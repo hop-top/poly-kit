@@ -3,7 +3,7 @@
   "description": "Cross-language CLI UX parity toolkit",
   "type": "library",
   "license": "MIT",
-  "version": "0.1.0",
+  "version": "0.2.0-experimental.0",
   "require": {
     "php": "^8.3",
     "guzzlehttp/guzzle": "^7.9",
