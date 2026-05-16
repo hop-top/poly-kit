@@ -1,6 +1,6 @@
 {
   ".": "0.2.0-alpha.0",
-  "sdk/ts": "0.1.0-alpha.0",
+  "sdk/ts": "0.2.0-alpha.0",
   "sdk/py": "0.1.0-alpha.0",
   "sdk/experimental/rs": "0.2.0-experimental.0",
   "sdk/experimental/php": "0.2.0-experimental.0",
