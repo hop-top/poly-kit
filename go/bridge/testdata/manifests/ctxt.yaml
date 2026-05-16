@@ -1,0 +1,23 @@
+name: ctxt
+version: 0.42.0
+binary: ctxt
+mode: subprocess
+accepts:
+  - kind: url
+    priority: 10
+    schemes: [http, https]
+  - kind: text
+    priority: 5
+    mime: ["text/*"]
+    max_size: 1048576
+  - kind: file
+    priority: 5
+    mime: ["text/*", "application/pdf", "application/json"]
+invoke:
+  args: ["--from-bridge", "--wait"]
+  env:
+    CTXT_BRIDGE_SOURCE: "${payload.source}"
+  timeout: 30s
+fallback_inproc:
+  enabled: true
+  socket: "$HOME/.run/ctxt/bridge.sock"

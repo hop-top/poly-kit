@@ -1,0 +1,23 @@
+# force-not-bypass: payload.Force is exposed to expressions but does
+# NOT bypass policy on its own. Two policies compose:
+#
+#   1. admin-only-cancel: line engineers can never CANCEL.
+#   2. force-allowed-for-admin: admins may use --force on any
+#      transition, but the override is explicit and grep-able.
+#
+# Result: a non-admin's force=true is still rejected; an admin's
+# force=true is allowed.
+policies:
+  - name: admin-only-cancel
+    on: kit.runtime.state.pre_transitioned
+    when: 'payload.To == "CANCELED" && (principal.role == "admin" || principal.role == "orchestrator")'
+    effect: allow
+    otherwise: deny
+    message: "only admin or orchestrator may transition to CANCELED"
+
+  - name: force-allowed-for-admin
+    on: kit.runtime.state.pre_transitioned
+    when: 'payload.Force && principal.role == "admin"'
+    effect: allow
+    otherwise: allow
+    message: "force overrides require admin role"

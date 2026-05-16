@@ -1,0 +1,22 @@
+# Per-file tier mapping for cli-py template.
+# See spec §13: kit-init-design.md.
+#
+# NOTE: Output paths use the resolved {{.Name}} substitution. Listed
+# here as the literal source segment "{{.Name}}" since the engine
+# applies tier filter to the post-substitution path -- callers must
+# match the rendered name when authoring per-project overrides.
+files:
+  ".ruff.toml": [1, 2, 3, 4]
+  "Makefile": [1, 2, 3, 4]
+  "pyproject.toml": [1, 2, 3, 4]
+
+  "src/{{.Name}}/__init__.py": [3, 4]
+  "src/{{.Name}}/cli.py": [3, 4]
+  "src/{{.Name}}/commands/__init__.py": [3, 4]
+  "tests/conftest.py": [3, 4]
+  "tests/unit/test_placeholder.py": [3, 4]
+  "tests/unit/.gitkeep": [3, 4]
+
+  "README.md": [4]
+  "CHANGELOG.md": [4]
+  "tests/e2e/.gitkeep": [4]

@@ -1,0 +1,13 @@
+kit/redact vendored PII rules
+
+This directory contains regex patterns hand-translated from the
+Microsoft Presidio project (https://github.com/microsoft/presidio),
+pinned to release 2.2.355.
+
+Original work Copyright (c) Microsoft Corporation. Licensed under the
+MIT License (see LICENSE).
+
+Modifications by the kit project: regex strings extracted from
+Presidio's Python recognizers and reformatted into a Go-friendly TOML
+schema. RE2-incompatible patterns dropped (see SOURCES.md). No rule
+semantics changed for retained patterns.

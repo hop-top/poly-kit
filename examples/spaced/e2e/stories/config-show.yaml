@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: spaced.config.show-current-config
+title: Inspect the current spaced configuration
+binary: spaced
+intent: |
+  An operator is troubleshooting a launch and wants to see the merged
+  configuration spaced is using. They run spaced config show with
+  --format=yaml to print the resolved configuration to stdout. The
+  output is captured for the operator's runbook.
+steps:
+  - id: show
+    intent: |
+      Render the current configuration as YAML. The operator inspects
+      the merged values and copies the relevant section into the
+      troubleshooting note.
+    invoke: ["spaced", "config", "show", "--format=yaml"]
+    capture: [exit_code, stdout]

@@ -1,0 +1,11 @@
+# delete-requires-note: destructive ops must carry an audit-trail
+# justification. The host tool surfaces this as a `--note` CLI flag
+# and stuffs the value into ctx via policy.ContextAttrsKey before
+# invoking the kit mutator.
+policies:
+  - name: delete-requires-note
+    on: kit.runtime.entity.pre_persisted
+    when: 'payload.Op != "delete" || context.note != ""'
+    effect: allow
+    otherwise: deny
+    message: "delete requires --note explaining why (audit trail)"

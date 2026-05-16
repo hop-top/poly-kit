@@ -1,0 +1,115 @@
+{
+  "anthropic": {
+    "id": "anthropic",
+    "name": "Anthropic",
+    "models": {
+      "claude-3-5-sonnet": {
+        "id": "claude-3-5-sonnet",
+        "name": "Claude 3.5 Sonnet",
+        "provider": "anthropic",
+        "family": "claude",
+        "modalities": {"input": ["text", "image"], "output": ["text"]},
+        "limit": {"context": 200000, "output": 8192},
+        "cost": {"input": 3.0, "output": 15.0},
+        "tool_call": true,
+        "reasoning": false,
+        "open_weights": false
+      },
+      "claude-3-5-haiku": {
+        "id": "claude-3-5-haiku",
+        "name": "Claude 3.5 Haiku",
+        "provider": "anthropic",
+        "family": "claude",
+        "modalities": {"input": ["text", "image"], "output": ["text"]},
+        "limit": {"context": 200000, "output": 8192},
+        "cost": {"input": 0.8, "output": 4.0},
+        "tool_call": true,
+        "reasoning": false,
+        "open_weights": false
+      },
+      "claude-3-7-sonnet": {
+        "id": "claude-3-7-sonnet",
+        "name": "Claude 3.7 Sonnet",
+        "provider": "anthropic",
+        "family": "claude",
+        "modalities": {"input": ["text", "image"], "output": ["text"]},
+        "limit": {"context": 200000, "output": 16384},
+        "cost": {"input": 3.0, "output": 15.0},
+        "tool_call": true,
+        "reasoning": true,
+        "open_weights": false
+      }
+    }
+  },
+  "openai": {
+    "id": "openai",
+    "name": "OpenAI",
+    "models": {
+      "gpt-4o": {
+        "id": "gpt-4o",
+        "name": "GPT-4o",
+        "provider": "openai",
+        "family": "gpt",
+        "modalities": {"input": ["text", "image"], "output": ["text"]},
+        "limit": {"context": 128000, "output": 4096},
+        "cost": {"input": 2.5, "output": 10.0},
+        "tool_call": true,
+        "reasoning": false,
+        "open_weights": false
+      },
+      "dall-e-3": {
+        "id": "dall-e-3",
+        "name": "DALL-E 3",
+        "provider": "openai",
+        "family": "dall-e",
+        "modalities": {"input": ["text"], "output": ["image"]},
+        "limit": {"context": 0, "output": 0},
+        "tool_call": false,
+        "reasoning": false,
+        "open_weights": false
+      },
+      "o1": {
+        "id": "o1",
+        "name": "o1",
+        "provider": "openai",
+        "family": "o1",
+        "modalities": {"input": ["text"], "output": ["text"]},
+        "limit": {"context": 200000, "output": 100000},
+        "cost": {"input": 15.0, "output": 60.0},
+        "tool_call": false,
+        "reasoning": true,
+        "open_weights": false
+      }
+    }
+  },
+  "meta": {
+    "id": "meta",
+    "name": "Meta",
+    "models": {
+      "llama-3-70b": {
+        "id": "llama-3-70b",
+        "name": "Llama 3 70B",
+        "provider": "meta",
+        "family": "llama",
+        "modalities": {"input": ["text"], "output": ["text"]},
+        "limit": {"context": 128000, "output": 4096},
+        "tool_call": true,
+        "reasoning": false,
+        "open_weights": true
+      },
+      "llama-3-8b": {
+        "id": "llama-3-8b",
+        "name": "Llama 3 8B",
+        "provider": "meta",
+        "family": "llama",
+        "modalities": {"input": ["text"], "output": ["text"]},
+        "limit": {"context": 128000, "output": 4096},
+        "tool_call": false,
+        "reasoning": false,
+        "open_weights": true,
+        "quantization": "fp16",
+        "future_field": 42
+      }
+    }
+  }
+}

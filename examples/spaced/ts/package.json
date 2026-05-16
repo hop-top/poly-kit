@@ -1,0 +1,17 @@
+{
+  "name": "spaced-ts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spaced CLI — TypeScript implementation",
+  "type": "commonjs",
+  "scripts": {
+    "start": "tsx spaced.ts",
+    "build": "tsc --noEmit --skipLibCheck",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "@hop-top/uri": "^0.2.0-alpha.1"
+  }
+}

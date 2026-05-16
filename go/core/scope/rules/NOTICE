@@ -1,0 +1,11 @@
+kit/scope vendored secret-detection rules
+
+This directory contains files derived from the gitleaks project
+(https://github.com/gitleaks/gitleaks), pinned to release v8.30.1.
+
+Original work Copyright (c) 2019-2026 Zachary Rice and contributors.
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Modifications by the kit project: split into gitleaks-paths.toml
+(global [allowlist] only, consumed by scope) and gitleaks-content.toml
+(full config preserved). No rule semantics changed.

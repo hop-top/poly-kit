@@ -1,0 +1,60 @@
+# Reusable build workflow.
+#
+# Go version contract:
+#   Callers MUST pass either `go-version` (explicit, e.g. "1.26.1") or
+#   `go-version-file` (path to a go.mod whose `go` directive pins the
+#   toolchain). The default `"stable"` is a fallback only and resolves
+#   to whatever actions/setup-go decides at run time — it is NOT a
+#   substitute for an explicit pin.
+#
+# Recommended:
+#   uses: hop-top/kit/.github/workflows/build.yml@main
+#   with:
+#     go-version-file: go.mod
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version (e.g. 1.26.1). Prefer go-version-file."
+        type: string
+        default: "stable"
+      go-version-file:
+        description: "Path to go.mod for version detection (preferred)"
+        type: string
+        default: ""
+      working-directory:
+        description: "Working directory"
+        type: string
+        default: ""
+    secrets:
+      GH_PAT:
+        description: "GitHub PAT for private hop.top/* modules"
+        required: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GOPRIVATE: "hop.top/*,github.com/hop-top/*"
+      GONOSUMCHECK: "hop.top/*,github.com/hop-top/*"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure private modules
+        env:
+          TOKEN: ${{ secrets.GH_PAT || github.token }}
+        run: |
+          git config --global url."https://${TOKEN}@github.com/hop-top".insteadOf "https://github.com/hop-top"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          go-version-file: ${{ inputs.go-version-file }}
+
+      - name: Build
+        run: go build ./...
+        working-directory: ${{ inputs.working-directory || '.' }}

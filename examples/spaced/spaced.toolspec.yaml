@@ -1,0 +1,150 @@
+name: spaced
+schema_version: "1"
+
+state_introspection:
+  config_commands:
+    - spaced config show
+  env_vars:
+    - SPACED_FORMAT
+    - SPACED_LOG_LEVEL
+    - SPACED_LOG_FORMAT
+
+commands:
+  - name: launch
+    intent:
+      domain: space
+      category: operations
+      tags: [mission, launch]
+    contract:
+      idempotent: false
+      retryable: false
+      side_effects:
+        - writes JSON report to file when --output set
+        - publishes bus events (kit.spaced.launch.initiated, kit.spaced.launch.completed)
+    safety:
+      level: dangerous
+      requires_confirmation: false
+    preview_modes:
+      - --dry-run
+    output_schema:
+      format: text
+      fields:
+        - mission
+        - vehicle
+        - orbit
+        - payload
+        - tags
+        - outcome
+        - note
+        - ts
+    flags:
+      - name: --payload
+        type: string[]
+        description: Payload manifest (comma-list)
+      - name: --orbit
+        type: string
+        description: Target orbit (leo|geo|lunar|helio|tbd)
+      - name: --dry-run
+        type: bool
+        description: Simulate launch without executing
+      - name: --output
+        short: -o
+        type: string
+        description: Write JSON report to file
+      - name: --interactive
+        short: -i
+        type: bool
+        description: Run interactive launch wizard
+      - name: --tag
+        type: set
+        description: Launch tags
+    suggested_next:
+      - mission list
+      - telemetry
+
+  - name: mission
+    children:
+      - name: list
+        intent:
+          domain: space
+          category: query
+          tags: [mission, catalog]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+        output_schema:
+          format: table
+          fields:
+            - name
+            - vehicle
+            - orbit
+            - outcome
+            - date
+        suggested_next:
+          - launch
+          - mission show
+
+  - name: daemon
+    children:
+      - name: list
+        intent:
+          domain: ops
+          category: query
+          tags: [daemon, monitoring]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+        output_schema:
+          format: table
+          fields: [id, daemon, status, since]
+
+      - name: status
+        intent:
+          domain: ops
+          category: query
+          tags: [daemon, monitoring]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+
+      - name: stop
+        intent:
+          domain: ops
+          category: operations
+          tags: [daemon, lifecycle]
+        contract:
+          idempotent: false
+          retryable: true
+          side_effects:
+            - publishes bus event (kit.spaced.daemon.stopped)
+            - attempts daemon termination (always fails)
+        safety:
+          level: dangerous
+          requires_confirmation: false
+        flags:
+          - name: --all
+            type: bool
+            description: Attempt to stop all daemons
+        suggested_next:
+          - daemon list
+
+  - name: config
+    children:
+      - name: show
+        intent:
+          domain: configuration
+          category: query
+          tags: [config, introspection]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+        output_schema:
+          format: yaml

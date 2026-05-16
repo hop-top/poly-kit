@@ -1,0 +1,8 @@
+# Adopter: include in your .buildkite/pipeline.yml steps.
+# Set KIT_CONFORMANCE_TOKEN + KIT_CONFORMANCE_SERVICE in pipeline env.
+steps:
+  - label: ":mag: conformance-grade"
+    command: |
+      go install hop.top/kit/cmd/kit@latest
+      go test ./e2e/conformance/...
+      kit conformance grade ./testdata/cassettes/conformance --format=json

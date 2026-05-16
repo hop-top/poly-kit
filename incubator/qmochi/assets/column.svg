@@ -1,0 +1,24 @@
+<?xml version='1.0'?>
+<svg xmlns='http://www.w3.org/2000/svg' width='400' height='160' version='1.1'>
+  <text x='50' y='14' font-size='12' font-weight='bold'>Revenue by Quarter</text>
+  <line x1='50' y1='20' x2='50' y2='135' stroke='#888' />
+  <text x='45' y='139' font-size='10' text-anchor='end'>0</text>
+  <text x='45' y='116' font-size='10' text-anchor='end'>50</text>
+  <text x='45' y='92' font-size='10' text-anchor='end'>100</text>
+  <text x='45' y='68' font-size='10' text-anchor='end'>150</text>
+  <text x='45' y='44' font-size='10' text-anchor='end'>200</text>
+  <text x='45' y='20' font-size='10' text-anchor='end'>250</text>
+  <line x1='50' y1='135' x2='280' y2='135' stroke='#888' />
+  <rect x='50' y='78' width='27' height='57' fill='#4285F4' />
+  <rect x='78' y='64' width='27' height='71' fill='#34A853' />
+  <rect x='107' y='49' width='27' height='86' fill='#4285F4' />
+  <rect x='135' y='40' width='27' height='95' fill='#34A853' />
+  <rect x='164' y='90' width='27' height='45' fill='#4285F4' />
+  <rect x='192' y='73' width='27' height='62' fill='#34A853' />
+  <rect x='221' y='35' width='27' height='100' fill='#4285F4' />
+  <rect x='249' y='20' width='27' height='115' fill='#34A853' />
+  <circle cx='295' cy='31' r='5' fill='#4285F4' />
+  <text x='305' y='35' font-size='11'>2025</text>
+  <circle cx='295' cy='49' r='5' fill='#34A853' />
+  <text x='305' y='53' font-size='11'>2026</text>
+</svg>

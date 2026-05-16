@@ -1,0 +1,140 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # ── Stage 1: Lint ──────────────────────────────────────────────
+  go-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.4
+          install-mode: goinstall
+      - run: make lint-go
+
+  ts-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: make lint-ts
+
+  py-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v4
+      - run: cd sdk/py && uv sync --all-extras
+      - run: make lint-py
+
+  docs-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: make lint-docs
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          args: '--config examples/spaced/lychee.toml docs/ README.md'
+          fail: false
+      - name: Fail on broken internal links
+        run: lychee --offline docs/ README.md
+
+  sdk-paths-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make lint-sdk-paths
+
+  # ── Stage 2: Test (after lint) ─────────────────────────────────
+  go-test:
+    needs: [go-lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make test-go-integration
+
+  ts-test:
+    needs: [ts-lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: make test-ts
+
+  py-test:
+    needs: [py-lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v4
+      - run: cd sdk/py && uv sync --all-extras
+      - run: cd engine/sdk/py-kit-engine && uv sync --all-extras
+      - run: make test-py
+
+  # ── Stage 3: Parity (after all tests) ─────────────────────────
+  parity:
+    needs: [go-test, ts-test, py-test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v4
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: cd sdk/py && uv sync --all-extras
+      - run: make test-parity
+
+  # ── Stage 4: Build + compliance (after parity) ────────────────
+  compliance:
+    needs: [parity]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build -buildvcs=false -o spaced ./examples/spaced/go/
+      - run: ./spaced compliance --spec examples/spaced/spaced.toolspec.yaml --format json

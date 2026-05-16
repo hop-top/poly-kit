@@ -1,0 +1,46 @@
+package codex
+
+import "hop.top/kit/go/core/uxp/invoke"
+
+func (Adapter) Mappings() []invoke.OptionMapping {
+	return []invoke.OptionMapping{
+		{Universal: "ModeRun", Support: invoke.MappingNative, Native: []string{"exec"}},
+		{Universal: "ModeInteractive", Support: invoke.MappingNative, Native: []string{"(default)"}},
+		{Universal: "ModeResume", Support: invoke.MappingNative, Native: []string{"exec resume <id>"},
+			Notes: "headless resume; codex resume is the interactive TUI flavor"},
+		{Universal: "Continue", Support: invoke.MappingNative, Native: []string{"exec resume --last"}},
+		{Universal: "Fork", Support: invoke.MappingNative, Native: []string{"fork <id>", "fork --last"}},
+		{Universal: "CWD", Support: invoke.MappingNative, Native: []string{"-C/--cd <DIR>"},
+			Notes: "also set CommandSpec.Dir for parity with non-codex callers"},
+		{Universal: "Model", Support: invoke.MappingNative, Native: []string{"-m/--model"}},
+		{Universal: "Agent", Support: invoke.MappingUnsupported, Native: nil,
+			Notes: "no --agent; use codex.profile Config key for --profile selection"},
+		{Universal: "OutputText", Support: invoke.MappingNative, Native: []string{"(default)"}},
+		{Universal: "OutputJSON", Support: invoke.MappingShim,
+			Native: []string{"-o/--output-last-message <FILE>"},
+			Notes:  "codex writes the final message to a file path; caller must set Config[\"codex.output_last_message_path\"]"},
+		{Universal: "OutputStreamJSON", Support: invoke.MappingNative, Native: []string{"--json"}},
+		{Universal: "SandboxReadOnly", Support: invoke.MappingNative, Native: []string{"-s read-only"}},
+		{Universal: "SandboxWorkspaceWrite", Support: invoke.MappingNative, Native: []string{"-s workspace-write"}},
+		{Universal: "SandboxDangerFullAccess", Support: invoke.MappingDangerous,
+			Native: []string{"-s danger-full-access"},
+			Notes:  "requires Config[\"uxp.allow_dangerous\"]=\"true\""},
+		{Universal: "ApprovalAsk", Support: invoke.MappingNative, Native: []string{"-a on-request"}},
+		{Universal: "ApprovalPlan", Support: invoke.MappingShim,
+			Native: []string{"-s read-only -a never (S-6)"},
+			Notes:  "no native plan mode; cross-shim with read-only sandbox + never approval"},
+		{Universal: "ApprovalAutoEdit", Support: invoke.MappingUnsupported, Native: nil,
+			Notes: "refused: no native auto-edit; would require degrading to dangerous bypass"},
+		{Universal: "ApprovalAutoAll", Support: invoke.MappingDangerous,
+			Native: []string{"--dangerously-bypass-approvals-and-sandbox"},
+			Notes:  "requires Config[\"uxp.allow_dangerous\"]=\"true\""},
+		{Universal: "ApprovalNever", Support: invoke.MappingNative, Native: []string{"-a never"}},
+		{Universal: "AddDirs", Support: invoke.MappingNative,
+			Native: []string{"--add-dir <DIR> (repeatable)"}},
+		{Universal: "Files", Support: invoke.MappingShim,
+			Native: []string{"S-1+S-3 (parent-dir reduce → --add-dir + prompt-block)"},
+			Notes:  "no per-file flag; codex accepts directory scope only"},
+		{Universal: "Images", Support: invoke.MappingNative,
+			Native: []string{"-i/--image <FILE>... (variadic)"}},
+	}
+}

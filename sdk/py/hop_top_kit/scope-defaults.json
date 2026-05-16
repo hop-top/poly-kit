@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/parity/scope-defaults.json",
+  "description": "Cross-language default deny patterns for kit/scope. Go, TypeScript, and Python ports MUST load values from here. Patterns use bmatcuk/doublestar/v4 syntax; '~' expands to the user home directory; environment macros (%APPDATA%, %LOCALAPPDATA%, %USERPROFILE%) expand to the corresponding os.UserConfigDir / os.UserHomeDir results so test overrides work.",
+  "version": 1,
+  "deny": {
+    "common": [
+      "~/.ssh/**",
+      "~/.aws/**",
+      "~/.azure/**",
+      "~/.config/gcloud/**",
+      "~/.gnupg/**",
+      "~/.pki/**",
+      "~/.kube/**",
+      "~/.netrc",
+      "~/.pgpass",
+      "~/.my.cnf",
+      "~/.npmrc",
+      "~/.pypirc",
+      "**/.env",
+      "**/.env.*",
+      "**/credentials*",
+      "**/secrets*",
+      "**/*.pem",
+      "**/*.key",
+      "**/id_rsa*",
+      "**/id_ed25519*",
+      "**/.git/config"
+    ],
+    "darwin": [
+      "~/Library/Keychains/**",
+      "~/Library/Cookies/**",
+      "~/Library/Application Support/Google/Chrome/**/Cookies*",
+      "~/Library/Application Support/Google/Chrome/**/Login Data*",
+      "~/Library/Application Support/Arc/User Data/**/Cookies*",
+      "~/Library/Application Support/BraveSoftware/Brave-Browser/**/Cookies*",
+      "~/Library/Application Support/Microsoft Edge/**/Cookies*",
+      "~/Library/Application Support/Firefox/Profiles/**/cookies.sqlite",
+      "~/Library/Application Support/Firefox/Profiles/**/key*.db",
+      "~/Library/Application Support/Firefox/Profiles/**/logins.json"
+    ],
+    "linux": [
+      "~/.config/google-chrome/**/Cookies*",
+      "~/.config/google-chrome/**/Login Data*",
+      "~/.config/BraveSoftware/Brave-Browser/**/Cookies*",
+      "~/.config/microsoft-edge/**/Cookies*",
+      "~/.mozilla/firefox/**/cookies.sqlite",
+      "~/.mozilla/firefox/**/key*.db",
+      "~/.mozilla/firefox/**/logins.json"
+    ],
+    "windows": [
+      "%USERPROFILE%/.aws/**",
+      "%USERPROFILE%/.azure/**",
+      "%APPDATA%/gcloud/**",
+      "%USERPROFILE%/.kube/**",
+      "%USERPROFILE%/.ssh/**",
+      "%APPDATA%/Microsoft/Credentials/**",
+      "%LOCALAPPDATA%/Microsoft/Credentials/**",
+      "%APPDATA%/Microsoft/Crypto/**",
+      "%APPDATA%/Microsoft/Protect/**",
+      "%APPDATA%/Microsoft/SystemCertificates/**",
+      "%APPDATA%/PuTTY/sshhostkeys",
+      "%APPDATA%/PuTTY/sessions/**",
+      "%LOCALAPPDATA%/Google/Chrome/User Data/**/Cookies*",
+      "%LOCALAPPDATA%/Google/Chrome/User Data/**/Login Data*",
+      "%LOCALAPPDATA%/Microsoft/Edge/User Data/**/Cookies*",
+      "%APPDATA%/Mozilla/Firefox/Profiles/**/cookies.sqlite",
+      "%APPDATA%/Mozilla/Firefox/Profiles/**/key*.db",
+      "%APPDATA%/Mozilla/Firefox/Profiles/**/logins.json"
+    ]
+  }
+}

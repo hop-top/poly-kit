@@ -1,0 +1,75 @@
+syntax = "proto3";
+package routellm.v1;
+option go_package = "hop.top/kit/contracts/proto/routellm/v1;routellmv1";
+
+service EvaService {
+  rpc ListContracts(ListContractsRequest) returns (ListContractsResponse);
+  rpc AddContract(AddContractRequest) returns (AddContractResponse);
+  rpc RemoveContract(RemoveContractRequest) returns (RemoveContractResponse);
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
+  rpc GetEvalResults(GetEvalResultsRequest) returns (GetEvalResultsResponse);
+}
+
+message ListContractsRequest {}
+message ListContractsResponse {
+  repeated Contract contracts = 1;
+}
+
+message Contract {
+  string id = 1;
+  string name = 2;
+  string content = 3;
+  bool enabled = 4;
+}
+
+message AddContractRequest {
+  string name = 1;
+  string content = 2;
+}
+message AddContractResponse {
+  string id = 1;
+  bool success = 2;
+}
+
+message RemoveContractRequest {
+  string id = 1;
+}
+message RemoveContractResponse {
+  bool success = 1;
+}
+
+message EvaluateRequest {
+  string prompt = 1;
+  string response = 2;
+  string contract_id = 3;
+}
+message EvaluateResponse {
+  bool passed = 1;
+  double confidence = 2;
+  repeated Violation violations = 3;
+}
+
+message Violation {
+  string contract_id = 1;
+  string rule = 2;
+  string message = 3;
+  double severity = 4;
+}
+
+message GetEvalResultsRequest {
+  string contract_id = 1;
+  int32 limit = 2;
+  int64 since_unix = 3;
+}
+message GetEvalResultsResponse {
+  repeated EvalResult results = 1;
+}
+
+message EvalResult {
+  string id = 1;
+  string prompt = 2;
+  bool passed = 3;
+  double confidence = 4;
+  repeated Violation violations = 5;
+  int64 timestamp_unix = 6;
+}

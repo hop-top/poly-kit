@@ -1,0 +1,14 @@
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Editor/IDE
+.idea/
+.vscode/
+
+# Environment
+.env
+.env.local
+.env.*.local

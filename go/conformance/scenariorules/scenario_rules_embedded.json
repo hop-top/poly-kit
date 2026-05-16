@@ -1,0 +1,66 @@
+{
+  "$comment": "Authoritative shape/verbset for kit conformance verify-no-leak. See .tlc/tracks/12fcc-leak/design.md §3. schema_version bumps require a binary update; rules_version bumps re-ship this file only. Sibling track 12fcc-scen owns adding new verbs.",
+  "schema_version": "1",
+  "rules_version": "2026.05.12.1",
+  "verbs": [
+    "exit_code_equals",
+    "exit_code_in",
+    "exit_code_class",
+    "output_field_equals",
+    "output_field_present",
+    "output_field_count",
+    "output_schema_matches",
+    "cassette_must_contain",
+    "cassette_must_not_contain",
+    "cassette_diff_equals",
+    "cassette_diff_empty",
+    "destructive_gate_required",
+    "dry_run_no_mutation",
+    "idempotency_replay_clean",
+    "capability_roundtrip",
+    "judge_score_above",
+    "stderr_contains",
+    "stderr_does_not_contain",
+    "stream_discipline_pass",
+    "provenance_present",
+    "provenance_matches_cassette",
+    "auth_lifecycle_clean"
+  ],
+  "top_level_keys": [
+    "scenario_id",
+    "factor_coverage",
+    "story_ref",
+    "tier",
+    "grading",
+    "judge",
+    "assertions",
+    "preconditions",
+    "steps",
+    "actors"
+  ],
+  "compound_rules": [
+    {
+      "id": "R1",
+      "description": "top-level scenario_id key",
+      "kind": "key_at_root",
+      "key": "scenario_id"
+    },
+    {
+      "id": "R2",
+      "description": "assertions list contains >= min_count entries with kind drawn from the verb set",
+      "kind": "assertions_list_verbs",
+      "min_count": 2
+    },
+    {
+      "id": "R3",
+      "description": "cassette_must_contain or cassette_must_not_contain key anywhere",
+      "kind": "any_key_in_set",
+      "keys": ["cassette_must_contain", "cassette_must_not_contain"]
+    },
+    {
+      "id": "R4",
+      "description": "judge block with prompt(_ref) and required_score or model",
+      "kind": "judge_block_with_prompt_and_score"
+    }
+  ]
+}

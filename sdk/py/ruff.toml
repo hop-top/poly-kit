@@ -1,0 +1,30 @@
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "RUF",    # ruff-specific
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "N802",   # function name lowercase (test names)
+    "N803",   # argument name lowercase
+    "N806",   # variable in function should be lowercase (Mock*, class refs)
+    "UP045",  # Optional[X] needed for Typer runtime annotations
+    "RUF002", # ambiguous unicode chars in docstrings (en dash etc)
+    "RUF012", # mutable class defaults (dataclass pattern)
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["S101", "E741", "SIM115", "SIM117"]  # assert, short var names, file open, nested with
+
+[format]
+quote-style = "double"

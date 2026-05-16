@@ -1,0 +1,17 @@
+{
+  "name": "probe-example",
+  "private": true,
+  "scripts": {
+    "start": "tsx probe.ts",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "tsx": "^4",
+    "vitest": "^1",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.1",
+    "pino": "^10.3.1"
+  }
+}

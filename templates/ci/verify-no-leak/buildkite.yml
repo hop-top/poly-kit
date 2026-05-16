@@ -1,0 +1,7 @@
+# Adopter: include in your .buildkite/pipeline.yml steps
+steps:
+  - label: ":mag: verify-no-leak"
+    command: |
+      go install hop.top/kit/cmd/kit@latest
+      kit conformance verify-no-leak --diff=origin/main...HEAD
+      kit conformance verify-no-leak --commit-range=origin/main..HEAD

@@ -1,0 +1,23 @@
+# Sample policy file used by policy_test.go end-to-end tests.
+policies:
+  - name: delete-requires-note
+    on: kit.runtime.entity.pre_persisted
+    # Allow non-delete ops; require --note for deletes.
+    when: 'payload.Op != "delete" || context.note != ""'
+    effect: allow
+    otherwise: deny
+    message: "deleting requires --note explaining why"
+
+  - name: admin-only-cancel
+    on: kit.runtime.state.pre_transitioned
+    when: 'payload.To == "CANCELLED" && (principal.role == "admin" || principal.role == "orchestrator")'
+    effect: allow
+    otherwise: deny
+    message: "only admin/orchestrator may cancel"
+
+  - name: writes-need-role
+    on: kit.runtime.entity.pre_validated
+    when: 'principal.role != ""'
+    effect: allow
+    otherwise: deny
+    message: "writes require an authenticated principal"

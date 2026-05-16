@@ -1,0 +1,12 @@
+{
+  "name": "kit-root",
+  "private": true,
+  "devDependencies": {
+    "commander": "^14.0.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@hop-top/uri": "^0.2.0-alpha.1"
+    }
+  }
+}

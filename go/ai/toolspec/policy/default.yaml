@@ -1,0 +1,97 @@
+# default.yaml — kit's opinionated default permission policy table.
+#
+# ADR-0019 specifies the contract; this file is the authoritative
+# data. Embedded into the binary via go:embed (see policy.go) and
+# loaded once on startup; harnesses or adopters that want a custom
+# table overlay this default via --policy <file> on the MCP adapter
+# (T-0497) or cli.WithPolicy() at RegisterManifestCommand time.
+#
+# Schema:
+#   schema_version: "1.0"
+#   rules:
+#     - side_effect: <read|write|destructive|interactive>
+#       network: <none|local-only|egress|any>
+#       action: <auto-allow|prompt|deny>
+#       reason: "<human-readable rationale>"
+#
+# Resolution order (see policy.Table.Resolve):
+#   1. Exact (side_effect, network) match wins.
+#   2. (side_effect, any) match catches the column-spanning rules.
+#   3. No match → action: prompt (fail-safe default).
+#
+# The matrix below is the same one ADR-0019 ships in §4 of its
+# Decision section. Update both together; tests in policy_test.go
+# assert every (side_effect, network) cell has a documented
+# decision.
+
+schema_version: "1.0"
+
+rules:
+  # ──────────────────────────────────────────────────────────────
+  # read — pure-read commands (list, show, get, find, info).
+  # Cannot cause data loss. Local reads auto-allow so agents can
+  # iterate freely on their own state. Egress reads prompt because
+  # the harness has no way to vet upstream URLs (`curl <url>`-style
+  # commands fall here).
+  # ──────────────────────────────────────────────────────────────
+  - side_effect: read
+    network: none
+    action: auto-allow
+    reason: "pure read, no I/O — bulk of agent traffic"
+  - side_effect: read
+    network: local-only
+    action: auto-allow
+    reason: "local-only read on user's machine; no escape hatch"
+  - side_effect: read
+    network: egress
+    action: prompt
+    reason: "egress read may exfiltrate state; user decides per call"
+
+  # ──────────────────────────────────────────────────────────────
+  # write — mutates state without irreversible loss (create, add,
+  # edit, update, sync). Local writes auto-allow because the user
+  # can undo them; shared/network writes prompt because the blast
+  # radius leaves the local sandbox.
+  # ──────────────────────────────────────────────────────────────
+  - side_effect: write
+    network: none
+    action: auto-allow
+    reason: "local write under user's full control; trivially undoable"
+  - side_effect: write
+    network: local-only
+    action: prompt
+    reason: "writes shared infrastructure (git remote, daemon socket)"
+  - side_effect: write
+    network: egress
+    action: prompt
+    reason: "writes a remote service; user authorizes per call"
+
+  # ──────────────────────────────────────────────────────────────
+  # destructive — mutates with potential irreversible loss
+  # (delete, reset, rotate, drop, force-push). Always prompts at
+  # minimum; egress + destructive (e.g. `git push --force` to a
+  # shared remote) defaults to deny because the consequences span
+  # other engineers.
+  # ──────────────────────────────────────────────────────────────
+  - side_effect: destructive
+    network: none
+    action: prompt
+    reason: "irreversible local mutation; surface the diff to the user"
+  - side_effect: destructive
+    network: local-only
+    action: prompt
+    reason: "irreversible mutation on shared local infra"
+  - side_effect: destructive
+    network: egress
+    action: deny
+    reason: "irreversible remote mutation affects others; explicit override only"
+
+  # ──────────────────────────────────────────────────────────────
+  # interactive — long-running, session-bound (shell, tui, serve).
+  # Always prompt because the agent's I/O channel gets swallowed
+  # for the session's lifetime; can't re-prompt mid-session.
+  # ──────────────────────────────────────────────────────────────
+  - side_effect: interactive
+    network: any
+    action: prompt
+    reason: "session-bound; agent loses its I/O channel"

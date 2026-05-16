@@ -1,0 +1,9 @@
+module BasicConfig
+
+name: String = "default-app"
+port: Int = 8080
+debug: Boolean = false
+
+output {
+  renderer = new JsonRenderer {}
+}

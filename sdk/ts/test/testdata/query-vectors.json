@@ -1,0 +1,187 @@
+[
+  {
+    "input": "",
+    "expected": {},
+    "description": "empty input → empty filter"
+  },
+  {
+    "input": "provider:anthropic",
+    "expected": {"Provider": "anthropic"},
+    "description": "single tag — provider"
+  },
+  {
+    "input": "family:llama",
+    "expected": {"Family": "llama"},
+    "description": "single tag — family"
+  },
+  {
+    "input": "in:text",
+    "expected": {"Input": "text"},
+    "description": "single tag — input modality"
+  },
+  {
+    "input": "out:image",
+    "expected": {"Output": "image"},
+    "description": "single tag — output modality"
+  },
+  {
+    "input": "provider:openai reasoning:true",
+    "expected": {"Provider": "openai", "Reasoning": true},
+    "description": "multi-tag — provider + bool"
+  },
+  {
+    "input": "provider:anthropic family:claude toolcall:true",
+    "expected": {"Provider": "anthropic", "Family": "claude", "ToolCall": true},
+    "description": "multi-tag — three fields"
+  },
+  {
+    "input": "reasoning:true",
+    "expected": {"Reasoning": true},
+    "description": "bool tag — true"
+  },
+  {
+    "input": "reasoning:false",
+    "expected": {"Reasoning": false},
+    "description": "bool tag — false"
+  },
+  {
+    "input": "openweights:true",
+    "expected": {"OpenWeights": true},
+    "description": "bool tag — openweights true"
+  },
+  {
+    "input": "toolcall:false",
+    "expected": {"ToolCall": false},
+    "description": "bool tag — toolcall false"
+  },
+  {
+    "input": "reasoning:yes",
+    "error": "invalid bool value \"yes\" for tag \"reasoning\": must be true or false",
+    "description": "bool tag — reject yes"
+  },
+  {
+    "input": "toolcall:1",
+    "error": "invalid bool value \"1\" for tag \"toolcall\": must be true or false",
+    "description": "bool tag — reject numeric 1"
+  },
+  {
+    "input": "openweights:maybe",
+    "error": "invalid bool value \"maybe\" for tag \"openweights\": must be true or false",
+    "description": "bool tag — reject maybe"
+  },
+  {
+    "input": "reasoning:TRUE",
+    "error": "invalid bool value \"TRUE\" for tag \"reasoning\": must be true or false",
+    "description": "bool tag — reject uppercase TRUE"
+  },
+  {
+    "input": "in:image,video",
+    "expected": {"Input": "image,video"},
+    "description": "multi-value modality — comma-separated"
+  },
+  {
+    "input": "out:text,code,json",
+    "expected": {"Output": "text,code,json"},
+    "description": "multi-value modality — three values"
+  },
+  {
+    "input": "in:image,video out:text",
+    "expected": {"Input": "image,video", "Output": "text"},
+    "description": "multi-value modality combined with single-value"
+  },
+  {
+    "input": "provider:openai provider:anthropic",
+    "expected": {"Provider": "openai,anthropic"},
+    "description": "repeated key — append with comma"
+  },
+  {
+    "input": "claude",
+    "expected": {"Query": "claude"},
+    "description": "free-text — single word"
+  },
+  {
+    "input": "gpt 4o",
+    "expected": {"Query": "gpt 4o"},
+    "description": "free-text — multi-word"
+  },
+  {
+    "input": "provider:openai gpt",
+    "expected": {"Provider": "openai", "Query": "gpt"},
+    "description": "mixed — tag + free-text"
+  },
+  {
+    "input": "fast reasoning:true provider:anthropic",
+    "expected": {"Reasoning": true, "Provider": "anthropic", "Query": "fast"},
+    "description": "mixed — free-text surrounded by tags"
+  },
+  {
+    "input": "\"provider:anthropic\"",
+    "expected": {"Query": "provider:anthropic"},
+    "description": "quoted string — colon treated as literal"
+  },
+  {
+    "input": "\"hello world\"",
+    "expected": {"Query": "hello world"},
+    "description": "quoted string — multi-word literal"
+  },
+  {
+    "input": "provider:openai \"big model\" reasoning:true",
+    "expected": {"Provider": "openai", "Reasoning": true, "Query": "big model"},
+    "description": "quoted string mixed with tags"
+  },
+  {
+    "input": "foo:bar",
+    "error": "unknown tag \"foo\"",
+    "description": "unknown tag — parse error"
+  },
+  {
+    "input": "provider:openai size:large",
+    "error": "unknown tag \"size\"",
+    "description": "unknown tag — mixed with valid tag"
+  },
+  {
+    "input": "   provider:anthropic   ",
+    "expected": {"Provider": "anthropic"},
+    "description": "whitespace — leading/trailing trimmed"
+  },
+  {
+    "input": "provider:anthropic  reasoning:true",
+    "expected": {"Provider": "anthropic", "Reasoning": true},
+    "description": "whitespace — multiple spaces between tokens"
+  },
+  {
+    "input": "provider:",
+    "error": "empty value for tag \"provider\"",
+    "description": "malformed — tag with empty value"
+  },
+  {
+    "input": ":anthropic",
+    "error": "malformed tag \":anthropic\": missing key",
+    "description": "malformed — missing key"
+  },
+  {
+    "input": "in:text out:code reasoning:true openweights:false provider:meta family:llama",
+    "expected": {
+      "Input": "text",
+      "Output": "code",
+      "Reasoning": true,
+      "OpenWeights": false,
+      "Provider": "meta",
+      "Family": "llama"
+    },
+    "description": "kitchen sink — all fields set"
+  },
+  {
+    "input": "in:text out:code reasoning:true openweights:false provider:meta family:llama coder",
+    "expected": {
+      "Input": "text",
+      "Output": "code",
+      "Reasoning": true,
+      "OpenWeights": false,
+      "Provider": "meta",
+      "Family": "llama",
+      "Query": "coder"
+    },
+    "description": "kitchen sink — all fields + free-text"
+  }
+]

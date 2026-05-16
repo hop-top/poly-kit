@@ -1,0 +1,10 @@
+# Invalid: accepts list is empty. Validate must reject and Load must
+# skip + log + continue without returning an error to the caller.
+name: broken
+version: 0.0.1
+binary: broken
+mode: subprocess
+accepts: []
+invoke:
+  args: ["--from-bridge"]
+  timeout: 5s

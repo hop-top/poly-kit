@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
+  "nixpkgs": {
+    "commit": "nixos-unstable"
+  },
+  "packages": [],
+  "env": {},
+  "shell": {
+    "init_hook": [
+      "echo 'hop.top/kit devbox shell (wraps .devcontainer/flake.nix)'"
+    ]
+  },
+  "include_flake_env": true
+}

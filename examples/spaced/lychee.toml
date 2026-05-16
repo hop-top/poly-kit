@@ -1,0 +1,7 @@
+[config]
+verbose = true
+no_progress = true
+timeout = 30
+max_retries = 3
+accept = [200, 204, 301, 302, 429]
+exclude_path = ["node_modules", ".venv", "media"]

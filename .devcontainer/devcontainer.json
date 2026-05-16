@@ -1,0 +1,29 @@
+{
+  "name": "hop.top/kit",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "remoteUser": "dev",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "ms-vscode.vscode-typescript-next",
+        "ms-python.python",
+        "continue.continue"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "go.goroot": "/usr/local/tools/go",
+        "go.toolsManagement.autoUpdate": false,
+        "python.defaultInterpreterPath": "/workspace/sdk/py/.venv/bin/python"
+      }
+    }
+  },
+  "features": {},
+  "forwardPorts": [],
+  "mounts": []
+}

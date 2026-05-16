@@ -1,0 +1,94 @@
+{
+  "title": "kit instance",
+  "description_html": "Read-only browse of a kit serve SQLite store. See <a href=\"https://github.com/hop-top/poly-kit/blob/main/docs/inspect-with-datasette.md\">docs/inspect-with-datasette.md</a>.",
+  "license": "internal",
+  "databases": {
+    "data": {
+      "title": "kit data",
+      "description": "Engine document store and version DAG.",
+      "tables": {
+        "documents": {
+          "description": "Type-tagged JSON documents. (type, id) is the primary key. data is opaque JSON; the engine does not parse it.",
+          "facets": ["type"],
+          "sortable_columns": ["created_at", "updated_at", "type", "id"]
+        },
+        "versions": {
+          "description": "Persistent version DAG. seq is monotonic per (type, id); version_id is unique. See engine-versioned-sqlite spec.",
+          "facets": ["type"],
+          "sortable_columns": ["created_at", "seq", "type", "id"]
+        },
+        "version_parents": {
+          "description": "Parent edges in the version DAG. Schema supports branching even though VersionedDocumentStore appends linearly today."
+        },
+        "snapshots": {
+          "description": "Full JSON payload per version_id. Joined to versions on version_id."
+        }
+      },
+      "queries": {
+        "recent-mutations": {
+          "title": "Recent mutations across all types",
+          "description": "Last 200 versions written, with snapshot byte counts.",
+          "sql": "select v.type, v.id, v.seq, v.created_at, v.hash, length(s.data) as snapshot_bytes\nfrom versions v\njoin snapshots s using (version_id)\norder by v.created_at desc\nlimit 200"
+        },
+        "history-for-document": {
+          "title": "Full history for one document",
+          "description": "Pass type and id to see every version of one document, oldest first.",
+          "sql": "select v.seq, v.version_id, v.created_at, v.hash, length(s.data) as snapshot_bytes\nfrom versions v\njoin snapshots s using (version_id)\nwhere v.type = :type and v.id = :id\norder by v.seq",
+          "params": ["type", "id"]
+        },
+        "branched-documents": {
+          "title": "Documents whose DAG has multiple heads",
+          "description": "Documents with branched version histories (more than one head). VersionedDocumentStore appends linearly today, so heads > 1 is unexpected and worth investigating.",
+          "sql": "with heads as (\n  select version_id from versions\n  where version_id not in (select parent_id from version_parents)\n)\nselect v.type, v.id, count(*) as head_count\nfrom versions v\njoin heads using (version_id)\ngroup by v.type, v.id\nhaving count(*) > 1\norder by head_count desc"
+        },
+        "type-summary": {
+          "title": "Document counts by type",
+          "description": "Total documents per type, with version counts.",
+          "sql": "select d.type,\n       count(distinct d.id) as document_count,\n       count(v.version_id) as version_count\nfrom documents d\nleft join versions v on v.type = d.type and v.id = d.id\ngroup by d.type\norder by document_count desc"
+        },
+        "orphan-snapshots": {
+          "title": "Orphan snapshots (FK integrity check)",
+          "description": "Snapshots whose version_id has no row in versions. Should always be empty if FK cascade is working.",
+          "sql": "select s.version_id, length(s.data) as bytes\nfrom snapshots s\nleft join versions v on v.version_id = s.version_id\nwhere v.version_id is null"
+        }
+      }
+    }
+  },
+  "plugins": {
+    "datasette-mask": {
+      "_comment": "Coarse pattern-based masking. Mirror your kit redact rules here per environment.",
+      "tables": {
+        "documents": {
+          "data": {
+            "patterns": [
+              "api_key",
+              "apikey",
+              "secret",
+              "password",
+              "token",
+              "private_key",
+              "ssn",
+              "credit_card"
+            ],
+            "replacement": "[redacted]"
+          }
+        },
+        "snapshots": {
+          "data": {
+            "patterns": [
+              "api_key",
+              "apikey",
+              "secret",
+              "password",
+              "token",
+              "private_key",
+              "ssn",
+              "credit_card"
+            ],
+            "replacement": "[redacted]"
+          }
+        }
+      }
+    }
+  }
+}

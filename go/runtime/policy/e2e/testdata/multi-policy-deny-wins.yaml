@@ -1,0 +1,20 @@
+# multi-policy-deny-wins: composition is deny-overrides. Two
+# policies match the same topic; the more restrictive one always
+# wins. The first denying policy supplies the surfaced message.
+policies:
+  - name: writes-need-authenticated-role
+    on: kit.runtime.entity.pre_validated
+    when: 'principal.role != ""'
+    effect: allow
+    otherwise: deny
+    message: "writes require an authenticated principal"
+
+  - name: writes-blocked-during-freeze
+    on: kit.runtime.entity.pre_validated
+    # `has()` guards the optional key — CEL raises "no such key" on
+    # bare access against a map that doesn't contain it, so policies
+    # that read host-supplied flags must always probe with has().
+    when: '!has(context.request_attrs.freeze) || context.request_attrs.freeze != true'
+    effect: allow
+    otherwise: deny
+    message: "writes blocked during change freeze window"

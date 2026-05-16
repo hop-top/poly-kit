@@ -1,0 +1,45 @@
+package opencode
+
+import "hop.top/kit/go/core/uxp/invoke"
+
+func (Adapter) Mappings() []invoke.OptionMapping {
+	return []invoke.OptionMapping{
+		{Universal: "ModeRun", Support: invoke.MappingNative, Native: []string{"run [message..]"}},
+		{Universal: "ModeInteractive", Support: invoke.MappingNative, Native: []string{"(default)"}},
+		{Universal: "ModeResume", Support: invoke.MappingNative, Native: []string{"run --session <id>"}},
+		{Universal: "Continue", Support: invoke.MappingNative, Native: []string{"run --continue"}},
+		{Universal: "Fork", Support: invoke.MappingNative, Native: []string{"--fork"},
+			Notes: "with --continue or --session"},
+		{Universal: "CWD", Support: invoke.MappingNative, Native: []string{"--dir <dir>"},
+			Notes: "for run/resume; bare TUI uses positional project arg"},
+		{Universal: "Model", Support: invoke.MappingNative, Native: []string{"-m/--model <provider/model>"}},
+		{Universal: "Agent", Support: invoke.MappingNative, Native: []string{"--agent <name>"}},
+		{Universal: "OutputText", Support: invoke.MappingNative, Native: []string{"(default)"}},
+		{Universal: "OutputJSON", Support: invoke.MappingShim, Native: []string{"--format json"},
+			Notes: "opencode --format json is JSONL event stream; adapter records shim, caller must reduce to final assistant message"},
+		{Universal: "OutputStreamJSON", Support: invoke.MappingNative, Native: []string{"--format json"}},
+		{Universal: "SandboxReadOnly", Support: invoke.MappingUnsupported, Native: nil,
+			Notes: "no per-tier sandbox; configure via opencode config"},
+		{Universal: "SandboxWorkspaceWrite", Support: invoke.MappingUnsupported, Native: nil,
+			Notes: "no per-tier sandbox; configure via opencode config"},
+		{Universal: "SandboxDangerFullAccess", Support: invoke.MappingDangerous,
+			Native: []string{"--dangerously-skip-permissions"},
+			Notes:  "requires Config[\"uxp.allow_dangerous\"]=\"true\""},
+		{Universal: "ApprovalAsk", Support: invoke.MappingNative, Native: []string{"(default)"}},
+		{Universal: "ApprovalPlan", Support: invoke.MappingUnsupported, Native: nil,
+			Notes: "no native plan mode"},
+		{Universal: "ApprovalAutoEdit", Support: invoke.MappingUnsupported, Native: nil,
+			Notes: "refused: no native auto-edit; would require degrading to dangerous bypass"},
+		{Universal: "ApprovalAutoAll", Support: invoke.MappingDangerous,
+			Native: []string{"--dangerously-skip-permissions"},
+			Notes:  "requires Config[\"uxp.allow_dangerous\"]=\"true\""},
+		{Universal: "ApprovalNever", Support: invoke.MappingUnsupported, Native: nil},
+		{Universal: "AddDirs", Support: invoke.MappingShim,
+			Native: []string{"S-2 (enumerate dir → repeated --file)"},
+			Notes:  "no --add-dir flag; walk respects Config[\"uxp.shim.dir_to_files_max\"] (default 200) and refuses overflow"},
+		{Universal: "Files", Support: invoke.MappingNative,
+			Native: []string{"-f/--file <path> (repeatable)"}},
+		{Universal: "Images", Support: invoke.MappingShim, Native: []string{"-f/--file <path>"},
+			Notes: "opencode does not distinguish images; reuses --file"},
+	}
+}

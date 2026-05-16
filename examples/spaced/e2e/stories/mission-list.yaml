@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: spaced.mission.list-catalog
+title: List the mission catalog
+binary: spaced
+intent: |
+  An operator wants to see every mission spaced is tracking. They run
+  spaced mission list to print the catalog as a table, and capture
+  stdout so a downstream review can confirm the catalog contents. The
+  command is read-only and idempotent; the story records a single
+  invocation.
+steps:
+  - id: list
+    intent: |
+      Print the mission catalog as a table. The operator scans for the
+      mission they care about and notes its current orbit + outcome.
+    invoke: ["spaced", "mission", "list"]
+    capture: [exit_code, stdout]

@@ -1,0 +1,8 @@
+name: local-fixture
+description: Test fixture
+kit_version: ">=0.1.0"
+variables:
+  - name: Name
+    required: true
+render_rules:
+  strip_suffixes: [".tmpl"]

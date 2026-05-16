@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: spaced.launch.dry-run-walkthrough
+title: Preview a launch with --dry-run before committing
+binary: spaced
+intent: |
+  An operator wants to preview a launch without committing it. They run
+  spaced launch with --dry-run, inspect the rendered manifest, and only
+  then re-invoke without the flag to perform the launch for real. This
+  story records the dry-run preview half of that flow.
+references:
+  - title: spaced launch reference
+    url: https://hop.top/kit/examples/spaced
+preconditions:
+  - spaced binary is on PATH
+  - SPACED_FORMAT is unset or set to "text"
+steps:
+  - id: preview
+    intent: |
+      Render the launch manifest without performing the launch so the
+      operator can sanity-check payload and orbit before committing.
+    invoke: ["spaced", "launch", "--payload", "alpha", "--orbit", "leo", "--dry-run"]
+    capture: [exit_code, stdout]

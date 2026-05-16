@@ -1,0 +1,69 @@
+name: Dev Environment
+description: >
+  Build dev container image for CI using the same
+  Dockerfile as local development. No AI tools.
+
+inputs:
+  dockerfile:
+    description: Path to Dockerfile
+    default: .devcontainer/Dockerfile
+    required: false
+  context:
+    description: Docker build context
+    default: .devcontainer
+    required: false
+  nix-cache-key:
+    description: >
+      Extra cache key segment for Nix layer.
+      Busted automatically when flake files change.
+    default: ''
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Hash Nix flake inputs
+      id: nix-hash
+      shell: bash
+      run: |
+        hash="$(sha256sum .devcontainer/flake.nix .devcontainer/flake.lock \
+          | sha256sum | cut -d' ' -f1)"
+        echo "hash=$hash" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Docker layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache
+        key: >-
+          buildx-${{ runner.os }}-${{ steps.nix-hash.outputs.hash
+          }}-${{ inputs.nix-cache-key
+          }}-${{ hashFiles(inputs.dockerfile) }}
+        restore-keys: |
+          buildx-${{ runner.os }}-${{ steps.nix-hash.outputs.hash }}-
+          buildx-${{ runner.os }}-
+
+    - name: Build dev image (no AI tools)
+      shell: bash
+      run: |
+        docker buildx build \
+          --file "${{ inputs.dockerfile }}" \
+          --cache-from type=local,src=/tmp/.buildx-cache \
+          --cache-to \
+            type=local,dest=/tmp/.buildx-cache-new,mode=max \
+          --load \
+          -t kit-dev:ci \
+          "${{ inputs.context }}"
+
+    - name: Rotate cache
+      shell: bash
+      if: always()
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache \
+          2>/dev/null || true

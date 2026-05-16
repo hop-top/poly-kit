@@ -1,0 +1,30 @@
+name: Release Python
+on:
+  push:
+    tags: ['py/v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: py
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: pypi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: py/.python-version
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync
+      - run: uv run pytest
+      - name: Version from tag
+        run: sed -i "s/^version = .*/version = \"${GITHUB_REF#refs/tags/py/v}\"/" pyproject.toml
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: py/dist/

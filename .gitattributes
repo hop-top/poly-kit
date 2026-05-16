@@ -1,0 +1,65 @@
+# Default: text files normalize to LF, binary detection is automatic.
+* text=auto eol=lf
+
+# Explicit text formats — collapse cross-platform CRLF noise.
+*.go          text eol=lf
+*.md          text eol=lf
+*.mdx         text eol=lf
+*.yaml        text eol=lf
+*.yml         text eol=lf
+*.json        text eol=lf
+*.toml        text eol=lf
+*.proto       text eol=lf
+*.ts          text eol=lf
+*.tsx         text eol=lf
+*.js          text eol=lf
+*.jsx         text eol=lf
+*.py          text eol=lf
+*.sh          text eol=lf
+*.bash        text eol=lf
+*.bats        text eol=lf
+Dockerfile    text eol=lf
+*.Dockerfile  text eol=lf
+Makefile      text eol=lf
+
+# Explicit binary — never line-end-translate or diff.
+*.png         binary
+*.jpg         binary
+*.jpeg        binary
+*.gif         binary
+*.ico         binary
+*.pdf         binary
+*.zip         binary
+*.tar.gz      binary
+*.tgz         binary
+*.woff        binary
+*.woff2       binary
+
+# Generated code — mark as linguist-generated so GitHub collapses diffs
+# and excludes from language statistics. Files still text + LF.
+contracts/proto/**/gen/**           linguist-generated=true
+**/*.pb.go                          linguist-generated=true
+**/*_pb.ts                          linguist-generated=true
+**/*_pb.py                          linguist-generated=true
+**/*.gen.go                         linguist-generated=true
+
+# Lockfiles — generated, large, collapse from PR diffs.
+pnpm-lock.yaml                      linguist-generated=true
+**/package-lock.json                linguist-generated=true
+**/yarn.lock                        linguist-generated=true
+**/uv.lock                          linguist-generated=true
+go.sum                              linguist-generated=true
+
+# Vendored docs / templates — exclude from language stats so they
+# don't inflate the project's reported tech mix on GitHub.
+docs/**            linguist-documentation=true
+templates/**       linguist-vendored=true
+.tlc/**            linguist-vendored=true
+
+# Examples are sample code, not the framework itself — exclude from
+# language stats but keep diffable.
+examples/**        linguist-documentation=true
+
+# Test fixtures may carry binary or generated content; keep diffable
+# but mark as generated so they don't dominate PR reviews.
+**/testdata/**     linguist-generated=true

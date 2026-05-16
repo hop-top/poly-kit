@@ -1,0 +1,54 @@
+# {{.Name}}
+
+{{.Description}}
+
+## Install
+
+```sh
+pip install {{.Name}}
+```
+
+Or with [uv](https://docs.astral.sh/uv/):
+
+```sh
+uv tool install {{.Name}}
+```
+
+## Usage
+
+```sh
+{{.Name}} --help
+{{.Name}} --version
+```
+
+### Output formats
+
+```sh
+{{.Name}} --format json
+{{.Name}} --format yaml
+```
+
+### Commands
+
+```sh
+{{.Name}} hello
+{{.Name}} hello --name You
+```
+
+## Development
+
+Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/),
+[Task](https://taskfile.dev)
+
+```sh
+task setup    # sync deps
+task check    # lint + typecheck + test
+task format   # auto-format
+```
+
+## License
+
+See [LICENSE](LICENSE).
+
+---
+Maintained by {{.Author}}.
