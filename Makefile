@@ -1,10 +1,40 @@
 .PHONY: setup lint lint-go lint-ts lint-py lint-docs lint-config lint-links lint-sdk-paths \
+	tools tools-golangci-lint \
 	test test-go test-go-integration test-ts test-py test-parity \
 	proto openapi clients clients-ts clients-php clients-rs clients-test api \
 	job-test job-integration-hatchet job-integration-restate job-integration-temporal \
 	test-workflow test-hook test-release promote promote-alpha promote-beta promote-rc promote-release check \
 	test-templates lint-templates build builtins-sync refresh-secret-rules \
 	refresh-pii-rules refresh-rules
+
+# Tool versions — single source of truth for local + the kit repo's
+# own CI. `.github/workflows/ci.yml` consumes the pin by calling
+# `make lint-go`, which in turn depends on `tools-golangci-lint`.
+#
+# Note: `.github/workflows/lint.yml` is a reusable workflow exposed
+# to OTHER hop-top repos via `workflow_call` and takes its own
+# `inputs.version` independently — it is NOT covered by this pin.
+GOLANGCI_LINT_VERSION ?= v2.11.4
+
+# lint-go invokes the binary from $(LOCAL_BIN) directly. The
+# `tools-golangci-lint` target is a hard dep, so the binary is
+# guaranteed present by the time the recipe runs. Using an
+# absolute path avoids PATH manipulation in `find -execdir`
+# subshells (which would otherwise fall back to the PATH-installed
+# version, defeating the version pin).
+LOCAL_BIN := $(CURDIR)/bin
+GOLANGCI_LINT := $(LOCAL_BIN)/golangci-lint
+
+tools: tools-golangci-lint ## Install pinned dev tools into bin/
+
+tools-golangci-lint: ## Install the pinned golangci-lint version into bin/
+	@mkdir -p $(LOCAL_BIN)
+	@if [ ! -x $(LOCAL_BIN)/golangci-lint ] || ! $(LOCAL_BIN)/golangci-lint version 2>/dev/null | grep -q "$(GOLANGCI_LINT_VERSION:v%=%)"; then \
+		echo "==> Installing golangci-lint $(GOLANGCI_LINT_VERSION) into $(LOCAL_BIN)"; \
+		GOBIN=$(LOCAL_BIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
+	else \
+		echo "==> golangci-lint $(GOLANGCI_LINT_VERSION) already installed"; \
+	fi
 
 setup: ## Initialize all sub-projects and dependencies
 	@echo "==> Initializing Go modules"
@@ -44,9 +74,9 @@ test-parity: ## Cross-language parity tests
 
 lint: lint-go lint-ts lint-py lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
 
-lint-go: ## Go: golangci-lint
-	@GOFLAGS=-buildvcs=false golangci-lint run ./...
-	@find go cmd contracts engine examples incubator -name "go.mod" -execdir env GOFLAGS=-buildvcs=false golangci-lint run ./... \;
+lint-go: tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION)
+	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
+	@find go cmd contracts engine examples incubator -name "go.mod" -execdir env GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./... \;
 
 lint-ts: ## TypeScript: eslint
 	cd sdk/ts && pnpm eslint src/

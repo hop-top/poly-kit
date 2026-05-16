@@ -15,10 +15,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v7
-        with:
-          version: v2.11.4
-          install-mode: goinstall
+      # golangci-lint is installed by `make lint-go` -> `tools-golangci-lint`
+      # at the version pinned by `GOLANGCI_LINT_VERSION` in the Makefile.
+      # Single source of truth for local + CI.
       - run: make lint-go
 
   ts-lint:
