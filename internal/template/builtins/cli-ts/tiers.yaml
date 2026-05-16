@@ -1,0 +1,18 @@
+# Per-file tier mapping for cli-ts template.
+# See spec §13: kit-init-design.md.
+files:
+  ".eslintrc.cjs": [1, 2, 3, 4]
+  ".prettierrc": [1, 2, 3, 4]
+  ".npmrc": [1, 2, 3, 4]
+  "Makefile": [1, 2, 3, 4]
+  "tsconfig.json": [1, 2, 3, 4]
+  "vitest.config.ts": [1, 2, 3, 4]
+  "package.json": [1, 2, 3, 4]
+
+  "src/index.ts": [3, 4]
+  "src/cli.ts": [3, 4]
+  "src/commands/.gitkeep": [3, 4]
+
+  "README.md": [4]
+  "CHANGELOG.md": [4]
+  "tests/e2e/.gitkeep": [4]

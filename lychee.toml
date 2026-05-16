@@ -1,0 +1,43 @@
+# lychee config — link checker for docs/ and README.md.
+#
+# Excludes references to internal-only paths that ship outside the
+# public docs tree:
+#   - `.tlc/tracks/**` — internal task tracking (not part of release artifact)
+#   - `specs/12fcc/**` — internal program spec
+#   - `docs/stories/**`, `docs/plans/**` — historical planning docs not archived in this release
+#   - `docs/adopters/adr/`, `docs/adopters/audits/`, `docs/adopters/specs/`,
+#     `docs/contributors/specs/2026-04-18-cli-demo-media-workflow-design/*.mmd`,
+#     and `docs/go/**` — cross-refs whose targets were curated out of the
+#     minimum doc set; will be reinstated when the full docs tree ships
+#   - `#guardrails`, `#runtime-guardrails-kitbreaker` — anchors in AGENTS.md
+#     that move with each AGENTS.md restructure
+exclude = [
+  '\.tlc/',
+  'specs/12fcc/',
+  'docs/stories(/|$)',
+  'docs/plans(/|$)',
+  'docs/adopters/adr(/|$)',
+  'docs/adopters/audits(/|$)',
+  'docs/adopters/specs(/|$)',
+  'docs/contributors/adr(/|$)',
+  'docs/contributors/audits(/|$)',
+  'docs/contributors/conformance(/|$)',
+  'docs/contributors/contracts(/|$)',
+  'docs/contributors/plans(/|$)',
+  'docs/contributors/specs(/|$)',
+  'docs/contributors/stories(/|$)',
+  'docs/contributors/workflows(/|$)',
+  'docs/go(/|$)',
+  'docs/adr(/|$)',
+  'docs/releasing\.md',
+  'docs/workflows(/|$)',
+  'kit/hops/go/',
+  'AGENTS\.md#',
+]
+
+# Reasonable timeouts.
+timeout = 20
+retry_wait_time = 2
+max_retries = 2
+
+# Offline by default — Makefile invocation passes --offline.

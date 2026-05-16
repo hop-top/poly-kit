@@ -1,0 +1,42 @@
+name: shared
+description: "Shared infrastructure (CI, devcontainer, gitignore, docs, scripts)"
+kit_version: ">=0.4.0"
+
+variables:
+  - name: Name
+    prompt: "Project name (lowercase, hyphens)"
+    required: true
+    validate: "^[a-z][a-z0-9-]{0,63}$"
+  - name: Description
+    prompt: "One-line description"
+    default: "A {{.Name}} project"
+  - name: Module
+    prompt: "Source repo prefix (e.g. github.com/org)"
+    default: "github.com/{{.Org}}/{{.Name}}"
+  - name: Author
+    prompt: "Author name"
+    required: true
+  - name: Email
+    prompt: "Author email"
+    required: true
+  - name: Year
+    prompt: "Copyright year"
+    default: "{{.Year}}"
+  - name: License
+    type: choice
+    choices: [MIT, Apache-2.0, BSD-3-Clause, Proprietary]
+    default: MIT
+
+files:
+  exclude:
+    - "kit-template.yaml"
+    - "tiers.yaml"
+    - "README.md"
+    - "init.sh"
+    - "ci/README.md"
+    - "devcontainer/README.md"
+    - "docs/README.md"
+    - "scripts/README.md"
+  binary: []
+
+hooks: {}

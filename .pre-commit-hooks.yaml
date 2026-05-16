@@ -1,0 +1,7 @@
+- id: verify-no-leak
+  name: verify-no-leak
+  description: scan for scenario leakage before commit
+  entry: kit conformance verify-no-leak --staged
+  language: system
+  pass_filenames: false
+  stages: [commit]

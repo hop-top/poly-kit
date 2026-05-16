@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/story-schema.json",
+  "$comment": "Authoritative wire-format shape for kit stories (v1). Pairs with the Go validator at go/conformance/story/. See .tlc/tracks/12fcc-story/design.md and ADR-0026. schema_version bumps require a binary update.",
+  "title": "kit story v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "story_id", "title", "intent", "binary", "steps"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1"]
+    },
+    "story_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9-]+)+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "intent": {
+      "type": "string",
+      "minLength": 40,
+      "maxLength": 2000
+    },
+    "binary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "toolspec_ref": {
+      "type": "string"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "url"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      }
+    },
+    "preconditions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "invoke"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "intent": {
+            "type": "string",
+            "minLength": 40,
+            "maxLength": 500
+          },
+          "invoke": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": { "type": "string" }
+          },
+          "capture": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["exit_code", "stdout", "stderr", "duration_ms"]
+            }
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "$comment": "Free-form metadata. Keys in the scenario-rules verb set + top_level_keys are forbidden by the Go validator (forbidden-metadata-key); JSON Schema cannot express that without duplicating contracts/scenario-rules.json. Consumers using this schema for IDE assist should not rely on the denylist firing here."
+    }
+  }
+}

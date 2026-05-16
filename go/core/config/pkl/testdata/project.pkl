@@ -1,0 +1,21 @@
+module ProjectConfig
+
+/// @wizard.group "Basics"
+/// Project name
+name: String = "my-project"
+
+/// @wizard.group "Basics"
+/// Programming language
+lang: "go"|"python"|"typescript" = "go"
+
+/// @wizard.group "Setup"
+/// Initialize git repo
+git: Boolean = true
+
+/// @wizard.group "Setup"
+/// Server port
+port: Int = 8080
+
+output {
+  renderer = new JsonRenderer {}
+}

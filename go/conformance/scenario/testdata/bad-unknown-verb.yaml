@@ -1,0 +1,17 @@
+schema_version: "1"
+scenario_id: bad-unknown-verb
+binary: spaced
+factor_coverage: [1]
+tier: 3
+story_ref:
+  story_id: bad-unknown-verb-story
+  story_path: stories/bad-unknown-verb.yaml
+  content_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+steps:
+  - id: launch
+    invoke: ["launch"]
+assertions:
+  - id: a1
+    kind: this_is_not_a_verb
+    on: launch
+    factor: 1

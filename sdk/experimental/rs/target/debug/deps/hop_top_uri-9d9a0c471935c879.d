@@ -1,0 +1,10 @@
+/Users/jadb/.w/ideacrafterslabs/kit/hops/main/sdk/experimental/rs/target/debug/deps/hop_top_uri-9d9a0c471935c879.d: /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/lib.rs /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/handle.rs /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/registry.rs /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/scheme.rs
+
+/Users/jadb/.w/ideacrafterslabs/kit/hops/main/sdk/experimental/rs/target/debug/deps/libhop_top_uri-9d9a0c471935c879.rlib: /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/lib.rs /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/handle.rs /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/registry.rs /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/scheme.rs
+
+/Users/jadb/.w/ideacrafterslabs/kit/hops/main/sdk/experimental/rs/target/debug/deps/libhop_top_uri-9d9a0c471935c879.rmeta: /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/lib.rs /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/handle.rs /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/registry.rs /Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/scheme.rs
+
+/Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/lib.rs:
+/Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/handle.rs:
+/Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/registry.rs:
+/Users/jadb/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hop-top-uri-0.2.0-alpha.0/src/scheme.rs:

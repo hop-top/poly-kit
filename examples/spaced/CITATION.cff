@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: spaced
+message: >-
+  If you use spaced in your research on satirical CLI
+  development, please cite it.
+type: software
+authors:
+  - name: hop-top contributors
+    website: https://github.com/hop-top
+repository-code: https://github.com/hop-top/kit
+license: MIT
+abstract: >-
+  Satirical SpaceX CLI historian — because someone had to
+  document what happens when you strap a mannequin to a
+  Falcon Heavy and send it past Mars.
+keywords:
+  - cli
+  - spacex
+  - satire
+  - cross-language-parity

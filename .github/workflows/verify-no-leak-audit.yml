@@ -1,0 +1,60 @@
+# verify-no-leak-audit — scheduled audit-mode sweep across the full
+# kit tree and recent history. Catches accidental scenario rubric
+# leakage that slipped past the PR-time gate.
+#
+# Per 12fcc-dog design §6.2 + ADR-0028. Runs daily at 06:00 UTC and
+# on manual dispatch. Findings page the kit team via the configured
+# Slack / PagerDuty webhook (stub in v1; pluggable in v1.1).
+name: verify-no-leak-audit
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - name: build kit
+        run: go build -o /tmp/kit ./cmd/kit
+
+      - name: audit full tree
+        run: /tmp/kit conformance verify-no-leak --audit --format=json --output=/tmp/audit.json
+
+      - name: audit recent commit-message history (last 100 commits)
+        run: /tmp/kit conformance verify-no-leak --commit-range=HEAD~100..HEAD --format=json --output=/tmp/history.json
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        if: always()
+        with:
+          name: verify-no-leak-audit-reports
+          path: |
+            /tmp/audit.json
+            /tmp/history.json
+
+      - name: page on findings (stub)
+        if: failure()
+        env:
+          ALERT_WEBHOOK: ${{ secrets.LEAK_AUDIT_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          # v1: surface the failure as a red audit run and let GitHub
+          # Actions notifications carry it. ALERT_WEBHOOK (if set) is
+          # POSTed below; PagerDuty / Slack routing lands later.
+          echo "::error::verify-no-leak audit findings — see uploaded artifact"
+          if [ -n "${ALERT_WEBHOOK:-}" ]; then
+            curl -sS -X POST -H 'content-type: application/json' \
+              -d '{"text":"verify-no-leak audit failed in hop-top/kit; see GHA run for findings"}' \
+              "$ALERT_WEBHOOK" || true
+          fi

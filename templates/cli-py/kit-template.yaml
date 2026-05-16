@@ -1,0 +1,32 @@
+name: cli-py
+description: "Python CLI with kit conventions (typer + pytest + uv)"
+kit_version: ">=0.4.0"
+
+variables:
+  - name: Name
+    prompt: "Project name (lowercase, hyphens)"
+    required: true
+    validate: "^[a-z][a-z0-9-]{0,63}$"
+  - name: Description
+    prompt: "One-line description"
+    default: "A {{.Name}} CLI"
+  - name: Author
+    prompt: "Author name"
+    required: true
+  - name: Email
+    prompt: "Author email"
+    required: true
+  - name: License
+    type: choice
+    choices: [MIT, Apache-2.0, BSD-3-Clause, Proprietary]
+    default: MIT
+
+files:
+  exclude:
+    - "kit-template.yaml"
+    - "tiers.yaml"
+    - "src/README.md"
+    - "tests/README.md"
+  binary: []
+
+hooks: {}

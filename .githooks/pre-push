@@ -1,0 +1,66 @@
+#!/bin/sh
+set -e
+
+# Skip if HEAD hasn't changed since last successful push
+CACHE_FILE="$(git rev-parse --git-dir)/pre-push-last-sha"
+CURRENT_SHA=$(git rev-parse HEAD)
+if [ -f "$CACHE_FILE" ] && [ "$(cat "$CACHE_FILE")" = "$CURRENT_SHA" ]; then
+    echo "Pre-push: HEAD unchanged since last push, skipping checks."
+    exit 0
+fi
+
+# Determine which files changed vs the remote branch being pushed to.
+REMOTE_SHA=""
+while read local_ref local_sha remote_ref remote_sha; do
+    REMOTE_SHA="$remote_sha"
+done
+# New branch or force push: compare against merge-base with main.
+if [ -z "$REMOTE_SHA" ] || [ "$REMOTE_SHA" = "0000000000000000000000000000000000000000" ]; then
+    REMOTE_SHA=$(git merge-base HEAD main 2>/dev/null || echo HEAD~1)
+fi
+
+CHANGED=$(git diff --name-only "$REMOTE_SHA" HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD)
+
+# --- Detect affected areas ---
+HAS_GO=$(echo "$CHANGED" | grep -E '\.go$' || true)
+HAS_TS=$(echo "$CHANGED" | grep -E '^sdk/ts/' || true)
+HAS_PY=$(echo "$CHANGED" | grep -E '^sdk/py/' || true)
+HAS_CONTRACTS=$(echo "$CHANGED" | grep -E '^contracts/' || true)
+
+# --- Lint EVERYTHING (fast enough and catches cross-cutting issues) ---
+echo "Running all linters (including config validation)..."
+make lint
+
+# --- Test only affected packages ---
+echo "Running tests..."
+
+if [ -n "$HAS_GO" ] || [ -n "$HAS_CONTRACTS" ]; then
+    if [ -n "$HAS_GO" ]; then
+        # Extract unique Go packages from changed .go files.
+        GO_PKGS=$(echo "$CHANGED" | grep -E '\.go$' \
+            | xargs -I{} dirname {} \
+            | sort -u \
+            | sed 's|^|./|' \
+            | tr '\n' ' ')
+        if [ -n "$GO_PKGS" ]; then
+            echo "  go (affected packages)..."
+            go test -short -count=1 $GO_PKGS
+        fi
+    else
+        echo "  go (all, due to contract changes)..."
+        make test-go
+    fi
+fi
+
+[ -n "$HAS_TS" ] && { echo "  ts..."; make test-ts; }
+[ -n "$HAS_PY" ] && { echo "  py..."; make test-py; }
+
+# Parity tests when CLI or contracts change.
+HAS_CLI=$(echo "$CHANGED" | grep -E '^go/console/cli/' || true)
+if [ -n "$HAS_CLI" ] || [ -n "$HAS_CONTRACTS" ]; then
+    echo "Running parity tests..."
+    make test-parity
+fi
+
+echo "All checks passed."
+echo "$CURRENT_SHA" > "$CACHE_FILE"

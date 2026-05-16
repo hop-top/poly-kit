@@ -1,0 +1,133 @@
+{
+  "name": "@hop-top/kit",
+  "version": "0.3.0",
+  "description": "Shared CLI utilities for hop-top tools — TypeScript/CJS edition",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./cli": {
+      "require": "./dist/cli.js",
+      "types": "./dist/cli.d.ts"
+    },
+    "./output": {
+      "require": "./dist/output.js",
+      "types": "./dist/output.d.ts"
+    },
+    "./xdg": {
+      "require": "./dist/xdg.js",
+      "types": "./dist/xdg.d.ts"
+    },
+    "./config": {
+      "require": "./dist/config.js",
+      "types": "./dist/config.d.ts"
+    },
+    "./sqlstore": {
+      "require": "./dist/sqlstore.js",
+      "types": "./dist/sqlstore.d.ts"
+    },
+    "./upgrade": {
+      "require": "./dist/upgrade.js",
+      "types": "./dist/upgrade.d.ts"
+    },
+    "./llm": {
+      "require": "./dist/llm.js",
+      "types": "./dist/llm.d.ts"
+    },
+    "./routellm": {
+      "require": "./dist/routellm.js",
+      "types": "./dist/routellm.d.ts"
+    },
+    "./alias": {
+      "require": "./dist/alias.js",
+      "types": "./dist/alias.d.ts"
+    },
+    "./tui": {
+      "require": "./dist/tui/index.js",
+      "types": "./dist/tui/index.d.ts"
+    },
+    "./errcorrect": {
+      "require": "./dist/errcorrect.js",
+      "types": "./dist/errcorrect.d.ts"
+    },
+    "./safety": {
+      "require": "./dist/safety.js",
+      "types": "./dist/safety.d.ts"
+    },
+    "./provenance": {
+      "require": "./dist/provenance.js",
+      "types": "./dist/provenance.d.ts"
+    },
+    "./stream": {
+      "require": "./dist/stream.js",
+      "types": "./dist/stream.d.ts"
+    },
+    "./progress": {
+      "require": "./dist/progress.js",
+      "types": "./dist/progress.d.ts"
+    },
+    "./auth": {
+      "require": "./dist/auth.js",
+      "types": "./dist/auth.d.ts"
+    },
+    "./api": {
+      "require": "./dist/api.js",
+      "types": "./dist/api.d.ts"
+    },
+    "./rpc": {
+      "require": "./dist/rpc.js",
+      "types": "./dist/rpc.d.ts"
+    },
+    "./aim": {
+      "require": "./dist/aim.js",
+      "types": "./dist/aim.d.ts"
+    },
+    "./scope": {
+      "require": "./dist/scope.js",
+      "types": "./dist/scope.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade.ts src/llm.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/scope.ts --format cjs --dts",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.11.0",
+    "@clack/prompts": "^1.2.0",
+    "@connectrpc/connect": "^2.1.1",
+    "@connectrpc/connect-web": "^2.1.1",
+    "@hop-top/uri": "^0.2.0-alpha.1",
+    "better-sqlite3": "^12.8.0",
+    "commander": "^14.0.3",
+    "csv-stringify": "^6.7.0",
+    "eta": "^4.6.0",
+    "hono": "^4.12.10",
+    "js-yaml": "^4.1.1",
+    "picomatch": "^4.0.4",
+    "pino": "^10.3.1",
+    "semver": "^7.7.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20",
+    "@types/picomatch": "^4.0.3",
+    "@types/semver": "^7.7.1",
+    "esbuild": "^0.25.12",
+    "eslint": "^10.2.0",
+    "tsup": "^8",
+    "typescript": "^5",
+    "typescript-eslint": "^8.58.0",
+    "vitest": "^1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

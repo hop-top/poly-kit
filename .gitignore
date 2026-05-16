@@ -1,0 +1,34 @@
+*.test
+*.out
+/dist/
+/bin/
+/logs/
+/tracks/
+vendor
+node_modules
+/logs/
+examples/spaced/web/web.js
+examples/spaced/web/web.js.map
+examples/spaced/web/test-results/
+examples/spaced/bin/
+**/__pycache__/
+examples/probe/go/probe
+examples/probe/ts/node_modules/
+examples/probe/ts/dist/
+examples/probe/py/.pytest_cache/
+
+# Composer lock (library; consumers resolve their own deps)
+php/composer.lock
+
+# uv lock (library; consumers resolve their own deps)
+py/kit-engine/uv.lock
+
+# Generated media (large binaries; regenerate via `make media`)
+examples/spaced/media/*.gif
+examples/spaced/media/*.png
+/kit
+
+# xray catalog dumps written to repo root with bad filenames
+/*_graph_*.mmd
+/*_graph_*.txt
+.tlc/

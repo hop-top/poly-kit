@@ -1,0 +1,17 @@
+name: tlc
+version: 0.10.0
+binary: tlc
+mode: subprocess
+accepts:
+  - kind: url
+    priority: 1
+    schemes: [http, https]
+  - kind: text
+    priority: 5
+    mime: ["text/*"]
+  - kind: file
+    priority: 5
+    mime: ["text/*", "application/pdf"]
+invoke:
+  args: ["--from-bridge"]
+  timeout: 15s

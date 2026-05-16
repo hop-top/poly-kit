@@ -1,0 +1,11 @@
+# writes-need-role: every entity write must carry an authenticated
+# principal. Anonymous mutations (role == "") are rejected; the host
+# tool's auth layer is responsible for stuffing a Principal into ctx
+# via policy.ContextPrincipalKey before invoking the kit mutator.
+policies:
+  - name: writes-need-authenticated-role
+    on: kit.runtime.entity.pre_validated
+    when: 'principal.role != ""'
+    effect: allow
+    otherwise: deny
+    message: "writes require an authenticated principal (anonymous mutations are not allowed)"

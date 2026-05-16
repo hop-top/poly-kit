@@ -1,0 +1,23 @@
+syntax = "proto3";
+package routellm.v1;
+option go_package = "hop.top/kit/contracts/proto/routellm/v1;routellmv1";
+
+service HealthService {
+  rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc Watch(HealthCheckRequest) returns (stream HealthCheckResponse);
+}
+
+message HealthCheckRequest {
+  string service = 1;
+}
+
+message HealthCheckResponse {
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+  }
+  ServingStatus status = 1;
+  string message = 2;
+  int64 uptime_seconds = 3;
+}

@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: spaced.launch.commit-then-verify
+title: Commit a launch, then verify it appears in the mission list
+binary: spaced
+intent: |
+  An operator commits a launch with an explicit payload + orbit, then
+  re-reads the mission catalog to confirm the new mission is present.
+  This story records both steps so a downstream scenario can compare
+  the captured stdout against the catalog snapshot.
+preconditions:
+  - spaced daemon is running
+  - SPACED_FORMAT is unset
+steps:
+  - id: launch
+    intent: |
+      Commit the launch with payload "alpha" targeting LEO. The
+      operator notes the returned mission id from stdout for the
+      next step's catalog cross-check.
+    invoke: ["spaced", "launch", "--payload", "alpha", "--orbit", "leo"]
+    capture: [exit_code, stdout]
+  - id: verify
+    intent: |
+      Re-read the mission catalog to confirm the launch just committed
+      is visible in the table. The operator scans for the mission id
+      they noted in the prior step.
+    invoke: ["spaced", "mission", "list"]
+    capture: [exit_code, stdout]
+metadata:
+  authoring_notes: "this is a two-step story; the second step's stdout is the read-back"

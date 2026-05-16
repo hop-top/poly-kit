@@ -1,0 +1,25 @@
+# Per-file tier mapping for cli-go template.
+# See spec §13: kit-init-design.md.
+#
+# Tier 1 = lint/build only
+# Tier 2 = + CI workflows
+# Tier 3 = + CLI wiring (main + cmd)
+# Tier 4 = + full conformance (README, docs, changelogs)
+#
+# Output paths (post-suffix-strip, post-substitution).
+files:
+  ".golangci.yml": [1, 2, 3, 4]
+  ".gitignore": [1, 2, 3, 4]
+  ".trivyignore": [1, 2, 3, 4]
+  "Makefile": [1, 2, 3, 4]
+  "go.mod": [1, 2, 3, 4]
+
+  ".goreleaser.yml": [2, 3, 4]
+
+  "main.go": [3, 4]
+  "cmd/root.go": [3, 4]
+  "internal/version/version.go": [3, 4]
+
+  "README.md": [4]
+  "CHANGELOG.md": [4]
+  "tests/e2e/.gitkeep": [4]

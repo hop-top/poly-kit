@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/hop-top/kit/main/contracts/story-schema.json
+schema_version: "1"
+story_id: spaced.daemon.status-check
+title: Check daemon status as part of an ops triage
+binary: spaced
+intent: |
+  An operator triaging a flaky launch wants to confirm the spaced
+  daemon is running. They run spaced daemon status, capturing exit
+  code and stdout so the triage runbook records a snapshot of the
+  daemon's state at the time of the incident.
+references:
+  - title: ops triage runbook
+    url: https://hop.top/ops/triage
+steps:
+  - id: status
+    intent: |
+      Print the daemon status. The operator notes the daemon id and
+      uptime, then proceeds to the next triage step in the runbook.
+    invoke: ["spaced", "daemon", "status"]
+    capture: [exit_code, stdout, duration_ms]

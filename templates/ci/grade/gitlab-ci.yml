@@ -1,0 +1,14 @@
+# Adopter: include in your .gitlab-ci.yml
+# Requires KIT_CONFORMANCE_TOKEN + KIT_CONFORMANCE_SERVICE as
+# masked CI/CD variables.
+conformance-grade:
+  stage: test
+  image: golang:1.26
+  script:
+    - go install hop.top/kit/cmd/kit@latest
+    - go test ./e2e/conformance/...
+    - kit conformance grade ./testdata/cassettes/conformance --format=json | tee grade-result.json
+  artifacts:
+    paths: [grade-result.json]
+    when: always
+  only: [merge_requests]

@@ -1,0 +1,24 @@
+interval: 30s
+targets:
+  - name: api
+    url: https://httpbin.org/get
+    method: GET
+    timeout: 5s
+    expect:
+      status: 200
+    alerts:
+      - type: log
+  - name: health
+    url: https://httpbin.org/status/200
+    method: GET
+    timeout: 3s
+    expect:
+      status: 200
+  - name: slow
+    url: https://httpbin.org/delay/10
+    method: GET
+    timeout: 2s
+    expect:
+      status: 200
+    alerts:
+      - type: log

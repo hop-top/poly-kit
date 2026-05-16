@@ -1,0 +1,3 @@
+# Release configuration — admin or release team only
+release-please-config.json @hop-top/release
+.release-please-manifest.json @hop-top/release

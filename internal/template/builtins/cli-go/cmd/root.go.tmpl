@@ -1,0 +1,46 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"{{.Module}}/internal/version"
+)
+
+var rootCmd = &cobra.Command{
+	Use:     "{{.Name}}",
+	Short:   "{{.Description}}",
+	Version: version.Version(),
+}
+
+func Execute() error {
+	return rootCmd.Execute()
+}
+
+func init() {
+	cobra.OnInitialize(initConfig)
+	rootCmd.PersistentFlags().StringP(
+		"format", "f", "text",
+		"Output format (text, json, yaml)",
+	)
+	rootCmd.PersistentFlags().BoolP(
+		"verbose", "v", false,
+		"Verbose output",
+	)
+}
+
+func initConfig() {
+	viper.SetEnvPrefix("{{.NameUpper}}")
+	viper.AutomaticEnv()
+	home, err := os.UserHomeDir()
+	if err == nil {
+		viper.AddConfigPath(
+			fmt.Sprintf("%s/.config/{{.Name}}", home),
+		)
+	}
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	_ = viper.ReadInConfig()
+}

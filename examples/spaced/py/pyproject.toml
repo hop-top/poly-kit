@@ -1,0 +1,16 @@
+[project]
+name = "spaced"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["hop-top-kit", "hop-top-uri>=0.2.0a0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.8"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+ignore = ["E501", "N802", "N803"]

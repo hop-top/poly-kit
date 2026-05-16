@@ -1,0 +1,25 @@
+{
+  "name": "@hop-top/kit-engine",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for kit serve — identity, storage, sync, peers via sidecar",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs --dts",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsup": "^8",
+    "typescript": "^5",
+    "vitest": "^1.6.1"
+  },
+  "kit": {
+    "version": "0.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

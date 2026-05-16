@@ -1,0 +1,36 @@
+# Adopter: copy to .github/workflows/verify-no-leak.yml
+# Requires kit binary on PATH. While `setup-kit` action is in
+# development, install via go install:
+#   go install hop.top/kit/cmd/kit@latest
+name: verify-no-leak
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5  # v5.5.0
+        with:
+          go-version: stable
+      - name: install kit
+        run: go install hop.top/kit/cmd/kit@latest
+      - name: scan diff
+        run: kit conformance verify-no-leak --diff=origin/${{ github.base_ref || 'main' }}...HEAD --format=json --output=/tmp/vnl-diff.json
+      - name: scan commit messages
+        run: kit conformance verify-no-leak --commit-range=origin/${{ github.base_ref || 'main' }}..HEAD --format=json
+      # Uncomment after the tool has been in your workflow long enough to trust:
+      # - name: scan PR body
+      #   if: github.event_name == 'pull_request'
+      #   env:
+      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   run: kit conformance verify-no-leak --pr-body=${{ github.event.number }} --format=json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        if: failure()
+        with:
+          name: verify-no-leak-findings
+          path: /tmp/vnl-*.json

@@ -1,0 +1,3 @@
+# go
+
+Probe: Go example.

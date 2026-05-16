@@ -1,0 +1,16 @@
+{
+  "name": "notebook-ts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@hop-top/kit-engine": "file:../../engine/sdk/ts-kit-engine"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0"
+  }
+}

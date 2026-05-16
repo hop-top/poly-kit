@@ -1,0 +1,10 @@
+# admin-only-cancel: only admin or orchestrator roles may end work in
+# progress by transitioning a task to CANCELED. Line engineers
+# (role=engineer) get a deny so they cannot accidentally drop work.
+policies:
+  - name: admin-only-cancel
+    on: kit.runtime.state.pre_transitioned
+    when: 'payload.To == "CANCELED" && (principal.role == "admin" || principal.role == "orchestrator")'
+    effect: allow
+    otherwise: deny
+    message: "only admin or orchestrator may transition to CANCELED"

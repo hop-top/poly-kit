@@ -1,0 +1,62 @@
+name: Templates
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "templates/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build templates
+        run: |
+          chmod +x templates/build.sh
+          templates/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: templates
+          path: templates/dist/
+
+  push:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        template:
+          - name: cli-template-go
+            repo: hop-top/cli-template-go
+          - name: cli-template-ts
+            repo: hop-top/cli-template-ts
+          - name: cli-template-py
+            repo: hop-top/cli-template-py
+          - name: cli-template-polyglot
+            repo: hop-top/cli-template-polyglot
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build templates
+        run: |
+          chmod +x templates/build.sh
+          templates/build.sh
+
+      - name: Push to target repo
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          TEMPLATE_NAME: ${{ matrix.template.name }}
+          TEMPLATE_REPO: ${{ matrix.template.repo }}
+        run: |
+          cd "templates/dist/${TEMPLATE_NAME}"
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: sync from kit templates"
+          git remote add origin \
+            "https://x-access-token:${GH_PAT}@github.com/${TEMPLATE_REPO}.git"
+          git push --force origin HEAD:main

@@ -1,0 +1,31 @@
+version: 2
+
+builds:
+  - binary: "{{.Name}}"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X {{.Module}}/internal/version.ver={{`{{ .Version }}`}}
+        -X {{.Module}}/internal/version.commit={{`{{ .Commit }}`}}
+        -X {{.Module}}/internal/version.date={{`{{ .Date }}`}}
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{.Name}}_{{`{{ .Version }}_{{ .Os }}_{{ .Arch }}`}}
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

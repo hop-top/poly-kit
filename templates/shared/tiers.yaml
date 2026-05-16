@@ -1,0 +1,35 @@
+# Per-file tier mapping for shared template.
+# See spec §13: kit-init-design.md.
+files:
+  "gitignore/common.gitignore": [1, 2, 3, 4]
+  "gitignore/go.gitignore": [1, 2, 3, 4]
+  "gitignore/ts.gitignore": [1, 2, 3, 4]
+  "gitignore/py.gitignore": [1, 2, 3, 4]
+
+  "ci/ci-go.yml": [2, 3, 4]
+  "ci/ci-ts.yml": [2, 3, 4]
+  "ci/ci-py.yml": [2, 3, 4]
+  "ci/dependabot.yml": [2, 3, 4]
+
+  "devcontainer/devcontainer.json": [2, 3, 4]
+  "devcontainer/Dockerfile": [2, 3, 4]
+  "devcontainer/post-create.sh": [2, 3, 4]
+  "devcontainer/flake.nix": [2, 3, 4]
+  "devcontainer/flake.lock": [2, 3, 4]
+  "devcontainer/devbox.json": [2, 3, 4]
+
+  "scripts/promote-release.sh": [2, 3, 4]
+  "LICENSE-MIT": [2, 3, 4]
+  "LICENSE-Apache-2.0": [2, 3, 4]
+
+  "CONTRIBUTING.md": [4]
+  "SECURITY.md": [4]
+  "RELEASING.md": [4]
+  "docs/ARCHITECTURE.md": [4]
+  "docs/RELEASING.md": [4]
+  "docs/manual/install.md": [4]
+  "docs/manual/getting-started.md": [4]
+  "docs/manual/commands.md": [4]
+  "docs/manual/configuration.md": [4]
+  "docs/manual/troubleshooting.md": [4]
+  "docs/manual/upgrade.md": [4]

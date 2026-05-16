@@ -1,0 +1,39 @@
+syntax = "proto3";
+package routellm.v1;
+option go_package = "hop.top/kit/contracts/proto/routellm/v1;routellmv1";
+
+service RouterService {
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
+  rpc ListRouters(ListRoutersRequest) returns (ListRoutersResponse);
+}
+
+message GetConfigRequest {}
+message GetConfigResponse {
+  string strong_model = 1;
+  string weak_model = 2;
+  repeated RouterInfo routers = 3;
+}
+
+message UpdateConfigRequest {
+  string strong_model = 1;
+  string weak_model = 2;
+  repeated string routers = 3;
+  map<string, string> router_params = 4;
+}
+message UpdateConfigResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListRoutersRequest {}
+message ListRoutersResponse {
+  repeated RouterInfo routers = 1;
+}
+
+message RouterInfo {
+  string name = 1;
+  string status = 2;
+  double threshold = 3;
+  map<string, string> config = 4;
+}

@@ -1,0 +1,128 @@
+name: CI (Swift / iOS)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/ios/**"
+      - "**.swift"
+      - "Package.swift"
+      - "Package.resolved"
+      - "**/*.xcodeproj/**"
+      - "**/*.xcworkspace/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "mobile/ios/**"
+      - "**.swift"
+      - "Package.swift"
+      - "Package.resolved"
+      - "**/*.xcodeproj/**"
+      - "**/*.xcworkspace/**"
+
+permissions:
+  contents: read
+
+# Swift / iOS builds need a macOS runner with Xcode.
+# Pin to macos-14 (Xcode 15.x) for reproducibility.
+# Update the runner image when adopting newer iOS SDKs.
+
+jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      # SwiftLint via Homebrew is the lightest install on macOS runners.
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Lint
+        # Repos can override the path; defaults to mobile/ios for ctxt's
+        # monorepo layout. Use --strict to fail on warnings in CI.
+        run: |
+          if [ -d mobile/ios ]; then
+            cd mobile/ios && swiftlint lint --strict --reporter github-actions-logging
+          else
+            swiftlint lint --strict --reporter github-actions-logging
+          fi
+
+  test:
+    name: Test
+    runs-on: macos-14
+    strategy:
+      matrix:
+        # Test against the simulators the project supports. Repos can
+        # override or extend this list.
+        destination:
+          - "platform=iOS Simulator,name=iPhone 15,OS=latest"
+          - "platform=iOS Simulator,name=iPad (10th generation),OS=latest"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Resolve Swift Package dependencies
+        if: hashFiles('**/Package.swift') != ''
+        run: |
+          swift package --package-path mobile/ios resolve || \
+          swift package resolve
+
+      - name: Test
+        # Detect the project layout: prefer mobile/ios/Ctxt.xcodeproj for
+        # ctxt's monorepo, else look for a single .xcodeproj at the root.
+        run: |
+          if [ -d mobile/ios/Ctxt.xcodeproj ]; then
+            xcodebuild test \
+              -project mobile/ios/Ctxt.xcodeproj \
+              -scheme Ctxt \
+              -destination "${{ matrix.destination }}" \
+              -resultBundlePath ./TestResults \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO
+          else
+            xcodebuild test \
+              -scheme Ctxt \
+              -destination "${{ matrix.destination }}" \
+              -resultBundlePath ./TestResults \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.destination }}
+          path: TestResults
+
+  build:
+    name: Build (no signing)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Build all targets
+        # Build without code signing — signing happens in the release
+        # workflow with secrets scoped there. Builds verify all three
+        # iOS targets compile (App + ShareExtension + BroadcastExtension).
+        run: |
+          if [ -d mobile/ios/Ctxt.xcodeproj ]; then
+            xcodebuild build \
+              -project mobile/ios/Ctxt.xcodeproj \
+              -scheme Ctxt \
+              -destination "generic/platform=iOS" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO
+          else
+            xcodebuild build \
+              -scheme Ctxt \
+              -destination "generic/platform=iOS" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO
+          fi

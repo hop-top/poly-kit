@@ -1,0 +1,146 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "separate-pull-requests": true,
+  "pull-request-title-pattern": "chore(release):${component} ${version}",
+  "include-component-in-tag": true,
+  "tag-separator": "/",
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "refactor",
+      "section": "Refactoring",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Miscellaneous",
+      "hidden": true
+    },
+    {
+      "type": "docs",
+      "section": "Documentation",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "CI",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "section": "Build",
+      "hidden": true
+    }
+  ],
+  "linked-versions": [
+    {
+      "group": "kit",
+      "components": ["kit", "sdk/ts", "sdk/py"]
+    }
+  ],
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "component": "kit",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "exclude-paths": [
+        "sdk/ts",
+        "sdk/py",
+        "sdk/experimental",
+        "templates",
+        "incubator"
+      ],
+      "prerelease": true,
+      "prerelease-type": "alpha.0",
+      "initial-version": "0.1.0-alpha.0"
+    },
+    "sdk/ts": {
+      "release-type": "node",
+      "component": "sdk/ts",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "prerelease": true,
+      "prerelease-type": "alpha.0",
+      "initial-version": "0.1.0-alpha.0"
+    },
+    "sdk/py": {
+      "release-type": "python",
+      "component": "sdk/py",
+      "package-name": "hop-top-kit",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "pyproject.toml",
+          "jsonpath": "$.project.version"
+        }
+      ],
+      "prerelease": true,
+      "prerelease-type": "alpha.0",
+      "initial-version": "0.1.0-alpha.0"
+    },
+    "sdk/experimental/rs": {
+      "release-type": "rust",
+      "component": "sdk/rs",
+      "package-name": "hop-top-kit",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "prerelease": true,
+      "prerelease-type": "experimental.0",
+      "initial-version": "0.1.0-experimental.0"
+    },
+    "sdk/experimental/php": {
+      "release-type": "php",
+      "component": "sdk/php",
+      "package-name": "hop-top/kit",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "composer.json",
+          "jsonpath": "$.version"
+        }
+      ],
+      "prerelease": true,
+      "prerelease-type": "experimental.0",
+      "initial-version": "0.1.0-experimental.0"
+    },
+    "incubator/qmochi": {
+      "release-type": "go",
+      "component": "qmochi",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "prerelease": true,
+      "prerelease-type": "alpha.0",
+      "initial-version": "0.1.0-alpha.0"
+    },
+    "incubator/ash": {
+      "release-type": "go",
+      "component": "ash",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "prerelease": true,
+      "prerelease-type": "alpha.0",
+      "initial-version": "0.1.0-alpha.0"
+    }
+  }
+}

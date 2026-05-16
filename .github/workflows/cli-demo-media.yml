@@ -1,0 +1,444 @@
+name: CLI Demo Media
+
+# Reusable workflow — call via `workflow_call` from any CLI project.
+# Produces terminal recordings (VHS by default) + optional screenshots,
+# stores them via a configurable backend, and posts a PR comment.
+#
+# Storage backends:
+#   branch  — commits media to a dedicated git branch (default)
+#   s3      — uploads to AWS S3
+#   r2      — uploads to Cloudflare R2 (S3-compatible)
+#   custom  — caller supplies upload-command + url-template
+#
+# Example caller (branch backend, VHS):
+#   jobs:
+#     demo:
+#       uses: hop-top/kit/.github/workflows/cli-demo-media.yml@main
+#       with:
+#         build-command: "make build-go"
+#         tape-files: "examples/spaced/tapes/*.tape"
+#         screenshot-command: "node examples/spaced/web/scripts/screenshot.mjs"
+#         media-dir: "examples/spaced/media"
+#       secrets: inherit
+#
+# Example caller (R2 backend, custom recorder):
+#   jobs:
+#     demo:
+#       uses: hop-top/kit/.github/workflows/cli-demo-media.yml@main
+#       with:
+#         record-command: "asciinema rec"
+#         tape-files: "demos/*.sh"
+#         storage-backend: r2
+#         storage-bucket: my-demo-assets
+#         storage-endpoint: https://abc123.r2.cloudflarestorage.com
+#       secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      # ── Recording ────────────────────────────────────────────────────────────
+      record-command:
+        description: >
+          Command used to record each tape file.
+          Defaults to 'vhs' (charmbracelet/vhs).
+          Override to use asciinema, terminalizer, a shell script, etc.
+        type: string
+        default: "vhs"
+      tape-files:
+        description: >
+          Glob of tape/script files passed to record-command, space-separated.
+          Evaluated by bash inside the runner.
+        type: string
+        default: "tapes/*.tape"
+      screenshot-command:
+        description: "Command to run for screenshots. Leave empty to skip."
+        type: string
+        default: ""
+
+      # ── Build ────────────────────────────────────────────────────────────────
+      build-command:
+        description: "Command to run before recording (e.g. 'make build')."
+        type: string
+        default: ""
+      working-directory:
+        description: "Working directory for all build/record/screenshot commands."
+        type: string
+        default: "."
+      media-dir:
+        description: "Directory where media files land (relative to working-directory)."
+        type: string
+        default: "media"
+
+      # ── Storage backend ──────────────────────────────────────────────────────
+      storage-backend:
+        description: >
+          Where to store generated media.
+          branch  — commit to a git branch in this repo (default)
+          s3      — upload to AWS S3
+          r2      — upload to Cloudflare R2 (S3-compatible endpoint)
+          custom  — caller provides upload-command + url-template
+        type: string
+        default: "branch"
+
+      # branch backend
+      assets-branch:
+        description: >
+          (branch backend) Branch to commit generated media to.
+          Per-PR subdir: <assets-branch>/<pr-number>/.
+        type: string
+        default: "assets"
+
+      # s3 / r2 / custom backend
+      storage-bucket:
+        description: "(s3/r2/custom) Bucket or container name."
+        type: string
+        default: ""
+      storage-endpoint:
+        description: >
+          (r2/custom) S3-compatible endpoint URL.
+          E.g. https://<account>.r2.cloudflarestorage.com
+          Leave empty for standard AWS S3.
+        type: string
+        default: ""
+      storage-path-prefix:
+        description: >
+          (s3/r2/custom) Path prefix within bucket.
+          Defaults to 'pr-<N>/' when empty.
+        type: string
+        default: ""
+      storage-public-url-base:
+        description: >
+          (s3/r2/custom) Public base URL for embedded images.
+          E.g. https://assets.example.com/demos
+          Must not have a trailing slash.
+        type: string
+        default: ""
+
+      # custom backend
+      upload-command:
+        description: >
+          (custom backend) Shell command to upload all files from media-dir.
+          Env vars available: MEDIA_DIR, STORAGE_BUCKET, STORAGE_ENDPOINT,
+          STORAGE_PATH, STORAGE_PUBLIC_URL_BASE.
+        type: string
+        default: ""
+      url-template:
+        description: >
+          (custom backend) URL template for a single file.
+          Use '{file}' as placeholder for the filename.
+          E.g. https://cdn.example.com/demos/{file}
+        type: string
+        default: ""
+
+      # ── PR comment ───────────────────────────────────────────────────────────
+      pr-comment-title:
+        description: "Heading line for the PR comment."
+        type: string
+        default: "## Demo Media"
+
+    secrets:
+      token:
+        description: >
+          GitHub token with repo write access (for branch backend + PR comment).
+          Pass via `secrets: inherit` or map GITHUB_TOKEN explicitly.
+        required: false
+      storage-access-key:
+        description: "(s3/r2) AWS_ACCESS_KEY_ID or equivalent."
+        required: false
+      storage-secret-key:
+        description: "(s3/r2) AWS_SECRET_ACCESS_KEY or equivalent."
+        required: false
+
+jobs:
+  record:
+    name: Record & Publish
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    env:
+      BACKEND: ${{ inputs.storage-backend }}
+
+    steps:
+      # ── 1. Checkout source ────────────────────────────────────────────────────
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.token || github.token }}
+
+      # ── 2. Resolve PR number + storage path ───────────────────────────────────
+      - name: Resolve context
+        id: ctx
+        shell: bash
+        env:
+          PR_NUMBER:    ${{ github.event.pull_request.number }}
+          RUN_NUMBER:   ${{ github.run_number }}
+          ASSETS_BRANCH: ${{ inputs.assets-branch }}
+          PATH_PREFIX:  ${{ inputs.storage-path-prefix }}
+          PUBLIC_BASE:  ${{ inputs.storage-public-url-base }}
+          BUCKET:       ${{ inputs.storage-bucket }}
+          ENDPOINT:     ${{ inputs.storage-endpoint }}
+          OWNER:        ${{ github.repository_owner }}
+          REPO:         ${{ github.event.repository.name }}
+        run: |
+          PR="${PR_NUMBER:-${RUN_NUMBER}}"
+          echo "pr=${PR}" >> "$GITHUB_OUTPUT"
+
+          # Storage path (bucket subdir or branch subdir)
+          PREFIX="${PATH_PREFIX:-pr-${PR}}"
+          echo "storage-path=${PREFIX}" >> "$GITHUB_OUTPUT"
+
+          # Public URL base per backend
+          case "$BACKEND" in
+            branch)
+              BASE="https://raw.githubusercontent.com/${OWNER}/${REPO}/${ASSETS_BRANCH}/${ASSETS_BRANCH}/${PR}"
+              ;;
+            s3)
+              BASE="${PUBLIC_BASE:-https://${BUCKET}.s3.amazonaws.com/${PREFIX}}"
+              ;;
+            r2)
+              BASE="${PUBLIC_BASE:-${ENDPOINT}/${BUCKET}/${PREFIX}}"
+              ;;
+            custom)
+              BASE="${PUBLIC_BASE}"
+              ;;
+          esac
+          echo "public-base=${BASE}" >> "$GITHUB_OUTPUT"
+
+      # ── 3a. Prepare assets branch (branch backend only) ───────────────────────
+      - name: Prepare assets worktree
+        id: worktree
+        if: inputs.storage-backend == 'branch'
+        shell: bash
+        env:
+          BRANCH: ${{ inputs.assets-branch }}
+        run: |
+          WT="${RUNNER_TEMP}/assets-worktree"
+          if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
+            git worktree add "${WT}" "origin/${BRANCH}" --track -b "${BRANCH}" \
+              2>/dev/null || git worktree add "${WT}" "${BRANCH}"
+          else
+            git worktree add --orphan -b "${BRANCH}" "${WT}"
+            pushd "${WT}"
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            echo "# Demo media — auto-generated by cli-demo-media workflow" > README.md
+            git add README.md
+            git commit -m "chore: init assets branch"
+            git push origin "${BRANCH}"
+            popd
+          fi
+          echo "path=${WT}" >> "$GITHUB_OUTPUT"
+
+      # ── 4. Build (optional) ───────────────────────────────────────────────────
+      - name: Build
+        if: inputs.build-command != ''
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        run: ${{ inputs.build-command }}
+
+      # ── 5a. Install VHS (default recorder) ────────────────────────────────────
+      - name: Install VHS
+        if: inputs.record-command == 'vhs'
+        uses: charmbracelet/vhs-action@v2
+        with:
+          install-only: true
+
+      # ── 5b. Record terminal sessions ──────────────────────────────────────────
+      - name: Record terminal sessions
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          RECORD_CMD: ${{ inputs.record-command }}
+          TAPE_GLOB:  ${{ inputs.tape-files }}
+          MEDIA_DIR:  ${{ inputs.media-dir }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${MEDIA_DIR}"
+          shopt -s nullglob
+          FILES=()
+          for pattern in ${TAPE_GLOB}; do
+            for f in $pattern; do FILES+=("$f"); done
+          done
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "::warning::No tape files matched '${TAPE_GLOB}' — skipping recording."
+            exit 0
+          fi
+          for tape in "${FILES[@]}"; do
+            echo "→ Recording: ${tape}"
+            ${RECORD_CMD} "${tape}"
+          done
+
+      # ── 6. Screenshots (optional) ─────────────────────────────────────────────
+      - name: Screenshots
+        if: inputs.screenshot-command != ''
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          MEDIA_DIR:      ${{ inputs.media-dir }}
+          SCREENSHOT_CMD: ${{ inputs.screenshot-command }}
+        run: |
+          mkdir -p "${MEDIA_DIR}"
+          ${SCREENSHOT_CMD}
+
+      # ── 7a. Commit to assets branch (branch backend) ──────────────────────────
+      - name: Commit media to assets branch
+        if: inputs.storage-backend == 'branch'
+        id: commit-branch
+        shell: bash
+        env:
+          PR_NUM:         ${{ steps.ctx.outputs.pr }}
+          ASSETS_BRANCH:  ${{ inputs.assets-branch }}
+          WORKTREE:       ${{ steps.worktree.outputs.path }}
+          WORK_DIR:       ${{ inputs.working-directory }}
+          MEDIA_DIR:      ${{ inputs.media-dir }}
+        run: |
+          set -euo pipefail
+          DEST="${WORKTREE}/${ASSETS_BRANCH}/${PR_NUM}"
+          mkdir -p "${DEST}"
+          SRC="${WORK_DIR}/${MEDIA_DIR}"
+          if [ -d "${SRC}" ] && [ -n "$(ls -A "${SRC}" 2>/dev/null)" ]; then
+            cp -r "${SRC}/." "${DEST}/"
+          else
+            echo "::warning::No files in ${SRC}."
+            exit 0
+          fi
+          cd "${WORKTREE}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          if git diff --cached --quiet; then
+            echo "::notice::No changes (media unchanged)."
+          else
+            git commit -m "chore(media): update demo media for PR #${PR_NUM} [skip ci]"
+            git push origin "${ASSETS_BRANCH}"
+          fi
+
+      # ── 7b. Upload to S3 / R2 (s3 + r2 backends) ─────────────────────────────
+      - name: Upload media to S3-compatible storage
+        if: inputs.storage-backend == 's3' || inputs.storage-backend == 'r2'
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.storage-access-key }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.storage-secret-key }}
+          ENDPOINT:              ${{ inputs.storage-endpoint }}
+          BUCKET:                ${{ inputs.storage-bucket }}
+          STORAGE_PATH:          ${{ steps.ctx.outputs.storage-path }}
+          WORK_DIR:              ${{ inputs.working-directory }}
+          MEDIA_DIR:             ${{ inputs.media-dir }}
+        run: |
+          set -euo pipefail
+          SRC="${WORK_DIR}/${MEDIA_DIR}"
+          DEST="s3://${BUCKET}/${STORAGE_PATH}/"
+          ENDPOINT_FLAG=""
+          if [ -n "${ENDPOINT}" ]; then
+            ENDPOINT_FLAG="--endpoint-url ${ENDPOINT}"
+          fi
+          aws s3 sync "${SRC}" "${DEST}" \
+            ${ENDPOINT_FLAG} \
+            --acl public-read \
+            --cache-control "public, max-age=31536000, immutable"
+
+      # ── 7c. Custom upload ─────────────────────────────────────────────────────
+      - name: Custom upload
+        if: inputs.storage-backend == 'custom' && inputs.upload-command != ''
+        working-directory: ${{ inputs.working-directory }}
+        shell: bash
+        env:
+          MEDIA_DIR:              ${{ inputs.media-dir }}
+          STORAGE_BUCKET:         ${{ inputs.storage-bucket }}
+          STORAGE_ENDPOINT:       ${{ inputs.storage-endpoint }}
+          STORAGE_PATH:           ${{ steps.ctx.outputs.storage-path }}
+          STORAGE_PUBLIC_URL_BASE: ${{ inputs.storage-public-url-base }}
+          AWS_ACCESS_KEY_ID:      ${{ secrets.storage-access-key }}
+          AWS_SECRET_ACCESS_KEY:  ${{ secrets.storage-secret-key }}
+        run: ${{ inputs.upload-command }}
+
+      # ── 8. Find existing PR comment ───────────────────────────────────────────
+      - name: Find existing comment
+        id: find-comment
+        if: github.event.pull_request.number != ''
+        uses: peter-evans/find-comment@v3
+        with:
+          token: ${{ secrets.token || github.token }}
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: "github-actions[bot]"
+          body-includes: "<!-- cli-demo-media -->"
+
+      # ── 9. Build PR comment body ──────────────────────────────────────────────
+      - name: Build comment body
+        id: comment-body
+        if: github.event.pull_request.number != ''
+        shell: bash
+        env:
+          PR_TITLE:     ${{ inputs.pr-comment-title }}
+          PUBLIC_BASE:  ${{ steps.ctx.outputs.public-base }}
+          URL_TEMPLATE: ${{ inputs.url-template }}
+          WORK_DIR:     ${{ inputs.working-directory }}
+          MEDIA_DIR:    ${{ inputs.media-dir }}
+          RUN_ID:       ${{ github.run_id }}
+          SERVER_URL:   ${{ github.server_url }}
+          REPOSITORY:   ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          MEDIA_PATH="${WORK_DIR}/${MEDIA_DIR}"
+
+          BODY="${PR_TITLE}"$'\n\n'
+          BODY+="_Generated by [cli-demo-media](/.github/workflows/cli-demo-media.yml)"
+          BODY+=" · run [\`${RUN_ID}\`](${SERVER_URL}/${REPOSITORY}/actions/runs/${RUN_ID})_"
+          BODY+=$'\n\n<!-- cli-demo-media -->\n\n'
+
+          # Resolve URL for a given filename.
+          url_for() {
+            local fname="$1"
+            if [ -n "${URL_TEMPLATE}" ]; then
+              echo "${URL_TEMPLATE//\{file\}/${fname}}"
+            else
+              echo "${PUBLIC_BASE}/${fname}"
+            fi
+          }
+
+          shopt -s nullglob
+          COUNT=0
+          # Embeddable formats: gif, png, svg, jpg, webp
+          for f in "${MEDIA_PATH}"/*.gif "${MEDIA_PATH}"/*.png \
+                   "${MEDIA_PATH}"/*.svg "${MEDIA_PATH}"/*.jpg \
+                   "${MEDIA_PATH}"/*.webp; do
+            fname="$(basename "${f}")"
+            name="${fname%.*}"
+            url="$(url_for "${fname}")"
+            BODY+="### ${name}"$'\n\n'
+            BODY+="![${name}](${url})"$'\n\n'
+            COUNT=$((COUNT + 1))
+          done
+
+          # Non-embeddable: mp4, webm → link only
+          for f in "${MEDIA_PATH}"/*.mp4 "${MEDIA_PATH}"/*.webm; do
+            fname="$(basename "${f}")"
+            name="${fname%.*}"
+            url="$(url_for "${fname}")"
+            BODY+="**${name}** — [view/download](${url})"$'\n\n'
+            COUNT=$((COUNT + 1))
+          done
+
+          if [ "${COUNT}" -eq 0 ]; then
+            BODY+="_No media files generated._"$'\n'
+          fi
+
+          BODY_FILE="${RUNNER_TEMP}/comment-body.md"
+          printf '%s' "${BODY}" > "${BODY_FILE}"
+          echo "body-file=${BODY_FILE}" >> "$GITHUB_OUTPUT"
+
+      # ── 10. Post / update PR comment ──────────────────────────────────────────
+      - name: Post PR comment
+        if: github.event.pull_request.number != ''
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.token || github.token }}
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          body-file: ${{ steps.comment-body.outputs.body-file }}
+          edit-mode: replace

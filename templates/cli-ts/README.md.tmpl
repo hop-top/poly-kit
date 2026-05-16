@@ -1,0 +1,40 @@
+# {{.Name}}
+
+{{.Description}}
+
+## Install
+
+```sh
+npm install -g {{.Name}}
+```
+
+## Usage
+
+```sh
+{{.Name}} --help
+{{.Name}} --version
+```
+
+### Output formats
+
+```sh
+{{.Name}} --format json
+{{.Name}} --format yaml
+```
+
+## Development
+
+Prerequisites: Node.js 22+, [Task](https://taskfile.dev)
+
+```sh
+task setup    # install deps
+task check    # lint + test
+task build    # compile TypeScript
+```
+
+## License
+
+See [LICENSE](LICENSE).
+
+---
+Maintained by {{.Author}}.

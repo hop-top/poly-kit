@@ -1,0 +1,43 @@
+# OPTIONAL: Container-image-based Lambda deployment.
+#
+# Most Lambda deployments use the zip-bundle pattern (build a static
+# `bootstrap` binary, zip it, push via `aws lambda update-function-code`).
+# This Dockerfile is for adopters who prefer container images — useful
+# when bundling assets alongside the binary, or when sharing a base
+# image across multiple Lambda functions.
+#
+# Rename to `Dockerfile` to use:
+#
+#   mv Dockerfile.example Dockerfile
+#   docker build -t cmdsurface-faas-lambda \
+#       -f examples/cmdsurface-faas/cmd/lambda/Dockerfile .
+#
+# Test locally with the AWS Runtime Interface Emulator:
+#
+#   docker run --rm -p 9000:8080 cmdsurface-faas-lambda
+#   curl -XPOST http://localhost:9000/2015-03-31/functions/function/invocations \
+#       -d '{"body": "{\"message\":\"hi\"}", "headers": {"content-type": "application/json"}}'
+#
+# Push and deploy:
+#
+#   aws ecr get-login-password --region us-east-1 | docker login --password-stdin \
+#       <acct>.dkr.ecr.us-east-1.amazonaws.com
+#   docker tag cmdsurface-faas-lambda <acct>.dkr.ecr.us-east-1.amazonaws.com/cmdsurface-faas-lambda:latest
+#   docker push <acct>.dkr.ecr.us-east-1.amazonaws.com/cmdsurface-faas-lambda:latest
+#   aws lambda create-function --function-name cmdsurface-ping \
+#       --package-type Image \
+#       --code ImageUri=<acct>.dkr.ecr.us-east-1.amazonaws.com/cmdsurface-faas-lambda:latest \
+#       --role arn:aws:iam::<acct>:role/lambda-basic-execution
+
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+    go build -tags lambda.norpc -trimpath -ldflags="-s -w" \
+        -o /main ./examples/cmdsurface-faas/cmd/lambda
+
+FROM public.ecr.aws/lambda/provided:al2023-arm64
+COPY --from=build /main /var/runtime/bootstrap
+CMD ["bootstrap"]

@@ -1,0 +1,133 @@
+# dogfood-grade — public-side workflow for the 12fcc-dog track.
+#
+# When a PR (or a push to main) touches `examples/spaced/**`,
+# `go/**`, or `cmd/**`, this workflow:
+#
+#   1. Verifies the seed stories pass `verify-stories` + `verify-no-leak`.
+#   2. Builds the spaced Go binary.
+#   3. Captures cassettes via xrr against that binary.
+#   4. Uploads the cassettes as a CI artifact.
+#   5. Dispatches a `grade-pr` event to `hop-top/scenarios-kit` (the
+#      private grader repo). The grader picks the artifact up, grades
+#      Tier 1, and posts a status check back to this commit.
+#
+# Implementation note (Mode C). The grader code lives in
+# `hop-top/scenarios-kit` and is invoked there, not here. The public
+# runner never has scenario rubric in memory. See
+# .tlc/tracks/12fcc-dog/design.md §3 and ADR-0028.
+#
+# The dispatch + capture steps below are gated behind
+# `DOGFOOD_DISPATCH_TOKEN`. Until the private repo exists and the
+# token is configured, the workflow runs steps 1-2 only (verify
+# gates + build) and exits cleanly. The capture + dispatch wiring
+# lights up automatically once the secret lands.
+name: dogfood-grade
+on:
+  pull_request:
+    paths:
+      - 'examples/spaced/**'
+      - 'go/**'
+      - 'cmd/**'
+      - '.github/workflows/dogfood-grade.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'examples/spaced/**'
+      - 'go/**'
+      - 'cmd/**'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      # Build the in-tree kit binary; install xrr.
+      - name: build kit + spaced
+        run: |
+          set -euo pipefail
+          go build -o /tmp/kit ./cmd/kit
+          go build -o /tmp/spaced ./examples/spaced/go/
+          # xrr install: `go install hop.top/kit/cmd/xrr@latest` once xrr ships.
+
+      # Both gates run on every PR per design §4. Each story must
+      # pass both. If either gate fails, the PR is red and the
+      # downstream capture/dispatch never runs.
+      - name: verify stories
+        run: /tmp/kit conformance verify-stories --paths=examples/spaced/e2e/stories --format=json --output=/tmp/verify-stories.json
+
+      - name: verify no leak (stories)
+        run: /tmp/kit conformance verify-no-leak --paths=examples/spaced/e2e/stories --format=json
+
+      # Tier 3 lockdown belt-and-suspenders: grep the workflow body
+      # for any `--tier=2` / `--tier=3` flags. The grader-side
+      # workflow hard-codes `--tier=1`; this is the public-side
+      # check that nothing here ever asks for a higher tier.
+      - name: tier-1 lockdown (lint this workflow)
+        run: scripts/verify-tier1.sh .github/workflows/dogfood-grade.yml
+
+      # ── Cassette capture (Mode C step 1) ────────────────────────
+      # Replace this stub with real xrr captures once xrr ships:
+      #
+      #   xrr capture --out /tmp/cassettes/spaced.launch.dry-run-walkthrough.cassette -- \
+      #     /tmp/spaced launch --payload alpha --orbit leo --dry-run
+      #   xrr capture --out /tmp/cassettes/spaced.mission.list-catalog.cassette -- \
+      #     /tmp/spaced mission list
+      #   xrr capture --out /tmp/cassettes/spaced.config.show-current-config.cassette -- \
+      #     /tmp/spaced config show --format=yaml
+      #
+      # Cassette filenames MUST match the scenario_id in the private
+      # repo's scenarios/spaced/<scenario_id>.yaml so grade-on-dispatch
+      # can pair them. See ADR-0028.
+      - name: capture cassettes (stub)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cassettes
+          echo "stub" > /tmp/cassettes/.placeholder
+          ls -la /tmp/cassettes/
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: dogfood-cassettes-${{ github.event.pull_request.number || github.sha }}
+          path: /tmp/cassettes/
+          retention-days: 7
+
+      # ── Cross-repo dispatch (Mode C step 2) ─────────────────────
+      # Only fires if the dispatch token is configured AND we're on
+      # a trusted ref (PR from the same repo, or push to main).
+      # External-fork PRs are dispatched at merge-time only — the
+      # token is not exposed to fork CI per design §3.
+      #
+      # GitHub-supplied context (numeric PR number, SHA, repo full
+      # name) is shape-validated by GitHub before reaching us, but
+      # we still funnel through env vars per the workflow-injection
+      # hardening convention.
+      - name: dispatch to private grader
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        env:
+          GH_TOKEN: ${{ secrets.DOGFOOD_DISPATCH_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 0 }}
+          COMMIT_SHA: ${{ github.sha }}
+          ARTIFACT_NAME: dogfood-cassettes-${{ github.event.pull_request.number || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "DOGFOOD_DISPATCH_TOKEN unset — skipping dispatch (mode C wiring not yet live)"
+            exit 0
+          fi
+          gh api -X POST \
+            repos/hop-top/scenarios-kit/dispatches \
+            -f event_type=grade-pr \
+            -f "client_payload[pr_number]=${PR_NUMBER}" \
+            -f "client_payload[commit_sha]=${COMMIT_SHA}" \
+            -f "client_payload[artifact_name]=${ARTIFACT_NAME}" \
+            -f 'client_payload[source]=hop-top/kit'

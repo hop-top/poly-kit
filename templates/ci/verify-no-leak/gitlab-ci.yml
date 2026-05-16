@@ -1,0 +1,9 @@
+# Adopter: include in your .gitlab-ci.yml
+verify-no-leak:
+  stage: lint
+  image: golang:1.26
+  script:
+    - go install hop.top/kit/cmd/kit@latest
+    - kit conformance verify-no-leak --diff=origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD
+    - kit conformance verify-no-leak --commit-range=origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME..HEAD
+  only: [merge_requests]

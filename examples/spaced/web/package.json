@@ -1,0 +1,20 @@
+{
+  "name": "@hop-top/spaced-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild web.ts --bundle --outfile=web.js --format=esm --platform=browser --sourcemap",
+    "dev": "esbuild web.ts --bundle --outfile=web.js --format=esm --platform=browser --sourcemap --watch",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "commander": "^11",
+    "esbuild": "^0.25.0",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "serve": "^14.2.6"
+  }
+}

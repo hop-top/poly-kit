@@ -1,0 +1,67 @@
+name: Nightly Release
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  auto-merge-release:
+    runs-on: ubuntu-latest
+    if: ${{ vars.NIGHTLY_RELEASE != 'false' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find release-please PR
+        id: find-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list \
+            --head release-please--branches--main \
+            --json number,mergeable,mergeStateStatus \
+            --jq '.[0]' 2>/dev/null || echo '{}')
+
+          NUMBER=$(echo "$PR" | jq -r '.number // empty')
+          if [ -z "$NUMBER" ]; then
+            echo "No release-please PR found"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Check CI status
+        if: steps.find-pr.outputs.found == 'true'
+        id: ci-check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.find-pr.outputs.number }}
+        run: |
+          CHECKS=$(gh pr checks "$PR_NUMBER" 2>&1 || true)
+
+          if echo "$CHECKS" | grep -qE "fail|pending"; then
+            echo "CI not green — skipping auto-merge"
+            echo "$CHECKS"
+            echo "green=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "CI green"
+            echo "green=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Auto-merge release PR
+        if: >-
+          steps.find-pr.outputs.found == 'true' &&
+          steps.ci-check.outputs.green == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.find-pr.outputs.number }}
+        run: |
+          gh pr merge "$PR_NUMBER" \
+            --squash \
+            --auto \
+            --subject "chore: release $(date +%Y-%m-%d)"

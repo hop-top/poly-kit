@@ -1,0 +1,73 @@
+name: Release Promotion Gate
+
+on:
+  pull_request:
+    paths:
+      - 'release-please-config.json'
+
+jobs:
+  validate-promotion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate promotion
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Authorization enforced via CODEOWNERS + branch protection;
+          # this gate only validates transition logic.
+
+          # Skip validation for initial config setup
+          if ! git show "${BASE_SHA}":release-please-config.json \
+               >/dev/null 2>&1; then
+            echo "Initial release-please setup — skipping" \
+              "promotion validation"
+            exit 0
+          fi
+
+          # Validate only prerelease-type changed
+          DIFF=$(git diff "${BASE_SHA}" -- release-please-config.json)
+          NON_PRERELEASE=$(echo "$DIFF" \
+            | grep "^[+-]" \
+            | grep -v "^[+-][+-][+-]" \
+            | grep -v "prerelease-type" \
+            | grep -v "^$" || true)
+
+          if [ -n "$NON_PRERELEASE" ]; then
+            echo "::error::Release promotion PR must only" \
+              "change prerelease-type"
+            exit 1
+          fi
+
+          # Validate all packages share the same prerelease-type
+          TYPES=$(jq -r '
+            [.packages | to_entries[]
+              | .value["prerelease-type"] // "release"]
+            | unique | length' release-please-config.json)
+
+          if [ "$TYPES" -ne 1 ]; then
+            echo "::error::All packages must share the same" \
+              "prerelease-type"
+            exit 1
+          fi
+
+          # Validate transition
+          OLD_STAGE=$(git show "${BASE_SHA}":release-please-config.json \
+            | jq -r '.packages["."]["prerelease-type"] // "release"')
+          NEW_STAGE=$(jq -r \
+            '.packages["."]["prerelease-type"] // "release"' \
+            release-please-config.json)
+
+          case "${OLD_STAGE}→${NEW_STAGE}" in
+            "release→alpha"|"alpha→beta"|"beta→rc"|"rc→release")
+              echo "Valid promotion: ${OLD_STAGE} → ${NEW_STAGE}"
+              ;;
+            *)
+              echo "::error::Invalid promotion:" \
+                "${OLD_STAGE} → ${NEW_STAGE}"
+              exit 1
+              ;;
+          esac

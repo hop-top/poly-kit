@@ -1,0 +1,77 @@
+# Vendored Presidio PII patterns. AUTO-GENERATED — refresh via
+# `make refresh-pii-rules` when bumping the Presidio pin.
+#
+# Source:  github.com/microsoft/presidio @ 2.2.355
+# License: MIT (see LICENSE in this dir; original Microsoft Presidio © 2020)
+# Refresh: make refresh-pii-rules
+#
+# Patterns hand-translated from
+# presidio-analyzer/presidio_analyzer/predefined_recognizers/*.py and
+# verified RE2-clean. Patterns that used backrefs or lookaround in
+# upstream were dropped (see SOURCES.md "Dropped patterns" section).
+
+[[rule]]
+id = "email"
+description = "Email address (RFC 5322 simplified)."
+pattern = '''([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})'''
+replacement = "<EMAIL>"
+
+[[rule]]
+id = "phone-e164"
+description = "International phone number in E.164 format (+CCNNNNNNNNN)."
+pattern = '''\+[1-9]\d{6,14}\b'''
+replacement = "<PHONE>"
+
+[[rule]]
+id = "phone-us"
+description = "US phone number with optional country code, dashes/dots/parens."
+pattern = '''\b(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b'''
+replacement = "<PHONE>"
+
+[[rule]]
+id = "us-ssn"
+description = "US Social Security Number (NNN-NN-NNNN)."
+pattern = '''\b\d{3}-\d{2}-\d{4}\b'''
+replacement = "<SSN>"
+
+[[rule]]
+id = "us-itin"
+description = "US Individual Taxpayer Identification Number (9XX-NN-NNNN)."
+pattern = '''\b9\d{2}-\d{2}-\d{4}\b'''
+replacement = "<ITIN>"
+
+[[rule]]
+id = "credit-card"
+description = "Credit card number (Visa/MC/Amex/Discover; 13-19 digits with optional separators). Luhn validation deferred to v2."
+pattern = '''\b(?:\d[ \-]?){12,18}\d\b'''
+replacement = "<CREDIT_CARD>"
+
+[[rule]]
+id = "iban"
+description = "International Bank Account Number (ISO 13616, 15-34 alphanumeric chars after country prefix)."
+pattern = '''\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b'''
+replacement = "<IBAN>"
+
+[[rule]]
+id = "ipv4"
+description = "IPv4 dotted-quad address."
+pattern = '''\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b'''
+replacement = "<IP>"
+
+[[rule]]
+id = "ipv6"
+description = "IPv6 address (full or compressed). Compressed form approximation: ::-prefix or middle ::."
+pattern = '''\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b|\b(?:[0-9a-fA-F]{1,4}:){1,7}:|\b(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}\b'''
+replacement = "<IP>"
+
+[[rule]]
+id = "us-passport"
+description = "US passport number (9 digits, may be prefixed with letter)."
+pattern = '''\b[A-Z]?\d{9}\b'''
+replacement = "<US_PASSPORT>"
+
+[[rule]]
+id = "us-driver-license"
+description = "US driver license — generic 7-13 alphanumeric. State-specific patterns vary widely; this is a coarse catch."
+pattern = '''\b[A-Z]\d{7,13}\b'''
+replacement = "<US_DRIVER_LICENSE>"
