@@ -333,20 +333,23 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 	argv := buildArgs(inv)
 	cmd := exec.CommandContext(ctx, r.binary, argv...)
 
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("cmdsurface: stdout pipe: %w", err)
-	}
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("cmdsurface: stderr pipe: %w", err)
-	}
+	// Use io.Pipe pairs rather than cmd.StdoutPipe()/StderrPipe() so
+	// cmd.Wait() does NOT close the read end before scanLinesTee
+	// goroutines have drained it. With StdoutPipe(), a race exists:
+	// if the process exits before goroutines are scheduled, Wait
+	// closes the pipe and the readers see EOF with zero events.
+	stdoutR, stdoutW := io.Pipe()
+	stderrR, stderrW := io.Pipe()
+	cmd.Stdout = stdoutW
+	cmd.Stderr = stderrW
 
 	applySubprocessAttrs(cmd)
 	cmd.Cancel = func() error { return killProcessTree(cmd) }
 	cmd.WaitDelay = 100 * time.Millisecond
 
 	if err := cmd.Start(); err != nil {
+		_ = stdoutW.Close()
+		_ = stderrW.Close()
 		return fmt.Errorf("cmdsurface: subprocess start: %w", err)
 	}
 
@@ -355,10 +358,12 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 	var stdoutBuf, stderrBuf bytes.Buffer
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go scanLinesTee(stdoutPipe, &stdoutBuf, "stdout", out, &wg)
-	go scanLinesTee(stderrPipe, &stderrBuf, "stderr", out, &wg)
+	go scanLinesTee(stdoutR, &stdoutBuf, "stdout", out, &wg)
+	go scanLinesTee(stderrR, &stderrBuf, "stderr", out, &wg)
 
 	waitErr := cmd.Wait()
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
 	wg.Wait()
 
 	res := &Result{
