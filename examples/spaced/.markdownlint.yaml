@@ -1,4 +1,5 @@
 default: true
+MD012: false          # multiple blank lines — release-please CHANGELOGs emit them
 MD013: false          # line length handled by AGENTS.md rule
 MD014: false          # $ before commands is intentional
 MD024: false          # duplicate headings — per-language sections repeat
