@@ -29,6 +29,10 @@ jobs:
           package: "@hop-top/kit"
           mirror: hop-top/kit-ts
           node-version: '22'
+          # --exclude sqlstore.test.ts: depends on better-sqlite3
+          # native bindings; --ignore-scripts blocks them. Mirrors
+          # local `make test-ts`.
+          test-command: pnpm install --frozen-lockfile --ignore-scripts && pnpm vitest run --exclude src/sqlstore.test.ts
         kit-py:
           dir: sdk/py
           ecosystem: py
