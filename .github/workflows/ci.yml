@@ -131,7 +131,7 @@ jobs:
 
   # ── Stage 3: Parity (after all tests) ─────────────────────────
   parity:
-    needs: [go-test, ts-test, py-test]
+    needs: [go-test, ts-test, py-test, rs-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
