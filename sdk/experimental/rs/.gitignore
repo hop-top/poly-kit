@@ -1,0 +1,13 @@
+# Build outputs
+/target/
+**/*.rs.bk
+*.profraw
+*.profdata
+
+# Local workspace/editor noise
+.DS_Store
+.idea/
+.vscode/
+
+# Cargo.lock is a release input for this mirrored package.
+!Cargo.lock
