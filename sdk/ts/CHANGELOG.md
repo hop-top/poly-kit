@@ -6,10 +6,14 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.4.0](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.3.0...kit-ts/v0.4.0) (2026-05-17)
 
+The hop-top team is happy to announce Kit's TS SDK 0.4.0. This release includes new features.
+
 
 ### Features
 
-* initial public release ([#1](https://github.com/hop-top/poly-kit/issues/1)) ([12569d0](https://github.com/hop-top/poly-kit/commit/12569d0e12bd0ee97fb1cf9ee835b35b5eab0732))
+* initial public release
+
+Full diff: [kit-ts/v0.3.0...kit-ts/v0.4.0](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.3.0...kit-ts/v0.4.0)
 
 ## [0.2.0-alpha.0](https://github.com/hop-top/poly-kit/compare/sdk/ts/v0.1.0-alpha.0...sdk/ts/v0.2.0-alpha.0) (2026-05-16)
 
