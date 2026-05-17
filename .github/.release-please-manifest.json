@@ -3,7 +3,7 @@
   "sdk/ts": "0.3.0",
   "sdk/py": "0.3.0",
   "sdk/experimental/rs": "0.3.0",
-  "sdk/experimental/php": "0.3.0",
+  "sdk/experimental/php": "0.4.0",
   "incubator/qmochi": "0.2.0-alpha.0",
   "incubator/ash": "0.2.0-alpha.0"
 }
