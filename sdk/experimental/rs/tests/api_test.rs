@@ -1,3 +1,9 @@
+// This integration test exercises the optional `api` module. Cargo
+// compiles every file under tests/ unconditionally, so the test must
+// gate its entire body on the `api` feature; otherwise the unresolved
+// imports break `cargo test` under default features.
+#![cfg(feature = "api")]
+
 use hop_top_kit::api::{ApiClient, Query};
 use mockito::{Matcher, Server};
 use serde::{Deserialize, Serialize};

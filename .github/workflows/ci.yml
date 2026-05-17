@@ -44,6 +44,19 @@ jobs:
       - run: cd sdk/py && uv sync --all-extras
       - run: make lint-py
 
+  rs-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk/experimental/rs
+      - run: make lint-rs
+
   docs-lint:
     runs-on: ubuntu-latest
     steps:
@@ -102,6 +115,19 @@ jobs:
       - run: cd sdk/py && uv sync --all-extras
       - run: cd engine/sdk/py-kit-engine && uv sync --all-extras
       - run: make test-py
+
+  rs-test:
+    needs: [rs-lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk/experimental/rs
+      - run: make test-rs
 
   # ── Stage 3: Parity (after all tests) ─────────────────────────
   parity:

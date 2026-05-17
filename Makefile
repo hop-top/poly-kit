@@ -67,6 +67,9 @@ test-py: ## Python tests
 	cd sdk/py && uv sync --all-extras -q && uv run pytest
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q && uv run pytest
 
+test-rs: ## Rust tests (all features, so api_test runs)
+	cd sdk/experimental/rs && cargo test --all-features --locked
+
 test-parity: ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
@@ -83,6 +86,10 @@ lint-ts: ## TypeScript: eslint
 
 lint-py: ## Python: ruff check + format
 	cd sdk/py && uv run ruff check . && uv run ruff format --check .
+
+lint-rs: ## Rust: cargo fmt --check + clippy (all features)
+	cd sdk/experimental/rs && cargo fmt --all -- --check
+	cd sdk/experimental/rs && cargo clippy --all-features --all-targets -- -D warnings
 
 lint-docs: ## Markdown: markdownlint
 	npx markdownlint-cli2 "README.md" "CHANGELOG.md" "RELEASING.md" "AGENTS.md" "docs/**/*.md" "cmd/kit/README.md" "incubator/**/*.md" --config examples/spaced/.markdownlint.yaml
