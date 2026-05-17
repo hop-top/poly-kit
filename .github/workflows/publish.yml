@@ -13,6 +13,7 @@ jobs:
     secrets:
       NPM_REGISTRY_TOKEN: ${{ secrets.NPM_REGISTRY_TOKEN }}
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      PYPI_REGISTRY_TOKEN: ${{ secrets.PYPI_REGISTRY_TOKEN }}
       GH_MIRROR_PAT: ${{ secrets.GH_MIRROR_PAT }}
     with:
       homepage: https://github.com/hop-top/poly-kit
@@ -35,6 +36,12 @@ jobs:
           mirror: hop-top/kit-py
           python-version: '3.11'
           test-command: pip install -e . && pytest
+          # OIDC trusted publishing returned `invalid-publisher` despite
+          # repeatedly correct pending-publisher claims (see uri-poly,
+          # which hit the same and switched to token in
+          # hop-top/.github#10). Use token auth until the PyPI side is
+          # debugged; can revert to default oidc afterwards.
+          pypi-auth: token
         kit-rs:
           dir: sdk/experimental/rs
           ecosystem: rs
