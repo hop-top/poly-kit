@@ -69,6 +69,7 @@
       ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
+      "versioning": "prerelease",
       "initial-version": "0.1.0-alpha.0"
     },
     "sdk/ts": {
@@ -78,6 +79,7 @@
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
+      "versioning": "prerelease",
       "initial-version": "0.1.0-alpha.0"
     },
     "sdk/py": {
@@ -95,6 +97,7 @@
       ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
+      "versioning": "prerelease",
       "initial-version": "0.1.0-alpha.0"
     },
     "sdk/experimental/rs": {
@@ -105,6 +108,7 @@
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "experimental.0",
+      "versioning": "prerelease",
       "initial-version": "0.1.0-experimental.0"
     },
     "sdk/experimental/php": {
@@ -122,6 +126,7 @@
       ],
       "prerelease": true,
       "prerelease-type": "experimental.0",
+      "versioning": "prerelease",
       "initial-version": "0.1.0-experimental.0"
     },
     "incubator/qmochi": {
@@ -131,6 +136,7 @@
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
+      "versioning": "prerelease",
       "initial-version": "0.1.0-alpha.0"
     },
     "incubator/ash": {
@@ -140,6 +146,7 @@
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
+      "versioning": "prerelease",
       "initial-version": "0.1.0-alpha.0"
     }
   }
