@@ -47,10 +47,14 @@ jobs:
             [ -z "$f" ] && continue
             dir=$(dirname "$f")
             case "$dir" in
-              .)  comp="kit" ;;
-              ts) comp="sdk/ts/kit" ;;
-              py) comp="sdk/py/kit" ;;
-              *)  comp="kit" ;;
+              .)                    comp="Kit" ;;
+              sdk/ts)               comp="Kit's TS SDK" ;;
+              sdk/py)               comp="Kit's Python SDK" ;;
+              sdk/experimental/rs)  comp="Kit's Rust SDK" ;;
+              sdk/experimental/php) comp="Kit's PHP SDK" ;;
+              incubator/qmochi)     comp="Qmochi" ;;
+              incubator/ash)        comp="Ash" ;;
+              *)                    comp="Kit" ;;
             esac
             ./scripts/rewrite-changelog.sh \
               --file "$f" --component "$comp"
