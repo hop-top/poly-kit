@@ -51,7 +51,7 @@
   "linked-versions": [
     {
       "group": "kit",
-      "components": ["kit", "sdk/ts", "sdk/py"]
+      "components": ["kit", "kit-ts", "kit-py", "kit-rs", "kit-php"]
     }
   ],
   "packages": {
@@ -73,7 +73,7 @@
     },
     "sdk/ts": {
       "release-type": "node",
-      "component": "sdk/ts",
+      "component": "kit-ts",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
@@ -82,7 +82,7 @@
     },
     "sdk/py": {
       "release-type": "python",
-      "component": "sdk/py",
+      "component": "kit-py",
       "package-name": "hop-top-kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
@@ -99,7 +99,7 @@
     },
     "sdk/experimental/rs": {
       "release-type": "rust",
-      "component": "sdk/rs",
+      "component": "kit-rs",
       "package-name": "hop-top-kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
@@ -109,7 +109,7 @@
     },
     "sdk/experimental/php": {
       "release-type": "php",
-      "component": "sdk/php",
+      "component": "kit-php",
       "package-name": "hop-top/kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,

@@ -10,21 +10,28 @@ The manifest lives at `.github/.release-please-manifest.json`; the config at
 2. release-please opens a release PR per component with bumped versions
    and changelog entries.
 3. Merging the release PR creates GitHub releases + tags.
-4. Per-language publish jobs fire: goreleaser (Go), npm (TS), PyPI
-   (Python).
+4. `.github/workflows/publish.yml` fires on the tag and calls the
+   org-wide reusable workflow
+   [`hop-top/.github/.github/workflows/publish-on-tag.yml@v0`](https://github.com/hop-top/.github/blob/main/.github/workflows/publish-on-tag.yml),
+   which parses `<component>/v<version>` from the tag, looks up the
+   `ecosystems` entry in `publish.yml`, and dispatches to the
+   per-language publish + mirror reusable workflows
+   (`publish-ts.yml`, `publish-py.yml`, `publish-rs.yml`,
+   `mirror-subtree.yml`).
 
 ## Components
 
-| Component | Path | Type |
-|-----------|------|------|
-| kit | `.` | Go |
-| sdk/ts | `sdk/ts` | Node |
-| sdk/py | `sdk/py` | Python |
-| qmochi | `incubator/qmochi` | Go |
-| ash | `incubator/ash` | Go |
-| aim | `incubator/aim` | Go |
+| Component | Path | Type | Prerelease |
+|-----------|------|------|------------|
+| kit | `.` | Go | alpha |
+| kit-ts | `sdk/ts` | Node | alpha |
+| kit-py | `sdk/py` | Python | alpha |
+| kit-rs | `sdk/experimental/rs` | Rust | experimental |
+| kit-php | `sdk/experimental/php` | PHP | experimental |
+| qmochi | `incubator/qmochi` | Go | alpha |
+| ash | `incubator/ash` | Go | alpha |
 
-`kit`, `sdk/ts`, and `sdk/py` share a linked version.
+`kit`, `kit-ts`, `kit-py`, `kit-rs`, and `kit-php` share a linked version.
 
 ## Bump policy
 

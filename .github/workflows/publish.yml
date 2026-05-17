@@ -18,30 +18,30 @@ jobs:
       homepage: https://github.com/hop-top/poly-kit
       description-prefix: "READ-ONLY MIRROR"
       ecosystems: |
-        go:
+        kit:
           dir: .
           ecosystem: go
           mirror: hop-top/kit
-        ts:
+        kit-ts:
           dir: sdk/ts
           ecosystem: ts
           package: "@hop-top/kit"
           mirror: hop-top/kit-ts
           node-version: '22'
-        py:
+        kit-py:
           dir: sdk/py
           ecosystem: py
           package: hop-top-kit
           mirror: hop-top/kit-py
           python-version: '3.11'
           test-command: pip install -e . && pytest
-        rs:
+        kit-rs:
           dir: sdk/experimental/rs
           ecosystem: rs
           package: hop-top-kit
           mirror: hop-top/kit-rs
           rust-toolchain: stable
-        php:
+        kit-php:
           dir: sdk/experimental/php
           ecosystem: php
           package: hop-top/kit
