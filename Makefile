@@ -1,6 +1,6 @@
-.PHONY: setup lint lint-go lint-ts lint-py lint-docs lint-config lint-links lint-sdk-paths \
+.PHONY: setup lint lint-go lint-ts lint-py lint-rs lint-docs lint-config lint-links lint-sdk-paths \
 	tools tools-golangci-lint \
-	test test-go test-go-integration test-ts test-py test-parity \
+	test test-go test-go-integration test-ts test-py test-rs test-parity \
 	proto openapi clients clients-ts clients-php clients-rs clients-test api \
 	job-test job-integration-hatchet job-integration-restate job-integration-temporal \
 	test-workflow test-hook test-release promote promote-alpha promote-beta promote-rc promote-release check \
@@ -67,6 +67,15 @@ test-py: ## Python tests
 	cd sdk/py && uv sync --all-extras -q && uv run pytest
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q && uv run pytest
 
+test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual --features api)
+	# Default features must compile and pass — that's what publish-rs.yml
+	# runs by default ('cargo test'). Without this, a source file gated on
+	# the api feature could break default build and only fail at publish.
+	cd sdk/experimental/rs && cargo test --locked
+	# All features ensures the api integration test (gated on feature=api)
+	# is exercised at PR time, not deferred to manual runs.
+	cd sdk/experimental/rs && cargo test --all-features --locked
+
 test-parity: ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
@@ -83,6 +92,10 @@ lint-ts: ## TypeScript: eslint
 
 lint-py: ## Python: ruff check + format
 	cd sdk/py && uv run ruff check . && uv run ruff format --check .
+
+lint-rs: ## Rust: cargo fmt --check + clippy (all features)
+	cd sdk/experimental/rs && cargo fmt --all -- --check
+	cd sdk/experimental/rs && cargo clippy --all-features --all-targets -- -D warnings
 
 lint-docs: ## Markdown: markdownlint
 	npx markdownlint-cli2 "README.md" "CHANGELOG.md" "RELEASING.md" "AGENTS.md" "docs/**/*.md" "cmd/kit/README.md" "incubator/**/*.md" --config examples/spaced/.markdownlint.yaml
