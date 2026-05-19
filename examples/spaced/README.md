@@ -233,7 +233,7 @@ engineering task** that can land with its own discussion, deprecation
 window, and changelog entry. This README documents the trade-off so
 the score gap is intentional, not an oversight.
 
-[adr-0037]: ../../docs/adr/0037-kit-consent.md
+[adr-0037]: ../../
 [kit-compliance]: ../../docs/telemetry-compliance.md
 
 ---

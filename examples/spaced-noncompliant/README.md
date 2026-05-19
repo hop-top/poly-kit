@@ -80,6 +80,6 @@ Report: 12/13
 
 - [`docs/adopters/reference/telemetry-compliance.md`](../../docs/adopters/reference/telemetry-compliance.md) —
   the adopter checklist this fixture validates against.
-- [`docs/adr/0037-consenting-telemetry-factor.md`](../../docs/adr/0037-consenting-telemetry-factor.md) —
+- [](../../) —
   why F13 exists and how the seven sub-conditions are scoped.
 - [`../spaced/`](../spaced/) — the canonical (compliant) adopter example.

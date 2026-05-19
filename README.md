@@ -47,7 +47,7 @@ benchmarks — not flag parsers and output renderers.
   [`go/runtime/telemetry`](go/runtime/telemetry/) emitter; users
   control consent via
   [`kit telemetry status|enable|disable|reset|inspect`](docs/adopters/guides/telemetry.md).
-  Designed per [ADR-0035](docs/adr/0035-runtime-telemetry.md).
+  Designed per ADR-0035.
 - **Engine.** Typed-JSON document store with versioning DAG;
   in-memory and SQLite backends.
 - **Storage abstractions.** Secret (10 backends), KV (4), blob (2).

@@ -17,9 +17,9 @@
  * in follow-up sdk-telemetry tasks.
  *
  * Ground truth + decisions:
- *   - ADR-0035 `docs/adr/0035-runtime-telemetry.md`
- *   - ADR-0036 `docs/adr/0036-telemetry-consent-prompt.md`
- *   - ADR-0038 `docs/adr/0038-sdk-telemetry-contract.md`
+ *   - ADR-0035 
+ *   - ADR-0036 
+ *   - ADR-0038 
  *   - Event-schema doc `sdk/docs/telemetry-event-schema.md`
  */
 

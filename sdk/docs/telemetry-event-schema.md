@@ -2,8 +2,8 @@
 
 > **Status**: Canonical contract for `schema_version = "1"`.
 > **Ground truth**: [`hops/main/go/runtime/telemetry/event.go`](../../go/runtime/telemetry/event.go).
-> **Decided by**: [ADR-0035](../../docs/adr/0035-runtime-telemetry.md) §6–§7
-> and [ADR-0038](../../docs/adr/0038-sdk-telemetry-contract.md) §6–§7.
+> **Decided by**: ADR-0035 §6–§7
+> and ADR-0038 §6–§7.
 > **Diffed by**: cross-language contract test (track `sdk-telemetry`,
 > task T-0709) under `hops/main/sdk/tests/cross-lang/telemetry/`.
 
@@ -422,11 +422,11 @@ semantics upstream.
 - **Code (canonical)**:
   [`hops/main/go/runtime/telemetry/event.go`](../../go/runtime/telemetry/event.go)
 - **ADR-0035**: tier model, identity, topics, consent interface
-  ([`hops/main/docs/adr/0035-runtime-telemetry.md`](../../docs/adr/0035-runtime-telemetry.md))
+  ([`hops/main/`](../../))
 - **ADR-0036**: kit-consent persisted file + env precedence
 - **ADR-0037**: kit-telemetry-compliance posture
 - **ADR-0038**: SDK delta-from-Go contract
-  ([`hops/main/docs/adr/0038-sdk-telemetry-contract.md`](../../docs/adr/0038-sdk-telemetry-contract.md))
+  ([`hops/main/`](../../))
 - **ADR-0017**: bus topic naming grammar (Source.Category.Object.Action)
 - **Track plan**: `.tlc/tracks/sdk-telemetry/plan.md` (tasks T-0708 +
   T-0709 + T-0710)

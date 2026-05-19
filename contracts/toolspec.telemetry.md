@@ -2,9 +2,9 @@
 
 Authoritative reference for the `telemetry:` block of a kit
 toolspec. Canonical schema fixed by
-[ADR-0037](../docs/adr/0037-consenting-telemetry-factor.md); runtime
+ADR-0037; runtime
 contract for the emitter/sinks fixed by
-[ADR-0035](../docs/adr/0035-runtime-telemetry.md).
+ADR-0035.
 
 ## Purpose
 
@@ -69,8 +69,8 @@ telemetry:
 
 ## Cross-references
 
-- [ADR-0037](../docs/adr/0037-consenting-telemetry-factor.md) —
+- ADR-0037 —
   Factor #13 rationale, sub-condition table.
-- [ADR-0035](../docs/adr/0035-runtime-telemetry.md) — emitter
+- ADR-0035 — emitter
   interfaces, env names, install_id path, bus topics, jsonl sink
   contract.

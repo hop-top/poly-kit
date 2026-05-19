@@ -360,9 +360,9 @@ onto the wire as `sdk_version`. See T-0674 for the discovery context.
 
 ## See also
 
-- [ADR-0035](../../../docs/adr/0035-runtime-telemetry.md) — canonical
+- ADR-0035 — canonical
   tier model, identity, topics, consent interface.
-- [ADR-0036](../../../docs/adr/0036-kit-consent.md) — consent
+- ADR-0036 — consent
   precedence, `DO_NOT_TRACK`, `prompt_version`, decision-source.
 - [`go/core/consent/`](../../core/consent/) — persisted decision +
   resolver + `consent.NewHook(...)` that satisfies `ConsentHook`.

@@ -2,7 +2,7 @@
 // anonymous CLI usage signals (command path, exit code, duration) and
 // publishes them on the kit bus for adopters that have opted in.
 //
-// Canonical design lives in ADR-0035 (`docs/adr/0035-runtime-telemetry.md`).
+// Canonical design lives in ADR-0035.
 // Read that before changing the wire contract — the schema is mirrored
 // by polyglot SDKs and a cross-language contract test diffs them.
 //

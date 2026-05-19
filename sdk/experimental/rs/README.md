@@ -115,7 +115,7 @@ recommended topology.
 
 ### Cross-references
 
-- Canonical contract: [ADR-0038](../../docs/adr/0038-sdk-telemetry-contract.md)
+- Canonical contract: ADR-0038
   (SDK delta-from-Go).
 - Schema doc: [`sdk/docs/telemetry-event-schema.md`](../../docs/telemetry-event-schema.md).
 - Go canonical implementation:
