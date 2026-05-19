@@ -10,9 +10,11 @@
  * on the next Crew Dragon all acceptable. GitHub Sponsors: https://github.com/sponsors/hop-top
  */
 
+import { Option } from 'commander';
 import { createCLI, setCommandGroup } from '../../../sdk/ts/src/cli';
 import { completionCommand } from '../../../sdk/ts/src/completion';
 import { createBus } from '../../../sdk/ts/src/bus';
+import { Client as TelemetryClient } from '../../../sdk/ts/src/telemetry/client';
 import { missionCommand }    from './commands/mission';
 import { launchCommand }     from './commands/launch';
 import { abortCommand }      from './commands/abort';
@@ -45,6 +47,76 @@ const { program } = createCLI({
   description: 'satirical SpaceX CLI historian — every launch, every RUD, every daemon',
   help:        { disclaimer },
   groups:      [{ id: 'management', title: 'MANAGEMENT', hidden: true }],
+});
+
+// --telemetry={off,anon,full} persistent flag. Mirrors the Go-side
+// wiring in examples/spaced/go/main.go + telemetry_wiring.go (ADR-0035).
+//
+// Hidden from --help so the cross-lang parity contract (TestParityFlagsExactSet)
+// stays green while py + ts still need to mirror the option set. Once py
+// adopts the same flag, all three sides can drop .hideHelp() in lockstep.
+program.addOption(
+  new Option('--telemetry <mode>', 'kit-telemetry emit mode (off|anon|full)')
+    .choices(['off', 'anon', 'full'])
+    .default('off')
+    .hideHelp(true),
+);
+
+// Lazy telemetry client state. We construct on first use so processes
+// that never opt in (the common case) pay no JSONL-sink-init cost.
+let telemetryClient: TelemetryClient | null = null;
+let telemetryMode: 'off' | 'anon' | 'full' = 'off';
+let invocationStartTime = 0;
+
+function ensureTelemetryClient(): TelemetryClient | null {
+  if (telemetryClient !== null) return telemetryClient;
+  try {
+    // jsonl sink is the safer default — see ADR-0038: an https endpoint
+    // misconfig must not silently drop events. The Client itself respects
+    // KIT_TELEMETRY_SINK / KIT_TELEMETRY_ENDPOINT env overrides.
+    telemetryClient = new TelemetryClient({ sink: 'jsonl' });
+  } catch {
+    // Soft refusal: a Client that won't construct must not crash spaced.
+    telemetryClient = null;
+  }
+  return telemetryClient;
+}
+
+// preAction: stamp invocation start + parse --telemetry into module state
+// BEFORE the subcommand action fires. Commander resolves the persistent
+// option onto the root program's opts() (since we attached it there).
+program.hook('preAction', (thisCommand) => {
+  invocationStartTime = Date.now();
+  const raw = thisCommand.opts().telemetry as string | undefined;
+  if (raw === 'anon' || raw === 'full') {
+    telemetryMode = raw;
+  } else {
+    telemetryMode = 'off';
+  }
+});
+
+// postAction: emit a single `spaced.invocation` event with command path
+// + duration. Mirrors the Go-side PersistentPostRunE; exit-code capture
+// is a follow-up (ADR-0035).
+program.hook('postAction', async (_thisCommand, actionCommand) => {
+  if (telemetryMode === 'off') return;
+  const client = ensureTelemetryClient();
+  if (client === null) return;
+  // Walk parents to reconstruct the full command path (e.g. ["spaced", "mission", "inspect"]).
+  const path: string[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cur: any = actionCommand;
+  while (cur) {
+    path.unshift(cur.name());
+    cur = cur.parent;
+  }
+  client.record('spaced.invocation', {
+    command_path: path,
+    exit_code: 0,
+    duration_ms: Date.now() - invocationStartTime,
+    kit_version: '0.1.0',
+  });
+  await client.shutdown(2000);
 });
 
 const bus = createBus();

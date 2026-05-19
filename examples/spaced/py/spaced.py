@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 
 # Inject sdk/py/ into path so hop_top_kit is importable without install.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../sdk/py"))
@@ -17,10 +18,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../../../ur
 # Also ensure commands can find data.py via their own sys.path injection.
 sys.path.insert(0, os.path.dirname(__file__))
 
+import click  # noqa: E402
 import typer  # noqa: E402
 from hop_top_kit.alias import bridge_to_click  # noqa: E402
 from hop_top_kit.bus import create_bus  # noqa: E402
 from hop_top_kit.cli import create_app, GroupConfig, HelpConfig, set_command_group  # noqa: E402
+from hop_top_kit.telemetry import Client as TelemetryClient, Mode as TelemetryMode, parse_mode as _parse_tel_mode  # noqa: E402
 
 from commands.alias import app as alias_app  # noqa: E402
 from commands.abort import app as abort_app  # noqa: E402
@@ -43,6 +46,124 @@ Elon Musk, DOGE, NASA, the FAA, or the Starman mannequin currently past Mars.
 We would, however, accept a sponsorship (https://github.com/sponsors/hop-top).
 Cash, Starlink credits, or a ride on the next Crew Dragon all acceptable.\
 """
+
+# ---------------------------------------------------------------------------
+# kit-telemetry wiring (mirrors examples/spaced/go/telemetry_wiring.go).
+#
+# Adopter pattern (ADR-0035 / ADR-0038):
+#   1. --telemetry={off,anon,full} hidden persistent flag parsed eagerly.
+#   2. Mode stored in module-global; consulted before each record() call so
+#      the SDK's lazy consent/mode resolution still applies.
+#   3. Lazy Client construction on first record (jsonl sink by default —
+#      safer than https; KIT_TELEMETRY_ENDPOINT / KIT_TELEMETRY_SINK_FILE
+#      drive the destination).
+#   4. atexit hook emits one "spaced.invocation" event with command_path +
+#      duration_ms. ExitCode capture is a follow-up (parity with Go side).
+#
+# Kept distinct from spaced's own `telemetry` subcommand (which serves
+# mission telemetry streams — separate concern from kit runtime telemetry).
+#
+# Flag is HIDDEN to keep the cross-lang parity contract green until ts +
+# go agree to surface it. The parity test enforces FLAGS-section equality.
+# ---------------------------------------------------------------------------
+
+_TELEMETRY_KIT_VERSION = "0.4.0-alpha"
+_telemetry_mode: TelemetryMode = TelemetryMode.OFF
+_telemetry_client: TelemetryClient | None = None
+_telemetry_start_monotonic: float | None = None
+_telemetry_command_path: list[str] = []
+_telemetry_recorded: bool = False
+
+
+def _ensure_telemetry_client() -> TelemetryClient | None:
+    """Lazily construct the kit-telemetry Client. Soft-refuses on error."""
+    global _telemetry_client
+    if _telemetry_client is not None:
+        return _telemetry_client
+    try:
+        # jsonl sink by default — adopters override via KIT_TELEMETRY_SINK
+        # or KIT_TELEMETRY_ENDPOINT env vars without code changes.
+        _telemetry_client = TelemetryClient(sink="jsonl")
+    except Exception:
+        _telemetry_client = None  # soft-refuse: never crash the host.
+    return _telemetry_client
+
+
+def _telemetry_pre_run_callback(ctx: click.Context, _param: click.Parameter, value: str) -> str:
+    """Parse --telemetry into the module-global mode + stamp a start time.
+
+    Runs as an eager click callback so the value is available before any
+    subcommand dispatches. Returns the raw value (unused; expose_value=False).
+    """
+    global _telemetry_mode, _telemetry_start_monotonic
+    if value:
+        parsed, ok = _parse_tel_mode(value)
+        if ok:
+            _telemetry_mode = parsed
+    _telemetry_start_monotonic = time.monotonic()
+    # Pre-compute command path from sys.argv so atexit hook has it even
+    # when the subcommand exits via raise SystemExit (typer.Exit) early.
+    _capture_command_path()
+    return value
+
+
+def _capture_command_path() -> None:
+    """Best-effort command_path from sys.argv (skips flags/values).
+
+    click.Context.command_path is only valid inside the running cobra-style
+    chain; the atexit hook fires *after* that context is torn down. argv
+    parsing is the lowest-fidelity but most robust source.
+    """
+    global _telemetry_command_path
+    parts: list[str] = ["spaced"]
+    skip_next = False
+    for arg in sys.argv[1:]:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg.startswith("--"):
+            # `--flag=value` is one token; `--flag value` is two.
+            if "=" not in arg:
+                skip_next = True
+            continue
+        if arg.startswith("-"):
+            continue
+        parts.append(arg)
+        # Only capture the first 2 positional segments (verb + subverb);
+        # everything after is argv noise (mission ids, payloads).
+        if len(parts) >= 3:
+            break
+    _telemetry_command_path = parts
+
+
+def _record_invocation() -> None:
+    """Emit one kit-telemetry event at process exit. Idempotent + safe."""
+    global _telemetry_recorded
+    if _telemetry_recorded:
+        return
+    _telemetry_recorded = True
+    if _telemetry_mode is TelemetryMode.OFF:
+        return
+    client = _ensure_telemetry_client()
+    if client is None:
+        return
+    duration_ms = 0
+    if _telemetry_start_monotonic is not None:
+        duration_ms = int((time.monotonic() - _telemetry_start_monotonic) * 1000)
+    attrs = {
+        "command_path": list(_telemetry_command_path) if _telemetry_command_path else ["spaced"],
+        # Full exit-code capture is a follow-up (parity with the Go side
+        # which records 0 today; see telemetry_wiring.go).
+        "exit_code": 0,
+        "duration_ms": duration_ms,
+        "kit_version": _TELEMETRY_KIT_VERSION,
+    }
+    try:
+        client.record("spaced.invocation", attrs)
+        client.shutdown(timeout=2.0)
+    except Exception:
+        # Never let telemetry crash exit.
+        pass
 
 app, theme = create_app(
     name="spaced",
@@ -225,6 +346,7 @@ def compliance_cmd(
 
 
 if __name__ == "__main__":
+    import atexit
     import typer.main as _typer_main
 
     _cmd = _typer_main.get_command(app)
@@ -239,6 +361,34 @@ if __name__ == "__main__":
         "~/.config/spaced/config.yaml"
     )
     bridge_to_click(_cmd, _alias_path)
+
+    # --telemetry={off,anon,full} hidden persistent flag (ADR-0035).
+    #
+    # Hidden from --help so the cross-language parity contract (which
+    # asserts an exact FLAGS-section equality across go/ts/py) stays
+    # green. The Go side keeps the flag hidden symmetrically (see
+    # examples/spaced/go/main.go); surface in all three at the same time.
+    #
+    # Registered as a click.Option directly (bypassing create_app's
+    # GlobalFlag mechanism) because GlobalFlag has no `hidden` field and
+    # would surface the flag in the FLAGS section.
+    _cmd.params.insert(
+        0,
+        click.Option(
+            ["--telemetry"],
+            default="off",
+            hidden=True,
+            is_eager=True,
+            expose_value=False,
+            callback=_telemetry_pre_run_callback,
+            help="kit-telemetry emit mode (off|anon|full)",
+        ),
+    )
+
+    # Record one invocation event at process exit. atexit is preferred
+    # over a post-run callback because typer/click commands can exit via
+    # raise typer.Exit() / SystemExit before any explicit hook runs.
+    atexit.register(_record_invocation)
 
     # prog_name="spaced" ensures usage line shows "spaced" not "spaced.py".
     _cmd.main(prog_name="spaced", args=sys.argv[1:])
