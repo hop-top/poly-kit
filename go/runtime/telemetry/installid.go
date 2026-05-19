@@ -157,25 +157,54 @@ func readInstallID(path string) ([]byte, error) {
 	return b, nil
 }
 
-// writeInstallIDExcl tries to create the file with O_EXCL. Returns
-// fs.ErrExist if another process beat us to it. On success the bytes
-// are written and the file is closed.
+// writeInstallIDExcl writes buf to a per-call tmp file then publishes
+// it via os.Link, which fails with fs.ErrExist if another writer
+// already published. This is the "exclusive create" without the
+// empty-file race: observers either see no file or a fully-populated
+// 32-byte file — never an empty zero-byte target.
+//
+// The tmp file lives in the same directory so the link is atomic
+// (POSIX requires same-filesystem). On link success we unlink the
+// tmp; on link failure (EEXIST: another writer won), we still unlink
+// the tmp and surface fs.ErrExist.
 func writeInstallIDExcl(path string, buf []byte) error {
 	if err := ensureParent(path); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, installIDFilePerm)
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+
+	// Per-call unique tmp suffix so two concurrent writers don't
+	// collide on the tmp file itself.
+	var nonce [8]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return fmt.Errorf("install_id: tmp nonce: %w", err)
+	}
+	tmp := filepath.Join(dir, fmt.Sprintf("%s.tmp.%d.%s", base, os.Getpid(), hex.EncodeToString(nonce[:])))
+
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, installIDFilePerm)
 	if err != nil {
-		return err
+		return fmt.Errorf("install_id: open tmp: %w", err)
 	}
 	if _, werr := f.Write(buf); werr != nil {
 		_ = f.Close()
-		_ = os.Remove(path)
-		return fmt.Errorf("install_id: write: %w", werr)
+		_ = os.Remove(tmp)
+		return fmt.Errorf("install_id: write tmp: %w", werr)
 	}
 	if cerr := f.Close(); cerr != nil {
-		return fmt.Errorf("install_id: close: %w", cerr)
+		_ = os.Remove(tmp)
+		return fmt.Errorf("install_id: close tmp: %w", cerr)
 	}
+
+	// os.Link returns EEXIST when the target already exists, giving us
+	// exclusive-publish semantics without ever exposing an empty target.
+	if err := os.Link(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		// Wrap so errors.Is(err, fs.ErrExist) still matches when another
+		// writer won the race.
+		return err
+	}
+	_ = os.Remove(tmp)
 	return nil
 }
 
