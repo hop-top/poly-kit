@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import stat
 import threading
 from pathlib import Path
@@ -87,7 +86,7 @@ class TestGetInstallID:
             try:
                 barrier.wait()
                 results.append(iid.get_install_id())
-            except BaseException as e:  # noqa: BLE001
+            except BaseException as e:
                 errors.append(e)
 
         threads = [threading.Thread(target=worker) for _ in range(4)]

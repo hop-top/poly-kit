@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 # Bind the SUBMODULE: `hop_top_kit.telemetry` also re-exports a `redact`
@@ -25,10 +23,7 @@ class TestRedactString:
         assert r.redact_string("addr 2001:db8::1 here") == "addr <redacted:ipv6> here"
 
     def test_ipv6_link_local(self):
-        assert (
-            r.redact_string("peer fe80::1234:5678:abcd:ef01 up")
-            == "peer <redacted:ipv6> up"
-        )
+        assert r.redact_string("peer fe80::1234:5678:abcd:ef01 up") == "peer <redacted:ipv6> up"
 
     def test_ipv6_loopback_under_match_documented(self):
         # ::1 starts with "::" (zero leading groups). The PHP-parity
@@ -75,6 +70,7 @@ class TestRedactString:
         # Force a stable HOME via reimport so the compiled pattern picks it up.
         monkeypatch.setenv("HOME", "/Users/testuser")
         from importlib import reload
+
         import hop_top_kit.telemetry.redact as r2
 
         reload(r2)

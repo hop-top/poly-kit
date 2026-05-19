@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from hop_top_kit.telemetry import client as cli
 from hop_top_kit.telemetry.client import Client
 
 
@@ -152,9 +150,7 @@ class TestAnonModeStripsAttrs:
         assert env["mode"] == "full"
         assert env["attrs"] == {"plan": "pro", "seats": 3}
 
-    def test_anon_strips_attrs_even_when_custom_redactor_repopulates(
-        self, isolated, monkeypatch
-    ):
+    def test_anon_strips_attrs_even_when_custom_redactor_repopulates(self, isolated, monkeypatch):
         # A buggy / malicious caller redactor could try to smuggle PII back
         # into attrs. The anon-mode strip happens at envelope-build time
         # (before the redactor runs), so reinjection still nets ``None``

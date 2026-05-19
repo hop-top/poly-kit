@@ -29,14 +29,14 @@ Example:
 
 from hop_top_kit import llm, telemetry, tui, uri
 from hop_top_kit.cli import DARK, NEON, Disable, GlobalFlag, Palette, Theme, create_app
-from hop_top_kit.telemetry import Client as TelemetryClient
-from hop_top_kit.telemetry import Mode as TelemetryMode
 from hop_top_kit.config import Options as ConfigOptions
 from hop_top_kit.config import load as load_config
 from hop_top_kit.output import Format, render
 from hop_top_kit.sqlstore import Options as StoreOptions
 from hop_top_kit.sqlstore import Store
 from hop_top_kit.sqlstore import open as open_store
+from hop_top_kit.telemetry import Client as TelemetryClient
+from hop_top_kit.telemetry import Mode as TelemetryMode
 from hop_top_kit.upgrade import CheckerOptions, create_checker
 from hop_top_kit.xdg import cache_dir, config_dir, data_dir, must_ensure, state_dir
 

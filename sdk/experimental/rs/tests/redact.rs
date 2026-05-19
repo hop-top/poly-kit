@@ -94,7 +94,7 @@ fn nested_json_recurses_into_arrays_and_objects() {
 
 #[test]
 fn non_string_value_types_pass_through() {
-    let v = json!({"n": 42, "b": true, "f": 3.14, "nil": null});
+    let v = json!({"n": 42, "b": true, "f": 7.5, "nil": null});
     let r = redact(v.clone());
     assert_eq!(r, v);
 }

@@ -18,7 +18,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const INSTALL_ID_SIZE: usize = 32;
 const FILE_PERM: u32 = 0o600;
@@ -66,7 +66,7 @@ pub fn get_install_id() -> io::Result<String> {
 
     let mut fresh = [0u8; INSTALL_ID_SIZE];
     getrandom::getrandom(&mut fresh)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("getrandom: {e}")))?;
+        .map_err(|e| io::Error::other(format!("getrandom: {e}")))?;
 
     let tmp = p.with_extension("new");
     fs::write(&tmp, fresh)?;
@@ -105,7 +105,7 @@ pub fn rotate() -> io::Result<String> {
 
     let mut fresh = [0u8; INSTALL_ID_SIZE];
     getrandom::getrandom(&mut fresh)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("getrandom: {e}")))?;
+        .map_err(|e| io::Error::other(format!("getrandom: {e}")))?;
 
     let tmp = p.with_extension("new");
     // Clear any stale .new from a previous crashed writer before
@@ -120,7 +120,7 @@ pub fn rotate() -> io::Result<String> {
 /// Create the parent directory of `path` with 0700 perms (idempotent).
 /// Force-tightens existing dirs in case some other tool created the
 /// parent at 0755.
-fn ensure_parent(path: &PathBuf) -> io::Result<()> {
+fn ensure_parent(path: &Path) -> io::Result<()> {
     let parent = path.parent().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidInput,

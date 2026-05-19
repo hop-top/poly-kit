@@ -2,6 +2,13 @@
 // feature since the cargo test harness compiles every tests/*.rs
 // unconditionally.
 #![cfg(feature = "telemetry")]
+// Each test holds ENV_LOCK (std::sync::Mutex) across .await calls in
+// the client's async API. Clippy flags this as a potential deadlock
+// hazard, but the lock is intentionally held to serialise process-
+// global env mutation across the integration binary — dropping it
+// mid-await would defeat the serialisation. Using tokio::sync::Mutex
+// would add real overhead for what is purely a test-coordination lock.
+#![allow(clippy::await_holding_lock)]
 
 use hop_top_kit::telemetry::{Client, ClientOptions, SinkKind};
 use serde_json::{json, Value};
