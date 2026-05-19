@@ -26,10 +26,43 @@ HAS_GO=$(echo "$CHANGED" | grep -E '\.go$' || true)
 HAS_TS=$(echo "$CHANGED" | grep -E '^sdk/ts/' || true)
 HAS_PY=$(echo "$CHANGED" | grep -E '^sdk/py/' || true)
 HAS_CONTRACTS=$(echo "$CHANGED" | grep -E '^contracts/' || true)
+HAS_DOCS=$(echo "$CHANGED" | grep -E '\.md$' || true)
+HAS_CONFIG=$(echo "$CHANGED" | grep -E '(^|/)(\.github/|.*\.json|.*\.ya?ml)$' || true)
+HAS_SDK_LAYOUT=$(echo "$CHANGED" | grep -E '^sdk/' || true)
 
-# --- Lint EVERYTHING (fast enough and catches cross-cutting issues) ---
-echo "Running all linters (including config validation)..."
-make lint
+# --- Lint affected areas only ---
+# Cross-cutting config/link/sdk-paths linters always run; per-language
+# linters gate on whether their language's files changed in this push.
+echo "Running affected linters..."
+
+if [ -n "$HAS_GO" ]; then
+    echo "  lint-go..."
+    make lint-go
+fi
+if [ -n "$HAS_TS" ]; then
+    echo "  lint-ts..."
+    make lint-ts
+fi
+if [ -n "$HAS_PY" ]; then
+    echo "  lint-py..."
+    make lint-py
+fi
+if [ -n "$HAS_DOCS" ]; then
+    echo "  lint-docs..."
+    make lint-docs
+fi
+if [ -n "$HAS_CONFIG" ] || [ -n "$HAS_SDK_LAYOUT" ]; then
+    echo "  lint-config..."
+    make lint-config
+fi
+if [ -n "$HAS_DOCS" ] || [ -n "$HAS_CONFIG" ]; then
+    echo "  lint-links..."
+    make lint-links
+fi
+if [ -n "$HAS_SDK_LAYOUT" ] || [ -n "$HAS_CONFIG" ]; then
+    echo "  lint-sdk-paths..."
+    make lint-sdk-paths
+fi
 
 # --- Test only affected packages ---
 echo "Running tests..."

@@ -2,6 +2,10 @@ packages:
   - sdk/ts
   - examples/spaced/ts
   - engine/sdk/ts-kit-engine
+# pnpm 11 strictDepBuilds: deps with install scripts must be explicitly
+# allowed (true) or denied (false). Without an entry, pnpm install exits 1.
+# See dotgithub SKILL.md "pnpm 11 strictDepBuilds blocks install on
+# transitive postinstalls" for context.
 allowBuilds:
-  better-sqlite3: set this to true or false
-  esbuild: set this to true or false
+  better-sqlite3: true
+  esbuild: true
