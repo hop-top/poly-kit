@@ -39,7 +39,7 @@ class Consent:
     decided_at: Optional[str] = None
 
     @classmethod
-    def denied(cls) -> "Consent":
+    def denied(cls) -> Consent:
         """Default-denied sentinel for missing/malformed input."""
         return cls(allowed=False)
 

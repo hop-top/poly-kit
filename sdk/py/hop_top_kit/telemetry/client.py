@@ -23,14 +23,14 @@ Divergence from Go's ``core/telemetry/event.go`` (intentional):
 
 from __future__ import annotations
 
-import asyncio
+import contextlib
 import json
 import os
 import queue
 import threading
-import time
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any, Optional
 
 from .consent import load_consent
 from .install_id import get_install_id
@@ -88,10 +88,8 @@ class _JSONLSink:
         except OSError:
             size = 0
         if size + len(line.encode("utf-8")) > _JSONL_ROTATE_BYTES:
-            try:
+            with contextlib.suppress(OSError):
                 os.replace(self._path, self._path + ".1")
-            except OSError:
-                pass
         with open(self._path, "a", encoding="utf-8") as fh:
             fh.write(line)
 
@@ -220,13 +218,11 @@ class Client:
             envelope = self._build_envelope(event, attrs or {}, mode)
 
             # Custom redactor first, default last (per docstring contract).
+            # A broken caller redactor must not break emission; fall back to
+            # the default-only path on any exception it raises.
             if self._redactor is not None:
-                try:
+                with contextlib.suppress(Exception):
                     envelope = self._redactor(envelope)
-                except Exception:
-                    # A broken caller redactor must not break emission;
-                    # fall back to the default-only path.
-                    pass
             envelope = _default_redact(envelope)
 
             try:
@@ -286,7 +282,7 @@ class Client:
             "sdk_version": self._sdk_version or _discover_sdk_version(),
             "installation_id": _safe_install_id(),
             "mode": mode.value,
-            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "occurred_at": datetime.now(UTC).isoformat(),
             "event": event,
             "attrs": envelope_attrs,
         }

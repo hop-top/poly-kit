@@ -163,6 +163,12 @@ func (e *rtEnv) Run(ctx context.Context, bin string, args ...string) (stdout, st
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Env = e.Env
 	cmd.Dir = e.HomeDir
+	// Force-kill grace: exec.CommandContext on Linux only signals the
+	// immediate child, so a shell-spawned grandchild (e.g. `sleep` invoked
+	// via `sh -c`) can survive past ctx cancellation until Wait blocks
+	// forever. WaitDelay (Go 1.20+) escalates to SIGKILL on the process
+	// group after the deadline, ensuring Run returns promptly.
+	cmd.WaitDelay = 500 * time.Millisecond
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf

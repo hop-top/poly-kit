@@ -144,22 +144,31 @@ function consentAllowedSync(): boolean {
 /**
  * Resolve SDK version. Order:
  *   1. `opts.sdkVersion` if provided.
- *   2. The `version` field of the nearest enclosing `package.json`
- *      (read once via require — Node CommonJS); failures fall through.
+ *   2. The `version` field of the nearest enclosing `package.json`,
+ *      located by walking up from this module's directory.
  *   3. `FALLBACK_SDK_VERSION`.
  */
 function resolveSdkVersion(explicit?: string): string {
   if (explicit && explicit.length > 0) return explicit;
   try {
-    // tsup bundles to CJS — `require` is available. We resolve relative
-    // to this module's compiled location (`dist/telemetry/client.js` →
-    // walk up to `dist/` → `package.json`). Use a try/catch envelope so
-    // a hermetic test runner without an enclosing package.json never
-    // breaks the Client.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pkg = require('../../package.json') as { version?: string };
-    if (typeof pkg.version === 'string' && pkg.version.length > 0) {
-      return pkg.version;
+    // Walk up from this file's directory looking for package.json. Works
+    // for both source layout (src/telemetry/client.ts → ../../package.json)
+    // and bundled CJS layout (dist/telemetry/client.js → ../../package.json).
+    const here = __dirname;
+    const candidates = [
+      path.join(here, '..', '..', 'package.json'),
+      path.join(here, '..', '..', '..', 'package.json'),
+    ];
+    for (const candidate of candidates) {
+      try {
+        const raw = readFileSync(candidate, 'utf8');
+        const pkg = JSON.parse(raw) as { version?: string };
+        if (typeof pkg.version === 'string' && pkg.version.length > 0) {
+          return pkg.version;
+        }
+      } catch {
+        // Try next candidate.
+      }
     }
   } catch {
     // Fall through.
@@ -270,11 +279,9 @@ export class Client {
 
     const deadline = Date.now() + timeoutMs;
     while (this.queue.length > 0 && Date.now() < deadline) {
-      // eslint-disable-next-line no-await-in-loop
       await this.drainOnce();
       if (this.queue.length > 0) {
         // Small yield so a slow sink doesn't hot-loop.
-        // eslint-disable-next-line no-await-in-loop
         await new Promise((r) => setTimeout(r, 25));
       }
     }

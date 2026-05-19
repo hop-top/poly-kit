@@ -10,6 +10,7 @@ languages write 32 raw bytes at the same path and hash them identically.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import secrets
@@ -42,9 +43,7 @@ def _hash(b: bytes) -> str:
 def _read_existing(p: Path) -> str:
     data = p.read_bytes()
     if len(data) != _ID_BYTES:
-        raise ValueError(
-            f"install_id: file has wrong size {len(data)} bytes, expected {_ID_BYTES}"
-        )
+        raise ValueError(f"install_id: file has wrong size {len(data)} bytes, expected {_ID_BYTES}")
     return _hash(data)
 
 
@@ -66,10 +65,8 @@ def get_install_id() -> str:
 
         p.parent.mkdir(parents=True, mode=_PERMS_DIR, exist_ok=True)
         # Best-effort tighten parent perms in case it pre-existed with looser bits.
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(p.parent, _PERMS_DIR)
-        except OSError:
-            pass
 
         fresh = secrets.token_bytes(_ID_BYTES)
         # Unique tmp suffix so cross-process races don't clobber each other.

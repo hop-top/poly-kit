@@ -43,7 +43,8 @@ fn first_call_generates_64_char_hex() {
     let id = get_install_id().expect("get_install_id");
     assert_eq!(id.len(), 64, "expected 64-char hex SHA-256, got {id}");
     assert!(
-        id.chars().all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+        id.chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
         "expected lowercase hex, got {id}"
     );
 }

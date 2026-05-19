@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any, Iterable, Pattern, Tuple
+from collections.abc import Iterable
+from re import Pattern
+from typing import Any
 
 # --- Patterns ----------------------------------------------------------------
 
@@ -24,7 +26,9 @@ from typing import Any, Iterable, Pattern, Tuple
 # preserves the path tail (slashes, alnum, dot, dash, underscore).
 _HOME = os.path.expanduser("~")
 _HOME_PATTERN: Pattern[str] = (
-    re.compile(rf"{re.escape(_HOME)}([/\w.\-]*)") if _HOME and _HOME != "~" else re.compile(r"(?!x)x")
+    re.compile(rf"{re.escape(_HOME)}([/\w.\-]*)")
+    if _HOME and _HOME != "~"
+    else re.compile(r"(?!x)x")
 )
 
 _EMAIL: Pattern[str] = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
@@ -51,7 +55,7 @@ _TOKEN_XOXB: Pattern[str] = re.compile(r"\bxoxb-[0-9]+-[0-9]+-[A-Za-z0-9]{24,}\b
 # Order matters: token patterns run BEFORE IP/email so we don't accidentally
 # eat parts of an xoxb token as numeric IP-shaped fragments. $HOME runs last
 # so its tail capture doesn't swallow an embedded email/ip-shaped substring.
-_REPLACEMENTS: Tuple[Tuple[Pattern[str], str], ...] = (
+_REPLACEMENTS: tuple[tuple[Pattern[str], str], ...] = (
     (_TOKEN_SK, "<redacted:token>"),
     (_TOKEN_GH, "<redacted:token>"),
     (_TOKEN_XOXB, "<redacted:token>"),

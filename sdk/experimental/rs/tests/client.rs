@@ -220,7 +220,9 @@ async fn custom_redactor_runs_before_default() {
     })
     .expect("client construction");
 
-    client.record("evt", json!({"original": "untouched"})).unwrap();
+    client
+        .record("evt", json!({"original": "untouched"}))
+        .unwrap();
     client.shutdown(Duration::from_millis(200)).await.unwrap();
 
     let content = std::fs::read_to_string(&sink_path).expect("sink file");

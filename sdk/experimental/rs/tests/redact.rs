@@ -59,10 +59,7 @@ fn ipv6_ipv4_mapped_documented() {
 #[test]
 fn redacts_sk_token() {
     let out = redact_string("Authorization: Bearer sk-AbCdEf1234567890 trailing");
-    assert_eq!(
-        out,
-        "Authorization: Bearer <redacted:token> trailing"
-    );
+    assert_eq!(out, "Authorization: Bearer <redacted:token> trailing");
 }
 
 #[test]

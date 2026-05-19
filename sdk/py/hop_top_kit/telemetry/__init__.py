@@ -5,15 +5,15 @@ install-id (32 raw bytes → SHA-256 hex) at XDG state, and consent file
 (YAML at XDG config). Default-denied across the board.
 """
 
-from .mode import Mode, parse_mode, resolve_mode
+from .client import Client
+from .consent import Consent, consent_path, load_consent
 from .install_id import (
     get_install_id,
     install_id_path,
     reset_for_test,
     rotate,
 )
-from .consent import Consent, consent_path, load_consent
-from .client import Client
+from .mode import Mode, parse_mode, resolve_mode
 
 # Re-export the redactor as `redact_string` only (string-only helper).
 # We do NOT re-export the `redact()` function under the bare name here
@@ -24,16 +24,16 @@ from .client import Client
 from .redact import redact_string
 
 __all__ = [
+    "Client",
+    "Consent",
     "Mode",
-    "parse_mode",
-    "resolve_mode",
+    "consent_path",
     "get_install_id",
     "install_id_path",
-    "rotate",
-    "reset_for_test",
-    "Consent",
-    "consent_path",
     "load_consent",
+    "parse_mode",
     "redact_string",
-    "Client",
+    "reset_for_test",
+    "resolve_mode",
+    "rotate",
 ]

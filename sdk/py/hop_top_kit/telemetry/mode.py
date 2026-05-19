@@ -13,11 +13,11 @@ The client (T-0714) combines mode + consent before any emission.
 from __future__ import annotations
 
 import os
-from enum import Enum
+from enum import StrEnum
 from typing import Optional
 
 
-class Mode(str, Enum):
+class Mode(StrEnum):
     """Telemetry emission mode. String-valued for ergonomic comparison."""
 
     OFF = "off"

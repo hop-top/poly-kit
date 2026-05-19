@@ -346,9 +346,8 @@ fn build_sink(
 ) -> Result<Sink, ClientError> {
     match kind {
         SinkKind::Https => {
-            let endpoint = endpoint.ok_or_else(|| {
-                ClientError::SinkConfig("https sink requires endpoint".into())
-            })?;
+            let endpoint = endpoint
+                .ok_or_else(|| ClientError::SinkConfig("https sink requires endpoint".into()))?;
             let client = reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(5))
                 .timeout(Duration::from_secs(10))
@@ -357,9 +356,8 @@ fn build_sink(
             Ok(Sink::Https(HttpsSink { client, endpoint }))
         }
         SinkKind::Jsonl => {
-            let path = sink_file.ok_or_else(|| {
-                ClientError::SinkConfig("jsonl sink requires sink_file".into())
-            })?;
+            let path = sink_file
+                .ok_or_else(|| ClientError::SinkConfig("jsonl sink requires sink_file".into()))?;
             Ok(Sink::Jsonl(JsonlSink {
                 path: std::path::PathBuf::from(path),
             }))
