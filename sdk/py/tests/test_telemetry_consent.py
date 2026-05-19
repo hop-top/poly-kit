@@ -43,12 +43,13 @@ class TestLoadConsent:
         _write(
             cons.consent_path(),
             """\
-telemetry:
-  consent:
-    state: granted
-    decided_at: "2026-01-15T10:00:00Z"
-    prompt_version: 3
-    decision_source: prompt
+kit:
+  telemetry:
+    consent:
+      state: granted
+      decided_at: "2026-01-15T10:00:00Z"
+      prompt_version: 3
+      decision_source: prompt
 """,
         )
         c = cons.load_consent()
@@ -61,11 +62,12 @@ telemetry:
         _write(
             cons.consent_path(),
             """\
-telemetry:
-  consent:
-    state: denied
-    prompt_version: 1
-    decision_source: flag
+kit:
+  telemetry:
+    consent:
+      state: denied
+      prompt_version: 1
+      decision_source: flag
 """,
         )
         c = cons.load_consent()
@@ -96,7 +98,7 @@ telemetry:
     def test_unreadable_int_prompt_version_defaults_zero(self):
         _write(
             cons.consent_path(),
-            "telemetry:\n  consent:\n    state: granted\n    prompt_version: not-a-number\n",
+            "kit:\n  telemetry:\n    consent:\n      state: granted\n      prompt_version: not-a-number\n",
         )
         c = cons.load_consent()
         # Granted survives; prompt_version coerces to 0 on failure.

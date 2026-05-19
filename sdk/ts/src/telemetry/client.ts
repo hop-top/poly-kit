@@ -36,7 +36,7 @@ import * as yaml from 'js-yaml';
 
 import { Mode, resolveMode } from './mode';
 import { getInstallId } from './installId';
-import { consentPath } from './consent';
+import { consentPath, legacyConsentPath } from './consent';
 import { redact } from './redact';
 
 /** Sink kinds understood by the Client. */
@@ -118,12 +118,23 @@ function defaultJsonlSinkFile(): string {
 }
 
 /**
- * loadConsentSync mirrors `loadConsent()` but with synchronous fs reads
- * so `record()` can stay sync. Failure modes fold to denied — same
- * contract as the async loader.
+ * consentAllowedSync mirrors `loadConsent()` but with synchronous fs
+ * reads so `record()` can stay sync. Tries the canonical
+ * `kit.telemetry.consent` partition under `config.yaml` first; falls
+ * back to the legacy bare `telemetry.consent` shape under
+ * `telemetry.yaml`. Failure modes fold to denied — same contract as
+ * the async loader.
  */
 function consentAllowedSync(): boolean {
-  const p = consentPath();
+  if (readGrantedFrom(consentPath(), 'canonical')) return true;
+  if (readGrantedFrom(legacyConsentPath(), 'legacy')) return true;
+  return false;
+}
+
+function readGrantedFrom(
+  p: string,
+  variant: 'canonical' | 'legacy',
+): boolean {
   if (!existsSync(p)) return false;
   let parsed: unknown;
   try {
@@ -134,7 +145,14 @@ function consentAllowedSync(): boolean {
   }
   if (typeof parsed !== 'object' || parsed === null) return false;
   const root = parsed as Record<string, unknown>;
-  const tel = root.telemetry;
+  let tel: unknown;
+  if (variant === 'canonical') {
+    const kit = root.kit;
+    if (typeof kit !== 'object' || kit === null) return false;
+    tel = (kit as Record<string, unknown>).telemetry;
+  } else {
+    tel = root.telemetry;
+  }
   if (typeof tel !== 'object' || tel === null) return false;
   const block = (tel as Record<string, unknown>).consent;
   if (typeof block !== 'object' || block === null) return false;
