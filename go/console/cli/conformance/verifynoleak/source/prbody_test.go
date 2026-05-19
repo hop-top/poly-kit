@@ -82,6 +82,28 @@ func TestPRBodyPathLabel(t *testing.T) {
 	assert.Equal(t, "pr:1:body", source.PRBodyPathLabel(1))
 }
 
+// scrubGitEnv unsets the GIT_* env vars that git inherits from a
+// parent process (notably from a pre-push hook). Without this, every
+// `git` subprocess we spawn in a tempdir would resolve back to the
+// outer repo via GIT_DIR / GIT_WORK_TREE. Empty-string values aren't
+// safe — git rejects an empty GIT_DIR — so we Unsetenv and restore on
+// cleanup.
+func scrubGitEnv(t *testing.T) {
+	t.Helper()
+	for _, v := range []string{
+		"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+		"GIT_NAMESPACE", "GIT_COMMON_DIR", "GIT_PREFIX",
+		"GIT_OBJECT_DIRECTORY",
+	} {
+		key := v
+		orig, had := os.LookupEnv(key)
+		os.Unsetenv(key)
+		if had {
+			t.Cleanup(func() { os.Setenv(key, orig) })
+		}
+	}
+}
+
 // ── PRBody validation ─────────────────────────────────────────────
 
 func TestPRBody_NonPositiveN(t *testing.T) {
@@ -91,6 +113,7 @@ func TestPRBody_NonPositiveN(t *testing.T) {
 }
 
 func TestPRBody_NoOriginRemote(t *testing.T) {
+	scrubGitEnv(t)
 	// Fresh tempdir is not a git repo; runGit will return
 	// ErrNotAGitRepo, which PRBody surfaces verbatim.
 	dir := t.TempDir()
@@ -108,6 +131,7 @@ func TestPRBody_StubbedGH(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
+	scrubGitEnv(t)
 
 	// Set up a temp git repo with a github origin.
 	repoDir := t.TempDir()
@@ -147,6 +171,7 @@ func TestPRBody_StubbedGHFailure(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
+	scrubGitEnv(t)
 
 	repoDir := t.TempDir()
 	require.NoError(t, exec.Command("git", "init", "-q", "-b", "main", repoDir).Run())
@@ -171,6 +196,7 @@ func TestPRBody_GHNotOnPATH(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
+	scrubGitEnv(t)
 
 	repoDir := t.TempDir()
 	require.NoError(t, exec.Command("git", "init", "-q", "-b", "main", repoDir).Run())

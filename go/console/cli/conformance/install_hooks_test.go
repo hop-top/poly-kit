@@ -39,6 +39,28 @@ func initRepo(t *testing.T, dir string) {
 	require.NoErrorf(t, err, "git init failed: %s", out)
 }
 
+// scrubGitEnv unsets the GIT_* env vars that git inherits from a
+// parent process (notably from a pre-push hook). Without this, every
+// `git` subprocess we spawn in a tempdir would resolve back to the
+// outer repo via GIT_DIR / GIT_WORK_TREE. Empty-string values aren't
+// safe — git rejects an empty GIT_DIR — so we Unsetenv and restore on
+// cleanup.
+func scrubGitEnv(t *testing.T) {
+	t.Helper()
+	for _, v := range []string{
+		"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+		"GIT_NAMESPACE", "GIT_COMMON_DIR", "GIT_PREFIX",
+		"GIT_OBJECT_DIRECTORY",
+	} {
+		key := v
+		orig, had := os.LookupEnv(key)
+		os.Unsetenv(key)
+		if had {
+			t.Cleanup(func() { os.Setenv(key, orig) })
+		}
+	}
+}
+
 func TestInstallHooks_FreshInstall(t *testing.T) {
 	dir := t.TempDir()
 	initRepo(t, dir)
@@ -83,6 +105,7 @@ func TestInstallHooks_Idempotent(t *testing.T) {
 }
 
 func TestInstallHooks_DryRunDoesNotWrite(t *testing.T) {
+	scrubGitEnv(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 
