@@ -237,8 +237,12 @@ class TestBackpressure:
             c.record("e", {"i": i})
         elapsed = time.perf_counter() - start
         c.shutdown(timeout=5)
-        # 1000 calls under 1s in aggregate (~1ms each).
-        assert elapsed < 1.0, f"record() too slow: {elapsed:.3f}s for 1000 calls"
+        # 1000 calls under 3s in aggregate (~3ms each). The non-blocking
+        # contract is "doesn't block"; the budget is intentionally generous
+        # so noisy CI runners (Python GC + slow shared-VM hosts) don't
+        # flake. Local Mac runs ~50-100ms; CI Linux runners observed up
+        # to ~1.05s under load.
+        assert elapsed < 3.0, f"record() too slow: {elapsed:.3f}s for 1000 calls"
 
     def test_dropped_count_increments_on_full_queue(self, isolated, monkeypatch):
         # Block the drain thread by mocking the sink to sleep.

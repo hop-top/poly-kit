@@ -65,8 +65,7 @@ pub fn get_install_id() -> io::Result<String> {
     ensure_parent(&p)?;
 
     let mut fresh = [0u8; INSTALL_ID_SIZE];
-    getrandom::getrandom(&mut fresh)
-        .map_err(|e| io::Error::other(format!("getrandom: {e}")))?;
+    getrandom::getrandom(&mut fresh).map_err(|e| io::Error::other(format!("getrandom: {e}")))?;
 
     let tmp = p.with_extension("new");
     fs::write(&tmp, fresh)?;
@@ -104,8 +103,7 @@ pub fn rotate() -> io::Result<String> {
     ensure_parent(&p)?;
 
     let mut fresh = [0u8; INSTALL_ID_SIZE];
-    getrandom::getrandom(&mut fresh)
-        .map_err(|e| io::Error::other(format!("getrandom: {e}")))?;
+    getrandom::getrandom(&mut fresh).map_err(|e| io::Error::other(format!("getrandom: {e}")))?;
 
     let tmp = p.with_extension("new");
     // Clear any stale .new from a previous crashed writer before
