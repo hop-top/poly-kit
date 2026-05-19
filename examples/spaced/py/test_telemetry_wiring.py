@@ -37,14 +37,14 @@ def _run(*args: str, env: dict | None = None) -> subprocess.CompletedProcess:
     )
 
 
-def test_telemetry_flag_hidden_from_help() -> None:
-    """--telemetry must NOT appear in --help (cross-lang parity contract)."""
+def test_telemetry_flag_visible_in_help() -> None:
+    """--telemetry MUST appear in --help (cross-lang parity contract)."""
     r = _run("--help")
     assert r.returncode == 0, f"--help failed: {r.stderr}"
     combined = r.stdout + r.stderr
-    assert "--telemetry" not in combined, (
-        "--telemetry leaked into --help output; the cross-lang parity contract "
-        f"expects it hidden until go/ts/py mirror the surface together.\n{combined}"
+    assert "--telemetry" in combined, (
+        "--telemetry missing from --help output; the cross-lang parity "
+        f"contract expects it visible on go/ts/py.\n{combined}"
     )
 
 

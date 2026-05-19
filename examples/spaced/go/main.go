@@ -47,11 +47,9 @@ func main() {
 	// installTelemetryPreRunHook and resolved per-invocation via
 	// telemetry.WithMode (precedence #1, beats env vars and SetMode).
 	//
-	// Hidden from --help so the cross-lang parity contract (which py +
-	// ts spaced demos don't yet expose) stays green. Surface in --help
-	// after py/ts mirror the flag (follow-up).
+	// Visible in --help; spaced py + ts mirror this flag with the same
+	// shape so the cross-lang parity contract includes it.
 	root.Cmd.PersistentFlags().String("telemetry", "off", "kit-telemetry emit mode (off|anon|full)")
-	_ = root.Cmd.PersistentFlags().MarkHidden("telemetry")
 
 	b := bus.New()
 

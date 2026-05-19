@@ -314,13 +314,16 @@ func TestParityHelp(t *testing.T) {
 // contract flags — no more, no less. A new flag added in one lang fails
 // here until all three match.
 //
-// Contract flags (sorted): --format --help --no-color --no-hints --quiet --version
+// Contract flags (sorted): --format --help --help-all --help-management
+//   --no-color --no-hints --quiet --telemetry --verbose --version
 func TestParityFlagsExactSet(t *testing.T) {
 	bins := parityHarness(t)
 	// Common flags across all three langs. Python auto-generates
 	// --help-commands for the visible default group; Go/TS do not.
+	// --telemetry is the kit-telemetry opt-in mode flag, mirrored
+	// across all three spaced demos (ADR-0035 adopter pattern).
 	common := []string{"--format", "--help", "--help-all", "--help-management",
-		"--no-color", "--no-hints", "--quiet", "--verbose", "--version"}
+		"--no-color", "--no-hints", "--quiet", "--telemetry", "--verbose", "--version"}
 	pyExtra := []string{"--help-commands", "--stream"}
 
 	flagRE := regexp.MustCompile(`--[\w-]+`)

@@ -362,22 +362,19 @@ if __name__ == "__main__":
     )
     bridge_to_click(_cmd, _alias_path)
 
-    # --telemetry={off,anon,full} hidden persistent flag (ADR-0035).
+    # --telemetry={off,anon,full} persistent flag (ADR-0035).
     #
-    # Hidden from --help so the cross-language parity contract (which
-    # asserts an exact FLAGS-section equality across go/ts/py) stays
-    # green. The Go side keeps the flag hidden symmetrically (see
-    # examples/spaced/go/main.go); surface in all three at the same time.
+    # Visible in --help; spaced go + ts mirror this flag with the same
+    # shape so the cross-language parity contract includes --telemetry.
     #
     # Registered as a click.Option directly (bypassing create_app's
-    # GlobalFlag mechanism) because GlobalFlag has no `hidden` field and
-    # would surface the flag in the FLAGS section.
+    # GlobalFlag mechanism) because GlobalFlag has no `hidden` field —
+    # using click.Option keeps the visibility decision local + explicit.
     _cmd.params.insert(
         0,
         click.Option(
             ["--telemetry"],
             default="off",
-            hidden=True,
             is_eager=True,
             expose_value=False,
             callback=_telemetry_pre_run_callback,

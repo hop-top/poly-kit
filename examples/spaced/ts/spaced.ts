@@ -52,14 +52,12 @@ const { program } = createCLI({
 // --telemetry={off,anon,full} persistent flag. Mirrors the Go-side
 // wiring in examples/spaced/go/main.go + telemetry_wiring.go (ADR-0035).
 //
-// Hidden from --help so the cross-lang parity contract (TestParityFlagsExactSet)
-// stays green while py + ts still need to mirror the option set. Once py
-// adopts the same flag, all three sides can drop .hideHelp() in lockstep.
+// Visible in --help; spaced go + py mirror this flag with the same shape
+// so the cross-lang parity contract includes --telemetry.
 program.addOption(
   new Option('--telemetry <mode>', 'kit-telemetry emit mode (off|anon|full)')
     .choices(['off', 'anon', 'full'])
-    .default('off')
-    .hideHelp(true),
+    .default('off'),
 );
 
 // Lazy telemetry client state. We construct on first use so processes
