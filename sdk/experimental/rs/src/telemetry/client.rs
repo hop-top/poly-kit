@@ -1,7 +1,7 @@
 //! Non-blocking telemetry client.
 //!
 //! Provides the SDK-side `Client` that adopters call from request /
-//! command paths. Constraints from ADR-0038 §4:
+//! command paths. Constraints:
 //!
 //! - `record()` is fire-and-forget. NEVER blocks, NEVER awaits, NEVER
 //!   panics on a full queue.
@@ -17,8 +17,7 @@
 //!   `Mode::Off` or `Consent::denied` collapses `record()` to a
 //!   no-op (Ok(())) with no envelope build, no channel send.
 //! - Optional custom redactor runs FIRST; the default
-//!   `telemetry::redact::redact` pass runs after (defense in depth per
-//!   ADR-0038 §3).
+//!   `telemetry::redact::redact` pass runs after (defense in depth).
 //!
 //! Envelope shape: mirrors the Go canonical `Event` at the seams the
 //! SDK can fill (`sdk_lang = "rs"`, `sdk_version`, `installation_id`,
@@ -61,8 +60,8 @@ pub struct ClientOptions {
     /// Path for the Jsonl sink. Required when `sink ==
     /// SinkKind::Jsonl`; ignored otherwise.
     pub sink_file: Option<String>,
-    /// Bounded channel capacity. Defaults to 1024 (ADR-0038 §4) when
-    /// constructed via `from_env` without `KIT_TELEMETRY_QUEUE_SIZE`.
+    /// Bounded channel capacity. Defaults to 1024 when constructed via
+    /// `from_env` without `KIT_TELEMETRY_QUEUE_SIZE`.
     pub queue_size: usize,
     /// SDK version reported on the wire. Defaults to the crate's
     /// `CARGO_PKG_VERSION` when None.
@@ -206,7 +205,7 @@ impl Client {
     /// - `load_consent().allowed == false`.
     ///
     /// On queue saturation increments `dropped_count()` and returns
-    /// `Ok(())` per ADR-0038 §4.
+    /// `Ok(())`.
     pub fn record(&self, event: &str, attrs: Value) -> Result<(), ClientError> {
         let mode = resolve_mode();
         if mode == Mode::Off {
@@ -223,9 +222,9 @@ impl Client {
         };
         redacted = redact(redacted);
 
-        // Anon-tier defensive strip (ADR-0038 §7 "Anon vs Full payload
-        // boundary"): drop free-form attrs when mode == anon, even if
-        // a custom redactor populated them.
+        // Anon-tier defensive strip ("Anon vs Full payload boundary"):
+        // drop free-form attrs when mode == anon, even if a custom
+        // redactor populated them.
         if mode == Mode::Anon {
             redacted = Value::Null;
         }
@@ -282,7 +281,7 @@ fn mode_str(m: Mode) -> &'static str {
 
 /// RFC3339 (UTC, nanosecond precision, trailing `Z`) timestamp built
 /// from `SystemTime::now()`. Avoids a chrono dep — the format is
-/// hand-rolled to match ADR-0035 §7 (`occurred_at` shape).
+/// hand-rolled to match the canonical `occurred_at` shape.
 fn now_rfc3339() -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -383,7 +382,7 @@ async fn drain_loop(mut rx: mpsc::Receiver<Envelope>, sink: Sink) {
 impl HttpsSink {
     async fn send(&self, env: &Envelope) -> Result<(), reqwest::Error> {
         let body = serde_json::to_string(env).unwrap_or_default();
-        // One retry on 5xx / transport — ADR-0038 §4 contract.
+        // One retry on 5xx / transport.
         let mut last_err: Option<reqwest::Error> = None;
         for _ in 0..2 {
             match self

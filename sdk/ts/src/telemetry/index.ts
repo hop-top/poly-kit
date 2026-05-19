@@ -16,10 +16,7 @@
  * The emit path itself, the BatchProcessor, and the OTLP exporter land
  * in follow-up sdk-telemetry tasks.
  *
- * Ground truth + decisions:
- *   - ADR-0035 
- *   - ADR-0036 
- *   - ADR-0038 
+ * Ground truth:
  *   - Event-schema doc `sdk/docs/telemetry-event-schema.md`
  */
 

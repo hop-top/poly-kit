@@ -90,9 +90,9 @@ func TestAggregateConsentingTelemetry_AllSkipDifferentReasons(t *testing.T) {
 	}
 }
 
-// TestAggregateConsentingTelemetry_MixedPassSkip — ADR-0037 §5
-// partial-instrumentation case: pass dominates over skip so the
-// aggregate signals "what we could verify, verified clean".
+// TestAggregateConsentingTelemetry_MixedPassSkip — partial-
+// instrumentation case: pass dominates over skip so the aggregate
+// signals "what we could verify, verified clean".
 func TestAggregateConsentingTelemetry_MixedPassSkip(t *testing.T) {
 	good := pass(FactorConsentingTelemetry, "ok")
 	skipR := skip(FactorConsentingTelemetry, "no test-inject hook")

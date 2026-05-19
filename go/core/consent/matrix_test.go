@@ -13,8 +13,8 @@
 // reading from a real FileStore behave the same way the unit tests
 // implied? Does a stale prompt_version persisted by one component
 // trigger the correct branch in another? Does the load-bearing
-// "DO_NOT_TRACK beats every other layer" claim from ADR-0036 hold when
-// every other layer is at its most aggressive?
+// "DO_NOT_TRACK beats every other layer" claim hold when every other
+// layer is at its most aggressive?
 //
 // This file deliberately uses the EXTERNAL test package (consent_test)
 // so it only reaches the public API surface — Store, Decision,
@@ -120,7 +120,7 @@ func TestMatrix_NonTTY_FirstRun_PersistsDeniedConfig(t *testing.T) {
 }
 
 // TestMatrix_DoNotTrack_BeatsExplicitTelemetryFlag is the load-bearing
-// ADR-0036 claim: even when the operator passes --telemetry=on (which
+// claim: even when the operator passes --telemetry=on (which
 // resolver step 3 would otherwise honor), DO_NOT_TRACK=1 short-circuits
 // at step 2 and denies. This is the cross-cutting variant of
 // resolve_test.go::TestResolve_DoNotTrack_Wins — the difference is

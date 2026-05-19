@@ -1,8 +1,7 @@
 package compliance
 
-// Tests for rtConsentingTelemetryInspect — ADR-0037 sub-conditions
-// (b) + (g) honored at runtime, plus the audit-topic load-bearing
-// assertion.
+// Tests for rtConsentingTelemetryInspect — sub-conditions (b) + (g)
+// honored at runtime, plus the audit-topic load-bearing assertion.
 //
 // Strategy: build the inspect-flavored stub binary
 // (testdata/stub-telemetry-binary-inspect) once and drive scenarios

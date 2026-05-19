@@ -6,10 +6,10 @@
 //
 // POST-REDACT CONTRACT
 // --------------------
-// Per ADR-0036, inspect is the trust-building subcommand: an operator
-// who is considering opting in must be able to see, byte for byte,
-// what kit would ship on their behalf. The redact contract is
-// unverifiable without inspect.
+// inspect is the trust-building subcommand: an operator who is
+// considering opting in must be able to see, byte for byte, what kit
+// would ship on their behalf. The redact contract is unverifiable
+// without inspect.
 //
 // inspect reads from the on-disk telemetry spool
 // (<XDG_STATE_HOME>/kit/telemetry/spool/YYYY-MM-DD.jsonl). The spool
@@ -79,7 +79,7 @@ import (
 // runtime package) because the runtime constant is unexported on
 // purpose — adding an export to satisfy the CLI would invert the
 // dependency direction. The path is part of the public layout
-// contract (ADR-0035 #8); a drift here is a test-detectable bug.
+// contract; a drift here is a test-detectable bug.
 const (
 	inspectSpoolSubPath = "telemetry/spool"
 	inspectXDGTool      = "kit"

@@ -19,7 +19,7 @@ namespace HopTop\Kit\Telemetry\Sink;
  *   * A separate Go drain (the kit telemetry daemon) can sweep events
  *     off disk without coupling to the PHP process lifecycle.
  *
- * On-disk layout (per ADR-0038 PHP addenda):
+ * On-disk layout:
  *   $XDG_STATE_HOME/kit/telemetry/inbox/php-<pid>.jsonl
  *
  * Per-PID filenames avoid cross-process contention; LOCK_EX still wraps

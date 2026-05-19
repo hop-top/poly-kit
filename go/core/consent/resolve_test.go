@@ -58,7 +58,7 @@ func TestResolve_KitModeOff_Wins(t *testing.T) {
 	}
 }
 
-// Per ADR-0036 section 5: ONLY mode=off short-circuits. Non-"off" mode
+// ONLY mode=off short-circuits. Non-"off" mode
 // values (anon/full/empty) are consumed by kit-telemetry's CurrentMode,
 // not by this resolver. So app=anon + kit=off -> step 1 sees kit=off
 // and short-circuits to denied.

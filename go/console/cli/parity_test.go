@@ -321,7 +321,7 @@ func TestParityFlagsExactSet(t *testing.T) {
 	// Common flags across all three langs. Python auto-generates
 	// --help-commands for the visible default group; Go/TS do not.
 	// --telemetry is the kit-telemetry opt-in mode flag, mirrored
-	// across all three spaced demos (ADR-0035 adopter pattern).
+	// across all three spaced demos (adopter pattern).
 	common := []string{"--format", "--help", "--help-all", "--help-management",
 		"--no-color", "--no-hints", "--quiet", "--telemetry", "--verbose", "--version"}
 	pyExtra := []string{"--help-commands", "--stream"}

@@ -39,8 +39,8 @@ type Inputs struct {
 	// *true for "--telemetry=on" and *false for "--telemetry=off".
 	TelemetryFlag *bool
 
-	// YesFlag mirrors --yes / --confirm=yes. Per ADR-0036, --yes is
-	// the non-interactive confirmation hint paired with --telemetry=on;
+	// YesFlag mirrors --yes / --confirm=yes. --yes is the
+	// non-interactive confirmation hint paired with --telemetry=on;
 	// it does NOT grant consent on its own.
 	YesFlag bool
 
@@ -52,7 +52,7 @@ type Inputs struct {
 	// (per telemetry.CurrentAppPrefix). Empty means no app-level
 	// override env var is checked; only KIT_TELEMETRY_MODE is. When
 	// set, "<AppPrefix>_TELEMETRY_MODE" is consulted BEFORE
-	// "KIT_TELEMETRY_MODE", matching ADR-0036 section 5.
+	// "KIT_TELEMETRY_MODE".
 	AppPrefix string
 
 	// Persisted is the on-disk decision loaded by the caller. A
@@ -85,9 +85,9 @@ func Resolve(ctx context.Context, in Inputs) Decision {
 	return d
 }
 
-// ResolveWithDiagnostics applies the precedence chain from ADR-0036
-// section 5 and returns the resolved Decision plus any non-fatal
-// diagnostics encountered while reading env vars.
+// ResolveWithDiagnostics applies the precedence chain and returns the
+// resolved Decision plus any non-fatal diagnostics encountered while
+// reading env vars.
 //
 // Precedence (highest wins):
 //
@@ -191,6 +191,6 @@ func ResolveWithDiagnostics(ctx context.Context, in Inputs) (Decision, []Resolve
 	}
 
 	// Step 7: Default. Cold-start (no record yet, no overrides) is
-	// denied with source=config per ADR-0036 section 1.
+	// denied with source=config.
 	return Decision{State: StateDenied, DecisionSource: SourceConfig}, diags
 }

@@ -39,7 +39,7 @@ func newFullEvent() Event {
 
 func TestSchemaVersionConstant(t *testing.T) {
 	if SchemaVersion != "1" {
-		t.Fatalf("SchemaVersion = %q, want %q (ADR-0035 #7 pins string \"1\")", SchemaVersion, "1")
+		t.Fatalf("SchemaVersion = %q, want %q (pinned string \"1\")", SchemaVersion, "1")
 	}
 }
 
@@ -205,7 +205,7 @@ func TestEventJSONTimestampKey(t *testing.T) {
 		t.Errorf("expected JSON to contain \"occurred_at\", got: %s", s)
 	}
 	// Regression guard: the pre-reconciliation field name was
-	// "timestamp"; ADR-0035 #7 pins occurred_at. Make sure we never
+	// "timestamp"; the pinned key is occurred_at. Make sure we never
 	// regress to the old key.
 	if strings.Contains(s, `"timestamp"`) {
 		t.Errorf("JSON must NOT contain \"timestamp\" key, got: %s", s)

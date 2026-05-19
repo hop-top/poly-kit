@@ -1,5 +1,5 @@
 // Telemetry wiring for the spaced demo. Demonstrates the canonical
-// kit-telemetry adopter pattern (ADR-0035):
+// kit-telemetry adopter pattern:
 //
 //  1. SetAppPrefix("spaced")  -> reads SPACED_TELEMETRY_MODE env var.
 //  2. SetMode(ModeOff)        -> documents the default explicitly.
@@ -105,8 +105,7 @@ func initTelemetry(b bus.Bus) {
 // installTelemetryFlag adds the --telemetry={off,anon,full} persistent
 // flag onto root and composes its parse step ahead of the kit
 // PersistentPreRunE chain. The flag wins over both SPACED_TELEMETRY_MODE
-// and KIT_TELEMETRY_MODE because WithMode is a per-context override
-// (ADR-0035 precedence #1).
+// and KIT_TELEMETRY_MODE because WithMode is a per-context override.
 //
 // This is also where the start-time stamp lands on the ctx so
 // PersistentPostRunE can compute duration_ms.
@@ -124,8 +123,8 @@ func installTelemetryPreRunHook(cmd *cobra.Command, args []string) error {
 // installTelemetryPostRun emits a single telemetry event at command
 // completion. Soft-refuses (no Record call) when the emitter wasn't
 // constructed. ExitCode is reported as 0 here — full exit-code capture
-// requires bubbling RunE's error up; ADR-0035 calls that out as a
-// follow-up so spaced records the happy-path metric for now.
+// requires bubbling RunE's error up; that is a follow-up so spaced
+// records the happy-path metric for now.
 func installTelemetryPostRun(cmd *cobra.Command, _ []string) error {
 	if spacedTelemetryEmitter == nil {
 		return nil

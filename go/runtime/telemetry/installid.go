@@ -5,7 +5,7 @@
 // surface API returns the lowercase hex SHA-256 of those bytes (64
 // chars), so the bytes-on-disk format stays canonical across polyglot
 // SDKs (Go, Python, TS, Rust, PHP) while the hashed string is what
-// flows through events. See ADR-0035 decision #4.
+// flows through events.
 package telemetry
 
 import (
@@ -28,15 +28,15 @@ const (
 	installIDSize = 32
 
 	// xdgTool is the tool name used when resolving xdg.StateFile. Fixed to
-	// "kit" per ADR-0035 decision #4 — polyglot SDKs share the same file,
-	// per-tool interpolation would break SDK reads.
+	// "kit" — polyglot SDKs share the same file, per-tool interpolation
+	// would break SDK reads.
 	xdgTool = "kit"
 
 	// installIDRel is the relative path under <XDG_STATE_HOME>/<xdgTool>.
 	installIDRel = "telemetry/installation_id"
 
-	// installIDFilePerm and installIDDirPerm are the on-disk perms required
-	// by ADR-0035 decision #4: 0600 for the file, 0700 for the parent dir.
+	// installIDFilePerm and installIDDirPerm are the on-disk perms:
+	// 0600 for the file, 0700 for the parent dir.
 	installIDFilePerm fs.FileMode = 0o600
 	installIDDirPerm  fs.FileMode = 0o700
 )

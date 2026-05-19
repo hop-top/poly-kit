@@ -2,9 +2,9 @@
 // package's runtime-check tests (the kill-switch tests and the
 // broader F13 suite).
 //
-// Real adopter binaries don't yet auto-route from KIT_BUS_SINK=jsonl
-// (see ADR-0037), so the runtime check needs a stand-in that DOES
-// honor KIT_BUS_SINK_PATH directly. This stub
+// Real adopter binaries don't yet auto-route from KIT_BUS_SINK=jsonl,
+// so the runtime check needs a stand-in that DOES honor
+// KIT_BUS_SINK_PATH directly. This stub
 // emits (or refuses to emit) a single synthetic event per invocation
 // based on env flags, so each F13 sub-check can verify the
 // harness-plus-check loop end-to-end against a controlled fixture.
@@ -24,7 +24,7 @@
 //	                    routes events.
 //	(unset)           — same as `respect` (safe default).
 //
-// The event payload mirrors the shape adopters write per ADR-0035 §3
+// The event payload mirrors the shape adopters write
 // (schema_version, sdk_lang, installation_id, mode, command_path,
 // exit_code, duration_ms, occurred_at). It's a synthetic stub so the
 // values are static; the compliance check only cares about presence,

@@ -1,6 +1,6 @@
 """Telemetry client — fire-and-forget envelope emission.
 
-Implements ADR-0038's SDK shape:
+SDK shape:
 
   * Envelope schema (v1): schema_version, sdk_lang, sdk_version,
     installation_id, mode, occurred_at, event, attrs.
@@ -16,8 +16,8 @@ Divergence from Go's ``core/telemetry/event.go`` (intentional):
   Go's ``Event`` struct carries ``CommandPath`` because the in-tree consumers
   are all Cobra commands. SDK adopters aren't necessarily CLIs, so we model
   the envelope as a free-form ``event`` name plus an ``attrs`` dict. This is
-  a known divergence — flagged in ADR-0038 and the cross-lang event schema
-  doc (``hops/main/sdk/docs/telemetry-event-schema.md``).
+  a known divergence — flagged in the cross-lang event schema doc
+  (``hops/main/sdk/docs/telemetry-event-schema.md``).
 """
 
 from __future__ import annotations
@@ -268,8 +268,8 @@ class Client:
     # -- internals -----------------------------------------------------------
 
     def _build_envelope(self, event: str, attrs: dict, mode: Mode) -> dict:
-        # Anon-tier defensive strip (ADR-0038 §7 "Anon vs Full payload
-        # boundary"): drop free-form attrs when mode == anon. Matches the
+        # Anon-tier defensive strip ("Anon vs Full payload boundary"):
+        # drop free-form attrs when mode == anon. Matches the
         # rs SDK's ``Value::Null`` shape — key stays for envelope-shape
         # stability, payload is JSON null. The default redactor runs
         # later but can't be relied on to do this (a caller redactor

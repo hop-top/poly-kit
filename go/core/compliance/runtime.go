@@ -40,8 +40,8 @@ const rtConsentingTelemetryTimeout = 90 * time.Second
 
 // rtConsentingTelemetry runs all three F13 runtime sub-checks
 // (kill-switch, inspect/redact, prompt) and aggregates the results
-// per ADR-0037's "one row per factor" model. Skips early when the
-// toolspec does not opt into telemetry.
+// per the "one row per factor" model. Skips early when the toolspec
+// does not opt into telemetry.
 //
 // Each sub-check owns its own rtEnv lifecycle via the envFactory
 // closure; we use newRTEnvDir over a per-call tmpdir so production
@@ -84,8 +84,8 @@ func rtConsentingTelemetry(binaryPath string, spec *toolspecYAML) CheckResult {
 }
 
 // aggregateConsentingTelemetry folds the three F13 runtime sub-check
-// results into a single CheckResult per ADR-0037's "one row per
-// factor" model. Precedence:
+// results into a single CheckResult per the "one row per factor"
+// model. Precedence:
 //
 //   - any fail → overall fail; Details concatenates each sub-check's
 //     failure Details so adopters see every gap in one pass.
@@ -97,9 +97,9 @@ func rtConsentingTelemetry(binaryPath string, spec *toolspecYAML) CheckResult {
 //
 // The mixed pass+skip case (e.g. kill-switch + prompt pass, inspect
 // skip because no test-inject hook) collapses to pass — partial
-// instrumentation is acceptable per ADR-0037 §5; a clean pass on the
-// arms we CAN verify is the strongest signal we can give the adopter
-// without false-failing on missing test hooks.
+// instrumentation is acceptable; a clean pass on the arms we CAN
+// verify is the strongest signal we can give the adopter without
+// false-failing on missing test hooks.
 func aggregateConsentingTelemetry(rs ...CheckResult) CheckResult {
 	var failed, skipped []string
 	for _, r := range rs {
@@ -113,8 +113,7 @@ func aggregateConsentingTelemetry(rs ...CheckResult) CheckResult {
 	f := FactorConsentingTelemetry
 	if len(failed) > 0 {
 		return fail(f, strings.Join(failed, "; "),
-			"Address each failing sub-condition; see ADR-0037 sub-conditions "+
-				"(b)/(c)/(d)/(e)/(f)/(g)")
+			"Address each failing sub-condition (b)/(c)/(d)/(e)/(f)/(g)")
 	}
 	if len(skipped) == len(rs) {
 		// All sub-checks skipped — same root reason (not opt-in or

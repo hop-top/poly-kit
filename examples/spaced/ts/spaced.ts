@@ -50,7 +50,7 @@ const { program } = createCLI({
 });
 
 // --telemetry={off,anon,full} persistent flag. Mirrors the Go-side
-// wiring in examples/spaced/go/main.go + telemetry_wiring.go (ADR-0035).
+// wiring in examples/spaced/go/main.go + telemetry_wiring.go.
 //
 // Visible in --help; spaced go + py mirror this flag with the same shape
 // so the cross-lang parity contract includes --telemetry.
@@ -69,7 +69,7 @@ let invocationStartTime = 0;
 function ensureTelemetryClient(): TelemetryClient | null {
   if (telemetryClient !== null) return telemetryClient;
   try {
-    // jsonl sink is the safer default — see ADR-0038: an https endpoint
+    // jsonl sink is the safer default: an https endpoint
     // misconfig must not silently drop events. The Client itself respects
     // KIT_TELEMETRY_SINK / KIT_TELEMETRY_ENDPOINT env overrides.
     telemetryClient = new TelemetryClient({ sink: 'jsonl' });
@@ -95,7 +95,7 @@ program.hook('preAction', (thisCommand) => {
 
 // postAction: emit a single `spaced.invocation` event with command path
 // + duration. Mirrors the Go-side PersistentPostRunE; exit-code capture
-// is a follow-up (ADR-0035).
+// is a follow-up.
 program.hook('postAction', async (_thisCommand, actionCommand) => {
   if (telemetryMode === 'off') return;
   const client = ensureTelemetryClient();

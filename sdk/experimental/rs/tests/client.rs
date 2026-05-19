@@ -202,8 +202,8 @@ async fn anon_mode_drops_caller_attrs() {
     let line = content.lines().next().expect("at least one line");
     let v: Value = serde_json::from_str(line).unwrap();
     assert_eq!(v["mode"], "anon");
-    // ADR-0038 §7: anon-tier defensive strip drops caller-provided
-    // free-form attrs. We surface this as attrs == null.
+    // Anon-tier defensive strip drops caller-provided free-form attrs.
+    // We surface this as attrs == null.
     assert_eq!(v["attrs"], Value::Null);
     teardown_env();
 }

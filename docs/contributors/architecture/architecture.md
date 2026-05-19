@@ -69,10 +69,10 @@ under `incubator/` until promoted.
 
 | Package | Role |
 |---|---|
-| `console/cli` | Fang+Cobra+Viper root command factory + Theme contract (ADR-0002) |
+| `console/cli` | Fang+Cobra+Viper root command factory + Theme contract |
 | `console/tui` | Pre-themed Bubble Tea v2 components (spinner, progress, dialog, list) |
 | `console/wizard` | Interactive command-driven form builder |
-| `console/output` | table/json/yaml renderer; owns `--format` flag (ADR-0003) |
+| `console/output` | table/json/yaml renderer; owns `--format` flag |
 | `console/markdown` | Glamour v2 terminal renderer |
 | `console/log` | Viper-configured charm.land/log/v2 wrapper |
 | `console/alias` | Git-style command alias bridge to Click/Typer |
@@ -84,27 +84,27 @@ under `incubator/` until promoted.
 | Package | Role |
 |---|---|
 | `core/config` | Layered loader: system → user → project → env; Pkl support; SIGHUP/signal-driven hot reload via `Reloadable[T]` + `reload:"true"` partition |
-| `core/consent` | Telemetry consent state machine + persisted decision (`<XDG_CONFIG_HOME>/kit/telemetry.yaml`); `DO_NOT_TRACK` / env / flag / prompt precedence (ADR-0036) |
+| `core/consent` | Telemetry consent state machine + persisted decision (`<XDG_CONFIG_HOME>/kit/telemetry.yaml`); `DO_NOT_TRACK` / env / flag / prompt precedence |
 | `core/identity` | Local-first Ed25519 identity; JWT; symmetric encryption |
 | `core/upgrade` | Self-upgrade check, download, replace + Badge |
 | `core/util` | Stdlib-only helpers (env, fingerprint, humanize, jsonl, must, ptr, retry, since, slug) |
 | `core/uxp` | AI CLI detection, project registry, diagnostics |
 | `core/xdg` | XDG Base Directory path resolution |
 | `core/projects` | Project registry and metadata lookup |
-| `core/compliance` | 13-factor adopter contract; static + runtime sub-checks; F13 `ConsentingTelemetry` (ADR-0037) |
+| `core/compliance` | 13-factor adopter contract; static + runtime sub-checks; F13 `ConsentingTelemetry` |
 
 ### `go/runtime/` — Bus, domain, jobs, peers, sync, telemetry
 
 | Package | Role |
 |---|---|
-| `runtime/bus` | Event-driven pub/sub; memory + SQLite + network transports; `TopicOf` builder + `ParseTopic` + `Qualifiers` payload convention (ADR-0017); env-driven sink selection for telemetry routing |
+| `runtime/bus` | Event-driven pub/sub; memory + SQLite + network transports; `TopicOf` builder + `ParseTopic` + `Qualifiers` payload convention; env-driven sink selection for telemetry routing |
 | `runtime/domain` | Generic DDD building blocks (Entity, Repository, StateMachine, Service) |
 | `runtime/domain/version` | Append-only version DAG for entity history |
 | `runtime/domain/sqlite` | SQLite repository implementations |
 | `runtime/job` | Job scheduler interface + Temporal, Restate, Hatchet, DurableTask adapters |
 | `runtime/peer` | Decentralised peer discovery; trust mesh; TOFU |
 | `runtime/sync` | Local-first multi-remote entity replication; HLC `Clock` + `WallClock` interface (`SystemWallClock` / `FixedClock` / `MockWallClock`) for deterministic tests |
-| `runtime/telemetry` | Opt-in, redact-before-egress CLI telemetry; `Mode` gate (off / anon / full), anonymous `install_id`, `ConsentHook` seam, batched HTTPS sink with on-disk spool (ADR-0035); cross-language wire-format mirrored by the four SDKs |
+| `runtime/telemetry` | Opt-in, redact-before-egress CLI telemetry; `Mode` gate (off / anon / full), anonymous `install_id`, `ConsentHook` seam, batched HTTPS sink with on-disk spool; cross-language wire-format mirrored by the four SDKs |
 
 ### `go/storage/` — Pluggable storage abstractions
 
@@ -214,28 +214,6 @@ Topic naming convention: `[Source].[Category].[Object].[Action]`
 | dpkms (ctxt) hub | network bus transport | `/ws/bus` cross-process event hub |
 | Charm libs | Go transitive | bubbletea/v2, lipgloss/v2, log/v2, fang/v2, glamour/v2 |
 | Spf13 stack | Go transitive | cobra v1.10, viper v1.21, pflag, afero, fsnotify |
-
-## Architecture decisions
-
-The full ADR ledger (`ADR-0001` through `ADR-0038`, with gaps at
-`0033`/`0034`) is archived outside this repo at
-`~/.w/ideacrafterslabs/.docs/archived/kit-technical-docs/adr/`.
-In-tree code and docs reference ADR identifiers as prose; the
-archive holds the rendered prose.
-
-Foundational ADRs that shape everything else:
-
-- `ADR-0001` CLI framework selection — Go uses cobra+viper+fang; TS/Py mirror via Commander/Typer
-- `ADR-0002` Theme architecture — Single theme per tool; brand accent override via `console/cli.Theme`
-- `ADR-0003` Output hints pipeline — Human vs machine split: progress/help → stderr, structured → stdout; `--format` flag
-- `ADR-0017` Bus topic + Qualifiers — `[Source].[Category].[Object].[Action]` naming + `Qualifiers` payload convention
-
-Consent / telemetry stack (added in the telemetry effort):
-
-- `ADR-0035` kit-telemetry — canonical wire contract; `Mode` tiers (off / anon / full); install_id derivation; redact-before-egress; batched HTTPS sink + on-disk spool
-- `ADR-0036` kit-consent — first-run prompt; env precedence (`DO_NOT_TRACK` > `KIT_TELEMETRY=…` > flag > persisted > prompt > non-TTY default)
-- `ADR-0037` ConsentingTelemetry as Factor #13 — opt-in 13th adopter factor; seven sub-conditions a binary must satisfy before it earns the right to emit a single event
-- `ADR-0038` cross-language wire parity — byte-identical envelopes verified by the harness at `sdk/tests/cross-lang/`
 
 ## Related pages
 

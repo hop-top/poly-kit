@@ -9,7 +9,7 @@ use Closure;
 /**
  * Best-effort PII / token-prefix redactor for telemetry envelopes.
  *
- * Per ADR-0038, redaction is intentionally best-effort:
+ * Redaction is intentionally best-effort:
  *   * The default pattern set catches the obvious shapes — email,
  *     IPv4 / IPv6, $HOME prefix, common token prefixes
  *     (`sk-`, `gh[pousr]_`, `xoxb-`).

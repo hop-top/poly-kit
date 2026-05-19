@@ -102,7 +102,7 @@ class CrossLangSmokeTest extends TestCase
         $env = json_decode($lines[0], true);
         $this->assertIsArray($env);
 
-        // Cross-language contract shape (ADR-0035 + ADR-0038 +
+        // Cross-language contract shape (see
         // sdk/docs/telemetry-event-schema.md).
         $this->assertSame('1', $env['schema_version']);
         $this->assertSame('php', $env['sdk_lang']);

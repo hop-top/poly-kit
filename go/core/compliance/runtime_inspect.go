@@ -1,9 +1,9 @@
 package compliance
 
 // Runtime check for FactorConsentingTelemetry sub-conditions (b) +
-// (g) per ADR-0037.
+// (g).
 //
-// Two sub-conditions are merged into one CheckResult (per ADR-0037's
+// Two sub-conditions are merged into one CheckResult (per the
 // "single row per factor" model):
 //
 //	A. Subcommand availability — for each canonical consent
@@ -43,7 +43,7 @@ import (
 
 // rtConsentingTelemetryInspect runs the F13 sub-(b)+(g)+audit-topic
 // runtime arm. Skips when the toolspec does not opt into telemetry
-// (ADR-0037 §4: F13 only applies to opt-in binaries).
+// (F13 only applies to opt-in binaries).
 //
 // ctx is honored on every subprocess invocation; callers MUST pass a
 // deadline-bearing ctx (the harness wraps subprocess Run in
@@ -71,7 +71,7 @@ func rtConsentingTelemetryInspect(ctx context.Context, bin string, spec *toolspe
 	// declared", so if anything is missing the static row will fail
 	// and the runtime check would be doubling up; (ii) an adopter
 	// that declares additional subcommands beyond the canonical set
-	// is out of scope — ADR-0037 (b) only requires the five.
+	// is out of scope — (b) only requires the five.
 	subs := intersectCanonical(spec.Telemetry.ConsentSubcommands)
 	if len(subs) == 0 {
 		// No canonical subcommands declared — static check already
@@ -284,13 +284,13 @@ func snippet(s string) string {
 
 // aggregate folds details into a single pass/fail CheckResult. Empty
 // details → pass with a canned summary; non-empty → fail with the
-// details joined and an ADR-0037-anchored suggestion.
+// details joined and an anchored suggestion.
 func aggregate(f Factor, details []string) CheckResult {
 	if len(details) == 0 {
 		return pass(f, "consent subcommands respond + inspect returns post-redact + audit topic fired")
 	}
 	return fail(f, strings.Join(details, "; "),
-		"Per ADR-0037 (b)+(g): each consent subcommand must exit 0 with "+
+		"Each consent subcommand must exit 0 with "+
 			"valid JSON; `inspect` must return a JSON object/array containing "+
 			"redacted (not raw) PII; the redactor MUST publish "+
 			"kit.telemetry.redact.matched audit events when matches fire.")

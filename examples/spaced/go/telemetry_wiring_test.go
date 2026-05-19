@@ -52,9 +52,8 @@ func TestTelemetryWiring_AnonModeEmitsOneEvent(t *testing.T) {
 
 	// Seed a granted consent decision so the emitter's consent gate
 	// passes. The on-disk format is owned by go/core/consent
-	// (telemetry.yaml under XDG_CONFIG_HOME/kit). Minimal valid doc
-	// per ADR-0036: state + decided_at + prompt_version +
-	// decision_source.
+	// (telemetry.yaml under XDG_CONFIG_HOME/kit). Minimal valid doc:
+	// state + decided_at + prompt_version + decision_source.
 	cfgDir := filepath.Join(xdgRoot, "config", "kit")
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 		t.Fatalf("mkdir consent dir: %v", err)
@@ -174,7 +173,7 @@ func TestTelemetryWiring_AnonModeEmitsOneEvent(t *testing.T) {
 	if ev.Mode != "anon" {
 		t.Errorf("event.Mode: got %q, want %q", ev.Mode, "anon")
 	}
-	// Anon tier MUST strip Args/Flags (ADR-0035 #6).
+	// Anon tier MUST strip Args/Flags.
 	if len(ev.Args) != 0 {
 		t.Errorf("event.Args should be empty in anon mode, got %v", ev.Args)
 	}

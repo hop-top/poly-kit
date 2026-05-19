@@ -12,8 +12,6 @@
  * PHP) while the hashed string is what flows through events.
  *
  * Perms: file 0600, parent dir 0700.
- *
- * See ADR-0035 decision #4 for the spec.
  */
 
 import { promises as fs } from 'node:fs';
@@ -24,9 +22,9 @@ import * as path from 'node:path';
 
 /** installIDSize is the on-disk byte length. SHA-256 of 32 bytes → 64-char hex. */
 const installIDSize = 32;
-/** File mode required by ADR-0035 §4. */
+/** File mode. */
 const installIDFilePerm = 0o600;
-/** Parent dir mode required by ADR-0035 §4. */
+/** Parent dir mode. */
 const installIDDirPerm = 0o700;
 
 /**

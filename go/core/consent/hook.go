@@ -8,9 +8,9 @@ import (
 
 // storeHook adapts a Store to telemetry.ConsentHook. Default-deny on
 // any read failure: a corrupt or unreadable consent file MUST NOT cause
-// the emitter to default-allow. Per ADR-0035 decision #4, the
-// cross-package contract is a plain bool and the surface is narrower
-// than the internal State enum on purpose.
+// the emitter to default-allow. The cross-package contract is a plain
+// bool and the surface is narrower than the internal State enum on
+// purpose.
 //
 // Per-batch semantic: kit-telemetry's emitter currently consults the
 // hook per-event, but sinks that batch events MUST re-check Granted on

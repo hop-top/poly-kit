@@ -2,7 +2,7 @@
 // consent decision (StateGranted, SourceFlag) so subsequent telemetry
 // events ship under the per-batch consent hook.
 //
-// The command is defensive about the precedence chain (ADR-0036 §5).
+// The command is defensive about the precedence chain.
 // If an env kill switch (DO_NOT_TRACK=1 or *_TELEMETRY_MODE=off) is set
 // at invocation time, the resolver would mask any granted state we
 // write. Rather than silently disagree with what the operator's shell
@@ -91,10 +91,10 @@ func runEnable(ctx context.Context, stdout io.Writer, dryRun bool) error {
 
 // consentEnvBlocked returns (envName, true) when the current env would
 // mask a granted consent. App-prefix env var is checked BEFORE the kit-
-// prefix per ADR-0035 — the embedding app's switch takes precedence
-// over kit's default. DO_NOT_TRACK is checked first as the cross-tool
-// industry convention (https://consoledonottrack.com/); we honor any
-// non-empty value other than "0"/"false" via consent.DoNotTrackEnabled.
+// prefix — the embedding app's switch takes precedence over kit's
+// default. DO_NOT_TRACK is checked first as the cross-tool industry
+// convention (https://consoledonottrack.com/); we honor any non-empty
+// value other than "0"/"false" via consent.DoNotTrackEnabled.
 func consentEnvBlocked() (string, bool) {
 	if consent.DoNotTrackEnabled(consent.OSEnv()) {
 		return "DO_NOT_TRACK", true

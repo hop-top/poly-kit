@@ -1,10 +1,6 @@
 # toolspec `telemetry:` block
 
-Authoritative reference for the `telemetry:` block of a kit
-toolspec. Canonical schema fixed by
-ADR-0037; runtime
-contract for the emitter/sinks fixed by
-ADR-0035.
+Authoritative reference for the `telemetry:` block of a kit toolspec.
 
 ## Purpose
 
@@ -37,7 +33,7 @@ telemetry:
   Canonical values: `invocation`, `error`, `lifecycle`. Non-empty
   when `enabled: true`.
 - `sinks` ([]string) — emitter sinks. Canonical values: `bus`,
-  `jsonl`. See ADR-0035 for sink contracts.
+  `jsonl`.
 - `consent_command` (string) — top-level subcommand path that owns
   the consent subtree (e.g. `"spaced telemetry"`).
 - `consent_subcommands` ([]string) — must enumerate
@@ -48,7 +44,7 @@ telemetry:
   (`<APP>_TELEMETRY_MODE` or `KIT_TELEMETRY_MODE`).
 - `prompt_version` (string) — version tag for the first-run prompt;
   load-bearing field name shared with the persisted consent
-  decision (ADR-0036). Aliases like `consent_version` are rejected.
+  decision. Aliases like `consent_version` are rejected.
 - `redact_rules` (string) — ruleset id. `kit-default` references the
   canonical ruleset shipped by `kit-telemetry`; custom paths
   permitted (runtime check verifies the ruleset fired).
@@ -67,10 +63,3 @@ telemetry:
   redact_rules: kit-default
 ```
 
-## Cross-references
-
-- ADR-0037 —
-  Factor #13 rationale, sub-condition table.
-- ADR-0035 — emitter
-  interfaces, env names, install_id path, bus topics, jsonl sink
-  contract.

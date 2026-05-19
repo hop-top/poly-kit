@@ -265,9 +265,8 @@ Each emitted event is one NDJSON line with the shape:
 ```
 
 The `event` + `attrs` extension is the TS / Py divergence from Go's
-canonical envelope (Go pins a typed `Event` struct). See ADR-0038 §7
-and `sdk/docs/telemetry-event-schema.md` for the cross-language
-contract.
+canonical envelope (Go pins a typed `Event` struct). See
+`sdk/docs/telemetry-event-schema.md` for the cross-language contract.
 
 ### Cross-SDK contract harness
 

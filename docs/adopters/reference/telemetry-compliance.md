@@ -9,8 +9,6 @@
 This page is reference material for engineers wiring telemetry into a
 kit-powered CLI. For end-user docs on what telemetry collects and how to
 opt out, see [`adopters/guides/telemetry.md`](../guides/telemetry.md).
-For the framework-level design rationale see
-[ADR-0037](../../adr/0037-consenting-telemetry-factor.md).
 
 ## 1. Purpose
 
@@ -56,8 +54,8 @@ have both a static arm (the toolspec must declare X) and a runtime arm
   normally emit; assert zero events on the bus within 500 ms.
 - **Common failures**: env var declared but the emitter doesn't read it.
 - **Fix**: this is free if you emit via `telemetry.Emitter` —
-  `consent.Resolve` honors `DO_NOT_TRACK` non-overridably per ADR-0036
-  precedence §1. Don't hand-roll the check.
+  `consent.Resolve` honors `DO_NOT_TRACK` non-overridably. Don't
+  hand-roll the check.
 
 ### d. `<APP>_TELEMETRY_MODE=off` (or `KIT_TELEMETRY_MODE=off`) suppresses emission
 
@@ -211,14 +209,6 @@ your binary scores **13/13**.
 
 ## 7. Cross-links
 
-- [ADR-0035 — kit-telemetry](../../adr/0035-runtime-telemetry.md) —
-  canonical wire contract, emitter interfaces, identity path, bus
-  topics, jsonl sink shape.
-- [ADR-0036 — kit-consent](../../adr/0036-kit-consent.md) — precedence
-  chain, `DO_NOT_TRACK` handling, persisted decision shape,
-  `decision_source` taxonomy.
-- [ADR-0037 — ConsentingTelemetry as Factor #13](../../adr/0037-consenting-telemetry-factor.md) —
-  design rationale for this factor.
 - [`go/runtime/telemetry/README.md`](../../../go/runtime/telemetry/README.md) —
   engineer-level depth: emitter API, sink internals, redact
   observation, polyglot SDK contract.

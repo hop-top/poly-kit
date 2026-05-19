@@ -60,7 +60,7 @@ func main() {
 
 	// Emit one telemetry.event.recorded at command exit. RunE errors
 	// don't reach here — root.Execute swallows them and returns to
-	// main; full exit-code capture is a follow-up (see ADR-0035).
+	// main; full exit-code capture is a follow-up.
 	root.Cmd.PersistentPostRunE = installTelemetryPostRun
 
 	// Log launch and daemon events.

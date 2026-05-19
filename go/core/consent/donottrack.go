@@ -12,7 +12,7 @@ import "strings"
 // that fall through to the rest of the precedence chain.
 //
 // This is the single canonical check shared by:
-//   - the resolver (step 2 of ADR-0036 §5),
+//   - the resolver,
 //   - the first-run prompt's env short-circuit,
 //   - the `kit telemetry enable` env-block helper.
 //

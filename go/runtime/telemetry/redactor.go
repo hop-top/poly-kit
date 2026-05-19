@@ -12,7 +12,7 @@ import (
 // Presidio corpus, lazy-loaded on first call). Panics if the corpus
 // loaded with zero rules — an empty rule set is a config bug, not a
 // runtime decision: telemetry with no redaction is worse than no
-// telemetry at all (ADR-0035 #6).
+// telemetry at all.
 //
 // Telemetry deliberately shares redact.Default() rather than building a
 // private Redactor: one rule corpus across the process means one

@@ -7,7 +7,7 @@
  * in-memory queue, two sinks (HTTPS POST + JSONL append-with-rotate),
  * and a best-effort `shutdown()` drain.
  *
- * Design constraints (ADR-0038):
+ * Design constraints:
  *
  *   - **Never block, never throw**: `record()` must return in <1ms even
  *     under queue saturation. Errors during background drain bump
@@ -21,7 +21,7 @@
  *   - **Envelope shape**: matches the cross-language event-schema doc
  *     for the common fields. NOTE: per the task spec, the TS+Py SDKs
  *     diverge from Go by carrying free-form `event` (string) + `attrs`
- *     (object) at the envelope root. See ADR-0038 §7 / event-schema §3.
+ *     (object) at the envelope root. See event-schema §3.
  *   - **install_id caching**: `getInstallId()` does file I/O; we resolve
  *     it lazily and cache the resolved promise.
  *
@@ -84,7 +84,7 @@ const SDK_LANG = 'ts';
 /**
  * Envelope shape this Client emits. Aligned with the cross-language
  * event-schema doc's "common fields" plus the TS/Py free-form `event`
- * + `attrs` extension carved out by ADR-0038 §7.
+ * + `attrs` extension.
  *
  * `attrs` is `null` when `mode === Mode.Anon` (matches the rs SDK's
  * ``Value::Null`` strip) — the key stays for envelope-shape stability,
@@ -334,8 +334,8 @@ export class Client {
       return [];
     }
     return batch.map((p) => {
-      // Anon-tier defensive strip (ADR-0038 §7 "Anon vs Full payload
-      // boundary"): drop free-form attrs when mode == anon. Matches the
+      // Anon-tier defensive strip ("Anon vs Full payload boundary"):
+      // drop free-form attrs when mode == anon. Matches the
       // rs SDK's ``Value::Null`` shape — key stays for envelope-shape
       // stability, payload is JSON null. We skip the redactor entirely
       // in anon mode because (a) there's nothing to scrub, and (b) a

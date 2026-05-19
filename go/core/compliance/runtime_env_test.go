@@ -255,7 +255,7 @@ func TestSeedConsent_GrantedFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat consent file: %v", err)
 	}
-	// Belt-and-braces: consent file SHOULD be 0600 per ADR-0036.
+	// Belt-and-braces: consent file SHOULD be 0600.
 	// Mask off setuid/setgid/sticky bits; we only care about rwx for
 	// owner/group/other. Test ensures we don't accidentally write
 	// world-readable.

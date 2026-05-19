@@ -13,8 +13,8 @@ namespace HopTop\Kit\Telemetry;
  *  - Anon: minimal pseudonymous metadata only.
  *  - Full: full event attributes per the canonical schema.
  *
- * Per ADR-0035 + ADR-0038, every adopter-facing entry point must be
- * infallible; tryFromLoose() never throws and defaults to Off.
+ * Every adopter-facing entry point must be infallible; tryFromLoose()
+ * never throws and defaults to Off.
  */
 enum Mode: string
 {

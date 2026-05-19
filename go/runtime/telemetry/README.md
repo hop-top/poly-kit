@@ -11,10 +11,8 @@ that maps to a three-tier privacy contract.
 > `ConsentHook`; the default hook denies. stdout / stderr are NEVER
 > captured at any tier.
 
-ADR-0035 records the canonical wire contract and the cross-track
-decisions. ADR-0036 records the consent UX. Read both before changing
-public surface — the schema is mirrored by polyglot SDKs and a
-cross-language contract test diffs the wire shape.
+The schema is mirrored by polyglot SDKs and a cross-language contract
+test diffs the wire shape.
 
 ## Why this exists
 
@@ -154,7 +152,7 @@ even if the caller populated them (see `emitter.go` step 4).
   lowercase hex (64 chars). The hash is the `installation_id` that
   flows through events.
 - **Path**: `<XDG_STATE_HOME>/kit/telemetry/installation_id` — FIXED,
-  not per-tool. Polyglot SDKs share the same file (ADR-0038).
+  not per-tool. Polyglot SDKs share the same file.
 - **Permissions**: file `0600`, parent directory `0700`.
 - **First-call race-safety**: concurrent first calls from multiple
   processes use `O_EXCL`; the first writer wins, losers re-read.
@@ -231,9 +229,8 @@ Defaults:
 
 The `bool` return is deliberately narrower than a `State` /
 `decision_source` enum: the cross-package contract only needs the
-emit-gate decision (ADR-0035 #4). The richer Decision value object
-(state + source) lives inside kit-consent and never crosses the
-emitter boundary.
+emit-gate decision. The richer Decision value object (state + source)
+lives inside kit-consent and never crosses the emitter boundary.
 
 ## Wire format
 
@@ -360,10 +357,6 @@ onto the wire as `sdk_version`. See T-0674 for the discovery context.
 
 ## See also
 
-- ADR-0035 — canonical
-  tier model, identity, topics, consent interface.
-- ADR-0036 — consent
-  precedence, `DO_NOT_TRACK`, `prompt_version`, decision-source.
 - [`go/core/consent/`](../../core/consent/) — persisted decision +
   resolver + `consent.NewHook(...)` that satisfies `ConsentHook`.
 - [`go/core/redact/`](../../core/redact/) — redact rule loading;
@@ -371,6 +364,6 @@ onto the wire as `sdk_version`. See T-0674 for the discovery context.
 - [`go/runtime/bus/`](../bus/) — topic grammar validator,
   `bus.NewEvent`, `bus.Sink`.
 - [`go/runtime/provenance/`](../provenance/) — the `Mode` + atomic +
-  one-shot env-read idiom this package mirrors (ADR-0024).
+  one-shot env-read idiom this package mirrors.
 - Sibling tracks: `kit-consent`, `kit-telemetry-compliance`,
   `cmdsurf-telemetry`, `sdk-telemetry`, `sdk-telemetry-php`.

@@ -17,8 +17,8 @@
  * ```
  *
  * This TS module is **read-only**: writing the consent file remains the
- * job of the Go `kit consent` CLI per ADR-0036. SDK consumers just need
- * to know whether emission is allowed.
+ * job of the Go `kit consent` CLI. SDK consumers just need to know
+ * whether emission is allowed.
  *
  * Anything that isn't a clean, parseable, `state: granted` block
  * collapses to `deniedConsent` — a fail-closed default so a corrupt

@@ -1,9 +1,8 @@
 package compliance
 
-// rtConsentingTelemetryPrompt — F13 runtime sub-check (e) + (f) from
-// ADR-0037:
+// rtConsentingTelemetryPrompt — F13 runtime sub-check (e) + (f):
 //
-//   (e) First-run prompt fires-or-skips per ADR-0036 precedence.
+//   (e) First-run prompt fires-or-skips per precedence.
 //   (f) Persisted decision carries the canonical `prompt_version` field
 //       (NOT `consent_version` or any other alias) AND a valid
 //       decision_source (env | flag | prompt | config).
@@ -15,17 +14,16 @@ package compliance
 //        prompt_version set.
 //   2. Fresh HOME + no env + any read cmd (non-TTY by construction)
 //      → config persisted with state=denied, decision_source=config,
-//        prompt_version set. (ADR-0036 §6 step 7: non-TTY default.)
+//        prompt_version set. (non-TTY default.)
 //   3. Pre-seed config telemetry=granted + DO_NOT_TRACK=1 + any cmd
 //      → no events emitted (env beats persisted). The persisted file
 //        may or may not be re-written; we only assert the env-mask
 //        behavior of step (c) here, leaving the rewrite policy to the
 //        consent implementation.
 //
-// Scenario 4 from ADR-0036 (TTY prompt fires) is NOT testable from
-// exec.Command — every subprocess we spawn is non-TTY by construction.
-// Documented in the pass-path Details as "TTY prompt covered by manual
-// review per ADR-0036".
+// Scenario 4 (TTY prompt fires) is NOT testable from exec.Command —
+// every subprocess we spawn is non-TTY by construction. Documented in
+// the pass-path Details as "TTY prompt covered by manual review".
 //
 // Harness caveat: the bus pkg does not auto-route from
 // KIT_BUS_SINK=jsonl yet. The stub binary under
@@ -55,11 +53,10 @@ const rtPromptRunTimeout = 5 * time.Second
 // suite when the binary is mute by design.
 const rtPromptPollBudget = 500 * time.Millisecond
 
-// validDecisionSources is the canonical set of decision_source values
-// per ADR-0036 §4. A persisted decision whose decision_source is
-// outside this set fails sub-condition (f) — the field exists for
-// auditability ("why am I in this state") and an unknown value is a
-// contract violation.
+// validDecisionSources is the canonical set of decision_source values.
+// A persisted decision whose decision_source is outside this set fails
+// sub-condition (f) — the field exists for auditability ("why am I in
+// this state") and an unknown value is a contract violation.
 var validDecisionSources = map[string]struct{}{
 	"env":    {},
 	"flag":   {},
@@ -68,8 +65,8 @@ var validDecisionSources = map[string]struct{}{
 }
 
 // persistedConsent mirrors the YAML shape of <XDG_CONFIG_HOME>/kit/
-// telemetry.yaml as defined by ADR-0036 and emitted by kit-consent.
-// Only the fields the check needs are unmarshalled; extras are
+// telemetry.yaml emitted by kit-consent. Only the fields the check
+// needs are unmarshalled; extras are
 // ignored. The inner Consent struct nests under `telemetry:` to match
 // SeedConsent's format.
 type persistedConsent struct {
@@ -83,14 +80,14 @@ type persistedConsent struct {
 	} `yaml:"telemetry"`
 }
 
-// rtConsentingTelemetryPrompt verifies ADR-0037 sub-conditions (e) +
-// (f). envFactory builds a fresh rtEnv per scenario (each scenario
+// rtConsentingTelemetryPrompt verifies sub-conditions (e) + (f).
+// envFactory builds a fresh rtEnv per scenario (each scenario
 // gets a fresh tmpdir to avoid first-run state bleed); bin is the
 // adopter binary path; spec drives the read-command pick and the
 // expected prompt_version stamp.
 //
-// Returns a single CheckResult per ADR-0037's "one row per factor"
-// model — multi-step failures are concatenated into Details. The
+// Returns a single CheckResult per the "one row per factor" model —
+// multi-step failures are concatenated into Details. The
 // signature mirrors rtConsentingTelemetryInspect / KillSwitch so all
 // three runtime sub-checks can be invoked from the same site.
 func rtConsentingTelemetryPrompt(ctx context.Context, bin string, spec *toolspecYAML, envFactory func() *rtEnv) CheckResult {
@@ -137,7 +134,7 @@ func rtConsentingTelemetryPrompt(ctx context.Context, bin string, spec *toolspec
 
 	return pass(f, "first-run prompt precedence honored "+
 		"(DO_NOT_TRACK→denied/env, non-TTY→denied/config, "+
-		"env-beats-persisted-granted); TTY prompt covered by manual review per ADR-0036")
+		"env-beats-persisted-granted); TTY prompt covered by manual review")
 }
 
 // promptAssertPersisted seeds a fresh rtEnv, applies envs, runs the
@@ -167,7 +164,7 @@ func promptAssertPersisted(
 		return fail(f,
 			fmt.Sprintf("%s: read persisted consent: %v", label, err),
 			"Ensure the adopter binary persists a decision at "+
-				"<XDG_CONFIG_HOME>/kit/telemetry.yaml on every invocation per ADR-0036"), false
+				"<XDG_CONFIG_HOME>/kit/telemetry.yaml on every invocation"), false
 	}
 
 	if got.Telemetry.Consent.State != wantState {
@@ -175,20 +172,20 @@ func promptAssertPersisted(
 			fmt.Sprintf("%s: persisted state=%q, want %q",
 				label, got.Telemetry.Consent.State, wantState),
 			"Verify the consent resolver writes state="+wantState+
-				" for this precedence step per ADR-0036"), false
+				" for this precedence step"), false
 	}
 	if got.Telemetry.Consent.DecisionSource != wantSource {
 		return fail(f,
 			fmt.Sprintf("%s: persisted decision_source=%q, want %q (valid: env|flag|prompt|config)",
 				label, got.Telemetry.Consent.DecisionSource, wantSource),
 			"Verify the consent resolver stamps decision_source="+wantSource+
-				" for this precedence step per ADR-0036 §4"), false
+				" for this precedence step"), false
 	}
 	if _, ok := validDecisionSources[got.Telemetry.Consent.DecisionSource]; !ok {
 		return fail(f,
 			fmt.Sprintf("%s: persisted decision_source=%q is not in canonical set {env, flag, prompt, config}",
 				label, got.Telemetry.Consent.DecisionSource),
-			"Use one of the canonical decision_source values per ADR-0036 §4"), false
+			"Use one of the canonical decision_source values"), false
 	}
 	// Sub-condition (f) field-name lock: prompt_version must be
 	// present in the persisted file under the literal key
@@ -197,9 +194,9 @@ func promptAssertPersisted(
 	if got.Telemetry.Consent.PromptVersion == nil {
 		return fail(f,
 			fmt.Sprintf("%s: persisted consent missing `prompt_version` field "+
-				"(field-name lock per ADR-0036 — aliases like `consent_version` are rejected)",
+				"(field-name lock — aliases like `consent_version` are rejected)",
 				label),
-			"Stamp `prompt_version` on every persisted decision per ADR-0036 §3"), false
+			"Stamp `prompt_version` on every persisted decision"), false
 	}
 
 	return CheckResult{}, true
@@ -209,8 +206,8 @@ func promptAssertPersisted(
 // state=granted, applies DO_NOT_TRACK=1, runs the read command, and
 // asserts zero telemetry events were emitted. The persisted file may
 // or may not be rewritten — we deliberately do NOT assert its
-// post-run shape, since ADR-0036 leaves rewrite policy under env
-// override to the consent implementation.
+// post-run shape, since rewrite policy under env override is left to
+// the consent implementation.
 func promptAssertEnvBeatsGranted(
 	ctx context.Context,
 	envFactory func() *rtEnv,
@@ -237,7 +234,7 @@ func promptAssertEnvBeatsGranted(
 			fmt.Sprintf("%s: expected 0 events (env beats persisted) but observed %d",
 				label, len(evs)),
 			"Ensure DO_NOT_TRACK=1 short-circuits emission even when the "+
-				"persisted state is granted per ADR-0036 §6 step 2"), false
+				"persisted state is granted"), false
 	}
 
 	return CheckResult{}, true
@@ -266,7 +263,7 @@ func readPersistedConsent(xdgConfig string) (*persistedConsent, error) {
 	// error.
 	if hasConsentVersionAlias(raw) && !hasPromptVersionField(raw) {
 		return nil, fmt.Errorf("persisted consent uses `consent_version` alias "+
-			"(field-name lock per ADR-0036: only `prompt_version` is accepted) at %s", path)
+			"(field-name lock: only `prompt_version` is accepted) at %s", path)
 	}
 
 	var pc persistedConsent
@@ -286,8 +283,8 @@ func hasPromptVersionField(raw []byte) bool {
 }
 
 // hasConsentVersionAlias detects the stale `consent_version` alias
-// that ADR-0036 explicitly rejects in favor of `prompt_version`. Used
-// to produce a pointed error message rather than a generic "missing
+// that is explicitly rejected in favor of `prompt_version`. Used to
+// produce a pointed error message rather than a generic "missing
 // field" failure.
 func hasConsentVersionAlias(raw []byte) bool {
 	return strings.Contains(string(raw), "consent_version:")

@@ -7,9 +7,9 @@
 // and ../stub-telemetry-binary-inspect/ (consent subcommands +
 // post-redact). The behavioral shape here is different from both —
 // this stub's only job is to RESOLVE consent against env + persisted
-// state per ADR-0036's precedence chain and WRITE the resulting
-// decision back to <XDG_CONFIG_HOME>/kit/telemetry.yaml — so we keep
-// it separate.
+// state per the precedence chain and WRITE the resulting decision
+// back to <XDG_CONFIG_HOME>/kit/telemetry.yaml — so we keep it
+// separate.
 //
 // Build via the test file's lazy sync.Once helper — never go-install'd.
 // Tests live under hop.top/kit/hops/main/go/core/compliance.
@@ -36,7 +36,7 @@
 // scenario 3 of the runtime check (env-beats-persisted-granted): the
 // stub WOULD emit if not for DO_NOT_TRACK, so observing zero events
 // proves the env-mask path is honored. Mirrors stub-telemetry-binary's
-// emission shape (ADR-0035 §3) so the bus reader works for both.
+// emission shape so the bus reader works for both.
 package main
 
 import (
@@ -96,8 +96,8 @@ func main() {
 	fmt.Println("{}")
 }
 
-// resolveConsent implements ADR-0036's precedence chain, restricted
-// to the subset of steps this stub needs:
+// resolveConsent implements the precedence chain, restricted to the
+// subset of steps this stub needs:
 //
 //  1. DO_NOT_TRACK=1                     → denied / env
 //  2. *_TELEMETRY_MODE=off               → denied / env
@@ -106,8 +106,8 @@ func main() {
 //  5. default (non-TTY)                  → denied / config
 //
 // The stub never prompts — exec.Command is always non-TTY, so the
-// TTY branch of ADR-0036's chain is unreachable here (and documented
-// as "covered by manual review" in the runtime check itself).
+// TTY branch of the chain is unreachable here (and documented as
+// "covered by manual review" in the runtime check itself).
 func resolveConsent(xdgConfig string) (state, source string) {
 	if os.Getenv("DO_NOT_TRACK") == "1" {
 		return "denied", "env"
@@ -163,8 +163,8 @@ func readPersistedState(xdgConfig string) string {
 	return ""
 }
 
-// persistConsent writes the YAML shape ADR-0036 specifies, with mode-
-// driven mutations for the negative tests. The 0o600 perm mirrors
+// persistConsent writes the canonical YAML shape, with mode-driven
+// mutations for the negative tests. The 0o600 perm mirrors
 // kit-consent's own write path (and the SeedConsent helper that
 // seeds fixtures into the same file).
 func persistConsent(xdgConfig, mode, state, source string) error {

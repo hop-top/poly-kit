@@ -19,7 +19,7 @@
 //
 // Reality vs target (recorded 2026-05-19):
 //
-//   - Target per ADR-0037: 13/13 on the opt-in spaced binary.
+//   - Target: 13/13 on the opt-in spaced binary.
 //   - Observed: 9/13. The shortfall is structural and well-understood:
 //
 //   - F9 ObservableOps: skip — "runtime check only", but the
@@ -70,8 +70,8 @@ import (
 // spaced closes adopter gaps.
 const wantScore = 9
 
-// wantTotal is the F13-opt-in denominator per ADR-0037: 13 when
-// telemetry.enabled is true.
+// wantTotal is the F13-opt-in denominator: 13 when telemetry.enabled
+// is true.
 const wantTotal = 13
 
 // TestE2E_SpacedCompliance builds the real spaced binary, flips
@@ -136,10 +136,10 @@ func TestE2E_SpacedCompliance(t *testing.T) {
 	}
 	t.Logf("score: %d/%d (opt-in denominator)", report.Score, report.Total)
 
-	// 5. Assert denominator. F13 opt-in must bump Total to 13
-	// per ADR-0037; if Total comes back as 12, the toolspec flip
-	// didn't take effect (e.g. parser regression) and the rest
-	// of the assertions become meaningless.
+	// 5. Assert denominator. F13 opt-in must bump Total to 13; if
+	// Total comes back as 12, the toolspec flip didn't take effect
+	// (e.g. parser regression) and the rest of the assertions become
+	// meaningless.
 	if report.Total != wantTotal {
 		t.Fatalf("Total = %d, want %d (opt-in denominator). "+
 			"This suggests the telemetry.enabled=true flip did not "+
@@ -151,7 +151,7 @@ func TestE2E_SpacedCompliance(t *testing.T) {
 	// close; a delta in either direction is informative.
 	if report.Score != wantScore {
 		t.Errorf("Score = %d/%d, want %d/%d. "+
-			"Drift from baseline — see ADR-0037 + integration_test.go "+
+			"Drift from baseline — see integration_test.go "+
 			"header for the per-factor expectations.",
 			report.Score, report.Total, wantScore, wantTotal)
 	}
@@ -168,7 +168,7 @@ func TestE2E_SpacedCompliance(t *testing.T) {
 	}
 	if f13 == nil {
 		t.Fatal("F13 ConsentingTelemetry not in report — Run must " +
-			"emit a row per factor per ADR-0037")
+			"emit a row per factor")
 	}
 
 	// Today's baseline: F13 fails because spaced's `telemetry`

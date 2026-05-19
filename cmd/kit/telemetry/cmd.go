@@ -1,6 +1,6 @@
 // Package telemetry implements the `kit telemetry` cobra subtree:
 // the user-facing CLI for inspecting, mutating, auditing, and resetting
-// the kit telemetry consent decision (kit-consent track, ADR-0036).
+// the kit telemetry consent decision (kit-consent track).
 package telemetry
 
 import "github.com/spf13/cobra"

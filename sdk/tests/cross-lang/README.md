@@ -7,8 +7,8 @@ volatile fields.
 
 ## What this proves
 
-ADR-0038 ships four polyglot SDKs (py / ts / rs / php) that all promise
-the same envelope shape and the same deterministic redactor placeholders
+Four polyglot SDKs (py / ts / rs / php) all promise the same envelope
+shape and the same deterministic redactor placeholders
 (`<redacted:email>`, `<redacted:ipv4>`, `<redacted:ipv6>`,
 `<redacted:token>`, `$HOME`). This harness is the byte-level proof: if
 two SDKs disagree on a placeholder, a key name, a redaction depth, or a

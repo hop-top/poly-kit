@@ -108,9 +108,8 @@ fn non_string_root_value_passes_through() {
 
 #[test]
 fn object_keys_preserved_verbatim() {
-    // ADR-0038 §7: flag KEYS are not redacted; only VALUES route
-    // through redact. Use a key that LOOKS like an email; it must
-    // survive.
+    // Flag KEYS are not redacted; only VALUES route through redact.
+    // Use a key that LOOKS like an email; it must survive.
     let v = json!({"sender@example.com": "ok"});
     let r = redact(v);
     let obj = r.as_object().unwrap();

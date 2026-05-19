@@ -11,9 +11,8 @@
  *     exit_code, duration_ms, occurred_at, kit_version, sdk_lang/version).
  *   - `Mode.Full`: anon + args + flags, both post-redact.
  *
- * See ADR-0035 / ADR-0038 for the decision record and the canonical
- * event-schema doc at `sdk/docs/telemetry-event-schema.md` for the
- * on-wire shape.
+ * See the event-schema doc at `sdk/docs/telemetry-event-schema.md`
+ * for the on-wire shape.
  *
  * The env-precedence rule is intentionally simple:
  *

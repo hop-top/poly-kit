@@ -19,7 +19,7 @@ import (
 // The semantics differ from provenance (which gates VALIDITY); here we
 // gate WHAT-WE-EMIT. The idiom — atomic global + one-shot env read +
 // per-context override — is identical so adopters learn the pattern
-// once. See ADR-0035 for the canonical precedence rules.
+// once.
 type Mode int32
 
 const (

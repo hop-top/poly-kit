@@ -157,10 +157,10 @@ func TestFactorNames(t *testing.T) {
 	}
 	assert.Equal(t, "Consenting Telemetry",
 		compliance.FactorConsentingTelemetry.String(),
-		"F13 name must match ADR-0037 (load-bearing for format padding)")
+		"F13 name is load-bearing for format padding")
 }
 
-// TestConsentingTelemetry_SkipsWhenNotOptedIn confirms ADR-0037's
+// TestConsentingTelemetry_SkipsWhenNotOptedIn confirms the
 // "skip not counted toward Total" semantics: a toolspec without a
 // telemetry block produces F13=skip and the report Total stays at 12.
 func TestConsentingTelemetry_SkipsWhenNotOptedIn(t *testing.T) {
@@ -186,7 +186,7 @@ commands:
 	assert.Equal(t, "skip", f13.Status,
 		"non-opt-in toolspec must yield F13=skip")
 	assert.Equal(t, 12, report.Total,
-		"skip results are excluded from Total per ADR-0037; "+
+		"skip results are excluded from Total; "+
 			"non-opt-in binaries score N/12 not N/13")
 }
 
@@ -363,8 +363,8 @@ telemetry:
 // permissive decode for them). We do NOT use yaml.KnownFields(true)
 // or a strict decoder here.
 //
-// Consequence: ADR-0037 documents `prompt_version: "v1"` (quoted)
-// as the canonical form. A spec author who writes `prompt_version: 1`
+// Consequence: `prompt_version: "v1"` (quoted) is the canonical
+// form. A spec author who writes `prompt_version: 1`
 // will pass YAML unmarshalling but produce a `prompt_version` of
 // "1", not the expected "v1". The static check is the layer that
 // enforces the canonical value shape; the YAML layer only enforces

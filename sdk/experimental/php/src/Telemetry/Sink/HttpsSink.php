@@ -132,7 +132,7 @@ final class HttpsSink implements SinkInterface
             $this->dropped += count($batch);
         } catch (Throwable) {
             // Transport failure (connect timeout, DNS, TLS, ...). Drop.
-            // Per ADR-0038, telemetry is best-effort and never fatal.
+            // Telemetry is best-effort and never fatal.
             $this->dropped += count($batch);
         }
     }

@@ -7,17 +7,17 @@ import (
 
 // ConsentHook is the seam between kit-telemetry and kit-consent. The
 // emitter consults Granted before publishing any event; false denies
-// emit regardless of Mode. Canonical per ADR-0035 decision #4 — the
-// boolean is deliberately narrower than a State/decision_source enum
-// because the cross-package contract only needs the emit-gate
-// decision; richer state is internal to kit-consent.
+// emit regardless of Mode. The boolean is deliberately narrower than
+// a State/decision_source enum because the cross-package contract
+// only needs the emit-gate decision; richer state is internal to
+// kit-consent.
 type ConsentHook interface {
 	Granted(ctx context.Context) bool
 }
 
 // denyHook is the default hook installed when no real ConsentHook has
 // been wired. Default-deny so an upgrade never starts a telemetry
-// stream by surprise. ADR-0035 decision #4.
+// stream by surprise.
 type denyHook struct{}
 
 // Granted always returns false. A nil-deref-safe permanent deny.

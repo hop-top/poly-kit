@@ -39,9 +39,8 @@ URI parsing, vanity handling, action routing, or handler identity.
 ## Telemetry
 
 The PHP SDK ships a publish-only telemetry client under the
-`HopTop\Kit\Telemetry` namespace. It implements the cross-language contract
-defined in ADR-0038 and
-mirrors the Go ground truth at `go/runtime/telemetry/`.
+`HopTop\Kit\Telemetry` namespace. It mirrors the Go ground truth at
+`go/runtime/telemetry/`.
 
 ### Default-denied posture
 
@@ -155,5 +154,4 @@ consumption should call the Go runtime.
 
 ### Cross-references
 
-* [ADR-0038 — SDK telemetry contract](../../../)
 * `go/runtime/telemetry/` — canonical implementation

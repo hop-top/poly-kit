@@ -4,12 +4,12 @@
 // writing decisions atomically under <XDG_CONFIG_HOME>/kit/telemetry.yaml.
 //
 // The wire-level contract with kit-telemetry is the ConsentHook
-// interface (see ADR-0035 — kit-telemetry owns the interface as
-// Granted(ctx) bool). NewHook builds an adapter from any Store. ADR-0036
-// pins the surrounding policy (default-deny, DO_NOT_TRACK precedence,
-// prompt_version semantics, decision_source taxonomy). This package
-// implements the persistence + adapter slice of that policy; the
-// precedence chain itself is resolved by callers further up the stack.
+// interface — kit-telemetry owns the interface as Granted(ctx) bool.
+// NewHook builds an adapter from any Store. The surrounding policy
+// (default-deny, DO_NOT_TRACK precedence, prompt_version semantics,
+// decision_source taxonomy) is implemented here as the persistence +
+// adapter slice; the precedence chain itself is resolved by callers
+// further up the stack.
 package consent
 
 import "time"
@@ -17,7 +17,7 @@ import "time"
 // State is the persisted consent decision state. The wire vocabulary
 // (granted, denied) matches both the YAML on-disk value and the
 // KIT_TELEMETRY_CONSENT env var vocabulary — one set of strings
-// everywhere, per ADR-0036 section 5.
+// everywhere.
 type State string
 
 const (
@@ -38,10 +38,9 @@ const (
 	StateDenied State = "denied"
 )
 
-// DecisionSource records how the consent decision was reached. Per
-// ADR-0036 section 4, the field is mandatory on every persisted
-// decision so `kit telemetry status` can answer "why am I in this
-// state" in a single read.
+// DecisionSource records how the consent decision was reached. The
+// field is mandatory on every persisted decision so `kit telemetry
+// status` can answer "why am I in this state" in a single read.
 type DecisionSource string
 
 const (
@@ -62,9 +61,9 @@ const (
 )
 
 // Decision is the value object describing a single persisted consent
-// state. Per ADR-0036, every field is recorded on disk so the audit
-// trail is complete; the cross-package ConsentHook returns a plain
-// bool (Granted) derived from State.
+// state. Every field is recorded on disk so the audit trail is
+// complete; the cross-package ConsentHook returns a plain bool
+// (Granted) derived from State.
 type Decision struct {
 	State          State          `yaml:"state"           json:"state"`
 	DecidedAt      time.Time      `yaml:"decided_at"      json:"decided_at"`

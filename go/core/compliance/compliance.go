@@ -30,7 +30,7 @@ const (
 	FactorProvenance
 	FactorEvolution
 	FactorAuthLifecycle
-	FactorConsentingTelemetry // F13 — added per ADR-0037
+	FactorConsentingTelemetry // F13
 )
 
 var factorNames = map[Factor]string{
@@ -84,9 +84,8 @@ type toolspecYAML struct {
 	Telemetry          *telemetryYAML  `yaml:"telemetry,omitempty"`
 }
 
-// telemetryYAML mirrors the toolspec `telemetry:` block.
-// Schema canonical per ADR-0037; subject to runtime + static
-// checks under FactorConsentingTelemetry.
+// telemetryYAML mirrors the toolspec `telemetry:` block. Subject to
+// runtime + static checks under FactorConsentingTelemetry.
 type telemetryYAML struct {
 	Enabled            bool     `yaml:"enabled"`
 	Categories         []string `yaml:"categories"`
@@ -175,8 +174,8 @@ func Run(binaryPath, toolspecPath string) (*Report, error) {
 		results = mergeResults(results, rtResults)
 	}
 
-	// Per ADR-0037: Total derives from the count of factors that are
-	// *eligible* to contribute (i.e. not F13-on-non-opt-in). The 12
+	// Total derives from the count of factors that are *eligible* to
+	// contribute (i.e. not F13-on-non-opt-in). The 12
 	// pre-F13 factors are always eligible, so the denominator is 12
 	// for non-opt-in binaries and 13 for opt-in binaries — preserving
 	// pre-F13 backward compat (existing fixtures continue to score
@@ -237,16 +236,15 @@ func telemetryOptedIn(spec *toolspecYAML) bool {
 
 // telemetryConsentSubcommandsCanonical is the canonical set of
 // subcommand names that an opt-in binary MUST expose under its
-// consent command (typically `<bin> telemetry`). Locked by ADR-0037.
+// consent command (typically `<bin> telemetry`).
 var telemetryConsentSubcommandsCanonical = []string{
 	"status", "enable", "disable", "reset", "inspect",
 }
 
 // telemetryModeEnvShape matches `<UPPERCASE_APP>_TELEMETRY_MODE`.
-// Per ADR-0037, opt-in binaries must declare DO_NOT_TRACK PLUS at
-// least one mode env: either the kit-built canonical
-// `KIT_TELEMETRY_MODE` (handled as a literal match) or an
-// app-prefixed shape like `SPACED_TELEMETRY_MODE`.
+// Opt-in binaries must declare DO_NOT_TRACK PLUS at least one mode env:
+// either the kit-built canonical `KIT_TELEMETRY_MODE` (handled as a
+// literal match) or an app-prefixed shape like `SPACED_TELEMETRY_MODE`.
 var telemetryModeEnvShape = regexp.MustCompile(`^[A-Z][A-Z0-9_]*_TELEMETRY_MODE$`)
 
 // containsString reports whether haystack contains needle.
@@ -292,10 +290,9 @@ func commandPathExists(cmds []commandYAML, path []string) bool {
 	return false
 }
 
-// checkConsentingTelemetry implements the F13 static check per
-// ADR-0037. When the toolspec opts into telemetry
-// (`telemetry.enabled: true`), it asserts the block is well-formed
-// across seven sub-conditions:
+// checkConsentingTelemetry implements the F13 static check. When the
+// toolspec opts into telemetry (`telemetry.enabled: true`), it asserts
+// the block is well-formed across seven sub-conditions:
 //
 //  1. categories non-empty
 //  2. consent_subcommands contains the canonical set
@@ -318,8 +315,8 @@ func commandPathExists(cmds []commandYAML, path []string) bool {
 //     enable] requires `<consent_command> status` and
 //     `<consent_command> enable` to exist as commands)
 //
-// Failures are aggregated into a single CheckResult per ADR-0037's
-// "single row per factor" model. binary is accepted for signature
+// Failures are aggregated into a single CheckResult per the "single
+// row per factor" model. binary is accepted for signature
 // parity with the runtime checks but unused at static time.
 func checkConsentingTelemetry(spec *toolspecYAML, binary string) CheckResult {
 	_ = binary
@@ -413,7 +410,7 @@ func checkConsentingTelemetry(spec *toolspecYAML, binary string) CheckResult {
 
 	return fail(FactorConsentingTelemetry,
 		strings.Join(failures, "; "),
-		"Fix the telemetry block per ADR-0037: ensure categories, "+
+		"Fix the telemetry block: ensure categories, "+
 			"consent_subcommands {status, enable, disable, reset, "+
 			"inspect}, kill_switch_envs [DO_NOT_TRACK, <APP>_TELEMETRY_MODE], "+
 			"prompt_version, redact_rules are set, and that each "+

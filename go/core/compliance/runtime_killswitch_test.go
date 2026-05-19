@@ -1,7 +1,7 @@
 package compliance
 
-// Tests for rtConsentingTelemetryKillSwitch — ADR-0037 sub-conditions
-// (c) and (d) honored at runtime.
+// Tests for rtConsentingTelemetryKillSwitch — sub-conditions (c) and
+// (d) honored at runtime.
 //
 // Strategy: build a tiny stub binary (testdata/stub-telemetry-binary)
 // once in TestMain and reuse it across scenarios. The stub honors

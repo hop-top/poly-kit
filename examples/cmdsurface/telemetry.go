@@ -116,8 +116,7 @@ func maybeBuildTelemetry(logger *slog.Logger, telemetryEnabled bool) (*telemetry
 		// No WithRedactor: the demo defaults to ModeAnon, so the
 		// emitter constructor does not require one. Flipping the
 		// global mode to Full at runtime would surface as a
-		// configuration error at telemetry.New() time — by design,
-		// per ADR-0035.
+		// configuration error at telemetry.New() time — by design.
 	)
 	if err != nil {
 		_ = telBus.Close(context.Background())

@@ -21,15 +21,15 @@ import (
 const xdgTool = "kit"
 
 // consentFileRel is the relative path under <XDG_CONFIG_HOME>/<xdgTool>.
-// Per ADR-0036, this YAML is the kit AppConfig — consent is one
-// partition under telemetry, not a dedicated file. Callers MUST NOT
-// assume the file is consent-only.
+// This YAML is the kit AppConfig — consent is one partition under
+// telemetry, not a dedicated file. Callers MUST NOT assume the file
+// is consent-only.
 const consentFileRel = "telemetry.yaml"
 
 // filePerm is the required mode of the on-disk file. 0600 because the
-// install_id sibling (ADR-0035 decision #4) uses the same posture; a
-// world-readable consent file would leak the user's decision to other
-// processes on shared boxes for no operational benefit.
+// install_id sibling uses the same posture; a world-readable consent
+// file would leak the user's decision to other processes on shared
+// boxes for no operational benefit.
 const filePerm fs.FileMode = 0o600
 
 // dirPerm is applied to the parent dir on first write. Matches the

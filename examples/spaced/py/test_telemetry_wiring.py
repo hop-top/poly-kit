@@ -68,7 +68,7 @@ def test_telemetry_flag_accepted_anon(tmp_path: Path) -> None:
     xdg_state = tmp_path / "state"
     sink = tmp_path / "telemetry.jsonl"
 
-    # Seed a granted consent decision (ADR-0036 minimal shape).
+    # Seed a granted consent decision (minimal shape).
     kit_dir = xdg_config / "kit"
     kit_dir.mkdir(parents=True, exist_ok=True)
     (kit_dir / "telemetry.yaml").write_text(

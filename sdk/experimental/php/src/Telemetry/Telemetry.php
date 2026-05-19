@@ -31,7 +31,7 @@ use Throwable;
  * Attributes are routed through {@see Redactor} before emission. In
  * Anonymous mode the attrs are dropped entirely (envelope still carries
  * event + installation_id + mode + occurred_at, matching the
- * cross-language contract from ADR-0035 / ADR-0038).
+ * cross-language contract).
  *
  * Every entry point is best-effort: nothing thrown by a sink, the
  * resolver, or the redactor is allowed to escape `record()`.

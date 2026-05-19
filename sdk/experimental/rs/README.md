@@ -90,8 +90,7 @@ let _ = Client::new(ClientOptions {
 ```
 
 Compliance-sensitive adopters should route SDK events through a Go-side
-collector that re-emits via `go/core/redact` — see ADR-0038 §3 for the
-recommended topology.
+collector that re-emits via `go/core/redact`.
 
 ### Sinks
 
@@ -115,8 +114,6 @@ recommended topology.
 
 ### Cross-references
 
-- Canonical contract: ADR-0038
-  (SDK delta-from-Go).
 - Schema doc: [`sdk/docs/telemetry-event-schema.md`](../../docs/telemetry-event-schema.md).
 - Go canonical implementation:
   [`go/runtime/telemetry/README.md`](../../../go/runtime/telemetry/README.md).

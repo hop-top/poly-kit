@@ -452,8 +452,8 @@ func TestIntegration_TelemetrySink_SchemaVersion_String(t *testing.T) {
 	}
 
 	// Layer 2: re-marshal the Event through JSON and confirm the wire
-	// form is a quoted string (the regression guard for ADR-0035 §7 —
-	// a future int field would JSON-encode without quotes).
+	// form is a quoted string (a future int field would JSON-encode
+	// without quotes).
 	blob, err := json.Marshal(ev)
 	if err != nil {
 		t.Fatalf("Marshal Event: %v", err)
@@ -485,7 +485,7 @@ func TestIntegration_TelemetrySink_NoStdoutStderrLeak(t *testing.T) {
 
 	// Synthesize a Result with stdout + stderr text. The sink must
 	// never surface that text into the published Event — the
-	// telemetry.Event type has no stdout/stderr columns (ADR-0035 #6).
+	// telemetry.Event type has no stdout/stderr columns.
 	res := cmdsurface.Result{
 		ExitCode: 0,
 		Stdout:   "secret-stdout-leak-canary",

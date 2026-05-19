@@ -10,9 +10,9 @@ use Symfony\Component\Yaml\Yaml;
 /**
  * In-memory representation of the persisted consent decision.
  *
- * Read from <XDG_CONFIG_HOME>/kit/telemetry.yaml. Per ADR-0038, the
- * loader is infallible: missing files, malformed YAML, missing keys,
- * and unknown states all collapse to the safe `denied` default.
+ * Read from <XDG_CONFIG_HOME>/kit/telemetry.yaml. The loader is
+ * infallible: missing files, malformed YAML, missing keys, and
+ * unknown states all collapse to the safe `denied` default.
  */
 final readonly class Consent
 {

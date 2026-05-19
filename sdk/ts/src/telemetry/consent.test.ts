@@ -134,8 +134,8 @@ describe('loadConsent', () => {
   });
 
   it('preserves sibling config keys without breaking parsing', async () => {
-    // Per ADR-0036 the file is the kit AppConfig; siblings of
-    // telemetry.consent may exist. Loader must ignore them.
+    // The file is the kit AppConfig; siblings of telemetry.consent may
+    // exist. Loader must ignore them.
     await writeConsentFile(
       [
         'unrelated:',

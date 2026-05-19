@@ -342,7 +342,7 @@ func TestE2E_FullSequence(t *testing.T) {
 
 	// Next emit would no-op: the hook over the same store now returns
 	// false. This is the "mid-flight disable drops the next batch"
-	// contract from ADR-0036.
+	// contract.
 	{
 		s, err := consent.NewFileStore()
 		if err != nil {

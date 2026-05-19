@@ -46,7 +46,7 @@ def _resolve_app_prefix(env: dict) -> str:
 
 
 def resolve_mode(env: Optional[dict] = None) -> Mode:
-    """Resolve the current telemetry mode per ADR-0035 / ADR-0038 precedence.
+    """Resolve the current telemetry mode per precedence.
 
     Precedence (highest wins):
       1. <APP>_TELEMETRY_MODE (if KIT_APP_PREFIX is set)

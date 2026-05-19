@@ -183,8 +183,8 @@ func New(opts ...Option) (*Emitter, error) {
 // Returns a non-nil error only when the underlying bus publish itself
 // fails. Callers therefore CANNOT distinguish "telemetry off" from
 // "telemetry succeeded" by the return value — that ambiguity is
-// intentional (ADR-0035 #2: a privacy-respecting emitter exposes no
-// channel by which a consumer can detect mode).
+// intentional: a privacy-respecting emitter exposes no channel by
+// which a consumer can detect mode.
 func (e *Emitter) Record(ctx context.Context, ev Event) error {
 	// Step 1: zero-cost short-circuit on Mode=Off. CurrentModeFromContext
 	// reads an atomic.Int32 (after the one-shot env read). No allocations
@@ -225,9 +225,9 @@ func (e *Emitter) Record(ctx context.Context, ev Event) error {
 	}
 	ev.InstallationID = id
 
-	// Step 4: Anon mode strips Args/Flags defensively. ADR-0035 #6:
-	// even a well-meaning caller can populate them; we MUST refuse to
-	// emit anything beyond the anon payload at this tier.
+	// Step 4: Anon mode strips Args/Flags defensively. Even a
+	// well-meaning caller can populate them; we MUST refuse to emit
+	// anything beyond the anon payload at this tier.
 	if mode == ModeAnon {
 		ev.Args = nil
 		ev.Flags = nil

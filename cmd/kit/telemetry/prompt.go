@@ -25,16 +25,15 @@ import (
 
 // PromptVersion is the disclosure copy version stamped onto every
 // decision the prompt writes. Bump when the prompt copy materially
-// changes per ADR-0036 §3 (new data category, new sink, redact
-// contract loosens). Cosmetic edits do NOT bump it. The first version
-// shipped to users is 1.
+// changes (new data category, new sink, redact contract loosens).
+// Cosmetic edits do NOT bump it. The first version shipped to users
+// is 1.
 const PromptVersion = 1
 
 // promptCopy is the literal disclosure text shown to the user before
 // the y/n line. It names the categories collected, the explicit
 // non-collected fields, the opt-out paths, and the DO_NOT_TRACK
-// escape hatch — together these satisfy GDPR's "informed" prong
-// (ADR-0036 §1).
+// escape hatch — together these satisfy GDPR's "informed" prong.
 const promptCopy = `kit can send anonymous usage telemetry to help improve the tooling: command names,
 exit codes, kit version, OS/arch. No file paths, no arguments, no environment
 values. You can opt out anytime with ` + "`kit telemetry disable`" + `, audit shipped events
@@ -79,8 +78,8 @@ type promptDeps struct {
 // resulting decision. The returned Decision is the value the caller
 // should hand to a ConsentHook; the persisted state on disk matches.
 //
-// Precedence (per ADR-0036 §5; only the rules relevant to the prompt
-// itself appear here — the resolver covers the rest):
+// Precedence (only the rules relevant to the prompt itself appear
+// here — the resolver covers the rest):
 //
 //  1. KIT_TELEMETRY_MODE=off (or any non-empty AppPrefix override):
 //     skip prompt, persist denied/env.
@@ -115,7 +114,7 @@ func Prompt(ctx context.Context, store consent.Store) (consent.Decision, error) 
 // command) construct their own promptDeps.
 //
 // a flat switch ladder; collapsing branches into helpers obscures the
-// ordering that ADR-0036 §5 fixes.
+// fixed precedence ordering.
 //
 //nolint:gocyclo // the precedence chain is intentionally readable as
 func promptInternal(ctx context.Context, store consent.Store, deps promptDeps) (consent.Decision, error) {
@@ -136,7 +135,7 @@ func promptInternal(ctx context.Context, store consent.Store, deps promptDeps) (
 	//
 	// This prompt-layer check examines KIT_TELEMETRY_MODE only;
 	// app-prefix precedence (<APP>_TELEMETRY_MODE) is handled by
-	// consent.Resolve at a higher layer (see ADR-0036 §5). The prompt
+	// consent.Resolve at a higher layer. The prompt
 	// itself doesn't have an embedding-app context, so it consults
 	// only the kit prefix. Embedding apps that need their own off
 	// switch can set KIT_TELEMETRY_MODE=off in their own startup, or

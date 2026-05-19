@@ -196,9 +196,8 @@ narrower set.
 
 ## Telemetry
 
-`hop_top_kit.telemetry` implements the SDK-side contract from
-ADR-0038 and the
-cross-language event schema in
+`hop_top_kit.telemetry` implements the SDK-side cross-language event
+schema in
 [`hops/main/sdk/docs/telemetry-event-schema.md`](../docs/telemetry-event-schema.md).
 Default-denied: nothing is emitted unless the user has both opted in
 (consent file) AND set a non-off `KIT_TELEMETRY_MODE`.

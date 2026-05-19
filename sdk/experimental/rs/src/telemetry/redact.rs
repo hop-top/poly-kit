@@ -1,6 +1,6 @@
 //! Best-effort PII + token-prefix redactor.
 //!
-//! Mirrors the SDK-side redactor contract from ADR-0038 §3:
+//! SDK-side redactor:
 //!
 //! - Email addresses → `<redacted:email>`.
 //! - IPv4 dotted-quad → `<redacted:ipv4>`.
@@ -20,7 +20,7 @@
 //!    permissive callback can't smuggle PII past the wire.
 //! 2. Route SDK events through a Go-side collector that re-emits via
 //!    `go/core/redact` (the recommended path for compliance-sensitive
-//!    contexts — see ADR-0038 §3).
+//!    contexts).
 //!
 //! The regex set is intentionally narrow: the cross-language contract
 //! test (`hops/main/sdk/tests/cross-lang/telemetry/`) asserts byte
@@ -147,8 +147,8 @@ pub fn redact_string(s: &str) -> String {
 
 /// Recursively redact every string leaf in a `serde_json::Value` tree.
 /// Numbers, booleans, and nulls pass through unchanged. Object KEYS
-/// are preserved verbatim (per ADR-0038 §7: flag KEYS are not
-/// redacted; only VALUES route through redact).
+/// are preserved verbatim (flag KEYS are not redacted; only VALUES
+/// route through redact).
 pub fn redact(v: Value) -> Value {
     match v {
         Value::String(s) => Value::String(redact_string(&s)),

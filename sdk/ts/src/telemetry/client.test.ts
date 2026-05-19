@@ -262,7 +262,7 @@ describe('Client.https sink', () => {
   });
 });
 
-describe('Client anon mode strips attrs (ADR-0038 §7)', () => {
+describe('Client anon mode strips attrs', () => {
   it('drops attrs payload to null in anon mode even with obvious PII', async () => {
     await grantConsent();
     process.env.KIT_TELEMETRY_MODE = 'anon';

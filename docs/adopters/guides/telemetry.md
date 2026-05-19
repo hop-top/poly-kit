@@ -64,7 +64,7 @@ reaching the wire format.
 
 > Surface attribution (CLI vs. HTTP vs. Lambda invocation surface)
 > currently ships in `full` mode only; broader surface tagging is
-> tracked under [ADR-0035](../../adr/0035-runtime-telemetry.md) v2.
+> tracked separately.
 
 ## How to opt in or out
 
@@ -93,8 +93,7 @@ kit telemetry status     # show resolved state, identity, mode
 ```
 
 `enable` and `disable` write a decision under
-`<XDG_CONFIG_HOME>/kit/telemetry/consent.json` (see
-[ADR-0035](../../adr/0035-runtime-telemetry.md) for the canonical path).
+`<XDG_CONFIG_HOME>/kit/telemetry/consent.json`.
 That decision is what every subsequent invocation reads.
 
 ### Environment variables (CI, scripted, ephemeral)
@@ -112,8 +111,7 @@ without forcing users to unset both.
 
 ### Precedence chain
 
-Resolved top-down on every invocation. Matching the [ADR-0036 §5](../../adr/0036-kit-consent.md)
-contract verbatim:
+Resolved top-down on every invocation:
 
 ```
 1. <APP>_TELEMETRY_MODE=off  or  KIT_TELEMETRY_MODE=off   -> denied
@@ -241,12 +239,6 @@ mode:
 
 ## References
 
-- [ADR-0035 — kit-telemetry](../../adr/0035-runtime-telemetry.md):
-  canonical tier model, identity, topics, consent interface, wire
-  format.
-- [ADR-0036 — kit-consent](../../adr/0036-kit-consent.md):
-  precedence chain, `DO_NOT_TRACK`, `prompt_version`,
-  `decision_source` taxonomy.
 - [consoledonottrack.com](https://consoledonottrack.com) — the
   `DO_NOT_TRACK` industry convention.
 - GDPR Art. 4(11), Art. 7; PECR reg. 6 — affirmative-consent

@@ -1,8 +1,8 @@
 """Telemetry SDK for hop-top tools.
 
-Implements the ADR-0035 / ADR-0038 contract: mode resolution from env,
-install-id (32 raw bytes → SHA-256 hex) at XDG state, and consent file
-(YAML at XDG config). Default-denied across the board.
+Mode resolution from env, install-id (32 raw bytes → SHA-256 hex) at
+XDG state, and consent file (YAML at XDG config). Default-denied
+across the board.
 """
 
 from .client import Client

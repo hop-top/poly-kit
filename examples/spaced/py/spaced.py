@@ -50,7 +50,7 @@ Cash, Starlink credits, or a ride on the next Crew Dragon all acceptable.\
 # ---------------------------------------------------------------------------
 # kit-telemetry wiring (mirrors examples/spaced/go/telemetry_wiring.go).
 #
-# Adopter pattern (ADR-0035 / ADR-0038):
+# Adopter pattern:
 #   1. --telemetry={off,anon,full} hidden persistent flag parsed eagerly.
 #   2. Mode stored in module-global; consulted before each record() call so
 #      the SDK's lazy consent/mode resolution still applies.
@@ -362,7 +362,7 @@ if __name__ == "__main__":
     )
     bridge_to_click(_cmd, _alias_path)
 
-    # --telemetry={off,anon,full} persistent flag (ADR-0035).
+    # --telemetry={off,anon,full} persistent flag.
     #
     # Visible in --help; spaced go + ts mirror this flag with the same
     # shape so the cross-language parity contract includes --telemetry.

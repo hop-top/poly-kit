@@ -2,17 +2,14 @@
 
 > **Status**: Canonical contract for `schema_version = "1"`.
 > **Ground truth**: [`hops/main/go/runtime/telemetry/event.go`](../../go/runtime/telemetry/event.go).
-> **Decided by**: ADR-0035 §6–§7
-> and ADR-0038 §6–§7.
-> **Diffed by**: cross-language contract test (track `sdk-telemetry`,
-> task T-0709) under `hops/main/sdk/tests/cross-lang/telemetry/`.
+> **Diffed by**: cross-language contract test under
+> `hops/main/sdk/tests/cross-lang/telemetry/`.
 
 This document is the single source of truth for the on-wire JSON shape
 that every kit telemetry runtime emits — the Go canonical
 implementation plus the polyglot SDKs (`py`, `ts`, `rs`, `php`). Each
 per-language SDK reads THIS doc to know exactly what bytes to put on
-the bus. ADR-0035 / ADR-0038 own the *decisions*; this doc is the
-*reference*.
+the bus.
 
 If a field appears in `event.go` but not here, the doc is stale: fix
 the doc. If a field appears here but not in `event.go`, the doc is
@@ -95,11 +92,11 @@ has no argv chain. The SDKs therefore emit:
 - NO `command_path` field. SDK envelopes carry neither argv0 nor a
   subcommand chain.
 
-Per ADR-0038 §7 "Anon vs Full payload boundary", Anon-mode SDK
-envelopes MUST strip `attrs` (mirroring how the Go emitter strips
-`args` + `flags` in Anon). Anon-tier envelopes still carry `event`
-because the event name is identity, not attribute payload; only the
-free-form `attrs` map is tier-gated.
+Anon vs Full payload boundary: Anon-mode SDK envelopes MUST strip
+`attrs` (mirroring how the Go emitter strips `args` + `flags` in
+Anon). Anon-tier envelopes still carry `event` because the event name
+is identity, not attribute payload; only the free-form `attrs` map is
+tier-gated.
 
 **Wire format MAY contain EITHER shape under v1.** Collectors and
 diff tools MUST treat the following two envelopes as both-valid
@@ -215,7 +212,7 @@ Implementers MUST NOT add ad-hoc top-level fields. Any *new* canonical
 field lands in `event.go` first, propagates here via the cross-language
 contract test, and is documented in this section before any SDK ships
 it. The SDK-only `event` + `attrs` pair (§1c) is the one carve-out
-already pinned by ADR-0038 §7.
+already pinned.
 
 Reserved future `attrs` sub-keys (carved out now so SDK adopters don't
 squat them):
@@ -260,14 +257,14 @@ counter.
 
 - **Wire type**: STRING (`"1"`). NOT integer, NOT float. Weakly-typed
   SDK languages round-trip int vs float vs string inconsistently, so
-  the wire shape is fixed (ADR-0035 §7 / ADR-0035 alternative E).
+  the wire shape is fixed.
 - **Current value**: `"1"`. Defined in
   `hops/main/go/runtime/telemetry/event.go` as the `SchemaVersion`
   const.
 - **Bump policy**: bump major (`"2"`, `"3"`, ...) on breaking shape
   changes — removed field, renamed field, type change, semantics
   change. Additive optional fields with `omitempty` do NOT bump.
-- **Compat window** (ADR-0038 §6): an SDK at compiled
+- **Compat window**: an SDK at compiled
   `schema_version = N` MUST refuse to emit when the persisted consent
   file's `schema_version` differs by more than one major. One-major-
   behind: emit with attrs dropped + log a debug warning. Otherwise:
@@ -326,8 +323,7 @@ Topic prefix is configured via:
 - **PHP**: `new TelemetryClient(['topicPrefix' => 'cmdsurf'])`.
 
 When no prefix is set, the canonical `kit.` prefix is used. The topic
-grammar (`[Source].[Category].[Object].[Action]`, past-tense) is
-locked by ADR-0017.
+grammar is `[Source].[Category].[Object].[Action]`, past-tense.
 
 ## 9. Audit topic
 
@@ -339,7 +335,7 @@ This topic is subscribed by the `kit-telemetry-compliance` track
 (task T-0702 redact-check) to verify that redact actually fired on
 any Full payload before it reached a sink. Payload shape on the
 audit topic is OUT OF SCOPE for this document — it is a different
-contract owned by ADR-0037.
+contract.
 
 SDK emitters do NOT publish on the audit topic directly. The redactor
 observer wired into the Go-side emitter is the canonical source. SDK-
@@ -421,15 +417,5 @@ semantics upstream.
 
 - **Code (canonical)**:
   [`hops/main/go/runtime/telemetry/event.go`](../../go/runtime/telemetry/event.go)
-- **ADR-0035**: tier model, identity, topics, consent interface
-  ([`hops/main/`](../../))
-- **ADR-0036**: kit-consent persisted file + env precedence
-- **ADR-0037**: kit-telemetry-compliance posture
-- **ADR-0038**: SDK delta-from-Go contract
-  ([`hops/main/`](../../))
-- **ADR-0017**: bus topic naming grammar (Source.Category.Object.Action)
-- **Track plan**: `.tlc/tracks/sdk-telemetry/plan.md` (tasks T-0708 +
-  T-0709 + T-0710)
 - **Cross-language contract test**:
-  `hops/main/sdk/tests/cross-lang/telemetry/` (proposed location;
-  lands with T-0709)
+  `hops/main/sdk/tests/cross-lang/telemetry/`

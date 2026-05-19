@@ -7,14 +7,13 @@ namespace HopTop\Kit\Telemetry;
 /**
  * Environment-driven configuration resolver for the telemetry pipeline.
  *
- * Implements the precedence ladder defined in ADR-0035 + ADR-0038
- * (PHP addenda). Resolution is infallible; unknown / malformed input
- * collapses to Mode::Off.
+ * Implements the precedence ladder. Resolution is infallible; unknown
+ * / malformed input collapses to Mode::Off.
  */
 final class EnvResolver
 {
     /**
-     * Resolves the current telemetry mode per ADR-0035 + ADR-0038.
+     * Resolves the current telemetry mode.
      *
      * Precedence (highest wins):
      *   1. <APP>_TELEMETRY_MODE (only when KIT_APP_PREFIX is set)

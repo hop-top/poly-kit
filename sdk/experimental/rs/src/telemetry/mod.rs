@@ -3,8 +3,7 @@
 //! Mirrors the Go-side contract (`hop.top/kit/go/runtime/telemetry`) at
 //! the data-only seams: Mode enum + env precedence, install_id
 //! reader/writer, consent-file reader. The Rust SDK is read-only
-//! against the consent file — kit-consent (Go) owns writes. See
-//! ADR-0035 (canonical contract) and ADR-0038 (SDK delta).
+//! against the consent file — kit-consent (Go) owns writes.
 
 pub mod client;
 pub mod consent;

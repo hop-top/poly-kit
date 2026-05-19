@@ -2,7 +2,7 @@
 // outcomes into the kit-telemetry pipeline.
 //
 // See `.tlc/tracks/cmdsurf-telemetry/design-note.md` for the contracts
-// this implementation pins (canonical contracts owned by ADR-0035).
+// this implementation pins.
 //
 // Seam properties:
 //
@@ -58,7 +58,7 @@ type InvocationEvent struct {
 	// (sentinel per design-note §2).
 	DurationMS int64 `json:"duration_ms"`
 	// OccurredAt is the wall-clock time the cmdsurface materialized the
-	// event. RFC 3339 with nanos (ADR-0035 §7).
+	// event. RFC 3339 with nanos.
 	OccurredAt time.Time `json:"occurred_at"`
 	// TraceID propagates inv.Meta.TraceID; omitempty so empty IDs
 	// disappear from the wire.

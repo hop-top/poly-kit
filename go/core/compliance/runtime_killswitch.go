@@ -1,7 +1,6 @@
 package compliance
 
-// rtConsentingTelemetryKillSwitch — F13 runtime sub-checks (c) + (d)
-// from ADR-0037:
+// rtConsentingTelemetryKillSwitch — F13 runtime sub-checks (c) + (d):
 //
 //   (c) DO_NOT_TRACK=1 suppresses emission even with granted consent
 //   (d) <APP>_TELEMETRY_MODE=off (or KIT_TELEMETRY_MODE=off) suppresses
@@ -47,14 +46,14 @@ const rtKillSwitchPollBudget = 500 * time.Millisecond
 // runtime-check phase indefinitely.
 const rtKillSwitchRunTimeout = 5 * time.Second
 
-// rtConsentingTelemetryKillSwitch verifies ADR-0037 sub-conditions
-// (c) and (d). envFactory builds a fresh rtEnv per scenario (each
+// rtConsentingTelemetryKillSwitch verifies sub-conditions (c) and
+// (d). envFactory builds a fresh rtEnv per scenario (each
 // scenario gets a fresh tmpdir to avoid first-run state bleed); bin
 // is the adopter binary path; spec drives which mode env to toggle
 // and which read command to invoke.
 //
-// Returns a single CheckResult per ADR-0037's "one row per factor"
-// model — multi-step failures are concatenated into Details.
+// Returns a single CheckResult per the "one row per factor" model —
+// multi-step failures are concatenated into Details.
 //
 // Production callers pass a closure that wraps newRTEnvDir over an
 // os.MkdirTemp; tests pass `func() *rtEnv { return newRTEnv(t) }`.
@@ -135,7 +134,7 @@ func killSwitchBaseline(ctx context.Context, envFactory func() *rtEnv, bin, read
 		return fail(f,
 			"harness sanity check: expected >=1 event in baseline run with granted consent, "+
 				"but BusFile is empty. Either the binary does not honor KIT_BUS_SINK_PATH "+
-				"(see ADR-0037 sub-condition c/d wiring) or emission is broken for an unrelated reason",
+				"or emission is broken for an unrelated reason",
 			"Plumb KIT_BUS_SINK_PATH into the adopter's bus builder so runtime checks can observe events"), false
 	}
 	return CheckResult{}, true
@@ -175,7 +174,7 @@ func killSwitchAssertSuppressed(
 			fmt.Sprintf("with granted consent + %s, expected 0 events but observed %d "+
 				"(leaked through kill switch)", label, len(evs)),
 			"Verify telemetry.Emitter.shouldEmit() honors DO_NOT_TRACK and "+
-				"<APP>_TELEMETRY_MODE per ADR-0037 sub-conditions (c)+(d)"), false
+				"<APP>_TELEMETRY_MODE per sub-conditions (c)+(d)"), false
 	}
 	return CheckResult{}, true
 }

@@ -483,8 +483,8 @@ func TestRecord_BusSource(t *testing.T) {
 // BenchmarkRecord_OffMode asserts the zero-cost short-circuit promise:
 // when CurrentModeFromContext resolves to ModeOff the emitter must avoid
 // allocations entirely and stay below ~200ns/op on commodity hardware.
-// ADR-0035 #2: every kit binary instantiates this emitter, so any
-// per-call cost falls on every adopter.
+// Every kit binary instantiates this emitter, so any per-call cost
+// falls on every adopter.
 func BenchmarkRecord_OffMode(b *testing.B) {
 	// We need a fresh emitter, but we don't want to flip the package
 	// global Mode (other parallel tests rely on it). Instead we force

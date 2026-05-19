@@ -1,7 +1,7 @@
 package compliance
 
-// Tests for rtConsentingTelemetryPrompt — ADR-0037 sub-conditions (e)
-// + (f) honored at runtime per the precedence chain in ADR-0036.
+// Tests for rtConsentingTelemetryPrompt — sub-conditions (e) + (f)
+// honored at runtime per the precedence chain.
 //
 // Build strategy: the kill-switch tests own the package-wide TestMain
 // (it builds testdata/stub-telemetry-binary once for the whole run),
@@ -214,8 +214,8 @@ func TestRtPrompt_PromptVersionFieldNameLocked(t *testing.T) {
 	if !strings.Contains(body, "prompt_version:") {
 		t.Fatalf("persisted file missing `prompt_version:` key (field-name lock)\n---\n%s\n---", body)
 	}
-	// Negative assertion: no aliases. ADR-0036 explicitly rejects
-	// `consent_version`.
+	// Negative assertion: no aliases. `consent_version` is explicitly
+	// rejected.
 	if strings.Contains(body, "consent_version:") {
 		t.Fatalf("persisted file contains rejected `consent_version:` alias\n---\n%s\n---", body)
 	}

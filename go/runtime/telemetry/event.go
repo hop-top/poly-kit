@@ -7,9 +7,9 @@ import (
 )
 
 // SchemaVersion is the canonical wire schema version for telemetry
-// events. It is a string per ADR-0035 (decision #7): weakly-typed SDKs
-// round-trip int vs float vs string inconsistently, so the wire type is
-// fixed at string. Future major bumps go "2", "3", ...
+// events. It is a string: weakly-typed SDKs round-trip int vs float
+// vs string inconsistently, so the wire type is fixed at string.
+// Future major bumps go "2", "3", ...
 const SchemaVersion = "1"
 
 // SDKLang identifies the emitter SDK in the event envelope. Go events
@@ -19,7 +19,7 @@ const SchemaVersion = "1"
 const SDKLang = "go"
 
 // installIDHexLen is the expected length of a rendered installation_id.
-// 32 raw bytes -> SHA-256 -> 64 lowercase hex chars (ADR-0035 #4).
+// 32 raw bytes -> SHA-256 -> 64 lowercase hex chars.
 const installIDHexLen = 64
 
 // Event is the on-wire telemetry payload published on
@@ -30,7 +30,7 @@ const installIDHexLen = 64
 //
 // Anon tier (Mode == "anon"): Args and Flags MUST be empty. The emitter
 // defensively strips them before publish even if a caller populated
-// them (ADR-0035 #6). Validate enforces the schema, not the tier rule.
+// them. Validate enforces the schema, not the tier rule.
 //
 // Full tier (Mode == "full"): Args is the post-redact argv tail and
 // Flags maps flag-name to its post-redact value. Flag KEYS are

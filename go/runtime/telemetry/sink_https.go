@@ -12,9 +12,9 @@
 // exponential-backoff retry → on terminal failure, spool. ReplaySpool
 // is opt-in and drains the spool dir, deleting files on 2xx.
 //
-// Spec: ADR-0035 decision #8 (spool location). Reuses the retry
-// posture established by `go/runtime/notify/retry.go` and the auth
-// env discovery idiom from `go/runtime/bus/network_auth_env.go`.
+// Reuses the retry posture established by
+// `go/runtime/notify/retry.go` and the auth env discovery idiom from
+// `go/runtime/bus/network_auth_env.go`.
 package telemetry
 
 import (
@@ -58,7 +58,7 @@ const (
 	DefaultTelemetryAuthEnv = "KIT_TELEMETRY_AUTH_TOKEN"
 
 	// spoolSubPath is the relative path under <XDG_STATE_HOME>/kit
-	// where the dated spool files live. Per ADR-0035 decision #8.
+	// where the dated spool files live.
 	spoolSubPath = "telemetry/spool"
 
 	// spoolFilePerm / spoolDirPerm match the installation_id perms —
@@ -663,8 +663,8 @@ func (s *HTTPSSink) CloseCtx(ctx context.Context) error {
 }
 
 // todayStamp returns the YYYY-MM-DD spool filename stem for the local
-// date. The dated layout (ADR-0035 #8) caps unbounded growth via
-// external retention (`find -mtime +N`).
+// date. The dated layout caps unbounded growth via external retention
+// (`find -mtime +N`).
 func todayStamp() string {
 	return time.Now().UTC().Format("2006-01-02")
 }

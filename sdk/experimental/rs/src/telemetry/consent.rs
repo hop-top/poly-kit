@@ -5,7 +5,7 @@
 //! `kit-consent` tool owns writes; SDKs simply load and respect the
 //! decision. Any I/O or parse failure falls through to a default-deny
 //! `Consent` so an upgrade can never start a telemetry stream by
-//! surprise. See ADR-0035 decision #4 and ADR-0038 SDK delta.
+//! surprise.
 
 use serde::Deserialize;
 use std::fs;

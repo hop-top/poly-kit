@@ -9,9 +9,8 @@ package compliance
 //
 // The harness wires the following envs into every subprocess via
 // e.Env: HOME, XDG_CONFIG_HOME, XDG_STATE_HOME, KIT_BUS_SINK=jsonl,
-// KIT_BUS_SINK_PATH=<e.BusFile>. KIT_BUS_SINK is the contract from
-// ADR-0037 sub-condition (c)/(d) — the bus package does not yet
-// honor it directly (no env-driven sink switch in
+// KIT_BUS_SINK_PATH=<e.BusFile>. The bus package does not yet
+// honor KIT_BUS_SINK directly (no env-driven sink switch in
 // hops/main/go/runtime/bus/), so adopter binaries that want
 // runtime-check observability must either plumb the env into their
 // bus builder themselves OR route emission to a JSONLSink at
@@ -203,7 +202,7 @@ func (e *rtEnv) EventsEmitted() []map[string]any {
 	scanner := bufio.NewScanner(f)
 	// Telemetry payloads (especially redacted-rule audit events) can
 	// exceed the default 64KiB bufio scanner buffer. 1 MiB matches
-	// the bus package's own redact-audit cap (ADR-0035 §4).
+	// the bus package's own redact-audit cap.
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -247,8 +246,8 @@ func (e *rtEnv) PollEvents(minCount int, maxWait time.Duration) ([]map[string]an
 // SeedConsent writes a telemetry.yaml file under
 // <XDG_CONFIG_HOME>/kit/ with the given decision. Helper for runtime
 // checks that need a granted-state fixture without driving the
-// interactive prompt. Shape mirrors consent.FileStore's wire format
-// (ADR-0036): telemetry.consent.{state, decided_at, prompt_version,
+// interactive prompt. Shape mirrors consent.FileStore's wire format:
+// telemetry.consent.{state, decided_at, prompt_version,
 // decision_source}. decided_at is hardcoded to a fixed timestamp
 // because runtime checks should not depend on wall-clock for
 // determinism.

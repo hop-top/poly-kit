@@ -210,9 +210,8 @@ The two `telemetry` concepts are distinct on purpose:
 - **Mission telemetry** (spaced-specific): satirical launch readouts,
   altitude / velocity / stage timing.
 - **Runtime telemetry** (kit concept): opt-in usage events emitted via
-  `hop.top/kit/go/runtime/telemetry` — see [ADR-0037][adr-0037] for
-  the canonical model and [kit-compliance][kit-compliance] for the
-  full subcommand contract.
+  `hop.top/kit/go/runtime/telemetry` — see [kit-compliance][kit-compliance]
+  for the full subcommand contract.
 
 For spaced to reach 13/13, one of two paths:
 
@@ -233,7 +232,6 @@ engineering task** that can land with its own discussion, deprecation
 window, and changelog entry. This README documents the trade-off so
 the score gap is intentional, not an oversight.
 
-[adr-0037]: ../../
 [kit-compliance]: ../../docs/telemetry-compliance.md
 
 ---
