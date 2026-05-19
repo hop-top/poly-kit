@@ -205,7 +205,7 @@ func TestRtPrompt_PromptVersionFieldNameLocked(t *testing.T) {
 	defer cancel()
 	_, _, _ = e.Run(ctx, bin, "status", "--format", "json")
 
-	path := filepath.Join(e.XDGConfig, "kit", "telemetry.yaml")
+	path := filepath.Join(e.XDGConfig, "kit", "config.yaml")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read persisted consent: %v", err)

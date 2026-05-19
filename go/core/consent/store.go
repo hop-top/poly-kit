@@ -3,9 +3,11 @@ package consent
 import "context"
 
 // Store is the persistence interface backing the on-disk consent file.
-// Implementations read and write the telemetry.consent partition of a
-// kit AppConfig YAML; the canonical FileStore lives at
-// <XDG_CONFIG_HOME>/kit/telemetry.yaml.
+// Implementations read and write the kit.telemetry.consent partition
+// of the kit AppConfig YAML; the canonical FileStore lives at
+// <XDG_CONFIG_HOME>/kit/config.yaml. A legacy
+// <XDG_CONFIG_HOME>/kit/telemetry.yaml (bare telemetry.consent) is
+// read as a fallback during migration.
 //
 // All methods take a context to leave room for future I/O cancellation
 // (e.g. reads over slow network-mounted homes); the current FileStore
@@ -13,7 +15,7 @@ import "context"
 // cancellation mid-syscall — it only checks ctx.Err on entry.
 type Store interface {
 	// Get returns the current decision. Missing file or absent
-	// telemetry.consent block yields Decision{State: StateUnknown}
+	// kit.telemetry.consent block yields Decision{State: StateUnknown}
 	// with a nil error so callers can branch on Unknown without
 	// pre-checking fs.ErrNotExist. Malformed YAML on disk returns an
 	// error — silently treating corruption as "no decision" would
@@ -27,7 +29,7 @@ type Store interface {
 	Set(ctx context.Context, d Decision) error
 
 	// Clear resets the persisted decision to StateUnknown by removing
-	// the telemetry.consent block from the file. Used by `kit
+	// the kit.telemetry.consent block from the file. Used by `kit
 	// telemetry reset`. Other top-level keys are preserved. If no
 	// file exists, Clear is a no-op (success).
 	Clear(ctx context.Context) error

@@ -27,7 +27,8 @@ It does NOT cover:
 ```
 fixtures/
   install_id.bytes  # 32 raw bytes pre-seeded for every SDK
-  consent.yaml      # granted decision pre-seeded
+  consent.yaml      # granted decision pre-seeded (kit.telemetry.consent
+                    # canonical shape, copied to <XDG_CONFIG_HOME>/kit/config.yaml)
   input.json        # deterministic event + attrs with PII shapes
 expected/
   envelope.json     # post-redaction envelope (sans volatile fields)

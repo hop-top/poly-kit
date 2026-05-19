@@ -84,7 +84,7 @@ under `incubator/` until promoted.
 | Package | Role |
 |---|---|
 | `core/config` | Layered loader: system → user → project → env; Pkl support; SIGHUP/signal-driven hot reload via `Reloadable[T]` + `reload:"true"` partition |
-| `core/consent` | Telemetry consent state machine + persisted decision (`<XDG_CONFIG_HOME>/kit/telemetry.yaml`); `DO_NOT_TRACK` / env / flag / prompt precedence |
+| `core/consent` | Telemetry consent state machine + persisted decision (`<XDG_CONFIG_HOME>/kit/config.yaml` under `kit.telemetry.consent`; legacy `kit/telemetry.yaml` read as fallback); `DO_NOT_TRACK` / env / flag / prompt precedence |
 | `core/identity` | Local-first Ed25519 identity; JWT; symmetric encryption |
 | `core/upgrade` | Self-upgrade check, download, replace + Badge |
 | `core/util` | Stdlib-only helpers (env, fingerprint, humanize, jsonl, must, ptr, retry, since, slug) |

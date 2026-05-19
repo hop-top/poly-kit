@@ -61,7 +61,12 @@ mkdir -p "${XDG_STATE_HOME}/kit/telemetry" "${XDG_CONFIG_HOME}/kit" "${SINK_DIR}
 # serves the whole run.
 cp "${FIXTURES}/install_id.bytes" "${XDG_STATE_HOME}/kit/telemetry/installation_id"
 chmod 600 "${XDG_STATE_HOME}/kit/telemetry/installation_id"
-cp "${FIXTURES}/consent.yaml" "${XDG_CONFIG_HOME}/kit/telemetry.yaml"
+# Canonical persisted-consent layout: <XDG_CONFIG_HOME>/kit/config.yaml
+# under kit.telemetry.consent. The fixture is already in that shape; SDK
+# read paths transparently fall back to the legacy telemetry.yaml when
+# config.yaml is absent, but the harness pins the canonical shape so the
+# default code path is exercised.
+cp "${FIXTURES}/consent.yaml" "${XDG_CONFIG_HOME}/kit/config.yaml"
 
 export XDG_STATE_HOME XDG_CONFIG_HOME
 export KIT_TELEMETRY_MODE=full

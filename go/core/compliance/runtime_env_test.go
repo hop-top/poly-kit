@@ -232,13 +232,14 @@ func TestSeedConsent_GrantedFixture(t *testing.T) {
 		t.Fatalf("SeedConsent: %v", err)
 	}
 
-	path := filepath.Join(e.XDGConfig, "kit", "telemetry.yaml")
+	path := filepath.Join(e.XDGConfig, "kit", "config.yaml")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read consent file: %v", err)
 	}
 	got := string(b)
 	for _, want := range []string{
+		"kit:",
 		"telemetry:",
 		"consent:",
 		"state: granted",
@@ -261,6 +262,36 @@ func TestSeedConsent_GrantedFixture(t *testing.T) {
 	// world-readable.
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Fatalf("consent file perm = %o, want 0600", perm)
+	}
+}
+
+// TestSeedLegacyConsent_WritesPreRefactorShape verifies the
+// legacy-fallback seeder lays down the pre-config.yaml layout.
+func TestSeedLegacyConsent_WritesPreRefactorShape(t *testing.T) {
+	e := newRTEnv(t)
+	if err := e.SeedLegacyConsent("granted", "prompt", 1); err != nil {
+		t.Fatalf("SeedLegacyConsent: %v", err)
+	}
+	path := filepath.Join(e.XDGConfig, "kit", "telemetry.yaml")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read legacy consent file: %v", err)
+	}
+	got := string(b)
+	for _, want := range []string{
+		"telemetry:",
+		"consent:",
+		"state: granted",
+		"prompt_version: 1",
+		"decision_source: prompt",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("legacy consent file missing %q\n---\n%s\n---", want, got)
+		}
+	}
+	// Critical negative assertion: legacy shape has NO `kit:` top key.
+	if strings.HasPrefix(got, "kit:") {
+		t.Fatalf("legacy seeder accidentally wrote canonical shape\n---\n%s\n---", got)
 	}
 }
 

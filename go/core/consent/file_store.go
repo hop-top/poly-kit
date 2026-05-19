@@ -22,9 +22,17 @@ const xdgTool = "kit"
 
 // consentFileRel is the relative path under <XDG_CONFIG_HOME>/<xdgTool>.
 // This YAML is the kit AppConfig — consent is one partition under
-// telemetry, not a dedicated file. Callers MUST NOT assume the file
-// is consent-only.
-const consentFileRel = "telemetry.yaml"
+// kit.telemetry, not a dedicated file. Callers MUST NOT assume the
+// file is consent-only.
+const consentFileRel = "config.yaml"
+
+// legacyConsentFileRel is the pre-refactor path that some installs may
+// still carry on disk. Read paths fall back to it when the canonical
+// config.yaml is missing or lacks the kit.telemetry.consent block; write
+// paths always emit to config.yaml. Migration is silent — the legacy
+// file is left in place to avoid clobbering sibling top-level keys that
+// adopters may have added by hand.
+const legacyConsentFileRel = "telemetry.yaml"
 
 // filePerm is the required mode of the on-disk file. 0600 because the
 // install_id sibling uses the same posture; a world-readable consent
@@ -38,10 +46,17 @@ const filePerm fs.FileMode = 0o600
 const dirPerm fs.FileMode = 0o700
 
 // FileStore is the default Store backed by a YAML file at
-// <XDG_CONFIG_HOME>/kit/telemetry.yaml. The implementation preserves
-// unknown top-level keys via yaml.Node round-tripping — this file is
-// the kit AppConfig, so sibling partitions (other than
-// telemetry.consent) MUST survive Set and Clear untouched.
+// <XDG_CONFIG_HOME>/kit/config.yaml under the kit.telemetry.consent
+// partition. The implementation preserves unknown top-level keys via
+// yaml.Node round-tripping — this file is the kit AppConfig, so
+// sibling partitions (other than kit.telemetry.consent) MUST survive
+// Set and Clear untouched.
+//
+// Migration: an earlier layout persisted the same shape into a
+// dedicated <XDG_CONFIG_HOME>/kit/telemetry.yaml under bare
+// `telemetry.consent`. FileStore reads that legacy file as a fallback
+// when config.yaml is absent or lacks the consent block. Writes always
+// go to config.yaml; the legacy file is never modified.
 //
 // Concurrency: an internal mutex serializes Get/Set/Clear. The file
 // itself is rewritten atomically (tmp + rename) so external readers
@@ -50,11 +65,17 @@ const dirPerm fs.FileMode = 0o700
 // out of scope (kit telemetry subcommands run interactively, not in
 // parallel).
 type FileStore struct {
-	// path is the resolved on-disk location. Populated once at
+	// path is the resolved canonical on-disk location
+	// (<XDG_CONFIG_HOME>/kit/config.yaml). Populated once at
 	// construction time via xdg.ConfigFile and reused for every
 	// operation; we do not re-resolve per call to avoid the package-
 	// global Reload race that the install_id implementation guards.
 	path string
+
+	// legacyPath is the pre-refactor location
+	// (<XDG_CONFIG_HOME>/kit/telemetry.yaml). Read-only fallback —
+	// never written to.
+	legacyPath string
 
 	// mu serializes file access within a single process.
 	mu sync.Mutex
@@ -69,7 +90,8 @@ func NewFileStore() (*FileStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("consent: resolve path: %w", err)
 	}
-	return &FileStore{path: path}, nil
+	legacy := filepath.Join(filepath.Dir(path), legacyConsentFileRel)
+	return &FileStore{path: path, legacyPath: legacy}, nil
 }
 
 // Path returns the resolved file path. Useful for `kit telemetry
@@ -80,9 +102,14 @@ func (s *FileStore) Path() string {
 }
 
 // Get reads and returns the current decision. Per the Store contract,
-// a missing file or absent telemetry.consent block returns
+// a missing file or absent kit.telemetry.consent block returns
 // Decision{State: StateUnknown} with a nil error; malformed YAML is
 // surfaced as an error.
+//
+// Read order: canonical config.yaml first under kit.telemetry.consent;
+// if the file is absent OR the consent block is missing, fall back to
+// the legacy telemetry.yaml under bare telemetry.consent. The legacy
+// file is never re-written; the next Set/Clear migrates to config.yaml.
 func (s *FileStore) Get(ctx context.Context) (Decision, error) {
 	if err := ctx.Err(); err != nil {
 		return Decision{}, err
@@ -90,15 +117,32 @@ func (s *FileStore) Get(ctx context.Context) (Decision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	doc, err := s.readDoc()
+	// Canonical path first.
+	doc, err := s.readDoc(s.path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return Decision{}, err
+	}
+	if doc != nil {
+		d, found, err := extractDecision(doc)
+		if err != nil {
+			return Decision{}, err
+		}
+		if found {
+			return d, nil
+		}
+	}
+
+	// Legacy fallback. Malformed legacy YAML is surfaced as an error
+	// (mirrors the canonical-path behavior) so callers can spot a
+	// corrupt migration source.
+	legacyDoc, err := s.readDoc(s.legacyPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return Decision{State: StateUnknown}, nil
 		}
 		return Decision{}, err
 	}
-
-	d, found, err := extractDecision(doc)
+	d, found, err := extractLegacyDecision(legacyDoc)
 	if err != nil {
 		return Decision{}, err
 	}
@@ -108,9 +152,17 @@ func (s *FileStore) Get(ctx context.Context) (Decision, error) {
 	return d, nil
 }
 
-// Set persists the decision atomically. Existing top-level keys other
-// than telemetry.consent are preserved verbatim; the telemetry.consent
-// block is replaced wholesale with the supplied Decision.
+// Set persists the decision atomically into config.yaml under
+// kit.telemetry.consent. Existing top-level keys (and existing keys
+// under kit) other than kit.telemetry.consent are preserved verbatim;
+// the consent block itself is replaced wholesale with the supplied
+// Decision.
+//
+// Migration: when only the legacy telemetry.yaml exists at call time,
+// Set always emits into config.yaml. The legacy file is left in place
+// (it may carry hand-added sibling keys); subsequent Get calls prefer
+// config.yaml so the legacy block becomes shadowed without being
+// destroyed.
 func (s *FileStore) Set(ctx context.Context, d Decision) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -118,7 +170,7 @@ func (s *FileStore) Set(ctx context.Context, d Decision) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	doc, err := s.readDoc()
+	doc, err := s.readDoc(s.path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -132,9 +184,10 @@ func (s *FileStore) Set(ctx context.Context, d Decision) error {
 	return s.writeDoc(doc)
 }
 
-// Clear resets to StateUnknown by removing the telemetry.consent block.
-// If the file does not exist, Clear is a no-op (success). Other
-// top-level keys are preserved.
+// Clear resets to StateUnknown by removing the kit.telemetry.consent
+// block from config.yaml. If config.yaml does not exist, Clear is a
+// no-op (success). Other top-level keys are preserved. The legacy
+// telemetry.yaml is never modified.
 func (s *FileStore) Clear(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -142,7 +195,7 @@ func (s *FileStore) Clear(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	doc, err := s.readDoc()
+	doc, err := s.readDoc(s.path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
@@ -153,11 +206,12 @@ func (s *FileStore) Clear(ctx context.Context) error {
 	return s.writeDoc(doc)
 }
 
-// readDoc reads and parses the YAML file. Returns (nil, fs.ErrNotExist-
-// wrapped error) when the file is absent so callers can branch
-// cleanly. Returns an error for malformed YAML — see Store.Get contract.
-func (s *FileStore) readDoc() (*yaml.Node, error) {
-	b, err := os.ReadFile(s.path)
+// readDoc reads and parses the YAML at path. Returns (nil,
+// fs.ErrNotExist-wrapped error) when the file is absent so callers can
+// branch cleanly. Returns an error for malformed YAML — see Store.Get
+// contract.
+func (s *FileStore) readDoc(path string) (*yaml.Node, error) {
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +220,7 @@ func (s *FileStore) readDoc() (*yaml.Node, error) {
 	}
 	var doc yaml.Node
 	if err := yaml.Unmarshal(b, &doc); err != nil {
-		return nil, fmt.Errorf("consent: parse %s: %w", s.path, err)
+		return nil, fmt.Errorf("consent: parse %s: %w", path, err)
 	}
 	return &doc, nil
 }
@@ -186,7 +240,7 @@ func (s *FileStore) writeDoc(doc *yaml.Node) error {
 		return fmt.Errorf("consent: marshal: %w", err)
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".telemetry.yaml.tmp.*")
+	tmp, err := os.CreateTemp(filepath.Dir(s.path), ".config.yaml.tmp.*")
 	if err != nil {
 		return fmt.Errorf("consent: create tmp: %w", err)
 	}

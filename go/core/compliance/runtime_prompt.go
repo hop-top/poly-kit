@@ -30,6 +30,12 @@ package compliance
 // testdata/stub-telemetry-binary-prompt/ honors KIT_BUS_SINK_PATH AND
 // writes the telemetry consent YAML directly under <XDG_CONFIG_HOME>/kit/
 // so the harness can read it back deterministically.
+//
+// The canonical consent path is <XDG_CONFIG_HOME>/kit/config.yaml under
+// kit.telemetry.consent. A legacy <XDG_CONFIG_HOME>/kit/telemetry.yaml
+// layout (bare telemetry.consent) is read as a fallback so adopter
+// binaries that still emit the pre-migration shape pass the runtime
+// check.
 
 import (
 	"context"
@@ -64,20 +70,34 @@ var validDecisionSources = map[string]struct{}{
 	"config": {},
 }
 
-// persistedConsent mirrors the YAML shape of <XDG_CONFIG_HOME>/kit/
-// telemetry.yaml emitted by kit-consent. Only the fields the check
-// needs are unmarshalled; extras are
-// ignored. The inner Consent struct nests under `telemetry:` to match
-// SeedConsent's format.
+// persistedConsent mirrors the YAML shape of
+// <XDG_CONFIG_HOME>/kit/config.yaml emitted by kit-consent. Only the
+// fields the check needs are unmarshalled; extras are ignored. The
+// canonical shape nests under `kit.telemetry.consent`; a legacy bare
+// `telemetry.consent` layout (pre-config.yaml migration) is read via
+// persistedConsentLegacy as a fallback.
 type persistedConsent struct {
+	Kit struct {
+		Telemetry struct {
+			Consent consentBlock `yaml:"consent"`
+		} `yaml:"telemetry"`
+	} `yaml:"kit"`
+}
+
+// persistedConsentLegacy mirrors the pre-refactor shape (bare
+// telemetry.consent at the top level) stored in
+// <XDG_CONFIG_HOME>/kit/telemetry.yaml.
+type persistedConsentLegacy struct {
 	Telemetry struct {
-		Consent struct {
-			State          string `yaml:"state"`
-			DecidedAt      string `yaml:"decided_at"`
-			PromptVersion  *int   `yaml:"prompt_version"`
-			DecisionSource string `yaml:"decision_source"`
-		} `yaml:"consent"`
+		Consent consentBlock `yaml:"consent"`
 	} `yaml:"telemetry"`
+}
+
+type consentBlock struct {
+	State          string `yaml:"state"`
+	DecidedAt      string `yaml:"decided_at"`
+	PromptVersion  *int   `yaml:"prompt_version"`
+	DecisionSource string `yaml:"decision_source"`
 }
 
 // rtConsentingTelemetryPrompt verifies sub-conditions (e) + (f).
@@ -164,34 +184,35 @@ func promptAssertPersisted(
 		return fail(f,
 			fmt.Sprintf("%s: read persisted consent: %v", label, err),
 			"Ensure the adopter binary persists a decision at "+
-				"<XDG_CONFIG_HOME>/kit/telemetry.yaml on every invocation"), false
+				"<XDG_CONFIG_HOME>/kit/config.yaml (kit.telemetry.consent) "+
+				"on every invocation"), false
 	}
 
-	if got.Telemetry.Consent.State != wantState {
+	if got.State != wantState {
 		return fail(f,
 			fmt.Sprintf("%s: persisted state=%q, want %q",
-				label, got.Telemetry.Consent.State, wantState),
+				label, got.State, wantState),
 			"Verify the consent resolver writes state="+wantState+
 				" for this precedence step"), false
 	}
-	if got.Telemetry.Consent.DecisionSource != wantSource {
+	if got.DecisionSource != wantSource {
 		return fail(f,
 			fmt.Sprintf("%s: persisted decision_source=%q, want %q (valid: env|flag|prompt|config)",
-				label, got.Telemetry.Consent.DecisionSource, wantSource),
+				label, got.DecisionSource, wantSource),
 			"Verify the consent resolver stamps decision_source="+wantSource+
 				" for this precedence step"), false
 	}
-	if _, ok := validDecisionSources[got.Telemetry.Consent.DecisionSource]; !ok {
+	if _, ok := validDecisionSources[got.DecisionSource]; !ok {
 		return fail(f,
 			fmt.Sprintf("%s: persisted decision_source=%q is not in canonical set {env, flag, prompt, config}",
-				label, got.Telemetry.Consent.DecisionSource),
+				label, got.DecisionSource),
 			"Use one of the canonical decision_source values"), false
 	}
 	// Sub-condition (f) field-name lock: prompt_version must be
 	// present in the persisted file under the literal key
 	// `prompt_version`. yaml.Unmarshal into a *int distinguishes
 	// "missing" (nil pointer) from "present with value 0".
-	if got.Telemetry.Consent.PromptVersion == nil {
+	if got.PromptVersion == nil {
 		return fail(f,
 			fmt.Sprintf("%s: persisted consent missing `prompt_version` field "+
 				"(field-name lock — aliases like `consent_version` are rejected)",
@@ -240,37 +261,58 @@ func promptAssertEnvBeatsGranted(
 	return CheckResult{}, true
 }
 
-// readPersistedConsent reads <xdgConfig>/kit/telemetry.yaml, parses
-// it as a persistedConsent, and returns it. The error path
-// distinguishes "no file" (returned as a concrete error so the
-// caller's Details message says "no consent file persisted") from
-// "malformed yaml".
-func readPersistedConsent(xdgConfig string) (*persistedConsent, error) {
-	path := filepath.Join(xdgConfig, "kit", "telemetry.yaml")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("no consent file at %s — binary did not persist a decision", path)
+// readPersistedConsent reads the persisted consent decision. It prefers
+// the canonical <xdgConfig>/kit/config.yaml (kit.telemetry.consent) and
+// falls back to the legacy <xdgConfig>/kit/telemetry.yaml (bare
+// telemetry.consent) layout when the canonical file is absent or
+// missing the consent block.
+//
+// The error path distinguishes "no file at either location" (returned
+// as a concrete error so the caller's Details message says "no consent
+// file persisted") from "malformed yaml".
+func readPersistedConsent(xdgConfig string) (*consentBlock, error) {
+	canonical := filepath.Join(xdgConfig, "kit", "config.yaml")
+	legacy := filepath.Join(xdgConfig, "kit", "telemetry.yaml")
+
+	raw, err := os.ReadFile(canonical)
+	if err == nil {
+		if hasConsentVersionAlias(raw) && !hasPromptVersionField(raw) {
+			return nil, fmt.Errorf("persisted consent uses `consent_version` alias "+
+				"(field-name lock: only `prompt_version` is accepted) at %s", canonical)
 		}
-		return nil, fmt.Errorf("read %s: %w", path, err)
-	}
-	// Field-name lock cross-check (sub-condition f): if the file
-	// contains a stale alias like `consent_version:` instead of
-	// `prompt_version:`, the YAML will unmarshal cleanly into our
-	// struct (PromptVersion stays nil), but the caller's prompt_version
-	// nil check will catch it. The literal grep below is belt-and-
-	// braces: if `consent_version` appears we surface a more pointed
-	// error.
-	if hasConsentVersionAlias(raw) && !hasPromptVersionField(raw) {
-		return nil, fmt.Errorf("persisted consent uses `consent_version` alias "+
-			"(field-name lock: only `prompt_version` is accepted) at %s", path)
+		var pc persistedConsent
+		if err := yaml.Unmarshal(raw, &pc); err != nil {
+			return nil, fmt.Errorf("parse %s: %w", canonical, err)
+		}
+		// If the canonical file is present but the kit.telemetry.consent
+		// block is empty (zero state), fall through to legacy so an
+		// adopter binary that wrote only config.yaml siblings without
+		// the consent block is not silently green-lit.
+		if pc.Kit.Telemetry.Consent.State != "" {
+			return &pc.Kit.Telemetry.Consent, nil
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read %s: %w", canonical, err)
 	}
 
-	var pc persistedConsent
-	if err := yaml.Unmarshal(raw, &pc); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+	rawLegacy, err := os.ReadFile(legacy)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("no consent file at %s or %s — binary did not persist a decision",
+				canonical, legacy)
+		}
+		return nil, fmt.Errorf("read %s: %w", legacy, err)
 	}
-	return &pc, nil
+	// Field-name lock cross-check on the legacy file too.
+	if hasConsentVersionAlias(rawLegacy) && !hasPromptVersionField(rawLegacy) {
+		return nil, fmt.Errorf("persisted consent uses `consent_version` alias "+
+			"(field-name lock: only `prompt_version` is accepted) at %s", legacy)
+	}
+	var pcLegacy persistedConsentLegacy
+	if err := yaml.Unmarshal(rawLegacy, &pcLegacy); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", legacy, err)
+	}
+	return &pcLegacy.Telemetry.Consent, nil
 }
 
 // hasPromptVersionField is a string-level scan to ensure the literal

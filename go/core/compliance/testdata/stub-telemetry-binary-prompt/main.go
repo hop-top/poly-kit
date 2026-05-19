@@ -8,8 +8,10 @@
 // post-redact). The behavioral shape here is different from both —
 // this stub's only job is to RESOLVE consent against env + persisted
 // state per the precedence chain and WRITE the resulting decision
-// back to <XDG_CONFIG_HOME>/kit/telemetry.yaml — so we keep it
-// separate.
+// back to <XDG_CONFIG_HOME>/kit/config.yaml under kit.telemetry.consent
+// — so we keep it separate. The legacy
+// <XDG_CONFIG_HOME>/kit/telemetry.yaml layout is honored on read for
+// migration symmetry with the production consent package.
 //
 // Build via the test file's lazy sync.Once helper — never go-install'd.
 // Tests live under hop.top/kit/hops/main/go/core/compliance.
@@ -143,36 +145,43 @@ func resolveConsent(xdgConfig string) (state, source string) {
 	return "denied", "config"
 }
 
-// readPersistedState scans <xdgConfig>/kit/telemetry.yaml for a
-// `state:` line and returns its value (granted | denied). Returns ""
-// when the file is absent or the state line cannot be found. We
-// avoid a real YAML parser here to keep the stub dependency-free —
-// the format SeedConsent writes is simple enough for a line scan.
+// readPersistedState scans the canonical
+// <xdgConfig>/kit/config.yaml first, falling back to legacy
+// <xdgConfig>/kit/telemetry.yaml, for a `state:` line and returns its
+// value (granted | denied). Returns "" when neither file is present
+// or the state line cannot be found. We avoid a real YAML parser here
+// to keep the stub dependency-free — the format SeedConsent writes is
+// simple enough for a line scan.
 func readPersistedState(xdgConfig string) string {
-	path := filepath.Join(xdgConfig, "kit", "telemetry.yaml")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		trim := strings.TrimSpace(line)
-		if strings.HasPrefix(trim, "state:") {
-			return strings.TrimSpace(strings.TrimPrefix(trim, "state:"))
+	for _, name := range []string{"config.yaml", "telemetry.yaml"} {
+		path := filepath.Join(xdgConfig, "kit", name)
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			trim := strings.TrimSpace(line)
+			if strings.HasPrefix(trim, "state:") {
+				v := strings.TrimSpace(strings.TrimPrefix(trim, "state:"))
+				if v != "" {
+					return v
+				}
+			}
 		}
 	}
 	return ""
 }
 
-// persistConsent writes the canonical YAML shape, with mode-driven
-// mutations for the negative tests. The 0o600 perm mirrors
-// kit-consent's own write path (and the SeedConsent helper that
-// seeds fixtures into the same file).
+// persistConsent writes the canonical YAML shape (kit.telemetry.consent
+// in config.yaml), with mode-driven mutations for the negative tests.
+// The 0o600 perm mirrors kit-consent's own write path (and the
+// SeedConsent helper that seeds fixtures into the same file).
 func persistConsent(xdgConfig, mode, state, source string) error {
 	dir := filepath.Join(xdgConfig, "kit")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
-	path := filepath.Join(dir, "telemetry.yaml")
+	path := filepath.Join(dir, "config.yaml")
 
 	// Mode tweaks: bad-source overrides source to an invalid value;
 	// no-version omits the prompt_version line entirely. Otherwise
@@ -182,14 +191,15 @@ func persistConsent(xdgConfig, mode, state, source string) error {
 		emitSource = "invalid"
 	}
 	var sb strings.Builder
-	sb.WriteString("telemetry:\n")
-	sb.WriteString("  consent:\n")
-	fmt.Fprintf(&sb, "    state: %s\n", state)
-	sb.WriteString("    decided_at: 2026-05-19T12:00:00Z\n")
+	sb.WriteString("kit:\n")
+	sb.WriteString("  telemetry:\n")
+	sb.WriteString("    consent:\n")
+	fmt.Fprintf(&sb, "      state: %s\n", state)
+	sb.WriteString("      decided_at: 2026-05-19T12:00:00Z\n")
 	if mode != "no-version" {
-		sb.WriteString("    prompt_version: 1\n")
+		sb.WriteString("      prompt_version: 1\n")
 	}
-	fmt.Fprintf(&sb, "    decision_source: %s\n", emitSource)
+	fmt.Fprintf(&sb, "      decision_source: %s\n", emitSource)
 
 	return os.WriteFile(path, []byte(sb.String()), 0o600)
 }

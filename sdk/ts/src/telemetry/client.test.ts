@@ -15,7 +15,7 @@ import { consentPath } from './consent';
 import { installIdPath, resetForTest } from './installId';
 
 // Each test gets its own XDG roots so we never touch the real
-// ~/.config/kit/telemetry.yaml or ~/.local/state/kit/telemetry tree.
+// ~/.config/kit/config.yaml or ~/.local/state/kit/telemetry tree.
 let tmpRoot: string;
 let savedConfigHome: string | undefined;
 let savedStateHome: string | undefined;
@@ -68,12 +68,13 @@ async function grantConsent(): Promise<void> {
   await fs.writeFile(
     p,
     [
-      'telemetry:',
-      '  consent:',
-      '    state: granted',
-      '    prompt_version: 1',
-      '    decision_source: prompt',
-      '    decided_at: 2026-05-19T12:00:00Z',
+      'kit:',
+      '  telemetry:',
+      '    consent:',
+      '      state: granted',
+      '      prompt_version: 1',
+      '      decision_source: prompt',
+      '      decided_at: 2026-05-19T12:00:00Z',
     ].join('\n'),
     { mode: 0o600 },
   );
@@ -84,7 +85,7 @@ async function denyConsent(): Promise<void> {
   await fs.mkdir(path.dirname(p), { recursive: true, mode: 0o700 });
   await fs.writeFile(
     p,
-    'telemetry:\n  consent:\n    state: denied\n',
+    'kit:\n  telemetry:\n    consent:\n      state: denied\n',
     { mode: 0o600 },
   );
 }

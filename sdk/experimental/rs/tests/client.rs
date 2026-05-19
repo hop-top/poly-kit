@@ -30,10 +30,10 @@ fn setup_env(mode: &str) -> tempfile::TempDir {
     let state = tmp.path().join("state");
     std::fs::create_dir_all(cfg.join("kit")).unwrap();
     std::fs::create_dir_all(&state).unwrap();
-    let mut f = std::fs::File::create(cfg.join("kit").join("telemetry.yaml")).unwrap();
+    let mut f = std::fs::File::create(cfg.join("kit").join("config.yaml")).unwrap();
     writeln!(
         f,
-        "telemetry:\n  consent:\n    state: granted\n    prompt_version: 1\n    decision_source: config\n    decided_at: \"2026-05-19T00:00:00Z\"\n"
+        "kit:\n  telemetry:\n    consent:\n      state: granted\n      prompt_version: 1\n      decision_source: config\n      decided_at: \"2026-05-19T00:00:00Z\"\n"
     )
     .unwrap();
 
@@ -113,10 +113,10 @@ async fn consent_denied_is_no_op() {
     let _g = ENV_LOCK.lock().unwrap();
     let tmp = setup_env("full");
     // Overwrite consent file with denied state.
-    let cfg = tmp.path().join("config").join("kit").join("telemetry.yaml");
+    let cfg = tmp.path().join("config").join("kit").join("config.yaml");
     std::fs::write(
         &cfg,
-        "telemetry:\n  consent:\n    state: denied\n    prompt_version: 1\n",
+        "kit:\n  telemetry:\n    consent:\n      state: denied\n      prompt_version: 1\n",
     )
     .unwrap();
 

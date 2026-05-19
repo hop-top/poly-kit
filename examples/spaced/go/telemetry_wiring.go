@@ -74,7 +74,8 @@ func initTelemetry(b bus.Bus) {
 
 	// Consent hook wiring. Default-deny lives in the package; this
 	// installs the file-backed store explicitly so the consent file
-	// path (XDG_CONFIG_HOME/kit/telemetry.yaml) is the gating surface.
+	// path (XDG_CONFIG_HOME/kit/config.yaml under
+	// kit.telemetry.consent) is the gating surface.
 	if store, err := consent.NewFileStore(); err == nil {
 		telemetry.SetConsentHook(consent.NewHook(store))
 	}

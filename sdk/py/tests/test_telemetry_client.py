@@ -15,14 +15,15 @@ from hop_top_kit.telemetry.client import Client
 def _grant_consent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Write a granted consent file under an isolated XDG_CONFIG_HOME."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-    p = tmp_path / "cfg" / "kit" / "telemetry.yaml"
+    p = tmp_path / "cfg" / "kit" / "config.yaml"
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(
-        "telemetry:\n"
-        "  consent:\n"
-        "    state: granted\n"
-        "    prompt_version: 1\n"
-        "    decision_source: prompt\n"
+        "kit:\n"
+        "  telemetry:\n"
+        "    consent:\n"
+        "      state: granted\n"
+        "      prompt_version: 1\n"
+        "      decision_source: prompt\n"
     )
 
 
@@ -54,10 +55,28 @@ class TestGating:
 
     def test_consent_denied_is_noop(self, isolated, monkeypatch, tmp_path):
         # Overwrite consent → denied.
-        (tmp_path / "cfg" / "kit" / "telemetry.yaml").write_text(
-            "telemetry:\n  consent:\n    state: denied\n"
+        (tmp_path / "cfg" / "kit" / "config.yaml").write_text(
+            "kit:\n  telemetry:\n    consent:\n      state: denied\n"
         )
         sink = isolated / "out.jsonl"
+        c = Client(sink="jsonl", sink_file=str(sink))
+        c.record("x")
+        c.shutdown(timeout=1)
+        assert not sink.exists()
+
+    def test_consent_denied_via_legacy_telemetry_yaml(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Legacy <XDG_CONFIG_HOME>/kit/telemetry.yaml denies just like the
+        canonical config.yaml. Exercises the migration-fallback read path."""
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+        monkeypatch.setenv("KIT_TELEMETRY_MODE", "anon")
+        # Only the legacy file exists; config.yaml is absent.
+        p = tmp_path / "cfg" / "kit" / "telemetry.yaml"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("telemetry:\n  consent:\n    state: denied\n    prompt_version: 1\n")
+        sink = tmp_path / "out.jsonl"
         c = Client(sink="jsonl", sink_file=str(sink))
         c.record("x")
         c.shutdown(timeout=1)

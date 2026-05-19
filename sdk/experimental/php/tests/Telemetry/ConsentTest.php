@@ -34,8 +34,12 @@ class ConsentTest extends TestCase
     public function testPathRespectsXdgConfigHome(): void
     {
         $this->assertSame(
-            $this->tmpDir . '/kit/telemetry.yaml',
+            $this->tmpDir . '/kit/config.yaml',
             Consent::path(),
+        );
+        $this->assertSame(
+            $this->tmpDir . '/kit/telemetry.yaml',
+            Consent::legacyPath(),
         );
     }
 
@@ -50,7 +54,7 @@ class ConsentTest extends TestCase
 
     public function testMalformedYamlReturnsDenied(): void
     {
-        file_put_contents(Consent::path(), "telemetry:\n  consent:\n    state: granted\n  : : :\nbroken\n");
+        file_put_contents(Consent::path(), "kit:\n  telemetry:\n    consent:\n      state: granted\n  : : :\nbroken\n");
         $c = Consent::load();
         $this->assertFalse($c->allowed);
         $this->assertSame('config', $c->decisionSource);
@@ -59,12 +63,13 @@ class ConsentTest extends TestCase
     public function testUnknownStateReturnsDenied(): void
     {
         $yaml = <<<YAML
-            telemetry:
-              consent:
-                state: maybe
-                prompt_version: 1
-                decision_source: cli
-                decided_at: "2026-01-01T00:00:00Z"
+            kit:
+              telemetry:
+                consent:
+                  state: maybe
+                  prompt_version: 1
+                  decision_source: cli
+                  decided_at: "2026-01-01T00:00:00Z"
             YAML;
         file_put_contents(Consent::path(), $yaml);
 
@@ -77,7 +82,7 @@ class ConsentTest extends TestCase
 
     public function testMissingConsentBlockReturnsDenied(): void
     {
-        file_put_contents(Consent::path(), "telemetry:\n  enabled: true\n");
+        file_put_contents(Consent::path(), "kit:\n  telemetry:\n    enabled: true\n");
         $c = Consent::load();
         $this->assertFalse($c->allowed);
     }
@@ -92,12 +97,13 @@ class ConsentTest extends TestCase
     public function testHappyGranted(): void
     {
         $yaml = <<<YAML
-            telemetry:
-              consent:
-                state: granted
-                prompt_version: 2
-                decision_source: cli
-                decided_at: "2026-05-19T12:00:00Z"
+            kit:
+              telemetry:
+                consent:
+                  state: granted
+                  prompt_version: 2
+                  decision_source: cli
+                  decided_at: "2026-05-19T12:00:00Z"
             YAML;
         file_put_contents(Consent::path(), $yaml);
 
@@ -111,12 +117,13 @@ class ConsentTest extends TestCase
     public function testHappyDenied(): void
     {
         $yaml = <<<YAML
-            telemetry:
-              consent:
-                state: denied
-                prompt_version: 1
-                decision_source: tui
-                decided_at: "2026-05-19T12:00:00Z"
+            kit:
+              telemetry:
+                consent:
+                  state: denied
+                  prompt_version: 1
+                  decision_source: tui
+                  decided_at: "2026-05-19T12:00:00Z"
             YAML;
         file_put_contents(Consent::path(), $yaml);
 
@@ -125,6 +132,45 @@ class ConsentTest extends TestCase
         $this->assertSame(1, $c->promptVersion);
         $this->assertSame('tui', $c->decisionSource);
         $this->assertSame('2026-05-19T12:00:00Z', $c->decidedAt);
+    }
+
+    public function testLegacyTelemetryYamlIsReadAsFallback(): void
+    {
+        // Pre-refactor layout: bare telemetry.consent in
+        // <XDG_CONFIG_HOME>/kit/telemetry.yaml. load() must honor it
+        // when the canonical config.yaml is absent.
+        $yaml = <<<YAML
+            telemetry:
+              consent:
+                state: granted
+                prompt_version: 1
+                decision_source: prompt
+                decided_at: "2026-05-19T12:00:00Z"
+            YAML;
+        file_put_contents(Consent::legacyPath(), $yaml);
+
+        $c = Consent::load();
+        $this->assertTrue($c->allowed);
+        $this->assertSame(1, $c->promptVersion);
+        $this->assertSame('prompt', $c->decisionSource);
+    }
+
+    public function testCanonicalConfigYamlWinsOverLegacyTelemetryYaml(): void
+    {
+        // Legacy says granted; canonical says denied. Canonical wins.
+        file_put_contents(
+            Consent::legacyPath(),
+            "telemetry:\n  consent:\n    state: granted\n    prompt_version: 1\n    decision_source: prompt\n",
+        );
+        file_put_contents(
+            Consent::path(),
+            "kit:\n  telemetry:\n    consent:\n      state: denied\n      prompt_version: 2\n      decision_source: flag\n",
+        );
+
+        $c = Consent::load();
+        $this->assertFalse($c->allowed);
+        $this->assertSame(2, $c->promptVersion);
+        $this->assertSame('flag', $c->decisionSource);
     }
 
     public function testDeniedFactory(): void

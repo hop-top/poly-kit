@@ -43,7 +43,7 @@ import (
 //     adopters rely on.
 func TestTelemetryWiring_AnonModeEmitsOneEvent(t *testing.T) {
 	// Sandbox XDG so the test never touches the developer's real
-	// telemetry.yaml or installation_id file. xdg.{Config,State}File
+	// kit config.yaml or installation_id file. xdg.{Config,State}File
 	// honors XDG_*_HOME, see go/core/xdg/xdg_test.go.
 	xdgRoot := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(xdgRoot, "config"))
@@ -52,20 +52,22 @@ func TestTelemetryWiring_AnonModeEmitsOneEvent(t *testing.T) {
 
 	// Seed a granted consent decision so the emitter's consent gate
 	// passes. The on-disk format is owned by go/core/consent
-	// (telemetry.yaml under XDG_CONFIG_HOME/kit). Minimal valid doc:
-	// state + decided_at + prompt_version + decision_source.
+	// (config.yaml under XDG_CONFIG_HOME/kit at kit.telemetry.consent).
+	// Minimal valid doc: state + decided_at + prompt_version +
+	// decision_source.
 	cfgDir := filepath.Join(xdgRoot, "config", "kit")
 	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 		t.Fatalf("mkdir consent dir: %v", err)
 	}
 	consentYAML := "" +
-		"telemetry:\n" +
-		"  consent:\n" +
-		"    state: granted\n" +
-		"    decided_at: " + time.Now().UTC().Format(time.RFC3339) + "\n" +
-		"    prompt_version: 1\n" +
-		"    decision_source: prompt\n"
-	if err := os.WriteFile(filepath.Join(cfgDir, "telemetry.yaml"), []byte(consentYAML), 0o600); err != nil {
+		"kit:\n" +
+		"  telemetry:\n" +
+		"    consent:\n" +
+		"      state: granted\n" +
+		"      decided_at: " + time.Now().UTC().Format(time.RFC3339) + "\n" +
+		"      prompt_version: 1\n" +
+		"      decision_source: prompt\n"
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(consentYAML), 0o600); err != nil {
 		t.Fatalf("write consent yaml: %v", err)
 	}
 

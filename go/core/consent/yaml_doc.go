@@ -10,10 +10,16 @@ import (
 // This file isolates the yaml.Node surgery from the Store I/O so the
 // FileStore reads as plain "read, transform, write". The transforms
 // preserve sibling top-level keys (the file is the kit AppConfig, not
-// consent-only) and replace only the telemetry.consent block on Set /
-// Clear.
+// consent-only) and replace only the kit.telemetry.consent block on
+// Set / Clear.
+//
+// The canonical path is kit.telemetry.consent inside config.yaml; the
+// pre-refactor layout used bare telemetry.consent inside a dedicated
+// telemetry.yaml. extractLegacyDecision walks the old shape so the
+// read path can fall back during migration.
 
 const (
+	keyKit            = "kit"
 	keyTelemetry      = "telemetry"
 	keyConsent        = "consent"
 	keyState          = "state"
@@ -98,10 +104,33 @@ func deleteMappingChild(m *yaml.Node, key string) {
 	}
 }
 
-// extractDecision walks doc looking for telemetry.consent and decodes
-// it into a Decision. Returns (Decision{}, false, nil) when the block
-// is absent or empty; (_, false, err) on malformed scalars.
+// extractDecision walks doc looking for kit.telemetry.consent and
+// decodes it into a Decision. Returns (Decision{}, false, nil) when
+// the block is absent or empty; (_, false, err) on malformed scalars.
 func extractDecision(doc *yaml.Node) (Decision, bool, error) {
+	root := rootMapping(doc)
+	if root == nil {
+		return Decision{}, false, nil
+	}
+	kit := mappingChild(root, keyKit)
+	if kit == nil || kit.Kind != yaml.MappingNode {
+		return Decision{}, false, nil
+	}
+	telemetry := mappingChild(kit, keyTelemetry)
+	if telemetry == nil || telemetry.Kind != yaml.MappingNode {
+		return Decision{}, false, nil
+	}
+	consent := mappingChild(telemetry, keyConsent)
+	if consent == nil || consent.Kind != yaml.MappingNode {
+		return Decision{}, false, nil
+	}
+	return decodeConsentMapping(consent)
+}
+
+// extractLegacyDecision walks the pre-refactor doc shape
+// (telemetry.consent at the top level, no kit wrapper). Same return
+// contract as extractDecision; only the navigation differs.
+func extractLegacyDecision(doc *yaml.Node) (Decision, bool, error) {
 	root := rootMapping(doc)
 	if root == nil {
 		return Decision{}, false, nil
@@ -114,7 +143,14 @@ func extractDecision(doc *yaml.Node) (Decision, bool, error) {
 	if consent == nil || consent.Kind != yaml.MappingNode {
 		return Decision{}, false, nil
 	}
+	return decodeConsentMapping(consent)
+}
 
+// decodeConsentMapping decodes a consent: mapping into a Decision.
+// Shared between the canonical kit.telemetry.consent path and the
+// legacy telemetry.consent path so both walks produce identical
+// Decision values.
+func decodeConsentMapping(consent *yaml.Node) (Decision, bool, error) {
 	var d Decision
 	if v := mappingChild(consent, keyState); v != nil {
 		d.State = State(v.Value)
@@ -143,19 +179,26 @@ func extractDecision(doc *yaml.Node) (Decision, bool, error) {
 	return d, true, nil
 }
 
-// upsertDecision writes d into doc under telemetry.consent, creating
-// intermediate mappings as needed. Other top-level keys (and other
-// keys under telemetry, should any exist) are preserved.
+// upsertDecision writes d into doc under kit.telemetry.consent,
+// creating intermediate mappings as needed. Other top-level keys (and
+// other keys under kit / kit.telemetry, should any exist) are
+// preserved.
 func upsertDecision(doc *yaml.Node, d Decision) error {
 	root := rootMapping(doc)
 	if root == nil {
 		return fmt.Errorf("consent: document root is not a mapping")
 	}
 
-	telemetry := mappingChild(root, keyTelemetry)
+	kit := mappingChild(root, keyKit)
+	if kit == nil || kit.Kind != yaml.MappingNode {
+		kit = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		setMappingChild(root, keyKit, kit)
+	}
+
+	telemetry := mappingChild(kit, keyTelemetry)
 	if telemetry == nil || telemetry.Kind != yaml.MappingNode {
 		telemetry = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-		setMappingChild(root, keyTelemetry, telemetry)
+		setMappingChild(kit, keyTelemetry, telemetry)
 	}
 
 	consent := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
@@ -180,16 +223,20 @@ func upsertDecision(doc *yaml.Node, d Decision) error {
 	return nil
 }
 
-// removeConsent strips the telemetry.consent block. If telemetry
-// becomes empty after the removal we leave it in place: a present-but-
-// empty mapping is harmless and avoids racing with any future
-// telemetry sub-keys.
+// removeConsent strips the kit.telemetry.consent block. If
+// kit.telemetry becomes empty after the removal we leave it in place:
+// a present-but-empty mapping is harmless and avoids racing with any
+// future kit.telemetry sub-keys.
 func removeConsent(doc *yaml.Node) {
 	root := rootMapping(doc)
 	if root == nil {
 		return
 	}
-	telemetry := mappingChild(root, keyTelemetry)
+	kit := mappingChild(root, keyKit)
+	if kit == nil || kit.Kind != yaml.MappingNode {
+		return
+	}
+	telemetry := mappingChild(kit, keyTelemetry)
 	if telemetry == nil || telemetry.Kind != yaml.MappingNode {
 		return
 	}

@@ -93,8 +93,29 @@ kit telemetry status     # show resolved state, identity, mode
 ```
 
 `enable` and `disable` write a decision under
-`<XDG_CONFIG_HOME>/kit/telemetry/consent.json`.
-That decision is what every subsequent invocation reads.
+`<XDG_CONFIG_HOME>/kit/config.yaml` (mode `0600`, parent dir
+`0700`). That file is the kit AppConfig; the persisted decision
+lives under the `kit.telemetry.consent` partition and reads like:
+
+```yaml
+kit:
+  telemetry:
+    consent:
+      state: granted              # granted | denied
+      decided_at: "2026-05-19T20:58:14Z"
+      prompt_version: 1
+      decision_source: flag       # prompt | flag | env | config
+```
+
+Sibling top-level partitions in the same file (other than
+`kit.telemetry.consent`) survive `enable` / `disable` / `reset`
+untouched — adopter-owned config can co-exist.
+
+A pre-refactor layout that stored the same shape under
+`<XDG_CONFIG_HOME>/kit/telemetry.yaml` (bare `telemetry.consent`)
+is read as a fallback; the next `enable` / `disable` migrates the
+decision into `config.yaml`. The legacy file is left in place so any
+hand-added sibling keys survive.
 
 ### Environment variables (CI, scripted, ephemeral)
 

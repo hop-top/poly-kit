@@ -1,6 +1,7 @@
-telemetry:
-  consent:
-    state: granted
-    decided_at: "2025-01-01T00:00:00Z"
-    prompt_version: 1
-    decision_source: prompt
+kit:
+  telemetry:
+    consent:
+      state: granted
+      decided_at: "2025-01-01T00:00:00Z"
+      prompt_version: 1
+      decision_source: prompt

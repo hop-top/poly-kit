@@ -68,16 +68,19 @@ def test_telemetry_flag_accepted_anon(tmp_path: Path) -> None:
     xdg_state = tmp_path / "state"
     sink = tmp_path / "telemetry.jsonl"
 
-    # Seed a granted consent decision (minimal shape).
+    # Seed a granted consent decision (minimal shape). The kit AppConfig
+    # at <XDG_CONFIG_HOME>/kit/config.yaml carries the consent block under
+    # kit.telemetry.consent.
     kit_dir = xdg_config / "kit"
     kit_dir.mkdir(parents=True, exist_ok=True)
-    (kit_dir / "telemetry.yaml").write_text(
-        "telemetry:\n"
-        "  consent:\n"
-        "    state: granted\n"
-        "    decided_at: 2025-01-01T00:00:00Z\n"
-        "    prompt_version: 1\n"
-        "    decision_source: prompt\n"
+    (kit_dir / "config.yaml").write_text(
+        "kit:\n"
+        "  telemetry:\n"
+        "    consent:\n"
+        "      state: granted\n"
+        "      decided_at: 2025-01-01T00:00:00Z\n"
+        "      prompt_version: 1\n"
+        "      decision_source: prompt\n"
     )
 
     env = {

@@ -243,18 +243,43 @@ func (e *rtEnv) PollEvents(minCount int, maxWait time.Duration) ([]map[string]an
 	}
 }
 
-// SeedConsent writes a telemetry.yaml file under
-// <XDG_CONFIG_HOME>/kit/ with the given decision. Helper for runtime
-// checks that need a granted-state fixture without driving the
-// interactive prompt. Shape mirrors consent.FileStore's wire format:
-// telemetry.consent.{state, decided_at, prompt_version,
-// decision_source}. decided_at is hardcoded to a fixed timestamp
-// because runtime checks should not depend on wall-clock for
-// determinism.
+// SeedConsent writes a config.yaml file under <XDG_CONFIG_HOME>/kit/
+// with the given decision under kit.telemetry.consent. Helper for
+// runtime checks that need a granted-state fixture without driving
+// the interactive prompt. Shape mirrors consent.FileStore's canonical
+// wire format: kit.telemetry.consent.{state, decided_at,
+// prompt_version, decision_source}. decided_at is hardcoded to a
+// fixed timestamp because runtime checks should not depend on
+// wall-clock for determinism.
 func (e *rtEnv) SeedConsent(state, source string, promptVersion int) error {
 	consentDir := filepath.Join(e.XDGConfig, "kit")
 	if err := os.MkdirAll(consentDir, 0o700); err != nil {
 		return fmt.Errorf("SeedConsent: mkdir %s: %w", consentDir, err)
+	}
+	consentFile := filepath.Join(consentDir, "config.yaml")
+	content := fmt.Sprintf(`kit:
+  telemetry:
+    consent:
+      state: %s
+      decided_at: 2026-05-19T12:00:00Z
+      prompt_version: %d
+      decision_source: %s
+`, state, promptVersion, source)
+	if err := os.WriteFile(consentFile, []byte(content), 0o600); err != nil {
+		return fmt.Errorf("SeedConsent: write %s: %w", consentFile, err)
+	}
+	return nil
+}
+
+// SeedLegacyConsent writes a pre-refactor telemetry.yaml fixture
+// (bare telemetry.consent at the top level) under
+// <XDG_CONFIG_HOME>/kit/. Used by tests that exercise the
+// migration-fallback read path. Production code never writes this
+// shape any more; SeedConsent is the canonical helper.
+func (e *rtEnv) SeedLegacyConsent(state, source string, promptVersion int) error {
+	consentDir := filepath.Join(e.XDGConfig, "kit")
+	if err := os.MkdirAll(consentDir, 0o700); err != nil {
+		return fmt.Errorf("SeedLegacyConsent: mkdir %s: %w", consentDir, err)
 	}
 	consentFile := filepath.Join(consentDir, "telemetry.yaml")
 	content := fmt.Sprintf(`telemetry:
@@ -265,7 +290,7 @@ func (e *rtEnv) SeedConsent(state, source string, promptVersion int) error {
     decision_source: %s
 `, state, promptVersion, source)
 	if err := os.WriteFile(consentFile, []byte(content), 0o600); err != nil {
-		return fmt.Errorf("SeedConsent: write %s: %w", consentFile, err)
+		return fmt.Errorf("SeedLegacyConsent: write %s: %w", consentFile, err)
 	}
 	return nil
 }

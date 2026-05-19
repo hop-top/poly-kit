@@ -5,16 +5,22 @@
  * Read-only consent-file loader — the TS mirror of the read path in
  * `go/core/consent/file_store.go`.
  *
- * On-disk shape (YAML under `<XDG_CONFIG_HOME>/kit/telemetry.yaml`):
+ * On-disk shape (YAML under `<XDG_CONFIG_HOME>/kit/config.yaml` at the
+ * `kit.telemetry.consent` partition):
  *
  * ```yaml
- * telemetry:
- *   consent:
- *     state: granted          # | denied
- *     prompt_version: 1
- *     decision_source: prompt # | flag | config | env
- *     decided_at: 2026-05-19T12:00:00Z
+ * kit:
+ *   telemetry:
+ *     consent:
+ *       state: granted          # | denied
+ *       prompt_version: 1
+ *       decision_source: prompt # | flag | config | env
+ *       decided_at: 2026-05-19T12:00:00Z
  * ```
+ *
+ * A pre-refactor layout at `<XDG_CONFIG_HOME>/kit/telemetry.yaml` (with
+ * a bare `telemetry.consent` block at the top level) is read as a
+ * fallback so installs that have not been migrated yet still work.
  *
  * This TS module is **read-only**: writing the consent file remains the
  * job of the Go `kit consent` CLI. SDK consumers just need to know
@@ -68,11 +74,21 @@ function xdgConfigHome(): string {
 }
 
 /**
- * consentPath returns the canonical on-disk path used by this module.
- * Useful for `kit telemetry status` diagnostics and SDK consumers that
- * want to surface the location.
+ * consentPath returns the canonical on-disk path used by this module
+ * (`<XDG_CONFIG_HOME>/kit/config.yaml`). Useful for `kit telemetry
+ * status` diagnostics and SDK consumers that want to surface the
+ * location.
  */
 export function consentPath(): string {
+  return path.join(xdgConfigHome(), 'kit', 'config.yaml');
+}
+
+/**
+ * legacyConsentPath returns the pre-refactor consent file location
+ * (`<XDG_CONFIG_HOME>/kit/telemetry.yaml`). Read-only fallback consumed
+ * by `loadConsent`; SDK callers should prefer `consentPath`.
+ */
+export function legacyConsentPath(): string {
   return path.join(xdgConfigHome(), 'kit', 'telemetry.yaml');
 }
 
@@ -83,17 +99,41 @@ export function consentPath(): string {
  *   - File missing → denied.
  *   - File unreadable → denied.
  *   - YAML parse error → denied.
- *   - Missing `telemetry.consent` block → denied.
+ *   - Missing `kit.telemetry.consent` block (and no legacy) → denied.
  *   - `state` neither "granted" nor "denied" → denied.
  *
  * `state: "denied"` returns a Consent with `allowed=false` but with the
  * other fields populated, so callers can distinguish an explicit deny
  * from a fail-closed default.
+ *
+ * Read order: canonical `config.yaml` (`kit.telemetry.consent`) first,
+ * then legacy `telemetry.yaml` (`telemetry.consent`) as a fallback.
  */
 export async function loadConsent(): Promise<Consent> {
-  const p = consentPath();
+  const canonical = await readConsentBlock(consentPath(), 'canonical');
+  if (canonical !== null) {
+    return canonical;
+  }
+  const legacy = await readConsentBlock(legacyConsentPath(), 'legacy');
+  if (legacy !== null) {
+    return legacy;
+  }
+  return deniedConsent;
+}
+
+/**
+ * readConsentBlock loads one YAML file and tries to decode a consent
+ * block from it. Returns the resolved Consent, or null when the file
+ * is missing / unreadable / malformed / lacks the expected block.
+ * Distinguishing null from `deniedConsent` lets the caller fall
+ * through to the next candidate path.
+ */
+async function readConsentBlock(
+  p: string,
+  variant: 'canonical' | 'legacy',
+): Promise<Consent | null> {
   if (!existsSync(p)) {
-    return deniedConsent;
+    return null;
   }
 
   let data: unknown;
@@ -101,26 +141,38 @@ export async function loadConsent(): Promise<Consent> {
     const raw = await fs.readFile(p, 'utf8');
     data = yaml.load(raw);
   } catch {
-    return deniedConsent;
+    return null;
   }
 
   if (typeof data !== 'object' || data === null) {
-    return deniedConsent;
+    return null;
   }
   const root = data as Record<string, unknown>;
-  const telemetry = root.telemetry;
+
+  // Canonical: kit.telemetry.consent. Legacy: telemetry.consent (no kit).
+  let telemetry: unknown;
+  if (variant === 'canonical') {
+    const kit = root.kit;
+    if (typeof kit !== 'object' || kit === null) {
+      return null;
+    }
+    telemetry = (kit as Record<string, unknown>).telemetry;
+  } else {
+    telemetry = root.telemetry;
+  }
+
   if (typeof telemetry !== 'object' || telemetry === null) {
-    return deniedConsent;
+    return null;
   }
   const block = (telemetry as Record<string, unknown>).consent;
   if (typeof block !== 'object' || block === null) {
-    return deniedConsent;
+    return null;
   }
   const c = block as Record<string, unknown>;
 
   const state = c.state;
   if (state !== 'granted' && state !== 'denied') {
-    return deniedConsent;
+    return null;
   }
 
   return {

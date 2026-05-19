@@ -56,7 +56,10 @@ kit telemetry reset       # clear persisted decision
 ```
 
 The PHP SDK only **reads** the persisted decision from
-`$XDG_CONFIG_HOME/kit/telemetry.yaml` (default `~/.config/kit/telemetry.yaml`).
+`$XDG_CONFIG_HOME/kit/config.yaml` (default
+`~/.config/kit/config.yaml`) at the `kit.telemetry.consent`
+partition. A pre-refactor `$XDG_CONFIG_HOME/kit/telemetry.yaml`
+(bare `telemetry.consent`) is honored as a read-only fallback.
 
 ### What is collected
 

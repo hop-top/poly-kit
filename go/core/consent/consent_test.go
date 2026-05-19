@@ -46,10 +46,10 @@ func TestDecisionGranted(t *testing.T) {
 	}
 }
 
-func TestNewFileStore_PathContainsKitTelemetry(t *testing.T) {
+func TestNewFileStore_PathContainsKitConfig(t *testing.T) {
 	s, _ := newTestStore(t)
-	if !strings.HasSuffix(s.Path(), filepath.Join("kit", "telemetry.yaml")) {
-		t.Fatalf("path %q does not end with kit/telemetry.yaml", s.Path())
+	if !strings.HasSuffix(s.Path(), filepath.Join("kit", "config.yaml")) {
+		t.Fatalf("path %q does not end with kit/config.yaml", s.Path())
 	}
 }
 
@@ -159,7 +159,7 @@ func TestFileStore_MalformedYAML_ReturnsError(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(s.Path()), 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	bad := []byte("telemetry:\n  consent: : : not yaml\n")
+	bad := []byte("kit:\n  telemetry:\n    consent: : : not yaml\n")
 	if err := os.WriteFile(s.Path(), bad, 0o600); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestFileStore_PreservesOtherTopLevelKeys(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(s.Path()), 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	seed := []byte("other: foo\ntelemetry:\n  consent:\n    state: denied\n    decided_at: \"2026-01-01T00:00:00Z\"\n    prompt_version: 1\n    decision_source: flag\n")
+	seed := []byte("other: foo\nkit:\n  bus:\n    enforce: strict\n  telemetry:\n    consent:\n      state: denied\n      decided_at: \"2026-01-01T00:00:00Z\"\n      prompt_version: 1\n      decision_source: flag\n")
 	if err := os.WriteFile(s.Path(), seed, 0o600); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -187,7 +187,8 @@ func TestFileStore_PreservesOtherTopLevelKeys(t *testing.T) {
 		t.Fatalf("seeded state = %q, want %q", d.State, StateDenied)
 	}
 
-	// Set replaces the consent block. `other: foo` must survive.
+	// Set replaces the consent block. `other: foo` and the sibling
+	// `kit.bus.enforce` partition must survive.
 	if err := s.Set(context.Background(), Decision{
 		State:          StateGranted,
 		DecidedAt:      time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
@@ -204,8 +205,80 @@ func TestFileStore_PreservesOtherTopLevelKeys(t *testing.T) {
 	if !strings.Contains(string(b), "other: foo") {
 		t.Fatalf("Set nuked sibling top-level key. file =\n%s", b)
 	}
+	if !strings.Contains(string(b), "enforce: strict") {
+		t.Fatalf("Set nuked sibling kit.bus partition. file =\n%s", b)
+	}
 	if !strings.Contains(string(b), "state: granted") {
 		t.Fatalf("Set did not write granted. file =\n%s", b)
+	}
+}
+
+// TestFileStore_LegacyTelemetryYAMLFallback verifies the read path
+// falls back to the pre-refactor <XDG_CONFIG_HOME>/kit/telemetry.yaml
+// layout (bare telemetry.consent at top level) when the canonical
+// config.yaml is absent. The legacy file is left untouched by reads;
+// the next Set migrates the decision into config.yaml.
+func TestFileStore_LegacyTelemetryYAMLFallback(t *testing.T) {
+	s, dir := newTestStore(t)
+	legacy := filepath.Join(dir, "kit", "telemetry.yaml")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	seed := []byte("telemetry:\n  consent:\n    state: granted\n    decided_at: \"2026-01-01T00:00:00Z\"\n    prompt_version: 1\n    decision_source: prompt\n")
+	if err := os.WriteFile(legacy, seed, 0o600); err != nil {
+		t.Fatalf("seed legacy: %v", err)
+	}
+
+	// Canonical config.yaml absent → read should fall back to legacy.
+	d, err := s.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if d.State != StateGranted {
+		t.Fatalf("legacy fallback state = %q, want %q", d.State, StateGranted)
+	}
+	if d.DecisionSource != SourcePrompt {
+		t.Fatalf("legacy fallback decision_source = %q, want %q",
+			d.DecisionSource, SourcePrompt)
+	}
+
+	// The legacy file must be untouched by the read.
+	if _, err := os.Stat(legacy); err != nil {
+		t.Fatalf("legacy file disappeared after read: %v", err)
+	}
+
+	// Set migrates into config.yaml; legacy stays put.
+	if err := s.Set(context.Background(), Decision{
+		State:          StateDenied,
+		DecidedAt:      time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		PromptVersion:  2,
+		DecisionSource: SourceFlag,
+	}); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if _, err := os.Stat(s.Path()); err != nil {
+		t.Fatalf("config.yaml not created after migration Set: %v", err)
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		t.Fatalf("Set deleted legacy telemetry.yaml: %v", err)
+	}
+
+	// Subsequent Get prefers config.yaml (denied wins over legacy granted).
+	got, err := s.Get(context.Background())
+	if err != nil {
+		t.Fatalf("post-migration Get: %v", err)
+	}
+	if got.State != StateDenied {
+		t.Fatalf("post-migration state = %q, want %q (config.yaml should shadow legacy)",
+			got.State, StateDenied)
+	}
+
+	body, err := os.ReadFile(s.Path())
+	if err != nil {
+		t.Fatalf("read config.yaml: %v", err)
+	}
+	if !strings.Contains(string(body), "kit:") {
+		t.Fatalf("config.yaml missing top-level kit key. file =\n%s", body)
 	}
 }
 

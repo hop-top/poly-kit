@@ -12,7 +12,7 @@ pub mod mode;
 pub mod redact;
 
 pub use client::{Client, ClientError, ClientOptions, Envelope, SinkKind};
-pub use consent::{consent_path, load_consent, Consent};
+pub use consent::{consent_path, legacy_consent_path, load_consent, Consent};
 pub use install_id::{get_install_id, install_id_path, rotate};
 pub use mode::{parse_mode, resolve_mode, Mode};
 pub use redact::{redact, redact_string};

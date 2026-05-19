@@ -1,7 +1,11 @@
 // Package consent implements the persisted consent state machine for
 // kit-telemetry. It owns the on-disk schema (state, decided_at,
 // prompt_version, decision_source) and exposes a Store for reading and
-// writing decisions atomically under <XDG_CONFIG_HOME>/kit/telemetry.yaml.
+// writing decisions atomically under
+// <XDG_CONFIG_HOME>/kit/config.yaml at the kit.telemetry.consent
+// partition. A legacy <XDG_CONFIG_HOME>/kit/telemetry.yaml layout
+// (bare telemetry.consent) is read as a fallback for backward
+// compatibility; writes always target the canonical config.yaml.
 //
 // The wire-level contract with kit-telemetry is the ConsentHook
 // interface — kit-telemetry owns the interface as Granted(ctx) bool.

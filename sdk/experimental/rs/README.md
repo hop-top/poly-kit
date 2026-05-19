@@ -109,7 +109,7 @@ collector that re-emits via `go/core/redact`.
 | `KIT_TELEMETRY_SINK` | `https | jsonl` (used by `ClientOptions::from_env`). |
 | `KIT_TELEMETRY_SINK_FILE` | JSONL path (used by `ClientOptions::from_env`). |
 | `KIT_TELEMETRY_QUEUE_SIZE` | Bounded channel capacity, defaults to 1024. |
-| `XDG_CONFIG_HOME` | Locates the consent file (`<HERE>/kit/telemetry.yaml`). |
+| `XDG_CONFIG_HOME` | Locates the consent file (`<HERE>/kit/config.yaml` at `kit.telemetry.consent`; legacy `<HERE>/kit/telemetry.yaml` read as fallback). |
 | `XDG_STATE_HOME` | Locates the install_id file (`<HERE>/kit/telemetry/installation_id`). |
 
 ### Cross-references

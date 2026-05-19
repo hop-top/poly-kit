@@ -10,7 +10,8 @@ Pre-conditions (set by the orchestrator, NOT this runner):
   - ``XDG_STATE_HOME`` and ``XDG_CONFIG_HOME`` point into the temp dir.
   - The 32-byte install_id fixture is pre-seeded at
     ``$XDG_STATE_HOME/kit/telemetry/installation_id``.
-  - The consent fixture is pre-seeded at ``$XDG_CONFIG_HOME/kit/telemetry.yaml``.
+  - The consent fixture is pre-seeded at ``$XDG_CONFIG_HOME/kit/config.yaml``
+    (canonical ``kit.telemetry.consent`` partition).
   - ``KIT_TELEMETRY_MODE=full``.
   - ``KIT_TELEMETRY_SINK=jsonl``.
   - ``KIT_TELEMETRY_SINK_FILE`` is set to a writable temp path.
