@@ -16,9 +16,10 @@ a mental model before browsing packages.
 
 `hop.top/kit` is the polyglot foundation library for the hop-top
 ecosystem. It provides a shared substrate of CLI, configuration,
-identity, storage, event bus, sync, and transport primitives so
-that every tool in the family looks, behaves, and integrates the
-same way across Go, TypeScript, and Python.
+identity, storage, event bus, sync, transport, consent, and
+opt-in telemetry primitives so that every tool in the family
+looks, behaves, and integrates the same way across Go,
+TypeScript, Python, Rust, and PHP.
 
 ## Adopter context
 
@@ -41,7 +42,9 @@ kit ships as multiple deployable units under one repo:
 | Go module `hop.top/kit` | `go/` | Library imported by Go consumers |
 | TS package `@hop-top/kit` | `sdk/ts/` | Library for Node + browser consumers |
 | Python package `hop-top-kit` | `sdk/py/` | Library for Python consumers |
-| `kit` sidecar binary | `cmd/kit/` | Engine running alongside other binaries |
+| Rust crate `kit-rs` *(experimental)* | `sdk/experimental/rs/` | Library for Rust consumers; telemetry parity |
+| PHP package `hop-top/kit` *(experimental)* | `sdk/experimental/php/` | Library for PHP consumers; telemetry parity |
+| `kit` sidecar binary | `cmd/kit/` | Engine + consent/telemetry subcommand tree |
 | `routellm-server` binary | `cmd/routellm-server/` | Standalone LLM router |
 
 ## Components
@@ -76,30 +79,32 @@ under `incubator/` until promoted.
 | `console/hay` | Breadcrumb / trace protocol for UI hints |
 | `console/ps` | Process status utilities |
 
-### `go/core/` — Identity, config, projects, compliance
+### `go/core/` — Identity, config, projects, consent, compliance
 
 | Package | Role |
 |---|---|
 | `core/config` | Layered loader: system → user → project → env; Pkl support; SIGHUP/signal-driven hot reload via `Reloadable[T]` + `reload:"true"` partition |
+| `core/consent` | Telemetry consent state machine + persisted decision (`<XDG_CONFIG_HOME>/kit/telemetry.yaml`); `DO_NOT_TRACK` / env / flag / prompt precedence (ADR-0036) |
 | `core/identity` | Local-first Ed25519 identity; JWT; symmetric encryption |
 | `core/upgrade` | Self-upgrade check, download, replace + Badge |
 | `core/util` | Stdlib-only helpers (env, fingerprint, humanize, jsonl, must, ptr, retry, since, slug) |
 | `core/uxp` | AI CLI detection, project registry, diagnostics |
 | `core/xdg` | XDG Base Directory path resolution |
 | `core/projects` | Project registry and metadata lookup |
-| `core/compliance` | Compliance policy engine + audit logging |
+| `core/compliance` | 13-factor adopter contract; static + runtime sub-checks; F13 `ConsentingTelemetry` (ADR-0037) |
 
-### `go/runtime/` — Bus, domain, jobs, peers, sync
+### `go/runtime/` — Bus, domain, jobs, peers, sync, telemetry
 
 | Package | Role |
 |---|---|
-| `runtime/bus` | Event-driven pub/sub; memory + SQLite + network transports; `TopicOf` builder + `ParseTopic` + `Qualifiers` payload convention (ADR-0017) |
+| `runtime/bus` | Event-driven pub/sub; memory + SQLite + network transports; `TopicOf` builder + `ParseTopic` + `Qualifiers` payload convention (ADR-0017); env-driven sink selection for telemetry routing |
 | `runtime/domain` | Generic DDD building blocks (Entity, Repository, StateMachine, Service) |
 | `runtime/domain/version` | Append-only version DAG for entity history |
 | `runtime/domain/sqlite` | SQLite repository implementations |
 | `runtime/job` | Job scheduler interface + Temporal, Restate, Hatchet, DurableTask adapters |
 | `runtime/peer` | Decentralised peer discovery; trust mesh; TOFU |
 | `runtime/sync` | Local-first multi-remote entity replication; HLC `Clock` + `WallClock` interface (`SystemWallClock` / `FixedClock` / `MockWallClock`) for deterministic tests |
+| `runtime/telemetry` | Opt-in, redact-before-egress CLI telemetry; `Mode` gate (off / anon / full), anonymous `install_id`, `ConsentHook` seam, batched HTTPS sink with on-disk spool (ADR-0035); cross-language wire-format mirrored by the four SDKs |
 
 ### `go/storage/` — Pluggable storage abstractions
 
@@ -131,13 +136,19 @@ Protobuf definitions for cross-language CRUD (`v1`) and RouteL2M
 | `@hop-top/kit/output` | `console/output` |
 | `@hop-top/kit/xdg` | `core/xdg` |
 | `@hop-top/kit/sqlstore` | `storage/sqlstore` (async) |
+| `@hop-top/kit/telemetry` | `runtime/telemetry` |
 | `hop_top_kit.cli` | `console/cli` (Typer) |
 | `hop_top_kit.output` | `console/output` |
 | `hop_top_kit.xdg` | `core/xdg` |
 | `hop_top_kit.config` | `core/config` |
+| `hop_top_kit.telemetry` | `runtime/telemetry` |
+| `kit_rs::telemetry` *(experimental)* | `runtime/telemetry` |
+| `HopTop\Kit\Telemetry` *(experimental)* | `runtime/telemetry` |
 
 Parity is enforced via `make test-parity` against shared contract
-fixtures.
+fixtures. Telemetry envelopes additionally pass byte-identical
+through the cross-language harness at
+[`sdk/tests/cross-lang/`](../../../sdk/tests/cross-lang/).
 
 ## Public surfaces
 
@@ -206,12 +217,25 @@ Topic naming convention: `[Source].[Category].[Object].[Action]`
 
 ## Architecture decisions
 
-The full set of ADRs lives at [`contributors/adr/`](../adr/). Three foundational
-ones shape everything else:
+The full ADR ledger (`ADR-0001` through `ADR-0038`, with gaps at
+`0033`/`0034`) is archived outside this repo at
+`~/.w/ideacrafterslabs/.docs/archived/kit-technical-docs/adr/`.
+In-tree code and docs reference ADR identifiers as prose; the
+archive holds the rendered prose.
 
-- [ADR-0001 CLI framework selection](../adr/0001-cli-framework-selection.md) — Go uses cobra+viper+fang; TS/Py mirror via Commander/Typer
-- [ADR-0002 Theme architecture](../adr/0002-theme-architecture.md) — Single theme per tool; brand accent override via `console/cli.Theme`
-- [ADR-0003 Output hints pipeline](../adr/0003-output-hints-pipeline.md) — Human vs machine split: progress/help → stderr, structured → stdout; `--format` flag
+Foundational ADRs that shape everything else:
+
+- `ADR-0001` CLI framework selection — Go uses cobra+viper+fang; TS/Py mirror via Commander/Typer
+- `ADR-0002` Theme architecture — Single theme per tool; brand accent override via `console/cli.Theme`
+- `ADR-0003` Output hints pipeline — Human vs machine split: progress/help → stderr, structured → stdout; `--format` flag
+- `ADR-0017` Bus topic + Qualifiers — `[Source].[Category].[Object].[Action]` naming + `Qualifiers` payload convention
+
+Consent / telemetry stack (added in the telemetry effort):
+
+- `ADR-0035` kit-telemetry — canonical wire contract; `Mode` tiers (off / anon / full); install_id derivation; redact-before-egress; batched HTTPS sink + on-disk spool
+- `ADR-0036` kit-consent — first-run prompt; env precedence (`DO_NOT_TRACK` > `KIT_TELEMETRY=…` > flag > persisted > prompt > non-TTY default)
+- `ADR-0037` ConsentingTelemetry as Factor #13 — opt-in 13th adopter factor; seven sub-conditions a binary must satisfy before it earns the right to emit a single event
+- `ADR-0038` cross-language wire parity — byte-identical envelopes verified by the harness at `sdk/tests/cross-lang/`
 
 ## Related pages
 
@@ -220,3 +244,6 @@ ones shape everything else:
 - [`cli-api-reference.md`](../../adopters/reference/cli-api-reference.md) — Go CLI factory
 - [`storage-abstractions.md`](../../adopters/concepts/storage-abstractions.md) — pick a storage layer
 - [`engine-security.md`](../../adopters/reference/engine-security.md) — identity, trust, threat model
+- [`telemetry.md`](../../adopters/guides/telemetry.md) — what kit telemetry collects, how to opt in/out (end users)
+- [`telemetry-compliance.md`](../../adopters/reference/telemetry-compliance.md) — F13 ConsentingTelemetry checklist (tool authors)
+- [`runtime/telemetry/README.md`](../../../go/runtime/telemetry/README.md) — wire-format + extension points (collaborators)
