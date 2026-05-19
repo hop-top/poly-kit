@@ -154,7 +154,16 @@ func New(opts ...Option) Bus {
 			// Best-effort connect; failures trigger reconnect loop.
 			_ = na.Connect(context.Background(), addr)
 		}
-		return &networkedBus{Bus: b, network: na}
+		b = &networkedBus{Bus: b, network: na}
+	}
+
+	// Env-driven sink switch (KIT_BUS_SINK / KIT_BUS_SINK_PATH). Applied
+	// last so the TeeBus wraps every other layer (memory/adapter,
+	// network) — sink Drains see the same events Publish accepted. Zero
+	// allocation in the common case: envSinksFromEnv returns nil when the
+	// env var is unset, so the TeeBus wrap is skipped entirely.
+	if sinks := envSinksFromEnv(); len(sinks) > 0 {
+		b = NewTeeBus(b, sinks, reporter)
 	}
 
 	return b

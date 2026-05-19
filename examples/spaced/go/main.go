@@ -35,9 +35,30 @@ func main() {
 		Accent:           "#FF5733",
 		Help:             cli.HelpConfig{Disclaimer: disclaimer},
 		MaxTopLevelVerbs: 12,
+		// Compose into kit's PersistentPreRunE chain — direct
+		// assignment to r.Cmd.PersistentPreRunE would silently
+		// overwrite the built-in chdir → identity → peer chain. The
+		// hook parses --telemetry and stamps a start time on ctx so
+		// PersistentPostRunE can compute duration_ms.
+		Hooks: cli.Hooks{PrePersistentRunE: installTelemetryPreRunHook},
 	}, cli.WithStatus(cli.StatusConfig{ExtraEnvKeys: []string{"SPACED_*"}}), cli.WithURI(spacedURIConfig()))
 
+	// --telemetry={off,anon,full} persistent flag. Parsed by
+	// installTelemetryPreRunHook and resolved per-invocation via
+	// telemetry.WithMode (precedence #1, beats env vars and SetMode).
+	root.Cmd.PersistentFlags().String("telemetry", "off", "kit-telemetry emit mode (off|anon|full)")
+
 	b := bus.New()
+
+	// Initialize kit-telemetry against the shared bus. Must run after
+	// bus.New so the emitter publishes onto the same bus the demo's
+	// other subscribers observe.
+	initTelemetry(b)
+
+	// Emit one telemetry.event.recorded at command exit. RunE errors
+	// don't reach here — root.Execute swallows them and returns to
+	// main; full exit-code capture is a follow-up (see ADR-0035).
+	root.Cmd.PersistentPostRunE = installTelemetryPostRun
 
 	// Log launch and daemon events.
 	b.SubscribeAsync("kit.spaced.launch.#", func(_ context.Context, e bus.Event) {
