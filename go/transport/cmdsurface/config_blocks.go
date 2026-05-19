@@ -158,7 +158,7 @@ type SinkConfig struct {
 //
 // Default disabled — adopters opt in by setting Enabled=true. When
 // absent from YAML the top-level Config.Telemetry field is nil; an
-// explicit `telemetry: {enabled: false}` materialises a non-nil block
+// explicit `telemetry: {enabled: false}` materializes a non-nil block
 // with Enabled=false. Downstream wiring (T-0677) distinguishes the
 // two: nil → never construct a sink; non-nil + !Enabled → construct
 // is skipped but the block round-trips for inspection.

@@ -437,7 +437,7 @@ func TestTelemetrySink_AnonNeverTripsSizeCap(t *testing.T) {
 // TestTelemetrySink_EmptyTraceIDOmittedFromJSON pins the omitempty wire
 // contract on InvocationEvent.TraceID: when inv.Meta.TraceID is empty,
 // the queued InvocationEvent MUST marshal without a "trace_id" key at
-// all (not "trace_id":""). Audit subscribers serialising the
+// all (not "trace_id":""). Audit subscribers serializing the
 // intermediate value rely on this to detect "no trace" vs. "empty trace".
 func TestTelemetrySink_EmptyTraceIDOmittedFromJSON(t *testing.T) {
 	ev := InvocationEvent{

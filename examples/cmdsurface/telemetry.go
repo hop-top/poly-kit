@@ -63,7 +63,7 @@ type telemetryResources struct {
 // Ordering: close the sink first (drains in-flight events through the
 // emitter) and then the bus (so the drain has a publish target until
 // the very last event lands). The Close context bounds the wait; the
-// caller passes a non-cancelled context to allow the drain to finish.
+// caller passes a non-canceled context to allow the drain to finish.
 func (r *telemetryResources) Close(ctx context.Context) {
 	if r == nil {
 		return

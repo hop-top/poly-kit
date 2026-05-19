@@ -26,7 +26,7 @@ import (
 // in telemetry.go. Unset / "" / "0" → telemetry stays off; "1" → the
 // example constructs an emitter, sink, and dedicated bus.Bus. The
 // default is "off" so `go run ./examples/cmdsurface` is identical to
-// pre-telemetry behaviour for anyone running the demo casually.
+// pre-telemetry behavior for anyone running the demo casually.
 const telemetryEnvVar = "CMDSURFACE_DEMO_TELEMETRY"
 
 // exampleApp bundles every wired component the example exposes so

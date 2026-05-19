@@ -1,14 +1,14 @@
 // Telemetry wiring for the spaced demo. Demonstrates the canonical
 // kit-telemetry adopter pattern (ADR-0035):
 //
-//   1. SetAppPrefix("spaced")  -> reads SPACED_TELEMETRY_MODE env var.
-//   2. SetMode(ModeOff)        -> documents the default explicitly.
-//   3. SetConsentHook(...)     -> consent-gated emit (default-deny).
-//   4. emitter via WithBus + WithTopicPrefix("spaced.telemetry.event").
-//   5. --telemetry={off,anon,full} persistent flag -> WithMode on ctx.
-//   6. PersistentPreRunE  records start time on ctx.
-//   7. PersistentPostRunE calls Emitter.Record with command path +
-//      exit code + duration.
+//  1. SetAppPrefix("spaced")  -> reads SPACED_TELEMETRY_MODE env var.
+//  2. SetMode(ModeOff)        -> documents the default explicitly.
+//  3. SetConsentHook(...)     -> consent-gated emit (default-deny).
+//  4. emitter via WithBus + WithTopicPrefix("spaced.telemetry.event").
+//  5. --telemetry={off,anon,full} persistent flag -> WithMode on ctx.
+//  6. PersistentPreRunE  records start time on ctx.
+//  7. PersistentPostRunE calls Emitter.Record with command path +
+//     exit code + duration.
 //
 // Kept distinct from spaced's own `telemetry` subcommand (which serves
 // mission telemetry streams — separate concern from kit runtime

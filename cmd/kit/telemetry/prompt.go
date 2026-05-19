@@ -114,9 +114,10 @@ func Prompt(ctx context.Context, store consent.Store) (consent.Decision, error) 
 // stdin (tests) or a different write target (future "preview"
 // command) construct their own promptDeps.
 //
-//nolint:gocyclo // the precedence chain is intentionally readable as
 // a flat switch ladder; collapsing branches into helpers obscures the
 // ordering that ADR-0036 §5 fixes.
+//
+//nolint:gocyclo // the precedence chain is intentionally readable as
 func promptInternal(ctx context.Context, store consent.Store, deps promptDeps) (consent.Decision, error) {
 	if err := ctx.Err(); err != nil {
 		return consent.Decision{}, err

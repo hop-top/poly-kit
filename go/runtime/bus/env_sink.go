@@ -7,7 +7,7 @@ import (
 )
 
 // EnvSinkKind selects an env-configured Sink to attach to bus.New().
-// Recognised values (case-insensitive):
+// Recognized values (case-insensitive):
 //
 //   - "jsonl" (with [EnvSinkPath] set) → [JSONLSink] writing JSONL to
 //     the file at [EnvSinkPath]. Append mode; the file is created if

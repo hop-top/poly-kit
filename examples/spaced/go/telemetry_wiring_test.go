@@ -7,7 +7,7 @@
 //
 // In-process by design: spaced's bus is per-process and there is no
 // env-driven sink redirection in the bus package today. T-0695 spec
-// (last bullet) explicitly authorises whatever in-test capture
+// (last bullet) explicitly authorizes whatever in-test capture
 // mechanism is cleanest, so we reuse the same wiring helpers main()
 // calls and subscribe synchronously on a memory bus.
 package main

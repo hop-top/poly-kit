@@ -16,7 +16,7 @@ func withFreshXDG(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", dir)
-	// Defence-in-depth: clear adjacent vars that adrg/xdg may consult
+	// Defense-in-depth: clear adjacent vars that adrg/xdg may consult
 	// for fallback resolution on some platforms.
 	t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "_data"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "_cache"))

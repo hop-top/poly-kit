@@ -228,7 +228,7 @@ func writeJSON(w io.Writer, s StatusOutput) error {
 
 // writeYAML emits StatusOutput as YAML. Uses yaml.v3 directly (no
 // custom node manipulation) — the payload is plain-data, so default
-// marshalling is correct and stable.
+// marshaling is correct and stable.
 func writeYAML(w io.Writer, s StatusOutput) error {
 	enc := yaml.NewEncoder(w)
 	enc.SetIndent(2)

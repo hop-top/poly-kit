@@ -18,7 +18,7 @@ import (
 const defaultTopicPrefix = "kit.telemetry.event"
 
 // recordedAction is the past-tense action suffix appended to the topic
-// prefix. Centralised so a future rename can't drift between Record and
+// prefix. Centralized so a future rename can't drift between Record and
 // tests.
 const recordedAction = "recorded"
 
@@ -202,7 +202,7 @@ func (e *Emitter) Record(ctx context.Context, ev Event) error {
 	}
 
 	// Step 3: stamp authoritative envelope fields. Callers fill the
-	// behaviour-bearing fields (CommandPath, ExitCode, DurationMS,
+	// behavior-bearing fields (CommandPath, ExitCode, DurationMS,
 	// Args/Flags, TraceID); everything that identifies the schema,
 	// install, or build is stamped here so producers cannot drift.
 	ev.SchemaVersion = SchemaVersion
@@ -238,7 +238,7 @@ func (e *Emitter) Record(ctx context.Context, ev Event) error {
 	// audit-side observation and returns a value-copy with rewritten
 	// Args/Flags.
 	//
-	// Runtime defence-in-depth: New() rejects Full-without-redactor at
+	// Runtime defense-in-depth: New() rejects Full-without-redactor at
 	// construction, but an adopter who flips mode per-context via
 	// WithMode(ctx, ModeFull) can reach this branch with e.redactor==nil
 	// (the New check saw Off/Anon at startup). Soft-refuse rather than
@@ -313,7 +313,7 @@ func modeString(m Mode) string {
 
 // joinCommandPath renders the command path for log messages without an
 // allocation when empty. Used only in the soft-refusal log line, so the
-// micro-cost is amortised against the slog call itself.
+// micro-cost is amortized against the slog call itself.
 func joinCommandPath(parts []string) string {
 	if len(parts) == 0 {
 		return ""

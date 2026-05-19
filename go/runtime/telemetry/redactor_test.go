@@ -132,9 +132,9 @@ func TestRedactEvent_DefensiveCopyOnArgsSlice(t *testing.T) {
 
 // countingObserver records every OnMatch call for inspection.
 type countingObserver struct {
-	mu     sync.Mutex
-	calls  int32
-	last   match
+	mu       sync.Mutex
+	calls    int32
+	last     match
 	allCalls []match
 }
 

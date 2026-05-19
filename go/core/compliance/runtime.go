@@ -61,7 +61,7 @@ func rtConsentingTelemetry(binaryPath string, spec *toolspecYAML) CheckResult {
 			fmt.Sprintf("create tmpdir for runtime check: %v", err),
 			"Verify the test environment has a writable temp directory")
 	}
-	defer os.RemoveAll(parent)
+	defer func() { _ = os.RemoveAll(parent) }()
 
 	envFactory := func() *rtEnv {
 		dir, err := os.MkdirTemp(parent, "scenario-*")

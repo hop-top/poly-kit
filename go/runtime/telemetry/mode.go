@@ -77,7 +77,7 @@ var envModeApplied atomic.Bool
 // string means no app override is configured.
 var appPrefix atomic.Value // string
 
-// envOnce serialises the one-shot env-var read inside CurrentMode so
+// envOnce serializes the one-shot env-var read inside CurrentMode so
 // concurrent first-callers establish a happens-before edge with the
 // goroutine that actually consults the env and stores the resolved
 // Mode. Without it, CAS-losers would race the CAS-winner's Store and

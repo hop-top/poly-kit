@@ -14,7 +14,7 @@ import (
 )
 
 // BuildOption configures BuildBridge. Tests pass no options to get
-// the historical zero-arg behaviour; the FaaS cmd/* binaries pass
+// the historical zero-arg behavior; the FaaS cmd/* binaries pass
 // WithTelemetrySink to fan invocation outcomes into kit-telemetry.
 type BuildOption func(*buildConfig)
 

@@ -32,9 +32,9 @@ func TestResolve_AppPrefixModeOff_Wins(t *testing.T) {
 	in := Inputs{
 		AppPrefix: "spaced",
 		Env: MapEnv(map[string]string{
-			"SPACED_TELEMETRY_MODE":  "off",
-			"KIT_TELEMETRY_CONSENT":  "granted", // would otherwise win step 5
-			"DO_NOT_TRACK":           "1",       // would otherwise win step 2
+			"SPACED_TELEMETRY_MODE": "off",
+			"KIT_TELEMETRY_CONSENT": "granted", // would otherwise win step 5
+			"DO_NOT_TRACK":          "1",       // would otherwise win step 2
 		}),
 		TelemetryFlag: boolPtr(true), // would otherwise win step 3
 	}

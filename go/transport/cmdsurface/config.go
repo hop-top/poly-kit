@@ -42,7 +42,7 @@ type Config struct {
 	// telemetry block resolves to enabled, so adopters can keep the
 	// emitter-bus dependency out of disabled paths.
 	//
-	// Marshalling tags are "-": functions cannot round-trip through
+	// Marshaling tags are "-": functions cannot round-trip through
 	// YAML / JSON. The provider must come from in-Go code, not config
 	// files.
 	TelemetryEmitterProvider func() (*telemetry.Emitter, error) `yaml:"-" json:"-"`

@@ -10,7 +10,7 @@
 //   - Non-blocking: Emit returns within ~1ms regardless of downstream
 //     pressure. Backpressure surfaces as dropped events (see Stats).
 //   - Mode-aware: Anon ships only bounded canonical fields. Full
-//     additionally ships post-redact Args/Flags and synthesises the
+//     additionally ships post-redact Args/Flags and synthesizes the
 //     surface name as Flags["_surface"] (telemetry.Event has no
 //     Surface column today; see design-note §3).
 //   - Consent-deaf: cmdsurface never consults consent. The emitter
@@ -38,7 +38,7 @@ const (
 	defaultTelemetryMaxBytes   = 8192
 )
 
-// InvocationEvent is the cmdsurface-flavoured intermediate value the
+// InvocationEvent is the cmdsurface-flavored intermediate value the
 // sink hands to its drain goroutine. It carries every canonical
 // telemetry.Event field plus a surface-only Surface stamp; see the
 // cmdsurf-telemetry design note §2 for full provenance.
@@ -58,7 +58,7 @@ type InvocationEvent struct {
 	// completion. -1 when RequestedAt was not stamped by the surface
 	// (sentinel per design-note §2).
 	DurationMS int64 `json:"duration_ms"`
-	// OccurredAt is the wall-clock time the cmdsurface materialised the
+	// OccurredAt is the wall-clock time the cmdsurface materialized the
 	// event. RFC 3339 with nanos (ADR-0035 §7).
 	OccurredAt time.Time `json:"occurred_at"`
 	// TraceID propagates inv.Meta.TraceID; omitempty so empty IDs
@@ -101,7 +101,7 @@ type TelemetryStats struct {
 	// channel was saturated.
 	DroppedFull int64
 	// DroppedOversize counts events the drain refused because the
-	// translated telemetry.Event JSON-marshalled larger than MaxBytes.
+	// translated telemetry.Event JSON-marshaled larger than MaxBytes.
 	DroppedOversize int64
 	// DroppedDenied counts events the emitter rejected with a non-nil
 	// error. The emitter soft-refuses (returns nil) for mode/consent
@@ -342,7 +342,7 @@ func (s *TelemetrySink) shipOne(ctx context.Context, ev InvocationEvent) {
 
 	// Surface workaround (design-note §3): Anon drops Surface entirely
 	// because telemetry.Event has no Surface column and Anon's promise
-	// is "no flags". Full synthesises Flags["_surface"] so adopters can
+	// is "no flags". Full synthesizes Flags["_surface"] so adopters can
 	// route on surface without scraping out-of-band fields.
 	if s.mode == telemetry.ModeFull {
 		if len(ev.Args) > 0 {

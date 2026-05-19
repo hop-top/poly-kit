@@ -281,7 +281,7 @@ func TestInspect_PostRedactInvariant(t *testing.T) {
 }
 
 // TestInspect_DefaultN10WhenFlagsZero documents the default-N
-// behaviour. With both --next and --last unset (n=0 at the runE
+// behavior. With both --next and --last unset (n=0 at the runE
 // boundary), inspect surfaces 10 events. We seed 15 and assert
 // exactly 10 are emitted.
 //

@@ -13,7 +13,7 @@ package cmdsurface_test
 // sink_telemetry.go shipOne), so per-context overrides like
 // telemetry.WithMode/WithConsentHook do NOT propagate from the test's
 // caller-side ctx. The integration tests therefore drive Anon/Full
-// behaviour via the process-global telemetry.SetMode + a permissive
+// behavior via the process-global telemetry.SetMode + a permissive
 // global ConsentHook, with t.Cleanup restoring both. Tests that need
 // global mode therefore CANNOT run in t.Parallel.
 
@@ -167,7 +167,7 @@ func buildBridgeWithTelemetry(
 // waitForEvents polls rec.Events() until it has at least n events or
 // the timeout elapses. The sink's drain runs on a goroutine; the bus
 // publish is synchronous from drain's POV, but the goroutine itself
-// is async, so a small polling loop is the cleanest synchronisation.
+// is async, so a small polling loop is the cleanest synchronization.
 // 200ms is generous: empirically <2ms under -race; CI may need more.
 func waitForEvents(t *testing.T, rec *busRecorder, n int, msg string) []bus.Event {
 	t.Helper()
@@ -483,7 +483,7 @@ func TestIntegration_TelemetrySink_NoStdoutStderrLeak(t *testing.T) {
 	rec := &busRecorder{}
 	busSink.Subscribe("kit.telemetry.event.recorded", rec.handler)
 
-	// Synthesise a Result with stdout + stderr text. The sink must
+	// Synthesize a Result with stdout + stderr text. The sink must
 	// never surface that text into the published Event — the
 	// telemetry.Event type has no stdout/stderr columns (ADR-0035 #6).
 	res := cmdsurface.Result{
@@ -515,7 +515,7 @@ func TestIntegration_TelemetrySink_NoStdoutStderrLeak(t *testing.T) {
 	}
 }
 
-// 8 — Full mode synthesises Flags["_surface"] ──────────────────────
+// 8 — Full mode synthesizes Flags["_surface"] ──────────────────────
 
 func TestIntegration_TelemetrySink_FullModeAddsSurfaceFlag(t *testing.T) {
 	installGlobalTelemetry(t, telemetry.ModeFull)
@@ -573,7 +573,7 @@ func TestIntegration_TelemetrySink_AnonModeStripsSurface(t *testing.T) {
 		t.Errorf("Anon Flags[_surface] present (=%q); must be absent", ev.Flags["_surface"])
 	}
 	// telemetry.Event has no top-level Surface column — verify by
-	// re-marshalling and confirming the string "surface" doesn't
+	// re-marshaling and confirming the string "surface" doesn't
 	// appear on the wire under any key.
 	blob, err := json.Marshal(ev)
 	if err != nil {

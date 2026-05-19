@@ -405,7 +405,7 @@ func TestBridge_Close_DrainsTelemetrySink(t *testing.T) {
 	sink := sinks[0].Sink.(*TelemetrySink)
 
 	// Emit a few events through the sink, then Close and confirm the
-	// drain has caught up. We don't assert on emitter behaviour (the
+	// drain has caught up. We don't assert on emitter behavior (the
 	// global telemetry mode in tests is Off → emitter soft-refuses);
 	// what we assert is the Close path returns nil and the drain
 	// goroutine has exited.

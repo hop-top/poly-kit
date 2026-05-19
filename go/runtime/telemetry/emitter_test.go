@@ -421,7 +421,7 @@ func TestRecord_InstallIDFailureSoftRefuse(t *testing.T) {
 }
 
 // TestRecord_FullModeWithNilRedactor_SoftRefuses covers the runtime
-// defence-in-depth check: New() guards Full-at-construction, but a
+// defense-in-depth check: New() guards Full-at-construction, but a
 // caller who flips mode per-context via WithMode(ctx, ModeFull) can
 // otherwise reach the redactor branch with a nil redactor. The emitter
 // must soft-refuse (warn + return nil + zero publishes) rather than
