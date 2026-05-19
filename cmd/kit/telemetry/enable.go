@@ -48,6 +48,10 @@ Refuses with a clear error when DO_NOT_TRACK=1 or *_TELEMETRY_MODE=off
 (app-prefixed or kit-prefixed) — the precedence chain would silently
 override the write, so we surface the conflict instead.`,
 		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			"kit/side-effect": "write-local",
+			"kit/idempotent":  "yes",
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runEnable(cmd.Context(), cmd.OutOrStdout(), cli.IsDryRun(cmd))
 		},

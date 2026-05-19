@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	kitinit "hop.top/kit/cmd/kit/init"
+	kittelemetry "hop.top/kit/cmd/kit/telemetry"
 	kittmpl "hop.top/kit/cmd/kit/template"
 	"hop.top/kit/go/console/cli"
 	breakercmd "hop.top/kit/go/console/cli/breaker"
@@ -41,6 +42,7 @@ var commandGroups = map[string]string{
 	"breaker":     "management",
 	"conformance": "management",
 	"scope":       "management",
+	"telemetry":   "management",
 	"toolspec":    "management",
 	"uxp":         "management",
 }
@@ -91,6 +93,7 @@ func main() {
 	root.Cmd.AddCommand(breakercmd.Cmd())
 	root.Cmd.AddCommand(conformancecmd.Cmd())
 	root.Cmd.AddCommand(configCmd())
+	root.Cmd.AddCommand(kittelemetry.Cmd())
 	root.Cmd.AddCommand(toolspecCmd(root))
 	root.Cmd.AddCommand(uxpcmd.Cmd())
 

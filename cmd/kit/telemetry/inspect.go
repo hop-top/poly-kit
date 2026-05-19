@@ -123,6 +123,10 @@ Format:
   an arbitrary JSON object whose schema depends on its Kind, which
   does not tabularize well. JSON consumers can parse line-by-line.`,
 		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			"kit/side-effect": "read",
+			"kit/idempotent":  "yes",
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			n := lastN
 			if nextN > 0 {

@@ -39,6 +39,10 @@ Disable is always allowed — env kill switches such as DO_NOT_TRACK=1
 already produce the same denied outcome, so writing a persistent
 denial on top of them is harmless and survives env changes.`,
 		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			"kit/side-effect": "write-local",
+			"kit/idempotent":  "yes",
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runDisable(cmd.Context(), cmd.OutOrStdout(), cli.IsDryRun(cmd))
 		},

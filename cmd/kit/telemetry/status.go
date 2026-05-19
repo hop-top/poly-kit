@@ -83,6 +83,10 @@ yaml | text). The JSON and YAML payloads are stable for scripted
 audits; the table format groups the data into Consent / Identity /
 Mode sections for terminal reading.`,
 		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			"kit/side-effect": "read",
+			"kit/idempotent":  "yes",
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runStatus(
 				cmd.Context(),

@@ -57,6 +57,12 @@ This is a destructive action. Pass --yes to skip the inline
 confirmation prompt. The kit-wide --confirm flag (yes|no|auto|prompt)
 also applies; both gates compose.`,
 		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			// Re-running rotates a NEW install_id each call, so not
+			// idempotent (each invocation mints a fresh anonymous
+			// identity, unlinkable from prior).
+			"kit/idempotent": "no",
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runReset(
 				cmd.Context(),
