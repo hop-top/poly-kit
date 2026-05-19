@@ -193,3 +193,59 @@ It now delegates to `default_registry.lookup(format).render(...)`
 internally. The `Format` Literal extends to include the new built-ins
 (`csv`, `text`) - non-breaking for adopters that typed against the
 narrower set.
+
+## Telemetry
+
+`hop_top_kit.telemetry` implements the SDK-side contract from
+[ADR-0038](../docs/adr/0038-sdk-telemetry-contract.md) and the
+cross-language event schema in
+[`hops/main/sdk/docs/telemetry-event-schema.md`](../docs/telemetry-event-schema.md).
+Default-denied: nothing is emitted unless the user has both opted in
+(consent file) AND set a non-off `KIT_TELEMETRY_MODE`.
+
+### What's collected
+
+In the default `anon` mode the envelope carries:
+
+- `schema_version`, `sdk_lang` (`py`), `sdk_version`, `mode`
+- `installation_id` (anonymised, rotatable — see `kit telemetry inspect`)
+- `occurred_at` (RFC 3339 UTC)
+- `event` name + caller-supplied `attrs` dict (best-effort redacted)
+
+Never collected by default: command arguments, filesystem paths, env, or
+caller identity. The opinionated redactor scrubs emails, IPv4/IPv6,
+common token prefixes (`sk-`, `gh{p,o,u,s,r}_`, `xoxb-`), and rewrites
+`$HOME` paths.
+
+### Opt in
+
+```python
+from hop_top_kit.telemetry import Client
+
+c = Client()              # JSONL sink at ~/.kit-telemetry.jsonl
+c.record("my_event", {"k": 1})
+c.shutdown()
+```
+
+For a remote NDJSON collector, install the optional dep and set
+`KIT_TELEMETRY_ENDPOINT`:
+
+```bash
+pip install 'hop-top-kit[telemetry-https]'
+export KIT_TELEMETRY_ENDPOINT=https://collector.example.com/v1
+export KIT_TELEMETRY_SINK=https
+```
+
+### Opt out
+
+- Env: `KIT_TELEMETRY_MODE=off` (highest precedence)
+- CLI: `kit telemetry disable` (Go-side; writes the consent file)
+- Inspect: `kit telemetry inspect` shows resolved mode + consent + path
+
+### Cross-language note
+
+The Go-side `core/telemetry/event.go` struct carries `CommandPath` because
+its consumers are all Cobra commands. The SDK envelope swaps that for a
+free-form `event` name + `attrs` dict so non-CLI adopters can use it too.
+This is a documented divergence; consumers that need command-path
+semantics should pass `"command_path"` inside `attrs`.

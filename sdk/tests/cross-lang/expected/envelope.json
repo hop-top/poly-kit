@@ -1,0 +1,19 @@
+{
+  "schema_version": "1",
+  "mode": "full",
+  "installation_id": "fee4349a190ef12863fc999eeb82d4eb21e3d19109d10fb2e574af61362a1c7f",
+  "event": "test.deterministic.fixture",
+  "attrs": {
+    "user_email": "<redacted:email>",
+    "server_ip": "<redacted:ipv4>",
+    "api_key": "<redacted:token>",
+    "github_token": "<redacted:token>",
+    "home_path": "$HOME/project/data.json",
+    "ipv6_addr": "<redacted:ipv6>",
+    "harmless_int": 42,
+    "harmless_bool": true,
+    "nested": {
+      "another_email": "<redacted:email>"
+    }
+  }
+}

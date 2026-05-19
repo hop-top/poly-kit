@@ -9,15 +9,34 @@ description = "Cross-language CLI UX parity toolkit"
 default = []
 api = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio"]
 uri = ["dep:hop-top-uri"]
+telemetry = [
+    "dep:tokio",
+    "dep:reqwest",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:serde_yaml",
+    "dep:sha2",
+    "dep:getrandom",
+    "dep:dirs",
+    "dep:regex",
+    "dep:thiserror",
+]
 
 [dependencies]
 hop-top-uri = { version = "0.2.0-alpha.0", optional = true }
 reqwest = { version = "0.12", features = ["json"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
+serde_yaml = { version = "0.9", optional = true }
+sha2 = { version = "0.10", optional = true }
+getrandom = { version = "0.2", optional = true }
+dirs = { version = "5", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
+regex = { version = "1", optional = true }
+thiserror = { version = "1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 mockito = "1"
 serde = { version = "1", features = ["derive"] }
+tempfile = "3"

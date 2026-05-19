@@ -1,0 +1,10 @@
+[package]
+name = "kit-telemetry-cross-lang-rs"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+hop-top-kit = { path = "../../../../experimental/rs", features = ["telemetry"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
