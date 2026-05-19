@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -421,6 +422,7 @@ func handleInvoke(
 	// directly so callers cannot spoof Meta.Surface through the frame.
 	inv.Path = append([]string(nil), leaf.Path...)
 	inv.Meta.Surface = SurfaceWS
+	inv.Meta.RequestedAt = time.Now()
 
 	invCtx, cancel := context.WithCancel(parent)
 	if !wc.registerCancel(f.ID, cancel) {

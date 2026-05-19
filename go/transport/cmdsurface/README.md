@@ -470,6 +470,129 @@ Built-in implementations:
 - `WebhookSink` — POST `{invocation, result, error}` envelope to a URL,
   with optional HMAC signing via `Sign func(body) (header, value)`.
 - `BusSink` — publish the same envelope via an `api.EventPublisher`.
+- `TelemetrySink` — fan-out into the kit-telemetry pipeline. See the
+  "Telemetry sink" section below.
+
+## Telemetry sink
+
+The telemetry sink fans every cmdsurface invocation completion into the
+kit-telemetry pipeline so operators can observe what their binary is
+doing without each adopter rebuilding identity, redaction, consent, and
+transport. It is the first (and currently the only) sink type that
+`FromConfig` constructs on the bridge's behalf; the other sinks remain
+adopter-wired via the `sinkRunner` pattern documented above. The
+telemetry sink is the exception because the kit-telemetry pipeline owns
+contracts (identity, redaction, mode, consent) that should not be
+re-implemented per command.
+
+### Default disabled
+
+`Config.Telemetry` is `nil` by default. Adopters opt in by setting
+`Telemetry.Enabled = true` (in YAML or in Go) and supplying a
+`TelemetryEmitterProvider`. With the block absent the bridge constructs
+nothing telemetry-related — no goroutines, no consent checks, no extra
+bus subscribers. A non-nil block with `Enabled = false` round-trips
+through config inspection but is otherwise inert.
+
+### Anon vs Full
+
+`Mode: "anon"` (the default when enabled) ships only the canonical
+bounded fields — `command_path`, `exit_code`, `duration_ms`,
+`occurred_at`, `kit_version`, and an optional `trace_id`. Args and
+flags are dropped before the event is queued, so there is no path by
+which a user-supplied value can reach the wire. Anon is the right tier
+for fleet health, error rates, and version tracking; it is the safe
+default for telemetry returned to the kit operator.
+
+`Mode: "full"` additionally ships the post-redact `args` and `flags`
+plus a synthetic `flags["_surface"]` stamp (kit-telemetry's canonical
+`Event` has no `surface` column, so the sink folds the originating
+surface into `flags` rather than dropping it). Every value passes
+through `telemetry.MustLoadRedactor()` inside the emitter before
+publish. Full is the right tier when the adopter needs to slice on
+flag values during incident response, with the trade-off that the
+redactor (not the cmdsurface sink) is now the only thing between user
+input and the wire.
+
+### Size cap
+
+`MaxBytes` (default `8192`) is the per-event ceiling applied after
+translation and after redaction. The sink marshals the
+`telemetry.Event` once — that JSON is the same payload the bus codec
+will produce — and drops oversize events whole rather than truncating
+them. Truncation could leak the prefix of a redacted token straddling
+the cut point; whole-event drop is observable via
+`Stats().DroppedOversize`.
+
+### Trace correlation
+
+`Invocation.Meta.TraceID` propagates verbatim into
+`telemetry.Event.TraceID` (`omitempty`, so an unset trace ID disappears
+from the wire). Surfaces that already populate `Meta.TraceID` (RPC
+interceptors, REST middleware, signed-URL token claims) light up
+trace-joined telemetry with no extra wiring. Adopters who want OTel
+spans on top of cmdsurface invocations stamp the trace ID once in
+their surface auth middleware; the sink does the rest.
+
+### Non-blocking guarantee
+
+`Sink.Emit` returns within ~1ms regardless of downstream pressure.
+Internally the sink hands the event to a single buffered channel
+(`ChannelCap` defaults to `256`) and a single drain goroutine ships
+them in order to the emitter. A saturated channel surfaces as
+`Stats().DroppedFull`; an emitter error (bus publish failure,
+validator rejection that escapes the soft-refuse path) surfaces as
+`Stats().DroppedDenied`. The producer's hot path never sees telemetry
+backpressure — by design.
+
+### Opt-in example
+
+```go
+cfg := cmdsurface.Config{
+    // ... existing surfaces / commands / sinks ...
+    Telemetry: &cmdsurface.TelemetryConfig{
+        Enabled:    true,
+        Mode:       "anon",
+        ChannelCap: 256,
+        MaxBytes:   8192,
+    },
+    TelemetryEmitterProvider: func() (*telemetry.Emitter, error) {
+        // Adopters wire bus + redactor + topic prefix here.
+        return telemetry.New(
+            telemetry.WithBus(myBus),
+            telemetry.WithTopicPrefix("myapp.telemetry.event"),
+            telemetry.WithKitVersion(buildVersion),
+        )
+    },
+}
+bridge, err := cmdsurface.FromConfig(rootCmd, cfg)
+if err != nil { /* ... */ }
+defer bridge.Close(ctx) // flushes the drain goroutine
+```
+
+The provider is a factory (not a `*telemetry.Emitter` directly) so the
+emitter and its bus are only built when the block resolves to enabled.
+`Bridge.Close(ctx)` drains in-flight events through the emitter within
+`ctx`'s deadline; adopters running long-lived servers should call it
+during graceful shutdown.
+
+### Verifying captured events
+
+`kit telemetry inspect` reads spooled events post-redaction; use it to
+confirm what is actually leaving the binary on a given machine before
+shipping a config change. The same subcommand family
+(`kit telemetry status | enable | disable | reset | inspect`) drives the
+user-facing consent UX — see the adopter guide cross-link below.
+
+### Cross-references
+
+- kit-telemetry package: `hops/main/go/runtime/telemetry/README.md`
+- Adopter consent flow + `kit telemetry` subcommands:
+  `hops/main/docs/adopters/guides/telemetry.md`
+- Design note (Anon/Full allow-list, size cap rationale, trace
+  population status): `.tlc/tracks/cmdsurf-telemetry/design-note.md`
+- Working wiring example:
+  `hops/main/examples/cmdsurface/telemetry.go`
 
 ## Safety matrix
 

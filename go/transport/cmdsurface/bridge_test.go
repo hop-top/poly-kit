@@ -5,8 +5,12 @@ import (
 	"errors"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/runtime/bus"
+	"hop.top/kit/go/runtime/telemetry"
 )
 
 // newBridgeTree builds a small tree with a mix of safe and
@@ -244,6 +248,193 @@ func (f *fakeRunner) Run(ctx context.Context, inv Invocation) (Result, error) {
 
 func (f *fakeRunner) Stream(context.Context, Invocation, chan<- Event) error {
 	return errors.New("fake stream")
+}
+
+// newTestEmitter returns a real *telemetry.Emitter wired to an
+// in-process bus. Cheap enough to use unconditionally in
+// FromConfig telemetry tests; avoids exposing TelemetrySink
+// internals just to assert the wiring.
+func newTestEmitter(t *testing.T) *telemetry.Emitter {
+	t.Helper()
+	em, err := telemetry.New(telemetry.WithBus(bus.New()))
+	if err != nil {
+		t.Fatalf("telemetry.New: %v", err)
+	}
+	return em
+}
+
+func TestFromConfig_TelemetryEnabled_ConstructsSink(t *testing.T) {
+	calls := 0
+	cfg := Config{
+		Telemetry: &TelemetryConfig{Enabled: true},
+		TelemetryEmitterProvider: func() (*telemetry.Emitter, error) {
+			calls++
+			return newTestEmitter(t), nil
+		},
+	}
+	b, err := FromConfig(newBridgeTree(), cfg)
+	if err != nil {
+		t.Fatalf("FromConfig: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("emitter provider calls=%d want=1", calls)
+	}
+	sinks := b.Sinks()
+	if len(sinks) != 1 {
+		t.Fatalf("Sinks len=%d want=1", len(sinks))
+	}
+	spec := sinks[0]
+	if _, ok := spec.Sink.(*TelemetrySink); !ok {
+		t.Fatalf("Sinks[0].Sink type=%T want=*TelemetrySink", spec.Sink)
+	}
+	if !spec.OnOK || !spec.OnError {
+		t.Errorf("Sinks[0] OnOK=%v OnError=%v want both true", spec.OnOK, spec.OnError)
+	}
+	if len(spec.Surfaces) != 0 || len(spec.Paths) != 0 {
+		t.Errorf("Sinks[0] expected unfiltered, got Surfaces=%v Paths=%v",
+			spec.Surfaces, spec.Paths)
+	}
+	// Cleanup the drain goroutine.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := b.Close(ctx); err != nil {
+		t.Errorf("Close: %v", err)
+	}
+}
+
+func TestFromConfig_TelemetryDisabled_NoSink(t *testing.T) {
+	cfg := Config{
+		Telemetry: &TelemetryConfig{Enabled: false},
+		// Provider deliberately set: should be ignored when Enabled=false.
+		TelemetryEmitterProvider: func() (*telemetry.Emitter, error) {
+			t.Fatalf("provider should not be invoked when Telemetry.Enabled=false")
+			return nil, nil
+		},
+	}
+	b, err := FromConfig(newBridgeTree(), cfg)
+	if err != nil {
+		t.Fatalf("FromConfig: %v", err)
+	}
+	if got := len(b.Sinks()); got != 0 {
+		t.Errorf("Sinks len=%d want=0", got)
+	}
+}
+
+func TestFromConfig_TelemetryAbsent_NoSink(t *testing.T) {
+	b, err := FromConfig(newBridgeTree(), Config{})
+	if err != nil {
+		t.Fatalf("FromConfig: %v", err)
+	}
+	if got := len(b.Sinks()); got != 0 {
+		t.Errorf("Sinks len=%d want=0", got)
+	}
+}
+
+func TestFromConfig_TelemetryEnabledNoProvider_Errors(t *testing.T) {
+	cfg := Config{
+		Telemetry: &TelemetryConfig{Enabled: true},
+		// No TelemetryEmitterProvider: must fail loud.
+	}
+	if _, err := FromConfig(newBridgeTree(), cfg); err == nil {
+		t.Fatalf("FromConfig should error when Telemetry.Enabled and no provider")
+	}
+}
+
+func TestFromConfig_TelemetryEmitterProvider_FailureBubbles(t *testing.T) {
+	want := errors.New("synthetic emitter failure")
+	cfg := Config{
+		Telemetry: &TelemetryConfig{Enabled: true},
+		TelemetryEmitterProvider: func() (*telemetry.Emitter, error) {
+			return nil, want
+		},
+	}
+	_, err := FromConfig(newBridgeTree(), cfg)
+	if err == nil {
+		t.Fatalf("FromConfig should propagate provider error")
+	}
+	if !errors.Is(err, want) {
+		t.Errorf("err=%v should wrap provider error %v", err, want)
+	}
+}
+
+func TestFromConfig_TelemetryDefaults_Applied(t *testing.T) {
+	// Zero ChannelCap / MaxBytes / Mode: ApplyDefaults must populate
+	// them before NewTelemetrySink is built. We can't peek inside the
+	// sink, so assert via TelemetryConfig.ApplyDefaults having mutated
+	// the block after FromConfig.
+	tc := &TelemetryConfig{Enabled: true}
+	cfg := Config{
+		Telemetry: tc,
+		TelemetryEmitterProvider: func() (*telemetry.Emitter, error) {
+			return newTestEmitter(t), nil
+		},
+	}
+	b, err := FromConfig(newBridgeTree(), cfg)
+	if err != nil {
+		t.Fatalf("FromConfig: %v", err)
+	}
+	if tc.Mode != "anon" {
+		t.Errorf("Mode=%q want=anon", tc.Mode)
+	}
+	if tc.ChannelCap != defaultTelemetryChannelCap {
+		t.Errorf("ChannelCap=%d want=%d", tc.ChannelCap, defaultTelemetryChannelCap)
+	}
+	if tc.MaxBytes != defaultTelemetryMaxBytes {
+		t.Errorf("MaxBytes=%d want=%d", tc.MaxBytes, defaultTelemetryMaxBytes)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = b.Close(ctx)
+}
+
+func TestBridge_Close_DrainsTelemetrySink(t *testing.T) {
+	cfg := Config{
+		Telemetry: &TelemetryConfig{Enabled: true},
+		TelemetryEmitterProvider: func() (*telemetry.Emitter, error) {
+			return newTestEmitter(t), nil
+		},
+	}
+	b, err := FromConfig(newBridgeTree(), cfg)
+	if err != nil {
+		t.Fatalf("FromConfig: %v", err)
+	}
+	sinks := b.Sinks()
+	if len(sinks) != 1 {
+		t.Fatalf("Sinks len=%d want=1", len(sinks))
+	}
+	sink := sinks[0].Sink.(*TelemetrySink)
+
+	// Emit a few events through the sink, then Close and confirm the
+	// drain has caught up. We don't assert on emitter behaviour (the
+	// global telemetry mode in tests is Off → emitter soft-refuses);
+	// what we assert is the Close path returns nil and the drain
+	// goroutine has exited.
+	const want = 3
+	for range want {
+		err := sink.Emit(context.Background(), Invocation{
+			Path: []string{"ping"},
+			Meta: Meta{Surface: SurfaceLib, RequestedAt: time.Now()},
+		}, Result{}, nil)
+		if err != nil {
+			t.Fatalf("sink.Emit: %v", err)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := b.Close(ctx); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	stats := sink.Stats()
+	// In ModeOff (test default) every event is Emitted (soft-refused
+	// inside emitter.Record returns nil). DroppedFull must be zero —
+	// channel cap is 256, we wrote 3.
+	if stats.Emitted != want {
+		t.Errorf("Stats().Emitted=%d want=%d (Stats=%+v)", stats.Emitted, want, stats)
+	}
+	if stats.DroppedFull != 0 {
+		t.Errorf("Stats().DroppedFull=%d want=0 (Stats=%+v)", stats.DroppedFull, stats)
+	}
 }
 
 func leafKeys(ls []*Leaf) []string {

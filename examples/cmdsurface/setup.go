@@ -11,6 +11,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -20,6 +21,13 @@ import (
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/rpc"
 )
+
+// telemetryEnvVar gates the optional kit-telemetry wiring described
+// in telemetry.go. Unset / "" / "0" → telemetry stays off; "1" → the
+// example constructs an emitter, sink, and dedicated bus.Bus. The
+// default is "off" so `go run ./examples/cmdsurface` is identical to
+// pre-telemetry behaviour for anyone running the demo casually.
+const telemetryEnvVar = "CMDSURFACE_DEMO_TELEMETRY"
 
 // exampleApp bundles every wired component the example exposes so
 // the e2e suite can drive each surface against the same instance.
@@ -57,7 +65,13 @@ type exampleApp struct {
 	OAuthState    cmdsurface.StateStore
 	SignedIssuer  *cmdsurface.SignedIssuer
 	SignedNonce   cmdsurface.NonceStore
-	Cleanup       func()
+	// Telemetry carries the optional kit-telemetry pipeline when
+	// CMDSURFACE_DEMO_TELEMETRY=1. Nil when telemetry is disabled or
+	// construction failed soft. Tests that want to inspect the
+	// TelemetrySink (Stats counters, channel state) read it via this
+	// field.
+	Telemetry *telemetryResources
+	Cleanup   func()
 }
 
 // exampleConfig captures the test-toggleable options BuildExample
@@ -112,7 +126,18 @@ func BuildExample(ctx context.Context, logger *slog.Logger, opts ...ExampleOptio
 	}
 
 	root := buildCobraTree()
-	bridge, sinkBuf := buildBridge(root, logger, cfg)
+
+	// Telemetry wiring is gated on CMDSURFACE_DEMO_TELEMETRY=1 (see
+	// telemetry.go). The bridge sink chain pulls the optional
+	// TelemetrySink in at construction time so every Result fans out
+	// to telemetry alongside the existing LogSink + FileSink.
+	telemetryEnabled := os.Getenv(telemetryEnvVar) == "1"
+	telRes, err := maybeBuildTelemetry(logger, telemetryEnabled)
+	if err != nil {
+		return nil, fmt.Errorf("maybeBuildTelemetry: %w", err)
+	}
+
+	bridge, sinkBuf := buildBridge(root, logger, cfg, telRes)
 
 	router, err := buildRouter(ctx, bridge)
 	if err != nil {
@@ -235,6 +260,16 @@ func BuildExample(ctx context.Context, logger *slog.Logger, opts ...ExampleOptio
 		cleanupOnce.Do(func() {
 			cronCleanup()
 			busCleanup()
+			// Telemetry cleanup runs last so any sink in flight on
+			// the cron / bus surfaces has its events drained through
+			// the emitter before we close the underlying bus.Bus.
+			// A short bounded context keeps shutdown timely if the
+			// emitter is wedged.
+			if telRes != nil {
+				closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				telRes.Close(closeCtx)
+				cancel()
+			}
 		})
 	}
 
@@ -251,6 +286,7 @@ func BuildExample(ctx context.Context, logger *slog.Logger, opts ...ExampleOptio
 		OAuthState:    stateStore,
 		SignedIssuer:  issuer,
 		SignedNonce:   nonceStore,
+		Telemetry:     telRes,
 		Cleanup:       cleanup,
 	}, nil
 }
@@ -323,7 +359,12 @@ func buildRPC(b *cmdsurface.Bridge, logger *slog.Logger) (*rpc.Server, error) {
 //
 // The buffer is returned so tests can assert that the sink pipeline
 // fired without racing the slog handler's stderr write.
-func buildBridge(root *cobra.Command, logger *slog.Logger, cfg exampleConfig) (*cmdsurface.Bridge, *bytes.Buffer) {
+//
+// telRes is non-nil when CMDSURFACE_DEMO_TELEMETRY=1 and the telemetry
+// emitter constructed cleanly (see telemetry.go). When non-nil, its
+// TelemetrySink is appended to the SinkSet so every Result also fans
+// into the kit-telemetry pipeline.
+func buildBridge(root *cobra.Command, logger *slog.Logger, cfg exampleConfig, telRes *telemetryResources) (*cmdsurface.Bridge, *bytes.Buffer) {
 	allowDestructive := []cmdsurface.Surface{
 		cmdsurface.SurfaceCLI,
 		cmdsurface.SurfaceLib,
@@ -354,6 +395,17 @@ func buildBridge(root *cobra.Command, logger *slog.Logger, cfg exampleConfig) (*
 	sinks := cmdsurface.SinkSet{
 		{Sink: &cmdsurface.LogSink{Handler: logger.Handler()}, OnError: true, OnOK: true},
 		{Sink: &cmdsurface.FileSink{W: sinkBuf}, OnError: true, OnOK: true},
+	}
+	// Optional telemetry sink. Added last so a problem in telemetry
+	// (e.g. dropped events under backpressure) can't shadow the
+	// audit-of-record sinks above. The sink itself is non-blocking by
+	// contract (see go/transport/cmdsurface/sink_telemetry.go).
+	if telRes != nil && telRes.Sink != nil {
+		sinks = append(sinks, cmdsurface.SinkSpec{
+			Sink:    telRes.Sink,
+			OnError: true,
+			OnOK:    true,
+		})
 	}
 	inner := cmdsurface.InProcessRunner(root)
 	runner := newSinkRunner(inner, sinks, logger)

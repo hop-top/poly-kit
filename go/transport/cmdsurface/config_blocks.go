@@ -150,3 +150,76 @@ type SinkConfig struct {
 	// FileSink fields.
 	Path string `yaml:"path,omitempty"`
 }
+
+// TelemetryConfig is the top-level "telemetry:" block. It configures
+// the TelemetrySink that emits each cmdsurface invocation completion
+// to the kit-telemetry pipeline (see sink_telemetry.go and the
+// cmdsurf-telemetry track design note §1).
+//
+// Default disabled — adopters opt in by setting Enabled=true. When
+// absent from YAML the top-level Config.Telemetry field is nil; an
+// explicit `telemetry: {enabled: false}` materialises a non-nil block
+// with Enabled=false. Downstream wiring (T-0677) distinguishes the
+// two: nil → never construct a sink; non-nil + !Enabled → construct
+// is skipped but the block round-trips for inspection.
+//
+// Field mirror: the With* options on TelemetrySink (WithChannelCap,
+// WithMaxBytes, WithMode, WithKitVersion) drive these knobs at the Go
+// API; this struct is the YAML-loadable counterpart. T-0677 reads
+// fields here and translates to the corresponding TelemetryOption
+// values when building the sink.
+//
+//	telemetry:
+//	  enabled:     true
+//	  mode:        anon      # off | anon | full; defaults to anon when Enabled
+//	  channel_cap: 256       # buffered channel capacity (default 256)
+//	  max_bytes:   8192      # per-event size cap, post-translation (default 8192)
+//	  kit_version: "1.2.3"   # optional; forwarded to telemetry.Event.KitVersion
+type TelemetryConfig struct {
+	// Enabled gates sink construction. Default disabled (false). The
+	// downstream bridge wiring reads cfg.Telemetry != nil &&
+	// cfg.Telemetry.Enabled to decide whether to build the sink.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// Mode is the telemetry tier: "off", "anon", or "full". Empty
+	// defaults to "anon" when Enabled (applied by ApplyDefaults).
+	Mode string `yaml:"mode,omitempty" json:"mode,omitempty"`
+	// ChannelCap is the buffered channel capacity. Zero defaults to
+	// 256 when Enabled (applied by ApplyDefaults). See design-note §5
+	// for sizing rationale; tunable but does not auto-grow.
+	ChannelCap int `yaml:"channel_cap,omitempty" json:"channel_cap,omitempty"`
+	// MaxBytes is the per-event JSON size cap applied after
+	// translation. Zero defaults to 8192 when Enabled (applied by
+	// ApplyDefaults). See design-note §4 for sizing rationale.
+	MaxBytes int `yaml:"max_bytes,omitempty" json:"max_bytes,omitempty"`
+	// KitVersion is the build version forwarded verbatim to
+	// telemetry.Event.KitVersion. Optional; adopters typically inject
+	// this from a linker flag.
+	KitVersion string `yaml:"kit_version,omitempty" json:"kit_version,omitempty"`
+}
+
+// ApplyDefaults fills zero-valued fields with their conventional
+// defaults when the block is enabled. No-op when Enabled is false:
+// disabled blocks have no sink to default for, and leaving fields at
+// zero keeps the round-trip lossless for adopters who toggle Enabled
+// at runtime.
+//
+// Idempotent: calling ApplyDefaults twice yields the same result as
+// calling it once. Explicit non-zero values are preserved verbatim.
+//
+// Callers MUST invoke ApplyDefaults after Load and before building a
+// TelemetrySink from this block. The cmdsurf-telemetry T-0677 bridge
+// fan-out wiring is the canonical caller.
+func (c *TelemetryConfig) ApplyDefaults() {
+	if c == nil || !c.Enabled {
+		return
+	}
+	if c.Mode == "" {
+		c.Mode = "anon"
+	}
+	if c.ChannelCap == 0 {
+		c.ChannelCap = defaultTelemetryChannelCap
+	}
+	if c.MaxBytes == 0 {
+		c.MaxBytes = defaultTelemetryMaxBytes
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"hop.top/kit/go/transport/api"
 )
@@ -130,6 +131,7 @@ func newLeafHandler(b *Bridge, leaf *Leaf) http.HandlerFunc {
 		// The leaf path is authoritative; ignore any client-supplied path.
 		inv.Path = append([]string(nil), leaf.Path...)
 		inv.Meta.Surface = SurfaceREST
+		inv.Meta.RequestedAt = time.Now()
 
 		res, err := b.Invoke(r.Context(), inv)
 		if err != nil {

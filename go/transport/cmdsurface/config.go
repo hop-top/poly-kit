@@ -1,12 +1,15 @@
 package cmdsurface
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"hop.top/kit/go/runtime/telemetry"
 )
 
 // Config is the YAML-loadable shape that drives a Bridge. The
@@ -18,6 +21,31 @@ import (
 type Config struct {
 	Surfaces SurfacesConfig `yaml:"surfaces"`
 	Policy   PolicyConfig   `yaml:"policy"`
+	// Telemetry is the optional kit-telemetry sink configuration.
+	// Pointer type so absence (nil) is distinguishable from a
+	// zero-valued enabled-false block. The bridge wiring (T-0677)
+	// reads cfg.Telemetry != nil && cfg.Telemetry.Enabled to decide
+	// whether to construct the TelemetrySink. See TelemetryConfig
+	// godoc and the cmdsurf-telemetry track design note.
+	Telemetry *TelemetryConfig `yaml:"telemetry,omitempty" json:"telemetry,omitempty"`
+
+	// TelemetryEmitterProvider is invoked by FromConfig when
+	// Telemetry.Enabled is true. Required when Telemetry.Enabled;
+	// ignored otherwise. The returned emitter is owned by the bridge
+	// (passed verbatim into the TelemetrySink via WithEmitter); the
+	// bridge will Close the sink — not the emitter — on Bridge.Close.
+	//
+	// Adopters typically construct the emitter via telemetry.New(...)
+	// with their own bus, redactor, and topic prefix. The provider
+	// shape (factory func instead of *telemetry.Emitter directly)
+	// keeps construction lazy: the emitter is only built when the
+	// telemetry block resolves to enabled, so adopters can keep the
+	// emitter-bus dependency out of disabled paths.
+	//
+	// Marshalling tags are "-": functions cannot round-trip through
+	// YAML / JSON. The provider must come from in-Go code, not config
+	// files.
+	TelemetryEmitterProvider func() (*telemetry.Emitter, error) `yaml:"-" json:"-"`
 }
 
 // SurfacesConfig is the surfaces: block. Defaults is the
@@ -130,6 +158,43 @@ func FromConfig(root *cobra.Command, cfg Config, opts ...Option) (*Bridge, error
 			return nil, fmt.Errorf("cmdsurface: config %q: %w", pattern, err)
 		}
 		b.applyCommandConfig(pattern, cc.Enabled)
+	}
+
+	// Telemetry sink wiring (T-0677). The kit-telemetry sink is the
+	// first sink that FromConfig constructs on the bridge's behalf —
+	// other sinks (bus/file/webhook/log) remain adopter-wired via the
+	// sinkRunner pattern documented in README.md. Telemetry is the
+	// exception because the kit-telemetry pipeline owns identity,
+	// redaction, and consent, and adopters should not have to
+	// re-implement that wiring per command.
+	if cfg.Telemetry != nil && cfg.Telemetry.Enabled {
+		cfg.Telemetry.ApplyDefaults()
+		if cfg.TelemetryEmitterProvider == nil {
+			return nil, errors.New(
+				"cmdsurface: telemetry sink enabled in config but " +
+					"TelemetryEmitterProvider not set on cmdsurface.Config",
+			)
+		}
+		emitter, err := cfg.TelemetryEmitterProvider()
+		if err != nil {
+			return nil, fmt.Errorf("cmdsurface: telemetry emitter provider: %w", err)
+		}
+		mode, _ := telemetry.ParseMode(cfg.Telemetry.Mode)
+		sink, err := NewTelemetrySink(
+			WithEmitter(emitter),
+			WithMode(mode),
+			WithChannelCap(cfg.Telemetry.ChannelCap),
+			WithMaxBytes(cfg.Telemetry.MaxBytes),
+			WithKitVersion(cfg.Telemetry.KitVersion),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("cmdsurface: telemetry sink: %w", err)
+		}
+		b.appendSink(SinkSpec{
+			Sink:    sink,
+			OnOK:    true,
+			OnError: true,
+		})
 	}
 	return b, nil
 }

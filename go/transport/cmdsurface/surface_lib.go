@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // The Library surface is the in-process Go API. It is the simplest
@@ -170,10 +171,11 @@ func buildLibInvocation(b *Bridge, argv []string, opts []InvokeOption) (Invocati
 		Args:  args,
 		Flags: builder.flags,
 		Meta: Meta{
-			Surface: SurfaceLib,
-			Caller:  builder.caller,
-			TraceID: builder.trace,
-			Extra:   builder.extra,
+			Surface:     SurfaceLib,
+			Caller:      builder.caller,
+			TraceID:     builder.trace,
+			Extra:       builder.extra,
+			RequestedAt: time.Now(),
 		},
 	}
 	return inv, nil

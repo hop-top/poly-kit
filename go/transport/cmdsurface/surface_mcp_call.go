@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 )
 
 // callParams is the params shape for tools/call.
@@ -53,7 +54,7 @@ func (h *mcpHandler) handleToolsCall(w http.ResponseWriter, req *http.Request, r
 	inv := Invocation{
 		Path:  append([]string(nil), leaf.Path...),
 		Flags: p.Arguments,
-		Meta:  Meta{Surface: SurfaceMCP},
+		Meta:  Meta{Surface: SurfaceMCP, RequestedAt: time.Now()},
 	}
 
 	res, err := h.b.Invoke(req.Context(), inv)

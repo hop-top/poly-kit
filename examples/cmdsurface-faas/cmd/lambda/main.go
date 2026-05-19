@@ -25,6 +25,7 @@ package main
 
 import (
 	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -33,10 +34,29 @@ import (
 	"hop.top/kit/go/transport/cmdsurface"
 )
 
-// bridge is constructed once at module init. Lambda containers stay
-// warm across invocations; reusing the bridge avoids paying the
+// bridge is constructed at module init when telemetry is opted out
+// (the common case for Lambda — env vars are present at module load,
+// so we can read CMDSURFACE_DEMO_TELEMETRY here). Lambda containers
+// stay warm across invocations; reusing the bridge avoids paying the
 // cobra-tree-build + leaf-discovery cost on every event.
-var bridge = shared.BuildBridge()
+//
+// Module-init wiring is unusual for telemetry (no logger pre-flight,
+// no graceful shutdown on consent failure), but the Lambda lifecycle
+// gives us no `main` execution between cold start and the first
+// event. The alternative — building the bridge lazily on first event —
+// pays per-event latency we'd rather avoid. Cleanup happens in main's
+// deferred Close path before lambda.Start returns control.
+var (
+	telRes *shared.TelemetryResources
+	bridge = func() *cmdsurface.Bridge {
+		telRes, _ = shared.MaybeBuildTelemetry(slog.Default())
+		var buildOpts []shared.BuildOption
+		if telRes != nil && telRes.Sink != nil {
+			buildOpts = append(buildOpts, shared.WithTelemetrySink(telRes.Sink))
+		}
+		return shared.BuildBridge(buildOpts...)
+	}()
+)
 
 func main() {
 	eventType := cmdsurface.LambdaEventType(os.Getenv("CMDSURF_EVENT"))
