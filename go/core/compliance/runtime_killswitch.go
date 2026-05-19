@@ -1,13 +1,13 @@
 package compliance
 
 // rtConsentingTelemetryKillSwitch — F13 runtime sub-checks (c) + (d)
-// from ADR-0037 and plan T-0701:
+// from ADR-0037:
 //
 //   (c) DO_NOT_TRACK=1 suppresses emission even with granted consent
 //   (d) <APP>_TELEMETRY_MODE=off (or KIT_TELEMETRY_MODE=off) suppresses
 //       emission even with granted consent
 //
-// Methodology (per T-0701, each step in its own rtEnv):
+// Methodology (each step in its own rtEnv):
 //
 //   1. baseline — seed consent=granted, run; assert >=1 event. Without
 //      this sanity check, steps 2/3 are vacuously true (no events
@@ -16,23 +16,19 @@ package compliance
 //      assert no events.
 //   3. <mode>=off — seed granted, set whichever mode env the toolspec
 //      declares in kill_switch_envs (KIT_TELEMETRY_MODE or
-//      <APP>_TELEMETRY_MODE per T-0739 reconciliation), value "off",
-//      run; assert no events.
+//      <APP>_TELEMETRY_MODE), value "off", run; assert no events.
 //
 // The check skips when the toolspec is not opt-in (mirrors the static
-// check). It assumes the spec is well-formed — T-0699's static check
+// check). It assumes the spec is well-formed — the static check
 // catches missing kill_switch_envs entries before this runtime check
 // would run them.
 //
-// Harness caveat (per T-0700): the bus pkg does not auto-route from
+// Harness caveat: the bus pkg does not auto-route from
 // KIT_BUS_SINK=jsonl yet. Real adopter binaries must plumb the env
 // into their bus builder OR route to a JSONLSink at
 // KIT_BUS_SINK_PATH. The stub binary under
 // `testdata/stub-telemetry-binary/` honors KIT_BUS_SINK_PATH directly
-// so the tests can exercise the check end-to-end. Until adopter
-// binaries gain the same wiring, this check is consumed only from
-// tests (not from runtime.go's runRuntimeChecks); see plan T-0701
-// for the production-integration step.
+// so the tests can exercise the check end-to-end.
 
 import (
 	"context"
@@ -41,9 +37,8 @@ import (
 )
 
 // rtKillSwitchPollBudget bounds the wait-for-emission window. 500ms
-// is the T-0701 plan target — long enough for a normal adopter binary
-// to flush, short enough not to wedge the test suite when the binary
-// is mute by design.
+// is long enough for a normal adopter binary to flush, short enough
+// not to wedge the test suite when the binary is mute by design.
 const rtKillSwitchPollBudget = 500 * time.Millisecond
 
 // rtKillSwitchRunTimeout bounds each child invocation. The check
@@ -77,7 +72,7 @@ func rtConsentingTelemetryKillSwitch(ctx context.Context, bin string, spec *tool
 
 	modeEnv := pickModeEnv(spec.Telemetry.KillSwitchEnvs)
 	if modeEnv == "" {
-		// T-0699 should have caught this at static time; if we reach
+		// The static check should have caught this; if we reach
 		// here the spec is malformed for runtime purposes.
 		return fail(f,
 			"no <APP>_TELEMETRY_MODE-shaped entry in telemetry.kill_switch_envs",
@@ -86,7 +81,7 @@ func rtConsentingTelemetryKillSwitch(ctx context.Context, bin string, spec *tool
 
 	// Step 1 — harness sanity baseline. If this scenario emits zero
 	// events, steps 2 + 3 are meaningless (vacuously true). Per the
-	// T-0700 harness caveat, the binary must route emission to
+	// harness caveat, the binary must route emission to
 	// KIT_BUS_SINK_PATH; if it doesn't, this baseline catches it.
 	if res, ok := killSwitchBaseline(ctx, envFactory, bin, readCmd); !ok {
 		return res

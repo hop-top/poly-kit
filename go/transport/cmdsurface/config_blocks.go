@@ -159,13 +159,13 @@ type SinkConfig struct {
 // Default disabled — adopters opt in by setting Enabled=true. When
 // absent from YAML the top-level Config.Telemetry field is nil; an
 // explicit `telemetry: {enabled: false}` materializes a non-nil block
-// with Enabled=false. Downstream wiring (T-0677) distinguishes the
-// two: nil → never construct a sink; non-nil + !Enabled → construct
-// is skipped but the block round-trips for inspection.
+// with Enabled=false. Downstream wiring distinguishes the two: nil →
+// never construct a sink; non-nil + !Enabled → construct is skipped
+// but the block round-trips for inspection.
 //
 // Field mirror: the With* options on TelemetrySink (WithChannelCap,
 // WithMaxBytes, WithMode, WithKitVersion) drive these knobs at the Go
-// API; this struct is the YAML-loadable counterpart. T-0677 reads
+// API; this struct is the YAML-loadable counterpart. The bridge reads
 // fields here and translates to the corresponding TelemetryOption
 // values when building the sink.
 //
@@ -207,8 +207,8 @@ type TelemetryConfig struct {
 // calling it once. Explicit non-zero values are preserved verbatim.
 //
 // Callers MUST invoke ApplyDefaults after Load and before building a
-// TelemetrySink from this block. The cmdsurf-telemetry T-0677 bridge
-// fan-out wiring is the canonical caller.
+// TelemetrySink from this block. The bridge fan-out wiring is the
+// canonical caller.
 func (c *TelemetryConfig) ApplyDefaults() {
 	if c == nil || !c.Enabled {
 		return

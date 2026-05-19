@@ -1,4 +1,4 @@
-// Telemetry-wiring e2e for the spaced adopter integration (T-0695).
+// Telemetry-wiring e2e for the spaced adopter integration.
 //
 // Asserts that running spaced with --telemetry=anon and a granted
 // consent file publishes one event on the bus topic
@@ -6,10 +6,9 @@
 // per-context mode override + post-run record path is wired end-to-end.
 //
 // In-process by design: spaced's bus is per-process and there is no
-// env-driven sink redirection in the bus package today. T-0695 spec
-// (last bullet) explicitly authorizes whatever in-test capture
-// mechanism is cleanest, so we reuse the same wiring helpers main()
-// calls and subscribe synchronously on a memory bus.
+// env-driven sink redirection in the bus package today. We reuse the
+// same wiring helpers main() calls and subscribe synchronously on a
+// memory bus.
 package main
 
 import (

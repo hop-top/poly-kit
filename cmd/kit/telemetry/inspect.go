@@ -38,8 +38,8 @@
 //
 //   - "last-N shipped" would require an in-memory ring snapshot from
 //     the running sink. That introspection API does not exist on
-//     HTTPSSink today and adding it belongs to T-0690 (the sink owner).
-//     v1 defers and treats --last as a synonym for --next.
+//     HTTPSSink today and belongs to the sink owner. v1 defers and
+//     treats --last as a synonym for --next.
 //
 // When a future task adds an in-memory snapshot API on the sink,
 // inspect can extend without changing its on-disk path.

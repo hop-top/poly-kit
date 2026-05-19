@@ -6,8 +6,7 @@ package compliance
 // Strategy: build a tiny stub binary (testdata/stub-telemetry-binary)
 // once in TestMain and reuse it across scenarios. The stub honors
 // KIT_BUS_SINK_PATH directly so the rtEnv harness can observe events
-// without depending on real adopter bus wiring (still unresolved per
-// T-0700's harness caveat).
+// without depending on real adopter bus wiring.
 
 import (
 	"context"
@@ -205,7 +204,7 @@ func TestRtKillSwitch_SanityCheckCatchesBrokenHarness(t *testing.T) {
 
 func TestRtKillSwitch_FailsWhenNoModeEnvDeclared(t *testing.T) {
 	// Edge case: spec opts in but only declares DO_NOT_TRACK (no
-	// *_TELEMETRY_MODE entry). T-0699 would catch this statically,
+	// *_TELEMETRY_MODE entry). The static check would catch this,
 	// but the runtime check should still degrade gracefully rather
 	// than panic on an empty modeEnv.
 	spec := killSwitchSpec([]string{"DO_NOT_TRACK"})
@@ -243,8 +242,7 @@ func TestRtKillSwitch_SkipsWhenNoReadCommand(t *testing.T) {
 
 // TestPickModeEnv exercises pickModeEnv directly — table-driven
 // because the function is tiny but the cases (kit literal vs
-// app-prefixed vs only-DO_NOT_TRACK) all matter for T-0739
-// reconciliation.
+// app-prefixed vs only-DO_NOT_TRACK) all matter.
 func TestPickModeEnv(t *testing.T) {
 	cases := []struct {
 		name string

@@ -3,13 +3,13 @@
 // persisted decision carries the canonical `prompt_version` field
 // plus a valid `decision_source`.
 //
-// Owned by T-0703. Sibling stubs live under ../stub-telemetry-binary/
-// (T-0701, kill switch) and ../stub-telemetry-binary-inspect/ (T-0702,
-// consent subcommands + post-redact). The behavioral shape here is
-// different from both — this stub's only job is to RESOLVE consent
-// against env + persisted state per ADR-0036's precedence chain and
-// WRITE the resulting decision back to <XDG_CONFIG_HOME>/kit/
-// telemetry.yaml — so we keep it separate.
+// Sibling stubs live under ../stub-telemetry-binary/ (kill switch)
+// and ../stub-telemetry-binary-inspect/ (consent subcommands +
+// post-redact). The behavioral shape here is different from both —
+// this stub's only job is to RESOLVE consent against env + persisted
+// state per ADR-0036's precedence chain and WRITE the resulting
+// decision back to <XDG_CONFIG_HOME>/kit/telemetry.yaml — so we keep
+// it separate.
 //
 // Build via the test file's lazy sync.Once helper — never go-install'd.
 // Tests live under hop.top/kit/hops/main/go/core/compliance.

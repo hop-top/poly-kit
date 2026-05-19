@@ -7,7 +7,7 @@ Mirrors `go/runtime/telemetry/mode.go`. SDK-side resolution honors:
 
 DO_NOT_TRACK and KIT_TELEMETRY_CONSENT are NOT consulted here — that's the
 consent layer's job (see consent.py). This module is pure mode resolution.
-The client (T-0714) combines mode + consent before any emission.
+The client combines mode + consent before any emission.
 """
 
 from __future__ import annotations

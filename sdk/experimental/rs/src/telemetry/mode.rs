@@ -1,4 +1,4 @@
-//! Mode enum + env precedence (T-0723).
+//! Mode enum + env precedence.
 //!
 //! Mirrors `go/runtime/telemetry/mode.go` semantics: three tiers (off,
 //! anon, full), <APP>_TELEMETRY_MODE wins over KIT_TELEMETRY_MODE.

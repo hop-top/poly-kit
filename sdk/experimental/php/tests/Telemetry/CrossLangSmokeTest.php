@@ -22,10 +22,10 @@ use PHPUnit\Framework\TestCase;
  *      occurred_at, event, attrs?). See sdk/docs/telemetry-event-schema.md.
  *
  *   2. Cross-language harness hook (DEFERRED): the shared harness at
- *      sdk/tests/cross-lang/ tracked by T-0709 is not yet shipped at
- *      the time this test landed. When that harness lands, add the PHP
- *      fixture script at sdk/tests/cross-lang/php/record.php and
- *      remove the `markTestSkipped` in {@see testCrossLangHarnessHook}.
+ *      sdk/tests/cross-lang/ is not yet shipped at the time this test
+ *      landed. When that harness lands, add the PHP fixture script at
+ *      sdk/tests/cross-lang/php/record.php and remove the
+ *      `markTestSkipped` in {@see testCrossLangHarnessHook}.
  */
 class CrossLangSmokeTest extends TestCase
 {
@@ -189,11 +189,11 @@ class CrossLangSmokeTest extends TestCase
     {
         $harness = dirname(__DIR__, 4) . '/sdk/tests/cross-lang';
         if (!is_dir($harness)) {
-            // T-0709 cross-language harness not yet shipped. When it
-            // lands, drop sdk/tests/cross-lang/php/record.php and
-            // adjust this test to invoke the harness driver against it.
+            // Cross-language harness not yet shipped. When it lands,
+            // drop sdk/tests/cross-lang/php/record.php and adjust this
+            // test to invoke the harness driver against it.
             $this->markTestSkipped(
-                'T-0709 cross-language harness not yet present at ' . $harness,
+                'cross-language harness not yet present at ' . $harness,
             );
         }
 

@@ -13,8 +13,8 @@ import (
 // TestEnvBusSinkJsonl_RoutesEvents pins the documented contract: when
 // KIT_BUS_SINK=jsonl and KIT_BUS_SINK_PATH=<file> are both set,
 // bus.New() returns a bus whose Publish drains into the file as JSONL.
-// Adopters (T-0700 compliance harness, ops sidecars) rely on this
-// shape so the bus pkg owns the env contract, not each binary.
+// Adopters (compliance harness, ops sidecars) rely on this shape so
+// the bus pkg owns the env contract, not each binary.
 func TestEnvBusSinkJsonl_RoutesEvents(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "events.jsonl")

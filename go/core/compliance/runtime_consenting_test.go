@@ -1,6 +1,6 @@
 package compliance
 
-// Tests for T-0704: rtConsentingTelemetry aggregator + Run/RunRuntime
+// Tests for the rtConsentingTelemetry aggregator + Run/RunRuntime
 // wiring of the three F13 runtime sub-checks (kill-switch, inspect,
 // prompt). Internal-test package so we can exercise the unexported
 // aggregator + helper surface directly.
@@ -131,9 +131,9 @@ func TestRtConsentingTelemetry_SkipsWhenNotOptedIn(t *testing.T) {
 }
 
 // TestRunRuntimeChecks_IncludesF13Slot confirms that runRuntimeChecks
-// emits an F13 row (T-0704's wiring). The exact pass/fail outcome
-// depends on the binary's behavior, but the SLOT must exist —
-// previously the function returned 10 results, now it returns 11.
+// emits an F13 row. The exact pass/fail outcome depends on the
+// binary's behavior, but the SLOT must exist — previously the
+// function returned 10 results, now it returns 11.
 func TestRunRuntimeChecks_IncludesF13Slot(t *testing.T) {
 	idempotent := true
 	// Non-opt-in spec → F13 will skip but the slot must still be

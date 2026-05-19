@@ -17,8 +17,7 @@ Divergence from Go's ``core/telemetry/event.go`` (intentional):
   are all Cobra commands. SDK adopters aren't necessarily CLIs, so we model
   the envelope as a free-form ``event`` name plus an ``attrs`` dict. This is
   a known divergence — flagged in ADR-0038 and the cross-lang event schema
-  doc (``hops/main/sdk/docs/telemetry-event-schema.md``). If the schema doc
-  doesn't yet enumerate it, treat as a T-0708 follow-up.
+  doc (``hops/main/sdk/docs/telemetry-event-schema.md``).
 """
 
 from __future__ import annotations

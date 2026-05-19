@@ -8,12 +8,6 @@
 // variable so the default Lambda / Cloud Run cold start pays nothing
 // for telemetry until the operator opts in by setting it to "1" in
 // the function's environment configuration.
-//
-// TODO: when T-0676's cmdsurface.Config telemetry block lands, this
-// helper can be replaced by a single config-driven construction at
-// BuildBridge time and the cmd/* binaries stop needing two calls. We
-// keep the helpers separate here so the FaaS legs can adopt the
-// config path independently of `examples/cmdsurface/`.
 package shared
 
 import (

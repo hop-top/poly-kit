@@ -285,9 +285,7 @@ func TestStatusCmd_Wired(t *testing.T) {
 }
 
 // TestCmd_TelemetryTree asserts the parent Cmd wires the status
-// subcommand. Future tasks (T-0667..T-0669) extend this with their
-// own assertions; the table form below keeps the merge surface
-// minimal.
+// subcommand.
 func TestCmd_TelemetryTree(t *testing.T) {
 	root := Cmd()
 	if root.Use != "telemetry" {

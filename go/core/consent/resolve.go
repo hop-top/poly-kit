@@ -109,8 +109,8 @@ func Resolve(ctx context.Context, in Inputs) Decision {
 // The resolver is PURE: same inputs produce the same outputs, with no
 // file I/O and no env reads except via in.Env. It NEVER emits
 // SourcePrompt — that source is set only by the interactive prompt
-// path (T-0665), not here. Overrides at steps 1-5 leave decided_at
-// and prompt_version zero-valued in the returned Decision; the upstream
+// path, not here. Overrides at steps 1-5 leave decided_at and
+// prompt_version zero-valued in the returned Decision; the upstream
 // caller is expected to stamp those only when writing the persisted
 // config.
 //

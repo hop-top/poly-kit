@@ -1,4 +1,4 @@
-//! Consent-file reader (T-0725).
+//! Consent-file reader.
 //!
 //! The Rust SDK is READ-ONLY against the telemetry consent file:
 //! `<XDG_CONFIG_HOME>/kit/telemetry.yaml`. The Go-side

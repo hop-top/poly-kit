@@ -10,11 +10,10 @@
  * $HOME paths). The placeholder strings (`<redacted:email>`,
  * `<redacted:ipv4>`, `<redacted:ipv6>`, `<redacted:token>`) MUST match
  * byte-for-byte across the py / ts / rs / php SDKs so the cross-language
- * contract harness (T-0709) can diff outputs without per-language
- * quirks.
+ * contract harness can diff outputs without per-language quirks.
  *
- * Callers can layer their own `redactor` callback on `Client` (T-0720);
- * it runs BEFORE this default pass.
+ * Callers can layer their own `redactor` callback on `Client`; it runs
+ * BEFORE this default pass.
  */
 import * as os from 'node:os';
 

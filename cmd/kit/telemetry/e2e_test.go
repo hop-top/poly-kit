@@ -1,5 +1,5 @@
 // e2e_test.go is the cross-cutting end-to-end test for the `kit
-// telemetry` subcommand tree (T-0671). The per-subcommand files
+// telemetry` subcommand tree. The per-subcommand files
 // (status_test.go, enable_test.go, disable_test.go, reset_test.go,
 // inspect_test.go) each exercise one verb in isolation; what they
 // don't cover is the OPERATOR SEQUENCE — does enable; status; disable

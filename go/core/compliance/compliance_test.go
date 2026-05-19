@@ -192,10 +192,10 @@ commands:
 
 // TestConsentingTelemetry_RunsWhenOptedIn confirms an opt-in toolspec
 // (enabled:true) with a fully well-formed telemetry block produces a
-// pass result for F13 and bumps Total to 13. Updated by T-0699 to
-// satisfy the real sub-condition checks (categories, consent_subcommands
-// mapping to commands tree, kill_switch_envs, prompt_version,
-// redact_rules) in addition to the opt-in gate.
+// pass result for F13 and bumps Total to 13. Asserts the real
+// sub-condition checks (categories, consent_subcommands mapping to
+// commands tree, kill_switch_envs, prompt_version, redact_rules) in
+// addition to the opt-in gate.
 func TestConsentingTelemetry_RunsWhenOptedIn(t *testing.T) {
 	body := `name: probe
 schema_version: "1"
@@ -366,9 +366,9 @@ telemetry:
 // Consequence: ADR-0037 documents `prompt_version: "v1"` (quoted)
 // as the canonical form. A spec author who writes `prompt_version: 1`
 // will pass YAML unmarshalling but produce a `prompt_version` of
-// "1", not the expected "v1". The static check (T-0699) is the
-// layer that enforces the canonical value shape; the YAML layer
-// only enforces parseability.
+// "1", not the expected "v1". The static check is the layer that
+// enforces the canonical value shape; the YAML layer only enforces
+// parseability.
 func TestToolspecTelemetryBlock_PromptVersionIsString(t *testing.T) {
 	bodyQuoted := `name: probe
 telemetry:
@@ -388,7 +388,7 @@ telemetry:
 	require.NotNil(t, s2.Telemetry)
 	assert.Equal(t, "1", s2.Telemetry.PromptVersion,
 		"yaml.v3 default decode coerces int scalar to string; "+
-			"strictness deferred to T-0699 static check")
+			"strictness deferred to the static check")
 }
 
 // f13Result fetches the FactorConsentingTelemetry result from a
@@ -692,8 +692,8 @@ func TestStatic_ConsentingTelemetry_PassWhenSubcommandsInTree(t *testing.T) {
 
 // TestRun_NonOptIn_TotalIs12 verifies the score-math wiring: a
 // non-opt-in spec passed through Run yields Total=12 with F13=skip.
-// This is the regression check that T-0704's runtime wiring did NOT
-// change non-opt-in behavior.
+// Regression check that the runtime wiring did NOT change non-opt-in
+// behavior.
 func TestRun_NonOptIn_TotalIs12(t *testing.T) {
 	body := `name: probe
 schema_version: "1"
@@ -706,7 +706,7 @@ commands:
 	require.NoError(t, err)
 	require.NotNil(t, report)
 	assert.Equal(t, 12, report.Total,
-		"non-opt-in spec must keep Total at 12 after T-0704 runtime wiring")
+		"non-opt-in spec must keep Total at 12 after runtime wiring")
 
 	var f13 *compliance.CheckResult
 	for i := range report.Results {

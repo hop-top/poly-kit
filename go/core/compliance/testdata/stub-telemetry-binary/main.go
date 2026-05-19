@@ -1,9 +1,10 @@
 // stub-telemetry-binary is a tiny program used by the compliance
-// package's runtime-check tests (T-0701 and the broader F13 suite).
+// package's runtime-check tests (the kill-switch tests and the
+// broader F13 suite).
 //
 // Real adopter binaries don't yet auto-route from KIT_BUS_SINK=jsonl
-// (see ADR-0037 / T-0700 harness caveat), so the runtime check needs
-// a stand-in that DOES honor KIT_BUS_SINK_PATH directly. This stub
+// (see ADR-0037), so the runtime check needs a stand-in that DOES
+// honor KIT_BUS_SINK_PATH directly. This stub
 // emits (or refuses to emit) a single synthetic event per invocation
 // based on env flags, so each F13 sub-check can verify the
 // harness-plus-check loop end-to-end against a controlled fixture.

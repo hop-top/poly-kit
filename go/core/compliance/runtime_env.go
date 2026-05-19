@@ -12,17 +12,16 @@ package compliance
 // KIT_BUS_SINK_PATH=<e.BusFile>. KIT_BUS_SINK is the contract from
 // ADR-0037 sub-condition (c)/(d) — the bus package does not yet
 // honor it directly (no env-driven sink switch in
-// hops/main/go/runtime/bus/ as of T-0700), so adopter binaries that
-// want runtime-check observability must either plumb the env into
-// their bus builder themselves OR route emission to a JSONLSink at
-// KIT_BUS_SINK_PATH. Runtime checks (T-0701..T-0703) may also use
+// hops/main/go/runtime/bus/), so adopter binaries that want
+// runtime-check observability must either plumb the env into their
+// bus builder themselves OR route emission to a JSONLSink at
+// KIT_BUS_SINK_PATH. Runtime checks may also use
 // KIT_TELEMETRY_ENDPOINT pointed at an httptest server when the
 // adopter ships only the HTTPS sink; the harness's BusFile path
 // reads whatever was written there regardless of the routing path.
 //
-// Public surface is file-scoped (unexported) per T-0700 — the
-// harness is consumed only by sibling _test.go files in this
-// package.
+// Public surface is file-scoped (unexported) — the harness is
+// consumed only by sibling _test.go files in this package.
 
 import (
 	"bufio"
@@ -48,9 +47,9 @@ import (
 //   - newRTEnvDir(dir string) — production-friendly; caller manages
 //     the tmpdir lifecycle (os.MkdirTemp + defer os.RemoveAll).
 //
-// The split lets production code under Run/RunRuntime (T-0704) invoke
-// the runtime sub-checks without dragging *testing.T through. Tests
-// keep the t.TempDir convenience.
+// The split lets production code under Run/RunRuntime invoke the
+// runtime sub-checks without dragging *testing.T through. Tests keep
+// the t.TempDir convenience.
 type rtEnv struct {
 	HomeDir   string   // tmpdir, also HOME env
 	XDGConfig string   // <HomeDir>/.config

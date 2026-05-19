@@ -1,9 +1,8 @@
 // Package cmdsurface — TelemetrySink fans cmdsurface invocation
 // outcomes into the kit-telemetry pipeline.
 //
-// This file implements T-0675 of the cmdsurf-telemetry track. See
-// `.tlc/tracks/cmdsurf-telemetry/design-note.md` for the contracts this
-// implementation pins (canonical contracts owned by ADR-0035).
+// See `.tlc/tracks/cmdsurf-telemetry/design-note.md` for the contracts
+// this implementation pins (canonical contracts owned by ADR-0035).
 //
 // Seam properties:
 //
@@ -182,8 +181,7 @@ var ErrTelemetrySinkNoEmitter = errors.New("cmdsurface: TelemetrySink requires W
 // the drain goroutine forwards the caller's ctx (and any per-ctx
 // telemetry.WithMode / telemetry.WithConsentHook overrides) into
 // emitter.Record. Dropping the ctx at the channel boundary would lose
-// these overrides — the global default would win, silently — which is
-// T-0682's reported failure mode.
+// these overrides — the global default would win, silently.
 //
 // The ctx may have been canceled by the time the drain processes the
 // carrier. That is intentional: telemetry is fire-and-forget, the
@@ -262,7 +260,7 @@ func NewTelemetrySink(opts ...TelemetryOption) (*TelemetrySink, error) {
 // ctx, …) — survive the channel boundary and reach emitter.Record
 // when the drain processes the event. Without this, the original
 // caller's ctx would be replaced with context.Background() at ship
-// time and the global default would silently win (T-0682).
+// time and the global default would silently win.
 func (s *TelemetrySink) Emit(ctx context.Context, inv Invocation, res Result, _ error) error {
 	ev := InvocationEvent{
 		CommandPath: append([]string(nil), inv.Path...),

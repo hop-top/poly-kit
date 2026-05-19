@@ -1,16 +1,16 @@
 package cmdsurface_test
 
-// Coverage test for T-0679 (cmdsurf-telemetry): every surface's
-// inbound-decode path MUST populate Meta.RequestedAt with a non-zero
-// timestamp and Meta.Surface with a non-empty Surface enum value
-// BEFORE the Invocation reaches the Runner / Bridge.
+// Coverage test: every surface's inbound-decode path MUST populate
+// Meta.RequestedAt with a non-zero timestamp and Meta.Surface with a
+// non-empty Surface enum value BEFORE the Invocation reaches the
+// Runner / Bridge.
 //
 // This table drives one inbound flow per surface and asserts on the
 // Invocation the Runner observes. Surfaces whose inbound machinery is
 // too heavy to assemble inline (signed, oauth, ws, rpc) skip with a
-// TODO referencing T-0679; the assignment for those is already covered
-// by their own TestXxx_HappyPath tests in this package — they would
-// fail their own end-to-end runs if RequestedAt / Surface drifted.
+// note pointing at their own TestXxx_HappyPath tests in this package
+// — they would fail their own end-to-end runs if RequestedAt /
+// Surface drifted.
 
 import (
 	"bytes"
@@ -278,27 +278,27 @@ func TestEverySurfaceSetsMeta(t *testing.T) {
 		// codec). Each surface's own *_test.go file already exercises
 		// the corresponding TestXxx_HappyPath and would catch a missing
 		// RequestedAt or Surface assignment at end-to-end run time. Skip
-		// here with a TODO referencing T-0679; revisit if/when the
-		// inbound machinery gains an easier in-process driver.
+		// here; revisit if/when the inbound machinery gains an easier
+		// in-process driver.
 		{
 			name:        "signed",
 			wantSurface: cmdsurface.SurfaceSigned,
-			skip:        "T-0679: signed inbound needs HMAC key + NonceStore; covered by surface_signed_test.go",
+			skip:        "signed inbound needs HMAC key + NonceStore; covered by surface_signed_test.go",
 		},
 		{
 			name:        "oauth-cb",
 			wantSurface: cmdsurface.SurfaceOAuthCB,
-			skip:        "T-0679: oauth-cb inbound needs OAuthProvider + StateStore + cookie; covered by surface_oauth_test.go",
+			skip:        "oauth-cb inbound needs OAuthProvider + StateStore + cookie; covered by surface_oauth_test.go",
 		},
 		{
 			name:        "ws",
 			wantSurface: cmdsurface.SurfaceWS,
-			skip:        "T-0679: ws inbound needs websocket upgrade + frame protocol; covered by surface_ws_test.go",
+			skip:        "ws inbound needs websocket upgrade + frame protocol; covered by surface_ws_test.go",
 		},
 		{
 			name:        "rpc",
 			wantSurface: cmdsurface.SurfaceRPC,
-			skip:        "T-0679: rpc inbound needs Connect codec + handler server; covered by surface_rpc_test.go",
+			skip:        "rpc inbound needs Connect codec + handler server; covered by surface_rpc_test.go",
 		},
 	}
 	for _, c := range cases {

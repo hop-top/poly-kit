@@ -483,9 +483,9 @@ func TestTelemetrySink_EmptyTraceIDOmittedFromJSON(t *testing.T) {
 	}
 }
 
-// TestTelemetrySink_PreservesCtxConsentHook pins T-0682's ctx-
-// propagation fix: a permissive ConsentHook installed on the caller's
-// ctx via telemetry.WithConsentHook MUST reach emitter.Record at ship
+// TestTelemetrySink_PreservesCtxConsentHook pins the ctx-propagation
+// invariant: a permissive ConsentHook installed on the caller's ctx
+// via telemetry.WithConsentHook MUST reach emitter.Record at ship
 // time, not get replaced by context.Background() at the channel-drain
 // boundary. The stub emitter records the ctx it received; we assert
 // the hook is observable on that ctx.

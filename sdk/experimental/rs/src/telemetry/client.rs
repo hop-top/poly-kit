@@ -1,4 +1,4 @@
-//! Non-blocking telemetry client (T-0726).
+//! Non-blocking telemetry client.
 //!
 //! Provides the SDK-side `Client` that adopters call from request /
 //! command paths. Constraints from ADR-0038 §4:
@@ -23,7 +23,7 @@
 //! Envelope shape: mirrors the Go canonical `Event` at the seams the
 //! SDK can fill (`sdk_lang = "rs"`, `sdk_version`, `installation_id`,
 //! `mode`, `occurred_at`). The current spec uses `event` + `attrs` as
-//! the caller-facing pair; the cross-language harness (T-0709) is the
+//! the caller-facing pair; the cross-language harness is the
 //! eventual gate that reconciles this with the Go `command_path` /
 //! `args` / `flags` layout. Until then the experimental SDK ships
 //! `event` + `attrs` to match the polyglot py/ts experimental clients.

@@ -26,10 +26,9 @@ func MustLoadRedactor() *redact.Redactor {
 }
 
 // RedactMatchObserver is fired when redactEvent rewrites a field. The
-// kit-telemetry-compliance package (T-0702) subscribes via the
+// kit-telemetry-compliance package subscribes via the
 // `kit.telemetry.redact.matched` bus topic; the bus publish itself
-// lives in the emitter (T-0688). For now this is just the in-process
-// hook.
+// lives in the emitter. For now this is just the in-process hook.
 //
 // fieldPath is a dotted breadcrumb identifying which Event field
 // produced the match: "args[2]" for the third arg, "flags.--token"
@@ -61,7 +60,7 @@ var redactObserver atomic.Value // observerBox
 // SetRedactObserver installs obs as the package observer for redact
 // matches in telemetry events. Pass nil to restore the no-op default.
 // Reentrant; the last call wins. Typically called once at process init
-// by kit-telemetry-compliance (T-0702).
+// by kit-telemetry-compliance.
 func SetRedactObserver(obs RedactMatchObserver) {
 	if obs == nil {
 		redactObserver.Store(observerBox{obs: noopRedactObserver{}})

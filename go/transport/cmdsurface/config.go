@@ -23,10 +23,9 @@ type Config struct {
 	Policy   PolicyConfig   `yaml:"policy"`
 	// Telemetry is the optional kit-telemetry sink configuration.
 	// Pointer type so absence (nil) is distinguishable from a
-	// zero-valued enabled-false block. The bridge wiring (T-0677)
-	// reads cfg.Telemetry != nil && cfg.Telemetry.Enabled to decide
-	// whether to construct the TelemetrySink. See TelemetryConfig
-	// godoc and the cmdsurf-telemetry track design note.
+	// zero-valued enabled-false block. The bridge wiring reads
+	// cfg.Telemetry != nil && cfg.Telemetry.Enabled to decide whether
+	// to construct the TelemetrySink. See TelemetryConfig godoc.
 	Telemetry *TelemetryConfig `yaml:"telemetry,omitempty" json:"telemetry,omitempty"`
 
 	// TelemetryEmitterProvider is invoked by FromConfig when
@@ -160,7 +159,7 @@ func FromConfig(root *cobra.Command, cfg Config, opts ...Option) (*Bridge, error
 		b.applyCommandConfig(pattern, cc.Enabled)
 	}
 
-	// Telemetry sink wiring (T-0677). The kit-telemetry sink is the
+	// Telemetry sink wiring. The kit-telemetry sink is the
 	// first sink that FromConfig constructs on the bridge's behalf —
 	// other sinks (bus/file/webhook/log) remain adopter-wired via the
 	// sinkRunner pattern documented in README.md. Telemetry is the

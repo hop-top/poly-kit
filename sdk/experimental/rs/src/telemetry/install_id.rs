@@ -1,4 +1,4 @@
-//! Installation ID reader/writer (T-0724).
+//! Installation ID reader/writer.
 //!
 //! Mirrors `go/runtime/telemetry/installid.go`: 32 raw bytes from
 //! `getrandom`, stored at

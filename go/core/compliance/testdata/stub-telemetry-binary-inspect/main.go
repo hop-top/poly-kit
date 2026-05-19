@@ -1,11 +1,10 @@
 // Stub binary for compliance runtime checks of F13 sub-conditions
 // (b) consent subcommands and (g) inspect-returns-post-redact.
 //
-// Owned by T-0702. A sibling stub for T-0701 (kill-switch) lives at
-// ../stub-telemetry-binary/ when that task lands; this stub has a
-// different behavioral shape (subcommand routing, regex redact loop,
-// audit publish) so we keep them separate per the runtime_inspect.go
-// header.
+// A sibling stub for the kill-switch check lives at
+// ../stub-telemetry-binary/; this stub has a different behavioral
+// shape (subcommand routing, regex redact loop, audit publish) so we
+// keep them separate per the runtime_inspect.go header.
 //
 // Build via TestMain in runtime_inspect_test.go — never go-install'd.
 // Tests live under hop.top/kit/hops/main/go/core/compliance.
@@ -58,8 +57,7 @@ var emailRE = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2
 
 // tokenRE matches the OpenAI-style `sk-` prefix plus a payload of
 // alphanumerics. Picked because it's the canonical "API key prefix"
-// the test plan calls out (T-0702 description: emails + sk-... API
-// key prefixes).
+// the test plan calls out (emails + sk-... API key prefixes).
 var tokenRE = regexp.MustCompile(`sk-[A-Za-z0-9]{4,}`)
 
 func main() {

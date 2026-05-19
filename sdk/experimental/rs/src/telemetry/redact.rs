@@ -1,4 +1,4 @@
-//! Best-effort PII + token-prefix redactor (T-0727).
+//! Best-effort PII + token-prefix redactor.
 //!
 //! Mirrors the SDK-side redactor contract from ADR-0038 §3:
 //!

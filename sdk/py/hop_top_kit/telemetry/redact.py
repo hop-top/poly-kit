@@ -4,11 +4,11 @@ NOT parity with ``go/core/redact`` — this is an opinionated regex set covering
 common leak shapes (emails, IPs, common token prefixes, $HOME paths). The
 deliberate placeholder strings (``<redacted:email>``, ``<redacted:ipv4>``,
 ``<redacted:ipv6>``, ``<redacted:token>``) MUST match byte-for-byte across the
-py / ts / rs / php SDKs so the cross-language contract harness (T-0709) can
-diff outputs without per-language quirks.
+py / ts / rs / php SDKs so the cross-language contract harness can diff
+outputs without per-language quirks.
 
-Callers can layer their own ``redactor`` callback on ``Client`` (T-0714); it
-runs BEFORE this default pass — see ``Client.__init__`` docstring.
+Callers can layer their own ``redactor`` callback on ``Client``; it runs
+BEFORE this default pass — see ``Client.__init__`` docstring.
 """
 
 from __future__ import annotations

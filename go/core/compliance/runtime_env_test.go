@@ -1,10 +1,10 @@
 package compliance
 
 // Tests OF the runtime-check harness (rtEnv). Tests USING it
-// (T-0701/T-0702/T-0703 sub-checks) live in separate files. Using
-// the internal-test package (compliance, not compliance_test) so we
-// can exercise the unexported rtEnv surface without forcing it to
-// be exported.
+// (the kill-switch / inspect / prompt sub-checks) live in separate
+// files. Using the internal-test package (compliance, not
+// compliance_test) so we can exercise the unexported rtEnv surface
+// without forcing it to be exported.
 
 import (
 	"context"

@@ -1,7 +1,7 @@
 package compliance
 
 // Runtime check for FactorConsentingTelemetry sub-conditions (b) +
-// (g) per ADR-0037 + plan T-0702.
+// (g) per ADR-0037.
 //
 // Two sub-conditions are merged into one CheckResult (per ADR-0037's
 // "single row per factor" model):
@@ -21,9 +21,9 @@ package compliance
 //
 //	C. Audit-topic subscription — same rtEnv as (B): assert at least
 //	   one `kit.telemetry.redact.matched` event was emitted on the
-//	   bus during the run. Load-bearing per the T-0739 reconciliation:
-//	   a no-op redactor that blanks output without firing matches
-//	   would pass (B) vacuously; the audit topic proves redact RAN.
+//	   bus during the run. Load-bearing: a no-op redactor that blanks
+//	   output without firing matches would pass (B) vacuously; the
+//	   audit topic proves redact RAN.
 //
 // The post-redact + audit-topic arms (B + C) auto-skip with a
 // reason when the binary does not honor KIT_TELEMETRY_TEST_INJECT
@@ -31,8 +31,7 @@ package compliance
 // NOT appear, either raw or redacted, in inspect's output).
 //
 // Public surface is unexported — invoked by runtime.go via
-// runRuntimeChecks once T-0704 wires it in. Until then this file
-// only ships the function; tests live in runtime_inspect_test.go.
+// runRuntimeChecks. Tests live in runtime_inspect_test.go.
 
 import (
 	"context"
@@ -67,8 +66,8 @@ func rtConsentingTelemetryInspect(ctx context.Context, bin string, spec *toolspe
 	// --- Arm A: subcommand availability ----------------------------
 	//
 	// Intersect declared subcommands with the canonical set. We run
-	// only the intersection because (i) the static check (T-0699
-	// checkConsentingTelemetry) already gates "canonical set must be
+	// only the intersection because (i) the static
+	// checkConsentingTelemetry already gates "canonical set must be
 	// declared", so if anything is missing the static row will fail
 	// and the runtime check would be doubling up; (ii) an adopter
 	// that declares additional subcommands beyond the canonical set
@@ -123,8 +122,8 @@ func rtConsentingTelemetryInspect(ctx context.Context, bin string, spec *toolspe
 	}
 
 	// PII fixtures. Hardcoded because hops/main/go/core/redact/testdata/
-	// does not exist as of T-0702 (the redact package ships rules
-	// in-tree, not fixtures). The patterns are deliberately obvious
+	// does not exist (the redact package ships rules in-tree, not
+	// fixtures). The patterns are deliberately obvious
 	// — emails + an OpenAI-style API key prefix — so the runtime
 	// check works against any redactor that handles the standard
 	// gitleaks / Presidio rule set.

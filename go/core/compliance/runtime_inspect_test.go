@@ -1,21 +1,22 @@
 package compliance
 
 // Tests for rtConsentingTelemetryInspect — ADR-0037 sub-conditions
-// (b) + (g) honored at runtime, plus the T-0739 reconciliation
-// audit-topic load-bearing assertion.
+// (b) + (g) honored at runtime, plus the audit-topic load-bearing
+// assertion.
 //
 // Strategy: build the inspect-flavored stub binary
 // (testdata/stub-telemetry-binary-inspect) once and drive scenarios
 // via STUB_INSPECT modes. The stub honors KIT_BUS_SINK_PATH directly
-// — same pattern as T-0701's kill-switch stub — so the rtEnv harness
-// can observe redact-audit events without depending on adopter bus
-// wiring (still unresolved per T-0700's harness caveat).
+// — same pattern as the kill-switch stub — so the rtEnv harness can
+// observe redact-audit events without depending on adopter bus
+// wiring.
 //
-// Build coordination: T-0701's TestMain (runtime_killswitch_test.go)
-// builds its own stub. There is one TestMain per package, so this
-// file uses a sync.Once-gated helper instead of declaring a second
-// TestMain. The stub is built lazily on first use; the once-guard
-// guarantees a single build per test process even with -p parallel.
+// Build coordination: the kill-switch TestMain
+// (runtime_killswitch_test.go) builds its own stub. There is one
+// TestMain per package, so this file uses a sync.Once-gated helper
+// instead of declaring a second TestMain. The stub is built lazily
+// on first use; the once-guard guarantees a single build per test
+// process even with -p parallel.
 
 import (
 	"context"
@@ -43,13 +44,12 @@ var (
 // cached path. The build dir is leaked intentionally — tests are
 // short-lived processes and the OS reaps /tmp on its own schedule;
 // adding teardown machinery here would mean coordinating with the
-// sibling TestMain in runtime_killswitch_test.go, which we cannot
-// modify under T-0702's "touch only your files" constraint.
+// sibling TestMain in runtime_killswitch_test.go.
 //
-// -buildvcs=false mirrors T-0701's stub build flag — avoids the
-// "error obtaining VCS status" failure in tlc bare-worktree layouts
-// where the build can't read .git. Stub binaries are throwaway test
-// scaffolding; VCS stamping is irrelevant.
+// -buildvcs=false mirrors the kill-switch stub build flag — avoids
+// the "error obtaining VCS status" failure in tlc bare-worktree
+// layouts where the build can't read .git. Stub binaries are
+// throwaway test scaffolding; VCS stamping is irrelevant.
 func ensureInspectStubBuilt(t *testing.T) string {
 	t.Helper()
 	inspectStubOnce.Do(func() {
@@ -247,9 +247,8 @@ func TestRtInspect_FailsWhenRedactBypassed(t *testing.T) {
 func TestRtInspect_FailsWhenAuditTopicSilent(t *testing.T) {
 	// "silent-redact" mode: stub redacts (raw PII absent, placeholders
 	// present) BUT does NOT publish kit.telemetry.redact.matched. This
-	// is the load-bearing negative test from the T-0739 reconciliation:
-	// a no-op-but-blanking redactor would pass arm B vacuously without
-	// arm C's audit-topic assertion.
+	// is the load-bearing negative test: a no-op-but-blanking redactor
+	// would pass arm B vacuously without arm C's audit-topic assertion.
 	spec := inspectSpec()
 	got := runInspectWith(t, spec, "silent-redact")
 	if got.Status != "fail" {

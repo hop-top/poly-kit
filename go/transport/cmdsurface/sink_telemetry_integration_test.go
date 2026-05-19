@@ -1,13 +1,13 @@
 package cmdsurface_test
 
-// Integration-level tests for the cmdsurface TelemetrySink (T-0682).
+// Integration-level tests for the cmdsurface TelemetrySink.
 //
 // These tests complement the unit-level coverage in
-// sink_telemetry_test.go (T-0675) and the Bridge wiring coverage in
-// bridge_test.go (T-0677). The shared theme: drive a real
-// telemetry.Emitter + bus pipeline end-to-end through the sink
-// constructed by Bridge.FromConfig, and assert on what actually lands
-// on the bus (or — for the consent-denied case — what does NOT land).
+// sink_telemetry_test.go and the Bridge wiring coverage in
+// bridge_test.go. The shared theme: drive a real telemetry.Emitter +
+// bus pipeline end-to-end through the sink constructed by
+// Bridge.FromConfig, and assert on what actually lands on the bus
+// (or — for the consent-denied case — what does NOT land).
 //
 // The sink itself calls Emitter.Record with context.Background() (see
 // sink_telemetry.go shipOne), so per-context overrides like

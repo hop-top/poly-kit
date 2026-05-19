@@ -1,14 +1,14 @@
 package compliance
 
 // rtConsentingTelemetryPrompt — F13 runtime sub-check (e) + (f) from
-// ADR-0037 and plan T-0703:
+// ADR-0037:
 //
 //   (e) First-run prompt fires-or-skips per ADR-0036 precedence.
 //   (f) Persisted decision carries the canonical `prompt_version` field
 //       (NOT `consent_version` or any other alias) AND a valid
 //       decision_source (env | flag | prompt | config).
 //
-// Methodology (each scenario in its own rtEnv per T-0700):
+// Methodology (each scenario in its own rtEnv):
 //
 //   1. Fresh HOME + DO_NOT_TRACK=1 + any read cmd
 //      → config persisted with state=denied, decision_source=env,
@@ -27,7 +27,7 @@ package compliance
 // Documented in the pass-path Details as "TTY prompt covered by manual
 // review per ADR-0036".
 //
-// Harness caveat (per T-0700): the bus pkg does not auto-route from
+// Harness caveat: the bus pkg does not auto-route from
 // KIT_BUS_SINK=jsonl yet. The stub binary under
 // testdata/stub-telemetry-binary-prompt/ honors KIT_BUS_SINK_PATH AND
 // writes the telemetry consent YAML directly under <XDG_CONFIG_HOME>/kit/

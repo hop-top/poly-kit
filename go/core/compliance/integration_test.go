@@ -1,14 +1,13 @@
 //go:build integration
 
-// Package compliance_test, integration build tag — T-0706.
+// Package compliance_test, integration build tag.
 //
 // End-to-end compliance check against the real `examples/spaced`
 // binary. This test is the GREEN-LIGHT verification for the
 // kit-telemetry-compliance track: build spaced, flip its
 // toolspec's `telemetry.enabled` from false to true (in a tmp
-// copy — the source toolspec stays at `enabled: false` per T-0697),
-// then run compliance.Run end-to-end and assert against the
-// observed score.
+// copy — the source toolspec stays at `enabled: false`), then run
+// compliance.Run end-to-end and assert against the observed score.
 //
 // Run with:
 //
@@ -44,17 +43,15 @@
 //
 // Additionally, the F13 runtime sub-checks (rtConsentingTelemetryInspect,
 // rtConsentingTelemetryKillSwitch, rtConsentingTelemetryPrompt)
-// exist in the package but are NOT yet wired into
-// runRuntimeChecks — that is T-0704's job, which is in flight at
-// the time this test landed. So the F13 result here reflects the
-// static check only.
+// exist in the package but are NOT yet wired into runRuntimeChecks.
+// The F13 result here reflects the static check only.
 //
 // The test is therefore a baseline lock-in: it documents what
 // `compliance.Run` returns for the real spaced binary today
 // (9/13), names every shortfall, and provides a tripwire that
-// fires when either side of the contract drifts. When T-0704
-// lands and spaced exposes the canonical telemetry subcommands,
-// flip wantScore to 13 and wantF13Status to "pass".
+// fires when either side of the contract drifts. When the runtime
+// wiring lands and spaced exposes the canonical telemetry
+// subcommands, flip wantScore to 13 and wantF13Status to "pass".
 
 package compliance_test
 
@@ -194,10 +191,10 @@ func TestE2E_SpacedCompliance(t *testing.T) {
 	}
 
 	// 9. Vacuity note: F13 runtime sub-checks (inspect, killswitch,
-	// prompt) are not yet routed through runRuntimeChecks — that is
-	// T-0704's wiring task. When T-0704 lands, this test's F13
-	// result becomes the static + runtime aggregate; until then it's
-	// static-only. The test does NOT need to change for that
-	// transition — the aggregate-row-per-factor contract is stable
-	// and `mergeResults` overrides static skips with runtime checks.
+	// prompt) are not yet routed through runRuntimeChecks. When the
+	// runtime wiring lands, this test's F13 result becomes the static
+	// + runtime aggregate; until then it's static-only. The test does
+	// NOT need to change for that transition — the
+	// aggregate-row-per-factor contract is stable and `mergeResults`
+	// overrides static skips with runtime checks.
 }

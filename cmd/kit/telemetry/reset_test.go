@@ -277,7 +277,7 @@ func TestResetCmd_Wired(t *testing.T) {
 
 // TestCmd_TelemetryTreeIncludesReset asserts the parent Cmd wires the
 // reset subcommand. Companion to TestCmd_TelemetryTree in
-// status_test.go; this isolates the merge surface for T-0668.
+// status_test.go.
 func TestCmd_TelemetryTreeIncludesReset(t *testing.T) {
 	root := Cmd()
 	var found bool

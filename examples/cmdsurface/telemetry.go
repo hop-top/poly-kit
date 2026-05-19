@@ -19,10 +19,8 @@
 //     construct without a redactor; flipping to Full requires wiring
 //     WithRedactor — out of scope for the demo.
 //
-// Path chosen for T-0681: we use the TelemetryOption constructor
-// directly. The cmdsurface.Config telemetry block (T-0676) is not
-// consulted here. Switching to the config path is a single-line swap
-// the moment T-0676 lands a public ConfigureTelemetry helper.
+// This file uses the TelemetryOption constructor directly. The
+// cmdsurface.Config telemetry block is not consulted here.
 package main
 
 import (

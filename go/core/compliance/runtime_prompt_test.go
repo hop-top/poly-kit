@@ -3,7 +3,7 @@ package compliance
 // Tests for rtConsentingTelemetryPrompt — ADR-0037 sub-conditions (e)
 // + (f) honored at runtime per the precedence chain in ADR-0036.
 //
-// Build strategy: sibling task T-0701 owns the package-wide TestMain
+// Build strategy: the kill-switch tests own the package-wide TestMain
 // (it builds testdata/stub-telemetry-binary once for the whole run),
 // so this file CANNOT define another TestMain. Instead the prompt
 // stub is compiled lazily on first use via sync.Once — same one-time
@@ -72,7 +72,7 @@ func buildPromptStub(t *testing.T) string {
 // promptSpec returns a minimal opt-in toolspec the prompt runtime
 // check will accept: one read command (idempotent + output_schema)
 // and a telemetry block. Mirrors killSwitchSpec from the sibling
-// test file; kept separate so changes here don't ripple into T-0701.
+// test file; kept separate so changes here stay isolated.
 func promptSpec() *toolspecYAML {
 	idempotent := true
 	return &toolspecYAML{

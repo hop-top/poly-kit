@@ -1,6 +1,6 @@
 // matrix_test.go is the cross-cutting integration matrix for the
-// kit-consent slice (T-0671). The sibling tasks (T-0663..T-0670) each
-// own unit tests over a single layer:
+// kit-consent slice. Sibling files own unit tests over a single
+// layer:
 //
 //   - consent_test.go: schema + FileStore round-trips
 //   - resolve_test.go: precedence chain in isolation (pure resolver)

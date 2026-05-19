@@ -1,10 +1,10 @@
 //! SDK telemetry module. Gated behind the `telemetry` feature.
 //!
 //! Mirrors the Go-side contract (`hop.top/kit/go/runtime/telemetry`) at
-//! the data-only seams: Mode enum + env precedence (T-0723), install_id
-//! reader/writer (T-0724), consent-file reader (T-0725). The Rust SDK
-//! is read-only against the consent file — kit-consent (Go) owns
-//! writes. See ADR-0035 (canonical contract) and ADR-0038 (SDK delta).
+//! the data-only seams: Mode enum + env precedence, install_id
+//! reader/writer, consent-file reader. The Rust SDK is read-only
+//! against the consent file — kit-consent (Go) owns writes. See
+//! ADR-0035 (canonical contract) and ADR-0038 (SDK delta).
 
 pub mod client;
 pub mod consent;

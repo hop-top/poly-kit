@@ -14,8 +14,8 @@ const SchemaVersion = "1"
 
 // SDKLang identifies the emitter SDK in the event envelope. Go events
 // stamp "go"; the polyglot SDKs ("py", "ts", "rs", "php") fill in their
-// own values when they emit. The cross-language contract test (track
-// sdk-telemetry, T-0709) diffs the wire shape across emitter languages.
+// own values when they emit. The cross-language contract test diffs
+// the wire shape across emitter languages.
 const SDKLang = "go"
 
 // installIDHexLen is the expected length of a rendered installation_id.
@@ -26,7 +26,7 @@ const installIDHexLen = 64
 // `kit.telemetry.event.recorded` (or `<app>.telemetry.event.recorded`
 // for adopters that set WithTopicPrefix). Field order, JSON tags, and
 // `omitempty` placement are part of the contract — they are diffed by
-// the cross-language contract test (sdk-telemetry T-0709).
+// the cross-language contract test.
 //
 // Anon tier (Mode == "anon"): Args and Flags MUST be empty. The emitter
 // defensively strips them before publish even if a caller populated

@@ -293,7 +293,7 @@ func commandPathExists(cmds []commandYAML, path []string) bool {
 }
 
 // checkConsentingTelemetry implements the F13 static check per
-// ADR-0037 + plan T-0699. When the toolspec opts into telemetry
+// ADR-0037. When the toolspec opts into telemetry
 // (`telemetry.enabled: true`), it asserts the block is well-formed
 // across seven sub-conditions:
 //
