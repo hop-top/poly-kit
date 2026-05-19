@@ -1,11 +1,11 @@
 # Vendored Presidio PII patterns. AUTO-GENERATED — refresh via
 # `make refresh-pii-rules` when bumping the Presidio pin.
 #
-# Source:  github.com/microsoft/presidio @ 2.2.355
+# Source:  github.com/microsoft/presidio @ 2.2.362
 # License: MIT (see LICENSE in this dir; original Microsoft Presidio © 2020)
 # Refresh: make refresh-pii-rules
 #
-# Patterns hand-translated from
+# Patterns hand-curated from
 # presidio-analyzer/presidio_analyzer/predefined_recognizers/*.py and
 # verified RE2-clean. Patterns that used backrefs or lookaround in
 # upstream were dropped (see SOURCES.md "Dropped patterns" section).

@@ -2,13 +2,13 @@
 
 | File              | Source                                                  | License |
 |-------------------|---------------------------------------------------------|---------|
-| presidio-pii.toml | github.com/microsoft/presidio @ 2.2.355                 | MIT     |
-| LICENSE           | github.com/microsoft/presidio @ 2.2.355                 | MIT     |
+| presidio-pii.toml | github.com/microsoft/presidio @ 2.2.362                 | MIT     |
+| LICENSE           | github.com/microsoft/presidio @ 2.2.362                 | MIT     |
 
 ## Pinned Commit
 
-- Tag:    2.2.355
-- URL:    https://github.com/microsoft/presidio/tree/2.2.355/presidio-analyzer/presidio_analyzer/predefined_recognizers
+- Tag:    2.2.362
+- URL:    https://github.com/microsoft/presidio/tree/2.2.362/presidio-analyzer/presidio_analyzer/predefined_recognizers
 
 ## Refresh
 
@@ -42,7 +42,7 @@ their false-positive rate in unstructured text is unacceptable:
 When loaded alongside the gitleaks corpus, rule-id collisions resolve
 in favour of gitleaks (its corpus is broader and updated more often).
 PII rules with conflicting ids get the suffix `-pii` at load time
-(see `loader.go::AddPresidio`).
+(see `loader.go::Default()`).
 
 ## Provenance Note
 
