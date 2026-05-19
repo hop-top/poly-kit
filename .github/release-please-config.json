@@ -125,9 +125,9 @@
         }
       ],
       "prerelease": true,
-      "prerelease-type": "experimental.0",
+      "prerelease-type": "alpha.0",
       "versioning": "prerelease",
-      "initial-version": "0.1.0-experimental.0"
+      "initial-version": "0.1.0-alpha.0"
     },
     "incubator/qmochi": {
       "release-type": "go",
