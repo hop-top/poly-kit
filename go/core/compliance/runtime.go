@@ -2,15 +2,18 @@ package compliance
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // runRuntimeChecks executes the binary and verifies behavior.
 func runRuntimeChecks(binaryPath string, spec *toolspecYAML) []CheckResult {
-	results := make([]CheckResult, 0, 10)
+	results := make([]CheckResult, 0, 11)
 
 	results = append(results, rtSelfDescribing(binaryPath))
 	results = append(results, rtStructuredIO(binaryPath, spec))
@@ -22,8 +25,122 @@ func runRuntimeChecks(binaryPath string, spec *toolspecYAML) []CheckResult {
 	results = append(results, rtProvenance(binaryPath, spec))
 	results = append(results, rtEvolution(binaryPath))
 	results = append(results, rtAuthLifecycle(binaryPath, spec))
+	results = append(results, rtConsentingTelemetry(binaryPath, spec))
 
 	return results
+}
+
+// rtConsentingTelemetryTimeout bounds the overall F13 runtime arm.
+// The three sub-checks each have their own per-subprocess timeouts;
+// this is the wall-clock cap on the whole aggregation. 90s gives the
+// kill-switch sub-check's 3 spawns (5s each) + inspect's ~10s + the
+// prompt arm's 3 spawns (5s each) generous headroom without wedging
+// the suite when an adopter binary is misbehaving.
+const rtConsentingTelemetryTimeout = 90 * time.Second
+
+// rtConsentingTelemetry runs all three F13 runtime sub-checks
+// (kill-switch, inspect/redact, prompt) and aggregates the results
+// per ADR-0037's "one row per factor" model. Skips early when the
+// toolspec does not opt into telemetry.
+//
+// Each sub-check owns its own rtEnv lifecycle via the envFactory
+// closure; we use newRTEnvDir over a per-call tmpdir so production
+// callers do not need *testing.T. The tmpdir is cleaned up at function
+// return.
+func rtConsentingTelemetry(binaryPath string, spec *toolspecYAML) CheckResult {
+	if !telemetryOptedIn(spec) {
+		return skip(FactorConsentingTelemetry, "binary does not opt into telemetry")
+	}
+
+	// Single tmpdir parent for the whole aggregation; per-scenario
+	// rtEnvs live in subdirs created by os.MkdirTemp under it. The
+	// cleanup at the end of this function reaps the whole tree.
+	parent, err := os.MkdirTemp("", "kit-compliance-f13-*")
+	if err != nil {
+		return fail(FactorConsentingTelemetry,
+			fmt.Sprintf("create tmpdir for runtime check: %v", err),
+			"Verify the test environment has a writable temp directory")
+	}
+	defer os.RemoveAll(parent)
+
+	envFactory := func() *rtEnv {
+		dir, err := os.MkdirTemp(parent, "scenario-*")
+		if err != nil {
+			// Fall back to parent itself; downstream errors will surface
+			// via subprocess invocations.
+			dir = parent
+		}
+		return newRTEnvDir(dir)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), rtConsentingTelemetryTimeout)
+	defer cancel()
+
+	sub1 := rtConsentingTelemetryKillSwitch(ctx, binaryPath, spec, envFactory)
+	sub2 := rtConsentingTelemetryInspect(ctx, binaryPath, spec, envFactory)
+	sub3 := rtConsentingTelemetryPrompt(ctx, binaryPath, spec, envFactory)
+
+	return aggregateConsentingTelemetry(sub1, sub2, sub3)
+}
+
+// aggregateConsentingTelemetry folds the three F13 runtime sub-check
+// results into a single CheckResult per ADR-0037's "one row per
+// factor" model. Precedence:
+//
+//   - any fail → overall fail; Details concatenates each sub-check's
+//     failure Details so adopters see every gap in one pass.
+//   - all skip → overall skip; Details concatenates each skip reason
+//     (typically all three say "binary does not opt into telemetry"
+//     or a no-read-command skip from a sub-check).
+//   - otherwise → overall pass; Details summarizes which sub-conditions
+//     passed.
+//
+// The mixed pass+skip case (e.g. kill-switch + prompt pass, inspect
+// skip because no test-inject hook) collapses to pass — partial
+// instrumentation is acceptable per ADR-0037 §5; a clean pass on the
+// arms we CAN verify is the strongest signal we can give the adopter
+// without false-failing on missing test hooks.
+func aggregateConsentingTelemetry(rs ...CheckResult) CheckResult {
+	var failed, skipped []string
+	for _, r := range rs {
+		switch r.Status {
+		case "fail":
+			failed = append(failed, r.Details)
+		case "skip":
+			skipped = append(skipped, r.Details)
+		}
+	}
+	f := FactorConsentingTelemetry
+	if len(failed) > 0 {
+		return fail(f, strings.Join(failed, "; "),
+			"Address each failing sub-condition; see ADR-0037 sub-conditions "+
+				"(b)/(c)/(d)/(e)/(f)/(g)")
+	}
+	if len(skipped) == len(rs) {
+		// All sub-checks skipped — same root reason (not opt-in or
+		// harness limitation). Deduplicate identical messages so the
+		// Details line stays readable.
+		return skip(f, joinUnique(skipped, "; "))
+	}
+	return pass(f, "all runtime sub-conditions pass "+
+		"(kill-switch + inspect/redact + prompt precedence)")
+}
+
+// joinUnique joins entries with sep, dropping exact duplicates while
+// preserving first-occurrence order. Used by aggregateConsentingTelemetry
+// to collapse the common case where all three sub-checks skip with
+// the same "binary does not opt into telemetry" reason.
+func joinUnique(parts []string, sep string) string {
+	seen := make(map[string]struct{}, len(parts))
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if _, dup := seen[p]; dup {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return strings.Join(out, sep)
 }
 
 // run executes a command and returns stdout, stderr, exit code.

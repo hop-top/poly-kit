@@ -148,3 +148,13 @@ commands:
           level: safe
         output_schema:
           format: yaml
+
+telemetry:
+  enabled: false            # flip to true once kit-telemetry + kit-consent ship
+  categories: [invocation, error]
+  sinks: [bus, jsonl]
+  consent_command: "spaced telemetry"
+  consent_subcommands: [status, enable, disable, reset, inspect]
+  kill_switch_envs: [DO_NOT_TRACK, SPACED_TELEMETRY_MODE]
+  prompt_version: "v1"
+  redact_rules: kit-default
