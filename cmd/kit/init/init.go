@@ -217,7 +217,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&fromFlag, "from", "cli-go", "Template spec (built-in name, @org/name, git URL, or path)")
 	f.StringVar(&moduleFlag, "module", "", "Go module path (defaults to github.com/<owner>/<name>)")
-	f.StringSliceVar(&runtimeFlag, "runtime", []string{"go"}, "Runtimes to scaffold (go, ts, py)")
+	f.StringSliceVar(&runtimeFlag, "runtime", []string{"go"}, "Runtimes to scaffold (go, ts, py, php, rs)")
 	f.IntVar(&tierFlag, "tier", 4, "Augment tier (0-4)")
 	f.StringVar(&modeFlag, "mode", "", "Mode override (bootstrap|augment); empty = auto-detect")
 	f.StringVar(&accountTypeFlag, "account-type", "personal", "GitHub account type (personal|org|none)")

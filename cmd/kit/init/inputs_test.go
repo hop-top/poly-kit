@@ -56,6 +56,23 @@ func clearKitEnv(t *testing.T) {
 
 // isolateGit points git at a temp HOME so global gitconfig probes by
 // inputs.gitConfig return controlled values (or empty when unset).
+//
+// Three layers of isolation, all required:
+//
+//   - GIT_CONFIG_GLOBAL  — pins the global config file to our tempdir,
+//     so the test author's ~/.gitconfig is invisible.
+//   - GIT_CONFIG_SYSTEM=/dev/null — disables /etc/gitconfig overrides.
+//   - GIT_DIR=/dev/null  — when the test runs from inside a worktree,
+//     `git config --get` would otherwise walk up from CWD and read the
+//     repo's local config (which on a kit dev box is the bare repo's
+//     local user.name="Test"). Pointing GIT_DIR at /dev/null makes git
+//     treat the repo as nonexistent for the spawned subprocess, so it
+//     falls through to the tempdir global config.
+//
+// Package-wide pre-push GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE
+// inheritance is handled once in TestMain (testmain_test.go); this
+// helper only adds the per-test bits that need GIT_DIR pinned to
+// /dev/null.
 func isolateGit(t *testing.T, name, email string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -63,6 +80,7 @@ func isolateGit(t *testing.T, name, email string) {
 	t.Setenv("HOME", dir)
 	t.Setenv("GIT_CONFIG_GLOBAL", cfg)
 	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+	t.Setenv("GIT_DIR", "/dev/null")
 	if name != "" {
 		require.NoError(t, exec.Command("git", "config", "--global", "user.name", name).Run())
 	}

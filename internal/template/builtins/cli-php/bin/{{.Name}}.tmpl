@@ -1,0 +1,21 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Composer autoloader: works for both source checkout (vendor/) and
+// `composer require --global` install (../../autoload.php).
+$candidates = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+foreach ($candidates as $f) {
+    if (file_exists($f)) {
+        require $f;
+        break;
+    }
+}
+
+use {{.VendorNamespace}}\{{.NameNamespace}}\Application;
+
+exit((new Application())->run());

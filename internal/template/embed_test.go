@@ -14,7 +14,7 @@ import (
 
 // expectedBuiltins is the set of templates synced from templates/ via
 // `make builtins-sync`. Keep in sync with internal/template/builtins/.
-var expectedBuiltins = []string{"cli-go", "cli-py", "cli-ts", "shared"}
+var expectedBuiltins = []string{"cli-go", "cli-php", "cli-py", "cli-rs", "cli-ts", "shared"}
 
 // requireSyncedBuiltins skips when builtins/ is empty (no sync ran);
 // otherwise returns the populated fs.FS.
