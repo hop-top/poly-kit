@@ -53,6 +53,7 @@ require (
 	github.com/tj/go-naturaldate v1.3.0
 	github.com/zalando/go-keyring v0.2.8
 	go.etcd.io/etcd/client/v3 v3.6.10
+	go.jetify.com/typeid v1.3.0
 	go.temporal.io/api v1.62.7
 	go.temporal.io/sdk v1.42.0
 	golang.org/x/crypto v0.50.0
@@ -129,6 +130,7 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
+	github.com/gofrs/uuid/v5 v5.2.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
