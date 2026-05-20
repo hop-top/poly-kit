@@ -63,7 +63,7 @@ Arguments:
 
 Flags:
   --output DIR          Output directory (default: ./<name>)
-  --lang LANG           Language: go, ts, py, or comma-separated
+  --lang LANG           Language: go, ts, py, rs, or comma-separated
                         for polyglot (default: go)
   --description TEXT    Project description
   --license LICENSE     License: apache, mit (default: apache)
@@ -90,6 +90,7 @@ Examples:
   scaffold.sh myapp
   scaffold.sh myapp --lang go,ts --forge github --org myorg
   scaffold.sh myapp --lang py --no-push
+  scaffold.sh myapp --lang rs --forge github --org myorg
 USAGE
   exit 0
 }
@@ -538,6 +539,9 @@ mkdir -p "$OUTPUT/.github"
         ;;
       py)
         echo "- Python: type hints required, ruff for linting, pytest for testing"
+        ;;
+      rs)
+        echo "- Rust: stable toolchain, \`cargo fmt\` + \`cargo clippy -D warnings\`, \`cargo test --all-features\` for testing"
         ;;
     esac
   done

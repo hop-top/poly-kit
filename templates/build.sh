@@ -49,11 +49,37 @@ compose_gitignore() {
 }
 
 # copy_ci_single <dest> <lang>
-# Copies dependabot + lang-specific CI/release as ci.yml/release.yml
+# Generates a single-lang dependabot.yml + copies lang-specific CI as ci.yml.
 copy_ci_single() {
   local dest="$1" lang="$2"
   mkdir -p "$dest/.github/workflows"
-  cp "$SHARED/ci/dependabot.yml" "$dest/.github/"
+
+  # Per-lang dependabot ecosystem
+  local ecosystem
+  case "$lang" in
+    go) ecosystem="gomod" ;;
+    ts) ecosystem="npm"   ;;
+    py) ecosystem="pip"   ;;
+    rs) ecosystem="cargo" ;;
+    *)
+      echo "Warning: no dependabot ecosystem for lang=$lang" >&2
+      ecosystem=""
+      ;;
+  esac
+
+  if [ -n "$ecosystem" ]; then
+    cat > "$dest/.github/dependabot.yml" <<DEPEOF
+version: 2
+updates:
+  - package-ecosystem: $ecosystem
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
+DEPEOF
+  fi
+
   local src="$SHARED/ci/ci-${lang}.yml"
   [ -f "$src" ] || src="${src}.tmpl"
   cp "$src" "$dest/.github/workflows/ci.yml"

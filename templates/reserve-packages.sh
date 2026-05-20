@@ -96,7 +96,9 @@ _reserve_cratesio() {
     return 0
   fi
 
-  if [ ! -f "$HOME/.cargo/credentials.toml" ] && [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+  if [ ! -f "$HOME/.cargo/credentials.toml" ] \
+    && [ ! -f "$HOME/.cargo/credentials" ] \
+    && [ -z "$CARGO_REGISTRY_TOKEN" ]; then
     echo "crates.io: not authenticated — run 'cargo login' or set CARGO_REGISTRY_TOKEN to reserve crate name"
     return 0
   fi
