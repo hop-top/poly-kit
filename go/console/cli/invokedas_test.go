@@ -1,7 +1,6 @@
 package cli_test
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,9 +22,9 @@ func newInvokedAsRoot(t *testing.T) *cli.Root {
 
 func TestInvokedAs_Empty(t *testing.T) {
 	// Guard against a stray ambient value in the test process — the
-	// contract is "unset → empty string", so we must actually unset
-	// it before constructing Root.
-	os.Unsetenv("KIT_INVOKED_AS")
+	// contract is "unset → empty string". t.Setenv to "" is equivalent
+	// to unset for os.Getenv and auto-restores any prior value.
+	t.Setenv("KIT_INVOKED_AS", "")
 	r := newInvokedAsRoot(t)
 	assert.Equal(t, "", r.InvokedAs(),
 		"InvokedAs must be empty when KIT_INVOKED_AS is unset")
