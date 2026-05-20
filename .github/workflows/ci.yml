@@ -148,6 +148,20 @@ jobs:
         with:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@v4
+      # Rust toolchain + cache for the typeid-v1 contract loader
+      # (tlc T-0753). test-parity (via test-parity-typeid) runs
+      # `cargo test --features id --test contract` on every build.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk/experimental/rs
+      # PHP toolchain for the typeid-v1 contract loader. The
+      # test-parity-typeid target only runs the PHP leg when both
+      # php and composer resolve on PATH; ubuntu-latest already
+      # ships PHP 8.x + composer, so the contract test executes
+      # here without an extra setup-php step.
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: cd sdk/py && uv sync --all-extras
       - run: make test-parity

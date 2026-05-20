@@ -1,7 +1,7 @@
 .PHONY: setup lint lint-go lint-ts lint-py lint-rs lint-docs lint-config lint-links lint-sdk-paths \
 	preflight \
 	tools tools-golangci-lint \
-	test test-go test-go-integration test-ts test-py test-rs test-parity \
+	test test-go test-go-integration test-ts test-py test-rs test-parity test-parity-typeid \
 	proto openapi clients clients-ts clients-php clients-rs clients-test api \
 	job-test job-integration-hatchet job-integration-restate job-integration-temporal \
 	test-workflow test-hook test-release promote promote-alpha promote-beta promote-rc promote-release check \
@@ -80,10 +80,32 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: ## Cross-language parity tests
+test-parity: test-parity-typeid ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
+
+# Per-SDK loaders for contracts/typeid-v1/fixtures.json. Each SDK runs
+# its own contract test; a wire-incompatible change in any SDK (or in
+# the shared fixture file) fails this target. PHP is treated as
+# optional because the kit's PHP toolchain is experimental and not
+# every CI runner ships it — when `php` and `composer` are present we
+# run the PHP contract test too. tlc T-0753.
+test-parity-typeid: ## TypeID v1 contract loaders across all 5 SDKs
+	@echo "==> typeid-v1 parity: Go"
+	go test ./go/core/id/... -run '^TestContract' -count=1 -timeout 60s
+	@echo "==> typeid-v1 parity: Rust"
+	cd sdk/experimental/rs && cargo test --features id --test contract --locked
+	@echo "==> typeid-v1 parity: TypeScript"
+	cd sdk/ts && pnpm vitest run src/id/contract.test.ts
+	@echo "==> typeid-v1 parity: Python"
+	cd sdk/py && uv sync --all-extras -q && uv run pytest tests/test_id_contract.py
+	@if command -v php >/dev/null 2>&1 && command -v composer >/dev/null 2>&1; then \
+		echo "==> typeid-v1 parity: PHP"; \
+		cd sdk/experimental/php && composer install --no-progress --quiet && vendor/bin/phpunit tests/Id/ContractTest.php; \
+	else \
+		echo "==> typeid-v1 parity: PHP toolchain not present, skipping (experimental SDK)"; \
+	fi
 
 lint: lint-go lint-ts lint-py lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
 
