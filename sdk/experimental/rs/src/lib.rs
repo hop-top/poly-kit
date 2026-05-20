@@ -1,4 +1,6 @@
+#[cfg(feature = "cli")]
 pub mod cli;
+#[cfg(feature = "output")]
 pub mod output;
 pub mod tui;
 
