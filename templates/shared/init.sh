@@ -67,14 +67,20 @@ fi
 app_name_upper="$(echo "$app_name" | tr '[:lower:]-' '[:upper:]_')"
 
 # Org: trailing segment of module_prefix (github.com/foo -> foo).
-# Falls back to author_name if module_prefix has no slash.
-if [[ "$module_prefix" == */* ]]; then
-  org="${module_prefix##*/}"
+# Strip trailing slash first so `github.com/foo/` still yields `foo`.
+# Falls back to author_name (then app_name) if no usable segment.
+module_prefix_trimmed="${module_prefix%/}"
+if [[ "$module_prefix_trimmed" == */* ]]; then
+  org="${module_prefix_trimmed##*/}"
 else
-  org="${author_name:-$app_name}"
+  org="$module_prefix_trimmed"
 fi
+[ -z "$org" ] && org="${author_name:-$app_name}"
 
-# PascalCase converter: my-app -> MyApp, my_app -> MyApp, myApp -> MyApp.
+# PascalCase converter: splits on hyphen/underscore/space and
+# title-cases each segment. Camel-cased input (e.g. myApp) is
+# treated as a single segment, producing Myapp — fine for the
+# CLI naming conventions we target.
 to_pascal() {
   printf '%s' "$1" \
     | awk 'BEGIN{FS="[-_ ]+"} {
@@ -190,7 +196,9 @@ while IFS= read -r path; do
   [ "$path" = "$new" ] && continue
   mv "$path" "$new"
 done < <(find "$PROJECT_DIR" -depth -name '*{{.Name}}*' \
-  ! -path '*/.git/*' 2>/dev/null)
+  ! -path '*/.git/*' \
+  ! -path '*/node_modules/*' \
+  ! -path '*/vendor/*' 2>/dev/null)
 
 # --- Strip .tmpl suffixes ------------------------------
 
