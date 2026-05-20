@@ -85,6 +85,60 @@ final class IdTest extends TestCase
         }
     }
 
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function invalidPrefixes(): iterable
+    {
+        yield 'uppercase'            => ['BadPrefix'];
+        yield 'leading digit'        => ['1abc'];
+        yield 'trailing underscore'  => ['abc_'];
+        yield 'leading underscore'   => ['_abc'];
+        yield 'over 63 chars'        => [str_repeat('x', 64)];
+        yield 'contains digit'       => ['abc123'];
+        yield 'contains hyphen'      => ['abc-def'];
+        yield 'whitespace'           => ['abc def'];
+    }
+
+    /**
+     * Locking these in proves the prefix gate fires LOCALLY — i.e. before
+     * we delegate to upstream — so a message-text change in jewei/typeid-php
+     * cannot reclassify these into the wrong kit exception type.
+     */
+    #[DataProvider('invalidPrefixes')]
+    public function testLocalPrefixValidationRejects(string $prefix): void
+    {
+        $this->expectException(InvalidPrefixException::class);
+        Id::validatePrefix($prefix);
+    }
+
+    #[DataProvider('invalidPrefixes')]
+    public function testNewRejectsInvalidPrefix(string $prefix): void
+    {
+        $this->expectException(InvalidPrefixException::class);
+        Id::new($prefix);
+    }
+
+    #[DataProvider('invalidPrefixes')]
+    public function testFromUuidRejectsInvalidPrefix(string $prefix): void
+    {
+        $this->expectException(InvalidPrefixException::class);
+        Id::fromUuid($prefix, '01940000-0000-7000-8000-000000000000');
+    }
+
+    public function testParseRejectsInvalidPrefix(): void
+    {
+        $this->expectException(InvalidPrefixException::class);
+        Id::parse('BadPrefix_01jsnsf2g7e2saxdjvz3j6tc3x');
+    }
+
+    public function testValidatePrefixAcceptsEmpty(): void
+    {
+        // Empty prefix is valid per the v0.3 grammar — should not raise.
+        Id::validatePrefix('');
+        $this->addToAssertionCount(1);
+    }
+
     public function testParseRejectsInvalidSuffix(): void
     {
         $this->expectException(IdException::class);
@@ -158,6 +212,45 @@ final class IdTest extends TestCase
 
         $this->assertSame($id, (string) $task);
         $this->assertSame($id, $task->value);
+    }
+
+    public function testTypedConstructorRejectsNonTypeIDString(): void
+    {
+        // Bare string with no underscore and not a valid 26-char suffix —
+        // must fail; constructor must NOT silently wrap garbage.
+        $this->expectException(IdException::class);
+        new TaskId('not_a_typeid_at_all');
+    }
+
+    public function testTypedConstructorRejectsPrefixMismatch(): void
+    {
+        $invoiceId = Id::fromUuid('invoice', '01940000-0000-7000-8000-000000000001');
+
+        $this->expectException(PrefixMismatchException::class);
+        new TaskId($invoiceId);
+    }
+
+    public function testTypedFromStringValidatesPrefix(): void
+    {
+        $taskId = Id::fromUuid('task', '01940000-0000-7000-8000-000000000000');
+        $task = TaskId::fromString($taskId);
+        $this->assertSame($taskId, (string) $task);
+    }
+
+    public function testTypedFromStringRejectsMismatchedPrefix(): void
+    {
+        $invoiceId = Id::fromUuid('invoice', '01940000-0000-7000-8000-000000000001');
+
+        $this->expectException(PrefixMismatchException::class);
+        TaskId::fromString($invoiceId);
+    }
+
+    public function testTypedFromStringRejectsNonTypeIDInput(): void
+    {
+        // 'not_a_typeid' parses as prefix='not_a' (locally valid lowercase)
+        // but suffix 'typeid' fails the 26-char Crockford check → suffix err.
+        $this->expectException(InvalidSuffixException::class);
+        TaskId::fromString('not_a_typeid');
     }
 }
 

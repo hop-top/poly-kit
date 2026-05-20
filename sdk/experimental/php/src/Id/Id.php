@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace HopTop\Kit\Id;
 
-use Throwable;
 use TypeID\Exception\ConstructorException;
 use TypeID\Exception\ValidationException;
 use TypeID\TypeID;
@@ -24,6 +23,15 @@ use TypeID\TypeID;
  */
 final class Id
 {
+    /**
+     * TypeID v0.3 prefix grammar (matches `jewei/typeid-php` Validator):
+     * lowercase a-z plus underscore separators, no leading or trailing
+     * underscore, max 63 chars. Empty string is valid (no prefix).
+     */
+    private const string PREFIX_PATTERN = '/^([a-z]([a-z_]{0,61}[a-z])?)?$/';
+
+    private const int PREFIX_MAX_LENGTH = 63;
+
     private function __construct() {}
 
     /**
@@ -33,17 +41,19 @@ final class Id
      */
     public static function new(string $prefix): string
     {
+        self::validatePrefix($prefix);
+
+        // Suffix is generated internally from a fresh UUIDv7; the only
+        // remaining failure mode is an upstream UUIDv7 generator hiccup,
+        // which surfaces as ConstructorException and is genuinely a
+        // suffix-side issue (bad random bytes).
         try {
             return TypeID::generate($prefix)->toString();
-        } catch (ValidationException $e) {
-            throw new InvalidPrefixException(
-                "invalid TypeID prefix: {$prefix}",
+        } catch (ConstructorException $e) {
+            throw new InvalidSuffixException(
+                "failed to generate TypeID suffix for prefix: {$prefix}",
                 previous: $e,
             );
-        } catch (ConstructorException $e) {
-            // Upstream uses ConstructorException for any generation failure,
-            // including prefix validation failures wrapped during fromUuid.
-            throw self::classifyConstructorException($e, $prefix);
         }
     }
 
@@ -58,10 +68,31 @@ final class Id
      */
     public static function parse(string $s): ParsedId
     {
+        if ($s === '') {
+            throw new InvalidSuffixException('cannot parse empty TypeID string');
+        }
+
+        // Split locally so we can decide which kit exception to raise without
+        // resorting to substring-matching upstream error messages.
+        $lastUnderscore = strrpos($s, '_');
+        if ($lastUnderscore === 0) {
+            throw new InvalidPrefixException(
+                "TypeID string cannot start with underscore: {$s}",
+            );
+        }
+
+        $prefix = $lastUnderscore === false ? '' : substr($s, 0, $lastUnderscore);
+        self::validatePrefix($prefix);
+
         try {
             $tid = TypeID::fromString($s);
         } catch (ConstructorException $e) {
-            throw self::classifyConstructorException($e, $s);
+            // Prefix already validated locally — any remaining upstream
+            // failure must concern the suffix (length, alphabet, overflow).
+            throw new InvalidSuffixException(
+                "invalid TypeID suffix in: {$s}",
+                previous: $e,
+            );
         }
 
         return new ParsedId(
@@ -81,16 +112,19 @@ final class Id
      */
     public static function fromUuid(string $prefix, string $uuid): string
     {
+        self::validatePrefix($prefix);
+
         try {
             return TypeID::fromUuid($uuid, $prefix)->toString();
         } catch (ValidationException $e) {
-            throw new InvalidPrefixException(
-                "invalid TypeID prefix: {$prefix}",
+            // Prefix was already validated above; any remaining ValidationException
+            // means the encoded suffix failed Validator::isValidSuffix, which is
+            // a suffix-side problem traceable to a bad UUID.
+            throw new InvalidSuffixException(
+                "invalid UUID for TypeID suffix: {$uuid}",
                 previous: $e,
             );
         } catch (ConstructorException $e) {
-            // fromUuid wraps Base32::encode failures (i.e. bad UUID input)
-            // in ConstructorException.
             throw new InvalidSuffixException(
                 "invalid UUID for TypeID suffix: {$uuid}",
                 previous: $e,
@@ -99,28 +133,31 @@ final class Id
     }
 
     /**
-     * Map an upstream ConstructorException onto the kit exception hierarchy.
+     * Validate a TypeID prefix against the v0.3 grammar.
      *
-     * `jewei/typeid-php` raises ConstructorException for any of: empty
-     * input, malformed delimiter, bad prefix, bad suffix, bad UUID. We
-     * inspect the message to route to the right kit-side type.
+     * Local check that mirrors `TypeID\Validator::isValidPrefix` so kit-side
+     * callers get a typed `InvalidPrefixException` without relying on
+     * substring-matching upstream exception messages — which would silently
+     * break if the upstream library rephrased its errors.
+     *
+     * @throws InvalidPrefixException
      */
-    private static function classifyConstructorException(
-        Throwable $e,
-        string $context,
-    ): IdException {
-        $message = $e->getMessage();
-
-        if (str_contains($message, 'prefix')) {
-            return new InvalidPrefixException(
-                "invalid TypeID prefix in: {$context}",
-                previous: $e,
-            );
+    public static function validatePrefix(string $prefix): void
+    {
+        if ($prefix === '') {
+            return;
         }
 
-        return new InvalidSuffixException(
-            "invalid TypeID suffix in: {$context}",
-            previous: $e,
-        );
+        if (strlen($prefix) > self::PREFIX_MAX_LENGTH) {
+            throw new InvalidPrefixException(sprintf(
+                'invalid TypeID prefix (max %d chars): %s',
+                self::PREFIX_MAX_LENGTH,
+                $prefix,
+            ));
+        }
+
+        if (preg_match(self::PREFIX_PATTERN, $prefix) !== 1) {
+            throw new InvalidPrefixException("invalid TypeID prefix: {$prefix}");
+        }
     }
 }
