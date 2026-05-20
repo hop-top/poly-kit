@@ -54,15 +54,53 @@ func clearKitEnv(t *testing.T) {
 	}
 }
 
+// scrubGitEnv removes inherited GIT_* env vars that would otherwise pin
+// git to the parent process's repo (notably under a pre-push hook where
+// GIT_DIR / GIT_WORK_TREE are set). t.Setenv("KEY", "") is unsafe — git
+// rejects empty GIT_DIR — so Unsetenv with t.Cleanup-restored values.
+//
+// Mirrors go/console/cli/conformance/install_hooks_test.go:scrubGitEnv.
+func scrubGitEnv(t *testing.T) {
+	t.Helper()
+	for _, v := range []string{
+		"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+		"GIT_NAMESPACE", "GIT_COMMON_DIR", "GIT_PREFIX",
+		"GIT_OBJECT_DIRECTORY",
+	} {
+		key := v
+		orig, had := os.LookupEnv(key)
+		_ = os.Unsetenv(key)
+		if had {
+			t.Cleanup(func() { _ = os.Setenv(key, orig) })
+		}
+	}
+}
+
 // isolateGit points git at a temp HOME so global gitconfig probes by
 // inputs.gitConfig return controlled values (or empty when unset).
+//
+// Three layers of isolation, all required:
+//
+//   - GIT_CONFIG_GLOBAL  — pins the global config file to our tempdir,
+//     so the test author's ~/.gitconfig is invisible.
+//   - GIT_CONFIG_SYSTEM=/dev/null — disables /etc/gitconfig overrides.
+//   - GIT_DIR=/dev/null  — when the test runs from inside a worktree,
+//     `git config --get` would otherwise walk up and read the *repo's*
+//     local config. Pointing GIT_DIR at /dev/null makes git treat the
+//     repo as nonexistent for the spawned subprocess, so it falls
+//     through to the (tempdir) global config we just wrote.
+//
+// scrubGitEnv handles GIT_WORK_TREE / GIT_INDEX_FILE / etc. that
+// pre-push hooks leak into their child process env.
 func isolateGit(t *testing.T, name, email string) {
 	t.Helper()
+	scrubGitEnv(t)
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, ".gitconfig")
 	t.Setenv("HOME", dir)
 	t.Setenv("GIT_CONFIG_GLOBAL", cfg)
 	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+	t.Setenv("GIT_DIR", "/dev/null")
 	if name != "" {
 		require.NoError(t, exec.Command("git", "config", "--global", "user.name", name).Run())
 	}
