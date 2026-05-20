@@ -66,18 +66,65 @@ fi
 # Uppercase app name for env var prefixes (e.g. my-app -> MY_APP)
 app_name_upper="$(echo "$app_name" | tr '[:lower:]-' '[:upper:]_')"
 
+# Org: trailing segment of module_prefix (github.com/foo -> foo).
+# Strip trailing slash first so `github.com/foo/` still yields `foo`.
+# Falls back to author_name (then app_name) if no usable segment.
+module_prefix_trimmed="${module_prefix%/}"
+if [[ "$module_prefix_trimmed" == */* ]]; then
+  org="${module_prefix_trimmed##*/}"
+else
+  org="$module_prefix_trimmed"
+fi
+[ -z "$org" ] && org="${author_name:-$app_name}"
+
+# PascalCase converter: splits on hyphen/underscore/space and
+# title-cases each segment. Camel-cased input (e.g. myApp) is
+# treated as a single segment, producing Myapp — fine for the
+# CLI naming conventions we target.
+to_pascal() {
+  printf '%s' "$1" \
+    | awk 'BEGIN{FS="[-_ ]+"} {
+        out=""
+        for (i=1; i<=NF; i++) {
+          w=$i
+          if (length(w) > 0) {
+            out = out toupper(substr(w,1,1)) tolower(substr(w,2))
+          }
+        }
+        print out
+      }'
+}
+
+vendor_namespace="$(to_pascal "$org")"
+name_namespace="$(to_pascal "$app_name")"
+module="${module_prefix:+${module_prefix}/}${app_name}"
+
 # --- Replace tokens ------------------------------------
 
 echo "Replacing tokens..."
 
-replace_token "{{app_name_upper}}" "$app_name_upper"
-replace_token "{{app_name}}" "$app_name"
-replace_token "{{description}}" "$description"
-replace_token "{{author_name}}" "$author_name"
-replace_token "{{author_email}}" "$author_email"
-replace_token "{{module_prefix}}" "$module_prefix"
-replace_token "{{license}}" "$license"
-replace_token "{{year}}" "$YEAR"
+# Go text/template dot-notation tokens used across cli-*/templates and
+# shared/. Order matters: substitute longer/qualified tokens before shorter
+# ones to avoid partial matches (e.g. NameUpper before Name).
+replace_token "{{.NameUpper}}"       "$app_name_upper"
+replace_token "{{.NameNamespace}}"   "$name_namespace"
+replace_token "{{.VendorNamespace}}" "$vendor_namespace"
+replace_token "{{.Description}}"     "$description"
+replace_token "{{.Author}}"          "$author_name"
+replace_token "{{.Email}}"           "$author_email"
+replace_token "{{.License}}"         "$license"
+replace_token "{{.CrateName}}"       "$app_name"
+replace_token "{{.Module}}"          "$module"
+replace_token "{{.Vendor}}"          "$org"
+replace_token "{{.Year}}"            "$YEAR"
+replace_token "{{.Org}}"             "$org"
+replace_token "{{.Name}}"            "$app_name"
+
+# Unwrap Go-template literal escapes `{{` `…` `}}` used to pass
+# `{{ .Version }}`-style tokens through to downstream renderers
+# like goreleaser. Strip the outer escape, keep the inner text.
+replace_token '{{`'                  ""
+replace_token '`}}'                  ""
 
 # --- License -------------------------------------------
 
@@ -137,19 +184,34 @@ if [ "$is_polyglot" = true ]; then
   fi
 fi
 
-# --- Python src dir rename -----------------------------
+# --- Rename placeholder path segments ------------------
 
-# Single-lang template
-if [ -d "$PROJECT_DIR/src/{{app_name}}" ]; then
-  mv "$PROJECT_DIR/src/{{app_name}}" \
-    "$PROJECT_DIR/src/${app_name}"
-fi
+# Some templates embed {{.Name}} in directory/file names
+# (e.g. cli-py/src/{{.Name}}/, cli-php/bin/{{.Name}}.tmpl).
+# Walk depth-first so we rename leaves before their parents.
+echo "Renaming placeholder paths..."
+while IFS= read -r path; do
+  [ -e "$path" ] || continue
+  new="${path//\{\{.Name\}\}/$app_name}"
+  [ "$path" = "$new" ] && continue
+  mv "$path" "$new"
+done < <(find "$PROJECT_DIR" -depth -name '*{{.Name}}*' \
+  ! -path '*/.git/*' \
+  ! -path '*/node_modules/*' \
+  ! -path '*/vendor/*' 2>/dev/null)
 
-# Polyglot template
-if [ -d "$PROJECT_DIR/py/src/{{app_name}}" ]; then
-  mv "$PROJECT_DIR/py/src/{{app_name}}" \
-    "$PROJECT_DIR/py/src/${app_name}"
-fi
+# --- Strip .tmpl suffixes ------------------------------
+
+# Rendering tokens above is in-place; templates ship with
+# a .tmpl suffix so language toolchains ignore them until
+# rendered. Strip the suffix now.
+echo "Stripping .tmpl suffixes..."
+while IFS= read -r f; do
+  mv "$f" "${f%.tmpl}"
+done < <(find "$PROJECT_DIR" -type f -name '*.tmpl' \
+  ! -path '*/.git/*' \
+  ! -path '*/node_modules/*' \
+  ! -path '*/vendor/*' 2>/dev/null)
 
 # --- Polyglot: prune unselected languages --------------
 
