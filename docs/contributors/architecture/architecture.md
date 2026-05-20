@@ -217,6 +217,13 @@ from a release-pipeline secret rather than via a source-file
 literal. Adopter docs:
 [`docs/adopters/reference/telemetry-compliance.md`](../../adopters/reference/telemetry-compliance.md#build-time-configuration-kit-options).
 
+Both tiers are themselves opt-in. An adopter who never calls
+`cli.WithTelemetry` ships a telemetry-free binary; the kit-options
+row simply doesn't exist for that build, and the user-config
+`kit.telemetry.consent` partition is never read or written. Kit's
+default posture is silence — every layer requires an explicit
+adopter and/or operator action to leave it.
+
 ### Bus protocol
 
 `runtime/bus` exposes Subscribe / Publish on topics. Three

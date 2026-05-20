@@ -22,6 +22,27 @@ different concerns with different actors. Conflating them would let a
 binary pass ObservableOps while silently violating the user-consent
 contract — so F13 is its own row with its own seven Suggestions.
 
+> **Telemetry is opt-in at three levels.** Adopters who don't want
+> telemetry in their binary don't have to opt out — they just don't
+> opt in:
+>
+> 1. **Wire-level**: don't call `cli.WithTelemetry(...)`. The binary
+>    has no telemetry posture; no code paths fire; `kit telemetry
+>    status` is unreachable from the CLI. `HasTelemetry()` returns
+>    false.
+> 2. **Surface-level**: wire `WithTelemetry` but don't register the
+>    cobra subtree (`root.Cmd.AddCommand(kittelemetry.Cmd())`).
+>    Useful for libraries that re-export kit but don't want to
+>    expose `kit telemetry …` from their own CLI.
+> 3. **Toolspec-level**: declare `telemetry.enabled: false` (or
+>    omit the block) in your toolspec. `kit compliance check`
+>    returns `skip` for F13 and your binary still scores `12/12`
+>    on the original twelve factors.
+>
+> The framework's defaults make "do nothing" the safe path. Operators
+> still get `DO_NOT_TRACK=1` precedence regardless of what an
+> adopter wires — it's non-overridable.
+
 ## 2. The seven sub-conditions
 
 Each row below maps to one assertion `kit compliance check` runs. Most

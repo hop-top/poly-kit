@@ -54,6 +54,28 @@ cross-language contract test (track sdk-telemetry, T-0709).
 | I want to drain spooled events after a network outage       | `(*HTTPSSink).ReplaySpool(ctx)`                              |
 | I want diagnostics for `kit telemetry inspect`              | `(*HTTPSSink).Stats()` → `SpoolStats`                        |
 
+## Not using telemetry?
+
+This package is opt-in. Adopters who don't want telemetry in their
+binary do not need to opt out — they simply don't opt in:
+
+- Don't import `hop.top/kit/go/runtime/telemetry`.
+- Don't call `cli.WithTelemetry(...)` on your CLI root.
+- Don't `AddCommand(kittelemetry.Cmd())` in your cobra setup.
+
+Result: no telemetry code paths exist in your binary. `kit telemetry
+status` is unreachable, the consent file is never read or written,
+no install_id is generated, no bus subscriber is registered. The
+build-time `DefaultEndpoint` ldflag target is a no-op (nothing
+reads it). F13 `ConsentingTelemetry` returns `skip` in
+`kit compliance check` and your binary still scores 12/12 on the
+original twelve factors.
+
+The "do nothing" path is the safe path; every emission requires an
+explicit chain of adopter wiring + operator consent + non-zero
+mode. See `docs/adopters/reference/telemetry-compliance.md` §1 for
+the three opt-in levels (wire / surface / toolspec).
+
 ## Adopter happy path
 
 ```go
