@@ -39,7 +39,7 @@ regex = { version = "1", optional = true }
 thiserror = { version = "1", optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
 comfy-table = { version = "7", default-features = false, optional = true }
-mti = { version = "1.1.1", features = ["serde", "instrument"], optional = true }
+mti = { version = "1.1.1", features = ["serde"], optional = true }
 uuid = { version = "1", features = ["v7", "serde"], optional = true }
 
 [dev-dependencies]

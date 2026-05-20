@@ -341,7 +341,7 @@ impl<'de, T: Prefix> Deserialize<'de> for Typed<T> {
 /// This is exposed only for parity fixture verification (T-0753) and is not
 /// part of the public cross-language kit API.
 #[doc(hidden)]
-pub fn __test_only_from_uuid(prefix: &str, uuid: Uuid) -> Result<String, IdError> {
+pub(crate) fn __test_only_from_uuid(prefix: &str, uuid: Uuid) -> Result<String, IdError> {
     let suffix = TypeIdSuffix::from(uuid);
     let id = prefix.try_create_type_id_with_suffix::<V7>(suffix)?;
     Ok(id.to_string())
@@ -433,30 +433,36 @@ mod tests {
         }
     }
 
+    // ------------------------------------------------------------------
+    // Pinned canonical wire-form fixtures. The expected strings below are
+    // the literal output of `mti` v1.1.x for the three pinned UUID inputs;
+    // they were captured once by calling `__test_only_from_uuid` and pasted
+    // here verbatim. If an upstream change ever shifts the base32 encoding
+    // (or anything else in the canonical form) this assertion fails loudly
+    // and the cross-language parity matrix must be reviewed.
+    // ------------------------------------------------------------------
+    const FIXTURE_TASK_CANONICAL: &str = "task_01jg000000e008000000000000";
+    const FIXTURE_INVOICE_CANONICAL: &str = "invoice_01jg000000e008000000000001";
+    const FIXTURE_USER_CANONICAL: &str = "user_01jg000000e00800000000007z";
+
     #[test]
     fn fixtures_emit_stable_canonical_strings() {
-        // Pin the wire form so accidental upstream changes that would break
-        // cross-language parity fail this test loudly. The expected values
-        // are derived from `mti` v1.1.x on first run; if upstream ever
-        // changes the base32 encoding the whole parity matrix needs review.
         let cases = [
-            ("task", FIXTURE_TASK_UUID),
-            ("invoice", FIXTURE_INVOICE_UUID),
-            ("user", FIXTURE_USER_UUID),
+            ("task", FIXTURE_TASK_UUID, FIXTURE_TASK_CANONICAL),
+            ("invoice", FIXTURE_INVOICE_UUID, FIXTURE_INVOICE_CANONICAL),
+            ("user", FIXTURE_USER_UUID, FIXTURE_USER_CANONICAL),
         ];
-        for (prefix, uuid_str) in cases {
+        for (prefix, uuid_str, expected) in cases {
             let uuid = fixture_uuid(uuid_str);
             let canonical = __test_only_from_uuid(prefix, uuid).unwrap();
-            // 26-char base32 suffix per spec v0.3.0.
-            let suffix_part = &canonical[prefix.len() + 1..];
             assert_eq!(
-                suffix_part.len(),
-                26,
-                "suffix for {prefix} must be 26 chars, got {suffix_part}"
+                canonical, expected,
+                "canonical typeid for ({prefix}, {uuid_str}) drifted from pinned wire form"
             );
             // Round-trip must yield the same UUID bytes.
             let parsed = parse(&canonical).unwrap();
             assert_eq!(parsed.uuid, uuid);
+            assert_eq!(parsed.prefix, prefix);
         }
     }
 
