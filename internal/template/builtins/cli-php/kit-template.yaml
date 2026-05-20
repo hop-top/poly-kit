@@ -1,0 +1,53 @@
+name: cli-php
+description: "PHP CLI with kit conventions (symfony/console + KitCommand facade + phpunit)"
+kit_version: ">=0.4.0"
+
+variables:
+  - name: Name
+    prompt: "Project name (lowercase, hyphens)"
+    required: true
+    validate: "^[a-z][a-z0-9-]{0,63}$"
+  - name: Description
+    prompt: "One-line description"
+    default: "A {{.Name}} CLI"
+  - name: Vendor
+    prompt: "Composer/PSR-4 vendor (lowercase, hyphens)"
+    default: "{{.Org}}"
+  - name: VendorNamespace
+    prompt: "PSR-4 vendor namespace segment (PascalCase, no spaces)"
+    default: "{{.Org}}"
+  - name: NameNamespace
+    prompt: "PSR-4 project namespace segment (PascalCase, no spaces)"
+    default: "{{.Name}}"
+  - name: Author
+    prompt: "Author name"
+    required: true
+  - name: Email
+    prompt: "Author email"
+    required: true
+  - name: License
+    type: choice
+    choices: [MIT, Apache-2.0, BSD-3-Clause, Proprietary]
+    default: MIT
+
+files:
+  exclude:
+    - "kit-template.yaml"
+    - "tiers.yaml"
+    - "src/README.md"
+    - "tests/README.md"
+  binary: []
+
+render_rules:
+  strip_suffixes: [".tmpl"]
+  remove_after_render:
+    - "kit-template.yaml"
+    - "tiers.yaml"
+  license:
+    var: License
+    target: LICENSE
+    sources:
+      MIT: LICENSE-MIT
+      Apache-2.0: LICENSE-Apache-2.0
+
+hooks: {}
