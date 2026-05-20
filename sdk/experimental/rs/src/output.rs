@@ -22,7 +22,7 @@ mod registry;
 
 pub use column::ColumnSpec;
 pub use formatter::Formatter;
-pub use option::{parse_options, OptionSpec, OptionType, Options, ParseError};
+pub use option::{parse_options, OptionSpec, OptionType, OptionValue, Options, ParseError};
 pub use registry::{default_registry, Registry};
 
 #[cfg(feature = "cli")]
