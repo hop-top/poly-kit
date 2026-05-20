@@ -2,6 +2,11 @@
 
 experimental Rust client SDK.
 
+## Modules
+
+- [`src/id/`](src/id/) — TypeID primitive (cross-language; see
+  [ADR 0001](../../../docs/adr/0001-typeid-primitive.md))
+
 ## URI facade
 
 The Rust URI facade is experimental and feature-gated:
