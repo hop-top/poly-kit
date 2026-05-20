@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/typeid-v1/fixtures.json",
+  "version": "v1",
+  "spec": "jetify-typeid-v0.3",
+  "description": "Canonical cross-language parity vectors for the typeid primitive. Every SDK shipped by kit (go/core/id, sdk/experimental/rs, sdk/ts, sdk/py, sdk/experimental/php) MUST produce the listed `typeid` string when fed `(prefix, uuid)`, and MUST round-trip `typeid` back to `(prefix, uuid)`. A divergence is a wire-format break. Capability flags (skip_in) document SDK-specific opt-outs verified empirically against the upstream libs (jetify/typeid, mti, typeid-js, typeid-python, jewei/typeid-php).",
+  "vectors": [
+    {
+      "name": "task-fixed-uuid-zero",
+      "prefix": "task",
+      "uuid": "01940000-0000-7000-8000-000000000000",
+      "typeid": "task_01jg000000e008000000000000"
+    },
+    {
+      "name": "invoice-fixed-uuid-one",
+      "prefix": "invoice",
+      "uuid": "01940000-0000-7000-8000-000000000001",
+      "typeid": "invoice_01jg000000e008000000000001"
+    },
+    {
+      "name": "user-fixed-uuid-ff",
+      "prefix": "user",
+      "uuid": "01940000-0000-7000-8000-0000000000ff",
+      "typeid": "user_01jg000000e00800000000007z"
+    },
+    {
+      "name": "empty-prefix-bare-suffix",
+      "prefix": "",
+      "uuid": "01940000-0000-7000-8000-000000000000",
+      "typeid": "01jg000000e008000000000000",
+      "skip_in": ["rs"],
+      "note": "The Rust kit wrapper (sdk/experimental/rs) rejects empty prefix in id::new and id::from_uuid as a kit-level policy. The bare-suffix form is still valid per the Jetify v0.3 spec and supported by go/ts/py/php — see ADR 0001."
+    },
+    {
+      "name": "underscore-prefix",
+      "prefix": "my_app",
+      "uuid": "01940000-0000-7000-8000-000000000000",
+      "typeid": "my_app_01jg000000e008000000000000"
+    },
+    {
+      "name": "max-length-prefix-63-chars",
+      "prefix": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "uuid": "01940000-0000-7000-8000-000000000000",
+      "typeid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_01jg000000e008000000000000"
+    }
+  ]
+}

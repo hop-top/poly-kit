@@ -335,11 +335,44 @@ impl<'de, T: Prefix> Deserialize<'de> for Typed<T> {
     }
 }
 
-/// Internal helper used by tests: build a canonical typeid string from a
-/// pinned prefix and a pinned [`Uuid`], without generating a new UUIDv7.
+/// Build a canonical typeid string deterministically from an explicit
+/// `prefix` and `uuid`. Useful for fixtures and cross-language parity
+/// tests where both sides must agree on the encoded form for a pinned
+/// input (tlc T-0753).
 ///
-/// This is exposed only for parity fixture verification (T-0753) and is not
-/// part of the public cross-language kit API.
+/// # Errors
+///
+/// Returns [`IdError::InvalidPrefix`] if `prefix` is empty or violates the
+/// Jetify TypeID grammar. The empty-prefix rejection matches [`new`]: the
+/// kit's Rust wrapper requires a self-describing prefix on every id.
+///
+/// # Example
+///
+/// ```
+/// use hop_top_kit::id::{from_uuid, parse};
+/// use uuid::Uuid;
+///
+/// let uuid = Uuid::parse_str("01940000-0000-7000-8000-000000000000").unwrap();
+/// let s = from_uuid("task", uuid).unwrap();
+/// assert_eq!(s, "task_01jg000000e008000000000000");
+/// let parsed = parse(&s).unwrap();
+/// assert_eq!(parsed.uuid, uuid);
+/// ```
+pub fn from_uuid(prefix: &str, uuid: Uuid) -> Result<String, IdError> {
+    if prefix.is_empty() {
+        return Err(IdError::InvalidPrefix(
+            "prefix must not be empty".to_owned(),
+        ));
+    }
+    let suffix = TypeIdSuffix::from(uuid);
+    let id = prefix.try_create_type_id_with_suffix::<V7>(suffix)?;
+    Ok(id.to_string())
+}
+
+/// Internal helper retained for parity fixture verification (T-0753).
+/// Mirrors [`from_uuid`] but bypasses the kit's empty-prefix rejection so
+/// the parity test suite can probe both paths from the same construction
+/// site without needing two crates' worth of test plumbing.
 #[doc(hidden)]
 pub(crate) fn __test_only_from_uuid(prefix: &str, uuid: Uuid) -> Result<String, IdError> {
     let suffix = TypeIdSuffix::from(uuid);
