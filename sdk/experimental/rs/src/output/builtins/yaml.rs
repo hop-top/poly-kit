@@ -5,15 +5,14 @@ use std::io::Write;
 use serde_json::Value;
 
 use crate::output::formatter::Formatter;
-use crate::output::option::{OptionSpec, OptionType, Options};
+use crate::output::option::{OptionSpec, Options};
 
-static OPTS: &[OptionSpec] = &[OptionSpec {
-    name: "explicit_start",
-    r#type: OptionType::Bool,
-    usage: "Emit a leading '---' document marker",
-    default: None,
-    r#enum: &[],
-}];
+// No options yet. The cross-language facade in py/ts/go/php exposes
+// emitter-style knobs (e.g. inline depth, explicit document markers),
+// but serde_yaml::to_string doesn't expose them; honoring them would
+// require switching to serde_yaml_ng or hand-rolling output. Track via
+// follow-up once a real adopter needs it.
+static OPTS: &[OptionSpec] = &[];
 
 pub struct YamlFormatter;
 
