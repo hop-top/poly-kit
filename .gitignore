@@ -17,8 +17,12 @@ examples/probe/ts/node_modules/
 examples/probe/ts/dist/
 examples/probe/py/.pytest_cache/
 
-# Composer lock (library; consumers resolve their own deps)
-php/composer.lock
+# PHPUnit cache (per-machine test result memoization)
+**/.phpunit.cache/
+
+# Stray pnpm artifacts when running inside sub-workspaces directly
+sdk/ts/pnpm-lock.yaml
+sdk/ts/pnpm-workspace.yaml
 
 # uv lock (library; consumers resolve their own deps)
 py/kit-engine/uv.lock

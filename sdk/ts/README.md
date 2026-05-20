@@ -184,6 +184,96 @@ const id = handler.id({
 });
 ```
 
+## Telemetry
+
+`@hop-top/kit/telemetry` ships the SDK-side primitives for the kit
+telemetry contract: a non-blocking `Client`, a best-effort PII /
+secret redactor, and the consent + install-id readers needed to gate
+emission.
+
+**Default-denied**: a fresh install never emits. The `Client.record()`
+call is a no-op unless the operator has run `kit consent grant` AND a
+mode is selected via `KIT_TELEMETRY_MODE=anon|full` (or the prefixed
+`<APP>_TELEMETRY_MODE` equivalent). Inspect what would ship with `kit
+telemetry inspect`.
+
+```ts
+import { Client } from '@hop-top/kit/telemetry';
+
+const client = new Client({
+  sink: 'jsonl',                          // or 'https'
+  sinkFile: '/tmp/kit-events.jsonl',      // jsonl sink only
+  endpoint: 'https://telemetry.example',  // https sink only
+  sdkVersion: '1.2.3',
+});
+
+// Fire-and-forget. Returns synchronously; never throws.
+client.record('cmd.invoked', { command: 'launch', exit_code: 0 });
+
+// Best-effort drain on process exit.
+await client.shutdown(5_000);
+```
+
+### Configuration
+
+All `ClientOptions` fields are mirrored by env vars (env wins when the
+option is omitted):
+
+| Field       | Env var                       | Default                                              |
+| ----------- | ----------------------------- | ---------------------------------------------------- |
+| `endpoint`  | `KIT_TELEMETRY_ENDPOINT`      | —                                                    |
+| `sink`      | `KIT_TELEMETRY_SINK`          | `jsonl`                                              |
+| `sinkFile`  | `KIT_TELEMETRY_SINK_FILE`     | `$XDG_STATE_HOME/kit/telemetry/events.jsonl`         |
+| `queueSize` | `KIT_TELEMETRY_QUEUE_SIZE`    | `1024`                                               |
+
+### Redactor
+
+The default `redact()` pass scrubs emails, IPv4 / IPv6 addresses, `sk-`
+/ `gh[pousr]_` / `xoxb-` token prefixes, and `$HOME` path prefixes
+before the envelope hits a sink. Placeholders (`<redacted:email>`,
+`<redacted:ipv4>`, `<redacted:ipv6>`, `<redacted:token>`) are
+byte-parity with the py / rs / php SDKs so the cross-language contract
+harness can diff outputs.
+
+```ts
+import { redact, redactString } from '@hop-top/kit/telemetry';
+
+redactString('user@example.com from 10.0.0.1'); // → '<redacted:email> from <redacted:ipv4>'
+redact({ ip: '8.8.8.8', count: 3 });            // → { ip: '<redacted:ipv4>', count: 3 }
+```
+
+A per-`Client` `redactor` callback runs BEFORE the default pass — use
+it for adopter-specific allowlists or stricter rules. Throwing
+callbacks are isolated (the event still goes through the default
+pass).
+
+### Envelope
+
+Each emitted event is one NDJSON line with the shape:
+
+```json
+{
+  "schema_version": "1",
+  "sdk_lang": "ts",
+  "sdk_version": "0.4.0",
+  "installation_id": "<64-char hex sha256>",
+  "mode": "anon",
+  "occurred_at": "2026-05-19T12:00:00.000Z",
+  "event": "cmd.invoked",
+  "attrs": { "command": "launch", "exit_code": 0 }
+}
+```
+
+The `event` + `attrs` extension is the TS / Py divergence from Go's
+canonical envelope (Go pins a typed `Event` struct). See
+`sdk/docs/telemetry-event-schema.md` for the cross-language contract.
+
+### Cross-SDK contract harness
+
+The harness at `hops/main/sdk/tests/cross-lang/` (planned in T-0709)
+diffs envelopes across SDKs. As of this revision the harness is not
+landed; TS-side wiring is deferred until the directory exists.
+
 ## License
 
 MIT.

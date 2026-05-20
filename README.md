@@ -41,6 +41,12 @@ benchmarks — not flag parsers and output renderers.
 - **Guardrail primitives.** Path scoping (`go/core/scope`), egress
   filtering (`go/core/redact`), runtime circuit breakers
   (`go/core/breaker`), operating-mode declarations (`go/core/stage`).
+- **Consenting telemetry.** Opt-in anonymous usage emission with
+  default-deny posture, redact-on-write, and a cross-language wire
+  contract (Go / py / ts / rs / php). Adopters wire one
+  [`go/runtime/telemetry`](go/runtime/telemetry/) emitter; users
+  control consent via
+  [`kit telemetry status|enable|disable|reset|inspect`](docs/adopters/guides/telemetry.md).
 - **Engine.** Typed-JSON document store with versioning DAG;
   in-memory and SQLite backends.
 - **Storage abstractions.** Secret (10 backends), KV (4), blob (2).

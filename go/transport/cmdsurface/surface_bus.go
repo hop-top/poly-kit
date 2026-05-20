@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"hop.top/kit/go/transport/api"
 )
@@ -321,6 +322,7 @@ func newBusHandler(
 			Meta:  req.Meta,
 		}
 		inv.Meta.Surface = SurfaceBus
+		inv.Meta.RequestedAt = time.Now()
 
 		res, ierr := b.Invoke(ctx, inv)
 		if ierr != nil {

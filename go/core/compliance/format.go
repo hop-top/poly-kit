@@ -33,7 +33,7 @@ func formatText(r *Report) string {
 
 	for _, cr := range r.Results {
 		icon := statusIcon(cr.Status)
-		fmt.Fprintf(&b, "  %s  F%-2d %-20s %s\n",
+		fmt.Fprintf(&b, "  %s  F%-2d %-22s %s\n",
 			icon, int(cr.Factor), cr.Name, cr.Details)
 		if cr.Suggestion != "" {
 			fmt.Fprintf(&b, "       └─ %s\n", cr.Suggestion)

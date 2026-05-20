@@ -177,6 +177,65 @@ spaced <TAB>   # shows: mission, ml, fleet, fs, ...
 
 ---
 
+## Telemetry
+
+spaced uses [kit-telemetry][kit-telemetry] to ship anonymous usage
+data (command path, exit code, duration) when the user opts in. By
+default telemetry is **OFF** — `Record` is a zero-cost no-op until
+both a granted consent decision and a non-`off` mode are in place.
+
+Three flips, any one wins:
+
+- `--telemetry=off|anon|full` — per-invocation override (precedence #1).
+- `SPACED_TELEMETRY_MODE` — env var, beats `KIT_TELEMETRY_MODE`.
+- `kit telemetry enable` / consent prompt — once kit-consent lands.
+
+When emitted, events publish on the bus topic
+`spaced.telemetry.event.recorded` (the kit default
+`kit.telemetry.event.recorded` is overridden via `WithTopicPrefix`).
+`stdout` and `stderr` are never captured at any tier.
+
+[kit-telemetry]: ../../go/runtime/telemetry/README.md
+
+### Compliance posture
+
+spaced currently scores 9/13 on the kit-compliance e2e (T-0706). The
+gap is a naming collision: spaced already exposes a `telemetry` cobra
+command for **mission telemetry** (simulated live launch data — see
+the command table above), which collides with kit-consent's expected
+`telemetry status|enable|disable|reset|inspect` subcommands.
+
+The two `telemetry` concepts are distinct on purpose:
+
+- **Mission telemetry** (spaced-specific): satirical launch readouts,
+  altitude / velocity / stage timing.
+- **Runtime telemetry** (kit concept): opt-in usage events emitted via
+  `hop.top/kit/go/runtime/telemetry` — see [kit-compliance][kit-compliance]
+  for the full subcommand contract.
+
+For spaced to reach 13/13, one of two paths:
+
+- **(a) Rename spaced's `telemetry` → `mission-telemetry`** (or just
+  `mission`). Recommended. `telemetry` is a load-bearing kit concept;
+  ceding the verb at the top level lets kit-consent's subcommands
+  land where compliance expects them. Cost: a user-facing CLI break,
+  so it deserves a deprecation cycle (alias the old name, log a
+  one-time stderr nag, drop in the next minor).
+- **(b) Register kit-consent's subcommands under spaced's existing
+  `telemetry` parent.** Possible but cramped — mission-telemetry
+  subverbs would become siblings of kit's `status` / `enable` /
+  `disable` / `reset` / `inspect`, and the help output mixes two
+  unrelated concept families. Avoid unless (a) is blocked.
+
+The rename touches user-facing CLI, so it is **deferred to a future
+engineering task** that can land with its own discussion, deprecation
+window, and changelog entry. This README documents the trade-off so
+the score gap is intentional, not an oversight.
+
+[kit-compliance]: ../../docs/telemetry-compliance.md
+
+---
+
 ## Web Demo
 
 Browser terminal — no Node APIs; pure function router bundled

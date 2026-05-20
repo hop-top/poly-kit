@@ -305,6 +305,7 @@ type Root struct {
 	apiCfg             *APIConfig
 	identityCfg        *IdentityConfig
 	peerCfg            *PeerConfig
+	telemetryCfg       *TelemetryConfig
 	verboseCount       int // -V count; 0=info, 1=debug, 2+=trace
 	aliases            map[string]string
 	aliasCompletionSet bool              // guards single ValidArgsFunction wrap

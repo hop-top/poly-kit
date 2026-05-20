@@ -89,10 +89,14 @@
     "./scope": {
       "require": "./dist/scope.js",
       "types": "./dist/scope.d.ts"
+    },
+    "./telemetry": {
+      "require": "./dist/telemetry/index.js",
+      "types": "./dist/telemetry/index.d.ts"
     }
   },
   "scripts": {
-    "build": "tsup src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade.ts src/llm.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/scope.ts --format cjs --dts",
+    "build": "tsup src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade.ts src/llm.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/scope.ts src/telemetry/index.ts --format cjs --dts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "test": "vitest run"

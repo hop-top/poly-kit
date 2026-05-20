@@ -312,6 +312,121 @@ func TestLoad_BlocksOmittedByDefault(t *testing.T) {
 	}
 }
 
+const fixtureTelemetryYAML = `
+surfaces:
+  defaults: [cli, lib]
+telemetry:
+  enabled:     true
+  mode:        full
+  channel_cap: 1024
+  max_bytes:   16384
+  kit_version: "1.2.3"
+`
+
+func TestConfig_TelemetryBlock_UnmarshalsAllFields(t *testing.T) {
+	cfg, err := Load(strings.NewReader(fixtureTelemetryYAML))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Telemetry == nil {
+		t.Fatal("Telemetry block nil after explicit YAML")
+	}
+	tc := cfg.Telemetry
+	if !tc.Enabled {
+		t.Errorf("Enabled=%v want true", tc.Enabled)
+	}
+	if tc.Mode != "full" {
+		t.Errorf("Mode=%q want full", tc.Mode)
+	}
+	if tc.ChannelCap != 1024 {
+		t.Errorf("ChannelCap=%d want 1024", tc.ChannelCap)
+	}
+	if tc.MaxBytes != 16384 {
+		t.Errorf("MaxBytes=%d want 16384", tc.MaxBytes)
+	}
+	if tc.KitVersion != "1.2.3" {
+		t.Errorf("KitVersion=%q want 1.2.3", tc.KitVersion)
+	}
+}
+
+func TestConfig_TelemetryBlock_AbsentLeavesNil(t *testing.T) {
+	cfg, err := Load(strings.NewReader(fixtureYAML))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Telemetry != nil {
+		t.Errorf("Telemetry=%+v, want nil when YAML omits the block", cfg.Telemetry)
+	}
+}
+
+func TestConfig_TelemetryBlock_DisabledExplicit(t *testing.T) {
+	cfg, err := Load(strings.NewReader(`
+telemetry:
+  enabled: false
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Telemetry == nil {
+		t.Fatal("Telemetry nil but YAML explicitly set the block")
+	}
+	if cfg.Telemetry.Enabled {
+		t.Errorf("Enabled=true want false")
+	}
+}
+
+func TestTelemetryConfig_ApplyDefaults_FillsZeroValues(t *testing.T) {
+	tc := &TelemetryConfig{Enabled: true}
+	tc.ApplyDefaults()
+	if tc.Mode != "anon" {
+		t.Errorf("Mode=%q want anon", tc.Mode)
+	}
+	if tc.ChannelCap != 256 {
+		t.Errorf("ChannelCap=%d want 256", tc.ChannelCap)
+	}
+	if tc.MaxBytes != 8192 {
+		t.Errorf("MaxBytes=%d want 8192", tc.MaxBytes)
+	}
+	// Idempotency: a second call must not change anything.
+	tc.ApplyDefaults()
+	if tc.Mode != "anon" || tc.ChannelCap != 256 || tc.MaxBytes != 8192 {
+		t.Errorf("ApplyDefaults not idempotent: %+v", tc)
+	}
+}
+
+func TestTelemetryConfig_ApplyDefaults_PreservesExplicit(t *testing.T) {
+	tc := &TelemetryConfig{
+		Enabled:    true,
+		Mode:       "full",
+		ChannelCap: 1024,
+		MaxBytes:   16384,
+	}
+	tc.ApplyDefaults()
+	if tc.Mode != "full" {
+		t.Errorf("Mode=%q want full (preserved)", tc.Mode)
+	}
+	if tc.ChannelCap != 1024 {
+		t.Errorf("ChannelCap=%d want 1024 (preserved)", tc.ChannelCap)
+	}
+	if tc.MaxBytes != 16384 {
+		t.Errorf("MaxBytes=%d want 16384 (preserved)", tc.MaxBytes)
+	}
+}
+
+func TestTelemetryConfig_ApplyDefaults_NoOpWhenDisabled(t *testing.T) {
+	tc := &TelemetryConfig{Enabled: false}
+	tc.ApplyDefaults()
+	if tc.Mode != "" {
+		t.Errorf("Mode=%q want \"\" (disabled block)", tc.Mode)
+	}
+	if tc.ChannelCap != 0 {
+		t.Errorf("ChannelCap=%d want 0 (disabled block)", tc.ChannelCap)
+	}
+	if tc.MaxBytes != 0 {
+		t.Errorf("MaxBytes=%d want 0 (disabled block)", tc.MaxBytes)
+	}
+}
+
 func TestFromConfig_BlocksDoNotBreakEnablement(t *testing.T) {
 	// Loading a fixture with webhook/bus/cron/sinks blocks must
 	// not regress the foundation behavior: per-command Enabled is

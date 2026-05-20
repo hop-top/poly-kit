@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Telemetry module under `HopTop\Kit\Telemetry`:
+  - `Mode` enum, env-precedence resolver, `install_id` sharing, consent reader.
+  - `JsonlSink` (default; FPM-safe via `register_shutdown_function`).
+  - `HttpsSink` (opt-in; Guzzle-backed; FPM block-on-flush caveat documented).
+  - `NullSink` (selected by `KIT_TELEMETRY_SINK=none`).
+  - Best-effort `Redactor` (email, IPv4/IPv6, `$HOME`, token prefixes) with
+    custom-callback escape hatch.
+  - `Telemetry` facade now wires consent gating, mode-aware envelope shaping,
+    redaction, and sink selection via `KIT_TELEMETRY_SINK`.
+- PHP SDK is publish-only (no bus consumer).
+
 ## [0.4.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-php/v0.4.0-experimental.1...kit-php/v0.4.0-alpha.1) (2026-05-11)
 
 The hop-top team is renaming Kit's PHP SDK pre-release identifier from `experimental.N` to `alpha.N`.

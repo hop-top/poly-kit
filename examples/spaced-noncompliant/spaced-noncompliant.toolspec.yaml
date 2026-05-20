@@ -1,0 +1,123 @@
+name: spaced-noncompliant
+schema_version: "1"
+
+# DELIBERATELY-BROKEN FIXTURE.
+#
+# This toolspec is intentionally malformed in exactly ONE way: the
+# `telemetry.kill_switch_envs` list is missing `DO_NOT_TRACK`. Every
+# other F13 sub-condition (a, b, d, e, f, g) is satisfied. The
+# kit-compliance test suite uses this fixture to assert that F13:
+#
+#   1. Fails with a Suggestion mentioning DO_NOT_TRACK.
+#   2. Does NOT flag any other sub-condition.
+#   3. Passes F1-F12 unchanged.
+#
+# See docs/adopters/reference/telemetry-compliance.md §2(c) for the
+# canonical fix.
+
+state_introspection:
+  config_commands:
+    - spaced-noncompliant config show
+  env_vars:
+    - SPACED_NONCOMPLIANT_FORMAT
+    - SPACED_NONCOMPLIANT_LOG_LEVEL
+
+commands:
+  - name: telemetry
+    intent:
+      domain: observability
+      category: configuration
+      tags: [telemetry, consent]
+    contract:
+      idempotent: true
+      retryable: true
+    safety:
+      level: safe
+    children:
+      - name: status
+        intent:
+          domain: observability
+          category: query
+          tags: [telemetry, consent]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+      - name: enable
+        intent:
+          domain: observability
+          category: configuration
+          tags: [telemetry, consent]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+      - name: disable
+        intent:
+          domain: observability
+          category: configuration
+          tags: [telemetry, consent]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+      - name: reset
+        intent:
+          domain: observability
+          category: configuration
+          tags: [telemetry, consent]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+      - name: inspect
+        intent:
+          domain: observability
+          category: query
+          tags: [telemetry, consent, audit]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+
+  - name: mission
+    intent:
+      domain: space
+      category: query
+      tags: [mission]
+    contract:
+      idempotent: true
+      retryable: true
+    safety:
+      level: safe
+
+  - name: launch
+    intent:
+      domain: space
+      category: operations
+      tags: [mission, launch]
+    contract:
+      idempotent: false
+      retryable: false
+    safety:
+      level: dangerous
+
+telemetry:
+  enabled: true
+  categories: [invocation, error]
+  sinks: [bus, jsonl]
+  consent_command: "spaced-noncompliant telemetry"
+  consent_subcommands: [status, enable, disable, reset, inspect]
+  # INTENTIONAL VIOLATION: DO_NOT_TRACK is missing from this list.
+  # The canonical value would be:
+  #   kill_switch_envs: [DO_NOT_TRACK, SPACED_NONCOMPLIANT_TELEMETRY_MODE]
+  # F13 sub-condition (c) is broken on purpose; (d) still passes
+  # because the mode env is present.
+  kill_switch_envs: [SPACED_NONCOMPLIANT_TELEMETRY_MODE]
+  prompt_version: "v1"
+  redact_rules: kit-default

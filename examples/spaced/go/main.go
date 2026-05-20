@@ -18,6 +18,7 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/runtime/bus"
+	runtimetelemetry "hop.top/kit/go/runtime/telemetry"
 	"hop.top/uri/handle/generate"
 	"hop.top/uri/scheme"
 )
@@ -35,9 +36,49 @@ func main() {
 		Accent:           "#FF5733",
 		Help:             cli.HelpConfig{Disclaimer: disclaimer},
 		MaxTopLevelVerbs: 12,
-	}, cli.WithStatus(cli.StatusConfig{ExtraEnvKeys: []string{"SPACED_*"}}), cli.WithURI(spacedURIConfig()))
+		// Compose into kit's PersistentPreRunE chain — direct
+		// assignment to r.Cmd.PersistentPreRunE would silently
+		// overwrite the built-in chdir → identity → peer chain. The
+		// hook parses --telemetry and stamps a start time on ctx so
+		// PersistentPostRunE can compute duration_ms.
+		Hooks: cli.Hooks{PrePersistentRunE: installTelemetryPreRunHook},
+	},
+		cli.WithStatus(cli.StatusConfig{ExtraEnvKeys: []string{"SPACED_*"}}),
+		cli.WithURI(spacedURIConfig()),
+		// Adopter-controlled kit-telemetry options. Endpoint is left
+		// empty so the production URL flows in via the ldflag-injected
+		// runtimetelemetry.DefaultEndpoint at release-build time —
+		// see docs/adopters/reference/telemetry-compliance.md for the
+		// GitHub Actions pattern. PromptOnFirstRun authorizes kit's
+		// first-run TTY prompt; without it, kit stays silent and the
+		// operator must opt in explicitly via env or a subcommand.
+		// DefaultModeOnGrant=ModeAnon is the safe "send the minimal
+		// payload" tier; ModeFull is opt-in beyond.
+		cli.WithTelemetry(cli.TelemetryConfig{
+			PromptOnFirstRun:   true,
+			DefaultModeOnGrant: runtimetelemetry.ModeAnon,
+		}),
+	)
+
+	// --telemetry={off,anon,full} persistent flag. Parsed by
+	// installTelemetryPreRunHook and resolved per-invocation via
+	// telemetry.WithMode (precedence #1, beats env vars and SetMode).
+	//
+	// Visible in --help; spaced py + ts mirror this flag with the same
+	// shape so the cross-lang parity contract includes it.
+	root.Cmd.PersistentFlags().String("telemetry", "off", "kit-telemetry emit mode (off|anon|full)")
 
 	b := bus.New()
+
+	// Initialize kit-telemetry against the shared bus. Must run after
+	// bus.New so the emitter publishes onto the same bus the demo's
+	// other subscribers observe.
+	initTelemetry(b)
+
+	// Emit one telemetry.event.recorded at command exit. RunE errors
+	// don't reach here — root.Execute swallows them and returns to
+	// main; full exit-code capture is a follow-up.
+	root.Cmd.PersistentPostRunE = installTelemetryPostRun
 
 	// Log launch and daemon events.
 	b.SubscribeAsync("kit.spaced.launch.#", func(_ context.Context, e bus.Event) {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 )
@@ -267,6 +268,7 @@ func (s *rpcServer) preflight(
 	// Canonicalise the invocation: resolved path + forced surface.
 	inv.Path = append([]string(nil), leaf.Path...)
 	inv.Meta.Surface = SurfaceRPC
+	inv.Meta.RequestedAt = time.Now()
 	return leaf, nil
 }
 

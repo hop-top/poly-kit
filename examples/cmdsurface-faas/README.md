@@ -170,6 +170,38 @@ For Cloud Run the bridge is also built once at startup. Cloud Run
 keeps the container warm between requests, so the cold-start cost
 amortises across many invocations.
 
+## Telemetry
+
+Both legs (`cmd/lambda`, `cmd/cloudrun`) optionally wire the
+**kit-telemetry** pipeline through `shared.MaybeBuildTelemetry`.
+The wiring is gated on the `CMDSURFACE_DEMO_TELEMETRY` environment
+variable so the cold-start path pays nothing for it by default.
+
+Enable per leg:
+
+| Target     | How to enable                                                        |
+| ---------- | -------------------------------------------------------------------- |
+| Cloud Run  | `gcloud run services update ... --set-env-vars CMDSURFACE_DEMO_TELEMETRY=1` |
+| Lambda     | `aws lambda update-function-configuration ... --environment 'Variables={...,CMDSURFACE_DEMO_TELEMETRY=1}'` |
+
+When enabled, both legs:
+
+- Construct a dedicated `bus.Bus` for telemetry traffic.
+- Install the consent FileStore (failure is non-fatal — telemetry
+  stays inert until the operator runs `kit telemetry enable`).
+- Build a `cmdsurface.TelemetrySink` in **ModeAnon** and wrap the
+  bridge's default runner with a sink fan-out runner that pushes each
+  Result through it.
+
+The Lambda leg constructs telemetry at **module init** (the
+`var bridge = ...` initialiser). This is unusual for telemetry but
+unavoidable in Lambda's lifecycle — there is no `main` execution
+between cold start and the first event. The Cloud Run leg constructs
+in `main()` and defers `Close` on shutdown, matching the unified
+example's lifecycle.
+
+See `shared/telemetry.go` for the helper.
+
 ## Differences vs `examples/cmdsurface`
 
 | Aspect              | `cmdsurface` (unified)    | `cmdsurface-faas` (this)            |

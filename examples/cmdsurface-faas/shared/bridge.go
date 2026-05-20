@@ -6,11 +6,29 @@
 package shared
 
 import (
+	"context"
 	"time"
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/transport/cmdsurface"
 )
+
+// BuildOption configures BuildBridge. Tests pass no options to get
+// the historical zero-arg behavior; the FaaS cmd/* binaries pass
+// WithTelemetrySink to fan invocation outcomes into kit-telemetry.
+type BuildOption func(*buildConfig)
+
+type buildConfig struct {
+	telemetrySink *cmdsurface.TelemetrySink
+}
+
+// WithTelemetrySink wraps the bridge's default InProcessRunner with a
+// sink fan-out runner that pushes each Result through the supplied
+// TelemetrySink. Pass nil to opt out (no-op); pass a sink returned by
+// MaybeBuildTelemetry to enable the kit-telemetry pipeline.
+func WithTelemetrySink(s *cmdsurface.TelemetrySink) BuildOption {
+	return func(c *buildConfig) { c.telemetrySink = s }
+}
 
 // BuildBridge returns a Bridge over a tiny demo command tree.
 //
@@ -23,9 +41,19 @@ import (
 // All three leaves are read-only, so the bridge enables every surface
 // by default. AllowDestructiveOn is set anyway so adopters copying
 // this example can add destructive leaves without surprises.
-func BuildBridge() *cmdsurface.Bridge {
+//
+// Pass WithTelemetrySink to wire the optional kit-telemetry pipeline
+// in. Tests historically called this with no args and continue to do
+// so — the variadic shape keeps the contract backwards-compatible.
+func BuildBridge(opts ...BuildOption) *cmdsurface.Bridge {
+	cfg := buildConfig{}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	root := buildTree()
-	return cmdsurface.New(root,
+
+	bridgeOpts := []cmdsurface.Option{
 		cmdsurface.WithPolicy(cmdsurface.Policy{
 			DefaultEnabled: []cmdsurface.Surface{
 				cmdsurface.SurfaceCLI,
@@ -41,7 +69,48 @@ func BuildBridge() *cmdsurface.Bridge {
 				cmdsurface.SurfaceLib,
 			},
 		}),
-	)
+	}
+
+	// Wrap the default InProcessRunner with a sink-runner when a
+	// telemetry sink was supplied. Inline here to avoid carrying the
+	// `examples/cmdsurface/sinkrunner.go` type across packages — the
+	// helper is small and the FaaS demos do not currently wire any
+	// other sinks.
+	if cfg.telemetrySink != nil {
+		inner := cmdsurface.InProcessRunner(root)
+		sinks := cmdsurface.SinkSet{
+			{
+				Sink:    cfg.telemetrySink,
+				OnError: true,
+				OnOK:    true,
+			},
+		}
+		bridgeOpts = append(bridgeOpts, cmdsurface.WithRunner(&sinkFanOutRunner{
+			inner: inner,
+			sinks: sinks,
+		}))
+	}
+
+	return cmdsurface.New(root, bridgeOpts...)
+}
+
+// sinkFanOutRunner is a minimal Runner that delegates to inner and
+// fans each completed (inv, res, err) tuple through sinks. Stream
+// invocations bypass the fan-out — streaming sinks would require a
+// different contract and the FaaS demos do not exercise it.
+type sinkFanOutRunner struct {
+	inner cmdsurface.Runner
+	sinks cmdsurface.SinkSet
+}
+
+func (s *sinkFanOutRunner) Run(ctx context.Context, inv cmdsurface.Invocation) (cmdsurface.Result, error) {
+	res, err := s.inner.Run(ctx, inv)
+	_ = s.sinks.Emit(ctx, inv, res, err)
+	return res, err
+}
+
+func (s *sinkFanOutRunner) Stream(ctx context.Context, inv cmdsurface.Invocation, out chan<- cmdsurface.Event) error {
+	return s.inner.Stream(ctx, inv, out)
 }
 
 // buildTree returns the demo cobra tree. The root is non-runnable;

@@ -25,11 +25,20 @@ var ErrDestructiveBlocked = errors.New("cmdsurface: destructive command blocked 
 // hand decoded Invocations to Bridge.Invoke and receive Results;
 // they iterate Bridge.Leaves at mount time to discover which
 // commands they should expose.
+//
+// Sinks are an opt-in fan-out slot. FromConfig populates the slot
+// from cfg.Telemetry (see config.go). Adopters using the manual
+// path continue to wrap their Runner with the sinkRunner pattern
+// documented in README.md — Bridge.Invoke does NOT auto-emit to
+// sinks today, the slot is a registry callers fetch via
+// Bridge.Sinks. This shape preserves the foundation contract while
+// giving the kit-telemetry sink a structured home.
 type Bridge struct {
 	root   *cobra.Command
 	cfg    bridgeConfig
 	leaves []*Leaf // depth-first leaf order
 	byPath map[string]*Leaf
+	sinks  SinkSet
 	mu     sync.RWMutex
 }
 
@@ -270,3 +279,73 @@ func (b *Bridge) Runner() Runner {
 // Policy returns the active Policy. Surfaces consult it to render
 // "would this leaf be allowed?" lists in capability endpoints.
 func (b *Bridge) Policy() Policy { return b.cfg.policy }
+
+// Sinks returns a copy of the bridge's registered SinkSet. The
+// returned slice is safe to inspect and to pass to SinkSet.Emit;
+// mutating it does not affect the bridge.
+//
+// FromConfig is the canonical populator (telemetry today; other
+// sink types remain adopter-wired). Callers wiring a sinkRunner
+// can merge Bridge.Sinks() with their own specs.
+func (b *Bridge) Sinks() SinkSet {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	out := make(SinkSet, len(b.sinks))
+	copy(out, b.sinks)
+	return out
+}
+
+// appendSink registers spec on the bridge. Internal helper for
+// FromConfig and (potentially) future Expose-style sink builders.
+// Not exported: the public Bridge surface is fluent and we don't
+// want adopters constructing partial SinkSpecs by accident — the
+// sinkRunner pattern stays the recommended path for adopter sinks.
+func (b *Bridge) appendSink(spec SinkSpec) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.sinks = append(b.sinks, spec)
+}
+
+// closableSink is the duck-typed close contract registered sinks
+// may implement. TelemetrySink satisfies it; non-closable sinks
+// (LogSink, FileSink, …) silently no-op during Bridge.Close. This
+// is the minimum surface needed to flush the kit-telemetry drain
+// goroutine on process shutdown.
+type closableSink interface {
+	Close(context.Context) error
+}
+
+// Close drains every registered sink that implements
+// closableSink. Errors are collected and joined; the first
+// returned error does not short-circuit the rest. Idempotent only
+// to the extent each sink's own Close is idempotent —
+// TelemetrySink.Close is.
+//
+// Bridge.Close does NOT close the cobra root or the Runner;
+// adopters that own additional resources (HTTP servers, bus
+// subscribers) close those separately. The single responsibility
+// here is "flush the drain goroutines my sinks own".
+func (b *Bridge) Close(ctx context.Context) error {
+	b.mu.RLock()
+	specs := make(SinkSet, len(b.sinks))
+	copy(specs, b.sinks)
+	b.mu.RUnlock()
+
+	var errs []error
+	for _, spec := range specs {
+		if spec.Sink == nil {
+			continue
+		}
+		c, ok := spec.Sink.(closableSink)
+		if !ok {
+			continue
+		}
+		if err := c.Close(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return errors.Join(errs...)
+}

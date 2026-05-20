@@ -435,6 +435,79 @@ Wave 3 surfaces:
 | `subscription cancel`   | n/a (no mapping)              | n/a (no provider)                        | issue refused (destructive); opt-in via build option |
 | `report purge`          | n/a (no mapping)              | n/a (no provider)                        | hidden from SurfaceSigned                            |
 
+## Telemetry
+
+The example optionally wires the **kit-telemetry** pipeline as an
+additional Sink. The wiring is gated on the
+`CMDSURFACE_DEMO_TELEMETRY` environment variable so the default
+experience (`go run ./examples/cmdsurface`) pays nothing for it:
+
+| `CMDSURFACE_DEMO_TELEMETRY` | Behaviour |
+| --------------------------- | --------- |
+| unset / `0` / anything else | telemetry is inert; no consent prompt, no extra bus, no extra goroutines |
+| `1`                         | a `cmdsurface.TelemetrySink` is constructed, the consent FileStore is installed, and every Result fans into kit-telemetry |
+
+When enabled, the demo defaults to **ModeAnon**. The emitter ships
+only the canonical bounded fields (`command_path`, `exit_code`,
+`duration_ms`, `occurred_at`, `installation_id`, `kit_version`,
+`schema_version`, `sdk_lang`). Args, flags, and `_surface` stay
+in-memory; they never reach the bus. See
+`.tlc/tracks/cmdsurf-telemetry/design-note.md` §3 for the rationale.
+
+Even with the env var set, telemetry stays **inert until the operator
+grants consent**. The package-level `ConsentHook` defaults to
+deny-all; the FileStore lookup returns "unknown" on a fresh machine,
+which collapses to `denied` at the emitter. The CLI command
+`kit telemetry enable` is the one operator-facing flip that turns the
+pipeline live.
+
+### Try it
+
+```sh
+# 1. Grant consent (one-time per machine).
+kit telemetry enable
+
+# 2. Run the demo with telemetry enabled. CLI mode bypasses the
+#    bridge entirely (see main.go), so emit a sample via a surface
+#    that actually goes through the bridge — e.g. the REST endpoint.
+CMDSURFACE_DEMO_TELEMETRY=1 go run ./examples/cmdsurface &
+sleep 1
+curl -sS -X POST http://localhost:8080/cmd/ping
+# → {"exit_code":0,"stdout":"pong\n"}
+
+# 3. Inspect the captured event.
+kit telemetry inspect --last 5
+# → 1 event with topic "cmdsurface-demo.telemetry.event.recorded",
+#   command_path=["ping"], exit_code=0, duration_ms populated.
+```
+
+### Wiring details
+
+The wiring lives in [`telemetry.go`](./telemetry.go). It:
+
+1. Calls `telemetry.SetAppPrefix("cmdsurface-demo")` so the bus topic
+   becomes `cmdsurface-demo.telemetry.event.recorded` (and
+   `CMDSURFACE_DEMO_TELEMETRY_MODE` works as the per-app mode env).
+2. Installs the consent FileStore via `consent.Install()`. Failure
+   is non-fatal; default-deny stays in effect.
+3. Constructs a dedicated `bus.Bus` for telemetry traffic. The demo's
+   own `exampleBus` satisfies `cmdsurface.Subscriber` but not the
+   canonical `bus.Bus`, so they live side by side. A real adopter
+   either shares the kit bus across both or keeps them separate.
+4. Builds a `telemetry.Emitter` against that bus and a
+   `cmdsurface.TelemetrySink` against the emitter (`ModeAnon`).
+5. Appends the sink to the existing `SinkSet` so every Bridge.Invoke
+   fans into telemetry alongside the LogSink + FileSink.
+
+Cleanup runs in `exampleApp.Cleanup` — the sink closes first (drains
+queued events through the emitter), then the bus closes. A 2-second
+context bounds the wait so a wedged emitter does not block shutdown.
+
+**Path chosen for T-0681:** direct `TelemetryOption` construction
+(`NewTelemetrySink(WithEmitter(...), WithMode(...))`). When T-0676's
+`cmdsurface.Config` telemetry block lands, this can switch to a
+config-driven path with no surface change to the README.
+
 ## End-to-end tests
 
 ```sh

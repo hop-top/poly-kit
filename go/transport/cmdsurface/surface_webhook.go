@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"text/template"
+	"time"
 
 	"hop.top/kit/go/transport/api"
 )
@@ -281,9 +282,10 @@ func newWebhookHandler(
 			Args:  args,
 			Flags: flags,
 			Meta: Meta{
-				Surface: SurfaceWebhook,
-				Caller:  mapping.Name,
-				TraceID: r.Header.Get("X-Request-ID"),
+				Surface:     SurfaceWebhook,
+				Caller:      mapping.Name,
+				TraceID:     r.Header.Get("X-Request-ID"),
+				RequestedAt: time.Now(),
 			},
 		}
 

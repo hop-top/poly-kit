@@ -8,6 +8,7 @@ import (
 	"strings"
 	"text/template"
 	"text/template/parse"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 )
@@ -229,9 +230,10 @@ func newLambdaAPIGWv2Handler(
 			Args:  args,
 			Flags: flags,
 			Meta: Meta{
-				Surface: SurfaceFaaS,
-				Caller:  "lambda",
-				TraceID: req.Headers["x-request-id"],
+				Surface:     SurfaceFaaS,
+				Caller:      "lambda",
+				TraceID:     req.Headers["x-request-id"],
+				RequestedAt: time.Now(),
 			},
 		}
 		res, err := b.Invoke(ctx, inv)
@@ -278,9 +280,10 @@ func newLambdaAPIGWv1Handler(
 			Args:  args,
 			Flags: flags,
 			Meta: Meta{
-				Surface: SurfaceFaaS,
-				Caller:  "lambda",
-				TraceID: req.Headers["X-Request-Id"],
+				Surface:     SurfaceFaaS,
+				Caller:      "lambda",
+				TraceID:     req.Headers["X-Request-Id"],
+				RequestedAt: time.Now(),
 			},
 		}
 		res, err := b.Invoke(ctx, inv)
@@ -327,9 +330,10 @@ func newLambdaEventBridgeHandler(
 			Args:  args,
 			Flags: flags,
 			Meta: Meta{
-				Surface: SurfaceFaaS,
-				Caller:  "lambda",
-				TraceID: ev.ID,
+				Surface:     SurfaceFaaS,
+				Caller:      "lambda",
+				TraceID:     ev.ID,
+				RequestedAt: time.Now(),
 			},
 		}
 		res, err := b.Invoke(ctx, inv)
@@ -398,9 +402,10 @@ func invokeSQSRecord(
 		Args:  args,
 		Flags: flags,
 		Meta: Meta{
-			Surface: SurfaceFaaS,
-			Caller:  "lambda",
-			TraceID: rec.MessageId,
+			Surface:     SurfaceFaaS,
+			Caller:      "lambda",
+			TraceID:     rec.MessageId,
+			RequestedAt: time.Now(),
 		},
 	}
 	res, err := b.Invoke(ctx, inv)
@@ -423,6 +428,7 @@ func newLambdaDirectHandler(b *Bridge, cfg LambdaConfig) func(context.Context, j
 		}
 		inv.Meta.Surface = SurfaceFaaS
 		inv.Meta.Caller = "lambda"
+		inv.Meta.RequestedAt = time.Now()
 		res, err := b.Invoke(ctx, inv)
 		if cfg.ResultLog != nil {
 			cfg.ResultLog(cfg, res, err)

@@ -1,0 +1,10 @@
+# Cargo build artifacts for the rs runner.
+runners/rs/target/
+runners/rs/Cargo.lock
+
+# Python bytecode.
+__pycache__/
+*.pyc
+
+# Stray sink dumps if someone runs a runner outside run.sh.
+*.jsonl
