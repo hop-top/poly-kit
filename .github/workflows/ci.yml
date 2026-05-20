@@ -157,11 +157,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: sdk/experimental/rs
-      # PHP toolchain for the typeid-v1 contract loader. The
-      # test-parity-typeid target only runs the PHP leg when both
-      # php and composer resolve on PATH; ubuntu-latest already
-      # ships PHP 8.x + composer, so the contract test executes
-      # here without an extra setup-php step.
+      # PHP 8.4 toolchain for the typeid-v1 contract loader.
+      # sdk/experimental/php's composer.json requires php ^8.4
+      # (lifted by T-0752 for jewei/typeid-php), and ubuntu-latest
+      # ships PHP 8.3 by default, so we pin explicitly.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: cd sdk/py && uv sync --all-extras
       - run: make test-parity
