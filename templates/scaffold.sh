@@ -214,9 +214,9 @@ esac
 IFS=',' read -ra LANG_ARRAY <<< "$LANG"
 for l in "${LANG_ARRAY[@]}"; do
   case "$l" in
-    go|ts|py) ;;
+    go|ts|py|rs) ;;
     *)
-      echo "Error: invalid language: $l (must be go, ts, or py)" >&2
+      echo "Error: invalid language: $l (must be go, ts, py, or rs)" >&2
       exit 1
       ;;
   esac

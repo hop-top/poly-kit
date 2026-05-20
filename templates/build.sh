@@ -80,7 +80,7 @@ overlay_lang() {
 }
 
 # --- Single-language templates ---
-for lang in go ts py; do
+for lang in go ts py rs; do
   dest="$DIST/cli-template-$lang"
   mkdir -p "$dest"
 
@@ -94,7 +94,7 @@ done
 poly="$DIST/cli-template-polyglot"
 mkdir -p "$poly"
 
-compose_gitignore "$poly" go ts py
+compose_gitignore "$poly" go ts py rs
 copy_shared "$poly"
 
 # CI -- all lang workflows
@@ -123,15 +123,22 @@ updates:
       interval: weekly
     commit-message:
       prefix: "build(deps):"
+
+  - package-ecosystem: cargo
+    directory: "/rs"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
 DEPEOF
-for lang in go ts py; do
+for lang in go ts py rs; do
   src="$SHARED/ci/ci-${lang}.yml"
   [ -f "$src" ] || src="${src}.tmpl"
   cp "$src" "$poly/.github/workflows/ci-${lang}.yml"
 done
 
 # Lang dirs (without shared root files)
-for lang in go ts py; do
+for lang in go ts py rs; do
   src="$SCRIPT_DIR/cli-${lang}"
   langdir="$poly/$lang"
   mkdir -p "$langdir"
@@ -158,6 +165,7 @@ build test lint setup:
 	$(MAKE) -C go $@
 	$(MAKE) -C ts $@
 	$(MAKE) -C py $@
+	$(MAKE) -C rs $@
 
 links:
 	@if command -v lychee >/dev/null 2>&1; then \
@@ -194,6 +202,7 @@ Select your languages and configure the project.
 - `go/` — Go CLI source
 - `ts/` — TypeScript CLI source
 - `py/` — Python CLI source
+- `rs/` — Rust CLI source
 
 ## Development
 

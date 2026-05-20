@@ -87,19 +87,60 @@ _reserve_pypi() {
   fi
 }
 
-# Entry point: reserves npm/PyPI names for ts/py languages detected in LANG_ARRAY.
+# Publish empty 0.0.0 placeholder to crates.io; skips if cargo missing, not authed, or name taken.
+_reserve_cratesio() {
+  local rs_dir="$1"
+
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "crates.io: cargo not installed — install Rust toolchain to reserve crate name"
+    return 0
+  fi
+
+  if [ ! -f "$HOME/.cargo/credentials.toml" ] && [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+    echo "crates.io: not authenticated — run 'cargo login' or set CARGO_REGISTRY_TOKEN to reserve crate name"
+    return 0
+  fi
+
+  local crate_name=""
+  if [ -f "$rs_dir/Cargo.toml" ]; then
+    crate_name=$(
+      grep -E '^[[:space:]]*name[[:space:]]*=' "$rs_dir/Cargo.toml" \
+        | head -1 | sed 's/.*= *"\(.*\)".*/\1/'
+    )
+  fi
+
+  if [ -z "$crate_name" ]; then
+    echo "crates.io: could not determine crate name — skipping"
+    return 0
+  fi
+
+  if curl -sf "https://crates.io/api/v1/crates/$crate_name" >/dev/null 2>&1; then
+    echo "crates.io: $crate_name already exists — skipping"
+    return 0
+  fi
+
+  _reserve_prompt_yn "Reserve $crate_name on crates.io?"
+  if [ "$REPLY" = "y" ]; then
+    echo "crates.io: publishing $crate_name..."
+    (cd "$rs_dir" && cargo publish --allow-dirty 2>&1) \
+      || echo "crates.io: publish failed — manual publish needed"
+  fi
+}
+
+# Entry point: reserves npm/PyPI/crates.io names for ts/py/rs languages detected in LANG_ARRAY.
 # Go is excluded (proxy.golang.org auto-indexes). Called by scaffold.sh post-clone.
 reserve_package_names() {
-  local has_ts=false has_py=false
+  local has_ts=false has_py=false has_rs=false
   for l in "${LANG_ARRAY[@]}"; do
     case "$l" in
       ts) has_ts=true ;;
       py) has_py=true ;;
+      rs) has_rs=true ;;
     esac
   done
 
   # Nothing to reserve for Go (proxy.golang.org auto-indexes)
-  if [ "$has_ts" = false ] && [ "$has_py" = false ]; then
+  if [ "$has_ts" = false ] && [ "$has_py" = false ] && [ "$has_rs" = false ]; then
     return 0
   fi
 
@@ -116,5 +157,11 @@ reserve_package_names() {
     local py_dir="$OUTPUT"
     [ "$IS_POLYGLOT" = true ] && py_dir="$OUTPUT/py"
     _reserve_pypi "$py_dir"
+  fi
+
+  if [ "$has_rs" = true ]; then
+    local rs_dir="$OUTPUT"
+    [ "$IS_POLYGLOT" = true ] && rs_dir="$OUTPUT/rs"
+    _reserve_cratesio "$rs_dir"
   fi
 }

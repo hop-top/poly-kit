@@ -164,6 +164,24 @@ detect_languages() {
   if [ "$_py_found" = true ]; then
     DETECTED_LANGS+=("py")
   fi
+
+  # Rust: root or one level deep
+  local _rs_found=false
+  if [ -f "Cargo.toml" ]; then
+    _rs_found=true
+    DETECTED_LANG_PATHS+=("rs:.")
+  else
+    for d in */; do
+      if [ -f "${d}Cargo.toml" ]; then
+        _rs_found=true
+        DETECTED_LANG_PATHS+=("rs:${d%/}")
+        break
+      fi
+    done
+  fi
+  if [ "$_rs_found" = true ]; then
+    DETECTED_LANGS+=("rs")
+  fi
 }
 
 # Extract project metadata from cwd into shell variables:
