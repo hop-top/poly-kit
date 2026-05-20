@@ -18,6 +18,7 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/runtime/bus"
+	runtimetelemetry "hop.top/kit/go/runtime/telemetry"
 	"hop.top/uri/handle/generate"
 	"hop.top/uri/scheme"
 )
@@ -41,7 +42,23 @@ func main() {
 		// hook parses --telemetry and stamps a start time on ctx so
 		// PersistentPostRunE can compute duration_ms.
 		Hooks: cli.Hooks{PrePersistentRunE: installTelemetryPreRunHook},
-	}, cli.WithStatus(cli.StatusConfig{ExtraEnvKeys: []string{"SPACED_*"}}), cli.WithURI(spacedURIConfig()))
+	},
+		cli.WithStatus(cli.StatusConfig{ExtraEnvKeys: []string{"SPACED_*"}}),
+		cli.WithURI(spacedURIConfig()),
+		// Adopter-controlled kit-telemetry options. Endpoint is left
+		// empty so the production URL flows in via the ldflag-injected
+		// runtimetelemetry.DefaultEndpoint at release-build time —
+		// see docs/adopters/reference/telemetry-compliance.md for the
+		// GitHub Actions pattern. PromptOnFirstRun authorizes kit's
+		// first-run TTY prompt; without it, kit stays silent and the
+		// operator must opt in explicitly via env or a subcommand.
+		// DefaultModeOnGrant=ModeAnon is the safe "send the minimal
+		// payload" tier; ModeFull is opt-in beyond.
+		cli.WithTelemetry(cli.TelemetryConfig{
+			PromptOnFirstRun:   true,
+			DefaultModeOnGrant: runtimetelemetry.ModeAnon,
+		}),
+	)
 
 	// --telemetry={off,anon,full} persistent flag. Parsed by
 	// installTelemetryPreRunHook and resolved per-invocation via

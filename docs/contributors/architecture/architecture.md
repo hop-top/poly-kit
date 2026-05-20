@@ -191,6 +191,32 @@ Viper and merged; later layers override earlier ones:
 
 Pkl is supported as an alternative to YAML.
 
+### Configuration tiers — user config vs kit options
+
+Two distinct surfaces. Conflating them is the cause of most
+"why didn't my change take effect?" questions.
+
+| Tier | Owned by | Mutable at runtime? | Lives in | Examples |
+|---|---|---|---|---|
+| **User config** | Operator running the binary | Yes | `<XDG_CONFIG_HOME>/<tool>/config.yaml` (Viper-layered per above) + env vars | `kit.telemetry.consent.state`, `kit.bus.enforce`, `kit.log.level` |
+| **Kit options** | Adopter building the binary | No (rebuild required) | Go source: `cli.With*` options + `-ldflags -X` build-time injection | `cli.TelemetryConfig.Endpoint`, `PromptOnFirstRun`, `DefaultModeOnGrant`; `runtimetelemetry.DefaultEndpoint` |
+
+User config answers _"how does the user want this binary to behave
+right now?"_. Kit options answer _"what kit-framework policy does
+the adopter's binary commit to?"_. The split exists because some
+decisions — the telemetry collector URL, whether kit may prompt for
+consent at all, the default emission tier — are properly the
+adopter's call, not the operator's. Baking them in keeps them out
+of `--help`, out of `kit telemetry status`, and out of a user's
+ability to point a production binary at an attacker-controlled
+collector.
+
+Pattern: the adopter wires `cli.With*` options once in `main.go`;
+secrets like the collector URL flow in via `-ldflags -X`
+from a release-pipeline secret rather than via a source-file
+literal. Adopter docs:
+[`docs/adopters/reference/telemetry-compliance.md`](../../adopters/reference/telemetry-compliance.md#build-time-configuration-kit-options).
+
 ### Bus protocol
 
 `runtime/bus` exposes Subscribe / Publish on topics. Three

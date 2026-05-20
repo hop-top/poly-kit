@@ -202,6 +202,48 @@ in the spool with bounded growth. Operators enforce retention with
 `Close()` / `CloseCtx(ctx)` are idempotent; pending events that can't
 be shipped within the context deadline are spooled.
 
+## Build-time configuration (kit options)
+
+Two package-level surfaces deliberately distinct from runtime user
+config:
+
+- `var DefaultEndpoint string` — the ldflag target. Adopter release
+  pipelines bake the production collector URL via
+  `-ldflags="-X 'hop.top/kit/go/runtime/telemetry.DefaultEndpoint=$URL'"`,
+  with `$URL` flowing from a CI secret. Dev builds without the
+  ldflag leave it empty; the safe default is "no HTTPS sink".
+- `func ResolveEndpoint(envOverride, wireConfig string) string` —
+  the precedence helper: env > wire > `DefaultEndpoint` > "". Pure
+  function (no env reads, no globals beyond `DefaultEndpoint`) so
+  tests can exercise the chain without `t.Setenv`.
+
+Callers (typically the adopter's bootstrap) wire it like:
+
+```go
+endpoint := runtimetelemetry.ResolveEndpoint(
+    os.Getenv("KIT_TELEMETRY_ENDPOINT"),
+    rootCfg.Endpoint, // from cli.WithTelemetry(cli.TelemetryConfig{Endpoint: ...})
+)
+if endpoint != "" {
+    sink, _ := runtimetelemetry.NewHTTPSSink(endpoint)
+    // …
+}
+```
+
+When adding new build-time knobs, mirror the same pattern: a
+package-level `var Default<Knob>` (the ldflag target) plus a
+`Resolve<Knob>` helper. Keep the helper pure so unit tests don't
+need env mutation or process-global state. The adopter's
+[`cli.TelemetryConfig`](../../console/cli/telemetry.go) is the
+typed bundle that aggregates these into a single `cli.WithTelemetry`
+option; extending it is the right place for semantic knobs that
+aren't secrets (e.g. `PromptOnFirstRun`).
+
+The user-facing doc at
+[`docs/adopters/reference/telemetry-compliance.md` §7](../../../docs/adopters/reference/telemetry-compliance.md#7-build-time-configuration-kit-options)
+explains the GitHub Actions pattern for adopters; this section is
+the engineer-level mirror.
+
 ## Consent hook
 
 ```go

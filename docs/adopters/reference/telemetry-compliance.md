@@ -207,7 +207,104 @@ while you wire the kit-\* packages. F13 surfaces actionable Suggestions
 per sub-condition — fix them in any order. Once the seven checks pass,
 your binary scores **13/13**.
 
-## 7. Cross-links
+## 7. Build-time configuration (kit options)
+
+Telemetry has two configuration tiers. The end-user surface
+(`kit telemetry enable|disable|reset`, `KIT_TELEMETRY_*` env vars,
+the persisted consent decision in `<XDG_CONFIG_HOME>/kit/config.yaml`)
+is documented in [`adopters/guides/telemetry.md`](../guides/telemetry.md).
+This section covers the adopter surface: kit options baked into
+the binary at build time, immutable to the operator.
+
+### Why a separate tier
+
+Some decisions are properly the adopter's, not the operator's:
+
+| Decision | Who owns it | Why |
+|---|---|---|
+| Collector URL | Adopter | Operator must not be able to point a production binary at an attacker-controlled collector |
+| Whether kit may prompt for consent | Adopter | Some binaries have their own first-run wizard; others ship in CI-only contexts where prompting is wrong |
+| Default emission tier on grant | Adopter | The redact config and the appetite for argv/flag values are properties of the binary, not the user |
+
+Baking them into the binary keeps them out of `--help`, out of
+`kit telemetry status`, and out of any user-writable config layer.
+
+### The kit option
+
+```go
+// adopter's main.go
+root := cli.New(cli.Config{Name: "spaced", /* ... */},
+    cli.WithTelemetry(cli.TelemetryConfig{
+        // Endpoint: usually left empty — see "Endpoint via ldflag" below.
+        PromptOnFirstRun:   true,
+        DefaultModeOnGrant: runtimetelemetry.ModeAnon,
+    }),
+)
+```
+
+`cli.TelemetryConfig` fields:
+
+- **`Endpoint string`** — the HTTPS collector URL. Optional. When
+  empty, callers fall back to `runtimetelemetry.ResolveEndpoint`,
+  which honors the env override and the ldflag-injected default.
+  Set this only when you have a wire-time reason to override both.
+- **`PromptOnFirstRun bool`** — when `false` (default), kit NEVER
+  fires its first-run consent prompt. Operators must opt in via
+  env (`KIT_TELEMETRY_CONSENT=granted`) or by invoking `kit
+  telemetry enable` themselves. Set `true` only when the binary
+  intends the prompt to fire from a known interactive surface.
+- **`DefaultModeOnGrant runtimetelemetry.Mode`** — the emission
+  tier kit assumes when consent is granted but no explicit mode
+  is set. Zero value (`ModeOff`) keeps the binary silent even
+  after a grant — operators must additionally set
+  `KIT_TELEMETRY_MODE=anon|full` to start emission. Most adopters
+  want `ModeAnon`; set `ModeFull` only when your redact config can
+  demonstrably handle argv/flag values without leaking secrets.
+
+### Endpoint via ldflag (recommended)
+
+The production collector URL belongs in a CI secret, not in a Go
+source file. Bake it at link time:
+
+```sh
+go build \
+  -ldflags="-X 'hop.top/kit/go/runtime/telemetry.DefaultEndpoint=$URL'" \
+  -o spaced ./cmd/spaced
+```
+
+GitHub Actions sketch (in the adopter's `.github/workflows/release.yml`):
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26' }
+      - name: Build with baked endpoint
+        env:
+          KIT_TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
+        run: |
+          go build \
+            -ldflags="-X 'hop.top/kit/go/runtime/telemetry.DefaultEndpoint=${KIT_TELEMETRY_ENDPOINT}'" \
+            -o spaced ./cmd/spaced
+```
+
+Resolution precedence at emit time (highest wins):
+
+1. `KIT_TELEMETRY_ENDPOINT` env var — operator override
+2. `cli.TelemetryConfig.Endpoint` — adopter wire-time override
+3. `runtimetelemetry.DefaultEndpoint` — ldflag-injected build default
+4. `""` — no endpoint configured; the jsonl sink stays the safe default
+
+Dev builds without the ldflag leave `DefaultEndpoint` empty, so
+local `go build` produces a binary that never tries to ship — exactly
+the safe default. The same binary, rebuilt by CI with the ldflag,
+ships to the configured collector. No source-file literal, no leak
+into `go env`.
+
+## 8. Cross-links
 
 - [`go/runtime/telemetry/README.md`](../../../go/runtime/telemetry/README.md) —
   engineer-level depth: emitter API, sink internals, redact

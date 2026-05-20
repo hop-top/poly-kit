@@ -111,6 +111,13 @@ Sibling top-level partitions in the same file (other than
 `kit.telemetry.consent`) survive `enable` / `disable` / `reset`
 untouched — adopter-owned config can co-exist.
 
+> **Where do events ship to?** The collector URL, whether kit
+> prompts on first run, and the default emission tier are
+> **adopter-owned** decisions baked into the binary at build time.
+> Operators cannot change them without a rebuild — that's by
+> design. See [`telemetry-compliance.md` §7](../reference/telemetry-compliance.md#7-build-time-configuration-kit-options)
+> for the build-time configuration tier.
+
 A pre-refactor layout that stored the same shape under
 `<XDG_CONFIG_HOME>/kit/telemetry.yaml` (bare `telemetry.consent`)
 is read as a fallback; the next `enable` / `disable` migrates the
