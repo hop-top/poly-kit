@@ -2,6 +2,11 @@
 
 experimental PHP client SDK.
 
+## Modules
+
+- [`src/Id/`](src/Id/) — TypeID primitive (cross-language; see
+  [ADR 0001](../../../docs/adr/0001-typeid-primitive.md))
+
 ## URI facade
 
 The experimental SDK exposes a thin facade over `hop-top/uri` so kit callers can

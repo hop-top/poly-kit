@@ -138,6 +138,9 @@ render(process.stdout, JSON_FORMAT, { ok: true });
 - `@hop-top/kit/cli` — `createCLI(cfg)` builds a Commander root program
   with the hop-top contract: `--format`, `--quiet`, `--no-color`,
   `--no-hints`, themed help, version, hidden completion command.
+- `@hop-top/kit/id` — TypeID primitive (cross-language; see
+  [ADR 0001](../../docs/adr/0001-typeid-primitive.md)). Source:
+  [`src/id/`](src/id/).
 - `@hop-top/kit/xdg` — XDG Base Directory paths.
 - `@hop-top/kit/config` — config-file loading.
 - `@hop-top/kit/sqlstore` — embedded SQLite key/value store.

@@ -2,6 +2,11 @@
 
 Python implementation of the hop-top kit library.
 
+## Modules
+
+- [`hop_top_kit.id`](hop_top_kit/id/) — TypeID primitive (cross-language;
+  see [ADR 0001](../../docs/adr/0001-typeid-primitive.md))
+
 ## URI facade
 
 `hop_top_kit.uri` exposes Kit's URI integration surface as a thin adapter over
