@@ -1,0 +1,54 @@
+# {{.Name}}
+
+{{.Description}}
+
+## Install
+
+```sh
+composer global require {{.Vendor}}/{{.Name}}
+```
+
+## Usage
+
+```sh
+{{.Name}} --help
+{{.Name}} --version
+```
+
+### Output formats
+
+Every command supports the kit output flag suite:
+
+```sh
+{{.Name}} list --format json
+{{.Name}} list --format yaml
+{{.Name}} list --cols name,status
+{{.Name}} list -o results.json   # ext infers format
+{{.Name}} list --format-help     # show all formats + options
+```
+
+### Commands
+
+```sh
+{{.Name}} hello                  # Hello, World!
+{{.Name}} hello Alice            # Hello, Alice!
+{{.Name}} list                   # exercise the output flag suite
+```
+
+## Development
+
+Prerequisites: PHP 8.3+, Composer.
+
+```sh
+make setup       # install deps
+make check       # lint + test + link check
+make test        # phpunit
+make lint        # phpstan
+```
+
+## License
+
+See [LICENSE](LICENSE).
+
+---
+Maintained by {{.Author}}.

@@ -172,10 +172,10 @@ build: builtins-sync ## Build the kit binary (re-syncs built-in templates first)
 	@mkdir -p bin
 	go build -buildvcs=false -o bin/kit ./cmd/kit
 
-builtins-sync: ## Sync templates/cli-{go,ts,py,shared} into internal/template/builtins/ for embedding
+builtins-sync: ## Sync templates/cli-{go,ts,py,php,shared} into internal/template/builtins/ for embedding
 	@rm -rf internal/template/builtins
 	@mkdir -p internal/template/builtins
-	@for tmpl in cli-go cli-ts cli-py shared; do \
+	@for tmpl in cli-go cli-ts cli-py cli-php shared; do \
 		if [ -d templates/$$tmpl ]; then \
 			cp -R templates/$$tmpl internal/template/builtins/$$tmpl; \
 		fi; \

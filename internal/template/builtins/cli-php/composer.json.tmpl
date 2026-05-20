@@ -1,0 +1,37 @@
+{
+  "name": "{{.Vendor}}/{{.Name}}",
+  "description": "{{.Description}}",
+  "type": "project",
+  "license": "{{.License}}",
+  "version": "0.0.0",
+  "authors": [
+    { "name": "{{.Author}}", "email": "{{.Email}}" }
+  ],
+  "bin": ["bin/{{.Name}}"],
+  "require": {
+    "php": "^8.3",
+    "hop-top/kit": "^0.4.0@alpha",
+    "symfony/console": "^7.0"
+  },
+  "require-dev": {
+    "phpstan/phpstan": "^2.1",
+    "phpunit/phpunit": "^11"
+  },
+  "autoload": {
+    "psr-4": {
+      "{{.VendorNamespace}}\\{{.NameNamespace}}\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "{{.VendorNamespace}}\\{{.NameNamespace}}\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit",
+    "lint": "phpstan analyse"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}

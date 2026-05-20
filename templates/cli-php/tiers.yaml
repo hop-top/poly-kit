@@ -1,0 +1,23 @@
+# Per-file tier mapping for cli-php template.
+# See spec §13: kit-init-design.md.
+#
+# Tier 1 = lint/build only
+# Tier 2 = + CI workflows
+# Tier 3 = + CLI wiring (bin + src/Commands)
+# Tier 4 = + full conformance (README, docs, changelogs)
+files:
+  ".gitignore": [1, 2, 3, 4]
+  "Makefile": [1, 2, 3, 4]
+  "composer.json": [1, 2, 3, 4]
+  "phpstan.neon": [1, 2, 3, 4]
+  "phpunit.xml": [1, 2, 3, 4]
+
+  "bin/{{.Name}}": [3, 4]
+  "src/Application.php": [3, 4]
+  "src/Commands/HelloCommand.php": [3, 4]
+  "src/Commands/ListCommand.php": [3, 4]
+  "tests/unit/PlaceholderTest.php": [3, 4]
+  "tests/e2e/.gitkeep": [3, 4]
+
+  "README.md": [4]
+  "CHANGELOG.md": [4]

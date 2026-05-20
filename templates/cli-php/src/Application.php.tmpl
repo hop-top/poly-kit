@@ -1,0 +1,33 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{.VendorNamespace}}\{{.NameNamespace}};
+
+use HopTop\Kit\Output\Flags;
+use Symfony\Component\Console\Application as SymfonyApplication;
+use {{.VendorNamespace}}\{{.NameNamespace}}\Commands\HelloCommand;
+use {{.VendorNamespace}}\{{.NameNamespace}}\Commands\ListCommand;
+
+/**
+ * {{.Name}} CLI entry point.
+ *
+ * Wires the kit Output flag suite (--format, --format-opt, --format-help,
+ * --cols, --template, -o/--output) on every command, then registers the
+ * built-in commands. Add your own commands by extending KitCommand and
+ * calling {@see SymfonyApplication::add()} below.
+ */
+final class Application extends SymfonyApplication
+{
+    public function __construct()
+    {
+        parent::__construct('{{.Name}}', '0.0.0');
+
+        // Wire the cross-language output flag suite. Every Command added
+        // after this call picks up --format/--cols/etc. automatically.
+        Flags::register($this);
+
+        $this->add(new HelloCommand());
+        $this->add(new ListCommand());
+    }
+}
