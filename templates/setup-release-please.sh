@@ -39,18 +39,27 @@ setup_release_please() {
           manifest+=$'\n  ".": "0.0.0"'
         fi
         ;;
+      rs)
+        if [ "$first" = true ]; then first=false; else manifest+=","; fi
+        if [ "$is_polyglot" = true ]; then
+          manifest+=$'\n  "rs": "0.0.0"'
+        else
+          manifest+=$'\n  ".": "0.0.0"'
+        fi
+        ;;
     esac
   done
   manifest+=$'\n}'
   echo "$manifest" > "$out/.release-please-manifest.json"
 
   # --- Config ---
-  local has_go=false has_ts=false has_py=false
+  local has_go=false has_ts=false has_py=false has_rs=false
   for l in "${langs[@]}"; do
     case "$l" in
       go) has_go=true ;;
       ts) has_ts=true ;;
       py) has_py=true ;;
+      rs) has_rs=true ;;
     esac
   done
 
@@ -60,6 +69,7 @@ setup_release_please() {
     local ex_parts=()
     [ "$has_ts" = true ] && ex_parts+=("\"ts\"")
     [ "$has_py" = true ] && ex_parts+=("\"py\"")
+    [ "$has_rs" = true ] && ex_parts+=("\"rs\"")
     ex_parts+=("\"templates\"")
     go_excludes=$(IFS=,; echo "${ex_parts[*]}")
   fi
@@ -131,6 +141,29 @@ setup_release_please() {
     }"
   fi
 
+  if [ "$has_rs" = true ]; then
+    [ "$pkg_first" = true ] && pkg_first=false || pkg_entries+=","
+    local rs_path="."
+    [ "$is_polyglot" = true ] && rs_path="rs"
+    local rs_component="${NAME}"
+    [ "$is_polyglot" = true ] && rs_component="rs/${NAME}"
+    pkg_entries+="
+    \"${rs_path}\": {
+      \"release-type\": \"rust\",
+      \"component\": \"${rs_component}\",
+      \"changelog-path\": \"CHANGELOG.md\",
+      \"bump-minor-pre-major\": true,
+      \"bump-patch-for-minor-pre-major\": true,
+      \"extra-files\": [
+        {
+          \"type\": \"toml\",
+          \"path\": \"Cargo.toml\",
+          \"jsonpath\": \"$.package.version\"
+        }
+      ]
+    }"
+  fi
+
   # Build linked-versions for polyglot (major.minor sync)
   local linked_versions=""
   if [ "$is_polyglot" = true ]; then
@@ -138,6 +171,7 @@ setup_release_please() {
     [ "$has_go" = true ] && components+=("\"${NAME}\"")
     [ "$has_ts" = true ] && components+=("\"ts/${NAME}\"")
     [ "$has_py" = true ] && components+=("\"py/${NAME}\"")
+    [ "$has_rs" = true ] && components+=("\"rs/${NAME}\"")
     local comp_list
     comp_list=$(IFS=,; echo "${components[*]}")
     linked_versions="
@@ -175,6 +209,7 @@ RPEOF
   rm -f "$out/.github/workflows/release-go.yml"
   rm -f "$out/.github/workflows/release-ts.yml"
   rm -f "$out/.github/workflows/release-py.yml"
+  rm -f "$out/.github/workflows/release-rs.yml"
 }
 
 setup_release_please_workflow() {
@@ -186,12 +221,13 @@ setup_release_please_workflow() {
   local is_polyglot=false
   [ "$lang_count" -gt 1 ] && is_polyglot=true
 
-  local has_go=false has_ts=false has_py=false
+  local has_go=false has_ts=false has_py=false has_rs=false
   for l in "${langs[@]}"; do
     case "$l" in
       go) has_go=true ;;
       ts) has_ts=true ;;
       py) has_py=true ;;
+      rs) has_rs=true ;;
     esac
   done
 
@@ -236,6 +272,17 @@ setup_release_please_workflow() {
       outputs+="
       py_release_created: \${{ steps.release.outputs.release_created }}
       py_tag_name: \${{ steps.release.outputs.tag_name }}"
+    fi
+  fi
+  if [ "$has_rs" = true ]; then
+    if [ "$is_polyglot" = true ]; then
+      outputs+="
+      rs_release_created: \${{ steps.release.outputs['rs--release_created'] }}
+      rs_tag_name: \${{ steps.release.outputs['rs--tag_name'] }}"
+    else
+      outputs+="
+      rs_release_created: \${{ steps.release.outputs.release_created }}
+      rs_tag_name: \${{ steps.release.outputs.tag_name }}"
     fi
   fi
 
@@ -350,6 +397,31 @@ ${ts_steps}
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: ${py_dist}
+"
+  fi
+
+  if [ "$has_rs" = true ]; then
+    local rs_test_step="      - run: cargo test --all-features --workspace"
+    local rs_publish_step="      - run: cargo publish --token \${{ secrets.CARGO_REGISTRY_TOKEN }}"
+    if [ "$is_polyglot" = true ]; then
+      rs_test_step="      - working-directory: rs
+        run: cargo test --all-features --workspace"
+      rs_publish_step="      - working-directory: rs
+        run: cargo publish --token \${{ secrets.CARGO_REGISTRY_TOKEN }}"
+    fi
+    release_jobs+="
+  release-rs:
+    needs: release-please
+    if: \${{ needs.release-please.outputs.rs_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+${rs_test_step}
+${rs_publish_step}
 "
   fi
 

@@ -265,6 +265,73 @@ else
 fi
 
 # ======================================================
+# Test 11: Single-lang Rust with --no-push
+# ======================================================
+
+info "Test 11: Single-lang Rust with --no-push"
+TEST11_DIR="$TMPDIR_BASE/test11"
+
+bash "$SCRIPT_DIR/scaffold.sh" test11app \
+  --output "$TEST11_DIR" \
+  --lang rs \
+  --description "Test Rust CLI" \
+  --license mit \
+  --author "Test Author" \
+  --email "test@example.com" \
+  --module-prefix "github.com/testorg" \
+  --forge none \
+  --no-push
+
+assert_dir_exists "$TEST11_DIR" "test11 project dir"
+assert_file_exists "$TEST11_DIR/.git/config" "test11 git init"
+assert_file_exists "$TEST11_DIR/.github/copilot-instructions.md" \
+  "test11 copilot instructions"
+assert_file_contains "$TEST11_DIR/.github/copilot-instructions.md" \
+  "Rust" "test11 copilot mentions Rust"
+assert_file_exists "$TEST11_DIR/.github/workflows/ci.yml" \
+  "test11 ci.yml"
+assert_file_contains "$TEST11_DIR/.github/workflows/ci.yml" \
+  "cargo" "test11 ci.yml mentions cargo"
+assert_file_exists "$TEST11_DIR/.github/dependabot.yml" \
+  "test11 dependabot.yml"
+assert_file_contains "$TEST11_DIR/.github/dependabot.yml" \
+  "cargo" "test11 dependabot has cargo ecosystem"
+assert_file_exists "$TEST11_DIR/release-please-config.json" \
+  "test11 release-please-config.json"
+assert_file_contains "$TEST11_DIR/release-please-config.json" \
+  '"release-type": "rust"' "test11 release-please uses rust release-type"
+assert_file_contains "$TEST11_DIR/release-please-config.json" \
+  '"path": "Cargo.toml"' "test11 release-please tracks Cargo.toml"
+assert_file_exists "$TEST11_DIR/.github/workflows/release-please.yml" \
+  "test11 release-please workflow"
+assert_file_contains "$TEST11_DIR/.github/workflows/release-please.yml" \
+  "release-rs:" "test11 release workflow has release-rs job"
+
+# ======================================================
+# Test 12: Polyglot with rs (go,ts,py,rs)
+# ======================================================
+
+info "Test 12: Polyglot including rs"
+TEST12_DIR="$TMPDIR_BASE/test12"
+
+bash "$SCRIPT_DIR/scaffold.sh" test12app \
+  --output "$TEST12_DIR" \
+  --lang go,ts,py,rs \
+  --description "Test polyglot+rs" \
+  --license apache \
+  --author "Test Author" \
+  --email "test@example.com" \
+  --module-prefix "github.com/testorg" \
+  --forge none \
+  --no-push
+
+assert_dir_exists "$TEST12_DIR/rs" "test12 rs/ dir"
+assert_file_contains "$TEST12_DIR/Makefile" 'MAKE) -C rs' \
+  "test12 Makefile delegates to rs"
+assert_file_contains "$TEST12_DIR/.github/dependabot.yml" \
+  "cargo" "test12 polyglot dependabot includes cargo"
+
+# ======================================================
 # Summary
 # ======================================================
 
