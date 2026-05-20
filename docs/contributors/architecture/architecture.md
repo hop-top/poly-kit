@@ -201,9 +201,9 @@ Two distinct surfaces. Conflating them is the cause of most
 | **User config** | Operator running the binary | Yes | `<XDG_CONFIG_HOME>/<tool>/config.yaml` (Viper-layered per above) + env vars | `kit.telemetry.consent.state`, `kit.bus.enforce`, `kit.log.level` |
 | **Kit options** | Adopter building the binary | No (rebuild required) | Go source: `cli.With*` options + `-ldflags -X` build-time injection | `cli.TelemetryConfig.Endpoint`, `PromptOnFirstRun`, `DefaultModeOnGrant`; `runtimetelemetry.DefaultEndpoint` |
 
-User config answers _"how does the user want this binary to behave
-right now?"_. Kit options answer _"what kit-framework policy does
-the adopter's binary commit to?"_. The split exists because some
+User config answers *"how does the user want this binary to behave
+right now?"*. Kit options answer *"what kit-framework policy does
+the adopter's binary commit to?"*. The split exists because some
 decisions — the telemetry collector URL, whether kit may prompt for
 consent at all, the default emission tier — are properly the
 adopter's call, not the operator's. Baking them in keeps them out
