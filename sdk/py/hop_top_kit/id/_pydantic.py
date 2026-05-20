@@ -1,13 +1,23 @@
 """hop_top_kit.id._pydantic — Pydantic v2 type adapter.
 
-Builds on the upstream ``typeid.integrations.pydantic.TypeIDField`` but
-translates the underlying ``TypeIDException`` family into ``ValueError``
-so Pydantic surfaces a clean :class:`pydantic.ValidationError` instead of
-leaking the upstream exception class.
+We do **not** delegate to the upstream
+``typeid.integrations.pydantic.TypeIDField``: it validates into a
+``typeid.TypeID`` instance and only serialises to a string in JSON mode,
+which would force every kit adopter to special-case ``mode="python"``
+dumps. Kit's invariant (per ADR 0001 § Wire form) is that a TypeID-typed
+field *is* the canonical ``<prefix>_<suffix>`` string everywhere — JSON,
+``model_dump()`` (python mode), bus payloads, logs.
 
-Stored canonical form (``str(TypeID)``) matches ADR 0001 § Wire form —
-JSON / bus payloads carry the ``<prefix>_<suffix>`` string, never a
-struct.
+This module builds a custom ``CoreSchema`` that:
+
+* accepts ``str`` or ``typeid.TypeID`` input,
+* validates prefix + suffix grammar against the upstream parser,
+* raises :class:`hop_top_kit.id.PrefixMismatchError` (a
+  :class:`ValueError` subclass — Pydantic surfaces it as a clean
+  :class:`pydantic.ValidationError`) on prefix mismatch,
+* returns the canonical :class:`str`, so ``model.field`` is always a
+  ``str`` and ``model_dump()`` emits the bare string in both ``python``
+  and ``json`` modes.
 """
 
 from __future__ import annotations
@@ -19,11 +29,19 @@ from pydantic_core import core_schema
 from typeid import TypeID
 from typeid.core.errors import TypeIDException
 
+from ._core import PrefixMismatchError
+
 
 def _validate_factory(expected_prefix: str):
-    """Return a Pydantic plain-validator closed over ``expected_prefix``."""
+    """Return a Pydantic validator closed over ``expected_prefix``.
 
-    def _validate(v: Any) -> TypeID:
+    The validator is wired into an ``after_validator`` chained off a
+    ``str_schema()``, so Pydantic has already coerced the input to
+    :class:`str` (or kept it as a :class:`typeid.TypeID` via the
+    ``isinstance``-branch below) before this function runs.
+    """
+
+    def _validate(v: Any) -> str:
         if isinstance(v, TypeID):
             tid = v
         elif isinstance(v, str):
@@ -39,10 +57,12 @@ def _validate_factory(expected_prefix: str):
             )
 
         if tid.prefix != expected_prefix:
-            raise ValueError(
+            raise PrefixMismatchError(
                 f"TypeID prefix mismatch: expected '{expected_prefix}', got '{tid.prefix}'",
             )
-        return tid
+        # Return the canonical string — kit fields are str everywhere
+        # (python dump, json dump, bus payloads). See module docstring.
+        return str(tid)
 
     return _validate
 
@@ -58,13 +78,14 @@ class _TypeIdBase:
         source_type: Any,
         handler: Any,
     ) -> core_schema.CoreSchema:
-        return core_schema.no_info_plain_validator_function(
+        # ``no_info_after_validator_function`` chains the kit validator
+        # off ``any_schema()`` (we accept TypeID instances too, not just
+        # str), but ``json_schema_input_schema`` keeps the OpenAPI /
+        # JSON-Schema view as ``string``.
+        return core_schema.no_info_after_validator_function(
             _validate_factory(cls._expected_prefix),
+            core_schema.any_schema(),
             json_schema_input_schema=core_schema.str_schema(),
-            serialization=core_schema.plain_serializer_function_ser_schema(
-                str,
-                when_used="json",
-            ),
         )
 
     @classmethod
@@ -106,9 +127,12 @@ class TypeId:
     Behaviour:
         - Accepts canonical ``<prefix>_<suffix>`` strings or already-parsed
           ``typeid.TypeID`` instances.
+        - Stores the canonical :class:`str` on the model (per ADR 0001 §
+          Wire form): ``model.id`` is always a string, ``model_dump()``
+          emits the bare string in both ``python`` and ``json`` modes.
         - Raises ``pydantic.ValidationError`` on malformed strings or
-          prefix mismatch.
-        - Serialises to canonical string in JSON mode.
+          prefix mismatch (via :class:`PrefixMismatchError`, which
+          subclasses :class:`ValueError`).
         - JSON Schema marks the field as ``{"type": "string", "format":
           "typeid"}`` for cross-tool schema consumers.
     """

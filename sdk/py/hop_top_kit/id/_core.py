@@ -71,12 +71,16 @@ class InvalidSuffixError(IdError):
     """
 
 
-class PrefixMismatchError(IdError):
+class PrefixMismatchError(ValueError, IdError):
     """The parsed prefix does not match an expected / declared prefix.
 
-    Raised by Pydantic-validated fields (via the upstream
-    ``TypeIDField`` integration) and by any kit caller that re-checks
-    prefix expectations after :func:`parse`.
+    Raised by Pydantic-validated ``TypeId[...]`` fields and by any kit
+    caller that re-checks prefix expectations after :func:`parse`.
+
+    Multiple inheritance from :class:`ValueError` is deliberate: Pydantic
+    v2 only converts ``ValueError`` raised inside a validator into a
+    :class:`pydantic.ValidationError`. Keeping :class:`IdError` in the
+    bases preserves the kit-wide ``except IdError`` catch-all.
     """
 
 
@@ -110,36 +114,42 @@ P = TypeVar("P", bound=str)
 
 
 class Typed(Generic[P]):
-    """Generic phantom-typed alias for a TypeID canonical string.
+    """Phantom-typed alias for a canonical TypeID string.
 
-    ``Typed[P]`` is a *typing-time* annotation. At runtime it returns
-    plain :class:`str` — values flowing through it are the canonical
-    ``<prefix>_<suffix>`` form, which is what kit puts on the wire
-    (per ADR 0001 § Wire form). This mirrors the Go ``TypeID[Prefix]``
-    and Rust newtype patterns at the type-checker level without
-    forcing adopters into a class allocation per ID.
+    ``Typed[P]`` is a typing-time annotation that evaluates to plain
+    :class:`str` at runtime. Values flowing through it are the canonical
+    ``<prefix>_<suffix>`` form (per ADR 0001 § Wire form), so
+    ``isinstance(x, Typed[Literal["task"]])`` reduces to
+    ``isinstance(x, str)`` and returns ``True`` for any TypeID string.
+    This mirrors the Go ``TypeID[Prefix]`` and Rust newtype patterns at
+    the type-checker level without runtime cost.
+
+    The kit floor is Python 3.11; PEP 695's
+    ``type Typed[P] = str`` syntax is only available from 3.12. The
+    custom ``__class_getitem__`` below gives the equivalent runtime
+    behaviour: subscripting returns :class:`str` itself.
 
     Usage::
 
-        from typing import NewType
+        from typing import Literal
         from hop_top_kit.id import Typed, new
 
-        TaskId = Typed[str]                 # bare phantom alias
-        # or, for stronger checker-level distinction:
-        # TaskId = NewType("TaskId", Typed[str])
+        TaskId = Typed[Literal["task"]]     # checker sees the prefix
+        tid: TaskId = new("task")           # plain canonical str at runtime
+        assert isinstance(tid, str)         # True
 
-        tid: TaskId = new("task")           # type: ignore[assignment]
-
-    For Pydantic-validated typed fields (with runtime prefix check),
-    use :class:`hop_top_kit.id.TypeId` instead.
+    For Pydantic-validated typed fields (with runtime prefix check), use
+    :class:`hop_top_kit.id.TypeId` instead.
     """
 
-    # __class_getitem__ is inherited from Generic and already returns
-    # a parameterised alias at runtime. We override only to make the
-    # alias evaluate to ``str`` so isinstance-style checks work, while
-    # keeping the static type informative.
-    def __class_getitem__(cls, item: Any) -> Any:
-        return super().__class_getitem__(item)  # type: ignore[misc]
+    def __class_getitem__(cls, item: Any) -> type:
+        # ``item`` is intentionally ignored — the prefix only matters to
+        # static type checkers / human readers. At runtime ``Typed[X]``
+        # IS :class:`str`, so subscripted forms work in
+        # :func:`isinstance` checks and round-trip through
+        # ``typing.get_type_hints`` as plain string annotations.
+        del item
+        return str
 
 
 # ---------------------------------------------------------------------------

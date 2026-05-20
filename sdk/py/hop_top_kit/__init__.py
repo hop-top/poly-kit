@@ -19,6 +19,16 @@ Public API:
     StoreOptions — options dataclass (hop_top_kit.sqlstore.Options).
     create_checker — factory for an upgrade Checker.
     CheckerOptions — options dataclass (hop_top_kit.upgrade.CheckerOptions).
+    new_id       — generate a new canonical TypeID string (ADR 0001).
+    parse_id     — parse a TypeID string into ``(prefix, uuid)``.
+    TypeId       — Pydantic v2 prefix-validated string field
+                   (``TypeId[Literal["task"]]``).
+    Typed        — phantom-typed alias evaluating to ``str`` at runtime
+                   (``Typed[Literal["task"]]``).
+    TypeIdError  — base exception for TypeID failures (re-export of
+                   ``hop_top_kit.id.IdError``).
+    ParsedTypeId — dataclass returned by :func:`parse_id` (re-export of
+                   ``hop_top_kit.id.Parsed``).
 
 Example:
     from hop_top_kit import create_app, config_dir, must_ensure
