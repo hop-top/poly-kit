@@ -6,6 +6,7 @@ Go (primary), TypeScript, Python. Rust and PHP experimental.
 
 - [Why kit](#why-kit)
 - [Features](#features)
+- [Primitives](#primitives)
 - [Install](#install)
 - [Getting started](#getting-started)
 - [Status](#status)
@@ -54,6 +55,16 @@ benchmarks — not flag parsers and output renderers.
   scenario DSL.
 - **Three SDKs at parity.** [`go/`](go/), [`sdk/ts/`](sdk/ts/),
   [`sdk/py/`](sdk/py/).
+
+## Primitives
+
+Shared building blocks every kit-using tool can adopt. Each primitive
+has a cross-language reference implementation and an ADR pinning the
+specification.
+
+| Primitive | Purpose                                        | Spec                                                              |
+| --------- | ---------------------------------------------- | ----------------------------------------------------------------- |
+| TypeID    | Self-describing entity IDs (`task_01j6…`).     | [ADR 0001](docs/adr/README.md#0001-typeid-primitive) — Jetify TypeID v0.3.0 |
 
 ## Install
 
