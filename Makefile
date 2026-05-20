@@ -1,4 +1,5 @@
 .PHONY: setup lint lint-go lint-ts lint-py lint-rs lint-docs lint-config lint-links lint-sdk-paths \
+	preflight \
 	tools tools-golangci-lint \
 	test test-go test-go-integration test-ts test-py test-rs test-parity \
 	proto openapi clients clients-ts clients-php clients-rs clients-test api \
@@ -25,6 +26,9 @@ GOLANGCI_LINT_VERSION ?= v2.11.4
 LOCAL_BIN := $(CURDIR)/bin
 GOLANGCI_LINT := $(LOCAL_BIN)/golangci-lint
 
+preflight: ## Verify host toolchain matches the repo's declared minimum reqs
+	@scripts/preflight.sh
+
 tools: tools-golangci-lint ## Install pinned dev tools into bin/
 
 tools-golangci-lint: ## Install the pinned golangci-lint version into bin/
@@ -36,7 +40,7 @@ tools-golangci-lint: ## Install the pinned golangci-lint version into bin/
 		echo "==> golangci-lint $(GOLANGCI_LINT_VERSION) already installed"; \
 	fi
 
-setup: ## Initialize all sub-projects and dependencies
+setup: preflight ## Initialize all sub-projects and dependencies
 	@echo "==> Initializing Go modules"
 	go mod download
 	@echo "==> Initializing TypeScript SDK"
@@ -47,9 +51,9 @@ setup: ## Initialize all sub-projects and dependencies
 	cd engine/sdk/py-kit-engine && uv sync --all-extras
 	@echo "==> Setup complete."
 
-check: lint test ## Run all linters and tests (full gate)
+check: preflight lint test ## Run all linters and tests (full gate)
 
-test: test-go test-ts test-py test-workflow test-hook ## Run all tests
+test: preflight test-go test-ts test-py test-workflow test-hook ## Run all tests
 
 test-go: ## Go tests (skips long-running container tests)
 	@go test -short ./... -count=1 -timeout 1200s
@@ -168,7 +172,7 @@ clients-test: ## Test all polyglot clients
 
 api: proto clients ## Generate protos + build all clients
 
-build: builtins-sync ## Build the kit binary (re-syncs built-in templates first)
+build: preflight builtins-sync ## Build the kit binary (re-syncs built-in templates first)
 	@mkdir -p bin
 	go build -buildvcs=false -o bin/kit ./cmd/kit
 
