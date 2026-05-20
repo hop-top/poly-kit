@@ -26,3 +26,4 @@ You're a **contributor**:
 
 - **[Personas](personas/)** — adopter persona profiles
 - **[Features](features/)** — feature catalog
+- **[Announcements](announcements/)** — release notes for new primitives & SDK additions
