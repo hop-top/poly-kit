@@ -8,6 +8,9 @@
     "php": "^8.3",
     "guzzlehttp/guzzle": "^7.9",
     "hop-top/uri": "^0.2.0@alpha",
+    "laravel/prompts": "^0.3",
+    "symfony/console": "^7.0",
+    "symfony/event-dispatcher": "^7.0",
     "symfony/yaml": "^7.0"
   },
   "require-dev": {
