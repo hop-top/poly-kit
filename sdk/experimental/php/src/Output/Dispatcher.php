@@ -9,7 +9,6 @@ use HopTop\Kit\Output\Formatter\Options as OptionsParser;
 use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\Console\Application;
-use Symfony\Component\Console\Helper\Helper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Output\StreamOutput;
@@ -161,11 +160,11 @@ final class Dispatcher
 
     private static function isFormatExplicit(InputInterface $input): bool
     {
-        // Symfony Console can't easily distinguish "user passed --format=table"
-        // from "default applied". Approximate via raw token scan on the
-        // original argv stash (good enough for parity; tests cover both).
-        $tokens = method_exists($input, '__toString') ? (string) $input : '';
-        return str_contains($tokens, '--format=') || str_contains($tokens, '--format ');
+        // hasParameterOption inspects the raw token stream that every
+        // InputInterface implementation keeps in $tokens — robust across
+        // ArrayInput, ArgvInput, StringInput, and any custom impls.
+        // (Earlier impl used (string)$input which only works on ArgvInput.)
+        return $input->hasParameterOption('--format', true);
     }
 
     private static function resolveFormat(

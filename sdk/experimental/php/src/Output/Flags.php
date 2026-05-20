@@ -55,21 +55,63 @@ final class Flags
             self::inject($cmd->getDefinition());
         }
 
-        // Wire a COMMAND-event listener too, for commands added *after*
-        // register() runs. The injection is idempotent (hasOption guard).
-        $dispatcher = new EventDispatcher();
+        // Wire a COMMAND-event listener for commands added *after*
+        // register() runs. Reuse the consumer's dispatcher if one is
+        // already attached (Application::setDispatcher() is one-shot from
+        // the consumer's side — we don't want to clobber their listeners,
+        // signal handlers, or contracts-based subscribers). Application
+        // has no public getDispatcher(), so read $dispatcher via
+        // reflection; if missing or null, install our own.
+        $dispatcher = self::existingDispatcher($app);
+        if ($dispatcher === null) {
+            $dispatcher = new EventDispatcher();
+            $app->setDispatcher($dispatcher);
+        }
         self::dispatchers()->offsetSet($app, $dispatcher);
-        $app->setDispatcher($dispatcher);
-        $dispatcher->addListener(
-            ConsoleEvents::COMMAND,
-            static function (ConsoleCommandEvent $event): void {
-                $cmd = $event->getCommand();
-                if ($cmd === null) {
-                    return;
-                }
-                self::inject($cmd->getDefinition());
-            },
-        );
+
+        $listener = static function (ConsoleCommandEvent $event): void {
+            $cmd = $event->getCommand();
+            if ($cmd === null) {
+                return;
+            }
+            self::inject($cmd->getDefinition());
+        };
+
+        // EventDispatcher::addListener and ContractsEventDispatcherInterface
+        // disagree on the method signature; the consumer-supplied
+        // dispatcher may implement either. Branch on capability.
+        if ($dispatcher instanceof EventDispatcher) {
+            $dispatcher->addListener(ConsoleEvents::COMMAND, $listener);
+        } elseif (method_exists($dispatcher, 'addListener')) {
+            // symfony/event-dispatcher-contracts impls expose addListener too.
+            $dispatcher->addListener(ConsoleEvents::COMMAND, $listener);
+        }
+        // If the consumer wired a dispatcher that exposes no addListener
+        // (a bare PSR-14 dispatcher), the upfront definition injection
+        // above still covers every Command added before register() runs.
+        // Commands added later won't pick up the flags — documented as a
+        // known limitation in the README's "Customising the dispatcher"
+        // section.
+    }
+
+    /**
+     * Read Application::$dispatcher via reflection. symfony/console doesn't
+     * expose a public getter (only setDispatcher), so we have no other
+     * way to detect a pre-existing dispatcher. Returns null when the
+     * property is unset or reflection fails.
+     */
+    private static function existingDispatcher(Application $app): ?object
+    {
+        try {
+            // setAccessible has been a no-op since PHP 8.1; ReflectionProperty
+            // can read private members directly. We support PHP ^8.3 so we
+            // never need to call setAccessible.
+            $ref = new \ReflectionProperty(Application::class, 'dispatcher');
+            $current = $ref->getValue($app);
+            return is_object($current) ? $current : null;
+        } catch (\ReflectionException) {
+            return null;
+        }
     }
 
     /**

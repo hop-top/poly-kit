@@ -90,4 +90,42 @@ class FlagsAndKitCommandTest extends TestCase
         Flags::register($app);
         $this->assertTrue(true); // no exception = pass
     }
+
+    public function testFlagsRegisterPreservesExistingDispatcher(): void
+    {
+        $app = new Application('test', '0.0.0-test');
+
+        // Consumer wires their own dispatcher BEFORE Flags::register().
+        $consumerDispatcher = new \Symfony\Component\EventDispatcher\EventDispatcher();
+        $consumerDispatcher->addListener('consumer.marker', static fn () => null);
+        $app->setDispatcher($consumerDispatcher);
+
+        Flags::register($app);
+
+        // The consumer's dispatcher must still be the Application's
+        // dispatcher — proving we didn't clobber it with a fresh one.
+        // Application::$dispatcher is private; read via reflection (same
+        // technique Flags::existingDispatcher uses internally).
+        $ref = new \ReflectionProperty(Application::class, 'dispatcher');
+$this->assertSame($consumerDispatcher, $ref->getValue($app));
+
+        // The consumer's pre-existing listeners must survive too.
+        $this->assertNotEmpty($consumerDispatcher->getListeners('consumer.marker'));
+        // And our own COMMAND listener must have been attached to it.
+        $this->assertNotEmpty($consumerDispatcher->getListeners(\Symfony\Component\Console\ConsoleEvents::COMMAND));
+    }
+
+    public function testFlagsRegisterInstallsDispatcherWhenNoneExists(): void
+    {
+        $app = new Application('test', '0.0.0-test');
+        // No setDispatcher call — Application starts with dispatcher === null.
+        Flags::register($app);
+
+        $ref = new \ReflectionProperty(Application::class, 'dispatcher');
+$dispatcher = $ref->getValue($app);
+        $this->assertInstanceOf(
+            \Symfony\Component\EventDispatcher\EventDispatcher::class,
+            $dispatcher,
+        );
+    }
 }
