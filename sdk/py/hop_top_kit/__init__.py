@@ -19,6 +19,16 @@ Public API:
     StoreOptions — options dataclass (hop_top_kit.sqlstore.Options).
     create_checker — factory for an upgrade Checker.
     CheckerOptions — options dataclass (hop_top_kit.upgrade.CheckerOptions).
+    new_id       — generate a new canonical TypeID string (ADR 0001).
+    parse_id     — parse a TypeID string into ``(prefix, uuid)``.
+    TypeId       — Pydantic v2 prefix-validated string field
+                   (``TypeId[Literal["task"]]``).
+    Typed        — phantom-typed alias evaluating to ``str`` at runtime
+                   (``Typed[Literal["task"]]``).
+    TypeIdError  — base exception for TypeID failures (re-export of
+                   ``hop_top_kit.id.IdError``).
+    ParsedTypeId — dataclass returned by :func:`parse_id` (re-export of
+                   ``hop_top_kit.id.Parsed``).
 
 Example:
     from hop_top_kit import create_app, config_dir, must_ensure
@@ -27,10 +37,15 @@ Example:
     cfg = must_ensure(config_dir("mytool"))
 """
 
-from hop_top_kit import llm, telemetry, tui, uri
+from hop_top_kit import id, llm, telemetry, tui, uri
 from hop_top_kit.cli import DARK, NEON, Disable, GlobalFlag, Palette, Theme, create_app
 from hop_top_kit.config import Options as ConfigOptions
 from hop_top_kit.config import load as load_config
+from hop_top_kit.id import IdError as TypeIdError
+from hop_top_kit.id import Parsed as ParsedTypeId
+from hop_top_kit.id import Typed, TypeId
+from hop_top_kit.id import new as new_id
+from hop_top_kit.id import parse as parse_id
 from hop_top_kit.output import Format, render
 from hop_top_kit.sqlstore import Options as StoreOptions
 from hop_top_kit.sqlstore import Store
@@ -49,20 +64,27 @@ __all__ = [
     "Format",
     "GlobalFlag",
     "Palette",
+    "ParsedTypeId",
     "Store",
     "StoreOptions",
     "TelemetryClient",
     "TelemetryMode",
     "Theme",
+    "TypeId",
+    "TypeIdError",
+    "Typed",
     "cache_dir",
     "config_dir",
     "create_app",
     "create_checker",
     "data_dir",
+    "id",
     "llm",
     "load_config",
     "must_ensure",
+    "new_id",
     "open_store",
+    "parse_id",
     "render",
     "state_dir",
     "telemetry",

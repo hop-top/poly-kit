@@ -18,6 +18,8 @@ dependencies = [
     "pathspec>=1.1.1",
     "jinja2>=3.1.6",
     "hop-top-uri>=0.2.0a0",
+    "typeid-python>=0.3.9,<0.4",
+    "pydantic>=2.0",
 ]
 
 [project.optional-dependencies]
