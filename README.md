@@ -64,7 +64,7 @@ specification.
 
 | Primitive | Purpose                                        | Spec                                                              |
 | --------- | ---------------------------------------------- | ----------------------------------------------------------------- |
-| TypeID    | Self-describing entity IDs (`task_01J6…`).     | [ADR 0001](docs/adr/0001-typeid-primitive.md) — Jetify TypeID v0.3 |
+| TypeID    | Self-describing entity IDs (`task_01j6…`).     | [ADR 0001](docs/adr/README.md#0001-typeid-primitive) — Jetify TypeID v0.3.0 |
 
 ## Install
 
