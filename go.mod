@@ -53,6 +53,7 @@ require (
 	github.com/tj/go-naturaldate v1.3.0
 	github.com/zalando/go-keyring v0.2.8
 	go.etcd.io/etcd/client/v3 v3.6.10
+	go.jetify.com/typeid v1.3.0
 	go.temporal.io/api v1.62.7
 	go.temporal.io/sdk v1.42.0
 	golang.org/x/crypto v0.50.0
@@ -203,7 +204,6 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/etcd/api/v3 v3.6.10 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.10 // indirect
-	go.jetify.com/typeid v1.3.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 // indirect
 	go.opentelemetry.io/otel v1.43.0 // indirect
