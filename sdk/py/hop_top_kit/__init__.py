@@ -27,10 +27,15 @@ Example:
     cfg = must_ensure(config_dir("mytool"))
 """
 
-from hop_top_kit import llm, telemetry, tui, uri
+from hop_top_kit import id, llm, telemetry, tui, uri
 from hop_top_kit.cli import DARK, NEON, Disable, GlobalFlag, Palette, Theme, create_app
 from hop_top_kit.config import Options as ConfigOptions
 from hop_top_kit.config import load as load_config
+from hop_top_kit.id import IdError as TypeIdError
+from hop_top_kit.id import Parsed as ParsedTypeId
+from hop_top_kit.id import Typed, TypeId
+from hop_top_kit.id import new as new_id
+from hop_top_kit.id import parse as parse_id
 from hop_top_kit.output import Format, render
 from hop_top_kit.sqlstore import Options as StoreOptions
 from hop_top_kit.sqlstore import Store
@@ -49,20 +54,27 @@ __all__ = [
     "Format",
     "GlobalFlag",
     "Palette",
+    "ParsedTypeId",
     "Store",
     "StoreOptions",
     "TelemetryClient",
     "TelemetryMode",
     "Theme",
+    "TypeId",
+    "TypeIdError",
+    "Typed",
     "cache_dir",
     "config_dir",
     "create_app",
     "create_checker",
     "data_dir",
+    "id",
     "llm",
     "load_config",
     "must_ensure",
+    "new_id",
     "open_store",
+    "parse_id",
     "render",
     "state_dir",
     "telemetry",
