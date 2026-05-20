@@ -35,6 +35,14 @@
 //   - Identity: *identity.Keypair (when WithIdentity used)
 //   - Mesh: *peer.Mesh (when WithPeers used)
 //
+// Key accessors:
+//   - [Root.InvokedAs]: caller-context signal read from the
+//     KIT_INVOKED_AS environment variable at construction time.
+//     Empty string means standalone invocation; a non-empty value
+//     names the upstream tool (e.g. "tlc", "hop") that exec'd the
+//     binary as a child. Env-var-only by design — there is no
+//     --invoked-as flag.
+//
 // # Options
 //
 //   - [WithAPI]: scaffolds an HTTP API server (single listener) — adds

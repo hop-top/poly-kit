@@ -339,6 +339,11 @@ type Root struct {
 	// RegisterStatusProvider directly.
 	statusProviders   map[string]StatusProvider
 	statusProvidersMu sync.Mutex
+	// invokedAs caches the trimmed value of the KIT_INVOKED_AS env var
+	// captured at cli.New time. Empty string means standalone
+	// invocation. Exposed via Root.InvokedAs. See invokedas.go for the
+	// contract and rationale.
+	invokedAs string
 }
 
 // New returns a Root pre-configured to the hop-top CLI contract:
@@ -572,6 +577,7 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		groupTitles:        groupTitles,
 		hiddenDefaultFlags: hiddenDefault,
 	}
+	r.initInvokedAs()
 
 	for _, o := range opts {
 		o(r)
