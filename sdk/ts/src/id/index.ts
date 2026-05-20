@@ -89,7 +89,8 @@ export function parseTyped<P extends string>(prefix: P, s: string): Typed<P> {
 }
 
 // Crockford base32 alphabet used by the TypeID spec (lowercase),
-// excluding i, l, o, u to avoid look-alike confusion.
+// excluding i, l, o, u to avoid look-alike confusion. Module-internal:
+// callers should validate via `typeIdSchema(prefix)` instead.
 const SUFFIX_RE = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
 
 /**
@@ -107,15 +108,12 @@ const SUFFIX_RE = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
  */
 export function typeIdSchema(prefix: string): z.ZodString {
   const pattern = new RegExp(
-    `^${escapeRegExp(prefix)}_[0-7][0-9a-hjkmnp-tv-z]{25}$`,
+    `^${escapeRegExp(prefix)}_${SUFFIX_RE.source.slice(1, -1)}$`,
   );
   return z
     .string()
     .regex(pattern, `invalid typeid for prefix '${prefix}'`);
 }
-
-/** Exported for tests; not part of the public API contract. */
-export const _SUFFIX_RE = SUFFIX_RE;
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
