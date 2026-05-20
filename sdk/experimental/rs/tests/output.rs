@@ -7,7 +7,7 @@ use std::sync::Arc;
 use clap::Command;
 use hop_top_kit::output::{
     default_registry, dispatch, register_output_flags, ColumnSpec, DispatchOptions, Formatter,
-    OptionSpec, OptionType, Options, Registry, RegisterOutputFlagsOptions,
+    OptionSpec, Options, RegisterOutputFlagsOptions, Registry,
 };
 use serde_json::{json, Value};
 
@@ -149,7 +149,10 @@ fn dispatch_default_format_path_succeeds_without_flags_or_extension() {
     .unwrap();
     let out = std::str::from_utf8(&buf).unwrap();
     // Table renders header + 1 row.
-    assert!(out.contains("name"), "expected 'name' header in default-format output, got: {out}");
+    assert!(
+        out.contains("name"),
+        "expected 'name' header in default-format output, got: {out}"
+    );
     assert!(out.contains("alpha"));
     assert!(out.contains('1'));
 }
@@ -267,9 +270,7 @@ fn dispatch_unknown_format_rejected() {
 fn dispatch_template_mutually_exclusive_with_cols() {
     let cmd = build_cmd();
     let matches = cmd
-        .try_get_matches_from([
-            "--format", "json", "--template", "{a}", "--cols", "a",
-        ])
+        .try_get_matches_from(["--format", "json", "--template", "{a}", "--cols", "a"])
         .unwrap();
     let mut buf = Vec::new();
     let err = dispatch(

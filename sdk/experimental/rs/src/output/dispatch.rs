@@ -157,10 +157,7 @@ fn resolve_format(
 
     let mut ext_key: &'static str = "";
     if !output_path.is_empty() && output_path != STDOUT_SENTINEL {
-        if let Some(ext) = Path::new(output_path)
-            .extension()
-            .and_then(|s| s.to_str())
-        {
+        if let Some(ext) = Path::new(output_path).extension().and_then(|s| s.to_str()) {
             let map = registry.extension_map();
             if let Some(k) = map.get(&ext.to_ascii_lowercase()) {
                 ext_key = k;
@@ -212,7 +209,7 @@ fn resolve_cols(matches: &ArgMatches) -> Vec<String> {
 fn validate_cols(cols: &[String], schema: &[ColumnSpec]) -> Result<(), DispatchError> {
     let headers: Vec<&str> = schema.iter().map(|c| c.header.as_str()).collect();
     for c in cols {
-        if !headers.iter().any(|h| *h == c.as_str()) {
+        if !headers.contains(&c.as_str()) {
             return Err(DispatchError::UnknownCol {
                 col: c.clone(),
                 valid: headers.join(", "),
@@ -222,11 +219,7 @@ fn validate_cols(cols: &[String], schema: &[ColumnSpec]) -> Result<(), DispatchE
     Ok(())
 }
 
-fn render_template(
-    out: &mut dyn Write,
-    template: &str,
-    data: &Value,
-) -> Result<(), DispatchError> {
+fn render_template(out: &mut dyn Write, template: &str, data: &Value) -> Result<(), DispatchError> {
     let rows: Vec<&Value> = match data {
         Value::Array(arr) => arr.iter().collect(),
         other => vec![other],

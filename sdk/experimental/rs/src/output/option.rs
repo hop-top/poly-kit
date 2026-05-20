@@ -61,11 +61,7 @@ pub struct OptionSpec {
 }
 
 impl OptionSpec {
-    pub const fn new(
-        name: &'static str,
-        ty: OptionType,
-        usage: &'static str,
-    ) -> Self {
+    pub const fn new(name: &'static str, ty: OptionType, usage: &'static str) -> Self {
         Self {
             name,
             r#type: ty,
@@ -125,13 +121,7 @@ where
     S: AsRef<str>,
 {
     let mut out: Options = HashMap::new();
-    let names_csv = || {
-        specs
-            .iter()
-            .map(|s| s.name)
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
+    let names_csv = || specs.iter().map(|s| s.name).collect::<Vec<_>>().join(", ");
 
     for raw_ref in pairs {
         let raw = raw_ref.as_ref();
@@ -175,6 +165,40 @@ where
     }
 
     Ok(out)
+}
+
+fn coerce(spec: &OptionSpec, value: &str) -> Result<OptionValue, ParseError> {
+    match spec.r#type {
+        OptionType::String => Ok(OptionValue::String(value.to_string())),
+        OptionType::Int => {
+            value
+                .parse::<i64>()
+                .map(OptionValue::Int)
+                .map_err(|_| ParseError::NotInt {
+                    name: spec.name.to_string(),
+                    value: value.to_string(),
+                })
+        }
+        OptionType::Bool => match value.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" | "t" | "y" => Ok(OptionValue::Bool(true)),
+            "false" | "0" | "no" | "f" | "n" => Ok(OptionValue::Bool(false)),
+            _ => Err(ParseError::NotBool {
+                name: spec.name.to_string(),
+                value: value.to_string(),
+            }),
+        },
+        OptionType::Enum => {
+            if spec.r#enum.contains(&value) {
+                Ok(OptionValue::String(value.to_string()))
+            } else {
+                Err(ParseError::NotEnum {
+                    name: spec.name.to_string(),
+                    value: value.to_string(),
+                    valid: spec.r#enum.join(", "),
+                })
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -235,8 +259,7 @@ mod tests {
 
     #[test]
     fn enum_validates_against_allowed() {
-        let specs =
-            [OptionSpec::new("case", OptionType::Enum, "").with_enum(&["upper", "lower"])];
+        let specs = [OptionSpec::new("case", OptionType::Enum, "").with_enum(&["upper", "lower"])];
         let out = parse_options(["case=upper"].iter(), &specs).unwrap();
         assert_eq!(out.get("case"), Some(&OptionValue::String("upper".into())));
 
@@ -263,7 +286,8 @@ mod tests {
     #[test]
     fn defaults_fill_missing_keys() {
         let specs = [
-            OptionSpec::new("a", OptionType::String, "").with_default(OptionValue::String("A".into())),
+            OptionSpec::new("a", OptionType::String, "")
+                .with_default(OptionValue::String("A".into())),
             OptionSpec::new("b", OptionType::Int, "").with_default(OptionValue::Int(7)),
         ];
         let out = parse_options(["a=override"].iter(), &specs).unwrap();
@@ -276,36 +300,5 @@ mod tests {
         let specs = [spec("x", OptionType::String)];
         let err = parse_options(["=value"].iter(), &specs).unwrap_err();
         assert!(matches!(err, ParseError::EmptyKey(_)));
-    }
-}
-
-fn coerce(spec: &OptionSpec, value: &str) -> Result<OptionValue, ParseError> {
-    match spec.r#type {
-        OptionType::String => Ok(OptionValue::String(value.to_string())),
-        OptionType::Int => value.parse::<i64>().map(OptionValue::Int).map_err(|_| {
-            ParseError::NotInt {
-                name: spec.name.to_string(),
-                value: value.to_string(),
-            }
-        }),
-        OptionType::Bool => match value.trim().to_ascii_lowercase().as_str() {
-            "true" | "1" | "yes" | "t" | "y" => Ok(OptionValue::Bool(true)),
-            "false" | "0" | "no" | "f" | "n" => Ok(OptionValue::Bool(false)),
-            _ => Err(ParseError::NotBool {
-                name: spec.name.to_string(),
-                value: value.to_string(),
-            }),
-        },
-        OptionType::Enum => {
-            if spec.r#enum.iter().any(|e| *e == value) {
-                Ok(OptionValue::String(value.to_string()))
-            } else {
-                Err(ParseError::NotEnum {
-                    name: spec.name.to_string(),
-                    value: value.to_string(),
-                    valid: spec.r#enum.join(", "),
-                })
-            }
-        }
     }
 }

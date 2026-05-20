@@ -50,7 +50,10 @@ impl Formatter for TableFormatter {
         opts: &Options,
         cols: &[String],
     ) -> std::io::Result<()> {
-        let header = opts.get("header").and_then(OptionValue::as_bool).unwrap_or(true);
+        let header = opts
+            .get("header")
+            .and_then(OptionValue::as_bool)
+            .unwrap_or(true);
         let rows = normalize(data);
         let columns = resolve_columns(&rows, cols);
 
@@ -61,7 +64,7 @@ impl Formatter for TableFormatter {
             .set_content_arrangement(ContentArrangement::Disabled);
 
         if header && !columns.is_empty() {
-            table.set_header(columns.iter().map(|c| Cell::new(c)).collect::<Vec<_>>());
+            table.set_header(columns.iter().map(Cell::new).collect::<Vec<_>>());
         }
 
         for row in &rows {

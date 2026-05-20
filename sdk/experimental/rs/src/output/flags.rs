@@ -38,10 +38,7 @@ pub fn register_output_flags(
         cmd = cmd.arg(
             Arg::new("format")
                 .long("format")
-                .help(format!(
-                    "Output format ({})",
-                    registry.keys().join(", ")
-                ))
+                .help(format!("Output format ({})", registry.keys().join(", ")))
                 .default_value("table")
                 .global(true),
         );

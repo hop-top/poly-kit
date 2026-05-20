@@ -15,11 +15,7 @@ pub struct ColumnSpec {
 
 impl ColumnSpec {
     /// Named-arg-friendly factory mirroring the py/ts/php construction sites.
-    pub fn new(
-        header: impl Into<String>,
-        key: impl Into<String>,
-        priority: i32,
-    ) -> Self {
+    pub fn new(header: impl Into<String>, key: impl Into<String>, priority: i32) -> Self {
         Self {
             header: header.into(),
             key: key.into(),
