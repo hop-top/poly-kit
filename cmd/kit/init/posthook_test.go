@@ -359,7 +359,47 @@ func TestHook_PullPath_BusDisabled_SchedulesTask(t *testing.T) {
 	assert.Equal(t, 0, exit)
 	assert.Contains(t, stderr, "scheduled tlc follow-up")
 	assertTLCInvoked(t, h, "Review PR #123", "deadbeef1234567890",
-		"t-0774-post-pr-hook", "github.pr.run", "T-0774")
+		"t-0774-post-pr-hook", "github.pr.run.completed", "T-0774")
+}
+
+// TestHook_PullPath_FamilyTopicMapping asserts the per-event tag value
+// carries the full 4-segment canonical topic name (not the short family
+// label), and that the dedup-key tag keeps the short family label.
+// Spec: kit-init-pr-wiring section "Per-event tag uses canonical topic".
+func TestHook_PullPath_FamilyTopicMapping(t *testing.T) {
+	cases := []struct {
+		family    string
+		wantTopic string // expected event:<topic> tag value
+	}{
+		{"run", "event:github.pr.run.completed"},
+		{"comment", "event:github.pr.comment.created"},
+		{"merged", "event:github.pr.pull.merged"},
+		{"closed", "event:github.pr.pull.closed"},
+	}
+	for _, c := range cases {
+		t.Run(c.family, func(t *testing.T) {
+			h := newHookHarness(t)
+			h.stubGH(t, fixtureGHJSON)
+			h.stubTLC(t)
+			h.stubCurl(t, "503") // force pull path
+
+			stderr, exit := h.run(t, map[string]string{
+				"KIT_BUS_ENABLED":         "false",
+				"KIT_POST_PR_HOOK_FAMILY": c.family,
+			})
+
+			assert.Equal(t, 0, exit)
+			assert.Contains(t, stderr, "scheduled tlc follow-up")
+			body, err := os.ReadFile(h.tlcLog)
+			require.NoError(t, err)
+			got := string(body)
+			assert.Contains(t, got, c.wantTopic,
+				"per-event tag must carry full canonical topic name")
+			// The dedup-key family stays as the short label.
+			assert.Contains(t, got, "kit:pr-followup:hop-top-example:123:"+c.family,
+				"dedup tag's family segment must stay short")
+		})
+	}
 }
 
 func TestHook_PullPath_ProbeReturnsNon2xx_SchedulesTask(t *testing.T) {
@@ -518,7 +558,8 @@ func assertTLCInvoked(t *testing.T, h *hookHarness, needles ...string) {
 	}
 	// Required tag set per contract Section 5.
 	assert.Contains(t, got, "kit:pr-followup", "fixed pr-followup tag must be set")
-	assert.Contains(t, got, "event:github.pr.run", "per-event tag must be set")
+	assert.Contains(t, got, "event:github.pr.run.completed",
+		"per-event tag must carry full canonical topic (default family=run)")
 	// Dedup tag carries the (repo, PR#, family) triple.
 	assert.Contains(t, got, "kit:pr-followup:hop-top-example:123:run",
 		"dedup tag must encode (repo, PR#, family)")

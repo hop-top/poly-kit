@@ -21,9 +21,10 @@
 #      follow-ups. Logs one stderr note and exits 0 — no local task.
 #   4. Pull path: otherwise (bus disabled, probe failed, non-2xx, DNS
 #      error, TLS error, timeout), creates a scheduled `tlc` task due
-#      10 minutes from now with kit:pr-followup + event:github.pr.run
-#      tags, the PR URL, head SHA, branch, and a track/task link
-#      resolved from the branch name when it matches t-NNNN-*.
+#      10 minutes from now with kit:pr-followup + the full canonical
+#      topic tag (e.g. event:github.pr.run.completed), the PR URL, head
+#      SHA, branch, and a track/task link resolved from the branch name
+#      when it matches t-NNNN-*.
 #
 # Fail-open: missing `tlc` or `gh` on PATH never blocks PR creation;
 # the hook prints one actionable stderr line and exits 0.
@@ -53,6 +54,22 @@ kit_log() {
 kit_debug() {
   [ "${KIT_POST_PR_HOOK_DEBUG}" = "1" ] || return 0
   printf 'kit-debug: %s\n' "$*" >&2
+}
+
+# Map the short event family (used only as a local label and inside the
+# dedup-key tag) to the full 4-segment canonical topic name expected by
+# bus.ValidateTopic. The per-event tag value carries the full topic so
+# downstream filtering is not lossy. Unknown families fall back to
+# "github.pr.${family}" — invalid for the bus, but kept distinguishable
+# so adopters see exactly what their override produced.
+kit_canonical_topic() {
+  case "$1" in
+    run)     printf 'github.pr.run.completed' ;;
+    comment) printf 'github.pr.comment.created' ;;
+    merged)  printf 'github.pr.pull.merged' ;;
+    closed)  printf 'github.pr.pull.closed' ;;
+    *)       printf 'github.pr.%s' "$1" ;;
+  esac
 }
 
 # ----- 1. discover gh + read PR metadata --------------------------------------
@@ -199,6 +216,7 @@ fi
 # Build the create command. tlc --due accepts natural-language ("in 10m")
 # and absolute ("2026-05-23T14:10:00Z") forms; we pass-through whatever
 # KIT_POST_PR_HOOK_DUE resolves to (default: "in 10m").
+CANONICAL_TOPIC="$(kit_canonical_topic "${KIT_POST_PR_HOOK_FAMILY}")"
 TASK_TITLE="Review PR #${PR_NUMBER}: ${PR_TITLE}"
 TASK_DESCRIPTION="Auto-scheduled by kit post-pr-open hook.
 
@@ -208,18 +226,19 @@ Branch:    ${PR_BRANCH}
 Head SHA:  ${PR_HEAD_SHA}
 Repo:      ${PR_REPO}
 Family:    ${KIT_POST_PR_HOOK_FAMILY}
-Trigger:   github.pr.${KIT_POST_PR_HOOK_FAMILY}
+Trigger:   ${CANONICAL_TOPIC}
 Task link: ${TASK_ID}
 "
 
 # Compose tlc args. --tag is repeatable; we pass all three tags
-# (the fixed kit:pr-followup, the per-event canonical tag, and the
-# dedup-key tag).
+# (the fixed kit:pr-followup, the per-event canonical tag carrying the
+# full 4-segment topic, and the dedup-key tag whose family segment stays
+# as the short label).
 set -- task create "${TASK_TITLE}" \
   --description "${TASK_DESCRIPTION}" \
   --due "${KIT_POST_PR_HOOK_DUE}" \
   --tag "kit:pr-followup" \
-  --tag "event:github.pr.${KIT_POST_PR_HOOK_FAMILY}" \
+  --tag "event:${CANONICAL_TOPIC}" \
   --tag "${DEDUP_TAG}"
 
 if [ -n "${TASK_ID}" ]; then
