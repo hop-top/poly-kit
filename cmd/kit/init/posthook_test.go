@@ -221,20 +221,70 @@ func newHookHarness(t *testing.T) *hookHarness {
 	return h
 }
 
-// stubGH writes a stub `gh` binary that returns the supplied JSON for
-// `gh pr view` and exits 0 for everything else.
+// stubGH writes a stub `gh` binary that mimics two real-gh behaviors:
+//
+//  1. `gh pr view --json <fields>` (no --jq) emits the raw JSON, used
+//     by legacy callers and quick-shape inspection.
+//  2. `gh pr view --json <fields> --jq <expr>` pipes the raw JSON
+//     through the host's real `jq` (the production gh binary embeds
+//     a jq runtime — we proxy through the system jq to get the same
+//     semantics).
+//
+// `gh repo view --json nameWithOwner --jq '.nameWithOwner'` is also
+// recognised for the baseRepository fallback path; it returns the
+// REPO_NAME_WITH_OWNER env var (empty by default) so tests can opt
+// into / out of the final gh-side fallback independently.
+//
+// If the test environment has no `jq` on PATH, --jq invocations exit
+// with a clear non-zero code and an error to stderr so failures point
+// at the missing dependency rather than silently degrading to the
+// legacy raw-JSON path. (Standard CI runners ship jq.)
 func (h *hookHarness) stubGH(t *testing.T, json string) {
 	t.Helper()
+	jqPath, err := exec.LookPath("jq")
+	if err != nil {
+		// Surface the dependency at stub-write time so a missing jq
+		// fails the whole test rather than leaking a confusing
+		// "title was \"\"" assertion downstream.
+		t.Skipf("gh stub requires system jq for --jq passthrough; not found on PATH")
+	}
 	script := `#!/usr/bin/env bash
 set -u
-case "$1" in
-  pr)
-    case "$2" in
-      view) cat <<'GHJSON'
+JQ='` + jqPath + `'
+JSON=$(cat <<'GHJSON'
 ` + json + `
 GHJSON
-      ;;
-    esac
+)
+JQ_EXPR=""
+saw_jq=0
+for arg in "$@"; do
+  if [ "${saw_jq}" = "1" ]; then
+    JQ_EXPR="${arg}"
+    saw_jq=0
+    continue
+  fi
+  case "${arg}" in
+    --jq) saw_jq=1 ;;
+  esac
+done
+case "$1 $2" in
+  "pr view")
+    if [ -n "${JQ_EXPR}" ]; then
+      printf '%s' "${JSON}" | "${JQ}" -r "${JQ_EXPR}"
+    else
+      printf '%s\n' "${JSON}"
+    fi
+    ;;
+  "repo view")
+    # Repo-side fallback used when baseRepository is missing. Tests
+    # configure REPO_NAME_WITH_OWNER to control the response; absent
+    # → empty (gh exits non-zero in real life, but the hook tolerates
+    # an empty stdout).
+    if [ -n "${JQ_EXPR}" ]; then
+      printf '%s' "${REPO_NAME_WITH_OWNER:-}" | "${JQ}" -R -r "${JQ_EXPR} // \"\""
+    else
+      printf '{"nameWithOwner":"%s"}\n' "${REPO_NAME_WITH_OWNER:-}"
+    fi
     ;;
 esac
 exit 0

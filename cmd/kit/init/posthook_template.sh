@@ -80,42 +80,68 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 
 # `gh pr view` against HEAD picks the PR matching the current branch.
-# --json keeps the fields stable across gh versions.
-PR_JSON="$(gh pr view --json number,url,headRefName,headRefOid,title,body,baseRepository 2>/dev/null || true)"
+# We extract each field with gh's built-in `--jq` so escape sequences
+# (e.g. PR titles like `Fix "foo" handling`, encoded in JSON as
+# `Fix \"foo\" handling`) resolve correctly without an external jq
+# dependency. One small `gh` invocation per field; gh caches its
+# transport so the per-call overhead is dominated by JSON traversal,
+# not network IO.
+#
+# Each extractor falls back to "" on error so a malformed gh response
+# does not crash the hook (the per-field empty-checks below decide
+# fail-open behavior).
+gh_extract() {
+  # $1: --jq expression. Always reads the same field set so adopters
+  # can grep `--json` once when auditing the hook.
+  gh pr view \
+    --json number,url,headRefName,headRefOid,title,body,baseRepository \
+    --jq "$1" 2>/dev/null || true
+}
 
-if [ -z "${PR_JSON}" ]; then
+PR_NUMBER="$(gh_extract '.number')"
+PR_URL="$(gh_extract '.url')"
+PR_BRANCH="$(gh_extract '.headRefName')"
+PR_HEAD_SHA="$(gh_extract '.headRefOid')"
+PR_TITLE="$(gh_extract '.title')"
+# baseRepository.{owner.login, name} are nested; gh's --jq returns ""
+# for missing paths so older `gh` versions degrade cleanly.
+PR_REPO_OWNER="$(gh_extract '.baseRepository.owner.login // ""')"
+PR_REPO_NAME="$(gh_extract '.baseRepository.name // ""')"
+
+if [ -z "${PR_NUMBER}" ]; then
   kit_log "no open PR for current branch; skipping scheduled follow-up"
   exit 0
 fi
 
-# Minimal JSON field extraction. gh emits compact JSON for these scalar
-# fields; sed-based extraction keeps the hook portable without adding a
-# jq dependency. The patterns assume gh's documented field shapes (no
-# embedded newlines in `title`; URLs and SHAs are RFC-safe).
-extract_field() {
-  printf '%s' "$1" | sed -n "s/.*\"$2\":\"\\([^\"]*\\)\".*/\\1/p" | head -n1
-}
-extract_number() {
-  printf '%s' "$1" | sed -n "s/.*\"$2\":\\([0-9][0-9]*\\).*/\\1/p" | head -n1
-}
-
-PR_NUMBER="$(extract_number "${PR_JSON}" number)"
-PR_URL="$(extract_field "${PR_JSON}" url)"
-PR_BRANCH="$(extract_field "${PR_JSON}" headRefName)"
-PR_HEAD_SHA="$(extract_field "${PR_JSON}" headRefOid)"
-PR_TITLE="$(extract_field "${PR_JSON}" title)"
-# baseRepository.{owner.login, name} are nested; degrade to "" when gh
-# omits them under older versions. The probe + tagging tolerates an
-# empty repo string.
-PR_REPO_OWNER="$(printf '%s' "${PR_JSON}" | sed -n 's/.*"baseRepository":{[^}]*"login":"\([^"]*\)".*/\1/p' | head -n1)"
-PR_REPO_NAME="$(printf '%s' "${PR_JSON}" | sed -n 's/.*"baseRepository":{[^}]*"name":"\([^"]*\)".*/\1/p' | head -n1)"
 PR_REPO=""
 if [ -n "${PR_REPO_OWNER}" ] && [ -n "${PR_REPO_NAME}" ]; then
   PR_REPO="${PR_REPO_OWNER}/${PR_REPO_NAME}"
 fi
 
-if [ -z "${PR_NUMBER}" ]; then
-  kit_log "could not parse PR number from gh output; skipping scheduled follow-up"
+# Fallback: derive owner/repo from PR_URL when gh's baseRepository is
+# absent (older gh, unexpected JSON shape). PR URLs are stable:
+# https://<host>/<owner>/<repo>/pull/<n>. Strip the protocol+host, take
+# the first two path segments. This keeps the (repo, PR#, family)
+# dedup contract intact across gh versions.
+if [ -z "${PR_REPO}" ] && [ -n "${PR_URL}" ]; then
+  # shellcheck disable=SC2001
+  url_path="$(printf '%s' "${PR_URL}" | sed -e 's#^https\{0,1\}://[^/]*/##')"
+  case "${url_path}" in
+    */pull/*|*/pulls/*)
+      PR_REPO="$(printf '%s' "${url_path}" | sed -e 's#/pulls\{0,1\}/.*##')"
+      ;;
+  esac
+fi
+
+# Last resort: ask gh for the current repo (works inside a git
+# checkout with a github remote). Keeps the hook usable on bare repos
+# even when gh pr view's baseRepository path is broken.
+if [ -z "${PR_REPO}" ]; then
+  PR_REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
+fi
+
+if [ -z "${PR_REPO}" ]; then
+  kit_log "could not resolve owner/repo for PR #${PR_NUMBER}; skipping scheduled follow-up (would emit a malformed dedup key)"
   exit 0
 fi
 
