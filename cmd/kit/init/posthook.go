@@ -13,10 +13,18 @@
 // branch, PR URL, and the originating track/task link when discoverable
 // from the branch name (matching the t-NNNN-* convention).
 //
-// Why a portable shell script: hops adopters target Linux + macOS today;
-// Windows support is best-effort and TODO'd inline. The script is
-// non-destructive — never overwrites an existing file — and pairs with
-// the existing .githooks/ convention (cf. .githooks/pre-push).
+// Cross-shell support: the generator emits two files in lockstep —
+// .githooks/post-pr-open (bash, POSIX shells incl. Git-Bash on Windows)
+// and .githooks/post-pr-open.ps1 (native PowerShell). Both implement
+// the same flow (port — not refactor); adopters wire whichever matches
+// their shell. The .ps1 is mode 0644 since Windows runs by extension,
+// not by exec bit. Both files share the augment-conflict policy: a
+// user-edited file yields a .kit-suggested sibling, never an overwrite.
+//
+// The bash script itself contains no OS-conditional path logic (it does
+// HTTP probes via curl and shells out to gh/tlc), so MSYS/Cygwin/MINGW
+// detection is unnecessary inside the script — the choice of which
+// file to wire (.sh vs .ps1) lives in the user's hook configuration.
 package kitinit
 
 import (
@@ -30,13 +38,21 @@ import (
 	"strings"
 )
 
-// postPROpenHookPath is the repo-relative POSIX path where the hook is
-// generated. Pinned here so tests and Summary integration share a single
-// source of truth.
+// postPROpenHookPath is the repo-relative POSIX path where the bash
+// hook is generated. Pinned here so tests and Summary integration
+// share a single source of truth.
 const postPROpenHookPath = ".githooks/post-pr-open"
+
+// postPROpenHookPS1Path is the PowerShell companion. Native Windows
+// shells run this file; POSIX shells (incl. Git-Bash) run the .sh.
+// Both are kept behaviorally aligned per the contract.
+const postPROpenHookPS1Path = ".githooks/post-pr-open.ps1"
 
 //go:embed posthook_template.sh
 var postPROpenHookScript []byte
+
+//go:embed posthook_template.ps1
+var postPROpenHookPS1Script []byte
 
 // PostHookAction enumerates the per-file action a posthook generation
 // run takes. Mirrors the action-shape pinned in the contract (Section 6).
@@ -78,11 +94,21 @@ type PostHookResult struct {
 	SHA256 string
 }
 
-// GeneratePostPROpenHook materialises .githooks/post-pr-open under
-// target. enabled=false short-circuits to PostHookActionSkippedFlag
-// (used by --without-githook-post-pr-open).
+// GeneratePostPROpenHook materialises BOTH .githooks/post-pr-open and
+// .githooks/post-pr-open.ps1 under target. enabled=false short-circuits
+// to PostHookActionSkippedFlag for both (used by
+// --without-githook-post-pr-open).
 //
-// Non-destructive guarantees per contract Section 6:
+// The returned PostHookResult describes the primary (bash) file's
+// action; the .ps1 companion follows the same per-file augment-conflict
+// policy but its on-disk side-effects are not surfaced through this
+// return value — callers wanting per-file granularity can re-stat the
+// .ps1 path. We keep the single-result shape so existing Summary
+// integration stays stable; the .ps1 is a behavioral mirror, not a
+// distinct artifact.
+//
+// Non-destructive guarantees per contract Section 6 (applied to each
+// file independently):
 //   - identical existing file → PostHookActionSkipUnchanged, no write
 //   - differing existing file → write <path>.kit-suggested sibling,
 //     leave the original untouched (PostHookActionSuggestSibling)
@@ -91,24 +117,54 @@ type PostHookResult struct {
 // Suggestion-sibling cleanup: when the current on-disk file matches a
 // previously-suggested sibling, the sibling is auto-removed so the
 // working tree doesn't accumulate stale .kit-suggested files (Section 6).
-// We perform that cleanup before computing the result so callers see a
-// stable view.
 //
 // dryRun=true suppresses bytes on disk but mirrors the result of a real
 // run, matching the engine semantics in internal/template.
 func GeneratePostPROpenHook(target string, enabled, dryRun bool) (PostHookResult, error) {
-	absPath := filepath.Join(target, filepath.FromSlash(postPROpenHookPath))
-	sum := sha256.Sum256(postPROpenHookScript)
-	digest := hex.EncodeToString(sum[:])
+	if !enabled {
+		// Surface the bash path for the skipped-flag result so the
+		// Summary still references a stable identifier; the .ps1 is
+		// suppressed in lockstep.
+		absPath := filepath.Join(target, filepath.FromSlash(postPROpenHookPath))
+		sum := sha256.Sum256(postPROpenHookScript)
+		return PostHookResult{
+			Path:   absPath,
+			SHA256: hex.EncodeToString(sum[:]),
+			Action: PostHookActionSkippedFlag,
+			Reason: "skipped",
+		}, nil
+	}
 
+	// Bash hook: 0o755 so POSIX shells (incl. Git-Bash on Windows) can
+	// chmod-execute it. This is the primary result returned to callers.
+	primary, err := writePostHookFile(target, postPROpenHookPath, postPROpenHookScript, 0o755, dryRun)
+	if err != nil {
+		return primary, err
+	}
+
+	// PowerShell companion: 0o644 — Windows runs by extension, not by
+	// exec bit. Any error here is surfaced; per-file action is observable
+	// on disk (the .ps1 sibling exists or not). We intentionally do not
+	// fold the .ps1 action into the primary result — keeping the return
+	// shape stable preserves Summary integration. The bash + .ps1 must
+	// stay in lockstep, so a .ps1 write/skip mirrors the bash decision
+	// in the common (refresh) case.
+	if _, err := writePostHookFile(target, postPROpenHookPS1Path, postPROpenHookPS1Script, 0o644, dryRun); err != nil {
+		return primary, err
+	}
+
+	return primary, nil
+}
+
+// writePostHookFile applies the augment-conflict policy to a single
+// generator-owned file. Extracted from GeneratePostPROpenHook so the
+// bash + .ps1 paths share the contract Section 6 behavior verbatim.
+func writePostHookFile(target, relPath string, content []byte, mode os.FileMode, dryRun bool) (PostHookResult, error) {
+	absPath := filepath.Join(target, filepath.FromSlash(relPath))
+	sum := sha256.Sum256(content)
 	res := PostHookResult{
 		Path:   absPath,
-		SHA256: digest,
-	}
-	if !enabled {
-		res.Action = PostHookActionSkippedFlag
-		res.Reason = "skipped"
-		return res, nil
+		SHA256: hex.EncodeToString(sum[:]),
 	}
 
 	existing, err := os.ReadFile(absPath)
@@ -116,7 +172,7 @@ func GeneratePostPROpenHook(target string, enabled, dryRun bool) (PostHookResult
 	case err == nil:
 		// Auto-cleanup stale .kit-suggested when the user has converged
 		// with what kit would write (Section 6).
-		if string(existing) == string(postPROpenHookScript) {
+		if string(existing) == string(content) {
 			suggested := absPath + ".kit-suggested"
 			if !dryRun {
 				if _, statErr := os.Stat(suggested); statErr == nil {
@@ -128,12 +184,14 @@ func GeneratePostPROpenHook(target string, enabled, dryRun bool) (PostHookResult
 			return res, nil
 		}
 		// Differs from kit's content → suggest sibling, never overwrite.
+		// Sibling carries the same mode as the would-be file so adopters
+		// who swap the names get a working hook without a chmod.
 		suggested := absPath + ".kit-suggested"
 		if !dryRun {
 			if err := os.MkdirAll(filepath.Dir(suggested), 0o750); err != nil {
 				return res, fmt.Errorf("kit init: post-pr-open: mkdir %q: %w", filepath.Dir(suggested), err)
 			}
-			if err := os.WriteFile(suggested, postPROpenHookScript, 0o755); err != nil {
+			if err := os.WriteFile(suggested, content, mode); err != nil {
 				return res, fmt.Errorf("kit init: post-pr-open: write %q: %w", suggested, err)
 			}
 		}
@@ -146,11 +204,7 @@ func GeneratePostPROpenHook(target string, enabled, dryRun bool) (PostHookResult
 			if err := os.MkdirAll(filepath.Dir(absPath), 0o750); err != nil {
 				return res, fmt.Errorf("kit init: post-pr-open: mkdir %q: %w", filepath.Dir(absPath), err)
 			}
-			// 0o755 — git hooks must be executable. mode bits are
-			// honored on POSIX; Windows ignores the +x bit (TODO:
-			// Windows requires a .bat companion or a git config
-			// core.hooksPath that resolves the script via sh.exe).
-			if err := os.WriteFile(absPath, postPROpenHookScript, 0o755); err != nil {
+			if err := os.WriteFile(absPath, content, mode); err != nil {
 				return res, fmt.Errorf("kit init: post-pr-open: write %q: %w", absPath, err)
 			}
 		}
@@ -200,12 +254,22 @@ func ResolveTaskIDFromBranch(branch string) string {
 	return "T-" + m[1]
 }
 
-// PostPROpenHookContent returns the embedded hook script. Exposed for
-// tests that need to invoke the script directly (via /bin/sh) without
-// going through GeneratePostPROpenHook's write semantics.
+// PostPROpenHookContent returns the embedded bash hook script. Exposed
+// for tests that need to invoke the script directly (via /bin/sh)
+// without going through GeneratePostPROpenHook's write semantics.
 func PostPROpenHookContent() []byte {
 	out := make([]byte, len(postPROpenHookScript))
 	copy(out, postPROpenHookScript)
+	return out
+}
+
+// PostPROpenPS1Content returns the embedded PowerShell hook script.
+// Exposed for tests that assert static properties of the .ps1
+// (canonical-topic map, env-var names, fail-open contract) without
+// requiring pwsh on the host. Symmetric with PostPROpenHookContent.
+func PostPROpenPS1Content() []byte {
+	out := make([]byte, len(postPROpenHookPS1Script))
+	copy(out, postPROpenHookPS1Script)
 	return out
 }
 
