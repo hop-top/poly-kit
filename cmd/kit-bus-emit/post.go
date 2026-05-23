@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -75,10 +76,13 @@ func Post(ctx context.Context, opts PostOpts, body []byte) (int, []byte, error) 
 	}
 	defer resp.Body.Close()
 
+	// io.ReadAll(io.LimitReader) loops until EOF or the cap, so the
+	// captured error body is complete across multi-chunk responses.
+	// A single resp.Body.Read returns whatever the network had
+	// buffered at that moment, which truncates error messages
+	// unpredictably.
 	const respCap = 4096
-	buf := make([]byte, respCap)
-	n, _ := resp.Body.Read(buf)
-	respBody := buf[:n]
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, respCap))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp.StatusCode, respBody,
