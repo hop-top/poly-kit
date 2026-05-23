@@ -195,6 +195,7 @@ type hookHarness struct {
 	hookPath string // <dir>/.githooks/post-pr-open
 	pathDir  string // PATH-shadow dir holding stub binaries
 	tlcLog   string // file the tlc stub appends invocation args to
+	curlLog  string // file the curl stub appends the last positional (probe URL) to
 }
 
 func newHookHarness(t *testing.T) *hookHarness {
@@ -212,11 +213,13 @@ func newHookHarness(t *testing.T) *hookHarness {
 	require.NoError(t, err)
 	pathDir := t.TempDir()
 	tlcLog := filepath.Join(t.TempDir(), "tlc.log")
+	curlLog := filepath.Join(t.TempDir(), "curl.log")
 
 	h := &hookHarness{
 		hookPath: filepath.Join(dir, ".githooks", "post-pr-open"),
 		pathDir:  pathDir,
 		tlcLog:   tlcLog,
+		curlLog:  curlLog,
 	}
 	return h
 }
@@ -598,6 +601,44 @@ func TestHook_MissingGH_LogsAndExits0(t *testing.T) {
 		"single actionable stderr line per contract Section 5")
 	// tlc must not be invoked when gh is missing (no PR metadata to act on).
 	assert.NoFileExists(t, h.tlcLog)
+}
+
+// TestHook_ProbeURLComposition_RecordsExpectedURL pins the contract
+// that the hook composes PROBE_URL as `${KIT_BUS_INGRESS_URL%/}/healthz`
+// — i.e. a single trailing-slash strip + `/healthz` suffix, no double
+// slashes, no missing path. The curl stub records the URL it receives
+// to h.curlLog so any future regression in URL composition (wrong env
+// var, missing trim, extra slash) surfaces as a test failure rather
+// than silently routing the probe to the wrong address.
+func TestHook_ProbeURLComposition_RecordsExpectedURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	h := newHookHarness(t)
+	h.stubGH(t, fixtureGHJSON)
+	h.stubTLC(t)
+	// KIT_BUS_INGRESS_URL carries a trailing slash on purpose — the
+	// hook must strip it before appending /healthz.
+	ingressURL := srv.URL + "/"
+	h.stubCurlAgainst(t, srv.URL+"/healthz")
+
+	_, exit := h.run(t, map[string]string{
+		"KIT_BUS_ENABLED":     "true",
+		"KIT_BUS_INGRESS_URL": ingressURL,
+	})
+	assert.Equal(t, 0, exit)
+
+	// The curl stub must record the URL the hook composed. The
+	// expected form is ${KIT_BUS_INGRESS_URL%/}/healthz — single
+	// slash, no doubling.
+	body, err := os.ReadFile(h.curlLog)
+	require.NoError(t, err, "stubCurlAgainst must record the URL the hook passed")
+	got := strings.TrimSpace(string(body))
+	want := srv.URL + "/healthz"
+	assert.Equal(t, want, got,
+		"hook must compose PROBE_URL as KIT_BUS_INGRESS_URL with trailing slash stripped + /healthz")
 }
 
 // TestHook_PullPath_PreservesEscapedQuotesInTitle pins the contract that
