@@ -152,11 +152,23 @@ func WriteAll(opts WriteOpts) (Plan, error) {
 			// untouched and the manifest is not updated for that
 			// path (it still reflects what kit-init originally
 			// wrote).
+			//
+			// Distinguish the two "why" sub-cases so the spec §6
+			// dry-run JSON reason enum is accurate:
+			//
+			//   - hadEntry==false && fileExists==true → the manifest
+			//     is missing the entry (reason: manifest-only).
+			//   - hadEntry==true  && hash differs    → the file was
+			//     edited after generation (reason: user-edited).
 			suggested := abs + ".kit-suggested"
 			suggestedRel := rel + ".kit-suggested"
 			entry.Action = ActionSuggestSibling
 			entry.SuggestedPath = suggestedRel
-			entry.Reason = ReasonUserEdited
+			if !hadEntry {
+				entry.Reason = ReasonManifestOnly
+			} else {
+				entry.Reason = ReasonUserEdited
+			}
 
 			// Suggestion cleanup: if an existing .kit-suggested is
 			// byte-identical to the live file, the user has
