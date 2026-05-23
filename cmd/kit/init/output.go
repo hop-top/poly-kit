@@ -33,7 +33,11 @@ type Summary struct {
 	GitHub     *GitHubSummary  `json:"github,omitempty"`
 	HopSkipped bool            `json:"hop_skipped,omitempty"`
 	TLCSkipped bool            `json:"tlc_skipped,omitempty"`
-	NextSteps  []string        `json:"next_steps"`
+	// PrePrHook reports the .githooks/pre-pr and .kit/generated.json
+	// rows kit init wrote (or would write, in dry-run). Absent when the
+	// generator was disabled via --without-githook-pre-pr.
+	PrePrHook *PrePrResult `json:"prepr_hook,omitempty"`
+	NextSteps []string     `json:"next_steps"`
 }
 
 // GitHubSummary is the JSON-friendly subset of github.RepoInfo embedded
@@ -93,6 +97,21 @@ func WriteHuman(w io.Writer, s Summary) error {
 	if s.GitHub != nil && s.GitHub.URL != "" {
 		if _, err := fmt.Fprintf(w, "\nGitHub: %s\n", s.GitHub.URL); err != nil {
 			return err
+		}
+	}
+
+	if s.PrePrHook != nil && len(s.PrePrHook.Files) > 0 {
+		if _, err := fmt.Fprintln(w, "\nBefore-PR hook:"); err != nil {
+			return err
+		}
+		for _, f := range s.PrePrHook.Files {
+			line := fmt.Sprintf("  %s [%s]", f.Path, f.Action)
+			if f.SuggestedPath != "" {
+				line += " → " + f.SuggestedPath
+			}
+			if _, err := fmt.Fprintln(w, line); err != nil {
+				return err
+			}
 		}
 	}
 

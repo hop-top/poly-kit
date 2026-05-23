@@ -58,6 +58,11 @@ type Inputs struct {
 	Force    bool
 	Yes      bool
 
+	// WithPrePrHook gates generation of .githooks/pre-pr and the
+	// .kit/generated.json manifest entry tracking it (T-0773, contract
+	// Section 8). Default true; --without-githook-pre-pr flips it.
+	WithPrePrHook bool
+
 	Mode Mode // populated by caller from detect.Detect
 
 	// Vars carries the union of built-in vars and resolved manifest
