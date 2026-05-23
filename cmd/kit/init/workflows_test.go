@@ -493,6 +493,56 @@ func TestReadManifest_AcceptsCorrectSchema(t *testing.T) {
 	assert.Equal(t, manifestGeneratedBy, m.GeneratedBy)
 }
 
+// TestWriteManifest_OverwriteIdempotent exercises the manifest write
+// path across two consecutive writes to the same location. On POSIX
+// os.Rename silently replaces the destination so this passes today;
+// on Windows os.Rename fails if the destination exists, so this test
+// fails on Windows runners before the fix and passes everywhere after.
+// Kept portable so future changes to the write path stay covered.
+func TestWriteManifest_OverwriteIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "generated.json")
+
+	// First write: brand-new manifest.
+	first := &Manifest{
+		Version:     manifestVersion,
+		GeneratedBy: manifestGeneratedBy,
+		Files: []ManifestEntry{
+			{Path: ".github/workflows/a.yml", SHA256: "aaaa", GeneratedAt: "2026-05-23T14:00:00Z"},
+		},
+	}
+	require.NoError(t, writeManifest(path, first))
+	got1, err := readManifest(path)
+	require.NoError(t, err)
+	require.Len(t, got1.Files, 1)
+	assert.Equal(t, "aaaa", got1.Files[0].SHA256)
+
+	// Second write: overwrite with different content. This is the
+	// codepath that fails on Windows when os.Rename isn't preceded by
+	// os.Remove on the destination.
+	second := &Manifest{
+		Version:     manifestVersion,
+		GeneratedBy: manifestGeneratedBy,
+		Files: []ManifestEntry{
+			{Path: ".github/workflows/a.yml", SHA256: "bbbb", GeneratedAt: "2026-05-23T15:00:00Z"},
+			{Path: ".github/workflows/b.yml", SHA256: "cccc", GeneratedAt: "2026-05-23T15:00:00Z"},
+		},
+	}
+	require.NoError(t, writeManifest(path, second),
+		"writeManifest must overwrite an existing manifest; this is the path that fails on Windows pre-fix")
+
+	got2, err := readManifest(path)
+	require.NoError(t, err)
+	require.Len(t, got2.Files, 2)
+	assert.Equal(t, "bbbb", got2.Files[0].SHA256)
+	assert.Equal(t, "cccc", got2.Files[1].SHA256)
+
+	// No stray temp file left behind.
+	_, statErr := os.Stat(path + ".tmp")
+	assert.True(t, os.IsNotExist(statErr),
+		"manifest temp file must be removed after a successful overwrite")
+}
+
 func TestRenderWorkflows_HopTopRefIsPinned(t *testing.T) {
 	// The default ref must be `v0` (matches existing poly-kit callers in
 	// .github/workflows/publish.yml). If you ever bump it, tighten the

@@ -552,7 +552,20 @@ func writeWorkflowManifest(path string, m *Manifest) error {
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	// os.Rename overwrites silently on POSIX but fails on Windows when
+	// the destination already exists or a handle is held. Remove the
+	// destination first (missing-file is fine) so the rename is
+	// reliable on every platform.
+	if err := removeFileIfExists(path); err != nil {
+		// Best-effort: clean up the temp file so we don't leave litter.
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // index returns a map from RelPath to position in m.Files for O(1)
