@@ -183,6 +183,140 @@ func TestGeneratePrePrHook_SuggestionCleanup(t *testing.T) {
 // cases (os.IsNotExist, malformed JSON) to (zero, nil), so propagating
 // its error only surfaces genuine I/O failures (chmod 0, etc.) that
 // the caller has no other way to learn about.
+// TestGeneratePrePrHook_InstallsPs1Companion guards Fix 5 Parts B+C:
+// alongside the bash hook the generator must also install a PowerShell
+// companion at .githooks/pre-pr.ps1 (mode 0644 — Windows runs by
+// extension, not by exec bit) and add a manifest entry for it.
+func TestGeneratePrePrHook_InstallsPs1Companion(t *testing.T) {
+	root := t.TempDir()
+
+	res, err := GeneratePrePrHook(root, false, fixedTime())
+	require.NoError(t, err)
+
+	// Result rows: bash hook, ps1 hook, manifest.
+	paths := make(map[string]PrePrFileReport, len(res.Files))
+	for _, r := range res.Files {
+		paths[r.Path] = r
+	}
+	require.Contains(t, paths, PrePrHookPath, "bash hook must be reported")
+	require.Contains(t, paths, PrePrHookPs1Path,
+		"PowerShell companion must be reported in result")
+	assert.Equal(t, ActionWrite, paths[PrePrHookPs1Path].Action,
+		"ps1 must be a fresh write on an empty tree")
+
+	// On-disk ps1 exists with reasonable mode (0644).
+	ps1Abs := filepath.Join(root, PrePrHookPs1Path)
+	info, err := os.Stat(ps1Abs)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm(),
+		".ps1 must be mode 0644 (no exec bit; Windows runs by extension)")
+
+	// Manifest carries the ps1 entry.
+	m, err := ReadGeneratedManifest(root)
+	require.NoError(t, err)
+	var foundPs1 bool
+	for _, f := range m.Files {
+		if f.Path == PrePrHookPs1Path {
+			foundPs1 = true
+			ps1Bytes, _ := loadPrePrHookPs1Bytes()
+			assert.Equal(t, hashBytes(ps1Bytes), f.SHA256,
+				"manifest hash must match the ps1 asset bytes")
+		}
+	}
+	assert.True(t, foundPs1, "manifest must include the .ps1 path")
+}
+
+// TestPrePrHookPs1Asset_StructuralMarkers guards the embedded ps1
+// content shape: the same gates and exit codes as the bash hook, the
+// same scratchpad markers, and a slug derivation function. Tests here
+// are static (string-scan) so they run even when pwsh is unavailable
+// in CI; a separate test exercises pwsh end-to-end when present.
+func TestPrePrHookPs1Asset_StructuralMarkers(t *testing.T) {
+	body, err := loadPrePrHookPs1Bytes()
+	require.NoError(t, err)
+	got := string(body)
+
+	// Exit semantics parity with bash hook.
+	assert.Contains(t, got, "exit 1", "ps1 must exit 1 on lint failure")
+	assert.Contains(t, got, "exit 2", "ps1 must exit 2 on test failure")
+	assert.Contains(t, got, "exit 3", "ps1 must exit 3 on scratchpad failure")
+
+	// Scratchpad patterns parity.
+	for _, p := range ScratchpadPatterns {
+		assert.Contains(t, got, p,
+			"ps1 must scan for marker %q", p)
+	}
+
+	// Gate resolution: at minimum it has to mention Makefile, mise, and
+	// .kit/pre-pr.toml in some order.
+	assert.Contains(t, got, "Makefile")
+	assert.Contains(t, got, "mise")
+	assert.Contains(t, got, "pre-pr.toml")
+
+	// Scratchpad path derivation references LOCALAPPDATA.
+	assert.Contains(t, got, "LOCALAPPDATA",
+		"ps1 must derive scratchpad path from LOCALAPPDATA on Windows")
+}
+
+// TestPrePrHookPs1Asset_PwshSyntax does a pwsh -NoProfile -Command
+// syntax check on the embedded ps1 if pwsh is available. CI runners
+// without pwsh skip; the structural test above is the baseline.
+func TestPrePrHookPs1Asset_PwshSyntax(t *testing.T) {
+	pwsh, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("pwsh not on PATH; structural test covers asset shape")
+	}
+	body, err := loadPrePrHookPs1Bytes()
+	require.NoError(t, err)
+	tmp := filepath.Join(t.TempDir(), "pre-pr.ps1")
+	require.NoError(t, os.WriteFile(tmp, body, 0o644))
+
+	// `pwsh -NoProfile -Command "& { . <file>; exit 99 }"` would
+	// execute. We just want a parse, so use the AST parser.
+	parser := `try {
+  $tokens = $null; $errors = $null
+  [System.Management.Automation.Language.Parser]::ParseFile(
+    '` + tmp + `', [ref]$tokens, [ref]$errors) | Out-Null
+  if ($errors.Count -gt 0) {
+    $errors | ForEach-Object { Write-Error $_.Message }
+    exit 1
+  }
+} catch { Write-Error $_.Exception.Message; exit 1 }`
+
+	out, runErr := exec.Command(pwsh, "-NoProfile", "-Command", parser).
+		CombinedOutput()
+	require.NoError(t, runErr, "ps1 must parse cleanly:\n%s", out)
+}
+
+// TestGeneratePrePrHook_Ps1SuggestSibling guards the augment policy
+// for the .ps1 file: a hand-edited ps1 must route to .kit-suggested
+// the same way the bash hook does.
+func TestGeneratePrePrHook_Ps1SuggestSibling(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".githooks"), 0o755))
+	custom := []byte("# user-edited ps1\nWrite-Host 'hi'\n")
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, PrePrHookPs1Path), custom, 0o644))
+
+	res, err := GeneratePrePrHook(root, false, fixedTime())
+	require.NoError(t, err)
+
+	var ps1Row *PrePrFileReport
+	for i := range res.Files {
+		if res.Files[i].Path == PrePrHookPs1Path {
+			ps1Row = &res.Files[i]
+		}
+	}
+	require.NotNil(t, ps1Row, "ps1 report row missing")
+	assert.Equal(t, ActionSuggestSibling, ps1Row.Action)
+	assert.Equal(t, PrePrHookPs1Path+".kit-suggested", ps1Row.SuggestedPath)
+
+	// Original untouched.
+	got, err := os.ReadFile(filepath.Join(root, PrePrHookPs1Path))
+	require.NoError(t, err)
+	assert.Equal(t, string(custom), string(got))
+}
+
 func TestGeneratePrePrHook_PropagatesManifestReadError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("os.Chmod(0) semantics differ on windows")
