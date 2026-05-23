@@ -45,16 +45,22 @@ func TestGeneratePrePrHook_FreshTree(t *testing.T) {
 
 	res, err := GeneratePrePrHook(root, false, fixedTime())
 	require.NoError(t, err)
-	require.Len(t, res.Files, 2)
+	// Result rows: bash hook, ps1 companion, manifest.
+	require.Len(t, res.Files, 3)
 
-	// Hook row.
+	// Bash hook row.
 	assert.Equal(t, PrePrHookPath, res.Files[0].Path)
 	assert.Equal(t, ActionWrite, res.Files[0].Action)
 	assert.Equal(t, ReasonNew, res.Files[0].Reason)
 
+	// PowerShell companion row.
+	assert.Equal(t, PrePrHookPs1Path, res.Files[1].Path)
+	assert.Equal(t, ActionWrite, res.Files[1].Action)
+	assert.Equal(t, ReasonNew, res.Files[1].Reason)
+
 	// Manifest row.
-	assert.Equal(t, GeneratedManifestPath, res.Files[1].Path)
-	assert.Equal(t, ActionManifestUpdate, res.Files[1].Action)
+	assert.Equal(t, GeneratedManifestPath, res.Files[2].Path)
+	assert.Equal(t, ActionManifestUpdate, res.Files[2].Action)
 
 	// Hook is executable.
 	info, err := os.Stat(filepath.Join(root, PrePrHookPath))
@@ -62,33 +68,42 @@ func TestGeneratePrePrHook_FreshTree(t *testing.T) {
 	assert.NotZero(t, info.Mode().Perm()&0o100,
 		"hook must be executable; got mode %v", info.Mode().Perm())
 
-	// Manifest carries one entry for the hook with the right hash.
+	// Manifest carries an entry per hook with the right hash.
 	m, err := ReadGeneratedManifest(root)
 	require.NoError(t, err)
 	require.Equal(t, GeneratedManifestVersion, m.Version)
 	assert.Equal(t, GeneratedManifestProducer, m.GeneratedBy)
-	require.Len(t, m.Files, 1)
-	assert.Equal(t, PrePrHookPath, m.Files[0].Path)
+	require.Len(t, m.Files, 2)
 
+	byPath := make(map[string]GeneratedManifestFile, len(m.Files))
+	for _, f := range m.Files {
+		byPath[f.Path] = f
+	}
 	hookBytes, _ := loadPrePrHookBytes()
-	assert.Equal(t, hashBytes(hookBytes), m.Files[0].SHA256)
+	require.Contains(t, byPath, PrePrHookPath)
+	assert.Equal(t, hashBytes(hookBytes), byPath[PrePrHookPath].SHA256)
+
+	ps1Bytes, _ := loadPrePrHookPs1Bytes()
+	require.Contains(t, byPath, PrePrHookPs1Path)
+	assert.Equal(t, hashBytes(ps1Bytes), byPath[PrePrHookPs1Path].SHA256)
 }
 
 func TestGeneratePrePrHook_SkipUnchanged(t *testing.T) {
 	root := t.TempDir()
 
-	// First run: writes the hook + manifest.
+	// First run: writes the hook + ps1 + manifest.
 	_, err := GeneratePrePrHook(root, false, fixedTime())
 	require.NoError(t, err)
 
 	// Second run with the same timestamp: bytes identical → skip-unchanged
-	// for the hook and skip-unchanged for the manifest.
+	// for both hooks and skip-unchanged for the manifest.
 	res, err := GeneratePrePrHook(root, false, fixedTime())
 	require.NoError(t, err)
-	require.Len(t, res.Files, 2)
-	assert.Equal(t, ActionSkipUnchanged, res.Files[0].Action)
-	assert.Equal(t, ActionSkipUnchanged, res.Files[1].Action,
-		"manifest re-write with identical bytes must be skip-unchanged")
+	require.Len(t, res.Files, 3)
+	for _, r := range res.Files {
+		assert.Equal(t, ActionSkipUnchanged, r.Action,
+			"%s expected skip-unchanged on identical-byte re-run", r.Path)
+	}
 }
 
 func TestGeneratePrePrHook_UserEdited(t *testing.T) {
@@ -361,9 +376,17 @@ func TestGeneratePrePrHook_SkipUnchangedFixesMode(t *testing.T) {
 
 	res, err := GeneratePrePrHook(root, false, fixedTime())
 	require.NoError(t, err)
-	require.Len(t, res.Files, 2)
+	// bash hook + ps1 + manifest rows.
+	require.Len(t, res.Files, 3)
 
-	assert.Equal(t, ActionSkipUnchanged, res.Files[0].Action,
+	// Locate the bash-hook row by path; order is documented but defensive.
+	var hookRow PrePrFileReport
+	for _, r := range res.Files {
+		if r.Path == PrePrHookPath {
+			hookRow = r
+		}
+	}
+	assert.Equal(t, ActionSkipUnchanged, hookRow.Action,
 		"identical bytes should still report skip-unchanged")
 
 	info, err := os.Stat(abs)
@@ -420,12 +443,18 @@ func TestGeneratePrePrHook_DryRunWritesNothing(t *testing.T) {
 
 	res, err := GeneratePrePrHook(root, true, fixedTime())
 	require.NoError(t, err)
-	require.Len(t, res.Files, 2)
+	// bash hook + ps1 + manifest rows.
+	require.Len(t, res.Files, 3)
 	// Report still describes the would-be actions.
-	assert.Equal(t, ActionWrite, res.Files[0].Action)
-	assert.Equal(t, ActionManifestUpdate, res.Files[1].Action)
+	byPath := make(map[string]PrePrFileReport, len(res.Files))
+	for _, r := range res.Files {
+		byPath[r.Path] = r
+	}
+	assert.Equal(t, ActionWrite, byPath[PrePrHookPath].Action)
+	assert.Equal(t, ActionWrite, byPath[PrePrHookPs1Path].Action)
+	assert.Equal(t, ActionManifestUpdate, byPath[GeneratedManifestPath].Action)
 
-	for _, rel := range []string{PrePrHookPath, GeneratedManifestPath} {
+	for _, rel := range []string{PrePrHookPath, PrePrHookPs1Path, GeneratedManifestPath} {
 		_, statErr := os.Stat(filepath.Join(root, rel))
 		assert.True(t, os.IsNotExist(statErr),
 			"dry-run wrote %s; stat err=%v", rel, statErr)

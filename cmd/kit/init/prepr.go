@@ -35,12 +35,19 @@ import (
 	"time"
 )
 
-//go:embed prepr_assets/pre-pr.sh
+//go:embed prepr_assets/pre-pr.sh prepr_assets/pre-pr.ps1
 var preprAssets embed.FS
 
-// PrePrHookPath is the repo-relative path of the generated hook script.
+// PrePrHookPath is the repo-relative path of the generated bash hook
+// script (Git Bash / MSYS / Cygwin / WSL / native Linux+macOS).
 // POSIX form (forward slashes) per the manifest contract (Section 6).
 const PrePrHookPath = ".githooks/pre-pr"
+
+// PrePrHookPs1Path is the repo-relative path of the generated PowerShell
+// companion hook for native Windows shells (PowerShell, cmd.exe via
+// `pwsh -File` wrapper). Same gate semantics + exit codes as the bash
+// hook (see prepr_assets/pre-pr.ps1 header).
+const PrePrHookPs1Path = ".githooks/pre-pr.ps1"
 
 // GeneratedManifestPath is the repo-relative path of the kit-init
 // manifest. Pinned by Section 6 of the contract.
@@ -138,6 +145,10 @@ func GeneratePrePrHook(projectRoot string, dryRun bool, now time.Time) (PrePrRes
 	if err != nil {
 		return PrePrResult{}, fmt.Errorf("kit init: pre-pr hook asset: %w", err)
 	}
+	ps1Bytes, err := loadPrePrHookPs1Bytes()
+	if err != nil {
+		return PrePrResult{}, fmt.Errorf("kit init: pre-pr.ps1 asset: %w", err)
+	}
 
 	// ReadGeneratedManifest already converts the safe cases (missing
 	// file, malformed JSON) into (zero, nil); a non-nil error here is a
@@ -148,20 +159,35 @@ func GeneratePrePrHook(projectRoot string, dryRun bool, now time.Time) (PrePrRes
 		return PrePrResult{}, err
 	}
 
+	// Bash hook: executable on POSIX. Mode 0o755.
 	hookReport, err := scaffoldPrePrFile(projectRoot, PrePrHookPath, hookBytes, manifest, dryRun, 0o755)
 	if err != nil {
 		return PrePrResult{}, err
 	}
+	// PowerShell companion: not chmod-executable on POSIX (Windows
+	// runs by extension association). Mode 0o644.
+	ps1Report, err := scaffoldPrePrFile(projectRoot, PrePrHookPs1Path, ps1Bytes, manifest, dryRun, 0o644)
+	if err != nil {
+		return PrePrResult{}, err
+	}
 
-	// Update / insert the manifest entry — but only when we actually
-	// wrote (or would write, in dry-run) the on-disk file. For
-	// suggest-sibling we leave the original entry alone so future
-	// runs continue to surface the conflict against the same baseline.
+	// Update / insert manifest entries — but only when the file was
+	// actually written (or would be, in dry-run). For suggest-sibling
+	// we leave the original entry alone so future runs continue to
+	// surface the conflict against the same baseline.
 	switch hookReport.Action {
 	case ActionWrite, ActionSkipUnchanged:
 		manifest = upsertManifestEntry(manifest, GeneratedManifestFile{
 			Path:        PrePrHookPath,
 			SHA256:      hashBytes(hookBytes),
+			GeneratedAt: now.UTC(),
+		})
+	}
+	switch ps1Report.Action {
+	case ActionWrite, ActionSkipUnchanged:
+		manifest = upsertManifestEntry(manifest, GeneratedManifestFile{
+			Path:        PrePrHookPs1Path,
+			SHA256:      hashBytes(ps1Bytes),
 			GeneratedAt: now.UTC(),
 		})
 	}
@@ -176,12 +202,19 @@ func GeneratePrePrHook(projectRoot string, dryRun bool, now time.Time) (PrePrRes
 		return PrePrResult{}, err
 	}
 
-	return PrePrResult{Files: []PrePrFileReport{hookReport, manifestReport}}, nil
+	return PrePrResult{
+		Files: []PrePrFileReport{hookReport, ps1Report, manifestReport},
+	}, nil
 }
 
-// loadPrePrHookBytes returns the embedded hook script body.
+// loadPrePrHookBytes returns the embedded bash hook script body.
 func loadPrePrHookBytes() ([]byte, error) {
 	return fs.ReadFile(preprAssets, "prepr_assets/pre-pr.sh")
+}
+
+// loadPrePrHookPs1Bytes returns the embedded PowerShell companion body.
+func loadPrePrHookPs1Bytes() ([]byte, error) {
+	return fs.ReadFile(preprAssets, "prepr_assets/pre-pr.ps1")
 }
 
 // scaffoldPrePrFile applies the Section 6 conflict policy to one path.
