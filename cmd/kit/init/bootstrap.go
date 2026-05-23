@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"time"
 
+	"hop.top/kit/cmd/kit/init/buswf"
 	tmpl "hop.top/kit/internal/template"
 )
 
@@ -165,12 +166,24 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 		return Summary{}, fmt.Errorf("bootstrap: post-pr-open hook: %w", posterr)
 	}
 
+	var busPlan buswf.Plan
+	if in.WithBusWorkflows {
+		opts := buswf.Defaults(target)
+		opts.DryRun = in.DryRun
+		plan, err := buswf.WriteAll(opts)
+		if err != nil {
+			return Summary{}, fmt.Errorf("bootstrap: bus workflows: %w", err)
+		}
+		busPlan = plan
+	}
+
 	// DryRun stops here: no hooks, no git, no github, no push.
 	if in.DryRun {
 		sum := buildSummary(in, target, result, nil)
 		sum.PrePrHook = preprResult
 		sum.Workflows = workflowActions
 		applyPostHookToSummary(&sum, postHookSummary)
+		sum.BusWorkflows = busPlan.Entries
 		return sum, nil
 	}
 
@@ -272,6 +285,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	summary.PrePrHook = preprResult
 	summary.Workflows = workflowActions
 	applyPostHookToSummary(&summary, postHookSummary)
+	summary.BusWorkflows = busPlan.Entries
 	return summary, nil
 }
 

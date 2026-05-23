@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"hop.top/kit/cmd/kit/init/buswf"
 	tmpl "hop.top/kit/internal/template"
 )
 
@@ -153,16 +154,28 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		}
 	}
 
+	var busPlan buswf.Plan
+	if in.WithBusWorkflows {
+		opts := buswf.Defaults(cwd)
+		opts.DryRun = in.DryRun
+		plan, err := buswf.WriteAll(opts)
+		if err != nil {
+			return Summary{}, fmt.Errorf("augment: bus workflows: %w", err)
+		}
+		busPlan = plan
+	}
+
 	summary := Summary{
-		Mode:       "augment",
-		Name:       in.Name,
-		Target:     cwd,
-		Template:   in.Template,
-		Result:     result,
-		TLCSkipped: tlcSkipped,
-		PrePrHook:  preprResult,
-		Workflows:  workflowActions,
-		NextSteps:  NextSteps("augment", in.Name, nil),
+		Mode:         "augment",
+		Name:         in.Name,
+		Target:       cwd,
+		Template:     in.Template,
+		Result:       result,
+		TLCSkipped:   tlcSkipped,
+		PrePrHook:    preprResult,
+		Workflows:    workflowActions,
+		BusWorkflows: busPlan.Entries,
+		NextSteps:    NextSteps("augment", in.Name, nil),
 	}
 	applyPostHookToSummary(&summary, postHookSummary)
 	return summary, nil

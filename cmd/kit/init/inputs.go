@@ -61,6 +61,7 @@ type Inputs struct {
 	WithPrePrHook         bool
 	WithGitHubWorkflows   bool
 	WithGithookPostPROpen bool
+	WithBusWorkflows      bool
 
 	Mode Mode // populated by caller from detect.Detect
 
@@ -100,6 +101,7 @@ type FlagSet struct {
 	WithGitHubWorkflows   *bool
 	WithPrePrHook         *bool
 	WithGithookPostPROpen *bool
+	WithBusWorkflows      *bool
 
 	ModeOverride *string // --mode flag value before parsing
 }
@@ -145,6 +147,11 @@ func Gather(
 	in.Force = derefBool(flags.Force, false)
 	in.NoGitHub = derefBool(flags.NoGitHub, false)
 	in.NoPush = derefBool(flags.NoPush, false)
+	// Bus event workflows are opt-in (spec §8): nil pointer →
+	// default false. The --without-bus-workflows complement is a
+	// no-op when the default is already false; we still parse it
+	// for symmetry with the other --with/--without pairs.
+	in.WithBusWorkflows = derefBool(flags.WithBusWorkflows, false)
 	// Hop default is true (spec §17). Precedence: flag > defaults.yaml >
 	// built-in. Both flag and defaults.Hop are *bool so unset (nil) falls
 	// through to the next layer; explicit false is honored.
