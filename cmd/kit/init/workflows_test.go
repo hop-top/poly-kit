@@ -345,6 +345,94 @@ func TestRenderWorkflows_Disabled_NoOp(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
+// TestRenderWorkflows_UserEditConverges_ReclaimsManifest covers the
+// convergence reclaim case from Section 6: when the on-disk file has been
+// user-edited (hash diverged from manifest) but the planned content
+// happens to match the live file byte-for-byte, kit should reclaim the
+// path by updating the manifest entry to the new hash and reporting a
+// `manifest-update` action. The stale `.kit-suggested` sibling, if any,
+// must also be cleaned up.
+func TestRenderWorkflows_UserEditConverges_ReclaimsManifest(t *testing.T) {
+	target := t.TempDir()
+	in := Inputs{Runtime: []string{"go"}, WithGitHubWorkflows: true}
+
+	rel := ".github/workflows/release-go-caller.yml"
+	abs := filepath.Join(target, filepath.FromSlash(rel))
+	relTest := ".github/workflows/test-go-caller.yml"
+
+	// Bootstrap so the manifest exists with hash X for the release file.
+	_, err := renderWorkflows(target, in.Runtime, in, fixedNow())
+	require.NoError(t, err)
+
+	// Seed the manifest with a STALE hash for the release file to model a
+	// user-edited divergence. The on-disk file is left unchanged so its
+	// real hash will match the planner's render output on the next run.
+	manifestPath := filepath.Join(target, ".kit", "generated.json")
+	manifestBytes, err := os.ReadFile(manifestPath)
+	require.NoError(t, err)
+	var m Manifest
+	require.NoError(t, json.Unmarshal(manifestBytes, &m))
+	for i := range m.Files {
+		if m.Files[i].Path == rel {
+			m.Files[i].SHA256 = "stale-deadbeef-not-the-current-hash"
+		}
+	}
+	tampered, err := json.MarshalIndent(&m, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(manifestPath, tampered, 0o644))
+
+	// Pre-create a `.kit-suggested` sibling with content IDENTICAL to the
+	// live file so the convergence path must also remove the sibling.
+	live, err := os.ReadFile(abs)
+	require.NoError(t, err)
+	sibling := abs + suggestedSuffix
+	require.NoError(t, os.WriteFile(sibling, live, 0o644))
+
+	// Now re-run: the planner's render still matches the live file
+	// (we never touched it) so kit should reclaim, not suggest-sibling.
+	actions, err := renderWorkflows(target, in.Runtime, in, fixedNow())
+	require.NoError(t, err)
+
+	var releaseAction *WorkflowAction
+	for i := range actions {
+		if actions[i].Path == rel {
+			releaseAction = &actions[i]
+			break
+		}
+	}
+	require.NotNil(t, releaseAction, "expected action for %s", rel)
+	assert.Equal(t, "manifest-update", releaseAction.Action,
+		"convergence should reclaim, not skip-unchanged")
+	assert.Equal(t, "convergence", releaseAction.Reason)
+
+	// Sibling must be pruned now that the live file equals the suggestion.
+	_, statErr := os.Stat(sibling)
+	assert.True(t, os.IsNotExist(statErr),
+		"stale .kit-suggested sibling must be pruned during convergence")
+
+	// Manifest reclaimed: entry SHA256 equals the current file hash.
+	mm := readManifestFile(t, target)
+	var got ManifestEntry
+	for _, f := range mm.Files {
+		if f.Path == rel {
+			got = f
+		}
+	}
+	require.NotEmpty(t, got.Path, "manifest must keep an entry for %s", rel)
+	assert.NotEqual(t, "stale-deadbeef-not-the-current-hash", got.SHA256,
+		"manifest hash must be refreshed on convergence")
+	currentHash := sha256Hex(live)
+	assert.Equal(t, currentHash, got.SHA256,
+		"manifest hash must match the live file hash after reclaim")
+
+	// The unrelated test caller (no tampering) stays skip-unchanged.
+	for _, a := range actions {
+		if a.Path == relTest {
+			assert.Equal(t, "skip-unchanged", a.Action)
+		}
+	}
+}
+
 func TestRenderWorkflows_HopTopRefIsPinned(t *testing.T) {
 	// The default ref must be `v0` (matches existing poly-kit callers in
 	// .github/workflows/publish.yml). If you ever bump it, tighten the

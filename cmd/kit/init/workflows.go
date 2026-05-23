@@ -73,7 +73,7 @@ type WorkflowAction struct {
 	Path          string `json:"path"`
 	Action        string `json:"action"` // write | skip-unchanged | suggest-sibling | manifest-update
 	SuggestedPath string `json:"suggested_path,omitempty"`
-	Reason        string `json:"reason,omitempty"` // user-edited | new | refresh | manifest-only
+	Reason        string `json:"reason,omitempty"` // user-edited | new | refresh | manifest-only | convergence
 }
 
 // workflowSpec describes one caller stub to render: the output file name
@@ -401,9 +401,30 @@ func applyWorkflow(p plannedWorkflow, manifest *Manifest, index map[string]int,
 		// Either no manifest entry (user-authored) or the on-disk hash
 		// diverged from the manifest (user-edited). Surface a sibling.
 		// Skip the sibling write when the existing file already matches
-		// what we'd render — there's nothing to suggest.
+		// what we'd render — there's nothing to suggest, and we should
+		// reclaim the path as kit-managed so future runs don't keep
+		// suggesting against a stale manifest hash.
 		if existingHash == p.ContentHash {
-			return WorkflowAction{Path: p.RelPath, Action: "skip-unchanged"}, nil
+			// Convergence reclaim per Section 6: the user-edited file
+			// (or untracked file) now equals the planner's render.
+			// Update the manifest entry to the current hash and remove
+			// any byte-identical `.kit-suggested` sibling. Both side
+			// effects are gated on !dryRun so dry-run only projects.
+			if !dryRun {
+				if err := removeFileIfExists(suggested); err != nil {
+					return WorkflowAction{}, err
+				}
+			}
+			upsertManifest(manifest, index, ManifestEntry{
+				Path:        p.RelPath,
+				SHA256:      p.ContentHash,
+				GeneratedAt: now().UTC().Format(time.RFC3339),
+			})
+			return WorkflowAction{
+				Path:   p.RelPath,
+				Action: "manifest-update",
+				Reason: "convergence",
+			}, nil
 		}
 		if !dryRun {
 			if err := writeWorkflowFile(suggested, p.Content); err != nil {
@@ -429,6 +450,15 @@ func writeWorkflowFile(path, content string) error {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("kit init: write %q: %w", path, err)
+	}
+	return nil
+}
+
+// removeFileIfExists removes path, treating a missing file as success.
+// All other I/O errors propagate so the caller sees real problems.
+func removeFileIfExists(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("kit init: remove %q: %w", path, err)
 	}
 	return nil
 }
