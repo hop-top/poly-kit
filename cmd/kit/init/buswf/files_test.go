@@ -97,6 +97,27 @@ func TestRunCompletedTrigger(t *testing.T) {
 	}
 }
 
+// TestRunCompletedBaseSHAIsASHA asserts KIT_BUS_PR_BASE_SHA is wired
+// to a SHA, not a branch name. workflow_run.head_repository.default_branch
+// is a branch name (e.g. "main"), not the SHA the spec §2 envelope
+// promises in pr.base_sha. Use pull_requests[0].base.sha which is
+// part of the pull_request_minimal object schema. See Comment 3293191443.
+func TestRunCompletedBaseSHAIsASHA(t *testing.T) {
+	t.Parallel()
+	f, ok := buswf.FileByTopic("github.pr.run.completed")
+	if !ok {
+		t.Fatal("FileByTopic(run.completed): not found")
+	}
+	body := string(f.Body)
+	if strings.Contains(body, "KIT_BUS_PR_BASE_SHA: ${{ github.event.workflow_run.head_repository.default_branch }}") {
+		t.Error("KIT_BUS_PR_BASE_SHA bound to default_branch (a branch name, not a SHA)")
+	}
+	want := "KIT_BUS_PR_BASE_SHA: ${{ github.event.workflow_run.pull_requests[0].base.sha }}"
+	if !strings.Contains(body, want) {
+		t.Errorf("KIT_BUS_PR_BASE_SHA not bound to pull_requests[0].base.sha\nwant: %s", want)
+	}
+}
+
 // TestRunCompletedPRURLIsHTMLURL asserts KIT_BUS_PR_URL is wired to a
 // human-facing URL, not the API URL. workflow_run.pull_requests[i] is
 // a pull_request_minimal object which exposes only the API .url field;
