@@ -207,6 +207,80 @@ func TestGeneratePrePrHook_PropagatesManifestReadError(t *testing.T) {
 		"error should wrap the manifest read failure")
 }
 
+// TestGeneratePrePrHook_SkipUnchangedFixesMode guards Fix 3: when the
+// hook is already present with the canonical bytes but wrong mode
+// (e.g. 0644 — clone from a fileshare that drops the +x bit, or a
+// previous run on a filesystem that didn't preserve the executable
+// bit), kit init must still chmod it. Otherwise the action reports
+// "skip-unchanged" but git refuses to run the hook.
+func TestGeneratePrePrHook_SkipUnchangedFixesMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix exec-bit semantics; windows uses extension association")
+	}
+	root := t.TempDir()
+	hookBytes, _ := loadPrePrHookBytes()
+
+	// Seed: canonical content, wrong mode.
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".githooks"), 0o755))
+	abs := filepath.Join(root, PrePrHookPath)
+	require.NoError(t, os.WriteFile(abs, hookBytes, 0o644))
+
+	res, err := GeneratePrePrHook(root, false, fixedTime())
+	require.NoError(t, err)
+	require.Len(t, res.Files, 2)
+
+	assert.Equal(t, ActionSkipUnchanged, res.Files[0].Action,
+		"identical bytes should still report skip-unchanged")
+
+	info, err := os.Stat(abs)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode().Perm()&0o100,
+		"skip-unchanged path must still chmod the hook executable; got mode %v",
+		info.Mode().Perm())
+}
+
+// TestGeneratePrePrHook_RefreshInPlaceFixesMode guards the refresh
+// branch for the same defect — the canonical-content path is the
+// hottest case but `manifestHashMatches → refresh` shares the same
+// gap.
+func TestGeneratePrePrHook_RefreshInPlaceFixesMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix exec-bit semantics; windows uses extension association")
+	}
+	root := t.TempDir()
+	hookBytes, _ := loadPrePrHookBytes()
+
+	// Seed an older copy that matches the manifest but isn't executable.
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".githooks"), 0o755))
+	older := append([]byte("# older variant\n"), hookBytes...)
+	abs := filepath.Join(root, PrePrHookPath)
+	require.NoError(t, os.WriteFile(abs, older, 0o644))
+
+	m := GeneratedManifest{
+		Version:     GeneratedManifestVersion,
+		GeneratedBy: GeneratedManifestProducer,
+		Files: []GeneratedManifestFile{{
+			Path:        PrePrHookPath,
+			SHA256:      hashBytes(older),
+			GeneratedAt: fixedTime(),
+		}},
+	}
+	mb, _ := json.MarshalIndent(m, "", "  ")
+	mb = append(mb, '\n')
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".kit"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, GeneratedManifestPath), mb, 0o644))
+
+	_, err := GeneratePrePrHook(root, false, fixedTime())
+	require.NoError(t, err)
+
+	info, err := os.Stat(abs)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode().Perm()&0o100,
+		"refresh path must chmod the hook executable; got mode %v",
+		info.Mode().Perm())
+}
+
 func TestGeneratePrePrHook_DryRunWritesNothing(t *testing.T) {
 	root := t.TempDir()
 
