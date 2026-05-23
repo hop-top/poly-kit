@@ -57,16 +57,21 @@ PR lifecycle events emitted by generated workflows use the four-segment
 form `[Source].[Category].[Object].[Action]`, with source `github`.
 Canonical names (the complete enumeration for this track):
 
-| Topic                          | When                                       | Listener intent                                                |
-|--------------------------------|--------------------------------------------|----------------------------------------------------------------|
-| `github.pr.run.completed`      | CI run finishes (success or failure)       | annotate the originating track/task; flag failures             |
-| `github.pr.comment.created`    | A review comment is created                | nudge the author; schedule a follow-up                         |
-| `github.pr.merged`             | PR is merged                               | close the originating track/task                               |
-| `github.pr.closed`             | PR is closed without merge                 | reopen or annotate the originating task                        |
+| Topic                         | When                                  | Listener intent                                     |
+|-------------------------------|---------------------------------------|-----------------------------------------------------|
+| `github.pr.run.completed`     | CI run finishes (success or failure)  | annotate the originating track/task; flag failures  |
+| `github.pr.comment.created`   | A review comment is created           | nudge the author; schedule a follow-up              |
+| `github.pr.pull.merged`       | PR is merged                          | close the originating track/task                    |
+| `github.pr.pull.closed`       | PR is closed without merge            | reopen or annotate the originating task             |
 
-These names match `bus.ValidateTopic` (see `docs/contracts/event-topics.md`):
-four dot-separated segments of lowercase ASCII letters, digits, or
-underscores (no hyphens); past-tense action segment.
+The object segment distinguishes which entity on the PR changed:
+`run` (a CI workflow run), `comment` (a review comment), or `pull`
+(the PR itself). All four names pass `bus.ValidateTopic`: exactly four
+segments, lowercase ASCII, past-tense action (`completed`, `created`,
+`merged`, `closed` — the latter two are in the validator's
+`pastTenseWhitelist`).
+
+See `docs/contracts/event-topics.md` for the full topic-shape rules.
 
 ### Common payload envelope
 
@@ -126,7 +131,7 @@ full logs and full bodies are deliberately omitted in favour of URLs):
 
   `excerpt` is also bounded to **256 bytes**, truncated with an ellipsis.
 
-- `github.pr.merged`:
+- `github.pr.pull.merged`:
 
   ```json
   {
@@ -137,7 +142,7 @@ full logs and full bodies are deliberately omitted in favour of URLs):
   }
   ```
 
-- `github.pr.closed`:
+- `github.pr.pull.closed`:
 
   ```json
   {
@@ -252,8 +257,8 @@ $TMPDIR/github-com-hop-top-poly-kit.scratchpad
 The after-PR-open hook chooses between two delivery models, in this order.
 
 **Rationale.** The hook runs at PR-open, but lifecycle events
-(`github.pr.run.completed`, `github.pr.comment.created`, `github.pr.merged`,
-`github.pr.closed`) fire later from CI workflows — minutes or hours after
+(`github.pr.run.completed`, `github.pr.comment.created`, `github.pr.pull.merged`,
+`github.pr.pull.closed`) fire later from CI workflows — minutes or hours after
 the hook has exited. A liveness probe is the only synchronous signal the
 hook has; it answers "is there a host that will own this PR's follow-ups?"
 rather than "has this specific event been received?". Per-event
@@ -307,7 +312,7 @@ When the pull path triggers, the generated task includes:
   follow-ups in one `tlc` query
 - a per-event tag matching the canonical event name, e.g.
   `event:github.pr.run.completed`, `event:github.pr.comment.created`,
-  `event:github.pr.merged`, `event:github.pr.closed`
+  `event:github.pr.pull.merged`, `event:github.pr.pull.closed`
 
 ### Duplicate-prevention key
 
