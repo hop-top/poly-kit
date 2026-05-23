@@ -53,9 +53,13 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		emailFlag         string
 		themeFlag         string
 		descriptionFlag   string
-		dryRunFlag        bool
-		forceFlag         bool
-		yesFlag           bool
+		dryRunFlag                 bool
+		forceFlag                  bool
+		yesFlag                    bool
+		withPrePrHookFlag          bool
+		withoutPrePrHookFlag       bool
+		withGitHubWorkflowsFlag    bool
+		withoutGitHubWorkflowsFlag bool
 	)
 
 	cmd := &cobra.Command{
@@ -153,12 +157,15 @@ func InitCmd(root *cli.Root) *cobra.Command {
 			}
 
 			// 4. Build FlagSet with pointers only for changed flags.
-			flagset := buildFlagSet(cmd,
+			flagset := buildFlagSet(
+				cmd,
 				&fromFlag, &moduleFlag, runtimeFlag, &tierFlag, &modeFlag,
 				&accountTypeFlag, &orgFlag, &visibilityFlag, &noGitHubFlag,
 				&noPushFlag, &licenseFlag, &hopFlag, &defaultBranchFlag,
 				&authorFlag, &emailFlag, &themeFlag, &descriptionFlag,
 				&dryRunFlag, &forceFlag, &yesFlag,
+				&withGitHubWorkflowsFlag, &withoutGitHubWorkflowsFlag,
+				&withPrePrHookFlag, &withoutPrePrHookFlag,
 			)
 
 			// 5. Wizard only spins up for interactive (non-yes) runs.
@@ -235,6 +242,14 @@ func InitCmd(root *cli.Root) *cobra.Command {
 	f.BoolVar(&dryRunFlag, "dry-run", false, "Show what would be written without touching disk")
 	f.BoolVar(&forceFlag, "force", false, "Bypass non-destructive guards (does not overwrite existing files)")
 	f.BoolVarP(&yesFlag, "yes", "y", false, "Non-interactive: skip wizard prompts")
+	f.BoolVar(&withPrePrHookFlag, "with-githook-pre-pr", true,
+		"Generate .githooks/pre-pr (lint/test/scratchpad gates)")
+	f.BoolVar(&withoutPrePrHookFlag, "without-githook-pre-pr", false,
+		"Skip .githooks/pre-pr generation (complement of --with-githook-pre-pr)")
+	f.BoolVar(&withGitHubWorkflowsFlag, "with-github-workflows", true,
+		"Generate .github/workflows/*-caller.yml stubs that use hop-top/.github reusable workflows")
+	f.BoolVar(&withoutGitHubWorkflowsFlag, "without-github-workflows", false,
+		"Skip .github/workflows/*-caller.yml generation (alias for --with-github-workflows=false)")
 
 	// kit init scaffolds new project trees (mkdir/write) and
 	// augments existing ones — declare the side-effect tier per
@@ -282,6 +297,8 @@ func buildFlagSet(
 	defaultBranch *string,
 	author, email, theme, description *string,
 	dryRun, force, yes *bool,
+	withGitHubWorkflows, withoutGitHubWorkflows *bool,
+	withPrePrHook, withoutPrePrHook *bool,
 ) *FlagSet {
 	fs := &FlagSet{}
 	c := cmd.Flags().Changed
@@ -345,6 +362,22 @@ func buildFlagSet(
 	}
 	if c("yes") {
 		fs.Yes = yes
+	}
+	switch {
+	case c("without-github-workflows") && *withoutGitHubWorkflows:
+		v := false
+		fs.WithGitHubWorkflows = &v
+	case c("with-github-workflows"):
+		v := *withGitHubWorkflows
+		fs.WithGitHubWorkflows = &v
+	}
+	switch {
+	case c("without-githook-pre-pr") && *withoutPrePrHook:
+		v := false
+		fs.WithPrePrHook = &v
+	case c("with-githook-pre-pr"):
+		v := *withPrePrHook
+		fs.WithPrePrHook = &v
 	}
 	return fs
 }

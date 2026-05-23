@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tmpl "hop.top/kit/internal/template"
 )
@@ -106,7 +107,32 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		}
 	}
 
+	// Render `.github/workflows/*-caller.yml` stubs in augment mode.
+	// The renderer reads `.kit/generated.json` and honors the
+	// .kit-suggested fallback when a tracked file diverges from the
+	// recorded hash.
+	var workflowActions []WorkflowAction
+	if in.WithGitHubWorkflows {
+		wfActions, werr := renderWorkflows(cwd, in.Runtime, in, nil)
+		if werr != nil {
+			return Summary{}, fmt.Errorf("augment: render github workflows: %w", werr)
+		}
+		workflowActions = wfActions
+	}
+
 	// Steps 9-10: NO git.Init, NO github.Create — existing repo.
+
+	// Existing hook is either refreshed (manifest hash matches) or
+	// surfaced as a .kit-suggested sibling (user-edited). Dry-run
+	// produces the same report shape without writes.
+	var preprResult *PrePrResult
+	if in.WithPrePrHook {
+		pr, perr := GeneratePrePrHook(cwd, in.DryRun, time.Now().UTC())
+		if perr != nil {
+			return Summary{}, fmt.Errorf("augment: pre-pr hook: %w", perr)
+		}
+		preprResult = &pr
+	}
 
 	// Step 11: tlc init (best-effort). Skipped when tlc is missing or
 	// when running under --dry-run.
@@ -126,6 +152,8 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		Template:   in.Template,
 		Result:     result,
 		TLCSkipped: tlcSkipped,
+		PrePrHook:  preprResult,
+		Workflows:  workflowActions,
 		NextSteps:  NextSteps("augment", in.Name, nil),
 	}, nil
 }
