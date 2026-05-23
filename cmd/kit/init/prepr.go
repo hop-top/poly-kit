@@ -139,7 +139,14 @@ func GeneratePrePrHook(projectRoot string, dryRun bool, now time.Time) (PrePrRes
 		return PrePrResult{}, fmt.Errorf("kit init: pre-pr hook asset: %w", err)
 	}
 
-	manifest, _ := ReadGeneratedManifest(projectRoot)
+	// ReadGeneratedManifest already converts the safe cases (missing
+	// file, malformed JSON) into (zero, nil); a non-nil error here is a
+	// genuine I/O failure (permissions, broken FS) that the caller has
+	// no other way to learn about, so we surface it.
+	manifest, err := ReadGeneratedManifest(projectRoot)
+	if err != nil {
+		return PrePrResult{}, err
+	}
 
 	hookReport, err := scaffoldPrePrFile(projectRoot, PrePrHookPath, hookBytes, manifest, dryRun, 0o755)
 	if err != nil {
