@@ -642,6 +642,79 @@ func TestHook_PullPath_PreservesEscapedQuotesInTitle(t *testing.T) {
 		"PR title with escaped double quotes must survive extraction")
 }
 
+// TestHook_PullPath_BaseRepositoryFallbackFromURL pins the contract that
+// the dedup tag carries owner/repo even when `gh pr view`'s
+// baseRepository field is absent or empty (older gh versions, fork
+// edge cases). The hook must derive owner/repo from PR_URL so the
+// (repo, PR#, family) dedup key stays unique across forks.
+func TestHook_PullPath_BaseRepositoryFallbackFromURL(t *testing.T) {
+	h := newHookHarness(t)
+	// baseRepository is JSON null — emulates an older gh that doesn't
+	// expose the field. PR_URL still carries owner/repo in the path.
+	const noBaseRepoJSON = `{"number":789,` +
+		`"url":"https://github.com/hop-top/example/pull/789",` +
+		`"headRefName":"t-0774-post-pr-hook",` +
+		`"headRefOid":"feedface1234567890",` +
+		`"title":"feat: add fallback",` +
+		`"body":"Implements T-0774",` +
+		`"baseRepository":null}`
+	h.stubGH(t, noBaseRepoJSON)
+	h.stubTLC(t)
+	h.stubCurl(t, "503") // force pull path
+
+	stderr, exit := h.run(t, map[string]string{
+		"KIT_BUS_ENABLED": "false",
+	})
+
+	assert.Equal(t, 0, exit)
+	assert.Contains(t, stderr, "scheduled tlc follow-up")
+
+	body, err := os.ReadFile(h.tlcLog)
+	require.NoError(t, err, "tlc stub log must exist")
+	got := string(body)
+	assert.Contains(t, got, "kit:pr-followup:hop-top-example:789:run",
+		"dedup tag must carry owner/repo derived from PR_URL when baseRepository is null")
+	assert.NotContains(t, got, "kit:pr-followup::789:run",
+		"malformed empty-repo dedup tag must not be emitted")
+}
+
+// TestHook_PullPath_AllRepoSourcesBroken_LogsAndExits0 pins the
+// fail-open contract: when baseRepository is absent AND PR_URL cannot
+// be parsed for owner/repo AND the gh repo view fallback is empty,
+// the hook must exit 0 with an actionable stderr message rather than
+// emit a malformed dedup tag (which would silently break dedup across
+// repos).
+func TestHook_PullPath_AllRepoSourcesBroken_LogsAndExits0(t *testing.T) {
+	h := newHookHarness(t)
+	// baseRepository null; PR_URL also lacks an owner/repo segment so
+	// the path-parsing fallback returns empty.
+	const brokenJSON = `{"number":42,` +
+		`"url":"https://example.invalid/no-owner-no-repo",` +
+		`"headRefName":"t-0774-post-pr-hook",` +
+		`"headRefOid":"badc0de1234567890",` +
+		`"title":"feat: broken metadata",` +
+		`"body":"Implements T-0774",` +
+		`"baseRepository":null}`
+	h.stubGH(t, brokenJSON)
+	h.stubTLC(t)
+	h.stubCurl(t, "503") // force pull path
+
+	// REPO_NAME_WITH_OWNER intentionally unset → gh repo view fallback
+	// also returns empty.
+	stderr, exit := h.run(t, map[string]string{
+		"KIT_BUS_ENABLED": "false",
+	})
+
+	assert.Equal(t, 0, exit, "fail-open: missing repo metadata must NOT block PR creation")
+	assert.Contains(t, stderr, "could not resolve owner/repo",
+		"actionable stderr message must explain why follow-up was skipped")
+	// tlc task create must NOT have fired.
+	if body, err := os.ReadFile(h.tlcLog); err == nil {
+		assert.NotContains(t, string(body), "task create",
+			"malformed dedup key must not produce a scheduled task")
+	}
+}
+
 // assertTLCInvoked verifies the tlc stub captured a `task create`
 // invocation whose argv contains every needle string. Centralized so
 // the assertions across push/pull tests stay readable.
