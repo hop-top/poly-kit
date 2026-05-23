@@ -195,20 +195,27 @@ func TestPostNon2xxReturnsError(t *testing.T) {
 
 // TestSignatureHeaderHMAC verifies the HMAC-SHA256 hex digest matches
 // the expected output for a known key/body pair. Pinning the digest
-// guards against silent algorithm drift.
+// guards against silent algorithm drift (e.g. someone swaps to a
+// different hash, mis-bases the hex encoding, or strips the prefix).
+//
+// Comment 3293191457: the expected value below is the canonical
+// HMAC-SHA256 of body "hello" under key "key", computed offline.
+// Cross-check (Python):
+//
+//	python3 -c "import hmac, hashlib; \
+//	  print('sha256=' + hmac.new(b'key', b'hello', hashlib.sha256).hexdigest())"
+//	→ sha256=9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b
 func TestSignatureHeaderHMAC(t *testing.T) {
 	t.Parallel()
-	// HMAC-SHA256("key", "hello") =
-	// 9307b3b8c2c8aa3a8a82a1d7b3b7b9d2e02f1b6d2b7c3a3b8a2d2d3c2a2e1a1c (placeholder)
-	// We compare against signatureHeader rather than hard-coding so
-	// changes in HMAC implementation surface in a single place.
-	want := signatureHeader("key", []byte("hello"))
-	if want == "" || want[:7] != "sha256=" {
-		t.Fatalf("signatureHeader produced %q", want)
-	}
-	// Determinism: same inputs → same output.
+	const want = "sha256=9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b"
 	got := signatureHeader("key", []byte("hello"))
 	if got != want {
-		t.Errorf("signatureHeader not deterministic: %q vs %q", got, want)
+		t.Errorf("signatureHeader(\"key\", \"hello\") = %q,\nwant %q", got, want)
+	}
+	// Determinism check: a second call must match the first byte for
+	// byte; protects against a future refactor that introduces
+	// time-of-day or random salt.
+	if again := signatureHeader("key", []byte("hello")); again != got {
+		t.Errorf("signatureHeader not deterministic: %q vs %q", again, got)
 	}
 }
