@@ -550,6 +550,89 @@ func TestHookGateResolution_KitTomlFallback(t *testing.T) {
 	assert.Contains(t, string(out), "kit-test-ok")
 }
 
+// TestHookGateResolution_KitTomlSingleQuotedField guards Fix 4: the
+// embedded hook used to only match double-quoted values via sed. TOML
+// allows single quotes as a literal string, and adopters routinely
+// reach for them when the command itself contains double quotes.
+func TestHookGateResolution_KitTomlSingleQuotedField(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hook is bash-only on windows")
+	}
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+
+	root := t.TempDir()
+	mustRun(t, root, "git", "init", "-q")
+	mustRun(t, root, "git", "config", "user.email", "t@e")
+	mustRun(t, root, "git", "config", "user.name", "t")
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".kit"), 0o755))
+	// Use single quotes for both fields — valid TOML literal strings.
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".kit", "pre-pr.toml"),
+		[]byte("lint = 'echo single-lint-ok'\n"+
+			"test = 'echo single-test-ok'\n"), 0o644))
+	mustRun(t, root, "git", "add", ".kit/pre-pr.toml")
+	mustRun(t, root, "git", "commit", "-q", "-m", "init")
+
+	_, err := GeneratePrePrHook(root, false, fixedTime())
+	require.NoError(t, err)
+
+	hook := filepath.Join(root, PrePrHookPath)
+	require.NoError(t, os.Chmod(hook, 0o755))
+	cmd := exec.Command("bash", hook)
+	cmd.Dir = root
+	out, runErr := cmd.CombinedOutput()
+	require.NoError(t, runErr,
+		"single-quoted TOML values must resolve as gate commands:\n%s", out)
+	assert.Contains(t, string(out), "single-lint-ok")
+	assert.Contains(t, string(out), "single-test-ok")
+}
+
+// TestHookGateResolution_KitTomlTrailingComment also guards Fix 4: the
+// sed-based parser must strip trailing whitespace and `#`-prefixed
+// comments after the closing quote so adopters can annotate their
+// gates.
+func TestHookGateResolution_KitTomlTrailingComment(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hook is bash-only on windows")
+	}
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+
+	root := t.TempDir()
+	mustRun(t, root, "git", "init", "-q")
+	mustRun(t, root, "git", "config", "user.email", "t@e")
+	mustRun(t, root, "git", "config", "user.name", "t")
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".kit"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".kit", "pre-pr.toml"),
+		[]byte("lint = \"echo cmnt-lint-ok\"  # run linter\n"+
+			"test = \"echo cmnt-test-ok\"\t# run tests\n"), 0o644))
+	mustRun(t, root, "git", "add", ".kit/pre-pr.toml")
+	mustRun(t, root, "git", "commit", "-q", "-m", "init")
+
+	_, err := GeneratePrePrHook(root, false, fixedTime())
+	require.NoError(t, err)
+
+	hook := filepath.Join(root, PrePrHookPath)
+	require.NoError(t, os.Chmod(hook, 0o755))
+	cmd := exec.Command("bash", hook)
+	cmd.Dir = root
+	out, runErr := cmd.CombinedOutput()
+	require.NoError(t, runErr,
+		"double-quoted TOML with trailing comment must resolve:\n%s", out)
+	assert.Contains(t, string(out), "cmnt-lint-ok")
+	assert.Contains(t, string(out), "cmnt-test-ok")
+}
+
 func TestHookGateResolution_NoGateDeclared(t *testing.T) {
 	// No Makefile, no mise, no .kit/pre-pr.toml → single-line stderr
 	// note per gate, exit 0.
