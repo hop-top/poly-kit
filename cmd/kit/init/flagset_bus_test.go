@@ -27,21 +27,22 @@ func callBuildFlagSet(t *testing.T, argv []string) *FlagSet {
 		t.Fatalf("ParseFlags(%v): %v", argv, err)
 	}
 
-	// Local pointers — values don't matter; only the bound pointers
-	// addressed by cmd.Flags() do. We re-read by name from cmd.Flags()
-	// using GetBool to capture what cobra actually parsed, then hand
-	// pointers into buildFlagSet just like InitCmd does.
-	with, err := cmd.Flags().GetBool("with-bus-workflows")
-	if err != nil {
-		t.Fatalf("GetBool with-bus-workflows: %v", err)
+	getBool := func(name string) bool {
+		v, err := cmd.Flags().GetBool(name)
+		if err != nil {
+			t.Fatalf("GetBool %s: %v", name, err)
+		}
+		return v
 	}
-	without, err := cmd.Flags().GetBool("without-bus-workflows")
-	if err != nil {
-		t.Fatalf("GetBool without-bus-workflows: %v", err)
-	}
-	// Unrelated flag locals get zero values; buildFlagSet's
-	// Changed-gated branches only fire when the flag was actually
-	// supplied, so the local zero values are irrelevant here.
+	withBus := getBool("with-bus-workflows")
+	withoutBus := getBool("without-bus-workflows")
+	withGH := getBool("with-github-workflows")
+	withoutGH := getBool("without-github-workflows")
+	withPrePr := getBool("with-githook-pre-pr")
+	withoutPrePr := getBool("without-githook-pre-pr")
+	withPostPr := getBool("with-githook-post-pr-open")
+	withoutPostPr := getBool("without-githook-post-pr-open")
+
 	var (
 		fromFlag, moduleFlag, modeFlag, accountTypeFlag, orgFlag,
 		visibilityFlag, licenseFlag, defaultBranchFlag, authorFlag,
@@ -51,18 +52,16 @@ func callBuildFlagSet(t *testing.T, argv []string) *FlagSet {
 		noGitHubFlag, noPushFlag, hopFlag,
 		dryRunFlag, forceFlag, yesFlag bool
 	)
-	// Silence unused (the `without` value is observed via cmd.Flags()
-	// inside buildFlagSet, not via this local).
-	_ = without
 	return buildFlagSet(cmd,
 		&fromFlag, &moduleFlag, runtimeFlag, &tierFlag, &modeFlag,
 		&accountTypeFlag, &orgFlag, &visibilityFlag, &noGitHubFlag,
 		&noPushFlag, &licenseFlag, &hopFlag, &defaultBranchFlag,
 		&authorFlag, &emailFlag, &themeFlag, &descriptionFlag,
 		&dryRunFlag, &forceFlag, &yesFlag,
-		// withBusWorkflows pointer — buildFlagSet reads the pointer's
-		// target so we point it at the bool cobra parsed.
-		&with,
+		&withGH, &withoutGH,
+		&withPrePr, &withoutPrePr,
+		&withPostPr, &withoutPostPr,
+		&withBus, &withoutBus,
 	)
 }
 
