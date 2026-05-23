@@ -97,6 +97,32 @@ func TestRunCompletedTrigger(t *testing.T) {
 	}
 }
 
+// TestRunCompletedGuardsOnPRAssociation asserts the emit-bus job's
+// if-clause includes a check that the workflow_run is PR-associated.
+// Without this guard, push-triggered workflow_run events (where
+// pull_requests is empty) cause every pull_requests[0].* expression
+// to evaluate against null. See Comment 3293191458.
+func TestRunCompletedGuardsOnPRAssociation(t *testing.T) {
+	t.Parallel()
+	f, ok := buswf.FileByTopic("github.pr.run.completed")
+	if !ok {
+		t.Fatal("FileByTopic(run.completed): not found")
+	}
+	body := string(f.Body)
+	// Either form is acceptable as long as the guard exists. We
+	// look for the canonical event-name check OR an explicit
+	// non-empty pull_requests check. Both forms suppress the job
+	// when the run originated from a push or schedule trigger.
+	hasEventCheck := strings.Contains(body, "github.event.workflow_run.event == 'pull_request'")
+	hasPRArrayCheck := strings.Contains(body, "github.event.workflow_run.pull_requests") &&
+		(strings.Contains(body, "pull_requests[0] != null") ||
+			strings.Contains(body, "fromJSON('null')") ||
+			strings.Contains(body, "join(github.event.workflow_run.pull_requests"))
+	if !hasEventCheck && !hasPRArrayCheck {
+		t.Errorf("emit-bus job missing PR-association guard.\n--- body ---\n%s", body)
+	}
+}
+
 // TestRunCompletedBaseSHAIsASHA asserts KIT_BUS_PR_BASE_SHA is wired
 // to a SHA, not a branch name. workflow_run.head_repository.default_branch
 // is a branch name (e.g. "main"), not the SHA the spec §2 envelope
