@@ -124,7 +124,6 @@ fi
 # the first two path segments. This keeps the (repo, PR#, family)
 # dedup contract intact across gh versions.
 if [ -z "${PR_REPO}" ] && [ -n "${PR_URL}" ]; then
-  # shellcheck disable=SC2001
   url_path="$(printf '%s' "${PR_URL}" | sed -e 's#^https\{0,1\}://[^/]*/##')"
   case "${url_path}" in
     */pull/*|*/pulls/*)
@@ -133,9 +132,10 @@ if [ -z "${PR_REPO}" ] && [ -n "${PR_URL}" ]; then
   esac
 fi
 
-# Last resort: ask gh for the current repo (works inside a git
-# checkout with a github remote). Keeps the hook usable on bare repos
-# even when gh pr view's baseRepository path is broken.
+# Last resort: ask gh for the current repo. Works inside a git
+# checkout with a github remote; keeps the hook usable when gh pr
+# view's baseRepository path is broken but the local clone still has
+# enough context.
 if [ -z "${PR_REPO}" ]; then
   PR_REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
 fi
