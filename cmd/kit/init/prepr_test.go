@@ -284,6 +284,46 @@ func TestScratchpadPath_Windows(t *testing.T) {
 	assert.Contains(t, got, "Temp")
 }
 
+// TestScratchpadPath_Windows_FallbackPaths_NoDoubledTemp guards the
+// three Windows env states described by the Section 4 fallback chain
+// (LOCALAPPDATA → TEMP → C:\Windows\Temp). The bug being asserted
+// against: a naive `filepath.Join(base, "Temp", leaf)` doubles Temp
+// when base already contains it (TEMP env var, or the C:\Windows\Temp
+// hard fallback).
+func TestScratchpadPath_Windows_FallbackPaths_NoDoubledTemp(t *testing.T) {
+	t.Run("LOCALAPPDATA set", func(t *testing.T) {
+		env := mapEnv(map[string]string{
+			"LOCALAPPDATA": `C:\Users\foo\AppData\Local`,
+			"TEMP":         "",
+		})
+		got := ScratchpadPath("acme", "windows", env)
+		want := filepath.Join(`C:\Users\foo\AppData\Local`, "Temp", "acme.scratchpad")
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("LOCALAPPDATA unset, TEMP set", func(t *testing.T) {
+		env := mapEnv(map[string]string{
+			"LOCALAPPDATA": "",
+			"TEMP":         `C:\Users\foo\AppData\Local\Temp`,
+		})
+		got := ScratchpadPath("acme", "windows", env)
+		// TEMP already includes the Temp segment; must not double it.
+		want := filepath.Join(`C:\Users\foo\AppData\Local\Temp`, "acme.scratchpad")
+		assert.Equal(t, want, got, "TEMP fallback must not append a doubled Temp segment")
+	})
+
+	t.Run("LOCALAPPDATA and TEMP unset", func(t *testing.T) {
+		env := mapEnv(map[string]string{
+			"LOCALAPPDATA": "",
+			"TEMP":         "",
+		})
+		got := ScratchpadPath("acme", "windows", env)
+		// C:\Windows\Temp already includes Temp; must not double it.
+		want := filepath.Join(`C:\Windows\Temp`, "acme.scratchpad")
+		assert.Equal(t, want, got, "hard fallback must not append a doubled Temp segment")
+	})
+}
+
 func TestScanScratchpad_PositiveCases(t *testing.T) {
 	cases := []string{
 		"// SCRATCH: write a parser here later",
