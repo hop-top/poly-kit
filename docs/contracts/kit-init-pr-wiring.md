@@ -65,7 +65,8 @@ Canonical names (the complete enumeration for this track):
 | `github.pr.closed`             | PR is closed without merge                 | reopen or annotate the originating task                        |
 
 These names match `bus.ValidateTopic` (see `docs/contracts/event-topics.md`):
-four lowercase segments, past-tense action.
+four dot-separated segments of lowercase ASCII letters, digits, or
+underscores (no hyphens); past-tense action segment.
 
 ### Common payload envelope
 
@@ -523,4 +524,5 @@ the files it did write.
 - Topic shape rules: [`docs/contracts/event-topics.md`](./event-topics.md)
 - Bus topic validator: [`go/runtime/bus/topics.go`](../../go/runtime/bus/topics.go)
 - Existing `kit init` implementation: [`cmd/kit/init/`](../../cmd/kit/init/)
-- Track plan: [`.tlc/tracks/kit-init-dotgithub-wiring/plan.md`](../../.tlc/tracks/kit-init-dotgithub-wiring/plan.md)
+- Track plan: `kit-init-dotgithub-wiring` (tracked in tlc; the `.tlc/`
+  directory is gitignored and not committed to this repo).
