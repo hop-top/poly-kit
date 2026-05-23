@@ -97,6 +97,41 @@ func TestRunCompletedTrigger(t *testing.T) {
 	}
 }
 
+// TestRunCompletedTriggerNoWildcardWorkflows asserts the workflow_run
+// trigger does NOT use a literal "*" string as a workflow name. GitHub
+// Actions has no wildcard syntax in workflow_run.workflows; the string
+// "*" would be treated as a literal workflow name and the workflow
+// would never fire. See Comment 3293191431.
+func TestRunCompletedTriggerNoWildcardWorkflows(t *testing.T) {
+	t.Parallel()
+	f, ok := buswf.FileByTopic("github.pr.run.completed")
+	if !ok {
+		t.Fatal("FileByTopic(run.completed): not found")
+	}
+	body := string(f.Body)
+	// Parse the YAML so we look at the structured value of
+	// on.workflow_run.workflows, not just a substring match.
+	var doc struct {
+		On struct {
+			WorkflowRun struct {
+				Workflows []string `yaml:"workflows"`
+				Types     []string `yaml:"types"`
+			} `yaml:"workflow_run"`
+		} `yaml:"on"`
+	}
+	if err := yaml.Unmarshal([]byte(body), &doc); err != nil {
+		t.Fatalf("parse: %v\n--- body ---\n%s", err, body)
+	}
+	if len(doc.On.WorkflowRun.Workflows) == 0 {
+		t.Fatal("workflow_run.workflows is empty; expected explicit caller workflow names")
+	}
+	for _, w := range doc.On.WorkflowRun.Workflows {
+		if w == "*" {
+			t.Errorf("workflow_run.workflows contains literal %q; GitHub Actions has no wildcard, this never fires", w)
+		}
+	}
+}
+
 // TestCommentCreatedTrigger checks the comment.created workflow uses
 // pull_request_review_comment + created.
 func TestCommentCreatedTrigger(t *testing.T) {
