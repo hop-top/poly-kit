@@ -247,7 +247,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 	f.BoolVar(&withoutPrePrHookFlag, "without-githook-pre-pr", false,
 		"Skip .githooks/pre-pr generation (complement of --with-githook-pre-pr)")
 	f.BoolVar(&withGitHubWorkflowsFlag, "with-github-workflows", true,
-		"Generate .github/workflows/*-caller.yml stubs that uses: hop-top/.github reusable workflows")
+		"Generate .github/workflows/*-caller.yml stubs that use hop-top/.github reusable workflows")
 	f.BoolVar(&withoutGitHubWorkflowsFlag, "without-github-workflows", false,
 		"Skip .github/workflows/*-caller.yml generation (alias for --with-github-workflows=false)")
 
