@@ -177,6 +177,36 @@ func TestGeneratePrePrHook_SuggestionCleanup(t *testing.T) {
 		"byte-identical .kit-suggested sibling must be cleaned up; stat err=%v", statErr)
 }
 
+// TestGeneratePrePrHook_PropagatesManifestReadError guards Fix 2:
+// GeneratePrePrHook used to swallow the error from ReadGeneratedManifest
+// with `manifest, _ := ...`. ReadGeneratedManifest already converts safe
+// cases (os.IsNotExist, malformed JSON) to (zero, nil), so propagating
+// its error only surfaces genuine I/O failures (chmod 0, etc.) that
+// the caller has no other way to learn about.
+func TestGeneratePrePrHook_PropagatesManifestReadError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod(0) semantics differ on windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses unix mode bits; cannot exercise read-failure")
+	}
+
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".kit"), 0o755))
+	abs := filepath.Join(root, GeneratedManifestPath)
+	require.NoError(t, os.WriteFile(abs, []byte(`{"version":1}`), 0o644))
+	require.NoError(t, os.Chmod(abs, 0))
+	t.Cleanup(func() {
+		// Restore so t.TempDir cleanup can remove the file.
+		_ = os.Chmod(abs, 0o644)
+	})
+
+	_, err := GeneratePrePrHook(root, false, fixedTime())
+	require.Error(t, err, "real manifest read errors must propagate")
+	assert.Contains(t, err.Error(), "read manifest",
+		"error should wrap the manifest read failure")
+}
+
 func TestGeneratePrePrHook_DryRunWritesNothing(t *testing.T) {
 	root := t.TempDir()
 
