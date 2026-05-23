@@ -434,12 +434,15 @@ func TestE2E_Augment_UserEdited_WritesSuggestSibling(t *testing.T) {
 	// which is exactly the "user-edited" state).
 	m, err := buswf.ReadManifest(target)
 	require.NoError(t, err)
+	var found bool
 	for _, f := range m.Files {
 		if f.Path == relPath {
+			found = true
 			assert.Equal(t, sha256Of(kitBytes), f.SHA256,
 				"manifest hash for user-edited path must stay at kit's content")
 		}
 	}
+	require.True(t, found, "manifest must still track %s after user-edit augment run", relPath)
 }
 
 // TestE2E_Augment_SuggestionCleanup_RemovesAcceptedSibling pins the
@@ -499,7 +502,8 @@ func TestE2E_Augment_PrePrHook_UserEdited_KeepsOriginal(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, string(customBody), string(got))
 
-	canonical, _ := loadPrePrHookBytes()
+	canonical, err := loadPrePrHookBytes()
+	require.NoError(t, err, "loadPrePrHookBytes must succeed (embedded asset)")
 	sibling, err := os.ReadFile(hookPath + ".kit-suggested")
 	require.NoError(t, err)
 	assert.Equal(t, string(canonical), string(sibling))
@@ -651,8 +655,10 @@ func TestE2E_BusWorkflows_TopicAndOnTriggerAndPayloadFields(t *testing.T) {
 			types, ok := trigger["types"].([]any)
 			require.True(t, ok, "on.%s.types must be a list", c.trigger.root)
 			gotTypes := make([]string, 0, len(types))
-			for _, ty := range types {
-				gotTypes = append(gotTypes, ty.(string))
+			for i, ty := range types {
+				s, ok := ty.(string)
+				require.True(t, ok, "on.%s.types[%d] must be a string; got %T (%v)", c.trigger.root, i, ty, ty)
+				gotTypes = append(gotTypes, s)
 			}
 			assert.ElementsMatch(t, c.trigger.types, gotTypes,
 				"on.%s.types must equal %v", c.trigger.root, c.trigger.types)
