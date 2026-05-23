@@ -51,10 +51,26 @@ has_mise_task() {
 
 kit_toml_field() {
     # $1 = field name (lint or test). Echoes the field value, or empty if
-    # absent. Tolerates whitespace around `=` and optional quotes.
-    local file="$(repo_root)/.kit/pre-pr.toml"
+    # absent.
+    #
+    # Supported subset: top-level scalar `<field> = "value"` or
+    # `<field> = 'value'`, with optional surrounding whitespace and an
+    # optional trailing `# comment`. Both quote styles map to the same
+    # literal string (we deliberately do not implement TOML's escape
+    # processing for "..." — adopters who need that can wire a Makefile
+    # target instead).
+    local file value
+    file="$(repo_root)/.kit/pre-pr.toml"
     [ -f "$file" ] || return 0
-    sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"(.*)\"[[:space:]]*$/\1/p" "$file" | head -n1
+    # First sed: extract content between either quote style. Two
+    # alternatives keep the expression POSIX-portable (sed -E lacks
+    # alternation grouping on BSD sed in some versions, but two
+    # separate `s///p` rules are fine).
+    value="$(sed -n -E \
+        -e "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*$/\1/p" \
+        -e "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*'([^']*)'.*$/\1/p" \
+        "$file" | head -n1)"
+    printf '%s' "$value"
 }
 
 run_gate() {
