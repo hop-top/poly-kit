@@ -310,15 +310,25 @@ When the pull path triggers, the generated task includes:
 - the event family that triggered scheduling
 - a fixed tag `kit:pr-followup` so adopters can filter all kit-generated
   follow-ups in one `tlc` query
-- a per-event tag matching the canonical event name, e.g.
-  `event:github.pr.run.completed`, `event:github.pr.comment.created`,
-  `event:github.pr.pull.merged`, `event:github.pr.pull.closed`
+- a per-event tag matching the **full canonical topic name**, prefixed
+  with `event:`. The four valid values are:
+  - `event:github.pr.run.completed`
+  - `event:github.pr.comment.created`
+  - `event:github.pr.pull.merged`
+  - `event:github.pr.pull.closed`
+
+  The tag carries the full topic so listeners and `tlc` filters can match
+  one specific event without ambiguity.
 
 ### Duplicate-prevention key
 
 The hook keys deduplication on the triple `(repo, PR number, event family)`,
-where `event family` is one of `run`, `comment`, `merged`, `closed`. This
-gives the right semantics:
+where `event family` is the short label that names *which kind of thing*
+happened: one of `run`, `comment`, `merged`, `closed`. The family is
+distinct from the per-event tag above — the family is a short discriminator
+used only in the dedup key (so two CI runs collapse to one `run` follow-up);
+the tag carries the full topic for filtering. This gives the right
+semantics:
 
 - two CI runs on the same PR collapse to one follow-up
 - a closed-then-reopened PR creates a fresh follow-up (the close and the
