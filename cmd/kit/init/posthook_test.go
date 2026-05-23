@@ -550,6 +550,48 @@ func TestHook_MissingGH_LogsAndExits0(t *testing.T) {
 	assert.NoFileExists(t, h.tlcLog)
 }
 
+// TestHook_PullPath_PreservesEscapedQuotesInTitle pins the contract that
+// PR titles containing escaped double quotes (e.g.
+//
+//	Fix "foo" handling for edge case
+//
+// → JSON-encoded as `"Fix \"foo\" handling for edge case"`) survive the
+// hook's metadata extraction intact. Originally the sed-based
+// extractor truncated PR_TITLE at the first `\`, producing a malformed
+// task title. The fix routes extraction through `gh pr view --json ...
+// --jq` so escape sequences resolve via gh's built-in jq.
+func TestHook_PullPath_PreservesEscapedQuotesInTitle(t *testing.T) {
+	h := newHookHarness(t)
+	// JSON-encoded title contains escaped double quotes inside the
+	// value. baseRepository carries the standard hop-top/example shape
+	// so the dedup-key path is exercised end-to-end.
+	const trickyJSON = `{"number":456,` +
+		`"url":"https://github.com/hop-top/example/pull/456",` +
+		`"headRefName":"t-0774-post-pr-hook",` +
+		`"headRefOid":"cafebabe1234567890",` +
+		`"title":"Fix \"foo\" handling for edge case",` +
+		`"body":"Implements T-0774",` +
+		`"baseRepository":{"name":"example","owner":{"login":"hop-top"}}}`
+	h.stubGH(t, trickyJSON)
+	h.stubTLC(t)
+	h.stubCurl(t, "503") // force pull path
+
+	stderr, exit := h.run(t, map[string]string{
+		"KIT_BUS_ENABLED": "false",
+	})
+
+	assert.Equal(t, 0, exit)
+	assert.Contains(t, stderr, "scheduled tlc follow-up")
+
+	body, err := os.ReadFile(h.tlcLog)
+	require.NoError(t, err, "tlc stub log must exist")
+	got := string(body)
+	// Task title must carry the literal quoted substring verbatim,
+	// not truncated at the first escape sequence.
+	assert.Contains(t, got, `Fix "foo" handling for edge case`,
+		"PR title with escaped double quotes must survive extraction")
+}
+
 // assertTLCInvoked verifies the tlc stub captured a `task create`
 // invocation whose argv contains every needle string. Centralized so
 // the assertions across push/pull tests stay readable.
