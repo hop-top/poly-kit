@@ -130,6 +130,51 @@ func TestPostNoAuth(t *testing.T) {
 	}
 }
 
+// TestPostMultiChunkResponseBody: ingress returns a non-2xx body
+// split across multiple network chunks (Flush between writes, with
+// brief sleeps so the underlying TCP buffer hands back partial data
+// to the next Read). The capped read must accumulate the full body,
+// not stop after the first chunk. A single Read into a fixed buffer
+// can return only a partial body even when the buffer is larger;
+// io.ReadAll(io.LimitReader) loops until EOF or the cap.
+// See Comment 3293191452.
+func TestPostMultiChunkResponseBody(t *testing.T) {
+	t.Parallel()
+	parts := []string{
+		"error chunk 1; ",
+		"error chunk 2; ",
+		"final chunk that follows.",
+	}
+	want := parts[0] + parts[1] + parts[2]
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		flusher, _ := w.(http.Flusher)
+		w.WriteHeader(http.StatusInternalServerError)
+		for _, p := range parts {
+			if _, err := io.WriteString(w, p); err != nil {
+				return
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+			// Give the client's TCP stack a moment so a Read at
+			// the other end returns just the bytes flushed so far,
+			// rather than the entire concatenation in one shot.
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, body, err := Post(ctx, PostOpts{IngressURL: srv.URL}, []byte(`{}`))
+	if err == nil {
+		t.Fatal("Post: want non-nil err on 500")
+	}
+	if string(body) != want {
+		t.Errorf("body = %q,\nwant %q", string(body), want)
+	}
+}
+
 // TestPostNon2xxReturnsError: any non-2xx is an error; caller decides
 // whether to surface based on strict mode.
 func TestPostNon2xxReturnsError(t *testing.T) {
