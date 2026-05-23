@@ -9,9 +9,10 @@
 //   - Generator non-destructive guarantees (write / skip-unchanged /
 //     suggest-sibling).
 //
-// We run the generated hook script via /bin/sh, with stub `gh`, `tlc`,
-// and `curl` binaries on PATH so the suite is hermetic (no real network,
-// no real bus, no real GitHub).
+// We run the generated hook script via /bin/bash (the generator emits
+// a bash shebang), with stub `gh`, `tlc`, and `curl` binaries on PATH
+// so the suite is hermetic (no real network, no real bus, no real
+// GitHub).
 package kitinit
 
 import (
