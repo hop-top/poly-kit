@@ -199,7 +199,12 @@ type hookHarness struct {
 func newHookHarness(t *testing.T) *hookHarness {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		t.Skip("post-pr-open hook is bash; Windows support is TODO")
+		// /bin/bash isn't guaranteed on native Windows; the .ps1
+		// companion (posthook_ps1_test.go) covers the same surface
+		// statically. Adopters who want end-to-end coverage on Windows
+		// can install Git-Bash and run via that shim; the kit init
+		// generator does not depend on it.
+		t.Skip("post-pr-open bash harness requires /bin/bash; Windows-native is covered by posthook_template.ps1 + posthook_ps1_test.go")
 	}
 	dir := t.TempDir()
 	_, err := GeneratePostPROpenHook(dir, true, false)
