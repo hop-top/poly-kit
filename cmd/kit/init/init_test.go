@@ -200,6 +200,7 @@ func TestInit_Bootstrap_WithoutPrePrHook_Skips(t *testing.T) {
 		"--no-github",
 		"--no-push",
 		"--without-githook-pre-pr",
+		"--without-github-workflows",
 		"--yes",
 	})
 	cmd.SetOut(io.Discard)
@@ -209,7 +210,9 @@ func TestInit_Bootstrap_WithoutPrePrHook_Skips(t *testing.T) {
 	target := filepath.Join(work, "mytool")
 	require.DirExists(t, target)
 
-	// Hook and manifest absent under --without-githook-pre-pr.
+	// Hook and manifest absent under --without-githook-pre-pr. Workflows
+	// share the same .kit/generated.json manifest file, so both
+	// generators must be disabled to keep the manifest off-disk.
 	_, hErr := os.Stat(filepath.Join(target, ".githooks/pre-pr"))
 	assert.True(t, os.IsNotExist(hErr),
 		"--without-githook-pre-pr must skip hook; stat err=%v", hErr)

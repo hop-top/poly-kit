@@ -142,11 +142,10 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	// path resolution under "" is harmless.
 	templateRoot := resolveTemplateRoot(src)
 
-	// PR-wiring (T-0773). Generated before the initial commit so the
-	// hook lands in the first revision. Section 6 of the contract is the
-	// authoritative behavioural spec; the generator itself honours
-	// dryRun so a --dry-run preview still produces a JSON-shaped report
-	// without touching disk.
+	// Generated before the initial commit so the hook lands in the
+	// first revision. The generator honours dryRun so a --dry-run
+	// preview still produces a JSON-shaped report without touching
+	// disk.
 	var preprResult *PrePrResult
 	if in.WithPrePrHook {
 		pr, err := GeneratePrePrHook(target, in.DryRun, time.Now().UTC())
@@ -156,10 +155,24 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 		preprResult = &pr
 	}
 
+	// Render `.github/workflows/*-caller.yml` stubs that `uses:`
+	// reusable workflows hosted at hop-top/.github. Honors --dry-run
+	// (planWorkflows still computes the action list so callers can
+	// preview without writes).
+	var workflowActions []WorkflowAction
+	if in.WithGitHubWorkflows {
+		wfActions, err := renderWorkflows(target, in.Runtime, in, nil)
+		if err != nil {
+			return Summary{}, fmt.Errorf("bootstrap: render github workflows: %w", err)
+		}
+		workflowActions = wfActions
+	}
+
 	// DryRun stops here: no hooks, no git, no github, no push.
 	if in.DryRun {
 		sum := buildSummary(in, target, result, nil)
 		sum.PrePrHook = preprResult
+		sum.Workflows = workflowActions
 		return sum, nil
 	}
 
@@ -259,6 +272,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	summary.HopSkipped = hopSkipped
 	summary.TLCSkipped = tlcSkipped
 	summary.PrePrHook = preprResult
+	summary.Workflows = workflowActions
 	return summary, nil
 }
 

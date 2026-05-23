@@ -59,9 +59,14 @@ type Inputs struct {
 	Yes      bool
 
 	// WithPrePrHook gates generation of .githooks/pre-pr and the
-	// .kit/generated.json manifest entry tracking it (T-0773, contract
-	// Section 8). Default true; --without-githook-pre-pr flips it.
+	// .kit/generated.json manifest entry tracking it. Default true;
+	// --without-githook-pre-pr flips it.
 	WithPrePrHook bool
+
+	// WithGitHubWorkflows gates the per-runtime
+	// `.github/workflows/*-caller.yml` generator. Default true; flip
+	// with `--without-github-workflows`.
+	WithGitHubWorkflows bool
 
 	Mode Mode // populated by caller from detect.Detect
 
@@ -97,6 +102,16 @@ type FlagSet struct {
 	DryRun   *bool
 	Force    *bool
 	Yes      *bool
+
+	// WithGitHubWorkflows is the merged result of the
+	// `--with-github-workflows` / `--without-github-workflows` pair;
+	// nil = neither flag was set (use Inputs default).
+	WithGitHubWorkflows *bool
+
+	// WithPrePrHook is the merged result of the
+	// `--with-githook-pre-pr` / `--without-githook-pre-pr` pair;
+	// nil = neither flag was set (use Inputs default).
+	WithPrePrHook *bool
 
 	ModeOverride *string // --mode flag value before parsing
 }
@@ -154,6 +169,8 @@ func Gather(
 		in.Hop = true
 	}
 	in.Tier = derefInt(flags.Tier, 4)
+	in.WithGitHubWorkflows = derefBool(flags.WithGitHubWorkflows, true)
+	in.WithPrePrHook = derefBool(flags.WithPrePrHook, true)
 
 	// Name: walk the full precedence chain here (instead of leaving it to
 	// the manifest required-var loop below) so the orchestrator-facing
