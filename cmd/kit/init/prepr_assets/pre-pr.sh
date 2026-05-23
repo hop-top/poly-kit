@@ -121,9 +121,10 @@ scan_scratchpad() {
     # otherwise omits the prefix and xargs may batch one file at a time).
     ( cd "$root" && git ls-files -z 2>/dev/null \
         | xargs -0 grep -HnE "$SCRATCH_PATTERNS_RE" 2>/dev/null \
-        | grep -vE '^\.githooks/pre-pr:' \
+        | grep -vE '^\.githooks/pre-pr(\.ps1)?:' \
         | grep -vE '^docs/contracts/kit-init-pr-wiring\.md:' \
         | grep -vE '^cmd/kit/init/prepr_assets/pre-pr\.sh:' \
+        | grep -vE '^cmd/kit/init/prepr_assets/pre-pr\.ps1:' \
         | grep -vE '^cmd/kit/init/prepr\.go:' \
         | grep -vE '^cmd/kit/init/prepr_test\.go:' \
         || true )
