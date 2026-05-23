@@ -232,6 +232,51 @@ func TestWriteAllAcceptedSiblingCleanup(t *testing.T) {
 	}
 }
 
+// TestWriteAllSuggestSiblingManifestOnly: a generated workflow file
+// exists on disk but the manifest has no entry for it. The spec §6
+// dry-run JSON enum distinguishes this from a true user-edited
+// divergence: the action is still suggest-sibling, but the reason
+// must be "manifest-only" (not "user-edited"). See Comment 3293191449.
+func TestWriteAllSuggestSiblingManifestOnly(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+
+	// Pre-create the target file on disk WITHOUT seeding the
+	// manifest first. The writer will see fileExists==true and
+	// hadEntry==false → suggest-sibling path with reason
+	// manifest-only (the manifest, not the user, is the missing
+	// information here).
+	target := filepath.Join(root, ".github", "workflows", "kit-bus-pr-run-completed.yml")
+	if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(target, []byte("# pre-existing user file, not from kit\n"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	plan, err := buswf.WriteAll(buswf.Defaults(root))
+	if err != nil {
+		t.Fatalf("WriteAll: %v", err)
+	}
+
+	found := false
+	for _, e := range plan.Entries {
+		if e.Path != ".github/workflows/kit-bus-pr-run-completed.yml" {
+			continue
+		}
+		found = true
+		if e.Action != buswf.ActionSuggestSibling {
+			t.Errorf("action = %q, want suggest-sibling", e.Action)
+		}
+		if e.Reason != buswf.ReasonManifestOnly {
+			t.Errorf("reason = %q, want manifest-only (file present, manifest absent)", e.Reason)
+		}
+	}
+	if !found {
+		t.Fatal("no plan entry for the pre-existing file")
+	}
+}
+
 // TestWriteAllRefreshInPlace: hash matches manifest → kit refreshes in
 // place. For our case Files() is deterministic so this is the
 // skip-unchanged variant (manifest hash already equals files-body
