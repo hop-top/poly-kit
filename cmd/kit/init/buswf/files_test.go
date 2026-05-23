@@ -97,6 +97,32 @@ func TestRunCompletedTrigger(t *testing.T) {
 	}
 }
 
+// TestRunCompletedPRURLIsHTMLURL asserts KIT_BUS_PR_URL is wired to a
+// human-facing URL, not the API URL. workflow_run.pull_requests[i] is
+// a pull_request_minimal object which exposes only the API .url field;
+// the canonical envelope (spec §2 "Common payload envelope") expects
+// pr.url to be the HTML URL. Construct it from server_url + repository
+// + number. See Comment 3293191437.
+func TestRunCompletedPRURLIsHTMLURL(t *testing.T) {
+	t.Parallel()
+	f, ok := buswf.FileByTopic("github.pr.run.completed")
+	if !ok {
+		t.Fatal("FileByTopic(run.completed): not found")
+	}
+	body := string(f.Body)
+	// The raw API url (.url without html_) is the bug; assert it is
+	// not the value bound to KIT_BUS_PR_URL.
+	if strings.Contains(body, "KIT_BUS_PR_URL: ${{ github.event.workflow_run.pull_requests[0].url }}") {
+		t.Error("KIT_BUS_PR_URL still bound to API .url; spec wants the HTML URL")
+	}
+	// Positive assertion: the binding must reference the constructed
+	// HTML URL (server_url + repository + /pull/<number>).
+	wantSubstr := "${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.workflow_run.pull_requests[0].number }}"
+	if !strings.Contains(body, "KIT_BUS_PR_URL: "+wantSubstr) {
+		t.Errorf("KIT_BUS_PR_URL not bound to constructed HTML URL %q\n--- body ---\n%s", wantSubstr, body)
+	}
+}
+
 // TestRunCompletedTriggerNoWildcardWorkflows asserts the workflow_run
 // trigger does NOT use a literal "*" string as a workflow name. GitHub
 // Actions has no wildcard syntax in workflow_run.workflows; the string
