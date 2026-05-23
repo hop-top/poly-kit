@@ -105,7 +105,7 @@ full logs and full bodies are deliberately omitted in favour of URLs):
   }
   ```
 
-  `failure_summary` is bounded to one log excerpt — at most ~512 bytes,
+  `failure_summary` is bounded to one log excerpt — at most **256 bytes**,
   truncated with an ellipsis. Listeners that need the full log fetch
   `logs_url`.
 
@@ -123,7 +123,7 @@ full logs and full bodies are deliberately omitted in favour of URLs):
   }
   ```
 
-  `excerpt` is also bounded (~512 bytes).
+  `excerpt` is also bounded to **256 bytes**, truncated with an ellipsis.
 
 - `github.pr.merged`:
 
@@ -234,6 +234,12 @@ that share the same `origin` remote. Algorithm:
 | `https://gitea.example.org/team/Repo.Name`  | `gitea-example-org-team-repo-name` |
 | (no `origin`) `/Users/jad/work/My Project`  | `users-jad-work-my-project`   |
 
+When the path-based fallback is used (no `origin`), the slug visibly bakes
+in a user-scoped path component (e.g. `users-jad-...`). This is by design,
+not a bug: `os.TempDir()` and `$XDG_RUNTIME_DIR` are themselves per-user, so
+the scratchpad path is already per-user regardless of the slug. The slug
+simply mirrors that scoping.
+
 So on macOS, in a clone of `hop-top/poly-kit`, the scratchpad lives at:
 
 ```
@@ -242,31 +248,49 @@ $TMPDIR/github-com-hop-top-poly-kit.scratchpad
 
 ## 5. Push/pull follow-up model (T-0774)
 
-The after-PR-open hook chooses between two delivery models, in this order:
+The after-PR-open hook chooses between two delivery models, in this order.
 
-### Push path
+**Rationale.** The hook runs at PR-open, but lifecycle events
+(`github.pr.run.completed`, `github.pr.comment.created`, `github.pr.merged`,
+`github.pr.closed`) fire later from CI workflows — minutes or hours after
+the hook has exited. A liveness probe is the only synchronous signal the
+hook has; it answers "is there a host that will own this PR's follow-ups?"
+rather than "has this specific event been received?". Per-event
+acknowledgement is the bus listener's job, not the hook's.
 
-If `vars.KIT_BUS_ENABLED == "true"` AND the configured ingress acks delivery
-of the relevant event with **HTTP 2xx within 5 seconds**, the hook does
-**not** create a local follow-up task. The bus listener (running on the
-host the ingress fronts) owns the follow-up. The 5-second timeout is the
-single canonical value; longer-running listeners must ack first and process
-asynchronously.
+### Liveness probe (push path)
 
-### Pull path
+At hook execution time (PR creation), the hook issues a **single** `GET`
+request to `${KIT_BUS_INGRESS_URL%/}/healthz`. `/healthz` is the canonical
+probe path (Kubernetes-style; pinned for every implementation). The probe
+timeout is **5 seconds**.
+
+The hook trusts the bus to deliver the follow-up — and therefore does
+**not** create local follow-up tasks for any of the four event families
+covering this PR — when **both** of the following are true:
+
+- the probe returns an HTTP 2xx within the 5-second timeout, AND
+- `vars.KIT_BUS_ENABLED == "true"`.
+
+The probe is one-shot at hook time. The hook does not attempt to ack
+individual lifecycle events — that happens later, asynchronously, on the
+bus listener.
+
+### Scheduled follow-up (pull path)
 
 The hook creates a scheduled local `tlc` task — due 10 minutes after PR
 open — when **any** of the following is true:
 
-- `vars.KIT_BUS_ENABLED != "true"` (bus disabled)
-- `vars.KIT_BUS_INGRESS_URL` is empty
-- the ingress is unreachable (connection refused, DNS failure, TLS error,
-  or the 5-second timeout elapses)
-- the ingress responds with a non-2xx status
+- `vars.KIT_BUS_ENABLED != "true"` (bus disabled), OR
+- `vars.KIT_BUS_INGRESS_URL` is empty, OR
+- the `/healthz` probe returns a non-2xx status, OR
+- the probe times out (5 seconds elapsed), errors (connection refused,
+  DNS failure, TLS error), or otherwise fails to complete.
 
-The same model applies to `github.pr.merged` and `github.pr.closed`: if the
-bus acks, no local task is created; otherwise a scheduled `tlc` task is
-created with the appropriate event family in its body.
+The same model applies across all four lifecycle event families
+(`run.completed`, `comment.created`, `merged`, `closed`): if the probe
+succeeds, no local task is created for the PR; otherwise a scheduled `tlc`
+task is created with the appropriate event family in its body.
 
 ### Follow-up task content
 
@@ -278,6 +302,11 @@ When the pull path triggers, the generated task includes:
 - the head SHA
 - the originating branch
 - the event family that triggered scheduling
+- a fixed tag `kit:pr-followup` so adopters can filter all kit-generated
+  follow-ups in one `tlc` query
+- a per-event tag matching the canonical event name, e.g.
+  `event:github.pr.run.completed`, `event:github.pr.comment.created`,
+  `event:github.pr.merged`, `event:github.pr.closed`
 
 ### Duplicate-prevention key
 
@@ -354,6 +383,13 @@ Schema rules:
 4. If a file appears on disk but is not in the manifest and a generator
    wants to write it, treat as user-edited: write `<path>.kit-suggested`.
 
+**Suggestion cleanup.** Before writing a new `<path>.kit-suggested` sibling,
+`kit init` checks whether an existing `<path>.kit-suggested` is
+byte-identical to the current `<path>`. If so, the sibling is removed (the
+user effectively accepted the suggestion). This keeps the working tree
+from accumulating stale `.kit-suggested` files once the user's edits
+converge with what kit would write.
+
 ### Dry-run / JSON output
 
 `kit init --dry-run` (or `--format json`) reports, for each file the
@@ -362,26 +398,61 @@ generator would touch:
 ```json
 {
   "path": ".github/workflows/release-go.yml",
-  "action": "write" | "skip-unchanged" | "suggest-sibling",
+  "action": "write" | "skip-unchanged" | "suggest-sibling" | "manifest-update",
   "suggested_path": ".github/workflows/release-go.yml.kit-suggested",
-  "reason": "user-edited" | "new" | "refresh"
+  "reason": "user-edited" | "new" | "refresh" | "manifest-only"
 }
 ```
 
 `suggested_path` is present only when `action == "suggest-sibling"`.
+
+`"manifest-update"` is reported when the only side effect for a path is
+rewriting its entry in `.kit/generated.json` — e.g. all generated files
+already match their manifest hashes and only `generatedAt` timestamps
+would change. No on-disk content under `path` is rewritten in this case.
 
 ## 7. Before-PR hook failure semantics (T-0773)
 
 The before-PR hook (rendered at `.githooks/pre-pr` or installed via the
 repo's existing `.githooks/` convention) runs the following gates:
 
-1. project lint (`make lint` or equivalent declared by the adopter)
-2. project tests (`make test` or equivalent)
-3. scratchpad cleanup detection: scan tracked source/docs for ephemeral
+1. **project lint** (resolved per the order below)
+2. **project tests** (resolved per the order below)
+3. **scratchpad cleanup detection**: scan tracked source/docs for ephemeral
    planning artefacts and relocate them to the path pinned in Section 4.
    If any artefact would have to be moved at PR time, the gate fails — the
    intent is that the hook is run pre-PR and the author commits a clean
    working tree.
+
+### Lint and test gate resolution
+
+This is a polyglot repo (Go / PHP / Rust / TS / Python — see
+`templates/cli-*/`). `make` is not a stable contract across adopter repos,
+so the hook resolves each of the lint and test gates by walking the
+following ordered list and using the first match:
+
+1. **Makefile.** If the repo root contains a `Makefile` with both a `lint`
+   and a `test` target, the hook invokes `make lint` and `make test`.
+2. **mise.** Else, if the repo has `mise.toml` or `.mise.toml` declaring
+   both `[tasks.lint]` and `[tasks.test]`, the hook invokes `mise run lint`
+   and `mise run test`.
+3. **Explicit kit config.** Else, the hook reads `.kit/pre-pr.toml` (pinned
+   path) for explicit commands:
+
+   ```toml
+   lint = "golangci-lint run ./..."
+   test = "go test ./..."
+   ```
+
+4. **No gate declared.** If none of the above resolves, the gate is treated
+   as "no gate declared": the hook prints a single-line stderr note (e.g.
+   `kit: no lint gate declared; skipping`) and continues. This is not an
+   error — adopters who deliberately rely on CI-only checks may legitimately
+   ship without a local gate.
+
+Gates are resolved independently — e.g. a repo may declare `lint` via
+`Makefile` and `test` via `.kit/pre-pr.toml`. The resolution order is
+applied per gate, not per repo.
 
 ### Exit semantics
 
@@ -399,26 +470,31 @@ There is **one** escape: the standard git hook bypass, `--no-verify` (e.g.
 `git push --no-verify` or, for workflows that invoke the hook via a wrapper,
 the wrapper's documented `--no-verify` passthrough). There is **no built-in
 "warn-only" mode**. Adopters who want gate output without enforcement run
-the gates directly (`make lint`, `make test`) outside the hook.
+the resolved commands directly (e.g. `make lint`, `mise run lint`, or
+whatever `.kit/pre-pr.toml` declares) outside the hook.
 
 ## 8. Opt-in / opt-out flags and augment-tier behavior
 
 `kit init` exposes per-generator flags so adopters can include or exclude
 each piece of wiring. Defaults are tuned so a hop-top project that runs
 `kit init` with no flags ends up wired into the standard hop-top contract.
+Bus event workflows are opt-in: the generated `.github/workflows/kit-bus-*.yml`
+files are runtime-disabled (Section 3), but absent from a default `kit init`
+run so adopters who never operate a bus host don't see clutter in
+`.github/workflows/`.
 
 | Flag                              | Default | Effect                                                                     |
 |-----------------------------------|---------|----------------------------------------------------------------------------|
 | `--with-github-workflows`         | `true`  | Render `.github/workflows/*-caller.yml` stubs (T-0772).                    |
 | `--with-githook-pre-pr`           | `true`  | Render `.githooks/pre-pr` and helpers (T-0773).                            |
 | `--with-githook-post-pr-open`     | `true`  | Render `.githooks/post-pr-open` and helpers (T-0774).                      |
-| `--with-bus-workflows`            | `true`  | Render `.github/workflows/kit-bus-*.yml` (T-0776). Disabled at runtime by default per Section 3. |
+| `--with-bus-workflows`            | `false` | Render `.github/workflows/kit-bus-*.yml` (T-0776). Opt-in. Disabled at runtime by default per Section 3. |
 | `--dry-run`                       | `false` | Compute the file list without writing; emit JSON report.                   |
 | `--format json`                   | (off)   | Emit machine-readable plan output (see Section 6).                         |
 
-Each `--with-*` flag has a `--without-*` complement that flips the default
-to `false`. Example: `kit init --without-bus-workflows` skips bus event
-workflow generation entirely.
+Each `--with-*` flag has a `--without-*` complement that flips the default.
+Example: `kit init --with-bus-workflows` opts into bus event workflow
+generation; `kit init --without-githook-pre-pr` skips the pre-PR hook.
 
 ### Augment-tier behavior
 
