@@ -511,7 +511,7 @@ func TestWriteManifest_OverwriteIdempotent(t *testing.T) {
 			{Path: ".github/workflows/a.yml", SHA256: "aaaa", GeneratedAt: "2026-05-23T14:00:00Z"},
 		},
 	}
-	require.NoError(t, writeManifest(path, first))
+	require.NoError(t, writeWorkflowManifest(path, first))
 	got1, err := readManifest(path)
 	require.NoError(t, err)
 	require.Len(t, got1.Files, 1)
@@ -528,8 +528,8 @@ func TestWriteManifest_OverwriteIdempotent(t *testing.T) {
 			{Path: ".github/workflows/b.yml", SHA256: "cccc", GeneratedAt: "2026-05-23T15:00:00Z"},
 		},
 	}
-	require.NoError(t, writeManifest(path, second),
-		"writeManifest must overwrite an existing manifest; this is the path that fails on Windows pre-fix")
+	require.NoError(t, writeWorkflowManifest(path, second),
+		"writeWorkflowManifest must overwrite an existing manifest; this is the path that fails on Windows pre-fix")
 
 	got2, err := readManifest(path)
 	require.NoError(t, err)
