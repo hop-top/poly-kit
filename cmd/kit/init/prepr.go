@@ -240,6 +240,16 @@ func scaffoldPrePrFile(
 	if bytesEqual(existing, content) {
 		report.Action = ActionSkipUnchanged
 		report.Reason = ReasonRefresh
+		// os.WriteFile only applies mode when *creating* a file; an
+		// existing path with mismatched mode (e.g. 0644 after a copy
+		// across filesystems that drops +x) would otherwise survive
+		// scaffolding non-executable. Re-apply the canonical mode here
+		// so "skip-unchanged" is byte AND permission idempotent.
+		if !dryRun {
+			if err := os.Chmod(abs, mode); err != nil {
+				return report, fmt.Errorf("kit init: chmod %s: %w", relPath, err)
+			}
+		}
 		return report, nil
 	}
 
@@ -250,6 +260,11 @@ func scaffoldPrePrFile(
 		if !dryRun {
 			if err := os.WriteFile(abs, content, mode); err != nil {
 				return report, fmt.Errorf("kit init: refresh %s: %w", relPath, err)
+			}
+			// os.WriteFile preserves the existing mode when overwriting
+			// an existing path; refresh must also normalise mode.
+			if err := os.Chmod(abs, mode); err != nil {
+				return report, fmt.Errorf("kit init: chmod %s: %w", relPath, err)
 			}
 		}
 		return report, nil
