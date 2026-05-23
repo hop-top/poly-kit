@@ -161,10 +161,21 @@ func emitJob(topic string, eventTrigger string, ifGuards []string, extraEnv map[
 func runCompletedFile() File {
 	topic := string(TopicRunCompleted)
 	header := commonHeader("pr run completed", topic)
+	// GitHub Actions has no wildcard syntax for workflow_run.workflows;
+	// "*" is treated as a literal workflow name and the workflow never
+	// fires. The adopter must list the names of the caller workflows
+	// they want this bus emitter to react to. We seed a "ci" placeholder
+	// and a loud TODO comment because the actual list is per-repo —
+	// kit init has no reliable way to enumerate the names of the other
+	// workflows it (or some other tool) will scaffold.
 	on := "" +
 		"on:\n" +
 		"  workflow_run:\n" +
-		"    workflows: [\"*\"]\n" +
+		"    # TODO: REQUIRED — list the names of the CI workflows this\n" +
+		"    # emitter should react to. GitHub Actions has no wildcard\n" +
+		"    # syntax here; \"*\" is a literal name, not a glob, and the\n" +
+		"    # workflow will never fire if you leave it unchanged.\n" +
+		"    workflows: [\"ci\"]\n" +
 		"    types: [completed]\n\n"
 
 	extraEnv := map[string]string{
