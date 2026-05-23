@@ -11,7 +11,7 @@
 //   - github.pr.pull.closed
 //
 // All workflows are gated at job level on
-// `vars.KIT_BUS_ENABLED == 'true' && vars.KIT_BUS_INGRESS_URL != ”`
+// `vars.KIT_BUS_ENABLED == 'true' && vars.KIT_BUS_INGRESS_URL != ""`
 // so they are runtime-disabled by default even when present.
 //
 // The actual POST to the bus ingress, signature/bearer auth, payload
