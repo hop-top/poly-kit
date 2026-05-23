@@ -633,6 +633,116 @@ func TestHookGateResolution_KitTomlTrailingComment(t *testing.T) {
 	assert.Contains(t, string(out), "cmnt-test-ok")
 }
 
+// TestHookScratchpadPath_WindowsShells guards Fix 5 Part A: the bash
+// hook must recognise Git Bash / MSYS / Cygwin / MINGW environments
+// (where `uname -s` returns MINGW64_NT-*, MSYS_NT-*, CYGWIN_NT-*) and
+// derive the scratchpad base from $LOCALAPPDATA/Temp with the same
+// fallback chain as the Go side: LOCALAPPDATA + /Temp, else TEMP
+// (no extra /Temp), else TMPDIR, else /tmp.
+//
+// We override `uname` via a PATH-stubbed wrapper so the host kernel
+// doesn't decide the outcome.
+func TestHookScratchpadPath_WindowsShells(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+
+	hookBytes, err := loadPrePrHookBytes()
+	require.NoError(t, err)
+
+	cases := []struct {
+		name        string
+		unameOutput string
+		env         map[string]string
+		// wantSuffix asserts the path ends with this; we don't pin the
+		// exact base prefix because filepath separators on the bash
+		// side stay forward-slash even when the env vars carry
+		// backslashes (Git Bash translates).
+		wantContains []string
+	}{
+		{
+			name:        "MINGW64_NT with LOCALAPPDATA",
+			unameOutput: "MINGW64_NT-10.0-19045",
+			env: map[string]string{
+				"LOCALAPPDATA": `C:\Users\foo\AppData\Local`,
+			},
+			wantContains: []string{"AppData", "Local", "Temp", "acme.scratchpad"},
+		},
+		{
+			name:        "MSYS_NT with LOCALAPPDATA",
+			unameOutput: "MSYS_NT-10.0-19045",
+			env: map[string]string{
+				"LOCALAPPDATA": `C:\Users\foo\AppData\Local`,
+			},
+			wantContains: []string{"AppData", "Local", "Temp", "acme.scratchpad"},
+		},
+		{
+			name:        "CYGWIN_NT with LOCALAPPDATA",
+			unameOutput: "CYGWIN_NT-10.0",
+			env: map[string]string{
+				"LOCALAPPDATA": `C:\Users\foo\AppData\Local`,
+			},
+			wantContains: []string{"AppData", "Local", "Temp", "acme.scratchpad"},
+		},
+		{
+			name:        "MINGW64_NT without LOCALAPPDATA, with TEMP",
+			unameOutput: "MINGW64_NT-10.0-19045",
+			env: map[string]string{
+				"TEMP": `C:\Users\foo\AppData\Local\Temp`,
+			},
+			// TEMP already includes Temp; must not double it.
+			wantContains: []string{"AppData", "Local", "Temp", "acme.scratchpad"},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tmpdir := t.TempDir()
+
+			// uname shim.
+			unameStub := filepath.Join(tmpdir, "uname")
+			require.NoError(t, os.WriteFile(unameStub,
+				[]byte("#!/usr/bin/env bash\nprintf '%s\\n' '"+c.unameOutput+"'\n"),
+				0o755))
+
+			// Hook source with a `scratchpad_path "acme"` call appended
+			// so we get just the path on stdout.
+			hookSrc := filepath.Join(tmpdir, "pre-pr-source.sh")
+			driver := append([]byte{}, hookBytes...)
+			// Strip the top-level run section by truncating before
+			// `# --- run gates ---`. We only want the function defs.
+			if idx := bytes.Index(driver, []byte("# --- run gates")); idx > 0 {
+				driver = driver[:idx]
+			}
+			driver = append(driver, []byte("\nscratchpad_path acme\n")...)
+			require.NoError(t, os.WriteFile(hookSrc, driver, 0o755))
+
+			cmd := exec.Command("bash", hookSrc)
+			// Build env: explicit, plus the uname-stub dir first on PATH.
+			envv := []string{
+				"PATH=" + tmpdir + string(os.PathListSeparator) + os.Getenv("PATH"),
+			}
+			for k, v := range c.env {
+				envv = append(envv, k+"="+v)
+			}
+			cmd.Env = envv
+			out, runErr := cmd.CombinedOutput()
+			require.NoError(t, runErr, "hook scratchpad_path errored:\n%s", out)
+			got := strings.TrimSpace(string(out))
+			for _, want := range c.wantContains {
+				assert.Contains(t, got, want,
+					"scratchpad_path for %s must contain %q; got %q",
+					c.unameOutput, want, got)
+			}
+			// Specifically guard against the doubled-Temp bug.
+			assert.NotContains(t, got, "Temp/Temp",
+				"scratchpad_path must not produce doubled Temp segment; got %q", got)
+			assert.NotContains(t, got, `Temp\Temp`,
+				"scratchpad_path must not produce doubled Temp segment; got %q", got)
+		})
+	}
+}
+
 func TestHookGateResolution_NoGateDeclared(t *testing.T) {
 	// No Makefile, no mise, no .kit/pre-pr.toml → single-line stderr
 	// note per gate, exit 0.
