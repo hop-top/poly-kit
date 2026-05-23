@@ -200,7 +200,13 @@ func runCompletedFile() File {
 	flags := []string{
 		"--kind run.completed",
 	}
-	body := header + on + emitJob(topic, "workflow_run", nil, extraEnv, flags)
+	// Guard against push-triggered workflow_run events: pull_requests
+	// is empty in that case and pull_requests[0].* evaluates against
+	// null. Belt and suspenders: combine with the existing
+	// KIT_BUS_ENABLED / KIT_BUS_INGRESS_URL gate so the job runs only
+	// when bus is on AND the run is PR-associated.
+	guards := []string{"github.event.workflow_run.event == 'pull_request'"}
+	body := header + on + emitJob(topic, "workflow_run", guards, extraEnv, flags)
 	return File{Name: "kit-bus-pr-run-completed.yml", Body: []byte(body), Topic: topic}
 }
 
