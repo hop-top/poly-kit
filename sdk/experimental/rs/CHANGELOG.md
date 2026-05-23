@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0-experimental.3](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.4.0-experimental.2...kit-rs/v0.4.0-experimental.3) (2026-05-21)
+
+The hop-top team is happy to announce Kit's Rust SDK 0.4.0-experimental.3. This release includes new features.
+
+
+### Features
+
+* **contracts:** typeid-v1 cross-language parity fixtures
+* **init:** add php & rs templates
+* **rs:** kit-sdk/id — typeid primitive
+* **telemetry:** consenting telemetry stack across kit-go + 4 SDKs
+
+Full diff: [kit-rs/v0.4.0-experimental.2...kit-rs/v0.4.0-experimental.3](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.4.0-experimental.2...kit-rs/v0.4.0-experimental.3)
+
 ## [0.4.0-experimental.2](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.4.0-experimental.1...kit-rs/v0.4.0-experimental.2) (2026-05-17)
 
 The hop-top team is happy to announce Kit's Rust SDK 0.4.0-experimental.2. This release includes maintenance release with bug fixes.
