@@ -86,6 +86,14 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		return Summary{}, fmt.Errorf("augment: render: %w", err)
 	}
 
+	// Step 6b: after-PR-open hook generation (T-0774, contract
+	// §5/§6/§8). Honors the same non-destructive semantics in augment
+	// mode: differing existing → .kit-suggested sibling.
+	postHookSummary, posterr := GeneratePostPROpenHook(cwd, in.WithGithookPostPROpen, in.DryRun)
+	if posterr != nil {
+		return Summary{}, fmt.Errorf("augment: post-pr-open hook: %w", posterr)
+	}
+
 	// Steps 7-8: side-effects skipped under --dry-run.
 	if !in.DryRun {
 		hookCtx := tmpl.HookContext{
@@ -145,7 +153,7 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		}
 	}
 
-	return Summary{
+	summary := Summary{
 		Mode:       "augment",
 		Name:       in.Name,
 		Target:     cwd,
@@ -155,7 +163,9 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		PrePrHook:  preprResult,
 		Workflows:  workflowActions,
 		NextSteps:  NextSteps("augment", in.Name, nil),
-	}, nil
+	}
+	applyPostHookToSummary(&summary, postHookSummary)
+	return summary, nil
 }
 
 // readGoModule returns the module path declared in <dir>/go.mod. Missing

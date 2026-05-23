@@ -53,13 +53,15 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		emailFlag         string
 		themeFlag         string
 		descriptionFlag   string
-		dryRunFlag                 bool
-		forceFlag                  bool
-		yesFlag                    bool
-		withPrePrHookFlag          bool
-		withoutPrePrHookFlag       bool
-		withGitHubWorkflowsFlag    bool
-		withoutGitHubWorkflowsFlag bool
+		dryRunFlag                   bool
+		forceFlag                    bool
+		yesFlag                      bool
+		withPrePrHookFlag            bool
+		withoutPrePrHookFlag         bool
+		withGitHubWorkflowsFlag      bool
+		withoutGitHubWorkflowsFlag   bool
+		withGithookPostPROpenFlag    bool
+		withoutGithookPostPROpenFlag bool
 	)
 
 	cmd := &cobra.Command{
@@ -166,6 +168,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 				&dryRunFlag, &forceFlag, &yesFlag,
 				&withGitHubWorkflowsFlag, &withoutGitHubWorkflowsFlag,
 				&withPrePrHookFlag, &withoutPrePrHookFlag,
+				&withGithookPostPROpenFlag, &withoutGithookPostPROpenFlag,
 			)
 
 			// 5. Wizard only spins up for interactive (non-yes) runs.
@@ -251,6 +254,19 @@ func InitCmd(root *cli.Root) *cobra.Command {
 	f.BoolVar(&withoutGitHubWorkflowsFlag, "without-github-workflows", false,
 		"Skip .github/workflows/*-caller.yml generation (alias for --with-github-workflows=false)")
 
+	// Per-generator wiring flags (contract §8). The pair is mutually
+	// exclusive: --with-githook-post-pr-open defaults to true (opt-in
+	// by default), --without-githook-post-pr-open defaults to false
+	// and is the explicit opt-out. When both are passed, the
+	// --without- form wins (louder signal). buildFlagSet collapses
+	// the pair into a single *bool so Gather's precedence chain sees
+	// one value; cobra's Changed() drives which of the two the user
+	// supplied.
+	f.BoolVar(&withGithookPostPROpenFlag, "with-githook-post-pr-open", true,
+		"Generate .githooks/post-pr-open (after-PR-open hook; T-0774)")
+	f.BoolVar(&withoutGithookPostPROpenFlag, "without-githook-post-pr-open", false,
+		"Skip generation of .githooks/post-pr-open (complement of --with-githook-post-pr-open)")
+
 	// kit init scaffolds new project trees (mkdir/write) and
 	// augments existing ones — declare the side-effect tier per
 	// cli-conventions §3.5. ADR-0020 drives --dry-run support off
@@ -299,6 +315,7 @@ func buildFlagSet(
 	dryRun, force, yes *bool,
 	withGitHubWorkflows, withoutGitHubWorkflows *bool,
 	withPrePrHook, withoutPrePrHook *bool,
+	withGithookPostPROpen, withoutGithookPostPROpen *bool,
 ) *FlagSet {
 	fs := &FlagSet{}
 	c := cmd.Flags().Changed
@@ -378,6 +395,14 @@ func buildFlagSet(
 	case c("with-githook-pre-pr"):
 		v := *withPrePrHook
 		fs.WithPrePrHook = &v
+	}
+	switch {
+	case c("without-githook-post-pr-open") && *withoutGithookPostPROpen:
+		v := false
+		fs.WithGithookPostPROpen = &v
+	case c("with-githook-post-pr-open"):
+		v := *withGithookPostPROpen
+		fs.WithGithookPostPROpen = &v
 	}
 	return fs
 }
