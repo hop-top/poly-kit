@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tmpl "hop.top/kit/internal/template"
 )
@@ -108,6 +109,19 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 
 	// Steps 9-10: NO git.Init, NO github.Create — existing repo.
 
+	// PR-wiring (T-0773). Section 6 conflict policy: existing hook is
+	// either refreshed (manifest hash matches) or surfaced as a
+	// .kit-suggested sibling (user-edited). Dry-run produces the same
+	// report shape without writes.
+	var preprResult *PrePrResult
+	if in.WithPrePrHook {
+		pr, perr := GeneratePrePrHook(cwd, in.DryRun, time.Now().UTC())
+		if perr != nil {
+			return Summary{}, fmt.Errorf("augment: pre-pr hook: %w", perr)
+		}
+		preprResult = &pr
+	}
+
 	// Step 11: tlc init (best-effort). Skipped when tlc is missing or
 	// when running under --dry-run.
 	var tlcSkipped bool
@@ -126,6 +140,7 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		Template:   in.Template,
 		Result:     result,
 		TLCSkipped: tlcSkipped,
+		PrePrHook:  preprResult,
 		NextSteps:  NextSteps("augment", in.Name, nil),
 	}, nil
 }

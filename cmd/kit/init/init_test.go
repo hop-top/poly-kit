@@ -175,11 +175,47 @@ func TestInit_Bootstrap_HappyPath(t *testing.T) {
 	for _, rel := range []string{"go.mod", "main.go", ".kit/version"} {
 		assert.FileExists(t, filepath.Join(target, rel))
 	}
+	// T-0773: pre-pr hook + manifest scaffolded under default flags.
+	assert.FileExists(t, filepath.Join(target, ".githooks/pre-pr"))
+	assert.FileExists(t, filepath.Join(target, ".kit/generated.json"))
 
 	// .kit/version content matches manifest name + "@latest".
 	got, err := os.ReadFile(filepath.Join(target, ".kit", "version"))
 	require.NoError(t, err)
 	assert.Equal(t, "fixture@latest\n", string(got))
+}
+
+func TestInit_Bootstrap_WithoutPrePrHook_Skips(t *testing.T) {
+	skipIfNoGitInit(t)
+	preCommitGitIdentity(t)
+	tplPath := fixtureInitTemplate(t)
+	work := t.TempDir()
+	t.Chdir(work)
+
+	cmd := InitCmd(nil)
+	cmd.SetArgs([]string{
+		"mytool",
+		"--from=" + tplPath,
+		"--hop=false",
+		"--no-github",
+		"--no-push",
+		"--without-githook-pre-pr",
+		"--yes",
+	})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	require.NoError(t, cmd.Execute())
+
+	target := filepath.Join(work, "mytool")
+	require.DirExists(t, target)
+
+	// Hook and manifest absent under --without-githook-pre-pr.
+	_, hErr := os.Stat(filepath.Join(target, ".githooks/pre-pr"))
+	assert.True(t, os.IsNotExist(hErr),
+		"--without-githook-pre-pr must skip hook; stat err=%v", hErr)
+	_, mErr := os.Stat(filepath.Join(target, ".kit/generated.json"))
+	assert.True(t, os.IsNotExist(mErr),
+		"--without-githook-pre-pr must skip manifest; stat err=%v", mErr)
 }
 
 func TestInit_Bootstrap_DryRun(t *testing.T) {

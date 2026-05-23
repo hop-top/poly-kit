@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	tmpl "hop.top/kit/internal/template"
 )
@@ -141,9 +142,25 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	// path resolution under "" is harmless.
 	templateRoot := resolveTemplateRoot(src)
 
+	// PR-wiring (T-0773). Generated before the initial commit so the
+	// hook lands in the first revision. Section 6 of the contract is the
+	// authoritative behavioural spec; the generator itself honours
+	// dryRun so a --dry-run preview still produces a JSON-shaped report
+	// without touching disk.
+	var preprResult *PrePrResult
+	if in.WithPrePrHook {
+		pr, err := GeneratePrePrHook(target, in.DryRun, time.Now().UTC())
+		if err != nil {
+			return Summary{}, fmt.Errorf("bootstrap: pre-pr hook: %w", err)
+		}
+		preprResult = &pr
+	}
+
 	// DryRun stops here: no hooks, no git, no github, no push.
 	if in.DryRun {
-		return buildSummary(in, target, result, nil), nil
+		sum := buildSummary(in, target, result, nil)
+		sum.PrePrHook = preprResult
+		return sum, nil
 	}
 
 	// 8. post_render hook.
@@ -241,6 +258,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	summary := buildSummary(in, target, result, ghSummary)
 	summary.HopSkipped = hopSkipped
 	summary.TLCSkipped = tlcSkipped
+	summary.PrePrHook = preprResult
 	return summary, nil
 }
 
