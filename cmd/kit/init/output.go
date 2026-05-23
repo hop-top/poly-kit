@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 
+	"hop.top/kit/cmd/kit/init/buswf"
 	"hop.top/kit/internal/template"
 )
 
@@ -34,15 +35,9 @@ type Summary struct {
 	HopSkipped bool            `json:"hop_skipped,omitempty"`
 	TLCSkipped bool            `json:"tlc_skipped,omitempty"`
 
-	// PrePrHook reports the .githooks/pre-pr and .kit/generated.json
-	// rows kit init wrote (or would write, in dry-run). Absent when
-	// the generator was disabled via --without-githook-pre-pr.
-	PrePrHook *PrePrResult `json:"prepr_hook,omitempty"`
-
-	// Workflows lists every `.github/workflows/*-caller.yml` action
-	// taken by the generator. Empty when `--without-github-workflows`
-	// was passed or no runtimes matched a registered generator.
-	Workflows []WorkflowAction `json:"workflows,omitempty"`
+	PrePrHook    *PrePrResult       `json:"prepr_hook,omitempty"`
+	Workflows    []WorkflowAction   `json:"workflows,omitempty"`
+	BusWorkflows []buswf.PlanEntry  `json:"bus_workflows,omitempty"`
 
 	NextSteps []string `json:"next_steps"`
 }
@@ -130,6 +125,24 @@ func WriteHuman(w io.Writer, s Summary) error {
 			line := fmt.Sprintf("  %s [%s]", a.Path, a.Action)
 			if a.SuggestedPath != "" {
 				line += " → " + a.SuggestedPath
+			}
+			if _, err := fmt.Fprintln(w, line); err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(s.BusWorkflows) > 0 {
+		if _, err := fmt.Fprintln(w, "\nKit bus workflows:"); err != nil {
+			return err
+		}
+		for _, e := range s.BusWorkflows {
+			line := fmt.Sprintf("  %-15s %s", e.Action, e.Path)
+			if e.SuggestedPath != "" {
+				line += " → " + e.SuggestedPath
+			}
+			if e.Reason != "" {
+				line += fmt.Sprintf(" (%s)", e.Reason)
 			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
 				return err

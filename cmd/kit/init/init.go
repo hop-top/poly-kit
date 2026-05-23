@@ -62,6 +62,8 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		withoutGitHubWorkflowsFlag   bool
 		withGithookPostPROpenFlag    bool
 		withoutGithookPostPROpenFlag bool
+		withBusWorkflowsFlag         bool
+		withoutBusWorkflowsFlag      bool
 	)
 
 	cmd := &cobra.Command{
@@ -169,6 +171,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 				&withGitHubWorkflowsFlag, &withoutGitHubWorkflowsFlag,
 				&withPrePrHookFlag, &withoutPrePrHookFlag,
 				&withGithookPostPROpenFlag, &withoutGithookPostPROpenFlag,
+				&withBusWorkflowsFlag, &withoutBusWorkflowsFlag,
 			)
 
 			// 5. Wizard only spins up for interactive (non-yes) runs.
@@ -253,19 +256,14 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		"Generate .github/workflows/*-caller.yml stubs that use hop-top/.github reusable workflows")
 	f.BoolVar(&withoutGitHubWorkflowsFlag, "without-github-workflows", false,
 		"Skip .github/workflows/*-caller.yml generation (alias for --with-github-workflows=false)")
-
-	// Per-generator wiring flags (contract §8). The pair is mutually
-	// exclusive: --with-githook-post-pr-open defaults to true (opt-in
-	// by default), --without-githook-post-pr-open defaults to false
-	// and is the explicit opt-out. When both are passed, the
-	// --without- form wins (louder signal). buildFlagSet collapses
-	// the pair into a single *bool so Gather's precedence chain sees
-	// one value; cobra's Changed() drives which of the two the user
-	// supplied.
 	f.BoolVar(&withGithookPostPROpenFlag, "with-githook-post-pr-open", true,
-		"Generate .githooks/post-pr-open (after-PR-open hook; T-0774)")
+		"Generate .githooks/post-pr-open (after-PR-open hook)")
 	f.BoolVar(&withoutGithookPostPROpenFlag, "without-githook-post-pr-open", false,
 		"Skip generation of .githooks/post-pr-open (complement of --with-githook-post-pr-open)")
+	f.BoolVar(&withBusWorkflowsFlag, "with-bus-workflows", false,
+		"Render .github/workflows/kit-bus-*.yml PR-lifecycle bus workflows (opt-in)")
+	f.BoolVar(&withoutBusWorkflowsFlag, "without-bus-workflows", false,
+		"Skip rendering kit-bus PR-lifecycle workflows (no-op when already disabled)")
 
 	// kit init scaffolds new project trees (mkdir/write) and
 	// augments existing ones — declare the side-effect tier per
@@ -316,6 +314,7 @@ func buildFlagSet(
 	withGitHubWorkflows, withoutGitHubWorkflows *bool,
 	withPrePrHook, withoutPrePrHook *bool,
 	withGithookPostPROpen, withoutGithookPostPROpen *bool,
+	withBusWorkflows, withoutBusWorkflows *bool,
 ) *FlagSet {
 	fs := &FlagSet{}
 	c := cmd.Flags().Changed
@@ -403,6 +402,13 @@ func buildFlagSet(
 	case c("with-githook-post-pr-open"):
 		v := *withGithookPostPROpen
 		fs.WithGithookPostPROpen = &v
+	}
+	switch {
+	case c("without-bus-workflows") && *withoutBusWorkflows:
+		off := false
+		fs.WithBusWorkflows = &off
+	case c("with-bus-workflows"):
+		fs.WithBusWorkflows = withBusWorkflows
 	}
 	return fs
 }
