@@ -469,15 +469,17 @@ func ScratchpadPath(slug, goos string, env func(string) string) string {
 	leaf := slug + ".scratchpad"
 	switch goos {
 	case "windows":
-		base := env("LOCALAPPDATA")
-		if base == "" {
-			base = env("TEMP")
+		// LOCALAPPDATA points at `...\AppData\Local` so we still need to
+		// append the Temp segment. TEMP and the C:\Windows\Temp hard
+		// fallback already end in Temp; appending another segment would
+		// produce `...\Temp\Temp\<leaf>`.
+		if base := env("LOCALAPPDATA"); base != "" {
+			return filepath.Join(base, "Temp", leaf)
 		}
-		if base == "" {
-			base = `C:\Windows\Temp`
+		if base := env("TEMP"); base != "" {
+			return filepath.Join(base, leaf)
 		}
-		// Windows convention: %LOCALAPPDATA%\Temp\<leaf>.
-		return filepath.Join(base, "Temp", leaf)
+		return filepath.Join(`C:\Windows\Temp`, leaf)
 	case "linux":
 		if v := env("XDG_RUNTIME_DIR"); v != "" {
 			return filepath.Join(v, leaf)
