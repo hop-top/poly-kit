@@ -333,24 +333,34 @@ exit 0
 // stubCurlAgainst writes a `curl` that performs a real HTTP GET against
 // httpTestURL — i.e. we exercise the actual probe path against
 // httptest.NewServer rather than a hard-coded status.
+//
+// The stub records the last positional argument (the URL the hook
+// composed) into h.curlLog so tests can assert PROBE_URL composition
+// independently of HTTP behavior. If the hook composed a URL different
+// from httpTestURL, the stub still forwards the request to httpTestURL
+// (so HTTP-backed gating tests stay stable) but the recorded value in
+// h.curlLog will diverge — a positive-assertion test catches the
+// regression. See TestHook_ProbeURLComposition_RecordsExpectedURL.
 func (h *hookHarness) stubCurlAgainst(t *testing.T, httpTestURL string) {
 	t.Helper()
 	// The real curl binary is on the host PATH; we can't shadow it with
 	// itself. Use a thin wrapper that calls the real curl with the
-	// configured URL (in case the hook's PROBE_URL composition is
-	// inadvertently wrong, the wrapper still hits httpTestURL — but the
-	// hook test below also exercises the URL composition).
+	// configured URL.
 	realCurl := "/usr/bin/curl"
 	if _, err := os.Stat(realCurl); err != nil {
 		t.Skip("real curl not at /usr/bin/curl; skipping HTTP-backed probe test")
 	}
-	// Pass-through wrapper: forward the script's args verbatim so
-	// --max-time, --connect-timeout, --silent, --output, --write-out
-	// continue to behave as the hook expects. The URL the hook composed
-	// is the last positional, but we explicitly substitute httpTestURL
-	// so the test asserts the hook's gating logic, not URL composition.
+	// Pass-through wrapper: capture the URL the hook passed (last
+	// positional) into h.curlLog, then forward all flags verbatim to
+	// the real curl but pointed at httpTestURL. The capture-then-redirect
+	// shape lets tests assert URL composition via h.curlLog while HTTP
+	// gating continues to exercise httptest.NewServer.
 	script := `#!/usr/bin/env bash
 ARGS=("$@")
+# Last positional carries the URL the hook composed. Record it
+# verbatim so tests can assert PROBE_URL composition.
+HOOK_URL="${ARGS[$((${#ARGS[@]}-1))]}"
+printf '%s\n' "${HOOK_URL}" >> "` + h.curlLog + `"
 URL="` + httpTestURL + `"
 exec ` + realCurl + ` "${ARGS[@]:0:$((${#ARGS[@]}-1))}" "${URL}"
 `
