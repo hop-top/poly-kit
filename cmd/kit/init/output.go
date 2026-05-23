@@ -33,11 +33,18 @@ type Summary struct {
 	GitHub     *GitHubSummary  `json:"github,omitempty"`
 	HopSkipped bool            `json:"hop_skipped,omitempty"`
 	TLCSkipped bool            `json:"tlc_skipped,omitempty"`
+
 	// PrePrHook reports the .githooks/pre-pr and .kit/generated.json
-	// rows kit init wrote (or would write, in dry-run). Absent when the
-	// generator was disabled via --without-githook-pre-pr.
+	// rows kit init wrote (or would write, in dry-run). Absent when
+	// the generator was disabled via --without-githook-pre-pr.
 	PrePrHook *PrePrResult `json:"prepr_hook,omitempty"`
-	NextSteps []string     `json:"next_steps"`
+
+	// Workflows lists every `.github/workflows/*-caller.yml` action
+	// taken by the generator. Empty when `--without-github-workflows`
+	// was passed or no runtimes matched a registered generator.
+	Workflows []WorkflowAction `json:"workflows,omitempty"`
+
+	NextSteps []string `json:"next_steps"`
 }
 
 // GitHubSummary is the JSON-friendly subset of github.RepoInfo embedded
@@ -108,6 +115,21 @@ func WriteHuman(w io.Writer, s Summary) error {
 			line := fmt.Sprintf("  %s [%s]", f.Path, f.Action)
 			if f.SuggestedPath != "" {
 				line += " → " + f.SuggestedPath
+			}
+			if _, err := fmt.Fprintln(w, line); err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(s.Workflows) > 0 {
+		if _, err := fmt.Fprintln(w, "\nGitHub workflows:"); err != nil {
+			return err
+		}
+		for _, a := range s.Workflows {
+			line := fmt.Sprintf("  %s [%s]", a.Path, a.Action)
+			if a.SuggestedPath != "" {
+				line += " → " + a.SuggestedPath
 			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
 				return err

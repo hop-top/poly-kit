@@ -107,12 +107,24 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		}
 	}
 
+	// Render `.github/workflows/*-caller.yml` stubs in augment mode.
+	// The renderer reads `.kit/generated.json` and honors the
+	// .kit-suggested fallback when a tracked file diverges from the
+	// recorded hash.
+	var workflowActions []WorkflowAction
+	if in.WithGitHubWorkflows {
+		wfActions, werr := renderWorkflows(cwd, in.Runtime, in, nil)
+		if werr != nil {
+			return Summary{}, fmt.Errorf("augment: render github workflows: %w", werr)
+		}
+		workflowActions = wfActions
+	}
+
 	// Steps 9-10: NO git.Init, NO github.Create — existing repo.
 
-	// PR-wiring (T-0773). Section 6 conflict policy: existing hook is
-	// either refreshed (manifest hash matches) or surfaced as a
-	// .kit-suggested sibling (user-edited). Dry-run produces the same
-	// report shape without writes.
+	// Existing hook is either refreshed (manifest hash matches) or
+	// surfaced as a .kit-suggested sibling (user-edited). Dry-run
+	// produces the same report shape without writes.
 	var preprResult *PrePrResult
 	if in.WithPrePrHook {
 		pr, perr := GeneratePrePrHook(cwd, in.DryRun, time.Now().UTC())
@@ -141,6 +153,7 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		Result:     result,
 		TLCSkipped: tlcSkipped,
 		PrePrHook:  preprResult,
+		Workflows:  workflowActions,
 		NextSteps:  NextSteps("augment", in.Name, nil),
 	}, nil
 }
