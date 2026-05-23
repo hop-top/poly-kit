@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-php/v0.4.0-alpha.1...kit-php/v0.4.0-alpha.2) (2026-05-23)
+
+The hop-top team is happy to announce Kit's PHP SDK 0.4.0-alpha.2. This release includes new features and bug fixes.
+
+
+### Features
+
+* **contracts:** typeid-v1 cross-language parity fixtures
+* **init:** add php & rs templates
+* initial public release
+* **php:** kit-sdk/Id — typeid primitive
+* **telemetry:** consenting telemetry stack across kit-go + 4 SDKs
+
+
+### Bug Fixes
+
+* **sdk/php:** rename SemVer pre-release identifier experimental.1 -&gt; alpha.1 (T-0183)
+
+Full diff: [kit-php/v0.4.0-alpha.1...kit-php/v0.4.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-php/v0.4.0-alpha.1...kit-php/v0.4.0-alpha.2)
+
 ## [Unreleased]
 
 ### Added
