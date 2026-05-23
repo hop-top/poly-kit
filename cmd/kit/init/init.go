@@ -254,10 +254,14 @@ func InitCmd(root *cli.Root) *cobra.Command {
 	f.BoolVar(&withoutGitHubWorkflowsFlag, "without-github-workflows", false,
 		"Skip .github/workflows/*-caller.yml generation (alias for --with-github-workflows=false)")
 
-	// Per-generator opt-in flags (contract §8). Mutually-exclusive
-	// pairs both default to false (the FlagSet records Changed on the
-	// one the user passed); buildFlagSet folds the pair into a single
-	// *bool so Gather's precedence chain sees one value.
+	// Per-generator wiring flags (contract §8). The pair is mutually
+	// exclusive: --with-githook-post-pr-open defaults to true (opt-in
+	// by default), --without-githook-post-pr-open defaults to false
+	// and is the explicit opt-out. When both are passed, the
+	// --without- form wins (louder signal). buildFlagSet collapses
+	// the pair into a single *bool so Gather's precedence chain sees
+	// one value; cobra's Changed() drives which of the two the user
+	// supplied.
 	f.BoolVar(&withGithookPostPROpenFlag, "with-githook-post-pr-open", true,
 		"Generate .githooks/post-pr-open (after-PR-open hook; T-0774)")
 	f.BoolVar(&withoutGithookPostPROpenFlag, "without-githook-post-pr-open", false,
