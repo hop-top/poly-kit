@@ -192,7 +192,10 @@ func runCompletedFile() File {
 		"KIT_BUS_PR_URL": "${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.workflow_run.pull_requests[0].number }}",
 		"KIT_BUS_PR_BRANCH":      "${{ github.event.workflow_run.head_branch }}",
 		"KIT_BUS_PR_HEAD_SHA":    "${{ github.event.workflow_run.head_sha }}",
-		"KIT_BUS_PR_BASE_SHA":    "${{ github.event.workflow_run.head_repository.default_branch }}",
+		// pull_requests[i] is a pull_request_minimal — base.sha is
+		// the real base commit SHA. workflow_run.head_repository.
+		// default_branch is a branch name, not a SHA.
+		"KIT_BUS_PR_BASE_SHA": "${{ github.event.workflow_run.pull_requests[0].base.sha }}",
 	}
 	flags := []string{
 		"--kind run.completed",
