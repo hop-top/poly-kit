@@ -157,14 +157,33 @@ project_id() {
 }
 
 scratchpad_path() {
-    local id="$1" base
-    case "$(uname -s)" in
+    local id="$1" base kernel
+    kernel="$(uname -s)"
+    case "$kernel" in
         Darwin)
             base="${TMPDIR:-/tmp}"
             ;;
         Linux)
             if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
                 base="$XDG_RUNTIME_DIR"
+            elif [ -n "${TMPDIR:-}" ]; then
+                base="$TMPDIR"
+            else
+                base="/tmp"
+            fi
+            ;;
+        MINGW*|MSYS*|CYGWIN*)
+            # Git Bash / MSYS2 / Cygwin running on Windows. Mirror the
+            # Go-side ScratchpadPath precedence: LOCALAPPDATA + Temp,
+            # else TEMP (already ends in Temp; no doubled segment),
+            # else TMPDIR, else /tmp. Git Bash translates `C:\...`
+            # paths to `/c/...` automatically, so we can pass either
+            # form through; bash itself only cares about forward
+            # slashes.
+            if [ -n "${LOCALAPPDATA:-}" ]; then
+                base="${LOCALAPPDATA}/Temp"
+            elif [ -n "${TEMP:-}" ]; then
+                base="$TEMP"
             elif [ -n "${TMPDIR:-}" ]; then
                 base="$TMPDIR"
             else
