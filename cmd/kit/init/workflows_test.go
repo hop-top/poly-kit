@@ -433,6 +433,66 @@ func TestRenderWorkflows_UserEditConverges_ReclaimsManifest(t *testing.T) {
 	}
 }
 
+// TestReadManifest_RejectsUnknownVersion verifies that readManifest
+// fails fast when the on-disk manifest pins a version that this kit
+// build doesn't recognize. We default missing (==0) fields, but a
+// non-zero value MUST match the pinned constant.
+func TestReadManifest_RejectsUnknownVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "generated.json")
+	data := []byte(`{"version": 2, "generated_by": "kit-init", "files": []}`)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	_, err := readManifest(path)
+	require.Error(t, err, "version 2 manifest must be rejected")
+	assert.Contains(t, err.Error(), "version",
+		"error must mention the version mismatch: %v", err)
+}
+
+// TestReadManifest_RejectsUnknownGeneratedBy ensures a manifest written
+// by a different tool name doesn't get silently accepted by kit-init.
+func TestReadManifest_RejectsUnknownGeneratedBy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "generated.json")
+	data := []byte(`{"version": 1, "generated_by": "wrong-tool", "files": []}`)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	_, err := readManifest(path)
+	require.Error(t, err, "generated_by 'wrong-tool' must be rejected")
+	assert.Contains(t, err.Error(), "generated_by",
+		"error must mention the generated_by mismatch: %v", err)
+}
+
+// TestReadManifest_DefaultsMissingFields preserves the legacy behavior:
+// if both fields are missing/zero, defaults apply. This guards against
+// the new validation accidentally breaking the empty-manifest path.
+func TestReadManifest_DefaultsMissingFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "generated.json")
+	// Both fields absent → defaults must apply.
+	data := []byte(`{"files": []}`)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	m, err := readManifest(path)
+	require.NoError(t, err)
+	assert.Equal(t, manifestVersion, m.Version)
+	assert.Equal(t, manifestGeneratedBy, m.GeneratedBy)
+}
+
+// TestReadManifest_AcceptsCorrectSchema is the happy path: version and
+// generated_by match the pinned constants.
+func TestReadManifest_AcceptsCorrectSchema(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "generated.json")
+	data := []byte(`{"version": 1, "generated_by": "kit-init", "files": []}`)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	m, err := readManifest(path)
+	require.NoError(t, err)
+	assert.Equal(t, manifestVersion, m.Version)
+	assert.Equal(t, manifestGeneratedBy, m.GeneratedBy)
+}
+
 func TestRenderWorkflows_HopTopRefIsPinned(t *testing.T) {
 	// The default ref must be `v0` (matches existing poly-kit callers in
 	// .github/workflows/publish.yml). If you ever bump it, tighten the

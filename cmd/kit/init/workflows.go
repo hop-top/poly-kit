@@ -511,11 +511,26 @@ func readManifest(path string) (*Manifest, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("decode manifest: %w", err)
 	}
-	if m.Version == 0 {
+	// Default missing (zero/empty) fields, but reject any explicitly-set
+	// value that disagrees with the pinned schema. A future kit-init
+	// bumping these constants will rewrite existing manifests in place;
+	// the current build must fail fast rather than silently mis-interpret
+	// a newer or third-party manifest.
+	switch m.Version {
+	case 0:
 		m.Version = manifestVersion
+	case manifestVersion:
+		// ok
+	default:
+		return nil, fmt.Errorf("unexpected manifest version %d (expected %d)", m.Version, manifestVersion)
 	}
-	if m.GeneratedBy == "" {
+	switch m.GeneratedBy {
+	case "":
 		m.GeneratedBy = manifestGeneratedBy
+	case manifestGeneratedBy:
+		// ok
+	default:
+		return nil, fmt.Errorf("unexpected manifest generated_by %q (expected %q)", m.GeneratedBy, manifestGeneratedBy)
 	}
 	return &m, nil
 }
