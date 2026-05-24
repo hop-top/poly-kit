@@ -9,6 +9,13 @@ kit-managed blocks (mise.toml, `.devcontainer/*`, `.env.example`
 kit-adapter blocks) are refreshed by `kit init`; the additive-merge
 checks below cover everything *outside* the managed scope.
 
+`kit init --update` is the **modern** way to refresh managed
+blocks; `conform.sh` is kept as a thin wrapper for the additive
+checks (license headers, missing files, Makefile / `.gitignore`
+merges) that fall outside the kit-managed scope. New adopters
+should reach for `kit init` first — see
+[RUNBOOK-UPGRADE.md](RUNBOOK-UPGRADE.md).
+
 ## Usage
 
 ```
