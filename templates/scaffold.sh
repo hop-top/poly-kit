@@ -22,6 +22,13 @@ source "$SCRIPT_DIR/reserve-packages.sh"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
+# >>> T-0806: docker-compose emitter sources >>>
+# shellcheck source=shared/managed-block.sh
+source "$SCRIPT_DIR/shared/managed-block.sh"
+# shellcheck source=shared/emit-docker-compose.sh
+source "$SCRIPT_DIR/shared/emit-docker-compose.sh"
+# <<< T-0806 <<<
+
 # --- Tool detection ------------------------------------
 
 detect_tools
@@ -42,6 +49,9 @@ ORG=""
 MODULE_PREFIX=""
 NO_TLC=false
 NO_PUSH=false
+# >>> T-0806: NO_DEVCONTAINER default (shared with T-0805) >>>
+NO_DEVCONTAINER=${NO_DEVCONTAINER:-false}
+# <<< T-0806 <<<
 
 # Auto-detect forge
 if [ "$HAS_GH" = true ]; then
@@ -84,6 +94,7 @@ USAGE
   fi
 
   cat <<USAGE
+  --no-devcontainer     Skip .devcontainer scaffolding
   -h, --help            Show this help
 
 Examples:
@@ -157,6 +168,11 @@ while [ $# -gt 0 ]; do
     --no-push)
       NO_PUSH=true; shift
       ;;
+    # >>> T-0806: --no-devcontainer flag (shared with T-0805) >>>
+    --no-devcontainer)
+      NO_DEVCONTAINER=true; shift
+      ;;
+    # <<< T-0806 <<<
     -*)
       echo "Error: unknown flag: $1" >&2
       exit 1
@@ -417,6 +433,13 @@ _lib_tmp="$(cd "$OUTPUT" && cd .. && pwd)/lib.sh"
 cp "$SCRIPT_DIR/lib.sh" "$_lib_tmp"
 (cd "$OUTPUT" && bash init.sh)
 rm -f "$_lib_tmp"
+
+# >>> T-0806: docker-compose emitter call >>>
+if [ "$NO_DEVCONTAINER" = false ]; then
+  echo "Emitting .devcontainer/docker-compose.yml..."
+  emit_docker_compose "$OUTPUT" "$NAME"
+fi
+# <<< T-0806 <<<
 
 # --- Post-clone setup ----------------------------------
 
