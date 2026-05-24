@@ -597,7 +597,9 @@ setup_release_please "$OUTPUT" "${LANG_ARRAY[@]}"
 
 # --- First commit + push -------------------------------
 
-# Stage copilot instructions (init.sh already committed template files)
+# init.sh already committed the template files; this commit
+# picks up the post-init artifacts (mise.toml, .devcontainer/,
+# .env.example, copilot instructions, release-please config).
 (cd "$OUTPUT" && git add -A && git commit -m "feat: scaffold $NAME" --allow-empty) || true
 
 if [ "$NO_PUSH" = false ] && [ -n "$REPO_URL" ]; then

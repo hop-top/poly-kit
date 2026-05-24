@@ -12,6 +12,10 @@
 #     <lang-csv>     Comma-separated lang list. Subset of
 #                    "go,ts,py,rs". Order is ignored.
 #
+# Spec §3 shows per-line exemplar comments (e.g. `# if lang
+# includes go`); the emitter does not reproduce those — tests
+# assert on content, not on illustrative comments.
+#
 # What gets emitted (always inside kit-managed markers):
 #
 #   [tools]

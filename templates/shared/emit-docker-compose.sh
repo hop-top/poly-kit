@@ -21,6 +21,15 @@
 #
 # otel-config.yaml is entirely kit-managed (one unlabeled block).
 #
+# Marker indentation: kit-managed markers are emitted at column
+# 0 (managed-block.sh's universal convention), even though the
+# services they wrap are nested under `services:` at column 2.
+# Spec §6 shows the markers at column 2 for visual alignment,
+# but YAML accepts comments at any column inside a mapping;
+# `docker compose config` parses both. Keeping the marker
+# convention uniform across file types (TOML, YAML, JSON-C,
+# .env) outweighs the cosmetic indent in this one file.
+#
 # Idempotent: re-emitting produces byte-identical files because
 # managed-block.sh writes via temp + `cmp -s` check, and the
 # devcontainer service block is also written deterministically.
