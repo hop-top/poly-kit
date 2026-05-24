@@ -129,7 +129,7 @@ func RunManaged(ctx context.Context, opts ManagedOptions) error {
 
 	// Service ops short-circuit emitter flow.
 	if opts.AddService != "" || opts.RemoveService != "" {
-		return runServiceOp(scriptDir, opts)
+		return runServiceOp(ctx, scriptDir, name, opts)
 	}
 
 	// 3/4. Run emitters either in-place or in a sandbox copy.
@@ -352,7 +352,12 @@ emit_env_example    "${PROJECT}" "${NAME}"
 // runServiceOp invokes apply-services.sh when present in the
 // extracted asset bundle. Returns a descriptive error when the
 // helper is not embedded (T-0808 hasn't merged into the worktree).
-func runServiceOp(scriptDir string, opts ManagedOptions) error {
+//
+// projectName is the already-resolved name from RunManaged (opts.Name
+// with filepath.Base(opts.Cwd) fallback), so apply-services.sh sees
+// the same identifier the emitters wrote into mise.toml / compose /
+// .env.
+func runServiceOp(ctx context.Context, scriptDir, projectName string, opts ManagedOptions) error {
 	applier := filepath.Join(scriptDir, "apply-services.sh")
 	if _, err := os.Stat(applier); errors.Is(err, fs.ErrNotExist) {
 		op := "--add-service"
@@ -370,7 +375,6 @@ func runServiceOp(scriptDir string, opts ManagedOptions) error {
 	// done by re-running apply_services with the surviving subset.
 	// For --remove-service, we read the current opted-in block to
 	// learn what's there, compute the new CSV, and re-apply.
-	projectName := filepath.Base(opts.Cwd)
 	var driverInvoke string
 	if opts.AddService != "" {
 		driverInvoke = fmt.Sprintf(
@@ -397,7 +401,7 @@ source "${SCRIPT_DIR}/apply-services.sh"
 	if err := os.WriteFile(driverPath, []byte(driver), 0o755); err != nil {
 		return fmt.Errorf("write services driver: %w", err)
 	}
-	cmd := exec.Command("bash", driverPath)
+	cmd := exec.CommandContext(ctx, "bash", driverPath)
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
 	return cmd.Run()
