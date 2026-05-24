@@ -283,3 +283,164 @@ EOF
   assert_file_contains \
     "$d/go.mod" "replace hop.top/kit => ../kit"
 }
+
+# ----------------------------------------------------------
+# Test 6: kit init --update wrapper (T-0811)
+# ----------------------------------------------------------
+#
+# These tests exercise the new managed-block refresh
+# delegation. They use a stub KIT_BIN so they don't depend
+# on the real kit binary being on PATH.
+#
+# To make the detection ladder deterministic (the dev's
+# real `kit` and `go` live next to each other in
+# ~/.local/bin and ~/.local/share/mise), we sanitize PATH
+# to strip those two locations. The remainder retains the
+# tools conform.sh needs (git, grep, sed, awk, etc.) so
+# the additive-merge checks still run.
+sanitized_path() {
+  echo "$PATH" \
+    | tr ':' '\n' \
+    | grep -v '\.local/bin' \
+    | grep -v 'mise/installs/go' \
+    | paste -sd: -
+}
+
+# Write a stub kit binary that records its invocation
+# arguments and emits a managed.go-style "refreshed N
+# managed file(s)" stdout block.
+write_kit_stub() {
+  local stub="$1" record="$2" exit_code="${3:-0}"
+  cat > "$stub" <<EOF
+#!/usr/bin/env bash
+echo "\$@" > "$record"
+cat <<OUT
+kit init: refreshed 2 managed file(s):
+  - mise.toml
+  - .devcontainer/devcontainer.json
+OUT
+exit $exit_code
+EOF
+  chmod +x "$stub"
+}
+
+@test "conform: --no-managed-refresh skips kit init" {
+  local d="$TEST_DIR/t6no"
+  create_go_project "$d"
+
+  # If kit were invoked, this stub would fail.
+  local stub="$TEST_DIR/kit-stub-fail"
+  local record="$TEST_DIR/kit-stub-fail.log"
+  write_kit_stub "$stub" "$record" 99
+
+  run env KIT_BIN="$stub" PATH="$(sanitized_path)" \
+    "$SCRIPT_DIR/conform.sh" \
+    --path "$d" --no-tlc --no-managed-refresh
+
+  # Stub should NOT have been called.
+  [ ! -f "$record" ]
+  # Report should reflect the skip (anchor on a literal
+  # substring that doesn't start with --).
+  assert_file_contains "$d/conform-report.md" \
+    "no-managed-refresh"
+}
+
+@test "conform: KIT_BIN env var is used when kit not on PATH" {
+  local d="$TEST_DIR/t6env"
+  create_go_project "$d"
+
+  local stub="$TEST_DIR/kit-stub-env"
+  local record="$TEST_DIR/kit-stub-env.log"
+  write_kit_stub "$stub" "$record" 0
+
+  run env KIT_BIN="$stub" PATH="$(sanitized_path)" \
+    "$SCRIPT_DIR/conform.sh" \
+    --path "$d" --no-tlc
+
+  # Stub must have been called with `init --update --quiet`.
+  [ -f "$record" ]
+  grep -q -- "init --update --quiet" "$record"
+
+  # Report should list the managed files the stub emitted.
+  assert_file_contains "$d/conform-report.md" \
+    "Managed Blocks"
+  assert_file_contains "$d/conform-report.md" "mise.toml"
+}
+
+@test "conform: --dry-run uses kit init --check (no drift)" {
+  local d="$TEST_DIR/t6dry"
+  create_go_project "$d"
+
+  local stub="$TEST_DIR/kit-stub-dry"
+  local record="$TEST_DIR/kit-stub-dry.log"
+  # Exit 0 — no drift.
+  write_kit_stub "$stub" "$record" 0
+
+  run env KIT_BIN="$stub" PATH="$(sanitized_path)" \
+    "$SCRIPT_DIR/conform.sh" \
+    --path "$d" --no-tlc --dry-run
+
+  # Stub fires with --check.
+  [ -f "$record" ]
+  grep -q -- "init --check --quiet" "$record"
+
+  # Managed status reflects "ok" in the report.
+  assert_file_contains "$d/conform-report.md" "Status: ok"
+}
+
+@test "conform: --dry-run reports drift in report" {
+  local d="$TEST_DIR/t6drift"
+  create_go_project "$d"
+
+  local stub="$TEST_DIR/kit-stub-drift"
+  local record="$TEST_DIR/kit-stub-drift.log"
+  # exit 1 = drift detected by kit init --check
+  write_kit_stub "$stub" "$record" 1
+
+  run env KIT_BIN="$stub" PATH="$(sanitized_path)" \
+    "$SCRIPT_DIR/conform.sh" \
+    --path "$d" --no-tlc --dry-run
+
+  # Stub fires with --check.
+  [ -f "$record" ]
+  grep -q -- "init --check --quiet" "$record"
+
+  # Managed status reflects "drift" in the report.
+  assert_file_contains "$d/conform-report.md" "Status: drift"
+}
+
+@test "conform: missing kit + go src warns + continues" {
+  local d="$TEST_DIR/t6miss"
+  create_go_project "$d"
+
+  # Stage conform.sh + sibling sources in a fake
+  # templates dir WITHOUT scaffold.sh so detection rule
+  # #3 (in-repo build) misses. PATH stripped of kit/go
+  # so #1 and #3 both fail; KIT_BIN unset so #2 misses.
+  local fake_templates="$TEST_DIR/fake-templates"
+  mkdir -p "$fake_templates"
+  cp "$SCRIPT_DIR/lib.sh" "$fake_templates/"
+  cp "$SCRIPT_DIR/conform-actions.sh" "$fake_templates/"
+  cp "$SCRIPT_DIR/setup-release-please.sh" "$fake_templates/"
+  cp "$SCRIPT_DIR/conform.sh" "$fake_templates/"
+  # Copy any blueprint dirs the action helpers need so
+  # the additive-merge checks don't fail looking for
+  # source files. (conform-actions.sh resolves these
+  # relative to its own SCRIPT_DIR.)
+  if [ -d "$SCRIPT_DIR/shared" ]; then
+    cp -R "$SCRIPT_DIR/shared" "$fake_templates/"
+  fi
+  if [ -d "$SCRIPT_DIR/ci" ]; then
+    cp -R "$SCRIPT_DIR/ci" "$fake_templates/"
+  fi
+
+  run env -u KIT_BIN PATH="$(sanitized_path)" \
+    "$fake_templates/conform.sh" \
+    --path "$d" --no-tlc
+
+  # Report exists; additive-merge checks still ran.
+  assert_file_exists "$d/conform-report.md"
+  # Report should note that managed refresh was skipped.
+  assert_file_contains "$d/conform-report.md" \
+    "kit binary not found"
+}
