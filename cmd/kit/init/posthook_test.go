@@ -370,12 +370,21 @@ exec ` + realCurl + ` "${ARGS[@]:0:$((${#ARGS[@]}-1))}" "${URL}"
 // run invokes the hook via /bin/bash with PATH limited to h.pathDir plus
 // the minimum the hook needs (sed, tr, head, sh — assumed available in
 // /usr/bin and /bin on macOS/Linux). Returns stderr + exit code.
+//
+// Tests can override PATH by passing a "PATH" key in env — useful for
+// missing-tool tests that need to ensure a real binary (e.g. /usr/bin/gh
+// on CI runners where gh is preinstalled) does NOT leak into the
+// harness's PATH and accidentally satisfy `command -v`.
 func (h *hookHarness) run(t *testing.T, env map[string]string) (stderr string, exitCode int) {
 	t.Helper()
 	// We deliberately do NOT include $HOME's PATH to keep the harness
 	// hermetic; but /usr/bin and /bin are required for sed/tr/head/sh.
 	// (curl is shadowed via h.pathDir; gh and tlc are stubbed there too.)
 	envPath := h.pathDir + ":/usr/bin:/bin"
+	if override, ok := env["PATH"]; ok {
+		envPath = override
+		delete(env, "PATH")
+	}
 
 	args := []string{h.hookPath}
 	cmd := newExecCmd("/bin/bash", args)
@@ -598,12 +607,18 @@ func TestHook_MissingTLC_LogsAndExits0(t *testing.T) {
 
 func TestHook_MissingGH_LogsAndExits0(t *testing.T) {
 	h := newHookHarness(t)
-	// No gh stub — `command -v gh` returns non-zero.
+	// No gh stub — `command -v gh` must return non-zero. We override
+	// PATH to ONLY h.pathDir so a preinstalled /usr/bin/gh (present on
+	// Ubuntu CI runners) does not leak in and accidentally satisfy
+	// `command -v gh`. The hook's missing-gh branch uses only bash
+	// builtins (printf, command, exit) before exiting, so the host
+	// utilities under /usr/bin are not required to reach it.
 	h.stubTLC(t)
 	h.stubCurl(t, "200")
 
 	stderr, exit := h.run(t, map[string]string{
 		"KIT_BUS_ENABLED": "true",
+		"PATH":            h.pathDir,
 	})
 
 	assert.Equal(t, 0, exit, "missing gh must NEVER block PR creation")
