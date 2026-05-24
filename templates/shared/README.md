@@ -122,3 +122,72 @@ Pure bash + POSIX `awk`, `grep`, `cmp`, `mktemp`, `mv`. Avoids
 file and atomically renaming. Verified on macOS BSD awk and
 GNU awk. Tests live in `managed-block.bats` and run with
 [bats-core](https://github.com/bats-core/bats-core).
+
+## emit-devcontainer-json.sh
+
+Emits `<project>/.devcontainer/devcontainer.json` in compose
+mode — no custom Dockerfile, toolchain provided by the
+`ghcr.io/jdx/mise/features/mise:1` devcontainer feature.
+
+### API
+
+```bash
+source "$SCRIPT_DIR/shared/managed-block.sh"
+source "$SCRIPT_DIR/shared/emit-devcontainer-json.sh"
+
+emit_devcontainer_json <project-dir> <project-name> <lang-csv>
+```
+
+| Argument        | Notes                                              |
+|-----------------|----------------------------------------------------|
+| `<project-dir>` | Project root. The file is written under `.devcontainer/`. |
+| `<project-name>`| Interpolated into the JSON `"name"` field.         |
+| `<lang-csv>`    | Comma-separated subset of `go`, `ts`, `py`, `rs`.  |
+
+### What gets emitted
+
+Per the track spec §5
+(`.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md`):
+
+- `dockerComposeFile: "docker-compose.yml"` (sibling file
+  emitted by T-0806).
+- `service: "devcontainer"`, `workspaceFolder: "/workspace"`,
+  `remoteUser: "dev"`.
+- `features` — `common-utils:2` + `jdx/mise:1`.
+- Managed `lifecycle` block — `postCreateCommand` runs
+  `mise trust && mise install && mise run install`;
+  `postStartCommand` runs `mise install --quiet`.
+- Managed `extensions` block inside
+  `customizations.vscode.extensions[]` — per-language VS Code
+  extensions (see mapping below), plus always-included
+  `jdx.mise-vscode` and `EditorConfig.EditorConfig`.
+- `forwardPorts: [16686, 4318]` — Jaeger UI and OTLP HTTP.
+
+### Per-language extension mapping
+
+| Lang | Extensions                                                          |
+|------|---------------------------------------------------------------------|
+| `go` | `golang.go`                                                         |
+| `ts` | `dbaeumer.vscode-eslint`, `esbenp.prettier-vscode`                  |
+| `py` | `ms-python.python`, `ms-python.vscode-pylance`, `charliermarsh.ruff`|
+| `rs` | `rust-lang.rust-analyzer`, `tamasfe.even-better-toml`               |
+
+Per-language extensions are appended in the canonical order
+`go → ts → py → rs` so two scaffolds with the same lang set
+produce a byte-identical file (idempotency).
+
+### JSON-C handling
+
+`devcontainer.json` is JSON-C — JSON with `//` line comments
+and trailing commas — both accepted by the devcontainer spec
+and by VS Code's loader. The emitter uses `mb_write` with the
+JSON-C comment marker (`//`) for the managed blocks. To parse
+the file with stricter loaders (e.g. `jq`), strip `//` line
+comments and trailing commas first; the bats tests demonstrate
+this.
+
+### Skipping emission
+
+`templates/scaffold.sh --no-devcontainer` skips this emitter
+(and the sibling `docker-compose.yml` emitter from T-0806).
+Tests live in `emit-devcontainer-json.bats`.
