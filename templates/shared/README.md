@@ -123,7 +123,6 @@ file and atomically renaming. Verified on macOS BSD awk and
 GNU awk. Tests live in `managed-block.bats` and run with
 [bats-core](https://github.com/bats-core/bats-core).
 
-<<<<<<< HEAD
 ## emit-mise.sh
 
 `emit-mise.sh` writes a kit-managed `mise.toml` into a project
