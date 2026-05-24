@@ -322,3 +322,101 @@ survive subsequent re-emits. `kit init --add-service redis`
 `KIT_QUEUE_REDIS_URL` within the `queue` block.
 
 Tests live in `emit-env-example.bats`.
+
+## Services catalog
+
+`templates/shared/services/` ships compose snippets + matching
+`.env` snippets for the five `--services` catalog members. The
+catalog is the opt-in counterpart to the always-on `telemetry`
+block emitted by `emit-docker-compose.sh`.
+
+### Layout
+
+```
+services/
+├── postgres.yml      # compose stanza
+├── redis.yml
+├── minio.yml
+├── mailpit.yml
+├── redpanda.yml
+└── env/
+    ├── postgres.env  # env vars to merge into .env.example
+    ├── redis.env
+    ├── minio.env
+    ├── mailpit.env
+    └── redpanda.env
+```
+
+| Service    | Image (pinned)                                            | Purpose                                |
+|------------|-----------------------------------------------------------|----------------------------------------|
+| `postgres` | `postgres:17-alpine`                                      | Relational DB; queue backend candidate |
+| `redis`    | `redis:8-alpine` (AOF on)                                 | Cache; queue backend candidate         |
+| `minio`    | `quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`        | S3-compatible object store             |
+| `mailpit`  | `axllent/mailpit:v1.21`                                   | SMTP capture + web UI for dev          |
+| `redpanda` | `docker.redpanda.com/redpandadata/redpanda:v24.2.7`       | Kafka API + schema registry, single node |
+
+`{{PROJECT_NAME}}` inside each snippet is substituted with the
+scaffolded project name (e.g. `POSTGRES_DB`, `S3_BUCKET`,
+`SMTP_FROM`).
+
+### API
+
+```bash
+source "$SCRIPT_DIR/shared/managed-block.sh"
+source "$SCRIPT_DIR/shared/apply-services.sh"
+
+apply_services    <project-dir> <project-name> <services-csv>
+apply_no_services <project-dir>
+```
+
+`apply_services` performs three writes, all gated by
+`managed-block.sh` for byte-level idempotency:
+
+1. **Compose** — concatenates each selected snippet (in
+   canonical catalog order `postgres → redis → minio →
+   mailpit → redpanda`, regardless of input order) into the
+   `# kit-managed: opted-in services` block of
+   `<project-dir>/.devcontainer/docker-compose.yml`.
+2. **Queue block** — rewrites the `# kit-managed: queue`
+   block of `<project-dir>/.env.example` so `KIT_QUEUE_DRIVER`
+   and the corresponding URL line reflect the selection.
+3. **Services block** — creates (or refreshes) a single
+   `# kit-managed: services` block at the bottom of
+   `.env.example` containing the non-queue env vars
+   (`S3_*`, `SMTP_*`, `KAFKA_*`). Per-adapter blocks
+   (`queue`, `storage`, `log`, `config`, `telemetry`) stay
+   focused on adapter-level config so catalog vars don't
+   spread across them.
+
+`apply_no_services` strips the `# kit-managed: telemetry`
+block from the compose file (used by scaffold.sh's
+`--no-services` flag). The user-extensible `devcontainer:`
+service and the `# kit-managed: opted-in services` block are
+left intact.
+
+### `KIT_QUEUE_DRIVER` precedence
+
+Highest wins:
+
+| Selection contains | `KIT_QUEUE_DRIVER` |
+|--------------------|--------------------|
+| `redis`            | `redis`            |
+| `postgres` (no redis) | `postgres`      |
+| neither            | `sqlite` (default) |
+
+Selecting both `postgres` and `redis` uncomments **both**
+`KIT_QUEUE_REDIS_URL` and `KIT_QUEUE_POSTGRES_URL` but sets
+`KIT_QUEUE_DRIVER=redis`. The user can flip the driver value
+by hand inside the managed block; `kit init --update` will
+preserve manual driver flips only if the surrounding shape
+still matches.
+
+### Idempotency + ordering
+
+- Input order is normalized to catalog order, so
+  `--services redpanda,postgres` and `--services postgres,redpanda`
+  produce byte-identical compose + env files.
+- Running `apply_services` twice with the same arguments is a
+  no-op (verified by `cmp -s` in `mb_write`).
+
+Tests live in `apply-services.bats`.
