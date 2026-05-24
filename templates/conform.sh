@@ -30,6 +30,7 @@ DRY_RUN=false
 REPORT_FILE="conform-report.md"
 TRACK_ID="kit-conform"
 NO_TLC=false
+NO_MANAGED_REFRESH=false
 
 # --- Usage ---------------------------------------------
 
@@ -42,14 +43,25 @@ Bring an existing repo up to kit standards.
 Idempotent. Safe actions are applied automatically.
 Edge cases are flagged in a report with LLM-ready prompts.
 
+Managed-block refresh (mise.toml, .devcontainer/*,
+.env.example kit-adapter blocks) is delegated to
+\`kit init --update\`. Additive-merge checks (license
+headers, missing-file copies, Makefile and .gitignore
+extensions) run after the managed refresh.
+
 Flags:
-  --path DIR          Project directory (default: .)
-  --dry-run           Report only, no file changes
-  --report FILE       Output report path
-                      (default: conform-report.md)
-  --track-id ID       tlc track ID (default: kit-conform)
-  --no-tlc            Skip tlc track creation
-  -h, --help          Show this help
+  --path DIR             Project directory (default: .)
+  --dry-run              Report only, no file changes;
+                         runs \`kit init --check\` to
+                         preview managed-block drift
+  --report FILE          Output report path
+                         (default: conform-report.md)
+  --track-id ID          tlc track ID (default: kit-conform)
+  --no-tlc               Skip tlc track creation
+  --no-managed-refresh   Skip the \`kit init --update\`
+                         step (only run additive-merge
+                         checks)
+  -h, --help             Show this help
 USAGE
   exit 0
 }
@@ -71,6 +83,8 @@ while [ $# -gt 0 ]; do
       TRACK_ID="$2"; shift 2 ;;
     --no-tlc)
       NO_TLC=true; shift ;;
+    --no-managed-refresh)
+      NO_MANAGED_REFRESH=true; shift ;;
     -h|--help)
       usage ;;
     *)
@@ -88,8 +102,13 @@ cd "$PROJECT_PATH" || {
 }
 
 # --- Detection -----------------------------------------
+#
+# `detect_tools` may return non-zero when none of its
+# `command -v` probes succeed (e.g. minimal CI image).
+# That's informational, not fatal — disarm `set -e` for
+# the call.
 
-detect_tools
+detect_tools || true
 detect_languages
 detect_project_meta
 
@@ -101,7 +120,114 @@ echo "Languages: ${DETECTED_LANGS[*]:-none}"
 APPLIED=()
 SKIPPED=()
 REVIEW=()
+MANAGED_TOUCHED=()
+MANAGED_STATUS="skipped"
+MANAGED_NOTE=""
 TASKS_YAML=""
+
+# --- Kit binary detection ------------------------------
+#
+# Detection ladder for `kit init --update|--check`:
+#   1. `command -v kit`        — installed binary on PATH
+#   2. $KIT_BIN env var        — explicit override
+#   3. in-repo `go build`      — poly-kit dev workflow
+#   4. skip with warning       — downstream project without kit
+#
+# Resolved value (empty when skipped) is exported as KIT_BIN
+# so subshells can re-use it.
+
+find_kit_binary() {
+  # 1. installed kit on PATH
+  if command -v kit >/dev/null 2>&1; then
+    KIT_BIN="$(command -v kit)"
+    return 0
+  fi
+  # 2. caller-provided override
+  if [ -n "${KIT_BIN:-}" ] && [ -x "$KIT_BIN" ]; then
+    return 0
+  fi
+  # 3. in-repo build (we're running against poly-kit itself)
+  if [ -f "$SCRIPT_DIR/scaffold.sh" ] \
+     && [ -d "$SCRIPT_DIR/../cmd/kit" ] \
+     && command -v go >/dev/null 2>&1; then
+    local tmp
+    tmp="$(mktemp -d)"
+    if (cd "$SCRIPT_DIR/.." && \
+        go build -buildvcs=false -o "$tmp/kit" ./cmd/kit) \
+       >/dev/null 2>&1; then
+      KIT_BIN="$tmp/kit"
+      return 0
+    fi
+  fi
+  # 4. no kit available
+  KIT_BIN=""
+  return 1
+}
+
+# --- Managed-block refresh -----------------------------
+#
+# Delegates mise.toml / .devcontainer/* / .env.example
+# refresh to `kit init --update` (or `--check` under
+# --dry-run). Parses stdout's "  - <path>" lines so the
+# report can list which managed files were touched.
+
+run_managed_refresh() {
+  if [ "$NO_MANAGED_REFRESH" = true ]; then
+    MANAGED_STATUS="skipped"
+    MANAGED_NOTE="--no-managed-refresh"
+    echo "Managed refresh: skipped (--no-managed-refresh)"
+    return 0
+  fi
+
+  if ! find_kit_binary; then
+    MANAGED_STATUS="skipped"
+    MANAGED_NOTE="kit binary not found"
+    echo "Warning: kit binary not found on PATH and no" >&2
+    echo "  in-repo go source detected; skipping managed" >&2
+    echo "  refresh. Set \$KIT_BIN or install kit." >&2
+    return 0
+  fi
+
+  local verb="--update"
+  [ "$DRY_RUN" = true ] && verb="--check"
+  echo "Managed refresh: $KIT_BIN init $verb"
+
+  local kit_out
+  if kit_out="$("$KIT_BIN" init "$verb" --quiet 2>&1)"; then
+    MANAGED_STATUS="ok"
+  else
+    local rc=$?
+    # --check exits non-zero on drift — that's informational
+    # in --dry-run mode, not a hard failure.
+    if [ "$DRY_RUN" = true ]; then
+      MANAGED_STATUS="drift"
+    else
+      MANAGED_STATUS="error"
+      MANAGED_NOTE="kit init $verb exit=$rc"
+      echo "Warning: kit init $verb failed (exit $rc)" >&2
+      printf '  %s\n' "${kit_out//$'\n'/$'\n'  }" >&2
+      return 0
+    fi
+  fi
+
+  # Indent kit's output so it nests visually under the
+  # conform.sh log.
+  printf '  %s\n' "${kit_out//$'\n'/$'\n'  }"
+
+  # Parse "  - <path>" lines emitted by managed.go to
+  # collect the touched managed files.
+  local line path
+  while IFS= read -r line; do
+    case "$line" in
+      "  - "*)
+        path="${line#  - }"
+        MANAGED_TOUCHED+=("$path")
+        ;;
+    esac
+  done <<<"$kit_out"
+}
+
+run_managed_refresh
 
 # --- Tracking helpers ----------------------------------
 
@@ -168,11 +294,22 @@ $TASKS_YAML---
 
 ## Summary
 
-| Category | Count |
-|----------|-------|
-| Applied  | ${#APPLIED[@]} |
-| Skipped  | ${#SKIPPED[@]} |
-| Review   | ${#REVIEW[@]} |
+| Category        | Count |
+|-----------------|-------|
+| Applied         | ${#APPLIED[@]} |
+| Skipped         | ${#SKIPPED[@]} |
+| Review          | ${#REVIEW[@]} |
+| Managed (kit)   | ${#MANAGED_TOUCHED[@]} |
+
+## Managed Blocks (kit init)
+
+Status: $MANAGED_STATUS$([ -n "$MANAGED_NOTE" ] && echo " — $MANAGED_NOTE")
+
+$(if [ ${#MANAGED_TOUCHED[@]} -gt 0 ]; then
+  for item in "${MANAGED_TOUCHED[@]}"; do echo "- $item"; done
+else
+  echo "_none_"
+fi)
 
 ## Applied
 
@@ -249,14 +386,26 @@ integrate_tlc
 
 echo ""
 echo "=== Conformance Summary ==="
-echo "  Applied: ${#APPLIED[@]}"
-echo "  Skipped: ${#SKIPPED[@]}"
-echo "  Review:  ${#REVIEW[@]}"
+echo "  Applied:       ${#APPLIED[@]}"
+echo "  Skipped:       ${#SKIPPED[@]}"
+echo "  Review:        ${#REVIEW[@]}"
+echo "  Managed (kit): ${#MANAGED_TOUCHED[@]} ($MANAGED_STATUS)"
 
 if [ ${#REVIEW[@]} -gt 0 ]; then
   echo ""
   echo "Review items remain; see $REPORT_FILE"
   exit 2
+fi
+
+# Under --dry-run, propagate `kit init --check` drift as
+# a non-zero exit so CI gates / pre-merge hooks notice
+# un-refreshed managed blocks without having to grep the
+# report. exit 3 is distinct from exit 2 (review items)
+# so callers can tell the failure modes apart.
+if [ "$DRY_RUN" = true ] && [ "$MANAGED_STATUS" = "drift" ]; then
+  echo ""
+  echo "Managed-block drift detected; see $REPORT_FILE"
+  exit 3
 fi
 
 exit 0
