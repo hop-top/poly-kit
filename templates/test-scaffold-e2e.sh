@@ -209,11 +209,19 @@ assert_managed_files() {
       local jq_tmp
       jq_tmp="$(mktemp "${TMPDIR:-/tmp}/dcjq.XXXXXX")"
       # Strip `// ...` line comments, then strip trailing commas
-      # before `]` or `}`. Two-pass awk so the second pass sees a
-      # comment-free buffer.
+      # before `]` or `}`. Accumulate the entire file into one
+      # buffer in awk's END block so the trailing-comma gsubs see
+      # multi-line context — BSD awk's `RS = ""` treats blank
+      # lines as record terminators (the comment-strip pass leaves
+      # blanks where comment-only lines used to be) and `RS = "\0"`
+      # behaves the same, so we must do the accumulation ourselves.
+      # Two literal gsubs (one per closing token) because BSD awk's
+      # gsub() doesn't honor `\1` backreferences.
       awk '{ sub(/[[:space:]]*\/\/.*$/, ""); print }' "$dc" \
-        | awk 'BEGIN{ RS=""; ORS="" }
-               { gsub(/,[[:space:]]*([\]}])/, "\\1"); print }' \
+        | awk '{ buf = buf $0 "\n" }
+               END { gsub(/,[[:space:]]*\]/, "]", buf);
+                     gsub(/,[[:space:]]*\}/, "}", buf);
+                     printf "%s", buf }' \
         > "$jq_tmp"
       if jq -e . "$jq_tmp" >/dev/null 2>&1; then
         pass "$tag devcontainer.json parses as JSON (after comment strip)"
