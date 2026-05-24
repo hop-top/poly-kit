@@ -49,3 +49,13 @@ Each template is a starting point. Common overrides:
 The templates default to ctxt's `mobile/{ios,android}/` monorepo
 layout but fall back to top-level project files via shell `if` guards,
 so they work for split-repo deployments too.
+
+## mise-action coverage
+
+CI workflows for go/ts/py/rs use `jdx/mise-action@v2` to install
+the toolchain pinned in `mise.toml`.
+
+Kotlin and Swift workflows are intentionally exempt: they use
+platform-native setup actions (`actions/setup-java@v4` for
+Kotlin, `xcode-select` for Swift) because mise does not manage
+JVM or Xcode toolchains.
