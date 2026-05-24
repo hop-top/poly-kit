@@ -22,6 +22,13 @@ source "$SCRIPT_DIR/reserve-packages.sh"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
+# >>> T-0807: env-example emitter sources >>>
+# shellcheck source=shared/managed-block.sh
+source "$SCRIPT_DIR/shared/managed-block.sh"
+# shellcheck source=shared/emit-env-example.sh
+source "$SCRIPT_DIR/shared/emit-env-example.sh"
+# <<< T-0807 <<<
+
 # --- Tool detection ------------------------------------
 
 detect_tools
@@ -419,6 +426,11 @@ cp "$SCRIPT_DIR/lib.sh" "$_lib_tmp"
 rm -f "$_lib_tmp"
 
 # --- Post-clone setup ----------------------------------
+
+# >>> T-0807: env-example emitter call >>>
+echo "Emitting .env.example..."
+emit_env_example "$OUTPUT" "$NAME"
+# <<< T-0807 <<<
 
 # a. tlc init
 if [ "$HAS_TLC" = true ] && [ "$NO_TLC" = false ]; then

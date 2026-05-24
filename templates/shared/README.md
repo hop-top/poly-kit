@@ -122,3 +122,30 @@ Pure bash + POSIX `awk`, `grep`, `cmp`, `mktemp`, `mv`. Avoids
 file and atomically renaming. Verified on macOS BSD awk and
 GNU awk. Tests live in `managed-block.bats` and run with
 [bats-core](https://github.com/bats-core/bats-core).
+
+## emit-env-example.sh
+
+`emit-env-example.sh` writes a project's `.env.example`
+containing the five labeled kit-managed blocks described in the
+scaffold-emits-mise-toml-devcontainer-compose spec §7:
+`telemetry`, `storage`, `queue`, `log`, `config`. Defaults match
+SQLite + local-XDG paths; redis and postgres URLs are commented
+out. `OTEL_SERVICE_NAME` is interpolated from the project name.
+
+### API
+
+```bash
+source "$SCRIPT_DIR/shared/managed-block.sh"
+source "$SCRIPT_DIR/shared/emit-env-example.sh"
+
+emit_env_example "$OUTPUT" "$NAME"   # writes <OUTPUT>/.env.example
+```
+
+`emit_env_example` is layered on top of `managed-block.sh`:
+re-running it is idempotent (byte-identical output), and any
+user-added env vars sitting **above** the managed markers
+survive subsequent re-emits. `kit init --add-service redis`
+(future) will flip `KIT_QUEUE_DRIVER` to `redis` and uncomment
+`KIT_QUEUE_REDIS_URL` within the `queue` block.
+
+Tests live in `emit-env-example.bats`.
