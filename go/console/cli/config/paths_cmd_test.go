@@ -190,6 +190,23 @@ func TestStandaloneSubcommands(t *testing.T) {
 	assert.Equal(t, "paths", pathsCmd.Use)
 }
 
+func TestRegisterPathSubcommands_UnderKitRoot_DefaultsToText(t *testing.T) {
+	root := &cobra.Command{Use: "tool"}
+	root.PersistentFlags().String("format", "table", "kit root default format")
+	parent := &cobra.Command{Use: "config"}
+	kitcliconfig.RegisterPathSubcommands(parent, "tool", kitcliconfig.WithResolver(fakeChain))
+	root.AddCommand(parent)
+
+	out, _, err := runCmd(t, root, "config", "path")
+	require.NoError(t, err,
+		"path must not inherit the root --format=table default and trip validateFormat")
+	assert.Equal(t, "/home/u/.config/tool/config.yaml\n", out)
+
+	out, _, err = runCmd(t, root, "config", "path", "--format", "json")
+	require.NoError(t, err)
+	assert.Contains(t, out, "\"path\"")
+}
+
 func TestDefaultResolver_NoOp(t *testing.T) {
 	// No resolver supplied: defaults to nil, paths prints nothing,
 	// path exits 1 with the sentinel.
