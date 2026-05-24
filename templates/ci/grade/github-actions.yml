@@ -20,20 +20,24 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5  # v5.5.0
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          go-version: stable
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
       - name: install kit
-        run: go install hop.top/kit/cmd/kit@latest
+        run: mise exec -- go install hop.top/kit/cmd/kit@latest
       - name: record cassette
-        run: go test ./e2e/conformance/...
+        run: mise exec -- go test ./e2e/conformance/...
       - name: grade
         env:
           KIT_CONFORMANCE_TOKEN: ${{ secrets.KIT_CONFORMANCE_TOKEN }}
           KIT_CONFORMANCE_SERVICE: ${{ vars.KIT_CONFORMANCE_SERVICE }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          kit conformance grade \
+          mise exec -- kit conformance grade \
             ./testdata/cassettes/conformance \
             --format=json \
             --pr-comment \
