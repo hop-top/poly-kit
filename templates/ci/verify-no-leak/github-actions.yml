@@ -14,21 +14,25 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5  # v5.5.0
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          go-version: stable
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
       - name: install kit
-        run: go install hop.top/kit/cmd/kit@latest
+        run: mise exec -- go install hop.top/kit/cmd/kit@latest
       - name: scan diff
-        run: kit conformance verify-no-leak --diff=origin/${{ github.base_ref || 'main' }}...HEAD --format=json --output=/tmp/vnl-diff.json
+        run: mise exec -- kit conformance verify-no-leak --diff=origin/${{ github.base_ref || 'main' }}...HEAD --format=json --output=/tmp/vnl-diff.json
       - name: scan commit messages
-        run: kit conformance verify-no-leak --commit-range=origin/${{ github.base_ref || 'main' }}..HEAD --format=json
+        run: mise exec -- kit conformance verify-no-leak --commit-range=origin/${{ github.base_ref || 'main' }}..HEAD --format=json
       # Uncomment after the tool has been in your workflow long enough to trust:
       # - name: scan PR body
       #   if: github.event_name == 'pull_request'
       #   env:
       #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   run: kit conformance verify-no-leak --pr-body=${{ github.event.number }} --format=json
+      #   run: mise exec -- kit conformance verify-no-leak --pr-body=${{ github.event.number }} --format=json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         if: failure()
         with:
