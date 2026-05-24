@@ -22,6 +22,21 @@ source "$SCRIPT_DIR/reserve-packages.sh"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
+# shellcheck source=shared/managed-block.sh
+source "$SCRIPT_DIR/shared/managed-block.sh"
+
+# shellcheck source=shared/emit-mise.sh
+source "$SCRIPT_DIR/shared/emit-mise.sh"
+
+# shellcheck source=shared/emit-devcontainer-json.sh
+source "$SCRIPT_DIR/shared/emit-devcontainer-json.sh"
+
+# shellcheck source=shared/emit-docker-compose.sh
+source "$SCRIPT_DIR/shared/emit-docker-compose.sh"
+
+# shellcheck source=shared/emit-env-example.sh
+source "$SCRIPT_DIR/shared/emit-env-example.sh"
+
 # --- Tool detection ------------------------------------
 
 detect_tools
@@ -42,6 +57,7 @@ ORG=""
 MODULE_PREFIX=""
 NO_TLC=false
 NO_PUSH=false
+NO_DEVCONTAINER=false
 
 # Auto-detect forge
 if [ "$HAS_GH" = true ]; then
@@ -84,6 +100,7 @@ USAGE
   fi
 
   cat <<USAGE
+  --no-devcontainer     Skip .devcontainer scaffolding
   -h, --help            Show this help
 
 Examples:
@@ -156,6 +173,9 @@ while [ $# -gt 0 ]; do
       ;;
     --no-push)
       NO_PUSH=true; shift
+      ;;
+    --no-devcontainer)
+      NO_DEVCONTAINER=true; shift
       ;;
     -*)
       echo "Error: unknown flag: $1" >&2
@@ -418,7 +438,26 @@ cp "$SCRIPT_DIR/lib.sh" "$_lib_tmp"
 (cd "$OUTPUT" && bash init.sh)
 rm -f "$_lib_tmp"
 
+# --- Devcontainer / compose emission --------------------
+
+if [ "$NO_DEVCONTAINER" = false ]; then
+  echo "Emitting .devcontainer/devcontainer.json..."
+  emit_devcontainer_json "$OUTPUT" "$NAME" "$LANG"
+  echo "Emitting .devcontainer/docker-compose.yml..."
+  emit_docker_compose "$OUTPUT" "$NAME"
+fi
+
 # --- Post-clone setup ----------------------------------
+
+# Emit kit-managed mise.toml from the central tool-versions
+# manifest, scoped to the project's selected langs.
+echo "Emitting mise.toml..."
+emit_mise "$OUTPUT" "$LANG"
+
+# Emit .env.example with kit-adapter env vars (telemetry,
+# storage, queue, log, config).
+echo "Emitting .env.example..."
+emit_env_example "$OUTPUT" "$NAME"
 
 # a. tlc init
 if [ "$HAS_TLC" = true ] && [ "$NO_TLC" = false ]; then
@@ -558,7 +597,9 @@ setup_release_please "$OUTPUT" "${LANG_ARRAY[@]}"
 
 # --- First commit + push -------------------------------
 
-# Stage copilot instructions (init.sh already committed template files)
+# init.sh already committed the template files; this commit
+# picks up the post-init artifacts (mise.toml, .devcontainer/,
+# .env.example, copilot instructions, release-please config).
 (cd "$OUTPUT" && git add -A && git commit -m "feat: scaffold $NAME" --allow-empty) || true
 
 if [ "$NO_PUSH" = false ] && [ -n "$REPO_URL" ]; then
