@@ -1,12 +1,12 @@
-name: CI (Go)
+name: CI (Rust)
 
 on:
   push:
     branches: [main]
-    paths: ["**.go", "go.mod", "go.sum"]
+    paths: ["**/*.rs", "Cargo.toml", "Cargo.lock"]
   pull_request:
     branches: [main]
-    paths: ["**.go", "go.mod", "go.sum"]
+    paths: ["**/*.rs", "Cargo.toml", "Cargo.lock"]
 
 permissions:
   contents: read
@@ -26,8 +26,13 @@ jobs:
       - run: mise run install
       # <<< kit-managed: toolchain <<<
 
-      - name: golangci-lint
-        run: mise exec -- golangci-lint run ./...
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt
+        run: mise exec -- cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: mise exec -- cargo clippy --all-targets --all-features -- -D warnings
 
   test:
     name: Test
@@ -43,14 +48,10 @@ jobs:
       - run: mise run install
       # <<< kit-managed: toolchain <<<
 
-      - name: Run tests
-        run: mise exec -- go test -race -coverprofile=coverage.out ./...
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-go
-          path: coverage.out
+      - name: Run tests
+        run: mise exec -- cargo test --all-features --workspace
 
   build:
     name: Build
@@ -67,5 +68,7 @@ jobs:
       - run: mise run install
       # <<< kit-managed: toolchain <<<
 
-      - name: Build
-        run: mise exec -- go build -o {{.Name}} .
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build {{.Name}}
+        run: mise exec -- cargo build --release --workspace --all-features

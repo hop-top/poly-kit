@@ -12,3 +12,6 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Compose service bind-mount data (postgres, redis, minio, etc.)
+.data/
