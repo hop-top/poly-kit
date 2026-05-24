@@ -4,6 +4,11 @@ Idempotent script that brings an existing repo to kit standards.
 Safe actions applied automatically; edge cases flagged in a report
 with LLM-ready prompts for review.
 
+`conform.sh` is a thin wrapper over `kit init --update`: the
+kit-managed blocks (mise.toml, `.devcontainer/*`, `.env.example`
+kit-adapter blocks) are refreshed by `kit init`; the additive-merge
+checks below cover everything *outside* the managed scope.
+
 ## Usage
 
 ```
@@ -15,11 +20,53 @@ conform.sh [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--path DIR` | `.` | Project directory |
-| `--dry-run` | — | Report only, no file changes |
+| `--dry-run` | — | Report only, no file changes; runs `kit init --check` to preview managed-block drift |
 | `--report FILE` | `conform-report.md` | Output report path |
 | `--track-id ID` | `kit-conform` | tlc track ID |
 | `--no-tlc` | — | Skip tlc track creation |
+| `--no-managed-refresh` | — | Skip the `kit init --update` step; run only the additive-merge checks below |
 | `-h, --help` | — | Show help |
+
+## Managed blocks
+
+The managed-block refresh is delegated to `kit init --update`
+(track: `scaffold-emits-mise-toml-devcontainer-compose`, §4).
+These files contain `kit-managed:` marker pairs; only the content
+between markers is rewritten — user-owned content above/below is
+preserved verbatim.
+
+Files in the **managed scope** (owned by `kit init`):
+
+- `mise.toml` — managed `[tools]` block
+- `.devcontainer/devcontainer.json` — managed
+  `postCreateCommand`, `postStartCommand`, `extensions`,
+  `features` keys
+- `.devcontainer/docker-compose.yml` — `kit-managed: telemetry`
+  and `kit-managed: opted-in services` blocks
+- `.devcontainer/otel-config.yaml` — entire file managed
+- `.env.example` — one managed block per adapter domain
+
+Files in the **additive-merge scope** (owned by `conform.sh`):
+
+- License headers, missing-file copies (see "Safe: Copy from
+  Template" below)
+- `Makefile` — additive merge of kit targets
+- `.gitignore` — additive merge of kit entries
+- Review items (AGENTS.md, go.mod replaces, etc.)
+
+### kit binary detection
+
+`conform.sh` resolves the kit binary in this order:
+
+1. `command -v kit` — installed kit on `$PATH`
+2. `$KIT_BIN` — explicit override (must be executable)
+3. In-repo `go build ./cmd/kit` — only when running against
+   poly-kit itself (detected by `templates/scaffold.sh`)
+4. Skip with a warning — additive-merge checks still run
+
+Pass `--no-managed-refresh` to skip step 1-3 entirely (useful
+for dry-run / CI checks that only want the additive-merge
+checks).
 
 ## What It Checks
 
@@ -109,6 +156,7 @@ Disabled automatically in `--dry-run` mode.
 | `0` | All checks passed or applied; no review items |
 | `1` | Runtime error (bad path, missing deps) |
 | `2` | Review items remain; see report |
+| `3` | `--dry-run` only — managed-block drift detected by `kit init --check` |
 
 ## Examples
 
