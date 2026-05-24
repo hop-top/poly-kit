@@ -157,8 +157,8 @@ No `Dockerfile` by default. The dev image is
   `kit init --add-service <name>` from the `--services` catalog
   (`postgres`, `redis`, `minio`, `mailpit`, `redpanda`).
 
-Service data persists in `./.data/<service>/` bind mounts (already
-in `.gitignore`).
+Service data persists in `.data/<service>/` bind mounts at the
+project root (gitignored).
 
 Jaeger UI: <http://localhost:16686>.
 
@@ -190,7 +190,7 @@ templates/shared/
 ├── emit-env-example.sh         # .env.example with five managed blocks
 ├── apply-services.sh           # --services catalog applier
 ├── services/
-│   ├── postgres.yml            # compose snippet, bind-mounted to ./.data/
+│   ├── postgres.yml            # compose snippet, bind-mounted to .data/ at project root
 │   ├── redis.yml
 │   ├── minio.yml
 │   ├── mailpit.yml

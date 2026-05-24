@@ -39,8 +39,8 @@ preserved verbatim.
     # … or in compose YAML directly for full control
 
 Catalog: `postgres`, `redis`, `minio`, `mailpit`, `redpanda`.
-Each service bind-mounts its data into `./.data/<service>/`
-(already in `.gitignore`).
+Each service bind-mounts its data into `.data/<service>/` at the
+project root (gitignored).
 
 ## See also
 
