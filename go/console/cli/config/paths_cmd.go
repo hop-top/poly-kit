@@ -24,7 +24,7 @@ const (
 )
 
 func resolveFormat(cmd *cobra.Command) string {
-	if f := cmd.Flag("format"); f != nil && f.Value.String() != "" {
+	if f := cmd.Flag("format"); f != nil && f.Changed {
 		return f.Value.String()
 	}
 	return formatText
