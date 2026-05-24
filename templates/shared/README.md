@@ -247,3 +247,51 @@ this.
 `templates/scaffold.sh --no-devcontainer` skips this emitter
 (and the sibling `docker-compose.yml` emitter from T-0806).
 Tests live in `emit-devcontainer-json.bats`.
+
+## emit-docker-compose.sh
+
+Scaffold emitter that writes `.devcontainer/docker-compose.yml`
+and the sibling `.devcontainer/otel-config.yaml` into a
+freshly-scaffolded project. Sourced and invoked by
+`templates/scaffold.sh` after `init.sh` finishes, unless
+`--no-devcontainer` is passed.
+
+### API
+
+```bash
+source "$SCRIPT_DIR/shared/managed-block.sh"
+source "$SCRIPT_DIR/shared/emit-docker-compose.sh"
+
+emit_docker_compose <project-dir> <project-name>
+```
+
+`<project-name>` is interpolated into the `OTEL_SERVICE_NAME`
+environment variable inside the `devcontainer` service.
+
+### File layout
+
+`docker-compose.yml` (matches spec §6 of track
+`scaffold-emits-mise-toml-devcontainer-compose`):
+
+| Section | Managed? | Notes |
+|---------|----------|-------|
+| `services:` header + `devcontainer:` | user-extensible | not inside markers; user may edit |
+| `# kit-managed: telemetry` | managed | default `otel-collector` v0.112.0 + `jaeger` 1.62 |
+| `# kit-managed: opted-in services` | managed | empty by default; populated by T-0808 `--services` |
+
+`otel-config.yaml` — entire file is one unlabeled
+kit-managed block (no user-editable region).
+
+### Idempotency
+
+Re-emitting against an existing project is byte-identical when
+the inputs match. Powered by `managed-block.sh`'s `cmp -s`
+short-circuit. If the user hand-edits the `devcontainer:`
+service block above the markers, the emitter leaves it alone
+and only refreshes the managed blocks below.
+
+### Tests
+
+`emit-docker-compose.bats` covers content, indentation,
+idempotency, and (if `docker compose` is available)
+`docker compose -f … config` validation.

@@ -31,6 +31,9 @@ source "$SCRIPT_DIR/shared/emit-mise.sh"
 # shellcheck source=shared/emit-devcontainer-json.sh
 source "$SCRIPT_DIR/shared/emit-devcontainer-json.sh"
 
+# shellcheck source=shared/emit-docker-compose.sh
+source "$SCRIPT_DIR/shared/emit-docker-compose.sh"
+
 # --- Tool detection ------------------------------------
 
 detect_tools
@@ -84,7 +87,6 @@ Flags:
   --homepage URL        Project homepage URL
   --org ORG             Organization/group for forge repo
   --module-prefix PFX   Module prefix (e.g. github.com/user)
-  --no-devcontainer     Skip devcontainer/compose emission
 USAGE
 
   if [ "$HAS_TLC" = true ]; then
@@ -95,6 +97,7 @@ USAGE
   fi
 
   cat <<USAGE
+  --no-devcontainer     Skip .devcontainer scaffolding
   -h, --help            Show this help
 
 Examples:
@@ -437,7 +440,8 @@ rm -f "$_lib_tmp"
 if [ "$NO_DEVCONTAINER" = false ]; then
   echo "Emitting .devcontainer/devcontainer.json..."
   emit_devcontainer_json "$OUTPUT" "$NAME" "$LANG"
-  # T-0806: emit_docker_compose call will be added here
+  echo "Emitting .devcontainer/docker-compose.yml..."
+  emit_docker_compose "$OUTPUT" "$NAME"
 fi
 
 # --- Post-clone setup ----------------------------------
