@@ -22,6 +22,12 @@ source "$SCRIPT_DIR/reserve-packages.sh"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
+# shellcheck source=shared/managed-block.sh
+source "$SCRIPT_DIR/shared/managed-block.sh"
+
+# shellcheck source=shared/emit-mise.sh
+source "$SCRIPT_DIR/shared/emit-mise.sh"
+
 # --- Tool detection ------------------------------------
 
 detect_tools
@@ -419,6 +425,11 @@ cp "$SCRIPT_DIR/lib.sh" "$_lib_tmp"
 rm -f "$_lib_tmp"
 
 # --- Post-clone setup ----------------------------------
+
+# Emit kit-managed mise.toml from the central tool-versions
+# manifest, scoped to the project's selected langs.
+echo "Emitting mise.toml..."
+emit_mise "$OUTPUT" "$LANG"
 
 # a. tlc init
 if [ "$HAS_TLC" = true ] && [ "$NO_TLC" = false ]; then
