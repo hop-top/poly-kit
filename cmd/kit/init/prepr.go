@@ -11,7 +11,7 @@
 //   - Section 8: --with-githook-pre-pr / --without-githook-pre-pr flags.
 //
 // Why this lives outside the tmpl engine: the hook script is a
-// kit-init-owned scaffold, not a per-template artefact. Adopters who use
+// kit-init-owned scaffold, not a per-template artifact. Adopters who use
 // any template still get the same hook content. Routing it through the
 // engine would force every template's manifest to declare the hook, with
 // no way to keep the manifest entry (.kit/generated.json) in sync with
@@ -319,7 +319,7 @@ func scaffoldPrePrFile(
 	return report, nil
 }
 
-// writeManifest serialises manifest to .kit/generated.json. Always
+// writeManifest serializes manifest to .kit/generated.json. Always
 // reports either manifest-update (when bytes diverge) or
 // skip-unchanged (when bytes match an existing manifest verbatim).
 func writeManifest(projectRoot string, manifest GeneratedManifest, dryRun bool) (PrePrFileReport, error) {
@@ -464,9 +464,7 @@ func ProjectIDSlug(repoRoot string) string {
 func DeriveSlugFromOrigin(origin string) string {
 	s := strings.TrimSpace(origin)
 	// Strip `git@host:` shorthand. Leaves `host:path`.
-	if strings.HasPrefix(s, "git@") {
-		s = strings.TrimPrefix(s, "git@")
-	}
+	s = strings.TrimPrefix(s, "git@")
 	// Strip `scheme://[user@]host[:port]/`.
 	if i := strings.Index(s, "://"); i >= 0 {
 		s = s[i+3:]

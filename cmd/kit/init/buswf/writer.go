@@ -43,7 +43,7 @@ const (
 )
 
 // PlanEntry is what dry-run reports per file. It mirrors the §6 dry-run
-// JSON shape exactly so callers can serialise it without translation.
+// JSON shape exactly so callers can serialize it without translation.
 type PlanEntry struct {
 	Path          string `json:"path"`
 	Action        Action `json:"action"`

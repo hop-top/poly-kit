@@ -26,7 +26,7 @@ import (
 )
 
 // buildKitBinary compiles cmd/kit into a temp file and returns its path.
-// Mirrors cmd/kit/serve_test.go::buildBinary so behaviour stays consistent.
+// Mirrors cmd/kit/serve_test.go::buildBinary so behavior stays consistent.
 func buildKitBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "kit-e2e")

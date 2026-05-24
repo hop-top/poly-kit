@@ -5,7 +5,7 @@
 // Git-Bash to wire up the kit init follow-up.
 //
 // What we assert (port — not refactor):
-//   - GeneratePostPROpenHook materialises BOTH .githooks/post-pr-open
+//   - GeneratePostPROpenHook materializes BOTH .githooks/post-pr-open
 //     and .githooks/post-pr-open.ps1 on a fresh tree.
 //   - Augment-conflict (suggest-sibling) policy applies to .ps1 too — a
 //     user-edited .ps1 yields .ps1.kit-suggested, never an overwrite.
@@ -37,7 +37,7 @@ import (
 )
 
 // -----------------------------------------------------------------------------
-// Generator — .ps1 is materialised alongside the .sh.
+// Generator — .ps1 is materialized alongside the .sh.
 // -----------------------------------------------------------------------------
 
 func TestGeneratePostPROpenHook_WritesPS1Companion(t *testing.T) {

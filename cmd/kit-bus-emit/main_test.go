@@ -59,7 +59,7 @@ func TestRunFailClosedOn500(t *testing.T) {
 }
 
 // TestRunNoIngress: when KIT_BUS_INGRESS_URL is empty, run exits 0
-// (defence-in-depth — the workflow `if:` should have stopped this job
+// (defense-in-depth — the workflow `if:` should have stopped this job
 // from running in the first place).
 func TestRunNoIngress(t *testing.T) {
 	envSet(t, map[string]string{

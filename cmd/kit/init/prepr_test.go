@@ -127,7 +127,7 @@ func TestGeneratePrePrHook_UserEdited(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, string(custom), string(got))
 
-	// Sibling materialised with kit content.
+	// Sibling materialized with kit content.
 	hookBytes, _ := loadPrePrHookBytes()
 	sibling, err := os.ReadFile(filepath.Join(root, hookReport.SuggestedPath))
 	require.NoError(t, err)
@@ -651,7 +651,7 @@ func TestHookGateResolution_MakefilePreferred(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	// Initialise git so the hook's `git ls-files` does not error.
+	// Initialize git so the hook's `git ls-files` does not error.
 	mustRun(t, root, "git", "init", "-q")
 	mustRun(t, root, "git", "config", "user.email", "t@e")
 	mustRun(t, root, "git", "config", "user.name", "t")
@@ -797,7 +797,7 @@ func TestHookGateResolution_KitTomlTrailingComment(t *testing.T) {
 }
 
 // TestHookScratchpadPath_WindowsShells guards Fix 5 Part A: the bash
-// hook must recognise Git Bash / MSYS / Cygwin / MINGW environments
+// hook must recognize Git Bash / MSYS / Cygwin / MINGW environments
 // (where `uname -s` returns MINGW64_NT-*, MSYS_NT-*, CYGWIN_NT-*) and
 // derive the scratchpad base from $LOCALAPPDATA/Temp with the same
 // fallback chain as the Go side: LOCALAPPDATA + /Temp, else TEMP

@@ -55,7 +55,7 @@ func run(args []string) error {
 	ingress := strings.TrimRight(os.Getenv("KIT_BUS_INGRESS_URL"), "/")
 	if ingress == "" {
 		// The workflow `if:` guard should have prevented this job
-		// from running, but defence in depth: log + exit 0 so we
+		// from running, but defense in depth: log + exit 0 so we
 		// don't break CI.
 		fmt.Fprintln(os.Stderr, "kit-bus-emit: KIT_BUS_INGRESS_URL is empty; skipping emit")
 		return nil

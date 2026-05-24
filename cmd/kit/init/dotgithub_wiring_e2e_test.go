@@ -196,7 +196,7 @@ func TestE2E_Bootstrap_ManifestSchemaAndHashes(t *testing.T) {
 	data, err := os.ReadFile(manifestPath)
 	require.NoError(t, err)
 	var raw struct {
-		Version     int `json:"version"`
+		Version     int    `json:"version"`
 		GeneratedBy string `json:"generated_by"`
 		Files       []struct {
 			Path        string `json:"path"`
@@ -421,7 +421,7 @@ func TestE2E_Augment_UserEdited_WritesSuggestSibling(t *testing.T) {
 	assert.Equal(t, string(userEdit), string(got),
 		"user-edited file must be preserved byte-for-byte")
 
-	// Sibling materialised with kit's canonical content.
+	// Sibling materialized with kit's canonical content.
 	sibling, err := os.ReadFile(absPath + ".kit-suggested")
 	require.NoError(t, err)
 	assert.Equal(t, string(kitBytes), string(sibling),
@@ -707,7 +707,7 @@ func TestE2E_BusWorkflows_TopicAndOnTriggerAndPayloadFields(t *testing.T) {
 // hook actually written by runBootstrap is byte-identical to
 // PostPROpenHookContent() — i.e. there is no in-flight token substitution
 // or template render that would silently drift the on-disk hook away from
-// the contract-pinned content. Contract Section 5 (the hook behaviour
+// the contract-pinned content. Contract Section 5 (the hook behavior
 // described there is implemented by the embedded asset).
 func TestE2E_Bootstrap_PostPROpenHook_ContentMatchesAsset(t *testing.T) {
 	target, _ := e2eBootstrap(t, e2eInputs("demo", false))

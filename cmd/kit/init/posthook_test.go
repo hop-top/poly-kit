@@ -187,7 +187,7 @@ func TestGeneratePostPROpenHook_DisabledFlagSkips(t *testing.T) {
 // stubbed `gh`, `tlc`, and `curl` binaries on PATH.
 // -----------------------------------------------------------------------------
 
-// hookHarness materialises the embedded script + stub binaries into a
+// hookHarness materializes the embedded script + stub binaries into a
 // per-test PATH so the suite runs hermetically. Returns the directory
 // holding the hook script and the PATH-shadowing dir; tests use the
 // latter to write per-scenario stubs (e.g. fail-tlc, success-tlc).
@@ -234,7 +234,7 @@ func newHookHarness(t *testing.T) *hookHarness {
 //     semantics).
 //
 // `gh repo view --json nameWithOwner --jq '.nameWithOwner'` is also
-// recognised for the baseRepository fallback path; it returns the
+// recognized for the baseRepository fallback path; it returns the
 // REPO_NAME_WITH_OWNER env var (empty by default) so tests can opt
 // into / out of the final gh-side fallback independently.
 //

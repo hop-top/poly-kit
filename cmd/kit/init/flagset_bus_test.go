@@ -1,7 +1,7 @@
 // White-box tests for buildFlagSet precedence rules. Targets the
 // --with-bus-workflows vs --without-bus-workflows conflict resolution
 // (Comment 3293191447): when both flags are supplied, --without- must
-// win because "off" is the safer default behaviour and the comment
+// win because "off" is the safer default behavior and the comment
 // pinned the same rule.
 package kitinit
 
@@ -47,8 +47,8 @@ func callBuildFlagSet(t *testing.T, argv []string) *FlagSet {
 		fromFlag, moduleFlag, modeFlag, accountTypeFlag, orgFlag,
 		visibilityFlag, licenseFlag, defaultBranchFlag, authorFlag,
 		emailFlag, themeFlag, descriptionFlag string
-		runtimeFlag                    []string
-		tierFlag                       int
+		runtimeFlag []string
+		tierFlag    int
 		noGitHubFlag, noPushFlag, hopFlag,
 		dryRunFlag, forceFlag, yesFlag bool
 	)
