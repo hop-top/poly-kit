@@ -34,6 +34,9 @@ source "$SCRIPT_DIR/shared/emit-devcontainer-json.sh"
 # shellcheck source=shared/emit-docker-compose.sh
 source "$SCRIPT_DIR/shared/emit-docker-compose.sh"
 
+# shellcheck source=shared/emit-env-example.sh
+source "$SCRIPT_DIR/shared/emit-env-example.sh"
+
 # --- Tool detection ------------------------------------
 
 detect_tools
@@ -450,6 +453,11 @@ fi
 # manifest, scoped to the project's selected langs.
 echo "Emitting mise.toml..."
 emit_mise "$OUTPUT" "$LANG"
+
+# Emit .env.example with kit-adapter env vars (telemetry,
+# storage, queue, log, config).
+echo "Emitting .env.example..."
+emit_env_example "$OUTPUT" "$NAME"
 
 # a. tlc init
 if [ "$HAS_TLC" = true ] && [ "$NO_TLC" = false ]; then
