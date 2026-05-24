@@ -308,9 +308,13 @@ setup_release_please_workflow() {
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          go-version-file: ${go_version_file}
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
@@ -324,17 +328,17 @@ setup_release_please_workflow() {
   if [ "$has_ts" = true ]; then
     local ts_steps=""
     if [ "$is_polyglot" = true ]; then
-      ts_steps="      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter ${ts_pkg_name} exec vitest run
-      - run: pnpm --filter ${ts_pkg_name} build
-      - run: pnpm --filter ${ts_pkg_name} publish --access public --no-git-checks
+      ts_steps="      - run: mise exec -- pnpm install --frozen-lockfile
+      - run: mise exec -- pnpm --filter ${ts_pkg_name} exec vitest run
+      - run: mise exec -- pnpm --filter ${ts_pkg_name} build
+      - run: mise exec -- pnpm --filter ${ts_pkg_name} publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}"
     else
-      ts_steps="      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec vitest run
-      - run: pnpm build
-      - run: pnpm publish --access public --no-git-checks
+      ts_steps="      - run: mise exec -- pnpm install --frozen-lockfile
+      - run: mise exec -- pnpm exec vitest run
+      - run: mise exec -- pnpm build
+      - run: mise exec -- pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}"
     fi
@@ -348,13 +352,13 @@ setup_release_please_workflow() {
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 ${ts_steps}
 "
   fi
@@ -365,17 +369,17 @@ ${ts_steps}
     if [ "$is_polyglot" = true ]; then
       py_wd="
       - working-directory: py
-        run: uv sync --all-extras
+        run: mise exec -- uv sync --all-extras
       - working-directory: py
-        run: uv run pytest
+        run: mise exec -- uv run pytest
       - working-directory: py
-        run: uv build"
+        run: mise exec -- uv build"
       py_dist="py/dist/"
     else
       py_wd="
-      - run: uv sync --all-extras
-      - run: uv run pytest
-      - run: uv build"
+      - run: mise exec -- uv sync --all-extras
+      - run: mise exec -- uv run pytest
+      - run: mise exec -- uv build"
     fi
     release_jobs+="
   release-py:
@@ -390,10 +394,13 @@ ${ts_steps}
       url: https://pypi.org/p/\${NAME:-app}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          python-version: '3.13'
-      - uses: astral-sh/setup-uv@v4${py_wd}
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<${py_wd}
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: ${py_dist}
@@ -401,13 +408,13 @@ ${ts_steps}
   fi
 
   if [ "$has_rs" = true ]; then
-    local rs_test_step="      - run: cargo test --all-features --workspace"
-    local rs_publish_step="      - run: cargo publish --token \${{ secrets.CARGO_REGISTRY_TOKEN }}"
+    local rs_test_step="      - run: mise exec -- cargo test --all-features --workspace"
+    local rs_publish_step="      - run: mise exec -- cargo publish --token \${{ secrets.CARGO_REGISTRY_TOKEN }}"
     if [ "$is_polyglot" = true ]; then
       rs_test_step="      - working-directory: rs
-        run: cargo test --all-features --workspace"
+        run: mise exec -- cargo test --all-features --workspace"
       rs_publish_step="      - working-directory: rs
-        run: cargo publish --token \${{ secrets.CARGO_REGISTRY_TOKEN }}"
+        run: mise exec -- cargo publish --token \${{ secrets.CARGO_REGISTRY_TOKEN }}"
     fi
     release_jobs+="
   release-rs:
@@ -418,7 +425,13 @@ ${ts_steps}
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
       - uses: Swatinem/rust-cache@v2
 ${rs_test_step}
 ${rs_publish_step}

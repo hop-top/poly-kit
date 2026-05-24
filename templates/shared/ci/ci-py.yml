@@ -3,10 +3,10 @@ name: CI (Python)
 on:
   push:
     branches: [main]
-    paths: ["**.py", "pyproject.toml", "requirements*.txt"]
+    paths: ["**.py", "pyproject.toml", "requirements*.txt", "uv.lock"]
   pull_request:
     branches: [main]
-    paths: ["**.py", "pyproject.toml", "requirements*.txt"]
+    paths: ["**.py", "pyproject.toml", "requirements*.txt", "uv.lock"]
 
 permissions:
   contents: read
@@ -18,21 +18,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install dependencies
-        run: uv sync --group dev
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - name: Ruff check
-        run: uv run ruff check .
+        run: mise exec -- uv run ruff check .
 
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: mise exec -- uv run ruff format --check .
 
   typecheck:
     name: Type Check
@@ -40,18 +38,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install dependencies
-        run: uv sync --group dev
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - name: Mypy
-        run: uv run mypy .
+        run: mise exec -- uv run mypy .
 
   test:
     name: Test
@@ -59,15 +55,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install dependencies
-        run: uv sync --group dev
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - name: Pytest
-        run: uv run pytest --cov -v
+        run: mise exec -- uv run pytest --cov -v
