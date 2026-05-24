@@ -1,0 +1,22 @@
+# Central tool-versions manifest for poly-kit.
+# Single source of truth consumed by `scaffold.sh` and `kit init`.
+# Bumping a version here triggers `kit init --update` downstream.
+# See `templates/shared/README.md` for the update policy.
+
+[runtimes]
+go     = "1.26"  # Go toolchain
+node   = "22"    # Node.js runtime
+pnpm   = "9"     # Node package manager
+python = "3.13"  # CPython
+uv     = "0.5"   # Python package + project manager
+rust   = "1.84"  # Rust toolchain (stable)
+
+[workflow]
+golangci-lint        = "1.62"  # Go linter aggregator
+ruff                 = "0.8"   # Python linter + formatter
+lychee               = "0.18"  # Markdown / URL link checker
+hadolint             = "2.12"  # Dockerfile linter
+actionlint           = "1.7"   # GitHub Actions workflow linter
+shellcheck           = "0.10"  # Shell script linter
+shfmt                = "3.10"  # Shell script formatter
+"npm:release-please" = "16"    # Release automation (npm-backed)

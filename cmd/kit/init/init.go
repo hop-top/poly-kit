@@ -64,6 +64,15 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		withoutGithookPostPROpenFlag bool
 		withBusWorkflowsFlag         bool
 		withoutBusWorkflowsFlag      bool
+
+		// Managed-block refresh flags (T-0810). When any of these is
+		// set, RunE short-circuits before the detect/Gather flow and
+		// dispatches to RunManaged. See cmd/kit/init/managed.go.
+		updateFlag        bool
+		checkFlag         bool
+		langsFlag         string
+		addServiceFlag    string
+		removeServiceFlag string
 	)
 
 	cmd := &cobra.Command{
@@ -95,6 +104,22 @@ func InitCmd(root *cli.Root) *cobra.Command {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("kit init: getwd: %w", err)
+			}
+
+			// T-0810 short-circuit: managed-block refresh / drift
+			// check / service ops. These flags bypass the full
+			// bootstrap/augment flow because their job is to operate
+			// on an existing project's managed blocks only.
+			if updateFlag || checkFlag || addServiceFlag != "" || removeServiceFlag != "" {
+				return RunManaged(ctx, ManagedOptions{
+					Cwd:           cwd,
+					Langs:         langsFlag,
+					Check:         checkFlag,
+					AddService:    addServiceFlag,
+					RemoveService: removeServiceFlag,
+					Stdout:        os.Stdout,
+					Stderr:        os.Stderr,
+				})
 			}
 
 			// 1. Mode resolution. Translate detect → typed errors early
@@ -264,6 +289,20 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		"Render .github/workflows/kit-bus-*.yml PR-lifecycle bus workflows (opt-in)")
 	f.BoolVar(&withoutBusWorkflowsFlag, "without-bus-workflows", false,
 		"Skip rendering kit-bus PR-lifecycle workflows (no-op when already disabled)")
+
+	// T-0810: managed-block refresh / drift / service ops. These
+	// flags short-circuit the bootstrap/augment flow at the top of
+	// RunE; see managed.go for the orchestration logic.
+	f.BoolVar(&updateFlag, "update", false,
+		"Refresh kit-managed blocks (mise.toml, devcontainer, compose, env) idempotently")
+	f.BoolVar(&checkFlag, "check", false,
+		"Exit non-zero if any kit-managed block drifted from the current manifest")
+	f.StringVar(&langsFlag, "langs", "",
+		"Comma-separated lang subset (go,ts,py,rs); empty = auto-detect from cwd")
+	f.StringVar(&addServiceFlag, "add-service", "",
+		"Append a curated service (postgres|redis|minio|mailpit|redpanda) to docker-compose")
+	f.StringVar(&removeServiceFlag, "remove-service", "",
+		"Inverse of --add-service")
 
 	// kit init scaffolds new project trees (mkdir/write) and
 	// augments existing ones — declare the side-effect tier per

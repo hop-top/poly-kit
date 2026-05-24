@@ -288,3 +288,18 @@ refresh-pii-rules: ## Re-vendor Presidio PII rules from latest tagged release
 	@echo "Done. Review diff, run tests, commit."
 
 refresh-rules: refresh-secret-rules refresh-pii-rules ## Refresh all vendored rule corpora
+
+sync-managed-assets: ## Re-copy templates/shared/*.{sh,toml} into cmd/kit/init/managed_assets/ (kit init embed)
+	@echo "Syncing managed-block emitters into cmd/kit/init/managed_assets/..."
+	@cp templates/shared/managed-block.sh \
+	    templates/shared/emit-mise.sh \
+	    templates/shared/emit-devcontainer-json.sh \
+	    templates/shared/emit-docker-compose.sh \
+	    templates/shared/emit-env-example.sh \
+	    templates/shared/tool-versions.toml \
+	    cmd/kit/init/managed_assets/
+	@if [ -f templates/shared/apply-services.sh ]; then \
+	    cp templates/shared/apply-services.sh cmd/kit/init/managed_assets/ ; \
+	    echo "  + apply-services.sh (T-0808)"; \
+	fi
+	@echo "Done. Review diff, rebuild kit, commit."
