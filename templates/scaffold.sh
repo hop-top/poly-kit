@@ -28,6 +28,9 @@ source "$SCRIPT_DIR/shared/managed-block.sh"
 # shellcheck source=shared/emit-mise.sh
 source "$SCRIPT_DIR/shared/emit-mise.sh"
 
+# shellcheck source=shared/emit-devcontainer-json.sh
+source "$SCRIPT_DIR/shared/emit-devcontainer-json.sh"
+
 # --- Tool detection ------------------------------------
 
 detect_tools
@@ -48,6 +51,7 @@ ORG=""
 MODULE_PREFIX=""
 NO_TLC=false
 NO_PUSH=false
+NO_DEVCONTAINER=false
 
 # Auto-detect forge
 if [ "$HAS_GH" = true ]; then
@@ -80,6 +84,7 @@ Flags:
   --homepage URL        Project homepage URL
   --org ORG             Organization/group for forge repo
   --module-prefix PFX   Module prefix (e.g. github.com/user)
+  --no-devcontainer     Skip devcontainer/compose emission
 USAGE
 
   if [ "$HAS_TLC" = true ]; then
@@ -162,6 +167,9 @@ while [ $# -gt 0 ]; do
       ;;
     --no-push)
       NO_PUSH=true; shift
+      ;;
+    --no-devcontainer)
+      NO_DEVCONTAINER=true; shift
       ;;
     -*)
       echo "Error: unknown flag: $1" >&2
@@ -423,6 +431,14 @@ _lib_tmp="$(cd "$OUTPUT" && cd .. && pwd)/lib.sh"
 cp "$SCRIPT_DIR/lib.sh" "$_lib_tmp"
 (cd "$OUTPUT" && bash init.sh)
 rm -f "$_lib_tmp"
+
+# --- Devcontainer / compose emission --------------------
+
+if [ "$NO_DEVCONTAINER" = false ]; then
+  echo "Emitting .devcontainer/devcontainer.json..."
+  emit_devcontainer_json "$OUTPUT" "$NAME" "$LANG"
+  # T-0806: emit_docker_compose call will be added here
+fi
 
 # --- Post-clone setup ----------------------------------
 
