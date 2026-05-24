@@ -18,14 +18,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          go-version-file: go.mod
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+        run: mise exec -- golangci-lint run ./...
 
   test:
     name: Test
@@ -33,12 +35,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          go-version-file: go.mod
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - name: Run tests
-        run: go test -race -coverprofile=coverage.out ./...
+        run: mise exec -- go test -race -coverprofile=coverage.out ./...
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -53,9 +59,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          go-version-file: go.mod
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - name: Build
-        run: go build -o {{.Name}} .
+        run: mise exec -- go build -o {{.Name}} .

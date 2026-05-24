@@ -18,17 +18,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          components: rustfmt, clippy
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - uses: Swatinem/rust-cache@v2
 
       - name: cargo fmt
-        run: cargo fmt --all -- --check
+        run: mise exec -- cargo fmt --all -- --check
 
       - name: cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: mise exec -- cargo clippy --all-targets --all-features -- -D warnings
 
   test:
     name: Test
@@ -36,12 +40,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test --all-features --workspace
+        run: mise exec -- cargo test --all-features --workspace
 
   build:
     name: Build
@@ -50,9 +60,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - uses: Swatinem/rust-cache@v2
 
       - name: Build {{.Name}}
-        run: cargo build --release --workspace --all-features
+        run: mise exec -- cargo build --release --workspace --all-features
