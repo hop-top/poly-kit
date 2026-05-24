@@ -302,4 +302,10 @@ sync-managed-assets: ## Re-copy templates/shared/*.{sh,toml} into cmd/kit/init/m
 	    cp templates/shared/apply-services.sh cmd/kit/init/managed_assets/ ; \
 	    echo "  + apply-services.sh (T-0808)"; \
 	fi
+	@if [ -d templates/shared/services ]; then \
+	    mkdir -p cmd/kit/init/managed_assets/services/env ; \
+	    cp templates/shared/services/*.yml cmd/kit/init/managed_assets/services/ ; \
+	    cp templates/shared/services/env/*.env cmd/kit/init/managed_assets/services/env/ ; \
+	    echo "  + services/ + services/env/ (T-0808 catalog)"; \
+	fi
 	@echo "Done. Review diff, rebuild kit, commit."

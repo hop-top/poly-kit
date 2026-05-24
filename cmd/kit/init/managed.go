@@ -42,7 +42,10 @@ import (
 //go:embed managed_assets/emit-devcontainer-json.sh
 //go:embed managed_assets/emit-docker-compose.sh
 //go:embed managed_assets/emit-env-example.sh
+//go:embed managed_assets/apply-services.sh
 //go:embed managed_assets/tool-versions.toml
+//go:embed managed_assets/services/*.yml
+//go:embed managed_assets/services/env/*.env
 var managedAssets embed.FS
 
 // ManagedFiles lists the project-relative paths the emitters write.
@@ -240,28 +243,42 @@ func extractManagedAssets() (string, func(), error) {
 		return "", func() {}, err
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
-	entries, err := fs.ReadDir(managedAssets, "managed_assets")
+
+	// Walk the embedded tree, mirroring its layout into `dir`.
+	// apply-services.sh (T-0808) resolves resources relative to
+	// its own BASH_SOURCE, so `services/<name>.yml` and
+	// `services/env/<name>.env` must keep their subpaths.
+	err = fs.WalkDir(managedAssets, "managed_assets", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel("managed_assets", p)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		target := filepath.Join(dir, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := managedAssets.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		mode := os.FileMode(0o644)
+		if strings.HasSuffix(p, ".sh") {
+			mode = 0o755
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, mode)
+	})
 	if err != nil {
 		cleanup()
 		return "", func() {}, err
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		data, err := managedAssets.ReadFile("managed_assets/" + e.Name())
-		if err != nil {
-			cleanup()
-			return "", func() {}, err
-		}
-		mode := os.FileMode(0o644)
-		if strings.HasSuffix(e.Name(), ".sh") {
-			mode = 0o755
-		}
-		if err := os.WriteFile(filepath.Join(dir, e.Name()), data, mode); err != nil {
-			cleanup()
-			return "", func() {}, err
-		}
 	}
 	return dir, cleanup, nil
 }
@@ -346,23 +363,36 @@ func runServiceOp(scriptDir string, opts ManagedOptions) error {
 			"%s requires T-0808's apply-services.sh; "+
 				"rebase onto a branch with T-0808 merged", op)
 	}
-	// Reserved for the T-0808 wire-up: source the applier and call
-	// its public function. The shape is documented in the T-0808
-	// spec; if it diverges, this branch needs a refresh.
-	verb, name := "apply_service", opts.AddService
-	if opts.RemoveService != "" {
-		verb, name = "remove_service", opts.RemoveService
+	// T-0808's apply-services.sh exposes:
+	//   apply_services <project-dir> <project-name> <services-csv>
+	//   apply_no_services <project-dir>
+	// There is no in-place "remove single service" verb — removal is
+	// done by re-running apply_services with the surviving subset.
+	// For --remove-service, we read the current opted-in block to
+	// learn what's there, compute the new CSV, and re-apply.
+	projectName := filepath.Base(opts.Cwd)
+	var driverInvoke string
+	if opts.AddService != "" {
+		driverInvoke = fmt.Sprintf(
+			`apply_services %q %q %q`,
+			opts.Cwd, projectName, opts.AddService)
+	} else {
+		// --remove-service: not fully wired yet. Surface clearly
+		// rather than silently corrupting state.
+		return fmt.Errorf(
+			"--remove-service is not yet supported; " +
+				"edit .devcontainer/docker-compose.yml directly " +
+				"or re-run scaffold without the service")
 	}
 	driver := fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR=%q
-PROJECT=%q
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/managed-block.sh"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/apply-services.sh"
-%s "${PROJECT}" %q
-`, scriptDir, opts.Cwd, verb, name)
+%s
+`, scriptDir, driverInvoke)
 	driverPath := filepath.Join(scriptDir, "services-driver.sh")
 	if err := os.WriteFile(driverPath, []byte(driver), 0o755); err != nil {
 		return fmt.Errorf("write services driver: %w", err)

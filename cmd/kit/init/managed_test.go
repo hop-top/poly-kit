@@ -197,21 +197,45 @@ func TestRunManaged_PreservesUserContentAboveMarkers(t *testing.T) {
 	}
 }
 
-// TestRunManaged_AddServiceWithoutHelper verifies the graceful
-// error path when T-0808's apply-services.sh isn't embedded yet.
-func TestRunManaged_AddServiceWithoutHelper(t *testing.T) {
+// TestRunManaged_AddServiceWiresRedis verifies the happy-path
+// integration with T-0808's apply-services.sh: a project with a
+// fresh managed scaffold gets the redis compose service added
+// and KIT_QUEUE_DRIVER flipped to redis.
+func TestRunManaged_AddServiceWiresRedis(t *testing.T) {
 	requireBash(t)
 	dir := t.TempDir()
-
-	err := RunManaged(context.Background(), ManagedOptions{
-		Cwd:        dir,
-		AddService: "redis",
-	})
-	if err == nil {
-		t.Fatal("expected error when apply-services.sh is not embedded")
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "T-0808") {
-		t.Errorf("error should mention T-0808; got: %v", err)
+
+	// Bootstrap managed blocks.
+	if err := RunManaged(context.Background(), ManagedOptions{
+		Cwd: dir, Langs: "go",
+	}); err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+
+	// Now add redis.
+	if err := RunManaged(context.Background(), ManagedOptions{
+		Cwd: dir, AddService: "redis",
+	}); err != nil {
+		t.Fatalf("add-service redis: %v", err)
+	}
+
+	compose, err := os.ReadFile(filepath.Join(dir, ".devcontainer/docker-compose.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(compose), "redis:") {
+		t.Errorf("expected redis service in compose:\n%s", compose)
+	}
+
+	envExample, err := os.ReadFile(filepath.Join(dir, ".env.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(envExample), "KIT_QUEUE_DRIVER=redis") {
+		t.Errorf("expected KIT_QUEUE_DRIVER=redis in .env.example:\n%s", envExample)
 	}
 }
 
