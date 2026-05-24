@@ -139,6 +139,53 @@ Existing files are never overwritten. Augment writes a sibling
 | `--force`           | `false`     | Bypass non-destructive guards                            |
 | `-y`, `--yes`       | `false`     | Non-interactive: skip wizard prompts                     |
 
+### Refresh kit-managed blocks in an existing project
+
+`kit init` can also operate purely on the kit-managed blocks (mise,
+devcontainer, compose, env) of an existing project — no full
+template render, no GitHub side-effects:
+
+```bash
+# Refresh mise.toml, devcontainer.json, docker-compose.yml, .env.example
+kit init --update
+
+# CI / pre-merge gate: exit non-zero if any managed block drifted from
+# what would be emitted now. Prints a unified diff to stdout.
+kit init --check
+
+# Append / remove a curated service in docker-compose
+# (requires T-0808's apply-services.sh; errors clean if absent)
+kit init --add-service redis
+kit init --remove-service redis
+```
+
+| Flag                | Default | Description                                                            |
+|---------------------|---------|------------------------------------------------------------------------|
+| `--update`          | `false` | Refresh kit-managed blocks idempotently (preserves user content)       |
+| `--check`           | `false` | Exit non-zero if any managed block drifted; emits unified diff         |
+| `--langs`           | auto    | Comma-separated lang subset (`go,ts,py,rs`); auto-detected from cwd    |
+| `--add-service`     | `""`    | Append a curated service (postgres, redis, minio, mailpit, redpanda)   |
+| `--remove-service`  | `""`    | Inverse of `--add-service`                                             |
+
+Lang detection rules (when `--langs` is unset):
+
+| Project marker                    | Lang |
+|-----------------------------------|------|
+| `go.mod`                          | `go` |
+| `package.json`                    | `ts` |
+| `pyproject.toml` / `requirements.txt` | `py` |
+| `Cargo.toml`                      | `rs` |
+
+The five managed files are:
+
+- `mise.toml`
+- `.devcontainer/devcontainer.json`
+- `.devcontainer/docker-compose.yml`
+- `.devcontainer/otel-config.yaml`
+- `.env.example`
+
+Spec: `.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md` §4.
+
 ### Migrating from `kit scaffold`
 
 `kit scaffold` was removed. Map old invocations to `kit init`:
