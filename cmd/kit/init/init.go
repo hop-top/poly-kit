@@ -36,23 +36,23 @@ func InitCmd(root *cli.Root) *cobra.Command {
 	// Locals captured by the closure; flag pointers are read from the
 	// cobra FlagSet via Changed-aware ptrIfChanged below.
 	var (
-		fromFlag          string
-		moduleFlag        string
-		runtimeFlag       []string
-		tierFlag          int
-		modeFlag          string
-		accountTypeFlag   string
-		orgFlag           string
-		visibilityFlag    string
-		noGitHubFlag      bool
-		noPushFlag        bool
-		licenseFlag       string
-		hopFlag           bool
-		defaultBranchFlag string
-		authorFlag        string
-		emailFlag         string
-		themeFlag         string
-		descriptionFlag   string
+		fromFlag                     string
+		moduleFlag                   string
+		runtimeFlag                  []string
+		tierFlag                     int
+		modeFlag                     string
+		accountTypeFlag              string
+		orgFlag                      string
+		visibilityFlag               string
+		noGitHubFlag                 bool
+		noPushFlag                   bool
+		licenseFlag                  string
+		hopFlag                      bool
+		defaultBranchFlag            string
+		authorFlag                   string
+		emailFlag                    string
+		themeFlag                    string
+		descriptionFlag              string
 		dryRunFlag                   bool
 		forceFlag                    bool
 		yesFlag                      bool

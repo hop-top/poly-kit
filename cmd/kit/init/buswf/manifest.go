@@ -69,7 +69,7 @@ func ReadManifest(root string) (Manifest, error) {
 
 // WriteManifest writes the manifest to .kit/generated.json under root,
 // creating the parent dir as needed. Files entries are sorted by Path
-// so re-serialisation is deterministic.
+// so re-serialization is deterministic.
 func WriteManifest(root string, m Manifest) error {
 	m.Version = 1
 	m.GeneratedBy = "kit-init"

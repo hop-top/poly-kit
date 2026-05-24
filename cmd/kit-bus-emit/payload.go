@@ -74,14 +74,14 @@ func kindToTopic(kind string) (bus.Topic, bool) {
 
 // BuildPayload assembles the JSON-serialisable map for the given
 // inputs. Returns the topic that was used (validated against
-// bus.ValidateTopic) and the marshalled body.
+// bus.ValidateTopic) and the marshaled body.
 func BuildPayload(in Inputs) (bus.Topic, []byte, error) {
 	topic, ok := kindToTopic(in.Kind)
 	if !ok {
 		return "", nil, fmt.Errorf("kit-bus-emit: unknown --kind %q", in.Kind)
 	}
 	if err := bus.ValidateTopic(topic); err != nil {
-		// Defence in depth — if someone changes the topic constants
+		// Defense in depth — if someone changes the topic constants
 		// without checking, this fires loudly at runtime.
 		return "", nil, fmt.Errorf("kit-bus-emit: topic %q invalid: %w", topic, err)
 	}

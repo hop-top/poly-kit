@@ -189,9 +189,9 @@ func runCompletedFile() File {
 		// only .url (API) is exposed, no .html_url. Construct the
 		// human-facing URL the spec envelope expects from
 		// server_url + repository + /pull/<number>.
-		"KIT_BUS_PR_URL": "${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.workflow_run.pull_requests[0].number }}",
-		"KIT_BUS_PR_BRANCH":      "${{ github.event.workflow_run.head_branch }}",
-		"KIT_BUS_PR_HEAD_SHA":    "${{ github.event.workflow_run.head_sha }}",
+		"KIT_BUS_PR_URL":      "${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.workflow_run.pull_requests[0].number }}",
+		"KIT_BUS_PR_BRANCH":   "${{ github.event.workflow_run.head_branch }}",
+		"KIT_BUS_PR_HEAD_SHA": "${{ github.event.workflow_run.head_sha }}",
 		// pull_requests[i] is a pull_request_minimal — base.sha is
 		// the real base commit SHA. workflow_run.head_repository.
 		// default_branch is a branch name, not a SHA.

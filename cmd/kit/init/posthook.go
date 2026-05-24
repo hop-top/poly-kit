@@ -94,7 +94,7 @@ type PostHookResult struct {
 	SHA256 string
 }
 
-// GeneratePostPROpenHook materialises BOTH .githooks/post-pr-open and
+// GeneratePostPROpenHook materializes BOTH .githooks/post-pr-open and
 // .githooks/post-pr-open.ps1 under target. enabled=false short-circuits
 // to PostHookActionSkippedFlag for both (used by
 // --without-githook-post-pr-open).

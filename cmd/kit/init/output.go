@@ -35,9 +35,9 @@ type Summary struct {
 	HopSkipped bool            `json:"hop_skipped,omitempty"`
 	TLCSkipped bool            `json:"tlc_skipped,omitempty"`
 
-	PrePrHook    *PrePrResult       `json:"prepr_hook,omitempty"`
-	Workflows    []WorkflowAction   `json:"workflows,omitempty"`
-	BusWorkflows []buswf.PlanEntry  `json:"bus_workflows,omitempty"`
+	PrePrHook    *PrePrResult      `json:"prepr_hook,omitempty"`
+	Workflows    []WorkflowAction  `json:"workflows,omitempty"`
+	BusWorkflows []buswf.PlanEntry `json:"bus_workflows,omitempty"`
 
 	NextSteps []string `json:"next_steps"`
 }
