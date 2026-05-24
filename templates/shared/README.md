@@ -2,6 +2,16 @@
 
 common infrastructure blueprints.
 
+Track spec:
+[`scaffold-emits-mise-toml-devcontainer-compose`](../../.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md).
+This directory holds the SOT (`tool-versions.toml`), the idempotent
+managed-block writer (`managed-block.sh`), the per-artifact emitters
+(`emit-*.sh`), the opt-in services applier (`apply-services.sh`), and
+the curated `--services` catalog under `services/`. `scaffold.sh`
+sources these directly; `kit init` embeds a byte-identical mirror
+under `cmd/kit/init/managed_assets/` (kept in sync by pre-commit
+hook) so refreshes work with just the `kit` binary on `$PATH`.
+
 ## Contents
 
 - [ci/](ci/README.md)
@@ -9,6 +19,8 @@ common infrastructure blueprints.
 - [devcontainer/](devcontainer/README.md)
 - [scripts/](scripts/README.md)
 - [tool-versions.toml](tool-versions.toml)
+- [services/](#services-catalog) — opt-in `--services` catalog
+  (postgres, redis, minio, mailpit, redpanda)
 
 ## tool-versions.toml
 

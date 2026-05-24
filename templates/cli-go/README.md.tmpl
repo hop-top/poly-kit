@@ -32,9 +32,52 @@ Config file: `~/.config/{{.Name}}/config.yaml`
 Environment variables prefixed with `{{.NameUpper}}_` are
 also recognized.
 
+## Getting started
+
+Toolchain is pinned in `mise.toml`. Install everything in one go:
+
+```sh
+mise install                # installs Go (and other pinned tools)
+mise run install            # downloads ecosystem deps (go mod download)
+cp .env.example .env        # adapter defaults (telemetry, storage, queue, log, config)
+```
+
+Optional — start telemetry services (otel-collector + jaeger):
+
+```sh
+docker compose -f .devcontainer/docker-compose.yml up -d
+open http://localhost:16686 # Jaeger UI for traces
+```
+
+## Tool versions
+
+Versions for the Go toolchain, linters, and release tooling are
+pinned in `mise.toml` at the project root. The file ships with a
+`# >>> kit-managed >>>` block tracked against the poly-kit central
+manifest. Refresh it with:
+
+```sh
+kit init --update
+```
+
+User-added tools above the marker are preserved verbatim.
+
+### Bring this project up to date
+
+When new defaults land upstream (bumped Go version, new linter,
+new managed service):
+
+```sh
+kit init --check    # preview drift; exit non-zero if out of sync
+kit init --update   # refresh managed blocks
+```
+
+See poly-kit's `templates/RUNBOOK-UPGRADE.md` for the full
+procedure.
+
 ## Development
 
-Prerequisites: Go 1.26+, GNU Make
+Prerequisites: `mise` (which installs Go 1.26+ for you), GNU Make.
 
 ```sh
 make setup    # download deps
