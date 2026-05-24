@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"hop.top/kit/go/console/cli"
+	kitcliconfig "hop.top/kit/go/console/cli/config"
 )
 
 // sigFixtureRoot returns a Root with EnforceValidate=false (so the
@@ -104,6 +105,18 @@ func TestValidateSignature_LocalGlobals_QuietOnNonGlobalFlag(t *testing.T) {
 	report := r.ValidateSignature()
 	assert.False(t, report.HasViolations(),
 		"non-shadowing local flag must not trip the validator")
+}
+
+func TestValidateSignature_LocalGlobals_QuietOnKitConfigPathSubcommands(t *testing.T) {
+	r := sigFixtureRoot(t)
+	parent := &cobra.Command{Use: "config", Short: "Inspect config"}
+	kitcliconfig.RegisterPathSubcommands(parent, "vtool")
+	r.Cmd.AddCommand(parent)
+
+	report := r.ValidateSignature()
+	v := findViolation(report, cli.SignatureCheckLocalGlobals)
+	assert.Nil(t, v,
+		"kit's RegisterPathSubcommands must not declare local --format shadowing the root global")
 }
 
 // ----------------------------------------------------------------------

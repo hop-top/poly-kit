@@ -92,6 +92,7 @@ func Command(toolName string, opts ...Option) *cobra.Command {
 		Short: "Inspect " + toolName + " configuration",
 		Args:  cobra.NoArgs,
 	}
+	cmd.PersistentFlags().String("format", formatText, "Output format: text|json|yaml")
 	RegisterPathSubcommands(cmd, toolName, opts...)
 	return cmd
 }

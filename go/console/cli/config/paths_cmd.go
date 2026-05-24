@@ -23,6 +23,13 @@ const (
 	formatYAML = "yaml"
 )
 
+func resolveFormat(cmd *cobra.Command) string {
+	if f := cmd.Flag("format"); f != nil && f.Value.String() != "" {
+		return f.Value.String()
+	}
+	return formatText
+}
+
 // errNoConfig is the sentinel returned by `path` when no rung in the
 // resolution chain exists. The root command catches it for exit
 // code 1 by returning the error from RunE; host bridges that
@@ -32,10 +39,7 @@ var errNoConfig = errors.New("no config file found in resolution chain")
 // pathCommand prints the highest-precedence existing config file.
 // Exits non-zero when no rung exists.
 func pathCommand(toolName string, o *options) *cobra.Command {
-	var (
-		format string
-		from   string
-	)
+	var from string
 	cmd := &cobra.Command{
 		Use:   "path",
 		Short: "Print the highest-precedence existing " + toolName + " config file",
@@ -48,6 +52,7 @@ in resolution chain" to stderr and exits 1.`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			format := resolveFormat(cmd)
 			if err := validateFormat(format); err != nil {
 				return err
 			}
@@ -64,7 +69,6 @@ in resolution chain" to stderr and exits 1.`,
 			return renderOne(cmd.OutOrStdout(), top, format)
 		},
 	}
-	cmd.Flags().StringVar(&format, "format", formatText, "Output format: text|json|yaml")
 	cmd.Flags().StringVar(&from, "from", "", "Resolve from this directory instead of os.Getwd()")
 	kitcli.SetSideEffect(cmd, kitcli.SideEffectRead)
 	kitcli.SetIdempotency(cmd, kitcli.IdempotencyYes)
@@ -73,10 +77,7 @@ in resolution chain" to stderr and exits 1.`,
 
 // pathsCommand prints the full precedence chain.
 func pathsCommand(toolName string, o *options) *cobra.Command {
-	var (
-		format string
-		from   string
-	)
+	var from string
 	cmd := &cobra.Command{
 		Use:   "paths",
 		Short: "Print the full " + toolName + " config resolution chain",
@@ -91,6 +92,7 @@ callers can drive scripts off precedence metadata.`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			format := resolveFormat(cmd)
 			if err := validateFormat(format); err != nil {
 				return err
 			}
@@ -102,7 +104,6 @@ callers can drive scripts off precedence metadata.`,
 			return renderMany(cmd.OutOrStdout(), chain, format)
 		},
 	}
-	cmd.Flags().StringVar(&format, "format", formatText, "Output format: text|json|yaml")
 	cmd.Flags().StringVar(&from, "from", "", "Resolve from this directory instead of os.Getwd()")
 	kitcli.SetSideEffect(cmd, kitcli.SideEffectRead)
 	kitcli.SetIdempotency(cmd, kitcli.IdempotencyYes)
