@@ -51,33 +51,18 @@ open http://localhost:16686 # Jaeger UI for traces
 
 ## Tool versions
 
-Versions for the Go toolchain, linters, and release tooling are
-pinned in `mise.toml` at the project root. The file ships with a
-`# >>> kit-managed >>>` block tracked against the poly-kit central
-manifest. Refresh it with:
+Go toolchain, linters, and release tooling are pinned in
+`mise.toml` at the project root, inside a `# >>> kit-managed >>>`
+block tracked against poly-kit's central manifest. User-added tools
+above the marker are preserved verbatim.
 
-```sh
-kit init --update
-```
-
-User-added tools above the marker are preserved verbatim.
-
-### Bring this project up to date
-
-When new defaults land upstream (bumped Go version, new linter,
-new managed service):
-
-```sh
-kit init --check    # preview drift; exit non-zero if out of sync
-kit init --update   # refresh managed blocks
-```
-
-See poly-kit's `templates/RUNBOOK-UPGRADE.md` for the full
-procedure.
+Refresh procedure (`kit init --check` / `kit init --update`) is
+documented in poly-kit's
+[templates/RUNBOOK-UPGRADE.md](https://github.com/hop-top/poly-kit/blob/main/templates/RUNBOOK-UPGRADE.md).
 
 ## Development
 
-Prerequisites: `mise` (which installs Go 1.26+ for you), GNU Make.
+Prerequisites: `mise` (installs the pinned Go toolchain), GNU Make.
 
 ```sh
 make setup    # download deps
