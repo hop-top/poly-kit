@@ -176,6 +176,24 @@ _strip_trailing_commas() {
 }
 
 # ----------------------------------------------------------
+# Key uniqueness (jq-free regression catch)
+# ----------------------------------------------------------
+
+# Catches the duplicate-`postCreateCommand` regression without depending
+# on jq being on PATH. A half-merged managed-block emit can leave two
+# `postCreateCommand` keys in the JSON-C body; the JSON-C parse path
+# (above) also catches this, but only when jq or python3 is available.
+@test "devcontainer.json has exactly one postCreateCommand key" {
+  local out="$TMP/proj"
+  mkdir -p "$out"
+  emit_devcontainer_json "$out" "myapp" "go"
+  local f="$out/.devcontainer/devcontainer.json"
+  run grep -c '"postCreateCommand"' "$f"
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 1 ]
+}
+
+# ----------------------------------------------------------
 # Idempotency
 # ----------------------------------------------------------
 

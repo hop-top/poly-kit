@@ -206,7 +206,7 @@ while IFS= read -r path; do
 done < <(find "$PROJECT_DIR" -depth -name '*{{.Name}}*' \
   ! -path '*/.git/*' \
   ! -path '*/node_modules/*' \
-  ! -path '*/vendor/*' 2>/dev/null)
+  ! -path '*/vendor/*')
 
 # --- Strip .tmpl suffixes ------------------------------
 
@@ -219,7 +219,7 @@ while IFS= read -r f; do
 done < <(find "$PROJECT_DIR" -type f -name '*.tmpl' \
   ! -path '*/.git/*' \
   ! -path '*/node_modules/*' \
-  ! -path '*/vendor/*' 2>/dev/null)
+  ! -path '*/vendor/*')
 
 # --- Polyglot: prune unselected languages --------------
 

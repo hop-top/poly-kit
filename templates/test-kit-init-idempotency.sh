@@ -57,9 +57,24 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-KIT="${KIT_BIN:-/tmp/kit-idempotency}"
 
-if [ ! -x "$KIT" ]; then
+# Honor an externally provided KIT_BIN (CI may pre-build once), otherwise
+# allocate a unique path via mktemp so parallel CI shards never race on
+# a shared /tmp/kit-idempotency. mktemp creates the empty file with a
+# unique name; `go build -o` overwrites it.
+if [ -n "${KIT_BIN:-}" ]; then
+  KIT="$KIT_BIN"
+  KIT_OWNED=0
+else
+  KIT="$(mktemp -t kit-idempotency.XXXXXX)"
+  KIT_OWNED=1
+  trap 'rm -f "$KIT"' EXIT
+fi
+
+# When we own the path (mktemp) the file exists but is empty (not -x),
+# so the build path is always taken. When KIT_BIN is supplied externally
+# we only rebuild if the binary is missing.
+if [ "$KIT_OWNED" = "1" ] || [ ! -x "$KIT" ]; then
   echo "Building kit binary at $KIT ..."
   (cd "$REPO_ROOT" && go build -buildvcs=false -o "$KIT" ./cmd/kit)
 fi

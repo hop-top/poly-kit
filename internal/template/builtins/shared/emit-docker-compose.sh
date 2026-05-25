@@ -202,6 +202,14 @@ emit_docker_compose() {
     return 2
   fi
 
+  # Surface mid-pipeline failures. Without pipefail, a body-producer
+  # crash gets swallowed and mb_write happily writes the empty
+  # half-broken output. Save prior state so we don't pollute callers
+  # (some bats tests source this file in a fresh shell without pipefail).
+  local _edc_prior_pipefail
+  if shopt -qo pipefail; then _edc_prior_pipefail=1; else _edc_prior_pipefail=0; fi
+  set -o pipefail
+
   mkdir -p "$project_dir/.devcontainer"
 
   local compose="$project_dir/.devcontainer/docker-compose.yml"
@@ -218,4 +226,6 @@ emit_docker_compose() {
 
   # 4. otel-config.yaml — entire file is one managed block.
   _edc_otel_config_body | mb_write "$otel"
+
+  if [[ "$_edc_prior_pipefail" = "0" ]]; then set +o pipefail; fi
 }

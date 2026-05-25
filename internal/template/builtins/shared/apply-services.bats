@@ -243,6 +243,21 @@ teardown() {
 }
 
 # ----------------------------------------------------------
+# Named-volume regression guard
+# ----------------------------------------------------------
+
+# Stateful services switched from named volumes (pgdata, redisdata,
+# miniodata under a top-level `volumes:` block) to bind mounts under
+# `./.data/<svc>`. Lock that contract here with a host-independent
+# assertion so a future revert doesn't slip through on docker-less
+# hosts (where `docker compose config -q` skips).
+@test "compose: no top-level volumes: block and no named-volume refs" {
+  apply_services "$PROJ" "myapp" "postgres,redis,minio"
+  ! grep -q '^volumes:' "$COMPOSE"
+  ! grep -qE '^[[:space:]]+(pgdata|redisdata|miniodata):' "$COMPOSE"
+}
+
+# ----------------------------------------------------------
 # Catalog metadata
 # ----------------------------------------------------------
 
