@@ -141,10 +141,11 @@ Refresh with `kit init --update`. User-added tools above the
 └── otel-config.yaml    # entirely kit-managed
 ```
 
-No `Dockerfile` by default. The dev image is
-`mcr.microsoft.com/devcontainers/base:debian` with the
-`ghcr.io/jdx/mise/features/mise:1` feature; the toolchain comes from
-`mise.toml`. Add a Dockerfile only if you need OS packages.
+No `Dockerfile` by default. The dev image is defined in
+[`shared/emit-devcontainer-json.sh`](shared/emit-devcontainer-json.sh)
+(default: the Microsoft devcontainers base + the `mise` feature);
+the toolchain comes from `mise.toml`. Add a Dockerfile only if you
+need OS packages.
 
 `docker-compose.yml` ships two labeled managed blocks:
 

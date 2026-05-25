@@ -14,15 +14,17 @@ scaffolding and conformance tools for kit projects.
 
 ## Blueprints
 
-- [cli-go/](cli-go/README.md): Go CLI template.
-- [cli-py/](cli-py/README.md): Python CLI template.
-- [cli-ts/](cli-ts/README.md): TypeScript CLI template.
+- [cli-go/](cli-go/): Go CLI template.
+- [cli-py/](cli-py/): Python CLI template.
+- [cli-ts/](cli-ts/): TypeScript CLI template.
+- [cli-rs/](cli-rs/): Rust CLI template.
+- [cli-php/](cli-php/): PHP CLI template.
 
 ## Tests
 
-- [test-lib.sh](test-lib.sh): unit tests for lib.sh.
-- [test-conform-e2e.sh](test-conform-e2e.sh): e2e tests for conform.sh.
 - [test-scaffold-e2e.sh](test-scaffold-e2e.sh): e2e tests for scaffold.sh.
+- [test-kit-init-idempotency.sh](test-kit-init-idempotency.sh): idempotency tests for `kit init`.
+- [test-e2e.sh](test-e2e.sh): top-level e2e harness.
 
 ## What scaffold emits
 

@@ -1,20 +1,11 @@
 # conform.sh
 
-Idempotent script that brings an existing repo to kit standards.
-Safe actions applied automatically; edge cases flagged in a report
-with LLM-ready prompts for review.
-
-`conform.sh` is a thin wrapper over `kit init --update`: the
+Thin wrapper over `kit init --update`. `kit init` refreshes the
 kit-managed blocks (mise.toml, `.devcontainer/*`, `.env.example`
-kit-adapter blocks) are refreshed by `kit init`; the additive-merge
-checks below cover everything *outside* the managed scope.
-
-`kit init --update` is the **modern** way to refresh managed
-blocks; `conform.sh` is kept as a thin wrapper for the additive
-checks (license headers, missing files, Makefile / `.gitignore`
-merges) that fall outside the kit-managed scope. New adopters
-should reach for `kit init` first — see
-[RUNBOOK-UPGRADE.md](RUNBOOK-UPGRADE.md).
+adapter blocks); `conform.sh` adds the additive-merge checks
+outside that scope (license headers, missing files, Makefile /
+`.gitignore` merges). New adopters: reach for `kit init` first —
+see [RUNBOOK-UPGRADE.md](RUNBOOK-UPGRADE.md).
 
 ## Usage
 

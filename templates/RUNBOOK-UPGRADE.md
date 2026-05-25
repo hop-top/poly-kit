@@ -8,6 +8,11 @@ service), pull them into an existing project:
 
     go install hop.top/kit/cmd/kit@latest
 
+While kit is in pre-release, `@latest` may not resolve. Pin to a
+published tag instead, e.g. `go install hop.top/kit/cmd/kit@v0.4.0-alpha.4`
+— see <https://github.com/hop-top/poly-kit/releases> for the
+current tag.
+
 Or rebuild from source if you're tracking a branch.
 
 ## 2. Preview drift
