@@ -325,7 +325,7 @@ assert_managed_files() {
   local wf_dir="$proj/.github/workflows"
   if [ -d "$wf_dir" ]; then
     local wf_files
-    wf_files="$(find "$wf_dir" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null)"
+    wf_files="$(find "$wf_dir" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \))"
     if [ -z "$wf_files" ]; then
       skip "$tag CI workflows (no .yml files under $wf_dir)"
     else
@@ -333,12 +333,12 @@ assert_managed_files() {
       local wf
       while IFS= read -r wf; do
         [ -z "$wf" ] && continue
-        if grep -q 'jdx/mise-action@v2' "$wf" 2>/dev/null; then
+        if grep -q 'jdx/mise-action@v2' "$wf"; then
           has_mise_action=true
         fi
         for pat in 'actions/setup-go@' 'actions/setup-node@' \
                    'actions/setup-python@' 'dtolnay/rust-toolchain@'; do
-          if grep -q "$pat" "$wf" 2>/dev/null; then
+          if grep -q "$pat" "$wf"; then
             had_legacy=true
             legacy_hits="${legacy_hits} ${wf##*/}:${pat}"
           fi
