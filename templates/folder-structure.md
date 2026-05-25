@@ -115,9 +115,6 @@ This document defines a language-agnostic, "self-aligning" repository architectu
 
 ## 4. What `scaffold.sh` / `kit init` Emits
 
-Spec:
-`.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md`.
-
 ### `mise.toml` (project root) — SOT for tool versions
 
 ```

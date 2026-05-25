@@ -8,7 +8,7 @@ set -euo pipefail
 # scaffold (go,ts,py and go,ts,py,rs), error cases (missing name,
 # invalid lang/license, existing dir, missing flag value),
 # --no-push skipping reservation, reserve-packages unit behavior
-# (npm unauthed, PyPI name taken), and (T-0812) per-spec emitter
+# (npm unauthed, PyPI name taken), and per-spec emitter
 # assertions via `assert_managed_files`: mise.toml shape,
 # .devcontainer/devcontainer.json compose-mode, docker-compose.yml
 # telemetry + opted-in services, otel-config.yaml,
@@ -99,7 +99,7 @@ assert_file_excludes() {
 # ------------------------------------------------------
 # assert_managed_files <project-dir> <lang-csv> [<services-csv>] [<project-name>]
 #
-# Validates the per-spec emitter outputs (T-0812):
+# Validates the per-spec emitter outputs:
 #   - mise.toml shape + per-lang gating + tasks.install
 #   - .devcontainer/devcontainer.json compose-mode + mise feature
 #   - .devcontainer/docker-compose.yml telemetry + opted-in services

@@ -73,9 +73,9 @@ type ManagedOptions struct {
 	// and reports drift to Stdout; the real project is untouched.
 	Check bool
 	// AddService / RemoveService are service catalog operations
-	// handled by the T-0808 apply-services.sh helper. If the helper
-	// is not embedded (because T-0808 hasn't merged), these return
-	// a descriptive error.
+	// handled by the embedded apply-services.sh helper. If the
+	// helper is not present in the asset bundle, these return a
+	// descriptive error.
 	AddService    string
 	RemoveService string
 	// Stdout / Stderr receive emitter output and diff content.
@@ -245,8 +245,8 @@ func extractManagedAssets() (string, func(), error) {
 	cleanup := func() { _ = os.RemoveAll(dir) }
 
 	// Walk the embedded tree, mirroring its layout into `dir`.
-	// apply-services.sh (T-0808) resolves resources relative to
-	// its own BASH_SOURCE, so `services/<name>.yml` and
+	// apply-services.sh resolves resources relative to its own
+	// BASH_SOURCE, so `services/<name>.yml` and
 	// `services/env/<name>.env` must keep their subpaths.
 	err = fs.WalkDir(managedAssets, "managed_assets", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -351,7 +351,7 @@ emit_env_example    "${PROJECT}" "${NAME}"
 
 // runServiceOp invokes apply-services.sh when present in the
 // extracted asset bundle. Returns a descriptive error when the
-// helper is not embedded (T-0808 hasn't merged into the worktree).
+// helper is not embedded in this build.
 //
 // projectName is the already-resolved name from RunManaged (opts.Name
 // with filepath.Base(opts.Cwd) fallback), so apply-services.sh sees
@@ -365,10 +365,11 @@ func runServiceOp(ctx context.Context, scriptDir, projectName string, opts Manag
 			op = "--remove-service"
 		}
 		return fmt.Errorf(
-			"%s requires T-0808's apply-services.sh; "+
-				"rebase onto a branch with T-0808 merged", op)
+			"%s requires the embedded apply-services helper; "+
+				"rebuild kit or pin to a version that includes "+
+				"service-catalog support", op)
 	}
-	// T-0808's apply-services.sh exposes:
+	// apply-services.sh exposes:
 	//   apply_services <project-dir> <project-name> <services-csv>
 	//   apply_no_services <project-dir>
 	// There is no in-place "remove single service" verb — removal is

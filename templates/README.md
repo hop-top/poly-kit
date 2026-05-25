@@ -26,9 +26,6 @@ scaffolding and conformance tools for kit projects.
 
 ## What scaffold emits
 
-Track:
-[`scaffold-emits-mise-toml-devcontainer-compose`](../.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md).
-
 Every new project (and every existing one refreshed with
 `kit init --update`) gets:
 

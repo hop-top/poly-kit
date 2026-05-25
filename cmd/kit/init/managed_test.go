@@ -1,4 +1,4 @@
-// Tests for the managed-block refresh orchestrator (T-0810).
+// Tests for the managed-block refresh orchestrator.
 //
 // These tests drive RunManaged directly rather than via the cobra
 // command — that keeps the surface tight and avoids reaching into
@@ -198,9 +198,9 @@ func TestRunManaged_PreservesUserContentAboveMarkers(t *testing.T) {
 }
 
 // TestRunManaged_AddServiceWiresRedis verifies the happy-path
-// integration with T-0808's apply-services.sh: a project with a
-// fresh managed scaffold gets the redis compose service added
-// and KIT_QUEUE_DRIVER flipped to redis.
+// integration with the embedded apply-services.sh: a project
+// with a fresh managed scaffold gets the redis compose service
+// added and KIT_QUEUE_DRIVER flipped to redis.
 func TestRunManaged_AddServiceWiresRedis(t *testing.T) {
 	requireBash(t)
 	dir := t.TempDir()

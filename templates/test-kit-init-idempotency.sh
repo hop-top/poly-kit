@@ -5,13 +5,12 @@ set -euo pipefail
 # test-kit-init-idempotency.sh
 #
 # End-to-end tests for the `kit init --update` idempotency
-# contract from spec §4 of the
-# `scaffold-emits-mise-toml-devcontainer-compose` track.
+# contract.
 #
 # Complements the Go-level coverage in
-# `cmd/kit/init/managed_test.go` (T-0810) by exercising the
-# actual built binary against scratch projects in tempdirs —
-# the way real users invoke it.
+# `cmd/kit/init/managed_test.go` by exercising the actual
+# built binary against scratch projects in tempdirs — the
+# way real users invoke it.
 #
 # Test matrix (each test runs in its own mktemp -d sandbox):
 #
@@ -27,7 +26,7 @@ set -euo pipefail
 #      `kit init --add-service redis` twice yields the same
 #      managed files as once (mb_write `cmp -s` short-circuit).
 #      Note: `--remove-service` is not supported yet — the
-#      T-0810 integration explicitly returns a clear error.
+#      integration explicitly returns a clear error.
 #      `apply_services` is REPLACING (not additive): each call
 #      writes the full opted-in compose block from the input
 #      CSV, so adding `redis` then `postgres` replaces redis
