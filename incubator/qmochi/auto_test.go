@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"hop.top/kit/go/ai/llm"
 )
 
 func TestAuto_SingleSeriesFewLabels_Bar(t *testing.T) {
@@ -156,8 +155,8 @@ type fakeCompleter struct {
 	response string
 }
 
-func (f *fakeCompleter) Complete(_ context.Context, _ llm.Request) (llm.Response, error) {
-	return llm.Response{Content: f.response}, nil
+func (f *fakeCompleter) Complete(_ context.Context, _ []Message) (string, error) {
+	return f.response, nil
 }
 
 func TestAutoWithLLM_UsesLLMResponse(t *testing.T) {
