@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"hop.top/kit/go/ai/llm"
 )
 
 // Auto inspects the shape of data and returns a Chart with
@@ -137,28 +135,24 @@ func uniformPointCount(data []Series) bool {
 // AutoWithLLM uses an LLM to pick the best chart type for
 // ambiguous data. Falls back to deterministic Auto if the
 // completer is nil or returns an unrecognized type.
-func AutoWithLLM(ctx context.Context, data []Series, comp llm.Completer) (Chart, error) {
+func AutoWithLLM(ctx context.Context, data []Series, comp Completer) (Chart, error) {
 	if comp == nil {
 		return Auto(data), nil
 	}
 
 	summary := summarizeData(data)
-	resp, err := comp.Complete(ctx, llm.Request{
-		Messages: []llm.Message{{
-			Role: "user",
-			Content: fmt.Sprintf(
-				"Given this dataset, respond with exactly one word — the best "+
-					"chart type: bar, column, line, sparkline, heatmap, braille, "+
-					"scatter, or pie.\n\n%s", summary),
-		}},
-		Temperature: 0,
-		MaxTokens:   20,
-	})
+	resp, err := comp.Complete(ctx, []Message{{
+		Role: "user",
+		Content: fmt.Sprintf(
+			"Given this dataset, respond with exactly one word — the best "+
+				"chart type: bar, column, line, sparkline, heatmap, braille, "+
+				"scatter, or pie.\n\n%s", summary),
+	}})
 	if err != nil {
 		return Auto(data), nil
 	}
 
-	chartType := parseChartType(resp.Content)
+	chartType := parseChartType(resp)
 	if chartType == "" {
 		return Auto(data), nil
 	}
