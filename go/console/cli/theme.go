@@ -19,6 +19,13 @@ import (
 	"image/color"
 
 	"charm.land/lipgloss/v2"
+	// charm.land/lipgloss/v2/compat runs an unconditional background-color
+	// query at package init that ignores NO_COLOR, leaking OSC/DA1 bytes to
+	// stdout and stealing stdin under a PTY. Upstream fix proposed in
+	// https://github.com/charmbracelet/lipgloss/pull/692; once merged and
+	// released, bump charm.land/lipgloss/v2 to pick it up and this note can
+	// be removed. Until then, callers that need clean stdout / non-leaky
+	// stdin should set NO_COLOR before importing this package transitively.
 	"charm.land/lipgloss/v2/compat"
 	"github.com/charmbracelet/x/exp/charmtone"
 )
