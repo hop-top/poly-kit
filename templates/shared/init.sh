@@ -130,6 +130,14 @@ replace_token '`}}'                  ""
 
 echo "Configuring license..."
 
+# License sources ship with a .tmpl suffix so language toolchains
+# ignore them; strip the suffix early so the cp below resolves on
+# both shipped (LICENSE-*.tmpl) and pre-stripped (LICENSE-*) layouts.
+for f in "$PROJECT_DIR"/LICENSE-MIT.tmpl "$PROJECT_DIR"/LICENSE-Apache-2.0.tmpl; do
+  [ -e "$f" ] || continue
+  mv "$f" "${f%.tmpl}"
+done
+
 if [ "$license" = "Apache-2.0" ]; then
   cp "$PROJECT_DIR/LICENSE-Apache-2.0" \
     "$PROJECT_DIR/LICENSE"
@@ -239,6 +247,14 @@ if [ "$is_polyglot" = true ]; then
     fi
   done
 fi
+
+# --- Remove manifest leftovers -------------------------
+
+# kit-template.yaml + tiers.yaml describe the template to the
+# render pipeline; they don't belong in the rendered project.
+# Mirrors the Go engine's render_rules.remove_after_render so
+# both paths produce identical output trees.
+rm -f "$PROJECT_DIR/kit-template.yaml" "$PROJECT_DIR/tiers.yaml"
 
 # --- Git init ------------------------------------------
 
