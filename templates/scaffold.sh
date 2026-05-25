@@ -22,6 +22,24 @@ source "$SCRIPT_DIR/reserve-packages.sh"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
+# shellcheck source=shared/managed-block.sh
+source "$SCRIPT_DIR/shared/managed-block.sh"
+
+# shellcheck source=shared/emit-mise.sh
+source "$SCRIPT_DIR/shared/emit-mise.sh"
+
+# shellcheck source=shared/emit-devcontainer-json.sh
+source "$SCRIPT_DIR/shared/emit-devcontainer-json.sh"
+
+# shellcheck source=shared/emit-docker-compose.sh
+source "$SCRIPT_DIR/shared/emit-docker-compose.sh"
+
+# shellcheck source=shared/emit-env-example.sh
+source "$SCRIPT_DIR/shared/emit-env-example.sh"
+
+# shellcheck source=shared/apply-services.sh
+source "$SCRIPT_DIR/shared/apply-services.sh"
+
 # --- Tool detection ------------------------------------
 
 detect_tools
@@ -42,6 +60,9 @@ ORG=""
 MODULE_PREFIX=""
 NO_TLC=false
 NO_PUSH=false
+NO_DEVCONTAINER=false
+SERVICES=""
+NO_SERVICES=false
 
 # Auto-detect forge
 if [ "$HAS_GH" = true ]; then
@@ -84,6 +105,9 @@ USAGE
   fi
 
   cat <<USAGE
+  --no-devcontainer     Skip .devcontainer scaffolding
+  --services LIST       Comma-separated catalog services: postgres,redis,minio,mailpit,redpanda
+  --no-services         Strip default telemetry services (rare)
   -h, --help            Show this help
 
 Examples:
@@ -157,6 +181,16 @@ while [ $# -gt 0 ]; do
     --no-push)
       NO_PUSH=true; shift
       ;;
+    --no-devcontainer)
+      NO_DEVCONTAINER=true; shift
+      ;;
+    --services)
+      require_arg "$1" "${2:-}"
+      SERVICES="$2"; shift 2
+      ;;
+    --no-services)
+      NO_SERVICES=true; shift
+      ;;
     -*)
       echo "Error: unknown flag: $1" >&2
       exit 1
@@ -222,6 +256,27 @@ for l in "${LANG_ARRAY[@]}"; do
       ;;
   esac
 done
+
+# Validate --services list against catalog
+if [ -n "$SERVICES" ]; then
+  IFS=',' read -ra _SVC_ARRAY <<< "$SERVICES"
+  for s in "${_SVC_ARRAY[@]}"; do
+    s_trimmed="$(echo "$s" | tr -d ' ')"
+    [ -z "$s_trimmed" ] && continue
+    case "$s_trimmed" in
+      postgres|redis|minio|mailpit|redpanda) ;;
+      *)
+        echo "Error: unknown service: $s_trimmed (must be one of: postgres, redis, minio, mailpit, redpanda)" >&2
+        exit 1
+        ;;
+    esac
+  done
+fi
+
+if [ "$NO_SERVICES" = true ] && [ -n "$SERVICES" ]; then
+  echo "Error: --no-services and --services are mutually exclusive" >&2
+  exit 1
+fi
 
 # Determine if polyglot
 IS_POLYGLOT=false
@@ -418,7 +473,38 @@ cp "$SCRIPT_DIR/lib.sh" "$_lib_tmp"
 (cd "$OUTPUT" && bash init.sh)
 rm -f "$_lib_tmp"
 
+# --- Devcontainer / compose emission --------------------
+
+if [ "$NO_DEVCONTAINER" = false ]; then
+  echo "Emitting .devcontainer/devcontainer.json..."
+  emit_devcontainer_json "$OUTPUT" "$NAME" "$LANG"
+  echo "Emitting .devcontainer/docker-compose.yml..."
+  emit_docker_compose "$OUTPUT" "$NAME"
+fi
+
 # --- Post-clone setup ----------------------------------
+
+# Emit kit-managed mise.toml from the central tool-versions
+# manifest, scoped to the project's selected langs.
+echo "Emitting mise.toml..."
+emit_mise "$OUTPUT" "$LANG"
+
+# Emit .env.example with kit-adapter env vars (telemetry,
+# storage, queue, log, config).
+echo "Emitting .env.example..."
+emit_env_example "$OUTPUT" "$NAME"
+
+# --- Services catalog ----------------------------------
+
+if [ "$NO_DEVCONTAINER" = false ]; then
+  if [ "$NO_SERVICES" = true ]; then
+    echo "Stripping default telemetry services..."
+    apply_no_services "$OUTPUT"
+  elif [ -n "$SERVICES" ]; then
+    echo "Applying services: $SERVICES..."
+    apply_services "$OUTPUT" "$NAME" "$SERVICES"
+  fi
+fi
 
 # a. tlc init
 if [ "$HAS_TLC" = true ] && [ "$NO_TLC" = false ]; then
@@ -558,7 +644,9 @@ setup_release_please "$OUTPUT" "${LANG_ARRAY[@]}"
 
 # --- First commit + push -------------------------------
 
-# Stage copilot instructions (init.sh already committed template files)
+# init.sh already committed the template files; this commit
+# picks up the post-init artifacts (mise.toml, .devcontainer/,
+# .env.example, copilot instructions, release-please config).
 (cd "$OUTPUT" && git add -A && git commit -m "feat: scaffold $NAME" --allow-empty) || true
 
 if [ "$NO_PUSH" = false ] && [ -n "$REPO_URL" ]; then

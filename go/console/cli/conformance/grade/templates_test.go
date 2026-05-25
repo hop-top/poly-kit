@@ -44,7 +44,7 @@ func TestGitHubActionsSHAsPinned(t *testing.T) {
 	body := string(raw)
 	for _, action := range []string{
 		"actions/checkout@",
-		"actions/setup-go@",
+		"jdx/mise-action@",
 		"actions/upload-artifact@",
 	} {
 		idx := strings.Index(body, action)
