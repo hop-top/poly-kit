@@ -51,5 +51,3 @@ project root (gitignored).
 - [`CONFORM.md`](CONFORM.md) — `conform.sh` (thin wrapper around
   `kit init --update`) for the additive-merge checks outside the
   managed scope.
-- Track spec:
-  [`.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md`](../.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md).

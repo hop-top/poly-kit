@@ -9,15 +9,14 @@
 #   <project-dir>/.devcontainer/docker-compose.yml
 #   <project-dir>/.devcontainer/otel-config.yaml
 #
-# Compose file layout (matches spec §6 of track
-# scaffold-emits-mise-toml-devcontainer-compose):
+# Compose file layout:
 #
 #   - The `devcontainer` service is NOT inside a managed block;
 #     it is user-extensible.
 #   - Two kit-managed blocks live below it:
 #       - `telemetry` — default otel-collector + jaeger services
-#       - `opted-in services` — empty by default; T-0808 will
-#         populate via `--services`.
+#       - `opted-in services` — empty by default; populated by
+#         apply-services.sh when `--services` is passed.
 #
 # otel-config.yaml is entirely kit-managed (one unlabeled block).
 #
@@ -137,10 +136,11 @@ YAML
 }
 
 # Body for the `opted-in services` block — empty by default.
-# T-0808 will replace this body via mb_write when `--services`
-# is passed. We emit a single comment line as a hint so the
-# block isn't visually empty, but the test expecting "empty"
-# treats this as empty (no real service definitions).
+# apply-services.sh replaces this body via mb_write when
+# `--services` is passed. We emit a single comment line as a
+# hint so the block isn't visually empty, but the test
+# expecting "empty" treats this as empty (no real service
+# definitions).
 _edc_opted_in_body() {
   cat <<'YAML'
   # postgres, redis, minio, mailpit, redpanda appended here by --services

@@ -2,8 +2,6 @@
 
 common infrastructure blueprints.
 
-Track spec:
-[`scaffold-emits-mise-toml-devcontainer-compose`](../../.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md).
 This directory holds the SOT (`tool-versions.toml`), the idempotent
 managed-block writer (`managed-block.sh`), the per-artifact emitters
 (`emit-*.sh`), the opt-in services applier (`apply-services.sh`), and
@@ -214,11 +212,8 @@ emit_devcontainer_json <project-dir> <project-name> <lang-csv>
 
 ### What gets emitted
 
-Per the track spec §5
-(`.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md`):
-
 - `dockerComposeFile: "docker-compose.yml"` (sibling file
-  emitted by T-0806).
+  emitted by `emit-docker-compose.sh`).
 - `service: "devcontainer"`, `workspaceFolder: "/workspace"`,
   `remoteUser: "dev"`.
 - `features` — `common-utils:2` + `jdx/mise:1`.
@@ -257,7 +252,7 @@ this.
 ### Skipping emission
 
 `templates/scaffold.sh --no-devcontainer` skips this emitter
-(and the sibling `docker-compose.yml` emitter from T-0806).
+(and the sibling `docker-compose.yml` emitter).
 Tests live in `emit-devcontainer-json.bats`.
 
 ## emit-docker-compose.sh
@@ -282,14 +277,13 @@ environment variable inside the `devcontainer` service.
 
 ### File layout
 
-`docker-compose.yml` (matches spec §6 of track
-`scaffold-emits-mise-toml-devcontainer-compose`):
+`docker-compose.yml`:
 
 | Section | Managed? | Notes |
 |---------|----------|-------|
 | `services:` header + `devcontainer:` | user-extensible | not inside markers; user may edit |
 | `# kit-managed: telemetry` | managed | default `otel-collector` v0.112.0 + `jaeger` 1.62 |
-| `# kit-managed: opted-in services` | managed | empty by default; populated by T-0808 `--services` |
+| `# kit-managed: opted-in services` | managed | empty by default; populated via `--services` |
 
 `otel-config.yaml` — entire file is one unlabeled
 kit-managed block (no user-editable region).
