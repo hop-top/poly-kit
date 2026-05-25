@@ -3,7 +3,7 @@ package qmochi_test
 import (
 	"fmt"
 
-	"hop.top/kit/incubator/qmochi"
+	"hop.top/qmochi"
 )
 
 func ExampleRenderBar() {

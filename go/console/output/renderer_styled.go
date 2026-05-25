@@ -94,9 +94,9 @@ func renderStyledTable(w io.Writer, v any, selected []string, style TableStyle, 
 		BorderHeader(true).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if row == table.HeaderRow {
-				s := lipgloss.NewStyle().Bold(true)
+				s := lipgloss.NewStyle()
 				if style.Header != nil {
-					s = s.Foreground(style.Header)
+					s = s.Bold(true).Foreground(style.Header)
 				}
 				return s
 			}

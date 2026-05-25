@@ -254,6 +254,30 @@ func TestRenderStyledTable_ZeroBorder_Defaults(t *testing.T) {
 	}
 }
 
+// TestRenderStyledTable_ZeroTableStyle_NoANSI asserts that a fully-zero
+// TableStyle (no colors at all) renders a header free of ANSI escapes. This
+// is the path adopters use to honor NO_COLOR — installing an empty
+// TableStyle must fully suppress styling, including the header Bold SGR.
+func TestRenderStyledTable_ZeroTableStyle_NoANSI(t *testing.T) {
+	var buf bytes.Buffer
+	if err := renderStyledTable(&buf, sampleRows(), nil, TableStyle{}, nil); err != nil {
+		t.Fatalf("renderStyledTable: %v", err)
+	}
+	out := buf.String()
+	if ansiRe.MatchString(out) {
+		t.Errorf("zero TableStyle leaked ANSI escapes: %q", out)
+	}
+	// Sanity: headers and rows still present so we know we actually rendered.
+	if !strings.Contains(out, "Name") || !strings.Contains(out, "Score") {
+		t.Errorf("zero TableStyle missing headers: %q", out)
+	}
+	for _, r := range sampleRows() {
+		if !strings.Contains(out, r.Name) {
+			t.Errorf("zero TableStyle missing row %q: %q", r.Name, out)
+		}
+	}
+}
+
 // TestRenderStyledTable_EmptySlice_Noop matches the plain renderer's
 // behavior: no header, no body, no error when rows are empty.
 func TestRenderStyledTable_EmptySlice_Noop(t *testing.T) {

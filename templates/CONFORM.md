@@ -7,6 +7,11 @@ outside that scope (license headers, missing files, Makefile /
 `.gitignore` merges). New adopters: reach for `kit init` first —
 see [RUNBOOK-UPGRADE.md](RUNBOOK-UPGRADE.md).
 
+`conform.sh` is a thin wrapper over `kit init --update`: the
+kit-managed blocks (mise.toml, `.devcontainer/*`, `.env.example`
+kit-adapter blocks) are refreshed by `kit init`; the additive-merge
+checks below cover everything *outside* the managed scope.
+
 ## Usage
 
 ```
