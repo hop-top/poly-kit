@@ -5,6 +5,8 @@ files:
   "gitignore/go.gitignore": [1, 2, 3, 4]
   "gitignore/ts.gitignore": [1, 2, 3, 4]
   "gitignore/py.gitignore": [1, 2, 3, 4]
+  "gitignore/rs.gitignore": [1, 2, 3, 4]
+  "gitignore/php.gitignore": [1, 2, 3, 4]
 
   "ci/ci-go.yml": [2, 3, 4]
   "ci/ci-ts.yml": [2, 3, 4]

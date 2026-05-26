@@ -107,7 +107,7 @@ overlay_lang() {
 }
 
 # --- Single-language templates ---
-for lang in go ts py rs; do
+for lang in go ts py rs php; do
   dest="$DIST/cli-template-$lang"
   mkdir -p "$dest"
 
@@ -121,7 +121,7 @@ done
 poly="$DIST/cli-template-polyglot"
 mkdir -p "$poly"
 
-compose_gitignore "$poly" go ts py rs
+compose_gitignore "$poly" go ts py rs php
 copy_shared "$poly"
 
 # CI -- all lang workflows
