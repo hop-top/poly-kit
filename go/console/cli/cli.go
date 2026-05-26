@@ -984,6 +984,9 @@ func (r *Root) checkShape(ve *ValidationError) {
 		}
 		switch depth {
 		case 1:
+			if r.IsReserved(cmd.Name()) {
+				return
+			}
 			if !IsTopLevelVerb(cmd) {
 				ve.UnannotatedTopLevelLeaf = append(ve.UnannotatedTopLevelLeaf,
 					cmd.CommandPath())
