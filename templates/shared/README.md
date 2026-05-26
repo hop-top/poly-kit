@@ -81,6 +81,24 @@ block:
 # <<< kit-managed: gitignore <<<
 ```
 
+### Section order (deterministic)
+
+`compose_gitignore` iterates the languages in the order they are
+passed (`for lang in "$@"`). The single-lang templates emit
+`common` + the one language. The polyglot template emits, in this
+exact order:
+
+1. `common.gitignore`
+2. `go.gitignore`
+3. `ts.gitignore`
+4. `py.gitignore`
+5. `rs.gitignore`
+6. `php.gitignore`
+
+The `common` block appears exactly once regardless of how many
+language snippets are appended. Order is deterministic per
+`build.sh` and is asserted by the e2e suite.
+
 This lets users add custom entries (e.g. `.idea-local/`) above
 or below the markers without losing them on a re-scaffold or
 `kit init --update`. `build.sh` runs at distributable-build
