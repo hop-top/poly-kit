@@ -39,14 +39,28 @@ copy_shared() {
 }
 
 # compose_gitignore <dest> <lang...>
-# Merges common + per-lang gitignore files into dest/.gitignore
+# Merges common + per-lang gitignore files into dest/.gitignore,
+# wrapped in a labeled kit-managed block so users may add custom
+# entries above / below the markers and have them survive a
+# re-scaffold or `kit init --update`. The composed file is the
+# tier-1 `.gitignore` shipped inside `dist/cli-template-*`; there
+# is no runtime emitter for `.gitignore`, so this is the SOT.
+#
+# Marker syntax mirrors `templates/shared/managed-block.sh`
+# (lines 75-76 + labeled variant). Emitted directly as static
+# shell text — `build.sh` runs at distributable-build time and
+# does not `source` the managed-block library.
 compose_gitignore() {
   local dest="$1"; shift
   local parts=("$SHARED/gitignore/common.gitignore")
   for lang in "$@"; do
     parts+=("$SHARED/gitignore/${lang}.gitignore")
   done
-  cat "${parts[@]}" > "$dest/.gitignore"
+  {
+    printf '# >>> kit-managed: gitignore >>>\n'
+    cat "${parts[@]}"
+    printf '# <<< kit-managed: gitignore <<<\n'
+  } > "$dest/.gitignore"
 }
 
 # copy_ci_single <dest> <lang>

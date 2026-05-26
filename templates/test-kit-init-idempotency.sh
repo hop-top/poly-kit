@@ -353,6 +353,188 @@ test_services_replace_semantics() {
 }
 
 # ------------------------------------------------------------
+# Test 7: build.sh emits `.gitignore` wrapped in a labeled
+# kit-managed block. The composed file is the SOT shipped
+# inside `dist/cli-template-*` — there is no Go-side runtime
+# emitter, so build.sh's `compose_gitignore` is the only
+# producer of `.gitignore`. Markers enable future-proof
+# re-scaffold/update semantics.
+# ------------------------------------------------------------
+test_gitignore_has_kit_managed_markers() {
+  local td="$1"
+
+  # Build into a tempdir so we never clobber the repo's dist/.
+  # We tolerate post-gitignore failures (e.g. the known php-CI
+  # gap) because compose_gitignore runs early in the loop; the
+  # `.gitignore` artifact for cli-template-go is always
+  # produced before any unrelated build step can fail.
+  ( cd "$REPO_ROOT" && rm -rf templates/dist \
+      && bash templates/build.sh >/dev/null 2>&1 || true )
+
+  local gi="$REPO_ROOT/templates/dist/cli-template-go/.gitignore"
+  if [ ! -f "$gi" ]; then
+    echo "      build.sh did not produce cli-template-go/.gitignore"
+    return 1
+  fi
+
+  # Open marker must be on the very first line, close marker on
+  # the last non-empty line. This locks the wrapping invariant.
+  local first last
+  first="$(head -n 1 "$gi")"
+  last="$(awk 'NF{l=$0} END{print l}' "$gi")"
+
+  if [ "$first" != "# >>> kit-managed: gitignore >>>" ]; then
+    echo "      expected open marker on line 1, got: $first"
+    return 1
+  fi
+  if [ "$last" != "# <<< kit-managed: gitignore <<<" ]; then
+    echo "      expected close marker on last non-empty line, got: $last"
+    return 1
+  fi
+
+  # Sanity: composed payload must include at least one entry
+  # from common.gitignore and one from go.gitignore.
+  if ! grep -q '^\.DS_Store$' "$gi"; then
+    echo "      common.gitignore content (.DS_Store) missing"
+    return 1
+  fi
+  if ! grep -q '^coverage\.out$' "$gi"; then
+    echo "      go.gitignore content (coverage.out) missing"
+    return 1
+  fi
+
+  # Save snapshot for the idempotency test.
+  cp "$gi" "$td/baseline.gitignore"
+  return 0
+}
+
+# ------------------------------------------------------------
+# Test 8: re-running build.sh produces a byte-identical
+# `.gitignore` (full idempotency). compose_gitignore is a pure
+# `cat` so this is also a regression net against accidental
+# nondeterminism (e.g. lang ordering, timestamp injection).
+# ------------------------------------------------------------
+test_gitignore_build_is_byte_identical() {
+  local td="$1"
+
+  ( cd "$REPO_ROOT" && rm -rf templates/dist \
+      && bash templates/build.sh >/dev/null 2>&1 || true )
+  local first="$REPO_ROOT/templates/dist/cli-template-go/.gitignore"
+  if [ ! -f "$first" ]; then
+    echo "      first build did not produce cli-template-go/.gitignore"
+    return 1
+  fi
+  cp "$first" "$td/first.gitignore"
+
+  ( cd "$REPO_ROOT" && rm -rf templates/dist \
+      && bash templates/build.sh >/dev/null 2>&1 || true )
+  local second="$REPO_ROOT/templates/dist/cli-template-go/.gitignore"
+  if [ ! -f "$second" ]; then
+    echo "      second build did not produce cli-template-go/.gitignore"
+    return 1
+  fi
+
+  if ! cmp -s "$td/first.gitignore" "$second"; then
+    echo "      build.sh produced different .gitignore bytes across runs:"
+    diff "$td/first.gitignore" "$second" | sed 's/^/        /'
+    return 1
+  fi
+  return 0
+}
+
+# ------------------------------------------------------------
+# Test 9: user content placed ABOVE the open marker and BELOW
+# the close marker in `.gitignore` survives `kit init --update`.
+# Today `--update` does not touch `.gitignore` (no Go-side
+# emitter is wired into ManagedFiles), so the round-trip is
+# trivially preserving. This test locks that contract: any
+# future emitter that picks up `.gitignore` MUST use the
+# managed-block helpers (mb_write) so user content above/below
+# is preserved, and this test will catch a clobbering
+# regression the moment it ships.
+# ------------------------------------------------------------
+test_gitignore_user_content_survives_update() {
+  local td="$1"
+  echo 'module test' > "$td/go.mod"
+
+  # Seed a `.gitignore` that mimics what build.sh emits, with
+  # user content above the open marker and below the close
+  # marker.
+  cat > "$td/.gitignore" <<'EOF'
+# user content ABOVE the managed block
+.idea-local/
+notes.private.md
+
+# >>> kit-managed: gitignore >>>
+.DS_Store
+coverage.out
+# <<< kit-managed: gitignore <<<
+
+# user content BELOW the managed block
+.cache/local-stuff
+EOF
+
+  local before_sha
+  if command -v sha256sum >/dev/null 2>&1; then
+    before_sha="$(sha256sum "$td/.gitignore" | awk '{print $1}')"
+  else
+    before_sha="$(shasum -a 256 "$td/.gitignore" | awk '{print $1}')"
+  fi
+
+  ( cd "$td" && "$KIT" init --update ) >/dev/null 2>&1 \
+    || { echo "      --update failed"; return 1; }
+
+  local after_sha
+  if command -v sha256sum >/dev/null 2>&1; then
+    after_sha="$(sha256sum "$td/.gitignore" | awk '{print $1}')"
+  else
+    after_sha="$(shasum -a 256 "$td/.gitignore" | awk '{print $1}')"
+  fi
+
+  # User content above must still be there.
+  if ! grep -q '^\.idea-local/$' "$td/.gitignore"; then
+    echo "      user content above the open marker was stripped"
+    return 1
+  fi
+  if ! grep -q '^notes\.private\.md$' "$td/.gitignore"; then
+    echo "      user content above the open marker was stripped"
+    return 1
+  fi
+
+  # User content below must still be there.
+  if ! grep -q '^\.cache/local-stuff$' "$td/.gitignore"; then
+    echo "      user content below the close marker was stripped"
+    return 1
+  fi
+
+  # Markers must still be present.
+  if ! grep -q '^# >>> kit-managed: gitignore >>>$' "$td/.gitignore"; then
+    echo "      open marker missing after --update"
+    return 1
+  fi
+  if ! grep -q '^# <<< kit-managed: gitignore <<<$' "$td/.gitignore"; then
+    echo "      close marker missing after --update"
+    return 1
+  fi
+
+  # Today: `--update` does not touch .gitignore, so the file is
+  # byte-identical. If a future emitter is wired in, this hash
+  # assertion may need to flip to a "marker-content matches
+  # manifest" check. Keep the assert + comment so the contract
+  # change is intentional.
+  if [ "$before_sha" != "$after_sha" ]; then
+    echo "      .gitignore bytes changed across --update:"
+    echo "        before: $before_sha"
+    echo "        after:  $after_sha"
+    echo "      (if you wired a runtime .gitignore emitter, update"
+    echo "       this assertion to verify mb_write preservation"
+    echo "       semantics rather than full byte equality.)"
+    return 1
+  fi
+  return 0
+}
+
+# ------------------------------------------------------------
 # Runner
 # ------------------------------------------------------------
 
@@ -375,6 +557,9 @@ run_test "--add-service redis twice == once"        test_add_service_idempotent
 run_test "--check: 0 on clean, 1 on drift"          test_check_drift_exit_codes
 run_test "detect-langs gates runtime entries"       test_detect_langs_gating
 run_test "--services is REPLACING (not additive)"   test_services_replace_semantics
+run_test ".gitignore has kit-managed markers"       test_gitignore_has_kit_managed_markers
+run_test ".gitignore build is byte-identical"       test_gitignore_build_is_byte_identical
+run_test ".gitignore user content survives update"  test_gitignore_user_content_survives_update
 
 echo "---"
 printf "passed: %d, failed: %d\n" "$pass" "$fail"
