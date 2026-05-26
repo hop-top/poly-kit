@@ -416,7 +416,7 @@ func TestInit_NilRoot_DoesNotPanic(t *testing.T) {
 }
 
 // TestInitCmd_ManagedFlagsRoute locks the cobra flag → RunManaged
-// dispatch wiring at init.go's top-of-RunE branch. Behaviour coverage
+// dispatch wiring at init.go's top-of-RunE branch. Behavior coverage
 // for the managed orchestrator lives in managed_test.go; this test
 // only verifies that the cobra-level flag check actually routes to
 // RunManaged. A future rename like addServiceFlag → serviceFlag that
