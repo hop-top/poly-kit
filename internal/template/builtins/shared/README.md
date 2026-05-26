@@ -71,6 +71,26 @@ governed by `shared/tiers.yaml`, not by per-language
 engine to match, so any such entry is vestigial and will be
 removed during audit.
 
+The composed content is wrapped in a labeled `kit-managed`
+block:
+
+```
+# >>> kit-managed: gitignore >>>
+<common.gitignore content>
+<per-lang snippet contents>
+# <<< kit-managed: gitignore <<<
+```
+
+This lets users add custom entries (e.g. `.idea-local/`) above
+or below the markers without losing them on a re-scaffold or
+`kit init --update`. `build.sh` runs at distributable-build
+time, so the markers are emitted as static shell text — the
+managed-block library is not sourced here. There is no runtime
+`emit-gitignore.sh`: `kit init` treats the composed file as a
+tier-1 copy, and the marker semantics are honored by the same
+`mb_*` helpers that govern the other emitted artifacts when an
+existing project is refreshed.
+
 ## Managed-block library
 
 `managed-block.sh` is a small bash library for **idempotent
