@@ -35,10 +35,49 @@ uv tool install {{.Name}}
 {{.Name}} hello --name You
 ```
 
+## Getting started
+
+Toolchain is pinned in `mise.toml`. Install everything in one go:
+
+```sh
+mise install                # installs Python + uv (and other pinned tools)
+mise run install            # syncs ecosystem deps (uv sync)
+cp .env.example .env        # adapter defaults (telemetry, storage, queue, log, config)
+```
+
+Optional — start telemetry services (otel-collector + jaeger):
+
+```sh
+docker compose -f .devcontainer/docker-compose.yml up -d
+open http://localhost:16686 # Jaeger UI for traces
+```
+
+## Tool versions
+
+Versions for Python, uv, ruff, and release tooling are pinned in
+`mise.toml` at the project root inside a kit-managed block. Refresh
+it with:
+
+```sh
+kit init --update
+```
+
+### Bring this project up to date
+
+When new defaults land upstream:
+
+```sh
+kit init --check    # preview drift
+kit init --update   # refresh managed blocks
+```
+
+See poly-kit's `templates/RUNBOOK-UPGRADE.md` for the full
+procedure.
+
 ## Development
 
-Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/),
-[Task](https://taskfile.dev)
+Prerequisites: `mise` (installs Python 3.13+, uv),
+[Task](https://taskfile.dev).
 
 ```sh
 task setup    # sync deps

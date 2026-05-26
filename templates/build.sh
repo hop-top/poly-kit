@@ -32,9 +32,10 @@ copy_shared() {
   cp "$SHARED/scripts/"* "$dest/scripts/"
   chmod +x "$dest/scripts/"*
 
-  # Devcontainer
-  mkdir -p "$dest/.devcontainer"
-  cp "$SHARED/devcontainer/"* "$dest/.devcontainer/"
+  # Devcontainer — emitted by templates/shared/emit-devcontainer-json.sh
+  # and templates/shared/emit-docker-compose.sh during scaffold.sh; no
+  # pre-existing template files to copy here. The directory is created
+  # at emit time.
 }
 
 # compose_gitignore <dest> <lang...>

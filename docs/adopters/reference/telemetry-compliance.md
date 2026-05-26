@@ -301,16 +301,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.26' }
+      - uses: jdx/mise-action@v2
+        with: { install: true, cache: true }
       - name: Build with baked endpoint
         env:
           KIT_TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
         run: |
-          go build \
+          mise exec -- go build \
             -ldflags="-X 'hop.top/kit/go/runtime/telemetry.DefaultEndpoint=${KIT_TELEMETRY_ENDPOINT}'" \
             -o spaced ./cmd/spaced
 ```
+
+(The Go toolchain version is pinned in the project's `mise.toml`; CI
+reads the same source of truth via `jdx/mise-action`.)
 
 Resolution precedence at emit time (highest wins):
 

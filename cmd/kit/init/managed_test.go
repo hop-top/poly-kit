@@ -1,4 +1,4 @@
-// Tests for the managed-block refresh orchestrator (T-0810).
+// Tests for the managed-block refresh orchestrator.
 //
 // These tests drive RunManaged directly rather than via the cobra
 // command — that keeps the surface tight and avoids reaching into
@@ -198,9 +198,9 @@ func TestRunManaged_PreservesUserContentAboveMarkers(t *testing.T) {
 }
 
 // TestRunManaged_AddServiceWiresRedis verifies the happy-path
-// integration with T-0808's apply-services.sh: a project with a
-// fresh managed scaffold gets the redis compose service added
-// and KIT_QUEUE_DRIVER flipped to redis.
+// integration with the embedded apply-services.sh: a project
+// with a fresh managed scaffold gets the redis compose service
+// added and KIT_QUEUE_DRIVER flipped to redis.
 func TestRunManaged_AddServiceWiresRedis(t *testing.T) {
 	requireBash(t)
 	dir := t.TempDir()
@@ -236,6 +236,44 @@ func TestRunManaged_AddServiceWiresRedis(t *testing.T) {
 	}
 	if !strings.Contains(string(envExample), "KIT_QUEUE_DRIVER=redis") {
 		t.Errorf("expected KIT_QUEUE_DRIVER=redis in .env.example:\n%s", envExample)
+	}
+}
+
+// TestRunManaged_RemoveServiceErrors locks the user-facing contract on
+// --remove-service: it is intentionally unsupported and must surface a
+// hint-rich error instead of silently corrupting the opted-in services
+// block. A future implementer wiring real removal will trigger this
+// test and remember to drop the early return.
+func TestRunManaged_RemoveServiceErrors(t *testing.T) {
+	requireBash(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed the managed blocks so RunManaged reaches the service-op leg
+	// without tripping any earlier bootstrap requirement.
+	if err := RunManaged(context.Background(), ManagedOptions{Cwd: dir, Langs: "go"}); err != nil {
+		t.Fatalf("seed bootstrap: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := RunManaged(context.Background(), ManagedOptions{
+		Cwd:           dir,
+		RemoveService: "redis",
+		Stdout:        &stdout,
+		Stderr:        &stderr,
+	})
+	if err == nil {
+		t.Fatalf("expected error from --remove-service, got nil\nstdout: %s\nstderr: %s",
+			stdout.String(), stderr.String())
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "remove-service") {
+		t.Errorf("error should mention remove-service flag; got: %s", msg)
+	}
+	if !strings.Contains(msg, "not yet supported") {
+		t.Errorf("error should mention `not yet supported` hint; got: %s", msg)
 	}
 }
 

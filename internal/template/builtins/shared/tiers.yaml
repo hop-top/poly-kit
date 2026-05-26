@@ -11,13 +11,6 @@ files:
   "ci/ci-py.yml": [2, 3, 4]
   "ci/dependabot.yml": [2, 3, 4]
 
-  "devcontainer/devcontainer.json": [2, 3, 4]
-  "devcontainer/Dockerfile": [2, 3, 4]
-  "devcontainer/post-create.sh": [2, 3, 4]
-  "devcontainer/flake.nix": [2, 3, 4]
-  "devcontainer/flake.lock": [2, 3, 4]
-  "devcontainer/devbox.json": [2, 3, 4]
-
   "scripts/promote-release.sh": [2, 3, 4]
   "LICENSE-MIT": [2, 3, 4]
   "LICENSE-Apache-2.0": [2, 3, 4]

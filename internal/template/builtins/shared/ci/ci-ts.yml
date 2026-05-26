@@ -3,10 +3,10 @@ name: CI (TypeScript)
 on:
   push:
     branches: [main]
-    paths: ["**.ts", "package.json", "package-lock.json"]
+    paths: ["**.ts", "package.json", "package-lock.json", "pnpm-lock.yaml"]
   pull_request:
     branches: [main]
-    paths: ["**.ts", "package.json", "package-lock.json"]
+    paths: ["**.ts", "package.json", "package-lock.json", "pnpm-lock.yaml"]
 
 permissions:
   contents: read
@@ -18,15 +18,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          node-version: "22"
-
-      - name: Install dependencies
-        run: npm install
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - name: Lint
-        run: npm run lint
+        run: mise exec -- pnpm run lint
 
   test:
     name: Test
@@ -34,15 +35,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          node-version: "22"
-
-      - name: Install dependencies
-        run: npm install
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - name: Test
-        run: npm test
+        run: mise exec -- pnpm test
 
   build:
     name: Build
@@ -51,12 +53,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
         with:
-          node-version: "22"
-
-      - name: Install dependencies
-        run: npm install
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
 
       - name: Build
-        run: npm run build
+        run: mise exec -- pnpm run build

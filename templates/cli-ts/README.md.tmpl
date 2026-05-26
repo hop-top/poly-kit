@@ -22,9 +22,35 @@ npm install -g {{.Name}}
 {{.Name}} --format yaml
 ```
 
+## Getting started
+
+Toolchain is pinned in `mise.toml`. Install everything in one go:
+
+```sh
+mise install                # installs Node + pnpm (and other pinned tools)
+mise run install            # installs ecosystem deps (pnpm install)
+cp .env.example .env        # adapter defaults (telemetry, storage, queue, log, config)
+```
+
+Optional — start telemetry services (otel-collector + jaeger):
+
+```sh
+docker compose -f .devcontainer/docker-compose.yml up -d
+open http://localhost:16686 # Jaeger UI for traces
+```
+
+## Tool versions
+
+Node, pnpm, linters, and release tooling are pinned in `mise.toml`
+inside a kit-managed block. Refresh procedure
+(`kit init --check` / `kit init --update`) is documented in
+poly-kit's
+[templates/RUNBOOK-UPGRADE.md](https://github.com/hop-top/poly-kit/blob/main/templates/RUNBOOK-UPGRADE.md).
+
 ## Development
 
-Prerequisites: Node.js 22+, [Task](https://taskfile.dev)
+Prerequisites: `mise` (installs the pinned Node + pnpm toolchain),
+[Task](https://taskfile.dev).
 
 ```sh
 task setup    # install deps

@@ -100,6 +100,17 @@ finished context on demand instead of rebuilding it each session.
 
 For more examples, see [`examples/`](examples/).
 
+### Scaffolding a new kit project
+
+`templates/scaffold.sh` produces a project with `mise.toml` (SOT for
+tool versions), a compose-mode `.devcontainer/` (otel-collector +
+jaeger pre-wired; Jaeger UI at <http://localhost:16686>), and an
+`.env.example` with five kit-adapter blocks. Contributor entry
+point is `mise run install`. Bring an existing project current with
+`kit init --update`. See
+[`templates/README.md`](templates/README.md) and
+[`templates/RUNBOOK-UPGRADE.md`](templates/RUNBOOK-UPGRADE.md).
+
 ## Status
 
 Pre-1.0. All components baseline at `0.1.0-alpha.0`. APIs may change

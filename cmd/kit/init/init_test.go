@@ -415,6 +415,49 @@ func TestInit_NilRoot_DoesNotPanic(t *testing.T) {
 		"expected ErrAlreadyKit; got %v", err)
 }
 
+// TestInitCmd_ManagedFlagsRoute locks the cobra flag → RunManaged
+// dispatch wiring at init.go's top-of-RunE branch. Behaviour coverage
+// for the managed orchestrator lives in managed_test.go; this test
+// only verifies that the cobra-level flag check actually routes to
+// RunManaged. A future rename like addServiceFlag → serviceFlag that
+// forgets to update the branch condition would silently fall through
+// to the bootstrap/augment path; here we catch that as an observable
+// side-effect (no mise.toml emitted).
+//
+// Strategy: drive a minimal Go project (just `go.mod`) through
+// `kit init --update --yes` and assert the managed-block scaffold
+// landed. We use --update (the cheapest managed flag) and the
+// presence of mise.toml as the proxy for "RunManaged ran".
+func TestInitCmd_ManagedFlagsRoute(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH; managed-block dispatch requires bash")
+	}
+	work := t.TempDir()
+	if err := os.WriteFile(filepath.Join(work, "go.mod"),
+		[]byte("module test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(work)
+
+	cmd := InitCmd(nil)
+	cmd.SetArgs([]string{
+		"--update",
+		"--langs=go",
+		"--yes",
+	})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	require.NoError(t, cmd.Execute())
+
+	// Observable: RunManaged dropped a mise.toml. If the flag check
+	// regressed and we fell through to bootstrap/augment, neither
+	// path emits this file under these args (bootstrap needs a
+	// positional name; augment needs .git/), so absence is a hard
+	// signal.
+	assert.FileExists(t, filepath.Join(work, "mise.toml"))
+}
+
 func TestInit_Bootstrap_ScopeError_OrgNoOrg(t *testing.T) {
 	work := t.TempDir()
 	t.Chdir(work)
