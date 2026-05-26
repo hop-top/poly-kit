@@ -1,5 +1,5 @@
 {
-  ".": "0.4.0-alpha.4",
+  ".": "0.4.0-alpha.5",
   "sdk/ts": "0.4.0-alpha.1",
   "sdk/py": "0.4.0-alpha.1",
   "sdk/experimental/rs": "0.4.0-experimental.3",
