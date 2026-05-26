@@ -9,7 +9,6 @@
 # Output paths (post-suffix-strip, post-substitution).
 files:
   ".golangci.yml": [1, 2, 3, 4]
-  ".gitignore": [1, 2, 3, 4]
   ".trivyignore": [1, 2, 3, 4]
   "Makefile": [1, 2, 3, 4]
   "go.mod": [1, 2, 3, 4]

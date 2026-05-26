@@ -6,7 +6,6 @@
 # Tier 3 = + CLI wiring (main + commands)
 # Tier 4 = + full conformance (README, docs, changelogs)
 files:
-  ".gitignore": [1, 2, 3, 4]
   "Cargo.toml": [1, 2, 3, 4]
   "Makefile": [1, 2, 3, 4]
   "rustfmt.toml": [1, 2, 3, 4]
