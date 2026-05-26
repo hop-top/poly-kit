@@ -157,6 +157,110 @@ func TestValidate_Matrix_RejectsTooManyTopLevelVerbs(t *testing.T) {
 	assert.NotEmpty(t, ve.TooManyTopLevelVerbs)
 }
 
+// Reserved kit verbs (mounted by cli.WithStatus and similar
+// kit-shipped factories) must NOT deduct from the adopter's
+// MaxTopLevelVerbs budget. The shape validator's depth-1 count
+// already exempts reserved tops in the hierarchical-chain and
+// depth-3 ancestor checks; the cap must follow suit.
+func TestValidate_Matrix_ReservedVerbsExcludedFromTopLevelCount(t *testing.T) {
+	// Cap = 3 adopter verbs. Reserved kit verb on top — should NOT
+	// count.
+	r := fixtureRoot(t, func(c *cli.Config) {
+		c.MaxTopLevelVerbs = 3
+	})
+	r.Cmd.RemoveCommand(r.Cmd.Commands()...)
+
+	// Reserved kit verb (simulates cli.WithStatus's mount).
+	statusLeaf := wellFormedLeaf("status", cli.SideEffectRead)
+	cli.SetTopLevelVerb(statusLeaf)
+	r.Cmd.AddCommand(statusLeaf)
+	r.MarkReserved("status")
+
+	// N=3 adopter verbs at the cap.
+	for _, name := range []string{"alpha", "beta", "gamma"} {
+		c := wellFormedLeaf(name, cli.SideEffectRead)
+		cli.SetTopLevelVerb(c)
+		r.Cmd.AddCommand(c)
+	}
+	require.NoError(t, r.Validate(),
+		"reserved verb must not deduct from MaxTopLevelVerbs budget")
+}
+
+func TestValidate_Matrix_RejectsTooManyTopLevelVerbs_ReservedNotCounted(t *testing.T) {
+	// Control: same shape as above but with N+1=4 adopter verbs.
+	// Reserved verb still excluded; adopter count alone (4) breaches
+	// the cap (3).
+	r := fixtureRoot(t, func(c *cli.Config) {
+		c.MaxTopLevelVerbs = 3
+	})
+	r.Cmd.RemoveCommand(r.Cmd.Commands()...)
+
+	statusLeaf := wellFormedLeaf("status", cli.SideEffectRead)
+	cli.SetTopLevelVerb(statusLeaf)
+	r.Cmd.AddCommand(statusLeaf)
+	r.MarkReserved("status")
+
+	for _, name := range []string{"alpha", "beta", "gamma", "delta"} {
+		c := wellFormedLeaf(name, cli.SideEffectRead)
+		cli.SetTopLevelVerb(c)
+		r.Cmd.AddCommand(c)
+	}
+	ve := matchValidationError(t, r.Validate())
+	assert.NotEmpty(t, ve.TooManyTopLevelVerbs,
+		"4 adopter verbs > cap=3 must still trip the cap "+
+			"even when one reserved verb is also mounted")
+}
+
+// Reserved kit verbs must also skip the UnannotatedTopLevelLeaf
+// check: kit owns annotations on its own mounts, so a reserved verb
+// without kit/top-level-verb is by contract well-formed. Guards
+// against a future kit factory shipping an unannotated reserved
+// verb and slipping past the shape validator silently.
+func TestValidate_Matrix_ReservedVerbsExemptFromAnnotationCheck(t *testing.T) {
+	r := fixtureRoot(t)
+	r.Cmd.RemoveCommand(r.Cmd.Commands()...)
+
+	// Reserved kit verb mounted WITHOUT cli.SetTopLevelVerb.
+	statusLeaf := wellFormedLeaf("status", cli.SideEffectRead)
+	r.Cmd.AddCommand(statusLeaf)
+	r.MarkReserved("status")
+
+	// Plus a properly annotated adopter verb so the tree is non-empty.
+	adopter := wellFormedLeaf("init", cli.SideEffectWrite)
+	cli.SetTopLevelVerb(adopter)
+	r.Cmd.AddCommand(adopter)
+
+	require.NoError(t, r.Validate(),
+		"reserved verb must skip the kit/top-level-verb annotation check")
+}
+
+// Multi-reserved variant: today only `status` is reserved, but the
+// kit roadmap mounts `doctor`, `help-all`, … via similar factories.
+// A 2-reserved tree at the adopter cap guards against a future
+// refactor that double-counts reserved verbs against the budget.
+func TestValidate_Matrix_MultipleReservedVerbsExcluded(t *testing.T) {
+	r := fixtureRoot(t, func(c *cli.Config) {
+		c.MaxTopLevelVerbs = 2
+	})
+	r.Cmd.RemoveCommand(r.Cmd.Commands()...)
+
+	for _, name := range []string{"status", "doctor"} {
+		c := wellFormedLeaf(name, cli.SideEffectRead)
+		cli.SetTopLevelVerb(c)
+		r.Cmd.AddCommand(c)
+		r.MarkReserved(name)
+	}
+
+	// N=2 adopter verbs at the cap; 2 reserved must not deduct.
+	for _, name := range []string{"alpha", "beta"} {
+		c := wellFormedLeaf(name, cli.SideEffectRead)
+		cli.SetTopLevelVerb(c)
+		r.Cmd.AddCommand(c)
+	}
+	require.NoError(t, r.Validate(),
+		"multiple reserved verbs must each be excluded from the cap")
+}
+
 func TestValidate_Matrix_AcceptsCanonicalNounVerb(t *testing.T) {
 	r := fixtureRoot(t)
 	group := &cobra.Command{Use: "foo", Short: "foo group"}
