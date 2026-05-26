@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.5...kit/v0.4.0-alpha.6) (2026-05-26)
+
+
+### Bug Fixes
+
+* **shape:** exclude reserved verbs from TooManyTopLevelVerbs count ([#93](https://github.com/hop-top/poly-kit/issues/93)) ([a6dfef1](https://github.com/hop-top/poly-kit/commit/a6dfef1acbed97a6a684190d1fdbbe1a4c183a6a))
+
 ## [0.4.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.4...kit/v0.4.0-alpha.5) (2026-05-26)
 
 
