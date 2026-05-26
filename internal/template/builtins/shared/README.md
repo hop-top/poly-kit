@@ -57,6 +57,20 @@ mise npm backend. Values are mise-resolvable version strings
 No flag gates emission of this manifest itself; it is always
 read.
 
+## gitignore composition
+
+The final project `.gitignore` is composed at scaffold time from
+`shared/gitignore/common.gitignore` plus per-language snippets
+under `shared/gitignore/<lang>.gitignore`. `templates/build.sh`'s
+`compose_gitignore` concatenates these in order into
+`<dest>/.gitignore`; tier filtering for the composed file is
+governed by `shared/tiers.yaml`, not by per-language
+`cli-<lang>/tiers.yaml`. As a convention, per-language
+`tiers.yaml` files MUST NOT list `.gitignore` — there is no
+`.gitignore` source file at `templates/cli-<lang>/` for the
+engine to match, so any such entry is vestigial and will be
+removed during audit.
+
 ## Managed-block library
 
 `managed-block.sh` is a small bash library for **idempotent
