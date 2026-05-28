@@ -6,7 +6,6 @@
 # Tier 3 = + CLI wiring (bin + src/Commands)
 # Tier 4 = + full conformance (README, docs, changelogs)
 files:
-  ".gitignore": [1, 2, 3, 4]
   "Makefile": [1, 2, 3, 4]
   "composer.json": [1, 2, 3, 4]
   "phpstan.neon": [1, 2, 3, 4]
