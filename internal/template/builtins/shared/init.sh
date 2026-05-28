@@ -130,6 +130,30 @@ replace_token '`}}'                  ""
 
 echo "Configuring license..."
 
+# LICENSE templates carry a Go text/template range over .Copyrights
+# so the kit Go engine can emit a multi-holder block. The shell
+# scaffold path collapses that range into a single resolved
+# "Copyright [(c) ] $YEAR $author_name" line — multi-holder via
+# scaffold.sh is intentionally out of scope (use `kit init` for it).
+#
+# Use awk to drop everything between (and including) the {{range
+# .Copyrights}} and {{end}} markers, then synthesise a single
+# Copyright line in their place. Awk over sed because sed -i is
+# incompatible between BSD and GNU; awk keeps the rewrite portable.
+collapse_copyright_block() {
+  local file="$1" prefix="$2"
+  [ -f "$file" ] || return 0
+  local tmp
+  tmp="$(mktemp "${TMPDIR:-/tmp}/license.XXXXXX")"
+  awk -v line="${prefix}${YEAR} ${author_name}" '
+    /{{range \.Copyrights}}/ { print line; skip = 1; next }
+    skip && /{{end}}/        { skip = 0; next }
+    skip                     { next }
+    { print }
+  ' "$file" > "$tmp"
+  mv "$tmp" "$file"
+}
+
 # License sources ship with a .tmpl suffix so language toolchains
 # ignore them; strip the suffix early so the cp below resolves on
 # both shipped (LICENSE-*.tmpl) and pre-stripped (LICENSE-*) layouts.
@@ -137,6 +161,13 @@ for f in "$PROJECT_DIR"/LICENSE-MIT.tmpl "$PROJECT_DIR"/LICENSE-Apache-2.0.tmpl;
   [ -e "$f" ] || continue
   mv "$f" "${f%.tmpl}"
 done
+
+# Collapse the multi-holder block into a single line for each
+# license file (MIT keeps the "(c) " prefix per SPDX; Apache does
+# not). Done before cp so the resulting LICENSE inherits the
+# rendered block.
+collapse_copyright_block "$PROJECT_DIR/LICENSE-MIT" "Copyright (c) "
+collapse_copyright_block "$PROJECT_DIR/LICENSE-Apache-2.0" "   Copyright "
 
 if [ "$license" = "Apache-2.0" ]; then
   cp "$PROJECT_DIR/LICENSE-Apache-2.0" \
