@@ -361,6 +361,59 @@ assert_managed_files() {
   fi
 }
 
+# assert_license_file <project-dir> <expected-spdx> [<expected-author>]
+#
+# Validates the rendered LICENSE file:
+#   - exists, classifies as MIT or Apache-2.0 by canonical body text
+#   - is free of unrendered Go-template literals ({{range, {{.Holder}}, …)
+#   - when <expected-author> supplied, contains a Copyright line ending
+#     in that name (shell scaffold collapses multi-holder to single line)
+assert_license_file() {
+  local proj="$1" spdx="$2" expected_author="${3:-}"
+  local tag="${proj##*/}"
+  local lic="$proj/LICENSE"
+
+  assert_file_exists "$lic" "$tag LICENSE"
+  [ -f "$lic" ] || return 0
+
+  # SPDX classification: canonical body text must survive intact.
+  case "$spdx" in
+    MIT|mit)
+      assert_file_contains "$lic" 'MIT License' \
+        "$tag LICENSE has MIT header"
+      assert_file_contains "$lic" \
+        'Permission is hereby granted, free of charge' \
+        "$tag LICENSE keeps canonical MIT permission paragraph"
+      ;;
+    Apache-2.0|apache)
+      assert_file_contains "$lic" 'Apache License' \
+        "$tag LICENSE has Apache header"
+      assert_file_contains "$lic" 'Version 2.0, January 2004' \
+        "$tag LICENSE keeps canonical Apache version line"
+      ;;
+  esac
+
+  # No leaked Go-template literals.
+  if grep -Eq '\{\{[[:space:]]*(range|end|if|\.[A-Za-z])' "$lic"; then
+    fail "$tag LICENSE has unrendered Go-template tokens"
+  else
+    pass "$tag LICENSE free of unrendered template tokens"
+  fi
+
+  # Kit-managed copyright markers present.
+  assert_file_contains "$lic" 'kit-managed: copyright' \
+    "$tag LICENSE has kit-managed: copyright sentinels"
+
+  # Expected author line, when caller specified one.
+  if [ -n "$expected_author" ]; then
+    if grep -Eq "Copyright( \(c\))? [0-9]{4}(-[0-9]{4})? ${expected_author}" "$lic"; then
+      pass "$tag LICENSE has Copyright line for $expected_author"
+    else
+      fail "$tag LICENSE missing Copyright line for $expected_author"
+    fi
+  fi
+}
+
 # ======================================================
 # Test 1: Single-lang Go with --no-push
 # ======================================================
@@ -387,6 +440,7 @@ assert_file_exists "$TEST1_DIR/.github/copilot-instructions.md" \
 assert_no_placeholders "$TEST1_DIR" "test1"
 assert_file_contains "$TEST1_DIR/.github/copilot-instructions.md" \
   "Go" "test1 copilot mentions Go"
+assert_license_file "$TEST1_DIR" "MIT" "Test Author"
 
 # ======================================================
 # Test 2: Polyglot with --no-push
@@ -414,6 +468,7 @@ assert_file_exists "$TEST2_DIR/Makefile" "test2 root Makefile"
 assert_file_contains "$TEST2_DIR/Makefile" 'MAKE) -C go' \
   "test2 Makefile delegates to go"
 assert_no_placeholders "$TEST2_DIR" "test2"
+assert_license_file "$TEST2_DIR" "Apache-2.0" "Test Author"
 
 # ======================================================
 # Test 3: Missing name -> exit 1
