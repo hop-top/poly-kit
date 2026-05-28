@@ -321,7 +321,86 @@ assert_managed_files() {
     fi
   fi
 
-  # ---------- f. .gitattributes ----------
+  # ---------- f. .gitignore ----------
+  local gi="$proj/.gitignore"
+  assert_file_exists "$gi" "$tag .gitignore"
+  if [ -f "$gi" ]; then
+    # Kit-managed block markers (labeled: gitignore).
+    assert_file_contains "$gi" '^# >>> kit-managed: gitignore >>>$' \
+      "$tag .gitignore has kit-managed open marker"
+    assert_file_contains "$gi" '^# <<< kit-managed: gitignore <<<$' \
+      "$tag .gitignore has kit-managed close marker"
+
+    # Common section (always present, independent of langs).
+    assert_file_contains "$gi" '^\.env$' \
+      "$tag .gitignore has common .env entry"
+    assert_file_contains "$gi" '^\.data/$' \
+      "$tag .gitignore has common .data/ entry"
+
+    # Per-lang assertions. `scaffold.sh` selects the polyglot
+    # dist (which composes all langs into `.gitignore`) whenever
+    # 2+ langs are passed; only single-lang scaffolds emit a
+    # `.gitignore` that excludes the other langs. So exclusion
+    # assertions are gated on single-lang mode.
+    local lang_count
+    lang_count="$(echo "${lang_csv//[[:space:]]/}" | tr ',' '\n' | grep -c .)"
+    local is_polyglot=false
+    [ "${lang_count:-0}" -gt 1 ] && is_polyglot=true
+
+    # vendor/ is shared by go + php, so php's discriminator is
+    # composer.lock.
+    if [[ "$lang_norm" == *,go,* ]] || [[ "$lang_norm" == *,php,* ]]; then
+      assert_file_contains "$gi" '^vendor/$' \
+        "$tag .gitignore has vendor/ (go|php)"
+    elif ! $is_polyglot; then
+      assert_file_excludes "$gi" '^vendor/$' \
+        "$tag .gitignore omits vendor/ (no go|php)"
+    fi
+
+    if [[ "$lang_norm" == *,ts,* ]]; then
+      assert_file_contains "$gi" '^node_modules/$' \
+        "$tag .gitignore has ts node_modules/"
+    elif ! $is_polyglot; then
+      assert_file_excludes "$gi" '^node_modules/$' \
+        "$tag .gitignore omits ts node_modules/"
+    fi
+
+    if [[ "$lang_norm" == *,py,* ]]; then
+      assert_file_contains "$gi" '^__pycache__/$' \
+        "$tag .gitignore has py __pycache__/"
+    elif ! $is_polyglot; then
+      assert_file_excludes "$gi" '^__pycache__/$' \
+        "$tag .gitignore omits py __pycache__/"
+    fi
+
+    if [[ "$lang_norm" == *,rs,* ]]; then
+      assert_file_contains "$gi" '^target/$' \
+        "$tag .gitignore has rs target/"
+    elif ! $is_polyglot; then
+      assert_file_excludes "$gi" '^target/$' \
+        "$tag .gitignore omits rs target/"
+    fi
+
+    if [[ "$lang_norm" == *,php,* ]]; then
+      assert_file_contains "$gi" '^composer\.lock$' \
+        "$tag .gitignore has php composer.lock"
+    elif ! $is_polyglot; then
+      assert_file_excludes "$gi" '^composer\.lock$' \
+        "$tag .gitignore omits php composer.lock"
+    fi
+
+    # Common section MUST appear exactly once regardless of how
+    # many lang snippets are composed in.
+    local dscount
+    dscount="$(grep -c '^\.DS_Store$' "$gi" 2>/dev/null || true)"
+    if [ "${dscount:-0}" -eq 1 ]; then
+      pass "$tag .gitignore common section appears exactly once (.DS_Store)"
+    else
+      fail "$tag .gitignore common section: .DS_Store appears ${dscount:-0} times, expected 1 in $gi"
+    fi
+  fi
+
+  # ---------- g. .gitattributes ----------
   local ga="$proj/.gitattributes"
   assert_file_exists "$ga" "$tag .gitattributes"
   if [ -f "$ga" ]; then
@@ -411,7 +490,7 @@ assert_managed_files() {
     fi
   fi
 
-  # ---------- g. CI workflows ----------
+  # ---------- h. CI workflows ----------
   local wf_dir="$proj/.github/workflows"
   if [ -d "$wf_dir" ]; then
     local wf_files
