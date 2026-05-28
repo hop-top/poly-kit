@@ -1,0 +1,5 @@
+# Go
+*.go              text eol=lf
+**/*.pb.go        linguist-generated=true
+**/*.gen.go       linguist-generated=true
+go.sum            linguist-generated=true
