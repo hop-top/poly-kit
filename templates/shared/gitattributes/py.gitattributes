@@ -1,0 +1,5 @@
+# Python
+*.py              text eol=lf
+**/*_pb.py        linguist-generated=true
+**/uv.lock        linguist-generated=true
+poetry.lock       linguist-generated=true

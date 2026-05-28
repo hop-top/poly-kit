@@ -1,0 +1,3 @@
+# PHP
+*.php             text eol=lf
+composer.lock     linguist-generated=true
