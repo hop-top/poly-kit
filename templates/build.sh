@@ -63,6 +63,31 @@ compose_gitignore() {
   } > "$dest/.gitignore"
 }
 
+# compose_gitattributes <dest> <lang...>
+# Merges common + per-lang gitattributes files into dest/.gitattributes,
+# wrapped in a labeled kit-managed block so users may add custom
+# entries above / below the markers and have them survive a
+# re-scaffold or `kit init --update`. The composed file is the
+# tier-1 `.gitattributes` shipped inside `dist/cli-template-*`; there
+# is no runtime emitter for `.gitattributes`, so this is the SOT.
+#
+# Marker syntax mirrors `templates/shared/managed-block.sh`
+# (lines 75-76 + labeled variant). Emitted directly as static
+# shell text — `build.sh` runs at distributable-build time and
+# does not `source` the managed-block library.
+compose_gitattributes() {
+  local dest="$1"; shift
+  local parts=("$SHARED/gitattributes/common.gitattributes")
+  for lang in "$@"; do
+    parts+=("$SHARED/gitattributes/${lang}.gitattributes")
+  done
+  {
+    printf '# >>> kit-managed: gitattributes >>>\n'
+    cat "${parts[@]}"
+    printf '# <<< kit-managed: gitattributes <<<\n'
+  } > "$dest/.gitattributes"
+}
+
 # copy_ci_single <dest> <lang>
 # Generates a single-lang dependabot.yml + copies lang-specific CI as ci.yml.
 copy_ci_single() {
@@ -126,6 +151,7 @@ for lang in go ts py rs php; do
   mkdir -p "$dest"
 
   compose_gitignore "$dest" "$lang"
+  compose_gitattributes "$dest" "$lang"
   copy_shared "$dest"
   copy_ci_single "$dest" "$lang"
   overlay_lang "$dest" "$lang"
@@ -136,6 +162,7 @@ poly="$DIST/cli-template-polyglot"
 mkdir -p "$poly"
 
 compose_gitignore "$poly" go ts py rs php
+compose_gitattributes "$poly" go ts py rs php
 copy_shared "$poly"
 
 # CI -- all lang workflows
