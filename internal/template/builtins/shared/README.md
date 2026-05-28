@@ -355,7 +355,7 @@ environment variable inside the `devcontainer` service.
 | Section | Managed? | Notes |
 |---------|----------|-------|
 | `services:` header + `devcontainer:` | user-extensible | not inside markers; user may edit |
-| `# kit-managed: telemetry` | managed | default `otel-collector` v0.112.0 + `jaeger` 1.62 |
+| `# kit-managed: telemetry` | managed | default `otel-collector` + `jaeger`; image tags pinned in [`emit-docker-compose.sh`](emit-docker-compose.sh) |
 | `# kit-managed: opted-in services` | managed | empty by default; populated via `--services` |
 
 `otel-config.yaml` — entire file is one unlabeled

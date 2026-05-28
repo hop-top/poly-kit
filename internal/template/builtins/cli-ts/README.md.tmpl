@@ -41,29 +41,15 @@ open http://localhost:16686 # Jaeger UI for traces
 
 ## Tool versions
 
-Versions for Node, pnpm, linters, and release tooling are pinned in
-`mise.toml` at the project root inside a kit-managed block. Refresh
-it with:
-
-```sh
-kit init --update
-```
-
-### Bring this project up to date
-
-When new defaults land upstream (bumped Node version, new tool):
-
-```sh
-kit init --check    # preview drift
-kit init --update   # refresh managed blocks
-```
-
-See poly-kit's `templates/RUNBOOK-UPGRADE.md` for the full
-procedure.
+Node, pnpm, linters, and release tooling are pinned in `mise.toml`
+inside a kit-managed block. Refresh procedure
+(`kit init --check` / `kit init --update`) is documented in
+poly-kit's
+[templates/RUNBOOK-UPGRADE.md](https://github.com/hop-top/poly-kit/blob/main/templates/RUNBOOK-UPGRADE.md).
 
 ## Development
 
-Prerequisites: `mise` (installs Node.js 22+ and pnpm),
+Prerequisites: `mise` (installs the pinned Node + pnpm toolchain),
 [Task](https://taskfile.dev).
 
 ```sh
