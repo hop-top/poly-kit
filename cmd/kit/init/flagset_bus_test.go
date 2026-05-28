@@ -45,8 +45,9 @@ func callBuildFlagSet(t *testing.T, argv []string) *FlagSet {
 
 	var (
 		fromFlag, moduleFlag, modeFlag, accountTypeFlag, orgFlag,
-		visibilityFlag, licenseFlag, defaultBranchFlag, authorFlag,
+		visibilityFlag, licenseFlag, defaultBranchFlag,
 		emailFlag, themeFlag, descriptionFlag string
+		authorFlag  []string
 		runtimeFlag []string
 		tierFlag    int
 		noGitHubFlag, noPushFlag, hopFlag,
@@ -56,7 +57,7 @@ func callBuildFlagSet(t *testing.T, argv []string) *FlagSet {
 		&fromFlag, &moduleFlag, runtimeFlag, &tierFlag, &modeFlag,
 		&accountTypeFlag, &orgFlag, &visibilityFlag, &noGitHubFlag,
 		&noPushFlag, &licenseFlag, &hopFlag, &defaultBranchFlag,
-		&authorFlag, &emailFlag, &themeFlag, &descriptionFlag,
+		authorFlag, &emailFlag, &themeFlag, &descriptionFlag,
 		&dryRunFlag, &forceFlag, &yesFlag,
 		&withGH, &withoutGH,
 		&withPrePr, &withoutPrePr,
