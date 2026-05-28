@@ -38,6 +38,30 @@ preserved verbatim.
     mise run install
     docker compose -f .devcontainer/docker-compose.yml config -q
 
+## Copyright years
+
+The scaffold writes copyright years at scaffold time and `kit init
+--update` does NOT auto-bump them. This matches the legal convention
+that the copyright year reflects when rights attached (creation), not
+when the file was last touched — see the [SFLP guide][sflp] and the
+[Copyright Office circular][circ].
+
+  - `kit init` (first run) → writes `Copyright (c) <current-year> …`.
+  - `kit init --update`    → leaves the copyright lines untouched.
+  - `kit init --update --author "<years> <holder>[ <<URL>>]"` →
+    overwrites the kit-managed copyright block with the supplied
+    holders, e.g. extend `2026` to `2026-2027` by re-running with
+    explicit `--author "2026-2027 Acme Inc <https://acme.example>"`.
+
+Multiple holders: repeat `--author` and/or pass `;`-delimited values
+within one invocation. Order is preserved.
+
+User-added Copyright lines below the
+`# <<< kit-managed: copyright <<<` close marker survive `--update`.
+
+[sflp]: https://www.softwarefreedom.org/resources/2012/ManagingCopyrightInformation.html
+[circ]: https://www.copyright.gov/circs/circ01.pdf
+
 ## Adding or removing services
 
     kit init --add-service redis
