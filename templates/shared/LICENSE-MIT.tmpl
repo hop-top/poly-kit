@@ -1,7 +1,11 @@
 MIT License
 
-{{range .Copyrights}}Copyright (c) {{.Years}} {{.Holder}}{{if .URL}} <{{.URL}}>{{end}}
-{{end}}
+# >>> kit-managed: copyright >>>
+{{range .Copyrights -}}
+Copyright (c) {{.Years}} {{.Holder}}{{if .URL}} <{{.URL}}>{{end}}
+{{end -}}
+# <<< kit-managed: copyright <<<
+
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
 "Software"), to deal in the Software without restriction, including

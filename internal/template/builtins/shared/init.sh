@@ -145,10 +145,16 @@ collapse_copyright_block() {
   [ -f "$file" ] || return 0
   local tmp
   tmp="$(mktemp "${TMPDIR:-/tmp}/license.XXXXXX")"
+  # Match {{range .Copyrights}} (or {{range .Copyrights -}}) on one
+  # line and the OUTER {{end}} (or {{end -}}) on a later line. The
+  # outer end always sits alone at the start of its line (after
+  # optional indent / whitespace-control), whereas inner {{if
+  # .URL}}…{{end}} sits mid-line — anchoring to ^[[:space:]]*
+  # prevents the inner end from terminating the range prematurely.
   awk -v line="${prefix}${YEAR} ${author_name}" '
-    /{{range \.Copyrights}}/ { print line; skip = 1; next }
-    skip && /{{end}}/        { skip = 0; next }
-    skip                     { next }
+    /\{\{-?[[:space:]]*range \.Copyrights/         { print line; skip = 1; next }
+    skip && /^[[:space:]]*\{\{-?[[:space:]]*end[[:space:]-]*\}\}/ { skip = 0; next }
+    skip                                           { next }
     { print }
   ' "$file" > "$tmp"
   mv "$tmp" "$file"
