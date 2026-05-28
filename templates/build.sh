@@ -101,6 +101,7 @@ copy_ci_single() {
     ts) ecosystem="npm"   ;;
     py) ecosystem="pip"   ;;
     rs) ecosystem="cargo" ;;
+    php) ecosystem="composer" ;;
     *)
       echo "Warning: no dependabot ecosystem for lang=$lang" >&2
       ecosystem=""
@@ -198,15 +199,22 @@ updates:
       interval: weekly
     commit-message:
       prefix: "build(deps):"
+
+  - package-ecosystem: composer
+    directory: "/php"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
 DEPEOF
-for lang in go ts py rs; do
+for lang in go ts py rs php; do
   src="$SHARED/ci/ci-${lang}.yml"
   [ -f "$src" ] || src="${src}.tmpl"
   cp "$src" "$poly/.github/workflows/ci-${lang}.yml"
 done
 
 # Lang dirs (without shared root files)
-for lang in go ts py rs; do
+for lang in go ts py rs php; do
   src="$SCRIPT_DIR/cli-${lang}"
   langdir="$poly/$lang"
   mkdir -p "$langdir"
@@ -234,6 +242,7 @@ build test lint setup:
 	$(MAKE) -C ts $@
 	$(MAKE) -C py $@
 	$(MAKE) -C rs $@
+	$(MAKE) -C php $@
 
 links:
 	@if command -v lychee >/dev/null 2>&1; then \
@@ -271,6 +280,7 @@ Select your languages and configure the project.
 - `ts/` — TypeScript CLI source
 - `py/` — Python CLI source
 - `rs/` — Rust CLI source
+- `php/` — PHP CLI source
 
 ## Development
 
