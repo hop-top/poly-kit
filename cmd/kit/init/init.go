@@ -49,7 +49,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		licenseFlag                  string
 		hopFlag                      bool
 		defaultBranchFlag            string
-		authorFlag                   string
+		authorFlag                   []string
 		emailFlag                    string
 		themeFlag                    string
 		descriptionFlag              string
@@ -191,7 +191,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 				&fromFlag, &moduleFlag, runtimeFlag, &tierFlag, &modeFlag,
 				&accountTypeFlag, &orgFlag, &visibilityFlag, &noGitHubFlag,
 				&noPushFlag, &licenseFlag, &hopFlag, &defaultBranchFlag,
-				&authorFlag, &emailFlag, &themeFlag, &descriptionFlag,
+				authorFlag, &emailFlag, &themeFlag, &descriptionFlag,
 				&dryRunFlag, &forceFlag, &yesFlag,
 				&withGitHubWorkflowsFlag, &withoutGitHubWorkflowsFlag,
 				&withPrePrHookFlag, &withoutPrePrHookFlag,
@@ -266,7 +266,11 @@ func InitCmd(root *cli.Root) *cobra.Command {
 	f.StringVar(&licenseFlag, "license", "", "License id (empty = per-account-type default)")
 	f.BoolVar(&hopFlag, "hop", true, "Use git hop for repo init")
 	f.StringVar(&defaultBranchFlag, "default-branch", "main", "Default branch name")
-	f.StringVar(&authorFlag, "author", "", "Author name (defaults to git config user.name)")
+	f.StringSliceVar(&authorFlag, "author", nil,
+		"Copyright holder(s) for LICENSE files. Repeatable; each value may "+
+			"contain ';'-delimited holders. Grammar: '<year-or-range> <holder>"+
+			"[ <<URL>>]'. Bare names use the current year. Empty defaults to "+
+			"the canonical 4-holder block.")
 	f.StringVar(&emailFlag, "email", "", "Author email (defaults to git config user.email)")
 	f.StringVar(&themeFlag, "theme", "daylight", "Theme")
 	f.StringVar(&descriptionFlag, "description", "", "Project description")
@@ -348,7 +352,8 @@ func buildFlagSet(
 	license *string,
 	hop *bool,
 	defaultBranch *string,
-	author, email, theme, description *string,
+	author []string,
+	email, theme, description *string,
 	dryRun, force, yes *bool,
 	withGitHubWorkflows, withoutGitHubWorkflows *bool,
 	withPrePrHook, withoutPrePrHook *bool,
@@ -400,6 +405,11 @@ func buildFlagSet(
 	if c("author") {
 		fs.Author = author
 	}
+	// FlagSet.AuthorChanged tracks "user supplied --author at all" so
+	// the default 4-holder block kicks in only when the flag is absent.
+	// Storing the bool (instead of relying on len(author)>0) lets an
+	// explicit `--author=` (empty value) still distinguish from unset.
+	fs.AuthorChanged = c("author")
 	if c("email") {
 		fs.Email = email
 	}
