@@ -8,6 +8,13 @@ files:
   "gitignore/rs.gitignore": [1, 2, 3, 4]
   "gitignore/php.gitignore": [1, 2, 3, 4]
 
+  "gitattributes/common.gitattributes": [1, 2, 3, 4]
+  "gitattributes/go.gitattributes": [1, 2, 3, 4]
+  "gitattributes/ts.gitattributes": [1, 2, 3, 4]
+  "gitattributes/py.gitattributes": [1, 2, 3, 4]
+  "gitattributes/rs.gitattributes": [1, 2, 3, 4]
+  "gitattributes/php.gitattributes": [1, 2, 3, 4]
+
   "ci/ci-go.yml": [2, 3, 4]
   "ci/ci-ts.yml": [2, 3, 4]
   "ci/ci-py.yml": [2, 3, 4]

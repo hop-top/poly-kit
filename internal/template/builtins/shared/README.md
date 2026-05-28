@@ -91,6 +91,45 @@ tier-1 copy, and the marker semantics are honored by the same
 `mb_*` helpers that govern the other emitted artifacts when an
 existing project is refreshed.
 
+## gitattributes composition
+
+The final project `.gitattributes` is composed at scaffold time
+from `shared/gitattributes/common.gitattributes` plus per-language
+snippets under `shared/gitattributes/<lang>.gitattributes`.
+`templates/build.sh`'s `compose_gitattributes` concatenates these
+in order into `<dest>/.gitattributes`; tier filtering for the
+composed file is governed by `shared/tiers.yaml`, not by
+per-language `cli-<lang>/tiers.yaml`. As a convention,
+per-language `tiers.yaml` files MUST NOT list `.gitattributes` —
+there is no `.gitattributes` source file at `templates/cli-<lang>/`
+for the engine to match, so any such entry is vestigial and will
+be removed during audit.
+
+Section order is deterministic: `common.gitattributes` first,
+then per-lang snippets in the order passed to the composer.
+Single-lang templates emit `common` + `<lang>`; the polyglot
+template emits `common` + `go` + `ts` + `py` + `rs` + `php`.
+
+The composed content is wrapped in a labeled `kit-managed`
+block:
+
+```
+# >>> kit-managed: gitattributes >>>
+<common.gitattributes content>
+<per-lang snippet contents>
+# <<< kit-managed: gitattributes <<<
+```
+
+This lets users add custom rules (e.g. `*.psd binary`) above or
+below the markers without losing them on a re-scaffold or
+`kit init --update`. `build.sh` runs at distributable-build time,
+so the markers are emitted as static shell text — the
+managed-block library is not sourced here. There is no runtime
+`emit-gitattributes.sh`: `kit init` treats the composed file as a
+tier-1 copy, and the marker semantics are honored by the same
+`mb_*` helpers that govern the other emitted artifacts when an
+existing project is refreshed.
+
 ## Managed-block library
 
 `managed-block.sh` is a small bash library for **idempotent
