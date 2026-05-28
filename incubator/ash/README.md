@@ -1,5 +1,12 @@
 # ash
 
+> [!WARNING]
+> **Deprecated.** This package has moved to
+> [`hop-top/poly-stem`](https://github.com/hop-top/poly-stem) and
+> renamed to `hop.top/stem`. New code MUST import `hop.top/stem`.
+> This incubator copy will be removed once all consumers migrate
+> (tracking: see consumer migration tracks in each downstream repo).
+
 > **Incubating** — this package is developed in
 > [hop-top/poly-kit](https://github.com/hop-top/poly-kit/tree/main/incubator/ash).
 > Submit issues, PRs, and discussions there.
