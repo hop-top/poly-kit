@@ -2,10 +2,14 @@
 
 ## [0.2.0-alpha.1](https://github.com/hop-top/poly-kit/compare/ash/v0.2.0-alpha.0...ash/v0.2.0-alpha.1) (2026-05-29)
 
+The hop-top team is happy to announce Ash 0.2.0-alpha.1. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
-* **docs:** correct markdownlint violations in incubator/ash ([#107](https://github.com/hop-top/poly-kit/issues/107)) ([9d55dae](https://github.com/hop-top/poly-kit/commit/9d55dae7b98b62012e1be81ac820630ce509d0a5))
+* **docs:** correct markdownlint violations in incubator/ash
+
+Full diff: [ash/v0.2.0-alpha.0...ash/v0.2.0-alpha.1](https://github.com/hop-top/poly-kit/compare/ash/v0.2.0-alpha.0...ash/v0.2.0-alpha.1)
 
 ## [Unreleased]
 
