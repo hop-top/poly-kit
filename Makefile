@@ -5,7 +5,7 @@
 	proto openapi clients clients-ts clients-php clients-rs clients-test api \
 	job-test job-integration-hatchet job-integration-restate job-integration-temporal \
 	test-workflow test-hook test-release promote promote-alpha promote-beta promote-rc promote-release check \
-	test-templates lint-templates build builtins-sync refresh-secret-rules \
+	test-templates lint-templates build builtins-sync check-mirror-sync refresh-secret-rules \
 	refresh-pii-rules refresh-rules
 
 # Tool versions — single source of truth for local + the kit repo's
@@ -214,6 +214,17 @@ builtins-sync: ## Sync templates/cli-{go,ts,py,php,rs,shared} into internal/temp
 	@find internal/template/builtins -name go.mod -exec sh -c 'mv "$$1" "$$1.tmpl"' _ {} \;
 	@find internal/template/builtins -name "*.go" -exec sh -c 'mv "$$1" "$$1.tmpl"' _ {} \;
 	@echo "synced built-in templates"
+
+check-mirror-sync: ## Verify templates/ and internal/template/builtins/ are in sync
+	@if diff -rq templates/ internal/template/builtins/ | grep -v '^Only in templates: ' | grep -q .; then \
+		echo "Mirror drift detected between templates/ and internal/template/builtins/:"; \
+		diff -rq templates/ internal/template/builtins/ | grep -v '^Only in templates: '; \
+		echo ""; \
+		echo "Fix: copy diverged files from templates/ to internal/template/builtins/ (source is canonical),"; \
+		echo "or run: make builtins-sync"; \
+		exit 1; \
+	fi
+	@echo "Mirror in sync."
 
 test-templates: ## Run bats tests for template scripts
 	bats templates/tests/lib.bats templates/tests/conform.bats
