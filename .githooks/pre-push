@@ -1,6 +1,25 @@
 #!/bin/sh
 set -e
 
+# Capture stdin once; pre-push receives ref info on stdin and we consult it
+# in two places below.
+PUSH_INPUT=$(cat)
+
+# --- Refuse direct pushes to protected branches (main/master) ---
+# Bypass: git push --no-verify (use only for hotfixes you've consciously chosen)
+PROTECTED_REFS="refs/heads/main refs/heads/master"
+ZERO_SHA="0000000000000000000000000000000000000000"
+PROTECTED_HIT=$(printf '%s\n' "$PUSH_INPUT" | awk -v zero="$ZERO_SHA" '
+    NF == 0 { next }
+    $2 == zero { next }   # branch deletion: allow
+    $3 == "refs/heads/main" || $3 == "refs/heads/master" { print $3; exit }
+')
+if [ -n "$PROTECTED_HIT" ]; then
+    printf 'ERROR: refusing direct push to %s. Open a PR instead.\n' "$PROTECTED_HIT" >&2
+    printf 'If this push is intentional (hotfix), bypass with: git push --no-verify\n' >&2
+    exit 1
+fi
+
 # Skip if HEAD hasn't changed since last successful push
 CACHE_FILE="$(git rev-parse --git-dir)/pre-push-last-sha"
 CURRENT_SHA=$(git rev-parse HEAD)
@@ -10,12 +29,9 @@ if [ -f "$CACHE_FILE" ] && [ "$(cat "$CACHE_FILE")" = "$CURRENT_SHA" ]; then
 fi
 
 # Determine which files changed vs the remote branch being pushed to.
-REMOTE_SHA=""
-while read local_ref local_sha remote_ref remote_sha; do
-    REMOTE_SHA="$remote_sha"
-done
+REMOTE_SHA=$(printf '%s\n' "$PUSH_INPUT" | awk 'NF >= 4 {sha=$4} END {print sha}')
 # New branch or force push: compare against merge-base with main.
-if [ -z "$REMOTE_SHA" ] || [ "$REMOTE_SHA" = "0000000000000000000000000000000000000000" ]; then
+if [ -z "$REMOTE_SHA" ] || [ "$REMOTE_SHA" = "$ZERO_SHA" ]; then
     REMOTE_SHA=$(git merge-base HEAD main 2>/dev/null || echo HEAD~1)
 fi
 

@@ -22,6 +22,20 @@ Quick start:
 make setup
 ```
 
+## Git Hooks
+
+This repo ships Git hooks in `.githooks/` to catch common mistakes locally before they hit CI:
+
+- `pre-push` — refuses direct pushes to `main`/`master` (open a PR instead) and runs affected linters/tests against the changes being pushed. Bypass with `git push --no-verify` for emergencies.
+
+To install (per-clone, idempotent):
+
+```sh
+bash scripts/install-hooks.sh
+```
+
+This sets `core.hooksPath=.githooks` for the current clone. CI does not require it.
+
 ## Code Style
 
 - Follow existing conventions in the codebase
