@@ -1,0 +1,30 @@
+name: Mirror Sync
+
+on:
+  pull_request:
+    paths:
+      - 'templates/**'
+      - 'internal/template/builtins/**'
+  push:
+    branches: [main]
+    paths:
+      - 'templates/**'
+      - 'internal/template/builtins/**'
+
+jobs:
+  mirror-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify mirror sync
+        run: |
+          if diff -rq templates/ internal/template/builtins/ | grep -v '^Only in templates: ' | grep -q .; then
+            echo "::error::Mirror drift detected between templates/ and internal/template/builtins/"
+            echo "Diff:"
+            diff -rq templates/ internal/template/builtins/ | grep -v '^Only in templates: '
+            echo ""
+            echo "Fix: copy diverged files from templates/ to internal/template/builtins/ (source is canonical)."
+            echo "Or run: make builtins-sync"
+            exit 1
+          fi
+          echo "Mirror in sync."

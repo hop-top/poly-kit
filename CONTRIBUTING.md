@@ -46,6 +46,25 @@ test: add missing tests
 - Ensure CI passes before requesting review
 - Update documentation if behavior changes
 
+## Templates Mirror Sync
+
+The `templates/` tree (canonical source) and `internal/template/builtins/`
+(Go embed mirror used by `kit init` at runtime) must stay byte-identical
+for every file that exists in both. The `mirror-sync` workflow enforces
+this on every PR touching either path.
+
+Scaffolder-only files (e.g. `build.sh`, `scaffold.sh`, `test-*.sh`,
+`lib.sh`, `tests/`, `dist/`) live in `templates/` and are intentionally
+NOT mirrored.
+
+When editing `templates/cli-*/...` or `templates/shared/...`, mirror your
+change to `internal/template/builtins/...`. Locally:
+
+```sh
+make check-mirror-sync     # verify
+make builtins-sync         # regenerate the embed mirror from templates/
+```
+
 ## Issues
 
 - Search existing issues before opening a new one
