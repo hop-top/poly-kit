@@ -84,8 +84,10 @@ Arguments:
 
 Flags:
   --output DIR          Output directory (default: ./<name>)
-  --lang LANG           Language: go, ts, py, rs, or comma-separated
+  --lang LANG           Language: go, ts, py, rs, php, or comma-separated
                         for polyglot (default: go)
+  --langs CSV           Alias for --lang accepting a comma list (e.g.
+                        --langs=go,ts,py). Use either flag form.
   --description TEXT    Project description
   --license LICENSE     License: apache, mit (default: apache)
   --author NAME         Author name (default: git user.name)
@@ -130,9 +132,17 @@ while [ $# -gt 0 ]; do
       require_arg "$1" "${2:-}"
       OUTPUT="$2"; shift 2
       ;;
-    --lang)
+    --lang|--langs)
       require_arg "$1" "${2:-}"
       LANG="$2"; shift 2
+      ;;
+    --lang=*|--langs=*)
+      LANG="${1#*=}"
+      if [ -z "$LANG" ]; then
+        echo "Error: ${1%%=*} requires a value" >&2
+        exit 1
+      fi
+      shift
       ;;
     --description)
       require_arg "$1" "${2:-}"
@@ -249,9 +259,9 @@ esac
 IFS=',' read -ra LANG_ARRAY <<< "$LANG"
 for l in "${LANG_ARRAY[@]}"; do
   case "$l" in
-    go|ts|py|rs) ;;
+    go|ts|py|rs|php) ;;
     *)
-      echo "Error: invalid language: $l (must be go, ts, py, or rs)" >&2
+      echo "Error: invalid language: $l (must be go, ts, py, rs, or php)" >&2
       exit 1
       ;;
   esac
@@ -345,7 +355,11 @@ echo "Building templates..."
 bash "$TEMPLATES_DIR/build.sh"
 
 if [ "$IS_POLYGLOT" = true ]; then
-  TEMPLATE_SRC="$DIST/cli-template-polyglot"
+  # Polyglot mode: start from the lang-agnostic skeleton; the
+  # per-lang overlays (lang dirs, CI workflows, dependabot,
+  # Makefile, README structure) are composed below into $OUTPUT
+  # AFTER the base is copied.
+  TEMPLATE_SRC="$DIST/cli-template-base"
 else
   TEMPLATE_SRC="$DIST/cli-template-${LANG_ARRAY[0]}"
 fi
@@ -447,6 +461,42 @@ for f in "$TEMPLATE_SRC"/.*; do
     *)    cp -r "$f" "$OUTPUT/" ;;
   esac
 done
+
+# --- Polyglot overlay -----------------------------------
+#
+# In polyglot mode `cli-template-base` ships only lang-agnostic
+# scaffolding. Compose per-lang content honoring LANG_ARRAY (the
+# user's --langs subset). Section order across all emitted
+# artifacts (.gitignore, .gitattributes, dependabot.yml, Makefile,
+# README structure) follows LANG_ARRAY pass order. Functions live
+# in templates/lib.sh and are shared with templates/build.sh.
+
+if [ "$IS_POLYGLOT" = true ]; then
+  echo "Composing polyglot overlay for langs: ${LANG_ARRAY[*]}..."
+
+  # a. Per-lang dirs (excludes root community files)
+  for lang in "${LANG_ARRAY[@]}"; do
+    overlay_lang_dir "$OUTPUT" "$lang" "$SCRIPT_DIR"
+  done
+
+  # b/c. Recompose .gitignore + .gitattributes with the chosen
+  # langs (base shipped common-only; overlay merges per-lang rules).
+  compose_gitignore "$OUTPUT" "${LANG_ARRAY[@]}"
+  compose_gitattributes "$OUTPUT" "${LANG_ARRAY[@]}"
+
+  # d. Polyglot dependabot.yml — one entry per lang, watching
+  # the lang's subdirectory.
+  compose_polyglot_dependabot "$OUTPUT" "${LANG_ARRAY[@]}"
+
+  # e. Per-lang CI workflows (ci-<lang>.yml).
+  copy_polyglot_ci_workflows "$OUTPUT" "${LANG_ARRAY[@]}"
+
+  # f. Root Makefile delegating to the chosen lang subdirs.
+  compose_polyglot_makefile "$OUTPUT" "${LANG_ARRAY[@]}"
+
+  # g. README structure section listing only the chosen langs.
+  compose_polyglot_readme_structure "$OUTPUT/README.md" "${LANG_ARRAY[@]}"
+fi
 
 # Map license flag to init.sh value
 INIT_LICENSE="MIT"

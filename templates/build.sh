@@ -1,92 +1,19 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SHARED="$SCRIPT_DIR/shared"
 DIST="$SCRIPT_DIR/dist"
+
+# Shared composition helpers (compose_gitignore, compose_gitattributes,
+# copy_shared, dependabot_ecosystem, ci_workflow_src, overlay_lang_dir,
+# compose_polyglot_*). Sourced by both build.sh and scaffold.sh so the
+# composition rules have one home.
+# shellcheck source=lib.sh
+source "$SCRIPT_DIR/lib.sh"
 
 # Clean dist
 rm -rf "$DIST"
-
-# copy_shared <dest>
-# Copies community files, docs, devcontainer, init.sh
-copy_shared() {
-  local dest="$1"
-
-  cp "$SHARED/LICENSE-MIT.tmpl" "$dest/LICENSE-MIT"
-  cp "$SHARED/LICENSE-Apache-2.0.tmpl" "$dest/LICENSE-Apache-2.0"
-  cp "$SHARED/SECURITY.md.tmpl" "$dest/SECURITY.md"
-  cp "$SHARED/CONTRIBUTING.md.tmpl" "$dest/CONTRIBUTING.md"
-  cp "$SHARED/RELEASING.md" "$dest/"
-  cp "$SHARED/init.sh" "$dest/"
-  chmod +x "$dest/init.sh"
-
-  # Docs
-  cp -r "$SHARED/docs" "$dest/"
-  mkdir -p "$dest/docs/stories" "$dest/docs/personas"
-  touch "$dest/docs/stories/.gitkeep"
-  touch "$dest/docs/personas/.gitkeep"
-
-  # Scripts
-  mkdir -p "$dest/scripts"
-  cp "$SHARED/scripts/"* "$dest/scripts/"
-  chmod +x "$dest/scripts/"*
-
-  # Devcontainer — emitted by templates/shared/emit-devcontainer-json.sh
-  # and templates/shared/emit-docker-compose.sh during scaffold.sh; no
-  # pre-existing template files to copy here. The directory is created
-  # at emit time.
-}
-
-# compose_gitignore <dest> <lang...>
-# Merges common + per-lang gitignore files into dest/.gitignore,
-# wrapped in a labeled kit-managed block so users may add custom
-# entries above / below the markers and have them survive a
-# re-scaffold or `kit init --update`. The composed file is the
-# tier-1 `.gitignore` shipped inside `dist/cli-template-*`; there
-# is no runtime emitter for `.gitignore`, so this is the SOT.
-#
-# Marker syntax mirrors `templates/shared/managed-block.sh`
-# (lines 75-76 + labeled variant). Emitted directly as static
-# shell text — `build.sh` runs at distributable-build time and
-# does not `source` the managed-block library.
-compose_gitignore() {
-  local dest="$1"; shift
-  local parts=("$SHARED/gitignore/common.gitignore")
-  for lang in "$@"; do
-    parts+=("$SHARED/gitignore/${lang}.gitignore")
-  done
-  {
-    printf '# >>> kit-managed: gitignore >>>\n'
-    cat "${parts[@]}"
-    printf '# <<< kit-managed: gitignore <<<\n'
-  } > "$dest/.gitignore"
-}
-
-# compose_gitattributes <dest> <lang...>
-# Merges common + per-lang gitattributes files into dest/.gitattributes,
-# wrapped in a labeled kit-managed block so users may add custom
-# entries above / below the markers and have them survive a
-# re-scaffold or `kit init --update`. The composed file is the
-# tier-1 `.gitattributes` shipped inside `dist/cli-template-*`; there
-# is no runtime emitter for `.gitattributes`, so this is the SOT.
-#
-# Marker syntax mirrors `templates/shared/managed-block.sh`
-# (lines 75-76 + labeled variant). Emitted directly as static
-# shell text — `build.sh` runs at distributable-build time and
-# does not `source` the managed-block library.
-compose_gitattributes() {
-  local dest="$1"; shift
-  local parts=("$SHARED/gitattributes/common.gitattributes")
-  for lang in "$@"; do
-    parts+=("$SHARED/gitattributes/${lang}.gitattributes")
-  done
-  {
-    printf '# >>> kit-managed: gitattributes >>>\n'
-    cat "${parts[@]}"
-    printf '# <<< kit-managed: gitattributes <<<\n'
-  } > "$dest/.gitattributes"
-}
 
 # copy_ci_single <dest> <lang>
 # Generates a single-lang dependabot.yml + copies lang-specific CI as ci.yml.
@@ -94,21 +21,11 @@ copy_ci_single() {
   local dest="$1" lang="$2"
   mkdir -p "$dest/.github/workflows"
 
-  # Per-lang dependabot ecosystem
   local ecosystem
-  case "$lang" in
-    go) ecosystem="gomod" ;;
-    ts) ecosystem="npm"   ;;
-    py) ecosystem="pip"   ;;
-    rs) ecosystem="cargo" ;;
-    php) ecosystem="composer" ;;
-    *)
-      echo "Warning: no dependabot ecosystem for lang=$lang" >&2
-      ecosystem=""
-      ;;
-  esac
-
-  if [ -n "$ecosystem" ]; then
+  ecosystem="$(dependabot_ecosystem "$lang")"
+  if [ -z "$ecosystem" ]; then
+    echo "Warning: no dependabot ecosystem for lang=$lang" >&2
+  else
     cat > "$dest/.github/dependabot.yml" <<DEPEOF
 version: 2
 updates:
@@ -121,13 +38,15 @@ updates:
 DEPEOF
   fi
 
-  local src="$SHARED/ci/ci-${lang}.yml"
-  [ -f "$src" ] || src="${src}.tmpl"
+  local src
+  src="$(ci_workflow_src "$lang")"
   cp "$src" "$dest/.github/workflows/ci.yml"
 }
 
 # overlay_lang <dest> <lang>
-# Copies lang-specific source (including hidden files)
+# Copies lang-specific source (including hidden files) flat into $dest
+# — used by single-lang dist builds. NOT the same as
+# overlay_lang_dir (lib.sh), which copies under $dest/<lang>/.
 overlay_lang() {
   local dest="$1" lang="$2"
   local src="$SCRIPT_DIR/cli-${lang}"
@@ -180,9 +99,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 CLEOF
 
 cat > "$base/README.md" << 'RMEOF'
-# {{app_name}}
+# {{.Name}}
 
-> {{description}}
+> {{.Description}}
 
 ## Quick Start
 
@@ -201,7 +120,7 @@ make setup    # install deps for all enabled languages
 
 ## License
 
-{{license}} — see [LICENSE](LICENSE).
+{{.License}} — see [LICENSE](LICENSE).
 RMEOF
 
 echo "Build complete. Output in $DIST/"
