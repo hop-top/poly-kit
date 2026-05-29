@@ -158,101 +158,19 @@ for lang in go ts py rs php; do
   overlay_lang "$dest" "$lang"
 done
 
-# --- Polyglot template ---
-poly="$DIST/cli-template-polyglot"
-mkdir -p "$poly"
+# --- Base template (lang-agnostic; consumed by scaffold.sh for polyglot) ---
+# Contains only content that ANY polyglot project gets regardless of which
+# --langs subset is chosen. Lang-specific overlays (per-lang dirs, CI
+# workflows, dependabot ecosystems, root Makefile) are composed at
+# scaffold time based on LANG_ARRAY.
+base="$DIST/cli-template-base"
+mkdir -p "$base"
 
-compose_gitignore "$poly" go ts py rs php
-compose_gitattributes "$poly" go ts py rs php
-copy_shared "$poly"
+compose_gitignore "$base"        # common only, no langs
+compose_gitattributes "$base"    # common only, no langs
+copy_shared "$base"
 
-# CI -- all lang workflows
-mkdir -p "$poly/.github/workflows"
-# Polyglot dependabot — watch subdirectories
-cat > "$poly/.github/dependabot.yml" << 'DEPEOF'
-version: 2
-updates:
-  - package-ecosystem: gomod
-    directory: "/go"
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: "build(deps):"
-
-  - package-ecosystem: npm
-    directory: "/ts"
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: "build(deps):"
-
-  - package-ecosystem: pip
-    directory: "/py"
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: "build(deps):"
-
-  - package-ecosystem: cargo
-    directory: "/rs"
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: "build(deps):"
-
-  - package-ecosystem: composer
-    directory: "/php"
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: "build(deps):"
-DEPEOF
-for lang in go ts py rs php; do
-  src="$SHARED/ci/ci-${lang}.yml"
-  [ -f "$src" ] || src="${src}.tmpl"
-  cp "$src" "$poly/.github/workflows/ci-${lang}.yml"
-done
-
-# Lang dirs (without shared root files)
-for lang in go ts py rs php; do
-  src="$SCRIPT_DIR/cli-${lang}"
-  langdir="$poly/$lang"
-  mkdir -p "$langdir"
-  if [ ! -d "$src" ]; then
-    echo "Warning: $src not found, skipping" >&2
-    continue
-  fi
-  for entry in "$src"/* "$src"/.*; do
-    base="$(basename "$entry")"
-    case "$base" in
-      .|..|CHANGELOG.md|README.md) continue ;;
-      *)  cp -r "$entry" "$langdir/" ;;
-    esac
-  done
-done
-
-# Polyglot root Makefile -- delegates to lang dirs
-cat > "$poly/Makefile" << 'MKEOF'
-.PHONY: build test lint links check setup
-
-check: lint test links
-
-build test lint setup:
-	$(MAKE) -C go $@
-	$(MAKE) -C ts $@
-	$(MAKE) -C py $@
-	$(MAKE) -C rs $@
-	$(MAKE) -C php $@
-
-links:
-	@if command -v lychee >/dev/null 2>&1; then \
-		lychee --no-progress .; \
-	else \
-		echo "lychee not installed; skipping link check"; \
-	fi
-MKEOF
-
-cat > "$poly/CHANGELOG.md" << 'CLEOF'
+cat > "$base/CHANGELOG.md" << 'CLEOF'
 # Changelog
 
 All notable changes documented here.
@@ -261,7 +179,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 CLEOF
 
-cat > "$poly/README.md" << 'RMEOF'
+cat > "$base/README.md" << 'RMEOF'
 # {{app_name}}
 
 > {{description}}
@@ -274,19 +192,11 @@ cat > "$poly/README.md" << 'RMEOF'
 
 Select your languages and configure the project.
 
-## Structure
-
-- `go/` — Go CLI source
-- `ts/` — TypeScript CLI source
-- `py/` — Python CLI source
-- `rs/` — Rust CLI source
-- `php/` — PHP CLI source
-
 ## Development
 
 ```bash
-make check    # lint + test all languages
-make setup    # install deps for all languages
+make check    # lint + test all enabled languages
+make setup    # install deps for all enabled languages
 ```
 
 ## License
