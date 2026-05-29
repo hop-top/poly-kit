@@ -2,12 +2,16 @@
 
 ## [0.4.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-py/v0.4.0-alpha.1...kit-py/v0.4.0-alpha.2) (2026-05-29)
 
+The hop-top team is happy to announce Kit's Python SDK 0.4.0-alpha.2. This release includes new features.
+
 
 ### Features
 
-* **contracts:** typeid-v1 cross-language parity fixtures ([ee7ecfb](https://github.com/hop-top/poly-kit/commit/ee7ecfbc7d382095c18090b956d947b145f919ee))
-* **py:** kit-sdk/id — typeid primitive ([5ff989e](https://github.com/hop-top/poly-kit/commit/5ff989e928daaca173c91c9cf83570cf6616a380))
-* **telemetry:** consenting telemetry stack across kit-go + 4 SDKs ([d7d85dc](https://github.com/hop-top/poly-kit/commit/d7d85dce02e64c4bd6bcc4a424810d2dcc9c8fd6))
+* **contracts:** typeid-v1 cross-language parity fixtures
+* **py:** kit-sdk/id — typeid primitive
+* **telemetry:** consenting telemetry stack across kit-go + 4 SDKs
+
+Full diff: [kit-py/v0.4.0-alpha.1...kit-py/v0.4.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-py/v0.4.0-alpha.1...kit-py/v0.4.0-alpha.2)
 
 ## [0.4.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-py/v0.4.0-alpha.0...kit-py/v0.4.0-alpha.1) (2026-05-17)
 
