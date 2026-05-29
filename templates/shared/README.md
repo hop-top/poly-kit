@@ -61,11 +61,16 @@ read.
 
 The final project `.gitignore` is composed at scaffold time from
 `shared/gitignore/common.gitignore` plus per-language snippets
-under `shared/gitignore/<lang>.gitignore`. `templates/build.sh`'s
-`compose_gitignore` concatenates these in order into
-`<dest>/.gitignore`; tier filtering for the composed file is
-governed by `shared/tiers.yaml`, not by per-language
-`cli-<lang>/tiers.yaml`. As a convention, per-language
+under `shared/gitignore/<lang>.gitignore`. `templates/build.sh`
+ships `common.gitignore` inside `cli-template-base`; the per-lang
+snippets are added by `templates/scaffold.sh`'s `compose_gitignore`
+when the user selects 2+ langs via `--langs`. Section order is
+deterministic: `common.gitignore` first, then per-lang snippets
+in the order of `--langs` (`LANG_ARRAY` pass order) — the user's
+chosen subset, not a fixed canonical order. Single-lang dists
+emit `common` + `<lang>` at build time. Tier filtering for the
+composed file is governed by `shared/tiers.yaml`, not by
+per-language `cli-<lang>/tiers.yaml`. As a convention, per-language
 `tiers.yaml` files MUST NOT list `.gitignore` — there is no
 `.gitignore` source file at `templates/cli-<lang>/` for the
 engine to match, so any such entry is vestigial and will be
@@ -114,19 +119,21 @@ existing project is refreshed.
 The final project `.gitattributes` is composed at scaffold time
 from `shared/gitattributes/common.gitattributes` plus per-language
 snippets under `shared/gitattributes/<lang>.gitattributes`.
-`templates/build.sh`'s `compose_gitattributes` concatenates these
-in order into `<dest>/.gitattributes`; tier filtering for the
-composed file is governed by `shared/tiers.yaml`, not by
-per-language `cli-<lang>/tiers.yaml`. As a convention,
-per-language `tiers.yaml` files MUST NOT list `.gitattributes` —
-there is no `.gitattributes` source file at `templates/cli-<lang>/`
-for the engine to match, so any such entry is vestigial and will
-be removed during audit.
+`templates/build.sh` ships `common.gitattributes` inside
+`cli-template-base`; the per-lang snippets are added by
+`templates/scaffold.sh`'s `compose_gitattributes` when the user
+selects 2+ langs via `--langs`. Tier filtering for the composed
+file is governed by `shared/tiers.yaml`, not by per-language
+`cli-<lang>/tiers.yaml`. As a convention, per-language
+`tiers.yaml` files MUST NOT list `.gitattributes` — there is no
+`.gitattributes` source file at `templates/cli-<lang>/` for the
+engine to match, so any such entry is vestigial and will be
+removed during audit.
 
 Section order is deterministic: `common.gitattributes` first,
-then per-lang snippets in the order passed to the composer.
-Single-lang templates emit `common` + `<lang>`; the polyglot
-template emits `common` + `go` + `ts` + `py` + `rs` + `php`.
+then per-lang snippets in the order of `--langs` (`LANG_ARRAY`
+pass order) — the user's chosen subset, not a fixed canonical
+order. Single-lang dists emit `common` + `<lang>` at build time.
 
 The composed content is wrapped in a labeled `kit-managed`
 block:

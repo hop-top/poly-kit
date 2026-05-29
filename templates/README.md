@@ -14,11 +14,32 @@ scaffolding and conformance tools for kit projects.
 
 ## Blueprints
 
+Single-lang sources (one per language):
+
 - [cli-go/](cli-go/): Go CLI template.
 - [cli-py/](cli-py/): Python CLI template.
 - [cli-ts/](cli-ts/): TypeScript CLI template.
 - [cli-rs/](cli-rs/): Rust CLI template.
 - [cli-php/](cli-php/): PHP CLI template.
+
+Built dists (produced by [`build.sh`](build.sh)):
+
+- `cli-template-<lang>` (one per language) — full single-lang dist
+  consumed by `scaffold.sh app --lang <lang>`. Unchanged.
+- `cli-template-base` — lang-agnostic skeleton: `shared/`, scripts,
+  `LICENSE`, `.devcontainer/`, common-only `.gitignore` /
+  `.gitattributes`, no per-lang content, no `dependabot.yml`.
+  Consumed by `scaffold.sh app --langs <csv>` (any 2+ langs).
+
+### Scaffold-time composition (polyglot)
+
+`scaffold.sh app --langs <csv>` (2+ langs) reads `cli-template-base`
+as the skeleton, then overlays per-lang dirs from the matching
+single-lang sources and composes `.gitignore`, `.gitattributes`,
+`dependabot.yml`, `Makefile`, and `README.md` from per-lang
+fragments. Section / dir order follows the order of `--langs`
+(`LANG_ARRAY` pass order), not a fixed canonical order. Polyglot
+means "any 2+ langs you chose", not "all 5".
 
 ## Tests
 
