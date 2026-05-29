@@ -101,6 +101,7 @@ copy_ci_single() {
     ts) ecosystem="npm"   ;;
     py) ecosystem="pip"   ;;
     rs) ecosystem="cargo" ;;
+    php) ecosystem="composer" ;;
     *)
       echo "Warning: no dependabot ecosystem for lang=$lang" >&2
       ecosystem=""

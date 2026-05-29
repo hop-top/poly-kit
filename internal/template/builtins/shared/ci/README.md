@@ -11,6 +11,7 @@ the kit toolchain (or stripped manually for one-off use).
 | `ci-go.yml.tmpl` | Go | ubuntu-latest | `go test -race`, `golangci-lint`, build |
 | `ci-ts.yml` | TypeScript / Node | ubuntu-latest | `pnpm test`, lint, build |
 | `ci-py.yml` | Python | ubuntu-latest | `pytest`, ruff, type-check |
+| `ci-php.yml` | PHP | ubuntu-latest | `make setup` (composer install), `make lint` (phpstan), `make test` (phpunit) |
 | `ci-swift.yml.tmpl` | Swift / iOS | macos-14 (Xcode 15.4) | `xcodebuild test` (iPhone + iPad simulators), SwiftLint, no-signing build |
 | `ci-kotlin.yml.tmpl` | Kotlin / Android | ubuntu-latest (JDK 17) | `./gradlew test`, `lint`, `ktlintCheck`, `assembleDebug` |
 
@@ -52,7 +53,7 @@ so they work for split-repo deployments too.
 
 ## mise-action coverage
 
-CI workflows for go/ts/py/rs use `jdx/mise-action@v2` to install
+CI workflows for go/ts/py/rs/php use `jdx/mise-action@v2` to install
 the toolchain pinned in `mise.toml`.
 
 Kotlin and Swift workflows are intentionally exempt: they use
