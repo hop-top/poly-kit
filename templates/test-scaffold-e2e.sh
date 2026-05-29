@@ -321,7 +321,176 @@ assert_managed_files() {
     fi
   fi
 
-  # ---------- f. CI workflows ----------
+  # ---------- f. .gitignore ----------
+  local gi="$proj/.gitignore"
+  assert_file_exists "$gi" "$tag .gitignore"
+  if [ -f "$gi" ]; then
+    # Kit-managed block markers (labeled: gitignore).
+    assert_file_contains "$gi" '^# >>> kit-managed: gitignore >>>$' \
+      "$tag .gitignore has kit-managed open marker"
+    assert_file_contains "$gi" '^# <<< kit-managed: gitignore <<<$' \
+      "$tag .gitignore has kit-managed close marker"
+
+    # Common section (always present, independent of langs).
+    assert_file_contains "$gi" '^\.env$' \
+      "$tag .gitignore has common .env entry"
+    assert_file_contains "$gi" '^\.data/$' \
+      "$tag .gitignore has common .data/ entry"
+
+    # Per-lang assertions. `scaffold.sh` selects the polyglot
+    # dist (which composes all langs into `.gitignore`) whenever
+    # 2+ langs are passed; only single-lang scaffolds emit a
+    # `.gitignore` that excludes the other langs. So exclusion
+    # assertions are gated on single-lang mode.
+    local lang_count
+    lang_count="$(echo "${lang_csv//[[:space:]]/}" | tr ',' '\n' | grep -c .)"
+    local is_polyglot=false
+    [ "${lang_count:-0}" -gt 1 ] && is_polyglot=true
+
+    # vendor/ is shared by go + php, so php's discriminator is
+    # composer.lock.
+    if [[ "$lang_norm" == *,go,* ]] || [[ "$lang_norm" == *,php,* ]]; then
+      assert_file_contains "$gi" '^vendor/$' \
+        "$tag .gitignore has vendor/ (go|php)"
+    elif ! $is_polyglot; then
+      assert_file_excludes "$gi" '^vendor/$' \
+        "$tag .gitignore omits vendor/ (no go|php)"
+    fi
+
+    if [[ "$lang_norm" == *,ts,* ]]; then
+      assert_file_contains "$gi" '^node_modules/$' \
+        "$tag .gitignore has ts node_modules/"
+    elif ! $is_polyglot; then
+      assert_file_excludes "$gi" '^node_modules/$' \
+        "$tag .gitignore omits ts node_modules/"
+    fi
+
+    if [[ "$lang_norm" == *,py,* ]]; then
+      assert_file_contains "$gi" '^__pycache__/$' \
+        "$tag .gitignore has py __pycache__/"
+    elif ! $is_polyglot; then
+      assert_file_excludes "$gi" '^__pycache__/$' \
+        "$tag .gitignore omits py __pycache__/"
+    fi
+
+    if [[ "$lang_norm" == *,rs,* ]]; then
+      assert_file_contains "$gi" '^target/$' \
+        "$tag .gitignore has rs target/"
+    elif ! $is_polyglot; then
+      assert_file_excludes "$gi" '^target/$' \
+        "$tag .gitignore omits rs target/"
+    fi
+
+    if [[ "$lang_norm" == *,php,* ]]; then
+      assert_file_contains "$gi" '^composer\.lock$' \
+        "$tag .gitignore has php composer.lock"
+    elif ! $is_polyglot; then
+      assert_file_excludes "$gi" '^composer\.lock$' \
+        "$tag .gitignore omits php composer.lock"
+    fi
+
+    # Common section MUST appear exactly once regardless of how
+    # many lang snippets are composed in.
+    local dscount
+    dscount="$(grep -c '^\.DS_Store$' "$gi" 2>/dev/null || true)"
+    if [ "${dscount:-0}" -eq 1 ]; then
+      pass "$tag .gitignore common section appears exactly once (.DS_Store)"
+    else
+      fail "$tag .gitignore common section: .DS_Store appears ${dscount:-0} times, expected 1 in $gi"
+    fi
+  fi
+
+  # ---------- g. .gitattributes ----------
+  local ga="$proj/.gitattributes"
+  assert_file_exists "$ga" "$tag .gitattributes"
+  if [ -f "$ga" ]; then
+    # Kit-managed block markers (labeled: gitattributes).
+    assert_file_contains "$ga" '^# >>> kit-managed: gitattributes >>>$' \
+      "$tag .gitattributes has kit-managed open marker"
+    assert_file_contains "$ga" '^# <<< kit-managed: gitattributes <<<$' \
+      "$tag .gitattributes has kit-managed close marker"
+
+    # Common section (always present, independent of langs).
+    assert_file_contains "$ga" '^\* text=auto eol=lf$' \
+      "$tag .gitattributes has common default-normalization rule"
+    assert_file_contains "$ga" '^\*\.md[[:space:]][[:space:]]*text eol=lf$' \
+      "$tag .gitattributes has common *.md text rule"
+    assert_file_contains "$ga" '^\*\.png[[:space:]][[:space:]]*binary$' \
+      "$tag .gitattributes has common *.png binary rule"
+
+    # Per-lang assertions. `scaffold.sh` selects the polyglot
+    # dist (which composes all langs into `.gitattributes`) whenever
+    # 2+ langs are passed; only single-lang scaffolds emit a
+    # `.gitattributes` that excludes the other langs. So exclusion
+    # assertions are gated on single-lang mode (mirrors the
+    # `.gitignore` block above).
+    local ga_lang_count
+    ga_lang_count="$(echo "${lang_csv//[[:space:]]/}" | tr ',' '\n' | grep -c .)"
+    local ga_is_polyglot=false
+    [ "${ga_lang_count:-0}" -gt 1 ] && ga_is_polyglot=true
+
+    if [[ "$lang_norm" == *,go,* ]]; then
+      assert_file_contains "$ga" '^\*\.go[[:space:]][[:space:]]*text eol=lf$' \
+        "$tag .gitattributes has go *.go text rule"
+      assert_file_contains "$ga" '^go\.sum[[:space:]][[:space:]]*linguist-generated=true$' \
+        "$tag .gitattributes has go go.sum linguist-generated"
+    elif ! $ga_is_polyglot; then
+      assert_file_excludes "$ga" 'go\.sum' \
+        "$tag .gitattributes omits go go.sum"
+    fi
+
+    if [[ "$lang_norm" == *,ts,* ]]; then
+      assert_file_contains "$ga" '^\*\.ts[[:space:]][[:space:]]*text eol=lf$' \
+        "$tag .gitattributes has ts *.ts text rule"
+      assert_file_contains "$ga" '^pnpm-lock\.yaml[[:space:]][[:space:]]*linguist-generated=true$' \
+        "$tag .gitattributes has ts pnpm-lock.yaml linguist-generated"
+    elif ! $ga_is_polyglot; then
+      assert_file_excludes "$ga" 'pnpm-lock\.yaml' \
+        "$tag .gitattributes omits ts pnpm-lock.yaml"
+    fi
+
+    if [[ "$lang_norm" == *,py,* ]]; then
+      assert_file_contains "$ga" '^\*\.py[[:space:]][[:space:]]*text eol=lf$' \
+        "$tag .gitattributes has py *.py text rule"
+      assert_file_contains "$ga" '^\*\*/uv\.lock[[:space:]][[:space:]]*linguist-generated=true$' \
+        "$tag .gitattributes has py **/uv.lock linguist-generated"
+    elif ! $ga_is_polyglot; then
+      assert_file_excludes "$ga" '\*\*/uv\.lock' \
+        "$tag .gitattributes omits py **/uv.lock"
+    fi
+
+    if [[ "$lang_norm" == *,rs,* ]]; then
+      assert_file_contains "$ga" '^\*\.rs[[:space:]][[:space:]]*text eol=lf$' \
+        "$tag .gitattributes has rs *.rs text rule"
+      assert_file_contains "$ga" '^Cargo\.lock[[:space:]][[:space:]]*linguist-generated=true$' \
+        "$tag .gitattributes has rs Cargo.lock linguist-generated"
+    elif ! $ga_is_polyglot; then
+      assert_file_excludes "$ga" 'Cargo\.lock' \
+        "$tag .gitattributes omits rs Cargo.lock"
+    fi
+
+    if [[ "$lang_norm" == *,php,* ]]; then
+      assert_file_contains "$ga" '^\*\.php[[:space:]][[:space:]]*text eol=lf$' \
+        "$tag .gitattributes has php *.php text rule"
+      assert_file_contains "$ga" '^composer\.lock[[:space:]][[:space:]]*linguist-generated=true$' \
+        "$tag .gitattributes has php composer.lock linguist-generated"
+    elif ! $ga_is_polyglot; then
+      assert_file_excludes "$ga" 'composer\.lock' \
+        "$tag .gitattributes omits php composer.lock"
+    fi
+
+    # Common section MUST appear exactly once regardless of how
+    # many lang snippets are composed in.
+    local ga_count
+    ga_count="$(grep -c '^\* text=auto eol=lf$' "$ga" 2>/dev/null || true)"
+    if [ "${ga_count:-0}" -eq 1 ]; then
+      pass "$tag .gitattributes common section appears exactly once"
+    else
+      fail "$tag .gitattributes common rule appears ${ga_count:-0} times, expected 1 in $ga"
+    fi
+  fi
+
+  # ---------- h. CI workflows ----------
   local wf_dir="$proj/.github/workflows"
   if [ -d "$wf_dir" ]; then
     local wf_files

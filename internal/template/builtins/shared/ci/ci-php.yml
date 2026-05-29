@@ -1,0 +1,53 @@
+name: CI (PHP)
+
+on:
+  push:
+    branches: [main]
+    paths: ["**.php", "composer.json", "composer.lock", "phpstan.neon", "phpunit.xml"]
+  pull_request:
+    branches: [main]
+    paths: ["**.php", "composer.json", "composer.lock", "phpstan.neon", "phpunit.xml"]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
+
+      - name: composer install
+        run: mise exec -- make setup
+
+      - name: phpstan
+        run: mise exec -- make lint
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # >>> kit-managed: toolchain >>>
+      - uses: jdx/mise-action@v2
+        with:
+          install: true
+          cache: true
+      - run: mise run install
+      # <<< kit-managed: toolchain <<<
+
+      - name: composer install
+        run: mise exec -- make setup
+
+      - name: phpunit
+        run: mise exec -- make test

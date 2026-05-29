@@ -18,6 +18,7 @@ files:
   "ci/ci-go.yml": [2, 3, 4]
   "ci/ci-ts.yml": [2, 3, 4]
   "ci/ci-py.yml": [2, 3, 4]
+  "ci/ci-php.yml": [2, 3, 4]
   "ci/dependabot.yml": [2, 3, 4]
 
   "scripts/promote-release.sh": [2, 3, 4]

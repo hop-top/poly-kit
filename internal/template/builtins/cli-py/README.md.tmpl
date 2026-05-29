@@ -54,29 +54,15 @@ open http://localhost:16686 # Jaeger UI for traces
 
 ## Tool versions
 
-Versions for Python, uv, ruff, and release tooling are pinned in
-`mise.toml` at the project root inside a kit-managed block. Refresh
-it with:
-
-```sh
-kit init --update
-```
-
-### Bring this project up to date
-
-When new defaults land upstream:
-
-```sh
-kit init --check    # preview drift
-kit init --update   # refresh managed blocks
-```
-
-See poly-kit's `templates/RUNBOOK-UPGRADE.md` for the full
-procedure.
+Python, uv, ruff, and release tooling are pinned in `mise.toml`
+inside a kit-managed block. Refresh procedure
+(`kit init --check` / `kit init --update`) is documented in
+poly-kit's
+[templates/RUNBOOK-UPGRADE.md](https://github.com/hop-top/poly-kit/blob/main/templates/RUNBOOK-UPGRADE.md).
 
 ## Development
 
-Prerequisites: `mise` (installs Python 3.13+, uv),
+Prerequisites: `mise` (installs the pinned Python toolchain + uv),
 [Task](https://taskfile.dev).
 
 ```sh
