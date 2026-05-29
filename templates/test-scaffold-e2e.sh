@@ -52,6 +52,15 @@ assert_dir_exists() {
   fi
 }
 
+assert_dir_not_exists() {
+  local dir="$1" label="${2:-$1}"
+  if [ -d "$dir" ]; then
+    fail "$label unexpectedly exists: $dir"
+  else
+    pass "$label absent"
+  fi
+}
+
 assert_no_placeholders() {
   local dir="$1" label="$2"
   local found
@@ -337,22 +346,18 @@ assert_managed_files() {
     assert_file_contains "$gi" '^\.data/$' \
       "$tag .gitignore has common .data/ entry"
 
-    # Per-lang assertions. `scaffold.sh` selects the polyglot
-    # dist (which composes all langs into `.gitignore`) whenever
-    # 2+ langs are passed; only single-lang scaffolds emit a
-    # `.gitignore` that excludes the other langs. So exclusion
-    # assertions are gated on single-lang mode.
-    local lang_count
-    lang_count="$(echo "${lang_csv//[[:space:]]/}" | tr ',' '\n' | grep -c .)"
-    local is_polyglot=false
-    [ "${lang_count:-0}" -gt 1 ] && is_polyglot=true
+    # Per-lang assertions. Post-T-0867, `scaffold.sh` honors the
+    # `--langs` subset: polyglot mode composes only the opted-in
+    # lang sections into `.gitignore`. Exclusion assertions fire
+    # for every lang NOT in the subset, regardless of polyglot vs.
+    # single-lang mode.
 
     # vendor/ is shared by go + php, so php's discriminator is
     # composer.lock.
     if [[ "$lang_norm" == *,go,* ]] || [[ "$lang_norm" == *,php,* ]]; then
       assert_file_contains "$gi" '^vendor/$' \
         "$tag .gitignore has vendor/ (go|php)"
-    elif ! $is_polyglot; then
+    else
       assert_file_excludes "$gi" '^vendor/$' \
         "$tag .gitignore omits vendor/ (no go|php)"
     fi
@@ -360,7 +365,7 @@ assert_managed_files() {
     if [[ "$lang_norm" == *,ts,* ]]; then
       assert_file_contains "$gi" '^node_modules/$' \
         "$tag .gitignore has ts node_modules/"
-    elif ! $is_polyglot; then
+    else
       assert_file_excludes "$gi" '^node_modules/$' \
         "$tag .gitignore omits ts node_modules/"
     fi
@@ -368,7 +373,7 @@ assert_managed_files() {
     if [[ "$lang_norm" == *,py,* ]]; then
       assert_file_contains "$gi" '^__pycache__/$' \
         "$tag .gitignore has py __pycache__/"
-    elif ! $is_polyglot; then
+    else
       assert_file_excludes "$gi" '^__pycache__/$' \
         "$tag .gitignore omits py __pycache__/"
     fi
@@ -376,7 +381,7 @@ assert_managed_files() {
     if [[ "$lang_norm" == *,rs,* ]]; then
       assert_file_contains "$gi" '^target/$' \
         "$tag .gitignore has rs target/"
-    elif ! $is_polyglot; then
+    else
       assert_file_excludes "$gi" '^target/$' \
         "$tag .gitignore omits rs target/"
     fi
@@ -384,7 +389,7 @@ assert_managed_files() {
     if [[ "$lang_norm" == *,php,* ]]; then
       assert_file_contains "$gi" '^composer\.lock$' \
         "$tag .gitignore has php composer.lock"
-    elif ! $is_polyglot; then
+    else
       assert_file_excludes "$gi" '^composer\.lock$' \
         "$tag .gitignore omits php composer.lock"
     fi
@@ -418,23 +423,17 @@ assert_managed_files() {
     assert_file_contains "$ga" '^\*\.png[[:space:]][[:space:]]*binary$' \
       "$tag .gitattributes has common *.png binary rule"
 
-    # Per-lang assertions. `scaffold.sh` selects the polyglot
-    # dist (which composes all langs into `.gitattributes`) whenever
-    # 2+ langs are passed; only single-lang scaffolds emit a
-    # `.gitattributes` that excludes the other langs. So exclusion
-    # assertions are gated on single-lang mode (mirrors the
-    # `.gitignore` block above).
-    local ga_lang_count
-    ga_lang_count="$(echo "${lang_csv//[[:space:]]/}" | tr ',' '\n' | grep -c .)"
-    local ga_is_polyglot=false
-    [ "${ga_lang_count:-0}" -gt 1 ] && ga_is_polyglot=true
+    # Per-lang assertions. Post-T-0867, `scaffold.sh` honors the
+    # `--langs` subset for polyglot composition. Exclusion
+    # assertions fire for every lang NOT in the subset (mirrors
+    # the `.gitignore` block above).
 
     if [[ "$lang_norm" == *,go,* ]]; then
       assert_file_contains "$ga" '^\*\.go[[:space:]][[:space:]]*text eol=lf$' \
         "$tag .gitattributes has go *.go text rule"
       assert_file_contains "$ga" '^go\.sum[[:space:]][[:space:]]*linguist-generated=true$' \
         "$tag .gitattributes has go go.sum linguist-generated"
-    elif ! $ga_is_polyglot; then
+    else
       assert_file_excludes "$ga" 'go\.sum' \
         "$tag .gitattributes omits go go.sum"
     fi
@@ -444,7 +443,7 @@ assert_managed_files() {
         "$tag .gitattributes has ts *.ts text rule"
       assert_file_contains "$ga" '^pnpm-lock\.yaml[[:space:]][[:space:]]*linguist-generated=true$' \
         "$tag .gitattributes has ts pnpm-lock.yaml linguist-generated"
-    elif ! $ga_is_polyglot; then
+    else
       assert_file_excludes "$ga" 'pnpm-lock\.yaml' \
         "$tag .gitattributes omits ts pnpm-lock.yaml"
     fi
@@ -454,7 +453,7 @@ assert_managed_files() {
         "$tag .gitattributes has py *.py text rule"
       assert_file_contains "$ga" '^\*\*/uv\.lock[[:space:]][[:space:]]*linguist-generated=true$' \
         "$tag .gitattributes has py **/uv.lock linguist-generated"
-    elif ! $ga_is_polyglot; then
+    else
       assert_file_excludes "$ga" '\*\*/uv\.lock' \
         "$tag .gitattributes omits py **/uv.lock"
     fi
@@ -464,7 +463,7 @@ assert_managed_files() {
         "$tag .gitattributes has rs *.rs text rule"
       assert_file_contains "$ga" '^Cargo\.lock[[:space:]][[:space:]]*linguist-generated=true$' \
         "$tag .gitattributes has rs Cargo.lock linguist-generated"
-    elif ! $ga_is_polyglot; then
+    else
       assert_file_excludes "$ga" 'Cargo\.lock' \
         "$tag .gitattributes omits rs Cargo.lock"
     fi
@@ -474,7 +473,7 @@ assert_managed_files() {
         "$tag .gitattributes has php *.php text rule"
       assert_file_contains "$ga" '^composer\.lock[[:space:]][[:space:]]*linguist-generated=true$' \
         "$tag .gitattributes has php composer.lock linguist-generated"
-    elif ! $ga_is_polyglot; then
+    else
       assert_file_excludes "$ga" 'composer\.lock' \
         "$tag .gitattributes omits php composer.lock"
     fi
@@ -844,6 +843,151 @@ bash "$SCRIPT_DIR/scaffold.sh" test-app-with-svc \
   --services postgres,redis \
   --forge none --no-push --no-tlc
 assert_managed_files "$TEST13C_DIR" "go" "postgres,redis" "test-app-with-svc"
+
+# ======================================================
+# Test 14: --langs subset go,ts (2-lang polyglot)
+# ======================================================
+#
+# Post-T-0867 polyglot honors --langs subset. Verify go + ts
+# present, py + rs + php excluded from lang dirs and managed
+# files. Mirrors TEST2 (go,ts,py) shape.
+
+info "Test 14: --langs subset go,ts"
+TEST14_DIR="$TMPDIR_BASE/test14app"
+
+bash "$SCRIPT_DIR/scaffold.sh" test14app \
+  --output "$TEST14_DIR" \
+  --lang go,ts \
+  --description "Test go,ts subset" \
+  --license apache \
+  --author "Test Author" \
+  --email "test@example.com" \
+  --module-prefix "github.com/testorg" \
+  --forge none \
+  --no-push --no-tlc
+
+assert_dir_exists "$TEST14_DIR" "test14 project dir"
+assert_dir_exists "$TEST14_DIR/go" "test14 go/ dir"
+assert_dir_exists "$TEST14_DIR/ts" "test14 ts/ dir"
+assert_dir_not_exists "$TEST14_DIR/py" "test14 py/ dir"
+assert_dir_not_exists "$TEST14_DIR/rs" "test14 rs/ dir"
+assert_dir_not_exists "$TEST14_DIR/php" "test14 php/ dir"
+assert_file_exists "$TEST14_DIR/Makefile" "test14 root Makefile"
+assert_file_contains "$TEST14_DIR/Makefile" 'MAKE) -C go' \
+  "test14 Makefile delegates to go"
+assert_file_contains "$TEST14_DIR/Makefile" 'MAKE) -C ts' \
+  "test14 Makefile delegates to ts"
+assert_no_placeholders "$TEST14_DIR" "test14"
+assert_managed_files "$TEST14_DIR" "go,ts" "" "test14app"
+
+# ======================================================
+# Test 15: --langs subset php,go (out-of-order, section ordering)
+# ======================================================
+#
+# Section-order convention (PR #103, documented in
+# templates/shared/README.md): per-lang sections in `.gitignore`
+# and `.gitattributes` appear in LANG_ARRAY pass order. Verify
+# php block precedes go block when invoked as --lang php,go.
+
+info "Test 15: --langs subset php,go (section order = pass order)"
+TEST15_DIR="$TMPDIR_BASE/test15app"
+
+bash "$SCRIPT_DIR/scaffold.sh" test15app \
+  --output "$TEST15_DIR" \
+  --lang php,go \
+  --description "Test php,go ordering" \
+  --license apache \
+  --author "Test Author" \
+  --email "test@example.com" \
+  --module-prefix "github.com/testorg" \
+  --forge none \
+  --no-push --no-tlc
+
+assert_dir_exists "$TEST15_DIR" "test15 project dir"
+assert_dir_exists "$TEST15_DIR/php" "test15 php/ dir"
+assert_dir_exists "$TEST15_DIR/go" "test15 go/ dir"
+assert_dir_not_exists "$TEST15_DIR/ts" "test15 ts/ dir"
+assert_dir_not_exists "$TEST15_DIR/py" "test15 py/ dir"
+assert_dir_not_exists "$TEST15_DIR/rs" "test15 rs/ dir"
+assert_managed_files "$TEST15_DIR" "php,go" "" "test15app"
+
+# Section-ordering check: composer.lock (php discriminator) must
+# appear BEFORE go.sum-ish anchors in .gitattributes. For
+# .gitignore, php's composer.lock must appear BEFORE the go-only
+# discriminator. (vendor/ is shared by go+php so it's not a
+# usable anchor.)
+TEST15_GI="$TEST15_DIR/.gitignore"
+TEST15_GA="$TEST15_DIR/.gitattributes"
+
+if [ -f "$TEST15_GI" ]; then
+  # composer.lock (php) and Cargo-or-go anchor. Go has no
+  # unique .gitignore line beyond vendor/ (shared). Use the
+  # cli-php section marker if present, else fall back to
+  # composer.lock line-number comparison vs. end-of-file.
+  php_line="$(grep -n '^composer\.lock$' "$TEST15_GI" | head -1 | cut -d: -f1 || true)"
+  if [ -n "$php_line" ]; then
+    pass "test15 .gitignore contains php composer.lock at line $php_line"
+  else
+    fail "test15 .gitignore missing php composer.lock line"
+  fi
+fi
+
+if [ -f "$TEST15_GA" ]; then
+  # composer.lock = php-only, go.sum = go-only. Both lang
+  # sections must be present and php must precede go.
+  php_ga_line="$(grep -n '^composer\.lock[[:space:]]' "$TEST15_GA" | head -1 | cut -d: -f1 || true)"
+  go_ga_line="$(grep -n '^go\.sum[[:space:]]' "$TEST15_GA" | head -1 | cut -d: -f1 || true)"
+  if [ -n "$php_ga_line" ] && [ -n "$go_ga_line" ]; then
+    if [ "$php_ga_line" -lt "$go_ga_line" ]; then
+      pass "test15 .gitattributes section order: php (L$php_ga_line) before go (L$go_ga_line)"
+    else
+      fail "test15 .gitattributes section order: php (L$php_ga_line) NOT before go (L$go_ga_line)"
+    fi
+  else
+    fail "test15 .gitattributes missing php composer.lock or go go.sum anchor (php_ga_line='$php_ga_line' go_ga_line='$go_ga_line')"
+  fi
+fi
+
+# ======================================================
+# Test 16: --langs full set go,ts,py,rs,php (5-lang regression)
+# ======================================================
+#
+# Regression: full lang set produces all five lang dirs and
+# every per-lang managed-file section. Mirrors TEST12 (4-lang)
+# extended to include php.
+
+info "Test 16: --langs full set go,ts,py,rs,php"
+TEST16_DIR="$TMPDIR_BASE/test16app"
+
+bash "$SCRIPT_DIR/scaffold.sh" test16app \
+  --output "$TEST16_DIR" \
+  --lang go,ts,py,rs,php \
+  --description "Test full 5-lang polyglot" \
+  --license apache \
+  --author "Test Author" \
+  --email "test@example.com" \
+  --module-prefix "github.com/testorg" \
+  --forge none \
+  --no-push --no-tlc
+
+assert_dir_exists "$TEST16_DIR" "test16 project dir"
+assert_dir_exists "$TEST16_DIR/go" "test16 go/ dir"
+assert_dir_exists "$TEST16_DIR/ts" "test16 ts/ dir"
+assert_dir_exists "$TEST16_DIR/py" "test16 py/ dir"
+assert_dir_exists "$TEST16_DIR/rs" "test16 rs/ dir"
+assert_dir_exists "$TEST16_DIR/php" "test16 php/ dir"
+assert_file_exists "$TEST16_DIR/Makefile" "test16 root Makefile"
+assert_file_contains "$TEST16_DIR/Makefile" 'MAKE) -C go' \
+  "test16 Makefile delegates to go"
+assert_file_contains "$TEST16_DIR/Makefile" 'MAKE) -C ts' \
+  "test16 Makefile delegates to ts"
+assert_file_contains "$TEST16_DIR/Makefile" 'MAKE) -C py' \
+  "test16 Makefile delegates to py"
+assert_file_contains "$TEST16_DIR/Makefile" 'MAKE) -C rs' \
+  "test16 Makefile delegates to rs"
+assert_file_contains "$TEST16_DIR/Makefile" 'MAKE) -C php' \
+  "test16 Makefile delegates to php"
+assert_managed_files "$TEST16_DIR" "go,ts,py,rs,php" "" "test16app"
 
 # ======================================================
 # Summary
