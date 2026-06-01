@@ -69,6 +69,12 @@ func wrapRunE(orig func(*cobra.Command, []string) error) func(*cobra.Command, []
 		// Silence cobra/fang's own error printer so we don't double-render.
 		cmd.SilenceErrors = true
 		cmd.SilenceUsage = true
+		// Preserve sentinel-bearing wrappers (e.g. flagValidationError)
+		// so outer middleware can still match via errors.Is. The render
+		// already used toCLIError to extract the envelope.
+		if errors.Is(err, errFlagValidation) {
+			return err
+		}
 		return ce
 	}
 }
@@ -116,13 +122,16 @@ func (r *Root) wrapRunESubtree(cmd *cobra.Command) {
 	}
 	if cmd.Annotations == nil || cmd.Annotations[wrappedAnnotation] != "true" {
 		if cmd.RunE != nil {
-			// Innermost (adopter) → error-render → idempotency →
-			// deprecation-warn → policy. Deprecation sits inside
-			// policy (so policy refusal short-circuits before emitting
-			// a warning) but outside idempotency/error-render so the
-			// warning is emitted once even when idempotency replay
-			// returns a cached result.
-			inner := wrapIdempotencyRunE(wrapRunE(cmd.RunE), r.IdemStore)
+			// Innermost (adopter) → flag-validator → error-render →
+			// idempotency → deprecation-warn → policy. Flag
+			// validators sit inside error-render so their
+			// *output.Error returns route through RenderError and
+			// honor --format. Validators run AFTER policy/idempotency
+			// only because we want the error envelope to wrap them;
+			// in practice a flag-shape rejection short-circuits before
+			// any meaningful adopter work runs.
+			adopter := wrapFlagValidatorRunE(cmd.RunE, r.flagValidators)
+			inner := wrapIdempotencyRunE(wrapRunE(adopter), r.IdemStore)
 			inner = wrapDeprecationRunE(inner)
 			cmd.RunE = r.wrapPolicyRunE(cmd, inner)
 			if cmd.Annotations == nil {

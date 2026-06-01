@@ -107,6 +107,13 @@ func wrapIdempotencyRunE(
 		defer cmd.SetOut(origOut)
 
 		err := orig(cmd, args)
+		// Skip recording when a flag-validator rejected the call
+		// before adopter dispatch — there's no useful output to
+		// replay, and caching the rejection would poison subsequent
+		// runs that pass the same key with a valid flag value.
+		if errors.Is(err, errFlagValidation) {
+			return err
+		}
 		exit := 0
 		if err != nil {
 			exit = exitCodeFor(err)

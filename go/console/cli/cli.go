@@ -344,6 +344,11 @@ type Root struct {
 	// invocation. Exposed via Root.InvokedAs. See invokedas.go for the
 	// contract and rationale.
 	invokedAs string
+	// flagValidators is the registered set of persistent-flag value
+	// validators. Captured into the leaf RunE chain by WrapRunE;
+	// registration must happen before WrapRunE for the validator to
+	// fire. See flag_validator.go.
+	flagValidators map[string]FlagValidator
 }
 
 // New returns a Root pre-configured to the hop-top CLI contract:
