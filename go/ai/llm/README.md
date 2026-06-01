@@ -187,6 +187,33 @@ prof := llm.RequestProfile{
 }
 ```
 
+### Picker
+
+`PickProvider` selects a single `*aim.Model` for a profile and budget:
+
+```go
+func PickProvider(ctx context.Context, reg *aim.Registry, profile RequestProfile, budget BudgetTier) (*aim.Model, error)
+```
+
+- Filter: queries `reg.Models(ctx, profile.Filter)`, then drops candidates
+  whose known `Limit.Context` / `Limit.Output` falls below the profile's
+  bounds. Unknown limits (zero) pass through.
+- Rank: `BudgetCheap` minimises token-weighted price
+  (`0.75*Cost.Input + 0.25*Cost.Output`); `BudgetPremium` maximises
+  `Limit.Context` and tiebreaks on `Cost.Input`; `BudgetBalanced` picks the
+  median of the price-sorted survivors. Nil-cost models are price 0 (Cheap
+  prefers, Premium loses tiebreaks).
+- Tiebreak: alphabetical `(Provider, ID)` makes every call deterministic.
+
+```go
+reg, _ := llm.Default(ctx)
+m, err := llm.PickProvider(ctx, reg, prof, llm.BudgetBalanced)
+```
+
+Errors are sentinel + structured: `errors.Is(err, llm.ErrNoProviderMatches)`
+detects the no-match case; `var nme *llm.NoMatchError; errors.As(err, &nme)`
+extracts `CandidateCount` and per-model `Eliminated` reasons for logs.
+
 ### Custom Adapters
 
 ```go
