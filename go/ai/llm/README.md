@@ -216,6 +216,37 @@ Errors are sentinel + structured: `errors.Is(err, llm.ErrNoProviderMatches)`
 detects the no-match case; `var nme *llm.NoMatchError; errors.As(err, &nme)`
 extracts `CandidateCount` and per-model `Eliminated` reasons for logs.
 
+### Pool configuration
+
+A `pool` block in `llm.yaml` restricts which `(scheme, model)` pairs the
+picker is allowed to pick. An empty or missing pool means "everything in
+aim's registry is fair game".
+
+```yaml
+pool:
+  - alias: fast
+    scheme: openai
+    model: gpt-4o-mini
+  - alias: legacy
+    scheme: openai
+    model: gpt-3.5-turbo
+    enabled: false
+```
+
+Resolution order is **file < env < CLI**: `LLM_POOL_DISABLE` is a comma-
+separated list of aliases or `scheme:model` strings that flips matching
+entries off; downstream CLIs that already parsed flags pass the same shape
+to `ResolvePool` for a final layer of overrides.
+
+```go
+pool, _ := llm.LoadPool()
+m, _ := llm.PickProviderInPool(ctx, reg, prof, llm.BudgetBalanced, pool)
+```
+
+Pool eliminations surface through `NoMatchError.Eliminated` with
+`Stage == "pool_disabled"` so operators can distinguish "pool too narrow"
+from "all pool members eliminated by budget caps".
+
 ### Custom Adapters
 
 ```go
