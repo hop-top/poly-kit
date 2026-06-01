@@ -247,6 +247,33 @@ Pool eliminations surface through `NoMatchError.Eliminated` with
 `Stage == "pool_disabled"` so operators can distinguish "pool too narrow"
 from "all pool members eliminated by budget caps".
 
+### Tracing
+
+`PickProvider` emits one structured `slog` event per call, gated on the
+`LLM_PICKER_TRACE` environment variable. Recognised truthy values (case-
+insensitive): `1`, `true`, `on`, `yes`. Anything else, including unset,
+suppresses the event. Tracing also stays silent on registry-query errors —
+only successful picks and `ErrNoProviderMatches` outcomes trace.
+
+Stable keys: `picker.budget`, `picker.filter.{tool_call,reasoning,structured_output,temperature,provider,family,input,output}`,
+`picker.profile.max_{input,output}_tokens`, `picker.candidate_count`,
+`picker.eliminated_count`, `picker.outcome` (`matched` / `no_match`), and on
+match `picker.chosen.provider` / `picker.chosen.model`. See the `picker.go`
+package doc for the full list.
+
+Sample line:
+
+```
+level=INFO msg=llm.pick picker.budget=balanced picker.filter.tool_call=true picker.filter.reasoning=<nil> picker.filter.structured_output=<nil> picker.filter.temperature=<nil> picker.profile.max_input_tokens=8192 picker.candidate_count=12 picker.eliminated_count=3 picker.outcome=matched picker.chosen.provider=openai picker.chosen.model=gpt-4o
+```
+
+Enable programmatically before invoking the picker:
+
+```go
+os.Setenv("LLM_PICKER_TRACE", "1")
+m, err := llm.PickProvider(ctx, reg, prof, llm.BudgetBalanced)
+```
+
 ### Custom Adapters
 
 ```go
