@@ -154,6 +154,21 @@ cfg, _ := llm.LoadConfig("anthropic://claude-sonnet-4-5-20250514?temperature=0.7
 
 Three-layer merge: config file < URI params < env vars.
 
+### Model registry
+
+`aim` (`hop.top/aim`) is the source of truth for model metadata — capabilities,
+modalities, cost, context windows. The picker (forthcoming) consumes this
+accessor; library code calls `llm.Default(ctx)` rather than constructing a
+registry directly so tests and embedders can inject custom sources via
+`llm.SetDefaultRegistry`. The lazy default reuses one `aim.NewRegistry` across
+calls; swapping the provider invalidates that cache.
+
+```go
+t := true
+reg, err := llm.Default(ctx)
+models, _ := reg.Models(ctx, aim.Filter{ToolCall: &t})
+```
+
 ### Custom Adapters
 
 ```go

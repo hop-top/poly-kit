@@ -61,6 +61,7 @@ require (
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
+	hop.top/aim v0.0.0-00010101000000-000000000000
 	hop.top/uri v0.2.0-alpha.0
 	hop.top/xrr v0.1.0-alpha.3
 	modernc.org/sqlite v1.48.2
@@ -227,3 +228,5 @@ require (
 )
 
 replace hop.top/hdl => /Users/jadb/.w/ideacrafterslabs/hdl/hops/main
+
+replace hop.top/aim => /Users/jadb/.w/ideacrafterslabs/aim/hops/main
