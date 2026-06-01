@@ -38,6 +38,36 @@ preserved verbatim.
     mise run install
     docker compose -f .devcontainer/docker-compose.yml config -q
 
+## Migrating `.golangci.yml` to v2
+
+`tool-versions.toml` pins `golangci-lint = "2.12"`. v1.62.x was built
+with Go 1.23 and refuses to lint Go 1.26+ targets:
+
+    can't load config: the Go language version (go1.24) used to build
+    golangci-lint is lower than the targeted Go version (1.26.1)
+
+v2 has a different config schema (`version: "2"` required,
+`linters-settings:` moves under `linters: settings:`). The Go scaffold
+ships a v2-shape baseline at `.golangci.yml`. Projects with a
+hand-rolled v1 config must migrate:
+
+    # before (v1)
+    linters:
+      enable: [govet, errcheck]
+    linters-settings:
+      gosec:
+        severity: medium
+
+    # after (v2)
+    version: "2"
+    linters:
+      enable: [govet, errcheck]
+      settings:
+        gosec:
+          severity: medium
+
+Full guide: <https://golangci-lint.run/docs/product/migration-guide/>.
+
 ## Adding or removing services
 
     kit init --add-service redis
