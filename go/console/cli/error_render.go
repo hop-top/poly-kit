@@ -69,6 +69,12 @@ func wrapRunE(orig func(*cobra.Command, []string) error) func(*cobra.Command, []
 		// Silence cobra/fang's own error printer so we don't double-render.
 		cmd.SilenceErrors = true
 		cmd.SilenceUsage = true
+		// Preserve sentinel-bearing wrappers (e.g. flagValidationError)
+		// so outer middleware can still match via errors.Is. The render
+		// already used toCLIError to extract the envelope.
+		if errors.Is(err, errFlagValidation) {
+			return err
+		}
 		return ce
 	}
 }

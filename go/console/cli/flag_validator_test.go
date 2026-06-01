@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"sync/atomic"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/idemstore"
 	"hop.top/kit/go/console/output"
 )
 
@@ -203,4 +205,71 @@ func TestWithFlagValidator_WrapRunEIdempotent(t *testing.T) {
 	assert.True(t,
 		strings.Contains(stderr.String(), "REJECT"),
 		"expected envelope on stderr, got %q", stderr.String())
+}
+
+// A validator rejection on a conditional-idempotent leaf invoked
+// with --idempotency-key must NOT record an entry in the store —
+// otherwise a subsequent call with the same key + a valid flag value
+// would replay the (empty) cached output instead of dispatching.
+func TestWithFlagValidator_DoesNotPoisonIdemStore(t *testing.T) {
+	store := idemstore.Memory()
+	defer store.Close()
+
+	r := cli.New(cli.Config{
+		Name:            "validatortool",
+		Version:         "0.0.0",
+		Short:           "flag validator + idempotency interaction",
+		DisableValidate: true,
+	}, cli.WithIdempotencyStore(store))
+	r.Cmd.PersistentFlags().String("my-flag", "default", "test flag")
+
+	var leafCalls atomic.Int32
+	leaf := &cobra.Command{
+		Use:   "do",
+		Short: "do thing",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			leafCalls.Add(1)
+			_, _ = cmd.OutOrStdout().Write([]byte("ok"))
+			return nil
+		},
+	}
+	cli.SetSideEffect(leaf, cli.SideEffectWrite)
+	cli.SetIdempotency(leaf, cli.IdempotencyConditional)
+	r.Cmd.AddCommand(leaf)
+
+	r.WithFlagValidator("my-flag", func(v string) *output.Error {
+		if v == "bad" {
+			return &output.Error{
+				Code:     "INVALID_FLAG",
+				Message:  "my-flag rejected",
+				ExitCode: 2,
+			}
+		}
+		return nil
+	})
+	r.WrapRunE()
+
+	// First call: rejected by validator while carrying an idempotency
+	// key. Must NOT write anything to the store.
+	var stdout, stderr bytes.Buffer
+	r.Cmd.SetOut(&stdout)
+	r.Cmd.SetErr(&stderr)
+	r.Cmd.SetArgs([]string{"do", "--idempotency-key", "k1", "--my-flag", "bad"})
+	err := r.Cmd.ExecuteContext(context.Background())
+	require.Error(t, err, "rejection must surface")
+	assert.Equal(t, int32(0), leafCalls.Load(), "leaf must not run")
+
+	_, hit, err := store.Lookup(context.Background(), "k1")
+	require.NoError(t, err)
+	assert.False(t, hit, "store must NOT have recorded the rejected call")
+
+	// Second call: same key, valid flag value. Leaf must dispatch —
+	// proving the cache wasn't poisoned by the first rejection.
+	stdout.Reset()
+	stderr.Reset()
+	r.Cmd.SetArgs([]string{"do", "--idempotency-key", "k1", "--my-flag", "good"})
+	err = r.Cmd.ExecuteContext(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), leafCalls.Load(), "leaf must dispatch on the retry")
+	assert.Equal(t, "ok", stdout.String(), "leaf payload must reach stdout")
 }

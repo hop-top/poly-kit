@@ -33,6 +33,9 @@
 package cli
 
 import (
+	"errors"
+	"maps"
+
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
 )
@@ -42,6 +45,24 @@ import (
 // routed through the kit error renderer so the user-visible output
 // honors --format json|yaml|table|text.
 type FlagValidator func(value string) *output.Error
+
+// errFlagValidation is the sentinel that marks a validator rejection
+// inside the RunE chain. Companion middleware (notably the idempotency
+// recorder) tests for it via errors.Is to skip side effects that
+// would otherwise poison caches on a pre-dispatch reject.
+var errFlagValidation = errors.New("kit/cli: flag validation failed")
+
+// flagValidationError wraps the validator's *output.Error so both
+// errors.Is(err, errFlagValidation) and errors.As(err, *output.Error)
+// succeed. The wrap is transparent to the renderer — AsCLIError
+// returns the inner *output.Error unchanged.
+type flagValidationError struct {
+	inner *output.Error
+}
+
+func (e *flagValidationError) Error() string             { return e.inner.Error() }
+func (e *flagValidationError) Unwrap() error             { return errFlagValidation }
+func (e *flagValidationError) AsCLIError() *output.Error { return e.inner }
 
 // WithFlagValidator registers a validator for a persistent flag by
 // name. The validator fires once per leaf invocation, AFTER cobra
@@ -55,9 +76,11 @@ type FlagValidator func(value string) *output.Error
 // the structured envelope rather than a bare stderr line.
 //
 // Ordering: call WithFlagValidator BEFORE WrapRunE (or before
-// Execute, which calls WrapRunE). Validators registered after the
-// subtree is wrapped never fire — the closures captured at wrap
-// time are immutable.
+// Execute, which calls WrapRunE). The validator map is snapshotted
+// at wrap time; entries added after WrapRunE never fire on the
+// already-wrapped subtree. Adopters that add subcommands after
+// WrapRunE must re-invoke WrapRunE to pick up the new leaves
+// (same constraint as WrapRunE itself).
 //
 // Calling WithFlagValidator twice with the same name overwrites
 // the earlier registration (last wins) — keeps test setup
@@ -86,6 +109,14 @@ func (r *Root) WithFlagValidator(name string, fn FlagValidator) *Root {
 //
 // Empty validator map → orig unchanged (zero overhead on tools
 // that don't use this feature).
+//
+// The map is snapshotted at wrap time so post-WrapRunE registrations
+// can never silently take effect at run time (the godoc promises
+// validators registered after the wrap are inert).
+//
+// Rejections wrap the validator's *output.Error in
+// flagValidationError so outer middleware (idempotency recorder)
+// can detect pre-dispatch failures via errors.Is(err, errFlagValidation).
 func wrapFlagValidatorRunE(
 	orig func(*cobra.Command, []string) error,
 	validators map[string]FlagValidator,
@@ -93,8 +124,9 @@ func wrapFlagValidatorRunE(
 	if orig == nil || len(validators) == 0 {
 		return orig
 	}
+	snap := maps.Clone(validators)
 	return func(cmd *cobra.Command, args []string) error {
-		for name, fn := range validators {
+		for name, fn := range snap {
 			flag := cmd.Flag(name)
 			if flag == nil {
 				// Flag isn't visible on this leaf. Could be a
@@ -110,7 +142,7 @@ func wrapFlagValidatorRunE(
 				continue
 			}
 			if e := fn(flag.Value.String()); e != nil {
-				return e
+				return &flagValidationError{inner: e}
 			}
 		}
 		return orig(cmd, args)
