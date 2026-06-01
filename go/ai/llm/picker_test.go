@@ -1,9 +1,12 @@
 package llm_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"hop.top/aim"
@@ -370,4 +373,136 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// captureSlog replaces [slog.Default] with a text handler writing to buf and
+// restores the previous default in t.Cleanup. level filters the handler.
+func captureSlog(t *testing.T, level slog.Level) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: level})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return buf
+}
+
+func TestPickProvider_Trace_On_Matched(t *testing.T) {
+	t.Setenv("LLM_PICKER_TRACE", "1")
+	buf := captureSlog(t, slog.LevelInfo)
+
+	reg := newRegistry(
+		t,
+		model("p1", "expensive", withCost(10, 10)),
+		model("p1", "cheap", withCost(1, 1)),
+	)
+	got, err := llm.PickProvider(context.Background(), reg, llm.RequestProfile{}, llm.BudgetCheap)
+	if err != nil {
+		t.Fatalf("PickProvider: %v", err)
+	}
+	if got.ID != "cheap" {
+		t.Fatalf("picked %q, want %q", got.ID, "cheap")
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"msg=llm.pick",
+		"picker.budget=cheap",
+		"picker.outcome=matched",
+		"picker.chosen.provider=p1",
+		"picker.chosen.model=cheap",
+		"picker.candidate_count=2",
+		"picker.eliminated_count=0",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log missing %q\nlog:\n%s", want, out)
+		}
+	}
+}
+
+func TestPickProvider_Trace_On_NoMatch(t *testing.T) {
+	t.Setenv("LLM_PICKER_TRACE", "true")
+	buf := captureSlog(t, slog.LevelInfo)
+
+	reg := newRegistry(
+		t,
+		model("p1", "no-tools", withTools(false)),
+	)
+	prof := llm.RequestProfile{Filter: aim.Filter{ToolCall: boolPtr(true)}}
+	_, err := llm.PickProvider(context.Background(), reg, prof, llm.BudgetCheap)
+	if !errors.Is(err, llm.ErrNoProviderMatches) {
+		t.Fatalf("want ErrNoProviderMatches, got %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "msg=llm.pick") {
+		t.Fatalf("log missing msg=llm.pick\nlog:\n%s", out)
+	}
+	if !strings.Contains(out, "picker.outcome=no_match") {
+		t.Errorf("log missing picker.outcome=no_match\nlog:\n%s", out)
+	}
+	if !strings.Contains(out, "picker.filter.tool_call=true") {
+		t.Errorf("log missing picker.filter.tool_call=true\nlog:\n%s", out)
+	}
+	if strings.Contains(out, "picker.chosen.provider") || strings.Contains(out, "picker.chosen.model") {
+		t.Errorf("log includes chosen.* keys on no-match\nlog:\n%s", out)
+	}
+}
+
+func TestPickProvider_Trace_Off(t *testing.T) {
+	// Explicitly unset so any ambient value from the harness doesn't leak in.
+	t.Setenv("LLM_PICKER_TRACE", "")
+	buf := captureSlog(t, slog.LevelInfo)
+
+	reg := newRegistry(
+		t,
+		model("p1", "only", withCost(1, 1)),
+	)
+	if _, err := llm.PickProvider(context.Background(), reg, llm.RequestProfile{}, llm.BudgetCheap); err != nil {
+		t.Fatalf("PickProvider: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "msg=llm.pick") {
+		t.Fatalf("trace emitted with tracing off\nlog:\n%s", out)
+	}
+}
+
+func TestPickProvider_Trace_AcceptedValues(t *testing.T) {
+	cases := []struct {
+		val  string
+		want bool
+	}{
+		{"1", true},
+		{"true", true},
+		{"TRUE", true},
+		{"yes", true},
+		{"on", true},
+		{"Off", false},
+		{"", false},
+		{"0", false},
+		{"no", false},
+	}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("val=%q", tc.val), func(t *testing.T) {
+			t.Setenv("LLM_PICKER_TRACE", tc.val)
+			if got := llm.TracingEnabled(); got != tc.want {
+				t.Fatalf("TracingEnabled(%q) = %v, want %v", tc.val, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPickProvider_Trace_RegistryErrorNoTrace(t *testing.T) {
+	t.Setenv("LLM_PICKER_TRACE", "1")
+	buf := captureSlog(t, slog.LevelInfo)
+
+	wantErr := fmt.Errorf("upstream boom")
+	reg := aim.NewRegistry(
+		aim.WithSource(fixtureSource{err: wantErr}),
+		aim.WithCacheOpts(aim.WithCacheDir(t.TempDir())),
+	)
+	_, err := llm.PickProvider(context.Background(), reg, llm.RequestProfile{}, llm.BudgetCheap)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("want wrapped wantErr, got %v", err)
+	}
+	if strings.Contains(buf.String(), "msg=llm.pick") {
+		t.Fatalf("registry error path emitted trace\nlog:\n%s", buf.String())
+	}
 }
