@@ -81,8 +81,7 @@ Hoisting routing into kit makes the decision algorithm a versioned,
 testable artifact. A consumer that needs different behaviour wraps
 `PickProvider` rather than reimplementing it.
 
-### Why aim is the single source of truth for capability, cost,
-### and context
+### Why aim is the single source of truth for capability, cost, and context
 
 The discipline here is **delegation over duplication**. `aim`
 already owns:
@@ -115,6 +114,18 @@ This shows up concretely in the picker: `weightedPrice` reads
 `m.Limit.Context` / `m.Limit.Output`; capability filtering is
 `reg.Models(ctx, profile.Filter)` and that's it. Kit owns no
 parallel catalogue.
+
+**What about offline / stale-cache / empty-registry conditions?**
+aim caches its projection on disk (XDG, TTL-refreshed), so a
+network-unavailable picker still resolves from the last successful
+refresh. An empty registry surfaces as `ErrNoProviderMatches` with
+`CandidateCount == 0` in the trace event — the picker fails closed,
+never silently to a shadow local table. The "delegation" argument
+explicitly does NOT promise "always-available routing"; it promises
+"never silently wrong". Operators who need a hard offline-safe
+fallback inject a custom `aim.Source` via `SetDefaultRegistry`
+(see kit/llm/registry.go) rather than asking the picker to
+synthesize one.
 
 ### Why BudgetTier is a 3-value enum, not a raw dollar budget
 

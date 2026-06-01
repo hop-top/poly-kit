@@ -19,5 +19,9 @@ are kept in place for history.
 - **Required sections**: Status, Date, Context, Decision,
   Consequences. See `0001-typeid-primitive.md` for the reference
   shape.
-- **Refs**: link the originating `tlc/` track or task in the header
-  block.
+- **Refs**: optional; link external references (specs, upstream
+  issues, vendor docs) when relevant. Do NOT cite internal task
+  tracker IDs — repo artifacts never reference internal context.
+- **Acknowledged quirks**: when the decision ships with magic numbers,
+  upstream gotchas, or operator-facing edges, include a section that
+  names them. See ADR 0002 for the pattern.
