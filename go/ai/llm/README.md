@@ -169,6 +169,24 @@ reg, err := llm.Default(ctx)
 models, _ := reg.Models(ctx, aim.Filter{ToolCall: &t})
 ```
 
+### Request profile and budget tier
+
+`RequestProfile` is the consumer-facing input to the forthcoming `PickProvider`:
+an `aim.Filter` plus `MaxInputTokens` / `MaxOutputTokens` bounds (the picker
+rejects models whose context window or output limit is smaller). `BudgetTier`
+(`cheap` / `balanced` / `premium`) captures the cost/capability trade-off as a
+stable categorical so the surface survives upstream pricing churn; use
+`ParseBudgetTier` for case-insensitive CLI input. Layering rule: consumers
+derive the profile from invocation context, kit picks the provider.
+
+```go
+t := true
+prof := llm.RequestProfile{
+    Filter:         aim.Filter{ToolCall: &t, StructuredOutput: &t},
+    MaxInputTokens: 8192,
+}
+```
+
 ### Custom Adapters
 
 ```go
