@@ -37,14 +37,22 @@ func PickProviderInPool(ctx context.Context, reg *aim.Registry, profile RequestP
 	}
 
 	survivors, tokenEliminated := applyTokenWindow(candidates, profile)
+	trace := tracingEnabled()
 	if len(survivors) == 0 {
 		nme := &NoMatchError{
 			Filter:         profile.Filter,
 			CandidateCount: len(models),
 			Eliminated:     append(poolEliminated, tokenEliminated...),
 		}
+		if trace {
+			emitPickTrace(ctx, profile, budget, len(models), len(poolEliminated)+len(tokenEliminated), nil)
+		}
 		return nil, nme
 	}
 
-	return rank(survivors, budget), nil
+	winner := rank(survivors, budget)
+	if trace {
+		emitPickTrace(ctx, profile, budget, len(models), len(poolEliminated)+len(tokenEliminated), winner)
+	}
+	return winner, nil
 }

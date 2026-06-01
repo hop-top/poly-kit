@@ -3,6 +3,8 @@ package llm_test
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,5 +92,65 @@ func TestPickProviderInPool_NoMatchAfterPoolFilter(t *testing.T) {
 	require.Len(t, nme.Eliminated, 2)
 	for _, e := range nme.Eliminated {
 		assert.Equal(t, llm.ElimPoolDisabled, e.Stage)
+	}
+}
+
+// PickProviderInPool must honour the same LLM_PICKER_TRACE contract as
+// PickProvider; the pool path is the more likely production caller, so a
+// silent observability hole there would defeat the purpose of tracing.
+func TestPickProviderInPool_Trace_On_Matched(t *testing.T) {
+	t.Setenv("LLM_PICKER_TRACE", "1")
+	buf := captureSlog(t, slog.LevelInfo)
+
+	reg := newRegistry(
+		t,
+		model("openai", "gpt-4o", withCost(5, 5)),
+		model("anthropic", "claude-sonnet-4-5", withCost(3, 3)),
+	)
+	pool := []llm.PoolEntry{
+		{Scheme: "anthropic", Model: "claude-sonnet-4-5", Enabled: true, Weight: 1.0},
+	}
+
+	got, err := llm.PickProviderInPool(context.Background(), reg, llm.RequestProfile{}, llm.BudgetCheap, pool)
+	require.NoError(t, err)
+	require.Equal(t, "claude-sonnet-4-5", got.ID)
+
+	logged := buf.String()
+	assert.Contains(t, logged, "msg=llm.pick")
+	assert.Contains(t, logged, "picker.outcome=matched")
+	assert.Contains(t, logged, "picker.chosen.provider=anthropic")
+	assert.Contains(t, logged, "picker.chosen.model=claude-sonnet-4-5")
+}
+
+func TestPickProviderInPool_Trace_On_NoMatch(t *testing.T) {
+	t.Setenv("LLM_PICKER_TRACE", "1")
+	buf := captureSlog(t, slog.LevelInfo)
+
+	reg := newRegistry(t, model("openai", "gpt-4o"))
+	pool := []llm.PoolEntry{
+		{Scheme: "openai", Model: "nonexistent", Enabled: true, Weight: 1.0},
+	}
+
+	_, err := llm.PickProviderInPool(context.Background(), reg, llm.RequestProfile{}, llm.BudgetCheap, pool)
+	require.Error(t, err)
+
+	logged := buf.String()
+	assert.Contains(t, logged, "msg=llm.pick")
+	assert.Contains(t, logged, "picker.outcome=no_match")
+	assert.NotContains(t, logged, "picker.chosen.")
+}
+
+func TestPickProviderInPool_Trace_Off(t *testing.T) {
+	// Default env (unset) ⇒ no info-level trace line.
+	buf := captureSlog(t, slog.LevelInfo)
+
+	reg := newRegistry(t, model("openai", "gpt-4o"))
+	pool := []llm.PoolEntry{{Scheme: "openai", Model: "gpt-4o", Enabled: true, Weight: 1.0}}
+
+	_, err := llm.PickProviderInPool(context.Background(), reg, llm.RequestProfile{}, llm.BudgetCheap, pool)
+	require.NoError(t, err)
+
+	if strings.Contains(buf.String(), "msg=llm.pick") {
+		t.Fatalf("pool path emitted trace with LLM_PICKER_TRACE unset\nlog:\n%s", buf.String())
 	}
 }

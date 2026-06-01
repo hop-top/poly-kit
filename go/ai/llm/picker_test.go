@@ -365,6 +365,7 @@ func TestPickProvider_RegistryError(t *testing.T) {
 		t.Fatalf("error message %q does not contain %q", msg, "query registry")
 	}
 }
+
 // captureSlog replaces [slog.Default] with a text handler writing to buf and
 // restores the previous default in t.Cleanup. level filters the handler.
 func captureSlog(t *testing.T, level slog.Level) *bytes.Buffer {
