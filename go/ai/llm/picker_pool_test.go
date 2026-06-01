@@ -95,7 +95,7 @@ func TestPickProviderInPool_NoMatchAfterPoolFilter(t *testing.T) {
 	}
 }
 
-// PickProviderInPool must honour the same LLM_PICKER_TRACE contract as
+// PickProviderInPool must honor the same LLM_PICKER_TRACE contract as
 // PickProvider; the pool path is the more likely production caller, so a
 // silent observability hole there would defeat the purpose of tracing.
 func TestPickProviderInPool_Trace_On_Matched(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// tracingEnabled reports whether LLM_PICKER_TRACE is set to a recognised
+// tracingEnabled reports whether LLM_PICKER_TRACE is set to a recognized
 // truthy value ("1", "true", "on", "yes"; case-insensitive). Anything else,
 // including unset, is off.
 func tracingEnabled() bool {

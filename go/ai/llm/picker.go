@@ -6,7 +6,7 @@
 // Tracing
 //
 // PickProvider emits one structured slog event per call when the
-// LLM_PICKER_TRACE environment variable is set to a recognised truthy value
+// LLM_PICKER_TRACE environment variable is set to a recognized truthy value
 // ("1", "true", "on", "yes"; case-insensitive). Anything else, including
 // unset, suppresses the event. The event is emitted via
 // [slog.InfoContext] on [slog.Default] just before the call returns

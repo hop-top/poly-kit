@@ -78,7 +78,7 @@ Splitting the picker across N CLIs means:
   registry X and budget Y, the chosen model is Z."
 
 Hoisting routing into kit makes the decision algorithm a versioned,
-testable artifact. A consumer that needs different behaviour wraps
+testable artifact. A consumer that needs different behavior wraps
 `PickProvider` rather than reimplementing it.
 
 ### Why aim is the single source of truth for capability, cost, and context
@@ -181,7 +181,7 @@ Reasons:
 The ranking algorithm is therefore explicit code: tier-specific
 sort + alphabetical `(Provider, ID)` tiebreak. See `picker.go` for
 the comparator definitions and `picker_test.go` for the locked
-behaviour.
+behavior.
 
 ### Pool config precedence: file < env < CLI
 
@@ -267,7 +267,7 @@ demonstrates this pattern.
 Wrap `PickProvider`. Don't bury the heuristic inside the tier
 switch — keep tier semantics stable so deployments can A/B and
 reason about results. Heuristics that aren't broadly useful (very
-specific batch-cost optimisation, e.g.) belong in adopter code,
+specific batch-cost optimization, e.g.) belong in adopter code,
 not in kit.
 
 ## Acknowledged quirks
@@ -296,7 +296,7 @@ pragmatic call:
   `aim.WithSource`.** Tests that want isolated state must pass
   `aim.WithCacheOpts(aim.WithCacheDir(t.TempDir()))` or share the
   user's real cache directory. See `picker_test.go` for the
-  pattern. This is an upstream `aim` behaviour, not a kit
+  pattern. This is an upstream `aim` behavior, not a kit
   decision, but kit's tests document the workaround so adopters
   writing their own picker tests don't trip on it.
 - **Nil-cost models rank as price 0 for Cheap.** A local
@@ -321,7 +321,7 @@ These are real follow-ups that this ADR does *not* commit to:
   supported flow today.
 - **No per-deployment override of price weights or median
   semantics.** The `0.75 / 0.25` token weighting and the
-  upper-median behaviour are baked in. If two adopters
+  upper-median behavior are baked in. If two adopters
   independently ask for a knob, that becomes a follow-up ADR; one
   adopter wrapping `PickProvider` is the answer until then.
 - **No formal pool schema in non-Go SDKs.** TS / Python / Rust /
@@ -410,9 +410,9 @@ These are real follow-ups that this ADR does *not* commit to:
 - Upstream model catalogue: `hop.top/aim` (Cost / StructuredOutput /
   Temperature on `aim.Model`; matching tristate `*bool` fields on
   `aim.Filter`).
-- Upstream cache behaviour: `aim.WithCacheOpts(aim.WithCacheDir(...))`
+- Upstream cache behavior: `aim.WithCacheOpts(aim.WithCacheDir(...))`
   for test isolation.
-- Trace gating: `LLM_PICKER_TRACE` env var; recognised truthy values
+- Trace gating: `LLM_PICKER_TRACE` env var; recognized truthy values
   `1`, `true`, `on`, `yes` (case-insensitive).
 - Pool disable knobs: `LLM_POOL_DISABLE` env var; `ResolvePool` for
   CLI-parsed overrides.
