@@ -48,6 +48,7 @@ type configFile struct {
 	Default   string                        `yaml:"default"`
 	Providers map[string]configFileProvider `yaml:"providers"`
 	Fallback  []string                      `yaml:"fallback"`
+	Pool      []configFilePoolEntry         `yaml:"pool,omitempty"`
 }
 
 // configFileProvider mirrors a single provider block in the YAML.
@@ -57,6 +58,25 @@ type configFileProvider struct {
 	Model   string `yaml:"model"`
 	// Any unknown keys land here.
 	Extra map[string]any `yaml:",inline"`
+}
+
+// configFilePoolEntry mirrors a single pool entry in llm.yaml.
+type configFilePoolEntry struct {
+	Alias   string  `yaml:"alias,omitempty"`
+	Scheme  string  `yaml:"scheme"`
+	Model   string  `yaml:"model"`
+	Enabled *bool   `yaml:"enabled,omitempty"` // tristate; missing = true
+	Weight  float64 `yaml:"weight,omitempty"`  // default 1.0 when zero
+}
+
+// PoolEntry is a resolved pool member after defaults and disable overrides
+// have been applied. Scheme+Model identify the model in aim's registry.
+type PoolEntry struct {
+	Alias   string
+	Scheme  string
+	Model   string
+	Enabled bool
+	Weight  float64
 }
 
 // ParseURI parses a provider URI string into its components.
@@ -239,4 +259,95 @@ func loadConfigFile() configFile {
 		return configFile{}
 	}
 	return cf
+}
+
+// LoadPool reads llm.yaml's pool block, applies defaults, then layers the
+// LLM_POOL_DISABLE env override on top. Returns nil, nil when the file has
+// no pool block — callers treat empty pool as "accept everything from the
+// registry" rather than "deny everything".
+//
+// LLM_POOL_DISABLE is a comma-separated list of identifiers. An entry is
+// disabled when its Alias OR its "<Scheme>:<Model>" form appears in the
+// list (both matches are case-sensitive exact).
+func LoadPool() ([]PoolEntry, error) {
+	cf := loadConfigFile()
+	if len(cf.Pool) == 0 {
+		return nil, nil
+	}
+
+	entries := make([]PoolEntry, 0, len(cf.Pool))
+	for _, raw := range cf.Pool {
+		entries = append(entries, resolvePoolEntry(raw))
+	}
+
+	if env := os.Getenv("LLM_POOL_DISABLE"); env != "" {
+		entries = ResolvePool(entries, splitCSV(env))
+	}
+
+	return entries, nil
+}
+
+// ResolvePool returns a copy of entries with disables from cliDisable applied.
+// Match rule mirrors LLM_POOL_DISABLE: Alias OR "<Scheme>:<Model>", case-
+// sensitive exact. Useful for downstream CLIs that already parsed flags.
+func ResolvePool(entries []PoolEntry, cliDisable []string) []PoolEntry {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]PoolEntry, len(entries))
+	copy(out, entries)
+	if len(cliDisable) == 0 {
+		return out
+	}
+	disable := make(map[string]struct{}, len(cliDisable))
+	for _, d := range cliDisable {
+		d = strings.TrimSpace(d)
+		if d != "" {
+			disable[d] = struct{}{}
+		}
+	}
+	for i := range out {
+		key := out[i].Scheme + ":" + out[i].Model
+		if _, hit := disable[out[i].Alias]; hit && out[i].Alias != "" {
+			out[i].Enabled = false
+			continue
+		}
+		if _, hit := disable[key]; hit {
+			out[i].Enabled = false
+		}
+	}
+	return out
+}
+
+// resolvePoolEntry applies tristate Enabled and zero-weight defaults to a
+// raw yaml entry.
+func resolvePoolEntry(raw configFilePoolEntry) PoolEntry {
+	enabled := true
+	if raw.Enabled != nil {
+		enabled = *raw.Enabled
+	}
+	weight := raw.Weight
+	if weight == 0 {
+		weight = 1.0
+	}
+	return PoolEntry{
+		Alias:   raw.Alias,
+		Scheme:  raw.Scheme,
+		Model:   raw.Model,
+		Enabled: enabled,
+		Weight:  weight,
+	}
+}
+
+// splitCSV parses a comma-separated list, trimming whitespace and dropping
+// empty fields.
+func splitCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
