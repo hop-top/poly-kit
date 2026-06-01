@@ -9,6 +9,7 @@ are kept in place for history.
 | ID   | Title                                                                                                | Status   | Summary                                                                                          |
 | ---- | ---------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------ |
 | 0001 | [TypeID as kit's entity-ID primitive](./0001-typeid-primitive.md) <a id="0001-typeid-primitive"></a> | Accepted | Adopt Jetify TypeID v0.3.0 as the canonical wire format for entity IDs across all kit bindings. |
+| 0002 | [LLM pool routing primitives](./0002-llm-pool-routing-primitives.md) <a id="0002-llm-pool-routing-primitives"></a> | Accepted | Ship a deterministic LLM picker + categorical `BudgetTier` + operator pool gating in `go/ai/llm/`, delegating model metadata to `hop.top/aim`. |
 
 ## Conventions
 
