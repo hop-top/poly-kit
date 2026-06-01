@@ -200,9 +200,11 @@ func PickProvider(ctx context.Context, reg *aim.Registry, profile RequestProfile
   bounds. Unknown limits (zero) pass through.
 - Rank: `BudgetCheap` minimises token-weighted price
   (`0.75*Cost.Input + 0.25*Cost.Output`); `BudgetPremium` maximises
-  `Limit.Context` and tiebreaks on `Cost.Input`; `BudgetBalanced` picks the
-  median of the price-sorted survivors. Nil-cost models are price 0 (Cheap
-  prefers, Premium loses tiebreaks).
+  `Limit.Context` and tiebreaks on `Cost.Input`; `BudgetBalanced` picks
+  `survivors[len/2]` after the price-asc sort. For even-sized survivor
+  lists this is the upper-middle entry (e.g. `len=2` picks the more
+  expensive of the two). Nil-cost models are price 0 (Cheap prefers,
+  Premium loses tiebreaks).
 - Tiebreak: alphabetical `(Provider, ID)` makes every call deterministic.
 
 ```go

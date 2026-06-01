@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"hop.top/aim"
@@ -358,16 +359,7 @@ func TestPickProvider_RegistryError(t *testing.T) {
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("errors.Is(err, wantErr) = false; err = %v", err)
 	}
-	if msg := err.Error(); !contains(msg, "query registry") {
+	if msg := err.Error(); !strings.Contains(msg, "query registry") {
 		t.Fatalf("error message %q does not contain %q", msg, "query registry")
 	}
-}
-
-func contains(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
