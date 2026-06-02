@@ -552,6 +552,9 @@ assert_file_exists "$TEST1_DIR/Makefile" "test1 Makefile"
 assert_file_exists "$TEST1_DIR/.git/config" "test1 git init"
 assert_file_exists "$TEST1_DIR/.github/copilot-instructions.md" \
   "test1 copilot instructions"
+assert_file_exists "$TEST1_DIR/.12fcc.json" "test1 12fcc seed"
+assert_file_contains "$TEST1_DIR/.12fcc.json" \
+  "ungradable" "test1 12fcc seed is ungradable until first conformance run"
 assert_no_placeholders "$TEST1_DIR" "test1"
 assert_file_contains "$TEST1_DIR/.github/copilot-instructions.md" \
   "Go" "test1 copilot mentions Go"

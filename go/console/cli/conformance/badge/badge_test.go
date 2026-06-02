@@ -172,6 +172,33 @@ func TestLeaf_RejectsUnknownTier(t *testing.T) {
 	}
 }
 
+func TestLeaf_RejectsEmptyTier(t *testing.T) {
+	dir := chdirTemp(t)
+	// Drop the tier value on factor 1 — JSON parses missing/empty as
+	// empty string. Matrix-author footgun: empty tier must NOT silently
+	// default to May, or a real MUST factor's failure would never red
+	// the badge.
+	missing := strings.Replace(matrixFixture,
+		`"tier":"must","status":"pass"`,
+		`"tier":"","status":"pass"`, 1)
+	matrix := filepath.Join(dir, "missing-tier.json")
+	if err := os.WriteFile(matrix, []byte(missing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := leaf.Cmd()
+	cmd.SetArgs([]string{"--matrix", matrix})
+	cmd.SilenceUsage = true
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	err := cmd.ExecuteContext(t.Context())
+	if err == nil {
+		t.Fatal("ran with empty tier; want error")
+	}
+	if !strings.Contains(err.Error(), "tier") {
+		t.Errorf("err = %v; want it to mention tier", err)
+	}
+}
+
 func TestLeaf_RejectsMissingMatrixFile(t *testing.T) {
 	chdirTemp(t)
 	cmd := leaf.Cmd()

@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -185,8 +184,11 @@ func parseTier(s string) (badge.Tier, error) {
 		return badge.Must, nil
 	case "should", "SHOULD":
 		return badge.Should, nil
-	case "may", "MAY", "":
+	case "may", "MAY":
 		return badge.May, nil
+	}
+	if s == "" {
+		return 0, errors.New("tier is required (one of must|should|may)")
 	}
 	return 0, fmt.Errorf("unknown tier %q (want must|should|may)", s)
 }
@@ -202,7 +204,3 @@ func parseStatus(s string) (badge.Status, error) {
 	}
 	return 0, fmt.Errorf("unknown status %q (want pass|fail|skip)", s)
 }
-
-// ensure cmd.OutOrStdout is bound; package io kept to avoid unused
-// import noise when run() ever needs streaming output.
-var _ io.Writer = os.Stdout
