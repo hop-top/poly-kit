@@ -27,7 +27,7 @@ teardown() {
 @test "emit_mise go: includes go runtime + golangci-lint" {
   emit_mise "$PROJ" "go"
   grep -qE '^go = "1\.26"$'            "$PROJ/mise.toml"
-  grep -qE '^golangci-lint = "1\.62"$' "$PROJ/mise.toml"
+  grep -qE '^golangci-lint = "2\.12"$' "$PROJ/mise.toml"
 }
 
 @test "emit_mise go: includes cross-cutting workflow tools" {
