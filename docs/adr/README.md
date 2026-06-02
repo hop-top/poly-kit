@@ -9,6 +9,7 @@ are kept in place for history.
 | ID   | Title                                                                                                | Status   | Summary                                                                                          |
 | ---- | ---------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------ |
 | 0001 | [TypeID as kit's entity-ID primitive](./0001-typeid-primitive.md) <a id="0001-typeid-primitive"></a> | Accepted | Adopt Jetify TypeID v0.3.0 as the canonical wire format for entity IDs across all kit bindings. |
+| 0002 | [LLM pool routing primitives](./0002-llm-pool-routing-primitives.md) <a id="0002-llm-pool-routing-primitives"></a> | Accepted | Ship a deterministic LLM picker + categorical `BudgetTier` + operator pool gating in `go/ai/llm/`, delegating model metadata to `hop.top/aim`. |
 
 ## Conventions
 
@@ -18,5 +19,9 @@ are kept in place for history.
 - **Required sections**: Status, Date, Context, Decision,
   Consequences. See `0001-typeid-primitive.md` for the reference
   shape.
-- **Refs**: link the originating `tlc/` track or task in the header
-  block.
+- **Refs**: optional; link external references (specs, upstream
+  issues, vendor docs) when relevant. Do NOT cite internal task
+  tracker IDs — repo artifacts never reference internal context.
+- **Acknowledged quirks**: when the decision ships with magic numbers,
+  upstream gotchas, or operator-facing edges, include a section that
+  names them. See ADR 0002 for the pattern.

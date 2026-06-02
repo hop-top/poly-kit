@@ -38,7 +38,7 @@ require (
 	github.com/hashicorp/mdns v1.0.6
 	github.com/invopop/jsonschema v0.13.0
 	github.com/lucasb-eyer/go-colorful v1.4.0
-	github.com/mattn/go-isatty v0.0.21
+	github.com/mattn/go-isatty v0.0.22
 	github.com/openai/openai-go v1.12.0
 	github.com/openbao/openbao/api/v2 v2.5.1
 	github.com/restatedev/sdk-go v0.24.0
@@ -61,6 +61,7 @@ require (
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
+	hop.top/aim v0.1.0-alpha.0
 	hop.top/uri v0.2.0-alpha.0
 	hop.top/xrr v0.1.0-alpha.3
 	modernc.org/sqlite v1.48.2

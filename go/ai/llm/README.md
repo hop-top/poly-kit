@@ -154,6 +154,126 @@ cfg, _ := llm.LoadConfig("anthropic://claude-sonnet-4-5-20250514?temperature=0.7
 
 Three-layer merge: config file < URI params < env vars.
 
+### Model registry
+
+`aim` (`hop.top/aim`) is the source of truth for model metadata — capabilities,
+modalities, cost, context windows. The picker (forthcoming) consumes this
+accessor; library code calls `llm.Default(ctx)` rather than constructing a
+registry directly so tests and embedders can inject custom sources via
+`llm.SetDefaultRegistry`. The lazy default reuses one `aim.NewRegistry` across
+calls; swapping the provider invalidates that cache.
+
+```go
+t := true
+reg, err := llm.Default(ctx)
+models, _ := reg.Models(ctx, aim.Filter{ToolCall: &t})
+```
+
+### Request profile and budget tier
+
+`RequestProfile` is the consumer-facing input to the forthcoming `PickProvider`:
+an `aim.Filter` plus `MaxInputTokens` / `MaxOutputTokens` bounds (the picker
+rejects models whose context window or output limit is smaller). `BudgetTier`
+(`cheap` / `balanced` / `premium`) captures the cost/capability trade-off as a
+stable categorical so the surface survives upstream pricing churn; use
+`ParseBudgetTier` for case-insensitive CLI input. Layering rule: consumers
+derive the profile from invocation context, kit picks the provider.
+
+```go
+t := true
+prof := llm.RequestProfile{
+    Filter:         aim.Filter{ToolCall: &t, StructuredOutput: &t},
+    MaxInputTokens: 8192,
+}
+```
+
+### Picker
+
+`PickProvider` selects a single `*aim.Model` for a profile and budget:
+
+```go
+func PickProvider(ctx context.Context, reg *aim.Registry, profile RequestProfile, budget BudgetTier) (*aim.Model, error)
+```
+
+- Filter: queries `reg.Models(ctx, profile.Filter)`, then drops candidates
+  whose known `Limit.Context` / `Limit.Output` falls below the profile's
+  bounds. Unknown limits (zero) pass through.
+- Rank: `BudgetCheap` minimises token-weighted price
+  (`0.75*Cost.Input + 0.25*Cost.Output`); `BudgetPremium` maximises
+  `Limit.Context` and tiebreaks on `Cost.Input`; `BudgetBalanced` picks
+  `survivors[len/2]` after the price-asc sort. For even-sized survivor
+  lists this is the upper-middle entry (e.g. `len=2` picks the more
+  expensive of the two). Nil-cost models are price 0 (Cheap prefers,
+  Premium loses tiebreaks).
+- Tiebreak: alphabetical `(Provider, ID)` makes every call deterministic.
+
+```go
+reg, _ := llm.Default(ctx)
+m, err := llm.PickProvider(ctx, reg, prof, llm.BudgetBalanced)
+```
+
+Errors are sentinel + structured: `errors.Is(err, llm.ErrNoProviderMatches)`
+detects the no-match case; `var nme *llm.NoMatchError; errors.As(err, &nme)`
+extracts `CandidateCount` and per-model `Eliminated` reasons for logs.
+
+### Pool configuration
+
+A `pool` block in `llm.yaml` restricts which `(scheme, model)` pairs the
+picker is allowed to pick. An empty or missing pool means "everything in
+aim's registry is fair game".
+
+```yaml
+pool:
+  - alias: fast
+    scheme: openai
+    model: gpt-4o-mini
+  - alias: legacy
+    scheme: openai
+    model: gpt-3.5-turbo
+    enabled: false
+```
+
+Resolution order is **file < env < CLI**: `LLM_POOL_DISABLE` is a comma-
+separated list of aliases or `scheme:model` strings that flips matching
+entries off; downstream CLIs that already parsed flags pass the same shape
+to `ResolvePool` for a final layer of overrides.
+
+```go
+pool, _ := llm.LoadPool()
+m, _ := llm.PickProviderInPool(ctx, reg, prof, llm.BudgetBalanced, pool)
+```
+
+Pool eliminations surface through `NoMatchError.Eliminated` with
+`Stage == "pool_disabled"` so operators can distinguish "pool too narrow"
+from "all pool members eliminated by budget caps".
+
+### Tracing
+
+`PickProvider` emits one structured `slog` event per call, gated on the
+`LLM_PICKER_TRACE` environment variable. Recognised truthy values (case-
+insensitive): `1`, `true`, `on`, `yes`. Anything else, including unset,
+suppresses the event. Tracing also stays silent on registry-query errors —
+only successful picks and `ErrNoProviderMatches` outcomes trace.
+
+Stable keys: `picker.budget`, `picker.filter.{tool_call,reasoning,structured_output,temperature,provider,family,input,output}`,
+`picker.profile.max_{input,output}_tokens`, `picker.candidate_count`,
+`picker.eliminated_count`, `picker.outcome` (`matched` / `no_match`), and on
+match `picker.chosen.provider` / `picker.chosen.model`. See the `picker.go`
+package doc for the full list.
+
+Sample line:
+
+```
+level=INFO msg=llm.pick picker.budget=balanced picker.filter.tool_call=true picker.filter.reasoning=<nil> picker.filter.structured_output=<nil> picker.filter.temperature=<nil> picker.profile.max_input_tokens=8192 picker.candidate_count=12 picker.eliminated_count=3 picker.outcome=matched picker.chosen.provider=openai picker.chosen.model=gpt-4o
+```
+
+Enable programmatically before invoking the picker:
+
+```go
+os.Setenv("LLM_PICKER_TRACE", "1")
+m, err := llm.PickProvider(ctx, reg, prof, llm.BudgetBalanced)
+```
+
 ### Custom Adapters
 
 ```go
