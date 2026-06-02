@@ -4,8 +4,8 @@
 
 <p align="center">
     <a href="https://github.com/{{.Org}}/{{.Name}}/releases"><img src="https://img.shields.io/github/release/{{.Org}}/{{.Name}}.svg" alt="Release"/></a>
-    <a href="https://crates.io/crates/{{.CrateName}}"><img src="https://img.shields.io/crates/v/{{.CrateName}}.svg" alt="Crates.io"/></a>
-    <a href="https://docs.rs/{{.CrateName}}"><img src="https://img.shields.io/docsrs/{{.CrateName}}" alt="docs.rs"/></a>
+    <a href="https://crates.io/crates/{{.Name}}"><img src="https://img.shields.io/crates/v/{{.Name}}.svg" alt="Crates.io"/></a>
+    <a href="https://docs.rs/{{.Name}}"><img src="https://img.shields.io/docsrs/{{.Name}}" alt="docs.rs"/></a>
     <a href="https://github.com/{{.Org}}/{{.Name}}/actions"><img src="https://github.com/{{.Org}}/{{.Name}}/actions/workflows/ci.yml/badge.svg" alt="Build Status"/></a>
     <a href="https://github.com/{{.Org}}/{{.Name}}/blob/main/LICENSE"><img src="https://img.shields.io/github/license/{{.Org}}/{{.Name}}" alt="License"/></a>
     <a href="https://github.com/hop-top/12-factor-ai-cli-apps"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/{{.Org}}/{{.Name}}/main/.12fcc.json" alt="12-factor AI-CLI"/></a>
@@ -17,7 +17,7 @@
 |--------------|-------|
 | Install and run the CLI | [Get started](#30-second-quickstart) |
 | Drive {{.Name}} from an agent | [Agent surface](#what-name-is) |
-| Embed {{.Name}} in your own code | [Library API](https://docs.rs/{{.CrateName}}) |
+| Embed {{.Name}} in your own code | [Library API](https://docs.rs/{{.Name}}) |
 | Look up a command or flag | `{{.Name}} --help` · `{{.Name}} spec --format json` |
 | Debug a failure | [Troubleshooting](docs/troubleshooting.md) |
 
@@ -49,7 +49,7 @@ Three surfaces, one crate:
   machine-readable manifest of every command, its inputs, outputs, side
   effects, and idempotency. Agents drive {{.Name}} from this, not from
   `--help`.
-- **Library** — `cargo add {{.CrateName}}` and use the same primitives
+- **Library** — `cargo add {{.Name}}` and use the same primitives
   from your own Rust code.
 
 Conformance proof: [`docs/12-factor-conformance.md`](docs/12-factor-conformance.md)
