@@ -28,6 +28,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/conformance/badge"
 	"hop.top/kit/go/console/cli/conformance/grade"
 	svccmd "hop.top/kit/go/console/cli/conformance/svc"
 	"hop.top/kit/go/console/output"
@@ -52,18 +53,19 @@ The alias "con" is available for terser invocation
 	install := installHooksCmd()
 	stories := verifyStoriesCmd()
 	gradeCmd := grade.Cmd()
+	badgeCmd := badge.Cmd()
 	static := reservedCmd("static", "12fcc-static")
 	harness := reservedCmd("harness", "12fcc-harness")
 	generateStories := reservedCmd("generate-stories", "12fcc-storygen")
 	svc := svccmd.Cmd()
 	// Kit-internal conformance leaves are exempt from Layer-A
-	// registration validation. gradeCmd carries the full annotation
-	// set (side-effect, idempotent, examples, next-steps) and does
-	// not need the exemption.
+	// registration validation. gradeCmd + badgeCmd carry the full
+	// annotation set (side-effect, idempotent, examples, next-steps)
+	// and do not need the exemption.
 	for _, c := range []*cobra.Command{verify, install, stories, static, harness, generateStories, svc} {
 		cli.SetExemptValidation(c)
 	}
-	cmd.AddCommand(verify, install, stories, gradeCmd, static, harness, generateStories, svc)
+	cmd.AddCommand(verify, install, stories, gradeCmd, badgeCmd, static, harness, generateStories, svc)
 	return cmd
 }
 

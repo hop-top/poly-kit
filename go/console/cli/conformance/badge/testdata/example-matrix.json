@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "factors": [
+    {"n": 1, "name": "Capability Introspection", "tier": "must", "status": "pass",
+     "evidence": "cmd/<app>/main.go RegisterSpecCommand"},
+    {"n": 2, "name": "Intent Clarity", "tier": "must", "status": "pass",
+     "evidence": "internal/cmd positional warning + flag aliases"},
+    {"n": 3, "name": "Structured I/O", "tier": "must", "status": "pass",
+     "evidence": "output.Render with WithProvenance"},
+    {"n": 4, "name": "Corrective Error Model", "tier": "should", "status": "pass",
+     "evidence": "internal/errs constructors + kit WrapRunE renderer"},
+    {"n": 5, "name": "Explicit Contracts", "tier": "must", "status": "pass",
+     "evidence": "per-leaf cli.SetSideEffect/Idempotency/OutputSchema/Examples"},
+    {"n": 6, "name": "Previewability", "tier": "should", "status": "pass",
+     "evidence": "--dry-run / --explain on mutating commands"},
+    {"n": 7, "name": "Idempotency", "tier": "must", "status": "pass",
+     "evidence": "Cache TTL + ETag handling; cli.SetIdempotency per leaf"},
+    {"n": 8, "name": "State Transparency", "tier": "must", "status": "pass",
+     "evidence": "cli.WithStatus + internal/status providers"},
+    {"n": 9, "name": "Contextual Guidance", "tier": "should", "status": "pass",
+     "evidence": "internal/cmd/hints registerHints + installHintEmitter"},
+    {"n": 10, "name": "Delegation Safety", "tier": "must", "status": "pass",
+     "evidence": "SourceBreaker + retry classifier"},
+    {"n": 11, "name": "Provenance", "tier": "should", "status": "pass",
+     "evidence": "provenance.go provenanceFromCache / provenanceForRefresh"},
+    {"n": 12, "name": "Evolution Guarantees", "tier": "must", "status": "pass",
+     "evidence": "apiversion.Negotiate; docs/schema-changelog.md"}
+  ]
+}
