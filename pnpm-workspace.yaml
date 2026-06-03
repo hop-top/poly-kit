@@ -9,3 +9,10 @@ packages:
 allowBuilds:
   better-sqlite3: true
   esbuild: true
+# pnpm 11 default flip: confirmModulesPurge prompts before wiping a
+# stale node_modules dir. Without a TTY (pre-push hook, make targets,
+# CI runners that don't set CI=true) the prompt aborts with
+# ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY. Setting to false makes
+# pnpm install idempotent across local + CI; same family of pnpm 11
+# default flip as the strictDepBuilds gate above.
+confirmModulesPurge: false
