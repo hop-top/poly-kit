@@ -496,6 +496,17 @@ if [ "$IS_POLYGLOT" = true ]; then
 
   # g. README structure section listing only the chosen langs.
   compose_polyglot_readme_structure "$OUTPUT/README.md" "${LANG_ARRAY[@]}"
+
+  # h. 12fcc seed at project root. Per-lang seeds already sit at
+  # <lang>/.12fcc.json (one per overlay step a), but the per-lang
+  # README badge URLs are root-relative
+  # (https://raw.githubusercontent.com/.../main/.12fcc.json) so
+  # they 404 in polyglot mode without a root copy. Pick the first
+  # lang's seed as the source — content is identical across all
+  # templates (static ungradable/lightgrey JSON). The per-lang
+  # copies stay in place; they're harmless duplicates today and
+  # future per-SDK conformance work can repurpose them.
+  cp "$OUTPUT/${LANG_ARRAY[0]}/.12fcc.json" "$OUTPUT/.12fcc.json"
 fi
 
 # Map license flag to init.sh value
