@@ -85,11 +85,12 @@ echo "Running tests..."
 
 if [ -n "$HAS_GO" ] || [ -n "$HAS_CONTRACTS" ]; then
     if [ -n "$HAS_GO" ]; then
-        # Extract unique Go packages from changed .go files.
+        # Extract unique Go packages from changed .go files, skipping
+        # directories that no longer exist (e.g. deleted in this push).
         GO_PKGS=$(echo "$CHANGED" | grep -E '\.go$' \
             | xargs -I{} dirname {} \
             | sort -u \
-            | sed 's|^|./|' \
+            | while IFS= read -r d; do if [ -d "$d" ]; then printf './%s\n' "$d"; fi; done \
             | tr '\n' ' ')
         if [ -n "$GO_PKGS" ]; then
             echo "  go (affected packages)..."

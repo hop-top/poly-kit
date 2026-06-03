@@ -140,16 +140,6 @@
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
       "initial-version": "0.1.0-alpha.0"
-    },
-    "incubator/ash": {
-      "release-type": "go",
-      "component": "ash",
-      "changelog-path": "CHANGELOG.md",
-      "bump-minor-pre-major": true,
-      "prerelease": true,
-      "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
-      "initial-version": "0.1.0-alpha.0"
     }
   }
 }
