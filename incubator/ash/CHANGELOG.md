@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0-alpha.1](https://github.com/hop-top/poly-kit/compare/ash/v0.2.0-alpha.0...ash/v0.2.0-alpha.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* **docs:** correct markdownlint violations in incubator/ash ([#107](https://github.com/hop-top/poly-kit/issues/107)) ([9d55dae](https://github.com/hop-top/poly-kit/commit/9d55dae7b98b62012e1be81ac820630ce509d0a5))
+
 ## [Unreleased]
 
 ### Deprecated
