@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.6...kit/v0.4.0-alpha.7) (2026-06-03)
+
+
+### Features
+
+* **conformance:** 12FCC badge writer + scaffold seed ([#118](https://github.com/hop-top/poly-kit/issues/118)) ([1bd2254](https://github.com/hop-top/poly-kit/commit/1bd22540f1aaf3052b19b7db35cbdfda7075d6c7))
+* **console/cli:** WithFlagValidator persistent-flag middleware ([#116](https://github.com/hop-top/poly-kit/issues/116)) ([cd2a1bd](https://github.com/hop-top/poly-kit/commit/cd2a1bd37be301d85bc1060b49b0f608c5340b33))
+* **llm:** pool routing primitives ([#115](https://github.com/hop-top/poly-kit/issues/115)) ([d7c1219](https://github.com/hop-top/poly-kit/commit/d7c121960c0a4925ae0ec6e32f51172471739ba4))
+* **scaffold:** add php CI template + composer dependabot ecosystem ([#106](https://github.com/hop-top/poly-kit/issues/106)) ([4728a3e](https://github.com/hop-top/poly-kit/commit/4728a3eb7f908fd24ea413b2555771a47b096b34))
+* **scaffold:** add shared gitattributes snippets per lang + common ([#101](https://github.com/hop-top/poly-kit/issues/101)) ([f5d1af5](https://github.com/hop-top/poly-kit/commit/f5d1af5ab8c6c97f872896f17cc31aa8a0a2e0f9))
+* **scaffold:** emit per-lang composed .gitattributes with managed-block markers ([#102](https://github.com/hop-top/poly-kit/issues/102)) ([a08eb57](https://github.com/hop-top/poly-kit/commit/a08eb577908d050bfe32315d24a513c086261583))
+
+
+### Bug Fixes
+
+* **scaffold:** include php in init.sh polyglot lang lists ([#125](https://github.com/hop-top/poly-kit/issues/125)) ([1ad895f](https://github.com/hop-top/poly-kit/commit/1ad895f8eceb99b7602093de9679c90c96872386))
+* **scaffold:** move php gitignore to shared mechanism ([#95](https://github.com/hop-top/poly-kit/issues/95)) ([792553c](https://github.com/hop-top/poly-kit/commit/792553c687a04318ff8954852e78483f0848cca3))
+* **scaffold:** reconcile per-lang tiers.yaml gitignore mapping ([#96](https://github.com/hop-top/poly-kit/issues/96)) ([376f28a](https://github.com/hop-top/poly-kit/commit/376f28a9c4a4f2ddd756853ffe64a43bbf6c4f4e))
+* **scaffold:** remove vestigial .gitignore entry from cli-php tiers.yaml ([#104](https://github.com/hop-top/poly-kit/issues/104)) ([d9f0bc1](https://github.com/hop-top/poly-kit/commit/d9f0bc1c1f6692b6f86b74f2573ebbf314c28a5b))
+* **scaffold:** resync templates/ ↔ internal/template/builtins/ mirror drift ([#105](https://github.com/hop-top/poly-kit/issues/105)) ([4e3491f](https://github.com/hop-top/poly-kit/commit/4e3491f6770cd56568a12a94bee76b5d35e9567f))
+* **scaffold:** wrap composed .gitignore in kit-managed block ([#98](https://github.com/hop-top/poly-kit/issues/98)) ([dfafdc8](https://github.com/hop-top/poly-kit/commit/dfafdc8aa887b06594febb620b43e3bbf3d1d2c7))
+* **templates:** bump golangci-lint pin to v2.12 for Go 1.26+ targets ([#117](https://github.com/hop-top/poly-kit/issues/117)) ([6fa65ad](https://github.com/hop-top/poly-kit/commit/6fa65ad9b2c962037e0576dcca5d80feedc3064a))
+* **workspace:** disable pnpm 11 confirmModulesPurge prompt ([#123](https://github.com/hop-top/poly-kit/issues/123)) ([397d2af](https://github.com/hop-top/poly-kit/commit/397d2af77ec0f3e458f9ed0a8dcaa672f36c158a))
+
 ## [0.4.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.5...kit/v0.4.0-alpha.6) (2026-05-26)
 
 
