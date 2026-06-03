@@ -26,7 +26,8 @@ is_polyglot=false
 if [ -d "$PROJECT_DIR/go" ] && \
    [ -d "$PROJECT_DIR/ts" ] && \
    [ -d "$PROJECT_DIR/py" ] && \
-   [ -d "$PROJECT_DIR/rs" ]; then
+   [ -d "$PROJECT_DIR/rs" ] && \
+   [ -d "$PROJECT_DIR/php" ]; then
   is_polyglot=true
 fi
 
@@ -58,7 +59,7 @@ if [ "$is_polyglot" = true ]; then
   selected_langs="${INIT_LANGUAGES:-}"
   [ -z "$selected_langs" ] && prompt_multi selected_langs \
     "Languages (comma-separated)" \
-    "go,ts,py,rs" "go,ts,py,rs"
+    "go,ts,py,rs,php" "go,ts,py,rs,php"
 fi
 
 # --- Derived tokens ------------------------------------
@@ -229,7 +230,7 @@ if [ "$is_polyglot" = true ]; then
   # Use comma-delimited string for Bash 3.2 compat (no assoc arrays)
   keep_langs=",$(echo "$selected_langs" | tr -d ' '),"
 
-  for lang in go ts py rs; do
+  for lang in go ts py rs php; do
     if [[ "$keep_langs" != *",$lang,"* ]]; then
       echo "  Removing $lang..."
 

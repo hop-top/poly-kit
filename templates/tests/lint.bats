@@ -47,6 +47,37 @@
   [ "$status" -eq 0 ]
 }
 
+# Consistency checks: language lists in init.sh must enumerate
+# all 5 supported langs (go, ts, py, rs, php). scaffold.sh already
+# validates this set at --lang parse time; init.sh's polyglot
+# detection, prompt default, and prune loop must match or php gets
+# silently ignored when init.sh runs (e.g. on a future clone-then-init
+# flow).
+
+@test "init.sh polyglot detection includes php" {
+  run grep -A 5 "is_polyglot=false" \
+    "$BATS_TEST_DIRNAME/../shared/init.sh"
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"$PROJECT_DIR/php"'* ]]
+}
+
+@test "init.sh selected_langs prompt default includes php" {
+  run grep "prompt_multi selected_langs" \
+    -A 2 "$BATS_TEST_DIRNAME/../shared/init.sh"
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"go,ts,py,rs,php"* ]]
+}
+
+@test "init.sh polyglot prune loop iterates php" {
+  run grep "for lang in" \
+    "$BATS_TEST_DIRNAME/../shared/init.sh"
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"php"* ]]
+}
+
 # shfmt checks (skipped if shfmt not installed)
 
 @test "shell scripts pass shfmt formatting" {
