@@ -29,7 +29,6 @@ The manifest lives at `.github/.release-please-manifest.json`; the config at
 | kit-rs | `sdk/experimental/rs` | Rust | experimental |
 | kit-php | `sdk/experimental/php` | PHP | experimental |
 | qmochi | `incubator/qmochi` | Go | alpha |
-| ash | `incubator/ash` | Go | alpha |
 
 `kit`, `kit-ts`, `kit-py`, `kit-rs`, and `kit-php` share a linked version.
 

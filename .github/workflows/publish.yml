@@ -63,7 +63,3 @@ jobs:
           dir: incubator/qmochi
           ecosystem: go
           mirror: hop-top/qmochi
-        ash:
-          dir: incubator/ash
-          ecosystem: go
-          mirror: hop-top/ash

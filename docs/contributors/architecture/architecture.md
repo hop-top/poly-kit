@@ -63,7 +63,6 @@ under `incubator/` until promoted.
 | `go/ai/llm` | Provider-agnostic LLM (Anthropic, OpenAI, Google, Ollama, RouteL2M, Triton); multimodal; fallback; hooks |
 | `go/ai/toolspec` | Structured CLI tool knowledge base; registry + source adapters |
 | `incubator/qmochi` *(incubator)* | Terminal charting (bar, column, line, sparkline, heatmap, Braille) |
-| `incubator/ash` *(incubator)* | AI session history storage and replay |
 
 ### `go/console/` — CLI and terminal UX
 
