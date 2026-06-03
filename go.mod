@@ -226,5 +226,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace hop.top/hdl => /Users/jadb/.w/ideacrafterslabs/hdl/hops/main
