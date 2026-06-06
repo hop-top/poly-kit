@@ -1,8 +1,8 @@
-"""Thin facade over the hop-top-uri package.
+"""Thin facade over the hop-top-cite package.
 
 This module intentionally delegates URI parsing, action resolution,
-completion, and handler rendering to the released URI package. Kit owns the
-integration surface; URI owns the implementation details and contract parity.
+completion, and handler rendering to the released cite package. Kit owns the
+integration surface; cite owns the implementation details and contract parity.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from functools import lru_cache
 from importlib import import_module
 from typing import Any
 
-_BACKEND_MODULES = ("uri", "hop_top_uri")
+_BACKEND_MODULES = ("cite", "hop_top_cite")
 _BACKEND_EXPORTS = {
     "ActionRoute",
     "AmbiguousVanityError",
@@ -39,7 +39,7 @@ _BACKEND_EXPORTS = {
 
 
 class URIBackendNotInstalledError(ImportError):
-    """Raised when the hop-top-uri backend package is unavailable."""
+    """Raised when the hop-top-cite backend package is unavailable."""
 
 
 # Backward-compatible alias: existing callers ``except URIBackendNotInstalled``
@@ -59,15 +59,15 @@ def _backend() -> Any:
             last_error = exc
 
     msg = (
-        "hop_top_kit.uri requires the hop-top-uri package. "
+        "hop_top_kit.uri requires the hop-top-cite package. "
         "Install hop-top-kit with its declared dependencies, or install "
-        "hop-top-uri directly."
+        "hop-top-cite directly."
     )
     raise URIBackendNotInstalledError(msg) from last_error
 
 
 def parse(input: str, policy: Any = None, options: Any = None) -> Any:
-    """Parse a URI using hop-top-uri's parser."""
+    """Parse a URI using hop-top-cite's parser."""
 
     return _backend().parse(input, policy, options)
 
@@ -82,7 +82,7 @@ def resolve(parsed_uri: Any, policy: Any = None) -> Any:
 
 
 def resolve_action(parsed_uri: Any, policy: Any = None) -> Any:
-    """Alias for ``resolve`` matching the underlying URI package name."""
+    """Alias for ``resolve`` matching the underlying cite package name."""
 
     return resolve(parsed_uri, policy)
 
@@ -95,7 +95,7 @@ def complete(
     input: str = "",
     to_complete: str = "",
 ) -> Any:
-    """Complete URI values through a hop-top-uri registry.
+    """Complete URI values through a hop-top-cite registry.
 
     ``input`` returns vanity completions, ``type_name``/``prefix`` returns a
     registered type completion, and ``to_complete`` delegates to URI scheme
@@ -122,7 +122,7 @@ def handler_id(spec: Any) -> str:
 
 
 def handler_snippet(platform: str, spec: Any) -> str:
-    """Render a platform handler snippet through hop-top-uri."""
+    """Render a platform handler snippet through hop-top-cite."""
 
     return _backend().snippet(platform, spec)
 
@@ -151,7 +151,7 @@ def __getattr__(name: str) -> Any:
 # F822 is suppressed because the backend re-exports listed below
 # (``_BACKEND_EXPORTS``) are forwarded lazily through ``__getattr__`` and are
 # not statically bound module attributes. They resolve at runtime against the
-# installed ``hop-top-uri`` package.
+# installed ``hop-top-cite`` package.
 __all__ = [  # noqa: F822
     "URI",
     "ActionRoute",

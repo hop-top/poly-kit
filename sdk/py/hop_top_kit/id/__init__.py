@@ -20,7 +20,7 @@ Public surface
         id: TypeId["task"]              # validates / round-trips str ↔ TypeID
 
 URI composition (``tlc://task/task_01J...``) is **not** part of this
-module. Use the ``hop-top-uri`` Py package directly with the canonical
+module. Use the ``hop-top-cite`` Py package directly with the canonical
 string returned here.
 """
 

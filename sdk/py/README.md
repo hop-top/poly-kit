@@ -10,8 +10,8 @@ Python implementation of the hop-top kit library.
 ## URI facade
 
 `hop_top_kit.uri` exposes Kit's URI integration surface as a thin adapter over
-the `hop-top-uri` package. The SDK does not duplicate URI parsing or handler
-generation logic; it delegates to the URI package for contract-backed behavior.
+the `hop-top-cite` package. The SDK does not duplicate URI parsing or handler
+generation logic; it delegates to the cite package for contract-backed behavior.
 
 ```python
 from hop_top_kit import uri
@@ -25,7 +25,7 @@ Supported helpers:
 
 | Helper | Purpose |
 |--------|---------|
-| `parse(input, policy=None, options=None)` | Parse a URI with `hop-top-uri`. |
+| `parse(input, policy=None, options=None)` | Parse a URI with `hop-top-cite`. |
 | `resolve(parsed_uri, policy)` / `resolve_action(...)` | Resolve an action to a command plan without executing it. |
 | `complete(registry, input=...)` | Return vanity completions from a URI registry. |
 | `complete(registry, type_name=..., prefix=...)` | Return typed completions from a URI registry. |
@@ -34,7 +34,7 @@ Supported helpers:
 | `handler_snippet(platform, spec)` | Render Linux/macOS/Windows handler snippets. |
 
 URI types such as `Policy`, `ParseOptions`, `Registry`, `HandlerSpec`, and
-`VanityAlias` are exposed lazily from `hop-top-uri` so callers can use the
+`VanityAlias` are exposed lazily from `hop-top-cite` so callers can use the
 backend's canonical model directly.
 
 ## Output formatting
