@@ -29,9 +29,9 @@ importers:
 
   examples/spaced/ts:
     dependencies:
-      '@hop-top/uri':
-        specifier: ^0.2.0-alpha.1
-        version: 0.2.0-alpha.1
+      '@hop-top/cite':
+        specifier: ^0.1.0
+        version: 0.1.0
 
   sdk/ts:
     dependencies:
@@ -624,10 +624,6 @@ packages:
 
   '@hop-top/cite@0.1.0':
     resolution: {integrity: sha512-8Q3AeG0wukxw9++ehmL3vq1CrInenWAGfyhoI0b/9M28UHH6+dkYbkgZzqJRI4k6HVNiwjtXG1X/ximP8jQHjQ==}
-    engines: {node: '>=22.0.0'}
-
-  '@hop-top/uri@0.2.0-alpha.1':
-    resolution: {integrity: sha512-M+dANMJOOCm+L3ysN9CZMa9C6uz12Vd9W5SSwIIkWX46KWpJKn/fms8ddKn3wvU2y53DZ1FIOwG5Hpl2h99/qA==}
     engines: {node: '>=22.0.0'}
 
   '@humanfs/core@0.19.2':
@@ -2055,8 +2051,6 @@ snapshots:
       levn: 0.4.1
 
   '@hop-top/cite@0.1.0': {}
-
-  '@hop-top/uri@0.2.0-alpha.1': {}
 
   '@humanfs/core@0.19.2':
     dependencies:
