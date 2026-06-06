@@ -9,14 +9,14 @@ experimental PHP client SDK.
 
 ## URI facade
 
-The experimental SDK exposes a thin facade over `hop-top/uri` so kit callers can
+The experimental SDK exposes a thin facade over `hop-top/cite` so kit callers can
 use the shared URI contract without depending on kit-specific parsing code.
 
 ```php
 <?php
 
-use Hop\Uri\ActionRoute;
-use Hop\Uri\Policy;
+use Hop\Cite\ActionRoute;
+use Hop\Cite\Policy;
 use HopTop\Kit\Uri\UriFacade;
 
 $uri = UriFacade::parse('task://hop-top/uri/T-0001');
@@ -38,7 +38,7 @@ $actionUri = UriFacade::parse('tlc://org/repo/T-0001?action=task.claim', $policy
 $plan = UriFacade::resolveAction($actionUri, $policy);
 ```
 
-This facade intentionally delegates to `hop-top/uri`; it does not reimplement
+This facade intentionally delegates to `hop-top/cite`; it does not reimplement
 URI parsing, vanity handling, action routing, or handler identity.
 
 ## Telemetry

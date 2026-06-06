@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6de9d5e135fcc8c28d02901195577001",
+    "content-hash": "07e306aca562a908ad4e87ecf228430d",
     "packages": [
         {
             "name": "brick/math",
@@ -394,17 +394,17 @@
             "time": "2026-05-19T17:32:11+00:00"
         },
         {
-            "name": "hop-top/uri",
-            "version": "v0.2.0-alpha.1",
+            "name": "hop-top/cite",
+            "version": "v0.1.0",
             "source": {
                 "type": "git",
-                "url": "https://github.com/hop-top/uri-php.git",
-                "reference": "fa5bea9fb17b2523a4b9e71d23fa8c8e698a8500"
+                "url": "https://github.com/hop-top/cite-php.git",
+                "reference": "232b64d604bede29928d64772044cdacc639621e"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/hop-top/uri-php/zipball/fa5bea9fb17b2523a4b9e71d23fa8c8e698a8500",
-                "reference": "fa5bea9fb17b2523a4b9e71d23fa8c8e698a8500",
+                "url": "https://api.github.com/repos/hop-top/cite-php/zipball/232b64d604bede29928d64772044cdacc639621e",
+                "reference": "232b64d604bede29928d64772044cdacc639621e",
                 "shasum": ""
             },
             "require": {
@@ -420,7 +420,7 @@
                     "src/Handle.php"
                 ],
                 "psr-4": {
-                    "Hop\\Uri\\": "src/"
+                    "Hop\\Cite\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -428,11 +428,11 @@
                 "MIT"
             ],
             "description": "Custom URI scheme utilities (polyglot).",
-            "homepage": "https://hop.top/uri",
+            "homepage": "https://hop.top/cite",
             "support": {
-                "source": "https://github.com/hop-top/uri-php/tree/v0.2.0-alpha.1"
+                "source": "https://github.com/hop-top/cite-php/tree/v0.1.0"
             },
-            "time": "2026-05-17T00:25:21+00:00"
+            "time": "2026-05-28T16:48:02+00:00"
         },
         {
             "name": "jewei/typeid-php",
@@ -3769,9 +3769,7 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {
-        "hop-top/uri": 15
-    },
+    "stability-flags": {},
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
