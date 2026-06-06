@@ -1,7 +1,7 @@
 /**
- * Thin facade over @hop-top/uri for kit SDK consumers.
+ * Thin facade over @hop-top/cite for kit SDK consumers.
  *
- * The URI implementation lives in @hop-top/uri; this module only adapts the
+ * The URI implementation lives in @hop-top/cite; this module only adapts the
  * kit-facing helper names used by the Go URI command group.
  */
 
@@ -110,16 +110,16 @@ interface UriModule {
   snippet(platform: string, spec: HandlerSpec): string;
 }
 
-// @hop-top/uri is intentionally a runtime dependency of the facade. Keeping the
+// @hop-top/cite is intentionally a runtime dependency of the facade. Keeping the
 // import as require avoids duplicating its declarations in this package.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const uri = require('@hop-top/uri') as UriModule;
+const uri = require('@hop-top/cite') as UriModule;
 
 export const defaultPolicy: Policy = uri.defaultPolicy;
 export const DefaultPolicy: Policy = uri.DefaultPolicy ?? uri.defaultPolicy;
 export const Registry: new (policy?: Policy) => Registry = uri.Registry;
 
-/** Parse a custom URI using @hop-top/uri policy and parse options. */
+/** Parse a custom URI using @hop-top/cite policy and parse options. */
 export function parse(
   input: string,
   policy?: Policy,
@@ -156,7 +156,7 @@ export function completeVanity(
 
 export const vanityCandidates = completeVanity;
 
-/** Complete URI values using a @hop-top/uri registry. */
+/** Complete URI values using a @hop-top/cite registry. */
 export function complete(
   registry: Registry,
   typeName: string,
@@ -165,7 +165,7 @@ export function complete(
   return uri.completeWithScheme(registry, typeName, input);
 }
 
-/** Create a @hop-top/uri registry with an optional policy. */
+/** Create a @hop-top/cite registry with an optional policy. */
 export function newRegistry(policy?: Policy): Registry {
   return uri.newRegistry(policy);
 }

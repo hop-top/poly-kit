@@ -110,7 +110,7 @@
     "@clack/prompts": "^1.2.0",
     "@connectrpc/connect": "^2.1.1",
     "@connectrpc/connect-web": "^2.1.1",
-    "@hop-top/uri": "^0.2.0-alpha.1",
+    "@hop-top/cite": "^0.1.0",
     "better-sqlite3": "^12.8.0",
     "commander": "^14.0.3",
     "csv-stringify": "^6.7.0",

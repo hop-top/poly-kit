@@ -47,9 +47,9 @@ importers:
       '@connectrpc/connect-web':
         specifier: ^2.1.1
         version: 2.1.1(@bufbuild/protobuf@2.12.0)(@connectrpc/connect@2.1.1(@bufbuild/protobuf@2.12.0))
-      '@hop-top/uri':
-        specifier: ^0.2.0-alpha.1
-        version: 0.2.0-alpha.1
+      '@hop-top/cite':
+        specifier: ^0.1.0
+        version: 0.1.0
       better-sqlite3:
         specifier: ^12.8.0
         version: 12.10.0
@@ -621,6 +621,10 @@ packages:
   '@eslint/plugin-kit@0.7.1':
     resolution: {integrity: sha512-rZAP3aVgB9ds9KOeUSL+zZ21hPmo8dh6fnIFwRQj5EAZl9gzR7wxYbYXYysAM8CTqGmUGyp2S4kUdV17MnGuWQ==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+
+  '@hop-top/cite@0.1.0':
+    resolution: {integrity: sha512-8Q3AeG0wukxw9++ehmL3vq1CrInenWAGfyhoI0b/9M28UHH6+dkYbkgZzqJRI4k6HVNiwjtXG1X/ximP8jQHjQ==}
+    engines: {node: '>=22.0.0'}
 
   '@hop-top/uri@0.2.0-alpha.1':
     resolution: {integrity: sha512-M+dANMJOOCm+L3ysN9CZMa9C6uz12Vd9W5SSwIIkWX46KWpJKn/fms8ddKn3wvU2y53DZ1FIOwG5Hpl2h99/qA==}
@@ -2049,6 +2053,8 @@ snapshots:
     dependencies:
       '@eslint/core': 1.2.1
       levn: 0.4.1
+
+  '@hop-top/cite@0.1.0': {}
 
   '@hop-top/uri@0.2.0-alpha.1': {}
 
