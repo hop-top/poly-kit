@@ -303,6 +303,7 @@ func DefaultKitInternalGlobs() []string {
 		"go/console/cli/conformance/verifynoleak/rules/scenario_rules_embedded.json",
 		"go/conformance/scenariorules/scenario_rules_embedded.json",
 		"go/conformance/scenario/testdata/**",
+		"go/conformance/scenario/README.md",
 		"templates/ci/grade/**",
 	}
 }

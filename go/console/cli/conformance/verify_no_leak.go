@@ -294,7 +294,9 @@ type prBodyDocument struct {
 // Detection order:
 //
 //  1. KIT_INTERNAL_ALLOWLIST=1 explicit opt-in.
-//  2. git remote origin URL contains "hop-top/kit".
+//  2. git remote origin URL matches a known hop-top kit repo name
+//     (hop-top/kit or hop-top/poly-kit; the repo was renamed in 2026
+//     to host the polyglot tree).
 func isKitInternal(cwd string) bool {
 	if os.Getenv("KIT_INTERNAL_ALLOWLIST") == "1" {
 		return true
@@ -303,7 +305,21 @@ func isKitInternal(cwd string) bool {
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(out), "hop-top/kit")
+	url := string(out)
+	for _, name := range []string{"hop-top/kit", "hop-top/poly-kit"} {
+		// Match with surrounding boundaries so "hop-top/kit-foo" doesn't
+		// satisfy "hop-top/kit". Trailing "/", ".git", or end-of-string
+		// are the only legitimate terminators in a GitHub URL.
+		for _, suffix := range []string{"/", ".git", ".git\n", "\n"} {
+			if strings.Contains(url, name+suffix) {
+				return true
+			}
+		}
+		if strings.HasSuffix(strings.TrimSpace(url), name) {
+			return true
+		}
+	}
+	return false
 }
 
 func countWithFindings(rs []scanner.FileResult) int {
