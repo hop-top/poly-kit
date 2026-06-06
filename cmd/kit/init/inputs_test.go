@@ -333,6 +333,32 @@ func TestGather_DefaultCopyrightsWhenAuthorAbsent(t *testing.T) {
 	assert.Equal(t, "@monaam", in.Copyrights[3].Holder)
 }
 
+func TestGather_EmptyAuthorFlagFallsThroughToDefault(t *testing.T) {
+	// `--author=` and `--author=';'` parse to zero holders;
+	// Gather must fall through to DefaultCopyrights rather than
+	// leaving in.Copyrights empty (and in.Author unset).
+	for _, tc := range []struct {
+		name  string
+		value []string
+	}{
+		{"empty string", []string{""}},
+		{"only semicolons", []string{";"}},
+		{"empty and semicolons", []string{"", ";;"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearKitEnv(t)
+			isolateGit(t, "", "")
+			flags := &kitinit.FlagSet{Author: tc.value, AuthorChanged: true}
+			in, err := kitinit.Gather(
+				context.Background(), nil, flags, tmpl.Manifest{}, kitinit.Defaults{}, nil)
+			require.NoError(t, err)
+			require.Len(t, in.Copyrights, 4, "expected canonical 4-holder default")
+			assert.Equal(t, "Idea Crafters LLC", in.Copyrights[0].Holder)
+			assert.NotEmpty(t, in.Author, "Author projection must be non-empty")
+		})
+	}
+}
+
 func TestGather_MultiHolderViaSemicolon(t *testing.T) {
 	clearKitEnv(t)
 	isolateGit(t, "", "")

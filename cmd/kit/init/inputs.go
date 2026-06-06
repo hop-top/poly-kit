@@ -258,10 +258,14 @@ func Gather(
 			in.Copyrights = DefaultCopyrights(year)
 		}
 	}
-	// Derive the single-string Author projection for legacy templates.
-	if len(in.Copyrights) > 0 {
-		in.Author = in.Copyrights[0].Holder
+	// Fall through to the canonical block when the chosen source parsed
+	// to zero holders (e.g. `--author=` or `--author=';'`). Matches the
+	// flag help contract: "Empty defaults to the canonical 4-holder block".
+	if len(in.Copyrights) == 0 {
+		in.Copyrights = DefaultCopyrights(year)
 	}
+	// Derive the single-string Author projection for legacy templates.
+	in.Author = in.Copyrights[0].Holder
 
 	in.Email = resolveScalar("email", flags.Email, defaults.Email, "")
 	if in.Email == "" {

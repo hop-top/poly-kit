@@ -31,7 +31,7 @@ import (
 //
 // Years carries either "YYYY" or "YYYY-YYYY"; the parser validates the
 // shape and rejects reversed ranges at construction time. Holder is the
-// untrimmed text between the year-space and any trailing " <URL>"
+// whitespace-trimmed text between the year-space and any trailing " <URL>"
 // suffix; URL is the bracketed-trimmed inner value (no angle brackets).
 type Copyright struct {
 	Years  string
