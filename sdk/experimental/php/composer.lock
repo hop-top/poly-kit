@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "07e306aca562a908ad4e87ecf228430d",
+    "content-hash": "7beee3afad61aa70ac588c428140dfd9",
     "packages": [
         {
             "name": "brick/math",
@@ -395,16 +395,16 @@
         },
         {
             "name": "hop-top/cite",
-            "version": "v0.1.0",
+            "version": "v0.2.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/hop-top/cite-php.git",
-                "reference": "232b64d604bede29928d64772044cdacc639621e"
+                "reference": "c53dd51367b8081f951bf2e72eddc9c217bf1e51"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/hop-top/cite-php/zipball/232b64d604bede29928d64772044cdacc639621e",
-                "reference": "232b64d604bede29928d64772044cdacc639621e",
+                "url": "https://api.github.com/repos/hop-top/cite-php/zipball/c53dd51367b8081f951bf2e72eddc9c217bf1e51",
+                "reference": "c53dd51367b8081f951bf2e72eddc9c217bf1e51",
                 "shasum": ""
             },
             "require": {
@@ -417,10 +417,12 @@
             "autoload": {
                 "files": [
                     "src/Scheme.php",
-                    "src/Handle.php"
+                    "src/Handle.php",
+                    "src/Registry.php",
+                    "src/Completions.php"
                 ],
                 "psr-4": {
-                    "Hop\\Cite\\": "src/"
+                    "HopTop\\Cite\\": "src/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -430,9 +432,9 @@
             "description": "Custom URI scheme utilities (polyglot).",
             "homepage": "https://hop.top/cite",
             "support": {
-                "source": "https://github.com/hop-top/cite-php/tree/v0.1.0"
+                "source": "https://github.com/hop-top/cite-php/tree/v0.2.0"
             },
-            "time": "2026-05-28T16:48:02+00:00"
+            "time": "2026-06-06T18:26:55+00:00"
         },
         {
             "name": "jewei/typeid-php",

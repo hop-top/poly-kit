@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace HopTop\Kit\Uri;
 
-use Hop\Cite\ParseOptions;
-use Hop\Cite\Policy;
-use Hop\Cite\ResolvedAction;
-use Hop\Cite\Handle;
-use Hop\Cite\HandlerSpec;
-use Hop\Cite\Scheme;
-use Hop\Cite\URI as ParsedUri;
+use HopTop\Cite\ParseOptions;
+use HopTop\Cite\Policy;
+use HopTop\Cite\ResolvedAction;
+use HopTop\Cite\Handle;
+use HopTop\Cite\HandlerSpec;
+use HopTop\Cite\Scheme;
+use HopTop\Cite\URI as ParsedUri;
 
 final class UriFacade
 {

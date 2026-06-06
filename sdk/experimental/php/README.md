@@ -15,8 +15,8 @@ use the shared URI contract without depending on kit-specific parsing code.
 ```php
 <?php
 
-use Hop\Cite\ActionRoute;
-use Hop\Cite\Policy;
+use HopTop\Cite\ActionRoute;
+use HopTop\Cite\Policy;
 use HopTop\Kit\Uri\UriFacade;
 
 $uri = UriFacade::parse('task://hop-top/uri/T-0001');
