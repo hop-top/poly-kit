@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.7...kit/v0.4.0-alpha.8) (2026-06-06)
+
+
+### Features
+
+* **scaffold:** multi-holder copyright in LICENSE files ([#100](https://github.com/hop-top/poly-kit/issues/100)) ([07bdae7](https://github.com/hop-top/poly-kit/commit/07bdae749040b5b612fd1b7b9a27b668a6e1cd93))
+
+
+### Bug Fixes
+
+* **ci:** unstick Templates + verify-no-leak-audit workflows ([#131](https://github.com/hop-top/poly-kit/issues/131)) ([62df81a](https://github.com/hop-top/poly-kit/commit/62df81abd42c1839eaaad39f541089ceed553a02))
+
 ## [0.4.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.6...kit/v0.4.0-alpha.7) (2026-06-03)
 
 
