@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -28,6 +29,7 @@ func TestIsKitInternal_PolyKitRename(t *testing.T) {
 		{"adopter repo", "https://github.com/acme/our-cli.git\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			scrubGitEnvForTest(t)
 			cwd := setupFakeGitRemote(t, tc.url)
 			t.Setenv("KIT_INTERNAL_ALLOWLIST", "")
 			got := isKitInternal(cwd)
@@ -39,6 +41,7 @@ func TestIsKitInternal_PolyKitRename(t *testing.T) {
 }
 
 func TestIsKitInternal_EnvOverride(t *testing.T) {
+	scrubGitEnvForTest(t)
 	cwd := setupFakeGitRemote(t, "https://github.com/acme/unrelated.git\n")
 	t.Setenv("KIT_INTERNAL_ALLOWLIST", "1")
 	if !isKitInternal(cwd) {
@@ -46,13 +49,43 @@ func TestIsKitInternal_EnvOverride(t *testing.T) {
 	}
 }
 
+// scrubGitEnvForTest unsets GIT_* vars in the test process so
+// isKitInternal's exec.Command("git", ...) doesn't resolve to the outer
+// repo via inherited GIT_DIR (set when tests run under a pre-push hook).
+// Empty-string values aren't safe — git rejects an empty GIT_DIR — so
+// we Unsetenv and restore the originals in cleanup.
+func scrubGitEnvForTest(t *testing.T) {
+	t.Helper()
+	for _, kv := range os.Environ() {
+		i := strings.IndexByte(kv, '=')
+		if i <= 0 || !strings.HasPrefix(kv, "GIT_") {
+			continue
+		}
+		key, val := kv[:i], kv[i+1:]
+		os.Unsetenv(key)
+		t.Cleanup(func() { os.Setenv(key, val) })
+	}
+}
+
 // setupFakeGitRemote creates a temp dir with a git repo whose
-// remote.origin.url is set to url. Uses set-url with a fallback to add
-// so dev templates that pre-create origin don't conflict.
+// remote.origin.url is set to url. Scrubs inherited GIT_* env vars so
+// git operations don't resolve back to the outer repo via GIT_DIR —
+// without this, running under a git hook (which sets GIT_DIR to the
+// outer repo's git dir) would write to the outer repo's config.
 func setupFakeGitRemote(t *testing.T, url string) string {
 	t.Helper()
 	dir := t.TempDir()
-	env := append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_TEMPLATE_DIR=")
+	// Build a clean env: keep PATH + HOME but strip every GIT_* var.
+	env := []string{
+		"GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_TEMPLATE_DIR=",
+	}
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "GIT_") {
+			env = append(env, kv)
+		}
+	}
 	runGit := func(args ...string) ([]byte, error) {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
@@ -62,11 +95,8 @@ func setupFakeGitRemote(t *testing.T, url string) string {
 	if out, err := runGit("init", "-q"); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	// Idempotent: add if missing, set-url if already present.
 	if out, err := runGit("remote", "add", "origin", url); err != nil {
-		if out2, err2 := runGit("remote", "set-url", "origin", url); err2 != nil {
-			t.Fatalf("git remote add: %v\n%s\nset-url fallback: %v\n%s", err, out, err2, out2)
-		}
+		t.Fatalf("git remote add: %v\n%s", err, out)
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
