@@ -34,10 +34,16 @@ import (
 
 // Inputs is the resolved view of all init-run knobs.
 type Inputs struct {
-	Name          string
-	Module        string
-	License       string
+	Name    string
+	Module  string
+	License string
+	// Author is the single-string projection of Copyrights[0].Holder
+	// (or git config user.name when no --author was supplied) kept for
+	// downstream templates that still reference {{.Author}}:
+	// package.json, pyproject.toml, Cargo.toml, README.md, etc. The
+	// authoritative multi-holder list lives on Copyrights.
 	Author        string
+	Copyrights    []Copyright
 	Email         string
 	Org           string
 	AccountType   string
@@ -75,10 +81,18 @@ type Inputs struct {
 // chain treats unset flags as transparent. Bool/int flags use *bool/*int
 // for the same reason; string slices use nil-vs-non-nil.
 type FlagSet struct {
-	Name          *string
-	Module        *string
-	License       *string
-	Author        *string
+	Name    *string
+	Module  *string
+	License *string
+	// Author is the repeatable --author flag value list. Empty/nil means
+	// the user didn't pass --author at all and the default copyright
+	// block should be synthesized downstream. Each value may contain
+	// ;-delimited holder chunks; see ParseCopyrights.
+	Author []string
+	// AuthorChanged tracks whether the --author flag was supplied at
+	// all (cobra.Flag.Changed) so an explicit empty value can be
+	// distinguished from "user left it alone". Wired by buildFlagSet.
+	AuthorChanged bool
 	Email         *string
 	Org           *string
 	AccountType   *string
@@ -200,10 +214,58 @@ func Gather(
 
 	// Now apply scalar precedence to the rest. Built-in fallbacks are
 	// computed once dependencies (AccountType, Author/Name) are available.
-	in.Author = resolveScalar("author", flags.Author, defaults.Author, "")
-	if in.Author == "" {
-		in.Author = gitConfig("user.name")
+	//
+	// Author/Copyrights precedence (see ADR + track plan):
+	//   1. --author (repeatable; ;-delimited within a value) → parsed into Copyrights
+	//   2. KIT_AUTHOR env (single legacy holder)
+	//   3. defaults.yaml author field (single legacy holder)
+	//   4. git config user.name (single legacy holder)
+	//   5. canonical 4-holder default block (only when nothing above applies)
+	//
+	// The single-string in.Author is kept as a derived value for the
+	// templates that still reference {{.Author}} (README.md, package.json,
+	// composer.json, Cargo.toml, pyproject.toml). LICENSE templates
+	// consume {{.Copyrights}} directly.
+	now := time.Now()
+	year := now.Year()
+	switch {
+	case flags.AuthorChanged:
+		cps, err := ParseCopyrights(flags.Author, year)
+		if err != nil {
+			return Inputs{}, err
+		}
+		in.Copyrights = cps
+	case os.Getenv("KIT_AUTHOR") != "":
+		cps, err := ParseCopyrights([]string{os.Getenv("KIT_AUTHOR")}, year)
+		if err != nil {
+			return Inputs{}, err
+		}
+		in.Copyrights = cps
+	case defaults.Author != "":
+		cps, err := ParseCopyrights([]string{defaults.Author}, year)
+		if err != nil {
+			return Inputs{}, err
+		}
+		in.Copyrights = cps
+	default:
+		if gn := gitConfig("user.name"); gn != "" {
+			cps, perr := ParseCopyrights([]string{gn}, year)
+			if perr == nil {
+				in.Copyrights = cps
+			}
+		}
+		if len(in.Copyrights) == 0 {
+			in.Copyrights = DefaultCopyrights(year)
+		}
 	}
+	// Fall through to the canonical block when the chosen source parsed
+	// to zero holders (e.g. `--author=` or `--author=';'`). Matches the
+	// flag help contract: "Empty defaults to the canonical 4-holder block".
+	if len(in.Copyrights) == 0 {
+		in.Copyrights = DefaultCopyrights(year)
+	}
+	// Derive the single-string Author projection for legacy templates.
+	in.Author = in.Copyrights[0].Holder
 
 	in.Email = resolveScalar("email", flags.Email, defaults.Email, "")
 	if in.Email == "" {
@@ -257,11 +319,11 @@ func Gather(
 	// (kit convention) and PascalCase (Go text/template convention used
 	// by built-in templates: {{.Name}}, {{.Module}}, …). Templates and
 	// manifest defaults can reference either casing.
-	now := time.Now()
 	setVar(in.Vars, "Name", in.Name)
 	setVar(in.Vars, "Module", in.Module)
 	setVar(in.Vars, "License", in.License)
 	setVar(in.Vars, "Author", in.Author)
+	setVar(in.Vars, "Copyrights", in.Copyrights)
 	setVar(in.Vars, "Email", in.Email)
 	setVar(in.Vars, "Org", in.Org)
 	setVar(in.Vars, "AccountType", in.AccountType)
@@ -272,7 +334,7 @@ func Gather(
 	setVar(in.Vars, "DefaultBranch", in.DefaultBranch)
 	setVar(in.Vars, "Runtime", in.Runtime)
 	setVar(in.Vars, "Tier", in.Tier)
-	setVar(in.Vars, "Year", now.Year())
+	setVar(in.Vars, "Year", year)
 	setVar(in.Vars, "Date", now.Format("2006-01-02"))
 
 	// Manifest variables: walk in declaration order so Default templates

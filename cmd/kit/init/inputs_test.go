@@ -93,10 +93,12 @@ func TestGather_FlagWinsOverEnv(t *testing.T) {
 	clearKitEnv(t)
 	isolateGit(t, "", "")
 	t.Setenv("KIT_AUTHOR", "env")
-	flags := &kitinit.FlagSet{Author: ptrStr("flag")}
+	flags := &kitinit.FlagSet{Author: []string{"flag"}, AuthorChanged: true}
 	in, err := kitinit.Gather(context.Background(), nil, flags, tmpl.Manifest{}, kitinit.Defaults{}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "flag", in.Author)
+	require.Len(t, in.Copyrights, 1)
+	assert.Equal(t, "flag", in.Copyrights[0].Holder)
 }
 
 func TestGather_EnvWinsOverDefaults(t *testing.T) {
@@ -126,8 +128,9 @@ func TestGather_ManifestDefaultRenders(t *testing.T) {
 	clearKitEnv(t)
 	isolateGit(t, "", "")
 	flags := &kitinit.FlagSet{
-		Name:   ptrStr("widget"),
-		Author: ptrStr("alice"),
+		Name:          ptrStr("widget"),
+		Author:        []string{"alice"},
+		AuthorChanged: true,
 	}
 	m := tmpl.Manifest{Variables: []tmpl.Variable{
 		{Name: "module", Default: "github.com/{{.author}}/{{.name}}"},
@@ -316,4 +319,77 @@ func TestGather_PositionalArgWinsOverEnvAndBasename(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "frompositional", in.Name)
 	assert.Equal(t, "frompositional", in.Vars["Name"])
+}
+
+func TestGather_DefaultCopyrightsWhenAuthorAbsent(t *testing.T) {
+	clearKitEnv(t)
+	isolateGit(t, "", "")
+	in, err := kitinit.Gather(
+		context.Background(), nil, nil, tmpl.Manifest{}, kitinit.Defaults{}, nil)
+	require.NoError(t, err)
+	require.Len(t, in.Copyrights, 4)
+	assert.Equal(t, "Idea Crafters LLC", in.Copyrights[0].Holder)
+	assert.Equal(t, "https://ideacrafters.com", in.Copyrights[0].URL)
+	assert.Equal(t, "@monaam", in.Copyrights[3].Holder)
+}
+
+func TestGather_EmptyAuthorFlagFallsThroughToDefault(t *testing.T) {
+	// `--author=` and `--author=';'` parse to zero holders;
+	// Gather must fall through to DefaultCopyrights rather than
+	// leaving in.Copyrights empty (and in.Author unset).
+	for _, tc := range []struct {
+		name  string
+		value []string
+	}{
+		{"empty string", []string{""}},
+		{"only semicolons", []string{";"}},
+		{"empty and semicolons", []string{"", ";;"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearKitEnv(t)
+			isolateGit(t, "", "")
+			flags := &kitinit.FlagSet{Author: tc.value, AuthorChanged: true}
+			in, err := kitinit.Gather(
+				context.Background(), nil, flags, tmpl.Manifest{}, kitinit.Defaults{}, nil)
+			require.NoError(t, err)
+			require.Len(t, in.Copyrights, 4, "expected canonical 4-holder default")
+			assert.Equal(t, "Idea Crafters LLC", in.Copyrights[0].Holder)
+			assert.NotEmpty(t, in.Author, "Author projection must be non-empty")
+		})
+	}
+}
+
+func TestGather_MultiHolderViaSemicolon(t *testing.T) {
+	clearKitEnv(t)
+	isolateGit(t, "", "")
+	flags := &kitinit.FlagSet{
+		Author:        []string{"2020 Foo;2024 Bar"},
+		AuthorChanged: true,
+	}
+	in, err := kitinit.Gather(
+		context.Background(), nil, flags, tmpl.Manifest{}, kitinit.Defaults{}, nil)
+	require.NoError(t, err)
+	require.Len(t, in.Copyrights, 2)
+	assert.Equal(t, "2020", in.Copyrights[0].Years)
+	assert.Equal(t, "Foo", in.Copyrights[0].Holder)
+	assert.Equal(t, "2024", in.Copyrights[1].Years)
+	assert.Equal(t, "Bar", in.Copyrights[1].Holder)
+}
+
+func TestGather_MultiHolderViaRepeatedFlag(t *testing.T) {
+	clearKitEnv(t)
+	isolateGit(t, "", "")
+	flags := &kitinit.FlagSet{
+		Author: []string{
+			"2020 Foo <https://foo.io>",
+			"2024 Bar",
+		},
+		AuthorChanged: true,
+	}
+	in, err := kitinit.Gather(
+		context.Background(), nil, flags, tmpl.Manifest{}, kitinit.Defaults{}, nil)
+	require.NoError(t, err)
+	require.Len(t, in.Copyrights, 2)
+	assert.Equal(t, "https://foo.io", in.Copyrights[0].URL)
+	assert.Equal(t, "Bar", in.Copyrights[1].Holder)
 }
