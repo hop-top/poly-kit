@@ -17,6 +17,8 @@ jobs:
       PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
       PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
       GH_MIRROR_PAT: ${{ secrets.GH_MIRROR_PAT }}
+      RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
+      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
     with:
       homepage: https://github.com/hop-top/poly-kit
       description-prefix: "READ-ONLY MIRROR"
