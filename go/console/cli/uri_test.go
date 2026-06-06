@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/kit/go/console/cli"
 	"hop.top/cite/handle/generate"
+	"hop.top/kit/go/console/cli"
 )
 
 func TestWithURI_MountsConfiguredCommand(t *testing.T) {
