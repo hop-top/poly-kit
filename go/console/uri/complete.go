@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"hop.top/uri/scheme"
+	"hop.top/cite/scheme"
 )
 
 func completeCmd(cfg Config) *cobra.Command {

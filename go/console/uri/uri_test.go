@@ -15,8 +15,8 @@ import (
 
 	kitcli "hop.top/kit/go/console/cli"
 	uricmd "hop.top/kit/go/console/uri"
-	"hop.top/uri/handle/generate"
-	"hop.top/uri/scheme"
+	"hop.top/cite/handle/generate"
+	"hop.top/cite/scheme"
 )
 
 func runCommand(t *testing.T, cmd *cobra.Command, args ...string) (string, string, error) {

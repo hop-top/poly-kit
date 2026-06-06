@@ -19,8 +19,8 @@ import (
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/runtime/bus"
 	runtimetelemetry "hop.top/kit/go/runtime/telemetry"
-	"hop.top/uri/handle/generate"
-	"hop.top/uri/scheme"
+	"hop.top/cite/handle/generate"
+	"hop.top/cite/scheme"
 )
 
 const disclaimer = `Not affiliated with, endorsed by, or in any way authorized by SpaceX,
