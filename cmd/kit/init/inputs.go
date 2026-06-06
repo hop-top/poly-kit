@@ -42,9 +42,9 @@ type Inputs struct {
 	// downstream templates that still reference {{.Author}}:
 	// package.json, pyproject.toml, Cargo.toml, README.md, etc. The
 	// authoritative multi-holder list lives on Copyrights.
-	Author     string
-	Copyrights []Copyright
-	Email      string
+	Author        string
+	Copyrights    []Copyright
+	Email         string
 	Org           string
 	AccountType   string
 	Visibility    string
@@ -86,7 +86,7 @@ type FlagSet struct {
 	License *string
 	// Author is the repeatable --author flag value list. Empty/nil means
 	// the user didn't pass --author at all and the default copyright
-	// block should be synthesised downstream. Each value may contain
+	// block should be synthesized downstream. Each value may contain
 	// ;-delimited holder chunks; see ParseCopyrights.
 	Author []string
 	// AuthorChanged tracks whether the --author flag was supplied at
@@ -229,7 +229,7 @@ func Gather(
 	now := time.Now()
 	year := now.Year()
 	switch {
-	case flags != nil && flags.AuthorChanged:
+	case flags.AuthorChanged:
 		cps, err := ParseCopyrights(flags.Author, year)
 		if err != nil {
 			return Inputs{}, err
