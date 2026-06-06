@@ -81,6 +81,8 @@ func TestAllowlist_DefaultKitInternalGlobsCovers12fccTracks(t *testing.T) {
 		".tlc/tracks/12fcc/spec.md",
 		".tlc/tracks/12fcc-scen/anything.md",
 		"contracts/scenario-rules.json",
+		"go/conformance/scenario/README.md",
+		"go/conformance/scenario/testdata/ok-minimal.yaml",
 	} {
 		assert.True(t, al.Matches(filepath.Join(dir, sub)), "kit-internal glob should cover %s", sub)
 	}

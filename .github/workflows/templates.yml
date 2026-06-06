@@ -35,8 +35,6 @@ jobs:
             repo: hop-top/cli-template-ts
           - name: cli-template-py
             repo: hop-top/cli-template-py
-          - name: cli-template-polyglot
-            repo: hop-top/cli-template-polyglot
     steps:
       - uses: actions/checkout@v4
       - name: Build templates
