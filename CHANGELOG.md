@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.8...kit/v0.4.0-alpha.9) (2026-06-06)
+
+
+### Bug Fixes
+
+* **ci:** pass RELEASE_BOT_* secrets to publish-on-tag ([#132](https://github.com/hop-top/poly-kit/issues/132)) ([f911766](https://github.com/hop-top/poly-kit/commit/f911766b1427e9eaae19b491ca6338a220fc7e34))
+
 ## [0.4.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.7...kit/v0.4.0-alpha.8) (2026-06-06)
 
 
