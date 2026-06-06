@@ -13,7 +13,7 @@
 //!   prefix-mismatch (typed parse).
 //!
 //! URI composition (`<scheme>://<entity-type>/<typeid>`) is **not** part of
-//! this module. Adopters compose the canonical string with `hop-top-uri`
+//! this module. Adopters compose the canonical string with `hop-top-cite`
 //! directly. This keeps the typeid primitive free of any transitive URI
 //! dependency.
 //!
