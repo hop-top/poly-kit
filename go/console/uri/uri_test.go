@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"hop.top/cite/handle/generate"
+	"hop.top/cite/scheme"
 	kitcli "hop.top/kit/go/console/cli"
 	uricmd "hop.top/kit/go/console/uri"
-	"hop.top/uri/handle/generate"
-	"hop.top/uri/scheme"
 )
 
 func runCommand(t *testing.T, cmd *cobra.Command, args ...string) (string, string, error) {

@@ -3,7 +3,7 @@ package uri
 import (
 	"github.com/spf13/cobra"
 
-	"hop.top/uri/scheme"
+	"hop.top/cite/scheme"
 )
 
 func parseCmd(cfg Config) *cobra.Command {

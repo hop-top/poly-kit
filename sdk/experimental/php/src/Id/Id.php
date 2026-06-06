@@ -19,7 +19,7 @@ use TypeID\TypeID;
  *   - `Id::fromUuid($p, $uuid)` → deterministic typeid string for a given uuid
  *
  * The canonical string form is the wire form. No URI helpers live here —
- * compose poly-URIs through the `hop-top/uri` package instead.
+ * compose poly-URIs through the `hop-top/cite` package instead.
  */
 final class Id
 {

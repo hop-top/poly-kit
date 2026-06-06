@@ -10,7 +10,7 @@ cross-language kit API SHAPE defined in ADR 0001:
 
 URI composition is intentionally **not** part of this module. Callers
 that need a poly-uri form should call ``hop_top_kit.uri`` (which in turn
-delegates to the ``hop-top-uri`` package) with the canonical TypeID
+delegates to the ``hop-top-cite`` package) with the canonical TypeID
 string returned by :func:`new` / :func:`parse`.
 """
 

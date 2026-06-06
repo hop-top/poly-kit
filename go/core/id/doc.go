@@ -20,7 +20,7 @@
 //     string in JSON.
 //
 // URI composition (e.g. "tlc://task/task_01j…") is intentionally
-// out of scope: callers compose poly-URIs via hop.top/uri.
+// out of scope: callers compose poly-URIs via hop.top/cite.
 //
 // # Glossary
 //

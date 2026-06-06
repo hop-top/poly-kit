@@ -73,11 +73,20 @@ wheels = [
 ]
 
 [[package]]
+name = "hop-top-cite"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/88/f4/a89510ae04cfd082f9438e9d6e35a2118beadd2121dac9e6af0a6c58ee64/hop_top_cite-0.1.0.tar.gz", hash = "sha256:2f849df4d9b6577be865ed3933f763df53f5a4d8c54840d6f0e1a8c9186f3b43", size = 10636, upload-time = "2026-05-28T16:45:06.237Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/7b/94125d6cbf74514c9f78d128a132bfcf90eea2a90a3a3c46223282b3272e/hop_top_cite-0.1.0-py3-none-any.whl", hash = "sha256:443efc9118d200e64cd2bc28642411663c62f5a46b89800134e53f9125a13afe", size = 8800, upload-time = "2026-05-28T16:45:05.062Z" },
+]
+
+[[package]]
 name = "hop-top-kit"
 version = "0.4.0a1"
 source = { editable = "." }
 dependencies = [
-    { name = "hop-top-uri" },
+    { name = "hop-top-cite" },
     { name = "jinja2" },
     { name = "packaging" },
     { name = "pathspec" },
@@ -103,7 +112,7 @@ telemetry-https = [
 
 [package.metadata]
 requires-dist = [
-    { name = "hop-top-uri", specifier = ">=0.2.0a0" },
+    { name = "hop-top-cite", specifier = ">=0.1.0" },
     { name = "httpx", marker = "extra == 'telemetry-https'", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "packaging", specifier = ">=24.0" },
@@ -121,15 +130,6 @@ requires-dist = [
     { name = "typer", extras = ["all"], marker = "extra == 'dev'", specifier = ">=0.12" },
 ]
 provides-extras = ["dev", "telemetry-https"]
-
-[[package]]
-name = "hop-top-uri"
-version = "0.2.0a1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c0/db/81bf64e02fd68fba66481d72f51a67406f3118d7b5633e6e002b834e9c49/hop_top_uri-0.2.0a1.tar.gz", hash = "sha256:d3c84e4cd5bb12afa92bd10dc4581f1c67ed33fe52388bee478d0e111a45726f", size = 8784, upload-time = "2026-05-16T05:34:01.294Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/a5/1c74326b0777dae505b6a5c9df56e4cf5a951f7e37bc94f0438d54962123/hop_top_uri-0.2.0a1-py3-none-any.whl", hash = "sha256:91cfbb907fcad23d9b68365270409333e1a20bd943afdb534655aab28443fae2", size = 8779, upload-time = "2026-05-16T05:34:00.07Z" },
-]
 
 [[package]]
 name = "httpcore"

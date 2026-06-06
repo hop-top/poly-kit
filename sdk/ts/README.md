@@ -147,7 +147,7 @@ render(process.stdout, JSON_FORMAT, { ok: true });
 - `@hop-top/kit/upgrade` — semver upgrade detection.
 - `@hop-top/kit/llm` / `routellm` — LLM client + routing helpers.
 - `@hop-top/kit/alias` — alias resolution + completion.
-- `@hop-top/kit/uri` — thin facade over `@hop-top/uri` for URI parsing,
+- `@hop-top/kit/uri` — thin facade over `@hop-top/cite` for URI parsing,
   action resolution, completions, registries, and OS handler metadata.
 - `@hop-top/kit/tui` — TUI toolkit (parity, anim, prompts).
 
@@ -155,7 +155,7 @@ See package.json `exports` for the full list.
 
 ## URI facade
 
-The URI module delegates to `@hop-top/uri`; it does not reimplement the URI
+The URI module delegates to `@hop-top/cite`; it does not reimplement the URI
 contract. It mirrors the kit Go URI command intent for SDK consumers:
 
 ```ts

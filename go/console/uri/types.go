@@ -1,8 +1,8 @@
 package uri
 
 import (
-	"hop.top/uri/handle/generate"
-	"hop.top/uri/scheme"
+	"hop.top/cite/handle/generate"
+	"hop.top/cite/scheme"
 )
 
 const (

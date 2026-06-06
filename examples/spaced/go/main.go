@@ -13,14 +13,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"hop.top/cite/handle/generate"
+	"hop.top/cite/scheme"
 	"hop.top/kit/examples/spaced/go/cmd"
 	"hop.top/kit/go/console/alias"
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/runtime/bus"
 	runtimetelemetry "hop.top/kit/go/runtime/telemetry"
-	"hop.top/uri/handle/generate"
-	"hop.top/uri/scheme"
 )
 
 const disclaimer = `Not affiliated with, endorsed by, or in any way authorized by SpaceX,

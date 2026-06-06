@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"hop.top/uri/scheme"
+	"hop.top/cite/scheme"
 )
 
 func resolvePolicy(base scheme.Policy, path string) (scheme.Policy, error) {

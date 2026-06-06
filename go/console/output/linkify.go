@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"hop.top/uri/handle"
+	"hop.top/cite/handle"
 )
 
 // uriSchemes lists URI schemes that get auto-linkified in table
@@ -37,7 +37,7 @@ func RegisterLinkScheme(scheme string) {
 }
 
 // linkifyCell replaces recognized URIs in a cell value with
-// OSC 8 hyperlinks via hop.top/uri/handle. Falls back to the
+// OSC 8 hyperlinks via hop.top/cite/handle. Falls back to the
 // short label when the terminal does not support hyperlinks.
 func linkifyCell(val string) string {
 	schemesMu.RLock()

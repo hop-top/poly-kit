@@ -12,6 +12,6 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
-    "@hop-top/uri": "^0.2.0-alpha.1"
+    "@hop-top/cite": "^0.1.0"
   }
 }

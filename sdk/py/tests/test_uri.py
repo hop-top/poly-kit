@@ -47,8 +47,8 @@ def install_backend(monkeypatch):
         desktop_filename=lambda spec: spec.handler_id() + ".desktop",
     )
     uri._backend.cache_clear()
-    monkeypatch.setitem(sys.modules, "uri", backend)
-    monkeypatch.delitem(sys.modules, "hop_top_uri", raising=False)
+    monkeypatch.setitem(sys.modules, "cite", backend)
+    monkeypatch.delitem(sys.modules, "hop_top_cite", raising=False)
     return backend
 
 
@@ -129,5 +129,5 @@ def test_missing_backend_error_is_actionable(monkeypatch):
 
     monkeypatch.setattr(uri, "import_module", missing)
 
-    with pytest.raises(uri.URIBackendNotInstalled, match="hop-top-uri"):
+    with pytest.raises(uri.URIBackendNotInstalled, match="hop-top-cite"):
         uri.parse("tlc://org/repo/T-0001")

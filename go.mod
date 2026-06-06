@@ -62,7 +62,7 @@ require (
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	hop.top/aim v0.1.0-alpha.0
-	hop.top/uri v0.2.0-alpha.0
+	hop.top/cite v0.1.0
 	hop.top/xrr v0.1.0-alpha.3
 	modernc.org/sqlite v1.48.2
 )

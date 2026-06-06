@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace HopTop\Kit\Tests\Uri;
 
-use Hop\Uri\ActionRoute;
-use Hop\Uri\HandlerSpec;
-use Hop\Uri\Policy;
+use HopTop\Cite\ActionRoute;
+use HopTop\Cite\HandlerSpec;
+use HopTop\Cite\Policy;
 use HopTop\Kit\Uri\UriFacade;
 use PHPUnit\Framework\TestCase;
 

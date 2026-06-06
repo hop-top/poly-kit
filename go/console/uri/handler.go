@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"hop.top/cite/handle/generate"
 	"hop.top/kit/go/console/output"
-	"hop.top/uri/handle/generate"
 )
 
 func handlerIDCmd(defaults HandlerConfig) *cobra.Command {

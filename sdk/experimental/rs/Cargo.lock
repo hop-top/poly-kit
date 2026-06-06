@@ -498,6 +498,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
+name = "hop-top-cite"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f59ed2a8c316ae482ac20078e9c92489948d4fd44c2485290e4e2ace0026234"
+dependencies = [
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "hop-top-kit"
 version = "0.4.0-experimental.3"
 dependencies = [
@@ -505,7 +516,7 @@ dependencies = [
  "comfy-table",
  "dirs",
  "getrandom 0.2.17",
- "hop-top-uri",
+ "hop-top-cite",
  "mockito",
  "mti",
  "regex",
@@ -518,17 +529,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "hop-top-uri"
-version = "0.2.0-alpha.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b463f403aadc23517bce9ad144de784639428804eb771e0e400498fb3c64552"
-dependencies = [
- "serde",
- "serde_json",
- "url",
 ]
 
 [[package]]
