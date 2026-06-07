@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit-py/v0.4.0-alpha.2...kit-py/v0.5.0-alpha.0) (2026-06-07)
+
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.0. This release includes miscellaneous improvements.
+
+
+### Refactored
+
+* migrate uri+hdl to cite across Go/TS/Py/Rs/PHP
+
+Full diff: [kit-py/v0.4.0-alpha.2...kit-py/v0.5.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit-py/v0.4.0-alpha.2...kit-py/v0.5.0-alpha.0)
+
 ## [0.4.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-py/v0.4.0-alpha.1...kit-py/v0.4.0-alpha.2) (2026-06-03)
 
 The hop-top team is happy to announce Kit's Python SDK 0.4.0-alpha.2. This release includes new features.
