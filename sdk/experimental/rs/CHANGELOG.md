@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.4.0-experimental.3...kit-rs/v0.5.0-alpha.0) (2026-06-07)
+
+
+### Refactored
+
+* migrate uri+hdl to cite across Go/TS/Py/Rs/PHP ([#129](https://github.com/hop-top/poly-kit/issues/129)) ([105fbe3](https://github.com/hop-top/poly-kit/commit/105fbe3eefb0e92a4c313479791a3af0477c3cd5))
+
 ## [0.4.0-experimental.3](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.4.0-experimental.2...kit-rs/v0.4.0-experimental.3) (2026-05-21)
 
 The hop-top team is happy to announce Kit's Rust SDK 0.4.0-experimental.3. This release includes new features.

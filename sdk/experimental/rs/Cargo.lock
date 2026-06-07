@@ -510,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "hop-top-kit"
-version = "0.4.0-experimental.3"
+version = "0.5.0-alpha.0"
 dependencies = [
  "clap",
  "comfy-table",
