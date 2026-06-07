@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.9...kit/v0.5.0-alpha.0) (2026-06-07)
+
+
+### Bug Fixes
+
+* **ci:** install kit-py dev extras in publish test-command ([#145](https://github.com/hop-top/poly-kit/issues/145)) ([8609b64](https://github.com/hop-top/poly-kit/commit/8609b640d1254d2d0bc5e6e582354ca8684bdc6f))
+
 ## [0.4.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.8...kit/v0.4.0-alpha.9) (2026-06-06)
 
 
