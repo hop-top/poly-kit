@@ -254,4 +254,3 @@ free-form `event` name + `attrs` dict so non-CLI adopters can use it too.
 This is a documented divergence; consumers that need command-path
 semantics should pass `"command_path"` inside `attrs`.
 
-<!-- release: track hop-top-cite>=0.1.0 -->
