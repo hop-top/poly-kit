@@ -71,8 +71,7 @@
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
-      "initial-version": "0.5.0-alpha.0",
-      "release-as": "0.5.0-alpha.0"
+      "initial-version": "0.5.0-alpha.0"
     },
     "sdk/ts": {
       "release-type": "node",
@@ -100,8 +99,7 @@
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
-      "initial-version": "0.5.0-alpha.0",
-      "release-as": "0.5.0-alpha.1"
+      "initial-version": "0.5.0-alpha.0"
     },
     "sdk/experimental/rs": {
       "release-type": "rust",
