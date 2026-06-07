@@ -2,10 +2,14 @@
 
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.2...kit-py/v0.5.0-alpha.3) (2026-06-07)
 
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.3. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
-* **sdk/py:** pin typer&lt;0.25 for click 8.4 compat ([#156](https://github.com/hop-top/poly-kit/issues/156)) ([2fa9329](https://github.com/hop-top/poly-kit/commit/2fa9329e73f0c0a72589d9b0be9102b361aec556))
+* **sdk/py:** pin typer&lt;0.25 for click 8.4 compat
+
+Full diff: [kit-py/v0.5.0-alpha.2...kit-py/v0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.2...kit-py/v0.5.0-alpha.3)
 
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.1...kit-py/v0.5.0-alpha.2) (2026-06-07)
 
