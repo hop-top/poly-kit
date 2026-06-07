@@ -2,10 +2,14 @@
 
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.1...kit-py/v0.5.0-alpha.2) (2026-06-07)
 
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.2. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
-* **sdk/py:** add click as explicit dev dep, drop stale typer[all] ([#152](https://github.com/hop-top/poly-kit/issues/152)) ([8831f2c](https://github.com/hop-top/poly-kit/commit/8831f2ccfc17e77a8817639571f3a1ec7466ef64))
+* **sdk/py:** add click as explicit dev dep, drop stale typer[all]
+
+Full diff: [kit-py/v0.5.0-alpha.1...kit-py/v0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.1...kit-py/v0.5.0-alpha.2)
 
 ## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.0...kit-py/v0.5.0-alpha.1) (2026-06-07)
 
