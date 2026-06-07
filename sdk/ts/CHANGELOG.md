@@ -4,6 +4,13 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.4.0-alpha.2...kit-ts/v0.5.0-alpha.0) (2026-06-07)
+
+
+### Refactored
+
+* migrate uri+hdl to cite across Go/TS/Py/Rs/PHP ([#129](https://github.com/hop-top/poly-kit/issues/129)) ([105fbe3](https://github.com/hop-top/poly-kit/commit/105fbe3eefb0e92a4c313479791a3af0477c3cd5))
+
 ## [0.4.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.4.0-alpha.1...kit-ts/v0.4.0-alpha.2) (2026-06-03)
 
 The hop-top team is happy to announce Kit's TS SDK 0.4.0-alpha.2. This release includes new features.
