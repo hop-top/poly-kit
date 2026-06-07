@@ -11,7 +11,7 @@ from functools import lru_cache
 from importlib import import_module
 from typing import Any
 
-_BACKEND_MODULES = ("cite", "hop_top_cite")
+_BACKEND_MODULES = ("cite",)
 _BACKEND_EXPORTS = {
     "ActionRoute",
     "AmbiguousVanityError",
