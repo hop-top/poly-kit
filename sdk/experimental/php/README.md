@@ -163,3 +163,5 @@ consumption should call the Go runtime.
 ### Cross-references
 
 * `go/runtime/telemetry/` — canonical implementation
+
+<!-- release: track hop-top/cite ^0.2.0 -->
