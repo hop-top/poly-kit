@@ -82,7 +82,8 @@
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
-      "initial-version": "0.1.0-alpha.0"
+      "initial-version": "0.1.0-alpha.0",
+      "release-as": "0.5.0-alpha.0"
     },
     "sdk/py": {
       "release-type": "python",
@@ -100,7 +101,8 @@
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
-      "initial-version": "0.1.0-alpha.0"
+      "initial-version": "0.1.0-alpha.0",
+      "release-as": "0.5.0-alpha.0"
     },
     "sdk/experimental/rs": {
       "release-type": "rust",
@@ -109,9 +111,10 @@
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
-      "prerelease-type": "experimental.0",
+      "prerelease-type": "alpha.0",
       "versioning": "prerelease",
-      "initial-version": "0.1.0-experimental.0"
+      "initial-version": "0.1.0-experimental.0",
+      "release-as": "0.5.0-alpha.0"
     },
     "sdk/experimental/php": {
       "release-type": "php",
@@ -129,7 +132,8 @@
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
-      "initial-version": "0.1.0-alpha.0"
+      "initial-version": "0.1.0-alpha.0",
+      "release-as": "0.5.0-alpha.0"
     },
     "incubator/qmochi": {
       "release-type": "go",
