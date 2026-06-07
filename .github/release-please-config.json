@@ -21,8 +21,7 @@
     },
     {
       "type": "refactor",
-      "section": "Refactoring",
-      "hidden": true
+      "section": "Refactored"
     },
     {
       "type": "chore",
