@@ -83,7 +83,7 @@ wheels = [
 
 [[package]]
 name = "hop-top-kit"
-version = "0.5.0a0"
+version = "0.5.0a1"
 source = { editable = "." }
 dependencies = [
     { name = "hop-top-cite" },
@@ -128,8 +128,8 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
     { name = "structlog", specifier = ">=24.0" },
     { name = "typeid-python", specifier = ">=0.3.9,<0.4" },
-    { name = "typer", specifier = ">=0.12" },
-    { name = "typer", marker = "extra == 'dev'", specifier = ">=0.12" },
+    { name = "typer", specifier = ">=0.12,<0.25" },
+    { name = "typer", marker = "extra == 'dev'", specifier = ">=0.12,<0.25" },
 ]
 provides-extras = ["dev", "telemetry-https"]
 
