@@ -1,6 +1,6 @@
 {
   "name": "@hop-top/kit",
-  "version": "0.4.0-alpha.2",
+  "version": "0.5.0-alpha.0",
   "description": "Shared CLI utilities for hop-top tools — TypeScript/CJS edition",
   "type": "commonjs",
   "main": "./dist/index.js",
