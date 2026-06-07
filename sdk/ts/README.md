@@ -280,3 +280,5 @@ landed; TS-side wiring is deferred until the directory exists.
 ## License
 
 MIT.
+
+<!-- release: track @hop-top/cite ^0.1.0 -->

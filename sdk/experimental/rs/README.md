@@ -121,3 +121,5 @@ collector that re-emits via `go/core/redact`.
 - Schema doc: [`sdk/docs/telemetry-event-schema.md`](../../docs/telemetry-event-schema.md).
 - Go canonical implementation:
   [`go/runtime/telemetry/README.md`](../../../go/runtime/telemetry/README.md).
+
+<!-- release: track hop-top-cite 0.1.0 -->
