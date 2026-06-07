@@ -43,7 +43,7 @@ jobs:
           package: hop-top-kit
           mirror: hop-top/kit-py
           python-version: '3.11'
-          test-command: pip install -e . && pytest
+          test-command: pip install -e ".[dev]" && pytest
           # OIDC trusted publishing returned `invalid-publisher` despite
           # repeatedly correct pending-publisher claims (see uri-poly,
           # which hit the same and switched to token in
