@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "note": "Cross-language cacheability gate vectors for kit/storage/httpcache. Consumed by the Go, TS, and Python ports so all three gate identically. request_cacheable drives cacheableRequest; response_cacheable drives cacheableResponse.",
+  "request_cacheable": [
+    { "name": "plain GET", "method": "GET", "headers": {}, "want": true },
+    { "name": "GET with unrelated header", "method": "GET", "headers": { "Accept": "text/html" }, "want": true },
+    { "name": "POST never cached", "method": "POST", "headers": {}, "want": false },
+    { "name": "HEAD never cached", "method": "HEAD", "headers": {}, "want": false },
+    { "name": "PUT never cached", "method": "PUT", "headers": {}, "want": false },
+    { "name": "request no-store opts out", "method": "GET", "headers": { "Cache-Control": "no-store" }, "want": false },
+    { "name": "request no-store among directives", "method": "GET", "headers": { "Cache-Control": "no-cache, no-store" }, "want": false },
+    { "name": "no-store match is case-insensitive", "method": "GET", "headers": { "Cache-Control": "NO-STORE" }, "want": false },
+    { "name": "no-store is token-bounded", "method": "GET", "headers": { "Cache-Control": "no-store-extension" }, "want": true }
+  ],
+  "response_cacheable": [
+    { "name": "200 OK", "status": 200, "headers": {}, "want": true },
+    { "name": "204 No Content", "status": 204, "headers": {}, "want": true },
+    { "name": "299 upper 2xx bound", "status": 299, "headers": {}, "want": true },
+    { "name": "301 redirect not cached", "status": 301, "headers": {}, "want": false },
+    { "name": "404 not cached", "status": 404, "headers": {}, "want": false },
+    { "name": "500 not cached", "status": 500, "headers": {}, "want": false },
+    { "name": "response no-store opts out", "status": 200, "headers": { "Cache-Control": "no-store" }, "want": false },
+    { "name": "response no-store among directives", "status": 200, "headers": { "Cache-Control": "max-age=60, no-store" }, "want": false }
+  ]
+}
