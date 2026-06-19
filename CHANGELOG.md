@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.0...kit/v0.5.0-alpha.1) (2026-06-19)
+
+
+### Features
+
+* **storage/httpcache:** caching RoundTripper over kv TTLStore ([7ce6619](https://github.com/hop-top/poly-kit/commit/7ce6619c9f5d027c73f4ed5a84d2d98a1201bae5))
+
 ## [0.5.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit/v0.4.0-alpha.9...kit/v0.5.0-alpha.0) (2026-06-07)
 
 
