@@ -237,6 +237,50 @@ func TestContract_Cacheability(t *testing.T) {
 	}
 }
 
+func TestRoundTrip_ZeroTTLCachesWithoutExpiry(t *testing.T) {
+	var origin atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin.Add(1)
+		_, _ = io.WriteString(w, "v")
+	}))
+	t.Cleanup(srv.Close)
+
+	// WithTTL(0) must store with no expiry, NOT stamp an already-past
+	// expiry (which would make every entry a perpetual miss).
+	client := &http.Client{Transport: httpcache.New(newStore(t), http.DefaultTransport,
+		httpcache.WithTTL(0))}
+
+	get(t, client, srv.URL)
+	get(t, client, srv.URL)
+	assert.Equal(t, int64(1), origin.Load(), "WithTTL(0) must cache (no expiry), not expire immediately")
+}
+
+func TestRoundTrip_StripsFramingHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Force chunked by writing without a Content-Length and flushing.
+		w.Header().Set("X-Keep", "yes")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "chunked-body")
+	}))
+	t.Cleanup(srv.Close)
+
+	client := &http.Client{Transport: httpcache.New(newStore(t), http.DefaultTransport)}
+	get(t, client, srv.URL) // prime
+
+	resp, err := client.Get(srv.URL) // from cache
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	assert.Equal(t, "chunked-body", string(body))
+	assert.Equal(t, "yes", resp.Header.Get("X-Keep"), "non-framing headers preserved")
+	// Framing headers must not survive into the reconstructed response:
+	// the body length is authoritative via resp.ContentLength.
+	assert.Empty(t, resp.Header.Get("Transfer-Encoding"), "Transfer-Encoding must be stripped")
+	assert.Empty(t, resp.Header.Get("Content-Length"), "Content-Length header must be stripped (ContentLength field is authoritative)")
+	assert.Equal(t, int64(len("chunked-body")), resp.ContentLength)
+}
+
 func get(t *testing.T, c *http.Client, url string) string {
 	t.Helper()
 	resp, err := c.Get(url)

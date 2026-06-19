@@ -21,9 +21,19 @@ type entry struct {
 	Body    []byte              `json:"body"`
 }
 
+// framingHeaders describe the wire framing of the original transfer,
+// not the cached payload: net/http has already dechunked the body and
+// the stored bytes are authoritative for length. Carrying them into a
+// reconstructed response produces inconsistent state (e.g. a chunked
+// Transfer-Encoding alongside an explicit ContentLength, which the HTTP
+// spec forbids), so they are dropped at encode time. decodeEntry sets
+// ContentLength from the stored bytes.
+var framingHeaders = []string{"Content-Length", "Transfer-Encoding", "Connection"}
+
 // encodeEntry serializes resp into the JSON envelope. It drains
 // resp.Body and refills it with a replayable buffer so the response
-// remains usable by the original caller after caching.
+// remains usable by the original caller after caching. Framing headers
+// are stripped from the stored copy (not from resp itself).
 func encodeEntry(resp *http.Response) ([]byte, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -32,9 +42,17 @@ func encodeEntry(resp *http.Response) ([]byte, error) {
 	_ = resp.Body.Close()
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 
+	hdr := resp.Header.Clone()
+	if hdr == nil {
+		hdr = http.Header{}
+	}
+	for _, h := range framingHeaders {
+		hdr.Del(h)
+	}
+
 	return json.Marshal(entry{
 		Status:  resp.StatusCode,
-		Headers: map[string][]string(resp.Header),
+		Headers: map[string][]string(hdr),
 		Body:    body,
 	})
 }

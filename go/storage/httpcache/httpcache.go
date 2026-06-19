@@ -80,13 +80,20 @@ func (t *Transport) load(req *http.Request, key string) (*http.Response, bool) {
 	return resp, true
 }
 
-// save serializes resp and writes it under key with the configured TTL.
-// encodeEntry refills resp.Body so the response stays usable; write
-// errors are intentionally ignored — caching is best-effort.
+// save serializes resp and writes it under key. A positive TTL uses
+// PutWithTTL; a non-positive TTL uses Put so the entry has no expiry
+// (PutWithTTL would otherwise stamp an already-past expiry and the entry
+// would never be served). encodeEntry refills resp.Body so the response
+// stays usable; write errors are intentionally ignored — caching is
+// best-effort.
 func (t *Transport) save(req *http.Request, key string, resp *http.Response) {
 	raw, err := encodeEntry(resp)
 	if err != nil {
 		return
 	}
-	_ = t.store.PutWithTTL(req.Context(), key, raw, t.cfg.ttl)
+	if t.cfg.ttl > 0 {
+		_ = t.store.PutWithTTL(req.Context(), key, raw, t.cfg.ttl)
+		return
+	}
+	_ = t.store.Put(req.Context(), key, raw)
 }

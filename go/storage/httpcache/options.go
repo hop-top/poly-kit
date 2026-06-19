@@ -28,8 +28,8 @@ func newConfig(opts ...Option) config {
 }
 
 // WithTTL sets how long a stored response is served before it is
-// treated as a miss. A non-positive duration falls back to the store's
-// own expiry behavior via PutWithTTL. Default 24h.
+// treated as a miss. A non-positive duration stores entries with no
+// expiry (served until evicted or overwritten). Default 24h.
 func WithTTL(d time.Duration) Option { return func(c *config) { c.ttl = d } }
 
 // WithPrefix overrides the cache-key namespace. Empty restores the
