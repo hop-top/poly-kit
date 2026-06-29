@@ -1,7 +1,7 @@
 # Vendored Presidio PII patterns. AUTO-GENERATED — refresh via
 # `make refresh-pii-rules` when bumping the Presidio pin.
 #
-# Source:  github.com/microsoft/presidio @ 2.2.362
+# Source:  github.com/microsoft/presidio @ 2.2.363
 # License: MIT (see LICENSE in this dir; original Microsoft Presidio © 2020)
 # Refresh: make refresh-pii-rules
 #
