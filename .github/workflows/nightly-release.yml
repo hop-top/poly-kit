@@ -1,5 +1,11 @@
 name: Nightly Release
 
+# Auto-merges the open release-please PR on each integration branch when its
+# CI is green:
+#   next → the prerelease PR (release-please--branches--next)
+#   main → the stable PR    (release-please--branches--main)
+# One matrix leg per branch so both channels advance nightly.
+
 on:
   schedule:
     - cron: '0 4 * * *'
@@ -12,6 +18,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [main, next]
     steps:
       - uses: actions/checkout@v4
 
@@ -19,15 +29,17 @@ jobs:
         id: find-pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: release-please--branches--${{ matrix.branch }}
         run: |
           PR=$(gh pr list \
-            --head release-please--branches--main \
+            --head "$HEAD_BRANCH" \
+            --base "${{ matrix.branch }}" \
             --json number,mergeable,mergeStateStatus \
             --jq '.[0]' 2>/dev/null || echo '{}')
 
           NUMBER=$(echo "$PR" | jq -r '.number // empty')
           if [ -z "$NUMBER" ]; then
-            echo "No release-please PR found"
+            echo "No release-please PR found for ${{ matrix.branch }}"
             echo "found=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -53,6 +65,9 @@ jobs:
             echo "green=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Plain merge (not squash): release-please PRs carry one commit per
+      # package with its own Release-As trailer; squashing collapses them and
+      # loses per-package version attribution.
       - name: Auto-merge release PR
         if: >-
           steps.find-pr.outputs.found == 'true' &&
@@ -60,8 +75,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.find-pr.outputs.number }}
+          BRANCH: ${{ matrix.branch }}
         run: |
           gh pr merge "$PR_NUMBER" \
-            --squash \
+            --merge \
             --auto \
-            --subject "chore: release $(date +%Y-%m-%d)"
+            --subject "chore: release $BRANCH $(date +%Y-%m-%d)"
