@@ -51,6 +51,36 @@ func TestRender_UnknownFormat(t *testing.T) {
 	assert.Error(t, output.Render(&buf, "xml", row{}))
 }
 
+func TestRender_WithCols_RestrictsColumns(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, output.Render(&buf, output.Table, []row{
+		{Name: "xray", Score: 95},
+	}, output.WithCols([]string{"Name"})))
+	out := buf.String()
+	assert.Contains(t, out, "Name")
+	assert.Contains(t, out, "xray")
+	assert.NotContains(t, out, "Score")
+	assert.NotContains(t, out, "95")
+}
+
+func TestRender_WithCols_EmptyMeansAllColumns(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, output.Render(&buf, output.Table, []row{
+		{Name: "grep", Score: 42},
+	}, output.WithCols(nil)))
+	out := buf.String()
+	assert.Contains(t, out, "Name")
+	assert.Contains(t, out, "Score")
+	assert.Contains(t, out, "42")
+}
+
+func TestRender_WithCols_UnknownColumnErrors(t *testing.T) {
+	var buf bytes.Buffer
+	assert.Error(t, output.Render(&buf, output.Table, []row{
+		{Name: "xray", Score: 95},
+	}, output.WithCols([]string{"Nope"})))
+}
+
 func BenchmarkRenderTable(b *testing.B) {
 	data := make([]row, 1000)
 	for i := range data {

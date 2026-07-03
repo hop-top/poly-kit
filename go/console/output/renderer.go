@@ -126,11 +126,11 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 	// files, tests) always fall through to the plain renderer so command
 	// output stays diff-friendly and ANSI-free.
 	if format == Table && cfg.tableStyle != nil && writerIsTTY(w) {
-		if err := renderStyledTable(w, payload, nil, *cfg.tableStyle, cfg.rowEmphasis); err != nil {
+		if err := renderStyledTable(w, payload, cfg.selectedCols, *cfg.tableStyle, cfg.rowEmphasis); err != nil {
 			return err
 		}
 	} else {
-		if err := f.Render(w, payload, nil, nil); err != nil {
+		if err := f.Render(w, payload, nil, cfg.selectedCols); err != nil {
 			return err
 		}
 	}
