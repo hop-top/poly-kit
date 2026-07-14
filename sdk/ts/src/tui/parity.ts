@@ -2,12 +2,15 @@
  * @module tui/parity
  * @package @hop-top/kit
  *
- * Loads tui/parity.json — the cross-language parity constants SoT.
+ * Cross-language parity constants SoT. The canonical file lives at
+ * `contracts/parity/parity.json`; a vendored copy ships next to this
+ * module so the published package is self-contained. A contract-sync
+ * test keeps the two in lockstep.
+ *
  * All TUI modules should import constants from here, not hardcode them.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import parityRaw from './parity.json';
 
 interface ParityData {
   status: {
@@ -30,12 +33,4 @@ interface ParityData {
   };
 }
 
-// Resolve from source, built dist, or current workspace checkout.
-const _candidates = [
-  resolve(__dirname, '..', '..', '..', '..', 'contracts', 'parity', 'parity.json'),
-  resolve(__dirname, '..', '..', '..', '..', '..', 'contracts', 'parity', 'parity.json'),
-  resolve(process.cwd(), 'contracts', 'parity', 'parity.json'),
-];
-const _path = _candidates.find((path) => existsSync(path)) ?? _candidates[0];
-
-export const parity: ParityData = JSON.parse(readFileSync(_path, 'utf8'));
+export const parity: ParityData = parityRaw;
