@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/go/console/tui/parity.json",
+  "description": "Cross-language TUI parity constants. All language implementations MUST load values from here.",
+
+  "status": {
+    "description": "Prefix symbols for status lines. Mirrors Go's InfoType constants in tui/status.go.",
+    "symbols": {
+      "info":    "ℹ",
+      "success": "✓",
+      "error":   "●",
+      "warn":    "▲"
+    }
+  },
+
+  "spinner": {
+    "description": "Braille dot spinner frames and timing.",
+    "frames":      ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+    "interval_ms": 80
+  },
+
+  "anim": {
+    "description": "Gradient character-scramble animation constants.",
+    "runes":        "0123456789abcdefABCDEF~!@#$%^&*()+=_",
+    "interval_ms":  100,
+    "default_width": 10
+  },
+
+  "help": {
+    "description": "Root --help layout contract. Fang is canonical; TS and Python mirror it.",
+    "section_order": ["commands", "flags"],
+    "sections": {
+      "usage":        { "title": "USAGE" },
+      "commands":     { "title": "COMMANDS" },
+      "flags":        { "title": "FLAGS" },
+      "global flags": { "title": "GLOBAL FLAGS" },
+      "arguments":    { "title": "ARGUMENTS" },
+      "aliases":      { "title": "ALIASES" },
+      "examples":     { "title": "EXAMPLES" },
+      "streams":      { "title": "STREAMS" }
+    }
+  },
+
+  "verbosity": {
+    "description": "Stackable -V flag maps count to log level. --quiet overrides to warn.",
+    "flag": "-V",
+    "levels": {
+      "0": "info",
+      "1": "debug",
+      "2": "trace"
+    },
+    "quiet_override": "warn"
+  },
+
+  "streams": {
+    "description": "Per-command named output streams toggled via --stream flag.",
+    "flag": "--stream",
+    "label_format": "[{name}]",
+    "output": "stderr"
+  },
+
+  "table": {
+    "description": "Styled-table contract for the output package. Plain tabwriter is the default; callers opt in to the lipgloss-backed renderer via WithTableStyle. The styled path is gated on writer-is-TTY so non-TTY writers (pipes, files, tests) always emit ANSI-free, diff-friendly output.",
+    "render_option": "WithTableStyle",
+    "tty_only": true,
+    "row_emphasis_kinds": ["none", "primary", "secondary", "muted"],
+    "row_emphasis_option": "RowEmphasis",
+    "border_default": "normal"
+  },
+
+  "extends": [
+    "scope-defaults.json"
+  ]
+}

@@ -7,96 +7,118 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js"
     },
     "./cli": {
+      "types": "./dist/cli.d.ts",
       "require": "./dist/cli.js",
-      "types": "./dist/cli.d.ts"
+      "default": "./dist/cli.js"
     },
     "./output": {
+      "types": "./dist/output.d.ts",
       "require": "./dist/output.js",
-      "types": "./dist/output.d.ts"
+      "default": "./dist/output.js"
     },
     "./xdg": {
+      "types": "./dist/xdg.d.ts",
       "require": "./dist/xdg.js",
-      "types": "./dist/xdg.d.ts"
+      "default": "./dist/xdg.js"
     },
     "./config": {
+      "types": "./dist/config.d.ts",
       "require": "./dist/config.js",
-      "types": "./dist/config.d.ts"
+      "default": "./dist/config.js"
     },
     "./sqlstore": {
+      "types": "./dist/sqlstore.d.ts",
       "require": "./dist/sqlstore.js",
-      "types": "./dist/sqlstore.d.ts"
+      "default": "./dist/sqlstore.js"
     },
     "./upgrade": {
+      "types": "./dist/upgrade.d.ts",
       "require": "./dist/upgrade.js",
-      "types": "./dist/upgrade.d.ts"
+      "default": "./dist/upgrade.js"
     },
     "./llm": {
+      "types": "./dist/llm.d.ts",
       "require": "./dist/llm.js",
-      "types": "./dist/llm.d.ts"
+      "default": "./dist/llm.js"
     },
     "./routellm": {
+      "types": "./dist/routellm.d.ts",
       "require": "./dist/routellm.js",
-      "types": "./dist/routellm.d.ts"
+      "default": "./dist/routellm.js"
     },
     "./alias": {
+      "types": "./dist/alias.d.ts",
       "require": "./dist/alias.js",
-      "types": "./dist/alias.d.ts"
+      "default": "./dist/alias.js"
     },
     "./tui": {
+      "types": "./dist/tui/index.d.ts",
       "require": "./dist/tui/index.js",
-      "types": "./dist/tui/index.d.ts"
+      "default": "./dist/tui/index.js"
     },
     "./errcorrect": {
+      "types": "./dist/errcorrect.d.ts",
       "require": "./dist/errcorrect.js",
-      "types": "./dist/errcorrect.d.ts"
+      "default": "./dist/errcorrect.js"
     },
     "./safety": {
+      "types": "./dist/safety.d.ts",
       "require": "./dist/safety.js",
-      "types": "./dist/safety.d.ts"
+      "default": "./dist/safety.js"
     },
     "./provenance": {
+      "types": "./dist/provenance.d.ts",
       "require": "./dist/provenance.js",
-      "types": "./dist/provenance.d.ts"
+      "default": "./dist/provenance.js"
     },
     "./stream": {
+      "types": "./dist/stream.d.ts",
       "require": "./dist/stream.js",
-      "types": "./dist/stream.d.ts"
+      "default": "./dist/stream.js"
     },
     "./progress": {
+      "types": "./dist/progress.d.ts",
       "require": "./dist/progress.js",
-      "types": "./dist/progress.d.ts"
+      "default": "./dist/progress.js"
     },
     "./auth": {
+      "types": "./dist/auth.d.ts",
       "require": "./dist/auth.js",
-      "types": "./dist/auth.d.ts"
+      "default": "./dist/auth.js"
     },
     "./api": {
+      "types": "./dist/api.d.ts",
       "require": "./dist/api.js",
-      "types": "./dist/api.d.ts"
+      "default": "./dist/api.js"
     },
     "./rpc": {
+      "types": "./dist/rpc.d.ts",
       "require": "./dist/rpc.js",
-      "types": "./dist/rpc.d.ts"
+      "default": "./dist/rpc.js"
     },
     "./aim": {
+      "types": "./dist/aim.d.ts",
       "require": "./dist/aim.js",
-      "types": "./dist/aim.d.ts"
+      "default": "./dist/aim.js"
     },
     "./scope": {
+      "types": "./dist/scope.d.ts",
       "require": "./dist/scope.js",
-      "types": "./dist/scope.d.ts"
+      "default": "./dist/scope.js"
     },
     "./telemetry": {
+      "types": "./dist/telemetry/index.d.ts",
       "require": "./dist/telemetry/index.js",
-      "types": "./dist/telemetry/index.d.ts"
+      "default": "./dist/telemetry/index.js"
     },
     "./id": {
+      "types": "./dist/id/index.d.ts",
       "require": "./dist/id/index.js",
-      "types": "./dist/id/index.d.ts"
+      "default": "./dist/id/index.js"
     }
   },
   "scripts": {
