@@ -6,10 +6,14 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.0...kit-ts/v0.5.0-alpha.1) (2026-07-14)
 
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.1. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
-* **ts:** ESM export conditions + self-contained parity data ([7965a18](https://github.com/hop-top/poly-kit/commit/7965a1800211f669cd324bed4608e4f981f05d15))
+* **ts:** ESM export conditions + self-contained parity data
+
+Full diff: [kit-ts/v0.5.0-alpha.0...kit-ts/v0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.0...kit-ts/v0.5.0-alpha.1)
 
 ## [0.5.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.4.0-alpha.2...kit-ts/v0.5.0-alpha.0) (2026-06-07)
 
