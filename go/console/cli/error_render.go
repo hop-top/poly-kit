@@ -27,11 +27,9 @@ func toCLIError(err error) *output.Error {
 			return out
 		}
 	}
-	return &output.Error{
-		Code:     output.CodeGeneric,
-		Message:  err.Error(),
-		ExitCode: 1,
-	}
+	// WrapError retains err so errors.Is still matches sentinels after the
+	// middleware converts a handler failure into the envelope.
+	return output.WrapError(err, output.CodeGeneric, 1)
 }
 
 // activeFormat returns the --format value visible to cmd. Empty when the

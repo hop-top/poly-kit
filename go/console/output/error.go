@@ -27,6 +27,38 @@ type Error struct {
 	SuggestedFix string   `json:"suggested_fix,omitempty" yaml:"suggested_fix,omitempty"`
 	Alternatives []string `json:"alternatives,omitempty" yaml:"alternatives,omitempty"`
 	ExitCode     int      `json:"exit_code" yaml:"exit_code"`
+
+	// err retains the error this envelope was built from so errors.Is
+	// still matches sentinels after the RunE middleware wraps a handler
+	// failure. Unexported so it stays off the wire: Cause is the
+	// human-readable serialized form, this is the machine-matchable one.
+	err error
+}
+
+// WrapError builds an envelope that preserves err for errors.Is/As while
+// rendering as code and message. Use it wherever an existing error is
+// converted into the envelope; the plain struct literal is fine when there
+// is no underlying error to retain.
+func WrapError(err error, code string, exitCode int) *Error {
+	if err == nil {
+		return nil
+	}
+	return &Error{
+		Code:     code,
+		Message:  err.Error(),
+		ExitCode: exitCode,
+		err:      err,
+	}
+}
+
+// Unwrap exposes the error this envelope was built from, so callers outside
+// the handler can classify failures by sentinel instead of string-matching
+// Message. Returns nil when the envelope was constructed without one.
+func (e *Error) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
 }
 
 // Error implements the error interface so adopters can return *Error
