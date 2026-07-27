@@ -49,20 +49,49 @@ type contextErr struct{ err error }
 func (c *contextErr) Error() string { return "context: " + c.err.Error() }
 func (c *contextErr) Unwrap() error { return c.err }
 
-// Boundary: an adopter error implementing AsCLIError takes the passthrough
-// branch, which returns the adopter's own envelope verbatim. That envelope
-// carries no retained error, so sentinel matching does NOT survive. This is
-// deliberate — the adopter owns the envelope there — and is pinned so the
-// asymmetry is a decision rather than a silent surprise.
-func TestRunE_Middleware_TypedErrorDoesNotRetainSentinel(t *testing.T) {
+// An adopter error implementing AsCLIError takes the passthrough branch. The
+// adopter owns every rendered field there, but the sentinel must still
+// survive: types like conformance.UsageError document that errors.Is identity
+// holds, and the envelope conversion must not quietly break that promise.
+func TestToCLIErrorTypedErrorRetainsSentinel(t *testing.T) {
+	converted := toCLIError(&asCLIErrorStub{err: errHandlerSentinel})
+
+	if !errors.Is(converted, errHandlerSentinel) {
+		t.Errorf("errors.Is through the AsCLIError passthrough = false, want true")
+	}
+}
+
+// Reattaching the sentinel must not disturb the envelope the adopter built.
+func TestToCLIErrorTypedErrorKeepsAdopterFields(t *testing.T) {
 	converted := toCLIError(&asCLIErrorStub{err: errHandlerSentinel})
 
 	if converted.Code != "TYPED" {
-		t.Fatalf("expected the adopter envelope to pass through, got code %q", converted.Code)
+		t.Errorf("Code = %q, want %q", converted.Code, "TYPED")
 	}
-	if errors.Is(converted, errHandlerSentinel) {
-		t.Errorf("AsCLIError passthrough unexpectedly retains the sentinel; " +
-			"if this is now intended, update the output README accordingly")
+	if converted.ExitCode != 7 {
+		t.Errorf("ExitCode = %d, want 7", converted.ExitCode)
+	}
+}
+
+// Adopters commonly return a shared package-level envelope from AsCLIError.
+// Retaining must copy rather than mutate, or one call's error leaks into the
+// next (and concurrent commands race on the same struct).
+func TestToCLIErrorTypedErrorDoesNotMutateSharedEnvelope(t *testing.T) {
+	shared := &output.Error{Code: "SHARED", Message: "shared", ExitCode: 9}
+	first := errors.New("first")
+	second := errors.New("second")
+
+	a := toCLIError(&sharedEnvelopeStub{err: first, env: shared})
+	b := toCLIError(&sharedEnvelopeStub{err: second, env: shared})
+
+	if errors.Unwrap(shared) != nil {
+		t.Errorf("the shared envelope was mutated; Retaining must copy")
+	}
+	if !errors.Is(a, first) || errors.Is(a, second) {
+		t.Errorf("first conversion retained the wrong error")
+	}
+	if !errors.Is(b, second) || errors.Is(b, first) {
+		t.Errorf("second conversion retained the wrong error")
 	}
 }
 
@@ -73,3 +102,12 @@ func (a *asCLIErrorStub) Unwrap() error { return a.err }
 func (a *asCLIErrorStub) AsCLIError() *output.Error {
 	return &output.Error{Code: "TYPED", Message: a.Error(), ExitCode: 7}
 }
+
+type sharedEnvelopeStub struct {
+	err error
+	env *output.Error
+}
+
+func (s *sharedEnvelopeStub) Error() string             { return s.err.Error() }
+func (s *sharedEnvelopeStub) Unwrap() error             { return s.err }
+func (s *sharedEnvelopeStub) AsCLIError() *output.Error { return s.env }

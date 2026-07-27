@@ -51,6 +51,30 @@ func WrapError(err error, code string, exitCode int) *Error {
 	}
 }
 
+// Retaining returns a copy of e that additionally retains err for
+// errors.Is/As, leaving every rendered field untouched. This is for the
+// AsCLIError passthrough path, where the adopter has already built the
+// envelope and owns its Code / Message / ExitCode: the middleware only
+// needs to reattach the error it came from so sentinel matching survives
+// the conversion.
+//
+// Copies rather than mutating because adopters commonly return a shared
+// package-level envelope from AsCLIError; writing to it would be a data
+// race and would leak one call's error into the next. An envelope that
+// already retains an error is returned unchanged, so an adopter using
+// WrapError keeps the chain it chose.
+func (e *Error) Retaining(err error) *Error {
+	if e == nil {
+		return nil
+	}
+	if err == nil || e.err != nil {
+		return e
+	}
+	clone := *e
+	clone.err = err
+	return &clone
+}
+
 // Unwrap exposes the error this envelope was built from, so callers outside
 // the handler can classify failures by sentinel instead of string-matching
 // Message. Returns nil when the envelope was constructed without one.

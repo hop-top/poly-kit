@@ -26,6 +26,7 @@ Pluggable structured output for kit CLIs. Built-in formatters:
 | `EmphasisKind`                 | Enum: `EmphasisNone/Primary/Secondary/Muted`    |
 | `Error`                        | Structured error envelope (code, message, exit code) |
 | `WrapError(err, code, exit)`   | Build an envelope that retains `err` for `errors.Is` |
+| `(*Error).Retaining(err)`      | Copy of the envelope that also retains `err`    |
 
 Format keys are also exposed as constants: `Table`, `JSON`, `YAML`,
 `CSV`, `Text`.
@@ -115,8 +116,8 @@ if err := root.Execute(); err != nil {
 `errors.As` still reaches `*output.Error` itself, so renderers can pull
 the exit code and suggested fix off it.
 
-One boundary: an adopter error implementing `AsCLIError() *output.Error`
-takes a passthrough branch and is rendered as the envelope it returns.
-That envelope retains no underlying error, so sentinel matching does not
-survive it — the adopter owns the envelope there. Build it with
-`WrapError` if you want `errors.Is` to keep working.
+Adopter errors implementing `AsCLIError() *output.Error` are rendered as
+the envelope they return, and the middleware reattaches the originating
+error via `Retaining` so `errors.Is` survives that path too. `Retaining`
+copies rather than mutates, so returning a shared package-level envelope
+from `AsCLIError` stays safe.
