@@ -25,5 +25,8 @@ pub mod kv;
 #[cfg(feature = "httpcache")]
 pub mod httpcache;
 
+#[cfg(feature = "sqlstore")]
+pub mod sqlstore;
+
 #[cfg(feature = "telemetry")]
 pub mod telemetry;

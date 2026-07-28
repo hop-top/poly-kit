@@ -18,6 +18,13 @@ httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Builds on sqldb for connection setup, pragmas and the SQLite engine —
 # no dependencies of its own.
 kv = ["sqldb"]
+sqlstore = ["sqldb", "dep:serde", "dep:serde_json"]
+# Backup/restore through a blob backend. Opt-in so a consumer that only
+# needs local `.dbs/` file backups does not compile the blob module.
+sqlstore-blob = ["sqlstore", "blob"]
+# At-rest value encryption. Opt-in so the base store stays free of the
+# crypto dependency tree.
+sqlstore-encrypt = ["sqlstore", "dep:crypto_secretbox", "dep:hkdf", "dep:sha2"]
 telemetry = [
     "dep:tokio",
     "dep:reqwest",
@@ -43,6 +50,20 @@ sha2 = { version = "0.10", optional = true }
 # encode/decode to owned buffers.
 base64 = { version = "0.22", default-features = false, features = [
     "alloc",
+], optional = true }
+# RustCrypto HKDF. Pinned to 0.12 rather than 0.13 because 0.12 is the line
+# built on the same `digest` 0.10 generation as the pinned sha2 — moving to
+# 0.13 would pull a second copy of sha2 into the tree for no gain.
+hkdf = { version = "0.12", default-features = false, optional = true }
+# NaCl secretbox (XSalsa20-Poly1305), the wire format the Go side uses.
+# RustCrypto's pure-Rust implementation: no libsodium C build, unlike
+# `dryoc`/`sodiumoxide`, and two orders of magnitude more downloads than
+# either. `default-features = false` drops `alloc`'s transitive std pull;
+# `getrandom` supplies the OS RNG for nonces and `salsa20` the cipher core.
+crypto_secretbox = { version = "0.1", default-features = false, features = [
+    "alloc",
+    "getrandom",
+    "salsa20",
 ], optional = true }
 getrandom = { version = "0.2", optional = true }
 dirs = { version = "5", optional = true }
