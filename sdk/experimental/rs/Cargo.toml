@@ -13,6 +13,9 @@ output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
+# Builds on sqldb for connection setup, pragmas and the SQLite engine —
+# no dependencies of its own.
+kv = ["sqldb"]
 telemetry = [
     "dep:tokio",
     "dep:reqwest",
