@@ -19,5 +19,8 @@ pub mod sqldb;
 #[cfg(feature = "kv")]
 pub mod kv;
 
+#[cfg(feature = "httpcache")]
+pub mod httpcache;
+
 #[cfg(feature = "telemetry")]
 pub mod telemetry;

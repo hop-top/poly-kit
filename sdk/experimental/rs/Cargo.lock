@@ -524,6 +524,7 @@ dependencies = [
 name = "hop-top-kit"
 version = "0.5.0-alpha.0"
 dependencies = [
+ "base64",
  "clap",
  "comfy-table",
  "dirs",
