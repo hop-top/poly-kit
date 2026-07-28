@@ -13,5 +13,8 @@ pub mod api;
 #[cfg(feature = "id")]
 pub mod id;
 
+#[cfg(feature = "bus")]
+pub mod bus;
+
 #[cfg(feature = "telemetry")]
 pub mod telemetry;

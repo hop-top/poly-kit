@@ -12,6 +12,7 @@ uri = ["dep:hop-top-cite"]
 output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep:comfy-table"]
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
+bus = ["dep:serde", "dep:serde_json"]
 telemetry = [
     "dep:tokio",
     "dep:reqwest",
