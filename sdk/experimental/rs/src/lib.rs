@@ -10,6 +10,9 @@ pub mod uri;
 #[cfg(feature = "api")]
 pub mod api;
 
+#[cfg(feature = "blob")]
+pub mod blob;
+
 #[cfg(feature = "id")]
 pub mod id;
 
