@@ -2,6 +2,7 @@
 	preflight \
 	tools tools-golangci-lint \
 	test test-go test-go-integration test-ts test-py test-rs test-parity test-parity-typeid \
+	test-parity-kv \
 	proto openapi clients clients-ts clients-php clients-rs clients-test api \
 	job-test job-integration-hatchet job-integration-restate job-integration-temporal \
 	test-workflow test-hook test-release promote promote-alpha promote-beta promote-rc promote-release check \
@@ -80,7 +81,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: test-parity-typeid ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-kv ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -106,6 +107,16 @@ test-parity-typeid: ## TypeID v1 contract loaders across all 5 SDKs
 	else \
 		echo "==> typeid-v1 parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
+
+# Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
+# The Go test drives the Rust half as a `cargo test` subprocess, so this
+# target needs BOTH toolchains — hence its home in test-parity rather
+# than test-go. KV_CROSSLANG gates the cross-process cases so a plain
+# `go test ./...` stays Rust-free; setting it here is what makes the
+# gate live in CI.
+test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
+	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
+	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v
 
 lint: lint-go lint-ts lint-py lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
 
