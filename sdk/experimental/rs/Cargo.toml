@@ -8,6 +8,7 @@ description = "Cross-language CLI UX parity toolkit"
 [features]
 default = []
 api = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio"]
+blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
 output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep:comfy-table"]
 cli = ["output", "dep:clap"]
