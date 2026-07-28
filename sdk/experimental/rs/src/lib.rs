@@ -19,5 +19,8 @@ pub mod id;
 #[cfg(feature = "sqldb")]
 pub mod sqldb;
 
+#[cfg(feature = "sqlstore")]
+pub mod sqlstore;
+
 #[cfg(feature = "telemetry")]
 pub mod telemetry;

@@ -14,6 +14,13 @@ output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
+sqlstore = ["sqldb", "dep:serde", "dep:serde_json"]
+# Backup/restore through a blob backend. Opt-in so a consumer that only
+# needs local `.dbs/` file backups does not compile the blob module.
+sqlstore-blob = ["sqlstore", "blob"]
+# At-rest value encryption. Opt-in so the base store stays free of the
+# crypto dependency tree.
+sqlstore-encrypt = ["sqlstore", "dep:crypto_secretbox", "dep:hkdf", "dep:sha2"]
 telemetry = [
     "dep:tokio",
     "dep:reqwest",
@@ -34,6 +41,20 @@ serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 serde_yaml = { version = "0.9", optional = true }
 sha2 = { version = "0.10", optional = true }
+# RustCrypto HKDF. Pinned to 0.12 rather than 0.13 because 0.12 is the line
+# built on the same `digest` 0.10 generation as the pinned sha2 — moving to
+# 0.13 would pull a second copy of sha2 into the tree for no gain.
+hkdf = { version = "0.12", default-features = false, optional = true }
+# NaCl secretbox (XSalsa20-Poly1305), the wire format the Go side uses.
+# RustCrypto's pure-Rust implementation: no libsodium C build, unlike
+# `dryoc`/`sodiumoxide`, and two orders of magnitude more downloads than
+# either. `default-features = false` drops `alloc`'s transitive std pull;
+# `getrandom` supplies the OS RNG for nonces and `salsa20` the cipher core.
+crypto_secretbox = { version = "0.1", default-features = false, features = [
+    "alloc",
+    "getrandom",
+    "salsa20",
+], optional = true }
 getrandom = { version = "0.2", optional = true }
 dirs = { version = "5", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
