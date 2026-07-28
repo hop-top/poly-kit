@@ -6,6 +6,8 @@ experimental Rust client SDK.
 
 - [`src/id/`](src/id/) — TypeID primitive (cross-language; see
   [ADR 0001](../../../docs/adr/0001-typeid-primitive.md))
+- [`src/bus/`](src/bus/) — in-process event bus (feature `bus`; see
+  [Bus](#bus))
 
 ## URI facade
 
@@ -121,5 +123,89 @@ collector that re-emits via `go/core/redact`.
 - Schema doc: [`sdk/docs/telemetry-event-schema.md`](../../docs/telemetry-event-schema.md).
 - Go canonical implementation:
   [`go/runtime/telemetry/README.md`](../../../go/runtime/telemetry/README.md).
+
+## Bus
+
+In-process event bus, feature-gated. Ports the core of the Go canonical
+runtime (`go/runtime/bus`): the `Topic` type and its wildcard matching,
+both topic validators, the `Event` envelope, `Qualifiers`, and in-memory
+publish/subscribe dispatch.
+
+```toml
+[dependencies]
+hop-top-kit = { version = "0.5.0-alpha.0", features = ["bus"] }
+```
+
+```bash
+cargo build --features bus
+cargo test  --features bus
+```
+
+Adds no dependencies beyond `serde` and `serde_json`, which the SDK
+already carries.
+
+### Topic notation
+
+Topics follow `[Source].[Category].[Object].[Action]`, with a past-tense
+action segment — `crm.sales.deal.created`, `billing.finance.invoice.paid`.
+
+Two validators exist, deliberately, with different strictness:
+
+| Function | Contract | Used by |
+|----------|----------|---------|
+| `validate` | 4 segments matching `^[a-z][a-z0-9_]*$`, total length <= 128, wildcards rejected. Does not check verb tense. | `Bus::publish`, per the configured `Mode`. |
+| `validate_topic` | Additionally requires a past-tense action segment (ends in `ed`, or appears in `PAST_TENSE_WHITELIST`). | `prefix_topics`, so misconfigured topic maps fail during adopter wiring. |
+
+Subscribe patterns keep wildcard support: `*` matches exactly one
+segment, `#` matches zero or more trailing segments and must come last.
+
+### Quick start
+
+```rust
+use hop_top_kit::bus::{Bus, Event, Mode};
+use serde_json::json;
+
+let mut bus = Bus::builder().enforce(Mode::Strict).build();
+bus.subscribe("crm.sales.deal.*", |e| {
+    println!("{} from {}", e.topic, e.source);
+    Ok(())
+});
+
+let event = Event::new("crm.sales.deal.created", "crm", json!({"id": 1}));
+bus.publish(&event).unwrap();
+```
+
+`Bus::subscribe` needs `&mut self` while `publish` needs `&self`. When
+handlers are registered in one place and events published in another,
+wrap the bus in `SharedBus`, which hands out cheap clones over a single
+`RefCell`.
+
+### Dispatch is synchronous
+
+Delivery runs inline on the publisher's thread, in subscription order,
+and the first handler error vetoes the publish. The Go package's
+async-handler path — goroutine pool, bounding semaphore, `WaitGroup`
+drained by `Close` under a deadline — is **not** ported. No Rust consumer
+needs concurrent delivery, and a faithful port would make an async
+runtime a hard dependency of this feature. See the `bus::mem` module
+docs for the decision in full.
+
+Consequence: a slow handler blocks the publisher, and `publish` returns
+only once every matching subscriber has run. Handlers that want to defer
+work should spawn a task themselves.
+
+### Not ported
+
+The Go package's `NetworkAdapter` (WebSocket peer relay, reconnect and
+backoff, star topology, auth handshake) and its SQLite adapter are
+deliberately absent, as are kv's etcd/TiDB backends and blob's S3
+backend. See [ADR 0004](../../../docs/adr/0004-rust-sdk-omits-distributed-backends.md)
+for the rationale and for what to build should cross-process eventing
+become a real requirement.
+
+### Cross-references
+
+- Go canonical implementation:
+  [`go/runtime/bus/README.md`](../../../go/runtime/bus/README.md).
 
 <!-- release: track hop-top-cite 0.1.0 -->
