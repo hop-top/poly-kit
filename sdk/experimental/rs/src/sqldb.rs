@@ -34,6 +34,8 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+use std::thread;
+use std::time::Duration;
 
 use rusqlite::Connection;
 use thiserror::Error;
@@ -234,16 +236,100 @@ pub fn apply_pragmas(conn: &Connection, opts: &Options) -> Result<(), SqlDbError
         })?;
 
     if opts.wal_enabled() {
-        // journal_mode returns the resulting mode as a row, so it must be
-        // queried rather than issued as a plain update.
-        conn.pragma_update_and_check(None, "journal_mode", "WAL", |_| Ok(()))
-            .map_err(|source| SqlDbError::Pragma {
-                pragma: "journal_mode=WAL".to_string(),
-                source,
-            })?;
+        set_wal(conn)?;
     }
 
     Ok(())
+}
+
+/// Attempts at converting the journal to WAL before giving up.
+const WAL_ATTEMPTS: u32 = 10;
+
+/// Base delay between WAL conversion attempts. Doubles per attempt,
+/// summing to roughly 1s of waiting across [`WAL_ATTEMPTS`].
+const WAL_RETRY_BASE: Duration = Duration::from_millis(2);
+
+/// Switches the journal to WAL, tolerating a concurrent first-open race.
+///
+/// Converting a database from rollback journal to WAL takes an exclusive
+/// lock. SQLite acquires that lock *without* consulting the busy handler,
+/// so the connection's `busy_timeout` cannot absorb the contention: when
+/// several processes open one brand-new file at the same moment, the
+/// losers get `SQLITE_BUSY` back in microseconds rather than waiting.
+///
+/// The contention is transient — it lasts only as long as one racer's
+/// conversion — and another racer finishing the job is a success, not a
+/// failure. So retry with bounded exponential backoff, re-reading the
+/// mode each round: whoever wins, everyone ends up on WAL.
+///
+/// Retry is chosen over a process-global lock deliberately. A mutex would
+/// only order threads inside one process, and cross-process access to a
+/// single database file is a hard requirement here; backoff is the only
+/// option that holds when the racers are separate processes.
+///
+/// Only `SQLITE_BUSY` is retried. Every other error, and a mode that
+/// settles on something other than WAL, propagates to the caller.
+fn set_wal(conn: &Connection) -> Result<(), SqlDbError> {
+    let pragma = || SqlDbError::Pragma {
+        pragma: "journal_mode=WAL".to_string(),
+        source: rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some("journal_mode=WAL still busy after retries".to_string()),
+        ),
+    };
+
+    let mut delay = WAL_RETRY_BASE;
+
+    for attempt in 0..WAL_ATTEMPTS {
+        // A racer may already have converted the file; that is a success.
+        if journal_mode(conn)?.eq_ignore_ascii_case("wal") {
+            return Ok(());
+        }
+
+        // journal_mode returns the resulting mode as a row, so it must be
+        // queried rather than issued as a plain update.
+        match conn.pragma_update_and_check(None, "journal_mode", "WAL", |_| Ok(())) {
+            Ok(()) => return Ok(()),
+            Err(source) if is_busy(&source) => {
+                if attempt + 1 == WAL_ATTEMPTS {
+                    break;
+                }
+                thread::sleep(delay);
+                delay = delay.saturating_mul(2);
+            }
+            Err(source) => {
+                return Err(SqlDbError::Pragma {
+                    pragma: "journal_mode=WAL".to_string(),
+                    source,
+                })
+            }
+        }
+    }
+
+    // Retries exhausted. One last check: a racer may have landed WAL
+    // between the final attempt and now.
+    if journal_mode(conn)?.eq_ignore_ascii_case("wal") {
+        return Ok(());
+    }
+
+    Err(pragma())
+}
+
+/// Reads the current journal mode.
+fn journal_mode(conn: &Connection) -> Result<String, SqlDbError> {
+    conn.query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
+        .map_err(|source| SqlDbError::Pragma {
+            pragma: "journal_mode".to_string(),
+            source,
+        })
+}
+
+/// Reports whether `err` is a `SQLITE_BUSY` failure.
+fn is_busy(err: &rusqlite::Error) -> bool {
+    matches!(
+        err.sqlite_error().map(|e| e.code),
+        Some(rusqlite::ErrorCode::DatabaseBusy)
+    )
 }
 
 /// Creates or opens a SQLite database with standard pragmas applied.
