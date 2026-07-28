@@ -141,13 +141,30 @@ Protobuf definitions for cross-language CRUD (`v1`) and RouteL2M
 | `hop_top_kit.xdg` | `core/xdg` |
 | `hop_top_kit.config` | `core/config` |
 | `hop_top_kit.telemetry` | `runtime/telemetry` |
-| `kit_rs::telemetry` *(experimental)* | `runtime/telemetry` |
+| `hop_top_kit::telemetry` *(experimental)* | `runtime/telemetry` |
+| `hop_top_kit::bus` *(experimental)* | `runtime/bus` (core only; sync dispatch) |
+| `hop_top_kit::sqldb` *(experimental)* | `storage/sqldb` |
+| `hop_top_kit::kv` *(experimental)* | `storage/kv` (SQLite backend only) |
+| `hop_top_kit::blob` *(experimental)* | `storage/blob` (local backend only) |
+| `hop_top_kit::sqlstore` *(experimental)* | `storage/sqlstore` |
+| `hop_top_kit::httpcache` *(experimental)* | `storage/httpcache` |
 | `HopTop\Kit\Telemetry` *(experimental)* | `runtime/telemetry` |
 
+Every Rust module is feature-gated, and the crate's default feature set is
+empty. Distributed backends are deliberately absent from the Rust SDK — see
+[ADR 0004](../../adr/0004-rust-sdk-omits-distributed-backends.md).
+
 Parity is enforced via `make test-parity` against shared contract
-fixtures. Telemetry envelopes additionally pass byte-identical
+fixtures. Two subsystems go further than fixture comparison. Telemetry
+envelopes pass byte-identical
 through the cross-language harness at
-[`sdk/tests/cross-lang/`](../../../sdk/tests/cross-lang/).
+[`sdk/tests/cross-lang/`](../../../sdk/tests/cross-lang/). The kv SQLite
+backend is gated by `make test-parity-kv`, which runs one language's
+implementation as a subprocess of another's test so that a single SQLite
+file is genuinely written by one and read by the other — a mismatch in how
+keys bind to SQLite storage classes passes both languages' own suites by
+construction, so only a cross-process test can catch it. See
+[`go/storage/kv/README.md`](../../../go/storage/kv/README.md).
 
 ## Public surfaces
 

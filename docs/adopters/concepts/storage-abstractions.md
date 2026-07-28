@@ -51,6 +51,9 @@ Interface: `Put` / `Get` / `Delete` / `List` / `Exists`.
 - Adapters: `blob/local` (filesystem), `blob/s3` (AWS S3).
 - Serves as destination for automated backups via the backup
   scheduler.
+- `blob/local` writes atomically: contents are staged in a temp file and
+  renamed into place, so a concurrent `Get` never sees a partial blob and
+  a failed write leaves the previous value intact.
 
 Use when: file storage, backups, large payloads, media.
 
