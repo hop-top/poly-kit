@@ -190,3 +190,49 @@ fn open_preserves_dsn_query() {
 fn must_open_panics() {
     let _ = must_open(Options::new(""));
 }
+
+/// Racing opens of one brand-new file must all succeed on WAL.
+///
+/// Converting a fresh database from rollback journal to WAL takes an
+/// exclusive lock that SQLite acquires without consulting the busy
+/// handler, so `busy_timeout` does not cover it. Every racer must still
+/// end up with a usable WAL connection.
+///
+/// Threads stand in for the processes this guards against: the retry is
+/// backoff on the losing connection, not in-process coordination, so the
+/// same path runs whether the racers share an address space or not.
+#[test]
+fn concurrent_first_open_converges_on_wal() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // Several fresh files: the race only exists on the very first open
+    // of a given path, so one file gives one chance to hit it.
+    for round in 0..16 {
+        let path = dir.path().join(format!("race{round}.db"));
+        let path = path.to_str().unwrap().to_string();
+        let threads = 8;
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(threads));
+
+        let handles: Vec<_> = (0..threads)
+            .map(|_| {
+                let path = path.clone();
+                let barrier = std::sync::Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    let db = open(Options::new(&path)).map_err(|e| e.to_string())?;
+                    db.query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
+                        .map_err(|e| e.to_string())
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            let mode = handle.join().expect("thread panicked");
+            assert_eq!(
+                mode.as_deref().map(str::to_lowercase),
+                Ok("wal".to_string()),
+                "round {round}: got {mode:?}"
+            );
+        }
+    }
+}
