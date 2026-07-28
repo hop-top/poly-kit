@@ -16,6 +16,9 @@ pub mod blob;
 #[cfg(feature = "id")]
 pub mod id;
 
+#[cfg(feature = "bus")]
+pub mod bus;
+
 #[cfg(feature = "sqldb")]
 pub mod sqldb;
 

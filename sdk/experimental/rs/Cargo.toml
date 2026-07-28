@@ -13,6 +13,7 @@ uri = ["dep:hop-top-cite"]
 output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep:comfy-table"]
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
+bus = ["dep:serde", "dep:serde_json"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
 httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Builds on sqldb for connection setup, pragmas and the SQLite engine —
