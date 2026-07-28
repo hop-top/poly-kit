@@ -13,6 +13,7 @@ output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
 sqldb = ["dep:rusqlite", "dep:thiserror"]
+httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
 # Builds on sqldb for connection setup, pragmas and the SQLite engine —
 # no dependencies of its own.
 kv = ["sqldb"]
@@ -36,6 +37,12 @@ serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 serde_yaml = { version = "0.9", optional = true }
 sha2 = { version = "0.10", optional = true }
+# `default-features = false` drops the std/simd defaults: the envelope
+# codec needs only the standard alphabet, and `alloc` is what supplies
+# encode/decode to owned buffers.
+base64 = { version = "0.22", default-features = false, features = [
+    "alloc",
+], optional = true }
 getrandom = { version = "0.2", optional = true }
 dirs = { version = "5", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
