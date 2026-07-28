@@ -13,5 +13,8 @@ pub mod api;
 #[cfg(feature = "id")]
 pub mod id;
 
+#[cfg(feature = "sqldb")]
+pub mod sqldb;
+
 #[cfg(feature = "telemetry")]
 pub mod telemetry;
