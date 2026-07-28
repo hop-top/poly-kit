@@ -5,6 +5,8 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -16,6 +18,11 @@ static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Buffer size used when streaming a blob into its staging file.
 const COPY_BUF: usize = 64 * 1024;
+
+/// Mode applied to stored blobs, matching the Go backend. Owner read/write
+/// plus group read; never world-readable, since blobs may hold backups.
+#[cfg(unix)]
+const BLOB_MODE: u32 = 0o640;
 
 /// A filesystem-backed blob store rooted at a directory.
 #[derive(Debug, Clone)]
@@ -151,6 +158,14 @@ impl Store for LocalStore {
         if let Err(e) = staged {
             let _ = fs::remove_file(&tmp);
             return Err(BlobError::io("write", e));
+        }
+        // Match the Go backend's 0640 on the staged file before it becomes
+        // visible at the destination. Rust creates files at 0666 & ~umask,
+        // typically 0644, which would publish blobs world-readable.
+        #[cfg(unix)]
+        if let Err(e) = fs::set_permissions(&tmp, PermissionsExt::from_mode(BLOB_MODE)) {
+            let _ = fs::remove_file(&tmp);
+            return Err(BlobError::io("chmod", e));
         }
         if let Err(e) = fs::rename(&tmp, &dest) {
             let _ = fs::remove_file(&tmp);

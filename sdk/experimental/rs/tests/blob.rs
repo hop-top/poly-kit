@@ -210,3 +210,26 @@ fn list_skips_temp_files() {
     assert_eq!(objs.len(), 1);
     assert_eq!(objs[0].key, "real.txt");
 }
+
+/// Stored blobs must not be world-readable. Rust creates files at
+/// `0666 & ~umask` (typically 0644), so `put` narrows to 0640 before the
+/// rename, matching the Go backend.
+#[cfg(unix)]
+#[test]
+fn put_stores_blob_not_world_readable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (dir, s) = setup();
+    s.put("secret.bin", "sensitive".as_bytes(), "")
+        .expect("put");
+
+    let mode = fs::metadata(dir.path().join("secret.bin"))
+        .expect("stat")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(
+        mode, 0o640,
+        "got {mode:o}, want 640 to match the Go backend"
+    );
+}
