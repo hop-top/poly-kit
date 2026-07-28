@@ -4,13 +4,24 @@
 //! [`TtlStore`] adds expiry, and [`SqliteStore`] implements both on top of
 //! the [`crate::sqldb`] primitive.
 //!
-//! # Keys are bytes
+//! # Keys are bytes, stored as TEXT
 //!
 //! Go models keys as `string`, which is an arbitrary byte sequence — the
 //! suite exercises prefixes such as `"data\xff"` that are not valid UTF-8.
-//! Rust `String` cannot hold those, so keys are `[u8]` here and stored as
-//! `BLOB`. SQLite compares blobs with `memcmp`, which is exactly the
-//! ordering Go's string comparison uses, so range scans behave identically.
+//! Rust `String` cannot hold those, so the API takes `[u8]`.
+//!
+//! The column is nonetheless `TEXT`, matching the Go schema. Both halves
+//! matter and neither is negotiable: SQLite treats TEXT and BLOB as
+//! distinct storage classes and compares storage class before value, so a
+//! blob-bound key never equals a text-bound one. A BLOB column would make
+//! every cross-language read a silent miss, turn `INSERT OR REPLACE` into
+//! a shadow row, and leave prefix ranges disjoint. Keys therefore bind
+//! through [`TextKey`], which hands SQLite the raw bytes as TEXT with no
+//! UTF-8 validation, and read back through [`key_bytes`].
+//!
+//! TEXT keeps the ordering Go relies on: the default `BINARY` collation is
+//! `memcmp` over the stored bytes, identical to Go's string comparison, so
+//! range scans behave the same in both languages even for non-UTF-8 keys.
 //! [`SqliteStore::put_str`] and friends are provided for the common
 //! UTF-8 case.
 //!
@@ -34,10 +45,35 @@
 use std::cell::Cell;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::Connection;
+use rusqlite::types::{ToSql, ToSqlOutput, ValueRef};
+use rusqlite::{Connection, Row};
 use thiserror::Error;
 
 use crate::sqldb::{self, Options, SqlDbError};
+
+/// Binds arbitrary bytes as a SQLite `TEXT` value.
+///
+/// `rusqlite`'s stock `&[u8]` binding produces a `BLOB`, and `&str` cannot
+/// carry the non-UTF-8 keys Go writes. `ValueRef::Text` reaches
+/// `sqlite3_bind_text64` directly, which copies the bytes verbatim and
+/// never validates them as UTF-8 — the only binding that matches what Go's
+/// driver does with a `string`.
+struct TextKey<'a>(&'a [u8]);
+
+impl ToSql for TextKey<'_> {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(ToSqlOutput::Borrowed(ValueRef::Text(self.0)))
+    }
+}
+
+/// Reads column `idx` of `row` as raw key bytes.
+///
+/// `row.get::<_, Vec<u8>>` rejects a `TEXT` column outright with
+/// `InvalidColumnType`, and `String` would reject non-UTF-8 keys, so the
+/// value is taken by reference and unwrapped to its bytes.
+fn key_bytes(row: &Row<'_>, idx: usize) -> rusqlite::Result<Vec<u8>> {
+    Ok(row.get_ref(idx)?.as_bytes().map(<[u8]>::to_vec)?)
+}
 
 /// Sweep expired rows once every this many successful writes.
 ///
@@ -217,11 +253,13 @@ impl SqliteStore {
     pub fn new(path: &str) -> Result<Self, KvError> {
         let conn = sqldb::open(Options::new(path)).map_err(KvError::Open)?;
 
-        // BLOB key column: Go keys are arbitrary bytes, and SQLite orders
-        // blobs by memcmp — the same ordering the Go range scan assumes.
+        // TEXT key column, byte-for-byte the Go schema. `CREATE TABLE IF
+        // NOT EXISTS` means whichever process opens the file first wins,
+        // so the two declarations must agree or the loser silently adopts
+        // a mismatched affinity.
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS kv (
-                key        BLOB PRIMARY KEY,
+                key        TEXT PRIMARY KEY,
                 value      BLOB NOT NULL,
                 expires_at INTEGER
             );
@@ -288,7 +326,7 @@ impl Store for SqliteStore {
         self.conn
             .execute(
                 "INSERT OR REPLACE INTO kv (key, value, expires_at) VALUES (?1, ?2, NULL)",
-                (key, value),
+                (TextKey(key), value),
             )
             .map_err(KvError::Query)?;
         self.maybe_sweep();
@@ -299,7 +337,7 @@ impl Store for SqliteStore {
         let found = self.conn.query_row(
             "SELECT value FROM kv
              WHERE key = ?1 AND (expires_at IS NULL OR expires_at > ?2)",
-            (key, now_millis()),
+            (TextKey(key), now_millis()),
             |row| row.get::<_, Vec<u8>>(0),
         );
         match found {
@@ -311,7 +349,7 @@ impl Store for SqliteStore {
 
     fn delete(&self, key: &[u8]) -> Result<(), KvError> {
         self.conn
-            .execute("DELETE FROM kv WHERE key = ?1", [key])
+            .execute("DELETE FROM kv WHERE key = ?1", [TextKey(key)])
             .map_err(KvError::Query)?;
         Ok(())
     }
@@ -323,25 +361,30 @@ impl Store for SqliteStore {
         // Three shapes, matching Go: unbounded (empty prefix), lower-bound
         // only (all-0xff prefix, which has no successor), and half-open
         // range for everything else.
-        let (sql, params): (String, Vec<rusqlite::types::Value>) = if prefix.is_empty() {
-            (format!("SELECT key FROM kv WHERE {live}"), vec![now.into()])
-        } else if let Some(end) = prefix_end(prefix) {
+        //
+        // Both bounds bind as TEXT. A blob bound would sort into a
+        // different storage class than the stored keys, so the range would
+        // never intersect them and the scan would silently return nothing.
+        let end = prefix_end(prefix);
+        let lo = TextKey(prefix);
+        let hi = end.as_deref().map(TextKey);
+        let (sql, params): (String, Vec<&dyn ToSql>) = if prefix.is_empty() {
+            (format!("SELECT key FROM kv WHERE {live}"), vec![&now])
+        } else if let Some(hi) = hi.as_ref() {
             (
                 format!("SELECT key FROM kv WHERE key >= ? AND key < ? AND {live}"),
-                vec![prefix.to_vec().into(), end.into(), now.into()],
+                vec![&lo, hi, &now],
             )
         } else {
             (
                 format!("SELECT key FROM kv WHERE key >= ? AND {live}"),
-                vec![prefix.to_vec().into(), now.into()],
+                vec![&lo, &now],
             )
         };
 
         let mut stmt = self.conn.prepare(&sql).map_err(KvError::Query)?;
         let rows = stmt
-            .query_map(rusqlite::params_from_iter(params), |row| {
-                row.get::<_, Vec<u8>>(0)
-            })
+            .query_map(rusqlite::params_from_iter(params), |row| key_bytes(row, 0))
             .map_err(KvError::Query)?;
 
         rows.collect::<Result<Vec<_>, _>>().map_err(KvError::Query)
@@ -354,7 +397,7 @@ impl TtlStore for SqliteStore {
         self.conn
             .execute(
                 "INSERT OR REPLACE INTO kv (key, value, expires_at) VALUES (?1, ?2, ?3)",
-                (key, value, expires),
+                (TextKey(key), value, expires),
             )
             .map_err(KvError::Query)?;
         self.maybe_sweep();

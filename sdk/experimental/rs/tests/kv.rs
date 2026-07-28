@@ -228,6 +228,18 @@ fn concurrent_access() {
     // Connection is not Sync, so each thread opens its own connection to
     // the same file — the contention the WAL + busy_timeout pragmas from
     // `sqldb::open` exist to absorb.
+    //
+    // KNOWN FLAKE, roughly 1 run in 20: `SqliteStore::new` fails with
+    // `Pragma { pragma: "journal_mode=WAL", DatabaseBusy }`. The cause is
+    // in `sqldb::apply_pragmas`, not here. Converting a fresh database
+    // from rollback journal to WAL needs an exclusive lock, and SQLite
+    // does not invoke the busy handler for that transition, so a
+    // `busy_timeout` set on the same connection cannot absorb it: every
+    // thread but the winner gets SQLITE_BUSY immediately. All 20 threads
+    // race to convert the same brand-new file here, which is exactly the
+    // shape that triggers it. Fixing it means retrying (or serialising)
+    // the journal_mode pragma inside `sqldb::open`, which is outside this
+    // module.
     let dir = tempfile::tempdir().unwrap();
     let path = Arc::new(dir.path().join("test.db").to_str().unwrap().to_string());
 
