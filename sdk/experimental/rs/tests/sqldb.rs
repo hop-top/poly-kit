@@ -5,7 +5,9 @@
 
 use std::collections::BTreeMap;
 
-use hop_top_kit::sqldb::{migrate, must_open, open, Options, SqlDbError, DEFAULT_BUSY_TIMEOUT_MS};
+use hop_top_kit::sqldb::{
+    migrate, must_open, open, Options, SqlDbError, DEFAULT_BUSY_TIMEOUT_MS, MAX_WAL_RETRY_BASE_MS,
+};
 
 fn migrations() -> BTreeMap<i64, String> {
     let mut m = BTreeMap::new();
@@ -235,4 +237,195 @@ fn concurrent_first_open_converges_on_wal() {
             );
         }
     }
+}
+
+/// Holds a shared read lock on a fresh non-WAL database.
+///
+/// A read lock is what makes this harness usable: it blocks the exclusive
+/// lock the WAL conversion needs, while still permitting the `PRAGMA
+/// journal_mode` reads the retry loop performs each round. An EXCLUSIVE
+/// lock would instead fail those reads outright, short-circuiting the
+/// loop before any retry budget is consumed.
+fn blocked_wal_db(dir: &std::path::Path, name: &str) -> (rusqlite::Connection, String) {
+    let path = dir.join(name);
+    let path = path.to_str().unwrap().to_string();
+
+    let holder = open(Options::new(&path).with_wal(false)).unwrap();
+    holder.execute_batch("CREATE TABLE t (x)").unwrap();
+    holder.execute_batch("BEGIN").unwrap();
+    let _: i64 = holder
+        .query_row("SELECT count(*) FROM t", [], |row| row.get(0))
+        .unwrap();
+
+    (holder, path)
+}
+
+/// A deliberately tiny budget must give up fast, and give up *loudly*.
+///
+/// The contract being pinned: exhaustion is an error mentioning the WAL
+/// pragma, never a silent downgrade to a rollback-journal connection.
+#[test]
+fn wal_retry_tiny_budget_fails_loudly() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_holder, path) = blocked_wal_db(dir.path(), "tiny.db");
+
+    let start = std::time::Instant::now();
+    let err = open(
+        Options::new(&path)
+            .with_busy_timeout(1)
+            .with_wal_retry(2, 1),
+    )
+    .expect_err("WAL conversion should not succeed against a held read lock");
+
+    let msg = err.to_string();
+    assert!(
+        matches!(err, SqlDbError::Pragma { .. }),
+        "expected a pragma error, got {err:?}"
+    );
+    assert!(
+        msg.contains("journal_mode=WAL"),
+        "error must name the failing pragma: {msg}"
+    );
+
+    // 2 attempts at a 1ms base is a handful of milliseconds; a generous
+    // bound still proves the budget, not busy_timeout, ended it.
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(2),
+        "tiny budget took {:?} — not fast-failing",
+        start.elapsed()
+    );
+}
+
+/// A wider budget must actually spend more time before giving up.
+///
+/// Same permanently-blocked database, so both budgets are exhausted; the
+/// only variable is how long each is willing to wait. That the wider one
+/// waits measurably longer is what proves the knob reaches the retry
+/// loop rather than being decorative.
+#[test]
+fn wal_retry_wider_budget_waits_longer() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let (_h1, tiny_path) = blocked_wal_db(dir.path(), "narrow.db");
+    let start = std::time::Instant::now();
+    open(
+        Options::new(&tiny_path)
+            .with_busy_timeout(1)
+            .with_wal_retry(1, 1),
+    )
+    .expect_err("held read lock must block conversion");
+    let tiny = start.elapsed();
+
+    let (_h2, wide_path) = blocked_wal_db(dir.path(), "wide.db");
+    let start = std::time::Instant::now();
+    open(
+        Options::new(&wide_path)
+            .with_busy_timeout(1)
+            .with_wal_retry(6, 10),
+    )
+    .expect_err("held read lock must block conversion");
+    let wide = start.elapsed();
+
+    // Wide schedule sleeps 10+20+40+80+160 = 310ms across its 6 attempts;
+    // the tiny one sleeps not at all. Assert well under that to stay
+    // robust on a loaded runner, while still separating the two.
+    assert!(
+        wide > tiny,
+        "wider budget did not wait longer: wide={wide:?} tiny={tiny:?}"
+    );
+    assert!(
+        wide >= std::time::Duration::from_millis(150),
+        "wider budget barely waited: {wide:?}"
+    );
+}
+
+/// Releasing the lock mid-retry must let a wide budget converge on WAL.
+///
+/// The tiny budget expires before the lock lifts and fails; the wide one
+/// outlasts it and succeeds. This is the retry loop's whole purpose —
+/// that a racer finishing its work turns a failure into a success.
+#[test]
+fn wal_retry_wide_budget_survives_transient_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let (holder, path) = blocked_wal_db(dir.path(), "transient.db");
+
+    // Tiny budget, lock still held: must fail.
+    open(
+        Options::new(&path)
+            .with_busy_timeout(1)
+            .with_wal_retry(1, 1),
+    )
+    .expect_err("tiny budget must not outlast a held lock");
+
+    // Release the lock shortly after the wide open starts retrying.
+    let handle = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        holder.execute_batch("ROLLBACK").unwrap();
+        drop(holder);
+    });
+
+    let db = open(
+        Options::new(&path)
+            .with_busy_timeout(1)
+            .with_wal_retry(20, 5),
+    )
+    .expect("wide budget should outlast a transient lock");
+
+    handle.join().unwrap();
+
+    let mode: String = db
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(mode.to_lowercase(), "wal", "got journal_mode={mode}");
+}
+
+/// Out-of-range knobs are clamped into the working range, not rejected.
+///
+/// Absurd input must still produce a usable connection — the documented
+/// clamp-don't-error contract, matching `busy_timeout`.
+#[test]
+fn wal_retry_out_of_range_still_opens() {
+    let dir = tempfile::tempdir().unwrap();
+
+    for (i, (attempts, base)) in [(0u32, 0i64), (0, -1), (u32::MAX, i64::MAX), (1, i64::MIN)]
+        .into_iter()
+        .enumerate()
+    {
+        let path = dir.path().join(format!("clamp{i}.db"));
+        let db = open(Options::new(path.to_str().unwrap()).with_wal_retry(attempts, base))
+            .unwrap_or_else(|e| panic!("attempts={attempts} base={base} failed: {e}"));
+
+        let mode: String = db
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            mode.to_lowercase(),
+            "wal",
+            "attempts={attempts} base={base}"
+        );
+    }
+}
+
+/// An uncontended open must not sleep, whatever the configured budget.
+///
+/// Guards against a regression where the loop sleeps before its first
+/// attempt: with a 60s base that would be immediately obvious here.
+#[test]
+fn wal_retry_does_not_sleep_when_uncontended() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("fast.db");
+
+    let start = std::time::Instant::now();
+    let db = open(Options::new(path.to_str().unwrap()).with_wal_retry(32, MAX_WAL_RETRY_BASE_MS))
+        .unwrap();
+    let elapsed = start.elapsed();
+
+    let mode: String = db
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(mode.to_lowercase(), "wal");
+    assert!(
+        elapsed < std::time::Duration::from_secs(1),
+        "uncontended open slept: {elapsed:?}"
+    );
 }

@@ -46,6 +46,34 @@ pub const MEMORY: &str = ":memory:";
 /// Default busy timeout in milliseconds when unset or non-positive.
 pub const DEFAULT_BUSY_TIMEOUT_MS: i64 = 5000;
 
+/// Default number of `journal_mode=WAL` conversion attempts when unset
+/// or non-positive. See [`Options::wal_retry_attempts`].
+pub const DEFAULT_WAL_RETRY_ATTEMPTS: u32 = 10;
+
+/// Upper bound on [`Options::wal_retry_attempts`]. Larger requests are
+/// clamped.
+pub const MAX_WAL_RETRY_ATTEMPTS: u32 = 32;
+
+/// Default base delay in milliseconds between `journal_mode=WAL`
+/// conversion attempts when unset or non-positive. Doubles per attempt.
+pub const DEFAULT_WAL_RETRY_BASE_MS: i64 = 2;
+
+/// Upper bound on [`Options::wal_retry_base_ms`]. Larger requests are
+/// clamped. One minute per attempt is already far past any plausible
+/// first-open contention window.
+pub const MAX_WAL_RETRY_BASE_MS: i64 = 60_000;
+
+/// Ceiling on a single backoff delay, applied *after* doubling.
+///
+/// Bounding the attempt count and the base delay independently is not
+/// enough: the delay doubles, so the two bounds multiply into a
+/// worst-case wait of astronomical length — finite, and free of
+/// [`Duration`] overflow, but indistinguishable from a hang. Plateauing
+/// each delay here turns the tail of the schedule linear, so the total
+/// wait is bounded by `MAX_WAL_RETRY_ATTEMPTS * MAX_WAL_RETRY_DELAY_MS`
+/// (about two minutes) no matter how the knobs are set.
+pub const MAX_WAL_RETRY_DELAY_MS: i64 = 4000;
+
 /// Errors returned by [`open`] and [`migrate`].
 #[derive(Debug, Error)]
 pub enum SqlDbError {
@@ -132,6 +160,21 @@ pub struct Options {
     /// Busy timeout in milliseconds. Values `<= 0` fall back to
     /// [`DEFAULT_BUSY_TIMEOUT_MS`].
     pub busy_timeout: i64,
+
+    /// Attempts at converting the journal to WAL on a concurrent first
+    /// open. `0` falls back to [`DEFAULT_WAL_RETRY_ATTEMPTS`]; values
+    /// above [`MAX_WAL_RETRY_ATTEMPTS`] are clamped down to it.
+    ///
+    /// Only consulted when [`Options::wal_enabled`] is `true`.
+    pub wal_retry_attempts: u32,
+
+    /// Base delay in milliseconds between WAL conversion attempts,
+    /// doubling per attempt. Values `<= 0` fall back to
+    /// [`DEFAULT_WAL_RETRY_BASE_MS`]; values above
+    /// [`MAX_WAL_RETRY_BASE_MS`] are clamped down to it.
+    ///
+    /// Only consulted when [`Options::wal_enabled`] is `true`.
+    pub wal_retry_base_ms: i64,
 }
 
 impl Options {
@@ -141,6 +184,8 @@ impl Options {
             path: path.into(),
             wal: None,
             busy_timeout: 0,
+            wal_retry_attempts: 0,
+            wal_retry_base_ms: 0,
         }
     }
 
@@ -158,6 +203,24 @@ impl Options {
         self
     }
 
+    /// Sets the WAL conversion retry budget: `attempts` tries with
+    /// `base_ms` between the first two, doubling thereafter up to
+    /// [`MAX_WAL_RETRY_DELAY_MS`] per attempt.
+    ///
+    /// Out-of-range input is clamped, never rejected, matching how
+    /// [`Options::with_busy_timeout`] treats its own: these are tuning
+    /// hints on a best-effort backoff, not correctness-bearing input, and
+    /// an [`open`] that fails because a caller asked for a hundred
+    /// retries would trade a recoverable wait for a hard error. The
+    /// bounds exist to stop an unbounded spin and to keep the doubling
+    /// schedule clear of [`Duration`] overflow, not to police callers.
+    #[must_use]
+    pub fn with_wal_retry(mut self, attempts: u32, base_ms: i64) -> Self {
+        self.wal_retry_attempts = attempts;
+        self.wal_retry_base_ms = base_ms;
+        self
+    }
+
     /// Resolved WAL setting — `true` unless explicitly disabled.
     pub fn wal_enabled(&self) -> bool {
         self.wal.unwrap_or(true)
@@ -170,6 +233,27 @@ impl Options {
         } else {
             self.busy_timeout
         }
+    }
+
+    /// Resolved WAL retry attempt count, applying the default for `0` and
+    /// clamping to [`MAX_WAL_RETRY_ATTEMPTS`]. Always `>= 1`.
+    pub fn wal_retry_attempts_resolved(&self) -> u32 {
+        if self.wal_retry_attempts == 0 {
+            DEFAULT_WAL_RETRY_ATTEMPTS
+        } else {
+            self.wal_retry_attempts.min(MAX_WAL_RETRY_ATTEMPTS)
+        }
+    }
+
+    /// Resolved WAL retry base delay, applying the default for
+    /// non-positive values and clamping to [`MAX_WAL_RETRY_BASE_MS`].
+    pub fn wal_retry_base(&self) -> Duration {
+        let ms = if self.wal_retry_base_ms <= 0 {
+            DEFAULT_WAL_RETRY_BASE_MS
+        } else {
+            self.wal_retry_base_ms.min(MAX_WAL_RETRY_BASE_MS)
+        };
+        Duration::from_millis(ms as u64)
     }
 }
 
@@ -236,18 +320,11 @@ pub fn apply_pragmas(conn: &Connection, opts: &Options) -> Result<(), SqlDbError
         })?;
 
     if opts.wal_enabled() {
-        set_wal(conn)?;
+        set_wal(conn, opts)?;
     }
 
     Ok(())
 }
-
-/// Attempts at converting the journal to WAL before giving up.
-const WAL_ATTEMPTS: u32 = 10;
-
-/// Base delay between WAL conversion attempts. Doubles per attempt,
-/// summing to roughly 1s of waiting across [`WAL_ATTEMPTS`].
-const WAL_RETRY_BASE: Duration = Duration::from_millis(2);
 
 /// Switches the journal to WAL, tolerating a concurrent first-open race.
 ///
@@ -267,9 +344,15 @@ const WAL_RETRY_BASE: Duration = Duration::from_millis(2);
 /// single database file is a hard requirement here; backoff is the only
 /// option that holds when the racers are separate processes.
 ///
+/// The budget — attempt count and base delay — comes from
+/// [`Options::wal_retry_attempts`] and [`Options::wal_retry_base_ms`],
+/// both resolved and clamped, so it is always finite and at least one
+/// attempt wide. Exhausting it is a loud `SQLITE_BUSY` error, never a
+/// silent fallback to a non-WAL connection.
+///
 /// Only `SQLITE_BUSY` is retried. Every other error, and a mode that
 /// settles on something other than WAL, propagates to the caller.
-fn set_wal(conn: &Connection) -> Result<(), SqlDbError> {
+fn set_wal(conn: &Connection, opts: &Options) -> Result<(), SqlDbError> {
     let pragma = || SqlDbError::Pragma {
         pragma: "journal_mode=WAL".to_string(),
         source: rusqlite::Error::SqliteFailure(
@@ -278,9 +361,11 @@ fn set_wal(conn: &Connection) -> Result<(), SqlDbError> {
         ),
     };
 
-    let mut delay = WAL_RETRY_BASE;
+    let attempts = opts.wal_retry_attempts_resolved();
+    let max_delay = Duration::from_millis(MAX_WAL_RETRY_DELAY_MS as u64);
+    let mut delay = opts.wal_retry_base().min(max_delay);
 
-    for attempt in 0..WAL_ATTEMPTS {
+    for attempt in 0..attempts {
         // A racer may already have converted the file; that is a success.
         if journal_mode(conn)?.eq_ignore_ascii_case("wal") {
             return Ok(());
@@ -291,11 +376,13 @@ fn set_wal(conn: &Connection) -> Result<(), SqlDbError> {
         match conn.pragma_update_and_check(None, "journal_mode", "WAL", |_| Ok(())) {
             Ok(()) => return Ok(()),
             Err(source) if is_busy(&source) => {
-                if attempt + 1 == WAL_ATTEMPTS {
+                if attempt + 1 == attempts {
                     break;
                 }
                 thread::sleep(delay);
-                delay = delay.saturating_mul(2);
+                // Saturating double, then plateau: keeps the tail of the
+                // schedule linear so the total wait stays bounded.
+                delay = delay.saturating_mul(2).min(max_delay);
             }
             Err(source) => {
                 return Err(SqlDbError::Pragma {
@@ -496,5 +583,98 @@ mod tests {
         let opts = Options::new("x.db").with_wal(false).with_busy_timeout(3000);
         assert!(!opts.wal_enabled());
         assert_eq!(opts.busy_timeout_ms(), 3000);
+    }
+
+    /// The pre-configurable budget was 10 attempts at a 2ms doubling base.
+    #[test]
+    fn wal_retry_defaults_match_historical_constants() {
+        let opts = Options::new("x.db");
+        assert_eq!(opts.wal_retry_attempts_resolved(), 10);
+        assert_eq!(opts.wal_retry_base(), Duration::from_millis(2));
+    }
+
+    #[test]
+    fn wal_retry_honours_explicit_budget() {
+        let opts = Options::new("x.db").with_wal_retry(3, 25);
+        assert_eq!(opts.wal_retry_attempts_resolved(), 3);
+        assert_eq!(opts.wal_retry_base(), Duration::from_millis(25));
+    }
+
+    #[test]
+    fn wal_retry_clamps_out_of_range() {
+        // Zero attempts would be an unbounded-failure knob; sentinel.
+        let zero = Options::new("x.db").with_wal_retry(0, 0);
+        assert_eq!(
+            zero.wal_retry_attempts_resolved(),
+            DEFAULT_WAL_RETRY_ATTEMPTS
+        );
+        assert_eq!(
+            zero.wal_retry_base(),
+            Duration::from_millis(DEFAULT_WAL_RETRY_BASE_MS as u64)
+        );
+
+        // Negative base is out of range, same sentinel treatment as
+        // `busy_timeout`.
+        let negative = Options::new("x.db").with_wal_retry(1, -5);
+        assert_eq!(negative.wal_retry_attempts_resolved(), 1);
+        assert_eq!(
+            negative.wal_retry_base(),
+            Duration::from_millis(DEFAULT_WAL_RETRY_BASE_MS as u64)
+        );
+
+        // Absurd values clamp rather than erroring or overflowing.
+        let huge = Options::new("x.db").with_wal_retry(u32::MAX, i64::MAX);
+        assert_eq!(huge.wal_retry_attempts_resolved(), MAX_WAL_RETRY_ATTEMPTS);
+        assert_eq!(
+            huge.wal_retry_base(),
+            Duration::from_millis(MAX_WAL_RETRY_BASE_MS as u64)
+        );
+    }
+
+    /// The worst case a caller can request must be bounded in wall-clock
+    /// terms, not merely finite. Bounding attempts and base delay
+    /// independently is insufficient — the delay doubles, so the two
+    /// bounds would multiply into an effective hang. The per-attempt
+    /// ceiling is what keeps the total tractable.
+    #[test]
+    fn wal_retry_max_budget_is_bounded() {
+        let opts = Options::new("x.db").with_wal_retry(u32::MAX, i64::MAX);
+        let max_delay = Duration::from_millis(MAX_WAL_RETRY_DELAY_MS as u64);
+
+        // Mirrors the schedule in `set_wal`.
+        let mut delay = opts.wal_retry_base().min(max_delay);
+        let mut total = Duration::ZERO;
+        for _ in 0..opts.wal_retry_attempts_resolved() {
+            total = total.saturating_add(delay);
+            delay = delay.saturating_mul(2).min(max_delay);
+        }
+
+        let ceiling = max_delay * MAX_WAL_RETRY_ATTEMPTS;
+        assert!(total <= ceiling, "total {total:?} exceeds {ceiling:?}");
+        // Two minutes-ish, not geological time.
+        assert!(total <= Duration::from_secs(180), "total {total:?}");
+    }
+
+    /// The default schedule must sum to roughly the historical ~1s, and
+    /// must not be perturbed by the per-attempt ceiling.
+    #[test]
+    fn wal_retry_default_schedule_unchanged() {
+        let opts = Options::new("x.db");
+        let max_delay = Duration::from_millis(MAX_WAL_RETRY_DELAY_MS as u64);
+
+        let mut delay = opts.wal_retry_base().min(max_delay);
+        let mut schedule = Vec::new();
+        for _ in 0..opts.wal_retry_attempts_resolved() {
+            schedule.push(delay);
+            delay = delay.saturating_mul(2).min(max_delay);
+        }
+
+        // 2, 4, 8, ... 1024 ms — pure doubling, ceiling never engages.
+        let expected: Vec<Duration> = (0..10).map(|i| Duration::from_millis(2 << i)).collect();
+        assert_eq!(schedule, expected);
+        assert_eq!(
+            schedule.iter().sum::<Duration>(),
+            Duration::from_millis(2046)
+        );
     }
 }
