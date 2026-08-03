@@ -76,13 +76,6 @@ type Rule struct {
 	// replacement is the rule-local template used by the Tag strategy when
 	// non-empty (e.g. "<OPENAI_KEY>" overrides the default "<rule-id>").
 	replacement string
-	// allowlist holds rule-scoped substrings; matches containing any are
-	// passed through unchanged. Global allowlist applies in addition.
-	//
-	// Deprecated: substring containment lets a match that merely embeds an
-	// entry escape redaction. Use exactAllowlist. Retained so existing
-	// TOML packs keep loading; see LoadPresidio.
-	allowlist []string
 	// exactAllowlist holds rule-scoped literals compared against the whole
 	// match. Global exact entries apply in addition.
 	exactAllowlist []string
@@ -118,7 +111,6 @@ type Redactor struct {
 	strategy Replacement
 	custom   func(Match) string
 
-	allowlist      []string
 	exactAllowlist []string
 
 	obsMu      sync.RWMutex
@@ -184,32 +176,6 @@ func (r *Redactor) SetReplacement(strategy Replacement, fn ...func(Match) string
 	}
 	r.strategy = strategy
 	return r, nil
-}
-
-// Allow adds substrings to the global allowlist. Any match whose Original
-// contains an allowed substring is emitted unchanged.
-//
-// Deprecated: substring containment is a redaction bypass. Because the
-// comparison runs against the matched secret — text an attacker may
-// influence — any credential that merely embeds an entry escapes
-// redaction entirely. Allow("sk-test") passes through the live key
-// "sk-testGENUINEPRODKEY..."; Allow("@example.com") passes through
-// "victim@example.com.evil.tld"; and a bare network prefix like
-// Allow("10.") exempts any token containing "10." because token charsets
-// admit digits and dots.
-//
-// Use AllowExact, which compares against the whole match and cannot be
-// defeated by embedding. Migration is usually mechanical — replace a
-// prefix with the full literal value it was standing in for:
-//
-//	r.Allow("sk-test")             // exempts any key embedding "sk-test"
-//	r.AllowExact("sk-test-fixture-key-0123456789")
-//
-// Behavior is unchanged for existing callers; this will be removed in a
-// future release.
-func (r *Redactor) Allow(subs ...string) *Redactor {
-	r.allowlist = append(r.allowlist, subs...)
-	return r
 }
 
 // AllowExact adds literals to the global allowlist. A match is exempted
@@ -356,10 +322,10 @@ func (r *Redactor) Stats() Stats {
 	}
 }
 
-// allowed reports whether orig is exempt from redaction, checking the
-// exact-match allowlists first and the deprecated substring allowlists
-// second. Comparison is literal in both cases — no regex on allowlists,
-// to keep ReDoS risk strictly on the rules side.
+// allowed reports whether orig is exempt from redaction. Comparison is
+// whole-match and literal — never substring, which would let a secret
+// embedding an entry escape redaction, and never regex, which would put
+// ReDoS risk on the allowlist side.
 func (r *Redactor) allowed(rule *Rule, orig string) bool {
 	for _, s := range r.exactAllowlist {
 		if s != "" && orig == s {
@@ -368,17 +334,6 @@ func (r *Redactor) allowed(rule *Rule, orig string) bool {
 	}
 	for _, s := range rule.exactAllowlist {
 		if s != "" && orig == s {
-			return true
-		}
-	}
-	// Deprecated substring layers. See Redactor.Allow.
-	for _, s := range r.allowlist {
-		if s != "" && contains(orig, s) {
-			return true
-		}
-	}
-	for _, s := range rule.allowlist {
-		if s != "" && contains(orig, s) {
 			return true
 		}
 	}
@@ -416,19 +371,4 @@ func (r *Redactor) fireObservers(m Match) {
 	for _, fn := range obs {
 		fn(m)
 	}
-}
-
-// contains is strings.Contains inlined to avoid the strings import in the
-// hot path. (Equivalent semantics; the stdlib version specializes the
-// same way.)
-func contains(s, substr string) bool {
-	if substr == "" {
-		return true
-	}
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

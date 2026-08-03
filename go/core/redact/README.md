@@ -79,30 +79,32 @@ treat unexpected growth in that counter as a leak signal.
 Never use an allowlist to whitelist a real customer's secret — that is a
 backdoor disguised as ergonomics.
 
-### Deprecated: substring allowlists
+### Removed: substring allowlists
 
-`Redactor.Allow(...)` and the TOML `allowlist = [...]` key match by
-**substring**, which is a redaction bypass: the comparison runs against
-the matched secret, so any credential that merely embeds an entry escapes
-redaction entirely.
-
-```go
-r.Allow("sk-test")      // also exempts the live key sk-testGENUINEPRODKEY...
-r.Allow("@example.com") // also exempts victim@example.com.evil.tld
-r.Allow("10.")          // also exempts Bearer abcdef10.0123456789abcdefgh
-```
-
-The last case is not hypothetical — token charsets admit digits and dots,
-so a bare RFC1918 prefix exempted live bearer tokens in a downstream
-consumer. Migration is usually mechanical: replace the prefix with the
-full literal value it stood in for.
+`Redactor.Allow(...)` and the TOML `allowlist = [...]` key matched by
+**substring**, which was a redaction bypass: the comparison ran against
+the matched secret, so any credential that merely embedded an entry
+escaped redaction entirely.
 
 ```go
-r.AllowExact("sk-test-fixture-key-0123456789")
+r.Allow("sk-test")      // also exempted the live key sk-testGENUINEPRODKEY...
+r.Allow("@example.com") // also exempted victim@example.com.evil.tld
+r.Allow("10.")          // also exempted Bearer abcdef10.0123456789abcdefgh
 ```
 
-Behavior is unchanged for existing callers; both will be removed in a
-future release.
+The last case was not hypothetical — token charsets admit digits and
+dots, so a bare RFC1918 prefix exempted live bearer tokens in a
+downstream consumer.
+
+Both are gone. `Allow` no longer compiles; the `allowlist` TOML key is
+ignored (rule packs still load, but the key exempts nothing — verify
+anything relying on it). Migration is usually mechanical: replace the
+prefix with the full literal value it stood in for.
+
+```go
+r.Allow("sk-test")                                // before
+r.AllowExact("sk-test-fixture-key-0123456789")    // after
+```
 
 ## Examples
 

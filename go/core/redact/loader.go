@@ -108,12 +108,9 @@ type presidioRule struct {
 	Description string `toml:"description"`
 	Pattern     string `toml:"pattern"`
 	Replacement string `toml:"replacement"`
-	// Allowlist is substring-matched.
-	//
-	// Deprecated: prefer allowlist_exact. A match that merely embeds an
-	// entry escapes redaction; see Redactor.Allow.
-	Allowlist []string `toml:"allowlist"`
-	// AllowlistExact is compared against the whole match.
+	// AllowlistExact is compared against the whole match. The former
+	// substring-matched `allowlist` key was removed: a match embedding an
+	// entry escaped redaction entirely.
 	AllowlistExact []string `toml:"allowlist_exact"`
 	MinConfidence  float64  `toml:"min_confidence"`
 }
@@ -156,7 +153,6 @@ func LoadPresidio(path string) ([]Rule, error) {
 			description:    pr.Description,
 			re:             re,
 			replacement:    repl,
-			allowlist:      pr.Allowlist,
 			exactAllowlist: pr.AllowlistExact,
 		})
 	}
