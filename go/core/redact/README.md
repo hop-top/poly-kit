@@ -14,8 +14,9 @@ error reports, anything user-facing that may have absorbed sensitive data.
 | Redact bytes (no string conversion) | `Redactor.ApplyBytes(b)` |
 | Audit-mode: find without replacing | `Redactor.Scan(s)` |
 | Pick a replacement strategy | `Redactor.SetReplacement(redact.Tag)` |
-| Pass-through known-safe values | `Redactor.Allow("sk-test", "AKIA...EXAMPLE")` |
+| Pass-through known-safe values | `Redactor.AllowExact("AKIAIOSFODNN7EXAMPLE")` |
 | Audit hook (per match) | `Redactor.OnMatch(func(m){...})` |
+| Audit hook (allowlisted pass-through) | `Redactor.OnAllowed(func(m){...})` |
 | Snapshot counters | `Redactor.Stats()` |
 | Add a rule from a Go literal | `Redactor.AddRule(id, pattern, replacement)` |
 | Bulk-add pre-compiled rules | `Redactor.AddRules(rules...)` |
@@ -58,22 +59,50 @@ take down the egress path.
 
 ## Allowlists
 
-Two layers, both string-substring (no regex):
+Comparison is literal, never regex — regex allowlists invite ReDoS back in
+via the side door.
 
-1. **Global** — `Redactor.Allow("sk-test", "AKIA...EXAMPLE")`. Any match
-   whose original contains an allowed substring passes through unchanged
-   with no observer fire.
-2. **Per-rule** — loaded from TOML `allowlist = [...]` keys. Same
+1. **Global** — `Redactor.AllowExact("AKIAIOSFODNN7EXAMPLE")`. A match is
+   exempted only when it equals an entry **in full**.
+2. **Per-rule** — loaded from TOML `allowlist_exact = [...]` keys. Same
    semantics, scoped to that rule.
 
 Use for:
 
-- Documentation examples (`sk-test123`, `AKIA...EXAMPLE`).
-- Local-dev placeholders (`OPENAI_API_KEY=test`).
-- Fixture data in tests.
+- Documentation examples (`AKIAIOSFODNN7EXAMPLE`).
+- Local-dev placeholders, fixture data in tests.
 
-Never use to whitelist a real customer's secret prefix — that is a
+Exempted matches are reported to `OnAllowed` observers and counted in
+`Stats().Allowed`. An allowlisted value leaves the process unredacted, so
+treat unexpected growth in that counter as a leak signal.
+
+Never use an allowlist to whitelist a real customer's secret — that is a
 backdoor disguised as ergonomics.
+
+### Deprecated: substring allowlists
+
+`Redactor.Allow(...)` and the TOML `allowlist = [...]` key match by
+**substring**, which is a redaction bypass: the comparison runs against
+the matched secret, so any credential that merely embeds an entry escapes
+redaction entirely.
+
+```go
+r.Allow("sk-test")      // also exempts the live key sk-testGENUINEPRODKEY...
+r.Allow("@example.com") // also exempts victim@example.com.evil.tld
+r.Allow("10.")          // also exempts Bearer abcdef10.0123456789abcdefgh
+```
+
+The last case is not hypothetical — token charsets admit digits and dots,
+so a bare RFC1918 prefix exempted live bearer tokens in a downstream
+consumer. Migration is usually mechanical: replace the prefix with the
+full literal value it stood in for.
+
+```go
+r.AllowExact("sk-test-fixture-key-0123456789")
+```
+
+Behavior is unchanged for existing callers; both will be removed in a
+future release.
 
 ## Examples
 
@@ -209,8 +238,9 @@ unchanged `tools/vendor-presidio/curated.go` → byte-identical output.
 3. Watch for over-broad patterns: anything that would redact common
    non-PII text (e.g. a 9-digit-number rule that swallows phone numbers
    AND order IDs). Either tighten the regex with anchors / word
-   boundaries, or add a global allowlist substring via
-   `Redactor.Allow(...)`.
+   boundaries, or exempt the specific known-safe values via
+   `Redactor.AllowExact(...)`. Prefer tightening the pattern: an
+   allowlist entry is a standing exemption, not a fix.
 4. If the upstream TOML schema or recognizer API changes (it has been
    stable since 2.x), update `loader.go::presidioRule` to match.
 

@@ -57,8 +57,12 @@ type Match struct {
 
 // Stats is a snapshot of Redactor activity.
 type Stats struct {
-	Rules       int
-	Matches     uint64
+	Rules   int
+	Matches uint64
+	// Allowed counts matches that an allowlist exempted from redaction.
+	// A non-zero value means secrets left the process unredacted by
+	// policy — alert on unexpected growth.
+	Allowed     uint64
 	ByRule      map[string]uint64
 	LastMatchAt time.Time
 }
@@ -74,7 +78,14 @@ type Rule struct {
 	replacement string
 	// allowlist holds rule-scoped substrings; matches containing any are
 	// passed through unchanged. Global allowlist applies in addition.
+	//
+	// Deprecated: substring containment lets a match that merely embeds an
+	// entry escape redaction. Use exactAllowlist. Retained so existing
+	// TOML packs keep loading; see LoadPresidio.
 	allowlist []string
+	// exactAllowlist holds rule-scoped literals compared against the whole
+	// match. Global exact entries apply in addition.
+	exactAllowlist []string
 }
 
 // ID returns the rule identifier.
@@ -107,15 +118,18 @@ type Redactor struct {
 	strategy Replacement
 	custom   func(Match) string
 
-	allowlist []string
+	allowlist      []string
+	exactAllowlist []string
 
-	obsMu     sync.RWMutex
-	observers []func(Match)
+	obsMu      sync.RWMutex
+	observers  []func(Match)
+	allowedObs []func(Match)
 
-	matches atomic.Uint64
-	statsMu sync.Mutex
-	byRule  map[string]uint64
-	lastAt  time.Time
+	matches      atomic.Uint64
+	allowedCount atomic.Uint64
+	statsMu      sync.Mutex
+	byRule       map[string]uint64
+	lastAt       time.Time
 
 	// logger handles internal warnings (e.g. custom-formatter panic
 	// recovery). Defaults to kit/log wired to the active viper; override
@@ -173,9 +187,43 @@ func (r *Redactor) SetReplacement(strategy Replacement, fn ...func(Match) string
 }
 
 // Allow adds substrings to the global allowlist. Any match whose Original
-// contains an allowed substring is emitted unchanged with no observer fire.
+// contains an allowed substring is emitted unchanged.
+//
+// Deprecated: substring containment is a redaction bypass. Because the
+// comparison runs against the matched secret — text an attacker may
+// influence — any credential that merely embeds an entry escapes
+// redaction entirely. Allow("sk-test") passes through the live key
+// "sk-testGENUINEPRODKEY..."; Allow("@example.com") passes through
+// "victim@example.com.evil.tld"; and a bare network prefix like
+// Allow("10.") exempts any token containing "10." because token charsets
+// admit digits and dots.
+//
+// Use AllowExact, which compares against the whole match and cannot be
+// defeated by embedding. Migration is usually mechanical — replace a
+// prefix with the full literal value it was standing in for:
+//
+//	r.Allow("sk-test")             // exempts any key embedding "sk-test"
+//	r.AllowExact("sk-test-fixture-key-0123456789")
+//
+// Behavior is unchanged for existing callers; this will be removed in a
+// future release.
 func (r *Redactor) Allow(subs ...string) *Redactor {
 	r.allowlist = append(r.allowlist, subs...)
+	return r
+}
+
+// AllowExact adds literals to the global allowlist. A match is exempted
+// only when it equals an entry in full, so an allowlisted fixture cannot
+// be extended into a live credential that inherits the exemption.
+//
+// Prefer this over Allow. Entries are compared literally — never as
+// regex, keeping ReDoS risk confined to the rules side — and empty
+// entries are ignored.
+//
+// Exempted matches are reported to OnAllowed observers and counted in
+// Stats().Allowed, so a pass-through is auditable rather than silent.
+func (r *Redactor) AllowExact(vals ...string) *Redactor {
+	r.exactAllowlist = append(r.exactAllowlist, vals...)
 	return r
 }
 
@@ -195,6 +243,25 @@ func (r *Redactor) OnMatch(fn func(Match)) *Redactor {
 	return r
 }
 
+// OnAllowed registers an observer fired for every match an allowlist
+// exempted from redaction. Passing nil clears registered observers.
+//
+// Allowlisted values leave the process unredacted; this hook is how that
+// stays visible to audit tooling. Callbacks receive the matched text —
+// treat it as toxic (count it, fingerprint it; do not log it verbatim).
+func (r *Redactor) OnAllowed(fn func(Match)) *Redactor {
+	if fn == nil {
+		r.obsMu.Lock()
+		r.allowedObs = nil
+		r.obsMu.Unlock()
+		return r
+	}
+	r.obsMu.Lock()
+	r.allowedObs = append(r.allowedObs, fn)
+	r.obsMu.Unlock()
+	return r
+}
+
 // Apply returns s with every rule match replaced per the active strategy.
 func (r *Redactor) Apply(s string) string {
 	if len(r.rules) == 0 || s == "" {
@@ -205,6 +272,7 @@ func (r *Redactor) Apply(s string) string {
 		rule := &r.rules[i]
 		out = rule.re.ReplaceAllStringFunc(out, func(orig string) string {
 			if r.allowed(rule, orig) {
+				r.recordAllowed(rule, orig)
 				return orig
 			}
 			m := Match{
@@ -234,6 +302,7 @@ func (r *Redactor) ApplyBytes(b []byte) []byte {
 		out = rule.re.ReplaceAllFunc(out, func(orig []byte) []byte {
 			s := string(orig)
 			if r.allowed(rule, s) {
+				r.recordAllowed(rule, s)
 				return orig
 			}
 			m := Match{RuleID: rule.id, Original: s, Start: -1, End: -1}
@@ -281,15 +350,28 @@ func (r *Redactor) Stats() Stats {
 	return Stats{
 		Rules:       len(r.rules),
 		Matches:     r.matches.Load(),
+		Allowed:     r.allowedCount.Load(),
 		ByRule:      cp,
 		LastMatchAt: r.lastAt,
 	}
 }
 
-// allowed reports whether orig contains any global or rule-scoped
-// allowlist substring. String contains only — no regex on allowlists,
+// allowed reports whether orig is exempt from redaction, checking the
+// exact-match allowlists first and the deprecated substring allowlists
+// second. Comparison is literal in both cases — no regex on allowlists,
 // to keep ReDoS risk strictly on the rules side.
 func (r *Redactor) allowed(rule *Rule, orig string) bool {
+	for _, s := range r.exactAllowlist {
+		if s != "" && orig == s {
+			return true
+		}
+	}
+	for _, s := range rule.exactAllowlist {
+		if s != "" && orig == s {
+			return true
+		}
+	}
+	// Deprecated substring layers. See Redactor.Allow.
 	for _, s := range r.allowlist {
 		if s != "" && contains(orig, s) {
 			return true
@@ -301,6 +383,22 @@ func (r *Redactor) allowed(rule *Rule, orig string) bool {
 		}
 	}
 	return false
+}
+
+// recordAllowed counts an exempted match and notifies OnAllowed
+// observers, so an allowlist pass-through is never silent.
+func (r *Redactor) recordAllowed(rule *Rule, orig string) {
+	r.allowedCount.Add(1)
+	r.obsMu.RLock()
+	obs := r.allowedObs
+	r.obsMu.RUnlock()
+	if len(obs) == 0 {
+		return
+	}
+	m := Match{RuleID: rule.id, Original: orig, Start: -1, End: -1}
+	for _, fn := range obs {
+		fn(m)
+	}
 }
 
 func (r *Redactor) recordMatch(id string) {
