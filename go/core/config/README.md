@@ -27,6 +27,106 @@ adapter there and pass `root.ConfigArgs()` through directly. Avoid reading
 repeatable config layers and key overrides, and can collide with Kit's built-in
 flag registration.
 
+## Writing values
+
+Use `SetValue` when the value has a Go type; use `Set` only when the value
+is genuinely a string.
+
+```go
+// typed write — emits keyword_threshold: 0.9
+config.SetValue("keyword_threshold", 0.9, config.ScopeUser, opts)
+
+// string write — emits name: "release"
+config.Set("name", "release", config.ScopeUser, opts)
+```
+
+`Set(key, value string, scope, opts)` writes every scalar with the yaml tag
+`!!str`. yaml.v3 then quotes anything that would otherwise resolve to a
+non-string, so `Set("keyword_threshold", "0.9", ...)` writes
+`keyword_threshold: "0.9"`. A consumer unmarshalling that key into a
+`float64` fails to decode. Because config typically loads in
+`PersistentPreRunE`, one such write breaks every later invocation of the
+binary — including diagnostic commands — and recovery means hand-editing
+the file.
+
+`SetValue(key string, value any, scope, opts)` infers the yaml tag from the
+Go type instead:
+
+| Go type   | yaml tag  | emitted     |
+|-----------|-----------|-------------|
+| `float64` | `!!float` | `k: 0.9`    |
+| `int`     | `!!int`   | `k: 123`    |
+| `bool`    | `!!bool`  | `k: true`   |
+| `nil`     | `!!null`  | `k: null`   |
+| `string`  | `!!str`   | `k: abc`, and `k: "0.9"` when the text would otherwise resolve to a non-string |
+
+### CLI path: raw arg to YAML
+
+A CLI receives every value as a string, so it has no Go type to hand
+`SetValue`. `ParseScalar(s string) any` bridges that gap — it converts the
+raw arg to a typed value, which then feeds `SetValue`:
+
+```go
+// kit config set keyword_threshold 0.9
+func runSet(key, raw string, opts config.Options) error {
+    return config.SetValue(key, config.ParseScalar(raw), config.ScopeUser, opts)
+}
+```
+
+```
+raw arg "0.9"  →  ParseScalar → float64(0.9)  →  SetValue → keyword_threshold: 0.9
+raw arg "true" →  ParseScalar → true          →  SetValue → verbose: true
+raw arg "prod" →  ParseScalar → "prod"        →  SetValue → env: "prod"
+```
+
+### Type coercion
+
+`ParseScalar` recognises floats, ints, bools, and null (`null` / `~`) only.
+Everything else stays a string. The narrow surface is deliberate: a bare
+`yaml.Unmarshal` of the arg would also convert `0x1F` to an int and
+`2024-01-01` to a timestamp, which is lossy and surprising for a value the
+user typed literally. `ParseScalar` leaves both as strings.
+
+`yes`, `on`, `off`, and `no` also stay strings, but the two write paths
+emit them differently:
+
+| written via | emitted    | safe under YAML 1.1? |
+|-------------|------------|----------------------|
+| `SetValue`  | `k: "yes"` | yes — quoted         |
+| `Set`       | `k: yes`   | no — bare token      |
+
+`SetValue` routes through `yaml.Node.Encode`, which double-quotes exactly
+these YAML 1.1 lookalikes, so the file is unambiguous to any reader.
+
+`Set` hand-builds a `!!str` node with no style, and yaml.v3 emits the bare
+token: under the YAML 1.2 core schema `yes` is already a string, so no
+quoting is required. yaml.v3 decodes it back as a string and Go-to-Go
+round-trips stay consistent — but a parser applying YAML 1.1 semantics will
+read `yes` as a boolean. Prefer `SetValue` when the file may be read by a
+non-yaml.v3 consumer.
+
+Dropping the tag entirely is not a safe blanket fix either: without a tag,
+inference happens at emit time and the caller loses control over whether a
+value lands as a string or a number. Caller-supplied type intent is the
+design.
+
+### Migrating existing `Set` callers
+
+Callers writing numerics or booleans through `Set` are producing quoted
+scalars today, and consumers decoding those keys into non-string fields
+fail. The fix is one line at each call site:
+
+```go
+// before — writes threshold: "0.9"
+config.Set("threshold", raw, config.ScopeUser, opts)
+
+// after — writes threshold: 0.9
+config.SetValue("threshold", config.ParseScalar(raw), config.ScopeUser, opts)
+```
+
+`Set` is unchanged and remains correct for values that are strings.
+Already-written files keep their quoted values until the key is rewritten.
+
 ## Hot reload
 
 `Reloadable[T]` wraps a typed config snapshot in an `atomic.Pointer[T]`
