@@ -28,9 +28,11 @@ func TestRunWizard_Headless(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "myapp", val)
 
+	// port is Int in the schema, so it round-trips as an int: the wizard
+	// writes it untagged-as-string and Get resolves it by tag.
 	val, err = config.Get("port", config.Options{ProjectConfigPath: cfgPath})
 	require.NoError(t, err)
-	assert.Equal(t, "9090", val)
+	assert.Equal(t, 9090, val)
 }
 
 func TestRunWizard_DryRun(t *testing.T) {
