@@ -87,6 +87,12 @@ Everything else stays a string. The narrow surface is deliberate: a bare
 `2024-01-01` to a timestamp, which is lossy and surprising for a value the
 user typed literally. `ParseScalar` leaves both as strings.
 
+Inference is never allowed to change the value. A number too large to
+represent exactly therefore stays a string rather than rounding through
+`float64`: `9223372036854775808` does not fit in an `int`, and writing it
+as `9.223372036854776e+18` would put a different number in the file than
+the one typed. The same applies to oversized float spellings like `1e400`.
+
 `yes`, `on`, `off`, and `no` also stay strings, but the two write paths
 emit them differently:
 

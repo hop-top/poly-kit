@@ -600,6 +600,88 @@ func TestSetValue_CommentPreservation(t *testing.T) {
 	}
 }
 
+// TestSetValue_PreservesAnchors covers overwriting a key whose value
+// carries a YAML anchor. Swapping the mapping entry for a fresh node
+// orphans the anchored node: the encoder never walks it, so it drops the
+// `&b` definition while still emitting every `*b` reference, and the
+// file it writes no longer parses at all.
+func TestSetValue_PreservesAnchors(t *testing.T) {
+	tests := []struct {
+		name     string
+		original string
+		key      string
+		value    any
+		want     map[string]any
+	}{
+		{
+			name:     "scalar anchor overwritten",
+			original: "base: &b 1\nother: *b\n",
+			key:      "base",
+			value:    2,
+			want:     map[string]any{"base": 2, "other": 2},
+		},
+		{
+			name:     "mapping anchor overwritten by scalar",
+			original: "base: &b\n  x: 1\nother: *b\n",
+			key:      "base",
+			value:    2,
+			want:     map[string]any{"base": 2, "other": 2},
+		},
+		{
+			name:     "alias side overwritten leaves anchor intact",
+			original: "base: &b 1\nother: *b\n",
+			key:      "other",
+			value:    2,
+			want:     map[string]any{"base": 1, "other": 2},
+		},
+		{
+			name:     "unrelated key added alongside anchor",
+			original: "base: &b 1\nother: *b\n",
+			key:      "third",
+			value:    9,
+			want:     map[string]any{"base": 1, "other": 1, "third": 9},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.yaml")
+			require.NoError(t, os.WriteFile(path, []byte(tt.original), 0o644))
+			opts := optsForPath(path, ScopeProject)
+
+			require.NoError(t, SetValue(tt.key, tt.value, ScopeProject, opts))
+
+			data, err := os.ReadFile(path)
+			require.NoError(t, err)
+
+			// The written file must still be loadable: an orphaned anchor
+			// fails here with "unknown anchor 'b' referenced".
+			var got map[string]any
+			require.NoError(t, yaml.Unmarshal(data, &got), "rewritten file: %s", data)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestSet_PreservesAnchors pins the same guarantee for the plain [Set]
+// path, which shares setNodeInMapping.
+func TestSet_PreservesAnchors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("base: &b 1\nother: *b\n"), 0o644))
+	opts := optsForPath(path, ScopeProject)
+
+	require.NoError(t, Set("base", "two", ScopeProject, opts))
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "&b", "anchor definition must survive: %s", data)
+
+	var got map[string]any
+	require.NoError(t, yaml.Unmarshal(data, &got), "rewritten file: %s", data)
+	assert.Equal(t, map[string]any{"base": "two", "other": "two"}, got)
+}
+
 func TestSetValue_EmptyScope(t *testing.T) {
 	err := SetValue("key", 1, ScopeUser, Options{})
 	assert.ErrorIs(t, err, ErrEmptyScope)

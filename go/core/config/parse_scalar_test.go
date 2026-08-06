@@ -42,6 +42,20 @@ func TestParseScalar(t *testing.T) {
 		{"date", "2024-01-01", "2024-01-01"},
 		{"underscored digits", "1_000", "1_000"},
 
+		// Integer-looking tokens that do not fit in an int stay strings
+		// rather than rounding through float64.
+		{"max int64", "9223372036854775807", 9223372036854775807},
+		{"max int64 plus one", "9223372036854775808", "9223372036854775808"},
+		{"min int64", "-9223372036854775808", -9223372036854775808},
+		{"min int64 minus one", "-9223372036854775809", "-9223372036854775809"},
+		{
+			"very long digit string",
+			"12345678901234567890123456789012345",
+			"12345678901234567890123456789012345",
+		},
+		// Out-of-range float spellings likewise stay strings.
+		{"float overflow", "1e400", "1e400"},
+
 		// Case-sensitive booleans: only exact lowercase converts.
 		{"True stays string", "True", "True"},
 		{"TRUE stays string", "TRUE", "TRUE"},
@@ -97,6 +111,13 @@ func TestParseScalar_ThroughSetValue(t *testing.T) {
 		{"bool", "true", "k: true\n"},
 		{"null", "null", "k: null\n"},
 		{"string", "abc", "k: abc\n"},
+		// Quoted, and above all still the exact digits typed: a float64
+		// round-trip would have written 9.223372036854776e+18.
+		{
+			"int overflow keeps exact digits",
+			"9223372036854775808",
+			"k: \"9223372036854775808\"\n",
+		},
 		// Quoted on the way out, so it cannot resolve back to int 31.
 		{"hex stays string", "0x1F", "k: \"0x1F\"\n"},
 		{"date stays string", "2024-01-01", "k: \"2024-01-01\"\n"},

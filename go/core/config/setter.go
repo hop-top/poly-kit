@@ -158,10 +158,20 @@ func parseOrCreateDoc(path string) (*yaml.Node, error) {
 }
 
 // setNodeInMapping sets or updates a value node in a mapping node.
-// If the key already exists, the existing value node is replaced in
+// If the key already exists, the existing value node is overwritten in
 // place, carrying over any comments attached to it. Otherwise a new
 // key-value pair is appended. The value node may be of any kind —
 // scalar, sequence or mapping.
+//
+// The overwrite mutates the existing node rather than swapping the
+// slice element for a new pointer, because yaml.v3 represents an alias
+// as an AliasNode holding a pointer to the anchored node. Repointing
+// the mapping entry leaves the anchored node reachable only from those
+// alias pointers, so the encoder never walks it, never emits the `&a`
+// definition, and still emits every `*a` reference — producing a file
+// that fails to parse with "unknown anchor". Mutating in place keeps
+// the anchored node in the tree, and Anchor is preserved explicitly so
+// the definition survives the new value.
 func setNodeInMapping(mapping *yaml.Node, key string, value *yaml.Node) {
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
 		if mapping.Content[i].Value == key {
@@ -175,7 +185,9 @@ func setNodeInMapping(mapping *yaml.Node, key string, value *yaml.Node) {
 			if value.FootComment == "" {
 				value.FootComment = old.FootComment
 			}
-			mapping.Content[i+1] = value
+			anchor := old.Anchor
+			*old = *value
+			old.Anchor = anchor
 			return
 		}
 	}
