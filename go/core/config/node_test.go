@@ -64,31 +64,89 @@ func TestWalkOrCreate_ScalarToMapping(t *testing.T) {
 }
 
 func TestNodeToValue_Scalar(t *testing.T) {
-	n := &yaml.Node{Kind: yaml.ScalarNode, Value: "hello"}
+	n := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "hello"}
 	assert.Equal(t, "hello", nodeToValue(n))
 }
 
-func TestNodeToValue_Sequence(t *testing.T) {
-	n := &yaml.Node{
-		Kind: yaml.SequenceNode,
-		Content: []*yaml.Node{
-			{Kind: yaml.ScalarNode, Value: "a"},
-			{Kind: yaml.ScalarNode, Value: "b"},
-		},
+// scalarNode parses src as a single-document scalar so the node carries
+// the tag yaml.v3 resolves, which is what nodeToValue keys off.
+func scalarNode(t *testing.T, src string) *yaml.Node {
+	t.Helper()
+	doc := mustParse(t, "v: "+src)
+	n := walkPath(doc, "v")
+	require.NotNil(t, n)
+	return n
+}
+
+func TestNodeToValue_ScalarTags(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want any
+	}{
+		{"int", "8080", 8080},
+		{"negative int", "-3", -3},
+		{"float", "0.9", 0.9},
+		{"bool true", "true", true},
+		{"bool false", "false", false},
+		{"null", "null", nil},
+		{"empty is null", "", nil},
+		{"bare string", "hello", "hello"},
+		{"quoted number stays string", `"8080"`, "8080"},
+		// YAML 1.1 booleans are plain strings under the 1.2 core
+		// schema that yaml.v3 implements.
+		{"yes stays string", "yes", "yes"},
+		{"on stays string", "on", "on"},
+		{"off stays string", "off", "off"},
+		{"no stays string", "no", "no"},
+		// Dates resolve to !!timestamp; kept as strings deliberately.
+		{"timestamp stays string", "2024-01-01", "2024-01-01"},
 	}
-	assert.Equal(t, []string{"a", "b"}, nodeToValue(n))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, nodeToValue(scalarNode(t, tt.src)))
+		})
+	}
+}
+
+func TestNodeToValue_Sequence(t *testing.T) {
+	doc := mustParse(t, "v: [a, b]")
+	n := walkPath(doc, "v")
+	require.NotNil(t, n)
+	assert.Equal(t, []any{"a", "b"}, nodeToValue(n))
+}
+
+func TestNodeToValue_SequenceMixedTypes(t *testing.T) {
+	doc := mustParse(t, `v: [1, 2.5, three, true, null, "4"]`)
+	n := walkPath(doc, "v")
+	require.NotNil(t, n)
+	assert.Equal(t, []any{1, 2.5, "three", true, nil, "4"}, nodeToValue(n))
 }
 
 func TestNodeToValue_Mapping(t *testing.T) {
 	n := &yaml.Node{
 		Kind: yaml.MappingNode,
 		Content: []*yaml.Node{
-			{Kind: yaml.ScalarNode, Value: "k"},
-			{Kind: yaml.ScalarNode, Value: "v"},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "k"},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: "v"},
 		},
 	}
 	got := nodeToValue(n).(map[string]any)
 	assert.Equal(t, "v", got["k"])
+}
+
+func TestNodeToValue_NestedMappingPreservesTypes(t *testing.T) {
+	doc := mustParse(t, "a:\n  b:\n    port: 8080\n    ratio: 0.5\n    on: true\n")
+	n := walkPath(doc, "a")
+	require.NotNil(t, n)
+
+	got, ok := nodeToValue(n).(map[string]any)
+	require.True(t, ok)
+	inner, ok := got["b"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 8080, inner["port"])
+	assert.Equal(t, 0.5, inner["ratio"])
+	assert.Equal(t, true, inner["on"])
 }
 
 func TestCollectLeaves(t *testing.T) {

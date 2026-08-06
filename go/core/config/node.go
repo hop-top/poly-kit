@@ -136,19 +136,32 @@ func walkOrCreate(doc *yaml.Node, key string) (*yaml.Node, string) {
 	return cur, parts[len(parts)-1]
 }
 
-// nodeToValue converts a yaml.Node to a Go value:
-// scalar → string, sequence → []string, mapping → map[string]any.
+// timestampTag is the YAML tag yaml.v3 resolves for date-like scalars
+// (e.g. a bare 2024-01-01). Config values are treated as strings rather
+// than time.Time: a date in a config file is nearly always meant as an
+// opaque token, and handing callers a time.Time would make Get's return
+// type depend on whether a string happens to parse as a date.
+const timestampTag = "!!timestamp"
+
+// nodeToValue converts a yaml.Node to a Go value, preserving the type
+// implied by each scalar's resolved YAML tag: !!int → int, !!float →
+// float64, !!bool → bool, !!null → nil, everything else → string.
+// Sequences become []any so element types survive; mappings become
+// map[string]any.
 func nodeToValue(n *yaml.Node) any {
 	switch n.Kind {
 	case yaml.ScalarNode:
-		return n.Value
+		return scalarToValue(n)
 	case yaml.SequenceNode:
-		out := make([]string, 0, len(n.Content))
+		out := make([]any, 0, len(n.Content))
 		for _, c := range n.Content {
-			out = append(out, c.Value)
+			out = append(out, nodeToValue(c))
 		}
 		return out
 	case yaml.MappingNode:
+		// Decoded key-by-key rather than via a single Decode call:
+		// decoding a whole mapping yields map[any]any when any key is
+		// non-string, which would break the map[string]any contract.
 		out := make(map[string]any, len(n.Content)/2)
 		for i := 0; i < len(n.Content)-1; i += 2 {
 			out[n.Content[i].Value] = nodeToValue(n.Content[i+1])
@@ -156,6 +169,22 @@ func nodeToValue(n *yaml.Node) any {
 		return out
 	}
 	return nil
+}
+
+// scalarToValue resolves a scalar node to its tagged Go type, deferring
+// to yaml.v3 so tag resolution (octal/hex ints, YAML 1.2 core schema
+// booleans, etc.) matches what Load would produce for the same file.
+func scalarToValue(n *yaml.Node) any {
+	if n.Tag == timestampTag {
+		return n.Value
+	}
+	var v any
+	if err := n.Decode(&v); err != nil {
+		// Unresolvable scalar: fall back to the raw text rather than
+		// dropping the value.
+		return n.Value
+	}
+	return v
 }
 
 // leafEntry represents a single leaf in a flattened YAML tree.

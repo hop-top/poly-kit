@@ -25,7 +25,7 @@ func TestUnset_ExistingKey(t *testing.T) {
 	assert.ErrorIs(t, err, config.ErrKeyNotFound)
 	v, err := config.Get("port", opts)
 	require.NoError(t, err)
-	assert.Equal(t, "8080", v)
+	assert.Equal(t, 8080, v)
 }
 
 func TestUnset_NestedKey(t *testing.T) {
@@ -42,7 +42,7 @@ func TestUnset_NestedKey(t *testing.T) {
 
 	v, err := config.Get("core.b", opts)
 	require.NoError(t, err)
-	assert.Equal(t, "2", v)
+	assert.Equal(t, 2, v)
 }
 
 func TestUnset_CleanupEmptyParent(t *testing.T) {
