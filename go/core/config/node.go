@@ -136,12 +136,16 @@ func walkOrCreate(doc *yaml.Node, key string) (*yaml.Node, string) {
 	return cur, parts[len(parts)-1]
 }
 
-// timestampTag is the YAML tag yaml.v3 resolves for date-like scalars
-// (e.g. a bare 2024-01-01). Config values are treated as strings rather
-// than time.Time: a date in a config file is nearly always meant as an
-// opaque token, and handing callers a time.Time would make Get's return
-// type depend on whether a string happens to parse as a date.
-const timestampTag = "!!timestamp"
+// Resolved YAML tags that scalarToValue converts to a non-string Go
+// type. Every other tag -- including !!binary, !!timestamp, and any
+// custom or unrecognized tag -- yields the scalar's raw source text, so
+// Get's return type stays within the documented set.
+const (
+	intTag   = "!!int"
+	floatTag = "!!float"
+	boolTag  = "!!bool"
+	nullTag  = "!!null"
+)
 
 // nodeToValue converts a yaml.Node to a Go value, preserving the type
 // implied by each scalar's resolved YAML tag: !!int → int, !!float →
@@ -171,20 +175,48 @@ func nodeToValue(n *yaml.Node) any {
 	return nil
 }
 
-// scalarToValue resolves a scalar node to its tagged Go type, deferring
-// to yaml.v3 so tag resolution (octal/hex ints, YAML 1.2 core schema
-// booleans, etc.) matches what Load would produce for the same file.
+// scalarToValue resolves a scalar node to its tagged Go type.
+//
+// Only the four tags above are converted; anything else returns the raw
+// source text. yaml.v3 does the conversion for the tags in the
+// whitelist so spellings it accepts (hex, octal and underscored ints,
+// .inf/.nan floats, YAML 1.2 core schema booleans) resolve exactly as
+// Load would resolve them for the same file.
+//
+// Tags outside the whitelist are deliberately not decoded:
+//
+//   - !!binary would come back as the *decoded* bytes in a string, so a
+//     caller reading a base64 field would silently receive different
+//     text than the file holds, with no way to detect it. Invalid
+//     base64 decodes to "" with no error, losing the value entirely.
+//   - !!timestamp would come back as a time.Time, making Get's return
+//     type depend on whether a value happens to parse as a date.
+//   - Custom tags (!mytype) carry no meaning to this package.
+//
+// Config values are opaque tokens, so raw text is the honest answer for
+// all of them.
 func scalarToValue(n *yaml.Node) any {
-	if n.Tag == timestampTag {
+	switch n.Tag {
+	case intTag, floatTag, boolTag, nullTag:
+	default:
 		return n.Value
 	}
+
 	var v any
 	if err := n.Decode(&v); err != nil {
-		// Unresolvable scalar: fall back to the raw text rather than
-		// dropping the value.
+		// Explicitly tagged but unconvertible (e.g. `!!int abc`): fall
+		// back to the raw text rather than dropping the value.
 		return n.Value
 	}
-	return v
+
+	// An !!int too large for int decodes to uint64. Return the raw text
+	// rather than a width the contract does not name.
+	switch v.(type) {
+	case int, float64, bool, nil:
+		return v
+	default:
+		return n.Value
+	}
 }
 
 // leafEntry represents a single leaf in a flattened YAML tree.

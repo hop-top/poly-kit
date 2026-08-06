@@ -12,10 +12,16 @@ var ErrKeyNotFound = errors.New("config: key not found")
 // Layer precedence: project > user > system.
 // Returns the value from the highest-priority layer that contains the key.
 //
-// The returned value keeps the type implied by the YAML scalar tag:
-// int, float64, bool, nil, or string. Sequences come back as []any and
-// mappings as map[string]any, so nested element types are preserved.
-// Date-like scalars (!!timestamp) are returned as strings, not time.Time.
+// The returned value keeps the type implied by the YAML scalar tag, and
+// is always one of int, float64, bool, nil or string. Only !!int,
+// !!float, !!bool and !!null are converted; every other tag -- !!str,
+// !!binary, !!timestamp, and any custom tag -- yields the scalar's raw
+// source text. So a date stays a string rather than becoming a
+// time.Time, base64 stays base64 rather than being decoded, and an
+// !!int too large for int stays its literal digits.
+//
+// Sequences come back as []any and mappings as map[string]any, with the
+// same rules applied to each element.
 func Get(key string, opts Options) (any, error) {
 	paths := layerPaths(opts)
 

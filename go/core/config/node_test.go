@@ -99,8 +99,29 @@ func TestNodeToValue_ScalarTags(t *testing.T) {
 		{"on stays string", "on", "on"},
 		{"off stays string", "off", "off"},
 		{"no stays string", "no", "no"},
+		// Spellings yaml.v3 resolves to !!int / !!float are converted.
+		{"hex int", "0x1F", 31},
+		{"octal int", "0o17", 15},
+		{"underscored int", "1_000", 1000},
+		{"float exponent", "1e3", 1000.0},
 		// Dates resolve to !!timestamp; kept as strings deliberately.
 		{"timestamp stays string", "2024-01-01", "2024-01-01"},
+		{"datetime stays string", "2024-01-01T10:20:30Z", "2024-01-01T10:20:30Z"},
+		{"explicit timestamp stays string", "!!timestamp 2024-01-01", "2024-01-01"},
+		// !!binary would decode to the underlying bytes; the raw base64
+		// source text is what the file holds and what callers expect.
+		{"binary stays raw base64", "!!binary aGk=", "aGk="},
+		{"invalid binary stays raw", `!!binary "not!base64"`, "not!base64"},
+		// Unknown tags carry no meaning here, so the text passes through.
+		{"custom tag stays string", "!mytype foo", "foo"},
+		{"custom uri tag stays string", "!<tag:example.com,2024:x> foo", "foo"},
+		// An int past MaxInt64 decodes to uint64, which is outside the
+		// documented return set; the literal digits are returned instead.
+		{"int overflow stays string", "9223372036854775808", "9223372036854775808"},
+		{"max int64 still converts", "9223372036854775807", 9223372036854775807},
+		// Explicitly tagged but unconvertible: raw text, not dropped.
+		{"bad explicit int stays string", "!!int notanum", "notanum"},
+		{"bad explicit bool stays string", "!!bool notabool", "notabool"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -121,6 +142,13 @@ func TestNodeToValue_SequenceMixedTypes(t *testing.T) {
 	n := walkPath(doc, "v")
 	require.NotNil(t, n)
 	assert.Equal(t, []any{1, 2.5, "three", true, nil, "4"}, nodeToValue(n))
+}
+
+func TestNodeToValue_SequenceNonPrimitiveTagsStayStrings(t *testing.T) {
+	doc := mustParse(t, `v: [2024-01-01, !!binary aGk=, 9223372036854775808]`)
+	n := walkPath(doc, "v")
+	require.NotNil(t, n)
+	assert.Equal(t, []any{"2024-01-01", "aGk=", "9223372036854775808"}, nodeToValue(n))
 }
 
 func TestNodeToValue_Mapping(t *testing.T) {
