@@ -214,6 +214,94 @@ func TestStatus(t *testing.T) {
 	}
 }
 
+// TestGradeSendsScenarioRefHeaders asserts the wire contract svc
+// enforces: X-Kit-Scenario-Ref carries the manifest's scenario ref
+// (with override + version), X-Kit-Tier carries the requested tier.
+// Without these headers svc rejects every upload before grading.
+func TestGradeSendsScenarioRefHeaders(t *testing.T) {
+	var gotRef, gotTier string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRef = r.Header.Get("X-Kit-Scenario-Ref")
+		gotTier = r.Header.Get("X-Kit-Tier")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": map[string]any{"scenario_id": "acme/widget", "verdict": VerdictPass},
+		})
+	}))
+	defer srv.Close()
+
+	c, _ := New(srv.URL)
+	dir := t.TempDir()
+	writeFixture(t, dir, "manifest.yaml",
+		"schema_version: \"1\"\nscenario_id: acme/widget\nscenario_version: v1\n")
+	writeFixture(t, dir, "steps/step-1/result.json", "{\"exit_code\":0}\n")
+
+	if _, err := c.Grade(context.Background(), GradeRequest{CassetteDir: dir, Tier: 3}); err != nil {
+		t.Fatalf("Grade: %v", err)
+	}
+	if gotRef != "acme/widget@v1" {
+		t.Errorf("X-Kit-Scenario-Ref = %q, want acme/widget@v1", gotRef)
+	}
+	if gotTier != "3" {
+		t.Errorf("X-Kit-Tier = %q, want 3", gotTier)
+	}
+
+	// Explicit override wins over the manifest.
+	if _, err := c.Grade(context.Background(),
+		GradeRequest{CassetteDir: dir, ScenarioID: "other/thing@v2"}); err != nil {
+		t.Fatalf("Grade with override: %v", err)
+	}
+	if gotRef != "other/thing@v2" {
+		t.Errorf("override X-Kit-Scenario-Ref = %q, want other/thing@v2", gotRef)
+	}
+}
+
+// TestGradeManifestRoundTripsServiceFields asserts Pack does not
+// strip the svc-required manifest fields (binary, recorder,
+// story_ref, steps[].captures) when re-materializing manifest.yaml.
+func TestGradeManifestRoundTripsServiceFields(t *testing.T) {
+	dir := t.TempDir()
+	manifest := `schema_version: "1"
+binary: example
+recorder: xrr
+recorder_version: 0.1.0
+recorded_at: 2026-08-08T12:00:00Z
+scenario_id: acme/widget
+story_ref:
+  story_id: example.story
+  content_hash: sha256:deadbeef
+steps:
+  - id: step-1
+    cassette_dir: steps/step-1/cassette
+    captures: steps/step-1
+`
+	writeFixture(t, dir, "manifest.yaml", manifest)
+
+	m, err := LoadManifest(dir)
+	if err != nil {
+		t.Fatalf("LoadManifest: %v", err)
+	}
+	if m.Binary != "example" || m.Recorder != "xrr" || m.RecorderVersion != "0.1.0" {
+		t.Fatalf("recorder fields dropped: %+v", m)
+	}
+	if m.StoryRef.StoryID != "example.story" || m.StoryRef.ContentHash != "sha256:deadbeef" {
+		t.Fatalf("story_ref dropped: %+v", m.StoryRef)
+	}
+	if len(m.Steps) != 1 || m.Steps[0].Captures != "steps/step-1" {
+		t.Fatalf("steps[].captures dropped: %+v", m.Steps)
+	}
+
+	encoded, err := encodeManifest(m)
+	if err != nil {
+		t.Fatalf("encodeManifest: %v", err)
+	}
+	for _, want := range []string{"binary: example", "recorder: xrr", "content_hash", "captures: steps/step-1"} {
+		if !strings.Contains(string(encoded), want) {
+			t.Errorf("re-encoded manifest missing %q:\n%s", want, encoded)
+		}
+	}
+}
+
 // TestIsRetryable covers the predicate.
 func TestIsRetryable(t *testing.T) {
 	if IsRetryable(nil) {
