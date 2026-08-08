@@ -9,8 +9,8 @@
 //	kit conformance verify-no-leak    [--staged|--diff=<spec>|--audit|--paths=...] [--format json|human]
 //	kit conformance install-hooks     [--dry-run] [--force] [--format json|human]
 //	kit conformance verify-stories    [--paths=...] [--strict-toolspec] [--format json|human]
+//	kit conformance harness record    --scenario <yaml> --binary <path> --out <dir>
 //	kit conformance static            (reserved placeholder)
-//	kit conformance harness           (reserved placeholder)
 //	kit conformance generate-stories  (reserved placeholder)
 //
 // Exit codes (full contract enforced by leaf RunE):
@@ -30,6 +30,7 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/conformance/badge"
 	"hop.top/kit/go/console/cli/conformance/grade"
+	harnessrecord "hop.top/kit/go/console/cli/conformance/harness/record"
 	svccmd "hop.top/kit/go/console/cli/conformance/svc"
 	"hop.top/kit/go/console/output"
 )
@@ -55,16 +56,21 @@ The alias "con" is available for terser invocation
 	gradeCmd := grade.Cmd()
 	badgeCmd := badge.Cmd()
 	static := reservedCmd("static", "12fcc-static")
-	harness := reservedCmd("harness", "12fcc-harness")
+	harness := harnessrecord.Group()
 	generateStories := reservedCmd("generate-stories", "12fcc-storygen")
 	svc := svccmd.Cmd()
 	// Kit-internal conformance leaves are exempt from Layer-A
 	// registration validation. gradeCmd + badgeCmd carry the full
 	// annotation set (side-effect, idempotent, examples, next-steps)
-	// and do not need the exemption.
-	for _, c := range []*cobra.Command{verify, install, stories, static, harness, generateStories, svc} {
+	// and do not need the exemption; the harness record leaf carries
+	// its own full annotation set inside harnessrecord.Group.
+	for _, c := range []*cobra.Command{verify, install, stories, static, generateStories, svc} {
 		cli.SetExemptValidation(c)
 	}
+	// Depth-3 leaves (harness record) require kit/hierarchical on
+	// every intermediate; the harness group annotates itself, the
+	// conformance parent is annotated here.
+	cli.SetHierarchical(cmd)
 	cmd.AddCommand(verify, install, stories, gradeCmd, badgeCmd, static, harness, generateStories, svc)
 	return cmd
 }
