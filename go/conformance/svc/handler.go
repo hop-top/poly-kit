@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"hop.top/kit/go/conformance/scenario"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/transport/api"
 )
@@ -21,8 +22,9 @@ type Service struct {
 	Judges    ModelRegistry
 	Receiver  *CassetteReceiver
 	StartedAt time.Time
-	// GraderVersion is echoed in the response envelope. When scen
-	// merges, this becomes scenario.GraderVersion.
+	// GraderVersion is the fallback grader version echoed when a
+	// result arrives without one; scenario.Grade normally stamps its
+	// own.
 	GraderVersion string
 }
 
@@ -36,7 +38,7 @@ func NewService(store ScenarioStore, claims ClaimStore, grader ScenarioGrader) *
 		Judges:        NullRegistry{},
 		Receiver:      &CassetteReceiver{},
 		StartedAt:     time.Now().UTC(),
-		GraderVersion: "0.0.0-stub",
+		GraderVersion: scenario.GraderVersion,
 	}
 }
 

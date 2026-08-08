@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"hop.top/kit/go/conformance/scenario"
 )
 
 // FSStore is the filesystem-backed ScenarioStore. The layout is:
@@ -115,9 +117,10 @@ func (s *FSStore) scan(_ context.Context) error {
 				}
 				s.byCanonical[canonical(ref)] = sc
 				s.metas[canonical(ref)] = ScenarioMeta{
-					Ref:           ref,
-					SchemaVersion: sc.SchemaVersion,
-					Tier:          sc.Tier,
+					Ref:            ref,
+					SchemaVersion:  sc.SchemaVersion,
+					FactorCoverage: sc.Doc.FactorCoverage,
+					Tier:           sc.Tier,
 				}
 			}
 			if latest != "" {
@@ -155,11 +158,10 @@ func (s *FSStore) scanVersions(idDir string) ([]string, error) {
 	return out, nil
 }
 
-// loadScenario reads + minimally parses a scenario.yaml. The full
-// scenario library will land via the scenario library; until then the stub
-// Scenario type carries only what's needed to ferry references and
-// prompt directories. We treat scenario.yaml bytes as opaque to keep
-// this independent of scen's not-yet-merged parser.
+// loadScenario reads, parses, and validates a scenario.yaml through
+// the scenario library. Boot refuses any scenario that fails the
+// strict parse or the validator — an operator cannot ship a bundle
+// the grader cannot honestly grade.
 func (s *FSStore) loadScenario(idDir string, ref ScenarioRef) (*Scenario, error) {
 	verDir := filepath.Join(idDir, ref.Version)
 	scPath := filepath.Join(verDir, "scenario.yaml")
@@ -167,15 +169,26 @@ func (s *FSStore) loadScenario(idDir string, ref ScenarioRef) (*Scenario, error)
 	if err != nil {
 		return nil, fmt.Errorf("read scenario.yaml: %w", err)
 	}
-	sc := &Scenario{
-		SchemaVersion: "1",
+	doc, err := scenario.ParseBytes(raw, scPath)
+	if err != nil {
+		return nil, fmt.Errorf("parse scenario.yaml: %w", err)
+	}
+	if err := scenario.Validate(doc); err != nil {
+		return nil, fmt.Errorf("validate scenario.yaml: %w", err)
+	}
+	if doc.ScenarioID != ref.ID {
+		return nil, fmt.Errorf("scenario_id %q does not match directory id %q",
+			doc.ScenarioID, ref.ID)
+	}
+	return &Scenario{
+		SchemaVersion: doc.SchemaVersion,
 		Namespace:     ref.Namespace,
 		ID:            ref.ID,
 		Version:       ref.Version,
-		Tier:          1,
+		Tier:          doc.Tier,
+		Doc:           doc,
 		Raw:           raw,
-	}
-	return sc, nil
+	}, nil
 }
 
 // pickLatest picks the latest version. If a "latest" symlink exists,

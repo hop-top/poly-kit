@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,8 +18,8 @@ import (
 )
 
 // fakeGrader is a test ScenarioGrader. It returns a canned passing
-// result so handler-level wiring can be exercised without depending on
-// the parallel scen track.
+// result so handler-level wiring can be exercised without exercising
+// the real assertion walk (LibGrader has its own tests).
 type fakeGrader struct{ err error }
 
 func (f fakeGrader) Grade(_ context.Context, in GradeInput) (*Result, error) {
@@ -26,27 +27,52 @@ func (f fakeGrader) Grade(_ context.Context, in GradeInput) (*Result, error) {
 		return nil, f.err
 	}
 	return &Result{
-		ScenarioID:    in.Scenario.Namespace + "/" + in.Scenario.ID,
+		ScenarioID:    in.Scenario.ID,
 		SchemaVersion: "1",
 		Verdict:       "pass",
 		ScoredAt:      time.Now().UTC(),
 		GraderVersion: "test-1.0",
 		Tier:          3,
-		Facets:        map[string]any{"steps": len(in.StepCaptures)},
-		Assertions:    []AssertionResult{{Verb: "exit_code_eq", Pass: true}},
-		JudgeTraces:   []JudgeTrace{{Model: "stub", Verdict: "pass"}},
+		Facets:        []FactorFacet{{Factor: 11, Status: "pass"}},
+		Assertions:    []AssertionResult{{ID: "a1", Kind: "exit_code_equals", Factor: 11, Status: "pass"}},
+		JudgeTraces:   []JudgeTrace{{JudgeID: "j1", Model: "stub", Score: 1}},
 	}, nil
+}
+
+// validScenarioYAML renders a minimal scenario document that survives
+// the strict parse + validator at FSStore boot. id must match the
+// directory the fixture is written into.
+func validScenarioYAML(id string) []byte {
+	return fmt.Appendf(nil, `schema_version: "1"
+scenario_id: %s
+binary: example
+factor_coverage: [11]
+tier: 3
+story_ref:
+  story_id: example.story
+  story_path: stories/example.yaml
+  content_hash: sha256:%s
+steps:
+  - id: step-1
+    invoke: ["example", "run"]
+assertions:
+  - id: exits-zero
+    kind: exit_code_equals
+    on: step-1
+    factor: 11
+    value: 0
+`, id, strings.Repeat("ab", 32))
 }
 
 func newTestService(t *testing.T) (*Service, *SQLClaimStore, string, string) {
 	t.Helper()
 	tmp := t.TempDir()
 	// Seed scenario layout: acme/widget/v1/scenario.yaml.
-	scYAML := []byte("schema_version: \"1\"\n")
 	if err := os.MkdirAll(filepath.Join(tmp, "scenarios/acme/widget/v1"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tmp, "scenarios/acme/widget/v1/scenario.yaml"), scYAML, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmp, "scenarios/acme/widget/v1/scenario.yaml"),
+		validScenarioYAML("widget"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store, err := NewFSStore(context.Background(), tmp)
