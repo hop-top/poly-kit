@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"hop.top/kit/go/conformance/client"
+	"hop.top/kit/go/conformance/scenario"
 )
 
 // TestGradeLeafSuccess wires the leaf against an httptest fixture
@@ -82,6 +83,74 @@ func TestGradeLeafFailMapsExitCode(t *testing.T) {
 	}
 	if !errors.Is(err, client.ErrGradeFail) {
 		t.Fatalf("err = %v, want errors.Is ErrGradeFail", err)
+	}
+}
+
+// TestGradeLeafFailShowsAssertionTraces asserts a failing grade's
+// per-assertion detail — the WHY behind each red facet — reaches CLI
+// consumers in both human and JSON output. The fixture reply mirrors
+// svc's wire shape exactly: the grader's scenario.Result (with its
+// assertions[] trace) serialized under the "result" key.
+func TestGradeLeafFailShowsAssertionTraces(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": &scenario.Result{
+				ScenarioID: "t.leaf.trace",
+				Verdict:    scenario.VerdictFail,
+				Reason:     "1 of 1 assertions failed",
+				Tier:       3,
+				Facets:     []scenario.FactorFacet{{Factor: 11, Status: scenario.StatusFail}},
+				Assertions: []scenario.AssertionResult{{
+					ID: "exits-zero", Kind: "exit_code_equals", Factor: 11,
+					Status: scenario.StatusFail, Observed: 3, Expected: 0,
+					Message: "exit code 3 != 0",
+				}},
+			},
+			"service": map[string]string{"version": "0.1.0"},
+		})
+	}))
+	defer srv.Close()
+
+	run := func(format string) string {
+		t.Helper()
+		dir := makeCassetteDir(t)
+		cmd := Cmd()
+		var stdout, stderr bytes.Buffer
+		cmd.SetOut(&stdout)
+		cmd.SetErr(&stderr)
+		cmd.SetContext(context.Background())
+		cmd.SetArgs([]string{dir, "--service", srv.URL, "--format", format})
+		err := cmd.Execute()
+		if !errors.Is(err, client.ErrGradeFail) {
+			t.Fatalf("Execute err = %v, want errors.Is ErrGradeFail\nstderr=%s", err, stderr.String())
+		}
+		return stdout.String()
+	}
+
+	human := run("human")
+	for _, want := range []string{
+		"failing assertions:",
+		"[exits-zero]",
+		"exit_code_equals",
+		"expected 0, observed 3",
+		"exit code 3 != 0",
+	} {
+		if !strings.Contains(human, want) {
+			t.Errorf("human output missing %q:\n%s", want, human)
+		}
+	}
+
+	jsonOut := run("json")
+	for _, want := range []string{
+		`"assertions"`,
+		`"exits-zero"`,
+		`"observed": 3`,
+		`"exit code 3 != 0"`,
+	} {
+		if !strings.Contains(jsonOut, want) {
+			t.Errorf("json output missing %q:\n%s", want, jsonOut)
+		}
 	}
 }
 

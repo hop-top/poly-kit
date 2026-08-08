@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"hop.top/kit/go/conformance/scenario"
 )
 
 // TestNewRequiresBaseURL asserts the no-default-service-URL contract:
@@ -71,6 +74,117 @@ func TestGradeSyncPass(t *testing.T) {
 	}
 	if res.ScenarioID != "t.sync.pass" {
 		t.Fatalf("ScenarioID = %q", res.ScenarioID)
+	}
+}
+
+// TestGradeDecodesAssertionTraces pins the /v1/grade wire contract:
+// svc serializes the grader's scenario.Result verbatim under the
+// "result" key (see svc.GradeResponse), so a tier-3 body looks like
+//
+//	{
+//	  "result": {
+//	    "scenario_id": "...", "schema_version": "1",
+//	    "verdict": "fail", "reason": "...", "scored_at": "...",
+//	    "grader_version": "...", "rules_version": "...", "tier": 3,
+//	    "facets":     [{"factor": 11, "status": "fail"}],
+//	    "assertions": [{"id": "exits-zero", "kind": "exit_code_equals",
+//	                    "factor": 11, "status": "fail",
+//	                    "observed": 3, "expected": 0,
+//	                    "message": "exit code 3 != 0"}]
+//	  },
+//	  "service": {"version": "...", "request_id": "..."}
+//	}
+//
+// The typed client must preserve the per-assertion trace through
+// decode. The trace is probed via a re-marshal of the returned Result
+// so the test compiles against any Result shape and fails at runtime
+// if the trace is dropped (the original defect: the client decoded a
+// "findings" field svc never sends, silently discarding every trace).
+func TestGradeDecodesAssertionTraces(t *testing.T) {
+	wire := &scenario.Result{
+		ScenarioID:    "acme/widget",
+		SchemaVersion: "1",
+		Verdict:       scenario.VerdictFail,
+		Reason:        "1 of 2 assertions failed",
+		ScoredAt:      time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC),
+		GraderVersion: "0.3.0",
+		RulesVersion:  "2026-05-01",
+		Tier:          3,
+		Facets: []scenario.FactorFacet{
+			{Factor: 1, Status: scenario.StatusPass},
+			{Factor: 11, Status: scenario.StatusFail},
+		},
+		Assertions: []scenario.AssertionResult{
+			{ID: "help-works", Kind: "exit_code_equals", Factor: 1,
+				Status: scenario.StatusPass, Observed: 0, Expected: 0},
+			{ID: "exits-zero", Kind: "exit_code_equals", Factor: 11,
+				Status: scenario.StatusFail, Observed: 3, Expected: 0,
+				Message: "exit code 3 != 0"},
+		},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result":  wire,
+			"service": map[string]string{"version": "0.1.0", "request_id": "req-1"},
+		})
+	}))
+	defer srv.Close()
+
+	c, err := New(srv.URL)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	res, err := c.Grade(context.Background(), GradeRequest{CassetteDir: buildFixtureDir(t)})
+	if err != nil {
+		t.Fatalf("Grade: %v", err)
+	}
+
+	reencoded, err := json.Marshal(res)
+	if err != nil {
+		t.Fatalf("re-marshal result: %v", err)
+	}
+	var probe struct {
+		Facets []struct {
+			Factor int    `json:"factor"`
+			Status string `json:"status"`
+		} `json:"facets"`
+		Assertions []struct {
+			ID       string `json:"id"`
+			Kind     string `json:"kind"`
+			Factor   int    `json:"factor"`
+			Status   string `json:"status"`
+			Observed any    `json:"observed"`
+			Expected any    `json:"expected"`
+			Message  string `json:"message"`
+		} `json:"assertions"`
+	}
+	if err := json.Unmarshal(reencoded, &probe); err != nil {
+		t.Fatalf("probe decode: %v", err)
+	}
+	if len(probe.Assertions) != 2 {
+		t.Fatalf("per-assertion trace dropped by client decode; got %d assertions, want 2\nresult: %s",
+			len(probe.Assertions), reencoded)
+	}
+	fail := probe.Assertions[1]
+	if fail.ID != "exits-zero" || fail.Kind != "exit_code_equals" || fail.Factor != 11 {
+		t.Errorf("assertion identity mangled: %+v", fail)
+	}
+	if fail.Status != "fail" {
+		t.Errorf("Status = %q, want fail", fail.Status)
+	}
+	if got := fmt.Sprint(fail.Observed); got != "3" {
+		t.Errorf("Observed = %v, want 3", fail.Observed)
+	}
+	if got := fmt.Sprint(fail.Expected); got != "0" {
+		t.Errorf("Expected = %v, want 0", fail.Expected)
+	}
+	if fail.Message != "exit code 3 != 0" {
+		t.Errorf("Message = %q, want %q", fail.Message, "exit code 3 != 0")
+	}
+	if len(probe.Facets) != 2 || probe.Facets[1].Factor != 11 || probe.Facets[1].Status != "fail" {
+		t.Errorf("facet rollups mangled: %+v", probe.Facets)
 	}
 }
 
