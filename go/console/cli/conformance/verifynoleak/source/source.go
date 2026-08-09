@@ -9,14 +9,24 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
 // ErrNotAGitRepo is returned by Staged / Diff when invoked outside a
 // git working tree. Callers map this to the io_error exit class.
 var ErrNotAGitRepo = errors.New("source: not inside a git repository")
+
+// ErrBadPaths wraps every --paths resolution failure: a missing
+// entry, or a directory holding nothing scannable. Callers map this
+// to the config_error exit class rather than io_error, because the
+// conformance action excludes io_error from its fail-on set — an
+// unscannable --paths would otherwise pass CI silently, which is the
+// vacuous result this expansion exists to prevent.
+var ErrBadPaths = errors.New("source: unusable --paths")
 
 // Staged lists files in the git index (those that would be in the
 // next commit). Used by --staged / the pre-commit hook.
@@ -62,17 +72,85 @@ func Audit(cwd string) ([]string, error) {
 // Each entry is resolved relative to cwd; missing entries surface
 // as errors rather than silent skips, since explicit means
 // intentional.
+//
+// Directories expand to the scannable files beneath them, matching
+// what verify-stories accepts. Returning a directory verbatim let
+// the scanner skip it as an unsupported extension and report zero
+// scanned files while still exiting clean — a pass that measured
+// nothing. A directory holding no scannable file is an error for
+// the same reason.
 func Paths(cwd string, paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, errors.New("source: --paths requires at least one path")
 	}
+	seen := make(map[string]struct{}, len(paths))
 	out := make([]string, 0, len(paths))
+	add := func(p string) {
+		if _, dup := seen[p]; dup {
+			return
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
 	for _, p := range paths {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(cwd, p)
 		}
-		out = append(out, p)
+		info, err := os.Stat(p)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s: %w", ErrBadPaths, p, err)
+		}
+		if !info.IsDir() {
+			add(p)
+			continue
+		}
+		nested, err := scannableUnder(p)
+		if err != nil {
+			return nil, err
+		}
+		if len(nested) == 0 {
+			return nil, fmt.Errorf("%w: %s: directory holds no scannable files", ErrBadPaths, p)
+		}
+		for _, n := range nested {
+			add(n)
+		}
 	}
+	return out, nil
+}
+
+// scannableExts are the extensions the directory walk collects.
+// Explicitly named files bypass this filter: naming a file is an
+// instruction, naming a directory is a search.
+var scannableExts = map[string]bool{
+	".yaml": true,
+	".yml":  true,
+	".md":   true,
+	".json": true,
+}
+
+// scannableUnder returns the sorted scannable files below dir,
+// skipping dot-directories the way verify-stories does.
+func scannableUnder(dir string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if p != dir && strings.HasPrefix(d.Name(), ".") {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if scannableExts[strings.ToLower(filepath.Ext(p))] {
+			out = append(out, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("source: walk %s: %w", dir, err)
+	}
+	sort.Strings(out)
 	return out, nil
 }
 

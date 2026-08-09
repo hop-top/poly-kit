@@ -189,6 +189,10 @@ func runVerifyNoLeak(cmd *cobra.Command, v *viper.Viper, f vnlFlags) error {
 		if errors.Is(err, source.ErrNotAGitRepo) {
 			return IOError("scan-source needs a git repo", err.Error(), "run inside a git working tree or use --paths")
 		}
+		if errors.Is(err, source.ErrBadPaths) {
+			return ConfigError("scan-source resolution failed", err.Error(),
+				"point --paths at an existing file, or a directory holding .yaml/.yml/.md/.json files")
+		}
 		return IOError("scan-source resolution failed", err.Error(), "")
 	}
 
