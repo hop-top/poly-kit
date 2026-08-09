@@ -33,9 +33,11 @@ type renderConfig struct {
 // WithProvenance attaches a Metadata envelope to the rendered output.
 //
 // For JSON and YAML formats, the rendered payload is wrapped in
-// {"data": <v>, "_meta": <Metadata>}. For Table format, provenance is
-// printed as a single trailing footer line on stderr (no column space
-// is consumed in the table itself).
+// {"data": <v>, "_meta": <Metadata>}. For the tag-driven formats (table,
+// csv, text, human), provenance is printed as a single trailing footer
+// line on stderr and the payload renders unwrapped — those formats
+// project `table:""` tags into a flat document with no place to nest an
+// envelope, and no column space is consumed by provenance.
 //
 // Adopters opt in explicitly — Render never auto-attaches provenance,
 // because the package can't tell which calls touched the network.
