@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/cli/conformance"
+	"hop.top/kit/go/console/output"
 )
 
 func runCmd(t *testing.T, args ...string) (string, error) {
@@ -58,7 +59,7 @@ func TestVerifyNoLeak_PRBody_ZeroIsNoOp(t *testing.T) {
 	// scan-only flows should not be broken by the new wiring.
 	// Pass --paths pointing at a known-empty list; we accept any
 	// non-usage error class (--paths inside a tempdir may surface
-	// io_error or succeed depending on resolution). The point is
+	// an io error or succeed depending on resolution). The point is
 	// that --pr-body=0 alone must not trip the usage guard.
 	_, err := runCmd(t, "verify-no-leak", "--pr-body", "0", "--quiet-on-clean", "--paths", "nonexistent-but-ok")
 	if err != nil {
@@ -100,7 +101,7 @@ func TestInstallHooks_AcceptsAllDesignedFlags(t *testing.T) {
 	}
 }
 
-func TestReservedChild_StaticExits3(t *testing.T) {
+func TestReservedChild_StaticExits2(t *testing.T) {
 	_, err := runCmd(t, "static")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, conformance.ErrUsage), "reserved subcommand should return ErrUsage")
@@ -108,10 +109,10 @@ func TestReservedChild_StaticExits3(t *testing.T) {
 
 	code, ok := conformance.ExitCode(err)
 	require.True(t, ok)
-	assert.Equal(t, 3, code, "ErrUsage should map to exit code 3")
+	assert.Equal(t, 2, code, "ErrUsage should map to the taxonomy usage slot (exit 2)")
 }
 
-func TestReservedChild_HarnessExits3(t *testing.T) {
+func TestReservedChild_HarnessExits2(t *testing.T) {
 	_, err := runCmd(t, "harness")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, conformance.ErrUsage))
@@ -126,12 +127,12 @@ func TestExitCode_Mapping(t *testing.T) {
 		ok   bool
 	}{
 		{"nil maps to 0", nil, 0, true},
-		{"leak detected", conformance.ErrLeakDetected, 2, true},
-		{"usage", conformance.ErrUsage, 3, true},
-		{"io", conformance.ErrIO, 4, true},
-		{"config", conformance.ErrConfig, 5, true},
+		{"leak detected", conformance.ErrLeakDetected, 66, true},
+		{"usage", conformance.ErrUsage, 2, true},
+		{"io", conformance.ErrIO, 6, true},
+		{"config", conformance.ErrConfig, 67, true},
 		{"unknown returns not-ok", errors.New("random"), 0, false},
-		{"wrapped leak still maps", wrap(conformance.ErrLeakDetected), 2, true},
+		{"wrapped leak still maps", wrap(conformance.ErrLeakDetected), 66, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -140,6 +141,44 @@ func TestExitCode_Mapping(t *testing.T) {
 			assert.Equal(t, c.ok, ok)
 		})
 	}
+}
+
+// TestSentinelEnvelopes pins each sentinel's rendered envelope to the
+// reconciled kit-wide taxonomy: usage on the shared slot 2, io on the
+// transient slot 6, and the two tool-specific outcomes (leak, config)
+// in kit's documented >6 band next to RATE_LIMITED(64) and
+// PROVENANCE_MISSING(65).
+func TestSentinelEnvelopes(t *testing.T) {
+	cases := []struct {
+		name           string
+		err            error
+		wantCode       string
+		wantExit       int
+		wantTransience string
+	}{
+		{"usage", conformance.UsageError("x"), "USAGE", 2, output.TransiencePermanent},
+		{"io", conformance.IOError("x", "", ""), "IO", output.ExitTransient, output.TransienceTransient},
+		{"leak", conformance.LeakDetectedError("x"), "LEAK_DETECTED", conformance.ExitLeakDetected, output.TransiencePermanent},
+		{"config", conformance.ConfigError("x", "", ""), "CONFIG", conformance.ExitConfigError, output.TransiencePermanent},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			conv, ok := c.err.(interface{ AsCLIError() *output.Error })
+			require.True(t, ok, "sentinel must implement AsCLIError")
+			env := conv.AsCLIError()
+			assert.Equal(t, c.wantCode, env.Code)
+			assert.Equal(t, c.wantExit, env.ExitCode)
+			assert.Equal(t, c.wantTransience, env.Transience,
+				"agents branch on transience to decide retries; io is the retry class")
+		})
+	}
+}
+
+// TestBandConstants locks the conformance-tree band allocation so a
+// future kit-wide code cannot silently collide with it.
+func TestBandConstants(t *testing.T) {
+	assert.Equal(t, 66, conformance.ExitLeakDetected, "next free slot after kit's 64/65")
+	assert.Equal(t, 67, conformance.ExitConfigError)
 }
 
 func TestReservedChild_HelpLine(t *testing.T) {

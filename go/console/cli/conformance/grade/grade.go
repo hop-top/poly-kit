@@ -214,11 +214,7 @@ func run(cmd *cobra.Command, v *viper.Viper, f gradeFlags) error {
 }
 
 // usageError mirrors conformance.UsageError so the kit RunE
-// middleware exits with code 3.
+// middleware exits with the kit-wide usage code (2).
 func usageError(detail string) error {
-	return &output.Error{
-		Code:     "USAGE",
-		Message:  "conformance grade: " + detail,
-		ExitCode: 3,
-	}
+	return output.UsageError("conformance grade: " + detail)
 }
