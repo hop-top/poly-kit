@@ -39,6 +39,36 @@ export { Registry, defaultRegistry, newRegistry } from './output/registry';
 export { jsonFormatter } from './output/formatters/json';
 export { yamlFormatter } from './output/formatters/yaml';
 export { tableFormatter } from './output/formatters/table';
+export type { CliError } from './output/error';
+export {
+  CODE_OK,
+  CODE_GENERIC,
+  CODE_USAGE,
+  CODE_NOT_FOUND,
+  CODE_CONFLICT,
+  CODE_UNAUTHORIZED,
+  CODE_TRANSIENT,
+  CODE_PROVENANCE_MISSING,
+  CODE_RATE_LIMITED,
+  EXIT_TRANSIENT,
+  EXIT_RATE_LIMITED,
+  EXIT_PROVENANCE_MISSING,
+  TRANSIENCE_TRANSIENT,
+  TRANSIENCE_PERMANENT,
+  TRANSIENCE_UNKNOWN,
+  transienceForCode,
+  wrapError,
+  unwrapError,
+  withTransience,
+  notFoundError,
+  conflictError,
+  unauthorizedError,
+  usageError,
+  transientError,
+  rateLimitedError,
+  provenanceMissingError,
+  renderError,
+} from './output/error';
 
 // Side-effect: register built-ins.
 import './output/builtins';
