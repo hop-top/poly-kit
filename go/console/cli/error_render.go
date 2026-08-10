@@ -30,7 +30,15 @@ func toCLIError(err error) *output.Error {
 			// conversion doesn't sever errors.Is. Sentinel-bearing types
 			// (e.g. conformance.UsageError) document that identity holds,
 			// and that promise has to survive the envelope too.
-			return out.Retaining(err)
+			out = out.Retaining(err)
+			if out.Transience == "" {
+				// Unset (not adopter-chosen) transience defaults from
+				// the code so passthrough envelopes predating the field
+				// still classify on the wire. WithTransience copies, so
+				// shared package-level envelopes stay untouched.
+				out = out.WithTransience(output.TransienceForCode(out.Code))
+			}
+			return out
 		}
 	}
 	// WrapError retains err so errors.Is still matches sentinels after the

@@ -61,7 +61,10 @@ func TestErrorUnwrapNilReceiver(t *testing.T) {
 // The retained error is unexported precisely so it cannot reach the wire.
 // Serialization must be byte-identical whether or not an error is wrapped.
 func TestErrorSerializationUnchangedByWrapping(t *testing.T) {
-	plain := &output.Error{Code: output.CodeGeneric, Message: "boom", ExitCode: 1}
+	plain := &output.Error{
+		Code: output.CodeGeneric, Message: "boom", ExitCode: 1,
+		Transience: output.TransienceUnknown,
+	}
 	wrapped := output.WrapError(errors.New("boom"), output.CodeGeneric, 1)
 
 	plainJSON, err := json.Marshal(plain)

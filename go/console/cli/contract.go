@@ -19,6 +19,12 @@ const (
 	// kitRetryable is "true" when the command's effect is safely
 	// re-runnable without further protection (after a transient
 	// failure, etc.). Absence means "false".
+	//
+	// Pairs with output.Error.Transience: the annotation declares the
+	// command safe to re-invoke, the envelope's transience class says
+	// whether a retry can clear the failure. Agents retry when the
+	// command is retryable AND the failure is transient (or unknown,
+	// bounded).
 	kitRetryable = "kit/retryable"
 	// kitDryRunRationale carries the adopter-supplied 1-200 char
 	// reason a write|destructive leaf opted out of --dry-run. Read
