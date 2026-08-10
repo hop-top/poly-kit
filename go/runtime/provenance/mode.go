@@ -14,7 +14,7 @@ import (
 //   - ModeWarn: track Provenance; log warnings to stderr on missing
 //     entries; emit anyway.
 //   - ModeStrict: track Provenance; return *output.Error{Code:
-//     "PROVENANCE_MISSING", ExitCode: 6} from Render on missing
+//     "PROVENANCE_MISSING", ExitCode: 65} from Render on missing
 //     entries; nothing hits stdout.
 //
 // Adopters call SetMode(ModeWarn) in main.init() to dogfood; flip to

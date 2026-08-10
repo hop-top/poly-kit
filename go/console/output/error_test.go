@@ -95,7 +95,8 @@ func TestSentinelConstructors(t *testing.T) {
 		{"Unauthorized", output.UnauthorizedError("nope"), output.CodeUnauthorized, 5, output.TransiencePermanent},
 		{"Usage", output.UsageError("bad flag"), output.CodeUsage, 2, output.TransiencePermanent},
 		{"RateLimited", output.RateLimitedError("budget"), output.CodeRateLimited, 64, output.TransienceTransient},
-		{"ProvenanceMissing", output.ProvenanceMissingError("/email"), output.CodeProvenanceMissing, 6, output.TransiencePermanent},
+		{"Transient", output.TransientError("upstream timeout"), output.CodeTransient, 6, output.TransienceTransient},
+		{"ProvenanceMissing", output.ProvenanceMissingError("/email"), output.CodeProvenanceMissing, 65, output.TransiencePermanent},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -118,6 +119,7 @@ func TestTransienceForCode(t *testing.T) {
 		{output.CodeUnauthorized, output.TransiencePermanent},
 		{output.CodeProvenanceMissing, output.TransiencePermanent},
 		{output.CodeRateLimited, output.TransienceTransient},
+		{output.CodeTransient, output.TransienceTransient},
 		{output.CodeGeneric, output.TransienceUnknown},
 		{"ADOPTER_SPECIFIC", output.TransienceUnknown},
 		{"", output.TransienceUnknown},

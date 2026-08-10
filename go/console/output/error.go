@@ -66,7 +66,7 @@ func TransienceForCode(code string) string {
 	case CodeUsage, CodeNotFound, CodeConflict, CodeUnauthorized,
 		CodeProvenanceMissing:
 		return TransiencePermanent
-	case CodeRateLimited:
+	case CodeRateLimited, CodeTransient:
 		return TransienceTransient
 	}
 	return TransienceUnknown
@@ -162,7 +162,8 @@ const (
 	CodeNotFound          = "NOT_FOUND"          // exit 3
 	CodeConflict          = "CONFLICT"           // exit 4
 	CodeUnauthorized      = "UNAUTHORIZED"       // exit 5
-	CodeProvenanceMissing = "PROVENANCE_MISSING" // exit 6 — Factor-12 strict-mode refusal
+	CodeTransient         = "TRANSIENT"          // exit 6 — Factor-11 transient/retryable failure
+	CodeProvenanceMissing = "PROVENANCE_MISSING" // exit 65 — Factor-12 strict-mode refusal
 	CodeRateLimited       = "RATE_LIMITED"       // exit 64 — Factor-10 max-ops budget exceeded (§8.6)
 )
 
@@ -183,11 +184,22 @@ const (
 	CodeGraderInternal            = "GRADER_INTERNAL"             // exit 1 — grader bug
 )
 
+// ExitTransient is the spec-assigned exit code for transient/retryable
+// failures (Factor 11: rate limit, timeout, upstream blip). Agents
+// branch on it before parsing stderr: exit 6 means a retry may clear
+// the failure.
+const ExitTransient = 6
+
 // ExitProvenanceMissing is the conventional exit code for Factor-12
 // strict-mode refusals. The Render boundary in
 // hop.top/kit/go/runtime/provenance returns this when a Synthesized
 // or Cached field has no recorded Provenance entry.
-const ExitProvenanceMissing = 6
+//
+// Lives at 65 in kit's extension band (alongside RATE_LIMITED at 64):
+// the spec reserves 0-6 for its core taxonomy and leaves >6 to
+// per-tool codes, and kit as a library stays out of the low per-tool
+// range adopters reach for first.
+const ExitProvenanceMissing = 65
 
 // ExitRateLimited is the conventional exit code for Factor-10 rate-limit
 // refusals (--max-ops budget exceeded). See §8.1 / §8.6.
@@ -211,6 +223,13 @@ func UnauthorizedError(msg string) *Error {
 // UsageError returns an *Error with CodeUsage and ExitCode 2.
 func UsageError(msg string) *Error {
 	return &Error{Code: CodeUsage, Message: msg, ExitCode: 2, Transience: TransiencePermanent}
+}
+
+// TransientError returns an *Error with CodeTransient and ExitCode 6
+// (Factor 11). Use it for failures a retry may clear: upstream
+// timeouts, connection resets, service-unavailable responses.
+func TransientError(msg string) *Error {
+	return &Error{Code: CodeTransient, Message: msg, ExitCode: ExitTransient, Transience: TransienceTransient}
 }
 
 // RateLimitedError returns an *Error with CodeRateLimited and

@@ -18,7 +18,7 @@ import (
 // the path segment.
 //
 // Returns nil on success; *output.Error{Code: "PROVENANCE_MISSING",
-// ExitCode: 6} on the aggregated violations.
+// ExitCode: 65} on the aggregated violations.
 //
 // Verify is pure — no I/O, just reflect over v and consult the
 // Tracker. Safe to call from tests; AssertProvenanceComplete is the
