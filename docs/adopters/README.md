@@ -34,6 +34,7 @@ how kit itself is implemented.
 - [`guides/getting-started-cli.md`](guides/getting-started-cli.md) — extended walkthrough
 - [`guides/kit-init.md`](guides/kit-init.md) — `kit init` flow + flag reference
 - [`guides/create-cli-project.md`](guides/create-cli-project.md) — scaffold a new CLI
+- [`guides/expose-cli-over-mcp.md`](guides/expose-cli-over-mcp.md) — serve your commands as MCP tools (both spec revisions)
 - [`guides/hook-cli-into-bus.md`](guides/hook-cli-into-bus.md) — first publish/subscribe
 - [`guides/run-the-engine.md`](guides/run-the-engine.md) — start the engine sidecar
 - [`guides/secret-management-guide.md`](guides/secret-management-guide.md) — secret backend recipes
