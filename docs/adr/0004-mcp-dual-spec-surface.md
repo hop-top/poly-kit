@@ -85,16 +85,29 @@ dual-era server "MAY serve both eras concurrently on the same endpoint".
 
 | ID | Marker |
 | -- | ------ |
-| M1 | HTTP header `MCP-Protocol-Version` present |
-| M2 | HTTP header `Mcp-Method` present |
-| M3 | HTTP header `Mcp-Name` present |
-| M4 | body `params._meta` contains the key `io.modelcontextprotocol/protocolVersion` (key presence only; the value is not inspected at detection time) |
-| M5 | body `method == "server/discover"` |
+| M1 | HTTP header `Mcp-Method` present |
+| M2 | HTTP header `Mcp-Name` present |
+| M3 | body `params._meta` contains the key `io.modelcontextprotocol/protocolVersion` (key presence only; the value is not inspected at detection time) |
+| M4 | body `method == "server/discover"` |
 
-The mere presence of `params._meta` is **not** a marker: 2024-11-05
-clients legitimately send `_meta.progressToken` (and OTel
-`traceparent`/`tracestate`/`baggage`). Only the reserved
-`protocolVersion` key signals the modern era.
+Two deliberate non-markers:
+
+- The mere presence of `params._meta` is **not** a marker: 2024-11-05
+  clients legitimately send `_meta.progressToken` (and OTel
+  `traceparent`/`tracestate`/`baggage`). Only the reserved
+  `protocolVersion` key signals the modern era.
+- Presence of the `MCP-Protocol-Version` **header** is **not** a
+  marker. The header predates 2026-07-28 (introduced with the
+  2025-06-18 transport), so SDK clients that negotiated down to
+  2024-11-05 via kit's `initialize` handshake send it on every
+  subsequent request; treating it as a modern signal would serve
+  their handshake and then brick the session. On the legacy path it
+  is tolerated and ignored, like `Mcp-Session-Id` and
+  `Last-Event-ID`. Nothing is lost: a conforming 2026-07-28 request
+  always carries M1 (`Mcp-Method` is required on every request) and
+  M3, so no modern request is ever detected by that header alone.
+  Once a request *is* routed modern, the header becomes mandatory
+  again (V4).
 
 **Precedence** (first rule that applies wins):
 
@@ -115,9 +128,11 @@ clients legitimately send `_meta.progressToken` (and OTel
   dual-era clients rely on to avoid falling back incorrectly: a
   recognized modern JSON-RPC error body identifies a modern server.
 - **D4 — otherwise legacy.** No markers → legacy handler. This is the
-  byte-for-byte preservation path: every request a 2024-11-05 client
-  can send has an empty marker set (or is `initialize`) and takes
-  today's exact code path.
+  byte-for-byte preservation path: every request a legacy client can
+  send — including mid-era SDK clients that negotiated 2024-11-05 via
+  the handshake and therefore send `MCP-Protocol-Version` on every
+  subsequent request — has an empty marker set (or is `initialize`)
+  and takes today's exact code path.
 
 **Interaction with enabled versions:**
 
@@ -125,10 +140,16 @@ clients legitimately send `_meta.progressToken` (and OTel
 - Legacy only: `MountMCP` installs today's `mcpHandler.serveHTTP`
   directly; the dispatcher is not in the path and markers are ignored
   exactly as today.
-- Modern only: every request routes to the modern handler. An
-  `initialize` request gets `-32601` at HTTP 404 with an error
-  message naming the supported versions (spec SHOULD for modern-only
-  servers, since legacy clients have no fall-forward mechanism).
+- Modern only: every request routes to the modern handler and is
+  handled per the normal V1–V9 order — no special-casing of
+  `initialize` anywhere. A bare legacy `initialize` therefore fails
+  V3 (`-32602` @ 400, missing required `_meta`). Whenever the modern
+  handler rejects a request whose `method` is `"initialize"`, the
+  error `message` additionally names the supported versions (spec
+  SHOULD: a modern-only server names its supported versions "in any
+  error it returns" to `initialize`, since legacy clients have no
+  fall-forward mechanism; the spec's compatibility matrix likewise
+  expects this rejection to be a 400 via normal server validation).
 
 **Worked edge cases** (both versions enabled):
 
@@ -137,10 +158,12 @@ clients legitimately send `_meta.progressToken` (and OTel
 | bare `initialize` | legacy | today's initialize result (`2024-11-05`) |
 | `initialize` + any marker | legacy | same |
 | bare `tools/list` / `tools/call` | legacy | today's responses |
+| `tools/list` / `tools/call` with only an `MCP-Protocol-Version: 2024-11-05` header (mid-era legacy-negotiated SDK client) | legacy | today's responses; header ignored |
 | bare unknown method | legacy | `-32601` at HTTP **200** (today's behavior, preserved) |
-| `tools/call` with M4 only (no headers) | modern | `-32020` at 400 (missing `MCP-Protocol-Version` header) |
-| `tools/call` with M2 only (no `_meta`) | modern | `-32602` at 400 (missing required `_meta` fields) |
-| bare `server/discover` | modern | `-32602` at 400 — a recognized modern error, which is what era-probing clients need |
+| `tools/call` with `_meta` protocolVersion key only (M3), no headers | modern | `-32602` at 400 (V3: `clientCapabilities` missing) |
+| `tools/call` with complete `_meta`, no headers | modern | `-32020` at 400 (V4: missing `MCP-Protocol-Version` header) |
+| `tools/call` with M1 only (no `_meta`) | modern | `-32602` at 400 (missing required `_meta` fields) |
+| bare `server/discover` | modern | `-32602` at 400 (missing required `_meta` fields; the spec-mandated modern response, though `-32602` alone is not one of the distinctively modern `-3202x` codes) |
 | unknown method + valid modern envelope | modern | `-32601` at HTTP **404** |
 | notification (no `id`) + markers | modern | HTTP 202, empty body, not processed |
 | `id: null` + markers | modern | `-32600` at 400 |
@@ -368,9 +391,15 @@ default with an MRTR flow, pinned here so it needs no new design:
   SHA-256 digest of the canonically-serialized arguments, the caller
   principal when known, and a short expiry. On retry the gate verifies
   the state, requires `inputResponses.confirm.action == "accept"`, and
-  proceeds; decline/cancel → `isError` "confirmation declined";
-  invalid or expired state → a fresh `input_required` result (spec:
-  re-request rather than error).
+  proceeds; decline/cancel → `isError` "confirmation declined".
+  Two failure cases are distinct: an **expired** (but authentic)
+  state is a routine re-prompt → a fresh `input_required` result
+  (spec: re-request missing information rather than error); a state
+  that **fails HMAC verification** is rejected (spec MUST) — it is
+  never honored, the event is logged as a security-relevant audit
+  event, and only then does the gate issue a fresh `input_required`
+  with newly minted state. Tampering thus causes nothing worse than
+  request failure, but is never silently treated as a re-prompt.
 - Interim `input_required` results carry no cache hints and are never
   cached.
 - MRTR never relaxes the destructive ceiling: `ErrDestructiveBlocked`
@@ -423,8 +452,10 @@ Deliberately excluded from this work (each would be its own decision):
 
 ### Positive
 
-- 2024-11-05 clients are untouched by construction: their traffic has
-  an empty marker set and reaches the exact code that serves it today,
+- 2024-11-05 clients are untouched by construction: their traffic —
+  including the `MCP-Protocol-Version` header that mid-era SDK
+  clients send after negotiating down via the handshake — has an
+  empty marker set and reaches the exact code that serves it today,
   which the legacy conformance cassettes lock.
 - Modern clients (and dual-era clients probing per the spec's
   backward-compatibility algorithm) get spec-correct behavior: every
@@ -496,6 +527,14 @@ Deliberately excluded from this work (each would be its own decision):
   through to the legacy handler and receive non-spec errors,
   defeating the spec's fallback algorithm, which keys on recognized
   modern error bodies.
+- **`MCP-Protocol-Version` header as a (value-sensitive) marker.**
+  Rejected: header *presence* would route mid-era legacy-negotiated
+  SDK clients — which send it on every post-`initialize` request —
+  to the modern handler and brick their sessions; a value-sensitive
+  variant (marker only when the value is a modern-servable version)
+  avoids that but adds a second value-inspection rule for zero
+  coverage, since every conforming modern request already carries
+  M1 and M3.
 - **Strict rejection of `initialize` + modern markers.** Rejected:
   adds a failure mode the spec doesn't define, for no interop gain.
 - **Teaching the toolspec adapter the 2026 descriptor fields now.**
