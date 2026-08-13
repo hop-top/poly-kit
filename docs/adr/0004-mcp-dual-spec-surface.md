@@ -396,8 +396,10 @@ per spec).
 structured as: resolve leaf → auth gate → *confirmation gate* →
 `Bridge.Invoke` → render. The confirmation gate is an unexported
 strategy slot on `mcpModernHandler` whose default implementation is
-the `X-Confirm-Token` check above. A later change replaces the
-default with an MRTR flow, pinned here so it needs no new design:
+the `X-Confirm-Token` check above. On mounts provisioned with key
+material (`WithMCPConfirmationKey`) the slot instead holds an MRTR
+flow, pinned here so it needs no new design; without a key the header
+gate remains the confirmation mechanism for every client:
 
 - Applies only when the request's
   `io.modelcontextprotocol/clientCapabilities` declares `elicitation`;
@@ -408,9 +410,12 @@ default with an MRTR flow, pinned here so it needs no new design:
   `inputRequests` under the single reserved key `"confirm"` (an
   `elicitation/create` form request asking the user to approve the
   invocation) and a `requestState`.
-- `requestState` is integrity-protected (HMAC-SHA-256; key is
-  process-local random per mount by default) over: leaf path key, a
-  SHA-256 digest of the canonically-serialized arguments, the caller
+- `requestState` is integrity-protected (HMAC-SHA-256; the key is
+  adopter-supplied via `WithMCPConfirmationKey` and MUST be shared
+  across instances — there is no generated-at-mount default, which
+  would break any-instance statelessness by making a retry that lands
+  on another instance unverifiable) over: leaf path key, a SHA-256
+  digest of the canonically-serialized arguments, the caller
   principal when known, and a short expiry. On retry the gate verifies
   the state, requires `inputResponses.confirm.action == "accept"`, and
   proceeds; decline/cancel → `isError` "confirmation declined".
