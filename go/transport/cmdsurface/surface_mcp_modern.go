@@ -24,10 +24,15 @@ import (
 	"strings"
 )
 
-// mcpResultTypeComplete is the resultType every modern result
-// envelope carries. MRTR "input_required" results are not produced;
-// tool-execution errors are complete results per spec.
-const mcpResultTypeComplete = "complete"
+// mcpResultTypeComplete and mcpResultTypeInputRequired are the two
+// resultType values a modern result envelope carries. Everything is
+// "complete" — tool-execution errors included, per spec — except the
+// interim results the MRTR confirmation flow produces
+// (surface_mcp_modern_confirm.go), which are "input_required".
+const (
+	mcpResultTypeComplete      = "complete"
+	mcpResultTypeInputRequired = "input_required"
+)
 
 // mcpModernHandler serves the 2026-07-28 protocol revision. It is
 // reachable only through the era dispatcher (or the modern-only
@@ -40,13 +45,20 @@ type mcpModernHandler struct {
 	cfg mcpConfig
 	// confirm is the strategy slot for the confirmation step in
 	// tools/call (ADR 0004 "MRTR confirmation slot"). The default is
-	// the X-Confirm-Token header gate mirroring the legacy handler.
+	// the X-Confirm-Token header gate mirroring the legacy handler;
+	// mounts given key material via WithMCPConfirmationKey install
+	// the MRTR elicitation gate (surface_mcp_modern_confirm.go)
+	// instead.
 	confirm mcpConfirmationGate
 }
 
 // newMCPModernHandler builds the 2026-07-28 handler for one mount.
 func newMCPModernHandler(b *Bridge, cfg mcpConfig) *mcpModernHandler {
-	return &mcpModernHandler{b: b, cfg: cfg, confirm: mcpHeaderConfirmationGate}
+	h := &mcpModernHandler{b: b, cfg: cfg, confirm: mcpHeaderConfirmationGate}
+	if len(cfg.confirmKey) > 0 {
+		h.confirm = h.elicitationConfirmGate
+	}
+	return h
 }
 
 // modernCheckError is one validation-chain failure: JSON-RPC error
@@ -354,12 +366,17 @@ func (h *mcpModernHandler) handleDiscover(w http.ResponseWriter, rpc jsonRPCRequ
 }
 
 // stampResultEnvelope adds the members every modern result envelope
-// carries: resultType "complete" and a result-level _meta with
+// carries: resultType and a result-level _meta with
 // io.modelcontextprotocol/serverInfo built from the mount's
 // configured server identity (the same values the legacy initialize
-// reports). Returns m for chaining.
+// reports). resultType defaults to "complete"; a producer that has
+// already chosen one keeps it (the MRTR confirmation gate is the only
+// such producer, stamping "input_required" on its interim results).
+// Returns m for chaining.
 func (h *mcpModernHandler) stampResultEnvelope(m map[string]any) map[string]any {
-	m["resultType"] = mcpResultTypeComplete
+	if _, ok := m["resultType"]; !ok {
+		m["resultType"] = mcpResultTypeComplete
+	}
 	m["_meta"] = map[string]any{
 		metaKeyServerInfo: map[string]any{
 			"name":    h.cfg.serverName,
