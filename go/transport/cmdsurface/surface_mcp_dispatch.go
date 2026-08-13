@@ -4,19 +4,13 @@ package cmdsurface
 // implements ADR 0004's precedence rules D1-D4 and the option/config
 // surface that selects which spec version(s) MountMCP serves.
 //
-// The modern (2026-07-28) handler itself is NOT implemented here — a
-// later task lands surface_mcp_modern.go / surface_mcp_modern_list.go
-// / surface_mcp_modern_call.go with the full V1-V9 validation chain.
-// This file lands the seam: mcpDispatcher routes each request to
-// either the legacy handler (byte-for-byte unchanged) or an
-// unexported modernHandler hook. The placeholder implementation of
-// that hook (placeholderModernHandler below) returns a minimal
-// spec-shaped -32022 UnsupportedProtocolVersion error — it is
-// intentionally NOT a full modern implementation and is replaced
-// wholesale by the next task. Tests in this package assert routing
-// decisions (which handler was selected) and legacy byte-identity,
-// not the placeholder's wire bytes beyond "well-formed JSON-RPC
-// error".
+// The modern (2026-07-28) handler itself lives in
+// surface_mcp_modern.go (V1-V8 validation chain, server/discover,
+// error writers), surface_mcp_modern_list.go (tools/list), and
+// surface_mcp_modern_call.go (tools/call). This file only decides
+// which era serves a request: mcpDispatcher routes each POST to
+// either the legacy handler (byte-for-byte unchanged) or
+// mcpModernHandler.serveParsed.
 
 import (
 	"bytes"
@@ -219,7 +213,7 @@ func resolveMCPSpecVersions(versions []MCPSpecVersion) (mcpEnabledSet, error) {
 // exactly.
 type mcpDispatcher struct {
 	legacy *mcpHandler
-	modern *mcpModernHandlerSeam
+	modern *mcpModernHandler
 }
 
 // ServeHTTP implements D1 (read + parse once for classification) then
@@ -276,7 +270,7 @@ func (d *mcpDispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 // unreadable body or unparseable JSON gets the same -32603/-32700
 // shape the legacy path would have produced, since that failure
 // happens before any method-specific handling, modern or legacy.
-func modernOnlyServeHTTP(modern *mcpModernHandlerSeam, w http.ResponseWriter, req *http.Request) {
+func modernOnlyServeHTTP(modern *mcpModernHandler, w http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(req.Body)
 	_ = req.Body.Close()
 	if err != nil {
@@ -305,50 +299,6 @@ func mcp405Handler(w http.ResponseWriter, _ *http.Request) {
 			Code:    mcpErrInvalidRequest,
 			Message: "method not allowed",
 		},
-	})
-}
-
-// --- modern-route placeholder (replaced by the next task) -----------
-
-// mcpModernHandlerSeam is the unexported hook a future change fills
-// with the real 2026-07-28 handler (mcpModernHandler, V1-V9
-// validation, server/discover, tools/list, tools/call). Today it
-// implements only enough to prove the dispatch seam: every request
-// classified modern reaches serveParsed and receives a well-formed
-// modern-shaped JSON-RPC error. Placeholder behavior:
-// -32022 UnsupportedProtocolVersion naming the supported set, since
-// no modern method is actually served yet.
-type mcpModernHandlerSeam struct {
-	cfg mcpConfig
-}
-
-// serveParsed is the placeholder modern entry point. It intentionally
-// does not implement V1-V9 — that is the next task's scope — and
-// always answers -32022 regardless of the request shape. The response
-// carries a well-formed JSON-RPC error envelope (jsonrpc 2.0, id
-// echoed when present) so a modern-aware client can at least identify
-// a modern-capable server, per D3's rationale.
-func (m *mcpModernHandlerSeam) serveParsed(w http.ResponseWriter, _ *http.Request, rpc jsonRPCRequest) {
-	writeJSONRPCErrorWithData(
-		w, rpc.ID, mcpErrUnsupportedVersion,
-		"unsupported protocol version (modern handler not yet implemented)",
-		http.StatusBadRequest,
-		map[string]any{
-			"supported": []string{mcpModernProtocolVersion},
-		},
-	)
-}
-
-// writeJSONRPCErrorWithData writes a JSON-RPC error envelope carrying
-// a data payload, mirroring writeJSONRPCError but with the additional
-// Data field the modern error codes (-3202x) use.
-func writeJSONRPCErrorWithData(w http.ResponseWriter, id json.RawMessage, code int, msg string, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(jsonRPCResponse{
-		JSONRPC: "2.0",
-		ID:      id,
-		Error:   &jsonRPCError{Code: code, Message: msg, Data: data},
 	})
 }
 

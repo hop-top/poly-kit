@@ -12,10 +12,10 @@ package cmdsurface
 // (surface_mcp_test.go).
 //
 // Tests here assert ROUTING decisions (which handler served a
-// request) and well-formedness of the modern-route placeholder's
-// JSON-RPC error shape — not the placeholder's exact wire bytes,
-// since those bytes are expected to change once the real modern
-// handler replaces this seam.
+// request), observed through each handler's outermost behavior: the
+// legacy wire shapes on the legacy route, and the modern handler's
+// V1-V9 validation outcomes on the modern route (whose fine-grained
+// coverage lives in surface_mcp_modern_test.go and friends).
 
 import (
 	"context"
@@ -136,7 +136,7 @@ func TestDispatch_D1_UnreadableBody_InternalErrorRegardlessOfHeaders(t *testing.
 		serverName:    defaultMCPServerName,
 		serverVersion: defaultMCPServerVersion,
 	}}
-	d := &mcpDispatcher{legacy: legacy, modern: &mcpModernHandlerSeam{}}
+	d := &mcpDispatcher{legacy: legacy, modern: newMCPModernHandler(b, legacy.cfg)}
 
 	req := httptest.NewRequest(http.MethodPost, "/mcp", &erroringReader{})
 	req.Header.Set("Content-Type", "application/json")
@@ -200,10 +200,10 @@ func TestDispatch_D3_M1_MethodHeaderRoutesModern(t *testing.T) {
 		headerMCPMethod: "tools/call",
 	}, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping"}}`)
 	if status != http.StatusBadRequest {
-		t.Fatalf("status=%d want=400 (modern placeholder)", status)
+		t.Fatalf("status=%d want=400 (modern V3)", status)
 	}
-	if code := errCode(m); code != mcpErrUnsupportedVersion {
-		t.Errorf("code=%d want=%d (-32022, modern placeholder)", code, mcpErrUnsupportedVersion)
+	if code := errCode(m); code != mcpErrInvalidParams {
+		t.Errorf("code=%d want=%d (-32602, modern V3: missing _meta)", code, mcpErrInvalidParams)
 	}
 }
 
@@ -213,10 +213,10 @@ func TestDispatch_D3_M2_NameHeaderRoutesModern(t *testing.T) {
 		headerMCPName: "ping",
 	}, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping"}}`)
 	if status != http.StatusBadRequest {
-		t.Fatalf("status=%d want=400 (modern placeholder)", status)
+		t.Fatalf("status=%d want=400 (modern V3)", status)
 	}
-	if code := errCode(m); code != mcpErrUnsupportedVersion {
-		t.Errorf("code=%d want=%d (-32022, modern placeholder)", code, mcpErrUnsupportedVersion)
+	if code := errCode(m); code != mcpErrInvalidParams {
+		t.Errorf("code=%d want=%d (-32602, modern V3: missing _meta)", code, mcpErrInvalidParams)
 	}
 }
 
@@ -225,10 +225,10 @@ func TestDispatch_D3_M3_MetaProtocolVersionKeyRoutesModern(t *testing.T) {
 	status, m := postJSON(t, srv, "/mcp", nil,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`)
 	if status != http.StatusBadRequest {
-		t.Fatalf("status=%d want=400 (modern placeholder)", status)
+		t.Fatalf("status=%d want=400 (modern V3)", status)
 	}
-	if code := errCode(m); code != mcpErrUnsupportedVersion {
-		t.Errorf("code=%d want=%d (-32022, modern placeholder)", code, mcpErrUnsupportedVersion)
+	if code := errCode(m); code != mcpErrInvalidParams {
+		t.Errorf("code=%d want=%d (-32602, modern V3: clientCapabilities missing)", code, mcpErrInvalidParams)
 	}
 }
 
@@ -237,10 +237,10 @@ func TestDispatch_D3_M4_ServerDiscoverRoutesModern(t *testing.T) {
 	status, m := postJSON(t, srv, "/mcp", nil,
 		`{"jsonrpc":"2.0","id":1,"method":"server/discover"}`)
 	if status != http.StatusBadRequest {
-		t.Fatalf("status=%d want=400 (modern placeholder)", status)
+		t.Fatalf("status=%d want=400 (modern V3)", status)
 	}
-	if code := errCode(m); code != mcpErrUnsupportedVersion {
-		t.Errorf("code=%d want=%d (-32022, modern placeholder)", code, mcpErrUnsupportedVersion)
+	if code := errCode(m); code != mcpErrInvalidParams {
+		t.Errorf("code=%d want=%d (-32602, modern V3: missing _meta)", code, mcpErrInvalidParams)
 	}
 }
 
@@ -264,12 +264,12 @@ func TestDispatch_WorkedEdgeCases(t *testing.T) {
 	srv := dispatchServer(t)
 
 	cases := []struct {
-		name       string
-		headers    map[string]string
-		body       string
-		wantStatus int
-		wantLegacy bool // response carries a legacy-shaped payload
-		wantModern bool // response is the modern placeholder (-32022)
+		name        string
+		headers     map[string]string
+		body        string
+		wantStatus  int
+		wantLegacy  bool // response carries a legacy-shaped payload
+		wantErrCode int  // expected JSON-RPC error code (0 = don't check)
 	}{
 		{
 			name:       "bare initialize",
@@ -304,37 +304,41 @@ func TestDispatch_WorkedEdgeCases(t *testing.T) {
 			wantLegacy: true,
 		},
 		{
-			name:       "tools/call with _meta protocolVersion key only (M3), no headers",
-			body:       `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`,
-			wantStatus: http.StatusBadRequest,
-			wantModern: true,
+			name:        "tools/call with _meta protocolVersion key only (M3), no headers",
+			body:        `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`,
+			wantStatus:  http.StatusBadRequest,
+			wantErrCode: mcpErrInvalidParams, // V3: clientCapabilities missing
 		},
 		{
 			name: "tools/call with complete _meta, no headers",
 			body: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping",` +
 				`"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`,
-			wantStatus: http.StatusBadRequest,
-			wantModern: true,
+			wantStatus:  http.StatusBadRequest,
+			wantErrCode: mcpErrHeaderMismatch, // V4: missing MCP-Protocol-Version header
 		},
 		{
-			name:       "tools/call with M1 only (no _meta)",
-			headers:    map[string]string{headerMCPMethod: "tools/call"},
-			body:       `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping"}}`,
-			wantStatus: http.StatusBadRequest,
-			wantModern: true,
+			name:        "tools/call with M1 only (no _meta)",
+			headers:     map[string]string{headerMCPMethod: "tools/call"},
+			body:        `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping"}}`,
+			wantStatus:  http.StatusBadRequest,
+			wantErrCode: mcpErrInvalidParams, // V3: missing required _meta
 		},
 		{
-			name:       "bare server/discover",
-			body:       `{"jsonrpc":"2.0","id":1,"method":"server/discover"}`,
-			wantStatus: http.StatusBadRequest,
-			wantModern: true,
+			name:        "bare server/discover",
+			body:        `{"jsonrpc":"2.0","id":1,"method":"server/discover"}`,
+			wantStatus:  http.StatusBadRequest,
+			wantErrCode: mcpErrInvalidParams, // V3: missing required _meta
 		},
 		{
-			name:       "unknown method + valid modern envelope",
-			headers:    map[string]string{headerMCPMethod: "nope/nowhere"},
-			body:       `{"jsonrpc":"2.0","id":1,"method":"nope/nowhere","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`,
-			wantStatus: http.StatusBadRequest, // modern placeholder: -32022 @ 400 (real V8 404 lands with the modern handler task)
-			wantModern: true,
+			name: "unknown method + valid modern envelope",
+			headers: map[string]string{
+				headerMCPMethod:          "nope/nowhere",
+				headerMCPProtocolVersion: "2026-07-28",
+			},
+			body: `{"jsonrpc":"2.0","id":1,"method":"nope/nowhere","params":{"_meta":{` +
+				`"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`,
+			wantStatus:  http.StatusNotFound,
+			wantErrCode: mcpErrMethodNotFound, // V8: -32601 @ 404
 		},
 		{
 			name:       "unparseable body (any headers)",
@@ -343,26 +347,17 @@ func TestDispatch_WorkedEdgeCases(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			// Full V2 notification handling (HTTP 202, empty body,
-			// discard) is not implemented by the placeholder; today the
-			// request still ROUTES modern (which is what this row
-			// asserts) and the placeholder answers -32022 rather than
-			// 202. Wire bytes beyond routing are intentionally not
-			// pinned here.
 			name:       "notification (no id) + markers",
 			headers:    map[string]string{headerMCPMethod: "tools/call"},
 			body:       `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"ping","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`,
-			wantStatus: http.StatusBadRequest,
-			wantModern: true,
+			wantStatus: http.StatusAccepted, // V2: notification → 202, empty body
 		},
 		{
-			// Real V2 malformed-id handling (-32600) is the next
-			// task's scope; today the request still ROUTES modern.
-			name:       "id: null + markers",
-			headers:    map[string]string{headerMCPMethod: "tools/call"},
-			body:       `{"jsonrpc":"2.0","id":null,"method":"tools/call","params":{"name":"ping","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`,
-			wantStatus: http.StatusBadRequest,
-			wantModern: true,
+			name:        "id: null + markers",
+			headers:     map[string]string{headerMCPMethod: "tools/call"},
+			body:        `{"jsonrpc":"2.0","id":null,"method":"tools/call","params":{"name":"ping","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`,
+			wantStatus:  http.StatusBadRequest,
+			wantErrCode: mcpErrInvalidRequest, // V2: id null → -32600
 		},
 	}
 
@@ -375,26 +370,22 @@ func TestDispatch_WorkedEdgeCases(t *testing.T) {
 			switch {
 			case c.wantLegacy:
 				if _, hasResult := m["result"]; !hasResult {
-					if code := errCode(m); code == mcpErrUnsupportedVersion {
+					if code := errCode(m); code == mcpErrHeaderMismatch || code == mcpErrUnsupportedVersion {
 						t.Fatalf("routed modern, want legacy: %v", m)
 					}
 				}
-			case c.wantModern:
-				if code := errCode(m); code != mcpErrUnsupportedVersion {
-					t.Fatalf("code=%d want=%d (modern placeholder): %v", code, mcpErrUnsupportedVersion, m)
+			case c.wantErrCode != 0:
+				if code := errCode(m); code != c.wantErrCode {
+					t.Fatalf("code=%d want=%d: %v", code, c.wantErrCode, m)
 				}
 			}
 		})
 	}
 }
 
-// Notification (no id) + markers, and id:null + markers are exercised
-// separately since the modern placeholder always answers with an
-// error envelope today (the real modern V2 notification/null-id
-// handling lands with the modern handler task) — these two rows are
-// asserted at the DETECTION level (detectMCPEra) rather than the
-// wire, since the placeholder cannot yet honor HTTP 202/-32600
-// semantics that depend on unimplemented V2 logic.
+// Notification (no id) + markers, and id:null + markers are also
+// asserted at the DETECTION level (detectMCPEra), independent of the
+// modern handler's V2 wire behavior pinned in the table above.
 func TestDispatch_WorkedEdgeCases_DetectionOnly_NotificationAndNullID(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	req.Header.Set(headerMCPMethod, "tools/call")
@@ -448,14 +439,14 @@ func TestOption_SpecVersions_DefaultBothEnabled(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("legacy initialize status=%d want=200", status)
 	}
-	// Modern-marked request also gets routed (placeholder answers).
+	// Modern-marked request also gets routed (V3 rejects: no _meta).
 	status, m := postJSON(t, srv, "/mcp", map[string]string{headerMCPMethod: "tools/call"},
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping"}}`)
 	if status != http.StatusBadRequest {
 		t.Fatalf("modern-marked status=%d want=400", status)
 	}
-	if code := errCode(m); code != mcpErrUnsupportedVersion {
-		t.Errorf("code=%d want=%d", code, mcpErrUnsupportedVersion)
+	if code := errCode(m); code != mcpErrInvalidParams {
+		t.Errorf("code=%d want=%d", code, mcpErrInvalidParams)
 	}
 }
 
@@ -510,14 +501,21 @@ func TestOption_SpecVersions_ModernOnly_InitializeFailsModernValidation(t *testi
 
 	// A bare legacy initialize, with NO modern markers, still routes
 	// modern (no special-casing when legacy isn't mounted at all) and
-	// fails the modern handler's own validation.
+	// fails V3 (-32602 @ 400, missing required _meta); the error
+	// message names the supported versions since a legacy client has
+	// no fall-forward mechanism.
 	status, m := postJSON(t, srv, "/mcp", nil,
 		`{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
 	if status != http.StatusBadRequest {
 		t.Fatalf("status=%d want=400 (modern-only rejects legacy initialize)", status)
 	}
-	if code := errCode(m); code != mcpErrUnsupportedVersion {
-		t.Errorf("code=%d want=%d", code, mcpErrUnsupportedVersion)
+	if code := errCode(m); code != mcpErrInvalidParams {
+		t.Errorf("code=%d want=%d", code, mcpErrInvalidParams)
+	}
+	if e, ok := m["error"].(map[string]any); ok {
+		if msg, _ := e["message"].(string); !strings.Contains(msg, mcpModernProtocolVersion) {
+			t.Errorf("message=%q must name supported version %q", msg, mcpModernProtocolVersion)
+		}
 	}
 
 	// GET/DELETE registered (405) when modern is enabled.
@@ -674,7 +672,7 @@ func TestDispatch_ConcurrentRequests_NoSharedState(t *testing.T) {
 					t.Errorf("modern status=%d want=400", status)
 					return
 				}
-				if code := errCode(m); code != mcpErrUnsupportedVersion {
+				if code := errCode(m); code != mcpErrInvalidParams {
 					t.Errorf("modern result corrupted: %v", m)
 				}
 			}

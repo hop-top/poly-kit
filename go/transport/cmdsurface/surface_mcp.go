@@ -153,7 +153,7 @@ func MountMCP(b *Bridge, r *api.Router, opts ...MCPOption) error {
 		// Modern only: every request routes to the modern handler; no
 		// special-casing of initialize (D2 does not apply when legacy
 		// is not enabled at all).
-		modern := &mcpModernHandlerSeam{cfg: cfg}
+		modern := newMCPModernHandler(b, cfg)
 		r.Handle(http.MethodPost, cfg.path, func(w http.ResponseWriter, req *http.Request) {
 			modernOnlyServeHTTP(modern, w, req)
 		})
@@ -162,7 +162,7 @@ func MountMCP(b *Bridge, r *api.Router, opts ...MCPOption) error {
 	default:
 		// Both enabled (default): the era dispatcher decides per
 		// request (D1-D4).
-		modern := &mcpModernHandlerSeam{cfg: cfg}
+		modern := newMCPModernHandler(b, cfg)
 		d := &mcpDispatcher{legacy: legacy, modern: modern}
 		r.Handle(http.MethodPost, cfg.path, d.ServeHTTP)
 		r.Handle(http.MethodGet, cfg.path, mcp405Handler)
