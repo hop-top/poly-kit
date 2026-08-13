@@ -286,6 +286,71 @@ func TestModern_V2_NullID(t *testing.T) {
 	}
 }
 
+// idBody renders a modern server/discover request body with the given
+// raw (already JSON-encoded) id literal spliced in.
+func idBody(rawID string) string {
+	return `{"jsonrpc":"2.0","id":` + rawID + `,"method":"server/discover","params":{"_meta":{` +
+		`"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
+}
+
+func TestModern_V2_IDType_StringAccepted(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("server/discover", ""), idBody(`"req-1"`))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200: %v", status, m)
+	}
+	if id, _ := m["id"].(string); id != "req-1" {
+		t.Errorf("id=%v want=req-1", m["id"])
+	}
+}
+
+func TestModern_V2_IDType_IntegerAccepted(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("server/discover", ""), idBody(`42`))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200: %v", status, m)
+	}
+	if id, _ := m["id"].(float64); id != 42 {
+		t.Errorf("id=%v want=42", m["id"])
+	}
+}
+
+func TestModern_V2_IDType_NegativeIntegerAccepted(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("server/discover", ""), idBody(`-7`))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200: %v", status, m)
+	}
+}
+
+func TestModern_V2_IDType_InvalidRejected(t *testing.T) {
+	// Spec (basic index, Requests): "Requests MUST include a string or
+	// integer ID. Unlike base JSON-RPC, the ID MUST NOT be null."
+	// Boolean, float, object, and array ids all fail the same way.
+	srv := modernServer(t)
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"bool_false", `false`},
+		{"bool_true", `true`},
+		{"float", `1.5`},
+		{"object", `{}`},
+		{"array", `[1]`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			status, m := postJSON(t, srv, "/mcp", modernHeaders("server/discover", ""), idBody(c.raw))
+			if status != http.StatusBadRequest {
+				t.Fatalf("status=%d want=400: %v", status, m)
+			}
+			if code := errCode(m); code != mcpErrInvalidRequest {
+				t.Errorf("code=%d want=%d (-32600)", code, mcpErrInvalidRequest)
+			}
+		})
+	}
+}
+
 // --- V3: required _meta keys ------------------------------------------
 
 func TestModern_V3_MissingMeta(t *testing.T) {
@@ -465,27 +530,106 @@ func TestModern_V5_SupportedListExcludesLegacyVersion(t *testing.T) {
 
 // --- V6: Mcp-Method header slot ---------------------------------------
 
-func TestModern_V6_MethodHeaderNotYetEnforced(t *testing.T) {
-	// Header/body agreement for Mcp-Method is a validation slot that
-	// currently accepts every request: a missing or mismatched header
-	// does not fail the call today.
+func TestModern_V6_MatchingHeaderPasses(t *testing.T) {
+	// Positive case: Mcp-Method agrees with the body method.
 	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("server/discover", ""),
+		modernBody(t, "server/discover", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200: %v", status, m)
+	}
+	if _, ok := m["result"].(map[string]any); !ok {
+		t.Fatalf("expected result: %v", m)
+	}
+}
 
+func TestModern_V6_MissingHeaderRejected(t *testing.T) {
 	// Absent Mcp-Method header (request routes modern via _meta M3).
+	srv := modernServer(t)
 	status, m := postJSON(t, srv, "/mcp", map[string]string{
 		headerMCPProtocolVersion: mcpModernProtocolVersion,
 	}, modernBody(t, "server/discover", nil))
-	if status != http.StatusOK {
-		t.Fatalf("absent header: status=%d want=200: %v", status, m)
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400: %v", status, m)
 	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
+	}
+}
 
-	// Mismatched Mcp-Method header.
-	status, m = postJSON(t, srv, "/mcp", map[string]string{
+func TestModern_V6_MismatchedHeaderRejected(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", map[string]string{
 		headerMCPProtocolVersion: mcpModernProtocolVersion,
 		headerMCPMethod:          "tools/call",
 	}, modernBody(t, "server/discover", nil))
-	if status != http.StatusOK {
-		t.Fatalf("mismatched header: status=%d want=200: %v", status, m)
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400: %v", status, m)
+	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
+	}
+}
+
+func TestModern_V6_EmptyHeaderValueRejected(t *testing.T) {
+	// An explicitly empty Mcp-Method header is indistinguishable from
+	// absent via http.Header.Get and must be rejected the same way.
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", map[string]string{
+		headerMCPProtocolVersion: mcpModernProtocolVersion,
+		headerMCPMethod:          "",
+	}, modernBody(t, "server/discover", nil))
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400: %v", status, m)
+	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
+	}
+}
+
+func TestModern_V6_CaseVariantHeaderNameAccepted(t *testing.T) {
+	// Header names are case-insensitive (RFC 9110); a differently-cased
+	// Mcp-Method still satisfies V6 when the value agrees.
+	srv := modernServer(t)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp",
+		strings.NewReader(modernBody(t, "server/discover", nil)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(strings.ToUpper(headerMCPProtocolVersion), mcpModernProtocolVersion)
+	req.Header.Set("mcp-method", "server/discover") // lowercase variant
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d want=200", resp.StatusCode)
+	}
+}
+
+func TestModern_V6_DuplicateHeaderUsesFirstValue(t *testing.T) {
+	// Go's http.Header.Get returns the first value of a repeated
+	// header; a duplicate Mcp-Method where the first value agrees with
+	// the body must pass V6 regardless of the second value.
+	srv := modernServer(t)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp",
+		strings.NewReader(modernBody(t, "server/discover", nil)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	req.Header.Add(headerMCPMethod, "server/discover")
+	req.Header.Add(headerMCPMethod, "tools/call")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d want=200", resp.StatusCode)
 	}
 }
 

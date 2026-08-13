@@ -10,6 +10,7 @@ package cmdsurface
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -119,9 +120,35 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 // validateNameHeader is the V7 step: on tools/call, Mcp-Name header
 // presence and agreement with params.name after Base64-sentinel
 // (=?base64?...?=) decoding (-32020 @ 400 on failure, per ADR 0004).
-// Enforcement is not yet implemented — every request is currently
-// accepted.
-func (h *mcpModernHandler) validateNameHeader(*http.Request, string) *modernCheckError {
+// A header value that merely looks like the sentinel (starts with the
+// prefix and ends with the suffix) is always treated as encoded, so a
+// decode failure fails closed rather than falling back to a literal
+// comparison.
+func (h *mcpModernHandler) validateNameHeader(req *http.Request, name string) *modernCheckError {
+	hdr := req.Header.Get(headerMCPName)
+	if hdr == "" {
+		return &modernCheckError{
+			code:   mcpErrHeaderMismatch,
+			msg:    "missing " + headerMCPName + " header",
+			status: http.StatusBadRequest,
+		}
+	}
+	decoded, ok := decodeMCPSentinel(hdr)
+	if !ok {
+		return &modernCheckError{
+			code:   mcpErrHeaderMismatch,
+			msg:    headerMCPName + " header value is not valid base64-sentinel encoded",
+			status: http.StatusBadRequest,
+		}
+	}
+	if decoded != name {
+		return &modernCheckError{
+			code: mcpErrHeaderMismatch,
+			msg: fmt.Sprintf("%s header %q does not match body params.name %q",
+				headerMCPName, decoded, name),
+			status: http.StatusBadRequest,
+		}
+	}
 	return nil
 }
 

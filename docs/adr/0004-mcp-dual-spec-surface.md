@@ -179,7 +179,7 @@ under 2026-07-28, which fixes statuses only for the cases below).
 | # | Check | Failure |
 | - | ----- | ------- |
 | V1 | `jsonrpc` member absent or `"2.0"` (same tolerance as legacy) | `-32600` @ 400 |
-| V2 | `id` present → request; absent → notification (respond HTTP 202, empty body, discard); `null` → malformed | `-32600` @ 400 |
+| V2 | `id` present → request; absent → notification (respond HTTP 202, empty body, discard); present id MUST be a JSON string or a JSON number with no fractional part (base JSON-RPC also allows `null`, but this revision forbids it) — `null`, boolean, float, object, and array ids are all malformed | `-32600` @ 400 |
 | V3 | `params._meta` carries required keys `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` (`clientInfo` optional) | `-32602` @ 400 |
 | V4 | `MCP-Protocol-Version` header present and equal to the `_meta` protocolVersion value | `-32020` @ 400 |
 | V5 | requested version supported; the modern handler supports exactly `"2026-07-28"` | `-32022` @ 400, `data: {"supported": ["2026-07-28"], "requested": <value>}` |

@@ -17,9 +17,11 @@ package cmdsurface
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // mcpResultTypeComplete is the resultType every modern result
@@ -101,15 +103,18 @@ func (h *mcpModernHandler) serveParsed(w http.ResponseWriter, req *http.Request,
 	}
 
 	// V2 — id present → request; absent → notification (HTTP 202,
-	// empty body, discarded without processing); null → malformed.
+	// empty body, discarded without processing); id MUST be a string
+	// or integer (base JSON-RPC also allows null, but the spec
+	// explicitly forbids it here) — null, bool, float, object, and
+	// array ids are all malformed.
 	if len(rpc.ID) == 0 {
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
-	if bytes.Equal(rpc.ID, []byte("null")) {
+	if !validModernRequestID(rpc.ID) {
 		h.writeModernError(w, rpc, &modernCheckError{
 			code:   mcpErrInvalidRequest,
-			msg:    "invalid request id: null",
+			msg:    "invalid request id: must be a string or integer, got " + string(rpc.ID),
 			status: http.StatusBadRequest,
 		})
 		return
@@ -185,11 +190,53 @@ func (h *mcpModernHandler) serveParsed(w http.ResponseWriter, req *http.Request,
 	}
 }
 
+// validModernRequestID reports whether raw (a non-empty rpc.ID) is a
+// JSON string or a JSON number with no fractional part — the only two
+// shapes the modern id rule (V2) permits. Base JSON-RPC additionally
+// allows null, but the spec explicitly forbids null ids here; boolean,
+// object, and array ids are rejected the same way a fractional number
+// is, since none of them satisfy "string or integer".
+func validModernRequestID(raw json.RawMessage) bool {
+	// json.Unmarshal treats a JSON "null" source as a no-op for both
+	// string and float64 destinations (the destination is left at its
+	// zero value with no error), so null must be rejected explicitly
+	// before the type probes below, or it would be misread as "".
+	if bytes.Equal(raw, []byte("null")) {
+		return false
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return true
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return false
+	}
+	return f == float64(int64(f))
+}
+
 // validateMethodHeader is the V6 step: Mcp-Method header presence and
 // header/body agreement (-32020 @ 400 on failure, per ADR 0004).
-// Enforcement is not yet implemented — every request is currently
-// accepted.
-func (h *mcpModernHandler) validateMethodHeader(*http.Request, jsonRPCRequest) *modernCheckError {
+// Header names are matched case-insensitively per RFC 9110 (Go's
+// http.Header.Get already does this); header values are compared
+// case-sensitively against the body method.
+func (h *mcpModernHandler) validateMethodHeader(req *http.Request, rpc jsonRPCRequest) *modernCheckError {
+	hdr := req.Header.Get(headerMCPMethod)
+	if hdr == "" {
+		return &modernCheckError{
+			code:   mcpErrHeaderMismatch,
+			msg:    "missing " + headerMCPMethod + " header",
+			status: http.StatusBadRequest,
+		}
+	}
+	if hdr != rpc.Method {
+		return &modernCheckError{
+			code: mcpErrHeaderMismatch,
+			msg: fmt.Sprintf("%s header %q does not match body method %q",
+				headerMCPMethod, hdr, rpc.Method),
+			status: http.StatusBadRequest,
+		}
+	}
 	return nil
 }
 
@@ -344,4 +391,33 @@ func writeJSONRPCErrorWithData(w http.ResponseWriter, id json.RawMessage, code i
 		ID:      id,
 		Error:   &jsonRPCError{Code: code, Message: msg, Data: data},
 	})
+}
+
+// mcpSentinelPrefix and mcpSentinelSuffix delimit the Base64 sentinel
+// encoding a header value carries when it cannot be represented as a
+// safe plain-ASCII header value. Markers are case-sensitive and must
+// appear exactly as shown (spec: Value Encoding).
+const (
+	mcpSentinelPrefix = "=?base64?"
+	mcpSentinelSuffix = "?="
+)
+
+// decodeMCPSentinel decodes a header value that may carry the Base64
+// sentinel encoding, returning the effective value to compare against
+// the request body. A value that is not sentinel-wrapped is returned
+// unchanged (conforming tool/resource names are header-safe ASCII and
+// are sent plain). A sentinel-wrapped value that fails to decode as
+// base64 is reported via ok=false so the caller can fail closed with
+// -32020, per spec: servers "MUST decode ... before comparing"; a
+// malformed encoding can never legitimately match the body value.
+func decodeMCPSentinel(v string) (decoded string, ok bool) {
+	if !strings.HasPrefix(v, mcpSentinelPrefix) || !strings.HasSuffix(v, mcpSentinelSuffix) {
+		return v, true
+	}
+	inner := strings.TrimSuffix(strings.TrimPrefix(v, mcpSentinelPrefix), mcpSentinelSuffix)
+	raw, err := base64.StdEncoding.DecodeString(inner)
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
 }
