@@ -61,6 +61,16 @@ type mcpConfig struct {
 	// originAllowlist backs WithMCPOriginAllowlist. Empty means no
 	// Origin check (default).
 	originAllowlist []string
+
+	// confirmKeySet / confirmKey back WithMCPConfirmationKey. A
+	// non-empty key switches the modern tools/call confirmation
+	// strategy from the X-Confirm-Token header gate to the MRTR
+	// elicitation flow (surface_mcp_modern_confirm.go). confirmKeySet
+	// distinguishes "option not supplied" (header gate, the default)
+	// from an explicit call with an empty key, which is a mount-time
+	// error.
+	confirmKeySet bool
+	confirmKey    []byte
 }
 
 // MCPOption configures the MCP surface mounted by MountMCP.
@@ -77,6 +87,28 @@ func WithMCPServerInfo(name, version string) MCPOption {
 	return func(c *mcpConfig) {
 		c.serverName = name
 		c.serverVersion = version
+	}
+}
+
+// WithMCPConfirmationKey enables the MRTR elicitation-based
+// confirmation flow for kit/requires-confirmation leaves on the
+// modern (2026-07-28) tools/call path. The key is the HMAC-SHA-256
+// secret protecting the integrity of the requestState the flow
+// round-trips through the client; it must be non-empty or MountMCP
+// fails. Deployments running multiple instances must give every
+// instance the same key so a retry landing on any instance verifies
+// state minted by any other — there is deliberately no
+// generated-at-mount default, which would silently break exactly that
+// cross-instance guarantee.
+//
+// Without this option the modern path keeps the X-Confirm-Token
+// header gate for every client; with it, clients that declare the
+// elicitation capability get the spec-native input_required
+// round-trip while all other clients keep the header gate.
+func WithMCPConfirmationKey(key []byte) MCPOption {
+	return func(c *mcpConfig) {
+		c.confirmKeySet = true
+		c.confirmKey = append([]byte(nil), key...)
 	}
 }
 
@@ -140,6 +172,9 @@ func MountMCP(b *Bridge, r *api.Router, opts ...MCPOption) error {
 		default:
 			return errors.New("cmdsurface: WithMCPCacheHints: unknown cache scope " + string(cfg.cacheScope))
 		}
+	}
+	if cfg.confirmKeySet && len(cfg.confirmKey) == 0 {
+		return errors.New("cmdsurface: WithMCPConfirmationKey: empty key")
 	}
 
 	legacy := &mcpHandler{b: b, cfg: cfg}
