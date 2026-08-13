@@ -176,6 +176,13 @@ Options:
 - `WithMCPPath(path string)` — override `/mcp`.
 - `WithMCPServerInfo(name, version string)` — identity returned by
   `initialize`.
+- `WithMCPConfirmationKey(key []byte)` — enable the spec 2026-07-28
+  MRTR confirmation flow for `kit/requires-confirmation` leaves on
+  the modern path: clients declaring the `elicitation` capability get
+  a `resultType: "input_required"` round-trip with an HMAC-SHA-256
+  protected `requestState` instead of the `X-Confirm-Token` header
+  gate (which remains for everyone else). Key must be non-empty and
+  shared across instances; mount fails on an empty key.
 
 Protocol reference: <https://modelcontextprotocol.io/specification>.
 See `go/transport/cmdsurface/surface_mcp_test.go`.

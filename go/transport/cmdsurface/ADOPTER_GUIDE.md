@@ -88,6 +88,36 @@ providers := []cmdsurface.OAuthProvider{{
 }}
 ```
 
+## MCP mid-call confirmation (spec 2026-07-28)
+
+`kit/requires-confirmation` leaves on the modern MCP path default to
+the `X-Confirm-Token` header gate. Opt into the spec-native MRTR
+confirmation round-trip by giving the mount key material:
+
+```go
+_ = cmdsurface.MountMCP(b, r,
+    cmdsurface.WithMCPConfirmationKey(key)) // non-empty, shared across instances
+```
+
+With a key configured, clients declaring the `elicitation` capability
+in `_meta` receive `resultType: "input_required"` carrying a
+confirmation prompt (`inputRequests.confirm`, an `elicitation/create`
+form request) and an HMAC-SHA-256-protected `requestState`. The retry
+echoes the state and answers `accept` to run the leaf; `decline` /
+`cancel` refuse it. The state binds the leaf, its arguments, and the
+caller's `Authorization` value, and expires after five minutes:
+expiry is a routine re-prompt, while a state failing verification is
+never honored — the rejection is emitted to registered `OnError`
+sinks as a security-relevant audit event before a fresh prompt is
+issued. Clients without the capability keep the header gate, and the
+destructive ceiling (`Policy.AllowDestructiveOn`) is never relaxed by
+a confirmation outcome.
+
+Key sourcing is deliberately explicit — there is no generated
+default. Give every instance behind a load balancer the same key, or
+retries landing on a different instance will be refused and
+re-prompted.
+
 ## Telemetry opt-in
 
 `Config.Telemetry` is `nil` by default — no events leave the binary
