@@ -19,3 +19,12 @@ v1 caches GET + 2xx only, honors `Cache-Control: no-store`, keys on
 (status, headers, base64 body) per the cross-language contract in
 `contracts/httpcache-v1/`. Non-goals (v2 seams): Vary keying, ETag
 revalidation, max-age-derived TTL.
+
+## Cross-language contract
+
+`contracts/httpcache-v1/` is the contract of record — `keying.json` for
+cache-key derivation, `entry.json` for the on-store envelope, and
+`cacheability.json` for the storage gate. Go is currently the only
+implementation, so the fixtures were derived from it; from here on they
+bind in the other direction, and a change to keying or the envelope is a
+change to the fixtures first. `contract_test.go` executes all three.

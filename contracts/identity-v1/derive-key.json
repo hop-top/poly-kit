@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "note": "Cross-language DeriveKey vectors for kit/core/identity. DeriveKey is HKDF-SHA256 over the Ed25519 private key seed, with an empty salt and the domain-separation string in `info`, expanded to 32 bytes. Deterministic, so every port must reproduce these bytes exactly or encrypted stores written by one language become unreadable by another. `seed` is the 32-byte Ed25519 seed; `public_key` is the Ed25519 public key derived from it, included so a port can confirm it built the keypair correctly before checking the derived key. All values are lowercase hex. Encrypt/Decrypt are NaCl secretbox (XSalsa20-Poly1305) over this key with a random 24-byte nonce and wire layout nonce||ciphertext; the nonce makes those non-deterministic, so they are covered by round-trip tests rather than fixed vectors.",
+  "algorithm": {
+    "kdf": "HKDF-SHA256",
+    "ikm": "ed25519 private key seed (32 bytes)",
+    "salt": null,
+    "info": "kit-identity-encryption-v1",
+    "output_len": 32
+  },
+  "derive_key": [
+    {
+      "name": "all-zero seed",
+      "seed": "0000000000000000000000000000000000000000000000000000000000000000",
+      "public_key": "3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
+      "derived_key": "59ed3e0b49234166824d58504afc0a5acefb1b5579f0ece8c7819765b28d460b"
+    },
+    {
+      "name": "all-0xff seed",
+      "seed": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "public_key": "76a1592044a6e4f511265bca73a604d90b0529d1df602be30a19a9257660d1f5",
+      "derived_key": "044d6a5ccafaef61c6aa77cec81f646d2ff91a2727a09f7c9359aadd5c8e703f"
+    },
+    {
+      "name": "counting seed",
+      "seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "public_key": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "derived_key": "001328235173cdef5edb3f5c55e85ca111a417260d06de95ed90e40a479c2b73"
+    },
+    {
+      "name": "rfc8032 test vector seed",
+      "seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "derived_key": "1bb5f1d42f2ed0165aca22d755c71de46cada0ed14bc2ec414ebae5135c7c20e"
+    },
+    {
+      "name": "high-entropy seed",
+      "seed": "833fe62409237b9d62ec77587520911e9a759cec1d19755b7da901b96dca3d42",
+      "public_key": "ec172b93ad5e563bf4932c70e1245034c35467ef2efd4d64ebf819683467e2bf",
+      "derived_key": "99f5c8d93705439d299399a96f07bcf1ff576ed649ae35361aa5d4e2d5d426b7"
+    }
+  ]
+}
