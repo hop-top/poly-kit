@@ -12,6 +12,7 @@
 package kitinit
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -217,6 +218,11 @@ func InitCmd(root *cli.Root) *cobra.Command {
 			if sideeffect.IsDryRun(ctx) {
 				inputs.DryRun = true
 			}
+			// Kit-global --offline (highest-precedence network
+			// override): force the GitHub + push opt-outs on. Only
+			// flips the opt-outs ON — an explicit --no-github or
+			// --no-push is already true and stays true.
+			applyOfflineOverride(ctx, &inputs)
 			// JSON-summary toggle reads from the kit-owned `--format`
 			// global (parity contract §3.3): the deprecated --json
 			// init-local flag was removed in favor of `--format json`.
@@ -319,6 +325,19 @@ func InitCmd(root *cli.Root) *cobra.Command {
 	cli.SetIdempotency(cmd, cli.IdempotencyConditional)
 	cli.SetTopLevelVerb(cmd)
 	return cmd
+}
+
+// applyOfflineOverride flips the network opt-outs on when the kit
+// global --offline flag tagged the context (see cli.IsOffline).
+// Highest precedence: it forces NoGitHub and NoPush regardless of the
+// individual flag values, and never un-sets an explicitly passed
+// --no-github/--no-push (those are already true and stay true).
+func applyOfflineOverride(ctx context.Context, in *Inputs) {
+	if !cli.IsOffline(ctx) {
+		return
+	}
+	in.NoGitHub = true
+	in.NoPush = true
 }
 
 // parseModeOverride converts the --mode flag value into a Mode. Empty
