@@ -235,7 +235,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 			switch mode {
 			case ModeBootstrap:
 				summary, err = runBootstrap(ctx, deps, inputs)
-			case ModeAugment:
+			case ModeAugment, ModeHopAugment:
 				summary, err = runAugment(ctx, deps, inputs, cwd)
 			default:
 				return fmt.Errorf("kit init: unsupported mode %s", mode)

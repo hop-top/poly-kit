@@ -123,7 +123,16 @@ kit init --mode augment --tier 2 --from cli-go --no-github -y
 ```
 
 Same semantics as a regular augment: cwd is the render target, no
-git/GitHub/push side-effects, existing files preserved.
+git/GitHub/push side-effects, existing files preserved. Two
+hop-specific behaviors on top:
+
+- **Dirty-tree refusal** — if `git status --porcelain` reports
+  anything in the worktree, augment refuses rather than merging
+  kit-template files into uncommitted work from another branch.
+  Commit or stash first, or pass `--yes` / `--force` to override.
+- **Branch in summary** — the summary reports which branch's tree
+  was augmented (`Hop branch:` line; `hop_branch` field under
+  `--format json`).
 
 ### Dry run
 

@@ -25,10 +25,14 @@ const maxFilesShown = 10
 // tlc was not on PATH. Both flags are best-effort signals; downstream
 // tooling can use them to decide whether to nudge the user to install
 // the missing dependencies.
+//
+// HopBranch carries the branch checked out in a hop worktree when the
+// run augmented one (ModeHopAugment); zero value outside hop mode.
 type Summary struct {
 	Mode       string          `json:"mode"`
 	Name       string          `json:"name"`
 	Target     string          `json:"target"`
+	HopBranch  string          `json:"hop_branch,omitempty"`
 	Template   string          `json:"template"`
 	Result     template.Result `json:"result"`
 	GitHub     *GitHubSummary  `json:"github,omitempty"`
@@ -55,6 +59,12 @@ func WriteHuman(w io.Writer, s Summary) error {
 	if _, err := fmt.Fprintf(w, "Created %s at %s from %s\n",
 		s.Name, s.Target, s.Template); err != nil {
 		return err
+	}
+
+	if s.HopBranch != "" {
+		if _, err := fmt.Fprintf(w, "Hop branch: %s\n", s.HopBranch); err != nil {
+			return err
+		}
 	}
 
 	if len(s.Result.Written) > 0 {

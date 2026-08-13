@@ -17,6 +17,7 @@ const (
 	ModeAugment                      // 1
 	ModeAlreadyKit                   // 2
 	ModeBareWorktree                 // 3
+	ModeHopAugment                   // 4
 )
 
 func (m Mode) String() string {
@@ -29,6 +30,8 @@ func (m Mode) String() string {
 		return "already_kit"
 	case ModeBareWorktree:
 		return "bare_worktree"
+	case ModeHopAugment:
+		return "hop_augment"
 	default:
 		return "unset"
 	}
@@ -49,6 +52,14 @@ func (m Mode) String() string {
 // For ModeAlreadyKit, the second return value is the version string from .kit/version.
 func Detect(cwd string, override Mode) (Mode, string, error) {
 	if override != ModeUnset {
+		// An explicit --mode augment on a bare-worktree-shaped cwd
+		// (hop layout) resolves to ModeHopAugment so the augment flow
+		// can apply hop-specific guards (dirty-tree refusal, branch in
+		// summary). Auto-detect still surfaces ModeBareWorktree, which
+		// init.go refuses with the --mode augment hint.
+		if override == ModeAugment && isBareWorktree(cwd) {
+			return ModeHopAugment, "", nil
+		}
 		return override, "", nil
 	}
 
