@@ -1,0 +1,390 @@
+package cmdsurface
+
+// Coverage for the modern tools/call handler
+// (surface_mcp_modern_call.go): result envelope (resultType,
+// structuredContent, content blocks, isError), V9 params validation,
+// the V7 Mcp-Name slot, pre-flight gates (auth 401, confirmation 428,
+// destructive block), safety-gate parity with the policy, and the
+// Meta.Extra audit stamps. Fixtures come from modernTestTree
+// (surface_mcp_modern_test.go).
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strings"
+	"testing"
+)
+
+// callBody renders a modern tools/call request for the given tool.
+func callBody(t *testing.T, name string, args map[string]any) string {
+	t.Helper()
+	params := map[string]any{"name": name}
+	if args != nil {
+		params["arguments"] = args
+	}
+	return modernBody(t, "tools/call", params)
+}
+
+func TestModernCall_HappyPath_RealExec(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "ping"),
+		callBody(t, "ping", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200: %v", status, m)
+	}
+	res, ok := m["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("no result: %v", m)
+	}
+	if res["resultType"] != "complete" {
+		t.Errorf("resultType=%v want=complete", res["resultType"])
+	}
+	if res["isError"] != false {
+		t.Errorf("isError=%v want=false", res["isError"])
+	}
+	content, _ := res["content"].([]any)
+	if len(content) == 0 {
+		t.Fatalf("no content blocks: %v", res)
+	}
+	if text := content[0].(map[string]any)["text"]; text != "pong\n" {
+		t.Errorf("content[0].text=%q want=%q", text, "pong\n")
+	}
+	meta, _ := res["_meta"].(map[string]any)
+	if _, ok := meta[metaKeyServerInfo].(map[string]any); !ok {
+		t.Errorf("_meta serverInfo missing: %v", res)
+	}
+	// tools/call is not a cacheable operation: no cache hints.
+	if _, ok := res["ttlMs"]; ok {
+		t.Errorf("ttlMs must not appear on tools/call results: %v", res)
+	}
+	if _, ok := res["cacheScope"]; ok {
+		t.Errorf("cacheScope must not appear on tools/call results: %v", res)
+	}
+	// No structured payload was produced.
+	if _, ok := res["structuredContent"]; ok {
+		t.Errorf("structuredContent must be omitted when Result.Data is nil: %v", res)
+	}
+}
+
+func TestModernCall_ArgumentMapping_RealExec(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "widget.add"),
+		callBody(t, "widget.add", map[string]any{"name": "gizmo", "count": 3}))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200: %v", status, m)
+	}
+	res, _ := m["result"].(map[string]any)
+	content, _ := res["content"].([]any)
+	if text := content[0].(map[string]any)["text"]; text != "added gizmo x3\n" {
+		t.Errorf("content[0].text=%q want=%q", text, "added gizmo x3\n")
+	}
+}
+
+func TestModernCall_StructuredContent(t *testing.T) {
+	data := map[string]any{"id": float64(42), "name": "x"}
+	b := New(modernTestTree(), WithRunner(&fakeRunner{
+		run: func(context.Context, Invocation) (Result, error) {
+			return Result{Stdout: "ok", Data: data}, nil
+		},
+	}))
+	srv := modernServerFor(t, b)
+	_, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "ping"),
+		callBody(t, "ping", nil))
+	res, _ := m["result"].(map[string]any)
+
+	sc, ok := res["structuredContent"].(map[string]any)
+	if !ok {
+		t.Fatalf("structuredContent missing: %v", res)
+	}
+	if sc["id"] != float64(42) || sc["name"] != "x" {
+		t.Errorf("structuredContent=%v want=%v", sc, data)
+	}
+	// The JSON text block (serialized fallback) is also present.
+	content, _ := res["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("content len=%d want=2: %v", len(content), content)
+	}
+	text, _ := content[1].(map[string]any)["text"].(string)
+	var roundTrip map[string]any
+	if err := json.Unmarshal([]byte(text), &roundTrip); err != nil {
+		t.Fatalf("data block not valid JSON: %q: %v", text, err)
+	}
+}
+
+func TestModernCall_StderrBlock(t *testing.T) {
+	b := New(modernTestTree(), WithRunner(&fakeRunner{
+		run: func(context.Context, Invocation) (Result, error) {
+			return Result{Stdout: "partial", Stderr: "warning: low disk"}, nil
+		},
+	}))
+	srv := modernServerFor(t, b)
+	_, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "ping"),
+		callBody(t, "ping", nil))
+	res, _ := m["result"].(map[string]any)
+	content, _ := res["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("content len=%d want=2: %v", len(content), content)
+	}
+	if text := content[1].(map[string]any)["text"]; text != "[stderr] warning: low disk" {
+		t.Errorf("stderr block=%q", text)
+	}
+}
+
+func TestModernCall_NonZeroExitIsError(t *testing.T) {
+	b := New(modernTestTree(), WithRunner(&fakeRunner{
+		run: func(context.Context, Invocation) (Result, error) {
+			return Result{Stdout: "boom", ExitCode: 2}, nil
+		},
+	}))
+	srv := modernServerFor(t, b)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "ping"),
+		callBody(t, "ping", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200", status)
+	}
+	res, _ := m["result"].(map[string]any)
+	if res["isError"] != true {
+		t.Errorf("isError=%v want=true (ExitCode=2)", res["isError"])
+	}
+	if res["resultType"] != "complete" {
+		t.Errorf("resultType=%v want=complete (tool errors are complete results)", res["resultType"])
+	}
+}
+
+// --- V9: per-method params ---------------------------------------------
+
+func TestModernCall_V9_MissingName(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", ""),
+		modernBody(t, "tools/call", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200 (application-level error)", status)
+	}
+	if code := errCode(m); code != mcpErrInvalidParams {
+		t.Errorf("code=%d want=%d (-32602)", code, mcpErrInvalidParams)
+	}
+}
+
+func TestModernCall_V9_UnknownTool(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "no.such.tool"),
+		callBody(t, "no.such.tool", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200 (application-level error)", status)
+	}
+	if code := errCode(m); code != mcpErrInvalidParams {
+		t.Errorf("code=%d want=%d (-32602)", code, mcpErrInvalidParams)
+	}
+	if msg := errMessage(m); !strings.Contains(msg, "no.such.tool") {
+		t.Errorf("message=%q must name the tool", msg)
+	}
+}
+
+func TestModernCall_V9_UnparseableParams(t *testing.T) {
+	// params.name of the wrong JSON type fails the tools/call params
+	// decode: -32602 at HTTP 200, mirroring legacy.
+	srv := modernServer(t)
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":12,"_meta":{` +
+		`"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", ""), body)
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200 (application-level error)", status)
+	}
+	if code := errCode(m); code != mcpErrInvalidParams {
+		t.Errorf("code=%d want=%d (-32602)", code, mcpErrInvalidParams)
+	}
+}
+
+func TestModernCall_V9_SurfaceNotEnabled(t *testing.T) {
+	b := New(modernTestTree())
+	b.Hide("ping", SurfaceMCP)
+	srv := modernServerFor(t, b)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "ping"),
+		callBody(t, "ping", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200", status)
+	}
+	if code := errCode(m); code != mcpErrInvalidParams {
+		t.Errorf("code=%d want=%d (unknown tool)", code, mcpErrInvalidParams)
+	}
+}
+
+// --- V7: Mcp-Name slot --------------------------------------------------
+
+func TestModernCall_V7_NameHeaderNotYetEnforced(t *testing.T) {
+	// Header/body agreement for Mcp-Name is a validation slot that
+	// currently accepts every request: a mismatched header does not
+	// fail the call today.
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "widget.list"),
+		callBody(t, "ping", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200: %v", status, m)
+	}
+	res, _ := m["result"].(map[string]any)
+	content, _ := res["content"].([]any)
+	if len(content) == 0 || content[0].(map[string]any)["text"] != "pong\n" {
+		t.Errorf("expected ping output despite mismatched Mcp-Name header: %v", res)
+	}
+}
+
+// --- Pre-flight gates ---------------------------------------------------
+
+func TestModernCall_AuthRequired401(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "auth-op"),
+		callBody(t, "auth-op", nil))
+	if status != http.StatusUnauthorized {
+		t.Fatalf("status=%d want=401", status)
+	}
+	res, _ := m["result"].(map[string]any)
+	if res["isError"] != true {
+		t.Errorf("isError=%v want=true", res["isError"])
+	}
+	if res["resultType"] != "complete" {
+		t.Errorf("resultType=%v want=complete", res["resultType"])
+	}
+	meta, _ := res["_meta"].(map[string]any)
+	if _, ok := meta[metaKeyServerInfo].(map[string]any); !ok {
+		t.Errorf("_meta serverInfo missing on gate refusal: %v", res)
+	}
+}
+
+func TestModernCall_AuthHeaderPasses(t *testing.T) {
+	srv := modernServer(t)
+	headers := modernHeaders("tools/call", "auth-op")
+	headers["Authorization"] = "Bearer token"
+	status, m := postJSON(t, srv, "/mcp", headers, callBody(t, "auth-op", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200: %v", status, m)
+	}
+	res, _ := m["result"].(map[string]any)
+	if res["isError"] != false {
+		t.Errorf("isError=%v want=false: %v", res["isError"], res)
+	}
+}
+
+func TestModernCall_ConfirmationRequired428(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "confirm-op"),
+		callBody(t, "confirm-op", nil))
+	if status != http.StatusPreconditionRequired {
+		t.Fatalf("status=%d want=428", status)
+	}
+	res, _ := m["result"].(map[string]any)
+	if res["isError"] != true {
+		t.Errorf("isError=%v want=true", res["isError"])
+	}
+	if res["resultType"] != "complete" {
+		t.Errorf("resultType=%v want=complete", res["resultType"])
+	}
+}
+
+func TestModernCall_ConfirmTokenPasses(t *testing.T) {
+	srv := modernServer(t)
+	headers := modernHeaders("tools/call", "confirm-op")
+	headers["X-Confirm-Token"] = "yes"
+	status, m := postJSON(t, srv, "/mcp", headers, callBody(t, "confirm-op", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200: %v", status, m)
+	}
+	res, _ := m["result"].(map[string]any)
+	if res["isError"] != false {
+		t.Errorf("isError=%v want=false: %v", res["isError"], res)
+	}
+}
+
+func TestModernCall_DestructiveBlockedByDefault(t *testing.T) {
+	srv := modernServer(t)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "nuke"),
+		callBody(t, "nuke", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200", status)
+	}
+	res, _ := m["result"].(map[string]any)
+	if res["isError"] != true {
+		t.Fatalf("isError=%v want=true (destructive blocked): %v", res["isError"], res)
+	}
+	content, _ := res["content"].([]any)
+	text, _ := content[0].(map[string]any)["text"].(string)
+	if !strings.Contains(text, "destructive") {
+		t.Errorf("block message=%q must mention destructive", text)
+	}
+}
+
+func TestModernCall_DestructiveAllowedWhenPolicyOptsIn(t *testing.T) {
+	b := New(modernTestTree(), WithPolicy(Policy{
+		AllowDestructiveOn: []Surface{SurfaceMCP},
+	}))
+	srv := modernServerFor(t, b)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "nuke"),
+		callBody(t, "nuke", nil))
+	if status != http.StatusOK {
+		t.Fatalf("status=%d want=200", status)
+	}
+	res, _ := m["result"].(map[string]any)
+	if res["isError"] != false {
+		t.Fatalf("isError=%v want=false (policy opted in): %v", res["isError"], res)
+	}
+	content, _ := res["content"].([]any)
+	if text := content[0].(map[string]any)["text"]; text != "boom\n" {
+		t.Errorf("content[0].text=%q want=%q", text, "boom\n")
+	}
+}
+
+// --- Meta / audit stamps ------------------------------------------------
+
+func TestModernCall_MetaStamps(t *testing.T) {
+	captured := make(chan Invocation, 1)
+	b := New(modernTestTree(), WithRunner(&fakeRunner{
+		run: func(_ context.Context, inv Invocation) (Result, error) {
+			captured <- inv
+			return Result{Stdout: "ok"}, nil
+		},
+	}))
+	srv := modernServerFor(t, b)
+	_, _ = postJSON(t, srv, "/mcp", modernHeaders("tools/call", "ping"),
+		callBody(t, "ping", nil))
+
+	inv := <-captured
+	if inv.Meta.Surface != SurfaceMCP {
+		t.Errorf("Surface=%v want=%v", inv.Meta.Surface, SurfaceMCP)
+	}
+	if inv.Meta.RequestedAt.IsZero() {
+		t.Error("RequestedAt is zero")
+	}
+	if got := inv.Meta.Extra["mcp_spec_version"]; got != mcpModernProtocolVersion {
+		t.Errorf("Extra[mcp_spec_version]=%q want=%q", got, mcpModernProtocolVersion)
+	}
+	if _, ok := inv.Meta.Extra["mcp_client_name"]; ok {
+		t.Error("mcp_client_name set without clientInfo in the request")
+	}
+	if _, ok := inv.Meta.Extra["mcp_client_version"]; ok {
+		t.Error("mcp_client_version set without clientInfo in the request")
+	}
+}
+
+func TestModernCall_MetaStamps_ClientInfo(t *testing.T) {
+	captured := make(chan Invocation, 1)
+	b := New(modernTestTree(), WithRunner(&fakeRunner{
+		run: func(_ context.Context, inv Invocation) (Result, error) {
+			captured <- inv
+			return Result{Stdout: "ok"}, nil
+		},
+	}))
+	srv := modernServerFor(t, b)
+
+	meta := modernMeta()
+	meta[metaKeyClientInfo] = map[string]any{"name": "clientx", "version": "1.2.0"}
+	body := modernBodyWithMeta(t, "tools/call", map[string]any{"name": "ping"}, meta)
+	_, _ = postJSON(t, srv, "/mcp", modernHeaders("tools/call", "ping"), body)
+
+	inv := <-captured
+	if got := inv.Meta.Extra["mcp_client_name"]; got != "clientx" {
+		t.Errorf("Extra[mcp_client_name]=%q want=clientx", got)
+	}
+	if got := inv.Meta.Extra["mcp_client_version"]; got != "1.2.0" {
+		t.Errorf("Extra[mcp_client_version]=%q want=1.2.0", got)
+	}
+}
