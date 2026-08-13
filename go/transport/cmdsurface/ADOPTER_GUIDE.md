@@ -49,6 +49,45 @@ Destructive commands (`kit/side-effect=destructive` cobra annotation)
 are blocked from remote surfaces by default. Opt in explicitly via
 `Policy.AllowDestructiveOn`.
 
+## MCP auth hardening (spec 2026-07-28)
+
+The MCP surface is auth-scheme-agnostic: `Class.AuthRequired` leaves
+are gated on `Authorization` header presence only. The 2026-07-28
+authorization obligations bind the authorization server / resource
+server deployed in front of the mount — not the transport bridge:
+
+- **RFC 9207 issuer identification** — your authorization server
+  must emit `iss` on every authorization response, error responses
+  included. Kit-side, the OAuth callback surface enforces the client
+  half: set `OAuthProvider.ExpectedIssuer` to the provider's issuer
+  identifier and callbacks reject responses whose `iss` is missing
+  or differs from it (exact string match), before state consumption.
+- **`application_type` at client registration** — register OAuth
+  clients with an explicit `application_type`. Kit performs no
+  client registration (neither a DCR client nor a registration
+  endpoint); this lives entirely in your authorization server or
+  registration tooling.
+- **Credential binding** — bind issued tokens to the issuing
+  authorization server and reject cross-issuer presentation at your
+  resource server. Kit forwards the RFC 9207-validated issuer to
+  sinks and custom Runners via `Meta.Extra["oauth_issuer"]`, and to
+  the leaf via a `FlagFromQuery` `"iss"` mapping, so credential
+  stores can record the binding at mint time.
+- **CIMD over DCR** — the spec deprecates Dynamic Client
+  Registration in favor of Client ID Metadata Documents (a hosted
+  metadata URL as the client identifier). Choose this at your
+  authorization server; kit holds no client identity and needs no
+  change. Existing DCR-based deployments keep working.
+
+```go
+providers := []cmdsurface.OAuthProvider{{
+    Name:           "github",
+    Path:           []string{"auth", "oauth-link"},
+    FlagFromQuery:  map[string]string{"code": "code", "iss": "issuer"},
+    ExpectedIssuer: "https://as.example", // RFC 9207
+}}
+```
+
 ## Telemetry opt-in
 
 `Config.Telemetry` is `nil` by default — no events leave the binary

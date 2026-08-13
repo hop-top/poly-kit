@@ -429,7 +429,7 @@ model, and coupling them for this change would buy nothing.
 | MRTR: `resultType`, `InputRequiredResult` (`inputRequests`/`requestState`), retry with `inputResponses` | Absent; strictly single round-trip; confirmation via `X-Confirm-Token` header | `resultType: "complete"` on every modern result now; confirmation-gate slot in modern `tools/call`; full `input_required` confirmation flow later per the pinned MRTR design |
 | Header routing: `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` required; header/body validation; Base64 sentinel; `Mcp-Param-*` | All headers ignored | Modern handler requires + validates (V4, V6, V7) with `-32020` @ 400; sentinel decoding for `Mcp-Name`; `x-mcp-header` not emitted, so inbound `Mcp-Param-*` are unrecognized and ignored |
 | Cacheable list results: `ttlMs` + `cacheScope` on discover/list/read ops | Absent | Emitted on `server/discover` + `tools/list` complete-results; defaults `0` / `"private"`; `WithMCPCacheHints` + `mcp:` config block |
-| Auth hardening: RFC 9207 issuer validation, `application_type`, credential binding, CIMD replaces DCR | MCP surface checks bearer *presence* only (`Class.AuthRequired`); no OAuth AS/RS in the bridge (`surface_oauth.go` is an unrelated inbound-callback surface) | Out of scope for the transport bridge: these obligations bind the authorization server / resource-server deployment in front of the mount. The surface stays auth-scheme-agnostic; adopter guidance lands in `ADOPTER_GUIDE.md` with the implementation. No wire change |
+| Auth hardening: RFC 9207 issuer validation, `application_type`, credential binding, CIMD replaces DCR | MCP surface checks bearer *presence* only (`Class.AuthRequired`); no OAuth AS/RS in the bridge. `surface_oauth.go` is the OAuth *client-side* callback surface — the one component RFC 9207's client obligation binds | Split by where each mechanism lives. Kit-side (shipped): RFC 9207 `iss` validation on the OAuth callback via `OAuthProvider.ExpectedIssuer` — `iss` required + exact string match, rejected before provider-error and state handling; validated issuer forwarded through `Meta.Extra["oauth_issuer"]` and a `FlagFromQuery` `"iss"` mapping. Deployment-side: `application_type` at registration, issuer-bound token rejection, CIMD — these bind the AS/RS in front of the mount; adopter guidance in `ADOPTER_GUIDE.md`. The MCP mount stays auth-scheme-agnostic; no MCP wire change |
 | Tasks extension `io.modelcontextprotocol/tasks` (`tasks/get`, `tasks/update`) | Absent | Not implemented. `capabilities.extensions` omitted from `server/discover` (= unsupported); `tasks/*` → `-32601` @ 404. The extensions map is the designated slot if this is ever added |
 | Deprecations: Roots, Sampling, Logging, HTTP+SSE transport | None implemented | Nothing to remove or add. GET/DELETE → 405 when modern enabled; `Mcp-Session-Id` / `Last-Event-ID` ignored |
 | Tool-descriptor shape (`toolspec/adapters/mcp.go` + live `tools/list` envelopes) | `{name, description, inputSchema}` in both places | Unchanged in both places; new optional descriptor fields not emitted; adapter decision recorded above as "no change" |
@@ -444,8 +444,12 @@ Deliberately excluded from this work (each would be its own decision):
 - Emitting `title`, `icons`, `outputSchema`, `annotations`, or
   `x-mcp-header` in tool descriptors.
 - The tasks extension and any `capabilities.extensions` entry.
-- OAuth authorization-server / resource-server features (CIMD,
-  RFC 9207 validation) inside the bridge.
+- OAuth authorization-server / resource-server mechanics inside the
+  bridge: client registration (DCR or CIMD), token issuance, and
+  issuer-bound token rejection. The MCP mount stays
+  auth-scheme-agnostic. (The RFC 9207 *client-side* `iss` check ships
+  on the OAuth callback surface — client-half validation, not an
+  AS/RS feature.)
 - A per-version `Surface` value or per-version enablement.
 
 ## Consequences
