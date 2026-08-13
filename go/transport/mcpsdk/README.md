@@ -24,6 +24,10 @@ if err := mcpsdk.Mount(b, r,
 
 Other entry points:
 
+- `mcpsdk.New(b, opts...)` — the `*Surface` handle: serve it
+  (`Handler` / `Mount` / `ServeStdio`), reach the raw `*mcp.Server`
+  (`Server()`), and drive the live tool list (`Hide` / `Expose` /
+  `Sync`, below).
 - `mcpsdk.Handler(b, opts...)` — a bare `http.Handler` to mount
   however you like.
 - `mcpsdk.NewServer(b, opts...)` — the underlying `*mcp.Server`, for
@@ -33,7 +37,89 @@ Other entry points:
 
 Options: `WithPath`, `WithServerInfo`, `WithInstructions`,
 `WithStateless` (SEP-2567 sessionless mode; GET/DELETE become 405),
-`WithJSONResponse`.
+`WithJSONResponse`, `WithServerOptions`, `WithServerConfigurator`,
+`WithToolDecorator`.
+
+## Beyond tools: the full SDK surface
+
+kit binds the cobra tree; everything else the SDK server offers is
+passed through, not wrapped. Two hooks:
+
+- **`WithServerOptions(*mcp.ServerOptions)`** — the base options the
+  SDK server is built with (shallow-copied; `WithInstructions`
+  overrides its `Instructions`). This is where `PageSize`,
+  `SubscribeHandler` / `UnsubscribeHandler`, `CompletionHandler`,
+  `Capabilities`, `KeepAlive`, `GetSessionID`, … go.
+- **`WithServerConfigurator(func(*mcp.Server))`** — runs against the
+  built server after kit's tools are bound. Register prompts,
+  resources, and resource templates with the SDK's own `AddPrompt` /
+  `AddResource` / `AddResourceTemplate`; capability advertisement
+  follows automatically from what you register (SDK inference —
+  `prompts`, `resources` with `subscribe` when a `SubscribeHandler`
+  is set, `completions` when a `CompletionHandler` is set).
+
+```go
+s, err := mcpsdk.New(b,
+    mcpsdk.WithServerOptions(&mcp.ServerOptions{
+        PageSize: 50,
+        SubscribeHandler: func(ctx context.Context, req *mcp.SubscribeRequest) error {
+            return track.Subscribe(req.Params.URI)
+        },
+    }),
+    mcpsdk.WithServerConfigurator(func(m *mcp.Server) {
+        m.AddPrompt(&mcp.Prompt{Name: "runbook"}, getRunbook)
+        m.AddResource(&mcp.Resource{
+            URI: "acme://state", Name: "state", MIMEType: "application/json",
+        }, readState)
+    }),
+)
+if err != nil { log.Fatal(err) }
+if err := s.Mount(r); err != nil { log.Fatal(err) }
+
+// Later: notify subscribers through the SDK.
+_ = s.Server().ResourceUpdated(ctx, &mcp.ResourceUpdatedNotificationParams{URI: "acme://state"})
+```
+
+What this buys, all SDK-served and covered by tests here:
+`prompts/list` + `prompts/get`, `resources/list` + `resources/read`
+(+ templates), `resources/subscribe` + `notifications/resources/
+updated`, cursor pagination on every list method (server `PageSize`,
+client iterators — no kit-side cursor logic exists), and completions.
+
+### Live tool list (Hide / Expose / Sync)
+
+The Surface keeps the SDK tool set in step with bridge enablement at
+runtime. `s.Hide(pattern)` / `s.Expose(pattern)` flip `SurfaceMCP` on
+matching leaves and reconcile; mutating the bridge directly works too
+— call `s.Sync()` afterwards. Every effective change unlists/relists
+tools and makes connected sessions receive
+`notifications/tools/list_changed` (SDK behavior). Enablement and the
+destructive policy ceiling are still re-checked on every call, so the
+listing is advisory and the gate is authoritative — exposing a
+policy-blocked destructive leaf lists a tool that still refuses.
+
+### Descriptor enrichment
+
+`WithToolDecorator(func(*cmdsurface.Leaf, *mcp.Tool))` runs per leaf
+after kit fills the defaults (name, description, flag-derived input
+schema, destructive hint): set `Title`, `OutputSchema`, `Icons`, or
+any annotation. kit cannot derive `OutputSchema` mechanically — a
+bridge `Result.Data` is untyped at mount time — so output schemas are
+adopter knowledge and belong in the decorator.
+
+### Streaming and progress
+
+A `tools/call` carrying a progress token streams: the bridge Runner's
+`Stream` runs the leaf and each output line is delivered as a
+`notifications/progress` message on the requesting session while the
+call is in flight; the terminal result still carries the full
+captured output. Calls without a token use the synchronous path
+unchanged. The boundary is precise: MCP tool results are a single
+terminal message, so line-by-line delivery rides progress
+notifications (SDK `NotifyProgress`) — there is no partial-result
+channel to stream into. The streaming path applies the same gates as
+the synchronous one (destructive ceiling, auth, confirmation,
+enablement), pinned by tests.
 
 ## Relationship to the hand-rolled surface
 
@@ -48,6 +134,11 @@ Options: `WithPath`, `WithServerInfo`, `WithInstructions`,
 | Tool identity | dotted leaf path (`widget.add`) | identical |
 | Input schema | derived from cobra flags | identical derivation |
 | Structured output | extra text block | native `structuredContent` |
+| Prompts / resources / templates | none | full, via SDK pass-through (`WithServerConfigurator`) |
+| Subscriptions + list/updated notifications | none | SDK-served (`SubscribeHandler`, `ResourceUpdated`, `tools/list_changed`) |
+| Pagination | none (single response) | SDK cursor pagination on every list method |
+| Progress streaming | none | per-line `notifications/progress` when the call carries a progress token |
+| Runtime tool list | re-read per `tools/list` | live: `Hide`/`Expose`/`Sync` with `tools/list_changed` |
 | Safety gates | Bridge policy + enablement | identical (same types, same `mcp` surface key) |
 
 Both implementations key off `cmdsurface.SurfaceMCP`: a leaf enabled
@@ -102,11 +193,11 @@ bypassed through the tasks surface).
 - **No HTTP status mirroring.** Gate refusals surface as `isError`
   tool results; HTTP-only probes cannot distinguish 401/428 the way
   they can against the hand-rolled surface.
-- **Tool set fixed at mount.** Leaves exposed when the server is
-  built become tools. `Bridge.Hide` after mount makes a tool fail
-  closed on call but does not unlist it (use
-  `(*mcp.Server).RemoveTools` for live removal with `list_changed`
-  notification).
+- **Direct bridge mutation needs a `Sync()`.** The Surface's own
+  `Hide`/`Expose` reconcile automatically, but `Bridge.Hide` called
+  directly leaves the SDK listing stale until `s.Sync()` runs — the
+  bridge exposes no change hook to observe. Stale listings are
+  advisory only: calls fail closed either way.
 - **Advertised ≠ callable.** Like the hand-rolled surface, policy-
   blocked destructive leaves are listed but always refuse; clients
   see the refusal in-band where a model can react to it.
