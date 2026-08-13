@@ -5,8 +5,9 @@ Context Protocol using the official
 [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk) for the
 entire protocol layer. It is the SDK-backed alternative to the
 hand-rolled MCP surface mounted by `cmdsurface.MountMCP`; both expose
-the same tools with the same safety posture, and adopters choose per
-mount.
+the same bridge tools, gated identically for everything kit binds
+(see [Safety and the trust boundary](#safety-and-the-trust-boundary)),
+and adopters choose per mount.
 
 ## Quick start
 
@@ -56,7 +57,9 @@ passed through, not wrapped. Two hooks:
   `AddResource` / `AddResourceTemplate`; capability advertisement
   follows automatically from what you register (SDK inference —
   `prompts`, `resources` with `subscribe` when a `SubscribeHandler`
-  is set, `completions` when a `CompletionHandler` is set).
+  is set, `completions` when a `CompletionHandler` is set). What you
+  register here runs outside kit's gates — see
+  [Safety and the trust boundary](#safety-and-the-trust-boundary).
 
 ```go
 s, err := mcpsdk.New(b,
@@ -139,16 +142,44 @@ enablement), pinned by tests.
 | Pagination | none (single response) | SDK cursor pagination on every list method |
 | Progress streaming | none | per-line `notifications/progress` when the call carries a progress token |
 | Runtime tool list | re-read per `tools/list` | live: `Hide`/`Expose`/`Sync` with `tools/list_changed` |
-| Safety gates | Bridge policy + enablement | identical (same types, same `mcp` surface key) |
+| Safety gates | Bridge policy + enablement | identical for kit-bound tools (same types, same `mcp` surface key); adopter-registered features ungated |
 
-Both implementations key off `cmdsurface.SurfaceMCP`: a leaf enabled
-for `mcp` (config or `Expose`) is exposed by whichever MCP
-implementation the adopter mounts, and `Policy.AllowDestructiveOn`
-gates destructive leaves for both identically. Destructive leaves are
-**blocked by default**; auth-required leaves demand an
-`Authorization` header and confirmation-required leaves an
-`X-Confirm-Token` header. Transports without HTTP headers (stdio,
-in-memory) fail those gates closed.
+## Safety and the trust boundary
+
+Kit's safety contract covers **kit-bound tools invoked through the
+bridge** — the tools this package registers from the cobra tree,
+dispatched via `Bridge.Invoke`. For those, both implementations key
+off `cmdsurface.SurfaceMCP`: a leaf enabled for `mcp` (config or
+`Expose`) is exposed by whichever MCP implementation the adopter
+mounts, and `Policy.AllowDestructiveOn` gates destructive leaves for
+both identically. Destructive leaves are **blocked by default**;
+auth-required leaves demand an `Authorization` header and
+confirmation-required leaves an `X-Confirm-Token` header. Transports
+without HTTP headers (stdio, in-memory) fail those gates closed.
+
+That is where the guarantee ends. `WithServerConfigurator` and
+`Server()` hand you the raw `*mcp.Server` — deliberately, per the
+wrap-nothing design — so everything registered through them runs
+under **your** responsibility, outside kit's gates:
+
+- **Adopter-registered features are ungated.** Tools, prompts,
+  resources, and completions you add via the configurator execute
+  whatever their handlers do; kit's destructive/auth/confirmation
+  checks never wrap them. Gate them yourself if they need gating.
+- **Name shadowing replaces gated handlers.** The SDK's `AddTool`
+  silently replaces an existing tool of the same name — no error. An
+  adopter call like `m.AddTool(&mcp.Tool{Name: "widget.delete"},
+  myHandler)` swaps out kit's policy-gated binding for `myHandler`,
+  which then executes ungated. Treat kit's dotted leaf names as
+  reserved; never reuse them for adopter tools.
+- **Direct Runner access bypasses the policy gate.** An adopter
+  handler that calls `Bridge.Runner().Run` reaches leaves without
+  the enablement or destructive checks. Dispatch through
+  `Bridge.Invoke` from adopter code to stay gated.
+
+None of this is reachable by a remote client on its own — it takes
+adopter code registering it — but the boundary is real and worth
+naming: kit gates what kit binds; what you register is yours.
 
 ## Version negotiation (as pinned by tests)
 
@@ -201,6 +232,10 @@ bypassed through the tasks surface).
 - **Advertised ≠ callable.** Like the hand-rolled surface, policy-
   blocked destructive leaves are listed but always refuse; clients
   see the refusal in-band where a model can react to it.
+- **Configurator power is configurator responsibility.** The raw
+  `*mcp.Server` is the point of the pass-through design, and it can
+  shadow or sidestep kit's gates from adopter code — see
+  [Safety and the trust boundary](#safety-and-the-trust-boundary).
 - **Two implementations, one contract.** The safety contract lives in
   the shared Bridge; the wire behavior differs in the ways listed
   above. Pick one per deployment rather than mounting both on the
