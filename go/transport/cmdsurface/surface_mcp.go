@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -41,6 +42,25 @@ type mcpConfig struct {
 	path          string
 	serverName    string
 	serverVersion string
+
+	// specVersionsSet / specVersions back WithMCPSpecVersions.
+	// specVersionsSet distinguishes "option not supplied" (both
+	// versions enabled, the default) from an explicit empty call
+	// (WithMCPSpecVersions() with zero args), which is a mount-time
+	// error per the ADR's option table.
+	specVersionsSet bool
+	specVersions    []MCPSpecVersion
+
+	// cacheHintsSet / cacheTTL / cacheScope back WithMCPCacheHints.
+	// Consumed by the modern handler (later task); validated here at
+	// mount time so misconfiguration fails fast.
+	cacheHintsSet bool
+	cacheTTL      time.Duration
+	cacheScope    MCPCacheScope
+
+	// originAllowlist backs WithMCPOriginAllowlist. Empty means no
+	// Origin check (default).
+	originAllowlist []string
 }
 
 // MCPOption configures the MCP surface mounted by MountMCP.
@@ -64,7 +84,14 @@ func WithMCPServerInfo(name, version string) MCPOption {
 // the router. It exposes one MCP tool per leaf where SurfaceMCP is
 // enabled. Tool name = dotted leaf path (e.g. "widget.add").
 //
-// Supported MCP methods:
+// By default both the 2024-11-05 and 2026-07-28 protocol revisions
+// are served from this one mount; WithMCPSpecVersions pins the
+// enabled set. Every request is routed to exactly one revision's
+// handler per the era-detection rules in
+// docs/adr/0004-mcp-dual-spec-surface.md — existing callers that sent
+// no modern markers are unaffected by construction.
+//
+// Supported MCP methods (2024-11-05):
 //
 //	initialize  → server info + capabilities
 //	tools/list  → enumerates tools with inputSchema derived from flags
@@ -90,12 +117,57 @@ func MountMCP(b *Bridge, r *api.Router, opts ...MCPOption) error {
 		path:          defaultMCPPath,
 		serverName:    defaultMCPServerName,
 		serverVersion: defaultMCPServerVersion,
+		cacheScope:    MCPCacheScopePrivate,
 	}
 	for _, o := range opts {
 		o(&cfg)
 	}
-	h := &mcpHandler{b: b, cfg: cfg}
-	r.Handle(http.MethodPost, cfg.path, h.serveHTTP)
+
+	enabled := mcpEnabledSet{legacy: true, modern: true}
+	if cfg.specVersionsSet {
+		var err error
+		enabled, err = resolveMCPSpecVersions(cfg.specVersions)
+		if err != nil {
+			return err
+		}
+	}
+	if cfg.cacheHintsSet {
+		if cfg.cacheTTL < 0 {
+			return errors.New("cmdsurface: WithMCPCacheHints: negative ttl")
+		}
+		switch cfg.cacheScope {
+		case MCPCacheScopePublic, MCPCacheScopePrivate:
+		default:
+			return errors.New("cmdsurface: WithMCPCacheHints: unknown cache scope " + string(cfg.cacheScope))
+		}
+	}
+
+	legacy := &mcpHandler{b: b, cfg: cfg}
+
+	switch {
+	case enabled.legacy && !enabled.modern:
+		// Legacy only: mount today's handler directly. The dispatcher
+		// is not in the path; markers are ignored exactly as today.
+		r.Handle(http.MethodPost, cfg.path, legacy.serveHTTP)
+	case enabled.modern && !enabled.legacy:
+		// Modern only: every request routes to the modern handler; no
+		// special-casing of initialize (D2 does not apply when legacy
+		// is not enabled at all).
+		modern := &mcpModernHandlerSeam{cfg: cfg}
+		r.Handle(http.MethodPost, cfg.path, func(w http.ResponseWriter, req *http.Request) {
+			modernOnlyServeHTTP(modern, w, req)
+		})
+		r.Handle(http.MethodGet, cfg.path, mcp405Handler)
+		r.Handle(http.MethodDelete, cfg.path, mcp405Handler)
+	default:
+		// Both enabled (default): the era dispatcher decides per
+		// request (D1-D4).
+		modern := &mcpModernHandlerSeam{cfg: cfg}
+		d := &mcpDispatcher{legacy: legacy, modern: modern}
+		r.Handle(http.MethodPost, cfg.path, d.ServeHTTP)
+		r.Handle(http.MethodGet, cfg.path, mcp405Handler)
+		r.Handle(http.MethodDelete, cfg.path, mcp405Handler)
+	}
 	return nil
 }
 
