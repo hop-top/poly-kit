@@ -91,10 +91,14 @@ func newConfig(opts ...Option) config {
 // on every call by Bridge.Invoke, so hiding a leaf after mount makes
 // its tool fail; it does not unlist it.
 func NewServer(b *cmdsurface.Bridge, opts ...Option) (*mcp.Server, error) {
+	return newServer(b, newConfig(opts...))
+}
+
+// newServer is the config-resolved core shared by every entry point.
+func newServer(b *cmdsurface.Bridge, cfg config) (*mcp.Server, error) {
 	if b == nil {
 		return nil, errors.New("mcpsdk: nil bridge")
 	}
-	cfg := newConfig(opts...)
 	srv := mcp.NewServer(
 		&mcp.Implementation{Name: cfg.serverName, Version: cfg.serverVersion},
 		&mcp.ServerOptions{Instructions: cfg.instructions},
@@ -113,18 +117,24 @@ func NewServer(b *cmdsurface.Bridge, opts ...Option) (*mcp.Server, error) {
 // WithStateless). All protocol handling — version negotiation,
 // session lifecycle, message parsing, error shapes — is the SDK's.
 func Handler(b *cmdsurface.Bridge, opts ...Option) (http.Handler, error) {
-	srv, err := NewServer(b, opts...)
+	cfg := newConfig(opts...)
+	srv, err := newServer(b, cfg)
 	if err != nil {
 		return nil, err
 	}
-	cfg := newConfig(opts...)
+	return newHandler(srv, cfg), nil
+}
+
+// newHandler wraps a built server in the SDK streamable HTTP
+// transport per cfg.
+func newHandler(srv *mcp.Server, cfg config) http.Handler {
 	return mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv },
 		&mcp.StreamableHTTPOptions{
 			Stateless:    cfg.stateless,
 			JSONResponse: cfg.jsonResponse,
 		},
-	), nil
+	)
 }
 
 // Mount registers the streamable HTTP handler on the router at the
@@ -135,11 +145,12 @@ func Mount(b *cmdsurface.Bridge, r *api.Router, opts ...Option) error {
 	if r == nil {
 		return errors.New("mcpsdk: Mount: nil router")
 	}
-	h, err := Handler(b, opts...)
+	cfg := newConfig(opts...)
+	srv, err := newServer(b, cfg)
 	if err != nil {
 		return err
 	}
-	cfg := newConfig(opts...)
+	h := newHandler(srv, cfg)
 	for _, method := range []string{http.MethodPost, http.MethodGet, http.MethodDelete} {
 		r.Handle(method, cfg.path, h.ServeHTTP)
 	}

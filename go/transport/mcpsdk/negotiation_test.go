@@ -162,10 +162,14 @@ func TestStatelessMode(t *testing.T) {
 }
 
 // TestTasksMethodsUnsupported pins the honest gap: go-sdk v1.7.0 has
-// no server-side tasks implementation, so tasks methods are rejected
-// by the SDK. When a future SDK release starts accepting these
-// methods this test fails, signaling that the tasks integration can
-// (and should) be revisited.
+// no server-side tasks implementation and rejects every tasks method
+// with exactly HTTP 400 and a `... "tasks/*" unsupported` body. The
+// assertion is deliberately pinned to that exact behavior so that ANY
+// change in how a future SDK answers tasks/* — full support, or
+// recognize-but-reject for tools without task opt-in — reddens this
+// test and forces the tasks integration to be revisited. A message
+// tweak tripping it is an acceptable false positive; staying silent
+// through an SDK upgrade that ships tasks is not.
 func TestTasksMethodsUnsupported(t *testing.T) {
 	b := cmdsurface.New(newTestTree())
 	h, err := Handler(b, WithStateless(), WithJSONResponse())
@@ -175,15 +179,23 @@ func TestTasksMethodsUnsupported(t *testing.T) {
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 
-	for _, body := range []string{
-		`{"jsonrpc":"2.0","id":1,"method":"tasks/get","params":{"taskId":"t1"}}`,
-		`{"jsonrpc":"2.0","id":2,"method":"tasks/list"}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tasks/cancel","params":{"taskId":"t1"}}`,
-		`{"jsonrpc":"2.0","id":4,"method":"tasks/result","params":{"taskId":"t1"}}`,
+	for _, tc := range []struct {
+		method string
+		body   string
+	}{
+		{"tasks/get", `{"jsonrpc":"2.0","id":1,"method":"tasks/get","params":{"taskId":"t1"}}`},
+		{"tasks/list", `{"jsonrpc":"2.0","id":2,"method":"tasks/list"}`},
+		{"tasks/cancel", `{"jsonrpc":"2.0","id":3,"method":"tasks/cancel","params":{"taskId":"t1"}}`},
+		{"tasks/result", `{"jsonrpc":"2.0","id":4,"method":"tasks/result","params":{"taskId":"t1"}}`},
 	} {
-		resp, payload := rawPost(t, srv.URL, body)
-		if resp.StatusCode == http.StatusOK && !strings.Contains(payload, `"error"`) {
-			t.Errorf("tasks method accepted (%s); revisit tasks support: %s", body, payload)
+		resp, payload := rawPost(t, srv.URL, tc.body)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400 — SDK tasks/* behavior changed; revisit tasks support (payload: %s)",
+				tc.method, resp.StatusCode, payload)
+		}
+		if !strings.Contains(payload, "unsupported") {
+			t.Errorf("%s: payload = %q, want to contain %q — SDK tasks/* behavior changed; revisit tasks support",
+				tc.method, payload, "unsupported")
 		}
 	}
 }

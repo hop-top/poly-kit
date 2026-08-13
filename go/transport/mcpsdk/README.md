@@ -40,7 +40,7 @@ Options: `WithPath`, `WithServerInfo`, `WithInstructions`,
 | | `cmdsurface.MountMCP` | `mcpsdk.Mount` |
 |---|---|---|
 | Protocol layer | ~400 lines in-repo | official MCP Go SDK |
-| Extra dependencies | none | `modelcontextprotocol/go-sdk` (+4 small indirects) |
+| Extra dependencies | none | `modelcontextprotocol/go-sdk` (+5 small indirects) |
 | Spec versions | 2024-11-05 only | 2024-11-05 … 2026-07-28 (negotiated) |
 | Transport | single-POST JSON-RPC | streamable HTTP: sessions, SSE streams, stateless mode; stdio; any SDK transport |
 | Sessions / resumption / keep-alive | none | SDK-managed |
@@ -70,13 +70,21 @@ headers), handled entirely by the SDK.
 
 ## Tasks extension: not yet available
 
-The `io.modelcontextprotocol/tasks` extension (SEP-1686 — durable
-long-running calls with `tasks/get` / `tasks/list` / `tasks/cancel` /
-`tasks/result`) is **not implemented by the SDK as of v1.7.0**: the
-SDK roadmap lists it as future experimental work, and the server
-rejects `tasks/*` methods as unsupported (pinned by
-`TestTasksMethodsUnsupported`, which is written to fail — loudly —
-once an SDK release starts accepting them).
+The `io.modelcontextprotocol/tasks` extension (durable long-running
+calls with `tasks/get` / `tasks/list` / `tasks/cancel` /
+`tasks/result`; governed spec-side by the merged **SEP-2663**) is
+**not implemented by the SDK as of v1.7.0**. The SDK's own live
+trackers are issue [#626] (labeled SEP-1686, cited in its ROADMAP)
+and the in-progress PR [#755]; PR #755 shapes tasks as per-tool
+opt-in, so a future SDK may recognize `tasks/*` yet reject calls for
+unconfigured tools. `TestTasksMethodsUnsupported` therefore pins
+today's exact rejection (HTTP 400 with an "unsupported" body): any
+change in how the SDK answers `tasks/*` — full support or
+recognize-but-unconfigured — turns that test red and forces a
+revisit.
+
+[#626]: https://github.com/modelcontextprotocol/go-sdk/issues/626
+[#755]: https://github.com/modelcontextprotocol/go-sdk/pull/755
 
 This package deliberately does not hand-roll the extension: the whole
 point of the surface is that protocol behavior comes from the SDK.
