@@ -202,18 +202,21 @@ func TestModernCall_V7_EmptyRawHeaderValueRejected(t *testing.T) {
 
 func TestModernCall_V7_EmptySentinelDecodeRejected(t *testing.T) {
 	// =?base64??= is a validly-formed sentinel wrapping zero payload
-	// bytes: it decodes successfully to "". An empty decoded value is
-	// a header-validation failure per the amended ADR V7 rule
-	// regardless of whether params.name also happens to be "" or
-	// absent — the header layer rejects it before any body-value
-	// comparison.
+	// bytes: it decodes successfully to "". Paired with a body
+	// params.name that is ALSO "" (rather than a non-matching name
+	// like "ping"), this fixture uniquely isolates the decoded=="" gate:
+	// if that gate were removed, "" == "" would pass the byte-equality
+	// comparison too and the request would fall through to V9,
+	// regressing to 200/-32602 instead of staying 400/-32020 — so this
+	// specific pairing is required to prove the empty-decode gate itself
+	// is doing the rejecting, not the ordinary mismatch check.
 	srv := modernServer(t)
 	headers := map[string]string{
 		headerMCPProtocolVersion: mcpModernProtocolVersion,
 		headerMCPMethod:          "tools/call",
 		headerMCPName:            "=?base64??=",
 	}
-	status, m := postJSON(t, srv, "/mcp", headers, callBody(t, "ping", nil))
+	status, m := postJSON(t, srv, "/mcp", headers, callBody(t, "", nil))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status=%d want=400: %v", status, m)
 	}
