@@ -381,6 +381,16 @@ Options:
 - `WithOAuthAuthorizeFn(fn func(provider string) (string, error))` —
   return the upstream provider's authorize URL.
 
+RFC 9207 issuer validation: set `OAuthProvider.ExpectedIssuer` to
+the provider's issuer identifier (absolute URL, no query/fragment —
+checked at mount) and the callback requires an `iss` query parameter
+equal to it (simple string comparison) on every response, error
+responses included, rejecting with `missing_iss` / `issuer_mismatch`
+before provider-error handling and state consumption. The validated
+issuer rides `Meta.Extra["oauth_issuer"]`; map `"iss"` in
+`FlagFromQuery` to hand it to the leaf. Unset = check disabled. See
+`go/transport/cmdsurface/surface_oauth_iss_test.go`.
+
 `InMemoryStateStore` is provided for single-process adopters; multi-
 replica deployments wire a shared store. Leaves with
 `Class.RequiresConfirmation` are refused at mount (redirect flow has
