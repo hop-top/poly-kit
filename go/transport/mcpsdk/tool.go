@@ -90,6 +90,14 @@ func toolHandler(b *cmdsurface.Bridge, leaf *cmdsurface.Leaf) mcp.ToolHandler {
 				RequestedAt: time.Now(),
 			},
 		}
+
+		// A progress token opts the call into progressive delivery:
+		// the runner streams and each output line becomes an MCP
+		// progress notification on the requesting session.
+		if token := req.Params.GetProgressToken(); token != nil {
+			return streamInvoke(ctx, b, leaf, inv, req, token)
+		}
+
 		res, err := b.Invoke(ctx, inv)
 		if err != nil {
 			if isUncallable(err) {
@@ -99,6 +107,61 @@ func toolHandler(b *cmdsurface.Bridge, leaf *cmdsurface.Leaf) mcp.ToolHandler {
 		}
 		return renderResult(res), nil
 	}
+}
+
+// streamInvoke runs inv through Runner.Stream, forwarding one MCP
+// progress notification per output line to the requesting session
+// and returning the terminal Result as the call result. The policy
+// gates Bridge.Invoke would apply are applied here first, the same
+// way the bridge's other streaming surfaces do before reaching the
+// Runner directly.
+func streamInvoke(ctx context.Context, b *cmdsurface.Bridge, leaf *cmdsurface.Leaf, inv cmdsurface.Invocation, req *mcp.CallToolRequest, token any) (*mcp.CallToolResult, error) {
+	if !leaf.Enabled[cmdsurface.SurfaceMCP] {
+		return nil, fmt.Errorf("%w: %s on %s",
+			cmdsurface.ErrSurfaceNotEnabled, leaf.PathKey(), cmdsurface.SurfaceMCP)
+	}
+	if !b.Policy().Allowed(leaf.Class, cmdsurface.SurfaceMCP) {
+		return errorResult(fmt.Sprintf("%v: %s on %s",
+			cmdsurface.ErrDestructiveBlocked, leaf.PathKey(), cmdsurface.SurfaceMCP)), nil
+	}
+
+	events := make(chan cmdsurface.Event, 16)
+	errc := make(chan error, 1)
+	go func() { errc <- b.Runner().Stream(ctx, inv, events) }()
+
+	var res *cmdsurface.Result
+	var progress float64
+	for ev := range events {
+		switch ev.Kind {
+		case "done":
+			if r, ok := ev.Data.(*cmdsurface.Result); ok {
+				res = r
+			}
+		case "stdout", "stderr":
+			progress++
+			line, _ := ev.Data.(string)
+			if ev.Kind == "stderr" {
+				line = "[stderr] " + line
+			}
+			// Best-effort: a notification the client misses does not
+			// fail the call.
+			_ = req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
+				ProgressToken: token,
+				Progress:      progress,
+				Message:       line,
+			})
+		}
+	}
+	if err := <-errc; err != nil {
+		if isUncallable(err) {
+			return nil, err
+		}
+		return errorResult(err.Error()), nil
+	}
+	if res == nil {
+		return errorResult("streaming produced no result"), nil
+	}
+	return renderResult(*res), nil
 }
 
 // isUncallable reports whether err means the tool cannot be called

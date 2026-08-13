@@ -18,6 +18,14 @@
 //     protocol behavior (negotiation, validation, error shapes)
 //     implemented by the official SDK.
 //
+// Beyond tools, the whole SDK server surface is passed through to
+// adopters: prompts, resources and templates, subscriptions and
+// notifications, pagination, and completions via WithServerOptions /
+// WithServerConfigurator; per-line progress streaming for calls
+// carrying a progress token; and a live tool list — Surface.Hide /
+// Expose / Sync translate runtime enablement changes into SDK tool
+// add/remove, firing tools/list_changed on connected sessions.
+//
 // This package contains no protocol logic of its own. Kit-side code
 // is limited to binding bridge leaves to SDK tool handlers, safety
 // gating, and mounting. See README.md in this directory for the full
