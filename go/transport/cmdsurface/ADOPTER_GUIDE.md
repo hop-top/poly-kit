@@ -49,6 +49,15 @@ Destructive commands (`kit/side-effect=destructive` cobra annotation)
 are blocked from remote surfaces by default. Opt in explicitly via
 `Policy.AllowDestructiveOn`.
 
+## MCP spec versions
+
+`MountMCP` serves the 2024-11-05 and 2026-07-28 MCP revisions from
+one mount, routed per request — existing mounts and clients are
+unaffected, and neither revision is deprecated. Pin the set with
+`WithMCPSpecVersions`; tune the modern path with `WithMCPCacheHints`
+and `WithMCPOriginAllowlist`. Full walkthrough:
+[docs/adopters/guides/expose-cli-over-mcp.md](../../../docs/adopters/guides/expose-cli-over-mcp.md).
+
 ## MCP auth hardening (spec 2026-07-28)
 
 The MCP surface is auth-scheme-agnostic: `Class.AuthRequired` leaves
@@ -109,7 +118,10 @@ caller's `Authorization` value, and expires after five minutes:
 expiry is a routine re-prompt, while a state failing verification is
 never honored — the rejection is emitted to registered `OnError`
 sinks as a security-relevant audit event before a fresh prompt is
-issued. Clients without the capability keep the header gate, and the
+issued. This audit event reaches bridge-registered sinks
+(`Bridge.Sinks()`) only: deployments whose sinks are wired solely
+through a Runner wrapper never observe pre-flight refusals, this one
+included. Clients without the capability keep the header gate, and the
 destructive ceiling (`Policy.AllowDestructiveOn`) is never relaxed by
 a confirmation outcome.
 
