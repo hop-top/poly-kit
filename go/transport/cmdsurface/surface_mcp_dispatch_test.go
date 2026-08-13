@@ -14,8 +14,8 @@ package cmdsurface
 // Tests here assert ROUTING decisions (which handler served a
 // request) and well-formedness of the modern-route placeholder's
 // JSON-RPC error shape — not the placeholder's exact wire bytes,
-// per the task-2 controller ruling: the real modern handler lands in
-// a later task and will change those bytes.
+// since those bytes are expected to change once the real modern
+// handler replaces this seam.
 
 import (
 	"context"
@@ -343,12 +343,12 @@ func TestDispatch_WorkedEdgeCases(t *testing.T) {
 			wantStatus: http.StatusBadRequest,
 		},
 		{
-			// Real V2 notification handling (HTTP 202, empty body,
-			// discard) is the next task's scope; today the request
-			// still ROUTES modern (which is what this row asserts) and
-			// the placeholder answers -32022 rather than 202. Wire
-			// bytes beyond routing are intentionally not pinned here,
-			// per the task-2 controller ruling.
+			// Full V2 notification handling (HTTP 202, empty body,
+			// discard) is not implemented by the placeholder; today the
+			// request still ROUTES modern (which is what this row
+			// asserts) and the placeholder answers -32022 rather than
+			// 202. Wire bytes beyond routing are intentionally not
+			// pinned here.
 			name:       "notification (no id) + markers",
 			headers:    map[string]string{headerMCPMethod: "tools/call"},
 			body:       `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"ping","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`,

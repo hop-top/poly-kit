@@ -310,15 +310,14 @@ func mcp405Handler(w http.ResponseWriter, _ *http.Request) {
 
 // --- modern-route placeholder (replaced by the next task) -----------
 
-// mcpModernHandlerSeam is the unexported hook the next task fills
+// mcpModernHandlerSeam is the unexported hook a future change fills
 // with the real 2026-07-28 handler (mcpModernHandler, V1-V9
-// validation, server/discover, tools/list, tools/call). This task
+// validation, server/discover, tools/list, tools/call). Today it
 // implements only enough to prove the dispatch seam: every request
 // classified modern reaches serveParsed and receives a well-formed
-// modern-shaped JSON-RPC error. Production placeholder behavior per
-// the task-2 controller ruling: -32022 UnsupportedProtocolVersion
-// naming the supported set, since the modern handler does not exist
-// yet to serve any modern method.
+// modern-shaped JSON-RPC error. Placeholder behavior:
+// -32022 UnsupportedProtocolVersion naming the supported set, since
+// no modern method is actually served yet.
 type mcpModernHandlerSeam struct {
 	cfg mcpConfig
 }
