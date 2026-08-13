@@ -7,35 +7,44 @@ package cmdsurface
 // mount, per-request version detection... both spec versions are
 // served from one mount").
 //
-// This file does not introduce new production assertions: every
-// legacy body asserted here is copied byte-for-byte from
-// surface_mcp_legacy_lock_test.go's own goldens (same tree shape,
-// same requests) and every modern body is copied byte-for-byte from
-// surface_mcp_modern_lock_test.go's own goldens (modernLockTree is
-// reused directly — imported by reference, not re-declared — since
-// this file's whole point is proving the TWO locks' bytes hold
-// simultaneously on one mount, not pinning a third tree's shape).
-// legacyLockTree() and modernLockTree() happen to declare equivalent
-// leaves (ping/widget.add/widget.delete/secret/deploy), which is what
-// makes an apples-to-apples interleave possible; this file assumes
-// that shape without re-asserting it (each source file's own suite
-// already does).
+// Fixture: this file mounts on legacyLockTree() (frozen,
+// surface_mcp_legacy_lock_test.go) via legacyLockServer(), reused
+// read-only exactly as every legacy-lock test in that file reads it —
+// no edit to the frozen file. Every "legacy" step's wantBody below is
+// therefore not merely SHAPED like the legacy lock's own goldens, it
+// is byte-for-byte copied from them (TestLegacyLock_Initialize_Defaults,
+// TestLegacyLock_ToolsList_ExactDescriptors,
+// TestLegacyLock_ToolsCall_HappyPath_RealExec, the -32601@200 quirk
+// test, and the addendum's mid-era-header non-marker test): same
+// tree, same requests, same expected bytes, so the claim "legacy bytes
+// identical to the legacy lock's goldens" is enforced by running both
+// suites against the identical fixture, not merely asserted in prose.
+//
+// "Modern" steps run against this SAME legacyLockTree mount (not a
+// separately declared tree), so the matrix genuinely proves the two
+// eras coexist on one Bridge/mount rather than proving two different
+// mounts each work in isolation. Modern wire bytes were derived by
+// running the modern handler against legacyLockTree() directly (its
+// widget.add carries force+tag beyond modernLockTree's narrower
+// shape) and are asserted byte-exact here.
 
 import (
 	"testing"
 )
 
 // TestMatrix_LegacyAndModernInterleaved_NoCrossTalk drives a sequence
-// of legacy and modern exchanges against one mount, alternating
-// eras request-by-request, and asserts every response byte-exact
-// against the two locks' own goldens. Passing requires: (a) the era
+// of legacy and modern exchanges against one mount (legacyLockTree),
+// alternating eras request-by-request, and asserts every response
+// byte-exact — legacy steps against the legacy lock's own goldens
+// (identity, not re-derivation), modern steps against golden bytes
+// derived from this same tree. Passing requires: (a) the era
 // dispatcher classifies every request correctly regardless of what
 // preceded it (no sticky/leaked state between requests, matching the
 // "stateless across requests" contracts documented on mcpHandler and
 // mcpModernHandler), and (b) neither handler's output is perturbed by
 // the other having just served a request on the same server.
 func TestMatrix_LegacyAndModernInterleaved_NoCrossTalk(t *testing.T) {
-	srv := modernLockServer(t, nil) // both versions enabled by default
+	srv := legacyLockServer(t, nil) // both versions enabled by default
 	client := hermeticHTTPClient()
 
 	type step struct {
@@ -44,13 +53,9 @@ func TestMatrix_LegacyAndModernInterleaved_NoCrossTalk(t *testing.T) {
 	}
 
 	steps := []step{
-		// 1. legacy initialize — byte-identical to
-		//    TestLegacyLock_Initialize_Defaults, but against
-		//    modernLockTree (deliberately not legacyLockTree — proves
-		//    the legacy WIRE FORMAT, not a specific fixture tree,
-		//    since modernLockTree's leaves happen to share names but
-		//    are declared independently and would fail if any leaf
-		//    shape diverged).
+		// 1. legacy initialize — identical request+response to
+		//    TestLegacyLock_Initialize_Defaults (same tree, same
+		//    mount pattern: legacyLockServer(t, nil), same body).
 		{"1-legacy-initialize", goldenExchange{
 			name:       "legacy initialize",
 			body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`),
@@ -66,8 +71,11 @@ func TestMatrix_LegacyAndModernInterleaved_NoCrossTalk(t *testing.T) {
 			wantStatus: 200,
 			wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"cacheScope":"private","capabilities":{"tools":{}},"resultType":"complete","supportedVersions":["2026-07-28"],"ttlMs":0}}` + "\n"),
 		}},
-		// 3. legacy tools/list — byte-identical to
-		//    TestLegacyLock_ToolsList_ExactDescriptors's golden.
+		// 3. legacy tools/list — identical request+response to
+		//    TestLegacyLock_ToolsList_ExactDescriptors (verified by
+		//    running both against legacyLockTree(): same bytes,
+		//    including widget.add's force+tag flags and the
+		//    hidden/deprecated-flag exclusions).
 		{"3-legacy-tools-list", goldenExchange{
 			name:       "legacy tools/list",
 			body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`),
@@ -76,16 +84,17 @@ func TestMatrix_LegacyAndModernInterleaved_NoCrossTalk(t *testing.T) {
 				`{"description":"Deploy","inputSchema":{"properties":{},"type":"object"},"name":"deploy"},` +
 				`{"description":"Ping the server","inputSchema":{"properties":{},"type":"object"},"name":"ping"},` +
 				`{"description":"Locked","inputSchema":{"properties":{},"type":"object"},"name":"secret"},` +
-				`{"description":"Add a widget","inputSchema":{"properties":{"count":{"description":"widget count","type":"integer"},"name":{"description":"widget name","type":"string"}},"required":["name"],"type":"object"},"name":"widget.add"},` +
+				`{"description":"Add a widget","inputSchema":{"properties":{"count":{"description":"widget count","type":"integer"},"force":{"description":"force flag","type":"boolean"},"name":{"description":"widget name","type":"string"},"tag":{"description":"tag list","items":{"type":"string"},"type":"array"}},"required":["name"],"type":"object"},"name":"widget.add"},` +
 				`{"description":"Delete a widget","inputSchema":{"properties":{},"type":"object"},"name":"widget.delete"}` +
 				`]}}` + "\n"),
 		}},
 		// 4. modern tools/list, same server, right after legacy
 		//    tools/list — cache hints + resultType/_meta present on
-		//    modern only, descriptor arrays identical in content
-		//    (both build via buildToolEnvelope) but the envelopes
-		//    differ, proving the two are genuinely separate response
-		//    paths rather than one shared cache.
+		//    modern only; the tools array carries the SAME force+tag
+		//    widget.add schema as step 3 (both build via
+		//    buildToolEnvelope over the identical tree), proving the
+		//    two are genuinely separate response paths over one
+		//    shared leaf set rather than one cached/shared response.
 		{"4-modern-tools-list", goldenExchange{
 			name:       "modern tools/list",
 			headers:    stdModernHeaders("tools/list", ""),
@@ -95,12 +104,13 @@ func TestMatrix_LegacyAndModernInterleaved_NoCrossTalk(t *testing.T) {
 				`{"description":"Deploy","inputSchema":{"properties":{},"type":"object"},"name":"deploy"},` +
 				`{"description":"Ping the server","inputSchema":{"properties":{},"type":"object"},"name":"ping"},` +
 				`{"description":"Locked","inputSchema":{"properties":{},"type":"object"},"name":"secret"},` +
-				`{"description":"Add a widget","inputSchema":{"properties":{"count":{"description":"widget count","type":"integer"},"name":{"description":"widget name","type":"string"}},"required":["name"],"type":"object"},"name":"widget.add"},` +
+				`{"description":"Add a widget","inputSchema":{"properties":{"count":{"description":"widget count","type":"integer"},"force":{"description":"force flag","type":"boolean"},"name":{"description":"widget name","type":"string"},"tag":{"description":"tag list","items":{"type":"string"},"type":"array"}},"required":["name"],"type":"object"},"name":"widget.add"},` +
 				`{"description":"Delete a widget","inputSchema":{"properties":{},"type":"object"},"name":"widget.delete"}` +
 				`],"ttlMs":0}}` + "\n"),
 		}},
-		// 5. legacy tools/call happy path — real exec, byte-identical
-		//    to TestLegacyLock_ToolsCall_HappyPath_RealExec's golden.
+		// 5. legacy tools/call happy path — real exec, identical
+		//    request+response to
+		//    TestLegacyLock_ToolsCall_HappyPath_RealExec.
 		{"5-legacy-tools-call", goldenExchange{
 			name:       "legacy tools/call ping",
 			body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping"}}`),
@@ -120,8 +130,22 @@ func TestMatrix_LegacyAndModernInterleaved_NoCrossTalk(t *testing.T) {
 			wantStatus: 200,
 			wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"content":[{"text":"pong\n","type":"text"}],"isError":false,"resultType":"complete"}}` + "\n"),
 		}},
+		// 6b. modern tools/call on widget.add WITH force+tag
+		//     arguments — exercises the exact flags step 3/4 proved
+		//     absent from modernLockTree, so the matrix's "one shared
+		//     leaf set, two eras" claim is proven for a leaf whose
+		//     schema differs between the two lock files' own trees,
+		//     not just for the flagless ping leaf.
+		{"6b-modern-tools-call-widget-add", goldenExchange{
+			name:       "modern tools/call widget.add with force+tag",
+			headers:    stdModernHeaders("tools/call", "widget.add"),
+			body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"widget.add","arguments":{"name":"gizmo","count":3,"force":true,"tag":["a","b"]},"_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+			wantStatus: 200,
+			wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"content":[{"text":"added\n","type":"text"}],"isError":false,"resultType":"complete"}}` + "\n"),
+		}},
 		// 7. legacy unknown method — the -32601@200 quirk, unaffected
-		//    by any modern traffic on the same mount.
+		//    by any modern traffic on the same mount. Identical to
+		//    TestLegacyLock_ErrorCode_MethodNotFound32601.
 		{"7-legacy-unknown-method", goldenExchange{
 			name:       "legacy unknown method quirk",
 			body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"nope/anywhere"}`),
@@ -145,7 +169,9 @@ func TestMatrix_LegacyAndModernInterleaved_NoCrossTalk(t *testing.T) {
 		//    lock's addendum both pin) — served on a mount where the
 		//    modern handler IS active for other requests, proving the
 		//    non-marker rule holds under real dual-serving, not just
-		//    in isolation.
+		//    in isolation. Identical to
+		//    TestLegacyLock_NonMarker_MidEraProtocolVersionHeader's
+		//    tools/call case.
 		{"9-legacy-nonmarker-header", goldenExchange{
 			name:       "legacy tools/call with mid-era protocol-version header (non-marker)",
 			headers:    map[string]string{"MCP-Protocol-Version": "2024-11-05"},
@@ -183,7 +209,7 @@ func TestMatrix_LegacyAndModernInterleaved_NoCrossTalk(t *testing.T) {
 // driven against it to confirm the default already IS the dual-serving
 // configuration, not an opt-in.
 func TestMatrix_BothEnabledIsDefault_NoOptionNeeded(t *testing.T) {
-	srv := modernLockServer(t, nil)
+	srv := legacyLockServer(t, nil)
 	client := hermeticHTTPClient()
 
 	runGoldenExchange(t, srv, client, goldenExchange{

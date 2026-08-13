@@ -50,6 +50,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,10 +70,14 @@ import (
 //	├── secret      (auth-required)
 //	└── deploy      (requires-confirmation)
 //
-// Deliberately shaped like legacyLockTree so the dual-version matrix
-// test (surface_mcp_matrix_test.go) can drive equivalent legacy and
-// modern exchanges against tools that mean the same thing in both
-// eras, without importing the frozen legacy fixture.
+// Deliberately shaped like (but narrower than) legacyLockTree: this
+// tree's widget.add carries only name+count, not legacyLockTree's
+// force+tag+hidden-flag+deprecated-flag set. The dual-version matrix
+// test (surface_mcp_matrix_test.go) does NOT use this tree — it mounts
+// on legacyLockTree() directly via legacyLockServer() so its legacy
+// steps can cite the legacy lock's own goldens by true identity. This
+// tree exists for the rest of this file's modern-only wire-contract
+// cases, where no legacy-lock cross-reference is being made.
 func modernLockTree() *cobra.Command {
 	root := &cobra.Command{Use: "root"}
 
@@ -219,6 +225,67 @@ func runGoldenExchange(t *testing.T, srv *httptest.Server, client *http.Client, 
 	for k, v := range gx.headers {
 		req.Header.Set(k, v)
 	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if resp.StatusCode != gx.wantStatus {
+		t.Fatalf("status=%d want=%d\nbody: %s", resp.StatusCode, gx.wantStatus, raw)
+	}
+	if !bytes.Equal(raw, gx.wantBody) {
+		t.Errorf("%s: wire body mismatch\n got:  %s\nwant:  %s", gx.name, raw, gx.wantBody)
+	}
+}
+
+// goldenExchangeH is goldenExchange's sibling for the one case shape
+// goldenExchange's map[string]string cannot express: a single header
+// NAME sent with more than one value (duplicate-header golden
+// exchanges — see the "duplicate headers" section below). A
+// map[string]string collapses repeated keys to one; http.Header.Add
+// preserves every occurrence in send order, which is what the ADR's
+// "sent more than once" cases require to actually exercise the
+// production request. Otherwise identical in spirit and shape to
+// goldenExchange (request in, status+body bytes out) — a fixture
+// extractor consuming this row shape need only support multi-valued
+// headers per case, the same accommodation net/http.Header itself
+// makes.
+type goldenExchangeH struct {
+	name    string
+	path    string // defaults to "/mcp" when empty
+	headers http.Header
+	body    []byte
+
+	wantStatus int
+	wantBody   []byte
+}
+
+// runGoldenExchangeHeader is runGoldenExchange for goldenExchangeH:
+// same hermetic client, same byte-exact comparator, only the header
+// construction differs (assigned wholesale rather than Set per key,
+// so Add-accumulated duplicate values survive onto the wire).
+func runGoldenExchangeHeader(t *testing.T, srv *httptest.Server, client *http.Client, gx goldenExchangeH) {
+	t.Helper()
+	path := gx.path
+	if path == "" {
+		path = "/mcp"
+	}
+	var rdr io.Reader
+	if gx.body != nil {
+		rdr = bytes.NewReader(gx.body)
+	}
+	req, err := http.NewRequest(http.MethodPost, srv.URL+path, rdr)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if gx.headers != nil {
+		req.Header = gx.headers.Clone()
+	}
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("do request: %v", err)
@@ -611,6 +678,115 @@ func TestModernLock_V7_SentinelDecodedBeforeCompare(t *testing.T) {
 	})
 }
 
+// --- duplicate headers: conflicting -> -32020@400, identical -> tolerated
+//
+// ADR 0004 "Duplicate headers": a header sent more than once with
+// byte-identical values is tolerated (benign proxy/intermediary
+// duplication); sent more than once with differing values is a
+// validation failure in its own right (-32020@400), without ever
+// comparing either conflicting value against the body. Locked here for
+// all three modern-authority headers (MCP-Protocol-Version, Mcp-Method,
+// Mcp-Name) — these previously existed only as structural assertions in
+// frozen per-behavior suites, unreachable by a fixture extractor.
+
+func TestModernLock_DuplicateHeader_MethodConflictingRejected(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	headers := http.Header{}
+	headers.Add(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	headers.Add(headerMCPMethod, "server/discover")
+	headers.Add(headerMCPMethod, "tools/list")
+	runGoldenExchangeHeader(t, srv, client, goldenExchangeH{
+		name:       "conflicting duplicate Mcp-Method rejected -32020@400",
+		headers:    headers,
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusBadRequest,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32020,"message":"Mcp-Method header sent with conflicting duplicate values"}}` + "\n"),
+	})
+}
+
+func TestModernLock_DuplicateHeader_MethodIdenticalTolerated(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	headers := http.Header{}
+	headers.Add(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	headers.Add(headerMCPMethod, "server/discover")
+	headers.Add(headerMCPMethod, "server/discover")
+	runGoldenExchangeHeader(t, srv, client, goldenExchangeH{
+		name:       "byte-identical duplicate Mcp-Method tolerated",
+		headers:    headers,
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusOK,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"cacheScope":"private","capabilities":{"tools":{}},"resultType":"complete","supportedVersions":["2026-07-28"],"ttlMs":0}}` + "\n"),
+	})
+}
+
+func TestModernLock_DuplicateHeader_NameConflictingRejected(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	headers := http.Header{}
+	headers.Add(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	headers.Add(headerMCPMethod, "tools/call")
+	headers.Add(headerMCPName, "ping")
+	headers.Add(headerMCPName, "widget.add")
+	runGoldenExchangeHeader(t, srv, client, goldenExchangeH{
+		name:       "conflicting duplicate Mcp-Name rejected -32020@400",
+		headers:    headers,
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping","_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusBadRequest,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32020,"message":"Mcp-Name header sent with conflicting duplicate values"}}` + "\n"),
+	})
+}
+
+func TestModernLock_DuplicateHeader_NameIdenticalTolerated(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	headers := http.Header{}
+	headers.Add(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	headers.Add(headerMCPMethod, "tools/call")
+	headers.Add(headerMCPName, "ping")
+	headers.Add(headerMCPName, "ping")
+	runGoldenExchangeHeader(t, srv, client, goldenExchangeH{
+		name:       "byte-identical duplicate Mcp-Name tolerated",
+		headers:    headers,
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping","_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusOK,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"content":[{"text":"pong\n","type":"text"}],"isError":false,"resultType":"complete"}}` + "\n"),
+	})
+}
+
+func TestModernLock_DuplicateHeader_ProtocolVersionConflictingRejected(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	headers := http.Header{}
+	headers.Add(headerMCPProtocolVersion, "2026-07-28")
+	headers.Add(headerMCPProtocolVersion, "2099-01-01")
+	headers.Add(headerMCPMethod, "server/discover")
+	runGoldenExchangeHeader(t, srv, client, goldenExchangeH{
+		name:       "conflicting duplicate MCP-Protocol-Version rejected -32020@400",
+		headers:    headers,
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusBadRequest,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32020,"message":"MCP-Protocol-Version header sent with conflicting duplicate values"}}` + "\n"),
+	})
+}
+
+func TestModernLock_DuplicateHeader_ProtocolVersionIdenticalTolerated(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	headers := http.Header{}
+	headers.Add(headerMCPProtocolVersion, "2026-07-28")
+	headers.Add(headerMCPProtocolVersion, "2026-07-28")
+	headers.Add(headerMCPMethod, "server/discover")
+	runGoldenExchangeHeader(t, srv, client, goldenExchangeH{
+		name:       "byte-identical duplicate MCP-Protocol-Version tolerated",
+		headers:    headers,
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusOK,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"cacheScope":"private","capabilities":{"tools":{}},"resultType":"complete","supportedVersions":["2026-07-28"],"ttlMs":0}}` + "\n"),
+	})
+}
+
 func TestModernLock_V8_UnknownMethod404(t *testing.T) {
 	srv := modernLockServer(t, nil)
 	client := hermeticHTTPClient()
@@ -632,6 +808,162 @@ func TestModernLock_V9_UnknownTool(t *testing.T) {
 		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"nope.nada","_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
 		wantStatus: http.StatusOK,
 		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"unknown tool: nope.nada"}}` + "\n"),
+	})
+}
+
+// --- pre-flight gates + capability fallback ------------------------------
+//
+// ADR 0004 "Pre-flight gates (modern), mirroring legacy exactly" pins
+// three outcomes ahead of Bridge.Invoke, and "MRTR confirmation slot"
+// pins a fourth (capability-gated fallback): AuthRequired without an
+// Authorization header -> isError result @ 401; RequiresConfirmation
+// without X-Confirm-Token (the default gate) -> isError result @ 428;
+// ErrDestructiveBlocked -> isError result @ 200; and, on a mount keyed
+// with WithMCPConfirmationKey, a client that does NOT declare the
+// elicitation capability still gets the header gate (428), never the
+// -32021 "missing required client capability" code — the capability is
+// optional precisely because this fallback exists. These previously
+// existed only as structural assertions in frozen per-behavior suites
+// (TestModernCall_AuthRequired401, _ConfirmationRequired428,
+// _DestructiveBlockedByDefault, TestModernConfirm_NoCapability_
+// HeaderFallback, decline/cancel loop) — high port-divergence-risk
+// wire behavior with no golden-exchange coverage until now.
+
+func TestModernLock_PreFlight_AuthRequired401(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "auth-required leaf without Authorization header -> isError@401",
+		headers:    stdModernHeaders("tools/call", "secret"),
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"secret","_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusUnauthorized,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"content":[{"text":"authentication required","type":"text"}],"isError":true,"resultType":"complete"}}` + "\n"),
+	})
+}
+
+func TestModernLock_PreFlight_AuthRequired_WithHeaderSucceeds(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	headers := stdModernHeaders("tools/call", "secret")
+	headers["Authorization"] = "Bearer x"
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "auth-required leaf with Authorization header succeeds",
+		headers:    headers,
+		body:       []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"secret","_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusOK,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":2,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"content":[{"text":"","type":"text"}],"isError":false,"resultType":"complete"}}` + "\n"),
+	})
+}
+
+func TestModernLock_PreFlight_ConfirmationRequired428(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "confirmation-required leaf without X-Confirm-Token -> isError@428",
+		headers:    stdModernHeaders("tools/call", "deploy"),
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"deploy","_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusPreconditionRequired,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"content":[{"text":"confirmation required","type":"text"}],"isError":true,"resultType":"complete"}}` + "\n"),
+	})
+}
+
+func TestModernLock_PreFlight_ConfirmationRequired_WithTokenSucceeds(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	headers := stdModernHeaders("tools/call", "deploy")
+	headers["X-Confirm-Token"] = "yes"
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "confirmation-required leaf with X-Confirm-Token succeeds",
+		headers:    headers,
+		body:       []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"deploy","_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusOK,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":2,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"content":[{"text":"","type":"text"}],"isError":false,"resultType":"complete"}}` + "\n"),
+	})
+}
+
+func TestModernLock_PreFlight_DestructiveBlockedByDefault(t *testing.T) {
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "destructive leaf blocked by default policy -> isError@200",
+		headers:    stdModernHeaders("tools/call", "widget.delete"),
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"widget.delete","_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusOK,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"content":[{"text":"cmdsurface: destructive command blocked on this surface: widget delete on mcp","type":"text"}],"isError":true,"resultType":"complete"}}` + "\n"),
+	})
+}
+
+// mcpLockConfirmKey is the shared HMAC key the pre-flight-gate goldens
+// use for keyed-mount (MRTR) cases below — independent of
+// mcpConfirmTestKey (surface_mcp_modern_confirm_test.go, frozen).
+var mcpLockConfirmKey = []byte("modern-lock-suite-shared-secret-32b")
+
+func TestModernLock_PreFlight_NoElicitationCapability_HeaderFallback(t *testing.T) {
+	// Keyed mount (WithMCPConfirmationKey), but the request's
+	// clientCapabilities does NOT declare "elicitation" at all: the
+	// gate must fall back to the X-Confirm-Token header check exactly
+	// as an unkeyed mount would, and must never answer -32021
+	// (missing required client capability) — the capability is
+	// optional precisely because this fallback exists (ADR 0004).
+	srv := modernLockServer(t, nil, WithMCPConfirmationKey(mcpLockConfirmKey))
+	client := hermeticHTTPClient()
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "keyed mount, no elicitation capability declared -> header gate fallback (428, not -32021)",
+		headers:    stdModernHeaders("tools/call", "deploy"),
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"deploy","_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusPreconditionRequired,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"content":[{"text":"confirmation required","type":"text"}],"isError":true,"resultType":"complete"}}` + "\n"),
+	})
+}
+
+func TestModernLock_MRTR_DeclineRefuses(t *testing.T) {
+	// Round 1 mints a real requestState (construction-exact — see the
+	// MRTR section below for the rationale); round 2 echoes it with
+	// inputResponses.confirm.action == "decline", which ADR 0004 pins
+	// as an isError "confirmation declined" complete result — never an
+	// execution, never a re-prompt.
+	srv := modernLockServer(t, nil, WithMCPConfirmationKey(mcpLockConfirmKey))
+	client := hermeticHTTPClient()
+
+	round1Body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"deploy","_meta":{"io.modelcontextprotocol/clientCapabilities":{"elicitation":{}},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`)
+	req1, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp", bytes.NewReader(round1Body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req1.Header.Set("Content-Type", "application/json")
+	for k, v := range stdModernHeaders("tools/call", "deploy") {
+		req1.Header.Set(k, v)
+	}
+	resp1, err := client.Do(req1)
+	if err != nil {
+		t.Fatalf("round1 do: %v", err)
+	}
+	defer resp1.Body.Close()
+	raw1, err := io.ReadAll(resp1.Body)
+	if err != nil {
+		t.Fatalf("round1 read: %v", err)
+	}
+	var decoded1 struct {
+		Result struct {
+			RequestState string `json:"requestState"`
+		} `json:"result"`
+	}
+	if err := jsonUnmarshalLock(raw1, &decoded1); err != nil {
+		t.Fatalf("round1 decode: %v\nbody: %s", err, raw1)
+	}
+	state := decoded1.Result.RequestState
+	if state == "" {
+		t.Fatalf("round1 missing requestState\nbody: %s", raw1)
+	}
+
+	round2Body := []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"deploy","requestState":` +
+		mustJSONLock(t, state) + `,"inputResponses":{"confirm":{"action":"decline"}},"_meta":{"io.modelcontextprotocol/clientCapabilities":{"elicitation":{}},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`)
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "MRTR decline refuses with isError, never executes",
+		headers:    stdModernHeaders("tools/call", "deploy"),
+		body:       round2Body,
+		wantStatus: http.StatusOK,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":2,"result":{"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"cmdsurface","version":"0.0.0"}},"content":[{"text":"confirmation declined","type":"text"}],"isError":true,"resultType":"complete"}}` + "\n"),
 	})
 }
 
@@ -709,6 +1041,109 @@ func TestModernLock_TasksExtension_DiscoverAdvertisesNoExtensionsMap(t *testing.
 	})
 }
 
+// --- era-detection marker permutations (ADR 0004 D1-D4, M1-M4) ----------
+//
+// The dual-version matrix (surface_mcp_matrix_test.go) proves era
+// isolation for the marker combinations most likely on real traffic
+// (M1+M2+M3 together, or no markers at all). This section locks the
+// distinctive individual-marker and precedence-rule wire outcomes ADR
+// 0004 pins but the matrix does not exercise in isolation: a single
+// marker alone routing modern (M2-only, M3-only, M4-only), the D2
+// initialize-wins-over-markers quirk, and the D1 parse-failure path
+// under modern headers. A port that requires M1 (Mcp-Method) for
+// modern routing — a natural but ADR-noncompliant implementation —
+// would pass every other case in this suite while misrouting M2/M3/M4
+// -only requests to the legacy handler; these goldens catch exactly
+// that. Mounted with both spec versions enabled (the default), so
+// era detection is genuinely exercised rather than assumed.
+
+func TestModernLock_EraDetection_M3Only_RoutesModern(t *testing.T) {
+	// M3 alone: body params._meta carries the reserved protocolVersion
+	// key (and nothing else — no clientCapabilities, no headers).
+	// Routes modern per D3; fails modern V3 (missing required _meta
+	// key io.modelcontextprotocol/clientCapabilities — V3 runs and
+	// fails before V4's header check is ever reached) rather than
+	// being served (or silently ignored) by the legacy handler, which
+	// never reads params._meta at all and would have executed
+	// tools/list successfully if this had been misrouted legacy.
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "M3-only (_meta protocolVersion key, no headers) routes modern",
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusBadRequest,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"missing required _meta key: io.modelcontextprotocol/clientCapabilities"}}` + "\n"),
+	})
+}
+
+func TestModernLock_EraDetection_M4Only_RoutesModern(t *testing.T) {
+	// M4 alone: bare server/discover, no headers, no _meta at all.
+	// method == "server/discover" routes modern unconditionally (D3);
+	// legacy has no server/discover handling to fall back to, so this
+	// also proves the method-name marker fires even with an otherwise
+	// completely bare request.
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "M4-only (bare server/discover) routes modern",
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"server/discover"}`),
+		wantStatus: http.StatusBadRequest,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"missing required params._meta"}}` + "\n"),
+	})
+}
+
+func TestModernLock_EraDetection_M2Only_RoutesModern(t *testing.T) {
+	// M2 alone: Mcp-Name header present, no Mcp-Method, no
+	// MCP-Protocol-Version, no _meta. Routes modern per D3 on the
+	// header marker alone; fails modern V3 (missing params._meta) —
+	// proving a single recognized header, unaccompanied by any other
+	// marker, is sufficient to route modern rather than requiring M1.
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "M2-only (Mcp-Name header alone) routes modern",
+		headers:    map[string]string{headerMCPName: "ping"},
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping"}}`),
+		wantStatus: http.StatusBadRequest,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"missing required params._meta"}}` + "\n"),
+	})
+}
+
+func TestModernLock_EraDetection_InitializeWithMarkers_RoutesLegacy(t *testing.T) {
+	// D2 (the ADR-acknowledged quirk): method == "initialize" routes
+	// legacy UNCONDITIONALLY, even carrying both header markers (M1)
+	// and a _meta protocolVersion key (M3) that would otherwise route
+	// modern. The response is the ordinary legacy initialize result —
+	// modern markers are silently ignored on this one method name.
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "initialize with modern markers still routes legacy (D2)",
+		headers:    map[string]string{headerMCPProtocolVersion: mcpModernProtocolVersion, headerMCPMethod: "initialize"},
+		body:       []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
+		wantStatus: http.StatusOK,
+		wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"tools":{}},"protocolVersion":"2024-11-05","serverInfo":{"name":"cmdsurface","version":"0.0.0"}}}` + "\n"),
+	})
+}
+
+func TestModernLock_EraDetection_UnparseableBodyWithModernHeaders_ParseError(t *testing.T) {
+	// D1 (parse) runs before any marker inspection: an unparseable
+	// body gets the same -32700@400 shape regardless of headers
+	// present, including a full set of modern headers that would
+	// otherwise route modern — the dispatcher delegates this exact
+	// failure to the single frozen legacy implementation of the parse-
+	// error path (surface_mcp_dispatch.go's design note).
+	srv := modernLockServer(t, nil)
+	client := hermeticHTTPClient()
+	runGoldenExchange(t, srv, client, goldenExchange{
+		name:       "unparseable body with modern headers -> -32700@400, headers ignored",
+		headers:    map[string]string{headerMCPProtocolVersion: mcpModernProtocolVersion, headerMCPMethod: "server/discover"},
+		body:       []byte(`{not valid json`),
+		wantStatus: http.StatusBadRequest,
+		wantBody:   []byte(`{"jsonrpc":"2.0","error":{"code":-32700,"message":"parse error: invalid character 'n' looking for beginning of object key string"}}` + "\n"),
+	})
+}
+
 // --- Origin allowlist -----------------------------------------------------
 
 func TestModernLock_Origin_Disallowed403(t *testing.T) {
@@ -743,7 +1178,12 @@ func TestModernLock_Origin_Allowed(t *testing.T) {
 
 func TestModernLock_HTTP_GET405(t *testing.T) {
 	srv := modernLockServer(t, nil)
-	resp, err := http.Get(srv.URL + "/mcp")
+	client := hermeticHTTPClient()
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/mcp", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("GET /mcp: %v", err)
 	}
@@ -857,6 +1297,16 @@ func TestModernLock_MRTR_FullLoop(t *testing.T) {
 	// runGoldenExchange's byte-exact comparator, then hands the
 	// extracted requestState to round 2, which IS byte-exact-checkable
 	// once round 2's own state is independently re-derived.
+	//
+	// Beyond resultType + non-empty requestState, this also pins (per
+	// ADR 0004): the inputRequests shape — exactly one entry under the
+	// reserved key "confirm", an elicitation/create form request — the
+	// v1.<expiry>.<mac> requestState FRAMING (three dot-separated
+	// parts, version tag "v1", numeric-decimal expiry; the mac segment
+	// itself is production-derived, never hardcoded, per the
+	// construction-exact exception), and the ABSENCE of ttlMs/
+	// cacheScope on the interim result ("Interim input_required results
+	// carry no cache hints and are never cached" — ADR 0004).
 	body1 := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"purge","arguments":{"target":"data"},"_meta":{"io.modelcontextprotocol/clientCapabilities":{"elicitation":{}},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`)
 	req1, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp", bytes.NewReader(body1))
 	if err != nil {
@@ -879,23 +1329,70 @@ func TestModernLock_MRTR_FullLoop(t *testing.T) {
 		t.Fatalf("round1 read: %v", err)
 	}
 	var decoded1 struct {
-		Result struct {
-			ResultType   string `json:"resultType"`
-			RequestState string `json:"requestState"`
-		} `json:"result"`
+		Result map[string]any `json:"result"`
 	}
 	if err := jsonUnmarshalLock(raw1, &decoded1); err != nil {
 		t.Fatalf("round1 decode: %v\nbody: %s", err, raw1)
 	}
-	if decoded1.Result.ResultType != mcpResultTypeInputRequired {
-		t.Fatalf("round1 resultType=%q want=%q\nbody: %s", decoded1.Result.ResultType, mcpResultTypeInputRequired, raw1)
+	res1 := decoded1.Result
+	if res1["resultType"] != mcpResultTypeInputRequired {
+		t.Fatalf("round1 resultType=%v want=%q\nbody: %s", res1["resultType"], mcpResultTypeInputRequired, raw1)
 	}
-	state := decoded1.Result.RequestState
+	state, _ := res1["requestState"].(string)
 	if state == "" {
 		t.Fatalf("round1 missing requestState\nbody: %s", raw1)
 	}
 	if counter.n != 0 {
 		t.Fatalf("leaf executed before confirmation, execs=%d", counter.n)
+	}
+
+	// inputRequests shape: exactly one entry, reserved key "confirm",
+	// an elicitation/create form request (ADR 0004
+	// "confirmInputRequired").
+	reqs, ok := res1["inputRequests"].(map[string]any)
+	if !ok || len(reqs) != 1 {
+		t.Fatalf("round1 inputRequests=%v want single entry", res1["inputRequests"])
+	}
+	confirm, ok := reqs[mcpConfirmInputRequestKey].(map[string]any)
+	if !ok {
+		t.Fatalf("round1 missing %q inputRequest: %v", mcpConfirmInputRequestKey, reqs)
+	}
+	if confirm["method"] != "elicitation/create" {
+		t.Errorf("round1 inputRequest method=%v want=elicitation/create", confirm["method"])
+	}
+	cp, _ := confirm["params"].(map[string]any)
+	if cp["mode"] != "form" {
+		t.Errorf("round1 elicit mode=%v want=form", cp["mode"])
+	}
+	if _, ok := cp["requestedSchema"].(map[string]any); !ok {
+		t.Errorf("round1 form elicitation missing requestedSchema: %v", cp)
+	}
+
+	// requestState framing: v1.<expiry>.<mac> — three dot-separated
+	// parts, version tag exactly "v1", expiry a base-10 integer. The
+	// mac segment's actual bytes are never asserted against a literal
+	// (construction-exact exception); only the ADR-pinned FRAMING is.
+	stateParts := strings.Split(state, ".")
+	if len(stateParts) != 3 {
+		t.Fatalf("round1 requestState framing=%q want 3 dot-separated parts (v1.<expiry>.<mac>)", state)
+	}
+	if stateParts[0] != mcpConfirmStateVersion {
+		t.Errorf("round1 requestState version tag=%q want=%q", stateParts[0], mcpConfirmStateVersion)
+	}
+	if _, err := strconv.ParseInt(stateParts[1], 10, 64); err != nil {
+		t.Errorf("round1 requestState expiry segment=%q not a base-10 integer: %v", stateParts[1], err)
+	}
+	if stateParts[2] == "" {
+		t.Errorf("round1 requestState mac segment is empty")
+	}
+
+	// Cache-hint absence: interim input_required results carry no
+	// ttlMs/cacheScope, ever (ADR 0004).
+	if _, ok := res1["ttlMs"]; ok {
+		t.Errorf("round1 input_required must not carry ttlMs: %v", res1)
+	}
+	if _, ok := res1["cacheScope"]; ok {
+		t.Errorf("round1 input_required must not carry cacheScope: %v", res1)
 	}
 
 	// Round 2: retry (new id) echoing the state, action "accept". This
