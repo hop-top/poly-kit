@@ -157,19 +157,82 @@ func TestModernCall_NonZeroExitIsError(t *testing.T) {
 func TestModernCall_V9_MissingName_FailsV7First(t *testing.T) {
 	// params.name is absent from the body and no Mcp-Name header is
 	// sent. V7 requires the header unconditionally on tools/call and
-	// runs before V9, so this is now a header-mismatch failure rather
-	// than reaching V9's own missing-name check (V7 < V9 in the
-	// pinned validation order; an empty-string name can never satisfy
-	// V7 either, since Go's http.Header.Get cannot distinguish a
-	// header sent with an empty value from one that was never set, so
-	// V9's missing-name branch is unreachable from a real HTTP
-	// request and is exercised only by V9's own decode-failure path,
-	// covered by TestModernCall_V9_UnparseableParams below).
+	// runs before V9's params decode, so this is a header-mismatch
+	// failure rather than reaching V9's own missing-name check (V7 <
+	// V9 in the pinned validation order). By ADR 0004's V7 rule
+	// (header present, non-empty after decoding, params.name present,
+	// and the two byte-equal — any violation is -32020@400, checked
+	// ahead of any params-shape error), V9's "missing tool name"
+	// branch is reachable only when V7 has already been satisfied,
+	// which requires params.name to already be present and
+	// non-empty — so no conforming HTTP request reaches it; it is
+	// retained as a defensive internal check, not because no test can
+	// exercise the surrounding rule (the empty-name and absent-name
+	// cases V7 itself owns are covered below).
 	srv := modernServer(t)
 	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", ""),
 		modernBody(t, "tools/call", nil))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status=%d want=400", status)
+	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
+	}
+}
+
+func TestModernCall_V7_EmptyRawHeaderValueRejected(t *testing.T) {
+	// Mcp-Name sent as a literal empty string (not sentinel-encoded):
+	// empty after "decoding" (a no-op for a non-sentinel value) is a
+	// header-validation failure per the amended ADR V7 rule, same as
+	// an absent header.
+	srv := modernServer(t)
+	headers := map[string]string{
+		headerMCPProtocolVersion: mcpModernProtocolVersion,
+		headerMCPMethod:          "tools/call",
+		headerMCPName:            "",
+	}
+	status, m := postJSON(t, srv, "/mcp", headers, callBody(t, "ping", nil))
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400: %v", status, m)
+	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
+	}
+}
+
+func TestModernCall_V7_EmptySentinelDecodeRejected(t *testing.T) {
+	// =?base64??= is a validly-formed sentinel wrapping zero payload
+	// bytes: it decodes successfully to "". An empty decoded value is
+	// a header-validation failure per the amended ADR V7 rule
+	// regardless of whether params.name also happens to be "" or
+	// absent — the header layer rejects it before any body-value
+	// comparison.
+	srv := modernServer(t)
+	headers := map[string]string{
+		headerMCPProtocolVersion: mcpModernProtocolVersion,
+		headerMCPMethod:          "tools/call",
+		headerMCPName:            "=?base64??=",
+	}
+	status, m := postJSON(t, srv, "/mcp", headers, callBody(t, "ping", nil))
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400: %v", status, m)
+	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
+	}
+}
+
+func TestModernCall_V7_HeaderPresentParamsNameAbsentRejected(t *testing.T) {
+	// Mcp-Name is present, non-empty, and well-formed, but params.name
+	// is altogether absent from the body: a header claiming a name
+	// the body never supplied is a header-validation failure per the
+	// amended ADR V7 rule, not a V9 params error.
+	srv := modernServer(t)
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{` +
+		`"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "ping"), body)
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400: %v", status, m)
 	}
 	if code := errCode(m); code != mcpErrHeaderMismatch {
 		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
@@ -192,17 +255,39 @@ func TestModernCall_V9_UnknownTool(t *testing.T) {
 }
 
 func TestModernCall_V9_UnparseableParams(t *testing.T) {
-	// params.name of the wrong JSON type fails the tools/call params
-	// decode: -32602 at HTTP 200, mirroring legacy.
+	// params.name of the wrong JSON type (present, but not a string):
+	// V7 cannot compare a non-string value against the header, so it
+	// defers; a non-empty Mcp-Name header must still be supplied to
+	// pass V7's own presence/non-empty checks before deferral is
+	// possible, then the tools/call params decode fails on the type
+	// mismatch: -32602 at HTTP 200, mirroring legacy.
 	srv := modernServer(t)
 	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":12,"_meta":{` +
 		`"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
-	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", ""), body)
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "whatever"), body)
 	if status != http.StatusOK {
 		t.Fatalf("status=%d want=200 (application-level error)", status)
 	}
 	if code := errCode(m); code != mcpErrInvalidParams {
 		t.Errorf("code=%d want=%d (-32602)", code, mcpErrInvalidParams)
+	}
+}
+
+func TestModernCall_V9_UnparseableParams_MissingHeaderFailsV7First(t *testing.T) {
+	// Same malformed body as above, but with no Mcp-Name header: V7's
+	// presence check runs before the params decode and rejects first
+	// (-32020 @ 400), per ADR 0004 — a missing required header is a
+	// header-validation failure regardless of what else is wrong with
+	// the body.
+	srv := modernServer(t)
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":12,"_meta":{` +
+		`"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`
+	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", ""), body)
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400", status)
+	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
 	}
 }
 
@@ -331,6 +416,103 @@ func TestModernCall_V7_LiteralSentinelLookalikeMustBeEncoded(t *testing.T) {
 	status, m := postJSON(t, srv, "/mcp", headers, callBody(t, "=?base64?literal?=", nil))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status=%d want=400 (lookalike must fail closed as malformed base64): %v", status, m)
+	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
+	}
+}
+
+func TestModernCall_V7_DuplicateHeaderConflictingValuesRejected(t *testing.T) {
+	// A duplicate Mcp-Name with differing values is itself a
+	// validation failure, same rule as V6's Mcp-Method duplicates.
+	srv := modernServer(t)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp",
+		strings.NewReader(callBody(t, "ping", nil)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	req.Header.Set(headerMCPMethod, "tools/call")
+	req.Header.Add(headerMCPName, "ping")
+	req.Header.Add(headerMCPName, "widget.list")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400", resp.StatusCode)
+	}
+	var m map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
+	}
+}
+
+func TestModernCall_V7_DuplicateHeaderIdenticalValuesTolerated(t *testing.T) {
+	// Byte-identical duplicate Mcp-Name values are tolerated.
+	srv := modernServer(t)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp",
+		strings.NewReader(callBody(t, "ping", nil)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	req.Header.Set(headerMCPMethod, "tools/call")
+	req.Header.Add(headerMCPName, "ping")
+	req.Header.Add(headerMCPName, "ping")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d want=200", resp.StatusCode)
+	}
+}
+
+func TestModernCall_V7_CaseVariantHeaderNameAccepted(t *testing.T) {
+	// Header names are case-insensitive (RFC 9110); a differently-cased
+	// Mcp-Name still satisfies V7 when the value agrees.
+	srv := modernServer(t)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp",
+		strings.NewReader(callBody(t, "ping", nil)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	req.Header.Set(headerMCPMethod, "tools/call")
+	req.Header.Set("mcp-name", "ping") // lowercase variant
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d want=200", resp.StatusCode)
+	}
+}
+
+func TestModernCall_V7_UppercaseSentinelMarkerTreatedLiteral(t *testing.T) {
+	// Sentinel markers are case-sensitive and MUST appear exactly as
+	// shown (lowercase) per spec; an uppercase variant is not
+	// recognized as the sentinel and is compared literally, so it
+	// mismatches a body name of "ping".
+	srv := modernServer(t)
+	headers := map[string]string{
+		headerMCPProtocolVersion: mcpModernProtocolVersion,
+		headerMCPMethod:          "tools/call",
+		headerMCPName:            "=?BASE64?cGluZw==?=",
+	}
+	status, m := postJSON(t, srv, "/mcp", headers, callBody(t, "ping", nil))
+	if status != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400: %v", status, m)
 	}
 	if code := errCode(m); code != mcpErrHeaderMismatch {
 		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)

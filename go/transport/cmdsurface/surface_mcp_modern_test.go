@@ -466,6 +466,57 @@ func TestModern_V4_NonStringMetaVersion(t *testing.T) {
 	}
 }
 
+func TestModern_V4_DuplicateHeaderConflictingValuesRejected(t *testing.T) {
+	// Same duplicate-header rule as V6/V7: conflicting
+	// MCP-Protocol-Version values are a mismatch in their own right.
+	srv := modernServer(t)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp",
+		strings.NewReader(modernBody(t, "server/discover", nil)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerMCPMethod, "server/discover")
+	req.Header.Add(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	req.Header.Add(headerMCPProtocolVersion, "2025-06-18")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400", resp.StatusCode)
+	}
+	var m map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
+	}
+}
+
+func TestModern_V4_DuplicateHeaderIdenticalValuesTolerated(t *testing.T) {
+	srv := modernServer(t)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp",
+		strings.NewReader(modernBody(t, "server/discover", nil)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerMCPMethod, "server/discover")
+	req.Header.Add(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	req.Header.Add(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d want=200", resp.StatusCode)
+	}
+}
+
 // --- V5: version support ----------------------------------------------
 
 func TestModern_V5_UnsupportedVersion(t *testing.T) {
@@ -609,10 +660,11 @@ func TestModern_V6_CaseVariantHeaderNameAccepted(t *testing.T) {
 	}
 }
 
-func TestModern_V6_DuplicateHeaderUsesFirstValue(t *testing.T) {
-	// Go's http.Header.Get returns the first value of a repeated
-	// header; a duplicate Mcp-Method where the first value agrees with
-	// the body must pass V6 regardless of the second value.
+func TestModern_V6_DuplicateHeaderConflictingValuesRejected(t *testing.T) {
+	// A duplicate Mcp-Method with differing values is itself a
+	// validation failure per the amended ADR: conflicting duplicates
+	// are the multiple-sources-of-truth hazard the header/body check
+	// exists to close, so neither value is trusted.
 	srv := modernServer(t)
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp",
 		strings.NewReader(modernBody(t, "server/discover", nil)))
@@ -623,6 +675,36 @@ func TestModern_V6_DuplicateHeaderUsesFirstValue(t *testing.T) {
 	req.Header.Set(headerMCPProtocolVersion, mcpModernProtocolVersion)
 	req.Header.Add(headerMCPMethod, "server/discover")
 	req.Header.Add(headerMCPMethod, "tools/call")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status=%d want=400", resp.StatusCode)
+	}
+	var m map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if code := errCode(m); code != mcpErrHeaderMismatch {
+		t.Errorf("code=%d want=%d (-32020)", code, mcpErrHeaderMismatch)
+	}
+}
+
+func TestModern_V6_DuplicateHeaderIdenticalValuesTolerated(t *testing.T) {
+	// Byte-identical duplicate Mcp-Method values (benign proxy
+	// duplication) are tolerated and treated as one value.
+	srv := modernServer(t)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp",
+		strings.NewReader(modernBody(t, "server/discover", nil)))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerMCPProtocolVersion, mcpModernProtocolVersion)
+	req.Header.Add(headerMCPMethod, "server/discover")
+	req.Header.Add(headerMCPMethod, "server/discover")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("do request: %v", err)

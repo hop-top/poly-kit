@@ -128,8 +128,17 @@ func (h *mcpModernHandler) serveParsed(w http.ResponseWriter, req *http.Request,
 	}
 
 	// V4 — MCP-Protocol-Version header present and equal to the
-	// _meta protocolVersion value.
-	hdr := req.Header.Get(headerMCPProtocolVersion)
+	// _meta protocolVersion value. Conflicting duplicate headers are a
+	// mismatch in their own right (singleHeaderValue).
+	hdr, headerOK := singleHeaderValue(req, headerMCPProtocolVersion)
+	if !headerOK {
+		h.writeModernError(w, rpc, &modernCheckError{
+			code:   mcpErrHeaderMismatch,
+			msg:    headerMCPProtocolVersion + " header sent with conflicting duplicate values",
+			status: http.StatusBadRequest,
+		})
+		return
+	}
 	if hdr == "" {
 		h.writeModernError(w, rpc, &modernCheckError{
 			code:   mcpErrHeaderMismatch,
@@ -190,6 +199,33 @@ func (h *mcpModernHandler) serveParsed(w http.ResponseWriter, req *http.Request,
 	}
 }
 
+// singleHeaderValue reads all occurrences of a header (case-insensitive
+// name, per RFC 9110) and reduces them to one value for comparison
+// against the request body. A header sent once, or sent multiple times
+// with byte-identical values (benign proxy/intermediary duplication),
+// resolves to that value. A header sent multiple times with differing
+// values is a validation failure in its own right: MCP-Protocol-Version,
+// Mcp-Method, and Mcp-Name exist precisely so gateways and the server
+// agree on one routing signal, and conflicting duplicates are the
+// multiple-sources-of-truth hazard that agreement check exists to
+// close — ok=false so the caller rejects with -32020 without ever
+// comparing a value that was never actually singular.
+func singleHeaderValue(req *http.Request, name string) (value string, ok bool) {
+	vals := req.Header.Values(name)
+	switch len(vals) {
+	case 0:
+		return "", true
+	case 1:
+		return vals[0], true
+	}
+	for _, v := range vals[1:] {
+		if v != vals[0] {
+			return "", false
+		}
+	}
+	return vals[0], true
+}
+
 // validModernRequestID reports whether raw (a non-empty rpc.ID) is a
 // JSON string or a JSON number with no fractional part — the only two
 // shapes the modern id rule (V2) permits. Base JSON-RPC additionally
@@ -217,11 +253,19 @@ func validModernRequestID(raw json.RawMessage) bool {
 
 // validateMethodHeader is the V6 step: Mcp-Method header presence and
 // header/body agreement (-32020 @ 400 on failure, per ADR 0004).
-// Header names are matched case-insensitively per RFC 9110 (Go's
-// http.Header.Get already does this); header values are compared
-// case-sensitively against the body method.
+// Header names are matched case-insensitively per RFC 9110; header
+// values are compared case-sensitively against the body method.
+// Conflicting duplicate headers are a mismatch in their own right
+// (singleHeaderValue); byte-identical duplicates are tolerated.
 func (h *mcpModernHandler) validateMethodHeader(req *http.Request, rpc jsonRPCRequest) *modernCheckError {
-	hdr := req.Header.Get(headerMCPMethod)
+	hdr, ok := singleHeaderValue(req, headerMCPMethod)
+	if !ok {
+		return &modernCheckError{
+			code:   mcpErrHeaderMismatch,
+			msg:    headerMCPMethod + " header sent with conflicting duplicate values",
+			status: http.StatusBadRequest,
+		}
+	}
 	if hdr == "" {
 		return &modernCheckError{
 			code:   mcpErrHeaderMismatch,

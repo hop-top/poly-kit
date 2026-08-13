@@ -40,7 +40,23 @@ func mcpHeaderConfirmationGate(req *http.Request, leaf *Leaf, _ jsonRPCRequest) 
 // not-enabled tool → -32602 @ 200; destructive blocks, runner errors,
 // and non-zero exit codes → isError result envelopes (all stamped
 // resultType "complete"). tools/call results carry no cache hints.
+//
+// V7 runs against a raw peek of params.name (rawToolCallName) before
+// the full params decode, so a header-validation failure (missing
+// Mcp-Name, empty-after-decode, absent params.name, mismatch) is
+// reported as -32020@400 even when the rest of params is unparseable
+// — ADR 0004: V7 precedes V9's params decode, and does not require
+// the body to have decoded to run.
 func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Request, rpc jsonRPCRequest, meta modernRequestMeta) {
+	// V7 — Mcp-Name header agreement (slot; see below). Runs against a
+	// pre-decode peek of params.name so it never depends on the rest
+	// of params being well-formed.
+	rawName, namePresent, nameIsString := rawToolCallName(rpc.Params)
+	if e := h.validateNameHeader(req, rawName, namePresent, nameIsString); e != nil {
+		h.writeModernError(w, rpc, e)
+		return
+	}
+
 	var p callParams
 	if len(rpc.Params) > 0 {
 		if err := json.Unmarshal(rpc.Params, &p); err != nil {
@@ -49,13 +65,13 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 		}
 	}
 
-	// V7 — Mcp-Name header agreement (slot; see below).
-	if e := h.validateNameHeader(req, p.Name); e != nil {
-		h.writeModernError(w, rpc, e)
-		return
-	}
-
-	// V9 — per-method params.
+	// V9 — per-method params. Unreachable through a conforming HTTP
+	// request now that V7 requires params.name to be present and
+	// non-empty and to match a required, non-empty Mcp-Name header
+	// (ADR 0004): any request that could reach this branch would
+	// already have failed V7. Kept as a defensive internal check for
+	// any future caller of this method that bypasses the V7 gate
+	// above.
 	if p.Name == "" {
 		writeJSONRPCError(w, rpc.ID, mcpErrInvalidParams, "missing tool name", http.StatusOK)
 		return
@@ -117,15 +133,62 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 	writeJSONRPCResult(w, rpc.ID, h.stampResultEnvelope(out), http.StatusOK)
 }
 
+// rawToolCallName peeks the params.name *key* out of a tools/call
+// request's raw params without requiring the rest of params to
+// decode, so V7 can run (and fail on a genuinely absent name)
+// independently of whatever else is wrong with the body. present
+// reports whether params is a JSON object carrying a "name" key at
+// all (ADR 0004 V7: "params.name absent" is a header-validation
+// failure, checked ahead of the full params decode). When present is
+// true but the key's value is not a JSON string, name is "" and
+// isString is false — V7 cannot compare a non-string value against
+// the header, so that case is left for V9's params decode to reject
+// as a shape error (mirrors legacy's existing type-mismatch handling)
+// rather than being folded into V7's "absent" case.
+func rawToolCallName(rawParams json.RawMessage) (name string, present, isString bool) {
+	if len(rawParams) == 0 {
+		return "", false, false
+	}
+	var p struct {
+		Name *json.RawMessage `json:"name"`
+	}
+	if err := json.Unmarshal(rawParams, &p); err != nil || p.Name == nil {
+		return "", false, false
+	}
+	if err := json.Unmarshal(*p.Name, &name); err != nil {
+		return "", true, false
+	}
+	return name, true, true
+}
+
 // validateNameHeader is the V7 step: on tools/call, Mcp-Name header
-// presence and agreement with params.name after Base64-sentinel
-// (=?base64?...?=) decoding (-32020 @ 400 on failure, per ADR 0004).
-// A header value that merely looks like the sentinel (starts with the
+// MUST be present, non-empty after Base64-sentinel (=?base64?...?=)
+// decoding, and byte-equal to params.name, which MUST itself be
+// present (-32020 @ 400 on any violation, per ADR 0004). Conflicting
+// duplicate Mcp-Name headers are a violation in their own right
+// (singleHeaderValue); byte-identical duplicates are tolerated. A
+// header value that merely looks like the sentinel (starts with the
 // prefix and ends with the suffix) is always treated as encoded, so a
 // decode failure fails closed rather than falling back to a literal
 // comparison.
-func (h *mcpModernHandler) validateNameHeader(req *http.Request, name string) *modernCheckError {
-	hdr := req.Header.Get(headerMCPName)
+//
+// rawName/namePresent/nameIsString come from a pre-decode peek of
+// params.name (rawToolCallName): namePresent=false (the "name" key is
+// altogether missing) is the V7 "params.name absent" violation.
+// namePresent=true with nameIsString=false (the key exists but isn't
+// a JSON string — e.g. "name": 12) is a different failure category:
+// V7 has no string to compare against the header, so it defers rather
+// than guessing, and the request falls through to V9's params decode,
+// which rejects the type mismatch as a shape error.
+func (h *mcpModernHandler) validateNameHeader(req *http.Request, rawName string, namePresent, nameIsString bool) *modernCheckError {
+	hdr, ok := singleHeaderValue(req, headerMCPName)
+	if !ok {
+		return &modernCheckError{
+			code:   mcpErrHeaderMismatch,
+			msg:    headerMCPName + " header sent with conflicting duplicate values",
+			status: http.StatusBadRequest,
+		}
+	}
 	if hdr == "" {
 		return &modernCheckError{
 			code:   mcpErrHeaderMismatch,
@@ -141,11 +204,30 @@ func (h *mcpModernHandler) validateNameHeader(req *http.Request, name string) *m
 			status: http.StatusBadRequest,
 		}
 	}
-	if decoded != name {
+	if decoded == "" {
+		return &modernCheckError{
+			code:   mcpErrHeaderMismatch,
+			msg:    headerMCPName + " header decodes to an empty value",
+			status: http.StatusBadRequest,
+		}
+	}
+	if !namePresent {
+		return &modernCheckError{
+			code:   mcpErrHeaderMismatch,
+			msg:    headerMCPName + " header present but body params.name is absent",
+			status: http.StatusBadRequest,
+		}
+	}
+	if !nameIsString {
+		// params.name exists but is not a JSON string: V7 cannot
+		// evaluate agreement, so it defers to V9's params decode.
+		return nil
+	}
+	if decoded != rawName {
 		return &modernCheckError{
 			code: mcpErrHeaderMismatch,
 			msg: fmt.Sprintf("%s header %q does not match body params.name %q",
-				headerMCPName, decoded, name),
+				headerMCPName, decoded, rawName),
 			status: http.StatusBadRequest,
 		}
 	}

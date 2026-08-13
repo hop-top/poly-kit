@@ -184,9 +184,31 @@ under 2026-07-28, which fixes statuses only for the cases below).
 | V4 | `MCP-Protocol-Version` header present and equal to the `_meta` protocolVersion value | `-32020` @ 400 |
 | V5 | requested version supported; the modern handler supports exactly `"2026-07-28"` | `-32022` @ 400, `data: {"supported": ["2026-07-28"], "requested": <value>}` |
 | V6 | `Mcp-Method` header present and equal to body `method` | `-32020` @ 400 |
-| V7 | `tools/call` only: `Mcp-Name` header present and, after Base64-sentinel decoding (`=?base64?...?=`), equal to `params.name`. On other methods the header is ignored | `-32020` @ 400 |
+| V7 | `tools/call` only: `Mcp-Name` header MUST be present, non-empty after Base64-sentinel decoding (`=?base64?...?=`; an empty sentinel `=?base64??=` decodes to `""` and counts as empty), and byte-equal to `params.name`, which MUST itself be present. On other methods the header is ignored. Any violation — header absent, header empty after decoding, `params.name` absent, or a value mismatch — is a header-validation failure, not a params error: headers are the routing signal gateways trust without parsing the body, so an empty or contradicted signal is malformed at the header layer, decided ahead of any body-shape check | `-32020` @ 400 |
 | V8 | method is one of `server/discover`, `tools/list`, `tools/call` | `-32601` @ 404 |
 | V9 | per-method params (e.g. missing/unknown tool name) | `-32602` @ 200 |
+
+V7 runs before V9's params decode: a `tools/call` failing V7 (e.g. no
+`Mcp-Name` header) returns `-32020` @ 400 even when `params` is
+otherwise unparseable, since the header check does not require the
+body to have decoded. Consequently V9's "missing tool name" response
+is reachable only when V7 has already passed — i.e. never through a
+conforming request, since V7's own presence-and-non-empty rule already
+rejects every case that would otherwise reach it. The branch is kept
+as a defensive internal check, not dead code by accident: it is the
+correct response *if* reached, for a hypothetical future caller of the
+per-method handler that bypasses `serveParsed`'s V7 gate.
+
+**Duplicate headers** (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`
+alike): a header sent more than once with byte-identical values is
+tolerated and treated as a single value (benign proxy/intermediary
+duplication). A header sent more than once with *differing* values is
+itself a validation failure (`-32020` @ 400) at whichever check
+consumes that header, without comparing any of the conflicting values
+against the body — conflicting duplicates are exactly the
+multiple-sources-of-truth hazard this header/body validation exists to
+close (a load balancer trusting one occurrence while the server
+executes on another).
 
 `-32022`'s `supported` list deliberately excludes `"2024-11-05"`:
 `supported` names versions a client may select *per-request*; the
