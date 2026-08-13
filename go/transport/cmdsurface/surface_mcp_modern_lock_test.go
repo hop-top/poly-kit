@@ -34,8 +34,8 @@ package cmdsurface
 // specific goldens are construction-exact (built via mintMCPConfirmState/
 // mcpConfirmBinding/mcpConfirmArgsDigest — the same helpers the
 // production gate uses) rather than byte-exact against a literal
-// string, per the task brief's instruction: "byte-exact where the ADR
-// pins bytes, construction-exact where it pins construction."
+// string: byte-exact where the ADR pins bytes, construction-exact
+// where it pins construction.
 //
 // Fixture convention: this file defines its own cobra tree
 // (modernLockTree), independent of legacyLockTree, modernTestTree,
@@ -175,10 +175,10 @@ func modernLockServer(t *testing.T, build func(root *cobra.Command) *Bridge, mou
 // Fix: this suite's own request helper (goldenExchange, below) uses a
 // private *http.Client with keep-alives disabled, so every request
 // opens (and closes) its own connection — no pooled socket can outlive
-// the server that owned it. Per the task brief, the frozen legacy lock
-// and the frozen per-behavior suites are NOT touched: their
-// http.DefaultClient usage remains exactly as it was (see report for
-// the residual-flake note carried forward to review).
+// the server that owned it. The frozen legacy lock and the frozen
+// per-behavior suites are NOT touched: their http.DefaultClient usage
+// remains exactly as it was, so the same residual keep-alive flake risk
+// still applies to those suites and is accepted there.
 func hermeticHTTPClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
@@ -990,9 +990,9 @@ func TestModernLock_InitializeRejection_NamesSupportedVersions(t *testing.T) {
 
 // --- tasks extension ABSENCE conformance ---------------------------------
 //
-// Per the task brief's controller scope addition, the tasks extension
-// (io.modelcontextprotocol/tasks: tasks/get, tasks/update) was
-// deliberately descoped by ADR decision. This suite does NOT implement
+// The tasks extension (io.modelcontextprotocol/tasks: tasks/get,
+// tasks/update) was deliberately descoped by ADR decision. This suite
+// does NOT implement
 // it; these goldens instead lock the two proofs of its absence: the
 // extension methods answer -32601 at 404 like any other unrecognized
 // method, and server/discover's capabilities object carries no
@@ -1029,9 +1029,9 @@ func TestModernLock_TasksExtension_DiscoverAdvertisesNoExtensionsMap(t *testing.
 	client := hermeticHTTPClient()
 	// The full server/discover golden (TestModernLock_ServerDiscover_Defaults)
 	// already pins this byte-exact; this case exists as an explicit,
-	// separately-named absence proof per the controller scope addition —
-	// capabilities is exactly {"tools":{}}, with no "extensions" member
-	// anywhere in the object, byte-exact.
+	// separately-named absence proof: capabilities is exactly
+	// {"tools":{}}, with no "extensions" member anywhere in the object,
+	// byte-exact.
 	runGoldenExchange(t, srv, client, goldenExchange{
 		name:       "server/discover capabilities has no extensions key",
 		headers:    stdModernHeaders("server/discover", ""),
@@ -1228,17 +1228,16 @@ func TestModernLock_HTTP_DELETE405(t *testing.T) {
 
 // --- MRTR full loop + tamper + expiry (construction-exact) --------------
 //
-// Per the task brief and fixture-convention note: requestState is
-// HMAC-derived, so these goldens cannot be literal string constants —
-// a byte-identical ADR-pinned FRAMING (v1.<expiry>.<mac>) holds, but
-// the mac's own encoding is only reproducible by calling the package's
-// own mintMCPConfirmState/verifyMCPConfirmState/mcpConfirmBinding/
-// mcpConfirmArgsDigest/mcpConfirmPrincipal helpers — the same ones the
-// production gate uses — rather than hardcoding an opaque string that
-// would break the moment an unrelated, ADR-conforming encoding detail
-// (e.g. base64 alphabet choice within spec bounds) changed. This is
-// construction-exact, not byte-exact, exactly per the brief's
-// distinction.
+// requestState is HMAC-derived, so these goldens cannot be literal
+// string constants — a byte-identical ADR-pinned FRAMING
+// (v1.<expiry>.<mac>) holds, but the mac's own encoding is only
+// reproducible by calling the package's own mintMCPConfirmState/
+// verifyMCPConfirmState/mcpConfirmBinding/mcpConfirmArgsDigest/
+// mcpConfirmPrincipal helpers — the same ones the production gate
+// uses — rather than hardcoding an opaque string that would break the
+// moment an unrelated, ADR-conforming encoding detail (e.g. base64
+// alphabet choice within spec bounds) changed. This is
+// construction-exact, not byte-exact.
 
 var mrtrLockKey = []byte("mrtr-lock-suite-shared-secret-32b")
 

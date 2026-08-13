@@ -1,8 +1,8 @@
 package cmdsurface
 
 // Legacy MCP surface conformance lock — addendum (protocol
-// 2024-11-05), fixing three coverage gaps flagged in review of the
-// original lock (surface_mcp_legacy_lock_test.go):
+// 2024-11-05), closing three coverage gaps left by the original lock
+// (surface_mcp_legacy_lock_test.go):
 //
 //  1. Era-misroute vectors: ADR 0004 ("docs/adr/0004-mcp-dual-spec-
 //     surface.md") names deliberate NON-markers a future era

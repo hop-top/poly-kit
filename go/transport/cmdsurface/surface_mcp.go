@@ -52,8 +52,8 @@ type mcpConfig struct {
 	specVersions    []MCPSpecVersion
 
 	// cacheHintsSet / cacheTTL / cacheScope back WithMCPCacheHints.
-	// Consumed by the modern handler (later task); validated here at
-	// mount time so misconfiguration fails fast.
+	// Consumed by the modern handler (see surface_mcp_modern.go); validated
+	// here at mount time so misconfiguration fails fast.
 	cacheHintsSet bool
 	cacheTTL      time.Duration
 	cacheScope    MCPCacheScope

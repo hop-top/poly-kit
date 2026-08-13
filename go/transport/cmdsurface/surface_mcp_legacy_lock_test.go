@@ -10,7 +10,7 @@ package cmdsurface
 // production code under test, so a future change that alters legacy
 // wire output — even a single byte — fails this suite.
 //
-// Interface for later tasks: this file, its helpers, and its golden
+// Frozen for future work: this file, its helpers, and its golden
 // constants are frozen. Keep it green; do not edit it. Add new
 // coverage for the 2026-07-28 surface in new files instead.
 //
@@ -25,9 +25,9 @@ package cmdsurface
 // wrapped at the outbound call site (see harness/harness.go Invoker,
 // xrr adapters/http/http.go). MountMCP's surface is itself an
 // http.Handler serving inbound JSON-RPC; there is nothing to record
-// as outbound traffic here. Per the task brief this falls back to
-// golden files + httptest with byte-exact assertions, which is what
-// follows. Every response-body assertion in this suite is byte-
+// as outbound traffic here. This suite instead falls back to golden
+// files + httptest with byte-exact assertions, which is what follows.
+// Every response-body assertion in this suite is byte-
 // exact. Most cases drive the surface end-to-end over real HTTP via
 // httptest.NewServer; the sole exception
 // (TestLegacyLock_ErrorCode_InternalError32603_UnreadableBody) calls
