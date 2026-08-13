@@ -29,6 +29,23 @@ type OAuthProvider struct {
 	// SuccessRedirect is the URL to redirect the user to on success.
 	// Empty = render a plain text success page.
 	SuccessRedirect string
+	// ExpectedIssuer, when set, enables RFC 9207 authorization
+	// response issuer validation on the callback. Set it to the
+	// provider's issuer identifier exactly as published in its
+	// authorization server metadata (RFC 8414 `issuer`: an absolute
+	// URL without query or fragment). The callback then requires an
+	// `iss` query parameter byte-for-byte equal to this value
+	// (simple string comparison, RFC 9207 section 2.4); a missing or
+	// mismatching `iss` is rejected with missing_iss /
+	// issuer_mismatch before any other processing — including
+	// provider error handling, since RFC 9207 puts `iss` on error
+	// responses too. On success the validated issuer is recorded in
+	// Meta.Extra["oauth_issuer"] so sinks and custom Runners can
+	// bind whatever credentials the leaf mints to the issuing
+	// authorization server; map "iss" in FlagFromQuery to hand the
+	// value to the leaf itself. Empty disables the check (previous
+	// behavior, for providers that do not implement RFC 9207).
+	ExpectedIssuer string
 }
 
 // OAuthOption configures MountOAuth.
@@ -139,6 +156,13 @@ func MountOAuth(b *Bridge, r *api.Router, providers []OAuthProvider, store State
 		if len(p.Path) == 0 {
 			return fmt.Errorf("cmdsurface: oauth provider %s: empty Path", p.Name)
 		}
+		if p.ExpectedIssuer != "" {
+			u, err := url.Parse(p.ExpectedIssuer)
+			if err != nil || !u.IsAbs() || u.RawQuery != "" || u.Fragment != "" {
+				return fmt.Errorf("cmdsurface: oauth provider %s: ExpectedIssuer %q is not an absolute URL without query or fragment",
+					p.Name, p.ExpectedIssuer)
+			}
+		}
 		leaf, err := b.resolveLeaf(p.Path)
 		if err != nil {
 			return fmt.Errorf("cmdsurface: oauth provider %s: %w", p.Name, err)
@@ -200,6 +224,25 @@ func newOAuthCallbackHandler(b *Bridge, leaf *Leaf, p OAuthProvider, store State
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
+		// RFC 9207: when an expected issuer is configured, every
+		// authorization response — error responses included — must
+		// carry a matching `iss` parameter. Validate before anything
+		// else so a mixed-up or spoofed response cannot even surface
+		// a fake provider error, let alone reach state consumption.
+		if p.ExpectedIssuer != "" {
+			iss := q.Get("iss")
+			if iss == "" {
+				oauthWriteError(w, p, http.StatusBadRequest, "missing_iss",
+					"iss query parameter required (RFC 9207 issuer validation is enabled for this provider)")
+				return
+			}
+			if iss != p.ExpectedIssuer {
+				oauthWriteError(w, p, http.StatusBadRequest, "issuer_mismatch",
+					fmt.Sprintf("iss %q does not match expected issuer %q", iss, p.ExpectedIssuer))
+				return
+			}
+		}
+
 		// Provider rejection takes precedence over state validation:
 		// the provider may have signaled "user denied access" before
 		// the user round-tripped back through our authorize endpoint,
@@ -226,15 +269,23 @@ func newOAuthCallbackHandler(b *Bridge, leaf *Leaf, p OAuthProvider, store State
 			flags[flagName] = q.Get(queryKey)
 		}
 
+		meta := Meta{
+			Surface:     SurfaceOAuthCB,
+			Caller:      p.Name,
+			TraceID:     r.Header.Get("X-Request-ID"),
+			RequestedAt: time.Now(),
+		}
+		if p.ExpectedIssuer != "" {
+			// Validated above: record the issuing authorization
+			// server so sinks and custom Runners can bind whatever
+			// credentials the leaf mints to it.
+			meta.Extra = map[string]string{"oauth_issuer": p.ExpectedIssuer}
+		}
+
 		inv := Invocation{
 			Path:  append([]string(nil), leafPath...),
 			Flags: flags,
-			Meta: Meta{
-				Surface:     SurfaceOAuthCB,
-				Caller:      p.Name,
-				TraceID:     r.Header.Get("X-Request-ID"),
-				RequestedAt: time.Now(),
-			},
+			Meta:  meta,
 		}
 
 		_ = leaf // resolution validated at mount time; bridge re-resolves by path
