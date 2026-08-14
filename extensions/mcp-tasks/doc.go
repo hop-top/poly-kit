@@ -10,8 +10,8 @@
 // The extension is EXPERIMENTAL, like the specification it
 // implements. This package is pinned to the ext-tasks draft schema at
 // github.com/modelcontextprotocol/ext-tasks revision
-// 2c1425d9a288b9b1f489430fe1e00bb392b47e48 (2026-08-13); wire shapes
-// follow that revision exactly.
+// 2c1425d9a288b9b1f489430fe1e00bb392b47e48 (dated 2026-07-15, fetched
+// 2026-08-13); wire shapes follow that revision exactly.
 //
 // A host wires the extension around an existing *mcp.Server:
 //
