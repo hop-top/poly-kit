@@ -17,7 +17,7 @@ import (
 )
 
 // ErrNotAGitRepo is returned by Staged / Diff when invoked outside a
-// git working tree. Callers map this to the io_error exit class.
+// git working tree. Callers map this to the io (transient) exit class.
 var ErrNotAGitRepo = errors.New("source: not inside a git repository")
 
 // ErrBadPaths wraps every --paths resolution failure: a missing

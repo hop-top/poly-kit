@@ -97,17 +97,21 @@ Each `Assertion` (alias of `scenario.AssertionResult`) carries
 The package exports typed sentinels matching the kit conformance
 sentinel pattern:
 
+Exit codes follow the 12fc taxonomy: shared classes on 0-6, grade
+verdicts in kit's documented >6 band (after RATE_LIMITED=64,
+PROVENANCE_MISSING=65, LEAK_DETECTED=66, CONFIG=67):
+
 | Sentinel | Exit | Meaning |
 |----------|------|---------|
-| `ErrServiceUnavailable` | 4 | retry-budget exhausted on 5xx / network |
+| `ErrServiceUnavailable` | 6 | retry-budget exhausted on 5xx / network (transient) |
 | `ErrServiceAuthFailed` | 5 | 401/403 from svc |
-| `ErrServiceUsage` | 3 | 4xx other than 401/403/429 |
-| `ErrCassettePack` | 5 | local pack failure |
-| `ErrCassetteTooLarge` | 3 | body > `WithMaxCassetteSize` |
-| `ErrManifestParse` | 3 | manifest.yaml could not be read |
-| `ErrGradeFail` | 2 | verdict=fail |
-| `ErrGradeUngradable` | 2 | verdict=ungradable |
-| `ErrRateLimited` | 4 | 429 with no headroom |
+| `ErrServiceUsage` | 2 | 4xx other than 401/403/429 |
+| `ErrCassettePack` | 1 | local pack failure |
+| `ErrCassetteTooLarge` | 2 | body > `WithMaxCassetteSize` |
+| `ErrManifestParse` | 2 | manifest.yaml could not be read |
+| `ErrGradeFail` | 68 | verdict=fail |
+| `ErrGradeUngradable` | 69 | verdict=ungradable |
+| `ErrRateLimited` | 64 | 429 with no headroom (transient) |
 
 Errors implement `errors.Is` for sentinel identity and
 `AsCLIError() *output.Error` so kit's CLI middleware picks up the

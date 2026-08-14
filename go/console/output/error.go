@@ -28,6 +28,13 @@ type Error struct {
 	Alternatives []string `json:"alternatives,omitempty" yaml:"alternatives,omitempty"`
 	ExitCode     int      `json:"exit_code" yaml:"exit_code"`
 
+	// Transience classifies the failure for retry decisions (Factor 4):
+	// TransienceTransient (retry-worthy), TransiencePermanent (do not
+	// retry), or TransienceUnknown. Constructors and WrapError populate
+	// it; RenderError normalizes an unset value to TransienceUnknown so
+	// every structured error carries a valid class on the wire.
+	Transience string `json:"transience,omitempty" yaml:"transience,omitempty"`
+
 	// err retains the error this envelope was built from so errors.Is
 	// still matches sentinels after the RunE middleware wraps a handler
 	// failure. Unexported so it stays off the wire: Cause is the
@@ -35,20 +42,65 @@ type Error struct {
 	err error
 }
 
+// Transience classes carried by Error.Transience. The vocabulary is
+// fixed by the spec's corrective-error model (Factor 4): agents branch
+// on it to decide whether a retry can help.
+const (
+	// TransienceTransient marks a failure a retry may clear (rate
+	// limit, timeout, upstream blip).
+	TransienceTransient = "transient"
+	// TransiencePermanent marks a failure retrying cannot clear
+	// without changing the input or the environment.
+	TransiencePermanent = "permanent"
+	// TransienceUnknown marks a failure kit cannot classify. Agents
+	// should treat retries as best-effort and bounded.
+	TransienceUnknown = "unknown"
+)
+
+// TransienceForCode returns the default transience class for one of the
+// standard codes above. Unrecognized (adopter-defined) codes map to
+// TransienceUnknown; adopters set Error.Transience (or use
+// WithTransience) to classify their own codes.
+func TransienceForCode(code string) string {
+	switch code {
+	case CodeUsage, CodeNotFound, CodeConflict, CodeUnauthorized,
+		CodeProvenanceMissing:
+		return TransiencePermanent
+	case CodeRateLimited, CodeTransient:
+		return TransienceTransient
+	}
+	return TransienceUnknown
+}
+
 // WrapError builds an envelope that preserves err for errors.Is/As while
 // rendering as code and message. Use it wherever an existing error is
 // converted into the envelope; the plain struct literal is fine when there
-// is no underlying error to retain.
+// is no underlying error to retain. Transience defaults from the code via
+// TransienceForCode; use WithTransience to override.
 func WrapError(err error, code string, exitCode int) *Error {
 	if err == nil {
 		return nil
 	}
 	return &Error{
-		Code:     code,
-		Message:  err.Error(),
-		ExitCode: exitCode,
-		err:      err,
+		Code:       code,
+		Message:    err.Error(),
+		ExitCode:   exitCode,
+		Transience: TransienceForCode(code),
+		err:        err,
 	}
+}
+
+// WithTransience returns a copy of e with Transience set to t, leaving
+// every other field (and the retained error) untouched. Copies rather
+// than mutating for the same reason as Retaining: adopters commonly
+// share package-level envelopes, and writing to one would race.
+func (e *Error) WithTransience(t string) *Error {
+	if e == nil {
+		return nil
+	}
+	clone := *e
+	clone.Transience = t
+	return &clone
 }
 
 // Retaining returns a copy of e that additionally retains err for
@@ -110,7 +162,8 @@ const (
 	CodeNotFound          = "NOT_FOUND"          // exit 3
 	CodeConflict          = "CONFLICT"           // exit 4
 	CodeUnauthorized      = "UNAUTHORIZED"       // exit 5
-	CodeProvenanceMissing = "PROVENANCE_MISSING" // exit 6 — Factor-12 strict-mode refusal
+	CodeTransient         = "TRANSIENT"          // exit 6 — Factor-11 transient/retryable failure
+	CodeProvenanceMissing = "PROVENANCE_MISSING" // exit 65 — Factor-12 strict-mode refusal
 	CodeRateLimited       = "RATE_LIMITED"       // exit 64 — Factor-10 max-ops budget exceeded (§8.6)
 )
 
@@ -131,11 +184,22 @@ const (
 	CodeGraderInternal            = "GRADER_INTERNAL"             // exit 1 — grader bug
 )
 
+// ExitTransient is the spec-assigned exit code for transient/retryable
+// failures (Factor 11: rate limit, timeout, upstream blip). Agents
+// branch on it before parsing stderr: exit 6 means a retry may clear
+// the failure.
+const ExitTransient = 6
+
 // ExitProvenanceMissing is the conventional exit code for Factor-12
 // strict-mode refusals. The Render boundary in
 // hop.top/kit/go/runtime/provenance returns this when a Synthesized
 // or Cached field has no recorded Provenance entry.
-const ExitProvenanceMissing = 6
+//
+// Lives at 65 in kit's extension band (alongside RATE_LIMITED at 64):
+// the spec reserves 0-6 for its core taxonomy and leaves >6 to
+// per-tool codes, and kit as a library stays out of the low per-tool
+// range adopters reach for first.
+const ExitProvenanceMissing = 65
 
 // ExitRateLimited is the conventional exit code for Factor-10 rate-limit
 // refusals (--max-ops budget exceeded). See §8.1 / §8.6.
@@ -143,29 +207,36 @@ const ExitRateLimited = 64
 
 // NotFoundError returns an *Error with CodeNotFound and ExitCode 3.
 func NotFoundError(msg string) *Error {
-	return &Error{Code: CodeNotFound, Message: msg, ExitCode: 3}
+	return &Error{Code: CodeNotFound, Message: msg, ExitCode: 3, Transience: TransiencePermanent}
 }
 
 // ConflictError returns an *Error with CodeConflict and ExitCode 4.
 func ConflictError(msg string) *Error {
-	return &Error{Code: CodeConflict, Message: msg, ExitCode: 4}
+	return &Error{Code: CodeConflict, Message: msg, ExitCode: 4, Transience: TransiencePermanent}
 }
 
 // UnauthorizedError returns an *Error with CodeUnauthorized and ExitCode 5.
 func UnauthorizedError(msg string) *Error {
-	return &Error{Code: CodeUnauthorized, Message: msg, ExitCode: 5}
+	return &Error{Code: CodeUnauthorized, Message: msg, ExitCode: 5, Transience: TransiencePermanent}
 }
 
 // UsageError returns an *Error with CodeUsage and ExitCode 2.
 func UsageError(msg string) *Error {
-	return &Error{Code: CodeUsage, Message: msg, ExitCode: 2}
+	return &Error{Code: CodeUsage, Message: msg, ExitCode: 2, Transience: TransiencePermanent}
+}
+
+// TransientError returns an *Error with CodeTransient and ExitCode 6
+// (Factor 11). Use it for failures a retry may clear: upstream
+// timeouts, connection resets, service-unavailable responses.
+func TransientError(msg string) *Error {
+	return &Error{Code: CodeTransient, Message: msg, ExitCode: ExitTransient, Transience: TransienceTransient}
 }
 
 // RateLimitedError returns an *Error with CodeRateLimited and
 // ExitCode 64. Used by the policy middleware when --max-ops is
 // exhausted (§8.6).
 func RateLimitedError(msg string) *Error {
-	return &Error{Code: CodeRateLimited, Message: msg, ExitCode: ExitRateLimited}
+	return &Error{Code: CodeRateLimited, Message: msg, ExitCode: ExitRateLimited, Transience: TransienceTransient}
 }
 
 // ProvenanceMissingError returns an *Error with CodeProvenanceMissing
@@ -183,7 +254,8 @@ func ProvenanceMissingError(detail string) *Error {
 		SuggestedFix: "call provenance.Track(ctx).Synthesize or .Cache at " +
 			"the fetch/derivation site; or use the kit-blessed httpwrap/" +
 			"sqlwrap/execwrap source wrappers which auto-stamp",
-		ExitCode: ExitProvenanceMissing,
+		ExitCode:   ExitProvenanceMissing,
+		Transience: TransiencePermanent,
 	}
 }
 
@@ -196,6 +268,11 @@ func ProvenanceMissingError(detail string) *Error {
 func RenderError(w io.Writer, format string, err *Error) error {
 	if err == nil {
 		return nil
+	}
+	if err.Transience == "" {
+		// Structured errors must carry a valid transience class on the
+		// wire even when built as a bare literal (Factor 4).
+		err = err.WithTransience(TransienceUnknown)
 	}
 	switch format {
 	case JSON:
