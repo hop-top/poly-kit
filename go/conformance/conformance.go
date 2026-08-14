@@ -11,6 +11,9 @@
 //   - configurable gates (EnforceDryRunRationale,
 //     EnforceDestructiveToken, EnforceGuidance) when adopters wire
 //     them up
+//   - signature checks (local-globals, reserved-name,
+//     depth-hierarchical, passthrough) — the same
+//     Root.ValidateSignature walk Execute() dispatches at boot
 //
 // Usage from an adopter test:
 //
@@ -60,15 +63,20 @@ type TB interface {
 	Fatalf(format string, args ...any)
 }
 
-// AssertCLI runs Root.Validate against root with EnforceValidate
-// forced to true, and reports a failure on t when validation
-// returns a non-nil error. The adopter's Config is restored after
-// the call returns so subsequent invocations of root.Execute() see
-// the original flag values.
+// AssertCLI runs both validators Execute() dispatches at boot:
+// Root.Validate (with EnforceValidate forced to true) and
+// Root.ValidateSignature (local-globals, reserved-name,
+// depth-hierarchical, passthrough). Any Validate error or signature
+// violation is reported as a failure on t — signature violations
+// fail regardless of severity, matching reject-mode runtime
+// behavior, which aborts on any violation without filtering. The
+// adopter's Config is restored after the call returns so subsequent
+// invocations of root.Execute() see the original flag values.
 //
-// Returns the *cli.ValidationError when validation fails so callers
+// Returns the *cli.ValidationError when Validate fails so callers
 // who want to inspect individual buckets (e.g. to assert a single
-// bucket-shape) can do so. Returns nil on success.
+// bucket-shape) can do so. Returns nil when Validate passes (even
+// if signature violations were reported).
 func AssertCLI(t TB, root *cli.Root) *cli.ValidationError {
 	t.Helper()
 	return AssertCLIWithOptions(t, root, Options{})
@@ -96,6 +104,16 @@ func AssertCLIWithOptions(t TB, root *cli.Root, opts Options) *cli.ValidationErr
 	}
 	if opts.EnforceGuidance {
 		root.Config.EnforceGuidance = true
+	}
+
+	// Signature validator: same walk Execute() dispatches at boot.
+	// Reject mode aborts on HasViolations without severity
+	// filtering, so every violation is a failure here too.
+	if report := root.ValidateSignature(); report.HasViolations() {
+		for _, v := range report.Violations {
+			t.Errorf("kitconformance.AssertCLI: signature violation: %s [%s/%s] %s",
+				v.Path, v.Check, v.Severity, v.Detail)
+		}
 	}
 
 	err := root.Validate()
