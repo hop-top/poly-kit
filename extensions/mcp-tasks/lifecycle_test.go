@@ -7,6 +7,8 @@ package tasks_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +18,64 @@ import (
 
 	"mcpext.example/tasks"
 )
+
+// TestStartTaskWithoutAttachFailsClosed pins the misuse mode: a host
+// that wires StartTask but never calls Attach must not ship the
+// module-internal marker key or a live taskId to the client. Without
+// the guard the marker CallToolResult marshals straight onto the
+// wire, producing a resultType "complete" result carrying both.
+// StartTask now refuses instead, so nothing is created and nothing
+// leaks.
+func TestStartTaskWithoutAttachFailsClosed(t *testing.T) {
+	ext := tasks.New(nil)
+	so := &mcp.ServerOptions{}
+	tasks.DeclareServerCapability(so)
+	srv := mcp.NewServer(&mcp.Implementation{Name: "tasks-test", Version: "0.0.1"}, so)
+	// Deliberately no ext.Attach(srv).
+
+	var startErr error
+	srv.AddTool(&mcp.Tool{
+		Name:        "op",
+		Description: "test operation",
+		InputSchema: map[string]any{"type": "object"},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		res, err := ext.StartTask(ctx, req, func(context.Context, *tasks.Handle) (*mcp.CallToolResult, error) {
+			return textResult("x"), nil
+		})
+		startErr = err
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
+	})
+	sdk := mcp.NewStreamableHTTPHandler(
+		func(*http.Request) *mcp.Server { return srv },
+		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true},
+	)
+	ts := httptest.NewServer(ext.Handler(sdk))
+	t.Cleanup(ts.Close)
+
+	env := post(t, ts.URL, callToolHeaders(nil), callToolBody(1, true, ""))
+
+	if startErr == nil {
+		t.Fatal("StartTask returned no error without Attach; want fail-closed")
+	}
+	if !strings.Contains(startErr.Error(), "not attached") {
+		t.Errorf("StartTask error = %v, want it to name the missing Attach", startErr)
+	}
+
+	// Nothing task-shaped may appear on the wire: no internal marker
+	// key, no taskId, and no "task"/"complete" hybrid result.
+	raw := string(env.Result)
+	for _, leak := range []string{"#created", "taskId", "task_"} {
+		if strings.Contains(raw, leak) {
+			t.Errorf("result leaks %q: %s", leak, raw)
+		}
+	}
+	if env.Error != nil && strings.Contains(env.Error.Message, "task_") {
+		t.Errorf("error leaks a task id: %+v", env.Error)
+	}
+}
 
 // TestCreatePollComplete pins the required core: server-directed
 // creation on tools/call for a declaring client, durable before the

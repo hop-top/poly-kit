@@ -93,7 +93,7 @@ Three attachment points, all required:
 | Call | What it does |
 |---|---|
 | `tasks.DeclareServerCapability(so)` | declares `io.modelcontextprotocol/tasks` under `capabilities.extensions` (initialize and `server/discover`) |
-| `ext.Attach(server)` | installs the middleware that turns `StartTask` results into wire `CreateTaskResult`s |
+| `ext.Attach(server)` | installs the middleware that turns `StartTask` results into wire `CreateTaskResult`s — a prerequisite for creation: `StartTask` errors, creating nothing, until it has been called |
 | `ext.Handler(next)` | serves `tasks/get` / `tasks/update` / `tasks/cancel` in front of the SDK handler |
 
 Inside an executor, `h.RequestInput` blocks until the client answers

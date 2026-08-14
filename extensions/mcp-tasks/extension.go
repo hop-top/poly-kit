@@ -73,6 +73,12 @@ type Extension struct {
 	principal func(http.Header) string
 	logger    *slog.Logger
 
+	// attached reports whether Attach installed the middleware that
+	// converts StartTask's marker into the wire CreateTaskResult.
+	// StartTask refuses to run without it, so the marker can never
+	// reach a client.
+	attached atomic.Bool
+
 	mu   sync.Mutex
 	live map[string]*Handle
 }
@@ -146,9 +152,12 @@ func ClientDeclares(req *mcp.CallToolRequest) bool {
 
 // Attach installs the extension's receiving middleware on s. The
 // middleware converts the marker result StartTask returns into the
-// wire CreateTaskResult; without Attach, StartTask results must not
-// be returned from tool handlers.
+// wire CreateTaskResult. It is a prerequisite for task creation:
+// StartTask fails until Attach has been called, so a host that wires
+// the extension incompletely gets a clear error instead of a
+// spec-violating result on the wire.
 func (e *Extension) Attach(s *mcp.Server) {
+	e.attached.Store(true)
 	s.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			res, err := next(ctx, method, req)
@@ -186,7 +195,9 @@ type ExecuteFunc func(ctx context.Context, h *Handle) (*mcp.CallToolResult, erro
 //
 // The returned CallToolResult is a marker: return it from the tool
 // handler unchanged, and the middleware installed by Attach replaces
-// it with the wire CreateTaskResult. Callers must have verified
+// it with the wire CreateTaskResult. Attach is therefore a
+// prerequisite — StartTask returns an error, creating nothing, if the
+// extension was never attached. Callers must have verified
 // ClientDeclares first — returning a CreateTaskResult to a
 // non-declaring client violates the spec — and must resolve any
 // multi-round-trip exchanges (SEP-2322) synchronously before calling
@@ -198,6 +209,14 @@ func (e *Extension) StartTask(ctx context.Context, req *mcp.CallToolRequest, run
 	}
 	if run == nil {
 		return nil, errors.New("tasks: StartTask: nil ExecuteFunc")
+	}
+	// Fail closed on incomplete wiring. Without the middleware the
+	// marker below would marshal onto the wire as a resultType
+	// "complete" result carrying the internal key and a live taskId —
+	// a spec violation, and a detached task the client was never told
+	// about. Refusing here means neither exists.
+	if !e.attached.Load() {
+		return nil, errors.New("tasks: StartTask: extension not attached to a server; call Extension.Attach before creating tasks")
 	}
 	var hdr http.Header
 	if req.Extra != nil {
