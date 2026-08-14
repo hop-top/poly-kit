@@ -14,7 +14,8 @@ input requests, TTLs, and per-principal task isolation.
 > [ext-tasks](https://github.com/modelcontextprotocol/ext-tasks) draft
 > schema at revision
 > [`2c1425d`](https://github.com/modelcontextprotocol/ext-tasks/commit/2c1425d9a288b9b1f489430fe1e00bb392b47e48)
-> (fetched 2026-08-13); wire shapes follow that revision exactly.
+> (dated 2026-07-15, fetched 2026-08-13); wire shapes follow that
+> revision exactly.
 > Breaking changes should be expected until the extension stabilizes.
 
 > [!NOTE]
@@ -31,7 +32,7 @@ input requests, TTLs, and per-principal task isolation.
   empty acks, `-32601` for the reserved-but-nonexistent `tasks/list`
   and `tasks/result`, `-32003` (Missing Required Client Capability)
   with the required extension in error data, `-32602` for unknown
-  task IDs, and tolerance for the SEP-2243 `Mcp-Name` / `Mcp-Method`
+  task IDs, and SEP-2243 validation of the `Mcp-Method` / `Mcp-Name`
   routing headers.
 - **Server-directed creation** on `tools/call`: your tool handler
   decides per call; `CreateTaskResult` is only ever returned to
@@ -109,6 +110,30 @@ tasks, resolve every MRTR exchange synchronously **before** calling
 `StartTask`, as the SEP requires. The task phase keeps its own
 `inputRequests` key namespace: reusing an MRTR-phase key inside the
 task is legal and unambiguous.
+
+### Routing headers
+
+SEP-2243 requires clients to mirror the body's `method` into
+`Mcp-Method`, and SEP-2663 requires `Mcp-Name` to carry `params.taskId`
+on `tasks/get`, `tasks/update`, and `tasks/cancel`, so intermediaries
+can route a poll to the instance holding the task without parsing the
+body. SEP-2243 makes the matching obligation explicit for servers:
+
+> Servers that process the request body MUST reject requests where the
+> values specified in the headers do not match the values in the
+> request body.
+
+This module reads the body, so it validates both headers and answers a
+missing or disagreeing one with HTTP 400 and JSON-RPC error `-32020`
+(`HeaderMismatch`) — the same code and shape the Go SDK uses for the
+core methods. Validation applies only from protocol version
+`2026-07-28`, which introduced the headers; earlier clients (and
+requests without `Mcp-Protocol-Version`) are served without them, per
+the SEP's backward-compatibility allowance.
+
+Routing is decided by the **body** method alone. A `tasks/*` body is
+always handled by the extension, whatever `Mcp-Method` says — the
+header can steer nothing, it can only fail validation.
 
 ## Why an HTTP-level handler?
 

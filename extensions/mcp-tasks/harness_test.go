@@ -70,6 +70,14 @@ func textResult(text string) *mcp.CallToolResult {
 // post sends one JSON-RPC request and decodes the response envelope.
 func post(t *testing.T, url string, hdr map[string]string, body string) *rpcEnvelope {
 	t.Helper()
+	env, _ := postStatus(t, url, hdr, body)
+	return env
+}
+
+// postStatus is post plus the HTTP status code, for the assertions
+// that pin a transport-level rejection alongside the JSON-RPC error.
+func postStatus(t *testing.T, url string, hdr map[string]string, body string) (*rpcEnvelope, int) {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
@@ -88,7 +96,7 @@ func post(t *testing.T, url string, hdr map[string]string, body string) *rpcEnve
 	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
 		t.Fatalf("decode response (status %d): %v", resp.StatusCode, err)
 	}
-	return &env
+	return &env, resp.StatusCode
 }
 
 // metaJSON renders the per-request _meta for the 2026-07-28 protocol,

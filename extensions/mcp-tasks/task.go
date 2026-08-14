@@ -34,6 +34,14 @@ const MinProtocolVersion = "2026-06-30"
 // the core specification reserves via SEP-2575.
 const CodeMissingClientCapability = -32003
 
+// CodeHeaderMismatch is the JSON-RPC error code SEP-2243 assigns to a
+// header validation failure — an Mcp-Method or Mcp-Name header that is
+// missing, or that disagrees with the request body. (SEP-2243 was
+// finalized with -32001; the error-code reallocation moved
+// HeaderMismatch to -32020, which the current specification and the
+// SDK both use.)
+const CodeHeaderMismatch = -32020
+
 // Method names owned by the extension. The "tasks/" prefix is
 // reserved by SEP-2663; tasks/list and tasks/result deliberately do
 // not exist and must answer -32601.

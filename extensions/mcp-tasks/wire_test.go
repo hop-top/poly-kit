@@ -155,11 +155,78 @@ func TestTasksListAndResultAbsent(t *testing.T) {
 	}
 }
 
-// TestMcpNameHeaderTolerated pins SEP-2243 routing-header tolerance:
-// tasks/get works with the mandated Mcp-Name=taskId, with a
-// mismatched value, and with the headers absent entirely (body
-// sniffing takes over when Mcp-Method is missing).
-func TestMcpNameHeaderTolerated(t *testing.T) {
+// TestRoutingHeadersValidated pins the SEP-2243 header/body agreement
+// on every tasks/* method: the mandated headers are served, and a
+// missing or mismatched Mcp-Method or Mcp-Name is a header validation
+// failure — HTTP 400 with CodeHeaderMismatch — never a route to
+// another handler and never a route to another task's state.
+func TestRoutingHeadersValidated(t *testing.T) {
+	var ext *tasks.Extension
+	ts, ext := newHarness(t, nil, taskToolHandlerVar(&ext, func(context.Context, *tasks.Handle) (*mcp.CallToolResult, error) {
+		return textResult("x"), nil
+	}))
+
+	taskID := createTask(t, ts, nil)["taskId"].(string)
+	pollUntil(t, ts, taskID, nil, "completed")
+
+	// drop returns the mandated header set minus key.
+	drop := func(key string) map[string]string {
+		h := tasksHeaders(tasks.MethodGet, taskID)
+		delete(h, key)
+		return h
+	}
+	// with returns the mandated header set with key overridden.
+	with := func(method, key, val string) map[string]string {
+		h := tasksHeaders(method, taskID)
+		h[key] = val
+		return h
+	}
+
+	for _, method := range []string{tasks.MethodGet, tasks.MethodUpdate, tasks.MethodCancel} {
+		// Matching headers: served normally.
+		env, code := postStatus(t, ts.URL, tasksHeaders(method, taskID),
+			tasksBody(2, method, taskID, true, ""))
+		if env.Error != nil || code != http.StatusOK {
+			t.Errorf("%s matching headers: status %d error %+v, want 200 served", method, code, env.Error)
+		}
+
+		// Mismatched Mcp-Method: the body still selects the extension
+		// (no bypass), and the disagreement is reported as such.
+		for _, bogus := range []string{"tools/call", "ping", "not-a-method"} {
+			env, code := postStatus(t, ts.URL, with(method, "Mcp-Method", bogus),
+				tasksBody(3, method, taskID, true, ""))
+			if code != http.StatusBadRequest || env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
+				t.Errorf("%s Mcp-Method=%q: status %d error %+v, want 400 / %d",
+					method, bogus, code, env.Error, tasks.CodeHeaderMismatch)
+			}
+		}
+
+		// Mismatched Mcp-Name: rejected, and never served from the
+		// task the header names instead of the one the body names.
+		env, code = postStatus(t, ts.URL, with(method, "Mcp-Name", "task_other"),
+			tasksBody(4, method, taskID, true, ""))
+		if code != http.StatusBadRequest || env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
+			t.Errorf("%s mismatched Mcp-Name: status %d error %+v, want 400 / %d",
+				method, code, env.Error, tasks.CodeHeaderMismatch)
+		}
+	}
+
+	// Absent headers at a header-mandating protocol version are
+	// themselves validation failures (SEP-2243 conformance table).
+	for _, key := range []string{"Mcp-Method", "Mcp-Name"} {
+		env, code := postStatus(t, ts.URL, drop(key), tasksBody(5, tasks.MethodGet, taskID, true, ""))
+		if code != http.StatusBadRequest || env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
+			t.Errorf("absent %s: status %d error %+v, want 400 / %d",
+				key, code, env.Error, tasks.CodeHeaderMismatch)
+		}
+	}
+}
+
+// TestRoutingHeadersPreVersionTolerated pins the compatibility half of
+// SEP-2243: the headers became mandatory in 2026-07-28, so a client
+// negotiating an earlier version (or sending no version header) is
+// served without them, exactly as the SDK treats its own methods.
+func TestRoutingHeadersPreVersionTolerated(t *testing.T) {
 	var ext *tasks.Extension
 	ts, ext := newHarness(t, nil, taskToolHandlerVar(&ext, func(context.Context, *tasks.Handle) (*mcp.CallToolResult, error) {
 		return textResult("x"), nil
@@ -172,9 +239,8 @@ func TestMcpNameHeaderTolerated(t *testing.T) {
 		name string
 		hdr  map[string]string
 	}{
-		{"mandated headers", tasksHeaders(tasks.MethodGet, taskID)},
-		{"mismatched Mcp-Name", tasksHeaders(tasks.MethodGet, "task_other")},
-		{"no routing headers", nil},
+		{"no headers at all", nil},
+		{"older protocol version", map[string]string{"Mcp-Protocol-Version": "2026-06-30"}},
 	}
 	for _, tc := range cases {
 		env := post(t, ts.URL, tc.hdr, tasksBody(2, tasks.MethodGet, taskID, true, ""))
