@@ -36,6 +36,7 @@ how kit itself is implemented.
 - [`guides/create-cli-project.md`](guides/create-cli-project.md) — scaffold a new CLI
 - [`guides/hook-cli-into-bus.md`](guides/hook-cli-into-bus.md) — first publish/subscribe
 - [`guides/run-the-engine.md`](guides/run-the-engine.md) — start the engine sidecar
+- [`guides/serve-mcp-with-the-sdk.md`](guides/serve-mcp-with-the-sdk.md) — serve your command tree over MCP with the official SDK
 - [`guides/secret-management-guide.md`](guides/secret-management-guide.md) — secret backend recipes
 - [`guides/telemetry.md`](guides/telemetry.md) — anonymous-usage telemetry: what we collect, opt-out, inspect, reset
 - [`guides/tui-component-gallery.md`](guides/tui-component-gallery.md) — TUI components catalog
