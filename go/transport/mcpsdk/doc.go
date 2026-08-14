@@ -26,8 +26,19 @@
 // Expose / Sync translate runtime enablement changes into SDK tool
 // add/remove, firing tools/list_changed on connected sessions.
 //
-// This package contains no protocol logic of its own. Kit-side code
-// is limited to binding bridge leaves to SDK tool handlers, safety
-// gating, and mounting. See README.md in this directory for the full
-// comparison and the honest tradeoffs.
+// WithTasks additionally enables the EXPERIMENTAL
+// io.modelcontextprotocol/tasks extension (SEP-2663) for named
+// leaves: durable pollable tool calls with tasks/get, tasks/update
+// and tasks/cancel, executed detached on the bridge Runner with
+// kit's safety gates enforced at task creation. The extension's wire
+// behavior lives in the standalone mcpext.example/tasks module
+// (in-repo under extensions/mcp-tasks); it exists beside the SDK
+// only because go-sdk v1.7.0 ships no tasks support — see the
+// README's tasks section for the contract and the reconcile canary.
+//
+// This package contains no MCP protocol logic of its own. Kit-side
+// code is limited to binding bridge leaves to SDK tool handlers,
+// safety gating, principal derivation, and mounting. See README.md
+// in this directory for the full comparison and the honest
+// tradeoffs.
 package mcpsdk

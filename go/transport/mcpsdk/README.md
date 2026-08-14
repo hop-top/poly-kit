@@ -39,7 +39,7 @@ Other entry points:
 Options: `WithPath`, `WithServerInfo`, `WithInstructions`,
 `WithStateless` (SEP-2567 sessionless mode; GET/DELETE become 405),
 `WithJSONResponse`, `WithServerOptions`, `WithServerConfigurator`,
-`WithToolDecorator`.
+`WithToolDecorator`, `WithTasks` (SEP-2663 tasks extension, below).
 
 ## Beyond tools: the full SDK surface
 
@@ -142,6 +142,7 @@ enablement), pinned by tests.
 | Pagination | none (single response) | SDK cursor pagination on every list method |
 | Progress streaming | none | per-line `notifications/progress` when the call carries a progress token |
 | Runtime tool list | re-read per `tools/list` | live: `Hide`/`Expose`/`Sync` with `tools/list_changed` |
+| Tasks (SEP-2663 extension) | none | poll core via `WithTasks` (experimental, below) |
 | Safety gates | Bridge policy + enablement | identical for kit-bound tools (same types, same `mcp` surface key); adopter-registered features ungated |
 
 ## Safety and the trust boundary
@@ -190,32 +191,89 @@ The 2026-07-28 protocol is served through its own per-request
 negotiation (`_meta` version/capabilities plus `Mcp-*` framing
 headers), handled entirely by the SDK.
 
-## Tasks extension: not yet available
+## Tasks extension (SEP-2663) — experimental
 
-The `io.modelcontextprotocol/tasks` extension (durable long-running
-calls with `tasks/get` / `tasks/list` / `tasks/cancel` /
-`tasks/result`; governed spec-side by the merged **SEP-2663**) is
-**not implemented by the SDK as of v1.7.0**. The SDK's own live
-trackers are issue [#626] (labeled SEP-1686, cited in its ROADMAP)
-and the in-progress PR [#755]; PR #755 shapes tasks as per-tool
-opt-in, so a future SDK may recognize `tasks/*` yet reject calls for
-unconfigured tools. `TestTasksMethodsUnsupported` therefore pins
-today's exact rejection (HTTP 400 with an "unsupported" body): any
-change in how the SDK answers `tasks/*` — full support or
-recognize-but-unconfigured — turns that test red and forces a
-revisit.
+`WithTasks` enables the `io.modelcontextprotocol/tasks` extension:
+durable, pollable long-running tool calls with `tasks/get` /
+`tasks/update` / `tasks/cancel`, cooperative cancellation, TTLs, and
+per-principal task isolation.
+
+```go
+s, err := mcpsdk.New(b, mcpsdk.WithTasks(mcpsdk.TasksConfig{
+    Tools: []string{"report.generate", "backup.run"}, // task-eligible leaves
+    TTL:   30 * time.Minute,                          // ttlMs (default 15m)
+}))
+```
+
+The wire behavior lives in a standalone extension module
+(`mcpext.example/tasks`, in-repo under `extensions/mcp-tasks/`, built
+against the [ext-tasks] draft pinned at revision `2c1425d9a288…`,
+2026-08-13, and designed for donation to the MCP organization); this
+package only binds it to the bridge. Both are **experimental**, like
+the extension itself.
+
+[ext-tasks]: https://github.com/modelcontextprotocol/ext-tasks
+
+How it behaves:
+
+- **Server-directed, spec-exact.** An eligible leaf called by a
+  client that declares the extension for the request (per-request
+  `_meta` capability, protocol ≥ 2026-06-30) answers with a
+  `CreateTaskResult` and runs detached; every other call — including
+  every SDK-client call today, since the Go SDK client negotiates an
+  older protocol — returns its result inline exactly as before.
+  Poll `tasks/get` until `completed` / `failed` / `cancelled`;
+  `tasks/list` and `tasks/result` answer `-32601` per the SEP.
+- **One execution path.** Detached execution dispatches through
+  `Bridge.Invoke` on the existing Runner: enablement and the policy
+  ceiling are re-checked at run time, stdout/stderr/exit render into
+  the completed task's `result` exactly like a synchronous call
+  (non-zero exit → `isError` result, still `completed`; only
+  kit-level faults such as a mid-flight `Hide` fail the task).
+- **Safety enforced at creation.** A policy-blocked destructive leaf
+  refuses before any task exists. Confirmation-required leaves accept
+  `X-Confirm-Token` as on the synchronous path, or resolve
+  confirmation synchronously through an MRTR elicitation exchange
+  (SEP-2322) whose signed `requestState` binds leaf, principal, and
+  expiry — either way strictly before the `CreateTaskResult`, as the
+  SEP mandates. Nothing on the tasks surface (get/update/cancel) can
+  execute, re-execute, or amplify a leaf; all of this is pinned by
+  tests.
+- **Principal-bound visibility.** Tasks are bound to the SHA-256 of
+  the `Authorization` header; unknown, expired, and foreign task IDs
+  answer one identical `-32602` (no existence oracle). Without
+  authentication every caller shares the empty principal — isolation
+  requires auth in front of the surface.
+- **Deployment caveats.** The default store is in-memory and
+  per-process: behind a load balancer, route `tasks/*` by the
+  `Mcp-Name: <taskId>` header (clients must send it per SEP-2243) or
+  supply a shared `Store`. Stdio serving is unaffected: stdio clients
+  negotiate pre-2026 protocol versions, where the extension is not
+  defined, so every call stays inline.
+
+The `tasks/get|update|cancel` methods are served by a thin
+HTTP-level handler in front of the SDK handler (wrapped inside
+`Handler`/`Mount` automatically), scoped strictly to the reserved
+`tasks/` method prefix — go-sdk v1.7.0 rejects unknown methods at the
+transport layer before middleware runs, so no in-SDK seam exists.
+Task *creation* rides entirely inside the SDK via receiving
+middleware. Optional push (`notifications/tasks` over
+`subscriptions/listen`) is not implemented: the SDK routes only its
+own notification types onto listen streams, and shipping push would
+mean hand-rolling transport machinery this surface exists to avoid.
+
+This is the one place the surface's solely-the-SDK rule is amended:
+**go-sdk v1.7.0 ships no tasks support** (its trackers are issue
+[#626], labeled SEP-1686 in its ROADMAP, and the in-progress PR
+[#755]), so implementing SEP-2663 beside the SDK duplicates nothing
+the SDK provides. The moment that changes, the rule applies again:
+`TestSDKNativeTasksCanary` pins the SDK's current rejection of
+`tasks/*` against a bare SDK server and turns red when a future SDK
+starts answering them — the signal to reconcile this extension with
+upstream.
 
 [#626]: https://github.com/modelcontextprotocol/go-sdk/issues/626
 [#755]: https://github.com/modelcontextprotocol/go-sdk/pull/755
-
-This package deliberately does not hand-roll the extension: the whole
-point of the surface is that protocol behavior comes from the SDK.
-When the SDK ships tasks support, the planned integration is a mount
-option naming task-capable leaf paths (validated at mount), detached
-execution on the bridge Runner with captured output, and safety
-enforced at task creation (a policy-blocked destructive leaf stays
-blocked; confirmation applies to the spawning call and can never be
-bypassed through the tasks surface).
 
 ## Honest tradeoffs
 
