@@ -154,8 +154,14 @@ func taskCallHeaders(tool string, extra map[string]string) map[string]string {
 	return hdr
 }
 
+// taskMethodBody builds a declaring 2026-07-28 tasks/* request. The
+// per-request protocolVersion _meta is required on every request at
+// that version, tasks/* included: the extension's methods are
+// dispatched by the SDK handler, so they carry the same _meta contract
+// as any standard method.
 func taskMethodBody(id int, method, taskID string) string {
-	return fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":%q,"params":{"taskId":%q,"_meta":{%s}}}`,
+	return fmt.Sprintf(
+		`{"jsonrpc":"2.0","id":%d,"method":%q,"params":{"taskId":%q,"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",%s}}}`,
 		id, method, taskID, tasksCapMeta)
 }
 

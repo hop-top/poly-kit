@@ -48,11 +48,10 @@ func TestStartTaskWithoutAttachFailsClosed(t *testing.T) {
 		}
 		return res, nil
 	})
-	sdk := mcp.NewStreamableHTTPHandler(
+	ts := httptest.NewServer(mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv },
 		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true},
-	)
-	ts := httptest.NewServer(ext.Handler(sdk))
+	))
 	t.Cleanup(ts.Close)
 
 	env := post(t, ts.URL, callToolHeaders(nil), callToolBody(1, true, ""))
@@ -205,7 +204,7 @@ func TestCancelCooperative(t *testing.T) {
 		return resultMap(t, env)
 	}
 	ack := cancel(3)
-	if ack["resultType"] != "complete" || len(ack) != 1 {
+	if ack["resultType"] != "complete" || !emptyAck(ack) {
 		t.Errorf("cancel ack = %v, want empty ack with resultType complete", ack)
 	}
 	final := pollUntil(t, ts, taskID, nil, "cancelled")

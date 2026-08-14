@@ -64,7 +64,7 @@ type Options struct {
 
 // Extension implements the server side of the MCP tasks extension
 // (SEP-2663) for go-sdk servers. See the package documentation for
-// the wiring: DeclareServerCapability, Attach, Handler, and StartTask
+// the wiring: DeclareServerCapability, Attach, and StartTask
 // from inside a tool handler.
 type Extension struct {
 	store     Store
@@ -150,16 +150,25 @@ func ClientDeclares(req *mcp.CallToolRequest) bool {
 	return ok
 }
 
-// Attach installs the extension's receiving middleware on s. The
-// middleware converts the marker result StartTask returns into the
-// wire CreateTaskResult. It is a prerequisite for task creation:
-// StartTask fails until Attach has been called, so a host that wires
-// the extension incompletely gets a clear error instead of a
-// spec-violating result on the wire.
-func (e *Extension) Attach(s *mcp.Server) {
-	e.attached.Store(true)
+// Attach wires the extension into s. It registers tasks/get,
+// tasks/update and tasks/cancel as custom methods on the server, so
+// the SDK's own transport dispatches them and they inherit every check
+// it applies to a standard method; and it installs the receiving
+// middleware that converts the marker result StartTask returns into
+// the wire CreateTaskResult and carries each request's HTTP headers
+// (the principal's source) through to the tasks/* handlers.
+//
+// Attach is a prerequisite for task creation: StartTask fails until it
+// has been called, so a host that wires the extension incompletely
+// gets a clear error instead of a spec-violating result on the wire.
+// It reports an error only if a tasks/* method could not be registered
+// — attaching the same extension to two servers, for instance.
+func (e *Extension) Attach(s *mcp.Server) error {
 	s.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			if extra := req.GetExtra(); extra != nil && extra.Header != nil {
+				ctx = context.WithValue(ctx, headerContextKey{}, extra.Header)
+			}
 			res, err := next(ctx, method, req)
 			if err != nil || method != "tools/call" {
 				return res, err
@@ -175,6 +184,11 @@ func (e *Extension) Attach(s *mcp.Server) {
 			return &createTaskResult{ResultType: "task", Task: *seed}, nil
 		}
 	})
+	if err := e.registerMethods(s); err != nil {
+		return err
+	}
+	e.attached.Store(true)
+	return nil
 }
 
 // ExecuteFunc runs the long-lived operation behind a task. It

@@ -3,6 +3,7 @@ package mcpsdk
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -174,7 +175,9 @@ func New(b *cmdsurface.Bridge, opts ...Option) (*Surface, error) {
 	}
 	s.Sync()
 	if tb != nil {
-		tb.ext.Attach(s.srv)
+		if err := tb.ext.Attach(s.srv); err != nil {
+			return nil, fmt.Errorf("mcpsdk: attaching tasks extension: %w", err)
+		}
 	}
 	for _, fn := range cfg.configurators {
 		fn(s.srv)
@@ -242,22 +245,18 @@ func (s *Surface) Hide(pattern string) *Surface {
 // streamable HTTP transport (stateful sessions by default; see
 // WithStateless). All protocol handling — version negotiation,
 // session lifecycle, message parsing, error shapes — is the SDK's.
-// With WithTasks enabled, the SDK handler is wrapped by the tasks
-// extension's handler, which serves exactly the tasks/get, update and
-// cancel methods the SDK cannot route and passes everything else
-// through untouched.
+// With WithTasks enabled, the extension's tasks/get, update and cancel
+// methods are registered on the server itself, so this one SDK handler
+// dispatches them alongside every standard method and they inherit the
+// same transport checks.
 func (s *Surface) Handler() http.Handler {
-	h := http.Handler(mcp.NewStreamableHTTPHandler(
+	return mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return s.srv },
 		&mcp.StreamableHTTPOptions{
 			Stateless:    s.cfg.stateless,
 			JSONResponse: s.cfg.jsonResponse,
 		},
-	))
-	if s.tasks != nil {
-		h = s.tasks.ext.Handler(h)
-	}
-	return h
+	)
 }
 
 // Mount registers the streamable HTTP handler on the router at the

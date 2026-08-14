@@ -116,8 +116,10 @@ type createTaskResult struct {
 
 // detailedTaskResult is the tasks/get result: Result & DetailedTask,
 // flat, with resultType "complete" (the standard result shape for the
-// tasks/get request).
+// tasks/get request). ResultBase satisfies the SDK's Result interface
+// so the SDK marshals it as the response to the registered method.
 type detailedTaskResult struct {
+	mcp.ResultBase
 	ResultType string `json:"resultType"`
 	Task
 }
@@ -125,6 +127,7 @@ type detailedTaskResult struct {
 // emptyAckResult is the tasks/update and tasks/cancel result: an
 // empty acknowledgement with resultType "complete".
 type emptyAckResult struct {
+	mcp.ResultBase
 	ResultType string `json:"resultType"`
 }
 

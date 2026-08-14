@@ -20,10 +20,19 @@
 //	so := &mcp.ServerOptions{ /* ... */ }
 //	tasks.DeclareServerCapability(so)           // capabilities.extensions
 //	server := mcp.NewServer(impl, so)
-//	ext.Attach(server)                          // result-shape middleware
+//	if err := ext.Attach(server); err != nil {  // tasks/* + result shape
+//	    return err
+//	}
 //
-//	sdk := mcp.NewStreamableHTTPHandler(getServer, nil)
-//	http.Handle("/mcp", ext.Handler(sdk))       // tasks/get|update|cancel
+//	http.Handle("/mcp", mcp.NewStreamableHTTPHandler(getServer, nil))
+//
+// Attach registers tasks/get, tasks/update and tasks/cancel on the
+// server through the SDK's own custom-method registration, so the
+// SDK's HTTP handler dispatches them exactly as it does a standard
+// method. The extension adds no HTTP handler of its own: every
+// tasks/* request passes the same Host, cross-origin, body-size,
+// content-negotiation, protocol-version and session checks as any
+// other request before it can reach task state.
 //
 // Task creation is server-directed, on tools/call only. Inside a tool
 // handler, the host decides per call and per client:

@@ -59,7 +59,7 @@ func TestInputRequiredRoundTrip(t *testing.T) {
 		env := post(t, ts.URL, tasksHeaders(tasks.MethodUpdate, taskID),
 			tasksBody(id, tasks.MethodUpdate, taskID, true, inputResponses))
 		ack := resultMap(t, env)
-		if ack["resultType"] != "complete" || len(ack) != 1 {
+		if ack["resultType"] != "complete" || !emptyAck(ack) {
 			t.Fatalf("update ack = %v, want empty ack with resultType complete", ack)
 		}
 		return ack

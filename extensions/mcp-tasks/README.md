@@ -72,7 +72,9 @@ ext := tasks.New(&tasks.Options{
 so := &mcp.ServerOptions{}
 tasks.DeclareServerCapability(so)   // capabilities.extensions
 server := mcp.NewServer(&mcp.Implementation{Name: "example"}, so)
-ext.Attach(server)                  // CreateTaskResult middleware
+if err := ext.Attach(server); err != nil { // tasks/* methods + result shape
+    return err
+}
 
 server.AddTool(&mcp.Tool{Name: "bake", InputSchema: schema},
     func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -84,17 +86,20 @@ server.AddTool(&mcp.Tool{Name: "bake", InputSchema: schema},
         })
     })
 
-sdk := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
-http.Handle("/mcp", ext.Handler(sdk)) // tasks/* in front, everything else untouched
+http.Handle("/mcp", mcp.NewStreamableHTTPHandler(
+    func(*http.Request) *mcp.Server { return server }, nil))
 ```
 
-Three attachment points, all required:
+Two attachment points, both required:
 
 | Call | What it does |
 |---|---|
 | `tasks.DeclareServerCapability(so)` | declares `io.modelcontextprotocol/tasks` under `capabilities.extensions` (initialize and `server/discover`) |
-| `ext.Attach(server)` | installs the middleware that turns `StartTask` results into wire `CreateTaskResult`s — a prerequisite for creation: `StartTask` errors, creating nothing, until it has been called |
-| `ext.Handler(next)` | serves `tasks/get` / `tasks/update` / `tasks/cancel` in front of the SDK handler |
+| `ext.Attach(server)` | registers `tasks/get` / `tasks/update` / `tasks/cancel` on the server, and installs the middleware that turns `StartTask` results into wire `CreateTaskResult`s — a prerequisite for creation: `StartTask` errors, creating nothing, until it has been called |
+
+There is no third step: the extension serves its methods through the
+SDK's ordinary handler, so the host mounts that handler and nothing
+else.
 
 Inside an executor, `h.RequestInput` blocks until the client answers
 via `tasks/update`, `h.SetStatusMessage` updates the human-readable
@@ -131,31 +136,60 @@ core methods. Validation applies only from protocol version
 requests without `Mcp-Protocol-Version`) are served without them, per
 the SEP's backward-compatibility allowance.
 
-Routing is decided by the **body** method alone. A `tasks/*` body is
-always handled by the extension, whatever `Mcp-Method` says — the
-header can steer nothing, it can only fail validation.
+Routing is decided by the **body** method alone: the SDK dispatches on
+it, and the `Mcp-Method` header can steer nothing — it can only fail
+validation.
 
-## Why an HTTP-level handler?
+## How it hangs off the SDK
 
-go-sdk v1.7.0 rejects methods outside its own table at the transport
-layer, before server middleware runs, so there is no in-SDK seam to
-route `tasks/*` through. `Extension.Handler` therefore intercepts
-strictly the `tasks/` method prefix — which SEP-2663 reserves for this
-extension — and passes everything else through untouched. Task
-*creation*, by contrast, rides entirely inside the SDK: a receiving
-middleware swaps the tool handler's marker result for the
-`CreateTaskResult`, so sessions, negotiation, and framing stay the
-SDK's.
+Everything runs inside the SDK's own handler; the extension adds no
+HTTP layer of its own.
+
+`Attach` registers the three methods with `mcp.AddReceivingCustomMethod`,
+the SDK's public seam for methods outside its table. They are then
+dispatched exactly like `tools/call`, which means a `tasks/*` request
+must first clear every check the transport applies: DNS-rebinding
+(`Host`) protection, cross-origin rules, the `MaxRequestBodyBytes` cap
+(enforced during the read, so an oversized body is never buffered),
+`Content-Type` and `Accept` negotiation, protocol-version validation,
+session state, and the SEP-2243 `Mcp-Method` header agreement. Nothing
+can reach task state, authorization, or execution without passing all
+of it.
+
+Two pieces the SDK cannot supply for a custom method, and how the
+extension covers them:
+
+- **`Mcp-Name`.** The SDK's header check extracts a name only for
+  `tools/call`, `resources/read` and `prompts/get`. SEP-2663 requires
+  `Mcp-Name` to mirror `params.taskId`, so the extension enforces that
+  itself with the same `-32020` code and the same pre-2026-07-28
+  tolerance. A handler-returned error carries HTTP 200 rather than the
+  transport's 400; the JSON-RPC error is identical.
+- **HTTP headers.** Custom-method handlers receive only
+  `(ctx, session, params)`, so the receiving middleware carries
+  `RequestExtra.Header` — the principal's source — through the context.
+
+Task *creation* likewise rides inside the SDK: the same middleware
+swaps the tool handler's marker result for the `CreateTaskResult`, so
+sessions, negotiation, and framing stay the SDK's.
+
+`tasks/list` and `tasks/result` are deliberately left unregistered:
+the SDK answers unknown methods with the `-32601` SEP-2663 mandates
+for them.
 
 ## Limitations
 
 - **Push notifications are not implemented.** `notifications/tasks`
   over `subscriptions/listen` (with acknowledgements) is optional in
-  SEP-2663. go-sdk v1.7.0 routes only its own notification types onto
-  listen streams and rejects unknown notification methods on the
-  sending path, so a conformant push would mean reimplementing the
-  transport layer. The required poll-based core is complete; add push
-  when the SDK exposes a seam for extension notifications.
+  SEP-2663. The SDK's custom-method registration covers the *receiving*
+  side, which is what the three `tasks/*` methods need; there is no
+  server-side equivalent for *sending* — `AddSendingCustomMethod` is
+  client-only, `Server.notifySessions` routes a fixed set of
+  notification types onto listen streams, and the default sending
+  handler rejects anything outside that set. A conformant push would
+  therefore mean reimplementing the transport layer. The required
+  poll-based core is complete; add push when the SDK exposes a
+  server-side seam for extension notifications.
 - **In-memory store is per process.** Behind a load balancer, either
   route `tasks/*` requests to the instance holding the task (clients
   already send `Mcp-Name: <taskId>` for exactly that, per SEP-2243)

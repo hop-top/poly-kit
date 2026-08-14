@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -203,22 +204,34 @@ func TestRoutingHeadersValidated(t *testing.T) {
 
 		// Mismatched Mcp-Name: rejected, and never served from the
 		// task the header names instead of the one the body names.
+		// The SDK's transport-level header check knows how to extract a
+		// name only for its own three named methods, so the Mcp-Name
+		// half is enforced by the extension's handler; the JSON-RPC
+		// error is identical, but a handler-returned error carries HTTP
+		// 200 rather than the transport's 400.
 		env, code = postStatus(t, ts.URL, with(method, "Mcp-Name", "task_other"),
 			tasksBody(4, method, taskID, true, ""))
-		if code != http.StatusBadRequest || env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
-			t.Errorf("%s mismatched Mcp-Name: status %d error %+v, want 400 / %d",
+		if env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
+			t.Errorf("%s mismatched Mcp-Name: status %d error %+v, want %d",
 				method, code, env.Error, tasks.CodeHeaderMismatch)
+		}
+		if res := env.Result; len(res) > 0 {
+			t.Errorf("%s mismatched Mcp-Name served a result: %s", method, res)
 		}
 	}
 
 	// Absent headers at a header-mandating protocol version are
 	// themselves validation failures (SEP-2243 conformance table).
-	for _, key := range []string{"Mcp-Method", "Mcp-Name"} {
-		env, code := postStatus(t, ts.URL, drop(key), tasksBody(5, tasks.MethodGet, taskID, true, ""))
-		if code != http.StatusBadRequest || env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
-			t.Errorf("absent %s: status %d error %+v, want 400 / %d",
-				key, code, env.Error, tasks.CodeHeaderMismatch)
-		}
+	// Mcp-Method is caught by the SDK's transport check (HTTP 400);
+	// Mcp-Name by the extension's handler.
+	env, code := postStatus(t, ts.URL, drop("Mcp-Method"), tasksBody(5, tasks.MethodGet, taskID, true, ""))
+	if code != http.StatusBadRequest || env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
+		t.Errorf("absent Mcp-Method: status %d error %+v, want 400 / %d",
+			code, env.Error, tasks.CodeHeaderMismatch)
+	}
+	env = post(t, ts.URL, drop("Mcp-Name"), tasksBody(5, tasks.MethodGet, taskID, true, ""))
+	if env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
+		t.Errorf("absent Mcp-Name: error %+v, want %d", env.Error, tasks.CodeHeaderMismatch)
 	}
 }
 
@@ -235,15 +248,22 @@ func TestRoutingHeadersPreVersionTolerated(t *testing.T) {
 	taskID := createTask(t, ts, nil)["taskId"].(string)
 	pollUntil(t, ts, taskID, nil, "completed")
 
+	// A pre-2026-07-28 client carries the capability declaration alone:
+	// the per-request protocolVersion _meta is what marks a request as
+	// speaking the newer protocol.
+	body := fmt.Sprintf(
+		`{"jsonrpc":"2.0","id":2,"method":%q,"params":{"taskId":%q,"_meta":{%q:{"extensions":{%q:{}}}}}}`,
+		tasks.MethodGet, taskID, "io.modelcontextprotocol/clientCapabilities", tasks.ExtensionID)
+
 	cases := []struct {
 		name string
 		hdr  map[string]string
 	}{
 		{"no headers at all", nil},
-		{"older protocol version", map[string]string{"Mcp-Protocol-Version": "2026-06-30"}},
+		{"older protocol version", map[string]string{"Mcp-Protocol-Version": "2025-11-25"}},
 	}
 	for _, tc := range cases {
-		env := post(t, ts.URL, tc.hdr, tasksBody(2, tasks.MethodGet, taskID, true, ""))
+		env := post(t, ts.URL, tc.hdr, body)
 		if env.Error != nil {
 			t.Errorf("%s: error = %+v, want served", tc.name, env.Error)
 			continue
@@ -279,8 +299,11 @@ func TestTasksRequireRequestID(t *testing.T) {
 	}))
 
 	body := `{"jsonrpc":"2.0","method":"tasks/get","params":{"taskId":"task_x","_meta":` + capsMeta(true) + `}}`
-	env := post(t, ts.URL, tasksHeaders(tasks.MethodGet, "task_x"), body)
-	if env.Error == nil || env.Error.Code != -32600 {
-		t.Errorf("id-less tasks/get: error = %+v, want -32600", env.Error)
+	code, payload := postRaw(t, ts.URL, tasksHeaders(tasks.MethodGet, "task_x"), body)
+	if code != http.StatusBadRequest {
+		t.Errorf("id-less tasks/get: status %d, want 400", code)
+	}
+	if !strings.Contains(payload, "missing id") {
+		t.Errorf("id-less tasks/get: body %q, want it to name the missing id", payload)
 	}
 }

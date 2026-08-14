@@ -164,19 +164,24 @@ func TestStatelessMode(t *testing.T) {
 }
 
 // TestSDKNativeTasksCanary is the reconcile-with-upstream signal.
-// Kit now implements SEP-2663 itself (the tasks extension module plus
-// the WithTasks binding) precisely because go-sdk v1.7.0 ships no
-// tasks support and rejects every tasks/* method at the transport
-// layer with exactly HTTP 400 and a `... "tasks/*" unsupported` body.
-// This canary pins that rejection against a BARE SDK server — no kit
-// surface, no tasks interceptor in front — so that ANY change in how
-// a future SDK answers tasks/* (native SEP-2663 support, or the
-// per-tool opt-in shape of go-sdk PR #755) reddens it and forces the
-// kit-side extension to be reconciled with upstream: the moment the
-// SDK routes these methods itself, the standing rule against
-// duplicating SDK behavior applies again. A message tweak tripping it
-// is an acceptable false positive; staying silent through an SDK
-// upgrade that ships tasks is not.
+// Kit implements SEP-2663 itself (the tasks extension module plus the
+// WithTasks binding) because go-sdk v1.7.0 ships no tasks support of
+// its own: a server that has not registered the methods answers every
+// tasks/* call with HTTP 400 and a `... "tasks/*" unsupported` body.
+// The extension supplies them through the SDK's own custom-method
+// registration, so the SDK routes and validates them like any standard
+// method — what is missing upstream is the SEP's semantics, not a way
+// to dispatch them.
+//
+// This canary pins the unregistered rejection against a BARE SDK
+// server — no kit surface, no extension attached — so that ANY change
+// in how a future SDK answers tasks/* out of the box (native SEP-2663
+// support, or the per-tool opt-in shape of go-sdk PR #755) reddens it
+// and forces the kit-side extension to be reconciled with upstream:
+// the moment the SDK implements these methods itself, the standing
+// rule against duplicating SDK behavior applies again. A message tweak
+// tripping it is an acceptable false positive; staying silent through
+// an SDK upgrade that ships tasks is not.
 func TestSDKNativeTasksCanary(t *testing.T) {
 	bare := mcp.NewServer(&mcp.Implementation{Name: "canary", Version: "0"}, nil)
 	h := mcp.NewStreamableHTTPHandler(
