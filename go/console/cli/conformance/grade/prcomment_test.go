@@ -118,7 +118,8 @@ func TestUpsertCommentUpdate(t *testing.T) {
 // mapping table.
 func TestBuildCheckRunPayloadConclusion(t *testing.T) {
 	tests := []struct {
-		verdict, want string
+		verdict client.Verdict
+		want    string
 	}{
 		{client.VerdictPass, "success"},
 		{client.VerdictFail, "failure"},

@@ -106,7 +106,8 @@ func TestPackTooLarge(t *testing.T) {
 
 func TestLoadManifest(t *testing.T) {
 	dir := t.TempDir()
-	writeFixture(t, dir, "manifest.yaml", "schema_version: \"1\"\nscenario_id: t.load\nstory_path: s.yaml\n")
+	writeFixture(t, dir, "manifest.yaml",
+		"schema_version: \"1\"\nscenario_id: t.load\nstory_ref:\n  story_path: s.yaml\n")
 	m, err := LoadManifest(dir)
 	if err != nil {
 		t.Fatalf("LoadManifest: %v", err)
@@ -114,8 +115,8 @@ func TestLoadManifest(t *testing.T) {
 	if m.ScenarioID != "t.load" {
 		t.Fatalf("ScenarioID = %q, want t.load", m.ScenarioID)
 	}
-	if m.StoryPath != "s.yaml" {
-		t.Fatalf("StoryPath = %q, want s.yaml", m.StoryPath)
+	if m.StoryRef.StoryPath != "s.yaml" {
+		t.Fatalf("StoryRef.StoryPath = %q, want s.yaml", m.StoryRef.StoryPath)
 	}
 }
 

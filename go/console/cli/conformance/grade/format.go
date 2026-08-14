@@ -3,6 +3,7 @@ package grade
 import (
 	"fmt"
 	"io"
+	"time"
 
 	"hop.top/kit/go/conformance/client"
 )
@@ -40,8 +41,8 @@ func (r *gradeReport) RenderHuman(w io.Writer) error {
 	if r.RulesVersion != "" {
 		fmt.Fprintf(w, "  rules:       %s\n", r.RulesVersion)
 	}
-	if r.ScoredAt != "" {
-		fmt.Fprintf(w, "  scored at:   %s\n", r.ScoredAt)
+	if !r.ScoredAt.IsZero() {
+		fmt.Fprintf(w, "  scored at:   %s\n", r.ScoredAt.Format(time.RFC3339))
 	}
 	if r.Reason != "" {
 		fmt.Fprintf(w, "  reason:      %s\n", r.Reason)
@@ -49,22 +50,41 @@ func (r *gradeReport) RenderHuman(w io.Writer) error {
 	if len(r.Facets) > 0 {
 		fmt.Fprintln(w, "  factor coverage:")
 		for _, f := range r.Facets {
-			fmt.Fprintf(w, "    [%d]  %-12s  %s\n", f.Factor, f.Status, f.Description)
+			fmt.Fprintf(w, "    [%d]  %s\n", f.Factor, f.Status)
 		}
 	}
-	if len(r.Findings) > 0 {
+	if failed := failedAssertions(r.Assertions); len(failed) > 0 {
 		fmt.Fprintln(w, "  failing assertions:")
-		for _, fi := range r.Findings {
-			fmt.Fprintf(w, "    [%s]  %s  expected %s, observed %s\n",
-				fi.ID, fi.Kind, fi.Expected, fi.Observed)
+		for _, a := range failed {
+			fmt.Fprintf(w, "    [%s]  %s  %s", a.ID, a.Kind, a.Status)
+			if a.Expected != nil || a.Observed != nil {
+				fmt.Fprintf(w, "  expected %v, observed %v", a.Expected, a.Observed)
+			}
+			if a.Message != "" {
+				fmt.Fprintf(w, "  (%s)", a.Message)
+			}
+			fmt.Fprintln(w)
 		}
 	}
 	return nil
 }
 
+// failedAssertions filters the tier-3 trace down to entries that did
+// not pass. fail, ungradable, and not_implemented all warrant a line:
+// each explains a facet that is not green.
+func failedAssertions(as []client.Assertion) []client.Assertion {
+	var out []client.Assertion
+	for _, a := range as {
+		if a.Status != client.StatusPass {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // verdictMark returns a unicode glyph for the verdict that does not
 // rely on ANSI color. The bare glyph is enough signal in any TTY.
-func verdictMark(v string) string {
+func verdictMark(v client.Verdict) string {
 	switch v {
 	case client.VerdictPass:
 		return "OK"

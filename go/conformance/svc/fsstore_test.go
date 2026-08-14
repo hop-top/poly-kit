@@ -20,9 +20,9 @@ func writeFile(t *testing.T, p, body string) {
 
 func TestFSStore_GetMetaList(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "scenarios/acme/widget/2026.05.01/scenario.yaml"), "schema_version: \"1\"\n")
-	writeFile(t, filepath.Join(root, "scenarios/acme/widget/2026.05.07/scenario.yaml"), "schema_version: \"1\"\n")
-	writeFile(t, filepath.Join(root, "scenarios/acme/gadget/2026.05.01/scenario.yaml"), "schema_version: \"1\"\n")
+	writeFile(t, filepath.Join(root, "scenarios/acme/widget/2026.05.01/scenario.yaml"), string(validScenarioYAML("widget")))
+	writeFile(t, filepath.Join(root, "scenarios/acme/widget/2026.05.07/scenario.yaml"), string(validScenarioYAML("widget")))
+	writeFile(t, filepath.Join(root, "scenarios/acme/gadget/2026.05.01/scenario.yaml"), string(validScenarioYAML("gadget")))
 
 	store, err := NewFSStore(context.Background(), root)
 	if err != nil {
@@ -45,6 +45,12 @@ func TestFSStore_GetMetaList(t *testing.T) {
 	}
 	if sc.Version != "2026.05.01" {
 		t.Errorf("pinned version: got %q, want 2026.05.01", sc.Version)
+	}
+	if sc.Doc == nil || sc.Doc.ScenarioID != "widget" {
+		t.Errorf("Get must return the parsed scenario document; got %+v", sc.Doc)
+	}
+	if sc.Tier != 3 {
+		t.Errorf("tier must come from the parsed document: got %d, want 3", sc.Tier)
 	}
 
 	// Missing scenario.
@@ -83,7 +89,7 @@ func TestFSStore_GetMetaList(t *testing.T) {
 
 func TestFSStore_Prompt(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "scenarios/acme/widget/v1/scenario.yaml"), "schema_version: \"1\"\n")
+	writeFile(t, filepath.Join(root, "scenarios/acme/widget/v1/scenario.yaml"), string(validScenarioYAML("widget")))
 	writeFile(t, filepath.Join(root, "scenarios/acme/widget/v1/prompts/judge.md"), "be fair")
 
 	store, err := NewFSStore(context.Background(), root)
@@ -118,5 +124,36 @@ func TestFSStore_EmptyRoot(t *testing.T) {
 	ns, _ := store.Namespaces(context.Background())
 	if len(ns) != 0 {
 		t.Errorf("expected no namespaces, got %v", ns)
+	}
+}
+
+// TestFSStore_RefusesInvalidScenario pins the boot contract: a bundle
+// containing a scenario the grader cannot honestly grade must refuse
+// to start, not silently serve it.
+func TestFSStore_RefusesInvalidScenario(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "scenarios/acme/widget/v1/scenario.yaml"),
+		"schema_version: \"1\"\n") // parses, fails validation
+	if _, err := NewFSStore(context.Background(), root); err == nil {
+		t.Fatal("NewFSStore accepted an invalid scenario; boot must refuse")
+	}
+
+	root2 := t.TempDir()
+	writeFile(t, filepath.Join(root2, "scenarios/acme/widget/v1/scenario.yaml"),
+		"not: [valid\n") // does not even parse
+	if _, err := NewFSStore(context.Background(), root2); err == nil {
+		t.Fatal("NewFSStore accepted unparseable YAML; boot must refuse")
+	}
+}
+
+// TestFSStore_RefusesScenarioIDMismatch pins the layout consistency
+// check: the document's scenario_id must match its directory id.
+func TestFSStore_RefusesScenarioIDMismatch(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "scenarios/acme/widget/v1/scenario.yaml"),
+		string(validScenarioYAML("gadget")))
+	_, err := NewFSStore(context.Background(), root)
+	if err == nil {
+		t.Fatal("NewFSStore accepted scenario_id/directory mismatch")
 	}
 }
