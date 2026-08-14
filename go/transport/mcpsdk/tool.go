@@ -19,6 +19,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	taskext "mcpext.example/tasks"
 
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -60,9 +61,16 @@ func toolFor(leaf *cmdsurface.Leaf) *mcp.Tool {
 // that is unknown or no longer enabled is a protocol error; policy
 // blocks, runner failures, and non-zero exit codes are isError
 // results so the calling model can read and react to them.
-func toolHandler(b *cmdsurface.Bridge, leaf *cmdsurface.Leaf) mcp.ToolHandler {
+//
+// When tb names the leaf task-eligible and the client declares the
+// tasks extension for the request, the call diverts onto the SEP-2663
+// task path (after the auth gate, which applies to every path):
+// destructive policy and confirmation are enforced at task creation,
+// and execution detaches onto the Runner via Bridge.Invoke.
+func toolHandler(b *cmdsurface.Bridge, leaf *cmdsurface.Leaf, tb *taskBinding) mcp.ToolHandler {
 	path := append([]string(nil), leaf.Path...)
 	cls := leaf.Class
+	name := toolName(leaf.Path)
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var hdr http.Header
 		if req.Extra != nil {
@@ -70,6 +78,9 @@ func toolHandler(b *cmdsurface.Bridge, leaf *cmdsurface.Leaf) mcp.ToolHandler {
 		}
 		if cls.AuthRequired && hdr.Get("Authorization") == "" {
 			return errorResult("authentication required"), nil
+		}
+		if tb != nil && tb.eligible[name] && taskext.ClientDeclares(req) {
+			return tb.invokeAsTask(ctx, b, leaf, req, hdr)
 		}
 		if cls.RequiresConfirmation && hdr.Get("X-Confirm-Token") == "" {
 			return errorResult("confirmation required"), nil

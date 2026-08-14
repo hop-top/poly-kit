@@ -32,6 +32,7 @@ type config struct {
 	serverOptions *mcp.ServerOptions
 	configurators []func(*mcp.Server)
 	toolDecorator func(*cmdsurface.Leaf, *mcp.Tool)
+	tasks         *TasksConfig
 }
 
 // Option configures the surface built by NewServer / Handler / Mount.
@@ -127,9 +128,10 @@ func newConfig(opts ...Option) config {
 // SDK tool add/remove calls, which in turn make connected sessions
 // receive tools/list_changed notifications (SDK behavior).
 type Surface struct {
-	b   *cmdsurface.Bridge
-	cfg config
-	srv *mcp.Server
+	b     *cmdsurface.Bridge
+	cfg   config
+	srv   *mcp.Server
+	tasks *taskBinding // nil unless WithTasks
 
 	mu         sync.Mutex
 	registered map[string]bool // dotted tool name -> currently added
@@ -155,9 +157,15 @@ func New(b *cmdsurface.Bridge, opts ...Option) (*Surface, error) {
 		so.Instructions = cfg.instructions
 	}
 
+	tb, err := newTaskBinding(b, cfg.tasks, so)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Surface{
-		b:   b,
-		cfg: cfg,
+		b:     b,
+		cfg:   cfg,
+		tasks: tb,
 		srv: mcp.NewServer(
 			&mcp.Implementation{Name: cfg.serverName, Version: cfg.serverVersion},
 			so,
@@ -165,6 +173,9 @@ func New(b *cmdsurface.Bridge, opts ...Option) (*Surface, error) {
 		registered: make(map[string]bool),
 	}
 	s.Sync()
+	if tb != nil {
+		tb.ext.Attach(s.srv)
+	}
 	for _, fn := range cfg.configurators {
 		fn(s.srv)
 	}
@@ -190,7 +201,7 @@ func (s *Surface) Sync() {
 		enabled := leaf.Enabled[cmdsurface.SurfaceMCP]
 		switch {
 		case enabled && !s.registered[name]:
-			s.srv.AddTool(s.toolFor(leaf), toolHandler(s.b, leaf))
+			s.srv.AddTool(s.toolFor(leaf), toolHandler(s.b, leaf, s.tasks))
 			s.registered[name] = true
 		case !enabled && s.registered[name]:
 			s.srv.RemoveTools(name)
@@ -231,14 +242,22 @@ func (s *Surface) Hide(pattern string) *Surface {
 // streamable HTTP transport (stateful sessions by default; see
 // WithStateless). All protocol handling — version negotiation,
 // session lifecycle, message parsing, error shapes — is the SDK's.
+// With WithTasks enabled, the SDK handler is wrapped by the tasks
+// extension's handler, which serves exactly the tasks/get, update and
+// cancel methods the SDK cannot route and passes everything else
+// through untouched.
 func (s *Surface) Handler() http.Handler {
-	return mcp.NewStreamableHTTPHandler(
+	h := http.Handler(mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return s.srv },
 		&mcp.StreamableHTTPOptions{
 			Stateless:    s.cfg.stateless,
 			JSONResponse: s.cfg.jsonResponse,
 		},
-	)
+	))
+	if s.tasks != nil {
+		h = s.tasks.ext.Handler(h)
+	}
+	return h
 }
 
 // Mount registers the streamable HTTP handler on the router at the
