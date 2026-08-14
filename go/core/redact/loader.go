@@ -21,10 +21,12 @@ const embedSentinel = "embed:"
 
 // gitleaksFile mirrors the subset of the gitleaks TOML schema we care
 // about. Per-rule [[rules.allowlists]] are intentionally NOT modeled —
-// gitleaks allowlists are regex-based and the redact engine's allowlist
-// is substring-only by design (see Allow + Rule.allowlist). Tools that
-// need to whitelist common test fixtures (sk-test, AKIA...EXAMPLE) do so
-// via Redactor.Allow().
+// gitleaks allowlists are regex-based and the redact engine's allowlists
+// are literal by design (see AllowExact + Rule.exactAllowlist). Dropping
+// them loads the corpus stricter than upstream intends: documented
+// samples like AKIAIOSFODNN7EXAMPLE are redacted rather than exempted.
+// Tools that need those fixtures readable opt in via
+// Redactor.AllowExact().
 type gitleaksFile struct {
 	Rules []gitleaksRule `toml:"rules"`
 }
@@ -102,12 +104,15 @@ type presidioFile struct {
 }
 
 type presidioRule struct {
-	ID            string   `toml:"id"`
-	Description   string   `toml:"description"`
-	Pattern       string   `toml:"pattern"`
-	Replacement   string   `toml:"replacement"`
-	Allowlist     []string `toml:"allowlist"`
-	MinConfidence float64  `toml:"min_confidence"`
+	ID          string `toml:"id"`
+	Description string `toml:"description"`
+	Pattern     string `toml:"pattern"`
+	Replacement string `toml:"replacement"`
+	// AllowlistExact is compared against the whole match. The former
+	// substring-matched `allowlist` key was removed: a match embedding an
+	// entry escaped redaction entirely.
+	AllowlistExact []string `toml:"allowlist_exact"`
+	MinConfidence  float64  `toml:"min_confidence"`
 }
 
 // LoadPresidio parses the vendored Presidio PII TOML at path. Same
@@ -144,11 +149,11 @@ func LoadPresidio(path string) ([]Rule, error) {
 			repl = "<" + pr.ID + ">"
 		}
 		out = append(out, Rule{
-			id:          pr.ID,
-			description: pr.Description,
-			re:          re,
-			replacement: repl,
-			allowlist:   pr.Allowlist,
+			id:             pr.ID,
+			description:    pr.Description,
+			re:             re,
+			replacement:    repl,
+			exactAllowlist: pr.AllowlistExact,
 		})
 	}
 	return out, nil
