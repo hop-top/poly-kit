@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"hop.top/kit/go/transport/cmdsurface"
 )
 
@@ -161,21 +163,26 @@ func TestStatelessMode(t *testing.T) {
 	}
 }
 
-// TestTasksMethodsUnsupported pins the honest gap: go-sdk v1.7.0 has
-// no server-side tasks implementation and rejects every tasks method
-// with exactly HTTP 400 and a `... "tasks/*" unsupported` body. The
-// assertion is deliberately pinned to that exact behavior so that ANY
-// change in how a future SDK answers tasks/* — full support, or
-// recognize-but-reject for tools without task opt-in — reddens this
-// test and forces the tasks integration to be revisited. A message
-// tweak tripping it is an acceptable false positive; staying silent
-// through an SDK upgrade that ships tasks is not.
-func TestTasksMethodsUnsupported(t *testing.T) {
-	b := cmdsurface.New(newTestTree())
-	h, err := Handler(b, WithStateless(), WithJSONResponse())
-	if err != nil {
-		t.Fatalf("Handler: %v", err)
-	}
+// TestSDKNativeTasksCanary is the reconcile-with-upstream signal.
+// Kit now implements SEP-2663 itself (the tasks extension module plus
+// the WithTasks binding) precisely because go-sdk v1.7.0 ships no
+// tasks support and rejects every tasks/* method at the transport
+// layer with exactly HTTP 400 and a `... "tasks/*" unsupported` body.
+// This canary pins that rejection against a BARE SDK server — no kit
+// surface, no tasks interceptor in front — so that ANY change in how
+// a future SDK answers tasks/* (native SEP-2663 support, or the
+// per-tool opt-in shape of go-sdk PR #755) reddens it and forces the
+// kit-side extension to be reconciled with upstream: the moment the
+// SDK routes these methods itself, the standing rule against
+// duplicating SDK behavior applies again. A message tweak tripping it
+// is an acceptable false positive; staying silent through an SDK
+// upgrade that ships tasks is not.
+func TestSDKNativeTasksCanary(t *testing.T) {
+	bare := mcp.NewServer(&mcp.Implementation{Name: "canary", Version: "0"}, nil)
+	h := mcp.NewStreamableHTTPHandler(
+		func(*http.Request) *mcp.Server { return bare },
+		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true},
+	)
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 
@@ -184,17 +191,18 @@ func TestTasksMethodsUnsupported(t *testing.T) {
 		body   string
 	}{
 		{"tasks/get", `{"jsonrpc":"2.0","id":1,"method":"tasks/get","params":{"taskId":"t1"}}`},
-		{"tasks/list", `{"jsonrpc":"2.0","id":2,"method":"tasks/list"}`},
+		{"tasks/update", `{"jsonrpc":"2.0","id":2,"method":"tasks/update","params":{"taskId":"t1","inputResponses":{}}}`},
 		{"tasks/cancel", `{"jsonrpc":"2.0","id":3,"method":"tasks/cancel","params":{"taskId":"t1"}}`},
-		{"tasks/result", `{"jsonrpc":"2.0","id":4,"method":"tasks/result","params":{"taskId":"t1"}}`},
+		{"tasks/list", `{"jsonrpc":"2.0","id":4,"method":"tasks/list"}`},
+		{"tasks/result", `{"jsonrpc":"2.0","id":5,"method":"tasks/result","params":{"taskId":"t1"}}`},
 	} {
 		resp, payload := rawPost(t, srv.URL, tc.body)
 		if resp.StatusCode != http.StatusBadRequest {
-			t.Errorf("%s: status = %d, want 400 — SDK tasks/* behavior changed; revisit tasks support (payload: %s)",
+			t.Errorf("%s: status = %d, want 400 — the SDK now answers tasks/* itself; reconcile the kit-side extension with upstream (payload: %s)",
 				tc.method, resp.StatusCode, payload)
 		}
 		if !strings.Contains(payload, "unsupported") {
-			t.Errorf("%s: payload = %q, want to contain %q — SDK tasks/* behavior changed; revisit tasks support",
+			t.Errorf("%s: payload = %q, want to contain %q — the SDK now answers tasks/* itself; reconcile the kit-side extension with upstream",
 				tc.method, payload, "unsupported")
 		}
 	}
