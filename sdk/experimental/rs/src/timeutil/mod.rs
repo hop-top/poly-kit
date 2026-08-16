@@ -15,16 +15,12 @@
 //! `chrono-english`. The deterministic forms are parsed natively and tried
 //! first; see the seam table below.
 //!
-//! # Calendar arithmetic: clamping vs. normalising
+//! # Calendar arithmetic: month overflow clamps
 //!
-//! **This is a deliberate, documented divergence from the Go implementation.**
+//! Adding a month to a day-of-month that does not exist in the target month
+//! *clamps* to that month's last valid day: `2026-01-31` plus one month is
+//! `2026-02-28`, not `2026-03-03`.
 //!
-//! Go's `time.AddDate` *normalises* month overflow by rolling forward into the
-//! next month: `2026-01-31` plus one month yields `2026-03-03`, because
-//! "February 31st" is normalised. chrono's [`Months`] arithmetic instead
-//! *clamps* to the last valid day of the target month, yielding `2026-02-28`.
-//!
-//! This port keeps **chrono's clamping** behaviour rather than emulating Go.
 //! Rationale: for a date utility whose inputs are user-facing phrases like
 //! `"in 1 month"`, landing in the *named* target month is the least surprising
 //! outcome. A user who writes `"+1M"` on January 31st means "some time in
@@ -32,10 +28,13 @@
 //! bug from the caller's point of view. Clamping is also what most calendar
 //! libraries and human intuition converge on.
 //!
+//! Go's `time.AddDate` normalises rather than clamps, so the canonical Go
+//! implementation is being changed to clamp as well — the two runtimes agree
+//! by construction, not by coincidence. This is a behavioural change on the
+//! Go side, not a Rust-only divergence.
+//!
 //! The behaviour is pinned by [`tests::month_arithmetic_clamps_it_does_not_normalise`]
-//! so it cannot drift silently. See the port report for the parity question:
-//! callers depending on Go's exact overflow behaviour will observe different
-//! results only for day-of-month values that do not exist in the target month.
+//! so it cannot drift silently.
 //!
 //! # Supported formats
 //!
