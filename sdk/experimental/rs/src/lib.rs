@@ -33,3 +33,6 @@ pub mod sqlstore;
 
 #[cfg(feature = "telemetry")]
 pub mod telemetry;
+
+#[cfg(feature = "timeutil")]
+pub mod timeutil;
