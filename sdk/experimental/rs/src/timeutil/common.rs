@@ -10,7 +10,7 @@ use super::{Direction, TimeError, Unit};
 ///
 /// Sub-day units use exact [`Duration`] arithmetic; day and week units use
 /// [`Days`]; month and year units use [`Months`], which **clamps** overflow
-/// (see the module-level docs for why this diverges from Go's `AddDate`).
+/// (see the module-level docs for why clamping is the chosen semantics).
 pub(crate) fn shift(
     base: DateTime<Utc>,
     n: u32,
@@ -228,11 +228,35 @@ pub(crate) fn parse_natural(s: &str, now: DateTime<Utc>) -> Result<DateTime<Utc>
     if s.contains(' ') && looks_like_date(s) {
         if let Ok(parsed) = parse_date_string(s, now, Dialect::Us) {
             if parsed != now {
-                return Ok(parsed);
+                return Ok(truncate_bare_week_phrase(s, parsed));
             }
         }
     }
     parse_iso(s)
+}
+
+/// Truncate `"next week"` / `"last week"` to midnight, matching Go.
+///
+/// `go-naturaldate` resolves a bare week phrase to the start of that day,
+/// while `interim` carries the reference time-of-day forward — so with a
+/// reference of 12:00, Go yields `00:00` and `interim` yields `12:00` for
+/// the same calendar date. Every other phrase `interim` handles
+/// (`"next monday"`, `"last friday"`, `"1 May 2026"`) already lands on
+/// midnight, so this is deliberately scoped to the bare week phrases
+/// rather than applied as a blanket truncation: flattening every natural
+/// result would also flatten the day-offset forms that are *supposed* to
+/// preserve the time of day (`"3 days ago"` from 12:00 is 12:00 in both
+/// implementations).
+fn truncate_bare_week_phrase(s: &str, parsed: DateTime<Utc>) -> DateTime<Utc> {
+    let lower = s.trim().to_lowercase();
+    if matches!(lower.as_str(), "next week" | "last week") {
+        return parsed
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .map(|naive| naive.and_utc())
+            .unwrap_or(parsed);
+    }
+    parsed
 }
 
 /// Resolve a weekday name to its [`chrono::Weekday`], case-insensitively.

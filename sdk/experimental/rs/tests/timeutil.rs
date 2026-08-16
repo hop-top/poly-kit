@@ -128,22 +128,17 @@ fn parse_until_table() {
     }
 }
 
-/// `"next week"` is a documented parity gap: `go-naturaldate` truncates to
-/// midnight, whereas `interim` carries the reference time-of-day forward.
-/// The calendar date agrees with Go; only the wall-clock time differs.
+/// `"next week"` matches Go exactly, date *and* time.
+///
+/// `interim` carries the reference time-of-day forward on a bare week
+/// phrase where `go-naturaldate` truncates to midnight, so the result is
+/// truncated back to `00:00` to keep the two implementations identical.
+/// Asserting the full instant, not just `date_naive()`, is the point: a
+/// weaker assertion would let the divergence silently return.
 #[test]
-fn parse_until_next_week_date_matches_go_time_does_not() {
+fn parse_until_next_week_matches_go_exactly() {
     let got = parse_until_at("next week", now()).unwrap();
-    assert_eq!(
-        got.date_naive(),
-        at(2026, 4, 26, 0, 0, 0).date_naive(),
-        "date should match the Go expectation"
-    );
-    assert_eq!(
-        got,
-        at(2026, 4, 26, 12, 0, 0),
-        "interim preserves time-of-day where go-naturaldate truncates to midnight"
-    );
+    assert_eq!(got, at(2026, 4, 26, 0, 0, 0));
 }
 
 #[test]
@@ -276,21 +271,12 @@ fn parse_since_table() {
     }
 }
 
-/// `"last week"` is the mirror of the `"next week"` gap above: the calendar
-/// date matches Go, the wall-clock time does not.
+/// The mirror of `parse_until_next_week_matches_go_exactly`: `"last week"`
+/// is truncated to midnight too, so both directions match Go exactly.
 #[test]
-fn parse_since_last_week_date_matches_go_time_does_not() {
+fn parse_since_last_week_matches_go_exactly() {
     let got = parse_since_at("last week", now()).unwrap();
-    assert_eq!(
-        got.date_naive(),
-        at(2026, 4, 12, 0, 0, 0).date_naive(),
-        "date should match the Go expectation"
-    );
-    assert_eq!(
-        got,
-        at(2026, 4, 12, 12, 0, 0),
-        "interim preserves time-of-day where go-naturaldate truncates to midnight"
-    );
+    assert_eq!(got, at(2026, 4, 12, 0, 0, 0));
 }
 
 #[test]
