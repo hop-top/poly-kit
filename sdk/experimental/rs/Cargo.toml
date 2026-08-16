@@ -12,6 +12,7 @@ uri = ["dep:hop-top-cite"]
 output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep:comfy-table"]
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
+timeutil = ["dep:chrono", "dep:interim", "dep:thiserror"]
 telemetry = [
     "dep:tokio",
     "dep:reqwest",
@@ -27,6 +28,14 @@ telemetry = [
 
 [dependencies]
 hop-top-cite = { version = "0.1.0", optional = true }
+chrono = { version = "0.4", default-features = false, features = [
+    "std",
+    "clock",
+], optional = true }
+interim = { version = "0.2", default-features = false, features = [
+    "std",
+    "chrono_0_4",
+], optional = true }
 reqwest = { version = "0.12", features = ["json"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
