@@ -103,17 +103,18 @@ r.register(htmlFormatter);
 
 ### Column metadata
 
-TS lacks struct tags; pass an explicit `ColumnSpec[]` list to `dispatch`
-when you want headers/keys to differ or want priority ordering for
-table layout:
+Go reads column order off struct field declaration order via `table:""`
+tags. TS has no struct tags, so pass an explicit `ColumnSpec[]` list to
+`dispatch` to pin **which columns appear and in what order** — the list
+is what payload-shaped SDKs use in place of Go's field order:
 
 ```ts
 import type { ColumnSpec } from '@hop-top/kit/output';
 
 const userCols: ColumnSpec[] = [
-  { header: 'ID',    key: 'id',    priority: 9 },
-  { header: 'Name',  key: 'name',  priority: 8 },
-  { header: 'Notes', key: 'notes', priority: 2 },
+  { header: 'id',    key: 'id',    priority: 9 },
+  { header: 'name',  key: 'name',  priority: 8 },
+  { header: 'notes', key: 'notes', priority: 2 },
 ];
 
 await dispatch(cmd, users, { columns: userCols });
@@ -121,6 +122,30 @@ await dispatch(cmd, users, { columns: userCols });
 
 When no `columns` is passed, headers are derived from the first row's
 own enumerable keys.
+
+### Column ordering
+
+1. **Default order.** With a `ColumnSpec[]` and no `--cols`, column order
+   and headers come from the list, in list order. Payload key order is the
+   fallback only when no list was supplied.
+2. **`--cols` precedence.** `--cols` reorders as well as selects:
+   `--cols status,name` renders `status` then `name`, whatever the list
+   says. Same rule on the no-schema fallback path.
+3. **`header` == `key`.** The two are the same name: it is the label, the
+   value matched against `--cols`, and the property read off the row. Go
+   cannot express a split through `table:""` tags, so no SDK offers one.
+   `key` is retained for source compatibility and must equal `header`.
+4. **Empty payload.** Zero rows emits nothing — not even a bare header
+   row. Emptiness is decided by row count, never by header count.
+5. **`priority`.** Accepted and stored, currently ignored. Hide-on-overflow
+   is implemented in Go only; the payload SDKs will port it separately.
+
+Capability differences against the Go reference:
+
+| Capability | Go | ts / rs / py / php |
+|---|---|---|
+| `priority` hide-on-overflow | yes | accepted, ignored |
+| json/yaml key order | lost (`structToMap`) | follows `ColumnSpec` order |
 
 ### Backward compatibility
 
