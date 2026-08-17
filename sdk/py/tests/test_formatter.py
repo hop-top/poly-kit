@@ -27,7 +27,7 @@ def test_option_spec_frozen():
 
 
 def test_column_spec_default_priority():
-    c = ColumnSpec(header="Name", key="name")
+    c = ColumnSpec(header="name", key="name")
     assert c.priority == 5
 
 

@@ -8,15 +8,19 @@ Mirrors hop.top/kit/go/console/output/text.go byte-for-byte:
 - ``style=paragraph``: ``Record N:\\n`` header + ``  HEADER: VALUE\\n``
   lines; blank line between records.
 
-Empty list → no output. Honors ``cols``. Zero deps.
+Zero rows → no output. ``columns`` sets field order/names; ``cols``
+reorders + selects. Zero deps.
 """
 
 from __future__ import annotations
 
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 from hop_top_kit.output.formatter import OptionSpec
 from hop_top_kit.output.projection import filter_columns, to_rows
+
+if TYPE_CHECKING:
+    from hop_top_kit.output.formatter import ColumnSpec
 
 _STYLE_KV = "kv"
 _STYLE_LINES = "lines"
@@ -50,9 +54,11 @@ class TextFormatter:
         data: Any,
         opts: dict[str, Any],
         cols: list[str],
+        columns: list[ColumnSpec] | None = None,
     ) -> None:
-        headers, rows = to_rows(data)
-        if not headers:
+        headers, rows = to_rows(data, columns)
+        # Emptiness is decided by ROW count, never header count.
+        if not rows:
             return
         if cols:
             headers, rows = filter_columns(headers, rows, cols)
