@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace HopTop\Kit\Tests\Output;
 
 use HopTop\Kit\Output\Dispatcher;
-use HopTop\Kit\Output\Formatter\ColumnSpec;
 use HopTop\Kit\Output\Formatter\Builtin\JsonFormatter;
 use HopTop\Kit\Output\Formatter\Builtin\TableFormatter;
 use HopTop\Kit\Output\Formatter\Builtin\YamlFormatter;
+use HopTop\Kit\Output\Formatter\ColumnSpec;
+use HopTop\Kit\Output\Formatter\Projection;
 use HopTop\Kit\Output\Registry;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
@@ -246,5 +247,76 @@ class DispatcherTest extends TestCase
         $output = new BufferedOutput();
         Dispatcher::dispatch($input, $output, [], columns: $schema, registry: $registry);
         $this->assertSame('', $output->fetch());
+    }
+
+    /**
+     * The precedence rule lives in exactly one place now, so pin it
+     * directly rather than only through the formatters.
+     */
+    public function testResolveEffectiveColsPrecedence(): void
+    {
+        $schema = [ColumnSpec::of('name', 'name'), ColumnSpec::of('count', 'count')];
+
+        // Rule 2: --cols wins verbatim, order and all.
+        $this->assertSame(
+            ['count', 'name'],
+            Projection::resolveEffectiveCols(['count', 'name'], $schema),
+        );
+        // Rule 1: no --cols → ColumnSpec order.
+        $this->assertSame(
+            ['name', 'count'],
+            Projection::resolveEffectiveCols([], $schema),
+        );
+        // Fallback: neither source → empty, meaning "infer from payload".
+        $this->assertSame([], Projection::resolveEffectiveCols([], null));
+        $this->assertSame([], Projection::resolveEffectiveCols([], []));
+        // --cols still wins when there is no schema to outrank.
+        $this->assertSame(['a'], Projection::resolveEffectiveCols(['a'], null));
+    }
+
+    /**
+     * Formatter::render() is public API. Collapsing precedence in dispatch
+     * means its signature never changed, so a third-party formatter written
+     * against the original four-parameter shape still satisfies the
+     * interface AND receives correctly ordered columns.
+     */
+    public function testThirdPartyFormatterKeepsOriginalSignatureAndGetsOrderedCols(): void
+    {
+        $spy = new class implements \HopTop\Kit\Output\Formatter\Formatter {
+            /** @var list<string> */
+            public array $seen = [];
+
+            public function key(): string
+            {
+                return 'spy';
+            }
+
+            public function extensions(): array
+            {
+                return [];
+            }
+
+            public function options(): array
+            {
+                return [];
+            }
+
+            public function render(mixed $writer, mixed $data, array $opts, array $cols): void
+            {
+                $this->seen = $cols;
+            }
+        };
+        $registry = new Registry();
+        $registry->register($spy);
+
+        Dispatcher::dispatch(
+            $this->input(['--format' => 'spy']),
+            new BufferedOutput(),
+            [['count' => 1, 'name' => 'alpha']],
+            columns: [ColumnSpec::of('name', 'name'), ColumnSpec::of('count', 'count')],
+            registry: $registry,
+        );
+
+        $this->assertSame(['name', 'count'], $spy->seen);
     }
 }

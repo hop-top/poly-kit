@@ -105,7 +105,16 @@ final class Dispatcher
 
             // The schema is not merely a validation gate: it is the default
             // column order and header source when the user passed no --cols.
-            $formatter->render($writer, $data, $opts, $cols, $columns ?? []);
+            // Collapse both sources into one ordered list here so the
+            // precedence rule lives in exactly one place and Formatter's
+            // public signature stays put — third-party formatters pick up
+            // correct ordering without changing their render().
+            $formatter->render(
+                $writer,
+                $data,
+                $opts,
+                Projection::resolveEffectiveCols($cols, $columns),
+            );
         } finally {
             $close();
         }
@@ -279,7 +288,10 @@ final class Dispatcher
         ?array $columns,
     ): void {
         $rows = Projection::normalize($data);
-        $resolved = Projection::resolveColumns($rows, [], $columns ?? []);
+        $resolved = Projection::resolveColumns(
+            $rows,
+            Projection::resolveEffectiveCols([], $columns),
+        );
         foreach ($rows as $row) {
             $line = preg_replace_callback(
                 '/\{(\*|[a-zA-Z0-9_.-]+)\}/',

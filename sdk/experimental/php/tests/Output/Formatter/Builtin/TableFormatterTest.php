@@ -6,6 +6,7 @@ namespace HopTop\Kit\Tests\Output\Formatter\Builtin;
 
 use HopTop\Kit\Output\Formatter\Builtin\TableFormatter;
 use HopTop\Kit\Output\Formatter\ColumnSpec;
+use HopTop\Kit\Output\Formatter\Projection;
 use PHPUnit\Framework\TestCase;
 
 class TableFormatterTest extends TestCase
@@ -14,7 +15,14 @@ class TableFormatterTest extends TestCase
     {
         $resolved = array_merge(['header' => true], $opts);
         $w = fopen('php://memory', 'w+b');
-        (new TableFormatter())->render($w, $data, $resolved, $cols, $columns);
+        // Mirror the Dispatcher: --cols and the ColumnSpec list are collapsed
+        // into one ordered list before the formatter ever sees them.
+        (new TableFormatter())->render(
+            $w,
+            $data,
+            $resolved,
+            Projection::resolveEffectiveCols($cols, $columns),
+        );
         rewind($w);
         return stream_get_contents($w) ?: '';
     }

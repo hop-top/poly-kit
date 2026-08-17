@@ -6,6 +6,7 @@ namespace HopTop\Kit\Tests\Output\Formatter\Builtin;
 
 use HopTop\Kit\Output\Formatter\Builtin\JsonFormatter;
 use HopTop\Kit\Output\Formatter\ColumnSpec;
+use HopTop\Kit\Output\Formatter\Projection;
 use PHPUnit\Framework\TestCase;
 
 class JsonFormatterTest extends TestCase
@@ -15,7 +16,9 @@ class JsonFormatterTest extends TestCase
         $f = new JsonFormatter();
         $resolved = array_merge(['indent' => 2], $opts);
         $w = fopen('php://memory', 'w+b');
-        $f->render($w, $data, $resolved, $cols, $columns);
+        // Mirror the Dispatcher: --cols and the ColumnSpec list are collapsed
+        // into one ordered list before the formatter ever sees them.
+        $f->render($w, $data, $resolved, Projection::resolveEffectiveCols($cols, $columns));
         rewind($w);
         return stream_get_contents($w) ?: '';
     }

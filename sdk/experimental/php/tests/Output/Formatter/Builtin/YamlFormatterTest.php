@@ -6,6 +6,7 @@ namespace HopTop\Kit\Tests\Output\Formatter\Builtin;
 
 use HopTop\Kit\Output\Formatter\Builtin\YamlFormatter;
 use HopTop\Kit\Output\Formatter\ColumnSpec;
+use HopTop\Kit\Output\Formatter\Projection;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
@@ -15,7 +16,14 @@ class YamlFormatterTest extends TestCase
     {
         $resolved = array_merge(['inline' => 4], $opts);
         $w = fopen('php://memory', 'w+b');
-        (new YamlFormatter())->render($w, $data, $resolved, $cols, $columns);
+        // Mirror the Dispatcher: --cols and the ColumnSpec list are collapsed
+        // into one ordered list before the formatter ever sees them.
+        (new YamlFormatter())->render(
+            $w,
+            $data,
+            $resolved,
+            Projection::resolveEffectiveCols($cols, $columns),
+        );
         rewind($w);
         return stream_get_contents($w) ?: '';
     }

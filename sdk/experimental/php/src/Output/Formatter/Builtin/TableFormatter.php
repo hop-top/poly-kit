@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace HopTop\Kit\Output\Formatter\Builtin;
 
-use HopTop\Kit\Output\Formatter\ColumnSpec;
 use HopTop\Kit\Output\Formatter\Formatter;
 use HopTop\Kit\Output\Formatter\OptionSpec;
 use HopTop\Kit\Output\Formatter\OptionType;
@@ -18,7 +17,8 @@ use RuntimeException;
  * Output: header line, padded-column body, columns space-separated.
  * No borders, no Unicode — keeps output pipe-friendly and grep-friendly.
  *
- * Column order: --cols, else the ColumnSpec list, else payload key order.
+ * Column order arrives pre-resolved in $cols (--cols, else the caller's
+ * ColumnSpec order); payload key order is the fallback when it is empty.
  * Zero rows emits nothing at all — the header row is suppressed along with
  * the body, because emptiness is a property of the row count and not of
  * whether a header source happened to be supplied.
@@ -54,22 +54,22 @@ final class TableFormatter implements Formatter
     }
 
     /**
-     * @param list<string>     $cols
-     * @param list<ColumnSpec> $columns
+     * @param list<string> $cols resolved column projection
      */
-    public function render(mixed $writer, mixed $data, array $opts, array $cols, array $columns = []): void
+    public function render(mixed $writer, mixed $data, array $opts, array $cols): void
     {
         $header = !array_key_exists('header', $opts) || $opts['header'] !== false;
         $rows = Projection::normalize($data);
 
         // Zero rows emits nothing — not even a bare header row. Guarded on
-        // ROW count, never on header count: --cols and the ColumnSpec list
-        // both supply headers for payloads that have no rows at all.
+        // ROW count, never on column count: $cols is populated for row-less
+        // payloads too, whether from --cols or from a ColumnSpec list, and
+        // a column-count guard would emit a lone header line for both.
         if ($rows === []) {
             return;
         }
 
-        $columns = Projection::resolveColumns($rows, $cols, $columns);
+        $columns = Projection::resolveColumns($rows, $cols);
 
         // Pre-compute string cells + per-column widths.
         $cellRows = [];
