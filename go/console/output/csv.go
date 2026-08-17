@@ -1,10 +1,12 @@
 package output
 
 import (
-	"encoding/csv"
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // csvFormatter renders structured data as CSV using `table` tags as the
@@ -95,22 +97,18 @@ func (csvFormatter) Render(w io.Writer, data any, opts Options, cols []string) e
 		return fmt.Errorf("option %q: delimiter must be exactly one character", "delimiter")
 	}
 
-	cw := csv.NewWriter(w)
-	cw.Comma = delim[0]
-	cw.UseCRLF = opts.GetBool("crlf")
-
-	if opts.GetBool("quote-all") {
-		// encoding/csv has no quote-all toggle; do it manually with a
-		// pre-quoted pass-through writer below.
-		return renderCSVQuoteAll(w, columns, elems, cw.Comma, cw.UseCRLF, opts.GetBool("no-header"))
+	eol := "\n"
+	if opts.GetBool("crlf") {
+		eol = "\r\n"
 	}
+	quoteAll := opts.GetBool("quote-all")
 
 	if !opts.GetBool("no-header") {
 		header := make([]string, len(columns))
 		for i, c := range columns {
 			header[i] = c.header
 		}
-		if err := cw.Write(header); err != nil {
+		if err := writeCSVRow(w, header, delim[0], eol, quoteAll); err != nil {
 			return err
 		}
 	}
@@ -119,69 +117,62 @@ func (csvFormatter) Render(w io.Writer, data any, opts Options, cols []string) e
 		for i, c := range columns {
 			row[i] = fmt.Sprintf("%v", e.Field(c.fieldIdx).Interface())
 		}
-		if err := cw.Write(row); err != nil {
-			return err
-		}
-	}
-	cw.Flush()
-	return cw.Error()
-}
-
-// renderCSVQuoteAll writes every field wrapped in double quotes,
-// regardless of whether encoding/csv would otherwise quote it.
-// Internal quotes are doubled per RFC 4180.
-func renderCSVQuoteAll(
-	w io.Writer,
-	columns []column,
-	elems []reflect.Value,
-	delim rune,
-	useCRLF bool,
-	noHeader bool,
-) error {
-	eol := "\n"
-	if useCRLF {
-		eol = "\r\n"
-	}
-	writeRow := func(fields []string) error {
-		for i, f := range fields {
-			if i > 0 {
-				if _, err := io.WriteString(w, string(delim)); err != nil {
-					return err
-				}
-			}
-			escaped := ""
-			for _, r := range f {
-				if r == '"' {
-					escaped += `""`
-					continue
-				}
-				escaped += string(r)
-			}
-			if _, err := io.WriteString(w, `"`+escaped+`"`); err != nil {
-				return err
-			}
-		}
-		_, err := io.WriteString(w, eol)
-		return err
-	}
-
-	if !noHeader {
-		header := make([]string, len(columns))
-		for i, c := range columns {
-			header[i] = c.header
-		}
-		if err := writeRow(header); err != nil {
-			return err
-		}
-	}
-	for _, e := range elems {
-		row := make([]string, len(columns))
-		for i, c := range columns {
-			row[i] = fmt.Sprintf("%v", e.Field(c.fieldIdx).Interface())
-		}
-		if err := writeRow(row); err != nil {
+		if err := writeCSVRow(w, row, delim[0], eol, quoteAll); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// writeCSVRow emits one record terminated by eol.
+//
+// Encoding is hand-rolled rather than delegated to encoding/csv because that
+// package cannot express the required behavior: with UseCRLF set it DROPS a
+// lone CR outright and rewrites an embedded LF to CRLF, both of which mutate
+// the caller's value with no error. It also contradicts itself — this
+// package's former quote-all path preserved the CR that the default path
+// discarded. RFC 4180 lists CR and LF as separate alternatives inside
+// `escaped`, so a bare CR between quotes is legal, and the W3C CSV on the Web
+// note is explicit that line endings within escaped cells are not normalised.
+// So a field is quoted and its bytes pass through verbatim; the record
+// terminator is the only place a CRLF is synthesised.
+func writeCSVRow(w io.Writer, fields []string, delim rune, eol string, quoteAll bool) error {
+	var b strings.Builder
+	for i, f := range fields {
+		if i > 0 {
+			b.WriteRune(delim)
+		}
+		if !quoteAll && !csvFieldNeedsQuotes(f, delim) {
+			b.WriteString(f)
+			continue
+		}
+		b.WriteByte('"')
+		// RFC 4180: an embedded quote is doubled. Everything else, CR and LF
+		// included, is written through untouched.
+		b.WriteString(strings.ReplaceAll(f, `"`, `""`))
+		b.WriteByte('"')
+	}
+	b.WriteString(eol)
+	_, err := io.WriteString(w, b.String())
+	return err
+}
+
+// csvFieldNeedsQuotes reproduces encoding/csv's quoting rule, which is the
+// one the other runtimes were written to match: quote iff the field contains
+// the active delimiter, a double quote, LF or CR, or begins with a unicode
+// space. Note the asymmetry — a LEADING space forces quoting, a trailing one
+// does not. `\.` alone terminates a PostgreSQL COPY stream, so it is quoted
+// defensively.
+func csvFieldNeedsQuotes(field string, delim rune) bool {
+	if field == "" {
+		return false
+	}
+	if field == `\.` {
+		return true
+	}
+	if strings.ContainsRune(field, delim) || strings.ContainsAny(field, "\"\r\n") {
+		return true
+	}
+	r1, _ := utf8.DecodeRuneInString(field)
+	return unicode.IsSpace(r1)
 }
