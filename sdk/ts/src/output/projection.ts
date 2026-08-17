@@ -7,6 +7,11 @@
  * Unlike Go (which uses `table:""` struct tags), TS callers pass an explicit
  * ColumnSpec[] list. When no columns are provided, callers fall back to
  * deriving headers from the first row's own enumerable keys.
+ *
+ * A ColumnSpec's `header` and `key` are the same name: validation and value
+ * lookup are one operation, matching what Go's `table:""` tag can express.
+ * `--cols` reorders as well as selects, so the user's order wins over the
+ * ColumnSpec list's.
  */
 
 import type { ColumnSpec } from './formatter';
@@ -31,74 +36,67 @@ export function deriveHeaders(
 }
 
 /**
- * Filters a ColumnSpec list to those whose `header` appears in `selected`.
- * Order is preserved from `columns` (caller's intended order). Unknown
- * names in `selected` throw with the available header list.
+ * Selects columns named by `selected`, in the order `selected` gives them.
+ * `--cols` reorders as well as selects, so the user's sequence wins over the
+ * ColumnSpec list's. Unknown names throw with the available header list.
  */
 export function filterColumns(
   columns: readonly ColumnSpec[],
   selected: readonly string[],
 ): readonly ColumnSpec[] {
-  const have = new Set(columns.map(c => c.header));
-  for (const name of selected) {
-    if (!have.has(name)) {
-      const valid = columns.map(c => c.header).join(', ');
+  const byName = new Map(columns.map(c => [c.header, c]));
+  return selected.map(name => {
+    const c = byName.get(name);
+    if (!c) {
+      const valid = columns.map(x => x.header).join(', ');
       throw new Error(`unknown column "${name}" (valid: ${valid})`);
     }
-  }
-  const want = new Set(selected);
-  return columns.filter(c => want.has(c.header));
+    return c;
+  });
 }
 
 /**
- * Builds a header→key lookup. Used to project rows for json/yaml/csv/text.
- * When no ColumnSpec list is provided, headers map to themselves (the row
- * already keys by the same names).
+ * Resolves the ordered column names for a render: the ColumnSpec list (or
+ * first-row keys) narrowed and reordered by `cols` when the user supplied it.
+ *
+ * Because header == key, the result is directly usable both as the output
+ * labels and as the lookup names on each row.
  */
-export function buildHeaderToKey(
-  columns?: readonly ColumnSpec[],
-): Map<string, string> {
-  const out = new Map<string, string>();
-  if (!columns) return out;
-  for (const c of columns) {
-    out.set(c.header, c.key);
+export function resolveColumnNames(
+  rows: readonly unknown[],
+  columns: readonly ColumnSpec[] | undefined,
+  cols: readonly string[],
+): readonly string[] {
+  if (cols.length === 0) return deriveHeaders(rows, columns);
+  if (columns && columns.length > 0) {
+    return filterColumns(columns, cols).map(c => c.header);
   }
-  return out;
+  // No ColumnSpec — `cols` names keys on the row directly, in user order.
+  const available = deriveHeaders(rows);
+  if (available.length === 0) return cols;
+  const have = new Set(available);
+  return cols.filter(c => have.has(c));
 }
 
 /**
- * Projects rows to plain objects keyed by header, optionally filtered by
- * `cols`. When `columns` is undefined, rows are returned as-is for JSON/
- * YAML pass-through. When `cols` is empty AND `columns` is defined,
- * every column is included.
+ * Projects rows to plain objects keyed by column name, in resolved order.
+ * With neither a ColumnSpec list nor `cols`, rows pass through untouched so
+ * JSON/YAML keep whatever shape the caller handed in.
  */
 export function projectRows(
   rows: readonly unknown[],
   columns: readonly ColumnSpec[] | undefined,
   cols: readonly string[],
 ): readonly Record<string, unknown>[] {
-  const active = columns
-    ? cols.length > 0
-      ? filterColumns(columns, cols)
-      : columns
-    : undefined;
+  const passthrough = cols.length === 0 && !(columns && columns.length > 0);
+  const names = passthrough ? [] : resolveColumnNames(rows, columns, cols);
 
   return rows.map(row => {
     const r = (row ?? {}) as Record<string, unknown>;
-    if (active) {
-      const out: Record<string, unknown> = {};
-      for (const c of active) {
-        out[c.header] = r[c.key];
-      }
-      return out;
-    }
-    if (cols.length > 0) {
-      // No ColumnSpec provided — treat cols as direct keys on the row.
-      const out: Record<string, unknown> = {};
-      for (const k of cols) out[k] = r[k];
-      return out;
-    }
-    return r;
+    if (passthrough) return r;
+    const out: Record<string, unknown> = {};
+    for (const name of names) out[name] = r[name];
+    return out;
   });
 }
 
