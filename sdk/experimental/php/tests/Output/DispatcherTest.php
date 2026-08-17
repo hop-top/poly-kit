@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace HopTop\Kit\Tests\Output;
 
 use HopTop\Kit\Output\Dispatcher;
-use HopTop\Kit\Output\Formatter\ColumnSpec;
 use HopTop\Kit\Output\Formatter\Builtin\JsonFormatter;
+use HopTop\Kit\Output\Formatter\Builtin\TableFormatter;
 use HopTop\Kit\Output\Formatter\Builtin\YamlFormatter;
+use HopTop\Kit\Output\Formatter\ColumnSpec;
+use HopTop\Kit\Output\Formatter\Projection;
 use HopTop\Kit\Output\Registry;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
@@ -128,5 +130,193 @@ class DispatcherTest extends TestCase
         $output = new BufferedOutput();
         Dispatcher::dispatch($input, $output, ['a' => 1], registry: $this->registry());
         $this->assertSame("{\"a\":1}\n", $output->fetch());
+    }
+
+    /**
+     * Rule 1: the ColumnSpec schema reaches the formatter and drives the
+     * default column order — it is not consumed by validateCols and
+     * dropped. Payload key order disagrees with the spec order so only
+     * a threaded schema can produce the asserted key sequence.
+     */
+    public function testDispatchThreadsColumnSpecToFormatter(): void
+    {
+        $schema = [
+            ColumnSpec::of('status', 'status'),
+            ColumnSpec::of('name', 'name'),
+        ];
+        $input = $this->input(['--format' => 'json', '--format-opt' => ['indent=0']]);
+        $output = new BufferedOutput();
+        Dispatcher::dispatch(
+            $input,
+            $output,
+            [['name' => 'alpha', 'status' => 'ok']],
+            columns: $schema,
+            registry: $this->registry(),
+        );
+        $this->assertSame("[{\"status\":\"ok\",\"name\":\"alpha\"}]\n", $output->fetch());
+    }
+
+    /**
+     * Rule 2: --cols reorders on top of a threaded schema — user wins.
+     */
+    public function testDispatchColsOverridesColumnSpecOrder(): void
+    {
+        $schema = [
+            ColumnSpec::of('name', 'name'),
+            ColumnSpec::of('count', 'count'),
+            ColumnSpec::of('status', 'status'),
+        ];
+        $input = $this->input([
+            '--format' => 'json',
+            '--format-opt' => ['indent=0'],
+            '--cols' => ['status', 'name'],
+        ]);
+        $output = new BufferedOutput();
+        Dispatcher::dispatch(
+            $input,
+            $output,
+            [['name' => 'alpha', 'count' => 1, 'status' => 'ok']],
+            columns: $schema,
+            registry: $this->registry(),
+        );
+        $this->assertSame("[{\"status\":\"ok\",\"name\":\"alpha\"}]\n", $output->fetch());
+    }
+
+    /**
+     * Rule 1, template path: --template honors ColumnSpec order too. The
+     * minimal renderer previously did `unset($columns)` and ignored the
+     * schema entirely; `{*}` expands to the schema-ordered values.
+     */
+    public function testDispatchTemplateHonorsColumnSpecOrder(): void
+    {
+        $schema = [
+            ColumnSpec::of('status', 'status'),
+            ColumnSpec::of('name', 'name'),
+        ];
+        $input = $this->input(['--format' => 'json', '--template' => '{*}']);
+        $output = new BufferedOutput();
+        Dispatcher::dispatch(
+            $input,
+            $output,
+            [['name' => 'alpha', 'count' => 1, 'status' => 'ok']],
+            columns: $schema,
+            registry: $this->registry(),
+        );
+        $this->assertSame("ok\talpha\n", $output->fetch());
+    }
+
+    /**
+     * Rule 1 fallback on the template path: no ColumnSpec → payload key
+     * order drives `{*}`.
+     */
+    public function testDispatchTemplateStarFallsBackToPayloadKeyOrder(): void
+    {
+        $input = $this->input(['--format' => 'json', '--template' => '{*}']);
+        $output = new BufferedOutput();
+        Dispatcher::dispatch(
+            $input,
+            $output,
+            [['name' => 'alpha', 'count' => 1]],
+            registry: $this->registry(),
+        );
+        $this->assertSame("alpha\t1\n", $output->fetch());
+    }
+
+    /**
+     * Rule 3: header == key, so --cols validation matches on the same name
+     * used for the row lookup. A ColumnSpec whose key differs from its
+     * header is rejected at construction rather than silently splitting.
+     */
+    public function testColumnSpecRejectsHeaderKeySplit(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("ColumnSpec header 'Name' must equal key 'name'");
+        ColumnSpec::of('Name', 'name');
+    }
+
+    /**
+     * Rule 4: zero rows emits nothing on the table path even when a
+     * ColumnSpec supplies headers.
+     */
+    public function testDispatchZeroRowsWithColumnSpecEmitsNothing(): void
+    {
+        $registry = $this->registry();
+        $registry->register(new TableFormatter());
+        $schema = [ColumnSpec::of('name', 'name'), ColumnSpec::of('count', 'count')];
+        $input = $this->input(['--format' => 'table']);
+        $output = new BufferedOutput();
+        Dispatcher::dispatch($input, $output, [], columns: $schema, registry: $registry);
+        $this->assertSame('', $output->fetch());
+    }
+
+    /**
+     * The precedence rule lives in exactly one place now, so pin it
+     * directly rather than only through the formatters.
+     */
+    public function testResolveEffectiveColsPrecedence(): void
+    {
+        $schema = [ColumnSpec::of('name', 'name'), ColumnSpec::of('count', 'count')];
+
+        // Rule 2: --cols wins verbatim, order and all.
+        $this->assertSame(
+            ['count', 'name'],
+            Projection::resolveEffectiveCols(['count', 'name'], $schema),
+        );
+        // Rule 1: no --cols → ColumnSpec order.
+        $this->assertSame(
+            ['name', 'count'],
+            Projection::resolveEffectiveCols([], $schema),
+        );
+        // Fallback: neither source → empty, meaning "infer from payload".
+        $this->assertSame([], Projection::resolveEffectiveCols([], null));
+        $this->assertSame([], Projection::resolveEffectiveCols([], []));
+        // --cols still wins when there is no schema to outrank.
+        $this->assertSame(['a'], Projection::resolveEffectiveCols(['a'], null));
+    }
+
+    /**
+     * Formatter::render() is public API. Collapsing precedence in dispatch
+     * means its signature never changed, so a third-party formatter written
+     * against the original four-parameter shape still satisfies the
+     * interface AND receives correctly ordered columns.
+     */
+    public function testThirdPartyFormatterKeepsOriginalSignatureAndGetsOrderedCols(): void
+    {
+        $spy = new class implements \HopTop\Kit\Output\Formatter\Formatter {
+            /** @var list<string> */
+            public array $seen = [];
+
+            public function key(): string
+            {
+                return 'spy';
+            }
+
+            public function extensions(): array
+            {
+                return [];
+            }
+
+            public function options(): array
+            {
+                return [];
+            }
+
+            public function render(mixed $writer, mixed $data, array $opts, array $cols): void
+            {
+                $this->seen = $cols;
+            }
+        };
+        $registry = new Registry();
+        $registry->register($spy);
+
+        Dispatcher::dispatch(
+            $this->input(['--format' => 'spy']),
+            new BufferedOutput(),
+            [['count' => 1, 'name' => 'alpha']],
+            columns: [ColumnSpec::of('name', 'name'), ColumnSpec::of('count', 'count')],
+            registry: $registry,
+        );
+
+        $this->assertSame(['name', 'count'], $spy->seen);
     }
 }
