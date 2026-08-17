@@ -38,10 +38,21 @@ interface Formatter
     /**
      * Render $data to $writer.
      *
+     * $cols arrives already resolved: the Dispatcher has collapsed the
+     * user's --cols and the caller's ColumnSpec list into one ordered list
+     * of column names, so a formatter never sees that precedence. Each name
+     * is both the header label and the row lookup — header == key, so there
+     * is no second mapping step. An empty $cols means "no column source
+     * applied"; fall back to the payload's own key order.
+     *
+     * Zero rows emits nothing, not even a bare header row — emptiness is
+     * decided by row count, never by column count, because $cols is
+     * populated for row-less payloads too.
+     *
      * @param resource              $writer fopen-style stream handle
      * @param mixed                 $data   single row or list of rows
      * @param array<string,mixed>   $opts   validated options
-     * @param list<string>          $cols   user-requested column projection ([] = "all default")
+     * @param list<string>          $cols   resolved column projection ([] = "infer from payload")
      */
     public function render(mixed $writer, mixed $data, array $opts, array $cols): void;
 }
