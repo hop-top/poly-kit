@@ -45,11 +45,27 @@ class OptionSpec:
 
 @dataclass(frozen=True)
 class ColumnSpec:
-    """Describes one column of a row payload (header + lookup key + priority)."""
+    """Describes one column of a row payload (header + lookup key + priority).
+
+    ``header`` and ``key`` are the same name: validation and value lookup are
+    one operation. Go cannot express a header/key split via ``table:""`` tags,
+    so no SDK may; the redundant ``key`` field is kept for source compatibility
+    and pinned to ``header`` at construction so drift is impossible.
+
+    ``priority`` is accepted and stored but ignored by the payload SDKs; the
+    hide-on-overflow behavior it drives is a Go-only feature today.
+    """
 
     header: str
     key: str
     priority: int = 5
+
+    def __post_init__(self) -> None:
+        if self.key != self.header:
+            raise ValueError(
+                f"ColumnSpec: header {self.header!r} and key {self.key!r} must be "
+                f"the same name (header == key is universal across SDKs)"
+            )
 
 
 @runtime_checkable
@@ -60,6 +76,11 @@ class Formatter(Protocol):
     plus methods ``options()`` (returning a list of OptionSpec) and ``render(out,
     data, opts, cols)``. ``runtime_checkable`` lets the Registry validate at
     register() time using ``isinstance(f, Formatter)`` for clearer errors.
+
+    ``render`` may accept an optional trailing ``columns`` argument carrying
+    the caller's ColumnSpec list, which sets default column order and header
+    names. Dispatch passes it only to formatters whose signature accepts it,
+    so the four-argument form remains valid.
     """
 
     key: str
@@ -73,6 +94,7 @@ class Formatter(Protocol):
         data: Any,
         opts: dict[str, Any],
         cols: list[str],
+        columns: list[ColumnSpec] | None = None,
     ) -> None: ...
 
 
