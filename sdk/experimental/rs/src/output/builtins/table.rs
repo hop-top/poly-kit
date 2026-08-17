@@ -55,9 +55,17 @@ impl Formatter for TableFormatter {
             .and_then(OptionValue::as_bool)
             .unwrap_or(true);
         let rows = normalize(data);
+
+        // Zero rows emits nothing — not even a bare header row. Emptiness is
+        // decided by ROW count, never by header count: `cols` is non-empty
+        // whenever the caller supplied a ColumnSpec list, so guarding on the
+        // column count would print a lone header for an empty payload.
+        if rows.is_empty() {
+            return Ok(());
+        }
+
         let columns = resolve_columns(&rows, cols);
 
-        // Empty input: emit only the header (if requested) and exit.
         let mut table = Table::new();
         table
             .load_preset(NOTHING)
@@ -88,8 +96,11 @@ fn normalize(data: &Value) -> Vec<&Value> {
     }
 }
 
-/// Honor user-supplied --cols projection; otherwise infer from the
-/// first object-shaped row in the payload.
+/// Honor the resolved column list — already `--cols` order, or the
+/// caller's ColumnSpec order, whichever the dispatcher settled on.
+/// An empty list means neither was supplied, so infer from the first
+/// object-shaped row; that fallback preserves the payload's own key
+/// order because serde_json is built with `preserve_order`.
 fn resolve_columns(rows: &[&Value], cols: &[String]) -> Vec<String> {
     if !cols.is_empty() {
         return cols.to_vec();
