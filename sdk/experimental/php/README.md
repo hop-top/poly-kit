@@ -41,6 +41,151 @@ $plan = UriFacade::resolveAction($actionUri, $policy);
 This facade intentionally delegates to `hop-top/cite`; it does not reimplement
 URI parsing, vanity handling, action routing, or handler identity.
 
+## Output formatting
+
+`HopTop\Kit\Output` ships the `table`, `json` and `yaml` built-in
+formatters. `csv` and `text` are **not implemented in PHP** — see
+*Conformance status* below.
+
+### Column ordering
+
+Go, the reference runtime, reads column order off `table:""` struct tags
+in field declaration order. PHP rows are associative arrays, so an
+explicit `ColumnSpec` list carries that order instead. Five rules bind
+every runtime.
+
+**1. Default order.** With a `ColumnSpec` list passed to
+`Dispatcher::dispatch()` / `KitCommand::render()` / `KitOutput::columns()`
+and no `--cols`, the list's order and names drive every formatter.
+Payload key order is the fallback used *only* when no list is supplied.
+
+```php
+$rows = [
+    ['count' => 3, 'status' => 'ready', 'name' => 'alpha'],
+    ['count' => 8, 'status' => 'held',  'name' => 'beta'],
+];
+$cols = [
+    new ColumnSpec('name', 'name', 9),
+    new ColumnSpec('count', 'count', 7),
+    new ColumnSpec('status', 'status', 5),
+];
+```
+
+The payload's own key order is `count, status, name`; the spec wins:
+
+```
+name   count  status
+alpha  3      ready
+beta   8      held
+```
+
+**2. `--cols` reorders as well as selects.** The user's sequence beats
+the `ColumnSpec` order — `--cols status,name` renders `status` then
+`name` — and the same rule holds on the no-schema fallback path:
+
+```
+status  name
+ready   alpha
+held    beta
+```
+
+`--format json` follows the identical order, since PHP arrays are
+insertion-ordered end to end:
+
+```json
+[
+  {
+    "status": "ready",
+    "name": "alpha"
+  },
+  {
+    "status": "held",
+    "name": "beta"
+  }
+]
+```
+
+**3. `header === key`.** The two name the same column: the label, the
+value matched against `--cols`, and the key read off the row. The
+`ColumnSpec` constructor throws `InvalidArgumentException` on a
+mismatch:
+
+```
+ColumnSpec header 'Name' must equal key 'name'
+```
+
+Go cannot express the split through a `table:""` tag, so no SDK offers
+one.
+
+**4. Zero rows emits nothing** — not even a bare header row. Emptiness
+is decided by row count, never column count, so a `ColumnSpec` list
+never resurrects a header for an empty payload.
+
+**5. `priority` is accepted, stored and ignored.** The hide-on-overflow
+behavior it drives is implemented in Go only; the field is kept so specs
+stay portable until that feature is ported.
+
+`Dispatcher` collapses `--cols` and the `ColumnSpec` list into one
+ordered list before calling a formatter
+(`Projection::resolveEffectiveCols()`), so the `$cols` argument a
+formatter receives is already final. `Formatter::render()` is unchanged:
+third-party formatters pick up correct ordering with no code change.
+That collapse is sound only because `header === key`.
+
+### `--template`
+
+The minimal renderer substitutes `{key}` per field and additionally
+supports a `{*}` placeholder that expands to every resolved column's
+value, tab-separated, in schema order:
+
+```php
+// template: '{*}'
+// alpha<TAB>3<TAB>ready
+// beta<TAB>8<TAB>held
+```
+
+`--template` and `--cols` are mutually exclusive, so on this path the
+`ColumnSpec` list is the sole ordering signal. `{*}` is **PHP-specific
+for now**: Go exposes `.Cols` and Python and TS expose `cols`, all
+iterable column *names*, whereas `{*}` yields pre-joined row *values*.
+The two are not the same affordance, and the house spelling for the
+minimal-renderer tier is still an open decision.
+
+### Go-vs-payload capability gaps
+
+| Capability | Go (reference) | php | py / ts | rs |
+|---|---|---|---|---|
+| Column order source | `table:""` tags, declaration order | `ColumnSpec` list order | `ColumnSpec` list order | `ColumnSpec` list order |
+| `priority` hide-on-overflow | implemented | accepted, stored, ignored | accepted, stored, ignored | accepted, stored, ignored |
+| `header != key` | inexpressible via `table:""` | `InvalidArgumentException` | rejected at construction | panics in `ColumnSpec::new` |
+| json/yaml key order | follows resolved order | follows resolved order | follows resolved order | follows resolved order |
+| `--cols` reorders | yes | yes | yes | yes |
+| Built-in formats | `table`, `json`, `yaml`, `csv`, `text` (+ `human`) | `table`, `json`, `yaml` | all five | `table`, `json`, `yaml` |
+| Ordered columns on the template path | `.Cols` | `{*}` | `cols` | none |
+
+Go's inability to express `header != key` is the *reason* rule 3 is
+universal: no SDK may carry a capability the reference cannot mirror.
+
+### Conformance status
+
+PHP satisfies all five ordering rules on both the formatter and template
+paths, as does Go across all five formats. The cross-runtime fixtures
+under `sdk/tests/cross-lang/` execute the contract against every runtime.
+Two gaps are open:
+
+- **`csv` and `text` are not implemented** in PHP or Rust. Only `table`,
+  `json` and `yaml` are portable across all five runtimes, so a caller
+  writing against the kit output contract cannot assume `--format csv`
+  exists. The fixtures record this as `rs-php-no-csv-text`.
+- **rs has no ordered-column affordance on the `--template` path**,
+  where PHP has `{*}`. The shared spelling for that tier is undecided.
+
+The fixtures compare the **column order re-parsed from each runtime's own
+output**, never raw bytes — PHP's YAML emits the dash on its own line and
+Rust's table renderer pads cells, so byte comparison was never viable.
+Byte-level formatting parity is pinned by each SDK's own unit tests
+instead.
+
 ## Telemetry
 
 The PHP SDK ships a publish-only telemetry client under the

@@ -148,12 +148,95 @@ empty only when it should fall back to payload key order. Custom
 formatters get correct ordering by rendering `cols` in the order given;
 they never see `ColumnSpec` and need no changes.
 
+Worked example — the same rows under each rule:
+
+```ts
+const rows = [
+  { count: 3, status: 'ready', name: 'alpha' },
+  { count: 8, status: 'held',  name: 'beta'  },
+];
+const cols: ColumnSpec[] = [
+  { header: 'name',   key: 'name',   priority: 9 },
+  { header: 'count',  key: 'count',  priority: 7 },
+  { header: 'status', key: 'status', priority: 5 },
+];
+```
+
+With `columns: cols` and no `--cols`, the list drives order — note the
+payload's own key order is `count, status, name` and is not what appears
+(rule 1):
+
+```
+name   count  status
+alpha  3      ready
+beta   8      held
+```
+
+`--cols status,name` reorders as well as selects (rule 2), in `table`
+and `json` alike:
+
+```
+status  name
+ready   alpha
+held    beta
+```
+
+```json
+[
+  {
+    "status": "ready",
+    "name": "alpha"
+  },
+  {
+    "status": "held",
+    "name": "beta"
+  }
+]
+```
+
+With no `columns` at all, payload key order is the fallback:
+
+```
+count  status  name
+3      ready   alpha
+8      held    beta
+```
+
 Capability differences against the Go reference:
 
-| Capability | Go | ts / rs / py / php |
-|---|---|---|
-| `priority` hide-on-overflow | yes | accepted, ignored |
-| json/yaml key order | lost (`structToMap`) | follows `ColumnSpec` order |
+| Capability | Go (reference) | ts / py | rs / php |
+|---|---|---|---|
+| Column order source | `table:""` tags, declaration order | `ColumnSpec[]` order | `ColumnSpec` list order |
+| `priority` hide-on-overflow | implemented | accepted, stored, ignored | accepted, stored, ignored |
+| `header != key` | inexpressible via `table:""` | rejected at construction | rejected at construction |
+| json/yaml key order | follows the resolved order | follows the resolved order | follows the resolved order |
+| `--cols` reorders | yes | yes | yes |
+| Built-in formats | `table`, `json`, `yaml`, `csv`, `text` (+ `human`) | same five | `table`, `json`, `yaml` only |
+| Ordered columns on the template path | `.Cols` | `cols` | `{*}` (php); none (rs) |
+
+Go's inability to express `header != key` is the *reason* rule 3 binds
+every runtime: no SDK may carry a capability the reference cannot mirror.
+
+### Conformance status
+
+TS satisfies all five rules, as does Go across all five formats. The
+fixtures under `sdk/tests/cross-lang/` execute the contract against every
+runtime. Two gaps remain open and matter when writing portable code:
+
+- **`csv` and `text` do not exist in rs or php.** Only `table`, `json`
+  and `yaml` are available in all five runtimes today. The fixtures
+  record this as `rs-php-no-csv-text`.
+- **rs has no ordered-column affordance on the `--template` path.** Go
+  exposes `.Cols` and py and ts expose `cols`; php has a `{*}`
+  placeholder yielding pre-joined values. The spelling for rs is an open
+  decision.
+
+The fixtures compare the **column order re-parsed from each runtime's own
+output**, never raw bytes — table padding and YAML block style differ
+legitimately between runtimes. Byte-level formatting parity is pinned by
+each SDK's own unit tests instead. `csv` output agrees byte-for-byte
+across go/py/ts in the default LF mode; the `crlf` option exposes known
+quoting divergences.
 
 ### Backward compatibility
 

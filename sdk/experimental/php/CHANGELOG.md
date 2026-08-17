@@ -68,6 +68,16 @@ Full diff: [kit-php/v0.4.0-alpha.1...kit-php/v0.4.0-alpha.2](https://github.com/
   through its `table:""` struct tags, so no SDK may. `priority` is still
   accepted and stored but remains ignored outside Go.
 
+### Known limitations
+
+- `csv` and `text` formatters are not implemented in this SDK. Only `table`,
+  `json` and `yaml` are portable across all five kit runtimes, so callers
+  cannot assume `--format csv` exists.
+- `{*}` is a PHP-only spelling for ordered columns on the template path. Go
+  exposes `.Cols` and Python and TS expose `cols` — iterable column *names* —
+  whereas `{*}` yields pre-joined row *values*. The shared spelling for the
+  minimal-renderer tier is undecided.
+
 ### Added
 
 - `HopTop\Kit\Output\Formatter\Projection` — shared column-resolution and
