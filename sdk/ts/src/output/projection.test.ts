@@ -15,7 +15,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { Command } from 'commander';
 import { dispatch } from './dispatch';
 import { registerOutputFlags } from './flags';
-import { deriveHeaders, filterColumns, projectRows } from './projection';
+import { newRegistry } from './registry';
+import { deriveHeaders, projectRows, resolveEffectiveCols } from './projection';
 import { columnName, type ColumnSpec } from './formatter';
 import './builtins';
 
@@ -150,17 +151,26 @@ describe('rule 2 — --cols reorders, user order wins', () => {
     expect(out).toBe('id,notes\n1,a\n2,b\n');
   });
 
-  it('filterColumns returns selected order, not schema order', () => {
-    expect(filterColumns(cols, ['notes', 'id']).map(c => c.header)).toEqual([
+  it('rejects an unknown --cols name against the ColumnSpec list', async () => {
+    await expect(run(['--cols', 'bogus'], rows, cols)).rejects.toThrow(
+      /unknown column "bogus" \(valid: id, name, notes\)/,
+    );
+  });
+
+  it('resolveEffectiveCols returns user cols verbatim, ignoring schema order', () => {
+    expect(resolveEffectiveCols(['notes', 'id'], cols)).toEqual([
       'notes',
       'id',
     ]);
   });
 
-  it('filterColumns rejects unknown names with the valid list', () => {
-    expect(() => filterColumns(cols, ['bogus'])).toThrow(
-      /unknown column "bogus" \(valid: id, name, notes\)/,
-    );
+  it('resolveEffectiveCols falls back to ColumnSpec order when no --cols', () => {
+    expect(resolveEffectiveCols([], cols)).toEqual(['id', 'name', 'notes']);
+  });
+
+  it('resolveEffectiveCols yields empty for payload-key fallback', () => {
+    expect(resolveEffectiveCols([], undefined)).toEqual([]);
+    expect(resolveEffectiveCols([], [])).toEqual([]);
   });
 });
 
@@ -178,13 +188,13 @@ describe('rule 3 — header == key', () => {
   });
 
   it('projectRows keys output by the column name itself', () => {
-    const got = projectRows(rows, cols, []);
+    const got = projectRows(rows, resolveEffectiveCols([], cols));
     expect(Object.keys(got[0])).toEqual(['id', 'name', 'notes']);
     expect(got[0]).toEqual({ id: '1', name: 'Alice', notes: 'a' });
   });
 
-  it('projectRows applies user order when cols supplied', () => {
-    const got = projectRows(rows, cols, ['notes', 'id']);
+  it('projectRows emits keys in the exact order given', () => {
+    const got = projectRows(rows, ['notes', 'id']);
     expect(Object.keys(got[0])).toEqual(['notes', 'id']);
   });
 
@@ -214,6 +224,60 @@ describe('rule 4 — zero rows emits nothing', () => {
 
   it('text emits nothing for an empty payload even with a ColumnSpec', async () => {
     expect(await run(['--format', 'text'], [], cols)).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Public API stability — ordering reaches formatters through `cols` alone.
+// ---------------------------------------------------------------------------
+
+describe('third-party formatters get ordering without signature changes', () => {
+  it('a 4-param formatter receives ColumnSpec order via cols', async () => {
+    const seen: string[][] = [];
+    const registry = newRegistry();
+    // Deliberately written against the documented 4-arg signature, with no
+    // knowledge of ColumnSpec — the case the interface must not break.
+    registry.register({
+      key: 'probe',
+      extensions: [],
+      options: [],
+      render(out, _data, _opts, cols) {
+        seen.push([...cols]);
+        out.write('ok');
+      },
+    });
+
+    const program = makeProgram(['--format', 'probe']);
+    const cap = captureStdout();
+    try {
+      await dispatch(program, rows, { columns: cols, registry });
+    } finally {
+      cap.restore();
+    }
+    expect(seen).toEqual([['id', 'name', 'notes']]);
+  });
+
+  it('a 4-param formatter sees user --cols order verbatim', async () => {
+    const seen: string[][] = [];
+    const registry = newRegistry();
+    registry.register({
+      key: 'probe',
+      extensions: [],
+      options: [],
+      render(out, _data, _opts, cols) {
+        seen.push([...cols]);
+        out.write('ok');
+      },
+    });
+
+    const program = makeProgram(['--format', 'probe', '--cols', 'notes,id']);
+    const cap = captureStdout();
+    try {
+      await dispatch(program, rows, { columns: cols, registry });
+    } finally {
+      cap.restore();
+    }
+    expect(seen).toEqual([['notes', 'id']]);
   });
 });
 

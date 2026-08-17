@@ -14,7 +14,7 @@
  */
 
 import type { Formatter, Options } from '../formatter';
-import { resolveColumnNames } from '../projection';
+import { deriveHeaders } from '../projection';
 
 const STYLE_KV = 'kv';
 const STYLE_LINES = 'lines';
@@ -38,12 +38,13 @@ export const textFormatter: Formatter = {
       usage: 'kv separator (kv style only)',
     },
   ],
-  render(out, data, opts: Options, cols, columns) {
+  render(out, data, opts: Options, cols) {
     const rows = normalise(data);
     // Emptiness is a ROW-count decision: no rows means no output at all.
     if (rows.length === 0) return;
 
-    const headers = resolveColumnNames(rows, columns, cols);
+    // `cols` arrives pre-resolved from dispatch; empty means payload keys.
+    const headers = cols.length > 0 ? cols : deriveHeaders(rows);
     if (headers.length === 0) return;
 
     const style = ((opts['style'] as string) || STYLE_KV) as

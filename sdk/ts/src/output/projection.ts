@@ -2,7 +2,7 @@
  * @module output/projection
  *
  * Helpers for projecting structured data through ColumnSpec lists. Mirrors
- * Go's projection.go (filterColumns / projectToMaps / TableHeaders).
+ * Go's projection.go (projectToMaps / TableHeaders).
  *
  * Unlike Go (which uses `table:""` struct tags), TS callers pass an explicit
  * ColumnSpec[] list. When no columns are provided, callers fall back to
@@ -14,7 +14,7 @@
  * ColumnSpec list's.
  */
 
-import type { ColumnSpec } from './formatter';
+import { columnName, type ColumnSpec } from './formatter';
 
 /** Normalises data into a readonly array of plain objects (rows). */
 export function normaliseRows<T>(data: T | readonly T[]): readonly T[] {
@@ -36,66 +36,42 @@ export function deriveHeaders(
 }
 
 /**
- * Selects columns named by `selected`, in the order `selected` gives them.
- * `--cols` reorders as well as selects, so the user's sequence wins over the
- * ColumnSpec list's. Unknown names throw with the available header list.
- */
-export function filterColumns(
-  columns: readonly ColumnSpec[],
-  selected: readonly string[],
-): readonly ColumnSpec[] {
-  const byName = new Map(columns.map(c => [c.header, c]));
-  return selected.map(name => {
-    const c = byName.get(name);
-    if (!c) {
-      const valid = columns.map(x => x.header).join(', ');
-      throw new Error(`unknown column "${name}" (valid: ${valid})`);
-    }
-    return c;
-  });
-}
-
-/**
- * Resolves the ordered column names for a render: the ColumnSpec list (or
- * first-row keys) narrowed and reordered by `cols` when the user supplied it.
+ * Resolves the effective column list a formatter should render.
  *
- * Because header == key, the result is directly usable both as the output
- * labels and as the lookup names on each row.
+ * Precedence, per the settled ordering contract:
+ *   - `cols` non-empty  → the user's `--cols`, verbatim and in user order
+ *     (rule 2: --cols reorders as well as selects).
+ *   - else a ColumnSpec list → its headers, in list order (rule 1).
+ *   - else                → empty, meaning "fall back to payload key order".
+ *
+ * Because header == key (rule 3), an ordered array of names carries
+ * everything a formatter needs: the labels and the row lookup keys are the
+ * same strings. Resolving here keeps precedence in one place and leaves the
+ * public Formatter signature untouched.
  */
-export function resolveColumnNames(
-  rows: readonly unknown[],
-  columns: readonly ColumnSpec[] | undefined,
+export function resolveEffectiveCols(
   cols: readonly string[],
+  columns: readonly ColumnSpec[] | undefined,
 ): readonly string[] {
-  if (cols.length === 0) return deriveHeaders(rows, columns);
-  if (columns && columns.length > 0) {
-    return filterColumns(columns, cols).map(c => c.header);
-  }
-  // No ColumnSpec — `cols` names keys on the row directly, in user order.
-  const available = deriveHeaders(rows);
-  if (available.length === 0) return cols;
-  const have = new Set(available);
-  return cols.filter(c => have.has(c));
+  if (cols.length > 0) return cols;
+  if (columns && columns.length > 0) return columns.map(columnName);
+  return [];
 }
 
 /**
- * Projects rows to plain objects keyed by column name, in resolved order.
- * With neither a ColumnSpec list nor `cols`, rows pass through untouched so
- * JSON/YAML keep whatever shape the caller handed in.
+ * Projects rows to plain objects keyed by column name, in `cols` order.
+ * An empty `cols` passes rows through untouched, so JSON/YAML keep whatever
+ * shape the caller handed in.
  */
 export function projectRows(
   rows: readonly unknown[],
-  columns: readonly ColumnSpec[] | undefined,
   cols: readonly string[],
 ): readonly Record<string, unknown>[] {
-  const passthrough = cols.length === 0 && !(columns && columns.length > 0);
-  const names = passthrough ? [] : resolveColumnNames(rows, columns, cols);
-
   return rows.map(row => {
     const r = (row ?? {}) as Record<string, unknown>;
-    if (passthrough) return r;
+    if (cols.length === 0) return r;
     const out: Record<string, unknown> = {};
-    for (const name of names) out[name] = r[name];
+    for (const name of cols) out[name] = r[name];
     return out;
   });
 }

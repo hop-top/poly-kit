@@ -15,7 +15,7 @@ import type { ColumnSpec, Formatter } from './formatter';
 import { parseOptions } from './formatter';
 import { registryFor, resolveCols } from './flags';
 import { renderFormatHelp } from './format_help';
-import { validateCols } from './projection';
+import { resolveEffectiveCols, validateCols } from './projection';
 import { renderTemplate } from './template';
 
 /** Sentinel value of --output meaning "write to stdout". */
@@ -101,13 +101,15 @@ export async function dispatch<T>(
       const rows = Array.isArray(data) ? (data as readonly unknown[]) : [data];
       validateCols(rows, options.columns, cols);
     }
+    // Resolve column precedence once, here, rather than in each formatter:
+    // user --cols wins, else the ColumnSpec list's order, else payload keys.
+    const effectiveCols = resolveEffectiveCols(cols, options.columns);
     await Promise.resolve(
       (formatter as Formatter).render(
         writer,
         data as never,
         parsedOpts,
-        cols,
-        options.columns,
+        effectiveCols,
       ),
     );
   } finally {

@@ -7,19 +7,20 @@
  */
 
 import type { Formatter, Options } from '../formatter';
-import { resolveColumnNames } from '../projection';
+import { deriveHeaders } from '../projection';
 
 export const tableFormatter: Formatter = {
   key: 'table',
   extensions: [],
   options: [],
-  render(out, data, _opts: Options, cols, columns) {
+  render(out, data, _opts: Options, cols) {
     const rows = normalise(data);
     // Emptiness is a ROW-count decision: no rows means no output at all,
     // not a bare header line.
     if (rows.length === 0) return;
 
-    const headers = resolveColumnNames(rows, columns, cols);
+    // `cols` arrives pre-resolved from dispatch; empty means payload keys.
+    const headers = cols.length > 0 ? cols : deriveHeaders(rows);
     if (headers.length === 0) return;
 
     const cells = rows.map(row =>

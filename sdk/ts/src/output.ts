@@ -36,7 +36,7 @@
 // Re-export the typed surface.
 export type { Formatter, OptionSpec, OptionType, Options, ColumnSpec } from './output/formatter';
 export { parseOptions, optionTypeName, columnName } from './output/formatter';
-export { deriveHeaders, filterColumns, resolveColumnNames, projectRows } from './output/projection';
+export { deriveHeaders, resolveEffectiveCols, projectRows } from './output/projection';
 export { Registry, defaultRegistry, newRegistry } from './output/registry';
 export { jsonFormatter } from './output/formatters/json';
 export { yamlFormatter } from './output/formatters/yaml';

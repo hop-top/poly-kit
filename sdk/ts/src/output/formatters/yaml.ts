@@ -22,9 +22,9 @@ export const yamlFormatter: Formatter = {
       usage: 'level at which to switch from block to flow style',
     },
   ],
-  render(out, data, opts: Options, cols, columns) {
+  render(out, data, opts: Options, cols) {
     const flowLevel = (opts['flow-level'] as number) ?? -1;
-    const value = projectForEncoding(data, cols, columns);
+    const value = projectForEncoding(data, cols);
     out.write(yaml.dump(value, { flowLevel }));
   },
 };

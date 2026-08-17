@@ -15,9 +15,9 @@ export const jsonFormatter: Formatter = {
   options: [
     { name: 'indent', type: 'int', default: 2, usage: 'spaces per indent level' },
   ],
-  render(out, data, opts: Options, cols, columns) {
+  render(out, data, opts: Options, cols) {
     const indent = (opts['indent'] as number) ?? 2;
-    const value = projectForEncoding(data, cols, columns);
+    const value = projectForEncoding(data, cols);
     out.write(JSON.stringify(value, null, indent) + '\n');
   },
 };

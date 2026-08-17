@@ -89,6 +89,8 @@ const htmlFormatter: Formatter = {
   extensions: ['.html'],
   options: [],
   render(out, data, _opts, cols) {
+    // `cols` is the resolved column list, already ordered — render it in
+    // the order given. Empty means "fall back to payload key order".
     // ... render HTML to `out`
   },
 };
@@ -139,6 +141,12 @@ own enumerable keys.
    row. Emptiness is decided by row count, never by header count.
 5. **`priority`.** Accepted and stored, currently ignored. Hide-on-overflow
    is implemented in Go only; the payload SDKs will port it separately.
+
+`dispatch` applies rules 1 and 2 before calling `render`, so the `cols`
+argument a formatter receives is already the final, ordered column list —
+empty only when it should fall back to payload key order. Custom
+formatters get correct ordering by rendering `cols` in the order given;
+they never see `ColumnSpec` and need no changes.
 
 Capability differences against the Go reference:
 

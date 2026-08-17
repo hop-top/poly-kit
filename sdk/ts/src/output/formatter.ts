@@ -83,18 +83,17 @@ export interface Formatter<T = unknown> {
    * @param out Destination writable stream.
    * @param data Single row or readonly array of rows.
    * @param opts Validated options; only declared keys with coerced values.
-   * @param cols User-requested column projection, in the user's order; empty
-   *   means "all columns". Reorders as well as selects.
-   * @param columns Caller's ColumnSpec list, when one was supplied. Drives
-   *   default column order and headers; absent means fall back to the first
-   *   row's own key order.
+   * @param cols Effective column list, already resolved by dispatch: the
+   *   user's `--cols` when supplied, else the caller's ColumnSpec headers in
+   *   list order, else empty meaning "fall back to payload key order".
+   *   Render columns in exactly this order — it is both the labels and, since
+   *   header == key, the lookup names on each row.
    */
   render(
     out: NodeJS.WritableStream,
     data: T | readonly T[],
     opts: Options,
     cols: readonly string[],
-    columns?: readonly ColumnSpec[],
   ): Promise<void> | void;
 }
 
