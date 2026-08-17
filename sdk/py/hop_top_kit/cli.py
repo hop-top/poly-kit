@@ -16,7 +16,16 @@ This module exposes the following public symbols:
     set_command_group — tag a command to a group
     register_stream   — register a named output stream on a command
     channel           — get a writer for a named stream
-    verbose_count     — get the current -V count from context
+    verbose_count     — get the current verbosity count from context
+
+Contract accessors — pure in the parity data they are given, so tests can
+inject a constructed contract instead of touching the shared file:
+
+    verbosity_shorthand  — verbosity.flag
+    verbosity_flag_usage — verbosity flag help text, level names generated
+    stream_label         — streams.label_format, applied to a stream name
+    stream_output        — streams.output, resolved to a stream object
+    stream_flag_name     — streams.flag
     NEON              — built-in vivid palette (#7ED957, #FF00FF)
     DARK              — built-in softer palette (#C1FF72, #FF66C4)
 
@@ -35,11 +44,12 @@ import re
 import sys
 import threading
 from dataclasses import dataclass, field
-from typing import Optional, TextIO
+from typing import Any, Optional, TextIO
 
 import click
 import typer
 
+from hop_top_kit import parity
 from hop_top_kit.parity import HELP_SECTION_ORDER, HELP_SECTIONS
 
 
@@ -101,8 +111,49 @@ _quiet_flag: contextvars.ContextVar[bool] = contextvars.ContextVar(
 
 
 def verbose_count() -> int:
-    """Return the current -V count. 0=info, 1=debug, 2+=trace."""
+    """Return the current stacked verbosity count.
+
+    Count-to-level mapping is the contract's; see ``verbosity.levels``.
+    """
     return _verbose_count.get()
+
+
+def verbosity_shorthand(data: dict[str, Any] | None = None) -> str:
+    """The stackable verbosity flag as declared by ``verbosity.flag``.
+
+    Pure in *data* so tests can inject a constructed contract.
+    """
+    return _verbosity_block(data).get("flag", "")
+
+
+def verbosity_flag_usage(data: dict[str, Any] | None = None) -> str:
+    """Help text for the verbosity flag, with level names from the contract.
+
+    Renders one ``flag=level`` hint per non-zero count in
+    ``verbosity.levels``, so the names in ``--help`` are generated rather
+    than restated: ``Increase log verbosity (-V=debug, -VV=trace)``.
+    """
+    block = _verbosity_block(data)
+    flag = block.get("flag", "")
+    levels = block.get("levels", {})
+    base = flag.lstrip("-")
+
+    hints = [
+        f"{flag}{base * (count - 1)}={levels[str(count)]}"
+        for count in sorted(int(k) for k in levels)
+        if count > 0
+    ]
+    if not hints:
+        return "Increase log verbosity"
+    return f"Increase log verbosity ({', '.join(hints)})"
+
+
+def _verbosity_block(data: dict[str, Any] | None) -> dict[str, Any]:
+    """The contract's ``verbosity`` block, defaulting to the loaded contract."""
+    if data is None:
+        data = parity.PARITY
+    block = data.get("verbosity", {})
+    return block if isinstance(block, dict) else {}
 
 
 # ---------------------------------------------------------------------------
@@ -142,18 +193,54 @@ class _NullWriter(io.TextIOBase):
         return len(s)
 
 
+def stream_label(name: str, data: dict[str, Any] | None = None) -> str:
+    """Line prefix for a named stream, from ``streams.label_format``.
+
+    Pure in *data* so tests can inject a constructed contract. The contract
+    declares the bracket form (``[{name}]``); the trailing space that
+    separates label from payload is this port's rendering, matching Go.
+    """
+    fmt = _streams_block(data).get("label_format", "")
+    return fmt.replace("{name}", name) + " "
+
+
+def stream_output(data: dict[str, Any] | None = None) -> TextIO:
+    """Destination for labelled stream lines, from ``streams.output``.
+
+    Resolved per call, not captured at import: ``sys.stderr`` is rebound by
+    test harnesses and by capture contexts.
+    """
+    if _streams_block(data).get("output", "") == "stdout":
+        return sys.stdout
+    return sys.stderr
+
+
+def stream_flag_name(data: dict[str, Any] | None = None) -> str:
+    """The ``--stream`` flag as declared by ``streams.flag``."""
+    return _streams_block(data).get("flag", "")
+
+
+def _streams_block(data: dict[str, Any] | None) -> dict[str, Any]:
+    """The contract's ``streams`` block, defaulting to the loaded contract."""
+    if data is None:
+        data = parity.PARITY
+    block = data.get("streams", {})
+    return block if isinstance(block, dict) else {}
+
+
 class _StreamChannel(io.TextIOBase):
-    """Thread-safe writer prepending [name] prefix to each line on stderr."""
+    """Thread-safe writer prepending the contract's label to each line."""
 
     def __init__(self, name: str) -> None:
-        self._prefix = f"[{name}] "
+        self._prefix = stream_label(name)
         self._lock = threading.Lock()
 
     def write(self, s: str) -> int:
         with self._lock:
+            dest = stream_output()
             for line in s.splitlines(keepends=True):
                 if line:
-                    sys.stderr.write(self._prefix + line)
+                    dest.write(self._prefix + line)
         return len(s)
 
 
@@ -174,8 +261,8 @@ def register_stream(cmd_name: str, name: str, description: str) -> None:
 def channel(cmd_name: str, name: str) -> TextIO:
     """Return a writer for the named stream.
 
-    If --stream includes *name*, writes to stderr with ``[name] `` prefix.
-    Otherwise returns a no-op writer.
+    If the streams flag includes *name*, writes to the contract's destination
+    with the contract's label prefix. Otherwise returns a no-op writer.
     """
     enabled = _get_enabled_streams().get(cmd_name, set())
     if name not in enabled:
@@ -642,15 +729,17 @@ def create_app(
         ),
     )
 
-    # -V / --verbose: stackable count flag
+    # Stackable verbosity count flag; shorthand and level names from the
+    # contract. typer takes the flag string at runtime, so nothing here
+    # needs to be a literal.
     params["verbose"] = (
         int,
         typer.Option(
             0,
-            "-V",
+            verbosity_shorthand(),
             "--verbose",
             count=True,
-            help="Increase log verbosity (-V=debug, -VV=trace)",
+            help=verbosity_flag_usage(),
         ),
     )
 
@@ -682,10 +771,14 @@ def create_app(
             typer.Option(None, "--no-hints", help="Suppress next-step hints after command output"),
         )
 
-    # --stream (comma-separated named diagnostic streams)
+    # Named diagnostic streams (comma-separated); flag name from the contract.
     params["stream"] = (
         str,
-        typer.Option("", "--stream", help="Enable diagnostic streams (comma-separated)"),
+        typer.Option(
+            "",
+            stream_flag_name(),
+            help="Enable diagnostic streams (comma-separated)",
+        ),
     )
 
     # --help-all (when groups configured)
