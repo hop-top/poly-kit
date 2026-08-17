@@ -2,13 +2,12 @@
 hop_top_kit.tui.anim — gradient animation context manager.
 
 Wraps rich.live.Live with a cycling gradient from theme.accent → theme.secondary.
-Constants loaded from tui/parity.json (single source of truth).
+Constants loaded from contracts/parity/parity.json (single source of truth)
+via hop_top_kit.parity.
 """
 
 from __future__ import annotations
 
-import json
-import pathlib
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -17,13 +16,11 @@ from rich.live import Live
 from rich.text import Text
 
 from hop_top_kit.cli import Theme
+from hop_top_kit.parity import ANIM_DEFAULT_WIDTH, ANIM_INTERVAL_MS, ANIM_RUNES
 
-_PARITY = json.loads(
-    (pathlib.Path(__file__).parents[4] / "contracts" / "parity" / "parity.json").read_text()
-)
-_ANIM_CHARS = _PARITY["anim"]["runes"]
-_INTERVAL = _PARITY["anim"]["interval_ms"] / 1000  # ms → seconds
-_DEFAULT_WIDTH = _PARITY["anim"]["default_width"]
+_ANIM_CHARS = ANIM_RUNES
+_INTERVAL = ANIM_INTERVAL_MS / 1000  # ms → seconds
+_DEFAULT_WIDTH = ANIM_DEFAULT_WIDTH
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:

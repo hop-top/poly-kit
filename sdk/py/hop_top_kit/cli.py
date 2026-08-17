@@ -30,9 +30,7 @@ from __future__ import annotations
 import contextvars
 import inspect
 import io
-import json
 import os
-import pathlib
 import re
 import sys
 import threading
@@ -42,8 +40,7 @@ from typing import Optional, TextIO
 import click
 import typer
 
-_PARITY_PATH = pathlib.Path(__file__).parents[3] / "contracts" / "parity" / "parity.json"
-_PARITY: dict = json.loads(_PARITY_PATH.read_text())
+from hop_top_kit.parity import HELP_SECTION_ORDER, HELP_SECTIONS
 
 
 @dataclass
@@ -290,8 +287,7 @@ class _BrandHelpFormatter(click.HelpFormatter):
 
     # Parity section title lookup built at class definition time.
     _PARITY_SECTION_TITLES: dict[str, str] = {
-        fang_key: cfg["title"]
-        for fang_key, cfg in _PARITY.get("help", {}).get("sections", {}).items()
+        fang_key: cfg["title"] for fang_key, cfg in HELP_SECTIONS.items()
     }
 
     def __init__(self, theme: Theme | None = None, *args, **kwargs) -> None:
@@ -508,11 +504,7 @@ def create_app(
     # Also override format_options to emit sections in the configured order.
     context_class = rich_help_cfg.get("context_class")
 
-    effective_order: list[str] = (
-        hcfg.section_order
-        if hcfg.section_order
-        else _PARITY.get("help", {}).get("section_order", ["commands", "options"])
-    )
+    effective_order: list[str] = hcfg.section_order if hcfg.section_order else HELP_SECTION_ORDER
 
     def _format_usage_colored(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         """Color usage pieces structurally using param types."""
