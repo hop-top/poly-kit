@@ -137,8 +137,35 @@ pub fn dispatch(
         }
     }
 
-    formatter.render(active_writer, data, &parsed_opts, &cols)?;
+    let effective = resolve_effective_cols(&cols, opts.columns);
+    formatter.render(active_writer, data, &parsed_opts, &effective)?;
     Ok(())
+}
+
+/// Resolve the column list handed to the formatter.
+///
+/// Precedence, per the cross-runtime column-ordering contract:
+///
+/// 1. User `--cols` wins outright — it reorders as well as selects, so the
+///    user's sequence is passed through verbatim.
+/// 2. Otherwise the caller's `ColumnSpec` list supplies both the default
+///    order and the headers, in list order.
+/// 3. With neither, an empty slice tells the formatter to fall back to the
+///    payload's own key order.
+///
+/// Resolving here rather than inside `render` keeps the [`Formatter`] trait
+/// signature unchanged, so external implementations keep compiling and pick
+/// up ordered columns for free.
+///
+/// [`Formatter`]: super::formatter::Formatter
+fn resolve_effective_cols(cols: &[String], schema: Option<&[ColumnSpec]>) -> Vec<String> {
+    if !cols.is_empty() {
+        return cols.to_vec();
+    }
+    match schema {
+        Some(specs) => specs.iter().map(|c| c.header.clone()).collect(),
+        None => Vec::new(),
+    }
 }
 
 fn resolve_format(
