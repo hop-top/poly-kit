@@ -38,10 +38,20 @@ interface Formatter
     /**
      * Render $data to $writer.
      *
-     * @param resource              $writer fopen-style stream handle
-     * @param mixed                 $data   single row or list of rows
-     * @param array<string,mixed>   $opts   validated options
-     * @param list<string>          $cols   user-requested column projection ([] = "all default")
+     * Column resolution precedence, in order:
+     *   1. $cols — the user's --cols list. Reorders as well as selects;
+     *      user order always wins.
+     *   2. $columns — the caller's ColumnSpec list, in list order.
+     *   3. payload key order of the first object-shaped row.
+     *
+     * Zero rows emits nothing, not even a bare header row — emptiness is
+     * decided by row count, never by header count.
+     *
+     * @param resource              $writer  fopen-style stream handle
+     * @param mixed                 $data    single row or list of rows
+     * @param array<string,mixed>   $opts    validated options
+     * @param list<string>          $cols    user-requested column projection ([] = "no --cols")
+     * @param list<ColumnSpec>      $columns caller-supplied schema ([] = "no ColumnSpec")
      */
-    public function render(mixed $writer, mixed $data, array $opts, array $cols): void;
+    public function render(mixed $writer, mixed $data, array $opts, array $cols, array $columns = []): void;
 }

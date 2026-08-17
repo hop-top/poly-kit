@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace HopTop\Kit\Output\Formatter\Builtin;
 
+use HopTop\Kit\Output\Formatter\ColumnSpec;
 use HopTop\Kit\Output\Formatter\Formatter;
 use HopTop\Kit\Output\Formatter\OptionSpec;
 use HopTop\Kit\Output\Formatter\OptionType;
+use HopTop\Kit\Output\Formatter\Projection;
 use RuntimeException;
 
 /**
@@ -16,7 +18,9 @@ use RuntimeException;
  *   - indent (int, default 2) — number of spaces per indent level; 0 = compact
  *
  * Single-row payloads emit a JSON object; list payloads emit a JSON array.
- * --cols is applied as a key projection before encoding.
+ * Key order follows --cols, else the ColumnSpec list, else the payload's
+ * own key order — PHP arrays are insertion-ordered, so the resolved order
+ * survives json_encode unchanged.
  */
 final class JsonFormatter implements Formatter
 {
@@ -42,10 +46,14 @@ final class JsonFormatter implements Formatter
         ];
     }
 
-    public function render(mixed $writer, mixed $data, array $opts, array $cols): void
+    /**
+     * @param list<string>     $cols
+     * @param list<ColumnSpec> $columns
+     */
+    public function render(mixed $writer, mixed $data, array $opts, array $cols, array $columns = []): void
     {
         $indent = is_int($opts['indent'] ?? null) ? (int) $opts['indent'] : 2;
-        $projected = self::project($data, $cols);
+        $projected = Projection::project($data, $cols, $columns);
 
         $flags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR;
         if ($indent > 0) {
@@ -69,41 +77,4 @@ final class JsonFormatter implements Formatter
         }
     }
 
-    /**
-     * Apply $cols projection. When $cols is empty, return data unchanged.
-     * Single-row payloads project keys directly; list payloads project
-     * each row.
-     *
-     * @param list<string> $cols
-     */
-    private static function project(mixed $data, array $cols): mixed
-    {
-        if ($cols === []) {
-            return $data;
-        }
-        if (self::isList($data)) {
-            return array_map(static fn (mixed $row) => self::projectRow($row, $cols), $data);
-        }
-        return self::projectRow($data, $cols);
-    }
-
-    /** @param list<string> $cols */
-    private static function projectRow(mixed $row, array $cols): mixed
-    {
-        if (!is_array($row)) {
-            return $row;
-        }
-        $out = [];
-        foreach ($cols as $c) {
-            if (array_key_exists($c, $row)) {
-                $out[$c] = $row[$c];
-            }
-        }
-        return $out;
-    }
-
-    private static function isList(mixed $data): bool
-    {
-        return is_array($data) && array_is_list($data);
-    }
 }
