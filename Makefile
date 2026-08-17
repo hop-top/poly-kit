@@ -107,7 +107,7 @@ test-parity-typeid: ## TypeID v1 contract loaders across all 5 SDKs
 		echo "==> typeid-v1 parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
 
-lint: lint-go lint-ts lint-py lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
+lint: lint-go lint-ts lint-py lint-lock-py lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
 
 lint-go: tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -118,6 +118,14 @@ lint-ts: ## TypeScript: eslint
 
 lint-py: ## Python: ruff check + format
 	cd sdk/py && uv run ruff check . && uv run ruff format --check .
+
+# `uv sync` rewrites uv.lock in place when it disagrees with pyproject.toml,
+# so drift never fails a build — it just lands as an unrelated dirty file in
+# the next contributor's tree. --check resolves without writing and exits
+# non-zero instead.
+lint-lock-py: ## Python: uv.lock consistent with pyproject.toml
+	cd sdk/py && uv lock --check
+	cd engine/sdk/py-kit-engine && uv lock --check
 
 lint-rs: ## Rust: cargo fmt --check + clippy (all features)
 	cd sdk/experimental/rs && cargo fmt --all -- --check
