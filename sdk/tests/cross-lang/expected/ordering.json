@@ -1,0 +1,181 @@
+{
+  "_comment": [
+    "Expected column sequences per case per format, derived from the five",
+    "settled contract rules — NOT recorded from whatever a runtime happened",
+    "to emit. Each entry is the EXACT ordered sequence of column names as they",
+    "must appear in that runtime's serialized output.",
+    "",
+    "'sequence' is an ordered array and is compared element-by-element. It is",
+    "never treated as a set and never sorted: an assertion that ignored order",
+    "would be inert against exactly the bugs this suite exists to catch.",
+    "",
+    "'empty': true means the formatter must emit no data row and no header row",
+    "(contract rule 4). For json/yaml an empty document (`[]`) satisfies it.",
+    "",
+    "Runtimes listed under known_gaps deviate KNOWINGLY. Their divergence is",
+    "reported by the harness but does not fail it — see README."
+  ],
+
+  "cases": {
+    "spec-order-vs-alphabetical": {
+      "table": { "sequence": ["zeta", "alpha", "mid"] },
+      "json":  { "sequence": ["zeta", "alpha", "mid"] },
+      "yaml":  { "sequence": ["zeta", "alpha", "mid"] }
+    },
+    "spec-order-vs-payload-order": {
+      "table": { "sequence": ["zeta", "alpha", "mid"] },
+      "json":  { "sequence": ["zeta", "alpha", "mid"] },
+      "yaml":  { "sequence": ["zeta", "alpha", "mid"] }
+    },
+    "cols-reorder-subset": {
+      "table": { "sequence": ["zeta", "alpha"] },
+      "json":  { "sequence": ["zeta", "alpha"] },
+      "yaml":  { "sequence": ["zeta", "alpha"] }
+    },
+    "cols-reorder-against-declaration": {
+      "table": { "sequence": ["mid", "zeta"] },
+      "json":  { "sequence": ["mid", "zeta"] },
+      "yaml":  { "sequence": ["mid", "zeta"] }
+    },
+    "no-spec-payload-fallback": {
+      "table": { "sequence": ["zeta", "alpha", "mid"] },
+      "json":  { "sequence": ["zeta", "alpha", "mid"] },
+      "yaml":  { "sequence": ["zeta", "alpha", "mid"] }
+    },
+    "no-spec-cols-reorder": {
+      "table": { "sequence": ["zeta", "alpha"] },
+      "json":  { "sequence": ["zeta", "alpha"] },
+      "yaml":  { "sequence": ["zeta", "alpha"] }
+    },
+    "empty-rows-with-spec": {
+      "table": { "sequence": [], "empty": true },
+      "json":  { "sequence": [], "empty": true },
+      "yaml":  { "sequence": [], "empty": true }
+    },
+    "cols-reorder-extended": {
+      "csv":  { "sequence": ["zeta", "alpha"] },
+      "text": { "sequence": ["zeta", "alpha"] }
+    },
+    "spec-order-extended": {
+      "csv":  { "sequence": ["zeta", "alpha", "mid"] },
+      "text": { "sequence": ["zeta", "alpha", "mid"] }
+    }
+  },
+
+  "header_key_enforced": {
+    "_comment": [
+      "Contract rule 3: header == key universally. The enforcement MECHANISM",
+      "differs per runtime (assert / dataclass __post_init__ / constructor",
+      "throw / read-time guard), so the fixture asserts the CONSTRAINT — a",
+      "header != key ColumnSpec must not round-trip — rather than pinning a",
+      "particular exception type or call site.",
+      "",
+      "Go is absent by construction, not by oversight: a `table:\"\"` tag cannot",
+      "express a header/key split at all. Go's inability to express it is the",
+      "REASON the rule exists, so Go satisfies it vacuously and the payload",
+      "SDKs are the ones under test."
+    ],
+    "rejected": true,
+    "applies_to": ["py", "ts", "rs", "php"],
+    "not_applicable": ["go"]
+  },
+
+  "known_gaps": {
+    "_comment": [
+      "Recorded divergences. The harness SURFACES these and does not fail on",
+      "them. Each is a real behavioral difference with a decided disposition."
+    ],
+
+    "go-cols-never-reorders": {
+      "runtime": "go",
+      "cases": [
+        "cols-reorder-subset",
+        "cols-reorder-against-declaration",
+        "no-spec-cols-reorder",
+        "cols-reorder-extended"
+      ],
+      "formats": ["table", "json", "yaml", "csv", "text"],
+      "detail": [
+        "Go SELECTS the requested columns but never REORDERS them: it emits",
+        "them in struct-field declaration order regardless of the --cols",
+        "sequence. filterColumns (go/console/output/projection.go:13-17) builds",
+        "a `want` set and its own doc states 'Order is preserved from cols",
+        "(struct field order), not from selected'. structToMap (:111) does the",
+        "same for json/yaml.",
+        "",
+        "This contradicts contract rule 2, which settled 4-to-1 with Go the",
+        "sole outlier and explicitly noted 'Only Go changes'. The Go-side",
+        "change was scoped to phase 2 but landed in none of T-0961..T-0965,",
+        "all four of which are payload SDKs. So this gap is the unimplemented",
+        "half of rule 2, not a new discovery — recorded here so it cannot",
+        "drift back out of view."
+      ]
+    },
+
+    "go-json-yaml-key-order": {
+      "runtime": "go",
+      "formats": ["json", "yaml"],
+      "detail": [
+        "projectToMaps/structToMap (go/console/output/projection.go:52,:111)",
+        "build a map[string]any, so encoding/json and yaml.v3 emit keys",
+        "alphabetically. Go's rule-1/rule-2 ordering guarantee is therefore",
+        "table/csv/text-only. Go additionally switches key NAMES from the",
+        "json:/yaml: tags to the table: tag headers the moment cols is",
+        "non-empty."
+      ]
+    },
+
+    "rs-php-no-csv-text": {
+      "runtime": ["rs", "php"],
+      "formats": ["csv", "text"],
+      "detail": [
+        "Neither SDK registers a csv or text formatter — rs builtins.rs and",
+        "php Builtins.php both say csv/text land in a follow-up phase. The",
+        "extended cases therefore run on py/ts/go only. Reported as skipped,",
+        "never as passed."
+      ]
+    },
+
+    "priority-go-only": {
+      "runtime": "go",
+      "detail": [
+        "priority is a complete hide-on-overflow feature in Go",
+        "(renderer.go:301-322 parseTableTag, :327-349 selectVisibleColumns,",
+        ":351-364 lowestPriorityIndex). The payload SDKs accept, store and",
+        "ignore it (contract rule 5). No conformance fixture asserts it:",
+        "pinning Go's behavior would pin a capability four runtimes cannot",
+        "mirror. Revisit when the port track lands.",
+        "",
+        "Note Go's hiding is width-driven and terminalWidth() falls back to",
+        "200 columns for a non-TTY writer, so priority does not perturb these",
+        "fixtures."
+      ]
+    },
+
+    "py-formatter-shape": {
+      "runtime": "py",
+      "detail": [
+        "py kept an optional 5th `columns` parameter on Formatter.render with",
+        "signature-gating (_accepts_columns, dispatch.py:226), while rs/php/ts",
+        "resolve column precedence in dispatch and leave render at 4 params.",
+        "Structurally divergent, behaviorally identical — which is precisely",
+        "what these fixtures verify. Every ordering case above passes on py",
+        "with the same expected sequence as the 4-param runtimes, so the",
+        "divergence is confined to the call shape."
+      ]
+    },
+
+    "table-bytes-not-comparable": {
+      "runtime": ["rs", "php"],
+      "detail": [
+        "Raw rendered bytes are NOT byte-comparable across runtimes and never",
+        "were: rs renders tables through comfy-table (leading/trailing cell",
+        "padding) while py/ts/php use a tabwriter shape, and php's YAML emits",
+        "the sequence dash on its own line where py/ts/rs inline it. Only",
+        "column ORDER is contractual, so the harness compares re-parsed column",
+        "sequences rather than bytes. Styling parity is contracts/parity's",
+        "job, not this suite's."
+      ]
+    }
+  }
+}
