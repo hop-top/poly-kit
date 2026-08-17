@@ -43,13 +43,17 @@ class CsvFormatterTest extends TestCase
      * never raw bytes, so quoting parity is enforced here and nowhere else.
      * Any drift in the quoting rule must fail loudly at this assertion.
      *
-     * Go's rule, which py and ts reproduce byte-for-byte: quote a field iff
-     * it contains the delimiter, a double quote, LF, CR, or BEGINS with a
-     * space. Trailing spaces and tabs are deliberately NOT quoted.
+     * The rule: quote a field iff it contains the delimiter, a double quote,
+     * LF, CR, or BEGINS with a unicode whitespace character. Trailing spaces
+     * are deliberately NOT quoted.
      *
-     * php's own fputcsv quotes both of those and is therefore NOT used: this
-     * formatter would otherwise bake php's disagreement with go/py/ts into
-     * the very port meant to close the portability gap.
+     * php's own fputcsv quotes trailing space and tab and is therefore NOT
+     * used: this formatter would otherwise bake php's disagreement with the
+     * other runtimes into the very port meant to close the portability gap.
+     *
+     * A quoted field's bytes are preserved verbatim — RFC 4180 lists CR and
+     * LF as separate alternatives inside `escaped`, so a bare CR between
+     * quotes is legal and dropping it would be silent data loss.
      *
      * @return list<array<string,string>>
      */
@@ -79,18 +83,94 @@ class CsvFormatterTest extends TestCase
     }
 
     /**
-     * CRLF mode follows Go: an embedded LF is rewritten to CRLF inside the
-     * quoted field, and a lone CR is DROPPED. ts's csv-stringify disagrees on
-     * both counts; go is the stated reference runtime, so go wins.
+     * CRLF mode changes the RECORD TERMINATOR and nothing else. An embedded
+     * LF stays an LF and a lone CR is preserved; rewriting either would
+     * mutate the caller's value.
      */
-    public function testCrlfMatchesGoIncludingDroppedLoneCr(): void
+    public function testCrlfChangesOnlyTheRecordTerminator(): void
     {
         $this->assertSame(
             "a,b,c,d,e,f,g,h,i\r\n"
-                . "plain,\"with,comma\",\"with\"\"quote\",\"with\r\nnewline\","
-                . "\" leading space\",trailing ,,with\ttab,\"withcr\"\r\n",
+                . "plain,\"with,comma\",\"with\"\"quote\",\"with\nnewline\","
+                . "\" leading space\",trailing ,,with\ttab,\"with\rcr\"\r\n",
             $this->render(self::adversarialRow(), ['crlf' => true]),
         );
+    }
+
+    /**
+     * Quote-all must preserve CR/LF too. The previous implementation dropped
+     * a lone CR here as well — worse than the go writer it was copied from,
+     * which preserved it on this path while dropping it on the default one.
+     */
+    public function testCrlfQuoteAllPreservesCr(): void
+    {
+        $out = $this->render(self::adversarialRow(), ['crlf' => true, 'quote-all' => true]);
+        $this->assertStringContainsString("\"with\rcr\"", $out, 'lone CR must survive quote-all');
+        $this->assertStringContainsString("\"with\nnewline\"", $out, 'in-field LF must stay LF');
+        $this->assertStringNotContainsString('withcr', $out, 'CR must not be dropped');
+    }
+
+    /**
+     * Round-trip is the acceptance criterion, not byte-equality: byte
+     * equality alone would be satisfied by every runtime agreeing on lossy
+     * output. Decoded with php's own str_getcsv.
+     *
+     * @return iterable<string,array{bool,bool}>
+     */
+    public static function roundTripModes(): iterable
+    {
+        yield 'lf' => [false, false];
+        yield 'crlf' => [true, false];
+        yield 'lf/quote-all' => [false, true];
+        yield 'crlf/quote-all' => [true, true];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('roundTripModes')]
+    public function testRoundTripsAdversarialRow(bool $crlf, bool $quoteAll): void
+    {
+        $expected = [
+            'plain', 'with,comma', 'with"quote', "with\nnewline",
+            ' leading space', 'trailing ', '', "with\ttab", "with\rcr",
+        ];
+        $out = $this->render(
+            self::adversarialRow(),
+            ['crlf' => $crlf, 'quote-all' => $quoteAll, 'no-header' => true],
+        );
+        // Strip the single record terminator, then decode the lone record.
+        $body = substr($out, 0, -($crlf ? 2 : 1));
+        $this->assertSame($expected, str_getcsv($body, ',', '"', ''));
+    }
+
+    /**
+     * Go decides leading-whitespace quoting with unicode.IsSpace on the first
+     * rune, not on a literal ASCII space. A leading TAB, vertical tab or NBSP
+     * must therefore be quoted too.
+     *
+     * @return iterable<string,array{string,string}>
+     */
+    public static function leadingWhitespaceCases(): iterable
+    {
+        yield 'tab' => ["\tlead", "\"\tlead\"\n"];
+        yield 'space' => [' lead', "\" lead\"\n"];
+        yield 'nbsp' => ["\u{a0}lead", "\"\u{a0}lead\"\n"];
+        yield 'vtab' => ["\vlead", "\"\vlead\"\n"];
+        yield 'trailing space stays bare' => ['trail ', "trail \n"];
+        yield 'plain stays bare' => ['plain', "plain\n"];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('leadingWhitespaceCases')]
+    public function testQuotesAnyLeadingUnicodeSpace(string $input, string $want): void
+    {
+        $this->assertSame($want, $this->render([['v' => $input]], ['no-header' => true]));
+    }
+
+    /**
+     * `\.` alone on a line terminates a PostgreSQL COPY stream; go's writer
+     * quotes it defensively and so must this one.
+     */
+    public function testQuotesPostgresCopySentinel(): void
+    {
+        $this->assertSame("\"\\.\"\n", $this->render([['v' => '\\.']], ['no-header' => true]));
     }
 
     public function testHeaderAndRows(): void

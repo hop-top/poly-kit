@@ -68,6 +68,26 @@ Full diff: [kit-php/v0.4.0-alpha.1...kit-php/v0.4.0-alpha.2](https://github.com/
   through its `table:""` struct tags, so no SDK may. `priority` is still
   accepted and stored but remains ignored outside Go.
 
+### Fixed
+
+- **CSV fields containing CR or LF are now preserved verbatim.** With `crlf`
+  set, the encoder previously DROPPED a lone carriage return and rewrote an
+  embedded LF to CRLF inside the quoted field — both silent, both
+  irrecoverable, and the CR drop applied on the `quote-all` path too. A field
+  holding CR and/or LF is quoted and its bytes pass through untouched in both
+  line-ending modes and both quoting paths; `crlf` now changes the record
+  terminator and nothing else. RFC 4180 lists `CR` and `LF` as separate
+  alternatives inside the `escaped` production, so a bare CR between quotes
+  is legal, and W3C CSV on the Web states that line endings within escaped
+  cells are not normalised.
+  **User-visible:** csv output for values containing `\r` changes under the
+  `crlf` option, and such values now survive a `str_getcsv` round-trip.
+- **Leading-whitespace quoting matches the documented rule.** The check was
+  `str_starts_with($field, ' ')`, which left a leading TAB, vertical tab or
+  NBSP unquoted; it is now a unicode whitespace test on the first character,
+  as the class docblock claimed. A field equal to `\.` is also quoted, since
+  that sequence alone on a line terminates a PostgreSQL `COPY` stream.
+
 ### Added
 
 - `HopTop\Kit\Output\Formatter\Projection` — shared column-resolution and

@@ -14,22 +14,24 @@ use RuntimeException;
  * CSV formatter.
  *
  * Encoding is hand-rolled rather than delegated to fputcsv or league/csv,
- * and that is deliberate. The three runtimes that already ship a csv
- * formatter do NOT agree on quoting once fields get awkward: go's
- * encoding/csv, python's stdlib csv and ts's csv-stringify are byte-identical
- * on the LF path, while php's own fputcsv quotes trailing spaces and tabs
- * that the other three leave bare. league/csv wraps fputcsv for writing and
- * therefore inherits exactly that divergence — using it would bake php's
- * disagreement into the very port meant to close the portability gap.
+ * and that is deliberate. php's own fputcsv quotes trailing spaces and tabs
+ * that the other runtimes leave bare, and league/csv wraps fputcsv for
+ * writing and therefore inherits exactly that divergence — using it would
+ * bake php's disagreement into the very port meant to close the portability
+ * gap.
  *
- * Go is the reference runtime. Its rule, reproduced exactly below: quote a
- * field iff it contains the active delimiter, a double quote, LF, or CR,
- * **or begins with a space**. Trailing whitespace and tabs are not quoted.
- * Internal quotes are doubled per RFC 4180.
+ * The rule: quote a field iff it contains the active delimiter, a double
+ * quote, LF, or CR, **or begins with a unicode whitespace character**.
+ * Trailing whitespace is not quoted. Internal quotes are doubled per RFC
+ * 4180.
  *
- * CRLF mode also follows go: an embedded LF is rewritten to CRLF inside the
- * quoted field, and a lone CR is DROPPED. ts disagrees on both counts; go
- * wins because go is the stated reference.
+ * A quoted field's bytes are preserved verbatim in BOTH line-ending modes
+ * and BOTH quoting paths. RFC 4180's `escaped` production lists CR and LF as
+ * separate alternatives, so a bare CR between quotes is legal, and the W3C
+ * CSV on the Web note states that line endings within escaped cells are not
+ * normalised. The crlf option changes the record terminator and nothing else
+ * — an earlier version copied go's encoding/csv, which DROPPED a lone CR and
+ * promoted an in-field LF to CRLF, silently corrupting values.
  *
  * Column order arrives pre-resolved in $cols (--cols, else the caller's
  * ColumnSpec order); payload key order is the fallback when it is empty.
@@ -115,7 +117,7 @@ final class CsvFormatter implements Formatter
         $columns = Projection::resolveColumns($rows, $cols);
 
         if (!$noHeader) {
-            self::writeRow($writer, $columns, $delimiter, $eol, $crlf, $quoteAll);
+            self::writeRow($writer, $columns, $delimiter, $eol, $quoteAll);
         }
         foreach ($rows as $row) {
             $cells = [];
@@ -123,7 +125,7 @@ final class CsvFormatter implements Formatter
                 $val = is_array($row) && array_key_exists($c, $row) ? $row[$c] : null;
                 $cells[] = self::stringify($val);
             }
-            self::writeRow($writer, $cells, $delimiter, $eol, $crlf, $quoteAll);
+            self::writeRow($writer, $cells, $delimiter, $eol, $quoteAll);
         }
     }
 
@@ -135,12 +137,11 @@ final class CsvFormatter implements Formatter
         array $cells,
         string $delimiter,
         string $eol,
-        bool $crlf,
         bool $quoteAll,
     ): void {
         $parts = [];
         foreach ($cells as $cell) {
-            $parts[] = self::encodeField($cell, $delimiter, $crlf, $quoteAll);
+            $parts[] = self::encodeField($cell, $delimiter, $quoteAll);
         }
         if (fwrite($writer, implode($delimiter, $parts) . $eol) === false) {
             throw new RuntimeException('csv: write failed');
@@ -148,56 +149,55 @@ final class CsvFormatter implements Formatter
     }
 
     /**
-     * Encode one field per go's encoding/csv rules.
+     * Encode one field.
+     *
+     * A quoted field's bytes pass through verbatim. RFC 4180 lists CR and LF
+     * as separate alternatives inside `escaped`, so a bare CR between quotes
+     * is legal, and the W3C CSV on the Web note is explicit that line endings
+     * within escaped cells are not normalised. Only the record terminator
+     * varies with the crlf option.
      */
     private static function encodeField(
         string $field,
         string $delimiter,
-        bool $crlf,
         bool $quoteAll,
     ): string {
         if (!$quoteAll && !self::needsQuotes($field, $delimiter)) {
             return $field;
         }
-        $out = '"';
-        $len = strlen($field);
-        for ($i = 0; $i < $len; $i++) {
-            $ch = $field[$i];
-            if ($ch === '"') {
-                // RFC 4180: an embedded quote is doubled.
-                $out .= '""';
-                continue;
-            }
-            if ($crlf && $ch === "\n") {
-                // go rewrites an embedded LF to the active line ending, so a
-                // CRLF document stays internally consistent.
-                $out .= "\r\n";
-                continue;
-            }
-            if ($crlf && $ch === "\r") {
-                // go DROPS a lone CR in CRLF mode: writing it would otherwise
-                // manufacture a spurious record separator on re-read.
-                continue;
-            }
-            $out .= $ch;
-        }
-        return $out . '"';
+        // RFC 4180: an embedded quote is doubled. Everything else, CR and LF
+        // included, is written through untouched.
+        return '"' . str_replace('"', '""', $field) . '"';
     }
 
     /**
-     * Go quotes a field iff it contains the delimiter, a quote, LF or CR, or
-     * begins with a space. Note the asymmetry: a LEADING space forces
-     * quoting, a trailing one does not, and a tab never does.
+     * Quote a field iff it contains the delimiter, a quote, LF or CR, or
+     * begins with a unicode whitespace character. Note the asymmetry: a
+     * LEADING space forces quoting, a trailing one does not.
+     *
+     * The leading-whitespace test covers any unicode space, not just an
+     * ASCII one: go decides this with unicode.IsSpace on the first rune, so a
+     * leading TAB, vertical tab or NBSP is quoted too. A field equal to `\.`
+     * is quoted defensively — that sequence alone on a line terminates a
+     * PostgreSQL COPY stream.
      */
     private static function needsQuotes(string $field, string $delimiter): bool
     {
-        if (str_starts_with($field, ' ')) {
+        if ($field === '') {
+            return false;
+        }
+        if ($field === '\\.') {
             return true;
         }
-        return str_contains($field, $delimiter)
+        if (
+            str_contains($field, $delimiter)
             || str_contains($field, '"')
             || str_contains($field, "\n")
-            || str_contains($field, "\r");
+            || str_contains($field, "\r")
+        ) {
+            return true;
+        }
+        return preg_match('/^\s/u', $field) === 1;
     }
 
     /**
