@@ -102,7 +102,13 @@ export async function dispatch<T>(
       validateCols(rows, options.columns, cols);
     }
     await Promise.resolve(
-      (formatter as Formatter).render(writer, data as never, parsedOpts, cols),
+      (formatter as Formatter).render(
+        writer,
+        data as never,
+        parsedOpts,
+        cols,
+        options.columns,
+      ),
     );
   } finally {
     if (close) await close();

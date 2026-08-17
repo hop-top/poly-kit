@@ -7,10 +7,14 @@
  * - lines:     tab-separated, no header, one row per line
  * - paragraph: "Record N:" header line then "  field: value" lines
  *
+ * Column order comes from the ColumnSpec list, or the first row's key order
+ * when none was supplied; `cols` narrows and reorders.
+ *
  * Zero deps. Mirrors Go text formatter byte-for-byte.
  */
 
 import type { Formatter, Options } from '../formatter';
+import { resolveColumnNames } from '../projection';
 
 const STYLE_KV = 'kv';
 const STYLE_LINES = 'lines';
@@ -34,13 +38,12 @@ export const textFormatter: Formatter = {
       usage: 'kv separator (kv style only)',
     },
   ],
-  render(out, data, opts: Options, cols) {
+  render(out, data, opts: Options, cols, columns) {
     const rows = normalise(data);
+    // Emptiness is a ROW-count decision: no rows means no output at all.
     if (rows.length === 0) return;
 
-    const allHeaders = Object.keys(rows[0] ?? {});
-    const headers =
-      cols.length > 0 ? cols.filter(c => allHeaders.includes(c)) : allHeaders;
+    const headers = resolveColumnNames(rows, columns, cols);
     if (headers.length === 0) return;
 
     const style = ((opts['style'] as string) || STYLE_KV) as

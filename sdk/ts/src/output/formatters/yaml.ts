@@ -2,12 +2,14 @@
  * @module output/formatters/yaml
  *
  * Built-in YAML formatter. Honors `flow-level` option (default -1, mapping
- * to js-yaml's default block style). When `cols` is non-empty, projects
- * rows to header-keyed objects.
+ * to js-yaml's default block style). Emitted key order follows the ColumnSpec
+ * list, narrowed and reordered by `cols`; without either, the payload passes
+ * through untouched.
  */
 
 import * as yaml from 'js-yaml';
 import type { Formatter, Options } from '../formatter';
+import { projectForEncoding } from './project';
 
 export const yamlFormatter: Formatter = {
   key: 'yaml',
@@ -20,28 +22,9 @@ export const yamlFormatter: Formatter = {
       usage: 'level at which to switch from block to flow style',
     },
   ],
-  render(out, data, opts: Options, cols) {
+  render(out, data, opts: Options, cols, columns) {
     const flowLevel = (opts['flow-level'] as number) ?? -1;
-    const value = projectForYaml(data, cols);
+    const value = projectForEncoding(data, cols, columns);
     out.write(yaml.dump(value, { flowLevel }));
   },
 };
-
-function projectForYaml(
-  data: unknown,
-  cols: readonly string[],
-): unknown {
-  if (cols.length === 0) return data;
-  if (Array.isArray(data)) {
-    return data.map(row => projectRow(row, cols));
-  }
-  return projectRow(data, cols);
-}
-
-function projectRow(row: unknown, cols: readonly string[]): unknown {
-  if (row === null || typeof row !== 'object') return row;
-  const r = row as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const c of cols) out[c] = r[c];
-  return out;
-}

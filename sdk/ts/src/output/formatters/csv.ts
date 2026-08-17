@@ -2,12 +2,14 @@
  * @module output/formatters/csv
  *
  * Built-in CSV formatter. Uses csv-stringify (sync API) for RFC 4180 quoting.
- * Honors `delimiter`, `no-header`, `quote-all`, `crlf` options + `cols`
- * filtering.
+ * Honors `delimiter`, `no-header`, `quote-all`, `crlf` options. Column order
+ * comes from the ColumnSpec list, or the first row's key order when none was
+ * supplied; `cols` narrows and reorders.
  */
 
 import { stringify } from 'csv-stringify/sync';
 import type { Formatter, Options } from '../formatter';
+import { resolveColumnNames } from '../projection';
 
 export const csvFormatter: Formatter = {
   key: 'csv',
@@ -28,13 +30,13 @@ export const csvFormatter: Formatter = {
       usage: 'use CRLF line endings (default LF)',
     },
   ],
-  render(out, data, opts: Options, cols) {
+  render(out, data, opts: Options, cols, columns) {
     const rows = normalise(data);
+    // Emptiness is a ROW-count decision: no rows means no output at all,
+    // not a bare header line.
     if (rows.length === 0) return;
 
-    const allHeaders = Object.keys(rows[0] ?? {});
-    const headers =
-      cols.length > 0 ? cols.filter(c => allHeaders.includes(c)) : allHeaders;
+    const headers = resolveColumnNames(rows, columns, cols);
     if (headers.length === 0) return;
 
     const delimiter = (opts['delimiter'] as string) ?? ',';
