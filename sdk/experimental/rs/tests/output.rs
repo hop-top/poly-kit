@@ -81,16 +81,70 @@ fn json_formatter_list_payload() {
     assert_eq!(parsed, data);
 }
 
+/// `--cols` selects AND reorders: user order wins (contract rule 2).
+///
+/// Asserts on the SERIALIZED BYTES, not on `Value == Value`. `serde_json`
+/// compares objects key-set-wise and ignores key order, so a Value-level
+/// assertion here passes under any ordering and pins nothing.
 #[test]
-fn json_formatter_cols_projection() {
+fn json_formatter_cols_projection_preserves_user_order() {
     let r = default_registry();
     let f = r.lookup("json").unwrap();
     let data = json!([{"name": "alpha", "count": 1, "status": "ok"}]);
-    let cols = vec!["name".to_string(), "status".to_string()];
+    let cols = vec!["status".to_string(), "name".to_string()];
     let mut buf = Vec::new();
     f.render(&mut buf, &data, &Options::new(), &cols).unwrap();
-    let parsed: Value = serde_json::from_slice(&buf).unwrap();
-    assert_eq!(parsed, json!([{"name": "alpha", "status": "ok"}]));
+    let out = std::str::from_utf8(&buf).unwrap();
+    assert_eq!(
+        out, "[\n  {\n    \"status\": \"ok\",\n    \"name\": \"alpha\"\n  }\n]\n",
+        "cols order must survive serialization verbatim, got: {out}"
+    );
+}
+
+/// With no `--cols` and no ColumnSpec, payload key order is the fallback
+/// (contract rule 1) — it must NOT be alphabetized on the way out.
+#[test]
+fn json_formatter_preserves_payload_key_order() {
+    let r = default_registry();
+    let f = r.lookup("json").unwrap();
+    let data: Value =
+        serde_json::from_str(r#"[{"zeta":1,"alpha":{"omega":2,"beta":3},"mid":"x"}]"#).unwrap();
+    let mut buf = Vec::new();
+    f.render(&mut buf, &data, &Options::new(), &[]).unwrap();
+    let out = std::str::from_utf8(&buf).unwrap();
+    let keys: Vec<&str> = ["zeta", "alpha", "omega", "beta", "mid"]
+        .into_iter()
+        .filter(|k| out.contains(&format!("\"{k}\"")))
+        .collect();
+    // Ordering must hold at every nesting depth, not just the top level.
+    let positions: Vec<usize> = ["\"zeta\"", "\"alpha\"", "\"omega\"", "\"beta\"", "\"mid\""]
+        .iter()
+        .map(|k| {
+            out.find(k)
+                .unwrap_or_else(|| panic!("missing {k} in {out}"))
+        })
+        .collect();
+    assert_eq!(keys.len(), 5, "all keys present, got: {out}");
+    assert!(
+        positions.windows(2).all(|w| w[0] < w[1]),
+        "payload key order must survive at every depth, got: {out}"
+    );
+}
+
+/// YAML shares the projection path; key order must survive there too.
+#[test]
+fn yaml_formatter_cols_projection_preserves_user_order() {
+    let r = default_registry();
+    let f = r.lookup("yaml").unwrap();
+    let data = json!([{"name": "alpha", "count": 1, "status": "ok"}]);
+    let cols = vec!["status".to_string(), "name".to_string()];
+    let mut buf = Vec::new();
+    f.render(&mut buf, &data, &Options::new(), &cols).unwrap();
+    let out = std::str::from_utf8(&buf).unwrap();
+    assert_eq!(
+        out, "- status: ok\n  name: alpha\n",
+        "yaml must emit cols in user order, got: {out}"
+    );
 }
 
 #[test]
@@ -157,6 +211,16 @@ fn dispatch_default_format_path_succeeds_without_flags_or_extension() {
     assert!(out.contains('1'));
 }
 
+/// Column sequence is asserted positionally, not with `contains` —
+/// a `contains` assertion holds under ANY ordering and pins nothing.
+fn column_order(out: &str) -> Vec<&str> {
+    out.lines()
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect()
+}
+
 #[test]
 fn table_formatter_renders_header_and_rows() {
     let r = default_registry();
@@ -164,24 +228,27 @@ fn table_formatter_renders_header_and_rows() {
     let mut buf = Vec::new();
     f.render(
         &mut buf,
-        &json!([
-            {"name": "alpha", "count": 1},
-            {"name": "beta",  "count": 22},
-        ]),
+        // Deliberately NOT alphabetical: sorted order would be count, name.
+        &serde_json::from_str(r#"[{"name":"alpha","count":1},{"name":"beta","count":22}]"#)
+            .unwrap(),
         &Options::new(),
         &[],
     )
     .unwrap();
     let out = std::str::from_utf8(&buf).unwrap();
-    assert!(out.contains("name"));
-    assert!(out.contains("count"));
+    assert_eq!(
+        column_order(out),
+        vec!["name", "count"],
+        "payload key order must drive columns, got: {out}"
+    );
     assert!(out.contains("alpha"));
     assert!(out.contains("beta"));
     assert!(out.contains("22"));
 }
 
+/// Contract rule 2: `--cols` reorders as well as selects.
 #[test]
-fn table_formatter_cols_projection() {
+fn table_formatter_cols_projection_reorders() {
     let r = default_registry();
     let f = r.lookup("table").unwrap();
     let mut buf = Vec::new();
@@ -193,10 +260,129 @@ fn table_formatter_cols_projection() {
     )
     .unwrap();
     let out = std::str::from_utf8(&buf).unwrap();
+    assert_eq!(
+        column_order(out),
+        vec!["status", "name"],
+        "user --cols order must win, got: {out}"
+    );
     // 'count' must not appear when projected away.
     assert!(!out.contains("count"));
-    assert!(out.contains("status"));
-    assert!(out.contains("alpha"));
+}
+
+/// Contract rule 4: zero rows emits nothing — not even a bare header.
+/// Emptiness is decided by ROW count, never by header count.
+#[test]
+fn table_formatter_zero_rows_emits_nothing() {
+    let r = default_registry();
+    let f = r.lookup("table").unwrap();
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([]),
+        &Options::new(),
+        &["name".to_string(), "count".to_string()],
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "",
+        "zero rows must emit nothing, not a bare header row"
+    );
+}
+
+/// Contract rule 1: the ColumnSpec list drives default column order and
+/// headers when the caller supplies one and the user passes no --cols.
+#[test]
+fn dispatch_columnspec_drives_default_order() {
+    let schema = [
+        ColumnSpec::new("name", "name", 9),
+        ColumnSpec::new("count", "count", 7),
+        ColumnSpec::new("status", "status", 5),
+    ];
+    let cmd = build_cmd();
+    let matches = cmd.try_get_matches_from::<_, &str>([]).unwrap();
+    let mut buf = Vec::new();
+    dispatch(
+        &matches,
+        &mut buf,
+        // Payload key order is deliberately the reverse of the schema, so
+        // a passing assertion can only come from the ColumnSpec list.
+        &serde_json::from_str(r#"[{"status":"ok","count":1,"name":"alpha"}]"#).unwrap(),
+        DispatchOptions {
+            columns: Some(&schema),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let out = std::str::from_utf8(&buf).unwrap();
+    assert_eq!(
+        column_order(out),
+        vec!["name", "count", "status"],
+        "ColumnSpec order must drive default columns, got: {out}"
+    );
+}
+
+/// Contract rule 2 at the dispatch layer: --cols beats the ColumnSpec order.
+#[test]
+fn dispatch_user_cols_override_columnspec_order() {
+    let schema = [
+        ColumnSpec::new("name", "name", 9),
+        ColumnSpec::new("count", "count", 7),
+        ColumnSpec::new("status", "status", 5),
+    ];
+    let cmd = build_cmd();
+    let matches = cmd.try_get_matches_from(["--cols", "status,name"]).unwrap();
+    let mut buf = Vec::new();
+    dispatch(
+        &matches,
+        &mut buf,
+        &json!([{"name": "alpha", "count": 1, "status": "ok"}]),
+        DispatchOptions {
+            columns: Some(&schema),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let out = std::str::from_utf8(&buf).unwrap();
+    assert_eq!(
+        column_order(out),
+        vec!["status", "name"],
+        "--cols must reorder as well as select, got: {out}"
+    );
+}
+
+/// ColumnSpec order must reach the JSON path too, not just table.
+#[test]
+fn dispatch_columnspec_drives_json_key_order() {
+    let schema = [
+        ColumnSpec::new("name", "name", 9),
+        ColumnSpec::new("count", "count", 7),
+    ];
+    let cmd = build_cmd();
+    let matches = cmd.try_get_matches_from(["--format", "json"]).unwrap();
+    let mut buf = Vec::new();
+    dispatch(
+        &matches,
+        &mut buf,
+        &serde_json::from_str(r#"[{"count":1,"name":"alpha"}]"#).unwrap(),
+        DispatchOptions {
+            columns: Some(&schema),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "[\n  {\n    \"name\": \"alpha\",\n    \"count\": 1\n  }\n]\n",
+    );
+}
+
+/// Contract rule 3: header == key, enforced at construction so the two
+/// cannot drift. Validation and value lookup are the same operation.
+#[test]
+#[should_panic(expected = "ColumnSpec header/key mismatch")]
+fn columnspec_rejects_header_key_drift() {
+    let _ = ColumnSpec::new("Name", "name", 5);
 }
 
 #[test]
