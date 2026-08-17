@@ -33,8 +33,41 @@ Full diff: [kit-php/v0.4.0-alpha.1...kit-php/v0.4.0-alpha.2](https://github.com/
 
 ## [Unreleased]
 
+### Changed
+
+- **Output column ordering is now driven by the `ColumnSpec` list.** Previously
+  the schema passed to `Dispatcher::dispatch()` / `KitCommand::render()` /
+  `KitOutput::columns()` was consumed only to validate `--cols` and then
+  dropped; every formatter fell back to payload key order. It now supplies the
+  default column order, the header labels, and the column *selection*.
+  **User-visible:** callers that already pass a `ColumnSpec` list whose order
+  differs from their payload key order will see columns reorder, and payload
+  keys absent from the schema will stop being emitted. Precedence is `--cols`
+  (user order always wins, it reorders as well as selects), else `ColumnSpec`
+  order, else payload key order. Applies to the `table`, `json`, and `yaml`
+  built-ins alike, so `json`/`yaml` serialized key order follows the same rule.
+- **`--template` honors the schema too.** The minimal renderer gained a `{*}`
+  placeholder that expands to every resolved column's value, tab-separated, in
+  schema order — the counterpart of the ordered `cols` variable the Python
+  SDK's Jinja path exposes. Plain `{key}` substitution is unchanged.
+- **Zero rows emits nothing** from the `table` formatter — not even a bare
+  header row. Emptiness is decided by row count, never by header count, so a
+  supplied `ColumnSpec` list or `--cols` no longer forces a lone header line.
+  Previously an empty payload emitted a stray blank line.
+- **`ColumnSpec` now requires `header === key`**, enforced in the constructor,
+  which throws `InvalidArgumentException` on a mismatch. Validation and row
+  lookup are one operation on one name. Go cannot express a header/key split
+  through its `table:""` struct tags, so no SDK may. `priority` is still
+  accepted and stored but remains ignored outside Go.
+
 ### Added
 
+- `HopTop\Kit\Output\Formatter\Projection` — shared column-resolution and
+  row-projection helpers, so the built-in formatters cannot drift apart.
+- `Formatter::render()` takes a fifth `array $columns = []` parameter carrying
+  the `ColumnSpec` list. It is defaulted, so existing third-party formatters
+  keep satisfying the interface, but they will ignore schema order until they
+  opt in.
 - Telemetry module under `HopTop\Kit\Telemetry`:
   - `Mode` enum, env-precedence resolver, `install_id` sharing, consent reader.
   - `JsonlSink` (default; FPM-safe via `register_shutdown_function`).
