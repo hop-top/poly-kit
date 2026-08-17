@@ -6,17 +6,21 @@ Mirrors hop.top/kit/go/console/output/csv.go semantics:
 - quote-all (bool, False): wrap every field in double quotes
 - crlf (bool, False): use CRLF line endings (default LF)
 
-Empty list input → no output. Honors ``cols`` (filters headers + rows).
+Zero rows → no output. ``columns`` sets header order/names; ``cols``
+reorders + selects.
 """
 
 from __future__ import annotations
 
 import csv as _csv
 import io
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 from hop_top_kit.output.formatter import OptionSpec
 from hop_top_kit.output.projection import filter_columns, to_rows
+
+if TYPE_CHECKING:
+    from hop_top_kit.output.formatter import ColumnSpec
 
 
 class CSVFormatter:
@@ -57,9 +61,11 @@ class CSVFormatter:
         data: Any,
         opts: dict[str, Any],
         cols: list[str],
+        columns: list[ColumnSpec] | None = None,
     ) -> None:
-        headers, rows = to_rows(data)
-        if not headers:
+        headers, rows = to_rows(data, columns)
+        # Emptiness is decided by ROW count, never header count.
+        if not rows:
             return
         if cols:
             headers, rows = filter_columns(headers, rows, cols)
