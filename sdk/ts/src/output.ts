@@ -28,13 +28,15 @@
  *
  * ## Backward compatibility
  *
- * `render(w, format, v)` keeps its original signature. New per-format
- * options + column projection are accessed via `dispatch()`.
+ * `render(w, format, v)` keeps its original signature and renders every
+ * column in payload key order. New per-format options and column ordering
+ * (ColumnSpec lists, `--cols`) are accessed via `dispatch()`.
  */
 
 // Re-export the typed surface.
 export type { Formatter, OptionSpec, OptionType, Options, ColumnSpec } from './output/formatter';
-export { parseOptions, optionTypeName } from './output/formatter';
+export { parseOptions, optionTypeName, columnName } from './output/formatter';
+export { deriveHeaders, resolveEffectiveCols, projectRows } from './output/projection';
 export { Registry, defaultRegistry, newRegistry } from './output/registry';
 export { jsonFormatter } from './output/formatters/json';
 export { yamlFormatter } from './output/formatters/yaml';

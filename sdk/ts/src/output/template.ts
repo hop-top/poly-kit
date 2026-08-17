@@ -11,6 +11,7 @@
 
 import { Eta } from 'eta';
 import type { ColumnSpec } from './formatter';
+import { deriveHeaders, projectRows, resolveEffectiveCols } from './projection';
 
 const eta = new Eta({ autoEscape: false });
 
@@ -29,12 +30,16 @@ export async function renderTemplate(
   columns?: readonly ColumnSpec[],
 ): Promise<void> {
   const rows = Array.isArray(data) ? (data as readonly unknown[]) : [data];
-  const items = projectItems(rows, columns);
-  const cols = columns
-    ? columns.map(c => c.header)
-    : items.length > 0 && typeof items[0] === 'object' && items[0] !== null
-      ? Object.keys(items[0] as Record<string, unknown>)
-      : [];
+  // Projection applies only when a ColumnSpec list fixes the order; the
+  // template's own `cols` binding always resolves to concrete names so
+  // `it.cols` stays usable on the payload-key fallback path too.
+  const projected = resolveEffectiveCols([], columns);
+  const cols = projected.length > 0 ? projected : deriveHeaders(rows);
+  // Templates always index items by field, so non-object rows become {}.
+  const items = projectRows(
+    rows.map(r => (r === null || typeof r !== 'object' ? {} : r)),
+    projected,
+  );
   const input = { items, cols, data };
 
   let rendered: string;
@@ -45,19 +50,4 @@ export async function renderTemplate(
     throw new Error(`template error: ${msg}`);
   }
   out.write(rendered);
-}
-
-function projectItems(
-  rows: readonly unknown[],
-  columns?: readonly ColumnSpec[],
-): readonly Record<string, unknown>[] {
-  if (!columns) {
-    return rows.map(r => (r === null || typeof r !== 'object' ? {} : (r as Record<string, unknown>)));
-  }
-  return rows.map(row => {
-    const r = (row ?? {}) as Record<string, unknown>;
-    const out: Record<string, unknown> = {};
-    for (const c of columns) out[c.header] = r[c.key];
-    return out;
-  });
 }
