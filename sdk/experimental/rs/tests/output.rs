@@ -538,11 +538,15 @@ fn dispatch_format_opt_forwards_to_formatter() {
 /// never raw bytes, so quoting parity is enforced here and nowhere else. Any
 /// drift in the quoting rule must fail loudly at this assertion.
 ///
-/// Go's rule, which py and ts reproduce byte-for-byte: quote a field iff it
-/// contains the delimiter, a double quote, LF, CR, or BEGINS with a space.
-/// Trailing spaces and tabs are deliberately NOT quoted — php's fputcsv
-/// quotes both, which is exactly the divergence this formatter avoids by
-/// implementing the rule explicitly rather than delegating to a library.
+/// The rule: quote a field iff it contains the delimiter, a double quote, LF,
+/// CR, or BEGINS with a unicode space. Trailing spaces and tabs are
+/// deliberately NOT quoted — php's fputcsv quotes both, which is exactly the
+/// divergence this formatter avoids by implementing the rule explicitly
+/// rather than delegating to a library.
+///
+/// A quoted field's bytes are preserved verbatim. CR and LF are separate
+/// alternatives in RFC 4180's `escaped` production, so a bare CR between
+/// quotes is legal; dropping it would be silent data loss.
 fn adversarial_row() -> Value {
     json!([{
         "a": "plain",
@@ -571,11 +575,11 @@ fn csv_formatter_quoting_matches_go_byte_for_byte() {
     );
 }
 
-/// CRLF mode follows Go: embedded LF is rewritten to CRLF inside the quoted
-/// field, and a lone CR is DROPPED. ts's csv-stringify disagrees on both
-/// counts; go is the stated reference runtime, so go wins.
+/// CRLF mode changes the RECORD TERMINATOR and nothing else. An embedded LF
+/// stays an LF and a lone CR is preserved; rewriting either would mutate the
+/// caller's value. Only the bytes between records differ from LF mode.
 #[test]
-fn csv_formatter_crlf_matches_go_including_dropped_lone_cr() {
+fn csv_formatter_crlf_changes_only_the_record_terminator() {
     let r = default_registry();
     let f = r.lookup("csv").unwrap();
     let mut opts = Options::new();
@@ -585,8 +589,163 @@ fn csv_formatter_crlf_matches_go_including_dropped_lone_cr() {
     assert_eq!(
         std::str::from_utf8(&buf).unwrap(),
         "a,b,c,d,e,f,g,h,i\r\n\
-         plain,\"with,comma\",\"with\"\"quote\",\"with\r\nnewline\",\" leading space\",trailing ,,with\ttab,\"withcr\"\r\n",
+         plain,\"with,comma\",\"with\"\"quote\",\"with\nnewline\",\" leading space\",trailing ,,with\ttab,\"with\rcr\"\r\n",
     );
+}
+
+/// Quote-all must preserve CR/LF too. The previous implementation dropped a
+/// lone CR on this path as well — worse than the go writer it was copied
+/// from, which preserved it here while dropping it on the default path.
+#[test]
+fn csv_formatter_crlf_quote_all_preserves_cr() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut opts = Options::new();
+    opts.insert("crlf".to_string(), OptionValue::Bool(true));
+    opts.insert("quote-all".to_string(), OptionValue::Bool(true));
+    let mut buf = Vec::new();
+    f.render(&mut buf, &adversarial_row(), &opts, &[]).unwrap();
+    let got = std::str::from_utf8(&buf).unwrap();
+    assert!(
+        got.contains("\"with\rcr\""),
+        "lone CR must survive quote-all, got {got:?}"
+    );
+    assert!(
+        got.contains("\"with\nnewline\""),
+        "in-field LF must stay LF, got {got:?}"
+    );
+    assert!(!got.contains("withcr"), "CR must not be dropped: {got:?}");
+}
+
+/// A minimal RFC 4180 reader. The crate ships no csv reader dependency, so
+/// round-trip is proved against a decoder written to the grammar directly:
+/// `escaped = DQUOTE *(TEXTDATA / COMMA / CR / LF / 2DQUOTE) DQUOTE`.
+/// Records are split only on an UNQUOTED line ending.
+fn decode_csv(input: &str, delim: char) -> Vec<Vec<String>> {
+    let mut records = Vec::new();
+    let mut record = Vec::new();
+    let mut field = String::new();
+    let mut in_quotes = false;
+    let mut chars = input.chars().peekable();
+    let mut pending = false; // saw at least one char of the current record
+
+    while let Some(c) = chars.next() {
+        pending = true;
+        if in_quotes {
+            if c == '"' {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    field.push('"');
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                field.push(c);
+            }
+            continue;
+        }
+        match c {
+            '"' if field.is_empty() => in_quotes = true,
+            c if c == delim => record.push(std::mem::take(&mut field)),
+            '\r' | '\n' => {
+                if c == '\r' && chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                record.push(std::mem::take(&mut field));
+                records.push(std::mem::take(&mut record));
+                pending = false;
+            }
+            other => field.push(other),
+        }
+    }
+    if pending || !field.is_empty() {
+        record.push(field);
+        records.push(record);
+    }
+    records
+}
+
+/// Round-trip is the acceptance criterion, not byte-equality: byte-equality
+/// alone would be satisfied by every runtime agreeing on lossy output.
+#[test]
+fn csv_formatter_round_trips_adversarial_row() {
+    let expected: Vec<String> = [
+        "plain",
+        "with,comma",
+        "with\"quote",
+        "with\nnewline",
+        " leading space",
+        "trailing ",
+        "",
+        "with\ttab",
+        "with\rcr",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+
+    for (label, crlf, quote_all) in [
+        ("lf", false, false),
+        ("crlf", true, false),
+        ("lf/quote-all", false, true),
+        ("crlf/quote-all", true, true),
+    ] {
+        let r = default_registry();
+        let f = r.lookup("csv").unwrap();
+        let mut opts = Options::new();
+        opts.insert("crlf".to_string(), OptionValue::Bool(crlf));
+        opts.insert("quote-all".to_string(), OptionValue::Bool(quote_all));
+        opts.insert("no-header".to_string(), OptionValue::Bool(true));
+        let mut buf = Vec::new();
+        f.render(&mut buf, &adversarial_row(), &opts, &[]).unwrap();
+        let text = std::str::from_utf8(&buf).unwrap();
+
+        let recs = decode_csv(text, ',');
+        assert_eq!(
+            recs.len(),
+            1,
+            "{label}: one row must decode to one record, got {text:?}"
+        );
+        assert_eq!(recs[0], expected, "{label}: round-trip must be lossless");
+    }
+}
+
+/// Go quotes on `unicode::is_whitespace` of the FIRST character, not on a
+/// literal ASCII space. `starts_with(' ')` silently left a leading TAB, VT
+/// and NBSP unquoted — a divergence from the rule this formatter documents.
+#[test]
+fn csv_formatter_quotes_any_leading_unicode_space() {
+    for (input, want) in [
+        ("\tlead", "\"\tlead\"\n"),
+        (" lead", "\" lead\"\n"),
+        ("\u{a0}lead", "\"\u{a0}lead\"\n"),
+        ("\u{b}lead", "\"\u{b}lead\"\n"),
+        ("trail ", "trail \n"),
+        ("plain", "plain\n"),
+    ] {
+        let r = default_registry();
+        let f = r.lookup("csv").unwrap();
+        let mut opts = Options::new();
+        opts.insert("no-header".to_string(), OptionValue::Bool(true));
+        let mut buf = Vec::new();
+        f.render(&mut buf, &json!([{ "v": input }]), &opts, &[])
+            .unwrap();
+        assert_eq!(std::str::from_utf8(&buf).unwrap(), want, "input {input:?}");
+    }
+}
+
+/// `\.` alone on a line terminates a PostgreSQL COPY stream; go's writer
+/// quotes it defensively and so must this one.
+#[test]
+fn csv_formatter_quotes_postgres_copy_sentinel() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut opts = Options::new();
+    opts.insert("no-header".to_string(), OptionValue::Bool(true));
+    let mut buf = Vec::new();
+    f.render(&mut buf, &json!([{ "v": "\\." }]), &opts, &[])
+        .unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "\"\\.\"\n");
 }
 
 #[test]

@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **CSV fields containing CR or LF are now preserved verbatim.** With
+  `crlf` set, the encoder previously DROPPED a lone carriage return and
+  rewrote an embedded LF to CRLF inside the quoted field — both silent,
+  both irrecoverable, and the CR drop applied on the `quote-all` path too.
+  A field holding CR and/or LF is quoted and its bytes pass through
+  untouched in both line-ending modes and both quoting paths; `crlf` now
+  changes the record terminator and nothing else. RFC 4180 lists `CR` and
+  `LF` as separate alternatives inside the `escaped` production, so a bare
+  CR between quotes is legal, and W3C CSV on the Web states that line
+  endings within escaped cells are not normalised.
+  **User-visible:** `--format csv --format-opt crlf` output for values
+  containing `\r` changes, and such values now survive a decode round-trip.
+- **Leading-whitespace quoting matches the documented rule.** The check was
+  `starts_with(' ')`, which left a leading TAB, vertical tab or NBSP
+  unquoted; it is now a unicode whitespace test on the first character, as
+  the module doc claimed. A field equal to `\.` is also quoted, since that
+  sequence alone on a line terminates a PostgreSQL `COPY` stream.
+
 ## [0.5.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.4.0-experimental.3...kit-rs/v0.5.0-alpha.0) (2026-06-07)
 
 
