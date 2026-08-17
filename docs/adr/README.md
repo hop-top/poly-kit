@@ -12,6 +12,26 @@ are kept in place for history.
 | 0002 | [LLM pool routing primitives](./0002-llm-pool-routing-primitives.md) <a id="0002-llm-pool-routing-primitives"></a> | Accepted | Ship a deterministic LLM picker + categorical `BudgetTier` + operator pool gating in `go/ai/llm/`, delegating model metadata to `hop.top/aim`. |
 | 0003 | [uri + hdl consolidated into cite](./0003-cite-consolidates-uri-and-hdl.md) <a id="0003-cite-consolidates-uri-and-hdl"></a> | Accepted | Replace `hop.top/uri` with `hop.top/cite v0.1.0` as the canonical poly-URI library; drop orphan `hop.top/hdl` (already de-replaced). |
 
+## Claiming a number
+
+The highest number on `main` is **not** the highest number claimed —
+in-flight branches hold numbers that `main` cannot see. Two branches
+that both read `main` will otherwise pick the same next number and
+collide at merge.
+
+To find a genuinely free number:
+
+```sh
+git fetch --all
+make lint-adr-numbers   # reports the highest number across all refs
+```
+
+`make lint-adr-numbers` also runs in CI (`adr-numbers-lint`) and fails
+the build when one number maps to two different filenames on any two
+refs, naming both files. If it fails on your PR, someone claimed your
+number first: rename your file to the next free number and update the
+index row below in the same commit.
+
 ## Conventions
 
 - **Filename**: `NNNN-kebab-title.md` (zero-padded 4-digit sequence).

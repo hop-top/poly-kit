@@ -1,4 +1,4 @@
-.PHONY: setup lint lint-go lint-ts lint-py lint-rs lint-docs lint-config lint-links lint-sdk-paths \
+.PHONY: setup lint lint-go lint-ts lint-py lint-rs lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers \
 	preflight \
 	tools tools-golangci-lint \
 	test test-go test-go-integration test-ts test-py test-rs test-parity test-parity-typeid \
@@ -107,7 +107,7 @@ test-parity-typeid: ## TypeID v1 contract loaders across all 5 SDKs
 		echo "==> typeid-v1 parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
 
-lint: lint-go lint-ts lint-py lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
+lint: lint-go lint-ts lint-py lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers ## Run all linters
 
 lint-go: tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -166,6 +166,9 @@ lint-sdk-paths: ## Guard against repeated-sdk-segment path corruption recurrence
 		--exclude='Makefile' \
 		--exclude='.xray_*.md'
 	@echo "No repeated-sdk-segment corruption detected."
+
+lint-adr-numbers: ## Guard against duplicate ADR numbers claimed across branches
+	@scripts/verify-adr-numbers.sh
 
 proto: ## Generate protobuf + Connect/gRPC stubs
 # Generated files are committed for go-get compatibility.
