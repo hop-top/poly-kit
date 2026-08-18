@@ -13,6 +13,26 @@ are kept in place for history.
 | 0003 | [uri + hdl consolidated into cite](./0003-cite-consolidates-uri-and-hdl.md) <a id="0003-cite-consolidates-uri-and-hdl"></a> | Accepted | Replace `hop.top/uri` with `hop.top/cite v0.1.0` as the canonical poly-URI library; drop orphan `hop.top/hdl` (already de-replaced). |
 | 0005 | [Output column precedence and header/key identity](./0005-output-column-precedence-and-header-key-identity.md) <a id="0005-output-column-precedence-and-header-key-identity"></a> | Accepted | `--cols` reorders as well as selects and the user's order wins; `header == key` universally, because Go cannot express a split via `table:""` tags. |
 
+## Claiming a number
+
+The highest number on `main` is **not** the highest number claimed —
+in-flight branches hold numbers that `main` cannot see. Two branches
+that both read `main` will otherwise pick the same next number and
+collide at merge.
+
+To find a genuinely free number:
+
+```sh
+git fetch --all
+make lint-adr-numbers   # reports the highest number across all refs
+```
+
+`make lint-adr-numbers` also runs in CI (`adr-numbers-lint`) and fails
+the build when one number maps to two different filenames on any two
+refs, naming both files. If it fails on your PR, someone claimed your
+number first: rename your file to the next free number and update the
+index row below in the same commit.
+
 ## Conventions
 
 - **Filename**: `NNNN-kebab-title.md` (zero-padded 4-digit sequence).

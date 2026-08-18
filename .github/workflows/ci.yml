@@ -78,6 +78,21 @@ jobs:
       - uses: actions/checkout@v4
       - run: make lint-sdk-paths
 
+  adr-numbers-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The collision this job catches lives *between* branches: two
+      # PRs cut from the same base can each claim the next free ADR
+      # number, and each branch looks correct in isolation. Comparing
+      # against other refs is the only way to see it, so fetch every
+      # branch. actions/checkout leaves only origin/<default-branch>
+      # by default, even at fetch-depth: 0. --depth=1 keeps this cheap:
+      # the check reads trees, never history.
+      - name: Fetch all branches for cross-ref comparison
+        run: git fetch --no-tags --depth=1 origin '+refs/heads/*:refs/remotes/origin/*'
+      - run: make lint-adr-numbers
+
   # ── Stage 2: Test (after lint) ─────────────────────────────────
   go-test:
     needs: [go-lint]
