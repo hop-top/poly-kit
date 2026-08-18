@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any, TextIO
 
-from hop_top_kit.output.formatter import OptionSpec
+from hop_top_kit.output.formatter import ColumnSpec, OptionSpec
 from hop_top_kit.output.projection import filter_columns, to_rows
 
 
@@ -63,9 +63,10 @@ class CSVFormatter:
         data: Any,
         opts: dict[str, Any],
         cols: list[str],
+        columns: list[ColumnSpec] | None = None,
     ) -> None:
-        headers, rows = to_rows(data)
-        if not headers:
+        headers, rows = to_rows(data, columns)
+        if not rows:
             return
         if cols:
             headers, rows = filter_columns(headers, rows, cols)
