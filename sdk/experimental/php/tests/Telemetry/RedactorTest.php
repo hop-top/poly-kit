@@ -125,7 +125,7 @@ class RedactorTest extends TestCase
     {
         $r = new Redactor(function (array $attrs): array {
             // The default has already replaced alice@example.com.
-            if (is_array($attrs) && isset($attrs['user']) && $attrs['user'] === '<redacted:email>') {
+            if (isset($attrs['user']) && $attrs['user'] === '<redacted:email>') {
                 $attrs['user'] = '<redacted:custom-email>';
             }
 

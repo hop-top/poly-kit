@@ -169,6 +169,11 @@ jobs:
       # medium+; see the audit-php target for the severity rationale.
       - run: make audit-php
       - run: cd sdk/experimental/php && composer install --no-progress
+      # Static analysis. phpstan was in require-dev but never ran, so it
+      # was installed on every build and enforced nothing. src/ gates at
+      # level 5, tests/ at 2; see phpstan.neon for why they differ. No
+      # baseline and no ignore list.
+      - run: make lint-php
       # CrossLangSmokeTest currently fails on the anon-mode null
       # assertion (telemetry stack regression). Excluded here so the
       # gate ships green; re-enable once that test is fixed.
