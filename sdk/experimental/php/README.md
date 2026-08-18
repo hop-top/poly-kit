@@ -245,7 +245,25 @@ The transport is chosen via `KIT_TELEMETRY_SINK`:
 |--------------------|------------------------------------------------------------|
 | (unset) / `jsonl`  | `JsonlSink` — append JSONL to a per-PID file under XDG_STATE (default; FPM-safe) |
 | `none`             | `NullSink` — drop every envelope (CI / staging)            |
-| `https`            | Adopters construct `HttpsSink` themselves and call `Telemetry::setSink()` (see FPM caveat below) |
+
+`https` is **not** an accepted value of this variable. The facade never
+constructs an HTTP client, so `KIT_TELEMETRY_SINK=https` reports a
+diagnostic and falls back to `JsonlSink`. Adopters who need HTTPS
+construct `HttpsSink` themselves and call `Telemetry::setSink()` (see
+the FPM caveat below). Note this differs from the Python, TypeScript,
+and Rust SDKs, where `https` *is* env-selectable.
+
+Any other explicitly-set value (a typo such as `htpps`, or an
+unimplemented transport) is likewise reported and falls back to
+`JsonlSink` — an operator's choice is never discarded in silence.
+
+Diagnostics go to a reporter that defaults to a no-op, so the SDK stays
+quiet on import and never writes to a php-fpm response body. Wire it to
+your logger to see them:
+
+```php
+Telemetry::setSinkErrReporter(static fn (string $m) => error_log($m));
+```
 
 **JsonlSink** registers a `register_shutdown_function` callback so envelopes
 are flushed even when the caller never calls `Telemetry::flush()`. The on-
