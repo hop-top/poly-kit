@@ -159,6 +159,10 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+      # composer only WARNS when composer.lock is stale, so drift never
+      # fails a build — it just surfaces later as an unexplained warning
+      # in someone else's install. --check-lock exits non-zero instead.
+      - run: make lint-lock-php
       - run: cd sdk/experimental/php && composer install --no-progress
       # CrossLangSmokeTest currently fails on the anon-mode null
       # assertion (telemetry stack regression). Excluded here so the

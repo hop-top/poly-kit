@@ -1,4 +1,4 @@
-.PHONY: setup lint lint-go lint-ts lint-py lint-rs lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers \
+.PHONY: setup lint lint-go lint-ts lint-py lint-lock-py lint-lock-php lint-rs lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers \
 	preflight \
 	tools tools-golangci-lint \
 	test test-go test-go-integration test-ts test-py test-rs test-parity test-parity-typeid \
@@ -107,7 +107,7 @@ test-parity-typeid: ## TypeID v1 contract loaders across all 5 SDKs
 		echo "==> typeid-v1 parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
 
-lint: lint-go lint-ts lint-py lint-lock-py lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers ## Run all linters
+lint: lint-go lint-ts lint-py lint-lock-py lint-lock-php lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers ## Run all linters
 
 lint-go: tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -126,6 +126,9 @@ lint-py: ## Python: ruff check + format
 lint-lock-py: ## Python: uv.lock consistent with pyproject.toml
 	cd sdk/py && uv lock --check
 	cd engine/sdk/py-kit-engine && uv lock --check
+
+lint-lock-php: ## PHP: composer.lock consistent with composer.json
+	cd sdk/experimental/php && composer validate --check-lock --no-check-publish
 
 lint-rs: ## Rust: cargo fmt --check + clippy (all features)
 	cd sdk/experimental/rs && cargo fmt --all -- --check
