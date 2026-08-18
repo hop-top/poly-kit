@@ -1,4 +1,4 @@
-.PHONY: setup lint lint-go lint-ts lint-py lint-lock-py lint-lock-php audit-php lint-rs lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers \
+.PHONY: setup lint lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-rs lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers \
 	preflight \
 	tools tools-golangci-lint \
 	test test-go test-go-integration test-ts test-py test-rs test-parity test-parity-typeid \
@@ -107,7 +107,7 @@ test-parity-typeid: ## TypeID v1 contract loaders across all 5 SDKs
 		echo "==> typeid-v1 parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
 
-lint: lint-go lint-ts lint-py lint-lock-py lint-lock-php audit-php lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers ## Run all linters
+lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers ## Run all linters
 
 lint-go: tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -141,6 +141,14 @@ lint-lock-php: ## PHP: composer.lock consistent with composer.json
 audit-php: ## PHP: composer.lock free of medium+ security advisories
 	cd sdk/experimental/php && composer audit --locked --no-dev \
 		--ignore-severity=low --abandoned=report --ignore-unreachable
+
+# Two passes: src/ at level 5, tests/ at 2 (see phpstan.neon for why they
+# differ). Both run via `composer analyse`, so this target and a bare
+# `composer analyse` gate identically. Neither config carries a baseline or
+# an ignore list, so every error reported is a real one. Needs vendor/
+# (unlike audit-php), hence the install.
+lint-php: ## PHP: phpstan static analysis (levels pinned in phpstan.neon)
+	cd sdk/experimental/php && composer install --no-progress --quiet && composer analyse
 
 lint-rs: ## Rust: cargo fmt --check + clippy (all features)
 	cd sdk/experimental/rs && cargo fmt --all -- --check

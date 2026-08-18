@@ -1,0 +1,7 @@
+# Second pass for tests/. Kept separate from phpstan.neon only because it
+# runs at a lower level; see the rationale in that file. Both passes run
+# under `composer analyse`, so tests/ is never silently unanalysed.
+parameters:
+    level: 2
+    paths:
+        - tests
