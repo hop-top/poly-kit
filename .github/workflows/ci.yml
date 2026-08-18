@@ -163,6 +163,11 @@ jobs:
       # fails a build — it just surfaces later as an unexplained warning
       # in someone else's install. --check-lock exits non-zero instead.
       - run: make lint-lock-php
+      # Audits composer.lock for known advisories. Nothing failed the build
+      # on a vulnerable dependency before this step, so 16 advisories piled
+      # up unnoticed. Runs on the lock (no vendor/ needed) and gates at
+      # medium+; see the audit-php target for the severity rationale.
+      - run: make audit-php
       - run: cd sdk/experimental/php && composer install --no-progress
       # CrossLangSmokeTest currently fails on the anon-mode null
       # assertion (telemetry stack regression). Excluded here so the
