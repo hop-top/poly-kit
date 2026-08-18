@@ -12,8 +12,9 @@ import (
 // Each one preserves the exact behavior of the pre-Formatter code path so
 // callers using output.Render(w, "json"|"yaml"|"table", v) see no change.
 // Column projection (cols) and per-format options are honored where they
-// apply; for json/yaml that means projecting struct values to maps keyed
-// by `table:""` tag headers when cols is non-empty.
+// apply; for json/yaml that means projecting struct values to ordered
+// objects keyed by `table:""` tag headers when cols is non-empty, with
+// keys emitted in --cols order.
 func init() {
 	Default.Register(jsonFormatter{})
 	Default.Register(yamlFormatter{})
@@ -31,7 +32,7 @@ func (jsonFormatter) Render(w io.Writer, data any, _ Options, cols []string) err
 	if len(cols) == 0 {
 		return enc.Encode(data)
 	}
-	return enc.Encode(projectToMaps(data, cols))
+	return enc.Encode(projectToOrdered(data, cols))
 }
 
 type yamlFormatter struct{}
@@ -43,7 +44,7 @@ func (yamlFormatter) Render(w io.Writer, data any, _ Options, cols []string) err
 	if len(cols) == 0 {
 		return yaml.NewEncoder(w).Encode(data)
 	}
-	return yaml.NewEncoder(w).Encode(projectToMaps(data, cols))
+	return yaml.NewEncoder(w).Encode(projectToOrdered(data, cols))
 }
 
 type tableFormatter struct{}
