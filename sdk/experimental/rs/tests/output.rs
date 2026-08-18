@@ -490,6 +490,99 @@ fn dispatch_template_renders() {
 }
 
 #[test]
+fn dispatch_template_star_follows_columnspec_order_not_payload_order() {
+    // ColumnSpec order deliberately DISAGREES with payload key order:
+    // payload is {name, count}; spec is [count, name]. Expecting "1\talpha"
+    // therefore proves the spec drove the order — a "alpha\t1" expectation
+    // would have been satisfied by payload order alone and proved nothing.
+    let schema = [
+        ColumnSpec::new("count", "count", 0),
+        ColumnSpec::new("name", "name", 0),
+    ];
+    let cmd = build_cmd();
+    let matches = cmd.try_get_matches_from(["--template", "{*}"]).unwrap();
+    let mut buf = Vec::new();
+    dispatch(
+        &matches,
+        &mut buf,
+        &json!([{"name": "alpha", "count": 1}, {"name": "beta", "count": 2}]),
+        DispatchOptions {
+            columns: Some(&schema),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let out = std::str::from_utf8(&buf).unwrap();
+    assert_eq!(out, "1\talpha\n2\tbeta\n");
+}
+
+#[test]
+fn dispatch_template_star_omits_columns_absent_from_row() {
+    let schema = [
+        ColumnSpec::new("count", "count", 0),
+        ColumnSpec::new("name", "name", 0),
+    ];
+    let cmd = build_cmd();
+    let matches = cmd.try_get_matches_from(["--template", "{*}"]).unwrap();
+    let mut buf = Vec::new();
+    dispatch(
+        &matches,
+        &mut buf,
+        &json!([{"name": "alpha"}]),
+        DispatchOptions {
+            columns: Some(&schema),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let out = std::str::from_utf8(&buf).unwrap();
+    assert_eq!(out, "\talpha\n");
+}
+
+#[test]
+fn dispatch_template_star_falls_back_to_payload_key_order() {
+    // No ColumnSpec supplied: `{*}` falls back to the first object-shaped
+    // row's own key order, matching the formatter path's inference.
+    let cmd = build_cmd();
+    let matches = cmd.try_get_matches_from(["--template", "{*}"]).unwrap();
+    let mut buf = Vec::new();
+    dispatch(
+        &matches,
+        &mut buf,
+        &json!([{"count": 1, "name": "alpha"}]),
+        DispatchOptions::default(),
+    )
+    .unwrap();
+    let out = std::str::from_utf8(&buf).unwrap();
+    assert_eq!(out, "1\talpha\n");
+}
+
+#[test]
+fn dispatch_template_star_coexists_with_named_keys() {
+    let schema = [
+        ColumnSpec::new("count", "count", 0),
+        ColumnSpec::new("name", "name", 0),
+    ];
+    let cmd = build_cmd();
+    let matches = cmd
+        .try_get_matches_from(["--template", "{name}|{*}"])
+        .unwrap();
+    let mut buf = Vec::new();
+    dispatch(
+        &matches,
+        &mut buf,
+        &json!([{"name": "alpha", "count": 1}]),
+        DispatchOptions {
+            columns: Some(&schema),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let out = std::str::from_utf8(&buf).unwrap();
+    assert_eq!(out, "alpha|1\talpha\n");
+}
+
+#[test]
 fn dispatch_cols_validated_against_schema() {
     let schema = [
         ColumnSpec::new("name", "name", 9),
