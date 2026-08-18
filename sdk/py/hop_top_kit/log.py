@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 import structlog
+
+from hop_top_kit import parity
 
 # ---------------------------------------------------------------------------
 # Theme — matches Go charmtone palette
@@ -112,19 +114,74 @@ logging.addLevelName(TRACE, "TRACE")
 
 _LEVEL_ORDER = ["trace", "debug", "info", "warning", "error", "critical"]
 
+# Contract level NAME → (stdlib level, structlog level name).
+#
+# The boundary between the contract's vocabulary and Python's. The contract
+# owns which names the -V count and --quiet map to; this table owns how each
+# name reaches stdlib logging. Two names need translating: "trace" has no
+# stdlib constant (TRACE is kit-local, below DEBUG, matching Go's
+# DebugLevel-1), and the contract's "warn" is stdlib/structlog "warning".
+_LEVEL_BY_NAME: dict[str, tuple[int, str]] = {
+    "trace": (TRACE, "trace"),
+    "debug": (logging.DEBUG, "debug"),
+    "info": (logging.INFO, "info"),
+    "warn": (logging.WARNING, "warning"),
+    "warning": (logging.WARNING, "warning"),
+    "error": (logging.ERROR, "error"),
+}
 
-def _verbose_to_level(verbose: int, quiet: bool = False) -> tuple[int, str]:
-    """Map verbose count → (stdlib level, structlog level name).
 
-    0=INFO, 1=DEBUG, 2+=TRACE. quiet overrides to WARNING.
+def level_for_name(name: str) -> tuple[int, str]:
+    """Resolve a contract level name to (stdlib level, structlog level name).
+
+    Unknown names fall back to INFO rather than raising: the contract is the
+    source of the name, and a CLI must still start if it gains a level this
+    port has no stdlib counterpart for.
+    """
+    return _LEVEL_BY_NAME.get(name, (logging.INFO, "info"))
+
+
+def verbosity_level(
+    verbose: int,
+    quiet: bool = False,
+    data: dict[str, Any] | None = None,
+) -> tuple[int, str]:
+    """Map a ``-V`` count to (stdlib level, structlog level name).
+
+    Pure in *data*: the caller supplies the parity contract so tests can
+    inject a constructed one. Defaults to the loaded contract.
+
+    The count-to-name mapping comes from ``verbosity.levels``; counts above
+    the highest declared key saturate at that key's level. ``quiet`` short-
+    circuits to ``verbosity.quiet_override``.
     """
     if quiet:
-        return logging.WARNING, "warning"
-    if verbose >= 2:
-        return TRACE, "trace"
-    if verbose == 1:
-        return logging.DEBUG, "debug"
-    return logging.INFO, "info"
+        return quiet_level(data)
+
+    levels = _verbosity_block(data).get("levels", {})
+    if not levels:
+        return logging.INFO, "info"
+
+    # Keys are decimal strings; saturate at the highest declared count.
+    counts = sorted(int(k) for k in levels)
+    chosen = counts[0]
+    for c in counts:
+        if verbose >= c:
+            chosen = c
+    return level_for_name(levels[str(chosen)])
+
+
+def quiet_level(data: dict[str, Any] | None = None) -> tuple[int, str]:
+    """Level ``--quiet`` forces, from ``verbosity.quiet_override``."""
+    return level_for_name(_verbosity_block(data).get("quiet_override", ""))
+
+
+def _verbosity_block(data: dict[str, Any] | None) -> dict[str, Any]:
+    """The contract's ``verbosity`` block, defaulting to the loaded contract."""
+    if data is None:
+        data = parity.PARITY
+    block = data.get("verbosity", {})
+    return block if isinstance(block, dict) else {}
 
 
 def with_verbose(
@@ -134,9 +191,10 @@ def with_verbose(
 ) -> Logger:
     """Create a logger at the level implied by verbose count.
 
-    Count mapping: 0=INFO, 1=DEBUG, 2+=TRACE. quiet overrides to WARNING.
+    Count mapping and the ``--quiet`` override both come from the
+    ``verbosity`` block of ``contracts/parity/parity.json``.
     """
-    level, level_name = _verbose_to_level(verbose, quiet)
+    level, level_name = verbosity_level(verbose, quiet)
     return _configure_and_get(level, level_name, no_color)
 
 
@@ -144,9 +202,11 @@ def create_logger(*, quiet: bool = False, no_color: bool = False) -> Logger:
     """Create a kit-themed structured logger.
 
     Uses structlog wrapping stdlib logging. All output goes to stderr.
+
+    ``quiet`` resolves through ``verbosity.quiet_override``; the verbose
+    default (DEBUG) is this factory's own, not a contract value.
     """
-    level = logging.WARNING if quiet else logging.DEBUG
-    level_name = "warning" if quiet else "debug"
+    level, level_name = quiet_level() if quiet else (logging.DEBUG, "debug")
     return _configure_and_get(level, level_name, no_color)
 
 

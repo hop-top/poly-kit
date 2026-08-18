@@ -2,23 +2,17 @@
 hop_top_kit.tui.status — prefixed status line renderer.
 
 Mirrors Go's tui.Status info/success/error/warn kinds.
-Symbols loaded from tui/parity.json (single source of truth).
+Symbols loaded from contracts/parity/parity.json (single source of truth)
+via hop_top_kit.parity.
 """
 
 from __future__ import annotations
-
-import json
-import pathlib
 
 from rich.console import Console
 from rich.text import Text
 
 from hop_top_kit.cli import Theme
-
-_PARITY = json.loads(
-    (pathlib.Path(__file__).parents[4] / "contracts" / "parity" / "parity.json").read_text()
-)
-_SYMBOLS: dict[str, str] = _PARITY["status"]["symbols"]
+from hop_top_kit.parity import STATUS_SYMBOLS as _SYMBOLS
 
 
 def status(theme: Theme, text: str, kind: str = "info") -> str:
