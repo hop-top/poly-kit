@@ -41,7 +41,12 @@ jobs:
         with:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@v4
-      - run: cd sdk/py && uv sync --all-extras
+      # --locked fails when uv.lock disagrees with pyproject.toml instead
+      # of silently rewriting it. A plain `uv sync` masks lock drift in CI
+      # and surfaces it later as an unrelated dirty file in contributor
+      # trees. Mirrors `pnpm install --frozen-lockfile` in the ts jobs.
+      - run: cd sdk/py && uv sync --all-extras --locked
+      - run: make lint-lock-py
       - run: make lint-py
 
   rs-lint:
@@ -127,8 +132,8 @@ jobs:
         with:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@v4
-      - run: cd sdk/py && uv sync --all-extras
-      - run: cd engine/sdk/py-kit-engine && uv sync --all-extras
+      - run: cd sdk/py && uv sync --all-extras --locked
+      - run: cd engine/sdk/py-kit-engine && uv sync --all-extras --locked
       - run: make test-py
 
   rs-test:
@@ -196,7 +201,7 @@ jobs:
         with:
           php-version: '8.4'
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: cd sdk/py && uv sync --all-extras
+      - run: cd sdk/py && uv sync --all-extras --locked
       - run: make test-parity
 
   # ── Stage 4: Build + compliance (after parity) ────────────────
