@@ -86,6 +86,22 @@ class ApiClient
 
         $options['http_errors'] = false;
 
+        // Redirects stay available — an API may legitimately move a resource —
+        // but a downgrade must be impossible. `protocols` confines redirect
+        // targets to https so credentials never follow a 302 onto cleartext;
+        // `strict` keeps POST/PUT bodies from silently becoming GETs on 301/302.
+        // Applied last so caller-supplied options cannot widen it.
+        $redirects = $options['allow_redirects'] ?? [];
+        $options['allow_redirects'] = array_merge(
+            is_array($redirects) ? $redirects : [],
+            [
+                'max' => 5,
+                'strict' => true,
+                'protocols' => ['https'],
+                'referer' => false,
+            ],
+        );
+
         $response = $this->httpClient->request($method, $url, $options);
         $status = $response->getStatusCode();
 
