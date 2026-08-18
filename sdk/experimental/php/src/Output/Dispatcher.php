@@ -97,7 +97,7 @@ final class Dispatcher
             }
             /** @var list<string> $pairs */
             $pairs = (array) $input->getOption('format-opt');
-            $opts = OptionsParser::parse(array_values($pairs), $formatter->options());
+            $opts = OptionsParser::parse($pairs, $formatter->options());
 
             if ($cols !== [] && $columns !== null && $columns !== []) {
                 self::validateCols($cols, $columns);

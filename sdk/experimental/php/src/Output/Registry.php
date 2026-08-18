@@ -77,7 +77,7 @@ final class Registry
     {
         $keys = array_keys($this->byKey);
         sort($keys);
-        return array_values($keys);
+        return $keys;
     }
 
     /**
@@ -86,7 +86,7 @@ final class Registry
     public function formatters(): array
     {
         $keys = $this->keys();
-        return array_values(array_map(fn (string $k) => $this->byKey[$k], $keys));
+        return array_map(fn (string $k) => $this->byKey[$k], $keys);
     }
 
     /**
