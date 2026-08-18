@@ -273,6 +273,37 @@ CLI processes can safely register the shutdown flush themselves:
 register_shutdown_function([$httpsSink, 'flush']);
 ```
 
+#### Client hardening (HTTPS sink)
+
+`HttpsSink` does not construct its own Guzzle client — the adopter injects
+one, so the adopter owns its security options. Kit sets only
+`connect_timeout`, `timeout`, and `http_errors`; every other Guzzle default
+applies as-is. Two defaults matter:
+
+- **Redirects follow by default.** Kit never sets `allow_redirects`, so a
+  `3xx` from the ingestor is followed automatically and the NDJSON batch is
+  re-sent to whatever host the `Location` header names. Telemetry bodies
+  carry `install_id` and, in `full` mode, redacted attrs.
+- **Cookies are off by default.** Kit never configures a jar. Adding one
+  puts the client in scope for cookie-domain-scoping advisories that
+  otherwise cannot apply.
+
+Kit performs no host allowlisting on the configured `$endpoint`. If the
+endpoint comes from untrusted configuration, validate it before
+constructing the sink. A hardened client:
+
+```php
+$client = new \GuzzleHttp\Client([
+    'allow_redirects' => false,  // ingestor is a fixed endpoint; never chase 3xx
+    'cookies'         => false,  // no jar: telemetry needs no session state
+]);
+$sink = new HttpsSink('https://ingest.example/v1/events', $client);
+```
+
+The same applies to `HopTop\Kit\Api\ApiClient`, which falls back to a
+default-constructed `GuzzleHttp\Client` when no client is injected. Pass a
+configured client when the `baseURL` is not a trusted constant.
+
 ### Redaction
 
 `Redactor` applies best-effort PII / token-prefix replacement to all
