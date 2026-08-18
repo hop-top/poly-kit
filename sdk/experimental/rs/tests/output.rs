@@ -7,7 +7,7 @@ use std::sync::Arc;
 use clap::Command;
 use hop_top_kit::output::{
     default_registry, dispatch, register_output_flags, ColumnSpec, DispatchOptions, Formatter,
-    OptionSpec, Options, RegisterOutputFlagsOptions, Registry,
+    OptionSpec, OptionValue, Options, RegisterOutputFlagsOptions, Registry,
 };
 use serde_json::{json, Value};
 
@@ -55,12 +55,14 @@ fn registry_register_lookup_duplicate_override() {
 fn registry_keys_sorted_and_extension_map() {
     let r = default_registry();
     let keys = r.keys();
-    assert_eq!(keys, vec!["json", "table", "yaml"]);
+    assert_eq!(keys, vec!["csv", "json", "table", "text", "yaml"]);
 
     let exts = r.extension_map();
     assert_eq!(exts.get("json").copied(), Some("json"));
     assert_eq!(exts.get("yaml").copied(), Some("yaml"));
     assert_eq!(exts.get("yml").copied(), Some("yaml"));
+    assert_eq!(exts.get("csv").copied(), Some("csv"));
+    assert_eq!(exts.get("txt").copied(), Some("text"));
     // table intentionally has no extensions — never picks up ext-infer.
     assert!(exts.values().all(|v| *v != "table"));
 }
@@ -526,4 +528,564 @@ fn dispatch_format_opt_forwards_to_formatter() {
     )
     .unwrap();
     assert_eq!(std::str::from_utf8(&buf).unwrap(), "{\"a\":1}\n");
+}
+
+// --- csv formatter ------------------------------------------------------
+
+/// The adversarial row that pins csv quoting rules byte-for-byte.
+///
+/// The cross-language ordering harness compares observed COLUMN ORDER and
+/// never raw bytes, so quoting parity is enforced here and nowhere else. Any
+/// drift in the quoting rule must fail loudly at this assertion.
+///
+/// The rule: quote a field iff it contains the delimiter, a double quote, LF,
+/// CR, or BEGINS with a unicode space. Trailing spaces and tabs are
+/// deliberately NOT quoted — php's fputcsv quotes both, which is exactly the
+/// divergence this formatter avoids by implementing the rule explicitly
+/// rather than delegating to a library.
+///
+/// A quoted field's bytes are preserved verbatim. CR and LF are separate
+/// alternatives in RFC 4180's `escaped` production, so a bare CR between
+/// quotes is legal; dropping it would be silent data loss.
+fn adversarial_row() -> Value {
+    json!([{
+        "a": "plain",
+        "b": "with,comma",
+        "c": "with\"quote",
+        "d": "with\nnewline",
+        "e": " leading space",
+        "f": "trailing ",
+        "g": "",
+        "h": "with\ttab",
+        "i": "with\rcr"
+    }])
+}
+
+#[test]
+fn csv_formatter_quoting_matches_go_byte_for_byte() {
+    let r = default_registry();
+    let f = r.lookup("csv").expect("csv formatter must be registered");
+    let mut buf = Vec::new();
+    f.render(&mut buf, &adversarial_row(), &Options::new(), &[])
+        .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "a,b,c,d,e,f,g,h,i\n\
+         plain,\"with,comma\",\"with\"\"quote\",\"with\nnewline\",\" leading space\",trailing ,,with\ttab,\"with\rcr\"\n",
+    );
+}
+
+/// CRLF mode changes the RECORD TERMINATOR and nothing else. An embedded LF
+/// stays an LF and a lone CR is preserved; rewriting either would mutate the
+/// caller's value. Only the bytes between records differ from LF mode.
+#[test]
+fn csv_formatter_crlf_changes_only_the_record_terminator() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut opts = Options::new();
+    opts.insert("crlf".to_string(), OptionValue::Bool(true));
+    let mut buf = Vec::new();
+    f.render(&mut buf, &adversarial_row(), &opts, &[]).unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "a,b,c,d,e,f,g,h,i\r\n\
+         plain,\"with,comma\",\"with\"\"quote\",\"with\nnewline\",\" leading space\",trailing ,,with\ttab,\"with\rcr\"\r\n",
+    );
+}
+
+/// Quote-all must preserve CR/LF too. The previous implementation dropped a
+/// lone CR on this path as well — worse than the go writer it was copied
+/// from, which preserved it here while dropping it on the default path.
+#[test]
+fn csv_formatter_crlf_quote_all_preserves_cr() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut opts = Options::new();
+    opts.insert("crlf".to_string(), OptionValue::Bool(true));
+    opts.insert("quote-all".to_string(), OptionValue::Bool(true));
+    let mut buf = Vec::new();
+    f.render(&mut buf, &adversarial_row(), &opts, &[]).unwrap();
+    let got = std::str::from_utf8(&buf).unwrap();
+    assert!(
+        got.contains("\"with\rcr\""),
+        "lone CR must survive quote-all, got {got:?}"
+    );
+    assert!(
+        got.contains("\"with\nnewline\""),
+        "in-field LF must stay LF, got {got:?}"
+    );
+    assert!(!got.contains("withcr"), "CR must not be dropped: {got:?}");
+}
+
+/// A minimal RFC 4180 reader. The crate ships no csv reader dependency, so
+/// round-trip is proved against a decoder written to the grammar directly:
+/// `escaped = DQUOTE *(TEXTDATA / COMMA / CR / LF / 2DQUOTE) DQUOTE`.
+/// Records are split only on an UNQUOTED line ending.
+fn decode_csv(input: &str, delim: char) -> Vec<Vec<String>> {
+    let mut records = Vec::new();
+    let mut record = Vec::new();
+    let mut field = String::new();
+    let mut in_quotes = false;
+    let mut chars = input.chars().peekable();
+    let mut pending = false; // saw at least one char of the current record
+
+    while let Some(c) = chars.next() {
+        pending = true;
+        if in_quotes {
+            if c == '"' {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    field.push('"');
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                field.push(c);
+            }
+            continue;
+        }
+        match c {
+            '"' if field.is_empty() => in_quotes = true,
+            c if c == delim => record.push(std::mem::take(&mut field)),
+            '\r' | '\n' => {
+                if c == '\r' && chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                record.push(std::mem::take(&mut field));
+                records.push(std::mem::take(&mut record));
+                pending = false;
+            }
+            other => field.push(other),
+        }
+    }
+    if pending || !field.is_empty() {
+        record.push(field);
+        records.push(record);
+    }
+    records
+}
+
+/// Round-trip is the acceptance criterion, not byte-equality: byte-equality
+/// alone would be satisfied by every runtime agreeing on lossy output.
+#[test]
+fn csv_formatter_round_trips_adversarial_row() {
+    let expected: Vec<String> = [
+        "plain",
+        "with,comma",
+        "with\"quote",
+        "with\nnewline",
+        " leading space",
+        "trailing ",
+        "",
+        "with\ttab",
+        "with\rcr",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+
+    for (label, crlf, quote_all) in [
+        ("lf", false, false),
+        ("crlf", true, false),
+        ("lf/quote-all", false, true),
+        ("crlf/quote-all", true, true),
+    ] {
+        let r = default_registry();
+        let f = r.lookup("csv").unwrap();
+        let mut opts = Options::new();
+        opts.insert("crlf".to_string(), OptionValue::Bool(crlf));
+        opts.insert("quote-all".to_string(), OptionValue::Bool(quote_all));
+        opts.insert("no-header".to_string(), OptionValue::Bool(true));
+        let mut buf = Vec::new();
+        f.render(&mut buf, &adversarial_row(), &opts, &[]).unwrap();
+        let text = std::str::from_utf8(&buf).unwrap();
+
+        let recs = decode_csv(text, ',');
+        assert_eq!(
+            recs.len(),
+            1,
+            "{label}: one row must decode to one record, got {text:?}"
+        );
+        assert_eq!(recs[0], expected, "{label}: round-trip must be lossless");
+    }
+}
+
+/// Go quotes on `unicode::is_whitespace` of the FIRST character, not on a
+/// literal ASCII space. `starts_with(' ')` silently left a leading TAB, VT
+/// and NBSP unquoted — a divergence from the rule this formatter documents.
+#[test]
+fn csv_formatter_quotes_any_leading_unicode_space() {
+    for (input, want) in [
+        ("\tlead", "\"\tlead\"\n"),
+        (" lead", "\" lead\"\n"),
+        ("\u{a0}lead", "\"\u{a0}lead\"\n"),
+        ("\u{b}lead", "\"\u{b}lead\"\n"),
+        ("trail ", "trail \n"),
+        ("plain", "plain\n"),
+    ] {
+        let r = default_registry();
+        let f = r.lookup("csv").unwrap();
+        let mut opts = Options::new();
+        opts.insert("no-header".to_string(), OptionValue::Bool(true));
+        let mut buf = Vec::new();
+        f.render(&mut buf, &json!([{ "v": input }]), &opts, &[])
+            .unwrap();
+        assert_eq!(std::str::from_utf8(&buf).unwrap(), want, "input {input:?}");
+    }
+}
+
+/// `\.` alone on a line terminates a PostgreSQL COPY stream; go's writer
+/// quotes it defensively and so must this one.
+#[test]
+fn csv_formatter_quotes_postgres_copy_sentinel() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut opts = Options::new();
+    opts.insert("no-header".to_string(), OptionValue::Bool(true));
+    let mut buf = Vec::new();
+    f.render(&mut buf, &json!([{ "v": "\\." }]), &opts, &[])
+        .unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "\"\\.\"\n");
+}
+
+#[test]
+fn csv_formatter_header_and_rows() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        // Deliberately NOT alphabetical: sorted order would be count, name.
+        &json!([{"name": "alpha", "count": 1}, {"name": "beta", "count": 22}]),
+        &Options::new(),
+        &[],
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "name,count\nalpha,1\nbeta,22\n"
+    );
+}
+
+#[test]
+fn csv_formatter_no_header_option() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut opts = Options::new();
+    opts.insert("no-header".to_string(), OptionValue::Bool(true));
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([{"name": "alpha", "count": 1}]),
+        &opts,
+        &[],
+    )
+    .unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "alpha,1\n");
+}
+
+#[test]
+fn csv_formatter_quote_all_option() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut opts = Options::new();
+    opts.insert("quote-all".to_string(), OptionValue::Bool(true));
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([{"name": "al\"pha", "count": 1}]),
+        &opts,
+        &[],
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "\"name\",\"count\"\n\"al\"\"pha\",\"1\"\n"
+    );
+}
+
+#[test]
+fn csv_formatter_custom_delimiter() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut opts = Options::new();
+    opts.insert(
+        "delimiter".to_string(),
+        OptionValue::String(";".to_string()),
+    );
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        // 'a;b' must be quoted because it contains the ACTIVE delimiter;
+        // 'c,d' must NOT be, because a comma is just a character now.
+        &json!([{"x": "a;b", "y": "c,d"}]),
+        &opts,
+        &[],
+    )
+    .unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "x;y\n\"a;b\";c,d\n");
+}
+
+#[test]
+fn csv_formatter_rejects_multichar_delimiter() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut opts = Options::new();
+    opts.insert(
+        "delimiter".to_string(),
+        OptionValue::String("||".to_string()),
+    );
+    let mut buf = Vec::new();
+    let err = f
+        .render(&mut buf, &json!([{"x": 1}]), &opts, &[])
+        .unwrap_err();
+    assert!(
+        format!("{err}").contains("delimiter must be exactly one character"),
+        "got: {err}"
+    );
+}
+
+/// Contract rule 2: `--cols` reorders as well as selects. The requested
+/// order disagrees with BOTH alphabetical (count, name, status) and payload
+/// declaration order (name, count, status), so a runtime that merely selects
+/// is caught here.
+#[test]
+fn csv_formatter_cols_reorder_beats_alphabetical_and_declaration() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([{"name": "alpha", "count": 1, "status": "ok"}]),
+        &Options::new(),
+        &["status".to_string(), "name".to_string()],
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "status,name\nok,alpha\n"
+    );
+}
+
+/// Contract rule 4: zero rows emits nothing — not even a bare header row,
+/// even though `cols` is populated.
+#[test]
+fn csv_formatter_zero_rows_emits_nothing() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([]),
+        &Options::new(),
+        &["name".to_string(), "count".to_string()],
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "",
+        "zero rows must emit nothing, not a bare header row"
+    );
+}
+
+#[test]
+fn csv_formatter_missing_and_null_cells_are_empty() {
+    let r = default_registry();
+    let f = r.lookup("csv").unwrap();
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([{"a": null, "b": 1}]),
+        &Options::new(),
+        &["a".to_string(), "b".to_string(), "missing".to_string()],
+    )
+    .unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "a,b,missing\n,1,\n");
+}
+
+// --- text formatter -----------------------------------------------------
+
+#[test]
+fn text_formatter_kv_default_style() {
+    let r = default_registry();
+    let f = r.lookup("text").expect("text formatter must be registered");
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([{"name": "alpha", "count": 1}, {"name": "beta", "count": 22}]),
+        &Options::new(),
+        &[],
+    )
+    .unwrap();
+    // Blank line BETWEEN records, never trailing.
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "name=alpha\ncount=1\n\nname=beta\ncount=22\n"
+    );
+}
+
+#[test]
+fn text_formatter_kv_custom_separator() {
+    let r = default_registry();
+    let f = r.lookup("text").unwrap();
+    let mut opts = Options::new();
+    opts.insert(
+        "separator".to_string(),
+        OptionValue::String(": ".to_string()),
+    );
+    let mut buf = Vec::new();
+    f.render(&mut buf, &json!([{"name": "alpha"}]), &opts, &[])
+        .unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "name: alpha\n");
+}
+
+#[test]
+fn text_formatter_lines_style_is_tab_separated_without_header() {
+    let r = default_registry();
+    let f = r.lookup("text").unwrap();
+    let mut opts = Options::new();
+    opts.insert(
+        "style".to_string(),
+        OptionValue::String("lines".to_string()),
+    );
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([{"name": "alpha", "count": 1}, {"name": "beta", "count": 22}]),
+        &opts,
+        &[],
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "alpha\t1\nbeta\t22\n",
+        "lines style emits no header row"
+    );
+}
+
+#[test]
+fn text_formatter_paragraph_style() {
+    let r = default_registry();
+    let f = r.lookup("text").unwrap();
+    let mut opts = Options::new();
+    opts.insert(
+        "style".to_string(),
+        OptionValue::String("paragraph".to_string()),
+    );
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([{"name": "alpha", "count": 1}, {"name": "beta", "count": 22}]),
+        &opts,
+        &[],
+    )
+    .unwrap();
+    // Records are 1-indexed; blank line BETWEEN records, never trailing.
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "Record 1:\n  name: alpha\n  count: 1\n\nRecord 2:\n  name: beta\n  count: 22\n"
+    );
+}
+
+/// Contract rule 2, on the text path: requested order disagrees with both
+/// alphabetical and declaration order.
+#[test]
+fn text_formatter_cols_reorder_beats_alphabetical_and_declaration() {
+    let r = default_registry();
+    let f = r.lookup("text").unwrap();
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([{"name": "alpha", "count": 1, "status": "ok"}]),
+        &Options::new(),
+        &["status".to_string(), "name".to_string()],
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "status=ok\nname=alpha\n"
+    );
+}
+
+/// Contract rule 4 on the text path.
+#[test]
+fn text_formatter_zero_rows_emits_nothing() {
+    let r = default_registry();
+    let f = r.lookup("text").unwrap();
+    let mut buf = Vec::new();
+    f.render(
+        &mut buf,
+        &json!([]),
+        &Options::new(),
+        &["name".to_string(), "count".to_string()],
+    )
+    .unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "");
+}
+
+#[test]
+fn text_formatter_single_object_payload_is_one_record() {
+    let r = default_registry();
+    let f = r.lookup("text").unwrap();
+    let mut buf = Vec::new();
+    f.render(&mut buf, &json!({"name": "alpha"}), &Options::new(), &[])
+        .unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "name=alpha\n");
+}
+
+// --- registration / extension wiring ------------------------------------
+
+/// `--format csv` / `--format text` must resolve, and `--output x.csv` /
+/// `x.txt` must infer the right formatter.
+#[test]
+fn csv_and_text_are_registered_with_extensions() {
+    let r = default_registry();
+    assert!(r.keys().contains(&"csv"), "csv must be registered");
+    assert!(r.keys().contains(&"text"), "text must be registered");
+    let ext = r.extension_map();
+    assert_eq!(ext.get("csv").copied(), Some("csv"));
+    assert_eq!(ext.get("txt").copied(), Some("text"));
+}
+
+#[test]
+fn dispatch_resolves_csv_format_end_to_end() {
+    let cmd = build_cmd();
+    let matches = cmd.try_get_matches_from(["--format", "csv"]).unwrap();
+    let mut buf = Vec::new();
+    dispatch(
+        &matches,
+        &mut buf,
+        &json!([{"name": "alpha", "count": 1}]),
+        DispatchOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(std::str::from_utf8(&buf).unwrap(), "name,count\nalpha,1\n");
+}
+
+/// Contract rule 1 through the dispatcher: the ColumnSpec list drives
+/// default order on the csv path, beating payload key order.
+#[test]
+fn dispatch_columnspec_drives_csv_column_order() {
+    let schema = [
+        ColumnSpec::new("status", "status", 9),
+        ColumnSpec::new("name", "name", 7),
+    ];
+    let cmd = build_cmd();
+    let matches = cmd.try_get_matches_from(["--format", "csv"]).unwrap();
+    let mut buf = Vec::new();
+    dispatch(
+        &matches,
+        &mut buf,
+        // Payload key order is name, status — the OPPOSITE of the spec.
+        &json!([{"name": "alpha", "status": "ok"}]),
+        DispatchOptions {
+            columns: Some(&schema),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        std::str::from_utf8(&buf).unwrap(),
+        "status,name\nok,alpha\n"
+    );
 }

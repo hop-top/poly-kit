@@ -1,26 +1,28 @@
-"""csv built-in formatter — stdlib csv.writer.
+"""csv built-in formatter.
 
-Mirrors hop.top/kit/go/console/output/csv.go semantics:
+Encoding is hand-rolled rather than delegated to ``csv.writer``: that writer's
+QUOTE_MINIMAL does not quote a field beginning with whitespace, which the
+other runtimes do. A quoted field's bytes are preserved verbatim in both
+line-ending modes and both quoting paths — RFC 4180 lists CR and LF as
+separate alternatives inside the ``escaped`` production, so a bare CR between
+quotes is legal, and the ``crlf`` option changes the record terminator and
+nothing else.
+
+Options:
 - delimiter (string, ","): single-char field delimiter
 - no-header (bool, False): omit header row
 - quote-all (bool, False): wrap every field in double quotes
 - crlf (bool, False): use CRLF line endings (default LF)
 
-Zero rows → no output. ``columns`` sets header order/names; ``cols``
-reorders + selects.
+Empty list input → no output. Honors ``cols`` (filters headers + rows).
 """
 
 from __future__ import annotations
 
-import csv as _csv
-import io
-from typing import TYPE_CHECKING, Any, TextIO
+from typing import Any, TextIO
 
 from hop_top_kit.output.formatter import OptionSpec
 from hop_top_kit.output.projection import filter_columns, to_rows
-
-if TYPE_CHECKING:
-    from hop_top_kit.output.formatter import ColumnSpec
 
 
 class CSVFormatter:
@@ -61,11 +63,9 @@ class CSVFormatter:
         data: Any,
         opts: dict[str, Any],
         cols: list[str],
-        columns: list[ColumnSpec] | None = None,
     ) -> None:
-        headers, rows = to_rows(data, columns)
-        # Emptiness is decided by ROW count, never header count.
-        if not rows:
+        headers, rows = to_rows(data)
+        if not headers:
             return
         if cols:
             headers, rows = filter_columns(headers, rows, cols)
@@ -83,16 +83,53 @@ class CSVFormatter:
             _write_quote_all(out, headers, rows, delim, eol, no_header)
             return
 
-        # stdlib csv writes its own line terminator; we capture into a
-        # buffer with newline='' so it doesn't translate, then re-emit
-        # with our chosen eol.
-        buf = io.StringIO(newline="")
-        writer = _csv.writer(buf, delimiter=delim, lineterminator=eol)
         if not no_header:
-            writer.writerow(headers)
+            _write_row(out, headers, delim, eol)
         for row in rows:
-            writer.writerow(row)
-        out.write(buf.getvalue())
+            _write_row(out, row, delim, eol)
+
+
+def _needs_quotes(field: str, delim: str) -> bool:
+    r"""Quote iff the field holds the delimiter, a quote, LF or CR, or starts
+    with unicode whitespace.
+
+    Note the asymmetry: a LEADING space forces quoting, a trailing one does
+    not. The stdlib writer's QUOTE_MINIMAL covers the delimiter, quote, CR and
+    LF but NOT leading whitespace, so a value like ``" x"`` came back from a
+    round-trip with its space intact only by luck of the reader's skipinitial-
+    space default being off. ``\.`` alone on a line terminates a PostgreSQL
+    COPY stream and is quoted defensively.
+    """
+    if field == "":
+        return False
+    if field == "\\.":
+        return True
+    if delim in field or '"' in field or "\n" in field or "\r" in field:
+        return True
+    return field[0].isspace()
+
+
+def _write_row(out: TextIO, cells: list[str], delim: str, eol: str) -> None:
+    """Emit one record terminated by ``eol``.
+
+    Encoding is hand-rolled rather than delegated to ``csv.writer`` because
+    that writer keys quoting off QUOTE_MINIMAL, which does not quote a leading
+    space the way the other runtimes do. A quoted field's bytes pass through
+    verbatim: RFC 4180 lists CR and LF as separate alternatives inside the
+    ``escaped`` production, so a bare CR between quotes is legal, and W3C CSV
+    on the Web states that line endings within escaped cells are not
+    normalised. Only the record terminator varies with ``crlf``.
+    """
+    parts: list[str] = []
+    for c in cells:
+        if _needs_quotes(c, delim):
+            # RFC 4180: an embedded quote is doubled. Everything else, CR and
+            # LF included, is written through untouched.
+            parts.append('"' + c.replace('"', '""') + '"')
+        else:
+            parts.append(c)
+    out.write(delim.join(parts))
+    out.write(eol)
 
 
 def _write_quote_all(

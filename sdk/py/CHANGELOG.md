@@ -44,6 +44,22 @@
 - `csv` and `text` formatters are not implemented in the Rust and PHP SDKs.
   Only `table`, `json` and `yaml` are portable across all five kit runtimes.
 
+### Fixed
+
+- **CSV quoting no longer keys off the stdlib writer's QUOTE_MINIMAL.** A
+  field beginning with whitespace was emitted BARE, unlike every other
+  runtime, so ` leading space` round-tripped intact only because the
+  reader's `skipinitialspace` happens to default off. Quoting is now decided
+  explicitly: the delimiter, a double quote, LF, CR, or a leading unicode
+  whitespace character. A field equal to `\.` is also quoted, since that
+  sequence alone on a line terminates a PostgreSQL `COPY` stream.
+  **User-visible:** `--format csv` output for values with leading whitespace
+  gains surrounding quotes, matching the other SDKs byte-for-byte.
+- A quoted field's bytes are now guaranteed verbatim in both line-ending
+  modes and both quoting paths, with `crlf` changing the record terminator
+  and nothing else. RFC 4180 lists `CR` and `LF` as separate alternatives
+  inside the `escaped` production, so a bare CR between quotes is legal.
+
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.2...kit-py/v0.5.0-alpha.3) (2026-06-07)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.3. This release includes maintenance release with bug fixes.
