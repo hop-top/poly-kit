@@ -1,0 +1,202 @@
+{
+  "_comment": [
+    "Cross-language MCP wire conformance cases. Generated from the Go",
+    "surface — do not hand-edit. Regenerate with:",
+    "  go test ./go/transport/cmdsurface/ -run TestGenerateMCPWireFixtures \\",
+    "      -update-mcp-fixtures",
+    "",
+    "Each case posts `request` (verbatim bytes) to the mount with",
+    "`headers` applied, and asserts the response is byte-identical to",
+    "`response` and the HTTP status equals `status`. Byte-identical",
+    "means exactly that: no JSON decode/re-encode before comparing.",
+    "Go emits objects with lexicographically sorted keys and a trailing",
+    "newline; a runtime whose serializer differs must reorder to match,",
+    "not normalize the comparison.",
+    "",
+    "`mount` lists MountMCP options for the case, as `name=value`",
+    "tokens. Absent means default mount: both eras, path /mcp, empty",
+    "origin allowlist, cache hints ttlMs=0 / cacheScope=private.",
+    "",
+    "`era` is which handler must serve the request (legacy = 2024-11-05,",
+    "modern = 2026-07-28). It is documentation for the runner author,",
+    "not an input: era is detected per-request from the markers in",
+    "ADR 0042, and a port that routes a case to the wrong handler will",
+    "fail on the response bytes anyway.",
+    "",
+    "See ADR 0043 for the polyglot surface design and ADR 0042 for the",
+    "normative era-detection rules."
+  ],
+  "command_tree": "legacyLockTree (see surface_mcp_legacy_lock_test.go)",
+  "cases": [
+    {
+      "name": "legacy/initialize/defaults",
+      "era": "legacy",
+      "why": "handshake response pins protocolVersion + default serverInfo",
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"tools\":{}},\"protocolVersion\":\"2024-11-05\",\"serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}}}\n"
+    },
+    {
+      "name": "legacy/initialize/null-id",
+      "era": "legacy",
+      "why": "id round-trips verbatim including null",
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"initialize\"}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":{\"capabilities\":{\"tools\":{}},\"protocolVersion\":\"2024-11-05\",\"serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}}}\n"
+    },
+    {
+      "name": "legacy/tools-list",
+      "era": "legacy",
+      "why": "tool enumeration, hidden and deprecated flags excluded",
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"tools\":[{\"description\":\"Deploy\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"deploy\"},{\"description\":\"Ping the server\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"ping\"},{\"description\":\"Locked\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"secret\"},{\"description\":\"Add a widget\",\"inputSchema\":{\"properties\":{\"count\":{\"description\":\"widget count\",\"type\":\"integer\"},\"force\":{\"description\":\"force flag\",\"type\":\"boolean\"},\"name\":{\"description\":\"widget name\",\"type\":\"string\"},\"tag\":{\"description\":\"tag list\",\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"required\":[\"name\"],\"type\":\"object\"},\"name\":\"widget.add\"},{\"description\":\"Delete a widget\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"widget.delete\"}]}}\n"
+    },
+    {
+      "name": "legacy/tools-call/read",
+      "era": "legacy",
+      "why": "non-destructive leaf invokes and returns stdout content block",
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"ping\"}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"text\":\"pong\\n\",\"type\":\"text\"}],\"isError\":false}}\n"
+    },
+    {
+      "name": "legacy/tools-call/destructive-blocked",
+      "era": "legacy",
+      "why": "destructive leaf blocked by default policy: isError result at HTTP 200",
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"widget.delete\"}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"text\":\"cmdsurface: destructive command blocked on this surface: widget delete on mcp\",\"type\":\"text\"}],\"isError\":true}}\n"
+    },
+    {
+      "name": "legacy/tools-call/auth-required",
+      "era": "legacy",
+      "why": "auth-required leaf without Authorization header",
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\"}}",
+      "status": 401,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"content\":[{\"text\":\"authentication required\",\"type\":\"text\"}],\"isError\":true}}\n"
+    },
+    {
+      "name": "legacy/error/method-not-found",
+      "era": "legacy",
+      "why": "-32601 for an unknown JSON-RPC method",
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"nope\"}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32601,\"message\":\"method not found: nope\"}}\n"
+    },
+    {
+      "name": "legacy/error/parse",
+      "era": "legacy",
+      "why": "-32700 at HTTP 400 for unparseable JSON, regardless of headers",
+      "request": "{not json",
+      "status": 400,
+      "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"parse error: invalid character 'n' looking for beginning of object key string\"}}\n"
+    },
+    {
+      "name": "legacy/meta-progress-token-is-not-modern",
+      "era": "legacy",
+      "why": "bare params._meta is NOT a modern marker: progressToken stays legacy",
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"initialize\",\"params\":{\"_meta\":{\"progressToken\":\"p1\"}}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"capabilities\":{\"tools\":{}},\"protocolVersion\":\"2024-11-05\",\"serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}}}\n"
+    },
+    {
+      "name": "legacy/protocol-version-header-is-not-modern",
+      "era": "legacy",
+      "why": "MCP-Protocol-Version header alone must NOT route modern (predates 2026-07-28)",
+      "headers": {
+        "MCP-Protocol-Version": "2025-06-18"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/list\"}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":{\"tools\":[{\"description\":\"Deploy\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"deploy\"},{\"description\":\"Ping the server\",\"inputSchema\":{\"properties\":{\"help\":{\"description\":\"help for ping\",\"type\":\"boolean\"}},\"type\":\"object\"},\"name\":\"ping\"},{\"description\":\"Locked\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"secret\"},{\"description\":\"Add a widget\",\"inputSchema\":{\"properties\":{\"count\":{\"description\":\"widget count\",\"type\":\"integer\"},\"force\":{\"description\":\"force flag\",\"type\":\"boolean\"},\"name\":{\"description\":\"widget name\",\"type\":\"string\"},\"tag\":{\"description\":\"tag list\",\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"required\":[\"name\"],\"type\":\"object\"},\"name\":\"widget.add\"},{\"description\":\"Delete a widget\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"widget.delete\"}]}}\n"
+    },
+    {
+      "name": "modern/server-discover",
+      "era": "modern",
+      "why": "server/discover is a modern marker on its own (M4)",
+      "headers": {
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "server/discover"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"server/discover\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}},\"cacheScope\":\"private\",\"capabilities\":{\"tools\":{}},\"resultType\":\"complete\",\"supportedVersions\":[\"2026-07-28\"],\"ttlMs\":0}}\n"
+    },
+    {
+      "name": "modern/tools-list",
+      "era": "modern",
+      "why": "cacheable list result carries ttlMs + cacheScope",
+      "headers": {
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/list"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}},\"cacheScope\":\"private\",\"resultType\":\"complete\",\"tools\":[{\"description\":\"Deploy\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"deploy\"},{\"description\":\"Ping the server\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"ping\"},{\"description\":\"Locked\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"secret\"},{\"description\":\"Add a widget\",\"inputSchema\":{\"properties\":{\"count\":{\"description\":\"widget count\",\"type\":\"integer\"},\"name\":{\"description\":\"widget name\",\"type\":\"string\"}},\"required\":[\"name\"],\"type\":\"object\"},\"name\":\"widget.add\"},{\"description\":\"Delete a widget\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"widget.delete\"}],\"ttlMs\":0}}\n"
+    },
+    {
+      "name": "modern/tools-call/read",
+      "era": "modern",
+      "why": "Mcp-Name header required on tools/call and must agree with the body",
+      "headers": {
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "ping"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"ping\",\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}},\"content\":[{\"text\":\"pong\\n\",\"type\":\"text\"}],\"isError\":false,\"resultType\":\"complete\"}}\n"
+    },
+    {
+      "name": "modern/error/header-mismatch",
+      "era": "modern",
+      "why": "-32020 HeaderMismatch when Mcp-Name disagrees with params.name",
+      "headers": {
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "widget_add"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"ping\",\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+      "status": 400,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":4,\"error\":{\"code\":-32020,\"message\":\"Mcp-Name header \\\"widget_add\\\" does not match body params.name \\\"ping\\\"\"}}\n"
+    },
+    {
+      "name": "modern/error/unsupported-version",
+      "era": "modern",
+      "why": "-32022 UnsupportedProtocolVersion for an unknown _meta protocolVersion",
+      "headers": {
+        "MCP-Protocol-Version": "2099-01-01",
+        "Mcp-Method": "tools/list"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2099-01-01\"}}}",
+      "status": 400,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":-32022,\"message\":\"unsupported protocol version: 2099-01-01\",\"data\":{\"requested\":\"2099-01-01\",\"supported\":[\"2026-07-28\"]}}}\n"
+    },
+    {
+      "name": "modern/tools-call/destructive-blocked",
+      "era": "modern",
+      "why": "ErrDestructiveBlocked renders as isError at HTTP 200, same as legacy",
+      "headers": {
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "widget.delete"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"widget.delete\",\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":6,\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}},\"content\":[{\"text\":\"cmdsurface: destructive command blocked on this surface: widget delete on mcp\",\"type\":\"text\"}],\"isError\":true,\"resultType\":\"complete\"}}\n"
+    },
+    {
+      "name": "modern/initialize-is-legacy",
+      "era": "modern",
+      "why": "D2: initialize routes legacy even when modern markers are present",
+      "headers": {
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "initialize"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"initialize\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"capabilities\":{\"tools\":{}},\"protocolVersion\":\"2024-11-05\",\"serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}}}\n"
+    }
+  ]
+}
