@@ -32,7 +32,8 @@ type Summary struct {
 	Template   string          `json:"template"`
 	Result     template.Result `json:"result"`
 	GitHub     *GitHubSummary  `json:"github,omitempty"`
-	HopSkipped bool            `json:"hop_skipped,omitempty"`
+	HopSkipped  bool           `json:"hop_skipped,omitempty"`
+	HopFellBack bool           `json:"hop_fell_back,omitempty"`
 	TLCSkipped bool            `json:"tlc_skipped,omitempty"`
 
 	PrePrHook    *PrePrResult      `json:"prepr_hook,omitempty"`

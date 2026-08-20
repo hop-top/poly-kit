@@ -37,9 +37,9 @@ type recordingGitRunner struct {
 	pushCalls   []string
 }
 
-func (r *recordingGitRunner) Init(_ context.Context, dir string, _ bool, _ string) (bool, error) {
+func (r *recordingGitRunner) Init(_ context.Context, dir string, _ bool, _ string, _ bool) (GitInitOutcome, error) {
 	r.initCalls = append(r.initCalls, dir)
-	return false, nil
+	return GitInitOutcome{}, nil
 }
 
 func (r *recordingGitRunner) InitialCommit(_ context.Context, dir, _ string) error {
