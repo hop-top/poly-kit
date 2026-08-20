@@ -49,6 +49,87 @@ Destructive commands (`kit/side-effect=destructive` cobra annotation)
 are blocked from remote surfaces by default. Opt in explicitly via
 `Policy.AllowDestructiveOn`.
 
+## MCP spec versions
+
+`MountMCP` serves the 2024-11-05 and 2026-07-28 MCP revisions from
+one mount, routed per request — existing mounts and clients are
+unaffected, and neither revision is deprecated. Pin the set with
+`WithMCPSpecVersions`; tune the modern path with `WithMCPCacheHints`
+and `WithMCPOriginAllowlist`. Full walkthrough:
+[docs/adopters/guides/expose-cli-over-mcp.md](../../../docs/adopters/guides/expose-cli-over-mcp.md).
+
+## MCP auth hardening (spec 2026-07-28)
+
+The MCP surface is auth-scheme-agnostic: `Class.AuthRequired` leaves
+are gated on `Authorization` header presence only. The 2026-07-28
+authorization obligations bind the authorization server / resource
+server deployed in front of the mount — not the transport bridge:
+
+- **RFC 9207 issuer identification** — your authorization server
+  must emit `iss` on every authorization response, error responses
+  included. Kit-side, the OAuth callback surface enforces the client
+  half: set `OAuthProvider.ExpectedIssuer` to the provider's issuer
+  identifier and callbacks reject responses whose `iss` is missing
+  or differs from it (exact string match), before state consumption.
+- **`application_type` at client registration** — register OAuth
+  clients with an explicit `application_type`. Kit performs no
+  client registration (neither a DCR client nor a registration
+  endpoint); this lives entirely in your authorization server or
+  registration tooling.
+- **Credential binding** — bind issued tokens to the issuing
+  authorization server and reject cross-issuer presentation at your
+  resource server. Kit forwards the RFC 9207-validated issuer to
+  sinks and custom Runners via `Meta.Extra["oauth_issuer"]`, and to
+  the leaf via a `FlagFromQuery` `"iss"` mapping, so credential
+  stores can record the binding at mint time.
+- **CIMD over DCR** — the spec deprecates Dynamic Client
+  Registration in favor of Client ID Metadata Documents (a hosted
+  metadata URL as the client identifier). Choose this at your
+  authorization server; kit holds no client identity and needs no
+  change. Existing DCR-based deployments keep working.
+
+```go
+providers := []cmdsurface.OAuthProvider{{
+    Name:           "github",
+    Path:           []string{"auth", "oauth-link"},
+    FlagFromQuery:  map[string]string{"code": "code", "iss": "issuer"},
+    ExpectedIssuer: "https://as.example", // RFC 9207
+}}
+```
+
+## MCP mid-call confirmation (spec 2026-07-28)
+
+`kit/requires-confirmation` leaves on the modern MCP path default to
+the `X-Confirm-Token` header gate. Opt into the spec-native MRTR
+confirmation round-trip by giving the mount key material:
+
+```go
+_ = cmdsurface.MountMCP(b, r,
+    cmdsurface.WithMCPConfirmationKey(key)) // non-empty, shared across instances
+```
+
+With a key configured, clients declaring the `elicitation` capability
+in `_meta` receive `resultType: "input_required"` carrying a
+confirmation prompt (`inputRequests.confirm`, an `elicitation/create`
+form request) and an HMAC-SHA-256-protected `requestState`. The retry
+echoes the state and answers `accept` to run the leaf; `decline` /
+`cancel` refuse it. The state binds the leaf, its arguments, and the
+caller's `Authorization` value, and expires after five minutes:
+expiry is a routine re-prompt, while a state failing verification is
+never honored — the rejection is emitted to registered `OnError`
+sinks as a security-relevant audit event before a fresh prompt is
+issued. This audit event reaches bridge-registered sinks
+(`Bridge.Sinks()`) only: deployments whose sinks are wired solely
+through a Runner wrapper never observe pre-flight refusals, this one
+included. Clients without the capability keep the header gate, and the
+destructive ceiling (`Policy.AllowDestructiveOn`) is never relaxed by
+a confirmation outcome.
+
+Key sourcing is deliberately explicit — there is no generated
+default. Give every instance behind a load balancer the same key, or
+retries landing on a different instance will be refused and
+re-prompted.
+
 ## Telemetry opt-in
 
 `Config.Telemetry` is `nil` by default — no events leave the binary
