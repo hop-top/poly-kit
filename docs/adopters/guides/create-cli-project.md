@@ -112,10 +112,15 @@ and merge by hand. No git, no GitHub, no push in augment mode.
 
 ### Augment a hop worktree or bare-worktree-shaped repo
 
-Auto-detect refuses bare worktrees (the case where
-`git rev-parse --git-common-dir` differs from `--git-dir`) and any
-tree carrying a `.kit/version` marker. Hop-style worktrees fall into
-the bare-worktree bucket. Bypass auto-detect with `--mode augment`:
+Auto-detect refuses a bare repository **root** (git internals, no
+working tree) and any tree carrying a `.kit/version` marker. A
+hop-style worktree is a *linked worktree* of that bare repo — a
+normal usable checkout — so it is not refused; plain `kit init`
+augments it.
+
+Passing `--mode augment` explicitly is still worthwhile on a hop
+tree: it resolves to the hop-aware path, which adds the two
+behaviors below.
 
 ```bash
 cd ~/.w/labspace/myproj/hops/fix/widgets
