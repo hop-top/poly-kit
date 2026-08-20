@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"hop.top/kit/go/console/cli/conformance/verifynoleak/scanner"
 )
 
 // A directory passed to --paths used to be returned verbatim, so the
@@ -29,7 +31,7 @@ func TestPathsExpandsDirectory(t *testing.T) {
 	nested := write(filepath.Join("nested", "c.yaml"))
 	write("notes.txt")
 
-	got, err := Paths(dir, []string{"stories"})
+	got, err := Paths(dir, []string{"stories"}, scanner.SupportedPath)
 	if err != nil {
 		t.Fatalf("Paths: %v", err)
 	}
@@ -52,7 +54,7 @@ func TestPathsKeepsExplicitFiles(t *testing.T) {
 	if err := os.WriteFile(md, []byte("hi\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := Paths(dir, []string{"notes.md"})
+	got, err := Paths(dir, []string{"notes.md"}, scanner.SupportedPath)
 	if err != nil {
 		t.Fatalf("Paths: %v", err)
 	}
@@ -61,39 +63,42 @@ func TestPathsKeepsExplicitFiles(t *testing.T) {
 	}
 }
 
-// An empty directory cannot substantiate a clean scan; surfacing it
-// as an error beats reporting zero scanned files and exiting clean.
-func TestPathsEmptyDirectoryErrors(t *testing.T) {
+// A directory that resolves but holds no scannable file is not an
+// error — an all-Go tree is legitimately clean. The vacuous scan is
+// surfaced by the command layer's "0 files scanned" stderr warning
+// instead, which keeps exit 0 (see TestVerifyNoLeak_PathsZeroScannedWarns).
+func TestPathsEmptyDirectoryIsNotAnError(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "empty"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Paths(dir, []string{"empty"}); err == nil {
-		t.Fatal("expected an error for a directory with no scannable files")
+	got, err := Paths(dir, []string{"empty"}, scanner.SupportedPath)
+	if err != nil {
+		t.Fatalf("resolvable empty directory must not error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected no files, got %v", got)
 	}
 }
 
 // A missing path stays an error: explicit means intentional.
 func TestPathsMissingErrors(t *testing.T) {
-	if _, err := Paths(t.TempDir(), []string{"nope"}); err == nil {
+	if _, err := Paths(t.TempDir(), []string{"nope"}, scanner.SupportedPath); err == nil {
 		t.Fatal("expected an error for a missing path")
 	}
 }
 
-// Both unusable-path failures must carry ErrBadPaths so the command
-// layer can classify them as config errors. io_error is excluded
-// from the conformance action's fail-on set, so misrouting these
-// would let an unscannable --paths pass CI silently.
+// An unresolvable path must carry ErrBadPaths so the command layer
+// classifies it as a config error. io_error is excluded from the
+// conformance action's fail-on set, so misrouting this would let a
+// typo'd --paths pass CI silently.
 func TestPathsUnusableWrapErrBadPaths(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "empty"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	for name, arg := range map[string]string{
-		"missing":         "nope",
-		"empty directory": "empty",
+		"missing":                     "nope",
+		"missing under existing root": filepath.Join("sub", "nope.yaml"),
 	} {
-		_, err := Paths(dir, []string{arg})
+		_, err := Paths(dir, []string{arg}, scanner.SupportedPath)
 		if err == nil {
 			t.Fatalf("%s: expected an error", name)
 		}

@@ -68,18 +68,42 @@ func Audit(cwd string) ([]string, error) {
 	return splitPaths(out, cwd), nil
 }
 
-// Paths normalises an explicit list of paths (the --paths flag).
-// Each entry is resolved relative to cwd; missing entries surface
-// as errors rather than silent skips, since explicit means
-// intentional.
+// Paths expands an explicit list of paths (the --paths flag) into
+// concrete file paths. Each entry is resolved relative to cwd.
 //
-// Directories expand to the scannable files beneath them, matching
-// what verify-stories accepts. Returning a directory verbatim let
-// the scanner skip it as an unsupported extension and report zero
-// scanned files while still exiting clean — a pass that measured
-// nothing. A directory holding no scannable file is an error for
-// the same reason.
-func Paths(cwd string, paths []string) ([]string, error) {
+// Directory entries are walked recursively: dot-directories are pruned
+// (except an explicitly passed root) and only files matching the
+// supported predicate are collected, mirroring verify-stories'
+// expansion. A nil predicate collects every regular file. The combined
+// list is deduplicated; per-directory walk output is lexicographic.
+//
+// An entry that does not resolve is an error, not a silent skip: it
+// wraps ErrBadPaths so the command layer classifies it as a config
+// error. io_error is excluded from the conformance action's fail-on
+// set, so passing a typo'd --paths through would let it go green in
+// CI having scanned nothing. Callers that genuinely want the lenient
+// behavior opt in via PathsAllowingMissing.
+//
+// A directory that resolves but holds no scannable file is NOT an
+// error — an all-Go tree is legitimately clean. That case exits 0 and
+// the command layer warns "0 files scanned" on stderr.
+func Paths(cwd string, paths []string, supported func(string) bool) ([]string, error) {
+	return resolvePaths(cwd, paths, supported, false)
+}
+
+// PathsAllowingMissing is Paths with unusable entries downgraded from
+// errors to pass-throughs: an unresolvable entry reaches the scanner
+// and surfaces in the report's skipped list instead of failing.
+//
+// This trades a loud failure for a silent one, so it is opt-in and
+// never the default. A gate that resolves no files still exits clean
+// under this mode — only pass it when scanning nothing is an
+// acceptable outcome.
+func PathsAllowingMissing(cwd string, paths []string, supported func(string) bool) ([]string, error) {
+	return resolvePaths(cwd, paths, supported, true)
+}
+
+func resolvePaths(cwd string, paths []string, supported func(string) bool, allowMissing bool) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, errors.New("source: --paths requires at least one path")
 	}
@@ -98,22 +122,54 @@ func Paths(cwd string, paths []string) ([]string, error) {
 		}
 		info, err := os.Stat(p)
 		if err != nil {
+			if allowMissing {
+				// Pass through so the scanner records it skipped
+				// with the stat reason.
+				add(p)
+				continue
+			}
 			return nil, fmt.Errorf("%w: %s: %w", ErrBadPaths, p, err)
 		}
 		if !info.IsDir() {
 			add(p)
 			continue
 		}
-		nested, err := scannableUnder(p)
-		if err != nil {
-			return nil, err
+		walked, werr := expandDir(p, supported)
+		if werr != nil {
+			return nil, fmt.Errorf("walk %s: %w", p, werr)
 		}
-		if len(nested) == 0 {
-			return nil, fmt.Errorf("%w: %s: directory holds no scannable files", ErrBadPaths, p)
+		for _, f := range walked {
+			add(f)
 		}
-		for _, n := range nested {
-			add(n)
+	}
+	return out, nil
+}
+
+// expandDir recursively collects supported regular files under root.
+// Dot-directories are pruned; the root itself is exempt so an
+// explicitly passed dot-directory still scans.
+func expandDir(root string, supported func(string) bool) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
+		if d.IsDir() {
+			if p != root && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		if supported == nil || supported(p) {
+			out = append(out, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
