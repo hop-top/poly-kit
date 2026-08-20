@@ -29,7 +29,7 @@ type GitInitOutcome struct {
 // gets --no-prompt, and if it still demands a TTY (its structure-
 // conversion wizard when an enclosing repo is detected) Init falls back
 // to plain `git init` instead of dying mid-scaffold with partial state
-// (T-0982). Runtime failures that are NOT interactivity-related still
+// Runtime failures that are NOT interactivity-related still
 // propagate as errors.
 func Init(ctx context.Context, dir string, hop bool, defaultBranch string, nonInteractive bool) (GitInitOutcome, error) {
 	if defaultBranch == "" {

@@ -130,7 +130,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	}
 
 	// 7b. Compose the built-in shared template (CI, gitignore,
-	// LICENSE, contribution docs, release scripts) — T-0983. Bootstrap
+	// LICENSE, contribution docs, release scripts). Bootstrap
 	// composes at tier 0 (everything), matching the --from render.
 	sharedSum, err := renderShared(ctx, deps, in, target, 0, in.DryRun)
 	if err != nil {
@@ -208,7 +208,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	// on PATH, Init returns Skipped=true so the surrounding flow can
 	// continue without an error (no .git is created in that case, so
 	// downstream commit/push steps are skipped too). Under --yes an
-	// interactivity failure falls back to plain git init (T-0982);
+	// interactivity failure falls back to plain git init;
 	// FellBack surfaces in the summary.
 	completed := []string{"render", "post_render hook"}
 	gitOutcome, err := deps.Git.Init(ctx, target, in.Hop, in.DefaultBranch, in.Yes)
@@ -228,7 +228,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 
 	// 10b. Emit kit-managed blocks (mise.toml, devcontainer, env) so the
 	// scaffolded CI workflows — whose toolchain step runs `mise run
-	// install` — are green out of the box (T-0983). Best-effort: a
+	// install` — are green out of the box. Best-effort: a
 	// missing bash or emitter failure degrades to a warning + the
 	// documented `kit init --update` recovery path, never a mid-scaffold
 	// abort.
@@ -335,7 +335,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 
 // stepError wraps a bootstrap step failure with the list of steps that
 // DID complete, so a mid-scaffold abort tells the user what state the
-// target directory is in (T-0982).
+// target directory is in.
 func stepError(step string, completed []string, err error) error {
 	return fmt.Errorf("bootstrap: %s: %w (completed steps: %s)", step, err, strings.Join(completed, ", "))
 }

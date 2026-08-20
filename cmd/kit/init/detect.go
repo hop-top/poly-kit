@@ -55,7 +55,7 @@ func Detect(cwd string, override Mode) (Mode, string, error) {
 	// 1. Bare-worktree detection via git rev-parse. A LINKED WORKTREE of
 	// a bare repo (git-dir != common-dir but cwd is inside a working
 	// tree) is a perfectly usable checkout — git add/commit/push all
-	// work — so it flows through the normal chain (T-0981). Only the
+	// work — so it flows through the normal chain. Only the
 	// bare repo ROOT (git internals, no working tree) stays refused:
 	// scaffolding files next to HEAD/objects/refs is never right.
 	if isBareWorktree(cwd) && !isInsideWorkTree(cwd) {

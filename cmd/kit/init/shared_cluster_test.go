@@ -1,4 +1,4 @@
-// White-box tests for the T-0981/T-0982/T-0983 scaffold-cluster fixes:
+// White-box tests for the scaffold-cluster fixes:
 // shared-template composition (tier table, output mapping, skip
 // reasons), bare-worktree detection, and the non-interactive git-hop
 // fallback.
@@ -54,7 +54,7 @@ func sharedDeps(t *testing.T) Deps {
 }
 
 // TestRenderShared_Tier0Bootstrap asserts the full shared composition
-// lands where scaffold.sh would put it (T-0983).
+// lands where scaffold.sh would put it.
 func TestRenderShared_Tier0Bootstrap(t *testing.T) {
 	target := t.TempDir()
 	in := sharedTestInputs(t)
@@ -211,7 +211,7 @@ func TestRenderShared_NonDestructive(t *testing.T) {
 }
 
 // TestDetect_WorktreeOfBare: a linked worktree of a bare repo must flow
-// to augment (T-0981), while the bare root stays refused.
+// to augment, while the bare root stays refused.
 func TestDetect_WorktreeOfBare(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
@@ -253,7 +253,7 @@ func TestDetect_WorktreeOfBare(t *testing.T) {
 }
 
 // TestInit_NonInteractiveFallback: a git-hop that demands a TTY under
-// --yes falls back to plain git init instead of failing (T-0982).
+// --yes falls back to plain git init instead of failing.
 func TestInit_NonInteractiveFallback(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")

@@ -119,7 +119,7 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 	// Render `.github/workflows/*-caller.yml` stubs in augment mode.
 	// Step 6c: compose the built-in shared template (CI, gitignore,
 	// LICENSE, contribution docs, release scripts) at the requested
-	// tier — T-0983. Non-destructive: differing existing files become
+	// tier. Non-destructive: differing existing files become
 	// .kit-suggested siblings, same as the engine's own contract.
 	sharedSum, serr := renderShared(ctx, deps, in, cwd, in.Tier, in.DryRun)
 	if serr != nil {

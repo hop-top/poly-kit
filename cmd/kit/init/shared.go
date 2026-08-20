@@ -5,7 +5,7 @@
 // this step existed, `kit init` emitted only the --from template and
 // every fresh repo was born without CI, LICENSE, or a .gitignore — the
 // bash scaffolder (templates/scaffold.sh) composed shared/ but the Go
-// path never did (T-0983).
+// path never did.
 //
 // The shared template is not a 1:1 file tree: several source groups
 // need output mapping (gitignore fragments concatenate into one
