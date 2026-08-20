@@ -127,12 +127,18 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 	var out []mcpFixtureCase
 
 	// --- legacy era (2024-11-05) ---
-	legacy := legacyLockServer(t, nil)
+	legacy := func() string { return legacyLockServer(t, nil).URL }
 
+	// A FRESH server per case. Cobra attaches help flags lazily on first
+	// execution, so a long-lived server lets an earlier tools/call leak a
+	// "help" property into a later tools/list — two identical requests
+	// then produce different bytes purely by position. That is a
+	// generator artifact, not surface behavior, and encoding it would
+	// force every port to reproduce a cobra quirk.
 	capture := func(name, era, why string, mount []string,
-		headers map[string]string, body string, srvURL string,
+		headers map[string]string, body string, newSrv func() string,
 	) {
-		status, _, raw := rawPOSTURL(t, srvURL, "/mcp", headers, []byte(body))
+		status, _, raw := rawPOSTURL(t, newSrv(), "/mcp", headers, []byte(body))
 		out = append(out, mcpFixtureCase{
 			Name:     name,
 			Era:      era,
@@ -148,59 +154,59 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 	capture("legacy/initialize/defaults", "legacy",
 		"handshake response pins protocolVersion + default serverInfo",
 		nil, nil,
-		`{"jsonrpc":"2.0","id":1,"method":"initialize"}`, legacy.URL)
+		`{"jsonrpc":"2.0","id":1,"method":"initialize"}`, legacy)
 
 	capture("legacy/initialize/null-id", "legacy",
 		"id round-trips verbatim including null",
 		nil, nil,
-		`{"jsonrpc":"2.0","id":null,"method":"initialize"}`, legacy.URL)
+		`{"jsonrpc":"2.0","id":null,"method":"initialize"}`, legacy)
 
 	capture("legacy/tools-list", "legacy",
 		"tool enumeration, hidden and deprecated flags excluded",
 		nil, nil,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`, legacy.URL)
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`, legacy)
 
 	capture("legacy/tools-call/read", "legacy",
 		"non-destructive leaf invokes and returns stdout content block",
 		nil, nil,
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ping"}}`,
-		legacy.URL)
+		legacy)
 
 	capture("legacy/tools-call/destructive-blocked", "legacy",
 		"destructive leaf blocked by default policy: isError result at HTTP 200",
 		nil, nil,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"widget.delete"}}`,
-		legacy.URL)
+		legacy)
 
 	capture("legacy/tools-call/auth-required", "legacy",
 		"auth-required leaf without Authorization header",
 		nil, nil,
 		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"secret"}}`,
-		legacy.URL)
+		legacy)
 
 	capture("legacy/error/method-not-found", "legacy",
 		"-32601 for an unknown JSON-RPC method",
 		nil, nil,
-		`{"jsonrpc":"2.0","id":6,"method":"nope"}`, legacy.URL)
+		`{"jsonrpc":"2.0","id":6,"method":"nope"}`, legacy)
 
 	capture("legacy/error/parse", "legacy",
 		"-32700 at HTTP 400 for unparseable JSON, regardless of headers",
 		nil, nil,
-		`{not json`, legacy.URL)
+		`{not json`, legacy)
 
 	capture("legacy/meta-progress-token-is-not-modern", "legacy",
 		"bare params._meta is NOT a modern marker: progressToken stays legacy",
 		nil, nil,
 		`{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"_meta":{"progressToken":"p1"}}}`,
-		legacy.URL)
+		legacy)
 
 	capture("legacy/protocol-version-header-is-not-modern", "legacy",
 		"MCP-Protocol-Version header alone must NOT route modern (predates 2026-07-28)",
 		nil, map[string]string{"MCP-Protocol-Version": "2025-06-18"},
-		`{"jsonrpc":"2.0","id":8,"method":"tools/list"}`, legacy.URL)
+		`{"jsonrpc":"2.0","id":8,"method":"tools/list"}`, legacy)
 
 	// --- modern era (2026-07-28) ---
-	modern := modernLockServer(t, nil)
+	modern := func() string { return modernLockServer(t, nil).URL }
 
 	modernMeta := `"_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}`
 
@@ -211,7 +217,7 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 			"Mcp-Method":           "server/discover",
 		},
 		`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{`+modernMeta+`}}`,
-		modern.URL)
+		modern)
 
 	capture("modern/tools-list", "modern",
 		"cacheable list result carries ttlMs + cacheScope",
@@ -220,7 +226,7 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 			"Mcp-Method":           "tools/list",
 		},
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{`+modernMeta+`}}`,
-		modern.URL)
+		modern)
 
 	capture("modern/tools-call/read", "modern",
 		"Mcp-Name header required on tools/call and must agree with the body",
@@ -230,7 +236,7 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 			"Mcp-Name":             "ping",
 		},
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ping",`+modernMeta+`}}`,
-		modern.URL)
+		modern)
 
 	capture("modern/error/header-mismatch", "modern",
 		"-32020 HeaderMismatch when Mcp-Name disagrees with params.name",
@@ -240,7 +246,7 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 			"Mcp-Name":             "widget_add",
 		},
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ping",`+modernMeta+`}}`,
-		modern.URL)
+		modern)
 
 	capture("modern/error/unsupported-version", "modern",
 		"-32022 UnsupportedProtocolVersion for an unknown _meta protocolVersion",
@@ -249,7 +255,7 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 			"Mcp-Method":           "tools/list",
 		},
 		`{"jsonrpc":"2.0","id":5,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2099-01-01"}}}`,
-		modern.URL)
+		modern)
 
 	capture("modern/tools-call/destructive-blocked", "modern",
 		"ErrDestructiveBlocked renders as isError at HTTP 200, same as legacy",
@@ -259,7 +265,7 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 			"Mcp-Name":             "widget.delete",
 		},
 		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"widget.delete",`+modernMeta+`}}`,
-		modern.URL)
+		modern)
 
 	capture("modern/initialize-is-legacy", "modern",
 		"D2: initialize routes legacy even when modern markers are present",
@@ -268,7 +274,7 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 			"Mcp-Method":           "initialize",
 		},
 		`{"jsonrpc":"2.0","id":7,"method":"initialize","params":{`+modernMeta+`}}`,
-		modern.URL)
+		modern)
 
 	return out
 }
