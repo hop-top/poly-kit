@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -58,20 +59,78 @@ func Audit(cwd string) ([]string, error) {
 	return splitPaths(out, cwd), nil
 }
 
-// Paths normalises an explicit list of paths (the --paths flag).
-// Each entry is resolved relative to cwd; missing entries surface
-// as errors rather than silent skips, since explicit means
-// intentional.
-func Paths(cwd string, paths []string) ([]string, error) {
+// Paths expands an explicit list of paths (the --paths flag) into
+// concrete file paths. Each entry is resolved relative to cwd.
+//
+// File entries pass through verbatim — explicit means intentional, so
+// a missing or unsupported file still reaches the scanner and surfaces
+// in the report's skipped list. Directory entries are walked
+// recursively: dot-directories are pruned (except an explicitly passed
+// root) and only files matching the supported predicate are collected,
+// mirroring verify-stories' expansion. The combined list is
+// deduplicated; per-directory walk output is lexicographic. A nil
+// predicate collects every regular file.
+func Paths(cwd string, paths []string, supported func(string) bool) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, errors.New("source: --paths requires at least one path")
 	}
+	seen := make(map[string]struct{}, len(paths))
 	out := make([]string, 0, len(paths))
+	add := func(p string) {
+		if _, ok := seen[p]; ok {
+			return
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
 	for _, p := range paths {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(cwd, p)
 		}
-		out = append(out, p)
+		info, err := os.Stat(p)
+		if err != nil || !info.IsDir() {
+			// Missing entries and bare files keep pass-through
+			// behavior; the scanner records them skipped with the
+			// stat / unsupported-extension reason.
+			add(p)
+			continue
+		}
+		walked, werr := expandDir(p, supported)
+		if werr != nil {
+			return nil, fmt.Errorf("walk %s: %w", p, werr)
+		}
+		for _, f := range walked {
+			add(f)
+		}
+	}
+	return out, nil
+}
+
+// expandDir recursively collects supported regular files under root.
+// Dot-directories are pruned; the root itself is exempt so an
+// explicitly passed dot-directory still scans.
+func expandDir(root string, supported func(string) bool) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			if p != root && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		if supported == nil || supported(p) {
+			out = append(out, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }

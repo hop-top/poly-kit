@@ -255,6 +255,14 @@ func classify(path string) fileKind {
 	return fileSkip
 }
 
+// SupportedPath reports whether ScanFile would scan path based on its
+// extension, rather than recording it skipped as unsupported. The set
+// is exactly classify's: YAML + Markdown. Sources that expand
+// directories use this to collect only scannable files.
+func SupportedPath(path string) bool {
+	return classify(path) != fileSkip
+}
+
 // isBinary samples the first 512 bytes for a NUL — same heuristic
 // `git diff` uses. Avoids dragging in `file --mime-type`.
 func isBinary(data []byte) bool {

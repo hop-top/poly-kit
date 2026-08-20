@@ -74,7 +74,7 @@ blocks, commit messages, and PR bodies before they ship. See
 	cmd.Flags().BoolVar(&staged, "staged", false, "scan only files staged for commit (Tier A)")
 	cmd.Flags().BoolVar(&audit, "audit", false, "scan the entire working tree (Tier C)")
 	cmd.Flags().StringVar(&diff, "diff", "", "scan files in `<base>...HEAD` diff (Tier B)")
-	cmd.Flags().StringSliceVar(&paths, "paths", nil, "scan an explicit list of paths")
+	cmd.Flags().StringSliceVar(&paths, "paths", nil, "scan an explicit list of paths (directories recurse)")
 
 	cmd.Flags().StringVar(&commitRange, "commit-range", "", "additionally scan commit messages in `<base>..HEAD`")
 	cmd.Flags().StringVar(&commitMsg, "commit-msg-file", "", "additionally scan a single commit message from file (for commit-msg hook)")
@@ -177,7 +177,7 @@ func runVerifyNoLeak(cmd *cobra.Command, v *viper.Viper, f vnlFlags) error {
 	case f.diff != "":
 		filePaths, err = source.Diff(cwd, f.diff)
 	case len(f.paths) > 0:
-		filePaths, err = source.Paths(cwd, f.paths)
+		filePaths, err = source.Paths(cwd, f.paths, scanner.SupportedPath)
 	default:
 		// auto-detect
 		filePaths, err = source.Staged(cwd)
@@ -259,6 +259,13 @@ func runVerifyNoLeak(cmd *cobra.Command, v *viper.Viper, f vnlFlags) error {
 
 	// Output + exit.
 	count := scanner.CountFindings(results)
+	// A --paths invocation that scanned nothing is a vacuous pass —
+	// surface it on stderr (even under --quiet-on-clean) so CI logs
+	// show the scan proved nothing. Exit stays 0: an all-Go tree is
+	// legitimately clean.
+	if len(f.paths) > 0 && countScanned(results) == 0 {
+		fmt.Fprintln(cmd.ErrOrStderr(), "verify-no-leak: warning: 0 files scanned — no scannable files under --paths")
+	}
 	if count == 0 && f.quietOnClean {
 		return nil
 	}
@@ -320,6 +327,19 @@ func isKitInternal(cwd string) bool {
 		}
 	}
 	return false
+}
+
+// countScanned reports how many results were actually scanned (not
+// skipped). Mirrors newVNLReport's scanned_files computation; used
+// for the vacuous-pass warning before rendering.
+func countScanned(rs []scanner.FileResult) int {
+	n := 0
+	for _, r := range rs {
+		if !r.Skipped {
+			n++
+		}
+	}
+	return n
 }
 
 func countWithFindings(rs []scanner.FileResult) int {
