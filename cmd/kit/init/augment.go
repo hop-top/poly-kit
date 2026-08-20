@@ -117,6 +117,34 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 	}
 
 	// Render `.github/workflows/*-caller.yml` stubs in augment mode.
+	// Step 6c: compose the built-in shared template (CI, gitignore,
+	// LICENSE, contribution docs, release scripts) at the requested
+	// tier — T-0983. Non-destructive: differing existing files become
+	// .kit-suggested siblings, same as the engine's own contract.
+	sharedSum, serr := renderShared(ctx, deps, in, cwd, in.Tier, in.DryRun)
+	if serr != nil {
+		return Summary{}, fmt.Errorf("augment: shared: %w", serr)
+	}
+
+	// Step 6d: emit kit-managed blocks (mise.toml, devcontainer, env)
+	// when the tier includes CI workflows — the scaffolded ci-<lang>
+	// jobs run `mise run install` and are red without mise.toml.
+	// Best-effort: failure degrades to a warning + `kit init --update`.
+	var managedWarning string
+	if !in.DryRun && in.Tier >= 2 {
+		if merr := RunManaged(ctx, ManagedOptions{
+			Cwd:   cwd,
+			Name:  in.Name,
+			Langs: strings.Join(in.Runtime, ","),
+			// Emitter chatter must never contaminate stdout: under
+			// --format json the summary is the only stdout payload.
+			Stdout: os.Stderr,
+			Stderr: os.Stderr,
+		}); merr != nil {
+			managedWarning = merr.Error()
+		}
+	}
+
 	// The renderer reads `.kit/generated.json` and honors the
 	// .kit-suggested fallback when a tracked file diverges from the
 	// recorded hash.
@@ -166,16 +194,18 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 	}
 
 	summary := Summary{
-		Mode:         "augment",
-		Name:         in.Name,
-		Target:       cwd,
-		Template:     in.Template,
-		Result:       result,
-		TLCSkipped:   tlcSkipped,
-		PrePrHook:    preprResult,
-		Workflows:    workflowActions,
-		BusWorkflows: busPlan.Entries,
-		NextSteps:    NextSteps("augment", in.Name, nil),
+		Mode:           "augment",
+		Name:           in.Name,
+		Target:         cwd,
+		Template:       in.Template,
+		Result:         result,
+		Shared:         &sharedSum,
+		ManagedWarning: managedWarning,
+		TLCSkipped:     tlcSkipped,
+		PrePrHook:      preprResult,
+		Workflows:      workflowActions,
+		BusWorkflows:   busPlan.Entries,
+		NextSteps:      NextSteps("augment", in.Name, nil),
 	}
 	applyPostHookToSummary(&summary, postHookSummary)
 	return summary, nil

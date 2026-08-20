@@ -129,6 +129,14 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 		return Summary{}, fmt.Errorf("bootstrap: render: %w", err)
 	}
 
+	// 7b. Compose the built-in shared template (CI, gitignore,
+	// LICENSE, contribution docs, release scripts) — T-0983. Bootstrap
+	// composes at tier 0 (everything), matching the --from render.
+	sharedSum, err := renderShared(ctx, deps, in, target, 0, in.DryRun)
+	if err != nil {
+		return Summary{}, fmt.Errorf("bootstrap: shared: %w", err)
+	}
+
 	// Hook context shared across all phases.
 	hookCtx := tmpl.HookContext{
 		Vars:      vars,
@@ -181,6 +189,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	// DryRun stops here: no hooks, no git, no github, no push.
 	if in.DryRun {
 		sum := buildSummary(in, target, result, nil)
+		sum.Shared = &sharedSum
 		sum.PrePrHook = preprResult
 		sum.Workflows = workflowActions
 		applyPostHookToSummary(&sum, postHookSummary)
@@ -216,6 +225,27 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 		return Summary{}, stepError("write .kit/version", completed, err)
 	}
 	completed = append(completed, ".kit/version")
+
+	// 10b. Emit kit-managed blocks (mise.toml, devcontainer, env) so the
+	// scaffolded CI workflows — whose toolchain step runs `mise run
+	// install` — are green out of the box (T-0983). Best-effort: a
+	// missing bash or emitter failure degrades to a warning + the
+	// documented `kit init --update` recovery path, never a mid-scaffold
+	// abort.
+	var managedWarning string
+	if merr := RunManaged(ctx, ManagedOptions{
+		Cwd:   target,
+		Name:  in.Name,
+		Langs: strings.Join(in.Runtime, ","),
+		// Emitter chatter must never contaminate stdout: under
+		// --format json the summary is the only stdout payload.
+		Stdout: os.Stderr,
+		Stderr: os.Stderr,
+	}); merr != nil {
+		managedWarning = merr.Error()
+	} else {
+		completed = append(completed, "managed blocks")
+	}
 
 	// 11. Initial commit. Skipped when git-hop was the requested
 	// initialiser and was not installed (no repo to commit into).
@@ -271,6 +301,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 			return Summary{}, stepError("push", completed, err)
 		}
 		completed = append(completed, "push")
+		_ = completed // final step; kept for future post-push failures
 	}
 
 	// 14. post_push hook.
@@ -290,6 +321,8 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 
 	// 16. Build + return summary.
 	summary := buildSummary(in, target, result, ghSummary)
+	summary.Shared = &sharedSum
+	summary.ManagedWarning = managedWarning
 	summary.HopSkipped = hopSkipped
 	summary.HopFellBack = gitOutcome.FellBack
 	summary.TLCSkipped = tlcSkipped

@@ -26,6 +26,21 @@ type Result struct {
 	Conditional   []string // false conditional subtrees
 	Removed       []string // RenderRules.RemoveAfterRender + license cleanup
 	LicensePicked string   // chosen license target path (empty if rule absent)
+
+	// SkipReasons maps each Skipped path to a machine-readable reason
+	// ("exclude-rule" | "tier-filter"). Additive: absent for pre-existing
+	// callers that only read Skipped.
+	SkipReasons map[string]string `json:"skip_reasons,omitempty"`
+}
+
+// addSkip appends path to Skipped and records why. Reason vocabulary is
+// intentionally small; JSON consumers key off it verbatim.
+func (r *Result) addSkip(path, reason string) {
+	r.Skipped = append(r.Skipped, path)
+	if r.SkipReasons == nil {
+		r.SkipReasons = map[string]string{}
+	}
+	r.SkipReasons[path] = reason
 }
 
 // Engine renders src into target. Construct via New; invoke Render or
@@ -114,7 +129,7 @@ func (e *Engine) walk(ctx context.Context) (Result, error) {
 		}
 		switch decision.Action {
 		case ActionSkip:
-			res.Skipped = append(res.Skipped, srcPath)
+			res.addSkip(srcPath, "exclude-rule")
 			if d.IsDir() {
 				return fs.SkipDir
 			}
@@ -233,7 +248,7 @@ func (e *Engine) applyLicenseRule(res *Result, lr *LicenseRule) error {
 // copies bytes verbatim.
 func (e *Engine) emit(srcPath, outPath string, render bool, res *Result) error {
 	if !AppliesAtTier(outPath, e.tiers, e.tier) {
-		res.Skipped = append(res.Skipped, srcPath)
+		res.addSkip(srcPath, "tier-filter")
 		return nil
 	}
 	raw, err := fs.ReadFile(e.src, srcPath)
