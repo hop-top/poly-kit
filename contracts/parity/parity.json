@@ -59,15 +59,6 @@
     "output": "stderr"
   },
 
-  "table": {
-    "description": "Styled-table contract for the output package. Plain tabwriter is the default; callers opt in to the lipgloss-backed renderer via WithTableStyle. The styled path is gated on writer-is-TTY so non-TTY writers (pipes, files, tests) always emit ANSI-free, diff-friendly output.",
-    "render_option": "WithTableStyle",
-    "tty_only": true,
-    "row_emphasis_kinds": ["none", "primary", "secondary", "muted"],
-    "row_emphasis_option": "RowEmphasis",
-    "border_default": "normal"
-  },
-
   "extends": [
     "scope-defaults.json"
   ]

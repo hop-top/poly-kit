@@ -3,16 +3,19 @@
 Mirrors the legacy ``_render_table`` in sdk/py/hop_top_kit/output.py:
 - 2-space gap between columns
 - header + data rows, each terminated with '\\n'
-- empty list → no output (not even a header)
-- ``cols`` filters headers to selection (preserving cols order)
+- zero rows → no output (not even a bare header row)
+- ``columns`` sets header order/names; ``cols`` reorders + selects
 """
 
 from __future__ import annotations
 
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 from hop_top_kit.output.formatter import OptionSpec
 from hop_top_kit.output.projection import filter_columns, to_rows
+
+if TYPE_CHECKING:
+    from hop_top_kit.output.formatter import ColumnSpec
 
 _GAP = "  "
 
@@ -30,9 +33,12 @@ class TableFormatter:
         data: Any,
         opts: dict[str, Any],
         cols: list[str],
+        columns: list[ColumnSpec] | None = None,
     ) -> None:
-        headers, rows = to_rows(data)
-        if not headers:
+        headers, rows = to_rows(data, columns)
+        # Emptiness is decided by ROW count, never header count: a
+        # ColumnSpec list yields headers even for a zero-row payload.
+        if not rows:
             return
         if cols:
             headers, rows = filter_columns(headers, rows, cols)

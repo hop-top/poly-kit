@@ -306,7 +306,7 @@ type Root struct {
 	identityCfg        *IdentityConfig
 	peerCfg            *PeerConfig
 	telemetryCfg       *TelemetryConfig
-	verboseCount       int // -V count; 0=info, 1=debug, 2+=trace
+	verboseCount       int // -V count; levels per parity verbosity.levels
 	aliases            map[string]string
 	aliasCompletionSet bool              // guards single ValidArgsFunction wrap
 	hiddenGroups       map[string]bool   // group IDs hidden from default --help
@@ -446,9 +446,11 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		pf.Bool("quiet", false, "Suppress non-essential output")
 		_ = v.BindPFlag("quiet", pf.Lookup("quiet"))
 	}
-	// -V / --verbose: stackable count flag (e.g. -VV = 2).
-	// Stored on Root; log/log.WithVerbose reads it.
-	pf.CountP("verbose", "V", "Increase log verbosity (-V=debug, -VV=trace)")
+	// Stackable verbosity count flag (e.g. -VV = 2). The shorthand and
+	// the level names in the help text come from the parity contract's
+	// verbosity block. Stored on Root; log/log.WithVerbose reads it.
+	pf.CountP("verbose", verbosityShorthand(&parity.Values),
+		verbosityFlagUsage(&parity.Values))
 	_ = v.BindPFlag("verbose", pf.Lookup("verbose"))
 
 	if !cfg.Disable.NoColor {

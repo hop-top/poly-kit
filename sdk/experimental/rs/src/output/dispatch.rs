@@ -114,7 +114,7 @@ pub fn dispatch(
         if !cols.is_empty() {
             return Err(DispatchError::TemplateAndCols);
         }
-        return render_template(active_writer, template, data);
+        return render_template(active_writer, template, data, opts.columns);
     }
 
     // 6. Formatter render.
@@ -137,8 +137,35 @@ pub fn dispatch(
         }
     }
 
-    formatter.render(active_writer, data, &parsed_opts, &cols)?;
+    let effective = resolve_effective_cols(&cols, opts.columns);
+    formatter.render(active_writer, data, &parsed_opts, &effective)?;
     Ok(())
+}
+
+/// Resolve the column list handed to the formatter.
+///
+/// Precedence, per the cross-runtime column-ordering contract:
+///
+/// 1. User `--cols` wins outright — it reorders as well as selects, so the
+///    user's sequence is passed through verbatim.
+/// 2. Otherwise the caller's `ColumnSpec` list supplies both the default
+///    order and the headers, in list order.
+/// 3. With neither, an empty slice tells the formatter to fall back to the
+///    payload's own key order.
+///
+/// Resolving here rather than inside `render` keeps the [`Formatter`] trait
+/// signature unchanged, so external implementations keep compiling and pick
+/// up ordered columns for free.
+///
+/// [`Formatter`]: super::formatter::Formatter
+fn resolve_effective_cols(cols: &[String], schema: Option<&[ColumnSpec]>) -> Vec<String> {
+    if !cols.is_empty() {
+        return cols.to_vec();
+    }
+    match schema {
+        Some(specs) => specs.iter().map(|c| c.header.clone()).collect(),
+        None => Vec::new(),
+    }
 }
 
 fn resolve_format(
@@ -219,22 +246,57 @@ fn validate_cols(cols: &[String], schema: &[ColumnSpec]) -> Result<(), DispatchE
     Ok(())
 }
 
-fn render_template(out: &mut dyn Write, template: &str, data: &Value) -> Result<(), DispatchError> {
+fn render_template(
+    out: &mut dyn Write,
+    template: &str,
+    data: &Value,
+    schema: Option<&[ColumnSpec]>,
+) -> Result<(), DispatchError> {
     let rows: Vec<&Value> = match data {
         Value::Array(arr) => arr.iter().collect(),
         other => vec![other],
     };
+    // `--template` and `--cols` are mutually exclusive, so there is no user
+    // projection to outrank the schema here: pass an empty `cols` slice and
+    // let the shared precedence helper apply rule 1 alone.
+    let mut resolved = resolve_effective_cols(&[], schema);
+    if resolved.is_empty() {
+        resolved = infer_columns(&rows);
+    }
     for row in rows {
-        let line = substitute(template, row);
+        let line = substitute(template, row, &resolved);
         writeln!(out, "{}", line)?;
     }
     Ok(())
 }
 
-/// Minimal `{key}` substitution. Mirrors the deliberately-tiny renderer
-/// in php Dispatcher; full template-engine parity (eta / Jinja-style) is
-/// a Phase-3 follow-up.
-fn substitute(template: &str, row: &Value) -> String {
+/// Payload key order of the first object-shaped row — the last-resort
+/// column order when no `ColumnSpec` list was supplied. serde_json is built
+/// with `preserve_order`, so this is the payload's own declaration order.
+/// Matches the formatter path's inference, so `{*}` and a table render of
+/// the same schema-less payload agree on order.
+fn infer_columns(rows: &[&Value]) -> Vec<String> {
+    for row in rows {
+        if let Value::Object(map) = row {
+            return map.keys().cloned().collect();
+        }
+    }
+    Vec::new()
+}
+
+/// Minimal `{key}` substitution, plus a `{*}` placeholder expanding to the
+/// resolved columns' values for the row, tab-joined, in resolved order.
+/// Full template-engine parity (eta / Jinja-style) is a Phase-3 follow-up.
+///
+/// `{*}` is not the `cols` variable go/py/ts expose: those bind an iterable
+/// of column NAMES that the template author loops over with a separator of
+/// their choosing. `{*}` is a single pre-joined string of this row's VALUES
+/// — no names, no looping, tab fixed. It is the ordering signal this
+/// engine-less renderer can carry, not an equivalent affordance.
+///
+/// Columns absent from the row contribute an empty field rather than being
+/// skipped, so every line has the same field count.
+fn substitute(template: &str, row: &Value, resolved: &[String]) -> String {
     let mut out = String::with_capacity(template.len());
     let bytes = template.as_bytes();
     let mut i = 0;
@@ -242,6 +304,19 @@ fn substitute(template: &str, row: &Value) -> String {
         if bytes[i] == b'{' {
             if let Some(close) = template[i + 1..].find('}') {
                 let key = &template[i + 1..i + 1 + close];
+                if key == "*" {
+                    let vals: Vec<String> = resolved
+                        .iter()
+                        .map(|c| match row.get(c) {
+                            Some(Value::String(s)) => s.clone(),
+                            Some(other) => other.to_string(),
+                            None => String::new(),
+                        })
+                        .collect();
+                    out.push_str(&vals.join("\t"));
+                    i += 1 + close + 1;
+                    continue;
+                }
                 if !key.is_empty()
                     && key
                         .chars()

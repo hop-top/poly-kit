@@ -83,7 +83,7 @@ wheels = [
 
 [[package]]
 name = "hop-top-kit"
-version = "0.5.0a1"
+version = "0.5.0a3"
 source = { editable = "." }
 dependencies = [
     { name = "hop-top-cite" },

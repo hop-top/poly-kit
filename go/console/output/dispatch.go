@@ -286,7 +286,7 @@ func renderTemplate(w io.Writer, src string, data any) error {
 		return fmt.Errorf("parse template: %w", err)
 	}
 	headers := TableHeaders(reflect.TypeOf(data))
-	items := projectToMaps(data, nil)
+	items := projectToMaps(data)
 	// projectToMaps may return data unchanged for non-struct inputs;
 	// normalize to []map[string]any when possible so .Items is iterable.
 	itemSlice, _ := items.([]map[string]any)

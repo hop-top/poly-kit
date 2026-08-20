@@ -20,6 +20,8 @@ use serde_json::Value;
 use crate::output::formatter::Formatter;
 use crate::output::option::{OptionSpec, OptionType, OptionValue, Options};
 
+use super::rows::{normalize, resolve_columns, row_get, stringify};
+
 static OPTS: &[OptionSpec] = &[OptionSpec {
     name: "header",
     r#type: OptionType::Bool,
@@ -55,9 +57,17 @@ impl Formatter for TableFormatter {
             .and_then(OptionValue::as_bool)
             .unwrap_or(true);
         let rows = normalize(data);
+
+        // Zero rows emits nothing — not even a bare header row. Emptiness is
+        // decided by ROW count, never by header count: `cols` is non-empty
+        // whenever the caller supplied a ColumnSpec list, so guarding on the
+        // column count would print a lone header for an empty payload.
+        if rows.is_empty() {
+            return Ok(());
+        }
+
         let columns = resolve_columns(&rows, cols);
 
-        // Empty input: emit only the header (if requested) and exit.
         let mut table = Table::new();
         table
             .load_preset(NOTHING)
@@ -77,46 +87,5 @@ impl Formatter for TableFormatter {
 
         writeln!(out, "{}", table)?;
         Ok(())
-    }
-}
-
-/// Always returns a list of rows; a single map becomes a one-row table.
-fn normalize(data: &Value) -> Vec<&Value> {
-    match data {
-        Value::Array(arr) => arr.iter().collect(),
-        other => vec![other],
-    }
-}
-
-/// Honor user-supplied --cols projection; otherwise infer from the
-/// first object-shaped row in the payload.
-fn resolve_columns(rows: &[&Value], cols: &[String]) -> Vec<String> {
-    if !cols.is_empty() {
-        return cols.to_vec();
-    }
-    for row in rows {
-        if let Value::Object(map) = row {
-            return map.keys().cloned().collect();
-        }
-    }
-    Vec::new()
-}
-
-fn row_get<'a>(row: &'a Value, key: &str) -> Option<&'a Value> {
-    if let Value::Object(map) = row {
-        map.get(key)
-    } else {
-        None
-    }
-}
-
-fn stringify(val: Option<&Value>) -> String {
-    match val {
-        None | Some(Value::Null) => String::new(),
-        Some(Value::String(s)) => s.clone(),
-        Some(Value::Bool(b)) => b.to_string(),
-        Some(Value::Number(n)) => n.to_string(),
-        // Arrays / objects: compact JSON keeps cells single-line.
-        Some(other) => serde_json::to_string(other).unwrap_or_default(),
     }
 }

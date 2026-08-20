@@ -5,9 +5,15 @@
  * API: `logger.info('msg', 'key', val, 'key2', val2)` (variadic key-value)
  * This matches Go's charm/log API, not pino's native object API.
  * Pino handles transports, serialization, and performance under the hood.
+ *
+ * The `-V` count → level mapping and the `--quiet` override both come from
+ * the parity contract (`parity.json` verbosity block), so the level
+ * vocabulary stays identical across the Go, TypeScript and Python ports.
  */
 
 import pino from 'pino';
+
+import { parity, type ParityData } from './tui/parity.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -97,6 +103,55 @@ function kvToObj(keyvals: any[]): Record<string, any> {
 }
 
 // ---------------------------------------------------------------------------
+// Parity contract → pino level names
+// ---------------------------------------------------------------------------
+
+/** Pino level names the contract's level vocabulary may resolve to. */
+const PINO_LEVELS = new Set(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
+
+/**
+ * Resolve a contract level name to a pino level name.
+ *
+ * The names are the cross-language vocabulary declared in `parity.json`;
+ * pino happens to use the same spellings, so this is a membership check
+ * rather than a translation table (Go needs one because charm/log has no
+ * `trace`).
+ */
+function levelByName(name: string): string | undefined {
+  return PINO_LEVELS.has(name) ? name : undefined;
+}
+
+/**
+ * Resolve a `-V` count against a parity contract's `verbosity.levels`
+ * table. Counts above the highest declared key clamp to that key's level;
+ * an empty or unresolvable table falls back to `info`.
+ *
+ * Taking the contract as a parameter (rather than reading the module-level
+ * `parity`) keeps the mapping testable against a constructed `ParityData`
+ * without mutating the shared `parity.json`.
+ */
+export function verbosityLevel(d: ParityData, verbose: number): string {
+  const levels = d.verbosity?.levels ?? {};
+  // Highest declared count at or below `verbose` wins.
+  let best = -1;
+  for (const key of Object.keys(levels)) {
+    const n = Number(key);
+    if (!Number.isInteger(n)) continue;
+    if (n <= verbose && n > best) best = n;
+  }
+  if (best < 0) return 'info';
+  return levelByName(levels[String(best)]) ?? 'info';
+}
+
+/**
+ * Resolve a parity contract's `verbosity.quiet_override` to a pino level
+ * name. An unrecognized or absent override falls back to `warn`.
+ */
+export function quietLevel(d: ParityData): string {
+  return levelByName(d.verbosity?.quiet_override ?? '') ?? 'warn';
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -104,8 +159,12 @@ export function createLogger(opts?: LoggerOptions): Logger {
   const quiet = opts?.quiet ?? false;
   const noColor = opts?.noColor ?? false;
 
+  // Note: the non-quiet level here is `debug`, NOT the contract's
+  // zero-verbosity level. createLogger predates the verbosity contract and
+  // is deliberately chattier than `withVerbose({ verbose: 0 })`; only the
+  // quiet override is contract-declared, so only it is wired.
   const p = pino({
-    level: quiet ? 'warn' : 'debug',
+    level: quiet ? quietLevel(parity) : 'debug',
   }, kitTransport(noColor));
 
   return {
@@ -122,8 +181,9 @@ export function createLogger(opts?: LoggerOptions): Logger {
 // ---------------------------------------------------------------------------
 
 /**
- * Map verbose count to pino level: 0=info, 1=debug, 2+=trace.
- * Quiet overrides to warn regardless of verbose count.
+ * Map verbose count to a pino level through the parity contract's
+ * `verbosity.levels` table. Quiet overrides to the contract's
+ * `quiet_override` level regardless of verbose count.
  */
 export function withVerbose(
   opts: LoggerOptions & { verbose?: number },
@@ -132,16 +192,7 @@ export function withVerbose(
   const noColor = opts.noColor ?? false;
   const v = opts.verbose ?? 0;
 
-  let level: string;
-  if (quiet) {
-    level = 'warn';
-  } else if (v >= 2) {
-    level = 'trace';
-  } else if (v >= 1) {
-    level = 'debug';
-  } else {
-    level = 'info';
-  }
+  const level = quiet ? quietLevel(parity) : verbosityLevel(parity, v);
 
   const p = pino({ level }, kitTransport(noColor));
 

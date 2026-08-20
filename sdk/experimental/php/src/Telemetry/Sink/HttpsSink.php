@@ -113,6 +113,11 @@ final class HttpsSink implements SinkInterface
             // Inspect status codes ourselves: 4xx → drop, 5xx → one retry.
             // Guzzle's default would throw on these and skip the retry path.
             'http_errors' => false,
+            // Never follow redirects. The batch carries install_id, so a 302
+            // from the ingestor would re-send it to whatever host the response
+            // names. A configured endpoint has no legitimate need to redirect;
+            // a 3xx is treated as a non-2xx and drops the batch.
+            'allow_redirects' => false,
         ];
 
         try {

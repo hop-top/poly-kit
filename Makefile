@@ -1,4 +1,4 @@
-.PHONY: setup lint lint-go lint-ts lint-py lint-rs lint-docs lint-config lint-links lint-sdk-paths \
+.PHONY: setup lint lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-rs lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers \
 	preflight \
 	tools tools-golangci-lint \
 	test test-go test-go-integration test-ts test-py test-rs test-parity test-parity-typeid \
@@ -118,7 +118,7 @@ test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
 	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v
 
-lint: lint-go lint-ts lint-py lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
+lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers ## Run all linters
 
 lint-go: tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -129,6 +129,37 @@ lint-ts: ## TypeScript: eslint
 
 lint-py: ## Python: ruff check + format
 	cd sdk/py && uv run ruff check . && uv run ruff format --check .
+
+# `uv sync` rewrites uv.lock in place when it disagrees with pyproject.toml,
+# so drift never fails a build — it just lands as an unrelated dirty file in
+# the next contributor's tree. --check resolves without writing and exits
+# non-zero instead.
+lint-lock-py: ## Python: uv.lock consistent with pyproject.toml
+	cd sdk/py && uv lock --check
+	cd engine/sdk/py-kit-engine && uv lock --check
+
+lint-lock-php: ## PHP: composer.lock consistent with composer.json
+	cd sdk/experimental/php && composer validate --check-lock --no-check-publish
+
+# `--locked` audits composer.lock directly, so this runs without a vendor/
+# tree and reports what CI would actually install. Severity gate: low is
+# ignored, medium and up fail. A hard gate on every severity turns any new
+# low advisory against a pinned transitive dep into a red build on unrelated
+# PRs — which is how audit steps end up commented out. Abandoned packages
+# report but don't fail: abandonment is not a vulnerability and rarely has a
+# same-day replacement. `--ignore-unreachable` keeps a Packagist outage from
+# failing the build for a reason unrelated to the code under test.
+audit-php: ## PHP: composer.lock free of medium+ security advisories
+	cd sdk/experimental/php && composer audit --locked --no-dev \
+		--ignore-severity=low --abandoned=report --ignore-unreachable
+
+# Two passes: src/ at level 5, tests/ at 2 (see phpstan.neon for why they
+# differ). Both run via `composer analyse`, so this target and a bare
+# `composer analyse` gate identically. Neither config carries a baseline or
+# an ignore list, so every error reported is a real one. Needs vendor/
+# (unlike audit-php), hence the install.
+lint-php: ## PHP: phpstan static analysis (levels pinned in phpstan.neon)
+	cd sdk/experimental/php && composer install --no-progress --quiet && composer analyse
 
 lint-rs: ## Rust: cargo fmt --check + clippy (all features)
 	cd sdk/experimental/rs && cargo fmt --all -- --check
@@ -177,6 +208,9 @@ lint-sdk-paths: ## Guard against repeated-sdk-segment path corruption recurrence
 		--exclude='Makefile' \
 		--exclude='.xray_*.md'
 	@echo "No repeated-sdk-segment corruption detected."
+
+lint-adr-numbers: ## Guard against duplicate ADR numbers claimed across branches
+	@scripts/verify-adr-numbers.sh
 
 proto: ## Generate protobuf + Connect/gRPC stubs
 # Generated files are committed for go-get compatibility.

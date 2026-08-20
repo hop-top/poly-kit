@@ -1,0 +1,130 @@
+{
+  "_comment": [
+    "Column-ordering conformance cases. Every runner reads this file, renders",
+    "each case in each listed format, RE-PARSES its own emitted bytes with an",
+    "order-preserving parser, and reports the observed column sequence.",
+    "",
+    "The observation — not the rendered bytes — is what the orchestrator diffs.",
+    "Table padding and YAML block style differ legitimately across runtimes",
+    "(comfy-table pads, tabwriter does not; php emits '-' on its own line), so",
+    "raw bytes were never comparable. Column ORDER is what the contract pins,",
+    "and re-parsing the runtime's own output is how we observe it honestly.",
+    "",
+    "Field meanings:",
+    "  spec    — ColumnSpec list, in list order. null means 'no ColumnSpec",
+    "            supplied at all' (the payload-key fallback path).",
+    "  rows    — payload rows. Key insertion order is significant and is",
+    "            deliberately NOT the spec order in several cases.",
+    "  cols    — the user's --cols override. [] means 'not supplied'.",
+    "  formats — which formatters to exercise. 'portable' expands to the set",
+    "            every runtime implements; 'extended' adds csv/text, which rs",
+    "            and php do not ship.",
+    "",
+    "header == key universally (contract rule 3), so a spec entry is one name."
+  ],
+
+  "portable_formats": ["table", "json", "yaml"],
+  "extended_formats": ["csv", "text"],
+
+  "cases": [
+    {
+      "name": "spec-order-vs-alphabetical",
+      "why": "ColumnSpec order is deliberately anti-alphabetical. A runtime that sorts its column map (rs's old BTreeMap) reorders to alpha,mid,zeta and is caught here.",
+      "spec": ["zeta", "alpha", "mid"],
+      "rows": [
+        { "zeta": "z1", "alpha": "a1", "mid": "m1" },
+        { "zeta": "z2", "alpha": "a2", "mid": "m2" }
+      ],
+      "cols": [],
+      "formats": "portable",
+      "go": true
+    },
+    {
+      "name": "spec-order-vs-payload-order",
+      "why": "Payload keys are inserted alpha,mid,zeta while the ColumnSpec says zeta,alpha,mid. A runtime that infers columns from payload keys instead of honoring the spec is caught here (contract rule 1).",
+      "spec": ["zeta", "alpha", "mid"],
+      "rows": [
+        { "alpha": "a1", "mid": "m1", "zeta": "z1" },
+        { "alpha": "a2", "mid": "m2", "zeta": "z2" }
+      ],
+      "cols": [],
+      "formats": "portable",
+      "go": true
+    },
+    {
+      "name": "cols-reorder-subset",
+      "why": "--cols selects a SUBSET in an order that matches neither the ColumnSpec list nor the payload keys. User order wins (contract rule 2): --cols reorders as well as selects. The requested order zeta,alpha is also anti-alphabetical, so a runtime that round-trips columns through an unordered map emits alpha,zeta and is caught rather than passing by coincidence.",
+      "spec": ["zeta", "alpha", "mid"],
+      "rows": [
+        { "zeta": "z1", "alpha": "a1", "mid": "m1" }
+      ],
+      "cols": ["zeta", "alpha"],
+      "formats": "portable",
+      "go": true
+    },
+    {
+      "name": "cols-reorder-against-declaration",
+      "why": "--cols asks for mid,zeta — a subset whose requested order is the REVERSE of the ColumnSpec/struct declaration order. Unlike cols-reorder-subset, the requested order here disagrees with declaration order, so a runtime that merely SELECTS without REORDERING emits zeta,mid and is caught. This is the case that separates 'honors --cols as a filter' from 'honors --cols as an ordering directive' (contract rule 2).",
+      "spec": ["zeta", "alpha", "mid"],
+      "rows": [
+        { "zeta": "z1", "alpha": "a1", "mid": "m1" }
+      ],
+      "cols": ["mid", "zeta"],
+      "formats": "portable",
+      "go": true
+    },
+    {
+      "name": "no-spec-payload-fallback",
+      "why": "No ColumnSpec supplied at all. Payload key order is the fallback and ONLY then (contract rule 1). Keys are anti-alphabetical so a sorting runtime is caught.",
+      "spec": null,
+      "rows": [
+        { "zeta": "z1", "alpha": "a1", "mid": "m1" }
+      ],
+      "cols": [],
+      "formats": "portable",
+      "go": true
+    },
+    {
+      "name": "no-spec-cols-reorder",
+      "why": "No ColumnSpec, but --cols reorders. Contract rule 2 states the same precedence applies on the fallback path — no exception. Requested order is anti-alphabetical so an unordered-map round-trip is caught.",
+      "spec": null,
+      "rows": [
+        { "zeta": "z1", "alpha": "a1", "mid": "m1" }
+      ],
+      "cols": ["zeta", "alpha"],
+      "formats": "portable",
+      "go": true
+    },
+    {
+      "name": "empty-rows-with-spec",
+      "why": "Zero rows with a NON-EMPTY ColumnSpec. Emptiness is decided by ROW count, never header count, so no bare header row may be emitted (contract rule 4). A runtime guarding on header count instead emits 'zeta alpha mid' and is caught.",
+      "spec": ["zeta", "alpha", "mid"],
+      "rows": [],
+      "cols": [],
+      "formats": "portable",
+      "go": true
+    },
+    {
+      "name": "cols-reorder-extended",
+      "why": "Same rule-2 assertion as cols-reorder-subset, on the csv/text formatters. rs and php do not ship these, so this case runs on py/ts/go only.",
+      "spec": ["zeta", "alpha", "mid"],
+      "rows": [
+        { "zeta": "z1", "alpha": "a1", "mid": "m1" }
+      ],
+      "cols": ["zeta", "alpha"],
+      "formats": "extended",
+      "go": true
+    },
+    {
+      "name": "spec-order-extended",
+      "why": "Rule-1 default ordering on the csv/text formatters. py/ts/go only.",
+      "spec": ["zeta", "alpha", "mid"],
+      "rows": [
+        { "alpha": "a1", "mid": "m1", "zeta": "z1" }
+      ],
+      "cols": [],
+      "formats": "extended",
+      "go": true
+    }
+  ]
+}

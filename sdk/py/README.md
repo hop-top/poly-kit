@@ -88,10 +88,10 @@ name;count;status
 alpha;1;ok
 beta;2;warn
 
-$ mycli list --cols name,status
-name   status
-alpha  ok
-beta   warn
+$ mycli list --cols status,name   # --cols reorders as well as selects
+status  name
+ok      alpha
+warn    beta
 
 $ mycli list -o /tmp/out.json    # extension infers json
 
@@ -114,6 +114,123 @@ Discover at runtime:
 mycli list --format-help                # list all
 mycli list --format csv --format-help   # csv-only options
 ```
+
+### Column ordering
+
+1. **Default order.** When `dispatch` receives a `columns=` list, that
+   list's order and header names drive every formatter — table, csv, text,
+   json, yaml and `--template` alike. The payload's own key order is the
+   fallback used *only* when no `ColumnSpec` list is supplied.
+2. **`--cols` reorders as well as selects.** The user's sequence wins over
+   the `ColumnSpec` order: `--cols status,name` renders `status` then
+   `name`. Repeated `--cols` flags accumulate and de-duplicate, and the
+   surviving first-seen order is the render order. The same rule applies on
+   the no-schema fallback path.
+3. **`header == key`.** They are one name: validation and value lookup are
+   the same operation, so a name accepted by `--cols` validation can never
+   fail again mid-render. Constructing a `ColumnSpec` whose `key` differs
+   from its `header` raises `ValueError` — Go cannot express the split via
+   its `table:""` tags, so no SDK carries it.
+4. **Zero rows emits nothing** — not even a bare header row. Emptiness is
+   decided by row count, never header count, so a `ColumnSpec` list does not
+   resurrect a header for an empty payload.
+5. **`priority` is accepted, stored and ignored.** The hide-on-overflow
+   behavior it drives is implemented in Go only; the payload SDKs keep the
+   field so specs stay portable until that feature is ported.
+
+A `ColumnSpec` naming a column the payload does not carry is a hole, not an
+error: it renders as an empty cell.
+
+Worked example — the same rows under each rule:
+
+```python
+rows = [
+    {"count": 3, "status": "ready", "name": "alpha"},
+    {"count": 8, "status": "held",  "name": "beta"},
+]
+cols = [
+    ColumnSpec("name", "name", 9),
+    ColumnSpec("count", "count", 7),
+    ColumnSpec("status", "status", 5),
+]
+```
+
+`columns=cols`, no `--cols` — the spec drives order, not the payload's
+own `count, status, name` key order (rule 1):
+
+```
+name   count  status
+alpha  3      ready
+beta   8      held
+```
+
+`--cols status,name` — the user's sequence wins and also selects
+(rule 2), in `table` and `json` alike:
+
+```
+status  name
+ready   alpha
+held    beta
+```
+
+```json
+[
+  {
+    "status": "ready",
+    "name": "alpha"
+  },
+  {
+    "status": "held",
+    "name": "beta"
+  }
+]
+```
+
+No `columns=` at all — payload key order is the fallback:
+
+```
+count  status  name
+3      ready   alpha
+8      held    beta
+```
+
+#### Go-vs-payload capability gaps
+
+| Capability | Go (reference) | py / ts | rs / php |
+|---|---|---|---|
+| Column order source | `table:""` tags, declaration order | `ColumnSpec` list order | `ColumnSpec` list order |
+| `priority` hide-on-overflow | implemented | accepted, stored, ignored | accepted, stored, ignored |
+| `header != key` | inexpressible via `table:""` | `ValueError` at construction | rejected at construction |
+| json/yaml key order | follows the resolved order | follows the resolved order | follows the resolved order |
+| `--cols` reorders | yes | yes | yes |
+| Built-in formats | `table`, `json`, `yaml`, `csv`, `text` (+ `human`) | same five | `table`, `json`, `yaml` only |
+| Ordered columns on the template path | `.Cols` | `cols` (py), `cols` (ts) | `{*}` (php); none (rs) |
+
+`header != key` being inexpressible in Go is not an oversight — it is the
+*reason* rule 3 is universal. No SDK may carry a capability the reference
+runtime cannot mirror.
+
+#### Conformance status
+
+Python satisfies all five rules, as does Go across all five formats. The
+cross-runtime fixtures under `sdk/tests/cross-lang/` execute the contract
+against every runtime. Two gaps remain open and matter when writing
+portable code:
+
+- **`--format csv` and `--format text` do not exist in rs or php.** Only
+  `table`, `json` and `yaml` are portable across all five runtimes today.
+  The fixtures record this as `rs-php-no-csv-text`.
+- **rs has no ordered-column affordance on the `--template` path.** Go
+  exposes `.Cols` and py and ts expose `cols`; php has a `{*}`
+  placeholder yielding pre-joined values. The spelling for rs is an open
+  decision.
+
+The fixtures compare the **column order re-parsed from each runtime's own
+output**, never raw bytes — table padding and YAML block style differ
+legitimately between runtimes. Byte-level formatting parity is pinned by
+each SDK's own unit tests instead. `csv` output agrees byte-for-byte
+across go/py/ts in the default LF mode; the `crlf` option exposes known
+quoting divergences.
 
 ### `--output|-o` and extension inference
 
@@ -173,13 +290,20 @@ class MarkdownFormatter:
                        usage="leading '#' count for record headers"),
         ]
 
-    def render(self, out, data, opts, cols):
+    def render(self, out, data, opts, cols, columns=None):
         prefix = "#" * opts["header-level"]
         for it in data:
             out.write(f"{prefix} {it['name']}\n")
 
 default_registry.register(MarkdownFormatter())
 ```
+
+`columns` is optional: dispatch forwards the caller's `ColumnSpec` list
+only to formatters whose signature accepts it, so the four-argument
+`render(out, data, opts, cols)` form keeps working unchanged. Accept it to
+honor the column-ordering rules above — `hop_top_kit.output.projection`
+exposes `to_rows(data, columns)`, `filter_columns` and `project_payload`
+so a custom formatter gets them for free.
 
 Use `default_registry.override(MyJSONFormatter())` to intentionally
 replace a built-in.

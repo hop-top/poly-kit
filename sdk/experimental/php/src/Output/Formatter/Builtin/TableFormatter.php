@@ -7,6 +7,7 @@ namespace HopTop\Kit\Output\Formatter\Builtin;
 use HopTop\Kit\Output\Formatter\Formatter;
 use HopTop\Kit\Output\Formatter\OptionSpec;
 use HopTop\Kit\Output\Formatter\OptionType;
+use HopTop\Kit\Output\Formatter\Projection;
 use RuntimeException;
 
 /**
@@ -15,6 +16,12 @@ use RuntimeException;
  *
  * Output: header line, padded-column body, columns space-separated.
  * No borders, no Unicode — keeps output pipe-friendly and grep-friendly.
+ *
+ * Column order arrives pre-resolved in $cols (--cols, else the caller's
+ * ColumnSpec order); payload key order is the fallback when it is empty.
+ * Zero rows emits nothing at all — the header row is suppressed along with
+ * the body, because emptiness is a property of the row count and not of
+ * whether a header source happened to be supplied.
  *
  * Options:
  *   - header (bool, default true) — set false to suppress the header row.
@@ -46,11 +53,23 @@ final class TableFormatter implements Formatter
         ];
     }
 
+    /**
+     * @param list<string> $cols resolved column projection
+     */
     public function render(mixed $writer, mixed $data, array $opts, array $cols): void
     {
         $header = !array_key_exists('header', $opts) || $opts['header'] !== false;
-        $rows = self::normalize($data);
-        $columns = self::resolveColumns($rows, $cols);
+        $rows = Projection::normalize($data);
+
+        // Zero rows emits nothing — not even a bare header row. Guarded on
+        // ROW count, never on column count: $cols is populated for row-less
+        // payloads too, whether from --cols or from a ColumnSpec list, and
+        // a column-count guard would emit a lone header line for both.
+        if ($rows === []) {
+            return;
+        }
+
+        $columns = Projection::resolveColumns($rows, $cols);
 
         // Pre-compute string cells + per-column widths.
         $cellRows = [];
@@ -75,37 +94,6 @@ final class TableFormatter implements Formatter
         foreach ($cellRows as $cells) {
             self::writeRow($writer, $columns, $cells, $widths);
         }
-    }
-
-    /**
-     * @return list<mixed> always a list of rows, even when the input was
-     *                    a single map (which becomes a one-row table).
-     */
-    private static function normalize(mixed $data): array
-    {
-        if (is_array($data) && array_is_list($data)) {
-            return $data;
-        }
-        return [$data];
-    }
-
-    /**
-     * @param list<mixed>  $rows
-     * @param list<string> $cols user-requested projection (may be empty)
-     * @return list<string>
-     */
-    private static function resolveColumns(array $rows, array $cols): array
-    {
-        if ($cols !== []) {
-            return $cols;
-        }
-        // Infer from the first object-shaped row.
-        foreach ($rows as $row) {
-            if (is_array($row) && !array_is_list($row)) {
-                return array_map(static fn ($k): string => (string) $k, array_keys($row));
-            }
-        }
-        return [];
     }
 
     private static function stringify(mixed $val): string

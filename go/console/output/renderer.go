@@ -189,9 +189,9 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 // the first element's `table` tags and reused for every row.
 //
 // selected, when non-empty, restricts output to columns whose tag header
-// matches one of the names (preserving the order in which they appear in the
-// struct, NOT the order in selected — column order is always struct order).
-// An unknown name in selected returns an error.
+// matches one of the names AND emits them in selected order — --cols
+// reorders as well as selects. With selected empty, column order falls back
+// to struct field order. An unknown name in selected returns an error.
 func renderTable(w io.Writer, v any, selected []string) error {
 	rv := reflect.ValueOf(v)
 
@@ -225,8 +225,8 @@ func renderTable(w io.Writer, v any, selected []string) error {
 			return err
 		}
 		// Re-number colIdx so it indexes the post-filter row layout used
-		// by the renderers below. filterColumns preserves struct order
-		// but does not renumber, so we do it here.
+		// by the renderers below. filterColumns emits in the user's
+		// --cols order but does not renumber, so we do it here.
 		for i := range filtered {
 			filtered[i].colIdx = i
 		}
