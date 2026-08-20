@@ -89,20 +89,25 @@ func TestWriteJSON_RoundTrip(t *testing.T) {
 
 func TestNextSteps_Bootstrap(t *testing.T) {
 	got := kitinit.NextSteps("bootstrap", "myapp", nil)
+	require.Len(t, got, 4)
 	assert.Equal(t, []string{
 		"cd myapp",
 		"make build",
 		"./bin/myapp --help",
-	}, got)
+	}, got[:3])
+	assert.Contains(t, got[3], "12fcc gate")
+	assert.Contains(t, got[3], ".12fc.json")
 }
 
 func TestNextSteps_Augment(t *testing.T) {
 	got := kitinit.NextSteps("augment", "myapp", nil)
+	require.Len(t, got, 4)
 	assert.Equal(t, []string{
 		"review .kit-suggested.* files",
 		"make build",
 		"make test",
-	}, got)
+	}, got[:3])
+	assert.Contains(t, got[3], "12fcc gate")
 }
 
 func TestNextSteps_UnknownMode(t *testing.T) {

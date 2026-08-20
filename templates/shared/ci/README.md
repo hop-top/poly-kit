@@ -8,6 +8,7 @@ the kit toolchain (or stripped manually for one-off use).
 
 | File | Language / Platform | Runner | What it builds |
 |---|---|---|---|
+| `12fcc.yml` | any | ubuntu-latest | 12-Factor conformance gate (spec-12fc action) — badge, SARIF, PR comment |
 | `ci-go.yml.tmpl` | Go | ubuntu-latest | `go test -race`, `golangci-lint`, build |
 | `ci-ts.yml` | TypeScript / Node | ubuntu-latest | `pnpm test`, lint, build |
 | `ci-py.yml` | Python | ubuntu-latest | `pytest`, ruff, type-check |

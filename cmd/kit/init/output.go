@@ -181,14 +181,24 @@ func NextSteps(mode, name string, github *GitHubSummary) []string {
 			fmt.Sprintf("cd %s", name),
 			"make build",
 			fmt.Sprintf("./bin/%s --help", name),
+			twelveFCCStep,
 		}
 	case "augment":
 		return []string{
 			"review .kit-suggested.* files",
 			"make build",
 			"make test",
+			twelveFCCStep,
 		}
 	default:
 		return nil
 	}
 }
+
+// twelveFCCStep is the conformance-gate follow-up appended to every
+// mode's checklist: the scaffold seeds .12fc.json as "ungradable" and
+// the badge stays grey until the adopter wires the gate into CI and
+// authors story docs (zero scannable files grades vacuously).
+const twelveFCCStep = "wire the 12fcc gate: copy kit templates/shared/ci/12fcc.yml " +
+	"to .github/workflows/, scope its paths to your command tree; flip " +
+	"commit-badge to true once story docs exist so .12fc.json reflects a real grade"
