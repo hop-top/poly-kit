@@ -63,8 +63,19 @@ func Detect(cwd string, override Mode) (Mode, string, error) {
 		return override, "", nil
 	}
 
-	// 1. Bare-worktree detection via git rev-parse
-	if isBareWorktree(cwd) {
+	// 1. Bare-worktree detection via git rev-parse. A LINKED WORKTREE of
+	// a bare repo (git-dir != common-dir but cwd is inside a working
+	// tree) is a perfectly usable checkout — git add/commit/push all
+	// work — so it flows through the normal chain. Only the
+	// bare repo ROOT (git internals, no working tree) stays refused:
+	// scaffolding files next to HEAD/objects/refs is never right.
+	if isBareWorktree(cwd) && !isInsideWorkTree(cwd) {
+		return ModeBareWorktree, "", nil
+	}
+	// A bare repo ROOT reports --is-bare-repository=true (its git-dir
+	// and common-dir coincide, so the check above misses it). Refuse it
+	// too: scaffolding next to HEAD/objects/refs is never right.
+	if out, err := runGitRevParse(cwd, "--is-bare-repository"); err == nil && out == "true" {
 		return ModeBareWorktree, "", nil
 	}
 
@@ -76,7 +87,9 @@ func Detect(cwd string, override Mode) (Mode, string, error) {
 		return ModeBootstrap, "", err // unexpected read error
 	}
 
-	// 3. .git/ exists
+	// 3. .git exists — a directory in regular clones, a FILE in linked
+	// worktrees ("gitdir: ..." pointer). os.Stat accepts both, which is
+	// what lets bare-repo worktrees (step 1) land in augment here.
 	if _, err := os.Stat(filepath.Join(cwd, ".git")); err == nil {
 		return ModeAugment, "", nil
 	}
@@ -131,6 +144,13 @@ func isBareWorktree(cwd string) bool {
 		return false // not in a git repo at all → not a bare worktree
 	}
 	return common != gitdir
+}
+
+// isInsideWorkTree reports whether cwd sits inside a git working tree
+// (as opposed to inside a bare repo's internals or a .git dir).
+func isInsideWorkTree(cwd string) bool {
+	out, err := runGitRevParse(cwd, "--is-inside-work-tree")
+	return err == nil && out == "true"
 }
 
 func runGitRevParse(cwd, flag string) (string, error) {

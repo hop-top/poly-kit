@@ -25,15 +25,26 @@ import (
 func TestAugment_BareWorktree_OverrideRendersIntoTree(t *testing.T) {
 	bareDir, worktreeDir := hopFixture(t)
 
-	// Precondition: auto-detect refuses this tree.
+	// Precondition: a LINKED worktree of a bare repo is a usable
+	// checkout (git add/commit/push all work), so auto-detect lets it
+	// through the normal chain rather than refusing it. Only the bare
+	// repo ROOT stays refused as ModeBareWorktree — scaffolding next to
+	// HEAD/objects/refs is never right.
 	mode, _, err := Detect(worktreeDir, ModeUnset)
 	require.NoError(t, err)
-	require.Equal(t, ModeBareWorktree, mode,
-		"bare-worktree cwd must surface as ModeBareWorktree under auto-detect")
+	require.NotEqual(t, ModeBareWorktree, mode,
+		"a linked worktree of a bare repo must not be refused as ModeBareWorktree")
 
-	// Documented bypass: an explicit --mode augment override wins,
-	// resolving to ModeHopAugment on a bare-worktree cwd so the augment
-	// flow applies the hop-specific guards.
+	// The bare hub itself is still refused.
+	hubMode, _, hubErr := Detect(bareDir, ModeUnset)
+	require.NoError(t, hubErr)
+	require.Equal(t, ModeBareWorktree, hubMode,
+		"the bare repo ROOT must still surface as ModeBareWorktree")
+
+	// An explicit --mode augment override still resolves to
+	// ModeHopAugment on a hop-shaped cwd, so the augment flow keeps
+	// applying the hop-specific guards (dirty-tree refusal, branch in
+	// summary) regardless of what auto-detect would have chosen.
 	mode, _, err = Detect(worktreeDir, ModeAugment)
 	require.NoError(t, err)
 	require.Equal(t, ModeHopAugment, mode,

@@ -29,9 +29,9 @@ func configureGitIdentity(t *testing.T, dir string) {
 func TestInit_PlainGit(t *testing.T) {
 	skipIfNoGit(t)
 	dir := t.TempDir()
-	skipped, err := kitinit.Init(context.Background(), dir, false, "main")
+	outcome, err := kitinit.Init(context.Background(), dir, false, "main", true)
 	require.NoError(t, err)
-	assert.False(t, skipped, "plain git init must not report skipped")
+	assert.False(t, outcome.Skipped, "plain git init must not report skipped")
 	assert.DirExists(t, filepath.Join(dir, ".git"))
 	head, err := os.ReadFile(filepath.Join(dir, ".git", "HEAD"))
 	require.NoError(t, err)
@@ -46,11 +46,11 @@ func TestInit_GitHop(t *testing.T) {
 		t.Skip("git-hop subcommand not available")
 	}
 	dir := t.TempDir()
-	skipped, err := kitinit.Init(context.Background(), dir, true, "")
+	outcome, err := kitinit.Init(context.Background(), dir, true, "", true)
 	if err != nil {
 		t.Skipf("git hop init not usable in this env: %v", err)
 	}
-	assert.False(t, skipped, "git-hop on PATH must not report skipped")
+	assert.False(t, outcome.Skipped, "git-hop on PATH must not report skipped")
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	assert.NotEmpty(t, entries, "git hop init should populate dir")
@@ -64,9 +64,9 @@ func TestInit_GitHop(t *testing.T) {
 func TestInit_GitHopMissing(t *testing.T) {
 	t.Setenv("PATH", "")
 	dir := t.TempDir()
-	skipped, err := kitinit.Init(context.Background(), dir, true, "")
+	outcome, err := kitinit.Init(context.Background(), dir, true, "", true)
 	require.NoError(t, err, "missing git-hop must NOT surface as an error")
-	assert.True(t, skipped, "missing git-hop must report skipped=true")
+	assert.True(t, outcome.Skipped, "missing git-hop must report skipped=true")
 	// No .git created — Init returned before exec.
 	_, statErr := os.Stat(filepath.Join(dir, ".git"))
 	assert.True(t, os.IsNotExist(statErr), "no .git should be created when git-hop is missing")
@@ -75,7 +75,7 @@ func TestInit_GitHopMissing(t *testing.T) {
 func TestInitialCommit_Succeeds(t *testing.T) {
 	skipIfNoGit(t)
 	dir := t.TempDir()
-	_, err := kitinit.Init(context.Background(), dir, false, "main")
+	_, err := kitinit.Init(context.Background(), dir, false, "main", true)
 	require.NoError(t, err)
 	configureGitIdentity(t, dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello\n"), 0o644))
@@ -89,7 +89,7 @@ func TestInitialCommit_Succeeds(t *testing.T) {
 func TestInitialCommit_FailsOnEmpty(t *testing.T) {
 	skipIfNoGit(t)
 	dir := t.TempDir()
-	_, err := kitinit.Init(context.Background(), dir, false, "main")
+	_, err := kitinit.Init(context.Background(), dir, false, "main", true)
 	require.NoError(t, err)
 	configureGitIdentity(t, dir)
 	err = kitinit.InitialCommit(context.Background(), dir, "feat: empty")
@@ -103,7 +103,7 @@ func TestInitialCommit_FailsOnEmpty(t *testing.T) {
 func TestPush_NoRemote(t *testing.T) {
 	skipIfNoGit(t)
 	dir := t.TempDir()
-	_, err := kitinit.Init(context.Background(), dir, false, "main")
+	_, err := kitinit.Init(context.Background(), dir, false, "main", true)
 	require.NoError(t, err)
 	err = kitinit.Push(context.Background(), dir)
 	require.Error(t, err)
