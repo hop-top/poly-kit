@@ -61,6 +61,12 @@ func Detect(cwd string, override Mode) (Mode, string, error) {
 	if isBareWorktree(cwd) && !isInsideWorkTree(cwd) {
 		return ModeBareWorktree, "", nil
 	}
+	// A bare repo ROOT reports --is-bare-repository=true (its git-dir
+	// and common-dir coincide, so the check above misses it). Refuse it
+	// too: scaffolding next to HEAD/objects/refs is never right.
+	if out, err := runGitRevParse(cwd, "--is-bare-repository"); err == nil && out == "true" {
+		return ModeBareWorktree, "", nil
+	}
 
 	// 2. .kit/version
 	versionPath := filepath.Join(cwd, ".kit", "version")
