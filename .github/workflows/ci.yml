@@ -58,7 +58,7 @@ jobs:
           # Keep in step with sdk/experimental/rs/rust-toolchain.toml.
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read that file.
-          toolchain: "1.97.1"
+          toolchain: "1.98.0"
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
@@ -149,7 +149,7 @@ jobs:
           # Keep in step with sdk/experimental/rs/rust-toolchain.toml.
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read that file.
-          toolchain: "1.97.1"
+          toolchain: "1.98.0"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: sdk/experimental/rs
@@ -212,7 +212,7 @@ jobs:
           # Keep in step with sdk/experimental/rs/rust-toolchain.toml.
           # This action requires an explicit toolchain and runs
           # `rustup default` with it, so it does not read that file.
-          toolchain: "1.97.1"
+          toolchain: "1.98.0"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: sdk/experimental/rs
