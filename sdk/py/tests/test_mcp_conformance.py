@@ -502,3 +502,62 @@ def test_mrtr_round_trip() -> None:
         f"round2 body mismatch\n  expected: {expected!r}\n  actual:   {second.body!r}"
     )
     assert len(executions) == 1, f"executions after accept: {len(executions)}"
+
+
+@pytest.mark.skipif(MRTR is None, reason="fixture declares no mrtr section")
+def test_mrtr_retry_is_refused_when_the_state_was_minted_under_another_key() -> None:
+    """A state minted under different key material cannot replay round 2.
+
+    The happy-path exchange above only ever presents a genuine state, so
+    on its own it cannot tell a mount that verifies the MAC from one that
+    waves any well-formed token through. Here the token is correctly
+    framed and correctly bound to the call — only the key behind the MAC
+    differs — and it must still be refused.
+
+    Re-prompting rather than erroring is the deliberate choice: the user
+    can still approve, and a token error is not actionable by them. What
+    must never happen is the leaf running.
+    """
+    assert MRTR is not None
+
+    # The forger's mount: same tree, same call, different secret.
+    forger_executions: list[int] = []
+    forger = mount_mcp(
+        Bridge(mrtr_tree(forger_executions)),
+        confirmation_key=b"a-different-suite-shared-secret!!",
+    )
+    minted = json.loads(
+        forger.handle(
+            Request(
+                method="POST",
+                path="/mcp",
+                headers=Headers.from_mapping(MRTR["round1_headers"]),
+                body=MRTR["round1_request"].encode("utf-8"),
+            )
+        ).body
+    )["result"]["requestState"]
+    assert isinstance(minted, str), "foreign round1 minted no state string"
+
+    # The real mount, keyed by the fixture.
+    executions: list[int] = []
+    surface = mount_mcp(
+        Bridge(mrtr_tree(executions)),
+        confirmation_key=MRTR["confirmation_key"].encode("utf-8"),
+    )
+    response = surface.handle(
+        Request(
+            method="POST",
+            path="/mcp",
+            headers=Headers.from_mapping(MRTR["round2_headers"]),
+            body=MRTR["round2_request_template"]
+            .replace("{{requestState}}", minted)
+            .encode("utf-8"),
+        )
+    )
+
+    result = json.loads(response.body).get("result")
+    assert isinstance(result, dict), "foreign round2 carries no result object"
+    assert result.get("resultType") == "input_required", (
+        f"foreign round2 must re-prompt, got {result.get('resultType')!r}"
+    )
+    assert not executions, "leaf ran on a state minted under another key"
