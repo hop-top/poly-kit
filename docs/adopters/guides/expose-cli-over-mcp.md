@@ -201,7 +201,7 @@ in the spec for missing client capabilities; kit requires none, so
 it is never sent.)
 
 `Result.Stdout` becomes a text content block; `Result.Stderr` adds
-a `[stderr] `-prefixed block; structured `Result.Data` is emitted
+a `[stderr]&#32;`-prefixed block; structured `Result.Data` is emitted
 both as a JSON text block and as `structuredContent`. A non-zero
 exit code sets `isError: true`.
 

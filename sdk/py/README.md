@@ -6,6 +6,139 @@ Python implementation of the hop-top kit library.
 
 - [`hop_top_kit.id`](hop_top_kit/id/) — TypeID primitive (cross-language;
   see [ADR 0001](../../docs/adr/0001-typeid-primitive.md))
+- [`hop_top_kit.mcp`](hop_top_kit/mcp/) — dual-spec MCP surface
+  (extra `mcp`; see [MCP surface](#mcp-surface))
+
+## MCP surface
+
+Serves the Model Context Protocol over a bridged command tree, one MCP
+tool per runnable leaf. A single mount answers **both** revisions —
+`2024-11-05` (handshake) and `2026-07-28` (stateless per-request
+envelope) — choosing per request, because the newer revision has no
+handshake to negotiate with.
+
+Wire behaviour is pinned by the shared cross-language fixtures in
+`sdk/tests/cross-lang/fixtures/mcp-wire.json`, compared as raw bytes.
+
+### Install
+
+The MCP dependencies are optional, so adopters who do not serve MCP do
+not carry them:
+
+```bash
+pip install 'hop-top-kit[mcp]'
+```
+
+The extra pulls `mcp>=2.0,<3` and `mcp-types>=2.0,<3`. The 2.0 line is
+the first carrying the `2026-07-28` era; 1.x tops out at `2025-11-25`
+and cannot serve the modern revision.
+
+`mcp-types` already models the era split this surface needs —
+`HANDSHAKE_PROTOCOL_VERSIONS` versus `MODERN_PROTOCOL_VERSIONS` — so the
+protocol constants come from the SDK rather than a parallel vocabulary.
+
+### Hosting: ASGI
+
+```python
+from hop_top_kit.mcp import Bridge, Command, Result, mount_mcp
+
+root = Command(name="app", children=[
+    Command(
+        name="ping",
+        short="Ping the server",
+        run=lambda flags: Result(stdout="pong\n"),
+        annotations={"kit/side-effect": "read"},
+    ),
+])
+
+app = mount_mcp(Bridge(root))   # an ASGI callable
+```
+
+`mount_mcp` returns an `McpSurface`, which *is* the ASGI application —
+mount it under uvicorn, hypercorn, or a Starlette route directly. ASGI
+rather than WSGI is deliberate: the modern era's streaming affordances
+are not expressible in WSGI, and the official SDK's modern transport is
+async.
+
+For a framework-free binding, `McpSurface.handle(request) -> Response`
+is the whole contract — a pure function from a normalised request, no
+socket involved, which is what lets the conformance suite drive every
+fixture case.
+
+### Options
+
+Keyword-only on `mount_mcp`: `path` (`/mcp`), `server_name`
+(`cmdsurface`), `server_version` (`0.0.0`), `spec_versions` (`None` =
+both eras), `cache_ttl_ms` (`0`), `cache_scope` (`private`),
+`origin_allowlist` (empty, no check), `confirmation_key`, and
+`extensions`. The option *set* is normative across every kit SDK; only
+the spelling is idiomatic.
+
+An explicitly empty `spec_versions`, a negative ttl, an unrecognized
+cache scope, or an empty confirmation key raise `MountError` rather than
+starting a server that quietly serves nothing.
+
+Policy is passed to the `Bridge`, not to `mount_mcp`:
+`Bridge(root, policy=...)`.
+
+### Safety
+
+Exposure is gated by `Policy.allowed(cls, surface)`. The default is
+deliberately closed: **no remote surface may invoke a destructive
+leaf** — `default_policy()` leaves `allow_destructive_on` empty, and
+empty means block-all. A blocked call returns an `isError` result at
+HTTP 200, not a transport error: the call was understood and declined,
+not malformed.
+
+```python
+from hop_top_kit.mcp import Policy, Surface
+
+Bridge(root, policy=Policy(allow_destructive_on=(Surface.MCP,)))
+```
+
+Leaves are classified from `kit/*` annotations: `kit/side-effect`
+(`destructive`, `destructive-local`, `destructive-shared`),
+`kit/auth-required`, `kit/requires-confirmation`.
+
+This gate is unrelated to the Factor 10 `safety.py` `--force` helper,
+which is a CLI-time TTY check for delegation safety.
+
+### Confirmation
+
+A `kit/requires-confirmation` leaf requires an `X-Confirm-Token` header
+by default. Supplying `confirmation_key` swaps in the
+`ElicitationConfirmationGate`: the first call answers `resultType:
+"input_required"` with an elicitation form and a signed `requestState`,
+and the client retries with the user's decision. Clients that do not
+advertise form elicitation keep the header gate — the spec forbids
+sending input requests to a client that cannot answer them.
+
+Multi-instance deployments must share one key, so a retry landing on any
+instance can verify state minted by another.
+
+### Lazy help flags change `tools/list` bytes
+
+`Command.attach_help_flag()` models cobra's lazy `--help` registration,
+so a leaf's `inputSchema` gains a `help` property after its first
+`tools/call`. Two identical `tools/list` requests either side of an
+invocation therefore return **different bytes**, legitimately. This is
+pinned by the `sequences` section of the wire fixtures. Opt out per
+command with `lazy_help_flag=False`.
+
+### Scope
+
+Deprecated upstream features (Roots, Sampling, Logging, HTTP+SSE) are
+unimplemented, matching the Go reference. The `tasks/*` extension is
+opt-in — `mount_mcp(bridge, extensions=(TasksExtension(),))`; left
+unmounted it answers `-32601` with no `extensions` map advertised in
+`server/discover`, which is the conformant way to not support it.
+
+### Cross-references
+
+- [Serve MCP from any SDK](../../docs/adopters/guides/serve-mcp-from-any-sdk.md)
+  — the polyglot adopter guide
+- [Expose your CLI over MCP](../../docs/adopters/guides/expose-cli-over-mcp.md)
+  — the Go reference surface, in depth
 
 ## URI facade
 

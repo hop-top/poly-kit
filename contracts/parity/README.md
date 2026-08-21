@@ -1,6 +1,9 @@
 # parity
 
-Cross-language TUI constants and symbols.
+Cross-language TUI constants and symbols, plus the other cross-language
+contracts recorded on this page: the [MCP wire
+contract](#mcp-wire-contract-sdktestscross-langfixturesmcp-wirejson) and
+the [styled-table prose](#styled-tables-go-only-prose-not-a-loaded-block).
 
 ## What belongs in `parity.json`
 
@@ -49,7 +52,7 @@ question of which port actually *reads* the loaded value.
 
 `verbosity` and `streams` are loaded but not yet read by the runtime. Each
 port currently hardcodes the same values (`-V` count → info/debug/trace,
-`--quiet` → warn; `--stream` writing `[name] ` prefixed lines to stderr).
+`--quiet` → warn; `--stream` writing `[name]&#32;` prefixed lines to stderr).
 Loading them first makes the contract honest and gives the ports a single
 value to migrate onto; wiring each port to read from the loader is follow-up
 work.
@@ -91,6 +94,85 @@ drift from it. It is recorded here instead.
 - Default border style is `normal`.
 
 See `go/console/output/tablestyle.go` for the implementation.
+
+## MCP wire contract (`sdk/tests/cross-lang/fixtures/mcp-wire.json`)
+
+The dual-spec MCP surface is a parity contract, but not a `parity.json`
+block: it pins **wire bytes**, not shared constants, so it carries its own
+fixture file and its own per-language runners. It is recorded here because
+this page is where a reader looks for "what must not drift between ports".
+
+Five implementations serve it:
+
+| Port | Implementation | Runner |
+|------|----------------|--------|
+| Go | `go/transport/cmdsurface/surface_mcp*.go` | `TestGenerateMCPWireFixtures` (drift gate) |
+| TypeScript | `sdk/ts/src/mcp/` | `src/mcp/conformance.test.ts` |
+| Python | `sdk/py/hop_top_kit/mcp/` | `tests/test_mcp_conformance.py` |
+| Rust | `sdk/experimental/rs/src/mcp/` | `tests/mcp_wire_conformance.rs` (feature `mcp`) |
+| PHP | `sdk/experimental/php/src/Mcp/` | `tests/Mcp/WireConformanceTest.php` |
+
+`make test-parity-mcp` runs all five. PHP is optional — it runs only when
+`php` and `composer` are on PATH, matching how the other experimental-SDK
+gates behave.
+
+Go's entry is a **drift gate, not a replay**: the fixture is generated from
+the Go surface, so Go's job is to prove the checked-in file still matches
+what it emits. The other four replay it.
+
+### Byte-identical means byte-identical
+
+Each case posts `request` verbatim with `headers` applied and asserts the
+response equals `response` **as bytes**, with no JSON decode/re-encode
+before comparing. Go emits objects with lexicographically sorted keys and a
+trailing newline; a runtime whose serializer differs must reorder to match,
+not normalize the comparison away. A port that compares parsed structures
+passes while emitting bytes no Go client would accept.
+
+### Both sections must run
+
+The file has two sections, and running only the first is the easy mistake:
+
+- **`cases`** (18) each get a **fresh mount**, so no case can observe state
+  left by another.
+- **`sequences`** (1, with 5 steps) are the deliberate exception: ordered
+  steps replayed against **one long-lived mount** — which is how adopters
+  actually deploy.
+
+Two real defect classes pass every single case and are caught only by the
+sequence:
+
+1. **A port that caches its leaf set.** `tools/list` must re-read the
+   bridge's leaves per request; Go's `Leaf` wraps a live `*cobra.Command`
+   and re-walks its flags every time.
+2. **A port that attaches lazy flags non-idempotently.** Cobra attaches
+   `--help` on a command's *first execution*, so two byte-identical
+   `tools/list` requests on one mount legitimately differ across an
+   intervening `tools/call` — and must differ *consistently*.
+
+The shipped sequence, `legacy/lazy-help-flag-on-long-lived-mount`, replays
+list → invoke → list → invoke → list. A cache passes every case and fails
+step 3; non-idempotent attachment passes every case and step 3, then fails
+step 5. A runner that only replays `cases` is not testing the contract.
+
+### Regenerating
+
+The fixture is generated, not hand-edited:
+
+```bash
+go test ./go/transport/cmdsurface/ -run TestGenerateMCPWireFixtures \
+    -update-mcp-fixtures
+```
+
+Regenerating is a deliberate act: it re-baselines every other port against
+new Go behavior, so a diff in this file should always be explainable as an
+intended Go-side change.
+
+Adopter-facing documentation of the surface itself lives in
+[`docs/adopters/guides/serve-mcp-from-any-sdk.md`](../../docs/adopters/guides/serve-mcp-from-any-sdk.md)
+(polyglot) and
+[`docs/adopters/guides/expose-cli-over-mcp.md`](../../docs/adopters/guides/expose-cli-over-mcp.md)
+(the Go reference).
 
 ## `extends`
 

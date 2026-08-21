@@ -19,6 +19,8 @@ experimental Rust client SDK.
   [Storage](#storage))
 - [`src/httpcache/`](src/httpcache/) — HTTP response cache over a `kv` TTL
   store (feature `httpcache`; see [httpcache wire contract](#httpcache-wire-contract))
+- [`src/mcp/`](src/mcp/) — dual-spec MCP surface over a bridged command
+  tree (feature `mcp`; see [MCP surface](#mcp-surface))
 
 ## Features
 
@@ -35,6 +37,11 @@ only what you use:
 | `sqlstore` | `sqldb` + `serde`, `serde_json` | 19 |
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 29 |
 | `sqlstore-encrypt` | `sqlstore` + `crypto_secretbox`, `hkdf`, `sha2` | 42 |
+| `mcp` | `rmcp` (default-features off) + `serde`, `serde_json` | — |
+
+`mcp` is the heaviest feature in the table: `rmcp` carries an async
+runtime in its tree even with default features off. Re-run the command
+below for a current number.
 
 Counts are non-dev crates, reproducible with:
 
@@ -193,6 +200,117 @@ output**, never raw bytes — comfy-table pads cells and PHP's YAML puts
 the dash on its own line, so byte comparison was never viable.
 Byte-level formatting parity is pinned by each SDK's own unit tests
 instead.
+
+## MCP surface
+
+Serves the Model Context Protocol over a bridged command tree, one MCP
+tool per runnable leaf. A single mount answers **both** revisions —
+`2024-11-05` (handshake) and `2026-07-28` (stateless per-request
+envelope) — choosing per request, because the newer revision has no
+handshake to negotiate with.
+
+Wire behaviour is pinned by the shared cross-language fixtures in
+`sdk/tests/cross-lang/fixtures/mcp-wire.json`, compared as raw bytes by
+`tests/mcp_wire_conformance.rs`. Where this README and the fixtures
+disagree, **the fixtures win**.
+
+```toml
+[dependencies]
+hop-top-kit = { version = "0.5.0-alpha.0", features = ["mcp"] }
+```
+
+`rmcp` supplies the protocol vocabulary only — version constants, the
+`-3202x` error codes, reserved `_meta` keys — with `default-features =
+false`, so its server/tokio/hyper stack stays out of the tree. This port
+hosts via a plain request-to-response function, not rmcp's transports.
+
+### Hosting
+
+```rust
+use hop_top_kit::mcp::{Bridge, CallResult, HttpRequest, Leaf, MountOptions, Surface};
+
+let bridge = Bridge::new().leaf(Leaf::new(&["ping"], "Ping the server", |_| {
+    Ok(CallResult::ok("pong\n"))
+}));
+let surface = Surface::mount(bridge, MountOptions::default())?;
+
+let response = surface.call(&HttpRequest::post("/mcp", body));
+```
+
+`Surface::call(&self, req: &HttpRequest) -> Response` is the
+`tower::Service`-shaped function this crate exports. It is synchronous
+and pure, and binds to no HTTP server: wire it to axum, hyper or warp,
+and the conformance suite drives it with no socket at all.
+
+`HttpRequest` keeps headers in wire order with duplicates preserved —
+the protocol tolerates a header sent twice with identical values but
+rejects conflicting duplicates, which a flattened map cannot express.
+
+**Naming trap:** `mcp::Surface` is the mounted handler. The safety enum
+is re-exported as `mcp::SurfaceKind` to avoid the collision; every other
+kit SDK calls that type `Surface`.
+
+### Options
+
+`MountOptions` is a plain struct with `Default`, not a builder: `path`
+(`/mcp`), `server_name` (`cmdsurface`), `server_version` (`0.0.0`),
+`spec_versions` (`None` = both eras), `cache_ttl_ms` (`0`),
+`cache_scope` (`Private`), `origin_allowlist` (empty, no check),
+`confirmation_key` (`None`), `tasks_enabled` (`false`). The option *set*
+is normative across every kit SDK; only the spelling is idiomatic.
+
+`Surface::mount` returns `Result<Surface, MountError>` rather than
+starting a mount that quietly serves nothing:
+
+| Variant | Trigger |
+|---------|---------|
+| `NoSpecVersions` | `spec_versions: Some(vec![])` |
+| `NegativeCacheTtl` | `cache_ttl_ms < 0` |
+| `EmptyConfirmationKey` | `confirmation_key: Some(vec![])` |
+
+### Safety
+
+Exposure is gated by `Policy::allowed(&class, surface)`, ported from
+Go's `cmdsurface/safety.go`. The default is deliberately closed: **no
+remote surface may invoke a destructive leaf** —
+`Policy::default_policy()` leaves `allow_destructive_on` empty, and
+empty means block-all rather than an unset sentinel. A blocked call
+renders as an `isError` result at HTTP 200, not a transport error: the
+call was understood and declined, not malformed.
+
+Note `Policy::default_policy()` is the named constructor `Bridge::new()`
+installs; the derived `Policy::default()` leaves *both* sets empty.
+
+Leaves are classified from `kit/*` annotations: `kit/side-effect`
+(`destructive`, `destructive-local`, `destructive-shared`),
+`kit/auth-required`, `kit/requires-confirmation`.
+
+### Long-lived mounts
+
+The surface holds no per-request cache: `tools/list` re-reads the
+bridge's leaf set every time, so a leaf set that changes after an invoke
+is reflected in the next listing. That matters because Go's `Leaf` wraps
+a live `*cobra.Command` and re-walks its flags per request, and cobra
+attaches `--help` to a command on its first execution — two
+byte-identical `tools/list` requests on one mount therefore differ
+across an intervening `tools/call`. See
+`Leaf::with_flags_on_first_execution`, and the `sequences` section of
+the wire fixtures, which pins it.
+
+### Scope
+
+Deprecated upstream features (Roots, Sampling, Logging, HTTP+SSE) are
+unimplemented, matching the Go reference. The `tasks/*` extension is
+opt-in via `tasks_enabled`; left off it answers `-32601` with no
+`extensions` map advertised in `server/discover`, which is the
+conformant way to not support it.
+
+### Cross-references
+
+- [Serve MCP from any SDK](../../../docs/adopters/guides/serve-mcp-from-any-sdk.md)
+  — the polyglot adopter guide
+- [Expose your CLI over MCP](../../../docs/adopters/guides/expose-cli-over-mcp.md)
+  — the Go reference surface, in depth
 
 ## Storage
 

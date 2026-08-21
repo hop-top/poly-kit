@@ -321,6 +321,13 @@ Deprecated upstream features (Roots, Sampling, Logging, HTTP+SSE) are
 unimplemented, matching the Go reference. Pagination, `tasks/*` and
 `subscriptions/listen` are likewise not served here.
 
+### Cross-references
+
+- [Serve MCP from any SDK](../../../docs/adopters/guides/serve-mcp-from-any-sdk.md)
+  — the polyglot adopter guide
+- [Expose your CLI over MCP](../../../docs/adopters/guides/expose-cli-over-mcp.md)
+  — the Go reference surface, in depth
+
 ## Telemetry
 
 The PHP SDK ships a publish-only telemetry client under the
