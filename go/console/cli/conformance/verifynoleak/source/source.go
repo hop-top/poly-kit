@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -171,42 +170,6 @@ func expandDir(root string, supported func(string) bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
-}
-
-// scannableExts are the extensions the directory walk collects.
-// Explicitly named files bypass this filter: naming a file is an
-// instruction, naming a directory is a search.
-var scannableExts = map[string]bool{
-	".yaml": true,
-	".yml":  true,
-	".md":   true,
-	".json": true,
-}
-
-// scannableUnder returns the sorted scannable files below dir,
-// skipping dot-directories the way verify-stories does.
-func scannableUnder(dir string) ([]string, error) {
-	var out []string
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if p != dir && strings.HasPrefix(d.Name(), ".") {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if scannableExts[strings.ToLower(filepath.Ext(p))] {
-			out = append(out, p)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("source: walk %s: %w", dir, err)
-	}
-	sort.Strings(out)
 	return out, nil
 }
 
