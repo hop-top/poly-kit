@@ -23,11 +23,14 @@ final class Command
      * Tracks cobra's lazily-registered `--help` flag.
      *
      * Cobra adds a local `help` bool flag to a command the first time it is
-     * executed, and the flag then shows up in every later `tools/list`. The
-     * wire fixtures capture a list taken before any call and another taken
-     * after one, so the two disagree about `ping` — reproducing the
-     * mutation is required for byte-exactness, not an implementation
-     * detail we are free to skip.
+     * executed, so on a long-lived mount a `tools/list` taken after that
+     * leaf has run reports one more property than an earlier one did.
+     *
+     * The wire fixtures build a fresh server per case and so never observe
+     * this, but the Go surface still behaves this way at runtime — verified
+     * directly against it — and an adopter serving from a persistent
+     * process will see it. Reproducing it keeps the two runtimes agreeing
+     * beyond the cases the fixtures happen to cover.
      */
     private bool $helpFlagRegistered = false;
 

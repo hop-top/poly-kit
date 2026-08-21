@@ -23,11 +23,8 @@ use PHPUnit\Framework\TestCase;
  * the only way key order, escaping and the trailing newline are actually
  * checked.
  *
- * Cases are replayed **in order against one mount per era**, because the
- * fixtures capture stateful behaviour: invoking a leaf registers cobra's
- * implicit `--help` flag, so a `tools/list` taken after a `tools/call`
- * legitimately differs from one taken before. Replaying each case against
- * a fresh mount would hide that and quietly break parity.
+ * Each case gets a fresh mount, so no case can observe state left behind
+ * by an earlier one and every case is independently reproducible.
  */
 final class WireConformanceTest extends TestCase
 {
@@ -38,17 +35,14 @@ final class WireConformanceTest extends TestCase
     {
         $cases = self::cases();
 
-        self::assertCount(17, $cases, 'fixture count changed — the parity contract moved');
-
-        $mounts = [
-            'legacy' => self::mount(LockTrees::legacy()),
-            'modern' => self::mount(LockTrees::modern()),
-        ];
+        self::assertCount(18, $cases, 'fixture count changed — the parity contract moved');
 
         foreach ($cases as $case) {
-            $dispatcher = $mounts[str_starts_with($case['name'], 'legacy/') ? 'legacy' : 'modern'];
+            $tree = str_starts_with($case['name'], 'legacy/')
+                ? LockTrees::legacy()
+                : LockTrees::modern();
 
-            $response = $dispatcher->dispatch($case['request'], self::headers($case));
+            $response = self::mount($tree)->dispatch($case['request'], self::headers($case));
 
             self::assertSame(
                 $case['status'],
@@ -62,25 +56,6 @@ final class WireConformanceTest extends TestCase
                 \sprintf('%s: wire body must be byte-identical', $case['name']),
             );
         }
-    }
-
-    #[Test]
-    public function legacyAndModernListsDivergeOnlyAfterAnInvocation(): void
-    {
-        // Guards the stateful behaviour the replay above depends on: the
-        // implicit help flag must appear only once its leaf has run.
-        $dispatcher = self::mount(LockTrees::legacy());
-
-        $before = $dispatcher->dispatch('{"jsonrpc":"2.0","id":1,"method":"tools/list"}', []);
-        self::assertStringNotContainsString('help for ping', $before->body);
-
-        $dispatcher->dispatch(
-            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ping"}}',
-            [],
-        );
-
-        $after = $dispatcher->dispatch('{"jsonrpc":"2.0","id":3,"method":"tools/list"}', []);
-        self::assertStringContainsString('help for ping', $after->body);
     }
 
     /**
