@@ -53,6 +53,24 @@ export {
 } from './modern.js';
 
 export {
+  clientSupportsFormElicitation,
+  ElicitationConfirmGate,
+  headerConfirmationGate,
+  MCP_CONFIRM_KEY,
+  MCP_CONFIRM_STATE_TTL_SECONDS,
+  MCP_CONFIRM_STATE_VERSION,
+  mcpConfirmArgsDigest,
+  mcpConfirmPrincipal,
+  mintMcpConfirmState,
+  parseMcpConfirmRetry,
+  verifyMcpConfirmState,
+  type McpConfirmBinding,
+  type McpConfirmDecision,
+  type McpConfirmRejection,
+  type McpConfirmStateStatus,
+} from './modern-confirm.js';
+
+export {
   discoverCapabilities,
   isTaskMethod,
   TASK_METHODS,

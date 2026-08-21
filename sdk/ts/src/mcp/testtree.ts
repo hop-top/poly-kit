@@ -178,9 +178,68 @@ function makeBridge(source: () => TreeLeaf[]): McpBridge {
   };
 }
 
+/**
+ * The Go MRTR lock tree (`mrtrLockTree`): a single
+ * requires-confirmation leaf, isolated from every other fixture tree.
+ * `purge` echoes its `--target` flag, so the accepted round-2 response
+ * proves the leaf ran with the arguments the state was bound to rather
+ * than merely that it ran.
+ */
+function mrtrLeaves(): TreeLeaf[] {
+  return [
+    {
+      path: ['purge'],
+      description: 'Purge a target',
+      properties: { target: str('what to purge') },
+      class: { requiresConfirmation: true },
+    },
+    // Go's `vault burn`: destructive AND requires-confirmation, so a
+    // fully accepted MRTR exchange still meets the policy gate behind
+    // it. The fixture tree has no such leaf, and a leaf that is merely
+    // destructive never enters the confirmation gate at all — which
+    // would make the ceiling assertion vacuous.
+    {
+      path: ['vault', 'burn'],
+      description: 'Burn the vault',
+      properties: {},
+      class: { requiresConfirmation: true, destructive: true },
+      stdout: 'burned\n',
+    },
+  ];
+}
+
 /** A bridge over the Go legacy lock tree. */
 export function legacyLockBridge(): McpBridge {
   return makeBridge(legacyLeaves);
+}
+
+/**
+ * A bridge over the Go MRTR lock tree, plus the execution counter the
+ * Go tests assert on: the whole point of the first round is that the
+ * leaf does NOT run, which only an execution count can prove.
+ */
+export function mrtrLockBridge(): {
+  bridge: McpBridge;
+  executions: () => number;
+} {
+  let executions = 0;
+  const inner = makeBridge(mrtrLeaves);
+  const bridge: McpBridge = {
+    leaves: () => inner.leaves(),
+    invoke(inv: Invocation): InvokeResult {
+      // The policy gate runs inside `inner.invoke` and throws before
+      // returning, so a blocked leaf is never counted as executed.
+      const res = inner.invoke(inv) as InvokeResult;
+      executions += 1;
+      if (inv.path.join('.') !== 'purge') return res;
+      const target = inv.flags?.target;
+      return {
+        ...res,
+        stdout: `purged ${typeof target === 'string' ? target : ''}\n`,
+      };
+    },
+  };
+  return { bridge, executions: () => executions };
 }
 
 /** A bridge over the Go modern lock tree. */

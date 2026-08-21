@@ -35,6 +35,7 @@ import {
   RESULT_TYPE_COMPLETE,
   renderCallResult,
   SURFACE_MCP,
+  type Leaf,
   type McpBridge,
   type RawJSON,
   type ResolvedMcpConfig,
@@ -54,6 +55,11 @@ import {
   writeResult,
 } from './legacy.js';
 import { isTaskMethod, taskMethodNotFound } from './tasks.js';
+import {
+  ElicitationConfirmGate,
+  headerConfirmationGate,
+  type McpConfirmDecision,
+} from './modern-confirm.js';
 import type {
   JsonRpcRequest,
   McpHttpRequest,
@@ -85,10 +91,22 @@ const SENTINEL_SUFFIX = '?=';
 
 /** The 2026-07-28 handler. */
 export class ModernMcpHandler {
+  /**
+   * The MRTR confirmation strategy, installed only when the mount was
+   * given key material. Without a key there is nothing to MAC state
+   * with, so every client — elicitation-capable or not — keeps the
+   * `X-Confirm-Token` header gate.
+   */
+  readonly confirmGate?: ElicitationConfirmGate;
+
   constructor(
     private readonly bridge: McpBridge,
     private readonly cfg: ResolvedMcpConfig,
-  ) {}
+  ) {
+    if (cfg.confirmationKey !== undefined) {
+      this.confirmGate = new ElicitationConfirmGate(cfg.confirmationKey);
+    }
+  }
 
   /**
    * The modern entry point. The validation chain runs in ADR 0042's
@@ -295,14 +313,18 @@ export class ModernMcpHandler {
     if (leaf.class?.authRequired && !headerValue(req, 'authorization')) {
       return this.writeCallError(rpc, 'authentication required', 401);
     }
-    if (
-      leaf.class?.requiresConfirmation &&
-      !headerValue(req, 'x-confirm-token')
-    ) {
+    // Confirmation gate. With a mounted key this is the MRTR
+    // elicitation loop, which falls back to the header gate for
+    // clients that did not declare form elicitation; without a key it
+    // IS the header gate, for everyone. Either way the decision is a
+    // pre-flight refusal or an interim prompt, stamped with the modern
+    // envelope like every other result on this path.
+    const gated = this.confirmationGate(req, leaf, rpc.params);
+    if (gated !== undefined) {
       return writeResult(
         rpc.id,
-        this.stampResultEnvelope(errorResultBlock('confirmation required')),
-        428,
+        this.stampResultEnvelope(gated.result),
+        gated.status,
       );
     }
 
@@ -336,6 +358,25 @@ export class ModernMcpHandler {
       // complete isError results at HTTP 200, as on legacy.
       return this.writeCallError(rpc, errorMessage(err), 200);
     }
+  }
+
+  /**
+   * Selects and runs the confirmation strategy for one `tools/call`.
+   * Returns `undefined` to proceed with the invocation.
+   *
+   * A leaf that does not require confirmation is never gated. A mount
+   * without a `confirmationKey` has no state to MAC, so the header gate
+   * applies to every client — this is the byte-for-byte preservation
+   * path, identical to what the legacy handler does.
+   */
+  private confirmationGate(
+    req: McpHttpRequest,
+    leaf: Leaf,
+    params: unknown,
+  ): McpConfirmDecision | undefined {
+    if (!leaf.class?.requiresConfirmation) return undefined;
+    if (this.confirmGate === undefined) return headerConfirmationGate(req);
+    return this.confirmGate.evaluate(req, leaf, params);
   }
 
   /** V6: Mcp-Method header presence + agreement with the body method. */
