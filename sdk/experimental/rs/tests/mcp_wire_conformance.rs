@@ -561,3 +561,78 @@ fn the_mrtr_exchange_prompts_then_lands_on_the_go_bytes() {
         "executions after accept"
     );
 }
+
+/// A state minted under a different key cannot replay round 2.
+///
+/// The happy-path exchange above only ever presents a genuine state, so
+/// on its own it cannot tell a mount that verifies the MAC from one that
+/// waves any well-formed token through. Here the token is correctly
+/// framed and correctly bound to the call — only the key behind the MAC
+/// differs — and it must still be refused.
+///
+/// Re-prompting rather than erroring is the deliberate choice: the user
+/// can still approve, and a token error is not actionable by them. What
+/// must never happen is the leaf running.
+#[test]
+fn the_mrtr_retry_is_refused_when_the_state_was_minted_under_another_key() {
+    let mrtr = load_mrtr();
+
+    // The forger's mount: same tree, same call, different secret.
+    let (forger_bridge, _forger_executions) = mrtr_tree();
+    let forger = Surface::mount(
+        forger_bridge,
+        MountOptions {
+            confirmation_key: Some(b"a-different-suite-shared-secret!!".to_vec()),
+            ..MountOptions::default()
+        },
+    )
+    .expect("forger mount");
+
+    let mut req = HttpRequest::post("/mcp", mrtr.round1_request.clone());
+    for (name, value) in &mrtr.round1_headers {
+        req = req.header(name.clone(), value.clone());
+    }
+    let minted_body: Value =
+        serde_json::from_str(forger.call(&req).body_str()).expect("foreign round1 body is JSON");
+    let minted = minted_body["result"]["requestState"]
+        .as_str()
+        .expect("foreign round1 minted a state string")
+        .to_owned();
+
+    // The real mount, keyed by the fixture.
+    let (bridge, executions) = mrtr_tree();
+    let surface = Surface::mount(
+        bridge,
+        MountOptions {
+            confirmation_key: Some(mrtr.confirmation_key.clone().into_bytes()),
+            ..MountOptions::default()
+        },
+    )
+    .expect("mount");
+
+    let body = mrtr
+        .round2_request_template
+        .replace("{{requestState}}", &minted);
+    let mut req = HttpRequest::post("/mcp", body);
+    for (name, value) in &mrtr.round2_headers {
+        req = req.header(name.clone(), value.clone());
+    }
+    let res = surface.call(&req);
+
+    let decoded: Value = serde_json::from_str(res.body_str()).expect("foreign round2 body is JSON");
+    let result = decoded
+        .get("result")
+        .filter(|v| v.is_object())
+        .expect("foreign round2 carries a result");
+
+    assert_eq!(
+        result["resultType"].as_str(),
+        Some("input_required"),
+        "foreign round2 must re-prompt"
+    );
+    assert_eq!(
+        executions.load(Ordering::SeqCst),
+        0,
+        "leaf ran on a state minted under another key"
+    );
+}
