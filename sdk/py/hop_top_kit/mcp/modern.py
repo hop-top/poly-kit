@@ -126,9 +126,7 @@ class RequestMeta:
 
 #: A confirmation gate returns ``(refusal_body, status)`` to refuse, or
 #: ``None`` to let the call proceed.
-ConfirmationGate = Callable[
-    [Request, Leaf, RPCRequest], "tuple[dict[str, Any], int] | None"
-]
+ConfirmationGate = Callable[[Request, Leaf, RPCRequest], "tuple[dict[str, Any], int] | None"]
 
 
 def header_confirmation_gate(
@@ -398,9 +396,7 @@ class ModernHandler:
         self.stamp_envelope(result)
         return write_result(rpc.id_raw, result, STATUS_OK)
 
-    def _tools_call(
-        self, request: Request, rpc: RPCRequest, meta: RequestMeta
-    ) -> Response:
+    def _tools_call(self, request: Request, rpc: RPCRequest, meta: RequestMeta) -> Response:
         """``tools/call`` — V7, V9, the pre-flight gates, invoke, render."""
         raw_name, present, is_string = raw_tool_name(rpc.params)
         try:
@@ -415,15 +411,11 @@ class ModernHandler:
             # requires a present, non-empty, header-matching name — but
             # kept as the correct answer for any caller that reaches this
             # method without passing the V7 gate above.
-            return write_error(
-                rpc.id_raw, ERR_INVALID_PARAMS, "missing tool name", STATUS_OK
-            )
+            return write_error(rpc.id_raw, ERR_INVALID_PARAMS, "missing tool name", STATUS_OK)
 
         leaf = resolve_exposed_leaf(self._bridge, name)
         if leaf is None:
-            return write_error(
-                rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK
-            )
+            return write_error(rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK)
 
         if leaf.cls.auth_required and not request.headers.get("authorization"):
             return self._call_error(rpc, "authentication required", STATUS_UNAUTHORIZED)
@@ -442,9 +434,7 @@ class ModernHandler:
         try:
             result = self._bridge.invoke(inv)
         except (UnknownCommandError, SurfaceNotEnabledError):
-            return write_error(
-                rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK
-            )
+            return write_error(rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK)
         except DestructiveBlockedError as exc:
             # The destructive ceiling renders as a tool error at HTTP 200,
             # never as a transport error — the same rendering as legacy.
@@ -520,9 +510,7 @@ class ModernHandler:
 
     def _call_error(self, rpc: RPCRequest, message: str, status: int) -> Response:
         """Write an ``isError`` tools/call result with the envelope stamped."""
-        return write_result(
-            rpc.id_raw, self.stamp_envelope(error_result_block(message)), status
-        )
+        return write_result(rpc.id_raw, self.stamp_envelope(error_result_block(message)), status)
 
 
 # --- free helpers --------------------------------------------------------
@@ -540,9 +528,7 @@ def parse_request_meta(params: Any) -> RequestMeta:
     if isinstance(params, dict):
         meta_obj = params.get("_meta")
     if not isinstance(meta_obj, dict):
-        raise CheckError(
-            ERR_INVALID_PARAMS, "missing required params._meta", STATUS_BAD_REQUEST
-        )
+        raise CheckError(ERR_INVALID_PARAMS, "missing required params._meta", STATUS_BAD_REQUEST)
     if META_PROTOCOL_VERSION not in meta_obj:
         raise CheckError(
             ERR_INVALID_PARAMS,

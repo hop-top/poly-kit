@@ -166,9 +166,7 @@ class McpSurface:
         if confirmation_key is not None and not confirmation_key:
             raise MountError("mcp: confirmation_key: empty key")
 
-        self.legacy = LegacyHandler(
-            bridge, server_name=server_name, server_version=server_version
-        )
+        self.legacy = LegacyHandler(bridge, server_name=server_name, server_version=server_version)
 
         gate = header_confirmation_gate
         if confirmation_key:
@@ -213,7 +211,9 @@ class McpSurface:
         except UnicodeDecodeError as exc:
             return write_error(None, ERR_PARSE, f"parse error: {exc}", 400)
         except ValueError as exc:
-            return write_error(None, ERR_PARSE, f"parse error: {_go_json_error(request.body, exc)}", 400)
+            return write_error(
+                None, ERR_PARSE, f"parse error: {_go_json_error(request.body, exc)}", 400
+            )
 
         if self._modern_enabled and not self._legacy_enabled:
             # Modern only: every request runs the normal V1-V9 order with
@@ -348,8 +348,7 @@ def _go_json_error(body: bytes, exc: ValueError) -> str:
         rest = stripped[1:].lstrip()
         if rest and rest[0] != '"' and rest[0] != "}":
             return (
-                f"invalid character {_go_char(rest[0])} "
-                "looking for beginning of object key string"
+                f"invalid character {_go_char(rest[0])} looking for beginning of object key string"
             )
     if stripped:
         return f"invalid character {_go_char(stripped[0])} looking for beginning of value"

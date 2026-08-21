@@ -190,9 +190,7 @@ def test_v3_runs_before_v4() -> None:
 
     Both checks fail here; V3 is earlier, so params wins over headers.
     """
-    response, body = send(
-        surface(), {"jsonrpc": "2.0", "id": 1, "method": "server/discover"}
-    )
+    response, body = send(surface(), {"jsonrpc": "2.0", "id": 1, "method": "server/discover"})
     assert response.status == 400
     assert body["error"]["code"] == ERR_INVALID_PARAMS
 

@@ -295,9 +295,7 @@ def _require_task_id(params: Any) -> str:
         value = params.get("taskId")
         if isinstance(value, str) and value:
             return value
-    raise CheckError(
-        ERR_INVALID_PARAMS, "missing required params.taskId", STATUS_OK
-    )
+    raise CheckError(ERR_INVALID_PARAMS, "missing required params.taskId", STATUS_OK)
 
 
 #: Re-exported so an adopter can answer ``tasks/*`` with the core surface's

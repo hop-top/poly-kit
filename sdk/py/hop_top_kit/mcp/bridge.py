@@ -148,9 +148,7 @@ class Command:
             return
         if any(flag.name == "help" for flag in self.flags):
             return
-        self.flags.append(
-            Flag(name="help", usage=f"help for {self.name}", type="bool")
-        )
+        self.flags.append(Flag(name="help", usage=f"help for {self.name}", type="bool"))
 
 
 @dataclass
@@ -328,9 +326,7 @@ class Bridge:
         """Disable ``surfaces`` on every leaf matching ``pattern``."""
         return self._set_surfaces(pattern, surfaces, False)
 
-    def _set_surfaces(
-        self, pattern: str, surfaces: Sequence[Surface], value: bool
-    ) -> Bridge:
+    def _set_surfaces(self, pattern: str, surfaces: Sequence[Surface], value: bool) -> Bridge:
         if not surfaces:
             return self
         for leaf in self._leaves:
@@ -404,14 +400,10 @@ def _in_process_runner(root: Command) -> Callable[[Invocation], Result]:
         for segment in inv.path:
             match = next((c for c in cmd.children if c.name == segment), None)
             if match is None:
-                raise UnknownCommandError(
-                    f"cmdsurface: unknown command: {' '.join(inv.path)}"
-                )
+                raise UnknownCommandError(f"cmdsurface: unknown command: {' '.join(inv.path)}")
             cmd = match
         if cmd.run is None:
-            raise UnknownCommandError(
-                f"cmdsurface: unknown command: {' '.join(inv.path)}"
-            )
+            raise UnknownCommandError(f"cmdsurface: unknown command: {' '.join(inv.path)}")
         cmd.attach_help_flag()
         return cmd.run(inv.flags)
 

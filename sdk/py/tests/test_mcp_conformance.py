@@ -42,11 +42,7 @@ from hop_top_kit.mcp import (
 )
 
 FIXTURE = (
-    Path(__file__).resolve().parents[2]
-    / "tests"
-    / "cross-lang"
-    / "fixtures"
-    / "mcp-wire.json"
+    Path(__file__).resolve().parents[2] / "tests" / "cross-lang" / "fixtures" / "mcp-wire.json"
 )
 
 
@@ -240,15 +236,11 @@ def test_wire_case_is_byte_exact(case: dict[str, Any]) -> None:
     )
     expected = case["response"].encode("utf-8")
     assert response.body == expected, (
-        f"{case['name']} body mismatch\n"
-        f"  expected: {expected!r}\n"
-        f"  actual:   {response.body!r}"
+        f"{case['name']} body mismatch\n  expected: {expected!r}\n  actual:   {response.body!r}"
     )
 
 
-@pytest.mark.parametrize(
-    "sequence", SEQUENCES, ids=[s["name"] for s in SEQUENCES]
-)
+@pytest.mark.parametrize("sequence", SEQUENCES, ids=[s["name"] for s in SEQUENCES])
 def test_wire_sequence_is_byte_exact(sequence: dict[str, Any]) -> None:
     """Replay one sequence's steps, in order, against ONE handler.
 
@@ -274,9 +266,7 @@ def test_wire_sequence_is_byte_exact(sequence: dict[str, Any]) -> None:
         )
         expected = step["response"].encode("utf-8")
         assert response.body == expected, (
-            f"{label} body mismatch\n"
-            f"  expected: {expected!r}\n"
-            f"  actual:   {response.body!r}"
+            f"{label} body mismatch\n  expected: {expected!r}\n  actual:   {response.body!r}"
         )
 
 

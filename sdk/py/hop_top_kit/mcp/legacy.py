@@ -60,9 +60,7 @@ class LegacyHandler:
     def serve(self, request: Request, rpc: RPCRequest) -> Response:
         """Route one already-parsed request by method."""
         if rpc.jsonrpc not in ("", "2.0"):
-            return write_error(
-                rpc.id_raw, ERR_INVALID_REQUEST, "invalid jsonrpc version", 400
-            )
+            return write_error(rpc.id_raw, ERR_INVALID_REQUEST, "invalid jsonrpc version", 400)
         if rpc.method == "initialize":
             return self._initialize(rpc)
         if rpc.method == "tools/list":
@@ -107,15 +105,11 @@ class LegacyHandler:
         params = rpc.params if isinstance(rpc.params, dict) else {}
         name = params.get("name")
         if not isinstance(name, str) or not name:
-            return write_error(
-                rpc.id_raw, ERR_INVALID_PARAMS, "missing tool name", STATUS_OK
-            )
+            return write_error(rpc.id_raw, ERR_INVALID_PARAMS, "missing tool name", STATUS_OK)
 
         leaf = resolve_exposed_leaf(self._bridge, name)
         if leaf is None:
-            return write_error(
-                rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK
-            )
+            return write_error(rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK)
 
         gate = preflight_refusal(request, leaf)
         if gate is not None:
@@ -131,9 +125,7 @@ class LegacyHandler:
         try:
             result = self._bridge.invoke(inv)
         except (UnknownCommandError, SurfaceNotEnabledError):
-            return write_error(
-                rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK
-            )
+            return write_error(rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK)
         except DestructiveBlockedError as exc:
             return write_result(rpc.id_raw, error_result_block(str(exc)), STATUS_OK)
         except Exception as exc:
@@ -153,9 +145,7 @@ class LegacyHandler:
 def exposed_tools(bridge: Bridge) -> list[dict[str, Any]]:
     """Tool descriptors for every leaf exposed on the MCP surface."""
     return [
-        leaf.tool_envelope()
-        for leaf in bridge.leaves()
-        if leaf.enabled.get(Surface.MCP, False)
+        leaf.tool_envelope() for leaf in bridge.leaves() if leaf.enabled.get(Surface.MCP, False)
     ]
 
 

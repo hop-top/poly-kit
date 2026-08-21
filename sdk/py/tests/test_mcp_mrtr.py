@@ -157,18 +157,14 @@ def test_client_without_elicitation_keeps_the_header_gate() -> None:
 def test_url_only_elicitation_client_keeps_the_header_gate() -> None:
     """A url-only client cannot receive this flow's *form* request."""
     surface = mount_mcp(Bridge(tree()), confirmation_key=KEY)
-    response, _ = call(
-        surface, {"name": "deploy", "_meta": meta(elicitation={"url": {}})}
-    )
+    response, _ = call(surface, {"name": "deploy", "_meta": meta(elicitation={"url": {}})})
     assert response.status == 428
 
 
 def test_first_call_returns_input_required() -> None:
     """The prompt carries both ``inputRequests`` and ``requestState``."""
     surface = mount_mcp(Bridge(tree()), confirmation_key=KEY)
-    response, body = call(
-        surface, {"name": "deploy", "_meta": meta(elicitation={})}
-    )
+    response, body = call(surface, {"name": "deploy", "_meta": meta(elicitation={})})
     assert response.status == 200
     result = body["result"]
     assert result["resultType"] == RESULT_TYPE_INPUT_REQUIRED
@@ -389,17 +385,13 @@ def test_tools_call_carries_no_cache_hints() -> None:
     assert "cacheScope" not in body["result"]
 
 
-@pytest.mark.parametrize(
-    "kwargs", [{"cache_ttl_ms": -1}, {"cache_scope": "semi-public"}]
-)
+@pytest.mark.parametrize("kwargs", [{"cache_ttl_ms": -1}, {"cache_scope": "semi-public"}])
 def test_bad_cache_hints_are_refused_at_mount(kwargs: dict) -> None:
     with pytest.raises(MountError):
         mount_mcp(Bridge(tree()), **kwargs)
 
 
-@pytest.mark.parametrize(
-    "versions", [(), ("2019-01-01",), ("2024-11-05", "nope")]
-)
+@pytest.mark.parametrize("versions", [(), ("2019-01-01",), ("2024-11-05", "nope")])
 def test_bad_spec_versions_are_refused_at_mount(versions: tuple) -> None:
     """An empty set is a refusal, not a synonym for the default."""
     with pytest.raises(MountError):
@@ -498,9 +490,7 @@ def test_disabled_subcapabilities_are_neither_advertised_nor_served() -> None:
         extensions=(TasksExtension(allow_list=False, allow_cancel=False),),
     )
     _, discover = rpc(surface, "server/discover", {"_meta": meta()})
-    capability = discover["result"]["capabilities"]["extensions"][
-        "io.modelcontextprotocol/tasks"
-    ]
+    capability = discover["result"]["capabilities"]["extensions"]["io.modelcontextprotocol/tasks"]
     assert "list" not in capability
     assert "cancel" not in capability
 

@@ -320,9 +320,7 @@ def test_null_id_with_markers_is_malformed_on_modern() -> None:
 
 def test_null_id_is_echoed_verbatim_on_legacy() -> None:
     """Legacy round-trips the id it was given, ``null`` included."""
-    response = surface().handle(
-        post({"jsonrpc": "2.0", "id": None, "method": "initialize"})
-    )
+    response = surface().handle(post({"jsonrpc": "2.0", "id": None, "method": "initialize"}))
     assert response.status == 200
     assert b'"id":null' in response.body
 
@@ -351,9 +349,7 @@ def test_meta_marker_without_headers_reaches_v4() -> None:
 def test_parse_error_is_identical_regardless_of_headers() -> None:
     """D1: an unparseable body answers the same whatever headers arrive."""
     bare = surface().handle(post("{not json"))
-    marked = surface().handle(
-        post("{not json", {"Mcp-Method": "tools/call", "Mcp-Name": "ping"})
-    )
+    marked = surface().handle(post("{not json", {"Mcp-Method": "tools/call", "Mcp-Name": "ping"}))
     assert bare.status == marked.status == 400
     assert bare.body == marked.body
 
@@ -480,6 +476,7 @@ def test_a_failing_command_still_attaches_the_flag() -> None:
     cobra registers the flag when it runs the command, so a command that
     raises has still had its flag created by the time the error surfaces.
     """
+
     def explode(_flags):
         raise RuntimeError("boom")
 

@@ -37,9 +37,7 @@ def surface():
     return mount_mcp(Bridge(root))
 
 
-async def drive(
-    app, body: bytes, *, method: str = "POST", headers: list[tuple[bytes, bytes]] = ()
-):
+async def drive(app, body: bytes, *, method: str = "POST", headers: list[tuple[bytes, bytes]] = ()):
     """Run one request through the ASGI callable, chunking the body."""
     scope = {
         "type": "http",
@@ -140,7 +138,9 @@ def test_disconnect_before_the_body_arrives_sends_nothing() -> None:
     async def send(message):  # pragma: no cover - must never run
         sent.append(message)
 
-    asyncio.run(app({"type": "http", "method": "POST", "path": "/mcp", "headers": []}, receive, send))
+    asyncio.run(
+        app({"type": "http", "method": "POST", "path": "/mcp", "headers": []}, receive, send)
+    )
     assert sent == []
 
 
