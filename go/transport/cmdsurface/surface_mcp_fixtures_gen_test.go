@@ -200,6 +200,17 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 		`{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"_meta":{"progressToken":"p1"}}}`,
 		legacy)
 
+	// The progressToken case above uses `initialize`, which D2
+	// short-circuits BEFORE M3 is consulted — so it does not actually
+	// exercise the non-marker. This case uses tools/list, where M3 is
+	// the only rule that could route it modern: a port that treats bare
+	// _meta as a marker fails here and nowhere else.
+	capture("legacy/meta-progress-token-on-tools-list", "legacy",
+		"bare params._meta on a NON-initialize method: M3 must not fire",
+		nil, nil,
+		`{"jsonrpc":"2.0","id":9,"method":"tools/list","params":{"_meta":{"progressToken":"p2"}}}`,
+		legacy)
+
 	capture("legacy/protocol-version-header-is-not-modern", "legacy",
 		"MCP-Protocol-Version header alone must NOT route modern (predates 2026-07-28)",
 		nil, map[string]string{"MCP-Protocol-Version": "2025-06-18"},

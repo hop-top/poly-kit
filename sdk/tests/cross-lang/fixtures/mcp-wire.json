@@ -101,6 +101,14 @@
       "response": "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"capabilities\":{\"tools\":{}},\"protocolVersion\":\"2024-11-05\",\"serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}}}\n"
     },
     {
+      "name": "legacy/meta-progress-token-on-tools-list",
+      "era": "legacy",
+      "why": "bare params._meta on a NON-initialize method: M3 must not fire",
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"progressToken\":\"p2\"}}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{\"tools\":[{\"description\":\"Deploy\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"deploy\"},{\"description\":\"Ping the server\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"ping\"},{\"description\":\"Locked\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"secret\"},{\"description\":\"Add a widget\",\"inputSchema\":{\"properties\":{\"count\":{\"description\":\"widget count\",\"type\":\"integer\"},\"force\":{\"description\":\"force flag\",\"type\":\"boolean\"},\"name\":{\"description\":\"widget name\",\"type\":\"string\"},\"tag\":{\"description\":\"tag list\",\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"required\":[\"name\"],\"type\":\"object\"},\"name\":\"widget.add\"},{\"description\":\"Delete a widget\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"widget.delete\"}]}}\n"
+    },
+    {
       "name": "legacy/protocol-version-header-is-not-modern",
       "era": "legacy",
       "why": "MCP-Protocol-Version header alone must NOT route modern (predates 2026-07-28)",
