@@ -33,7 +33,7 @@ import (
 	"hop.top/kit/go/console/output"
 )
 
-// Row shapes. Field order is the Go analogue of ColumnSpec list order.
+// Row shapes. Field order is the Go analog of ColumnSpec list order.
 
 // zetaAlphaMid declares fields anti-alphabetically so a runtime that sorts
 // its columns is caught.

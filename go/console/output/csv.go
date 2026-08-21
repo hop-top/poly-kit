@@ -135,7 +135,7 @@ func (csvFormatter) Render(w io.Writer, data any, opts Options, cols []string) e
 // `escaped`, so a bare CR between quotes is legal, and the W3C CSV on the Web
 // note is explicit that line endings within escaped cells are not normalised.
 // So a field is quoted and its bytes pass through verbatim; the record
-// terminator is the only place a CRLF is synthesised.
+// terminator is the only place a CRLF is synthesized.
 func writeCSVRow(w io.Writer, fields []string, delim rune, eol string, quoteAll bool) error {
 	var b strings.Builder
 	for i, f := range fields {

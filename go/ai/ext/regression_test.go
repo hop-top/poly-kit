@@ -133,7 +133,7 @@ echo '{"name":"enriched","version":"2.0.0","description":"enriched desc","capabi
 		Path: bin,
 	}
 
-	// Before Enrich, Meta() returns synthesised data.
+	// Before Enrich, Meta() returns synthesized data.
 	pre := f.Meta()
 	if pre.Description != "" {
 		t.Errorf("pre-enrich description should be empty, got %q", pre.Description)

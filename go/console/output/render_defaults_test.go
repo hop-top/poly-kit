@@ -28,18 +28,18 @@ func adopterRows() []adopterRow {
 	}
 }
 
-// TestRender_CSV_MaterialisesDeclaredOptionDefaults is the regression
+// TestRender_CSV_MaterializesDeclaredOptionDefaults is the regression
 // guard for the silent-empty-csv bug.
 //
 // output.Render invoked Formatter.Render with a nil Options map, so
-// csv's declared delimiter default (",") never materialised. Every
+// csv's declared delimiter default (",") never materialized. Every
 // adopter calling Render(w, "csv", rows) — the documented entry point —
 // therefore tripped the one-character delimiter check and got an error
 // or, when the caller ignored it, zero bytes and exit 0.
 //
 // Options defaults are declared data on the Formatter; Render must fill
 // them in exactly as Dispatch does via ParseOptions.
-func TestRender_CSV_MaterialisesDeclaredOptionDefaults(t *testing.T) {
+func TestRender_CSV_MaterializesDeclaredOptionDefaults(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, output.Render(&buf, output.CSV, adopterRows()))
 
@@ -55,10 +55,10 @@ func TestRender_CSV_MaterialisesDeclaredOptionDefaults(t *testing.T) {
 	assert.Equal(t, []string{"2", "beta", "20"}, records[2])
 }
 
-// TestRender_CSV_SingleStructMaterialisesDefaults covers the non-slice
+// TestRender_CSV_SingleStructMaterializesDefaults covers the non-slice
 // path through the same shim: a lone struct hits the identical nil-Options
 // bug, and adopters rendering a single record are just as exposed.
-func TestRender_CSV_SingleStructMaterialisesDefaults(t *testing.T) {
+func TestRender_CSV_SingleStructMaterializesDefaults(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, output.Render(&buf, output.CSV, adopterRow{ID: "7", Name: "solo", Score: 3}))
 
@@ -66,13 +66,13 @@ func TestRender_CSV_SingleStructMaterialisesDefaults(t *testing.T) {
 	assert.Equal(t, "ID,Name,Score\n7,solo,3\n", buf.String())
 }
 
-// TestRender_Text_MaterialisesDeclaredOptionDefaults pins the text
+// TestRender_Text_MaterializesDeclaredOptionDefaults pins the text
 // formatter's defaults through the same shim. text declares style="kv"
 // and separator="="; with nil Options both fell back to in-formatter
 // hardcoded fallbacks. Those fallbacks masked the bug for text but do
 // not exist for every option, so assert the declared defaults reach the
 // formatter rather than relying on the duplicate.
-func TestRender_Text_MaterialisesDeclaredOptionDefaults(t *testing.T) {
+func TestRender_Text_MaterializesDeclaredOptionDefaults(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, output.Render(&buf, output.Text, adopterRows()))
 

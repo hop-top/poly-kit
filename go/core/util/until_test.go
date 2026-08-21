@@ -107,7 +107,7 @@ func TestParseUntil(t *testing.T) {
 
 // TestParseUntil_MonthClamping pins forward month/year arithmetic to clamping
 // rather than Go's default AddDate normalisation. Every expectation is a
-// literal date: computing it with AddDate would just re-derive the behaviour
+// literal date: computing it with AddDate would just re-derive the behavior
 // under test.
 func TestParseUntil_MonthClamping(t *testing.T) {
 	tests := []struct {

@@ -137,7 +137,7 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 		cfg.tableStyle = getDefaultTableStyle()
 	}
 
-	// Materialise the formatter's declared option defaults. Passing a nil
+	// Materialize the formatter's declared option defaults. Passing a nil
 	// Options map here silently defeats every default declared in an
 	// OptionSpec — csv's delimiter (",") among them, which made every
 	// Render(w, CSV, v) call fail the one-character check. ParseOptions
