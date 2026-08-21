@@ -107,6 +107,55 @@ describe('era detection (ADR 0042 D1-D4, markers M1-M4)', () => {
     expect(detectMcpEra(req, parsed(req.body))).toBe('legacy');
   });
 
+  // M3 must be tested on a method D2 does NOT short-circuit. On
+  // `initialize`, D2 returns legacy before M3 is ever consulted, so an
+  // implementation that wrongly treats bare `_meta` presence as a
+  // marker still looks correct there. These cases put the same payload
+  // on non-initialize methods, where M3 is the only rule that could
+  // route them modern — so they fail if, and only if, M3 is wrong.
+  it('M3 is keyed on the reserved key, not on _meta presence (D2 cannot mask it)', () => {
+    for (const method of ['tools/list', 'tools/call', 'nope']) {
+      // Bare _meta, no reserved key: must stay legacy.
+      const bare = post({
+        jsonrpc: '2.0',
+        id: 1,
+        method,
+        params: { _meta: { progressToken: 'p1' } },
+      });
+      expect(detectMcpEra(bare, parsed(bare.body)), `bare _meta on ${method}`).toBe(
+        'legacy',
+      );
+
+      // Same shape, reserved key added: must flip to modern. Pairing
+      // the two pins that the key is what decides, not the container.
+      const reserved = post({
+        jsonrpc: '2.0',
+        id: 1,
+        method,
+        params: {
+          _meta: {
+            progressToken: 'p1',
+            'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          },
+        },
+      });
+      expect(
+        detectMcpEra(reserved, parsed(reserved.body)),
+        `reserved key on ${method}`,
+      ).toBe('modern');
+    }
+  });
+
+  it('an empty _meta object is not a marker', () => {
+    const req = post({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: { _meta: {} },
+    });
+    expect(detectMcpEra(req, parsed(req.body))).toBe('legacy');
+  });
+
   it('non-marker: MCP-Protocol-Version header stays legacy at any value', () => {
     for (const v of ['2024-11-05', '2025-06-18', '2026-07-28']) {
       const req = post({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, {
