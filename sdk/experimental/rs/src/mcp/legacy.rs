@@ -20,7 +20,12 @@ use super::HandlerConfig;
 pub const PROTOCOL_VERSION: &str = "2024-11-05";
 
 /// Serves one already-parsed request on the legacy era.
-pub(super) fn serve(cfg: &HandlerConfig, bridge: &Bridge, req: &Request, headers: &Headers) -> Response {
+pub(super) fn serve(
+    cfg: &HandlerConfig,
+    bridge: &Bridge,
+    req: &Request,
+    headers: &Headers,
+) -> Response {
     if !req.jsonrpc_ok() {
         return error_response(
             400,
@@ -257,7 +262,8 @@ mod tests {
                 },
             ),
         );
-        let req = parse(r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"secret"}}"#);
+        let req =
+            parse(r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"secret"}}"#);
         let resp = serve(&cfg(), &bridge, &req, &Headers(&[]));
         assert_eq!(resp.status, 401);
         assert!(resp.body_str().contains("authentication required"));

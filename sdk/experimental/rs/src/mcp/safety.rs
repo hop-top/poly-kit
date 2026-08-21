@@ -258,7 +258,10 @@ mod tests {
         }
         for tier in ["read", "write", ""] {
             let cls = SafetyClass::from_annotations([("kit/side-effect", tier)]);
-            assert!(!cls.destructive, "{tier:?} must not classify as destructive");
+            assert!(
+                !cls.destructive,
+                "{tier:?} must not classify as destructive"
+            );
         }
     }
 

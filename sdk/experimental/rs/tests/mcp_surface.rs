@@ -106,7 +106,10 @@ fn mrtr_round_trip_prompts_then_accepts() {
     assert!(result.get("ttlMs").is_none());
     assert!(result.get("cacheScope").is_none());
 
-    let state = result["requestState"].as_str().expect("requestState").to_owned();
+    let state = result["requestState"]
+        .as_str()
+        .expect("requestState")
+        .to_owned();
 
     // Retry with an accept: the call proceeds.
     let accepted = surface.call(&modern_call(format!(
@@ -274,7 +277,9 @@ fn mrtr_never_relaxes_the_destructive_ceiling() {
 
 #[test]
 fn cache_hints_are_tunable_on_cacheable_lists_only() {
-    let bridge = Bridge::new().leaf(Leaf::new(&["ping"], "Ping", |_| Ok(CallResult::ok("pong\n"))));
+    let bridge = Bridge::new().leaf(Leaf::new(&["ping"], "Ping", |_| {
+        Ok(CallResult::ok("pong\n"))
+    }));
     let surface = Surface::mount(
         bridge,
         MountOptions {
@@ -285,7 +290,10 @@ fn cache_hints_are_tunable_on_cacheable_lists_only() {
     )
     .unwrap();
 
-    for (method, header) in [("tools/list", "tools/list"), ("server/discover", "server/discover")] {
+    for (method, header) in [
+        ("tools/list", "tools/list"),
+        ("server/discover", "server/discover"),
+    ] {
         let resp = surface.call(
             &HttpRequest::post(
                 "/mcp",
@@ -384,7 +392,10 @@ fn structured_data_appears_as_content_block_and_structured_content() {
     );
 
     let result = body(resp.body_str())["result"].clone();
-    assert_eq!(result["structuredContent"], serde_json::json!({"a": 1, "b": 2}));
+    assert_eq!(
+        result["structuredContent"],
+        serde_json::json!({"a": 1, "b": 2})
+    );
     // The JSON text block doubles as the serialized fallback, key-sorted.
     let content = result["content"].as_array().unwrap();
     assert_eq!(content[1]["text"], r#"{"a":1,"b":2}"#);

@@ -447,11 +447,15 @@ mod tests {
                 .with_enabled([Surface::Cli]),
         );
         assert_eq!(
-            bridge.invoke("nope", Surface::Mcp, &Map::new()).unwrap_err(),
+            bridge
+                .invoke("nope", Surface::Mcp, &Map::new())
+                .unwrap_err(),
             InvokeError::UnknownCommand
         );
         assert_eq!(
-            bridge.invoke("ping", Surface::Mcp, &Map::new()).unwrap_err(),
+            bridge
+                .invoke("ping", Surface::Mcp, &Map::new())
+                .unwrap_err(),
             InvokeError::SurfaceNotEnabled
         );
     }
@@ -548,7 +552,9 @@ mod tests {
         let bridge = Bridge::new().leaf(
             Leaf::new(&["ping"], "Ping", |_| Ok(CallResult::ok("pong\n")))
                 .with_flags_on_first_execution(vec![FlagSchema::new(
-                    "help", "boolean", "help for ping",
+                    "help",
+                    "boolean",
+                    "help for ping",
                 )]),
         );
         let names = || {

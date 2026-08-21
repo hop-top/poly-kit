@@ -76,8 +76,8 @@ pub mod tasks;
 pub mod wire;
 
 pub use bridge::{Bridge, CallResult, FlagSchema, InvokeError, Leaf};
-pub use modern::{request_meta, RequestMeta};
 pub use dispatch::{detect_era, Era, HttpRequest, MountError, Surface};
+pub use modern::{request_meta, RequestMeta};
 pub use safety::{Policy, SafetyClass, Surface as SurfaceKind};
 pub use wire::{Request, Response};
 

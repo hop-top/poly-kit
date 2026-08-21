@@ -82,7 +82,12 @@ fn load_sequences() -> Vec<Sequence> {
             seqs.iter()
                 .map(|s| Sequence {
                     name: s["name"].as_str().unwrap().to_owned(),
-                    steps: s["steps"].as_array().unwrap().iter().map(parse_case).collect(),
+                    steps: s["steps"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(parse_case)
+                        .collect(),
                 })
                 .collect()
         })
@@ -151,18 +156,14 @@ fn legacy_tree() -> Bridge {
                 ..SafetyClass::default()
             }),
         )
-        .leaf(
-            leaf(&["secret"], "Locked", "").with_class(SafetyClass {
-                auth_required: true,
-                ..SafetyClass::default()
-            }),
-        )
-        .leaf(
-            leaf(&["deploy"], "Deploy", "").with_class(SafetyClass {
-                requires_confirmation: true,
-                ..SafetyClass::default()
-            }),
-        )
+        .leaf(leaf(&["secret"], "Locked", "").with_class(SafetyClass {
+            auth_required: true,
+            ..SafetyClass::default()
+        }))
+        .leaf(leaf(&["deploy"], "Deploy", "").with_class(SafetyClass {
+            requires_confirmation: true,
+            ..SafetyClass::default()
+        }))
         .leaf(
             // cobra attaches --help to a command on its first execution,
             // so this flag is absent from a listing taken before any
@@ -193,18 +194,14 @@ fn modern_tree() -> Bridge {
                 ..SafetyClass::default()
             }),
         )
-        .leaf(
-            leaf(&["secret"], "Locked", "").with_class(SafetyClass {
-                auth_required: true,
-                ..SafetyClass::default()
-            }),
-        )
-        .leaf(
-            leaf(&["deploy"], "Deploy", "").with_class(SafetyClass {
-                requires_confirmation: true,
-                ..SafetyClass::default()
-            }),
-        )
+        .leaf(leaf(&["secret"], "Locked", "").with_class(SafetyClass {
+            auth_required: true,
+            ..SafetyClass::default()
+        }))
+        .leaf(leaf(&["deploy"], "Deploy", "").with_class(SafetyClass {
+            requires_confirmation: true,
+            ..SafetyClass::default()
+        }))
 }
 
 /// Builds the surface a given case runs against.

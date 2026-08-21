@@ -95,7 +95,10 @@ impl Request {
             }
         };
         Ok(Self {
-            jsonrpc: obj.get("jsonrpc").and_then(Value::as_str).map(ToOwned::to_owned),
+            jsonrpc: obj
+                .get("jsonrpc")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned),
             id: obj.get("id").cloned(),
             method: obj
                 .get("method")

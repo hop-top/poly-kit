@@ -271,9 +271,9 @@ fn go_parse_message(body: &[u8], err: &serde_json::Error) -> String {
                 .find(|(_, c)| !c.is_whitespace())
                 .map(|(_, c)| c);
             match next {
-                Some(c) if c != '"' && c != '}' => format!(
-                    "invalid character '{c}' looking for beginning of object key string"
-                ),
+                Some(c) if c != '"' && c != '}' => {
+                    format!("invalid character '{c}' looking for beginning of object key string")
+                }
                 _ => format!("unexpected end of JSON input: {err}"),
             }
         }
@@ -448,7 +448,10 @@ mod tests {
         );
         // M4
         assert_eq!(
-            detect_era(&[], &parse(r#"{"jsonrpc":"2.0","id":1,"method":"server/discover"}"#)),
+            detect_era(
+                &[],
+                &parse(r#"{"jsonrpc":"2.0","id":1,"method":"server/discover"}"#)
+            ),
             Era::Modern
         );
     }

@@ -276,7 +276,9 @@ fn parse_meta(req: &Request) -> Result<RequestMeta, CheckError> {
         data: None,
     };
 
-    let meta = req.meta().ok_or_else(|| fail("missing required params._meta"))?;
+    let meta = req
+        .meta()
+        .ok_or_else(|| fail("missing required params._meta"))?;
 
     let version_raw = meta
         .get(meta_keys::PROTOCOL_VERSION)
@@ -801,7 +803,10 @@ mod tests {
     #[test]
     fn error_codes_match_sdk() {
         use rmcp::model::ErrorCode;
-        assert_eq!(codes::HEADER_MISMATCH, i64::from(ErrorCode::HEADER_MISMATCH.0));
+        assert_eq!(
+            codes::HEADER_MISMATCH,
+            i64::from(ErrorCode::HEADER_MISMATCH.0)
+        );
         assert_eq!(
             codes::UNSUPPORTED_VERSION,
             i64::from(ErrorCode::UNSUPPORTED_PROTOCOL_VERSION.0)
