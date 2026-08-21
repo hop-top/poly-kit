@@ -81,7 +81,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: test-parity-typeid test-parity-kv ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-kv test-parity-mcp ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -106,6 +106,36 @@ test-parity-typeid: ## TypeID v1 contract loaders across all 5 SDKs
 		cd sdk/experimental/php && composer install --no-progress --quiet && vendor/bin/phpunit tests/Id/ContractTest.php; \
 	else \
 		echo "==> typeid-v1 parity: PHP toolchain not present, skipping (experimental SDK)"; \
+	fi
+
+# MCP wire conformance over sdk/tests/cross-lang/fixtures/mcp-wire.json.
+# The fixture is GENERATED from the Go surface (see
+# surface_mcp_fixtures_gen_test.go), so Go's own gate is the drift check
+# rather than a replay: `go test ./go/transport/cmdsurface/` fails if the
+# surface no longer produces the committed bytes. The four SDKs replay it.
+#
+# Two sections, and a runner must honour both. `cases` each get a FRESH
+# mount, so no case observes another's state. `sequences` are ordered
+# steps against ONE long-lived mount — that is where a port that caches
+# its leaf set, or attaches lazy flags non-idempotently, is caught. Both
+# defects pass every case; only the sequence sees them.
+#
+# PHP is optional for the same reason as test-parity-typeid: the PHP
+# toolchain is experimental and not every runner ships it.
+test-parity-mcp: ## MCP dual-spec wire conformance across Go + 4 SDKs
+	@echo "==> mcp-wire parity: Go (fixture drift gate)"
+	go test ./go/transport/cmdsurface/ -run '^TestGenerateMCPWireFixtures$$' -count=1 -timeout 120s
+	@echo "==> mcp-wire parity: Rust"
+	cd sdk/experimental/rs && cargo test --features mcp --test mcp_wire_conformance --locked
+	@echo "==> mcp-wire parity: TypeScript"
+	cd sdk/ts && pnpm vitest run src/mcp/conformance.test.ts
+	@echo "==> mcp-wire parity: Python"
+	cd sdk/py && uv sync --all-extras -q && uv run pytest tests/test_mcp_conformance.py
+	@if command -v php >/dev/null 2>&1 && command -v composer >/dev/null 2>&1; then \
+		echo "==> mcp-wire parity: PHP"; \
+		cd sdk/experimental/php && composer install --no-progress --quiet && vendor/bin/phpunit tests/Mcp/WireConformanceTest.php; \
+	else \
+		echo "==> mcp-wire parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
 
 # Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
