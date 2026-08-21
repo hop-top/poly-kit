@@ -1519,12 +1519,17 @@ func tamperMCPConfirmState(state string) string {
 	if len(state) == 0 {
 		return state
 	}
+	// Flip a byte in the FIRST base64 quantum, not the last. The
+	// trailing character of a base64 string can carry padding bits that
+	// decode to the same plaintext, so mutating it sometimes produced a
+	// state that still verified — the sanity check then failed roughly
+	// one run in eight.
 	b := []byte(state)
-	last := b[len(b)-1]
-	if last == 'A' {
-		b[len(b)-1] = 'B'
+	i := 0
+	if b[i] == 'A' {
+		b[i] = 'B'
 	} else {
-		b[len(b)-1] = 'A'
+		b[i] = 'A'
 	}
 	return string(b)
 }
