@@ -119,41 +119,15 @@ function modernLeaves(): TreeLeaf[] {
 /**
  * Builds a bridge over a fixed leaf set, applying the default policy
  * on invoke so the destructive ceiling is exercised exactly as the Go
- * bridge exercises it.
- *
- * `helpFlagOn` reproduces a real Go-side artifact the fixtures
- * captured: cobra attaches a command's `--help` flag lazily, on first
- * execution, and the generator drives one long-lived server per era.
- * By the time the later `legacy/protocol-version-header-is-not-modern`
- * case lists tools, the earlier `legacy/tools-call/read` case has
- * executed `ping`, so `ping`'s schema has grown a `help` property
- * that the first `legacy/tools-list` case did not see. The fixtures
- * pin both shapes, so the difference is modelled rather than
- * normalized away.
+ * bridge exercises it. Stateless: the leaf set a request sees never
+ * depends on what an earlier request did.
  */
-function makeBridge(
-  source: () => TreeLeaf[],
-  opts: { helpFlagAfterInvoke?: boolean } = {},
-): McpBridge {
+function makeBridge(source: () => TreeLeaf[]): McpBridge {
   const leaves = source();
-  const executed = new Set<string>();
   const policy = defaultPolicy();
 
-  const visible = (): Leaf[] =>
-    leaves.map((l) => {
-      const key = l.path.join('.');
-      if (!opts.helpFlagAfterInvoke || !executed.has(key)) return l;
-      return {
-        ...l,
-        properties: {
-          ...l.properties,
-          help: bool(`help for ${l.path[l.path.length - 1]}`),
-        },
-      };
-    });
-
   return {
-    leaves: visible,
+    leaves: (): Leaf[] => leaves,
     invoke(inv: Invocation): InvokeResult {
       const key = inv.path.join('.');
       const leaf = leaves.find((l) => l.path.join('.') === key);
@@ -163,7 +137,6 @@ function makeBridge(
       if (!policyAllowed(policy, leaf.class ?? {}, inv.meta.surface)) {
         throw new DestructiveBlockedError(leaf.path.join(' '), inv.meta.surface);
       }
-      executed.add(key);
       return { stdout: leaf.stdout ?? '', exitCode: 0 };
     },
   };
@@ -171,7 +144,7 @@ function makeBridge(
 
 /** A bridge over the Go legacy lock tree. */
 export function legacyLockBridge(): McpBridge {
-  return makeBridge(legacyLeaves, { helpFlagAfterInvoke: true });
+  return makeBridge(legacyLeaves);
 }
 
 /** A bridge over the Go modern lock tree. */

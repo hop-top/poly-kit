@@ -54,22 +54,16 @@ function loadFixtures(): WireDoc {
 }
 
 /**
- * The Go generator drives two long-lived httptest servers — one over
- * the legacy lock tree for the legacy cases, one over the modern lock
- * tree for the modern ones. The trees differ (the legacy tree's
- * `widget add` carries extra `force`/`tag` flags), AND the servers
- * are stateful across cases: cobra attaches a command's `--help` flag
- * lazily on first execution, so `ping`'s schema grows a `help`
- * property once an earlier case has invoked it. The fixtures pin both
- * shapes of `ping`, so this replay mirrors the generator exactly —
- * one handler per era, cases in fixture order — rather than building
- * a fresh handler per case and normalizing the difference away.
+ * The Go generator builds a fresh server per case, over one of two
+ * command trees: the legacy lock tree for the legacy cases, the
+ * modern lock tree for the modern ones. The trees differ — the
+ * legacy tree's `widget add` carries extra `force`/`tag` flags the
+ * modern tree omits — so the fixtures cannot be served from a single
+ * shared tree. Each case is otherwise independent: no state carries
+ * from one case to the next.
  */
-function handlersByEra() {
-  return {
-    legacy: createMcpHandler(legacyLockBridge()),
-    modern: createMcpHandler(modernLockBridge()),
-  };
+function bridgeFor(c: WireCase) {
+  return c.name.startsWith('legacy/') ? legacyLockBridge() : modernLockBridge();
 }
 
 describe('MCP wire conformance (cross-language fixtures)', () => {
@@ -79,34 +73,19 @@ describe('MCP wire conformance (cross-language fixtures)', () => {
     expect(doc.cases.length).toBe(17);
   });
 
-  // One handler per era, shared across cases and replayed in fixture
-  // order — the generator's own execution model.
-  const handlers = handlersByEra();
-  const results: Array<{ c: WireCase; status: number; body: string }> = [];
-
-  it('replays every case against its era handler', async () => {
-    for (const c of doc.cases) {
-      const handler = c.name.startsWith('legacy/')
-        ? handlers.legacy
-        : handlers.modern;
+  for (const c of doc.cases) {
+    it(`${c.name} — ${c.why ?? ''}`, async () => {
+      const handler = createMcpHandler(bridgeFor(c));
       const res = await handler({
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(c.headers ?? {}) },
         body: c.request,
       });
-      results.push({ c, status: res.status, body: res.body });
-    }
-    expect(results.length).toBe(doc.cases.length);
-  });
 
-  for (const [i, c] of doc.cases.entries()) {
-    it(`${c.name} — ${c.why ?? ''}`, () => {
-      const got = results[i];
-      expect(got, `case ${c.name} was not replayed`).toBeDefined();
       // Status first: a status mismatch explains a body mismatch.
-      expect(got.status, `status for ${c.name}`).toBe(c.status);
+      expect(res.status, `status for ${c.name}`).toBe(c.status);
       // Byte-exact: raw string compare, no JSON round-trip.
-      expect(got.body, `body for ${c.name}`).toBe(c.response);
+      expect(res.body, `body for ${c.name}`).toBe(c.response);
     });
   }
 });
