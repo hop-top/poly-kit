@@ -42,6 +42,51 @@ struct Case {
     response: String,
 }
 
+/// One ordered sequence: steps replayed against a single long-lived
+/// mount, in order.
+struct Sequence {
+    name: String,
+    steps: Vec<Case>,
+}
+
+fn load_doc() -> Value {
+    let raw = std::fs::read_to_string(fixture_path()).expect("read mcp-wire.json");
+    serde_json::from_str(&raw).expect("parse mcp-wire.json")
+}
+
+/// Decodes one case/step object; both share the same shape.
+fn parse_case(c: &Value) -> Case {
+    Case {
+        name: c["name"].as_str().unwrap().to_owned(),
+        era: c["era"].as_str().unwrap_or("legacy").to_owned(),
+        headers: c["headers"]
+            .as_object()
+            .map(|h| {
+                h.iter()
+                    .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        request: c["request"].as_str().unwrap().to_owned(),
+        status: c["status"].as_u64().unwrap() as u16,
+        response: c["response"].as_str().unwrap().to_owned(),
+    }
+}
+
+fn load_sequences() -> Vec<Sequence> {
+    load_doc()["sequences"]
+        .as_array()
+        .map(|seqs| {
+            seqs.iter()
+                .map(|s| Sequence {
+                    name: s["name"].as_str().unwrap().to_owned(),
+                    steps: s["steps"].as_array().unwrap().iter().map(parse_case).collect(),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn load_cases() -> Vec<Case> {
     let raw = std::fs::read_to_string(fixture_path()).expect("read mcp-wire.json");
     let doc: Value = serde_json::from_str(&raw).expect("parse mcp-wire.json");
@@ -116,7 +161,14 @@ fn legacy_tree() -> Bridge {
                 ..SafetyClass::default()
             }),
         )
-        .leaf(leaf(&["ping"], "Ping the server", "pong\n"))
+        .leaf(
+            // cobra attaches --help to a command on its first execution,
+            // so this flag is absent from a listing taken before any
+            // tools/call and present afterwards on a long-lived mount.
+            leaf(&["ping"], "Ping the server", "pong\n").with_flags_on_first_execution(vec![
+                FlagSchema::new("help", "boolean", "help for ping"),
+            ]),
+        )
 }
 
 /// The modern fixtures' command tree (Go's `modernLockTree`).
@@ -230,4 +282,71 @@ fn every_case_routes_to_the_era_the_fixture_names() {
             case.name
         );
     }
+}
+
+#[test]
+fn every_sequence_replays_byte_exact_on_one_mount() {
+    // Unlike `cases`, these steps share a single mount: the whole point
+    // is state that legitimately carries across requests, which a
+    // fresh-mount-per-step model cannot express.
+    let sequences = load_sequences();
+    assert_eq!(
+        sequences.len(),
+        1,
+        "sequence count changed; re-review the port"
+    );
+
+    let mut failures = Vec::new();
+    for sequence in &sequences {
+        let bridge = if sequence.name.starts_with("legacy/") {
+            legacy_tree()
+        } else {
+            modern_tree()
+        };
+        let surface = Surface::mount(bridge, MountOptions::default()).expect("mount");
+
+        for (i, step) in sequence.steps.iter().enumerate() {
+            let mut req = HttpRequest::post("/mcp", step.request.clone());
+            for (name, value) in &step.headers {
+                req = req.header(name.clone(), value.clone());
+            }
+
+            let resp = surface.call(&req);
+            if resp.status != step.status || resp.body_str() != step.response {
+                failures.push(format!(
+                    "sequence {} step {i} ({})\n  status: got {} want {}\n                       body:\n    got  {:?}\n    want {:?}",
+                    sequence.name,
+                    step.name,
+                    resp.status,
+                    step.status,
+                    resp.body_str(),
+                    step.response
+                ));
+            }
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{} sequence step(s) diverged from the Go wire bytes:\n\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
+}
+
+#[test]
+fn a_fresh_mount_shows_the_pre_execution_flag_set() {
+    // Guards the isolation `cases` depends on: the lazy flag must be a
+    // property of an executed leaf, not of the tree definition. If it
+    // leaked into construction, the `cases` listings would carry `help`
+    // and 18/18 would break.
+    let surface = Surface::mount(legacy_tree(), MountOptions::default()).expect("mount");
+    let resp = surface.call(&HttpRequest::post(
+        "/mcp",
+        r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
+    ));
+    assert!(
+        !resp.body_str().contains("help"),
+        "a mount that has never invoked ping must not report its help flag"
+    );
 }

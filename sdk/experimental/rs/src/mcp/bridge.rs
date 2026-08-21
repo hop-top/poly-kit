@@ -8,6 +8,7 @@
 //! bridge clap, a hand-rolled tree, or a test double.
 
 use std::collections::BTreeSet;
+use std::sync::RwLock;
 
 use serde_json::{Map, Value};
 
@@ -144,8 +145,19 @@ pub struct Leaf {
     pub path: Vec<String>,
     /// One-line description, emitted as the tool `description`.
     pub short: String,
-    /// Flag schemas backing `inputSchema`.
-    pub flags: Vec<FlagSchema>,
+    /// Flag schemas backing `inputSchema`, read at render time.
+    ///
+    /// Behind a lock because the set is not fixed at construction: a CLI
+    /// framework may attach flags to a command the first time it runs
+    /// (cobra adds `--help` on first execution), and Go's `Leaf` sees
+    /// that because it holds a live `*cobra.Command` and walks its flag
+    /// set per request. Freezing the set at build time would make this
+    /// port diverge from Go on any long-lived mount — see
+    /// [`Leaf::on_first_execution`].
+    flags: RwLock<Vec<FlagSchema>>,
+    /// Flags to attach the first time this leaf executes, and a latch so
+    /// they attach exactly once.
+    deferred_flags: RwLock<Option<Vec<FlagSchema>>>,
     /// Safety annotations driving the policy and pre-flight gates.
     pub class: SafetyClass,
     /// Surfaces this leaf is exposed on.
@@ -159,7 +171,7 @@ impl std::fmt::Debug for Leaf {
         f.debug_struct("Leaf")
             .field("path", &self.path)
             .field("short", &self.short)
-            .field("flags", &self.flags)
+            .field("flags", &self.flags())
             .field("class", &self.class)
             .field("enabled", &self.enabled)
             .finish_non_exhaustive()
@@ -176,7 +188,8 @@ impl Leaf {
         Self {
             path: path.iter().map(|s| (*s).to_string()).collect(),
             short: short.into(),
-            flags: Vec::new(),
+            flags: RwLock::new(Vec::new()),
+            deferred_flags: RwLock::new(None),
             class: SafetyClass::default(),
             enabled: [Surface::Cli, Surface::Lib, Surface::Mcp]
                 .into_iter()
@@ -185,11 +198,50 @@ impl Leaf {
         }
     }
 
-    /// Attaches flag schemas.
+    /// Attaches flag schemas visible from the first listing onward.
     #[must_use]
-    pub fn with_flags(mut self, flags: Vec<FlagSchema>) -> Self {
-        self.flags = flags;
+    pub fn with_flags(self, flags: Vec<FlagSchema>) -> Self {
+        *self.flags.write().expect("flags lock") = flags;
         self
+    }
+
+    /// Registers flags that appear only after this leaf first executes.
+    ///
+    /// Models what a CLI framework does lazily: cobra attaches a
+    /// command's `--help` flag on first execution, so a `tools/list`
+    /// before any `tools/call` and one after legitimately differ on a
+    /// long-lived mount. Go's surface exhibits this because its `Leaf`
+    /// holds a live `*cobra.Command` and re-walks the flag set on every
+    /// request; this is the equivalent hook for adapters bridging a
+    /// framework with the same behavior.
+    ///
+    /// Attaches exactly once, on the first invocation.
+    #[must_use]
+    pub fn with_flags_on_first_execution(self, flags: Vec<FlagSchema>) -> Self {
+        *self.deferred_flags.write().expect("deferred lock") = Some(flags);
+        self
+    }
+
+    /// The flag schemas as of right now.
+    #[must_use]
+    pub fn flags(&self) -> Vec<FlagSchema> {
+        self.flags.read().expect("flags lock").clone()
+    }
+
+    /// Applies any deferred flags. Called once, on first execution.
+    ///
+    /// Idempotent: the deferred set is taken, so later invocations are
+    /// no-ops and the flag set stays stable thereafter.
+    pub(crate) fn on_first_execution(&self) {
+        let Some(deferred) = self.deferred_flags.write().expect("deferred lock").take() else {
+            return;
+        };
+        let mut flags = self.flags.write().expect("flags lock");
+        for flag in deferred {
+            if !flags.iter().any(|f| f.name == flag.name) {
+                flags.push(flag);
+            }
+        }
     }
 
     /// Sets the safety class.
@@ -219,7 +271,7 @@ impl Leaf {
     pub fn tool_envelope(&self) -> Value {
         let mut properties = Map::new();
         let mut required: Vec<Value> = Vec::new();
-        for flag in &self.flags {
+        for flag in &self.flags() {
             properties.insert(flag.name.clone(), flag.to_property());
             if flag.required {
                 required.push(Value::String(flag.name.clone()));
@@ -344,6 +396,9 @@ impl Bridge {
                 surface,
             });
         }
+        // Mirrors cobra attaching flags on a command's first execution:
+        // the leaf set a later tools/list renders reflects it.
+        leaf.on_first_execution();
         (leaf.handler)(arguments).map_err(InvokeError::Handler)
     }
 }
@@ -485,6 +540,56 @@ mod tests {
             names,
             ["widget.zzz", "widgetz"],
             "the whole 'widget' subtree precedes the sibling 'widgetz'"
+        );
+    }
+
+    #[test]
+    fn deferred_flags_attach_on_first_execution_only() {
+        let bridge = Bridge::new().leaf(
+            Leaf::new(&["ping"], "Ping", |_| Ok(CallResult::ok("pong\n")))
+                .with_flags_on_first_execution(vec![FlagSchema::new(
+                    "help", "boolean", "help for ping",
+                )]),
+        );
+        let names = || {
+            bridge.leaves()[0]
+                .flags()
+                .iter()
+                .map(|f| f.name.clone())
+                .collect::<Vec<_>>()
+        };
+
+        assert!(names().is_empty(), "not attached before any execution");
+        bridge.invoke("ping", Surface::Mcp, &Map::new()).unwrap();
+        assert_eq!(names(), vec!["help".to_string()]);
+
+        // Idempotent: a second run must not duplicate the flag.
+        bridge.invoke("ping", Surface::Mcp, &Map::new()).unwrap();
+        assert_eq!(names(), vec!["help".to_string()]);
+    }
+
+    #[test]
+    fn a_blocked_invocation_does_not_attach_deferred_flags() {
+        // The policy gate runs first, so a leaf that never executed must
+        // not look as though it had — matching cobra, which attaches on
+        // actual execution.
+        let bridge = Bridge::new().leaf(
+            Leaf::new(&["widget", "delete"], "Delete", |_| {
+                Ok(CallResult::default())
+            })
+            .with_class(SafetyClass {
+                destructive: true,
+                ..SafetyClass::default()
+            })
+            .with_flags_on_first_execution(vec![FlagSchema::new("help", "boolean", "help")]),
+        );
+
+        assert!(bridge
+            .invoke("widget.delete", Surface::Mcp, &Map::new())
+            .is_err());
+        assert!(
+            bridge.leaves()[0].flags().is_empty(),
+            "a blocked leaf never executed, so nothing attaches"
         );
     }
 

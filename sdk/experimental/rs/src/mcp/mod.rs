@@ -28,6 +28,18 @@
 //! additive only" invariant structurally checkable, so a reviewer can
 //! confirm a modern-era change never reached into the legacy path.
 //!
+//! # Long-lived mounts
+//!
+//! The surface holds no per-request cache: `tools/list` re-reads the
+//! bridge's leaf set every time, so a leaf set that changes after an
+//! invoke is reflected in the next listing. That matters because Go's
+//! `Leaf` wraps a live `*cobra.Command` and re-walks its flags per
+//! request, and cobra attaches `--help` to a command on its first
+//! execution — two byte-identical `tools/list` requests on one mount
+//! therefore differ across an intervening `tools/call`. See
+//! [`Leaf::with_flags_on_first_execution`], and the `sequences` section
+//! of the wire fixtures, which pins it.
+//!
 //! # Safety
 //!
 //! Exposure is gated by [`safety::Policy`], ported from Go's
