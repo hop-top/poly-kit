@@ -14,6 +14,13 @@ differs has to reorder to match, not normalise the comparison away.
 The fixture file also carries the command trees the cases were captured
 against. Both are rebuilt here, because two cases differ only by which
 tree served them.
+
+One section is deliberately not byte-exact end to end. ``mrtr`` replays
+the confirmation loop, whose first round mints a fresh, time-bound
+``requestState`` carrying a MAC that differs on every run: only its
+framing is checkable there. The second round echoes that state back and
+is compared byte-exact like everything else, which is what makes the
+exchange verifiable rather than merely plausible.
 """
 
 from __future__ import annotations
@@ -364,3 +371,144 @@ def _id_stripped(payload: str) -> str:
     import re
 
     return re.sub(r'"id":\s*(?:"[^"]*"|[-\w.]+)', '"id":X', payload)
+
+
+# --- the MRTR confirmation loop -------------------------------------------
+
+#: The third fixture section, and the only one that is not byte-exact end
+#: to end. Round 1 mints a fresh, time-bound ``requestState`` whose MAC
+#: differs on every run, so only its *shape* is assertable; round 2 echoes
+#: that state back and IS byte-exact.
+MRTR: dict[str, Any] | None = FIXTURE_DOC.get("mrtr")
+
+
+def mrtr_tree(counter: list[int]) -> Command:
+    """The tree the ``mrtr`` fixture was captured against.
+
+    Not one of the two era trees: neither carries a ``purge`` leaf, and
+    the fixture's ``command_tree`` does not describe this one because the
+    Go generator drives MRTR from a separate lock tree. ``purge`` is
+    ``kit/requires-confirmation`` and echoes its ``target`` back, so the
+    round-2 body pins *which* arguments survived the round trip rather
+    than merely that something ran.
+
+    ``counter`` is appended to on every execution.
+    :meth:`Bridge.invoke` applies the enablement check and the
+    destructive ceiling *before* delegating to the runner, so a gated
+    leaf never reaches this callable and is never counted.
+    """
+
+    def purge(flags: Any) -> Result:
+        counter.append(1)
+        target = flags.get("target", "")
+        return Result(stdout=f"purged {target if isinstance(target, str) else ''}\n")
+
+    return Command(
+        name="root",
+        children=[
+            Command(
+                name="purge",
+                short="Purge a target",
+                run=purge,
+                annotations={"kit/requires-confirmation": "true"},
+                flags=[Flag("target", "what to purge", "string")],
+            ),
+        ],
+    )
+
+
+def _dig(root: Any, path: str) -> Any:
+    """Read a dotted path out of a decoded result, for the fixture's assertions."""
+    cur: Any = root
+    for segment in path.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(segment)
+    return cur
+
+
+def test_fixture_declares_an_mrtr_section() -> None:
+    """A dropped ``mrtr`` section must fail loudly, not silently skip."""
+    assert MRTR is not None, "fixture declares no mrtr section"
+
+
+@pytest.mark.skipif(MRTR is None, reason="fixture declares no mrtr section")
+def test_mrtr_round_trip() -> None:
+    """Replay the confirmation loop against ONE mount keyed by the fixture.
+
+    Round 1 must come back ``input_required`` with an elicitation prompt
+    and *without* the leaf having run — that non-execution is the entire
+    defect this section exists to catch, and only an execution count can
+    prove it. A port gating on ``X-Confirm-Token`` alone would have
+    refused at 428; a port with no gate at all would have executed.
+
+    Round 2 substitutes the state *this port minted* into the fixture's
+    template and is compared byte-exact. That pairing is what makes the
+    exchange verifiable rather than merely plausible: a port that
+    fabricated a plausible-looking round 1 could not produce a state its
+    own round 2 accepts *and* land on Go's exact bytes.
+
+    Both rounds share one mount keyed with the fixture's
+    ``confirmation_key``. The state is a MAC over that key, so a mount
+    with different key material cannot replay round 2.
+    """
+    assert MRTR is not None
+    executions: list[int] = []
+    surface = mount_mcp(
+        Bridge(mrtr_tree(executions)),
+        confirmation_key=MRTR["confirmation_key"].encode("utf-8"),
+    )
+
+    # --- Round 1: the prompt ---------------------------------------------
+    first = surface.handle(
+        Request(
+            method="POST",
+            path="/mcp",
+            headers=Headers.from_mapping(MRTR["round1_headers"]),
+            body=MRTR["round1_request"].encode("utf-8"),
+        )
+    )
+    assert first.status == MRTR["round1_status"], (
+        f"round1 status {first.status} != {MRTR['round1_status']}"
+    )
+
+    result = json.loads(first.body).get("result")
+    assert isinstance(result, dict), "round1 carries no result object"
+
+    assert not executions, "leaf executed before confirmation"
+
+    for path, want in MRTR["round1_must_have"].items():
+        assert _dig(result, path) == want, f"round1 {path}: {_dig(result, path)!r} != {want!r}"
+    for absent in MRTR["round1_must_not_have"]:
+        assert absent not in result, f"round1 must not carry {absent}"
+
+    # Exactly one entry, under the reserved "confirm" key.
+    assert list(result["inputRequests"]) == ["confirm"]
+
+    # ``v1.<expiry-base10>.<mac>`` — three dot-separated parts. The MAC is
+    # production-derived and never compared, only required to be present.
+    state = result["requestState"]
+    assert isinstance(state, str), "requestState is not a string"
+    parts = state.split(".")
+    assert len(parts) == 3, f"requestState framing: {state!r}"
+    assert parts[0] == "v1", f"requestState version: {parts[0]!r}"
+    assert parts[1].isdigit(), f"requestState expiry is not base-10: {parts[1]!r}"
+    assert parts[2], "requestState mac is empty"
+
+    # --- Round 2: the accepted retry, byte-exact --------------------------
+    second = surface.handle(
+        Request(
+            method="POST",
+            path="/mcp",
+            headers=Headers.from_mapping(MRTR["round2_headers"]),
+            body=MRTR["round2_request_template"].replace("{{requestState}}", state).encode("utf-8"),
+        )
+    )
+    assert second.status == MRTR["round2_status"], (
+        f"round2 status {second.status} != {MRTR['round2_status']}"
+    )
+    expected = MRTR["round2_response"].encode("utf-8")
+    assert second.body == expected, (
+        f"round2 body mismatch\n  expected: {expected!r}\n  actual:   {second.body!r}"
+    )
+    assert len(executions) == 1, f"executions after accept: {len(executions)}"
