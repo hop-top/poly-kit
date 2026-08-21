@@ -23,6 +23,12 @@
     "ADR 0042, and a port that routes a case to the wrong handler will",
     "fail on the response bytes anyway.",
     "",
+    "`cases` each get a FRESH mount, so no case can observe state left",
+    "by another. `sequences` are the deliberate exception: ordered",
+    "steps replayed against ONE long-lived mount, capturing behavior",
+    "that only a persistent server exhibits — which is how adopters",
+    "actually deploy. Run both.",
+    "",
     "See ADR 0043 for the polyglot surface design and ADR 0042 for the",
     "normative era-detection rules."
   ],
@@ -205,6 +211,39 @@
       "request": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"initialize\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
       "status": 200,
       "response": "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"capabilities\":{\"tools\":{}},\"protocolVersion\":\"2024-11-05\",\"serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}}}\n"
+    }
+  ],
+  "sequences": [
+    {
+      "name": "legacy/lazy-help-flag-on-long-lived-mount",
+      "era": "legacy",
+      "why": "same tools/list request before and after a tools/call: cobra attaches ping's help flag on first execution, so the second listing legitimately differs. Replay these steps against ONE mount, in order.",
+      "steps": [
+        {
+          "name": "list-before-invoke",
+          "era": "legacy",
+          "why": "no help flag yet",
+          "request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}",
+          "status": 200,
+          "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"description\":\"Deploy\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"deploy\"},{\"description\":\"Ping the server\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"ping\"},{\"description\":\"Locked\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"secret\"},{\"description\":\"Add a widget\",\"inputSchema\":{\"properties\":{\"count\":{\"description\":\"widget count\",\"type\":\"integer\"},\"force\":{\"description\":\"force flag\",\"type\":\"boolean\"},\"name\":{\"description\":\"widget name\",\"type\":\"string\"},\"tag\":{\"description\":\"tag list\",\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"required\":[\"name\"],\"type\":\"object\"},\"name\":\"widget.add\"},{\"description\":\"Delete a widget\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"widget.delete\"}]}}\n"
+        },
+        {
+          "name": "invoke-ping",
+          "era": "legacy",
+          "why": "first execution attaches the help flag",
+          "request": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"ping\"}}",
+          "status": 200,
+          "response": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"content\":[{\"text\":\"pong\\n\",\"type\":\"text\"}],\"isError\":false}}\n"
+        },
+        {
+          "name": "list-after-invoke",
+          "era": "legacy",
+          "why": "identical request, now reports help",
+          "request": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}",
+          "status": 200,
+          "response": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"tools\":[{\"description\":\"Deploy\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"deploy\"},{\"description\":\"Ping the server\",\"inputSchema\":{\"properties\":{\"help\":{\"description\":\"help for ping\",\"type\":\"boolean\"}},\"type\":\"object\"},\"name\":\"ping\"},{\"description\":\"Locked\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"secret\"},{\"description\":\"Add a widget\",\"inputSchema\":{\"properties\":{\"count\":{\"description\":\"widget count\",\"type\":\"integer\"},\"force\":{\"description\":\"force flag\",\"type\":\"boolean\"},\"name\":{\"description\":\"widget name\",\"type\":\"string\"},\"tag\":{\"description\":\"tag list\",\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"required\":[\"name\"],\"type\":\"object\"},\"name\":\"widget.add\"},{\"description\":\"Delete a widget\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"widget.delete\"}]}}\n"
+        }
+      ]
     }
   ]
 }

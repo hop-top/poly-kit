@@ -84,9 +84,21 @@ type mcpFixtureCase struct {
 
 // mcpFixtureDoc is the emitted file.
 type mcpFixtureDoc struct {
-	Comment []string         `json:"_comment"`
-	Tree    string           `json:"command_tree"`
-	Cases   []mcpFixtureCase `json:"cases"`
+	Comment   []string         `json:"_comment"`
+	Tree      string           `json:"command_tree"`
+	Cases     []mcpFixtureCase `json:"cases"`
+	Sequences []mcpFixtureSeq  `json:"sequences"`
+}
+
+// mcpFixtureSeq is an ordered exchange against ONE long-lived mount.
+// Cases in `cases` each get a fresh mount; these deliberately do not,
+// because the behavior under test only appears on a persistent server —
+// which is how adopters actually deploy.
+type mcpFixtureSeq struct {
+	Name  string           `json:"name"`
+	Era   string           `json:"era"`
+	Why   string           `json:"why,omitempty"`
+	Steps []mcpFixtureCase `json:"steps"`
 }
 
 // fixtureComment documents the contract for every runner author.
@@ -114,6 +126,12 @@ func fixtureComment() []string {
 		"not an input: era is detected per-request from the markers in",
 		"ADR 0042, and a port that routes a case to the wrong handler will",
 		"fail on the response bytes anyway.",
+		"",
+		"`cases` each get a FRESH mount, so no case can observe state left",
+		"by another. `sequences` are the deliberate exception: ordered",
+		"steps replayed against ONE long-lived mount, capturing behavior",
+		"that only a persistent server exhibits — which is how adopters",
+		"actually deploy. Run both.",
 		"",
 		"See ADR 0043 for the polyglot surface design and ADR 0042 for the",
 		"normative era-detection rules.",
@@ -290,6 +308,42 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 	return out
 }
 
+// mcpFixtureSequences captures behavior that only a long-lived mount
+// exhibits. Cobra attaches a leaf's help flag lazily on first
+// execution, so a tools/list AFTER a tools/call reports a "help"
+// property that the same request did not report before. Isolating
+// every case hides this — but adopters serve from persistent
+// processes, so a port that resets state per request would diverge
+// from Go exactly where it matters and no per-case fixture would
+// notice.
+func mcpFixtureSequences(t *testing.T) []mcpFixtureSeq {
+	t.Helper()
+	srv := legacyLockServer(t, nil).URL
+	step := func(name, why, body string) mcpFixtureCase {
+		status, _, raw := rawPOSTURL(t, srv, "/mcp", nil, []byte(body))
+		return mcpFixtureCase{
+			Name: name, Era: "legacy", Why: why,
+			Request: body, Status: status, Response: string(raw),
+		}
+	}
+	return []mcpFixtureSeq{{
+		Name: "legacy/lazy-help-flag-on-long-lived-mount",
+		Era:  "legacy",
+		Why: "same tools/list request before and after a tools/call: " +
+			"cobra attaches ping's help flag on first execution, so the " +
+			"second listing legitimately differs. Replay these steps " +
+			"against ONE mount, in order.",
+		Steps: []mcpFixtureCase{
+			step("list-before-invoke", "no help flag yet",
+				`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`),
+			step("invoke-ping", "first execution attaches the help flag",
+				`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ping"}}`),
+			step("list-after-invoke", "identical request, now reports help",
+				`{"jsonrpc":"2.0","id":3,"method":"tools/list"}`),
+		},
+	}}
+}
+
 func fixturePath(t *testing.T) string {
 	t.Helper()
 	// go/transport/cmdsurface -> repo root
@@ -303,9 +357,10 @@ func TestGenerateMCPWireFixtures(t *testing.T) {
 		t.Fatal("no fixture cases generated")
 	}
 	doc := mcpFixtureDoc{
-		Comment: fixtureComment(),
-		Tree:    "legacyLockTree (see surface_mcp_legacy_lock_test.go)",
-		Cases:   cases,
+		Comment:   fixtureComment(),
+		Tree:      "legacyLockTree (see surface_mcp_legacy_lock_test.go)",
+		Cases:     cases,
+		Sequences: mcpFixtureSequences(t),
 	}
 	encoded, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
