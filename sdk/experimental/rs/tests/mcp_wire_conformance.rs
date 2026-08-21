@@ -19,6 +19,8 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use hop_top_kit::mcp::safety::{SafetyClass, Surface as SurfaceKind};
 use hop_top_kit::mcp::{Bridge, CallResult, FlagSchema, HttpRequest, Leaf, MountOptions, Surface};
@@ -348,5 +350,217 @@ fn a_fresh_mount_shows_the_pre_execution_flag_set() {
     assert!(
         !resp.body_str().contains("help"),
         "a mount that has never invoked ping must not report its help flag"
+    );
+}
+
+/// The fixture's `mrtr` section: the confirmation round trip.
+///
+/// Unlike `cases` and `sequences` this is not byte-exact end to end.
+/// Round 1 mints a fresh, time-bound `requestState` whose MAC differs
+/// every run, so only its SHAPE is assertable — the fixture names the
+/// members that must be present and the ones that must never appear.
+/// Round 2 echoes that state back into a template and IS byte-exact,
+/// which is what makes the exchange verifiable rather than merely
+/// plausible: a port that fabricated a plausible-looking round 1 could
+/// not produce a state its own round 2 accepts AND land on Go's bytes.
+struct Mrtr {
+    confirmation_key: String,
+    round1_headers: Vec<(String, String)>,
+    round1_request: String,
+    round1_status: u16,
+    round1_must_have: Vec<(String, String)>,
+    round1_must_not_have: Vec<String>,
+    round2_headers: Vec<(String, String)>,
+    round2_request_template: String,
+    round2_status: u16,
+    round2_response: String,
+}
+
+fn header_pairs(v: &Value) -> Vec<(String, String)> {
+    v.as_object()
+        .map(|h| {
+            h.iter()
+                .map(|(k, val)| (k.clone(), val.as_str().unwrap().to_owned()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn load_mrtr() -> Mrtr {
+    let doc = load_doc();
+    let m = &doc["mrtr"];
+    assert!(m.is_object(), "fixture has no mrtr section");
+    Mrtr {
+        confirmation_key: m["confirmation_key"].as_str().unwrap().to_owned(),
+        round1_headers: header_pairs(&m["round1_headers"]),
+        round1_request: m["round1_request"].as_str().unwrap().to_owned(),
+        round1_status: m["round1_status"].as_u64().unwrap() as u16,
+        round1_must_have: m["round1_must_have"]
+            .as_object()
+            .expect("round1_must_have object")
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+            .collect(),
+        round1_must_not_have: m["round1_must_not_have"]
+            .as_array()
+            .expect("round1_must_not_have array")
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect(),
+        round2_headers: header_pairs(&m["round2_headers"]),
+        round2_request_template: m["round2_request_template"].as_str().unwrap().to_owned(),
+        round2_status: m["round2_status"].as_u64().unwrap() as u16,
+        round2_response: m["round2_response"].as_str().unwrap().to_owned(),
+    }
+}
+
+/// The Go MRTR lock tree, plus the execution counter the exchange turns
+/// on: round 1's whole point is that the leaf does NOT run, which only
+/// a count can prove.
+///
+/// `vault.burn` is Go's destructive-AND-requires-confirmation leaf: a
+/// fully accepted exchange still meets the policy gate behind it. A leaf
+/// that is merely destructive never enters the confirmation gate at all.
+fn mrtr_tree() -> (Bridge, Arc<AtomicUsize>) {
+    let executions = Arc::new(AtomicUsize::new(0));
+
+    let purge_count = Arc::clone(&executions);
+    let burn_count = Arc::clone(&executions);
+
+    let bridge = Bridge::new()
+        .leaf(
+            Leaf::new(&["purge"], "Purge a target", move |args| {
+                purge_count.fetch_add(1, Ordering::SeqCst);
+                let target = args.get("target").and_then(Value::as_str).unwrap_or("");
+                Ok(CallResult::ok(format!("purged {target}\n")))
+            })
+            .with_flags(vec![FlagSchema::new("target", "string", "what to purge")])
+            .with_class(SafetyClass {
+                requires_confirmation: true,
+                ..SafetyClass::default()
+            }),
+        )
+        .leaf(
+            Leaf::new(&["vault", "burn"], "Burn the vault", move |_| {
+                burn_count.fetch_add(1, Ordering::SeqCst);
+                Ok(CallResult::ok("burned\n"))
+            })
+            .with_class(SafetyClass {
+                requires_confirmation: true,
+                destructive: true,
+                ..SafetyClass::default()
+            }),
+        );
+
+    (bridge, executions)
+}
+
+/// Reads a dotted path out of a decoded result, for the fixture's
+/// shape assertions.
+fn dig<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut cur = root;
+    for seg in path.split('.') {
+        cur = cur.as_object()?.get(seg)?;
+    }
+    Some(cur)
+}
+
+#[test]
+fn the_mrtr_exchange_prompts_then_lands_on_the_go_bytes() {
+    let mrtr = load_mrtr();
+    let (bridge, executions) = mrtr_tree();
+
+    // ONE mount for both rounds, keyed with the fixture's key: the state
+    // is a MAC over it, so a mount with a different key cannot replay
+    // round 2.
+    let surface = Surface::mount(
+        bridge,
+        MountOptions {
+            confirmation_key: Some(mrtr.confirmation_key.clone().into_bytes()),
+            ..MountOptions::default()
+        },
+    )
+    .expect("mount");
+
+    // --- Round 1: the prompt -------------------------------------------
+    let mut req = HttpRequest::post("/mcp", mrtr.round1_request.clone());
+    for (name, value) in &mrtr.round1_headers {
+        req = req.header(name.clone(), value.clone());
+    }
+    let r1 = surface.call(&req);
+    assert_eq!(r1.status, mrtr.round1_status, "round1 status");
+
+    let body1: Value = serde_json::from_str(r1.body_str()).expect("round1 body is JSON");
+    let result1 = body1
+        .get("result")
+        .filter(|v| v.is_object())
+        .expect("round1 carries a result");
+
+    // The leaf must NOT have run: that is the entire defect this section
+    // exists to catch. A port gating on X-Confirm-Token alone would have
+    // refused at 428 above; a port with no gate at all executes here.
+    assert_eq!(
+        executions.load(Ordering::SeqCst),
+        0,
+        "leaf executed before confirmation"
+    );
+
+    for (path, want) in &mrtr.round1_must_have {
+        assert_eq!(
+            dig(result1, path).and_then(Value::as_str),
+            Some(want.as_str()),
+            "round1 {path}"
+        );
+    }
+    for absent in &mrtr.round1_must_not_have {
+        assert!(
+            result1.get(absent).is_none(),
+            "round1 must not carry {absent}"
+        );
+    }
+
+    // Exactly one entry, under the reserved "confirm" key.
+    let keys: Vec<&str> = result1["inputRequests"]
+        .as_object()
+        .expect("inputRequests object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(keys, ["confirm"], "inputRequests keys");
+
+    // `v1.<expiry-base10>.<mac>` — three dot-separated parts. The MAC is
+    // production-derived and never compared.
+    let state = result1["requestState"]
+        .as_str()
+        .expect("requestState is a string");
+    let parts: Vec<&str> = state.split('.').collect();
+    assert_eq!(parts.len(), 3, "requestState part count: {state}");
+    assert_eq!(parts[0], "v1", "requestState version");
+    assert!(
+        !parts[1].is_empty() && parts[1].bytes().all(|b| b.is_ascii_digit()),
+        "requestState expiry is base-10: {}",
+        parts[1]
+    );
+    assert!(!parts[2].is_empty(), "requestState mac is non-empty");
+
+    // --- Round 2: the accepted retry, byte-exact ------------------------
+    let body2 = mrtr
+        .round2_request_template
+        .replace("{{requestState}}", state);
+    let mut req = HttpRequest::post("/mcp", body2);
+    for (name, value) in &mrtr.round2_headers {
+        req = req.header(name.clone(), value.clone());
+    }
+    let r2 = surface.call(&req);
+    assert_eq!(r2.status, mrtr.round2_status, "round2 status");
+    assert_eq!(
+        r2.body_str(),
+        mrtr.round2_response,
+        "round2 body must be byte-exact against the Go wire bytes"
+    );
+    assert_eq!(
+        executions.load(Ordering::SeqCst),
+        1,
+        "executions after accept"
     );
 }
