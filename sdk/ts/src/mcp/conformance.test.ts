@@ -271,6 +271,58 @@ describe('MCP wire conformance — MRTR confirmation loop', () => {
     expect(r2.body, 'round2 body').toBe(mrtr.round2_response);
     expect(executions(), 'executions after accept').toBe(1);
   });
+
+  /**
+   * A state minted under a different key cannot replay round 2.
+   *
+   * The happy-path exchange above only ever presents a genuine state,
+   * so on its own it cannot tell a mount that verifies the MAC from one
+   * that waves any well-formed token through. Here the token is
+   * correctly framed and correctly bound to the call — only the key
+   * behind the MAC differs — and it must still be refused.
+   *
+   * Re-prompting rather than erroring is the deliberate choice: the
+   * user can still approve, and a token error is not actionable by
+   * them. What must never happen is the leaf running.
+   */
+  it('refuses a retry whose state was minted under another key', async () => {
+    if (mrtr === undefined) throw new Error('fixture has no mrtr section');
+
+    // The forger's mount: same tree, same call, different secret.
+    const forger = createMcpHandler(mrtrLockBridge().bridge, {
+      confirmationKey: 'a-different-suite-shared-secret!!',
+    });
+    const minted = await forger({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...mrtr.round1_headers },
+      body: mrtr.round1_request,
+    });
+    const state = (JSON.parse(minted.body) as { result?: { requestState?: unknown } })
+      .result?.requestState;
+    expect(typeof state, 'foreign round1 minted a state string').toBe('string');
+
+    // The real mount, keyed by the fixture.
+    const { bridge, executions } = mrtrLockBridge();
+    const handler = createMcpHandler(bridge, {
+      confirmationKey: mrtr.confirmation_key,
+    });
+    const res = await handler({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...mrtr.round2_headers },
+      body: mrtr.round2_request_template.replace(
+        '{{requestState}}',
+        String(state),
+      ),
+    });
+
+    const result = (JSON.parse(res.body) as { result?: Record<string, unknown> })
+      .result;
+    expect(result, 'foreign round2 carries a result').toBeDefined();
+    expect(result?.resultType, 'foreign round2 must re-prompt').toBe(
+      'input_required',
+    );
+    expect(executions(), 'leaf ran on a state minted under another key').toBe(0);
+  });
 });
 
 /** Reads a dotted path out of a decoded result, for the fixture's assertions. */
