@@ -82,8 +82,10 @@ fn default_surfaces() -> BTreeSet<SurfaceKind> {
 
 /// The legacy fixtures' command tree (Go's `legacyLockTree`).
 ///
-/// `widget.add` carries the full flag set here, including the hidden and
-/// deprecated flags that must be filtered out of `inputSchema`.
+/// `widget.add` carries the full visible flag set. Go's tree also
+/// registers a hidden and a deprecated flag on it, both of which its
+/// schema builder filters out; they are simply not declared here, which
+/// is what the fixture's `inputSchema` pins.
 fn legacy_tree() -> Bridge {
     Bridge::new()
         .leaf(
@@ -93,9 +95,6 @@ fn legacy_tree() -> Bridge {
                     FlagSchema::new("count", "integer", "widget count"),
                     FlagSchema::new("force", "boolean", "force flag"),
                     FlagSchema::new("tag", "array", "tag list"),
-                    // The hidden and deprecated flags Go registers are
-                    // filtered before schema construction, so they are
-                    // simply absent here — the fixture pins that.
                 ])
                 .with_enabled(default_surfaces()),
         )
@@ -154,55 +153,12 @@ fn modern_tree() -> Bridge {
         )
 }
 
-/// The legacy tree as it is *after* `ping` has been invoked once.
-///
-/// Go's generator drives one live server for all legacy cases, and cobra
-/// lazily attaches a `--help` flag to a command the first time it runs.
-/// `legacy/tools-call/read` invokes `ping`, so the later
-/// `legacy/protocol-version-header-is-not-modern` case observes `ping`
-/// carrying a `help` property that the earlier `legacy/tools-list` case
-/// does not. That is a real, if incidental, property of the recorded
-/// bytes; reproducing it is what "the fixtures win" means.
-fn legacy_tree_after_ping_ran() -> Bridge {
-    Bridge::new()
-        .leaf(
-            leaf(&["widget", "add"], "Add a widget", "added\n").with_flags(vec![
-                FlagSchema::new("name", "string", "widget name").required(),
-                FlagSchema::new("count", "integer", "widget count"),
-                FlagSchema::new("force", "boolean", "force flag"),
-                FlagSchema::new("tag", "array", "tag list"),
-            ]),
-        )
-        .leaf(
-            leaf(&["widget", "delete"], "Delete a widget", "deleted\n").with_class(SafetyClass {
-                destructive: true,
-                ..SafetyClass::default()
-            }),
-        )
-        .leaf(
-            leaf(&["secret"], "Locked", "").with_class(SafetyClass {
-                auth_required: true,
-                ..SafetyClass::default()
-            }),
-        )
-        .leaf(
-            leaf(&["deploy"], "Deploy", "").with_class(SafetyClass {
-                requires_confirmation: true,
-                ..SafetyClass::default()
-            }),
-        )
-        .leaf(
-            leaf(&["ping"], "Ping the server", "pong\n")
-                .with_flags(vec![FlagSchema::new("help", "boolean", "help for ping")]),
-        )
-}
-
 /// Builds the surface a given case runs against.
 fn surface_for(case: &Case) -> Surface {
-    let bridge = match case.name.as_str() {
-        "legacy/protocol-version-header-is-not-modern" => legacy_tree_after_ping_ran(),
-        name if name.starts_with("legacy/") => legacy_tree(),
-        _ => modern_tree(),
+    let bridge = if case.name.starts_with("legacy/") {
+        legacy_tree()
+    } else {
+        modern_tree()
     };
     Surface::mount(bridge, MountOptions::default()).expect("mount")
 }
