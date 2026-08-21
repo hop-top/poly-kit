@@ -6,6 +6,7 @@ experimental PHP client SDK.
 
 - [`src/Id/`](src/Id/) — TypeID primitive (cross-language; see
   [ADR 0001](../../../docs/adr/0001-typeid-primitive.md))
+- [`src/Mcp/`](src/Mcp/) — dual-spec MCP surface over PSR-15
 
 ## URI facade
 
@@ -185,6 +186,140 @@ output**, never raw bytes — PHP's YAML emits the dash on its own line and
 Rust's table renderer pads cells, so byte comparison was never viable.
 Byte-level formatting parity is pinned by each SDK's own unit tests
 instead.
+
+## MCP surface
+
+Serves the Model Context Protocol over a bridged command tree, exposing one
+MCP tool per runnable leaf. One mount answers **both** protocol revisions —
+`2024-11-05` (handshake) and `2026-07-28` (stateless per-request envelope) —
+choosing per request, because the newer revision has no handshake to
+negotiate with.
+
+Wire behaviour is pinned by the shared cross-language fixtures in
+`sdk/tests/cross-lang/fixtures/mcp-wire.json`, compared as raw bytes.
+
+### Hosting: PSR-15
+
+The surface is exported as a PSR-15 `RequestHandlerInterface`, not a server.
+Kit does not own your HTTP stack, so binding the handler is your decision;
+being a plain request-to-response function also means the wire behaviour is
+testable without opening a socket.
+
+```php
+<?php
+
+use HopTop\Kit\Mcp\Bridge;
+use HopTop\Kit\Mcp\Command;
+use HopTop\Kit\Mcp\Mount;
+use HopTop\Kit\Mcp\Policy;
+use HopTop\Kit\Mcp\RequestHandler;
+use HopTop\Kit\Mcp\Result;
+use HopTop\Kit\Mcp\ServerInfo;
+use Nyholm\Psr7\Factory\Psr17Factory;
+
+$root = (new Command(name: 'app'))->addCommand(
+    new Command(
+        name: 'ping',
+        description: 'Ping the server',
+        annotations: ['kit/side-effect' => 'read'],
+        runner: static fn (array $flags): Result => new Result(stdout: "pong\n"),
+    ),
+);
+
+$factory = new Psr17Factory();
+
+$handler = new RequestHandler(
+    new Bridge($root, Policy::default()),
+    new Mount(serverInfo: new ServerInfo('app', '1.0.0')),
+    $factory,   // PSR-17 response factory
+    $factory,   // PSR-17 stream factory
+);
+```
+
+Mount it wherever your stack routes requests. With a PSR-15 middleware
+pipeline (Slim, Mezzio, Laminas):
+
+```php
+$app->post('/mcp', $handler);
+```
+
+Under plain php-fpm, bridge the superglobals with any PSR-7 implementation
+and emit the result:
+
+```php
+$request = Psr17Factory::fromGlobals();   // or your bridge of choice
+$response = $handler->handle($request);
+
+http_response_code($response->getStatusCode());
+foreach ($response->getHeaders() as $name => $values) {
+    header($name.': '.implode(', ', $values), true);
+}
+echo (string) $response->getBody();
+```
+
+Two details matter when choosing a PSR-7 bridge:
+
+* **Preserve repeated headers.** The protocol tolerates a header sent twice
+  with identical values but rejects conflicting duplicates, which a
+  comma-joined `$_SERVER['HTTP_*']` value cannot express.
+* **Do not re-encode the body.** Responses are already serialized; passing
+  them through a JSON layer will reorder keys and break parity.
+
+### Safety
+
+Exposure is gated by `Policy::allowed()`. The default is deliberately
+closed: **no remote surface may invoke a destructive leaf**, and a blocked
+call comes back as an `isError` result at HTTP 200 rather than a transport
+error — the call was understood and declined, not malformed.
+
+```php
+// Opt a surface in explicitly; the empty default means block-all.
+new Policy(allowDestructiveOn: [Surface::Mcp]);
+```
+
+Leaves are classified from `kit/*` annotations: `kit/side-effect`
+(`destructive`, `destructive-local`, `destructive-shared`),
+`kit/auth-required`, and `kit/requires-confirmation`.
+
+### Confirmation
+
+A `kit/requires-confirmation` leaf requires an `X-Confirm-Token` header by
+default. Supplying a `confirmationKey` instead opts into the 2026-07-28 MRTR
+flow: the first call answers `resultType: "input_required"` with an
+elicitation form and a signed `requestState`, and the client retries with
+the user's decision. The token is bound to the tool, its arguments and the
+caller, so the surface stays stateless and a token minted for one call
+cannot be replayed against another.
+
+```php
+new Mount(confirmationKey: $key);   // HMAC key, never a user-supplied value
+```
+
+Clients that do not advertise form elicitation keep the header gate — the
+spec forbids sending input requests to a client that cannot answer them.
+
+### Protocol layer
+
+The surface implements the JSON-RPC framing and era detection directly
+rather than delegating to `mcp/sdk`. The published SDK (v0.7.1, the latest
+release) carries revisions `2024-11-05` through `2025-11-25` only —
+`2026-07-28`, `server/discover`, `resultType` and `cacheScope` exist on its
+`main` branch but in no tagged release. Its supporting types also disagree
+with this surface where the fixtures are explicit: `Mcp\Schema\JsonRpc\Error`
+rejects a `null` id, which the `2024-11-05` era must round-trip verbatim,
+and `ProtocolVersionMiddleware` answers an unknown version with its own
+wording and a `2025-03-26` fallback rather than the `-32022` payload the
+fixtures pin.
+
+Revisit once a release carries the modern era: `ProtocolVersion`'s
+handshake/modern split is the right vocabulary to adopt, and the middleware
+already reads the reserved `_meta` protocol-version key.
+
+### Scope
+
+Deprecated upstream features (Roots, Sampling, Logging, HTTP+SSE) are
+unimplemented, matching the Go reference. Pagination, `tasks/*` and
+`subscriptions/listen` are likewise not served here.
 
 ## Telemetry
 
