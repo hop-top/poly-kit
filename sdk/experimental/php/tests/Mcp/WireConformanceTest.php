@@ -23,8 +23,13 @@ use PHPUnit\Framework\TestCase;
  * the only way key order, escaping and the trailing newline are actually
  * checked.
  *
- * Each case gets a fresh mount, so no case can observe state left behind
- * by an earlier one and every case is independently reproducible.
+ * The fixture carries two sections and both are replayed:
+ *
+ *  - `cases` each get a **fresh** mount, so no case can observe state left
+ *    behind by an earlier one.
+ *  - `sequences` are the deliberate exception: ordered steps replayed
+ *    against **one long-lived** mount, capturing behaviour only a
+ *    persistent server exhibits — which is how adopters actually deploy.
  */
 final class WireConformanceTest extends TestCase
 {
@@ -33,7 +38,7 @@ final class WireConformanceTest extends TestCase
     #[Test]
     public function everyFixtureCaseMatchesByteForByte(): void
     {
-        $cases = self::cases();
+        $cases = self::section('cases');
 
         self::assertCount(18, $cases, 'fixture count changed — the parity contract moved');
 
@@ -58,6 +63,37 @@ final class WireConformanceTest extends TestCase
         }
     }
 
+    #[Test]
+    public function everySequenceReplaysAgainstOneLongLivedMount(): void
+    {
+        $sequences = self::section('sequences');
+
+        self::assertNotEmpty($sequences, 'the long-lived-mount contract must be exercised');
+
+        foreach ($sequences as $sequence) {
+            $tree = str_starts_with($sequence['name'], 'legacy/')
+                ? LockTrees::legacy()
+                : LockTrees::modern();
+
+            // One mount for the whole sequence: the steps are only
+            // meaningful in order, against accumulated state.
+            $dispatcher = self::mount($tree);
+
+            foreach ($sequence['steps'] as $step) {
+                $response = $dispatcher->dispatch($step['request'], self::headers($step));
+
+                $label = $sequence['name'].'/'.$step['name'];
+
+                self::assertSame($step['status'], $response->status, $label.': HTTP status');
+                self::assertSame(
+                    $step['response'],
+                    $response->body,
+                    $label.': wire body must be byte-identical',
+                );
+            }
+        }
+    }
+
     /**
      * Builds a default mount: both eras, the conservative policy, and the
      * fixtures' server identity and cache hints.
@@ -73,6 +109,8 @@ final class WireConformanceTest extends TestCase
     }
 
     /**
+     * Normalises a case's or step's headers to PSR-style multi-value lists.
+     *
      * @param array<string, mixed> $case
      *
      * @return array<string, list<string>>
@@ -88,15 +126,21 @@ final class WireConformanceTest extends TestCase
         return $headers;
     }
 
-    /** @return list<array<string, mixed>> */
-    private static function cases(): array
+    /**
+     * Reads one top-level array from the shared fixture.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function section(string $name): array
     {
         $raw = file_get_contents(self::FIXTURE);
         self::assertIsString($raw, 'wire fixtures must be readable');
 
-        /** @var array{cases: list<array<string, mixed>>} $decoded */
+        /** @var array<string, list<array<string, mixed>>> $decoded */
         $decoded = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
 
-        return $decoded['cases'];
+        self::assertArrayHasKey($name, $decoded, 'fixture is missing the '.$name.' section');
+
+        return $decoded[$name];
     }
 }

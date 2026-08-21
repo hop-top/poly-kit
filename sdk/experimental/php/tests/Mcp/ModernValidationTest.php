@@ -203,30 +203,6 @@ final class ModernValidationTest extends TestCase
     }
 
     #[Test]
-    public function aLongLivedMountReportsCobrasLazyHelpFlagAfterALeafRuns(): void
-    {
-        // Cobra registers a leaf's implicit `--help` flag the first time it
-        // executes, so a persistent mount reports one more property than it
-        // did before. The wire fixtures build a fresh server per case and
-        // never see this; the Go surface still does it, so a port that
-        // skipped it would diverge in exactly the deployment shape adopters
-        // actually run.
-        $bridge = new Bridge(LockTrees::legacy(), Policy::default());
-        $dispatcher = (new Mount())->dispatcher($bridge);
-
-        $before = $dispatcher->dispatch('{"jsonrpc":"2.0","id":1,"method":"tools/list"}', []);
-        self::assertStringNotContainsString('help for ping', $before->body);
-
-        $dispatcher->dispatch(
-            '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ping"}}',
-            [],
-        );
-
-        $after = $dispatcher->dispatch('{"jsonrpc":"2.0","id":3,"method":"tools/list"}', []);
-        self::assertStringContainsString('help for ping', $after->body);
-    }
-
-    #[Test]
     public function aMountMustServeAtLeastOneSpecVersion(): void
     {
         $this->expectException(\InvalidArgumentException::class);
