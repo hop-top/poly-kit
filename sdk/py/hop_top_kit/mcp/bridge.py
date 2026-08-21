@@ -112,6 +112,9 @@ class Command:
     #: Flags inherited by every descendant, mirroring cobra's persistent
     #: flags. Local flags of the same name win.
     persistent_flags: list[Flag] = field(default_factory=list)
+    #: Whether this command gains a ``--help`` flag on first execution,
+    #: mirroring cobra's lazy registration. See :meth:`attach_help_flag`.
+    lazy_help_flag: bool = True
 
     @property
     def has_subcommands(self) -> bool:
@@ -120,6 +123,34 @@ class Command:
     @property
     def runnable(self) -> bool:
         return self.run is not None
+
+    def attach_help_flag(self) -> None:
+        """Register this command's ``--help`` flag, once.
+
+        Models cobra's lazy registration: a command's help flag is not
+        created when the command is declared but when it is first
+        executed. The consequence is visible on the wire — a leaf's
+        ``inputSchema`` gains a ``help`` property after its first
+        ``tools/call``, so two byte-identical ``tools/list`` requests
+        either side of an invocation legitimately return different bytes.
+
+        Surfacing it rather than hiding it is deliberate. The flag is a
+        real, declared input of the command once it exists, and an
+        adopter's process is long-lived, so this is the steady state
+        their clients actually observe — not an artefact of test
+        isolation. Suppressing it would make the schema disagree with the
+        command it describes.
+
+        Idempotent, and skipped entirely when a caller declares its own
+        ``help`` flag or opts out via :attr:`lazy_help_flag`.
+        """
+        if not self.lazy_help_flag:
+            return
+        if any(flag.name == "help" for flag in self.flags):
+            return
+        self.flags.append(
+            Flag(name="help", usage=f"help for {self.name}", type="bool")
+        )
 
 
 @dataclass
@@ -358,7 +389,15 @@ def match_pattern(pattern: str, path: Sequence[str]) -> bool:
 
 
 def _in_process_runner(root: Command) -> Callable[[Invocation], Result]:
-    """Default runner: call the resolved leaf's ``run`` in this process."""
+    """Default runner: call the resolved leaf's ``run`` in this process.
+
+    Execution has one side effect beyond running the command: it attaches
+    the command's ``--help`` flag if it does not have one yet, mirroring
+    cobra's lazy registration (see :meth:`Command.attach_help_flag`). The
+    flag is attached *before* ``run`` is called, so it exists even when
+    the command raises — cobra registers on the execution path, not on
+    success.
+    """
 
     def run(inv: Invocation) -> Result:
         cmd: Command = root
@@ -373,6 +412,7 @@ def _in_process_runner(root: Command) -> Callable[[Invocation], Result]:
             raise UnknownCommandError(
                 f"cmdsurface: unknown command: {' '.join(inv.path)}"
             )
+        cmd.attach_help_flag()
         return cmd.run(inv.flags)
 
     return run

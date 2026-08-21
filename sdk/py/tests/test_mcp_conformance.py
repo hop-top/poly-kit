@@ -43,8 +43,8 @@ FIXTURE = (
 )
 
 
-def load_cases() -> list[dict[str, Any]]:
-    """Read the fixture cases.
+def load_fixture() -> dict[str, Any]:
+    """Read the fixture document.
 
     A missing fixture is a hard failure, not a skip: this suite exists to
     prove parity, and a silently-skipped parity suite is worse than no
@@ -52,7 +52,19 @@ def load_cases() -> list[dict[str, Any]]:
     """
     if not FIXTURE.exists():  # pragma: no cover - fixture ships with the repo
         raise FileNotFoundError(f"wire fixture not found at {FIXTURE}")
-    return json.loads(FIXTURE.read_text())["cases"]
+    return json.loads(FIXTURE.read_text())
+
+
+FIXTURE_DOC = load_fixture()
+
+#: Independent request/response pairs, each replayed against a FRESH handler.
+CASES: list[dict[str, Any]] = FIXTURE_DOC["cases"]
+
+#: Ordered step lists, each replayed against ONE long-lived handler. These
+#: exist because some surface behaviour is only observable across requests:
+#: per-case isolation hides it, and adopters serve from persistent
+#: processes where it is the normal condition.
+SEQUENCES: list[dict[str, Any]] = FIXTURE_DOC.get("sequences", [])
 
 
 # --- the two command trees the fixtures were captured against -------------
@@ -174,15 +186,30 @@ def modern_tree() -> Command:
 
 
 def surface_for(case: dict[str, Any]):
-    """Build a fresh surface for one case.
+    """Build a FRESH surface for one case.
 
-    Fresh per case, deliberately. The fixtures are position-independent:
-    each case is a self-contained request/response pair, and no case
-    depends on another having run first. Sharing one surface across the
-    suite would let per-case state leak forward and turn a passing run
-    into an artefact of iteration order.
+    Fresh per case, deliberately. Every entry under ``cases`` is a
+    self-contained request/response pair that must not depend on any
+    other having run first, so each gets a handler that has served
+    nothing else.
+
+    That isolation is also what made a real property invisible for a
+    while, which is why ``sequences`` exists alongside: see
+    :func:`test_wire_sequence_is_byte_exact`.
     """
     tree = legacy_tree() if case["era"] == "legacy" else modern_tree()
+    return mount_mcp(Bridge(tree))
+
+
+def surface_for_sequence(sequence: dict[str, Any]):
+    """Build ONE long-lived surface for a whole sequence.
+
+    The opposite of :func:`surface_for` and the entire point of the
+    section: the steps are replayed in order against a single handler, so
+    state a request leaves behind is visible to the next one — which is
+    how an adopter's persistent process actually serves traffic.
+    """
+    tree = legacy_tree() if sequence["era"] == "legacy" else modern_tree()
     return mount_mcp(Bridge(tree))
 
 
@@ -194,9 +221,6 @@ def request_for(case: dict[str, Any]) -> Request:
         headers=Headers.from_mapping(case.get("headers")),
         body=case["request"].encode("utf-8"),
     )
-
-
-CASES = load_cases()
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
@@ -215,6 +239,66 @@ def test_wire_case_is_byte_exact(case: dict[str, Any]) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "sequence", SEQUENCES, ids=[s["name"] for s in SEQUENCES]
+)
+def test_wire_sequence_is_byte_exact(sequence: dict[str, Any]) -> None:
+    """Replay one sequence's steps, in order, against ONE handler.
+
+    Sequences pin behaviour that only exists *between* requests. The one
+    in the fixture today is cobra's lazily-attached ``--help`` flag: a
+    leaf gains it on first execution, so two byte-identical
+    ``tools/list`` requests either side of a ``tools/call`` legitimately
+    return different bytes. Per-case isolation cannot see that, and it is
+    the normal condition in an adopter's long-lived process.
+
+    Each step asserts on the *cumulative* state, so a step that passes
+    only because an earlier one failed to mutate anything still fails
+    here — the step index is reported to make that obvious.
+    """
+    surface = surface_for_sequence(sequence)
+
+    for index, step in enumerate(sequence["steps"]):
+        response = surface.handle(request_for(step))
+        label = f"{sequence['name']} step {index} ({step['name']})"
+
+        assert response.status == step["status"], (
+            f"{label}: status {response.status} != {step['status']}"
+        )
+        expected = step["response"].encode("utf-8")
+        assert response.body == expected, (
+            f"{label} body mismatch\n"
+            f"  expected: {expected!r}\n"
+            f"  actual:   {response.body!r}"
+        )
+
+
+def test_sequences_actually_depend_on_order() -> None:
+    """A sequence must contain at least one order-dependent step.
+
+    Without this, a sequence whose steps all happened to be independent
+    would pass while proving nothing, and the section would quietly
+    decay into a slower copy of ``cases``. The guard looks for two steps
+    with identical request bytes and differing responses — the shape
+    that per-case isolation structurally cannot express.
+
+    Ids are stripped before grouping: they are per-step counters carrying
+    no protocol meaning, and leaving them in would make every step
+    trivially unique and this guard vacuous.
+    """
+    assert SEQUENCES, "fixture declares no sequences"
+
+    for sequence in SEQUENCES:
+        by_request: dict[str, set[str]] = {}
+        for step in sequence["steps"]:
+            key = _id_stripped(step["request"])
+            by_request.setdefault(key, set()).add(_id_stripped(step["response"]))
+        assert any(len(responses) > 1 for responses in by_request.values()), (
+            f"{sequence['name']}: no step pair shares a request but differs in "
+            "response, so nothing here needs a long-lived mount"
+        )
+
+
 def test_fixture_covers_both_eras() -> None:
     """Guard against a fixture edit that silently drops one era's coverage."""
     eras = {case["era"] for case in CASES}
@@ -223,15 +307,21 @@ def test_fixture_covers_both_eras() -> None:
 
 
 def test_identical_requests_expect_identical_responses() -> None:
-    """No case may depend on another having run first.
+    """No entry under ``cases`` may depend on another having run first.
 
-    The fixtures were once generated from one long-lived server per era,
+    ``cases`` were once generated from one long-lived server per era,
     which let a lazily-registered flag from an earlier invocation leak
     into a later ``tools/list`` — two byte-identical requests expecting
     different responses purely by position. That is fixed upstream, and
-    this guard keeps it fixed: it groups cases by (era, headers, body)
-    and asserts each group agrees on one answer, so the artefact cannot
-    silently return.
+    this guard keeps it fixed: it groups cases by (era, routing headers,
+    body) and asserts each group agrees on one answer.
+
+    **Scoped to ``CASES`` on purpose — never widen it to ``SEQUENCES``.**
+    Cross-request state is a bug in a case and the whole point of a
+    sequence, so the same grouping applied there would fail on exactly
+    the property the section exists to pin. The two sections encode
+    opposite contracts and each needs its own guard;
+    :func:`test_sequences_actually_depend_on_order` is the sequence half.
     """
     from collections import defaultdict
 

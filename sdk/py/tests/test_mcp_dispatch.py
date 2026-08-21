@@ -25,6 +25,7 @@ from hop_top_kit.mcp import (
     ERA_MODERN,
     Bridge,
     Command,
+    Flag,
     Headers,
     Request,
     Result,
@@ -355,3 +356,182 @@ def test_parse_error_is_identical_regardless_of_headers() -> None:
     )
     assert bare.status == marked.status == 400
     assert bare.body == marked.body
+
+
+# --- lazy help-flag registration -------------------------------------------
+#
+# The fixture's sequence pins the observable wire consequence: one
+# tools/call on ping, and the next tools/list reports a help property.
+# It cannot reach the properties below, because it invokes exactly one
+# leaf exactly once. Each of these is a way the mechanism could be wrong
+# while still replaying that sequence byte-exactly.
+
+
+def help_tree() -> Command:
+    return Command(
+        name="root",
+        children=[
+            Command(
+                name="ping",
+                short="Ping the server",
+                run=lambda flags: Result(stdout="pong\n"),
+                annotations={"kit/side-effect": "read"},
+            ),
+            Command(
+                name="other",
+                short="Other",
+                run=lambda flags: Result(stdout="other\n"),
+            ),
+        ],
+    )
+
+
+def leaf_properties(app, tool: str) -> dict:
+    """The declared inputSchema properties of one tool, via tools/list."""
+    response = app.handle(post({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))
+    tools = json.loads(response.body)["result"]["tools"]
+    return next(t for t in tools if t["name"] == tool)["inputSchema"]["properties"]
+
+
+def invoke(app, tool: str):
+    return app.handle(
+        post(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": tool},
+            }
+        )
+    )
+
+
+def test_repeated_invocation_attaches_the_help_flag_once() -> None:
+    """Attachment is idempotent, so the schema cannot grow without bound.
+
+    A non-idempotent implementation still replays the fixture's sequence
+    byte-exactly, because that sequence invokes its leaf exactly once.
+    Here the leaf is invoked repeatedly, which is what an adopter's
+    long-lived process does — and where a duplicate-appending bug turns
+    into an ever-growing ``inputSchema``.
+    """
+    tree = help_tree()
+    app = mount_mcp(Bridge(tree))
+    for _ in range(5):
+        invoke(app, "ping")
+
+    ping = next(c for c in tree.children if c.name == "ping")
+    assert [f.name for f in ping.flags] == ["help"]
+    assert list(leaf_properties(app, "ping")) == ["help"]
+
+
+def test_the_flag_attaches_only_to_the_invoked_leaf() -> None:
+    """Invoking one command must not alter any other command's schema."""
+    app = mount_mcp(Bridge(help_tree()))
+    invoke(app, "ping")
+
+    assert "help" in leaf_properties(app, "ping")
+    assert leaf_properties(app, "other") == {}
+
+
+def test_listing_alone_never_attaches_the_flag() -> None:
+    """It is execution that registers the flag, not enumeration.
+
+    Were listing enough, the very first ``tools/list`` would already
+    report ``help`` and the fixture's before/after distinction would
+    collapse.
+    """
+    app = mount_mcp(Bridge(help_tree()))
+    for _ in range(3):
+        leaf_properties(app, "ping")
+    assert leaf_properties(app, "ping") == {}
+
+
+def test_a_blocked_invocation_does_not_attach_the_flag() -> None:
+    """A call refused before execution never reaches the registration point.
+
+    The destructive ceiling rejects inside the bridge, ahead of the
+    runner, so a blocked leaf's schema must be untouched — otherwise the
+    schema would advertise an input for a command this surface will never
+    run.
+    """
+    tree = Command(
+        name="root",
+        children=[
+            Command(
+                name="purge",
+                short="Purge",
+                run=lambda flags: Result(stdout="purged\n"),
+                annotations={"kit/side-effect": "destructive"},
+            )
+        ],
+    )
+    app = mount_mcp(Bridge(tree))
+    response = invoke(app, "purge")
+    body = json.loads(response.body)
+    assert body["result"]["isError"] is True
+
+    assert leaf_properties(app, "purge") == {}
+
+
+def test_a_failing_command_still_attaches_the_flag() -> None:
+    """Registration happens on the execution path, not on success.
+
+    cobra registers the flag when it runs the command, so a command that
+    raises has still had its flag created by the time the error surfaces.
+    """
+    def explode(_flags):
+        raise RuntimeError("boom")
+
+    tree = Command(
+        name="root",
+        children=[Command(name="boom", short="Boom", run=explode)],
+    )
+    app = mount_mcp(Bridge(tree))
+    body = json.loads(invoke(app, "boom").body)
+    assert body["result"]["isError"] is True
+
+    assert "help" in leaf_properties(app, "boom")
+
+
+def test_a_caller_declared_help_flag_is_never_overwritten() -> None:
+    """An explicit ``help`` flag wins; lazy registration defers to it."""
+    tree = Command(
+        name="root",
+        children=[
+            Command(
+                name="ping",
+                short="Ping",
+                run=lambda flags: Result(),
+                flags=[Flag("help", "custom help text", "string")],
+            )
+        ],
+    )
+    app = mount_mcp(Bridge(tree))
+    invoke(app, "ping")
+    assert leaf_properties(app, "ping") == {
+        "help": {"type": "string", "description": "custom help text"}
+    }
+
+
+def test_lazy_help_flag_can_be_opted_out() -> None:
+    """A tree not built on cobra should not inherit cobra's quirk.
+
+    The behaviour is real for kit's own cobra-backed trees, but it is a
+    property of that framework rather than of MCP, so an adopter driving
+    a different one can switch it off.
+    """
+    tree = Command(
+        name="root",
+        children=[
+            Command(
+                name="ping",
+                short="Ping",
+                run=lambda flags: Result(),
+                lazy_help_flag=False,
+            )
+        ],
+    )
+    app = mount_mcp(Bridge(tree))
+    invoke(app, "ping")
+    assert leaf_properties(app, "ping") == {}
