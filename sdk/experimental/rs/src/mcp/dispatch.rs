@@ -364,10 +364,49 @@ mod tests {
     fn bare_meta_without_the_reserved_key_stays_legacy() {
         // The progressToken non-marker: a legacy client legitimately
         // sends _meta, and must not be routed modern.
-        let req = parse(
-            r#"{"jsonrpc":"2.0","id":7,"method":"tools/list","params":{"_meta":{"progressToken":"p1"}}}"#,
-        );
-        assert_eq!(detect_era(&[], &req), Era::Legacy);
+        //
+        // The method here is deliberately NOT `initialize`. D2 returns
+        // legacy for `initialize` before M3 is ever consulted, so an
+        // `initialize` payload would pass even if M3 wrongly fired on
+        // bare `_meta` — the rule would look pinned while being
+        // untested. `tools/list` makes M3 the only rule that could
+        // route these modern.
+        for params in [
+            // The OTel and progress keys real legacy clients send.
+            r#"{"_meta":{"progressToken":"p1"}}"#,
+            r#"{"_meta":{"traceparent":"00-x-y-01","tracestate":"a=1"}}"#,
+            // An empty _meta object is still not a marker.
+            r#"{"_meta":{}}"#,
+            // A key that merely resembles the reserved one.
+            r#"{"_meta":{"protocolVersion":"2026-07-28"}}"#,
+            r#"{"_meta":{"io.modelcontextprotocol/clientCapabilities":{}}}"#,
+        ] {
+            let req = parse(&format!(
+                r#"{{"jsonrpc":"2.0","id":7,"method":"tools/list","params":{params}}}"#
+            ));
+            assert_eq!(
+                detect_era(&[], &req),
+                Era::Legacy,
+                "bare _meta must not route modern: {params}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_reserved_protocol_version_key_fires_m3() {
+        // The positive half of the same rule, also on a non-initialize
+        // method: the reserved key alone routes modern, and only its
+        // presence matters — the value is never inspected.
+        for value in ["\"2026-07-28\"", "null", "123", "{}", "\"anything\""] {
+            let req = parse(&format!(
+                r#"{{"jsonrpc":"2.0","id":7,"method":"tools/list","params":{{"_meta":{{"io.modelcontextprotocol/protocolVersion":{value}}}}}}}"#
+            ));
+            assert_eq!(
+                detect_era(&[], &req),
+                Era::Modern,
+                "reserved key must fire M3 whatever its value: {value}"
+            );
+        }
     }
 
     #[test]

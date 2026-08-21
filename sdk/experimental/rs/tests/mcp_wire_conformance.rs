@@ -166,7 +166,7 @@ fn surface_for(case: &Case) -> Surface {
 #[test]
 fn every_fixture_case_is_byte_exact() {
     let cases = load_cases();
-    assert_eq!(cases.len(), 17, "fixture count changed; re-review the port");
+    assert_eq!(cases.len(), 18, "fixture count changed; re-review the port");
 
     let mut failures = Vec::new();
     for case in &cases {
