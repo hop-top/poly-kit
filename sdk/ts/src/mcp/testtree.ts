@@ -119,15 +119,47 @@ function modernLeaves(): TreeLeaf[] {
 /**
  * Builds a bridge over a fixed leaf set, applying the default policy
  * on invoke so the destructive ceiling is exercised exactly as the Go
- * bridge exercises it. Stateless: the leaf set a request sees never
- * depends on what an earlier request did.
+ * bridge exercises it.
+ *
+ * The bridge models cobra's lazy help-flag attachment, which is real
+ * observable behavior of the Go reference rather than a fixture
+ * artifact: cobra attaches a command's `--help` flag on that
+ * command's FIRST execution, so a leaf's schema legitimately gains a
+ * `help` property once it has been invoked. On a long-lived mount the
+ * same `tools/list` bytes therefore produce different responses
+ * before and after a `tools/call` — which is what adopters serving
+ * from a persistent process actually observe.
+ *
+ * The rule is applied generically to whichever leaf was executed, not
+ * special-cased to `ping` or to any expected fixture bytes: a bridge
+ * that hardcoded the answer would pass the sequence while still
+ * misrepresenting the mechanism.
+ *
+ * `leaves()` recomputes from the mutable execution set on every call,
+ * which is what lets the surface observe the change — the library
+ * re-reads `bridge.leaves()` per request, so a snapshot taken once at
+ * construction would hide this behavior.
  */
 function makeBridge(source: () => TreeLeaf[]): McpBridge {
   const leaves = source();
   const policy = defaultPolicy();
+  // Leaf keys whose command has been executed at least once, and has
+  // therefore had its help flag attached by cobra.
+  const executed = new Set<string>();
 
   return {
-    leaves: (): Leaf[] => leaves,
+    leaves: (): Leaf[] =>
+      leaves.map((l) => {
+        const key = l.path.join('.');
+        if (!executed.has(key)) return l;
+        return {
+          ...l,
+          properties: {
+            ...l.properties,
+            help: bool(`help for ${l.path[l.path.length - 1]}`),
+          },
+        };
+      }),
     invoke(inv: Invocation): InvokeResult {
       const key = inv.path.join('.');
       const leaf = leaves.find((l) => l.path.join('.') === key);
@@ -137,6 +169,10 @@ function makeBridge(source: () => TreeLeaf[]): McpBridge {
       if (!policyAllowed(policy, leaf.class ?? {}, inv.meta.surface)) {
         throw new DestructiveBlockedError(leaf.path.join(' '), inv.meta.surface);
       }
+      // Cobra attaches the help flag as part of executing the command,
+      // so this happens only once the policy gate has let it through:
+      // a blocked invocation never runs, and never attaches the flag.
+      executed.add(key);
       return { stdout: leaf.stdout ?? '', exitCode: 0 };
     },
   };
