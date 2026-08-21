@@ -29,9 +29,13 @@ import (
 	"flag"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"hop.top/kit/go/transport/api"
 )
 
 // rawPOSTURL is rawPOST against an explicit base URL. rawPOST takes a
@@ -88,6 +92,30 @@ type mcpFixtureDoc struct {
 	Tree      string           `json:"command_tree"`
 	Cases     []mcpFixtureCase `json:"cases"`
 	Sequences []mcpFixtureSeq  `json:"sequences"`
+	MRTR      *mcpFixtureMRTR  `json:"mrtr"`
+}
+
+// mcpFixtureMRTR pins the multi-round-trip confirmation loop. It cannot
+// be a plain case: round 1 mints a fresh, time-bound requestState whose
+// MAC differs on every run, so only its FRAMING is checkable. Round 2
+// echoes that state back and IS byte-exact, because the response
+// carries no MAC-derived value.
+//
+// A port that implements only a header gate — no elicitation loop —
+// fails round 1 on resultType and never produces a state to replay.
+type mcpFixtureMRTR struct {
+	Why               string            `json:"why"`
+	ConfirmationKey   string            `json:"confirmation_key"`
+	Round1Headers     map[string]string `json:"round1_headers"`
+	Round1Request     string            `json:"round1_request"`
+	Round1Status      int               `json:"round1_status"`
+	Round1MustHave    map[string]any    `json:"round1_must_have"`
+	Round1MustNotHave []string          `json:"round1_must_not_have"`
+	StateFraming      string            `json:"state_framing"`
+	Round2Headers     map[string]string `json:"round2_headers"`
+	Round2Template    string            `json:"round2_request_template"`
+	Round2Status      int               `json:"round2_status"`
+	Round2Response    string            `json:"round2_response"`
 }
 
 // mcpFixtureSeq is an ordered exchange against ONE long-lived mount.
@@ -132,6 +160,14 @@ func fixtureComment() []string {
 		"steps replayed against ONE long-lived mount, capturing behavior",
 		"that only a persistent server exhibits — which is how adopters",
 		"actually deploy. Run both.",
+		"",
+		"`mrtr` is the third section and the only one that is not",
+		"byte-exact end to end. Round 1 mints a fresh, time-bound",
+		"requestState whose MAC differs every run, so only its framing is",
+		"checkable; round 2 echoes that state back and IS byte-exact.",
+		"Mount with `confirmation_key` — the state is a MAC over it, so a",
+		"different key cannot replay round 2. A port that gates on the",
+		"X-Confirm-Token header alone fails round 1 outright.",
 		"",
 		"See ADR 0043 for the polyglot surface design and ADR 0042 for the",
 		"normative era-detection rules.",
@@ -352,6 +388,78 @@ func mcpFixtureSequences(t *testing.T) []mcpFixtureSeq {
 	}}
 }
 
+// mcpFixtureMRTRCase drives the real confirmation loop and captures
+// both rounds. The key is the fixture's own, published in the file so
+// every runner mounts with the same secret — the state is a MAC over
+// it, so a runner using a different key cannot replay round 2.
+func mcpFixtureMRTRCase(t *testing.T) *mcpFixtureMRTR {
+	t.Helper()
+	root, _ := mrtrLockTree()
+	b := New(root)
+	r := api.NewRouter()
+	if err := MountMCP(b, r, WithMCPConfirmationKey(mrtrLockKey)); err != nil {
+		t.Fatalf("MountMCP: %v", err)
+	}
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	h1 := map[string]string{
+		headerMCPProtocolVersion: mcpModernProtocolVersion,
+		headerMCPMethod:          "tools/call",
+		headerMCPName:            "purge",
+	}
+	body1 := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"purge","arguments":{"target":"data"},"_meta":{"io.modelcontextprotocol/clientCapabilities":{"elicitation":{}},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`
+	st1, _, raw1 := rawPOSTURL(t, srv.URL, "/mcp", h1, []byte(body1))
+
+	var decoded struct {
+		Result map[string]any `json:"result"`
+	}
+	if err := json.Unmarshal(raw1, &decoded); err != nil {
+		t.Fatalf("round1 decode: %v\nbody: %s", err, raw1)
+	}
+	state, _ := decoded.Result["requestState"].(string)
+	if state == "" {
+		t.Fatalf("round1 produced no requestState: %s", raw1)
+	}
+
+	// Round 2 echoes the state back with an accept answer. Emitted as a
+	// TEMPLATE: the runner substitutes the state IT received, because
+	// its own round 1 mints a different MAC.
+	h2 := map[string]string{
+		headerMCPProtocolVersion: mcpModernProtocolVersion,
+		headerMCPMethod:          "tools/call",
+		headerMCPName:            "purge",
+	}
+	tmpl := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"purge","arguments":{"target":"data"},"requestState":"{{requestState}}","inputResponses":{"confirm":{"action":"accept"}},"_meta":{"io.modelcontextprotocol/clientCapabilities":{"elicitation":{}},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`
+	body2 := strings.Replace(tmpl, "{{requestState}}", state, 1)
+	st2, _, raw2 := rawPOSTURL(t, srv.URL, "/mcp", h2, []byte(body2))
+
+	return &mcpFixtureMRTR{
+		Why: "multi-round-trip confirmation. A RequiresConfirmation leaf " +
+			"invoked by an elicitation-capable client must return " +
+			"resultType=input_required with an opaque requestState, NOT " +
+			"execute. The client re-calls echoing that state plus an " +
+			"accept answer, and only then does the leaf run. A port that " +
+			"gates on the X-Confirm-Token header alone fails round 1.",
+		ConfirmationKey: string(mrtrLockKey),
+		Round1Headers:   h1,
+		Round1Request:   body1,
+		Round1Status:    st1,
+		Round1MustHave: map[string]any{
+			"resultType":                        mcpResultTypeInputRequired,
+			"inputRequests.confirm.method":      "elicitation/create",
+			"inputRequests.confirm.params.mode": "form",
+		},
+		// Interim input_required results are never cached (ADR 0042).
+		Round1MustNotHave: []string{"ttlMs", "cacheScope"},
+		StateFraming:      "v1.<expiry-base10>.<mac> — three dot-separated parts; the mac is production-derived and never compared",
+		Round2Headers:     h2,
+		Round2Template:    tmpl,
+		Round2Status:      st2,
+		Round2Response:    string(raw2),
+	}
+}
+
 func fixturePath(t *testing.T) string {
 	t.Helper()
 	// go/transport/cmdsurface -> repo root
@@ -369,6 +477,7 @@ func TestGenerateMCPWireFixtures(t *testing.T) {
 		Tree:      "legacyLockTree (see surface_mcp_legacy_lock_test.go)",
 		Cases:     cases,
 		Sequences: mcpFixtureSequences(t),
+		MRTR:      mcpFixtureMRTRCase(t),
 	}
 	encoded, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {

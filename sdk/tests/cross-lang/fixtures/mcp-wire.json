@@ -29,6 +29,14 @@
     "that only a persistent server exhibits — which is how adopters",
     "actually deploy. Run both.",
     "",
+    "`mrtr` is the third section and the only one that is not",
+    "byte-exact end to end. Round 1 mints a fresh, time-bound",
+    "requestState whose MAC differs every run, so only its framing is",
+    "checkable; round 2 echoes that state back and IS byte-exact.",
+    "Mount with `confirmation_key` — the state is a MAC over it, so a",
+    "different key cannot replay round 2. A port that gates on the",
+    "X-Confirm-Token header alone fails round 1 outright.",
+    "",
     "See ADR 0043 for the polyglot surface design and ADR 0042 for the",
     "normative era-detection rules."
   ],
@@ -261,5 +269,34 @@
         }
       ]
     }
-  ]
+  ],
+  "mrtr": {
+    "why": "multi-round-trip confirmation. A RequiresConfirmation leaf invoked by an elicitation-capable client must return resultType=input_required with an opaque requestState, NOT execute. The client re-calls echoing that state plus an accept answer, and only then does the leaf run. A port that gates on the X-Confirm-Token header alone fails round 1.",
+    "confirmation_key": "mrtr-lock-suite-shared-secret-32b",
+    "round1_headers": {
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": "purge"
+    },
+    "round1_request": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"purge\",\"arguments\":{\"target\":\"data\"},\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{\"elicitation\":{}},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+    "round1_status": 200,
+    "round1_must_have": {
+      "inputRequests.confirm.method": "elicitation/create",
+      "inputRequests.confirm.params.mode": "form",
+      "resultType": "input_required"
+    },
+    "round1_must_not_have": [
+      "ttlMs",
+      "cacheScope"
+    ],
+    "state_framing": "v1.\u003cexpiry-base10\u003e.\u003cmac\u003e — three dot-separated parts; the mac is production-derived and never compared",
+    "round2_headers": {
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": "purge"
+    },
+    "round2_request_template": "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"purge\",\"arguments\":{\"target\":\"data\"},\"requestState\":\"{{requestState}}\",\"inputResponses\":{\"confirm\":{\"action\":\"accept\"}},\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{\"elicitation\":{}},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+    "round2_status": 200,
+    "round2_response": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}},\"content\":[{\"text\":\"purged data\\n\",\"type\":\"text\"}],\"isError\":false,\"resultType\":\"complete\"}}\n"
+  }
 }
