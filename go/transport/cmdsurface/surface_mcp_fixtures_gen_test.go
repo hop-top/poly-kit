@@ -340,6 +340,14 @@ func mcpFixtureSequences(t *testing.T) []mcpFixtureSeq {
 				`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ping"}}`),
 			step("list-after-invoke", "identical request, now reports help",
 				`{"jsonrpc":"2.0","id":3,"method":"tools/list"}`),
+			// Invoking the same leaf again must not attach a SECOND help
+			// flag. A port whose attachment is not idempotent grows the
+			// property list per call; with only one invoke in the
+			// sequence nothing would notice.
+			step("invoke-ping-again", "second execution attaches nothing new",
+				`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ping"}}`),
+			step("list-after-second-invoke", "still exactly one help flag",
+				`{"jsonrpc":"2.0","id":5,"method":"tools/list"}`),
 		},
 	}}
 }

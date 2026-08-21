@@ -242,6 +242,22 @@
           "request": "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}",
           "status": 200,
           "response": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"tools\":[{\"description\":\"Deploy\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"deploy\"},{\"description\":\"Ping the server\",\"inputSchema\":{\"properties\":{\"help\":{\"description\":\"help for ping\",\"type\":\"boolean\"}},\"type\":\"object\"},\"name\":\"ping\"},{\"description\":\"Locked\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"secret\"},{\"description\":\"Add a widget\",\"inputSchema\":{\"properties\":{\"count\":{\"description\":\"widget count\",\"type\":\"integer\"},\"force\":{\"description\":\"force flag\",\"type\":\"boolean\"},\"name\":{\"description\":\"widget name\",\"type\":\"string\"},\"tag\":{\"description\":\"tag list\",\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"required\":[\"name\"],\"type\":\"object\"},\"name\":\"widget.add\"},{\"description\":\"Delete a widget\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"widget.delete\"}]}}\n"
+        },
+        {
+          "name": "invoke-ping-again",
+          "era": "legacy",
+          "why": "second execution attaches nothing new",
+          "request": "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"ping\"}}",
+          "status": 200,
+          "response": "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"text\":\"pong\\n\",\"type\":\"text\"}],\"isError\":false}}\n"
+        },
+        {
+          "name": "list-after-second-invoke",
+          "era": "legacy",
+          "why": "still exactly one help flag",
+          "request": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/list\"}",
+          "status": 200,
+          "response": "{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"tools\":[{\"description\":\"Deploy\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"deploy\"},{\"description\":\"Ping the server\",\"inputSchema\":{\"properties\":{\"help\":{\"description\":\"help for ping\",\"type\":\"boolean\"}},\"type\":\"object\"},\"name\":\"ping\"},{\"description\":\"Locked\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"secret\"},{\"description\":\"Add a widget\",\"inputSchema\":{\"properties\":{\"count\":{\"description\":\"widget count\",\"type\":\"integer\"},\"force\":{\"description\":\"force flag\",\"type\":\"boolean\"},\"name\":{\"description\":\"widget name\",\"type\":\"string\"},\"tag\":{\"description\":\"tag list\",\"items\":{\"type\":\"string\"},\"type\":\"array\"}},\"required\":[\"name\"],\"type\":\"object\"},\"name\":\"widget.add\"},{\"description\":\"Delete a widget\",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":\"widget.delete\"}]}}\n"
         }
       ]
     }
