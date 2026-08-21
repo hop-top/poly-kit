@@ -13,7 +13,8 @@ use HopTop\Kit\Mcp\Result;
  *
  * The legacy and modern fixture cases run against *different* trees — the
  * modern one declares fewer flags on `widget add` — so the two are kept
- * separate here rather than folded into one shared tree.
+ * separate here rather than folded into one shared tree. The `mrtr`
+ * section runs against a third, deliberately isolated from both.
  */
 final class LockTrees
 {
@@ -53,6 +54,43 @@ final class LockTrees
         );
 
         return self::tree($add);
+    }
+
+    /**
+     * The tree behind the `mrtr` fixture section.
+     *
+     * A single requires-confirmation leaf, isolated from both lock trees.
+     * `purge` echoes its `--target` flag, so the accepted round-2 response
+     * proves the leaf ran with the arguments the state was bound to rather
+     * than merely that it ran.
+     *
+     * The counter is what makes round 1 checkable at all: the whole point
+     * of the first round is that the leaf does NOT run, and only an
+     * execution count can prove a negative.
+     *
+     * @return array{Command, ExecutionCounter}
+     */
+    public static function mrtr(): array
+    {
+        $counter = new ExecutionCounter();
+
+        $purge = new Command(
+            name: 'purge',
+            description: 'Purge a target',
+            flags: [new FlagSpec('target', 'string', 'what to purge')],
+            annotations: [
+                'kit/side-effect' => 'write',
+                'kit/requires-confirmation' => 'true',
+            ],
+            runner: static function (array $arguments) use ($counter): Result {
+                $counter->n++;
+                $target = $arguments['target'] ?? '';
+
+                return new Result(stdout: \sprintf("purged %s\n", \is_string($target) ? $target : ''));
+            },
+        );
+
+        return [(new Command(name: 'root'))->addCommand($purge), $counter];
     }
 
     /** Everything except `widget add` is identical between the two trees. */
