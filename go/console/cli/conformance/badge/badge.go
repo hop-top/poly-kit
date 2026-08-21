@@ -12,7 +12,7 @@
 //   - emit ungradable seed (used by kit init / scaffold):
 //     kit conformance badge --emit-seed
 //
-// Output defaults to .12fcc.json in CWD; override with -o / --output.
+// Output defaults to .12fc.json in CWD; override with -o / --output.
 // The leaf never reaches the network; library callers writing custom
 // regen pipelines import hop.top/kit/go/conformance/badge directly.
 package badge
@@ -37,7 +37,7 @@ func Cmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "badge",
 		Short: "Write the shields.io endpoint-badge JSON for a 12fcc matrix",
-		Long: `Generate the .12fcc.json file consumed by the shields.io
+		Long: `Generate the .12fc.json file consumed by the shields.io
 endpoint badge embedded in the project's README.
 
 Two modes:
@@ -50,7 +50,7 @@ Two modes:
                     by kit init so a freshly scaffolded project's badge
                     renders grey from day 1 instead of broken.
 
-The output path defaults to .12fcc.json in the current directory;
+The output path defaults to .12fc.json in the current directory;
 override with -o / --output.
 
 The matrix file is a JSON object with the shape:
@@ -76,7 +76,7 @@ tier is one of "must" | "should" | "may"; status is one of
 	}
 	cmd.Flags().StringVar(&f.matrix, "matrix", "", "path to per-factor matrix JSON")
 	cmd.Flags().BoolVar(&f.emitSeed, "emit-seed", false, "write an ungradable seed (skips --matrix)")
-	cmd.Flags().StringVarP(&f.output, "output", "o", ".12fcc.json", "output path for the shields endpoint JSON")
+	cmd.Flags().StringVarP(&f.output, "output", "o", ".12fc.json", "output path for the shields endpoint JSON")
 
 	cli.SetSideEffect(cmd, cli.SideEffectWriteLocal)
 	cli.SetIdempotency(cmd, cli.IdempotencyYes)
@@ -87,8 +87,8 @@ tier is one of "must" | "should" | "may"; status is one of
 			Command: "kit conformance badge --matrix=docs/12-factor-matrix.json"},
 	})
 	_ = cli.SetNextSteps(cmd, []cli.NextStep{
-		{When: "after kit init", Suggest: "commit .12fcc.json alongside the README so the badge renders grey until the first conformance run"},
-		{When: "on regen", Suggest: "diff .12fcc.json before commit; verdict drift is the badge color change"},
+		{When: "after kit init", Suggest: "commit .12fc.json alongside the README so the badge renders grey until the first conformance run"},
+		{When: "on regen", Suggest: "diff .12fc.json before commit; verdict drift is the badge color change"},
 	})
 	return cmd
 }

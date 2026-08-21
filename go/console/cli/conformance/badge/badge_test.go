@@ -43,8 +43,8 @@ func runLeaf(t *testing.T, dir string, args ...string) (badgeJSON []byte, stdout
 	if err := cmd.ExecuteContext(t.Context()); err != nil {
 		t.Fatalf("leaf execute: %v\nstdout: %s", err, out.String())
 	}
-	// Determine output path: --output flag, default .12fcc.json.
-	outPath := filepath.Join(dir, ".12fcc.json")
+	// Determine output path: --output flag, default .12fc.json.
+	outPath := filepath.Join(dir, ".12fc.json")
 	for i, a := range args {
 		if (a == "-o" || a == "--output") && i+1 < len(args) {
 			outPath = args[i+1]
@@ -77,7 +77,7 @@ func chdirTemp(t *testing.T) string {
 func TestLeaf_EmitSeed_WritesUngradable(t *testing.T) {
 	dir := chdirTemp(t)
 	data, stdout := runLeaf(t, dir, "--emit-seed")
-	if !strings.Contains(stdout, ".12fcc.json") {
+	if !strings.Contains(stdout, ".12fc.json") {
 		t.Errorf("stdout did not mention output path: %q", stdout)
 	}
 	var got map[string]any
@@ -114,8 +114,8 @@ func TestLeaf_RespectsOutputFlag(t *testing.T) {
 		t.Fatalf("custom output not written: %v", err)
 	}
 	// Default path should not be created.
-	if _, err := os.Stat(filepath.Join(dir, ".12fcc.json")); !os.IsNotExist(err) {
-		t.Errorf("default .12fcc.json was also created; want only custom path")
+	if _, err := os.Stat(filepath.Join(dir, ".12fc.json")); !os.IsNotExist(err) {
+		t.Errorf("default .12fc.json was also created; want only custom path")
 	}
 }
 

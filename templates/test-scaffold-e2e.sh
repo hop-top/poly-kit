@@ -605,8 +605,8 @@ assert_file_exists "$TEST1_DIR/Makefile" "test1 Makefile"
 assert_file_exists "$TEST1_DIR/.git/config" "test1 git init"
 assert_file_exists "$TEST1_DIR/.github/copilot-instructions.md" \
   "test1 copilot instructions"
-assert_file_exists "$TEST1_DIR/.12fcc.json" "test1 12fcc seed"
-assert_file_contains "$TEST1_DIR/.12fcc.json" \
+assert_file_exists "$TEST1_DIR/.12fc.json" "test1 12fcc seed"
+assert_file_contains "$TEST1_DIR/.12fc.json" \
   "ungradable" "test1 12fcc seed is ungradable until first conformance run"
 assert_no_placeholders "$TEST1_DIR" "test1"
 assert_file_contains "$TEST1_DIR/.github/copilot-instructions.md" \
@@ -638,11 +638,11 @@ assert_dir_exists "$TEST2_DIR/py" "test2 py/ dir"
 assert_file_exists "$TEST2_DIR/Makefile" "test2 root Makefile"
 assert_file_contains "$TEST2_DIR/Makefile" 'MAKE) -C go' \
   "test2 Makefile delegates to go"
-assert_file_exists "$TEST2_DIR/.12fcc.json" \
+assert_file_exists "$TEST2_DIR/.12fc.json" \
   "test2 polyglot 12fcc seed at root"
-assert_file_contains "$TEST2_DIR/.12fcc.json" "ungradable" \
+assert_file_contains "$TEST2_DIR/.12fc.json" "ungradable" \
   "test2 polyglot 12fcc seed at root is ungradable"
-assert_file_exists "$TEST2_DIR/go/.12fcc.json" \
+assert_file_exists "$TEST2_DIR/go/.12fc.json" \
   "test2 polyglot 12fcc seed under go/"
 assert_no_placeholders "$TEST2_DIR" "test2"
 assert_license_file "$TEST2_DIR" "Apache-2.0" "Test Author"
