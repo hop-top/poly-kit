@@ -30,6 +30,21 @@ use Throwable;
  * client controls connect / total budgets via the options below.
  *
  * Body shape: `application/x-ndjson` — one JSON envelope per line.
+ *
+ * # --offline
+ *
+ * This sink holds a caller-supplied client, so it inherits whatever
+ * policy that client carries. It is NOT guarded here: constructing the
+ * client is the adopter's choice, and silently rewriting its handler
+ * stack would override a stack they deliberately built.
+ *
+ * Adopters wiring this sink under a CLI that honours `--offline` should
+ * guard the client they pass — `OfflineGuard::push($stack)` for Guzzle,
+ * or `OfflineGuardClient::wrap()` for any PSR-18 client. Without that,
+ * telemetry keeps shipping while `--offline` is set. Note that a blocked
+ * flush is not fatal either way: `sendBatch()` already treats any
+ * transport throwable as a dropped batch, so the guard degrades to
+ * dropping events rather than failing the command.
  */
 final class HttpsSink implements SinkInterface
 {
