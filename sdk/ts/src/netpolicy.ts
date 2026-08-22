@@ -154,6 +154,7 @@ function target(input: RequestInfo | URL, init?: RequestInit): { method: string;
 
 /** Marks a fetch implementation as already guarded, so wrapping is idempotent. */
 const guarded = Symbol.for('hop.top/kit/netpolicy.guarded');
+const unguardedBase = Symbol.for('hop.top/kit/netpolicy.unguardedBase');
 
 /**
  * Wrap base so requests made in an offline-marked scope reject with an
@@ -181,6 +182,9 @@ export function guardFetch(base: typeof globalThis.fetch): typeof globalThis.fet
   };
 
   (wrapper as { [guarded]?: boolean })[guarded] = true;
+  // Remember the unwrapped transport so logging-class sinks can reach
+  // past the guard without capturing a reference at module load.
+  (wrapper as { [unguardedBase]?: typeof globalThis.fetch })[unguardedBase] = base;
   return wrapper;
 }
 
@@ -198,4 +202,30 @@ export function guardFetch(base: typeof globalThis.fetch): typeof globalThis.fet
  */
 export function install(): void {
   globalThis.fetch = guardFetch(globalThis.fetch);
+}
+
+/**
+ * Fetch for logging-class egress — telemetry, and any future
+ * remote-logging or crash-reporting sink.
+ *
+ * `--offline` means "do not talk to the network on the user's behalf". It
+ * does not silence diagnostics, the same way a remote syslog target is
+ * not muted by an offline flag. Consent and the telemetry mode already
+ * govern whether those sinks emit at all; `--offline` is not a second
+ * consent gate.
+ *
+ * Resolved lazily, per call: it reads the *current* `globalThis.fetch`
+ * and unwraps the guard if {@link install} has wrapped it. Capturing a
+ * reference at module load instead would freeze out later stubbing —
+ * breaking both test fakes and adopters who swap the global transport.
+ *
+ * Never use this for anything the user asked for — that is exactly the
+ * traffic `--offline` exists to stop.
+ */
+export function observabilityFetch(): typeof globalThis.fetch {
+  const current = globalThis.fetch as {
+    [guarded]?: boolean;
+    [unguardedBase]?: typeof globalThis.fetch;
+  };
+  return current?.[unguardedBase] ?? (globalThis.fetch as typeof globalThis.fetch);
 }
