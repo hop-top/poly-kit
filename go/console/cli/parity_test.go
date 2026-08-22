@@ -315,7 +315,8 @@ func TestParityHelp(t *testing.T) {
 // here until all three match.
 //
 // Contract flags (sorted): --format --help --help-all --help-management
-//   --no-color --no-hints --quiet --telemetry --verbose --version
+//
+//	--no-color --no-hints --quiet --telemetry --verbose --version
 func TestParityFlagsExactSet(t *testing.T) {
 	bins := parityHarness(t)
 	// Common flags across all three langs. Python auto-generates
@@ -325,6 +326,10 @@ func TestParityFlagsExactSet(t *testing.T) {
 	common := []string{"--format", "--help", "--help-all", "--help-management",
 		"--no-color", "--no-hints", "--quiet", "--telemetry", "--verbose", "--version"}
 	pyExtra := []string{"--help-commands", "--stream"}
+	// --offline is implemented in Go only for now; py/ts have no
+	// equivalent yet, so it is a per-language extra rather than part
+	// of the shared contract set.
+	goExtra := []string{"--offline"}
 
 	flagRE := regexp.MustCompile(`--[\w-]+`)
 
@@ -350,8 +355,12 @@ func TestParityFlagsExactSet(t *testing.T) {
 
 		want := make([]string, len(common))
 		copy(want, common)
-		if b.lang == "py" {
+		switch b.lang {
+		case "py":
 			want = append(want, pyExtra...)
+			sort.Strings(want)
+		case "go":
+			want = append(want, goExtra...)
 			sort.Strings(want)
 		}
 

@@ -14,33 +14,8 @@ equivalents) must satisfy the same contract.
 | `--quiet` | Suppress non-essential output |
 | `--no-color` | Disable ANSI colour |
 | `--help-all` | Show help including hidden groups |
-| `--offline` | Disable all network. Highest-precedence override; flips off any per-command opt-in (`--push`, `--sync`, peer discovery, upgrade check). |
-| `--profile <name>` | Active aps profile. Selects identity (credentials, default org, git author). Defaults to `$APS_PROFILE`. |
-| `--instance <name>` | Backend instance. Names a bundle of service endpoints in `$XDG_CONFIG_HOME/<tool>/instances.yaml`. |
+| `--offline` | Disable network access. Highest-precedence override; flips off any per-command opt-in (`--push`, `--sync`, peer discovery, upgrade check). Enforced beneath `net/http` for HTTP(S); direct socket users (raw `net.Dial`, SQL drivers, gRPC) must consult the offline marker themselves. Loopback is exempt. |
 
-### `--instance` semantics
-
-A pod is *where a service runs*. An instance is *which service URLs my
-client points at*. The flag is purely a resolver — it never provisions,
-boots, or mutates anything; it just looks up a YAML record and hands
-the resolved fields to subcommands that opt in.
-
-**Single-valued, not repeatable.** `--instance` is a `string` flag.
-Passing it twice (`--instance a --instance b`) keeps the last value;
-there is no list semantic. If you need to fan out across multiple
-backends, run the binary multiple times — the resolver is cheap.
-
-**Per-command consumption.** Not every subcommand reads `--instance`.
-A subcommand that touches a backing service (e.g. `kit serve`,
-`kit engine ...`) honors the resolved bundle as the *default*; an
-explicit per-command flag (`--endpoint`, `--addr`) always wins.
-Local-only subcommands (e.g. `kit toolspec spec`) ignore it.
-
-**Schema is per-tool.** kit's `Instance` struct has different fields
-than aps's. Same flag name, same resolver shape (via `core.Resolve`),
-schemas owned by each tool. The YAML files at
-`~/.config/kit/instances.yaml` and `~/.config/aps/instances.yaml` are
-independent.
 
 ## Help Subcommand
 
