@@ -14,7 +14,7 @@ equivalents) must satisfy the same contract.
 | `--quiet` | Suppress non-essential output |
 | `--no-color` | Disable ANSI colour |
 | `--help-all` | Show help including hidden groups |
-| `--offline` | Disable network access. Highest-precedence override; flips off any per-command opt-in (`--push`, `--sync`, peer discovery, upgrade check). Enforced beneath the language's default HTTP client (Go: `net/http` transport; TS: `globalThis.fetch`) for HTTP(S); callers that open sockets directly (raw `net.Dial`/`node:net`, SQL drivers, gRPC) or inject their own transport must consult the offline marker themselves. Loopback is exempt. |
+| `--offline` | Disable network access. Highest-precedence override; flips off any per-command opt-in (`--push`, `--sync`, peer discovery, upgrade check). Enforced beneath the language's default HTTP client (Go: `net/http` transport; Python: the `urllib` opener chain; TS: `globalThis.fetch`) for HTTP(S); callers that open sockets directly (raw `net.Dial`/`node:net`/`socket`, SQL drivers, gRPC) or inject their own transport must consult the offline marker themselves. Loopback is exempt. Logging-class egress — telemetry, and any remote-logging or crash-reporting sink — is also exempt: `--offline` stops traffic the user asked for, it is not a second consent gate on diagnostics. |
 
 
 ## Help Subcommand
