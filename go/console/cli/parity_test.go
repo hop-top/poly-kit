@@ -325,10 +325,10 @@ func TestParityFlagsExactSet(t *testing.T) {
 	// across all three spaced demos (adopter pattern).
 	common := []string{"--format", "--help", "--help-all", "--help-management",
 		"--no-color", "--no-hints", "--quiet", "--telemetry", "--verbose", "--version"}
-	pyExtra := []string{"--help-commands", "--stream"}
-	// --offline is implemented in Go only for now; py/ts have no
-	// equivalent yet, so it is a per-language extra rather than part
-	// of the shared contract set.
+	pyExtra := []string{"--help-commands", "--offline", "--stream"}
+	// --offline is implemented in Go and Python; TS has no equivalent
+	// yet, so it stays a per-language extra rather than part of the
+	// shared contract set. Fold it into common once TS lands it.
 	goExtra := []string{"--offline"}
 
 	flagRE := regexp.MustCompile(`--[\w-]+`)
