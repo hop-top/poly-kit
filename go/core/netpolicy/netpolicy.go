@@ -117,3 +117,39 @@ func (g *guard) RoundTrip(req *http.Request) (*http.Response, error) {
 func Install() {
 	http.DefaultTransport = Guard(http.DefaultTransport)
 }
+
+// # Observability carve-out
+//
+// --offline means "do not talk to the network on the user's behalf". It
+// does not silence diagnostics: telemetry, and any future remote-logging
+// or crash-reporting sink, are logging-class egress and stay exempt, the
+// same way a remote syslog target would not be muted by an offline flag.
+// Consent and the telemetry mode already govern whether those emit at
+// all; --offline is not a second consent gate.
+//
+// Sinks opt out by building their client with ObservabilityTransport
+// rather than relying on http.DefaultTransport, which Install guards.
+// The exemption is therefore explicit at the call site and survives a
+// sink changing which HTTP library it uses.
+
+// ObservabilityTransport returns a transport that ignores the offline
+// marker, for logging-class sinks (telemetry, remote logging, crash
+// reporting). base may be nil, in which case the unguarded default is
+// used.
+//
+// If base is already guarded, the guard is stripped: the caller is
+// asserting this client carries diagnostics, not user-initiated traffic.
+// Never use it for anything the user asked for — that is exactly the
+// traffic --offline exists to stop.
+func ObservabilityTransport(base http.RoundTripper) http.RoundTripper {
+	if g, ok := base.(*guard); ok {
+		return g.base
+	}
+	if base != nil {
+		return base
+	}
+	if g, ok := http.DefaultTransport.(*guard); ok {
+		return g.base
+	}
+	return http.DefaultTransport
+}

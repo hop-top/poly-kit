@@ -33,6 +33,8 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+
+	"hop.top/kit/go/core/netpolicy"
 	"time"
 
 	"hop.top/kit/go/core/breaker"
@@ -226,7 +228,14 @@ func NewHTTPSSink(url string, opts ...HTTPSOption) (*HTTPSSink, error) {
 	}
 
 	if cfg.httpClient == nil {
-		cfg.httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+		// Telemetry is logging-class egress: --offline must not mute
+		// diagnostics, so the sink opts out of the offline guard that
+		// netpolicy.Install puts on http.DefaultTransport. Consent and
+		// mode still govern whether anything is emitted at all.
+		cfg.httpClient = &http.Client{
+			Timeout:   defaultHTTPTimeout,
+			Transport: netpolicy.ObservabilityTransport(nil),
+		}
 	}
 
 	if cfg.spoolDir == "" {
