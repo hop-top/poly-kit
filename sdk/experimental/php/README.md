@@ -400,8 +400,12 @@ database drivers, or `file_get_contents()` on an `http://` URL. For those
 `--offline` stays advisory and the call site must consult
 `NetPolicy::isOffline()` itself.
 
-`Telemetry\Sink\HttpsSink` takes a caller-supplied client and is not
-guarded for you; pass it a guarded client if it runs under `--offline`.
+`Telemetry\Sink\HttpsSink` is deliberately **not** guarded. Telemetry is
+logging-class egress: `--offline` stops traffic the user asked for, it is
+not a second consent gate on diagnostics — the same way a remote syslog
+target is not muted by an offline flag. Consent and telemetry mode already
+govern whether anything is emitted at all. Do not pass it a guarded
+client; that would suppress diagnostics `--offline` is not meant to touch.
 
 ### CLI flag
 

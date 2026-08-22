@@ -33,18 +33,19 @@ use Throwable;
  *
  * # --offline
  *
- * This sink holds a caller-supplied client, so it inherits whatever
- * policy that client carries. It is NOT guarded here: constructing the
- * client is the adopter's choice, and silently rewriting its handler
- * stack would override a stack they deliberately built.
+ * This sink is deliberately NOT guarded, and adopters should not guard
+ * the client they pass either.
  *
- * Adopters wiring this sink under a CLI that honours `--offline` should
- * guard the client they pass — `OfflineGuard::push($stack)` for Guzzle,
- * or `OfflineGuardClient::wrap()` for any PSR-18 client. Without that,
- * telemetry keeps shipping while `--offline` is set. Note that a blocked
- * flush is not fatal either way: `sendBatch()` already treats any
- * transport throwable as a dropped batch, so the guard degrades to
- * dropping events rather than failing the command.
+ * Telemetry is logging-class egress: `--offline` stops network traffic
+ * the user asked for, it is not a second consent gate on diagnostics —
+ * the same way a remote syslog target is not muted by an offline flag.
+ * Consent and the telemetry mode already decide whether anything is
+ * emitted at all.
+ *
+ * Guarding this client would suppress diagnostics that `--offline` is not
+ * meant to touch. It would also fail quietly: `sendBatch()` treats any
+ * transport throwable as a dropped batch, so a guarded client degrades to
+ * silently dropping events rather than surfacing a refusal.
  */
 final class HttpsSink implements SinkInterface
 {
