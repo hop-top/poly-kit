@@ -229,3 +229,29 @@ async fn api_client_default_is_online() {
     assert_eq!(v["ok"], true);
     mock.assert_async().await;
 }
+
+// Telemetry is logging-class egress: `--offline` stops traffic the user
+// asked for, it is not a second consent gate on diagnostics. Consent and
+// telemetry mode already govern whether anything is emitted at all.
+//
+// The sink builds a plain `reqwest::Client`, never a `GuardedClient`, so
+// there is no policy knob a CLI could thread through to mute it. This
+// pins the construction path: an Https sink must build without any
+// network policy being supplied.
+#[tokio::test]
+async fn telemetry_https_sink_builds_without_a_net_policy() {
+    use hop_top_kit::telemetry::{Client, ClientOptions, SinkKind};
+
+    let built = Client::new(ClientOptions {
+        sink: SinkKind::Https,
+        endpoint: Some("https://telemetry.example.com/v1/events".into()),
+        queue_size: 4,
+        ..Default::default()
+    });
+
+    assert!(
+        built.is_ok(),
+        "https telemetry sink must construct with no net policy: \
+         --offline must not be able to suppress logging-class egress"
+    );
+}

@@ -34,7 +34,6 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
-use crate::netpolicy::{GuardedClient, NetPolicy};
 use crate::telemetry::consent::load_consent;
 use crate::telemetry::install_id::get_install_id;
 use crate::telemetry::mode::{resolve_mode, Mode};
@@ -70,11 +69,6 @@ pub struct ClientOptions {
     /// Optional custom redactor that runs BEFORE the default redactor.
     /// Stored boxed so the `Client` stays `Send + Sync`.
     pub redactor: Option<Box<dyn Fn(Value) -> Value + Send + Sync>>,
-    /// Network policy for the Https sink. Defaults to online. The CLI
-    /// layer sets `NetPolicy::new(offline)` here once it registers
-    /// `--offline`; the sink then refuses non-loopback POSTs instead of
-    /// emitting them.
-    pub policy: NetPolicy,
 }
 
 impl Default for ClientOptions {
@@ -86,7 +80,6 @@ impl Default for ClientOptions {
             queue_size: 1024,
             sdk_version: None,
             redactor: None,
-            policy: NetPolicy::default(),
         }
     }
 }
@@ -124,7 +117,6 @@ impl ClientOptions {
             queue_size,
             sdk_version: None,
             redactor: None,
-            policy: NetPolicy::default(),
         }
     }
 }
@@ -191,7 +183,7 @@ impl Client {
         // Build the sink first so config errors surface synchronously
         // (rather than from inside the drain task where they'd silently
         // increment dropped).
-        let sink = build_sink(opts.sink, opts.endpoint, opts.sink_file, opts.policy)?;
+        let sink = build_sink(opts.sink, opts.endpoint, opts.sink_file)?;
 
         // Spawn drain. Requires a live tokio runtime — Client::new
         // panics here with a clear message if there is none.
@@ -336,7 +328,7 @@ enum Sink {
 }
 
 struct HttpsSink {
-    client: GuardedClient,
+    client: reqwest::Client,
     endpoint: String,
 }
 
@@ -350,21 +342,20 @@ fn build_sink(
     kind: SinkKind,
     endpoint: Option<String>,
     sink_file: Option<String>,
-    policy: NetPolicy,
 ) -> Result<Sink, ClientError> {
     match kind {
         SinkKind::Https => {
             let endpoint = endpoint
                 .ok_or_else(|| ClientError::SinkConfig("https sink requires endpoint".into()))?;
-            // Built through the guard so the policy applies even though
-            // this sink sets its own timeouts.
-            let client = GuardedClient::build(
-                policy,
-                reqwest::Client::builder()
-                    .connect_timeout(Duration::from_secs(5))
-                    .timeout(Duration::from_secs(10)),
-            )
-            .map_err(|e| ClientError::SinkConfig(format!("reqwest build: {e}")))?;
+            // Telemetry is logging-class egress: `--offline` stops
+            // traffic the user asked for, not diagnostics. Consent and
+            // mode already govern whether anything is emitted, so this
+            // client is deliberately built WITHOUT the offline guard.
+            let client = reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(10))
+                .build()
+                .map_err(|e| ClientError::SinkConfig(format!("reqwest build: {e}")))?;
             Ok(Sink::Https(HttpsSink { client, endpoint }))
         }
         SinkKind::Jsonl => {
@@ -393,10 +384,10 @@ async fn drain_loop(mut rx: mpsc::Receiver<Envelope>, sink: Sink) {
 }
 
 impl HttpsSink {
-    async fn send(&self, env: &Envelope) -> Result<(), crate::netpolicy::NetError> {
+    async fn send(&self, env: &Envelope) -> Result<(), reqwest::Error> {
         let body = serde_json::to_string(env).unwrap_or_default();
         // One retry on 5xx / transport.
-        let mut last_err: Option<crate::netpolicy::NetError> = None;
+        let mut last_err: Option<reqwest::Error> = None;
         for _ in 0..2 {
             match self
                 .client
@@ -411,9 +402,6 @@ impl HttpsSink {
                     continue;
                 }
                 Ok(_) => return Ok(()),
-                // An offline refusal is terminal: retrying cannot make
-                // the policy allow the POST.
-                Err(e) if e.is_offline() => return Err(e),
                 Err(e) => {
                     last_err = Some(e);
                     continue;
