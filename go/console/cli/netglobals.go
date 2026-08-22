@@ -26,6 +26,8 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/core/netpolicy"
 )
 
 // Flag names for the session globals. Registered unconditionally in
@@ -44,7 +46,6 @@ const profileEnv = "APS_PROFILE"
 // Unexported context-key types so external packages cannot collide
 // with the tags; access goes through the With*/Is*/‑From helpers.
 type (
-	offlineCtxKey  struct{}
 	profileCtxKey  struct{}
 	instanceCtxKey struct{}
 )
@@ -52,18 +53,18 @@ type (
 // WithOffline returns a context tagged with the offline marker.
 // Installed by the netglobals hook before RunE dispatch; tests inject
 // it directly when driving a leaf without a full Root.
+//
+// The marker itself lives in go/core/netpolicy so transports can
+// enforce it without importing this package (which would cycle); these
+// two functions are forwarders kept for the existing call sites.
 func WithOffline(ctx context.Context, offline bool) context.Context {
-	return context.WithValue(ctx, offlineCtxKey{}, offline)
+	return netpolicy.WithOffline(ctx, offline)
 }
 
 // IsOffline reports whether ctx carries the offline marker. Untagged
 // contexts (including nil-safe context.Background()) report false.
 func IsOffline(ctx context.Context) bool {
-	if ctx == nil {
-		return false
-	}
-	on, _ := ctx.Value(offlineCtxKey{}).(bool)
-	return on
+	return netpolicy.IsOffline(ctx)
 }
 
 // WithProfile returns a context carrying the active profile name.
