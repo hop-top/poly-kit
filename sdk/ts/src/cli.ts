@@ -28,7 +28,10 @@
 import { Command, Help } from 'commander';
 import { parity, type ParityData } from './tui/parity.js';
 import { registerOutputFlags } from './output/flags.js';
+import { install as installNetPolicy, setProcessOffline } from './netpolicy.js';
 import './output/builtins.js';
+export { ErrOffline, OfflineError, guardFetch, isOffline, isOfflineError,
+         withOffline } from './netpolicy.js';
 export { HintSet, hintsEnabled, renderHints, active,
          registerUpgradeHints, registerVersionHints } from './hint.js';
 export type { Hint, HintOptions } from './hint.js';
@@ -308,6 +311,7 @@ export interface CLIConfig {
     quiet?: boolean;
     noColor?: boolean;
     hints?: boolean;
+    offline?: boolean;
   };
 
   /** Command groups for partitioned help (e.g. COMMANDS vs MANAGEMENT). */
@@ -731,6 +735,30 @@ export function createCLI(cfg: CLIConfig): CLIResult {
   }
   if (!cfg.disable?.hints) {
     program.option('--no-hints', 'Suppress next-step hints after command output', false);
+  }
+
+  // --offline (cli-parity-guide, "Global Flags") disables all network
+  // access. It is the highest-precedence override: per-command network
+  // opt-ins (peer discovery, sync replication, repo creation, initial
+  // push, upgrade checks) must behave as if their corresponding opt-out
+  // flag had been passed. The override only forces opt-outs ON — it never
+  // un-sets an explicitly passed --no-* flag, which is why it stamps a
+  // marker rather than rewriting parsed options.
+  //
+  // Registering the flag alone would be advisory: a leaf that never
+  // consults the marker would still reach the wire. installNetPolicy
+  // guards globalThis.fetch so the refusal happens beneath naive callers.
+  if (!cfg.disable?.offline) {
+    program.option('--offline', 'Disable network access', false);
+    installNetPolicy();
+    // preSubcommand fires before a subcommand's action handler, and the
+    // root's own action for a leaf-less program; hook both so the marker
+    // is set whichever shape the adopter uses.
+    const stamp = (thisCmd: Command) => {
+      setProcessOffline(thisCmd.opts()['offline'] === true);
+    };
+    program.hook('preSubcommand', (thisCmd) => stamp(thisCmd));
+    program.hook('preAction', (thisCmd) => stamp(thisCmd));
   }
 
   // Stackable verbosity count flag (-VV = 2). The shorthand comes from the

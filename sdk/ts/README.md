@@ -253,7 +253,14 @@ render(process.stdout, JSON_FORMAT, { ok: true });
 
 - `@hop-top/kit/cli` — `createCLI(cfg)` builds a Commander root program
   with the hop-top contract: `--format`, `--quiet`, `--no-color`,
-  `--no-hints`, themed help, version, hidden completion command.
+  `--no-hints`, `--offline`, themed help, version, hidden completion
+  command.
+- `@hop-top/kit/netpolicy` — enforcement behind the `--offline` global.
+  `createCLI` guards `globalThis.fetch`, so a leaf that never consults
+  the marker is still refused; loopback stays reachable. Callers that
+  inject their own transport wrap it with `guardFetch`, and socket-level
+  clients (`node:net`, SQL drivers, gRPC) consult `isOffline()`
+  themselves. Match the refusal with `isOfflineError(err)`.
 - `@hop-top/kit/id` — TypeID primitive (cross-language; see
   [ADR 0001](../../docs/adr/0001-typeid-primitive.md)). Source:
   [`src/id/`](src/id/).
