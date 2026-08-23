@@ -10,6 +10,13 @@ pub mod uri;
 #[cfg(feature = "api")]
 pub mod api;
 
+// Network policy marker + the guarded client every reqwest request in
+// this crate is issued through. Gated on `api` because that is the
+// feature that brings reqwest in; `telemetry` enables `api` so its
+// HTTPS sink is covered too.
+#[cfg(feature = "api")]
+pub mod netpolicy;
+
 #[cfg(feature = "blob")]
 pub mod blob;
 
@@ -39,4 +46,3 @@ pub mod timeutil;
 
 #[cfg(feature = "mcp")]
 pub mod mcp;
-
