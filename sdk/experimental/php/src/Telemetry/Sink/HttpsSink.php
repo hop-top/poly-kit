@@ -30,6 +30,22 @@ use Throwable;
  * client controls connect / total budgets via the options below.
  *
  * Body shape: `application/x-ndjson` — one JSON envelope per line.
+ *
+ * # --offline
+ *
+ * This sink is deliberately NOT guarded, and adopters should not guard
+ * the client they pass either.
+ *
+ * Telemetry is logging-class egress: `--offline` stops network traffic
+ * the user asked for, it is not a second consent gate on diagnostics —
+ * the same way a remote syslog target is not muted by an offline flag.
+ * Consent and the telemetry mode already decide whether anything is
+ * emitted at all.
+ *
+ * Guarding this client would suppress diagnostics that `--offline` is not
+ * meant to touch. It would also fail quietly: `sendBatch()` treats any
+ * transport throwable as a dropped batch, so a guarded client degrades to
+ * silently dropping events rather than surfacing a refusal.
  */
 final class HttpsSink implements SinkInterface
 {
