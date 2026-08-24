@@ -7,6 +7,7 @@ experimental PHP client SDK.
 - [`src/Id/`](src/Id/) — TypeID primitive (cross-language; see
   [ADR 0001](../../../docs/adr/0001-typeid-primitive.md))
 - [`src/Mcp/`](src/Mcp/) — dual-spec MCP surface over PSR-15
+- [`src/Net/`](src/Net/) — `--offline` network policy marker and enforcement
 
 ## URI facade
 
@@ -327,6 +328,91 @@ unimplemented, matching the Go reference. Pagination, `tasks/*` and
   — the polyglot adopter guide
 - [Expose your CLI over MCP](../../../docs/adopters/guides/expose-cli-over-mcp.md)
   — the Go reference surface, in depth
+
+## Offline enforcement
+
+The family-wide `--offline` global disables network access. It is the
+highest-precedence override: per-command network opt-ins behave as if
+their opt-out flag had been passed. It only forces opt-outs on — it never
+un-sets an explicitly passed `--no-*` flag.
+
+Loopback is exempt. `--offline` means "do not talk to the network", not
+"do not talk to myself", so `127.0.0.1`, `localhost`, `[::1]` and unix
+sockets stay reachable. Hostnames are remote even when they would resolve
+to loopback, because performing that resolution is itself network access.
+
+### Setting the marker
+
+```php
+use HopTop\Kit\Net\NetPolicy;
+
+NetPolicy::setOffline(true);   // once, at start-up
+NetPolicy::isOffline();        // consult
+```
+
+Go threads this through `context.Context`; PHP has no ambient context, so
+the marker is process state. A CLI invocation is exactly one process, which
+is the scope `--offline` describes.
+
+### Enforcement
+
+The marker alone is advisory — a caller who forgets to consult it still
+reaches the wire. Enforcement therefore sits beneath the caller, and a
+blocked request throws `OfflineException` rather than skipping silently.
+
+For Guzzle, guard the **handler stack**:
+
+```php
+use HopTop\Kit\Net\OfflineGuard;
+
+$client = new GuzzleHttp\Client(['handler' => OfflineGuard::stack()]);
+// or, on a stack you already built:
+OfflineGuard::push($stack);
+```
+
+The stack is the right seam because Guzzle's `request()`, `send()`,
+`requestAsync()` and `sendAsync()` are siblings — none delegates to
+another — but all four run the stack. A decorator wrapping only PSR-18's
+`sendRequest()` would leave `request()` and `send()` unguarded.
+
+For a non-Guzzle PSR-18 client, where `sendRequest()` is the only seam,
+wrap the client:
+
+```php
+use HopTop\Kit\Net\OfflineGuardClient;
+
+$client = OfflineGuardClient::wrap($psr18Client);
+```
+
+`OfflineException` implements PSR-18's `ClientExceptionInterface`, so
+conforming callers catch it normally.
+
+`ApiClient` installs the guard on the client it builds when you inject
+none, so the default path is enforced without opting in. An injected
+client is left alone — its owner chose its stack — so guard it yourself.
+
+### Scope
+
+Enforcement covers HTTP(S) through Guzzle and PSR-18, which is every
+network client in this port today. It does **not** cover code that opens a
+socket directly: `fsockopen`, `stream_socket_client`, PDO and other
+database drivers, or `file_get_contents()` on an `http://` URL. For those
+`--offline` stays advisory and the call site must consult
+`NetPolicy::isOffline()` itself.
+
+`Telemetry\Sink\HttpsSink` is deliberately **not** guarded. Telemetry is
+logging-class egress: `--offline` stops traffic the user asked for, it is
+not a second consent gate on diagnostics — the same way a remote syslog
+target is not muted by an offline flag. Consent and telemetry mode already
+govern whether anything is emitted at all. Do not pass it a guarded
+client; that would suppress diagnostics `--offline` is not meant to touch.
+
+### CLI flag
+
+Not yet wired. This port has no global-flag layer — `src/Cli/Cli.php` is a
+stub — so the marker is set programmatically today. Registering `--offline`
+as a Symfony Console global belongs with the CLI-layer work, which will
+call `NetPolicy::setOffline()` from the resolved flag.
 
 ## Telemetry
 

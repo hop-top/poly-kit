@@ -232,6 +232,37 @@ describe('Client.https sink', () => {
     }
   });
 
+  // Telemetry is logging-class egress: --offline stops traffic the user
+  // asked for, it is not a second consent gate on diagnostics. The sink
+  // must therefore still ship while the process is marked offline.
+  //
+  // The endpoint is deliberately remote: loopback is exempt from the
+  // guard by design, so a 127.0.0.1 target could never fail this test.
+  it('ships while offline: --offline must not mute telemetry', async () => {
+    const { install, setProcessOffline } = await import('../netpolicy');
+    await grantConsent();
+    process.env.KIT_TELEMETRY_MODE = 'anon';
+
+    const mockFetch = vi.fn(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal('fetch', mockFetch);
+    // Guard the global exactly as createCLI does at start-up.
+    install();
+    setProcessOffline(true);
+
+    try {
+      const c = new Client({
+        sink: 'https',
+        endpoint: 'https://telemetry.example.com/v1/events',
+      });
+      c.record('probe', { i: 1 });
+      await c.shutdown(2_000);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      setProcessOffline(false);
+    }
+  });
+
   it('retries once on 5xx, then drops', async () => {
     await grantConsent();
     process.env.KIT_TELEMETRY_MODE = 'anon';

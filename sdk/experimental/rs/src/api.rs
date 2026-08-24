@@ -1,4 +1,4 @@
-use reqwest::Client;
+use crate::netpolicy::{GuardedClient, NetError, NetPolicy};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -32,20 +32,38 @@ pub struct Query {
 }
 
 /// HTTP client for the kit REST API.
+///
+/// Requests are issued through [`GuardedClient`], so the `--offline`
+/// policy is enforced beneath every method here — a caller does not opt
+/// in and cannot opt out.
 pub struct ApiClient {
     base_url: String,
-    client: Client,
+    client: GuardedClient,
     auth_token: Option<String>,
 }
 
 impl ApiClient {
-    /// Create a new client pointing at the given base URL.
+    /// Create a new client pointing at the given base URL, permitting
+    /// network access.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the TLS backend cannot be initialised, matching
+    /// `reqwest::Client::new`. Use [`ApiClient::with_policy`] to handle
+    /// that failure.
     pub fn new(base_url: &str) -> Self {
-        Self {
+        Self::with_policy(base_url, NetPolicy::default()).expect("build http client")
+    }
+
+    /// Create a new client under an explicit network policy. This is
+    /// the constructor the CLI layer calls once it registers
+    /// `--offline`: `ApiClient::with_policy(url, NetPolicy::new(offline))`.
+    pub fn with_policy(base_url: &str, policy: NetPolicy) -> Result<Self, reqwest::Error> {
+        Ok(Self {
             base_url: base_url.trim_end_matches('/').to_string(),
-            client: Client::new(),
+            client: GuardedClient::new(policy)?,
             auth_token: None,
-        }
+        })
     }
 
     /// Set a bearer token for authenticated requests.
@@ -64,7 +82,7 @@ impl ApiClient {
             .json(entity)
             .send()
             .await
-            .map_err(|e| transport_error(&e))?;
+            .map_err(net_error)?;
         parse_response(resp).await
     }
 
@@ -77,7 +95,7 @@ impl ApiClient {
             .request(reqwest::Method::GET, &format!("/{id}"))
             .send()
             .await
-            .map_err(|e| transport_error(&e))?;
+            .map_err(net_error)?;
         parse_response(resp).await
     }
 
@@ -91,7 +109,7 @@ impl ApiClient {
             .query(q)
             .send()
             .await
-            .map_err(|e| transport_error(&e))?;
+            .map_err(net_error)?;
         parse_response(resp).await
     }
 
@@ -105,7 +123,7 @@ impl ApiClient {
             .json(entity)
             .send()
             .await
-            .map_err(|e| transport_error(&e))?;
+            .map_err(net_error)?;
         parse_response(resp).await
     }
 
@@ -115,7 +133,7 @@ impl ApiClient {
             .request(reqwest::Method::DELETE, &format!("/{id}"))
             .send()
             .await
-            .map_err(|e| transport_error(&e))?;
+            .map_err(net_error)?;
         let status = resp.status();
         if status.is_success() {
             return Ok(());
@@ -123,7 +141,7 @@ impl ApiClient {
         Err(parse_error(resp).await)
     }
 
-    fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+    fn request(&self, method: reqwest::Method, path: &str) -> crate::netpolicy::RequestBuilder {
         let url = format!("{}{}", self.base_url, path);
         let mut req = self
             .client
@@ -163,6 +181,24 @@ fn transport_error(e: &reqwest::Error) -> ApiError {
         message: e.to_string(),
     }
 }
+
+/// Map a guarded-client failure onto `ApiError`. An offline refusal
+/// keeps its own code so callers can branch on it without parsing the
+/// message; anything else is an ordinary transport failure.
+fn net_error(e: NetError) -> ApiError {
+    match e {
+        NetError::Offline(o) => ApiError {
+            status: 0,
+            code: OFFLINE_CODE.into(),
+            message: o.to_string(),
+        },
+        NetError::Transport(t) => transport_error(&t),
+    }
+}
+
+/// `ApiError::code` set when a request was refused by the `--offline`
+/// policy rather than attempted and failed.
+pub const OFFLINE_CODE: &str = "offline";
 
 #[cfg(test)]
 mod tests {

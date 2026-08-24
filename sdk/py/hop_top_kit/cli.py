@@ -17,6 +17,7 @@ This module exposes the following public symbols:
     register_stream   — register a named output stream on a command
     channel           — get a writer for a named stream
     verbose_count     — get the current verbosity count from context
+    is_offline        — report whether --offline is in effect
 
 Contract accessors — pure in the parity data they are given, so tests can
 inject a constructed contract instead of touching the shared file:
@@ -49,7 +50,7 @@ from typing import Any, Optional, TextIO
 import click
 import typer
 
-from hop_top_kit import parity
+from hop_top_kit import netpolicy, parity
 from hop_top_kit.parity import HELP_SECTION_ORDER, HELP_SECTIONS
 
 
@@ -116,6 +117,27 @@ def verbose_count() -> int:
     Count-to-level mapping is the contract's; see ``verbosity.levels``.
     """
     return _verbose_count.get()
+
+
+def is_offline() -> bool:
+    """Report whether ``--offline`` is in effect for this invocation.
+
+    ``--offline`` is the highest-precedence override: per-command network
+    opt-ins (peer discovery, sync replication, repo creation, initial push,
+    upgrade checks) must behave as if their corresponding opt-out flag had
+    been passed. The override only forces opt-outs ON — it never un-sets an
+    explicitly passed ``--no-*`` flag.
+
+    Leaves need not consult this to be safe: the marker is enforced beneath
+    ``urllib`` by :mod:`hop_top_kit.netpolicy`, which refuses the request in
+    the opener chain. This accessor exists so a command can skip the work
+    entirely rather than let it fail at the transport.
+
+    The marker itself lives in :mod:`hop_top_kit.netpolicy` so transports can
+    enforce it without importing this module (which would cycle); this is a
+    forwarder kept for call sites already reaching for the CLI package.
+    """
+    return netpolicy.is_offline()
 
 
 def verbosity_shorthand(data: dict[str, Any] | None = None) -> str:
@@ -771,6 +793,13 @@ def create_app(
             typer.Option(None, "--no-hints", help="Suppress next-step hints after command output"),
         )
 
+    # --offline (always present; the flag name is reserved family-wide,
+    # matching the delegation-safety globals).
+    params["offline"] = (
+        Optional[bool],
+        typer.Option(None, "--offline", help="Disable network access"),
+    )
+
     # Named diagnostic streams (comma-separated); flag name from the contract.
     params["stream"] = (
         str,
@@ -842,6 +871,18 @@ def create_app(
         q = bool(kwargs.get("quiet"))
         _quiet_flag.set(q)
         _verbose_count.set(0 if q else v)
+        # --offline: stamp the resolved value and arm the transport
+        # chokepoint before any leaf runs. The marker is set on EVERY
+        # dispatch, not only when the flag is present: a process that
+        # invokes the app more than once (a REPL, a test harness, an
+        # embedding host) would otherwise inherit the previous
+        # invocation's marker and refuse a request nobody asked to block.
+        offline_ = bool(kwargs.get("offline"))
+        netpolicy.set_offline(offline_)
+        if offline_:
+            # install() is idempotent, but arming it only when the flag is
+            # set keeps an untouched process's opener chain clean.
+            netpolicy.install()
         # Wire --stream: parse comma-separated names into enabled set.
         stream_val = kwargs.get("stream", "")
         if stream_val:
