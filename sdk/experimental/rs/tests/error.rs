@@ -105,7 +105,7 @@ fn transience_for_code_table() {
 
 #[test]
 fn wrap_defaults_transience_from_code() {
-    let base = std::io::Error::new(std::io::ErrorKind::Other, "boom");
+    let base = std::io::Error::other("boom");
     assert_eq!(
         CliError::wrap(&base, CODE_CONFLICT, 4).transience,
         TRANSIENCE_PERMANENT
