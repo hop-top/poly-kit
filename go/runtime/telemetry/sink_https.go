@@ -33,11 +33,10 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
-
-	"hop.top/kit/go/core/netpolicy"
 	"time"
 
 	"hop.top/kit/go/core/breaker"
+	"hop.top/kit/go/core/netpolicy"
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/runtime/bus"
 )
