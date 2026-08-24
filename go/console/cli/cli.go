@@ -20,6 +20,7 @@ import (
 	"hop.top/kit/go/console/progress"
 	configoverrides "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/identity"
+	"hop.top/kit/go/core/netpolicy"
 	"hop.top/kit/go/runtime/peer"
 )
 
@@ -558,14 +559,6 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		"Disable all network access. Highest-precedence override: flips off "+
 			"per-command network opt-ins (peer discovery, sync, GitHub, push).")
 	_ = v.BindPFlag(offlineFlag, pf.Lookup(offlineFlag))
-	pf.String(profileFlag, "",
-		"Active profile selecting identity (credentials, default org, git author). "+
-			"Defaults to $APS_PROFILE.")
-	_ = v.BindPFlag(profileFlag, pf.Lookup(profileFlag))
-	_ = v.BindEnv(profileFlag, profileEnv)
-	pf.String(instanceFlag, "",
-		"Backend instance: names an endpoint bundle in $XDG_CONFIG_HOME/<tool>/instances.yaml.")
-	_ = v.BindPFlag(instanceFlag, pf.Lookup(instanceFlag))
 
 	// Tool-specific extra persistent flags. When a pointer destination
 	// is provided (StringVar/BoolVar/IntVar) the flag is bound to that
@@ -666,6 +659,11 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// Session globals: stamp --offline/--profile/--instance onto the
 	// command context so leaves consume them via cli.IsOffline /
 	// cli.ProfileFrom / cli.InstanceFrom.
+	//
+	// Stamping alone is advisory. Install guards http.DefaultTransport so
+	// --offline is enforced beneath every client that has not set its own
+	// Transport, rather than relying on each leaf to remember to check.
+	netpolicy.Install()
 	hooks = append(hooks, r.installNetGlobalsHook())
 
 	if cfg.Hooks.PrePersistentRunE != nil {

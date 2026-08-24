@@ -347,6 +347,10 @@ fn build_sink(
         SinkKind::Https => {
             let endpoint = endpoint
                 .ok_or_else(|| ClientError::SinkConfig("https sink requires endpoint".into()))?;
+            // Telemetry is logging-class egress: `--offline` stops
+            // traffic the user asked for, not diagnostics. Consent and
+            // mode already govern whether anything is emitted, so this
+            // client is deliberately built WITHOUT the offline guard.
             let client = reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(5))
                 .timeout(Duration::from_secs(10))

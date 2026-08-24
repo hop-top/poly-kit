@@ -105,6 +105,11 @@
       "require": "./dist/aim.js",
       "default": "./dist/aim.js"
     },
+    "./netpolicy": {
+      "types": "./dist/netpolicy.d.ts",
+      "require": "./dist/netpolicy.js",
+      "default": "./dist/netpolicy.js"
+    },
     "./scope": {
       "types": "./dist/scope.d.ts",
       "require": "./dist/scope.js",
@@ -127,7 +132,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade.ts src/llm.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/scope.ts src/telemetry/index.ts src/id/index.ts src/mcp/index.ts --format cjs --dts",
+    "build": "tsup src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade.ts src/llm.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/netpolicy.ts src/scope.ts src/telemetry/index.ts src/id/index.ts src/mcp/index.ts --format cjs --dts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "test": "vitest run"
