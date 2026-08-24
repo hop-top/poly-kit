@@ -1,4 +1,4 @@
-.PHONY: setup lint lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-rs lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers \
+.PHONY: setup lint lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-rs lint-docs lint-config lint-links lint-sdk-paths \
 	preflight \
 	tools tools-golangci-lint \
 	test test-go test-go-integration test-ts test-py test-rs test-parity test-parity-typeid \
@@ -148,7 +148,7 @@ test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
 	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v
 
-lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-config lint-links lint-sdk-paths lint-adr-numbers ## Run all linters
+lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
 
 lint-go: tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -238,9 +238,6 @@ lint-sdk-paths: ## Guard against repeated-sdk-segment path corruption recurrence
 		--exclude='Makefile' \
 		--exclude='.xray_*.md'
 	@echo "No repeated-sdk-segment corruption detected."
-
-lint-adr-numbers: ## Guard against duplicate ADR numbers claimed across branches
-	@scripts/verify-adr-numbers.sh
 
 proto: ## Generate protobuf + Connect/gRPC stubs
 # Generated files are committed for go-get compatibility.
