@@ -22,10 +22,17 @@ func TestParseSince(t *testing.T) {
 		{"3 days ago", "3 days ago", now.AddDate(0, 0, -3)},
 		{"1 week ago", "1 week ago", now.AddDate(0, 0, -7)},
 		{"2 weeks ago", "2 weeks ago", now.AddDate(0, 0, -14)},
-		{"1 month ago", "1 month ago", now.AddDate(0, -1, 0)},
-		{"6 months ago", "6 months ago", now.AddDate(0, -6, 0)},
-		{"1 year ago", "1 year ago", now.AddDate(-1, 0, 0)},
-		{"2 years ago", "2 years ago", now.AddDate(-2, 0, 0)},
+		// month/year expectations are literals, not now.AddDate(...):
+		// a computed expectation would silently track whatever the
+		// implementation does and prove nothing about clamping.
+		{"1 month ago", "1 month ago",
+			time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)},
+		{"6 months ago", "6 months ago",
+			time.Date(2025, 10, 19, 12, 0, 0, 0, time.UTC)},
+		{"1 year ago", "1 year ago",
+			time.Date(2025, 4, 19, 12, 0, 0, 0, time.UTC)},
+		{"2 years ago", "2 years ago",
+			time.Date(2024, 4, 19, 12, 0, 0, 0, time.UTC)},
 		{"1 hour ago", "1 hour ago", now.Add(-1 * time.Hour)},
 		{"3 hours ago", "3 hours ago", now.Add(-3 * time.Hour)},
 		{"30 minutes ago", "30 minutes ago", now.Add(-30 * time.Minute)},
@@ -43,8 +50,8 @@ func TestParseSince(t *testing.T) {
 		{"24h", "24h", now.Add(-24 * time.Hour)},
 		{"30m", "30m", now.Add(-30 * time.Minute)},
 		{"2w", "2w", now.AddDate(0, 0, -14)},
-		{"3M", "3M", now.AddDate(0, -3, 0)},
-		{"1y", "1y", now.AddDate(-1, 0, 0)},
+		{"3M", "3M", time.Date(2026, 1, 19, 12, 0, 0, 0, time.UTC)},
+		{"1y", "1y", time.Date(2025, 4, 19, 12, 0, 0, 0, time.UTC)},
 
 		// ISO 8601
 		{"date only", "2026-04-15", time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC)},
@@ -68,6 +75,94 @@ func TestParseSince(t *testing.T) {
 				tt.input, tt.expected, got)
 		})
 	}
+}
+
+// TestParseSince_MonthClamping pins backward month/year arithmetic to clamping
+// rather than Go's default AddDate normalisation. Every expectation is a
+// literal date: computing it with AddDate would just re-derive the behaviour
+// under test.
+func TestParseSince_MonthClamping(t *testing.T) {
+	tests := []struct {
+		name     string
+		now      time.Time
+		input    string
+		expected time.Time
+	}{
+		// backward clamp: Mar 31 - 1 month lands in February.
+		// AddDate would give 2026-03-03.
+		{"mar 31 minus 1 month, phrase",
+			time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC),
+			"1 month ago",
+			time.Date(2026, 2, 28, 12, 0, 0, 0, time.UTC)},
+		{"mar 31 minus 1 month, short form",
+			time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC),
+			"1M",
+			time.Date(2026, 2, 28, 12, 0, 0, 0, time.UTC)},
+
+		// no clamp needed
+		{"mar 15 minus 1 month, no clamp",
+			time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+			"1 month ago",
+			time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)},
+		{"mar 15 minus 1 month, short form, no clamp",
+			time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+			"1M",
+			time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)},
+
+		// leap day backward into a non-leap year
+		{"feb 29 minus 1 year",
+			time.Date(2028, 2, 29, 12, 0, 0, 0, time.UTC),
+			"1 year ago",
+			time.Date(2027, 2, 28, 12, 0, 0, 0, time.UTC)},
+		{"feb 29 minus 1 year, short form",
+			time.Date(2028, 2, 29, 12, 0, 0, 0, time.UTC),
+			"1y",
+			time.Date(2027, 2, 28, 12, 0, 0, 0, time.UTC)},
+		// 12 months back is the same as 1 year back
+		{"feb 29 minus 12 months",
+			time.Date(2028, 2, 29, 12, 0, 0, 0, time.UTC),
+			"12 months ago",
+			time.Date(2027, 2, 28, 12, 0, 0, 0, time.UTC)},
+
+		// clamping backwards across a year boundary
+		{"jan 31 minus 2 months",
+			time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC),
+			"2 months ago",
+			time.Date(2025, 11, 30, 12, 0, 0, 0, time.UTC)},
+		{"may 31 minus 1 month into 30-day month",
+			time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC),
+			"1 month ago",
+			time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC)},
+
+		// time-of-day (and sub-second precision) survives a clamp
+		{"time of day preserved through clamp",
+			time.Date(2026, 3, 31, 23, 47, 13, 123456789, time.UTC),
+			"1 month ago",
+			time.Date(2026, 2, 28, 23, 47, 13, 123456789, time.UTC)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseSinceAt(tt.input, tt.now)
+			require.NoError(t, err, "input: %q", tt.input)
+			assert.True(t, tt.expected.Equal(got),
+				"input: %q\nnow:      %s\nexpected: %s\ngot:      %s",
+				tt.input, tt.now, tt.expected, got)
+		})
+	}
+}
+
+// TestParseSince_ClampPreservesLocation checks that a clamped result keeps the
+// input's location rather than silently reverting to UTC.
+func TestParseSince_ClampPreservesLocation(t *testing.T) {
+	loc := time.FixedZone("TEST", -4*3600)
+	now := time.Date(2026, 3, 31, 9, 30, 0, 0, loc)
+
+	got, err := ParseSinceAt("1 month ago", now)
+	require.NoError(t, err)
+	assert.Equal(t, loc.String(), got.Location().String())
+	assert.Equal(t, "2026-02-28T09:30:00-04:00",
+		got.Format(time.RFC3339))
 }
 
 func TestParseSince_Errors(t *testing.T) {

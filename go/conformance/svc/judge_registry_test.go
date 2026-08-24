@@ -19,16 +19,16 @@ func TestNullRegistry_RefusesEverything(t *testing.T) {
 }
 
 func TestStubRegistry_Scores(t *testing.T) {
-	r := StubRegistry{CannedVerdict: "pass", CannedScore: 0.9}
+	r := StubRegistry{CannedScore: 0.9}
 	j, err := r.Resolve("stub")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	resp, err := j.Score(context.Background(), JudgeRequest{Prompt: "p", CapturedText: "t"})
+	resp, err := j.Score(context.Background(), JudgeRequest{Prompt: "p", Input: "t"})
 	if err != nil {
 		t.Fatalf("Score: %v", err)
 	}
-	if resp.Verdict != "pass" || resp.Score != 0.9 {
+	if resp.Score != 0.9 {
 		t.Errorf("Score: got %+v", resp)
 	}
 }
@@ -62,15 +62,15 @@ func TestConfigRegistry_LoadsYAML(t *testing.T) {
 
 	// With a stub provider, Resolve succeeds.
 	r.RegisterProvider("anthropic", func(_ string, _ ConfigModelEntry) (AIJudge, error) {
-		return stubJudge{model: "claude-sonnet-4", verdict: "pass", score: 1}, nil
+		return stubJudge{model: "claude-sonnet-4", score: 1}, nil
 	})
 	j, err := r.Resolve("claude-sonnet-4")
 	if err != nil {
 		t.Fatalf("Resolve with factory: %v", err)
 	}
 	resp, _ := j.Score(context.Background(), JudgeRequest{})
-	if resp.Verdict != "pass" {
-		t.Errorf("verdict: got %q", resp.Verdict)
+	if resp.Score != 1 {
+		t.Errorf("score: got %v", resp.Score)
 	}
 }
 

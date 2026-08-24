@@ -69,27 +69,28 @@ expires. `Status` fetches a result by grade-id.
 
 ## Result type
 
-Currently a structural bridge to `hop.top/kit/go/conformance/scenario.Result`
-(scen track lands in parallel). The JSON wire shape is identical, so
-once scen merges callers should switch to `scenario.Result` with a
-compile-time assertion. The bridge fields are:
+`Result` is a type alias to `hop.top/kit/go/conformance/scenario.Result`
+— the exact struct svc serializes under the `"result"` key — so the
+typed decode preserves everything the grader records:
 
 ```go
-type Result struct {
-    ScenarioID     string         // canonical scenario name
-    Verdict        string         // pass | fail | ungradable
-    ExitCode       int            // suggested process-exit code
-    Reason         string         // human-readable verdict summary
-    Tier           int            // actually-graded tier
-    ScoredAt       string         // RFC3339
-    GraderVersion  string
-    RulesVersion   string
-    ServiceVersion string
-    Facets         []Facet        // tier-2/3 factor coverage
-    Findings       []Finding      // tier-3 failing assertions
-    Provenance     map[string]any
-}
+type Result = scenario.Result // fields (JSON tags in parentheses):
+//  ScenarioID    (scenario_id)     canonical scenario name
+//  SchemaVersion (schema_version)
+//  Verdict       (verdict)         pass | fail | ungradable
+//  Reason        (reason)          human-readable verdict summary
+//  ScoredAt      (scored_at)       time.Time, RFC3339 on the wire
+//  GraderVersion (grader_version)
+//  RulesVersion  (rules_version)
+//  Tier          (tier)            actually-graded tier
+//  Facets        (facets)          tier-2/3 per-factor rollups
+//  Assertions    (assertions)      tier-3 per-assertion traces
+//  JudgeTraces   (judge_traces)    tier-3 AI-judge invocations
 ```
+
+Each `Assertion` (alias of `scenario.AssertionResult`) carries
+`ID`, `Kind`, `Factor`, `Status`, `Observed`, `Expected`, and
+`Message` — the diagnosability trail explaining why a facet failed.
 
 ## Error envelope
 

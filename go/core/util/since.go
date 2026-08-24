@@ -75,9 +75,9 @@ func parseRelative(s string, now time.Time) (time.Time, error) {
 	case "week":
 		return now.AddDate(0, 0, -n*7), nil
 	case "month":
-		return now.AddDate(0, -n, 0), nil
+		return addMonthsClamped(now, -n), nil
 	case "year":
-		return now.AddDate(-n, 0, 0), nil
+		return addYearsClamped(now, -n), nil
 	default:
 		return time.Time{}, fmt.Errorf("timeutil: unknown unit %q", parts[1])
 	}
@@ -116,9 +116,9 @@ func parseShort(s string, now time.Time) (time.Time, error) {
 	case 'w':
 		return now.AddDate(0, 0, -n*7), nil
 	case 'M':
-		return now.AddDate(0, -n, 0), nil
+		return addMonthsClamped(now, -n), nil
 	case 'y':
-		return now.AddDate(-n, 0, 0), nil
+		return addYearsClamped(now, -n), nil
 	default:
 		return time.Time{}, fmt.Errorf("unknown suffix")
 	}

@@ -111,11 +111,17 @@ func TestReservedChild_StaticExits3(t *testing.T) {
 	assert.Equal(t, 3, code, "ErrUsage should map to exit code 3")
 }
 
-func TestReservedChild_HarnessExits3(t *testing.T) {
-	_, err := runCmd(t, "harness")
+func TestHarness_IsRealGroupWithRecordLeaf(t *testing.T) {
+	// harness graduated from reserved placeholder to a real command
+	// group; bare invocation prints help instead of exiting 3.
+	out, err := runCmd(t, "harness")
+	require.NoError(t, err)
+	assert.Contains(t, out, "record", "harness help should advertise the record leaf")
+
+	// The record leaf enforces its required flags.
+	_, err = runCmd(t, "harness", "record")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, conformance.ErrUsage))
-	assert.Contains(t, err.Error(), "12fcc-harness")
+	assert.Contains(t, err.Error(), "--scenario")
 }
 
 func TestExitCode_Mapping(t *testing.T) {
@@ -150,7 +156,10 @@ func TestReservedChild_HelpLine(t *testing.T) {
 	// re-implement it here.
 	lower := strings.ToLower(out)
 	assert.Contains(t, lower, "reserved for 12fcc-static")
-	assert.Contains(t, lower, "reserved for 12fcc-harness")
+	// harness is implemented now; its help line must no longer read
+	// as reserved.
+	assert.NotContains(t, lower, "reserved for 12fcc-harness")
+	assert.Contains(t, lower, "record and replay conformance cassettes")
 }
 
 func wrap(err error) error { return errors.Join(err, errors.New("context")) }

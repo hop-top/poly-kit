@@ -56,6 +56,27 @@ const (
 	Human Format = "human" // Human renders v via a bespoke per-type renderer.
 )
 
+// isTagDriven reports whether format projects values through their
+// `table:""` tags into a flat, columnar document.
+//
+// These formats cannot express a nested {data, _meta} envelope: wrapping
+// the payload hands them an untagged struct, from which they resolve zero
+// columns and return nil having written nothing. They therefore render
+// the payload unwrapped and receive provenance as a trailing stderr
+// footer instead.
+//
+// human belongs here despite dispatching to [HumanRenderer] first: its
+// fallback is the table renderer, and the wrapper would not satisfy
+// HumanRenderer either, so it degrades identically.
+func isTagDriven(format Format) bool {
+	switch format {
+	case Table, CSV, Text, Human:
+		return true
+	default:
+		return false
+	}
+}
+
 // defaultPriority is assigned to columns whose tag omits priority=N.
 const defaultPriority = 5
 
@@ -89,12 +110,16 @@ var stderrWriter io.Writer = os.Stderr
 //
 // Optional RenderOptions configure per-call behavior. WithProvenance(m)
 // attaches a Metadata envelope: JSON/YAML wrap the payload in
-// {"data": <v>, "_meta": <m>}; Table prints a single trailing stderr
-// footer line and renders v unchanged.
+// {"data": <v>, "_meta": <m>}; the tag-driven formats (table, csv, text,
+// human) render v unchanged and print a single trailing stderr footer
+// line instead, because a flat columnar projection has nowhere to nest
+// an envelope.
 //
-// Adopters needing per-format options or column selection should call
-// Default.Lookup(format) and invoke Formatter.Render directly with Options
-// and cols.
+// Render supplies each formatter's declared option defaults (see
+// [Formatter.Options]) exactly as Dispatch does. Callers who need to
+// override an option, or to project columns, should call
+// Default.Lookup(format) and invoke Formatter.Render directly with
+// Options and cols.
 func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 	f, ok := Default.Lookup(format)
 	if !ok {
@@ -112,8 +137,22 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 		cfg.tableStyle = getDefaultTableStyle()
 	}
 
+	// Materialise the formatter's declared option defaults. Passing a nil
+	// Options map here silently defeats every default declared in an
+	// OptionSpec — csv's delimiter (",") among them, which made every
+	// Render(w, CSV, v) call fail the one-character check. ParseOptions
+	// with no user pairs yields exactly the declared defaults.
+	formatOpts, err := ParseOptions(nil, f.Options())
+	if err != nil {
+		return fmt.Errorf("output format %q: %w", format, err)
+	}
+
+	// Only the structured formats can carry provenance inline; the
+	// tag-driven ones derive their columns from `table:""` tags and would
+	// resolve zero columns on the untagged wrapper struct, emitting
+	// nothing at all while still returning nil.
 	payload := v
-	if cfg.provenance != nil && format != Table {
+	if cfg.provenance != nil && !isTagDriven(format) {
 		payload = struct {
 			Data any       `json:"data"  yaml:"data"`
 			Meta *Metadata `json:"_meta" yaml:"_meta"`
@@ -130,12 +169,12 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 			return err
 		}
 	} else {
-		if err := f.Render(w, payload, nil, nil); err != nil {
+		if err := f.Render(w, payload, formatOpts, nil); err != nil {
 			return err
 		}
 	}
 
-	if cfg.provenance != nil && format == Table {
+	if cfg.provenance != nil && isTagDriven(format) {
 		fmt.Fprintf(stderrWriter, "Source: %s (fetched %s, method=%s)\n",
 			cfg.provenance.Source,
 			cfg.provenance.FetchedAt.Format(time.RFC3339),

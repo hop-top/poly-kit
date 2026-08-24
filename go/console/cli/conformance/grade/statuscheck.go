@@ -53,7 +53,7 @@ func postStatusCheck(ctx context.Context, res *client.Result) error {
 // ungradable→neutral.
 func buildCheckRunPayload(sha string, r *client.Result) map[string]any {
 	conclusion := "neutral"
-	title := "verdict: " + r.Verdict
+	title := "verdict: " + string(r.Verdict)
 	switch r.Verdict {
 	case client.VerdictPass:
 		conclusion = "success"

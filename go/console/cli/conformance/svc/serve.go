@@ -86,13 +86,9 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		judges = j
 	}
 
-	// scenarioGrader is currently a stub: the parallel the scenario library
-	// track ships scenario.Grader and a single-file wire-up follows
-	// the merge. Until then svc compiles and routes against a refusal
-	// grader so service plumbing can be verified.
-	grader := stubGrader{}
-
-	service := svc.NewService(store, claims, grader)
+	// LibGrader delegates to the scenario library: every verdict comes
+	// from scenario.Grade's assertion walk over the uploaded captures.
+	service := svc.NewService(store, claims, svc.LibGrader{})
 	service.Judges = judges
 	service.Receiver = &svc.CassetteReceiver{
 		HardCap: int64(hardMB) << 20,
@@ -155,22 +151,4 @@ func countScenarios(ctx context.Context, store svc.ScenarioStore) int {
 		n += len(ms)
 	}
 	return n
-}
-
-// stubGrader is a placeholder until the scenario library merges. It returns a
-// permissive "pass" verdict so smoke tests can exercise the full
-// request pipeline. Production deployments MUST replace this with the
-// real scenario.Grader once scen merges.
-type stubGrader struct{}
-
-func (stubGrader) Grade(_ context.Context, in svc.GradeInput) (*svc.Result, error) {
-	return &svc.Result{
-		ScenarioID:    in.Scenario.Namespace + "/" + in.Scenario.ID,
-		SchemaVersion: "1",
-		Verdict:       "pass",
-		Reason:        "stub grader: the scenario library not yet merged",
-		ScoredAt:      time.Now().UTC(),
-		GraderVersion: "stub-0.0.0",
-		Tier:          in.Tier,
-	}, nil
 }

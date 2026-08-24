@@ -15,3 +15,6 @@ pub mod id;
 
 #[cfg(feature = "telemetry")]
 pub mod telemetry;
+
+#[cfg(feature = "timeutil")]
+pub mod timeutil;
