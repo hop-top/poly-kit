@@ -48,8 +48,9 @@ func WithProvenance(m Metadata) RenderOption {
 
 // WithCols restricts rendered output to the columns whose table:"" header
 // matches one of cols (case-sensitive, matched against the row struct's
-// tag headers). Column order follows struct field order, not the order in
-// cols. An empty or nil cols means "all columns" (no restriction).
+// tag headers). Selected columns are emitted in the order given in cols,
+// so cols reorders as well as restricts. An empty or nil cols means "all
+// columns" (no restriction), rendered in struct field order.
 //
 // WithCols is the programmatic equivalent of the dispatch-layer --cols
 // flag and threads the selection through every render path:
