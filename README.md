@@ -37,7 +37,9 @@ benchmarks — not flag parsers and output renderers.
 - **Command surface bridge.** One cobra tree projects to 13
   transport surfaces: CLI, REST, RPC, MCP, WS, SSE, Bus, Cron,
   Library, Webhook, OAuth callback, Signed URL, FaaS (AWS Lambda,
-  Cloud Run). Destructive commands locked from remote surfaces by
+  Cloud Run). The MCP surface serves both spec revisions
+  (2024-11-05 + 2026-07-28) from one mount, neither deprecated.
+  Destructive commands locked from remote surfaces by
   default. See [`go/transport/cmdsurface/`](go/transport/cmdsurface/).
 - **Guardrail primitives.** Path scoping (`go/core/scope`), egress
   filtering (`go/core/redact`), runtime circuit breakers
@@ -59,18 +61,17 @@ benchmarks — not flag parsers and output renderers.
 ## Primitives
 
 Shared building blocks every kit-using tool can adopt. Each primitive
-has a cross-language reference implementation and an ADR pinning the
+has a cross-language reference implementation pinning the
 specification.
 
 | Primitive | Purpose                                    | Spec                                                                        | Modules                                                                                                                                                                                                                                          |
 | --------- | ------------------------------------------ | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TypeID    | Self-describing entity IDs (`task_01j6…`). | [ADR 0001](docs/adr/0001-typeid-primitive.md) — Jetify TypeID v0.3.0 | go [`go/core/id`](go/core/id/), rs [`sdk/experimental/rs/src/id`](sdk/experimental/rs/src/id/), ts [`sdk/ts/src/id`](sdk/ts/src/id/), py [`sdk/py/hop_top_kit/id`](sdk/py/hop_top_kit/id/), php [`sdk/experimental/php/src/Id`](sdk/experimental/php/src/Id/) |
-| LLM routing | Deterministic provider picker + categorical budget tier + operator pool gating. | [ADR 0002](docs/adr/0002-llm-pool-routing-primitives.md) — RequestProfile / BudgetTier / PickProvider | go [`go/ai/llm`](go/ai/llm/) (model metadata delegated to [`hop.top/aim`](https://hop.top/aim)) |
+| TypeID    | Self-describing entity IDs (`task_01j6…`). | Jetify TypeID v0.3.0 | go [`go/core/id`](go/core/id/), rs [`sdk/experimental/rs/src/id`](sdk/experimental/rs/src/id/), ts [`sdk/ts/src/id`](sdk/ts/src/id/), py [`sdk/py/hop_top_kit/id`](sdk/py/hop_top_kit/id/), php [`sdk/experimental/php/src/Id`](sdk/experimental/php/src/Id/) |
+| LLM routing | Deterministic provider picker + categorical budget tier + operator pool gating. | RequestProfile / BudgetTier / PickProvider | go [`go/ai/llm`](go/ai/llm/) (model metadata delegated to [`hop.top/aim`](https://hop.top/aim)) |
 
 URI composition (`<scheme>://<entity-type>/<typeid>`) is handled by
 [hop-top/poly-uri](https://github.com/hop-top/poly-uri), not by the
-TypeID primitive itself. See ADR 0001 §"URI form" for the scope
-boundary.
+TypeID primitive itself.
 
 ## Install
 

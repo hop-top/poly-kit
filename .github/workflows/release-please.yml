@@ -1,8 +1,16 @@
 name: release-please
 
+# Runs on both integration branches:
+#   next → prereleases (*-alpha|beta|rc.N), config used as-is (prerelease: true)
+#   main → stable (x.y.z), config is patched in-CI to drop the prerelease flags
+# The committed release-please-config.json is byte-identical on both branches;
+# the stable-vs-prerelease difference is applied ephemerally by the
+# "Derive stable config on main" step below, keyed off the branch name. This
+# keeps next → main promotion merges free of config conflicts.
+
 on:
   push:
-    branches: [main]
+    branches: [main, next]
   workflow_dispatch: {}
 
 permissions:
@@ -13,6 +21,27 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      # On main, strip prerelease behavior so bumps cut stable x.y.z instead of
+      # *-alpha.N. On next, leave the config untouched (prereleases). The edit
+      # is in-CI only and never committed, so both branches keep one config.
+      - name: Derive stable config on main
+        if: github.ref_name == 'main'
+        run: |
+          cfg=.github/release-please-config.json
+          tmp=$(mktemp)
+          jq '
+            (.packages[]) |= (
+              del(.prerelease)
+              | del(."prerelease-type")
+              | del(.versioning)
+            )
+          ' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+          echo "Patched $cfg for stable release on main:"
+          jq '.packages | to_entries
+              | map({key, prerelease: .value.prerelease})' "$cfg"
+
       # Mint a short-lived installation token from the hop-top release-bot
       # GitHub App so the release PRs are opened by `release-bot[bot]`
       # rather than the human owner — sidesteps the CODEOWNERS
@@ -27,4 +56,5 @@ jobs:
         with:
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
+          target-branch: ${{ github.ref_name }}
           token: ${{ steps.app-token.outputs.token }}

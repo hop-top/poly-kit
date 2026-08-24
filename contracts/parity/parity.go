@@ -37,10 +37,43 @@ type Data struct {
 		SectionOrder []string                 `json:"section_order"`
 		Sections     map[string]SectionConfig `json:"sections"`
 	} `json:"help"`
+	Verbosity struct {
+		Flag string `json:"flag"`
+		// Levels maps the stacked -V count (as a decimal string) to a
+		// log level name. Keys are strings because JSON object keys are.
+		Levels        map[string]string `json:"levels"`
+		QuietOverride string            `json:"quiet_override"`
+	} `json:"verbosity"`
+	Streams struct {
+		Flag        string `json:"flag"`
+		LabelFormat string `json:"label_format"`
+		Output      string `json:"output"`
+	} `json:"streams"`
 }
 
 // Values is the parsed parity data, available at init time.
 var Values Data
+
+// Blocks is the registry of top-level parity.json keys this loader knows.
+// Every content block in parity.json MUST appear here and MUST have a
+// corresponding field on Data — TestParityNoUnloadedBlocks enforces both
+// directions so a new block cannot be added as decoration.
+//
+// Keys starting with "$" are JSON Schema metadata, not content.
+var Blocks = []string{
+	"description",
+	"status",
+	"spinner",
+	"anim",
+	"help",
+	"verbosity",
+	"streams",
+	"extends",
+}
+
+// Raw returns the embedded parity.json bytes. Tests use it to compare the
+// declared key set against Blocks without re-reading the file from disk.
+func Raw() []byte { return raw }
 
 func init() {
 	if err := json.Unmarshal(raw, &Values); err != nil {

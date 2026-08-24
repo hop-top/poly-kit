@@ -85,10 +85,11 @@ class FlagsAndKitCommandTest extends TestCase
 
     public function testFlagsRegisterIsIdempotent(): void
     {
+        $this->expectNotToPerformAssertions(); // no exception = pass
+
         $app = new Application('test', '0.0.0-test');
         Flags::register($app);
         Flags::register($app);
-        $this->assertTrue(true); // no exception = pass
     }
 
     public function testFlagsRegisterPreservesExistingDispatcher(): void

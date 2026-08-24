@@ -25,10 +25,17 @@ func TestParseUntil(t *testing.T) {
 		{"in 3 days", "in 3 days", now.AddDate(0, 0, 3)},
 		{"in 1 week", "in 1 week", now.AddDate(0, 0, 7)},
 		{"in 2 weeks", "in 2 weeks", now.AddDate(0, 0, 14)},
-		{"in 1 month", "in 1 month", now.AddDate(0, 1, 0)},
-		{"in 6 months", "in 6 months", now.AddDate(0, 6, 0)},
-		{"in 1 year", "in 1 year", now.AddDate(1, 0, 0)},
-		{"in 2 years", "in 2 years", now.AddDate(2, 0, 0)},
+		// month/year expectations are literals, not now.AddDate(...):
+		// a computed expectation would silently track whatever the
+		// implementation does and prove nothing about clamping.
+		{"in 1 month", "in 1 month",
+			time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC)},
+		{"in 6 months", "in 6 months",
+			time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)},
+		{"in 1 year", "in 1 year",
+			time.Date(2027, 4, 19, 12, 0, 0, 0, time.UTC)},
+		{"in 2 years", "in 2 years",
+			time.Date(2028, 4, 19, 12, 0, 0, 0, time.UTC)},
 		{"in 1 hour", "in 1 hour", now.Add(1 * time.Hour)},
 		{"in 3 hours", "in 3 hours", now.Add(3 * time.Hour)},
 		{"in 30 minutes", "in 30 minutes",
@@ -41,8 +48,8 @@ func TestParseUntil(t *testing.T) {
 		{"+24h", "+24h", now.Add(24 * time.Hour)},
 		{"+30m", "+30m", now.Add(30 * time.Minute)},
 		{"+2w", "+2w", now.AddDate(0, 0, 14)},
-		{"+3M", "+3M", now.AddDate(0, 3, 0)},
-		{"+1y", "+1y", now.AddDate(1, 0, 0)},
+		{"+3M", "+3M", time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)},
+		{"+1y", "+1y", time.Date(2027, 4, 19, 12, 0, 0, 0, time.UTC)},
 		{"+10s", "+10s", now.Add(10 * time.Second)},
 
 		// weekday names (now = Sunday 2026-04-19)
@@ -96,6 +103,90 @@ func TestParseUntil(t *testing.T) {
 				tt.input, tt.expected, got)
 		})
 	}
+}
+
+// TestParseUntil_MonthClamping pins forward month/year arithmetic to clamping
+// rather than Go's default AddDate normalisation. Every expectation is a
+// literal date: computing it with AddDate would just re-derive the behavior
+// under test.
+func TestParseUntil_MonthClamping(t *testing.T) {
+	tests := []struct {
+		name     string
+		now      time.Time
+		input    string
+		expected time.Time
+	}{
+		// headline: Jan 31 + 1 month lands in February, not March.
+		// AddDate would give 2026-03-03.
+		{"jan 31 plus 1 month, phrase",
+			time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC),
+			"in 1 month",
+			time.Date(2026, 2, 28, 12, 0, 0, 0, time.UTC)},
+		// same case through the short-form path — different code path
+		{"jan 31 plus 1 month, short form",
+			time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC),
+			"+1M",
+			time.Date(2026, 2, 28, 12, 0, 0, 0, time.UTC)},
+
+		// no clamp needed: ordinary month arithmetic is unaffected
+		{"jan 15 plus 1 month, no clamp",
+			time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC),
+			"in 1 month",
+			time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)},
+		{"jan 15 plus 1 month, short form, no clamp",
+			time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC),
+			"+1M",
+			time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)},
+
+		// leap day forward into a non-leap year
+		{"feb 29 plus 1 year",
+			time.Date(2028, 2, 29, 12, 0, 0, 0, time.UTC),
+			"in 1 year",
+			time.Date(2029, 2, 28, 12, 0, 0, 0, time.UTC)},
+		{"feb 29 plus 1 year, short form",
+			time.Date(2028, 2, 29, 12, 0, 0, 0, time.UTC),
+			"+1y",
+			time.Date(2029, 2, 28, 12, 0, 0, 0, time.UTC)},
+
+		// clamping across a year boundary and into a leap February
+		{"dec 31 plus 2 months",
+			time.Date(2027, 12, 31, 12, 0, 0, 0, time.UTC),
+			"in 2 months",
+			time.Date(2028, 2, 29, 12, 0, 0, 0, time.UTC)},
+		{"aug 31 plus 1 month into 30-day month",
+			time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC),
+			"in 1 month",
+			time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)},
+
+		// time-of-day (and sub-second precision) survives a clamp
+		{"time of day preserved through clamp",
+			time.Date(2026, 1, 31, 23, 47, 13, 123456789, time.UTC),
+			"in 1 month",
+			time.Date(2026, 2, 28, 23, 47, 13, 123456789, time.UTC)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseUntilAt(tt.input, tt.now)
+			require.NoError(t, err, "input: %q", tt.input)
+			assert.True(t, tt.expected.Equal(got),
+				"input: %q\nnow:      %s\nexpected: %s\ngot:      %s",
+				tt.input, tt.now, tt.expected, got)
+		})
+	}
+}
+
+// TestParseUntil_ClampPreservesLocation checks that a clamped result keeps the
+// input's location rather than silently reverting to UTC.
+func TestParseUntil_ClampPreservesLocation(t *testing.T) {
+	loc := time.FixedZone("TEST", 5*3600)
+	now := time.Date(2026, 1, 31, 9, 30, 0, 0, loc)
+
+	got, err := ParseUntilAt("in 1 month", now)
+	require.NoError(t, err)
+	assert.Equal(t, loc.String(), got.Location().String())
+	assert.Equal(t, "2026-02-28T09:30:00+05:00",
+		got.Format(time.RFC3339))
 }
 
 func TestParseUntil_Errors(t *testing.T) {

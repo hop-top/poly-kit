@@ -1,7 +1,7 @@
 {
   "name": "@hop-top/kit",
-  "version": "0.5.0-alpha.0",
-  "description": "Shared CLI utilities for hop-top tools — TypeScript/CJS edition",
+  "version": "0.5.0-alpha.1",
+  "description": "Shared CLI utilities for hop-top tools \u2014 TypeScript/CJS edition",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -119,10 +119,15 @@
       "types": "./dist/id/index.d.ts",
       "require": "./dist/id/index.js",
       "default": "./dist/id/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "require": "./dist/mcp/index.js",
+      "default": "./dist/mcp/index.js"
     }
   },
   "scripts": {
-    "build": "tsup src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade.ts src/llm.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/scope.ts src/telemetry/index.ts src/id/index.ts --format cjs --dts",
+    "build": "tsup src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade.ts src/llm.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/scope.ts src/telemetry/index.ts src/id/index.ts src/mcp/index.ts --format cjs --dts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "test": "vitest run"
@@ -133,6 +138,8 @@
     "@connectrpc/connect": "^2.1.1",
     "@connectrpc/connect-web": "^2.1.1",
     "@hop-top/cite": "^0.1.0",
+    "@modelcontextprotocol/core": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
     "better-sqlite3": "^12.8.0",
     "commander": "^14.0.3",
     "csv-stringify": "^6.7.0",

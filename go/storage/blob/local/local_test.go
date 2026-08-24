@@ -3,7 +3,10 @@ package local_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -114,6 +117,142 @@ func TestExists(t *testing.T) {
 	}
 	if !ok {
 		t.Fatal("expected true")
+	}
+}
+
+// failingReader yields n bytes then fails, simulating an interrupted write.
+type failingReader struct {
+	data []byte
+	n    int
+}
+
+func (f *failingReader) Read(p []byte) (int, error) {
+	if f.n <= 0 {
+		return 0, errors.New("boom")
+	}
+	k := copy(p, f.data[:min(len(p), f.n)])
+	f.n -= k
+	return k, nil
+}
+
+func TestPutFailureLeavesPreviousValue(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+
+	if err := s.Put(ctx, "k.txt", strings.NewReader("original"), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.Put(ctx, "k.txt", &failingReader{data: bytes.Repeat([]byte("B"), 64), n: 32}, "")
+	if err == nil {
+		t.Fatal("expected write error")
+	}
+
+	rc, err := s.Get(ctx, "k.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	got, _ := io.ReadAll(rc)
+	if string(got) != "original" {
+		t.Fatalf("got %q, want previous value intact", got)
+	}
+}
+
+func TestPutFailureLeavesNoKeyAndNoTemp(t *testing.T) {
+	dir := t.TempDir()
+	s, err := local.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	if err := s.Put(ctx, "new.txt", &failingReader{data: []byte("xxxx"), n: 2}, ""); err == nil {
+		t.Fatal("expected write error")
+	}
+
+	ok, err := s.Exists(ctx, "new.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("failed Put must not create the destination key")
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("temp file left behind: %v", entries)
+	}
+}
+
+func TestPutOverwriteNeverObservedPartial(t *testing.T) {
+	s := setup(t)
+	ctx := context.Background()
+
+	small := "v1"
+	large := strings.Repeat("Z", 1<<20)
+	if err := s.Put(ctx, "atomic.bin", strings.NewReader(small), ""); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 20; i++ {
+			_ = s.Put(ctx, "atomic.bin", strings.NewReader(large), "")
+			_ = s.Put(ctx, "atomic.bin", strings.NewReader(small), "")
+		}
+	}()
+
+	for {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		rc, err := s.Get(ctx, "atomic.bin")
+		if err != nil {
+			t.Errorf("get during concurrent put: %v", err)
+			return
+		}
+		got, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Errorf("read during concurrent put: %v", err)
+			return
+		}
+		if string(got) != small && string(got) != large {
+			t.Errorf("observed partial blob of %d bytes", len(got))
+			return
+		}
+	}
+}
+
+func TestListSkipsTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	s, err := local.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	if err := s.Put(ctx, "real.txt", strings.NewReader("r"), ""); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a crash-orphaned staging file.
+	if err := os.WriteFile(filepath.Join(dir, ".real.txt.123.tmp"), []byte("junk"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	objs, err := s.List(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objs) != 1 || objs[0].Key != "real.txt" {
+		t.Fatalf("got %+v, want only real.txt", objs)
 	}
 }
 

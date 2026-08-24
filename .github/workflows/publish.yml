@@ -55,6 +55,10 @@ jobs:
           ecosystem: rs
           package: hop-top-kit
           mirror: hop-top/kit-rs
+          # Deliberately floating, unlike CI's pinned lint/test jobs:
+          # a release must compile on current stable so consumers can
+          # build it. Publishing does not run fmt/clippy, which are the
+          # version-sensitive gates.
           rust-toolchain: stable
         kit-php:
           dir: sdk/experimental/php

@@ -3,6 +3,8 @@ package client
 import (
 	"net/http"
 	"time"
+
+	"hop.top/kit/go/conformance/scenario"
 )
 
 // Client carries the configuration for a single svc endpoint.
@@ -55,47 +57,42 @@ type Capture struct {
 	CassetteDir string // path relative to GradeRequest.CassetteDir
 }
 
-// Result is a structural bridge to
-// hop.top/kit/go/conformance/scenario.Result. While the scen track is
-// landing in a parallel worktree, this package mirrors the JSON wire
-// shape locally. After scen merges, this alias should be replaced by
-// a type alias / direct re-export with a compile-time assertion that
-// the JSON tags still match.
-type Result struct {
-	ScenarioID     string         `json:"scenario_id"`
-	Verdict        string         `json:"verdict"` // pass | fail | ungradable
-	ExitCode       int            `json:"exit_code"`
-	Reason         string         `json:"reason,omitempty"`
-	Tier           int            `json:"tier,omitempty"`
-	ScoredAt       string         `json:"scored_at,omitempty"`
-	GraderVersion  string         `json:"grader_version,omitempty"`
-	RulesVersion   string         `json:"rules_version,omitempty"`
-	ServiceVersion string         `json:"service_version,omitempty"`
-	Facets         []Facet        `json:"facets,omitempty"`
-	Findings       []Finding      `json:"findings,omitempty"`
-	Provenance     map[string]any `json:"provenance,omitempty"`
-}
+// Result is the grade result envelope — a type alias to the scenario
+// library's Result, which is the exact struct svc serializes under
+// the "result" key of a /v1/grade response (svc.GradeResponse).
+// Aliasing rather than mirroring makes wire drift impossible: every
+// field the grader records — facet rollups, per-assertion traces,
+// judge traces — survives the typed decode by construction.
+type Result = scenario.Result
 
-// Facet is one factor-coverage entry in tier-2/3 results.
-type Facet struct {
-	Factor      int    `json:"factor"`
-	Status      string `json:"status"` // pass | fail | n/a
-	Description string `json:"description,omitempty"`
-}
+// Verdict is the top-level pass/fail/ungradable outcome.
+type Verdict = scenario.Verdict
 
-// Finding is one failing assertion in tier-3 results.
-type Finding struct {
-	ID       string `json:"id"`
-	Kind     string `json:"kind,omitempty"`
-	Expected string `json:"expected,omitempty"`
-	Observed string `json:"observed,omitempty"`
-}
+// Status is the per-assertion / per-facet outcome.
+type Status = scenario.Status
 
-// Verdict constants. Match scen's wire shape.
+// Facet is one per-factor rollup entry in tier-2/3 results.
+type Facet = scenario.FactorFacet
+
+// Assertion is one per-assertion trace entry in tier-3 results. It
+// carries the observed/expected values and the evaluator message that
+// explain WHY a facet failed.
+type Assertion = scenario.AssertionResult
+
+// JudgeTrace records one AI-judge invocation (tier-3 results only).
+type JudgeTrace = scenario.JudgeTrace
+
+// Verdict and Status constants, re-exported from the scenario
+// library so adopters need only this import.
 const (
-	VerdictPass       = "pass"
-	VerdictFail       = "fail"
-	VerdictUngradable = "ungradable"
+	VerdictPass       = scenario.VerdictPass
+	VerdictFail       = scenario.VerdictFail
+	VerdictUngradable = scenario.VerdictUngradable
+
+	StatusPass           = scenario.StatusPass
+	StatusFail           = scenario.StatusFail
+	StatusNotImplemented = scenario.StatusNotImplemented
+	StatusUngradable     = scenario.StatusUngradable
 )
 
 // backoffPolicy controls the retry loop's per-attempt delay

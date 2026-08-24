@@ -18,35 +18,38 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Manifest is the in-memory shape of manifest.yaml. SchemaVersion is
-// emitted as a string ("1") matching design.md §2; downstream svc
-// validates and rejects unsupported versions.
+// Manifest is the in-memory shape of manifest.yaml. The field set
+// mirrors the svc-side manifest schema (svc.Manifest) so uploads
+// round-trip the service's required fields — binary, recorder,
+// story_ref, per-step captures — instead of silently dropping them
+// at pack time.
 type Manifest struct {
-	SchemaVersion    string         `yaml:"schema_version"`
-	ScenarioID       string         `yaml:"scenario_id"`
-	StoryPath        string         `yaml:"story_path,omitempty"`
-	StoryContentHash string         `yaml:"story_content_hash,omitempty"`
-	RecordedAt       time.Time      `yaml:"recorded_at,omitempty"`
-	KitVersion       string         `yaml:"kit_version,omitempty"`
-	XrrVersion       string         `yaml:"xrr_version,omitempty"`
-	Tier             int            `yaml:"tier,omitempty"`
-	Steps            []ManifestStep `yaml:"steps,omitempty"`
+	SchemaVersion   string         `yaml:"schema_version"`
+	Binary          string         `yaml:"binary,omitempty"`
+	BinaryVersion   string         `yaml:"binary_version,omitempty"`
+	Recorder        string         `yaml:"recorder,omitempty"`
+	RecorderVersion string         `yaml:"recorder_version,omitempty"`
+	RecordedAt      time.Time      `yaml:"recorded_at,omitempty"`
+	ScenarioID      string         `yaml:"scenario_id,omitempty"`
+	ScenarioVersion string         `yaml:"scenario_version,omitempty"`
+	StoryRef        ManifestStory  `yaml:"story_ref,omitempty"`
+	Steps           []ManifestStep `yaml:"steps,omitempty"`
+}
+
+// ManifestStory pins the story bytes shipped at the tar root.
+type ManifestStory struct {
+	StoryID     string `yaml:"story_id,omitempty"`
+	StoryPath   string `yaml:"story_path,omitempty"`
+	ContentHash string `yaml:"content_hash,omitempty"`
 }
 
 // ManifestStep is one row in manifest.yaml.steps[]. ID is the
-// step-id scen's assertion.on resolves against.
+// step-id scen's assertion.on resolves against; Captures points at
+// the steps/<id>/ directory carrying result.json + stdout/stderr.
 type ManifestStep struct {
-	ID          string          `yaml:"id"`
-	CassetteDir string          `yaml:"cassette_dir,omitempty"`
-	Capture     ManifestCapture `yaml:"capture,omitempty"`
-}
-
-// ManifestCapture points at the per-step capture artifacts (stdout,
-// stderr, result.json) relative to the cassette dir root.
-type ManifestCapture struct {
-	Stdout string `yaml:"stdout,omitempty"`
-	Stderr string `yaml:"stderr,omitempty"`
-	Result string `yaml:"result,omitempty"`
+	ID          string `yaml:"id"`
+	CassetteDir string `yaml:"cassette_dir,omitempty"`
+	Captures    string `yaml:"captures,omitempty"`
 }
 
 // LoadManifest reads <cassetteDir>/manifest.yaml, decodes it, and

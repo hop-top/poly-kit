@@ -8,10 +8,31 @@ description = "Cross-language CLI UX parity toolkit"
 [features]
 default = []
 api = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio"]
+blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
 output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep:comfy-table"]
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
+bus = ["dep:serde", "dep:serde_json"]
+sqldb = ["dep:rusqlite", "dep:thiserror"]
+httpcache = ["kv", "dep:serde", "dep:serde_json", "dep:sha2", "dep:base64"]
+# Dual-spec MCP surface. `rmcp` supplies the protocol vocabulary (version
+# constants, the -3202x error codes, reserved _meta keys) with
+# default-features off, so the server/tokio/hyper stack stays out of the
+# tree: this port hosts via a plain request->response fn, not rmcp's
+# transports. Consumers who do not serve MCP compile none of it.
+mcp = ["dep:serde", "dep:serde_json", "dep:rmcp"]
+# Builds on sqldb for connection setup, pragmas and the SQLite engine —
+# no dependencies of its own.
+kv = ["sqldb"]
+sqlstore = ["sqldb", "dep:serde", "dep:serde_json"]
+# Backup/restore through a blob backend. Opt-in so a consumer that only
+# needs local `.dbs/` file backups does not compile the blob module.
+sqlstore-blob = ["sqlstore", "blob"]
+# At-rest value encryption. Opt-in so the base store stays free of the
+# crypto dependency tree.
+sqlstore-encrypt = ["sqlstore", "dep:crypto_secretbox", "dep:hkdf", "dep:sha2"]
+timeutil = ["dep:chrono", "dep:interim", "dep:thiserror"]
 telemetry = [
     "dep:tokio",
     "dep:reqwest",
@@ -27,25 +48,69 @@ telemetry = [
 
 [dependencies]
 hop-top-cite = { version = "0.1.0", optional = true }
+chrono = { version = "0.4", default-features = false, features = [
+    "std",
+    "clock",
+], optional = true }
+interim = { version = "0.2", default-features = false, features = [
+    "std",
+    "chrono_0_4",
+], optional = true }
 reqwest = { version = "0.12", features = ["json"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
-serde_json = { version = "1", optional = true }
+# preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so
+# object key order survives round-trips and projection at every nesting depth.
+# Required for --format=json/yaml to emit columns in ColumnSpec / --cols order
+# rather than alphabetically. indexmap is already in the tree via serde_yaml.
+serde_json = { version = "1", features = ["preserve_order"], optional = true }
 serde_yaml = { version = "0.9", optional = true }
 sha2 = { version = "0.10", optional = true }
+# `default-features = false` drops the std/simd defaults: the envelope
+# codec needs only the standard alphabet, and `alloc` is what supplies
+# encode/decode to owned buffers.
+base64 = { version = "0.22", default-features = false, features = [
+    "alloc",
+], optional = true }
+# RustCrypto HKDF. Pinned to 0.12 rather than 0.13 because 0.12 is the line
+# built on the same `digest` 0.10 generation as the pinned sha2 — moving to
+# 0.13 would pull a second copy of sha2 into the tree for no gain.
+hkdf = { version = "0.12", default-features = false, optional = true }
+# NaCl secretbox (XSalsa20-Poly1305), the wire format the Go side uses.
+# RustCrypto's pure-Rust implementation: no libsodium C build, unlike
+# `dryoc`/`sodiumoxide`, and two orders of magnitude more downloads than
+# either. `default-features = false` drops `alloc`'s transitive std pull;
+# `getrandom` supplies the OS RNG for nonces and `salsa20` the cipher core.
+crypto_secretbox = { version = "0.1", default-features = false, features = [
+    "alloc",
+    "getrandom",
+    "salsa20",
+], optional = true }
 getrandom = { version = "0.2", optional = true }
 dirs = { version = "5", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
 regex = { version = "1", optional = true }
 thiserror = { version = "1", optional = true }
+rmcp = { version = "3.1.4", default-features = false, optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
 comfy-table = { version = "7", default-features = false, optional = true }
 mti = { version = "1.1.1", features = ["serde"], optional = true }
 uuid = { version = "1", features = ["v7", "serde"], optional = true }
+# `bundled` compiles SQLite from source: no libsqlite3 on the build host,
+# and a pinned engine version so pragma/WAL behaviour is identical across
+# platforms and CI runners. Matches the Go side's pure-Go driver posture.
+# `default-features = false` drops the unused statement cache (hashlink)
+# and the wasm ffi shim.
+rusqlite = { version = "0.40", default-features = false, features = [
+    "bundled",
+], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 mockito = "1"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Must match the lib dependency's feature set, or the test build and the
+# shipped crate disagree about Map's backing store and the suite would
+# validate ordering the released crate does not have.
+serde_json = { version = "1", features = ["preserve_order"] }
 tempfile = "3"
 uuid = { version = "1", features = ["v7", "serde"] }

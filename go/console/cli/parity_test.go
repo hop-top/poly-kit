@@ -325,6 +325,12 @@ func TestParityFlagsExactSet(t *testing.T) {
 	common := []string{"--format", "--help", "--help-all", "--help-management",
 		"--no-color", "--no-hints", "--quiet", "--telemetry", "--verbose", "--version"}
 	pyExtra := []string{"--help-commands", "--stream"}
+	// --offline/--profile/--instance (netglobals.go) are documented as
+	// family-wide (every kit-powered CLI, per the cli-parity-guide Global
+	// Flags table), but only the Go cli.New wiring exists so far. Scope
+	// to Go until ts/py pick up the same globals, same shape as pyExtra
+	// above for a lang-specific addition.
+	goExtra := []string{"--instance", "--offline", "--profile"}
 
 	flagRE := regexp.MustCompile(`--[\w-]+`)
 
@@ -350,8 +356,12 @@ func TestParityFlagsExactSet(t *testing.T) {
 
 		want := make([]string, len(common))
 		copy(want, common)
-		if b.lang == "py" {
+		switch b.lang {
+		case "py":
 			want = append(want, pyExtra...)
+			sort.Strings(want)
+		case "go":
+			want = append(want, goExtra...)
 			sort.Strings(want)
 		}
 

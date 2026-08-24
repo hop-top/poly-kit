@@ -22,6 +22,7 @@ var (
 	ErrMissingRequired  = errors.New("kit init: missing required input")
 	ErrOrgRequired      = errors.New("kit init: --org is required when --account-type=org")
 	ErrExists           = errors.New("kit init: target directory already exists")
+	ErrHopDirty         = errors.New("kit init: hop branch has uncommitted changes")
 )
 
 // ExistsError: target directory already present in cwd. --force does not
@@ -64,7 +65,7 @@ func (e *ModeBareWorktreeError) Error() string {
 	return fmt.Sprintf(
 		"kit init does not support bare worktrees yet.\n"+
 			"Detected: cwd is worktree of %s (bare repo).\n"+
-			"Workaround: run kit init from a regular clone.",
+			"Workaround: re-run with --mode augment to render into this worktree.",
 		e.CommonDir,
 	)
 }
@@ -77,6 +78,33 @@ func NewModeBareWorktreeError(commonDir, gitDir string) error {
 func IsBareWorktree(err error) bool {
 	var e *ModeBareWorktreeError
 	return errors.As(err, &e) || errors.Is(err, ErrModeBareWorktree)
+}
+
+// HopDirtyError: hop-mode augment found uncommitted changes in the
+// worktree. The tree may carry work from another branch, so augment
+// refuses to merge kit-template files into it unless the user opted
+// in via --yes/--force.
+type HopDirtyError struct {
+	Branch    string
+	DirtyList string // truncated `git status --porcelain` output
+}
+
+func (e *HopDirtyError) Error() string {
+	return fmt.Sprintf(
+		"kit init: hop branch %q has uncommitted changes; commit or stash first, "+
+			"or pass --yes / --force to override.\n%s",
+		e.Branch, e.DirtyList,
+	)
+}
+func (e *HopDirtyError) Unwrap() []error { return []error{ErrHopDirty} }
+
+func NewHopDirtyError(branch, dirtyList string) error {
+	return &HopDirtyError{Branch: branch, DirtyList: dirtyList}
+}
+
+func IsHopDirty(err error) bool {
+	var e *HopDirtyError
+	return errors.As(err, &e) || errors.Is(err, ErrHopDirty)
 }
 
 // AlreadyKitError: .kit/version present; redirect user to kit upgrade.

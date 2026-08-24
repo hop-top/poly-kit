@@ -194,8 +194,10 @@ run_lang() {
       # cargo needs a registry cache; point CARGO_HOME at the real one
       # so the rebound HOME inside the runner doesn't trigger a re-fetch.
       local real_cargo_home="${CARGO_HOME:-${REAL_HOME:-$HOME}/.cargo}"
+      # --bin is explicit: the crate carries a second binary (order) for the
+      # column-ordering harness, so cargo cannot infer a default.
       ( cd "${RUNNERS}/rs" && \
-        HOME="${HARNESS_HOME}" CARGO_HOME="${real_cargo_home}" cargo run --quiet )
+        HOME="${HARNESS_HOME}" CARGO_HOME="${real_cargo_home}" cargo run --quiet --bin record )
       ;;
     php)
       HOME="${HARNESS_HOME}" php "${RUNNERS}/php/record.php"

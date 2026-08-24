@@ -26,7 +26,7 @@
  */
 
 import { Command, Help } from 'commander';
-import { parity } from './tui/parity.js';
+import { parity, type ParityData } from './tui/parity.js';
 import { registerOutputFlags } from './output/flags.js';
 import './output/builtins.js';
 export { HintSet, hintsEnabled, renderHints, active,
@@ -38,6 +38,29 @@ export type { Hint, HintOptions } from './hint.js';
 // ---------------------------------------------------------------------------
 
 const verboseCountMap = new WeakMap<Command, number>();
+
+/**
+ * Return the single-character shorthand declared by the parity contract's
+ * `verbosity.flag`, with leading dashes stripped. A contract value that is
+ * not a single character after stripping falls back to `V`.
+ *
+ * Taking the contract as a parameter (rather than reading the module-level
+ * `parity`) keeps the mapping testable against a constructed `ParityData`
+ * without mutating the shared `parity.json`.
+ */
+export function verbosityShorthand(d: ParityData): string {
+  const s = (d.verbosity?.flag ?? '').replace(/^-+/, '');
+  return s.length === 1 ? s : 'V';
+}
+
+/**
+ * Render the `-V` option spec commander registers, e.g. `-V, --verbose`.
+ * The shorthand comes from the parity contract; the long name is
+ * kit-local (the contract declares only the shorthand).
+ */
+export function verbosityFlagSpec(d: ParityData): string {
+  return `-${verbosityShorthand(d)}, --verbose`;
+}
 
 /** Read the accumulated -V count for a parsed command tree. */
 export function verboseCount(cmd: Command): number {
@@ -63,8 +86,42 @@ interface StreamDef {
 const streamDefsMap = new WeakMap<Command, StreamDef[]>();
 
 /**
+ * Return the long flag name declared by the parity contract's
+ * `streams.flag`, with leading dashes stripped (commander's parsed option
+ * key is the undashed camelCase name). Falls back to `stream`.
+ *
+ * Taking the contract as a parameter (rather than reading the module-level
+ * `parity`) keeps the mapping testable against a constructed `ParityData`
+ * without mutating the shared `parity.json`.
+ */
+export function streamFlagName(d: ParityData): string {
+  const name = (d.streams?.flag ?? '').replace(/^-+/, '');
+  return name === '' ? 'stream' : name;
+}
+
+/**
+ * Render a stream's prefix from the parity contract's
+ * `streams.label_format` template. The template's `{name}` placeholder is
+ * substituted with the stream name; a trailing space separates the label
+ * from the payload.
+ */
+export function streamLabel(d: ParityData, name: string): string {
+  const format = d.streams?.label_format || '[{name}]';
+  return format.split('{name}').join(name) + ' ';
+}
+
+/**
+ * Resolve the parity contract's `streams.output` destination to a stream.
+ * Anything other than `stdout` resolves to stderr, which is the contract's
+ * declared destination.
+ */
+export function streamOutput(d: ParityData): NodeJS.WritableStream {
+  return d.streams?.output === 'stdout' ? process.stdout : process.stderr;
+}
+
+/**
  * Register a named diagnostic stream on a command.
- * Adds a `--stream <names>` option (comma-separated) on first call.
+ * Adds the parity contract's stream option (comma-separated) on first call.
  *
  * Parity note: Go uses StringSlice (repeatable --stream); TS and Python
  * use a single comma-separated string value.
@@ -76,9 +133,9 @@ export function registerStream(
   if (!defs) {
     defs = [];
     streamDefsMap.set(cmd, defs);
-    // Add --stream option on first registration.
+    // Add the contract's stream option on first registration.
     cmd.option(
-      '--stream <names>',
+      `--${streamFlagName(parity)} <names>`,
       'Enable diagnostic streams (comma-separated)',
     );
   }
@@ -93,24 +150,37 @@ export function getStreamDefs(cmd: Command): StreamDef[] {
 const noopWriter = { write(_s: string): boolean { return true; } };
 
 /**
- * Return a writer for a named stream. When the stream is enabled via
- * `--stream`, writes go to stderr with a `[name] ` prefix. Otherwise
- * writes are discarded.
+ * Commander stores a parsed option under the camelCased form of its long
+ * name (`--log-level` → `opts.logLevel`), so the contract's flag name must
+ * be camelCased before it is read back off `cmd.opts()`.
+ */
+function optionKey(flagName: string): string {
+  return flagName.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
+/**
+ * Return a writer for a named stream. When the stream is enabled via the
+ * parity contract's stream flag, writes go to the contract's
+ * `streams.output` destination, prefixed with its `streams.label_format`
+ * label. Otherwise writes are discarded.
  */
 export function channel(
   cmd: Command, name: string,
 ): { write(s: string): boolean } {
   const opts = cmd.opts();
-  const enabled = typeof opts.stream === 'string'
-    ? opts.stream.split(',').map((s: string) => s.trim()).includes(name)
+  const raw = opts[optionKey(streamFlagName(parity))];
+  const enabled = typeof raw === 'string'
+    ? raw.split(',').map((s: string) => s.trim()).includes(name)
     : false;
   if (!enabled) return noopWriter;
+  const prefix = streamLabel(parity, name);
+  const w = streamOutput(parity);
   return {
     write(s: string): boolean {
       // Split on newlines and prefix each line (parity with Go/Python).
       const lines = s.split('\n');
       for (const line of lines) {
-        if (line) process.stderr.write(`[${name}] ${line}\n`);
+        if (line) w.write(`${prefix}${line}\n`);
       }
       return true;
     },
@@ -663,9 +733,11 @@ export function createCLI(cfg: CLIConfig): CLIResult {
     program.option('--no-hints', 'Suppress next-step hints after command output', false);
   }
 
-  // -V / --verbose: accumulator pattern for stacking (-VV = 2).
+  // Stackable verbosity count flag (-VV = 2). The shorthand comes from the
+  // parity contract's verbosity block; commander takes the option spec as a
+  // runtime string, so it need not be a literal.
   program.option(
-    '-V, --verbose', 'Increase verbosity',
+    verbosityFlagSpec(parity), 'Increase verbosity',
     (_: string, prev: number) => prev + 1, 0,
   );
   // Store count after parse; quiet overrides verbose.

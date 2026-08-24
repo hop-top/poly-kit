@@ -11,7 +11,7 @@
 //
 // The package is mode-gated: ModeOff (default) is zero-cost; ModeWarn
 // records and warns on stderr; ModeStrict turns missing entries into
-// *output.Error{Code: "PROVENANCE_MISSING", ExitCode: 6} returned from
+// *output.Error{Code: "PROVENANCE_MISSING", ExitCode: 65} returned from
 // Render before bytes hit stdout. SetMode flips the package global;
 // WithMode overrides per context (e.g., a --strict CLI invocation).
 //

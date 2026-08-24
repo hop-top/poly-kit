@@ -16,7 +16,9 @@ type asCLIError interface {
 
 // toCLIError converts err to an *output.Error following the rules in the
 // task spec: typed errors implementing AsCLIError() pass through; bare
-// errors are wrapped with CodeGeneric / ExitCode 1.
+// errors are wrapped with CodeGeneric / ExitCode 1. Either way the
+// originating error is retained so errors.Is keeps matching sentinels
+// across the conversion.
 func toCLIError(err error) *output.Error {
 	if err == nil {
 		return nil
@@ -24,14 +26,24 @@ func toCLIError(err error) *output.Error {
 	var ce asCLIError
 	if errors.As(err, &ce) {
 		if out := ce.AsCLIError(); out != nil {
+			// The adopter owns every rendered field; reattach err so the
+			// conversion doesn't sever errors.Is. Sentinel-bearing types
+			// (e.g. conformance.UsageError) document that identity holds,
+			// and that promise has to survive the envelope too.
+			out = out.Retaining(err)
+			if out.Transience == "" {
+				// Unset (not adopter-chosen) transience defaults from
+				// the code so passthrough envelopes predating the field
+				// still classify on the wire. WithTransience copies, so
+				// shared package-level envelopes stay untouched.
+				out = out.WithTransience(output.TransienceForCode(out.Code))
+			}
 			return out
 		}
 	}
-	return &output.Error{
-		Code:     output.CodeGeneric,
-		Message:  err.Error(),
-		ExitCode: 1,
-	}
+	// WrapError retains err so errors.Is still matches sentinels after the
+	// middleware converts a handler failure into the envelope.
+	return output.WrapError(err, output.CodeGeneric, 1)
 }
 
 // activeFormat returns the --format value visible to cmd. Empty when the
@@ -97,7 +109,8 @@ func wrapRunE(orig func(*cobra.Command, []string) error) func(*cobra.Command, []
 // The middleware behavior:
 //   - If RunE returns nil, nothing is written to stderr.
 //   - If RunE returns an error implementing AsCLIError(), the returned
-//     envelope is rendered as-is.
+//     envelope is rendered as-is; the originating error is reattached so
+//     errors.Is still matches sentinels, without altering any rendered field.
 //   - Otherwise, the error is wrapped with Code=CodeGeneric, ExitCode=1.
 //   - In JSON/YAML mode the envelope is rendered structurally; in
 //     table/plaintext mode it's rendered as "Code: Message\nFix: ...".

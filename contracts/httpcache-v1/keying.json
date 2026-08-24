@@ -1,0 +1,233 @@
+{
+  "version": 1,
+  "note": "Cross-language cache-key vectors for kit/storage/httpcache. Key = prefix + lowercase-hex sha256(method + \" \" + url), where url is the request URL re-serialized by the language's URL type and method is used VERBATIM (no case folding). Vary-aware keying is a v1 non-goal: the key depends on method and URL only, never on request headers. Ports MUST reproduce these digests exactly.",
+  "default_prefix": "httpcache:",
+  "derivation": {
+    "hash": "sha256",
+    "digest_encoding": "lowercase hex, 64 chars",
+    "preimage": "method + \" \" + url",
+    "separator": " ",
+    "key": "prefix + digest",
+    "vary_aware": false
+  },
+  "normalization": {
+    "note": "The v1 contract applies NO normalization of its own. The url in the preimage is whatever the URL type re-serializes; the vectors below pin exactly which transforms that does and does not include.",
+    "method_case_folded": false,
+    "host_case_folded": false,
+    "default_port_stripped": false,
+    "query_params_sorted": false,
+    "empty_query_marker_dropped": false,
+    "fragment_stripped": false,
+    "dot_segments_resolved": false,
+    "path_non_ascii_percent_encoded": true,
+    "path_space_percent_encoded": true,
+    "query_non_ascii_percent_encoded": false,
+    "existing_percent_escapes_preserved": true
+  },
+  "cases": [
+    {
+      "name": "baseline GET",
+      "method": "GET",
+      "url": "https://example.com/a",
+      "want_url": "https://example.com/a",
+      "want_digest": "91cd61a36ae99d448f15adfab08b5fb6a0e496ba473fdd6f82d36423f0d64c44",
+      "want_key": "httpcache:91cd61a36ae99d448f15adfab08b5fb6a0e496ba473fdd6f82d36423f0d64c44"
+    },
+    {
+      "name": "method case is significant",
+      "note": "The method is hashed verbatim; it is NOT upper-cased first. A port that normalizes the method before hashing produces a different key than Go for the same request.",
+      "method": "get",
+      "url": "https://example.com/a",
+      "want_url": "https://example.com/a",
+      "want_digest": "ad4b1f847ac94e591403521d815bceae80b2c294be8be5883ebac299a416158d",
+      "want_key": "httpcache:ad4b1f847ac94e591403521d815bceae80b2c294be8be5883ebac299a416158d"
+    },
+    {
+      "name": "method participates in the key",
+      "note": "Only GET is cacheable, but the derivation itself is method-agnostic and must still match.",
+      "method": "POST",
+      "url": "https://example.com/a",
+      "want_url": "https://example.com/a",
+      "want_digest": "5436a75b66b51ae78152d6db29c219549101c9a066d71dece196f867086d07e5",
+      "want_key": "httpcache:5436a75b66b51ae78152d6db29c219549101c9a066d71dece196f867086d07e5"
+    },
+    {
+      "name": "empty path is not promoted to root",
+      "note": "\"https://example.com\" and \"https://example.com/\" are distinct keys. Ports whose URL type inserts an implicit \"/\" will diverge here.",
+      "method": "GET",
+      "url": "https://example.com",
+      "want_url": "https://example.com",
+      "want_digest": "7ce19e3903c090c63d62006051c9d4d0e099e4661b8f2de022854587348089a3",
+      "want_key": "httpcache:7ce19e3903c090c63d62006051c9d4d0e099e4661b8f2de022854587348089a3"
+    },
+    {
+      "name": "explicit root path",
+      "method": "GET",
+      "url": "https://example.com/",
+      "want_url": "https://example.com/",
+      "want_digest": "06b9566227767dcb7544eec2cdf632fa4db4b4a97c65f506cf44adf2456554f2",
+      "want_key": "httpcache:06b9566227767dcb7544eec2cdf632fa4db4b4a97c65f506cf44adf2456554f2"
+    },
+    {
+      "name": "query parameter order is significant",
+      "note": "Paired with the next case: same parameters, different order, different key. Query strings are NOT sorted or canonicalized.",
+      "method": "GET",
+      "url": "https://example.com/a?b=1&a=2",
+      "want_url": "https://example.com/a?b=1&a=2",
+      "want_digest": "04226031bea8c17957b794b0b6e75744503a135fcb45f82afe50d50f090f1874",
+      "want_key": "httpcache:04226031bea8c17957b794b0b6e75744503a135fcb45f82afe50d50f090f1874"
+    },
+    {
+      "name": "query parameter order is significant (reordered)",
+      "method": "GET",
+      "url": "https://example.com/a?a=2&b=1",
+      "want_url": "https://example.com/a?a=2&b=1",
+      "want_digest": "9683662950c3eac5b83a767bde2ef0b86a425aa5c7f0150a535a40767fa0b9b7",
+      "want_key": "httpcache:9683662950c3eac5b83a767bde2ef0b86a425aa5c7f0150a535a40767fa0b9b7"
+    },
+    {
+      "name": "empty query marker is preserved",
+      "note": "A trailing \"?\" with no parameters survives re-serialization and yields a key distinct from the bare path.",
+      "method": "GET",
+      "url": "https://example.com/a?",
+      "want_url": "https://example.com/a?",
+      "want_digest": "3c2cdcf003f11d6de29c7cf72a3b4d2a1fad174f63ada4373b84bb6095453d42",
+      "want_key": "httpcache:3c2cdcf003f11d6de29c7cf72a3b4d2a1fad174f63ada4373b84bb6095453d42"
+    },
+    {
+      "name": "fragment is part of the key",
+      "note": "Fragments are never sent on the wire, but v1 hashes the re-serialized URL as-is and does NOT strip them. Ports whose URL type drops the fragment will diverge.",
+      "method": "GET",
+      "url": "https://example.com/a#frag",
+      "want_url": "https://example.com/a#frag",
+      "want_digest": "321ee1e0604f498fdfabab2c69c755e7e615f39fae878bfe8b4b2c00273aff12",
+      "want_key": "httpcache:321ee1e0604f498fdfabab2c69c755e7e615f39fae878bfe8b4b2c00273aff12"
+    },
+    {
+      "name": "query and fragment together",
+      "method": "GET",
+      "url": "https://example.com/a?q=1#frag",
+      "want_url": "https://example.com/a?q=1#frag",
+      "want_digest": "03cf2c64b7e94e8f39c13ce447e467aee1f9810ae1bdc1cb672d205769331b70",
+      "want_key": "httpcache:03cf2c64b7e94e8f39c13ce447e467aee1f9810ae1bdc1cb672d205769331b70"
+    },
+    {
+      "name": "default https port is NOT stripped",
+      "note": "\"https://example.com:443/a\" keys differently from \"https://example.com/a\". Ports whose URL type elides the scheme-default port will diverge.",
+      "method": "GET",
+      "url": "https://example.com:443/a",
+      "want_url": "https://example.com:443/a",
+      "want_digest": "191118c01e04f2fd8b8eead2c0629b018a8c45c3b63d3da3a255de37e9928d90",
+      "want_key": "httpcache:191118c01e04f2fd8b8eead2c0629b018a8c45c3b63d3da3a255de37e9928d90"
+    },
+    {
+      "name": "default http port is NOT stripped",
+      "method": "GET",
+      "url": "http://example.com:80/a",
+      "want_url": "http://example.com:80/a",
+      "want_digest": "45c04542c3d027a271f6d6c9ddce3140ac285e277c1810571d02640884bd2eda",
+      "want_key": "httpcache:45c04542c3d027a271f6d6c9ddce3140ac285e277c1810571d02640884bd2eda"
+    },
+    {
+      "name": "non-default port",
+      "method": "GET",
+      "url": "https://example.com:8443/a",
+      "want_url": "https://example.com:8443/a",
+      "want_digest": "def9703143deb57bf0b616ffbc93d3bf019ee7c26c8b4c671f7d38350ef96652",
+      "want_key": "httpcache:def9703143deb57bf0b616ffbc93d3bf019ee7c26c8b4c671f7d38350ef96652"
+    },
+    {
+      "name": "host case is NOT folded",
+      "note": "Hostnames are case-insensitive per RFC 3986, but v1 does not lower-case them. Ports whose URL type normalizes host case will diverge.",
+      "method": "GET",
+      "url": "https://EXAMPLE.com/a",
+      "want_url": "https://EXAMPLE.com/a",
+      "want_digest": "9c19154550104b4cf3fa6d51a5d326bf0dd13c706b5dc783d2406dd770ee88f8",
+      "want_key": "httpcache:9c19154550104b4cf3fa6d51a5d326bf0dd13c706b5dc783d2406dd770ee88f8"
+    },
+    {
+      "name": "percent-encoded non-ASCII path",
+      "note": "Pairs with the next case: an already-encoded path and its decoded spelling collapse to the SAME key, because the path is re-serialized percent-encoded.",
+      "method": "GET",
+      "url": "https://example.com/caf%C3%A9",
+      "want_url": "https://example.com/caf%C3%A9",
+      "want_digest": "837fb432ddbebbbcd56f93fc53fc401370301013251ddab28ef203dcf92f6423",
+      "want_key": "httpcache:837fb432ddbebbbcd56f93fc53fc401370301013251ddab28ef203dcf92f6423"
+    },
+    {
+      "name": "literal non-ASCII path is percent-encoded",
+      "note": "Same digest as the previous case. The path component IS UTF-8 percent-encoded on re-serialization.",
+      "method": "GET",
+      "url": "https://example.com/café",
+      "want_url": "https://example.com/caf%C3%A9",
+      "want_digest": "837fb432ddbebbbcd56f93fc53fc401370301013251ddab28ef203dcf92f6423",
+      "want_key": "httpcache:837fb432ddbebbbcd56f93fc53fc401370301013251ddab28ef203dcf92f6423"
+    },
+    {
+      "name": "percent-encoded non-ASCII query is preserved",
+      "note": "Pairs with the next case. Unlike the path, the QUERY component is passed through verbatim, so an encoded query and its decoded spelling key DIFFERENTLY. This asymmetry is the single likeliest source of cross-language divergence.",
+      "method": "GET",
+      "url": "https://example.com/a?q=caf%C3%A9",
+      "want_url": "https://example.com/a?q=caf%C3%A9",
+      "want_digest": "c1ab5ec1f662dae417ff809cf116aac24feaeac557ba51f2c281275996a443a1",
+      "want_key": "httpcache:c1ab5ec1f662dae417ff809cf116aac24feaeac557ba51f2c281275996a443a1"
+    },
+    {
+      "name": "literal non-ASCII query is NOT percent-encoded",
+      "note": "Distinct from the previous case. The query is emitted raw, non-ASCII bytes and all. A port that percent-encodes the query on re-serialization will diverge.",
+      "method": "GET",
+      "url": "https://example.com/a?q=café",
+      "want_url": "https://example.com/a?q=café",
+      "want_digest": "1f1a594077af7ff75f954e5c9c42b794394262031543d8839bcc5c41bd538f27",
+      "want_key": "httpcache:1f1a594077af7ff75f954e5c9c42b794394262031543d8839bcc5c41bd538f27"
+    },
+    {
+      "name": "encoded path separator is not decoded",
+      "note": "%2F must survive re-serialization as %2F; decoding it would merge two distinct resources onto one key.",
+      "method": "GET",
+      "url": "https://example.com/a%2Fb",
+      "want_url": "https://example.com/a%2Fb",
+      "want_digest": "360de8bab216589e88164d942485f3d0ea2299641b9a62004d98cf6180351110",
+      "want_key": "httpcache:360de8bab216589e88164d942485f3d0ea2299641b9a62004d98cf6180351110"
+    },
+    {
+      "name": "space in path is percent-encoded",
+      "note": "A literal space becomes %20 (not \"+\") in the path component.",
+      "method": "GET",
+      "url": "https://example.com/a b",
+      "want_url": "https://example.com/a%20b",
+      "want_digest": "3586ee6cf63231dc4b208eda3294bf0ca68d835ea0541a0d9d909c86c1add545",
+      "want_key": "httpcache:3586ee6cf63231dc4b208eda3294bf0ca68d835ea0541a0d9d909c86c1add545"
+    },
+    {
+      "name": "dot segments are NOT resolved",
+      "note": "\"/./a/../b\" is hashed literally, not collapsed to \"/b\". Ports whose URL type normalizes dot segments will diverge.",
+      "method": "GET",
+      "url": "https://example.com/./a/../b",
+      "want_url": "https://example.com/./a/../b",
+      "want_digest": "645687c2982685df64a7cfcb5bb55d9cfaae7a3f9f18da5210bdda2d8b858d00",
+      "want_key": "httpcache:645687c2982685df64a7cfcb5bb55d9cfaae7a3f9f18da5210bdda2d8b858d00"
+    },
+    {
+      "name": "userinfo participates in the key",
+      "note": "Credentials embedded in the URL are re-serialized and hashed. Ports that strip userinfo will diverge; ports that redact the password will diverge differently.",
+      "method": "GET",
+      "url": "https://user:pw@example.com/a",
+      "want_url": "https://user:pw@example.com/a",
+      "want_digest": "4c3c3a0878f186f3097914b31f865e30b7297c91fd4a43ba3e0f4ba7a7a8c865",
+      "want_key": "httpcache:4c3c3a0878f186f3097914b31f865e30b7297c91fd4a43ba3e0f4ba7a7a8c865"
+    }
+  ],
+  "prefix_cases": [
+    {
+      "name": "default prefix applies when unset",
+      "prefix": "",
+      "want_effective_prefix": "httpcache:"
+    },
+    {
+      "name": "custom prefix replaces the default",
+      "prefix": "app:v2:",
+      "want_effective_prefix": "app:v2:"
+    }
+  ]
+}

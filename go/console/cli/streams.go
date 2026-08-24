@@ -10,9 +10,37 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/contracts/parity"
 )
 
 const streamsAnnotationKey = "streams"
+
+// streamLabel renders a stream's prefix from the parity contract's
+// streams.label_format template. The template's "{name}" placeholder is
+// substituted with the stream name; a trailing space separates the label
+// from the payload.
+//
+// Taking the contract as a parameter (rather than reading parity.Values)
+// keeps the rendering testable against a constructed Data without
+// mutating the shared parity.json.
+func streamLabel(d *parity.Data, name string) string {
+	format := d.Streams.LabelFormat
+	if format == "" {
+		format = "[{name}]"
+	}
+	return strings.ReplaceAll(format, "{name}", name) + " "
+}
+
+// streamOutput resolves the parity contract's streams.output destination
+// to a writer. Anything other than "stdout" resolves to stderr, which is
+// the contract's declared destination.
+func streamOutput(d *parity.Data) io.Writer {
+	if d.Streams.Output == "stdout" {
+		return os.Stdout
+	}
+	return os.Stderr
+}
 
 // StreamDef describes a named stream registered on a command.
 type StreamDef struct {
@@ -31,7 +59,9 @@ func RegisterStream(cmd *cobra.Command, name, description string) {
 }
 
 // Channel returns an io.Writer for the named stream.
-// If --stream includes this name, writes to stderr with [name] prefix.
+// If --stream includes this name, writes to the parity contract's
+// streams.output destination, prefixed with the contract's
+// streams.label_format label.
 // Otherwise returns io.Discard (zero-cost no-op).
 // Thread-safe.
 func Channel(cmd *cobra.Command, name string) io.Writer {
@@ -39,10 +69,9 @@ func Channel(cmd *cobra.Command, name string) io.Writer {
 		return io.Discard
 	}
 	dim := lipgloss.NewStyle().Faint(true)
-	prefix := dim.Render(fmt.Sprintf("[%s] ", name))
 	return &streamChannel{
-		prefix: prefix,
-		w:      os.Stderr,
+		prefix: dim.Render(streamLabel(&parity.Values, name)),
+		w:      streamOutput(&parity.Values),
 	}
 }
 
@@ -92,18 +121,30 @@ func saveStreamDefs(cmd *cobra.Command, defs []StreamDef) {
 	cmd.Annotations[streamsAnnotationKey] = string(b)
 }
 
-// ensureStreamFlag registers --stream on cmd once.
+// streamFlagName returns the long flag name declared by the parity
+// contract's streams.flag, with the leading dashes stripped for cobra
+// (which registers names undashed). Falls back to "stream".
+func streamFlagName(d *parity.Data) string {
+	name := strings.TrimLeft(d.Streams.Flag, "-")
+	if name == "" {
+		return "stream"
+	}
+	return name
+}
+
+// ensureStreamFlag registers the contract's stream flag on cmd once.
 func ensureStreamFlag(cmd *cobra.Command) {
-	if cmd.Flags().Lookup("stream") != nil {
+	flag := streamFlagName(&parity.Values)
+	if cmd.Flags().Lookup(flag) != nil {
 		return
 	}
-	cmd.Flags().StringSlice("stream", nil,
+	cmd.Flags().StringSlice(flag, nil,
 		"Enable named output streams (comma-separated)")
 }
 
-// streamEnabled checks if name is in the --stream flag value.
+// streamEnabled checks if name is in the stream flag's value.
 func streamEnabled(cmd *cobra.Command, name string) bool {
-	f := cmd.Flags().Lookup("stream")
+	f := cmd.Flags().Lookup(streamFlagName(&parity.Values))
 	if f == nil || !f.Changed {
 		return false
 	}

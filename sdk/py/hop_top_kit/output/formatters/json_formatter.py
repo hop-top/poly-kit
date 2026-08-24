@@ -1,12 +1,20 @@
-"""json built-in formatter — stdlib json with configurable indent."""
+"""json built-in formatter — stdlib json with configurable indent.
+
+Key order mirrors the tabular formatters: ``columns`` sets it, ``cols``
+reorders + selects, payload insertion order is the fallback.
+"""
 
 from __future__ import annotations
 
 import dataclasses
 import json
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 from hop_top_kit.output.formatter import OptionSpec
+from hop_top_kit.output.projection import project_payload
+
+if TYPE_CHECKING:
+    from hop_top_kit.output.formatter import ColumnSpec
 
 
 class JSONFormatter:
@@ -29,11 +37,13 @@ class JSONFormatter:
         data: Any,
         opts: dict[str, Any],
         cols: list[str],
+        columns: list[ColumnSpec] | None = None,
     ) -> None:
         indent = opts.get("indent", 2)
         if indent == 0:
             indent = None  # json.dumps None → compact
-        out.write(json.dumps(_to_jsonable(data), indent=indent))
+        keys = cols or [c.header for c in columns or []]
+        out.write(json.dumps(_to_jsonable(project_payload(data, keys)), indent=indent))
         out.write("\n")
 
 

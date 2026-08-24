@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/kv-v1/keys.json",
+  "version": "v1",
+  "note": "Cross-language storage-binding corpus for kit/storage/kv on the SQLite backend. Every SDK that implements the kv contract MUST be able to write this corpus to a SQLite file and read back every key, with the exact value bytes, from a store opened by any other SDK against that same file. The `kv.key` column is TEXT in every implementation: SQLite compares storage class before value, so a BLOB-bound key never equals a TEXT-bound one and cross-language reads would silently miss. Keys and values are hex so JSON carries non-UTF-8 bytes losslessly. `list_order` is the full corpus under `ORDER BY key`, i.e. SQLite's default BINARY collation, which is memcmp over the stored bytes and therefore identical to Go's string ordering — prefix scans depend on that equivalence holding under TEXT. The list/List operation itself issues no ORDER BY, so its row order is unspecified: compare its result as a set, and assert `list_order` only against an explicitly ordered query. `expect_hex` in `prefix_scans` is likewise given in collation order and compared as a set.",
+  "cases": [
+    {
+      "name": "ascii-plain",
+      "key_hex": "6b6579",
+      "value_hex": "76616c7565",
+      "note": "\"key\" -> \"value\". The ordinary path."
+    },
+    {
+      "name": "ascii-path-like",
+      "key_hex": "6170702f612f62",
+      "value_hex": "31",
+      "note": "\"app/a/b\" -> \"1\". Prefix-scan shaped."
+    },
+    {
+      "name": "empty-value",
+      "key_hex": "656d707479",
+      "value_hex": "",
+      "note": "\"empty\" -> zero-length value. Must round-trip as present-but-empty, not absent."
+    },
+    {
+      "name": "single-byte-key",
+      "key_hex": "61",
+      "value_hex": "78",
+      "note": "\"a\" -> \"x\". Shortest non-empty key."
+    },
+    {
+      "name": "trailing-ff",
+      "key_hex": "64617461ff",
+      "value_hex": "747261696c696e67",
+      "note": "\"data\\xff\" -> \"trailing\". Not valid UTF-8; the prefix that broke prefixEnd."
+    },
+    {
+      "name": "trailing-ff-child-a",
+      "key_hex": "64617461ff61",
+      "value_hex": "6368696c6461",
+      "note": "\"data\\xffa\" -> \"childa\". Inside the \"data\\xff\" prefix range."
+    },
+    {
+      "name": "trailing-ff-child-b",
+      "key_hex": "64617461ff62",
+      "value_hex": "6368696c6462",
+      "note": "\"data\\xffb\" -> \"childb\". Inside the \"data\\xff\" prefix range."
+    },
+    {
+      "name": "outside-ff-prefix",
+      "key_hex": "6461746166",
+      "value_hex": "6f757473696465",
+      "note": "\"dataf\" -> \"outside\". Sorts near the 0xff keys but is outside the prefix range; guards an over-wide upper bound."
+    },
+    {
+      "name": "all-ff-double",
+      "key_hex": "ffff",
+      "value_hex": "616c6c6666",
+      "note": "\"\\xff\\xff\" -> \"allff\". Prefix with no successor: the scan must be lower-bounded only."
+    },
+    {
+      "name": "all-ff-child",
+      "key_hex": "ffff7a",
+      "value_hex": "616c6c66667a",
+      "note": "\"\\xff\\xffz\" -> \"allffz\". Must be reachable from the all-0xff prefix."
+    },
+    {
+      "name": "high-byte-run",
+      "key_hex": "fefdfc",
+      "value_hex": "68696768",
+      "note": "\"\\xfe\\xfd\\xfc\" -> \"high\". Non-UTF-8 bytes that are not 0xff; guards a fix that special-cases 0xff only."
+    },
+    {
+      "name": "leading-nul",
+      "key_hex": "006c656164",
+      "value_hex": "6e756c6c656164",
+      "note": "\"\\x00lead\" -> \"nullead\". Leading NUL must not truncate the key; sqlite3_bind_text64 is length-counted, C-string semantics would drop this to the empty key."
+    },
+    {
+      "name": "embedded-nul",
+      "key_hex": "656d62006564",
+      "value_hex": "656d626e756c",
+      "note": "\"emb\\x00ed\" -> \"embnul\". Interior NUL must survive the round trip and stay distinct from \"emb\"."
+    },
+    {
+      "name": "value-with-nul-and-ff",
+      "key_hex": "62696e76616c",
+      "value_hex": "00ff00ff",
+      "note": "\"binval\" -> \"\\x00\\xff\\x00\\xff\". The value column is BLOB; binary values must survive unchanged."
+    },
+    {
+      "name": "utf8-multibyte",
+      "key_hex": "6ce29c93",
+      "value_hex": "e29c93",
+      "note": "\"l\\u2713\" -> \"\\u2713\". Valid multi-byte UTF-8, to prove the TEXT binding is not mangling well-formed text."
+    },
+    {
+      "name": "invalid-utf8-continuation",
+      "key_hex": "6c80",
+      "value_hex": "62616432",
+      "note": "\"l\\x80\" -> \"bad2\". A bare continuation byte: invalid UTF-8 that a String-typed API could not represent at all."
+    }
+  ],
+  "list_order": [
+    "006c656164",
+    "61",
+    "6170702f612f62",
+    "62696e76616c",
+    "6461746166",
+    "64617461ff",
+    "64617461ff61",
+    "64617461ff62",
+    "656d62006564",
+    "656d707479",
+    "6b6579",
+    "6c80",
+    "6ce29c93",
+    "fefdfc",
+    "ffff",
+    "ffff7a"
+  ],
+  "prefix_scans": [
+    {
+      "name": "empty-prefix-lists-all",
+      "prefix_hex": "",
+      "expect_hex": [
+        "006c656164",
+        "61",
+        "6170702f612f62",
+        "62696e76616c",
+        "6461746166",
+        "64617461ff",
+        "64617461ff61",
+        "64617461ff62",
+        "656d62006564",
+        "656d707479",
+        "6b6579",
+        "6c80",
+        "6ce29c93",
+        "fefdfc",
+        "ffff",
+        "ffff7a"
+      ],
+      "note": "Empty prefix is unbounded: every live key, in BINARY collation order."
+    },
+    {
+      "name": "trailing-ff-prefix",
+      "prefix_hex": "64617461ff",
+      "expect_hex": ["64617461ff", "64617461ff61", "64617461ff62"],
+      "note": "prefixEnd(\"data\\xff\") drops the 0xff and increments, giving \"datb\"; \"dataf\" must stay out."
+    },
+    {
+      "name": "all-ff-prefix-unbounded",
+      "prefix_hex": "ffff",
+      "expect_hex": ["ffff", "ffff7a"],
+      "note": "All-0xff prefix has no successor, so the scan is lower-bounded only and must still exclude everything below it."
+    },
+    {
+      "name": "ascii-prefix",
+      "prefix_hex": "64617461",
+      "expect_hex": ["6461746166", "64617461ff", "64617461ff61", "64617461ff62"],
+      "note": "\"data\" covers the 0xff keys and \"dataf\" alike."
+    },
+    {
+      "name": "nul-prefix-is-not-empty-prefix",
+      "prefix_hex": "00",
+      "expect_hex": ["006c656164"],
+      "note": "A 0x00 prefix is a real one-byte prefix, not the empty/unbounded case."
+    },
+    {
+      "name": "emb-prefix-stops-at-nul",
+      "prefix_hex": "656d62",
+      "expect_hex": ["656d62006564"],
+      "note": "\"emb\" must match the embedded-NUL key; a C-string truncation bug would make these two keys collide instead."
+    }
+  ]
+}

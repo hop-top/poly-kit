@@ -23,7 +23,11 @@ class ApiException extends \RuntimeException
     /**
      * Build from decoded API error response body.
      *
-     * @param array{status: int, code: string, message: string} $body
+     * Keys are optional: the body is whatever the remote returned, so a
+     * malformed or truncated error response still yields an exception
+     * rather than an undefined-offset fatal.
+     *
+     * @param array{status?: int, code?: string, message?: string} $body
      */
     public static function fromResponse(array $body): self
     {

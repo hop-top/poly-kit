@@ -23,6 +23,7 @@ func (s *stubTB) Helper() {}
 func (s *stubTB) Errorf(format string, args ...any) {
 	s.errors = append(s.errors, fmt.Sprintf(format, args...))
 }
+
 func (s *stubTB) Fatalf(format string, args ...any) {
 	s.fatal = append(s.fatal, fmt.Sprintf(format, args...))
 }
@@ -158,6 +159,45 @@ func TestAssertCLI_SadPath_MissingShort(t *testing.T) {
 	}
 	if len(ve.MissingShort) == 0 {
 		t.Fatalf("expected MissingShort bucket; got: %s", ve.Error())
+	}
+}
+
+func TestAssertCLI_SadPath_SignatureLeafRedefinesGlobalFlag(t *testing.T) {
+	r := rootFixture()
+	shadow := &cobra.Command{
+		Use: "shadow", Short: "Shadow a global",
+		Long: "Leaf that redefines the global --format flag.",
+		Run:  func(*cobra.Command, []string) {},
+	}
+	shadow.Flags().String("format", "", "local format override")
+	cli.SetSideEffect(shadow, cli.SideEffectRead)
+	cli.SetIdempotency(shadow, cli.IdempotencyYes)
+	cli.SetTopLevelVerb(shadow)
+	r.Cmd.AddCommand(shadow)
+
+	stub := &stubTB{}
+	kitconformance.AssertCLI(stub, r)
+
+	if len(stub.errors) == 0 {
+		t.Fatal("expected AssertCLI to fail on a leaf redefining a global flag (signature local-globals)")
+	}
+	joined := strings.Join(stub.errors, " | ")
+	if !strings.Contains(joined, cli.SignatureCheckLocalGlobals) {
+		t.Fatalf("expected message to name the %q check; got: %s",
+			cli.SignatureCheckLocalGlobals, joined)
+	}
+	if !strings.Contains(joined, "format") {
+		t.Fatalf("expected message to mention the shadowed flag; got: %s", joined)
+	}
+}
+
+func TestAssertCLI_HappyPath_CleanRootPassesSignatureChecks(t *testing.T) {
+	r := rootFixture()
+	stub := &stubTB{}
+	kitconformance.AssertCLI(stub, r)
+	if len(stub.errors) != 0 || len(stub.fatal) != 0 {
+		t.Fatalf("clean root must pass both validators; errors=%v fatal=%v",
+			stub.errors, stub.fatal)
 	}
 }
 

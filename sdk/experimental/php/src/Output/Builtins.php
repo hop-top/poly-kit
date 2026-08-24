@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace HopTop\Kit\Output;
 
+use HopTop\Kit\Output\Formatter\Builtin\CsvFormatter;
 use HopTop\Kit\Output\Formatter\Builtin\JsonFormatter;
 use HopTop\Kit\Output\Formatter\Builtin\TableFormatter;
+use HopTop\Kit\Output\Formatter\Builtin\TextFormatter;
 use HopTop\Kit\Output\Formatter\Builtin\YamlFormatter;
 
 /**
- * Built-in formatter registration. Phase-1 ships table + json + yaml;
- * csv / text land in Phase-3.
+ * Built-in formatter registration: table + json + yaml + csv + text.
  *
  * 'table' is the default --format and intentionally minimal: pipe-friendly
  * ASCII, no borders, no color. Adopters wanting richer tables (borders,
@@ -25,5 +26,7 @@ final class Builtins
         $r->register(new TableFormatter());
         $r->register(new JsonFormatter());
         $r->register(new YamlFormatter());
+        $r->register(new CsvFormatter());
+        $r->register(new TextFormatter());
     }
 }

@@ -2,10 +2,10 @@
 // 12-Factor AI-CLI conformance report, and derives the verdict
 // (label / message / color) from a per-factor matrix.
 //
-// The badge JSON committed at repo root as `.12fcc.json` drives the
+// The badge JSON committed at repo root as `.12fc.json` drives the
 // shields endpoint badge that the kit-scaffolded READMEs embed:
 //
-//	https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/<owner>/<repo>/main/.12fcc.json
+//	https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/<owner>/<repo>/main/.12fc.json
 //
 // Adopter test wiring (typically the same test that regenerates the
 // human-readable `docs/12-factor-conformance.md`):
@@ -19,7 +19,7 @@
 //	            // ... 11 more
 //	        },
 //	    }
-//	    f, _ := os.Create(".12fcc.json")
+//	    f, _ := os.Create(".12fc.json")
 //	    defer f.Close()
 //	    if err := badge.WriteJSON(f, rep); err != nil { t.Fatal(err) }
 //	}

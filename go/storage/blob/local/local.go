@@ -32,6 +32,12 @@ func New(dir string) (*Store, error) {
 	return &Store{root: abs}, nil
 }
 
+// isTempName reports whether name is an in-flight (or crash-orphaned) Put
+// staging file, which must never surface as a key.
+func isTempName(name string) bool {
+	return strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".tmp")
+}
+
 func (s *Store) resolve(key string) (string, error) {
 	resolved := filepath.Join(s.root, filepath.FromSlash(key))
 	if !strings.HasPrefix(resolved, s.root+string(os.PathSeparator)) && resolved != s.root {
@@ -41,23 +47,50 @@ func (s *Store) resolve(key string) (string, error) {
 }
 
 // Put writes the contents of r to key, creating subdirectories as needed.
+//
+// The write is atomic: contents land in a sibling temp file that is synced
+// and then renamed over the destination. A concurrent Get therefore never
+// observes a partial blob, and an interrupted write leaves any previous
+// value intact.
 func (s *Store) Put(_ context.Context, key string, r io.Reader, _ string) error {
 	p, err := s.resolve(key)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+	dir := filepath.Dir(p)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("blob/local: mkdir: %w", err)
 	}
-	f, err := os.Create(p)
+
+	f, err := os.CreateTemp(dir, "."+filepath.Base(p)+".*.tmp")
 	if err != nil {
-		return fmt.Errorf("blob/local: create: %w", err)
+		return fmt.Errorf("blob/local: create tmp: %w", err)
 	}
+	tmp := f.Name()
+
 	if _, err := io.Copy(f, r); err != nil {
 		f.Close()
+		os.Remove(tmp)
 		return fmt.Errorf("blob/local: write: %w", err)
 	}
-	return f.Close()
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return fmt.Errorf("blob/local: sync: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("blob/local: close tmp: %w", err)
+	}
+	if err := os.Chmod(tmp, 0o640); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("blob/local: chmod tmp: %w", err)
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("blob/local: rename: %w", err)
+	}
+	return nil
 }
 
 // Get opens the blob for reading. Caller must close the returned ReadCloser.
@@ -94,6 +127,9 @@ func (s *Store) List(_ context.Context, prefix string) ([]blob.Object, error) {
 			return err
 		}
 		if d.IsDir() {
+			return nil
+		}
+		if isTempName(d.Name()) {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, p)

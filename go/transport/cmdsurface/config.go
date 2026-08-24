@@ -28,6 +28,15 @@ type Config struct {
 	// to construct the TelemetrySink. See TelemetryConfig godoc.
 	Telemetry *TelemetryConfig `yaml:"telemetry,omitempty" json:"telemetry,omitempty"`
 
+	// MCP is the optional declarative MCP surface configuration. Like
+	// Telemetry, a pointer so absence is distinguishable from an
+	// explicit empty block. Declarative-only: FromConfig does not
+	// mount the MCP surface from this field (matching the
+	// webhook/bus/cron blocks) — adopters read cfg.MCP and translate
+	// to WithMCP* options when calling MountMCP themselves. See
+	// MCPConfig godoc.
+	MCP *MCPConfig `yaml:"mcp,omitempty" json:"mcp,omitempty"`
+
 	// TelemetryEmitterProvider is invoked by FromConfig when
 	// Telemetry.Enabled is true. Required when Telemetry.Enabled;
 	// ignored otherwise. The returned emitter is owned by the bridge

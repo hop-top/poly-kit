@@ -136,19 +136,36 @@ func walkOrCreate(doc *yaml.Node, key string) (*yaml.Node, string) {
 	return cur, parts[len(parts)-1]
 }
 
-// nodeToValue converts a yaml.Node to a Go value:
-// scalar → string, sequence → []string, mapping → map[string]any.
+// Resolved YAML tags that scalarToValue converts to a non-string Go
+// type. Every other tag -- including !!binary, !!timestamp, and any
+// custom or unrecognized tag -- yields the scalar's raw source text, so
+// Get's return type stays within the documented set.
+const (
+	intTag   = "!!int"
+	floatTag = "!!float"
+	boolTag  = "!!bool"
+	nullTag  = "!!null"
+)
+
+// nodeToValue converts a yaml.Node to a Go value, preserving the type
+// implied by each scalar's resolved YAML tag: !!int → int, !!float →
+// float64, !!bool → bool, !!null → nil, everything else → string.
+// Sequences become []any so element types survive; mappings become
+// map[string]any.
 func nodeToValue(n *yaml.Node) any {
 	switch n.Kind {
 	case yaml.ScalarNode:
-		return n.Value
+		return scalarToValue(n)
 	case yaml.SequenceNode:
-		out := make([]string, 0, len(n.Content))
+		out := make([]any, 0, len(n.Content))
 		for _, c := range n.Content {
-			out = append(out, c.Value)
+			out = append(out, nodeToValue(c))
 		}
 		return out
 	case yaml.MappingNode:
+		// Decoded key-by-key rather than via a single Decode call:
+		// decoding a whole mapping yields map[any]any when any key is
+		// non-string, which would break the map[string]any contract.
 		out := make(map[string]any, len(n.Content)/2)
 		for i := 0; i < len(n.Content)-1; i += 2 {
 			out[n.Content[i].Value] = nodeToValue(n.Content[i+1])
@@ -156,6 +173,50 @@ func nodeToValue(n *yaml.Node) any {
 		return out
 	}
 	return nil
+}
+
+// scalarToValue resolves a scalar node to its tagged Go type.
+//
+// Only the four tags above are converted; anything else returns the raw
+// source text. yaml.v3 does the conversion for the tags in the
+// whitelist so spellings it accepts (hex, octal and underscored ints,
+// .inf/.nan floats, YAML 1.2 core schema booleans) resolve exactly as
+// Load would resolve them for the same file.
+//
+// Tags outside the whitelist are deliberately not decoded:
+//
+//   - !!binary would come back as the *decoded* bytes in a string, so a
+//     caller reading a base64 field would silently receive different
+//     text than the file holds, with no way to detect it. Invalid
+//     base64 decodes to "" with no error, losing the value entirely.
+//   - !!timestamp would come back as a time.Time, making Get's return
+//     type depend on whether a value happens to parse as a date.
+//   - Custom tags (!mytype) carry no meaning to this package.
+//
+// Config values are opaque tokens, so raw text is the honest answer for
+// all of them.
+func scalarToValue(n *yaml.Node) any {
+	switch n.Tag {
+	case intTag, floatTag, boolTag, nullTag:
+	default:
+		return n.Value
+	}
+
+	var v any
+	if err := n.Decode(&v); err != nil {
+		// Explicitly tagged but unconvertible (e.g. `!!int abc`): fall
+		// back to the raw text rather than dropping the value.
+		return n.Value
+	}
+
+	// An !!int too large for int decodes to uint64. Return the raw text
+	// rather than a width the contract does not name.
+	switch v.(type) {
+	case int, float64, bool, nil:
+		return v
+	default:
+		return n.Value
+	}
 }
 
 // leafEntry represents a single leaf in a flattened YAML tree.

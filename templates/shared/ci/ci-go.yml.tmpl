@@ -3,10 +3,13 @@ name: CI (Go)
 on:
   push:
     branches: [main]
-    paths: ["**.go", "go.mod", "go.sum"]
+    # The workflow file + mise.toml are in the filter so toolchain and
+    # workflow repairs verify themselves instead of waiting for the
+    # next .go push.
+    paths: ["**.go", "go.mod", "go.sum", "mise.toml", ".github/workflows/ci-go.yml"]
   pull_request:
     branches: [main]
-    paths: ["**.go", "go.mod", "go.sum"]
+    paths: ["**.go", "go.mod", "go.sum", "mise.toml", ".github/workflows/ci-go.yml"]
 
 permissions:
   contents: read
@@ -44,7 +47,11 @@ jobs:
       # <<< kit-managed: toolchain <<<
 
       - name: Run tests
-        run: mise exec -- go test -race -coverprofile=coverage.out ./...
+        # -race requires cgo, but mise.toml pins CGO_ENABLED=0 for
+        # static builds — and `mise exec` re-applies [env] over the
+        # job/step env, silently clobbering a step-level override. The
+        # env(1) wrapper AFTER mise exec is the only layer that wins.
+        run: mise exec -- env CGO_ENABLED=1 go test -race -coverprofile=coverage.out ./...
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4

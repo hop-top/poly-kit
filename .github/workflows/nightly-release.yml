@@ -1,5 +1,11 @@
 name: Nightly Release
 
+# Auto-merges the open release-please PR on each integration branch when its
+# CI is green:
+#   next → the prerelease PR (release-please--branches--next)
+#   main → the stable PR    (release-please--branches--main)
+# One matrix leg per branch so both channels advance nightly.
+
 on:
   schedule:
     - cron: '0 4 * * *'
@@ -12,56 +18,63 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [main, next]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Find release-please PR
-        id: find-pr
+      # release-please opens ONE PR PER PACKAGE, on branches named
+      # release-please--branches--<branch>--components--<component>.
+      # `gh pr list --head` is an exact match, so filtering on the bare
+      # release-please--branches--<branch> prefix matched nothing and this
+      # job silently no-opped. Select by base branch + bot author instead,
+      # which is component-name agnostic, and iterate over every PR rather
+      # than only the first.
+      - name: Auto-merge release PRs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ matrix.branch }}
         run: |
-          PR=$(gh pr list \
-            --head release-please--branches--main \
-            --json number,mergeable,mergeStateStatus \
-            --jq '.[0]' 2>/dev/null || echo '{}')
+          set -euo pipefail
 
-          NUMBER=$(echo "$PR" | jq -r '.number // empty')
-          if [ -z "$NUMBER" ]; then
-            echo "No release-please PR found"
-            echo "found=false" >> "$GITHUB_OUTPUT"
+          # `mapfile` is bash>=4 only; a plain read loop keeps this portable
+          # and, more importantly, fails loudly rather than silently empty.
+          PRS=$(gh pr list \
+            --base "$BRANCH" \
+            --author "app/hop-top-release-bot" \
+            --state open \
+            --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("release-please--branches--"))
+                  | .number')
+
+          if [ -z "$PRS" ]; then
+            echo "No release-please PR found for $BRANCH"
             exit 0
           fi
 
-          echo "found=true" >> "$GITHUB_OUTPUT"
-          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Found release PR(s) for $BRANCH:" $PRS
 
-      - name: Check CI status
-        if: steps.find-pr.outputs.found == 'true'
-        id: ci-check
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.find-pr.outputs.number }}
-        run: |
-          CHECKS=$(gh pr checks "$PR_NUMBER" 2>&1 || true)
+          for PR_NUMBER in $PRS; do
+            echo "::group::PR #$PR_NUMBER"
 
-          if echo "$CHECKS" | grep -qE "fail|pending"; then
-            echo "CI not green — skipping auto-merge"
-            echo "$CHECKS"
-            echo "green=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "CI green"
-            echo "green=true" >> "$GITHUB_OUTPUT"
-          fi
+            CHECKS=$(gh pr checks "$PR_NUMBER" 2>&1 || true)
+            if echo "$CHECKS" | grep -qE "fail|pending"; then
+              echo "CI not green — skipping #$PR_NUMBER"
+              echo "$CHECKS"
+              echo "::endgroup::"
+              continue
+            fi
+            echo "CI green — merging #$PR_NUMBER"
 
-      - name: Auto-merge release PR
-        if: >-
-          steps.find-pr.outputs.found == 'true' &&
-          steps.ci-check.outputs.green == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.find-pr.outputs.number }}
-        run: |
-          gh pr merge "$PR_NUMBER" \
-            --squash \
-            --auto \
-            --subject "chore: release $(date +%Y-%m-%d)"
+            # Plain merge (not squash): release-please PRs carry one commit
+            # per package with its own Release-As trailer; squashing collapses
+            # them and loses per-package version attribution.
+            gh pr merge "$PR_NUMBER" \
+              --merge \
+              --auto \
+              --subject "chore: release $BRANCH $(date +%Y-%m-%d)"
+
+            echo "::endgroup::"
+          done

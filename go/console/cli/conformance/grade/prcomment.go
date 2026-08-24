@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"hop.top/kit/go/conformance/client"
 )
@@ -69,7 +70,7 @@ func buildCommentBody(r *client.Result) string {
 	var b strings.Builder
 	b.WriteString(MarkerComment)
 	b.WriteString("\n\n")
-	fmt.Fprintf(&b, "## Conformance grade — verdict: **%s**\n\n", strings.ToUpper(r.Verdict))
+	fmt.Fprintf(&b, "## Conformance grade — verdict: **%s**\n\n", strings.ToUpper(string(r.Verdict)))
 	b.WriteString("| Field | Value |\n|-------|-------|\n")
 	if r.ScenarioID != "" {
 		fmt.Fprintf(&b, "| Scenario | `%s` |\n", r.ScenarioID)
@@ -77,8 +78,8 @@ func buildCommentBody(r *client.Result) string {
 	if r.Tier > 0 {
 		fmt.Fprintf(&b, "| Tier | %d |\n", r.Tier)
 	}
-	if r.ScoredAt != "" {
-		fmt.Fprintf(&b, "| Graded at | %s |\n", r.ScoredAt)
+	if !r.ScoredAt.IsZero() {
+		fmt.Fprintf(&b, "| Graded at | %s |\n", r.ScoredAt.Format(time.RFC3339))
 	}
 	if r.GraderVersion != "" {
 		fmt.Fprintf(&b, "| Grader | %s (rules %s) |\n", r.GraderVersion, r.RulesVersion)

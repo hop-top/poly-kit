@@ -87,15 +87,43 @@ if [ -n "$HAS_GO" ] || [ -n "$HAS_CONTRACTS" ]; then
     if [ -n "$HAS_GO" ]; then
         # Extract unique Go packages from changed .go files, skipping
         # directories that no longer exist (e.g. deleted in this push).
-        GO_PKGS=$(echo "$CHANGED" | grep -E '\.go$' \
+        # Packages inside a NESTED module (their own go.mod, e.g.
+        # extensions/mcp-tasks) cannot be resolved by the root module's
+        # `go test` — passing them yields "[setup failed]". Split them out
+        # and test each nested module from its own directory.
+        ALL_DIRS=$(echo "$CHANGED" | grep -E '\.go$' \
             | xargs -I{} dirname {} \
             | sort -u \
-            | while IFS= read -r d; do if [ -d "$d" ]; then printf './%s\n' "$d"; fi; done \
-            | tr '\n' ' ')
+            | while IFS= read -r d; do if [ -d "$d" ]; then printf '%s\n' "$d"; fi; done)
+
+        GO_PKGS=""
+        NESTED_MODS=""
+        for d in $ALL_DIRS; do
+            # Walk up from $d looking for a go.mod above the repo root.
+            m="$d"
+            root_mod=""
+            while [ "$m" != "." ] && [ -n "$m" ]; do
+                if [ -f "$m/go.mod" ]; then root_mod="$m"; break; fi
+                m=$(dirname "$m")
+            done
+            if [ -n "$root_mod" ]; then
+                case " $NESTED_MODS " in
+                    *" $root_mod "*) ;;
+                    *) NESTED_MODS="$NESTED_MODS $root_mod" ;;
+                esac
+            else
+                GO_PKGS="$GO_PKGS ./$d"
+            fi
+        done
+
         if [ -n "$GO_PKGS" ]; then
             echo "  go (affected packages)..."
             go test -short -count=1 $GO_PKGS
         fi
+        for m in $NESTED_MODS; do
+            echo "  go (nested module $m)..."
+            ( cd "$m" && go test -short -count=1 ./... )
+        done
     else
         echo "  go (all, due to contract changes)..."
         make test-go

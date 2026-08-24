@@ -13,16 +13,19 @@ with kit conventions. Replaces the deprecated `kit scaffold` command.
 | augment     | `kit init` (no name) in existing repo| Add tier-N kit files in place   |
 
 Refused with hint: `kit init` in an already-initialized kit repo
-(`.kit/version` present) or in a bare git worktree root.
+(`.kit/version` present) or in a bare repository root.
 
 ### Auto-detect rules
 
 `kit init` (no `--mode`) walks cwd in this order:
 
-1. `git rev-parse --git-common-dir` differs from `--git-dir` → bare
-   worktree → refused (use `--mode augment` to override).
+1. bare repository **root** (no working tree) → refused (use
+   `--mode augment` to override). A *linked worktree* of a bare repo
+   is not refused: it is a normal usable checkout, so it falls
+   through to the rules below and augments like any other repo.
 2. `.kit/version` present → already-initialized kit repo → refused.
-3. `.git/` present → augment.
+3. `.git/` present → augment. A hop-style worktree lands here, since
+   its `.git` is a file pointing at the bare parent.
 4. otherwise → bootstrap.
 
 A positional `<name>` shifts step 3/4 toward bootstrap when
@@ -34,10 +37,14 @@ cwd, not augmenting cwd itself).
 Pass `--mode augment` to bypass auto-detect when you need to
 augment a repo that auto-detect refuses:
 
-- **Bare worktrees / hop-shaped repos.** A worktree under
-  `hops/<branch>/` whose `.git` is a file pointing to the bare
-  parent triggers the bare-worktree refusal. `--mode augment`
-  bypasses that check.
+- **Bare repository roots.** A bare repo root (git internals, no
+  working tree) is refused — scaffolding next to `HEAD`/`objects`/
+  `refs` is never right. `--mode augment` bypasses that check.
+- **Hop-shaped worktrees.** A worktree under `hops/<branch>/` is no
+  longer refused by auto-detect, so plain `kit init` augments it.
+  Passing `--mode augment` explicitly is still worthwhile: it
+  resolves to the hop-aware path, which adds the dirty-tree refusal
+  and the branch line in the summary described below.
 - **Labspace roots.** Any tree whose ancestors carry `.kit/`
   markers from prior augments may surface as already-initialized;
   `--mode augment` overrides.

@@ -4,7 +4,21 @@ version = "0.0.0"
 edition = "2021"
 publish = false
 
+# Two runners share one crate so they share one target dir and one build.
+# `record` drives the telemetry envelope harness; `order` drives the
+# column-ordering conformance harness.
+[[bin]]
+name = "record"
+path = "src/main.rs"
+
+[[bin]]
+name = "order"
+path = "src/order.rs"
+
 [dependencies]
-hop-top-kit = { path = "../../../../experimental/rs", features = ["telemetry"] }
-serde_json = "1"
+hop-top-kit = { path = "../../../../experimental/rs", features = ["telemetry", "output"] }
+# preserve_order MUST match the SDK's own feature set: without it serde_json's
+# Map is a BTreeMap and every observed key order would come back alphabetical,
+# silently destroying the very thing these fixtures assert.
+serde_json = { version = "1", features = ["preserve_order"] }
 tokio = { version = "1", features = ["full"] }

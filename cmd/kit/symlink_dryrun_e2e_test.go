@@ -71,7 +71,7 @@ func TestE2E_KitSymlink_DryRun_NoDiskSideEffects(t *testing.T) {
 	}
 }
 
-func TestE2E_KitSymlink_NoDryRun_OptInDoesNotChangeBehaviour(t *testing.T) {
+func TestE2E_KitSymlink_NoDryRun_OptInDoesNotChangeBehavior(t *testing.T) {
 	// Verifies the opt-in registry does not break the no-flag path:
 	// running `kit symlink` (no --dry-run) still writes a real link.
 	proj := t.TempDir()

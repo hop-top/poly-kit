@@ -69,44 +69,49 @@ expires. `Status` fetches a result by grade-id.
 
 ## Result type
 
-Currently a structural bridge to `hop.top/kit/go/conformance/scenario.Result`
-(scen track lands in parallel). The JSON wire shape is identical, so
-once scen merges callers should switch to `scenario.Result` with a
-compile-time assertion. The bridge fields are:
+`Result` is a type alias to `hop.top/kit/go/conformance/scenario.Result`
+— the exact struct svc serializes under the `"result"` key — so the
+typed decode preserves everything the grader records:
 
 ```go
-type Result struct {
-    ScenarioID     string         // canonical scenario name
-    Verdict        string         // pass | fail | ungradable
-    ExitCode       int            // suggested process-exit code
-    Reason         string         // human-readable verdict summary
-    Tier           int            // actually-graded tier
-    ScoredAt       string         // RFC3339
-    GraderVersion  string
-    RulesVersion   string
-    ServiceVersion string
-    Facets         []Facet        // tier-2/3 factor coverage
-    Findings       []Finding      // tier-3 failing assertions
-    Provenance     map[string]any
-}
+type Result = scenario.Result // fields (JSON tags in parentheses):
+//  ScenarioID    (scenario_id)     canonical scenario name
+//  SchemaVersion (schema_version)
+//  Verdict       (verdict)         pass | fail | ungradable
+//  Reason        (reason)          human-readable verdict summary
+//  ScoredAt      (scored_at)       time.Time, RFC3339 on the wire
+//  GraderVersion (grader_version)
+//  RulesVersion  (rules_version)
+//  Tier          (tier)            actually-graded tier
+//  Facets        (facets)          tier-2/3 per-factor rollups
+//  Assertions    (assertions)      tier-3 per-assertion traces
+//  JudgeTraces   (judge_traces)    tier-3 AI-judge invocations
 ```
+
+Each `Assertion` (alias of `scenario.AssertionResult`) carries
+`ID`, `Kind`, `Factor`, `Status`, `Observed`, `Expected`, and
+`Message` — the diagnosability trail explaining why a facet failed.
 
 ## Error envelope
 
 The package exports typed sentinels matching the kit conformance
 sentinel pattern:
 
+Exit codes follow the 12fc taxonomy: shared classes on 0-6, grade
+verdicts in kit's documented >6 band (after RATE_LIMITED=64,
+PROVENANCE_MISSING=65, LEAK_DETECTED=66, CONFIG=67):
+
 | Sentinel | Exit | Meaning |
 |----------|------|---------|
-| `ErrServiceUnavailable` | 4 | retry-budget exhausted on 5xx / network |
+| `ErrServiceUnavailable` | 6 | retry-budget exhausted on 5xx / network (transient) |
 | `ErrServiceAuthFailed` | 5 | 401/403 from svc |
-| `ErrServiceUsage` | 3 | 4xx other than 401/403/429 |
-| `ErrCassettePack` | 5 | local pack failure |
-| `ErrCassetteTooLarge` | 3 | body > `WithMaxCassetteSize` |
-| `ErrManifestParse` | 3 | manifest.yaml could not be read |
-| `ErrGradeFail` | 2 | verdict=fail |
-| `ErrGradeUngradable` | 2 | verdict=ungradable |
-| `ErrRateLimited` | 4 | 429 with no headroom |
+| `ErrServiceUsage` | 2 | 4xx other than 401/403/429 |
+| `ErrCassettePack` | 1 | local pack failure |
+| `ErrCassetteTooLarge` | 2 | body > `WithMaxCassetteSize` |
+| `ErrManifestParse` | 2 | manifest.yaml could not be read |
+| `ErrGradeFail` | 68 | verdict=fail |
+| `ErrGradeUngradable` | 69 | verdict=ungradable |
+| `ErrRateLimited` | 64 | 429 with no headroom (transient) |
 
 Errors implement `errors.Is` for sentinel identity and
 `AsCLIError() *output.Error` so kit's CLI middleware picks up the

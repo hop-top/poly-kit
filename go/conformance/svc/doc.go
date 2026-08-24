@@ -4,16 +4,16 @@
 // storage, and operator CLI surfaces.
 //
 // The package is the network surface only; the actual grading logic
-// lives in hop.top/kit/go/conformance/scenario. The
-// ScenarioGrader interface in this package is a local bridge that
-// mirrors what scen's design pins; when scen lands, a follow-up wires
-// scenario.Grader concretely.
+// lives in hop.top/kit/go/conformance/scenario. The ScenarioGrader
+// interface is the seam; LibGrader (grader.go) is the production
+// implementation delegating to scenario.Grade.
 //
 // Layout overview:
 //
 //	doc.go              package overview
 //	types.go            shared types: ScenarioRef, ScenarioMeta, etc.
-//	scenario_bridge.go  ScenarioGrader interface + stub types
+//	scenario_bridge.go  ScenarioGrader seam + scenario type aliases
+//	grader.go           LibGrader — scenario.Grade delegation
 //	errors.go           output.Error helpers + HTTP shaping
 //	manifest.go         manifest.yaml types + validator
 //	cassette.go         tar.gz receiver + size/traversal hardening

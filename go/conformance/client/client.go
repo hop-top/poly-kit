@@ -63,12 +63,10 @@ func (c *Client) Grade(ctx context.Context, req GradeRequest) (*Result, error) {
 	// Apply overrides.
 	if req.ScenarioID != "" {
 		manifest.ScenarioID = req.ScenarioID
+		manifest.ScenarioVersion = ""
 	}
 	if req.StoryPath != "" {
-		manifest.StoryPath = req.StoryPath
-	}
-	if req.Tier > 0 {
-		manifest.Tier = req.Tier
+		manifest.StoryRef.StoryPath = req.StoryPath
 	}
 
 	// Pack. Pack returns a deterministic body + the idempotency key.
@@ -96,7 +94,7 @@ func (c *Client) Grade(ctx context.Context, req GradeRequest) (*Result, error) {
 					ctx.Err().Error(), "")
 			}
 		}
-		res, retryAfter, err := c.postGrade(ctx, endpoint, bodyBytes, idemKey, manifest)
+		res, retryAfter, err := c.postGrade(ctx, endpoint, bodyBytes, idemKey, manifest, req.Tier)
 		if err == nil {
 			if res != nil && res.gradeID != "" && res.result == nil {
 				// 202 — poll loop.
@@ -148,7 +146,7 @@ type gradeResp struct {
 // postGrade performs one POST attempt and decodes the response. The
 // retryAfter return is the parsed Retry-After value (0 if absent or
 // unparseable); the retry loop honors it on 429.
-func (c *Client) postGrade(ctx context.Context, url string, body []byte, idemKey string, manifest *Manifest) (*gradeResp, time.Duration, error) {
+func (c *Client) postGrade(ctx context.Context, url string, body []byte, idemKey string, manifest *Manifest, tier int) (*gradeResp, time.Duration, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(body)))
 	if err != nil {
 		return nil, 0, ServiceUsageError("build request", err.Error(), "")
@@ -158,6 +156,12 @@ func (c *Client) postGrade(ctx context.Context, url string, body []byte, idemKey
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("X-Kit-Client-Version", ClientVersion)
 	req.Header.Set("X-Kit-Cassette-Schema-Version", CassetteSchemaVersion)
+	if ref := scenarioRef(manifest); ref != "" {
+		req.Header.Set("X-Kit-Scenario-Ref", ref)
+	}
+	if tier > 0 {
+		req.Header.Set("X-Kit-Tier", strconv.Itoa(tier))
+	}
 	if idemKey != "" {
 		req.Header.Set("Idempotency-Key", idemKey)
 	}
@@ -341,6 +345,20 @@ func (b backoffPolicy) delay(attempt int) time.Duration {
 		d *= jitter
 	}
 	return time.Duration(d)
+}
+
+// scenarioRef renders the "<ns>/<id>[@version]" ref svc routes on.
+// ScenarioID carries the ns/id (or a full ref); ScenarioVersion is
+// appended when set and the id does not already pin one.
+func scenarioRef(m *Manifest) string {
+	if m == nil || m.ScenarioID == "" {
+		return ""
+	}
+	ref := m.ScenarioID
+	if m.ScenarioVersion != "" && !strings.Contains(ref, "@") {
+		ref += "@" + m.ScenarioVersion
+	}
+	return ref
 }
 
 // parseRetryAfter understands both numeric (seconds) and HTTP-date

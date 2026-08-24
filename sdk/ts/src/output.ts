@@ -28,17 +28,49 @@
  *
  * ## Backward compatibility
  *
- * `render(w, format, v)` keeps its original signature. New per-format
- * options + column projection are accessed via `dispatch()`.
+ * `render(w, format, v)` keeps its original signature and renders every
+ * column in payload key order. New per-format options and column ordering
+ * (ColumnSpec lists, `--cols`) are accessed via `dispatch()`.
  */
 
 // Re-export the typed surface.
 export type { Formatter, OptionSpec, OptionType, Options, ColumnSpec } from './output/formatter';
-export { parseOptions, optionTypeName } from './output/formatter';
+export { parseOptions, optionTypeName, columnName } from './output/formatter';
+export { deriveHeaders, resolveEffectiveCols, projectRows } from './output/projection';
 export { Registry, defaultRegistry, newRegistry } from './output/registry';
 export { jsonFormatter } from './output/formatters/json';
 export { yamlFormatter } from './output/formatters/yaml';
 export { tableFormatter } from './output/formatters/table';
+export type { CliError } from './output/error';
+export {
+  CODE_OK,
+  CODE_GENERIC,
+  CODE_USAGE,
+  CODE_NOT_FOUND,
+  CODE_CONFLICT,
+  CODE_UNAUTHORIZED,
+  CODE_TRANSIENT,
+  CODE_PROVENANCE_MISSING,
+  CODE_RATE_LIMITED,
+  EXIT_TRANSIENT,
+  EXIT_RATE_LIMITED,
+  EXIT_PROVENANCE_MISSING,
+  TRANSIENCE_TRANSIENT,
+  TRANSIENCE_PERMANENT,
+  TRANSIENCE_UNKNOWN,
+  transienceForCode,
+  wrapError,
+  unwrapError,
+  withTransience,
+  notFoundError,
+  conflictError,
+  unauthorizedError,
+  usageError,
+  transientError,
+  rateLimitedError,
+  provenanceMissingError,
+  renderError,
+} from './output/error';
 
 // Side-effect: register built-ins.
 import './output/builtins';

@@ -1,5 +1,65 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **Output column ordering is now driven by the `ColumnSpec` list.**
+  Previously the `columns=` list passed to `dispatch()` was consumed only to
+  validate `--cols` and then dropped, so the table path fell back to payload
+  key order while the `--template` path already honored the schema — one
+  module, two answers. The list now supplies the default column order, the
+  header labels, and the column selection on every path. **User-visible:**
+  callers passing a `columns=` list whose order differs from their payload's
+  key order will see columns reorder, and payload keys absent from the schema
+  stop being emitted. Anyone parsing column positions or diffing
+  `--format json` output sees different bytes. Precedence is `--cols` (user
+  order always wins; it reorders as well as selects), else `ColumnSpec` order,
+  else payload key order.
+- **`--format json --cols name` now projects.** The JSON formatter previously
+  ignored `cols` entirely and returned full rows, diverging from every other
+  SDK. The YAML formatter had the identical defect and is fixed in the same
+  pass. Both now follow the resolved column order, so serialized key order
+  matches the table path.
+- **Column validation has one source of truth.** `dispatch` validated `--cols`
+  against the `ColumnSpec` headers while `filter_columns` re-derived headers
+  from row keys, so a `ColumnSpec` naming a column absent from a row passed
+  dispatch validation and then raised `ValueError` mid-render. The
+  `ColumnSpec` list is now passed into projection rather than re-derived.
+- **Zero rows emits nothing** — not even a bare header row. Emptiness is
+  decided by row count rather than header count, so a `columns=` list no
+  longer resurrects a header for an empty payload.
+- **`ColumnSpec` now requires `header == key`**, raising `ValueError` on a
+  mismatch. The two name the same column, so validation and row lookup are
+  one operation on one name. Go cannot express a header/key split through its
+  `table:""` struct tags, so no SDK may. `priority` is still accepted and
+  stored but remains ignored outside Go.
+- A custom formatter's `render` may now accept an optional `columns`
+  argument; dispatch forwards the caller's `ColumnSpec` list to formatters
+  that declare it. The four-argument `render(out, data, opts, cols)` form
+  keeps working unchanged.
+
+### Known limitations
+
+- `csv` and `text` formatters are not implemented in the Rust and PHP SDKs.
+  Only `table`, `json` and `yaml` are portable across all five kit runtimes.
+
+### Fixed
+
+- **CSV quoting no longer keys off the stdlib writer's QUOTE_MINIMAL.** A
+  field beginning with whitespace was emitted BARE, unlike every other
+  runtime, so ` leading space` round-tripped intact only because the
+  reader's `skipinitialspace` happens to default off. Quoting is now decided
+  explicitly: the delimiter, a double quote, LF, CR, or a leading unicode
+  whitespace character. A field equal to `\.` is also quoted, since that
+  sequence alone on a line terminates a PostgreSQL `COPY` stream.
+  **User-visible:** `--format csv` output for values with leading whitespace
+  gains surrounding quotes, matching the other SDKs byte-for-byte.
+- A quoted field's bytes are now guaranteed verbatim in both line-ending
+  modes and both quoting paths, with `crlf` changing the record terminator
+  and nothing else. RFC 4180 lists `CR` and `LF` as separate alternatives
+  inside the `escaped` production, so a bare CR between quotes is legal.
+
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.2...kit-py/v0.5.0-alpha.3) (2026-06-07)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.3. This release includes maintenance release with bug fixes.

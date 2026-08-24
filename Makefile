@@ -1,7 +1,8 @@
-.PHONY: setup lint lint-go lint-ts lint-py lint-rs lint-docs lint-config lint-links lint-sdk-paths \
+.PHONY: setup lint lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-rs lint-docs lint-config lint-links lint-sdk-paths \
 	preflight \
 	tools tools-golangci-lint \
 	test test-go test-go-integration test-ts test-py test-rs test-parity test-parity-typeid \
+	test-parity-kv \
 	proto openapi clients clients-ts clients-php clients-rs clients-test api \
 	job-test job-integration-hatchet job-integration-restate job-integration-temporal \
 	test-workflow test-hook test-release promote promote-alpha promote-beta promote-rc promote-release check \
@@ -80,7 +81,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: test-parity-typeid ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-kv test-parity-mcp ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -107,7 +108,47 @@ test-parity-typeid: ## TypeID v1 contract loaders across all 5 SDKs
 		echo "==> typeid-v1 parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
 
-lint: lint-go lint-ts lint-py lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
+# MCP wire conformance over sdk/tests/cross-lang/fixtures/mcp-wire.json.
+# The fixture is GENERATED from the Go surface (see
+# surface_mcp_fixtures_gen_test.go), so Go's own gate is the drift check
+# rather than a replay: `go test ./go/transport/cmdsurface/` fails if the
+# surface no longer produces the committed bytes. The four SDKs replay it.
+#
+# Two sections, and a runner must honour both. `cases` each get a FRESH
+# mount, so no case observes another's state. `sequences` are ordered
+# steps against ONE long-lived mount — that is where a port that caches
+# its leaf set, or attaches lazy flags non-idempotently, is caught. Both
+# defects pass every case; only the sequence sees them.
+#
+# PHP is optional for the same reason as test-parity-typeid: the PHP
+# toolchain is experimental and not every runner ships it.
+test-parity-mcp: ## MCP dual-spec wire conformance across Go + 4 SDKs
+	@echo "==> mcp-wire parity: Go (fixture drift gate)"
+	go test ./go/transport/cmdsurface/ -run '^TestGenerateMCPWireFixtures$$' -count=1 -timeout 120s
+	@echo "==> mcp-wire parity: Rust"
+	cd sdk/experimental/rs && cargo test --features mcp --test mcp_wire_conformance --locked
+	@echo "==> mcp-wire parity: TypeScript"
+	cd sdk/ts && pnpm vitest run src/mcp/conformance.test.ts
+	@echo "==> mcp-wire parity: Python"
+	cd sdk/py && uv sync --all-extras -q && uv run pytest tests/test_mcp_conformance.py
+	@if command -v php >/dev/null 2>&1 && command -v composer >/dev/null 2>&1; then \
+		echo "==> mcp-wire parity: PHP"; \
+		cd sdk/experimental/php && composer install --no-progress --quiet && vendor/bin/phpunit tests/Mcp/WireConformanceTest.php; \
+	else \
+		echo "==> mcp-wire parity: PHP toolchain not present, skipping (experimental SDK)"; \
+	fi
+
+# Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
+# The Go test drives the Rust half as a `cargo test` subprocess, so this
+# target needs BOTH toolchains — hence its home in test-parity rather
+# than test-go. KV_CROSSLANG gates the cross-process cases so a plain
+# `go test ./...` stays Rust-free; setting it here is what makes the
+# gate live in CI.
+test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
+	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
+	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v
+
+lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
 
 lint-go: tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -118,6 +159,37 @@ lint-ts: ## TypeScript: eslint
 
 lint-py: ## Python: ruff check + format
 	cd sdk/py && uv run ruff check . && uv run ruff format --check .
+
+# `uv sync` rewrites uv.lock in place when it disagrees with pyproject.toml,
+# so drift never fails a build — it just lands as an unrelated dirty file in
+# the next contributor's tree. --check resolves without writing and exits
+# non-zero instead.
+lint-lock-py: ## Python: uv.lock consistent with pyproject.toml
+	cd sdk/py && uv lock --check
+	cd engine/sdk/py-kit-engine && uv lock --check
+
+lint-lock-php: ## PHP: composer.lock consistent with composer.json
+	cd sdk/experimental/php && composer validate --check-lock --no-check-publish
+
+# `--locked` audits composer.lock directly, so this runs without a vendor/
+# tree and reports what CI would actually install. Severity gate: low is
+# ignored, medium and up fail. A hard gate on every severity turns any new
+# low advisory against a pinned transitive dep into a red build on unrelated
+# PRs — which is how audit steps end up commented out. Abandoned packages
+# report but don't fail: abandonment is not a vulnerability and rarely has a
+# same-day replacement. `--ignore-unreachable` keeps a Packagist outage from
+# failing the build for a reason unrelated to the code under test.
+audit-php: ## PHP: composer.lock free of medium+ security advisories
+	cd sdk/experimental/php && composer audit --locked --no-dev \
+		--ignore-severity=low --abandoned=report --ignore-unreachable
+
+# Two passes: src/ at level 5, tests/ at 2 (see phpstan.neon for why they
+# differ). Both run via `composer analyse`, so this target and a bare
+# `composer analyse` gate identically. Neither config carries a baseline or
+# an ignore list, so every error reported is a real one. Needs vendor/
+# (unlike audit-php), hence the install.
+lint-php: ## PHP: phpstan static analysis (levels pinned in phpstan.neon)
+	cd sdk/experimental/php && composer install --no-progress --quiet && composer analyse
 
 lint-rs: ## Rust: cargo fmt --check + clippy (all features)
 	cd sdk/experimental/rs && cargo fmt --all -- --check

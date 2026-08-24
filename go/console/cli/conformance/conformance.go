@@ -9,17 +9,29 @@
 //	kit conformance verify-no-leak    [--staged|--diff=<spec>|--audit|--paths=...] [--format json|human]
 //	kit conformance install-hooks     [--dry-run] [--force] [--format json|human]
 //	kit conformance verify-stories    [--paths=...] [--strict-toolspec] [--format json|human]
+//	kit conformance harness record    --scenario <yaml> --binary <path> --out <dir>
 //	kit conformance static            (reserved placeholder)
-//	kit conformance harness           (reserved placeholder)
 //	kit conformance generate-stories  (reserved placeholder)
 //
 // Exit codes (full contract enforced by leaf RunE):
 //
-//	0 clean         no findings
-//	2 leak_detected one or more scenario-shaped blocks found
-//	3 usage_error   bad flags, or "not yet implemented" reserved name
-//	4 io_error      git/gh failed; retryable
-//	5 config_error  bad .verifynoleak.allow or bare-ignore-rejected
+//	 0 clean          no findings
+//	 2 usage          bad flags, or "not yet implemented" reserved name
+//	 6 io             git/gh/fs environment failed; transient, retry may clear
+//	66 leak_detected  one or more scenario-shaped blocks found
+//	67 config         bad .verifynoleak.allow or bare-ignore-rejected
+//
+// The contract follows the reconciled 12fc taxonomy (0 success,
+// 1 general, 2 usage, 3 not-found, 4 conflict, 5 permission/auth,
+// 6 transient/retryable, >6 documented per-tool): usage sits on the
+// shared slot 2; io failures are exactly the transient class CI
+// excludes so a flaky network cannot red-light a build; leak and
+// config findings are tool-specific verdicts with no shared class,
+// so they live in kit's documented >6 band, contiguous with
+// RATE_LIMITED (64) and PROVENANCE_MISSING (65) from
+// go/console/output. Earlier kit versions used 2 leak / 3 usage /
+// 4 io / 5 config, which collided with the shared meanings of 2-5;
+// pin a kit release if you still consume the old numbers.
 package conformance
 
 import (
@@ -30,6 +42,7 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/conformance/badge"
 	"hop.top/kit/go/console/cli/conformance/grade"
+	harnessrecord "hop.top/kit/go/console/cli/conformance/harness/record"
 	svccmd "hop.top/kit/go/console/cli/conformance/svc"
 	"hop.top/kit/go/console/output"
 )
@@ -55,31 +68,62 @@ The alias "con" is available for terser invocation
 	gradeCmd := grade.Cmd()
 	badgeCmd := badge.Cmd()
 	static := reservedCmd("static", "12fcc-static")
-	harness := reservedCmd("harness", "12fcc-harness")
+	harness := harnessrecord.Group()
 	generateStories := reservedCmd("generate-stories", "12fcc-storygen")
 	svc := svccmd.Cmd()
 	// Kit-internal conformance leaves are exempt from Layer-A
 	// registration validation. gradeCmd + badgeCmd carry the full
 	// annotation set (side-effect, idempotent, examples, next-steps)
-	// and do not need the exemption.
-	for _, c := range []*cobra.Command{verify, install, stories, static, harness, generateStories, svc} {
+	// and do not need the exemption; the harness record leaf carries
+	// its own full annotation set inside harnessrecord.Group.
+	for _, c := range []*cobra.Command{verify, install, stories, static, generateStories, svc} {
 		cli.SetExemptValidation(c)
 	}
+	// Depth-3 leaves (harness record) require kit/hierarchical on
+	// every intermediate; the harness group annotates itself, the
+	// conformance parent is annotated here.
+	cli.SetHierarchical(cmd)
 	cmd.AddCommand(verify, install, stories, gradeCmd, badgeCmd, static, harness, generateStories, svc)
 	return cmd
 }
 
 // Conformance exit-code codes. These are conformance-tree-local and
-// extend output.Code* — they coexist with kit-wide codes by reusing
-// the same numeric exit slots: e.g. leak_detected reuses slot 2 even
-// though kit-wide that's also the CodeUsage slot. The Code string is
-// what disambiguates for JSON consumers; the ExitCode is what
-// disambiguates for shells.
+// extend output.Code*. USAGE and IO reuse the kit-wide numeric slots
+// they belong to (2 usage, 6 transient); the tool-specific outcomes
+// get their own band slots so the exit code alone tells an agent
+// which class it is. The Code string then refines within the class
+// for JSON consumers.
 const (
-	CodeLeakDetected = "LEAK_DETECTED" // exit 2
-	CodeUsage        = "USAGE"         // exit 3 (overrides kit-wide CodeNotFound for the conformance tree)
-	CodeIO           = "IO"            // exit 4
-	CodeConfig       = "CONFIG"        // exit 5
+	CodeLeakDetected = "LEAK_DETECTED" // exit 66 (ExitLeakDetected)
+	CodeUsage        = "USAGE"         // exit 2 (kit-wide usage slot)
+	CodeIO           = "IO"            // exit 6 (kit-wide transient slot)
+	CodeConfig       = "CONFIG"        // exit 67 (ExitConfigError)
+)
+
+// Conformance-tree band codes. The spec reserves 0-6 for the shared
+// taxonomy and leaves >6 to documented per-tool codes; kit already
+// allocates 64 (RATE_LIMITED) and 65 (PROVENANCE_MISSING) in
+// go/console/output. The conformance tree extends that band
+// contiguously so no two kit features can claim the same slot:
+//
+//	64 RATE_LIMITED        (output.ExitRateLimited)
+//	65 PROVENANCE_MISSING  (output.ExitProvenanceMissing)
+//	66 LEAK_DETECTED       (this package)
+//	67 CONFIG              (this package)
+//	68 GRADE_FAIL          (go/conformance/client)
+//	69 GRADE_UNGRADABLE    (go/conformance/client)
+const (
+	// ExitLeakDetected is the exit code for a verify-no-leak /
+	// verify-stories finding. A leak is a tool-specific verdict, not
+	// one of the shared failure classes, so it lives in the band.
+	ExitLeakDetected = 66
+
+	// ExitConfigError is the exit code for malformed conformance
+	// configuration (.verifynoleak.allow, rules files, bare ignore
+	// comments). Also tool-specific: the shared taxonomy has no
+	// config-error class and overloading 5 (auth) or 2 (usage) would
+	// make agents mis-branch.
+	ExitConfigError = 67
 )
 
 // Sentinel errors used across conformance subcommands. Each is a
@@ -92,21 +136,21 @@ const (
 // errors.Is(err, ErrX) true for switch-friendly testing.
 var (
 	// ErrLeakDetected is the identity sentinel for any verify-no-leak
-	// finding. Compare with errors.Is. Exit code 2.
-	ErrLeakDetected = &conformanceSentinel{code: CodeLeakDetected, exit: 2, msg: "verify-no-leak: scenario-shaped content detected"}
+	// finding. Compare with errors.Is. Exit code 66 (band).
+	ErrLeakDetected = &conformanceSentinel{code: CodeLeakDetected, exit: ExitLeakDetected, transience: output.TransiencePermanent, msg: "verify-no-leak: scenario-shaped content detected"}
 
 	// ErrUsage is the identity sentinel for bad flags or invocations
-	// of reserved-but-unimplemented subcommands. Exit code 3.
-	ErrUsage = &conformanceSentinel{code: CodeUsage, exit: 3, msg: "conformance: usage error"}
+	// of reserved-but-unimplemented subcommands. Exit code 2.
+	ErrUsage = &conformanceSentinel{code: CodeUsage, exit: 2, transience: output.TransiencePermanent, msg: "conformance: usage error"}
 
-	// ErrIO is the identity sentinel for git/gh failures the caller
-	// should retry. Exit code 4.
-	ErrIO = &conformanceSentinel{code: CodeIO, exit: 4, msg: "conformance: io error"}
+	// ErrIO is the identity sentinel for git/gh/environment failures
+	// the caller should retry. Exit code 6 (transient class).
+	ErrIO = &conformanceSentinel{code: CodeIO, exit: output.ExitTransient, transience: output.TransienceTransient, msg: "conformance: io error"}
 
 	// ErrConfig is the identity sentinel for malformed
 	// .verifynoleak.allow or a bare ignore comment missing its reason.
-	// Exit code 5.
-	ErrConfig = &conformanceSentinel{code: CodeConfig, exit: 5, msg: "conformance: config error"}
+	// Exit code 67 (band).
+	ErrConfig = &conformanceSentinel{code: CodeConfig, exit: ExitConfigError, transience: output.TransiencePermanent, msg: "conformance: config error"}
 )
 
 // conformanceSentinel is the typed error backing the package's
@@ -118,15 +162,16 @@ var (
 // etc. which return a wrapped form that still chain-matches the
 // identity sentinel.
 type conformanceSentinel struct {
-	code string
-	exit int
-	msg  string
+	code       string
+	exit       int
+	transience string
+	msg        string
 }
 
 func (s *conformanceSentinel) Error() string { return s.msg }
 
 func (s *conformanceSentinel) AsCLIError() *output.Error {
-	return &output.Error{Code: s.code, Message: s.msg, ExitCode: s.exit}
+	return &output.Error{Code: s.code, Message: s.msg, ExitCode: s.exit, Transience: s.transience}
 }
 
 // wrappedSentinel decorates a base conformanceSentinel with a
@@ -155,6 +200,7 @@ func (w *wrappedSentinel) AsCLIError() *output.Error {
 		Cause:        w.cause,
 		SuggestedFix: w.fix,
 		ExitCode:     w.base.exit,
+		Transience:   w.base.transience,
 	}
 }
 
@@ -192,21 +238,21 @@ func ExitCode(err error) (int, bool) {
 	case err == nil:
 		return 0, true
 	case errors.Is(err, ErrLeakDetected):
-		return 2, true
+		return ExitLeakDetected, true
 	case errors.Is(err, ErrUsage):
-		return 3, true
+		return 2, true
 	case errors.Is(err, ErrIO):
-		return 4, true
+		return output.ExitTransient, true
 	case errors.Is(err, ErrConfig):
-		return 5, true
+		return ExitConfigError, true
 	}
 	return 0, false
 }
 
 // reservedCmd returns a placeholder subcommand for names owned by a
 // sibling track that has not yet implemented its conformance layer.
-// Invoking the placeholder exits 3 (usage_error) with a pointer to
-// the owning track.
+// Invoking the placeholder exits 2 (usage) with a pointer to the
+// owning track.
 func reservedCmd(name, track string) *cobra.Command {
 	return &cobra.Command{
 		Use:    name,

@@ -286,3 +286,63 @@ func TestMCP_Render_Compact(t *testing.T) {
 	// trailing newline from json.Encoder.
 	assert.NotContains(t, out, "\n  ", "compact mode has no indent")
 }
+
+// --- Regression lock: byte-identical output ------------------------
+//
+// ADR 0004 records "no change" for this adapter under MCP 2026-07-28:
+// the descriptor's required fields (name, description, inputSchema)
+// are unchanged and every new field the revision adds (title, icons,
+// outputSchema, annotations, x-mcp-header) is optional, so the
+// adapter's existing three-key envelope stays spec-valid as-is. These
+// tests pin the exact serialized bytes (not just structural presence)
+// so a future edit that quietly adds/renames/reorders a key is
+// caught, unlike the map[string]any assertions above which tolerate
+// extra keys.
+
+func TestMCP_Render_ByteIdentical_Pretty(t *testing.T) {
+	spec := minimalSpec()
+	var buf bytes.Buffer
+	require.NoError(t, MCP().Render(&buf, spec))
+
+	const want = `{
+  "description": "mytool CLI tool",
+  "inputSchema": {
+    "properties": {
+      "action": {
+        "description": "The action to perform.",
+        "enum": [
+          "list",
+          "create",
+          "delete"
+        ],
+        "type": "string"
+      },
+      "config": {
+        "description": "config path",
+        "type": "string"
+      },
+      "verbose": {
+        "description": "verbose",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "type": "object"
+  },
+  "name": "mytool"
+}
+`
+	assert.Equal(t, want, buf.String(), "MCP envelope bytes must stay stable across spec revisions (ADR 0004: no change)")
+}
+
+func TestMCP_Render_ByteIdentical_Compact(t *testing.T) {
+	spec := minimalSpec()
+	var buf bytes.Buffer
+	require.NoError(t, MCP().Render(&buf, spec, WithPretty(false)))
+
+	const want = `{"description":"mytool CLI tool","inputSchema":{"properties":{"action":{"description":"The action to perform.","enum":["list","create","delete"],"type":"string"},"config":{"description":"config path","type":"string"},"verbose":{"description":"verbose","type":"boolean"}},"required":["action"],"type":"object"},"name":"mytool"}
+`
+	assert.Equal(t, want, buf.String(), "MCP envelope bytes must stay stable across spec revisions (ADR 0004: no change)")
+}

@@ -41,10 +41,8 @@ func (NullRegistry) Resolve(_ string) (AIJudge, error) { return nil, ErrModelNot
 func (NullRegistry) RegisteredModels() []string { return nil }
 
 // StubRegistry returns deterministic canned responses for testing and
-// adopter dev. Score returns a fixed verdict regardless of input.
+// adopter dev. Score returns a fixed score regardless of input.
 type StubRegistry struct {
-	// CannedVerdict drives the default judge verdict; "pass" if empty.
-	CannedVerdict string
 	// CannedScore is the score returned; 1.0 if zero.
 	CannedScore float64
 	// Models is the set of names callers may resolve. Empty = match any.
@@ -65,15 +63,11 @@ func (s StubRegistry) Resolve(model string) (AIJudge, error) {
 			return nil, ErrModelNotRegistered
 		}
 	}
-	v := s.CannedVerdict
-	if v == "" {
-		v = "pass"
-	}
 	score := s.CannedScore
 	if score == 0 {
 		score = 1.0
 	}
-	return stubJudge{model: model, verdict: v, score: score}, nil
+	return stubJudge{model: model, score: score}, nil
 }
 
 // RegisteredModels returns s.Models or ["stub"] when empty.
@@ -85,17 +79,15 @@ func (s StubRegistry) RegisteredModels() []string {
 }
 
 type stubJudge struct {
-	model   string
-	verdict string
-	score   float64
+	model string
+	score float64
 }
 
 func (j stubJudge) Score(_ context.Context, req JudgeRequest) (JudgeResponse, error) {
 	return JudgeResponse{
-		Verdict:   j.verdict,
 		Score:     j.score,
-		Rationale: fmt.Sprintf("stub verdict for %s", j.model),
-		TokensIn:  len(req.Prompt) + len(req.CapturedText),
+		Rationale: fmt.Sprintf("stub score for %s", j.model),
+		TokensIn:  len(req.Prompt) + len(req.Input),
 		TokensOut: 8,
 	}, nil
 }

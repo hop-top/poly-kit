@@ -34,9 +34,11 @@
 //   - A stored entry past its TTL is a miss (the request is refetched).
 //
 // Entries are persisted as a language-neutral JSON envelope (status,
-// headers, base64 body) rather than a Go-specific wire dump, so the
-// TS and Python parity ports read and write the same store and the
-// same cross-language test vectors. See the entry type for the format.
+// headers, base64 body) rather than a Go-specific wire dump, so parity
+// ports in other languages can read and write the same store. The
+// format is pinned by the fixtures in contracts/httpcache-v1 — those
+// are the contract of record, not this implementation. See the entry
+// type for the shape.
 //
 // httpcache borrows the TTLStore; it never Opens or Closes it. The
 // caller owns the store's lifecycle, exactly as breaker.WrapHTTP's

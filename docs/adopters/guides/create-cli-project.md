@@ -112,10 +112,15 @@ and merge by hand. No git, no GitHub, no push in augment mode.
 
 ### Augment a hop worktree or bare-worktree-shaped repo
 
-Auto-detect refuses bare worktrees (the case where
-`git rev-parse --git-common-dir` differs from `--git-dir`) and any
-tree carrying a `.kit/version` marker. Hop-style worktrees fall into
-the bare-worktree bucket. Bypass auto-detect with `--mode augment`:
+Auto-detect refuses a bare repository **root** (git internals, no
+working tree) and any tree carrying a `.kit/version` marker. A
+hop-style worktree is a *linked worktree* of that bare repo — a
+normal usable checkout — so it is not refused; plain `kit init`
+augments it.
+
+Passing `--mode augment` explicitly is still worthwhile on a hop
+tree: it resolves to the hop-aware path, which adds the two
+behaviors below.
 
 ```bash
 cd ~/.w/labspace/myproj/hops/fix/widgets
@@ -123,7 +128,16 @@ kit init --mode augment --tier 2 --from cli-go --no-github -y
 ```
 
 Same semantics as a regular augment: cwd is the render target, no
-git/GitHub/push side-effects, existing files preserved.
+git/GitHub/push side-effects, existing files preserved. Two
+hop-specific behaviors on top:
+
+- **Dirty-tree refusal** — if `git status --porcelain` reports
+  anything in the worktree, augment refuses rather than merging
+  kit-template files into uncommitted work from another branch.
+  Commit or stash first, or pass `--yes` / `--force` to override.
+- **Branch in summary** — the summary reports which branch's tree
+  was augmented (`Hop branch:` line; `hop_branch` field under
+  `--format json`).
 
 ### Dry run
 
