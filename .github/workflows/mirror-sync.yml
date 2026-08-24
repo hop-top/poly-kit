@@ -18,13 +18,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify mirror sync
         run: |
-          if diff -rq templates/ internal/template/builtins/ | grep -vE '^Only in templates/?: ' | grep -q .; then
+          # builtins-sync renames *.go/go.mod to *.tmpl on copy (see
+          # internal/template/embed.go) so a raw `diff -rq templates/
+          # internal/template/builtins/` always reports that rename as
+          # drift. Regenerate the mirror the same way CI would and diff
+          # against THAT, so the check tracks what sync actually does
+          # instead of reimplementing its rename rule here.
+          make builtins-sync
+          if ! git diff --quiet -- internal/template/builtins/; then
             echo "::error::Mirror drift detected between templates/ and internal/template/builtins/"
             echo "Diff:"
-            diff -rq templates/ internal/template/builtins/ | grep -vE '^Only in templates/?: '
+            git diff -- internal/template/builtins/
             echo ""
-            echo "Fix: copy diverged files from templates/ to internal/template/builtins/ (source is canonical)."
-            echo "Or run: make builtins-sync"
+            echo "Fix: run 'make builtins-sync' locally and commit the result."
             exit 1
           fi
           echo "Mirror in sync."
