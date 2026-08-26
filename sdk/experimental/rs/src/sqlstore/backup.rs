@@ -139,9 +139,14 @@ pub fn backup_to_blob<S: crate::blob::Store>(
 /// replacing any existing file.
 ///
 /// The download is staged in a sibling temp file, synced, then renamed over
-/// the destination. An interrupted restore therefore leaves the previous
-/// database intact rather than a truncated one, and a concurrent reader
-/// never observes a half-written file.
+/// the destination. `std::fs::rename` already replaces an existing
+/// destination atomically on both Unix (`rename(2)`) and Windows
+/// (`MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`, passed unconditionally
+/// by the standard library), so no destination-removal step is needed on
+/// either platform. An interrupted restore therefore leaves either the
+/// previous database or the fully-staged new one on disk — never neither,
+/// and never a truncated file — and a concurrent reader never observes a
+/// half-written file.
 ///
 /// # Errors
 ///
@@ -179,6 +184,10 @@ pub fn restore_from_blob<S: crate::blob::Store>(
     }
 
     if let Err(e) = fs::rename(&tmp, db_path) {
+        // tmp is still the only copy of the newly-fetched data at this
+        // point (rename either succeeds atomically or leaves both files
+        // as they were — it never partially applies), and db_path (if it
+        // existed) is untouched, so cleaning up the failed tmp is safe.
         let _ = fs::remove_file(&tmp);
         return Err(BackupError::io("rename", e));
     }
@@ -244,5 +253,43 @@ mod tests {
             with_suffix(Path::new("/a/b/app.db"), ".restore.tmp"),
             PathBuf::from("/a/b/app.db.restore.tmp")
         );
+    }
+
+    /// `std::fs::rename` (used directly by `restore_from_blob`) already
+    /// replaces an existing destination on both Unix and Windows — Rust's
+    /// standard library always passes `MOVEFILE_REPLACE_EXISTING` to
+    /// `MoveFileExW` on Windows, so this has never required a manual
+    /// remove-then-retry workaround on either platform. Guards the actual
+    /// entry point `restore_from_blob` relies on (rather than testing a
+    /// standalone rename-replace wrapper — see git history on this file
+    /// for why one existed and was removed: it retried on
+    /// `io::ErrorKind::AlreadyExists`, an error kind `fs::rename` cannot
+    /// actually produce for this scenario on any supported platform).
+    #[test]
+    fn rename_overwrites_existing_destination_on_disk() {
+        let dir = std::env::temp_dir().join(format!(
+            "backup-rename-replacing-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+
+        let from = dir.join("src.tmp");
+        let to = dir.join("dest.db");
+        fs::write(&from, b"new-content").unwrap();
+        fs::write(&to, b"old-content").unwrap();
+
+        fs::rename(&from, &to).expect("rename must overwrite existing destination");
+
+        assert_eq!(fs::read(&to).unwrap(), b"new-content");
+        assert!(
+            !from.exists(),
+            "source must be gone after a successful rename"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
