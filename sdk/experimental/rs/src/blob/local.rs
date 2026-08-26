@@ -45,6 +45,21 @@ impl LocalStore {
 
     /// Map a slash-separated key onto an absolute path inside the root,
     /// rejecting anything that escapes it.
+    ///
+    /// The invariant enforced is `resolved` strictly under `self.root` —
+    /// never equal to it. Every empty/dot/leading-slash segment is a
+    /// no-op in the walk below (`""` from an empty key, a leading `/`, or
+    /// a doubled `//`; `"."` from a literal dot component), so any key
+    /// spelling that reduces to zero effective segments — `""`, `"."`,
+    /// `"a/.."`, `"./."`, and so on — resolves to exactly `self.root`
+    /// unless that's rejected explicitly. It used to not be: `put("")`
+    /// or `put(".")` would stage a file and then rename it onto the
+    /// store root directory itself. A leading `/` on its own is safe and
+    /// intentionally still allowed through — `resolve("/etc/passwd")`
+    /// treats the leading `/` as the same no-op empty segment a doubled
+    /// `//` would produce, landing at `root/etc/passwd`, safely nested;
+    /// rejecting every leading-slash key outright would be broader than
+    /// this function needs to be.
     fn resolve(&self, key: &str) -> Result<PathBuf, BlobError> {
         let mut resolved = self.root.clone();
         for segment in key.split('/') {
@@ -58,7 +73,7 @@ impl LocalStore {
                 other => resolved.push(other),
             }
         }
-        if !resolved.starts_with(&self.root) {
+        if resolved == self.root || !resolved.starts_with(&self.root) {
             return Err(BlobError::KeyEscapesRoot(key.to_string()));
         }
         Ok(resolved)
@@ -257,6 +272,45 @@ mod tests {
             Err(BlobError::KeyEscapesRoot(_))
         ));
         assert!(s.resolve("a/b/c").is_ok());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Every key spelling that reduces to zero effective path segments
+    /// resolves to exactly the store root, and must be rejected — not
+    /// just the empty string. Pre-fix, only `""` and a leading `/` were
+    /// special-cased; `"."` and `"a/.."` both slipped through the same
+    /// way `""` did, reaching `put()`'s rename step with the store root
+    /// itself as the destination.
+    #[test]
+    fn resolve_rejects_every_key_that_resolves_to_root() {
+        let dir =
+            std::env::temp_dir().join(format!("kit-blob-resolve-root-{}", std::process::id()));
+        let s = LocalStore::new(&dir).expect("new store");
+        for key in ["", ".", "/", "a/..", "./.", "a/../.", "a/b/../.."] {
+            assert!(
+                matches!(s.resolve(key), Err(BlobError::KeyEscapesRoot(_))),
+                "key {key:?} must be rejected: resolves to the store root"
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A leading `/` is not itself an escape attempt: `split('/')`
+    /// produces an empty first segment, the same no-op a doubled `//`
+    /// would produce, so `"/etc/passwd"` resolves safely nested under
+    /// the store root (`root/etc/passwd`) rather than at the real
+    /// filesystem's `/etc/passwd`. Rejecting every leading-slash key
+    /// outright would be broader than the escape-prevention this
+    /// function exists for — only a key that ends up outside root, or
+    /// exactly at root, is unsafe.
+    #[test]
+    fn resolve_accepts_leading_slash_key_as_nested_under_root() {
+        let dir = std::env::temp_dir().join(format!("kit-blob-resolve-abs-{}", std::process::id()));
+        let s = LocalStore::new(&dir).expect("new store");
+        let resolved = s
+            .resolve("/etc/passwd")
+            .expect("leading slash must not escape");
+        assert_eq!(resolved, s.root().join("etc").join("passwd"));
         let _ = fs::remove_dir_all(&dir);
     }
 }
