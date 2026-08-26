@@ -133,9 +133,13 @@ func resolvePaths(cwd string, paths []string, supported func(string) bool, allow
 			add(p)
 			continue
 		}
-		walked, werr := expandDir(p, supported)
+		walked, werr := expandDir(p, supported, allowMissing)
 		if werr != nil {
-			return nil, fmt.Errorf("walk %s: %w", p, werr)
+			if allowMissing && os.IsNotExist(werr) {
+				add(p)
+				continue
+			}
+			return nil, fmt.Errorf("%w: walk %s: %w", ErrBadPaths, p, werr)
 		}
 		for _, f := range walked {
 			add(f)
@@ -145,32 +149,97 @@ func resolvePaths(cwd string, paths []string, supported func(string) bool, allow
 }
 
 // expandDir recursively collects supported regular files under root.
-// Dot-directories are pruned; the root itself is exempt so an
-// explicitly passed dot-directory still scans.
-func expandDir(root string, supported func(string) bool) ([]string, error) {
+//
+// Recursion goes through os.ReadDir on each directory path rather
+// than filepath.WalkDir, matching verify-stories' expandPaths /
+// walkYAMLs (verify_stories.go) and walkPaths (this file). ReadDir is
+// called with a path string, so a symlink root is followed to the
+// files behind it; WalkDir instead Lstats the root DirEntry, which
+// reports a symlink-to-directory as neither a directory nor a regular
+// file and silently yields nothing. Nested symlinked subdirectories
+// are intentionally not followed here either way, consistent with
+// verify-stories. Output paths are built by joining onto root exactly
+// as given — a symlinked root keeps the symlink's own path prefix,
+// never a resolved one, so the result stays consistent with the
+// allowlist matcher's cwd-relative globbing (suppress.LoadAllowlist),
+// which is likewise never symlink-resolved.
+//
+// allowMissing mirrors resolvePaths' leniency: an entry (file,
+// symlink, or an entire subdirectory) that vanishes between
+// os.ReadDir listing it and this walk reaching it is skipped —
+// losing only that entry or subtree, not the whole call — rather
+// than aborting. Any other error (permission denied, a stale handle)
+// is never swallowed regardless of allowMissing; only "the thing we
+// were about to look at is already gone" is a scan-time race worth
+// tolerating.
+func expandDir(root string, supported func(string) bool, allowMissing bool) ([]string, error) {
+	// Dot-directories are pruned below the root; the root itself is
+	// exempt so an explicitly passed dot-directory still scans.
+	prune := func(p, name string) bool {
+		return p != root && strings.HasPrefix(name, ".")
+	}
 	var out []string
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			if p != root && strings.HasPrefix(d.Name(), ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
-		if supported == nil || supported(p) {
-			out = append(out, p)
-		}
-		return nil
-	})
-	if err != nil {
+	if err := walkDirEntries(root, root, supported, allowMissing, prune, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// walkDirEntries recursively collects supported regular files under
+// dir into out. prune(dir, name) reports whether a directory entry
+// should be skipped entirely (not recursed into). A ReadDir or Info
+// failure that indicates the target no longer exists is tolerated
+// under allowMissing — the affected entry or subtree is dropped, and
+// the walk continues with whatever else it already found or finds
+// afterward; any other error always aborts the whole walk regardless
+// of allowMissing, since it means something is actually wrong rather
+// than merely raced away.
+func walkDirEntries(root, dir string, supported func(string) bool, allowMissing bool, prune func(p, name string) bool, out *[]string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if allowMissing && os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Name())
+		if e.IsDir() {
+			if prune != nil && prune(p, e.Name()) {
+				continue
+			}
+			if err := walkDirEntries(root, p, supported, allowMissing, prune, out); err != nil {
+				return err
+			}
+			continue
+		}
+		// e.Type() reads the mode bits ReadDir already buffered — no
+		// extra syscall, and nothing to race against a file deleted
+		// after the listing. The regular-file check only needs a
+		// fresh Lstat (e.Info()) for the ModeSymlink case, where the
+		// buffered type alone can't say whether the link's target is
+		// a regular file; that's also the only case where the entry
+		// can plausibly have vanished since ReadDir, so it's the only
+		// branch allowMissing needs to guard.
+		if e.Type()&fs.ModeSymlink != 0 {
+			info, err := e.Info()
+			if err != nil {
+				if allowMissing && os.IsNotExist(err) {
+					continue
+				}
+				return err
+			}
+			if !info.Mode().IsRegular() {
+				continue
+			}
+		} else if !e.Type().IsRegular() {
+			continue
+		}
+		if supported == nil || supported(p) {
+			*out = append(*out, p)
+		}
+	}
+	return nil
 }
 
 // CommitRange lists commit-message bodies for `<base>..HEAD`. Each
@@ -248,27 +317,29 @@ func splitPaths(out, cwd string) []string {
 
 // walkPaths is the non-git audit fallback. Lists every regular file
 // under cwd; the scanner classifier filters by extension. .git/ and
-// node_modules/ are pruned because they're never the leak channel
-// we care about and walking them on a real project is wasteful.
+// node_modules/ are pruned because they're never the leak channel we
+// care about and walking them on a real project is wasteful.
+//
+// Built on walkDirEntries (the same recursive os.ReadDir-based walker
+// expandDir uses) rather than filepath.WalkDir, for two reasons: (1)
+// WalkDir Lstats its root argument, so a symlinked cwd would report
+// as neither a directory nor a regular file and yield nothing — the
+// same false-clean-scan bug expandDir had for a symlinked --paths
+// root; (2) resolving cwd through filepath.EvalSymlinks to work
+// around that (an earlier version of this fix) made walkPaths emit
+// paths under the resolved real directory while expandDir emits paths
+// under the symlink as given — two scan sources returning differently
+// -prefixed absolute paths for logically equivalent input breaks
+// .verifynoleak.allow glob matching (suppress.LoadAllowlist resolves
+// relative to the unresolved --paths cwd), and does so inconsistently
+// depending on which scan source found a given file. Sharing
+// walkDirEntries keeps both on the same path-prefix convention.
 func walkPaths(cwd string) ([]string, error) {
+	prune := func(_, name string) bool {
+		return name == ".git" || name == "node_modules"
+	}
 	var out []string
-	err := filepath.WalkDir(cwd, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			name := d.Name()
-			if name == ".git" || name == "node_modules" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.Type().IsRegular() {
-			out = append(out, p)
-		}
-		return nil
-	})
-	if err != nil {
+	if err := walkDirEntries(cwd, cwd, nil, false, prune, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
