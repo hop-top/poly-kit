@@ -7,7 +7,10 @@
 # shields.io badge (.12fc.json), SARIF annotations, sticky PR comment.
 #
 # Follow-ups after fetching:
-#   - paths: scope to your command-surface tree (cmd/ for Go CLIs).
+#   - paths: defaults to the repo root (.) so the gate works out of the
+#     box for any language. Narrow it to your command-surface tree
+#     (e.g. cmd/ for Go CLIs, src/ for most others) once your project
+#     layout is settled, to keep scans fast and focused.
 #   - The badge stays "ungradable" until story docs exist — with zero
 #     scannable files the leaves pass vacuously. Author story docs,
 #     then flip commit-badge to true in the push job so the badge
@@ -45,9 +48,9 @@ jobs:
       - uses: hop-top/spec-12fc@fbd05973d8c0ec1acd9b20994d3db9bbfc3ac141 # main @ 2026-07-02
         with:
           command: all
-          paths: cmd/
+          paths: .            # repo root; narrow to your command tree if desired (see header)
           diff: ""            # scan paths, not PR diff; --diff+--paths are mutually exclusive
-          fail-on: 2,3,5
+          fail-on: 2,66,67    # usage, leak-detected, config-error (io_error/6 excluded: transient)
           upload-sarif: true
           pr-comment: true
           commit-badge: false
@@ -69,9 +72,9 @@ jobs:
       - uses: hop-top/spec-12fc@fbd05973d8c0ec1acd9b20994d3db9bbfc3ac141 # main @ 2026-07-02
         with:
           command: all
-          paths: cmd/
+          paths: .
           diff: ""
-          fail-on: 2,3,5
+          fail-on: 2,66,67    # usage, leak-detected, config-error (io_error/6 excluded: transient)
           upload-sarif: true
           pr-comment: false
           commit-badge: false
