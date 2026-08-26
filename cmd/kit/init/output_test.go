@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	kitinit "hop.top/kit/cmd/kit/init"
+	"hop.top/kit/go/console/cli/conformance"
 	"hop.top/kit/internal/template"
 )
 
@@ -139,6 +140,34 @@ func TestNextSteps_12fccWordingMatchesTemplateHeader(t *testing.T) {
 		"template header should use the same verb as the CLI next-steps hint")
 	assert.NotContains(t, strings.ToLower(string(header)), "copy",
 		"template header still uses \"copy\" wording instead of \"fetch\"")
+}
+
+// TestTwelveFCCTemplate_FailOnMatchesExitCodeTaxonomy pins the shared
+// 12fcc.yml CI template's fail-on list against kit's actual
+// conformance exit codes, imported directly rather than duplicated as
+// literals — this drifted once already (fail-on: 2,3,5, a stale
+// taxonomy) with nothing to catch it, silently letting a scan's
+// findings populate the report/badge without ever failing CI.
+func TestTwelveFCCTemplate_FailOnMatchesExitCodeTaxonomy(t *testing.T) {
+	sub, err := template.BuiltIn()
+	require.NoError(t, err)
+	data, err := fs.ReadFile(sub, "shared/ci/12fcc.yml")
+	require.NoError(t, err)
+	content := string(data)
+
+	want := fmt.Sprintf("fail-on: %d,%d,%d",
+		2, // usage: kit-wide slot, not exported as a named conformance constant
+		conformance.ExitLeakDetected,
+		conformance.ExitConfigError,
+	)
+	assert.Contains(t, content, want,
+		"12fcc.yml fail-on must list kit's actual exit codes (usage, leak-detected, config-error)")
+
+	// io_error (exit 6) is intentionally excluded — it's the transient
+	// class, not a scan verdict; asserting its absence catches a
+	// future edit that adds it back in by habit.
+	assert.NotContains(t, content, "fail-on: 2,3,5",
+		"12fcc.yml still carries the stale pre-taxonomy fail-on list")
 }
 
 func TestWriteHuman_NoGitHub(t *testing.T) {

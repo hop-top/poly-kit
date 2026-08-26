@@ -237,6 +237,7 @@ func NextSteps(mode, name string, github *GitHubSummary) []string {
 // that extracts a single file). Adopters fetch it from
 // hop-top/poly-kit directly.
 const twelveFCCStep = "wire the 12fcc gate: fetch templates/shared/ci/12fcc.yml " +
-	"from hop-top/poly-kit and save it as .github/workflows/12fcc.yml, " +
-	"scope its paths to your command tree; flip commit-badge to true " +
-	"once story docs exist so .12fc.json reflects a real grade"
+	"from hop-top/poly-kit and save it as .github/workflows/12fcc.yml " +
+	"(paths defaults to the repo root; narrow it to your command tree " +
+	"if desired); flip commit-badge to true once story docs exist so " +
+	".12fc.json reflects a real grade"
