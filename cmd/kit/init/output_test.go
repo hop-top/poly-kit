@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"strings"
 	"testing"
 
@@ -97,6 +98,9 @@ func TestNextSteps_Bootstrap(t *testing.T) {
 	}, got[:3])
 	assert.Contains(t, got[3], "12fcc gate")
 	assert.Contains(t, got[3], ".12fc.json")
+	assert.Contains(t, got[3], "hop-top/poly-kit")
+	assert.Contains(t, got[3], ".github/workflows/12fcc.yml")
+	assert.NotContains(t, got[3], "kit templates/")
 }
 
 func TestNextSteps_Augment(t *testing.T) {
@@ -108,10 +112,33 @@ func TestNextSteps_Augment(t *testing.T) {
 		"make test",
 	}, got[:3])
 	assert.Contains(t, got[3], "12fcc gate")
+	assert.Contains(t, got[3], "hop-top/poly-kit")
+	assert.Contains(t, got[3], ".github/workflows/12fcc.yml")
+	assert.NotContains(t, got[3], "kit templates/")
 }
 
 func TestNextSteps_UnknownMode(t *testing.T) {
 	assert.Nil(t, kitinit.NextSteps("other", "myapp", nil))
+}
+
+// TestNextSteps_12fccWordingMatchesTemplateHeader pins the next-steps
+// hint's verb ("fetch ... and save it as") against the shared 12fcc.yml
+// template's own header comment, which an adopter reads right after
+// following the hint. The two drifted once already (hint said "fetch",
+// header still said "copy to") with nothing to catch it.
+func TestNextSteps_12fccWordingMatchesTemplateHeader(t *testing.T) {
+	got := kitinit.NextSteps("bootstrap", "myapp", nil)
+	require.Len(t, got, 4)
+	assert.Contains(t, got[3], "fetch")
+
+	sub, err := template.BuiltIn()
+	require.NoError(t, err)
+	header, err := fs.ReadFile(sub, "shared/ci/12fcc.yml")
+	require.NoError(t, err)
+	assert.Contains(t, string(header), "fetch",
+		"template header should use the same verb as the CLI next-steps hint")
+	assert.NotContains(t, strings.ToLower(string(header)), "copy",
+		"template header still uses \"copy\" wording instead of \"fetch\"")
 }
 
 func TestWriteHuman_NoGitHub(t *testing.T) {

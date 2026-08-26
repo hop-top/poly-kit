@@ -1,11 +1,12 @@
-# Adopter: copy to .github/workflows/12fcc.yml
+# Adopter: fetch from hop-top/poly-kit and save as
+# .github/workflows/12fcc.yml
 #
 # 12-Factor AI-CLI conformance gate over the hop-top/spec-12fc composite
 # action: verify-no-leak + verify-stories (+ cassette grading when a
 # cassette-dir is configured), aggregated report, per-factor matrix,
 # shields.io badge (.12fc.json), SARIF annotations, sticky PR comment.
 #
-# Follow-ups after copying:
+# Follow-ups after fetching:
 #   - paths: scope to your command-surface tree (cmd/ for Go CLIs).
 #   - The badge stays "ungradable" until story docs exist — with zero
 #     scannable files the leaves pass vacuously. Author story docs,

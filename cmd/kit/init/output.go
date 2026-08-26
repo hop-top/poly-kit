@@ -230,6 +230,13 @@ func NextSteps(mode, name string, github *GitHubSummary) []string {
 // mode's checklist: the scaffold seeds .12fc.json as "ungradable" and
 // the badge stays grey until the adopter wires the gate into CI and
 // authors story docs (zero scannable files grades vacuously).
-const twelveFCCStep = "wire the 12fcc gate: copy kit templates/shared/ci/12fcc.yml " +
-	"to .github/workflows/, scope its paths to your command tree; flip " +
-	"commit-badge to true once story docs exist so .12fc.json reflects a real grade"
+//
+// The workflow itself is not copied into scaffolds automatically —
+// renderShared only maps ci-<runtime>.yml files, so 12fcc.yml stays in
+// the kit repo's own template tree (there's no `kit template` verb
+// that extracts a single file). Adopters fetch it from
+// hop-top/poly-kit directly.
+const twelveFCCStep = "wire the 12fcc gate: fetch templates/shared/ci/12fcc.yml " +
+	"from hop-top/poly-kit and save it as .github/workflows/12fcc.yml, " +
+	"scope its paths to your command tree; flip commit-badge to true " +
+	"once story docs exist so .12fc.json reflects a real grade"
