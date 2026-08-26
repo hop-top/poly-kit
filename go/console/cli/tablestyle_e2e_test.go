@@ -163,7 +163,12 @@ func TestStyledTable_E2E_WithCols_TTY(t *testing.T) {
 
 // TestStyledTable_E2E_WithCols_UnknownColumn_TTY pins the error path:
 // an unknown --cols name must still surface as an error on the styled
-// TTY renderer, the same as it does on the plain tabwriter path.
+// TTY renderer. Table is tag-driven, so this exercises
+// renderStyledTable's pre-existing filterColumns validation rather than
+// Render's newer up-front validateCols check (that check is pinned
+// directly for JSON/YAML by TestRender_WithCols_UnknownColumn_*_Errors
+// in metadata_test.go) — kept here so the styled path's own error
+// behavior has explicit e2e coverage alongside its plain-path sibling.
 func TestStyledTable_E2E_WithCols_UnknownColumn_TTY(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("creack/pty is unix-only")

@@ -116,10 +116,12 @@ var stderrWriter io.Writer = os.Stderr
 // an envelope.
 //
 // Render supplies each formatter's declared option defaults (see
-// [Formatter.Options]) exactly as Dispatch does. Callers who need to
-// override an option, or to project columns, should call
-// Default.Lookup(format) and invoke Formatter.Render directly with
-// Options and cols.
+// [Formatter.Options]) exactly as Dispatch does. WithCols(names) projects
+// to the named columns, validated up front against v's `table:""` tags —
+// an unknown name returns an error rather than silently resolving zero
+// columns. Callers who need to override a formatter option beyond its
+// declared default should call Default.Lookup(format) and invoke
+// Formatter.Render directly with Options.
 func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 	f, ok := Default.Lookup(format)
 	if !ok {
@@ -174,7 +176,11 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 		// lets the formatter's own cols handling stay a no-op below.
 		data := v
 		if len(selectedCols) > 0 {
-			data = projectToOrdered(v, selectedCols)
+			projected, err := projectToOrdered(v, selectedCols)
+			if err != nil {
+				return err
+			}
+			data = projected
 			selectedCols = nil
 		}
 		payload = struct {

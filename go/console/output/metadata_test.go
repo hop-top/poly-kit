@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // fixedMetadata returns a Metadata with deterministic Source/FetchedAt/Method
@@ -191,18 +193,27 @@ func TestRender_WithProvenance_WithCols_YAML_KeepsEnvelope(t *testing.T) {
 		t.Fatalf("Render: %v", err)
 	}
 
-	out := buf.String()
-	if !strings.Contains(out, "_meta") {
-		t.Errorf("YAML output lost the _meta envelope under WithCols: %q", out)
+	var got struct {
+		Data []map[string]any `yaml:"data"`
+		Meta *Metadata        `yaml:"_meta"`
 	}
-	if !strings.Contains(out, "data") {
-		t.Errorf("YAML output lost the data key under WithCols: %q", out)
+	if err := yaml.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("decode envelope: %v\nraw: %s", err, buf.String())
 	}
-	if !strings.Contains(out, "NAME") && !strings.Contains(out, "Demo-1") {
-		t.Errorf("YAML output lost the projected payload under WithCols: %q", out)
+	if got.Meta == nil {
+		t.Fatalf("_meta missing entirely; raw: %s", buf.String())
 	}
-	if strings.Contains(out, "SCORE") || strings.Contains(out, "10") {
-		t.Errorf("YAML output retained unselected column under WithCols: %q", out)
+	if got.Meta.Source != m.Source {
+		t.Errorf("_meta.source = %q, want %q", got.Meta.Source, m.Source)
+	}
+	if len(got.Data) != 1 {
+		t.Fatalf("data length = %d, want 1; raw: %s", len(got.Data), buf.String())
+	}
+	if _, ok := got.Data[0]["NAME"]; !ok {
+		t.Errorf("data[0] missing projected column NAME; raw: %s", buf.String())
+	}
+	if _, ok := got.Data[0]["SCORE"]; ok {
+		t.Errorf("data[0] retained unselected column SCORE; raw: %s", buf.String())
 	}
 }
 
@@ -236,6 +247,58 @@ func TestRender_WithCols_UnknownColumn_YAML_Errors(t *testing.T) {
 	err := Render(&buf, YAML, rows, WithCols([]string{"Nope"}))
 	if err == nil {
 		t.Fatalf("Render returned nil error for unknown column; output: %q", buf.String())
+	}
+}
+
+// TestRender_WithCols_UntaggedMap_Errors pins WithCols against a payload
+// with no `table:""` tags to project against (a raw map). validateCols
+// previously deferred silently whenever TableHeaders found no headers,
+// which let an unrequested field ("secret") leak through unfiltered
+// instead of erroring or filtering, and did so more visibly once
+// WithProvenance stopped collapsing the envelope to "{}" — the leaked
+// field started showing up in real output instead of vanishing.
+func TestRender_WithCols_UntaggedMap_Errors(t *testing.T) {
+	data := map[string]string{"name": "x", "secret": "y"}
+
+	var buf bytes.Buffer
+	err := Render(&buf, JSON, data, WithCols([]string{"name"}))
+	if err == nil {
+		t.Fatalf("Render returned nil error for WithCols on untagged data; output: %q", buf.String())
+	}
+}
+
+// TestRender_WithProvenance_WithCols_UntaggedMap_Errors is the
+// WithProvenance twin: the same untagged-map + WithCols combination must
+// still error rather than leak the full map into the provenance envelope.
+func TestRender_WithProvenance_WithCols_UntaggedMap_Errors(t *testing.T) {
+	data := map[string]string{"name": "x", "secret": "y"}
+	m := fixedMetadata()
+
+	var buf bytes.Buffer
+	err := Render(&buf, JSON, data, WithProvenance(m), WithCols([]string{"name"}))
+	if err == nil {
+		t.Fatalf("Render returned nil error for WithCols+WithProvenance on untagged data; output: %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "secret") {
+		t.Errorf("unselected field %q leaked into output: %q", "secret", buf.String())
+	}
+}
+
+// TestRender_WithProvenance_WithCols_NilSliceElement_Errors pins the
+// panic found in projectToOrdered: a slice containing a nil pointer
+// element, combined with WithProvenance+WithCols, must return an error
+// rather than panic when the projection can't be resolved.
+func TestRender_WithProvenance_WithCols_NilSliceElement_Errors(t *testing.T) {
+	type row struct {
+		Name string `table:"NAME"`
+	}
+	rows := []*row{{Name: "Demo-1"}, nil}
+	m := fixedMetadata()
+
+	var buf bytes.Buffer
+	err := Render(&buf, JSON, rows, WithProvenance(m), WithCols([]string{"NAME"}))
+	if err == nil {
+		t.Fatalf("Render returned nil error for nil slice element under WithCols; output: %q", buf.String())
 	}
 }
 
