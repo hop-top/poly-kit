@@ -147,30 +147,52 @@ func resolvePaths(cwd string, paths []string, supported func(string) bool, allow
 // expandDir recursively collects supported regular files under root.
 // Dot-directories are pruned; the root itself is exempt so an
 // explicitly passed dot-directory still scans.
+//
+// Recursion goes through os.ReadDir on each directory path rather
+// than filepath.WalkDir, matching verify-stories' expandPaths /
+// walkYAMLs (verify_stories.go). ReadDir is called with a path
+// string, so a symlink root is followed to the files behind it;
+// WalkDir instead Lstats the root DirEntry, which reports a
+// symlink-to-directory as neither a directory nor a regular file
+// and silently yields nothing. Nested symlinked subdirectories are
+// intentionally not followed here either way, consistent with
+// verify-stories.
 func expandDir(root string, supported func(string) bool) ([]string, error) {
 	var out []string
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			if p != root && strings.HasPrefix(d.Name(), ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
-		if supported == nil || supported(p) {
-			out = append(out, p)
-		}
-		return nil
-	})
-	if err != nil {
+	if err := walkDirEntries(root, root, supported, &out); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+func walkDirEntries(root, dir string, supported func(string) bool, out *[]string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Name())
+		if e.IsDir() {
+			if p != root && strings.HasPrefix(e.Name(), ".") {
+				continue
+			}
+			if err := walkDirEntries(root, p, supported, out); err != nil {
+				return err
+			}
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		if supported == nil || supported(p) {
+			*out = append(*out, p)
+		}
+	}
+	return nil
 }
 
 // CommitRange lists commit-message bodies for `<base>..HEAD`. Each

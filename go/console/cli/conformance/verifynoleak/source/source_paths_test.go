@@ -81,6 +81,34 @@ func TestPathsEmptyDirectoryIsNotAnError(t *testing.T) {
 	}
 }
 
+// A symlink-to-directory root must expand the same as a real
+// directory. Paths classifies the root with os.Stat (which follows
+// symlinks) before handing it to expandDir; expandDir must follow
+// suit for the root instead of silently yielding zero files.
+func TestPathsExpandsSymlinkedDirectory(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(real, "a.yaml")
+	if err := os.WriteFile(target, []byte("id: x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unsupported on this platform: %v", err)
+	}
+
+	got, err := Paths(dir, []string{"link"}, scanner.SupportedPath)
+	if err != nil {
+		t.Fatalf("Paths: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expanded %d file(s) through symlinked root, want 1: %v", len(got), got)
+	}
+}
+
 // A missing path stays an error: explicit means intentional.
 func TestPathsMissingErrors(t *testing.T) {
 	if _, err := Paths(t.TempDir(), []string{"nope"}, scanner.SupportedPath); err == nil {
