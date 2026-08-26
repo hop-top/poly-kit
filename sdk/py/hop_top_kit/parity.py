@@ -1,10 +1,12 @@
 """
 hop_top_kit.parity — cross-language TUI parity constants.
 
-Single loader for the canonical ``contracts/parity/parity.json``. Every
-Python consumer imports from here rather than re-deriving the path: three
-independent ``parents[N]`` walks to the same file drift apart the moment a
-module moves, and each one breaks differently.
+Single loader for the parity constants SoT. The canonical file lives at
+``contracts/parity/parity.json``; a vendored copy ships next to this module
+(same pattern as ``scope-defaults.json``) so the published package is
+self-contained — a repo-relative walk breaks the moment the package is
+installed outside the monorepo. A contract-sync test in
+``tests/test_parity.py`` keeps the two copies in lockstep.
 
 Mirrors the Go loader in ``contracts/parity/parity.go`` (``parity.Values``
 and ``parity.Blocks``) and the TypeScript loader in
@@ -17,12 +19,15 @@ import json
 import pathlib
 from typing import Any
 
-# hop_top_kit/parity.py -> hop_top_kit -> sdk/py -> sdk -> <repo root>
-PARITY_PATH = pathlib.Path(__file__).resolve().parents[3] / "contracts" / "parity" / "parity.json"
-"""Canonical parity contract path, resolved once for every consumer."""
+PARITY_PATH = pathlib.Path(__file__).resolve().parent / "parity.json"
+"""Vendored parity contract path, resolved once for every consumer.
 
-PARITY: dict[str, Any] = json.loads(PARITY_PATH.read_text())
-"""Parsed contents of ``contracts/parity/parity.json``."""
+Kept byte-identical to ``contracts/parity/parity.json`` by the
+contract-sync test.
+"""
+
+PARITY: dict[str, Any] = json.loads(PARITY_PATH.read_text(encoding="utf-8"))
+"""Parsed contents of the vendored ``parity.json``."""
 
 BLOCKS: tuple[str, ...] = (
     "description",

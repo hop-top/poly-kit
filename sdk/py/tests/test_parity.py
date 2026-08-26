@@ -13,8 +13,35 @@ cannot be added as decoration.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from hop_top_kit import parity
+
+_HERE = Path(__file__).parent
+_REPO_ROOT = _HERE.parent.parent.parent
+_CANONICAL_PARITY = _REPO_ROOT / "contracts" / "parity" / "parity.json"
+_LOCAL_PARITY = _HERE.parent / "hop_top_kit" / "parity.json"
+
+
+# ─── Contract sync ───────────────────────────────────────────────────────────
+
+
+class TestContractSync:
+    """The vendored copy must stay locked to the canonical contract.
+
+    The package ships ``hop_top_kit/parity.json`` so standalone installs
+    work outside the monorepo; ``contracts/parity/parity.json`` remains the
+    single source of truth. Byte-for-byte, not JSON-equal: formatting drift
+    is drift.
+    """
+
+    def test_vendored_matches_canonical_bytes(self) -> None:
+        assert _LOCAL_PARITY.read_bytes() == _CANONICAL_PARITY.read_bytes(), (
+            "sdk/py/hop_top_kit/parity.json has drifted from "
+            "contracts/parity/parity.json.\n"
+            "Edit the canonical file, then re-copy it into the package:\n"
+            "  cp contracts/parity/parity.json sdk/py/hop_top_kit/parity.json"
+        )
 
 
 def _declared_blocks() -> list[str]:
