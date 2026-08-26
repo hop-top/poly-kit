@@ -32,7 +32,11 @@ func (jsonFormatter) Render(w io.Writer, data any, _ Options, cols []string) err
 	if len(cols) == 0 {
 		return enc.Encode(data)
 	}
-	return enc.Encode(projectToOrdered(data, cols))
+	projected, err := projectToOrdered(data, cols)
+	if err != nil {
+		return err
+	}
+	return enc.Encode(projected)
 }
 
 type yamlFormatter struct{}
@@ -44,7 +48,11 @@ func (yamlFormatter) Render(w io.Writer, data any, _ Options, cols []string) err
 	if len(cols) == 0 {
 		return yaml.NewEncoder(w).Encode(data)
 	}
-	return yaml.NewEncoder(w).Encode(projectToOrdered(data, cols))
+	projected, err := projectToOrdered(data, cols)
+	if err != nil {
+		return err
+	}
+	return yaml.NewEncoder(w).Encode(projected)
 }
 
 type tableFormatter struct{}

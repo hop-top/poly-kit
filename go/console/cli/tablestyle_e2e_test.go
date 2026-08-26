@@ -100,6 +100,101 @@ func TestCLIInstallsDefaultTableStyle(t *testing.T) {
 	}
 }
 
+// TestStyledTable_E2E_WithCols_TTY exercises output.WithCols on the real
+// TTY/styled path (renderStyledTable), not just the non-TTY tabwriter
+// path the other WithCols tests in the output package cover. The bug
+// this option originally fixed was specifically in this styled path —
+// selected cols reaching renderStyledTable as nil — so a bytes.Buffer
+// test can pass while the TTY path is still broken; only a real
+// terminal writer exercises writerIsTTY's *os.File + isatty check.
+func TestStyledTable_E2E_WithCols_TTY(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creack/pty is unix-only")
+	}
+
+	root := cli.New(cli.Config{
+		Name:            "stylenant",
+		Version:         "0.0.1",
+		Short:           "styled-table e2e",
+		DisableValidate: true,
+	})
+
+	master, slave, err := pty.Open()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = master.Close()
+		_ = slave.Close()
+	})
+
+	done := make(chan []byte, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, master)
+		done <- buf.Bytes()
+	}()
+
+	err = output.Render(slave, output.Table, e2eRows(),
+		output.WithTableStyle(root.TableStyle()),
+		output.WithCols([]string{"Name", "Score"}),
+	)
+	require.NoError(t, err)
+	require.NoError(t, slave.Close())
+
+	stripped := stripANSI(string(<-done))
+
+	if !strings.Contains(stripped, "Name") {
+		t.Errorf("TTY WithCols output missing selected column Name: %q", stripped)
+	}
+	if !strings.Contains(stripped, "Score") {
+		t.Errorf("TTY WithCols output missing selected column Score: %q", stripped)
+	}
+	if strings.Contains(stripped, "Status") {
+		t.Errorf("TTY WithCols output leaked unselected column Status: %q", stripped)
+	}
+	for _, r := range e2eRows() {
+		if !strings.Contains(stripped, r.Name) {
+			t.Errorf("TTY WithCols output missing row %q: %q", r.Name, stripped)
+		}
+		if strings.Contains(stripped, r.Status) {
+			t.Errorf("TTY WithCols output leaked unselected value %q: %q", r.Status, stripped)
+		}
+	}
+}
+
+// TestStyledTable_E2E_WithCols_UnknownColumn_TTY pins the error path:
+// an unknown --cols name must still surface as an error on the styled
+// TTY renderer. Table is tag-driven, so this exercises
+// renderStyledTable's pre-existing filterColumns validation rather than
+// Render's newer up-front validateCols check (that check is pinned
+// directly for JSON/YAML by TestRender_WithCols_UnknownColumn_*_Errors
+// in metadata_test.go) — kept here so the styled path's own error
+// behavior has explicit e2e coverage alongside its plain-path sibling.
+func TestStyledTable_E2E_WithCols_UnknownColumn_TTY(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creack/pty is unix-only")
+	}
+
+	root := cli.New(cli.Config{
+		Name:            "stylenant",
+		Version:         "0.0.1",
+		Short:           "styled-table e2e",
+		DisableValidate: true,
+	})
+
+	master, slave, err := pty.Open()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = master.Close()
+		_ = slave.Close()
+	})
+
+	err = output.Render(slave, output.Table, e2eRows(),
+		output.WithTableStyle(root.TableStyle()),
+		output.WithCols([]string{"Nope"}),
+	)
+	require.Error(t, err)
+}
+
 // TestStyledTable_E2E_TTYAndNonTTYContentIdentity is the headline e2e:
 // the same command on a TTY writer emits ANSI + box-drawing, while on
 // a non-TTY writer it emits the existing plain tabwriter output, and

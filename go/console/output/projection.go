@@ -83,7 +83,7 @@ func projectToMaps(data any) any {
 // the same way table/csv/text do via filterColumns.
 //
 // Non-struct inputs are returned as-is to the caller.
-func projectToOrdered(data any, cols []string) any {
+func projectToOrdered(data any, cols []string) (any, error) {
 	rv := reflect.ValueOf(data)
 
 	switch rv.Kind() {
@@ -92,20 +92,24 @@ func projectToOrdered(data any, cols []string) any {
 		for i := range rv.Len() {
 			e := rv.Index(i)
 			if e.Kind() == reflect.Ptr {
+				if e.IsNil() {
+					return nil, fmt.Errorf("--cols %s: element %d is a nil pointer, nothing to project",
+						strings.Join(cols, ","), i)
+				}
 				e = e.Elem()
 			}
 			out[i] = structToOrdered(e, cols)
 		}
-		return out
+		return out, nil
 	case reflect.Ptr:
 		if rv.IsNil() {
-			return data
+			return data, nil
 		}
-		return structToOrdered(rv.Elem(), cols)
+		return structToOrdered(rv.Elem(), cols), nil
 	case reflect.Struct:
-		return structToOrdered(rv, cols)
+		return structToOrdered(rv, cols), nil
 	default:
-		return data
+		return data, nil
 	}
 }
 
