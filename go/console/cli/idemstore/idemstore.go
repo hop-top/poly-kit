@@ -96,12 +96,15 @@ create table if not exists idempotency (
 		_ = db.Close()
 		return nil, fmt.Errorf("idemstore: migrate: %w", err)
 	}
-	return &sqliteStore{db: db, ttl: ttl}, nil
+	return &sqliteStore{db: db, ttl: ttl, now: time.Now}, nil
 }
 
 type sqliteStore struct {
 	db  *sql.DB
 	ttl time.Duration
+	// now is the store's time source; time.Now outside tests.
+	// Injectable so TTL expiry is testable without wall-clock sleeps.
+	now func() time.Time
 }
 
 func (s *sqliteStore) Lookup(ctx context.Context, key string) (Result, bool, error) {
@@ -127,7 +130,7 @@ func (s *sqliteStore) Lookup(ctx context.Context, key string) (Result, bool, err
 			return Result{}, false, fmt.Errorf("idemstore: parse recorded: %w", perr)
 		}
 	}
-	if s.ttl > 0 && time.Since(rec) > s.ttl {
+	if s.ttl > 0 && s.now().Sub(rec) > s.ttl {
 		return Result{}, false, nil
 	}
 	return Result{
@@ -140,7 +143,7 @@ func (s *sqliteStore) Lookup(ctx context.Context, key string) (Result, bool, err
 
 func (s *sqliteStore) Record(ctx context.Context, key string, r Result) error {
 	if r.Recorded.IsZero() {
-		r.Recorded = time.Now().UTC()
+		r.Recorded = s.now().UTC()
 	}
 	_, err := s.db.ExecContext(ctx,
 		`insert into idempotency (key, exit_code, output, recorded)
@@ -173,12 +176,14 @@ func (s *sqliteStore) Close() error {
 // OpenSQLite with an explicit ttl, or call Memory() and Close() per
 // scenario.
 func Memory() Store {
-	return &memoryStore{m: make(map[string]Result)}
+	return &memoryStore{m: make(map[string]Result), now: time.Now}
 }
 
 type memoryStore struct {
 	mu sync.Mutex
 	m  map[string]Result
+	// now is the store's time source; time.Now outside tests.
+	now func() time.Time
 }
 
 func (s *memoryStore) Lookup(_ context.Context, key string) (Result, bool, error) {
@@ -195,7 +200,7 @@ func (s *memoryStore) Record(_ context.Context, key string, r Result) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if r.Recorded.IsZero() {
-		r.Recorded = time.Now().UTC()
+		r.Recorded = s.now().UTC()
 	}
 	r.Key = key
 	s.m[key] = r
