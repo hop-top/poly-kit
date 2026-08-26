@@ -19,14 +19,6 @@ import (
 	"image/color"
 
 	"charm.land/lipgloss/v2"
-	// charm.land/lipgloss/v2/compat runs an unconditional background-color
-	// query at package init that ignores NO_COLOR, leaking OSC/DA1 bytes to
-	// stdout and stealing stdin under a PTY. Upstream fix proposed in
-	// https://github.com/charmbracelet/lipgloss/pull/692; once merged and
-	// released, bump charm.land/lipgloss/v2 to pick it up and this note can
-	// be removed. Until then, callers that need clean stdout / non-leaky
-	// stdin should set NO_COLOR before importing this package transitively.
-	"charm.land/lipgloss/v2/compat"
 	"github.com/charmbracelet/x/exp/charmtone"
 )
 
@@ -85,13 +77,14 @@ func buildTheme(accent string) Theme {
 func themeFromPalette(p Palette) Theme {
 	muted := color.Color(charmtone.Squid)
 	// Title renders as an inverse chip: white-on-black on light terminals,
-	// black-on-white on dark. The compat AdaptiveColor reads its decision from
-	// a package-level background probe done once at init.
-	titleFg := color.Color(compat.AdaptiveColor{
+	// black-on-white on dark. adaptiveColor resolves the background lazily on
+	// first color resolution — never at package init, never under NO_COLOR,
+	// and never when stdin/stdout is not a terminal (see adaptivecolor.go).
+	titleFg := color.Color(adaptiveColor{
 		Light: lipgloss.Color("#FFFFFF"),
 		Dark:  lipgloss.Color("#000000"),
 	})
-	titleBg := color.Color(compat.AdaptiveColor{
+	titleBg := color.Color(adaptiveColor{
 		Light: lipgloss.Color("#000000"),
 		Dark:  lipgloss.Color("#FFFFFF"),
 	})
@@ -104,7 +97,7 @@ func themeFromPalette(p Palette) Theme {
 	secondary := p.Flag
 	if rgbaEqual(p.Command, lipgloss.Color("#FF00AA")) {
 		warn = color.Color(charmtone.Citron)
-		secondary = color.Color(compat.AdaptiveColor{
+		secondary = color.Color(adaptiveColor{
 			Light: lipgloss.Color("#0000FF"),
 			Dark:  lipgloss.Color("#5C7BFF"),
 		})
