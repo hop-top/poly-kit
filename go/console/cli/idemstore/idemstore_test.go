@@ -65,10 +65,18 @@ func TestIdemstore_Sqlite_OverwriteOnRecord(t *testing.T) {
 }
 
 func TestIdemstore_TTL_Expiry(t *testing.T) {
+	const ttl = time.Minute
+
 	dbPath := filepath.Join(t.TempDir(), "idem.db")
-	s, err := idemstore.OpenSQLite(dbPath, 10*time.Millisecond)
+	s, err := idemstore.OpenSQLite(dbPath, ttl)
 	require.NoError(t, err)
 	defer s.Close()
+
+	// Fake clock: expiry is driven by advancing `current`, never by
+	// real elapsed time.
+	base := time.Now().UTC()
+	current := base
+	idemstore.SetNow(s, func() time.Time { return current })
 
 	ctx := context.Background()
 	require.NoError(t, s.Record(ctx, "k", idemstore.Result{
@@ -76,12 +84,13 @@ func TestIdemstore_TTL_Expiry(t *testing.T) {
 	}))
 
 	// Within TTL: hit.
+	current = base.Add(ttl)
 	_, hit, err := s.Lookup(ctx, "k")
 	require.NoError(t, err)
 	require.True(t, hit, "fresh entry must be a hit")
 
 	// Past TTL: miss.
-	time.Sleep(20 * time.Millisecond)
+	current = base.Add(ttl + time.Second)
 	_, hit, err = s.Lookup(ctx, "k")
 	require.NoError(t, err)
 	assert.False(t, hit, "expired entry must be a miss")
