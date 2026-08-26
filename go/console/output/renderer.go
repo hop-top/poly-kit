@@ -137,6 +137,17 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 		cfg.tableStyle = getDefaultTableStyle()
 	}
 
+	// WithCols is documented to error on an unknown column name. Dispatch
+	// enforces this via validateCols before calling Formatter.Render
+	// directly; Render must apply the same check for callers who invoke it
+	// without going through Dispatch, or an unknown name silently resolves
+	// zero columns downstream instead of erroring.
+	if len(cfg.selectedCols) > 0 {
+		if err := validateCols(v, cfg.selectedCols); err != nil {
+			return err
+		}
+	}
+
 	// Materialize the formatter's declared option defaults. Passing a nil
 	// Options map here silently defeats every default declared in an
 	// OptionSpec — csv's delimiter (",") among them, which made every
@@ -152,11 +163,24 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 	// resolve zero columns on the untagged wrapper struct, emitting
 	// nothing at all while still returning nil.
 	payload := v
+	selectedCols := cfg.selectedCols
 	if cfg.provenance != nil && !isTagDriven(format) {
+		// Project the payload down to the selected columns BEFORE
+		// wrapping it in the envelope, not after: the envelope struct
+		// carries no `table:""` tags of its own, so handing it (rather
+		// than the value underneath it) to the formatter's own cols
+		// projection resolves zero columns and collapses "data"/"_meta"
+		// down to "{}". Pre-projecting here keeps the envelope intact and
+		// lets the formatter's own cols handling stay a no-op below.
+		data := v
+		if len(selectedCols) > 0 {
+			data = projectToOrdered(v, selectedCols)
+			selectedCols = nil
+		}
 		payload = struct {
 			Data any       `json:"data"  yaml:"data"`
 			Meta *Metadata `json:"_meta" yaml:"_meta"`
-		}{Data: v, Meta: cfg.provenance}
+		}{Data: data, Meta: cfg.provenance}
 	}
 
 	// Styled table path: when the caller supplied WithTableStyle and the
@@ -165,11 +189,11 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 	// files, tests) always fall through to the plain renderer so command
 	// output stays diff-friendly and ANSI-free.
 	if format == Table && cfg.tableStyle != nil && writerIsTTY(w) {
-		if err := renderStyledTable(w, payload, cfg.selectedCols, *cfg.tableStyle, cfg.rowEmphasis); err != nil {
+		if err := renderStyledTable(w, payload, selectedCols, *cfg.tableStyle, cfg.rowEmphasis); err != nil {
 			return err
 		}
 	} else {
-		if err := f.Render(w, payload, formatOpts, cfg.selectedCols); err != nil {
+		if err := f.Render(w, payload, formatOpts, selectedCols); err != nil {
 			return err
 		}
 	}
