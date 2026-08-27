@@ -60,9 +60,23 @@ impl LocalStore {
     /// `//` would produce, landing at `root/etc/passwd`, safely nested;
     /// rejecting every leading-slash key outright would be broader than
     /// this function needs to be.
+    ///
+    /// A key is a logical string, not a raw OS path, so segmentation
+    /// splits on both `/` and `\` unconditionally — regardless of
+    /// `cfg(target_os)`. This store is not Unix-restricted (only the
+    /// permission-bit code is `#[cfg(unix)]`-gated), so it also builds
+    /// for Windows targets, where `PathBuf::push` on a
+    /// backslash-containing string later splits into real path
+    /// components and `Path::starts_with` does not normalise `..` —
+    /// splitting only on `/` would let a key like `"foo\..\..\bar"`
+    /// carry an unchecked `..` straight past the per-segment guard
+    /// below. Splitting on both here means every platform's key
+    /// namespace behaves identically, and the existing empty/dot/`..`
+    /// handling per segment already does the right thing regardless of
+    /// which separator produced it.
     fn resolve(&self, key: &str) -> Result<PathBuf, BlobError> {
         let mut resolved = self.root.clone();
-        for segment in key.split('/') {
+        for segment in key.split(['/', '\\']) {
             match segment {
                 "" | "." => continue,
                 ".." => {
@@ -265,14 +279,13 @@ mod tests {
 
     #[test]
     fn resolve_rejects_escaping_keys() {
-        let dir = std::env::temp_dir().join(format!("kit-blob-resolve-{}", std::process::id()));
-        let s = LocalStore::new(&dir).expect("new store");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let s = LocalStore::new(dir.path()).expect("new store");
         assert!(matches!(
             s.resolve("../escape"),
             Err(BlobError::KeyEscapesRoot(_))
         ));
         assert!(s.resolve("a/b/c").is_ok());
-        let _ = fs::remove_dir_all(&dir);
     }
 
     /// Every key spelling that reduces to zero effective path segments
@@ -283,16 +296,14 @@ mod tests {
     /// itself as the destination.
     #[test]
     fn resolve_rejects_every_key_that_resolves_to_root() {
-        let dir =
-            std::env::temp_dir().join(format!("kit-blob-resolve-root-{}", std::process::id()));
-        let s = LocalStore::new(&dir).expect("new store");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let s = LocalStore::new(dir.path()).expect("new store");
         for key in ["", ".", "/", "a/..", "./.", "a/../.", "a/b/../.."] {
             assert!(
                 matches!(s.resolve(key), Err(BlobError::KeyEscapesRoot(_))),
                 "key {key:?} must be rejected: resolves to the store root"
             );
         }
-        let _ = fs::remove_dir_all(&dir);
     }
 
     /// A leading `/` is not itself an escape attempt: `split('/')`
@@ -305,12 +316,61 @@ mod tests {
     /// exactly at root, is unsafe.
     #[test]
     fn resolve_accepts_leading_slash_key_as_nested_under_root() {
-        let dir = std::env::temp_dir().join(format!("kit-blob-resolve-abs-{}", std::process::id()));
-        let s = LocalStore::new(&dir).expect("new store");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let s = LocalStore::new(dir.path()).expect("new store");
         let resolved = s
             .resolve("/etc/passwd")
             .expect("leading slash must not escape");
         assert_eq!(resolved, s.root().join("etc").join("passwd"));
-        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A key is a logical string, not a raw OS path: its namespace must
+    /// behave identically regardless of which separator character
+    /// appears in it, on every platform this store can be built for.
+    ///
+    /// `resolve()` used to split only on `/`. On a Unix test runner that
+    /// is merely inert — `\` is a legal filename byte there, so
+    /// `"foo\..\..\etc\passwd"` walked as one opaque, safely-nested
+    /// segment (`root/foo\..\..\etc\passwd`) rather than as a traversal.
+    /// But this crate is not `#[cfg(unix)]`-gated (only the permission-
+    /// bit code is), so it also builds for
+    /// `x86_64-pc-windows-msvc`, where `PathBuf::push` on a
+    /// backslash-containing string *does* split into real `..`
+    /// components once it reaches the filesystem, bypassing the
+    /// per-segment escape check entirely — and `Path::starts_with`
+    /// never normalises `..`, so the final containment check is not a
+    /// reliable backstop either.
+    ///
+    /// The fix segments on both separators unconditionally, so this
+    /// test asserts the segmentation itself is separator-agnostic: a
+    /// `..`-via-backslash key must be rejected exactly like the
+    /// already-covered `..`-via-forward-slash key, on any platform the
+    /// suite runs on — deterministic, without needing an actual Windows
+    /// target to prove it.
+    #[test]
+    fn resolve_rejects_escaping_keys_with_backslash_separators() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let s = LocalStore::new(dir.path()).expect("new store");
+        for key in [
+            "..\\escape",
+            "foo\\..\\..\\etc\\passwd",
+            "a\\b\\..\\..\\..\\escape",
+        ] {
+            assert!(
+                matches!(s.resolve(key), Err(BlobError::KeyEscapesRoot(_))),
+                "key {key:?} must be rejected: escapes root via backslash separators"
+            );
+        }
+        // Mixed separators must segment identically to either alone.
+        assert!(matches!(
+            s.resolve("a/b\\../..\\.."),
+            Err(BlobError::KeyEscapesRoot(_))
+        ));
+        // A non-escaping backslash key still resolves, nested under root,
+        // the same way a forward-slash equivalent does.
+        assert_eq!(
+            s.resolve("foo\\bar").expect("nested key must resolve"),
+            s.root().join("foo").join("bar")
+        );
     }
 }
