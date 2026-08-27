@@ -76,10 +76,17 @@ type Message struct {
 }
 
 // Request carries all parameters for a completion call.
+//
+// Temperature is a pointer so an explicit zero is distinguishable from
+// unset: nil leaves the provider default; non-nil is sent on the wire,
+// including 0 (deterministic sampling). MaxTokens is deliberately
+// asymmetric and stays a plain int: zero is not a meaningful request
+// value — every provider requires a positive limit — so 0 means unset
+// and falls back to the provider default.
 type Request struct {
 	Messages      []Message
 	Model         string
-	Temperature   float64
+	Temperature   *float64
 	MaxTokens     int
 	StopSequences []string
 	Extensions    map[string]any

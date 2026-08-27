@@ -152,8 +152,8 @@ func (a *Adapter) buildParams(
 		}
 	}
 
-	if req.Temperature > 0 {
-		p.Temperature = param.NewOpt(req.Temperature)
+	if req.Temperature != nil {
+		p.Temperature = param.NewOpt(*req.Temperature)
 	}
 
 	if len(req.StopSequences) > 0 {

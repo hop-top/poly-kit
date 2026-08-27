@@ -18,12 +18,14 @@ import (
 type mockProvider struct {
 	resp llm.Response
 	err  error
+	got  llm.Request
 }
 
 func (m *mockProvider) Close() error { return nil }
 func (m *mockProvider) Complete(
-	_ context.Context, _ llm.Request,
+	_ context.Context, req llm.Request,
 ) (llm.Response, error) {
+	m.got = req
 	return m.resp, m.err
 }
 
@@ -97,6 +99,57 @@ func TestServer_ChatCompletion(t *testing.T) {
 	assert.Equal(t, "Hello there!", resp.Choices[0].Message.Content)
 	assert.Equal(t, "stop", resp.Choices[0].FinishReason)
 	assert.Equal(t, 15, resp.Usage.TotalTokens)
+}
+
+func TestServer_ChatCompletion_ExplicitZeroTemperature(t *testing.T) {
+	provider := &mockProvider{resp: llm.Response{Content: "ok"}}
+	srv := newTestServer(0.8, provider)
+
+	zero := 0.0
+	body := chatCompletionRequest{
+		Model: "router-test-0.5",
+		Messages: []chatMessage{
+			{Role: "user", Content: "Hi"},
+		},
+		Temperature: &zero,
+	}
+	b, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/v1/chat/completions",
+		bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, provider.got.Temperature,
+		"explicit zero temperature should propagate to llm.Request")
+	assert.Zero(t, *provider.got.Temperature)
+}
+
+func TestServer_ChatCompletion_NilTemperature(t *testing.T) {
+	provider := &mockProvider{resp: llm.Response{Content: "ok"}}
+	srv := newTestServer(0.8, provider)
+
+	body := chatCompletionRequest{
+		Model: "router-test-0.5",
+		Messages: []chatMessage{
+			{Role: "user", Content: "Hi"},
+		},
+	}
+	b, _ := json.Marshal(body)
+
+	req := httptest.NewRequest("POST", "/v1/chat/completions",
+		bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Nil(t, provider.got.Temperature,
+		"unset temperature should stay nil in llm.Request")
 }
 
 func TestServer_ChatCompletion_InvalidModel(t *testing.T) {
