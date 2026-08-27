@@ -416,8 +416,8 @@ func (a *Adapter) buildBody(
 	// Generation config.
 	var gc generationConfig
 	hasConfig := false
-	if req.Temperature > 0 {
-		t := req.Temperature
+	if req.Temperature != nil {
+		t := *req.Temperature
 		gc.Temperature = &t
 		hasConfig = true
 	}

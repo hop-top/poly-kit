@@ -376,13 +376,80 @@ func TestComplete_CustomMaxTokensAndTemp(t *testing.T) {
 	_, err = comp.Complete(context.Background(), llm.Request{
 		Messages:    []llm.Message{{Role: "user", Content: "Hi"}},
 		MaxTokens:   2048,
-		Temperature: 0.7,
+		Temperature: tempPtr(0.7),
 	})
 	require.NoError(t, err)
 
 	assert.Equal(t, float64(2048), gotMaxTokens)
 	assert.InDelta(t, 0.7, gotTemp, 0.001)
 }
+
+func TestComplete_ExplicitZeroTemperature(t *testing.T) {
+	var gotTemp float64
+	var tempPresent bool
+
+	_, cfg := mockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		_ = json.Unmarshal(body, &req)
+
+		var v any
+		v, tempPresent = req["temperature"]
+		gotTemp, _ = v.(float64)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(anthropicResponse("ok", "end_turn", 1, 1))
+	})
+
+	provider, err := anthropicFactory(cfg)
+	require.NoError(t, err)
+	defer provider.Close()
+
+	_, err = provider.(llm.Completer).Complete(context.Background(),
+		llm.Request{
+			Messages:    []llm.Message{{Role: "user", Content: "Hi"}},
+			Temperature: tempPtr(0),
+		})
+	require.NoError(t, err)
+
+	assert.True(t, tempPresent,
+		"explicit zero temperature should reach the wire")
+	assert.Zero(t, gotTemp)
+}
+
+func TestComplete_NilTemperatureOmitted(t *testing.T) {
+	var tempPresent bool
+	var gotMaxTokens float64
+
+	_, cfg := mockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		_ = json.Unmarshal(body, &req)
+
+		_, tempPresent = req["temperature"]
+		gotMaxTokens, _ = req["max_tokens"].(float64)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(anthropicResponse("ok", "end_turn", 1, 1))
+	})
+
+	provider, err := anthropicFactory(cfg)
+	require.NoError(t, err)
+	defer provider.Close()
+
+	_, err = provider.(llm.Completer).Complete(context.Background(),
+		llm.Request{
+			Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+		})
+	require.NoError(t, err)
+
+	assert.False(t, tempPresent,
+		"temperature should be absent when unset")
+	assert.Equal(t, float64(1024), gotMaxTokens,
+		"default max tokens should be preserved")
+}
+
+func tempPtr(v float64) *float64 { return &v }
 
 func TestComplete_ModelOverride(t *testing.T) {
 	var gotModel string

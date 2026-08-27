@@ -171,8 +171,8 @@ func (a *Adapter) buildParams(
 		Model:    model,
 		Messages: msgs,
 	}
-	if req.Temperature != 0 {
-		p.Temperature = param.NewOpt(req.Temperature)
+	if req.Temperature != nil {
+		p.Temperature = param.NewOpt(*req.Temperature)
 	}
 	if req.MaxTokens > 0 {
 		p.MaxTokens = param.NewOpt(int64(req.MaxTokens))

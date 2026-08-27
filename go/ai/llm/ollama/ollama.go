@@ -256,8 +256,8 @@ func (a *Adapter) buildBody(ctx context.Context, req llm.Request, stream bool) (
 	}
 
 	// Map temperature into options.
-	if req.Temperature > 0 {
-		cr.Options = map[string]any{"temperature": req.Temperature}
+	if req.Temperature != nil {
+		cr.Options = map[string]any{"temperature": *req.Temperature}
 	}
 
 	return json.Marshal(cr)

@@ -151,6 +151,61 @@ func TestComplete_HappyPath(t *testing.T) {
 	assert.Equal(t, 30, resp.Usage.TotalTokens)
 }
 
+func TestComplete_ExplicitZeroTemperature(t *testing.T) {
+	var gotTemp float64
+	var tempPresent bool
+
+	srv := fakeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		_ = json.Unmarshal(body, &req)
+
+		var v any
+		v, tempPresent = req["temperature"]
+		gotTemp, _ = v.(float64)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(completionJSON("ok", "assistant", "stop")))
+	})
+
+	p := newAdapter(t, "openai", srv.URL, "gpt-4o")
+	_, err := p.(llm.Completer).Complete(context.Background(), llm.Request{
+		Messages:    []llm.Message{{Role: "user", Content: "hi"}},
+		Temperature: tempPtr(0),
+	})
+	require.NoError(t, err)
+
+	assert.True(t, tempPresent,
+		"explicit zero temperature should reach the wire")
+	assert.Zero(t, gotTemp)
+}
+
+func TestComplete_NilTemperatureOmitted(t *testing.T) {
+	var tempPresent bool
+
+	srv := fakeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		_ = json.Unmarshal(body, &req)
+
+		_, tempPresent = req["temperature"]
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(completionJSON("ok", "assistant", "stop")))
+	})
+
+	p := newAdapter(t, "openai", srv.URL, "gpt-4o")
+	_, err := p.(llm.Completer).Complete(context.Background(), llm.Request{
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+
+	assert.False(t, tempPresent,
+		"temperature should be absent when unset")
+}
+
+func tempPtr(v float64) *float64 { return &v }
+
 // ---------- Stream ----------
 
 func TestStream_HappyPath(t *testing.T) {
