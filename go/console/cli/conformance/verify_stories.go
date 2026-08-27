@@ -232,6 +232,17 @@ func walkDir(dir string) ([]string, error) {
 	return out, err
 }
 
+// prunedDirNames lists directory names walkYAMLs never recurses into,
+// regardless of nesting depth: dependency trees that are never a
+// source of kit stories and, per T-1043, choke the story parser on
+// unrelated YAML (e.g. pnpm's .modules.yaml, vendored Go deps) when
+// --paths defaults to the repo root. Mirrors
+// verifynoleak/source.prunedDirNames.
+var prunedDirNames = map[string]bool{
+	"node_modules": true,
+	"vendor":       true,
+}
+
 func walkYAMLs(dir string, out *[]string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -240,7 +251,7 @@ func walkYAMLs(dir string, out *[]string) error {
 	for _, e := range entries {
 		full := dir + "/" + e.Name()
 		if e.IsDir() {
-			if strings.HasPrefix(e.Name(), ".") {
+			if strings.HasPrefix(e.Name(), ".") || prunedDirNames[e.Name()] {
 				continue
 			}
 			if err := walkYAMLs(full, out); err != nil {

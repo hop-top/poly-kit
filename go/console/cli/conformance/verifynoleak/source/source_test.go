@@ -58,6 +58,32 @@ func TestPaths_DirectoryExpansion(t *testing.T) {
 			want:  []string{"d/ok.yaml"},
 		},
 		{
+			// A --paths=. default (12fcc's post-PR#186 CI gate
+			// template) must not walk into node_modules/: unrelated
+			// YAML sitting there is not a story/leak-scan target and
+			// must never surface as a finding.
+			name:  "node_modules pruned",
+			files: []string{"d/node_modules/some-pkg/bad.yaml", "d/ok.yaml"},
+			paths: []string{"d"},
+			want:  []string{"d/ok.yaml"},
+		},
+		{
+			// Same as node_modules, for Go's vendor/ tree.
+			name:  "vendor pruned",
+			files: []string{"d/vendor/some-go-dep/bad.yaml", "d/ok.yaml"},
+			paths: []string{"d"},
+			want:  []string{"d/ok.yaml"},
+		},
+		{
+			// An explicitly passed node_modules/vendor root is exempt
+			// from pruning, mirroring the existing dot-dir exemption:
+			// the caller asked for it by name, so still walk it.
+			name:  "explicit node_modules root still walked",
+			files: []string{"node_modules/pkg/data.yaml"},
+			paths: []string{"node_modules"},
+			want:  []string{"node_modules/pkg/data.yaml"},
+		},
+		{
 			name:  "explicit dot-dir root still walked",
 			files: []string{".hidden/leak.yaml"},
 			paths: []string{".hidden"},
