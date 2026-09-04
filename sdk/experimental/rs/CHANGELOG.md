@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.0...kit-rs/v0.5.0-alpha.1) (2026-09-04)
+
+The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.1. This release includes new features and bug fixes.
+
+
+### ⚠ BREAKING CHANGES
+
+* **ai/llm:** `Request.Temperature` type changes from `float64` to `*float64`. Callers setting a literal must pass a pointer; zero-value construction (unset) keeps behaving as before via nil.
+* **rs:** `telemetry::ClientOptions` gains a `policy` field, so struct-literal construction must add it (`..Default::default()` is unaffected). `api::ApiClient::request` returns `netpolicy::RequestBuilder` instead of `reqwest::RequestBuilder`.
+
+### Features
+
+* **httpcache:** port response cache to rust behind feature gate
+* merge offline-transport
+* merge offline-transport
+* **output:** add rs csv + text formatters
+* **rs/sqldb:** configurable WAL retry budget on Options
+* **rs:** add kv store with sqlite backend
+* **rs:** add sqldb primitive
+* **rs:** add sqlstore typed kv store over sqldb
+* **rs:** enforce `--offline` at the reqwest construction path
+* **rs:** port blob local backend behind `blob` feature
+* **rs:** port bus core behind `bus` feature
+* **rs:** port dual-spec MCP surface behind an `mcp` feature
+* **rs:** port relative-date parsing behind timeutil feature
+* **rs:** port relative-date parsing behind timeutil feature
+* **sdk/rs:** add structured error envelope with transience class
+
+
+### Bug Fixes
+
+* **ai/llm:** send explicit zero temperature on the wire
+* **ci:** mirror-sync false-positives on the documented .go/.tmpl rename
+* **output:** decide table emptiness by row count, not column count
+* **output:** enable serde_json preserve_order in rs
+* **output:** enforce header == key on ColumnSpec construction
+* **output:** give rs --template an ordered-column affordance
+* **output:** preserve CR and LF verbatim in rs csv fields
+* **output:** thread ColumnSpec order through to formatters
+* **rs/blob:** narrow stored blob mode to 0640
+* **rs:** clippy io_other_error in tests/error.rs, fmt lib.rs
+* **rs:** correct restore_from_blob doc comment, no rename fix needed
+* **rs:** exempt telemetry from `--offline`
+* **rs:** match Go exactly on bare week phrases
+* **rs:** match Go exactly on bare week phrases
+* **rs:** reflect lazily-attached leaf flags on long-lived mounts
+* **rs:** reject empty and leading-slash keys in blob local resolve
+* **rs:** reject every key spelling that resolves to the blob store root
+* **rs:** retry rename-over-existing on restore for Windows parity
+* **rs:** store kv keys as TEXT for cross-language SQLite access
+* **sqldb:** tolerate concurrent first-open WAL conversion
+
+Full diff: [kit-rs/v0.5.0-alpha.0...kit-rs/v0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.0...kit-rs/v0.5.0-alpha.1)
+
 ## [Unreleased]
 
 ### Changed

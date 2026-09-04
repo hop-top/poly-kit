@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.0...kit-php/v0.5.0-alpha.1) (2026-09-04)
+
+The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.1. This release includes new features and bug fixes.
+
+
+### ⚠ BREAKING CHANGES
+
+* **ai/llm:** `Request.Temperature` type changes from `float64` to `*float64`. Callers setting a literal must pass a pointer; zero-value construction (unset) keeps behaving as before via nil.
+* **php:** `HttpsSink` no longer follows redirects; a 3xx from the ingestor now drops the batch instead of trailing the `Location` header. `ApiClient` refuses redirects to plain http and preserves method/body across 301/302.
+* **output:** callers passing a ColumnSpec list whose order differs from payload key order see columns reorder; payload keys absent from the schema stop being emitted.
+* **output:** ColumnSpec with header != key now throws InvalidArgumentException at construction.
+
+### Features
+
+* merge offline-transport
+* merge offline-transport
+* **output:** add php csv + text formatters
+* **php:** enforce `--offline` beneath Guzzle and PSR-18
+* **php:** host the MCP surface on PSR-15 and gate confirmations via MRTR
+* **php:** serve the dual-spec MCP surface
+* **sdk/php:** add structured error envelope with transience class
+
+
+### Bug Fixes
+
+* **ai/llm:** send explicit zero temperature on the wire
+* **build:** realign php composer.lock, guard drift in CI
+* **deps:** clear 16 php advisories via in-range lock update
+* **output:** enforce header == key on php ColumnSpec
+* **output:** preserve CR and LF verbatim in php csv fields
+* **output:** thread ColumnSpec to php formatters, honor its order
+* **php:** correct types flagged by static analysis
+* **php:** stop guzzle redirects leaking request bodies
+* **telemetry:** report unsupported KIT_TELEMETRY_SINK values
+
+Full diff: [kit-php/v0.5.0-alpha.0...kit-php/v0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.0...kit-php/v0.5.0-alpha.1)
+
 ## [0.5.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit-php/v0.4.0-alpha.2...kit-php/v0.5.0-alpha.0) (2026-06-07)
 
 The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.0. This release includes miscellaneous improvements.
