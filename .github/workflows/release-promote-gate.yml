@@ -3,7 +3,7 @@ name: Release Promotion Gate
 on:
   pull_request:
     paths:
-      - 'release-please-config.json'
+      - '.github/release-please-config.json'
 
 jobs:
   validate-promotion:
@@ -21,7 +21,7 @@ jobs:
           # this gate only validates transition logic.
 
           # Skip validation for initial config setup
-          if ! git show "${BASE_SHA}":release-please-config.json \
+          if ! git show "${BASE_SHA}":.github/release-please-config.json \
                >/dev/null 2>&1; then
             echo "Initial release-please setup — skipping" \
               "promotion validation"
@@ -29,7 +29,7 @@ jobs:
           fi
 
           # Validate only prerelease-type changed
-          DIFF=$(git diff "${BASE_SHA}" -- release-please-config.json)
+          DIFF=$(git diff "${BASE_SHA}" -- .github/release-please-config.json)
           NON_PRERELEASE=$(echo "$DIFF" \
             | grep "^[+-]" \
             | grep -v "^[+-][+-][+-]" \
@@ -46,7 +46,7 @@ jobs:
           TYPES=$(jq -r '
             [.packages | to_entries[]
               | .value["prerelease-type"] // "release"]
-            | unique | length' release-please-config.json)
+            | unique | length' .github/release-please-config.json)
 
           if [ "$TYPES" -ne 1 ]; then
             echo "::error::All packages must share the same" \
@@ -54,12 +54,15 @@ jobs:
             exit 1
           fi
 
-          # Validate transition
-          OLD_STAGE=$(git show "${BASE_SHA}":release-please-config.json \
-            | jq -r '.packages["."]["prerelease-type"] // "release"')
+          # Validate transition. prerelease-type carries a counter suffix
+          # ("alpha.0", not "alpha") — without it release-please skips the
+          # first prerelease and starts at alpha.1 — so compare the channel
+          # only, up to the first dot.
+          OLD_STAGE=$(git show "${BASE_SHA}":.github/release-please-config.json \
+            | jq -r '.packages["."]["prerelease-type"] // "release" | split(".")[0]')
           NEW_STAGE=$(jq -r \
-            '.packages["."]["prerelease-type"] // "release"' \
-            release-please-config.json)
+            '.packages["."]["prerelease-type"] // "release" | split(".")[0]' \
+            .github/release-please-config.json)
 
           case "${OLD_STAGE}→${NEW_STAGE}" in
             "release→alpha"|"alpha→beta"|"beta→rc"|"rc→release")
