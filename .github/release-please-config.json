@@ -22,7 +22,8 @@
     },
     {
       "type": "refactor",
-      "section": "Refactored"
+      "section": "Refactored",
+      "hidden": true
     },
     {
       "type": "chore",
