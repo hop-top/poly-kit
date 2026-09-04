@@ -507,8 +507,15 @@ of any of them.
 ### Permission
 
 - `cmdsurface.Bridge.Invoke` applies its gates in this order:
-  resolution, surface enablement, the destructive ceiling
+  resolution, surface enablement, invocability (an interactive or
+  self-hosting leaf is refused with `ErrNotInvocable` naming the
+  reflector's reason, whatever the surface), the destructive ceiling
   (`Policy.Allowed`), then the permission gate (`PermissionFunc`).
+  The invocability gate is the bridge's, so a transport that exposed
+  the whole tree cannot admit an interactive leaf; the runner's own
+  refusal is a backstop. Over REST such commands are withheld at
+  mount, so the route is absent (`404`) and discovery carries the
+  reason; over the socket the answer is `NOT_INVOCABLE`.
   Confirmation is not a bridge gate: it is the command's own flag and
   its own refusal, an exit code in the Result.
 - The permission gate MUST run on every surface, inside the bridge,
@@ -665,10 +672,11 @@ the command.
   cancellation is reported after it.
 
 Which context a transport hands the runner is the transport's
-contract. The `api` service passes the HTTP request's context, so a
-client that disconnects cancels its command. The `socket` service
-passes the service's context, so a command runs to completion after
-its client hangs up and is canceled only when the service stops.
+contract, and both kit-shipped services pass the caller's: the `api`
+service the HTTP request's context, the `socket` service a
+per-connection context, so a client that disconnects mid-command
+cancels it on either transport (see [Security](#provenance)).
+Stopping the service cancels every command in flight.
 
 ### Isolation between invocations
 
@@ -747,9 +755,10 @@ Rules:
 
 - An **interactive** command is never invocable through a projected
   surface. It needs a terminal and a human; a runner captures the
-  streams and supplies an empty stdin, so it has neither. The runner
-  refuses it with `ErrNotInvocable`, naming the reason, even when a
-  bridge admits it as a leaf.
+  streams and supplies an empty stdin, so it has neither. The bridge
+  refuses it at `Invoke` with `ErrNotInvocable`, naming the reason,
+  before the destructive ceiling — even when it admitted the command
+  as a leaf — and the runner refuses it again as a backstop.
 - A **self-hosting** command is never invocable through a projected
   surface, and no reflection option lifts the reason. Running it
   inside a served invocation would start a server inside the server,
@@ -888,8 +897,9 @@ changing a line:
      transport with the reason `self-hosting`. Before, kit's `serve`
      was reachable over the socket, and would have started a second
      supervisor inside the first. Interactive commands, which the
-     socket's bridge admits as leaves, are now refused by the runner
-     rather than run without a terminal.
+     socket's bridge admits as leaves, are now refused by the bridge
+     (`NOT_INVOCABLE`), with the runner as a backstop, rather than
+     run without a terminal.
 
 A deprecation of `WithAPI`, if any, is announced through the standard
 kit deprecation surface

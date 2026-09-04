@@ -405,6 +405,7 @@ which is a different answer from one that does not exist:
 |---|---|---|
 | `NOT_FOUND` | the path resolves to no reachable command | typo; or a hidden, deprecated, or self-hosting command the reflector excluded — `serve` itself answers this |
 | `NOT_ENABLED` | the command exists but not on this surface | excluded by your `Expose` / `Hide` patterns |
+| `NOT_INVOCABLE` | the command can never run through a transport | an `interactive` command; the message names the reason |
 | `BLOCKED` | destructive command refused by policy | `Policy.AllowDestructiveOn` does not name this surface |
 | `DENIED` | the permission gate refused this caller | `cli.WithPermission`, or a `--policy` that refuses the class; the message carries the reason |
 | `UNAUTHENTICATED` | `SocketConfig.Auth` refused the request | only sent when an authenticator is configured |
@@ -477,11 +478,12 @@ as it applies to the socket:
   what the request carries. Standard input is empty: a destructive
   command with no `confirm` flag is refused, never prompted on the
   operator's terminal.
-- **Hanging up does not cancel.** A request runs with the service's
-  context, not the connection's. Close the connection mid-command and
-  the command finishes; its result is discarded. Stopping the service
-  cancels every command in flight, and a command that fails while
-  canceled is reported as canceled.
+- **Hanging up cancels.** A request runs with its connection's
+  context. Close the connection mid-command and the command's context
+  is canceled; a command that honors its context stops, and its result
+  is discarded either way. Stopping the service cancels every command
+  in flight, and a command that fails while canceled is reported as
+  canceled.
 
 ## What the service does not implement
 
@@ -507,13 +509,12 @@ Stated plainly, so you can decide what to put in front of it:
 - **No streaming.** One request, one response. Long-running commands
   return when they finish.
 - **No interactive or self-hosting commands.** A command tiered
-  `interactive` is refused by the runner — there is no terminal on a
-  socket. `serve`, any command declaring `kit/network: ingress`, and
-  any command annotated `kit/self-hosting: true` are not reachable at
-  all; they answer `NOT_FOUND`.
-
-## Related pages
-
+  `interactive` is refused by the bridge's gate, before the policy
+  gate, with `NOT_INVOCABLE` — there is no terminal on a socket — and
+  the runner refuses it again as a backstop. `serve`, any command
+  declaring `kit/network: ingress`, and any command annotated
+  `kit/self-hosting: true` are never reachable at all: they are not
+  leaves, so a call answers `NOT_FOUND`.
 - [socket package README](../../../go/transport/socket/README.md) —
   wire protocol, error codes, config keys
 - [transportsvc README](../../../go/transport/transportsvc/README.md)

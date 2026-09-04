@@ -72,11 +72,12 @@ Which of `data` and `stdout` a result carries follows the
 | yes | any other | that rendering | omitted |
 | no | anything | as the command produced it | omitted |
 
-A request is run with the service's context, not the connection's: a
-client that hangs up mid-command does not cancel it, and the result
-is discarded. Stopping the service cancels every command in flight.
-Requests on one connection are answered in order; across connections
-the bridge's runner serializes in-process commands, one at a time.
+A request runs with its connection's context: a client that hangs up
+mid-command cancels it (see [Cancellation](#cancellation)), and the
+result is discarded. Stopping the service cancels every command in
+flight. Requests on one connection are answered in order; across
+connections the bridge's runner serializes in-process commands, one
+at a time.
 
 ## Error codes
 
@@ -84,6 +85,7 @@ the bridge's runner serializes in-process commands, one at a time.
 |---|---|
 | `NOT_FOUND` | `path` resolves to no reachable command, including one the reflector excluded (hidden, deprecated) |
 | `NOT_ENABLED` | the command exists but is not exposed on this surface |
+| `NOT_INVOCABLE` | the command can never run through a transport — interactive, or self-hosting — refused by the bridge's gate; the message names the reason |
 | `BLOCKED` | destructive command refused because the policy does not name this surface |
 | `DENIED` | the permission gate refused this caller; the message carries its stable reason |
 | `UNAUTHENTICATED` | the configured `Authenticator` refused the request; never sent without one |
@@ -166,7 +168,7 @@ directory.
 | `Request`, `Response`, `Error` | wire types |
 | `Authenticator`, `Identity` | the per-request verification hook and its verdict |
 | `Transport.Auth`, `Transport.OnRefused` | install the hook; observe its refusals |
-| `CodeNotFound`, `CodeNotEnabled`, `CodeBlocked`, `CodeDenied`, `CodeUnauthenticated`, `CodeInvalid`, `CodeInternal` | error-code constants |
+| `CodeNotFound`, `CodeNotEnabled`, `CodeNotInvocable`, `CodeBlocked`, `CodeDenied`, `CodeUnauthenticated`, `CodeInvalid`, `CodeInternal` | error-code constants |
 | `SocketMode` | the `0600` the socket file is created with |
 
 Register it through

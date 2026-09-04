@@ -109,10 +109,12 @@ endpoint that advertises the whole surface rather than only the
 callable part.
 
 The bridge reflects with `AllowInteractive` and `AllowReserved`, so
-interactive and management-only commands are leaves and the policy
-gate decides per call. Nothing lifts `self-hosting`: those commands
-are never leaves, and a call to one is an unknown command. The runner
-refuses an interactive leaf regardless — see [Execution](#execution).
+interactive and management-only commands are leaves — describable,
+and withheld per surface — and `Invoke` refuses an interactive leaf
+with `ErrNotInvocable` before the destructive ceiling, whatever the
+surface. Nothing lifts `self-hosting`: those commands are never
+leaves, and a call to one is an unknown command. The runner refuses
+both again as a backstop — see [Execution](#execution).
 
 `Classify(cmd)` still works and is unchanged in behavior, but it
 reflects one command in isolation. Prefer `Leaf.Descriptor`.
@@ -184,12 +186,16 @@ delivered first.
 
 ### Refusals
 
-`ErrNotInvocable` is returned by the in-process runner for a leaf it
-can never execute: an interactive command (no terminal here) or a
+`ErrNotInvocable` is returned for a leaf that can never execute
+through a transport: an interactive command (no terminal here) or a
 self-hosting one (the runner is the process it would start a server
-inside of, or replace). The message names the reflector's reason.
-`SubprocessRunner` holds no tree and cannot classify; discovery and
-the bridge withhold self-hosting commands before it is reached.
+inside of, or replace). `Bridge.Invoke` returns it first, before the
+destructive ceiling and the permission gate, so every surface is
+covered; the in-process runner returns it again as a backstop for
+callers that reach a runner directly. The message names the
+reflector's reason. `SubprocessRunner` holds no tree and cannot
+classify; discovery and the bridge withhold both classes before it is
+reached.
 
 ## Surface matrix
 
@@ -822,6 +828,7 @@ The mappings of bridge sentinel errors to wire format are uniform:
 | `ErrUnknownCommand`    | 404 `unknown_command` | `CodeNotFound`  | `unknown_command`            | 500 (mount-time refusal) | event-type response |
 | `ErrSurfaceNotEnabled` | 404 `not_enabled` | `CodeNotFound`    | `not_enabled`                | (mount-time refusal)     | (mount-time refusal) |
 | `ErrDestructiveBlocked`| 403 `destructive_blocked` | `CodePermissionDenied` | `destructive_blocked` | 403 / (mount-time refusal) | (mount-time refusal) |
+| `ErrNotInvocable`      | 404 `not_invocable` (withheld at mount) | `NOT_INVOCABLE` (socket) | passthrough | (mount-time refusal) | (mount-time refusal) |
 | `ErrPermissionDenied`  | 403 `permission_denied` (projection) | `DENIED` (socket) | passthrough | passthrough | passthrough |
 
 Cross-references: `go/transport/cmdsurface/surface_rest.go`,
