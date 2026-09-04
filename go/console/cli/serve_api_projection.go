@@ -27,12 +27,14 @@ import (
 // "this command exists but you cannot call it here" is exactly the
 // answer the track exists to give.
 func buildProjection(root *cobra.Command, name, version string, r *Root) api.ProjectionConfig {
-	tree := cmdreflect.Reflect(
-		root,
-		cmdreflect.WithReserved(r),
-		cmdreflect.AllowInteractive(),
-		cmdreflect.AllowReserved(),
-	)
+	// No Allow* options. Each one makes a class of command
+	// INVOCABLE, not merely described — the reflector describes
+	// every command unconditionally. Passing AllowInteractive here
+	// would mount a shell over HTTP, which is exactly what the
+	// track puts out of scope; the descriptors still appear in
+	// discovery carrying their reason, which is what "reflect
+	// everything" asks for.
+	tree := cmdreflect.Reflect(root, cmdreflect.WithReserved(r))
 
 	bridge := cmdsurface.New(root)
 	// Exposing REST here is what "no adopter mounting code" means:
