@@ -176,8 +176,22 @@ LF mode; the `crlf` option exposes known quoting divergences.
 
 ## Errors
 
-`Error` is the structured envelope rendered by `RenderError`. Build it
-with a struct literal when there is no underlying error:
+`Error` is the structured envelope rendered by `RenderError`. Every
+standard code has a constructor that pins its exit code and transience
+class, so adopters never hand-roll the numbers:
+
+| Constructor | Code | Exit | Transience |
+|---|---|---|---|
+| `GenericError(msg)` | `GENERIC` | 1 (`ExitGeneric`) | permanent |
+| `UsageError(msg)` | `USAGE` | 2 | permanent |
+| `NotFoundError(msg)` | `NOT_FOUND` | 3 | permanent |
+| `ConflictError(msg)` | `CONFLICT` | 4 | permanent |
+| `UnauthorizedError(msg)` | `UNAUTHORIZED` | 5 | permanent |
+| `TransientError(msg)` | `TRANSIENT` | 6 (`ExitTransient`) | transient |
+| `RateLimitedError(msg)` | `RATE_LIMITED` | 64 (`ExitRateLimited`) | transient |
+| `ProvenanceMissingError(detail)` | `PROVENANCE_MISSING` | 65 (`ExitProvenanceMissing`) | permanent |
+
+Build it with a struct literal when there is no underlying error:
 
 ```go
 return &output.Error{

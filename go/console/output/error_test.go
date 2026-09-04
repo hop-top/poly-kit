@@ -90,6 +90,7 @@ func TestSentinelConstructors(t *testing.T) {
 		wantExit       int
 		wantTransience string
 	}{
+		{"Generic", output.GenericError("boom"), output.CodeGeneric, 1, output.TransiencePermanent},
 		{"NotFound", output.NotFoundError("nope"), output.CodeNotFound, 3, output.TransiencePermanent},
 		{"Conflict", output.ConflictError("dup"), output.CodeConflict, 4, output.TransiencePermanent},
 		{"Unauthorized", output.UnauthorizedError("nope"), output.CodeUnauthorized, 5, output.TransiencePermanent},
@@ -106,6 +107,22 @@ func TestSentinelConstructors(t *testing.T) {
 			assert.Equal(t, tc.wantTransience, tc.got.Transience)
 		})
 	}
+}
+
+func TestGenericError(t *testing.T) {
+	// Exit 1 is the catch-all class; the constructor closes the table so
+	// adopters stop hand-rolling {ExitCode: 1} literals with no
+	// Transience.
+	assert.Equal(t, 1, output.ExitGeneric)
+
+	e := output.GenericError("cache corrupt")
+	require.NotNil(t, e)
+	assert.Equal(t, output.CodeGeneric, e.Code)
+	assert.Equal(t, output.ExitGeneric, e.ExitCode)
+	assert.Equal(t, output.TransiencePermanent, e.Transience)
+	assert.Equal(t, "cache corrupt", e.Message)
+	assert.Equal(t, "GENERIC: cache corrupt", e.Error())
+	assert.Nil(t, e.Unwrap())
 }
 
 func TestTransienceForCode(t *testing.T) {

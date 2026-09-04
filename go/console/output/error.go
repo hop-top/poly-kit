@@ -184,6 +184,12 @@ const (
 	CodeGraderInternal            = "GRADER_INTERNAL"             // exit 1 — grader bug
 )
 
+// ExitGeneric is the spec-assigned exit code for the catch-all failure
+// class: the command failed for a reason no more specific code
+// describes. Adopters reaching for a bare exit 1 should return
+// GenericError instead, so the envelope carries a Code and a Transience.
+const ExitGeneric = 1
+
 // ExitTransient is the spec-assigned exit code for transient/retryable
 // failures (Factor 11: rate limit, timeout, upstream blip). Agents
 // branch on it before parsing stderr: exit 6 means a retry may clear
@@ -204,6 +210,16 @@ const ExitProvenanceMissing = 65
 // ExitRateLimited is the conventional exit code for Factor-10 rate-limit
 // refusals (--max-ops budget exceeded). See §8.1 / §8.6.
 const ExitRateLimited = 64
+
+// GenericError returns an *Error with CodeGeneric and ExitCode 1: the
+// catch-all class for failures no more specific code describes.
+// Classified permanent because the adopter chose the class knowingly;
+// use WithTransience when the cause may clear on retry. WrapError with
+// CodeGeneric still defaults to TransienceUnknown, since a wrapped
+// error's cause is opaque.
+func GenericError(msg string) *Error {
+	return &Error{Code: CodeGeneric, Message: msg, ExitCode: ExitGeneric, Transience: TransiencePermanent}
+}
 
 // NotFoundError returns an *Error with CodeNotFound and ExitCode 3.
 func NotFoundError(msg string) *Error {
