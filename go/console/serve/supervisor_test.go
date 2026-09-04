@@ -197,8 +197,9 @@ func TestSupervisor_IsolateKeepsSiblingsRunning(t *testing.T) {
 	t.Parallel()
 	tr := &trace{}
 	boom := errors.New("boom")
+	healthy := &fake{name: "healthy", trace: tr}
 	reg := serve.NewRegistry()
-	reg.Register(&fake{name: "healthy", trace: tr})
+	reg.Register(healthy)
 	reg.Register(&fake{name: "doomed", trace: tr, startErr: boom, failAfter: 20 * time.Millisecond})
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -206,12 +207,16 @@ func TestSupervisor_IsolateKeepsSiblingsRunning(t *testing.T) {
 	done := make(chan serve.Result, 1)
 	go func() { done <- sup.Run(ctx, []string{"healthy", "doomed"}, enabledSet("healthy", "doomed")) }()
 
-	// The failure happens; the healthy sibling must still be running
-	// some time later.
+	// Once the failure has been observed, the healthy sibling must
+	// still be up. Asserted on the sibling's own readiness rather than
+	// on the absence of a trace entry after a sleep: "X has not
+	// happened yet" is not a claim a sleep can establish, and under
+	// isolate the only path that stops it is the shutdown sequence,
+	// which cannot begin before the cancel below.
 	waitFor(t, func() bool { return slices.Contains(tr.events(), "fail:doomed") })
-	time.Sleep(30 * time.Millisecond)
-	assert.NotContains(t, tr.events(), "stop:healthy",
+	assert.True(t, healthy.Ready(),
 		"isolate must not stop the healthy sibling")
+	assert.NotContains(t, tr.events(), "stop:healthy")
 
 	cancel()
 	res := <-done
@@ -224,8 +229,12 @@ func TestSupervisor_IsolateKeepsSiblingsRunning(t *testing.T) {
 func TestSupervisor_StopTimeoutAbandonsStraggler(t *testing.T) {
 	t.Parallel()
 	tr := &trace{}
+	abandoned := make(chan struct{})
 	reg := serve.NewRegistry()
-	reg.Register(&fake{name: "straggler", trace: tr, stopDelay: 2 * time.Second})
+	reg.Register(&fake{
+		name: "straggler", trace: tr,
+		stopDelay: 30 * time.Second, abandoned: abandoned,
+	})
 	reg.Register(&fake{name: "prompt", trace: tr})
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -241,19 +250,41 @@ func TestSupervisor_StopTimeoutAbandonsStraggler(t *testing.T) {
 	waitFor(t, func() bool { return len(tr.events()) >= 4 })
 	cancel()
 
+	// The supervisor's own record is written synchronously inside the
+	// stop sequence, so everything asserted on res is already settled
+	// when Run returns. Only the abandoned goroutine's own trace entry
+	// is unsynchronized, and that is waited for separately below.
 	started := time.Now()
 	res := <-done
-	assert.Less(t, time.Since(started), time.Second,
-		"the straggler must not hold the whole shutdown")
+	elapsed := time.Since(started)
 
-	ev := tr.events()
-	assert.Contains(t, ev, "stop-abandoned:straggler")
-	assert.Contains(t, ev, "stopped:prompt",
-		"the next service is stopped rather than blocked behind the straggler")
 	assert.Equal(t, serve.OutcomeRuntimeCrash, res.Outcome)
 	require.Contains(t, res.Failed, "straggler",
 		"an abandoned stop is recorded as a failure")
 	assert.Contains(t, res.Failed["straggler"].Error(), "stop exceeded")
+
+	// The straggler's Stop sleeps 30s. Returning in a fraction of that
+	// is the actual claim — the budget is enforced rather than waited
+	// out — and the margin is wide enough that a loaded runner cannot
+	// turn a pass into a failure.
+	assert.Less(t, elapsed, 10*time.Second,
+		"the straggler must not hold the whole shutdown")
+
+	// The next service is stopped rather than blocked behind the
+	// straggler. prompt's Stop is awaited by the supervisor, so this
+	// entry is settled by the time Run returns.
+	assert.Contains(t, tr.events(), "stopped:prompt")
+
+	// The abandoned goroutine is deliberately never awaited by the
+	// supervisor (contract: a Stop over budget is abandoned so it
+	// cannot block the shutdown). Wait for its own signal rather than
+	// assuming it has been scheduled by now.
+	select {
+	case <-abandoned:
+	case <-time.After(10 * time.Second):
+		t.Fatal("straggler Stop never observed its budget expiring")
+	}
+	assert.Contains(t, tr.events(), "stop-abandoned:straggler")
 }
 
 func TestSupervisor_ShutdownBudgetExceeded(t *testing.T) {

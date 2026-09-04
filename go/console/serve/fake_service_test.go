@@ -41,6 +41,15 @@ type fake struct {
 	neverReady bool
 	// stopDelay makes Stop overrun its budget.
 	stopDelay time.Duration
+	// abandoned is closed when Stop observes its budget expiring.
+	//
+	// The supervisor abandons an over-budget Stop by contract, so the
+	// goroutine running it is never awaited. That makes the trace
+	// entry it writes racy to read directly: the test and the
+	// abandoned goroutine are unsynchronized. Tests wait on this
+	// channel instead, which is a happens-before edge rather than a
+	// hope about scheduling.
+	abandoned chan struct{}
 	// stopErr is returned by Stop.
 	stopErr error
 	// deps is the DependsOn declaration; nil means no declaration.
@@ -101,6 +110,9 @@ func (f *fake) Stop(ctx context.Context) error {
 		case <-time.After(f.stopDelay):
 		case <-ctx.Done():
 			f.trace.add("stop-abandoned:" + f.name)
+			if f.abandoned != nil {
+				close(f.abandoned)
+			}
 			return ctx.Err()
 		}
 	}
