@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/output"
 )
 
 // ErrUnknownCommand is returned when an Invocation.Path cannot be
@@ -80,7 +82,7 @@ func (r *inProcessRunner) Run(ctx context.Context, inv Invocation) (Result, erro
 		Stderr: stderr.String(),
 	}
 	if execErr != nil {
-		res.ExitCode = 1
+		res.ExitCode = inProcessExitCode(execErr)
 		if res.Stderr == "" {
 			res.Stderr = execErr.Error()
 		}
@@ -135,7 +137,7 @@ func (r *inProcessRunner) Stream(ctx context.Context, inv Invocation, out chan<-
 		Stderr: stderrBuf.String(),
 	}
 	if execErr != nil {
-		res.ExitCode = 1
+		res.ExitCode = inProcessExitCode(execErr)
 		if res.Stderr == "" {
 			res.Stderr = execErr.Error()
 		}
@@ -402,6 +404,35 @@ func scanLinesTee(r io.Reader, buf *bytes.Buffer, kind string, out chan<- Event,
 		buf.WriteByte('\n')
 		out <- Event{Kind: kind, Data: line, At: time.Now()}
 	}
+}
+
+// cliError is the conversion interface kit's structured errors
+// satisfy. Depending on the interface rather than the concrete type
+// keeps the runner from caring which package minted the error.
+type cliError interface {
+	AsCLIError() *output.Error
+}
+
+// inProcessExitCode derives the exit code from an error returned by
+// cobra's ExecuteContext.
+//
+// Kit's structured errors carry the verdict: a policy refusal is
+// UNAUTHORIZED (5), a bad request is USAGE (2). Collapsing them all
+// to 1 discards that, which matters most to a transport — a refusal
+// reported as a generic failure reads to a caller as "the server
+// broke" rather than "you were refused". This mirrors what the
+// subprocess runner already does with exitCodeOf.
+//
+// Falls back to 1 when the error carries no code of its own, which is
+// the right answer for a bare errors.New from an adopter command.
+func inProcessExitCode(err error) int {
+	var ce cliError
+	if errors.As(err, &ce) {
+		if e := ce.AsCLIError(); e != nil && e.ExitCode != 0 {
+			return e.ExitCode
+		}
+	}
+	return 1
 }
 
 // exitCodeOf extracts the process exit code from an *exec.ExitError,

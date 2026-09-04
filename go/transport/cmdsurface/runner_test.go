@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/output"
 )
 
 // newFakeTree builds a tiny cobra tree used by the runner tests:
@@ -516,4 +518,76 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TestInProcessRunner_Run_StructuredExitCode pins the rule that a
+// command failing with a kit structured error reports THAT error's
+// exit code, not a flattened 1. A transport maps the code onto its
+// own status vocabulary, so collapsing a refusal into a generic
+// failure tells a caller the server broke when it did not.
+func TestInProcessRunner_Run_StructuredExitCode(t *testing.T) {
+	root := &cobra.Command{Use: "fix"}
+	root.AddCommand(&cobra.Command{
+		Use: "refuse",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			e := output.UnauthorizedError("destructive command fix refuse refused")
+			_ = output.RenderError(cmd.ErrOrStderr(), "text", e)
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			return e
+		},
+	})
+
+	r := InProcessRunner(root)
+	res, err := r.Run(context.Background(), Invocation{Path: []string{"refuse"}})
+	if err != nil {
+		t.Fatalf("Run err: %v (Runner.Run should not bubble execErr)", err)
+	}
+	if res.ExitCode != 5 {
+		t.Errorf("ExitCode=%d want=5 (UNAUTHORIZED)", res.ExitCode)
+	}
+	if !strings.Contains(res.Stderr, "UNAUTHORIZED") {
+		t.Errorf("Stderr=%q want to contain the rendered envelope", res.Stderr)
+	}
+}
+
+// TestInProcessRunner_Stream_StructuredExitCode is the streaming
+// counterpart: both in-process sites derive the code the same way.
+func TestInProcessRunner_Stream_StructuredExitCode(t *testing.T) {
+	root := &cobra.Command{Use: "fix"}
+	root.AddCommand(&cobra.Command{
+		Use: "refuse",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			return output.UsageError("bad request")
+		},
+	})
+
+	r := InProcessRunner(root)
+	ch := make(chan Event, 8)
+	errc := make(chan error, 1)
+	go func() {
+		errc <- r.Stream(context.Background(), Invocation{Path: []string{"refuse"}}, ch)
+	}()
+	var done *Event
+	for ev := range ch {
+		if ev.Kind == "done" {
+			d := ev
+			done = &d
+		}
+	}
+	if err := <-errc; err != nil {
+		t.Fatalf("Stream err: %v", err)
+	}
+	if done == nil {
+		t.Fatal("expected terminal done event")
+	}
+	res, ok := done.Data.(*Result)
+	if !ok {
+		t.Fatalf("done.Data type=%T", done.Data)
+	}
+	if res.ExitCode != 2 {
+		t.Errorf("done Result.ExitCode=%d want=2 (USAGE)", res.ExitCode)
+	}
 }
