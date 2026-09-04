@@ -33,8 +33,9 @@ command. Starting it gives you:
 - **Every command reachable**, subject to the same safety policy the
   CLI enforces — destructive commands are refused unless you permit
   them.
-- **Structured results**: exit code, stdout, stderr, and any typed
-  payload the command produced, as JSON.
+- **Structured results**: exit code, stdout, stderr, and — for a
+  command that declares an output schema — its output decoded into
+  `data`.
 - **The serve lifecycle**: readiness reporting, ordered shutdown, and
   the socket file unlinked when the service stops.
 
@@ -174,18 +175,102 @@ func main() {
 The connection stays open. Send more requests on it and read one
 response per request, in order.
 
-### 4. Call a read command
+### 4. Get structured output
+
+A command that declares an output schema answers in `data` — its
+output decoded, not its text. Declare the schema with
+`cli.SetOutputSchema` and render through `output.Dispatch`, the same
+way the command renders on the CLI:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/spf13/cobra"
+
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/output"
+)
+
+// Widget is one row of `widget list`. The json tags name the fields
+// in data; the table tags name the columns on the CLI.
+type Widget struct {
+    ID   string `json:"id" table:"ID"`
+    Name string `json:"name" table:"NAME"`
+}
+
+func main() {
+    root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
+        cli.WithStatus(cli.StatusConfig{}),
+        cli.WithSocket(cli.SocketConfig{}),
+    )
+
+    list := &cobra.Command{
+        Use:   "list",
+        Short: "List widgets",
+        Long:  "List every widget.",
+        RunE: func(cmd *cobra.Command, _ []string) error {
+            widgets := []Widget{{ID: "w-1", Name: "bolt"}}
+            return output.Dispatch(cmd, root.Viper, widgets)
+        },
+    }
+    cli.SetSideEffect(list, cli.SideEffectRead)
+    err := cli.SetOutputSchema(list, cli.OutputSchema{Type: &[]Widget{}, Version: "1.0"})
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    widget := &cobra.Command{Use: "widget", Short: "Manage widgets"}
+    widget.AddCommand(list)
+    root.Cmd.AddCommand(widget)
+
+    if err := root.Execute(context.Background()); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+`WithStatus` mounts the `status` command every kit root is validated
+to have. Call `widget list` with no `format` and the service runs it
+as `--format=json` and decodes what it wrote:
 
 ```console
-$ echo '{"path":["widget","get"],"args":["7"],"flags":{"format":"json"}}' \
+$ echo '{"path":["widget","list"]}' | socat - UNIX-CONNECT:/tmp/mytool.sock
+{"ok":true,"result":{"exit_code":0,"data":[{"id":"w-1","name":"bolt"}]}}
+```
+
+Name a format and you get that rendering on `stdout` instead — the
+table the CLI prints, or the JSON text alongside `data`:
+
+```console
+$ echo '{"path":["widget","list"],"flags":{"format":"table"}}' | socat - UNIX-CONNECT:/tmp/mytool.sock
+{"ok":true,"result":{"exit_code":0,"stdout":"ID   NAME\nw-1  bolt\n"}}
+$ echo '{"path":["widget","list"],"flags":{"format":"json"}}' | socat - UNIX-CONNECT:/tmp/mytool.sock
+{"ok":true,"result":{"exit_code":0,"stdout":"[\n  {\n    \"id\": \"w-1\",\n    \"name\": \"bolt\"\n  }\n]\n","data":[{"id":"w-1","name":"bolt"}]}}
+```
+
+A command without a schema answers with its rendering in `stdout` and
+no `data`, whatever format you name. Read the client's `Result.Data`
+as the JSON value it is (`[]any` of `map[string]any` here), or
+`json.Marshal` it into your own type.
+
+### 5. Call a read command
+
+```console
+$ echo '{"path":["widget","get"],"args":["7"]}' \
     | socat - UNIX-CONNECT:/tmp/mytool.sock
-{"ok":true,"result":{"exit_code":0,"stdout":"{\"id\":7,\"name\":\"bolt\"}\n"}}
+{"ok":true,"result":{"exit_code":0,"data":{"id":7,"name":"bolt"}}}
 ```
 
 `args` are the positional arguments after the command path; `flags`
-is keyed by long flag name.
+is keyed by long flag name. `widget get` declares a schema, so it
+answers in `data`; add `"flags":{"format":"json"}` to get the JSON
+text on `stdout` as well.
 
-### 5. Call a write command
+### 6. Call a write command
 
 A non-destructive write needs nothing special:
 
@@ -207,7 +292,7 @@ $ echo '{"path":["widget","get"],"args":["999"]}' \
 `ok:false` means the request never reached your command. `ok:true`
 with a non-zero `exit_code` means it ran and failed.
 
-### 6. Permit a destructive command
+### 7. Permit a destructive command
 
 Destructive commands are refused by default:
 
@@ -272,7 +357,7 @@ A command annotated for typed confirmation additionally needs
 Naming a surface widens **that surface only** — permitting destructive
 commands on the socket does not make them reachable over MCP or REST.
 
-### 7. Restrict which commands are reachable
+### 8. Restrict which commands are reachable
 
 By default every command the reflector considers invocable is
 reachable. Narrow it with `Expose` and `Hide`:
@@ -314,11 +399,11 @@ which is a different answer from one that does not exist:
 {"ok":false,"error":{"code":"NOT_ENABLED","message":"cmdsurface: surface not enabled for command: widget delete on rpc"}}
 ```
 
-### 8. Read errors
+### 9. Read errors
 
 | `code` | Meaning | Typical cause |
 |---|---|---|
-| `NOT_FOUND` | the path resolves to no reachable command | typo; or a hidden or deprecated command the reflector excluded |
+| `NOT_FOUND` | the path resolves to no reachable command | typo; or a hidden, deprecated, or self-hosting command the reflector excluded — `serve` itself answers this |
 | `NOT_ENABLED` | the command exists but not on this surface | excluded by your `Expose` / `Hide` patterns |
 | `BLOCKED` | destructive command refused by policy | `Policy.AllowDestructiveOn` does not name this surface |
 | `INVALID` | the request line is malformed | bad JSON, or an empty `path` |
@@ -332,7 +417,7 @@ Command exit codes surface in `result.exit_code`, using the same
 `2` is a usage error and `5` is unauthorized whether the command was
 invoked from a shell or from this socket.
 
-### 9. Stop it, and know when it is ready
+### 10. Stop it, and know when it is ready
 
 `serve` reports readiness once the socket is bound, carrying the
 resolved path:
@@ -373,6 +458,28 @@ A path longer than your platform's `sockaddr_un` limit (103 bytes
 here) is refused at startup with exit `2` and a message naming the
 limit, rather than surfacing as a kernel `invalid argument`.
 
+## Execution facts
+
+Rely on these; they are the
+[execution contract](../../contracts/serve-lifecycle.md#execution)
+as it applies to the socket:
+
+- **One command at a time.** Requests on a connection are answered in
+  order, and across connections the service runs commands in process
+  on the tool's own command tree, one at a time. A request waits for
+  the one running.
+- **Each request starts clean.** Flags from one request do not carry
+  into the next. Every command starts from the flag state the
+  operator's own `mytool serve socket` command line left, plus only
+  what the request carries. Standard input is empty: a destructive
+  command with no `confirm` flag is refused, never prompted on the
+  operator's terminal.
+- **Hanging up does not cancel.** A request runs with the service's
+  context, not the connection's. Close the connection mid-command and
+  the command finishes; its result is discarded. Stopping the service
+  cancels every command in flight, and a command that fails while
+  canceled is reported as canceled.
+
 ## What the service does not implement
 
 Stated plainly, so you can decide what to put in front of it:
@@ -389,6 +496,11 @@ Stated plainly, so you can decide what to put in front of it:
   ConnectRPC, use [`go/transport/rpc`](../../../go/transport/rpc/).
 - **No streaming.** One request, one response. Long-running commands
   return when they finish.
+- **No interactive or self-hosting commands.** A command tiered
+  `interactive` is refused by the runner — there is no terminal on a
+  socket. `serve`, any command declaring `kit/network: ingress`, and
+  any command annotated `kit/self-hosting: true` are not reachable at
+  all; they answer `NOT_FOUND`.
 
 ## Related pages
 
