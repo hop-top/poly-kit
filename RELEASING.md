@@ -107,9 +107,12 @@ promotion merge into a config conflict.
 
 Two `Release-As:` facts to check before merging that commit:
 
-- In manifest mode the footer is **global across components**: it applies to
-  every package release-please would otherwise consider — `incubator/qmochi`
-  included, which does not share the kit family's version line.
+- In manifest mode the footer applies to every package that sees the commit.
+  The root package sees every commit and the linked kit family follows it; an
+  empty commit (the usual `chore(release)` vehicle) reaches every package,
+  `incubator/qmochi` included, which does not share the kit family's version
+  line. A commit that touches files reaches only the packages whose paths it
+  touches.
 - Only the first `Release-As:` line in a commit body is honoured.
 
 Dry-run first and read the proposed titles:
