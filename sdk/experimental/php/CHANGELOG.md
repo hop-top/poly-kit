@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.0...kit-php/v0.5.0-alpha.1) (2026-09-04)
 
+The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.1. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -11,30 +13,32 @@
 
 ### Features
 
-* merge offline-transport ([9c20087](https://github.com/hop-top/poly-kit/commit/9c20087cab95e8006929155d1c59c1a3afb20738))
-* merge offline-transport ([6fa2303](https://github.com/hop-top/poly-kit/commit/6fa2303f7aa212d8ec2fb88ee1f200c54b9e2107))
-* **output:** add php csv + text formatters ([3423342](https://github.com/hop-top/poly-kit/commit/3423342d1f8bb82195d2371daf28a7845951d7a2))
-* **php:** enforce `--offline` beneath Guzzle and PSR-18 ([ade8dcc](https://github.com/hop-top/poly-kit/commit/ade8dcc8dd545922df16b6e88bb9f3c216d7ea1b))
-* **php:** host the MCP surface on PSR-15 and gate confirmations via MRTR ([5b98d59](https://github.com/hop-top/poly-kit/commit/5b98d592307fed9c37a23d2ee96d58dce4b8baa5))
-* **php:** serve the dual-spec MCP surface ([a7e6461](https://github.com/hop-top/poly-kit/commit/a7e6461dc990ff2245357d1f37f3af0a9ef9fd2f))
-* **sdk/php:** add structured error envelope with transience class ([bfdb725](https://github.com/hop-top/poly-kit/commit/bfdb725a56a00bf2adee3332507c0fd097e64636))
+* merge offline-transport
+* merge offline-transport
+* **output:** add php csv + text formatters
+* **php:** enforce `--offline` beneath Guzzle and PSR-18
+* **php:** host the MCP surface on PSR-15 and gate confirmations via MRTR
+* **php:** serve the dual-spec MCP surface
+* **sdk/php:** add structured error envelope with transience class
 
 
 ### Bug Fixes
 
-* **build:** realign php composer.lock, guard drift in CI ([cd9faed](https://github.com/hop-top/poly-kit/commit/cd9faedfc0337dec4c0c94736680abad9e893838))
-* **deps:** clear 16 php advisories via in-range lock update ([ed35987](https://github.com/hop-top/poly-kit/commit/ed35987b4ab074d8750183a835d267408367c9cc))
-* **output:** enforce header == key on php ColumnSpec ([2b388e0](https://github.com/hop-top/poly-kit/commit/2b388e0ecd2236a5e8423deb32381e7a6f3f673a))
-* **output:** preserve CR and LF verbatim in php csv fields ([4a8af85](https://github.com/hop-top/poly-kit/commit/4a8af851cc559a7f46a3c1f8bd621c9336c0c324))
-* **output:** thread ColumnSpec to php formatters, honor its order ([cc265e6](https://github.com/hop-top/poly-kit/commit/cc265e620477b4eb68b2b6e8175090ef5591d7e4))
-* **php:** correct types flagged by static analysis ([44bbd01](https://github.com/hop-top/poly-kit/commit/44bbd01279c2ffae11028f927f1f96508e8b0800))
-* **php:** stop guzzle redirects leaking request bodies ([02bfcee](https://github.com/hop-top/poly-kit/commit/02bfceed0d8486070645d702fa613932a090f4bb))
-* **telemetry:** report unsupported KIT_TELEMETRY_SINK values ([b7421c3](https://github.com/hop-top/poly-kit/commit/b7421c3e07dab06dbb8787abc2c96d2178323836))
+* **build:** realign php composer.lock, guard drift in CI
+* **deps:** clear 16 php advisories via in-range lock update
+* **output:** enforce header == key on php ColumnSpec
+* **output:** preserve CR and LF verbatim in php csv fields
+* **output:** thread ColumnSpec to php formatters, honor its order
+* **php:** correct types flagged by static analysis
+* **php:** stop guzzle redirects leaking request bodies
+* **telemetry:** report unsupported KIT_TELEMETRY_SINK values
 
 
 ### Refactored
 
-* **output:** resolve effective cols in dispatch, keep Formatter arity ([1d229bd](https://github.com/hop-top/poly-kit/commit/1d229bd91f23c88cdbe5a7d169dd07001964acaa))
+* **output:** resolve effective cols in dispatch, keep Formatter arity
+
+Full diff: [kit-php/v0.5.0-alpha.0...kit-php/v0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.0...kit-php/v0.5.0-alpha.1)
 
 ## [0.5.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit-php/v0.4.0-alpha.2...kit-php/v0.5.0-alpha.0) (2026-06-07)
 
