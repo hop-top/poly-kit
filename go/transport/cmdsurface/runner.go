@@ -38,86 +38,48 @@ type Runner interface {
 	Stream(ctx context.Context, inv Invocation, out chan<- Event) error
 }
 
-// InProcessRunner returns a Runner that invokes the cobra tree
-// rooted at root in the current process. The returned Runner does
-// not mutate root; it temporarily swaps the root's output writers
-// and argv during Run/Stream and restores them on return.
-//
-// Concurrent calls into the same InProcessRunner are serialized on
-// an internal mutex because cobra's argv/output state is held on
-// the *Command itself — there is no per-invocation isolation in the
-// upstream library. Surfaces that need true parallelism should wire
-// a Subprocess- or sandboxed Runner instead.
-func InProcessRunner(root *cobra.Command) Runner {
-	return &inProcessRunner{root: root}
-}
-
-type inProcessRunner struct {
-	root *cobra.Command
-	mu   sync.Mutex
-}
-
-// Run implements Runner.
+// Run implements Runner. The invocation runs on the runner's tree
+// with the caller's context, captured streams, and no stdin; see
+// [InProcessRunner] for what is isolated between invocations. A
+// command that fails while ctx is done is reported as a cancellation
+// through the returned error, alongside the partial Result.
 func (r *inProcessRunner) Run(ctx context.Context, inv Invocation) (Result, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.root == nil {
-		return Result{}, errors.New("cmdsurface: nil cobra root")
-	}
-	leaf, err := resolveLeaf(r.root, inv.Path)
+	ex, err := r.prepare(ctx, inv)
 	if err != nil {
 		return Result{}, err
 	}
-	_ = leaf // resolution validates the path; cobra dispatches via SetArgs
+	defer ex.release()
 
 	var stdout, stderr bytes.Buffer
-	restore := captureRoot(r.root, &stdout, &stderr, buildArgs(inv))
-	defer restore()
+	ex.attach(&stdout, &stderr)
 
-	execErr := r.root.ExecuteContext(ctx)
-
-	res := Result{
-		Stdout: stdout.String(),
-		Stderr: stderr.String(),
-	}
-	if execErr != nil {
-		res.ExitCode = inProcessExitCode(execErr)
-		if res.Stderr == "" {
-			res.Stderr = execErr.Error()
-		}
-	}
-	return res, nil
+	execErr := ex.root.ExecuteContext(ctx)
+	res := ex.result(execErr, stdout.String(), stderr.String())
+	return res, canceled(ctx, execErr)
 }
 
 // Stream implements Runner. It produces one Event per output line
-// (Kind="stdout"/"stderr") followed by a terminal Event{Kind:"done"}.
-// out is closed when streaming completes.
+// (Kind="stdout"/"stderr") followed by a terminal Event{Kind:"done"}
+// carrying the same Result Run would have returned, Data included.
+// out is closed when streaming completes. Cancellation is reported
+// the way Run reports it, after the done event.
 func (r *inProcessRunner) Stream(ctx context.Context, inv Invocation, out chan<- Event) error {
 	if out == nil {
 		return errors.New("cmdsurface: nil event channel")
 	}
 	defer close(out)
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.root == nil {
-		return errors.New("cmdsurface: nil cobra root")
-	}
-	if _, err := resolveLeaf(r.root, inv.Path); err != nil {
+	ex, err := r.prepare(ctx, inv)
+	if err != nil {
 		return err
 	}
+	defer ex.release()
 
 	outR, outW := io.Pipe()
 	errR, errW := io.Pipe()
 
 	var stdoutBuf, stderrBuf bytes.Buffer
-	outTee := io.MultiWriter(outW, &stdoutBuf)
-	errTee := io.MultiWriter(errW, &stderrBuf)
-
-	restore := captureRootWriters(r.root, outTee, errTee, buildArgs(inv))
-	defer restore()
+	ex.attach(io.MultiWriter(outW, &stdoutBuf), io.MultiWriter(errW, &stderrBuf))
 
 	// Scanners drain each pipe and forward one Event per line.
 	var wg sync.WaitGroup
@@ -125,25 +87,16 @@ func (r *inProcessRunner) Stream(ctx context.Context, inv Invocation, out chan<-
 	go scanLines(outR, "stdout", out, &wg)
 	go scanLines(errR, "stderr", out, &wg)
 
-	execErr := r.root.ExecuteContext(ctx)
+	execErr := ex.root.ExecuteContext(ctx)
 	// Closing the writers tells the scanners to drain remaining
 	// bytes and exit cleanly.
 	_ = outW.Close()
 	_ = errW.Close()
 	wg.Wait()
 
-	res := &Result{
-		Stdout: stdoutBuf.String(),
-		Stderr: stderrBuf.String(),
-	}
-	if execErr != nil {
-		res.ExitCode = inProcessExitCode(execErr)
-		if res.Stderr == "" {
-			res.Stderr = execErr.Error()
-		}
-	}
-	out <- Event{Kind: "done", Data: res, At: time.Now()}
-	return nil
+	res := ex.result(execErr, stdoutBuf.String(), stderrBuf.String())
+	out <- Event{Kind: "done", Data: &res, At: time.Now()}
+	return canceled(ctx, execErr)
 }
 
 // scanLines reads r line-by-line and forwards each line as an Event
@@ -201,16 +154,10 @@ func buildArgs(inv Invocation) []string {
 	return out
 }
 
-// captureRoot installs stdout/stderr buffers and argv on root and
-// returns a function that restores the prior values. Also flips
+// captureRootWriters installs the output writers and argv on root
+// and returns a function that restores the prior values. Also flips
 // SilenceUsage/SilenceErrors so cobra does not interleave its own
 // help text into the captured streams on error.
-func captureRoot(root *cobra.Command, stdout, stderr *bytes.Buffer, args []string) func() {
-	return captureRootWriters(root, stdout, stderr, args)
-}
-
-// captureRootWriters is the generic form taking any io.Writer
-// destinations, used by Stream to plug io.Pipe writers in.
 func captureRootWriters(root *cobra.Command, outW, errW io.Writer, args []string) func() {
 	prevOut := root.OutOrStdout()
 	prevErr := root.ErrOrStderr()
