@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/ai/cmdreflect"
-	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -231,62 +229,11 @@ func (e *bridgeExecutor) Execute(
 		return api.CommandResult{}, translateBridgeError(err)
 	}
 	return api.CommandResult{
-		ExitCode: resolveExitCode(res),
+		ExitCode: res.ExitCode,
 		Data:     res.Data,
 		Stdout:   res.Stdout,
 		Stderr:   res.Stderr,
 	}, nil
-}
-
-// resolveExitCode recovers the command's real exit code.
-//
-// The in-process runner reports every failure as exit 1 because
-// cobra's ExecuteContext returns a bare error. Kit's own failures
-// carry a richer verdict — a policy refusal is UNAUTHORIZED (5), a
-// bad request is USAGE (2) — and flattening them all to 1 would map
-// every refusal onto a 500, telling a caller the server broke when in
-// fact they were refused.
-//
-// The rendered envelope on stderr is where that verdict survives, so
-// it is read back here. A plain-text envelope leads with "CODE: ",
-// and the structured formats carry the code as a JSON/YAML field.
-func resolveExitCode(res cmdsurface.Result) int {
-	if res.ExitCode == 0 {
-		return 0
-	}
-	if code := codeFromEnvelope(res.Stderr); code > 0 {
-		return code
-	}
-	return res.ExitCode
-}
-
-// envelopeExitCodes maps the kit error codes that can reach a
-// projected call onto their exit codes. It is a lookup of the
-// taxonomy in go/console/output, not a second definition of it.
-var envelopeExitCodes = map[string]int{
-	output.CodeUsage:             2,
-	output.CodeNotFound:          3,
-	output.CodeConflict:          4,
-	output.CodeUnauthorized:      5,
-	output.CodeTransient:         output.ExitTransient,
-	output.CodeRateLimited:       output.ExitRateLimited,
-	output.CodeProvenanceMissing: output.ExitProvenanceMissing,
-}
-
-// codeFromEnvelope returns the exit code named by a rendered error
-// envelope, or 0 when stderr carries no recognizable one.
-func codeFromEnvelope(stderr string) int {
-	for code, exit := range envelopeExitCodes {
-		// Plain: "UNAUTHORIZED: ...". Structured: "code":"UNAUTHORIZED"
-		// or code: UNAUTHORIZED. All three contain the token followed
-		// by a delimiter, so one containment check covers them.
-		if strings.Contains(stderr, code+":") ||
-			strings.Contains(stderr, code+`"`) ||
-			strings.Contains(stderr, code+"\n") {
-			return exit
-		}
-	}
-	return 0
 }
 
 // translateBridgeError maps the bridge's sentinels onto the
