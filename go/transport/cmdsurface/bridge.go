@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -22,19 +23,46 @@ var ErrSurfaceNotEnabled = errors.New("cmdsurface: surface not enabled for comma
 // in Policy.AllowDestructiveOn.
 var ErrDestructiveBlocked = errors.New("cmdsurface: destructive command blocked on this surface")
 
+// ErrPermissionDenied is returned when the [PermissionFunc] refuses
+// an Invocation. The wrapped message carries the decision's stable
+// reason. Transports map it to their own "forbidden" vocabulary
+// (403 over HTTP, a DENIED wire code on the socket); it is distinct
+// from ErrDestructiveBlocked because the two are answered by
+// different gates and fixed by different people — the destructive
+// ceiling by the deployment's policy, a permission denial by the
+// caller's entitlement.
+var ErrPermissionDenied = errors.New("cmdsurface: permission denied")
+
+// ErrAuthRefused is the error a transport reports through
+// [Bridge.Audit] when it refuses a request before the bridge is
+// reached because the caller failed authentication. The bridge never
+// returns it — authentication is the transport's own gate — but
+// routing the refusal through the same sinks keeps the audit trail
+// whole: one stream carries "not authenticated", "not permitted",
+// and "ran", with the same provenance fields on each.
+var ErrAuthRefused = errors.New("cmdsurface: authentication refused")
+
+// idempotencyKeyFlag mirrors the kit-managed --idempotency-key flag
+// name that go/console/cli auto-registers on conditional-idempotent
+// leaves. Mirrored, not imported, for the same reason the annotation
+// keys are: cli reaches this package, not the reverse.
+const idempotencyKeyFlag = "idempotency-key"
+
 // Bridge projects a cobra root onto many surfaces. It owns the
 // Runner, the Policy, and the per-leaf enablement map. Surfaces
 // hand decoded Invocations to Bridge.Invoke and receive Results;
 // they iterate Bridge.Leaves at mount time to discover which
 // commands they should expose.
 //
-// Sinks are an opt-in fan-out slot. FromConfig populates the slot
-// from cfg.Telemetry (see config.go). Adopters using the manual
-// path continue to wrap their Runner with the sinkRunner pattern
-// documented in README.md — Bridge.Invoke does NOT auto-emit to
-// sinks today, the slot is a registry callers fetch via
-// Bridge.Sinks. This shape preserves the foundation contract while
-// giving the kit-telemetry sink a structured home.
+// Sinks are the audit fan-out slot. FromConfig populates it from
+// cfg.Telemetry (see config.go) and [WithSinks] adds adopter sinks.
+// Bridge.Invoke emits to registered sinks for every refusal and for
+// every execution on a remote surface (any surface other than
+// SurfaceCLI and SurfaceLib), so a sink sees "refused" and "ran"
+// with the same provenance whether or not the Runner was reached.
+// Adopters wrapping their Runner with the sinkRunner pattern in
+// README.md keep that path; it observes only invocations that reach
+// the Runner, which is why refusals are emitted here.
 type Bridge struct {
 	root   *cobra.Command
 	cfg    bridgeConfig
@@ -72,8 +100,10 @@ func (l *Leaf) PathKey() string { return strings.Join(l.Path, " ") }
 
 // bridgeConfig is the internal options bag set by Option funcs.
 type bridgeConfig struct {
-	runner Runner
-	policy Policy
+	runner     Runner
+	policy     Policy
+	permission PermissionFunc
+	sinks      SinkSet
 }
 
 // Option configures a Bridge at construction.
@@ -87,6 +117,23 @@ func WithRunner(r Runner) Option { return func(c *bridgeConfig) { c.runner = r }
 // DefaultPolicy().
 func WithPolicy(p Policy) Option { return func(c *bridgeConfig) { c.policy = p } }
 
+// WithPermission installs fn as the bridge's [PermissionFunc], the
+// gate [Invoke] consults after the destructive ceiling and before
+// the Runner on every surface. A nil fn keeps the default,
+// [PermitAll].
+func WithPermission(fn PermissionFunc) Option {
+	return func(c *bridgeConfig) { c.permission = fn }
+}
+
+// WithSinks registers audit sinks on the bridge. [Invoke] emits to
+// them for every refusal and for every execution on a remote
+// surface; [Bridge.Audit] lets a transport report its own pre-flight
+// refusals (failed authentication) through the same set. Repeated
+// options append.
+func WithSinks(specs ...SinkSpec) Option {
+	return func(c *bridgeConfig) { c.sinks = append(c.sinks, specs...) }
+}
+
 // New returns a Bridge that projects root onto the surfaces a
 // caller subsequently enables via Expose / Hide / config. Leaves
 // are discovered once at construction; commands added to root after
@@ -99,10 +146,14 @@ func New(root *cobra.Command, opts ...Option) *Bridge {
 	if cfg.runner == nil {
 		cfg.runner = InProcessRunner(root)
 	}
+	if cfg.permission == nil {
+		cfg.permission = PermitAll
+	}
 	b := &Bridge{
 		root:   root,
 		cfg:    cfg,
 		byPath: make(map[string]*Leaf),
+		sinks:  append(SinkSet(nil), cfg.sinks...),
 	}
 	b.discover()
 	return b
@@ -272,36 +323,136 @@ func matchPattern(pattern string, path []string) bool {
 }
 
 // Invoke routes inv through the bridge: resolves the leaf, applies
-// the policy gate, then delegates to the configured Runner. Errors
-// are:
+// the gates in order, then delegates to the configured Runner. The
+// gates, and the error each refusal returns:
 //
-//   - ErrUnknownCommand: inv.Path does not resolve.
-//   - ErrSurfaceNotEnabled: leaf is not exposed on inv.Meta.Surface.
-//   - ErrDestructiveBlocked: leaf is destructive and Policy disallows
-//     the surface.
+//  1. Resolution — ErrUnknownCommand: inv.Path does not resolve.
+//  2. Enablement — ErrSurfaceNotEnabled: leaf is not exposed on
+//     inv.Meta.Surface.
+//  3. Destructive ceiling — ErrDestructiveBlocked: leaf is
+//     destructive and Policy disallows the surface.
+//  4. Permission — ErrPermissionDenied: the [PermissionFunc] refused
+//     this Meta for this leaf; the message carries its reason.
+//
+// Confirmation is deliberately not a gate here: it is the command's
+// own flag and its own refusal, the same on every surface as on the
+// CLI, so the Runner's Result carries it as an exit code.
+//
+// Every refusal, and every execution on a remote surface, is emitted
+// to the bridge's sinks (see [WithSinks]) with the Meta the transport
+// supplied. RequestedAt is stamped when the surface left it zero, so
+// an audit record always has a timestamp. When Meta carries an
+// IdempotencyKey and the leaf registers the kit-managed
+// --idempotency-key flag, the key is forwarded as that flag unless
+// the caller set it explicitly.
 //
 // The Runner's own errors are returned as-is (wrapped runners are
 // responsible for their own error contracts).
 func (b *Bridge) Invoke(ctx context.Context, inv Invocation) (Result, error) {
-	leaf, err := b.resolveLeaf(inv.Path)
-	if err != nil {
-		return Result{}, err
-	}
-	surface := inv.Meta.Surface
-	if surface == "" {
+	if inv.Meta.Surface == "" {
 		// Library callers may omit the field; treat as SurfaceLib so
 		// in-process Invoke calls Just Work.
-		surface = SurfaceLib
+		inv.Meta.Surface = SurfaceLib
+	}
+	if inv.Meta.RequestedAt.IsZero() {
+		inv.Meta.RequestedAt = time.Now()
+	}
+	surface := inv.Meta.Surface
+
+	leaf, err := b.resolveLeaf(inv.Path)
+	if err != nil {
+		return Result{}, b.refuse(ctx, inv, err)
 	}
 	if !leaf.Enabled[surface] {
-		return Result{}, fmt.Errorf("%w: %s on %s",
-			ErrSurfaceNotEnabled, leaf.PathKey(), surface)
+		return Result{}, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",
+			ErrSurfaceNotEnabled, leaf.PathKey(), surface))
 	}
 	if !b.cfg.policy.Allowed(leaf.Class, surface) {
-		return Result{}, fmt.Errorf("%w: %s on %s",
-			ErrDestructiveBlocked, leaf.PathKey(), surface)
+		return Result{}, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",
+			ErrDestructiveBlocked, leaf.PathKey(), surface))
 	}
-	return b.cfg.runner.Run(ctx, inv)
+	if dec := b.Permission(ctx, inv.Meta, leaf); !dec.Allowed {
+		return Result{}, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s: %s",
+			ErrPermissionDenied, leaf.PathKey(), surface, dec.Reason))
+	}
+
+	inv = forwardIdempotencyKey(inv, leaf)
+
+	res, err := b.cfg.runner.Run(ctx, inv)
+	if surface.remote() {
+		b.Audit(ctx, inv, res, err)
+	}
+	return res, err
+}
+
+// refuse emits a pre-execution refusal to the sinks when the surface
+// is remote and returns err unchanged, so every early return in
+// Invoke reads the same.
+func (b *Bridge) refuse(ctx context.Context, inv Invocation, err error) error {
+	if inv.Meta.Surface.remote() {
+		b.Audit(ctx, inv, Result{}, err)
+	}
+	return err
+}
+
+// forwardIdempotencyKey copies Meta.IdempotencyKey into the leaf's
+// --idempotency-key flag when the leaf has one and the caller did not
+// set it. The caller's Flags map is never mutated: a transport may
+// reuse it.
+func forwardIdempotencyKey(inv Invocation, leaf *Leaf) Invocation {
+	if inv.Meta.IdempotencyKey == "" || leaf == nil || leaf.Cmd == nil {
+		return inv
+	}
+	if leaf.Cmd.Flags().Lookup(idempotencyKeyFlag) == nil {
+		return inv
+	}
+	if _, set := inv.Flags[idempotencyKeyFlag]; set {
+		return inv
+	}
+	flags := make(map[string]any, len(inv.Flags)+1)
+	for k, v := range inv.Flags {
+		flags[k] = v
+	}
+	flags[idempotencyKeyFlag] = inv.Meta.IdempotencyKey
+	inv.Flags = flags
+	return inv
+}
+
+// Permission asks the bridge's [PermissionFunc] whether meta may
+// invoke leaf. Surfaces consult it at mount time with a Meta that
+// carries only the surface, and honor a refusal there only when the
+// decision is CallerIndependent — a caller-specific verdict cannot
+// be known before a caller exists.
+func (b *Bridge) Permission(ctx context.Context, meta Meta, leaf *Leaf) PermissionDecision {
+	if leaf == nil {
+		return PermissionDecision{Allowed: true}
+	}
+	return b.cfg.permission(ctx, meta, leaf)
+}
+
+// Audit emits one record to the bridge's registered sinks. Invoke
+// calls it for every refusal and every remote execution; a transport
+// calls it directly for a refusal the bridge never sees — a failed
+// authentication, reported with [ErrAuthRefused] — so one audit
+// stream carries every verdict with the same provenance fields.
+//
+// Sinks are best-effort: their errors are dropped here, as the
+// SinkSet contract already makes them non-fatal, and an audit sink
+// must never turn a refusal into a different refusal.
+func (b *Bridge) Audit(ctx context.Context, inv Invocation, res Result, err error) {
+	sinks := b.Sinks()
+	if len(sinks) == 0 {
+		return
+	}
+	_ = sinks.Emit(ctx, inv, res, err)
+}
+
+// remote reports whether s is a surface other than the two local
+// runtimes. Audit applies to remote surfaces: a CLI invocation is
+// the operator's own act, and an in-process library call has no
+// caller to attribute.
+func (s Surface) remote() bool {
+	return s != SurfaceCLI && s != SurfaceLib
 }
 
 // resolveLeaf returns the *Leaf for path, or ErrUnknownCommand.
@@ -330,9 +481,9 @@ func (b *Bridge) Policy() Policy { return b.cfg.policy }
 // returned slice is safe to inspect and to pass to SinkSet.Emit;
 // mutating it does not affect the bridge.
 //
-// FromConfig is the canonical populator (telemetry today; other
-// sink types remain adopter-wired). Callers wiring a sinkRunner
-// can merge Bridge.Sinks() with their own specs.
+// FromConfig populates it with the telemetry sink and [WithSinks]
+// adds adopter sinks. Callers wiring a sinkRunner can merge
+// Bridge.Sinks() with their own specs.
 func (b *Bridge) Sinks() SinkSet {
 	b.mu.RLock()
 	defer b.mu.RUnlock()

@@ -26,23 +26,46 @@ type Invocation struct {
 }
 
 // Meta carries provenance for an Invocation. Surfaces fill the
-// fields they have evidence for; the policy gate and audit sinks
-// read what is present.
+// fields they have evidence for; the policy gate, the permission
+// gate, and audit sinks read what is present.
+//
+// Every field is transport-agnostic so a sink sees one shape whether
+// the call arrived over HTTP, a Unix socket, MCP, or a bus. A
+// transport with an authenticator fills Caller and Tenant from the
+// verified identity; a transport without one records the caller's
+// claim as provenance and grants nothing on its basis.
 type Meta struct {
 	// Caller is a stable identifier for the originating principal
 	// (user id, service account, webhook source). Format is
 	// surface-defined; the bridge does not parse it.
 	Caller string `json:"caller,omitempty"`
+	// Tenant is the tenant or organization the principal acts
+	// within, when the surface's authentication carries one. Empty
+	// for single-tenant tools and for surfaces without an
+	// authenticator.
+	Tenant string `json:"tenant,omitempty"`
 	// Surface is the transport that produced the Invocation. The
 	// policy gate refuses Invocations whose Surface is not enabled
 	// for the resolved leaf.
 	Surface Surface `json:"surface"`
-	// TraceID propagates a request/trace identifier across
-	// surfaces and sinks. Empty when the surface did not provide
+	// RequestID identifies this one request on its transport: the
+	// X-Request-ID the HTTP middleware issued or echoed, the socket
+	// request's own id. It is per-request; TraceID is the
+	// cross-service correlation a caller propagates.
+	RequestID string `json:"request_id,omitempty"`
+	// TraceID propagates a distributed-trace identifier across
+	// surfaces and sinks (the trace-id field of a W3C traceparent,
+	// or an X-Trace-ID). Empty when the surface did not provide
 	// one.
 	TraceID string `json:"trace_id,omitempty"`
-	// RequestedAt records when the surface received the request.
-	// Zero value means "unknown / not provided".
+	// IdempotencyKey is the caller-supplied key for a replayable
+	// write (the Idempotency-Key header over HTTP). The bridge
+	// forwards it to the leaf's --idempotency-key flag when the leaf
+	// registers one; it performs no dedupe of its own.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	// RequestedAt records when the surface received the request. It
+	// is the audit timestamp: the bridge stamps it at Invoke when a
+	// surface left it zero.
 	RequestedAt time.Time `json:"requested_at,omitempty"`
 	// Extra is a free-form bag for surface-specific context that
 	// downstream sinks may consume (HTTP headers, bus message
@@ -85,7 +108,7 @@ type Event struct {
 // String returns a single-line representation of inv suitable for
 // log entries. Format:
 //
-//	<surface> <path...> args=[..] flags={..} caller=<id> trace=<id>
+//	<surface> <path...> args=[..] flags={..} caller=<id> tenant=<id> request=<id> trace=<id>
 //
 // Flag values are rendered with %v; secrets are the caller's
 // responsibility — the bridge does not redact.
@@ -119,6 +142,12 @@ func (inv Invocation) String() string {
 	}
 	if inv.Meta.Caller != "" {
 		fmt.Fprintf(&b, " caller=%s", inv.Meta.Caller)
+	}
+	if inv.Meta.Tenant != "" {
+		fmt.Fprintf(&b, " tenant=%s", inv.Meta.Tenant)
+	}
+	if inv.Meta.RequestID != "" {
+		fmt.Fprintf(&b, " request=%s", inv.Meta.RequestID)
 	}
 	if inv.Meta.TraceID != "" {
 		fmt.Fprintf(&b, " trace=%s", inv.Meta.TraceID)
