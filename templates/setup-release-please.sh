@@ -305,7 +305,7 @@ setup_release_please_workflow() {
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # >>> kit-managed: toolchain >>>
@@ -351,7 +351,7 @@ setup_release_please_workflow() {
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # >>> kit-managed: toolchain >>>
       - uses: jdx/mise-action@v2
         with:
@@ -393,7 +393,7 @@ ${ts_steps}
       name: pypi
       url: https://pypi.org/p/\${NAME:-app}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # >>> kit-managed: toolchain >>>
       - uses: jdx/mise-action@v2
         with:
@@ -424,7 +424,7 @@ ${ts_steps}
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # >>> kit-managed: toolchain >>>
       - uses: jdx/mise-action@v2
         with:
@@ -455,7 +455,7 @@ jobs:
     outputs:
 ${outputs}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
 ${release_jobs}
 WFEOF

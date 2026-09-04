@@ -45,7 +45,7 @@ jobs:
       GONOSUMCHECK: "hop.top/*,github.com/hop-top/*"
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure private modules
         env:
@@ -54,7 +54,7 @@ jobs:
           git config --global url."https://${TOKEN}@github.com/hop-top".insteadOf "https://github.com/hop-top"
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
           go-version-file: ${{ inputs.go-version-file }}
@@ -75,7 +75,7 @@ jobs:
         working-directory: ${{ inputs.working-directory || '.' }}
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         if: always()
         with:
           files: ${{ inputs.working-directory && format('{0}/coverage.out', inputs.working-directory) || 'coverage.out' }}
