@@ -27,6 +27,7 @@ class CliErrorTest extends TestCase
     public static function constructorCases(): array
     {
         return [
+            'Generic' => [CliError::generic('boom'), CliError::CODE_GENERIC, 1, CliError::TRANSIENCE_PERMANENT],
             'NotFound' => [CliError::notFound('nope'), CliError::CODE_NOT_FOUND, 3, CliError::TRANSIENCE_PERMANENT],
             'Conflict' => [CliError::conflict('dup'), CliError::CODE_CONFLICT, 4, CliError::TRANSIENCE_PERMANENT],
             'Unauthorized' => [CliError::unauthorized('nope'), CliError::CODE_UNAUTHORIZED, 5, CliError::TRANSIENCE_PERMANENT],
@@ -55,10 +56,12 @@ class CliErrorTest extends TestCase
         foreach (self::constructorCases() as [$err]) {
             $exits[$err->exitCode] = $err->code;
         }
-        $this->assertCount(7, $exits);
+        $this->assertCount(8, $exits);
+        $this->assertSame(1, CliError::EXIT_GENERIC);
         $this->assertSame(6, CliError::EXIT_TRANSIENT);
         $this->assertSame(64, CliError::EXIT_RATE_LIMITED);
         $this->assertSame(65, CliError::EXIT_PROVENANCE_MISSING);
+        $this->assertSame(CliError::CODE_GENERIC, $exits[1]);
         $this->assertSame(CliError::CODE_TRANSIENT, $exits[6]);
         $this->assertSame(CliError::CODE_PROVENANCE_MISSING, $exits[65]);
     }

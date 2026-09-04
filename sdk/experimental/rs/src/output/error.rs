@@ -34,6 +34,11 @@ pub const CODE_TRANSIENT: &str = "TRANSIENT"; // exit 6 — Factor-11 transient/
 pub const CODE_PROVENANCE_MISSING: &str = "PROVENANCE_MISSING"; // exit 65 — Factor-12 strict-mode refusal
 pub const CODE_RATE_LIMITED: &str = "RATE_LIMITED"; // exit 64 — Factor-10 max-ops budget exceeded
 
+/// Spec-assigned exit code for the generic failure class: the command
+/// failed and no narrower code applies. Pair it with
+/// [`CliError::generic`] rather than hand-rolling exit 1, so the
+/// envelope carries a transience class.
+pub const EXIT_GENERIC: i32 = 1;
 /// Spec-assigned exit code for transient/retryable failures (Factor 11).
 /// Agents branch on it before parsing stderr: exit 6 means a retry may
 /// clear the failure.
@@ -103,6 +108,15 @@ impl CliError {
             transience,
             ..CliError::default()
         }
+    }
+
+    /// CODE_GENERIC envelope with exit code 1. The catch-all for
+    /// failures no narrower code describes; permanent because retrying
+    /// the same input in the same environment is not expected to help.
+    /// Wrapping an arbitrary error as CODE_GENERIC via
+    /// [`CliError::wrap`] still defaults to unknown.
+    pub fn generic(message: impl Into<String>) -> Self {
+        Self::standard(CODE_GENERIC, message, EXIT_GENERIC, TRANSIENCE_PERMANENT)
     }
 
     /// CODE_NOT_FOUND envelope with exit code 3.

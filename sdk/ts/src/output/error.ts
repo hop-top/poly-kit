@@ -46,6 +46,13 @@ export const CODE_PROVENANCE_MISSING = 'PROVENANCE_MISSING'; // exit 65 — Fact
 export const CODE_RATE_LIMITED = 'RATE_LIMITED'; // exit 64 — Factor-10 max-ops budget exceeded
 
 /**
+ * Spec-assigned exit code for the generic failure class: the command
+ * failed and no narrower code applies. Pair it with {@link genericError}
+ * rather than hand-rolling exit 1, so the envelope carries a transience
+ * class.
+ */
+export const EXIT_GENERIC = 1;
+/**
  * Spec-assigned exit code for transient/retryable failures (Factor 11).
  * Agents branch on it before parsing stderr: exit 6 means a retry may
  * clear the failure.
@@ -150,6 +157,22 @@ export function withTransience(e: CliError, transience: string): CliError {
   const clone: CliError = { ...e, transience };
   if (retained.has(e)) retained.set(clone, retained.get(e));
   return clone;
+}
+
+/**
+ * CODE_GENERIC envelope with exit code 1. The catch-all for failures no
+ * narrower code describes; permanent because retrying the same input
+ * in the same environment is not expected to help. Wrapping an
+ * arbitrary error as CODE_GENERIC via {@link wrapError} still defaults
+ * to unknown.
+ */
+export function genericError(message: string): CliError {
+  return {
+    code: CODE_GENERIC,
+    message,
+    exit_code: EXIT_GENERIC,
+    transience: TRANSIENCE_PERMANENT,
+  };
 }
 
 /** CODE_NOT_FOUND envelope with exit code 3. */
