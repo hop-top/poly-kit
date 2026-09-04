@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -11,6 +12,16 @@ import (
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 )
+
+// ReasonWithheldByConfig is the discovery reason for a command the
+// adopter kept off REST through APIConfig.WithholdCommands.
+//
+// The projection owns this reason rather than the reflector: the
+// reflector's vocabulary answers "is this command projectable at
+// all", and the answer here is yes — this deployment chose not to.
+// The spelling follows the reflector's hyphenated-lowercase
+// convention so a client switching on the field sees one vocabulary.
+const ReasonWithheldByConfig = "withheld-by-config"
 
 // buildProjection reflects root and returns the projection config the
 // api service mounts.
@@ -26,7 +37,9 @@ import (
 // them at reflection time would make them vanish from discovery, and
 // "this command exists but you cannot call it here" is exactly the
 // answer the track exists to give.
-func buildProjection(root *cobra.Command, name, version string, r *Root) api.ProjectionConfig {
+func buildProjection(
+	root *cobra.Command, name, version string, r *Root, cfg *APIConfig,
+) api.ProjectionConfig {
 	// No Allow* options. Each one makes a class of command
 	// INVOCABLE, not merely described — the reflector describes
 	// every command unconditionally. Passing AllowInteractive here
@@ -36,7 +49,11 @@ func buildProjection(root *cobra.Command, name, version string, r *Root) api.Pro
 	// everything" asks for.
 	tree := cmdreflect.Reflect(root, cmdreflect.WithReserved(r))
 
-	bridge := cmdsurface.New(root)
+	// A zero Policy is behaviorally identical to DefaultPolicy() on
+	// every surface, so passing the adopter's value through
+	// unconditionally preserves today's behavior when they set
+	// nothing.
+	bridge := cmdsurface.New(root, cmdsurface.WithPolicy(cfg.Policy))
 	// Exposing REST here is what "no adopter mounting code" means:
 	// the bridge's default enabled set is CLI + Lib + MCP, so a leaf
 	// would otherwise refuse every projected call with
@@ -47,12 +64,24 @@ func buildProjection(root *cobra.Command, name, version string, r *Root) api.Pro
 	// ceiling is Policy.Allowed, which Expose does not touch: a
 	// destructive leaf stays refused on REST unless the adopter's
 	// policy names the surface.
-	bridge.Expose("*", cmdsurface.SurfaceREST)
+	// An empty Expose reaches the whole tree, which is what makes
+	// projection automatic; a non-empty one narrows it.
+	if len(cfg.Expose) == 0 {
+		bridge.Expose("*", cmdsurface.SurfaceREST)
+	}
+	for _, pattern := range cfg.Expose {
+		bridge.Expose(pattern, cmdsurface.SurfaceREST)
+	}
+	// Hide runs after Expose so it carves exceptions out of it.
+	for _, pattern := range cfg.Hide {
+		bridge.Hide(pattern, cmdsurface.SurfaceREST)
+	}
 
-	cfg := api.ProjectionConfig{
+	exec := &bridgeExecutor{bridge: bridge, needsConfirm: map[string]bool{}}
+	pcfg := api.ProjectionConfig{
 		ToolName:    name,
 		ToolVersion: version,
-		Executor:    &bridgeExecutor{bridge: bridge},
+		Executor:    exec,
 	}
 
 	for _, d := range tree.Descriptors {
@@ -60,9 +89,13 @@ func buildProjection(root *cobra.Command, name, version string, r *Root) api.Pro
 		if d.IsRoot() || d.Surface.HasSubCommands {
 			continue
 		}
-		cfg.Descriptors = append(cfg.Descriptors, descriptorToProjection(d, bridge))
+		pd := descriptorToProjection(d, bridge)
+		if pd.RequiresConfirmation {
+			exec.needsConfirm[pd.PathKey()] = true
+		}
+		pcfg.Descriptors = append(pcfg.Descriptors, pd)
 	}
-	return cfg
+	return pcfg
 }
 
 // descriptorToProjection converts one reflected descriptor into the
@@ -105,14 +138,43 @@ func descriptorToProjection(d *cmdreflect.Descriptor, b *cmdsurface.Bridge) api.
 		out.Args = append(out.Args, api.CommandArg{Name: a.Name, Required: a.Required})
 	}
 
-	if out.Invocable && !policyAllowsREST(d, b) {
-		// Reuse the reflector's own vocabulary rather than minting
-		// a REST-specific token: the caller's question is the same
-		// one, and a second spelling would fragment the enum.
-		out.Invocable = false
-		out.Reason = string(cmdreflect.ReasonUnauthorizedDestructive)
+	if out.Invocable {
+		switch {
+		case !restEnabled(d, b):
+			// The adopter's withhold list took this one off REST.
+			// A distinct reason keeps "we chose not to" separable
+			// from "policy forbids it" in an operator's listing.
+			out.Invocable = false
+			out.Reason = ReasonWithheldByConfig
+		case !policyAllowsREST(d, b):
+			// Reuse the reflector's own vocabulary rather than
+			// minting a REST-specific token: the caller's question
+			// is the same one, and a second spelling would
+			// fragment the enum.
+			out.Invocable = false
+			out.Reason = string(cmdreflect.ReasonUnauthorizedDestructive)
+		}
 	}
 	return out
+}
+
+// restEnabled reports whether the leaf is still exposed on REST after
+// the withhold patterns were applied.
+//
+// A descriptor with no leaf on the bridge is treated as enabled: the
+// reflector already judged it invocable, and the absence means the
+// bridge never discovered it, which policyAllowsREST answers for.
+func restEnabled(d *cmdreflect.Descriptor, b *cmdsurface.Bridge) bool {
+	if b == nil {
+		return true
+	}
+	key := d.PathKey()
+	for _, leaf := range b.Leaves() {
+		if leaf.PathKey() == key {
+			return leaf.Enabled[cmdsurface.SurfaceREST]
+		}
+	}
+	return true
 }
 
 // policyAllowsREST asks the bridge whether the leaf may be invoked
@@ -151,6 +213,11 @@ func sideEffectClass(t cmdreflect.Tier) api.SideEffectClass {
 // by the same gate every other surface uses.
 type bridgeExecutor struct {
 	bridge *cmdsurface.Bridge
+	// needsConfirm holds the command paths that must carry a
+	// confirmation token, keyed by PathKey. The gate lives here
+	// rather than in the HTTP layer so it sits on the same side of
+	// the boundary as the rest of the policy.
+	needsConfirm map[string]bool
 }
 
 // Execute implements api.CommandExecutor.
@@ -159,6 +226,14 @@ func (e *bridgeExecutor) Execute(
 ) (api.CommandResult, error) {
 	if e.bridge == nil {
 		return api.CommandResult{}, errors.New("cli: no command bridge configured")
+	}
+
+	// A command that declares kit/requires-confirmation must carry a
+	// token on every call. Permitting the destructive TIER through
+	// policy is a separate decision from waiving the per-call
+	// confirmation, and must not imply it.
+	if e.needsConfirm[strings.Join(req.Path, " ")] && req.ConfirmToken == "" {
+		return api.CommandResult{}, api.ErrConfirmationRequired
 	}
 
 	inv := cmdsurface.Invocation{

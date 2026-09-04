@@ -211,7 +211,7 @@ func (a *apiService) mountProjection(router *api.Router) {
 	// Config is the authority for name and version: Cmd.Version
 	// carries the rendered --version template, not the bare value.
 	cfg := buildProjection(
-		a.root.Cmd, a.root.Config.Name, a.root.Config.Version, a.root,
+		a.root.Cmd, a.root.Config.Name, a.root.Config.Version, a.root, a.cfg,
 	)
 
 	api.MountCommandProjection(router, cfg)
