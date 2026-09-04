@@ -134,13 +134,40 @@ and leave the sibling branch's PR alone. Approvals are dismissed on push and
 release-please rebuilds the PR on every push to its base, so approve after the
 last change you want in.
 
-Channel transitions on `next` (`alpha → beta → rc`) are driven by the
-`prerelease-type` in config plus `Release-As:` trailers, gated by
-`.github/workflows/release-promote-gate.yml`. That gate permits only
-`release → alpha → beta → rc → release`; it rejects skipped and backwards
-transitions, and requires that a promotion PR change nothing but
-`prerelease-type`, with all packages sharing one value. Promoting `next` to
-stable is the `next → main` merge described in [Branch model](#branch-model).
+Channel transitions on `next` (`alpha → beta → rc`) are committed by
+`scripts/promote-release.sh <stage>` (`make promote-<stage>`), which rewrites
+`prerelease-type` on every package to `<stage>.0` — or removes it for
+`release` — and commits `chore(release): promote to <stage>`, changing no
+other line. Open that commit as a PR:
+`.github/workflows/release-promote-gate.yml` permits only
+`release → alpha → beta → rc → release`, rejects skipped and backwards
+transitions, and requires that the PR change nothing but `prerelease-type`,
+with all packages sharing one value.
+
+release-please reads `prerelease-type` only when the version it bumps has no
+prerelease suffix, i.e. at the first bump after a stable version. While the
+manifest carries a suffix, every merged release PR bumps that counter whatever
+the config says: `0.5.0-alpha.3` becomes `0.5.0-alpha.4` under
+`prerelease-type: beta.0`. So each stage means:
+
+- `alpha` seeds the next line. Once the stable cut is merged back into
+  `next`, the first `feat:` proposes `x.y+1.0-alpha.0` (a `fix:` alone,
+  `x.y.z+1-alpha.0`).
+- `beta` and `rc` declare the channel for the gate. To move
+  `0.5.0-alpha.N` to `0.5.0-beta.0`, land a commit on `next` carrying
+  `Release-As: 0.5.0-beta.0` — dry-run first, as for a stable cut — after
+  which merges count `beta.1`, `beta.2`, …
+- `release` cuts nothing. It only resets the gate so the ladder can start
+  again at `alpha`. With the manifest at `0.5.0-rc.N` a merge on `next`
+  still proposes `rc.N+1`; with the manifest already stable and no
+  `prerelease-type`, a merge on either branch would propose a **stable**
+  version. Run `release` then `alpha` back to back right after the
+  `next → main` promotion merge, while the manifest still carries `rc`, and
+  land the same two commits on `main` so the config stays identical.
+
+Promoting `next` to stable is the `next → main` merge described in
+[Branch model](#branch-model); stable `x.y.z` is cut there with
+`Release-As: x.y.z`, never by the promote script.
 
 ## Components
 
