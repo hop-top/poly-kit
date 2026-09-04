@@ -225,6 +225,11 @@ type SurfaceMeta struct {
 	// Reserved reports whether the command's depth-1 ancestor is a
 	// kit-reserved verb.
 	Reserved bool
+	// SelfHosting reports a command that hosts or modifies the tool
+	// itself: it sits under the depth-1 `serve` verb, it declares
+	// kit/network=ingress, or it carries kit/self-hosting. Such a
+	// command is never invocable through a projected surface.
+	SelfHosting bool
 	// Runnable reports whether the command has a Run or RunE.
 	Runnable bool
 	// HasSubCommands reports whether the command has children.

@@ -167,6 +167,52 @@ func fixtureRoot() *cobra.Command {
 	})
 	root.AddCommand(mgmt)
 
+	// The serve hierarchy: runnable supervisor with a runnable child
+	// and a hidden child. Self-hosting by position, whatever the
+	// reserved lookup says.
+	serve := &cobra.Command{
+		Use:         "serve",
+		Short:       "run services",
+		Run:         func(*cobra.Command, []string) {},
+		Annotations: map[string]string{annSideEffect: "write-shared"},
+	}
+	serve.AddCommand(&cobra.Command{
+		Use:         "api",
+		Short:       "run the api",
+		Run:         func(*cobra.Command, []string) {},
+		Annotations: map[string]string{annSideEffect: "write-shared"},
+	})
+	serve.AddCommand(&cobra.Command{
+		Use:         "internal",
+		Short:       "hidden server",
+		Hidden:      true,
+		Run:         func(*cobra.Command, []string) {},
+		Annotations: map[string]string{annSideEffect: "write-shared"},
+	})
+	root.AddCommand(serve)
+
+	// Declares it listens: self-hosting by network class.
+	root.AddCommand(&cobra.Command{
+		Use:   "listen",
+		Short: "accept connections",
+		Run:   func(*cobra.Command, []string) {},
+		Annotations: map[string]string{
+			annSideEffect: "write-local",
+			annNetwork:    "ingress",
+		},
+	})
+
+	// Explicitly marked: self-hosting by annotation.
+	root.AddCommand(&cobra.Command{
+		Use:   "upgrade",
+		Short: "replace the binary",
+		Run:   func(*cobra.Command, []string) {},
+		Annotations: map[string]string{
+			annSideEffect:  "write-local",
+			annSelfHosting: "true",
+		},
+	})
+
 	// Framework built-ins.
 	root.AddCommand(&cobra.Command{Use: "help", Short: "help", Run: func(*cobra.Command, []string) {}})
 	completion := &cobra.Command{Use: "completion", Short: "completion"}

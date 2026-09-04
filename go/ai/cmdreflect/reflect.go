@@ -32,12 +32,22 @@ const (
 	annExec             = "kit/exec"
 	annBusPublish       = "kit/bus-publish"
 	annSpecCommand      = "kit/spec-command"
+	annSelfHosting      = cmdmeta.KeySelfHosting
 )
 
 // requiredFlagAnnotation is the key cobra's MarkFlagRequired writes.
 // pflag exposes required-ness only through this annotation, so
 // reading it is the only way to reflect the fact.
 const requiredFlagAnnotation = cobra.BashCompOneRequiredFlag
+
+// serveVerb is the depth-1 word the serve-lifecycle contract gives to
+// exactly one command: the supervisor and selector over the tool's
+// services. Everything under it is self-hosting by construction —
+// invoking it from inside a served invocation would start a server
+// inside the server. The name is fixed by the contract, not by the
+// reserved-verb lookup, so the classification holds on a bare cobra
+// tree too.
+const serveVerb = "serve"
 
 // reservedLookup is the seam through which the walker learns which
 // depth-1 verbs a tool reserves. [hop.top/kit/go/console/cli.Root]
@@ -210,6 +220,37 @@ func Reflect(root *cobra.Command, opts ...Option) *Tree {
 	return t
 }
 
+// Describe reflects a single command in the context of its tree and
+// returns its descriptor, with the same facts and the same
+// invocability verdict [Reflect] would record for it. It is the
+// per-command entry point for a consumer that already holds a
+// resolved *cobra.Command — a runner about to execute it — and needs
+// its tier, output schema, or self-hosting status without walking
+// the whole tree again.
+//
+// root anchors the path and the depth-1 verb lookup; when nil, the
+// command's own root is used. A nil cmd yields nil.
+func Describe(root, cmd *cobra.Command, opts ...Option) *Descriptor {
+	if cmd == nil {
+		return nil
+	}
+	if root == nil {
+		root = cmd.Root()
+	}
+	cfg := &config{}
+	for _, o := range opts {
+		o(cfg)
+	}
+	var path []string
+	for c := cmd; c != nil; c = c.Parent() {
+		path = append([]string{c.Name()}, path...)
+		if c == root {
+			break
+		}
+	}
+	return describe(cmd, path, root, cfg)
+}
+
 // describe builds one descriptor. It resolves every fact first and
 // decides invocability last, so the verdict is a function of the
 // fully-populated descriptor rather than of walk order.
@@ -227,9 +268,36 @@ func describe(cmd *cobra.Command, path []string, root *cobra.Command, cfg *confi
 	d.Surface = reflectSurface(cmd, root, cfg)
 	d.Output = reflectOutput(cmd)
 	d.Safety = reflectSafety(cmd)
+	// Resolved after Safety: one of the three signals is the
+	// network class the safety projection already decoded.
+	d.Surface.SelfHosting = isSelfHosting(cmd, root, d.Safety)
 
 	decide(d, cfg)
 	return d
+}
+
+// isSelfHosting reports whether cmd hosts or modifies the tool
+// itself. Three independent signals, any one of which suffices:
+//
+//   - the command sits under the depth-1 `serve` verb, which the
+//     serve-lifecycle contract fixes as the supervisor and selector
+//     over the tool's services;
+//   - the command declares kit/network=ingress — it accepts inbound
+//     connections, which is what a server does;
+//   - the command carries kit/self-hosting, the explicit mark for
+//     self-modifying commands (an upgrade that replaces the binary)
+//     and for anything else an adopter knows must stay on the CLI.
+//
+// None of the three consults the reserved-verb lookup, so a tool
+// that reflects without one still withholds its server.
+func isSelfHosting(cmd, root *cobra.Command, s Safety) bool {
+	if cmdmeta.IsSelfHosting(cmd) {
+		return true
+	}
+	if s.Network == toolspec.PermNetworkIngress {
+		return true
+	}
+	return depthOneName(cmd, root) == serveVerb
 }
 
 // reflectSurface resolves the presentation and transport metadata.
@@ -392,6 +460,13 @@ func decide(d *Descriptor, cfg *config) {
 	}
 	if (d.Surface.Reserved || d.Surface.SpecCommand) && !cfg.allowReserved {
 		fired[ReasonManagementOnly] = true
+	}
+	// No option lifts self-hosting. The relaxations exist so a
+	// consumer can reflect for the surface it actually has — a
+	// terminal lifts interactive, the spec lifts reserved — and no
+	// projected surface ever has "is the process itself".
+	if d.Surface.SelfHosting {
+		fired[ReasonSelfHosting] = true
 	}
 	if d.Safety.Destructive() {
 		switch {
