@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Cross-language cacheability gate vectors for kit/storage/httpcache. Consumed by the Go, TS, and Python ports so all three gate identically. request_cacheable drives cacheableRequest; response_cacheable drives cacheableResponse.",
+  "note": "Cross-language cacheability gate vectors for kit/storage/httpcache. Every port consumes these so all of them gate identically. request_cacheable pins which requests are eligible for caching; response_cacheable pins which responses may be stored. See keying.json for cache-key derivation and entry.json for the on-store envelope.",
   "request_cacheable": [
     { "name": "plain GET", "method": "GET", "headers": {}, "want": true },
     { "name": "GET with unrelated header", "method": "GET", "headers": { "Accept": "text/html" }, "want": true },

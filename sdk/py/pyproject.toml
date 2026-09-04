@@ -23,11 +23,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "typer>=0.12,<0.25", "click>=8", "ruff>=0.8"]
+dev = ["pytest>=8", "typer>=0.12,<0.25", "click>=8", "ruff>=0.8", "mcp>=2.0,<3", "mcp-types>=2.0,<3"]
 # Optional HTTPS sink for the telemetry client. The JSONL sink works
 # without it; only adopters who emit to a remote NDJSON collector need
 # httpx pulled in.
 telemetry-https = ["httpx>=0.27"]
+# The dual-spec MCP surface (hop_top_kit.mcp). Only adopters serving MCP
+# need the protocol packages; the rest of the SDK imports neither, so the
+# base install stays free of them. Pinned to 2.0.x because that is the
+# first release line carrying the 2026-07-28 era — 1.x tops out at
+# 2025-11-25 and cannot serve the modern revision at all.
+mcp = ["mcp>=2.0,<3", "mcp-types>=2.0,<3"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

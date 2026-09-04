@@ -39,25 +39,70 @@ func TestDetect_AlreadyKit(t *testing.T) {
 	assert.Equal(t, "1.2.3", version)
 }
 
-func TestDetect_BareWorktree(t *testing.T) {
+// newBareRepoWithWorktree builds a bare repo with one commit (so
+// `worktree add -b` has a ref to branch from — an empty bare repo has
+// no HEAD and `worktree add -b` fails outright on it) and one linked
+// worktree off that commit. Returns the bare repo root and the
+// worktree dir.
+func newBareRepoWithWorktree(t *testing.T) (bareDir, worktreeDir string) {
+	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
 	root := t.TempDir()
-	bareDir := filepath.Join(root, "repo.git")
-	require.NoError(t, exec.Command("git", "init", "--bare", bareDir).Run())
 
-	worktreeDir := filepath.Join(root, "wt")
-	// Create an initial commit on a branch so worktree add has a ref.
-	require.NoError(t, exec.Command("git", "-C", bareDir, "config", "user.email", "test@example.com").Run())
-	require.NoError(t, exec.Command("git", "-C", bareDir, "config", "user.name", "Test").Run())
-	// Use --orphan-style: create a new branch via worktree add -b on an unborn ref.
-	out, err := exec.Command("git", "-C", bareDir, "worktree", "add", "-b", "main", worktreeDir).CombinedOutput()
-	if err != nil {
-		t.Skipf("git worktree add failed: %v: %s", err, out)
+	// Seed via a throwaway non-bare clone: commit there, then clone
+	// --bare from it. This is the portable way to get a bare repo
+	// with history — pushing into a bare repo's checked-out branch
+	// from itself is not.
+	seedDir := filepath.Join(root, "seed")
+	run := func(dir string, args ...string) {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+		require.NoErrorf(t, err, "git %v: %s", args, out)
 	}
+	require.NoError(t, os.MkdirAll(seedDir, 0o755))
+	run(seedDir, "init", "-q")
+	run(seedDir, "config", "user.email", "test@example.com")
+	run(seedDir, "config", "user.name", "Test")
+	require.NoError(t, os.WriteFile(filepath.Join(seedDir, "f"), []byte("x"), 0o644))
+	run(seedDir, "add", "f")
+	run(seedDir, "commit", "-q", "-m", "init")
+
+	bareDir = filepath.Join(root, "repo.git")
+	out, err := exec.Command("git", "clone", "--bare", "-q", seedDir, bareDir).CombinedOutput()
+	require.NoErrorf(t, err, "clone --bare: %s", out)
+
+	worktreeDir = filepath.Join(root, "wt")
+	out, err = exec.Command("git", "-C", bareDir, "worktree", "add", "-b", "feature", worktreeDir).CombinedOutput()
+	require.NoErrorf(t, err, "worktree add: %s", out)
+	return bareDir, worktreeDir
+}
+
+// A LINKED worktree of a bare repo is a normal, usable checkout — git
+// add/commit/push all work from it — so Detect resolves it through the
+// regular chain to ModeAugment. See Detect's step-1 comment: "A LINKED
+// WORKTREE ... is a perfectly usable checkout ... so it flows through
+// the normal chain." Verified against git 2.39 and 2.55: --git-dir !=
+// --git-common-dir (so isBareWorktree is true) AND
+// --is-inside-work-tree is true, so the ModeBareWorktree guard
+// (isBareWorktree && !isInsideWorkTree) does not fire here.
+func TestDetect_LinkedWorktreeOfBareRepo(t *testing.T) {
+	_, worktreeDir := newBareRepoWithWorktree(t)
 
 	mode, version, err := kitinit.Detect(worktreeDir, kitinit.ModeUnset)
+	require.NoError(t, err)
+	assert.Equal(t, kitinit.ModeAugment, mode)
+	assert.Empty(t, version)
+}
+
+// The bare repo ROOT — its git internals, no working tree — is the
+// case ModeBareWorktree actually names: scaffolding next to
+// HEAD/objects/refs is never right, so Detect refuses it.
+func TestDetect_BareRepoRoot(t *testing.T) {
+	bareDir, _ := newBareRepoWithWorktree(t)
+
+	mode, version, err := kitinit.Detect(bareDir, kitinit.ModeUnset)
 	require.NoError(t, err)
 	assert.Equal(t, kitinit.ModeBareWorktree, mode)
 	assert.Empty(t, version)

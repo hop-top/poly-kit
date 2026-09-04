@@ -52,7 +52,9 @@ abstract class KitCommand extends Command
      * Render $data through the active formatter, honoring all output flags
      * wired by Flags::register().
      *
-     * @param list<ColumnSpec>|null $columns Schema for --cols validation
+     * @param list<ColumnSpec>|null $columns Column schema. Supplies the
+     *        default column order and headers, and doubles as the valid-
+     *        name set for --cols.
      */
     protected function render(
         mixed $data,

@@ -125,7 +125,55 @@ func TestComplete_WithTemperature(t *testing.T) {
 	p := mustNew(t, srv.URL, "gemini-2.0-flash")
 	_, err := p.(llm.Completer).Complete(context.Background(), llm.Request{
 		Messages:    []llm.Message{{Role: "user", Content: "hi"}},
-		Temperature: 0.7,
+		Temperature: tempPtr(0.7),
+	})
+	require.NoError(t, err)
+}
+
+func TestComplete_ExplicitZeroTemperature(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			var req map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+
+			gc, ok := req["generationConfig"].(map[string]any)
+			require.True(t, ok, "generationConfig should be present")
+			temp, ok := gc["temperature"]
+			require.True(t, ok,
+				"explicit zero temperature should reach the wire")
+			assert.InDelta(t, 0.0, temp, 0.0001)
+
+			writeJSON(w, geminiResponse("ok", "STOP", 0, 0))
+		},
+	))
+	defer srv.Close()
+
+	p := mustNew(t, srv.URL, "gemini-2.0-flash")
+	_, err := p.(llm.Completer).Complete(context.Background(), llm.Request{
+		Messages:    []llm.Message{{Role: "user", Content: "hi"}},
+		Temperature: tempPtr(0),
+	})
+	require.NoError(t, err)
+}
+
+func TestComplete_NilTemperatureOmitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			var req map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+
+			_, ok := req["generationConfig"]
+			assert.False(t, ok,
+				"generationConfig should be absent when nothing is set")
+
+			writeJSON(w, geminiResponse("ok", "STOP", 0, 0))
+		},
+	))
+	defer srv.Close()
+
+	p := mustNew(t, srv.URL, "gemini-2.0-flash")
+	_, err := p.(llm.Completer).Complete(context.Background(), llm.Request{
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
 	})
 	require.NoError(t, err)
 }
@@ -538,6 +586,8 @@ func TestInterfaceCompliance(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+func tempPtr(v float64) *float64 { return &v }
 
 func mustNew(
 	t *testing.T, baseURL, model string,

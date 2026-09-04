@@ -24,13 +24,19 @@ exit-code contract.
 
 ## Exit codes
 
+Codes follow the 12fc taxonomy (0-6 shared classes, >6 documented
+per-tool band):
+
 | Code | Meaning |
 |------|---------|
 | 0 | verdict=pass |
-| 2 | verdict=fail or ungradable |
-| 3 | usage error, manifest parse, or rejected by the service |
-| 4 | service unavailable or retry budget exhausted |
-| 5 | auth failure or cassette pack error |
+| 1 | cassette pack error (general local failure) |
+| 2 | usage error, manifest parse, or rejected by the service |
+| 5 | auth failure |
+| 6 | service unavailable or retry budget exhausted (transient — retry may clear) |
+| 64 | rate-limited by the service (transient) |
+| 68 | verdict=fail |
+| 69 | verdict=ungradable |
 
 ## Per-provider gotchas
 

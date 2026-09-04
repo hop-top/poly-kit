@@ -6,6 +6,7 @@ namespace HopTop\Kit\Api;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
+use HopTop\Kit\Net\OfflineGuard;
 use Psr\Http\Message\ResponseInterface;
 
 class ApiClient
@@ -17,7 +18,13 @@ class ApiClient
         private readonly ?string $authToken = null,
         ?ClientInterface $httpClient = null,
     ) {
-        $this->httpClient = $httpClient ?? new Client();
+        // A caller who injects no client gets one whose handler stack
+        // already carries the offline guard, so `--offline` is enforced
+        // beneath them without their having to know the marker exists.
+        // An injected client is left alone: its owner chose its stack,
+        // and can guard it with OfflineGuard::push() or wrap it in
+        // OfflineGuardClient.
+        $this->httpClient = $httpClient ?? new Client(['handler' => OfflineGuard::stack()]);
     }
 
     /**
@@ -85,6 +92,22 @@ class ApiClient
         }
 
         $options['http_errors'] = false;
+
+        // Redirects stay available — an API may legitimately move a resource —
+        // but a downgrade must be impossible. `protocols` confines redirect
+        // targets to https so credentials never follow a 302 onto cleartext;
+        // `strict` keeps POST/PUT bodies from silently becoming GETs on 301/302.
+        // Applied last so caller-supplied options cannot widen it.
+        $redirects = $options['allow_redirects'] ?? [];
+        $options['allow_redirects'] = array_merge(
+            is_array($redirects) ? $redirects : [],
+            [
+                'max' => 5,
+                'strict' => true,
+                'protocols' => ['https'],
+                'referer' => false,
+            ],
+        );
 
         $response = $this->httpClient->request($method, $url, $options);
         $status = $response->getStatusCode();

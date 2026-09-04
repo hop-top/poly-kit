@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "note": "Cross-language on-store envelope for kit/storage/httpcache. A cached response is persisted as a single JSON object with exactly three fields: status, headers, body. Ports MUST read and write byte-identical envelopes so they can share one kv backend. encode_cases pin what a port writes; decode_cases pin what a port must accept when reading an envelope another port wrote.",
+  "schema": {
+    "fields": ["status", "headers", "body"],
+    "field_order": "Serialized in declaration order: status, headers, body. Readers MUST NOT depend on key order; writers SHOULD emit this order.",
+    "unknown_fields": "Ignored on decode, so a v2 may add fields without breaking v1 readers.",
+    "status": {
+      "type": "integer",
+      "note": "HTTP status code. Only 2xx is ever stored (see cacheability.json), but the envelope itself imposes no range check on decode. The reason phrase is NOT stored; a reader derives it from the code."
+    },
+    "headers": {
+      "type": "object mapping string to array of string",
+      "note": "Multi-value semantics are preserved: every value is an ARRAY, even single-valued headers. A port that serializes headers as a flat string map loses duplicate Set-Cookie / Vary values and breaks the contract.",
+      "key_casing": "Keys are stored in HTTP canonical form (each dash-separated token capitalized: content-type -> Content-Type, ETAG -> Etag). Lookup remains case-insensitive in the reconstructed response, but the stored bytes use canonical casing.",
+      "value_order": "Order within a key's array is significant and preserved.",
+      "null_handling": "A null headers field decodes to an empty header set, not an error."
+    },
+    "body": {
+      "type": "string",
+      "encoding": "standard base64 (RFC 4648 section 4), WITH padding",
+      "alphabet": "A-Z a-z 0-9 + / with = padding. NOT the URL-safe alphabet: - and _ are rejected on decode.",
+      "note": "This matches Go encoding/json's default []byte marshalling. Ports whose serializer defaults to an array of byte numbers (for example serde's default for Vec<u8>) MUST override it to emit a base64 string, and MUST NOT emit unpadded base64.",
+      "empty": "Zero-length body serializes as the empty string \"\".",
+      "null_handling": "A null body decodes to a zero-length body, not an error."
+    }
+  },
+  "porting_notes": {
+    "note": "This envelope is satisfiable with a mainstream JSON serializer, a base64 codec, and a sha256 implementation. No custom or exotic dependency is required; the two places a default serializer diverges are called out below.",
+    "body_representation": "The commonest divergence: many serializers render a byte-sequence type as a JSON ARRAY OF NUMBERS ([104,105]) rather than a base64 STRING (\"aGk=\"). That produces an envelope no other port can read. Model body as a string field and base64-encode/decode explicitly at the boundary, or attach a base64 codec attribute to the field. Do not accept the serializer default without checking what it emits.",
+    "body_alphabet": "Use the STANDARD base64 alphabet WITH padding. Not URL-safe, not unpadded, not MIME-wrapped. A decoder configured for the URL-safe or no-pad alphabet will reject conforming envelopes and emit non-conforming ones.",
+    "headers_representation": "Model headers as a map from string to a LIST of strings. A map to a bare string is lossy and non-conforming. Write keys in HTTP canonical casing; compare case-insensitively on read.",
+    "decode_leniency": "Accept null and missing headers/body as empty. Reject malformed JSON and malformed base64 — but treat rejection as a cache MISS, never as an error surfaced to the caller.",
+    "field_order": "Emit status, headers, body in that order so envelopes are byte-comparable across ports. Serializers that emit struct fields in declaration order do this for free; ones that sort keys alphabetically will produce body, headers, status and fail byte-exact comparison while remaining semantically valid."
+  },
+  "framing_headers": {
+    "strip": ["Content-Length", "Transfer-Encoding", "Connection"],
+    "note": "These describe the wire framing of the ORIGINAL transfer, not the cached payload. The transport has already dechunked the body, so the stored bytes are authoritative for length. Carrying them into a reconstructed response produces states the HTTP spec forbids (for example a chunked Transfer-Encoding alongside an explicit content length).",
+    "strip_at": "encode — the stored envelope never contains them",
+    "strip_is_case_insensitive": true,
+    "strip_mutates_source_response": false,
+    "recompute_on_decode": "The reconstructed response's content-length is set from the decoded body length, as a response-level field. It is NOT re-added to the headers map.",
+    "decode_tolerance": "If an envelope written by a non-conforming port does contain a framing header, a reader MAY pass it through; the recomputed body length still wins."
+  },
+  "decode_response": {
+    "note": "Fields a port sets on the response it reconstructs from an envelope.",
+    "status_code": "from status",
+    "reason_phrase": "derived from status, not stored",
+    "protocol": "HTTP/1.1",
+    "headers": "from headers, or empty when null",
+    "body": "a fresh replayable reader over the decoded bytes",
+    "content_length": "byte length of the decoded body",
+    "request": "associated with the request that triggered the lookup"
+  },
+  "encode_cases": [
+    {
+      "name": "minimal 200 with body",
+      "status": 200,
+      "headers": { "Content-Type": ["text/plain"] },
+      "body_utf8": "hello",
+      "want_json": "{\"status\":200,\"headers\":{\"Content-Type\":[\"text/plain\"]},\"body\":\"aGVsbG8=\"}"
+    },
+    {
+      "name": "header keys are canonicalized",
+      "note": "Input key \"content-type\" is stored as \"Content-Type\".",
+      "status": 200,
+      "headers": { "content-type": ["text/plain"] },
+      "body_utf8": "hello",
+      "want_json": "{\"status\":200,\"headers\":{\"Content-Type\":[\"text/plain\"]},\"body\":\"aGVsbG8=\"}"
+    },
+    {
+      "name": "multi-value header preserves order",
+      "status": 200,
+      "headers": { "X-Multi": ["a", "b"] },
+      "body_utf8": "hello",
+      "want_json": "{\"status\":200,\"headers\":{\"X-Multi\":[\"a\",\"b\"]},\"body\":\"aGVsbG8=\"}"
+    },
+    {
+      "name": "framing headers are stripped",
+      "note": "Content-Length, Transfer-Encoding and Connection never reach the store; X-Keep does.",
+      "status": 200,
+      "headers": {
+        "X-Keep": ["yes"],
+        "Content-Length": ["5"],
+        "Transfer-Encoding": ["chunked"],
+        "Connection": ["keep-alive"]
+      },
+      "body_utf8": "hello",
+      "want_json": "{\"status\":200,\"headers\":{\"X-Keep\":[\"yes\"]},\"body\":\"aGVsbG8=\"}"
+    },
+    {
+      "name": "framing header strip is case-insensitive",
+      "status": 200,
+      "headers": { "content-length": ["5"], "TRANSFER-ENCODING": ["chunked"], "connection": ["close"] },
+      "body_utf8": "hello",
+      "want_json": "{\"status\":200,\"headers\":{},\"body\":\"aGVsbG8=\"}"
+    },
+    {
+      "name": "empty body serializes as empty string",
+      "status": 204,
+      "headers": {},
+      "body_utf8": "",
+      "want_json": "{\"status\":204,\"headers\":{},\"body\":\"\"}"
+    },
+    {
+      "name": "no headers serializes as empty object",
+      "status": 200,
+      "headers": {},
+      "body_utf8": "hi",
+      "want_json": "{\"status\":200,\"headers\":{},\"body\":\"aGk=\"}"
+    },
+    {
+      "name": "binary body uses the standard base64 alphabet",
+      "note": "Bytes chosen to exercise both + and / in the output; a URL-safe encoder would emit - and _ here and break the contract.",
+      "status": 200,
+      "headers": {},
+      "body_base64": "+/+/",
+      "want_json": "{\"status\":200,\"headers\":{},\"body\":\"+/+/\"}"
+    },
+    {
+      "name": "binary body with NUL and high bytes",
+      "status": 200,
+      "headers": { "X-Bin": ["v"] },
+      "body_base64": "AP/+AQI=",
+      "want_json": "{\"status\":200,\"headers\":{\"X-Bin\":[\"v\"]},\"body\":\"AP/+AQI=\"}"
+    },
+    {
+      "name": "base64 padding is emitted",
+      "note": "One residual byte pads with two '='; two residual bytes pad with one '='.",
+      "status": 200,
+      "headers": {},
+      "body_base64": "AQ==",
+      "want_json": "{\"status\":200,\"headers\":{},\"body\":\"AQ==\"}"
+    },
+    {
+      "name": "non-ASCII body is base64 of its UTF-8 bytes",
+      "status": 200,
+      "headers": { "Content-Type": ["text/plain; charset=utf-8"] },
+      "body_utf8": "café",
+      "want_json": "{\"status\":200,\"headers\":{\"Content-Type\":[\"text/plain; charset=utf-8\"]},\"body\":\"Y2Fmw6k=\"}"
+    }
+  ],
+  "decode_cases": [
+    {
+      "name": "round-trips a well-formed envelope",
+      "json": "{\"status\":200,\"headers\":{\"X-Multi\":[\"a\",\"b\"]},\"body\":\"aGVsbG8=\"}",
+      "want_ok": true,
+      "want_status": 200,
+      "want_headers": { "X-Multi": ["a", "b"] },
+      "want_body_utf8": "hello",
+      "want_content_length": 5
+    },
+    {
+      "name": "null headers decode to an empty header set",
+      "json": "{\"status\":200,\"headers\":null,\"body\":\"aGk=\"}",
+      "want_ok": true,
+      "want_status": 200,
+      "want_headers": {},
+      "want_body_utf8": "hi",
+      "want_content_length": 2
+    },
+    {
+      "name": "null body decodes to a zero-length body",
+      "json": "{\"status\":204,\"headers\":{},\"body\":null}",
+      "want_ok": true,
+      "want_status": 204,
+      "want_headers": {},
+      "want_body_utf8": "",
+      "want_content_length": 0
+    },
+    {
+      "name": "missing fields default rather than error",
+      "json": "{\"status\":200}",
+      "want_ok": true,
+      "want_status": 200,
+      "want_headers": {},
+      "want_body_utf8": "",
+      "want_content_length": 0
+    },
+    {
+      "name": "unknown fields are ignored",
+      "note": "Forward compatibility seam: a v2 writer may add fields a v1 reader does not know.",
+      "json": "{\"status\":200,\"headers\":{},\"body\":\"aGk=\",\"future\":{\"vary\":[\"Accept\"]}}",
+      "want_ok": true,
+      "want_status": 200,
+      "want_headers": {},
+      "want_body_utf8": "hi",
+      "want_content_length": 2
+    },
+    {
+      "name": "content length is recomputed from the body, not from a stored header",
+      "note": "Even if a non-conforming writer leaves Content-Length in the map, the decoded body length is authoritative.",
+      "json": "{\"status\":200,\"headers\":{\"Content-Length\":[\"999\"]},\"body\":\"aGVsbG8=\"}",
+      "want_ok": true,
+      "want_status": 200,
+      "want_body_utf8": "hello",
+      "want_content_length": 5
+    },
+    {
+      "name": "unpadded base64 is rejected",
+      "note": "Decode failure is not fatal to the caller: httpcache degrades a bad entry to a cache miss.",
+      "json": "{\"status\":200,\"headers\":{},\"body\":\"aGk\"}",
+      "want_ok": false
+    },
+    {
+      "name": "URL-safe base64 is rejected",
+      "json": "{\"status\":200,\"headers\":{},\"body\":\"-_8=\"}",
+      "want_ok": false
+    },
+    {
+      "name": "malformed JSON is rejected",
+      "json": "{\"status\":200,",
+      "want_ok": false
+    }
+  ]
+}

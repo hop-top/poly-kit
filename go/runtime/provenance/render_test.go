@@ -72,7 +72,7 @@ func TestRender_StrictMode_MissingProvenance_RefusesEmit(t *testing.T) {
 	var oe *output.Error
 	require.True(t, errors.As(err, &oe), "expected *output.Error, got %T", err)
 	assert.Equal(t, output.CodeProvenanceMissing, oe.Code)
-	assert.Equal(t, 6, oe.ExitCode)
+	assert.Equal(t, output.ExitProvenanceMissing, oe.ExitCode)
 	assert.Contains(t, oe.Cause, "/cohort")
 	// And NO bytes hit the writer.
 	assert.Empty(t, buf.String())

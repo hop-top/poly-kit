@@ -37,6 +37,21 @@ files:
     - "devcontainer/README.md"
     - "docs/README.md"
     - "scripts/README.md"
+    # Managed-block emitter machinery: consumed by `kit init --update`
+    # from the embedded copy, never rendered into projects. Several are
+    # bash/bats with {{...}}-shaped content that trips text/template.
+    - "emit-*.sh"
+    - "*.bats"
+    - "apply-services.sh"
+    # Experimental CI templates carrying GitHub-Actions ${{ }} syntax
+    # that collides with text/template; no core runtime selects them.
+    - "ci/ci-kotlin.yml.tmpl"
+    - "ci/ci-swift.yml.tmpl"
+    - "managed-block.sh"
+    - "tool-versions.toml"
+    - "services/*"
+    - "services/env/*"
+    - "devcontainer/*"
   binary: []
 
 render_rules:

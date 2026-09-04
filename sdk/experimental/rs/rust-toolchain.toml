@@ -1,0 +1,16 @@
+# Pinned so `cargo fmt --check` and `clippy -D warnings` are reproducible.
+#
+# Both gates are version-sensitive: rustfmt's line-breaking and clippy's
+# lint set change between releases, so a floating `stable` lets an
+# upstream Rust release turn CI red on a PR that changed nothing.
+#
+# Bumping is a deliberate change: raise the version, run `make lint-rs`,
+# and land any resulting reformat or lint fixes in the same commit.
+#
+# CI must pass this version to dtolnay/rust-toolchain explicitly. That
+# action takes `toolchain` as a required input and runs `rustup default`
+# with it, so it does NOT read this file — keep the two in step.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

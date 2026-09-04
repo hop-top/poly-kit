@@ -6,6 +6,7 @@ namespace HopTop\Kit\Output;
 
 use HopTop\Kit\Output\Formatter\ColumnSpec;
 use HopTop\Kit\Output\Formatter\Options as OptionsParser;
+use HopTop\Kit\Output\Formatter\Projection;
 use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\Console\Application;
@@ -28,6 +29,11 @@ use Symfony\Component\Console\Output\StreamOutput;
  *      formatter is a hard error.
  *   5. --template: render template against data, return.
  *   6. Else: parseOptions, validateCols, formatter.render.
+ *
+ * Column ordering, on both the template and the formatter path:
+ *   --cols wins (it reorders as well as selects), else the ColumnSpec list
+ *   order, else the payload's own key order. header == key throughout, so
+ *   --cols validation and row lookup match on one name.
  */
 final class Dispatcher
 {
@@ -35,7 +41,10 @@ final class Dispatcher
     private const DEFAULT_FORMAT = 'table';
 
     /**
-     * @param list<ColumnSpec>|null $columns Schema for --cols validation
+     * @param list<ColumnSpec>|null $columns Column schema. Supplies the
+     *        default column order and headers, and doubles as the valid-
+     *        name set for --cols. Null/empty falls back to payload key
+     *        order.
      */
     public static function dispatch(
         InputInterface $input,
@@ -88,13 +97,24 @@ final class Dispatcher
             }
             /** @var list<string> $pairs */
             $pairs = (array) $input->getOption('format-opt');
-            $opts = OptionsParser::parse(array_values($pairs), $formatter->options());
+            $opts = OptionsParser::parse($pairs, $formatter->options());
 
             if ($cols !== [] && $columns !== null && $columns !== []) {
                 self::validateCols($cols, $columns);
             }
 
-            $formatter->render($writer, $data, $opts, $cols);
+            // The schema is not merely a validation gate: it is the default
+            // column order and header source when the user passed no --cols.
+            // Collapse both sources into one ordered list here so the
+            // precedence rule lives in exactly one place and Formatter's
+            // public signature stays put — third-party formatters pick up
+            // correct ordering without changing their render().
+            $formatter->render(
+                $writer,
+                $data,
+                $opts,
+                Projection::resolveEffectiveCols($cols, $columns),
+            );
         } finally {
             $close();
         }
@@ -222,6 +242,10 @@ final class Dispatcher
     }
 
     /**
+     * Reject --cols names absent from the schema. header == key, so the
+     * name checked here is the same name the formatter looks up on the row
+     * — one operation, one name, no header/key mapping table.
+     *
      * @param list<string>     $cols
      * @param list<ColumnSpec> $schema
      */
@@ -240,9 +264,20 @@ final class Dispatcher
     }
 
     /**
-     * Minimal `{key}` substitution against each row of $data. Full template
-     * engine (eta/Jinja parity) deferred to Phase-3; this is enough for
+     * Minimal `{key}` substitution against each row of $data, plus a `{*}`
+     * placeholder that expands to every resolved column's value, tab-
+     * separated, in resolved order. Full template engine (eta/Jinja
+     * parity) deferred to Phase-3; this is enough for
      * `--template '{name}\t{count}'`-style use cases.
+     *
+     * `{*}` is this renderer's analogue of the ordered `cols` variable py's
+     * Jinja path exposes: the column order comes from the ColumnSpec list
+     * when one was supplied, and falls back to payload key order otherwise.
+     * The template path is bound by the same ordering contract as the
+     * formatter path — the schema is consulted here too.
+     *
+     * --template and --cols are mutually exclusive, so there is no user
+     * projection to outrank the schema on this path.
      *
      * @param list<ColumnSpec>|null $columns
      */
@@ -252,14 +287,27 @@ final class Dispatcher
         mixed $data,
         ?array $columns,
     ): void {
-        unset($columns); // schema not consulted in minimal renderer
-        $rows = is_array($data) && array_is_list($data) ? $data : [$data];
+        $rows = Projection::normalize($data);
+        $resolved = Projection::resolveColumns(
+            $rows,
+            Projection::resolveEffectiveCols([], $columns),
+        );
         foreach ($rows as $row) {
             $line = preg_replace_callback(
-                '/\{([a-zA-Z0-9_.-]+)\}/',
-                static function (array $m) use ($row): string {
+                '/\{(\*|[a-zA-Z0-9_.-]+)\}/',
+                static function (array $m) use ($row, $resolved): string {
                     $k = $m[1];
-                    if (is_array($row) && array_key_exists($k, $row)) {
+                    if (!is_array($row)) {
+                        return '';
+                    }
+                    if ($k === '*') {
+                        $vals = [];
+                        foreach ($resolved as $c) {
+                            $vals[] = array_key_exists($c, $row) ? (string) $row[$c] : '';
+                        }
+                        return implode("\t", $vals);
+                    }
+                    if (array_key_exists($k, $row)) {
                         return (string) $row[$k];
                     }
                     return '';

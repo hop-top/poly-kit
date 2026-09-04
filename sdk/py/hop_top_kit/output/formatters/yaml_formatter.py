@@ -1,13 +1,21 @@
-"""yaml built-in formatter — PyYAML safe_dump."""
+"""yaml built-in formatter — PyYAML safe_dump.
+
+Key order mirrors the tabular formatters: ``columns`` sets it, ``cols``
+reorders + selects, payload insertion order is the fallback.
+"""
 
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 import yaml
 
 from hop_top_kit.output.formatter import OptionSpec
+from hop_top_kit.output.projection import project_payload
+
+if TYPE_CHECKING:
+    from hop_top_kit.output.formatter import ColumnSpec
 
 
 class YAMLFormatter:
@@ -30,11 +38,13 @@ class YAMLFormatter:
         data: Any,
         opts: dict[str, Any],
         cols: list[str],
+        columns: list[ColumnSpec] | None = None,
     ) -> None:
         flow = opts.get("default-flow-style", False)
+        keys = cols or [c.header for c in columns or []]
         out.write(
             yaml.safe_dump(
-                _to_yaml_safe(data),
+                _to_yaml_safe(project_payload(data, keys)),
                 default_flow_style=flow,
                 sort_keys=False,
             )

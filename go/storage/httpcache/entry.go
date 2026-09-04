@@ -8,12 +8,13 @@ import (
 )
 
 // entry is the on-store representation of a cached response. It is a
-// language-neutral JSON envelope — NOT a Go-specific wire dump — so the
-// TS and Python parity ports serialize to the identical shape and can
-// share both a kv backend and the cross-language test vectors.
+// language-neutral JSON envelope — NOT a Go-specific wire dump — so
+// parity ports serialize to the identical shape and can share both a kv
+// backend and the cross-language test vectors.
 //
-// Contract (contracts/httpcache-v1): field names are lowercase, Body is
-// standard base64 (encoding/json's []byte default), Headers preserves
+// Contract (contracts/httpcache-v1/entry.json): field names are
+// lowercase and emitted in declaration order, Body is standard base64
+// WITH padding (encoding/json's []byte default), Headers preserves
 // multi-value semantics as a map of slices.
 type entry struct {
 	Status  int                 `json:"status"`

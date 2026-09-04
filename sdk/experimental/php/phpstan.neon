@@ -1,0 +1,20 @@
+# Shipped code is gated at level 5 — the first level that reports argument
+# type mismatches, which is the check most worth having here. src/ passes
+# it clean.
+#
+# tests/ is gated at 2 via a second pass because one helper blocks 3 and
+# up: HttpsSinkTest::clientWith() hands an array by reference to Guzzle's
+# Middleware::history(), whose container is untyped and inferred as
+# array|ArrayAccess<int, array>. By-ref parameters must match the callee
+# exactly, so closing it means widening the helper's own signature to
+# accept an ArrayAccess it is never called with. Fold tests/ back into the
+# level 5 run above once that helper is retyped; nothing else in tests/
+# fails at 5.
+#
+# Level 6 would cost 3 errors in src/ (missing iterable value types).
+#
+# No baseline and no ignore list: every error reported here is a real one.
+parameters:
+    level: 5
+    paths:
+        - src

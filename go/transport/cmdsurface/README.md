@@ -165,20 +165,64 @@ unauthenticated → `CodeUnauthenticated`. See
 func MountMCP(b *Bridge, r *api.Router, opts ...MCPOption) error
 ```
 
-Wire shape: MCP JSON-RPC 2.0 at the configured path (default `/mcp`).
-Supports `initialize`, `tools/list`, `tools/call`. Tool name is the
-dotted leaf path (e.g. `widget.add`). Flag schema is derived from the
-leaf's pflag set; `Result.Stdout` becomes a text content block, non-zero
-`ExitCode` sets `isError: true`.
+Wire shape: MCP JSON-RPC 2.0 at the configured path (default `/mcp`),
+serving **both protocol revisions from the one mount**:
+
+- **2024-11-05** — `initialize`, `tools/list`, `tools/call`; plain
+  JSON-RPC bodies, no required headers.
+- **2026-07-28** — stateless per-request `_meta` (reserved
+  `io.modelcontextprotocol/*` keys), `server/discover`, header
+  routing with `MCP-Protocol-Version` / `Mcp-Method` / `Mcp-Name`
+  header-body validation (`-32020` on mismatch), `resultType` +
+  serverInfo-stamped result envelopes, `ttlMs` / `cacheScope` cache
+  hints on list results, and GET / DELETE answered with 405.
+
+Each POST routes to exactly one revision's handler by per-request
+detection: `initialize` is always legacy; a modern marker
+(`Mcp-Method` / `Mcp-Name` header, the reserved `_meta`
+protocolVersion key, or `method: "server/discover"`) routes modern;
+everything else takes the legacy path byte-for-byte unchanged. Full
+precedence rules: `docs/adr/0004-mcp-dual-spec-surface.md`.
+
+Tool name is the dotted leaf path (e.g. `widget.add`). Flag schema is
+derived from the leaf's pflag set; `Result.Stdout` becomes a text
+content block, non-zero `ExitCode` sets `isError: true`. The modern
+path additionally emits `Result.Data` as `structuredContent`.
 
 Options:
 
 - `WithMCPPath(path string)` — override `/mcp`.
 - `WithMCPServerInfo(name, version string)` — identity returned by
-  `initialize`.
+  `initialize`, reported by `server/discover`, and stamped into every
+  modern result's `_meta` serverInfo.
+- `WithMCPSpecVersions(versions ...MCPSpecVersion)` — pin the enabled
+  revision set (`MCPSpec20241105`, `MCPSpec20260728`); absent = both.
+  An empty call or an unrecognized version fails the mount.
+- `WithMCPCacheHints(ttl time.Duration, scope MCPCacheScope)` — set
+  `ttlMs` / `cacheScope` on modern `server/discover` and `tools/list`
+  results; absent = `0` / `"private"`. A negative ttl or unknown
+  scope fails the mount.
+- `WithMCPOriginAllowlist(origins ...string)` — exact-match `Origin`
+  validation on the modern path (403 on mismatch); absent = no check.
+  Configure it (or bind to localhost) on any routable deployment.
+- `WithMCPConfirmationKey(key []byte)` — enable the spec 2026-07-28
+  MRTR confirmation flow for `kit/requires-confirmation` leaves on
+  the modern path: clients declaring the `elicitation` capability get
+  a `resultType: "input_required"` round-trip with an HMAC-SHA-256
+  protected `requestState` instead of the `X-Confirm-Token` header
+  gate (which remains for everyone else). Key must be non-empty and
+  shared across instances; mount fails on an empty key.
+
+The declarative `mcp:` config block (`MCPConfig`) mirrors these
+options field-for-field; `FromConfig` parses it but does not mount —
+adopters translate it to options themselves, like the webhook / bus /
+cron blocks.
 
 Protocol reference: <https://modelcontextprotocol.io/specification>.
-See `go/transport/cmdsurface/surface_mcp_test.go`.
+Adopter walkthrough: `docs/adopters/guides/expose-cli-over-mcp.md`.
+See `go/transport/cmdsurface/surface_mcp_test.go`,
+`surface_mcp_dispatch_test.go`, `surface_mcp_modern_test.go`, and
+`surface_mcp_modern_confirm_test.go`.
 
 ### WebSocket
 
@@ -381,6 +425,16 @@ Options:
 - `WithOAuthAuthorizeFn(fn func(provider string) (string, error))` —
   return the upstream provider's authorize URL.
 
+RFC 9207 issuer validation: set `OAuthProvider.ExpectedIssuer` to
+the provider's issuer identifier (absolute URL, no query/fragment —
+checked at mount) and the callback requires an `iss` query parameter
+equal to it (simple string comparison) on every response, error
+responses included, rejecting with `missing_iss` / `issuer_mismatch`
+before provider-error handling and state consumption. The validated
+issuer rides `Meta.Extra["oauth_issuer"]`; map `"iss"` in
+`FlagFromQuery` to hand it to the leaf. Unset = check disabled. See
+`go/transport/cmdsurface/surface_oauth_iss_test.go`.
+
 `InMemoryStateStore` is provided for single-process adopters; multi-
 replica deployments wire a shared store. Leaves with
 `Class.RequiresConfirmation` are refused at mount (redirect flow has
@@ -461,7 +515,11 @@ Sinks are orthogonal fan-out targets. `Sink.Emit(ctx, inv, res, err)`
 is the contract; `SinkSet` is a slice of `SinkSpec` filters (by
 surface, path pattern, success/error). The package does NOT call sinks
 automatically — adopters wrap their `Runner` with a thin adapter that
-delegates and emits (see the `sinkRunner` pattern below).
+delegates and emits (see the `sinkRunner` pattern below). Note that
+runner-wrapping sinks only observe invocations that reach the
+`Runner`: pre-flight refusal audit events (such as the modern MCP
+confirmation-state rejection) are emitted to bridge-registered sinks
+(`Bridge.Sinks()`) only.
 
 Built-in implementations:
 
@@ -589,8 +647,6 @@ user-facing consent UX — see the adopter guide cross-link below.
 - kit-telemetry package: `hops/main/go/runtime/telemetry/README.md`
 - Adopter consent flow + `kit telemetry` subcommands:
   `hops/main/docs/adopters/guides/telemetry.md`
-- Design note (Anon/Full allow-list, size cap rationale, trace
-  population status): `.tlc/tracks/cmdsurf-telemetry/design-note.md`
 - Working wiring example:
   `hops/main/examples/cmdsurface/telemetry.go`
 
@@ -803,7 +859,7 @@ Three primary risks the bridge defends against:
    because the signed URL IS the auth; the destructive ceiling
    still applies.
 
-Full design and surface inventory: `.tlc/tracks/cmdsurf/spec.md`.
+The surface matrix above is the full surface inventory.
 
 ## Status
 
@@ -851,5 +907,4 @@ Cross-references: `go/transport/cmdsurface/bridge_test.go`,
 `go/transport/cmdsurface/sink_test.go`,
 `examples/cmdsurface/main.go`,
 `examples/cmdsurface/setup.go`,
-`examples/cmdsurface/sinkrunner.go`,
-`.tlc/tracks/cmdsurf/spec.md`.
+`examples/cmdsurface/sinkrunner.go`.

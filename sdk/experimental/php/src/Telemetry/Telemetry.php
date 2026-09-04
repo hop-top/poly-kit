@@ -26,7 +26,13 @@ use Throwable;
  *   * `none`          → no-op (envelope is dropped silently).
  *   * `https`         → not wired by the facade; adopters who need
  *                       HTTPS construct {@see Sink\HttpsSink} themselves
- *                       and pass it to {@see setSink()}.
+ *                       and pass it to {@see setSink()}. Setting the env
+ *                       var to `https` reports via
+ *                       {@see setSinkErrReporter()} and falls back to
+ *                       JsonlSink.
+ *   * anything else   → reported via {@see setSinkErrReporter()}, then
+ *                       JsonlSink. An explicitly-set value is never
+ *                       ignored without a diagnostic.
  *
  * Attributes are routed through {@see Redactor} before emission. In
  * Anonymous mode the attrs are dropped entirely (envelope still carries
@@ -40,6 +46,9 @@ final class Telemetry
 {
     private static ?SinkInterface $sink = null;
     private static ?Redactor $redactor = null;
+
+    /** @var (callable(string): void)|null */
+    private static $sinkErrReporter = null;
 
     /**
      * Record an event. No-op when telemetry is off or consent is denied.
@@ -105,6 +114,37 @@ final class Telemetry
     }
 
     /**
+     * Install the receiver for sink-selection diagnostics. Pass null to
+     * restore the no-op default.
+     *
+     * Process-wide by design: the sink is itself process-wide
+     * configuration, so the reporter follows the same scope. Adopters
+     * who want misconfiguration surfaced wire this to their logger:
+     *
+     * ```php
+     * Telemetry::setSinkErrReporter(
+     *     static fn (string $m) => error_log($m),
+     * );
+     * ```
+     *
+     * @param (callable(string): void)|null $reporter
+     */
+    public static function setSinkErrReporter(?callable $reporter): void
+    {
+        self::$sinkErrReporter = $reporter;
+    }
+
+    /**
+     * @return callable(string): void
+     */
+    private static function noopReporter(): callable
+    {
+        return static function (string $message): void {
+            // Quiet by default; see setSinkErrReporter().
+        };
+    }
+
+    /**
      * Force the next call to `record()` to flush the active sink.
      * Adopters running long-lived CLIs may call this periodically.
      */
@@ -124,6 +164,7 @@ final class Telemetry
     {
         self::$sink = null;
         self::$redactor = null;
+        self::$sinkErrReporter = null;
     }
 
     private static function sink(): SinkInterface
@@ -133,12 +174,49 @@ final class Telemetry
         }
 
         $choice = strtolower(trim((string) getenv('KIT_TELEMETRY_SINK')));
+
+        if ($choice === 'https') {
+            self::warn(
+                'KIT_TELEMETRY_SINK=https is not selectable via the '
+                . 'environment; construct Sink\HttpsSink and pass it to '
+                . 'Telemetry::setSink(). Falling back to the JSONL sink.',
+            );
+        } elseif ($choice !== '' && $choice !== 'jsonl' && $choice !== 'none') {
+            self::warn(sprintf(
+                'KIT_TELEMETRY_SINK=%s is not a supported value '
+                . '(expected "jsonl" or "none"). Falling back to the '
+                . 'JSONL sink.',
+                $choice,
+            ));
+        }
+
         self::$sink = match ($choice) {
             'none' => new NullSink(),
             default => new JsonlSink(),
         };
 
         return self::$sink;
+    }
+
+    /**
+     * Report a sink misconfiguration. Mirrors the Go bus env-sink
+     * contract (go/runtime/bus/env_sink.go): diagnostics go to the
+     * installed reporter, which defaults to a no-op so the SDK stays
+     * stderr-quiet under php-fpm — a library must never write to a
+     * stream that may be the live response body.
+     *
+     * Never throws: a reporter that raises is swallowed, because
+     * telemetry stays best-effort even when misconfigured.
+     */
+    private static function warn(string $message): void
+    {
+        try {
+            (self::$sinkErrReporter ?? self::noopReporter())(
+                'kit telemetry: ' . $message,
+            );
+        } catch (Throwable) {
+            // see record()
+        }
     }
 
     private static function redactor(): Redactor

@@ -1,0 +1,33 @@
+module TypedConfig
+
+/// @wizard.group "Basics"
+/// Service name
+name: String = "svc"
+
+/// @wizard.group "Limits"
+/// Retry count
+retries: Int = 3
+
+/// @wizard.group "Limits"
+/// Sample ratio
+ratio: Float = 0.5
+
+/// @wizard.group "Limits"
+/// Enable feature
+enabled: Boolean = true
+
+/// @wizard.group "Basics"
+/// Environment
+env: "dev"|"prod" = "dev"
+
+/// @wizard.group "Basics"
+/// Request timeout
+timeout: String = "30s"
+
+/// @wizard.group "Basics"
+/// Feature tags
+tags: Listing<String> = new { "alpha" }
+
+output {
+  renderer = new JsonRenderer {}
+}

@@ -12,44 +12,70 @@ import (
 )
 
 // Code* constants for the conformance-client sentinel set. Code values
-// are emitted in the JSON envelope on stderr; exit codes are assigned
-// .
+// are emitted in the JSON envelope on stderr.
+//
+// Exit codes follow the reconciled 12fc taxonomy: usage-class
+// rejections on the shared slot 2, auth on 5, transient service
+// blips on 6, rate-limiting on kit's band code 64, and the grade
+// verdicts on the band (68/69, see ExitGradeFail below).
 const (
-	CodeServiceUnavailable = "SERVICE_UNAVAILABLE" // exit 4
-	CodeServiceAuthFailed  = "SERVICE_AUTH_FAILED" // exit 5
-	CodeServiceUsage       = "SERVICE_USAGE"       // exit 3
-	CodeCassettePack       = "CASSETTE_PACK_FAILED"
-	CodeCassetteTooLarge   = "CASSETTE_TOO_LARGE" // exit 3
-	CodeManifestParse      = "MANIFEST_PARSE_FAILED"
-	CodeGradeFail          = "GRADE_FAIL"       // exit 2
-	CodeGradeUngradable    = "GRADE_UNGRADABLE" // exit 2
-	CodeRateLimited        = "RATE_LIMITED"     // exit 4
-	CodeUnauthorized       = "UNAUTHORIZED"     // alias for service-auth
+	CodeServiceUnavailable = "SERVICE_UNAVAILABLE"   // exit 6 (transient)
+	CodeServiceAuthFailed  = "SERVICE_AUTH_FAILED"   // exit 5 (auth)
+	CodeServiceUsage       = "SERVICE_USAGE"         // exit 2 (usage)
+	CodeCassettePack       = "CASSETTE_PACK_FAILED"  // exit 1 (general local failure)
+	CodeCassetteTooLarge   = "CASSETTE_TOO_LARGE"    // exit 2 (usage)
+	CodeManifestParse      = "MANIFEST_PARSE_FAILED" // exit 2 (usage)
+	CodeGradeFail          = "GRADE_FAIL"            // exit 68 (band)
+	CodeGradeUngradable    = "GRADE_UNGRADABLE"      // exit 69 (band)
+	CodeRateLimited        = "RATE_LIMITED"          // exit 64 (kit band, transient)
+	CodeUnauthorized       = "UNAUTHORIZED"          // alias for service-auth
+)
+
+// Grade-verdict band codes. The 12fc taxonomy reserves 0-6 for the
+// shared failure classes and leaves >6 to documented per-tool codes.
+// Kit's band so far: 64 RATE_LIMITED + 65 PROVENANCE_MISSING (both in
+// go/console/output) and 66 LEAK_DETECTED + 67 CONFIG (conformance
+// tree). The two grade verdicts continue that allocation: they are
+// tool-specific outcomes — "the graded CLI did not pass" is neither a
+// usage error nor any other shared class — so they must not squat on
+// the low slots agents branch on.
+const (
+	// ExitGradeFail is the exit code for verdict=fail: the scenario
+	// was graded and did not pass.
+	ExitGradeFail = 68
+
+	// ExitGradeUngradable is the exit code for verdict=ungradable:
+	// the service could not evaluate the cassette (stale story hash,
+	// missing scenario, ...). Distinct from ExitGradeFail so agents
+	// can branch to "re-record the cassette" instead of "fix the CLI"
+	// without parsing stderr.
+	ExitGradeUngradable = 69
 )
 
 // Sentinel identity values. Use errors.Is(err, ErrFoo) to match.
 // Wrap with the matching constructor (e.g. ServiceUnavailableError)
 // to attach detail while preserving identity.
 var (
-	ErrServiceUnreachable = &sentinel{code: CodeServiceUnavailable, exit: 4, msg: "grade service unavailable"}
+	ErrServiceUnreachable = &sentinel{code: CodeServiceUnavailable, exit: output.ExitTransient, transience: output.TransienceTransient, msg: "grade service unavailable"}
 	ErrServiceUnavailable = ErrServiceUnreachable // alias to match design.md vocab
-	ErrServiceAuthFailed  = &sentinel{code: CodeServiceAuthFailed, exit: 5, msg: "grade service auth failed"}
+	ErrServiceAuthFailed  = &sentinel{code: CodeServiceAuthFailed, exit: 5, transience: output.TransiencePermanent, msg: "grade service auth failed"}
 	ErrUnauthorized       = ErrServiceAuthFailed
-	ErrServiceUsage       = &sentinel{code: CodeServiceUsage, exit: 3, msg: "grade service rejected request"}
-	ErrCassettePack       = &sentinel{code: CodeCassettePack, exit: 5, msg: "could not pack cassette"}
-	ErrCassetteTooLarge   = &sentinel{code: CodeCassetteTooLarge, exit: 3, msg: "cassette exceeds size limit"}
-	ErrManifestParse      = &sentinel{code: CodeManifestParse, exit: 3, msg: "could not parse manifest.yaml"}
-	ErrGradeFail          = &sentinel{code: CodeGradeFail, exit: 2, msg: "grade verdict: fail"}
-	ErrGradeUngradable    = &sentinel{code: CodeGradeUngradable, exit: 2, msg: "grade verdict: ungradable"}
-	ErrRateLimited        = &sentinel{code: CodeRateLimited, exit: 4, msg: "grade service rate-limited"}
+	ErrServiceUsage       = &sentinel{code: CodeServiceUsage, exit: 2, transience: output.TransiencePermanent, msg: "grade service rejected request"}
+	ErrCassettePack       = &sentinel{code: CodeCassettePack, exit: 1, transience: output.TransiencePermanent, msg: "could not pack cassette"}
+	ErrCassetteTooLarge   = &sentinel{code: CodeCassetteTooLarge, exit: 2, transience: output.TransiencePermanent, msg: "cassette exceeds size limit"}
+	ErrManifestParse      = &sentinel{code: CodeManifestParse, exit: 2, transience: output.TransiencePermanent, msg: "could not parse manifest.yaml"}
+	ErrGradeFail          = &sentinel{code: CodeGradeFail, exit: ExitGradeFail, transience: output.TransiencePermanent, msg: "grade verdict: fail"}
+	ErrGradeUngradable    = &sentinel{code: CodeGradeUngradable, exit: ExitGradeUngradable, transience: output.TransiencePermanent, msg: "grade verdict: ungradable"}
+	ErrRateLimited        = &sentinel{code: CodeRateLimited, exit: output.ExitRateLimited, transience: output.TransienceTransient, msg: "grade service rate-limited"}
 )
 
 // sentinel is the identity-bearing typed error that satisfies error
 // + AsCLIError so kit's CLI middleware preserves exit codes.
 type sentinel struct {
-	code string
-	exit int
-	msg  string
+	code       string
+	exit       int
+	transience string
+	msg        string
 }
 
 func (s *sentinel) Error() string { return s.msg }
@@ -58,7 +84,7 @@ func (s *sentinel) Error() string { return s.msg }
 // middleware can render the structured envelope and main() can exit
 // with the sentinel's code.
 func (s *sentinel) AsCLIError() *output.Error {
-	return &output.Error{Code: s.code, Message: s.msg, ExitCode: s.exit}
+	return &output.Error{Code: s.code, Message: s.msg, ExitCode: s.exit, Transience: s.transience}
 }
 
 // wrappedSentinel decorates a base sentinel with caller-supplied
@@ -87,6 +113,7 @@ func (w *wrappedSentinel) AsCLIError() *output.Error {
 		Cause:        w.cause,
 		SuggestedFix: w.fix,
 		ExitCode:     w.base.exit,
+		Transience:   w.base.transience,
 	}
 }
 

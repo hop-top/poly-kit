@@ -81,6 +81,21 @@ func errorCode(status int, msg string) string {
 	}
 }
 
+// serveNetOpts resolves the effective peer/sync opt-outs for
+// `kit serve`. The kit-global --offline flag is the highest-precedence
+// network override: when it tagged the command context (see
+// cli.IsOffline) both opt-outs flip on regardless of the individual
+// --no-peer/--no-sync values. The override only forces the opt-outs
+// ON — an explicitly passed --no-peer/--no-sync is never un-set.
+func serveNetOpts(cmd *cobra.Command) (noPeer, noSync bool) {
+	noPeer, _ = cmd.Flags().GetBool("no-peer")
+	noSync, _ = cmd.Flags().GetBool("no-sync")
+	if cli.IsOffline(cmd.Context()) {
+		noPeer, noSync = true, true
+	}
+	return noPeer, noSync
+}
+
 func serveCmd(root *cli.Root) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -93,8 +108,7 @@ func serveCmd(root *cli.Root) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			port, _ := cmd.Flags().GetInt("port")
 			dataDir, _ := cmd.Flags().GetString("data")
-			noPeer, _ := cmd.Flags().GetBool("no-peer")
-			noSync, _ := cmd.Flags().GetBool("no-sync")
+			noPeer, noSync := serveNetOpts(cmd)
 			versionsBackend, _ := cmd.Flags().GetString("versions")
 
 			if err := os.MkdirAll(dataDir, 0o755); err != nil {

@@ -82,7 +82,17 @@ func TestE2E_MeshTrustDiscovery(t *testing.T) {
 	go func() { _ = meshA.Start(ctx) }()
 	go func() { _ = meshB.Start(ctx) }()
 
-	time.Sleep(200 * time.Millisecond)
+	// Wait for both meshes to discover each other instead of relying on a
+	// fixed sleep, which is timing-sensitive under CI load.
+	require.Eventually(t, func() bool {
+		muA.Lock()
+		nA := len(connectedA)
+		muA.Unlock()
+		muB.Lock()
+		nB := len(connectedB)
+		muB.Unlock()
+		return nA >= 1 && nB >= 1
+	}, 10*time.Second, 10*time.Millisecond, "meshes should discover each other")
 	cancel()
 
 	// Both meshes should have discovered each other

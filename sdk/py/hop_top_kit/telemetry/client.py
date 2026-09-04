@@ -120,6 +120,17 @@ class _HTTPSSink:
         ).encode("utf-8")
         headers = {"Content-Type": "application/x-ndjson"}
 
+        # Telemetry is logging-class egress: ``--offline`` stops traffic
+        # the user asked for, it is not a second consent gate on
+        # diagnostics. Consent and telemetry mode already govern whether
+        # anything is emitted at all.
+        #
+        # httpx does not consult urllib's opener chain, so this sink is
+        # outside the reach of ``netpolicy.install()`` by construction.
+        # That exemption is intended, not incidental: keep this sink off
+        # ``urllib.request.urlopen``, or it will start being suppressed
+        # by --offline. Pinned by tests/test_telemetry_offline.py.
+        #
         # Lazy import: httpx is optional (declared under
         # ``optional-dependencies.telemetry-https`` in pyproject.toml).
         try:

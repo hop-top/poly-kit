@@ -408,10 +408,11 @@ func TestHooks_OnFallback(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRequest_Extensions(t *testing.T) {
+	temp := 0.7
 	req := llm.Request{
 		Messages:    []llm.Message{{Role: "user", Content: "test"}},
 		Model:       "gpt-4",
-		Temperature: 0.7,
+		Temperature: &temp,
 		MaxTokens:   100,
 		Extensions:  map[string]any{"custom": true},
 	}

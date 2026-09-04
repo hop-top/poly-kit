@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"hop.top/kit/cmd/kit/init/buswf"
@@ -38,7 +39,7 @@ type HookRunner interface {
 // can distinguish "binary not on PATH, no scaffolding ran" from a hard
 // failure (see git.Init for the precise contract).
 type GitRunner interface {
-	Init(ctx context.Context, dir string, hop bool, defaultBranch string) (bool, error)
+	Init(ctx context.Context, dir string, hop bool, defaultBranch string, nonInteractive bool) (GitInitOutcome, error)
 	InitialCommit(ctx context.Context, dir, message string) error
 	Push(ctx context.Context, dir string) error
 }
@@ -128,6 +129,14 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 		return Summary{}, fmt.Errorf("bootstrap: render: %w", err)
 	}
 
+	// 7b. Compose the built-in shared template (CI, gitignore,
+	// LICENSE, contribution docs, release scripts). Bootstrap
+	// composes at tier 0 (everything), matching the --from render.
+	sharedSum, err := renderShared(ctx, deps, in, target, 0, in.DryRun)
+	if err != nil {
+		return Summary{}, fmt.Errorf("bootstrap: shared: %w", err)
+	}
+
 	// Hook context shared across all phases.
 	hookCtx := tmpl.HookContext{
 		Vars:      vars,
@@ -180,6 +189,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	// DryRun stops here: no hooks, no git, no github, no push.
 	if in.DryRun {
 		sum := buildSummary(in, target, result, nil)
+		sum.Shared = &sharedSum
 		sum.PrePrHook = preprResult
 		sum.Workflows = workflowActions
 		applyPostHookToSummary(&sum, postHookSummary)
@@ -195,27 +205,55 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	}
 
 	// 9. git init (or git hop init). When --hop=true and git-hop is not
-	// on PATH, Init returns skipped=true so the surrounding flow can
+	// on PATH, Init returns Skipped=true so the surrounding flow can
 	// continue without an error (no .git is created in that case, so
-	// downstream commit/push steps are skipped too).
-	hopSkipped, err := deps.Git.Init(ctx, target, in.Hop, in.DefaultBranch)
+	// downstream commit/push steps are skipped too). Under --yes an
+	// interactivity failure falls back to plain git init;
+	// FellBack surfaces in the summary.
+	completed := []string{"render", "post_render hook"}
+	gitOutcome, err := deps.Git.Init(ctx, target, in.Hop, in.DefaultBranch, in.Yes)
 	if err != nil {
-		return Summary{}, fmt.Errorf("bootstrap: git init: %w", err)
+		return Summary{}, stepError("git init", completed, err)
 	}
+	hopSkipped := gitOutcome.Skipped
+	completed = append(completed, "git init")
 
 	// 10. Write .kit/version. Format: "<template-name>@<ref>\n".
 	// We don't currently track resolved git ref; use template name + "@latest"
 	// as a sentinel until upgrade-time work threads through real refs.
 	if err := writeKitVersion(target, manifest.Name); err != nil {
-		return Summary{}, fmt.Errorf("bootstrap: write .kit/version: %w", err)
+		return Summary{}, stepError("write .kit/version", completed, err)
+	}
+	completed = append(completed, ".kit/version")
+
+	// 10b. Emit kit-managed blocks (mise.toml, devcontainer, env) so the
+	// scaffolded CI workflows — whose toolchain step runs `mise run
+	// install` — are green out of the box. Best-effort: a
+	// missing bash or emitter failure degrades to a warning + the
+	// documented `kit init --update` recovery path, never a mid-scaffold
+	// abort.
+	var managedWarning string
+	if merr := RunManaged(ctx, ManagedOptions{
+		Cwd:   target,
+		Name:  in.Name,
+		Langs: strings.Join(in.Runtime, ","),
+		// Emitter chatter must never contaminate stdout: under
+		// --format json the summary is the only stdout payload.
+		Stdout: os.Stderr,
+		Stderr: os.Stderr,
+	}); merr != nil {
+		managedWarning = merr.Error()
+	} else {
+		completed = append(completed, "managed blocks")
 	}
 
 	// 11. Initial commit. Skipped when git-hop was the requested
 	// initialiser and was not installed (no repo to commit into).
 	if !hopSkipped {
 		if err := deps.Git.InitialCommit(ctx, target, "feat: initial scaffold"); err != nil {
-			return Summary{}, fmt.Errorf("bootstrap: initial commit: %w", err)
+			return Summary{}, stepError("initial commit", completed, err)
 		}
+		completed = append(completed, "initial commit")
 	}
 
 	// 12. GitHub repo + branch protection (org only). Skipped when the
@@ -235,8 +273,9 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 		}
 		info, err := deps.GitHub.Create(ctx, target, cfg)
 		if err != nil {
-			return Summary{}, fmt.Errorf("bootstrap: github create: %w", err)
+			return Summary{}, stepError("github create", completed, err)
 		}
+		completed = append(completed, "github create")
 		if info.URL != "" || info.Repo != "" {
 			ghSummary = &GitHubSummary{
 				Repo:       info.Repo,
@@ -259,8 +298,10 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 	// 13. Push (unless suppressed or no remote configured).
 	if !in.NoPush && ghSummary != nil {
 		if err := deps.Git.Push(ctx, target); err != nil {
-			return Summary{}, fmt.Errorf("bootstrap: push: %w", err)
+			return Summary{}, stepError("push", completed, err)
 		}
+		completed = append(completed, "push")
+		_ = completed // final step; kept for future post-push failures
 	}
 
 	// 14. post_push hook.
@@ -280,13 +321,23 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 
 	// 16. Build + return summary.
 	summary := buildSummary(in, target, result, ghSummary)
+	summary.Shared = &sharedSum
+	summary.ManagedWarning = managedWarning
 	summary.HopSkipped = hopSkipped
+	summary.HopFellBack = gitOutcome.FellBack
 	summary.TLCSkipped = tlcSkipped
 	summary.PrePrHook = preprResult
 	summary.Workflows = workflowActions
 	applyPostHookToSummary(&summary, postHookSummary)
 	summary.BusWorkflows = busPlan.Entries
 	return summary, nil
+}
+
+// stepError wraps a bootstrap step failure with the list of steps that
+// DID complete, so a mid-scaffold abort tells the user what state the
+// target directory is in.
+func stepError(step string, completed []string, err error) error {
+	return fmt.Errorf("bootstrap: %s: %w (completed steps: %s)", step, err, strings.Join(completed, ", "))
 }
 
 // buildSummary assembles the final Summary; centralized so DryRun and
@@ -392,8 +443,8 @@ type defaultGitRunner struct{}
 // NewGitRunner returns a GitRunner backed by git.go.
 func NewGitRunner() GitRunner { return defaultGitRunner{} }
 
-func (defaultGitRunner) Init(ctx context.Context, dir string, hop bool, branch string) (bool, error) {
-	return Init(ctx, dir, hop, branch)
+func (defaultGitRunner) Init(ctx context.Context, dir string, hop bool, branch string, nonInteractive bool) (GitInitOutcome, error) {
+	return Init(ctx, dir, hop, branch, nonInteractive)
 }
 func (defaultGitRunner) InitialCommit(ctx context.Context, dir, msg string) error {
 	return InitialCommit(ctx, dir, msg)

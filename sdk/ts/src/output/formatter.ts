@@ -24,16 +24,36 @@ export interface OptionSpec {
 export type Options = Readonly<Record<string, string | number | boolean>>;
 
 /**
- * Column metadata used by table/csv/text formatters and --cols validation.
+ * Column metadata used by every built-in formatter and by --cols validation.
  *
- * - `header` is the user-visible label and the value matched against --cols.
- * - `key` is the property name on the row object.
- * - `priority` (optional) controls hide-on-overflow for table; higher wins.
+ * - `header` is the user-visible label, the name matched against --cols, AND
+ *   the property read off the row object: header == key, universally. Go
+ *   cannot express a header/key split through `table:""` struct tags, so no
+ *   SDK offers one.
+ * - `key` is retained for source compatibility and must equal `header`;
+ *   `columnName` reports the single effective name.
+ * - `priority` is accepted and stored but ignored — hide-on-overflow is a
+ *   Go-only feature today.
  */
 export interface ColumnSpec {
   readonly header: string;
   readonly key: string;
   readonly priority?: number;
+}
+
+/**
+ * Returns a ColumnSpec's effective column name, rejecting a header/key split.
+ *
+ * Validating at read time keeps drift impossible while `key` still exists as
+ * a field.
+ */
+export function columnName(c: ColumnSpec): string {
+  if (c.key !== c.header) {
+    throw new Error(
+      `column "${c.header}": header and key must match (got key "${c.key}")`,
+    );
+  }
+  return c.header;
 }
 
 /**
@@ -63,7 +83,11 @@ export interface Formatter<T = unknown> {
    * @param out Destination writable stream.
    * @param data Single row or readonly array of rows.
    * @param opts Validated options; only declared keys with coerced values.
-   * @param cols User-requested column projection; empty means "all columns".
+   * @param cols Effective column list, already resolved by dispatch: the
+   *   user's `--cols` when supplied, else the caller's ColumnSpec headers in
+   *   list order, else empty meaning "fall back to payload key order".
+   *   Render columns in exactly this order — it is both the labels and, since
+   *   header == key, the lookup names on each row.
    */
   render(
     out: NodeJS.WritableStream,

@@ -36,6 +36,7 @@ import * as yaml from 'js-yaml';
 
 import { Mode, resolveMode } from './mode';
 import { getInstallId } from './installId';
+import { observabilityFetch } from '../netpolicy';
 import { consentPath, legacyConsentPath } from './consent';
 import { redact } from './redact';
 
@@ -412,7 +413,12 @@ export class Client {
         HTTPS_CONNECT_TIMEOUT_MS,
       );
       try {
-        const res = await fetch(this.endpoint, {
+        // Telemetry is logging-class egress: --offline stops traffic
+        // the user asked for, not diagnostics. Consent and mode already
+        // govern whether anything is emitted, so this sink deliberately
+        // uses the unguarded fetch captured before install() patched the
+        // global.
+        const res = await observabilityFetch()(this.endpoint, {
           method: 'POST',
           headers,
           body,

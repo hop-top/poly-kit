@@ -117,7 +117,9 @@ func TestText_ColsFilterLines(t *testing.T) {
 	out, err := renderText(t, data, []string{"style=lines"}, []string{"Name", "Score"})
 	require.NoError(t, err)
 
-	// Filter respects struct order, not selected order.
+	// Filter respects selected order; here it happens to match struct
+	// order too. See TestCols_Reorder_TextLines for the discriminating
+	// case, where the two disagree.
 	assert.Equal(t, "alpha\t10\n", out)
 }
 

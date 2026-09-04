@@ -41,7 +41,12 @@ jobs:
         with:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@v4
-      - run: cd sdk/py && uv sync --all-extras
+      # --locked fails when uv.lock disagrees with pyproject.toml instead
+      # of silently rewriting it. A plain `uv sync` masks lock drift in CI
+      # and surfaces it later as an unrelated dirty file in contributor
+      # trees. Mirrors `pnpm install --frozen-lockfile` in the ts jobs.
+      - run: cd sdk/py && uv sync --all-extras --locked
+      - run: make lint-lock-py
       - run: make lint-py
 
   rs-lint:
@@ -50,7 +55,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          # Keep in step with sdk/experimental/rs/rust-toolchain.toml.
+          # This action requires an explicit toolchain and runs
+          # `rustup default` with it, so it does not read that file.
+          toolchain: "1.98.0"
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
@@ -112,8 +120,8 @@ jobs:
         with:
           python-version: '3.13'
       - uses: astral-sh/setup-uv@v4
-      - run: cd sdk/py && uv sync --all-extras
-      - run: cd engine/sdk/py-kit-engine && uv sync --all-extras
+      - run: cd sdk/py && uv sync --all-extras --locked
+      - run: cd engine/sdk/py-kit-engine && uv sync --all-extras --locked
       - run: make test-py
 
   rs-test:
@@ -123,7 +131,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          # Keep in step with sdk/experimental/rs/rust-toolchain.toml.
+          # This action requires an explicit toolchain and runs
+          # `rustup default` with it, so it does not read that file.
+          toolchain: "1.98.0"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: sdk/experimental/rs
@@ -139,7 +150,21 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+      # composer only WARNS when composer.lock is stale, so drift never
+      # fails a build — it just surfaces later as an unexplained warning
+      # in someone else's install. --check-lock exits non-zero instead.
+      - run: make lint-lock-php
+      # Audits composer.lock for known advisories. Nothing failed the build
+      # on a vulnerable dependency before this step, so 16 advisories piled
+      # up unnoticed. Runs on the lock (no vendor/ needed) and gates at
+      # medium+; see the audit-php target for the severity rationale.
+      - run: make audit-php
       - run: cd sdk/experimental/php && composer install --no-progress
+      # Static analysis. phpstan was in require-dev but never ran, so it
+      # was installed on every build and enforced nothing. src/ gates at
+      # level 5, tests/ at 2; see phpstan.neon for why they differ. No
+      # baseline and no ignore list.
+      - run: make lint-php
       # CrossLangSmokeTest currently fails on the anon-mode null
       # assertion (telemetry stack regression). Excluded here so the
       # gate ships green; re-enable once that test is fixed.
@@ -169,7 +194,10 @@ jobs:
       # `cargo test --features id --test contract` on every build.
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          # Keep in step with sdk/experimental/rs/rust-toolchain.toml.
+          # This action requires an explicit toolchain and runs
+          # `rustup default` with it, so it does not read that file.
+          toolchain: "1.98.0"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: sdk/experimental/rs
@@ -181,7 +209,7 @@ jobs:
         with:
           php-version: '8.4'
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: cd sdk/py && uv sync --all-extras
+      - run: cd sdk/py && uv sync --all-extras --locked
       - run: make test-parity
 
   # ── Stage 4: Build + compliance (after parity) ────────────────

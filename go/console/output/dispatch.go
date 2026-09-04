@@ -257,11 +257,21 @@ func formatPrimaryExt(r *Registry, key string) string {
 // validateCols ensures every name in cols matches a `table:""` tag header
 // on data's element type. Mirrors the error format used by filterColumns
 // so json/yaml see the same diagnostic table renders see.
+//
+// data with no `table:""` tags at all (a raw map, an untagged struct, a
+// slice of non-struct elements) has no headers to validate against; cols
+// is non-empty there only because the caller explicitly asked for a
+// projection this data shape cannot honor, so that is an error rather
+// than a silent defer — deferring let an unrequested field leak straight
+// through to the formatter unfiltered instead of being rejected or
+// dropped.
 func validateCols(data any, cols []string) error {
 	headers := TableHeaders(reflect.TypeOf(data))
 	if len(headers) == 0 {
-		// No tagged headers — nothing we can validate against. Defer to
-		// the formatter (which may simply emit the full payload).
+		if len(cols) > 0 {
+			return fmt.Errorf("--cols %s: data has no `table:\"\"` tagged fields to project",
+				strings.Join(cols, ","))
+		}
 		return nil
 	}
 	have := make(map[string]struct{}, len(headers))
@@ -286,7 +296,7 @@ func renderTemplate(w io.Writer, src string, data any) error {
 		return fmt.Errorf("parse template: %w", err)
 	}
 	headers := TableHeaders(reflect.TypeOf(data))
-	items := projectToMaps(data, nil)
+	items := projectToMaps(data)
 	// projectToMaps may return data unchanged for non-struct inputs;
 	// normalize to []map[string]any when possible so .Items is iterable.
 	itemSlice, _ := items.([]map[string]any)

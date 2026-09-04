@@ -20,6 +20,7 @@ import (
 	"hop.top/kit/go/console/progress"
 	configoverrides "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/identity"
+	"hop.top/kit/go/core/netpolicy"
 	"hop.top/kit/go/runtime/peer"
 )
 
@@ -306,7 +307,7 @@ type Root struct {
 	identityCfg        *IdentityConfig
 	peerCfg            *PeerConfig
 	telemetryCfg       *TelemetryConfig
-	verboseCount       int // -V count; 0=info, 1=debug, 2+=trace
+	verboseCount       int // -V count; levels per parity verbosity.levels
 	aliases            map[string]string
 	aliasCompletionSet bool              // guards single ValidArgsFunction wrap
 	hiddenGroups       map[string]bool   // group IDs hidden from default --help
@@ -446,9 +447,11 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		pf.Bool("quiet", false, "Suppress non-essential output")
 		_ = v.BindPFlag("quiet", pf.Lookup("quiet"))
 	}
-	// -V / --verbose: stackable count flag (e.g. -VV = 2).
-	// Stored on Root; log/log.WithVerbose reads it.
-	pf.CountP("verbose", "V", "Increase log verbosity (-V=debug, -VV=trace)")
+	// Stackable verbosity count flag (e.g. -VV = 2). The shorthand and
+	// the level names in the help text come from the parity contract's
+	// verbosity block. Stored on Root; log/log.WithVerbose reads it.
+	pf.CountP("verbose", verbosityShorthand(&parity.Values),
+		verbosityFlagUsage(&parity.Values))
 	_ = v.BindPFlag("verbose", pf.Lookup("verbose"))
 
 	if !cfg.Disable.NoColor {
@@ -545,6 +548,18 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	_ = v.BindPFlag(apiVersionFlag, pf.Lookup(apiVersionFlag))
 	hideFlag(apiVersionFlag)
 
+	// Session globals (cli-parity-guide, "Global Flags"): --offline /
+	// --profile / --instance. Always registered — the names are
+	// reserved, same as the delegation-safety globals above. Left
+	// visible (no hideFlag) because they are part of the
+	// cross-language parity FLAGS contract, unlike the hidden kit
+	// plumbing. Values reach leaves via the netglobals hook (see
+	// netglobals.go) which stamps them onto the command context.
+	pf.Bool(offlineFlag, false,
+		"Disable all network access. Highest-precedence override: flips off "+
+			"per-command network opt-ins (peer discovery, sync, GitHub, push).")
+	_ = v.BindPFlag(offlineFlag, pf.Lookup(offlineFlag))
+
 	// Tool-specific extra persistent flags. When a pointer destination
 	// is provided (StringVar/BoolVar/IntVar) the flag is bound to that
 	// pointer in addition to viper; otherwise the flag falls back to a
@@ -640,6 +655,16 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	if !cfg.Disable.DryRun {
 		hooks = append(hooks, r.installDryRunHook())
 	}
+
+	// Session globals: stamp --offline/--profile/--instance onto the
+	// command context so leaves consume them via cli.IsOffline /
+	// cli.ProfileFrom / cli.InstanceFrom.
+	//
+	// Stamping alone is advisory. Install guards http.DefaultTransport so
+	// --offline is enforced beneath every client that has not set its own
+	// Transport, rather than relying on each leaf to remember to check.
+	netpolicy.Install()
+	hooks = append(hooks, r.installNetGlobalsHook())
 
 	if cfg.Hooks.PrePersistentRunE != nil {
 		hooks = append(hooks, cfg.Hooks.PrePersistentRunE)

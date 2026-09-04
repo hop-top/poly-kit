@@ -70,7 +70,7 @@ class RegistryTest extends TestCase
             public function key(): string { return ''; }
             public function extensions(): array { return []; }
             public function options(): array { return []; }
-            public function render(mixed $writer, mixed $data, array $opts, array $cols): void {}
+            public function render(mixed $writer, mixed $data, array $opts, array $cols, array $columns = []): void {}
         });
     }
 

@@ -197,6 +197,43 @@ type TelemetryConfig struct {
 	KitVersion string `yaml:"kit_version,omitempty" json:"kit_version,omitempty"`
 }
 
+// MCPConfig is the top-level "mcp:" block. It is the declarative
+// counterpart to the WithMCP* options MountMCP accepts (see
+// surface_mcp_dispatch.go and docs/adr/0004-mcp-dual-spec-surface.md):
+// a caller building MountMCP's opts from YAML reads this block and
+// translates each field to the corresponding option. Load / FromConfig
+// parse this block but do not act on it — FromConfig does not mount
+// surfaces, consistent with the webhook/bus/cron blocks above.
+//
+//	mcp:
+//	  spec_versions: ["2024-11-05", "2026-07-28"]  # empty = both
+//	  path: /mcp                                    # empty = "/mcp"
+//	  cache_ttl_ms: 0                                # 0 = stale
+//	  cache_scope: private                           # "" = private
+//	  origin_allowlist: ["https://app.example.com"]
+type MCPConfig struct {
+	// SpecVersions lists the enabled MCP protocol revisions
+	// ("2024-11-05", "2026-07-28"). Empty means both — the
+	// WithMCPSpecVersions default. Translates to WithMCPSpecVersions.
+	SpecVersions []string `yaml:"spec_versions,omitempty"`
+	// Path overrides the MCP mount path. Empty means "/mcp" — the
+	// WithMCPPath default. Translates to WithMCPPath.
+	Path string `yaml:"path,omitempty"`
+	// CacheTTLMs is the ttlMs value attached to modern cacheable list
+	// results. Zero means immediately stale — the WithMCPCacheHints
+	// default. Translates to WithMCPCacheHints (ttl half).
+	CacheTTLMs int `yaml:"cache_ttl_ms,omitempty"`
+	// CacheScope is "public" or "private". Empty means "private" —
+	// the WithMCPCacheHints default. Translates to WithMCPCacheHints
+	// (scope half).
+	CacheScope string `yaml:"cache_scope,omitempty"`
+	// OriginAllowlist enables Origin-header validation on the modern
+	// path when non-empty. Empty means no check — the
+	// WithMCPOriginAllowlist default. Translates to
+	// WithMCPOriginAllowlist.
+	OriginAllowlist []string `yaml:"origin_allowlist,omitempty"`
+}
+
 // ApplyDefaults fills zero-valued fields with their conventional
 // defaults when the block is enabled. No-op when Enabled is false:
 // disabled blocks have no sink to default for, and leaving fields at

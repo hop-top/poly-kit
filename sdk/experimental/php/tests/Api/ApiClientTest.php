@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HopTop\Kit\Tests\Api;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\BadResponseException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
@@ -183,5 +184,93 @@ class ApiClientTest extends TestCase
             $this->assertSame(500, $e->status);
             $this->assertSame('http_error', $e->errorCode);
         }
+    }
+
+    /**
+     * @param array<int, Response|\Throwable> $responses
+     */
+    private function makeHttpsClient(array $responses, ?string $token = null): ApiClient
+    {
+        $mock = new MockHandler($responses);
+        $stack = HandlerStack::create($mock);
+        $stack->push(Middleware::history($this->history));
+        $http = new Client(['handler' => $stack]);
+
+        return new ApiClient(
+            baseURL: 'https://api.test',
+            authToken: $token,
+            httpClient: $http,
+        );
+    }
+
+    public function testRedirectToPlainHttpIsRefused(): void
+    {
+        // Downgrade attempt: https origin redirects to http. Following it would
+        // put the Authorization header on the wire in cleartext.
+        $client = $this->makeHttpsClient(
+            [
+                new Response(302, ['Location' => 'http://attacker.example/steal']),
+                new Response(200, ['Content-Type' => 'application/json'], '{"id":"1"}'),
+            ],
+            token: 'secret-token',
+        );
+
+        try {
+            $client->get('1');
+            $this->fail('Expected the http downgrade redirect to be refused');
+        } catch (BadResponseException $e) {
+            $this->assertStringContainsString('allowed redirect protocols', $e->getMessage());
+        }
+
+        // Only the original request went out; nothing reached the attacker.
+        $this->assertCount(1, $this->history);
+        $this->assertSame('api.test', $this->lastRequest()->getUri()->getHost());
+    }
+
+    public function testCallerSuppliedOptionsCannotReenableHttpDowngrade(): void
+    {
+        // A caller re-enabling http redirects must not win over the hardening.
+        $mock = new MockHandler([
+            new Response(302, ['Location' => 'http://attacker.example/steal']),
+            new Response(200, ['Content-Type' => 'application/json'], '{"id":"1"}'),
+        ]);
+        $stack = HandlerStack::create($mock);
+        $stack->push(Middleware::history($this->history));
+        $http = new Client([
+            'handler' => $stack,
+            // Client-level default deliberately permits the downgrade.
+            'allow_redirects' => ['protocols' => ['http', 'https']],
+        ]);
+        $client = new ApiClient(
+            baseURL: 'https://api.test',
+            authToken: 'secret-token',
+            httpClient: $http,
+        );
+
+        try {
+            $client->get('1');
+            $this->fail('Expected the http downgrade redirect to be refused');
+        } catch (BadResponseException $e) {
+            $this->assertStringContainsString('allowed redirect protocols', $e->getMessage());
+        }
+
+        $this->assertCount(1, $this->history);
+        $this->assertSame('api.test', $this->lastRequest()->getUri()->getHost());
+    }
+
+    public function testHttpsRedirectStillFollowedWithinCap(): void
+    {
+        // Redirects remain legitimate for an API client as long as they stay
+        // on https — only the downgrade is closed off.
+        $client = $this->makeHttpsClient([
+            new Response(302, ['Location' => 'https://api.test/moved']),
+            new Response(200, ['Content-Type' => 'application/json'], '{"id":"1"}'),
+        ]);
+
+        $result = $client->get('1');
+
+        $this->assertSame(['id' => '1'], $result);
+        $this->assertCount(2, $this->history);
+        $this->assertSame('https://api.test/moved', (string) $this->lastRequest()->getUri());
     }
 }

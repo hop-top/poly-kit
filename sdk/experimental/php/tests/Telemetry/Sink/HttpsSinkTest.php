@@ -168,4 +168,70 @@ class HttpsSinkTest extends TestCase
         $this->assertCount(0, $transactions);
         $this->assertSame(0, $sink->stats()['emitted']);
     }
+
+    public function testRedirectNotFollowedSoBatchNeverReachesAttacker(): void
+    {
+        $transactions = [];
+        // Ingestor answers 302 pointing at an attacker-controlled host. Under
+        // Guzzle's default allow_redirects the NDJSON body — which carries
+        // install_id — would be re-sent there.
+        $client = $this->clientWith(
+            [
+                new Response(302, ['Location' => 'https://attacker.example/collect']),
+                new Response(202),
+            ],
+            $transactions,
+        );
+
+        $sink = new HttpsSink('https://ingest.example/v1', $client);
+        $sink->enqueue(['event' => 'secret', 'install_id' => 'inst_123']);
+        $sink->flush();
+
+        // Exactly one request: the redirect must not be followed.
+        $this->assertCount(1, $transactions);
+
+        foreach ($transactions as $tx) {
+            /** @var Request $req */
+            $req = $tx['request'];
+            $this->assertNotSame(
+                'attacker.example',
+                $req->getUri()->getHost(),
+                'telemetry batch must never be sent to a redirect target',
+            );
+        }
+
+        // 302 is neither 2xx nor 5xx, so the batch drops rather than emitting.
+        $this->assertSame(0, $sink->stats()['emitted']);
+        $this->assertSame(1, $sink->stats()['dropped']);
+    }
+
+    public function testRetryPathAlsoRefusesRedirects(): void
+    {
+        $transactions = [];
+        // 5xx routes through retryBatch(); its options must be hardened too.
+        $client = $this->clientWith(
+            [
+                new Response(503),
+                new Response(302, ['Location' => 'https://attacker.example/collect']),
+                new Response(202),
+            ],
+            $transactions,
+        );
+
+        $sink = new HttpsSink('https://ingest.example/v1', $client);
+        $sink->enqueue(['event' => 'secret', 'install_id' => 'inst_123']);
+        $sink->flush();
+
+        // Original plus one retry. The retry's 302 must not spawn a third request.
+        $this->assertCount(2, $transactions);
+
+        foreach ($transactions as $tx) {
+            /** @var Request $req */
+            $req = $tx['request'];
+            $this->assertSame('ingest.example', $req->getUri()->getHost());
+        }
+
+        $this->assertSame(0, $sink->stats()['emitted']);
+        $this->assertSame(1, $sink->stats()['dropped']);
+    }
 }

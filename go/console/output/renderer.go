@@ -116,10 +116,12 @@ var stderrWriter io.Writer = os.Stderr
 // an envelope.
 //
 // Render supplies each formatter's declared option defaults (see
-// [Formatter.Options]) exactly as Dispatch does. Callers who need to
-// override an option, or to project columns, should call
-// Default.Lookup(format) and invoke Formatter.Render directly with
-// Options and cols.
+// [Formatter.Options]) exactly as Dispatch does. WithCols(names) projects
+// to the named columns, validated up front against v's `table:""` tags —
+// an unknown name returns an error rather than silently resolving zero
+// columns. Callers who need to override a formatter option beyond its
+// declared default should call Default.Lookup(format) and invoke
+// Formatter.Render directly with Options.
 func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 	f, ok := Default.Lookup(format)
 	if !ok {
@@ -137,7 +139,18 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 		cfg.tableStyle = getDefaultTableStyle()
 	}
 
-	// Materialise the formatter's declared option defaults. Passing a nil
+	// WithCols is documented to error on an unknown column name. Dispatch
+	// enforces this via validateCols before calling Formatter.Render
+	// directly; Render must apply the same check for callers who invoke it
+	// without going through Dispatch, or an unknown name silently resolves
+	// zero columns downstream instead of erroring.
+	if len(cfg.selectedCols) > 0 {
+		if err := validateCols(v, cfg.selectedCols); err != nil {
+			return err
+		}
+	}
+
+	// Materialize the formatter's declared option defaults. Passing a nil
 	// Options map here silently defeats every default declared in an
 	// OptionSpec — csv's delimiter (",") among them, which made every
 	// Render(w, CSV, v) call fail the one-character check. ParseOptions
@@ -152,11 +165,28 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 	// resolve zero columns on the untagged wrapper struct, emitting
 	// nothing at all while still returning nil.
 	payload := v
+	selectedCols := cfg.selectedCols
 	if cfg.provenance != nil && !isTagDriven(format) {
+		// Project the payload down to the selected columns BEFORE
+		// wrapping it in the envelope, not after: the envelope struct
+		// carries no `table:""` tags of its own, so handing it (rather
+		// than the value underneath it) to the formatter's own cols
+		// projection resolves zero columns and collapses "data"/"_meta"
+		// down to "{}". Pre-projecting here keeps the envelope intact and
+		// lets the formatter's own cols handling stay a no-op below.
+		data := v
+		if len(selectedCols) > 0 {
+			projected, err := projectToOrdered(v, selectedCols)
+			if err != nil {
+				return err
+			}
+			data = projected
+			selectedCols = nil
+		}
 		payload = struct {
 			Data any       `json:"data"  yaml:"data"`
 			Meta *Metadata `json:"_meta" yaml:"_meta"`
-		}{Data: v, Meta: cfg.provenance}
+		}{Data: data, Meta: cfg.provenance}
 	}
 
 	// Styled table path: when the caller supplied WithTableStyle and the
@@ -165,11 +195,11 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 	// files, tests) always fall through to the plain renderer so command
 	// output stays diff-friendly and ANSI-free.
 	if format == Table && cfg.tableStyle != nil && writerIsTTY(w) {
-		if err := renderStyledTable(w, payload, nil, *cfg.tableStyle, cfg.rowEmphasis); err != nil {
+		if err := renderStyledTable(w, payload, selectedCols, *cfg.tableStyle, cfg.rowEmphasis); err != nil {
 			return err
 		}
 	} else {
-		if err := f.Render(w, payload, formatOpts, nil); err != nil {
+		if err := f.Render(w, payload, formatOpts, selectedCols); err != nil {
 			return err
 		}
 	}
@@ -189,9 +219,9 @@ func Render(w io.Writer, format Format, v any, opts ...RenderOption) error {
 // the first element's `table` tags and reused for every row.
 //
 // selected, when non-empty, restricts output to columns whose tag header
-// matches one of the names (preserving the order in which they appear in the
-// struct, NOT the order in selected — column order is always struct order).
-// An unknown name in selected returns an error.
+// matches one of the names AND emits them in selected order — --cols
+// reorders as well as selects. With selected empty, column order falls back
+// to struct field order. An unknown name in selected returns an error.
 func renderTable(w io.Writer, v any, selected []string) error {
 	rv := reflect.ValueOf(v)
 
@@ -225,8 +255,8 @@ func renderTable(w io.Writer, v any, selected []string) error {
 			return err
 		}
 		// Re-number colIdx so it indexes the post-filter row layout used
-		// by the renderers below. filterColumns preserves struct order
-		// but does not renumber, so we do it here.
+		// by the renderers below. filterColumns emits in the user's
+		// --cols order but does not renumber, so we do it here.
 		for i := range filtered {
 			filtered[i].colIdx = i
 		}

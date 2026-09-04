@@ -4,6 +4,61 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Output column ordering is now driven by the `ColumnSpec[]` list.** The
+  projection helpers already implemented the rule but were unreachable from a
+  render: `options.columns` was consumed by `--cols` validation and then
+  dropped, while the built-in formatters derived headers from
+  `Object.keys(rows[0])`. The list now supplies the default column order, the
+  header labels, and the column selection. **User-visible:** callers passing a
+  `columns` list whose order differs from their payload's key order will see
+  columns reorder, and payload keys absent from the schema stop being emitted.
+  Anyone parsing column positions or diffing `--format json` output sees
+  different bytes. Precedence is `--cols` (user order always wins; it reorders
+  as well as selects), else `ColumnSpec` order, else payload key order.
+- `Formatter.render` is **unchanged**. `resolveEffectiveCols` collapses
+  `--cols` and the `ColumnSpec` list into one ordered list once, at the
+  dispatch layer, and passes it through the existing `cols` argument — so
+  third-party formatters keep working and pick up correct ordering with no
+  code change. The collapse is sound only because `header === key`.
+- **`header` must equal `key`.** The two name the same column: the label, the
+  value matched against `--cols`, and the property read off the row. Go cannot
+  express a header/key split through its `table:""` struct tags, so no SDK
+  may. `key` is retained for source compatibility and must equal `header`.
+  `priority` is still accepted and stored but remains ignored outside Go.
+
+### Removed
+
+- `filterColumns` and `buildHeaderToKey`. Under `header === key` the latter
+  was an identity map and `projectRows`' `out[c.header] = r[c.key]` an
+  identity mapping; `filterColumns` became unreachable once dispatch passes
+  the resolved column list verbatim. Unknown-`--cols` rejection was never
+  lost — it lives in `validateCols`.
+
+### Known limitations
+
+- `csv` and `text` formatters are not implemented in the Rust and PHP SDKs.
+  Only `table`, `json` and `yaml` are portable across all five kit runtimes.
+
+### Fixed
+
+- **CSV no longer emits structurally invalid output in `crlf` mode.** A field
+  containing an embedded LF was written UNQUOTED, so a single record decoded
+  as two records (three under some readers). This was data corruption, not a
+  quoting preference. Encoding is now hand-rolled instead of delegated to
+  csv-stringify, which produced that output in its `windows`
+  record-delimiter mode.
+- **A field beginning with whitespace is now quoted**, matching the other
+  SDKs; it was previously emitted bare. A field equal to `\.` is quoted too,
+  since that sequence alone on a line terminates a PostgreSQL `COPY` stream.
+- A quoted field's bytes are preserved verbatim in both line-ending modes and
+  both quoting paths; `crlf` changes the record terminator and nothing else.
+  RFC 4180 lists `CR` and `LF` as separate alternatives inside the `escaped`
+  production, so a bare CR between quotes is legal.
+
 ## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.0...kit-ts/v0.5.0-alpha.1) (2026-07-14)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.1. This release includes maintenance release with bug fixes.

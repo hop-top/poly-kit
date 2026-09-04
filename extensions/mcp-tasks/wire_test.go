@@ -1,0 +1,309 @@
+// Copyright 2026 The Model Context Protocol Authors. All rights reserved.
+// Use of this source code is governed by the license
+// that can be found in the LICENSE file.
+
+package tasks_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"mcpext.example/tasks"
+)
+
+// TestServerCapabilityAdvertised pins the server-side declaration:
+// capabilities.extensions carries the extension ID on the legacy
+// initialize handshake (and DeclareServerCapability preserves the
+// SDK's default logging capability).
+func TestServerCapabilityAdvertised(t *testing.T) {
+	var ext *tasks.Extension
+	ts, ext := newHarness(t, nil, taskToolHandlerVar(&ext, func(context.Context, *tasks.Handle) (*mcp.CallToolResult, error) {
+		return textResult("x"), nil
+	}))
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}`
+	env := post(t, ts.URL, nil, body)
+	res := resultMap(t, env)
+	caps, _ := res["capabilities"].(map[string]any)
+	exts, _ := caps["extensions"].(map[string]any)
+	if _, ok := exts[tasks.ExtensionID]; !ok {
+		t.Errorf("capabilities.extensions = %v, want %s declared", caps["extensions"], tasks.ExtensionID)
+	}
+	if _, ok := caps["logging"]; !ok {
+		t.Errorf("capabilities = %v, want SDK default logging preserved", caps)
+	}
+}
+
+// TestDeclareServerCapabilityMergesExisting pins that host-provided
+// capabilities survive the declaration.
+func TestDeclareServerCapabilityMergesExisting(t *testing.T) {
+	so := &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{
+		Completions: &mcp.CompletionCapabilities{},
+	}}
+	tasks.DeclareServerCapability(so)
+	if so.Capabilities.Completions == nil {
+		t.Error("existing completions capability dropped")
+	}
+	if _, ok := so.Capabilities.Extensions[tasks.ExtensionID]; !ok {
+		t.Error("extension not declared")
+	}
+}
+
+// TestMissingCapabilityOnTasksMethods pins the -32003 gate: every
+// tasks/* method refuses non-declaring requests with the SEP's code
+// and names the required extension in error data.
+func TestMissingCapabilityOnTasksMethods(t *testing.T) {
+	var ext *tasks.Extension
+	ts, ext := newHarness(t, nil, taskToolHandlerVar(&ext, func(context.Context, *tasks.Handle) (*mcp.CallToolResult, error) {
+		return textResult("x"), nil
+	}))
+
+	for _, method := range []string{tasks.MethodGet, tasks.MethodUpdate, tasks.MethodCancel} {
+		env := post(t, ts.URL, tasksHeaders(method, "task_x"), tasksBody(1, method, "task_x", false, ""))
+		if env.Error == nil || env.Error.Code != tasks.CodeMissingClientCapability {
+			t.Errorf("%s undeclared: error = %+v, want -32003", method, env.Error)
+			continue
+		}
+		var data struct {
+			RequiredCapabilities struct {
+				Extensions map[string]json.RawMessage `json:"extensions"`
+			} `json:"requiredCapabilities"`
+		}
+		if err := json.Unmarshal(env.Error.Data, &data); err != nil {
+			t.Errorf("%s: error data %s: %v", method, env.Error.Data, err)
+			continue
+		}
+		if _, ok := data.RequiredCapabilities.Extensions[tasks.ExtensionID]; !ok {
+			t.Errorf("%s: error data = %s, want required extension named", method, env.Error.Data)
+		}
+	}
+}
+
+// TestNoExistenceOracle pins principal binding: an unknown task ID
+// and a foreign principal's task ID produce byte-identical -32602
+// errors on every tasks/* method.
+func TestNoExistenceOracle(t *testing.T) {
+	release := make(chan struct{})
+	var ext *tasks.Extension
+	ts, ext := newHarness(t,
+		&tasks.Options{Principal: func(h http.Header) string { return h.Get("Authorization") }},
+		taskToolHandlerVar(&ext, func(ctx context.Context, _ *tasks.Handle) (*mcp.CallToolResult, error) {
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			return textResult("x"), nil
+		}))
+	defer close(release)
+
+	alice := map[string]string{"Authorization": "Bearer alice"}
+	bob := map[string]string{"Authorization": "Bearer bob"}
+	taskID := createTask(t, ts, alice)["taskId"].(string)
+
+	// Owner sees it.
+	if res := resultMap(t, getTask(t, ts, taskID, alice)); res["status"] != "working" {
+		t.Fatalf("owner tasks/get = %v, want working", res)
+	}
+
+	errBody := func(method, id string, hdr map[string]string) string {
+		h := tasksHeaders(method, id)
+		for k, v := range hdr {
+			h[k] = v
+		}
+		env := post(t, ts.URL, h, tasksBody(9, method, id, true, ""))
+		if env.Error == nil || env.Error.Code != -32602 {
+			t.Fatalf("%s(%s): error = %+v, want -32602", method, id, env.Error)
+		}
+		b, _ := json.Marshal(env.Error)
+		return string(b)
+	}
+
+	for _, method := range []string{tasks.MethodGet, tasks.MethodUpdate, tasks.MethodCancel} {
+		unknown := errBody(method, "task_doesnotexist", alice)
+		foreign := errBody(method, taskID, bob)
+		if !bytes.Equal([]byte(unknown), []byte(foreign)) {
+			t.Errorf("%s: unknown-id and foreign-principal errors differ:\n  unknown: %s\n  foreign: %s",
+				method, unknown, foreign)
+		}
+	}
+
+	// The foreign probes must not have affected the task.
+	if res := resultMap(t, getTask(t, ts, taskID, alice)); res["status"] != "working" {
+		t.Errorf("owner tasks/get after foreign probes = %v, want working", res)
+	}
+}
+
+// TestTasksListAndResultAbsent pins the SEP's reservations:
+// tasks/list and tasks/result do not exist and answer -32601.
+func TestTasksListAndResultAbsent(t *testing.T) {
+	var ext *tasks.Extension
+	ts, ext := newHarness(t, nil, taskToolHandlerVar(&ext, func(context.Context, *tasks.Handle) (*mcp.CallToolResult, error) {
+		return textResult("x"), nil
+	}))
+
+	for _, method := range []string{"tasks/list", "tasks/result"} {
+		env := post(t, ts.URL, tasksHeaders(method, "task_x"), tasksBody(1, method, "task_x", true, ""))
+		if env.Error == nil || env.Error.Code != -32601 {
+			t.Errorf("%s: error = %+v, want -32601", method, env.Error)
+		}
+	}
+}
+
+// TestRoutingHeadersValidated pins the SEP-2243 header/body agreement
+// on every tasks/* method: the mandated headers are served, and a
+// missing or mismatched Mcp-Method or Mcp-Name is a header validation
+// failure — HTTP 400 with CodeHeaderMismatch — never a route to
+// another handler and never a route to another task's state.
+func TestRoutingHeadersValidated(t *testing.T) {
+	var ext *tasks.Extension
+	ts, ext := newHarness(t, nil, taskToolHandlerVar(&ext, func(context.Context, *tasks.Handle) (*mcp.CallToolResult, error) {
+		return textResult("x"), nil
+	}))
+
+	taskID := createTask(t, ts, nil)["taskId"].(string)
+	pollUntil(t, ts, taskID, nil, "completed")
+
+	// drop returns the mandated header set minus key.
+	drop := func(key string) map[string]string {
+		h := tasksHeaders(tasks.MethodGet, taskID)
+		delete(h, key)
+		return h
+	}
+	// with returns the mandated header set with key overridden.
+	with := func(method, key, val string) map[string]string {
+		h := tasksHeaders(method, taskID)
+		h[key] = val
+		return h
+	}
+
+	for _, method := range []string{tasks.MethodGet, tasks.MethodUpdate, tasks.MethodCancel} {
+		// Matching headers: served normally.
+		env, code := postStatus(t, ts.URL, tasksHeaders(method, taskID),
+			tasksBody(2, method, taskID, true, ""))
+		if env.Error != nil || code != http.StatusOK {
+			t.Errorf("%s matching headers: status %d error %+v, want 200 served", method, code, env.Error)
+		}
+
+		// Mismatched Mcp-Method: the body still selects the extension
+		// (no bypass), and the disagreement is reported as such.
+		for _, bogus := range []string{"tools/call", "ping", "not-a-method"} {
+			env, code := postStatus(t, ts.URL, with(method, "Mcp-Method", bogus),
+				tasksBody(3, method, taskID, true, ""))
+			if code != http.StatusBadRequest || env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
+				t.Errorf("%s Mcp-Method=%q: status %d error %+v, want 400 / %d",
+					method, bogus, code, env.Error, tasks.CodeHeaderMismatch)
+			}
+		}
+
+		// Mismatched Mcp-Name: rejected, and never served from the
+		// task the header names instead of the one the body names.
+		// The SDK's transport-level header check knows how to extract a
+		// name only for its own three named methods, so the Mcp-Name
+		// half is enforced by the extension's handler; the JSON-RPC
+		// error is identical, but a handler-returned error carries HTTP
+		// 200 rather than the transport's 400.
+		env, code = postStatus(t, ts.URL, with(method, "Mcp-Name", "task_other"),
+			tasksBody(4, method, taskID, true, ""))
+		if env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
+			t.Errorf("%s mismatched Mcp-Name: status %d error %+v, want %d",
+				method, code, env.Error, tasks.CodeHeaderMismatch)
+		}
+		if res := env.Result; len(res) > 0 {
+			t.Errorf("%s mismatched Mcp-Name served a result: %s", method, res)
+		}
+	}
+
+	// Absent headers at a header-mandating protocol version are
+	// themselves validation failures (SEP-2243 conformance table).
+	// Mcp-Method is caught by the SDK's transport check (HTTP 400);
+	// Mcp-Name by the extension's handler.
+	env, code := postStatus(t, ts.URL, drop("Mcp-Method"), tasksBody(5, tasks.MethodGet, taskID, true, ""))
+	if code != http.StatusBadRequest || env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
+		t.Errorf("absent Mcp-Method: status %d error %+v, want 400 / %d",
+			code, env.Error, tasks.CodeHeaderMismatch)
+	}
+	env = post(t, ts.URL, drop("Mcp-Name"), tasksBody(5, tasks.MethodGet, taskID, true, ""))
+	if env.Error == nil || env.Error.Code != tasks.CodeHeaderMismatch {
+		t.Errorf("absent Mcp-Name: error %+v, want %d", env.Error, tasks.CodeHeaderMismatch)
+	}
+}
+
+// TestRoutingHeadersPreVersionTolerated pins the compatibility half of
+// SEP-2243: the headers became mandatory in 2026-07-28, so a client
+// negotiating an earlier version (or sending no version header) is
+// served without them, exactly as the SDK treats its own methods.
+func TestRoutingHeadersPreVersionTolerated(t *testing.T) {
+	var ext *tasks.Extension
+	ts, ext := newHarness(t, nil, taskToolHandlerVar(&ext, func(context.Context, *tasks.Handle) (*mcp.CallToolResult, error) {
+		return textResult("x"), nil
+	}))
+
+	taskID := createTask(t, ts, nil)["taskId"].(string)
+	pollUntil(t, ts, taskID, nil, "completed")
+
+	// A pre-2026-07-28 client carries the capability declaration alone:
+	// the per-request protocolVersion _meta is what marks a request as
+	// speaking the newer protocol.
+	body := fmt.Sprintf(
+		`{"jsonrpc":"2.0","id":2,"method":%q,"params":{"taskId":%q,"_meta":{%q:{"extensions":{%q:{}}}}}}`,
+		tasks.MethodGet, taskID, "io.modelcontextprotocol/clientCapabilities", tasks.ExtensionID)
+
+	cases := []struct {
+		name string
+		hdr  map[string]string
+	}{
+		{"no headers at all", nil},
+		{"older protocol version", map[string]string{"Mcp-Protocol-Version": "2025-11-25"}},
+	}
+	for _, tc := range cases {
+		env := post(t, ts.URL, tc.hdr, body)
+		if env.Error != nil {
+			t.Errorf("%s: error = %+v, want served", tc.name, env.Error)
+			continue
+		}
+		if res := resultMap(t, env); res["status"] != "completed" {
+			t.Errorf("%s: status = %v, want completed", tc.name, res["status"])
+		}
+	}
+}
+
+// TestTaskIDsUnguessable pins the entropy contract at the observable
+// level: IDs are unique and never ordered or derived from a counter.
+func TestTaskIDsUnguessable(t *testing.T) {
+	seen := make(map[string]bool)
+	for i := 0; i < 256; i++ {
+		id := tasks.NewTaskID()
+		if !strings.HasPrefix(id, "task_") || len(id) != len("task_")+22 {
+			t.Fatalf("id %q: want task_ prefix + 22 base64url chars (128 bits)", id)
+		}
+		if seen[id] {
+			t.Fatalf("duplicate id %q", id)
+		}
+		seen[id] = true
+	}
+}
+
+// TestTasksRequireRequestID pins that a tasks/* notification (no id)
+// is rejected as an invalid request rather than silently handled.
+func TestTasksRequireRequestID(t *testing.T) {
+	var ext *tasks.Extension
+	ts, ext := newHarness(t, nil, taskToolHandlerVar(&ext, func(context.Context, *tasks.Handle) (*mcp.CallToolResult, error) {
+		return textResult("x"), nil
+	}))
+
+	body := `{"jsonrpc":"2.0","method":"tasks/get","params":{"taskId":"task_x","_meta":` + capsMeta(true) + `}}`
+	code, payload := postRaw(t, ts.URL, tasksHeaders(tasks.MethodGet, "task_x"), body)
+	if code != http.StatusBadRequest {
+		t.Errorf("id-less tasks/get: status %d, want 400", code)
+	}
+	if !strings.Contains(payload, "missing id") {
+		t.Errorf("id-less tasks/get: body %q, want it to name the missing id", payload)
+	}
+}

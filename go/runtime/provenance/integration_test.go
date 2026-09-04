@@ -85,7 +85,7 @@ func TestIntegration_StrictRefusal_FullEnvelope(t *testing.T) {
 	var oe *output.Error
 	require.True(t, errors.As(err, &oe))
 	assert.Equal(t, output.CodeProvenanceMissing, oe.Code)
-	assert.Equal(t, 6, oe.ExitCode)
+	assert.Equal(t, output.ExitProvenanceMissing, oe.ExitCode)
 	assert.Contains(t, oe.Cause, "/a")
 	assert.Contains(t, oe.Cause, "/b")
 	assert.NotEmpty(t, oe.SuggestedFix)

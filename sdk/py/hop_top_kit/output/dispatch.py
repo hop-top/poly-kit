@@ -16,15 +16,28 @@ Resolution order (mirrors Go output.Dispatch):
 5. ``--template`` escape hatch (mutually exclusive with ``--cols``).
 6. ``parse_options`` against active formatter; validate cols against
    ``columns`` schema; ``Formatter.render``.
+
+Column ordering contract:
+
+- A ``columns`` (``list[ColumnSpec]``) argument drives default column
+  order and header names, in list order — the same rule the ``--template``
+  path already applies. Payload key order is the fallback used only when
+  no ColumnSpec list is supplied.
+- ``--cols`` reorders as well as selects: the user's sequence wins.
+- ``header == key``; validation and value lookup are one operation on one
+  name, so ``--cols`` is validated against exactly the header list the
+  formatters project against.
 """
 
 from __future__ import annotations
 
+import inspect
 import os
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -96,9 +109,11 @@ def dispatch(
 ) -> None:
     """Render *data* via the active Formatter using flags from *ctx*.
 
-    *columns* documents the row schema for ``--cols`` validation. When
-    None or empty, ``--cols`` is accepted only when there is no schema
-    to validate against (the Formatter handles row shape itself).
+    *columns* is the row schema: it sets the default column order and the
+    header names, and is the set ``--cols`` is validated against. It is
+    forwarded to the Formatter so the rendered order matches. When None or
+    empty, column order falls back to the payload's own key order and
+    ``--cols`` is validated by the Formatter against those keys.
     """
     flags = _flags_from_ctx(ctx)
     registry = flags.registry or default_registry
@@ -138,7 +153,7 @@ def dispatch(
             _validate_cols(cols, columns)
 
         try:
-            formatter.render(writer, data, opts, cols)
+            _render(formatter, writer, data, opts, cols, columns)
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
 
@@ -187,11 +202,50 @@ def _primary_ext(registry: Registry, key: str) -> str:
     return f.extensions[0]
 
 
+def _render(
+    formatter: Any,
+    writer: TextIO,
+    data: Any,
+    opts: dict[str, Any],
+    cols: list[str],
+    columns: list[ColumnSpec] | None,
+) -> None:
+    """Invoke ``formatter.render``, forwarding *columns* when it is accepted.
+
+    Adopters predating the ColumnSpec-ordering contract implement the
+    four-argument ``render(out, data, opts, cols)``; calling those with a
+    fifth argument would break them, so the signature decides.
+    """
+    if _accepts_columns(type(formatter).render):
+        formatter.render(writer, data, opts, cols, columns)
+        return
+    formatter.render(writer, data, opts, cols)
+
+
+@cache
+def _accepts_columns(render: Any) -> bool:
+    try:
+        params = inspect.signature(render).parameters
+    except (TypeError, ValueError):  # pragma: no cover - exotic callables
+        return False
+    if "columns" in params:
+        return True
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
 def _validate_cols(cols: list[str], schema: list[ColumnSpec]) -> None:
-    have = {c.header for c in schema}
+    """Reject a ``--cols`` name absent from *schema*.
+
+    Single source of truth: *schema* headers are exactly the header list the
+    formatters project against, so a name accepted here cannot fail again
+    inside ``filter_columns`` mid-render. The valid set is listed in schema
+    order to match the formatter-side message.
+    """
+    headers = [c.header for c in schema]
+    have = set(headers)
     for c in cols:
         if c not in have:
-            valid = ", ".join(sorted(have))
+            valid = ", ".join(headers)
             raise typer.BadParameter(f"unknown column {c!r} (valid: {valid})")
 
 

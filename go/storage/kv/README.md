@@ -1,3 +1,54 @@
 # kv
 
 key-value persistence abstractions and drivers.
+
+## Keys bind as TEXT
+
+The SQLite driver declares `key TEXT PRIMARY KEY`, and every implementation
+must bind keys as TEXT rather than BLOB. This is a correctness requirement,
+not a style preference.
+
+SQLite treats TEXT and BLOB as distinct storage classes and compares
+storage class before value, so a key written as a BLOB never equals the
+same bytes written as TEXT. Nothing raises an error when this goes wrong.
+Instead, reads become silent misses, `INSERT OR REPLACE` writes a shadow
+row beside the one it should have replaced, and prefix scans return
+disjoint sets.
+
+Two consequences are easy to miss:
+
+- **The column declaration is not what carries the contract; the bind type
+  is.** The table is created with `CREATE TABLE IF NOT EXISTS`, so whichever
+  process opens the file first wins and any other implementation's
+  declaration is inert. Declaring `TEXT` proves nothing about what a peer
+  actually binds.
+- **Keys are arbitrary byte sequences.** Go models them as `string`, which
+  admits bytes that are not valid UTF-8. A port whose string type cannot
+  hold those bytes must take a byte slice and bind it as TEXT without UTF-8
+  validation rather than reaching for BLOB.
+
+TEXT also gives the ordering callers rely on: the default `BINARY`
+collation is `memcmp` over stored bytes, which matches Go string
+comparison, so ordered scans agree across languages even for non-UTF-8
+keys. Note that `List` itself issues no `ORDER BY`; its result is a set.
+
+## Cross-language gate
+
+A test suite that round-trips within a single language cannot catch a
+binding mismatch, because both sides agree with themselves. The gate that
+actually crosses the boundary is driven from the shared corpus in
+[`contracts/kv-v1/keys.json`](../../../contracts/kv-v1/keys.json):
+`sqlite/crosslang_test.go` writes the corpus and has another
+implementation read it back, and vice versa.
+
+Because it needs more than one toolchain present, it runs in the parity
+job rather than in `go test ./...`:
+
+```bash
+make test-parity-kv
+```
+
+The cross-process cases are gated behind the `KV_CROSSLANG` environment
+variable, so a plain `go test ./...` stays free of any other toolchain.
+The remaining cases in that file — including the one pinning the key
+column's storage class — always run.

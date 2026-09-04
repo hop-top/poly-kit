@@ -89,6 +89,8 @@ const htmlFormatter: Formatter = {
   extensions: ['.html'],
   options: [],
   render(out, data, _opts, cols) {
+    // `cols` is the resolved column list, already ordered — render it in
+    // the order given. Empty means "fall back to payload key order".
     // ... render HTML to `out`
   },
 };
@@ -103,17 +105,18 @@ r.register(htmlFormatter);
 
 ### Column metadata
 
-TS lacks struct tags; pass an explicit `ColumnSpec[]` list to `dispatch`
-when you want headers/keys to differ or want priority ordering for
-table layout:
+Go reads column order off struct field declaration order via `table:""`
+tags. TS has no struct tags, so pass an explicit `ColumnSpec[]` list to
+`dispatch` to pin **which columns appear and in what order** — the list
+is what payload-shaped SDKs use in place of Go's field order:
 
 ```ts
 import type { ColumnSpec } from '@hop-top/kit/output';
 
 const userCols: ColumnSpec[] = [
-  { header: 'ID',    key: 'id',    priority: 9 },
-  { header: 'Name',  key: 'name',  priority: 8 },
-  { header: 'Notes', key: 'notes', priority: 2 },
+  { header: 'id',    key: 'id',    priority: 9 },
+  { header: 'name',  key: 'name',  priority: 8 },
+  { header: 'notes', key: 'notes', priority: 2 },
 ];
 
 await dispatch(cmd, users, { columns: userCols });
@@ -121,6 +124,119 @@ await dispatch(cmd, users, { columns: userCols });
 
 When no `columns` is passed, headers are derived from the first row's
 own enumerable keys.
+
+### Column ordering
+
+1. **Default order.** With a `ColumnSpec[]` and no `--cols`, column order
+   and headers come from the list, in list order. Payload key order is the
+   fallback only when no list was supplied.
+2. **`--cols` precedence.** `--cols` reorders as well as selects:
+   `--cols status,name` renders `status` then `name`, whatever the list
+   says. Same rule on the no-schema fallback path.
+3. **`header` == `key`.** The two are the same name: it is the label, the
+   value matched against `--cols`, and the property read off the row. Go
+   cannot express a split through `table:""` tags, so no SDK offers one.
+   `key` is retained for source compatibility and must equal `header`.
+4. **Empty payload.** Zero rows emits nothing — not even a bare header
+   row. Emptiness is decided by row count, never by header count.
+5. **`priority`.** Accepted and stored, currently ignored. Hide-on-overflow
+   is implemented in Go only; the payload SDKs will port it separately.
+
+`dispatch` applies rules 1 and 2 before calling `render`, so the `cols`
+argument a formatter receives is already the final, ordered column list —
+empty only when it should fall back to payload key order. Custom
+formatters get correct ordering by rendering `cols` in the order given;
+they never see `ColumnSpec` and need no changes.
+
+Worked example — the same rows under each rule:
+
+```ts
+const rows = [
+  { count: 3, status: 'ready', name: 'alpha' },
+  { count: 8, status: 'held',  name: 'beta'  },
+];
+const cols: ColumnSpec[] = [
+  { header: 'name',   key: 'name',   priority: 9 },
+  { header: 'count',  key: 'count',  priority: 7 },
+  { header: 'status', key: 'status', priority: 5 },
+];
+```
+
+With `columns: cols` and no `--cols`, the list drives order — note the
+payload's own key order is `count, status, name` and is not what appears
+(rule 1):
+
+```
+name   count  status
+alpha  3      ready
+beta   8      held
+```
+
+`--cols status,name` reorders as well as selects (rule 2), in `table`
+and `json` alike:
+
+```
+status  name
+ready   alpha
+held    beta
+```
+
+```json
+[
+  {
+    "status": "ready",
+    "name": "alpha"
+  },
+  {
+    "status": "held",
+    "name": "beta"
+  }
+]
+```
+
+With no `columns` at all, payload key order is the fallback:
+
+```
+count  status  name
+3      ready   alpha
+8      held    beta
+```
+
+Capability differences against the Go reference:
+
+| Capability | Go (reference) | ts / py | rs / php |
+|---|---|---|---|
+| Column order source | `table:""` tags, declaration order | `ColumnSpec[]` order | `ColumnSpec` list order |
+| `priority` hide-on-overflow | implemented | accepted, stored, ignored | accepted, stored, ignored |
+| `header != key` | inexpressible via `table:""` | rejected at construction | rejected at construction |
+| json/yaml key order | follows the resolved order | follows the resolved order | follows the resolved order |
+| `--cols` reorders | yes | yes | yes |
+| Built-in formats | `table`, `json`, `yaml`, `csv`, `text` (+ `human`) | same five | `table`, `json`, `yaml` only |
+| Ordered columns on the template path | `.Cols` | `cols` | `{*}` (php); none (rs) |
+
+Go's inability to express `header != key` is the *reason* rule 3 binds
+every runtime: no SDK may carry a capability the reference cannot mirror.
+
+### Conformance status
+
+TS satisfies all five rules, as does Go across all five formats. The
+fixtures under `sdk/tests/cross-lang/` execute the contract against every
+runtime. Two gaps remain open and matter when writing portable code:
+
+- **`csv` and `text` do not exist in rs or php.** Only `table`, `json`
+  and `yaml` are available in all five runtimes today. The fixtures
+  record this as `rs-php-no-csv-text`.
+- **rs has no ordered-column affordance on the `--template` path.** Go
+  exposes `.Cols` and py and ts expose `cols`; php has a `{*}`
+  placeholder yielding pre-joined values. The spelling for rs is an open
+  decision.
+
+The fixtures compare the **column order re-parsed from each runtime's own
+output**, never raw bytes — table padding and YAML block style differ
+legitimately between runtimes. Byte-level formatting parity is pinned by
+each SDK's own unit tests instead. `csv` output agrees byte-for-byte
+across go/py/ts in the default LF mode; the `crlf` option exposes known
+quoting divergences.
 
 ### Backward compatibility
 
@@ -137,7 +253,14 @@ render(process.stdout, JSON_FORMAT, { ok: true });
 
 - `@hop-top/kit/cli` — `createCLI(cfg)` builds a Commander root program
   with the hop-top contract: `--format`, `--quiet`, `--no-color`,
-  `--no-hints`, themed help, version, hidden completion command.
+  `--no-hints`, `--offline`, themed help, version, hidden completion
+  command.
+- `@hop-top/kit/netpolicy` — enforcement behind the `--offline` global.
+  `createCLI` guards `globalThis.fetch`, so a leaf that never consults
+  the marker is still refused; loopback stays reachable. Callers that
+  inject their own transport wrap it with `guardFetch`, and socket-level
+  clients (`node:net`, SQL drivers, gRPC) consult `isOffline()`
+  themselves. Match the refusal with `isOfflineError(err)`.
 - `@hop-top/kit/id` — TypeID primitive (cross-language; see
   [ADR 0001](../../docs/adr/0001-typeid-primitive.md)). Source:
   [`src/id/`](src/id/).
@@ -150,13 +273,118 @@ render(process.stdout, JSON_FORMAT, { ok: true });
 - `@hop-top/kit/uri` — thin facade over `@hop-top/cite` for URI parsing,
   action resolution, completions, registries, and OS handler metadata.
 - `@hop-top/kit/tui` — TUI toolkit (parity, anim, prompts).
+- `@hop-top/kit/mcp` — dual-spec MCP surface (see [MCP surface](#mcp-surface)).
 
 See package.json `exports` for the full list.
 
+## MCP surface
+
+Serves the Model Context Protocol over a bridged command tree, one MCP
+tool per runnable leaf. A single mount answers **both** revisions —
+`2024-11-05` (handshake) and `2026-07-28` (stateless per-request
+envelope) — choosing per request, because the newer revision has no
+handshake to negotiate with.
+
+Wire behaviour is pinned by the shared cross-language fixtures in
+`sdk/tests/cross-lang/fixtures/mcp-wire.json`, compared as raw bytes.
+
+### Use the v2 scoped packages
+
+The protocol layer comes from `@modelcontextprotocol/core` and
+`@modelcontextprotocol/server`, both pinned at `2.0.0`. They are already
+dependencies of this package.
+
+**`@modelcontextprotocol/sdk` — the v1 package — is deliberately not a
+dependency.** It is legacy-era only: its `LATEST_PROTOCOL_VERSION` is
+`2025-11-25`, and `2026-07-28` appears nowhere in it. It cannot serve
+the modern era. It is also the name every search result reaches for, so
+it is the most likely mistake here — code that imports it passes the
+legacy fixtures and fails every modern one.
+
+### Hosting: a framework-free handler
+
+`createMcpHandler` returns a plain async function, not a server. kit
+does not own your HTTP stack, and a pure request-to-response function is
+testable against the fixtures with no socket open.
+
+```ts
+import { createMcpHandler, commanderBridge } from '@hop-top/kit/mcp';
+
+const bridge = commanderBridge(rootCommand, {
+  run: async (inv, cmd) => ({ stdout: await execute(cmd, inv.flags), exitCode: 0 }),
+});
+
+const handler = createMcpHandler(bridge, {
+  serverInfo: { name: 'my-cli', version: '1.4.0' },
+});
+
+const res = await handler({ method: 'POST', headers, body });
+// res: { status, headers, body }
+```
+
+`commanderBridge` requires a `run` callback — kit does not dictate how a
+command's output is captured. Bind the handler to node:http, hono,
+express, fastify, or a Worker.
+
+### Options
+
+`path` (`/mcp`), `serverInfo` (`cmdsurface` / `0.0.0`), `specVersions`
+(both eras), `cacheHints` (`ttlMs` 0, `cacheScope` `private`),
+`originAllowlist` (empty, no check), `confirmationKey`, and `policy`
+(`defaultPolicy()`). The option *set* is normative across every kit SDK;
+only the spelling is idiomatic.
+
+An explicitly empty `specVersions`, a negative ttl, an unrecognized
+cache scope, or an empty confirmation key all throw at mount time rather
+than starting a server that quietly serves nothing.
+
+### Safety
+
+Exposure is gated by `policyAllowed(policy, cls, surface)`. The default
+is deliberately closed: **no remote surface may invoke a destructive
+leaf** — `defaultPolicy()` leaves `allowDestructiveOn` empty, and empty
+means block-all. A blocked call returns an `isError` result at HTTP 200,
+not a transport error: the call was understood and declined, not
+malformed.
+
+```ts
+const policy = { allowDestructiveOn: ['mcp'], defaultEnabled: ['cli', 'lib', 'mcp'] };
+```
+
+Leaves are classified from `kit/*` annotations: `kit/side-effect`
+(`destructive`, `destructive-local`, `destructive-shared`),
+`kit/auth-required`, `kit/requires-confirmation`.
+
+This gate is unrelated to the Factor 10 `safetyGuard` `--force` helper,
+which is a CLI-time TTY check for delegation safety.
+
+### Confirmation is header-only in this port
+
+A `kit/requires-confirmation` leaf requires an `X-Confirm-Token` header.
+`confirmationKey` is accepted and validated at mount time but **the
+modern handler does not read it** — the MRTR elicitation round-trip that
+Go, Python, Rust and PHP offer is not implemented here yet. Do not plan
+an elicitation flow against this port today.
+
+### Scope
+
+Deprecated upstream features (Roots, Sampling, Logging, HTTP+SSE) are
+unimplemented, matching the Go reference. `tasks/*` answers `-32601` and
+no `extensions` map is advertised in `server/discover`, which is the
+conformant way to not support it.
+
+### Cross-references
+
+- [Serve MCP from any SDK](../../docs/adopters/guides/serve-mcp-from-any-sdk.md)
+  — the polyglot adopter guide
+- [Expose your CLI over MCP](../../docs/adopters/guides/expose-cli-over-mcp.md)
+  — the Go reference surface, in depth
+
 ## URI facade
 
-The URI module delegates to `@hop-top/cite`; it does not reimplement the URI
-contract. It mirrors the kit Go URI command intent for SDK consumers:
+The URI module delegates to `@hop-top/cite` (`^0.1.0`); it does not
+reimplement the URI contract. It mirrors the kit Go URI command intent
+for SDK consumers:
 
 ```ts
 import { parse, resolve, complete, handler, newRegistry } from '@hop-top/kit/uri';

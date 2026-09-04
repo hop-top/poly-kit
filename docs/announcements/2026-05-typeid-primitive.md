@@ -2,7 +2,6 @@
 
 **Date:** 2026-05-20
 **Status:** Available
-**Track:** [`id-typeid`](../adr/0001-typeid-primitive.md)
 
 ## What
 
@@ -74,7 +73,6 @@ flip the primary key after one release cycle of dual-write.
 
 ## References
 
-- ADR: [`docs/adr/0001-typeid-primitive.md`](../adr/0001-typeid-primitive.md)
 - Glossary: TypeID entry in the workspace glossary
 - Upstream spec: <https://github.com/jetify-com/typeid>
 - Wire-format contract: [`contracts/typeid-v1/fixtures.json`](../../contracts/typeid-v1/fixtures.json)

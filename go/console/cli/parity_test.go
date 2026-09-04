@@ -315,15 +315,19 @@ func TestParityHelp(t *testing.T) {
 // here until all three match.
 //
 // Contract flags (sorted): --format --help --help-all --help-management
-//   --no-color --no-hints --quiet --telemetry --verbose --version
+//
+//	--no-color --no-hints --quiet --telemetry --verbose --version
 func TestParityFlagsExactSet(t *testing.T) {
 	bins := parityHarness(t)
 	// Common flags across all three langs. Python auto-generates
 	// --help-commands for the visible default group; Go/TS do not.
 	// --telemetry is the kit-telemetry opt-in mode flag, mirrored
 	// across all three spaced demos (adopter pattern).
+	// --offline ships in all three langs, so it is part of the shared
+	// contract set rather than a per-language extra.
 	common := []string{"--format", "--help", "--help-all", "--help-management",
-		"--no-color", "--no-hints", "--quiet", "--telemetry", "--verbose", "--version"}
+		"--no-color", "--no-hints", "--offline", "--quiet", "--telemetry",
+		"--verbose", "--version"}
 	pyExtra := []string{"--help-commands", "--stream"}
 
 	flagRE := regexp.MustCompile(`--[\w-]+`)
@@ -352,8 +356,8 @@ func TestParityFlagsExactSet(t *testing.T) {
 		copy(want, common)
 		if b.lang == "py" {
 			want = append(want, pyExtra...)
-			sort.Strings(want)
 		}
+		sort.Strings(want)
 
 		assert.Equal(t, want, got,
 			"%s: FLAGS section must contain exactly the cross-lang contract flags", b.lang)

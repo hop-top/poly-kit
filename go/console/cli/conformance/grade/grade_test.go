@@ -14,6 +14,7 @@ import (
 
 	"hop.top/kit/go/conformance/client"
 	"hop.top/kit/go/conformance/scenario"
+	"hop.top/kit/go/console/output"
 )
 
 // TestGradeLeafSuccess wires the leaf against an httptest fixture
@@ -55,7 +56,8 @@ func TestGradeLeafSuccess(t *testing.T) {
 }
 
 // TestGradeLeafFailMapsExitCode asserts that verdict=fail returns an
-// error whose AsCLIError envelope reports ExitCode 2 (GRADE_FAIL).
+// error whose AsCLIError envelope reports the GRADE_FAIL band code
+// (68) rather than colliding with the shared usage slot.
 func TestGradeLeafFailMapsExitCode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -83,6 +85,13 @@ func TestGradeLeafFailMapsExitCode(t *testing.T) {
 	}
 	if !errors.Is(err, client.ErrGradeFail) {
 		t.Fatalf("err = %v, want errors.Is ErrGradeFail", err)
+	}
+	conv, ok := err.(interface{ AsCLIError() *output.Error })
+	if !ok {
+		t.Fatal("grade-fail error must implement AsCLIError")
+	}
+	if got := conv.AsCLIError().ExitCode; got != client.ExitGradeFail {
+		t.Fatalf("ExitCode = %d, want %d (GRADE_FAIL band code)", got, client.ExitGradeFail)
 	}
 }
 

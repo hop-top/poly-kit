@@ -14,13 +14,15 @@ import (
 // Source of truth: go/console/output/error.go. Refresh when the
 // kit-side table grows.
 var exitClassToCode = map[string]int{
-	"OK":           0,
-	"GENERIC":      1,
-	"USAGE":        2,
-	"NOT_FOUND":    3,
-	"CONFLICT":     4,
-	"UNAUTHORIZED": 5,
-	"RATE_LIMITED": 64,
+	"OK":                 0,
+	"GENERIC":            1,
+	"USAGE":              2,
+	"NOT_FOUND":          3,
+	"CONFLICT":           4,
+	"UNAUTHORIZED":       5,
+	"TRANSIENT":          6,
+	"RATE_LIMITED":       64,
+	"PROVENANCE_MISSING": 65,
 }
 
 // ClassToExitCode resolves a kit exit-class symbol to its numeric

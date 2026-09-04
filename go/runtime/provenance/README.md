@@ -102,7 +102,7 @@ Three tiers, set by `SetMode` (package-global) or `WithMode`
 |------|--------------|-------------|
 | `ModeOff` | No checks; `Render` is plain `json.Marshal`. | Default; backward-compatible with pre-provenance adopters. |
 | `ModeWarn` | Records and emits, but warns to stderr on missing entries. | Dogfooding stage — switch on once your tests pass, fix warnings as they pop up. |
-| `ModeStrict` | Refuses to emit; returns `*output.Error{Code: "PROVENANCE_MISSING", ExitCode: 6}`. | Production — silent provenance regressions become loud. |
+| `ModeStrict` | Refuses to emit; returns `*output.Error{Code: "PROVENANCE_MISSING", ExitCode: 65}`. | Production — silent provenance regressions become loud. |
 
 The `--strict` invocation flag (when adopters wire it) calls
 `WithMode(ctx, ModeStrict)` for that single run, leaving the
