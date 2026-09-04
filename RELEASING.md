@@ -122,6 +122,18 @@ npx release-please@latest release-pr --dry-run \
   --target-branch main | grep '^title:'
 ```
 
+**Release brake.** Release PRs on either branch are blocked until a member of
+`@hop-top/release` approves them. The `production-branch-guardrail` ruleset on
+`main` and `next` requires code-owner review with zero required approvals, and
+`.github/CODEOWNERS` covers exactly the files every release PR rewrites: the
+manifest and each managed `CHANGELOG.md`. Everything else merges review-free.
+The nightly auto-cut (`.github/workflows/nightly-release.yml`) merges with
+`--auto`, so it only times a merge that is already approved; it cannot cut a
+release nobody approved, on either branch. Approve the PR you intend to ship
+and leave the sibling branch's PR alone. Approvals are dismissed on push and
+release-please rebuilds the PR on every push to its base, so approve after the
+last change you want in.
+
 Channel transitions on `next` (`alpha → beta → rc`) are driven by the
 `prerelease-type` in config plus `Release-As:` trailers, gated by
 `.github/workflows/release-promote-gate.yml`. That gate permits only
