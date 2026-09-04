@@ -9,6 +9,7 @@ import {
   CODE_TRANSIENT,
   CODE_UNAUTHORIZED,
   CODE_USAGE,
+  EXIT_GENERIC,
   EXIT_PROVENANCE_MISSING,
   EXIT_RATE_LIMITED,
   EXIT_TRANSIENT,
@@ -16,6 +17,7 @@ import {
   TRANSIENCE_TRANSIENT,
   TRANSIENCE_UNKNOWN,
   conflictError,
+  genericError,
   notFoundError,
   provenanceMissingError,
   rateLimitedError,
@@ -43,6 +45,7 @@ function capture(): { write(chunk: string): void; text(): string } {
 
 describe('constructors — code/exit/transience', () => {
   const cases: Array<[string, CliError, string, number, string]> = [
+    ['Generic', genericError('boom'), CODE_GENERIC, 1, TRANSIENCE_PERMANENT],
     ['NotFound', notFoundError('nope'), CODE_NOT_FOUND, 3, TRANSIENCE_PERMANENT],
     ['Conflict', conflictError('dup'), CODE_CONFLICT, 4, TRANSIENCE_PERMANENT],
     [
@@ -81,12 +84,14 @@ describe('constructors — code/exit/transience', () => {
     expect(got.transience).toBe(wantTransience);
   });
 
-  it('exit-code table is unique, 6 transient / 65 provenance', () => {
+  it('exit-code table is unique, 1 generic / 6 transient / 65 provenance', () => {
     const exits = new Map(cases.map(([, e]) => [e.exit_code, e.code]));
-    expect(exits.size).toBe(7);
+    expect(exits.size).toBe(8);
+    expect(EXIT_GENERIC).toBe(1);
     expect(EXIT_TRANSIENT).toBe(6);
     expect(EXIT_RATE_LIMITED).toBe(64);
     expect(EXIT_PROVENANCE_MISSING).toBe(65);
+    expect(exits.get(1)).toBe(CODE_GENERIC);
     expect(exits.get(6)).toBe(CODE_TRANSIENT);
     expect(exits.get(65)).toBe(CODE_PROVENANCE_MISSING);
   });
