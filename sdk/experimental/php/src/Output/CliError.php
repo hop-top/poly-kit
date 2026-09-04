@@ -49,6 +49,13 @@ final class CliError implements JsonSerializable, Stringable
     public const string CODE_RATE_LIMITED = 'RATE_LIMITED'; // exit 64 — Factor-10 budget exceeded
 
     /**
+     * Spec-assigned exit code for the generic failure class: the
+     * command failed and no narrower code applies. Pair it with
+     * generic() rather than hand-rolling exit 1, so the envelope
+     * carries a transience class.
+     */
+    public const int EXIT_GENERIC = 1;
+    /**
      * Spec-assigned exit code for transient/retryable failures
      * (Factor 11). Agents branch on it before parsing stderr: exit 6
      * means a retry may clear the failure.
@@ -116,6 +123,23 @@ final class CliError implements JsonSerializable, Stringable
             exitCode: $exitCode,
             transience: self::transienceForCode($code),
             source: $err,
+        );
+    }
+
+    /**
+     * CODE_GENERIC envelope with exit code 1. The catch-all for
+     * failures no narrower code describes; permanent because retrying
+     * the same input in the same environment is not expected to help.
+     * Wrapping an arbitrary error as CODE_GENERIC via wrap() still
+     * defaults to TRANSIENCE_UNKNOWN.
+     */
+    public static function generic(string $message): self
+    {
+        return new self(
+            code: self::CODE_GENERIC,
+            message: $message,
+            exitCode: self::EXIT_GENERIC,
+            transience: self::TRANSIENCE_PERMANENT,
         );
     }
 
