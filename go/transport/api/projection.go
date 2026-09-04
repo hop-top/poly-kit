@@ -153,12 +153,57 @@ type CommandDescriptor struct {
 	// it as an enum.
 	Reason string `json:"reason,omitempty"`
 
-	// RequiresConfirmation reports that the command is gated on a
-	// confirmation token.
+	// RequiresConfirmation reports that the command is gated on
+	// confirmation. A caller satisfies the gate by passing the
+	// command's own confirm flag; see [ConfirmFlagsFor].
 	RequiresConfirmation bool `json:"requires_confirmation,omitempty"`
+	// RequiresConfirmToken reports that the command needs a typed
+	// confirm-token in addition to confirm.
+	RequiresConfirmToken bool `json:"requires_confirm_token,omitempty"`
 	// AuthRequired reports that the command declares
 	// kit/auth-required.
 	AuthRequired bool `json:"auth_required,omitempty"`
+}
+
+// Confirmation flag names. They are the command's OWN flags, the same
+// ones the CLI takes, so confirmation means one thing everywhere: the
+// projection carries them through and the command's gate decides.
+const (
+	// ConfirmFlag is the confirmation flag every gated command has.
+	ConfirmFlag = "confirm"
+	// ConfirmTokenFlag is the typed-token flag a command annotated
+	// kit/destructive-token additionally requires.
+	ConfirmTokenFlag = "confirm-token"
+)
+
+// ConfirmValues are the values ConfirmFlag accepts.
+var ConfirmValues = []string{"yes", "no", "auto", "prompt"}
+
+// ConfirmFlagsFor returns the confirmation flags a caller may pass to
+// this command, empty when it is not gated.
+//
+// They are not in the command's declared flag set — kit registers them
+// as policy plumbing rather than as command flags — so the projection
+// adds them for gated commands only. Everything else keeps rejecting
+// undeclared flags.
+func ConfirmFlagsFor(d CommandDescriptor) []CommandFlag {
+	if !d.RequiresConfirmation && !d.RequiresConfirmToken {
+		return nil
+	}
+	out := []CommandFlag{{
+		Name:        ConfirmFlag,
+		Type:        "string",
+		Description: "Confirmation for this gated command: one of yes, no, auto, prompt.",
+	}}
+	if d.RequiresConfirmToken {
+		out = append(out, CommandFlag{
+			Name: ConfirmTokenFlag,
+			Type: "string",
+			Description: "Typed confirmation token. The refusal message " +
+				"for a call without it names the expected value.",
+		})
+	}
+	return out
 }
 
 // Method returns the HTTP method this descriptor projects onto.

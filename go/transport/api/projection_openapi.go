@@ -80,17 +80,6 @@ func describeCommandOp(spec *huma.OpenAPI, d CommandDescriptor) {
 		Responses:   commandResponses(spec, d),
 	}
 
-	if d.RequiresConfirmation {
-		op.Parameters = append(op.Parameters, &huma.Param{
-			Name:     ConfirmTokenHeader,
-			In:       "header",
-			Required: true,
-			Description: "Confirmation token; this command is gated on " +
-				"explicit confirmation.",
-			Schema: &huma.Schema{Type: "string"},
-		})
-	}
-
 	// Where the parameters go mirrors decodeCommandRequest: a GET
 	// carries them in the query, a POST in the body.
 	if d.Method() == http.MethodGet {
@@ -105,13 +94,19 @@ func describeCommandOp(spec *huma.OpenAPI, d CommandDescriptor) {
 // parameters.
 func queryParamsFor(d CommandDescriptor) []*huma.Param {
 	var out []*huma.Param
-	for _, f := range d.sortedFlags() {
+	for _, f := range append(d.sortedFlags(), ConfirmFlagsFor(d)...) {
+		sc := flagSchema(f)
+		if f.Name == ConfirmFlag {
+			for _, v := range ConfirmValues {
+				sc.Enum = append(sc.Enum, v)
+			}
+		}
 		out = append(out, &huma.Param{
 			Name:        f.Name,
 			In:          "query",
 			Required:    f.Required,
 			Description: f.Description,
-			Schema:      flagSchema(f),
+			Schema:      sc,
 		})
 	}
 	if len(d.Args) > 0 {
@@ -139,6 +134,18 @@ func requestBodyFor(d CommandDescriptor) *huma.RequestBody {
 		if f.Required {
 			required = append(required, f.Name)
 		}
+	}
+	// A gated command's confirmation flags are part of its request
+	// body, so the document says how to satisfy the gate rather than
+	// leaving a caller to discover it from a refusal.
+	for _, f := range ConfirmFlagsFor(d) {
+		sc := flagSchema(f)
+		if f.Name == ConfirmFlag {
+			for _, v := range ConfirmValues {
+				sc.Enum = append(sc.Enum, v)
+			}
+		}
+		props[f.Name] = sc
 	}
 
 	body := &huma.Schema{

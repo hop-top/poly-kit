@@ -97,9 +97,6 @@ const (
 	// travels in the message so the answer says WHY, not merely
 	// that the route is absent.
 	CodeNotInvocable = "not_invocable"
-	// CodeConfirmationRequired is returned when a command gated on
-	// confirmation was called without a confirmation token.
-	CodeConfirmationRequired = "confirmation_required"
 	// CodeDestructiveBlocked is returned when policy refuses a
 	// destructive command on this surface.
 	CodeDestructiveBlocked = "destructive_blocked"

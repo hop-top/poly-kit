@@ -36,9 +36,6 @@ type CommandRequest struct {
 	Flags map[string]any
 	// Args are the positional arguments in order.
 	Args []string
-	// ConfirmToken is the value of the confirmation header, empty
-	// when absent.
-	ConfirmToken string
 }
 
 // CommandResult is the outcome of one projected call.
@@ -61,19 +58,10 @@ var (
 	// ErrCommandNotInvocable reports that the addressed command is
 	// not mounted on this surface.
 	ErrCommandNotInvocable = errors.New("api: command not invocable on this surface")
-	// ErrConfirmationRequired reports that the command needs a
-	// confirmation token the caller did not supply.
-	ErrConfirmationRequired = errors.New("api: confirmation required")
 	// ErrDestructiveBlocked reports that policy refuses this
 	// command on this surface.
 	ErrDestructiveBlocked = errors.New("api: destructive command blocked on this surface")
 )
-
-// ConfirmTokenHeader carries the confirmation token for commands that
-// require one. It matches the header the existing cmdsurface REST
-// mount reads, so a caller that already confirms against one surface
-// does not learn a second spelling.
-const ConfirmTokenHeader = "X-Confirm-Token"
 
 // ProjectionConfig configures MountCommandProjection.
 type ProjectionConfig struct {
@@ -160,12 +148,6 @@ func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error)
 			Code:    CodeNotInvocable,
 			Message: msg,
 		})
-	case errors.Is(err, ErrConfirmationRequired):
-		Error(w, http.StatusPreconditionRequired, &APIError{
-			Status:  http.StatusPreconditionRequired,
-			Code:    CodeConfirmationRequired,
-			Message: ConfirmTokenHeader + " header required for this command",
-		})
 	case errors.Is(err, ErrDestructiveBlocked):
 		Error(w, http.StatusForbidden, &APIError{
 			Status:  http.StatusForbidden,
@@ -193,13 +175,18 @@ func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error)
 //     winning on conflict — the body is the more explicit statement.
 func decodeCommandRequest(r *http.Request, d CommandDescriptor) (CommandRequest, error) {
 	req := CommandRequest{
-		Path:         append([]string(nil), d.Path...),
-		Flags:        map[string]any{},
-		ConfirmToken: r.Header.Get(ConfirmTokenHeader),
+		Path:  append([]string(nil), d.Path...),
+		Flags: map[string]any{},
 	}
 
 	byName := make(map[string]CommandFlag, len(d.Flags))
 	for _, f := range d.Flags {
+		byName[f.Name] = f
+	}
+	// A gated command additionally accepts its confirmation flags.
+	// They are added here rather than to the descriptor's declared
+	// set so "undeclared flag -> 400" stays intact everywhere else.
+	for _, f := range ConfirmFlagsFor(d) {
 		byName[f.Name] = f
 	}
 

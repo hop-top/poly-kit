@@ -144,18 +144,19 @@ func TestOpenAPIDestructiveOperationIsMarked(t *testing.T) {
 	assert.Contains(t, op["summary"], "[destructive]",
 		"danger must be visible in a generated client's method list")
 
-	params, ok := op["parameters"].([]any)
-	require.True(t, ok, "a confirmed command must declare the header")
-	found := false
-	for _, p := range params {
-		pm := p.(map[string]any)
-		if pm["name"] == api.ConfirmTokenHeader {
-			found = true
-			assert.Equal(t, "header", pm["in"])
-			assert.Equal(t, true, pm["required"])
-		}
-	}
-	assert.True(t, found, "confirmation header must be in the spec")
+	// The gate is satisfied by the command's own confirm flag, so the
+	// document must show it in the request body rather than inventing
+	// a transport-specific header.
+	body := op["requestBody"].(map[string]any)
+	schema := body["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+	flags := schema["properties"].(map[string]any)["flags"].(map[string]any)
+	props := flags["properties"].(map[string]any)
+
+	require.Contains(t, props, "confirm",
+		"a gated command must document its confirm flag")
+	confirm := props["confirm"].(map[string]any)
+	assert.Contains(t, confirm["enum"], "yes",
+		"the document must name the accepted confirm values")
 }
 
 func TestOpenAPIOperationIDsAreStable(t *testing.T) {

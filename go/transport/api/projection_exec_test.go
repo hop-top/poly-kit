@@ -136,17 +136,36 @@ func TestMissingRequiredArgIsBadRequest(t *testing.T) {
 	assert.Zero(t, ex.calls)
 }
 
-func TestConfirmTokenHeaderReachesExecutor(t *testing.T) {
+func TestConfirmFlagReachesExecutorForGatedCommand(t *testing.T) {
+	// Confirmation is the command's own flag, so it must arrive in
+	// Flags like any other and let the command's gate decide.
 	ex := &stubExecutor{}
 	r := newProjectedRouter(t, ex)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/commands/widget/delete", nil)
-	req.Header.Set(api.ConfirmTokenHeader, "tok-123")
+	req := httptest.NewRequest(http.MethodPost, "/v1/commands/widget/delete",
+		strings.NewReader(`{"flags":{"confirm":"yes"}}`))
+	req.Header.Set("Content-Type", "application/json")
 
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "tok-123", ex.got.ConfirmToken)
+	assert.Equal(t, "yes", ex.got.Flags["confirm"])
+}
+
+func TestConfirmFlagRejectedOnUngatedCommand(t *testing.T) {
+	// Only gated commands accept it; everything else keeps the
+	// undeclared-flag 400.
+	ex := &stubExecutor{}
+	r := newProjectedRouter(t, ex)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/commands/widget/add",
+		strings.NewReader(`{"flags":{"confirm":"yes"},"args":["g"]}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Zero(t, ex.calls)
 }
 
 func TestStructuredDataIsTheResponseBody(t *testing.T) {
@@ -223,12 +242,6 @@ func TestPolicyRefusalsMapToStableStatuses(t *testing.T) {
 			err:    api.ErrDestructiveBlocked,
 			status: http.StatusForbidden,
 			code:   api.CodeDestructiveBlocked,
-		},
-		{
-			name:   "confirmation required",
-			err:    api.ErrConfirmationRequired,
-			status: http.StatusPreconditionRequired,
-			code:   api.CodeConfirmationRequired,
 		},
 	}
 	for _, c := range cases {

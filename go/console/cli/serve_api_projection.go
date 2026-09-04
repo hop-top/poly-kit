@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/ai/cmdreflect"
+	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -77,11 +78,10 @@ func buildProjection(
 		bridge.Hide(pattern, cmdsurface.SurfaceREST)
 	}
 
-	exec := &bridgeExecutor{bridge: bridge, needsConfirm: map[string]bool{}}
 	pcfg := api.ProjectionConfig{
 		ToolName:    name,
 		ToolVersion: version,
-		Executor:    exec,
+		Executor:    &bridgeExecutor{bridge: bridge},
 	}
 
 	for _, d := range tree.Descriptors {
@@ -89,11 +89,7 @@ func buildProjection(
 		if d.IsRoot() || d.Surface.HasSubCommands {
 			continue
 		}
-		pd := descriptorToProjection(d, bridge)
-		if pd.RequiresConfirmation {
-			exec.needsConfirm[pd.PathKey()] = true
-		}
-		pcfg.Descriptors = append(pcfg.Descriptors, pd)
+		pcfg.Descriptors = append(pcfg.Descriptors, descriptorToProjection(d, bridge))
 	}
 	return pcfg
 }
@@ -115,6 +111,7 @@ func descriptorToProjection(d *cmdreflect.Descriptor, b *cmdsurface.Bridge) api.
 		Invocable:            d.Invocable,
 		Reason:               string(d.Reason),
 		RequiresConfirmation: d.Safety.RequiresConfirmation,
+		RequiresConfirmToken: d.Safety.DestructiveTokenRequired,
 		AuthRequired:         d.Safety.AuthRequired,
 		OutputSchema:         d.Output.Schema,
 	}
@@ -213,11 +210,6 @@ func sideEffectClass(t cmdreflect.Tier) api.SideEffectClass {
 // by the same gate every other surface uses.
 type bridgeExecutor struct {
 	bridge *cmdsurface.Bridge
-	// needsConfirm holds the command paths that must carry a
-	// confirmation token, keyed by PathKey. The gate lives here
-	// rather than in the HTTP layer so it sits on the same side of
-	// the boundary as the rest of the policy.
-	needsConfirm map[string]bool
 }
 
 // Execute implements api.CommandExecutor.
@@ -228,34 +220,73 @@ func (e *bridgeExecutor) Execute(
 		return api.CommandResult{}, errors.New("cli: no command bridge configured")
 	}
 
-	// A command that declares kit/requires-confirmation must carry a
-	// token on every call. Permitting the destructive TIER through
-	// policy is a separate decision from waiving the per-call
-	// confirmation, and must not imply it.
-	if e.needsConfirm[strings.Join(req.Path, " ")] && req.ConfirmToken == "" {
-		return api.CommandResult{}, api.ErrConfirmationRequired
-	}
-
 	inv := cmdsurface.Invocation{
 		Path:  req.Path,
 		Args:  req.Args,
 		Flags: req.Flags,
 		Meta:  cmdsurface.Meta{Surface: cmdsurface.SurfaceREST},
 	}
-	if req.ConfirmToken != "" {
-		inv.Meta.Extra = map[string]string{"confirm_token": req.ConfirmToken}
-	}
-
 	res, err := e.bridge.Invoke(ctx, inv)
 	if err != nil {
 		return api.CommandResult{}, translateBridgeError(err)
 	}
 	return api.CommandResult{
-		ExitCode: res.ExitCode,
+		ExitCode: resolveExitCode(res),
 		Data:     res.Data,
 		Stdout:   res.Stdout,
 		Stderr:   res.Stderr,
 	}, nil
+}
+
+// resolveExitCode recovers the command's real exit code.
+//
+// The in-process runner reports every failure as exit 1 because
+// cobra's ExecuteContext returns a bare error. Kit's own failures
+// carry a richer verdict — a policy refusal is UNAUTHORIZED (5), a
+// bad request is USAGE (2) — and flattening them all to 1 would map
+// every refusal onto a 500, telling a caller the server broke when in
+// fact they were refused.
+//
+// The rendered envelope on stderr is where that verdict survives, so
+// it is read back here. A plain-text envelope leads with "CODE: ",
+// and the structured formats carry the code as a JSON/YAML field.
+func resolveExitCode(res cmdsurface.Result) int {
+	if res.ExitCode == 0 {
+		return 0
+	}
+	if code := codeFromEnvelope(res.Stderr); code > 0 {
+		return code
+	}
+	return res.ExitCode
+}
+
+// envelopeExitCodes maps the kit error codes that can reach a
+// projected call onto their exit codes. It is a lookup of the
+// taxonomy in go/console/output, not a second definition of it.
+var envelopeExitCodes = map[string]int{
+	output.CodeUsage:             2,
+	output.CodeNotFound:          3,
+	output.CodeConflict:          4,
+	output.CodeUnauthorized:      5,
+	output.CodeTransient:         output.ExitTransient,
+	output.CodeRateLimited:       output.ExitRateLimited,
+	output.CodeProvenanceMissing: output.ExitProvenanceMissing,
+}
+
+// codeFromEnvelope returns the exit code named by a rendered error
+// envelope, or 0 when stderr carries no recognizable one.
+func codeFromEnvelope(stderr string) int {
+	for code, exit := range envelopeExitCodes {
+		// Plain: "UNAUTHORIZED: ...". Structured: "code":"UNAUTHORIZED"
+		// or code: UNAUTHORIZED. All three contain the token followed
+		// by a delimiter, so one containment check covers them.
+		if strings.Contains(stderr, code+":") ||
+			strings.Contains(stderr, code+`"`) ||
+			strings.Contains(stderr, code+"\n") {
+			return exit
+		}
+	}
+	return 0
 }
 
 // translateBridgeError maps the bridge's sentinels onto the
