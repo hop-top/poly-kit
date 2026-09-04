@@ -24,6 +24,8 @@ jobs:
         branch: [main, next]
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # release-please opens ONE PR PER PACKAGE, on branches named
       # release-please--branches--<branch>--components--<component>.

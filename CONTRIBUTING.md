@@ -2,6 +2,11 @@
 
 Thanks for your interest in contributing!
 
+Org-wide policy — Conventional Commit types, the release model, and
+sign-off expectations — lives in
+[hop-top/.github `CONTRIBUTING.md`](https://github.com/hop-top/.github/blob/main/CONTRIBUTING.md).
+This file covers only what is specific to this repository.
+
 ## Getting Started
 
 1. Fork the repository
@@ -9,15 +14,19 @@ Thanks for your interest in contributing!
 3. Create a feature branch: `git checkout -b feat/my-change`
 4. Make your changes
 5. Run tests: `make test`
-6. Commit using
-   [Conventional Commits](https://conventionalcommits.org)
-7. Push and open a Pull Request
+6. Push and open a Pull Request
+
+Commit and PR titles follow the org convention; see
+[Commit messages](#commit-messages) below.
 
 ## Development Setup
 
-See the [.devcontainer/README.md](.devcontainer/README.md) file for detailed instructions on setting up your environment.
+See [.devcontainer/README.md](.devcontainer/README.md) for detailed
+instructions on setting up your environment — devcontainer, manual
+toolchain versions, and per-language dependency bootstrap.
 
 Quick start:
+
 ```sh
 make setup
 ```
@@ -42,19 +51,23 @@ This sets `core.hooksPath=.githooks` for the current clone. CI does not require 
 - Run linters before submitting: `make lint`
 - Keep changes focused; one concern per PR
 
-## Commit Messages
+## Commit messages
 
-Use [Conventional Commits](https://conventionalcommits.org):
+Conventional Commits, per the
+[org-wide policy](https://github.com/hop-top/.github/blob/main/CONTRIBUTING.md#conventional-commits) —
+including which types are user-facing and the `ci:` rule. Nothing in
+this repo overrides it.
 
-```
-feat(scope): add new feature
-fix(scope): correct a bug
-docs: update readme
-test: add missing tests
-```
+## Releases
+
+Branch model, prerelease channels, and how a stable version is cut are
+documented in [RELEASING.md](RELEASING.md). The org-wide shape of the
+release process is in the
+[org-wide policy](https://github.com/hop-top/.github/blob/main/CONTRIBUTING.md#release-model).
 
 ## Pull Requests
 
+- Fill in the PR template (`.github/PULL_REQUEST_TEMPLATE.md`)
 - Reference related issues in the PR description
 - Keep PRs small and reviewable
 - Ensure CI passes before requesting review
@@ -82,10 +95,9 @@ make builtins-sync         # regenerate the embed mirror from templates/
 ## Issues
 
 - Search existing issues before opening a new one
-- Use issue templates when available
+- Use the issue forms in `.github/ISSUE_TEMPLATE/`
 - Provide reproduction steps for bugs
 
 ## Code of Conduct
 
-Be respectful and constructive. We are all here to build
-something great together.
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

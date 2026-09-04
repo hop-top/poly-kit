@@ -165,6 +165,8 @@ jobs:
       # ── 1. Checkout source ────────────────────────────────────────────────────
       - name: Checkout source
         uses: actions/checkout@v7
+        # persist-credentials intentionally left on: later steps push the
+        # generated media to the assets branch using this credential.
         with:
           fetch-depth: 0
           token: ${{ secrets.token || github.token }}

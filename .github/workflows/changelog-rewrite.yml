@@ -22,6 +22,8 @@ jobs:
       pull-requests: read
     steps:
       - uses: actions/checkout@v7
+        # persist-credentials intentionally left on: the commit step below
+        # pushes back to the PR branch using the checkout credential.
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
