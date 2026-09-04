@@ -126,16 +126,37 @@ Invocable commands sort first. The reason vocabulary is the reflector's
 
 Execution goes through the `cmdsurface` `Bridge`, so safety level,
 permissions and confirmation are enforced by the same gate every other
-surface uses. The REST layer implements no policy of its own — a
-second opinion here could disagree with the CLI's.
+surface uses. Interactive and unauthorized-destructive commands are
+withheld at mount, not refused per call. See
+[the adopter guide](../../../docs/adopters/guides/expose-cli-over-rest.md)
+for the task walkthrough.
 
-Interactive and unauthorized-destructive commands are withheld **at
-mount**, not refused per call: they never become routes, and discovery
-explains why. The projection enables the REST surface on the bridge
-(the default enabled set is CLI + Lib + MCP), which widens *enablement*
-only. The destructive ceiling is still `Policy.Allowed`, so a
-destructive command stays withheld unless the adopter's policy names
-the REST surface.
+#### Permit destructive commands on REST
+
+```go
+cli.WithAPI(cli.APIConfig{
+    Policy: cmdsurface.Policy{
+        AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceREST},
+    },
+})
+```
+
+A command declaring `kit/requires-confirmation` still needs the
+`X-Confirm-Token` header on every call.
+
+#### Withhold a command from REST
+
+```go
+cli.WithAPI(cli.APIConfig{
+    Hide: []string{"admin *", "debug dump"},
+})
+```
+
+Patterns are `"widget add"`, `"widget *"`, or `"*"`. Hidden commands
+stay in discovery with `invocable: false` and the reason
+`withheld-by-config`, and other surfaces are unaffected. `Expose` is
+the allow-list counterpart: empty mounts the whole tree, and `Hide`
+is applied after it.
 
 ### Exit codes
 

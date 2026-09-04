@@ -415,7 +415,9 @@ changing a line:
    Execution runs through the same `cmdsurface` policy gate as every
    other surface, so a command's safety level, permissions and
    confirmation requirements mean the same thing over HTTP as they do
-   on the CLI.
+   on the CLI. To permit destructive commands over REST, or to
+   withhold a command from it, see
+   [expose-cli-over-rest.md](../adopters/guides/expose-cli-over-rest.md).
 
 A deprecation of `WithAPI`, if any, is announced through the standard
 kit deprecation surface
