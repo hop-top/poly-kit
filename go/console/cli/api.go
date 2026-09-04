@@ -5,15 +5,38 @@ import (
 	"hop.top/kit/go/transport/cmdsurface"
 )
 
+// DefaultAPIAddr is the api service's listen address when neither
+// APIConfig.Addr, services.api.addr, nor --addr sets one. It is a
+// loopback address: a tool that serves its command tree over HTTP
+// serves it to the machine it runs on until the adopter says
+// otherwise, and saying otherwise means either configuring Auth or
+// opting into unauthenticated exposure by name (see
+// APIConfig.InsecureRemote).
+const DefaultAPIAddr = "127.0.0.1:8080"
+
 // APIConfig configures the built-in api service and token commands
 // added by WithAPI.
 type APIConfig struct {
-	// Addr is the default listen address (default ":8080").
+	// Addr is the default listen address (default [DefaultAPIAddr],
+	// a loopback address). A non-loopback address — ":8080",
+	// "0.0.0.0:8080", a LAN IP — is refused at validation unless
+	// Auth is set or InsecureRemote opts in.
 	Addr string
 	// OpenAPI configures OpenAPI spec generation (nil = disabled).
 	OpenAPI *api.OpenAPIConfig
-	// Auth validates requests (nil = no auth).
+	// Auth validates requests (nil = no auth). It gates every
+	// route, projected and adopter-owned, and is what permits a
+	// non-loopback Addr. The claims it returns attribute each call:
+	// see [api.IdentityOf] for the shapes that carry a principal and
+	// tenant into the audit trail and the permission gate.
 	Auth api.AuthFunc
+	// InsecureRemote permits serving WITHOUT authentication on a
+	// non-loopback address. It is an explicit acceptance that every
+	// host able to reach Addr may run every command the policy
+	// permits, as whoever it claims to be. services.api.insecure_remote
+	// and --insecure-remote set the same thing. It changes nothing
+	// when Auth is set and honored.
+	InsecureRemote bool
 	// Handlers registers custom routes on the router.
 	Handlers func(r *api.Router)
 	// Resources registers ResourceRouters (called after router setup).
@@ -68,7 +91,7 @@ type APIConfig struct {
 func WithAPI(cfg APIConfig) func(*Root) {
 	return func(r *Root) {
 		if cfg.Addr == "" {
-			cfg.Addr = ":8080"
+			cfg.Addr = DefaultAPIAddr
 		}
 		r.apiCfg = &cfg
 
@@ -88,9 +111,13 @@ func WithAPI(cfg APIConfig) func(*Root) {
 //
 // They are per-service flags for the api service, and the contract
 // makes per-service flags valid only under the selector form. These
-// two are the documented exception: they predate the hierarchy, and
-// refusing them under the supervisor form would break every adopter
-// that has one HTTP surface and a shell script that starts it.
+// are the documented exception: --addr and --no-auth predate the
+// hierarchy, and refusing them under the supervisor form would break
+// every adopter that has one HTTP surface and a shell script that
+// starts it. --insecure-remote joins them because it qualifies the
+// other two — it is the flag that makes a non-loopback --addr
+// without auth acceptable — and a qualifier that is valid in fewer
+// places than the flags it qualifies would be a trap.
 func (r *Root) mountAPIServeFlags() {
 	cfg := r.apiCfg
 	if cfg == nil {
@@ -105,6 +132,10 @@ func (r *Root) mountAPIServeFlags() {
 		}
 		if cfg.Auth != nil && c.Flags().Lookup("no-auth") == nil {
 			c.Flags().Bool("no-auth", false, "Disable authentication on the api service")
+		}
+		if c.Flags().Lookup(insecureRemoteFlag) == nil {
+			c.Flags().Bool(insecureRemoteFlag, false,
+				"Serve the api service without authentication on a non-loopback address")
 		}
 		return
 	}

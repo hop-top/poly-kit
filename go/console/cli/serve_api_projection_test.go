@@ -81,7 +81,9 @@ func projectionHandler(t *testing.T, r *Root) http.Handler {
 	require.True(t, ok, "WithAPI must register the api service")
 	a, ok := svc.(*apiService)
 	require.True(t, ok)
-	return a.buildHandler(t.Context())
+	h, err := a.buildHandler(t.Context())
+	require.NoError(t, err)
+	return h
 }
 
 func TestProjectionMountsWithoutAdopterCode(t *testing.T) {

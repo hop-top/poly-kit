@@ -306,7 +306,7 @@ func TestWithAPI_RegistersAPIService(t *testing.T) {
 }
 
 func TestWithAPI_ServeStartsAPIWithoutConfiguration(t *testing.T) {
-	r := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: ":0"}))
+	r := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))
 
 	// No services.api.enabled key at all: calling WithAPI IS the
 	// request to serve it, so `serve` must behave as it did before.
@@ -319,7 +319,7 @@ func TestWithAPI_ServeStartsAPIWithoutConfiguration(t *testing.T) {
 }
 
 func TestWithAPI_ExplicitDisableWinsOverCompatDefault(t *testing.T) {
-	r := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: ":0"}))
+	r := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))
 	r.Viper.Set("services.api.enabled", false)
 
 	err := runServeArgs(t, r, []string{"serve"}, 2*time.Second)

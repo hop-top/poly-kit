@@ -60,6 +60,14 @@ type SocketConfig struct {
 	// Naming a surface here widens that surface only; every other
 	// transport keeps the ceiling it had.
 	Policy cmdsurface.Policy
+
+	// Auth, when set, verifies every request before it is invoked;
+	// see [socket.Authenticator]. Without one the socket file's
+	// 0600 permission is the access control, and the caller and
+	// tenant a request carries are recorded as provenance only —
+	// nothing is granted on their basis. With one, the verified
+	// identity replaces them and a refusal answers UNAUTHENTICATED.
+	Auth socket.Authenticator
 }
 
 // WithSocket returns a Root option registering the built-in `socket`
@@ -116,7 +124,24 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 		// The zero Policy resolves identically to DefaultPolicy, so
 		// an adopter that sets nothing gets the conservative gate.
 		transportsvc.WithBridgeOptions(cmdsurface.WithPolicy(cfg.Policy)),
-		transportsvc.WithValidate(func() error { return validateSocketPath(root, cfg) }),
+		// The permission gate and audit sinks are resolved at Start:
+		// --policy is parsed and every adopter option has run only
+		// then. Validate has already refused a --policy that cannot
+		// load, so the error path here is unreachable in practice.
+		transportsvc.WithBridgeOptionsFunc(func() []cmdsurface.Option {
+			shared, err := root.serveBridgeOptions()
+			if err != nil {
+				return nil
+			}
+			return shared
+		}),
+		transportsvc.WithValidate(func() error {
+			if err := validateSocketPath(root, cfg); err != nil {
+				return err
+			}
+			_, err := root.servePermission()
+			return err
+		}),
 		// Same class as the api service: it accepts requests that
 		// mutate shared state, and it listens.
 		transportsvc.WithClass(string(SideEffectWriteShared), "listen"),
@@ -128,9 +153,13 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 		opts = append(opts, transportsvc.Hide(p))
 	}
 
-	return transportsvc.NewTransportService(
+	svc := transportsvc.NewTransportService(
 		SocketServiceName, root.Cmd, cmdsurface.SurfaceRPC, tr, opts...,
 	)
+	// The transport reports its own refusals into the service's
+	// bridge, which exists only once the service has started.
+	tr.svc = svc
+	return svc
 }
 
 // lazySocket defers resolving the socket path until Bind, so a
@@ -139,6 +168,7 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 type lazySocket struct {
 	root *Root
 	cfg  *SocketConfig
+	svc  *transportsvc.TransportService
 	tr   *socket.Transport
 }
 
@@ -148,7 +178,24 @@ func (l *lazySocket) Bind(ctx context.Context) (string, error) {
 		return "", err
 	}
 	l.tr = socket.New(path)
+	l.tr.Auth = l.cfg.Auth
+	l.tr.OnRefused = l.refused
 	return l.tr.Bind(ctx)
+}
+
+// refused routes a transport-level refusal (a failed authentication)
+// into the bridge's audit sinks, so the socket's "not authenticated"
+// lands in the same stream as the bridge's "not permitted" and "ran".
+func (l *lazySocket) refused(ctx context.Context, inv cmdsurface.Invocation, err error) {
+	if l.svc == nil {
+		return
+	}
+	b := l.svc.Bridge()
+	if b == nil {
+		return
+	}
+	inv.Meta.Surface = cmdsurface.SurfaceRPC
+	b.Audit(ctx, inv, cmdsurface.Result{}, err)
 }
 
 func (l *lazySocket) Serve(ctx context.Context, inv transportsvc.Invoker) error {
