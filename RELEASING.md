@@ -72,8 +72,10 @@ release-please machinery pointed at different branches.
    release-please **for that branch**.
 2. release-please opens a release PR per component with bumped versions and
    changelog entries. On `next` the bump carries the prerelease suffix
-   (`*-alpha.N` → `*-beta.N` → `*-rc.N`); on `main` it drops the suffix and
-   cuts the stable `x.y.z`.
+   (`*-alpha.N` → `*-beta.N` → `*-rc.N`). On `main` the config is patched
+   in-CI to drop the prerelease keys, but a version already on a prerelease
+   track needs an explicit `Release-As:` trailer to reach stable `x.y.z` —
+   see [Branch-aware release-please](#branch-aware-release-please).
 3. Merging the release PR creates GitHub releases + tags.
 4. `.github/workflows/publish.yml` fires on any `*/v*` tag (regardless of
    originating branch) and calls the org-wide reusable workflow
@@ -88,15 +90,36 @@ release-please machinery pointed at different branches.
 release-please is run against **both** `next` and `main` via the workflow's
 `target-branch`, sharing one config with per-branch prerelease behavior:
 
-- On **`next`**, packages carry `prerelease: true` (+ `versioning: prerelease`,
-  `prerelease-type: alpha.0`) so bumps produce `*-alpha.N`/`*-beta.N`/`*-rc.N`.
-- On **`main`**, packages set `prerelease: false` so bumps produce stable
-  `x.y.z`.
+The committed `.github/release-please-config.json` is byte-identical on both
+branches — every package carries `prerelease: true`, `versioning: prerelease`,
+`prerelease-type: alpha.0`. Keeping one config on both branches is what makes
+`next → main` promotion merges conflict-free.
+
+- On **`next`**, the config is used as committed, so bumps produce
+  `*-alpha.N`/`*-beta.N`/`*-rc.N`.
+- On **`main`**, the `Derive stable config on main` step in
+  `.github/workflows/release-please.yml` strips `prerelease`,
+  `prerelease-type`, and `versioning` from every package **in-CI only**. The
+  edit is never committed.
+
+> **Known limitation — `main` does not currently cut stable.** Stripping those
+> keys changes how the next bump is computed, but it does not move a version
+> already carrying a prerelease suffix back onto the stable track. With every
+> kit-family entry in `.github/.release-please-manifest.json` sitting at
+> `0.5.0-alpha.N`, the run on `main` bumps alpha → alpha, and `main` and `next`
+> propose the same versions. Cutting stable takes an explicit
+> `Release-As: x.y.z` trailer on a commit landing on `main`. Past
+> `Release-As:` trailers in this repo have all targeted prerelease versions
+> (seeding a channel, forcing a stalled bump); none has yet named a stable
+> `x.y.z`.
 
 Channel transitions on `next` (`alpha → beta → rc`) are driven by the
 `prerelease-type` in config plus `Release-As:` trailers, gated by
-`.github/workflows/release-promote-gate.yml`. Promoting `next` to stable is the
-`next → main` merge described in [Branch model](#branch-model).
+`.github/workflows/release-promote-gate.yml`. That gate permits only
+`release → alpha → beta → rc → release`; it rejects skipped and backwards
+transitions, and requires that a promotion PR change nothing but
+`prerelease-type`, with all packages sharing one value. Promoting `next` to
+stable is the `next → main` merge described in [Branch model](#branch-model).
 
 ## Components
 
