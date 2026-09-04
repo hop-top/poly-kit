@@ -28,8 +28,21 @@ jobs:
             exit 0
           fi
 
-          # Validate only prerelease-type changed
           DIFF=$(git diff "${BASE_SHA}" -- .github/release-please-config.json)
+          CHANGED=$(echo "$DIFF" \
+            | grep "^[+-]" \
+            | grep -v "^[+-][+-][+-]" \
+            | grep -v "^$" || true)
+
+          # A PR that leaves prerelease-type alone is config maintenance,
+          # not a channel promotion; there is no transition to validate.
+          if ! echo "$CHANGED" | grep -q "prerelease-type"; then
+            echo "prerelease-type unchanged — not a promotion PR," \
+              "nothing to validate"
+            exit 0
+          fi
+
+          # Validate only prerelease-type changed
           NON_PRERELEASE=$(echo "$DIFF" \
             | grep "^[+-]" \
             | grep -v "^[+-][+-][+-]" \
