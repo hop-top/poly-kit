@@ -6,32 +6,36 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.1...kit-ts/v0.5.0-alpha.2) (2026-09-04)
 
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.2. This release includes new features and bug fixes.
+
 
 ### Features
 
-* merge offline-transport ([9c20087](https://github.com/hop-top/poly-kit/commit/9c20087cab95e8006929155d1c59c1a3afb20738))
-* merge offline-transport ([6fa2303](https://github.com/hop-top/poly-kit/commit/6fa2303f7aa212d8ec2fb88ee1f200c54b9e2107))
-* **sdk/ts:** add structured error envelope with transience class ([6c17d55](https://github.com/hop-top/poly-kit/commit/6c17d55bdf03c1b4b04dc0f15c663f8b326d4c56))
-* **ts/mcp:** implement MRTR confirmation loop on the modern surface ([bd048af](https://github.com/hop-top/poly-kit/commit/bd048af1d85faec746a3816041ce9a553390084c))
-* **ts:** enforce --offline at the fetch layer ([baf17b2](https://github.com/hop-top/poly-kit/commit/baf17b2ab53c893533f440cac56806c437bb5cb8))
-* **ts:** serve dual-spec MCP surface ([e9f9ada](https://github.com/hop-top/poly-kit/commit/e9f9ada729d20164facffefcf11f86514887223f))
+* merge offline-transport
+* merge offline-transport
+* **sdk/ts:** add structured error envelope with transience class
+* **ts/mcp:** implement MRTR confirmation loop on the modern surface
+* **ts:** enforce --offline at the fetch layer
+* **ts:** serve dual-spec MCP surface
 
 
 ### Bug Fixes
 
-* **output:** collapse header/key split, let --cols reorder ([b11b33c](https://github.com/hop-top/poly-kit/commit/b11b33c4a30e52fb062922c798f8db3ed7541f2a))
-* **output:** emit valid csv from ts in crlf mode ([259151e](https://github.com/hop-top/poly-kit/commit/259151e2d6641ca0c1044c2389cb09bc7489aed2))
-* **output:** reach projection helpers from every render ([706010c](https://github.com/hop-top/poly-kit/commit/706010c123c1fc49e0d53170ff3a343c4aa302d9))
-* **parity:** load verbosity/streams blocks, drop decorative table block ([e94d031](https://github.com/hop-top/poly-kit/commit/e94d031b61a229bb74ac1c6c2d7006aa847f8c4d))
-* **ts:** exempt telemetry from `--offline` ([e11a74a](https://github.com/hop-top/poly-kit/commit/e11a74abb16e4a73b1659d9326875f59cade916b))
-* **ts:** re-export registerOutputFlags + dispatch from output subpath ([89711a2](https://github.com/hop-top/poly-kit/commit/89711a26b71a012930f91d03e03b7a0b5b4948ad))
-* **ts:** ship root index entry so bare package import resolves ([b3155e4](https://github.com/hop-top/poly-kit/commit/b3155e4962f7ea32815e2b816a6680eb522dc514))
+* **output:** collapse header/key split, let --cols reorder
+* **output:** emit valid csv from ts in crlf mode
+* **output:** reach projection helpers from every render
+* **parity:** load verbosity/streams blocks, drop decorative table block
+* **ts:** exempt telemetry from `--offline`
+* **ts:** re-export registerOutputFlags + dispatch from output subpath
+* **ts:** ship root index entry so bare package import resolves
 
 
 ### Refactored
 
-* **cli:** read verbosity/streams values from parity contract ([95e0b0a](https://github.com/hop-top/poly-kit/commit/95e0b0a67bfe160ffab9937cd17966f099ce148d))
-* **output:** resolve column precedence in dispatch, not formatters ([0ae7cd7](https://github.com/hop-top/poly-kit/commit/0ae7cd7e4a654bda67688c910946a8f8834f3355))
+* **cli:** read verbosity/streams values from parity contract
+* **output:** resolve column precedence in dispatch, not formatters
+
+Full diff: [kit-ts/v0.5.0-alpha.1...kit-ts/v0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.1...kit-ts/v0.5.0-alpha.2)
 
 ## [Unreleased]
 
