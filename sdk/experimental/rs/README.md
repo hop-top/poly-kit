@@ -63,9 +63,9 @@ The Rust URI facade is experimental and feature-gated:
 hop-top-kit = { version = "0.1", features = ["uri"] }
 ```
 
-`hop_top_kit::uri` delegates to `hop-top-cite`; it does not reimplement
-URI parsing, action routing, completion, or handler generation.
-`hop-top-cite` is published on crates.io.
+`hop_top_kit::uri` delegates to `hop-top-cite` (`0.1.0`); it does not
+reimplement URI parsing, action routing, completion, or handler
+generation. `hop-top-cite` is published on crates.io.
 
 ## Output formatting
 

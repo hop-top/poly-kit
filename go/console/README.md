@@ -11,5 +11,7 @@ human-facing CLI/TUI behavior.
 - [markdown/](markdown/README.md)
 - [output/](output/README.md)
 - [ps/](ps/README.md)
+- [stage/](stage/README.md)
 - [tui/](tui/README.md)
+- [uri/](uri/README.md)
 - [wizard/](wizard/README.md)

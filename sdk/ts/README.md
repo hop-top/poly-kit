@@ -382,8 +382,9 @@ conformant way to not support it.
 
 ## URI facade
 
-The URI module delegates to `@hop-top/cite`; it does not reimplement the URI
-contract. It mirrors the kit Go URI command intent for SDK consumers:
+The URI module delegates to `@hop-top/cite` (`^0.1.0`); it does not
+reimplement the URI contract. It mirrors the kit Go URI command intent
+for SDK consumers:
 
 ```ts
 import { parse, resolve, complete, handler, newRegistry } from '@hop-top/kit/uri';

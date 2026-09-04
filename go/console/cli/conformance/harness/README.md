@@ -53,9 +53,9 @@ pass `harness.WithInvoker(...)`.
 
 ## Wiring xrr into your adapter call sites
 
-The harness depends on **xrr** (`hop.top/xrr`) to capture side
-effects. xrr does *not* auto-instrument; the adopter wraps each
-adapter call site once. Example for HTTP:
+The harness depends on **xrr** (`hop.top/xrr`, `v0.1.0-alpha.3`) to
+capture side effects. xrr does *not* auto-instrument; the adopter
+wraps each adapter call site once. Example for HTTP:
 
 ```go
 import (
@@ -213,4 +213,9 @@ Adopters running under `go test -v` get the message verbatim;
 
 - ADR-0021 — xrr-first integration model.
 - `kitconformance.AssertCLI` — Layer-A static-shape checker.
-- `hop.top/xrr` — the cassette substrate.
+- `hop.top/xrr` (`v0.1.0-alpha.3`) — the cassette substrate.
+- `go/conformance/recorder` — stamps `recorder_version` from the xrr
+  module version in build info (`recorder.go:301`), so a bump moves
+  recorded manifests too.
+
+<!-- release: track hop.top/xrr v0.1.0-alpha.3 -->

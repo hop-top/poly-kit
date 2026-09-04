@@ -40,8 +40,8 @@ $actionUri = UriFacade::parse('tlc://org/repo/T-0001?action=task.claim', $policy
 $plan = UriFacade::resolveAction($actionUri, $policy);
 ```
 
-This facade intentionally delegates to `hop-top/cite`; it does not reimplement
-URI parsing, vanity handling, action routing, or handler identity.
+This facade intentionally delegates to `hop-top/cite` (`^0.2.0`); it does not
+reimplement URI parsing, vanity handling, action routing, or handler identity.
 
 ## Output formatting
 
