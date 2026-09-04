@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.3...kit-py/v0.5.0-alpha.4) (2026-09-04)
+
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.4. This release includes new features and bug fixes.
+
+
+### ⚠ BREAKING CHANGES
+
+* **ai/llm:** `Request.Temperature` type changes from `float64` to `*float64`. Callers setting a literal must pass a pointer; zero-value construction (unset) keeps behaving as before via nil.
+* **output:** ColumnSpec(header=..., key=...) with differing names now raises ValueError.
+
+### Features
+
+* merge offline-transport
+* merge offline-transport
+* **py:** enforce `--offline` at the urllib layer
+* **py:** model cobra's lazy help-flag registration on the MCP surface
+* **py:** port the dual-spec MCP surface
+* **sdk/py:** add structured error envelope with transience class
+
+
+### Bug Fixes
+
+* **ai/llm:** send explicit zero temperature on the wire
+* **build:** realign sdk/py uv.lock with declared version
+* **output:** drive row projection from ColumnSpec
+* **output:** forward ColumnSpec from dispatch to formatters
+* **output:** honor ColumnSpec order in tabular formatters
+* **output:** pin ColumnSpec header to key
+* **output:** project cols in json and yaml formatters
+* **output:** quote leading whitespace in py csv fields
+* **output:** restore ColumnSpec wiring on py csv formatter
+* **py:** pin the clock in sqlstore TTL tests
+* **py:** vendor parity.json into package, drop monorepo fs read
+
+Full diff: [kit-py/v0.5.0-alpha.3...kit-py/v0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.3...kit-py/v0.5.0-alpha.4)
+
 ## [Unreleased]
 
 ### Changed
