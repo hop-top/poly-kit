@@ -185,6 +185,7 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	stopTO, _ := cmd.Flags().GetDuration("stop-timeout")
 	serveTimeoutOverrides(configs, readyTO, stopTO)
 	applyAPICompat(cmd, root, configs)
+	applySocketFlags(cmd, root)
 
 	outcome := serve.Resolve(reg, serve.Request{
 		Args:    args,

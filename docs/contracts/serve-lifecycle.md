@@ -144,6 +144,62 @@ with a service of the same name.
 - Stop order is the exact reverse of the order in which services
   actually started.
 
+### Transport services
+
+A **transport service** is a service whose work is projecting the
+tool's completed command tree onto one transport: the MCP channel, an
+RPC listener, an SSE stream, a bus consumer, the built-in Unix socket.
+They are all the same shape, and they differ only in how requests
+arrive and how responses leave.
+
+That common shape is centralized in
+[`go/transport/transportsvc`](../../go/transport/transportsvc/). A
+transport supplies three methods — `Bind`, `Serve`, `Close` — and
+receives the whole of the lifecycle in return. A transport MUST NOT
+re-implement any of the following:
+
+| Centralized             | What it means for a transport                          |
+|-------------------------|--------------------------------------------------------|
+| Reflection              | the command tree is reflected once, at `Start`          |
+| Policy                  | every invocation passes the surface and destructive gates |
+| Readiness               | ready is reported once, after `Bind` returns            |
+| Address                 | `Bind`'s return value is surfaced via `Addressed`       |
+| Stop                    | `Close` is called once, bounded, and is idempotent      |
+
+Rules:
+
+- Reflection happens at `Start`, never at construction. The command
+  tree is complete only after every option has run and every
+  subcommand is mounted; a transport that reflected at construction
+  would serve whatever subset existed when `main` happened to build
+  it.
+- The transport's surface is **pinned** by the seam. A transport
+  cannot invoke as a surface other than its own, so per-leaf
+  enablement and the destructive ceiling cannot be sidestepped by a
+  transport setting a different `Meta.Surface`.
+- `Bind` MUST acquire everything that can fail deterministically. It
+  is the acquisition readiness is about: ready is reported when `Bind`
+  returns nil, and never before.
+- `Close` MUST make `Serve` return. A `Close` that leaves the listener
+  open leaves the process holding a port after `serve` has reported it
+  stopped.
+- A transport declares its configuration gate, its side-effect and
+  network class, and its `DependsOn` list through the seam's options
+  rather than by implementing `Validator`, `Classified`, or
+  `Dependent` itself.
+
+Registration, naming, and enablement are unchanged: a transport
+service registers like any other, its identifier obeys the naming
+rules above, and `enabled` defaults to `false`. Kit ships `socket` on
+this seam; `api` predates it and keeps its own implementation.
+
+The seam lives under `go/transport/` rather than beside the contract
+types in [`go/console/serve`](../../go/console/serve/) because the
+command-tree half of it reaches `cmdsurface`, which reaches
+`cmdreflect`, which reaches `go/console/cli`, which registers services
+back into `serve`. Keeping the contract package free of the transport
+stack is what keeps that acyclic.
+
 ## Readiness
 
 **Ready** means the service has completed every acquisition that can
@@ -312,6 +368,24 @@ Service-specific keys live under the same block and are owned by the
 service: `services.api.addr`, `services.socket.path`, and so on. Kit
 does not reserve names inside a service's own block beyond the four
 lifecycle keys above.
+
+The two kit-shipped services own these:
+
+| Key                    | Type   | Default                              | Meaning                        |
+|------------------------|--------|--------------------------------------|--------------------------------|
+| `services.api.addr`    | string | `:8080`                              | HTTP listen address            |
+| `services.socket.path` | string | `$XDG_RUNTIME_DIR/<tool>/<tool>.sock`| Unix socket path               |
+
+`--socket` overrides `services.socket.path` for one run, the way
+`--addr` overrides `services.api.addr`. The socket path is resolved to
+an absolute path, and a path longer than the platform's `sockaddr_un`
+limit is a configuration failure at exit `2` rather than a kernel
+`invalid argument` at start.
+
+The socket is created with mode `0600`. On a Unix domain socket the
+filesystem permission IS the access control — the socket has no port
+and is not routable — so the service is loopback-only by construction
+and grants nothing on the basis of a caller-supplied identity.
 
 Environment variables follow the kit convention — `<TOOL>` prefix,
 uppercase, dots to underscores:
