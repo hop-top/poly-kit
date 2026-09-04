@@ -15,7 +15,7 @@ are answered in order. A connection may carry any number of requests.
 ### Request
 
 ```json
-{"path":["widget","get"],"args":["7"],"flags":{"format":"json"},"caller":"daemon","trace_id":"abc123"}
+{"path":["widget","get"],"args":["7"],"flags":{"format":"json"},"caller":"daemon","tenant":"acme","request_id":"r-1","trace_id":"abc123","idempotency_key":"k-1"}
 ```
 
 | Field | Type | Required | Meaning |
@@ -23,11 +23,15 @@ are answered in order. A connection may carry any number of requests.
 | `path` | `[]string` | yes | command path from root to leaf, e.g. `["widget","get"]` |
 | `args` | `[]string` | no | positional arguments after the path |
 | `flags` | `object` | no | flags keyed by long name; values as the command expects them |
-| `caller` | `string` | no | claimed principal, forwarded to audit sinks as provenance |
+| `caller` | `string` | no | claimed principal, forwarded to audit sinks as provenance; replaced by the authenticator's verdict when one is configured |
+| `tenant` | `string` | no | claimed tenant, under the same terms as `caller` |
+| `request_id` | `string` | no | request identifier for the audit trail; issued by the server when absent |
 | `trace_id` | `string` | no | trace identifier propagated across surfaces |
+| `idempotency_key` | `string` | no | forwarded to the command's `--idempotency-key` flag when it registers one |
 
-`path` must be non-empty. `caller` is **not** a credential: it is
-recorded, never verified, and grants nothing.
+`path` must be non-empty. Without an [`Authenticator`](#authentication),
+`caller` and `tenant` are **not** credentials: they are recorded,
+never verified, and grant nothing.
 
 ### Response
 
@@ -61,11 +65,40 @@ failed. `ok:false` means it never ran.
 | `NOT_FOUND` | `path` resolves to no reachable command, including one the reflector excluded (hidden, deprecated) |
 | `NOT_ENABLED` | the command exists but is not exposed on this surface |
 | `BLOCKED` | destructive command refused because the policy does not name this surface |
+| `DENIED` | the permission gate refused this caller; the message carries its stable reason |
+| `UNAUTHENTICATED` | the configured `Authenticator` refused the request; never sent without one |
 | `INVALID` | malformed request line, or empty `path` |
 | `INTERNAL` | any other runner error |
 
 A malformed line does not close the connection; the next request is
 served normally.
+
+## Authentication
+
+The transport ships without an authenticator: the socket file's
+`0600` permission is the access control, and for the common case
+that is the authentication. `Transport.Auth` (an `Authenticator`,
+`cli.SocketConfig.Auth` for the built-in service) verifies each
+request before it is invoked. It receives the connection, so it may
+read peer credentials from the kernel, and the request, so it may
+verify something the caller sent. A non-nil error answers
+`UNAUTHENTICATED`; the returned `Identity` replaces the request's
+claimed `caller` and `tenant` in `Meta`.
+
+A refusal never reaches the bridge, so the transport reports it
+through `Transport.OnRefused` with an error wrapping
+`cmdsurface.ErrAuthRefused`; the built-in service routes that into
+`Bridge.Audit`, so the refusal lands in the same audit stream as the
+bridge's own verdicts.
+
+## Cancellation
+
+Requests on a connection are answered in order but read ahead: a
+reader goroutine keeps consuming lines while a command runs, so a peer
+that hangs up mid-command is noticed immediately and the connection's
+context — the one the invocation received — is canceled. Up to 16
+requests may be read ahead; past that, a client that floods without
+reading responses is not observed until the backlog drains.
 
 ## Configuration
 
@@ -111,7 +144,9 @@ directory.
 | `New(path)` | construct the transport |
 | `Transport` | implements `transportsvc.Transport` |
 | `Request`, `Response`, `Error` | wire types |
-| `CodeNotFound`, `CodeNotEnabled`, `CodeBlocked`, `CodeInvalid`, `CodeInternal` | error-code constants |
+| `Authenticator`, `Identity` | the per-request verification hook and its verdict |
+| `Transport.Auth`, `Transport.OnRefused` | install the hook; observe its refusals |
+| `CodeNotFound`, `CodeNotEnabled`, `CodeBlocked`, `CodeDenied`, `CodeUnauthenticated`, `CodeInvalid`, `CodeInternal` | error-code constants |
 | `SocketMode` | the `0600` the socket file is created with |
 
 Register it through
@@ -122,5 +157,8 @@ constructing the service by hand.
 
 - [transportsvc](../transportsvc/README.md) — the lifecycle seam
 - [serve lifecycle contract](../../../docs/contracts/serve-lifecycle.md)
+  — the Security section states the provenance and permission rules
+- [secure-remote-serving.md](../../../docs/adopters/guides/secure-remote-serving.md)
+  — the permission gate and audit trail, walked through
 - [`go/transport/rpc`](../rpc/) — ConnectRPC and protobuf, when you
   need a schema rather than dynamic dispatch

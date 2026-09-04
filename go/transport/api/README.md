@@ -191,9 +191,15 @@ Refusals where the command never ran are distinct from exit codes:
 |-----------|--------|------|
 | command withheld on this surface | 404 | `not_invocable` |
 | policy refuses a destructive command | 403 | `destructive_blocked` |
+| the permission gate refuses this caller | 403 | `permission_denied` |
 
 A `not_invocable` body carries the descriptor's reason, which is what
 separates "no such command" from "that command exists and is withheld".
+A `permission_denied` body carries the gate's stable reason; it is
+`403`, not `401`, because the caller is authenticated and the refusal
+is about what this caller may do. It is distinct from
+`destructive_blocked` because different people fix them: the ceiling
+is the deployment's policy, the denial is the caller's entitlement.
 
 An unconfirmed destructive command is refused by the command itself,
 not by the projection: it exits `UNAUTHORIZED` and the table above
@@ -205,6 +211,50 @@ The projection installs no auth. Routes are registered through the
 router, so `APIConfig.Auth` and the rest of the middleware stack wrap
 them exactly as they wrap an adopter's own routes — discovery
 included.
+
+The api service listens on `127.0.0.1:8080` by default and refuses a
+non-loopback address it would serve unauthenticated, at exit `2`,
+unless `services.api.insecure_remote` opts in. `Auth` is what makes
+any other address acceptable. The rules are normative in the
+[serve lifecycle contract](../../../docs/contracts/serve-lifecycle.md#security);
+the walkthrough is
+[secure-remote-serving.md](../../../docs/adopters/guides/secure-remote-serving.md).
+
+#### Claims and identity
+
+`Auth` stores whatever claims the `AuthFunc` returns; the projection
+never interprets them. To attribute a call it asks `IdentityOf`, which
+understands three shapes without importing an adopter's types:
+
+| Claims value | Principal | Tenant |
+|---|---|---|
+| implements `Identity` | `Principal()` | `TenantID()` |
+| `Claims` (or `*Claims`) | `Subject` | `Tenant` |
+| string-keyed map (any element type, named types included) | `"sub"` | `"tenant"` |
+
+Anything else authenticates the call and leaves it unattributed.
+`ScopesOf` reads `Claims.Scopes` or a map's `"scopes"` entry the same
+way. `Auth(fn, OnAuthRefused(hook))` lets a refusal be observed
+before the `401` is written, which is how the api service records it
+in the audit trail.
+
+#### Request provenance
+
+Each projected call gathers a `RequestMeta` and hands it to the
+executor on `CommandRequest.Meta`:
+
+| Field | Source |
+|---|---|
+| `Principal`, `Tenant`, `Scopes` | the stored claims |
+| `RequestID` | the `RequestID` middleware (`X-Request-ID`, issued when absent, echoed) |
+| `TraceID` | the trace-id field of `traceparent`, else `X-Trace-ID` |
+| `IdempotencyKey` | `Idempotency-Key` |
+| `RemoteAddr`, `ReceivedAt` | the request |
+
+The request's own context is passed through unchanged, so a client
+disconnect cancels the command. The executor maps all of this onto
+`cmdsurface.Meta`; scopes travel as `Meta.Extra["scopes"]`,
+comma-joined, for the permission gate.
 
 ### OpenAPI
 
