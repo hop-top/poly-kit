@@ -314,7 +314,13 @@ type Root struct {
 	servePolicy serve.PolicyGate
 	// serveBus is the bus the supervisor publishes lifecycle events
 	// to; nil leaves only the log counterpart.
-	serveBus           serve.Publisher
+	serveBus serve.Publisher
+	// socketCfg is the built-in socket service's configuration, nil
+	// until WithSocket runs.
+	socketCfg *SocketConfig
+	// socketFlag is the --socket value when the operator passed one;
+	// it wins over config at bind time.
+	socketFlag         string
 	identityCfg        *IdentityConfig
 	peerCfg            *PeerConfig
 	telemetryCfg       *TelemetryConfig
@@ -396,7 +402,8 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// Override cobra's default version template to print "<name> v<version>"
 	// instead of "<name> version <version>".
 	cmd.SetVersionTemplate(
-		`{{with .DisplayName}}{{printf "%s " .}}{{end}}{{printf "v%s" .Version}}` + "\n")
+		`{{with .DisplayName}}{{printf "%s " .}}{{end}}{{printf "v%s" .Version}}` + "\n",
+	)
 
 	// Normalize: strip leading "v" so the template's "v%s" doesn't double it.
 	cfg.Version = strings.TrimPrefix(cfg.Version, "v")
@@ -837,7 +844,8 @@ func (r *Root) Execute(ctx context.Context) error {
 	// so adopter errors are rendered to stderr in the requested format.
 	r.WrapRunE()
 
-	return fang.Execute(ctx, r.Cmd,
+	return fang.Execute(
+		ctx, r.Cmd,
 		fang.WithVersion(r.Config.Version),
 		fang.WithColorSchemeFunc(brandColorScheme),
 	)

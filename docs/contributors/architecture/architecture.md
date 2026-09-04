@@ -61,6 +61,7 @@ under `incubator/` until promoted.
 | Package | Role |
 |---|---|
 | `go/ai/llm` | Provider-agnostic LLM (Anthropic, OpenAI, Google, Ollama, RouteL2M, Triton); multimodal; fallback; hooks |
+| `go/ai/cmdreflect` | Command-tree reflection into descriptors; records why a command is non-invocable |
 | `go/ai/toolspec` | Structured CLI tool knowledge base; registry + source adapters |
 | `incubator/qmochi` *(incubator)* | Terminal charting (bar, column, line, sparkline, heatmap, Braille) |
 
@@ -69,6 +70,8 @@ under `incubator/` until promoted.
 | Package | Role |
 |---|---|
 | `console/cli` | Fang+Cobra+Viper root command factory + Theme contract |
+| `console/cli/cmdmeta` | Leaf: cobra annotation readers shared by `console/cli` and the reflector; zero kit imports |
+| `console/serve` | Service contract, registry, supervisor, failure policy; imports no transport package |
 | `console/tui` | Pre-themed Bubble Tea v2 components (spinner, progress, dialog, list) |
 | `console/wizard` | Interactive command-driven form builder |
 | `console/output` | table/json/yaml renderer; owns `--format` flag |
@@ -120,7 +123,46 @@ under `incubator/` until promoted.
 | Package | Role |
 |---|---|
 | `transport/api` | HTTP toolkit: router, middleware, resources, OpenAPI 3.1, WebSocket, Huma |
+| `transport/cmdsurface` | Bridge projecting the cobra tree onto many surfaces; policy gate |
 | `transport/rpc` | ConnectRPC unified CRUD over gRPC; generic proto, no per-entity codegen |
+| `transport/socket` | NDJSON over a Unix domain socket, on the transport-service seam |
+| `transport/transportsvc` | Transport-service seam: reflect once at Start, pinned surface, readiness, ordered stop |
+
+### Import layering
+
+The command tree, the reflector, and the transports would form a
+cycle if wired naively; `console/cli/cmdmeta` is what breaks it. The
+rule that keeps the graph acyclic:
+
+- `console/cli` may import `transport/*` and `console/serve`.
+- `transport/*` and `ai/cmdreflect` MUST NOT import `console/cli`.
+  They reach cobra annotations through `console/cli/cmdmeta`, which
+  is a leaf with zero kit imports for exactly this reason.
+- `console/serve` imports no transport package. It holds the service
+  contract only, so the lifecycle types stay usable without the
+  transport stack.
+- `transport/transportsvc` lives under `transport/` rather than
+  beside the contract in `console/serve` because it reaches
+  `cmdsurface` → `cmdreflect`; putting the seam in `console/serve`
+  reintroduces the cycle.
+
+Check it with a probe, not a package-local build: add a one-line file
+to `console/cli` importing the package under test, then run
+`go build ./...` over the whole module. Building only the new package
+always succeeds, because the offending edge closes through
+`console/cli` and is invisible from below.
+
+The probe passes today. It fails the moment the rule is broken — make
+`ai/cmdreflect` import `console/cli` directly and the same probe
+reports `import cycle not allowed` through
+`cli → cmdsurface → cmdreflect → cli`.
+
+```go
+// go/console/cli/zz_cycleprobe.go — delete after the check
+package cli
+
+import _ "hop.top/kit/go/transport/transportsvc"
+```
 
 ### `contracts/` — Shared schemas
 
