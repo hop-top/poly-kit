@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // Annotation keys reserved under the kit/ prefix for the contract
@@ -25,7 +27,7 @@ const (
 	// whether a retry can clear the failure. Agents retry when the
 	// command is retryable AND the failure is transient (or unknown,
 	// bounded).
-	kitRetryable = "kit/retryable"
+	kitRetryable = cmdmeta.KeyRetryable
 	// kitDryRunRationale carries the adopter-supplied 1-200 char
 	// reason a write|destructive leaf opted out of --dry-run. Read
 	// by the EnforceDryRunRationale validator gate.
@@ -33,29 +35,29 @@ const (
 	// kitOutputSchema carries the adopter-declared JSON Schema for
 	// the command's structured output. Pre-serialized JSON; the
 	// validator parses it shallowly to ensure it is valid JSON.
-	kitOutputSchema = "kit/output-schema"
+	kitOutputSchema = cmdmeta.KeyOutputSchema
 	// kitOutputSchemaVersion carries the adopter-declared
 	// MAJOR.MINOR version paired with kit/output-schema.
-	kitOutputSchemaVersion = "kit/output-schema-version"
+	kitOutputSchemaVersion = cmdmeta.KeyOutputSchemaVersion
 	// kitExamples carries a JSON-encoded []Example (Title, Command,
 	// Output). Read by `<tool> spec --format json` and by adopter
 	// help renderers.
-	kitExamples = "kit/examples"
+	kitExamples = cmdmeta.KeyExamples
 	// kitNextSteps carries a JSON-encoded []NextStep (When, Suggest,
 	// Reason). Surfaced to agents post-invocation.
-	kitNextSteps = "kit/next-steps"
+	kitNextSteps = cmdmeta.KeyNextSteps
 	// kitTopLevelVerb marks a depth-1 leaf as an intentional
 	// top-level verb (e.g. `kit init`). Without it the shape
 	// validator rejects depth-1 runnable leaves.
-	kitTopLevelVerb = "kit/top-level-verb"
+	kitTopLevelVerb = cmdmeta.KeyTopLevelVerb
 	// kitHierarchical marks an intermediate non-runnable node as an
 	// intentional grouping level for depth-3+ trees. Required on
 	// every intermediate when the leaf depth exceeds 2.
-	kitHierarchical = "kit/hierarchical"
+	kitHierarchical = cmdmeta.KeyHierarchical
 	// kitPassthrough marks a leaf that accepts opaque positional
 	// `-- args...` and forwards them to a child process. Purely
 	// informational; surfaces in the spec manifest.
-	kitPassthrough = "kit/passthrough"
+	kitPassthrough = cmdmeta.KeyPassthrough
 	// kitExemptValidation marks an internal command exempt from
 	// Layer-A enforcement. Reserved for kit-shipped commands that
 	// can't reasonably carry the full annotation set (compat
@@ -98,11 +100,10 @@ func SetRetryable(cmd *cobra.Command, v bool) {
 }
 
 // IsRetryable reports whether kit/retryable is "true" on cmd.
+//
+// Forwards to [cmdmeta.IsRetryable].
 func IsRetryable(cmd *cobra.Command) bool {
-	if cmd == nil || cmd.Annotations == nil {
-		return false
-	}
-	return cmd.Annotations[kitRetryable] == "true"
+	return cmdmeta.IsRetryable(cmd)
 }
 
 // SetDestructiveToken marks cmd as requiring --confirm-token=<sha> in

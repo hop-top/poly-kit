@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/runtime/sideeffect"
 )
 
@@ -22,12 +23,12 @@ const globalDryRunViperKey = "kit.dry_run"
 // SupportsDryRun opt-in (ADR-0019) and the new OptOutDryRun escape
 // hatch (ADR-0020). Both share the key; the value distinguishes
 // intent.
-const dryRunAnnotation = "kit/dry-run"
+const dryRunAnnotation = cmdmeta.KeyDryRun
 
 // dryRunSupported is the legacy ADR-0019 marker value. Retained as a
 // back-compat synonym for "tier-driven default-allow"; logs a
 // one-time deprecation warning at startup when found on any leaf.
-const dryRunSupported = "supported"
+const dryRunSupported = cmdmeta.DryRunSupported
 
 // dryRunOptedOut is the ADR-0020 escape hatch value. Set via
 // OptOutDryRun for write|destructive leaves that genuinely cannot
@@ -35,7 +36,7 @@ const dryRunSupported = "supported"
 // without preview semantics, etc.). The pre-execution hook rejects
 // --dry-run on these with a friendlier diagnostic than the generic
 // "not supported."
-const dryRunOptedOut = "opted-out"
+const dryRunOptedOut = cmdmeta.DryRunOptedOut
 
 // dryRunPolicy is the resolved decision the pre-execution hook makes
 // per leaf. See ADR-0020 for the policy table.
@@ -146,8 +147,14 @@ func resolveDryRunPolicy(cmd *cobra.Command) dryRunPolicy {
 // the resolved policy. Adopter help renderers and the pre-execution
 // check both call this. Returns true for "allow" only; no-op,
 // reject-interactive, and reject-opt-out all return false.
+//
+// Forwards to [cmdmeta.IsDryRunSupported], which resolves the same
+// policy table over raw annotation strings. cli keeps
+// resolveDryRunPolicy for its own use: the pre-execution hook needs
+// to distinguish no-op from the two refusal reasons, which this
+// boolean deliberately flattens.
 func IsDryRunSupported(cmd *cobra.Command) bool {
-	return resolveDryRunPolicy(cmd) == dryRunPolicyAllow
+	return cmdmeta.IsDryRunSupported(cmd)
 }
 
 // dryRunHelpAddendum is the line appended to a leaf command's Long

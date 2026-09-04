@@ -344,7 +344,15 @@ func verifyMCPConfirmState(key []byte, state string, b mcpConfirmBinding, now ti
 	if err != nil {
 		return mcpConfirmStateInvalid
 	}
-	tag, err := base64.RawURLEncoding.DecodeString(parts[2])
+	// Strict() rejects a non-canonical encoding. The tag is 32 bytes,
+	// so its 43-character encoding ends on a character carrying 4 data
+	// bits plus 2 unused ones. A non-strict decoder discards those two,
+	// which makes 4 distinct final characters decode to the same tag —
+	// an attacker who flips one of them would present a state that is
+	// not the one we minted and still pass hmac.Equal. Canonical-only
+	// decoding is what makes "the bytes differ" and "the MAC differs"
+	// the same statement.
+	tag, err := base64.RawURLEncoding.Strict().DecodeString(parts[2])
 	if err != nil {
 		return mcpConfirmStateInvalid
 	}

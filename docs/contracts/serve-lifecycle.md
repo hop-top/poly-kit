@@ -360,6 +360,13 @@ and `--no-auth` flags, and exits the same way.
   it first. The two MUST NOT both own it.
 - An adopter replacing the built-in API with its own implementation
   registers it under the same name through `WithServiceOverride`.
+- The api service projects the tool's own command tree onto REST and
+  OpenAPI automatically. This is additive: `APIConfig.Handlers` and
+  `APIConfig.Resources` are mounted first and keep working unchanged,
+  and every projected route sits under a versioned prefix
+  (`/v1/commands`) that no adopter route occupied before. See
+  [`go/transport/api`](../../go/transport/api/README.md) for the route
+  shape and the mapping tables.
 
 ### What changed observably
 
@@ -382,6 +389,35 @@ changing a line:
    default guards against. `WithAPI` is not that case: calling it is
    itself the request to serve the API. An explicit
    `services.api.enabled: false` still wins.
+
+4. **The api service serves `/v1/commands`.** Registering the api
+   service — including via `WithAPI` — now also mounts a REST
+   projection of the command tree and describes it in the OpenAPI
+   document. An adopter writes no mounting code to get it.
+
+   Three consequences are worth stating plainly:
+
+   - **New routes exist that did not before.** They are confined to
+     the `/v1/commands` prefix and to `/openapi.json` (the latter only
+     when the adopter had not configured `WithOpenAPI`, in which case
+     nothing was served there at all).
+   - **They are behind the adopter's existing auth.** The projection
+     installs no auth of its own; `APIConfig.Auth` gates the projected
+     routes and the discovery endpoint exactly as it gates the
+     adopter's own.
+   - **Not every command is reachable.** Interactive commands and
+     destructive commands the policy does not permit on this surface
+     are *not* mounted. They remain visible in the discovery listing
+     with `invocable: false` and a stable reason, so an operator can
+     tell "no such command" from "withheld here". Forced remote
+     execution of either class is out of scope.
+
+   Execution runs through the same `cmdsurface` policy gate as every
+   other surface, so a command's safety level, permissions and
+   confirmation requirements mean the same thing over HTTP as they do
+   on the CLI. To permit destructive commands over REST, or to
+   withhold a command from it, see
+   [expose-cli-over-rest.md](../adopters/guides/expose-cli-over-rest.md).
 
 A deprecation of `WithAPI`, if any, is announced through the standard
 kit deprecation surface

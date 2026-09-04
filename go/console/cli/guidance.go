@@ -5,28 +5,28 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // Example is one entry in a leaf command's kit/examples annotation.
 // Title is a short human label; Command is the literal invocation
 // (e.g. "kit foo create --name=bar"); Output is an optional embedded
 // snippet illustrating expected output.
-type Example struct {
-	Title   string `json:"title" yaml:"title"`
-	Command string `json:"command" yaml:"command"`
-	Output  string `json:"output,omitempty" yaml:"output,omitempty"`
-}
+//
+// An ALIAS of [cmdmeta.Example], not a copy: the reader lives in the
+// leaf package, and an alias keeps the two spellings the same type,
+// so a value crossing between cli and cmdmeta needs no conversion.
+type Example = cmdmeta.Example
 
 // NextStep is one entry in a leaf command's kit/next-steps
 // annotation. Surfaced to agents post-invocation to chain follow-up
 // commands. When is a free-form condition string ("on success",
 // "when no results"); Suggest is the literal next invocation;
 // Reason explains why the suggestion fits.
-type NextStep struct {
-	When    string `json:"when,omitempty" yaml:"when,omitempty"`
-	Suggest string `json:"suggest" yaml:"suggest"`
-	Reason  string `json:"reason,omitempty" yaml:"reason,omitempty"`
-}
+//
+// An alias of [cmdmeta.NextStep]; see [Example].
+type NextStep = cmdmeta.NextStep
 
 // Guidance bundles Examples and NextSteps for SetGuidance — a
 // convenience over the two singular setters.
@@ -74,36 +74,18 @@ func SetGuidance(cmd *cobra.Command, g Guidance) error {
 // Returns (nil, false) when the annotation is absent or malformed;
 // callers that want decode errors should use json.Unmarshal directly
 // on the annotation bytes.
+//
+// Forwards to [cmdmeta.GetExamples].
 func GetExamples(cmd *cobra.Command) ([]Example, bool) {
-	if cmd == nil || cmd.Annotations == nil {
-		return nil, false
-	}
-	raw := cmd.Annotations[kitExamples]
-	if raw == "" {
-		return nil, false
-	}
-	var out []Example
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, false
-	}
-	return out, true
+	return cmdmeta.GetExamples(cmd)
 }
 
 // GetNextSteps decodes the kit/next-steps annotation into []NextStep.
 // Same semantics as GetExamples.
+//
+// Forwards to [cmdmeta.GetNextSteps].
 func GetNextSteps(cmd *cobra.Command) ([]NextStep, bool) {
-	if cmd == nil || cmd.Annotations == nil {
-		return nil, false
-	}
-	raw := cmd.Annotations[kitNextSteps]
-	if raw == "" {
-		return nil, false
-	}
-	var out []NextStep
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, false
-	}
-	return out, true
+	return cmdmeta.GetNextSteps(cmd)
 }
 
 // setGuidanceList marshals v to JSON and stores the result under
