@@ -105,21 +105,21 @@ def test_ttl_not_yet_expired(monkeypatch):
 
     import hop_top_kit.sqlstore as sqlstore_mod
 
+    # Fixed clock on both sides; t0 sits on the last second of a minute so
+    # the +1 s step crosses the boundary.
+    t0 = datetime(2026, 1, 1, 12, 59, 59, tzinfo=UTC)
+    monkeypatch.setattr(sqlstore_mod, "_now", lambda: t0)
+
     s = open_store(":memory:", Options(ttl=timedelta(seconds=60)))
     s.put("ttl-key", "alive")
 
     # Advance "now" by only 1 second — entry should still be valid
-    _real_now = datetime.now(tz=UTC)
-    fake_now = _real_now.replace(second=(_real_now.second + 1) % 60)
-
-    original_now = sqlstore_mod._now
-    monkeypatch.setattr(sqlstore_mod, "_now", lambda: fake_now)
+    monkeypatch.setattr(sqlstore_mod, "_now", lambda: t0 + timedelta(seconds=1))
 
     found, val = s.get("ttl-key", str)
     assert found is True
     assert val == "alive"
 
-    monkeypatch.setattr(sqlstore_mod, "_now", original_now)
     s.close()
 
 
@@ -129,22 +129,22 @@ def test_ttl_not_yet_expired(monkeypatch):
 
 
 def test_ttl_expired(monkeypatch):
-    """Value stored now with 10 s TTL → expired when clock is +20 s."""
+    """Value stored at t0 with 10 s TTL → expired when clock is t0 + 20 s."""
     from datetime import timedelta
 
     import hop_top_kit.sqlstore as sqlstore_mod
 
+    # Fixed clock on both sides so the test never depends on the wall
+    # clock. t0 sits 15 s before a minute boundary so the +20 s step
+    # crosses it, which is where hand-rolled minute/second arithmetic
+    # used to raise ValueError.
+    t0 = datetime(2026, 1, 1, 12, 59, 45, tzinfo=UTC)
+    monkeypatch.setattr(sqlstore_mod, "_now", lambda: t0)
+
     s = open_store(":memory:", Options(ttl=timedelta(seconds=10)))
     s.put("ttl-key", "gone")
 
-    # Advance fake clock 20 seconds into the future
-    _real_now = datetime.now(tz=UTC)
-    fake_future = _real_now.replace(
-        second=(_real_now.second + 20) % 60,
-        minute=_real_now.minute + (_real_now.second + 20) // 60,
-    )
-
-    monkeypatch.setattr(sqlstore_mod, "_now", lambda: fake_future)
+    monkeypatch.setattr(sqlstore_mod, "_now", lambda: t0 + timedelta(seconds=20))
 
     found, val = s.get("ttl-key", str)
     assert found is False
