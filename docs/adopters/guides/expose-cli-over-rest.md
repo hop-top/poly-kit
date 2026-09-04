@@ -50,6 +50,8 @@ win a collision, and everything the projection adds lives under
 package main
 
 import (
+    "context"
+
     "hop.top/kit/go/console/cli"
 )
 
@@ -219,6 +221,8 @@ your declared output schemas, the confirmation header where it is
 required:
 
 ```go
+import "hop.top/kit/go/transport/api"
+
 cli.WithAPI(cli.APIConfig{
     Addr:    ":8080",
     OpenAPI: &api.OpenAPIConfig{Title: "mytool", Version: "1.4.2"},
@@ -239,6 +243,8 @@ operation, its method and its path.
 endpoint exactly as it gates your own:
 
 ```go
+import "net/http"
+
 cli.WithAPI(cli.APIConfig{
     Addr: ":8080",
     Auth: func(r *http.Request) (any, error) {
