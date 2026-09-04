@@ -156,12 +156,12 @@ Three-layer merge: config file < URI params < env vars.
 
 ### Model registry
 
-`aim` (`hop.top/aim`) is the source of truth for model metadata — capabilities,
-modalities, cost, context windows. The picker (forthcoming) consumes this
-accessor; library code calls `llm.Default(ctx)` rather than constructing a
-registry directly so tests and embedders can inject custom sources via
-`llm.SetDefaultRegistry`. The lazy default reuses one `aim.NewRegistry` across
-calls; swapping the provider invalidates that cache.
+`aim` (`hop.top/aim`, `v0.1.0-alpha.0`) is the source of truth for model
+metadata — capabilities, modalities, cost, context windows. The picker
+consumes this accessor; library code calls `llm.Default(ctx)` rather than
+constructing a registry directly so tests and embedders can inject custom
+sources via `llm.SetDefaultRegistry`. The lazy default reuses one
+`aim.NewRegistry` across calls; swapping the provider invalidates that cache.
 
 ```go
 t := true
@@ -171,7 +171,7 @@ models, _ := reg.Models(ctx, aim.Filter{ToolCall: &t})
 
 ### Request profile and budget tier
 
-`RequestProfile` is the consumer-facing input to the forthcoming `PickProvider`:
+`RequestProfile` is the consumer-facing input to `PickProvider`:
 an `aim.Filter` plus `MaxInputTokens` / `MaxOutputTokens` bounds (the picker
 rejects models whose context window or output limit is smaller). `BudgetTier`
 (`cheap` / `balanced` / `premium`) captures the cost/capability trade-off as a
@@ -312,3 +312,5 @@ llm.Register("myscheme", func(cfg llm.ResolvedConfig) (llm.Provider, error) {
 ## License
 
 MIT
+
+<!-- release: track hop.top/aim v0.1.0-alpha.0 -->

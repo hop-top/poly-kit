@@ -143,8 +143,9 @@ unmounted it answers `-32601` with no `extensions` map advertised in
 ## URI facade
 
 `hop_top_kit.uri` exposes Kit's URI integration surface as a thin adapter over
-the `hop-top-cite` package. The SDK does not duplicate URI parsing or handler
-generation logic; it delegates to the cite package for contract-backed behavior.
+the `hop-top-cite` package (`>=0.1.0`). The SDK does not duplicate URI parsing
+or handler generation logic; it delegates to the cite package for
+contract-backed behavior.
 
 ```python
 from hop_top_kit import uri
@@ -511,3 +512,4 @@ free-form `event` name + `attrs` dict so non-CLI adopters can use it too.
 This is a documented divergence; consumers that need command-path
 semantics should pass `"command_path"` inside `attrs`.
 
+<!-- release: track hop-top-cite >=0.1.0 -->

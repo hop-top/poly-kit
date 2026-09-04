@@ -95,7 +95,8 @@ func (s *Server) handleChatCompletions(
 		Messages: msgs,
 	}
 	if req.Temperature != nil {
-		llmReq.Temperature = *req.Temperature
+		t := *req.Temperature
+		llmReq.Temperature = &t
 	}
 	if req.MaxTokens != nil {
 		llmReq.MaxTokens = *req.MaxTokens
