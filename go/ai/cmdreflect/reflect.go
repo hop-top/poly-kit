@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/ai/toolspec"
-	kitcli "hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // Cobra annotation keys this package reads. They are the canonical
@@ -239,9 +239,9 @@ func reflectSurface(cmd *cobra.Command, root *cobra.Command, cfg *config) Surfac
 		Runnable:       cmd.Runnable(),
 		HasSubCommands: cmd.HasSubCommands(),
 		Builtin:        isBuiltin(cmd),
-		TopLevelVerb:   kitcli.IsTopLevelVerb(cmd),
-		Hierarchical:   kitcli.IsHierarchical(cmd),
-		Passthrough:    kitcli.IsPassthrough(cmd),
+		TopLevelVerb:   cmdmeta.IsTopLevelVerb(cmd),
+		Hierarchical:   cmdmeta.IsHierarchical(cmd),
+		Passthrough:    cmdmeta.IsPassthrough(cmd),
 		Group:          cmd.GroupID,
 	}
 	if cmd.Deprecated != "" {
@@ -329,8 +329,8 @@ func reflectSafety(cmd *cobra.Command) Safety {
 		s.RequiresConfirmation = true
 	}
 
-	s.Retryable = kitcli.IsRetryable(cmd)
-	s.DryRunSupported = kitcli.IsDryRunSupported(cmd)
+	s.Retryable = cmdmeta.IsRetryable(cmd)
+	s.DryRunSupported = cmdmeta.IsDryRunSupported(cmd)
 	return s
 }
 
@@ -339,14 +339,14 @@ func reflectSafety(cmd *cobra.Command) Safety {
 // still carried so a diagnostic can show what was written.
 func reflectOutput(cmd *cobra.Command) OutputMeta {
 	var o OutputMeta
-	if raw, ver, ok := kitcli.GetOutputSchemaJSON(cmd); ok && len(raw) > 0 {
+	if raw, ver, ok := cmdmeta.GetOutputSchemaJSON(cmd); ok && len(raw) > 0 {
 		o.Schema = append([]byte(nil), raw...)
 		o.SchemaVersion = ver
 		if !json.Valid(raw) {
 			o.SchemaMalformed = true
 		}
 	}
-	if ex, ok := kitcli.GetExamples(cmd); ok {
+	if ex, ok := cmdmeta.GetExamples(cmd); ok {
 		o.Examples = make([]Example, 0, len(ex))
 		for _, e := range ex {
 			o.Examples = append(o.Examples, Example{
@@ -354,7 +354,7 @@ func reflectOutput(cmd *cobra.Command) OutputMeta {
 			})
 		}
 	}
-	if ns, ok := kitcli.GetNextSteps(cmd); ok {
+	if ns, ok := cmdmeta.GetNextSteps(cmd); ok {
 		o.NextSteps = make([]NextStep, 0, len(ns))
 		for _, n := range ns {
 			o.NextSteps = append(o.NextSteps, NextStep{
