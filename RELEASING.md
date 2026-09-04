@@ -75,8 +75,15 @@ release-please machinery pointed at different branches.
    counter (`*-alpha.N` → `*-alpha.N+1`; `beta`/`rc` via the promote gate).
    Stable `x.y.z` is cut deliberately with a `Release-As:` footer — see
    [Branch-aware release-please](#branch-aware-release-please).
-3. Merging the release PR creates GitHub releases + tags.
-4. `.github/workflows/publish.yml` fires on any `*/v*` tag (regardless of
+3. On every release PR, `.github/workflows/changelog-rewrite.yml` post-processes
+   the bot's branch: it rewrites changelog prose, then regenerates `uv.lock` and
+   `composer.lock` when release-please bumped `pyproject.toml` or
+   `composer.json` (the lock checks would otherwise fail on the release PR and
+   on every PR cut after it merges). The lockfile commit is pushed with the
+   release-bot app token so CI reruns on the synced branch. `Cargo.lock` needs
+   nothing: release-please rewrites it itself.
+4. Merging the release PR creates GitHub releases + tags.
+5. `.github/workflows/publish.yml` fires on any `*/v*` tag (regardless of
    originating branch) and calls the org-wide reusable workflow
    [`hop-top/.github/.github/workflows/publish-on-tag.yml@v0`](https://github.com/hop-top/.github/blob/main/.github/workflows/publish-on-tag.yml),
    which parses `<component>/v<version>` from the tag, looks up the
