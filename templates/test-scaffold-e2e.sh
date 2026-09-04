@@ -816,6 +816,20 @@ assert_file_contains "$TEST11_DIR/release-please-config.json" \
   '"release-type": "rust"' "test11 release-please uses rust release-type"
 assert_file_contains "$TEST11_DIR/release-please-config.json" \
   '"path": "Cargo.toml"' "test11 release-please tracks Cargo.toml"
+assert_file_contains "$TEST11_DIR/release-please-config.json" \
+  '"prerelease": true' "test11 release-please package is prerelease"
+assert_file_contains "$TEST11_DIR/release-please-config.json" \
+  '"prerelease-type": "alpha.0"' "test11 release-please seeds alpha.0"
+assert_file_contains "$TEST11_DIR/release-please-config.json" \
+  '"versioning": "prerelease"' "test11 release-please counter-only versioning"
+assert_file_contains "$TEST11_DIR/release-please-config.json" \
+  '"initial-version": "0.1.0-alpha.0"' "test11 release-please initial-version"
+assert_file_excludes "$TEST11_DIR/release-please-config.json" \
+  'bump-patch-for-minor-pre-major' "test11 release-please feat bumps minor pre-1.0"
+assert_file_exists "$TEST11_DIR/.release-please-manifest.json" \
+  "test11 release-please manifest"
+assert_file_contains "$TEST11_DIR/.release-please-manifest.json" \
+  '^{}$' "test11 release-please manifest is empty so initial-version applies"
 assert_file_exists "$TEST11_DIR/.github/workflows/release-please.yml" \
   "test11 release-please workflow"
 assert_file_contains "$TEST11_DIR/.github/workflows/release-please.yml" \

@@ -13,44 +13,16 @@ setup_release_please() {
   local is_polyglot=false
   [ "$lang_count" -gt 1 ] && is_polyglot=true
 
-  # --- Manifest (all versions start at 0.0.0) ---
-  local manifest="{"
-  local first=true
-
-  for l in "${langs[@]}"; do
-    case "$l" in
-      go)
-        if [ "$first" = true ]; then first=false; else manifest+=","; fi
-        manifest+=$'\n  ".": "0.0.0"'
-        ;;
-      ts)
-        if [ "$first" = true ]; then first=false; else manifest+=","; fi
-        if [ "$is_polyglot" = true ]; then
-          manifest+=$'\n  "ts": "0.0.0"'
-        else
-          manifest+=$'\n  ".": "0.0.0"'
-        fi
-        ;;
-      py)
-        if [ "$first" = true ]; then first=false; else manifest+=","; fi
-        if [ "$is_polyglot" = true ]; then
-          manifest+=$'\n  "py": "0.0.0"'
-        else
-          manifest+=$'\n  ".": "0.0.0"'
-        fi
-        ;;
-      rs)
-        if [ "$first" = true ]; then first=false; else manifest+=","; fi
-        if [ "$is_polyglot" = true ]; then
-          manifest+=$'\n  "rs": "0.0.0"'
-        else
-          manifest+=$'\n  ".": "0.0.0"'
-        fi
-        ;;
-    esac
-  done
-  manifest+=$'\n}'
-  echo "$manifest" > "$out/.release-please-manifest.json"
+  # --- Manifest ---
+  # Empty on purpose. release-please honours a package's "initial-version"
+  # only when the manifest has no key for it; any seeded value (even 0.0.0)
+  # is taken as a real prior release and bumped from. A 0.0.0 seed also
+  # jumps straight to 1.0.0 on the first feat. Never overwrite an existing
+  # manifest: it is release-please's record of what has shipped (conform
+  # re-runs this on live repos).
+  if [ ! -f "$out/.release-please-manifest.json" ]; then
+    echo '{}' > "$out/.release-please-manifest.json"
+  fi
 
   # --- Config ---
   local has_go=false has_ts=false has_py=false has_rs=false
@@ -74,6 +46,11 @@ setup_release_please() {
     go_excludes=$(IFS=,; echo "${ex_parts[*]}")
   fi
 
+  # Every package carries the prerelease combo: prerelease + prerelease-type
+  # + versioning keep the counter in the alpha channel (alpha.0 -> alpha.1 ->
+  # ...) until a Release-As footer cuts stable; the ".0" seed is what makes the
+  # first release alpha.0 rather than alpha.1; bump-minor-pre-major makes feat
+  # a minor bump before 1.0. initial-version sets the very first release.
   local pkg_entries=""
   local pkg_first=true
 
@@ -86,7 +63,10 @@ setup_release_please() {
       \"component\": \"${NAME}\",
       \"changelog-path\": \"CHANGELOG.md\",
       \"bump-minor-pre-major\": true,
-      \"bump-patch-for-minor-pre-major\": true,
+      \"prerelease\": true,
+      \"prerelease-type\": \"alpha.0\",
+      \"versioning\": \"prerelease\",
+      \"initial-version\": \"0.1.0-alpha.0\",
       \"exclude-paths\": [${go_excludes}]
     }"
     else
@@ -96,7 +76,10 @@ setup_release_please() {
       \"component\": \"${NAME}\",
       \"changelog-path\": \"CHANGELOG.md\",
       \"bump-minor-pre-major\": true,
-      \"bump-patch-for-minor-pre-major\": true
+      \"prerelease\": true,
+      \"prerelease-type\": \"alpha.0\",
+      \"versioning\": \"prerelease\",
+      \"initial-version\": \"0.1.0-alpha.0\"
     }"
     fi
   fi
@@ -113,7 +96,10 @@ setup_release_please() {
       \"component\": \"${ts_component}\",
       \"changelog-path\": \"CHANGELOG.md\",
       \"bump-minor-pre-major\": true,
-      \"bump-patch-for-minor-pre-major\": true
+      \"prerelease\": true,
+      \"prerelease-type\": \"alpha.0\",
+      \"versioning\": \"prerelease\",
+      \"initial-version\": \"0.1.0-alpha.0\"
     }"
   fi
 
@@ -130,7 +116,10 @@ setup_release_please() {
       \"package-name\": \"${NAME}\",
       \"changelog-path\": \"CHANGELOG.md\",
       \"bump-minor-pre-major\": true,
-      \"bump-patch-for-minor-pre-major\": true,
+      \"prerelease\": true,
+      \"prerelease-type\": \"alpha.0\",
+      \"versioning\": \"prerelease\",
+      \"initial-version\": \"0.1.0-alpha.0\",
       \"extra-files\": [
         {
           \"type\": \"toml\",
@@ -153,7 +142,10 @@ setup_release_please() {
       \"component\": \"${rs_component}\",
       \"changelog-path\": \"CHANGELOG.md\",
       \"bump-minor-pre-major\": true,
-      \"bump-patch-for-minor-pre-major\": true,
+      \"prerelease\": true,
+      \"prerelease-type\": \"alpha.0\",
+      \"versioning\": \"prerelease\",
+      \"initial-version\": \"0.1.0-alpha.0\",
       \"extra-files\": [
         {
           \"type\": \"toml\",
