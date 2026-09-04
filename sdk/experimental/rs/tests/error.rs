@@ -6,7 +6,7 @@
 use hop_top_kit::output::{
     render_error, transience_for_code, CliError, CODE_CONFLICT, CODE_GENERIC, CODE_NOT_FOUND,
     CODE_PROVENANCE_MISSING, CODE_RATE_LIMITED, CODE_TRANSIENT, CODE_UNAUTHORIZED, CODE_USAGE,
-    EXIT_PROVENANCE_MISSING, EXIT_RATE_LIMITED, EXIT_TRANSIENT, TRANSIENCE_PERMANENT,
+    EXIT_GENERIC, EXIT_PROVENANCE_MISSING, EXIT_RATE_LIMITED, EXIT_TRANSIENT, TRANSIENCE_PERMANENT,
     TRANSIENCE_TRANSIENT, TRANSIENCE_UNKNOWN,
 };
 use serde_json::Value;
@@ -22,6 +22,12 @@ fn render(format: &str, err: &CliError) -> String {
 #[test]
 fn constructors_set_code_exit_transience() {
     let cases = [
+        (
+            CliError::generic("boom"),
+            CODE_GENERIC,
+            1,
+            TRANSIENCE_PERMANENT,
+        ),
         (
             CliError::not_found("nope"),
             CODE_NOT_FOUND,
@@ -71,11 +77,12 @@ fn constructors_set_code_exit_transience() {
         assert_eq!(got.transience, *transience);
     }
 
-    // Exit-code table is unique; 6 is transient, 65 provenance.
+    // Exit-code table is unique; 1 is generic, 6 transient, 65 provenance.
     let mut exits: Vec<i32> = cases.iter().map(|(e, ..)| e.exit_code).collect();
     exits.sort_unstable();
     exits.dedup();
     assert_eq!(exits.len(), cases.len());
+    assert_eq!(EXIT_GENERIC, 1);
     assert_eq!(EXIT_TRANSIENT, 6);
     assert_eq!(EXIT_RATE_LIMITED, 64);
     assert_eq!(EXIT_PROVENANCE_MISSING, 65);
