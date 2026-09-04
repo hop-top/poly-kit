@@ -426,6 +426,241 @@ Defaulting to `enabled: false` is deliberate. A service that starts
 listening because a dependency upgrade added it to the registry is an
 unrequested open port; enablement is an explicit act.
 
+## Execution
+
+A transport service does not run commands; it hands an invocation to
+the bridge, and the bridge hands it to a **runner**. The runner is
+where a served invocation becomes a command execution, and this
+section is the normative contract for that step: the shape of the
+result, the streams, cancellation, what is isolated between
+invocations, and the classes of command that never run this way.
+Authority: [`go/transport/cmdsurface`](../../go/transport/cmdsurface/)
+(`runner.go`, `exec.go`, `result.go`).
+
+### Result
+
+Every invocation, whichever transport carried it, produces one
+`Result`:
+
+| Field       | Meaning                                                                  |
+|-------------|--------------------------------------------------------------------------|
+| `exit_code` | the command's exit status in the kit taxonomy; `0` on success            |
+| `stdout`    | what the command wrote to its standard output, as text                   |
+| `stderr`    | what the command wrote to its standard error, as text                    |
+| `data`      | the command's declared structured output, decoded; absent when none      |
+
+Rules:
+
+- `exit_code` is the code a kit structured error carries (`USAGE` is
+  `2`, `UNAUTHORIZED` is `5`, and so on per
+  [`go/console/output/error.go`](../../go/console/output/error.go)).
+  A bare error with no code is `1`. A command that succeeds is `0`
+  regardless of what it wrote to `stderr`.
+- `stdout` and `stderr` are what the command wrote through
+  `cmd.OutOrStdout()` and `cmd.ErrOrStderr()`. A command that writes
+  to `os.Stdout` directly bypasses capture; such output reaches the
+  serving process's own streams and is not in the result. Cobra's
+  usage and error text is silenced. When a command fails without
+  writing to `stderr`, the error's message is placed there so a
+  failure is never silent.
+- `data` is populated by **decoding**, never by scraping a human
+  rendering. The rule is in the next section.
+
+### Format selection and structured output
+
+An invocation asks for a rendering the way a shell does: through the
+command's own `--format` flag, carried in the invocation's flags under
+the key `format`. There is no separate field.
+
+The runner then applies one rule, and applies it identically over
+every transport:
+
+1. **The command declares an output schema, can take `--format`, and
+   the invocation names no format.** The runner runs the command with
+   `--format=json` — the structured rendering the output pipeline
+   dispatches — decodes its standard output into `data`, and leaves
+   `stdout` empty. The caller asked for no rendering; the data is the
+   output, and the JSON text would only repeat it.
+2. **The invocation names `json`.** The command runs as asked;
+   `stdout` carries the JSON text as the CLI would print it, and, if
+   the command declares a schema, `data` carries it decoded.
+3. **The invocation names any other format.** The command runs as
+   asked and `stdout` carries that rendering. `data` is absent: the
+   caller asked for text, and the runner does not scrape it.
+4. **The command declares no schema.** Its streams are whatever it
+   produces under the named or default format, exactly as today, and
+   `data` is absent even under `json`: the decoder only runs for
+   output a command has declared.
+
+`data` is decoded only when standard output is exactly one JSON
+document. A command that writes anything after its document — a hint,
+a trailing line — gets `data` absent and its streams intact, so a
+consumer never receives a payload the runner guessed at. Numbers keep
+their exact text: a Go consumer sees `json.Number`, and a transport
+re-encoding `data` emits the digits the command wrote, integers above
+2^53 included.
+
+A declared schema is the command's statement that its output is data,
+and rule 1 is its consequence. The alternative — the human rendering
+on `stdout` and the decoded payload in `data` from one run — would
+need the output pipeline to hand the typed value to the runner before
+rendering it, and no such seam exists. Running the command twice to
+get both is not an option: a write command must run once. So the
+runner selects the structured rendering when the caller expressed no
+preference, and never renders twice.
+
+Over REST, `format` is a root flag rather than one the command
+declares, so the projection does not accept it: rule 1 governs every
+schema-declaring command there, and every other command answers in
+its default rendering.
+
+### Streams
+
+`Runner.Run` returns the `Result` when the command finishes.
+`Runner.Stream` delivers the same execution incrementally: one event
+per line of `stdout` and of `stderr` as it is written, then a `done`
+event carrying the `Result` — `data` included — that `Run` would have
+returned. Run and Stream are one execution observed two ways; a
+command does not behave differently under either.
+
+The kit-shipped `api` and `socket` services are request/reply and use
+`Run`. The WebSocket, SSE, and RPC surfaces in `cmdsurface` use
+`Stream`.
+
+### Cancellation
+
+The invocation's context is the command's context: what the command
+reads as `cmd.Context()` is the caller's, and canceling it cancels
+the command.
+
+- **In process**, cancellation is cooperative. A command that selects
+  on its context returns when the context is done; one that never
+  reads it runs to completion. This is the same contract the command
+  has on the CLI under a signal.
+- **In a subprocess**, the child's whole process group is killed on
+  Unix, so a helper the command spawned does not outlive it; on
+  Windows the child itself is killed and grandchildren are best
+  effort.
+- A command that fails while its context is done is reported to the
+  transport as a **cancellation** — the runner's error wraps
+  `context.Canceled` or `context.DeadlineExceeded` — alongside the
+  partial `Result`, so a caller can tell an abort it asked for from a
+  failure of the command's own. A command that completes despite the
+  cancellation is a completion.
+- Under `Stream`, the `done` event is still delivered, and the
+  cancellation is reported after it.
+
+Which context a transport hands the runner is the transport's
+contract. The `api` service passes the HTTP request's context, so a
+client that disconnects cancels its command. The `socket` service
+passes the service's context, so a command runs to completion after
+its client hangs up and is canceled only when the service stops.
+
+### Isolation between invocations
+
+Cobra and pflag keep everything about an execution on the command
+tree itself: argv, the output writers, the command's context, and
+every parsed flag value with its `Changed` bit. A tree executed twice
+is not a fresh tree the second time. The runner is responsible for
+making it one.
+
+With the default **shared-tree** runner (`InProcessRunner(root)`):
+
+- Invocations are serialized: one at a time per bridge. The tree is
+  one object, and a second invocation parsing flags while the first
+  runs would race on them.
+- Before each invocation, every flag the leaf's parse will touch —
+  its own and every ancestor's persistent set — is returned to the
+  **baseline**: the value and `Changed` bit it had when the runner was
+  built. For a kit root, that is the state the operator's own command
+  line left, so `mytool --no-color serve socket` serves invocations
+  that see `--no-color`, and each invocation adds only the flags it
+  carries. After the invocation, the baseline is restored, so the
+  tree is clean between invocations too.
+- A slice flag the invocation carries is emptied before the parse,
+  not reset to its baseline: pflag appends to a slice on every set
+  after the first, and would otherwise stack the invocation's values
+  on the baseline's.
+- The leaf's context is set to the invocation's explicitly, every
+  time. Cobra copies the root's context onto a leaf only when the
+  leaf has none, so a leaf executed once would otherwise keep that
+  first context — canceled, or carrying another caller's values —
+  forever.
+- Standard input is empty. A command that prompts reads EOF; one that
+  checks for a terminal finds none. The serving process's own stdin
+  is never read on a caller's behalf.
+- Output writers, argv, the silence bits, and stdin are restored on
+  return.
+
+What is **not** isolated, and cannot be from the runner: process-wide
+effects a command has through its own code or the tree's hooks. The
+working directory (`--chdir`), environment variables, package-level
+variables, and anything a `cobra.OnInitialize` hook reads into
+process state are the process's. A transport reachable by callers who
+are not the operator MUST restrict the flags it forwards; the REST
+projection does so by accepting only the flags a command declares.
+
+With a **root factory** (`InProcessRunner(nil,
+WithRootFactory(build))`), every invocation gets a tree of its own:
+nothing is reset, nothing is serialized, and invocations run in
+parallel. The factory MUST return a tree that shares no mutable state
+with the trees it returned before — no flag bound to a package-level
+variable. A tree from `cli.New` is prepared for execution inside
+`Root.Execute`, where the confirmation and policy gates are installed,
+so a factory over `cli.New` yields an ungated tree today; a kit root
+uses the shared-tree form.
+
+The throughput consequence is stated plainly: **a shared-tree bridge
+runs one command at a time.** A tool that needs concurrent in-process
+execution supplies a root factory; one that needs process isolation
+supplies `SubprocessRunner(binary)`, which spawns a process per
+invocation and has nothing to share.
+
+### Interactive, self-hosting, and management commands
+
+Three classes of command are described by discovery and withheld from
+execution. The reasons are the reflector's
+([`go/ai/cmdreflect`](../../go/ai/cmdreflect/README.md)), and every
+transport surfaces them unchanged.
+
+| Class        | Reason            | Which commands                                                              | Lifted by     |
+|--------------|-------------------|-----------------------------------------------------------------------------|---------------|
+| interactive  | `interactive`     | `kit/side-effect: interactive` — a shell, a TUI, anything needing a terminal | the CLI only  |
+| self-hosting | `self-hosting`    | `serve` and everything under it; `kit/network: ingress`; `kit/self-hosting: true` | nothing       |
+| management   | `management-only` | kit's reserved verbs (`spec`, `status`, …) and their children               | `AllowReserved` |
+
+Rules:
+
+- An **interactive** command is never invocable through a projected
+  surface. It needs a terminal and a human; a runner captures the
+  streams and supplies an empty stdin, so it has neither. The runner
+  refuses it with `ErrNotInvocable`, naming the reason, even when a
+  bridge admits it as a leaf.
+- A **self-hosting** command is never invocable through a projected
+  surface, and no reflection option lifts the reason. Running it
+  inside a served invocation would start a server inside the server,
+  or replace the binary that is serving. Any one of three signals
+  marks it: position under the depth-1 `serve` verb, which the
+  hierarchy above gives to exactly one command; a declared
+  `kit/network: ingress`, because accepting connections is what a
+  server does; or the explicit `kit/self-hosting: true`, which is how
+  kit marks its own self-modifying commands and how an adopter marks
+  theirs. None of the three consults the reserved-verb list, so a
+  bare cobra tree withholds its server too. A bridge never discovers
+  such a command as a leaf, so a call answers "unknown command" and
+  discovery answers `self-hosting`; the runner refuses it as well.
+- A **management-only** command keeps its reason. It exists for the
+  tool's own introspection surface and is withheld from projection by
+  default; a consumer that has a use for it reflects with
+  `AllowReserved`, as the socket service's bridge does, and the policy
+  gate decides from there.
+- Kit's own `serve` is both reserved and self-hosting. It reports
+  `self-hosting`, the answer that says why calling it through a
+  transport can never work rather than merely who owns the word.
+
+Forced remote execution of an interactive or self-hosting command is
+out of scope: there is no override.
+
 ## Compatibility
 
 Adopters calling [`cli.WithAPI(...)`](../../go/console/cli/api.go)
@@ -504,6 +739,31 @@ changing a line:
    on the CLI. To permit destructive commands over REST, or to
    withhold a command from it, see
    [expose-cli-over-rest.md](../adopters/guides/expose-cli-over-rest.md).
+
+5. **Served invocations are isolated, and `data` is real.** The
+   in-process runner behind every transport now applies the
+   [Execution](#execution) contract. Five differences are visible:
+
+   - A command that declares an output schema answers a call that
+     names no format with `data` populated and `stdout` empty.
+     Before, `data` was never set — the guides' claim that it carried
+     the structured output was not true — and `stdout` carried the
+     command's default table rendering.
+   - A flag set by one invocation no longer persists into the next.
+     Before, a `--verbose` or `--all` sent once stayed set on the
+     shared tree for every later call that did not mention it.
+   - A served command reads an empty stdin. Before, it read the
+     serving process's own stdin, and a destructive command with no
+     `confirm` flag could prompt on the operator's terminal.
+   - A command that fails while its caller's context is done is
+     reported as a cancellation rather than as a command failure.
+   - `serve`, any command declaring `kit/network: ingress`, and any
+     command annotated `kit/self-hosting` are withheld from every
+     transport with the reason `self-hosting`. Before, kit's `serve`
+     was reachable over the socket, and would have started a second
+     supervisor inside the first. Interactive commands, which the
+     socket's bridge admits as leaves, are now refused by the runner
+     rather than run without a terminal.
 
 A deprecation of `WithAPI`, if any, is announced through the standard
 kit deprecation surface

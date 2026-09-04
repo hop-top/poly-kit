@@ -161,6 +161,33 @@ stay in discovery with `invocable: false` and the reason
 the allow-list counterpart: empty mounts the whole tree, and `Hide`
 is applied after it.
 
+### Response body
+
+A command that runs answers with one object:
+
+```json
+{"exit_code": 0, "data": {"widgets": [{"id": "w-1"}]}}
+```
+
+| Field | When present |
+|---|---|
+| `exit_code` | always |
+| `data` | the command declares an output schema (`cli.SetOutputSchema`); it is the command's output decoded from its own `--format=json` rendering |
+| `stdout` | the command declares no schema, or wrote something other than one JSON document; carries the command's default rendering |
+| `stderr` | the command wrote to standard error, or failed without writing — then the error's message |
+
+`format` is a root flag rather than one the command declares, so the
+projection does not accept it: a schema-declaring command always
+answers in `data`, and every other command in its default rendering.
+The full rule is in the
+[execution contract](../../../docs/contracts/serve-lifecycle.md#format-selection-and-structured-output).
+
+A request's context is the command's: a client that disconnects
+cancels the command it started. Commands run one at a time per
+service — the in-process runner serializes on the shared command
+tree — and each starts from the flag state the operator's own command
+line left, plus only the flags the request carries.
+
 ### Exit codes
 
 A command that runs returns its structured output as the response
@@ -223,5 +250,7 @@ Without `WithOpenAPI`, projection still mounts, and a **minimal** spec
 is served at the same `/openapi.json` — enough to find every operation,
 its method and its path. Full schemas are what `WithOpenAPI` buys.
 
-Streaming and compat output are out of scope: the response is the
-command's structured result.
+Streaming is out of scope: the projection is request/reply, and a
+command's output arrives when it finishes. The response is the
+command's structured result where it declares one, and its default
+rendering in `stdout` where it does not.
