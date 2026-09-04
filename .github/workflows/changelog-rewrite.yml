@@ -1,5 +1,13 @@
 name: Changelog Rewrite
 
+# Post-processing for release-please PRs, run in order on the bot's branch:
+#   rewrite   — rewrite changelog prose (pushes with GITHUB_TOKEN; no CI rerun)
+#   lockfiles — regenerate uv.lock / composer.lock when release-please bumped
+#               pyproject.toml / composer.json; pushes with the release-bot app
+#               token so CI reruns and the lock checks see the synced files.
+# release-please rewrites its branch on every run; both jobs converge again on
+# the next `synchronize` event and commit nothing when there is nothing to do.
+
 on:
   pull_request:
     branches: [main, next]
@@ -73,6 +81,77 @@ jobs:
           else
             git add '**/CHANGELOG.md'
             git commit -m "chore: rewrite changelog"
+            git push
+          fi
+
+  lockfiles:
+    needs: rewrite
+    if: startsWith(github.head_ref, 'release-please--')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      # release-please's extra-files bump pyproject.toml / composer.json but
+      # cannot regenerate the lockfiles those manifests are hashed into, so
+      # every release PR would fail `uv lock --check` / `composer validate
+      # --check-lock` and leave the base branch inconsistent after merge.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+          # persist-credentials intentionally left on: the push below relies
+          # on the app token so the resulting commit retriggers CI.
+
+      - name: Detect bumped lock-backed manifests
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          py=false; php=false
+          [ -n "$(git diff --name-only "$BASE_SHA" -- sdk/py/pyproject.toml)" ] && py=true
+          [ -n "$(git diff --name-only "$BASE_SHA" -- sdk/experimental/php/composer.json)" ] && php=true
+          echo "py=$py" >> "$GITHUB_OUTPUT"
+          echo "php=$php" >> "$GITHUB_OUTPUT"
+          echo "pyproject changed: $py; composer.json changed: $php"
+
+      - uses: actions/setup-python@v5
+        if: steps.detect.outputs.py == 'true'
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v4
+        if: steps.detect.outputs.py == 'true'
+      - name: Regenerate uv.lock
+        if: steps.detect.outputs.py == 'true'
+        run: cd sdk/py && uv lock
+
+      # sdk/experimental/php requires php ^8.4; matches ci.yml.
+      - uses: shivammathur/setup-php@v2
+        if: steps.detect.outputs.php == 'true'
+        with:
+          php-version: '8.4'
+      - name: Regenerate composer.lock
+        if: steps.detect.outputs.php == 'true'
+        run: cd sdk/experimental/php && composer update --lock --no-interaction
+
+      - name: Commit synced lockfiles
+        if: steps.detect.outputs.py == 'true' || steps.detect.outputs.php == 'true'
+        run: |
+          git config user.name "hop-top-release-bot[bot]"
+          git config user.email \
+            "285210535+hop-top-release-bot[bot]@users.noreply.github.com"
+          if git diff --quiet -- sdk/py/uv.lock sdk/experimental/php/composer.lock; then
+            echo "lockfiles already in sync"
+          else
+            git add sdk/py/uv.lock sdk/experimental/php/composer.lock
+            git commit -m "build(deps): sync lockfiles after version bump"
             git push
           fi
 
