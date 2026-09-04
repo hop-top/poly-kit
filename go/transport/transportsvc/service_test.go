@@ -23,12 +23,12 @@ type fakeTransport struct {
 	bindErr  error
 	serveErr error
 
-	mu       sync.Mutex
-	bound    int
-	closed   int
-	served   bool
-	invoker  transportsvc.Invoker
-	release  chan struct{}
+	mu      sync.Mutex
+	bound   int
+	closed  int
+	served  bool
+	invoker transportsvc.Invoker
+	release chan struct{}
 	// closeUnblocksServe mirrors the real contract: Close makes
 	// Serve return. A transport that leaves it false is the mutation
 	// the seam's contract test pins.

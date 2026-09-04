@@ -88,10 +88,10 @@ type Transport struct {
 	// Path is the socket path. Required.
 	Path string
 
-	mu   sync.Mutex
-	ln   net.Listener
+	mu    sync.Mutex
+	ln    net.Listener
 	conns map[net.Conn]struct{}
-	done bool
+	done  bool
 }
 
 // New returns a Transport listening at path.
