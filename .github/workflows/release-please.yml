@@ -1,12 +1,17 @@
 name: release-please
 
-# Runs on both integration branches:
-#   next → prereleases (*-alpha|beta|rc.N), config used as-is (prerelease: true)
-#   main → stable (x.y.z), config is patched in-CI to drop the prerelease flags
-# The committed release-please-config.json is byte-identical on both branches;
-# the stable-vs-prerelease difference is applied ephemerally by the
-# "Derive stable config on main" step below, keyed off the branch name. This
-# keeps next → main promotion merges free of config conflicts.
+# Runs on both integration branches with ONE committed config:
+#   next → prereleases (*-alpha|beta|rc.N)
+#   main → same prerelease config; stable x.y.z is cut deliberately, never
+#          derived from the branch name
+#
+# Every package carries the prerelease triple (prerelease: true,
+# prerelease-type, versioning: prerelease), so on either branch a plain merge
+# advances the counter (alpha.N → alpha.N+1). To cut stable, land a
+# conventional commit on main carrying a `Release-As: x.y.z` footer — that is
+# the only thing that moves a version already on a prerelease track back to
+# stable. Keeping the config byte-identical on both branches is what keeps
+# next → main promotion merges conflict-free. See RELEASING.md.
 
 on:
   push:
@@ -21,38 +26,19 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      # On main, strip prerelease behavior so bumps cut stable x.y.z instead of
-      # *-alpha.N. On next, leave the config untouched (prereleases). The edit
-      # is in-CI only and never committed, so both branches keep one config.
-      - name: Derive stable config on main
-        if: github.ref_name == 'main'
-        run: |
-          cfg=.github/release-please-config.json
-          tmp=$(mktemp)
-          jq '
-            (.packages[]) |= (
-              del(.prerelease)
-              | del(."prerelease-type")
-              | del(.versioning)
-            )
-          ' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
-          echo "Patched $cfg for stable release on main:"
-          jq '.packages | to_entries
-              | map({key, prerelease: .value.prerelease})' "$cfg"
+      - uses: actions/checkout@v7
 
       # Mint a short-lived installation token from the hop-top release-bot
       # GitHub App so the release PRs are opened by `release-bot[bot]`
       # rather than the human owner — sidesteps the CODEOWNERS
       # self-approval block on `.release-please-manifest.json`.
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
 
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         with:
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json

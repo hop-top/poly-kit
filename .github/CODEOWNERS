@@ -1,3 +1,12 @@
-# Release configuration — admin or release team only
-/.github/release-please-config.json @hop-top/release
+# Release configuration + changelogs — release team only.
+# Anchored to the release-please-managed paths: a basename `CHANGELOG.md`
+# rule would also gate the scaffold changelogs under templates/ and
+# internal/template/, which release-please never writes.
+/.github/release-please-config.json    @hop-top/release
 /.github/.release-please-manifest.json @hop-top/release
+/CHANGELOG.md                          @hop-top/release
+/sdk/ts/CHANGELOG.md                   @hop-top/release
+/sdk/py/CHANGELOG.md                   @hop-top/release
+/sdk/experimental/rs/CHANGELOG.md      @hop-top/release
+/sdk/experimental/php/CHANGELOG.md     @hop-top/release
+/incubator/qmochi/CHANGELOG.md         @hop-top/release

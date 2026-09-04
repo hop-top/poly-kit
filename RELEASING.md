@@ -71,11 +71,10 @@ release-please machinery pointed at different branches.
 1. Conventional commits on `next` (prereleases) or `main` (stable) trigger
    release-please **for that branch**.
 2. release-please opens a release PR per component with bumped versions and
-   changelog entries. On `next` the bump carries the prerelease suffix
-   (`*-alpha.N` → `*-beta.N` → `*-rc.N`). On `main` the config is patched
-   in-CI to drop the prerelease keys, but a version already on a prerelease
-   track needs an explicit `Release-As:` trailer to reach stable `x.y.z` —
-   see [Branch-aware release-please](#branch-aware-release-please).
+   changelog entries. On either branch a plain merge advances the prerelease
+   counter (`*-alpha.N` → `*-alpha.N+1`; `beta`/`rc` via the promote gate).
+   Stable `x.y.z` is cut deliberately with a `Release-As:` footer — see
+   [Branch-aware release-please](#branch-aware-release-please).
 3. Merging the release PR creates GitHub releases + tags.
 4. `.github/workflows/publish.yml` fires on any `*/v*` tag (regardless of
    originating branch) and calls the org-wide reusable workflow
@@ -88,30 +87,40 @@ release-please machinery pointed at different branches.
 ### Branch-aware release-please
 
 release-please is run against **both** `next` and `main` via the workflow's
-`target-branch`, sharing one config with per-branch prerelease behavior:
+`target-branch`, sharing one committed config.
 
-The committed `.github/release-please-config.json` is byte-identical on both
-branches — every package carries `prerelease: true`, `versioning: prerelease`,
-`prerelease-type: alpha.0`. Keeping one config on both branches is what makes
-`next → main` promotion merges conflict-free.
+`.github/release-please-config.json` is byte-identical on both branches — every
+package carries `prerelease: true`, `versioning: prerelease`,
+`prerelease-type: alpha.0`. Nothing in the workflow patches it per branch.
+Keeping one config on both branches is what makes `next → main` promotion
+merges conflict-free, and it means a plain merge on **either** branch produces
+the next prerelease counter — `main` and `next` propose the same versions until
+a stable cut lands.
 
-- On **`next`**, the config is used as committed, so bumps produce
-  `*-alpha.N`/`*-beta.N`/`*-rc.N`.
-- On **`main`**, the `Derive stable config on main` step in
-  `.github/workflows/release-please.yml` strips `prerelease`,
-  `prerelease-type`, and `versioning` from every package **in-CI only**. The
-  edit is never committed.
+**Cutting stable.** A version already on a prerelease track only leaves it via
+an explicit footer. Land a conventional commit on `main` carrying
+`Release-As: x.y.z` (no suffix) — a squash-merged `chore(release): cut x.y.z`
+PR is the usual vehicle — and release-please's next run on `main` proposes
+`x.y.z` instead of `-alpha.N+1`. Do **not** flip `prerelease: false` in the
+committed config: that diverges the file across branches and turns every later
+promotion merge into a config conflict.
 
-> **Known limitation — `main` does not currently cut stable.** Stripping those
-> keys changes how the next bump is computed, but it does not move a version
-> already carrying a prerelease suffix back onto the stable track. With every
-> kit-family entry in `.github/.release-please-manifest.json` sitting at
-> `0.5.0-alpha.N`, the run on `main` bumps alpha → alpha, and `main` and `next`
-> propose the same versions. Cutting stable takes an explicit
-> `Release-As: x.y.z` trailer on a commit landing on `main`. Past
-> `Release-As:` trailers in this repo have all targeted prerelease versions
-> (seeding a channel, forcing a stalled bump); none has yet named a stable
-> `x.y.z`.
+Two `Release-As:` facts to check before merging that commit:
+
+- In manifest mode the footer is **global across components**: it applies to
+  every package release-please would otherwise consider — `incubator/qmochi`
+  included, which does not share the kit family's version line.
+- Only the first `Release-As:` line in a commit body is honoured.
+
+Dry-run first and read the proposed titles:
+
+```sh
+npx release-please@latest release-pr --dry-run \
+  --token "$(gh auth token)" --repo-url hop-top/poly-kit \
+  --config-file .github/release-please-config.json \
+  --manifest-file .github/.release-please-manifest.json \
+  --target-branch main | grep '^title:'
+```
 
 Channel transitions on `next` (`alpha → beta → rc`) are driven by the
 `prerelease-type` in config plus `Release-As:` trailers, gated by
