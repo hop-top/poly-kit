@@ -18,6 +18,7 @@ from hop_top_kit.output.error import (
     CODE_TRANSIENT,
     CODE_UNAUTHORIZED,
     CODE_USAGE,
+    EXIT_GENERIC,
     EXIT_PROVENANCE_MISSING,
     EXIT_RATE_LIMITED,
     EXIT_TRANSIENT,
@@ -26,6 +27,7 @@ from hop_top_kit.output.error import (
     TRANSIENCE_UNKNOWN,
     CLIError,
     conflict_error,
+    generic_error,
     not_found_error,
     provenance_missing_error,
     rate_limited_error,
@@ -41,6 +43,7 @@ from hop_top_kit.output.error import (
 @pytest.mark.parametrize(
     ("got", "want_code", "want_exit", "want_transience"),
     [
+        (generic_error("boom"), CODE_GENERIC, 1, TRANSIENCE_PERMANENT),
         (not_found_error("nope"), CODE_NOT_FOUND, 3, TRANSIENCE_PERMANENT),
         (conflict_error("dup"), CODE_CONFLICT, 4, TRANSIENCE_PERMANENT),
         (unauthorized_error("nope"), CODE_UNAUTHORIZED, 5, TRANSIENCE_PERMANENT),
@@ -55,6 +58,7 @@ from hop_top_kit.output.error import (
         ),
     ],
     ids=[
+        "Generic",
         "NotFound",
         "Conflict",
         "Unauthorized",
@@ -74,6 +78,7 @@ def test_exit_code_table_is_unique():
     # Mirrors the harness exit-code table: 0-6 core taxonomy + kit
     # extension band 64/65. Uniqueness pins the taxonomy.
     exits = {
+        generic_error("m").exit_code: CODE_GENERIC,
         not_found_error("m").exit_code: CODE_NOT_FOUND,
         conflict_error("m").exit_code: CODE_CONFLICT,
         unauthorized_error("m").exit_code: CODE_UNAUTHORIZED,
@@ -82,10 +87,12 @@ def test_exit_code_table_is_unique():
         rate_limited_error("m").exit_code: CODE_RATE_LIMITED,
         provenance_missing_error("m").exit_code: CODE_PROVENANCE_MISSING,
     }
-    assert len(exits) == 7
+    assert len(exits) == 8
+    assert EXIT_GENERIC == 1
     assert EXIT_TRANSIENT == 6
     assert EXIT_RATE_LIMITED == 64
     assert EXIT_PROVENANCE_MISSING == 65
+    assert exits[1] == CODE_GENERIC
     assert exits[6] == CODE_TRANSIENT
     assert exits[65] == CODE_PROVENANCE_MISSING
 

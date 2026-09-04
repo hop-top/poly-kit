@@ -46,6 +46,11 @@ CODE_TRANSIENT = "TRANSIENT"  # exit 6 — Factor-11 transient/retryable failure
 CODE_PROVENANCE_MISSING = "PROVENANCE_MISSING"  # exit 65 — Factor-12 strict-mode refusal
 CODE_RATE_LIMITED = "RATE_LIMITED"  # exit 64 — Factor-10 max-ops budget exceeded
 
+#: Spec-assigned exit code for the generic failure class: the command
+#: failed and no narrower code applies. Pair it with :func:`generic_error`
+#: rather than hand-rolling exit 1, so the envelope carries a transience
+#: class.
+EXIT_GENERIC = 1
 #: Spec-assigned exit code for transient/retryable failures (Factor 11).
 #: Agents branch on it before parsing stderr: exit 6 means a retry may
 #: clear the failure.
@@ -149,6 +154,22 @@ def wrap_error(err: BaseException | None, code: str, exit_code: int) -> CLIError
     )
     e.__cause__ = err
     return e
+
+
+def generic_error(message: str) -> CLIError:
+    """CODE_GENERIC envelope with exit code 1.
+
+    The catch-all for failures no narrower code describes; permanent
+    because retrying the same input in the same environment is not
+    expected to help. Wrapping an arbitrary error as CODE_GENERIC via
+    :func:`wrap_error` still defaults to :data:`TRANSIENCE_UNKNOWN`.
+    """
+    return CLIError(
+        code=CODE_GENERIC,
+        message=message,
+        exit_code=EXIT_GENERIC,
+        transience=TRANSIENCE_PERMANENT,
+    )
 
 
 def not_found_error(message: str) -> CLIError:
