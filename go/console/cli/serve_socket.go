@@ -43,6 +43,22 @@ type SocketConfig struct {
 
 	// Hide carves exceptions out of Expose, applied after it.
 	Hide []string
+
+	// Policy gates which commands the socket may invoke. The zero
+	// value behaves exactly like [cmdsurface.DefaultPolicy]: every
+	// non-destructive command is reachable, and destructive ones are
+	// refused on this surface.
+	//
+	// To permit destructive commands over the socket, name the
+	// socket's surface:
+	//
+	//	Policy: cmdsurface.Policy{
+	//		AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+	//	}
+	//
+	// Naming a surface here widens that surface only; every other
+	// transport keeps the ceiling it had.
+	Policy cmdsurface.Policy
 }
 
 // WithSocket returns a Root option registering the built-in `socket`
@@ -96,6 +112,9 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 		// A local owner-only channel that reaches nothing is not
 		// useful; the destructive ceiling still gates what it can do.
 		transportsvc.Expose("*"),
+		// The zero Policy resolves identically to DefaultPolicy, so
+		// an adopter that sets nothing gets the conservative gate.
+		transportsvc.WithBridgeOptions(cmdsurface.WithPolicy(cfg.Policy)),
 		transportsvc.WithValidate(func() error { return validateSocketPath(root, cfg) }),
 		// Same class as the api service: it accepts requests that
 		// mutate shared state, and it listens.

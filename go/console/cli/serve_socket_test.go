@@ -16,6 +16,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/socket"
 )
 
@@ -205,4 +206,116 @@ func TestServeSocketRefusesUnexposedAndUnknownCommands(t *testing.T) {
 	resp = callSocket(t, path, socket.Request{Path: []string{"nosuch"}})
 	require.False(t, resp.Ok)
 	assert.Equal(t, socket.CodeNotFound, resp.Error.Code)
+}
+
+// destructiveRoot builds a root with a destructive command, so the
+// policy path can be exercised end to end over a real socket.
+func destructiveRoot(t *testing.T, cfg cli.SocketConfig) *cli.Root {
+	t.Helper()
+	r := newServeRoot(t, cli.WithSocket(cfg))
+	r.Cmd.AddCommand(
+		&cobra.Command{
+			Use:  "ping",
+			RunE: func(cmd *cobra.Command, _ []string) error { cmd.Print("pong"); return nil },
+		},
+		&cobra.Command{
+			Use:         "nuke",
+			Annotations: map[string]string{"kit/side-effect": "destructive"},
+			RunE:        func(cmd *cobra.Command, _ []string) error { cmd.Print("destroyed"); return nil },
+		},
+	)
+	return r
+}
+
+func TestSocketRefusesDestructiveByDefault(t *testing.T) {
+	path := shortSocketPath(t)
+	r := destructiveRoot(t, cli.SocketConfig{Path: path})
+
+	stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
+	defer stop()
+
+	// The zero Policy resolves like DefaultPolicy: destructive
+	// commands are refused on this surface, and the caller is told
+	// which command on which surface rather than getting a bare
+	// failure.
+	resp := callSocket(t, path, socket.Request{Path: []string{"nuke"}})
+	require.False(t, resp.Ok)
+	require.NotNil(t, resp.Error)
+	assert.Equal(t, socket.CodeBlocked, resp.Error.Code)
+	assert.Equal(t,
+		"cmdsurface: destructive command blocked on this surface: nuke on rpc",
+		resp.Error.Message)
+}
+
+func TestSocketPermitsDestructiveWhenPolicyNamesTheSurface(t *testing.T) {
+	path := shortSocketPath(t)
+	r := destructiveRoot(t, cli.SocketConfig{
+		Path: path,
+		Policy: cmdsurface.Policy{
+			AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+		},
+	})
+
+	stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
+	defer stop()
+
+	// Naming the surface lifts the transport's destructive ceiling,
+	// but kit's own confirmation gate still applies: over a socket
+	// there is no TTY, so an unconfirmed destructive command is
+	// refused by the command itself rather than by the bridge.
+	resp := callSocket(t, path, socket.Request{Path: []string{"nuke"}})
+	require.True(t, resp.Ok, "the bridge must no longer block it")
+	require.NotNil(t, resp.Result)
+	assert.Equal(t, 1, resp.Result.ExitCode)
+	assert.Contains(t, resp.Result.Stderr, "--confirm=no (or non-TTY default)")
+
+	// Passing the confirmation the command asks for completes it.
+	resp = callSocket(t, path, socket.Request{
+		Path:  []string{"nuke"},
+		Flags: map[string]any{"confirm": "yes"},
+	})
+	require.True(t, resp.Ok)
+	require.NotNil(t, resp.Result)
+	assert.Equal(t, 0, resp.Result.ExitCode)
+	assert.Contains(t, resp.Result.Stdout, "destroyed")
+}
+
+func TestSocketPolicyDoesNotWidenOtherSurfaces(t *testing.T) {
+	t.Parallel()
+	// Permitting destructive commands on the socket's surface must
+	// not make them reachable over MCP, REST, or anything else: a
+	// local owner-only channel is a different trust context from a
+	// network one.
+	p := cmdsurface.Policy{
+		AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+	}
+	destructive := cmdsurface.SafetyClass{Destructive: true}
+
+	assert.True(t, p.Allowed(destructive, cmdsurface.SurfaceRPC),
+		"the named surface is permitted")
+	for _, s := range cmdsurface.AllSurfaces() {
+		if s == cmdsurface.SurfaceRPC || s == cmdsurface.SurfaceCLI || s == cmdsurface.SurfaceLib {
+			// CLI and Lib are local-runtime surfaces the gate always
+			// allows, independent of this policy.
+			continue
+		}
+		assert.False(t, p.Allowed(destructive, s),
+			"naming rpc must not widen %s", s)
+	}
+}
+
+func TestSocketZeroPolicyMatchesDefaultPolicy(t *testing.T) {
+	t.Parallel()
+	// The Policy field's zero value must change nothing for an
+	// adopter who never sets it.
+	var zero cmdsurface.Policy
+	def := cmdsurface.DefaultPolicy()
+
+	for _, cls := range []cmdsurface.SafetyClass{{}, {Destructive: true}} {
+		for _, s := range cmdsurface.AllSurfaces() {
+			assert.Equal(t, def.Allowed(cls, s), zero.Allowed(cls, s),
+				"zero Policy must match DefaultPolicy for destructive=%v on %s",
+				cls.Destructive, s)
+		}
+	}
 }
