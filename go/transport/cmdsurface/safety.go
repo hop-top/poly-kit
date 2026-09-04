@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/ai/cmdreflect"
 )
 
 // Cobra annotation keys the bridge reads. These match the canonical
@@ -44,24 +46,53 @@ type SafetyClass struct {
 // Classify reads cmd's annotations and returns the bridge-side
 // SafetyClass. A nil cmd or nil Annotations yields a zero-value
 // class (treated as a read-only, no-auth command).
+//
+// Deprecated: Classify reflects a single command in isolation.
+// Reflect the whole tree with [hop.top/kit/go/ai/cmdreflect.Reflect]
+// and read Leaf.Descriptor instead — one reflection, and commands
+// the bridge excludes carry a reason rather than vanishing. Classify
+// remains as a thin shim over the same resolution so existing
+// callers keep working.
 func Classify(cmd *cobra.Command) SafetyClass {
-	var cls SafetyClass
+	if cmd == nil {
+		return SafetyClass{}
+	}
+	tree := cmdreflect.Reflect(cmd)
+	if tree.Root == nil {
+		return SafetyClass{}
+	}
+	return classFromDescriptor(tree.Root)
+}
+
+// classFromDescriptor projects a reflected descriptor into the
+// bridge's SafetyClass. The class is a narrow view of
+// cmdreflect.Safety — just the fields the policy gate consults —
+// kept as its own type because it is the bridge's public contract.
+func classFromDescriptor(d *cmdreflect.Descriptor) SafetyClass {
+	if d == nil {
+		return SafetyClass{}
+	}
+	return SafetyClass{
+		Destructive:  d.Safety.Destructive(),
+		AuthRequired: d.Safety.AuthRequired,
+		// The bridge's confirmation axis is the DECLARED
+		// annotation, not the resolved verdict: destructiveness
+		// is already gated separately by Policy.Allowed, and
+		// folding it in here would demand a confirm token for
+		// every destructive leaf on every surface.
+		RequiresConfirmation: d.Safety.ConfirmationDeclared,
+		Permissions:          splitCSV(annotationOf(d.Cmd, annPermissions)),
+		ExitCodes:            d.Safety.ExitCodes,
+	}
+}
+
+// annotationOf reads one annotation off a cobra command, tolerating
+// a nil command or nil map.
+func annotationOf(cmd *cobra.Command, key string) string {
 	if cmd == nil || cmd.Annotations == nil {
-		return cls
+		return ""
 	}
-	switch cmd.Annotations[annSideEffect] {
-	case "destructive", "destructive-local", "destructive-shared":
-		cls.Destructive = true
-	}
-	if cmd.Annotations[annAuthRequired] == "true" {
-		cls.AuthRequired = true
-	}
-	if cmd.Annotations[annRequiresConfirm] == "true" {
-		cls.RequiresConfirmation = true
-	}
-	cls.Permissions = splitCSV(cmd.Annotations[annPermissions])
-	cls.ExitCodes = splitCSV(cmd.Annotations[annExitCodes])
-	return cls
+	return cmd.Annotations[key]
 }
 
 // splitCSV parses a comma-separated annotation value, trimming

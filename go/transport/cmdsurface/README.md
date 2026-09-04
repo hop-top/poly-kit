@@ -33,7 +33,10 @@ the same Runner under provider invocation contracts.
   tracks per-leaf surface enablement.
 - **Leaf** — one runnable cobra command in the tree, discovered at
   `New` time. Carries its `Path`, the resolved `*cobra.Command`, a
-  snapshot `SafetyClass`, and a per-surface `Enabled` map.
+  snapshot `SafetyClass`, a per-surface `Enabled` map, and the
+  `Descriptor` it was built from.
+- **Descriptor** — the canonical reflection of one command, from
+  `go/ai/cmdreflect`. See [Command reflection](#command-reflection).
 - **Surface** — a transport projection identified by a string constant
   (`SurfaceREST`, `SurfaceMCP`, etc.). Thirteen surfaces are declared.
 - **Invocation** — the transport-agnostic call envelope: `Path`,
@@ -54,6 +57,55 @@ the same Runner under provider invocation contracts.
 - **Mapping** — adopter-supplied binding from an external trigger
   (webhook slug, Lambda event, signed token) to a leaf, with optional
   template-driven flag extraction.
+
+## Command reflection
+
+The bridge does not walk the cobra tree itself. `go/ai/cmdreflect` is
+kit's single reflector: `cmdreflect.Reflect(root)` returns a `Tree`
+holding one `Descriptor` per command, and `New` builds the bridge's
+leaves from it.
+
+One descriptor feeds every consumer — the `<tool> spec` manifest,
+OpenAPI projection, the MCP tool list, and every surface in this
+package. Before it existed, each of those derived its own view of the
+same tree and dropped a different subset of commands with no record of
+why; a command could appear on one surface and silently vanish from
+another.
+
+A `Descriptor` carries the command's path, use/short/long text,
+aliases, flags (types, defaults, required-ness, hidden and deprecated
+markers), declared positional args, output schema, resolved safety
+(side-effect tier, permission tokens, confirmation, exit codes), and
+surface metadata (hidden, deprecated, reserved, transport
+annotations).
+
+**Nothing is dropped.** Every command in the tree gets a descriptor.
+A command a surface must not expose is still described, with
+`Invocable` false and a `NonInvocableReason` naming the rule:
+
+| Reason | Meaning |
+|--------|---------|
+| `not-runnable` | a command group: has subcommands, no action of its own |
+| `builtin` | cobra/fang framework command (`help`, `completion`, `man`, `__complete`) |
+| `hidden-internal` | `Hidden` is set: not part of the supported surface |
+| `deprecated` | carries a deprecation marker; withheld from projected surfaces |
+| `interactive` | `kit/side-effect=interactive`: needs a terminal and a human |
+| `unauthorized-destructive` | destructive and not authorized on this surface |
+| `management-only` | reserved to the tool's own management surface (e.g. `spec`) |
+| `malformed-schema` | declared metadata does not resolve (bad side-effect value, invalid output schema) |
+
+Exactly one reason is recorded per command; when several rules apply
+the most specific wins, so the answer to "why can't I call this?" does
+not depend on walk order.
+
+`Bridge.Leaves()` returns the invocable commands.
+`Bridge.NonInvocable()` returns the rest with their reasons, and
+`Bridge.Descriptors()` returns both — use those to build a capability
+endpoint that advertises the whole surface rather than only the
+callable part.
+
+`Classify(cmd)` still works and is unchanged in behavior, but it
+reflects one command in isolation. Prefer `Leaf.Descriptor`.
 
 ## Surface matrix
 
