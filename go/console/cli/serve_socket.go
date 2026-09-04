@@ -29,9 +29,10 @@ const socketSubkeyPath = ".path"
 // SocketConfig configures the built-in `socket` service.
 type SocketConfig struct {
 	// Path is the socket path. Empty resolves to
-	// <XDG_RUNTIME_DIR>/<tool>/<tool>.sock, which is where an
-	// ephemeral per-user IPC endpoint belongs. services.socket.path
-	// overrides it, and --socket overrides that.
+	// <runtime dir>/<tool>/<tool>.sock — $XDG_RUNTIME_DIR when set,
+	// otherwise the platform's own location for ephemeral per-user
+	// files. services.socket.path overrides it, and --socket
+	// overrides that.
 	Path string
 
 	// Expose lists the command patterns the socket may invoke, in
@@ -182,9 +183,10 @@ func resolveSocketPath(root *Root, cfg *SocketConfig) (string, error) {
 	return defaultSocketPath(root)
 }
 
-// defaultSocketPath is <XDG_RUNTIME_DIR>/<tool>/<tool>.sock, which
-// falls back to the OS temp directory on a system with no runtime
-// dir — the same fallback every other kit runtime artifact takes.
+// defaultSocketPath is <runtime dir>/<tool>/<tool>.sock. The runtime
+// base is $XDG_RUNTIME_DIR when set and the platform's own ephemeral
+// per-user location otherwise, falling back to the OS temp directory
+// — the same resolution every other kit runtime artifact takes.
 func defaultSocketPath(root *Root) (string, error) {
 	tool := "kit"
 	if root != nil && root.Config.Name != "" {

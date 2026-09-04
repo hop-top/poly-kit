@@ -7,18 +7,13 @@
 // transport. MCP, RPC, SSE, a bus consumer, and the built-in socket
 // service are all that same shape, and they differ only in how
 // requests arrive and how responses leave. That difference is the
-// [Transport] interface; everything else is centralized here.
+// [Transport] interface; everything else — reflecting the tree at
+// start, the policy path, readiness with the bound address, and
+// ordered idempotent stop — is centralized here.
 //
-// # What is centralized
-//
-//   - Reflection of the command tree, once, at start, through
-//     [hop.top/kit/go/transport/cmdsurface] and
-//     [hop.top/kit/go/ai/cmdreflect].
-//   - The policy path: per-leaf surface enablement and the
-//     destructive ceiling, applied to every invocation.
-//   - Readiness, reported once after the transport binds, with the
-//     bound address surfaced to the supervisor.
-//   - Ordered, idempotent stop within the caller's budget.
+// See README.md in this directory for the API reference, and the
+// adopter guide docs/adopters/guides/build-a-transport-service.md
+// for the task walkthrough.
 //
 // # Why this is not in go/console/serve
 //

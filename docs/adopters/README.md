@@ -34,9 +34,11 @@ how kit itself is implemented.
 - [`guides/getting-started-cli.md`](guides/getting-started-cli.md) — extended walkthrough
 - [`guides/kit-init.md`](guides/kit-init.md) — `kit init` flow + flag reference
 - [`guides/create-cli-project.md`](guides/create-cli-project.md) — scaffold a new CLI
+- [`guides/build-a-transport-service.md`](guides/build-a-transport-service.md) — put your own transport in front of your command tree
 - [`guides/expose-cli-over-mcp.md`](guides/expose-cli-over-mcp.md) — serve your commands as MCP tools (both spec revisions)
 - [`guides/hook-cli-into-bus.md`](guides/hook-cli-into-bus.md) — first publish/subscribe
 - [`guides/run-the-engine.md`](guides/run-the-engine.md) — start the engine sidecar
+- [`guides/serve-cli-over-unix-socket.md`](guides/serve-cli-over-unix-socket.md) — serve your commands over a local Unix socket
 - [`guides/serve-mcp-from-any-sdk.md`](guides/serve-mcp-from-any-sdk.md) — serve MCP from the TypeScript, Python, Rust or PHP SDK
 - [`guides/serve-mcp-with-the-sdk.md`](guides/serve-mcp-with-the-sdk.md) — serve your command tree over MCP with the official SDK
 - [`guides/secret-management-guide.md`](guides/secret-management-guide.md) — secret backend recipes

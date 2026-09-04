@@ -193,6 +193,12 @@ service registers like any other, its identifier obeys the naming
 rules above, and `enabled` defaults to `false`. Kit ships `socket` on
 this seam; `api` predates it and keeps its own implementation.
 
+Adopters start from the task guides rather than this section: [serve
+your CLI over a Unix socket](../adopters/guides/serve-cli-over-unix-socket.md)
+to run the built-in service, and [build a transport
+service](../adopters/guides/build-a-transport-service.md) to put your
+own transport on the seam.
+
 The seam lives under `go/transport/` rather than beside the contract
 types in [`go/console/serve`](../../go/console/serve/) because the
 command-tree half of it reaches `cmdsurface`, which reaches
@@ -374,7 +380,13 @@ The two kit-shipped services own these:
 | Key                    | Type   | Default                              | Meaning                        |
 |------------------------|--------|--------------------------------------|--------------------------------|
 | `services.api.addr`    | string | `:8080`                              | HTTP listen address            |
-| `services.socket.path` | string | `$XDG_RUNTIME_DIR/<tool>/<tool>.sock`| Unix socket path               |
+| `services.socket.path` | string | runtime dir, see below               | Unix socket path               |
+
+The socket's default path is `<runtime dir>/<tool>/<tool>.sock`, where
+the runtime dir is `$XDG_RUNTIME_DIR` when set, and otherwise the
+platform's own location for ephemeral per-user files
+(`~/Library/Application Support` on macOS, the temp directory when no
+runtime base is available).
 
 `--socket` overrides `services.socket.path` for one run, the way
 `--addr` overrides `services.api.addr`. The socket path is resolved to
