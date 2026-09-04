@@ -321,6 +321,8 @@ which is a different answer from one that does not exist:
 | `NOT_FOUND` | the path resolves to no reachable command | typo; or a hidden or deprecated command the reflector excluded |
 | `NOT_ENABLED` | the command exists but not on this surface | excluded by your `Expose` / `Hide` patterns |
 | `BLOCKED` | destructive command refused by policy | `Policy.AllowDestructiveOn` does not name this surface |
+| `DENIED` | the permission gate refused this caller | `cli.WithPermission`, or a `--policy` that refuses the class; the message carries the reason |
+| `UNAUTHENTICATED` | `SocketConfig.Auth` refused the request | only sent when an authenticator is configured |
 | `INVALID` | the request line is malformed | bad JSON, or an empty `path` |
 | `INTERNAL` | anything else the runner returned | a bug worth reporting |
 
@@ -358,6 +360,7 @@ process is still listening on is refused, rather than silently stolen.
 | `Expose` | `[]string` | every invocable command | patterns the socket may reach |
 | `Hide` | `[]string` | none | patterns carved out of `Expose` |
 | `Policy` | `cmdsurface.Policy` | zero value | safety gate; zero behaves as `cmdsurface.DefaultPolicy()` |
+| `Auth` | `socket.Authenticator` | none | verifies each request; its identity replaces the claimed `caller` and `tenant` |
 
 Configuration precedence is flag, then config file, then
 `SocketConfig`, then the default:
@@ -377,11 +380,18 @@ limit, rather than surfacing as a kernel `invalid argument`.
 
 Stated plainly, so you can decide what to put in front of it:
 
-- **No authentication.** Access control is the socket file's
-  permission, nothing more.
-- **Caller identity is provenance, not a credential.** The `caller`
-  and `trace_id` fields travel to audit sinks. Nothing is granted on
-  their basis, and a client may claim any value.
+- **No authentication by default.** Access control is the socket
+  file's permission. `SocketConfig.Auth` adds a per-request
+  authenticator — it receives the connection, so it can ask the
+  kernel who the peer is — but kit ships none.
+- **Caller identity is provenance, not a credential.** Without an
+  authenticator, the `caller` and `tenant` fields are recorded as
+  claimed and travel to audit sinks with `request_id`, `trace_id`, and
+  `idempotency_key`. Nothing is granted on their basis, and a client
+  may claim any value. A permission gate that decides on
+  `Meta.Caller` over an unauthenticated socket is trusting the
+  caller's word; see
+  [secure-remote-serving.md](secure-remote-serving.md#5-wire-a-permission-policy).
 - **No remote access.** A Unix socket is local by construction. There
   is no listen address, no TLS, and no way to reach it from another
   host without you forwarding it yourself.
@@ -398,6 +408,8 @@ Stated plainly, so you can decide what to put in front of it:
   — the seam this service is built on
 - [build-a-transport-service.md](build-a-transport-service.md) — put
   your own transport on that seam
+- [secure-remote-serving.md](secure-remote-serving.md) — the
+  permission gate and the audit trail, shared with the api service
 - [serve lifecycle contract](../../contracts/serve-lifecycle.md) —
   normative registration, readiness, and shutdown rules
 - [expose-cli-over-mcp.md](expose-cli-over-mcp.md) — the same commands
