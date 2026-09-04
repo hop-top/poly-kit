@@ -387,3 +387,71 @@ func countOf(all []string, want string) int {
 	}
 	return n
 }
+
+// blockingFake models the shape every listener-shaped service has:
+// Start blocks on an accept loop that only unblocks when Stop closes
+// the listener. Context cancellation alone does NOT free it.
+//
+// This is the shape that deadlocks a supervisor which waits for Start
+// to return before calling Stop.
+type blockingFake struct {
+	name    string
+	trace   *trace
+	release chan struct{}
+
+	mu    sync.Mutex
+	ready bool
+}
+
+func (b *blockingFake) Name() string { return b.name }
+
+func (b *blockingFake) Start(_ context.Context, report func()) error {
+	b.trace.add("start:" + b.name)
+	b.mu.Lock()
+	b.ready = true
+	b.mu.Unlock()
+	report()
+	// Deliberately NOT selecting on ctx.Done(): only Stop frees this.
+	<-b.release
+	return nil
+}
+
+func (b *blockingFake) Ready() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.ready
+}
+
+func (b *blockingFake) Stop(context.Context) error {
+	b.trace.add("stop:" + b.name)
+	b.mu.Lock()
+	b.ready = false
+	b.mu.Unlock()
+	close(b.release)
+	return nil
+}
+
+func TestSupervisor_StopsBeforeWaitingOnStart(t *testing.T) {
+	t.Parallel()
+	tr := &trace{}
+	reg := serve.NewRegistry()
+	reg.Register(&blockingFake{name: "listener", trace: tr, release: make(chan struct{})})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	sup := serve.NewSupervisor(reg, serve.SupervisorConfig{})
+
+	done := make(chan serve.Result, 1)
+	go func() { done <- sup.Run(ctx, []string{"listener"}, enabledSet("listener")) }()
+
+	waitFor(t, func() bool { return slices.Contains(tr.events(), "start:listener") })
+	cancel()
+
+	select {
+	case res := <-done:
+		assert.Equal(t, serve.OutcomeCleanStop, res.Outcome)
+		assert.Equal(t, 0, res.ExitCode())
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run deadlocked: it must call Stop (which releases the " +
+			"service) before waiting for Start to return")
+	}
+}

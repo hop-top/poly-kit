@@ -18,6 +18,7 @@ import (
 	"hop.top/kit/go/console/cli/idemstore"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/progress"
+	"hop.top/kit/go/console/serve"
 	configoverrides "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/identity"
 	"hop.top/kit/go/core/netpolicy"
@@ -302,8 +303,18 @@ type Root struct {
 	// policyLoader is the loader for named --policy=<name> resolution
 	// (§8.6). nil means policy-file support is not wired; --confirm
 	// and --max-ops still work without it.
-	policyLoader       PolicyLoader
-	apiCfg             *APIConfig
+	policyLoader PolicyLoader
+	apiCfg       *APIConfig
+	// serveReg is the registry `serve` children register into, nil
+	// until the first WithService/WithServices/WithAPI option runs.
+	// Its presence is what mounts the kit-owned serve parent.
+	serveReg *serve.Registry
+	// servePolicy is the third validation gate for service selection;
+	// nil passes every service.
+	servePolicy serve.PolicyGate
+	// serveBus is the bus the supervisor publishes lifecycle events
+	// to; nil leaves only the log counterpart.
+	serveBus           serve.Publisher
 	identityCfg        *IdentityConfig
 	peerCfg            *PeerConfig
 	telemetryCfg       *TelemetryConfig
@@ -776,6 +787,11 @@ func (r *Root) Execute(ctx context.Context) error {
 	// Surface dry-run support state in `<tool> help <cmd>` so users
 	// know which leaves accept --dry-run. Idempotent.
 	r.applyDryRunHelpAddendum()
+
+	// List the registered services on `serve --help`, so the question
+	// "which services can I name?" is answered without a second
+	// invocation. Idempotent.
+	r.serveHelpAddendum()
 
 	// Emit a one-time deprecation warning when any leaf still uses
 	// the legacy ADR-0019 kit/dry-run: supported annotation. The

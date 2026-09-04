@@ -198,7 +198,7 @@ func (st *runState) snapshot() ([]string, []string, map[string]error, []Lifecycl
 //
 // selected is normally Outcome.Selected from [Resolve]; Run does not
 // re-resolve and does not consult enablement, because the decision the
-// caller already made is the one the contract says to honour.
+// caller already made is the one the contract says to honor.
 func (s *Supervisor) Run(ctx context.Context, selected []string, configs map[string]Config) Result {
 	st := &runState{
 		failed:      make(map[string]error),
@@ -228,18 +228,50 @@ func (s *Supervisor) Run(ctx context.Context, selected []string, configs map[str
 	// A start failure short-circuits: services already running are
 	// stopped in reverse order, and the outcome is start-failed.
 	if sup.startErr != nil {
-		cancelRun()
-		sup.wait()
-		s.stopAll(ctx, st, em)
-		return s.finish(st, em)
+		return s.shutdown(ctx, cancelRun, sup, st, em)
 	}
 
 	s.emitAggregateReady(runCtx, st, em)
 	s.await(runCtx, sup, st, em, cancelRun)
 
+	return s.shutdown(ctx, cancelRun, sup, st, em)
+}
+
+// shutdown ends the run: cancel, ordered stop, then wait for the Start
+// goroutines to unwind.
+//
+// The order matters and is not interchangeable. Stop is what releases
+// the resource a service is blocked on — closing a listener, unlinking
+// a socket — so waiting for Start to return BEFORE calling Stop
+// deadlocks any service whose Start blocks on an accept loop, which is
+// every listener-shaped service there is. Cancellation alone does not
+// free them.
+//
+// The wait is bounded for the same reason a Stop is: a service that
+// ignores both cancellation and Stop must not hold the process open.
+// Its goroutine is abandoned, which is safe because the run is over
+// and the process is about to exit.
+func (s *Supervisor) shutdown(
+	ctx context.Context,
+	cancelRun context.CancelFunc,
+	sup *supervised,
+	st *runState,
+	em *emitter,
+) Result {
 	cancelRun()
-	sup.wait()
 	s.stopAll(ctx, st, em)
+
+	done := make(chan struct{})
+	go func() {
+		sup.wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(s.cfg.ShutdownTimeout):
+		st.record(OutcomeShutdownTimeout)
+	}
+
 	return s.finish(st, em)
 }
 
@@ -341,7 +373,7 @@ func (s *Supervisor) awaitReady(
 			st.ready = append(st.ready, name)
 			st.mu.Unlock()
 			em.emit(ctx, ObjectService, ActionReadyReported, EventPayload{
-				Service: name, ElapsedMS: st.elapsedMS(),
+				Service: name, Address: addrOf(s.reg, name), ElapsedMS: st.elapsedMS(),
 			})
 			return nil
 
@@ -488,4 +520,17 @@ func (s *Supervisor) finish(st *runState, em *emitter) Result {
 func (s *Supervisor) result(st *runState, o LifecycleOutcome, err *output.Error) Result {
 	started, ready, failed, _ := st.snapshot()
 	return Result{Outcome: o, Err: err, Started: started, Ready: ready, Failed: failed}
+}
+
+// addrOf reads the optional [Addressed] declaration.
+func addrOf(reg *Registry, name string) string {
+	svc, ok := reg.Lookup(name)
+	if !ok {
+		return ""
+	}
+	a, ok := svc.(Addressed)
+	if !ok {
+		return ""
+	}
+	return a.Addr()
 }

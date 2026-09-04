@@ -29,6 +29,15 @@ type EventPayload struct {
 
 	// ElapsedMS is milliseconds since the supervisor began the run.
 	ElapsedMS int64 `json:"elapsed_ms"`
+
+	// Address is where the service is accepting work, when it has
+	// one: a listen address, a socket path. Empty for a service with
+	// no address and for every event but ready_reported.
+	//
+	// It is carried because the resolved address is the single most
+	// useful thing an operator reads out of a startup trace, and for
+	// a wildcard port (":0") it is not knowable from configuration.
+	Address string `json:"address,omitempty"`
 }
 
 // Publisher is the narrow slice of hop.top/kit/go/runtime/bus.Bus the
@@ -91,6 +100,9 @@ func (e *emitter) logEvent(object, action string, payload EventPayload) {
 	kv := []any{"object", object, "elapsed_ms", payload.ElapsedMS}
 	if payload.Service != "" {
 		kv = append(kv, "service", payload.Service)
+	}
+	if payload.Address != "" {
+		kv = append(kv, "address", payload.Address)
 	}
 	if payload.Reason != "" {
 		kv = append(kv, "reason", payload.Reason)

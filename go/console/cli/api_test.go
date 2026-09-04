@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -110,8 +111,12 @@ func TestServe_StartsAndStops(t *testing.T) {
 		},
 	}))
 
-	var buf bytes.Buffer
-	r.Cmd.SetErr(&buf)
+	// The serve goroutine writes this buffer while the poll loop below
+	// reads it, so it must be synchronized: an unguarded bytes.Buffer
+	// shared across goroutines is a data race the -race detector
+	// rightly rejects.
+	buf := &syncBuffer{}
+	r.Cmd.SetErr(buf)
 
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -121,7 +126,12 @@ func TestServe_StartsAndStops(t *testing.T) {
 		errCh <- r.Execute(ctx)
 	}()
 
-	// wait for "Listening" message
+	// Justification for the changed expectation: the leaf command
+	// printed a bespoke "Listening on <addr>" line to stderr. The api
+	// service reports readiness through the supervisor's lifecycle
+	// trace instead, which carries the same resolved address under a
+	// structured key. The behavior asserted — the server comes up on
+	// `serve`, and canceling the context exits cleanly — is unchanged.
 	deadline := time.After(3 * time.Second)
 	for {
 		select {
@@ -129,7 +139,7 @@ func TestServe_StartsAndStops(t *testing.T) {
 			cancel()
 			t.Fatal("timed out waiting for server to start")
 		default:
-			if strings.Contains(buf.String(), "Listening") {
+			if strings.Contains(buf.String(), "ready_reported") {
 				cancel()
 				err := <-errCh
 				assert.NoError(t, err, "serve must exit cleanly on cancel")
@@ -177,4 +187,22 @@ func TestServe_OpenAPIConfigured(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "serve command must exist with OpenAPI config")
+}
+
+// syncBuffer is a bytes.Buffer safe for concurrent Write and String.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

@@ -29,6 +29,11 @@ Rules:
   only. It MUST NOT take a positional service argument.
 - `<tool> serve <service>` MUST accept exactly one positional
   argument. Two or more positional arguments is a usage error.
+- The inspection form is the flag `--list`, not a `list` child.
+  `list` is reserved selector vocabulary and cannot be registered as a
+  service, so a `serve list` child would be indistinguishable from the
+  selector form naming a service called `list` — the exact ambiguity
+  the reservation exists to prevent.
 - The two forms share one lifecycle implementation. A single service
   started by the selector observes the same readiness, shutdown, and
   exit semantics as the same service started by the supervisor.
@@ -171,6 +176,13 @@ service.
 | `kit.serve.service.stopped`           | a service's `Stop` returned                   |
 | `kit.serve.supervisor.ready_reported` | every started service is ready                |
 | `kit.serve.supervisor.stopped`        | the supervisor finished its shutdown sequence |
+
+A service that has an address — a listener, a socket path — MAY
+declare it, and the supervisor carries it in the `ready_reported`
+payload and its log counterpart under `address`. This is the one
+startup detail an operator always wants and configuration cannot
+always supply: for a wildcard port (`:0`) the bound port is not
+knowable until the bind succeeds.
 
 Every action above already passes
 [`bus.ValidateTopic`](../../go/runtime/bus/topics.go) without touching
@@ -316,6 +328,13 @@ Flags:
 - Per-service flags registered by a service are only accepted under
   `<tool> serve <service>`; passing one to the supervisor form is a
   usage error, because it would silently apply to one member of a set.
+  The api service's `--addr` and `--no-auth` are the documented
+  exception: they predate the hierarchy, and refusing them under the
+  supervisor form would break every adopter that has one HTTP surface
+  and a script that starts it.
+- `--enable` / `--disable` are refused under the selector form. The
+  override rule already decides enablement there, and accepting both
+  would let one invocation say two contradictory things.
 
 Defaulting to `enabled: false` is deliberate. A service that starts
 listening because a dependency upgrade added it to the registry is an
@@ -323,24 +342,46 @@ unrequested open port; enablement is an explicit act.
 
 ## Compatibility
 
-Adopters currently mounting a leaf `serve` command via
-[`cli.WithAPI(...)`](../../go/console/cli/api.go) keep working
-unchanged. `WithAPI` continues to register today's single-purpose
-`serve` command with today's `--addr` / `--no-auth` flags and today's
-behavior, and this contract does not alter it.
-
-The supervisor is introduced alongside it, not in place of it:
+Adopters calling [`cli.WithAPI(...)`](../../go/console/cli/api.go)
+keep working. `WithAPI` registers the HTTP API as the `api` service
+under the kit-owned `serve` parent rather than mounting a
+single-purpose leaf `serve` command. For a tool whose only service is
+the API, `<tool> serve` starts the same server, with the same `--addr`
+and `--no-auth` flags, and exits the same way.
 
 - `WithAPI` remains supported for the whole of the current major
   version, and continues to be the shortest path to one HTTP surface.
-- The registry-backed supervisor becomes the way to run more than one
-  service, and the way an adopter contributes a service of its own.
+- The registry-backed supervisor is how a tool runs more than one
+  service, and how an adopter contributes a service of its own.
 - An adopter MUST NOT be required to write mounting code to gain the
-  supervisor. Migration is opt-in and mechanical: register the API
-  service instead of calling `WithAPI`, then move `--addr` into
-  `services.api.addr`.
-- When both are wired, the registry wins and `WithAPI`'s leaf command
-  is not registered. The two MUST NOT both own the `serve` word.
+  supervisor. Migration is opt-in and mechanical: move `--addr` into
+  `services.api.addr` and add services as siblings.
+- Exactly one command owns the `serve` word, whichever option mounts
+  it first. The two MUST NOT both own it.
+- An adopter replacing the built-in API with its own implementation
+  registers it under the same name through `WithServiceOverride`.
+
+### What changed observably
+
+Three differences are visible to an adopter who upgrades without
+changing a line:
+
+1. **`serve` gained children and flags.** It accepts an optional
+   service name and the `--list`, `--enable`, `--disable`, and timeout
+   flags. `<tool> serve` with no argument is unchanged for a
+   single-API tool.
+2. **The startup line moved into the lifecycle trace.** The leaf
+   command printed `Listening on <addr>` to stderr. The api service
+   reports readiness through `kit.serve.service.ready_reported` and
+   its log counterpart, which carries the same resolved address under
+   a structured `address` key. Anything scraping the literal string
+   must read the structured field instead.
+3. **`services.api.enabled` defaults to true for `WithAPI`.**
+   Enablement defaults to `false` for a service that arrives through
+   the registry, because an unrequested open port is the risk that
+   default guards against. `WithAPI` is not that case: calling it is
+   itself the request to serve the API. An explicit
+   `services.api.enabled: false` still wins.
 
 A deprecation of `WithAPI`, if any, is announced through the standard
 kit deprecation surface
