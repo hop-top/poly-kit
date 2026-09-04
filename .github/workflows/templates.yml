@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build templates
         run: |
           chmod +x templates/build.sh
@@ -37,6 +39,8 @@ jobs:
             repo: hop-top/cli-template-py
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build templates
         run: |
           chmod +x templates/build.sh

@@ -3,6 +3,10 @@ name: publish
 on:
   push:
     tags: ['*/v*']
+  # Manual trigger: re-run a publish for an existing tag without
+  # re-pushing. Replays against the workflow file at the tag's commit,
+  # not main HEAD.
+  workflow_dispatch: {}
 
 jobs:
   publish:
