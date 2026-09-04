@@ -6,6 +6,8 @@ import (
 
 	"github.com/invopop/jsonschema"
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // OutputSchema declares the structured-output schema for a leaf
@@ -73,13 +75,8 @@ func SetOutputSchema(cmd *cobra.Command, s OutputSchema) error {
 // GetOutputSchemaJSON returns the raw JSON Schema bytes stored on cmd
 // and the declared version. Returns (nil, "", false) when no schema
 // is declared.
+//
+// Forwards to [cmdmeta.GetOutputSchemaJSON].
 func GetOutputSchemaJSON(cmd *cobra.Command) (raw json.RawMessage, version string, ok bool) {
-	if cmd == nil || cmd.Annotations == nil {
-		return nil, "", false
-	}
-	v, has := cmd.Annotations[kitOutputSchema]
-	if !has || v == "" {
-		return nil, "", false
-	}
-	return json.RawMessage(v), cmd.Annotations[kitOutputSchemaVersion], true
+	return cmdmeta.GetOutputSchemaJSON(cmd)
 }

@@ -1,6 +1,10 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
+)
 
 // Shape-related annotation defaults used by the validator (design
 // the static-conformance contract). Adopters override via Config.
@@ -50,18 +54,25 @@ func SetPassthrough(cmd *cobra.Command) {
 }
 
 // IsTopLevelVerb reports whether kit/top-level-verb is "true" on cmd.
+//
+// Forwards to [cmdmeta.IsTopLevelVerb]; the reader lives in that
+// leaf package so reflection can call it without importing cli.
 func IsTopLevelVerb(cmd *cobra.Command) bool {
-	return readBoolAnnotation(cmd, kitTopLevelVerb)
+	return cmdmeta.IsTopLevelVerb(cmd)
 }
 
 // IsHierarchical reports whether kit/hierarchical is "true" on cmd.
+//
+// Forwards to [cmdmeta.IsHierarchical].
 func IsHierarchical(cmd *cobra.Command) bool {
-	return readBoolAnnotation(cmd, kitHierarchical)
+	return cmdmeta.IsHierarchical(cmd)
 }
 
 // IsPassthrough reports whether kit/passthrough is "true" on cmd.
+//
+// Forwards to [cmdmeta.IsPassthrough].
 func IsPassthrough(cmd *cobra.Command) bool {
-	return readBoolAnnotation(cmd, kitPassthrough)
+	return cmdmeta.IsPassthrough(cmd)
 }
 
 func setAnnotationTrue(cmd *cobra.Command, key string) {
@@ -72,13 +83,6 @@ func setAnnotationTrue(cmd *cobra.Command, key string) {
 		cmd.Annotations = make(map[string]string)
 	}
 	cmd.Annotations[key] = "true"
-}
-
-func readBoolAnnotation(cmd *cobra.Command, key string) bool {
-	if cmd == nil || cmd.Annotations == nil {
-		return false
-	}
-	return cmd.Annotations[key] == "true"
 }
 
 // IsReserved reports whether name is in the set of subcommand names
