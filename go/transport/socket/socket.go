@@ -3,6 +3,8 @@ package socket
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/transportsvc"
@@ -26,6 +29,13 @@ const SocketMode os.FileMode = 0o600
 // limit on an unauthenticated local channel.
 const maxLineBytes = 1 << 20
 
+// pipelineDepth is how many request lines a connection may have read
+// ahead of the one being served. Reading ahead is what lets the
+// transport notice a peer that has gone away while a long command is
+// still running; the bound keeps a client that floods requests from
+// growing memory without limit.
+const pipelineDepth = 16
+
 // Request is one line of the wire protocol. It is a
 // [cmdsurface.Invocation] plus the provenance fields a caller may
 // supply, kept as a distinct type so the wire shape can carry
@@ -37,13 +47,22 @@ type Request struct {
 	Args []string `json:"args,omitempty"`
 	// Flags is the flag set keyed by long name.
 	Flags map[string]any `json:"flags,omitempty"`
-	// Caller is a claimed principal identifier. It is provenance for
-	// the audit trail, NOT a credential: the service grants nothing
-	// on its basis, and a future authenticated transport is what
-	// would make it trustworthy.
+	// Caller is a claimed principal identifier. Without an
+	// [Authenticator] on the transport it is provenance for the
+	// audit trail, NOT a credential: the service grants nothing on
+	// its basis. With one, the authenticator's verdict replaces it.
 	Caller string `json:"caller,omitempty"`
+	// Tenant is a claimed tenant identifier, carried under the same
+	// terms as Caller.
+	Tenant string `json:"tenant,omitempty"`
+	// RequestID identifies this request in the audit trail. The
+	// transport issues one when the caller sends none.
+	RequestID string `json:"request_id,omitempty"`
 	// TraceID propagates a trace identifier across surfaces.
 	TraceID string `json:"trace_id,omitempty"`
+	// IdempotencyKey is forwarded to the command's --idempotency-key
+	// flag when it registers one.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 // Response is one line of the wire protocol in the reply direction.
@@ -59,7 +78,8 @@ type Response struct {
 // Error is the wire form of a refused or failed invocation.
 type Error struct {
 	// Code is a stable symbol a client can branch on:
-	// NOT_FOUND, NOT_ENABLED, BLOCKED, INVALID, INTERNAL.
+	// NOT_FOUND, NOT_ENABLED, BLOCKED, DENIED, UNAUTHENTICATED,
+	// INVALID, INTERNAL.
 	Code string `json:"code"`
 	// Message is the human-readable detail.
 	Message string `json:"message"`
@@ -76,17 +96,59 @@ const (
 	// CodeBlocked is a destructive command the policy refuses on
 	// this surface.
 	CodeBlocked = "BLOCKED"
+	// CodeDenied is a command the permission gate refuses for this
+	// caller. The message carries the gate's stable reason.
+	CodeDenied = "DENIED"
+	// CodeUnauthenticated is a request the transport's
+	// [Authenticator] refused. It is only ever sent when the
+	// transport has one.
+	CodeUnauthenticated = "UNAUTHENTICATED"
 	// CodeInvalid is a malformed request line.
 	CodeInvalid = "INVALID"
 	// CodeInternal is anything else the runner returned.
 	CodeInternal = "INTERNAL"
 )
 
+// Identity is what an [Authenticator] establishes for a request.
+type Identity struct {
+	// Principal is the verified caller identifier.
+	Principal string
+	// Tenant is the verified tenant, empty for single-tenant tools.
+	Tenant string
+}
+
+// Authenticator verifies who is on the other end of a socket
+// request. It sees the connection, so an implementation may read
+// peer credentials from the kernel, and the request, so it may
+// verify a token the caller sent in a flag. A non-nil error refuses
+// the request with [CodeUnauthenticated]; the returned Identity
+// replaces the request's claimed Caller and Tenant.
+//
+// The transport ships without one: the socket is owner-only by
+// construction, and for the common case the file permission is the
+// authentication. An authenticator is for the case where the socket
+// is shared deliberately and the tool must know which local caller
+// is speaking.
+type Authenticator func(ctx context.Context, conn net.Conn, req Request) (Identity, error)
+
 // Transport is the [transportsvc.Transport] serving NDJSON over a
 // Unix domain socket at Path.
 type Transport struct {
 	// Path is the socket path. Required.
 	Path string
+
+	// Auth, when set, verifies every request before it is invoked.
+	// See [Authenticator].
+	Auth Authenticator
+
+	// OnRefused is called for a request the transport refused before
+	// reaching the invoker — today, a failed authentication — with
+	// the invocation as it would have been dispatched and an error
+	// wrapping [cmdsurface.ErrAuthRefused]. The service that owns
+	// the transport wires it to [cmdsurface.Bridge.Audit] so the
+	// refusal lands in the same audit stream as everything the
+	// bridge decides.
+	OnRefused func(ctx context.Context, inv cmdsurface.Invocation, err error)
 
 	mu    sync.Mutex
 	ln    net.Listener
@@ -194,22 +256,48 @@ func (t *Transport) Serve(ctx context.Context, inv transportsvc.Invoker) error {
 
 // handle serves one connection: a request line in, a response line
 // out, until the peer closes or the connection is torn down.
+//
+// Requests are answered strictly in order, but they are READ ahead
+// of being served: a reader goroutine keeps consuming lines while a
+// command runs, so a peer that hangs up mid-command is noticed at
+// once — the read returns, and the connection's context is canceled,
+// which cancels the invocation in flight. A transport that only read
+// between requests would run a command to completion for a caller
+// who is no longer there.
 func (t *Transport) handle(ctx context.Context, conn net.Conn, inv transportsvc.Invoker) {
 	defer func() { _ = conn.Close() }()
 
-	sc := bufio.NewScanner(conn)
-	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
-	enc := json.NewEncoder(conn)
+	connCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	for sc.Scan() {
-		if ctx.Err() != nil {
+	lines := make(chan []byte, pipelineDepth)
+	go func() {
+		defer close(lines)
+		// The peer closing, a read error, or the listener tearing the
+		// connection down all end the scan; each means no caller is
+		// left to answer, so the connection's work is canceled.
+		defer cancel()
+		sc := bufio.NewScanner(conn)
+		sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
+		for sc.Scan() {
+			line := append([]byte(nil), sc.Bytes()...)
+			select {
+			case lines <- line:
+			case <-connCtx.Done():
+				return
+			}
+		}
+	}()
+
+	enc := json.NewEncoder(conn)
+	for line := range lines {
+		if connCtx.Err() != nil {
 			return
 		}
-		line := sc.Bytes()
 		if len(line) == 0 {
 			continue
 		}
-		if err := enc.Encode(t.dispatch(ctx, line, inv)); err != nil {
+		if err := enc.Encode(t.dispatch(connCtx, conn, line, inv)); err != nil {
 			// The peer is gone or the socket is torn down; there is
 			// nowhere left to report this.
 			return
@@ -219,7 +307,7 @@ func (t *Transport) handle(ctx context.Context, conn net.Conn, inv transportsvc.
 
 // dispatch decodes one request line and invokes it, mapping every
 // outcome onto a Response.
-func (t *Transport) dispatch(ctx context.Context, line []byte, inv transportsvc.Invoker) Response {
+func (t *Transport) dispatch(ctx context.Context, conn net.Conn, line []byte, inv transportsvc.Invoker) Response {
 	var req Request
 	if err := json.Unmarshal(line, &req); err != nil {
 		return errResponse(CodeInvalid, err.Error())
@@ -227,26 +315,51 @@ func (t *Transport) dispatch(ctx context.Context, line []byte, inv transportsvc.
 	if len(req.Path) == 0 {
 		return errResponse(CodeInvalid, "path is required")
 	}
+	if req.RequestID == "" {
+		req.RequestID = newRequestID()
+	}
 
-	res, err := inv(ctx, cmdsurface.Invocation{
+	invocation := cmdsurface.Invocation{
 		Path:  req.Path,
 		Args:  req.Args,
 		Flags: req.Flags,
 		Meta: cmdsurface.Meta{
 			// Surface is pinned by the seam; setting it here would
-			// be overwritten. Caller and TraceID are the caller's
-			// claim, carried for audit only.
-			Caller:  req.Caller,
-			TraceID: req.TraceID,
+			// be overwritten. Without an authenticator, Caller and
+			// Tenant are the caller's claim, carried for audit only.
+			Caller:         req.Caller,
+			Tenant:         req.Tenant,
+			RequestID:      req.RequestID,
+			TraceID:        req.TraceID,
+			IdempotencyKey: req.IdempotencyKey,
+			RequestedAt:    time.Now(),
 		},
-	})
+	}
+
+	if t.Auth != nil {
+		id, err := t.Auth(ctx, conn, req)
+		if err != nil {
+			if t.OnRefused != nil {
+				t.OnRefused(ctx, invocation,
+					fmt.Errorf("%w: %v", cmdsurface.ErrAuthRefused, err))
+			}
+			return errResponse(CodeUnauthenticated, err.Error())
+		}
+		// The verified identity replaces the claim. A caller who
+		// sent a different name is recorded as who they proved to
+		// be, not who they said they were.
+		invocation.Meta.Caller = id.Principal
+		invocation.Meta.Tenant = id.Tenant
+	}
+
+	res, err := inv(ctx, invocation)
 	if err != nil {
 		return errResponse(codeFor(err), err.Error())
 	}
 	return Response{Ok: true, Result: &res}
 }
 
-// codeFor maps a bridge error onto a wire code. The three the bridge
+// codeFor maps a bridge error onto a wire code. The four the bridge
 // documents are distinguished; anything else is internal.
 func codeFor(err error) string {
 	switch {
@@ -256,6 +369,8 @@ func codeFor(err error) string {
 		return CodeNotEnabled
 	case errors.Is(err, cmdsurface.ErrDestructiveBlocked):
 		return CodeBlocked
+	case errors.Is(err, cmdsurface.ErrPermissionDenied):
+		return CodeDenied
 	default:
 		return CodeInternal
 	}
@@ -263,6 +378,18 @@ func codeFor(err error) string {
 
 func errResponse(code, msg string) Response {
 	return Response{Ok: false, Error: &Error{Code: code, Message: msg}}
+}
+
+// newRequestID issues an id for a request that arrived without one,
+// so every audit record has a handle even when the caller is a
+// one-line shell pipe. Random rather than sequential: ids from two
+// server instances must not collide in a shared audit stream.
+func newRequestID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }
 
 // Close stops accepting, tears down live connections, and unlinks the
