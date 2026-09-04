@@ -23,7 +23,7 @@ jobs:
       matrix:
         branch: [main, next]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # release-please opens ONE PR PER PACKAGE, on branches named
       # release-please--branches--<branch>--components--<component>.

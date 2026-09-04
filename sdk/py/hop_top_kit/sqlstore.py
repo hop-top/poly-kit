@@ -21,7 +21,7 @@ TTL semantics
 Pass ``Options(ttl=timedelta(seconds=30))`` to :func:`open`.  On every
 ``put`` the ``expires_at`` column is set to::
 
-    int(time.time() * 1000) + ttl_ms
+    _now_ms() + ttl_ms
 
 On ``get``, if ``expires_at <= now_ms`` the entry is treated as missing and
 ``(False, None)`` is returned.  **Expired rows are not deleted automatically**;
@@ -63,7 +63,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
@@ -84,8 +83,8 @@ def _now() -> datetime:
 
 
 def _now_ms() -> int:
-    """Return current UNIX time in milliseconds."""
-    return int(time.time() * 1000)
+    """Return current UNIX time in milliseconds, via :func:`_now`."""
+    return int(_now().timestamp() * 1000)
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +180,7 @@ class Store:
         raw_value, expires_at = row
 
         if expires_at is not None:
-            now_ms = int(_now().timestamp() * 1000)
+            now_ms = _now_ms()
             if expires_at <= now_ms:
                 return False, None
 
@@ -217,7 +216,7 @@ class Store:
         if self._opts.ttl is None:
             return None
         ttl_ms = int(self._opts.ttl.total_seconds() * 1000)
-        return int(time.time() * 1000) + ttl_ms
+        return _now_ms() + ttl_ms
 
 
 # ---------------------------------------------------------------------------

@@ -71,11 +71,10 @@ release-please machinery pointed at different branches.
 1. Conventional commits on `next` (prereleases) or `main` (stable) trigger
    release-please **for that branch**.
 2. release-please opens a release PR per component with bumped versions and
-   changelog entries. On `next` the bump carries the prerelease suffix
-   (`*-alpha.N` → `*-beta.N` → `*-rc.N`). On `main` the config is patched
-   in-CI to drop the prerelease keys, but a version already on a prerelease
-   track needs an explicit `Release-As:` trailer to reach stable `x.y.z` —
-   see [Branch-aware release-please](#branch-aware-release-please).
+   changelog entries. On either branch a plain merge advances the prerelease
+   counter (`*-alpha.N` → `*-alpha.N+1`; `beta`/`rc` via the promote gate).
+   Stable `x.y.z` is cut deliberately with a `Release-As:` footer — see
+   [Branch-aware release-please](#branch-aware-release-please).
 3. Merging the release PR creates GitHub releases + tags.
 4. `.github/workflows/publish.yml` fires on any `*/v*` tag (regardless of
    originating branch) and calls the org-wide reusable workflow
@@ -88,38 +87,92 @@ release-please machinery pointed at different branches.
 ### Branch-aware release-please
 
 release-please is run against **both** `next` and `main` via the workflow's
-`target-branch`, sharing one config with per-branch prerelease behavior:
+`target-branch`, sharing one committed config.
 
-The committed `.github/release-please-config.json` is byte-identical on both
-branches — every package carries `prerelease: true`, `versioning: prerelease`,
-`prerelease-type: alpha.0`. Keeping one config on both branches is what makes
-`next → main` promotion merges conflict-free.
+`.github/release-please-config.json` is byte-identical on both branches — every
+package carries `prerelease: true`, `versioning: prerelease`,
+`prerelease-type: alpha.0`. Nothing in the workflow patches it per branch.
+Keeping one config on both branches is what makes `next → main` promotion
+merges conflict-free, and it means a plain merge on **either** branch produces
+the next prerelease counter — `main` and `next` propose the same versions until
+a stable cut lands.
 
-- On **`next`**, the config is used as committed, so bumps produce
-  `*-alpha.N`/`*-beta.N`/`*-rc.N`.
-- On **`main`**, the `Derive stable config on main` step in
-  `.github/workflows/release-please.yml` strips `prerelease`,
-  `prerelease-type`, and `versioning` from every package **in-CI only**. The
-  edit is never committed.
+**Cutting stable.** A version already on a prerelease track only leaves it via
+an explicit footer. Land a conventional commit on `main` carrying
+`Release-As: x.y.z` (no suffix) — a squash-merged `chore(release): cut x.y.z`
+PR is the usual vehicle — and release-please's next run on `main` proposes
+`x.y.z` instead of `-alpha.N+1`. Do **not** flip `prerelease: false` in the
+committed config: that diverges the file across branches and turns every later
+promotion merge into a config conflict.
 
-> **Known limitation — `main` does not currently cut stable.** Stripping those
-> keys changes how the next bump is computed, but it does not move a version
-> already carrying a prerelease suffix back onto the stable track. With every
-> kit-family entry in `.github/.release-please-manifest.json` sitting at
-> `0.5.0-alpha.N`, the run on `main` bumps alpha → alpha, and `main` and `next`
-> propose the same versions. Cutting stable takes an explicit
-> `Release-As: x.y.z` trailer on a commit landing on `main`. Past
-> `Release-As:` trailers in this repo have all targeted prerelease versions
-> (seeding a channel, forcing a stalled bump); none has yet named a stable
-> `x.y.z`.
+Two `Release-As:` facts to check before merging that commit:
 
-Channel transitions on `next` (`alpha → beta → rc`) are driven by the
-`prerelease-type` in config plus `Release-As:` trailers, gated by
-`.github/workflows/release-promote-gate.yml`. That gate permits only
-`release → alpha → beta → rc → release`; it rejects skipped and backwards
-transitions, and requires that a promotion PR change nothing but
-`prerelease-type`, with all packages sharing one value. Promoting `next` to
-stable is the `next → main` merge described in [Branch model](#branch-model).
+- In manifest mode the footer applies to every package that sees the commit.
+  The root package sees every commit and the linked kit family follows it; an
+  empty commit (the usual `chore(release)` vehicle) reaches every package,
+  `incubator/qmochi` included, which does not share the kit family's version
+  line. A commit that touches files reaches only the packages whose paths it
+  touches.
+- Only the first `Release-As:` line in a commit body is honoured.
+
+Dry-run first and read the proposed titles:
+
+```sh
+npx release-please@latest release-pr --dry-run \
+  --token "$(gh auth token)" --repo-url hop-top/poly-kit \
+  --config-file .github/release-please-config.json \
+  --manifest-file .github/.release-please-manifest.json \
+  --target-branch main | grep '^title:'
+```
+
+**Release brake.** Release PRs on either branch are blocked until a member of
+`@hop-top/release` approves them. The `production-branch-guardrail` ruleset on
+`main` and `next` requires code-owner review with zero required approvals, and
+`.github/CODEOWNERS` covers exactly the managed `CHANGELOG.md` files, which
+release-please rewrites on every release PR. The config and manifest are
+deliberately not owned: promotions and counter reseeds are human edits to
+those files and merge review-free, like everything else.
+The nightly auto-cut (`.github/workflows/nightly-release.yml`) merges with
+`--auto`, so it only times a merge that is already approved; it cannot cut a
+release nobody approved, on either branch. Approve the PR you intend to ship
+and leave the sibling branch's PR alone. Approvals are dismissed on push and
+release-please rebuilds the PR on every push to its base, so approve after the
+last change you want in.
+
+Channel transitions on `next` (`alpha → beta → rc`) are committed by
+`scripts/promote-release.sh <stage>` (`make promote-<stage>`), which rewrites
+`prerelease-type` on every package to `<stage>.0` — or removes it for
+`release` — and commits `chore(release): promote to <stage>`, changing no
+other line. Open that commit as a PR:
+`.github/workflows/release-promote-gate.yml` permits only
+`release → alpha → beta → rc → release`, rejects skipped and backwards
+transitions, and requires that the PR change nothing but `prerelease-type`,
+with all packages sharing one value.
+
+release-please reads `prerelease-type` only when the version it bumps has no
+prerelease suffix, i.e. at the first bump after a stable version. While the
+manifest carries a suffix, every merged release PR bumps that counter whatever
+the config says: `0.5.0-alpha.3` becomes `0.5.0-alpha.4` under
+`prerelease-type: beta.0`. So each stage means:
+
+- `alpha` seeds the next line. Once the stable cut is merged back into
+  `next`, the first `feat:` proposes `x.y+1.0-alpha.0` (a `fix:` alone,
+  `x.y.z+1-alpha.0`).
+- `beta` and `rc` declare the channel for the gate. To move
+  `0.5.0-alpha.N` to `0.5.0-beta.0`, land a commit on `next` carrying
+  `Release-As: 0.5.0-beta.0` — dry-run first, as for a stable cut — after
+  which merges count `beta.1`, `beta.2`, …
+- `release` cuts nothing. It only resets the gate so the ladder can start
+  again at `alpha`. With the manifest at `0.5.0-rc.N` a merge on `next`
+  still proposes `rc.N+1`; with the manifest already stable and no
+  `prerelease-type`, a merge on either branch would propose a **stable**
+  version. Run `release` then `alpha` back to back right after the
+  `next → main` promotion merge, while the manifest still carries `rc`, and
+  land the same two commits on `main` so the config stays identical.
+
+Promoting `next` to stable is the `next → main` merge described in
+[Branch model](#branch-model); stable `x.y.z` is cut there with
+`Release-As: x.y.z`, never by the promote script.
 
 ## Components
 

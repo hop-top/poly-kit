@@ -3,7 +3,7 @@
 ## Version Lifecycle
 
 ```
-0.1.0-alpha.1 -> .2 -> ... -> 0.1.0-beta.1 -> ... -> 0.1.0-rc.1 -> ... -> 0.1.0
+0.1.0-alpha.0 -> .1 -> ... -> 0.1.0-beta.0 -> ... -> 0.1.0-rc.0 -> ... -> 0.1.0
 ```
 
 | Stage   | Audience     | API              | Breaking changes  |
@@ -23,6 +23,13 @@
 
 ## Promoting a release stage
 
+`scripts/promote-release.sh` (behind the `make promote*` targets)
+rewrites `prerelease-type` on every package to `<stage>.0`, or removes
+it for `release`, and commits `chore(release): promote to <stage>`.
+release-please reads that value only when the version it bumps has no
+prerelease suffix; while the manifest carries one, every merged release
+PR bumps that counter whatever the config says.
+
 Interactive:
 
 ```bash
@@ -32,11 +39,17 @@ make promote
 Explicit:
 
 ```bash
-make promote-alpha    # initialize alpha (new version cycle)
-make promote-beta     # alpha -> beta (feature-complete)
-make promote-rc       # beta -> rc (no known blockers)
-make promote-release  # rc -> release (bake period passed)
+make promote-alpha    # seed the next line: x.y.z -> x.y+1.0-alpha.0
+make promote-beta     # declare beta; jump with Release-As: x.y.z-beta.0
+make promote-rc       # declare rc; jump with Release-As: x.y.z-rc.0
+make promote-release  # reset the ladder; cuts nothing
 ```
+
+Stable `x.y.z` is cut by a commit carrying `Release-As: x.y.z`, never by
+`promote-release`. Run `promote-release` and `promote-alpha` back to
+back while the manifest still carries the `rc` suffix: with no
+`prerelease-type` and a stable manifest, the next merged release PR
+would propose another stable version.
 
 ### Transition criteria
 
