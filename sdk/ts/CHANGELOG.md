@@ -4,6 +4,38 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.1...kit-ts/v0.5.0-alpha.2) (2026-09-04)
+
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.2. This release includes new features and bug fixes.
+
+
+### ⚠ BREAKING CHANGES
+
+* **ai/llm:** `Request.Temperature` type changes from `float64` to `*float64`. Callers setting a literal must pass a pointer; zero-value construction (unset) keeps behaving as before via nil.
+
+### Features
+
+* merge offline-transport
+* merge offline-transport
+* **sdk/ts:** add structured error envelope with transience class
+* **ts/mcp:** implement MRTR confirmation loop on the modern surface
+* **ts:** enforce --offline at the fetch layer
+* **ts:** serve dual-spec MCP surface
+
+
+### Bug Fixes
+
+* **ai/llm:** send explicit zero temperature on the wire
+* **output:** collapse header/key split, let --cols reorder
+* **output:** emit valid csv from ts in crlf mode
+* **output:** reach projection helpers from every render
+* **parity:** load verbosity/streams blocks, drop decorative table block
+* **ts:** exempt telemetry from `--offline`
+* **ts:** re-export registerOutputFlags + dispatch from output subpath
+* **ts:** ship root index entry so bare package import resolves
+
+Full diff: [kit-ts/v0.5.0-alpha.1...kit-ts/v0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.1...kit-ts/v0.5.0-alpha.2)
+
 ## [Unreleased]
 
 ### Changed
