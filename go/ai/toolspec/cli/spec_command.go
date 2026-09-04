@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
+	"hop.top/kit/go/ai/cmdreflect"
 	"hop.top/kit/go/ai/toolspec"
 	"hop.top/kit/go/ai/toolspec/adapters"
 	kitcli "hop.top/kit/go/console/cli"
@@ -233,13 +233,19 @@ func EmitManifest(root *kitcli.Root, schemaVersion string) toolspec.Manifest {
 	return BuildManifest(root, schemaVersion, false)
 }
 
-// BuildManifest walks root.Cmd and returns the toolspec.Manifest the
-// spec subcommand emits. Exported so tests and external introspection
-// tools can build the manifest without going through the subcommand.
+// BuildManifest reflects root.Cmd and returns the toolspec.Manifest
+// the spec subcommand emits. Exported so tests and external
+// introspection tools can build the manifest without going through
+// the subcommand.
+//
+// Reflection is delegated to [hop.top/kit/go/ai/cmdreflect]; this
+// function only projects descriptors into the manifest shape and
+// applies the manifest's own inclusion policy. See that package for
+// the one-descriptor rule.
 //
 // includeDeprecated controls whether deprecated leaves appear in the
-// returned slice; when false (default), they're filtered out so agents
-// don't latch onto soon-to-be-removed commands.
+// returned slice; when false (default), they're filtered out so
+// agents don't latch onto soon-to-be-removed commands.
 func BuildManifest(root *kitcli.Root, schemaVersion string, includeDeprecated bool) toolspec.Manifest {
 	if root == nil || root.Cmd == nil {
 		return toolspec.Manifest{
@@ -253,271 +259,133 @@ func BuildManifest(root *kitcli.Root, schemaVersion string, includeDeprecated bo
 		SchemaVersion: schemaVersion,
 		Commands:      []toolspec.ManifestCommand{},
 	}
-	walkLeaves(root.Cmd, func(cmd *cobra.Command) {
-		// Skip the spec subcommand itself + cobra built-ins (help,
-		// completion). The kit/spec-command annotation locks this
-		// regardless of name.
-		if isSpecOrBuiltin(cmd) {
-			return
+
+	// The manifest publishes hidden and interactive leaves and its
+	// own reserved management verbs — an agent must be able to find
+	// the schema of `<tool> spec` itself. Deprecation is the one
+	// exclusion the manifest applies, and it is caller-controlled.
+	tree := cmdreflect.Reflect(
+		root.Cmd,
+		cmdreflect.WithReserved(root),
+		cmdreflect.AllowHidden(),
+		cmdreflect.AllowInteractive(),
+		cmdreflect.AllowReserved(),
+		cmdreflect.AllowDeprecated(),
+	)
+	for _, d := range tree.Descriptors {
+		if !manifestIncludes(d, includeDeprecated) {
+			continue
 		}
-		isDeprecated := commandIsDeprecated(cmd)
-		if isDeprecated && !includeDeprecated {
-			return
-		}
-		m.Commands = append(m.Commands, manifestCommand(cmd, root))
-	})
+		m.Commands = append(m.Commands, manifestCommand(d))
+	}
 	return m
 }
 
-// commandIsDeprecated reports whether cmd carries a deprecation marker:
-// cobra.Command.Deprecated set, kit/deprecated-since, or
-// kit/removal-target — any of the three triggers the deprecation
-// classification (matching the warning emitter's logic).
-func commandIsDeprecated(cmd *cobra.Command) bool {
-	if cmd == nil {
+// manifestIncludes applies the manifest's inclusion policy to a
+// reflected descriptor.
+//
+// The manifest lists LEAVES: a command group has no invocation of
+// its own, so publishing it as a callable tool would be a lie. That
+// is exactly what cmdreflect records as ReasonNotRunnable, and what
+// ReasonBuiltin records for the framework's own help and completion
+// trees. Deprecation is the caller's choice.
+func manifestIncludes(d *cmdreflect.Descriptor, includeDeprecated bool) bool {
+	if d == nil || d.Cmd == nil || d.IsRoot() {
 		return false
 	}
-	if cmd.Deprecated != "" {
-		return true
-	}
-	if cmd.Annotations == nil {
+	switch d.Reason {
+	case cmdreflect.ReasonNotRunnable, cmdreflect.ReasonBuiltin:
 		return false
 	}
-	return cmd.Annotations["kit/deprecated-since"] != "" ||
-		cmd.Annotations["kit/removal-target"] != ""
+	if d.Surface.HasSubCommands {
+		return false
+	}
+	if d.Surface.Deprecated && !includeDeprecated {
+		return false
+	}
+	return true
 }
 
-// manifestCommand projects a single cobra leaf into a ManifestCommand.
-// The optional root parameter lets the projector consult kit-shipped
-// reserved-subcommand snapshots when computing the Reserved field
-// . Callers that do not have a Root handy may pass
-// nil; the Reserved field then defaults to false.
-func manifestCommand(cmd *cobra.Command, root *kitcli.Root) toolspec.ManifestCommand {
+// manifestCommand projects one reflected descriptor into a
+// ManifestCommand. Every field here is a rename or a re-shape of a
+// fact [hop.top/kit/go/ai/cmdreflect] already resolved; nothing is
+// re-derived from the cobra command.
+func manifestCommand(d *cmdreflect.Descriptor) toolspec.ManifestCommand {
 	mc := toolspec.ManifestCommand{
-		Path:  strings.Fields(cmd.CommandPath()),
-		Short: cmd.Short,
-		Long:  cmd.Long,
-	}
-	if se, ok := kitcli.GetSideEffect(cmd); ok {
-		mc.SideEffect = string(se)
-	}
-	if id, ok := kitcli.GetIdempotency(cmd); ok {
-		mc.Idempotent = string(id)
-	}
-	mc.Deprecated = commandIsDeprecated(cmd)
-	mc.Hidden = cmd.Hidden
-	if cmd.Annotations != nil {
-		mc.DeprecatedSince = cmd.Annotations["kit/deprecated-since"]
-		mc.RemovalTarget = cmd.Annotations["kit/removal-target"]
-		mc.SinceVersion = cmd.Annotations["kit/since"]
-		if raw := cmd.Annotations["kit/exit-codes"]; raw != "" {
-			mc.ExitCodes = splitCSV(raw)
-		}
-		if raw := cmd.Annotations["kit/args"]; raw != "" {
-			for _, name := range splitCSV(raw) {
-				mc.Args = append(mc.Args, toolspec.ManifestArg{
-					Name:     strings.TrimSuffix(name, "?"),
-					Required: !strings.HasSuffix(name, "?"),
-				})
-			}
-		}
-	}
-	mc.Flags = collectFlags(cmd)
+		Path:            append([]string(nil), d.Path...),
+		Short:           d.Short,
+		Long:            d.Long,
+		SideEffect:      d.Safety.DeclaredSideEffect,
+		Idempotent:      d.Safety.Idempotent,
+		ExitCodes:       d.Safety.ExitCodes,
+		Deprecated:      d.Surface.Deprecated,
+		DeprecatedSince: d.Surface.DeprecatedSince,
+		RemovalTarget:   d.Surface.RemovalTarget,
+		SinceVersion:    d.Surface.SinceVersion,
+		Hidden:          d.Surface.Hidden,
 
-	// === Schema 1.1 additions ===
-	projectLayerAFields(cmd, &mc, root)
+		Retryable:                d.Safety.Retryable,
+		TopLevelVerb:             d.Surface.TopLevelVerb,
+		Hierarchical:             d.Surface.Hierarchical,
+		Passthrough:              d.Surface.Passthrough,
+		DestructiveTokenRequired: d.Safety.DestructiveTokenRequired,
+		DryRunSupported:          d.Safety.DryRunSupported,
+		DryRunRationale:          d.Safety.DryRunRationale,
+		Reserved:                 d.Surface.Reserved,
+	}
+
+	for _, a := range d.Args {
+		mc.Args = append(mc.Args, toolspec.ManifestArg{
+			Name:     a.Name,
+			Required: a.Required,
+		})
+	}
+	mc.Flags = manifestFlags(d.Flags)
+
+	if len(d.Output.Schema) > 0 {
+		mc.OutputSchema = toolspec.RawJSON(append([]byte(nil), d.Output.Schema...))
+		mc.OutputSchemaVersion = d.Output.SchemaVersion
+	}
+	if len(d.Output.Examples) > 0 {
+		mc.Examples = make([]toolspec.ManifestExample, 0, len(d.Output.Examples))
+		for _, e := range d.Output.Examples {
+			mc.Examples = append(mc.Examples, toolspec.ManifestExample{
+				Title: e.Title, Command: e.Command, Output: e.Output,
+			})
+		}
+	}
+	if len(d.Output.NextSteps) > 0 {
+		mc.NextSteps = make([]toolspec.ManifestNextStep, 0, len(d.Output.NextSteps))
+		for _, n := range d.Output.NextSteps {
+			mc.NextSteps = append(mc.NextSteps, toolspec.ManifestNextStep{
+				When: n.When, Suggest: n.Suggest, Reason: n.Reason,
+			})
+		}
+	}
 	return mc
 }
 
-// projectLayerAFields fills the schema-1.1 fields on mc. Split out
-// of manifestCommand to keep the projector readable. Decode failures
-// on kit/examples / kit/next-steps are silently dropped so the
-// projector never fails the manifest as a whole.
-func projectLayerAFields(cmd *cobra.Command, mc *toolspec.ManifestCommand, root *kitcli.Root) {
-	if cmd == nil || mc == nil {
-		return
-	}
-	mc.Retryable = kitcli.IsRetryable(cmd)
-	mc.TopLevelVerb = kitcli.IsTopLevelVerb(cmd)
-	mc.Hierarchical = kitcli.IsHierarchical(cmd)
-	mc.Passthrough = kitcli.IsPassthrough(cmd)
-
-	if raw, ver, ok := kitcli.GetOutputSchemaJSON(cmd); ok && len(raw) > 0 {
-		buf := make([]byte, len(raw))
-		copy(buf, raw)
-		mc.OutputSchema = toolspec.RawJSON(buf)
-		mc.OutputSchemaVersion = ver
-	}
-
-	if ex, ok := kitcli.GetExamples(cmd); ok {
-		mc.Examples = make([]toolspec.ManifestExample, 0, len(ex))
-		for _, e := range ex {
-			mc.Examples = append(mc.Examples, toolspec.ManifestExample{
-				Title:   e.Title,
-				Command: e.Command,
-				Output:  e.Output,
-			})
-		}
-	}
-	if ns, ok := kitcli.GetNextSteps(cmd); ok {
-		mc.NextSteps = make([]toolspec.ManifestNextStep, 0, len(ns))
-		for _, n := range ns {
-			mc.NextSteps = append(mc.NextSteps, toolspec.ManifestNextStep{
-				When:    n.When,
-				Suggest: n.Suggest,
-				Reason:  n.Reason,
-			})
-		}
-	}
-
-	// kit/destructive-token=required → DestructiveTokenRequired.
-	if cmd.Annotations != nil {
-		if v := cmd.Annotations["kit/destructive-token"]; v == "required" || v == "true" {
-			mc.DestructiveTokenRequired = true
-		}
-		mc.DryRunRationale = cmd.Annotations["kit/dry-run-rationale"]
-	}
-
-	mc.DryRunSupported = kitcli.IsDryRunSupported(cmd)
-
-	if root != nil {
-		mc.Reserved = root.IsReserved(firstAncestorName(cmd, root))
-	}
-}
-
-// firstAncestorName returns the name of the depth-1 ancestor of cmd
-// under root (e.g. for `mytool foo bar baz` returns "foo"). When cmd
-// is a depth-1 leaf the function returns cmd.Name() itself; when
-// cmd is the root or somehow detached the function returns "".
-func firstAncestorName(cmd *cobra.Command, root *kitcli.Root) string {
-	if cmd == nil || root == nil || root.Cmd == nil {
-		return ""
-	}
-	if cmd == root.Cmd {
-		return ""
-	}
-	current := cmd
-	for current.Parent() != nil && current.Parent() != root.Cmd {
-		current = current.Parent()
-	}
-	return current.Name()
-}
-
-// collectFlags returns all flags declared directly on cmd (i.e. local
-// flags excluding inherited persistent flags) projected into
-// ManifestFlag entries. Persistent globals from the root are excluded
-// here; agents discover them via the manifest's tool-level metadata
-// when adopters extend the schema. Today we keep per-command flags
-// scoped tight so the manifest is compact.
-func collectFlags(cmd *cobra.Command) []toolspec.ManifestFlag {
-	if cmd == nil {
-		return nil
-	}
-	since := flagSinceForCmd(cmd)
+// manifestFlags projects reflected flags into ManifestFlag entries.
+// Hidden flags are omitted: the manifest keeps per-command flags
+// scoped tight, and a hidden flag is not part of the supported
+// surface. Persistent globals inherited from the root are excluded
+// too — they belong to the tool, not to any one leaf.
+func manifestFlags(flags []cmdreflect.Flag) []toolspec.ManifestFlag {
 	var out []toolspec.ManifestFlag
-	cmd.LocalFlags().VisitAll(func(f *pflag.Flag) {
+	for _, f := range flags {
 		if f.Hidden {
-			return
-		}
-		mf := toolspec.ManifestFlag{
-			Name:        f.Name,
-			Short:       f.Shorthand,
-			Type:        f.Value.Type(),
-			Description: f.Usage,
-			Default:     f.DefValue,
-		}
-		if v, ok := since[f.Name]; ok {
-			mf.SinceVersion = v
-		}
-		out = append(out, mf)
-	})
-	return out
-}
-
-// flagSinceForCmd parses kit/flag-since for this command into a flag
-// name → MAJOR.MINOR map. Mirrors the apiversion.go parser but lives
-// here to avoid an internal-package import; the format is stable per
-// §13.
-func flagSinceForCmd(cmd *cobra.Command) map[string]string {
-	out := map[string]string{}
-	if cmd == nil || cmd.Annotations == nil {
-		return out
-	}
-	raw := cmd.Annotations["kit/flag-since"]
-	if raw == "" {
-		return out
-	}
-	for _, entry := range strings.Split(raw, ",") {
-		entry = strings.TrimSpace(entry)
-		eq := strings.Index(entry, "=")
-		if eq < 0 {
 			continue
 		}
-		out[strings.TrimSpace(entry[:eq])] = strings.TrimSpace(entry[eq+1:])
+		out = append(out, toolspec.ManifestFlag{
+			Name:         f.Name,
+			Short:        f.Short,
+			Type:         f.Type,
+			Description:  f.Description,
+			Default:      f.Default,
+			SinceVersion: f.SinceVersion,
+		})
 	}
 	return out
-}
-
-// splitCSV splits a "a,b,c" string into trimmed non-empty parts.
-func splitCSV(s string) []string {
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-// walkLeaves invokes fn on every leaf command (no children) under root.
-func walkLeaves(root *cobra.Command, fn func(*cobra.Command)) {
-	if root == nil {
-		return
-	}
-	if !root.HasSubCommands() {
-		fn(root)
-		return
-	}
-	for _, c := range root.Commands() {
-		walkLeaves(c, fn)
-	}
-}
-
-// isSpecOrBuiltin returns true for cobra/fang built-in leaves (help,
-// completion bash|zsh|fish|powershell, man, __complete). Match by
-// leaf name or by parent name for the completion-shell leaves.
-// Adopter-overridden help/completion inherit the same exemption
-// since kit treats them as built-ins.
-//
-// The spec / manifest subcommands themselves are NOT filtered out —
-// the manifest must include a self-describing
-// entry for `<tool> spec` so agents can locate the schema of every
-// other entry. The legacy kit/spec-command annotation is preserved
-// for the deprecation-warning middleware (which separately skips
-// the spec command to keep the output stream clean), but does not
-// remove the leaf from the manifest.
-func isSpecOrBuiltin(cmd *cobra.Command) bool {
-	if cmd == nil {
-		return true
-	}
-	switch cmd.Name() {
-	case "help", "completion", "man", "__complete", "__completeNoDesc":
-		return true
-	}
-	if p := cmd.Parent(); p != nil {
-		switch p.Name() {
-		case "completion":
-			return true
-		}
-	}
-	// Bare-root non-runnable leaves (no children, no Run/RunE)
-	// shouldn't appear in the manifest either.
-	if !cmd.Runnable() {
-		return true
-	}
-	return false
 }
 
 // flagValueAndChangedWalk also reports whether the flag was

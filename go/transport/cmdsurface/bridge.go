@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/ai/cmdreflect"
 )
 
 // ErrSurfaceNotEnabled is returned when an Invocation's Meta.Surface
@@ -38,6 +40,7 @@ type Bridge struct {
 	cfg    bridgeConfig
 	leaves []*Leaf // depth-first leaf order
 	byPath map[string]*Leaf
+	tree   *cmdreflect.Tree
 	sinks  SinkSet
 	mu     sync.RWMutex
 }
@@ -52,6 +55,15 @@ type Leaf struct {
 	Cmd     *cobra.Command
 	Class   SafetyClass
 	Enabled map[Surface]bool
+
+	// Descriptor is the canonical reflection of this command, from
+	// [hop.top/kit/go/ai/cmdreflect]. Surfaces that need richer
+	// metadata than SafetyClass carries — declared args, flag
+	// types and defaults, output schema, deprecation detail —
+	// read it here instead of walking the cobra tree again.
+	//
+	// Always non-nil for a leaf the bridge discovered.
+	Descriptor *cmdreflect.Descriptor
 }
 
 // PathKey returns the leaf path as a space-joined string (the form
@@ -96,9 +108,20 @@ func New(root *cobra.Command, opts ...Option) *Bridge {
 	return b
 }
 
-// discover walks the cobra tree and records leaves in depth-first
-// order. Hidden and deprecated commands are skipped (Expose can
-// re-enable them by exact path). The root itself is never a leaf.
+// discover reflects the cobra tree once and records the leaves the
+// bridge will project, in depth-first order.
+//
+// Reflection is delegated to [hop.top/kit/go/ai/cmdreflect], which
+// describes EVERY command and records a reason for each one it
+// judges non-invocable. The bridge keeps the invocable ones as
+// leaves; the reasons for the rest stay available through
+// [Bridge.NonInvocable], so "this command is not on the bridge"
+// has an answer instead of being a silent omission.
+//
+// Hidden and deprecated commands are excluded, which is the
+// reflector's default. Expose can re-enable a leaf by exact path,
+// but only among the ones discovered here — matching the behavior
+// this method has always had.
 func (b *Bridge) discover() {
 	defaults := b.cfg.policy.resolvedDefaults()
 	defaultSet := make(map[Surface]bool, len(defaults))
@@ -106,37 +129,60 @@ func (b *Bridge) discover() {
 		defaultSet[s] = true
 	}
 
-	var walk func(cmd *cobra.Command, path []string)
-	walk = func(cmd *cobra.Command, path []string) {
-		// Skip the root itself; only descendants are leaves.
-		if len(path) > 0 && isLeaf(cmd) && cmd.Runnable() {
-			cls := Classify(cmd)
-			// Copy defaultSet so each leaf has its own map.
-			enabled := make(map[Surface]bool, len(defaultSet))
-			for k, v := range defaultSet {
-				enabled[k] = v
-			}
-			leaf := &Leaf{
-				Path:    append([]string(nil), path...),
-				Cmd:     cmd,
-				Class:   cls,
-				Enabled: enabled,
-			}
-			b.leaves = append(b.leaves, leaf)
-			b.byPath[leaf.PathKey()] = leaf
+	// Interactive and destructive commands stay discoverable: the
+	// bridge gates them at Invoke time through Policy.Allowed,
+	// which is a per-surface decision the reflector cannot make
+	// for all surfaces at once.
+	b.tree = cmdreflect.Reflect(
+		b.root,
+		cmdreflect.AllowInteractive(),
+		cmdreflect.AllowReserved(),
+	)
+
+	for _, d := range b.tree.Invocable() {
+		if d.IsRoot() || d.Surface.HasSubCommands {
+			continue
 		}
-		for _, child := range cmd.Commands() {
-			if child.Hidden || child.Deprecated != "" {
-				continue
-			}
-			walk(child, append(path, child.Name()))
+		enabled := make(map[Surface]bool, len(defaultSet))
+		for k, v := range defaultSet {
+			enabled[k] = v
 		}
+		leaf := &Leaf{
+			Path:       append([]string(nil), d.Path[1:]...),
+			Cmd:        d.Cmd,
+			Class:      classFromDescriptor(d),
+			Enabled:    enabled,
+			Descriptor: d,
+		}
+		b.leaves = append(b.leaves, leaf)
+		b.byPath[leaf.PathKey()] = leaf
 	}
-	walk(b.root, nil)
 }
 
-// isLeaf reports whether cmd has no subcommands.
-func isLeaf(cmd *cobra.Command) bool { return !cmd.HasSubCommands() }
+// NonInvocable returns the descriptors the bridge did NOT turn into
+// leaves, each carrying the reason it was excluded. Capability
+// endpoints that advertise "every command" render these alongside
+// Leaves so an agent can tell "no such command" from "that command
+// exists but is not reachable here".
+func (b *Bridge) NonInvocable() []*cmdreflect.Descriptor {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if b.tree == nil {
+		return nil
+	}
+	return b.tree.NonInvocable()
+}
+
+// Descriptors returns the complete reflection of the bridge's cobra
+// tree, invocable commands and excluded ones alike.
+func (b *Bridge) Descriptors() []*cmdreflect.Descriptor {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if b.tree == nil {
+		return nil
+	}
+	return b.tree.Descriptors
+}
 
 // Leaves returns the bridge's leaves in depth-first discovery
 // order. The returned slice is a read-only view; surfaces must not

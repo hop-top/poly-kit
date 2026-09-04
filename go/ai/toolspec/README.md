@@ -5,7 +5,24 @@ Semantic tool definitions and mapping for kit-projected CLI surfaces.
 `toolspec` is the data layer behind `<tool> spec` subcommands and the
 adapter targets (MCP, kit-manifest, OpenAPI, …). It models a CLI tool
 as a recursive command tree plus risk metadata; adopters declare
-behaviour with cobra annotations and the walker projects them.
+behavior with cobra annotations and the walker projects them.
+
+## Where reflection happens
+
+`toolspec` no longer walks cobra. [`go/ai/cmdreflect`](../cmdreflect/)
+is kit's single reflector: it produces one `Descriptor` per command,
+and `WalkCobra` and `BuildManifest` are projections from those
+descriptors into the `ToolSpec` and `Manifest` shapes.
+
+That package holds the one-descriptor rule and the
+`NonInvocableReason` vocabulary — the named reasons a command is
+reflected but withheld (`hidden-internal`, `deprecated`,
+`interactive`, `management-only`, `malformed-schema`, and the rest).
+Read it before adding a new field to either shape: the fact you need
+is likely already resolved on the descriptor.
+
+The safety vocabulary below is unchanged; `cmdreflect` resolves
+annotations *into* it rather than defining a competing one.
 
 ## Safety vocabulary
 
