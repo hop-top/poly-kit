@@ -188,7 +188,37 @@ func (a *apiService) buildHandler(ctx context.Context) http.Handler {
 		a.cfg.OnHub(hub)
 	}
 
+	a.mountProjection(router)
+
 	return router
+}
+
+// mountProjection reflects the completed command tree and mounts the
+// versioned REST projection plus its OpenAPI description.
+//
+// It runs LAST, after the adopter's Handlers and Resources, so an
+// adopter route always wins a pattern collision: the projection is
+// additive, and a tool that already serves something at a path it
+// happens to want keeps serving it.
+//
+// The tree is reflected here, at start, because that is the first
+// moment cobra has all of it — WithAPI runs while the tree is still
+// being built.
+func (a *apiService) mountProjection(router *api.Router) {
+	if a.root == nil || a.root.Cmd == nil {
+		return
+	}
+	// Config is the authority for name and version: Cmd.Version
+	// carries the rendered --version template, not the bare value.
+	cfg := buildProjection(
+		a.root.Cmd, a.root.Config.Name, a.root.Config.Version, a.root, a.cfg,
+	)
+
+	api.MountCommandProjection(router, cfg)
+	api.DescribeCommandProjection(router, cfg)
+	// Serves a floor spec only when the adopter never configured
+	// WithOpenAPI; a no-op otherwise.
+	api.MountMinimalProjectionSpec(router, cfg)
 }
 
 // applyAPICompat maps the leaf `serve` command's own flags onto the

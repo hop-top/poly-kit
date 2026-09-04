@@ -36,6 +36,7 @@ how kit itself is implemented.
 - [`guides/create-cli-project.md`](guides/create-cli-project.md) — scaffold a new CLI
 - [`guides/build-a-transport-service.md`](guides/build-a-transport-service.md) — put your own transport in front of your command tree
 - [`guides/expose-cli-over-mcp.md`](guides/expose-cli-over-mcp.md) — serve your commands as MCP tools (both spec revisions)
+- [`guides/expose-cli-over-rest.md`](guides/expose-cli-over-rest.md) — serve your commands as a versioned REST API with OpenAPI
 - [`guides/hook-cli-into-bus.md`](guides/hook-cli-into-bus.md) — first publish/subscribe
 - [`guides/run-the-engine.md`](guides/run-the-engine.md) — start the engine sidecar
 - [`guides/serve-cli-over-unix-socket.md`](guides/serve-cli-over-unix-socket.md) — serve your commands over a local Unix socket

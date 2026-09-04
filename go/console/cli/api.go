@@ -1,6 +1,9 @@
 package cli
 
-import "hop.top/kit/go/transport/api"
+import (
+	"hop.top/kit/go/transport/api"
+	"hop.top/kit/go/transport/cmdsurface"
+)
 
 // APIConfig configures the built-in api service and token commands
 // added by WithAPI.
@@ -17,6 +20,35 @@ type APIConfig struct {
 	Resources func(r *api.Router, humaAPI interface{})
 	// OnHub provides the WebSocket hub to the consumer (nil = no WS).
 	OnHub func(hub *api.Hub)
+
+	// Policy gates which projected commands may run over REST. The
+	// zero value withholds every destructive command, which is the
+	// safe default.
+	//
+	// To permit destructive commands over REST:
+	//
+	//	Policy: cmdsurface.Policy{
+	//	    AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceREST},
+	//	}
+	//
+	// Permitting them does not skip confirmation: a command that
+	// declares kit/requires-confirmation still needs the
+	// X-Confirm-Token header on every call.
+	Policy cmdsurface.Policy
+
+	// Expose lists the command patterns the projection may mount, in
+	// the pattern language of [cmdsurface.Bridge.Expose] ("widget
+	// add", "widget *", "*"). Empty exposes the whole tree, which is
+	// what makes projection automatic; the destructive ceiling in
+	// Policy still applies on top.
+	Expose []string
+
+	// Hide carves exceptions out of Expose, applied after it.
+	// Hidden commands stay visible in the discovery listing with
+	// invocable=false and the reason "withheld-by-config", and this
+	// affects REST only — the CLI and every other surface are
+	// untouched.
+	Hide []string
 }
 
 // WithAPI returns a Root option that stores the API config, registers
