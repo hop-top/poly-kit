@@ -128,8 +128,10 @@ npx release-please@latest release-pr --dry-run \
 **Release brake.** Release PRs on either branch are blocked until a member of
 `@hop-top/release` approves them. The `production-branch-guardrail` ruleset on
 `main` and `next` requires code-owner review with zero required approvals, and
-`.github/CODEOWNERS` covers exactly the files every release PR rewrites: the
-manifest and each managed `CHANGELOG.md`. Everything else merges review-free.
+`.github/CODEOWNERS` covers exactly the managed `CHANGELOG.md` files, which
+release-please rewrites on every release PR. The config and manifest are
+deliberately not owned: promotions and counter reseeds are human edits to
+those files and merge review-free, like everything else.
 The nightly auto-cut (`.github/workflows/nightly-release.yml`) merges with
 `--auto`, so it only times a merge that is already approved; it cannot cut a
 release nobody approved, on either branch. Approve the PR you intend to ship

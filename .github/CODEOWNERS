@@ -1,12 +1,16 @@
-# Release configuration + changelogs — release team only.
-# Anchored to the release-please-managed paths: a basename `CHANGELOG.md`
-# rule would also gate the scaffold changelogs under templates/ and
+# Changelogs — release team only.
+# release-please rewrites a component's CHANGELOG.md on every release PR,
+# so code-owner review here is the release brake: a release PR merges
+# only after explicit release-team approval, and the nightly auto-cut can
+# only time a merge that is already approved. The release-please config
+# and manifest are deliberately NOT listed: promotions and counter reseeds
+# are human edits to those files and must stay review-free.
+# Anchored to the release-please-managed changelogs: a basename rule
+# would also gate the scaffold changelogs under templates/ and
 # internal/template/, which release-please never writes.
-/.github/release-please-config.json    @hop-top/release
-/.github/.release-please-manifest.json @hop-top/release
-/CHANGELOG.md                          @hop-top/release
-/sdk/ts/CHANGELOG.md                   @hop-top/release
-/sdk/py/CHANGELOG.md                   @hop-top/release
-/sdk/experimental/rs/CHANGELOG.md      @hop-top/release
-/sdk/experimental/php/CHANGELOG.md     @hop-top/release
-/incubator/qmochi/CHANGELOG.md         @hop-top/release
+/CHANGELOG.md                     @hop-top/release
+/sdk/ts/CHANGELOG.md              @hop-top/release
+/sdk/py/CHANGELOG.md              @hop-top/release
+/sdk/experimental/rs/CHANGELOG.md @hop-top/release
+/sdk/experimental/php/CHANGELOG.md @hop-top/release
+/incubator/qmochi/CHANGELOG.md    @hop-top/release

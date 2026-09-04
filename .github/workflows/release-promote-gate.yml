@@ -17,8 +17,8 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          # Authorization enforced via CODEOWNERS + branch protection;
-          # this gate only validates transition logic.
+          # Who may promote is the repo's ordinary PR policy; the config is
+          # not code-owned. This gate only validates transition logic.
 
           # Skip validation for initial config setup
           if ! git show "${BASE_SHA}":.github/release-please-config.json \
