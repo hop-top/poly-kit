@@ -266,7 +266,10 @@ func TestSocketPermitsDestructiveWhenPolicyNamesTheSurface(t *testing.T) {
 	resp := callSocket(t, path, socket.Request{Path: []string{"nuke"}})
 	require.True(t, resp.Ok, "the bridge must no longer block it")
 	require.NotNil(t, resp.Result)
-	assert.Equal(t, 1, resp.Result.ExitCode)
+	// The refusal carries the taxonomy's UNAUTHORIZED code, not a
+	// flattened 1: a caller branching on the exit code sees the same
+	// number it would from a shell.
+	assert.Equal(t, output.UnauthorizedError("").ExitCode, resp.Result.ExitCode)
 	assert.Contains(t, resp.Result.Stderr, "--confirm=no (or non-TTY default)")
 
 	// Passing the confirmation the command asks for completes it.

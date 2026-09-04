@@ -253,7 +253,7 @@ unconfirmed destructive command is now refused by the command instead
 of by the bridge:
 
 ```console
-{"ok":true,"result":{"exit_code":1,"stderr":"UNAUTHORIZED: destructive command mytool widget delete refused: --confirm=no (or non-TTY default)\n"}}
+{"ok":true,"result":{"exit_code":5,"stderr":"UNAUTHORIZED: destructive command mytool widget delete refused: --confirm=no (or non-TTY default)\n"}}
 ```
 
 Pass the confirmation as a flag to complete it:
