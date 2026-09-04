@@ -14,7 +14,9 @@ package cmdsurface
 // lock trees.
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -312,12 +314,12 @@ func TestModernConfirm_TamperedStateAuditedAndReprompted(t *testing.T) {
 	_, state := inputRequiredResult(t, m)
 
 	// Flip the final MAC character.
-	last := state[len(state)-1]
-	flip := byte('A')
-	if last == 'A' {
-		flip = 'B'
-	}
-	tampered := state[:len(state)-1] + string(flip)
+	// Tamper a DATA-bearing position: decode the tag, flip a bit in its
+	// first byte, re-encode. Flipping the final CHARACTER instead would
+	// be unreliable — the tag is 32 bytes, so the last character of its
+	// 43-character encoding carries 2 bits that no byte uses, and a
+	// flip confined to those decodes back to the identical tag.
+	tampered := tamperStateTag(t, state, func(tag []byte) { tag[0] ^= 0x01 })
 
 	status, m := postJSON(t, srv, "/mcp", modernHeaders("tools/call", "purge"),
 		confirmBody(t, 2, "purge", nil, elicitMeta(), tampered, "accept"))
@@ -700,4 +702,95 @@ func TestVerifyMCPConfirmState_Table(t *testing.T) {
 			}
 		})
 	}
+}
+
+// tamperStateTag rewrites the MAC of a minted requestState by applying
+// mutate to the decoded tag and re-encoding it. Tampering the bytes
+// rather than the encoded characters keeps a test's intent independent
+// of how the decoder treats non-canonical input.
+func tamperStateTag(t *testing.T, state string, mutate func([]byte)) string {
+	t.Helper()
+	parts := strings.Split(state, ".")
+	if len(parts) != 3 {
+		t.Fatalf("state=%q want 3 dot-separated parts", state)
+	}
+	tag, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		t.Fatalf("decode state tag: %v", err)
+	}
+	mutate(tag)
+	return parts[0] + "." + parts[1] + "." +
+		base64.RawURLEncoding.EncodeToString(tag)
+}
+
+// TestModernConfirm_NonCanonicalStateRejected pins that a state whose
+// tag is re-encoded with a non-zero padding bit is refused.
+//
+// The tag is 32 bytes, so its 43-character encoding carries 258 bits:
+// the final character's low 2 bits are unused. A non-strict decoder
+// discards them, so four distinct final characters decode to the same
+// tag — a caller could present a state the server never minted and
+// still pass hmac.Equal. This asserts on verifyMCPConfirmState
+// directly: it is the function that decides, and the padding bit is
+// computed from the decoded tag rather than assumed, so the test holds
+// for any MAC rather than depending on which final character a given
+// key happens to produce.
+func TestModernConfirm_NonCanonicalStateRejected(t *testing.T) {
+	key := mcpConfirmTestKey
+	b := mcpConfirmBinding{tool: "purge", argsDigest: "d1", principal: "p1"}
+	state := mintMCPConfirmState(key, b, time.Now().Add(time.Hour))
+
+	if got := verifyMCPConfirmState(key, state, b, time.Now()); got != mcpConfirmStateValid {
+		t.Fatalf("freshly minted state verify=%v want valid", got)
+	}
+
+	noncanonical := setStatePaddingBit(t, state)
+	if noncanonical == state {
+		t.Fatal("failed to construct a non-canonical state")
+	}
+	if got := verifyMCPConfirmState(key, noncanonical, b, time.Now()); got != mcpConfirmStateInvalid {
+		t.Errorf("non-canonical state verify=%v want invalid "+
+			"(a padding-bit flip must not be honored)", got)
+	}
+}
+
+// setStatePaddingBit re-encodes a state's tag with its lowest unused
+// padding bit set, producing a value that decodes to the SAME tag
+// under a non-strict decoder and is rejected outright under a strict
+// one. The bit is derived from the decoded tag, so the result is
+// deterministic for any MAC.
+func setStatePaddingBit(t *testing.T, state string) string {
+	t.Helper()
+	parts := strings.Split(state, ".")
+	if len(parts) != 3 {
+		t.Fatalf("state=%q want 3 dot-separated parts", state)
+	}
+	enc := parts[2]
+	tag, err := base64.RawURLEncoding.DecodeString(enc)
+	if err != nil {
+		t.Fatalf("decode state tag: %v", err)
+	}
+	// 32 bytes is 256 bits; 43 base64 characters carry 258. The final
+	// character's LOW 2 bits are therefore unused. Clear them and set a
+	// non-zero value, so the change lands only on padding whatever the
+	// canonical character happens to be — masking matters, since simply
+	// OR-ing a bit that is already set would be a no-op.
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	last := strings.IndexByte(alphabet, enc[len(enc)-1])
+	if last < 0 {
+		t.Fatalf("unexpected base64 character %q", enc[len(enc)-1])
+	}
+	altered := enc[:len(enc)-1] + string(alphabet[(last&^0x03)|0x01])
+
+	// Sanity: the mutation must be padding-only, i.e. still decode to
+	// the identical tag under a non-strict decoder. Otherwise this test
+	// would be checking ordinary tampering, which another test covers.
+	back, err := base64.RawURLEncoding.DecodeString(altered)
+	if err != nil || !bytes.Equal(back, tag) {
+		t.Fatalf("mutation was not padding-only (err=%v)", err)
+	}
+	// Reassemble the whole state: returning the bare tag would fail
+	// verification on the part count instead of on the encoding, which
+	// would make this test pass no matter how the tag is decoded.
+	return parts[0] + "." + parts[1] + "." + altered
 }
