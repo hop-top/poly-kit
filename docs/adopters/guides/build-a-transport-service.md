@@ -146,6 +146,9 @@ func (t *Transport) Close(context.Context) error {
 
 ### 2. Register it
 
+`example.com/mytool/internal/tcptransport` below is a placeholder for
+wherever you put step 1 — substitute your own module path.
+
 ```go
 package main
 
@@ -153,6 +156,7 @@ import (
     "context"
     "log"
 
+    "example.com/mytool/internal/tcptransport"
     "hop.top/kit/go/console/cli"
     "hop.top/kit/go/transport/cmdsurface"
     "hop.top/kit/go/transport/transportsvc"
@@ -206,6 +210,20 @@ second later.
 Drive the service directly — no CLI needed:
 
 ```go
+package tcptransport_test
+
+import (
+    "context"
+    "net"
+    "testing"
+
+    "github.com/stretchr/testify/require"
+
+    "example.com/mytool/internal/tcptransport"
+    "hop.top/kit/go/transport/cmdsurface"
+    "hop.top/kit/go/transport/transportsvc"
+)
+
 func TestTransportServesCommands(t *testing.T) {
     tr := &tcptransport.Transport{Addr: "127.0.0.1:0"}
     svc := transportsvc.NewTransportService(

@@ -220,13 +220,31 @@ $ echo '{"path":["widget","delete"],"args":["7"]}' \
 Permit them by naming the socket's surface:
 
 ```go
-import "hop.top/kit/go/transport/cmdsurface"
+package main
 
-cli.WithSocket(cli.SocketConfig{
-    Policy: cmdsurface.Policy{
-        AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
-    },
-})
+import (
+    "context"
+    "log"
+
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/transport/cmdsurface"
+)
+
+func main() {
+    root := cli.New(cli.Config{Name: "mytool", Version: "1.0.0"},
+        cli.WithSocket(cli.SocketConfig{
+            Policy: cmdsurface.Policy{
+                AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+            },
+        }),
+    )
+
+    root.Cmd.AddCommand(widgetCmd())
+
+    if err := root.Execute(context.Background()); err != nil {
+        log.Fatal(err)
+    }
+}
 ```
 
 That lifts the transport's ceiling. Your command's **own confirmation
@@ -260,10 +278,29 @@ By default every command the reflector considers invocable is
 reachable. Narrow it with `Expose` and `Hide`:
 
 ```go
-cli.WithSocket(cli.SocketConfig{
-    Expose: []string{"widget *", "status"},
-    Hide:   []string{"widget delete"},
-})
+package main
+
+import (
+    "context"
+    "log"
+
+    "hop.top/kit/go/console/cli"
+)
+
+func main() {
+    root := cli.New(cli.Config{Name: "mytool", Version: "1.0.0"},
+        cli.WithSocket(cli.SocketConfig{
+            Expose: []string{"widget *", "status"},
+            Hide:   []string{"widget delete"},
+        }),
+    )
+
+    root.Cmd.AddCommand(widgetCmd())
+
+    if err := root.Execute(context.Background()); err != nil {
+        log.Fatal(err)
+    }
+}
 ```
 
 Patterns are `"widget add"` (exact), `"widget *"` (everything under
