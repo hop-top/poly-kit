@@ -1,5 +1,10 @@
 # Security Policy
 
+This repository reports to its own mailbox and timeline, which differ
+from the
+[org-wide policy](https://github.com/hop-top/.github/blob/main/SECURITY.md).
+The terms below take precedence for this repository.
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability, please report it
@@ -20,8 +25,8 @@ Send an email to <opensec@ideacrafters.com> with:
 
 ## Supported Versions
 
-Only the latest release is actively supported with
-security patches.
+See [RELEASING.md](RELEASING.md) for the branch and release model. Only
+the latest release is actively supported with security patches.
 
 ## Disclosure Policy
 
