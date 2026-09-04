@@ -65,6 +65,18 @@ type Dependent interface {
 	DependsOn() []string
 }
 
+// Addressed is the optional address declaration a [Service] may
+// implement. The supervisor reads it once the service reports ready
+// and carries the result into the readiness event and log line, so an
+// operator learns where the service is actually listening — including
+// the port the kernel picked for a wildcard ":0" address, which no
+// amount of reading the config would reveal.
+type Addressed interface {
+	// Addr is where the service accepts work, or "" when it is not
+	// yet bound or has no address.
+	Addr() string
+}
+
 // Classified is the optional policy declaration a [Service] may
 // implement. The returned side-effect and network classes are the
 // input to the third validation gate, resolved against the table in
