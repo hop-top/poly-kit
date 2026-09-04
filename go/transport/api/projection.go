@@ -29,7 +29,7 @@ const CommandProjectionPrefix = "/v1/commands"
 // the caller translates its tier vocabulary into these values.
 type SideEffectClass string
 
-// Side-effect classes recognised by the projection. They mirror the
+// Side-effect classes recognized by the projection. They mirror the
 // canonical six-tier ladder, collapsed to the distinctions that
 // change an HTTP decision.
 const (
@@ -51,7 +51,7 @@ const (
 //
 // The rule is deliberately coarse. A finer mapping — PUT for
 // idempotent writes, DELETE for destructive ones — reads better in
-// isolation but cannot be honoured here: kit's declared vocabulary
+// isolation but cannot be honored here: kit's declared vocabulary
 // has no notion of a resource identity, so there is no target for
 // PUT/DELETE semantics, and a caller who saw DELETE would reasonably
 // expect the URL to name the thing being deleted. Two methods keep

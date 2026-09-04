@@ -189,7 +189,7 @@ func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error)
 //     cacheable and safe to replay, so it carries no body.
 //   - POST (everything else): flags and args come from a JSON object
 //     body ({"flags":{…},"args":[…]}). Query parameters are still
-//     honoured for flags so a caller can mix the two, with the body
+//     honored for flags so a caller can mix the two, with the body
 //     winning on conflict — the body is the more explicit statement.
 func decodeCommandRequest(r *http.Request, d CommandDescriptor) (CommandRequest, error) {
 	req := CommandRequest{

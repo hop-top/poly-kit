@@ -41,7 +41,7 @@ func buildProjection(root *cobra.Command, name, version string, r *Root) api.Pro
 	// ErrSurfaceNotEnabled. The adopter used to write this Expose;
 	// registering the api service now implies it.
 	//
-	// This widens enablement, not authorisation. The destructive
+	// This widens enablement, not authorization. The destructive
 	// ceiling is Policy.Allowed, which Expose does not touch: a
 	// destructive leaf stays refused on REST unless the adopter's
 	// policy names the surface.
