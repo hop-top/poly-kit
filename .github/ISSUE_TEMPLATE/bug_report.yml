@@ -1,0 +1,73 @@
+# Adapted from hop-top/.github; component dropdown is repo-specific.
+name: Bug report
+description: Something broke
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which surface broke. Pick the closest one.
+      options:
+        - Go core (go/, internal/)
+        - CLI (cmd/kit)
+        - kit init templates (templates/, internal/template)
+        - TypeScript SDK (sdk/ts)
+        - Python SDK (sdk/py)
+        - Rust SDK (sdk/experimental/rs)
+        - PHP SDK (sdk/experimental/php)
+        - Engine (engine/)
+        - Contracts / codegen (contracts/)
+        - Incubator (incubator/)
+        - Docs
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >-
+        Output of `kit --version`, or the released package version for an
+        SDK (npm / PyPI / crates.io / Packagist).
+    validations:
+      required: true
+  - type: input
+    id: toolchain
+    attributes:
+      label: Language toolchain
+      description: Only for SDK or build reports.
+      placeholder: go1.26.1 / node 22.11 / python 3.11.9 / rustc 1.83 / php 8.3
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: macOS 15.6 / Ubuntu 24.04 / Windows 11
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal / shell
+      placeholder: iTerm2 + zsh / Windows Terminal + pwsh
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for duplicates
+          required: true

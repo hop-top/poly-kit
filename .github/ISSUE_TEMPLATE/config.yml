@@ -1,0 +1,12 @@
+# Adapted from hop-top/.github; security contact is repo-specific.
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/hop-top/poly-kit/blob/main/SECURITY.md
+    about: Do not open a public issue — report privately per SECURITY.md.
+  - name: Org-wide contributing policy
+    url: https://github.com/hop-top/.github/blob/main/CONTRIBUTING.md
+    about: Commit conventions and release model that apply across hop-top.
+  - name: Docs + catalog
+    url: https://hop.top
+    about: Full catalog, docs, install paths.

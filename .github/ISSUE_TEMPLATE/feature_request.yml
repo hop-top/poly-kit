@@ -1,0 +1,56 @@
+# Adapted from hop-top/.github; component dropdown is repo-specific.
+name: Feature request
+description: Something's missing
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Where this would live.
+      options:
+        - Go core (go/, internal/)
+        - CLI (cmd/kit)
+        - kit init templates (templates/, internal/template)
+        - TypeScript SDK (sdk/ts)
+        - Python SDK (sdk/py)
+        - Rust SDK (sdk/experimental/rs)
+        - PHP SDK (sdk/experimental/php)
+        - Engine (engine/)
+        - Contracts / codegen (contracts/)
+        - Incubator (incubator/)
+        - Docs
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you're trying to do and what's in the way. Problem first, not solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How you'd want it to work (CLI shape, flags, output, API surface).
+  - type: textarea
+    id: parity
+    attributes:
+      label: Cross-language parity
+      description: >-
+        If this touches a shared contract, say which of the Go / TS / Python /
+        Rust / PHP surfaces need it. Leave blank if it is single-language.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried; other tools that do this.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for duplicates
+          required: true
