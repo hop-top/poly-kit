@@ -41,6 +41,10 @@ export { Registry, defaultRegistry, newRegistry } from './output/registry';
 export { jsonFormatter } from './output/formatters/json';
 export { yamlFormatter } from './output/formatters/yaml';
 export { tableFormatter } from './output/formatters/table';
+export type { RegisterOutputFlagsOptions } from './output/flags';
+export { registerOutputFlags, registryFor, resolveCols } from './output/flags';
+export type { DispatchOptions } from './output/dispatch';
+export { dispatch } from './output/dispatch';
 export type { CliError } from './output/error';
 export {
   CODE_OK,
