@@ -848,3 +848,55 @@ func TestSocketClientDisconnectCancelsInvocation(t *testing.T) {
 	defer runner.mu.Unlock()
 	assert.ErrorIs(t, runner.ctxErr, context.Canceled)
 }
+
+// --- Invocability -------------------------------------------------------
+
+func TestInteractiveCommandRefusedCentrallyOnBothTransports(t *testing.T) {
+	shell := func() *cobra.Command {
+		return &cobra.Command{
+			Use:         "shell",
+			Short:       "interactive shell",
+			RunE:        func(cmd *cobra.Command, _ []string) error { cmd.Print("never"); return nil },
+			Annotations: map[string]string{"kit/side-effect": "interactive"},
+		}
+	}
+
+	// Socket: the whole tree is exposed, so the leaf is reachable and
+	// the bridge's gate answers with its own code and the reason.
+	rec := &auditRecorder{}
+	path := tmpSocket(t)
+	r := authRoot(t, WithSocket(SocketConfig{Path: path}), WithAuditSinks(rec.spec()))
+	r.Cmd.AddCommand(shell())
+	stop := serveSocket(t, r, path)
+	resp := socketCall(t, path, socket.Request{Path: []string{"shell"}, RequestID: "req-i"})
+	stop()
+	require.False(t, resp.Ok)
+	assert.Equal(t, socket.CodeNotInvocable, resp.Error.Code)
+	assert.Equal(t,
+		"cmdsurface: command not invocable through a runner: shell on rpc is interactive (interactive: requires a terminal and a human)",
+		resp.Error.Message)
+	inv, _, err := rec.last(t)
+	assert.ErrorIs(t, err, cmdsurface.ErrNotInvocable)
+	assert.Equal(t, "req-i", inv.Meta.RequestID)
+
+	// REST: withheld at mount, so the route is absent and discovery
+	// carries the reason.
+	r = authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
+	r.Cmd.AddCommand(shell())
+	base, stop := serveAPI(t, r)
+	defer stop()
+	resp2, _ := postJSON(t, base+"/v1/commands/shell", `{}`, nil)
+	assert.Equal(t, http.StatusNotFound, resp2.StatusCode)
+	_, body := get(t, base+"/v1/commands", nil)
+	var doc api.DiscoveryDocument
+	require.NoError(t, json.Unmarshal(body, &doc))
+	var found bool
+	for _, e := range doc.Commands {
+		if e.Name == "shell" {
+			found = true
+			assert.False(t, e.Invocable)
+			assert.Equal(t, "interactive", e.Reason)
+		}
+	}
+	require.True(t, found)
+}

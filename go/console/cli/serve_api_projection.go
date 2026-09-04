@@ -304,7 +304,11 @@ func metaFromRequest(m api.RequestMeta) cmdsurface.Meta {
 func translateBridgeError(err error) error {
 	switch {
 	case errors.Is(err, cmdsurface.ErrUnknownCommand),
-		errors.Is(err, cmdsurface.ErrSurfaceNotEnabled):
+		errors.Is(err, cmdsurface.ErrSurfaceNotEnabled),
+		errors.Is(err, cmdsurface.ErrNotInvocable):
+		// Interactive and self-hosting commands are withheld at mount,
+		// so the bridge's own gate is unreachable over REST; mapping
+		// it keeps the vocabulary whole should a route ever exist.
 		return fmt.Errorf("%w: %s", api.ErrCommandNotInvocable, err.Error())
 	case errors.Is(err, cmdsurface.ErrDestructiveBlocked):
 		return fmt.Errorf("%w: %s", api.ErrDestructiveBlocked, err.Error())

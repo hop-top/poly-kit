@@ -6,6 +6,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/ai/cmdreflect"
 )
 
 // denyCaller refuses one named caller and lets everyone else through.
@@ -366,5 +370,88 @@ func TestInvocationStringCarriesTenantAndRequest(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Fatalf("%q missing %q", s, want)
 		}
+	}
+}
+
+func TestInvoke_RefusesInteractiveBeforeCeilingAndPermission(t *testing.T) {
+	root := newBridgeTree()
+	root.AddCommand(&cobra.Command{
+		Use:         "shell",
+		RunE:        func(*cobra.Command, []string) error { return nil },
+		Annotations: map[string]string{"kit/side-effect": "interactive"},
+	})
+	calls := 0
+	asked := false
+	rec := &sinkRecorder{}
+	b := New(
+		root,
+		WithRunner(countingRunner(&calls, nil)),
+		WithPermission(func(context.Context, Meta, *Leaf) PermissionDecision {
+			asked = true
+			return PermissionDecision{Allowed: true}
+		}),
+		WithSinks(SinkSpec{Sink: rec, OnError: true}),
+	)
+	b.Expose("*", SurfaceRPC)
+
+	// The leaf exists on the bridge — AllowInteractive keeps it
+	// describable — but no transport may run it.
+	var found bool
+	for _, l := range b.Leaves() {
+		found = found || l.PathKey() == "shell"
+	}
+	if !found {
+		t.Fatal("interactive command must remain a leaf for discovery")
+	}
+
+	_, err := b.Invoke(context.Background(), Invocation{
+		Path: []string{"shell"}, Meta: Meta{Surface: SurfaceRPC},
+	})
+	if !errors.Is(err, ErrNotInvocable) {
+		t.Fatalf("err = %v, want ErrNotInvocable", err)
+	}
+	if !strings.Contains(err.Error(), "shell on rpc is interactive") {
+		t.Fatalf("reason missing from %q", err.Error())
+	}
+	if calls != 0 {
+		t.Fatal("the runner must not be reached")
+	}
+	if asked {
+		t.Fatal("the permission gate must not be consulted for a leaf that can never run")
+	}
+	if rec.count() != 1 || !errors.Is(rec.calls[0].err, ErrNotInvocable) {
+		t.Fatalf("the refusal must be audited; records = %d", rec.count())
+	}
+}
+
+func TestNotInvocableReasonOrdersSelfHostingFirst(t *testing.T) {
+	// A self-hosting leaf is refused as such even when it is also
+	// destructive, so the answer names the rule nothing can lift
+	// rather than the ceiling a policy could.
+	cases := []struct {
+		name string
+		leaf *Leaf
+		want cmdreflect.NonInvocableReason
+	}{
+		{"nil leaf", nil, cmdreflect.ReasonNone},
+		{"no descriptor", &Leaf{}, cmdreflect.ReasonNone},
+		{"plain", &Leaf{Descriptor: &cmdreflect.Descriptor{}}, cmdreflect.ReasonNone},
+		{"interactive", &Leaf{Descriptor: &cmdreflect.Descriptor{
+			Safety: cmdreflect.Safety{Tier: cmdreflect.TierInteractive},
+		}}, cmdreflect.ReasonInteractive},
+		{"self-hosting", &Leaf{Descriptor: &cmdreflect.Descriptor{
+			Surface: cmdreflect.SurfaceMeta{SelfHosting: true},
+		}}, cmdreflect.ReasonSelfHosting},
+		{"self-hosting and destructive", &Leaf{Descriptor: &cmdreflect.Descriptor{
+			Surface: cmdreflect.SurfaceMeta{SelfHosting: true},
+			Safety:  cmdreflect.Safety{Tier: cmdreflect.TierDestructiveShared},
+		}}, cmdreflect.ReasonSelfHosting},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := notInvocableReason(c.leaf); got != c.want {
+				t.Fatalf("got %q, want %q", got, c.want)
+			}
+		})
 	}
 }

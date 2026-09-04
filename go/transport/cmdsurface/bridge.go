@@ -329,9 +329,12 @@ func matchPattern(pattern string, path []string) bool {
 //  1. Resolution — ErrUnknownCommand: inv.Path does not resolve.
 //  2. Enablement — ErrSurfaceNotEnabled: leaf is not exposed on
 //     inv.Meta.Surface.
-//  3. Destructive ceiling — ErrDestructiveBlocked: leaf is
+//  3. Invocability — ErrNotInvocable: the leaf is interactive or
+//     self-hosting and can never run through a transport; the
+//     message carries the reflector's reason.
+//  4. Destructive ceiling — ErrDestructiveBlocked: leaf is
 //     destructive and Policy disallows the surface.
-//  4. Permission — ErrPermissionDenied: the [PermissionFunc] refused
+//  5. Permission — ErrPermissionDenied: the [PermissionFunc] refused
 //     this Meta for this leaf; the message carries its reason.
 //
 // Confirmation is deliberately not a gate here: it is the command's
@@ -366,6 +369,10 @@ func (b *Bridge) Invoke(ctx context.Context, inv Invocation) (Result, error) {
 	if !leaf.Enabled[surface] {
 		return Result{}, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",
 			ErrSurfaceNotEnabled, leaf.PathKey(), surface))
+	}
+	if reason := notInvocableReason(leaf); reason != cmdreflect.ReasonNone {
+		return Result{}, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s is %s (%s)",
+			ErrNotInvocable, leaf.PathKey(), surface, reason, reason.Explain()))
 	}
 	if !b.cfg.policy.Allowed(leaf.Class, surface) {
 		return Result{}, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",

@@ -178,6 +178,31 @@ func (p Policy) resolvedDefaults() []Surface {
 	return []Surface{SurfaceCLI, SurfaceLib, SurfaceMCP}
 }
 
+// notInvocableReason returns the reflector's reason a leaf can never
+// run through a transport — [cmdreflect.ReasonInteractive] for a
+// command that needs a terminal, [cmdreflect.ReasonSelfHosting] for
+// one that would start a server inside the server or replace the
+// binary that is serving — or "" when the leaf may run.
+//
+// The bridge discovers with AllowInteractive so interactive commands
+// stay describable and per-surface decisions stay possible; this is
+// the central gate that stops them from executing anywhere, before
+// the destructive ceiling and the permission gate, so a transport
+// that exposed the whole tree cannot admit one and the runner's own
+// refusal is a backstop rather than the only line.
+func notInvocableReason(leaf *Leaf) cmdreflect.NonInvocableReason {
+	if leaf == nil || leaf.Descriptor == nil {
+		return cmdreflect.ReasonNone
+	}
+	switch {
+	case leaf.Descriptor.Surface.SelfHosting:
+		return cmdreflect.ReasonSelfHosting
+	case leaf.Descriptor.Safety.Tier == cmdreflect.TierInteractive:
+		return cmdreflect.ReasonInteractive
+	}
+	return cmdreflect.ReasonNone
+}
+
 // ReasonPermissionDenied is the discovery reason for a command the
 // permission gate refuses for every caller. It sits beside the
 // reflector's vocabulary (interactive, unauthorized-destructive, …)

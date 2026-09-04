@@ -78,8 +78,8 @@ type Response struct {
 // Error is the wire form of a refused or failed invocation.
 type Error struct {
 	// Code is a stable symbol a client can branch on:
-	// NOT_FOUND, NOT_ENABLED, BLOCKED, DENIED, UNAUTHENTICATED,
-	// INVALID, INTERNAL.
+	// NOT_FOUND, NOT_ENABLED, NOT_INVOCABLE, BLOCKED, DENIED,
+	// UNAUTHENTICATED, INVALID, INTERNAL.
 	Code string `json:"code"`
 	// Message is the human-readable detail.
 	Message string `json:"message"`
@@ -96,6 +96,10 @@ const (
 	// CodeBlocked is a destructive command the policy refuses on
 	// this surface.
 	CodeBlocked = "BLOCKED"
+	// CodeNotInvocable is a command that can never run through a
+	// transport — interactive, or self-hosting — refused by the
+	// bridge's invocability gate. The message names the reason.
+	CodeNotInvocable = "NOT_INVOCABLE"
 	// CodeDenied is a command the permission gate refuses for this
 	// caller. The message carries the gate's stable reason.
 	CodeDenied = "DENIED"
@@ -359,7 +363,7 @@ func (t *Transport) dispatch(ctx context.Context, conn net.Conn, line []byte, in
 	return Response{Ok: true, Result: &res}
 }
 
-// codeFor maps a bridge error onto a wire code. The four the bridge
+// codeFor maps a bridge error onto a wire code. The five the bridge
 // documents are distinguished; anything else is internal.
 func codeFor(err error) string {
 	switch {
@@ -367,6 +371,8 @@ func codeFor(err error) string {
 		return CodeNotFound
 	case errors.Is(err, cmdsurface.ErrSurfaceNotEnabled):
 		return CodeNotEnabled
+	case errors.Is(err, cmdsurface.ErrNotInvocable):
+		return CodeNotInvocable
 	case errors.Is(err, cmdsurface.ErrDestructiveBlocked):
 		return CodeBlocked
 	case errors.Is(err, cmdsurface.ErrPermissionDenied):

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -292,4 +293,35 @@ func startSocketWith(t *testing.T, path string, auth socket.Authenticator, opts 
 		}
 	})
 	return svc
+}
+
+func TestInteractiveCommandIsNotInvocableOnTheWire(t *testing.T) {
+	t.Parallel()
+	path := socketPath(t)
+	root := testRoot()
+	root.AddCommand(&cobra.Command{
+		Use:         "shell",
+		Annotations: map[string]string{"kit/side-effect": "interactive"},
+		RunE:        func(cmd *cobra.Command, _ []string) error { cmd.Print("never"); return nil },
+	})
+	svc := transportsvc.NewTransportService("socket", root, cmdsurface.SurfaceRPC, socket.New(path),
+		transportsvc.Expose("*"))
+	ctx, cancel := context.WithCancel(context.Background())
+	ready := make(chan struct{}, 1)
+	errCh := make(chan error, 1)
+	go func() { errCh <- svc.Start(ctx, func() { ready <- struct{}{} }) }()
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("never ready")
+	}
+	t.Cleanup(func() { _ = svc.Stop(context.Background()); cancel(); <-errCh })
+
+	// Expose("*") admits the leaf; the bridge's gate refuses it with
+	// its own code, not INTERNAL.
+	resp := call(t, path, socket.Request{Path: []string{"shell"}})
+	require.False(t, resp.Ok)
+	assert.Equal(t, socket.CodeNotInvocable, resp.Error.Code)
+	assert.Contains(t, resp.Error.Message, "shell on rpc is interactive")
 }
