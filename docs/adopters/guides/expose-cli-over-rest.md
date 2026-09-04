@@ -148,17 +148,17 @@ The command's exit code sets the HTTP status: `0` is `200`, `2`
 [the exit-code table](../../../go/transport/api/README.md#exit-codes)
 for the full mapping.
 
-### 5. Permit destructive commands
+### 5. Permit a destructive command
 
-Destructive commands are withheld from REST by default. Calling one
-gets a `404`, and discovery explains it:
+Destructive commands are withheld from REST by default. There is no
+route, and discovery says why:
 
 ```json
 {"name": "widget delete", "invocable": false,
  "reason": "unauthorized-destructive"}
 ```
 
-Name the REST surface in `Policy` to permit them:
+Permit them by naming the REST surface:
 
 ```go
 import "hop.top/kit/go/transport/cmdsurface"
@@ -171,22 +171,36 @@ cli.WithAPI(cli.APIConfig{
 })
 ```
 
-The route now exists. A command that also declares
-`kit/requires-confirmation` still needs a token on every call —
-permitting the tier is not the same as waiving the confirmation:
+That lifts the transport's ceiling. Your command's **own confirmation
+gate still applies**, and there is no TTY behind an HTTP request, so
+an unconfirmed destructive command is now refused by the command
+instead of by the bridge — `403`, carrying the command's own message:
+
+```json
+{"exit_code": 5,
+ "stderr": "UNAUTHORIZED: destructive command mytool widget delete refused: --confirm=no (or non-TTY default)\n"}
+```
+
+Pass the confirmation as a flag to complete it:
 
 ```bash
 curl -s -X POST http://127.0.0.1:8080/v1/commands/widget/delete \
-  -H 'X-Confirm-Token: any-non-empty-value' \
-  -d '{"args":["w-1"]}'
+  -H 'Content-Type: application/json' \
+  -d '{"flags":{"confirm":"yes"},"args":["7"]}'
 ```
-
-Without the header the call is refused:
 
 ```json
-{"status": 428, "code": "confirmation_required",
- "message": "X-Confirm-Token header required for this command"}
+{"exit_code": 0, "stdout": "deleted widget 7\n"}
 ```
+
+Both steps are required: `Policy` decides whether the transport may
+carry the command, and `confirm` satisfies the command's own gate.
+A command annotated for typed confirmation additionally needs
+`confirm-token`; the refusal message tells the caller the exact token.
+
+Naming a surface widens **that surface only** — permitting destructive
+commands over REST does not make them reachable over MCP or the
+socket.
 
 ### 6. Keep a command off REST
 
@@ -217,8 +231,8 @@ means the whole tree and a non-empty list is the only thing mounted.
 ### 7. Read the OpenAPI document
 
 Set `OpenAPI` to get a full document — request and response schemas,
-your declared output schemas, the confirmation header where it is
-required:
+your declared output schemas, the confirmation flags where a command
+is gated:
 
 ```go
 import "hop.top/kit/go/transport/api"

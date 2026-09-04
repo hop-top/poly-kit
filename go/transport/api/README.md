@@ -141,8 +141,11 @@ cli.WithAPI(cli.APIConfig{
 })
 ```
 
-A command declaring `kit/requires-confirmation` still needs the
-`X-Confirm-Token` header on every call.
+That lifts the transport ceiling only. A command declaring
+`kit/requires-confirmation` still runs its own gate, which has no TTY
+here, so the call must carry `"flags":{"confirm":"yes"}`; a typed-token
+command additionally needs `confirm-token`, and the refusal names the
+expected value.
 
 #### Withhold a command from REST
 
@@ -188,13 +191,13 @@ Refusals where the command never ran are distinct from exit codes:
 |-----------|--------|------|
 | command withheld on this surface | 404 | `not_invocable` |
 | policy refuses a destructive command | 403 | `destructive_blocked` |
-| confirmation token missing | 428 | `confirmation_required` |
 
 A `not_invocable` body carries the descriptor's reason, which is what
 separates "no such command" from "that command exists and is withheld".
 
-Commands requiring confirmation read the token from `X-Confirm-Token`,
-the same header the `cmdsurface` REST mount uses.
+An unconfirmed destructive command is refused by the command itself,
+not by the projection: it exits `UNAUTHORIZED` and the table above
+maps that to `403`, with the command's own message in `stderr`.
 
 ### Auth
 
@@ -208,7 +211,8 @@ included.
 With `WithOpenAPI` configured, every projected operation is described
 at `/openapi.json`: parameters or request body per the method, the
 declared output schema on `data` where the adopter declared one, the
-confirmation header where required, and `[destructive]` in the summary
+confirmation flags where a command is gated (`confirm` as an enum of
+its accepted values), and `[destructive]` in the summary
 so danger is visible in a generated client's method list. Operation
 ids are `commands_<path_with_underscores>`.
 
