@@ -56,13 +56,43 @@ for _, d := range tree.NonInvocable() {
 | `interactive` | `kit/side-effect=interactive`: needs a terminal and a human |
 | `unauthorized-destructive` | destructive and not authorized on this surface |
 | `management-only` | reserved to the tool's own management surface (e.g. `spec`) |
+| `self-hosting` | hosts or modifies the tool itself; runs from the CLI only (see below) |
 | `malformed-schema` | declared metadata does not resolve |
 
 Exactly one reason is recorded per command. When several rules would
 fire the most specific wins, so the answer to "why can't I call this?"
 does not depend on evaluation order inside the walker. Structural
 facts (`not-runnable`, `builtin`) outrank declaration defects, which
-outrank surface withdrawal, which outranks behavioral exclusion.
+outrank surface withdrawal (`hidden-internal`, `self-hosting`,
+`management-only`, `deprecated`), which outranks behavioral exclusion
+(`interactive`, `unauthorized-destructive`).
+
+### Self-hosting
+
+A command is self-hosting when running it from inside a served
+invocation would start a server inside the server, or replace the
+binary that is serving. Any one of three signals marks it:
+
+| Signal | Example |
+|--------|---------|
+| it sits under the depth-1 `serve` verb | `mytool serve`, `mytool serve socket` |
+| it declares `kit/network: ingress` | a `listen` command that accepts connections |
+| it carries `kit/self-hosting: true` | an `upgrade` that replaces the binary |
+
+None of the three consults the reserved-verb lookup, so a bare cobra
+tree withholds its server too. **No option lifts `self-hosting`**:
+the relaxations below exist so a consumer can reflect for the surface
+it has — a terminal lifts `interactive`, the spec lifts
+`management-only` — and no projected surface ever has "is the process
+itself". Kit's own `serve` is both reserved and self-hosting; it
+reports `self-hosting`, the answer that says why calling it through a
+transport can never work.
+
+Mark your own self-modifying commands with the annotation:
+
+```go
+cmd.Annotations[cmdmeta.KeySelfHosting] = "true"
+```
 
 ## Options
 
@@ -113,3 +143,13 @@ is dangerous.
 `Reflect` expects a fully assembled root: every subcommand registered,
 every flag declared. Reflecting a tree still under construction yields
 descriptors that do not match what the binary exposes.
+
+## Describe one command
+
+`Describe(root, cmd)` returns the descriptor `Reflect` would record
+for `cmd` — same facts, same verdict — without walking the tree. It
+is for a consumer that already holds a resolved `*cobra.Command` and
+needs its tier, output schema, or self-hosting status at the moment
+of use; the command runners in
+[`go/transport/cmdsurface`](../../transport/cmdsurface/) call it
+before executing a leaf.

@@ -13,7 +13,10 @@ import (
 // coverage check at the bottom enforces that, so adding a reason
 // without a case here fails the suite.
 func TestReflectReasons(t *testing.T) {
-	tree := Reflect(fixtureRoot(), WithReserved(fakeReserved{"mgmt": true}))
+	// serve is reserved here on purpose: the row below pins that
+	// self-hosting outranks management-only for the one command
+	// that is both.
+	tree := Reflect(fixtureRoot(), WithReserved(fakeReserved{"mgmt": true, "serve": true}))
 
 	tests := []struct {
 		name      string
@@ -38,9 +41,16 @@ func TestReflectReasons(t *testing.T) {
 		{"invalid output schema is a defect", "badschema", false, ReasonMalformedSchema},
 		{"spec subcommand is management-only", "spec", false, ReasonManagementOnly},
 		{"child of a reserved verb is management-only", "mgmt status", false, ReasonManagementOnly},
+		{"serve is self-hosting by position", "serve", false, ReasonSelfHosting},
+		{"child of serve is self-hosting", "serve api", false, ReasonSelfHosting},
+		{"ingress listener is self-hosting by network class", "listen", false, ReasonSelfHosting},
+		{"kit/self-hosting marks a self-modifying command", "upgrade", false, ReasonSelfHosting},
 
-		// Precedence: hidden outranks deprecated.
+		// Precedence: hidden outranks deprecated and self-hosting;
+		// self-hosting outranks management-only (serve is reserved
+		// above).
 		{"hidden outranks deprecated", "hidden-and-old", false, ReasonHiddenInternal},
+		{"hidden outranks self-hosting", "serve internal", false, ReasonHiddenInternal},
 	}
 
 	seen := map[NonInvocableReason]bool{}
@@ -169,6 +179,77 @@ func TestAllowOptions(t *testing.T) {
 					tc.path, got.Reason)
 			}
 		})
+	}
+}
+
+// TestSelfHostingSurvivesEveryRelaxation pins that no option lifts
+// self-hosting: a consumer reflecting with every relaxation it has
+// still cannot project the server, the listener, or the upgrader.
+func TestSelfHostingSurvivesEveryRelaxation(t *testing.T) {
+	tree := Reflect(fixtureRoot(),
+		WithReserved(fakeReserved{"serve": true}),
+		AllowHidden(), AllowDeprecated(), AllowInteractive(), AllowReserved(),
+	)
+	for _, path := range []string{"serve", "serve api", "listen", "upgrade"} {
+		d := tree.Lookup(path)
+		if d == nil {
+			t.Fatalf("no descriptor at %q", path)
+		}
+		if !d.Surface.SelfHosting {
+			t.Errorf("%s: Surface.SelfHosting = false", path)
+		}
+		if d.Invocable {
+			t.Errorf("%s: Invocable = true under every relaxation", path)
+		}
+		if d.Reason != ReasonSelfHosting {
+			t.Errorf("%s: Reason = %q, want %q", path, d.Reason, ReasonSelfHosting)
+		}
+	}
+	for _, path := range []string{"list", "shell", "spec", "mgmt status"} {
+		if d := tree.Lookup(path); d == nil || d.Surface.SelfHosting {
+			t.Errorf("%s: reported self-hosting", path)
+		}
+	}
+}
+
+// TestDescribe pins that the per-command entry point records the
+// same facts and verdict the tree walk does, so a consumer holding
+// one resolved command gets an answer consistent with discovery.
+func TestDescribe(t *testing.T) {
+	root := fixtureRoot()
+	tree := Reflect(root, WithReserved(fakeReserved{"mgmt": true}))
+
+	for _, path := range []string{"list", "shell", "serve api", "listen", "mgmt status", "widget rename"} {
+		want := tree.Lookup(path)
+		if want == nil {
+			t.Fatalf("no descriptor at %q", path)
+		}
+		got := Describe(root, want.Cmd, WithReserved(fakeReserved{"mgmt": true}))
+		if got == nil {
+			t.Fatalf("Describe(%q) = nil", path)
+		}
+		if got.PathKey() != want.PathKey() {
+			t.Errorf("%s: PathKey = %q, want %q", path, got.PathKey(), want.PathKey())
+		}
+		if got.Invocable != want.Invocable || got.Reason != want.Reason {
+			t.Errorf("%s: verdict = (%v, %q), want (%v, %q)",
+				path, got.Invocable, got.Reason, want.Invocable, want.Reason)
+		}
+		if got.Safety.Tier != want.Safety.Tier || got.Surface.SelfHosting != want.Surface.SelfHosting {
+			t.Errorf("%s: Safety/Surface diverge from the tree walk", path)
+		}
+		if got.Output.Schema == nil != (want.Output.Schema == nil) {
+			t.Errorf("%s: Output.Schema presence diverges from the tree walk", path)
+		}
+	}
+
+	// A nil root anchors on the command's own root.
+	leaf := tree.Lookup("serve api").Cmd
+	if d := Describe(nil, leaf); d == nil || d.PathKey() != "serve api" || d.Reason != ReasonSelfHosting {
+		t.Errorf("Describe(nil, serve api) = %+v", d)
+	}
+	if Describe(root, nil) != nil {
+		t.Error("Describe of a nil command returned a descriptor")
 	}
 }
 
@@ -544,6 +625,18 @@ func TestSurfaceMetadata(t *testing.T) {
 		}
 		if tree.Lookup("list").Surface.Builtin {
 			t.Error("an adopter command is marked Builtin")
+		}
+	})
+
+	t.Run("self-hosting does not need the reserved lookup", func(t *testing.T) {
+		bare := Reflect(fixtureRoot())
+		for _, path := range []string{"serve", "serve api", "listen", "upgrade"} {
+			if !bare.Lookup(path).Surface.SelfHosting {
+				t.Errorf("%s: SelfHosting = false on a bare reflection", path)
+			}
+		}
+		if bare.Lookup("add").Surface.SelfHosting {
+			t.Error("a plain write command reported SelfHosting")
 		}
 	})
 }

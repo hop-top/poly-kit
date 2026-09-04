@@ -97,19 +97,104 @@ curl -s http://127.0.0.1:8080/v1/commands
       "side_effect": "interactive",
       "invocable": false,
       "reason": "interactive"
+    },
+    {
+      "name": "serve",
+      "side_effect": "write",
+      "invocable": false,
+      "reason": "self-hosting"
     }
   ],
-  "reasons": ["interactive"],
+  "reasons": ["interactive", "self-hosting"],
   "exit_status": [{"exit_code": 0, "status": 200}]
 }
 ```
 
 Entries with `"invocable": false` have no route. The `reason` says
-why — `interactive`, `unauthorized-destructive`, `hidden-internal`,
-`deprecated`, `withheld-by-config` and the rest of the reflector's
-vocabulary. Read it before assuming a missing route is a bug.
+why — `interactive`, `self-hosting`, `unauthorized-destructive`,
+`hidden-internal`, `deprecated`, `withheld-by-config` and the rest of
+the reflector's vocabulary. Read it before assuming a missing route
+is a bug. `serve` is always `self-hosting`: it is the process you are
+talking to.
 
-### 3. Call a read command
+### 3. Get structured output
+
+A command that declares an output schema answers in `data` — its
+output decoded, not its text. Declare the schema with
+`cli.SetOutputSchema` and render through `output.Dispatch`, the same
+way the command renders on the CLI:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/spf13/cobra"
+
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/output"
+)
+
+// Widget is one row of `widget list`. The json tags name the fields
+// in data; the table tags name the columns on the CLI.
+type Widget struct {
+    ID   string `json:"id" table:"ID"`
+    Name string `json:"name" table:"NAME"`
+}
+
+func main() {
+    root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
+        cli.WithStatus(cli.StatusConfig{}),
+        cli.WithAPI(cli.APIConfig{Addr: ":8080"}),
+    )
+
+    list := &cobra.Command{
+        Use:   "list",
+        Short: "List widgets",
+        Long:  "List every widget.",
+        RunE: func(cmd *cobra.Command, _ []string) error {
+            widgets := []Widget{{ID: "w-1", Name: "bolt"}}
+            return output.Dispatch(cmd, root.Viper, widgets)
+        },
+    }
+    cli.SetSideEffect(list, cli.SideEffectRead)
+    err := cli.SetOutputSchema(list, cli.OutputSchema{Type: &[]Widget{}, Version: "1.0"})
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    widget := &cobra.Command{Use: "widget", Short: "Manage widgets"}
+    widget.AddCommand(list)
+    root.Cmd.AddCommand(widget)
+
+    if err := root.Execute(context.Background()); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+`WithStatus` mounts the `status` command every kit root is validated
+to have. On the CLI this prints a table; `--format=json` prints the
+JSON. Over REST the projection runs the command as `--format=json`
+and decodes what it wrote:
+
+```bash
+curl -s http://127.0.0.1:8080/v1/commands/widget/list
+```
+
+```json
+{"exit_code":0,"data":[{"id":"w-1","name":"bolt"}]}
+```
+
+`data` is exactly the JSON the command rendered. A command without a
+schema answers with its default rendering in `stdout` instead, and
+`data` is absent. `format` is a root flag, not one the command
+declares, so the projection does not accept it: a schema-declaring
+command always answers in `data`.
+
+### 4. Call a read command
 
 A command annotated `kit/side-effect: read` is a `GET`. Flags go in
 the query string, positional arguments in repeated `arg`:
@@ -119,18 +204,14 @@ curl -s 'http://127.0.0.1:8080/v1/commands/widget/list?limit=5&all=true'
 ```
 
 ```json
-{
-  "exit_code": 0,
-  "data": {"widgets": [{"id": "w-1"}]},
-  "stdout": ""
-}
+{"exit_code":0,"data":[{"id":"w-1","name":"bolt"}]}
 ```
 
 Values are converted to the flag's declared type, so `limit=5`
-arrives as a number. `data` carries the command's structured output
-when it declares an output schema.
+arrives as a number. `data` is present because `widget list` declares
+an output schema (step 3); undeclared query parameters are ignored.
 
-### 4. Call a write command
+### 5. Call a write command
 
 Anything not annotated `read` is a `POST`, with flags and arguments
 in a JSON body:
@@ -142,15 +223,19 @@ curl -s -X POST http://127.0.0.1:8080/v1/commands/widget/add \
 ```
 
 ```json
-{"exit_code": 0, "data": {"id": "w-2"}}
+{"exit_code":0,"stdout":"created widget w-2\n"}
 ```
+
+`widget add` declares no schema, so its output arrives as the text it
+printed. Declare one (step 3) and the same call answers
+`{"exit_code":0,"data":{"id":"w-2"}}`.
 
 The command's exit code sets the HTTP status: `0` is `200`, `2`
 (`USAGE`) is `400`, `3` (`NOT_FOUND`) is `404`. See
 [the exit-code table](../../../go/transport/api/README.md#exit-codes)
 for the full mapping.
 
-### 5. Permit a destructive command
+### 6. Permit a destructive command
 
 Destructive commands are withheld from REST by default. There is no
 route, and discovery says why:
@@ -203,7 +288,7 @@ Naming a surface widens **that surface only** — permitting destructive
 commands over REST does not make them reachable over MCP or the
 socket.
 
-### 6. Keep a command off REST
+### 7. Keep a command off REST
 
 `Hide` takes command patterns and withholds them from REST only —
 the CLI and every other surface keep the command:
@@ -228,7 +313,7 @@ Use `Expose` for the opposite posture — an allow-list, where empty
 means the whole tree and a non-empty list is the only thing mounted.
 `Hide` is applied after `Expose`, so it carves exceptions out of it.
 
-### 7. Read the OpenAPI document
+### 8. Read the OpenAPI document
 
 Set `OpenAPI` to get a full document — request and response schemas,
 your declared output schemas, the confirmation flags where a command
@@ -250,7 +335,7 @@ Without `OpenAPI` set, projection still mounts and a minimal
 document is served at the same path — enough to find every
 operation, its method and its path.
 
-### 8. Put it behind auth
+### 9. Put it behind auth
 
 `APIConfig.Auth` gates the projected routes and the discovery
 endpoint exactly as it gates your own, and it is what permits a
@@ -301,6 +386,26 @@ and trace ids — is
 | `APIConfig.Hide` | empty | Pattern list withheld from REST, applied after `Expose`. |
 | `APIConfig.Handlers` | nil | Your own routes, mounted before the projection. |
 
+## Execution facts
+
+Rely on these; they are the
+[execution contract](../../contracts/serve-lifecycle.md#execution)
+as it applies to REST:
+
+- **A disconnect cancels the command.** The request's context is the
+  command's `cmd.Context()`. A command that selects on it stops when
+  the client goes away; one that never reads it runs to completion.
+- **One command at a time.** The projection runs commands in process
+  on the tool's own command tree, and the runner serializes them. A
+  second request waits for the first to finish.
+- **Each request starts clean.** Flags from one request do not carry
+  into the next. Every command starts from the flag state the
+  operator's own `mytool serve` command line left, plus only what the
+  request carries. Standard input is empty.
+- **A cancellation is not a failure.** A command that fails while its
+  request is canceled is reported as canceled, not as an error of its
+  own.
+
 ## What the projection does not implement
 
 Absence here is deliberate — a surface that guessed at these would
@@ -312,10 +417,19 @@ be lying about what your commands promise:
 - **Interactive commands.** A command tiered `interactive` needs a
   terminal and a human; it is never mounted, and appears in
   discovery with `reason: "interactive"`.
+- **Self-hosting commands.** `serve` and everything under it, any
+  command declaring `kit/network: ingress`, and any command annotated
+  `kit/self-hosting: true` would start a server inside the server or
+  replace the binary that is serving. They are never mounted, and
+  appear in discovery with `reason: "self-hosting"`. Mark your own
+  self-modifying commands with the annotation.
 - **Forced remote execution.** Commands the policy refuses stay
   refused. There is no override that runs one anyway.
-- **Streaming and compat output.** The response is the command's
-  structured result. Streams are not projected.
+- **Streaming.** A command's output arrives when it finishes. The
+  response is `data` where the command declares a schema and its
+  default rendering in `stdout` where it does not.
+- **A choice of rendering.** `format` is not accepted. A caller who
+  wants a table renders `data` itself.
 
 ## Related pages
 

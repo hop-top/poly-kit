@@ -31,6 +31,11 @@ const (
 	KeySideEffect = "kit/side-effect"
 	// KeyDryRun holds the explicit dry-run declaration.
 	KeyDryRun = "kit/dry-run"
+	// KeySelfHosting marks a command that hosts or modifies the tool
+	// itself — starts a server or supervisor, or replaces the
+	// binary — and so must only ever run from the local CLI, never
+	// from inside a served invocation.
+	KeySelfHosting = "kit/self-hosting"
 )
 
 // ReadBool reports whether key is present on cmd with the value
@@ -69,4 +74,9 @@ func IsPassthrough(cmd *cobra.Command) bool {
 // IsRetryable reports whether kit/retryable is "true" on cmd.
 func IsRetryable(cmd *cobra.Command) bool {
 	return ReadBool(cmd, KeyRetryable)
+}
+
+// IsSelfHosting reports whether kit/self-hosting is "true" on cmd.
+func IsSelfHosting(cmd *cobra.Command) bool {
+	return ReadBool(cmd, KeySelfHosting)
 }

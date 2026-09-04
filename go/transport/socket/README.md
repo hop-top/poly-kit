@@ -36,7 +36,11 @@ never verified, and grant nothing.
 ### Response
 
 ```json
-{"ok":true,"result":{"exit_code":0,"stdout":"bolt\n","stderr":"","data":null}}
+{"ok":true,"result":{"exit_code":0,"data":{"id":7,"name":"bolt"}}}
+```
+
+```json
+{"ok":true,"result":{"exit_code":0,"stdout":"widget-1\nwidget-2\n"}}
 ```
 
 ```json
@@ -48,15 +52,31 @@ never verified, and grant nothing.
 | `ok` | `bool` | `true` when the command ran; `false` when the request was refused before reaching it |
 | `result` | `object` | present when `ok` is `true` |
 | `result.exit_code` | `int` | the command's exit status; `0` on success |
-| `result.stdout` | `string` | captured standard output |
-| `result.stderr` | `string` | captured standard error |
-| `result.data` | `any` | structured payload when the command produced typed output |
+| `result.stdout` | `string` | captured standard output; omitted when empty |
+| `result.stderr` | `string` | captured standard error; omitted when empty |
+| `result.data` | `any` | the command's declared output, decoded; omitted when the command declares no output schema or the request named a non-json `format` |
 | `error` | `object` | present when `ok` is `false` |
 | `error.code` | `string` | stable symbol, table below |
 | `error.message` | `string` | human-readable detail |
 
 `ok:true` with a non-zero `exit_code` means the command ran and
 failed. `ok:false` means it never ran.
+
+Which of `data` and `stdout` a result carries follows the
+[execution contract](../../../docs/contracts/serve-lifecycle.md#format-selection-and-structured-output):
+
+| Command declares an output schema | Request `flags.format` | `stdout` | `data` |
+|---|---|---|---|
+| yes | absent | omitted | present |
+| yes | `"json"` | the JSON text | present |
+| yes | any other | that rendering | omitted |
+| no | anything | as the command produced it | omitted |
+
+A request is run with the service's context, not the connection's: a
+client that hangs up mid-command does not cancel it, and the result
+is discarded. Stopping the service cancels every command in flight.
+Requests on one connection are answered in order; across connections
+the bridge's runner serializes in-process commands, one at a time.
 
 ## Error codes
 

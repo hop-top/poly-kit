@@ -44,11 +44,14 @@ the same Runner under provider invocation contracts.
   this shape.
 - **Result** — the unified return value (`ExitCode`, `Stdout`,
   `Stderr`, optional `Data`). Surfaces map it onto their wire format.
+  See [Execution](#execution) for how `Data` is populated.
 - **Event** — one streaming frame (`stdout` / `stderr` / `progress` /
   `done`) produced by `Runner.Stream`.
 - **Runner** — executes an `Invocation`. The default
-  `InProcessRunner(root)` re-enters the cobra tree in-process;
-  `SubprocessRunner(binary)` is the stub for sandboxed execution.
+  `InProcessRunner(root)` re-enters the cobra tree in-process, one
+  invocation at a time; `InProcessRunner(nil, WithRootFactory(f))`
+  builds a tree per invocation and runs them in parallel;
+  `SubprocessRunner(binary)` spawns a process per invocation.
 - **Sink** — fan-out target for completed invocations (log, file,
   webhook, bus). Orthogonal to surfaces.
 - **Policy** — the destructive ceiling. Conservative default: no remote
@@ -92,6 +95,7 @@ A command a surface must not expose is still described, with
 | `interactive` | `kit/side-effect=interactive`: needs a terminal and a human |
 | `unauthorized-destructive` | destructive and not authorized on this surface |
 | `management-only` | reserved to the tool's own management surface (e.g. `spec`) |
+| `self-hosting` | `serve` and its children, `kit/network=ingress`, or `kit/self-hosting`: runs from the CLI only |
 | `malformed-schema` | declared metadata does not resolve (bad side-effect value, invalid output schema) |
 
 Exactly one reason is recorded per command; when several rules apply
@@ -104,8 +108,88 @@ not depend on walk order.
 endpoint that advertises the whole surface rather than only the
 callable part.
 
+The bridge reflects with `AllowInteractive` and `AllowReserved`, so
+interactive and management-only commands are leaves and the policy
+gate decides per call. Nothing lifts `self-hosting`: those commands
+are never leaves, and a call to one is an unknown command. The runner
+refuses an interactive leaf regardless — see [Execution](#execution).
+
 `Classify(cmd)` still works and is unchanged in behavior, but it
 reflects one command in isolation. Prefer `Leaf.Descriptor`.
+
+## Execution
+
+The runner is where an invocation becomes a command execution. The
+normative rules are in the
+[serve-lifecycle contract](../../../docs/contracts/serve-lifecycle.md#execution);
+this is the package view.
+
+### Runners
+
+```go
+func InProcessRunner(root *cobra.Command, opts ...RunnerOption) Runner
+func WithRootFactory(newRoot func() *cobra.Command) RunnerOption
+func SubprocessRunner(binaryPath string) Runner
+```
+
+| Runner | Isolation | Concurrency |
+|--------|-----------|-------------|
+| `InProcessRunner(root)` | one shared tree; flag chain reset to its baseline around every invocation, leaf context set explicitly, empty stdin, writers and argv restored | serialized: one invocation at a time |
+| `InProcessRunner(nil, WithRootFactory(f))` | a fresh tree per invocation; nothing shared, nothing reset | parallel |
+| `SubprocessRunner(binary)` | a process per invocation; cancellation kills the process group | parallel |
+
+The **baseline** the shared runner resets to is the flag state at
+construction. `cmdsurface.New(root)` builds the runner when the
+bridge is built — at service start for a kit root — so the
+operator's own command line (`--no-color`, `-c key=val`) is what every
+served invocation starts from, plus only the flags it carries.
+
+A root factory must return a tree sharing no mutable state with the
+ones before it: no flag bound to a package-level variable, no
+closure over a shared struct. A tree from `cli.New` is gated inside
+`Root.Execute`, so a factory over `cli.New` runs ungated; a kit root
+uses the shared form until cli exposes a prepare-without-execute
+hook.
+
+What no runner isolates: process-wide effects of the command's own
+code or the tree's hooks — the working directory, the environment,
+package-level variables, `cobra.OnInitialize` state.
+
+### Structured output
+
+`Result.Data` is populated by decoding, never by scraping text:
+
+| Command declares a schema | Invocation `flags.format` | `Stdout` | `Data` |
+|---------------------------|---------------------------|----------|--------|
+| yes | absent | empty | decoded from the command's `--format=json` output |
+| yes | `json` | the JSON text | decoded |
+| yes | any other | that rendering | nil |
+| no  | anything | as the command produced it | nil |
+
+Decoding requires standard output to be exactly one JSON document;
+numbers arrive as `json.Number`, so a transport re-encodes the digits
+the command wrote. A command that writes text after its document
+leaves `Data` nil and the streams intact.
+
+### Cancellation
+
+The invocation's context is the command's `cmd.Context()`. In
+process, cancellation is cooperative — a command that never reads its
+context runs to completion. In a subprocess, the child's process
+group is killed (Unix) or the child itself (Windows). A command that
+fails while the context is done is reported through the runner's
+error, wrapping `context.Canceled` or `context.DeadlineExceeded`,
+alongside the partial `Result`; under `Stream` the `done` event is
+delivered first.
+
+### Refusals
+
+`ErrNotInvocable` is returned by the in-process runner for a leaf it
+can never execute: an interactive command (no terminal here) or a
+self-hosting one (the runner is the process it would start a server
+inside of, or replace). The message names the reflector's reason.
+`SubprocessRunner` holds no tree and cannot classify; discovery and
+the bridge withhold self-hosting commands before it is reached.
 
 ## Surface matrix
 
@@ -944,11 +1028,10 @@ Implemented (this package):
 - FaaS adapters: AWS Lambda (5 event types), Cloud Run.
 - Sinks: Log, File, Webhook, Bus.
 
-Stubbed:
-
-- `SubprocessRunner` — constructor exists for wiring; the body
-  returns "not implemented in foundation wave". Adopters who need
-  process isolation supply their own `Runner` impl.
+Runners: `InProcessRunner` (shared tree, serialized, isolated per
+invocation), `InProcessRunner` with `WithRootFactory` (tree per
+invocation, parallel), `SubprocessRunner` (process per invocation,
+process-group cancellation on Unix). See [Execution](#execution).
 
 Deferred (out of scope; file as follow-up tracks if pursued):
 
