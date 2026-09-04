@@ -92,21 +92,29 @@ type Transport interface {
 //
 // The returned error is the bridge's: [cmdsurface.ErrUnknownCommand]
 // for a path that does not resolve, [cmdsurface.ErrSurfaceNotEnabled]
-// for a leaf not exposed on this surface, and
+// for a leaf not exposed on this surface,
 // [cmdsurface.ErrDestructiveBlocked] for a destructive leaf the
-// policy refuses. A transport maps them onto its wire format; it does
-// not decide them.
+// policy refuses, and [cmdsurface.ErrPermissionDenied] for a caller
+// the permission gate refuses. A transport maps them onto its wire
+// format; it does not decide them.
+//
+// The Meta a transport passes is carried through unchanged except
+// for Surface, which the seam pins. A transport fills Caller and
+// Tenant only from an identity it verified; without an
+// authenticator it records what the caller claimed and the bridge
+// grants nothing on that basis.
 type Invoker func(ctx context.Context, inv cmdsurface.Invocation) (cmdsurface.Result, error)
 
 // TransportOption configures a transport service at construction.
 type TransportOption func(*transportConfig)
 
 type transportConfig struct {
-	bridgeOpts []cmdsurface.Option
-	expose     []exposeRule
-	validate   func() error
-	class      func() (string, string)
-	dependsOn  []string
+	bridgeOpts     []cmdsurface.Option
+	bridgeOptFuncs []func() []cmdsurface.Option
+	expose         []exposeRule
+	validate       func() error
+	class          func() (string, string)
+	dependsOn      []string
 }
 
 type exposeRule struct {
@@ -118,6 +126,22 @@ type exposeRule struct {
 // built at start — a custom Runner, a custom Policy.
 func WithBridgeOptions(opts ...cmdsurface.Option) TransportOption {
 	return func(c *transportConfig) { c.bridgeOpts = append(c.bridgeOpts, opts...) }
+}
+
+// WithBridgeOptionsFunc is [WithBridgeOptions] resolved at Start
+// rather than at construction. It exists for the same reason the
+// command tree is reflected at Start: configuration that is complete
+// only after every Root option has run — a permission gate built from
+// the parsed --policy flag, audit sinks an adopter registers after
+// the service — cannot be captured when the service is constructed.
+// The function runs once per Start, after every [WithBridgeOptions]
+// value, so its options take precedence.
+func WithBridgeOptionsFunc(fn func() []cmdsurface.Option) TransportOption {
+	return func(c *transportConfig) {
+		if fn != nil {
+			c.bridgeOptFuncs = append(c.bridgeOptFuncs, fn)
+		}
+	}
 }
 
 // Expose enables the service's surface on every leaf matching
@@ -261,8 +285,13 @@ func (t *TransportService) Start(ctx context.Context, ready func()) error {
 	}
 
 	// Reflect now, not at construction: the tree is complete only
-	// once every option has mounted its commands.
-	bridge := cmdsurface.New(t.root, t.cfg.bridgeOpts...)
+	// once every option has mounted its commands. Deferred bridge
+	// options resolve here for the same reason.
+	opts := append([]cmdsurface.Option(nil), t.cfg.bridgeOpts...)
+	for _, fn := range t.cfg.bridgeOptFuncs {
+		opts = append(opts, fn()...)
+	}
+	bridge := cmdsurface.New(t.root, opts...)
 	for _, rule := range t.cfg.expose {
 		if rule.on {
 			bridge.Expose(rule.pattern, t.surface)
