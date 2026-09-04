@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.3...kit-py/v0.5.0-alpha.4) (2026-09-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **output:** ColumnSpec(header=..., key=...) with differing names now raises ValueError.
+
+### Features
+
+* merge offline-transport ([9c20087](https://github.com/hop-top/poly-kit/commit/9c20087cab95e8006929155d1c59c1a3afb20738))
+* merge offline-transport ([6fa2303](https://github.com/hop-top/poly-kit/commit/6fa2303f7aa212d8ec2fb88ee1f200c54b9e2107))
+* **py:** enforce `--offline` at the urllib layer ([537c1f3](https://github.com/hop-top/poly-kit/commit/537c1f3d51b56df28e19af690ee650e14bf0c0bd))
+* **py:** model cobra's lazy help-flag registration on the MCP surface ([964e6d8](https://github.com/hop-top/poly-kit/commit/964e6d8d3e541925283a7e76b1e3e8d729eaf6ed))
+* **py:** port the dual-spec MCP surface ([01c4671](https://github.com/hop-top/poly-kit/commit/01c467157774bb6393a85d7c8c581dfa80b7bb0e))
+* **sdk/py:** add structured error envelope with transience class ([51537c9](https://github.com/hop-top/poly-kit/commit/51537c943353627196d7c91e42c109f790d4fb3f))
+
+
+### Bug Fixes
+
+* **build:** realign sdk/py uv.lock with declared version ([5ecb554](https://github.com/hop-top/poly-kit/commit/5ecb554af709f78b92ed36027e4c66478aa1e749))
+* **output:** drive row projection from ColumnSpec ([bce2349](https://github.com/hop-top/poly-kit/commit/bce2349100a1ba0bdf9ed115766bc5745dfdccda))
+* **output:** forward ColumnSpec from dispatch to formatters ([867dcf2](https://github.com/hop-top/poly-kit/commit/867dcf2603957fc61428147393cb251e5f71558d))
+* **output:** honor ColumnSpec order in tabular formatters ([a0dfbf6](https://github.com/hop-top/poly-kit/commit/a0dfbf68180f69e8a7155f5d962ae961308e6181))
+* **output:** pin ColumnSpec header to key ([ac14eee](https://github.com/hop-top/poly-kit/commit/ac14eee6e6ca00c82b1f5fb0782d15df066fa221))
+* **output:** project cols in json and yaml formatters ([6588b2a](https://github.com/hop-top/poly-kit/commit/6588b2ae7c580675d5557600be704f9bc7fd515b))
+* **output:** quote leading whitespace in py csv fields ([7262d57](https://github.com/hop-top/poly-kit/commit/7262d575dad7f187a29a9c182d19a0c3068eea68))
+* **output:** restore ColumnSpec wiring on py csv formatter ([598459e](https://github.com/hop-top/poly-kit/commit/598459e8e64454cb0ac0f7a46091e40872ddbc33))
+* **py:** vendor parity.json into package, drop monorepo fs read ([81ee787](https://github.com/hop-top/poly-kit/commit/81ee787fa02ad0af4d5cf7285c5eea1e5f6368f0))
+
+
+### Refactored
+
+* **cli:** read verbosity and streams from parity contract ([996a26d](https://github.com/hop-top/poly-kit/commit/996a26d6d42e51f6b602ff220a22b7a2a22a000c))
+* **parity:** collapse Python path traversals into one loader ([58f112e](https://github.com/hop-top/poly-kit/commit/58f112e9de27597d04634f629be8783d164c6b84))
+
 ## [Unreleased]
 
 ### Changed
