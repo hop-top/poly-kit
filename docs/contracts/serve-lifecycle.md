@@ -366,12 +366,29 @@ Notes:
   keep their existing branch.
 - A refusal raised by the argument parser before the command runs — a
   positional count the command does not accept, an unknown or
-  malformed flag, a flag missing its value or its required companion —
-  is `USAGE`, exit `2`, rendered as the same envelope the command's own
-  refusals use. This holds for every kit command and on every surface:
-  the shell exit status, `result.exit_code` over the socket, and the
-  REST status it maps to. The parser MUST NOT leave such a refusal as a
-  bare exit `1`.
+  malformed flag, a flag missing its value or its required companion,
+  or a word naming no known subcommand — is `USAGE`, exit `2`,
+  rendered as the same envelope the command's own refusals use. This
+  holds for every kit command, and wherever the arguments of a
+  resolved command are parsed: the shell exit status, `result.exit_code`
+  over the socket, and the REST status it maps to. The parser MUST NOT
+  leave such a refusal as a bare exit `1`.
+- On the command line, an unknown subcommand is `USAGE`, not
+  `NOT_FOUND`, and stays `USAGE` no matter which command it was aimed
+  at. A subcommand is part of the invocation's grammar; `NOT_FOUND` is
+  for an operand naming a resource that does not exist, which is why
+  an unknown *service* name above is exit `3`. The distinction is what
+  the operator does next: re-read the usage, or go looking for the
+  resource. A command that only groups subcommands and cannot run on
+  its own is the case most easily missed — it has no argument
+  validator of its own, so the refusal has to be raised before
+  dispatch rather than by the command. Invoked bare, such a command
+  still prints its help and exits `0`.
+- The served surfaces address a command by path rather than by parsing
+  one, so a path naming no exposed command is refused by the bridge
+  before any invocation exists — a transport-level `unknown_command`,
+  not a `Result` carrying exit `2`. The `USAGE` rule above governs the
+  arguments of a command that *was* resolved.
 
 ## Configuration surface
 
