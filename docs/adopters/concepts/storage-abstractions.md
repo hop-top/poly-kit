@@ -186,6 +186,30 @@ sqldb.Open()
 | Generic JSON documents        | `store.DocumentStore`  |
 | Raw SQL (local)               | `sqldb.Open()` direct  |
 
+## Network policy in the kv backends
+
+`kv.OpenContext` consults the offline marker before a network driver
+dials; `kv.Open` keeps its signature and supplies a background context,
+so it connects without consulting the policy. Prefer `OpenContext`
+wherever a context is at hand.
+
+A third-party driver registered through the older `kv.Opener` still
+works, because `OpenContext` falls back to it, but it connects
+unpoliced. Register through `kv.RegisterBackendContext` to be covered;
+all four shipped drivers do.
+
+The two network drivers reach the policy by different seams:
+
+- `tidb` routes the MySQL driver's `Config.DialFunc` through
+  `netpolicy.GuardDial`.
+- `etcd` cannot use that seam, because gRPC dials on its own background
+  context so the marker never arrives, and `clientv3.New` returns before
+  connecting at all. Its endpoints are checked with `netpolicy.CheckDial`
+  at open time.
+
+Registration is by import rather than by build tag, so a binary carries
+only the dependencies of the backends it opens.
+
 ## Reference: package list
 
 | Package           | Type   | Backend                          |

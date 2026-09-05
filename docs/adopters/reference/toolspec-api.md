@@ -74,6 +74,41 @@ Risk metadata for a command.
 | `RequiresConfirmation` | `bool`        | Has `--yes`/`--force`/`-y`|
 | `Permissions`          | `[]string`    | Required permissions      |
 
+### Permission tokens
+
+`Permissions` carries the tokens declared in
+[`go/ai/toolspec/permissions.go`](../../../go/ai/toolspec/permissions.go).
+The filesystem tier is derived from a command's declared `kit/fs` value.
+
+| Value                   | `Safety.Level` | Permission                   |
+|-------------------------|----------------|------------------------------|
+| `read`                  | safe           | `kit:fs:read`                |
+| `write-local`           | caution        | `kit:fs:write:local`         |
+| `write-shared`          | caution        | `kit:fs:write:shared`        |
+| `destructive-local`     | dangerous      | `kit:fs:destructive:local`   |
+| `destructive-shared`    | dangerous      | `kit:fs:destructive:shared`  |
+| `interactive`           | caution        | `kit:fs:read`                |
+| `write` (legacy)        | caution        | `kit:fs:write:shared`        |
+| `destructive` (legacy)  | dangerous      | `kit:fs:destructive:shared`  |
+
+Legacy values map conservatively: bare `write` and `destructive` assume
+shared scope. Adopters who mean `write-local` or `destructive-local`
+must declare the value explicitly.
+
+`kit/network` is an orthogonal axis, default `none`, independent of the
+tier: a `read` can be `egress:public`, a `destructive-local` can be
+`none`.
+
+| Value              | Permission                    |
+|--------------------|-------------------------------|
+| (absent or `none`) | `kit:network:none`            |
+| `egress:public`    | `kit:network:egress:public`   |
+| `egress:private`   | `kit:network:egress:private`  |
+| `ingress`          | `kit:network:ingress`         |
+
+Subprocess execution and bus publication carry `kit:exec:subprocess`
+and `kit:bus:publish`.
+
 ## Intent
 
 Classifies command purpose for AI routing.
