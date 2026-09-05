@@ -422,18 +422,27 @@ func TestParityCompletionSubcommand(t *testing.T) {
 }
 
 // TestParityUnknownCommand: unknown subcommand must not silently succeed.
-// Framework behavior varies:
-//   - Go/cobra+fang: exits 0, shows root help (no domain output)
-//   - Commander (TS): exits 1, prints error to stderr
-//   - Typer (Python): exits 2, prints error
+// A subcommand is part of the invocation's grammar, not a resource the
+// invocation names, so a word naming none is a usage error: exit 2.
+// Go refuses it whether the parent it was aimed at is runnable or not,
+// and Typer already does. Commander (TS) exits 1 and offers no seam to
+// change it without replacing its error handler: remaining framework
+// variance, held to "must not succeed" below.
 //
-// Contract: output must not contain domain data (missions, vehicles) —
-// the unknown command must not have been routed to a business handler.
+// Contract: every language must exit non-zero, and output must not
+// contain domain data (missions, vehicles) — the unknown command must
+// not have been routed to a business handler.
 func TestParityUnknownCommand(t *testing.T) {
 	bins := parityHarness(t)
 	forAll(t, bins, func(t *testing.T, b binary) {
 		r := invoke(b, "bogus-command-xyz")
 		plain := stripANSI(r.combined())
+		assert.NotEqual(t, 0, r.code,
+			"%s: an unknown command must not succeed\nstderr: %s", b.lang, r.stderr)
+		if b.lang != "ts" {
+			assert.Equal(t, 2, r.code,
+				"%s: an unknown command is a usage error\nstderr: %s", b.lang, r.stderr)
+		}
 		// Must produce some output.
 		assert.NotEmpty(t, strings.TrimSpace(plain),
 			"%s: unknown command must produce output", b.lang)

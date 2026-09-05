@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"hop.top/kit/examples/spaced/go/cmd"
 	"hop.top/kit/go/console/alias"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/runtime/bus"
 	runtimetelemetry "hop.top/kit/go/runtime/telemetry"
@@ -140,9 +142,29 @@ func main() {
 	ctx := context.Background()
 	if err := root.Execute(ctx); err != nil {
 		_ = b.Close(ctx)
+		// Kit classifies a failed invocation into the taxonomy and
+		// carries the exit code on the envelope. Honor it, or every
+		// refusal — usage, not-found, unauthorized — collapses to 1.
+		if code := exitCodeFromEnvelope(err); code != 0 {
+			os.Exit(code)
+		}
 		os.Exit(1)
 	}
 	_ = b.Close(ctx)
+}
+
+// exitCodeFromEnvelope returns the ExitCode carried by the
+// *output.Error an invocation failed with, or 0 when the error is not
+// one of kit's envelopes.
+func exitCodeFromEnvelope(err error) int {
+	type asCLIError interface{ AsCLIError() *output.Error }
+	var ce asCLIError
+	if errors.As(err, &ce) {
+		if out := ce.AsCLIError(); out != nil && out.ExitCode != 0 {
+			return out.ExitCode
+		}
+	}
+	return 0
 }
 
 func spacedURIConfig() cli.URIConfig {
