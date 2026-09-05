@@ -6,12 +6,13 @@ import (
 	"sort"
 )
 
-// builtins/ is populated by `make builtins-sync` from templates/cli-{go,ts,py,shared}.
-// During sync, *.go and go.mod files are renamed to *.tmpl so (a) Go's embed
-// does not refuse a nested module, (b) `go build ./...` does not try to compile
-// template placeholders. Render engine restores the original names at output
-// time. Manifest-ization (T-0841) will move this rename into per-template
-// file rules.
+// builtins/ is a verbatim copy of templates/cli-{go,ts,py,php,rs} and
+// templates/shared, produced by `make builtins-sync` and checked by
+// `make check-mirror-sync`. Go sources (*.go, go.mod) ship as *.tmpl on both
+// sides so (a) Go's embed does not refuse a nested module and (b) `go build
+// ./...` does not try to compile template placeholders; `make
+// check-template-sources` enforces the suffix and the render engine strips
+// it at output time (render_rules.strip_suffixes).
 //
 //go:embed all:builtins/*
 var builtinFS embed.FS

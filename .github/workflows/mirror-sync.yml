@@ -5,11 +5,15 @@ on:
     paths:
       - 'templates/**'
       - 'internal/template/builtins/**'
+      - 'Makefile'
+      - '.github/workflows/mirror-sync.yml'
   push:
     branches: [main]
     paths:
       - 'templates/**'
       - 'internal/template/builtins/**'
+      - 'Makefile'
+      - '.github/workflows/mirror-sync.yml'
 
 jobs:
   mirror-sync:
@@ -19,20 +23,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify mirror sync
-        run: |
-          # builtins-sync renames *.go/go.mod to *.tmpl on copy (see
-          # internal/template/embed.go) so a raw `diff -rq templates/
-          # internal/template/builtins/` always reports that rename as
-          # drift. Regenerate the mirror the same way CI would and diff
-          # against THAT, so the check tracks what sync actually does
-          # instead of reimplementing its rename rule here.
-          make builtins-sync
-          if ! git diff --quiet -- internal/template/builtins/; then
-            echo "::error::Mirror drift detected between templates/ and internal/template/builtins/"
-            echo "Diff:"
-            git diff -- internal/template/builtins/
-            echo ""
-            echo "Fix: run 'make builtins-sync' locally and commit the result."
-            exit 1
-          fi
-          echo "Mirror in sync."
+        # Strict comparison: templates/ is canonical and the mirror must be a
+        # byte-identical copy (Go sources ship as *.tmpl on both sides).
+        run: make check-mirror-sync
