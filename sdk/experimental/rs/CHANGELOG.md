@@ -2,18 +2,22 @@
 
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.1...kit-rs/v0.5.0-alpha.2) (2026-09-05)
 
+The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.2. This release includes new features.
+
 
 ### Features
 
-* **rs:** EXIT_GENERIC and CliError::generic for the exit-1 class ([7deaa97](https://github.com/hop-top/poly-kit/commit/7deaa97ec4d431bb34337474d1f6a3e0702ef367))
-* **rs:** Go-style duration parser for serve budgets ([697b93e](https://github.com/hop-top/poly-kit/commit/697b93ef86badca9c581d9196f270b8f2ee13170))
-* **rs:** mount serve as a clap command ([60f6099](https://github.com/hop-top/poly-kit/commit/60f6099df9159d1c3821d9de642da787dadf0a04))
-* **rs:** mount serve as a clap command ([eb8c140](https://github.com/hop-top/poly-kit/commit/eb8c140bff60cf74f31cdce4c3d16b30dda12e56))
-* **rs:** serve command with --list, --enable/--disable and timeout flags ([3f4a3a1](https://github.com/hop-top/poly-kit/commit/3f4a3a11d2e74384b9482f72c204cd8be972f63b))
-* **rs:** serve run path from ArgMatches to exit code ([484c043](https://github.com/hop-top/poly-kit/commit/484c043faf7cf5fd738fb8df8b52aeb177a17e0d))
-* **rs:** serve supervisor and service lifecycle ([8a20b5d](https://github.com/hop-top/poly-kit/commit/8a20b5d17e9374400fd00e7ccf0cb2cc03101c49))
-* **rs:** serve supervisor and service lifecycle ([30b3e82](https://github.com/hop-top/poly-kit/commit/30b3e8250ea70ea125bba6674925a76a396f8a51))
-* **sdk:** EXIT_GENERIC and generic error constructor in all SDKs ([9db9c90](https://github.com/hop-top/poly-kit/commit/9db9c90647b227b31a6c912d0c8d54b54271422a))
+* **rs:** EXIT_GENERIC and CliError::generic for the exit-1 class
+* **rs:** Go-style duration parser for serve budgets
+* **rs:** mount serve as a clap command
+* **rs:** mount serve as a clap command
+* **rs:** serve command with --list, --enable/--disable and timeout flags
+* **rs:** serve run path from ArgMatches to exit code
+* **rs:** serve supervisor and service lifecycle
+* **rs:** serve supervisor and service lifecycle
+* **sdk:** EXIT_GENERIC and generic error constructor in all SDKs
+
+Full diff: [kit-rs/v0.5.0-alpha.1...kit-rs/v0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.1...kit-rs/v0.5.0-alpha.2)
 
 ## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.0...kit-rs/v0.5.0-alpha.1) (2026-09-04)
 
