@@ -185,9 +185,9 @@ onto other surfaces without rewriting it.
 
 `socket` is loopback-only with owner-only permissions and does no
 caller authentication beyond filesystem mode. `bridge` today ships
-the payload types and manifest loader only: its own doc comment
-also promises dispatch and an embeddable receiver, and neither is
-implemented yet, so treat it as incomplete.
+the payload types and manifest loader only. Dispatch and an
+embeddable receiver are not implemented, so a host routes payloads
+itself; treat the package as incomplete.
 
 Deep dives: [`expose-cli-over-rest.md`](../guides/expose-cli-over-rest.md),
 [`expose-cli-over-mcp.md`](../guides/expose-cli-over-mcp.md),
