@@ -70,7 +70,7 @@ specification.
 | LLM routing | Deterministic provider picker + categorical budget tier + operator pool gating. | RequestProfile / BudgetTier / PickProvider | go [`go/ai/llm`](go/ai/llm/) (model metadata delegated to [`hop.top/aim`](https://hop.top/aim)) |
 
 URI composition (`<scheme>://<entity-type>/<typeid>`) is handled by
-[hop-top/poly-uri](https://github.com/hop-top/poly-uri), not by the
+[hop-top/poly-cite](https://github.com/hop-top/poly-cite), not by the
 TypeID primitive itself.
 
 ## Install
