@@ -1017,11 +1017,12 @@ simply not implemented the surface yet, and
 [`contracts/parity/serve.json`](../../contracts/parity/serve.json)
 records that as a pending gap rather than a failure.
 
-Two ports cannot implement the command half of this contract at all
-until something else lands first: the Rust and PHP SDKs ship no
-command-registration layer, so there is no kit-owned place to mount a
-`serve` parent. That is a prerequisite, not an exemption — the
-obligations below apply in full the day they gain one.
+One port cannot implement the command half of this contract at all
+until something else lands first: the Rust SDK's `cli.rs` is empty, so
+there is no kit-owned place to mount a `serve` parent. That is a
+prerequisite, not an exemption — the obligations below apply in full
+the day it gains one. PHP mounts commands on Symfony Console through
+`KitCommand`, so its command half is expressible today.
 
 ### Required of every SDK
 

@@ -143,7 +143,7 @@
     },
     "php": {
       "implementation": null,
-      "note": "sdk/experimental/php/src/Cli/Cli.php is an empty class: the SDK ships no command-registration layer. It also has no event bus, so its lifecycle_events obligation would be satisfied through the log sink.",
+      "note": "Commands mount on Symfony Console via sdk/experimental/php/src/Cli/KitCommand.php, so the command half is expressible today; serve itself is not implemented. The SDK has no event bus, so its lifecycle_events obligation would be satisfied through the log sink.",
       "hierarchy": "PENDING",
       "override_rule": "PENDING",
       "list_flag": "PENDING",
