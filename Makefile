@@ -1,7 +1,7 @@
 .PHONY: setup lint lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-rs lint-docs lint-config lint-links lint-sdk-paths \
 	preflight \
 	tools tools-golangci-lint \
-	test test-go test-go-integration test-ts test-py test-rs test-parity test-parity-typeid \
+	test test-go test-go-integration test-go-race test-ts test-py test-rs test-parity test-parity-typeid \
 	test-parity-kv \
 	proto openapi clients clients-ts clients-php clients-rs clients-test api \
 	job-test job-integration-hatchet job-integration-restate job-integration-temporal \
@@ -63,6 +63,43 @@ test-go: ## Go tests (skips long-running container tests)
 test-go-integration: ## Go tests including testcontainer integration
 	@go test ./... -count=1 -timeout 1200s
 	@find go cmd contracts engine examples incubator -name "go.mod" -execdir go test ./... -count=1 -timeout 1200s \;
+
+# Race detector over the library tree. The serve work landed tests that
+# only fail under -race — root-factory parallel invocation in
+# go/console/cli, per-invocation flag isolation in
+# go/transport/cmdsurface, the transport services, and the concurrency
+# guards under go/runtime, go/core, go/ai and go/storage. A plain
+# `go test` runs every one of them green with the guard removed, so
+# without this target a concurrency regression reaches the default
+# branch unnoticed.
+#
+# Scope is the whole of go/ rather than a curated package list: a list
+# goes stale the first time someone adds a concurrent test somewhere
+# nobody thought to enumerate, and the failure mode is silent. Whole-repo
+# ./... was measured and rejected — it pulls in sdk, examples, engine,
+# incubator and contracts, whose testcontainer and cross-language suites
+# dominate the run and carry no concurrency guards. Cold, with an empty
+# build cache, go/ takes ~2m40s under -race; ./... did not finish inside
+# 25 minutes.
+#
+# EXCLUDED, and why: go/core/projects fails under -race today, ahead of
+# and independent of this target. projects.Write -> xdg.ConfigDir ->
+# xdg.RawConfigDir calls github.com/adrg/xdg's Reload(), which writes
+# that library's package-level globals on every call; ten concurrent
+# Writes in TestConcurrentWrite race on them. The fix belongs in
+# go/core/xdg (serialise or memoise the Reload), not here, and it
+# changes behaviour for every xdg caller — so it is its own change.
+# Drop the exclusion once that lands.
+#
+# -buildvcs=false keeps the build off the git index: the VCS stamp
+# fails ("error obtaining VCS status") when another checkout or hook
+# holds it, which is routine on a dev machine running this alongside a
+# push.
+RACE_EXCLUDE := hop.top/kit/go/core/projects
+
+test-go-race: ## Go tests under the race detector (go/ tree, concurrency guards)
+	@go test -race -buildvcs=false -count=1 -timeout 1200s \
+		$$(go list -buildvcs=false ./go/... | grep -vxF '$(RACE_EXCLUDE)')
 
 test-ts: ## TypeScript tests
 	cd sdk/ts && pnpm vitest run --exclude src/sqlstore.test.ts
