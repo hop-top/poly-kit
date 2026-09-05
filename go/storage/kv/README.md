@@ -2,6 +2,38 @@
 
 key-value persistence abstractions and drivers.
 
+## Backends
+
+| Backend  | Driver package | Config fields        | TTL |
+|----------|----------------|----------------------|-----|
+| `sqlite` | `kv/sqlite`    | `Path`               | yes |
+| `badger` | `kv/badger`    | `Path`               | yes |
+| `etcd`   | `kv/etcd`      | `Endpoints`, `Prefix`| no  |
+| `tidb`   | `kv/tidb`      | `DSN`, `Table`       | no  |
+
+`kv.Open` dispatches on `Config.Backend` through a registry that each
+driver populates from its own `init`. Importing the driver is what makes
+its name valid:
+
+```go
+import (
+    "hop.top/kit/go/storage/kv"
+    _ "hop.top/kit/go/storage/kv/etcd"
+)
+
+store, err := kv.Open(kv.Config{
+    Backend:   "etcd",
+    Endpoints: []string{"127.0.0.1:2379"},
+    Prefix:    "app/",
+})
+```
+
+Registration is by import rather than by build tag so a binary carries
+only the dependencies of the backends it opens — importing `kv` alone
+pulls neither BadgerDB nor etcd's gRPC stack. Naming a backend whose
+driver is absent reports the package to import; `kv.Backends()` lists
+what the current binary has registered.
+
 ## Keys bind as TEXT
 
 The SQLite driver declares `key TEXT PRIMARY KEY`, and every implementation

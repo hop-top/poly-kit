@@ -17,6 +17,7 @@ import (
 
 	"hop.top/kit/go/storage/httpcache"
 	"hop.top/kit/go/storage/kv"
+	_ "hop.top/kit/go/storage/kv/sqlite"
 )
 
 // newStore opens a sqlite-backed TTLStore in a temp dir, registered for
