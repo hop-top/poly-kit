@@ -123,8 +123,10 @@ Add a service of your own with `cli.WithService` in `cmd/root.go`; it
 appears in `serve --list` beside `api` and `socket` and starts under
 the same supervisor.
 
-<!-- kit:agents-fragment — the AGENTS.md template fragment describing the
-     served surface to agents is inserted here by the kit template. -->
+[`AGENTS.md`](AGENTS.md) is the agent-facing description of this
+surface: discovery, the refusal vocabulary, invocation over REST and
+the socket, the confirmation gates, and the exit-code taxonomy. Hand
+it to an agent that has to call `{{.Name}}` without a terminal.
 
 ## Configuration
 

@@ -19,6 +19,8 @@ files:
   "cmd/root.go": [3, 4]
   "cmd/hello.go": [3, 4]
   "internal/version/version.go": [3, 4]
+  # Agent-facing doc for the served surface: ships wherever serve does.
+  "AGENTS.md": [3, 4]
 
   "README.md": [4]
   "CHANGELOG.md": [4]

@@ -1,0 +1,229 @@
+# {{.Name}} for agents
+
+You are calling `{{.Name}}` over a transport, not a terminal. Follow
+these instructions.
+
+Start the surface you need:
+
+```sh
+{{.Name}} serve api --addr 127.0.0.1:8080
+{{.Name}} serve socket
+```
+
+`serve api` binds loopback and refuses a non-loopback address without
+`--insecure-remote`. `serve socket` listens on
+`<runtime dir>/{{.Name}}/{{.Name}}.sock`, mode `0600`, and prints the
+resolved path on the `ready_reported` line under `address=`.
+
+## Discover before you call
+
+```sh
+curl -s http://127.0.0.1:8080/v1/commands
+```
+
+Discovery is the authority. Every command in the tree is listed,
+callable or not, so never probe routes and never read a 404 as "maybe
+it exists". If discovery does not list it, it does not exist; if
+discovery lists it with `invocable: false`, the reason tells you what
+to do.
+
+The document carries `tool`, `version`, `prefix`, `commands`,
+`reasons` (the reason values present here) and `exit_status` (this
+tool's exit-code-to-HTTP table). Each entry:
+
+| Field | Meaning |
+|-------|---------|
+| `path` | path segments below the root, e.g. `["item","list"]` |
+| `name` | the same path, space-joined — the socket's key for it |
+| `summary` | one line |
+| `side_effect` | `read`, `write`, `destructive`, `interactive` |
+| `invocable` | whether you may call it here |
+| `reason` | present only when `invocable` is false |
+| `method`, `route` | present only when `invocable` is true |
+| `flags` | declared flags: `name`, `type`, `description`, `default`, `required` |
+| `args` | declared positionals: `name`, `required` |
+| `requires_confirmation` | the command has a confirmation gate |
+
+Schemas are at `/openapi.json`. Only invocable commands appear there.
+
+## Refusal vocabulary
+
+Branch on `reason`. Never retry a call unchanged after a refusal.
+
+| Reason | What it means | Do |
+|--------|---------------|----|
+| `not-runnable` | a command group, no action of its own | Call a child. Read `path` prefixes from discovery. |
+| `builtin` | CLI framework plumbing (`help`, `completion`, `man`) | Ignore. Not part of this tool's capability. |
+| `hidden-internal` | marked unsupported by the author | Do not call. Not published for you. |
+| `deprecated` | scheduled for removal | Find a replacement in discovery. Do not build on it. |
+| `malformed-schema` | declared metadata does not resolve | Give up on this command and report the defect. You cannot build a correct request. |
+| `self-hosting` | starts a server or replaces the binary | Never callable remotely. No configuration lifts it. Do not retry. |
+| `management-only` | reserved to the tool's own management surface | Not on REST. Reachable over the socket. |
+| `interactive` | needs a terminal and a human | Never callable remotely. Ask a human to run it. Do not retry. |
+| `unauthorized-destructive` | real command, destructive, not permitted on this surface | Ask a human to permit it. You cannot lift this yourself. |
+| `withheld-by-config` | excluded by this deployment's configuration | Ask a human to expose it. Other surfaces may still have it. |
+
+## Invoke over REST
+
+Method follows `side_effect`: `read` is `GET`, everything else is
+`POST`. Use the `method` and `route` discovery gave you; do not derive
+them.
+
+Read — flags as query parameters by long name, positionals as a
+repeated `arg`:
+
+```sh
+curl -s 'http://127.0.0.1:8080/v1/commands/item/list?limit=10&arg=first'
+```
+
+Everything else — a JSON body:
+
+```sh
+curl -s -X POST http://127.0.0.1:8080/v1/commands/item/add \
+  -H 'Content-Type: application/json' \
+  -d '{"flags":{},"args":["widget"]}'
+```
+
+An undeclared flag in a POST body is refused:
+`400 {"status":400,"code":"bad_request","message":"unknown flag: <name>"}`.
+An undeclared **query** parameter is silently dropped instead — so a
+misspelled flag on a GET runs the command without it. Spell query
+flags from the `flags` discovery gave you and check the result.
+
+Every response body is the result itself, with no envelope:
+
+```json
+{"exit_code":0,"data":[{"name":"bolt"}]}
+```
+
+`exit_code` is always present. `data`, `stdout` and `stderr` appear
+only when non-empty.
+
+## Invoke over the socket
+
+One JSON request per line; the connection stays open and answers come
+back in order, so many calls share one connection. A request line over
+1 MiB ends the connection.
+
+Pass `--socket` so you know the path rather than deriving it, then
+call:
+
+```sh
+{{.Name}} serve socket --socket /tmp/{{.Name}}.sock
+
+python3 -c '
+import socket, sys
+s = socket.socket(socket.AF_UNIX); s.connect(sys.argv[1])
+s.sendall(b"{\"path\":[\"item\",\"list\"]}\n")
+print(s.makefile("rb").readline().decode().strip())
+' /tmp/{{.Name}}.sock
+```
+
+Without `--socket` the path is `<runtime dir>/{{.Name}}/{{.Name}}.sock`,
+where the runtime dir is `$XDG_RUNTIME_DIR` when set and a
+platform-specific per-user directory otherwise — so read the resolved
+path from the `ready_reported` line's `address=` rather than rebuilding
+it. Precedence: `--socket`, then `services.socket.path`, then that
+default. A path over 103 bytes is refused before anything binds.
+
+Request fields: `path` (required, array of segments), `args`, `flags`
+(keyed by long name, no dashes), and the optional `caller`, `tenant`,
+`request_id`, `trace_id`, `idempotency_key`. `caller` and `tenant` are
+provenance, not credentials — they grant nothing.
+
+The reply is an envelope. Branch on `ok`:
+
+```json
+{"ok":true,"result":{"exit_code":0,"data":[{"name":"bolt"}]}}
+{"ok":false,"error":{"code":"BLOCKED","message":"..."}}
+```
+
+| Code | Meaning | Do |
+|------|---------|----|
+| `NOT_FOUND` | no such command — also the answer for self-hosting commands | Re-read discovery. Do not retry the path. |
+| `NOT_ENABLED` | exists, not exposed on this surface | Try another transport, or ask a human. |
+| `NOT_INVOCABLE` | can never run through a transport; the message names the reason | Do not retry. Interactive work needs a human. |
+| `BLOCKED` | destructive, refused by policy on this surface | Ask a human to permit it. Do not retry unchanged. |
+| `DENIED` | the permission gate refused this caller | Ask a human. Do not retry unchanged. |
+| `UNAUTHENTICATED` | authentication failed; sent only when this tool has an authenticator | Fix credentials, then retry. |
+| `INVALID` | malformed request line, or empty `path` | Fix the request and retry. |
+| `INTERNAL` | anything else the runner returned | Report. Retry only if the tool documents it as transient. |
+
+An unknown flag over the socket is **not** a wire error: you get
+`ok: true` with `exit_code: 2` and a JSON usage error in
+`result.stderr`. Check `exit_code`, not just `ok`.
+
+## Read the result, not the output
+
+A command with an output schema answers in `data` and leaves `stdout`
+empty. Parse `data`. Parse `stdout` only when the entry has no schema
+and `data` is absent, and never scrape a table.
+
+## Destructive commands
+
+Destructive commands are withheld from every served surface until a
+human names that surface in this tool's configuration. Until then they
+carry `unauthorized-destructive` and have no route.
+
+Once permitted, the command's own gate still applies. There is no
+terminal behind your request, so the gate refuses by default:
+`exit_code: 5`, HTTP 403. Pass the command's own `confirm` flag:
+
+```sh
+curl -s -X POST http://127.0.0.1:8080/v1/commands/item/purge \
+  -H 'Content-Type: application/json' \
+  -d '{"flags":{"confirm":"yes"},"args":[]}'
+```
+
+A command needing typed confirmation also takes `confirm-token`. Its
+refusal names the value:
+
+```text
+This is a destructive operation requiring typed confirmation.
+Token: 029f971270ca
+Re-run with --confirm-token=029f971270ca to proceed.
+```
+
+Read that token out of `stderr` and echo it back exactly. Never invent,
+guess, or compute one — a mismatch is refused the same way.
+
+```sh
+curl -s -X POST http://127.0.0.1:8080/v1/commands/item/wipe \
+  -H 'Content-Type: application/json' \
+  -d '{"flags":{"confirm":"yes","confirm-token":"029f971270ca"}}'
+```
+
+`confirm` is accepted only on commands that have a gate. Sending it to
+an ungated command is `400 unknown flag: confirm`.
+
+## Exit codes
+
+`exit_code` carries the same meaning on every transport. The
+`exit_status` table in discovery is this tool's own copy.
+
+| Exit | HTTP | Meaning | Retry? |
+|------|------|---------|--------|
+| 0 | 200 | success | — |
+| 1 | 500 | unclassified failure | No. Report. |
+| 2 | 400 | your request was wrong | No. Fix the request first. |
+| 3 | 404 | the thing asked for does not exist | No. |
+| 4 | 409 | conflict with current state | Re-read state, then decide. |
+| 5 | 403 | refused: not permitted, or unconfirmed | No. Confirm, or ask a human. |
+| 6 | 503 | transient | Yes, with backoff. |
+| 64 | 429 | rate limited | Yes, with backoff. |
+| 65 | 422 | refused: provenance missing | No. |
+
+Any other code is 500 and unclassified.
+
+## Never
+
+- Never call `serve` or any `self-hosting` command from inside a served
+  invocation. You would start a server inside the server.
+- Never retry a `DENIED`, `BLOCKED`, or `unauthorized-destructive`
+  refusal unchanged. Nothing you send lifts it; a human must.
+- Never retry an `interactive` or `self-hosting` command on another
+  transport. No configuration makes them callable.
+- Never invent a confirmation token. Use the one the refusal printed.
+- Never treat an empty `commands` list as an error. It means this
+  deployment exposes nothing to you.
+- Never infer a route. Use the `route` and `method` from discovery.
