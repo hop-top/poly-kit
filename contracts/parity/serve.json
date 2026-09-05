@@ -128,18 +128,18 @@
       "config_keys": "PENDING"
     },
     "rs": {
-      "implementation": null,
-      "note": "sdk/experimental/rs/src/cli.rs is an empty stub: the SDK ships no command-registration layer, so there is no place to mount a serve parent. That is a prerequisite, not an exemption.",
+      "implementation": "sdk/experimental/rs/src/serve (feature `serve`); library surface only, no command mount",
+      "note": "sdk/experimental/rs/src/cli.rs is still an empty stub, so there is no place to mount a serve parent and no argument parser. The lifecycle half of the contract ships as a library a future command layer mounts: the supervisor, the registration seam, resolution, readiness, the six transitions, ordered shutdown and the exit-code values. The two entries that remain PENDING are the ones that need a parser: `hierarchy` (the serve / serve <service> commands and the parse-time arity refusal — resolve() returns USAGE/2 for a 2-element operand vector, but nothing produces one) and `list_flag` (list_services() yields the rows in registration order; no --list flag exists). Likewise the --enable/--disable and *-timeout flag names, and env spellings such as <TOOL>_SERVICES_API_ENABLED, are unimplemented: the port has no env resolution, which the contract makes conditional on having one.",
       "hierarchy": "PENDING",
-      "override_rule": "PENDING",
+      "override_rule": "SHIPPED",
       "list_flag": "PENDING",
-      "registration_seam": "PENDING",
-      "readiness": "PENDING",
-      "lifecycle_events": "PENDING",
-      "ordered_shutdown": "PENDING",
-      "failure_policy": "PENDING",
-      "exit_taxonomy": "PENDING",
-      "config_keys": "PENDING"
+      "registration_seam": "SHIPPED",
+      "readiness": "SHIPPED",
+      "lifecycle_events": "SHIPPED",
+      "ordered_shutdown": "SHIPPED",
+      "failure_policy": "SHIPPED",
+      "exit_taxonomy": "SHIPPED",
+      "config_keys": "SHIPPED"
     },
     "php": {
       "implementation": null,
