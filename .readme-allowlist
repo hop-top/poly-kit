@@ -53,3 +53,7 @@ go/integrations/repohost/gitea/mock      # test double registered as gitea-mock;
 go/integrations/repohost/gitee/mock      # test double registered as gitee-mock; go/integrations/README.md documents the pattern
 go/integrations/repohost/github/mock     # test double registered as github-mock; go/integrations/README.md documents the pattern
 go/integrations/repohost/gitlab/mock     # test double registered as gitlab-mock; go/integrations/README.md documents the pattern
+go/console/cli/conformance/harness  # no Go source of its own; listed in cli/conformance/README.md table
+go/core/upgrade/driver/configfile  # no own config; covered by driver/README.md backend table
+go/core/upgrade/driver/fsdir  # no own config; covered by driver/README.md backend table
+go/core/upgrade/driver/sqlite  # no own config; covered by driver/README.md backend table
