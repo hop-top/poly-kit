@@ -12,8 +12,20 @@ import (
 // VerboseCount returns the -V count from the root command.
 // Counts map to levels via the parity contract's verbosity.levels table;
 // the contract's quiet_override wins when --quiet is set.
+//
+// The count is read from the persistent flag at call time: cobra
+// shares one *pflag.Flag between the root's persistent set and every
+// subcommand's merged set, so whichever command parsed -V, the value
+// is here. Before parsing it is the default, 0.
 func (r *Root) VerboseCount() int {
-	return r.verboseCount
+	if r == nil || r.Cmd == nil {
+		return 0
+	}
+	n, err := r.Cmd.PersistentFlags().GetCount("verbose")
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // verbosityShorthand returns the single-character shorthand declared by

@@ -128,19 +128,25 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 		// --policy is parsed and every adopter option has run only
 		// then. Validate has already refused a --policy that cannot
 		// load, so the error path here is unreachable in practice.
+		// The runner is resolved at Start for the same reason: a root
+		// factory replays the operator's parsed root flags onto every
+		// tree it builds. The shared options go last so a
+		// test-injected Runner still wins.
 		transportsvc.WithBridgeOptionsFunc(func() []cmdsurface.Option {
 			shared, err := root.serveBridgeOptions()
 			if err != nil {
 				return nil
 			}
-			return shared
+			return append(root.serveRunnerOptions(), shared...)
 		}),
 		transportsvc.WithValidate(func() error {
 			if err := validateSocketPath(root, cfg); err != nil {
 				return err
 			}
-			_, err := root.servePermission()
-			return err
+			if _, err := root.servePermission(); err != nil {
+				return err
+			}
+			return root.validateRootFactory()
 		}),
 		// Same class as the api service: it accepts requests that
 		// mutate shared state, and it listens.

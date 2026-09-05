@@ -77,7 +77,8 @@ mid-command cancels it (see [Cancellation](#cancellation)), and the
 result is discarded. Stopping the service cancels every command in
 flight. Requests on one connection are answered in order; across
 connections the bridge's runner serializes in-process commands, one
-at a time.
+at a time, unless the tool opts in with `cli.WithRootFactory`, which
+runs each request on a tree of its own, in parallel.
 
 ## Error codes
 

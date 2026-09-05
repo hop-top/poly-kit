@@ -749,10 +749,43 @@ WithRootFactory(build))`), every invocation gets a tree of its own:
 nothing is reset, nothing is serialized, and invocations run in
 parallel. The factory MUST return a tree that shares no mutable state
 with the trees it returned before — no flag bound to a package-level
-variable. A tree from `cli.New` is prepared for execution inside
-`Root.Execute`, where the confirmation and policy gates are installed,
-so a factory over `cli.New` yields an ungated tree today; a kit root
-uses the shared-tree form.
+variable, no closure over a struct another invocation writes.
+
+A kit root supplies the factory through `cli.WithRootFactory(build)`,
+where `build` is the tool's own construction — `cli.New` plus every
+command it mounts, the function `main` already has. The kit-shipped
+`api` and `socket` services then hand their bridge the factory runner
+instead of the shared-tree one, and for every tree the factory
+returns:
+
+- `Root.Prepare` installs what `Root.Execute` installs before it
+  parses — the RunE middleware carrying the confirmation, policy,
+  idempotency, and error-envelope gates, the kit-managed flags, and
+  validation — without executing, and without touching cobra's
+  process-global initializer list. A served invocation meets the same
+  gates on a factory tree as on the CLI: an unconfirmed destructive
+  command is refused with `UNAUTHORIZED`, a typed-token command needs
+  its token, and the permission and invocability gates answer in the
+  bridge before any tree is built.
+- The persistent root flags the operator set on the serving command
+  line are replayed onto it, `Changed` bit included, so
+  `mytool --no-color -c key=val serve socket` serves invocations that
+  see both. This is the factory form's counterpart of the shared
+  runner's baseline.
+- The factory is exercised once when the service validates. One that
+  returns nothing, returns the serving root, or builds a tree that
+  fails validation is a usage error at exit `2`, before anything
+  binds.
+
+The shared-tree form is the **default** and the factory form is
+**opt-in**. Only the adopter can rebuild the adopter's tree: commands
+are mounted after `cli.New` returns, and kit holds no description of
+that step. Opting in also accepts a cost — the construction runs once
+per served invocation, so anything expensive or stateful in it (a
+store opened, a keypair loaded) belongs outside the factory and must
+be safe for concurrent use — and a responsibility kit cannot check:
+trees that share state through package-level variables are isolated
+in name only.
 
 The throughput consequence is stated plainly: **a shared-tree bridge
 runs one command at a time.** A tool that needs concurrent in-process
