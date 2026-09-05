@@ -118,11 +118,13 @@ func ResetForTest() error {
 	return nil
 }
 
-// pathMu guards concurrent calls into xdg.StateFile. The underlying
-// adrg/xdg package mutates package-level state inside Reload(); without
-// this mutex two goroutines calling InstallationID() simultaneously
-// race on those globals (-race flags it). The mutex is contended only
-// during the StateFile resolve itself, which is microseconds.
+// pathMu serializes the resolve-then-use of the install ID path.
+//
+// It no longer exists to make xdg.StateFile safe — kit/core/xdg
+// serializes its own resolves, so that call is concurrency-safe on its
+// own. What remains is this package's need for the path and the
+// directory it creates to be settled before a caller acts on them. The
+// mutex is held only for the resolve, which is microseconds.
 var pathMu sync.Mutex
 
 // InstallIDPath returns the canonical on-disk path used by this
