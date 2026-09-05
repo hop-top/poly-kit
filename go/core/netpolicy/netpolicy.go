@@ -20,14 +20,38 @@
 //
 // # Scope
 //
-// Guard sits in the http.RoundTripper chain, so it covers HTTP and
-// HTTPS through net/http — which is every network client in kit today.
-// It does NOT cover code that opens a socket directly: net.Dial /
-// DialContext (e.g. the SMTP notification sink), database/sql drivers,
-// gRPC or raw TLS. For those, --offline remains advisory and the call
-// site must consult IsOffline itself. Closing that gap needs a wrapped
-// net.Dialer threaded through each such client; it is deliberately not
-// attempted here.
+// Enforcement has two seams, because Go offers no single one.
+//
+// Guard sits in the http.RoundTripper chain, and Install puts it under
+// http.DefaultTransport, so every client that does not set its own
+// Transport is covered without a per-site change. That is all HTTP and
+// HTTPS through net/http, and with it ConnectRPC, which rides an
+// ordinary *http.Client.
+//
+// GuardDial is the seam for everything net/http does not own. Go has no
+// hook beneath net.Dial: a library that opens its own socket cannot be
+// intercepted from outside, so it is covered only once its dial function
+// is routed through GuardDial. Libraries that accept an injected dialer
+// — net/smtp via net.Dialer, coder/websocket via DialOptions.HTTPClient,
+// go-sql-driver/mysql via Config.DialFunc or RegisterDialContext, gRPC
+// via WithContextDialer, crypto/tls via tls.Client over a dialed conn —
+// can therefore all be brought under the policy. CheckDial exposes the
+// same decision for hooks that are not shaped like a dialer.
+//
+// What remains uncovered, and cannot be covered from this package:
+//
+//   - A dependency that calls net.Dial itself and exposes no dialer
+//     hook. Nothing in Go can intercept it; the only fixes are upstream
+//     or a sandbox outside the process.
+//   - A client holding a *net.Dialer rather than a dial function. Only
+//     DialContext carries a context, and DialContext is a method, not a
+//     replaceable field, so a *net.Dialer cannot be made policy-aware.
+//     Such a call site must call GuardDial's result directly.
+//   - A caller that captured http.DefaultTransport before Install ran,
+//     or that sets an explicit Transport without wrapping it in Guard.
+//
+// For anything in that list --offline stays advisory and the call site
+// must consult IsOffline itself.
 package netpolicy
 
 import (
