@@ -46,3 +46,6 @@ pub mod timeutil;
 
 #[cfg(feature = "mcp")]
 pub mod mcp;
+
+#[cfg(feature = "serve")]
+pub mod serve;
