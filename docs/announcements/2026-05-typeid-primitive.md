@@ -49,7 +49,7 @@ specifics.
 ## URI form
 
 TypeIDs compose into canonical URIs via
-[`hop-top/poly-uri`](https://github.com/hop-top/poly-uri):
+[`hop-top/poly-cite`](https://github.com/hop-top/poly-cite):
 
 ```
 tlc://task/task_01j5xkv2et008000000000000
@@ -57,7 +57,7 @@ inv://invoice/invoice_01j5xkv2et008000000000001
 ```
 
 The TypeID primitive owns only the typeid string portion. URI
-parsing and the scheme/namespace registry are handled by `poly-uri`.
+parsing and the scheme/namespace registry are handled by `poly-cite`.
 
 ## Migration recommendation
 
