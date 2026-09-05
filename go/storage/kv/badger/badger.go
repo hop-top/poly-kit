@@ -15,7 +15,26 @@ type Store struct {
 }
 
 // New opens a BadgerDB at the given directory path.
+//
+// It is NewContext with a background context, kept for callers that have
+// none to offer.
 func New(dir string) (*Store, error) {
+	return NewContext(context.Background(), dir)
+}
+
+// NewContext opens a BadgerDB at the given directory path, honoring
+// cancellation on ctx.
+//
+// There is no network policy to enforce here: BadgerDB is a directory on
+// the local filesystem, so this driver has no dial to refuse and an offline
+// context does not restrict it. ctx is checked before the open so a
+// canceled caller does not create files, and the context-aware shape is
+// what lets kv.Open route every shipped driver through one registration
+// path.
+func NewContext(ctx context.Context, dir string) (*Store, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	opts := badgerdb.DefaultOptions(dir).WithLogger(nil)
 	db, err := badgerdb.Open(opts)
 	if err != nil {

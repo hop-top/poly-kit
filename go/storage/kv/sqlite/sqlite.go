@@ -17,12 +17,27 @@ type Store struct {
 }
 
 // New opens (or creates) a SQLite database at path and ensures the kv table exists.
+//
+// It is NewContext with a background context, kept for callers that have
+// none to offer.
 func New(path string) (*Store, error) {
+	return NewContext(context.Background(), path)
+}
+
+// NewContext opens (or creates) a SQLite database at path and ensures the
+// kv table exists, honoring cancellation on ctx.
+//
+// There is no network policy to enforce here: sqldb.Open takes a filesystem
+// path and opens a file-backed database, so this driver has no dial to
+// refuse and an offline context does not restrict it. ctx bounds the
+// migration statements, and the context-aware shape is what lets kv.Open
+// route every shipped driver through one registration path.
+func NewContext(ctx context.Context, path string) (*Store, error) {
 	db, err := sqldb.Open(sqldb.Options{Path: path})
 	if err != nil {
 		return nil, fmt.Errorf("sqlite kv: open: %w", err)
 	}
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS kv (
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS kv (
 		key   TEXT PRIMARY KEY,
 		value BLOB NOT NULL,
 		expires_at INTEGER
@@ -30,7 +45,7 @@ func New(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("sqlite kv: migrate: %w", err)
 	}
-	if _, err := db.Exec(
+	if _, err := db.ExecContext(ctx,
 		`CREATE INDEX IF NOT EXISTS idx_kv_expires ON kv(expires_at) WHERE expires_at IS NOT NULL`,
 	); err != nil {
 		db.Close()
