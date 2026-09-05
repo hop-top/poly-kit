@@ -33,7 +33,7 @@ how kit itself is implemented.
 
 - [`guides/getting-started-cli.md`](guides/getting-started-cli.md) — extended walkthrough
 - [`guides/kit-init.md`](guides/kit-init.md) — `kit init` flow + flag reference
-- [`guides/create-cli-project.md`](guides/create-cli-project.md) — scaffold a new CLI
+- [`guides/create-cli-project.md`](guides/create-cli-project.md) — scaffold a new CLI (a scaffolded project ships its own `AGENTS.md`: how an agent discovers and calls it over REST and the socket)
 - [`guides/build-a-transport-service.md`](guides/build-a-transport-service.md) — put your own transport in front of your command tree
 - [`guides/expose-cli-over-mcp.md`](guides/expose-cli-over-mcp.md) — serve your commands as MCP tools (both spec revisions)
 - [`guides/expose-cli-over-rest.md`](guides/expose-cli-over-rest.md) — serve your commands as a versioned REST API with OpenAPI

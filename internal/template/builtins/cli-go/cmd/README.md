@@ -35,6 +35,14 @@ socket.
 
 ## What gates a change here
 
+`AGENTS.md.tmpl` is the agent-facing description of the same surface,
+shipped at tiers 3 and 4 beside `root.go`. It is gated by the same
+`go test ./cmd/kit/init/` run: `TestBootstrap_CLIGo_AgentsFragment`
+asserts it renders with the tool's own name and that tiers 1 and 2 do
+not get it, and the serve test above pins the discovery reasons and
+endpoints the fragment documents. A change to the served surface that
+makes the fragment wrong should fail one of those two.
+
 `go test ./cmd/kit/init/` in poly-kit renders this template through
 the real bootstrap path, compiles the result against the checkout of
 kit, and drives the binary:
