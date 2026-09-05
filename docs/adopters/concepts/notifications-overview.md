@@ -40,55 +40,117 @@ sink" below.
 It does NOT replace the bus, an incident-management product, a
 workflow runtime, or a managed-provider integration.
 
+Reach for it when:
+
+- Routing a subset of bus events outward: Slack/Discord webhook,
+  ops email digest, desktop notification on warn-and-above.
+- Adding at-least-once delivery to a paging-grade sink (webhook to
+  PagerDuty, SMS via a webhook gateway).
+- Filtering an existing sink by topic + severity without touching
+  the publisher or the `TeeBus`.
+
+Do not reach for it when:
+
+- Modules are tightly coupled. Call the function.
+- You need end-user notifications (welcome emails, password resets,
+  preference-driven multi-channel routing). The `bus.Sink` interface
+  accommodates a managed-provider sink (Novu / Courier / Knock); the
+  MVP does not ship one.
+- You need an incident-management product. Notify pushes events out;
+  acknowledgement, escalation, and on-call rotation are the
+  destination's problem.
+- You need cross-process durable queueing. The bus is in-process;
+  sinks fire-and-forget. Wire a workflow runtime
+  (`go/runtime/job/{temporal,hatchet,restate}`) when you need
+  durability.
+
 ## Quick start
 
-Trim of the [spec §9](../../contributors/specs/notifications.md#9-wiring-example-end-to-end)
-wiring — a webhook for criticals, an email for warnings, an audit
-file, all teed off the same bus:
+The spec §9 wiring end to end: a webhook for criticals with retry
+and a dead-letter file, an email for billing warnings, a desktop
+alert on warn-and-above, an audit file, all teed off the same bus:
 
 ```go
+package main
+
 import (
-    "hop.top/kit/go/core/breaker"
-    "hop.top/kit/go/core/redact"
-    "hop.top/kit/go/runtime/bus"
-    "hop.top/kit/go/runtime/notify"
-    emailsink "hop.top/kit/go/runtime/notify/sinks/email"
-    webhooksink "hop.top/kit/go/runtime/notify/sinks/webhook"
+	"context"
+	"fmt"
+	"os"
+
+	"hop.top/kit/go/core/breaker"
+	"hop.top/kit/go/core/redact"
+	"hop.top/kit/go/runtime/bus"
+	"hop.top/kit/go/runtime/notify"
+	emailsink "hop.top/kit/go/runtime/notify/sinks/email"
+	osnotifysink "hop.top/kit/go/runtime/notify/sinks/osnotify"
+	webhooksink "hop.top/kit/go/runtime/notify/sinks/webhook"
 )
 
-red := redact.Default()
+func wireBus(ctx context.Context) (bus.Bus, error) {
+	red := redact.Default()
+	webBreaker := breaker.New("notify-webhook" /* policies */)
+	smtpBreaker := breaker.New("notify-email" /* policies */)
+	osBreaker := breaker.New("notify-osnotify" /* policies */)
 
-pages := notify.NewRetrySink(
-    notify.NewFilterSink(
-        webhooksink.New(
-            os.Getenv("PAGERDUTY_URL"),
-            webhooksink.WithRedactor(red),
-            webhooksink.WithBreaker(breaker.New("pages")),
-        ),
-        notify.WithMinSeverity(notify.SeverityCritical),
-    ),
-    notify.WithMaxAttempts(5),
-)
+	deadLetter, err := bus.NewJSONLSinkFile("/var/log/kit/dl.jsonl")
+	if err != nil {
+		return nil, fmt.Errorf("open dead-letter sink: %w", err)
+	}
 
-subjectTmpl, _ := emailsink.TextTemplate("[{{.Topic}}]")
-bodyTmpl, _ := emailsink.TextTemplate("{{.Source}}: {{.Payload}}")
-ops := notify.NewFilterSink(
-    emailsink.New(
-        emailsink.NewSMTPMailer("smtp.local", 25),
-        emailsink.WithRecipients("ops@example.com"),
-        emailsink.WithSubject(subjectTmpl),
-        emailsink.WithBody(bodyTmpl),
-        emailsink.WithRedactor(red),
-    ),
-    notify.WithMinSeverity(notify.SeverityWarn),
-)
+	pages := notify.NewRetrySink(
+		notify.NewFilterSink(
+			webhooksink.New(
+				os.Getenv("PAGERDUTY_URL"),
+				webhooksink.WithRedactor(red),
+				webhooksink.WithBreaker(webBreaker),
+			),
+			notify.WithMinSeverity(notify.SeverityCritical),
+		),
+		notify.WithMaxAttempts(5),
+		notify.WithDeadLetter(deadLetter),
+	)
 
-audit, _ := bus.NewJSONLSinkFile("/var/log/kit/audit.jsonl")
+	subjectTmpl, _ := emailsink.TextTemplate("[{{.Topic}}] alert")
+	bodyTmpl, _ := emailsink.TextTemplate("{{.Source}}: {{.Payload}}")
+	summaries := notify.NewFilterSink(
+		emailsink.New(
+			emailsink.NewSMTPMailer("smtp.local", 25),
+			emailsink.WithRecipients("ops@example.com"),
+			emailsink.WithFrom("kit@example.com"),
+			emailsink.WithSubject(subjectTmpl),
+			emailsink.WithBody(bodyTmpl),
+			emailsink.WithRedactor(red),
+			emailsink.WithBreaker(smtpBreaker),
+		),
+		notify.WithMinSeverity(notify.SeverityWarn),
+		notify.WithTopicPattern("billing.#"),
+	)
 
-b := bus.NewTeeBus(bus.New(), []bus.Sink{pages, ops, audit}, nil)
+	osSink, err := osnotifysink.New(
+		osnotifysink.WithTitle(osnotifysink.LiteralTemplate("kit alert")),
+		osnotifysink.WithText(osnotifysink.LiteralTemplate("see logs")),
+		osnotifysink.WithRedactor(red),
+		osnotifysink.WithBreaker(osBreaker),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("init os notify: %w", err)
+	}
+	desktop := notify.NewFilterSink(
+		osSink,
+		notify.WithMinSeverity(notify.SeverityWarn),
+	)
+
+	audit, err := bus.NewJSONLSinkFile("/var/log/kit/audit.jsonl")
+	if err != nil {
+		return nil, fmt.Errorf("open audit sink: %w", err)
+	}
+
+	return bus.NewTeeBus(bus.New(), []bus.Sink{pages, summaries, desktop, audit}, nil), nil
+}
 ```
 
-Publish to `b` as normal; `TeeBus` fans every event to every sink,
+Publish to the returned bus as normal; `TeeBus` fans every event to every sink,
 the filters trim, the retry handles transient failures.
 
 ## Severity convention
@@ -111,7 +173,14 @@ Two ways to advertise severity:
 - Map / JSON payload: include a lowercase
   `"severity": "warn"` key (or numeric `2`).
 
-`SeverityOf` checks both shapes; missing or invalid → `SeverityInfo`.
+`SeverityOf(bus.Event)` reads severity from the payload without
+mutating `bus.Event` itself. Resolution order:
+
+1. `e.Payload` satisfies `WithSeverity`: return `p.Severity()`.
+2. `e.Payload` is `map[string]any` with a `severity` key whose value
+   is a lowercase keyword (`debug`/`info`/`warn`/`error`/`critical`)
+   or a number in `[SeverityDebug, SeverityCritical]`.
+3. Otherwise `SeverityInfo` (the default).
 
 See [spec §5](../../contributors/specs/notifications.md#5-severity-convention) for
 the full wire contract.
@@ -126,6 +195,13 @@ RetrySink
        └─ <reference sink>
 ```
 
+| Layer | Type | Purpose |
+|-------|------|---------|
+| `RetrySink` | outermost | At-least-once delivery; owns ctx + timer/select between attempts; routes exhausted events to a dead-letter `bus.Sink` (or returns last error). |
+| `FilterSink` | middle | Drops events whose topic / severity / predicate does not match. Filter rejection is silent (`Drain` returns `nil`). |
+| Reference sink | innermost | Renders, redacts, breaker-wraps, egresses. Each sink ships its own subpackage under `sinks/`; see [notify-sinks.md](../reference/notify-sinks.md). |
+
+- Filters can be stacked (logical AND across the chain).
 - Filter trims volume; if the event doesn't match the
   topic/severity/predicate, no I/O happens and `Drain` returns
   `nil` (silent rejection).
@@ -174,6 +250,22 @@ expose `WithRedactor(*redact.Redactor)` and
 `WithBreaker(breaker.Breaker)`, and run them in pipeline order
 (template → redactor → breaker → egress).
 
+## Guardrails
+
+Every outbound reference sink integrates redaction and breakers:
+
+- `WithRedactor(r *redact.Redactor)`: applied to the rendered
+  payload immediately before egress. Default `nil` = no-op.
+- `WithBreaker(b breaker.Breaker)`: gates egress. Default `nil`.
+  An open circuit returns `breaker.ErrBrokenCircuit`, which
+  `RetrySink` treats as terminal: no further attempts, route
+  straight to the dead-letter (or return unwrapped).
+
+Pipeline order on every outbound sink:
+`template render → redactor → breaker → egress`. The
+[`guardrails.go`](../../../go/runtime/notify/guardrails.go) godoc is
+the package-wide convention.
+
 ## Trust boundary
 
 The redactor is YOUR redactor. The sink does not know what your
@@ -193,10 +285,19 @@ is currently suited to heavyweight egress (telemetry batches,
 LLM responses); notification volume is naturally low (one `Drain`
 per matching event), so the per-payload cost amortises easily.
 
+## Cross-language parity
+
+Go-only MVP. `bus.Sink` and `bus.TeeBus` themselves are still
+Go-only (TS / Python ports of pub/sub exist but Sinks/Tee are
+marked `planned`). Notify ports are gated on the bus primitives
+porting first. See ADR-0012 and spec §3 decision #8.
+
 ## See also
 
+- [notify-sinks.md](../reference/notify-sinks.md): webhook, email and osnotify constructors, options, templates, pipelines
+
 - [`docs/contributors/specs/notifications.md`](../../contributors/specs/notifications.md) — full spec, decisions, test plan
-- [`go/runtime/notify/README.md`](../../../go/runtime/notify/README.md) — package reference
+- [`go/runtime/notify/README.md`](../../../go/runtime/notify/README.md) — package README
 - [ADR-0012](../../contributors/adr/0012-notify-build-on-bus-sink.md) — build-on-bus-sink decision
 - [`docs/adopters/concepts/bus-overview.md`](bus-overview.md) — bus pub/sub primer
 - [`docs/contributors/audits/redact-egress-audit.md`](../../contributors/audits/redact-egress-audit.md) — egress audit

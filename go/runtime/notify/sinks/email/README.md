@@ -1,97 +1,20 @@
 # emailsink
 
-Email delivery sink for kit bus events via a pluggable `Mailer`.
-Subject and body are templated against the `bus.Event` before
-delivery, optionally redacted, then handed to a breaker-wrapped
-`Mailer.Send`.
+## What it answers
 
-## Constructor
+How does a bus event become an email? Subject and body are templated
+against the `bus.Event`, optionally redacted, then handed to a
+breaker-wrapped `Mailer.Send`. The `Mailer` is pluggable; an SMTP
+implementation ships. Wrong package for chat webhooks (`../webhook`)
+and for end-user transactional mail (managed provider, not shipped).
 
-```go
-func New(m Mailer, opts ...Option) bus.Sink
-```
+## Use it when
 
-No error: per spec decision #9, construction has no IO. SMTP dial
-happens lazily inside `SMTPMailer.Send`. Required fields
-(recipients, subject template, body template) are validated at
-`Drain` time; a misconfigured sink returns a per-event error
-instead of panicking on construction.
+- the target is a mailbox or an ops digest → `emailsink.New(mailer, emailsink.WithRecipients(...), emailsink.WithSubject(t), emailsink.WithBody(t))`
+- you have an SMTP relay → `emailsink.NewSMTPMailer(host, port, emailsink.WithSMTPAuth(...), emailsink.WithSMTPTLS(true))`
+- you use Sendgrid / Mailgun / SES → implement `Mailer` (one `Send` method); `MailerFunc` adapts a closure for tests
 
-## Options
-
-| Option | Default | Effect |
-|--------|---------|--------|
-| `WithFrom(addr)` | `""` | Default From address; can be overridden per `Message` (SMTP sets its own default via `WithSMTPFrom`). |
-| `WithContentType(ct)` | `text/plain; charset=utf-8` | RFC 822 `Content-Type` header. |
-| `WithRecipients(addrs...)` | required | To: list. Empty list = `Drain` error. |
-| `WithSubject(t)` | required | Subject `Template`; nil = `Drain` error. |
-| `WithBody(t)` | required | Body `Template`; nil = `Drain` error. |
-| `WithRedactor(r)` | `nil` | `r.Apply` runs on rendered subject AND body before `Send`. |
-| `WithBreaker(b)` | `nil` | Wraps `Mailer.Send` via `breaker.WrapCtx`. Open circuit short-circuits before dial. |
-
-## The `Mailer` interface
-
-```go
-type Mailer interface {
-    Send(ctx context.Context, msg Message) error
-}
-
-type Message struct {
-    From        string
-    To          []string
-    ContentType string
-    Subject     string
-    Body        string
-}
-```
-
-A `MailerFunc` adapter is provided for tests; production code wires
-the bundled `SMTPMailer` or rolls a Sendgrid / Mailgun / SES
-adapter that satisfies the same interface.
-
-## SMTP transport
-
-```go
-func NewSMTPMailer(host string, port int, opts ...SMTPOption) Mailer
-```
-
-Dials lazily on every `Send` — no connection pooling, by design
-(reference impl). Honours `ctx` cancellation through the dialer.
-
-| SMTP option | Default | Effect |
-|-------------|---------|--------|
-| `WithSMTPAuth(user, pass)` | none | PLAIN auth; identity host stamped at construction. |
-| `WithSMTPTLS(true)` | `false` | Opportunistic STARTTLS upgrade; errors if server does not advertise the extension. |
-| `WithSMTPFrom(addr)` | none | Default From when `Message.From` is empty. |
-| `WithSMTPTLSConfig(cfg)` | `&tls.Config{ServerName: host}` | Override TLS config used by STARTTLS. |
-| `WithSMTPDialer(d)` | `&net.Dialer{Timeout: 30s}` | Override the underlying TCP dialer. Tests use this for deterministic deadlines. |
-
-## Templates
-
-```go
-type Template interface {
-    Render(e bus.Event) (string, error)
-}
-```
-
-| Helper | Behaviour |
-|--------|-----------|
-| `TextTemplate(src)` | Parses `src` as `text/template`; renders against `bus.Event`. Parse errors at construction. |
-| `LiteralTemplate(s)` | Always renders `s` regardless of the event. Useful for fixed subjects ("kit alert"). |
-
-## Pipeline
-
-Per [`go/runtime/notify/guardrails.go`](../../guardrails.go):
-
-```
-render(subject) + render(body) → redactor.Apply on each → breaker.WrapCtx(Mailer.Send)
-```
-
-`breaker.ErrBrokenCircuit` is returned unwrapped by
-`breaker.WrapCtx` so `errors.Is` keeps working — `RetrySink` treats
-it as terminal.
-
-## Usage
+## Quick start
 
 Local SMTP (maildev / mailhog) for development:
 
@@ -113,9 +36,31 @@ ops := emailsink.New(
 )
 ```
 
+## Contract
+
+- `New` returns `bus.Sink` with no error: construction has no IO
+  (spec decision #9). Recipients, subject and body templates are
+  validated at `Drain`; a misconfigured sink returns a per-event
+  error instead of panicking.
+- Pipeline: `render(subject) + render(body) → redactor.Apply on each →
+  breaker.WrapCtx(Mailer.Send)`.
+- `breaker.ErrBrokenCircuit` comes back unwrapped (`errors.Is` works);
+  `RetrySink` treats it as terminal.
+- `SMTPMailer` dials lazily on every `Send`, no pooling, honours
+  `ctx` cancellation through the dialer (default `net.Dialer`
+  timeout 30s). `WithSMTPTLS(true)` is STARTTLS and errors when the
+  server does not advertise it.
+- `TextTemplate` parse errors fail at construction;
+  `LiteralTemplate` ignores the event.
+
+## Neighbours
+
+- `../webhook`, `../osnotify`: the other reference sinks.
+- `go/runtime/notify`: `FilterSink`, `RetrySink`, severity.
+
 ## See also
 
-- [`go/runtime/notify/README.md`](../../README.md) — package overview
-- [`go/runtime/notify/guardrails.go`](../../guardrails.go) — pipeline convention godoc
-- [`go/core/breaker/README.md`](../../../../core/breaker/README.md) — `WrapCtx` semantics
-- [`go/core/redact/README.md`](../../../../core/redact/README.md) — `Apply` semantics
+- [Notify sink reference](../../../../../docs/adopters/reference/notify-sinks.md#email-emailsink): options, `Mailer` and `Message`, SMTP options, templates
+- [`go/runtime/notify/guardrails.go`](../../guardrails.go): pipeline convention godoc
+- [`go/core/breaker/README.md`](../../../../core/breaker/README.md): `WrapCtx` semantics
+- [`go/core/redact/README.md`](../../../../core/redact/README.md): `Apply` semantics
