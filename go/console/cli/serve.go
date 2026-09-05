@@ -232,6 +232,10 @@ func runServeList(cmd *cobra.Command, root *Root) error {
 	}
 
 	configs := serveConfigs(root.Viper, reg.Names(), nil, nil)
+	// The listing reads the same resolution the supervisor runs on,
+	// WithAPI's default-on included; anything else would list a
+	// service as disabled that a bare `serve` is about to start.
+	applyAPIEnabledDefault(root, configs)
 	w := cmd.OutOrStdout()
 	fmt.Fprintf(w, "%-20s %-11s %-8s %s\n", "SERVICE", "CONFIGURED", "ENABLED", "READY")
 	for _, svc := range reg.List() {

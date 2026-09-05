@@ -1,5 +1,6 @@
 // `kit serve` is the reference implementation of the engine wire
-// protocol. Routes, request/response shapes, status codes, and the
+// protocol, served as kit's own api service (see engine below).
+// Routes, request/response shapes, status codes, and the
 // error envelope below conform to docs/engine-protocol.md, with
 // per-row protocol-of-record decisions captured in
 // docs/adr/0018-engine-sdk-protocol-reconciliation.md (audit:
@@ -15,20 +16,25 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	stdsync "sync"
 	"time"
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/engine/store"
+	"hop.top/kit/go/ai/toolspec"
 	"hop.top/kit/go/console/cli"
 	kitlog "hop.top/kit/go/console/log"
+	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/runtime/bus"
 	kitsync "hop.top/kit/go/runtime/sync"
 	"hop.top/kit/go/storage/secret"
@@ -96,190 +102,311 @@ func serveNetOpts(cmd *cobra.Command) (noPeer, noSync bool) {
 	return noPeer, noSync
 }
 
-func serveCmd(root *cli.Root) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "serve",
-		Short: "Start the document engine HTTP server",
-		Long: "Run the kit document-engine HTTP server: schema-validated " +
-			"REST routes for document CRUD plus history/branching/pruning, " +
-			"WebSocket event stream, peer sync, and Bearer-token auth. " +
-			"--port 0 (default) lets the kernel pick a free port; --data " +
-			"selects the on-disk SQLite store location.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			port, _ := cmd.Flags().GetInt("port")
-			dataDir, _ := cmd.Flags().GetString("data")
-			noPeer, noSync := serveNetOpts(cmd)
-			versionsBackend, _ := cmd.Flags().GetString("versions")
-
-			if err := os.MkdirAll(dataDir, 0o755); err != nil {
-				return fmt.Errorf("create data dir: %w", err)
-			}
-
-			ds, err := store.NewDocumentStore(filepath.Join(dataDir, "documents.db"))
-			if err != nil {
-				return err
-			}
-			defer func() { _ = ds.Close() }()
-
-			var vstore store.VersionStore
-			switch versionsBackend {
-			case "memory":
-				vstore = store.NewInMemoryVersionStore()
-			case "", "sqlite":
-				vstore, err = store.NewSQLiteVersionStore(ds.DB())
-				if err != nil {
-					return fmt.Errorf("init sqlite version store: %w", err)
-				}
-			default:
-				return fmt.Errorf("unknown --versions backend %q (want sqlite|memory)", versionsBackend)
-			}
-			vds := store.NewVersionedDocumentStore(ds, vstore)
-
-			ctx, cancel := context.WithCancel(cmd.Context())
-			defer cancel()
-
-			logger := kitlog.New(root.Viper)
-
-			// Document mutation event bus. Sibling tools (sync workers,
-			// indexers, observers) subscribe via kit/runtime/bus to
-			// receive kit.engine.document.{created,updated,deleted} on
-			// every successful HTTP write. See cmd/kit/events.go.
-			eventBus := bus.New()
-			defer func() {
-				closeCtx, closeCancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer closeCancel()
-				_ = eventBus.Close(closeCtx)
-			}()
-
-			mws := []api.Middleware{
-				api.RequestID(),
-				api.Logger(logger.Info),
-				api.Recovery(func(v any, r *http.Request) {
-					logger.Error("panic", "error", v, "path", r.URL.Path)
-				}),
-				api.ContentType("application/json"),
-			}
-
-			// Mint the auth and shutdown tokens via the kit secret
-			// store so the reference implementation models the
-			// canonical pattern: callers should never mint random
-			// bearer tokens directly.
-			secrets, err := secret.Open(secret.Config{Backend: "memory", Service: "kit-engine"})
-			if err != nil {
-				return fmt.Errorf("open secret store: %w", err)
-			}
-			authToken, err := secret.Mint(ctx, secrets, "auth-token", 16)
-			if err != nil {
-				return fmt.Errorf("mint auth token: %w", err)
-			}
-			shutdownToken, err := secret.Mint(ctx, secrets, "shutdown-token", 16)
-			if err != nil {
-				return fmt.Errorf("mint shutdown token: %w", err)
-			}
-
-			mws = append(mws, requireAuth(authToken, shutdownToken))
-
-			router := api.NewRouter(
-				api.WithMiddleware(mws...),
-				api.WithCapabilities("kit-engine", version),
-			)
-
-			registerDocumentRoutes(router, vds, eventBus)
-			registerHistoryRoutes(router, vds, vstore)
-			registerBranchingRoutes(router, vds, vstore)
-			registerPruningRoutes(router, vds)
-			if !noSync {
-				registerSyncRoutes(router)
-			}
-			if root.Identity != nil {
-				registerIdentityRoutes(router, root)
-			}
-			if root.Mesh != nil && !noPeer {
-				registerPeerRoutes(router, root)
-			}
-
-			hub := api.NewHub()
-			go hub.Run(ctx)
-			router.Handle("GET", "/events", api.WSHandler(hub))
-			startedAt := time.Now()
-			router.Handle("GET", "/health", func(w http.ResponseWriter, _ *http.Request) {
-				_ = json.NewEncoder(w).Encode(map[string]any{
-					"status":         "ok",
-					"pid":            os.Getpid(),
-					"uptime_seconds": int(time.Since(startedAt).Seconds()),
-				})
-			})
-			router.Handle("POST", "/shutdown", func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("Authorization") != "Bearer "+shutdownToken {
-					jsonError(w, http.StatusUnauthorized, "invalid token")
-					return
-				}
-				w.WriteHeader(http.StatusNoContent)
-				if f, ok := w.(http.Flusher); ok {
-					f.Flush()
-				}
-				go cancel()
-			})
-
-			ln, err := net.Listen("tcp", ":"+strconv.Itoa(port))
-			if err != nil {
-				return fmt.Errorf("listen: %w", err)
-			}
-			addr := ln.Addr().(*net.TCPAddr)
-			startupJSON, _ := json.Marshal(map[string]any{
-				"port":           addr.Port,
-				"pid":            os.Getpid(),
-				"token":          authToken,
-				"shutdown_token": shutdownToken,
-			})
-			fmt.Fprintln(os.Stdout, string(startupJSON))
-
-			if root.Mesh != nil && !noPeer {
-				go func() {
-					if err := root.Mesh.Start(ctx); err != nil {
-						logger.Error("mesh start", "error", err)
-					}
-				}()
-			}
-
-			srv := &http.Server{Handler: router}
-			errCh := make(chan error, 1)
-			go func() { errCh <- srv.Serve(ln) }()
-
-			select {
-			case err := <-errCh:
-				return err
-			case <-ctx.Done():
-				shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer shutCancel()
-				return srv.Shutdown(shutCtx)
-			}
-		},
-	}
-
-	xdg := os.Getenv("XDG_DATA_HOME")
-	if xdg == "" {
-		home, _ := os.UserHomeDir()
-		xdg = filepath.Join(home, ".local", "share")
-	}
-	defaultData := filepath.Join(xdg, "kit-engine")
-
-	cmd.Flags().Int("port", 0, "Listen port (0 = auto-assign)")
-	cmd.Flags().String("data", defaultData, "Data directory")
-	cmd.Flags().String("app", "", "Application namespace")
-	cmd.Flags().Bool("daemon", false, "Detach and write PID file")
-	cmd.Flags().Bool("no-peer", false, "Disable mDNS peer discovery")
-	cmd.Flags().Bool("no-sync", false, "Disable sync replication")
-	cmd.Flags().Bool("encrypt", false, "Encrypt data at rest")
-	cmd.Flags().String("versions", "sqlite", "Version-history backend (sqlite|memory). sqlite is durable across restarts; memory is ephemeral.")
-
-	cli.SetSideEffect(cmd, cli.SideEffectWrite)
-	cli.SetIdempotency(cmd, cli.IdempotencyNo)
-	cli.SetTopLevelVerb(cmd)
-	return cmd
+// routeRegistrar is the slice of *api.Router the engine's route
+// registrars need. The api service builds the router; the engine wraps
+// it in a capRouter so every route also lands in the /capabilities set
+// the leaf `serve` command used to get from api.WithCapabilities.
+type routeRegistrar interface {
+	Handle(method, path string, handler http.HandlerFunc)
 }
 
-func registerDocumentRoutes(router *api.Router, vds *store.VersionedDocumentStore, eventBus bus.Bus, opts ...EventOption) {
+// engine is the document engine behind `kit serve`: the stores it
+// opens before the api service starts, the tokens it mints for the
+// run, and the bus its document events publish to.
+//
+// It is the adopter side of kit's own migration from a hand-written
+// leaf `serve` command to the api service: the routes are unchanged,
+// the server, the listener, the startup line and the shutdown are the
+// service's. See docs/adopters/guides/migrate-to-served-commands.md.
+type engine struct {
+	bus bus.Bus
+
+	dataDir  string
+	versions string
+	noPeer   bool
+	noSync   bool
+
+	ds     *store.DocumentStore
+	vstore store.VersionStore
+	vds    *store.VersionedDocumentStore
+
+	authToken     string
+	shutdownToken string
+
+	// bg bounds the goroutines the routes start (the WebSocket hub, the
+	// mesh); close ends them.
+	bg       context.Context
+	bgCancel context.CancelFunc
+}
+
+func newEngine() *engine {
+	bg, cancel := context.WithCancel(context.Background())
+	return &engine{bus: bus.New(), bg: bg, bgCancel: cancel}
+}
+
+// close releases what prepare opened. Idempotent.
+func (e *engine) close() {
+	e.bgCancel()
+	if e.ds != nil {
+		_ = e.ds.Close()
+		e.ds = nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = e.bus.Close(ctx)
+}
+
+// mountFlags puts the engine's flags on the kit-owned serve parent,
+// beside the api service's own --addr. They predate the hierarchy and
+// every SDK sidecar passes them, so they stay where scripts expect
+// them; each configures the api service and nothing else.
+func (e *engine) mountFlags(root *cli.Root) {
+	for _, c := range root.Cmd.Commands() {
+		if c.Name() != "serve" {
+			continue
+		}
+		xdgData := os.Getenv("XDG_DATA_HOME")
+		if xdgData == "" {
+			home, _ := os.UserHomeDir()
+			xdgData = filepath.Join(home, ".local", "share")
+		}
+		c.Flags().Int("port", 0, "Listen port for the api service on loopback (0 = auto-assign); --addr overrides it")
+		c.Flags().String("data", filepath.Join(xdgData, "kit-engine"), "Data directory")
+		c.Flags().String("app", "", "Application namespace")
+		c.Flags().Bool("daemon", false, "Detach and write PID file")
+		c.Flags().Bool("no-peer", false, "Disable mDNS peer discovery")
+		c.Flags().Bool("no-sync", false, "Disable sync replication")
+		c.Flags().Bool("encrypt", false, "Encrypt data at rest")
+		c.Flags().String("versions", "sqlite", "Version-history backend (sqlite|memory). sqlite is durable across restarts; memory is ephemeral.")
+		c.Long += "\n\nThe api service is the kit document engine: schema-validated REST\n" +
+			"routes for document CRUD plus history, branching and pruning, a\n" +
+			"WebSocket event stream at /events, peer sync, and Bearer-token auth\n" +
+			"on every write. --port, --data, --versions, --no-peer and --no-sync\n" +
+			"configure it; the startup JSON line on stdout carries the bound port\n" +
+			"and the tokens for this run."
+		return
+	}
+}
+
+// prepare is the root's PrePersistentRunE hook. For a `serve` that
+// will start the api service it maps --port onto the service's listen
+// address, opens the stores and mints the tokens, so a bad data
+// directory is refused before anything binds. Every other command,
+// `serve --list`, and a `serve <other service>` pass through untouched.
+func (e *engine) prepare(root *cli.Root, cmd *cobra.Command, args []string) error {
+	if cmd.Name() != "serve" {
+		return nil
+	}
+	if list, _ := cmd.Flags().GetBool("list"); list {
+		return nil
+	}
+	if len(args) == 1 && args[0] != cli.APIServiceName {
+		return nil
+	}
+
+	if port := cmd.Flags().Lookup("port"); port != nil && port.Changed {
+		if addr := cmd.Flags().Lookup("addr"); addr == nil || !addr.Changed {
+			p, _ := cmd.Flags().GetInt("port")
+			root.Viper.Set("services.api.addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(p)))
+		}
+	}
+
+	e.dataDir, _ = cmd.Flags().GetString("data")
+	e.versions, _ = cmd.Flags().GetString("versions")
+	e.noPeer, e.noSync = serveNetOpts(cmd)
+
+	if err := os.MkdirAll(e.dataDir, 0o755); err != nil {
+		return fmt.Errorf("create data dir: %w", err)
+	}
+	ds, err := store.NewDocumentStore(filepath.Join(e.dataDir, "documents.db"))
+	if err != nil {
+		return err
+	}
+	e.ds = ds
+	switch e.versions {
+	case "memory":
+		e.vstore = store.NewInMemoryVersionStore()
+	case "", "sqlite":
+		e.vstore, err = store.NewSQLiteVersionStore(ds.DB())
+		if err != nil {
+			return fmt.Errorf("init sqlite version store: %w", err)
+		}
+	default:
+		return fmt.Errorf("unknown --versions backend %q (want sqlite|memory)", e.versions)
+	}
+	e.vds = store.NewVersionedDocumentStore(ds, e.vstore)
+
+	// Mint the auth and shutdown tokens via the kit secret store so the
+	// reference implementation models the canonical pattern: callers
+	// should never mint random bearer tokens directly.
+	secrets, err := secret.Open(secret.Config{Backend: "memory", Service: "kit-engine"})
+	if err != nil {
+		return fmt.Errorf("open secret store: %w", err)
+	}
+	if e.authToken, err = secret.Mint(cmd.Context(), secrets, "auth-token", 16); err != nil {
+		return fmt.Errorf("mint auth token: %w", err)
+	}
+	if e.shutdownToken, err = secret.Mint(cmd.Context(), secrets, "shutdown-token", 16); err != nil {
+		return fmt.Errorf("mint shutdown token: %w", err)
+	}
+	return nil
+}
+
+// auth is the api service's AuthFunc, with the engine's rule: reads
+// are open, everything else carries one of the run's bearer tokens.
+// Setting it is also what lets an operator move the api off loopback
+// with --addr; the reads stay open there as they were.
+func (e *engine) auth(r *http.Request) (any, error) {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		return nil, nil
+	}
+	got := r.Header.Get("Authorization")
+	for _, t := range []string{e.authToken, e.shutdownToken} {
+		if t != "" && got == "Bearer "+t {
+			return api.Claims{Subject: "kit-engine"}, nil
+		}
+	}
+	return nil, errors.New("unauthorized")
+}
+
+// registerRoutes is the api service's Handlers hook. It runs when the
+// service starts — after prepare opened the stores — and mounts the
+// engine's routes ahead of the command projection, so they keep every
+// path they had.
+func (e *engine) registerRoutes(router *api.Router, root *cli.Root) {
+	{
+		cr := &capRouter{Router: router, cs: toolspec.NewCapabilitySet("kit-engine", version)}
+
+		registerDocumentRoutes(cr, e.vds, e.bus)
+		registerHistoryRoutes(cr, e.vds, e.vstore)
+		registerBranchingRoutes(cr, e.vds, e.vstore)
+		registerPruningRoutes(cr, e.vds)
+		if !e.noSync {
+			registerSyncRoutes(cr)
+		}
+		if root.Identity != nil {
+			registerIdentityRoutes(cr, root)
+		}
+		if root.Mesh != nil && !e.noPeer {
+			registerPeerRoutes(cr, root)
+			go func() {
+				if err := root.Mesh.Start(e.bg); err != nil {
+					kitlog.New(root.Viper).Error("mesh start", "error", err)
+				}
+			}()
+		}
+
+		hub := api.NewHub()
+		go hub.Run(e.bg)
+		cr.Handle("GET", "/events", api.WSHandler(hub))
+
+		startedAt := time.Now()
+		cr.Handle("GET", "/health", func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":         "ok",
+				"pid":            os.Getpid(),
+				"uptime_seconds": int(time.Since(startedAt).Seconds()),
+			})
+		})
+		cr.Handle("POST", "/shutdown", e.shutdown(root))
+		cr.Handle("GET", "/capabilities", cr.capabilities)
+	}
+}
+
+// shutdown stops the api service on request. Stopping the service
+// makes its Start return cleanly, which ends the supervisor's run the
+// same way a signal would: exit 0, stores closed by main.
+func (e *engine) shutdown(root *cli.Root) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+e.shutdownToken {
+			jsonError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		svc, ok := root.ServeRegistry().Lookup(cli.APIServiceName)
+		if !ok {
+			return
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = svc.Stop(ctx)
+		}()
+	}
+}
+
+// announce prints the startup JSON line the SDK sidecars read — port,
+// pid, and the two tokens — when the api service reports ready. The
+// bound port is knowable only then, which is why the line rides on
+// kit.serve.service.ready_reported rather than being printed by a
+// command that no longer owns the listener.
+func (e *engine) announce(out io.Writer) {
+	e.bus.Subscribe("kit.serve.service.ready_reported", func(_ context.Context, ev bus.Event) error {
+		p, ok := ev.Payload.(serve.EventPayload)
+		if !ok || p.Service != cli.APIServiceName {
+			return nil
+		}
+		_, portStr, err := net.SplitHostPort(p.Address)
+		if err != nil {
+			return nil
+		}
+		port, _ := strconv.Atoi(portStr)
+		line, _ := json.Marshal(map[string]any{
+			"port":           port,
+			"pid":            os.Getpid(),
+			"token":          e.authToken,
+			"shutdown_token": e.shutdownToken,
+		})
+		fmt.Fprintln(out, string(line))
+		return nil
+	})
+}
+
+// capRouter records every route the engine registers so GET
+// /capabilities can describe them, the way api.WithCapabilities did on
+// the leaf command's own router.
+type capRouter struct {
+	*api.Router
+	cs      toolspec.CapabilitySet
+	methods map[string][]string
+	paths   []string
+}
+
+func (c *capRouter) Handle(method, path string, handler http.HandlerFunc) {
+	if c.methods == nil {
+		c.methods = map[string][]string{}
+	}
+	if _, seen := c.methods[path]; !seen {
+		c.paths = append(c.paths, path)
+	}
+	c.methods[path] = append(c.methods[path], method)
+	c.Router.Handle(method, path, handler)
+}
+
+func (c *capRouter) capabilities(w http.ResponseWriter, _ *http.Request) {
+	if len(c.cs.Capabilities) == 0 {
+		paths := append([]string(nil), c.paths...)
+		sort.Strings(paths)
+		for _, p := range paths {
+			c.cs.Add(toolspec.Capability{
+				Name: "endpoint:" + p, Type: "endpoint", Path: p, Methods: c.methods[p],
+			})
+		}
+	}
+	body, err := c.cs.JSON()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "failed to serialize capabilities")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
+func registerDocumentRoutes(router routeRegistrar, vds *store.VersionedDocumentStore, eventBus bus.Bus, opts ...EventOption) {
 	cfg := newEventConfig(opts...)
 	router.Handle("POST", "/{type}/", func(w http.ResponseWriter, r *http.Request) {
 		docType := api.PathParam(r, "type")
@@ -406,7 +533,7 @@ func registerDocumentRoutes(router *api.Router, vds *store.VersionedDocumentStor
 // vs is consulted directly for DAG topology since
 // [store.VersionedDocumentStore] does not surface parent edges
 // today.
-func registerHistoryRoutes(router *api.Router, vds *store.VersionedDocumentStore, vs store.VersionStore) {
+func registerHistoryRoutes(router routeRegistrar, vds *store.VersionedDocumentStore, vs store.VersionStore) {
 	router.Handle("GET", "/{type}/{id}/history", func(w http.ResponseWriter, r *http.Request) {
 		docType := api.PathParam(r, "type")
 		if !validType(docType) {
@@ -494,7 +621,7 @@ func registerHistoryRoutes(router *api.Router, vds *store.VersionedDocumentStore
 	})
 }
 
-func registerSyncRoutes(router *api.Router) {
+func registerSyncRoutes(router routeRegistrar) {
 	type remote struct {
 		Name   string `json:"name"`
 		URL    string `json:"url"`
@@ -581,7 +708,7 @@ func registerSyncRoutes(router *api.Router) {
 	})
 }
 
-func registerIdentityRoutes(router *api.Router, root *cli.Root) {
+func registerIdentityRoutes(router routeRegistrar, root *cli.Root) {
 	router.Handle("GET", "/identity", func(w http.ResponseWriter, _ *http.Request) {
 		pubPEM, _ := root.Identity.MarshalPublicKey()
 		_ = json.NewEncoder(w).Encode(map[string]string{
@@ -611,30 +738,7 @@ func registerIdentityRoutes(router *api.Router, root *cli.Root) {
 	})
 }
 
-// requireAuth accepts any of the supplied bearer tokens for non-GET/HEAD
-// requests. The shutdown route has its own additional check for its
-// dedicated token; the middleware just gates the auth header at the
-// transport level.
-func requireAuth(tokens ...string) api.Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == "GET" || r.Method == "HEAD" {
-				next.ServeHTTP(w, r)
-				return
-			}
-			auth := r.Header.Get("Authorization")
-			for _, t := range tokens {
-				if t != "" && auth == "Bearer "+t {
-					next.ServeHTTP(w, r)
-					return
-				}
-			}
-			jsonError(w, http.StatusUnauthorized, "unauthorized")
-		})
-	}
-}
-
-func registerPeerRoutes(router *api.Router, root *cli.Root) {
+func registerPeerRoutes(router routeRegistrar, root *cli.Root) {
 	router.Handle("GET", "/peers", func(w http.ResponseWriter, _ *http.Request) {
 		peers := root.Mesh.Peers()
 		_ = json.NewEncoder(w).Encode(peers)

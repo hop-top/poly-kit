@@ -134,6 +134,17 @@ func fixtureRoot() *cobra.Command {
 		},
 	})
 
+	// A nested serve: a command named serve below depth 1 starts a
+	// server of its own and is self-hosting by name at any depth.
+	svc := &cobra.Command{Use: "svc", Short: "service commands"}
+	svc.AddCommand(&cobra.Command{
+		Use:         "serve",
+		Short:       "start the grading service",
+		Run:         func(*cobra.Command, []string) {},
+		Annotations: map[string]string{annSideEffect: "write"},
+	})
+	root.AddCommand(svc)
+
 	// Management-only: the spec subcommand.
 	root.AddCommand(&cobra.Command{
 		Use:   "spec",

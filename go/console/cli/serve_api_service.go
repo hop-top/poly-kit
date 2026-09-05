@@ -379,6 +379,13 @@ func projectedPathOf(urlPath string) []string {
 // A services.api.enabled key in config still wins, so an adopter that
 // has migrated can turn it off without removing the option.
 func applyAPICompat(cmd *cobra.Command, root *Root, configs map[string]serve.Config) {
+	applyAPIFlags(cmd, root)
+	applyAPIEnabledDefault(root, configs)
+}
+
+// applyAPIFlags carries the serve parent's --addr, --no-auth and
+// --insecure-remote onto the api service.
+func applyAPIFlags(cmd *cobra.Command, root *Root) {
 	if root.apiCfg == nil || root.serveReg == nil {
 		return
 	}
@@ -386,20 +393,34 @@ func applyAPICompat(cmd *cobra.Command, root *Root, configs map[string]serve.Con
 	if !ok {
 		return
 	}
-
-	if a, isAPI := svc.(*apiService); isAPI {
-		if f := cmd.Flags().Lookup("addr"); f != nil && f.Changed {
-			addr, _ := cmd.Flags().GetString("addr")
-			a.cfg.Addr = addr
-		}
-		if noAuth, err := cmd.Flags().GetBool("no-auth"); err == nil {
-			a.noAuth = noAuth
-		}
-		if f := cmd.Flags().Lookup(insecureRemoteFlag); f != nil && f.Changed {
-			a.insecureFlag, _ = cmd.Flags().GetBool(insecureRemoteFlag)
-		}
+	a, isAPI := svc.(*apiService)
+	if !isAPI {
+		return
 	}
+	if f := cmd.Flags().Lookup("addr"); f != nil && f.Changed {
+		addr, _ := cmd.Flags().GetString("addr")
+		a.cfg.Addr = addr
+	}
+	if noAuth, err := cmd.Flags().GetBool("no-auth"); err == nil {
+		a.noAuth = noAuth
+	}
+	if f := cmd.Flags().Lookup(insecureRemoteFlag); f != nil && f.Changed {
+		a.insecureFlag, _ = cmd.Flags().GetBool(insecureRemoteFlag)
+	}
+}
 
+// applyAPIEnabledDefault resolves WithAPI's default-on enablement into
+// configs. It is the one place that resolution lives: the supervisor
+// consults it before starting, and `serve --list` consults it before
+// reporting, so the listing never says "not enabled" about a service
+// a bare `serve` is about to start.
+func applyAPIEnabledDefault(root *Root, configs map[string]serve.Config) {
+	if root.apiCfg == nil || root.serveReg == nil {
+		return
+	}
+	if _, ok := root.serveReg.Lookup(APIServiceName); !ok {
+		return
+	}
 	explicitlyConfigured := root.Viper != nil &&
 		root.Viper.IsSet(serveKeyPrefix+APIServiceName+serveSubkeyEnabled)
 	if explicitlyConfigured {

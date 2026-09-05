@@ -17,6 +17,7 @@ import (
 	"hop.top/kit/go/console/output"
 	coreconfig "hop.top/kit/go/core/config"
 	uxpcmd "hop.top/kit/go/core/uxp/invoke/cmd/uxp"
+	"hop.top/kit/go/transport/api"
 )
 
 var version = "dev"
@@ -58,8 +59,20 @@ func applyCommandGroups(root *cli.Root) {
 	}
 }
 
-func main() {
-	root := cli.New(cli.Config{
+// newKitRoot builds kit's own root: the reserved verbs, identity and
+// peers, and the two kit-shipped services with the document engine
+// riding on the api service. main and the tests share it so the tree
+// under test is the tree that ships.
+//
+// The engine is an adopter of kit's serve capability like any other:
+// WithAPI registers the api service, the engine's routes reach it
+// through APIConfig.Handlers, its flags sit on the serve parent, and
+// the startup line the SDK sidecars read rides on the readiness event.
+// Nothing here mounts a server by hand.
+func newKitRoot(version string) (*cli.Root, *engine) {
+	eng := newEngine()
+	var root *cli.Root
+	root = cli.New(cli.Config{
 		Name:    "kit",
 		Version: version,
 		Short:   "Generic document engine for kit apps",
@@ -74,6 +87,11 @@ func main() {
 				{ID: "instance", Title: "INSTANCE"},
 			},
 		},
+		Hooks: cli.Hooks{
+			PrePersistentRunE: func(cmd *cobra.Command, args []string) error {
+				return eng.prepare(root, cmd, args)
+			},
+		},
 	},
 		cli.WithIdentity(cli.IdentityConfig{}),
 		cli.WithPeers(cli.PeerConfig{}),
@@ -84,8 +102,25 @@ func main() {
 		// adopters who fork kit add their own via
 		// root.RegisterStatusProvider before Execute.
 		cli.WithStatus(cli.StatusConfig{}),
+		// The api service carries the document engine. A wildcard
+		// loopback port keeps `kit serve` auto-assigning as the leaf
+		// command did; Auth is the engine's own rule (reads open, writes
+		// need the run's bearer token).
+		cli.WithAPI(cli.APIConfig{
+			Addr: "127.0.0.1:0",
+			Auth: eng.auth,
+			// root is assigned by the time the service starts; the
+			// closure reads it then, not now.
+			Handlers: func(r *api.Router) { eng.registerRoutes(r, root) },
+		}),
+		// The socket service: kit's own commands over an owner-only Unix
+		// socket. Registered, not enabled; `kit serve socket` starts it.
+		cli.WithSocket(cli.SocketConfig{}),
+		cli.WithServiceBus(eng.bus),
 	)
-	root.Cmd.AddCommand(serveCmd(root))
+	eng.mountFlags(root)
+	eng.announce(os.Stdout)
+
 	root.Cmd.AddCommand(kitinit.InitCmd(root))
 	root.Cmd.AddCommand(kittmpl.GroupCmd(root))
 	root.Cmd.AddCommand(symlinkCmd(root))
@@ -98,8 +133,15 @@ func main() {
 	root.Cmd.AddCommand(uxpcmd.Cmd())
 
 	applyCommandGroups(root)
+	return root, eng
+}
+
+func main() {
+	root, eng := newKitRoot(version)
+	defer eng.close()
 
 	if err := root.Execute(context.Background()); err != nil {
+		eng.close()
 		// The kit RunE middleware wraps every leaf error into an
 		// *output.Error envelope carrying the authoritative ExitCode.
 		// Honor it: typed AsCLIError errors (envelopes, conformance

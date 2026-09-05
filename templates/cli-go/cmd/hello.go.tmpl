@@ -1,0 +1,55 @@
+package cmd
+
+import (
+	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/output"
+)
+
+// Greeting is what hello prints. The json tags name the fields of the
+// structured output (--format json on the CLI, `data` over REST and
+// the socket); the table tags name the columns of the default
+// rendering.
+type Greeting struct {
+	Name    string `json:"name" table:"NAME"`
+	Message string `json:"message" table:"MESSAGE"`
+}
+
+func init() {
+	root.Cmd.AddCommand(helloCmd())
+}
+
+// helloCmd is the sample command: a read-only leaf that declares its
+// output schema. Copy it to add a command of your own. The
+// annotations at the bottom are what kit validates at startup and
+// what decides how the command is served: a read is a GET, a write is
+// a POST, a destructive command is withheld until you permit it.
+func helloCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "hello [name]",
+		Short: "Print a greeting",
+		Long:  "Print a greeting for name, or for the world when no name is given.",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := "world"
+			if len(args) == 1 {
+				name = args[0]
+			}
+			greeting := Greeting{Name: name, Message: "Hello, " + name + "!"}
+			return output.Dispatch(cmd, root.Viper, []Greeting{greeting})
+		},
+	}
+	cli.SetSideEffect(cmd, cli.SideEffectRead)
+	cli.SetIdempotency(cmd, cli.IdempotencyYes)
+	cli.SetTopLevelVerb(cmd)
+	// The schema is what makes `data` real on every served surface.
+	if err := cli.SetOutputSchema(cmd, cli.OutputSchema{Type: &[]Greeting{}, Version: "1.0"}); err != nil {
+		panic(err)
+	}
+	_ = cli.SetExamples(cmd, []cli.Example{
+		{Title: "Greet the world", Command: "{{.Name}} hello"},
+		{Title: "Greet someone, as data", Command: "{{.Name}} hello Ada --format json"},
+	})
+	return cmd
+}

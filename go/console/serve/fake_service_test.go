@@ -39,6 +39,10 @@ type fake struct {
 	// neverReady suppresses the ready report, so the service
 	// exhausts its readiness budget.
 	neverReady bool
+	// exitAfter makes Start return nil on its own after the duration,
+	// the way a service stops itself (an api service whose /shutdown
+	// route stopped it).
+	exitAfter time.Duration
 	// stopDelay makes Stop overrun its budget.
 	stopDelay time.Duration
 	// abandoned is closed when Stop observes its budget expiring.
@@ -91,6 +95,16 @@ func (f *fake) Start(ctx context.Context, report func()) error {
 		}
 		f.trace.add("fail:" + f.name)
 		return f.startErr
+	}
+
+	if f.exitAfter > 0 {
+		select {
+		case <-time.After(f.exitAfter):
+			f.trace.add("exit:" + f.name)
+			return nil
+		case <-ctx.Done():
+			return nil
+		}
 	}
 
 	<-ctx.Done()
