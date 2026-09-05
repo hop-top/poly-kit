@@ -60,6 +60,7 @@
   },
 
   "extends": [
-    "scope-defaults.json"
+    "scope-defaults.json",
+    "serve.json"
   ]
 }
