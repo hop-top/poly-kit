@@ -7,6 +7,7 @@ namespace HopTop\Kit\Tests\Serve;
 use HopTop\Kit\Output\Flags;
 use HopTop\Kit\Output\Formatter\Builtin\JsonFormatter;
 use HopTop\Kit\Output\Registry;
+use HopTop\Kit\Serve\FlagOverrides;
 use HopTop\Kit\Serve\PolicyGate;
 use HopTop\Kit\Serve\PolicyVerdict;
 use HopTop\Kit\Serve\ServeCommand;
@@ -244,6 +245,168 @@ final class ServeCommandTest extends TestCase
 
         $this->assertSame(0, $svc->startCount);
         $this->assertSame(2, $tester->getStatusCode());
+    }
+
+    // -- --enable / --disable ------------------------------------------
+
+    public function testEnableIsRepeatableAndMakesAnUnconfiguredServiceConfiguredAndEnabled(): void
+    {
+        // Neither service has a config block: the flag is what
+        // configures each one, and naming both starts both.
+        $a = new FakeService('alpha', finishAfterTicks: 2);
+        $b = new FakeService('beta', finishAfterTicks: 2);
+        [$tester] = self::tester(self::registryOf($a, $b), []);
+        $tester->execute(['--enable' => ['alpha', 'beta']]);
+
+        $this->assertSame(1, $a->startCount);
+        $this->assertSame(1, $b->startCount);
+        $this->assertSame(0, $tester->getStatusCode());
+    }
+
+    public function testDisableSkipsAnEnabledServiceSilentlyUnderTheSupervisorForm(): void
+    {
+        $on = new FakeService('on', finishAfterTicks: 2);
+        $off = new FakeService('off', finishAfterTicks: 2);
+        [$tester] = self::tester(self::registryOf($on, $off), self::enabled(['on', 'off']));
+        $tester->execute(['--disable' => ['off']]);
+
+        $this->assertSame(1, $on->startCount);
+        $this->assertSame(0, $off->startCount);
+        $this->assertSame(0, $tester->getStatusCode());
+    }
+
+    public function testDisablingEveryEnabledServiceLeavesNothingToRunAndExitsTwo(): void
+    {
+        // finishAfterTicks keeps a regression from hanging the suite: a
+        // service the flag failed to disable would otherwise wait for a
+        // signal.
+        [$tester] = self::tester(
+            self::registryOf(new FakeService('api', finishAfterTicks: 2)),
+            self::enabled(['api']),
+        );
+        $tester->execute(['--disable' => ['api']]);
+        $this->assertSame(2, $tester->getStatusCode());
+    }
+
+    /** @return iterable<string, array{0: string}> */
+    public static function enableDisableFlags(): iterable
+    {
+        yield '--enable' => ['--enable'];
+        yield '--disable' => ['--disable'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('enableDisableFlags')]
+    public function testEnableAndDisableAreRefusedUnderTheSelectorForm(string $flag): void
+    {
+        $svc = new FakeService('api', finishAfterTicks: 2);
+        [$tester] = self::tester(self::registryOf($svc), self::enabled(['api']));
+        $tester->execute(['service' => ['api'], $flag => ['api']]);
+
+        $this->assertSame(0, $svc->startCount);
+        $this->assertSame(2, $tester->getStatusCode());
+    }
+
+    public function testFlagsDoNotLeakIntoALaterRunOnTheSameCommand(): void
+    {
+        // The command's configs are what a second serve in one process
+        // reads; a run's flags must not survive it.
+        $svc = new FakeService('api', finishAfterTicks: 2);
+        [$tester] = self::tester(self::registryOf($svc), self::enabled(['api']));
+        $tester->execute(['--disable' => ['api']]);
+        $this->assertSame(2, $tester->getStatusCode());
+
+        $tester->execute([]);
+        $this->assertSame(1, $svc->startCount);
+        $this->assertSame(0, $tester->getStatusCode());
+    }
+
+    // -- timeout flags ---------------------------------------------------
+
+    public function testReadyTimeoutBoundsStartForEveryResolvedService(): void
+    {
+        // Without the flag the default 30s budget would outlive the
+        // test; the flag is what turns a never-ready service into a
+        // start failure, and the elapsed bound is what proves it.
+        [$tester] = self::tester(
+            self::registryOf(new FakeService('api', readyAfterTicks: 1_000_000)),
+            self::enabled(['api']),
+        );
+        $started = microtime(true);
+        $tester->execute(['--ready-timeout' => '50ms']);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertLessThan(5.0, microtime(true) - $started);
+    }
+
+    public function testShutdownTimeoutBoundsTheWholeStop(): void
+    {
+        [$tester] = self::tester(
+            self::registryOf(new FakeService('api', finishAfterTicks: 2, stopDelay: 0.05)),
+            self::enabled(['api']),
+        );
+        $tester->execute(['service' => ['api'], '--stop-timeout' => '10ms', '--shutdown-timeout' => '1ms']);
+        $this->assertSame(1, $tester->getStatusCode());
+    }
+
+    public function testAnUnparseableDurationIsUsageExitTwo(): void
+    {
+        $svc = new FakeService('api', finishAfterTicks: 2);
+        [$tester] = self::tester(self::registryOf($svc), self::enabled(['api']));
+        $tester->execute(['--ready-timeout' => '30x']);
+
+        $this->assertSame(0, $svc->startCount);
+        $this->assertSame(2, $tester->getStatusCode());
+    }
+
+    // -- the pure overrides ----------------------------------------------
+
+    public function testApplyEnableDisableMakesAnUnconfiguredServiceConfiguredAndEnabled(): void
+    {
+        $out = FlagOverrides::applyEnableDisable([], ['api'], []);
+        $this->assertTrue($out['api']->enabled);
+    }
+
+    public function testApplyEnableDisableClearsEnablementAndKeepsBudgets(): void
+    {
+        $out = FlagOverrides::applyEnableDisable(
+            ['api' => new ServiceConfig(enabled: true, readyTimeout: 5.0)],
+            [],
+            ['api'],
+        );
+        $this->assertFalse($out['api']->enabled);
+        $this->assertSame(5.0, $out['api']->readyTimeout);
+    }
+
+    public function testApplyEnableDisableIgnoresAnUnconfiguredDisable(): void
+    {
+        $this->assertSame([], FlagOverrides::applyEnableDisable([], [], ['ghost']));
+    }
+
+    public function testApplyEnableDisableLetsEnableWinOverDisable(): void
+    {
+        $out = FlagOverrides::applyEnableDisable([], ['api'], ['api']);
+        $this->assertTrue($out['api']->enabled);
+    }
+
+    public function testApplyTimeoutsAppliesOneBudgetToEveryService(): void
+    {
+        $out = FlagOverrides::applyTimeouts(
+            ['a' => new ServiceConfig(enabled: true), 'b' => new ServiceConfig(stopTimeout: 1.0)],
+            10.0,
+            20.0,
+        );
+        $this->assertTrue($out['a']->enabled);
+        $this->assertFalse($out['b']->enabled);
+        foreach (['a', 'b'] as $name) {
+            $this->assertSame(10.0, $out[$name]->readyTimeout);
+            $this->assertSame(20.0, $out[$name]->stopTimeout);
+        }
+    }
+
+    public function testApplyTimeoutsLeavesTheMapAloneWithoutFlags(): void
+    {
+        $src = ['a' => new ServiceConfig(readyTimeout: 7.0)];
+        $this->assertSame($src, FlagOverrides::applyTimeouts($src, null, null));
     }
 
     public function testSupervisorFormStartsEveryEnabledService(): void
