@@ -274,8 +274,104 @@ render(process.stdout, JSON_FORMAT, { ok: true });
   action resolution, completions, registries, and OS handler metadata.
 - `@hop-top/kit/tui` — TUI toolkit (parity, anim, prompts).
 - `@hop-top/kit/mcp` — dual-spec MCP surface (see [MCP surface](#mcp-surface)).
+- `@hop-top/kit/serve` — the serve hierarchy and service lifecycle (see
+  [Serve](#serve)).
 
 See package.json `exports` for the full list.
+
+## Serve
+
+`<tool> serve` supervises every configured and enabled service;
+`<tool> serve <service>` selects exactly one. Both forms share one
+lifecycle, so a service started by the selector observes the same
+readiness, shutdown, and exit semantics as the same service started by
+the supervisor.
+
+The normative contract is
+[`docs/contracts/serve-lifecycle.md`](../../docs/contracts/serve-lifecycle.md);
+this module implements the part of it §"Cross-language parity" makes
+binding on every SDK. Go is the reference implementation.
+
+```ts
+import { createCLI } from '@hop-top/kit/cli';
+import { ServiceRegistry, registerServe } from '@hop-top/kit/serve';
+
+const registry = new ServiceRegistry();
+registry.register({
+  name: 'api',
+  async start(signal, ready) {
+    // Report ready once every acquisition that can fail has succeeded.
+    ready();
+    await new Promise<void>((r) =>
+      signal.addEventListener('abort', () => r(), { once: true }));
+  },
+  ready: () => true,
+  async stop() { /* drain, then release */ },
+});
+
+const { program } = createCLI({
+  name: 'mytool', version: '1.0.0', description: 'My tool',
+});
+registerServe(program, { registry, configs: { api: { enabled: true } } });
+program.parse();
+```
+
+### The override rule
+
+`serve <service>` starts the named service **even when
+`services.<name>.enabled` is false**, provided it is registered and its
+configuration and policy validate. Enablement answers "does the
+supervisor start this by default"; it is not an authorization decision,
+and an operator naming a service has already made the decision the flag
+exists to automate.
+
+Under the supervisor form a disabled service is skipped silently and
+does not affect the exit code. A supervisor invocation that resolves to
+zero services exits 2 rather than 0: a process that exits 0 without
+listening is indistinguishable from a successful start to systemd or a
+container runtime.
+
+### Configuration
+
+| Key | Type | Default |
+|-----|------|---------|
+| `services.<name>.enabled` | bool | `false` |
+| `services.<name>.ready_timeout` | duration | `30s` |
+| `services.<name>.stop_timeout` | duration | `30s` |
+| `services.failure_policy` | `fail-fast` \| `isolate` | `fail-fast` |
+| `services.shutdown_timeout` | duration | `60s` |
+
+`registerServe` takes the resolved blocks as `configs`; this port does
+not resolve dotted keys itself, because `@hop-top/kit/config` merges
+whole documents rather than resolving per key. The contract requires the
+key *names*, not a particular resolution engine.
+
+### Exit codes
+
+| Situation | Code | Exit |
+|-----------|------|------|
+| Clean stop after a signal | `OK` | 0 |
+| Invalid selection, invalid config, zero services | `USAGE` | 2 |
+| Unknown service name | `NOT_FOUND` | 3 |
+| Policy denied | `UNAUTHORIZED` | 5 |
+| Start failure, runtime crash, shutdown budget exceeded | `GENERIC` | 1 |
+
+### Lifecycle events
+
+Six transitions are surfaced, on the bus when a `publisher` is wired and
+through the `logger` either way:
+`kit.serve.service.{started,ready_reported,failed,stopped}` and
+`kit.serve.supervisor.{ready_reported,stopped}`. The service identifier
+travels in the payload, never in the topic, so a subscriber is not
+forced to re-bind when a tool gains a service.
+
+### What this port does not do
+
+The contract rules these out as Go-only; they are absent here by design,
+not unimplemented: the REST/OpenAPI projection of the command tree, the
+Unix socket service, `cmdreflect`-driven discovery, and the permission,
+provenance, and audit surface. This SDK ships no HTTP or socket server,
+so a service that listens is the adopter's to write.
 
 ## MCP surface
 

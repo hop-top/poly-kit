@@ -174,6 +174,60 @@ Adopter-facing documentation of the surface itself lives in
 [`docs/adopters/guides/expose-cli-over-mcp.md`](../../docs/adopters/guides/expose-cli-over-mcp.md)
 (the Go reference).
 
+## Serve lifecycle (`serve.json`)
+
+The serve hierarchy and service lifecycle is a parity contract, but not a
+`parity.json` block: it is not a set of constants every port loads at
+runtime, it is a **conformance record** — which of the contract's required
+behaviors each port has actually shipped. So it carries its own file and
+its own tests, the way `scope-defaults.json` does, and is registered in
+`extends`.
+
+Behavioral authority is
+[`docs/contracts/serve-lifecycle.md`](../../docs/contracts/serve-lifecycle.md)
+§"Cross-language parity", which is also where the reasoning lives for what
+was ruled in and what was ruled out. `serve.json` records the decision, not
+the argument.
+
+The file has three parts:
+
+| Part | What it holds |
+|------|---------------|
+| `constants` | values a conforming port MUST reproduce exactly: the name grammar, the reserved names, the six topic strings, the `services.*` keys and their defaults, the failure policies, the signals, and the exit-code table |
+| `behaviors` | the named required behaviors, one line each |
+| `ports` | per-language status for every behavior: `SHIPPED`, `PENDING`, or `N/A` |
+
+### PENDING is not FAIL
+
+A language that has not implemented `serve` is marked `PENDING`, and the
+suite passes. The harness's job here is to make a gap visible, not to fail
+a build over work that has not started — the alternative is a red suite
+that stays red for months and stops being read.
+
+What the suite *does* fail on:
+
+- A port that omits a behavior key entirely, which would let a gap go
+  unrecorded rather than recorded as pending.
+- A status outside the declared vocabulary.
+- A status for a behavior `behaviors` does not declare (a typo).
+- Any `PENDING` under `go`. Go is the reference implementation; a pending
+  there means the fixture and the implementation disagree about what
+  exists.
+
+### The constants are pinned against Go
+
+`TestServeContractMatchesGo` asserts every constant against
+`hop.top/kit/go/console/serve` rather than against a second copy of the
+literal: reserved names through `IsReservedName`, the name grammar against
+`ValidateName` in both directions, the topics against `DefaultTopics`, the
+exit rows against `ExitCodeFor`/`CodeFor`, and the timeout defaults against
+the `Default*Timeout` constants.
+
+That direction matters. A fixture pinned against hand-typed literals drifts
+the moment Go changes and nobody notices; pinned against the implementation,
+a Go-side change fails here and forces the fixture — and therefore the
+sibling ports' spec — to be updated in the same commit.
+
 ## `extends`
 
 `extends` lists sibling contract files that the parity test suite also

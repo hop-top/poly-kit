@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/parity/serve.json",
+  "description": "Cross-language conformance record for the serve hierarchy and service lifecycle. Authority for behavior is docs/contracts/serve-lifecycle.md, section 'Cross-language parity'; this file records which required behaviors each port has shipped. A port that has not implemented serve is PENDING, not FAIL: the harness makes the gap visible without failing a build over work that has not started.",
+  "version": 1,
+  "contract": "docs/contracts/serve-lifecycle.md#cross-language-parity",
+
+  "statuses": {
+    "SHIPPED": "the port implements this behavior and has tests pinning it",
+    "PENDING": "the port has not implemented this behavior yet; not a failure",
+    "N/A": "the behavior is not required of this port, with a reason"
+  },
+
+  "constants": {
+    "description": "Values a conforming port MUST reproduce exactly. Unlike the per-language status table below, these do not vary by port.",
+
+    "name_pattern": "^[a-z][a-z0-9-]*$",
+    "reserved_names": ["all", "none", "list"],
+
+    "topics": {
+      "prefix": "kit.serve",
+      "service.started": "kit.serve.service.started",
+      "service.ready_reported": "kit.serve.service.ready_reported",
+      "service.failed": "kit.serve.service.failed",
+      "service.stopped": "kit.serve.service.stopped",
+      "supervisor.ready_reported": "kit.serve.supervisor.ready_reported",
+      "supervisor.stopped": "kit.serve.supervisor.stopped"
+    },
+
+    "payload_keys": {
+      "service": "service identifier; never in the topic",
+      "error": "failure text; never in the topic",
+      "address": "resolved listen address, on ready_reported only"
+    },
+
+    "config_keys": {
+      "services.<name>.enabled": { "type": "bool", "default": false },
+      "services.<name>.ready_timeout": { "type": "duration", "default": "30s" },
+      "services.<name>.stop_timeout": { "type": "duration", "default": "30s" },
+      "services.failure_policy": { "type": "enum", "default": "fail-fast" },
+      "services.shutdown_timeout": { "type": "duration", "default": "60s" }
+    },
+
+    "failure_policies": ["fail-fast", "isolate"],
+
+    "signals": ["SIGINT", "SIGTERM"],
+
+    "exit_codes": {
+      "clean-stop": { "code": "OK", "exit": 0 },
+      "invalid-selection": { "code": "USAGE", "exit": 2 },
+      "config-invalid": { "code": "USAGE", "exit": 2 },
+      "no-services": { "code": "USAGE", "exit": 2 },
+      "unknown-service": { "code": "NOT_FOUND", "exit": 3 },
+      "policy-denied": { "code": "UNAUTHORIZED", "exit": 5 },
+      "start-failed": { "code": "GENERIC", "exit": 1 },
+      "runtime-crash": { "code": "GENERIC", "exit": 1 },
+      "shutdown-timeout": { "code": "GENERIC", "exit": 1 }
+    }
+  },
+
+  "behaviors": {
+    "hierarchy": "<tool> serve supervises every configured and enabled service; <tool> serve <service> selects exactly one; both share one lifecycle. 2+ positional args is USAGE/2.",
+    "override_rule": "serve <service> starts the service even when services.<name>.enabled is false, provided registration, configuration and policy validate in that order. A disabled service under the supervisor form is skipped silently and does not affect the exit code. Zero resolved services under the supervisor form exits 2.",
+    "list_flag": "the inspection form is the --list flag, not a `list` child.",
+    "registration_seam": "a registry both kit-owned and adopter-owned services register into before the root runs; each registration carries a name, a blocking start, a readiness report and a stop. Duplicate registration fails at construction with an explicit override escape hatch; listing order is registration order.",
+    "readiness": "ready at most once per start; aggregate ready when every started service is ready; a service not ready within ready_timeout is a start failure.",
+    "lifecycle_events": "the six transitions above are surfaced through the bus (under the exact topic strings) or, for a port with no bus, through the log with the same field names.",
+    "ordered_shutdown": "SIGINT/SIGTERM begin a graceful drain and a second signal aborts it; cancel once, then stop in the exact reverse of actual start order, one at a time, each bounded by stop_timeout, all bounded by shutdown_timeout.",
+    "failure_policy": "fail-fast (default) brings every service down on one failure; isolate keeps the rest running.",
+    "exit_taxonomy": "serve outcomes route onto the shared exit-code taxonomy, including a signal stop exiting 0 and TRANSIENT propagating exit 6.",
+    "config_keys": "the services.* key names above are read, with the defaults above. How a port resolves them is not contract."
+  },
+
+  "not_required": {
+    "description": "Go-only affordances. A port is not non-conformant for lacking these; see the contract section 'Explicitly not required' for the reasoning on each.",
+    "items": [
+      "rest_projection",
+      "socket_service_and_transportsvc",
+      "cmdreflect_discovery",
+      "permission_gate_provenance_audit",
+      "execution_runner_contract",
+      "toolspec_policy_table",
+      "withapi_compatibility",
+      "nearest_name_suggestion",
+      "dependency_ordering_and_cycle_panic"
+    ]
+  },
+
+  "ports": {
+    "go": {
+      "implementation": "go/console/serve, mounted by go/console/cli/serve.go",
+      "hierarchy": "SHIPPED",
+      "override_rule": "SHIPPED",
+      "list_flag": "SHIPPED",
+      "registration_seam": "SHIPPED",
+      "readiness": "SHIPPED",
+      "lifecycle_events": "SHIPPED",
+      "ordered_shutdown": "SHIPPED",
+      "failure_policy": "SHIPPED",
+      "exit_taxonomy": "SHIPPED",
+      "config_keys": "SHIPPED"
+    },
+    "ts": {
+      "implementation": "sdk/ts/src/serve.ts, mounted by registerServe on a commander root",
+      "hierarchy": "SHIPPED",
+      "override_rule": "SHIPPED",
+      "list_flag": "SHIPPED",
+      "registration_seam": "SHIPPED",
+      "readiness": "SHIPPED",
+      "lifecycle_events": "SHIPPED",
+      "ordered_shutdown": "SHIPPED",
+      "failure_policy": "SHIPPED",
+      "exit_taxonomy": "SHIPPED",
+      "config_keys": "SHIPPED"
+    },
+    "py": {
+      "implementation": null,
+      "note": "Typer root exists (sdk/py/hop_top_kit/cli.py), so the command half is expressible; serve is not implemented yet.",
+      "hierarchy": "PENDING",
+      "override_rule": "PENDING",
+      "list_flag": "PENDING",
+      "registration_seam": "PENDING",
+      "readiness": "PENDING",
+      "lifecycle_events": "PENDING",
+      "ordered_shutdown": "PENDING",
+      "failure_policy": "PENDING",
+      "exit_taxonomy": "PENDING",
+      "config_keys": "PENDING"
+    },
+    "rs": {
+      "implementation": null,
+      "note": "sdk/experimental/rs/src/cli.rs is an empty stub: the SDK ships no command-registration layer, so there is no place to mount a serve parent. That is a prerequisite, not an exemption.",
+      "hierarchy": "PENDING",
+      "override_rule": "PENDING",
+      "list_flag": "PENDING",
+      "registration_seam": "PENDING",
+      "readiness": "PENDING",
+      "lifecycle_events": "PENDING",
+      "ordered_shutdown": "PENDING",
+      "failure_policy": "PENDING",
+      "exit_taxonomy": "PENDING",
+      "config_keys": "PENDING"
+    },
+    "php": {
+      "implementation": null,
+      "note": "Commands mount on Symfony Console via sdk/experimental/php/src/Cli/KitCommand.php, so the command half is expressible today; serve itself is not implemented. The SDK has no event bus, so its lifecycle_events obligation would be satisfied through the log sink.",
+      "hierarchy": "PENDING",
+      "override_rule": "PENDING",
+      "list_flag": "PENDING",
+      "registration_seam": "PENDING",
+      "readiness": "PENDING",
+      "lifecycle_events": "PENDING",
+      "ordered_shutdown": "PENDING",
+      "failure_policy": "PENDING",
+      "exit_taxonomy": "PENDING",
+      "config_keys": "PENDING"
+    }
+  }
+}
