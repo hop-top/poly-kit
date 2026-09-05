@@ -304,6 +304,41 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		require.Contains(t, byName, "status")
 		assert.Equal(t, "management-only", byName["status"].Reason)
 
+		// AGENTS.md tells an agent to read route and method off
+		// discovery and never to derive them, and that both are
+		// absent exactly when a command has no route.
+		var shaped struct {
+			Commands []struct {
+				Name      string `json:"name"`
+				Invocable bool   `json:"invocable"`
+				Method    string `json:"method"`
+				Route     string `json:"route"`
+			} `json:"commands"`
+			ExitStatus []struct {
+				ExitCode int `json:"exit_code"`
+				Status   int `json:"status"`
+			} `json:"exit_status"`
+		}
+		require.NoError(t, json.Unmarshal(body, &shaped))
+		for _, c := range shaped.Commands {
+			if c.Invocable {
+				assert.NotEmpty(t, c.Route, "%s is invocable, so it has a route", c.Name)
+				assert.NotEmpty(t, c.Method, "%s is invocable, so it has a method", c.Name)
+				continue
+			}
+			assert.Empty(t, c.Route, "%s is withheld, so it has no route", c.Name)
+			assert.Empty(t, c.Method, "%s is withheld, so it has no method", c.Name)
+		}
+		// The exit-code table the fragment reproduces is published by
+		// the tool itself, so an agent never has to trust the doc.
+		mapping := map[int]int{}
+		for _, p := range shaped.ExitStatus {
+			mapping[p.ExitCode] = p.Status
+		}
+		assert.Equal(t, map[int]int{
+			0: 200, 1: 500, 2: 400, 3: 404, 4: 409, 5: 403, 6: 503, 64: 429, 65: 422,
+		}, mapping, "the fragment's exit-code table must be the tool's own")
+
 		// A read command runs over REST and answers in data, because
 		// the sample declares its output schema.
 		status, body = httpGet(t, base+"/v1/commands/hello?arg=Ada")
@@ -324,6 +359,20 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		// The OpenAPI floor spec is served without any configuration.
 		status, _ = httpGet(t, base+"/openapi.json")
 		assert.Equal(t, http.StatusOK, status)
+
+		// AGENTS.md tells an agent that method follows side-effect and
+		// to take it from discovery rather than deriving it: hello is
+		// a read, so it is GET-only and a POST is refused outright.
+		status, body = httpPost(t, base+"/v1/commands/hello", `{}`)
+		assert.Equal(t, http.StatusMethodNotAllowed, status, string(body))
+
+		// And that an undeclared *query* parameter is dropped rather
+		// than refused — the trap the fragment names explicitly, since
+		// a misspelled flag on a GET runs the command without it.
+		status, body = httpGet(t, base+"/v1/commands/hello?nosuchflag=x&arg=Ada")
+		require.Equal(t, http.StatusOK, status, string(body))
+		assert.Contains(t, string(body), "Hello, Ada!",
+			"an undeclared query parameter is dropped, not refused")
 
 		assert.Equal(t, 0, stop(), "a signal-initiated stop is a clean stop")
 	})
@@ -388,5 +437,58 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		assert.Equal(t, 0, resp.Result.ExitCode)
 		require.Len(t, resp.Result.Data, 1)
 		assert.Equal(t, "Hello, Ada!", resp.Result.Data[0]["message"])
+
+		// AGENTS.md documents the socket's refusal envelope and its
+		// wire codes. Assert the two an agent is most likely to meet
+		// on this tree, plus the rule that an unknown flag is NOT a
+		// wire error but an exit code inside a successful envelope.
+		var wire struct {
+			Ok    bool `json:"ok"`
+			Error *struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+			Result *struct {
+				ExitCode int `json:"exit_code"`
+			} `json:"result"`
+		}
+		ask := func(req map[string]any) {
+			t.Helper()
+			c, err := net.Dial("unix", sock)
+			require.NoError(t, err)
+			defer func() { _ = c.Close() }()
+			require.NoError(t, json.NewEncoder(c).Encode(req))
+			wire.Ok, wire.Error, wire.Result = false, nil, nil
+			require.NoError(t, json.NewDecoder(c).Decode(&wire))
+		}
+
+		// A withheld destructive command is BLOCKED, not NOT_FOUND:
+		// the fragment tells an agent to read that as "ask a human".
+		ask(map[string]any{"path": []string{"nuke"}})
+		require.False(t, wire.Ok)
+		require.NotNil(t, wire.Error)
+		assert.Equal(t, "BLOCKED", wire.Error.Code)
+
+		// serve is self-hosting, and over the socket that reads as
+		// NOT_FOUND rather than NOT_INVOCABLE.
+		ask(map[string]any{"path": []string{"serve"}})
+		require.False(t, wire.Ok)
+		require.NotNil(t, wire.Error)
+		assert.Equal(t, "NOT_FOUND", wire.Error.Code)
+
+		// An empty path is INVALID, the one code an agent can fix and
+		// retry.
+		ask(map[string]any{"path": []string{}})
+		require.False(t, wire.Ok)
+		require.NotNil(t, wire.Error)
+		assert.Equal(t, "INVALID", wire.Error.Code)
+
+		// An unknown flag rides inside a successful envelope with a
+		// usage exit code, so an agent must check exit_code and not
+		// only ok.
+		ask(map[string]any{"path": []string{"hello"}, "flags": map[string]any{"nosuchflag": "x"}})
+		require.True(t, wire.Ok, "an unknown flag is not a wire error")
+		require.NotNil(t, wire.Result)
+		assert.Equal(t, 2, wire.Result.ExitCode)
 	})
 }
