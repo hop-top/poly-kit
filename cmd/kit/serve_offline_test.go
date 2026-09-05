@@ -4,19 +4,26 @@ import (
 	"context"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"hop.top/kit/go/console/cli"
 )
 
-// newServeCmdForTest builds the real serve command against a minimal
-// root so flag registration matches production exactly.
-func newServeCmdForTest(t *testing.T) *cli.Root {
+// newServeCmdForTest builds kit's real root and returns its serve
+// command, so flag registration matches production exactly: the
+// engine's --no-peer/--no-sync sit on the kit-owned serve parent.
+func newServeCmdForTest(t *testing.T) *cobra.Command {
 	t.Helper()
-	return cli.New(cli.Config{
-		Name: "kit", Version: "0.0.0-test", Short: "t",
-		DisableValidate: true,
-	})
+	root, eng := newKitRoot("0.0.0-test")
+	t.Cleanup(eng.close)
+	for _, c := range root.Cmd.Commands() {
+		if c.Name() == "serve" {
+			return c
+		}
+	}
+	t.Fatal("kit root has no serve command")
+	return nil
 }
 
 // TestServeNetOpts_OfflineFlipsBoth locks the --offline override for
@@ -24,8 +31,7 @@ func newServeCmdForTest(t *testing.T) *cli.Root {
 // --no-sync on even when neither flag was passed, so peer discovery
 // and sync replication are disabled.
 func TestServeNetOpts_OfflineFlipsBoth(t *testing.T) {
-	root := newServeCmdForTest(t)
-	cmd := serveCmd(root)
+	cmd := newServeCmdForTest(t)
 	require.NoError(t, cmd.ParseFlags(nil))
 	cmd.SetContext(cli.WithOffline(context.Background(), true))
 
@@ -37,8 +43,7 @@ func TestServeNetOpts_OfflineFlipsBoth(t *testing.T) {
 // TestServeNetOpts_DefaultsRespected: without --offline the individual
 // flags keep their parsed values.
 func TestServeNetOpts_DefaultsRespected(t *testing.T) {
-	root := newServeCmdForTest(t)
-	cmd := serveCmd(root)
+	cmd := newServeCmdForTest(t)
 	require.NoError(t, cmd.ParseFlags(nil))
 	cmd.SetContext(context.Background())
 
@@ -50,8 +55,7 @@ func TestServeNetOpts_DefaultsRespected(t *testing.T) {
 // TestServeNetOpts_ExplicitFlagWithoutOffline: individual opt-outs
 // still work standalone.
 func TestServeNetOpts_ExplicitFlagWithoutOffline(t *testing.T) {
-	root := newServeCmdForTest(t)
-	cmd := serveCmd(root)
+	cmd := newServeCmdForTest(t)
 	require.NoError(t, cmd.ParseFlags([]string{"--no-peer"}))
 	cmd.SetContext(context.Background())
 
@@ -63,8 +67,7 @@ func TestServeNetOpts_ExplicitFlagWithoutOffline(t *testing.T) {
 // TestServeNetOpts_OfflineNeverUnsetsExplicit: --offline composes with
 // an explicitly passed --no-peer/--no-sync — it never un-sets them.
 func TestServeNetOpts_OfflineNeverUnsetsExplicit(t *testing.T) {
-	root := newServeCmdForTest(t)
-	cmd := serveCmd(root)
+	cmd := newServeCmdForTest(t)
 	require.NoError(t, cmd.ParseFlags([]string{"--no-peer", "--no-sync"}))
 	cmd.SetContext(cli.WithOffline(context.Background(), true))
 

@@ -26,7 +26,7 @@ import (
 // vs is consulted directly (alongside vds) to surface DAG topology
 // (parent_ids per version) without enlarging the public surface of
 // VersionedDocumentStore.
-func registerBranchingRoutes(router *api.Router, vds *store.VersionedDocumentStore, vs store.VersionStore) {
+func registerBranchingRoutes(router routeRegistrar, vds *store.VersionedDocumentStore, vs store.VersionStore) {
 	router.Handle("GET", "/{type}/{id}/branches", func(w http.ResponseWriter, r *http.Request) {
 		docType := api.PathParam(r, "type")
 		if !validType(docType) {
