@@ -68,7 +68,9 @@
     "ordered_shutdown": "SIGINT/SIGTERM begin a graceful drain and a second signal aborts it; cancel once, then stop in the exact reverse of actual start order, one at a time, each bounded by stop_timeout, all bounded by shutdown_timeout.",
     "failure_policy": "fail-fast (default) brings every service down on one failure; isolate keeps the rest running.",
     "exit_taxonomy": "serve outcomes route onto the shared exit-code taxonomy, including a signal stop exiting 0 and TRANSIENT propagating exit 6.",
-    "config_keys": "the services.* key names above are read, with the defaults above. How a port resolves them is not contract."
+    "config_keys": "the services.* key names above are read, with the defaults above. How a port resolves them is not contract.",
+    "enable_disable_flags": "--enable <name> / --disable <name> are repeatable flags on serve that override services.<name>.enabled for one run, under the supervisor form only. --enable on an unconfigured service makes it configured and enabled; --disable on an enabled service skips it silently without affecting the exit code; --enable wins over --disable for the same name. Either flag combined with the selector form is refused as USAGE/2.",
+    "timeout_flags": "--ready-timeout, --stop-timeout and --shutdown-timeout are accepted under both forms, by exactly those names, and override services.<name>.ready_timeout and services.<name>.stop_timeout for every resolved service and services.shutdown_timeout for the run. The duration spelling a port accepts is not contract."
   },
 
   "not_required": {
@@ -98,7 +100,9 @@
       "ordered_shutdown": "SHIPPED",
       "failure_policy": "SHIPPED",
       "exit_taxonomy": "SHIPPED",
-      "config_keys": "SHIPPED"
+      "config_keys": "SHIPPED",
+      "enable_disable_flags": "SHIPPED",
+      "timeout_flags": "SHIPPED"
     },
     "ts": {
       "implementation": "sdk/ts/src/serve.ts, mounted by registerServe on a commander root",
@@ -111,7 +115,9 @@
       "ordered_shutdown": "SHIPPED",
       "failure_policy": "SHIPPED",
       "exit_taxonomy": "SHIPPED",
-      "config_keys": "SHIPPED"
+      "config_keys": "SHIPPED",
+      "enable_disable_flags": "SHIPPED",
+      "timeout_flags": "SHIPPED"
     },
     "py": {
       "implementation": "sdk/py/hop_top_kit/serve.py, mounted by register_serve on a Typer root",
@@ -124,21 +130,25 @@
       "ordered_shutdown": "SHIPPED",
       "failure_policy": "SHIPPED",
       "exit_taxonomy": "SHIPPED",
-      "config_keys": "SHIPPED"
+      "config_keys": "SHIPPED",
+      "enable_disable_flags": "SHIPPED",
+      "timeout_flags": "SHIPPED"
     },
     "rs": {
-      "implementation": null,
-      "note": "sdk/experimental/rs/src/cli.rs is an empty stub: the SDK ships no command-registration layer, so there is no place to mount a serve parent. That is a prerequisite, not an exemption.",
-      "hierarchy": "PENDING",
-      "override_rule": "PENDING",
-      "list_flag": "PENDING",
-      "registration_seam": "PENDING",
-      "readiness": "PENDING",
-      "lifecycle_events": "PENDING",
-      "ordered_shutdown": "PENDING",
-      "failure_policy": "PENDING",
-      "exit_taxonomy": "PENDING",
-      "config_keys": "PENDING"
+      "implementation": "sdk/experimental/rs/src/serve (feature `serve`), command mounted by serve::command (feature `serve-cli`)",
+      "note": "serve::command::mount puts `serve [SERVICE]` with --list, --enable/--disable and the three timeout flags on any clap root, the way the TypeScript port mounts on any commander root; the kit-owned root factory, when it lands, mounts the same command. Arity is refused by resolve() at USAGE/2 rather than by clap so the exit code stays on the shared taxonomy. The one gap left is the env-var spelling (<TOOL>_SERVICES_API_ENABLED): the contract makes it conditional on a port having env resolution, which arrives with the Rust config loader, not with this command.",
+      "hierarchy": "SHIPPED",
+      "override_rule": "SHIPPED",
+      "list_flag": "SHIPPED",
+      "registration_seam": "SHIPPED",
+      "readiness": "SHIPPED",
+      "lifecycle_events": "SHIPPED",
+      "ordered_shutdown": "SHIPPED",
+      "failure_policy": "SHIPPED",
+      "exit_taxonomy": "SHIPPED",
+      "config_keys": "SHIPPED",
+      "enable_disable_flags": "SHIPPED",
+      "timeout_flags": "SHIPPED"
     },
     "php": {
       "implementation": "sdk/experimental/php/src/Serve, mounted as ServeCommand on a Symfony Console application",
@@ -152,7 +162,9 @@
       "ordered_shutdown": "SHIPPED",
       "failure_policy": "SHIPPED",
       "exit_taxonomy": "SHIPPED",
-      "config_keys": "SHIPPED"
+      "config_keys": "SHIPPED",
+      "enable_disable_flags": "SHIPPED",
+      "timeout_flags": "SHIPPED"
     }
   }
 }

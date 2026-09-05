@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.4...kit-py/v0.5.0-alpha.5) (2026-09-05)
+
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.5. This release includes new features and bug fixes.
+
+
+### Features
+
+* **py:** EXIT_GENERIC and generic_error for the exit-1 class
+* **py:** port serve supervisor and service selector
+* **py:** port the serve supervisor and service selector
+* **py:** serve --enable/--disable and timeout flags
+* **sdk:** EXIT_GENERIC and generic error constructor in all SDKs
+* **ts:** serve cross-language contract and TypeScript implementation
+
+
+### Bug Fixes
+
+* **parity:** record and implement serve --enable/--disable and timeout flags
+* **py:** re-sync vendored parity.json after extends change
+
+Full diff: [kit-py/v0.5.0-alpha.4...kit-py/v0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.4...kit-py/v0.5.0-alpha.5)
+
 ## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.3...kit-py/v0.5.0-alpha.4) (2026-09-04)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.4. This release includes new features and bug fixes.

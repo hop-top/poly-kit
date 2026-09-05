@@ -1,5 +1,87 @@
 # Changelog
 
+## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.2...kit/v0.5.0-alpha.3) (2026-09-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** unresolvable `help <topic>` exits 2 (USAGE) instead of 1 (GENERIC).
+* **cli:** WithAPI without Auth on a non-loopback Addr (":8080", "0.0.0.0:…") is refused at validation with exit 2 unless services.api.insecure_remote / --insecure-remote is set.
+
+### Features
+
+* **api:** adopter control over projected command policy and exposure ([fd63fc9](https://github.com/hop-top/poly-kit/commit/fd63fc99080a57aef2c8731a0f12dadb1acc5c46))
+* **api:** project reflected commands onto versioned REST with OpenAPI ([53f9b76](https://github.com/hop-top/poly-kit/commit/53f9b769bddbc12e8dda290dec89e8c7a14c4e2c))
+* **api:** project reflected commands onto versioned REST with OpenAPI ([b917f13](https://github.com/hop-top/poly-kit/commit/b917f13546a3cd47c2323b6a433c7d61fb14ae1b))
+* **cli:** bind the api service to loopback and refuse unauthenticated remote serving ([cc440b4](https://github.com/hop-top/poly-kit/commit/cc440b49937f88a914ca36d46e2659f25fc7766d))
+* **cli:** Kit-owned serve parent, service registry option, WithAPI as the api service ([e5290a6](https://github.com/hop-top/poly-kit/commit/e5290a6a39cc51e8d82c0b1323051b987b4fc889))
+* **cli:** let adopters set the socket policy gate ([a253e64](https://github.com/hop-top/poly-kit/commit/a253e6403599dd54215fa27798d369ecbed7a623))
+* **cli:** prepare trees without executing and serve on a root factory ([b1c3637](https://github.com/hop-top/poly-kit/commit/b1c3637396f6b56a1f762620a92554cb30af43f9))
+* **cli:** serve socket over a unix domain socket ([207a10d](https://github.com/hop-top/poly-kit/commit/207a10d06e9a3cdf856ecd50669f4eae046012db))
+* **cmdreflect:** classify self-hosting commands ([83dcbe8](https://github.com/hop-top/poly-kit/commit/83dcbe848f568bb651e94bc0b805e6895f67f38e))
+* **cmdsurface:** central permission gate and audit emission on the bridge ([d2ca916](https://github.com/hop-top/poly-kit/commit/d2ca9164771a4bdf9690202a24a77e9ba4305868))
+* **cmdsurface:** isolate invocations and decode declared output ([5e5d139](https://github.com/hop-top/poly-kit/commit/5e5d1396a3eec03a25dc66825eeb5068cb91d368))
+* **cmdsurface:** isolate invocations and decode declared output ([f62164d](https://github.com/hop-top/poly-kit/commit/f62164da2513d95234d824e91f605f5dbc8bf0e2))
+* **cmdsurface:** refuse interactive and self-hosting leaves at the bridge ([159e0c2](https://github.com/hop-top/poly-kit/commit/159e0c21d300dbb9f529223d9eb2e58c98c94eea))
+* **kit:** serve the document engine as the api service ([74c7b1e](https://github.com/hop-top/poly-kit/commit/74c7b1e60136750f8accd6cb193404af4ccf7ff6))
+* **output:** GenericError constructor and ExitGeneric for the exit-1 class ([524002d](https://github.com/hop-top/poly-kit/commit/524002d606a45765f398370757d0f7c4c2ce8ae1))
+* **php:** port the serve supervisor and service selector ([d2d7564](https://github.com/hop-top/poly-kit/commit/d2d75647aa918cacf5a727e63cc14b2d810232b8))
+* **py:** port the serve supervisor and service selector ([8386820](https://github.com/hop-top/poly-kit/commit/8386820112b64fc56bfe202440594e607bf6cc81))
+* **reflect:** canonical command descriptor with non-invocable reasons ([de2b05c](https://github.com/hop-top/poly-kit/commit/de2b05cbf20565a6e2a45b0acaeb0395b20f42db))
+* **reflect:** canonical command descriptor with non-invocable reasons ([1b73e4a](https://github.com/hop-top/poly-kit/commit/1b73e4a19228e34565701f91b9e8ceb971820f2c))
+* **rs:** mount serve as a clap command ([60f6099](https://github.com/hop-top/poly-kit/commit/60f6099df9159d1c3821d9de642da787dadf0a04))
+* **rs:** mount serve as a clap command ([eb8c140](https://github.com/hop-top/poly-kit/commit/eb8c140bff60cf74f31cdce4c3d16b30dda12e56))
+* **rs:** serve supervisor and service lifecycle ([8a20b5d](https://github.com/hop-top/poly-kit/commit/8a20b5d17e9374400fd00e7ccf0cb2cc03101c49))
+* **serve:** contract types, registry seam, selection resolution ([ba00b6f](https://github.com/hop-top/poly-kit/commit/ba00b6f7f0e869616204cbbc855bc46dd280a084))
+* **serve:** supervisor with ordered start, readiness, and policy-driven stop ([3ac2898](https://github.com/hop-top/poly-kit/commit/3ac2898d3aa744621dad536675dc650f76d7f59d))
+* **serve:** supervisor with ordered start, readiness, and policy-driven stop ([281656f](https://github.com/hop-top/poly-kit/commit/281656fd0694fb4d85c433d80962f7b919bb7e40))
+* **serve:** transport-service registration seam ([9a9a7ba](https://github.com/hop-top/poly-kit/commit/9a9a7ba0b157fb06af9c62e4d5d690a8e5ce9c26))
+* **serve:** transport-service registration seam ([cfa4dab](https://github.com/hop-top/poly-kit/commit/cfa4dab34cbeca16530e78067f2cbe09f8ab27d9))
+* **socket:** verified identity, per-connection cancellation, DENIED code ([a52c0a1](https://github.com/hop-top/poly-kit/commit/a52c0a11b564ca6cc5605d97da427c5b0ec3cc9d))
+* **templates:** make the cli-go tier-3 root a served kit root ([5fe0ac5](https://github.com/hop-top/poly-kit/commit/5fe0ac577e9c39e8ceabceabeb0c7abc7a47b42a))
+* **templates:** make the cli-go tier-3 root a served kit root ([bab0557](https://github.com/hop-top/poly-kit/commit/bab055796b32010645a0513a17da299e3157f0d6))
+* **templates:** ship an agent-facing AGENTS.md in cli-go projects ([de6ad86](https://github.com/hop-top/poly-kit/commit/de6ad86db2976b16942415bd401b3efa53f10158))
+* **templates:** ship an agent-facing AGENTS.md in cli-go projects ([d10889d](https://github.com/hop-top/poly-kit/commit/d10889d43adc684d881746913c254ee7d0b291ec))
+* **transport:** serve commands over a unix domain socket ([9e7f6c7](https://github.com/hop-top/poly-kit/commit/9e7f6c706d01a8ba34a1b6d01ab6b7c176146488))
+* **transportsvc:** resolve bridge options at start ([6ca6e57](https://github.com/hop-top/poly-kit/commit/6ca6e578d88688620c32627730ddba95947f9a83))
+* **ts:** serve cross-language contract and TypeScript implementation ([165a82a](https://github.com/hop-top/poly-kit/commit/165a82a97d8640d58448d67e88d9ec98e3e5fa05))
+
+
+### Bug Fixes
+
+* **api:** carry confirmation as the command's own flags over REST ([522bab5](https://github.com/hop-top/poly-kit/commit/522bab50074de5f41a941f701fd5c69a6024bdb7))
+* **cli:** annotate the token leaves so an authenticating root validates ([c6e344c](https://github.com/hop-top/poly-kit/commit/c6e344cef1c7a9ed5076eff9eb6c2002a738d234))
+* **cli:** assert the taxonomy exit code for a socket refusal ([6b5ed8e](https://github.com/hop-top/poly-kit/commit/6b5ed8eb661566648766e7233bb3eae2cfeeafff))
+* **cli:** classify cobra argument and flag errors as USAGE ([38eeaba](https://github.com/hop-top/poly-kit/commit/38eeabadedf2f5e72531d518d2501ce965249389))
+* **cli:** classify cobra argument and flag errors as USAGE ([fc308ea](https://github.com/hop-top/poly-kit/commit/fc308ea4958569a2b6ff00d99d98a48e1e5ab89d))
+* **cli:** honour a help flag ahead of an unknown subcommand ([0885012](https://github.com/hop-top/poly-kit/commit/08850121e6e9b9d24a4632ec0d30ab4e8310a84f))
+* **cli:** list the api service as the supervisor resolves it ([6209da5](https://github.com/hop-top/poly-kit/commit/6209da555d7523ae457defd21e6241a10f3ec2f1))
+* **cli:** refuse unknown subcommand under a non-runnable parent ([93f7722](https://github.com/hop-top/poly-kit/commit/93f7722f353504a353f6e55bcbd003942ad8c2d0))
+* **cli:** refuse unknown subcommand under a non-runnable parent ([7069c8b](https://github.com/hop-top/poly-kit/commit/7069c8b7e0a2434c86c5590907d79cf9cd46a2c0))
+* **cli:** reset flags to defaults before a repeat Execute ([e80e8fa](https://github.com/hop-top/poly-kit/commit/e80e8fa324ddf000a34f8e61730f06aeab4ce041))
+* **cli:** resolve `help <name>` as command path before group id ([38f0341](https://github.com/hop-top/poly-kit/commit/38f03418f59b2fb85dd539ac546f34e8159ff0f3))
+* **cmdreflect:** classify serve as self-hosting at any depth ([d82b640](https://github.com/hop-top/poly-kit/commit/d82b6405a326b1253ac451f0b75c5149c47037ba))
+* **cmdreflect:** skip nameless commands ([39c43a0](https://github.com/hop-top/poly-kit/commit/39c43a06626aafd00a793160295126eb6d4602fb))
+* **cmdsurface:** clear Changed on callback-backed flags when resetting ([1281dfe](https://github.com/hop-top/poly-kit/commit/1281dfe6d91303a1ec059fc7794ab0f6fcd9d18b))
+* **cmdsurface:** decode confirm-state MAC canonically ([a0ca7bf](https://github.com/hop-top/poly-kit/commit/a0ca7bfc41ac675daba3acc889e70351a8eba2fe))
+* **cmdsurface:** derive in-process exit code from the error ([916d917](https://github.com/hop-top/poly-kit/commit/916d917906a6088576a11cb4ceea033644eb92d0))
+* **make:** fail test-go-race when go list does not fully resolve ([4d82bb1](https://github.com/hop-top/poly-kit/commit/4d82bb13d93faebe46b7f7ca10708569bf058441))
+* **parity:** record and implement serve --enable/--disable and timeout flags ([e38b143](https://github.com/hop-top/poly-kit/commit/e38b143c77771c7abe088557f058be81922dd70a))
+* **parity:** record serve --enable/--disable and timeout flags as behaviors ([64b637a](https://github.com/hop-top/poly-kit/commit/64b637a921fb8a65d55cc90f3e5a531185f64159))
+* **release:** let the python updater write PEP 440 into pyproject.toml ([1a20cf3](https://github.com/hop-top/poly-kit/commit/1a20cf3d0261a21b75f462cd43d71149a58aaaca))
+* **routellm:** reject zero-length config reads in watcher ([319f44a](https://github.com/hop-top/poly-kit/commit/319f44aeb5eb1cc636f229f03f3a6c16d02a0546))
+* **routellm:** reject zero-length config reads in watcher ([e9c93f6](https://github.com/hop-top/poly-kit/commit/e9c93f6fbe66fb3b4d4cbfb8dda4a0917ae59ad5))
+* **serve:** make stop-abandonment observable, deflake supervisor tests ([ffe13e0](https://github.com/hop-top/poly-kit/commit/ffe13e00fb015f6b5df8a86781e2461577d9bb3a))
+* **serve:** report a self-stopping service stopped once ([3f0600e](https://github.com/hop-top/poly-kit/commit/3f0600e8ce8e1c03ddbe50e37a9e3c3fa3b164e2))
+* **serve:** run a second serve on the same Root under its own context ([c63d4d3](https://github.com/hop-top/poly-kit/commit/c63d4d3000a0ab3bcc6e8cc20cd664b8b5205301))
+* **templates:** make check-mirror-sync portable to GNU diff ([15840bb](https://github.com/hop-top/poly-kit/commit/15840bbded82c871ba838d0a48d0fe5865027769))
+* **templates:** ship version.go as .tmpl; mirror is a verbatim copy ([f68ce2c](https://github.com/hop-top/poly-kit/commit/f68ce2c591a9c9e3f2d54c70f05e1a4014bd841e))
+* **templates:** ship version.go as .tmpl; mirror is a verbatim copy ([456f63f](https://github.com/hop-top/poly-kit/commit/456f63f7a31ee13291e5e3b0a8ad5939230d36d5))
+* **templates:** stop the agent doc's opener from hanging its reader ([9729a92](https://github.com/hop-top/poly-kit/commit/9729a923f43fea45e9e3e69de7600ed8fd1a8efc))
+* **transport:** drop redundant socket unlink on close ([a6c5976](https://github.com/hop-top/poly-kit/commit/a6c5976c3e1bb8fc689072fec463b1cb51e9b6ac))
+* **xdg:** serialize adrg/xdg resolves to end global-state race ([dadf5f5](https://github.com/hop-top/poly-kit/commit/dadf5f5440006dbde49d08da200d3297ed10ae70))
+* **xdg:** serialize adrg/xdg resolves to end global-state race ([e787673](https://github.com/hop-top/poly-kit/commit/e787673dc777fda386094c2ef0fc5a8c92bf93c0))
+
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.1...kit/v0.5.0-alpha.2) (2026-09-04)
 
 

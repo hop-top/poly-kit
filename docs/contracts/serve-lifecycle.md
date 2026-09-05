@@ -1017,12 +1017,12 @@ simply not implemented the surface yet, and
 [`contracts/parity/serve.json`](../../contracts/parity/serve.json)
 records that as a pending gap rather than a failure.
 
-One port cannot implement the command half of this contract at all
-until something else lands first: the Rust SDK's `cli.rs` is empty, so
-there is no kit-owned place to mount a `serve` parent. That is a
-prerequisite, not an exemption — the obligations below apply in full
-the day it gains one. PHP mounts commands on Symfony Console through
-`KitCommand`, so its command half is expressible today.
+Every port has a mount point for the command half: Go through the
+root's `WithService` option, TypeScript and Python on any commander or
+Typer root, PHP through `KitCommand` on Symfony Console, and Rust
+through `serve::command::mount` on any clap root (feature `serve-cli`)
+— the kit-owned Rust root factory, when it lands, mounts that same
+command.
 
 ### Required of every SDK
 
@@ -1136,11 +1136,12 @@ A port whose sink is the log emits `started` / `ready_reported` /
 identifier and the address as **structured fields** rather than
 interpolated into the message text. That is what makes a startup trace
 greppable across a fleet whose tools are not all the same language.
-A port with neither a bus nor a structured logger — Rust and PHP have
-neither today — emits the same four transitions with the same field
-names through whatever it writes to stderr; what it MUST NOT do is
-stay silent about a service that started, became ready, failed, or
-stopped.
+A port with neither a bus nor a structured logger emits the same four
+transitions with the same field names through whatever it writes to
+stderr; what it MUST NOT do is stay silent about a service that
+started, became ready, failed, or stopped. Which ports those are is
+not recorded here — it changes as ports grow a bus or a logger, and a
+port that has one is bound by the corresponding rule above.
 
 What is *not* contract: the payload's `elapsed_ms`, the `Qualifiers`
 envelope Go embeds, and any key beyond `service`, `error`, and
@@ -1217,11 +1218,6 @@ by a fleet of tools that are not all the same language:
 port is the risk the default guards against. Service-specific keys
 live in the same block and are owned by the service.
 
-The `--enable` / `--disable` flags and their rules (supervisor form
-only, refused under the selector form, `--enable` implies configured)
-are contract; the `--ready-timeout` / `--stop-timeout` /
-`--shutdown-timeout` flags are contract as names.
-
 What is **not** contract: how a port resolves those keys. Go layers
 them through viper with flag → env → file → default precedence per
 key. A port whose config layer merges whole documents rather than
@@ -1230,6 +1226,39 @@ resolving dotted keys satisfies this section by reading the same key
 precedence engine first. The environment-variable spelling
 (`<TOOL>_SERVICES_API_ENABLED`) is contract only for a port that has
 env resolution at all.
+
+#### The `--enable` / `--disable` and timeout flags
+
+`--enable <name>` and `--disable <name>` MUST be accepted on `serve`
+as repeatable flags, and their rules from
+[Configuration surface](#configuration-surface) are contract in full:
+
+- They apply to the supervisor form only, and override
+  `services.<name>.enabled` for that one run.
+- `--enable` implies configured: a service with no `services.<name>`
+  block at all becomes configured and enabled when named, so the flag
+  is the aggregate equivalent of the selector's override rule and is
+  subject to the same configuration and policy validation.
+- `--disable` on an enabled service skips it silently, exactly as a
+  configured-but-disabled service is skipped, and MUST NOT affect the
+  exit code. A supervisor invocation that resolves to zero services
+  after the overrides still exits `2`.
+- `--enable` wins over `--disable` for the same name: the affirmative
+  act is the more specific one.
+- Either flag combined with the selector form is `USAGE`, exit `2`.
+  The override rule already decides enablement there, and accepting
+  both would let one invocation say two contradictory things.
+
+`--ready-timeout`, `--stop-timeout`, and `--shutdown-timeout` MUST be
+accepted by exactly those names, under both forms. The first two apply
+one budget to every resolved service, overriding
+`services.<name>.ready_timeout` and `services.<name>.stop_timeout`;
+the third overrides `services.shutdown_timeout` for the run. The
+duration spelling a port accepts is not contract.
+
+`contracts/parity/serve.json` records these as the
+`enable_disable_flags` and `timeout_flags` rows, so the fixture and
+this text list the same obligations.
 
 ### Explicitly not required
 
