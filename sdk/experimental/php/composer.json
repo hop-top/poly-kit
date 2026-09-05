@@ -3,7 +3,7 @@
   "description": "Cross-language CLI UX parity toolkit",
   "type": "library",
   "license": "MIT",
-  "version": "0.5.0-alpha.1",
+  "version": "0.5.0-alpha.2",
   "require": {
     "php": "^8.4",
     "guzzlehttp/guzzle": "^7.9",
@@ -34,8 +34,8 @@
   "scripts": {
     "test": "phpunit",
     "analyse": [
-      "phpstan analyse",
-      "phpstan analyse -c phpstan-tests.neon"
+      "phpstan analyse --memory-limit=1G",
+      "phpstan analyse -c phpstan-tests.neon --memory-limit=1G"
     ]
   }
 }

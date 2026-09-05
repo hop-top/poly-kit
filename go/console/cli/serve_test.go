@@ -266,6 +266,73 @@ func TestServe_EnableFlagRefusedUnderSelector(t *testing.T) {
 	assert.Equal(t, output.CodeUsage, kitErr.Code)
 }
 
+func TestServe_EnableFlagIsRepeatableAndImpliesConfigured(t *testing.T) {
+	// Neither service has a services.<name> block: --enable is what
+	// makes each one configured, and naming both starts both.
+	a := &stubService{name: "alpha"}
+	b := &stubService{name: "beta"}
+	r := newServeRoot(t, cli.WithServices(a, b))
+
+	err := runServeArgs(t, r,
+		[]string{"serve", "--enable", "alpha", "--enable", "beta"}, 300*time.Millisecond)
+	assert.NoError(t, err)
+	assert.True(t, a.wasStarted())
+	assert.True(t, b.wasStarted())
+}
+
+func TestServe_DisableFlagSkipsEnabledServiceSilently(t *testing.T) {
+	on := &stubService{name: "on"}
+	off := &stubService{name: "off"}
+	r := newServeRoot(t, cli.WithServices(on, off))
+	r.Viper.Set("services.on.enabled", true)
+	r.Viper.Set("services.off.enabled", true)
+
+	err := runServeArgs(t, r, []string{"serve", "--disable", "off"}, 300*time.Millisecond)
+	assert.NoError(t, err, "a skipped service does not affect the exit code")
+	assert.True(t, on.wasStarted())
+	assert.False(t, off.wasStarted())
+}
+
+func TestServe_DisableFlagRefusedUnderSelector(t *testing.T) {
+	r := newServeRoot(t, cli.WithService(&stubService{name: "worker"}))
+
+	err := runServeArgs(t, r,
+		[]string{"serve", "worker", "--disable", "worker"}, 2*time.Second)
+	require.Error(t, err)
+
+	var kitErr *output.Error
+	require.ErrorAs(t, err, &kitErr)
+	assert.Equal(t, output.CodeUsage, kitErr.Code)
+}
+
+// neverReadyService starts and stays up but never reports ready, so the
+// readiness budget decides the outcome.
+type neverReadyService struct{ stubService }
+
+func (s *neverReadyService) Start(ctx context.Context, _ func()) error {
+	s.mu.Lock()
+	s.started = true
+	s.mu.Unlock()
+	<-ctx.Done()
+	return nil
+}
+
+func TestServe_ReadyTimeoutFlagBoundsStart(t *testing.T) {
+	svc := &neverReadyService{stubService{name: "worker"}}
+	r := newServeRoot(t, cli.WithService(svc))
+	r.Viper.Set("services.worker.enabled", true)
+
+	// Without the flag the default 30s budget would outlive the test;
+	// the flag is what turns a never-ready service into a start failure.
+	err := runServeArgs(t, r,
+		[]string{"serve", "--ready-timeout", "20ms"}, 5*time.Second)
+	require.Error(t, err)
+
+	var kitErr *output.Error
+	require.ErrorAs(t, err, &kitErr)
+	assert.Equal(t, output.CodeGeneric, kitErr.Code)
+}
+
 func TestServe_PolicyDenialIsUnauthorized(t *testing.T) {
 	r := newServeRoot(t,
 		cli.WithService(&classifiedStub{stubService: &stubService{name: "worker"}}),

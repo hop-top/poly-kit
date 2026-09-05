@@ -35,7 +35,7 @@ final class ServeCommand extends KitCommand
      */
     public function __construct(
         private readonly ServiceRegistry $registry,
-        private array $configs = [],
+        private readonly array $configs = [],
         private readonly SupervisorConfig $supervisorConfig = new SupervisorConfig(),
         private readonly ?PolicyGate $policy = null,
         private readonly ?ServeLogger $logger = null,
@@ -81,6 +81,36 @@ final class ServeCommand extends KitCommand
                 null,
                 InputOption::VALUE_NONE,
                 'List registered services and their state',
+            )
+            ->addOption(
+                'enable',
+                null,
+                InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+                'Enable a service for this run (repeatable, supervisor form only)',
+            )
+            ->addOption(
+                'disable',
+                null,
+                InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+                'Disable a service for this run (repeatable, supervisor form only)',
+            )
+            ->addOption(
+                'ready-timeout',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Per-service budget from start to ready (default 30s)',
+            )
+            ->addOption(
+                'stop-timeout',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Per-service budget for one stop (default 30s)',
+            )
+            ->addOption(
+                'shutdown-timeout',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Total shutdown budget across all services (default 60s)',
             );
     }
 
@@ -92,8 +122,49 @@ final class ServeCommand extends KitCommand
 
         /** @var list<string> $args */
         $args = $this->input->getArgument('service');
+        /** @var list<string> $enable */
+        $enable = $this->input->getOption('enable');
+        /** @var list<string> $disable */
+        $disable = $this->input->getOption('disable');
 
-        $resolution = Resolver::resolve($this->registry, $args, $this->configs, $this->policy);
+        if (count($args) === 1 && ($enable !== [] || $disable !== [])) {
+            // Under the selector form the override rule already decides
+            // enablement; accepting the flags too would let one
+            // invocation say two contradictory things.
+            return $this->refuse(CliError::usage(
+                '--enable/--disable apply to the supervisor form; drop the service name or drop the flags',
+            ));
+        }
+
+        $durations = [];
+        foreach (['ready-timeout', 'stop-timeout', 'shutdown-timeout'] as $flag) {
+            $raw = $this->input->getOption($flag);
+            if ($raw === null) {
+                continue;
+            }
+            $seconds = Duration::parse((string) $raw);
+            if ($seconds === null) {
+                return $this->refuse(CliError::usage(
+                    sprintf('--%s: invalid duration "%s"', $flag, (string) $raw),
+                ));
+            }
+            $durations[$flag] = $seconds;
+        }
+
+        $configs = FlagOverrides::applyTimeouts(
+            FlagOverrides::applyEnableDisable($this->configs, $enable, $disable),
+            $durations['ready-timeout'] ?? null,
+            $durations['stop-timeout'] ?? null,
+        );
+        $supervisorConfig = $this->supervisorConfig;
+        if (($durations['shutdown-timeout'] ?? 0.0) > 0) {
+            $supervisorConfig = new SupervisorConfig(
+                failurePolicy: $supervisorConfig->failurePolicy,
+                shutdownTimeout: $durations['shutdown-timeout'],
+            );
+        }
+
+        $resolution = Resolver::resolve($this->registry, $args, $configs, $this->policy);
         if ($resolution->error !== null) {
             return $this->refuse($resolution->error);
         }
@@ -102,14 +173,14 @@ final class ServeCommand extends KitCommand
         try {
             $supervisor = new Supervisor(
                 registry: $this->registry,
-                config: $this->supervisorConfig,
+                config: $supervisorConfig,
                 logger: $this->logger ?? new StderrLogger(),
                 escalation: $signals->escalation(),
             );
             $result = $supervisor->run(
                 $signals->drain(),
                 $resolution->selected,
-                $this->configs,
+                $configs,
                 $signals,
             );
         } finally {
