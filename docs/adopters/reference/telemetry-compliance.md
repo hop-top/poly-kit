@@ -246,10 +246,20 @@ not contribute to the failure count.
 ## 6. Adopting incrementally
 
 Not ready to ship telemetry? Leave `telemetry.enabled: false` (or omit
-the block entirely). F13 returns `skip` and `Report.Total` derives from
-`len(results)`, so your binary scores **12/12** on the original twelve
-factors. Existing tests stay green; you can add the telemetry block
-later without rewriting any compliance scaffolding.
+the block entirely). F13 returns `skip` and the denominator stays at 12,
+so your binary scores **12/12** on the original twelve factors. Existing
+tests stay green; you can add the telemetry block later without
+rewriting any compliance scaffolding.
+
+The denominator counts the factors *eligible* to contribute. The twelve
+pre-F13 factors always are — including ones that skip, such as the
+runtime-only checks on a `--static` run. Only an F13 skip on a non-opt-in
+toolspec is left out, which is what keeps a non-opt-in binary at `N/12`
+and moves an opt-in one to `N/13`.
+
+All three ports — Go, TypeScript and Python — run the same F13 check and
+apply the same 12/13 denominator, so a toolspec scores identically
+whichever port checks it.
 
 Mid-migration: it's fine to set `enabled: true` and fail F13 in CI
 while you wire the kit-\* packages. F13 surfaces actionable Suggestions
