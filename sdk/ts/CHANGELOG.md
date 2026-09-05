@@ -6,19 +6,23 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3) (2026-09-05)
 
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.3. This release includes new features and bug fixes.
+
 
 ### Features
 
-* **sdk:** EXIT_GENERIC and generic error constructor in all SDKs ([9db9c90](https://github.com/hop-top/poly-kit/commit/9db9c90647b227b31a6c912d0c8d54b54271422a))
-* **ts:** EXIT_GENERIC and genericError for the exit-1 class ([c0d5ed1](https://github.com/hop-top/poly-kit/commit/c0d5ed132f9ac107a00a08f33b66acbbb284f5b6))
-* **ts:** serve --enable/--disable and timeout flags ([4422f2e](https://github.com/hop-top/poly-kit/commit/4422f2efd3724b5a0b1de14c3bbf108f10d6fbb3))
-* **ts:** serve cross-language contract and TypeScript implementation ([165a82a](https://github.com/hop-top/poly-kit/commit/165a82a97d8640d58448d67e88d9ec98e3e5fa05))
-* **ts:** serve hierarchy and service lifecycle ([8c8af57](https://github.com/hop-top/poly-kit/commit/8c8af5729e1ee65018ca60888dab64b22aa7f484))
+* **sdk:** EXIT_GENERIC and generic error constructor in all SDKs
+* **ts:** EXIT_GENERIC and genericError for the exit-1 class
+* **ts:** serve --enable/--disable and timeout flags
+* **ts:** serve cross-language contract and TypeScript implementation
+* **ts:** serve hierarchy and service lifecycle
 
 
 ### Bug Fixes
 
-* **parity:** record and implement serve --enable/--disable and timeout flags ([e38b143](https://github.com/hop-top/poly-kit/commit/e38b143c77771c7abe088557f058be81922dd70a))
+* **parity:** record and implement serve --enable/--disable and timeout flags
+
+Full diff: [kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3)
 
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.1...kit-ts/v0.5.0-alpha.2) (2026-09-04)
 
