@@ -49,9 +49,10 @@ kit ships as multiple deployable units under one repo:
 
 ## Components
 
-The Go module groups packages into seven role-based domains. Each
-domain has a clear charter; cross-domain imports are constrained
-to keep boundaries clean.
+The Go module groups packages into eleven role-based areas. Each
+area has a clear charter; cross-domain imports are constrained
+to keep boundaries clean. The six load-bearing areas are detailed
+below; the remaining five are summarised under Smaller areas.
 
 ### AI primitives — `go/ai/` and `incubator/`
 
@@ -115,7 +116,7 @@ under `incubator/` until promoted.
 | `storage/blob` | Abstract blob interface; local + S3 adapters |
 | `storage/kv` | Abstract KV with SQLite, etcd, Badger, TiDB |
 | `storage/secret` | Vault: env, file, encrypted file, keyring, 1Password, OpenBao, Infisical |
-| `storage/sqldb` | SQL database (PostgreSQL/MySQL via Go stdlib) |
+| `storage/sqldb` | Shared SQLite connection management (modernc.org/sqlite) with WAL, busy timeout, foreign keys |
 | `storage/sqlstore` | Generic SQLite key-value store with TTL |
 
 ### `go/transport/` — HTTP and RPC
@@ -127,6 +128,20 @@ under `incubator/` until promoted.
 | `transport/rpc` | ConnectRPC unified CRUD over gRPC; generic proto, no per-entity codegen |
 | `transport/socket` | NDJSON over a Unix domain socket, on the transport-service seam |
 | `transport/transportsvc` | Transport-service seam: reflect once at Start, pinned surface, readiness, ordered stop |
+
+### Smaller areas
+
+Five further areas sit under `go/` alongside the six above. They are
+smaller — some deliberately so — but they are part of the module and
+count toward the eleven.
+
+| Area | Role |
+|---|---|
+| `go/bridge` | kit/bridge protocol library: JSON payload types (text/url/file/blob oneof) + CLI manifest loader; wire format mirrored by `contracts/bridge.proto` |
+| `go/conformance` | Layer-A test helper for the adopter conformance suite; scenario/story runners, recorder, badge |
+| `go/integrations` | Parent of cross-cutting adapters; holds `repohost` (unified repo-host SPI, five drivers plus mocks) |
+| `go/security` | Reserved for security tooling wrappers (scorecard, SAST adapters); placeholder, gaps pinned in `gaps_test.go` |
+| `go/tools` | Static-analysis helpers shipped for adopters; `provenancelint` go/analysis Analyzer |
 
 ### Import layering
 

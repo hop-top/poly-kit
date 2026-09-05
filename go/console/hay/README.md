@@ -4,8 +4,6 @@ Generic fuzzy resolution for CLI tools. Matches user input against
 a corpus using pluggable scoring, staged lookup, and configurable
 ambiguity handling. Zero external deps; stdlib only.
 
-Author: $USER
-
 ## Quick Start
 
 Basic resolve with string slice:

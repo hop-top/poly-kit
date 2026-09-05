@@ -1,34 +1,38 @@
 package integrations_test
 
-// Gap test for the missing kit/integrations/repo-host adapter.
-// Same convention: t.Skip + pin until the gap is closed.
+// Closed-gap test for the kit/integrations/repo-host adapter. The
+// adapter shipped as go/integrations/repohost, so the Skip+pin form
+// is retired in favor of a real assertion against the public API.
 
-import "testing"
+import (
+	"context"
+	"testing"
 
-// Gap: kit/integrations/repo-host adapter does not exist.
+	"github.com/stretchr/testify/require"
+	"hop.top/kit/go/integrations/repohost"
+	_ "hop.top/kit/go/integrations/repohost/github/mock"
+)
+
+// Closed: kit/integrations/repo-host adapter exists.
 //
-// rsx ships ~482 LOC of GitHub client; tlc has 8 sync plugins for
-// the same set of repo hosts (GitHub, GitLab, Gitea, Bitbucket).
-// The pattern is identical: auth via token-from-env or PAT, list
-// PRs/issues, post comments, fetch commit metadata. A shared
-// adapter under kit/integrations/repo-host would let both tools
-// drop their per-host glue.
+// rsx shipped ~482 LOC of GitHub client and tlc 8 sync plugins for
+// the same set of repo hosts before repohost unified them behind a
+// driver SPI: unified types (PullRequest, Issue, Commit, Repo,
+// Comment), the Host/MutableHost interfaces, and a
+// Config+RegisterDriver+Open registry with drivers for github,
+// gitlab, gitea, gitee and bitbucket.
 //
-// Desired API shape (sketch):
-//
-//	host, err := repohost.Open(ctx, repohost.Options{
-//	    Provider: "github",      // or "gitlab", "gitea", "bitbucket"
-//	    Token:    secret.Get(ctx, "GITHUB_TOKEN"),
-//	})
-//	prs, err := host.ListPullRequests(ctx, "hop-top/kit", repohost.Filter{Open: true})
-//
-// with a small unified type set (PullRequest, Issue, Commit) and
-// per-provider drivers under repohost/{github,gitlab,gitea,bitbucket}.
+// This test pins the shape the gap asked for: Open() a provider by
+// name and list its pull requests through the unified types.
 func TestGap_RepoHostAdapter_Missing(t *testing.T) {
-	t.Skip("gap: kit/integrations/repo-host adapter not implemented; rsx (~482 LOC GitHub client) + tlc (8 sync plugins) reimplement the same pattern")
+	host, err := repohost.Open(context.Background(), repohost.Config{
+		Provider: "github-mock",
+		Token:    "test-token",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, host)
 
-	// Pin: this package exists as a placeholder — when the adapter
-	// ships, this test should:
-	//   1. import "hop.top/kit/go/integrations/repohost"
-	//   2. Exercise Open() against a mock or recorded cassette
+	prs, err := host.ListPullRequests(context.Background(), "hop-top/kit", repohost.Filter{Open: true})
+	require.NoError(t, err)
+	require.NotEmpty(t, prs)
 }
