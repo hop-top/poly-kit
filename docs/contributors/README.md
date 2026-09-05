@@ -10,6 +10,8 @@ work on the kit codebase.
   conventions, testing, signing commits, branch policy.
 - **[Releasing](releasing.md)** — release-please flow, version-bump
   policy, BREAKING-change protocol, per-release notes.
+- **[Folder README guide](readme-guide.md)**: the two README shapes,
+  which directories need one, caps, and the `make lint-readmes` allowlist.
 
 ## Sections
 

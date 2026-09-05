@@ -14,7 +14,7 @@ hook) so refreshes work with just the `kit` binary on `$PATH`.
 
 - [ci/](ci/README.md)
 - [docs/](docs/README.md)
-- [devcontainer/](devcontainer/README.md)
+- [devcontainer](#emit-devcontainer-jsonsh): emitted, no source directory
 - [scripts/](scripts/README.md)
 - [tool-versions.toml](tool-versions.toml)
 - [services/](#services-catalog) — opt-in `--services` catalog
