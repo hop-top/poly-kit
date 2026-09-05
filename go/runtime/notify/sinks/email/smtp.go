@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"hop.top/kit/go/core/netpolicy"
 )
 
 // ErrSMTPDial is returned when the underlying network dial fails.
@@ -139,9 +141,18 @@ func (m *smtpMailer) Send(ctx context.Context, msg Message) error {
 		dialer = &net.Dialer{Timeout: 30 * time.Second}
 	}
 
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	// SMTP is raw-dial egress: net/http never sees it, so netpolicy.Install
+	// cannot cover it. A *net.Dialer cannot be made policy-aware either —
+	// DialContext is a method, not a replaceable field — so the guard wraps
+	// the dial function here, at the one place the socket is opened.
+	// WithSMTPDialer keeps taking a *net.Dialer; the injected dialer is
+	// still honored, just no longer able to bypass --offline.
+	conn, err := netpolicy.GuardDial(dialer.DialContext)(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrSMTPDial, err)
+		// Both sentinels stay matchable: callers already branch on
+		// ErrSMTPDial, and an --offline refusal must remain reachable
+		// through errors.Is(err, netpolicy.ErrOffline).
+		return fmt.Errorf("%w: %w", ErrSMTPDial, err)
 	}
 
 	c, err := smtp.NewClient(conn, m.host)

@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"regexp"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 
+	"hop.top/kit/go/core/netpolicy"
 	"hop.top/kit/go/storage/kv"
 )
 
@@ -29,15 +30,42 @@ type Store struct {
 var _ kv.Store = (*Store)(nil)
 
 // New opens a MySQL/TiDB connection and ensures the KV table exists.
+//
+// It is NewContext with a background context, kept for callers that have
+// none to offer. Because the offline marker travels on a context, a Store
+// built this way is unguarded at open time; every later query still is,
+// since the guard rides the driver's dial hook. Prefer NewContext.
 func New(dsn string, table string) (*Store, error) {
+	return NewContext(context.Background(), dsn, table)
+}
+
+// NewContext opens a MySQL/TiDB connection and ensures the KV table
+// exists, honoring the network policy carried by ctx.
+//
+// The dial is routed through netpolicy.GuardDial via the driver's
+// Config.DialFunc, which go-sql-driver/mysql invokes with the context of
+// the query that triggered the connection. sql.Open is lazy, so an
+// --offline refusal surfaces on the first use — here the ping below, and
+// on every subsequent Get/Put/Delete/List — rather than being lost at
+// open time.
+func NewContext(ctx context.Context, dsn string, table string) (*Store, error) {
 	if err := validateTable(table); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("mysql", dsn)
+	cfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("tidb kv: open: %w", err)
+		return nil, fmt.Errorf("tidb kv: parse dsn: %w", err)
 	}
-	if err := db.Ping(); err != nil {
+	// ParseDSN never sets DialFunc, so this is the driver's own seam
+	// rather than an override of a caller's choice.
+	cfg.DialFunc = netpolicy.GuardDial(nil)
+
+	connector, err := mysql.NewConnector(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("tidb kv: connector: %w", err)
+	}
+	db := sql.OpenDB(connector)
+	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("tidb kv: ping: %w", err)
 	}
@@ -45,7 +73,7 @@ func New(dsn string, table string) (*Store, error) {
 		k VARCHAR(512) PRIMARY KEY,
 		v LONGBLOB NOT NULL
 	)`, table)
-	if _, err := db.Exec(ddl); err != nil {
+	if _, err := db.ExecContext(ctx, ddl); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("tidb kv: migrate: %w", err)
 	}

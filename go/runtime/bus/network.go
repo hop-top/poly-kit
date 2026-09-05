@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"hop.top/kit/go/core/netpolicy"
 	"hop.top/kit/go/core/util"
 )
 
@@ -99,6 +100,7 @@ type NetworkAdapter struct {
 	originID     string
 	auth         Authenticator
 	relay        bool // T-0182: star-topology relay (re-forward inbound to non-origin peers)
+	offline      atomic.Bool
 	closed       atomic.Bool
 	wg           sync.WaitGroup
 	unsub        Unsubscribe
@@ -139,13 +141,39 @@ func NewNetworkAdapter(b Bus, opts ...NetworkOption) *NetworkAdapter {
 	return n
 }
 
+// baseCtx returns the root context for adapter-owned goroutines. A
+// reconnect outlives the caller's context, so it cannot inherit it — but
+// starting from a bare Background would silently drop the offline marker
+// and let a dropped peer be re-dialed on a run that asked for no
+// network. Connect records the policy it saw; reconnects replay it.
+func (n *NetworkAdapter) baseCtx() context.Context {
+	if n.offline.Load() {
+		return netpolicy.WithOffline(context.Background(), true)
+	}
+	return context.Background()
+}
+
 // Connect establishes a WebSocket connection to a remote peer.
 func (n *NetworkAdapter) Connect(ctx context.Context, addr string) error {
 	if n.closed.Load() {
 		return ErrBusClosed
 	}
 
-	conn, _, err := websocket.Dial(ctx, addr, nil)
+	// Remember the policy for reconnects, which start from their own
+	// context long after this one is gone. Sticky by design: once a run
+	// is offline, a later online Connect must not un-set it for peers
+	// dialed under the offline policy.
+	if netpolicy.IsOffline(ctx) {
+		n.offline.Store(true)
+	}
+
+	// coder/websocket handshakes over an *http.Client, so the policy is
+	// applied through a guarded transport rather than a dialer. Naming
+	// the client here rather than relying on http.DefaultClient keeps
+	// enforcement explicit and independent of netpolicy.Install order.
+	conn, _, err := websocket.Dial(ctx, addr, &websocket.DialOptions{
+		HTTPClient: &http.Client{Transport: netpolicy.Guard(http.DefaultTransport)},
+	})
 	if err != nil {
 		return err
 	}
@@ -441,7 +469,7 @@ func (n *NetworkAdapter) reconnectLoop(addr string) {
 		n.mu.Unlock()
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(n.baseCtx())
 	defer cancel()
 
 	// Stop retrying when adapter closes.

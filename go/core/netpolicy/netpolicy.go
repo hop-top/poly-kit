@@ -38,6 +38,33 @@
 // can therefore all be brought under the policy. CheckDial exposes the
 // same decision for hooks that are not shaped like a dialer.
 //
+// # kit's own egress
+//
+// Every egress path kit itself owns is now routed through one of the two
+// seams:
+//
+//   - SMTP (runtime/notify/sinks/email) dials through GuardDial. The
+//     mailer still accepts a *net.Dialer, which cannot itself be made
+//     policy-aware; the guard wraps its DialContext at the call site.
+//   - WebSocket (transport/api/client and runtime/bus) hands
+//     coder/websocket an *http.Client whose transport is Guard-wrapped.
+//     Naming it explicitly rather than leaning on http.DefaultClient
+//     keeps enforcement independent of whether Install has run. The bus
+//     reconnect loop starts from its own root context and replays the
+//     policy its last Connect saw, so a dropped peer is not re-dialed
+//     on an offline run.
+//   - TiDB/MySQL (storage/kv/tidb) sets Config.DialFunc to a guarded
+//     dialer. The driver invokes it with the context of the query that
+//     triggered the connection, so the marker survives sql.Open's
+//     laziness and the refusal lands on first use.
+//
+// One gap remains inside kit, bounded by an API rather than by Go:
+// kv.Open and kv.Opener carry no context, so a Store opened through the
+// backend registry cannot police its own open-time ping. The guarded
+// dial hook is installed regardless, so every query through that Store
+// is covered; only the initial connect escapes. Callers with a context
+// should use tidb.NewContext.
+//
 // What remains uncovered, and cannot be covered from this package:
 //
 //   - A dependency that calls net.Dial itself and exposes no dialer
