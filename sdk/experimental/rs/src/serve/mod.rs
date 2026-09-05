@@ -136,9 +136,10 @@ mod supervisor;
 
 pub use cancel::CancelToken;
 pub use config::{
-    failure_error, worst_outcome, FailurePolicy, LifecycleOutcome, ServiceConfig, ServiceConfigs,
-    SupervisorConfig, DEFAULT_READY_TIMEOUT, DEFAULT_SHUTDOWN_TIMEOUT, DEFAULT_STOP_TIMEOUT,
-    KEY_ENABLED, KEY_FAILURE_POLICY, KEY_READY_TIMEOUT, KEY_SHUTDOWN_TIMEOUT, KEY_STOP_TIMEOUT,
+    failure_error, parse_duration, worst_outcome, FailurePolicy, LifecycleOutcome, ServiceConfig,
+    ServiceConfigs, SupervisorConfig, DEFAULT_READY_TIMEOUT, DEFAULT_SHUTDOWN_TIMEOUT,
+    DEFAULT_STOP_TIMEOUT, KEY_ENABLED, KEY_FAILURE_POLICY, KEY_READY_TIMEOUT, KEY_SHUTDOWN_TIMEOUT,
+    KEY_STOP_TIMEOUT,
 };
 pub use events::{
     default_topics, EventPayload, Publisher, ServeLogger, StderrLogger, ACTION_FAILED,
