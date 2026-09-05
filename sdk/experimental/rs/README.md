@@ -4,23 +4,28 @@ experimental Rust client SDK.
 
 ## Modules
 
-- [`src/id/`](src/id/) — TypeID primitive (cross-language; see
-  [ADR 0001](../../../docs/adr/0001-typeid-primitive.md))
-- [`src/bus/`](src/bus/) — in-process event bus (feature `bus`; see
-  [Bus](#bus))
-- [`src/sqldb.rs`](src/sqldb.rs) — SQLite connection setup, pragmas and a
-  numbered migration runner (feature `sqldb`; see [Storage](#storage))
-- [`src/kv.rs`](src/kv.rs) — byte-keyed `Store` / `TtlStore` traits with a
-  SQLite backend (feature `kv`; see [Storage](#storage))
-- [`src/blob/`](src/blob/) — object storage over a pluggable backend, local
-  filesystem only (feature `blob`; see [Storage](#storage))
-- [`src/sqlstore/`](src/sqlstore/) — typed JSON store over `sqldb`, with
-  optional backup and at-rest encryption (feature `sqlstore`; see
-  [Storage](#storage))
-- [`src/httpcache/`](src/httpcache/) — HTTP response cache over a `kv` TTL
-  store (feature `httpcache`; see [httpcache wire contract](#httpcache-wire-contract))
-- [`src/mcp/`](src/mcp/) — dual-spec MCP surface over a bridged command
-  tree (feature `mcp`; see [MCP surface](#mcp-surface))
+Every path is relative to `src/`. Feature names come from `Cargo.toml`; the
+[feature table](#features) is the authority for what each one pulls in.
+
+| Path | What it is | Start here when |
+|------|------------|-----------------|
+| [`serve/`](src/serve/README.md) | serve hierarchy and service lifecycle (feature `serve`, `serve-cli` for the clap command) | your CLI hosts long-running services |
+| [`output/`](src/output/README.md) | `--format` flag family, `Formatter` trait, registry, `CliError` (feature `output`) | a command renders one payload as table, json or yaml |
+| [`output/builtins/`](src/output/builtins/README.md) | the shipped formatters and their `--format-opt` keys | you need a formatter option or a custom formatter |
+| [`bus/`](src/bus/README.md) | in-process event bus with topic grammar (feature `bus`) | components publish or subscribe to named events |
+| [`mcp/`](src/mcp/README.md) | dual-spec MCP surface over a bridged command tree (feature `mcp`) | MCP clients must call your commands as tools |
+| [`sqlstore/`](src/sqlstore/README.md) | typed JSON store over `sqldb` with backup and encryption (feature `sqlstore`) | a CLI keeps typed records locally |
+| [`httpcache/`](src/httpcache/README.md) | HTTP response cache over a `kv` TTL store (feature `httpcache`) | responses must be reused across runs |
+| [`blob/`](src/blob/README.md) | object storage over a backend trait, local filesystem only (feature `blob`) | you store opaque files or artifacts |
+| [`id/`](src/id/README.md) | TypeID primitive (feature `id`) | you mint or parse prefixed identifiers |
+| [`telemetry/`](src/telemetry/README.md) | consent-gated usage events, redaction, sinks (feature `telemetry`) | you record usage under user consent |
+| [`timeutil/`](src/timeutil/README.md) | `since` and `until` relative-date parsing (feature `timeutil`) | a flag takes a human time expression |
+| [`sqldb.rs`](src/sqldb.rs) | SQLite connection setup, pragmas, numbered migrations (feature `sqldb`) | you open a database directly |
+| [`kv.rs`](src/kv.rs) | byte-keyed `Store` / `TtlStore` traits over SQLite (feature `kv`) | you need small keyed values with expiry |
+| [`netpolicy.rs`](src/netpolicy.rs) | `--offline` marker and the guarded reqwest client (feature `api`) | a request must honour `--offline` |
+| [`api.rs`](src/api.rs) | JSON API client over the guarded client (feature `api`) | you call an HTTP API from a kit CLI |
+| [`uri.rs`](src/uri.rs) | URI facade delegating to `hop-top-cite` (feature `uri`) | you parse or format kit URIs |
+| [`cli.rs`](src/cli.rs), [`tui.rs`](src/tui.rs) | placeholders, empty | never; both are reserved |
 
 ## Features
 
