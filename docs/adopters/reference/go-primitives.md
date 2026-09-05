@@ -117,15 +117,17 @@ want and the abstraction stays swappable.
 |---|---|---|---|
 | kv/sqlite | `kv` | `hop.top/kit/go/storage/kv/sqlite` | Local file, no server; reachable via `kv.Open` |
 | kv/badger | `kv` | `hop.top/kit/go/storage/kv/badger` | Embedded, no server; reachable via `kv.Open` |
-| kv/etcd | `kv` | `hop.top/kit/go/storage/kv/etcd` | Needs an etcd cluster; construct directly |
-| kv/tidb | `kv` | `hop.top/kit/go/storage/kv/tidb` | Needs a TiDB/MySQL server; construct directly |
+| kv/etcd | `kv` | `hop.top/kit/go/storage/kv/etcd` | Needs an etcd cluster; blank-import to reach it via `kv.Open` |
+| kv/tidb | `kv` | `hop.top/kit/go/storage/kv/tidb` | Needs a TiDB/MySQL server; blank-import to reach it via `kv.Open` |
 | blob/local | `blob` | `hop.top/kit/go/storage/blob/local` | Local filesystem |
 | blob/s3 | `blob` | `hop.top/kit/go/storage/blob/s3` | You supply the AWS SDK client |
 
-`kv.Open` dispatches on `Config.Backend`, and today only `sqlite`
-and `badger` are wired: asking it for `etcd` or `tidb` returns
-`backend not available (requires build tag)`. Import the backend
-package and call its `New` directly instead.
+`kv.Open` dispatches on `Config.Backend` through a driver registry:
+blank-import the backend package you want and it registers itself. A
+name whose driver was never imported is refused with an error naming
+the package to import. Use `kv.OpenContext` where you have a context —
+it lets a driver police its initial connect, which is what makes
+`--offline` cover the first dial and not only later queries.
 
 Deep dive: [`storage-abstractions.md`](../concepts/storage-abstractions.md).
 
