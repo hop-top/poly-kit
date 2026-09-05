@@ -24,6 +24,7 @@ export enum Factor {
   Provenance = 10,
   Evolution = 11,
   AuthLifecycle = 12,
+  ConsentingTelemetry = 13,
 }
 
 const factorNames: Record<number, string> = {
@@ -39,6 +40,7 @@ const factorNames: Record<number, string> = {
   [Factor.Provenance]: "Provenance",
   [Factor.Evolution]: "Evolution",
   [Factor.AuthLifecycle]: "Auth Lifecycle",
+  [Factor.ConsentingTelemetry]: "Consenting Telemetry",
 };
 
 export function factorName(f: Factor): string {
@@ -71,6 +73,19 @@ interface SpecYAML {
     config_commands?: string[];
     auth_commands?: string[];
   };
+  telemetry?: TelemetryYAML;
+}
+
+/** The toolspec `telemetry:` block, subject to the F13 check. */
+interface TelemetryYAML {
+  enabled?: boolean;
+  categories?: string[];
+  sinks?: string[];
+  consent_command?: string;
+  consent_subcommands?: string[];
+  kill_switch_envs?: string[];
+  prompt_version?: string;
+  redact_rules?: string;
 }
 
 interface CmdYAML {
@@ -116,6 +131,46 @@ function dangerousCommands(cmds: CmdYAML[]): CmdYAML[] {
   return allCommands(cmds).filter(
     (c) => c.safety?.level === "dangerous",
   );
+}
+
+/** True iff the toolspec declares a telemetry block with
+ *  enabled: true. Non-opt-in specs skip F13 entirely. */
+function telemetryOptedIn(spec: SpecYAML): boolean {
+  return spec?.telemetry?.enabled === true;
+}
+
+/** Subcommands an opt-in binary MUST expose under its consent
+ *  command (typically `<bin> telemetry`). */
+const telemetryConsentSubcommandsCanonical = [
+  "status",
+  "enable",
+  "disable",
+  "reset",
+  "inspect",
+];
+
+/** Matches `<UPPERCASE_APP>_TELEMETRY_MODE`. The kit literal
+ *  `KIT_TELEMETRY_MODE` matches by construction, as does any
+ *  app-prefixed form like `SPACED_TELEMETRY_MODE`. */
+const telemetryModeEnvShape = /^[A-Z][A-Z0-9_]*_TELEMETRY_MODE$/;
+
+function hasTelemetryModeEnv(envs: string[]): boolean {
+  return envs.some((e) => telemetryModeEnvShape.test(e));
+}
+
+/** True when the space-separated path (e.g. "telemetry status")
+ *  exists in the command tree. */
+function commandPathExists(
+  cmds: CmdYAML[],
+  path: string[],
+): boolean {
+  if (path.length === 0) return false;
+  for (const c of cmds) {
+    if (c.name !== path[0]) continue;
+    if (path.length === 1) return true;
+    return commandPathExists(c.children ?? [], path.slice(1));
+  }
+  return false;
 }
 
 function pass(
@@ -285,6 +340,108 @@ function checkAuthLifecycle(spec: SpecYAML): CheckResult {
       "no auth_commands — skipped (tool may not need auth)");
   }
   return pass(f, "auth_commands present");
+}
+
+/**
+ * F13 static check. When the toolspec opts into telemetry
+ * (`telemetry.enabled: true`), asserts the block is well-formed
+ * across seven sub-conditions:
+ *
+ *  1. categories non-empty
+ *  2. consent_subcommands contains the canonical set
+ *     {status, enable, disable, reset, inspect}
+ *  3. kill_switch_envs contains DO_NOT_TRACK
+ *  4. kill_switch_envs contains a `<APP>_TELEMETRY_MODE` entry
+ *  5. prompt_version non-empty (canonical field name is locked —
+ *     aliases like `consent_version` are not read)
+ *  6. redact_rules non-empty
+ *  7. every declared consent_subcommand maps to a real command
+ *     in the commands tree
+ *
+ * Failures aggregate into a single result: one row per factor.
+ */
+function checkConsentingTelemetry(spec: SpecYAML): CheckResult {
+  const f = Factor.ConsentingTelemetry;
+  if (!telemetryOptedIn(spec)) {
+    return skip(f, "binary does not opt into telemetry");
+  }
+
+  const t = spec.telemetry ?? {};
+  const failures: string[] = [];
+
+  if (!t.categories || t.categories.length === 0) {
+    failures.push("telemetry.categories is empty");
+  }
+
+  const subs = t.consent_subcommands ?? [];
+  const missingSubs = telemetryConsentSubcommandsCanonical.filter(
+    (req) => !subs.includes(req),
+  );
+  if (missingSubs.length > 0) {
+    failures.push(
+      "telemetry.consent_subcommands missing required entries: " +
+        missingSubs.join(", "),
+    );
+  }
+
+  const envs = t.kill_switch_envs ?? [];
+  if (!envs.includes("DO_NOT_TRACK")) {
+    failures.push(
+      "telemetry.kill_switch_envs missing DO_NOT_TRACK",
+    );
+  }
+  if (!hasTelemetryModeEnv(envs)) {
+    failures.push(
+      "telemetry.kill_switch_envs missing a <APP>_TELEMETRY_MODE " +
+        "entry (e.g. KIT_TELEMETRY_MODE or SPACED_TELEMETRY_MODE)",
+    );
+  }
+
+  if (!(t.prompt_version ?? "").trim()) {
+    failures.push(
+      "telemetry.prompt_version is empty (canonical field name " +
+        "is `prompt_version`; aliases like `consent_version` " +
+        "are not accepted)",
+    );
+  }
+
+  if (!(t.redact_rules ?? "").trim()) {
+    failures.push("telemetry.redact_rules is empty");
+  }
+
+  // The consent_command schema is `<bin> telemetry [...]`; the
+  // leading `<bin>` is the binary name, not a top-level command,
+  // so strip it. Fall back to `telemetry <sub>` when the value is
+  // empty or a bare binary name.
+  const consentTokens = (t.consent_command ?? "").split(/\s+/)
+    .filter((tok) => tok.length > 0);
+  const consentPath =
+    consentTokens.length > 1 ? consentTokens.slice(1) : ["telemetry"];
+  const unmappedSubs: string[] = [];
+  for (const sub of subs) {
+    const full = [...consentPath, sub];
+    if (!commandPathExists(spec.commands ?? [], full)) {
+      unmappedSubs.push(full.join(" "));
+    }
+  }
+  if (unmappedSubs.length > 0) {
+    failures.push(
+      "telemetry.consent_subcommands declared but not in " +
+        "commands tree: " + unmappedSubs.join(", "),
+    );
+  }
+
+  if (failures.length === 0) {
+    return pass(f,
+      "telemetry block well-formed; all consent subcommands declared");
+  }
+
+  return fail(f, failures.join("; "),
+    "Fix the telemetry block: ensure categories, " +
+      "consent_subcommands {status, enable, disable, reset, " +
+      "inspect}, kill_switch_envs [DO_NOT_TRACK, <APP>_TELEMETRY_MODE], " +
+      "prompt_version, redact_rules are set, and that each " +
+      "consent_subcommand maps to a command in the commands tree.");
 }
 
 function runStaticChecks(spec: SpecYAML): CheckResult[] {
@@ -578,11 +735,19 @@ export function run(
 ): Report {
   const spec = loadSpec(toolspecPath);
   let results = runStaticChecks(spec);
+  results.push(checkConsentingTelemetry(spec));
 
   if (binaryPath) {
     const rtResults = runRuntimeChecks(binaryPath, spec);
     results = mergeResults(results, rtResults);
   }
+
+  // The denominator counts factors *eligible* to contribute. The 12
+  // pre-F13 factors always are, so a non-opt-in binary still scores
+  // N/12; only an opt-in binary adds F13 and scores N/13. Skips
+  // inside the eligible set (e.g. runtime-only factors on a
+  // static-only run) still count toward the denominator.
+  const total = telemetryOptedIn(spec) ? 13 : 12;
 
   const score = results.filter((r) => r.status === "pass").length;
   return {
@@ -590,7 +755,7 @@ export function run(
     toolspec: toolspecPath,
     results,
     score,
-    total: 12,
+    total,
   };
 }
 
@@ -610,7 +775,7 @@ function mergeResults(
   const out: CheckResult[] = [];
   for (
     let f = Factor.SelfDescribing;
-    f <= Factor.AuthLifecycle;
+    f <= Factor.ConsentingTelemetry;
     f++
   ) {
     const r = byFactor.get(f);
