@@ -360,7 +360,7 @@ Deep dives: [`engine-security.md`](engine-security.md),
 | Primitive | What it is | Reach for it when | Import path |
 |---|---|---|---|
 | conformance | Layer-A test helper: `AssertCLI` asserts your root satisfies the kit contract | One-line contract assertion in your test suite | `hop.top/kit/go/conformance` |
-| cli/conformance/harness | Integration toolkit asserting contract properties under controlled conditions | Deeper assertions: dry-run purity, exit-code classes, JSON schema | `hop.top/kit/go/console/cli/conformance/harness` |
+| conformance/harness | Integration toolkit asserting contract properties under controlled conditions | Deeper assertions: dry-run purity, exit-code classes, JSON schema | `hop.top/kit/go/conformance/harness` |
 | conformance/scenario | The scenario DSL: closed-vocabulary YAML rubric grading a captured run | Authoring a graded conformance scenario | `hop.top/kit/go/conformance/scenario` |
 | conformance/story | Story DSL: closed-key YAML schema, parser, three-tier validator | Writing stories that describe expected behaviour | `hop.top/kit/go/conformance/story` |
 | conformance/recorder | Turns a scenario plus a binary into an uploadable cassette | Recording a run for grading | `hop.top/kit/go/conformance/recorder` |
@@ -370,13 +370,13 @@ Deep dives: [`engine-security.md`](engine-security.md),
 | job/mock | In-memory `job.Service` | Testing job producers without a backend | `hop.top/kit/go/runtime/job/mock` |
 | secret/memory | In-memory secret store | Tests that need a vault | `hop.top/kit/go/storage/secret/memory` |
 
-Mind the two similarly-named trees. `hop.top/kit/go/conformance`
-is the **library** holding `AssertCLI`;
+Mind the two similarly-named trees. Everything an adopter imports
+lives under `hop.top/kit/go/conformance` — `AssertCLI` at its root,
+the `harness` toolkit and the `verifynoleak` scanners beneath it.
 `hop.top/kit/go/console/cli/conformance` is the **`kit conformance`
-subcommand tree** and has no `AssertCLI`. Import the first from
-your tests; mount the second if you want the commands.
-(`go/conformance/README.md` currently names the second path for
-`AssertCLI` — following it verbatim will not compile.)
+subcommand tree**: every package under it returns a cobra command
+and none export test helpers. Import the first from your tests;
+mount the second if you want the commands.
 
 Deep dive: [`toolspec-harness-guide.md`](../integrations/toolspec-harness-guide.md).
 
@@ -424,7 +424,7 @@ closed catalog of adapter mapping helpers), `runtime/policy/cel`
 linter, not an API you call.
 
 **Test-only, no importable package.** `runtime/policy/e2e`,
-`console/cli/conformance/verifynoleak` and its `citemplates`
+`conformance/verifynoleak` and its `citemplates`
 directory contain only `_test.go` files, so they do not appear in
 `go list` output as importable packages at all.
 `core/xdg/scopetest` is documented in its own source as
