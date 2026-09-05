@@ -326,6 +326,36 @@ func TestWithAPI_ServeStartsAPIWithoutConfiguration(t *testing.T) {
 	assert.False(t, svc.Ready(), "the service is stopped after the run")
 }
 
+// TestWithAPI_ListReadsTheSupervisorsResolution pins that `serve
+// --list` reports the api service the way the supervisor resolves it:
+// enabled by default under WithAPI, disabled only by an explicit key.
+func TestWithAPI_ListReadsTheSupervisorsResolution(t *testing.T) {
+	apiLine := func(r *cli.Root) string {
+		var out bytes.Buffer
+		r.Cmd.SetOut(&out)
+		require.NoError(t, runServeArgs(t, r, []string{"serve", "--list"}, 2*time.Second))
+		for _, line := range strings.Split(out.String(), "\n") {
+			if strings.HasPrefix(line, cli.APIServiceName+" ") {
+				return line
+			}
+		}
+		t.Fatalf("no api line in listing:\n%s", out.String())
+		return ""
+	}
+
+	r := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))
+	fields := strings.Fields(apiLine(r))
+	require.Len(t, fields, 4, "SERVICE CONFIGURED ENABLED READY")
+	assert.Equal(t, "true", fields[1], "the compat default makes the api configured")
+	assert.Equal(t, "true", fields[2], "the listing must say what a bare serve does: start it")
+
+	off := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))
+	off.Viper.Set("services.api.enabled", false)
+	fields = strings.Fields(apiLine(off))
+	require.Len(t, fields, 4)
+	assert.Equal(t, "false", fields[2], "an explicit services.api.enabled: false wins")
+}
+
 func TestWithAPI_ExplicitDisableWinsOverCompatDefault(t *testing.T) {
 	r := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))
 	r.Viper.Set("services.api.enabled", false)

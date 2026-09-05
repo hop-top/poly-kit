@@ -129,6 +129,14 @@ link or shim with a different target is refused unless --force.`,
 	cli.SetSideEffect(cmd, cli.SideEffectWrite)
 	cli.SetIdempotency(cmd, cli.IdempotencyYes)
 	cli.SetTopLevelVerb(cmd)
+	// kit symlink installs the binary that is running — a served
+	// invocation would relink the process serving it. Self-hosting
+	// withholds it from every transport; the reason travels in
+	// discovery.
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations["kit/self-hosting"] = "true"
 	return cmd
 }
 
