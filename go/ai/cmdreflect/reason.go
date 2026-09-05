@@ -63,6 +63,15 @@ const (
 	// dilutes the tool list without adding capability.
 	ReasonManagementOnly NonInvocableReason = "management-only"
 
+	// ReasonSelfHosting marks a command that hosts or modifies the
+	// tool itself: the `serve` hierarchy, a command that declares it
+	// listens (kit/network=ingress), or one annotated
+	// kit/self-hosting. Running it from inside a served invocation
+	// would start a server inside the server, or replace the binary
+	// that is serving. No option lifts it: the command runs from
+	// the local CLI only.
+	ReasonSelfHosting NonInvocableReason = "self-hosting"
+
 	// ReasonMalformedSchema marks a command whose declared metadata
 	// does not resolve: an unrecognized kit/side-effect value, or a
 	// kit/output-schema that is not valid JSON. The command is
@@ -80,14 +89,22 @@ const (
 // built-in is not a policy judgement and should never be reported as
 // one. Declaration defects come next, because a malformed schema
 // makes every downstream judgement unreliable. Surface withdrawal
-// (hidden, management-only, deprecated) follows, and behavioral
-// exclusions (interactive, unauthorized) come last — those describe
-// a command that IS on the surface and still cannot be called here.
+// (hidden, self-hosting, management-only, deprecated) follows, and
+// behavioral exclusions (interactive, unauthorized) come last —
+// those describe a command that IS on the surface and still cannot
+// be called here.
+//
+// Self-hosting sits above management-only because it is the more
+// useful answer for the one command that carries both: kit's own
+// `serve` is reserved AND is the server. "Reserved to kit" says who
+// owns the word; "self-hosting" says why calling it through a served
+// surface can never work.
 var reasonPrecedence = []NonInvocableReason{
 	ReasonNotRunnable,
 	ReasonBuiltin,
 	ReasonMalformedSchema,
 	ReasonHiddenInternal,
+	ReasonSelfHosting,
 	ReasonManagementOnly,
 	ReasonDeprecated,
 	ReasonInteractive,
@@ -138,6 +155,8 @@ func (r NonInvocableReason) Explain() string {
 		return "destructive and not authorized on this surface"
 	case ReasonManagementOnly:
 		return "reserved to the tool's own management surface"
+	case ReasonSelfHosting:
+		return "self-hosting: starts a server or modifies the tool itself; runs from the CLI only"
 	case ReasonMalformedSchema:
 		return "declared metadata does not resolve"
 	}
