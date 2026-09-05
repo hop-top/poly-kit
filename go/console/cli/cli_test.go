@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/output"
 )
 
 // ansiRE matches ANSI SGR escape sequences.
@@ -569,7 +570,100 @@ func TestHelpPerGroup_Unknown(t *testing.T) {
 	r.Cmd.SetErr(&buf)
 	r.SetArgs([]string{"help", "bogus"})
 	err := r.Execute(t.Context())
-	assert.Error(t, err, "unknown group ID must error")
+	require.Error(t, err, "an unresolvable help topic must error")
+
+	// A topic naming neither a command nor a group is a usage
+	// mistake, so it carries the taxonomy's usage code — not the
+	// generic 1 an unrecognized group ID used to produce.
+	var ce *output.Error
+	require.ErrorAs(t, err, &ce, "the refusal must be an output.Error envelope")
+	assert.Equal(t, 2, ce.ExitCode, "an unknown help topic exits 2 (usage)")
+	assert.Equal(t, output.CodeUsage, ce.Code, "and is classified as usage")
+}
+
+// TestHelpTopic_Command: `help <command>` renders that command's own
+// help rather than being read as a group ID. A command name reaching
+// the group lookup and being refused there was the defect.
+func TestHelpTopic_Command(t *testing.T) {
+	r := perGroupRoot()
+	var buf bytes.Buffer
+	r.Cmd.SetOut(&buf)
+	r.Cmd.SetErr(&buf)
+	r.SetArgs([]string{"help", "deploy"})
+	require.NoError(t, r.Execute(t.Context()))
+	out := stripANSI(buf.String())
+
+	assert.Contains(t, out, "Deploy the app", "the command's own help must render")
+	assert.NotContains(t, out, "unknown help",
+		"a command name must not be diagnosed as an unknown topic")
+}
+
+// TestHelpTopic_NestedCommandPath: the operand is a command path, so a
+// nested command is reachable by naming its whole path.
+func TestHelpTopic_NestedCommandPath(t *testing.T) {
+	r := perGroupRoot()
+	widget := &cobra.Command{Use: "widget", Short: "Widget things"}
+	widget.AddCommand(&cobra.Command{
+		Use: "add", Short: "Add a widget",
+		Run: func(cmd *cobra.Command, args []string) {},
+	})
+	r.Cmd.AddCommand(widget)
+
+	var buf bytes.Buffer
+	r.Cmd.SetOut(&buf)
+	r.Cmd.SetErr(&buf)
+	r.SetArgs([]string{"help", "widget", "add"})
+	require.NoError(t, r.Execute(t.Context()))
+
+	assert.Contains(t, stripANSI(buf.String()), "Add a widget",
+		"the leaf command's own help must render")
+}
+
+// TestHelpTopic_PartialPathIsUsage: a path resolving only part way is
+// unresolvable, not help for the ancestor it stopped at.
+func TestHelpTopic_PartialPathIsUsage(t *testing.T) {
+	r := perGroupRoot()
+	widget := &cobra.Command{Use: "widget", Short: "Widget things"}
+	widget.AddCommand(&cobra.Command{
+		Use: "add", Short: "Add a widget",
+		Run: func(cmd *cobra.Command, args []string) {},
+	})
+	r.Cmd.AddCommand(widget)
+
+	var buf bytes.Buffer
+	r.Cmd.SetOut(&buf)
+	r.Cmd.SetErr(&buf)
+	r.SetArgs([]string{"help", "widget", "bogus"})
+	err := r.Execute(t.Context())
+
+	var ce *output.Error
+	require.ErrorAs(t, err, &ce, "a partial path must be refused")
+	assert.Equal(t, 2, ce.ExitCode, "and refused as usage")
+	assert.Contains(t, ce.Message, "widget bogus",
+		"the refusal must quote the whole topic it could not resolve")
+}
+
+// TestHelpTopic_CommandWinsOverGroup pins the tie-break documented on
+// ApplyGroupVisibility: a command shadowing a group ID takes the name,
+// and the shadowed group keeps its --help-<id> flag form.
+func TestHelpTopic_CommandWinsOverGroup(t *testing.T) {
+	r := perGroupRoot()
+	r.Cmd.AddCommand(&cobra.Command{
+		Use: "extras", Short: "Extras command shadowing the group ID",
+		Run: func(cmd *cobra.Command, args []string) {},
+	})
+
+	var buf bytes.Buffer
+	r.Cmd.SetOut(&buf)
+	r.Cmd.SetErr(&buf)
+	r.SetArgs([]string{"help", "extras"})
+	require.NoError(t, r.Execute(t.Context()))
+	out := stripANSI(buf.String())
+
+	assert.Contains(t, out, "Extras command shadowing the group ID",
+		"the command must win the shared name")
+	assert.NotContains(t, out, "Bonus feature",
+		"the group listing must not be what a shadowed name renders")
 }
 
 // ── Completion ────────────────────────────────────────────────────────────

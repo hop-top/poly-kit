@@ -460,12 +460,17 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		cmd.Flags().Lookup(flagName).NoOptDefVal = "true"
 	}
 
-	// Hidden "help" subcommand: accepts group ID or "all".
+	// Hidden "help" subcommand: accepts a command path, a group ID,
+	// or "all". Args is deliberately arbitrary — a command path is
+	// many words ("help widget add"), and applyGroupVisibility
+	// classifies the operand before cobra ever dispatches here, so an
+	// arity rule at this level would only pre-empt that with the
+	// wrong diagnosis.
 	helpSub := &cobra.Command{
-		Use:    "help [group]",
-		Short:  "Show help for a command group",
+		Use:    "help [command | group]",
+		Short:  "Show help for a command or command group",
 		Hidden: true,
-		Args:   cobra.ExactArgs(1),
+		Args:   cobra.ArbitraryArgs,
 	}
 	cmd.AddCommand(helpSub)
 
@@ -1264,8 +1269,25 @@ func walk(cmd *cobra.Command, fn func(*cobra.Command)) {
 // present in the args. When --help-all is detected, args are rewritten to
 // --help so fang renders the full help.
 //
-// Per-group help: --help-<id> or "help <id>" renders only that group's
-// commands. "help all" is equivalent to --help-all.
+// Per-group help: --help-<id> renders only that group's commands.
+//
+// The "help <operand...>" subcommand form is broader, and is
+// classified in this order:
+//
+//   - "help all" reveals every group, exactly as --help-all does.
+//   - A command path — one word or several, to whatever depth the tree
+//     goes ("help widget add") — prints that command's own help, exit 0.
+//   - A registered group ID prints that group's commands, exit 0.
+//   - Anything else is a usage error: exit 2 per the [output] taxonomy,
+//     the same code a bogus subcommand gets, rather than the generic 1
+//     an unrecognized operand used to produce.
+//
+// Tie-break: a command wins over a group of the same name. A command is
+// a thing the user can run and therefore the thing "help <name>" is
+// overwhelmingly asking about, and it is reachable no other way, whereas
+// a shadowed group keeps its --help-<id> flag form. Because the operand
+// may be a multi-word path, only a fully-resolved path counts: "help
+// widget nosuch" is a usage error, not help for widget.
 //
 // Exported for callers that bypass r.Execute (e.g. to call fang directly
 // with WithoutVersion or other custom options); they must invoke this
@@ -1275,24 +1297,27 @@ func (r *Root) ApplyGroupVisibility() { r.applyGroupVisibility() }
 func (r *Root) applyGroupVisibility() {
 	args := r.resolveArgs()
 
-	// Check for "help <id>" subcommand form.
+	// Check for the "help <operand...>" subcommand form.
 	if len(args) >= 2 && args[0] == "help" {
-		groupID := args[1]
-		if groupID == "all" {
+		operands := args[1:]
+		// "help all" reveals every group. It stops short of the
+		// plumbing flags --help-all also unhides; that difference is
+		// long-standing shipped behavior, not an oversight here.
+		if len(operands) == 1 && operands[0] == "all" {
 			r.Cmd.SetArgs([]string{"--help"})
 			return
 		}
-		if _, ok := r.groupTitles[groupID]; !ok {
-			// Wire up RunE to return an error for unknown group.
-			helpCmd := r.findHelpSubcommand()
-			if helpCmd != nil {
-				helpCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-					return fmt.Errorf("unknown help group %q", groupID)
-				}
-			}
+		if target := r.findHelpTarget(operands); target != nil {
+			r.installCommandHelp(target)
 			return
 		}
-		r.installGroupHelp(groupID)
+		if len(operands) == 1 {
+			if _, ok := r.groupTitles[operands[0]]; ok {
+				r.installGroupHelp(operands[0])
+				return
+			}
+		}
+		r.installHelpTopicError(operands)
 		return
 	}
 
@@ -1316,14 +1341,7 @@ func (r *Root) applyGroupVisibility() {
 		}
 	}
 	if helpAll {
-		// Reveal kit-owned plumbing flags (--config, --chdir, --dry-run,
-		// etc.) that are hidden from default --help to keep the FLAGS
-		// section aligned with the cross-language parity contract.
-		for _, name := range r.hiddenDefaultFlags {
-			if f := r.Cmd.PersistentFlags().Lookup(name); f != nil {
-				f.Hidden = false
-			}
-		}
+		r.revealHiddenDefaultFlags()
 		cleaned := make([]string, 0, len(args))
 		for _, a := range args {
 			if a == "--help-all" {
@@ -1351,6 +1369,88 @@ func (r *Root) findHelpSubcommand() *cobra.Command {
 		}
 	}
 	return nil
+}
+
+// revealHiddenDefaultFlags unhides the kit-owned plumbing flags
+// (--config, --chdir, --dry-run, etc.) that default --help suppresses
+// to keep the FLAGS section aligned with the cross-language parity
+// contract.
+func (r *Root) revealHiddenDefaultFlags() {
+	for _, name := range r.hiddenDefaultFlags {
+		if f := r.Cmd.PersistentFlags().Lookup(name); f != nil {
+			f.Hidden = false
+		}
+	}
+}
+
+// findHelpTarget resolves operands as a command path and returns the
+// command it names, or nil when it names none.
+//
+// Resolution is cobra's own: Find walks as deep as the words match and
+// hands back whatever it could not consume. A path only counts when
+// nothing is left over, so a partial match ("widget nosuch") resolves
+// to no command rather than quietly to its parent — which is what
+// cobra's stock help command does, and why classification lives here
+// instead of being delegated to it.
+//
+// The root itself is never a target: "help" with no operand is handled
+// before this is reached, and an operand list that resolves back to the
+// root is one Find could not consume at all.
+func (r *Root) findHelpTarget(operands []string) *cobra.Command {
+	if len(operands) == 0 {
+		return nil
+	}
+	target, rest, err := r.Cmd.Find(operands)
+	if err != nil || target == nil || target == r.Cmd || len(rest) > 0 {
+		return nil
+	}
+	return target
+}
+
+// installCommandHelp points the help subcommand at target, so
+// "help <command path>" prints that command's help and exits 0.
+//
+// The rendering is cobra's, reached through the same Help() the
+// command's own --help would reach, so a command documented one way by
+// "tool widget add --help" is documented identically by "tool help
+// widget add".
+func (r *Root) installCommandHelp(target *cobra.Command) {
+	helpCmd := r.findHelpSubcommand()
+	if helpCmd == nil {
+		return
+	}
+	helpCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		if target.Context() == nil {
+			target.SetContext(cmd.Context())
+		}
+		// Match cobra's own help command: make the help and version
+		// flags exist on the target before its help is rendered, so
+		// they appear in the FLAGS section.
+		target.InitDefaultHelpFlag()
+		target.InitDefaultVersionFlag()
+		return target.Help()
+	}
+}
+
+// installHelpTopicError makes the help subcommand refuse an operand
+// that names neither a command path nor a group.
+//
+// The refusal is an [output.UsageError] — exit 2 — because a help
+// topic that resolves to nothing is the same class of mistake as an
+// unknown subcommand, and checkUnknownSubcommand exempts a leading
+// `help` precisely so this classification is made here with the group
+// IDs in hand.
+func (r *Root) installHelpTopicError(operands []string) {
+	helpCmd := r.findHelpSubcommand()
+	if helpCmd == nil {
+		return
+	}
+	topic := strings.Join(operands, " ")
+	helpCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return output.UsageError(fmt.Sprintf(
+			"unknown help topic %q for %q%s", topic, r.Cmd.Name(),
+			suggestionsFor(r.Cmd, operands[0])))
+	}
 }
 
 // installGroupHelp rewrites the command tree so only the target group's
