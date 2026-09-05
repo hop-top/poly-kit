@@ -297,15 +297,7 @@ final class Supervisor
             // are abandoned and the run exits with the crash code.
             if ($this->escalation?->cancelled() === true) {
                 $state->observed[] = Outcome::RuntimeCrash;
-                foreach (array_slice($order, 0, $i + 1) as $abandoned) {
-                    $state->failed[$abandoned] = 'drain aborted by second signal';
-                    $this->emitter->emit(Topics::OBJECT_SERVICE, Topics::ACTION_FAILED, [
-                        'service' => $abandoned,
-                        'error' => 'drain aborted by second signal',
-                        'reason' => 'escalated',
-                        'elapsed_ms' => $state->elapsedMs(),
-                    ]);
-                }
+                $this->abandonRemaining($state, array_slice($order, 0, $i + 1), 'escalated');
                 return;
             }
 
@@ -331,24 +323,66 @@ final class Supervisor
                 ($configs[$name] ?? new ServiceConfig())->stopTimeout,
                 max(0.0, $deadline - ($this->now)()),
             );
-            $this->stopOne($svc, $name, $budget, $deadline, $state);
+            if (!$this->stopOne($svc, $name, $budget, $deadline, $state)) {
+                $this->abandonRemaining($state, array_slice($order, 0, $i), 'escalated');
+                return;
+            }
         }
     }
 
-    /** Bounds one stop by its budget and by whatever remains of the total. */
+    /**
+     * Records the services a second signal left unstopped.
+     *
+     * @param list<string> $remaining
+     */
+    private function abandonRemaining(RunState $state, array $remaining, string $reason): void
+    {
+        foreach (array_reverse($remaining) as $name) {
+            $state->failed[$name] = 'drain aborted by second signal';
+            $this->emitter->emit(Topics::OBJECT_SERVICE, Topics::ACTION_FAILED, [
+                'service' => $name,
+                'error' => 'drain aborted by second signal',
+                'reason' => $reason,
+                'elapsed_ms' => $state->elapsedMs(),
+            ]);
+        }
+    }
+
+    /**
+     * Bounds one stop by its budget and by whatever remains of the
+     * total. Returns false when an escalation arrived during the stop
+     * and the remaining drain must be abandoned.
+     */
     private function stopOne(
         Service $svc,
         string $name,
         float $budget,
         float $deadline,
         RunState $state,
-    ): void {
+    ): bool {
         $began = ($this->now)();
         try {
             $svc->stop();
         } catch (Throwable $e) {
             $this->fail($state, $name, $e->getMessage(), Outcome::RuntimeCrash, 'stop', $e);
-            return;
+            return true;
+        }
+
+        // A drain is exactly where a second signal lands, and a signal
+        // interrupts a blocking call: a stop() parked in usleep() or
+        // on a socket returns early rather than running to completion.
+        // Without this check that short return would be read as a
+        // clean, fast stop and the escalation would be lost — the
+        // operator's second SIGINT would do nothing at all.
+        if ($this->escalation?->cancelled() === true) {
+            $this->fail(
+                $state,
+                $name,
+                'drain aborted by second signal',
+                Outcome::RuntimeCrash,
+                'escalated',
+            );
+            return false;
         }
 
         // PHP cannot preempt a synchronous stop, so a straggler is
@@ -367,19 +401,19 @@ final class Supervisor
                 $overTotal ? Outcome::ShutdownTimeout : Outcome::RuntimeCrash,
                 $overTotal ? 'shutdown_timeout' : 'stop_timeout',
             );
-            return;
+            return true;
         }
 
         // A service that returned on its own already reported stopped
         // when it did; the event is not repeated — one stopped per
         // service per run.
-        if ($state->markStopped($name)) {
-            return;
+        if (!$state->markStopped($name)) {
+            $this->emitter->emit(Topics::OBJECT_SERVICE, Topics::ACTION_STOPPED, [
+                'service' => $name,
+                'elapsed_ms' => $state->elapsedMs(),
+            ]);
         }
-        $this->emitter->emit(Topics::OBJECT_SERVICE, Topics::ACTION_STOPPED, [
-            'service' => $name,
-            'elapsed_ms' => $state->elapsedMs(),
-        ]);
+        return true;
     }
 
     /** Records a failure and surfaces it under the `failed` transition. */
