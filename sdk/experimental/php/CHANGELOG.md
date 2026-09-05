@@ -18,6 +18,11 @@ The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.2. This release 
 
 * **parity:** record and implement serve --enable/--disable and timeout flags
 
+### Contributors
+
+* @hop-top-release-bot[bot]
+* Jad Bitar (@jadb)
+
 Full diff: [kit-php/v0.5.0-alpha.1...kit-php/v0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.1...kit-php/v0.5.0-alpha.2)
 
 ## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.0...kit-php/v0.5.0-alpha.1) (2026-09-04)
