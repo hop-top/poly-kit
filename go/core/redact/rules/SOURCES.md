@@ -2,13 +2,13 @@
 
 | File              | Source                                                  | License |
 |-------------------|---------------------------------------------------------|---------|
-| presidio-pii.toml | github.com/microsoft/presidio @ 2.2.362                 | MIT     |
-| LICENSE           | github.com/microsoft/presidio @ 2.2.362                 | MIT     |
+| presidio-pii.toml | github.com/microsoft/presidio @ 2.2.364                 | MIT     |
+| LICENSE           | github.com/microsoft/presidio @ 2.2.364                 | MIT     |
 
 ## Pinned Commit
 
-- Tag:    2.2.362
-- URL:    https://github.com/microsoft/presidio/tree/2.2.362/presidio-analyzer/presidio_analyzer/predefined_recognizers
+- Tag:    2.2.364
+- URL:    https://github.com/microsoft/presidio/tree/2.2.364/presidio-analyzer/presidio_analyzer/predefined_recognizers
 
 ## Refresh
 
