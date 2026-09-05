@@ -114,18 +114,17 @@
       "config_keys": "SHIPPED"
     },
     "py": {
-      "implementation": null,
-      "note": "Typer root exists (sdk/py/hop_top_kit/cli.py), so the command half is expressible; serve is not implemented yet.",
-      "hierarchy": "PENDING",
-      "override_rule": "PENDING",
-      "list_flag": "PENDING",
-      "registration_seam": "PENDING",
-      "readiness": "PENDING",
-      "lifecycle_events": "PENDING",
-      "ordered_shutdown": "PENDING",
-      "failure_policy": "PENDING",
-      "exit_taxonomy": "PENDING",
-      "config_keys": "PENDING"
+      "implementation": "sdk/py/hop_top_kit/serve.py, mounted by register_serve on a Typer root",
+      "hierarchy": "SHIPPED",
+      "override_rule": "SHIPPED",
+      "list_flag": "SHIPPED",
+      "registration_seam": "SHIPPED",
+      "readiness": "SHIPPED",
+      "lifecycle_events": "SHIPPED",
+      "ordered_shutdown": "SHIPPED",
+      "failure_policy": "SHIPPED",
+      "exit_taxonomy": "SHIPPED",
+      "config_keys": "SHIPPED"
     },
     "rs": {
       "implementation": null,
