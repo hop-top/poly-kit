@@ -320,6 +320,17 @@ than it was asked to run.
 Both policies apply identically to the selector form, where they are
 indistinguishable: one service failing is the only service failing.
 
+### Re-execution
+
+A run is over when the supervisor returns; the root it ran on is not
+consumed. Executing `serve` again on the same root — a test harness, a
+tool that restarts its services in-process — MUST start a run that
+observes only the new call's context and signals: it keeps serving
+until that context is canceled, and it returns when it is. A run MUST
+NOT inherit the previous run's context, whether that context is still
+alive (the new run would ignore its own cancellation) or already
+canceled (the new run would stop without serving).
+
 ## Exit behavior
 
 Codes come from the kit taxonomy in
@@ -353,6 +364,14 @@ Notes:
   error is already a kit transient error, in which case exit `6`
   (`TRANSIENT`) is propagated unchanged so agents and retry wrappers
   keep their existing branch.
+- A refusal raised by the argument parser before the command runs — a
+  positional count the command does not accept, an unknown or
+  malformed flag, a flag missing its value or its required companion —
+  is `USAGE`, exit `2`, rendered as the same envelope the command's own
+  refusals use. This holds for every kit command and on every surface:
+  the shell exit status, `result.exit_code` over the socket, and the
+  REST status it maps to. The parser MUST NOT leave such a refusal as a
+  bare exit `1`.
 
 ## Configuration surface
 
@@ -575,8 +594,11 @@ Rules:
 - `exit_code` is the code a kit structured error carries (`USAGE` is
   `2`, `UNAUTHORIZED` is `5`, and so on per
   [`go/console/output/error.go`](../../go/console/output/error.go)).
-  A bare error with no code is `1`. A command that succeeds is `0`
-  regardless of what it wrote to `stderr`.
+  A bare error with no code is `1`. An invocation the command's parser
+  refuses — wrong positional count, unknown or malformed flag, missing
+  required flag — is `USAGE`, `2`, with the parser's message in
+  `stderr`. A command that succeeds is `0` regardless of what it wrote
+  to `stderr`.
 - `stdout` and `stderr` are what the command wrote through
   `cmd.OutOrStdout()` and `cmd.ErrOrStderr()`. A command that writes
   to `os.Stdout` directly bypasses capture; such output reaches the
@@ -727,10 +749,43 @@ WithRootFactory(build))`), every invocation gets a tree of its own:
 nothing is reset, nothing is serialized, and invocations run in
 parallel. The factory MUST return a tree that shares no mutable state
 with the trees it returned before — no flag bound to a package-level
-variable. A tree from `cli.New` is prepared for execution inside
-`Root.Execute`, where the confirmation and policy gates are installed,
-so a factory over `cli.New` yields an ungated tree today; a kit root
-uses the shared-tree form.
+variable, no closure over a struct another invocation writes.
+
+A kit root supplies the factory through `cli.WithRootFactory(build)`,
+where `build` is the tool's own construction — `cli.New` plus every
+command it mounts, the function `main` already has. The kit-shipped
+`api` and `socket` services then hand their bridge the factory runner
+instead of the shared-tree one, and for every tree the factory
+returns:
+
+- `Root.Prepare` installs what `Root.Execute` installs before it
+  parses — the RunE middleware carrying the confirmation, policy,
+  idempotency, and error-envelope gates, the kit-managed flags, and
+  validation — without executing, and without touching cobra's
+  process-global initializer list. A served invocation meets the same
+  gates on a factory tree as on the CLI: an unconfirmed destructive
+  command is refused with `UNAUTHORIZED`, a typed-token command needs
+  its token, and the permission and invocability gates answer in the
+  bridge before any tree is built.
+- The persistent root flags the operator set on the serving command
+  line are replayed onto it, `Changed` bit included, so
+  `mytool --no-color -c key=val serve socket` serves invocations that
+  see both. This is the factory form's counterpart of the shared
+  runner's baseline.
+- The factory is exercised once when the service validates. One that
+  returns nothing, returns the serving root, or builds a tree that
+  fails validation is a usage error at exit `2`, before anything
+  binds.
+
+The shared-tree form is the **default** and the factory form is
+**opt-in**. Only the adopter can rebuild the adopter's tree: commands
+are mounted after `cli.New` returns, and kit holds no description of
+that step. Opting in also accepts a cost — the construction runs once
+per served invocation, so anything expensive or stateful in it (a
+store opened, a keypair loaded) belongs outside the factory and must
+be safe for concurrent use — and a responsibility kit cannot check:
+trees that share state through package-level variables are isolated
+in name only.
 
 The throughput consequence is stated plainly: **a shared-tree bridge
 runs one command at a time.** A tool that needs concurrent in-process

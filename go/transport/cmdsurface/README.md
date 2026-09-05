@@ -148,10 +148,16 @@ served invocation starts from, plus only the flags it carries.
 
 A root factory must return a tree sharing no mutable state with the
 ones before it: no flag bound to a package-level variable, no
-closure over a shared struct. A tree from `cli.New` is gated inside
-`Root.Execute`, so a factory over `cli.New` runs ungated; a kit root
-uses the shared form until cli exposes a prepare-without-execute
-hook.
+closure over a shared struct. A tree from `cli.New` is gated only
+once prepared: `cli.Root.Prepare` installs what `Root.Execute`
+installs before parsing — the RunE middleware with the confirmation
+and policy gates, the kit-managed flags, validation — without
+executing, so a factory over a kit root is
+`func() *cobra.Command { r := newRoot(); _ = r.Prepare(); return r.Cmd }`
+(check the error in real code). The kit-shipped `api` and `socket`
+services build exactly that from `cli.WithRootFactory(newRoot)` and
+replay the operator's root flags onto each tree; a bridge wired by
+hand does the same.
 
 What no runner isolates: process-wide effects of the command's own
 code or the tree's hooks — the working directory, the environment,
