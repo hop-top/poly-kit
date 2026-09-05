@@ -6,7 +6,7 @@
 	proto openapi clients clients-ts clients-php clients-rs clients-test api \
 	job-test job-integration-hatchet job-integration-restate job-integration-temporal \
 	test-workflow test-hook test-release promote promote-alpha promote-beta promote-rc promote-release check \
-	test-templates lint-templates build builtins-sync check-mirror-sync refresh-secret-rules \
+	test-templates lint-templates build builtins-sync check-template-sources check-mirror-sync refresh-secret-rules \
 	refresh-pii-rules refresh-rules
 
 # Tool versions — single source of truth for local + the kit repo's
@@ -270,24 +270,36 @@ build: preflight builtins-sync ## Build the kit binary (re-syncs built-in templa
 	@mkdir -p bin
 	go build -buildvcs=false -o bin/kit ./cmd/kit
 
-builtins-sync: ## Sync templates/cli-{go,ts,py,php,rs,shared} into internal/template/builtins/ for embedding
+# Template trees mirrored verbatim into internal/template/builtins/ for
+# embedding. templates/ is canonical; the mirror is a byte-identical copy.
+BUILTIN_TEMPLATES := cli-go cli-ts cli-py cli-php cli-rs shared
+
+builtins-sync: check-template-sources ## Sync templates/cli-{go,ts,py,php,rs,shared} into internal/template/builtins/ for embedding
 	@rm -rf internal/template/builtins
 	@mkdir -p internal/template/builtins
-	@for tmpl in cli-go cli-ts cli-py cli-php cli-rs shared; do \
+	@for tmpl in $(BUILTIN_TEMPLATES); do \
 		if [ -d templates/$$tmpl ]; then \
 			cp -R templates/$$tmpl internal/template/builtins/$$tmpl; \
 		fi; \
 	done
-	@# go.mod inside an embedded subtree creates a nested module that Go's
-	@# embed refuses to cross; .go files inside the host module path get
-	@# compiled by `go build ./...` and break on template placeholders.
-	@# Rename both to .tmpl so the embed glob includes them; engine
-	@# renders them back to their original names at output time.
-	@find internal/template/builtins -name go.mod -exec sh -c 'mv "$$1" "$$1.tmpl"' _ {} \;
-	@find internal/template/builtins -name "*.go" -exec sh -c 'mv "$$1" "$$1.tmpl"' _ {} \;
 	@echo "synced built-in templates"
 
-check-mirror-sync: ## Verify templates/ and internal/template/builtins/ are in sync
+check-template-sources: ## Verify mirrored templates ship Go sources (*.go, go.mod) as *.tmpl
+	@# go.mod inside an embedded subtree creates a nested module that Go's
+	@# embed refuses to cross; .go files anywhere under the host module get
+	@# compiled by `go build ./...` and break on template placeholders.
+	@# Templates ship both as *.tmpl (the engine strips the suffix at render
+	@# time) so the mirror stays a verbatim copy of templates/.
+	@bad=$$(cd templates && find $(BUILTIN_TEMPLATES) -type f \( -name '*.go' -o -name go.mod \) 2>/dev/null); \
+	if [ -n "$$bad" ]; then \
+		echo "Go sources under templates/ must carry a .tmpl suffix (see internal/template/embed.go):"; \
+		echo "$$bad" | sed 's|^|  templates/|'; \
+		echo ""; \
+		echo "Fix: git mv <file> <file>.tmpl (render strips the suffix)"; \
+		exit 1; \
+	fi
+
+check-mirror-sync: check-template-sources ## Verify templates/ and internal/template/builtins/ are in sync
 	@if diff -rq templates/ internal/template/builtins/ | grep -v '^Only in templates: ' | grep -q .; then \
 		echo "Mirror drift detected between templates/ and internal/template/builtins/:"; \
 		diff -rq templates/ internal/template/builtins/ | grep -v '^Only in templates: '; \
