@@ -59,6 +59,11 @@ how kit itself is implemented.
 - [`reference/engine-security.md`](reference/engine-security.md) — identity, trust, encryption
 - [`reference/compliance-api.md`](reference/compliance-api.md) — 12-factor checker
 
+**Integrations**
+
+- [`integrations/README.md`](integrations/README.md) — AI harness, Claude Code and repo host integrations
+- [`integrations/repohost/README.md`](integrations/repohost/README.md) — provider auth behind the repohost facade
+
 ## Reference: which audience am I?
 
 If you're modifying kit itself (touching `go/`, `incubator/`, `sdk/`,

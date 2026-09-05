@@ -35,8 +35,8 @@ work on the kit codebase.
   [`stories/README.md`](stories/README.md).
 - **[Audits](audits/)** — package audits accompanying ADRs. Start at
   [`audits/README.md`](audits/README.md).
-- **[Contracts](contracts/)** — wire-level contracts: event topics,
-  ext-discover protocol.
+- **[Contracts](../contracts/README.md)** — wire-level contracts: event topics,
+  ext-discover protocol, kit init PR wiring, serve lifecycle.
 - **[Conformance](conformance/)** — dogfooding, threat model, CI
   integration, leak verification.
 
