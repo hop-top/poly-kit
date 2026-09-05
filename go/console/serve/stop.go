@@ -102,6 +102,12 @@ func (s *Supervisor) stopOne(
 			s.noteFailure(totalCtx, name, err, OutcomeRuntimeCrash, "stop", st, em)
 			return
 		}
+		// A service that returned on its own already reported
+		// stopped when it did; Stop released its resources, and the
+		// event is not repeated (contract: one stopped per service).
+		if st.markStopped(name) {
+			return
+		}
 		em.emit(totalCtx, ObjectService, ActionStopped, EventPayload{
 			Service: name, ElapsedMS: st.elapsedMS(),
 		})
