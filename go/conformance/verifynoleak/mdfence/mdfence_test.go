@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/mdfence"
+	"hop.top/kit/go/conformance/verifynoleak/mdfence"
 )
 
 func TestExtract_NoFences_ReturnsEmpty(t *testing.T) {

@@ -5,7 +5,9 @@
 the library you import from a unit test — not to be confused with
 `hop.top/kit/go/console/cli/conformance`, which is the cobra command
 tree behind the `kit conformance` subcommand and exports no test
-helpers. Import the library as `kitconformance`:
+helpers. Every adopter-facing library sits under this tree: the
+`harness` integration toolkit and the `verifynoleak` scanners are
+siblings of this package. Import the library as `kitconformance`:
 
 ```go
 import kitconformance "hop.top/kit/go/conformance"
@@ -93,7 +95,7 @@ arms ship in companion tracks:
 - **Provenance check** (factors 3, 4): captured in `12fcc-prov`
   (`go/runtime/provenance/`). Not part of `kit.Validate`.
 - **Test cassettes** (factor 9): xrr-based integration testing in
-  `12fcc-harness` (`go/console/cli/conformance/harness/`). Not part
+  `12fcc-harness` (`go/conformance/harness/`). Not part
   of `kit.Validate`.
 - **AI-judged quality** (factors 4, 9 polish tier): deferred until
   structural enforcement is adopted.

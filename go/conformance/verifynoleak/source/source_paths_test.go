@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/scanner"
+	"hop.top/kit/go/conformance/verifynoleak/scanner"
 )
 
 // A directory passed to --paths used to be returned verbatim, so the

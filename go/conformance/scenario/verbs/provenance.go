@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"hop.top/kit/go/console/cli/conformance/harness/diff"
+	"hop.top/kit/go/conformance/harness/diff"
 )
 
 // provenance_present: { paths?: []string }

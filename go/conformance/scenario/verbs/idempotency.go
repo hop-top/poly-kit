@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"hop.top/kit/go/console/cli/conformance/harness/diff"
+	"hop.top/kit/go/conformance/harness/diff"
 )
 
 // idempotency_replay_clean: { } — operates on the on-step's

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"hop.top/kit/go/console/cli/conformance/harness/classifier"
-	"hop.top/kit/go/console/cli/conformance/harness/diff"
+	"hop.top/kit/go/conformance/harness/classifier"
+	"hop.top/kit/go/conformance/harness/diff"
 	xrr "hop.top/xrr"
 )
 

@@ -49,7 +49,7 @@ func TestEmbeddedJSONInSyncWithContracts(t *testing.T) {
 		t.Fatalf(`scenario_rules_embedded.json is out of sync with contracts/scenario-rules.json
 fix:
   cp contracts/scenario-rules.json \
-    go/console/cli/conformance/verifynoleak/rules/scenario_rules_embedded.json
+    go/conformance/verifynoleak/rules/scenario_rules_embedded.json
 `)
 	}
 }

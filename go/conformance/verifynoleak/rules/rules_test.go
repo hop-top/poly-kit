@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/rules"
+	"hop.top/kit/go/conformance/verifynoleak/rules"
 )
 
 func mustLoad(t *testing.T) *rules.Set {

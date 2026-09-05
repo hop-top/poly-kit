@@ -1,6 +1,6 @@
 # harness — xrr-backed integration test toolkit
 
-`hop.top/kit/go/console/cli/conformance/harness` is the Go test
+`hop.top/kit/go/conformance/harness` is the Go test
 helper package adopters import to assert kit-blessed contract
 properties of a cobra-driven CLI.
 
@@ -17,7 +17,7 @@ Redis / gRPC / exec / fs interactions, gated destructive paths.
 import (
     "testing"
 
-    "hop.top/kit/go/console/cli/conformance/harness"
+    "hop.top/kit/go/conformance/harness"
 )
 
 func TestSpaced_Idempotent(t *testing.T) {

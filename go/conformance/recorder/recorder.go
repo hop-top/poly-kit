@@ -34,9 +34,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"hop.top/kit/go/conformance/harness"
 	"hop.top/kit/go/conformance/scenario"
 	"hop.top/kit/go/conformance/svc"
-	"hop.top/kit/go/console/cli/conformance/harness"
 )
 
 // Options carries everything Run needs. Scenario, StoryBytes, OutDir,

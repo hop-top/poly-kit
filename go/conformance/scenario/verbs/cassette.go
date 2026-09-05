@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"hop.top/kit/go/console/cli/conformance/harness/classifier"
-	"hop.top/kit/go/console/cli/conformance/harness/diff"
+	"hop.top/kit/go/conformance/harness/classifier"
+	"hop.top/kit/go/conformance/harness/diff"
 )
 
 // cassette_must_contain: { op_class, adapter?, match? }

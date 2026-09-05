@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"hop.top/kit/go/console/cli/conformance/harness"
-	"hop.top/kit/go/console/cli/conformance/harness/classifier"
+	"hop.top/kit/go/conformance/harness"
+	"hop.top/kit/go/conformance/harness/classifier"
 )
 
 // recordingT captures Errorf/Fatalf calls from the harness so we

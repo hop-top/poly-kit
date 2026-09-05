@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/suppress"
+	"hop.top/kit/go/conformance/verifynoleak/suppress"
 )
 
 // TestTestdataAllowlistedByKitInternal confirms that the kit-internal

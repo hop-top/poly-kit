@@ -11,8 +11,8 @@ package predicates
 import (
 	"fmt"
 
-	"hop.top/kit/go/console/cli/conformance/harness/classifier"
-	"hop.top/kit/go/console/cli/conformance/harness/diff"
+	"hop.top/kit/go/conformance/harness/classifier"
+	"hop.top/kit/go/conformance/harness/diff"
 )
 
 // NoMutation returns (ok, summary) where ok is true iff every
