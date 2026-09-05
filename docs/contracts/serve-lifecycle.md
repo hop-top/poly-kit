@@ -1136,11 +1136,12 @@ A port whose sink is the log emits `started` / `ready_reported` /
 identifier and the address as **structured fields** rather than
 interpolated into the message text. That is what makes a startup trace
 greppable across a fleet whose tools are not all the same language.
-A port with neither a bus nor a structured logger — Rust and PHP have
-neither today — emits the same four transitions with the same field
-names through whatever it writes to stderr; what it MUST NOT do is
-stay silent about a service that started, became ready, failed, or
-stopped.
+A port with neither a bus nor a structured logger emits the same four
+transitions with the same field names through whatever it writes to
+stderr; what it MUST NOT do is stay silent about a service that
+started, became ready, failed, or stopped. Which ports those are is
+not recorded here — it changes as ports grow a bus or a logger, and a
+port that has one is bound by the corresponding rule above.
 
 What is *not* contract: the payload's `elapsed_ms`, the `Qualifiers`
 envelope Go embeds, and any key beyond `service`, `error`, and
