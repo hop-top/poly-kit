@@ -110,6 +110,24 @@ jobs:
           go-version-file: go.mod
       - run: make test-go-integration
 
+  # Runs alongside go-test, not after it: the race detector roughly
+  # doubles wall time, and go-test is already the long pole of the test
+  # stage. As a sibling job the race gate costs the pipeline nothing it
+  # was not already spending. Scope and the go/core/projects exclusion
+  # are documented on the `test-go-race` target in the Makefile — CI and
+  # a developer's local run share the one command.
+  go-race:
+    needs: [go-lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make test-go-race
+
   ts-test:
     needs: [ts-lint]
     runs-on: ubuntu-latest
@@ -193,7 +211,7 @@ jobs:
 
   # ── Stage 3: Parity (after all tests) ─────────────────────────
   parity:
-    needs: [go-test, ts-test, py-test, rs-test, php-test]
+    needs: [go-test, go-race, ts-test, py-test, rs-test, php-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
