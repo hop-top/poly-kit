@@ -320,6 +320,17 @@ than it was asked to run.
 Both policies apply identically to the selector form, where they are
 indistinguishable: one service failing is the only service failing.
 
+### Re-execution
+
+A run is over when the supervisor returns; the root it ran on is not
+consumed. Executing `serve` again on the same root — a test harness, a
+tool that restarts its services in-process — MUST start a run that
+observes only the new call's context and signals: it keeps serving
+until that context is canceled, and it returns when it is. A run MUST
+NOT inherit the previous run's context, whether that context is still
+alive (the new run would ignore its own cancellation) or already
+canceled (the new run would stop without serving).
+
 ## Exit behavior
 
 Codes come from the kit taxonomy in
@@ -353,6 +364,14 @@ Notes:
   error is already a kit transient error, in which case exit `6`
   (`TRANSIENT`) is propagated unchanged so agents and retry wrappers
   keep their existing branch.
+- A refusal raised by the argument parser before the command runs — a
+  positional count the command does not accept, an unknown or
+  malformed flag, a flag missing its value or its required companion —
+  is `USAGE`, exit `2`, rendered as the same envelope the command's own
+  refusals use. This holds for every kit command and on every surface:
+  the shell exit status, `result.exit_code` over the socket, and the
+  REST status it maps to. The parser MUST NOT leave such a refusal as a
+  bare exit `1`.
 
 ## Configuration surface
 
@@ -575,8 +594,11 @@ Rules:
 - `exit_code` is the code a kit structured error carries (`USAGE` is
   `2`, `UNAUTHORIZED` is `5`, and so on per
   [`go/console/output/error.go`](../../go/console/output/error.go)).
-  A bare error with no code is `1`. A command that succeeds is `0`
-  regardless of what it wrote to `stderr`.
+  A bare error with no code is `1`. An invocation the command's parser
+  refuses — wrong positional count, unknown or malformed flag, missing
+  required flag — is `USAGE`, `2`, with the parser's message in
+  `stderr`. A command that succeeds is `0` regardless of what it wrote
+  to `stderr`.
 - `stdout` and `stderr` are what the command wrote through
   `cmd.OutOrStdout()` and `cmd.ErrOrStderr()`. A command that writes
   to `os.Stdout` directly bypasses capture; such output reaches the

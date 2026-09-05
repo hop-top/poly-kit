@@ -161,6 +161,14 @@ func TestServe_TwoPositionalArgsIsUsage(t *testing.T) {
 
 	err := runServeArgs(t, r, []string{"serve", "worker", "extra"}, 2*time.Second)
 	require.Error(t, err, "serve accepts at most one service name")
+
+	// The refusal is cobra's MaximumNArgs, raised before RunE; the
+	// contract still owes the caller USAGE, exit 2.
+	var kitErr *output.Error
+	require.ErrorAs(t, err, &kitErr)
+	assert.Equal(t, output.CodeUsage, kitErr.Code)
+	assert.Equal(t, 2, kitErr.ExitCode)
+	assert.Contains(t, kitErr.Message, "accepts at most 1 arg(s), received 2")
 }
 
 func TestServe_ZeroResolvedServicesIsUsage(t *testing.T) {

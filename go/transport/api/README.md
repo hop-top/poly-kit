@@ -197,7 +197,7 @@ body, with its exit code mapped to a status:
 |------|------|--------|---------|
 | 0  | `OK`                 | 200 | success |
 | 1  | `GENERIC`            | 500 | unclassified failure |
-| 2  | `USAGE`              | 400 | the request was wrong |
+| 2  | `USAGE`              | 400 | the request was wrong: a usage error the command raised, or a positional or flag error its parser raised |
 | 3  | `NOT_FOUND`          | 404 | |
 | 4  | `CONFLICT`           | 409 | |
 | 5  | `UNAUTHORIZED`       | 403 | see below |
