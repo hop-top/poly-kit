@@ -320,6 +320,17 @@ than it was asked to run.
 Both policies apply identically to the selector form, where they are
 indistinguishable: one service failing is the only service failing.
 
+### Re-execution
+
+A run is over when the supervisor returns; the root it ran on is not
+consumed. Executing `serve` again on the same root — a test harness, a
+tool that restarts its services in-process — MUST start a run that
+observes only the new call's context and signals: it keeps serving
+until that context is canceled, and it returns when it is. A run MUST
+NOT inherit the previous run's context, whether that context is still
+alive (the new run would ignore its own cancellation) or already
+canceled (the new run would stop without serving).
+
 ## Exit behavior
 
 Codes come from the kit taxonomy in
