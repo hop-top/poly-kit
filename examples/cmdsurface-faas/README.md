@@ -72,11 +72,9 @@ curl -X POST http://localhost:8080/2015-03-31/functions/function/invocations \
 
 - `go/transport/cmdsurface`: `LambdaHandler`, `RunCloudRun` and the bridge
 - `examples/cmdsurface`: every surface in one process
-- `cmd/cloudrun/Dockerfile`, `cmd/lambda/Dockerfile.example`: container
-  builds
+- `cmd/cloudrun/Dockerfile`, `cmd/lambda/Dockerfile.example`: container builds
 
 ## See also
 
 - [cmdsurface example walkthrough](../../docs/adopters/guides/cmdsurface-example.md#faas-binaries-examplescmdsurface-faas):
-  deployment recipes, event-type matrix, cold start notes, telemetry,
-  differences from the unified example
+  deployment recipes, event-type matrix, cold start notes, telemetry, differences

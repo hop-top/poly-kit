@@ -204,6 +204,20 @@ mirror automatically.
 > `datasette-auth-passwords` or `datasette-auth-existing-cookies`
 > plugins, or front it with a reverse proxy that handles auth.
 
+## Customizing per environment
+
+Copy the shipped `examples/datasette/kit-metadata.json` to an
+environment-specific overlay and adjust the masking rules to match your
+redact policy:
+
+```bash
+cp examples/datasette/kit-metadata.json ~/.config/kit/datasette-prod.json
+# edit masking patterns
+datasette serve /var/lib/kit/data.db \
+  --immutable \
+  --metadata ~/.config/kit/datasette-prod.json
+```
+
 ## Copying a live DB safely
 
 If you can't run Datasette on the same machine as `kit serve`:

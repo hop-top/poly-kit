@@ -24,22 +24,8 @@ uv tool install datasette        # or: pipx install datasette
 
 Open <http://localhost:8001>.
 
-## Customizing per environment
+## See also
 
-Copy `kit-metadata.json` to your environment-specific overlay and
-adjust the masking rules to match your redact policy:
-
-```bash
-cp kit-metadata.json ~/.config/kit/datasette-prod.json
-# edit masking patterns
-datasette serve /var/lib/kit/data.db \
-  --immutable \
-  --metadata ~/.config/kit/datasette-prod.json
-```
-
-## Trust boundary
-
-Datasette has no notion of kit's redact policies by default. The
-shipped metadata applies coarse pattern-based masking through the
-`datasette-mask` plugin, but **never expose Datasette publicly**
-without an auth layer in front of it.
+- [Inspect a kit instance with Datasette](../../docs/adopters/guides/inspect-with-datasette.md):
+  per-environment metadata overlays, redaction and the `datasette-mask`
+  plugin, the trust boundary, copying a live DB, performance notes

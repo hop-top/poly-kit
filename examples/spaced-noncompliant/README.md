@@ -29,11 +29,7 @@ A compliance test against this fixture must assert:
 - F13 does NOT fail for any other sub-condition. The Suggestion is
   surgical — it names the missing env, not "kill switch is wrong".
 
-The matching test lives in `hops/main/go/core/compliance/` and is
-authored under a sibling task in the
-[`kit-telemetry-compliance`](../../../.tlc/tracks/kit-telemetry-compliance/plan.md)
-track (T-0704 / T-0706 / follow-up). This fixture pre-lands as part of
-T-0705 so those tests have a stable target to assert against.
+The matching test lives in `go/core/compliance/`.
 
 ## Layout
 
@@ -41,7 +37,6 @@ T-0705 so those tests have a stable target to assert against.
 |------|---------|
 | `main.go` | Minimal cobra wiring; reuses spaced's command tree so the binary actually runs |
 | `spaced-noncompliant.toolspec.yaml` | Deliberately-broken toolspec; documents the violation inline |
-| `README.md` | This file |
 
 ## Building
 
@@ -80,6 +75,4 @@ Report: 12/13
 
 - [`docs/adopters/reference/telemetry-compliance.md`](../../docs/adopters/reference/telemetry-compliance.md) —
   the adopter checklist this fixture validates against.
-- [](../../) —
-  why F13 exists and how the seven sub-conditions are scoped.
 - [`../spaced/`](../spaced/) — the canonical (compliant) adopter example.
