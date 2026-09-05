@@ -14,6 +14,16 @@
 # Level 6 would cost 3 errors in src/ (missing iterable value types).
 #
 # No baseline and no ignore list: every error reported here is a real one.
+#
+# Both passes run with --memory-limit=1G (see composer.json). phpstan
+# inherits php.ini's memory_limit into its parallel workers, and a
+# worker needs ~130 MB for either tree today, so a stock CLI ini
+# (homebrew and distro packages ship 128M) kills the worker and phpstan
+# exits 1 with "Result is incomplete because of severe errors". CI only
+# stayed green because shivammathur/setup-php appends memory_limit=-1 to
+# every php.ini it installs. Pinning the limit in the script makes the
+# gate behave the same everywhere; 1G rather than -1 so a runaway
+# analysis still fails instead of swapping the host.
 parameters:
     level: 5
     paths:
