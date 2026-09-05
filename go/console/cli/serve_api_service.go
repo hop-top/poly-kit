@@ -97,11 +97,12 @@ func (a *apiService) Validate() error {
 	}
 	// The permission gate is built from --policy at start; a --policy
 	// that cannot be loaded is a configuration error, and belongs
-	// here rather than a second later as a start failure.
+	// here rather than a second later as a start failure. A root
+	// factory that cannot build a usable tree is the same class.
 	if _, err := a.root.servePermission(); err != nil {
 		return err
 	}
-	return nil
+	return a.root.validateRootFactory()
 }
 
 // validateExposure refuses a non-loopback address the service would

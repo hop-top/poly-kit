@@ -323,11 +323,14 @@ type Root struct {
 	socketFlag string
 	// serveAuth is the permission gate and audit sinks every
 	// kit-shipped transport service shares; see serve_auth.go.
-	serveAuth          serveAuthState
-	identityCfg        *IdentityConfig
-	peerCfg            *PeerConfig
-	telemetryCfg       *TelemetryConfig
-	verboseCount       int // -V count; levels per parity verbosity.levels
+	serveAuth    serveAuthState
+	identityCfg  *IdentityConfig
+	peerCfg      *PeerConfig
+	telemetryCfg *TelemetryConfig
+	// rootFactory rebuilds the tool's root for one served invocation;
+	// nil serves every invocation on this Root's tree. See
+	// root_factory.go.
+	rootFactory        func() *Root
 	aliases            map[string]string
 	aliasCompletionSet bool              // guards single ValidArgsFunction wrap
 	hiddenGroups       map[string]bool   // group IDs hidden from default --help
@@ -684,7 +687,12 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// Stamping alone is advisory. Install guards http.DefaultTransport so
 	// --offline is enforced beneath every client that has not set its own
 	// Transport, rather than relying on each leaf to remember to check.
-	netpolicy.Install()
+	//
+	// Once per process: Install is a read-modify-write of a package
+	// global, and a root factory (see root_factory.go) runs New on
+	// every served invocation, concurrently with commands whose HTTP
+	// clients read that global. Guarding twice is a no-op anyway.
+	installNetPolicyOnce.Do(netpolicy.Install)
 	hooks = append(hooks, r.installNetGlobalsHook())
 
 	if cfg.Hooks.PrePersistentRunE != nil {
@@ -702,14 +710,19 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		}
 	}
 
-	// Deferred: cobra parses after New(); OnInitialize reads the flag
-	// from cobra's thread-safe store — no captured local, no PreRun conflict.
-	cobra.OnInitialize(func() {
-		r.verboseCount, _ = cmd.Flags().GetCount("verbose")
-	})
+	// No cobra.OnInitialize here. Its registry is process-global and
+	// every closure in it runs on every Execute of every tree in the
+	// process, so one closure per New would grow without bound under
+	// a root factory and would read other trees' flag sets while they
+	// parse. What the closure used to capture — the parsed -V count —
+	// lives on the persistent flag itself; VerboseCount reads it there.
 
 	return r
 }
+
+// installNetPolicyOnce guards the one process-wide mutation New
+// performs; see the netpolicy.Install call site.
+var installNetPolicyOnce sync.Once
 
 // NewE is the explicit-error companion to cli.New. It applies the
 // same construction logic and additionally runs Root.Validate at
@@ -769,7 +782,64 @@ func (r *Root) dispatchValidationFailure(err error) (bool, error) {
 
 // Execute runs the root command through fang, which provides styled help,
 // version output, error rendering, and man page generation.
+//
+// Before parsing it prepares the tree — everything [Root.Prepare]
+// installs — and additionally applies the steps that depend on the
+// argv about to be parsed: group visibility for --help, and the
+// --api-version filter. A validation failure is dispatched through
+// Config.ValidationFailureMode here; Prepare returns it instead.
 func (r *Root) Execute(ctx context.Context) error {
+	r.prepareTree()
+	r.applyGroupVisibility()
+
+	// --api-version (§13). Detect the requested version pre-parse so
+	// hidden commands are excluded from help and refused at dispatch.
+	// Filtering is opt-in: empty value means "all commands present".
+	if reqAPI := r.scanArgsForAPIVersion(); reqAPI != "" {
+		if minErr := checkMinAPIVersion(r.Cmd, reqAPI); minErr != nil {
+			fmt.Fprintln(os.Stderr, minErr.Error())
+			os.Exit(2)
+		}
+		applyAPIVersionFilter(r.Cmd, reqAPI)
+	}
+
+	// Pre-flight: refuse to run a misconfigured tool when the adopter
+	// has Config.EnforceValidate=true (the default at 0.1.0-alpha.0
+	//). Adopters opt out via DisableValidate;
+	// tests that exercise the validator directly call Root.Validate()
+	// rather than going through Execute.
+	if err := r.validateTree(); err != nil {
+		if handled, returned := r.dispatchValidationFailure(err); handled {
+			return returned
+		}
+	}
+
+	// Signature validator: gated by Config.SignatureStrictness,
+	// independent of EnforceValidate. silent (zero value) is a
+	// no-op; warn logs each violation via slog and continues;
+	// reject routes through ValidationFailureMode.
+	if r.Config.SignatureStrictness != SignatureStrictnessSilent {
+		if handled, returned := r.dispatchSignatureReport(); handled {
+			return returned
+		}
+	}
+
+	// Wrap every leaf RunE with the structured-error envelope middleware
+	// so adopter errors are rendered to stderr in the requested format.
+	r.WrapRunE()
+
+	return fang.Execute(
+		ctx, r.Cmd,
+		fang.WithVersion(r.Config.Version),
+		fang.WithColorSchemeFunc(brandColorScheme),
+	)
+}
+
+// prepareTree applies the argv-independent half of Execute's
+// pre-flight to the command tree: alias annotations, the completion
+// command, leaf help, auto-registered flags, and the help addenda.
+// Every step is idempotent, so Prepare and Execute may both run it.
+func (r *Root) prepareTree() {
 	if r.Config.Help.ShowAliases {
 		annotateAliases(r.Cmd)
 	}
@@ -784,7 +854,6 @@ func (r *Root) Execute(ctx context.Context) error {
 		}
 	}
 
-	r.applyGroupVisibility()
 	r.installLeafHelp()
 
 	// Auto-register kit-managed flags (--dry-run on write/destructive
@@ -808,50 +877,15 @@ func (r *Root) Execute(ctx context.Context) error {
 	// annotation keeps working as a back-compat synonym; the
 	// warning makes the supersession (ADR-0020) audible.
 	r.warnLegacySupportsDryRun()
+}
 
-	// --api-version (§13). Detect the requested version pre-parse so
-	// hidden commands are excluded from help and refused at dispatch.
-	// Filtering is opt-in: empty value means "all commands present".
-	if reqAPI := r.scanArgsForAPIVersion(); reqAPI != "" {
-		if minErr := checkMinAPIVersion(r.Cmd, reqAPI); minErr != nil {
-			fmt.Fprintln(os.Stderr, minErr.Error())
-			os.Exit(2)
-		}
-		applyAPIVersionFilter(r.Cmd, reqAPI)
+// validateTree runs Validate when Config.EnforceValidate is set and
+// returns its error undispatched.
+func (r *Root) validateTree() error {
+	if !r.Config.EnforceValidate {
+		return nil
 	}
-
-	// Pre-flight: refuse to run a misconfigured tool when the adopter
-	// has Config.EnforceValidate=true (the default at 0.1.0-alpha.0
-	//). Adopters opt out via DisableValidate;
-	// tests that exercise the validator directly call Root.Validate()
-	// rather than going through Execute.
-	if r.Config.EnforceValidate {
-		if err := r.Validate(); err != nil {
-			if handled, returned := r.dispatchValidationFailure(err); handled {
-				return returned
-			}
-		}
-	}
-
-	// Signature validator: gated by Config.SignatureStrictness,
-	// independent of EnforceValidate. silent (zero value) is a
-	// no-op; warn logs each violation via slog and continues;
-	// reject routes through ValidationFailureMode.
-	if r.Config.SignatureStrictness != SignatureStrictnessSilent {
-		if handled, returned := r.dispatchSignatureReport(); handled {
-			return returned
-		}
-	}
-
-	// Wrap every leaf RunE with the structured-error envelope middleware
-	// so adopter errors are rendered to stderr in the requested format.
-	r.WrapRunE()
-
-	return fang.Execute(
-		ctx, r.Cmd,
-		fang.WithVersion(r.Config.Version),
-		fang.WithColorSchemeFunc(brandColorScheme),
-	)
+	return r.Validate()
 }
 
 // Validate walks the command tree and refuses leaf commands missing
@@ -1324,11 +1358,16 @@ func (r *Root) resolveArgs() []string {
 	return nil
 }
 
-// annotateAliases appends "(aliases: x, y)" to Short for commands with aliases.
+// annotateAliases appends "(aliases: x, y)" to Short for commands with
+// aliases. Idempotent: a Short already carrying its suffix is left
+// alone, so Prepare followed by Execute annotates once.
 func annotateAliases(root *cobra.Command) {
 	for _, c := range root.Commands() {
 		if len(c.Aliases) > 0 {
-			c.Short += " (aliases: " + strings.Join(c.Aliases, ", ") + ")"
+			suffix := " (aliases: " + strings.Join(c.Aliases, ", ") + ")"
+			if !strings.HasSuffix(c.Short, suffix) {
+				c.Short += suffix
+			}
 		}
 		annotateAliases(c)
 	}

@@ -60,7 +60,13 @@ func buildProjection(
 	// every surface, so passing the adopter's value through
 	// unconditionally preserves today's behavior when they set
 	// nothing.
-	opts := append([]cmdsurface.Option{cmdsurface.WithPolicy(cfg.Policy)}, shared...)
+	//
+	// The runner comes next: the per-invocation runner when the
+	// adopter supplied a root factory, otherwise nothing, and the
+	// bridge builds its shared-tree runner over root. The shared
+	// options go last so a test-injected Runner still wins.
+	opts := append([]cmdsurface.Option{cmdsurface.WithPolicy(cfg.Policy)}, r.serveRunnerOptions()...)
+	opts = append(opts, shared...)
 	bridge := cmdsurface.New(root, opts...)
 	// Exposing REST here is what "no adopter mounting code" means:
 	// the bridge's default enabled set is CLI + Lib + MCP, so a leaf
