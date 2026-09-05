@@ -105,7 +105,10 @@ func wrapRunE(orig func(*cobra.Command, []string) error) func(*cobra.Command, []
 //     output.Error.
 //
 // Calling WrapRunE more than once is a no-op for already-wrapped
-// commands (the wrapper is idempotent — marked by an annotation).
+// commands (the wrapper is idempotent — marked by an annotation). Each
+// call also clears the context cobra copied onto every subcommand
+// during a previous execution, so a Root executed again runs its
+// leaves under the new call's context (see resetSubcommandContexts).
 //
 // The middleware behavior:
 //   - If RunE returns nil, nothing is written to stderr.
@@ -131,7 +134,32 @@ func (r *Root) WrapRunE() {
 	installIdempotencyKeyFlag(r.Cmd)
 	installConfirmTokenFlag(r.Cmd)
 	r.installUsageClassification()
+	resetSubcommandContexts(r.Cmd)
 	r.wrapRunESubtree(r.Cmd)
+}
+
+// resetSubcommandContexts clears the context cobra copied onto every
+// subcommand during a previous execution of root.
+//
+// Cobra copies the root's context onto the command it dispatches only
+// when that command has none, so a subcommand executed once keeps its
+// first context for the life of the tree: a Root executed again runs
+// its leaves under the previous call's context, not the new one. For a
+// long-running command such as `serve` that is a run that stops at once
+// when the old context is already canceled, or one that never observes
+// the new cancellation when it is not. Kit's own pre-run hooks derive
+// the leaf context from whatever is there, so they compound the
+// staleness rather than repair it.
+//
+// Called from WrapRunE, which Execute runs before every dispatch, so
+// each execution starts from the root's context as cobra intends. The
+// root itself is left alone: ExecuteContext sets it.
+func resetSubcommandContexts(root *cobra.Command) {
+	walk(root, func(cmd *cobra.Command) {
+		if cmd != root {
+			cmd.SetContext(nil) //nolint:staticcheck // nil is cobra's "copy the root's context at dispatch" state
+		}
+	})
 }
 
 const wrappedAnnotation = "kit.cli.runE.wrapped"
