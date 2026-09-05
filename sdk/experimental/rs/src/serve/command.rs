@@ -18,14 +18,16 @@
 //!   no possible-values list.
 //!
 //! Process exit stays with the adopter's `main`: this is a library
-//! crate, and [`run`] returns the exit code rather than calling
-//! `std::process::exit` on the caller's behalf.
+//! crate, so there is deliberately no `exit_with(result)` helper.
+//! [`run`] returns a [`RunResult`] carrying `exit_code`, and `main`
+//! calls `std::process::exit` on it after whatever flushing or
+//! reporting of its own it wants — the last line of the example.
 //!
 //! # Example
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use hop_top_kit::serve::command::{mount, ServeCommandOptions};
+//! use hop_top_kit::serve::command::{mount, run, ServeCommandOptions};
 //! use hop_top_kit::serve::{ServiceConfig, ServiceConfigs, ServiceRegistry};
 //! # use hop_top_kit::serve::{CancelToken, ReadySignal, ServeFuture, Service};
 //! # struct Api;
@@ -54,7 +56,8 @@
 //!     if let Some(sub) = matches.subcommand_matches("serve") {
 //!         let mut opts = ServeCommandOptions::new(registry);
 //!         opts.configs = Some(configs);
-//!         let _ = (sub, opts);
+//!         let res = run(sub, opts).await;
+//!         std::process::exit(res.exit_code);
 //!     }
 //! }
 //! ```
@@ -67,10 +70,14 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 
 use crate::output::CliError;
 
+use super::cancel::CancelToken;
 use super::config::{parse_duration, ServiceConfigs, SupervisorConfig};
-use super::events::{Publisher, ServeLogger};
+use super::config::{FailurePolicy, LifecycleOutcome};
+use super::events::{Publisher, ServeLogger, StderrLogger};
 use super::registry::{PolicyGate, ServiceRegistry};
-use super::resolve::list_services;
+use super::resolve::{list_services, resolve, ResolveRequest};
+use super::signals::signal_controller;
+use super::supervisor::{RunResult, Supervisor, SupervisorOptions};
 
 /// The command word. `serve` is the parent for both forms.
 pub const COMMAND_NAME: &str = "serve";
@@ -113,6 +120,11 @@ pub struct ServeCommandOptions {
     pub logger: Option<Arc<dyn ServeLogger>>,
     /// Where `--list` writes. Defaults to the process stdout.
     pub stdout: Box<dyn Write>,
+    /// The caller's own shutdown, merged with the signals: cancelling
+    /// it begins the same graceful drain the first SIGINT/SIGTERM
+    /// does. Go's `cmd.Context()` plays this role. `None` leaves the
+    /// signals as the only trigger.
+    pub shutdown: Option<CancelToken>,
 }
 
 impl ServeCommandOptions {
@@ -126,6 +138,7 @@ impl ServeCommandOptions {
             publisher: None,
             logger: None,
             stdout: Box::new(std::io::stdout()),
+            shutdown: None,
         }
     }
 }
@@ -291,6 +304,27 @@ pub fn apply_flags(
     Ok(())
 }
 
+/// Parses a `services.failure_policy` string an adopter read out of
+/// its own configuration, refusing an unknown policy as a usage error
+/// with the fix spelled out — rather than silently running `fail-fast`
+/// when the operator asked for `isolate`, which is the kind of
+/// surprise that costs an incident. An empty string is the default.
+#[allow(clippy::result_large_err)]
+pub fn parse_failure_policy(raw: &str) -> Result<FailurePolicy, CliError> {
+    if raw.is_empty() {
+        return Ok(FailurePolicy::default());
+    }
+    FailurePolicy::parse(raw).ok_or_else(|| {
+        let mut err = CliError::usage(format!("services.failure_policy: unknown policy {raw:?}"));
+        err.suggested_fix = format!(
+            "use {:?} or {:?}",
+            FailurePolicy::FailFast.as_str(),
+            FailurePolicy::Isolate.as_str()
+        );
+        err
+    })
+}
+
 fn repeated(matches: &ArgMatches, flag: &str) -> Vec<String> {
     matches
         .get_many::<String>(flag)
@@ -331,4 +365,97 @@ pub fn run_list(
         )?;
     }
     Ok(())
+}
+
+/// Runs a parsed `serve` invocation to completion and returns the run
+/// result carrying the exit code. Mirrors the Go port's `runServe`
+/// step for step: `--list` short-circuits before resolution; the
+/// operands and flags resolve onto the configuration; [`resolve`]
+/// applies the hierarchy and the three gates; then the signal
+/// controller and the supervisor own the process until the drain
+/// completes.
+///
+/// Every refusal comes back as a [`RunResult`] with `error` set and
+/// `exit_code` on the shared taxonomy — `USAGE`/2, `NOT_FOUND`/3,
+/// `UNAUTHORIZED`/5 — so the caller has one path to exit through.
+pub async fn run(matches: &ArgMatches, opts: ServeCommandOptions) -> RunResult {
+    let ServeCommandOptions {
+        registry,
+        configs,
+        config,
+        policy,
+        publisher,
+        logger,
+        mut stdout,
+        shutdown,
+    } = opts;
+    let mut configs = configs.unwrap_or_default();
+    let mut config = config;
+
+    if matches.get_flag(FLAG_LIST) {
+        return match run_list(&registry, Some(&configs), stdout.as_mut()) {
+            Ok(()) => RunResult::clean(),
+            Err(e) => RunResult::refused(
+                LifecycleOutcome::RuntimeCrash,
+                CliError::generic(format!("serve --list: {e}")),
+            ),
+        };
+    }
+
+    let args = operands(matches);
+    if let Err(e) = apply_flags(matches, &mut configs, &mut config, args.len() == 1) {
+        return RunResult::refused(LifecycleOutcome::InvalidSelection, e);
+    }
+
+    let outcome = resolve(
+        &registry,
+        &ResolveRequest {
+            args,
+            configs: Some(&configs),
+            policy: policy.as_deref(),
+        },
+    );
+    if let Some(err) = outcome.error {
+        let why = outcome.outcome.unwrap_or(LifecycleOutcome::ConfigInvalid);
+        return RunResult::refused(why, err);
+    }
+
+    // The supervisor owns the signals from here: the first begins the
+    // drain, a second aborts it.
+    let signals = match signal_controller() {
+        Ok(s) => s,
+        Err(e) => {
+            return RunResult::refused(
+                LifecycleOutcome::StartFailed,
+                CliError::generic(format!("serve: installing signal handlers: {e}")),
+            )
+        }
+    };
+    let cancel = signals.shutdown.clone();
+    let done = CancelToken::new();
+    if let Some(external) = shutdown {
+        let first = cancel.clone();
+        let finished = done.clone();
+        tokio::spawn(async move {
+            tokio::select! {
+                () = external.cancelled() => first.cancel(),
+                () = finished.cancelled() => {}
+            }
+        });
+    }
+
+    let sup = Supervisor::new(
+        registry,
+        SupervisorOptions {
+            config,
+            publisher,
+            logger: Some(logger.unwrap_or_else(|| Arc::new(StderrLogger))),
+            escalate: Some(signals.escalate.clone()),
+            ..SupervisorOptions::default()
+        },
+    );
+    let res = sup.run(cancel, &outcome.selected, &configs).await;
+    done.cancel();
+    signals.stop();
+    res
 }

@@ -129,3 +129,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 tempfile = "3"
 uuid = { version = "1", features = ["v7", "serde"] }
+
+# A real process serving a real listener, driven by the smoke test in
+# tests/serve_command.rs. Cargo sets no CARGO_BIN_EXE_* for examples,
+# so that test builds it itself.
+[[example]]
+name = "serve"
+required-features = ["serve-cli"]

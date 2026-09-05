@@ -11,15 +11,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use clap::Command;
-use hop_top_kit::output::CODE_USAGE;
+use hop_top_kit::output::{CODE_NOT_FOUND, CODE_UNAUTHORIZED, CODE_USAGE};
 use hop_top_kit::serve::command::{
-    apply_flags, mount, mount_for, operands, run_list, serve_command, serve_command_for,
-    ServeCommandOptions, SELECTOR_FLAGS_REFUSAL,
+    apply_flags, mount, mount_for, operands, parse_failure_policy, run, run_list, serve_command,
+    serve_command_for, ServeCommandOptions, SELECTOR_FLAGS_REFUSAL,
 };
 use hop_top_kit::serve::{
-    resolve, CancelToken, ReadySignal, ResolveRequest, ServeFuture, Service, ServiceConfig,
-    ServiceConfigs, ServiceRegistry, SupervisorConfig, DEFAULT_READY_TIMEOUT,
-    DEFAULT_SHUTDOWN_TIMEOUT, DEFAULT_STOP_TIMEOUT,
+    resolve, CancelToken, FailurePolicy, LifecycleOutcome, PolicyGate, ReadySignal, ResolveRequest,
+    RunResult, ServeFuture, Service, ServiceConfig, ServiceConfigs, ServiceRegistry,
+    SupervisorConfig, Verdict, DEFAULT_READY_TIMEOUT, DEFAULT_SHUTDOWN_TIMEOUT,
+    DEFAULT_STOP_TIMEOUT,
 };
 
 // ---------------------------------------------------------------------------
@@ -27,6 +28,44 @@ use hop_top_kit::serve::{
 // ---------------------------------------------------------------------------
 
 struct Fake(&'static str);
+
+/// A service declaring a policy class, so the gate has something to
+/// deny.
+struct Classed(&'static str);
+
+impl Service for Classed {
+    fn name(&self) -> &str {
+        self.0
+    }
+    fn start<'a>(
+        &'a self,
+        cancel: CancelToken,
+        ready: ReadySignal,
+    ) -> ServeFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            ready.report();
+            cancel.cancelled().await;
+            Ok(())
+        })
+    }
+    fn ready(&self) -> bool {
+        false
+    }
+    fn stop<'a>(&'a self, _: CancelToken) -> ServeFuture<'a, Result<(), String>> {
+        Box::pin(async { Ok(()) })
+    }
+    fn class(&self) -> Option<(String, String)> {
+        Some(("write".to_string(), "egress".to_string()))
+    }
+}
+
+struct DenyAll;
+
+impl PolicyGate for DenyAll {
+    fn allow(&self, _: &str, _: &str) -> Verdict {
+        Verdict::deny("policy says no")
+    }
+}
 
 impl Service for Fake {
     fn name(&self) -> &str {
@@ -553,4 +592,361 @@ fn mount_for_carries_the_help_addendum() {
         .map(|s| s.to_string())
         .unwrap()
         .contains("api"));
+}
+
+// ---------------------------------------------------------------------------
+// The run path: matches in, exit code out
+// ---------------------------------------------------------------------------
+
+/// A `#[tokio::test]` has no per-test timeout; a defect that never
+/// drains would hang the suite rather than fail one test.
+async fn bounded(fut: impl std::future::Future<Output = RunResult>) -> RunResult {
+    match tokio::time::timeout(Duration::from_secs(20), fut).await {
+        Ok(res) => res,
+        Err(_) => panic!("run did not finish within its bound"),
+    }
+}
+
+fn opts_with(reg: ServiceRegistry, configs: ServiceConfigs) -> ServeCommandOptions {
+    let mut opts = ServeCommandOptions::new(reg);
+    opts.configs = Some(configs);
+    opts
+}
+
+fn enabled(names: &[&str]) -> ServiceConfigs {
+    names
+        .iter()
+        .map(|n| (n.to_string(), ServiceConfig::enabled()))
+        .collect()
+}
+
+#[tokio::test]
+async fn run_refuses_two_operands_at_usage_2_without_starting() {
+    let m = parse(&["serve", "a", "b"]);
+    let res = bounded(run(
+        &m,
+        opts_with(registry(&["a", "b"]), enabled(&["a", "b"])),
+    ))
+    .await;
+    assert_eq!(res.exit_code, 2);
+    assert_eq!(res.outcome, LifecycleOutcome::InvalidSelection);
+    assert_eq!(res.error.as_ref().unwrap().code, CODE_USAGE);
+    assert!(res.started.is_empty());
+}
+
+#[tokio::test]
+async fn run_refuses_an_unknown_service_at_not_found_3() {
+    let m = parse(&["serve", "nope"]);
+    let res = bounded(run(&m, opts_with(registry(&["api"]), enabled(&["api"])))).await;
+    assert_eq!(res.exit_code, 3);
+    assert_eq!(res.outcome, LifecycleOutcome::UnknownService);
+    assert_eq!(res.error.as_ref().unwrap().code, CODE_NOT_FOUND);
+}
+
+#[tokio::test]
+async fn run_refuses_a_policy_denied_service_at_unauthorized_5() {
+    let mut reg = ServiceRegistry::new();
+    reg.register(Arc::new(Classed("api"))).unwrap();
+    let m = parse(&["serve", "api"]);
+    let mut opts = opts_with(reg, ServiceConfigs::new());
+    opts.policy = Some(Arc::new(DenyAll));
+    let res = bounded(run(&m, opts)).await;
+    assert_eq!(res.exit_code, 5);
+    assert_eq!(res.outcome, LifecycleOutcome::PolicyDenied);
+    assert_eq!(res.error.as_ref().unwrap().code, CODE_UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn run_refuses_a_supervisor_form_resolving_to_nothing_at_usage_2() {
+    let m = parse(&["serve"]);
+    let res = bounded(run(
+        &m,
+        opts_with(registry(&["api"]), ServiceConfigs::new()),
+    ))
+    .await;
+    assert_eq!(res.exit_code, 2);
+    assert_eq!(res.outcome, LifecycleOutcome::NoServices);
+}
+
+#[tokio::test]
+async fn run_list_short_circuits_before_resolution() {
+    // Nothing configured: a bare `serve` is USAGE/2, but `--list` is
+    // an inspection and exits 0 with the table.
+    let sink = Sink::default();
+    let m = parse(&["serve", "--list"]);
+    let mut opts = opts_with(registry(&["api"]), ServiceConfigs::new());
+    opts.stdout = Box::new(sink.clone());
+    let res = bounded(run(&m, opts)).await;
+    assert_eq!(res.exit_code, 0);
+    assert_eq!(res.outcome, LifecycleOutcome::CleanStop);
+    assert!(res.error.is_none());
+    assert!(res.started.is_empty(), "--list starts nothing");
+    let text = sink.text();
+    assert!(text.starts_with("SERVICE"), "{text}");
+    assert!(text.contains("api"), "{text}");
+}
+
+#[tokio::test]
+async fn run_refuses_enable_under_the_selector_form_before_resolving() {
+    // `nope` is unregistered; the flag refusal (USAGE/2) must come
+    // before the registration gate (NOT_FOUND/3).
+    let m = parse(&["serve", "nope", "--enable", "api"]);
+    let res = bounded(run(&m, opts_with(registry(&["api"]), enabled(&["api"])))).await;
+    assert_eq!(res.exit_code, 2);
+    assert_eq!(res.outcome, LifecycleOutcome::InvalidSelection);
+    assert_eq!(res.error.as_ref().unwrap().message, SELECTOR_FLAGS_REFUSAL);
+}
+
+#[tokio::test]
+async fn run_starts_the_resolved_set_and_drains_to_exit_0_on_shutdown() {
+    let m = parse(&["serve", "--disable", "a"]);
+    let shutdown = CancelToken::new();
+    let mut opts = opts_with(registry(&["a", "b"]), enabled(&["a", "b"]));
+    opts.shutdown = Some(shutdown.clone());
+
+    let trigger = shutdown.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        trigger.cancel();
+    });
+
+    let res = bounded(run(&m, opts)).await;
+    assert_eq!(res.exit_code, 0, "{:?}", res.error);
+    assert_eq!(res.outcome, LifecycleOutcome::CleanStop);
+    assert_eq!(
+        res.started,
+        ["b"],
+        "the disabled service is skipped silently"
+    );
+    assert_eq!(res.ready, ["b"]);
+    assert!(res.failed.is_empty());
+}
+
+#[tokio::test]
+async fn run_enables_an_unconfigured_service_for_the_supervisor_form() {
+    let m = parse(&["serve", "--enable", "b", "--shutdown-timeout", "5s"]);
+    let shutdown = CancelToken::new();
+    let mut opts = opts_with(registry(&["a", "b"]), ServiceConfigs::new());
+    opts.shutdown = Some(shutdown.clone());
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        shutdown.cancel();
+    });
+    let res = bounded(run(&m, opts)).await;
+    assert_eq!(res.exit_code, 0, "{:?}", res.error);
+    assert_eq!(res.started, ["b"]);
+}
+
+#[tokio::test]
+async fn run_maps_a_start_failure_onto_generic_1() {
+    struct Broken;
+    impl Service for Broken {
+        fn name(&self) -> &str {
+            "broken"
+        }
+        fn start<'a>(
+            &'a self,
+            _: CancelToken,
+            _: ReadySignal,
+        ) -> ServeFuture<'a, Result<(), String>> {
+            Box::pin(async { Err("bind: address in use".to_string()) })
+        }
+        fn ready(&self) -> bool {
+            false
+        }
+        fn stop<'a>(&'a self, _: CancelToken) -> ServeFuture<'a, Result<(), String>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+    let mut reg = ServiceRegistry::new();
+    reg.register(Arc::new(Broken)).unwrap();
+    let m = parse(&["serve", "broken"]);
+    let res = bounded(run(&m, opts_with(reg, ServiceConfigs::new()))).await;
+    assert_eq!(res.exit_code, 1);
+    assert_eq!(res.outcome, LifecycleOutcome::StartFailed);
+    assert!(res.failed.contains_key("broken"));
+}
+
+#[test]
+fn failure_policy_strings_parse_or_refuse_with_the_fix_spelled_out() {
+    assert_eq!(parse_failure_policy("").unwrap(), FailurePolicy::FailFast);
+    assert_eq!(
+        parse_failure_policy("fail-fast").unwrap(),
+        FailurePolicy::FailFast
+    );
+    assert_eq!(
+        parse_failure_policy("isolate").unwrap(),
+        FailurePolicy::Isolate
+    );
+
+    let err = parse_failure_policy("retry").unwrap_err();
+    assert_eq!(err.code, CODE_USAGE);
+    assert_eq!(err.exit_code, 2);
+    assert!(err.message.contains("\"retry\""), "{}", err.message);
+    assert_eq!(err.suggested_fix, "use \"fail-fast\" or \"isolate\"");
+}
+
+// ---------------------------------------------------------------------------
+// Serving in a real process
+// ---------------------------------------------------------------------------
+
+#[cfg(unix)]
+mod real_process {
+    use std::path::PathBuf;
+    use std::process::Stdio;
+    use std::time::Duration;
+
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
+    use tokio::sync::OnceCell;
+
+    static EXAMPLE: OnceCell<PathBuf> = OnceCell::const_new();
+
+    /// Builds `examples/serve.rs` once per test binary. Cargo sets no
+    /// `CARGO_BIN_EXE_*` for examples, so the test builds it itself,
+    /// bounded so a wedged build fails these tests rather than CI.
+    async fn example() -> PathBuf {
+        EXAMPLE
+            .get_or_init(|| async {
+                let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+                let manifest = env!("CARGO_MANIFEST_DIR");
+                let status = tokio::time::timeout(
+                    Duration::from_secs(600),
+                    Command::new(cargo)
+                        .current_dir(manifest)
+                        .args(["build", "--example", "serve", "--features", "serve-cli"])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::inherit())
+                        .status(),
+                )
+                .await
+                .expect("building the serve example did not finish within its bound")
+                .expect("spawn cargo");
+                assert!(status.success(), "cargo build --example serve: {status}");
+
+                let mut path = PathBuf::from(
+                    std::env::var("CARGO_TARGET_DIR")
+                        .unwrap_or_else(|_| format!("{manifest}/target")),
+                );
+                path.push("debug");
+                path.push("examples");
+                path.push("serve");
+                assert!(path.exists(), "{}", path.display());
+                path
+            })
+            .await
+            .clone()
+    }
+
+    async fn output_of(args: &[&str]) -> (i32, String, String) {
+        let out = tokio::time::timeout(
+            Duration::from_secs(20),
+            Command::new(example().await).args(args).output(),
+        )
+        .await
+        .expect("the example did not exit within its bound")
+        .expect("spawn example");
+        (
+            out.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&out.stdout).to_string(),
+            String::from_utf8_lossy(&out.stderr).to_string(),
+        )
+    }
+
+    #[tokio::test]
+    async fn the_example_binds_reports_ready_and_stops_cleanly_on_sigint() {
+        let mut child = Command::new(example().await)
+            .arg("serve")
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn example");
+        let pid = child.id().expect("child pid");
+        let mut lines = BufReader::new(child.stderr.take().unwrap()).lines();
+
+        // Wait for readiness, and read the address out of the event
+        // rather than trusting the log: the contract puts it in the
+        // payload, and a real port must actually be listening there.
+        let ready_line = tokio::time::timeout(Duration::from_secs(20), async {
+            while let Ok(Some(line)) = lines.next_line().await {
+                if line.contains("kit.serve.service.ready_reported") {
+                    return line;
+                }
+            }
+            panic!("stderr ended before ready_reported")
+        })
+        .await
+        .expect("the service did not report ready within its bound");
+        let addr = ready_line
+            .split("\"address\":\"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .unwrap_or_else(|| panic!("no address in {ready_line}"))
+            .to_string();
+        std::net::TcpStream::connect(&addr).unwrap_or_else(|e| panic!("connect {addr}: {e}"));
+
+        let killed = Command::new("kill")
+            .args(["-INT", &pid.to_string()])
+            .status()
+            .await
+            .expect("kill");
+        assert!(killed.success());
+
+        let rest = tokio::time::timeout(Duration::from_secs(20), async {
+            let mut acc = String::new();
+            while let Ok(Some(line)) = lines.next_line().await {
+                acc.push_str(&line);
+                acc.push('\n');
+            }
+            acc
+        })
+        .await
+        .expect("stderr did not close within its bound");
+        let status = tokio::time::timeout(Duration::from_secs(20), child.wait())
+            .await
+            .expect("the example did not exit within its bound")
+            .expect("wait");
+
+        assert_eq!(status.code(), Some(0), "a signal stop exits 0:\n{rest}");
+        assert!(
+            rest.contains("kit.serve.supervisor.stopped"),
+            "no supervisor stopped event:\n{rest}"
+        );
+        assert!(
+            rest.contains("\"reason\":\"clean-stop\""),
+            "stopped reason:\n{rest}"
+        );
+        assert!(
+            rest.contains("kit.serve.service.stopped"),
+            "no service stopped event:\n{rest}"
+        );
+        assert!(
+            std::net::TcpStream::connect(&addr).is_err(),
+            "the listener outlived the process"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_example_lists_and_refuses_with_the_contract_exit_codes() {
+        let (code, stdout, _) = output_of(&["serve", "--list"]).await;
+        assert_eq!(code, 0);
+        assert!(stdout.starts_with("SERVICE"), "{stdout}");
+        assert!(stdout.contains("echo"), "{stdout}");
+
+        let (code, _, stderr) = output_of(&["serve", "a", "b"]).await;
+        assert_eq!(code, 2, "{stderr}");
+        assert!(stderr.contains("USAGE"), "{stderr}");
+
+        let (code, _, stderr) = output_of(&["serve", "nope"]).await;
+        assert_eq!(code, 3, "{stderr}");
+        assert!(stderr.contains("NOT_FOUND"), "{stderr}");
+
+        let (code, _, stderr) = output_of(&["serve", "echo", "--enable", "echo"]).await;
+        assert_eq!(code, 2, "{stderr}");
+        assert!(stderr.contains("supervisor form"), "{stderr}");
+
+        let (code, _, stderr) = output_of(&["serve", "--ready-timeout", "30"]).await;
+        assert_eq!(code, 2, "clap's own usage error is also 2:\n{stderr}");
+        assert!(stderr.contains("missing unit"), "{stderr}");
+    }
 }
