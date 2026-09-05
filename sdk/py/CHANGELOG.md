@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.4...kit-py/v0.5.0-alpha.5) (2026-09-05)
+
+
+### Features
+
+* **py:** EXIT_GENERIC and generic_error for the exit-1 class ([49d6dc3](https://github.com/hop-top/poly-kit/commit/49d6dc3e99764630918d3db83b84cedb374ea19b))
+* **py:** port serve supervisor and service selector ([a3955d1](https://github.com/hop-top/poly-kit/commit/a3955d13b12567fd033ebd349f69d9def1f1c0ae))
+* **py:** port the serve supervisor and service selector ([8386820](https://github.com/hop-top/poly-kit/commit/8386820112b64fc56bfe202440594e607bf6cc81))
+* **py:** serve --enable/--disable and timeout flags ([d4a48ac](https://github.com/hop-top/poly-kit/commit/d4a48acdd20435aae53fb4e1fc23b0095d9042c3))
+* **sdk:** EXIT_GENERIC and generic error constructor in all SDKs ([9db9c90](https://github.com/hop-top/poly-kit/commit/9db9c90647b227b31a6c912d0c8d54b54271422a))
+* **ts:** serve cross-language contract and TypeScript implementation ([165a82a](https://github.com/hop-top/poly-kit/commit/165a82a97d8640d58448d67e88d9ec98e3e5fa05))
+
+
+### Bug Fixes
+
+* **parity:** record and implement serve --enable/--disable and timeout flags ([e38b143](https://github.com/hop-top/poly-kit/commit/e38b143c77771c7abe088557f058be81922dd70a))
+* **py:** re-sync vendored parity.json after extends change ([1b3a6fd](https://github.com/hop-top/poly-kit/commit/1b3a6fd8921105932170e25a9c2090df3c9d1109))
+
 ## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.3...kit-py/v0.5.0-alpha.4) (2026-09-04)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.4. This release includes new features and bug fixes.
