@@ -152,6 +152,13 @@ type runState struct {
 	begin    time.Time
 	now      func() time.Time
 
+	// stopped names the services whose stopped event has already been
+	// emitted, because their Start returned cleanly on its own before
+	// the ordered stop reached them. Stop still runs for them — it is
+	// what releases what Start acquired — but a service reports
+	// stopped once per run, whichever path noticed it first.
+	stopped map[string]bool
+
 	// stopConfigs is the per-service block the stop sequence reads
 	// its budgets from. Held here rather than passed down so the
 	// shutdown path needs no argument the caller could forget.
@@ -172,6 +179,19 @@ func (st *runState) markFailed(name string, err error) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	st.failed[name] = err
+}
+
+// markStopped records that name's stopped event has been emitted and
+// reports whether it had been already.
+func (st *runState) markStopped(name string) (already bool) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.stopped == nil {
+		st.stopped = map[string]bool{}
+	}
+	already = st.stopped[name]
+	st.stopped[name] = true
+	return already
 }
 
 func (st *runState) snapshot() ([]string, []string, map[string]error, []LifecycleOutcome) {
@@ -404,9 +424,11 @@ func (s *Supervisor) awaitReady(
 			}
 			// An earlier service returning cleanly mid-start is a
 			// stop, not a failure.
-			em.emit(ctx, ObjectService, ActionStopped, EventPayload{
-				Service: exit.name, ElapsedMS: st.elapsedMS(),
-			})
+			if !st.markStopped(exit.name) {
+				em.emit(ctx, ObjectService, ActionStopped, EventPayload{
+					Service: exit.name, ElapsedMS: st.elapsedMS(),
+				})
+			}
 
 		case <-timer.C:
 			err := fmt.Errorf("not ready within %s", budget)
@@ -460,9 +482,11 @@ func (s *Supervisor) await(
 			// A clean return under isolate is not a failure of that
 			// service, but the process must not survive as an empty
 			// shell: when the last one is gone the run is over.
-			em.emit(ctx, ObjectService, ActionStopped, EventPayload{
-				Service: exit.name, ElapsedMS: st.elapsedMS(),
-			})
+			if !st.markStopped(exit.name) {
+				em.emit(ctx, ObjectService, ActionStopped, EventPayload{
+					Service: exit.name, ElapsedMS: st.elapsedMS(),
+				})
+			}
 		}
 	}
 

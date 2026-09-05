@@ -40,13 +40,14 @@ const (
 // reading it is the only way to reflect the fact.
 const requiredFlagAnnotation = cobra.BashCompOneRequiredFlag
 
-// serveVerb is the depth-1 word the serve-lifecycle contract gives to
-// exactly one command: the supervisor and selector over the tool's
-// services. Everything under it is self-hosting by construction —
-// invoking it from inside a served invocation would start a server
-// inside the server. The name is fixed by the contract, not by the
-// reserved-verb lookup, so the classification holds on a bare cobra
-// tree too.
+// serveVerb is the word the serve-lifecycle contract gives to the
+// supervisor and selector over the tool's services at depth 1, and
+// the word a tool uses for any command that starts a server of its
+// own deeper in the tree. A command named serve, at any depth, and
+// everything under it is self-hosting by construction — invoking it
+// from inside a served invocation would start a server inside the
+// server. The name is fixed by the contract, not by the reserved-verb
+// lookup, so the classification holds on a bare cobra tree too.
 const serveVerb = "serve"
 
 // reservedLookup is the seam through which the walker learns which
@@ -209,6 +210,14 @@ func Reflect(root *cobra.Command, opts ...Option) *Tree {
 			t.byPath[key] = d
 		}
 		for _, child := range cmd.Commands() {
+			// A command with no name cannot be addressed on any
+			// surface — the shell cannot type it, a transport cannot
+			// route to it. Cobra mounts one when a tool disables the
+			// default help command with SetHelpCommand(&Command{}),
+			// which is how a kit root keeps `help` off its surface.
+			if child.Name() == "" {
+				continue
+			}
 			walk(child, append(path, child.Name()))
 		}
 	}
@@ -279,9 +288,10 @@ func describe(cmd *cobra.Command, path []string, root *cobra.Command, cfg *confi
 // isSelfHosting reports whether cmd hosts or modifies the tool
 // itself. Three independent signals, any one of which suffices:
 //
-//   - the command sits under the depth-1 `serve` verb, which the
-//     serve-lifecycle contract fixes as the supervisor and selector
-//     over the tool's services;
+//   - the command is named `serve`, or sits under one, at any depth:
+//     the depth-1 verb the serve-lifecycle contract fixes as the
+//     supervisor and selector over the tool's services, and any
+//     nested `serve` that starts a server of its own;
 //   - the command declares kit/network=ingress — it accepts inbound
 //     connections, which is what a server does;
 //   - the command carries kit/self-hosting, the explicit mark for
@@ -297,7 +307,18 @@ func isSelfHosting(cmd, root *cobra.Command, s Safety) bool {
 	if s.Network == toolspec.PermNetworkIngress {
 		return true
 	}
-	return depthOneName(cmd, root) == serveVerb
+	return underServe(cmd, root)
+}
+
+// underServe reports whether cmd, or any ancestor of it below root,
+// is named serve.
+func underServe(cmd, root *cobra.Command) bool {
+	for cur := cmd; cur != nil && cur != root; cur = cur.Parent() {
+		if cur.Name() == serveVerb {
+			return true
+		}
+	}
+	return false
 }
 
 // reflectSurface resolves the presentation and transport metadata.

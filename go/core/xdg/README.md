@@ -115,6 +115,39 @@ path, err := xdg.SearchConfigFile("mytool", "policy.yaml")
 // returns user file if present, else /etc/xdg/mytool/policy.yaml, else error
 ```
 
+## Concurrency
+
+Every function is safe to call from multiple goroutines. Callers need no
+mutex of their own.
+
+The underlying `adrg/xdg` keeps its directories in package-level globals
+and rewrites all of them on each refresh, holding no lock — concurrent
+resolves through it directly are a data race. This package serializes the
+refresh and the read that follows it, which is what makes the wrapper
+safe where the library is not.
+
+Resolution reads the environment on every call, so changing an `XDG_*`
+variable takes effect on the very next call — no cache to invalidate, no
+refresh function to call. Tests can `t.Setenv` and resolve immediately.
+
+### What the lock costs
+
+The lock spans the refresh **and** the resolve that follows it — it has to,
+because `adrg/xdg`'s file helpers read the state the refresh rewrites. So
+the lock covers whatever the resolve does, and not every resolve is cheap:
+
+| Functions | Under the lock |
+|---|---|
+| `ConfigDir` / `DataDir` / `CacheDir` / `StateDir` / `RuntimeDir` / `BinHome`, the `Raw*` variants, `Home` / `UserDir(s)` / `FontDirs` / `ApplicationDirs` | env reads + string joins, no I/O |
+| `ConfigFile` / `DataFile` / `CacheFile` / `StateFile` / `RuntimeFile` | **creates parent directories** (`MkdirAll`); `RuntimeFile` also stats its candidate bases |
+| `Search*File` | **stats each search path** until one hits |
+
+The file and search helpers therefore serialize filesystem I/O across
+goroutines. Resolving a location once at startup does not care. Resolving
+files in a hot loop from several goroutines will queue on the lock — hoist
+the resolve out of the loop, since the path for a given `(tool, name)` does
+not change between iterations.
+
 ## Platform notes
 
 - **macOS**: `Config*` uses `~/Library/Preferences`; `Data*`/`State*` use

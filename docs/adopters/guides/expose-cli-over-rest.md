@@ -231,7 +231,11 @@ printed. Declare one (step 3) and the same call answers
 `{"exit_code":0,"data":{"id":"w-2"}}`.
 
 The command's exit code sets the HTTP status: `0` is `200`, `2`
-(`USAGE`) is `400`, `3` (`NOT_FOUND`) is `404`. See
+(`USAGE`) is `400`, `3` (`NOT_FOUND`) is `404`. A wrong number of
+`args`, or a flag the command does not take, is a `USAGE` error too:
+the response is `400` with the parser's message in `stderr`. A `path`
+naming no exposed command never reaches the command at all: the
+bridge refuses it as `404 unknown_command`, with no `exit_code`. See
 [the exit-code table](../../../go/transport/api/README.md#exit-codes)
 for the full mapping.
 
@@ -373,6 +377,67 @@ the refusal, the opt-in, a permission gate, the audit trail, request
 and trace ids — is
 [secure-remote-serving.md](secure-remote-serving.md).
 
+### 10. Run requests in parallel
+
+By default the projection runs one command at a time: every request
+runs on the tool's own command tree, and the runner serializes them.
+To run requests in parallel, hand kit the function that builds your
+root — the one `main` already has — with `cli.WithRootFactory`. Every
+request then runs on a tree of its own.
+
+```go
+package main
+
+import (
+    "context"
+
+    "github.com/spf13/cobra"
+
+    "hop.top/kit/go/console/cli"
+)
+
+func newRoot() *cli.Root {
+    root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
+        cli.WithAPI(cli.APIConfig{}),
+        cli.WithRootFactory(newRoot), // a fresh tree per request
+    )
+    root.Cmd.AddCommand(&cobra.Command{
+        Use:         "ping",
+        Short:       "Answer pong",
+        Annotations: map[string]string{"kit/side-effect": "read"},
+        RunE: func(cmd *cobra.Command, _ []string) error {
+            cmd.Print("pong")
+            return nil
+        },
+    })
+    return root
+}
+
+func main() {
+    _ = newRoot().Execute(context.Background())
+}
+```
+
+```bash
+mytool serve
+```
+
+What you get, and what you owe:
+
+- Requests run concurrently on isolated trees. Nothing is shared
+  between them, and no request waits for another.
+- Every gate still applies. Kit prepares each tree before it runs, so
+  an unconfirmed destructive command is refused with `403`, a
+  typed-token command needs its token, and interactive and
+  self-hosting commands stay unmounted. Root flags from your own
+  `mytool serve` command line reach every request.
+- `newRoot` runs once per request, so keep it cheap: open stores and
+  clients once, outside it, and make them safe for concurrent use.
+  Anything reached through a package-level variable is shared across
+  requests, factory or not.
+- A `newRoot` that cannot build a valid tree is refused when `serve`
+  validates, at exit `2`, before the server binds.
+
 ## Option reference
 
 | Option | Default | Effect |
@@ -385,6 +450,7 @@ and trace ids — is
 | `APIConfig.Expose` | empty | Empty mounts the whole tree; a non-empty list is an allow-list. |
 | `APIConfig.Hide` | empty | Pattern list withheld from REST, applied after `Expose`. |
 | `APIConfig.Handlers` | nil | Your own routes, mounted before the projection. |
+| `cli.WithRootFactory(newRoot)` | not set | Run requests in parallel, each on a tree `newRoot` builds (step 10). Unset serializes them on the tool's own tree. |
 
 ## Execution facts
 
@@ -395,13 +461,16 @@ as it applies to REST:
 - **A disconnect cancels the command.** The request's context is the
   command's `cmd.Context()`. A command that selects on it stops when
   the client goes away; one that never reads it runs to completion.
-- **One command at a time.** The projection runs commands in process
-  on the tool's own command tree, and the runner serializes them. A
-  second request waits for the first to finish.
+- **One command at a time, unless you opt in.** By default the
+  projection runs commands in process on the tool's own command tree,
+  and the runner serializes them: a second request waits for the
+  first to finish. With `cli.WithRootFactory` (step 10) every request
+  runs on a tree of its own, in parallel.
 - **Each request starts clean.** Flags from one request do not carry
   into the next. Every command starts from the flag state the
   operator's own `mytool serve` command line left, plus only what the
-  request carries. Standard input is empty.
+  request carries, on the shared tree and on a factory's alike.
+  Standard input is empty.
 - **A cancellation is not a failure.** A command that fails while its
   request is canceled is reported as canceled, not as an error of its
   own.

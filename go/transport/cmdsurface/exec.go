@@ -364,12 +364,42 @@ func resetFlags(leaf *cobra.Command, baseline map[*pflag.Flag]flagState, passed 
 	}
 }
 
+// ResetFlagToDefault returns one flag to its declared default and
+// clears its Changed bit, the state it had before any command line
+// was parsed onto it. A callback-backed flag (pflag Func, BoolFunc)
+// keeps its value — restoring it would invoke the adopter's own
+// function — but its Changed bit is cleared like any other.
+//
+// It is the primitive behind this package's per-invocation reset,
+// exported so a caller that re-parses a tree — a cobra root executed
+// more than once in a process — returns flags to their defaults the
+// same way, rather than growing a second implementation of the same
+// pflag edge cases: slice flags, which pflag appends to on every Set
+// after the first; callback-backed flags, whose Set is the adopter's
+// own function; and values whose String form does not round-trip
+// through Set.
+func ResetFlagToDefault(f *pflag.Flag) {
+	if f == nil {
+		return
+	}
+	restoreFlag(f, nil, false)
+}
+
 // restoreFlag puts one flag back to st. A flag the baseline never saw
 // (st nil: registered after the runner was built) goes to its
 // declared default. Callback-backed flags (pflag Func and BoolFunc)
 // are left alone: their Set IS the adopter's callback, and a reset
 // would invoke it.
 func restoreFlag(f *pflag.Flag, st *flagState, passed bool) {
+	// Changed is bookkeeping pflag owns, not part of the value, so it
+	// is restored for every flag — including the callback-backed ones
+	// that return early below. Set first so no later branch can skip
+	// it.
+	f.Changed = st != nil && st.changed
+
+	// A callback-backed flag's Set IS the adopter's function, so its
+	// value is left alone: restoring it would invoke that function
+	// with a value the operator never passed.
 	switch f.Value.Type() {
 	case "func", "boolfunc":
 		return
@@ -394,7 +424,6 @@ func restoreFlag(f *pflag.Flag, st *flagState, passed bool) {
 			_ = f.Value.Set(f.DefValue)
 		}
 	}
-	f.Changed = st != nil && st.changed
 }
 
 // defaultSlice parses the "[a,b]" form pflag prints as a slice flag's

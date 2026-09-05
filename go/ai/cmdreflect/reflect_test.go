@@ -43,6 +43,7 @@ func TestReflectReasons(t *testing.T) {
 		{"child of a reserved verb is management-only", "mgmt status", false, ReasonManagementOnly},
 		{"serve is self-hosting by position", "serve", false, ReasonSelfHosting},
 		{"child of serve is self-hosting", "serve api", false, ReasonSelfHosting},
+		{"nested serve is self-hosting by name at any depth", "svc serve", false, ReasonSelfHosting},
 		{"ingress listener is self-hosting by network class", "listen", false, ReasonSelfHosting},
 		{"kit/self-hosting marks a self-modifying command", "upgrade", false, ReasonSelfHosting},
 
@@ -182,6 +183,36 @@ func TestAllowOptions(t *testing.T) {
 	}
 }
 
+// TestReflectSkipsNamelessCommands pins that a command with no name
+// is not described: cobra mounts one when a tool disables its default
+// help command with SetHelpCommand(&cobra.Command{Hidden: true}), and
+// a descriptor with an empty path segment would reach every projected
+// surface as a command nobody can address.
+func TestReflectSkipsNamelessCommands(t *testing.T) {
+	root := &cobra.Command{Use: "fix", Short: "fixture root"}
+	root.AddCommand(&cobra.Command{
+		Use:         "list",
+		Short:       "list things",
+		Run:         func(*cobra.Command, []string) {},
+		Annotations: map[string]string{annSideEffect: "read"},
+	})
+	root.SetHelpCommand(&cobra.Command{Hidden: true})
+	root.InitDefaultHelpCmd()
+	root.AddCommand(&cobra.Command{Hidden: true})
+
+	tree := Reflect(root)
+	for _, d := range tree.Descriptors {
+		for _, seg := range d.Path {
+			if seg == "" {
+				t.Errorf("descriptor %q has an empty path segment", d.Path)
+			}
+		}
+	}
+	if d := tree.Lookup("list"); d == nil || !d.Invocable {
+		t.Errorf("list must still be described and invocable")
+	}
+}
+
 // TestSelfHostingSurvivesEveryRelaxation pins that no option lifts
 // self-hosting: a consumer reflecting with every relaxation it has
 // still cannot project the server, the listener, or the upgrader.
@@ -190,7 +221,7 @@ func TestSelfHostingSurvivesEveryRelaxation(t *testing.T) {
 		WithReserved(fakeReserved{"serve": true}),
 		AllowHidden(), AllowDeprecated(), AllowInteractive(), AllowReserved(),
 	)
-	for _, path := range []string{"serve", "serve api", "listen", "upgrade"} {
+	for _, path := range []string{"serve", "serve api", "svc serve", "listen", "upgrade"} {
 		d := tree.Lookup(path)
 		if d == nil {
 			t.Fatalf("no descriptor at %q", path)

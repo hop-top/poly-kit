@@ -4,6 +4,26 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3) (2026-09-05)
+
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.3. This release includes new features and bug fixes.
+
+
+### Features
+
+* **sdk:** EXIT_GENERIC and generic error constructor in all SDKs
+* **ts:** EXIT_GENERIC and genericError for the exit-1 class
+* **ts:** serve --enable/--disable and timeout flags
+* **ts:** serve cross-language contract and TypeScript implementation
+* **ts:** serve hierarchy and service lifecycle
+
+
+### Bug Fixes
+
+* **parity:** record and implement serve --enable/--disable and timeout flags
+
+Full diff: [kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3)
+
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.1...kit-ts/v0.5.0-alpha.2) (2026-09-04)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.2. This release includes new features and bug fixes.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +36,12 @@ func (r *recorder) Publish(_ context.Context, e bus.Event) error {
 	defer r.mu.Unlock()
 	r.events = append(r.events, e)
 	return nil
+}
+
+func (r *recorder) snapshot() []bus.Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]bus.Event(nil), r.events...)
 }
 
 func (r *recorder) topics() []string {
@@ -116,6 +123,37 @@ func TestSupervisor_DependencyCyclePanics(t *testing.T) {
 	assert.Panics(t, func() {
 		sup.Run(t.Context(), []string{"a", "b"}, enabledSet("a", "b"))
 	}, "a cycle is a wiring bug, discoverable on the first run")
+}
+
+// TestSupervisor_SelfStoppingServiceReportsStoppedOnce pins that a
+// service whose Start returns cleanly on its own — the api service
+// after its /shutdown route — is reported stopped exactly once: the
+// ordered stop still calls its Stop, and does not repeat the event.
+func TestSupervisor_SelfStoppingServiceReportsStoppedOnce(t *testing.T) {
+	t.Parallel()
+	tr := &trace{}
+	rec := &recorder{}
+	reg := serve.NewRegistry()
+	reg.Register(&fake{name: "quitter", trace: tr, exitAfter: 20 * time.Millisecond})
+
+	sup := serve.NewSupervisor(reg, serve.SupervisorConfig{}, serve.WithPublisher(rec))
+	res := sup.Run(t.Context(), []string{"quitter"}, enabledSet("quitter"))
+	require.Nil(t, res.Err, "a clean self-exit is a clean stop")
+
+	stopped := 0
+	for _, e := range rec.snapshot() {
+		if e.Topic != "kit.serve.service.stopped" {
+			continue
+		}
+		p, ok := e.Payload.(serve.EventPayload)
+		require.True(t, ok)
+		if p.Service == "quitter" {
+			stopped++
+		}
+	}
+	assert.Equal(t, 1, stopped, "one stopped event per service per run")
+	assert.Contains(t, tr.events(), "stop:quitter", "Stop still runs to release resources")
+	assert.Equal(t, 1, strings.Count(strings.Join(rec.topics(), " "), "kit.serve.supervisor.stopped"))
 }
 
 func TestSupervisor_ReadinessAggregatesAcrossServices(t *testing.T) {

@@ -161,6 +161,14 @@ func TestServe_TwoPositionalArgsIsUsage(t *testing.T) {
 
 	err := runServeArgs(t, r, []string{"serve", "worker", "extra"}, 2*time.Second)
 	require.Error(t, err, "serve accepts at most one service name")
+
+	// The refusal is cobra's MaximumNArgs, raised before RunE; the
+	// contract still owes the caller USAGE, exit 2.
+	var kitErr *output.Error
+	require.ErrorAs(t, err, &kitErr)
+	assert.Equal(t, output.CodeUsage, kitErr.Code)
+	assert.Equal(t, 2, kitErr.ExitCode)
+	assert.Contains(t, kitErr.Message, "accepts at most 1 arg(s), received 2")
 }
 
 func TestServe_ZeroResolvedServicesIsUsage(t *testing.T) {
@@ -258,6 +266,73 @@ func TestServe_EnableFlagRefusedUnderSelector(t *testing.T) {
 	assert.Equal(t, output.CodeUsage, kitErr.Code)
 }
 
+func TestServe_EnableFlagIsRepeatableAndImpliesConfigured(t *testing.T) {
+	// Neither service has a services.<name> block: --enable is what
+	// makes each one configured, and naming both starts both.
+	a := &stubService{name: "alpha"}
+	b := &stubService{name: "beta"}
+	r := newServeRoot(t, cli.WithServices(a, b))
+
+	err := runServeArgs(t, r,
+		[]string{"serve", "--enable", "alpha", "--enable", "beta"}, 300*time.Millisecond)
+	assert.NoError(t, err)
+	assert.True(t, a.wasStarted())
+	assert.True(t, b.wasStarted())
+}
+
+func TestServe_DisableFlagSkipsEnabledServiceSilently(t *testing.T) {
+	on := &stubService{name: "on"}
+	off := &stubService{name: "off"}
+	r := newServeRoot(t, cli.WithServices(on, off))
+	r.Viper.Set("services.on.enabled", true)
+	r.Viper.Set("services.off.enabled", true)
+
+	err := runServeArgs(t, r, []string{"serve", "--disable", "off"}, 300*time.Millisecond)
+	assert.NoError(t, err, "a skipped service does not affect the exit code")
+	assert.True(t, on.wasStarted())
+	assert.False(t, off.wasStarted())
+}
+
+func TestServe_DisableFlagRefusedUnderSelector(t *testing.T) {
+	r := newServeRoot(t, cli.WithService(&stubService{name: "worker"}))
+
+	err := runServeArgs(t, r,
+		[]string{"serve", "worker", "--disable", "worker"}, 2*time.Second)
+	require.Error(t, err)
+
+	var kitErr *output.Error
+	require.ErrorAs(t, err, &kitErr)
+	assert.Equal(t, output.CodeUsage, kitErr.Code)
+}
+
+// neverReadyService starts and stays up but never reports ready, so the
+// readiness budget decides the outcome.
+type neverReadyService struct{ stubService }
+
+func (s *neverReadyService) Start(ctx context.Context, _ func()) error {
+	s.mu.Lock()
+	s.started = true
+	s.mu.Unlock()
+	<-ctx.Done()
+	return nil
+}
+
+func TestServe_ReadyTimeoutFlagBoundsStart(t *testing.T) {
+	svc := &neverReadyService{stubService{name: "worker"}}
+	r := newServeRoot(t, cli.WithService(svc))
+	r.Viper.Set("services.worker.enabled", true)
+
+	// Without the flag the default 30s budget would outlive the test;
+	// the flag is what turns a never-ready service into a start failure.
+	err := runServeArgs(t, r,
+		[]string{"serve", "--ready-timeout", "20ms"}, 5*time.Second)
+	require.Error(t, err)
+
+	var kitErr *output.Error
+	require.ErrorAs(t, err, &kitErr)
+	assert.Equal(t, output.CodeGeneric, kitErr.Code)
+}
+
 func TestServe_PolicyDenialIsUnauthorized(t *testing.T) {
 	r := newServeRoot(t,
 		cli.WithService(&classifiedStub{stubService: &stubService{name: "worker"}}),
@@ -316,6 +391,36 @@ func TestWithAPI_ServeStartsAPIWithoutConfiguration(t *testing.T) {
 	svc, ok := r.ServeRegistry().Lookup(cli.APIServiceName)
 	require.True(t, ok)
 	assert.False(t, svc.Ready(), "the service is stopped after the run")
+}
+
+// TestWithAPI_ListReadsTheSupervisorsResolution pins that `serve
+// --list` reports the api service the way the supervisor resolves it:
+// enabled by default under WithAPI, disabled only by an explicit key.
+func TestWithAPI_ListReadsTheSupervisorsResolution(t *testing.T) {
+	apiLine := func(r *cli.Root) string {
+		var out bytes.Buffer
+		r.Cmd.SetOut(&out)
+		require.NoError(t, runServeArgs(t, r, []string{"serve", "--list"}, 2*time.Second))
+		for _, line := range strings.Split(out.String(), "\n") {
+			if strings.HasPrefix(line, cli.APIServiceName+" ") {
+				return line
+			}
+		}
+		t.Fatalf("no api line in listing:\n%s", out.String())
+		return ""
+	}
+
+	r := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))
+	fields := strings.Fields(apiLine(r))
+	require.Len(t, fields, 4, "SERVICE CONFIGURED ENABLED READY")
+	assert.Equal(t, "true", fields[1], "the compat default makes the api configured")
+	assert.Equal(t, "true", fields[2], "the listing must say what a bare serve does: start it")
+
+	off := newServeRoot(t, cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))
+	off.Viper.Set("services.api.enabled", false)
+	fields = strings.Fields(apiLine(off))
+	require.Len(t, fields, 4)
+	assert.Equal(t, "false", fields[2], "an explicit services.api.enabled: false wins")
 }
 
 func TestWithAPI_ExplicitDisableWinsOverCompatDefault(t *testing.T) {

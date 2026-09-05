@@ -14,7 +14,13 @@ these personas to keep design choices grounded in real users.
 | [kit-contributor](kit-contributor.md) | Contributes to kit packages specifically |
 | [secret-consumer](secret-consumer.md) | Developer reading secrets in kit-based apps |
 | [security-operator](security-operator.md) | Configures and manages secret backends for teams |
+| [ai-agent](ai-agent.md) | Autonomous caller of a kit-based tool over REST, socket, or MCP |
 
 Personas form an extension chain: `oss-contributor` is the broadest
 audience; `cli-author` narrows to CLI builders; the language-specific
 toolmakers and the security personas extend further from there.
+
+`ai-agent` sits outside that chain. Every other persona builds or
+maintains a tool; `ai-agent` consumes a finished one through its
+served surface, so its needs are read off the projection contract
+rather than off kit's authoring APIs.

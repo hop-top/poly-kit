@@ -122,7 +122,7 @@ for the user to diff/merge.
 | 0    | Nothing (pure detection / preview)                              |
 | 1    | `.gitignore`, `.golangci.yml`, `Makefile` (or runtime-equivalent) |
 | 2    | tier 1 + `.github/workflows/ci.yml`                              |
-| 3    | tier 2 + `cmd/<name>/main.go` (only if missing)                  |
+| 3    | tier 2 + `main.go`, `cmd/root.go`, `cmd/hello.go` (only if missing): a kit root with `serve`, the `api` and `socket` services, and a sample command |
 | 4    | tier 3 + `README.md`, `*.toolspec.yaml`, full conformance set    |
 
 ## Migration from `kit scaffold`

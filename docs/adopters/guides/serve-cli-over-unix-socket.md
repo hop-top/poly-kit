@@ -418,7 +418,9 @@ back and the next request on the same connection is served normally.
 Command exit codes surface in `result.exit_code`, using the same
 [kit exit-code taxonomy](../../../go/console/output/error.go) the CLI uses, so
 `2` is a usage error and `5` is unauthorized whether the command was
-invoked from a shell or from this socket.
+invoked from a shell or from this socket. A request with the wrong
+number of `args`, or a flag the command does not take, is `2` as well,
+with the parser's message in `result.stderr`.
 
 ### 10. Stop it, and know when it is ready
 
@@ -438,6 +440,71 @@ not blocked by a leftover. A socket file left behind by a crashed
 process is reclaimed automatically at the next start; a socket a live
 process is still listening on is refused, rather than silently stolen.
 
+### 11. Run requests in parallel
+
+By default the service runs one command at a time: every request runs
+on the tool's own command tree, and the runner serializes them. To
+run requests in parallel, hand kit the function that builds your root
+— the one `main` already has — with `cli.WithRootFactory`. Every
+request then runs on a tree of its own.
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/spf13/cobra"
+
+    "hop.top/kit/go/console/cli"
+)
+
+func newRoot() *cli.Root {
+    root := cli.New(cli.Config{Name: "mytool", Version: "1.0.0"},
+        cli.WithSocket(cli.SocketConfig{}),
+        cli.WithRootFactory(newRoot), // a fresh tree per request
+    )
+    root.Cmd.AddCommand(&cobra.Command{
+        Use:         "ping",
+        Short:       "Answer pong",
+        Annotations: map[string]string{"kit/side-effect": "read"},
+        RunE: func(cmd *cobra.Command, _ []string) error {
+            cmd.Print("pong")
+            return nil
+        },
+    })
+    return root
+}
+
+func main() {
+    if err := newRoot().Execute(context.Background()); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+```bash
+mytool serve socket
+```
+
+What you get, and what you owe:
+
+- Requests run concurrently on isolated trees, across connections.
+  Nothing is shared between them, and no request waits for another.
+- Every gate still applies. Kit prepares each tree before it runs, so
+  an unconfirmed destructive command is refused with exit `5` in its
+  result, a typed-token command needs its token, and interactive and
+  self-hosting commands answer `NOT_INVOCABLE` and `NOT_FOUND` as
+  before. Root flags from your own `mytool serve socket` command line
+  reach every request.
+- `newRoot` runs once per request, so keep it cheap: open stores and
+  clients once, outside it, and make them safe for concurrent use.
+  Anything reached through a package-level variable is shared across
+  requests, factory or not.
+- A `newRoot` that cannot build a valid tree is refused when `serve`
+  validates, at exit `2`, before the socket binds.
+
 ## Option reference
 
 | Field | Type | Default | Meaning |
@@ -447,6 +514,10 @@ process is still listening on is refused, rather than silently stolen.
 | `Hide` | `[]string` | none | patterns carved out of `Expose` |
 | `Policy` | `cmdsurface.Policy` | zero value | safety gate; zero behaves as `cmdsurface.DefaultPolicy()` |
 | `Auth` | `socket.Authenticator` | none | verifies each request; its identity replaces the claimed `caller` and `tenant` |
+
+Parallel execution is a root option rather than a field:
+`cli.WithRootFactory(newRoot)` (step 11). Without it, requests run one
+at a time on the tool's own tree.
 
 Configuration precedence is flag, then config file, then
 `SocketConfig`, then the default:
@@ -468,16 +539,19 @@ Rely on these; they are the
 [execution contract](../../contracts/serve-lifecycle.md#execution)
 as it applies to the socket:
 
-- **One command at a time.** Requests on a connection are answered in
-  order, and across connections the service runs commands in process
-  on the tool's own command tree, one at a time. A request waits for
-  the one running.
+- **One command at a time, unless you opt in.** Requests on a
+  connection are answered in order. Across connections the service
+  runs commands in process on the tool's own command tree, one at a
+  time, by default: a request waits for the one running. With
+  `cli.WithRootFactory` (step 11) every request runs on a tree of its
+  own, in parallel.
 - **Each request starts clean.** Flags from one request do not carry
   into the next. Every command starts from the flag state the
   operator's own `mytool serve socket` command line left, plus only
-  what the request carries. Standard input is empty: a destructive
-  command with no `confirm` flag is refused, never prompted on the
-  operator's terminal.
+  what the request carries, on the shared tree and on a factory's
+  alike. Standard input is empty: a destructive command with no
+  `confirm` flag is refused, never prompted on the operator's
+  terminal.
 - **Hanging up cancels.** A request runs with its connection's
   context. Close the connection mid-command and the command's context
   is canceled; a command that honors its context stops, and its result

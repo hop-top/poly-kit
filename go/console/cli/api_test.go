@@ -56,6 +56,35 @@ func TestWithAPI_WithAuth_AddsTokenCommand(t *testing.T) {
 	assert.True(t, found, "token command must be registered when Auth is set")
 }
 
+// TestWithAPI_WithAuth_ValidatingRootStarts pins that setting Auth on
+// a validating root — every root by default — does not make the root
+// refuse to start: the token leaves WithAPI mounts carry the
+// annotations the validator requires of every leaf.
+func TestWithAPI_WithAuth_ValidatingRootStarts(t *testing.T) {
+	r := cli.New(cli.Config{Name: "test", Version: "0.1.0", Short: "t"},
+		cli.WithStatus(cli.StatusConfig{}),
+		cli.WithAPI(cli.APIConfig{
+			Auth: func(r *http.Request) (any, error) { return nil, nil },
+		}))
+
+	err := r.Validate()
+	require.NoError(t, err, "a root that authenticates its api must still validate")
+
+	for _, c := range r.Cmd.Commands() {
+		if c.Name() != "token" {
+			continue
+		}
+		for _, leaf := range c.Commands() {
+			s, ok := cli.GetSideEffect(leaf)
+			assert.True(t, ok, "%s declares kit/side-effect", leaf.CommandPath())
+			assert.Equal(t, cli.SideEffectRead, s, "%s is a read", leaf.CommandPath())
+			_, ok = cli.GetIdempotency(leaf)
+			assert.True(t, ok, "%s declares kit/idempotent", leaf.CommandPath())
+			assert.NotEmpty(t, leaf.Long, "%s has a Long", leaf.CommandPath())
+		}
+	}
+}
+
 func TestWithAPI_WithoutAuth_SkipsTokenCommand(t *testing.T) {
 	r := cli.New(cli.Config{
 		Name: "test", Version: "0.1.0",

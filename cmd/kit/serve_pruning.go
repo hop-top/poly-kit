@@ -31,7 +31,7 @@ import (
 //     ns (per spec); the handler converts to time.Duration.
 //   - /abandon body: seq (int). Empty 200 response on success;
 //     idempotent — abandoning an already-dead head is a no-op success.
-func registerPruningRoutes(router *api.Router, vds *store.VersionedDocumentStore) {
+func registerPruningRoutes(router routeRegistrar, vds *store.VersionedDocumentStore) {
 	router.Handle("POST", "/{type}/{id}/prune", func(w http.ResponseWriter, r *http.Request) {
 		docType := api.PathParam(r, "type")
 		if !validType(docType) {

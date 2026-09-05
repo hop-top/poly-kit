@@ -24,12 +24,18 @@ No advertised `help` subcommand; users discover help via the
 Cobra (Go) and Typer (Python) is suppressed and hidden in all
 three languages.
 
-A hidden `help <group>` form is recognized as a muscle-memory
-fallback — `mytool help management` is rewritten internally to
-the equivalent `--help-management` flag. This form is **not**
-listed in `--help` or `--help-all` output by design; see
-[`help-rendering.md`](../reference/help-rendering.md) §"`help <id>`
-subcommand" for the full rationale.
+A hidden `help <topic>` form is recognized as a muscle-memory
+fallback. It is a Go-side affordance, outside the parity contract
+itself — the contract's canonical surface is `-h`/`--help` plus
+the `--help-<id>` flags, which all three languages implement. In
+Go the operand is a command path (`mytool help fleet add` shows
+that command's help) or a group ID, which is rewritten internally
+to the equivalent `--help-management` flag; a command wins a name
+it shares with a group, and an operand naming neither is a usage
+error (exit 2). This form is **not** listed in `--help` or
+`--help-all` output by design; see
+[`help-rendering.md`](../reference/help-rendering.md)
+§"`help <topic>` subcommand" for the full rationale.
 
 ## Completion
 

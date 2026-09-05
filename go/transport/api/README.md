@@ -184,9 +184,11 @@ The full rule is in the
 
 A request's context is the command's: a client that disconnects
 cancels the command it started. Commands run one at a time per
-service — the in-process runner serializes on the shared command
-tree — and each starts from the flag state the operator's own command
-line left, plus only the flags the request carries.
+service by default — the in-process runner serializes on the shared
+command tree — or in parallel, each on a tree of its own, when the
+tool opts in with `cli.WithRootFactory`. Either way each starts from
+the flag state the operator's own command line left, plus only the
+flags the request carries.
 
 ### Exit codes
 
@@ -197,7 +199,7 @@ body, with its exit code mapped to a status:
 |------|------|--------|---------|
 | 0  | `OK`                 | 200 | success |
 | 1  | `GENERIC`            | 500 | unclassified failure |
-| 2  | `USAGE`              | 400 | the request was wrong |
+| 2  | `USAGE`              | 400 | the request was wrong: a usage error the command raised, or a positional or flag error its parser raised |
 | 3  | `NOT_FOUND`          | 404 | |
 | 4  | `CONFLICT`           | 409 | |
 | 5  | `UNAUTHORIZED`       | 403 | see below |

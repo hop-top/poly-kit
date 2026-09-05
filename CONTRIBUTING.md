@@ -51,6 +51,28 @@ This sets `core.hooksPath=.githooks` for the current clone. CI does not require 
 - Run linters before submitting: `make lint`
 - Keep changes focused; one concern per PR
 
+## Tests
+
+`make test` is the everyday gate. Two Go test targets run in CI as
+separate jobs, and you can run either locally:
+
+| Target | Covers |
+| --- | --- |
+| `make test-go-integration` | Every Go module, testcontainer suites included. The `go-test` job. |
+| `make test-go-race` | The `go/` tree under `-race`. The `go-race` job. |
+
+`test-go-race` exists because a concurrency guard is invisible to a
+plain `go test`: the parallel-invocation and flag-isolation tests behind
+`serve` pass whether or not the code they guard is still correct, and
+only the race detector tells them apart. Add a test that spawns a
+goroutine and it is covered the moment it lands — the target takes the
+whole `go/` tree, so there is no list to add yourself to.
+
+It runs alongside `test-go-integration` rather than after it, and takes
+about three minutes from a cold cache. One package, `go/core/projects`,
+is excluded because it races today for a reason of its own; the Makefile
+target carries the detail and the condition for dropping the exclusion.
+
 ## Commit messages
 
 Conventional Commits, per the

@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"hop.top/kit/go/console/output"
 )
 
@@ -104,7 +105,10 @@ func wrapRunE(orig func(*cobra.Command, []string) error) func(*cobra.Command, []
 //     output.Error.
 //
 // Calling WrapRunE more than once is a no-op for already-wrapped
-// commands (the wrapper is idempotent — marked by an annotation).
+// commands (the wrapper is idempotent — marked by an annotation). Each
+// call also clears the context cobra copied onto every subcommand
+// during a previous execution, so a Root executed again runs its
+// leaves under the new call's context (see resetSubcommandContexts).
 //
 // The middleware behavior:
 //   - If RunE returns nil, nothing is written to stderr.
@@ -116,6 +120,11 @@ func wrapRunE(orig func(*cobra.Command, []string) error) func(*cobra.Command, []
 //     table/plaintext mode it's rendered as "Code: Message\nFix: ...".
 //   - Policy refusals come back as UNAUTHORIZED (exit 5) or
 //     RATE_LIMITED (exit 64).
+//   - Cobra's own validation of the invocation — positional arity,
+//     unknown or malformed flags, required flags, flag groups — is
+//     USAGE (exit 2). Those errors are raised before RunE, so they
+//     are classified at cobra's seams (see installUsageClassification)
+//     rather than in the RunE chain.
 func (r *Root) WrapRunE() {
 	// Auto-apply idempotency defaults so the conditional-idempotent
 	// flag installer sees adopter intent. Validate would do this
@@ -124,7 +133,33 @@ func (r *Root) WrapRunE() {
 	applyDefaultIdempotency(r.Cmd)
 	installIdempotencyKeyFlag(r.Cmd)
 	installConfirmTokenFlag(r.Cmd)
+	r.installUsageClassification()
+	resetSubcommandContexts(r.Cmd)
 	r.wrapRunESubtree(r.Cmd)
+}
+
+// resetSubcommandContexts clears the context cobra copied onto every
+// subcommand during a previous execution of root.
+//
+// Cobra copies the root's context onto the command it dispatches only
+// when that command has none, so a subcommand executed once keeps its
+// first context for the life of the tree: a Root executed again runs
+// its leaves under the previous call's context, not the new one. For a
+// long-running command such as `serve` that is a run that stops at once
+// when the old context is already canceled, or one that never observes
+// the new cancellation when it is not. Kit's own pre-run hooks derive
+// the leaf context from whatever is there, so they compound the
+// staleness rather than repair it.
+//
+// Called from WrapRunE, which Execute runs before every dispatch, so
+// each execution starts from the root's context as cobra intends. The
+// root itself is left alone: ExecuteContext sets it.
+func resetSubcommandContexts(root *cobra.Command) {
+	walk(root, func(cmd *cobra.Command) {
+		if cmd != root {
+			cmd.SetContext(nil) //nolint:staticcheck // nil is cobra's "copy the root's context at dispatch" state
+		}
+	})
 }
 
 const wrappedAnnotation = "kit.cli.runE.wrapped"
@@ -147,6 +182,7 @@ func (r *Root) wrapRunESubtree(cmd *cobra.Command) {
 			inner := wrapIdempotencyRunE(wrapRunE(adopter), r.IdemStore)
 			inner = wrapDeprecationRunE(inner)
 			cmd.RunE = r.wrapPolicyRunE(cmd, inner)
+			cmd.PreRunE = wrapPreRunUsage(cmd)
 			if cmd.Annotations == nil {
 				cmd.Annotations = make(map[string]string)
 			}
@@ -156,4 +192,116 @@ func (r *Root) wrapRunESubtree(cmd *cobra.Command) {
 	for _, c := range cmd.Commands() {
 		r.wrapRunESubtree(c)
 	}
+}
+
+// Cobra validates an invocation before it reaches RunE: pflag's parse
+// errors are handed to the command's FlagErrorFunc, the Args validator
+// checks positional arity, and required flags and flag groups are
+// checked between PreRun and RunE. All of them leave cobra as errors
+// the RunE chain never sees, so without classification they reach
+// Execute bare and every surface reads them as GENERIC (exit 1).
+//
+// They are the caller's mistake, which the taxonomy names USAGE (exit
+// 2), so kit hooks each seam and classifies there. No message matching
+// is involved: pflag's errors are typed, and an error returned by an
+// Args validator or by cobra's own ValidateRequiredFlags and
+// ValidateFlagGroups is a validation failure by construction. The
+// originating error is retained, so errors.As still reaches the pflag
+// type for a caller that wants the offending flag.
+const (
+	usageFlagHookAnnotation = "kit.cli.usage.flagErrorFunc"
+	usageArgsHookAnnotation = "kit.cli.usage.args"
+)
+
+// installUsageClassification hooks the FlagErrorFunc on the root and
+// wraps the Args validator of every command in the tree. Idempotent:
+// each hook is recorded in an annotation and installed once.
+//
+// A FlagErrorFunc the adopter installed still runs first; kit
+// classifies whatever it returns bare. A command whose Args is nil is
+// left alone: cobra's ArbitraryArgs never fails, and a nil Args is
+// also what makes cobra's Find fall back to its legacy unknown-command
+// check, which a wrapper would suppress.
+func (r *Root) installUsageClassification() {
+	root := r.Cmd
+	if root.Annotations == nil || root.Annotations[usageFlagHookAnnotation] != "true" {
+		prev := root.FlagErrorFunc()
+		root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+			return usageError(cmd, prev(cmd, err))
+		})
+		annotate(root, usageFlagHookAnnotation)
+	}
+	walk(root, func(cmd *cobra.Command) {
+		if cmd.Args == nil {
+			return
+		}
+		if cmd.Annotations != nil && cmd.Annotations[usageArgsHookAnnotation] == "true" {
+			return
+		}
+		orig := cmd.Args
+		cmd.Args = func(cmd *cobra.Command, args []string) error {
+			return usageError(cmd, orig(cmd, args))
+		}
+		annotate(cmd, usageArgsHookAnnotation)
+	})
+}
+
+// wrapPreRunUsage returns a PreRunE that runs cobra's required-flag
+// and flag-group checks ahead of the adopter's pre-run hook and
+// classifies a failure as USAGE. Cobra runs the same two checks itself
+// right after PreRun and returns their errors bare, with no seam to
+// hook; running them one step earlier is the only typed way to reach
+// them. A hook that fails here fails the same invocation cobra would
+// have failed, one hook sooner.
+//
+// The adopter's PreRunE, or PreRun when that is what they set, runs
+// afterwards exactly as cobra would have run it.
+func wrapPreRunUsage(cmd *cobra.Command) func(*cobra.Command, []string) error {
+	preRunE, preRun := cmd.PreRunE, cmd.PreRun
+	return func(c *cobra.Command, args []string) error {
+		if err := c.ValidateRequiredFlags(); err != nil {
+			return usageError(c, err)
+		}
+		if err := c.ValidateFlagGroups(); err != nil {
+			return usageError(c, err)
+		}
+		if preRunE != nil {
+			return preRunE(c, args)
+		}
+		if preRun != nil {
+			preRun(c, args)
+		}
+		return nil
+	}
+}
+
+// usageError classifies err, raised by cobra while validating the
+// invocation of cmd, as USAGE and renders it the way wrapRunE renders
+// a handler failure, so the caller sees one envelope shape whichever
+// layer refused. nil and help requests pass through untouched, as does
+// an error that already carries a kit envelope: an adopter's own
+// validator that chose its code keeps it.
+func usageError(cmd *cobra.Command, err error) error {
+	if err == nil || errors.Is(err, pflag.ErrHelp) {
+		return err
+	}
+	var ce asCLIError
+	if errors.As(err, &ce) {
+		return err
+	}
+	out := output.WrapError(err, output.CodeUsage, int(ExitUsage))
+	out.SuggestedFix = "run '" + cmd.CommandPath() + " --help' for usage"
+	_ = output.RenderError(cmd.ErrOrStderr(), activeFormat(cmd), out)
+	// Silence cobra's own printer so the envelope is not doubled.
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	return out
+}
+
+// annotate records a kit-owned marker on cmd.
+func annotate(cmd *cobra.Command, key string) {
+	if cmd.Annotations == nil {
+		cmd.Annotations = make(map[string]string)
+	}
+	cmd.Annotations[key] = "true"
 }

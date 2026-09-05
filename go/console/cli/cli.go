@@ -323,11 +323,14 @@ type Root struct {
 	socketFlag string
 	// serveAuth is the permission gate and audit sinks every
 	// kit-shipped transport service shares; see serve_auth.go.
-	serveAuth          serveAuthState
-	identityCfg        *IdentityConfig
-	peerCfg            *PeerConfig
-	telemetryCfg       *TelemetryConfig
-	verboseCount       int // -V count; levels per parity verbosity.levels
+	serveAuth    serveAuthState
+	identityCfg  *IdentityConfig
+	peerCfg      *PeerConfig
+	telemetryCfg *TelemetryConfig
+	// rootFactory rebuilds the tool's root for one served invocation;
+	// nil serves every invocation on this Root's tree. See
+	// root_factory.go.
+	rootFactory        func() *Root
 	aliases            map[string]string
 	aliasCompletionSet bool              // guards single ValidArgsFunction wrap
 	hiddenGroups       map[string]bool   // group IDs hidden from default --help
@@ -339,6 +342,10 @@ type Root struct {
 	// when --help-all is on the args.
 	hiddenDefaultFlags []string
 	overrideArgs       []string // captured from SetArgs for pre-parse inspection
+	// executed records that Execute has parsed a command line onto
+	// this tree, so the next Execute knows it has a previous parse to
+	// reset before this one's argv lands. See resetForExecute.
+	executed bool
 	// configArgsErr stashes the most recent ParseConfigArgs failure
 	// from ConfigArgs/ConfigOverrides so Root.Validate() can surface
 	// it in the EnforceValidate pre-flight. Cleared on a successful
@@ -453,12 +460,17 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		cmd.Flags().Lookup(flagName).NoOptDefVal = "true"
 	}
 
-	// Hidden "help" subcommand: accepts group ID or "all".
+	// Hidden "help" subcommand: accepts a command path, a group ID,
+	// or "all". Args is deliberately arbitrary — a command path is
+	// many words ("help widget add"), and applyGroupVisibility
+	// classifies the operand before cobra ever dispatches here, so an
+	// arity rule at this level would only pre-empt that with the
+	// wrong diagnosis.
 	helpSub := &cobra.Command{
-		Use:    "help [group]",
-		Short:  "Show help for a command group",
+		Use:    "help [command | group]",
+		Short:  "Show help for a command or command group",
 		Hidden: true,
-		Args:   cobra.ExactArgs(1),
+		Args:   cobra.ArbitraryArgs,
 	}
 	cmd.AddCommand(helpSub)
 
@@ -684,7 +696,12 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// Stamping alone is advisory. Install guards http.DefaultTransport so
 	// --offline is enforced beneath every client that has not set its own
 	// Transport, rather than relying on each leaf to remember to check.
-	netpolicy.Install()
+	//
+	// Once per process: Install is a read-modify-write of a package
+	// global, and a root factory (see root_factory.go) runs New on
+	// every served invocation, concurrently with commands whose HTTP
+	// clients read that global. Guarding twice is a no-op anyway.
+	installNetPolicyOnce.Do(netpolicy.Install)
 	hooks = append(hooks, r.installNetGlobalsHook())
 
 	if cfg.Hooks.PrePersistentRunE != nil {
@@ -702,14 +719,19 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		}
 	}
 
-	// Deferred: cobra parses after New(); OnInitialize reads the flag
-	// from cobra's thread-safe store — no captured local, no PreRun conflict.
-	cobra.OnInitialize(func() {
-		r.verboseCount, _ = cmd.Flags().GetCount("verbose")
-	})
+	// No cobra.OnInitialize here. Its registry is process-global and
+	// every closure in it runs on every Execute of every tree in the
+	// process, so one closure per New would grow without bound under
+	// a root factory and would read other trees' flag sets while they
+	// parse. What the closure used to capture — the parsed -V count —
+	// lives on the persistent flag itself; VerboseCount reads it there.
 
 	return r
 }
+
+// installNetPolicyOnce guards the one process-wide mutation New
+// performs; see the netpolicy.Install call site.
+var installNetPolicyOnce sync.Once
 
 // NewE is the explicit-error companion to cli.New. It applies the
 // same construction logic and additionally runs Root.Validate at
@@ -769,7 +791,86 @@ func (r *Root) dispatchValidationFailure(err error) (bool, error) {
 
 // Execute runs the root command through fang, which provides styled help,
 // version output, error rendering, and man page generation.
+//
+// Before parsing it prepares the tree — everything [Root.Prepare]
+// installs — and additionally applies the steps that depend on the
+// argv about to be parsed: group visibility for --help, and the
+// --api-version filter. A validation failure is dispatched through
+// Config.ValidationFailureMode here; Prepare returns it instead.
 func (r *Root) Execute(ctx context.Context) error {
+	r.prepareTree()
+
+	// Return every flag to its default before this call's argv is
+	// parsed onto the tree. Cobra parses into the flag set in place
+	// and never unsets anything, so without this a second Execute
+	// inherits the first one's values and Changed bits, and a flag
+	// omitted the second time still reads as if it had been passed.
+	//
+	// Only trees driven through Execute are reset here. A tree built
+	// by a root factory is prepared and then driven by the
+	// in-process runner, which does its own per-invocation reset
+	// against the baseline it captured, so it is neither reached nor
+	// double-reset by this one.
+	r.resetForExecute()
+
+	r.applyGroupVisibility()
+
+	// --api-version (§13). Detect the requested version pre-parse so
+	// hidden commands are excluded from help and refused at dispatch.
+	// Filtering is opt-in: empty value means "all commands present".
+	if reqAPI := r.scanArgsForAPIVersion(); reqAPI != "" {
+		if minErr := checkMinAPIVersion(r.Cmd, reqAPI); minErr != nil {
+			fmt.Fprintln(os.Stderr, minErr.Error())
+			os.Exit(2)
+		}
+		applyAPIVersionFilter(r.Cmd, reqAPI)
+	}
+
+	// Pre-flight: refuse to run a misconfigured tool when the adopter
+	// has Config.EnforceValidate=true (the default at 0.1.0-alpha.0
+	//). Adopters opt out via DisableValidate;
+	// tests that exercise the validator directly call Root.Validate()
+	// rather than going through Execute.
+	if err := r.validateTree(); err != nil {
+		if handled, returned := r.dispatchValidationFailure(err); handled {
+			return returned
+		}
+	}
+
+	// Signature validator: gated by Config.SignatureStrictness,
+	// independent of EnforceValidate. silent (zero value) is a
+	// no-op; warn logs each violation via slog and continues;
+	// reject routes through ValidationFailureMode.
+	if r.Config.SignatureStrictness != SignatureStrictnessSilent {
+		if handled, returned := r.dispatchSignatureReport(); handled {
+			return returned
+		}
+	}
+
+	// Wrap every leaf RunE with the structured-error envelope middleware
+	// so adopter errors are rendered to stderr in the requested format.
+	r.WrapRunE()
+
+	// Resolve the invocation before dispatch. A word naming no child
+	// of a non-runnable command never reaches an Args validator or
+	// kit's RunE middleware — cobra renders help and exits 0 — so the
+	// refusal has to be raised here, ahead of fang.
+	if err := r.checkUnknownSubcommand(r.resolveArgs()); err != nil {
+		return r.refuseUnknownSubcommand(err)
+	}
+
+	return fang.Execute(
+		ctx, r.Cmd,
+		fang.WithVersion(r.Config.Version),
+		fang.WithColorSchemeFunc(brandColorScheme),
+	)
+}
+
+// prepareTree applies the argv-independent half of Execute's
+// pre-flight to the command tree: alias annotations, the completion
+// command, leaf help, auto-registered flags, and the help addenda.
+// Every step is idempotent, so Prepare and Execute may both run it.
+func (r *Root) prepareTree() {
 	if r.Config.Help.ShowAliases {
 		annotateAliases(r.Cmd)
 	}
@@ -784,7 +885,6 @@ func (r *Root) Execute(ctx context.Context) error {
 		}
 	}
 
-	r.applyGroupVisibility()
 	r.installLeafHelp()
 
 	// Auto-register kit-managed flags (--dry-run on write/destructive
@@ -808,50 +908,15 @@ func (r *Root) Execute(ctx context.Context) error {
 	// annotation keeps working as a back-compat synonym; the
 	// warning makes the supersession (ADR-0020) audible.
 	r.warnLegacySupportsDryRun()
+}
 
-	// --api-version (§13). Detect the requested version pre-parse so
-	// hidden commands are excluded from help and refused at dispatch.
-	// Filtering is opt-in: empty value means "all commands present".
-	if reqAPI := r.scanArgsForAPIVersion(); reqAPI != "" {
-		if minErr := checkMinAPIVersion(r.Cmd, reqAPI); minErr != nil {
-			fmt.Fprintln(os.Stderr, minErr.Error())
-			os.Exit(2)
-		}
-		applyAPIVersionFilter(r.Cmd, reqAPI)
+// validateTree runs Validate when Config.EnforceValidate is set and
+// returns its error undispatched.
+func (r *Root) validateTree() error {
+	if !r.Config.EnforceValidate {
+		return nil
 	}
-
-	// Pre-flight: refuse to run a misconfigured tool when the adopter
-	// has Config.EnforceValidate=true (the default at 0.1.0-alpha.0
-	//). Adopters opt out via DisableValidate;
-	// tests that exercise the validator directly call Root.Validate()
-	// rather than going through Execute.
-	if r.Config.EnforceValidate {
-		if err := r.Validate(); err != nil {
-			if handled, returned := r.dispatchValidationFailure(err); handled {
-				return returned
-			}
-		}
-	}
-
-	// Signature validator: gated by Config.SignatureStrictness,
-	// independent of EnforceValidate. silent (zero value) is a
-	// no-op; warn logs each violation via slog and continues;
-	// reject routes through ValidationFailureMode.
-	if r.Config.SignatureStrictness != SignatureStrictnessSilent {
-		if handled, returned := r.dispatchSignatureReport(); handled {
-			return returned
-		}
-	}
-
-	// Wrap every leaf RunE with the structured-error envelope middleware
-	// so adopter errors are rendered to stderr in the requested format.
-	r.WrapRunE()
-
-	return fang.Execute(
-		ctx, r.Cmd,
-		fang.WithVersion(r.Config.Version),
-		fang.WithColorSchemeFunc(brandColorScheme),
-	)
+	return r.Validate()
 }
 
 // Validate walks the command tree and refuses leaf commands missing
@@ -1204,8 +1269,25 @@ func walk(cmd *cobra.Command, fn func(*cobra.Command)) {
 // present in the args. When --help-all is detected, args are rewritten to
 // --help so fang renders the full help.
 //
-// Per-group help: --help-<id> or "help <id>" renders only that group's
-// commands. "help all" is equivalent to --help-all.
+// Per-group help: --help-<id> renders only that group's commands.
+//
+// The "help <operand...>" subcommand form is broader, and is
+// classified in this order:
+//
+//   - "help all" reveals every group, exactly as --help-all does.
+//   - A command path — one word or several, to whatever depth the tree
+//     goes ("help widget add") — prints that command's own help, exit 0.
+//   - A registered group ID prints that group's commands, exit 0.
+//   - Anything else is a usage error: exit 2 per the [output] taxonomy,
+//     the same code a bogus subcommand gets, rather than the generic 1
+//     an unrecognized operand used to produce.
+//
+// Tie-break: a command wins over a group of the same name. A command is
+// a thing the user can run and therefore the thing "help <name>" is
+// overwhelmingly asking about, and it is reachable no other way, whereas
+// a shadowed group keeps its --help-<id> flag form. Because the operand
+// may be a multi-word path, only a fully-resolved path counts: "help
+// widget nosuch" is a usage error, not help for widget.
 //
 // Exported for callers that bypass r.Execute (e.g. to call fang directly
 // with WithoutVersion or other custom options); they must invoke this
@@ -1215,24 +1297,27 @@ func (r *Root) ApplyGroupVisibility() { r.applyGroupVisibility() }
 func (r *Root) applyGroupVisibility() {
 	args := r.resolveArgs()
 
-	// Check for "help <id>" subcommand form.
+	// Check for the "help <operand...>" subcommand form.
 	if len(args) >= 2 && args[0] == "help" {
-		groupID := args[1]
-		if groupID == "all" {
+		operands := args[1:]
+		// "help all" reveals every group. It stops short of the
+		// plumbing flags --help-all also unhides; that difference is
+		// long-standing shipped behavior, not an oversight here.
+		if len(operands) == 1 && operands[0] == "all" {
 			r.Cmd.SetArgs([]string{"--help"})
 			return
 		}
-		if _, ok := r.groupTitles[groupID]; !ok {
-			// Wire up RunE to return an error for unknown group.
-			helpCmd := r.findHelpSubcommand()
-			if helpCmd != nil {
-				helpCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-					return fmt.Errorf("unknown help group %q", groupID)
-				}
-			}
+		if target := r.findHelpTarget(operands); target != nil {
+			r.installCommandHelp(target)
 			return
 		}
-		r.installGroupHelp(groupID)
+		if len(operands) == 1 {
+			if _, ok := r.groupTitles[operands[0]]; ok {
+				r.installGroupHelp(operands[0])
+				return
+			}
+		}
+		r.installHelpTopicError(operands)
 		return
 	}
 
@@ -1256,14 +1341,7 @@ func (r *Root) applyGroupVisibility() {
 		}
 	}
 	if helpAll {
-		// Reveal kit-owned plumbing flags (--config, --chdir, --dry-run,
-		// etc.) that are hidden from default --help to keep the FLAGS
-		// section aligned with the cross-language parity contract.
-		for _, name := range r.hiddenDefaultFlags {
-			if f := r.Cmd.PersistentFlags().Lookup(name); f != nil {
-				f.Hidden = false
-			}
-		}
+		r.revealHiddenDefaultFlags()
 		cleaned := make([]string, 0, len(args))
 		for _, a := range args {
 			if a == "--help-all" {
@@ -1291,6 +1369,88 @@ func (r *Root) findHelpSubcommand() *cobra.Command {
 		}
 	}
 	return nil
+}
+
+// revealHiddenDefaultFlags unhides the kit-owned plumbing flags
+// (--config, --chdir, --dry-run, etc.) that default --help suppresses
+// to keep the FLAGS section aligned with the cross-language parity
+// contract.
+func (r *Root) revealHiddenDefaultFlags() {
+	for _, name := range r.hiddenDefaultFlags {
+		if f := r.Cmd.PersistentFlags().Lookup(name); f != nil {
+			f.Hidden = false
+		}
+	}
+}
+
+// findHelpTarget resolves operands as a command path and returns the
+// command it names, or nil when it names none.
+//
+// Resolution is cobra's own: Find walks as deep as the words match and
+// hands back whatever it could not consume. A path only counts when
+// nothing is left over, so a partial match ("widget nosuch") resolves
+// to no command rather than quietly to its parent — which is what
+// cobra's stock help command does, and why classification lives here
+// instead of being delegated to it.
+//
+// The root itself is never a target: "help" with no operand is handled
+// before this is reached, and an operand list that resolves back to the
+// root is one Find could not consume at all.
+func (r *Root) findHelpTarget(operands []string) *cobra.Command {
+	if len(operands) == 0 {
+		return nil
+	}
+	target, rest, err := r.Cmd.Find(operands)
+	if err != nil || target == nil || target == r.Cmd || len(rest) > 0 {
+		return nil
+	}
+	return target
+}
+
+// installCommandHelp points the help subcommand at target, so
+// "help <command path>" prints that command's help and exits 0.
+//
+// The rendering is cobra's, reached through the same Help() the
+// command's own --help would reach, so a command documented one way by
+// "tool widget add --help" is documented identically by "tool help
+// widget add".
+func (r *Root) installCommandHelp(target *cobra.Command) {
+	helpCmd := r.findHelpSubcommand()
+	if helpCmd == nil {
+		return
+	}
+	helpCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		if target.Context() == nil {
+			target.SetContext(cmd.Context())
+		}
+		// Match cobra's own help command: make the help and version
+		// flags exist on the target before its help is rendered, so
+		// they appear in the FLAGS section.
+		target.InitDefaultHelpFlag()
+		target.InitDefaultVersionFlag()
+		return target.Help()
+	}
+}
+
+// installHelpTopicError makes the help subcommand refuse an operand
+// that names neither a command path nor a group.
+//
+// The refusal is an [output.UsageError] — exit 2 — because a help
+// topic that resolves to nothing is the same class of mistake as an
+// unknown subcommand, and checkUnknownSubcommand exempts a leading
+// `help` precisely so this classification is made here with the group
+// IDs in hand.
+func (r *Root) installHelpTopicError(operands []string) {
+	helpCmd := r.findHelpSubcommand()
+	if helpCmd == nil {
+		return
+	}
+	topic := strings.Join(operands, " ")
+	helpCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return output.UsageError(fmt.Sprintf(
+			"unknown help topic %q for %q%s", topic, r.Cmd.Name(),
+			suggestionsFor(r.Cmd, operands[0])))
+	}
 }
 
 // installGroupHelp rewrites the command tree so only the target group's
@@ -1324,11 +1484,16 @@ func (r *Root) resolveArgs() []string {
 	return nil
 }
 
-// annotateAliases appends "(aliases: x, y)" to Short for commands with aliases.
+// annotateAliases appends "(aliases: x, y)" to Short for commands with
+// aliases. Idempotent: a Short already carrying its suffix is left
+// alone, so Prepare followed by Execute annotates once.
 func annotateAliases(root *cobra.Command) {
 	for _, c := range root.Commands() {
 		if len(c.Aliases) > 0 {
-			c.Short += " (aliases: " + strings.Join(c.Aliases, ", ") + ")"
+			suffix := " (aliases: " + strings.Join(c.Aliases, ", ") + ")"
+			if !strings.HasSuffix(c.Short, suffix) {
+				c.Short += suffix
+			}
 		}
 		annotateAliases(c)
 	}
