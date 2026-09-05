@@ -135,15 +135,24 @@ fn list_empty_prefix_returns_everything() {
     );
 }
 
+// The two sides of a TTL assertion need opposite budgets. "Still live"
+// must hold however long the runner stalls between the write and the
+// read, so it gets a TTL no CI box will sleep through; "expired" only
+// needs the sleep to exceed the TTL, so it gets a tiny one. One value
+// serving both is what made these tests flake on slow runners.
+const LIVE_TTL: Duration = Duration::from_secs(60);
+const DYING_TTL: Duration = Duration::from_millis(1);
+const PAST_DYING: Duration = Duration::from_millis(10);
+
 #[test]
 fn ttl_expiration() {
     let (_dir, s) = new_store();
-    s.put_with_ttl(b"ephemeral", b"x", Duration::from_millis(50))
-        .unwrap();
+    s.put_with_ttl(b"ephemeral", b"x", LIVE_TTL).unwrap();
 
     assert_eq!(s.get(b"ephemeral").unwrap(), Some(b"x".to_vec()));
 
-    thread::sleep(Duration::from_millis(60));
+    s.put_with_ttl(b"ephemeral", b"x", DYING_TTL).unwrap();
+    thread::sleep(PAST_DYING);
 
     assert_eq!(s.get(b"ephemeral").unwrap(), None);
 }
@@ -152,12 +161,12 @@ fn ttl_expiration() {
 fn ttl_expired_key_is_excluded_from_list() {
     let (_dir, s) = new_store();
     s.put(b"live", b"1").unwrap();
-    s.put_with_ttl(b"dying", b"2", Duration::from_millis(50))
-        .unwrap();
+    s.put_with_ttl(b"dying", b"2", LIVE_TTL).unwrap();
 
     assert_eq!(sorted(s.list(b"").unwrap()).len(), 2);
 
-    thread::sleep(Duration::from_millis(60));
+    s.put_with_ttl(b"dying", b"2", DYING_TTL).unwrap();
+    thread::sleep(PAST_DYING);
 
     assert_eq!(s.list(b"").unwrap(), vec![b"live".to_vec()]);
 }
