@@ -11,8 +11,8 @@ import (
 	"hop.top/kit/go/conformance/scenariorules"
 	"hop.top/kit/go/conformance/story/parser"
 	"hop.top/kit/go/conformance/story/validator"
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/rules"
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/scanner"
+	"hop.top/kit/go/conformance/verifynoleak/rules"
+	"hop.top/kit/go/conformance/verifynoleak/scanner"
 )
 
 // TestExampleStoriesPassBothValidators is the structural

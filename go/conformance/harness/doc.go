@@ -6,7 +6,7 @@
 //
 //	import (
 //	    "testing"
-//	    "hop.top/kit/go/console/cli/conformance/harness"
+//	    "hop.top/kit/go/conformance/harness"
 //	)
 //
 //	func TestSpaced_Idempotent(t *testing.T) {
@@ -27,10 +27,11 @@
 // recorded cassette. See ADR-0021 (xrr-first integration model)
 // for the rationale.
 //
-// The harness's primary surface is this Go package; adopters who
-// want a CLI subcommand to summarize / refresh cassettes pick that
-// up from the (currently reserved) `kit conformance harness`
-// leaf in a future track.
+// The harness's primary surface is this Go package. It is a
+// library, not a command: nothing here returns a cobra command.
+// The separate `kit conformance harness record` leaf, which
+// records cassettes from the command line, lives in the command
+// tree at hop.top/kit/go/console/cli/conformance/harness/record.
 //
 // Six primitives, plus deterministic-environment helpers:
 //

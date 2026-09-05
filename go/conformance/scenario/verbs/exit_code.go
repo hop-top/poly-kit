@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"hop.top/kit/go/console/cli/conformance/harness"
+	"hop.top/kit/go/conformance/harness"
 )
 
 // exit_code_equals: { value: int }

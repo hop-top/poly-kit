@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"hop.top/kit/go/console/cli/conformance/harness/classifier"
-	"hop.top/kit/go/console/cli/conformance/harness/diff"
+	"hop.top/kit/go/conformance/harness/classifier"
+	"hop.top/kit/go/conformance/harness/diff"
 )
 
 // dry_run_no_mutation: { } — operates on the on-step's cassette.

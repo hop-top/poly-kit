@@ -9,7 +9,7 @@ import (
 	"sort"
 	"time"
 
-	"hop.top/kit/go/console/cli/conformance/harness"
+	"hop.top/kit/go/conformance/harness"
 )
 
 // ExecInvoker runs the target binary as a real subprocess. It

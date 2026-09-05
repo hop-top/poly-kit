@@ -21,9 +21,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/mdfence"
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/rules"
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/suppress"
+	"hop.top/kit/go/conformance/verifynoleak/mdfence"
+	"hop.top/kit/go/conformance/verifynoleak/rules"
+	"hop.top/kit/go/conformance/verifynoleak/suppress"
 )
 
 // Default per-file size cap (1 MiB) matches design.md §6.

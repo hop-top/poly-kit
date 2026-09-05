@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	"hop.top/kit/go/console/cli/conformance/harness/classifier"
+	"hop.top/kit/go/conformance/harness/classifier"
 	xrr "hop.top/xrr"
 )
 

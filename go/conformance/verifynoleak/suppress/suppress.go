@@ -300,7 +300,7 @@ func DefaultKitInternalGlobs() []string {
 		"docs/**/*verify-no-leak*.md",
 		"docs/conformance/ci-integration.md",
 		"go/conformance/client/testdata/**",
-		"go/console/cli/conformance/verifynoleak/rules/scenario_rules_embedded.json",
+		"go/conformance/verifynoleak/rules/scenario_rules_embedded.json",
 		"go/conformance/scenariorules/scenario_rules_embedded.json",
 		"go/conformance/scenario/testdata/**",
 		"go/conformance/scenario/README.md",

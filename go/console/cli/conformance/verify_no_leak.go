@@ -11,10 +11,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/rules"
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/scanner"
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/source"
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/suppress"
+	"hop.top/kit/go/conformance/verifynoleak/rules"
+	"hop.top/kit/go/conformance/verifynoleak/scanner"
+	"hop.top/kit/go/conformance/verifynoleak/source"
+	"hop.top/kit/go/conformance/verifynoleak/suppress"
 	"hop.top/kit/go/console/output"
 )
 

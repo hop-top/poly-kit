@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/scanner"
-	"hop.top/kit/go/console/cli/conformance/verifynoleak/source"
+	"hop.top/kit/go/conformance/verifynoleak/scanner"
+	"hop.top/kit/go/conformance/verifynoleak/source"
 )
 
 // mkTree creates each relative path under root as an empty file,

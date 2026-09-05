@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"hop.top/kit/go/console/cli/conformance/harness/classifier"
-	"hop.top/kit/go/console/cli/conformance/harness/diff"
+	"hop.top/kit/go/conformance/harness/classifier"
+	"hop.top/kit/go/conformance/harness/diff"
 )
 
 // destructive_gate_required: { when?: {flag_absent: "--yes"} }
