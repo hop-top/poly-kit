@@ -30,6 +30,7 @@ Task-oriented how-tos for adopters: one outcome per page, with the audience name
 | [`serve-cli-over-unix-socket.md`](serve-cli-over-unix-socket.md) | newline-delimited JSON over a local Unix socket | you want local IPC with no port |
 | [`serve-mcp-from-any-sdk.md`](serve-mcp-from-any-sdk.md) | one MCP mount serving both protocol revisions from Go, TypeScript, Python, Rust or PHP | you serve MCP from a non-Go SDK |
 | [`serve-mcp-with-the-sdk.md`](serve-mcp-with-the-sdk.md) | MCP over the official Go SDK: prompts, resources, subscriptions | you want the SDK's full server feature set |
+| [`spaced-example.md`](spaced-example.md) | completion, aliases, telemetry posture, browser demo and parity harness for `examples/spaced/` | you use spaced as the reference CLI and want the detail its README links out |
 | [`telemetry.md`](telemetry.md) | anonymous-usage pipeline, off by default: consent, inspect, reset, opt out | you decide whether to enable telemetry or need to turn it off |
 | [`troubleshoot-scaffold.md`](troubleshoot-scaffold.md) | symptom-indexed fixes for `kit init` failures | a `kit init` run errored or left junk behind |
 | [`trust-a-peer.md`](trust-a-peer.md) | add a remote engine to the trust mesh so the two sync | you connect two engines |
