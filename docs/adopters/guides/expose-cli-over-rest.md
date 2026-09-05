@@ -231,7 +231,9 @@ printed. Declare one (step 3) and the same call answers
 `{"exit_code":0,"data":{"id":"w-2"}}`.
 
 The command's exit code sets the HTTP status: `0` is `200`, `2`
-(`USAGE`) is `400`, `3` (`NOT_FOUND`) is `404`. See
+(`USAGE`) is `400`, `3` (`NOT_FOUND`) is `404`. A wrong number of
+`args`, or a flag the command does not take, is a `USAGE` error too:
+the response is `400` with the parser's message in `stderr`. See
 [the exit-code table](../../../go/transport/api/README.md#exit-codes)
 for the full mapping.
 

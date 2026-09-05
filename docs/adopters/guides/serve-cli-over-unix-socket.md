@@ -418,7 +418,9 @@ back and the next request on the same connection is served normally.
 Command exit codes surface in `result.exit_code`, using the same
 [kit exit-code taxonomy](../../../go/console/output/error.go) the CLI uses, so
 `2` is a usage error and `5` is unauthorized whether the command was
-invoked from a shell or from this socket.
+invoked from a shell or from this socket. A request with the wrong
+number of `args`, or a flag the command does not take, is `2` as well,
+with the parser's message in `result.stderr`.
 
 ### 10. Stop it, and know when it is ready
 
