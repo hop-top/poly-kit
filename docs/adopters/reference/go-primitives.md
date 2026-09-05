@@ -181,13 +181,16 @@ onto other surfaces without rewriting it.
 | rpc | ConnectRPC scaffold with interceptors mirroring the HTTP middleware | gRPC/Connect CRUD without per-entity codegen | `hop.top/kit/go/transport/rpc` |
 | rpc/client | Typed ConnectRPC client for kit entity services | Calling a kit RPC service | `hop.top/kit/go/transport/rpc/client` |
 | socket | Serves the command tree as NDJSON over a Unix domain socket | Local IPC without a network port | `hop.top/kit/go/transport/socket` |
-| bridge | Payload types and manifest loader for OS-level shells. Partial — see below | Wiring a Share Extension, Shortcut or browser extension | `hop.top/kit/go/bridge` |
+| bridge | Payload types, manifest loader and payload-to-handler matching for OS-level shells. Partial — see below | Wiring a Share Extension, Shortcut or browser extension | `hop.top/kit/go/bridge` |
 
 `socket` is loopback-only with owner-only permissions and does no
 caller authentication beyond filesystem mode. `bridge` today ships
-the payload types and manifest loader only. Dispatch and an
-embeddable receiver are not implemented, so a host routes payloads
-itself; treat the package as incomplete.
+the wire types, the manifest loader and the matcher that picks which
+installed handler should take a payload. An embeddable receiver is
+not implemented, so a host still has to execute the winning handler
+itself — spawning the subprocess, opening the socket or making the
+HTTP call — and to accept payloads from the shells in the first
+place; treat the package as incomplete.
 
 Deep dives: [`expose-cli-over-rest.md`](../guides/expose-cli-over-rest.md),
 [`expose-cli-over-mcp.md`](../guides/expose-cli-over-mcp.md),
