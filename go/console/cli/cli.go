@@ -790,6 +790,7 @@ func (r *Root) dispatchValidationFailure(err error) (bool, error) {
 // Config.ValidationFailureMode here; Prepare returns it instead.
 func (r *Root) Execute(ctx context.Context) error {
 	r.prepareTree()
+
 	r.applyGroupVisibility()
 
 	// --api-version (§13). Detect the requested version pre-parse so
@@ -827,6 +828,14 @@ func (r *Root) Execute(ctx context.Context) error {
 	// Wrap every leaf RunE with the structured-error envelope middleware
 	// so adopter errors are rendered to stderr in the requested format.
 	r.WrapRunE()
+
+	// Resolve the invocation before dispatch. A word naming no child
+	// of a non-runnable command never reaches an Args validator or
+	// kit's RunE middleware — cobra renders help and exits 0 — so the
+	// refusal has to be raised here, ahead of fang.
+	if err := r.checkUnknownSubcommand(r.resolveArgs()); err != nil {
+		return r.refuseUnknownSubcommand(err)
+	}
 
 	return fang.Execute(
 		ctx, r.Cmd,
