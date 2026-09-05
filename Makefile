@@ -95,11 +95,32 @@ test-go-integration: ## Go tests including testcontainer integration
 # fails ("error obtaining VCS status") when another checkout or hook
 # holds it, which is routine on a dev machine running this alongside a
 # push.
+#
+# `go list` runs on its own line, and its status is checked, because a
+# PARTIAL failure is silent otherwise: go list prints the packages it
+# resolved, fails on one (a broken build constraint, a malformed file, a
+# new nested module) and exits non-zero, but inside a command
+# substitution feeding a pipe that status is discarded — the recipe then
+# races the survivors and reports green. A gate that goes green by
+# skipping the package that broke is worse than no gate.
+#
+# The empty-list check is the same failure in a different disguise:
+# `go test` with no package arguments prints "no Go files ... [setup
+# failed]" and still exits 0, so a filter that matched everything would
+# also report a green gate having tested nothing.
 RACE_EXCLUDE := hop.top/kit/go/core/projects
 
 test-go-race: ## Go tests under the race detector (go/ tree, concurrency guards)
-	@go test -race -buildvcs=false -count=1 -timeout 1200s \
-		$$(go list -buildvcs=false ./go/... | grep -vxF '$(RACE_EXCLUDE)')
+	@pkgs=$$(go list -buildvcs=false ./go/...) || { \
+		echo "go list failed; refusing to run a partial race gate"; \
+		exit 1; \
+	}; \
+	pkgs=$$(printf '%s\n' "$$pkgs" | grep -vxF '$(RACE_EXCLUDE)'); \
+	if [ -z "$$pkgs" ]; then \
+		echo "no packages to race-test; refusing to report a green gate"; \
+		exit 1; \
+	fi; \
+	go test -race -buildvcs=false -count=1 -timeout 1200s $$pkgs
 
 test-ts: ## TypeScript tests
 	cd sdk/ts && pnpm vitest run --exclude src/sqlstore.test.ts
