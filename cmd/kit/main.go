@@ -120,7 +120,6 @@ func newKitRoot(version string) (*cli.Root, *engine) {
 	)
 	eng.mountFlags(root)
 	eng.announce(os.Stdout)
-	annotateTokenLeaves(root)
 
 	root.Cmd.AddCommand(kitinit.InitCmd(root))
 	root.Cmd.AddCommand(kittmpl.GroupCmd(root))
@@ -158,33 +157,6 @@ func main() {
 			os.Exit(130)
 		}
 		os.Exit(1)
-	}
-}
-
-// annotateTokenLeaves carries the Layer-A annotations kit's own `token`
-// command lacks. WithAPI mounts `token claims` and `token decode`
-// whenever Auth is set, without kit/side-effect, kit/idempotent, or
-// Long, so a validating root — every root by default — refuses to
-// start the moment it authenticates its api. Both leaves are reads.
-// The annotations belong on the command where it is built, in
-// go/console/cli/api_token.go; this is the adopter-side compensation
-// kit itself needs until they are.
-func annotateTokenLeaves(root *cli.Root) {
-	for _, c := range root.Cmd.Commands() {
-		if c.Name() != "token" {
-			continue
-		}
-		for _, leaf := range c.Commands() {
-			if leaf.Long == "" {
-				leaf.Long = leaf.Short + "."
-			}
-			if _, ok := cli.GetSideEffect(leaf); !ok {
-				cli.SetSideEffect(leaf, cli.SideEffectRead)
-			}
-			if _, ok := cli.GetIdempotency(leaf); !ok {
-				cli.SetIdempotency(leaf, cli.IdempotencyYes)
-			}
-		}
 	}
 }
 

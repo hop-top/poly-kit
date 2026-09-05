@@ -29,10 +29,17 @@ type tokenClaims struct {
 }
 
 // Signing and verification are consumer responsibilities.
+//
+// Both token leaves carry the annotations a validating root requires
+// of every leaf — kit/side-effect, kit/idempotent, Long — because
+// WithAPI mounts them into the adopter's tree, and a tree that fails
+// its own validator the moment Auth is set would refuse to start.
 func tokenClaimsCmd(_ *Root) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "claims",
 		Short: "Print a structured claims template (not a signed token)",
+		Long: "Print a JSON claims template — subject, scopes, issued-at and expiry —\n" +
+			"for the adopter's own signer to turn into a token. Nothing is signed here.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sub, _ := cmd.Flags().GetString("sub")
 			scopes, _ := cmd.Flags().GetStringSlice("scopes")
@@ -59,14 +66,18 @@ func tokenClaimsCmd(_ *Root) *cobra.Command {
 	cmd.Flags().StringSlice("scopes", nil, "Comma-separated scopes")
 	cmd.Flags().Duration("expires", 24*time.Hour, "Token lifetime")
 
+	SetSideEffect(cmd, SideEffectRead)
+	SetIdempotency(cmd, IdempotencyYes)
 	return cmd
 }
 
 func tokenDecodeCmd(_ *Root) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "decode [token]",
 		Short: "Decode and print JWT payload (no signature verification)",
-		Args:  cobra.ExactArgs(1),
+		Long: "Decode the payload segment of a JWT and print it as JSON. The signature\n" +
+			"is not verified; this is an inspection aid, not an authentication step.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			token := args[0]
 			parts := strings.Split(token, ".")
@@ -90,4 +101,7 @@ func tokenDecodeCmd(_ *Root) *cobra.Command {
 			return nil
 		},
 	}
+	SetSideEffect(cmd, SideEffectRead)
+	SetIdempotency(cmd, IdempotencyYes)
+	return cmd
 }
