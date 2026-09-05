@@ -82,15 +82,6 @@ test-go-integration: ## Go tests including testcontainer integration
 # build cache, go/ takes ~2m40s under -race; ./... did not finish inside
 # 25 minutes.
 #
-# EXCLUDED, and why: go/core/projects fails under -race today, ahead of
-# and independent of this target. projects.Write -> xdg.ConfigDir ->
-# xdg.RawConfigDir calls github.com/adrg/xdg's Reload(), which writes
-# that library's package-level globals on every call; ten concurrent
-# Writes in TestConcurrentWrite race on them. The fix belongs in
-# go/core/xdg (serialise or memoise the Reload), not here, and it
-# changes behaviour for every xdg caller — so it is its own change.
-# Drop the exclusion once that lands.
-#
 # -buildvcs=false keeps the build off the git index: the VCS stamp
 # fails ("error obtaining VCS status") when another checkout or hook
 # holds it, which is routine on a dev machine running this alongside a
@@ -106,16 +97,20 @@ test-go-integration: ## Go tests including testcontainer integration
 #
 # The empty-list check is the same failure in a different disguise:
 # `go test` with no package arguments prints "no Go files ... [setup
-# failed]" and still exits 0, so a filter that matched everything would
-# also report a green gate having tested nothing.
-RACE_EXCLUDE := hop.top/kit/go/core/projects
-
+# failed]" and still exits 0, so an empty list would also report a
+# green gate having tested nothing.
+#
+# Nothing is excluded. go/core/projects used to be, because
+# projects.Write -> xdg.ConfigDir tripped the detector on the
+# package-level globals github.com/adrg/xdg rewrites on every resolve;
+# go/core/xdg now serializes those resolves, so the gate covers the
+# whole of go/. Keep it that way — reach for a fix in the racing
+# package before reaching for an exclusion here.
 test-go-race: ## Go tests under the race detector (go/ tree, concurrency guards)
 	@pkgs=$$(go list -buildvcs=false ./go/...) || { \
 		echo "go list failed; refusing to run a partial race gate"; \
 		exit 1; \
 	}; \
-	pkgs=$$(printf '%s\n' "$$pkgs" | grep -vxF '$(RACE_EXCLUDE)'); \
 	if [ -z "$$pkgs" ]; then \
 		echo "no packages to race-test; refusing to report a green gate"; \
 		exit 1; \
