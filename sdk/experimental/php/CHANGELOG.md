@@ -2,23 +2,19 @@
 
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.1...kit-php/v0.5.0-alpha.2) (2026-09-05)
 
-The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.2. This release includes new features and bug fixes.
-
 
 ### Features
 
-* **php:** EXIT_GENERIC and CliError::generic for the exit-1 class
-* **php:** port serve supervisor and service selector
-* **php:** port the serve supervisor and service selector
-* **php:** serve --enable/--disable and timeout flags
-* **sdk:** EXIT_GENERIC and generic error constructor in all SDKs
+* **php:** EXIT_GENERIC and CliError::generic for the exit-1 class ([4f6ff40](https://github.com/hop-top/poly-kit/commit/4f6ff405ab526ba63f7fc91d557398ec3ba4ee00))
+* **php:** port serve supervisor and service selector ([d09d86d](https://github.com/hop-top/poly-kit/commit/d09d86d876688e2042a14f85eff43cf91729e93d))
+* **php:** port the serve supervisor and service selector ([d2d7564](https://github.com/hop-top/poly-kit/commit/d2d75647aa918cacf5a727e63cc14b2d810232b8))
+* **php:** serve --enable/--disable and timeout flags ([ae24f04](https://github.com/hop-top/poly-kit/commit/ae24f04f59fb2ca3e0e5c4c9ab030d8f500557f4))
+* **sdk:** EXIT_GENERIC and generic error constructor in all SDKs ([9db9c90](https://github.com/hop-top/poly-kit/commit/9db9c90647b227b31a6c912d0c8d54b54271422a))
 
 
 ### Bug Fixes
 
-* **parity:** record and implement serve --enable/--disable and timeout flags
-
-Full diff: [kit-php/v0.5.0-alpha.1...kit-php/v0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.1...kit-php/v0.5.0-alpha.2)
+* **parity:** record and implement serve --enable/--disable and timeout flags ([e38b143](https://github.com/hop-top/poly-kit/commit/e38b143c77771c7abe088557f058be81922dd70a))
 
 ## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.0...kit-php/v0.5.0-alpha.1) (2026-09-04)
 
