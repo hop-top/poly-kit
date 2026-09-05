@@ -9,9 +9,9 @@ import (
 )
 
 // withFreshXDG points XDG_STATE_HOME at a fresh t.TempDir for the
-// duration of the test. The adrg/xdg lib calls Reload() inside every
-// xdg.StateFile call (via our wrapper), so no cache-purge dance is
-// required — env-var changes take effect on the next resolve.
+// duration of the test. kit/core/xdg re-reads the environment on every
+// resolve, so no cache-purge dance is required — env-var changes take
+// effect on the next call.
 func withFreshXDG(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
