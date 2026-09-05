@@ -20,7 +20,7 @@ You're a **contributor**:
 - **[Contributing guide](contributors/contributing.md)** — dev setup, PRs, testing
 - **[Architecture](contributors/architecture/)** — how kit is built
 - **[Release process](contributors/releasing.md)** — release-please flow
-- **[ADRs](adr/README.md)** — architecture decision records (index)
+- **[Contracts](contracts/README.md)** — wire-level and behavioural contracts a kit-based tool must honour
 
 ## Personas & features
 

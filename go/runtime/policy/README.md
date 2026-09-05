@@ -63,3 +63,8 @@ entity:
 
 See `go/core/stage/README.md` for the full primitive overview, and
 `runtime/policy/stage.yaml` for the ruleset.
+
+## Sub-packages
+
+- [`cel/`](cel/README.md): the CEL evaluator, isolated so other engines never pull `cel-go`.
+- [`withcel/`](withcel/README.md): `withcel.New(cfg)`, the one-line CEL-backed `policy.Engine` for the wiring layer.

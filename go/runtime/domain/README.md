@@ -51,3 +51,8 @@ If you also use `runtime/sync.Replicator` and override
 `Service[T]`'s prefix, pass the same prefix to
 `sync.WithSubscriptionPrefix[T]` so the replicator captures
 your entity events.
+
+## Sub-packages
+
+- [`sqlite/`](sqlite/README.md): `domain.Repository[T]` and `domain.AuditRepository` on a `sqlstore.Store`.
+- [`version/`](version/README.md): append-only history, a content-addressed `DAG` of `Version` nodes behind `VersionedRepository[T]`.

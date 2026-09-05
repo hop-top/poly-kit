@@ -11,6 +11,7 @@ scaffolding and conformance tools for kit projects.
 
 - [lib.sh](lib.sh): shared utilities (sourced by scaffold + conform).
 - [shared/](shared/README.md): common infrastructure (CI, docs, scripts).
+- [ci/](ci/README.md): drop-in CI workflows for the `kit conformance` leaves.
 
 ## Blueprints
 
