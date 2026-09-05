@@ -32,9 +32,19 @@
 //
 // Resolution reads the environment on every call, so a caller that
 // changes an XDG_* variable sees the new value on the very next call.
-// There is no cache and so no refresh entry point to invoke. The
-// serialization is a short lock around what is only environment reads
-// and string joins, so concurrent resolvers do not meaningfully contend.
+// There is no cache and so no refresh entry point to invoke.
+//
+// The lock spans the refresh and the resolve that follows it, which it
+// has to: the library's own file helpers read the state the refresh
+// rewrites. So the lock covers whatever the resolve does, and some
+// resolves do filesystem I/O — the *File functions create parent
+// directories, and the Search*File functions stat each search path.
+// Those are serialized across goroutines. Resolving a location once at
+// startup does not care; resolving files in a hot loop from several
+// goroutines will queue on it, and should hoist the resolve out of the
+// loop, since the path for a given (tool, name) does not change. The
+// directory functions do no I/O and hold the lock only for environment
+// reads and string joins.
 package xdg
 
 import (

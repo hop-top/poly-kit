@@ -1,6 +1,7 @@
 package xdg_test
 
 import (
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -11,7 +12,11 @@ import (
 )
 
 // TestConcurrentResolve_NoRace hammers every exported resolver from many
-// goroutines at once.
+// goroutines at once: the six directory functions and their Raw*
+// variants, all five *File helpers, all five Search*File helpers, and
+// the non-path accessors (Home, UserDir, UserDirs, FontDirs,
+// ApplicationDirs). Every one of them is a serialized entry into the
+// library, so every one belongs here.
 //
 // Each of them refreshes github.com/adrg/xdg from the environment, and
 // that library rewrites its package-level globals on every refresh with
@@ -38,6 +43,11 @@ func TestConcurrentResolve_NoRace(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", runtime)
 	t.Setenv("XDG_BIN_HOME", bin)
 
+	// RuntimeFile filters its candidate bases through an existence check
+	// and falls back to os.TempDir() when the runtime base is missing,
+	// so the base has to exist for the pinned root to be the one used.
+	require.NoError(t, os.MkdirAll(runtime, 0o750))
+
 	// Directory resolvers: name -> (resolver, expected root).
 	dirFns := map[string]struct {
 		fn   func(string) (string, error)
@@ -55,15 +65,29 @@ func TestConcurrentResolve_NoRace(t *testing.T) {
 		"BinHome":      {xdg.BinHome, bin},
 	}
 
-	// File resolvers: name -> (resolver, expected root).
+	// File resolvers: name -> (resolver, expected root). These create
+	// the parent directory of the path they return, so they hold the
+	// resolve lock across filesystem I/O.
 	fileFns := map[string]struct {
 		fn   func(string, string) (string, error)
 		root string
 	}{
-		"ConfigFile": {xdg.ConfigFile, cfg},
-		"DataFile":   {xdg.DataFile, data},
-		"CacheFile":  {xdg.CacheFile, cache},
-		"StateFile":  {xdg.StateFile, state},
+		"ConfigFile":  {xdg.ConfigFile, cfg},
+		"DataFile":    {xdg.DataFile, data},
+		"CacheFile":   {xdg.CacheFile, cache},
+		"StateFile":   {xdg.StateFile, state},
+		"RuntimeFile": {xdg.RuntimeFile, runtime},
+	}
+
+	// Search resolvers. Each stats its search paths under the same
+	// lock. Nothing is planted, so the lookup failure is the expected
+	// result — what is under test is the concurrent entry, not the hit.
+	searchFns := map[string]func(string, string) (string, error){
+		"SearchConfigFile":  xdg.SearchConfigFile,
+		"SearchDataFile":    xdg.SearchDataFile,
+		"SearchCacheFile":   xdg.SearchCacheFile,
+		"SearchStateFile":   xdg.SearchStateFile,
+		"SearchRuntimeFile": xdg.SearchRuntimeFile,
 	}
 
 	const goroutines = 24
@@ -85,11 +109,10 @@ func TestConcurrentResolve_NoRace(t *testing.T) {
 					assert.NoError(t, err, "%s", name)
 					assert.Equal(t, filepath.Join(c.root, "mytool", "app.yaml"), got, "%s", name)
 				}
-				// Search helpers read the library's baseDirs after the
-				// refresh, so they race on it too even though they resolve
-				// nothing here. The lookup failure is the expected result.
-				_, err := xdg.SearchConfigFile("mytool", "absent.yaml")
-				assert.Error(t, err, "SearchConfigFile")
+				for name, fn := range searchFns {
+					_, err := fn("mytool", "absent.yaml")
+					assert.Error(t, err, "%s", name)
+				}
 
 				// Non-path accessors touch the same globals.
 				assert.NotEmpty(t, xdg.Home(), "Home")

@@ -29,12 +29,36 @@ var reloadMu sync.Mutex
 // against the freshly resolved globals, holding reloadMu throughout.
 //
 // Reload() is deliberately called on every resolve rather than
-// memoised. It is pure environment reads and string joins — no
-// syscalls beyond os.Getenv, no filesystem access — so it is cheap,
-// and callers (kit's own tests included) set XDG_* variables and
-// expect the very next resolve to observe them. A cache would need an
-// invalidation check that re-read every XDG_* variable, which is the
-// work Reload() already does, in exchange for a staleness bug.
+// memoized. It is pure environment reads and string joins — no
+// syscalls beyond os.Getenv — and callers (kit's own tests included)
+// set XDG_* variables and expect the very next resolve to observe
+// them. A cache would need an invalidation check that re-read every
+// XDG_* variable, which is the work Reload() already does, in
+// exchange for a staleness bug.
+//
+// # What the lock costs
+//
+// The lock spans the refresh AND the resolve, so the cost is fn()'s,
+// not Reload()'s. That matters, because several fn()s touch the
+// filesystem:
+//
+//   - ConfigFile, DataFile, StateFile, CacheFile and RuntimeFile
+//     create the parent directories of the path they return
+//     (os.MkdirAll, via the library's internal pathutil.Create).
+//     RuntimeFile also stats its candidate bases first.
+//   - The five Search*File helpers stat each search path until one
+//     hits.
+//
+// Those calls therefore serialize filesystem I/O across goroutines,
+// not just a handful of getenvs. On a cold path — resolving a config
+// location once at startup — that is irrelevant. A caller resolving
+// files in a hot loop from several goroutines will see them queue up,
+// and should hoist the resolve out of the loop: these functions
+// return a path for a fixed (tool, name), so the answer does not
+// change between iterations. The directory-only functions (ConfigDir,
+// DataDir, the Raw* variants, Home, UserDirs, FontDirs,
+// ApplicationDirs) perform no I/O and hold the lock for the getenvs
+// and joins alone.
 func withReload[T any](fn func() T) T {
 	reloadMu.Lock()
 	defer reloadMu.Unlock()
