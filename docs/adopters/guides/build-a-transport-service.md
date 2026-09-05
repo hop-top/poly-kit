@@ -197,6 +197,7 @@ configured.
 | `Expose(pattern)` | your transport should reach commands the bridge does not enable by default — usually `Expose("*")` |
 | `Hide(pattern)` | you want an exception carved out of a broader `Expose` |
 | `WithBridgeOptions(...)` | you need a custom `cmdsurface.Policy` (to permit destructive commands) or a custom `Runner` |
+| `WithBridgeOptionsFunc(fn)` | the options exist only at Start — a `cmdsurface.WithPermission` gate built from a parsed flag, `cmdsurface.WithSinks` registered after the service |
 | `WithValidate(fn)` | your configuration can be wrong in a way you can detect before binding — a malformed address, a missing file |
 | `WithClass(sideEffect, network)` | your tool runs a policy table and this service should be gated by it |
 | `WithDependsOn(names...)` | your transport needs another service started first |
@@ -282,8 +283,16 @@ These are consequences for you as the author, not background theory:
 
 - **No framing.** You choose the wire format.
 - **No authentication.** If your transport is reachable beyond the
-  local host, authenticate before calling the invoker, and put the
-  principal in `Meta.Caller` for audit sinks.
+  local host, authenticate before calling the invoker, and put only a
+  verified principal and tenant in `Meta.Caller` and `Meta.Tenant`;
+  fill `Meta.RequestID`, `Meta.TraceID`, and `Meta.IdempotencyKey`
+  from whatever your wire format carries. Report a refused
+  authentication through `Bridge.Audit` with
+  `cmdsurface.ErrAuthRefused` so it lands in the same audit trail as
+  the bridge's own verdicts. The permission gate and the audit sinks
+  are the bridge's, so your transport gets both without writing
+  either; see
+  [secure-remote-serving.md](secure-remote-serving.md).
 - **No streaming.** `Invoker` is request/response. For incremental
   output, reach the runner through the bridge — see
   [`Bridge.Runner`](../../../go/transport/cmdsurface/bridge.go).

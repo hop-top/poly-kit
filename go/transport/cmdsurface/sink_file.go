@@ -53,13 +53,15 @@ var newline = []byte("\n")
 // fileSinkRecord is the default JSON payload schema. Surfaces wanting
 // richer envelopes can supply their own Format.
 type fileSinkRecord struct {
-	At       time.Time `json:"at"`
-	Path     string    `json:"path"`
-	Surface  string    `json:"surface"`
-	ExitCode int       `json:"exit_code"`
-	Error    string    `json:"error,omitempty"`
-	TraceID  string    `json:"trace_id,omitempty"`
-	Caller   string    `json:"caller,omitempty"`
+	At        time.Time `json:"at"`
+	Path      string    `json:"path"`
+	Surface   string    `json:"surface"`
+	ExitCode  int       `json:"exit_code"`
+	Error     string    `json:"error,omitempty"`
+	TraceID   string    `json:"trace_id,omitempty"`
+	RequestID string    `json:"request_id,omitempty"`
+	Caller    string    `json:"caller,omitempty"`
+	Tenant    string    `json:"tenant,omitempty"`
 }
 
 // DefaultFileSinkFormat marshals inv/res/err to a fileSinkRecord
@@ -67,12 +69,14 @@ type fileSinkRecord struct {
 // nil; exported so callers can wrap it.
 func DefaultFileSinkFormat(inv Invocation, res Result, err error) ([]byte, error) {
 	r := fileSinkRecord{
-		At:       time.Now().UTC(),
-		Path:     joinPath(inv.Path),
-		Surface:  string(inv.Meta.Surface),
-		ExitCode: res.ExitCode,
-		TraceID:  inv.Meta.TraceID,
-		Caller:   inv.Meta.Caller,
+		At:        time.Now().UTC(),
+		Path:      joinPath(inv.Path),
+		Surface:   string(inv.Meta.Surface),
+		ExitCode:  res.ExitCode,
+		TraceID:   inv.Meta.TraceID,
+		RequestID: inv.Meta.RequestID,
+		Caller:    inv.Meta.Caller,
+		Tenant:    inv.Meta.Tenant,
 	}
 	if err != nil {
 		r.Error = err.Error()

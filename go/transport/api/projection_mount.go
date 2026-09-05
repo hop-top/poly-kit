@@ -36,6 +36,11 @@ type CommandRequest struct {
 	Flags map[string]any
 	// Args are the positional arguments in order.
 	Args []string
+	// Meta is the provenance the projection gathered from the HTTP
+	// request: authenticated principal and tenant, request id, trace
+	// id, idempotency key. The executor carries it into the bridge's
+	// Meta so the permission gate and audit sinks see it.
+	Meta RequestMeta
 }
 
 // CommandResult is the outcome of one projected call.
@@ -61,6 +66,10 @@ var (
 	// ErrDestructiveBlocked reports that policy refuses this
 	// command on this surface.
 	ErrDestructiveBlocked = errors.New("api: destructive command blocked on this surface")
+	// ErrPermissionDenied reports that the permission gate refuses
+	// this command for this caller. The wrapped message carries the
+	// gate's stable reason.
+	ErrPermissionDenied = errors.New("api: permission denied")
 )
 
 // ProjectionConfig configures MountCommandProjection.
@@ -123,7 +132,11 @@ func commandHandler(ex CommandExecutor, d CommandDescriptor) http.HandlerFunc {
 			})
 			return
 		}
+		req.Meta = RequestMetaFrom(r)
 
+		// r.Context() is handed through unchanged: the server cancels
+		// it when the client disconnects, and that cancellation must
+		// reach the command.
 		res, err := ex.Execute(r.Context(), req)
 		if err != nil {
 			writeProjectionError(w, d, err)
@@ -152,6 +165,14 @@ func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error)
 		Error(w, http.StatusForbidden, &APIError{
 			Status:  http.StatusForbidden,
 			Code:    CodeDestructiveBlocked,
+			Message: err.Error(),
+		})
+	case errors.Is(err, ErrPermissionDenied):
+		// 403, not 401: the caller is authenticated, and the refusal
+		// is about what this caller may do.
+		Error(w, http.StatusForbidden, &APIError{
+			Status:  http.StatusForbidden,
+			Code:    CodePermissionDenied,
 			Message: err.Error(),
 		})
 	default:

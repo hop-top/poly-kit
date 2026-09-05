@@ -57,7 +57,7 @@ import (
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithAPI(cli.APIConfig{Addr: ":8080"}),
+        cli.WithAPI(cli.APIConfig{}), // listens on 127.0.0.1:8080
     )
     _ = root.Execute(context.Background())
 }
@@ -67,8 +67,10 @@ func main() {
 mytool serve
 ```
 
-Every command carrying `kit/side-effect` is now reachable. Nothing
-else changes: `--addr` and `--no-auth` work as before.
+Every command carrying `kit/side-effect` is now reachable from this
+machine. The default address is loopback; to reach the API from
+another host, put it behind `Auth` first — see step 8 and
+[secure-remote-serving.md](secure-remote-serving.md).
 
 ### 2. Discover the commands
 
@@ -249,7 +251,6 @@ Permit them by naming the REST surface:
 import "hop.top/kit/go/transport/cmdsurface"
 
 cli.WithAPI(cli.APIConfig{
-    Addr: ":8080",
     Policy: cmdsurface.Policy{
         AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceREST},
     },
@@ -294,7 +295,6 @@ the CLI and every other surface keep the command:
 
 ```go
 cli.WithAPI(cli.APIConfig{
-    Addr: ":8080",
     Hide: []string{"admin *", "debug dump"},
 })
 ```
@@ -323,7 +323,6 @@ is gated:
 import "hop.top/kit/go/transport/api"
 
 cli.WithAPI(cli.APIConfig{
-    Addr:    ":8080",
     OpenAPI: &api.OpenAPIConfig{Title: "mytool", Version: "1.4.2"},
 })
 ```
@@ -339,28 +338,48 @@ operation, its method and its path.
 ### 9. Put it behind auth
 
 `APIConfig.Auth` gates the projected routes and the discovery
-endpoint exactly as it gates your own:
+endpoint exactly as it gates your own, and it is what permits a
+non-loopback address:
 
 ```go
-import "net/http"
+import (
+    "net/http"
+
+    "hop.top/kit/go/transport/api"
+)
 
 cli.WithAPI(cli.APIConfig{
-    Addr: ":8080",
+    Addr: "0.0.0.0:8080",
     Auth: func(r *http.Request) (any, error) {
-        return validateToken(r.Header.Get("Authorization"))
+        claims, err := validateToken(r.Header.Get("Authorization"))
+        if err != nil {
+            return nil, err
+        }
+        return api.Claims{Subject: claims.User, Tenant: claims.Org, Scopes: claims.Scopes}, nil
     },
 })
 ```
 
 The projection installs no auth of its own and no second mechanism.
-An unauthenticated call gets `401` before the command runs.
+An unauthenticated call gets `401` before the command runs. The
+claims you return attribute each call: return an `api.Claims`, a
+value implementing `api.Identity`, or a string-keyed map with `sub`
+and `tenant`, and the principal and tenant reach the permission gate
+and the audit trail as `Meta.Caller` and `Meta.Tenant`.
+
+Forgetting `Auth` on a non-loopback address is refused at `serve`,
+exit `2`, with a message naming the fix. The complete walkthrough —
+the refusal, the opt-in, a permission gate, the audit trail, request
+and trace ids — is
+[secure-remote-serving.md](secure-remote-serving.md).
 
 ## Option reference
 
 | Option | Default | Effect |
 |---|---|---|
-| `APIConfig.Addr` | `:8080` | Listen address. `--addr` overrides it. |
-| `APIConfig.Auth` | none | Gates every route, projected and adopter-owned. `--no-auth` disables it. |
+| `APIConfig.Addr` | `127.0.0.1:8080` | Listen address. `--addr` overrides it. Non-loopback needs `Auth` or `InsecureRemote`. |
+| `APIConfig.Auth` | none | Gates every route, projected and adopter-owned, and permits any address. `--no-auth` disables it on loopback. |
+| `APIConfig.InsecureRemote` | `false` | Serve unauthenticated beyond loopback. `services.api.insecure_remote` / `--insecure-remote` set the same. |
 | `APIConfig.OpenAPI` | nil | Full spec at `/openapi.json`. Unset still serves a minimal one. |
 | `APIConfig.Policy` | zero | Zero withholds all destructive commands. `AllowDestructiveOn: [SurfaceREST]` permits them. |
 | `APIConfig.Expose` | empty | Empty mounts the whole tree; a non-empty list is an allow-list. |
@@ -416,6 +435,8 @@ be lying about what your commands promise:
 
 - [api README](../../../go/transport/api/README.md) — full package
   reference: route shape, mapping tables, discovery payload
+- [secure-remote-serving.md](secure-remote-serving.md) — auth beyond
+  loopback, the permission gate, the audit trail
 - [expose-cli-over-mcp.md](expose-cli-over-mcp.md) — the same tree
   as MCP tools, for LLM hosts
 - [serve-lifecycle contract](../../contracts/serve-lifecycle.md) —

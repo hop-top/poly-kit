@@ -100,6 +100,10 @@ const (
 	// CodeDestructiveBlocked is returned when policy refuses a
 	// destructive command on this surface.
 	CodeDestructiveBlocked = "destructive_blocked"
+	// CodePermissionDenied is returned when the permission gate
+	// refuses a command for this caller. The message carries the
+	// gate's stable reason.
+	CodePermissionDenied = "permission_denied"
 )
 
 // StatusNotInvocable is the status for addressing a non-invocable

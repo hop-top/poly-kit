@@ -1,6 +1,7 @@
 package cmdsurface
 
 import (
+	"context"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -175,4 +176,80 @@ func (p Policy) resolvedDefaults() []Surface {
 		return p.DefaultEnabled
 	}
 	return []Surface{SurfaceCLI, SurfaceLib, SurfaceMCP}
+}
+
+// notInvocableReason returns the reflector's reason a leaf can never
+// run through a transport — [cmdreflect.ReasonInteractive] for a
+// command that needs a terminal, [cmdreflect.ReasonSelfHosting] for
+// one that would start a server inside the server or replace the
+// binary that is serving — or "" when the leaf may run.
+//
+// The bridge discovers with AllowInteractive so interactive commands
+// stay describable and per-surface decisions stay possible; this is
+// the central gate that stops them from executing anywhere, before
+// the destructive ceiling and the permission gate, so a transport
+// that exposed the whole tree cannot admit one and the runner's own
+// refusal is a backstop rather than the only line.
+func notInvocableReason(leaf *Leaf) cmdreflect.NonInvocableReason {
+	if leaf == nil || leaf.Descriptor == nil {
+		return cmdreflect.ReasonNone
+	}
+	switch {
+	case leaf.Descriptor.Surface.SelfHosting:
+		return cmdreflect.ReasonSelfHosting
+	case leaf.Descriptor.Safety.Tier == cmdreflect.TierInteractive:
+		return cmdreflect.ReasonInteractive
+	}
+	return cmdreflect.ReasonNone
+}
+
+// ReasonPermissionDenied is the discovery reason for a command the
+// permission gate refuses for every caller. It sits beside the
+// reflector's vocabulary (interactive, unauthorized-destructive, …)
+// and the projection's own withheld-by-config, spelled the same way
+// so a client switching on the field sees one vocabulary.
+//
+// The bridge owns it rather than the reflector because the verdict
+// is the [PermissionFunc]'s, which the reflector never consults: a
+// permission decision depends on the deployment's policy and, for
+// most callers, on who is asking.
+const ReasonPermissionDenied = "permission-denied"
+
+// PermissionDecision is a [PermissionFunc]'s answer.
+type PermissionDecision struct {
+	// Allowed permits the invocation. When false, Reason must say
+	// why in stable words.
+	Allowed bool
+	// Reason is the stable explanation of a refusal, carried to the
+	// caller and to audit sinks. Empty when Allowed.
+	Reason string
+	// CallerIndependent reports that the verdict does not depend on
+	// the Meta: every caller gets the same answer. Discovery uses it
+	// to withhold a command denied for everyone at mount time with
+	// [ReasonPermissionDenied], rather than mounting a route that
+	// can only refuse. A caller-specific refusal must leave it
+	// false, or the command disappears for callers who are allowed.
+	CallerIndependent bool
+}
+
+// PermissionFunc decides whether the principal described by meta
+// may invoke leaf. It is the central permission gate:
+// [Bridge.Invoke] consults it after the destructive ceiling and
+// before the Runner, on every surface, so no transport can reach a
+// command the deployment's policy refuses.
+//
+// It receives the whole Leaf — path, [SafetyClass] with the parsed
+// kit/permissions scopes, and the reflected Descriptor — and the
+// Meta the transport populated: Caller, Tenant, Surface, and any
+// surface-specific Extra. Confirmation is not its concern; that
+// stays the command's own gate.
+//
+// The bridge's default permits everything, so a bridge without one
+// behaves exactly as before the gate existed.
+type PermissionFunc func(ctx context.Context, meta Meta, leaf *Leaf) PermissionDecision
+
+// PermitAll is the default [PermissionFunc]: every invocation is
+// allowed.
+func PermitAll(context.Context, Meta, *Leaf) PermissionDecision {
+	return PermissionDecision{Allowed: true}
 }

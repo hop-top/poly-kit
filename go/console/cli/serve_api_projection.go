@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -23,7 +24,7 @@ import (
 const ReasonWithheldByConfig = "withheld-by-config"
 
 // buildProjection reflects root and returns the projection config the
-// api service mounts.
+// api service mounts, together with the bridge that executes it.
 //
 // Reflection happens HERE, at service start, rather than at
 // registration: WithAPI runs while the tree is still being assembled,
@@ -38,7 +39,7 @@ const ReasonWithheldByConfig = "withheld-by-config"
 // answer the track exists to give.
 func buildProjection(
 	root *cobra.Command, name, version string, r *Root, cfg *APIConfig,
-) api.ProjectionConfig {
+) (api.ProjectionConfig, *cmdsurface.Bridge, error) {
 	// No Allow* options. Each one makes a class of command
 	// INVOCABLE, not merely described — the reflector describes
 	// every command unconditionally. Passing AllowInteractive here
@@ -48,11 +49,19 @@ func buildProjection(
 	// everything" asks for.
 	tree := cmdreflect.Reflect(root, cmdreflect.WithReserved(r))
 
+	// The permission gate and the audit sinks are resolved now, at
+	// start: --policy is parsed by then and every adopter option has
+	// run.
+	shared, err := r.serveBridgeOptions()
+	if err != nil {
+		return api.ProjectionConfig{}, nil, err
+	}
 	// A zero Policy is behaviorally identical to DefaultPolicy() on
 	// every surface, so passing the adopter's value through
 	// unconditionally preserves today's behavior when they set
 	// nothing.
-	bridge := cmdsurface.New(root, cmdsurface.WithPolicy(cfg.Policy))
+	opts := append([]cmdsurface.Option{cmdsurface.WithPolicy(cfg.Policy)}, shared...)
+	bridge := cmdsurface.New(root, opts...)
 	// Exposing REST here is what "no adopter mounting code" means:
 	// the bridge's default enabled set is CLI + Lib + MCP, so a leaf
 	// would otherwise refuse every projected call with
@@ -82,14 +91,16 @@ func buildProjection(
 		Executor:    &bridgeExecutor{bridge: bridge},
 	}
 
+	leaves := leafByKey(bridge)
 	for _, d := range tree.Descriptors {
 		// The root itself and pure command groups are not calls.
 		if d.IsRoot() || d.Surface.HasSubCommands {
 			continue
 		}
-		pcfg.Descriptors = append(pcfg.Descriptors, descriptorToProjection(d, bridge))
+		pcfg.Descriptors = append(pcfg.Descriptors,
+			descriptorToProjection(d, bridge, leaves[d.PathKey()]))
 	}
-	return pcfg
+	return pcfg, bridge, nil
 }
 
 // descriptorToProjection converts one reflected descriptor into the
@@ -99,8 +110,11 @@ func buildProjection(
 // the reflector allows but policy refuses on the REST surface must be
 // withheld with a reason, not mounted and then refused per-call. The
 // bridge is the authority on policy, so it is consulted here rather
-// than a second rule being written.
-func descriptorToProjection(d *cmdreflect.Descriptor, b *cmdsurface.Bridge) api.CommandDescriptor {
+// than a second rule being written. leaf is the bridge's view of the
+// same command, nil when the bridge did not discover it.
+func descriptorToProjection(
+	d *cmdreflect.Descriptor, b *cmdsurface.Bridge, leaf *cmdsurface.Leaf,
+) api.CommandDescriptor {
 	out := api.CommandDescriptor{
 		Path:                 append([]string(nil), d.Path[1:]...),
 		Summary:              d.Short,
@@ -135,7 +149,7 @@ func descriptorToProjection(d *cmdreflect.Descriptor, b *cmdsurface.Bridge) api.
 
 	if out.Invocable {
 		switch {
-		case !restEnabled(d, b):
+		case !restEnabled(leaf):
 			// The adopter's withhold list took this one off REST.
 			// A distinct reason keeps "we chose not to" separable
 			// from "policy forbids it" in an operator's listing.
@@ -148,6 +162,14 @@ func descriptorToProjection(d *cmdreflect.Descriptor, b *cmdsurface.Bridge) api.
 			// fragment the enum.
 			out.Invocable = false
 			out.Reason = string(cmdreflect.ReasonUnauthorizedDestructive)
+		case deniedForEveryone(b, leaf):
+			// The permission gate refuses this command whoever
+			// asks, so there is no caller for whom a route would
+			// answer. A caller-specific refusal is not visible
+			// here: the command stays mounted and the gate answers
+			// per call.
+			out.Invocable = false
+			out.Reason = cmdsurface.ReasonPermissionDenied
 		}
 	}
 	return out
@@ -159,17 +181,11 @@ func descriptorToProjection(d *cmdreflect.Descriptor, b *cmdsurface.Bridge) api.
 // A descriptor with no leaf on the bridge is treated as enabled: the
 // reflector already judged it invocable, and the absence means the
 // bridge never discovered it, which policyAllowsREST answers for.
-func restEnabled(d *cmdreflect.Descriptor, b *cmdsurface.Bridge) bool {
-	if b == nil {
+func restEnabled(leaf *cmdsurface.Leaf) bool {
+	if leaf == nil {
 		return true
 	}
-	key := d.PathKey()
-	for _, leaf := range b.Leaves() {
-		if leaf.PathKey() == key {
-			return leaf.Enabled[cmdsurface.SurfaceREST]
-		}
-	}
-	return true
+	return leaf.Enabled[cmdsurface.SurfaceREST]
 }
 
 // policyAllowsREST asks the bridge whether the leaf may be invoked
@@ -182,6 +198,19 @@ func policyAllowsREST(d *cmdreflect.Descriptor, b *cmdsurface.Bridge) bool {
 		Destructive:  d.Safety.Destructive(),
 		AuthRequired: d.Safety.AuthRequired,
 	}, cmdsurface.SurfaceREST)
+}
+
+// deniedForEveryone asks the permission gate with a Meta that names
+// only the surface, and honors a refusal only when the gate says the
+// verdict does not depend on the caller. Discovery cannot know who
+// will call; it can only withhold what nobody may call.
+func deniedForEveryone(b *cmdsurface.Bridge, leaf *cmdsurface.Leaf) bool {
+	if b == nil || leaf == nil {
+		return false
+	}
+	dec := b.Permission(context.Background(),
+		cmdsurface.Meta{Surface: cmdsurface.SurfaceREST}, leaf)
+	return !dec.Allowed && dec.CallerIndependent
 }
 
 // sideEffectClass projects the six-tier ladder onto the three
@@ -211,6 +240,12 @@ type bridgeExecutor struct {
 }
 
 // Execute implements api.CommandExecutor.
+//
+// The request's provenance becomes the bridge's Meta unchanged: the
+// principal and tenant the auth middleware established, the request
+// id the middleware issued, the trace id and idempotency key the
+// caller propagated. ctx is the request's own, so a client that
+// disconnects cancels the command.
 func (e *bridgeExecutor) Execute(
 	ctx context.Context, req api.CommandRequest,
 ) (api.CommandResult, error) {
@@ -222,7 +257,7 @@ func (e *bridgeExecutor) Execute(
 		Path:  req.Path,
 		Args:  req.Args,
 		Flags: req.Flags,
-		Meta:  cmdsurface.Meta{Surface: cmdsurface.SurfaceREST},
+		Meta:  metaFromRequest(req.Meta),
 	}
 	res, err := e.bridge.Invoke(ctx, inv)
 	if err != nil {
@@ -236,16 +271,49 @@ func (e *bridgeExecutor) Execute(
 	}, nil
 }
 
+// metaFromRequest maps the HTTP layer's provenance onto the bridge's
+// Meta. Scopes travel in Extra, comma-joined, because Meta has no
+// typed field for entitlements and the permission gate is the one
+// consumer.
+func metaFromRequest(m api.RequestMeta) cmdsurface.Meta {
+	meta := cmdsurface.Meta{
+		Caller:         m.Principal,
+		Tenant:         m.Tenant,
+		Surface:        cmdsurface.SurfaceREST,
+		RequestID:      m.RequestID,
+		TraceID:        m.TraceID,
+		IdempotencyKey: m.IdempotencyKey,
+		RequestedAt:    m.ReceivedAt,
+	}
+	extra := map[string]string{}
+	if m.RemoteAddr != "" {
+		extra["remote_addr"] = m.RemoteAddr
+	}
+	if len(m.Scopes) > 0 {
+		extra["scopes"] = strings.Join(m.Scopes, ",")
+	}
+	if len(extra) > 0 {
+		meta.Extra = extra
+	}
+	return meta
+}
+
 // translateBridgeError maps the bridge's sentinels onto the
 // projection's, so the HTTP layer switches on its own vocabulary
 // rather than importing the bridge's.
 func translateBridgeError(err error) error {
 	switch {
 	case errors.Is(err, cmdsurface.ErrUnknownCommand),
-		errors.Is(err, cmdsurface.ErrSurfaceNotEnabled):
+		errors.Is(err, cmdsurface.ErrSurfaceNotEnabled),
+		errors.Is(err, cmdsurface.ErrNotInvocable):
+		// Interactive and self-hosting commands are withheld at mount,
+		// so the bridge's own gate is unreachable over REST; mapping
+		// it keeps the vocabulary whole should a route ever exist.
 		return fmt.Errorf("%w: %s", api.ErrCommandNotInvocable, err.Error())
 	case errors.Is(err, cmdsurface.ErrDestructiveBlocked):
 		return fmt.Errorf("%w: %s", api.ErrDestructiveBlocked, err.Error())
+	case errors.Is(err, cmdsurface.ErrPermissionDenied):
+		return fmt.Errorf("%w: %s", api.ErrPermissionDenied, err.Error())
 	}
 	return err
 }

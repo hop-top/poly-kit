@@ -95,12 +95,27 @@ func (f *fakeTransport) binds() int {
 	return f.bound
 }
 
+// invoke returns the Invoker Serve was handed, waiting for it: the
+// seam reports ready after Bind and before Serve, so a caller that
+// reads the invoker the instant readiness fires can race Serve's
+// entry. Waiting here is the honest reading of the contract, not a
+// weakening of it.
 func (f *fakeTransport) invoke(t *testing.T) transportsvc.Invoker {
 	t.Helper()
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	require.NotNil(t, f.invoker, "Serve was never handed an Invoker")
-	return f.invoker
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		f.mu.Lock()
+		inv := f.invoker
+		f.mu.Unlock()
+		if inv != nil {
+			return inv
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Serve was never handed an Invoker")
+			return nil
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // testRoot builds a small cobra tree: one plain leaf, one destructive

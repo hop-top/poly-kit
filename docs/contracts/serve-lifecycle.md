@@ -377,10 +377,15 @@ lifecycle keys above.
 
 The two kit-shipped services own these:
 
-| Key                    | Type   | Default                              | Meaning                        |
-|------------------------|--------|--------------------------------------|--------------------------------|
-| `services.api.addr`    | string | `:8080`                              | HTTP listen address            |
-| `services.socket.path` | string | runtime dir, see below               | Unix socket path               |
+| Key                            | Type   | Default                | Meaning                                                        |
+|--------------------------------|--------|------------------------|----------------------------------------------------------------|
+| `services.api.addr`            | string | `127.0.0.1:8080`       | HTTP listen address; loopback unless authenticated or opted in |
+| `services.api.insecure_remote` | bool   | `false`                | serve the api unauthenticated on a non-loopback address        |
+| `services.socket.path`         | string | runtime dir, see below | Unix socket path                                               |
+
+`services.api.addr` defaults to a loopback address, and a non-loopback
+value is refused at validation unless `APIConfig.Auth` is set or
+`services.api.insecure_remote` is true — see [Security](#security).
 
 The socket's default path is `<runtime dir>/<tool>/<tool>.sock`, where
 the runtime dir is `$XDG_RUNTIME_DIR` when set, and otherwise the
@@ -414,10 +419,12 @@ Flags:
 - Per-service flags registered by a service are only accepted under
   `<tool> serve <service>`; passing one to the supervisor form is a
   usage error, because it would silently apply to one member of a set.
-  The api service's `--addr` and `--no-auth` are the documented
-  exception: they predate the hierarchy, and refusing them under the
-  supervisor form would break every adopter that has one HTTP surface
-  and a script that starts it.
+  The api service's `--addr`, `--no-auth`, and `--insecure-remote`
+  are the documented exception: the first two predate the hierarchy,
+  and refusing them under the supervisor form would break every
+  adopter that has one HTTP surface and a script that starts it;
+  the third qualifies the other two, and a qualifier valid in fewer
+  places than the flags it qualifies would be a trap.
 - `--enable` / `--disable` are refused under the selector form. The
   override rule already decides enablement there, and accepting both
   would let one invocation say two contradictory things.
@@ -425,6 +432,120 @@ Flags:
 Defaulting to `enabled: false` is deliberate. A service that starts
 listening because a dependency upgrade added it to the registry is an
 unrequested open port; enablement is an explicit act.
+
+## Security
+
+A transport service admits callers the tool did not start. This
+section states what the kit-shipped services promise about who those
+callers are, what they may do, and what is recorded. The Go types
+that encode it are `cmdsurface.Meta`, `cmdsurface.PermissionFunc`,
+and `cmdsurface.Bridge.Audit` in
+[`go/transport/cmdsurface`](../../go/transport/cmdsurface/).
+
+### Exposure
+
+- The api service MUST default to a loopback listen address
+  (`127.0.0.1:8080`).
+- The api service MUST refuse, at the configuration gate (exit `2`),
+  a non-loopback address on which it would serve unauthenticated: no
+  `APIConfig.Auth`, or `Auth` disabled by `--no-auth`. The message
+  MUST name the three remedies — set `Auth`, listen on loopback, or
+  opt in.
+- The opt-in is `services.api.insecure_remote` (`--insecure-remote`,
+  `APIConfig.InsecureRemote`), resolved flag, then config, then code.
+  It permits unauthenticated serving on any address and changes
+  nothing else. Its name is part of the contract: a configuration
+  reviewer MUST be able to find every such deployment by that key.
+- `--no-auth` MUST NOT widen exposure: it is accepted on a loopback
+  address, or under the opt-in, and refused otherwise.
+- A tool that sets `Auth` keeps working on any address. `WithAPI`
+  adopters whose address was the old default keep working on
+  loopback; an adopter who set a non-loopback address and no `Auth`
+  is refused with the message above until they choose.
+- Loopback means the literal host is `127.0.0.0/8`, `::1`, or
+  `localhost`. An empty host binds every interface and is not
+  loopback.
+- The socket service is loopback by construction: a Unix socket has
+  no port and is not routable, and the socket file is created `0600`,
+  so the filesystem permission is the access control. No address rule
+  applies to it.
+
+### Provenance
+
+`cmdsurface.Meta` carries the call's provenance across every
+transport. A transport MUST populate the fields it has evidence for
+and MUST leave the rest empty; the bridge grants nothing on the basis
+of any of them.
+
+| Field            | api service                                    | socket service                              |
+|------------------|------------------------------------------------|---------------------------------------------|
+| `Caller`         | principal from the `Auth` claims               | verified by `SocketConfig.Auth`, else the request's `caller` as a claim |
+| `Tenant`         | tenant from the `Auth` claims                  | verified by `SocketConfig.Auth`, else the request's `tenant` as a claim |
+| `Surface`        | `rest`, pinned                                 | `rpc`, pinned by the seam                   |
+| `RequestID`      | `X-Request-ID`, issued when absent, echoed     | `request_id`, issued when absent            |
+| `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`      | `trace_id`                                  |
+| `IdempotencyKey` | `Idempotency-Key`                              | `idempotency_key`                           |
+| `RequestedAt`    | receipt time                                   | receipt time                                |
+| `Extra`          | `remote_addr`, `scopes` (comma-joined claims)  | —                                           |
+
+- Claims MUST be extractable without the transport importing the
+  adopter's types: a value implementing `api.Identity`, an
+  `api.Claims`, or a string-keyed map with `sub` and `tenant`. A
+  claims value of another shape authenticates the call and leaves it
+  unattributed.
+- A caller-supplied identity on a transport without an authenticator
+  is provenance, not a credential. The socket's `caller` and `tenant`
+  are recorded as claimed; `SocketConfig.Auth` is what makes them
+  verified, and its verdict replaces the claim.
+- The request context MUST reach the bridge unchanged, so a client
+  disconnect cancels the invocation on both transports. Whether the
+  command stops is the runner's contract.
+- The idempotency key MUST reach the leaf's `--idempotency-key` flag
+  when the leaf registers one and the caller did not set it. Dedupe
+  is the command's own middleware; the transport keeps no store.
+
+### Permission
+
+- `cmdsurface.Bridge.Invoke` applies its gates in this order:
+  resolution, surface enablement, invocability (an interactive or
+  self-hosting leaf is refused with `ErrNotInvocable` naming the
+  reflector's reason, whatever the surface), the destructive ceiling
+  (`Policy.Allowed`), then the permission gate (`PermissionFunc`).
+  The invocability gate is the bridge's, so a transport that exposed
+  the whole tree cannot admit an interactive leaf; the runner's own
+  refusal is a backstop. Over REST such commands are withheld at
+  mount, so the route is absent (`404`) and discovery carries the
+  reason; over the socket the answer is `NOT_INVOCABLE`.
+  Confirmation is not a bridge gate: it is the command's own flag and
+  its own refusal, an exit code in the Result.
+- The permission gate MUST run on every surface, inside the bridge,
+  so no transport can bypass it. The default permits everything.
+- `cli.WithPermission` installs the adopter's decision on the api
+  and socket services. It composes after the tool's policy engine:
+  a `--policy` that refuses a side-effect class refuses it for every
+  caller, on every surface, before the adopter's decision is asked —
+  the same `Engine.Authorize` the CLI runs.
+- A refusal returns `ErrPermissionDenied` with a stable reason. It
+  is `403 permission_denied` over REST and `DENIED` over the socket,
+  distinct from the destructive ceiling's `403 destructive_blocked`
+  and `BLOCKED`, because different people fix them.
+- Discovery MUST keep a command invocable when the verdict depends
+  on the caller; a per-caller answer cannot be pre-computed. A
+  decision marked `CallerIndependent` MAY be reflected at mount with
+  the reason `permission-denied`, owned by `cmdsurface`, beside the
+  reflector's own vocabulary.
+
+### Audit
+
+- Every refusal — authentication (`ErrAuthRefused`, reported by the
+  transport through `Bridge.Audit`), enablement, the destructive
+  ceiling, permission — and every execution on a remote surface MUST
+  reach the bridge's sinks with the Meta above, the command path, and
+  the verdict: the refusing error, or the command's Result.
+- `cli.WithAuditSinks` registers sinks on every kit-shipped transport
+  service. Sinks are best-effort and MUST NOT change a verdict.
+- CLI and in-process library invocations are not audited: the first
+  is the operator's own act, the second has no caller to attribute.
 
 ## Execution
 
@@ -551,10 +672,11 @@ the command.
   cancellation is reported after it.
 
 Which context a transport hands the runner is the transport's
-contract. The `api` service passes the HTTP request's context, so a
-client that disconnects cancels its command. The `socket` service
-passes the service's context, so a command runs to completion after
-its client hangs up and is canceled only when the service stops.
+contract, and both kit-shipped services pass the caller's: the `api`
+service the HTTP request's context, the `socket` service a
+per-connection context, so a client that disconnects mid-command
+cancels it on either transport (see [Security](#provenance)).
+Stopping the service cancels every command in flight.
 
 ### Isolation between invocations
 
@@ -633,9 +755,10 @@ Rules:
 
 - An **interactive** command is never invocable through a projected
   surface. It needs a terminal and a human; a runner captures the
-  streams and supplies an empty stdin, so it has neither. The runner
-  refuses it with `ErrNotInvocable`, naming the reason, even when a
-  bridge admits it as a leaf.
+  streams and supplies an empty stdin, so it has neither. The bridge
+  refuses it at `Invoke` with `ErrNotInvocable`, naming the reason,
+  before the destructive ceiling — even when it admitted the command
+  as a leaf — and the runner refuses it again as a backstop.
 - A **self-hosting** command is never invocable through a projected
   surface, and no reflection option lifts the reason. Running it
   inside a served invocation would start a server inside the server,
@@ -740,7 +863,19 @@ changing a line:
    withhold a command from it, see
    [expose-cli-over-rest.md](../adopters/guides/expose-cli-over-rest.md).
 
-5. **Served invocations are isolated, and `data` is real.** The
+5. **The api service listens on loopback, and refuses to serve
+   unauthenticated anywhere else.** `services.api.addr` defaults to
+   `127.0.0.1:8080` rather than `:8080`. An adopter who set no
+   address is unaffected on the same machine and no longer reachable
+   from others. An adopter who set a non-loopback address — `:8080`
+   included — and no `Auth` now gets exit `2` at `serve` with a
+   message naming the fix; setting `services.api.insecure_remote:
+   true` restores the previous behavior verbatim, by name. An adopter
+   with `Auth` is unaffected on any address. See
+   [Security](#security) and
+   [secure-remote-serving.md](../adopters/guides/secure-remote-serving.md).
+
+6. **Served invocations are isolated, and `data` is real.** The
    in-process runner behind every transport now applies the
    [Execution](#execution) contract. Five differences are visible:
 
@@ -762,8 +897,9 @@ changing a line:
      transport with the reason `self-hosting`. Before, kit's `serve`
      was reachable over the socket, and would have started a second
      supervisor inside the first. Interactive commands, which the
-     socket's bridge admits as leaves, are now refused by the runner
-     rather than run without a terminal.
+     socket's bridge admits as leaves, are now refused by the bridge
+     (`NOT_INVOCABLE`), with the runner as a backstop, rather than
+     run without a terminal.
 
 A deprecation of `WithAPI`, if any, is announced through the standard
 kit deprecation surface

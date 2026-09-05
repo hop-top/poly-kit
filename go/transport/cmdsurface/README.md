@@ -109,10 +109,12 @@ endpoint that advertises the whole surface rather than only the
 callable part.
 
 The bridge reflects with `AllowInteractive` and `AllowReserved`, so
-interactive and management-only commands are leaves and the policy
-gate decides per call. Nothing lifts `self-hosting`: those commands
-are never leaves, and a call to one is an unknown command. The runner
-refuses an interactive leaf regardless — see [Execution](#execution).
+interactive and management-only commands are leaves — describable,
+and withheld per surface — and `Invoke` refuses an interactive leaf
+with `ErrNotInvocable` before the destructive ceiling, whatever the
+surface. Nothing lifts `self-hosting`: those commands are never
+leaves, and a call to one is an unknown command. The runner refuses
+both again as a backstop — see [Execution](#execution).
 
 `Classify(cmd)` still works and is unchanged in behavior, but it
 reflects one command in isolation. Prefer `Leaf.Descriptor`.
@@ -184,12 +186,16 @@ delivered first.
 
 ### Refusals
 
-`ErrNotInvocable` is returned by the in-process runner for a leaf it
-can never execute: an interactive command (no terminal here) or a
+`ErrNotInvocable` is returned for a leaf that can never execute
+through a transport: an interactive command (no terminal here) or a
 self-hosting one (the runner is the process it would start a server
-inside of, or replace). The message names the reflector's reason.
-`SubprocessRunner` holds no tree and cannot classify; discovery and
-the bridge withhold self-hosting commands before it is reached.
+inside of, or replace). `Bridge.Invoke` returns it first, before the
+destructive ceiling and the permission gate, so every surface is
+covered; the in-process runner returns it again as a backstop for
+callers that reach a runner directly. The message names the
+reflector's reason. `SubprocessRunner` holds no tree and cannot
+classify; discovery and the bridge withhold both classes before it is
+reached.
 
 ## Surface matrix
 
@@ -649,13 +655,26 @@ and are not auto-mounted — adopters that want them build the
 
 Sinks are orthogonal fan-out targets. `Sink.Emit(ctx, inv, res, err)`
 is the contract; `SinkSet` is a slice of `SinkSpec` filters (by
-surface, path pattern, success/error). The package does NOT call sinks
-automatically — adopters wrap their `Runner` with a thin adapter that
-delegates and emits (see the `sinkRunner` pattern below). Note that
-runner-wrapping sinks only observe invocations that reach the
-`Runner`: pre-flight refusal audit events (such as the modern MCP
-confirmation-state rejection) are emitted to bridge-registered sinks
-(`Bridge.Sinks()`) only.
+surface, path pattern, success/error).
+
+Two paths reach a sink:
+
+- **Bridge-registered sinks** (`WithSinks`, or the telemetry sink
+  `FromConfig` adds). `Bridge.Invoke` emits to them for every refusal
+  — unknown command, surface not enabled, the destructive ceiling,
+  the permission gate — and for every execution on a remote surface
+  (every surface but `cli` and `lib`). A transport reports its own
+  pre-bridge refusals through `Bridge.Audit`, with
+  `ErrAuthRefused` for a failed authentication, so one stream carries
+  every verdict with the same `Meta`. The modern MCP
+  confirmation-state rejection is emitted here too.
+- **Runner-wrapping sinks** (the `sinkRunner` pattern below) observe
+  only invocations that reach the `Runner`, on every surface including
+  the local ones. They are the adopter's own path and are unaffected.
+
+An audit record's verdict is `err` when the call was refused before
+running and `res.ExitCode` when it ran; a confirmation refusal is the
+latter, because confirmation is the command's own gate.
 
 Built-in implementations:
 
@@ -795,7 +814,12 @@ How cobra annotations gate each surface:
 | `kit/side-effect=destructive`  | allowed   | `Policy.AllowDestructiveOn` | same | same  | same                 | same      | same                | same                  | same               | same                 |
 | `kit/auth-required=true`       | n/a       | `api.Auth(authFn)` (deny-all if unset) | `Authorization` header or `Meta.Caller` | n/a | `WebhookAuth.Verify` is the gate; `AuthNone` is refused | state IS auth | signed URL IS auth | `headers.authorization` or `Meta.Caller` | refused unless `WithCronAllowAuth(true)` | IAM is the gate |
 | `kit/requires-confirmation=true` | n/a     | `X-Confirm-Token` header (428 when missing) | same | n/a | refused unless `WithWebhookAllowConfirmation()` | refused at mount | skipped | `headers.x-confirm-token` | (cron has no confirm channel — refused if also auth-required without opt-in) | refused at mount |
-| `kit/permissions=<csv>`        | parsed; enforcement is adopter's responsibility (OAuth-scoped check before Run) |
+| `kit/permissions=<csv>`        | `PermissionFunc` | `PermissionFunc` | same | same | same | same | same | same | same | same |
+
+`kit/permissions` is parsed into `Leaf.Class.Permissions` and enforced
+by the bridge's `PermissionFunc` (`WithPermission`), which runs after
+the destructive ceiling and before the Runner on every surface: the
+adopter's decision, kit's gate. The default permits everything.
 
 The mappings of bridge sentinel errors to wire format are uniform:
 
@@ -804,6 +828,8 @@ The mappings of bridge sentinel errors to wire format are uniform:
 | `ErrUnknownCommand`    | 404 `unknown_command` | `CodeNotFound`  | `unknown_command`            | 500 (mount-time refusal) | event-type response |
 | `ErrSurfaceNotEnabled` | 404 `not_enabled` | `CodeNotFound`    | `not_enabled`                | (mount-time refusal)     | (mount-time refusal) |
 | `ErrDestructiveBlocked`| 403 `destructive_blocked` | `CodePermissionDenied` | `destructive_blocked` | 403 / (mount-time refusal) | (mount-time refusal) |
+| `ErrNotInvocable`      | 404 `not_invocable` (withheld at mount) | `NOT_INVOCABLE` (socket) | passthrough | (mount-time refusal) | (mount-time refusal) |
+| `ErrPermissionDenied`  | 403 `permission_denied` (projection) | `DENIED` (socket) | passthrough | passthrough | passthrough |
 
 Cross-references: `go/transport/cmdsurface/surface_rest.go`,
 `go/transport/cmdsurface/safety.go`,

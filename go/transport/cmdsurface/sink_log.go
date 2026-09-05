@@ -17,7 +17,9 @@ import (
 //   - exit_code: Result.ExitCode (int)
 //   - error:     err.Error() when err != nil
 //   - trace_id:  Meta.TraceID when non-empty
+//   - request_id: Meta.RequestID when non-empty
 //   - caller:    Meta.Caller when non-empty
+//   - tenant:    Meta.Tenant when non-empty
 //
 // When Level <= slog.LevelDebug, the record additionally carries
 // stdout / stderr attributes copied from Result.
@@ -53,8 +55,14 @@ func (l *LogSink) Emit(ctx context.Context, inv Invocation, res Result, err erro
 	if inv.Meta.TraceID != "" {
 		attrs = append(attrs, slog.String("trace_id", inv.Meta.TraceID))
 	}
+	if inv.Meta.RequestID != "" {
+		attrs = append(attrs, slog.String("request_id", inv.Meta.RequestID))
+	}
 	if inv.Meta.Caller != "" {
 		attrs = append(attrs, slog.String("caller", inv.Meta.Caller))
+	}
+	if inv.Meta.Tenant != "" {
+		attrs = append(attrs, slog.String("tenant", inv.Meta.Tenant))
 	}
 	if level <= slog.LevelDebug {
 		if res.Stdout != "" {

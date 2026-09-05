@@ -33,7 +33,13 @@ func RequestID() Middleware {
 
 // GetRequestID extracts the request ID from the request context.
 func GetRequestID(r *http.Request) string {
-	v, _ := r.Context().Value(requestIDKey{}).(string)
+	return RequestIDFromContext(r.Context())
+}
+
+// RequestIDFromContext extracts the request ID the [RequestID]
+// middleware stored, or "" when the middleware did not run.
+func RequestIDFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(requestIDKey{}).(string)
 	return v
 }
 

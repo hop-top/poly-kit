@@ -121,7 +121,7 @@ func TestServe_StartsAndStops(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	errCh := make(chan error, 1)
-	r.SetArgs([]string{"serve", "--addr", ":0"})
+	r.SetArgs([]string{"serve", "--addr", "127.0.0.1:0"})
 	go func() {
 		errCh <- r.Execute(ctx)
 	}()

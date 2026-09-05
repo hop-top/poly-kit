@@ -57,6 +57,13 @@ format rather than deciding them:
 | `cmdsurface.ErrUnknownCommand` | the path does not resolve |
 | `cmdsurface.ErrSurfaceNotEnabled` | the leaf is not exposed on this surface |
 | `cmdsurface.ErrDestructiveBlocked` | destructive leaf refused by policy |
+| `cmdsurface.ErrPermissionDenied` | the permission gate refused this caller; the message carries its reason |
+
+The Meta a transport passes reaches the bridge unchanged except for
+`Surface`, which the seam pins. A transport fills `Caller` and
+`Tenant` only from an identity it verified; without an authenticator
+it records what the caller claimed, and the bridge grants nothing on
+that basis.
 
 ## Constructor
 
@@ -81,6 +88,7 @@ construction — both are wiring bugs in `main`.
 | `Expose(pattern)` | the transport should reach commands the bridge does not enable by default; usually `Expose("*")` |
 | `Hide(pattern)` | carving an exception out of a broader `Expose` |
 | `WithBridgeOptions(...)` | you need a custom `cmdsurface.Policy` or `Runner` |
+| `WithBridgeOptionsFunc(fn)` | the options are known only at Start — a permission gate built from a parsed flag, audit sinks registered after the service; applied after `WithBridgeOptions` |
 | `WithValidate(fn)` | configuration can be detectably wrong before binding |
 | `WithClass(sideEffect, network)` | the service should be gated by a policy table |
 | `WithDependsOn(names...)` | another service must start first |

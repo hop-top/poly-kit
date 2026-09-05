@@ -320,7 +320,10 @@ type Root struct {
 	socketCfg *SocketConfig
 	// socketFlag is the --socket value when the operator passed one;
 	// it wins over config at bind time.
-	socketFlag         string
+	socketFlag string
+	// serveAuth is the permission gate and audit sinks every
+	// kit-shipped transport service shares; see serve_auth.go.
+	serveAuth          serveAuthState
 	identityCfg        *IdentityConfig
 	peerCfg            *PeerConfig
 	telemetryCfg       *TelemetryConfig

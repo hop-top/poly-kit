@@ -39,6 +39,7 @@ how kit itself is implemented.
 - [`guides/expose-cli-over-rest.md`](guides/expose-cli-over-rest.md) — serve your commands as a versioned REST API with OpenAPI
 - [`guides/hook-cli-into-bus.md`](guides/hook-cli-into-bus.md) — first publish/subscribe
 - [`guides/run-the-engine.md`](guides/run-the-engine.md) — start the engine sidecar
+- [`guides/secure-remote-serving.md`](guides/secure-remote-serving.md) — auth beyond loopback, one permission gate, one audit trail
 - [`guides/serve-cli-over-unix-socket.md`](guides/serve-cli-over-unix-socket.md) — serve your commands over a local Unix socket
 - [`guides/serve-mcp-from-any-sdk.md`](guides/serve-mcp-from-any-sdk.md) — serve MCP from the TypeScript, Python, Rust or PHP SDK
 - [`guides/serve-mcp-with-the-sdk.md`](guides/serve-mcp-with-the-sdk.md) — serve your command tree over MCP with the official SDK
