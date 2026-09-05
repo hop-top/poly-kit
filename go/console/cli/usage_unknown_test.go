@@ -179,3 +179,47 @@ func TestUnknown_CompletionRequestsAreNotRefused(t *testing.T) {
 		})
 	}
 }
+
+// TestUnknown_HelpFlagPrecedence pins cobra's own reading of a help
+// flag sharing a line with an unknown word. The rule is positional,
+// not "a help flag anywhere wins": cobra tests the flag inside the
+// resolved command's execute, which is only reached once Find has
+// routed, so a flag ahead of the word prints help and a flag behind
+// it never runs. gh and kubectl behave the same way.
+func TestUnknown_HelpFlagPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		wantErr bool
+	}{
+		// Help flag first: cobra prints help, exit 0.
+		{"--help before word", []string{"--help", "nosuch"}, false},
+		{"-h before word", []string{"-h", "nosuch"}, false},
+		{"--help-all before word", []string{"--help-all", "nosuch"}, false},
+		{"--help=true before word", []string{"--help=true", "nosuch"}, false},
+		// Help flag after the word: never reached, refusal stands.
+		{"--help after word", []string{"nosuch", "--help"}, true},
+		{"-h after word", []string{"nosuch", "-h"}, true},
+		{"--help-all after word", []string{"nosuch", "--help-all"}, true},
+		// Under a parent, cobra's legacyArgs check only fires at the
+		// root, so the parent's own execute runs and honors the flag.
+		// gh and kubectl agree: `gh repo bogus --help` exits 0 while
+		// `gh bogus --help` exits 1.
+		{"--help after word under a parent", []string{"widget", "nosuch", "--help"}, false},
+		// A help flag behind "--" is an operand, not a flag.
+		{"--help behind a terminator", []string{"nosuch", "--", "--help"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ce, _, stderr, err := executeUnknown(t, unknownRoot(t, nil), tc.args...)
+			if tc.wantErr {
+				require.Error(t, err, "want a refusal")
+				require.NotNil(t, ce)
+				assert.Equal(t, output.CodeUsage, ce.Code)
+				assert.Equal(t, 2, ce.ExitCode)
+				return
+			}
+			require.NoError(t, err, "a help flag ahead of the word is a help request\nstderr: %s", stderr)
+			assert.Nil(t, ce)
+		})
+	}
+}

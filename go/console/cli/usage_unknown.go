@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -24,9 +25,19 @@ import (
 // It reports nil for everything that is not that gap: a resolved
 // runnable command (its own Args rules the operands), a bare
 // non-runnable command (help, exit 0, the documented behavior), a
-// help or completion request, and a malformed flag, which is the
-// first thing wrong with the command line and is diagnosed as the
-// flag error it is.
+// completion request or a leading `help`, and a malformed flag,
+// which is the first thing wrong with the command line and is
+// diagnosed as the flag error it is.
+//
+// A help flag is honored on cobra's own terms, which are positional
+// rather than "a help flag anywhere wins". Cobra tests the flag
+// inside the resolved command's execute, so it is only reached once
+// Find has routed: `tool --help bogus` prints help, because
+// stripFlags drops the leading flag and no word precedes it, while
+// `tool bogus --help` is refused before any execute runs. Real cobra
+// trees agree — gh and kubectl both exit non-zero on `bogus --help`.
+// So a help flag standing ahead of the unknown word suppresses the
+// refusal; one standing behind it does not.
 func (r *Root) checkUnknownSubcommand(args []string) error {
 	if r == nil || r.Cmd == nil {
 		return nil
@@ -45,17 +56,78 @@ func (r *Root) checkUnknownSubcommand(args []string) error {
 		return nil
 	}
 
-	// A parse failure in the leftovers is a flag error, not an
-	// unknown command: report nothing and let the flag machinery
-	// name the flag. Find leaves flags in rest, so strip them the
-	// way cobra does before parsing.
+	// Find leaves flags in rest, so strip them the way cobra does
+	// before parsing. Two outcomes short-circuit the check:
+	//
+	//   - ErrHelp: the leftovers carry a help flag, so this is a help
+	//     request. Cobra reaches its own help check inside the
+	//     resolved command's execute, which is exactly the point this
+	//     stands in for.
+	//   - any other parse failure: a malformed flag is the first thing
+	//     wrong with the line, so let the flag machinery name it.
 	words, err := strippedWords(target, rest)
-	if err != nil || len(words) == 0 {
+	switch {
+	case errors.Is(err, pflag.ErrHelp):
+		return nil
+	case err != nil:
+		return nil
+	case len(words) == 0:
+		return nil
+	}
+
+	// A help flag standing ahead of the unknown word is a help
+	// request too, on cobra's positional terms.
+	if helpFlagPrecedes(target, rest, words[0]) {
 		return nil
 	}
 
 	return output.UsageError(fmt.Sprintf("unknown command %q for %q%s",
 		words[0], target.CommandPath(), suggestionsFor(target, words[0])))
+}
+
+// helpFlagPrecedes reports whether a help flag appears in args before
+// word — the position at which cobra would have reached its own help
+// check and never looked at the word. It matches --help, -h, and the
+// --help-<id> family this package registers (--help-all and one per
+// command group), including their --flag=value spellings, and stops
+// at "--", after which nothing is a flag.
+func helpFlagPrecedes(cmd *cobra.Command, args []string, word string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if a == word {
+			return false
+		}
+		if isHelpFlagToken(cmd, a) {
+			return true
+		}
+	}
+	return false
+}
+
+// isHelpFlagToken reports whether tok is a help flag: the long or
+// short help flag, or any --help-<id> variant registered on cmd's
+// root. The value half of a --flag=value token is ignored.
+func isHelpFlagToken(cmd *cobra.Command, tok string) bool {
+	if tok == "-h" || tok == "--help" {
+		return true
+	}
+	name, _, _ := strings.Cut(tok, "=")
+	switch {
+	case strings.HasPrefix(name, "--"):
+		name = strings.TrimPrefix(name, "--")
+	case strings.HasPrefix(name, "-"):
+		return strings.Contains(strings.TrimPrefix(name, "-"), "h")
+	default:
+		return false
+	}
+	if name == "help" {
+		return true
+	}
+	// The --help-<id> family is registered on the root, so look
+	// there rather than on the command Find resolved to.
+	return strings.HasPrefix(name, "help-") && cmd.Root().Flags().Lookup(name) != nil
 }
 
 // refuseUnknownSubcommand renders err as the active --format
@@ -86,9 +158,10 @@ func isReservedDispatchWord(w string) bool {
 
 // strippedWords returns the non-flag words of args as cobra's own
 // resolution sees them, and reports a parse error when a flag in
-// args is malformed. Parsing runs against a throwaway copy of the
-// command's flag set so the real flags keep their values for the
-// parse cobra is about to do.
+// args is malformed — including pflag.ErrHelp when the args carry a
+// help flag, which the caller reads as a help request. Parsing runs
+// against a throwaway copy of the command's flag set so the real
+// flags keep their values for the parse cobra is about to do.
 func strippedWords(cmd *cobra.Command, args []string) ([]string, error) {
 	probe := pflag.NewFlagSet(cmd.Name(), pflag.ContinueOnError)
 	probe.ParseErrorsAllowlist.UnknownFlags = true
