@@ -120,19 +120,41 @@ FLAGS:
   ...
 ```
 
-### `help <id>` subcommand
+### `help <topic>` subcommand
 
-Same as `--help-<id>` but as a subcommand:
+The operand is a command path or a group ID:
 
 ```
+$ spaced launch             # a command
+$ spaced help launch        # → same as `spaced launch --help`
+$ spaced help fleet add     # a command path, to any depth
 $ spaced help management    # → same as --help-management
 $ spaced help extras        # → same as --help-extras
 $ spaced help all           # → same as --help-all
 ```
 
+Note that `help all` reveals every group but, unlike `--help-all`,
+leaves kit's plumbing flags (`--config`, `--chdir`, …) hidden.
+
+#### Resolution order
+
+1. `help all` — every group, as `--help-all`.
+2. A command path — that command's own help, exit 0.
+3. A registered group ID — that group's commands, exit 0.
+4. Anything else — a usage error, exit 2, the same code an
+   unknown subcommand gets.
+
+A command path only counts when it resolves completely: `help
+fleet nosuch` is a usage error, not help for `fleet`.
+
+**Tie-break**: when a command and a group share a name, the
+command wins — it is what the user can run, and it is reachable
+no other way, whereas a shadowed group keeps its `--help-<id>`
+flag form.
+
 #### Visibility: hidden by design
 
-The `help [group]` subcommand is registered with `Hidden: true`
+The `help [topic]` subcommand is registered with `Hidden: true`
 and is **deliberately absent from both `--help` and `--help-all`
 output**. This is intentional, not an oversight.
 
@@ -142,8 +164,8 @@ mandates that all three languages expose help exclusively via the
 `-h`/`--help` flag — no advertised `help` subcommand. Cobra (Go)
 and Typer (Python) emit a `help` subcommand by default; kit
 suppresses both so users see one canonical surface across Go, TS,
-and Python tools. The hidden `help [group]` form exists purely as
-a fallback dispatcher for users who type `mytool help <group>`
+and Python tools. The hidden `help [topic]` form exists purely as
+a fallback dispatcher for users who type `mytool help <topic>`
 out of muscle memory from other tools — it is *recognized* but
 not *promoted*. Surfacing it under `--help-all` would advertise a
 second, parallel help mechanism alongside `--help-<id>`,
@@ -156,12 +178,13 @@ use `--help-<id>` flags, which *are* listed under FLAGS in
 `--help-all` output. The flag form is the canonical surface; the
 subcommand form is an unadvertised affordance.
 
-Implementation: registered hidden in
-`go/console/cli/cli.go:227-234`. The pre-parse arg rewrite in
-`Root.applyGroupVisibility` (`cli.go:382-455`) detects
-`help <id>` literally in `os.Args` and rewrites to the equivalent
-`--help-<id>` flag form — the hidden subcommand itself never
-needs to render its own help.
+Implementation: registered hidden in `go/console/cli/cli.go`. The
+pre-parse pass in `Root.ApplyGroupVisibility` classifies the
+operand before cobra dispatches — a command path points the
+subcommand at that command's own `Help()`, a group ID rewrites to
+the equivalent `--help-<id>` flag form, and anything else becomes
+an `output.UsageError`. The doc comment on `ApplyGroupVisibility`
+carries the rationale for the ordering and the tie-break.
 
 ## Structural Rendering (No Regex)
 
