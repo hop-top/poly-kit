@@ -9,16 +9,19 @@ import (
 // ResetFlags resets all flag values on cmd and its children to their
 // defaults, clearing each flag's Changed bit with its value.
 //
-// [Root.Execute] does this itself before every dispatch, so a Root
-// executed repeatedly needs no explicit call. It stays exported for
-// adopters driving a tree through cobra directly.
+// [Root.Execute] does this itself before each REPEAT execute — the
+// first one is left alone, since what the flags hold then is
+// construction and adopter setup rather than a previous parse — so a
+// Root executed repeatedly needs no explicit call. It stays exported
+// for adopters driving a tree through cobra directly.
 //
 // The per-flag work is [cmdsurface.ResetFlagToDefault], the same
 // primitive the in-process runner uses between served invocations, so
 // both paths agree on pflag's edge cases: a slice flag is emptied
-// rather than appended to, and a callback-backed flag is left alone
-// so a reset never invokes the adopter's own function. Viper bindings
-// are preserved — they re-read from the flag on next access.
+// rather than appended to, and a callback-backed flag keeps its value
+// so a reset never invokes the adopter's own function, while its
+// Changed bit is cleared like any other. Viper bindings are preserved
+// — they re-read from the flag on next access.
 func ResetFlags(cmd *cobra.Command) {
 	if cmd == nil {
 		return
