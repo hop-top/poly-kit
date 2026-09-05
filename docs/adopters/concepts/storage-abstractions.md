@@ -30,15 +30,25 @@ Interface: `Put` / `Get` / `Delete` / `List` / `Close`.
 
 - Values are `[]byte`; caller serialises.
 - Optional `TTLStore` extension for expiration.
-- Backend selection via factory.
+- Backend selection via factory; importing a driver registers its name,
+  so a binary only links the backends it opens.
 
 ```go
+import (
+    "hop.top/kit/go/storage/kv"
+    _ "hop.top/kit/go/storage/kv/sqlite"
+)
+
 store, err := kv.Open(kv.Config{
-    Backend: "sqlite",   // sqlite | badger | etcd | tidb
-    DSN:     "path.db",  // backend-specific connection string
-    Table:   "kv",       // table/bucket name (where applicable)
+    Backend: "sqlite",     // sqlite | badger | etcd | tidb
+    Path:    "cache.db",   // sqlite file / badger directory
 })
 ```
+
+Config carries only the fields a given backend reads: `Path` for
+sqlite and badger, `Endpoints` plus `Prefix` for etcd, `DSN` plus
+`Table` for tidb. Opening a backend whose driver was not imported
+reports the package to import.
 
 Use when: caching, session state, config persistence, sync queue.
 
