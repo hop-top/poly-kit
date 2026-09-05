@@ -306,7 +306,7 @@ Pattern: the adopter wires `cli.With*` options once in `main.go`;
 secrets like the collector URL flow in via `-ldflags -X`
 from a release-pipeline secret rather than via a source-file
 literal. Adopter docs:
-[`docs/adopters/reference/telemetry-compliance.md`](../../adopters/reference/telemetry-compliance.md#build-time-configuration-kit-options).
+[`docs/adopters/reference/telemetry-compliance.md`](../../adopters/reference/telemetry-compliance.md#7-build-time-configuration-kit-options).
 
 Both tiers are themselves opt-in. An adopter who never calls
 `cli.WithTelemetry` ships a telemetry-free binary; the kit-options
