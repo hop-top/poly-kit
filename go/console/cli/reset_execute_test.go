@@ -153,3 +153,56 @@ func TestRerun_CallbackFlagIsNotReplayed(t *testing.T) {
 	assert.Equal(t, []string{"one"}, calls,
 		"the reset must not invoke the adopter's callback")
 }
+
+// TestRerun_CallbackFlagChangedIsCleared: a callback-backed flag must
+// not be re-Set on reset — that would invoke the adopter's own
+// function — but its Changed bit is still state from the previous
+// parse and must be cleared with everything else. Both halves are
+// asserted: the bit goes false, and the callback does not fire.
+func TestRerun_CallbackFlagChangedIsCleared(t *testing.T) {
+	var noteCalls, verboseCalls []string
+	r := cli.New(cli.Config{
+		Name: "reruntool", Version: "0.0.0", Short: "rerun test tool",
+		DisableValidate: true,
+	})
+	var noteChanged, verboseChanged bool
+	leaf := &cobra.Command{
+		Use: "go", Short: "go", Long: "go",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			noteChanged = cmd.Flags().Changed("note")
+			verboseChanged = cmd.Flags().Changed("loud")
+			return nil
+		},
+	}
+	cli.SetSideEffect(leaf, cli.SideEffectRead)
+	leaf.Flags().Func("note", "record a note", func(v string) error {
+		noteCalls = append(noteCalls, v)
+		return nil
+	})
+	leaf.Flags().BoolFunc("loud", "be loud", func(v string) error {
+		verboseCalls = append(verboseCalls, v)
+		return nil
+	})
+	r.Cmd.AddCommand(leaf)
+
+	// Run 1 passes both callback flags.
+	r.SetArgs([]string{"go", "--note=one", "--loud"})
+	require.NoError(t, r.Execute(context.Background()))
+	require.True(t, noteChanged, "run 1 passed --note")
+	require.True(t, verboseChanged, "run 1 passed --loud")
+	require.Equal(t, []string{"one"}, noteCalls)
+	require.Len(t, verboseCalls, 1)
+
+	// Run 2 passes neither.
+	r.SetArgs([]string{"go"})
+	require.NoError(t, r.Execute(context.Background()))
+
+	assert.False(t, noteChanged,
+		"Func flag Changed must be cleared by the reset")
+	assert.False(t, verboseChanged,
+		"BoolFunc flag Changed must be cleared by the reset")
+	assert.Equal(t, []string{"one"}, noteCalls,
+		"the reset must not invoke the Func callback")
+	assert.Len(t, verboseCalls, 1,
+		"the reset must not invoke the BoolFunc callback")
+}
