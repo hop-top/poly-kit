@@ -2,9 +2,32 @@ package secret
 
 import "fmt"
 
+// Backends lists every backend name the package documents as
+// available. Each is registered by the init of its own subpackage, so
+// a name only resolves through Open once that subpackage is imported
+// (blank imports are the convention).
+//
+// This is the single source of truth the README and Config.Backend
+// document; tests assert every entry resolves through Open, so a
+// backend cannot be documented without being registered.
+var Backends = []string{
+	"env",
+	"file",
+	"agefile",
+	"keyring",
+	"onepassword",
+	"ghsecrets",
+	"openbao",
+	"infisical",
+	"memory",
+}
+
 // Config describes which secret backend to use.
 type Config struct {
-	Backend      string // "env", "file", "keyring", "openbao", "infisical", "memory", "agefile", "ghsecrets", "onepassword"
+	// Backend names the store to open. See Backends for the full set:
+	// "env", "file", "agefile", "keyring", "onepassword", "ghsecrets",
+	// "openbao", "infisical", "memory".
+	Backend      string
 	Prefix       string // for env adapter
 	Dir          string // for file adapter
 	Service      string // for keyring adapter
