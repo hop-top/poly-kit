@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.1...kit-rs/v0.5.0-alpha.2) (2026-09-05)
+
+The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.2. This release includes new features.
+
+
+### Features
+
+* **rs:** EXIT_GENERIC and CliError::generic for the exit-1 class
+* **rs:** Go-style duration parser for serve budgets
+* **rs:** mount serve as a clap command
+* **rs:** mount serve as a clap command
+* **rs:** serve command with --list, --enable/--disable and timeout flags
+* **rs:** serve run path from ArgMatches to exit code
+* **rs:** serve supervisor and service lifecycle
+* **rs:** serve supervisor and service lifecycle
+* **sdk:** EXIT_GENERIC and generic error constructor in all SDKs
+
+Full diff: [kit-rs/v0.5.0-alpha.1...kit-rs/v0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.1...kit-rs/v0.5.0-alpha.2)
+
 ## [0.5.0-alpha.1](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.0...kit-rs/v0.5.0-alpha.1) (2026-09-04)
 
 The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.1. This release includes new features and bug fixes.
