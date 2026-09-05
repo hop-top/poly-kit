@@ -2,28 +2,20 @@
 
 Invocation adapter for OpenAI Codex CLI (`codex` binary).
 
-## Last verified
+Last verified 2026-05-09 against `codex-cli` 0.130.0 (top-level plus the
+`exec`, `resume` and `fork` subcommands). Source of truth: `Mappings()` in
+`mappings.go`; the parity table in `go/core/uxp/README.md` is built from it.
 
-- Date: 2026-05-09
-- Binary: `codex-cli` 0.130.0
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/codex.txt`
-  (top-level + `exec`, `resume`, `fork` subcommands)
+## Mode routing
 
-## Mode → subcommand routing
+`ModeInteractive` is bare `codex [PROMPT]`; `ModeRun` is `codex exec
+[PROMPT]`; `ModeResume` is `codex exec resume [SESSION_ID|--last]
+[PROMPT]`; `ModeResume` with `Fork` is `codex fork [SESSION_ID|--last]
+[PROMPT]`.
 
-Codex has multiple subcommands; this adapter routes:
-
-| Mode | Subcommand |
-|---|---|
-| `ModeInteractive` | (none — bare `codex [PROMPT]`) |
-| `ModeRun` | `codex exec [PROMPT]` |
-| `ModeResume` | `codex exec resume [SESSION_ID|--last] [PROMPT]` |
-| `ModeResume + Fork` | `codex fork [SESSION_ID|--last] [PROMPT]` |
-
-`codex resume` (without `exec`) is the interactive TUI flavor; the
-adapter prefers headless `exec resume` for `ModeResume`. If a caller
-needs the TUI variant for resume, they should use `ModeInteractive`
-plus `Config["codex.profile"]` or `ExtraArgs`.
+`codex resume` without `exec` is the interactive TUI flavor; the adapter
+prefers headless `exec resume` for `ModeResume`. For the TUI variant, use
+`ModeInteractive` plus `Config["codex.profile"]` or `ExtraArgs`.
 
 ## Mapping summary
 
@@ -36,7 +28,7 @@ plus `Config["codex.profile"]` or `ExtraArgs`.
 | `CWD` | `-C/--cd <DIR>` | adapter also sets `CommandSpec.Dir` |
 | `Model` | `-m/--model` | |
 | `Agent` | unsupported | use `codex.profile` for `--profile` |
-| `OutputJSON` | `-o/--output-last-message <FILE>` (shim) | **requires `Config["codex.output_last_message_path"]`** — codex writes the final message to a file, not stdout |
+| `OutputJSON` | `-o/--output-last-message <FILE>` (shim) | **requires `Config["codex.output_last_message_path"]`**: codex writes the final message to a file, not stdout |
 | `OutputStreamJSON` | `--json` | JSONL events to stdout |
 | `SandboxReadOnly` | `-s read-only` | full tier parity |
 | `SandboxWorkspaceWrite` | `-s workspace-write` | |
@@ -52,41 +44,36 @@ plus `Config["codex.profile"]` or `ExtraArgs`.
 
 ## Shims invoked
 
-- **S-1 (`expandToParentDirs`)** for `Invocation.Files` → `--add-dir`. Dedups against caller-provided `AddDirs`.
+- **S-1 (`expandToParentDirs`)** for `Invocation.Files` → `--add-dir`, deduped against caller-provided `AddDirs`.
 - **S-3 (`formatFileBlock`)** prepended to the positional prompt when `Files` is non-empty.
-- **S-6 (sandbox/approval cross-shim)** — codex-only. `ApprovalPlan` lacks a native flag; the adapter combines `-s read-only` (no writes possible) with `-a never` (no prompts) as the closest peer to plan mode. If the caller already supplied a sandbox tier explicitly, S-6 preserves that tier and only adds `-a never`. Diagnostic emitted to record the cross-shim.
+- **S-6 (sandbox/approval cross-shim)**, codex-only. `ApprovalPlan` has no native flag, so the adapter combines `-s read-only` (no writes possible) with `-a never` (no prompts) as the closest peer. An explicitly supplied sandbox tier is preserved and only `-a never` is added. A diagnostic records the cross-shim.
 
 ## Anti-shims (refused mappings)
 
-- `Approval = ApprovalAutoEdit` → **error**. Codex has no native auto-edit mode and `--dangerously-bypass-approvals-and-sandbox` would change authority semantics. The diagnostic names the safer alternatives (`ApprovalAsk`, `ApprovalNever`).
-- `Approval = ApprovalAutoAll` without `Config["uxp.allow_dangerous"]="true"` → **error**.
-- `Sandbox = SandboxDangerFullAccess` without opt-in → **error**.
-- `Output = OutputJSON` without `Config["codex.output_last_message_path"]` → **error**. Codex's final-message JSON is file-based; refusing rather than picking a default path keeps the contract explicit.
-- `Output = OutputJSON` or `OutputStreamJSON` with `Mode = ModeInteractive` → **error**. Both require the `exec` subcommand.
-- `Fork = true` outside `Mode = ModeResume` → **error**.
-- `Mode = ModeResume` without `SessionID` and without `Continue = true` → **error**.
-- `Agent != ""` → **error**. Use `codex.profile` Config key for `--profile`-style configuration profiles.
+| Refused | Why |
+|---|---|
+| `ApprovalAutoEdit` | no native auto-edit; `--dangerously-bypass-approvals-and-sandbox` would change authority semantics. Diagnostic names `ApprovalAsk` and `ApprovalNever` |
+| `ApprovalAutoAll`, `SandboxDangerFullAccess` | need `Config["uxp.allow_dangerous"]="true"` |
+| `OutputJSON` without `codex.output_last_message_path` | the final-message JSON is file-based; refusing beats picking a default path |
+| `OutputJSON` / `OutputStreamJSON` with `ModeInteractive` | both require the `exec` subcommand |
+| `Fork = true` outside `ModeResume` | fork is a resume modifier |
+| `ModeResume` without `SessionID` and without `Continue = true` | nothing to resume |
+| `Agent != ""` | use the `codex.profile` key for `--profile` configuration profiles |
 
-## Recognized Config keys (`codex.*` namespace)
+## Recognized Config keys
 
-| Key | Native flag | Type |
-|---|---|---|
-| `codex.profile` | `-p/--profile` | string (config profile name from `~/.codex/config.toml`) |
-| `codex.config` | `-c <key=value>` (repeatable) | comma-list of `key=value` pairs (TOML-parsed values) |
-| `codex.enable` | `--enable <feature>` (repeatable) | comma-list |
-| `codex.disable` | `--disable <feature>` (repeatable) | comma-list |
-| `codex.search` | `--search` | bool |
-| `codex.skip_git_repo_check` | `--skip-git-repo-check` | bool |
-| `codex.ephemeral` | `--ephemeral` | bool — disables session persistence |
-| `codex.ignore_user_config` | `--ignore-user-config` | bool |
-| `codex.ignore_rules` | `--ignore-rules` | bool |
-| `codex.output_schema` | `--output-schema <FILE>` | path to JSON Schema |
-| `codex.output_last_message_path` | `-o/--output-last-message <FILE>` | path; **required for `OutputJSON`** |
-| `codex.oss` | `--oss` | bool — open-source provider |
-| `codex.local_provider` | `--local-provider` | string (`lmstudio` or `ollama`) |
+The `codex.*` namespace covers `profile`, `config`, `enable`, `disable`,
+`search`, `skip_git_repo_check`, `ephemeral`, `ignore_user_config`,
+`ignore_rules`, `output_schema`, `output_last_message_path`, `oss` and
+`local_provider`. Flags, types and defaults are tabled in the
+[UXP reference](../../../../../../docs/adopters/reference/uxp.md#codex-codex).
 
 ## Notes
 
-- `codex apply` (top-level subcommand to apply the latest agent diff as `git apply`) is not exposed via this adapter; it's a host-side tool, not an invocation pattern.
-- `codex review`, `codex cloud`, `codex remote-control`, `codex app-server`, etc. are also not in scope — they are distinct CLI surfaces, not flag-level shims.
-- `--no-alt-screen` (TUI scrollback compat) and `--remote` (websocket connect) are TUI-only; pass via `ExtraArgs` if needed.
+- `codex apply` (apply the latest agent diff as `git apply`) is not exposed here; it is a host-side tool, not an invocation pattern. `codex review`, `codex cloud`, `codex remote-control` and `codex app-server` are likewise out of scope, being distinct CLI surfaces rather than flag-level shims.
+- `--no-alt-screen` (TUI scrollback compat) and `--remote` (websocket connect) are TUI-only; pass them via `ExtraArgs`.
+
+## See also
+
+- [`go/core/uxp/README.md`](../../../README.md): parity matrices, shim catalog, universal `Config` keys
+- [UXP invoke reference](../../../../../../docs/adopters/reference/uxp.md)

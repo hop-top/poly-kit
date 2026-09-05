@@ -1,5 +1,6 @@
-// Code generation directive for the parity README. Run
-// `go generate ./go/core/uxp/...` to regenerate the parity tables.
+// Code generation directive for the parity tables. Run
+// `go generate ./go/core/uxp/...` to regenerate them in
+// docs/adopters/reference/uxp.md.
 package uxp
 
-//go:generate go run ./internal/parityreadme -update
+//go:generate go run ./internal/parityreadme -update -readme ../../../docs/adopters/reference/uxp.md
