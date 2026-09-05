@@ -415,17 +415,21 @@ func TestNoAuthCannotWidenExposure(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "no auth on loopback is permitted")
 
 	// --no-auth beyond loopback needs the opt-in, and then it serves.
+	// The policy opt-in rides along: exposure needs an answer to both
+	// "who may call" and "what may they run".
 	r = authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0", Auth: bearer(nil)}))
-	base, stop = serveAPI(t, r, "--no-auth", "--addr", "0.0.0.0:0", "--insecure-remote")
+	base, stop = serveAPI(t, r, "--no-auth", "--addr", "0.0.0.0:0",
+		"--insecure-remote", "--"+insecureNoPolicyFlag)
 	resp, _ = get(t, strings.Replace(base, "0.0.0.0", "127.0.0.1", 1)+"/v1/commands/list", nil)
 	stop()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestAuthPermitsAnyAddress(t *testing.T) {
-	// A tool that already sets Auth keeps working on any address.
+	// A tool that already sets Auth keeps working on any address,
+	// once it has also said what those callers may run.
 	r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", Auth: bearer(nil)}))
-	base, stop := serveAPI(t, r)
+	base, stop := serveAPI(t, r, "--"+insecureNoPolicyFlag)
 	defer stop()
 	resp, _ := get(t, strings.Replace(base, "0.0.0.0", "127.0.0.1", 1)+"/v1/commands/list",
 		map[string]string{"Authorization": "Bearer alice"})
@@ -448,7 +452,10 @@ func TestInsecureRemoteOptIn(t *testing.T) {
 	}
 	for name, arrange := range cases {
 		t.Run(name, func(t *testing.T) {
-			r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0"}))
+			r := authRoot(t, WithAPI(APIConfig{
+				Addr:             "0.0.0.0:0",
+				InsecureNoPolicy: true,
+			}))
 			args := arrange(r)
 			base, stop := serveAPI(t, r, args...)
 			defer stop()
@@ -464,11 +471,261 @@ func TestInsecureRemoteOptIn(t *testing.T) {
 		assert.Equal(t, refusalNoAuth, oe.Message)
 	})
 	t.Run("flag overrides a config key", func(t *testing.T) {
-		r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0"}))
+		r := authRoot(t, WithAPI(APIConfig{
+			Addr:             "0.0.0.0:0",
+			InsecureNoPolicy: true,
+		}))
 		r.Viper.Set("services.api.insecure_remote", false)
 		_, stop := serveAPI(t, r, "--insecure-remote")
 		stop()
 	})
+}
+
+// --- The policy exposure gate ----------------------------------------
+
+const refusalNoPolicy = `service "api": addr: "0.0.0.0:0" is not a loopback address and no delegation policy is configured; ` +
+	`set --policy, listen on 127.0.0.1, or set services.api.insecure_no_policy: true (or --insecure-no-policy) to serve every command beyond loopback`
+
+// policyRoot builds an authenticating root whose --policy resolves to
+// p, so a test can serve beyond loopback with a real policy in force.
+func policyRoot(t *testing.T, p policy.Policy, cfg APIConfig) *Root {
+	t.Helper()
+	cfg.Auth = bearer(nil)
+	return authRoot(
+		t,
+		WithAPI(cfg),
+		WithPolicy(func(string) (policy.Policy, error) { return p, nil }),
+	)
+}
+
+// TestZeroPolicyEngineIsAsToothlessAsNil pins the premise the gate
+// rests on: with --policy unset the engine is not nil, but its
+// verdict is indistinguishable from a nil engine's for every class,
+// destructive included. That is why the gate asks whether a policy
+// was named rather than whether an engine exists.
+func TestZeroPolicyEngineIsAsToothlessAsNil(t *testing.T) {
+	purge := &cobra.Command{
+		Use:         "purge",
+		Annotations: map[string]string{"kit/side-effect": "destructive"},
+	}
+
+	var nilEngine *policy.Engine
+	nilAllowed, _, _ := nilEngine.Authorize(purge)
+	assert.True(t, nilAllowed, "a nil engine permits a destructive command")
+
+	zero := policy.NewEngine(policy.Policy{}, 0)
+	zeroAllowed, _, _ := zero.Authorize(purge)
+	assert.True(t, zeroAllowed,
+		"a --policy-less engine permits a destructive command too")
+	assert.Nil(t, zero.Policy().Allow,
+		"no policy loaded means no allow map, which is what default-permits")
+
+	// A named policy that declares the class is what actually gates.
+	loaded := policy.NewEngine(policy.Policy{
+		Name:  "locked",
+		Allow: map[policy.SideEffect][]string{policy.SideEffectDestructive: {}},
+	}, 0)
+	gated, _, reason := loaded.Authorize(purge)
+	assert.False(t, gated, "a loaded policy can refuse")
+	assert.Contains(t, reason, "policy:")
+}
+
+func TestNonLoopbackWithoutPolicyIsRefusedAtValidate(t *testing.T) {
+	// Auth is configured, so the authentication gate is satisfied and
+	// the refusal under test is the policy one alone.
+	r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", Auth: bearer(nil)}))
+
+	err := runServeExpect(t, r, []string{"serve", "api"}, 2*time.Second)
+	oe := usageErr(t, err)
+	assert.Equal(t, refusalNoPolicy, oe.Message)
+	assert.Empty(t, apiSvc(t, r).Addr(), "nothing may bind when validation refuses")
+
+	// The supervisor form validates the same way.
+	r = authRoot(t, WithAPI(APIConfig{Addr: ":0", Auth: bearer(nil)}))
+	oe = usageErr(t, runServeExpect(t, r, []string{"serve"}, 2*time.Second))
+	assert.Contains(t, oe.Message, `addr: ":0" is not a loopback address and no delegation policy is configured`)
+
+	// --addr on the command line cannot widen what the config could not.
+	r = authRoot(t, WithAPI(APIConfig{Auth: bearer(nil)}))
+	oe = usageErr(t, runServeExpect(t, r,
+		[]string{"serve", "api", "--addr", "0.0.0.0:0"}, 2*time.Second))
+	assert.Equal(t, refusalNoPolicy, oe.Message)
+
+	// An unauthenticated non-loopback surface is refused for the
+	// authentication reason first: that gate runs before this one, so
+	// the message names the missing Auth rather than the missing
+	// policy. Fixing only the policy still leaves it refused.
+	r = authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0"}))
+	oe = usageErr(t, runServeExpect(t, r, []string{"serve", "api"}, 2*time.Second))
+	assert.Equal(t, refusalNoAuth, oe.Message)
+}
+
+// TestLoopbackWithoutPolicyServes is the regression this fix must not
+// cause: local serving keeps allow-by-default, with no policy and no
+// opt-in, because that is the development path.
+func TestLoopbackWithoutPolicyServes(t *testing.T) {
+	r := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
+	base, stop := serveAPI(t, r)
+	defer stop()
+	resp, body := get(t, base+"/v1/commands/list", nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+
+	// Every loopback spelling serves, including the IPv6 literal and
+	// the name every guide uses.
+	for _, addr := range []string{"localhost:0", "[::1]:0"} {
+		t.Run(addr, func(t *testing.T) {
+			r := authRoot(t, WithAPI(APIConfig{Addr: addr}))
+			_, stop := serveAPI(t, r)
+			stop()
+		})
+	}
+}
+
+// TestNonLoopbackWithPolicyServes proves the ordinary secure path is
+// open: name a policy and the surface serves beyond loopback with no
+// opt-in at all.
+func TestNonLoopbackWithPolicyServes(t *testing.T) {
+	r := policyRoot(
+		t,
+		policy.Policy{
+			Name:  "remote",
+			Allow: map[policy.SideEffect][]string{policy.SideEffectDestructive: {}},
+		},
+		APIConfig{Addr: "0.0.0.0:0"},
+	)
+	base, stop := serveAPI(t, r, "--policy", "remote")
+	defer stop()
+
+	local := strings.Replace(base, "0.0.0.0", "127.0.0.1", 1)
+	resp, body := get(t, local+"/v1/commands/list",
+		map[string]string{"Authorization": "Bearer alice"})
+	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+
+	// The policy that unlocked the address is the one enforcing it:
+	// the destructive command it refuses is refused over REST.
+	resp, body = postJSON(t, local+"/v1/commands/purge", `{}`,
+		map[string]string{"Authorization": "Bearer alice"})
+	assert.NotEqual(t, http.StatusOK, resp.StatusCode, string(body))
+}
+
+// TestInsecureNoPolicyOptIn is the escape: an adopter who wants an
+// open remote surface says so, in their own wiring, and it serves.
+func TestInsecureNoPolicyOptIn(t *testing.T) {
+	cases := map[string]func(*Root) []string{
+		"flag": func(*Root) []string {
+			return []string{"--" + insecureNoPolicyFlag}
+		},
+		"config key": func(r *Root) []string {
+			r.Viper.Set("services.api.insecure_no_policy", true)
+			return nil
+		},
+		"APIConfig": func(r *Root) []string {
+			r.apiCfg.InsecureNoPolicy = true
+			return nil
+		},
+	}
+	for name, arrange := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", Auth: bearer(nil)}))
+			args := arrange(r)
+			base, stop := serveAPI(t, r, args...)
+			defer stop()
+			resp, body := get(t,
+				strings.Replace(base, "0.0.0.0", "127.0.0.1", 1)+"/v1/commands/list",
+				map[string]string{"Authorization": "Bearer alice"})
+			assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+		})
+	}
+
+	t.Run("config key false overrides the code default", func(t *testing.T) {
+		r := authRoot(t, WithAPI(APIConfig{
+			Addr: "0.0.0.0:0", Auth: bearer(nil), InsecureNoPolicy: true,
+		}))
+		r.Viper.Set("services.api.insecure_no_policy", false)
+		oe := usageErr(t, runServeExpect(t, r, []string{"serve", "api"}, 2*time.Second))
+		assert.Equal(t, refusalNoPolicy, oe.Message)
+	})
+
+	t.Run("flag overrides a config key", func(t *testing.T) {
+		r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", Auth: bearer(nil)}))
+		r.Viper.Set("services.api.insecure_no_policy", false)
+		_, stop := serveAPI(t, r, "--"+insecureNoPolicyFlag)
+		stop()
+	})
+
+	t.Run("the flag is registered beside --insecure-remote", func(t *testing.T) {
+		r := authRoot(t, WithAPI(APIConfig{}))
+		for _, c := range r.Cmd.Commands() {
+			if c.Name() == "serve" {
+				require.NotNil(t, c.Flags().Lookup(insecureNoPolicyFlag))
+			}
+		}
+	})
+
+	t.Run("it does not waive the authentication gate", func(t *testing.T) {
+		// The two opt-ins are separate refusals: waiving the policy
+		// one leaves an unauthenticated surface still refused.
+		r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", InsecureNoPolicy: true}))
+		oe := usageErr(t, runServeExpect(t, r, []string{"serve", "api"}, 2*time.Second))
+		assert.Equal(t, refusalNoAuth, oe.Message)
+	})
+}
+
+// TestInsecureRemoteDoesNotWaiveThePolicyGate is the other half of
+// the separation: the two keys answer different questions, so
+// accepting unauthenticated callers is not also an acceptance that
+// they may run anything. An adopter who set only insecure_remote
+// gets the policy refusal, and must say the second thing too.
+func TestInsecureRemoteDoesNotWaiveThePolicyGate(t *testing.T) {
+	for name, arrange := range map[string]func(*Root) []string{
+		"flag": func(*Root) []string { return []string{"--insecure-remote"} },
+		"config key": func(r *Root) []string {
+			r.Viper.Set("services.api.insecure_remote", true)
+			return nil
+		},
+		"APIConfig": func(r *Root) []string {
+			r.apiCfg.InsecureRemote = true
+			return nil
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0"}))
+			args := arrange(r)
+			oe := usageErr(t, runServeExpect(t, r,
+				append([]string{"serve", "api"}, args...), 2*time.Second))
+			assert.Equal(t, refusalNoPolicy, oe.Message,
+				"insecure_remote waives authentication, not the policy requirement")
+		})
+	}
+
+	// Both together serve: each key answers its own question.
+	r := authRoot(t, WithAPI(APIConfig{
+		Addr: "0.0.0.0:0", InsecureRemote: true, InsecureNoPolicy: true,
+	}))
+	base, stop := serveAPI(t, r)
+	defer stop()
+	resp, body := get(t,
+		strings.Replace(base, "0.0.0.0", "127.0.0.1", 1)+"/v1/commands/list", nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+}
+
+// TestSocketUnaffectedByPolicyExposureGate: the socket service is
+// loopback by construction — a 0600 unix socket has no listen
+// address to be remote on — so the gate must not reach it. It serves
+// with no policy and no opt-in.
+func TestSocketUnaffectedByPolicyExposureGate(t *testing.T) {
+	path := tmpSocket(t)
+	r := authRoot(t, WithSocket(SocketConfig{Path: path}))
+	stop := serveSocket(t, r, path)
+	defer stop()
+
+	resp := socketCall(t, path, socket.Request{Path: []string{"list"}})
+	require.True(t, resp.Ok, "%+v", resp.Error)
+
+	// And the exposure gate is genuinely absent rather than merely
+	// satisfied: the same root has no policy and no opt-in set.
+	assert.False(t, r.servePolicyConfigured(),
+		"the socket serves with no policy configured")
 }
 
 // --- Context propagation ---------------------------------------------
