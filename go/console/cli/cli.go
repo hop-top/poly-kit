@@ -589,8 +589,10 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// plumbing. Values reach leaves via the netglobals hook (see
 	// netglobals.go) which stamps them onto the command context.
 	pf.Bool(offlineFlag, false,
-		"Disable all network access. Highest-precedence override: flips off "+
-			"per-command network opt-ins (peer discovery, sync, GitHub, push).")
+		"Disable network access. Highest-precedence override: flips off "+
+			"per-command network opt-ins (peer discovery, sync, GitHub, push). "+
+			"Enforced beneath net/http and any client routed through "+
+			"netpolicy.GuardDial; loopback and diagnostics stay exempt.")
 	_ = v.BindPFlag(offlineFlag, pf.Lookup(offlineFlag))
 
 	// Tool-specific extra persistent flags. When a pointer destination

@@ -3,10 +3,16 @@
 // resolved value through the command context so leaves consume it
 // without reaching back into the Root.
 //
-// --offline disables all network access. It is the highest-precedence
+// --offline disables network access. It is the highest-precedence
 // override: per-command network opt-ins (peer discovery, sync
 // replication, GitHub repo creation, initial push, upgrade checks)
 // must behave as if their corresponding opt-out flag had been passed.
+//
+// Enforcement is not process-wide, because Go provides no hook beneath
+// net.Dial. It covers net/http (netpolicy.Install) and any client whose
+// dialer is routed through netpolicy.GuardDial. A dependency that opens
+// its own socket and exposes no dialer hook is not covered; see the
+// netpolicy package doc, "Scope", for the exact boundary.
 // The override only forces opt-outs ON — it never un-sets an
 // explicitly passed --no-* flag.
 
