@@ -427,10 +427,10 @@ Supported: all chart types.
 
 | | |
 |---|---|
-| <img src="assets/line.svg" width="400" alt="Line chart"> | <img src="assets/bar.svg" width="400" alt="Bar chart"> |
-| <img src="assets/scatter.svg" width="400" alt="Scatter chart"> | <img src="assets/column.svg" width="400" alt="Column chart"> |
-| <img src="assets/pie.svg" width="300" alt="Pie chart"> | <img src="assets/heatmap.svg" width="300" alt="Heatmap chart"> |
-| <img src="assets/sparkline.svg" width="300" alt="Sparkline chart"> | |
+| <img src="../../../incubator/qmochi/assets/line.svg" width="400" alt="Line chart"> | <img src="../../../incubator/qmochi/assets/bar.svg" width="400" alt="Bar chart"> |
+| <img src="../../../incubator/qmochi/assets/scatter.svg" width="400" alt="Scatter chart"> | <img src="../../../incubator/qmochi/assets/column.svg" width="400" alt="Column chart"> |
+| <img src="../../../incubator/qmochi/assets/pie.svg" width="300" alt="Pie chart"> | <img src="../../../incubator/qmochi/assets/heatmap.svg" width="300" alt="Heatmap chart"> |
+| <img src="../../../incubator/qmochi/assets/sparkline.svg" width="300" alt="Sparkline chart"> | |
 
 ## Auto Chart Selection
 

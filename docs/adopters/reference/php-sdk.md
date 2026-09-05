@@ -263,10 +263,10 @@ echo (string) $response->getBody();
 
 Two details matter when choosing a PSR-7 bridge:
 
-* **Preserve repeated headers.** The protocol tolerates a header sent twice
+- **Preserve repeated headers.** The protocol tolerates a header sent twice
   with identical values but rejects conflicting duplicates, which a
   comma-joined `$_SERVER['HTTP_*']` value cannot express.
-* **Do not re-encode the body.** Responses are already serialized; passing
+- **Do not re-encode the body.** Responses are already serialized; passing
   them through a JSON layer will reorder keys and break parity.
 
 ### Safety
@@ -511,9 +511,9 @@ during a request adds the round-trip to that request's wall-clock time. The
 class deliberately does **not** auto-register a shutdown flush. In FPM the
 recommended pattern is:
 
-* Use the default `JsonlSink` so writes happen at shutdown after the
+- Use the default `JsonlSink` so writes happen at shutdown after the
   response is sent.
-* Or, if HTTPS is required, construct the sink yourself and only call
+- Or, if HTTPS is required, construct the sink yourself and only call
   `flush()` from a long-running worker — never from a request hot path.
 
 CLI processes can safely register the shutdown flush themselves:
@@ -558,10 +558,10 @@ configured client when the `baseURL` is not a trusted constant.
 `Redactor` applies best-effort PII / token-prefix replacement to all
 attributes in Full mode:
 
-* Email addresses → `<redacted:email>`
-* IPv4 / IPv6 → `<redacted:ipv4>` / `<redacted:ipv6>`
-* `$HOME` paths → `$HOME`
-* Common token shapes (`sk-…`, `ghp_…` / `ghu_…` / `gho_…` / `ghs_…` /
+- Email addresses → `<redacted:email>`
+- IPv4 / IPv6 → `<redacted:ipv4>` / `<redacted:ipv6>`
+- `$HOME` paths → `$HOME`
+- Common token shapes (`sk-…`, `ghp_…` / `ghu_…` / `gho_…` / `ghs_…` /
   `ghr_…`, `xoxb-…`) → `<redacted:token>`
 
 Adopters can supply a custom callback for project-specific patterns:
@@ -587,6 +587,6 @@ consumption should call the Go runtime.
 
 ### Cross-references
 
-* `go/runtime/telemetry/` — canonical implementation
+- `go/runtime/telemetry/` — canonical implementation
 
 <!-- release: track hop-top/cite ^0.2.0 -->

@@ -1,13 +1,12 @@
 # qmochi 🍡
 
-> **Incubating.** Developed in
-> [hop-top/poly-kit](https://github.com/hop-top/poly-kit/tree/main/incubator/qmochi);
+> **Incubating.** Developed in [hop-top/poly-kit](https://github.com/hop-top/poly-kit/tree/main/incubator/qmochi);
 > submit issues, PRs and discussions there.
 
 Terminal charting for Go, built for
-[Bubble Tea](https://github.com/charmbracelet/bubbletea). High-density
-Unicode rendering with fractional blocks and Braille characters.
-Value-oriented API: define, normalize, render. Optional SVG output.
+[Bubble Tea](https://github.com/charmbracelet/bubbletea). High-density Unicode
+rendering with fractional blocks and Braille characters. Value-oriented API:
+define, normalize, render. Optional SVG output.
 
 ```sh
 go get hop.top/qmochi
@@ -29,6 +28,7 @@ go get hop.top/qmochi
 ## Styles and effects
 
 Per-chart or per-series; `Series.Style` overrides `Chart.Style`.
+
 | Constant | Glyphs / type | Used in |
 |----------|---------------|---------|
 | `SolidBlock` | `▏▎▍▌▋▊▉█` | Bar, Column |
@@ -43,20 +43,20 @@ Per-chart or per-series; `Series.Style` overrides `Chart.Style`.
 
 ## Pipeline
 
+Raw series and points in; pick a chart type (or set one); normalize;
+render to the terminal or to SVG.
+
 ```
 data    → Auto(data) | AutoWithLLM(ctx, data, llm) → Chart
 Chart   → Normalize(chart)                         → Dataset
 Dataset → Render*(chart, ds, ly) | RenderSVG(chart, ds)
 ```
 
-Raw series and points in; pick a chart type (or set one); normalize to
-align series, fill gaps and validate; render to the terminal or to SVG.
-
 ## Bubble Tea integration
 
-Stateful `Model` handles `tea.WindowSizeMsg` automatically. Dynamic
-updates arrive as `qmochi.SetChartMsg` (replace chart config and data)
-and `qmochi.SetSizeMsg` (override dimensions).
+Stateful `Model` handles `tea.WindowSizeMsg` automatically. Dynamic updates
+arrive as `qmochi.SetChartMsg` (replace chart config and data) and
+`qmochi.SetSizeMsg` (override dimensions).
 
 ```go
 m := qmochi.NewModel(chart)
@@ -66,15 +66,15 @@ m.View().Content         // in View
 
 ## Normalization rules
 
-Preserves series order, style, color and effect; uses first-seen label
-order across all series; zero-fills missing values; rejects empty series
-names and duplicate labels. Scatter charts skip label validation, using
-the X field instead.
+`Normalize` aligns series and validates: preserves series order, style,
+color and effect; uses first-seen label order across all series;
+zero-fills missing values; rejects empty series names and duplicate
+labels. Scatter charts skip label validation, using the X field instead.
 
 ## See also
 
 - [qmochi chart gallery](../../docs/adopters/reference/qmochi-charts.md):
-  every chart type with its options and worked example, SVG output,
-  automatic and LLM-assisted chart selection
+  every chart type with options and a worked example, SVG output,
+  automatic and LLM-assisted selection
 
 MIT licensed.
