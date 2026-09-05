@@ -50,6 +50,7 @@ how kit itself is implemented.
 
 **Reference**
 
+- [`reference/go-primitives.md`](reference/go-primitives.md) — index of every Go primitive kit ships, grouped by what you are trying to do
 - [`reference/cli-api-reference.md`](reference/cli-api-reference.md) — Go CLI factory
 - [`reference/ts-api-reference.md`](reference/ts-api-reference.md) — TypeScript CLI factory
 - [`reference/py-api-reference.md`](reference/py-api-reference.md) — Python CLI factory
