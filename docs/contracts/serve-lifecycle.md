@@ -1096,34 +1096,25 @@ that has not reported ready inside `services.<name>.ready_timeout` is
 a start failure.
 
 Six lifecycle transitions MUST be surfaced. Which sink carries them is
-conditional, but **at least one MUST**, and the vocabulary is fixed
-whichever does:
+conditional, but **at least one MUST**, and the vocabulary below is
+fixed whichever does.
 
-| Transition                            | Emitted when                                  |
-|---------------------------------------|-----------------------------------------------|
-| `kit.serve.service.started`           | start has been invoked for a service          |
-| `kit.serve.service.ready_reported`    | a service reported ready                      |
-| `kit.serve.service.failed`            | a service returned an error                   |
-| `kit.serve.service.stopped`           | a service's stop returned                     |
-| `kit.serve.supervisor.ready_reported` | every started service is ready                |
-| `kit.serve.supervisor.stopped`        | the supervisor finished its shutdown sequence |
-
-**A port that has an event bus MUST publish them under exactly these
-topic strings.** A subscriber is written against the string and does
-not know which language published it, so the strings are not
-negotiable for a port that publishes at all. Not every SDK has a bus —
-PHP has none today — and this section does not require one to be built
-before `serve` can ship. A port without a bus satisfies the
-requirement through the log alone.
+**A port that has an event bus MUST publish them under exactly the
+topic strings in the table.** A subscriber is written against the
+string and does not know which language published it, so the strings
+are not negotiable for a port that publishes at all. Not every SDK
+has a bus — PHP has none today — and this section does not require one
+to be built before `serve` can ship. A port without a bus satisfies
+the requirement through the log alone.
 
 Fixed for either sink:
 
-| Topic                                 | Emitted when                                  |
+| Transition                            | Surfaced when                                 |
 |---------------------------------------|-----------------------------------------------|
-| `kit.serve.service.started`           | `Start` has been invoked for a service        |
+| `kit.serve.service.started`           | a service has been asked to start             |
 | `kit.serve.service.ready_reported`    | a service reported ready                      |
-| `kit.serve.service.failed`            | a service returned a non-nil error            |
-| `kit.serve.service.stopped`           | a service's stop returned                     |
+| `kit.serve.service.failed`            | a service failed                              |
+| `kit.serve.service.stopped`           | a service finished stopping                   |
 | `kit.serve.supervisor.ready_reported` | every started service is ready                |
 | `kit.serve.supervisor.stopped`        | the supervisor finished its shutdown sequence |
 
