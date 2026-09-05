@@ -58,15 +58,54 @@ func buildHelpStub(t *testing.T) string {
 
 var helpStubANSI = regexp.MustCompile(`\x1b\[[^m]*m`)
 
+// hermeticStubEnv builds the stub's environment from nothing rather
+// than inheriting the runner's, so these assertions cannot be moved by
+// a developer's or CI's ambient configuration.
+//
+// That matters more here than it would for most exec-based tests: the
+// stub is a full kit CLI, and kit resolves config from the environment
+// on several paths. viper's AutomaticEnv binds any STUBHELP_* variable
+// to a matching flag; the XDG dirs steer config, data, state and cache
+// lookup; NO_COLOR and HOP_QUIET_HINTS change what is written. Any of
+// those could alter an exit code or a first line, which is exactly
+// what these tests read.
+//
+// Every entry below is present for a reason:
+//
+//   - HOME because Go and the OS both consult it, and a stub with none
+//     may fall back to reading the real user's home.
+//   - TMPDIR pointed at the test's own dir so anything written lands
+//     there and is cleaned up with it.
+//   - XDG_{CONFIG,DATA,STATE,CACHE}_HOME pointed at empty test-scoped
+//     dirs, so config discovery finds nothing rather than the
+//     developer's real files.
+//   - NO_COLOR so output is plain regardless of the terminal.
+//
+// Nothing is inherited, not even PATH: the stub execs no child, and it
+// was verified to run every case this file asserts under a completely
+// empty environment with identical exit codes and output. So no
+// ambient variable is silently load-bearing, and STUBHELP_*, HOP_*,
+// KIT_*, TERM and the rest are deliberately absent.
+func hermeticStubEnv(t *testing.T) []string {
+	t.Helper()
+	dir := t.TempDir()
+	return []string{
+		"HOME=" + dir,
+		"TMPDIR=" + dir,
+		"XDG_CONFIG_HOME=" + filepath.Join(dir, "config"),
+		"XDG_DATA_HOME=" + filepath.Join(dir, "data"),
+		"XDG_STATE_HOME=" + filepath.Join(dir, "state"),
+		"XDG_CACHE_HOME=" + filepath.Join(dir, "cache"),
+		"NO_COLOR=1",
+	}
+}
+
 // runHelpStub invokes the built stub and returns its exit code and its
 // combined, ANSI-stripped output.
 func runHelpStub(t *testing.T, args ...string) (int, string) {
 	t.Helper()
 	cmd := exec.Command(buildHelpStub(t), args...)
-	// A stub inheriting the test runner's environment would pick up
-	// whatever config the developer's machine has; keep it bare so the
-	// exit codes are the binary's own.
-	cmd.Env = append(os.Environ(), "NO_COLOR=1")
+	cmd.Env = hermeticStubEnv(t)
 	out, err := cmd.CombinedOutput()
 	code := 0
 	if err != nil {
