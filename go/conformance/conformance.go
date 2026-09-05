@@ -1,6 +1,13 @@
 // Package conformance is the kit-shipped Layer-A test helper that
 // adopters import as `kitconformance` to assert their CLI root
-// satisfies the Layer-A contract:
+// satisfies the Layer-A contract.
+//
+// This is the package adopters want. Do not confuse it with
+// hop.top/kit/go/console/cli/conformance, which is the cobra command
+// tree behind the `kit conformance` subcommand: that package exports
+// Cmd() and exit-code sentinels, not AssertCLI.
+//
+// The contract asserted here:
 //
 //   - kit/side-effect + kit/idempotent on every runnable leaf
 //   - Short / Long discipline (§2 hard tier)

@@ -4,6 +4,11 @@
 // 12fcc track family; names not yet implemented are reserved so the
 // help tree is honest about the eventual surface.
 //
+// This package is the command tree, not a test helper. Adopters
+// asserting their own CLI against the Layer-A contract want
+// hop.top/kit/go/conformance and its AssertCLI, which this package
+// does not export.
+//
 // Subcommands:
 //
 //	kit conformance verify-no-leak    [--staged|--diff=<spec>|--audit|--paths=...] [--format json|human]

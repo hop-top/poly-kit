@@ -1,11 +1,14 @@
 # `kit` CLI conformance (Layer-A / 12fcc-static)
 
-`hop.top/kit/go/console/cli/conformance` is the adopter-facing
-surface for the **12-factor CLI conformance contract**, Wave 1
-(static-track). Import it as `kitconformance` from a unit test:
+`hop.top/kit/go/conformance` is the adopter-facing surface for the
+**12-factor CLI conformance contract**, Wave 1 (static-track). It is
+the library you import from a unit test — not to be confused with
+`hop.top/kit/go/console/cli/conformance`, which is the cobra command
+tree behind the `kit conformance` subcommand and exports no test
+helpers. Import the library as `kitconformance`:
 
 ```go
-import kitconformance "hop.top/kit/go/console/cli/conformance"
+import kitconformance "hop.top/kit/go/conformance"
 
 func TestCLIConforms(t *testing.T) {
     kitconformance.AssertCLI(t, buildRoot())
