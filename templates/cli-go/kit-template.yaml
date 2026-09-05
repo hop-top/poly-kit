@@ -1,6 +1,6 @@
 name: cli-go
-description: "Single-binary Go CLI with kit conventions (cobra + viper)"
-kit_version: ">=0.4.0"
+description: "Single-binary Go CLI on a kit root: served commands, api + socket services (cobra)"
+kit_version: ">=0.5.0-alpha.3"
 
 variables:
   - name: Name

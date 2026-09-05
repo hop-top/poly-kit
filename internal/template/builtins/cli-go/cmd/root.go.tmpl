@@ -1,46 +1,124 @@
+// Package cmd wires {{.Name}}'s commands onto a kit root.
+//
+// The root carries the kit global flags (--format, --quiet, --no-color,
+// -c/--config, -v/--verbose, ...), the reserved `status` and `spec`
+// verbs, and the `serve` supervisor with the built-in api and socket
+// services registered. Every command added to root.Cmd is reachable
+// from the shell and, under `serve`, over REST and the Unix socket
+// behind the same safety policy — there is nothing to mount.
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+
+	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/core/config"
 	"{{.Module}}/internal/version"
 )
 
-var rootCmd = &cobra.Command{
-	Use:     "{{.Name}}",
-	Short:   "{{.Description}}",
-	Version: version.Version(),
+// root is built once, at package initialization, so each command
+// file in this package registers itself from an init function
+// (see hello.go).
+var root = newRoot()
+
+func newRoot() *cli.Root {
+	var r *cli.Root
+	r = cli.New(cli.Config{
+		Name:    "{{.Name}}",
+		Version: version.Version(),
+		Short:   "{{.Description}}",
+		Hooks: cli.Hooks{
+			PrePersistentRunE: func(*cobra.Command, []string) error { return loadConfig(r) },
+		},
+	},
+		// `status` is the introspection verb every kit root is validated
+		// to carry.
+		cli.WithStatus(cli.StatusConfig{}),
+		// `serve api`: the command tree over REST on 127.0.0.1:8080, with
+		// discovery at /v1/commands and an OpenAPI document. Enabled by
+		// default under a bare `serve`. A non-loopback address needs
+		// Auth, or services.api.insecure_remote by name.
+		cli.WithAPI(cli.APIConfig{}),
+		// `serve socket`: the same tree over an owner-only Unix socket.
+		// Registered but not enabled; `serve socket` starts it, or set
+		// services.socket.enabled in the config file.
+		cli.WithSocket(cli.SocketConfig{}),
+	)
+	return r
 }
 
+// Execute runs the CLI and returns the error the root reports.
 func Execute() error {
-	return rootCmd.Execute()
+	return root.Execute(context.Background())
 }
 
-func init() {
-	cobra.OnInitialize(initConfig)
-	rootCmd.PersistentFlags().StringP(
-		"format", "f", "text",
-		"Output format (text, json, yaml)",
-	)
-	rootCmd.PersistentFlags().BoolP(
-		"verbose", "v", false,
-		"Verbose output",
-	)
-}
-
-func initConfig() {
-	viper.SetEnvPrefix("{{.NameUpper}}")
-	viper.AutomaticEnv()
-	home, err := os.UserHomeDir()
-	if err == nil {
-		viper.AddConfigPath(
-			fmt.Sprintf("%s/.config/{{.Name}}", home),
-		)
+// ExitCode maps an error returned by Execute onto the process exit
+// code. Kit's structured errors carry their own — 2 for a usage
+// error, 3 for not found, 5 for unauthorized, and so on — and an
+// error without one exits 1.
+func ExitCode(err error) int {
+	type withCLIError interface{ AsCLIError() *output.Error }
+	var ce withCLIError
+	if errors.As(err, &ce) {
+		if out := ce.AsCLIError(); out != nil && out.ExitCode != 0 {
+			return out.ExitCode
+		}
 	}
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	_ = viper.ReadInConfig()
+	return 1
+}
+
+// loadConfig layers the configuration into root.Viper before any
+// command runs, in kit's precedence: flags beat the environment
+// ({{.NameUpper}}_<KEY>, dots as underscores), which beats the config
+// files, which beat defaults. `-c <path>` merges one more file and
+// `-c key=value` overrides one key; both come from kit's own flag.
+//
+// Everything `serve` reads — services.api.addr, services.api.enabled,
+// services.socket.path, ... — resolves through here.
+func loadConfig(r *cli.Root) error {
+	if err := config.BindEnv(r.Viper, "{{.NameUpper}}"); err != nil {
+		return err
+	}
+	extra, overrides, err := r.ConfigArgs()
+	if err != nil {
+		return err
+	}
+	// System, then user (~/.config/{{.Name}}/config.yaml), then the
+	// nearest project marker: later layers win.
+	layers := config.OptionsForTool("{{.Name}}")
+	for _, path := range []string{layers.SystemConfigPath, layers.UserConfigPath, layers.ProjectConfigPath} {
+		if err := mergeConfigFile(r, path, false); err != nil {
+			return err
+		}
+	}
+	for _, path := range extra {
+		if err := mergeConfigFile(r, path, true); err != nil {
+			return err
+		}
+	}
+	for key, value := range overrides {
+		r.Viper.Set(key, value)
+	}
+	return nil
+}
+
+// mergeConfigFile merges one YAML file into root.Viper. A missing
+// file in a conventional slot is skipped; a missing file the user
+// named with -c is an error.
+func mergeConfigFile(r *cli.Root, path string, required bool) error {
+	if path == "" {
+		return nil
+	}
+	r.Viper.SetConfigFile(path)
+	err := r.Viper.MergeInConfig()
+	if err == nil || (!required && errors.Is(err, fs.ErrNotExist)) {
+		return nil
+	}
+	return fmt.Errorf("config %s: %w", path, err)
 }

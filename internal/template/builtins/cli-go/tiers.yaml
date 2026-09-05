@@ -3,7 +3,7 @@
 #
 # Tier 1 = lint/build only
 # Tier 2 = + CI workflows
-# Tier 3 = + CLI wiring (main + cmd)
+# Tier 3 = + CLI wiring (main + cmd: a kit root with serve, api, socket)
 # Tier 4 = + full conformance (README, docs, changelogs)
 #
 # Output paths (post-suffix-strip, post-substitution).
@@ -17,6 +17,7 @@ files:
 
   "main.go": [3, 4]
   "cmd/root.go": [3, 4]
+  "cmd/hello.go": [3, 4]
   "internal/version/version.go": [3, 4]
 
   "README.md": [4]
