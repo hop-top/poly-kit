@@ -15,6 +15,10 @@ func init() {
 		if table == "" {
 			table = kv.DefaultTable
 		}
+		// kv.Opener carries no context, so the open-time ping cannot be
+		// policy-checked from here; widening Opener would break every
+		// driver and adopter. New still installs the guarded dial hook,
+		// so every query through the returned Store is covered.
 		return New(cfg.DSN, table)
 	})
 }

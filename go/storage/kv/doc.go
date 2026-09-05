@@ -19,6 +19,14 @@
 //	kv/etcd      "etcd"      distributed etcd cluster
 //	kv/tidb      "tidb"      TiDB or any MySQL-compatible server
 //
+// # Network policy
+//
+// The tidb driver routes its dial through netpolicy.GuardDial, so an
+// --offline run refuses remote queries while loopback stays reachable.
+// Open cannot police the initial connect: Opener takes no context, and
+// the offline marker travels on one. Callers holding a context should
+// use tidb.NewContext, which checks the open-time ping too.
+//
 // Registration is by import rather than by build tag so that a binary only
 // carries the dependencies of the backends it actually opens. That matters
 // most for etcd, which brings in gRPC, protobuf and zap; a program that only
