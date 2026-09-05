@@ -841,9 +841,12 @@ projection withheld is answered by your handler — as document type
 `v1` — rather than by a 404. Kit's own document engine is in exactly
 this position. The projection's mounted routes are more specific and
 still win, and `GET /v1/commands` still lists what is withheld and
-why; a client must read discovery rather than probe routes. A
-`/v1/commands/` guard route is not the fix: Go's mux refuses it as
-ambiguous against `/{type}/{id}/history`.
+why; a client must read discovery rather than probe routes. Treat the
+`/v1/commands` prefix as reserved for the projection: mount nothing
+of your own under it, and keep a first-segment wildcard route from
+claiming it where your wire protocol allows. A `/v1/commands/` guard
+route is not the fix: Go's mux refuses it as ambiguous against
+`/{type}/{id}/history`.
 
 ### The destructive command has no route
 
@@ -857,44 +860,6 @@ you do:
 
 ```json
 {"exit_code":5,"stderr":"UNAUTHORIZED: destructive command mytool widget delete refused: --confirm=no (or non-TTY default)\n"}
-```
-
-### Setting `Auth` refuses to start
-
-```console
-cli validation failed: 2 leaf command(s) missing kit/side-effect annotation: mytool token claims, mytool token decode; 2 leaf command(s) missing kit/idempotent annotation: mytool token claims, mytool token decode; 2 leaf command(s) missing Long: mytool token claims, mytool token decode
-```
-
-`WithAPI` mounts a `token` command whenever `Auth` is set, and its two
-leaves arrive without the annotations a validating root requires. Until
-kit annotates them at the source, carry them yourself after `cli.New`
-— both leaves are reads:
-
-```go
-package migrate
-
-import "hop.top/kit/go/console/cli"
-
-// annotateTokenLeaves gives kit's token claims and token decode the
-// annotations the validator requires.
-func annotateTokenLeaves(root *cli.Root) {
-    for _, c := range root.Cmd.Commands() {
-        if c.Name() != "token" {
-            continue
-        }
-        for _, leaf := range c.Commands() {
-            if leaf.Long == "" {
-                leaf.Long = leaf.Short + "."
-            }
-            if _, ok := cli.GetSideEffect(leaf); !ok {
-                cli.SetSideEffect(leaf, cli.SideEffectRead)
-            }
-            if _, ok := cli.GetIdempotency(leaf); !ok {
-                cli.SetIdempotency(leaf, cli.IdempotencyYes)
-            }
-        }
-    }
-}
 ```
 
 ### The socket path is too long

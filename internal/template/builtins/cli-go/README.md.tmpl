@@ -60,10 +60,25 @@ Conformance proof: [`docs/12-factor-conformance.md`](docs/12-factor-conformance.
 Every command in `cmd/` is also a route. There is nothing to mount:
 
 ```sh
-{{.Name}} serve --list        # api and socket: configured, enabled, ready
+{{.Name}} serve --list        # the registered services and their state
 {{.Name}} serve api           # REST on 127.0.0.1:8080
 {{.Name}} serve socket        # the same commands over an owner-only Unix socket
 {{.Name}} serve               # every enabled service under one lifecycle
+```
+
+`serve --list` names every registered service and, per service,
+whether the supervisor has a configuration for it (CONFIGURED — from
+your config file, or from `api`'s built-in default), whether a bare
+`serve` would start it (ENABLED — `api` is on by default, `socket` is
+off until you enable it), and whether it is accepting work right now
+(READY — true only inside a running `serve`, so always false when you
+ask from the shell). A fresh project prints:
+
+```console
+$ {{.Name}} serve --list
+SERVICE              CONFIGURED  ENABLED  READY
+api                  true        true     false
+socket               false       false    false
 ```
 
 ```sh
