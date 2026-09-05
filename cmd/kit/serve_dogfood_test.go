@@ -77,6 +77,7 @@ func TestKitServe_ProjectsKitCommandsBehindTheGates(t *testing.T) {
 	}
 	assert.Equal(t, "self-hosting", got["serve"].Reason, "kit's serve is the process being talked to")
 	assert.Equal(t, "self-hosting", got["symlink"].Reason, "symlink relinks the binary that is serving")
+	assert.Equal(t, "self-hosting", got["conformance svc serve"].Reason, "a nested serve starts a server of its own")
 	for _, c := range doc.Commands {
 		assert.NotEmpty(t, c.Name, "discovery describes no nameless command: %+v", c)
 	}

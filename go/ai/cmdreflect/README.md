@@ -75,7 +75,7 @@ binary that is serving. Any one of three signals marks it:
 
 | Signal | Example |
 |--------|---------|
-| it sits under the depth-1 `serve` verb | `mytool serve`, `mytool serve socket` |
+| it is named `serve`, or sits under one, at any depth | `mytool serve`, `mytool serve socket`, `mytool svc serve` |
 | it declares `kit/network: ingress` | a `listen` command that accepts connections |
 | it carries `kit/self-hosting: true` | an `upgrade` that replaces the binary |
 

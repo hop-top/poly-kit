@@ -43,6 +43,7 @@ func TestReflectReasons(t *testing.T) {
 		{"child of a reserved verb is management-only", "mgmt status", false, ReasonManagementOnly},
 		{"serve is self-hosting by position", "serve", false, ReasonSelfHosting},
 		{"child of serve is self-hosting", "serve api", false, ReasonSelfHosting},
+		{"nested serve is self-hosting by name at any depth", "svc serve", false, ReasonSelfHosting},
 		{"ingress listener is self-hosting by network class", "listen", false, ReasonSelfHosting},
 		{"kit/self-hosting marks a self-modifying command", "upgrade", false, ReasonSelfHosting},
 
@@ -220,7 +221,7 @@ func TestSelfHostingSurvivesEveryRelaxation(t *testing.T) {
 		WithReserved(fakeReserved{"serve": true}),
 		AllowHidden(), AllowDeprecated(), AllowInteractive(), AllowReserved(),
 	)
-	for _, path := range []string{"serve", "serve api", "listen", "upgrade"} {
+	for _, path := range []string{"serve", "serve api", "svc serve", "listen", "upgrade"} {
 		d := tree.Lookup(path)
 		if d == nil {
 			t.Fatalf("no descriptor at %q", path)

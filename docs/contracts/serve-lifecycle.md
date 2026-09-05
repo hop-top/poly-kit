@@ -818,8 +818,10 @@ Rules:
   surface, and no reflection option lifts the reason. Running it
   inside a served invocation would start a server inside the server,
   or replace the binary that is serving. Any one of three signals
-  marks it: position under the depth-1 `serve` verb, which the
-  hierarchy above gives to exactly one command; a declared
+  marks it: the name `serve`, or a position under one, at any depth
+  — the depth-1 verb the hierarchy above gives to exactly one
+  command, and any nested `serve` that starts a server of its own; a
+  declared
   `kit/network: ingress`, because accepting connections is what a
   server does; or the explicit `kit/self-hosting: true`, which is how
   kit marks its own self-modifying commands and how an adopter marks
