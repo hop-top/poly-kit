@@ -183,19 +183,21 @@ Once registered:
 mytool config path                       # winning file (single line)
 mytool config paths                      # full chain
 mytool config paths --format json|yaml   # machine-readable
-mytool config paths --from <scope>       # filter to one scope
+mytool config paths --from <dir>         # resolve as if cwd were <dir>
 ```
 
 Flags:
 
 | Flag | Values | Default | Effect |
 |---|---|---|---|
-| `--format` | `table` \| `json` \| `yaml` | `table` | Output format. Inherits `--format` from root if set. |
-| `--from` | `default` \| `system` \| `user` \| `project` \| `flag` | (all) | Show only one scope row. `config path` ignores this — it always returns the winner. |
+| `--format` | `text` \| `json` \| `yaml` | `text` | Output format. Inherits `--format` from root if set. |
+| `--from` | any directory path | `os.Getwd()` | Resolve the chain as if the working directory were this path. Not a scope filter: every rung is still printed. Applies to `config path` too, which then reports the winner for that directory. |
 
-The path data is sourced from `core/config.Paths(cwd)`, which
-returns an ordered slice of `ResolvedPath` (`{Scope, Source, Exists,
-Wins}`). Every kit CLI MUST expose `path` and `paths`; see
+The path data comes from the `Resolver` the CLI registers, which
+returns an ordered slice of `ResolvedPath` (`{Path, Source, Scope,
+Exists}`), highest-precedence first. There is no `wins` field: the
+winner is the first entry with `exists: true`. Every kit CLI MUST
+expose `path` and `paths`; see
 `~/.ops/docs/cli-conventions-with-kit.md` §10.
 
 ## Related pages
