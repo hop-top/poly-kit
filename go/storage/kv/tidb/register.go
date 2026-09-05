@@ -1,13 +1,14 @@
 package tidb
 
 import (
+	"context"
 	"fmt"
 
 	"hop.top/kit/go/storage/kv"
 )
 
 func init() {
-	kv.RegisterBackend("tidb", func(cfg kv.Config) (kv.Store, error) {
+	kv.RegisterBackendContext("tidb", func(ctx context.Context, cfg kv.Config) (kv.Store, error) {
 		if cfg.DSN == "" {
 			return nil, fmt.Errorf("kv: tidb backend requires DSN")
 		}
@@ -15,10 +16,9 @@ func init() {
 		if table == "" {
 			table = kv.DefaultTable
 		}
-		// kv.Opener carries no context, so the open-time ping cannot be
-		// policy-checked from here; widening Opener would break every
-		// driver and adopter. New still installs the guarded dial hook,
-		// so every query through the returned Store is covered.
-		return New(cfg.DSN, table)
+		// NewContext checks the open-time ping against the policy on ctx,
+		// so kv.OpenContext refuses an offline remote connect here rather
+		// than only on the first query afterwards.
+		return NewContext(ctx, cfg.DSN, table)
 	})
 }

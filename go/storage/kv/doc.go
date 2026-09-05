@@ -21,11 +21,25 @@
 //
 // # Network policy
 //
-// The tidb driver routes its dial through netpolicy.GuardDial, so an
-// --offline run refuses remote queries while loopback stays reachable.
-// Open cannot police the initial connect: Opener takes no context, and
-// the offline marker travels on one. Callers holding a context should
-// use tidb.NewContext, which checks the open-time ping too.
+// OpenContext honors the network policy carried by its context, including
+// on the initial connect: an --offline run refuses a remote tidb or etcd
+// while loopback, unix sockets and the local file backends stay reachable.
+//
+// Drivers opt in by registering with RegisterBackendContext rather than
+// RegisterBackend, and all four shipped drivers do. Open keeps its
+// signature and simply supplies a background context, so it connects
+// without consulting the policy; prefer OpenContext wherever a context is
+// at hand. A third-party driver registered the old way still works —
+// OpenContext falls back to its Opener — but connects unpoliced, which is
+// the cost of leaving Opener intact.
+//
+// The two network drivers reach the policy by different seams, because
+// their libraries differ. tidb routes Config.DialFunc through
+// netpolicy.GuardDial, which the MySQL driver invokes with the context of
+// the query that triggered the dial. etcd cannot use that seam: gRPC dials
+// on its own background context, so the marker never arrives, and
+// clientv3.New returns before connecting at all. Its endpoints are instead
+// checked with netpolicy.CheckDial at open time, before the client exists.
 //
 // Registration is by import rather than by build tag so that a binary only
 // carries the dependencies of the backends it actually opens. That matters

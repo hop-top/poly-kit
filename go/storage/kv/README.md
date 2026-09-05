@@ -28,6 +28,32 @@ store, err := kv.Open(kv.Config{
 })
 ```
 
+## Network policy
+
+`kv.OpenContext` honors the `--offline` policy carried by its context,
+including on the initial connect: a remote `tidb` or `etcd` is refused,
+while loopback, unix sockets and the local file backends stay reachable.
+
+```go
+store, err := kv.OpenContext(ctx, kv.Config{
+    Backend:   "etcd",
+    Endpoints: []string{"etcd.internal:2379"},
+})
+```
+
+Drivers opt in by registering with `kv.RegisterBackendContext` instead of
+`kv.RegisterBackend`; all four shipped drivers do. `kv.Open` keeps its
+signature and supplies a background context, so it connects without
+consulting the policy — prefer `OpenContext` wherever a context is at
+hand. A third-party driver registered through the older `kv.Opener` still
+works, because `OpenContext` falls back to it, but connects unpoliced.
+
+The two network drivers reach the policy by different seams. `tidb` routes
+the MySQL driver's `Config.DialFunc` through `netpolicy.GuardDial`. `etcd`
+cannot use that seam — gRPC dials on its own background context, so the
+marker never arrives, and `clientv3.New` returns before connecting at all —
+so its endpoints are checked with `netpolicy.CheckDial` at open time.
+
 Registration is by import rather than by build tag so a binary carries
 only the dependencies of the backends it opens — importing `kv` alone
 pulls neither BadgerDB nor etcd's gRPC stack. Naming a backend whose

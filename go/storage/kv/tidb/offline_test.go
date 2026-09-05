@@ -145,11 +145,15 @@ func contains(s, sub string) bool {
 	return false
 }
 
-// The context-free New (and therefore kv.Open, whose Opener carries no
-// context) cannot police its own open-time ping. But the guarded dial
-// hook is installed regardless, so a Store reached through that path
-// still refuses on a later query with an offline context. This is the
-// coverage claim register.go makes; assert it rather than trusting it.
+// The context-free New cannot police its own open-time ping: it has no
+// context to read the marker from. The guarded dial hook is installed
+// regardless, so a Store reached through that path still refuses on a
+// later query with an offline context.
+//
+// kv.Open no longer reaches this path with a caller's policy — the driver
+// registers a context-carrying opener, so kv.OpenContext refuses the
+// connect outright — but New stays for callers holding no context, and
+// must not report a refusal it cannot know about.
 func TestNew_ContextFreeOpenStillGuardsLaterQueries(t *testing.T) {
 	port, reached := tidbListener(t)
 	// Loopback so the open-time ping is permitted to proceed; it fails

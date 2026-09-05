@@ -57,13 +57,18 @@
 //     dialer. The driver invokes it with the context of the query that
 //     triggered the connection, so the marker survives sql.Open's
 //     laziness and the refusal lands on first use.
-//
-// One gap remains inside kit, bounded by an API rather than by Go:
-// kv.Open and kv.Opener carry no context, so a Store opened through the
-// backend registry cannot police its own open-time ping. The guarded
-// dial hook is installed regardless, so every query through that Store
-// is covered; only the initial connect escapes. Callers with a context
-// should use tidb.NewContext.
+//   - etcd (storage/kv/etcd) checks its endpoints with CheckDial before
+//     building the client. The dialer seam does not reach it: gRPC dials
+//     from its own connection manager on a background context, so the
+//     marker never arrives, and clientv3.New returns before connecting
+//     at all. The open-time check is what makes the refusal reliable; a
+//     guarded dialer is installed beside it regardless.
+//   - The key-value registry (storage/kv) dispatches kv.OpenContext
+//     through a context-carrying opener, so a Store built through the
+//     registry policies its initial connect and not merely its later
+//     queries. The context-free kv.Open remains, and still opens
+//     unpoliced; so does a third-party driver registered through the
+//     older context-free kv.Opener, which OpenContext falls back to.
 //
 // What remains uncovered, and cannot be covered from this package:
 //
