@@ -542,8 +542,32 @@ func TestUnauthenticatedRemoteServingIsRefused(t *testing.T) {
 	}
 }
 
+func TestUnboundedRemoteServingIsRefused(t *testing.T) {
+	// --insecure-remote answers who may call. What any caller may run
+	// is still unanswered, so the surface stays refused, and the
+	// message names its own remedies rather than repeating the
+	// authentication ones.
+	root := newRoot(options{})
+	err := runToCompletion(t, root,
+		[]string{"serve", "api", "--addr", "0.0.0.0:0", "--insecure-remote"},
+		5*time.Second)
+	require.Error(t, err)
+
+	var kitErr *output.Error
+	require.ErrorAs(t, err, &kitErr)
+	assert.Equal(t, output.CodeUsage, kitErr.Code)
+	assert.Equal(t, 2, kitErr.ExitCode, "refused at the configuration gate")
+	assert.Contains(t, kitErr.Message, "no delegation policy is configured")
+	for _, remedy := range []string{"--policy", "127.0.0.1", "services.api.insecure_no_policy"} {
+		assert.Contains(t, kitErr.Message, remedy, "the message names every remedy")
+	}
+}
+
 func TestInsecureRemoteOptInIsHonoredByName(t *testing.T) {
-	run := startServe(t, options{}, "api", "--addr", "0.0.0.0:0", "--insecure-remote")
+	// Both opt-ins: exposure beyond loopback needs an answer to who
+	// may call AND to what any caller may run.
+	run := startServe(t, options{}, "api", "--addr", "0.0.0.0:0",
+		"--insecure-remote", "--insecure-no-policy")
 	p := run.waitReady(t, "api")
 	_, port, err := net.SplitHostPort(p.Address)
 	require.NoError(t, err)

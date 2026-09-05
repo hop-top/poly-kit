@@ -11,7 +11,8 @@ import (
 // serves it to the machine it runs on until the adopter says
 // otherwise, and saying otherwise means either configuring Auth or
 // opting into unauthenticated exposure by name (see
-// APIConfig.InsecureRemote).
+// APIConfig.InsecureRemote), and bounding what those callers may run
+// with a delegation policy (see APIConfig.InsecureNoPolicy).
 const DefaultAPIAddr = "127.0.0.1:8080"
 
 // APIConfig configures the built-in api service and token commands
@@ -20,7 +21,8 @@ type APIConfig struct {
 	// Addr is the default listen address (default [DefaultAPIAddr],
 	// a loopback address). A non-loopback address — ":8080",
 	// "0.0.0.0:8080", a LAN IP — is refused at validation unless
-	// Auth is set or InsecureRemote opts in.
+	// Auth is set or InsecureRemote opts in, and refused again
+	// unless a --policy is in force or InsecureNoPolicy opts in.
 	Addr string
 	// OpenAPI configures OpenAPI spec generation (nil = disabled).
 	OpenAPI *api.OpenAPIConfig
@@ -36,7 +38,23 @@ type APIConfig struct {
 	// permits, as whoever it claims to be. services.api.insecure_remote
 	// and --insecure-remote set the same thing. It changes nothing
 	// when Auth is set and honored.
+	//
+	// It waives authentication only. Whether a caller admitted this
+	// way is bounded in what it may run is InsecureNoPolicy's
+	// question, and a non-loopback address needs an answer to both.
 	InsecureRemote bool
+	// InsecureNoPolicy permits serving on a non-loopback address with
+	// NO delegation policy in force. Without a policy the permission
+	// gate permits every command for every caller, so this is an
+	// explicit acceptance that any caller the surface admits may run
+	// the whole command tree, destructive commands included.
+	// services.api.insecure_no_policy and --insecure-no-policy set the
+	// same thing. It changes nothing when --policy names a policy.
+	//
+	// It is separate from InsecureRemote because authentication and
+	// authorization are separate: a tool with Auth configured has
+	// said who may call, not what they may run.
+	InsecureNoPolicy bool
 	// Handlers registers custom routes on the router.
 	Handlers func(r *api.Router)
 	// Resources registers ResourceRouters (called after router setup).
@@ -136,6 +154,10 @@ func (r *Root) mountAPIServeFlags() {
 		if c.Flags().Lookup(insecureRemoteFlag) == nil {
 			c.Flags().Bool(insecureRemoteFlag, false,
 				"Serve the api service without authentication on a non-loopback address")
+		}
+		if c.Flags().Lookup(insecureNoPolicyFlag) == nil {
+			c.Flags().Bool(insecureNoPolicyFlag, false,
+				"Serve the api service on a non-loopback address with no delegation policy")
 		}
 		return
 	}

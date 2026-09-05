@@ -38,7 +38,9 @@ for your own command tree; substitute it.
 
 - **Loopback by default.** `WithAPI` listens on `127.0.0.1:8080`
   unless you say otherwise. Saying otherwise without authentication
-  is refused before anything binds.
+  is refused before anything binds, and so is saying it without a
+  delegation policy: exposure needs an answer to who may call and to
+  what any caller may run.
 - **One identity model on every transport.** The principal, tenant,
   request id, trace id, and idempotency key travel with each call
   into the same `Meta`, whether it arrived over HTTP or the socket.
@@ -130,6 +132,25 @@ USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and --no-au
 
 `--no-auth` still works on loopback, as it always did.
 
+Authentication is only the first gate. Configure `Auth` (step 3) and
+the same address is refused again, this time for what it does not
+bound:
+
+```console
+$ mytool serve
+USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and no delegation policy is configured; set --policy, listen on 127.0.0.1, or set services.api.insecure_no_policy: true (or --insecure-no-policy) to serve every command beyond loopback
+$ echo $?
+2
+```
+
+Without a `--policy` the permission gate permits every command for
+every caller — the same verdict it would give if there were no gate
+at all — so an authenticated caller may still run your destructive
+commands. The three ways forward are again the three the message
+names: name a policy (step 5), go back to loopback, or accept it by
+name (step 4). Both gates apply independently: a non-loopback address
+must satisfy each.
+
 ### 3. Expose beyond loopback with Auth
 
 `APIConfig.Auth` is what permits a non-loopback address. It runs
@@ -217,7 +238,9 @@ curl -s http://10.0.0.5:8080/v1/commands/widget/list \
 in step 5 as `Meta.Extra["scopes"]`, comma-joined, which is where a
 `kit/permissions` annotation gets enforced.
 
-### 4. The opt-in, and what it means
+### 4. The opt-ins, and what they mean
+
+There are two, one per gate, and neither implies the other.
 
 To serve **without** authentication on a non-loopback address, say
 so by name, in code, config, or on the command line:
@@ -246,6 +269,51 @@ every command the policy permits, as whoever it claims to be: the
 audit trail records what it claimed, and `Meta.Caller` is empty
 because nothing established it. That is the whole effect of the
 flag, and the name is chosen so it reads that way in a config review.
+
+To serve on a non-loopback address with **no delegation policy**, say
+that separately:
+
+```go
+import "hop.top/kit/go/console/cli"
+
+cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", InsecureNoPolicy: true})
+```
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  api:
+    addr: 0.0.0.0:8080
+    insecure_no_policy: true
+```
+
+```console
+$ mytool serve --insecure-no-policy
+```
+
+Same precedence: flag, then config key, then code. With it set, any
+caller the surface admits may run the whole command tree, destructive
+commands included, because nothing bounds what the permission gate
+allows.
+
+The two are deliberately separate keys, because they waive different
+things. `insecure_remote` says you accept unidentified callers;
+`insecure_no_policy` says you accept unbounded ones. A tool with
+`Auth` configured has answered the first question and not the second,
+and a tool with a `--policy` and no `Auth` has answered the second and
+not the first. Setting one never sets the other, so a config review
+can see exactly which of the two you accepted:
+
+```console
+$ mytool serve --addr 0.0.0.0:8080 --insecure-remote
+USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and no delegation policy is configured; ...
+```
+
+Loopback needs neither. Serving on `127.0.0.1` keeps
+allow-by-default, with no policy and no opt-in, because that is the
+development path and the caller is already on your machine. The
+socket service needs neither for the same reason: it is loopback by
+construction.
 
 ### 5. Wire a permission policy
 
@@ -376,7 +444,8 @@ interactive command:
 {"name": "widget purge", "invocable": false, "reason": "permission-denied"}
 ```
 
-The tool's policy engine is wired into the same gate. A `--policy`
+The tool's policy engine is wired into the same gate, and naming one
+is what satisfies the second exposure gate from step 2. A `--policy`
 that refuses a side-effect class refuses it on every surface for
 every caller, before your decision is asked, and discovery reflects
 it the same way:
@@ -498,12 +567,13 @@ on both transports; a command that honors its context stops.
 | `APIConfig.Addr` | `127.0.0.1:8080` | Listen address. Non-loopback needs `Auth` or `InsecureRemote`. |
 | `APIConfig.Auth` | none | Authenticates every route and permits any address. Claims attribute the call. |
 | `APIConfig.InsecureRemote` | `false` | Serve unauthenticated beyond loopback. `services.api.insecure_remote` / `--insecure-remote` set the same. |
+| `APIConfig.InsecureNoPolicy` | `false` | Serve beyond loopback with no delegation policy. `services.api.insecure_no_policy` / `--insecure-no-policy` set the same. |
 | `SocketConfig.Auth` | none | Verifies each socket request; the verified identity replaces the claimed one. |
 | `cli.WithPermission(fn)` | permit all | Permission gate on every kit-shipped transport service. |
 | `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. |
-| `--policy=<name>` | none | The tool's policy engine, applied to remote calls for every caller. |
+| `--policy=<name>` | none | The tool's policy engine, applied to remote calls for every caller. Naming one permits a non-loopback address. |
 
-Precedence for the opt-in is flag, then config key, then code. The
+Precedence for either opt-in is flag, then config key, then code. The
 socket path, exposure patterns, and destructive policy are documented
 in their own guides and are unchanged.
 
@@ -525,6 +595,9 @@ Absence here is deliberate; each of these belongs somewhere else:
 - **Forced remote execution.** Interactive commands, destructive
   commands the policy withholds, and commands the permission gate
   refuses stay refused. There is no override.
+- **A default policy.** Kit ships none and infers none. A tool with
+  no `--policy` is unbounded, which is why serving beyond loopback
+  makes you either name one or accept the absence by name.
 - **A per-caller discovery listing.** Discovery is one document for
   every caller; caller-specific verdicts are given per call.
 

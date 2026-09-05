@@ -166,3 +166,23 @@ func leafByKey(b *cmdsurface.Bridge) map[string]*cmdsurface.Leaf {
 	}
 	return out
 }
+
+// servePolicyConfigured reports whether a delegation policy is in
+// force for this invocation — that is, whether the permission gate
+// the transport services share can refuse anything at all.
+//
+// It asks the flag rather than the engine because a "no policy"
+// engine is not nil: newPolicyEngine always returns one, and with
+// --policy unset its Allow map is nil, which Authorize default-
+// permits for every side-effect class, destructive included. A nil
+// engine and a --policy-less engine are equally toothless, so the
+// question that separates them is whether a policy was named at all.
+//
+// --policy is a persistent root flag bound to viper, so a config
+// file that sets it counts exactly as the command line does.
+func (r *Root) servePolicyConfigured() bool {
+	if r == nil || r.Cmd == nil {
+		return false
+	}
+	return strings.TrimSpace(flagValue(r.Cmd, policyFlag)) != ""
+}
