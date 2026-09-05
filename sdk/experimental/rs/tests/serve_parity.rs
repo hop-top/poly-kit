@@ -237,9 +237,10 @@ fn every_exit_code_row_matches_the_fixture() {
 }
 
 /// The fixture's `ports.rs` row must describe what this port actually
-/// ships, not what it aspires to. The two PENDING entries are the ones
-/// that need an argument parser, which `sdk/experimental/rs/src/cli.rs`
-/// does not yet provide.
+/// ships, not what it aspires to. Every behavior is exercised: the
+/// lifecycle half by tests/serve.rs, the command half (`serve`,
+/// `serve <service>`, `--list`) by tests/serve_command.rs behind the
+/// `serve-cli` feature.
 #[test]
 fn the_rust_port_row_is_an_honest_record() {
     let doc = load();
@@ -250,38 +251,23 @@ fn the_rust_port_row_is_an_honest_record() {
     let behaviors = doc["behaviors"].as_object().unwrap();
     for key in behaviors.keys() {
         assert!(rs.contains_key(key), "ports.rs is missing status for {key}");
+        assert_eq!(rs[key], "SHIPPED", "{key}");
     }
 
-    // Shipped: everything exercised by tests/serve.rs.
-    for shipped in [
-        "override_rule",
-        "registration_seam",
-        "readiness",
-        "lifecycle_events",
-        "ordered_shutdown",
-        "failure_policy",
-        "exit_taxonomy",
-        "config_keys",
-    ] {
-        assert_eq!(rs[shipped], "SHIPPED", "{shipped}");
-    }
-
-    // Deferred: the two that need a command layer to parse operands and
-    // flags. Claiming these without a parser would be the dishonest
-    // half of the record.
-    for pending in ["hierarchy", "list_flag"] {
-        assert_eq!(
-            rs[pending], "PENDING",
-            "{pending} needs a command layer this SDK does not have"
-        );
-    }
-
+    let implementation = rs["implementation"]
+        .as_str()
+        .expect("a shipped port names where its implementation lives");
     assert!(
-        rs["implementation"].is_string(),
-        "a shipped port names where its implementation lives"
+        implementation.contains("serve::command"),
+        "{implementation}"
     );
-    assert!(
-        rs["note"].as_str().unwrap().contains("cli.rs"),
-        "the note must say why the two PENDING entries are pending"
-    );
+    assert!(implementation.contains("serve-cli"), "{implementation}");
+
+    // The note records the one remaining gap and no longer blames a
+    // missing parser: the empty cli.rs was the reason the command half
+    // was pending, and that reason is gone.
+    let note = rs["note"].as_str().unwrap();
+    assert!(!note.contains("cli.rs"), "{note}");
+    assert!(note.contains("_SERVICES_API_ENABLED"), "{note}");
+    assert!(note.contains("config loader"), "{note}");
 }

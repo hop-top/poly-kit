@@ -128,11 +128,11 @@
       "config_keys": "PENDING"
     },
     "rs": {
-      "implementation": "sdk/experimental/rs/src/serve (feature `serve`); library surface only, no command mount",
-      "note": "sdk/experimental/rs/src/cli.rs is still an empty stub, so there is no place to mount a serve parent and no argument parser. The lifecycle half of the contract ships as a library a future command layer mounts: the supervisor, the registration seam, resolution, readiness, the six transitions, ordered shutdown and the exit-code values. The two entries that remain PENDING are the ones that need a parser: `hierarchy` (the serve / serve <service> commands and the parse-time arity refusal — resolve() returns USAGE/2 for a 2-element operand vector, but nothing produces one) and `list_flag` (list_services() yields the rows in registration order; no --list flag exists). Likewise the --enable/--disable and *-timeout flag names, and env spellings such as <TOOL>_SERVICES_API_ENABLED, are unimplemented: the port has no env resolution, which the contract makes conditional on having one.",
-      "hierarchy": "PENDING",
+      "implementation": "sdk/experimental/rs/src/serve (feature `serve`), command mounted by serve::command (feature `serve-cli`)",
+      "note": "serve::command::mount puts `serve [SERVICE]` with --list, --enable/--disable and the three timeout flags on any clap root, the way the TypeScript port mounts on any commander root; the kit-owned root factory, when it lands, mounts the same command. Arity is refused by resolve() at USAGE/2 rather than by clap so the exit code stays on the shared taxonomy. The one gap left is the env-var spelling (<TOOL>_SERVICES_API_ENABLED): the contract makes it conditional on a port having env resolution, which arrives with the Rust config loader, not with this command.",
+      "hierarchy": "SHIPPED",
       "override_rule": "SHIPPED",
-      "list_flag": "PENDING",
+      "list_flag": "SHIPPED",
       "registration_seam": "SHIPPED",
       "readiness": "SHIPPED",
       "lifecycle_events": "SHIPPED",
