@@ -182,6 +182,36 @@ func TestAllowOptions(t *testing.T) {
 	}
 }
 
+// TestReflectSkipsNamelessCommands pins that a command with no name
+// is not described: cobra mounts one when a tool disables its default
+// help command with SetHelpCommand(&cobra.Command{Hidden: true}), and
+// a descriptor with an empty path segment would reach every projected
+// surface as a command nobody can address.
+func TestReflectSkipsNamelessCommands(t *testing.T) {
+	root := &cobra.Command{Use: "fix", Short: "fixture root"}
+	root.AddCommand(&cobra.Command{
+		Use:         "list",
+		Short:       "list things",
+		Run:         func(*cobra.Command, []string) {},
+		Annotations: map[string]string{annSideEffect: "read"},
+	})
+	root.SetHelpCommand(&cobra.Command{Hidden: true})
+	root.InitDefaultHelpCmd()
+	root.AddCommand(&cobra.Command{Hidden: true})
+
+	tree := Reflect(root)
+	for _, d := range tree.Descriptors {
+		for _, seg := range d.Path {
+			if seg == "" {
+				t.Errorf("descriptor %q has an empty path segment", d.Path)
+			}
+		}
+	}
+	if d := tree.Lookup("list"); d == nil || !d.Invocable {
+		t.Errorf("list must still be described and invocable")
+	}
+}
+
 // TestSelfHostingSurvivesEveryRelaxation pins that no option lifts
 // self-hosting: a consumer reflecting with every relaxation it has
 // still cannot project the server, the listener, or the upgrader.

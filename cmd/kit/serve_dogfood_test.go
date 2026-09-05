@@ -77,6 +77,9 @@ func TestKitServe_ProjectsKitCommandsBehindTheGates(t *testing.T) {
 	}
 	assert.Equal(t, "self-hosting", got["serve"].Reason, "kit's serve is the process being talked to")
 	assert.Equal(t, "self-hosting", got["symlink"].Reason, "symlink relinks the binary that is serving")
+	for _, c := range doc.Commands {
+		assert.NotEmpty(t, c.Name, "discovery describes no nameless command: %+v", c)
+	}
 	assert.Equal(t, "management-only", got["status"].Reason)
 	assert.Equal(t, "unauthorized-destructive", got["telemetry reset"].Reason)
 	assert.True(t, got["config paths"].Invocable, "a read command of kit's own is served")

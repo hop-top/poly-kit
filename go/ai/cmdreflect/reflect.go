@@ -209,6 +209,14 @@ func Reflect(root *cobra.Command, opts ...Option) *Tree {
 			t.byPath[key] = d
 		}
 		for _, child := range cmd.Commands() {
+			// A command with no name cannot be addressed on any
+			// surface — the shell cannot type it, a transport cannot
+			// route to it. Cobra mounts one when a tool disables the
+			// default help command with SetHelpCommand(&Command{}),
+			// which is how a kit root keeps `help` off its surface.
+			if child.Name() == "" {
+				continue
+			}
 			walk(child, append(path, child.Name()))
 		}
 	}
