@@ -184,9 +184,11 @@ The full rule is in the
 
 A request's context is the command's: a client that disconnects
 cancels the command it started. Commands run one at a time per
-service — the in-process runner serializes on the shared command
-tree — and each starts from the flag state the operator's own command
-line left, plus only the flags the request carries.
+service by default — the in-process runner serializes on the shared
+command tree — or in parallel, each on a tree of its own, when the
+tool opts in with `cli.WithRootFactory`. Either way each starts from
+the flag state the operator's own command line left, plus only the
+flags the request carries.
 
 ### Exit codes
 
