@@ -3,10 +3,12 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"sync"
 
 	"github.com/coder/websocket"
 
+	"hop.top/kit/go/core/netpolicy"
 	"hop.top/kit/go/transport/api"
 )
 
@@ -24,8 +26,18 @@ type WSClient struct {
 }
 
 // DialWS connects to url and returns a WSClient.
+//
+// coder/websocket performs its handshake over an *http.Client, so the
+// policy is applied by handing it a guarded transport rather than a
+// dialer. Passing nil options would fall back to http.DefaultClient,
+// which netpolicy.Install happens to guard — but that coverage is
+// incidental and disappears the moment a caller supplies its own client.
+// Naming the guarded client here makes the enforcement explicit and
+// independent of process-wide install order.
 func DialWS(ctx context.Context, url string, _ ...WSOption) (*WSClient, error) {
-	conn, _, err := websocket.Dial(ctx, url, nil)
+	conn, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+		HTTPClient: &http.Client{Transport: netpolicy.Guard(http.DefaultTransport)},
+	})
 	if err != nil {
 		return nil, err
 	}
