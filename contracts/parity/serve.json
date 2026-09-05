@@ -127,18 +127,18 @@
       "config_keys": "SHIPPED"
     },
     "rs": {
-      "implementation": null,
-      "note": "sdk/experimental/rs/src/cli.rs is an empty stub: the SDK ships no command-registration layer, so there is no place to mount a serve parent. That is a prerequisite, not an exemption.",
-      "hierarchy": "PENDING",
-      "override_rule": "PENDING",
-      "list_flag": "PENDING",
-      "registration_seam": "PENDING",
-      "readiness": "PENDING",
-      "lifecycle_events": "PENDING",
-      "ordered_shutdown": "PENDING",
-      "failure_policy": "PENDING",
-      "exit_taxonomy": "PENDING",
-      "config_keys": "PENDING"
+      "implementation": "sdk/experimental/rs/src/serve (feature `serve`), command mounted by serve::command (feature `serve-cli`)",
+      "note": "serve::command::mount puts `serve [SERVICE]` with --list, --enable/--disable and the three timeout flags on any clap root, the way the TypeScript port mounts on any commander root; the kit-owned root factory, when it lands, mounts the same command. Arity is refused by resolve() at USAGE/2 rather than by clap so the exit code stays on the shared taxonomy. The one gap left is the env-var spelling (<TOOL>_SERVICES_API_ENABLED): the contract makes it conditional on a port having env resolution, which arrives with the Rust config loader, not with this command.",
+      "hierarchy": "SHIPPED",
+      "override_rule": "SHIPPED",
+      "list_flag": "SHIPPED",
+      "registration_seam": "SHIPPED",
+      "readiness": "SHIPPED",
+      "lifecycle_events": "SHIPPED",
+      "ordered_shutdown": "SHIPPED",
+      "failure_policy": "SHIPPED",
+      "exit_taxonomy": "SHIPPED",
+      "config_keys": "SHIPPED"
     },
     "php": {
       "implementation": "sdk/experimental/php/src/Serve, mounted as ServeCommand on a Symfony Console application",
