@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,16 +14,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// syncBuffer is a bytes.Buffer guarded by a mutex. The watcher emits
+// its warnings from the poll goroutine while the assertions read the
+// capture from the test goroutine, so an unguarded buffer is a data
+// race on the buffer's own fields — reported by -race regardless of
+// whether the bytes happen to arrive intact.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) Contains(sub string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return bytes.Contains(b.buf.Bytes(), []byte(sub))
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 // newCaptureLogger returns a kit/log-compatible logger that writes to
 // the given buffer at WarnLevel (matches the watcher's emit level).
-func newCaptureLogger(buf *bytes.Buffer) *charmlog.Logger {
+func newCaptureLogger(buf *syncBuffer) *charmlog.Logger {
 	return charmlog.NewWithOptions(buf, charmlog.Options{
 		Level: charmlog.WarnLevel,
 	})
 }
 
 func TestConfigWatcher_StatFailed_LogsWarning(t *testing.T) {
-	var buf bytes.Buffer
+	var buf syncBuffer
 	logger := newCaptureLogger(&buf)
 
 	// Path that does not exist forces os.Stat to fail.
@@ -37,7 +66,7 @@ func TestConfigWatcher_StatFailed_LogsWarning(t *testing.T) {
 
 	// Wait for poll loop to fire at least once.
 	require.Eventually(t, func() bool {
-		return bytes.Contains(buf.Bytes(), []byte("stat failed"))
+		return buf.Contains("stat failed")
 	}, 500*time.Millisecond, 10*time.Millisecond,
 		"watcher should emit stat-failed warning")
 
@@ -50,7 +79,7 @@ func TestConfigWatcher_StatFailed_LogsWarning(t *testing.T) {
 }
 
 func TestConfigWatcher_ParseFailed_LogsWarning(t *testing.T) {
-	var buf bytes.Buffer
+	var buf syncBuffer
 	logger := newCaptureLogger(&buf)
 
 	// Write a malformed YAML file so loadConfigFile errors after stat
@@ -69,7 +98,7 @@ func TestConfigWatcher_ParseFailed_LogsWarning(t *testing.T) {
 	w.Start(ctx)
 
 	require.Eventually(t, func() bool {
-		return bytes.Contains(buf.Bytes(), []byte("parse failed"))
+		return buf.Contains("parse failed")
 	}, 500*time.Millisecond, 10*time.Millisecond,
 		"watcher should emit parse-failed warning")
 
