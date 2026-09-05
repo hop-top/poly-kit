@@ -29,6 +29,7 @@ export * as routellm from './routellm.js';
 export * as rpc from './rpc.js';
 export * as safety from './safety.js';
 export * as scope from './scope.js';
+export * as serve from './serve.js';
 export * as stream from './stream.js';
 export * as telemetry from './telemetry/index.js';
 export * as tui from './tui/index.js';
