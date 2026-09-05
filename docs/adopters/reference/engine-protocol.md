@@ -249,6 +249,14 @@ Returns version list (newest first).
 }
 ```
 
+`version` is the 1-based sequence number. `operation` is derived from
+it, not stored: `create` when `version == 1`, `update` for every other
+entry. A deleted document's history reports no `delete` operation.
+
+This shape is pinned by the cross-language SDK parity test, so the keys
+`version`, `data`, `timestamp` and `operation` are load-bearing for the
+TS and Python ports.
+
 **curl:**
 
 ```sh
@@ -269,7 +277,11 @@ POST /:type/:id/revert
 {"version": 2}
 ```
 
-**Response (200):** document at reverted state.
+**Response (200):** the full document envelope at the reverted state,
+not a version entry.
+
+Revert **appends** a new version rather than truncating history, so the
+version list grows by one.
 
 **409** if version does not exist.
 
