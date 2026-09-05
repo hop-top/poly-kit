@@ -9,52 +9,38 @@
 //! shutdown and exit semantics as the same service started by the
 //! supervisor.
 //!
-//! # What this module is, and is not
+//! # What this module is, and how it mounts
 //!
-//! The contract names one prerequisite for this port specifically: the
-//! Rust SDK's `cli.rs` is empty, so there is no kit-owned place to
-//! mount a `serve` parent. That is still true — this module ships the
-//! **library half** of the contract and stops at the seam a command
-//! layer would mount onto.
+//! Two halves, two features:
 //!
-//! Implemented here, and testable without a parser:
-//!
-//! - The registration seam ([`ServiceRegistry`], [`Service`]) with the
-//!   four capabilities, the name grammar, the reserved names, the
+//! - `serve` — the **library half**, usable from any parser: the
+//!   registration seam ([`ServiceRegistry`], [`Service`]) with the four
+//!   capabilities, the name grammar, the reserved names, the
 //!   construction-time duplicate refusal and its `override` escape
-//!   hatch, and registration-order listing.
-//! - Resolution ([`resolve`]) — the hierarchy, the override rule, the
-//!   three gates in order, silent skipping of a disabled service, and
-//!   the zero-services refusal. It takes the positional operands as a
-//!   `Vec<String>`; what it does not do is *parse* them off a command
-//!   line.
-//! - Readiness, the six lifecycle transitions with their exact topic
-//!   strings and payload keys, ordered shutdown with the contract's
-//!   budgets and second-signal escalation, `services.failure_policy`,
-//!   and the `services.*` keys with their defaults.
-//! - The exit-code taxonomy as values ([`LifecycleOutcome::exit_code`]),
+//!   hatch, and registration-order listing; resolution ([`resolve`]) —
+//!   the hierarchy, the override rule, the three gates in order, silent
+//!   skipping of a disabled service, the zero-services and the arity
+//!   refusals; readiness, the six lifecycle transitions with their exact
+//!   topic strings and payload keys, ordered shutdown with the
+//!   contract's budgets and second-signal escalation,
+//!   `services.failure_policy`, the `services.*` keys with their
+//!   defaults, and the exit-code taxonomy ([`LifecycleOutcome::exit_code`])
 //!   routed onto the shared `output::CliError` codes.
+//! - `serve-cli` — the **command half**, [`command`]: `serve [SERVICE]`
+//!   with `--list`, `--enable`/`--disable`, `--ready-timeout`,
+//!   `--stop-timeout` and `--shutdown-timeout`, mounted on whatever
+//!   `clap::Command` the adopter already has by [`command::mount`], and
+//!   run from its `ArgMatches` to an exit code by [`command::run`]. It
+//!   does not wait for a kit-owned root: like the TypeScript port's
+//!   `registerServe(program)`, it mounts on *any* root, and the kit root
+//!   factory will mount the same command when it exists.
 //!
-//! Deferred until the SDK grows a command layer, because there is
-//! nothing to hang them on:
-//!
-//! - Mounting `serve` / `serve <service>` as commands, and therefore
-//!   the two-positional-arguments arity refusal *as a parse-time
-//!   behavior*. [`resolve`] returns `USAGE`/2 for a 2-element operand
-//!   vector, so the semantics are here and pinned; what is missing is
-//!   the parser that would produce that vector.
-//! - `--list` **as a flag**. [`list_services`] produces the rows in
-//!   registration order; no flag exists to trigger it.
-//! - The `--enable` / `--disable` / `--ready-timeout` / `--stop-timeout`
-//!   / `--shutdown-timeout` flag names, and env-var spellings such as
-//!   `<TOOL>_SERVICES_API_ENABLED`. The contract makes the latter
-//!   contract "only for a port that has env resolution at all"; this
-//!   port has none, and reads the key *names* out of the
-//!   [`ServiceConfigs`] map a caller resolves however it likes.
-//!
-//! Building a whole command framework to close that gap is out of
-//! scope for this module; the day `cli.rs` gains one, mounting these
-//! pieces is a small, mechanical addition.
+//! What remains outside both, by the contract's own terms: the env-var
+//! spelling `<TOOL>_SERVICES_API_ENABLED`. The contract makes it
+//! contract "only for a port that has env resolution at all"; this port
+//! reads the key *names* out of the [`ServiceConfigs`] map a caller
+//! resolves however it likes, and the spelling arrives with the config
+//! loader, not here.
 //!
 //! # Deliberate non-goals
 //!
@@ -127,6 +113,8 @@
 //! ```
 
 mod cancel;
+#[cfg(feature = "serve-cli")]
+pub mod command;
 mod config;
 mod events;
 mod registry;
@@ -136,9 +124,10 @@ mod supervisor;
 
 pub use cancel::CancelToken;
 pub use config::{
-    failure_error, worst_outcome, FailurePolicy, LifecycleOutcome, ServiceConfig, ServiceConfigs,
-    SupervisorConfig, DEFAULT_READY_TIMEOUT, DEFAULT_SHUTDOWN_TIMEOUT, DEFAULT_STOP_TIMEOUT,
-    KEY_ENABLED, KEY_FAILURE_POLICY, KEY_READY_TIMEOUT, KEY_SHUTDOWN_TIMEOUT, KEY_STOP_TIMEOUT,
+    failure_error, parse_duration, worst_outcome, FailurePolicy, LifecycleOutcome, ServiceConfig,
+    ServiceConfigs, SupervisorConfig, DEFAULT_READY_TIMEOUT, DEFAULT_SHUTDOWN_TIMEOUT,
+    DEFAULT_STOP_TIMEOUT, KEY_ENABLED, KEY_FAILURE_POLICY, KEY_READY_TIMEOUT, KEY_SHUTDOWN_TIMEOUT,
+    KEY_STOP_TIMEOUT,
 };
 pub use events::{
     default_topics, EventPayload, Publisher, ServeLogger, StderrLogger, ACTION_FAILED,

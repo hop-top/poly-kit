@@ -25,6 +25,107 @@ pub const DEFAULT_STOP_TIMEOUT: Duration = Duration::from_secs(30);
 /// Default total shutdown budget. `services.shutdown_timeout`.
 pub const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Parses a duration in the grammar the contract examples use — Go's:
+/// one or more `<number><unit>` groups, concatenated (`1m30s`), where
+/// `<number>` is an integer or a decimal and `<unit>` is one of `ns`,
+/// `us`, `ms`, `s`, `m`, `h`.
+///
+/// Stricter than Go in the two places the contract has no use for
+/// leniency: a bare number is refused (Go treats `"0"` alone as zero),
+/// and a sign is refused (a negative budget has no meaning here). The
+/// error names the offending token, so a usage refusal can carry it
+/// verbatim.
+///
+/// Hand-rolled rather than pulled from a crate: clap 4 has no duration
+/// value parser, and the crate that would supply one is not in the
+/// tree. The grammar is a dozen lines.
+pub fn parse_duration(s: &str) -> Result<Duration, String> {
+    if s.is_empty() {
+        return Err("duration is empty".to_string());
+    }
+    if s.starts_with('-') || s.starts_with('+') {
+        return Err(format!("duration {s:?}: sign is not allowed"));
+    }
+
+    let mut total: u128 = 0;
+    let mut rest = s;
+    while !rest.is_empty() {
+        let num_end = rest
+            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+            .unwrap_or(rest.len());
+        let num = &rest[..num_end];
+        rest = &rest[num_end..];
+
+        let unit_end = rest
+            .find(|c: char| c.is_ascii_digit() || c == '.')
+            .unwrap_or(rest.len());
+        let unit = &rest[..unit_end];
+        rest = &rest[unit_end..];
+
+        if num.is_empty() {
+            return Err(format!("duration {s:?}: missing number before {unit:?}"));
+        }
+        if unit.is_empty() {
+            return Err(format!("duration {s:?}: missing unit after {num:?}"));
+        }
+        let Some(scale) = unit_nanos(unit) else {
+            return Err(format!("duration {s:?}: unknown unit {unit:?}"));
+        };
+        let nanos = scaled_nanos(num, scale)
+            .ok_or_else(|| format!("duration {s:?}: bad number {num:?}"))?;
+        total = total
+            .checked_add(nanos)
+            .ok_or_else(|| format!("duration {s:?}: overflows"))?;
+    }
+
+    let secs =
+        u64::try_from(total / 1_000_000_000).map_err(|_| format!("duration {s:?}: overflows"))?;
+    let nanos = (total % 1_000_000_000) as u32;
+    Ok(Duration::new(secs, nanos))
+}
+
+/// Nanoseconds in one `unit`, or `None` for a spelling outside the
+/// grammar.
+fn unit_nanos(unit: &str) -> Option<u128> {
+    Some(match unit {
+        "ns" => 1,
+        "us" => 1_000,
+        "ms" => 1_000_000,
+        "s" => 1_000_000_000,
+        "m" => 60 * 1_000_000_000,
+        "h" => 3_600 * 1_000_000_000,
+        _ => return None,
+    })
+}
+
+/// `num` (integer or decimal, ASCII digits and at most one `.`) times
+/// `scale` nanoseconds, in integer arithmetic so `1ns` is exactly one
+/// nanosecond and `0.1s` exactly a hundred million. A fraction finer
+/// than a nanosecond truncates.
+fn scaled_nanos(num: &str, scale: u128) -> Option<u128> {
+    let (int, frac) = match num.split_once('.') {
+        Some((i, f)) => (i, f),
+        None => (num, ""),
+    };
+    if int.is_empty() && frac.is_empty() {
+        return None;
+    }
+    if frac.contains('.') {
+        return None;
+    }
+    let mut total: u128 = 0;
+    if !int.is_empty() {
+        total = int.parse::<u128>().ok()?.checked_mul(scale)?;
+    }
+    if !frac.is_empty() {
+        let digits = u32::try_from(frac.len()).ok()?;
+        let divisor = 10u128.checked_pow(digits)?;
+        let f = frac.parse::<u128>().ok()?.checked_mul(scale)? / divisor;
+        total = total.checked_add(f)?;
+    }
+    Some(total)
+}
+
 /// The resolved `services.<name>` block for one service. Only the
 /// lifecycle keys are modeled; service-specific keys live in the same
 /// block and are read by the service itself.

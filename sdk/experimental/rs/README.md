@@ -38,6 +38,8 @@ only what you use:
 | `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 29 |
 | `sqlstore-encrypt` | `sqlstore` + `crypto_secretbox`, `hkdf`, `sha2` | 42 |
 | `mcp` | `rmcp` (default-features off) + `serde`, `serde_json` | — |
+| `serve` | `output` + `tokio`, `serde_json` | 59 |
+| `serve-cli` | `serve` + `cli` (`clap`) | 77 |
 
 `mcp` is the heaviest feature in the table: `rmcp` carries an async
 runtime in its tree even with default features off. Re-run the command
@@ -53,6 +55,39 @@ cargo tree --no-default-features --features <feature> -e normal
 `blob` already carries. `rusqlite` uses the `bundled` feature, so SQLite is
 compiled from source and no system `libsqlite3` is required — at the cost of
 a C compiler on the build host and a slower first build.
+
+## Serve
+
+`serve` is the service lifecycle as a library (registry, resolution,
+supervisor, signals, events); `serve-cli` adds the `serve [SERVICE]`
+command with `--list`, `--enable`/`--disable` and the timeout flags,
+and mounts it on any clap root — no kit-owned root required:
+
+```rust
+use hop_top_kit::serve::command::{mount, run, ServeCommandOptions};
+use hop_top_kit::serve::{ServiceConfig, ServiceConfigs, ServiceRegistry};
+
+#[tokio::main]
+async fn main() {
+    let mut registry = ServiceRegistry::new();
+    registry.register(std::sync::Arc::new(Api)).expect("wiring"); // Api: impl Service
+    let mut configs = ServiceConfigs::new();
+    configs.insert("api".to_string(), ServiceConfig::enabled());
+
+    let matches = mount(clap::Command::new("tool")).get_matches();
+    if let Some(sub) = matches.subcommand_matches("serve") {
+        let mut opts = ServeCommandOptions::new(registry);
+        opts.configs = Some(configs);
+        std::process::exit(run(sub, opts).await.exit_code);
+    }
+}
+```
+
+`serve` runs every configured and enabled service; `serve api` runs that
+one even when disabled; `serve --list` prints them in registration order.
+A `serve` the root already owned is replaced, never doubled. See
+[`examples/serve.rs`](examples/serve.rs) for a service that binds a real
+listener, and `docs/contracts/serve-lifecycle.md` for the contract.
 
 ## URI facade
 

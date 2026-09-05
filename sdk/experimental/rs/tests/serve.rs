@@ -2039,3 +2039,78 @@ async fn an_earlier_service_settling_does_not_extend_a_later_readiness_budget() 
         "budget was extended by an earlier exit; run took {took:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Duration grammar: the `30s`-style strings the contract's config keys
+// and timeout flags carry
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_duration_accepts_every_unit() {
+    use hop_top_kit::serve::parse_duration;
+    let cases: &[(&str, Duration)] = &[
+        ("7ns", Duration::from_nanos(7)),
+        ("7us", Duration::from_micros(7)),
+        ("7ms", Duration::from_millis(7)),
+        ("7s", Duration::from_secs(7)),
+        ("7m", Duration::from_secs(7 * 60)),
+        ("7h", Duration::from_secs(7 * 3600)),
+    ];
+    for (input, want) in cases {
+        assert_eq!(parse_duration(input).as_ref(), Ok(want), "{input}");
+    }
+}
+
+#[test]
+fn parse_duration_concatenates_groups_and_takes_decimals() {
+    use hop_top_kit::serve::parse_duration;
+    assert_eq!(parse_duration("1m30s"), Ok(Duration::from_secs(90)));
+    assert_eq!(
+        parse_duration("1h2m3s4ms"),
+        Ok(Duration::from_millis(3_600_000 + 120_000 + 3_000 + 4))
+    );
+    assert_eq!(parse_duration("1.5s"), Ok(Duration::from_millis(1500)));
+    assert_eq!(parse_duration("0.25m"), Ok(Duration::from_secs(15)));
+    assert_eq!(parse_duration(".5s"), Ok(Duration::from_millis(500)));
+    assert_eq!(parse_duration("0s"), Ok(Duration::ZERO));
+}
+
+#[test]
+fn parse_duration_refuses_what_the_grammar_excludes_and_names_the_token() {
+    use hop_top_kit::serve::parse_duration;
+    let bare = parse_duration("30").unwrap_err();
+    assert!(
+        bare.contains("missing unit") && bare.contains("\"30\""),
+        "{bare}"
+    );
+
+    let unknown = parse_duration("30d").unwrap_err();
+    assert!(
+        unknown.contains("unknown unit") && unknown.contains("\"d\""),
+        "{unknown}"
+    );
+
+    let negative = parse_duration("-30s").unwrap_err();
+    assert!(negative.contains("sign"), "{negative}");
+    assert!(parse_duration("+30s").is_err());
+
+    let empty = parse_duration("").unwrap_err();
+    assert!(empty.contains("empty"), "{empty}");
+
+    let unitfirst = parse_duration("s30").unwrap_err();
+    assert!(unitfirst.contains("missing number"), "{unitfirst}");
+
+    assert!(parse_duration(".s").is_err(), "a lone dot is not a number");
+    assert!(parse_duration("1.2.3s").is_err());
+    assert!(parse_duration(" 30s").is_err(), "no whitespace tolerance");
+    assert!(parse_duration("99999999999999999999999999h").is_err());
+}
+
+#[test]
+fn parse_duration_round_trips_the_three_defaults() {
+    use hop_top_kit::serve::parse_duration;
+    assert_eq!(parse_duration("30s"), Ok(DEFAULT_READY_TIMEOUT));
+    assert_eq!(parse_duration("30s"), Ok(DEFAULT_STOP_TIMEOUT));
+    assert_eq!(parse_duration("60s"), Ok(DEFAULT_SHUTDOWN_TIMEOUT));
+    assert_eq!(parse_duration("1m"), Ok(DEFAULT_SHUTDOWN_TIMEOUT));
+}

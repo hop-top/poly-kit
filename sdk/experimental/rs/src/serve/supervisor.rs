@@ -39,6 +39,40 @@ pub struct RunResult {
 }
 
 /// Options for [`Supervisor`].
+impl RunResult {
+    /// A run that did nothing and exits 0: `--list`, or a caller that
+    /// resolved and chose not to start.
+    pub fn clean() -> Self {
+        RunResult {
+            outcome: LifecycleOutcome::CleanStop,
+            error: None,
+            started: Vec::new(),
+            ready: Vec::new(),
+            failed: HashMap::new(),
+            exit_code: 0,
+        }
+    }
+
+    /// A run refused before anything started. The outcome is the
+    /// authority for the code and exit code — that is what "outcomes
+    /// route onto the shared taxonomy" means — and the error envelope
+    /// is aligned to it, keeping its message and suggested fix.
+    pub fn refused(outcome: LifecycleOutcome, err: CliError) -> Self {
+        let exit_code = outcome.exit_code();
+        let mut err = err;
+        err.code = outcome.code().to_string();
+        err.exit_code = exit_code;
+        RunResult {
+            outcome,
+            error: Some(err),
+            started: Vec::new(),
+            ready: Vec::new(),
+            failed: HashMap::new(),
+            exit_code,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct SupervisorOptions {
     pub config: SupervisorConfig,
