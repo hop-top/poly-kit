@@ -140,7 +140,7 @@ count toward the eleven.
 | `go/bridge` | kit/bridge protocol library: JSON payload types (text/url/file/blob oneof) + CLI manifest loader; wire format mirrored by `contracts/bridge.proto` |
 | `go/conformance` | Layer-A test helper for the adopter conformance suite; scenario/story runners, recorder, badge |
 | `go/integrations` | Parent of cross-cutting adapters; holds `repohost` (unified repo-host SPI, five drivers plus mocks) |
-| `go/security` | Reserved for security tooling wrappers (scorecard, SAST adapters); placeholder, gaps pinned in `gaps_test.go` |
+| `go/security` | Trust in artifacts and execution: artifact signature verification (cosign, minisign, SLSA) for `core/upgrade`, sandboxed exec behind `runtime/sideeffect`, hash-chained audit log feeding `runtime/provenance`, SARIF normalization; no importable API yet, one gap test per family in `gaps_test.go` |
 | `go/tools` | Static-analysis helpers shipped for adopters; `provenancelint` go/analysis Analyzer |
 
 ### Import layering
@@ -178,6 +178,24 @@ package cli
 
 import _ "hop.top/kit/go/transport/transportsvc"
 ```
+
+### Security surface map
+
+Several packages touch security and their names overlap. Each answers
+one question; place new work by the question, not the word.
+
+| Question | Package | Rule of thumb |
+|---|---|---|
+| Who am I, who are you, what keys prove it | `core/identity` | Keys you own. KMS is your key in someone else's box, so it belongs here. Tokens are identity proofs, so auth flows belong here; token *storage* goes to `storage/secret` |
+| Where secret material lives | `storage/secret` | Backends only; the `Secret` interface does not change per backend |
+| What must not leave the process | `core/redact` | Privacy hygiene on egress; not access control |
+| What am I allowed to do right now | `runtime/policy`, `core/scope`, `core/netpolicy`, `runtime/sideeffect` | The runtime's own rules. One family; not worth a rename |
+| Can I trust this artifact and this execution | `go/security` | Claims made by things you did not produce or cannot fully control: signatures on downloads, code you run in a sandbox, a log someone might tamper with |
+| Does this CLI conform to the 12-factor AI CLI spec | `core/compliance` | Not a security package; listed to kill the name collision |
+| Did the user agree to this egress | `core/consent`, `runtime/telemetry` | Privacy; unchanged |
+
+Renaming these packages was rejected: it would break adopter imports
+for no behavior gain, and this map is the cheaper fix.
 
 ### `contracts/` — Shared schemas
 

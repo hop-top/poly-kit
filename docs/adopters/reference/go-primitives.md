@@ -432,9 +432,19 @@ directory contain only `_test.go` files, so they do not appear in
 `core/xdg/scopetest` is documented in its own source as
 intentionally empty, existing only to host tests.
 
-**Declared placeholders.** `go/security` and `go/integrations`
-export nothing. Both say in their doc comment that they are
-reserved for future work.
+**Defined but not yet importable.** `go/security` exports nothing
+today, but its scope is fixed: trust in artifacts and execution —
+artifact signature verification (cosign, minisign, SLSA) for
+`upgrade`, sandboxed exec behind `sideeffect`'s `Exec` seam, a
+hash-chained audit log feeding `provenance`, and SARIF
+normalization for scanner findings. Keys stay in `identity`,
+secrets in `secret`, egress in `netpolicy`, rules in `policy` and
+`scope`; repository trust scoring is out of scope. Each family
+gets a row in the tables above when it ships.
+
+**Declared placeholder.** `go/integrations` itself exports nothing
+and says so in its doc comment; its one child, `repohost`, is
+listed under [identity, upgrades and housekeeping](#i-need-identity-upgrades-and-housekeeping).
 
 **Not counted.** Packages under `incubator/` (for example
 `incubator/qmochi`, terminal charting) are outside `go/` and
