@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -39,9 +40,25 @@ const DefaultTable = "kv"
 
 // Opener is a function that creates a Store from config.
 // Registered via RegisterBackend.
+//
+// It carries no context, so a driver registered this way cannot consult the
+// network policy while it connects. Prefer ContextOpener; this shape stays
+// for drivers written against it.
 type Opener func(cfg Config) (Store, error)
 
-var backends = map[string]Opener{}
+// ContextOpener is a function that creates a Store from config, honoring
+// the policy carried by ctx. Registered via RegisterBackendContext.
+//
+// It exists because the offline marker (netpolicy.WithOffline) travels on a
+// context: an Opener has none to consult, so its initial connect escapes the
+// policy even when the driver's later queries are guarded. A ContextOpener
+// closes that one-connect gap.
+type ContextOpener func(ctx context.Context, cfg Config) (Store, error)
+
+var (
+	backends    = map[string]Opener{}
+	ctxBackends = map[string]ContextOpener{}
+)
 
 // RegisterBackend registers a factory for the named backend.
 //
@@ -49,15 +66,38 @@ var backends = map[string]Opener{}
 // a driver is what makes its name valid for Open. Backends whose dependencies
 // are costly (etcd pulls in gRPC and protobuf) therefore stay out of binaries
 // that never ask for them.
+//
+// Prefer RegisterBackendContext for any driver that touches the network: an
+// Opener cannot see the offline marker, so OpenContext has to fall back to
+// opening it with a context-free call.
 func RegisterBackend(name string, fn Opener) {
 	backends[name] = fn
 }
 
+// RegisterBackendContext registers a context-aware factory for the named
+// backend, alongside rather than instead of RegisterBackend.
+//
+// OpenContext prefers a factory registered here and falls back to a plain
+// Opener when a driver offers none, so registering both is not required and
+// a driver written against Opener keeps working unchanged. Open, which has no
+// context of its own, always goes through the context-free path.
+//
+// A driver registered here is reported by Backends the same way, so
+// registering only a ContextOpener is enough to make a name valid.
+func RegisterBackendContext(name string, fn ContextOpener) {
+	ctxBackends[name] = fn
+}
+
 // Backends returns the registered backend names in sorted order.
 func Backends() []string {
-	names := make([]string, 0, len(backends))
+	names := make([]string, 0, len(backends)+len(ctxBackends))
 	for name := range backends {
 		names = append(names, name)
+	}
+	for name := range ctxBackends {
+		if _, dup := backends[name]; !dup {
+			names = append(names, name)
+		}
 	}
 	sort.Strings(names)
 	return names
@@ -67,7 +107,24 @@ func Backends() []string {
 //
 // An unregistered name reports which names are available and, for the
 // drivers kit ships, which package to import to get the missing one.
+//
+// Open has no context to police the connect with. A caller holding one
+// should use OpenContext, which does.
 func Open(cfg Config) (Store, error) {
+	return OpenContext(context.Background(), cfg)
+}
+
+// OpenContext creates a Store from config using registered backends,
+// honoring the network policy carried by ctx.
+//
+// It prefers a factory registered by RegisterBackendContext, which can refuse
+// the initial connect on an offline-marked context. A backend that registered
+// only a plain Opener falls back to that; such a driver connects without
+// seeing the policy, which is the compatibility cost of not breaking Opener.
+func OpenContext(ctx context.Context, cfg Config) (Store, error) {
+	if fn, ok := ctxBackends[cfg.Backend]; ok {
+		return fn(ctx, cfg)
+	}
 	fn, ok := backends[cfg.Backend]
 	if !ok {
 		if pkg, known := driverPackages[cfg.Backend]; known {
