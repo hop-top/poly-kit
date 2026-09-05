@@ -1,3 +1,0 @@
-# src
-
-TypeScript contract definitions.
