@@ -69,18 +69,30 @@ func TestListPrefix(t *testing.T) {
 	assert.ElementsMatch(t, []string{"app/a", "app/b"}, keys)
 }
 
+// The two sides of a TTL assertion need opposite budgets. "Still live"
+// must hold however long the runner stalls between the write and the
+// read, so it gets a TTL no CI box will sleep through; "expired" only
+// needs the sleep to exceed the TTL, so it gets a tiny one. One value
+// serving both is what made this test flake under a loaded -race run.
+const (
+	liveTTL   = 60 * time.Second
+	dyingTTL  = time.Millisecond
+	pastDying = 10 * time.Millisecond
+)
+
 func TestTTLExpiration(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
 
-	require.NoError(t, s.PutWithTTL(ctx, "ephemeral", []byte("x"), 50*time.Millisecond))
+	require.NoError(t, s.PutWithTTL(ctx, "ephemeral", []byte("x"), liveTTL))
 
 	val, ok, err := s.Get(ctx, "ephemeral")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, []byte("x"), val)
 
-	time.Sleep(60 * time.Millisecond)
+	require.NoError(t, s.PutWithTTL(ctx, "ephemeral", []byte("x"), dyingTTL))
+	time.Sleep(pastDying)
 
 	_, ok, err = s.Get(ctx, "ephemeral")
 	require.NoError(t, err)

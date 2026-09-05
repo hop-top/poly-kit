@@ -67,18 +67,31 @@ func TestListPrefix(t *testing.T) {
 	assert.ElementsMatch(t, []string{"app/a", "app/b"}, keys)
 }
 
+// The two sides of a TTL assertion need opposite budgets. "Still live"
+// must hold however long the runner stalls between the write and the
+// read, so it gets a TTL no CI box will sleep through; "expired" only
+// needs the sleep to exceed the TTL, so it gets a tiny one. Badger
+// stores expiry at second granularity and treats expires_at <= now as
+// expired, so a millisecond TTL is gone as soon as the sleep returns.
+const (
+	liveTTL   = 60 * time.Second
+	dyingTTL  = time.Millisecond
+	pastDying = 10 * time.Millisecond
+)
+
 func TestPutWithTTL(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
 
-	require.NoError(t, s.PutWithTTL(ctx, "ttl-key", []byte("val"), 1*time.Second))
+	require.NoError(t, s.PutWithTTL(ctx, "ttl-key", []byte("val"), liveTTL))
 
 	val, ok, err := s.Get(ctx, "ttl-key")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, []byte("val"), val)
 
-	time.Sleep(2 * time.Second)
+	require.NoError(t, s.PutWithTTL(ctx, "ttl-key", []byte("val"), dyingTTL))
+	time.Sleep(pastDying)
 
 	_, ok, err = s.Get(ctx, "ttl-key")
 	require.NoError(t, err)
