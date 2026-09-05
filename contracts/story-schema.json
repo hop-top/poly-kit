@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/story-schema.json",
-  "$comment": "Authoritative wire-format shape for kit stories (v1). Pairs with the Go validator at go/conformance/story/. See .tlc/tracks/12fcc-story/design.md and ADR-0026. schema_version bumps require a binary update.",
+  "$comment": "Authoritative wire-format shape for kit stories (v1). Pairs with the Go validator at go/conformance/story/. See ADR-0026. schema_version bumps require a binary update.",
   "title": "kit story v1",
   "type": "object",
   "additionalProperties": false,

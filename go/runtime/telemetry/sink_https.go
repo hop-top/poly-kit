@@ -69,7 +69,7 @@ const (
 )
 
 // SpoolStats is the diagnostics snapshot read by `kit telemetry inspect`
-// (kit-consent track) and assertable from tests.
+// and assertable from tests.
 type SpoolStats struct {
 	PendingInMemory int
 	SpoolFiles      int

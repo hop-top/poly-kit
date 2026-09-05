@@ -18,7 +18,7 @@ import (
 	tmpl "hop.top/kit/internal/template"
 )
 
-// recordingHookRunner lives in testhelpers_test.go (T-0952). For augment,
+// recordingHookRunner lives in testhelpers_test.go. For augment,
 // hooks are empty in the synthetic fixture so calls stays nil — kept as
 // a forward-compat probe.
 
@@ -238,7 +238,7 @@ func TestAugment_Tier4_FullConformance(t *testing.T) {
 	}
 }
 
-// TestAugment_Force_OverwritesNonMain — T-0949: Inputs.Force plumbs into
+// TestAugment_Force_OverwritesNonMain — Inputs.Force plumbs into
 // engine.Render. Non-sacred files (README.md) overwrite; sacred files
 // (cmd/<name>/main.go) still route to .kit-suggested.
 //

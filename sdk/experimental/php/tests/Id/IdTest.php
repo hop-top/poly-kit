@@ -16,7 +16,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Canonical fixtures: same UUIDv7 inputs used across the cross-language
- * parity work (T-0753). DO NOT change the UUID strings — Go, Rust, TS,
+ * parity work. DO NOT change the UUID strings — Go, Rust, TS,
  * Python, and PHP must all produce identical output suffixes from them.
  */
 final class IdTest extends TestCase

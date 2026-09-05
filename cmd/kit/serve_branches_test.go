@@ -14,12 +14,12 @@ import (
 	"hop.top/kit/go/transport/api"
 )
 
-// In-process smoke tests for the branching routes (T-0397, spec
+// In-process smoke tests for the branching routes (spec
 // docs/specs/engine-versioned-branching.md §5). Exhaustive end-to-end
 // coverage (multi-step DAG topology, restart durability) lives in
-// serve_branches_integration_test.go (T-0398). These tests focus on
-// happy-path wire shape + basic error mapping for each route, plus
-// the backward-compat guarantee on /history without ?topology.
+// serve_branches_integration_test.go. These tests focus on happy-path
+// wire shape + basic error mapping for each route, plus the
+// backward-compat guarantee on /history without ?topology.
 //
 // We wire registerBranchingRoutes + registerHistoryRoutes against
 // real in-package stores rather than mocking — the handler logic is
@@ -366,7 +366,7 @@ func TestServeBranches_HistoryTopology(t *testing.T) {
 
 // TestServeBranches_HistoryDefaultUnchanged guarantees backward
 // compatibility: GET /:type/:id/history (no topology query) returns
-// the same shape T-0353 established — `versions` array with
+// the original linear response shape — `versions` array with
 // `version`, `data`, `timestamp`, `operation`, no `heads` key.
 func TestServeBranches_HistoryDefaultUnchanged(t *testing.T) {
 	srv, cleanup := newBranchingTestServer(t)

@@ -8,10 +8,10 @@
 //
 //	go test -tags=e2e ./cmd/kit/init/ -run TestE2E -v
 //
-// Until T-0867 wires `initCmd` into cmd/kit/main.go, the kit binary will
-// not have an `init` subcommand. Each test probes `kit init --help` and
-// skips with a clear message when the subcommand is unregistered. Once
-// T-0867 lands, the same suite begins exercising the real flow with no
+// Until `initCmd` is wired into cmd/kit/main.go, the kit binary will not
+// have an `init` subcommand. Each test probes `kit init --help` and skips
+// with a clear message when the subcommand is unregistered. Once it is
+// registered, the same suite begins exercising the real flow with no
 // edits required.
 package kitinit_test
 
@@ -63,7 +63,7 @@ func hasInitSubcommand(t *testing.T, bin string) bool {
 }
 
 // skipUnlessInitWired returns the kit binary path or skips the test when
-// `kit init` is not yet registered (pre-T-0867).
+// `kit init` is not yet registered.
 func skipUnlessInitWired(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -71,7 +71,7 @@ func skipUnlessInitWired(t *testing.T) string {
 	}
 	bin := buildKitBinary(t)
 	if !hasInitSubcommand(t, bin) {
-		t.Skip("kit init subcommand not registered — pending T-0867")
+		t.Skip("kit init subcommand not registered")
 	}
 	return bin
 }

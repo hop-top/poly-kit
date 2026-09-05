@@ -205,4 +205,3 @@ kit init mytool --from https://github.com/acme/kit-template-acme
 - [Getting Started CLI](getting-started-cli.md) — the kit CLI
   contract `kit init` wires up
 - Source: [`cmd/kit/init/`](../../../cmd/kit/init/)
-- Spec: `~/.ops/docs/superpowers/specs/2026-04-26-kit-init-design.md`

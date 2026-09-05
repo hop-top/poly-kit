@@ -1,7 +1,6 @@
 # Publish your kit-powered CLI's manifest
 
 Status: published
-Track: `kit-toolspec-ai-harness-contract`
 Audience: adopters building a kit-powered CLI who want to expose
 their tool's capability manifest to AI harnesses (Claude Code, MCP
 hosts, agent frameworks) per ADR-0022.
@@ -81,9 +80,8 @@ cmd.Annotations = map[string]string{
 ```
 
 The four current side-effect classes (read | write | destructive |
-interactive) live in `go/console/cli/sideeffect.go`. The
-`kit-toolspec-safety-ladder` track will expand this; today, pick the
-closest match.
+interactive) live in `go/console/cli/sideeffect.go`. A later release
+will expand this; today, pick the closest match.
 
 ## Schema versioning
 

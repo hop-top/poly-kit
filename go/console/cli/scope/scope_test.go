@@ -164,7 +164,7 @@ func deniedSentinel(t *testing.T) error {
 // TestCheck_OutputToFile_JSON exercises the Dispatch migration on
 // `scope check`: --format json and --output write to a temp file via
 // the global viper (matching how scope reads format in production
-// when wired under cli.Root). Regression guard for the T-0990
+// when wired under cli.Root). Regression guard for the Dispatch
 // callsite swap.
 func TestCheck_OutputToFile_JSON(t *testing.T) {
 	resetViper(t)

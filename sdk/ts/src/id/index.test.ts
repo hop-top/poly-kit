@@ -10,7 +10,7 @@ import {
 } from './index';
 
 // Canonical fixture set — these EXACT uuid inputs are shared with the
-// other language SDKs so future cross-language parity work (T-0753)
+// other language SDKs so future cross-language parity work
 // finds matching outputs. Do not mutate without coordinating across
 // sdk/{go,rs,py,php}.
 const FIXTURES: ReadonlyArray<{ prefix: string; uuid: string }> = [

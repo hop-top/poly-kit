@@ -1048,14 +1048,11 @@ process-group cancellation on Unix). See [Execution](#execution).
 
 Deferred (out of scope; file as follow-up tracks if pursued):
 
-- GraphQL surface (schema mismatch is severe; defer until requested) —
-  track `cmdsurf-graphql` to be filed.
-- Slack slash command / inbound email (build on Webhook) — track
-  `cmdsurf-slack` to be filed.
+- GraphQL surface (schema mismatch is severe; defer until requested).
+- Slack slash command / inbound email (build on Webhook).
 - gRPC-raw (`.proto`) alongside ConnectRPC.
 - Multi-tenant signed-URL issuance with per-tenant keys.
-- OpenTelemetry context propagation through `Invocation.Meta` —
-  track `cmdsurf-otel` to be filed.
+- OpenTelemetry context propagation through `Invocation.Meta`.
 
 ## Testing and end-to-end
 

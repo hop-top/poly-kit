@@ -80,7 +80,7 @@ func LoadAllowlist(repoRoot string) (*Allowlist, error) {
 }
 
 // Add appends a glob pattern to the allowlist. Used by the
-// kit-internal default allowlist (design.md §5).
+// kit-internal default allowlist.
 func (al *Allowlist) Add(globs ...string) {
 	for _, g := range globs {
 		negate := false

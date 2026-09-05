@@ -5,8 +5,7 @@ Invocation adapter for goose CLI (Block, Inc.).
 ## Last verified
 
 - Date: 2026-05-09
-- Binary: `goose` 1.33.1
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/goose.txt` (top-level + `goose run` + `goose session`)
+- Binary: `goose` 1.33.1 (help captured for the top-level command plus `goose run` and `goose session`)
 
 ## Distinctive shape
 

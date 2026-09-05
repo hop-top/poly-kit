@@ -2,8 +2,8 @@ package kitinit_test
 
 // initsh_e2e_test.go — exercises the standalone init.sh that ships in
 // the rendered scaffold. Verifies post-run that:
-//   1. No `.tmpl`-suffixed files remain (T-1051).
-//   2. kit-template.yaml + tiers.yaml are removed (T-1052).
+//   1. No `.tmpl`-suffixed files remain.
+//   2. kit-template.yaml + tiers.yaml are removed.
 //   3. Core targets (main.go, go.mod, Makefile) survive token substitution.
 //
 // Layout mirrors templates/scaffold.sh: the rendered project dir lives

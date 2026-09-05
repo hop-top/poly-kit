@@ -2,10 +2,10 @@
 // `.github/workflows/*-caller.yml` stubs that reference reusable workflows
 // hosted at `hop-top/.github/.github/workflows/<name>.yml@<ref>`.
 //
-// Implements T-0772. Contract: docs/contracts/kit-init-pr-wiring.md
-// (Sections 1, 6, 8). Caller stubs are NEVER inlined copies of reusable
-// workflows — every job `uses:` the upstream reference. Generation is
-// gated behind `--with-github-workflows` (default true).
+// Contract: docs/contracts/kit-init-pr-wiring.md (Sections 1, 6, 8).
+// Caller stubs are NEVER inlined copies of reusable workflows — every
+// job `uses:` the upstream reference. Generation is gated behind
+// `--with-github-workflows` (default true).
 //
 // Conflict policy (Section 6):
 //   - Never overwrite existing files.

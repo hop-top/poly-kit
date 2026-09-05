@@ -1,4 +1,4 @@
-// Per-template bootstrap smoke tests (T-0863). White-box (package kitinit)
+// Per-template bootstrap smoke tests. White-box (package kitinit)
 // because runBootstrap is unexported. Each test resolves a built-in template
 // via the real Registry, renders into t.TempDir() with stub runners (no
 // network, no shell-out), then asserts a small set of marker files.
@@ -29,7 +29,7 @@ import (
 )
 
 // Recording runners (recordingHookRunner / recordingGitRunner /
-// recordingGitHubRunner) live in testhelpers_test.go (T-0952).
+// recordingGitHubRunner) live in testhelpers_test.go.
 
 // builtinAvailable reports whether name is in the embedded built-ins list.
 func builtinAvailable(t *testing.T, name string) bool {

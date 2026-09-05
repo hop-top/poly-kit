@@ -13,7 +13,7 @@ returns).
 | `kit.api.request.started`      | before handler runs |
 | `kit.api.request.ended`        | after handler returns |
 
-> Breaking change in this release. Prior to T-0122 the
+> Breaking change in this release. Prior to this release the
 > middleware emitted `api.request.start` and `api.request.end`
 > — both non-conformant (3 segments, present-tense). The old
 > topics have been removed with no back-compat alias.

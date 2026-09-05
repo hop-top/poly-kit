@@ -11,7 +11,7 @@ import (
 )
 
 // versioned_branching_test.go covers the public Fork / Merge /
-// Branches surface added by track engine-versioned-branching.
+// Branches surface.
 //
 // Scope (P1.2): tests run against the in-memory backend only via
 // newVersionedStore. The cross-backend conformance — proving the

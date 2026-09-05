@@ -1,7 +1,6 @@
 // Package gemini implements the InvocationAdapter for Gemini CLI.
 //
-// Help-text basis: gemini --version 0.40.1 (2026-05-09 capture at
-// .tlc/tracks/uxp-agent-cli-facade/help/gemini.txt).
+// Help-text basis: gemini --version 0.40.1 (2026-05-09 capture).
 //
 // Key shape:
 //   - run: gemini -p "<prompt>"

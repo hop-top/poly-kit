@@ -1,7 +1,6 @@
 // Package codex implements the InvocationAdapter for Codex CLI.
 //
-// Help-text basis: codex-cli 0.130.0 (2026-05-09 capture at
-// .tlc/tracks/uxp-agent-cli-facade/help/codex.txt).
+// Help-text basis: codex-cli 0.130.0 (2026-05-09 capture).
 //
 // Codex has four argv shapes for the universal Modes:
 //   - ModeInteractive: codex [PROMPT]

@@ -232,12 +232,10 @@ and the xrr cassette recorder. Both apply the same normalisation so
   for inferred-from-cached values. v2 will tighten.
 - **Auto-install of Tracker in kit cli middleware is deferred.** v1
   is opt-in: adopters call `provenance.WithTracker` themselves; a
-  follow-up coordinated with 12fcc-static wires the install
-  automatically.
+  follow-up wires the install automatically.
 
 ## See also
 
 - ADR-0024 — provenance lint + guardrail combination.
-- Track design doc: `.tlc/tracks/12fcc-prov/design.md`.
 - ADR-0019 — `runtime/sideeffect` mirror precedent for the
   context-bound seam idiom.

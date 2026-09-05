@@ -6,7 +6,6 @@ Invocation adapter for Crush CLI (Charmbracelet).
 
 - Date: 2026-05-09
 - Binary: `crush` v0.65.2
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/crush.txt`
 
 ## Distinctive shape (= leanest in the suite)
 

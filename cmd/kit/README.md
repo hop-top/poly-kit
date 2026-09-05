@@ -154,7 +154,7 @@ kit init --update
 kit init --check
 
 # Append / remove a curated service in docker-compose
-# (requires T-0808's apply-services.sh; errors clean if absent)
+# (requires apply-services.sh; errors clean if absent)
 kit init --add-service redis
 kit init --remove-service redis
 ```
@@ -183,8 +183,6 @@ The five managed files are:
 - `.devcontainer/docker-compose.yml`
 - `.devcontainer/otel-config.yaml`
 - `.env.example`
-
-Spec: `.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md` §4.
 
 ### Migrating from `kit scaffold`
 

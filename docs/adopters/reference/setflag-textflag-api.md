@@ -123,11 +123,6 @@ cmd --add-tag urgent --remove-tag draft
 cmd --tag +urgent,-draft
 ```
 
-### Tracked migrations
-
-- `tlc` task tags: `tlc#T-0665`
-- `aps` profile tags: `aps#T-0327`
-
 ### Steps
 
 1. Register via `RegisterSetFlag` / `RegisterTextFlag`

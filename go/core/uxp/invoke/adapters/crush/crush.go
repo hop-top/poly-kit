@@ -1,8 +1,7 @@
 // Package crush implements the InvocationAdapter for Crush CLI
 // (Charmbracelet).
 //
-// Help-text basis: crush v0.65.2 (2026-05-09 capture at
-// .tlc/tracks/uxp-agent-cli-facade/help/crush.txt).
+// Help-text basis: crush v0.65.2 (2026-05-09 capture).
 //
 // Distinctive shape:
 //   - run: crush run [prompt...]

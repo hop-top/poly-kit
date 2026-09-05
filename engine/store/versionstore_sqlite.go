@@ -227,9 +227,9 @@ func (s *sqliteVersionStore) appendVersionTx(ctx context.Context, tx sqlExec, do
 
 // ListVersions implements VersionStore.
 //
-// Hydrates Live from the `live` column (T-0425): SQLite INTEGER 1 =
-// true, 0 = false. The column is NOT NULL DEFAULT 1, so every row
-// has a defined value.
+// Hydrates Live from the `live` column: SQLite INTEGER 1 = true,
+// 0 = false. The column is NOT NULL DEFAULT 1, so every row has a
+// defined value.
 func (s *sqliteVersionStore) ListVersions(ctx context.Context, docType, id string) ([]Version, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT version_id, seq, created_at, live FROM versions WHERE type = ? AND id = ? ORDER BY seq`,

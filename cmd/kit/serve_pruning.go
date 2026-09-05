@@ -12,9 +12,7 @@ import (
 )
 
 // registerPruningRoutes wires the two pruning routes per
-// docs/engine-protocol.md §"Pruning + Liveness" (track
-// engine-version-pruning, spec docs/specs/engine-version-pruning.md
-// §5):
+// docs/adopters/reference/engine-protocol.md §"Pruning + Liveness":
 //
 //	POST /:type/:id/prune    → apply RetentionPolicy, drop prunable versions.
 //	POST /:type/:id/abandon  → mark a head dead (filtered out by ?live=1).

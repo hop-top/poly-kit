@@ -243,9 +243,9 @@ func TestGather_HopDefaultsFalseHonoured(t *testing.T) {
 
 // TestGather_NameFallsBackToBasename asserts that when no positional arg,
 // no --name flag, and no KIT_NAME env are set, Gather populates Name (and
-// vars["Name"]) from basename(cwd). This is the fix for T-0411 problem A:
-// before this, the cli-go manifest's required-Name check would fire under
-// --yes and block augment-mode runs that omitted a positional name.
+// vars["Name"]) from basename(cwd). Before this, the cli-go manifest's
+// required-Name check would fire under --yes and block augment-mode runs
+// that omitted a positional name.
 func TestGather_NameFallsBackToBasename(t *testing.T) {
 	clearKitEnv(t)
 	isolateGit(t, "", "")
@@ -271,7 +271,7 @@ func TestGather_NameFallsBackToBasename(t *testing.T) {
 
 // TestGather_NameFromKitNameEnv asserts KIT_NAME env populates both the
 // scalar in.Name and vars["Name"], so the orchestrator-facing summary and
-// the rendered template share a single value (T-0411 problem B). Before
+// the rendered template share a single value. Before
 // the fix, env-supplied KIT_NAME landed in vars["Name"] only, while
 // in.Name was overwritten by basename(cwd) inside runAugment — leaving
 // the human/JSON summary mis-reporting "name: <basename>".

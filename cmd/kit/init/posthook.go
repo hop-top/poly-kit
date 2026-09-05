@@ -1,6 +1,6 @@
 // Package kitinit — posthook.go generates the after-PR-open git hook
-// scaffolded by `kit init` (T-0774, contract: docs/contracts/kit-init-pr-wiring.md
-// sections 2, 3, 5, 6, 8).
+// scaffolded by `kit init` (contract:
+// docs/contracts/kit-init-pr-wiring.md sections 2, 3, 5, 6, 8).
 //
 // The hook script (.githooks/post-pr-open) is invoked by adopters
 // after `gh pr create` succeeds (or any equivalent PR-open path). It

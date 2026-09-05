@@ -6,7 +6,6 @@ Invocation adapter for OpenAI Codex CLI (`codex` binary).
 
 - Date: 2026-05-09
 - Binary: `codex-cli` 0.130.0
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/codex.txt`
   (top-level + `exec`, `resume`, `fork` subcommands)
 
 ## Mode → subcommand routing

@@ -451,8 +451,9 @@ When enabled, the demo defaults to **ModeAnon**. The emitter ships
 only the canonical bounded fields (`command_path`, `exit_code`,
 `duration_ms`, `occurred_at`, `installation_id`, `kit_version`,
 `schema_version`, `sdk_lang`). Args, flags, and `_surface` stay
-in-memory; they never reach the bus. See
-`.tlc/tracks/cmdsurf-telemetry/design-note.md` §3 for the rationale.
+in-memory; they never reach the bus: the anonymous mode is defined
+as exactly the bounded field set above, so that an operator can
+enable telemetry without auditing per-invocation argument content.
 
 Even with the env var set, telemetry stays **inert until the operator
 grants consent**. The package-level `ConsentHook` defaults to
@@ -503,8 +504,8 @@ Cleanup runs in `exampleApp.Cleanup` — the sink closes first (drains
 queued events through the emitter), then the bus closes. A 2-second
 context bounds the wait so a wedged emitter does not block shutdown.
 
-**Path chosen for T-0681:** direct `TelemetryOption` construction
-(`NewTelemetrySink(WithEmitter(...), WithMode(...))`). When T-0676's
+**Path chosen:** direct `TelemetryOption` construction
+(`NewTelemetrySink(WithEmitter(...), WithMode(...))`). Once a
 `cmdsurface.Config` telemetry block lands, this can switch to a
 config-driven path with no surface change to the README.
 

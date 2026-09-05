@@ -84,8 +84,8 @@ You need:
 
 3. **Open the browser** at <http://localhost:8001>. You'll see the
    `documents`, `versions`, `version_parents`, and `snapshots` tables
-   (after the `engine-versioned-sqlite` track lands; before that,
-   only `documents`).
+   (once the versioned store has been initialised; before that, only
+   `documents`).
 
 ## Kit-aware metadata
 

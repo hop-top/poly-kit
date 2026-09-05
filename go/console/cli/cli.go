@@ -207,8 +207,8 @@ type Config struct {
 	ValidationFailureMode ValidationFailureMode
 	// EnforceDryRunRationale, when true, rejects opted-out --dry-run
 	// on write|destructive leaves that lack the kit/dry-run-rationale
-	// annotation. Default false at 0.1.0-alpha.0; flips on its own
-	// follow-up track once kit-internal sweeps complete.
+	// annotation. Default false at 0.1.0-alpha.0; flips in a
+	// follow-up once the internal sweeps complete.
 	EnforceDryRunRationale bool
 	// EnforceDestructiveToken, when true, rejects destructive leaves
 	// that have not opted into the typed-token confirmation flow via

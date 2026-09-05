@@ -92,8 +92,7 @@
 //   - docs/specs/notifications.md §7.5 Guardrails (redaction,
 //     breakers, boundedness)
 //   - docs/audits/redact-egress-audit.md (entries #14, #15 cover
-//     JSONLSink + StdoutSink; webhook / email / osnotify entries are
-//     added by the kit-notify track)
+//     JSONLSink + StdoutSink)
 //   - docs/audits/breaker-primitives-audit.md (network + exec
 //     egress requirements)
 //   - go/core/redact/README.md (Redactor surface; Apply / ApplyBytes

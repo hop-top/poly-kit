@@ -31,8 +31,7 @@ for adopters flipping `EnforceValidate=true` on an existing tool.
 `EnforceValidate=true` is the **default** at this release. Adopters
 who need a temporary escape hatch (negative tests, fuzz harnesses,
 embedded use-cases) set `cli.Config{DisableValidate: true}`. The
-flip is final — there is no migration window per
-[design.md §6](../../../../.tlc/tracks/12fcc-static/design.md).
+flip is final — there is no migration window.
 
 The validator runs in two passes:
 
@@ -88,21 +87,20 @@ kitconformance.AssertCLIWithOptions(t, root, kitconformance.Options{
 
 ## What is NOT enforced
 
-The 12fcc-static track is **structural** — it locks the shape of
+This validator is **structural** — it locks the shape of
 the cobra tree and the annotation surface. The dynamic / behavioral
-arms ship in companion tracks:
+arms ship separately:
 
-- **Provenance check** (factors 3, 4): captured in `12fcc-prov`
-  (`go/runtime/provenance/`). Not part of `kit.Validate`.
+- **Provenance check** (factors 3, 4): captured in
+  `go/runtime/provenance/`. Not part of `kit.Validate`.
 - **Test cassettes** (factor 9): xrr-based integration testing in
-  `12fcc-harness` (`go/conformance/harness/`). Not part
-  of `kit.Validate`.
+  `go/conformance/harness/`. Not part of `kit.Validate`.
 - **AI-judged quality** (factors 4, 9 polish tier): deferred until
   structural enforcement is adopted.
 - **Structured-output detection at runtime** (Pass 2 H5 extension):
   the validator cannot tell whether `RunE` calls `output.Dispatch`;
   declare `cli.SetOutputSchema` explicitly when your leaf emits
-  structured data. A future `kit doctor` track will surface leaves
+  structured data. A future `kit doctor` will surface leaves
   that emit structured data without a declared schema.
 
 ## Factor → annotation map
@@ -301,8 +299,6 @@ mode emits the same shape as a runtime usage error.
 
 ## References
 
-- Design doc:
-  [`.tlc/tracks/12fcc-static/design.md`](../../../../.tlc/tracks/12fcc-static/design.md)
 - ADR-0024 (12fcc conformance contract) — forthcoming
 - Foundation commits: `e4b1a23..a559b7a` on branch `12fcc-static`
 - Migration commits: `c543bf1..HEAD` on branch `12fcc-static`

@@ -18,13 +18,6 @@
 // # Consent gate
 //
 // Emission additionally requires a granted ConsentHook. The default
-// hook denies; sibling track kit-consent ships the user-facing gate
+// hook denies; the `kit telemetry` CLI ships the user-facing gate
 // that flips it. No consent => no emit, regardless of Mode.
-//
-// # Sibling tracks
-//
-//   - kit-consent: the user-facing consent gate and rotation CLI.
-//   - kit-telemetry-compliance: redact-check audit observer.
-//   - cmdsurf-telemetry: first adopter (CLI command-surface analytics).
-//   - sdk-telemetry: polyglot SDK mirrors of this wire contract.
 package telemetry

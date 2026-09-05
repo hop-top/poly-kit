@@ -116,9 +116,9 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		return Summary{}, fmt.Errorf("augment: render: %w", err)
 	}
 
-	// Step 6b: after-PR-open hook generation (T-0774, contract
-	// §5/§6/§8). Honors the same non-destructive semantics in augment
-	// mode: differing existing → .kit-suggested sibling.
+	// Step 6b: after-PR-open hook generation (contract §5/§6/§8).
+	// Honors the same non-destructive semantics in augment mode:
+	// differing existing → .kit-suggested sibling.
 	postHookSummary, posterr := GeneratePostPROpenHook(cwd, in.WithGithookPostPROpen, in.DryRun)
 	if posterr != nil {
 		return Summary{}, fmt.Errorf("augment: post-pr-open hook: %w", posterr)

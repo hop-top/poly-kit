@@ -11,7 +11,7 @@ package id_test
 //   - the contract fixtures themselves were edited without updating the
 //     other-language SDKs.
 // Either way the parity matrix is broken; fix the encoder or coordinate
-// a fixtures.json + 5-SDK bump (tlc T-0753).
+// a fixtures.json + 5-SDK bump.
 
 import (
 	"encoding/json"

@@ -183,8 +183,7 @@ godoc.
 Go-only MVP. `bus.Sink` and `bus.TeeBus` themselves are still
 Go-only (TS / Python ports of pub/sub exist but Sinks/Tee are
 marked `planned`). Notify ports are gated on the bus primitives
-porting first, tracked under `kit-notify-polyglot`. See ADR-0012
-and spec §3 decision #8.
+porting first. See ADR-0012.
 
 ## See also
 

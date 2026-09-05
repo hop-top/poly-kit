@@ -19,8 +19,7 @@ unique: the main-region content and any extra keys.
 
 ## Before you start
 
-- kit version: `AppShell` lives in `hop.top/kit/go/console/tui` —
-  available since the kit-tui-appshell track shipped.
+- kit version: `AppShell` lives in `hop.top/kit/go/console/tui`.
 - Bubbletea: AppShell uses bubbletea v2 (`charm.land/bubbletea/v2`).
   If you're on v1, upgrade first.
 - Theme: AppShell expects a `cli.Theme`. If your CLI already uses

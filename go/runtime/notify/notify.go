@@ -23,8 +23,7 @@
 //
 // Cross-language parity. The MVP is Go-only. bus.Sink and bus.TeeBus
 // themselves are still Go-only (TS/Python ports exist for pub/sub
-// only); notify ports are gated on those primitives porting first
-// and tracked under kit-notify-polyglot. See spec §3 #8 and §11.
+// only); notify ports are gated on those primitives porting first.
 //
 // Spec: docs/specs/notifications.md.
 package notify

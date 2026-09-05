@@ -16,7 +16,7 @@ import (
 // --- canonical cross-language fixtures -------------------------------------
 //
 // These are pinned by UUID input so that the Go, Rust, TypeScript, Python,
-// and PHP SDK tests can all assert the same wire outputs (tlc T-0753).
+// and PHP SDK tests can all assert the same wire outputs.
 // The expected strings were generated from the upstream library and
 // re-verified by Parse below.
 

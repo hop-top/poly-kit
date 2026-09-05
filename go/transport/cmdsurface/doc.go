@@ -38,9 +38,8 @@
 //   - YAML config loading.
 //
 // Surface implementations (REST handler, ConnectRPC service, etc.)
-// land in subsequent waves as separate files. See the track spec at
-// .tlc/tracks/cmdsurf/spec.md for the full surface inventory and
-// wave breakdown.
+// land in subsequent waves as separate files. The full surface
+// inventory is the Surface constants declared below.
 package cmdsurface
 
 // Surface identifies an invocation transport. Surfaces are

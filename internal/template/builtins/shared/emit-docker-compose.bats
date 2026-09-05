@@ -81,7 +81,7 @@ teardown() {
   [ "$status" -eq 0 ]
   # Body must not contain a docker service key like `postgres:`,
   # `redis:`, `minio:`, `mailpit:`, `redpanda:`. Only comments
-  # / blank lines are allowed (placeholder hint for T-0808).
+  # / blank lines are allowed (placeholder hint).
   ! echo "$output" | grep -Eq '^  (postgres|redis|minio|mailpit|redpanda):$'
   # And every non-blank line must be a comment.
   while IFS= read -r line; do

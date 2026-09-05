@@ -5,8 +5,7 @@
 #   emit_devcontainer_json <project-dir> <project-name> <lang-csv>
 #
 # Writes <project-dir>/.devcontainer/devcontainer.json as JSON-C
-# (JSON with `//` line comments) per the spec at
-# `.tlc/tracks/scaffold-emits-mise-toml-devcontainer-compose/spec.md` §5.
+# (JSON with `//` line comments).
 #
 # The file is composed in two parts:
 #

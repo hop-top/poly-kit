@@ -40,7 +40,7 @@ func (r *capturingModalRouter) ScoreSignal(_ context.Context, sig UserSignal) (f
 }
 
 // TestRegression_TextOnlyBackwardCompat verifies plain Router receives text
-// via Score when routing with UserSignal (T-0733 backward compat).
+// via Score when routing with UserSignal (backward compat).
 func TestRegression_TextOnlyBackwardCompat(t *testing.T) {
 	cr := &capturingRouter{score: 0.6}
 	reg := NewRegistry()
@@ -56,7 +56,7 @@ func TestRegression_TextOnlyBackwardCompat(t *testing.T) {
 }
 
 // TestRegression_ModalRouterDispatch verifies ModalRouter receives full
-// UserSignal via ScoreSignal, not the text-only Score path (T-0733).
+// UserSignal via ScoreSignal, not the text-only Score path.
 func TestRegression_ModalRouterDispatch(t *testing.T) {
 	mr := &capturingModalRouter{score: 0.9}
 	reg := NewRegistry()
@@ -73,7 +73,7 @@ func TestRegression_ModalRouterDispatch(t *testing.T) {
 }
 
 // TestRegression_ImageFlagDetection verifies lastUserSignal sets HasImage
-// when message contains an image ContentPart (T-0733).
+// when message contains an image ContentPart.
 func TestRegression_ImageFlagDetection(t *testing.T) {
 	msgs := []llm.Message{{
 		Role: "user",
@@ -91,7 +91,7 @@ func TestRegression_ImageFlagDetection(t *testing.T) {
 }
 
 // TestRegression_MixedContent verifies lastUserSignal sets all appropriate
-// flags for a message with text + image + audio parts (T-0733).
+// flags for a message with text + image + audio parts.
 func TestRegression_MixedContent(t *testing.T) {
 	msgs := []llm.Message{{
 		Role: "user",
@@ -110,7 +110,7 @@ func TestRegression_MixedContent(t *testing.T) {
 }
 
 // TestRegression_EmptyPartsFallback verifies lastUserSignal uses Content
-// field when Parts is empty (T-0733 backward compat).
+// field when Parts is empty (backward compat).
 func TestRegression_EmptyPartsFallback(t *testing.T) {
 	msgs := []llm.Message{{
 		Role:    "user",
@@ -127,7 +127,7 @@ func TestRegression_EmptyPartsFallback(t *testing.T) {
 
 // TestRegression_SingleRegistryLookup verifies Route succeeds for a valid
 // router, proving the refactored validateRouterThreshold works without a
-// redundant registry lookup (T-0733).
+// redundant registry lookup.
 func TestRegression_SingleRegistryLookup(t *testing.T) {
 	reg := NewRegistry()
 	require.NoError(t, reg.Register("test", &stubRouter{score: 0.5}))

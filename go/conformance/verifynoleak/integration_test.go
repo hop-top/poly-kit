@@ -50,7 +50,7 @@ func allFindings(results []scanner.FileResult) []scanner.Finding {
 	return out
 }
 
-// ── T-1225 positive cases ────────────────────────────────────────
+// ── positive cases ───────────────────────────────────────────────
 
 func TestPositive_RealScenarioAtTypicalPath(t *testing.T) {
 	dir := t.TempDir()

@@ -1,18 +1,17 @@
 // dotgithub_wiring_e2e_test.go — cross-generator e2e coverage for the
-// kit-init-dotgithub-wiring track (T-0775).
+// .github/.githooks wiring emitted by `kit init`.
 //
-// This file is the integration counterpart to the per-generator unit tests
-// already shipped by T-0772 (workflows_test.go), T-0773 (prepr_test.go),
-// T-0774 (posthook_test.go, posthook_ps1_test.go), and T-0776
-// (buswf/*_test.go + bus_workflows_test.go). Where those tests verify each
-// generator in isolation, this file drives the full bootstrap and augment
-// flows end-to-end and asserts the four generator families compose
-// coherently:
+// This file is the integration counterpart to the per-generator unit
+// tests in workflows_test.go, prepr_test.go, posthook_test.go,
+// posthook_ps1_test.go, buswf/*_test.go and bus_workflows_test.go. Where
+// those tests verify each generator in isolation, this file drives the
+// full bootstrap and augment flows end-to-end and asserts the four
+// generator families compose coherently:
 //
-//   - .github/workflows/*-caller.yml (workflow callers — T-0772)
-//   - .githooks/pre-pr{,.ps1}        (before-PR hook — T-0773)
-//   - .githooks/post-pr-open{,.ps1}  (after-PR hook — T-0774)
-//   - .github/workflows/kit-bus-*.yml (bus event workflows — T-0776, opt-in)
+//   - .github/workflows/*-caller.yml  (workflow callers)
+//   - .githooks/pre-pr{,.ps1}         (before-PR hook)
+//   - .githooks/post-pr-open{,.ps1}   (after-PR hook)
+//   - .github/workflows/kit-bus-*.yml (bus event workflows, opt-in)
 //
 // Contract: docs/contracts/kit-init-pr-wiring.md (Sections 1, 2, 3, 5, 6, 8).
 //
@@ -141,20 +140,20 @@ func e2eBootstrap(t *testing.T, in Inputs) (target string, summary Summary) {
 func TestE2E_Bootstrap_DefaultFlags_WiresAllNonBusGenerators(t *testing.T) {
 	target, summary := e2eBootstrap(t, e2eInputs("demo", false))
 
-	// Workflow callers (T-0772). Default Runtime = ["go"] → release + test.
+	// Workflow callers. Default Runtime = ["go"] → release + test.
 	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "release-go-caller.yml"))
 	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "test-go-caller.yml"))
 
-	// Before-PR hook (T-0773) — bash + ps1 companion.
+	// Before-PR hook — bash + ps1 companion.
 	assert.FileExists(t, filepath.Join(target, ".githooks", "pre-pr"))
 	assert.FileExists(t, filepath.Join(target, ".githooks", "pre-pr.ps1"))
 
-	// After-PR-open hook (T-0774) — bash + ps1 companion.
+	// After-PR-open hook — bash + ps1 companion.
 	assert.FileExists(t, filepath.Join(target, ".githooks", "post-pr-open"))
 	assert.FileExists(t, filepath.Join(target, ".githooks", "post-pr-open.ps1"))
 
-	// Bus workflows (T-0776) MUST NOT exist when --with-bus-workflows is
-	// false. Default is opt-in (Section 8).
+	// Bus workflows MUST NOT exist when --with-bus-workflows is false.
+	// Default is opt-in (Section 8).
 	for _, f := range buswf.Files() {
 		_, statErr := os.Stat(filepath.Join(target, ".github", "workflows", f.Name))
 		assert.True(t, os.IsNotExist(statErr),
@@ -222,10 +221,10 @@ func TestE2E_Bootstrap_ManifestSchemaAndHashes(t *testing.T) {
 	}
 
 	// Each generator's known paths must be present with a hash that
-	// matches the live file's content. We assert against the bash hook
-	// + ps1 (T-0773) and the workflow callers (T-0772). post-pr-open
-	// (T-0774) does not currently land in this manifest (Summary surfaces
-	// it via PostHookResult); see "real bugs found" report.
+	// matches the live file's content. We assert against the bash
+	// before-PR hook + its ps1 companion and the workflow callers. The
+	// after-PR-open hook does not currently land in this manifest —
+	// Summary surfaces it via PostHookResult instead.
 	mustMatch := []string{
 		PrePrHookPath,
 		PrePrHookPs1Path,

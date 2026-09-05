@@ -42,9 +42,4 @@
 //   - ErrTemplateNotFound / NewTemplateNotFoundError / IsTemplateNotFound
 //   - ErrHookFailed / NewHookFailedError / IsHookFailed
 //   - ErrFileConflict / NewFileConflictError / IsFileConflict
-//
-// # Spec
-//
-// See docs/superpowers/specs/2026-04-26-kit-init-design.md (in the
-// ops repo) for the full design.
 package template

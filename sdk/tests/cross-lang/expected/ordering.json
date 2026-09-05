@@ -105,8 +105,8 @@
         "",
         "This contradicts contract rule 2, which settled 4-to-1 with Go the",
         "sole outlier and explicitly noted 'Only Go changes'. The Go-side",
-        "change was scoped to phase 2 but landed in none of T-0961..T-0965,",
-        "all four of which are payload SDKs. So this gap is the unimplemented",
+        "change was scoped to a later phase but landed in none of the",
+        "payload SDKs. So this gap is the unimplemented",
         "half of rule 2, not a new discovery — recorded here so it cannot",
         "drift back out of view."
       ]

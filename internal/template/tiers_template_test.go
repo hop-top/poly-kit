@@ -1,5 +1,5 @@
-// T-0950: tiers.yaml keys may contain text/template variables that
-// reference the same vars used for file rendering. The engine must
+// tiers.yaml keys may contain text/template variables that reference
+// the same vars used for file rendering. The engine must
 // render keys before matching against post-substitution output paths,
 // or var-bearing keys silently fall through to the default tier [4].
 package template_test

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// T-0729: JWT issuer/audience validation regressions.
+// Regression: JWT issuer/audience validation.
 
 func TestRegression_NilVerifyOptions(t *testing.T) {
 	kp, err := Generate()

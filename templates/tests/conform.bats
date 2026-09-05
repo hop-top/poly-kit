@@ -285,7 +285,7 @@ EOF
 }
 
 # ----------------------------------------------------------
-# Test 6: kit init --update wrapper (T-0811)
+# Test 6: kit init --update wrapper
 # ----------------------------------------------------------
 #
 # These tests exercise the new managed-block refresh

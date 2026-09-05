@@ -127,7 +127,7 @@ type FlagSet struct {
 //     unless --name overrides. When neither is set, KIT_NAME and then
 //     basename(cwd) close the chain so augment-mode runs that omit a
 //     positional name still get a non-empty Name before the manifest
-//     required-var loop runs (T-0411).
+//     required-var loop runs.
 //   - The first scalar resolution pass populates the orchestrator-facing
 //     Inputs fields and seeds the Vars map with built-ins.
 //   - The second pass walks manifest.Variables in declaration order so
@@ -186,9 +186,9 @@ func Gather(
 	// the manifest required-var loop below) so the orchestrator-facing
 	// scalar in.Name and the rendered vars["Name"] share a single source
 	// of truth. Without this, augment-mode's basename fallback ran AFTER
-	// Gather and diverged from vars["Name"] populated via KIT_NAME (T-0411
-	// problem B), or never ran at all because the manifest's required
-	// check fired first under --yes (T-0411 problem A).
+	// Gather and diverged from vars["Name"] populated via KIT_NAME, or
+	// never ran at all because the manifest's required check fired
+	// first under --yes.
 	//
 	// Order: --name flag > positional arg > KIT_NAME env > basename(cwd).
 	// basename is a universally-safe last resort: augment treats cwd as
@@ -215,7 +215,7 @@ func Gather(
 	// Now apply scalar precedence to the rest. Built-in fallbacks are
 	// computed once dependencies (AccountType, Author/Name) are available.
 	//
-	// Author/Copyrights precedence (see ADR + track plan):
+	// Author/Copyrights precedence:
 	//   1. --author (repeatable; ;-delimited within a value) → parsed into Copyrights
 	//   2. KIT_AUTHOR env (single legacy holder)
 	//   3. defaults.yaml author field (single legacy holder)

@@ -3,9 +3,10 @@
 // pinned in docs/contracts/kit-init-pr-wiring.md §6.
 //
 // We deliberately keep the schema isolated to this package for now —
-// T-0772/T-0773/T-0774 will land their own entries and a shared writer
-// can be promoted once we have three concrete callers. Per the "build
-// the shared abstraction after the third example" rule.
+// the workflow-caller, before-PR hook and after-PR hook generators land
+// their own entries, and a shared writer can be promoted once we have
+// three concrete callers. Per the "build the shared abstraction after
+// the third example" rule.
 package buswf
 
 import (

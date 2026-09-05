@@ -101,6 +101,6 @@
 //	_ = json.Unmarshal(raw, &p)
 //
 // Publishers SHOULD use payload structs that round-trip cleanly
-// via encoding/json. See [Event] for details and the bus topics
-// spec (tlc/docs/bus-topics-spec-0.1.md §4) for the catalog.
+// via encoding/json. See [Event] for details and
+// docs/contracts/event-topics.md for the topic catalog.
 package bus

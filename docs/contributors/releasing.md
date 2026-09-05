@@ -13,7 +13,7 @@ Per-row protocol-of-record decisions are in
 the input audit is [`docs/contributors/audits/engine-sdk-drift.md`](audits/engine-sdk-drift.md).
 
 Cross-SDK parity is locked by the integration test under
-`engine/sdk/parity` (T-0390), which runs the same
+`engine/sdk/parity`, which runs the same
 create/update/history/revert workload through both SDKs against
 one `kit serve` and asserts identical observable behavior.
 
@@ -350,8 +350,7 @@ the SQLite backend.
   the seq closest to the reverted target. The conformance suite
   locks this down. A future branch-aware Revert would break the
   test deliberately.
-- SDK parity (TS / Python). Deferred to track
-  `engine-sdk-protocol-reconcile` (T-0384..T-0391); the wire
+- SDK parity (TS / Python). Deferred to follow-up work; the wire
   contract lands first and SDKs follow.
 
 **Spec & ADR**
@@ -600,10 +599,9 @@ close + reopen.
 - **Cross-instance pruning coordination.** Multiple `kit serve`
   instances running `Prune` against a replicated dataset.
   Belongs to the replication track (`docs/engine-sync.md`).
-- **SDK parity (TS / Python).** Deferred to track
-  `engine-sdk-protocol-reconcile`; the wire contract lands first
-  and SDK bindings for `Prune` / `Abandon` /
-  `Branches({live:true})` follow.
+- **SDK parity (TS / Python).** Deferred to follow-up work; the
+  wire contract lands first and SDK bindings for `Prune` /
+  `Abandon` / `Branches({live:true})` follow.
 
 **Spec & ADR**
 

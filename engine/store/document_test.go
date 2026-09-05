@@ -186,8 +186,8 @@ func TestTimestampsSet(t *testing.T) {
 
 // TestVersionTablesCreated asserts the additive version-tables
 // migration runs on first boot and is idempotent across reopens.
-// Per the engine-snapshot-dedup track, the snapshot storage shape
-// is content-addressed: snapshot_blobs(hash, data, refcount) and a
+// The snapshot storage shape is content-addressed:
+// snapshot_blobs(hash, data, refcount) and a
 // version_snapshots(version_id, hash) join replace the original
 // snapshots(version_id, data) table.
 func TestVersionTablesCreated(t *testing.T) {

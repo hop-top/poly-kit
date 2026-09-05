@@ -30,11 +30,10 @@ against:
   what survives.
 
 The package is polyglot-aware: the on-disk `installation_id` lives at
-a fixed path so SDK siblings (Python, TS, Rust, PHP — track
-sdk-telemetry / sdk-telemetry-php) read the same identifier without
-re-hashing. The wire `Event` shape is also part of the contract — JSON
-tags, field order, and `omitempty` placement are diffed by the
-cross-language contract test (track sdk-telemetry, T-0709).
+a fixed path so SDK siblings (Python, TS, Rust, PHP) read the same
+identifier without re-hashing. The wire `Event` shape is also part of
+the contract — JSON tags, field order, and `omitempty` placement are
+diffed by the cross-language contract test.
 
 ## When to use what — intent table
 
@@ -50,7 +49,7 @@ cross-language contract test (track sdk-telemetry, T-0709).
 | I want to override which env var holds the bearer token     | `WithTelemetryAuthEnv("MY_TELEMETRY_TOKEN")`                 |
 | I want to know my install_id                                | `InstallationID()`                                           |
 | I want to rotate install_id                                 | `Rotate()` (called from `kit consent reset` CLI)             |
-| I want to verify redact actually fired before egress        | `SetRedactObserver(...)` (track kit-telemetry-compliance)    |
+| I want to verify redact actually fired before egress        | `SetRedactObserver(...)`                                     |
 | I want to drain spooled events after a network outage       | `(*HTTPSSink).ReplaySpool(ctx)`                              |
 | I want diagnostics for `kit telemetry inspect`              | `(*HTTPSSink).Stats()` → `SpoolStats`                        |
 
@@ -307,9 +306,9 @@ Reserved-but-not-yet-emitted future actions in the same Object space:
 `flushed`, `dropped`, `spool_overflowed`. The namespace is claimed
 now to avoid a future collision with the bus grammar validator.
 
-Audit topic: `kit.telemetry.redact.matched` — `kit-telemetry-compliance`
-T-0702 subscribes to verify redact actually fired before any Full
-payload reached a sink.
+Audit topic: `kit.telemetry.redact.matched` — a compliance subscriber
+listens on it to verify redact actually fired before any Full payload
+reached a sink.
 
 **Anon payload:**
 
@@ -391,7 +390,7 @@ emitter, _ := telemetry.New(
 
 When set explicitly, `WithSDKVersion` short-circuits the
 `ReadBuildInfo` path entirely and the supplied string is what flows
-onto the wire as `sdk_version`. See T-0674 for the discovery context.
+onto the wire as `sdk_version`.
 
 ## Concurrency notes
 

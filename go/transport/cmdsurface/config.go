@@ -69,11 +69,10 @@ type SurfacesConfig struct {
 // surfaces.commands.<pattern>. The Enabled field drives the
 // bridge's per-leaf surface set; the Webhook / Bus / Cron / Sinks
 // blocks are the declarative counterpart to the Go-side mount
-// inputs (WebhookMapping, BusBinding, CronSchedule, SinkSpec)
-// documented in .tlc/tracks/cmdsurf/spec.md. The blocks are
-// parsed by Load and surfaced unchanged; callers building Mount*
-// inputs from YAML translate each block to the corresponding
-// runtime struct.
+// inputs (WebhookMapping, BusBinding, CronSchedule, SinkSpec).
+// The blocks are parsed by Load and surfaced unchanged; callers
+// building Mount* inputs from YAML translate each block to the
+// corresponding runtime struct.
 type CommandConfig struct {
 	// Enabled lists the surfaces this command is exposed on. When
 	// empty the bridge falls back to SurfacesConfig.Defaults (or

@@ -1,8 +1,8 @@
 // Package cursoragent implements the InvocationAdapter for Cursor
 // Agent CLI.
 //
-// Help-text basis: cursor-agent 2025.10.01-f425367 (2026-05-09 capture
-// at .tlc/tracks/uxp-agent-cli-facade/help/cursor-agent.txt).
+// Help-text basis: cursor-agent 2025.10.01-f425367 (2026-05-09
+// capture).
 //
 // Distinctive shape:
 //   - run: cursor-agent -p "<prompt>"

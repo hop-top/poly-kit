@@ -28,8 +28,8 @@ func seedLegacyDB(t *testing.T, payloads map[string]string) string {
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Mirror the shape from the engine-versioned-sqlite track
-	// (pre-dedup). versions + version_parents + the legacy
+	// Mirror the original pre-dedup shape: versions +
+	// version_parents + the legacy
 	// snapshots table; everything else (documents, etc.) is a
 	// no-op for these tests.
 	_, err = db.Exec(`

@@ -78,8 +78,8 @@ Both are emitted only when the corresponding annotation is set
 ### Default-policy table (harness reference)
 
 This is the recommended decoder for `Safety.Permissions`; the
-canonical contract lives in the `kit-toolspec-ai-harness-contract`
-track. `auto` = allow without prompt; `prompt` = ask user;
+canonical contract is ADR-0022. `auto` = allow without prompt;
+`prompt` = ask user;
 `deny` = refuse unless explicitly allowlisted.
 
 | Tier × Network        | none    | egress:public | egress:private | ingress |

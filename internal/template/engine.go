@@ -3,8 +3,6 @@
 // honors kit-conditional gating, filters by tier, and writes with
 // conflict-aware semantics. Hooks, registry resolution, and shelling
 // out to git/gh are NOT this engine's concern.
-//
-// See docs/superpowers/specs/2026-04-26-kit-init-design.md §7-§8.
 package template
 
 import (

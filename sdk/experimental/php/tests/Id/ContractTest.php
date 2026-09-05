@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Cross-language parity contract test (tlc T-0753).
+ * Cross-language parity contract test.
  *
  * Loads `contracts/typeid-v1/fixtures.json` from the repo root and
  * asserts that this PHP SDK's encode (Id::fromUuid) and decode

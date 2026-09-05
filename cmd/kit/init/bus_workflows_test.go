@@ -1,4 +1,4 @@
-// Integration tests for --with-bus-workflows wiring (T-0776).
+// Integration tests for --with-bus-workflows wiring.
 //
 // Drives runBootstrap and runAugment directly with WithBusWorkflows set
 // and asserts the four .github/workflows/kit-bus-*.yml files (or their

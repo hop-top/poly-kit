@@ -53,7 +53,7 @@ var urlSuffixRegex = regexp.MustCompile(`\s+<([^<>]+)>\s*$`)
 // resolved []Copyright. currentYear seeds the legacy single-name
 // fallback path (when the first token is not a 4-digit year).
 //
-// Rules (locked by track plan):
+// Rules:
 //   - split each value on ";", trim whitespace per chunk
 //   - empty chunks (consecutive ";" or trailing ";") are skipped silently
 //   - per-chunk grammar: "<years> <holder>[ <<URL>>]"
