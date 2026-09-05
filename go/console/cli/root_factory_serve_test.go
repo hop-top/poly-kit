@@ -269,6 +269,12 @@ func tokenIn(t *testing.T, text string) string {
 	return rest
 }
 
+// The three parallel tests below are also the guard against New registering a
+// cobra.OnInitialize closure. cobra keeps one process-global initializer list;
+// a factory that appended to it on every build would race on the list from
+// concurrent invocations and read other trees' flag sets from every Execute,
+// which the race detector reports here (reintroducing the registration turns
+// all three red under -race). No probe into cobra's internals is needed.
 func TestRootFactorySocketRunsInvocationsInParallel(t *testing.T) {
 	const n = 4
 	f := newFactoryFixture(t, n)

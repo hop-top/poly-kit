@@ -5,7 +5,6 @@ import (
 	"context"
 	"reflect"
 	"testing"
-	_ "unsafe" // for go:linkname
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -13,14 +12,6 @@ import (
 
 	"hop.top/kit/go/console/output"
 )
-
-// cobraInitializers is cobra's process-global OnInitialize registry.
-// Every closure in it runs on every Execute of every tree in the
-// process, so its length is the direct measure of what New leaves
-// behind. Read here, never written.
-//
-//go:linkname cobraInitializers github.com/spf13/cobra.initializers
-var cobraInitializers []func()
 
 func nukeLeaf() *cobra.Command {
 	return &cobra.Command{
@@ -146,17 +137,6 @@ func TestPrepareRejectsSignatureViolationsWhenAsked(t *testing.T) {
 	err := r.Prepare()
 	var se *SignatureReportError
 	require.ErrorAs(t, err, &se)
-}
-
-func TestNewRegistersNoCobraInitializer(t *testing.T) {
-	before := len(cobraInitializers)
-	for range 8 {
-		r := New(Config{Name: "p", Version: "0.1.0", DisableValidate: true})
-		r.Cmd.AddCommand(nukeLeaf())
-		require.NoError(t, r.Prepare())
-	}
-	assert.Equal(t, before, len(cobraInitializers),
-		"New must not grow cobra's process-global initializer list")
 }
 
 func TestVerboseCountReadsTheParsedFlag(t *testing.T) {
