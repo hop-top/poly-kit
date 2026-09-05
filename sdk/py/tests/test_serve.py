@@ -42,6 +42,8 @@ from hop_top_kit.serve import (
     Supervisor,
     SupervisorConfig,
     _RunState,
+    apply_enable_disable,
+    apply_timeout_overrides,
     code_for,
     configs_from_mapping,
     default_topics,
@@ -1302,6 +1304,136 @@ def test_command_runs_a_disabled_service_through_the_selector_and_exits_0():
     CliRunner().invoke(app, ["serve", "api"])
     assert exits[0][0] == 0
     assert api.start_count == 1
+
+
+# ---------------------------------------------------------------------------
+# --enable / --disable and the timeout flags
+# ---------------------------------------------------------------------------
+
+
+def test_enable_flag_is_repeatable_and_implies_configured():
+    """Neither service has a config block: the flag is what configures
+    each one, and naming both starts both."""
+    a = FakeService("alpha", return_after=0.05)
+    b = FakeService("beta", return_after=0.05)
+    app, exits, _out = app_with(registry_of(a, b), {})
+    CliRunner().invoke(app, ["serve", "--enable", "alpha", "--enable", "beta"])
+    assert exits == [(0, None)]
+    assert a.start_count == 1
+    assert b.start_count == 1
+
+
+def test_disable_flag_skips_an_enabled_service_silently():
+    on = FakeService("on", return_after=0.05)
+    off = FakeService("off", return_after=0.05)
+    app, exits, _out = app_with(
+        registry_of(on, off),
+        {"on": ServiceConfig(enabled=True), "off": ServiceConfig(enabled=True)},
+    )
+    CliRunner().invoke(app, ["serve", "--disable", "off"])
+    assert exits == [(0, None)]
+    assert on.start_count == 1
+    assert off.start_count == 0
+
+
+def test_disabling_every_enabled_service_leaves_nothing_to_run_and_exits_2():
+    # return_after keeps a regression from hanging the suite: a service
+    # the flag failed to disable would otherwise wait for a signal.
+    app, exits, _out = app_with(
+        registry_of(FakeService("api", return_after=0.05)), {"api": ServiceConfig(enabled=True)}
+    )
+    CliRunner().invoke(app, ["serve", "--disable", "api"])
+    assert exits[0][0] == 2
+
+
+@pytest.mark.parametrize("flag", ["--enable", "--disable"])
+def test_enable_and_disable_are_refused_under_the_selector_form(flag: str):
+    api = FakeService("api", return_after=0.05)
+    app, exits, _out = app_with(registry_of(api), {"api": ServiceConfig(enabled=True)})
+    CliRunner().invoke(app, ["serve", "api", flag, "api"])
+    assert exits == [
+        (
+            2,
+            "--enable/--disable apply to the supervisor form; drop the service name or drop the flags",
+        )
+    ]
+    assert api.start_count == 0
+
+
+def test_flags_do_not_leak_into_the_callers_configs():
+    configs = {"api": ServiceConfig(enabled=True)}
+    app, _exits, _out = app_with(registry_of(FakeService("api", return_after=0.05)), configs)
+    CliRunner().invoke(app, ["serve", "--disable", "api"])
+    assert configs["api"].enabled is True
+
+
+def test_ready_timeout_flag_bounds_start_for_every_resolved_service():
+    """Without the flag the default 30s budget would outlive the test; the
+    flag is what turns a never-ready service into a start failure."""
+    app, exits, _out = app_with(
+        registry_of(FakeService("api", never_ready=True)), {"api": ServiceConfig(enabled=True)}
+    )
+    started = time.monotonic()
+    CliRunner().invoke(app, ["serve", "--ready-timeout", "50ms"])
+    assert exits[0][0] == 1
+    assert "ready" in (exits[0][1] or "")
+    # The default budget would also end in exit 1, thirty seconds later:
+    # the elapsed bound is what proves the flag reached the service.
+    assert time.monotonic() - started < 5
+
+
+def test_shutdown_timeout_flag_bounds_the_whole_stop():
+    app, exits, _out = app_with(
+        registry_of(FakeService("api", hang_in_stop=True, return_after=0.01)),
+        {"api": ServiceConfig(enabled=True)},
+    )
+    started = time.monotonic()
+    CliRunner().invoke(
+        app, ["serve", "api", "--stop-timeout", "20ms", "--shutdown-timeout", "40ms"]
+    )
+    assert exits[0][0] == 1
+    assert time.monotonic() - started < 5
+
+
+def test_an_unparseable_duration_flag_is_usage_exit_2():
+    api = FakeService("api", return_after=0.05)
+    app, exits, _out = app_with(registry_of(api), {"api": ServiceConfig(enabled=True)})
+    CliRunner().invoke(app, ["serve", "--ready-timeout", "30x"])
+    assert exits[0][0] == 2
+    assert "--ready-timeout" in (exits[0][1] or "")
+    assert api.start_count == 0
+
+
+def test_apply_enable_disable_makes_an_unconfigured_service_configured_and_enabled():
+    assert apply_enable_disable({}, ["api"], []) == {"api": ServiceConfig(enabled=True)}
+
+
+def test_apply_enable_disable_clears_enablement_and_keeps_budgets():
+    out = apply_enable_disable({"api": ServiceConfig(enabled=True, ready_timeout=5)}, [], ["api"])
+    assert out == {"api": ServiceConfig(enabled=False, ready_timeout=5)}
+
+
+def test_apply_enable_disable_ignores_an_unconfigured_disable():
+    assert apply_enable_disable({}, [], ["ghost"]) == {}
+
+
+def test_apply_enable_disable_lets_enable_win_over_disable():
+    assert apply_enable_disable({}, ["api"], ["api"]) == {"api": ServiceConfig(enabled=True)}
+
+
+def test_apply_timeout_overrides_applies_one_budget_to_every_service():
+    out = apply_timeout_overrides(
+        {"a": ServiceConfig(enabled=True), "b": ServiceConfig(stop_timeout=1)}, 10, 20
+    )
+    assert out == {
+        "a": ServiceConfig(enabled=True, ready_timeout=10, stop_timeout=20),
+        "b": ServiceConfig(enabled=False, ready_timeout=10, stop_timeout=20),
+    }
+
+
+def test_apply_timeout_overrides_leaves_the_map_alone_without_flags():
+    src = {"a": ServiceConfig(ready_timeout=7)}
+    assert apply_timeout_overrides(src) == src
 
 
 # ---------------------------------------------------------------------------

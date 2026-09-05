@@ -30,6 +30,9 @@ import {
   exitCodeFor,
   isFailure,
   isReservedName,
+  applyEnableDisable,
+  applyTimeoutOverrides,
+  parseDurationMs,
   registerServe,
   resolve,
   signalController,
@@ -1090,6 +1093,99 @@ describe('registerServe', () => {
     expect(exits[0]!.message).toContain('bind refused');
   });
 
+  // -- --enable / --disable -------------------------------------------
+
+  it('--enable is repeatable and makes an unconfigured service configured and enabled', async () => {
+    // Neither service has a config block: the flag is what configures
+    // each one, and naming both starts both.
+    const a = fakeService('alpha', { returnAfterMs: 5 });
+    const b = fakeService('beta', { returnAfterMs: 5 });
+    const { program, exits } = programWith(registryOf(a, b), {});
+    await program.parseAsync(
+      ['serve', '--enable', 'alpha', '--enable', 'beta'], { from: 'user' },
+    );
+
+    expect(a.startCount).toBe(1);
+    expect(b.startCount).toBe(1);
+    expect(exits).toEqual([{ code: 0, message: undefined }]);
+  });
+
+  it('--disable skips an enabled service silently under the supervisor form', async () => {
+    const on = fakeService('on', { returnAfterMs: 5 });
+    const off = fakeService('off', { returnAfterMs: 5 });
+    const { program, exits } = programWith(registryOf(on, off), enabled('on', 'off'));
+    await program.parseAsync(['serve', '--disable', 'off'], { from: 'user' });
+
+    expect(on.startCount).toBe(1);
+    expect(off.startCount).toBe(0);
+    expect(exits).toEqual([{ code: 0, message: undefined }]);
+  });
+
+  it('--disable on every enabled service leaves nothing to run and exits 2', async () => {
+    // returnAfterMs keeps a regression from hanging the suite: a service
+    // the flag failed to disable would otherwise wait for a signal.
+    const { program, exits } = programWith(
+      registryOf(fakeService('api', { returnAfterMs: 5 })), enabled('api'),
+    );
+    await program.parseAsync(['serve', '--disable', 'api'], { from: 'user' });
+    expect(exits[0]!.code).toBe(2);
+  });
+
+  it.each([['--enable'], ['--disable']])(
+    'refuses %s under the selector form with USAGE exit 2', async (flag) => {
+      const svc = fakeService('api', { returnAfterMs: 5 });
+      const { program, exits } = programWith(registryOf(svc), enabled('api'));
+      await program.parseAsync(['serve', 'api', flag, 'api'], { from: 'user' });
+
+      expect(svc.startCount).toBe(0);
+      expect(exits).toEqual([{
+        code: 2,
+        message: '--enable/--disable apply to the supervisor form; drop the service name or drop the flags',
+      }]);
+    },
+  );
+
+  it('does not let the flags leak into the caller\'s configs', async () => {
+    const configs: Record<string, ServiceConfig> = { api: { enabled: true } };
+    const { program } = programWith(registryOf(fakeService('api', { returnAfterMs: 5 })), configs);
+    await program.parseAsync(['serve', '--disable', 'api'], { from: 'user' });
+    expect(configs.api!.enabled).toBe(true);
+  });
+
+  // -- timeout flags ----------------------------------------------------
+
+  it('--ready-timeout bounds start for every resolved service', async () => {
+    // Without the flag the default 30s budget would outlive the test;
+    // the flag is what turns a never-ready service into a start failure.
+    const { program, exits } = programWith(
+      registryOf(fakeService('api', { neverReady: true })), enabled('api'),
+    );
+    await program.parseAsync(['serve', '--ready-timeout', '15ms'], { from: 'user' });
+
+    expect(exits[0]!.code).toBe(1);
+    expect(exits[0]!.message).toContain('ready');
+  });
+
+  it('--shutdown-timeout bounds the whole stop', async () => {
+    const { program, exits } = programWith(
+      registryOf(fakeService('api', { hangInStop: true, returnAfterMs: 1 })), enabled('api'),
+    );
+    await program.parseAsync(
+      ['serve', 'api', '--stop-timeout', '10ms', '--shutdown-timeout', '15ms'], { from: 'user' },
+    );
+    expect(exits[0]!.code).toBe(1);
+  });
+
+  it('refuses an unparseable duration as USAGE exit 2', async () => {
+    const svc = fakeService('api', { returnAfterMs: 5 });
+    const { program, exits } = programWith(registryOf(svc), enabled('api'));
+    await program.parseAsync(['serve', '--ready-timeout', '30x'], { from: 'user' });
+
+    expect(svc.startCount).toBe(0);
+    expect(exits[0]!.code).toBe(2);
+    expect(exits[0]!.message).toContain('--ready-timeout');
+  });
+
   it('leaves no signal listeners behind after a run', async () => {
     const before = process.listenerCount('SIGTERM');
     const { program } = programWith(
@@ -1097,5 +1193,65 @@ describe('registerServe', () => {
     );
     await program.parseAsync(['serve', 'api'], { from: 'user' });
     expect(process.listenerCount('SIGTERM')).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Flag overrides
+// ---------------------------------------------------------------------------
+
+describe('applyEnableDisable', () => {
+  it('enable makes an unconfigured service configured and enabled', () => {
+    expect(applyEnableDisable({}, ['api'], [])).toEqual({ api: { enabled: true } });
+  });
+
+  it('disable clears enablement on a configured service and keeps its budgets', () => {
+    const out = applyEnableDisable({ api: { enabled: true, readyTimeoutMs: 5 } }, [], ['api']);
+    expect(out).toEqual({ api: { enabled: false, readyTimeoutMs: 5 } });
+  });
+
+  it('disable on an unconfigured service is a no-op', () => {
+    expect(applyEnableDisable({}, [], ['ghost'])).toEqual({});
+  });
+
+  it('enable wins over disable for the same name', () => {
+    expect(applyEnableDisable({}, ['api'], ['api'])).toEqual({ api: { enabled: true } });
+  });
+
+  it('returns a new map rather than mutating the input', () => {
+    const input: Record<string, ServiceConfig> = { api: { enabled: true } };
+    const out = applyEnableDisable(input, [], ['api']);
+    expect(input.api!.enabled).toBe(true);
+    expect(out).not.toBe(input);
+  });
+});
+
+describe('applyTimeoutOverrides', () => {
+  it('applies one budget to every resolved service', () => {
+    const out = applyTimeoutOverrides(
+      { a: { enabled: true }, b: { enabled: false, stopTimeoutMs: 1 } }, 10, 20,
+    );
+    expect(out).toEqual({
+      a: { enabled: true, readyTimeoutMs: 10, stopTimeoutMs: 20 },
+      b: { enabled: false, readyTimeoutMs: 10, stopTimeoutMs: 20 },
+    });
+  });
+
+  it('leaves the map alone when neither flag is set', () => {
+    const out = applyTimeoutOverrides({ a: { enabled: true, readyTimeoutMs: 7 } });
+    expect(out).toEqual({ a: { enabled: true, readyTimeoutMs: 7 } });
+  });
+});
+
+describe('parseDurationMs', () => {
+  it.each([
+    ['30s', 30_000], ['500ms', 500], ['1m30s', 90_000], ['1h', 3_600_000],
+    ['1.5s', 1_500], ['2', 2_000],
+  ])('parses %s', (raw, ms) => {
+    expect(parseDurationMs(raw)).toBe(ms);
+  });
+
+  it.each([[''], ['30x'], ['s'], ['1m 30s'], ['abc']])('rejects %j', (raw) => {
+    expect(parseDurationMs(raw)).toBeNull();
   });
 });

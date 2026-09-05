@@ -39,7 +39,7 @@ import signal
 import sys
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol, runtime_checkable
 
 from hop_top_kit.output.error import (
@@ -81,6 +81,8 @@ __all__ = [
     "SignalController",
     "Supervisor",
     "SupervisorConfig",
+    "apply_enable_disable",
+    "apply_timeout_overrides",
     "code_for",
     "default_topics",
     "exit_code_for",
@@ -467,6 +469,54 @@ def _as_seconds(value: Any) -> float | None:
             return None
         return float(m.group(1)) * _DURATION_SCALE[m.group(2)]
     return None
+
+
+def apply_enable_disable(
+    configs: Mapping[str, ServiceConfig],
+    enable: Iterable[str],
+    disable: Iterable[str],
+) -> dict[str, ServiceConfig]:
+    """Apply ``--enable`` / ``--disable`` on top of the resolved blocks.
+
+    Returns a new mapping. An unconfigured service becomes configured the
+    moment an operator names it in ``--enable``: the flag is the
+    aggregate equivalent of the selector's override rule. ``--disable``
+    on a configured service clears its enablement so the supervisor form
+    skips it silently; on an unconfigured service it is a no-op. Enable
+    wins over disable for the same name — the affirmative act is the more
+    specific one.
+    """
+    out = dict(configs)
+    for name in disable:
+        cfg = out.get(name)
+        if cfg is not None:
+            out[name] = replace(cfg, enabled=False)
+    for name in enable:
+        cfg = out.get(name)
+        out[name] = replace(cfg, enabled=True) if cfg is not None else ServiceConfig(enabled=True)
+    return out
+
+
+def apply_timeout_overrides(
+    configs: Mapping[str, ServiceConfig],
+    ready_timeout: float | None = None,
+    stop_timeout: float | None = None,
+) -> dict[str, ServiceConfig]:
+    """Apply ``--ready-timeout`` / ``--stop-timeout`` across every service.
+
+    Returns a new mapping. The flags map onto the per-service keys, so a
+    flag set on the supervisor form applies the same budget to every
+    member of the set — which is what an operator tuning a whole process,
+    rather than one service, is asking for.
+    """
+    overrides: dict[str, float] = {}
+    if ready_timeout is not None and ready_timeout > 0:
+        overrides["ready_timeout"] = ready_timeout
+    if stop_timeout is not None and stop_timeout > 0:
+        overrides["stop_timeout"] = stop_timeout
+    if not overrides:
+        return dict(configs)
+    return {name: replace(cfg, **overrides) for name, cfg in configs.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -1559,12 +1609,41 @@ def register_serve(app: Any, opts: ServeOptions) -> None:
         list_: bool = typer.Option(
             False, "--list", help="List registered services and their state"
         ),
+        enable: list[str] | None = typer.Option(  # noqa: B008
+            None,
+            "--enable",
+            help="Enable a service for this run (repeatable, supervisor form only)",
+        ),
+        disable: list[str] | None = typer.Option(  # noqa: B008
+            None,
+            "--disable",
+            help="Disable a service for this run (repeatable, supervisor form only)",
+        ),
+        ready_timeout: str | None = typer.Option(
+            None, "--ready-timeout", help="Per-service budget from start to ready (default 30s)"
+        ),
+        stop_timeout: str | None = typer.Option(
+            None, "--stop-timeout", help="Per-service budget for one stop (default 30s)"
+        ),
+        shutdown_timeout: str | None = typer.Option(
+            None,
+            "--shutdown-timeout",
+            help="Total shutdown budget across all services (default 60s)",
+        ),
     ) -> None:
         """Run configured services under one lifecycle."""
         if list_:
             _run_list(opts)
             return
-        _run_serve(list(services or []), opts)
+        _run_serve(
+            list(services or []),
+            opts,
+            enable=enable or [],
+            disable=disable or [],
+            ready_timeout=ready_timeout,
+            stop_timeout=stop_timeout,
+            shutdown_timeout=shutdown_timeout,
+        )
 
 
 def _run_list(opts: ServeOptions) -> None:
@@ -1581,18 +1660,74 @@ def _run_list(opts: ServeOptions) -> None:
         w.write(f"{svc.name:<20} {configured!s:<11} {enabled!s:<8} {svc.ready()!s}\n")
 
 
-def _run_serve(args: Sequence[str], opts: ServeOptions) -> None:
+def _run_serve(
+    args: Sequence[str],
+    opts: ServeOptions,
+    *,
+    enable: Sequence[str] = (),
+    disable: Sequence[str] = (),
+    ready_timeout: str | None = None,
+    stop_timeout: str | None = None,
+    shutdown_timeout: str | None = None,
+) -> None:
     """Resolve the invocation and run the resulting set."""
-    outcome = resolve(opts.registry, args, configs=opts.configs, policy=opts.policy)
+    if len(args) == 1 and (enable or disable):
+        # Under the selector form the override rule already decides
+        # enablement; accepting the flags too would let one invocation
+        # say two contradictory things.
+        _report(
+            opts,
+            exit_code_for(OUTCOME_INVALID_SELECTION),
+            _refusal(
+                OUTCOME_INVALID_SELECTION,
+                "--enable/--disable apply to the supervisor form; "
+                "drop the service name or drop the flags",
+            ),
+        )
+        return
+
+    durations: dict[str, float] = {}
+    for key, flag, raw in (
+        ("ready", "--ready-timeout", ready_timeout),
+        ("stop", "--stop-timeout", stop_timeout),
+        ("shutdown", "--shutdown-timeout", shutdown_timeout),
+    ):
+        if raw is None:
+            continue
+        seconds = _as_seconds(raw)
+        if seconds is None:
+            _report(
+                opts,
+                exit_code_for(OUTCOME_CONFIG_INVALID),
+                _refusal(OUTCOME_CONFIG_INVALID, f'{flag}: invalid duration "{raw}"'),
+            )
+            return
+        durations[key] = seconds
+
+    configs = apply_timeout_overrides(
+        apply_enable_disable(opts.configs, enable, disable),
+        durations.get("ready"),
+        durations.get("stop"),
+    )
+    config = opts.config
+    if "shutdown" in durations and durations["shutdown"] > 0:
+        config = replace(config, shutdown_timeout=durations["shutdown"])
+
+    outcome = resolve(opts.registry, args, configs=configs, policy=opts.policy)
     if outcome.error is not None:
         _report(opts, exit_code_for(outcome.outcome or OUTCOME_CONFIG_INVALID), outcome.error)
         return
 
-    result = asyncio.run(_serve_async(outcome.selected, opts))
+    result = asyncio.run(_serve_async(outcome.selected, opts, configs, config))
     _report(opts, result.exit_code, result.error)
 
 
-async def _serve_async(selected: Sequence[str], opts: ServeOptions) -> RunResult:
+async def _serve_async(
+    selected: Sequence[str],
+    opts: ServeOptions,
+    configs: Mapping[str, ServiceConfig],
+    config: SupervisorConfig,
+) -> RunResult:
     """Own the signals for one run and drive the supervisor.
 
     The first signal begins the drain, a second aborts it. The controller
@@ -1603,12 +1738,12 @@ async def _serve_async(selected: Sequence[str], opts: ServeOptions) -> RunResult
     try:
         sup = Supervisor(
             opts.registry,
-            config=opts.config,
+            config=config,
             publisher=opts.publisher,
             logger=opts.logger,
             escalate=sig.escalate,
         )
-        return await sup.run(sig.cancel, selected, opts.configs)
+        return await sup.run(sig.cancel, selected, configs)
     finally:
         sig.stop()
 

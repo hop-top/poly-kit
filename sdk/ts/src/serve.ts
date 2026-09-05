@@ -1380,6 +1380,86 @@ export function signalController(): {
 }
 
 // ---------------------------------------------------------------------------
+// Flag overrides
+// ---------------------------------------------------------------------------
+
+/**
+ * Applies `--enable` / `--disable` on top of the resolved
+ * `services.<name>` blocks, returning a new map.
+ *
+ * An unconfigured service becomes configured the moment an operator
+ * names it in `--enable`: the flag is the aggregate equivalent of the
+ * selector's override rule. `--disable` on a configured service clears
+ * its enablement so the supervisor form skips it silently; on an
+ * unconfigured service it is a no-op. Enable wins over disable for the
+ * same name — the affirmative act is the more specific one.
+ */
+export function applyEnableDisable(
+  configs: Readonly<Record<string, ServiceConfig>>,
+  enable: readonly string[],
+  disable: readonly string[],
+): Record<string, ServiceConfig> {
+  const out: Record<string, ServiceConfig> = { ...configs };
+  for (const name of disable) {
+    if (out[name] !== undefined) out[name] = { ...out[name], enabled: false };
+  }
+  for (const name of enable) {
+    out[name] = { ...(out[name] ?? {}), enabled: true };
+  }
+  return out;
+}
+
+/**
+ * Applies `--ready-timeout` / `--stop-timeout` across every resolved
+ * service, returning a new map. The flags map onto the per-service
+ * keys, so a flag set on the supervisor form applies the same budget
+ * to every member of the set — which is what an operator tuning a
+ * whole process, rather than one service, is asking for.
+ */
+export function applyTimeoutOverrides(
+  configs: Readonly<Record<string, ServiceConfig>>,
+  readyTimeoutMs?: number,
+  stopTimeoutMs?: number,
+): Record<string, ServiceConfig> {
+  const ready = readyTimeoutMs !== undefined && readyTimeoutMs > 0;
+  const stop = stopTimeoutMs !== undefined && stopTimeoutMs > 0;
+  if (!ready && !stop) return { ...configs };
+  const out: Record<string, ServiceConfig> = {};
+  for (const [name, cfg] of Object.entries(configs)) {
+    out[name] = {
+      ...cfg,
+      ...(ready ? { readyTimeoutMs } : {}),
+      ...(stop ? { stopTimeoutMs } : {}),
+    };
+  }
+  return out;
+}
+
+const DURATION_UNIT_MS: Record<string, number> = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 };
+
+/**
+ * Parses a duration flag value into milliseconds, or `null` when it
+ * does not parse. Accepts Go's value+unit sequence (`30s`, `1m30s`,
+ * `500ms`) and a bare number, read as seconds the way the config keys
+ * are. The spelling accepted here is not contract; the flag names are.
+ */
+export function parseDurationMs(raw: string): number | null {
+  const s = raw.trim();
+  if (s === '') return null;
+  if (/^\d+(?:\.\d+)?$/.test(s)) return Number(s) * 1_000;
+  const re = /(\d+(?:\.\d+)?)(ms|s|m|h)/g;
+  let total = 0;
+  let consumed = '';
+  for (const m of s.matchAll(re)) {
+    consumed += m[0];
+    total += Number(m[1]) * DURATION_UNIT_MS[m[2]!]!;
+  }
+  // The matches must account for the whole string, or "30x" would
+  // silently parse as 30s.
+  return consumed === s ? total : null;
+}
+
+// ---------------------------------------------------------------------------
 // Command wiring
 // ---------------------------------------------------------------------------
 
@@ -1423,18 +1503,42 @@ export function registerServe(
   program: Command,
   opts: RegisterServeOptions,
 ): Command {
+  const collect = (v: string, prev: string[]): string[] => prev.concat([v]);
   const cmd = program
     .command('serve [service...]')
     .description('Run configured services under one lifecycle')
     .option('--list', 'List registered services and their state')
-    .action(async (services: string[], flags: { list?: boolean }) => {
+    .option(
+      '--enable <name>',
+      'Enable a service for this run (repeatable, supervisor form only)',
+      collect, [],
+    )
+    .option(
+      '--disable <name>',
+      'Disable a service for this run (repeatable, supervisor form only)',
+      collect, [],
+    )
+    .option('--ready-timeout <duration>', 'Per-service budget from start to ready (default 30s)')
+    .option('--stop-timeout <duration>', 'Per-service budget for one stop (default 30s)')
+    .option('--shutdown-timeout <duration>', 'Total shutdown budget across all services (default 60s)')
+    .action(async (services: string[], flags: ServeFlags) => {
       if (flags.list) {
         runList(opts);
         return;
       }
-      await runServe(services ?? [], opts);
+      await runServe(services ?? [], flags, opts);
     });
   return cmd;
+}
+
+/** The parsed `serve` flags, as commander hands them to the action. */
+interface ServeFlags {
+  list?: boolean;
+  enable?: string[];
+  disable?: string[];
+  readyTimeout?: string;
+  stopTimeout?: string;
+  shutdownTimeout?: string;
 }
 
 /**
@@ -1463,11 +1567,52 @@ function runList(opts: RegisterServeOptions): void {
 /** Resolves the invocation and runs the resulting set. */
 async function runServe(
   args: readonly string[],
+  flags: ServeFlags,
   opts: RegisterServeOptions,
 ): Promise<void> {
+  const enable = flags.enable ?? [];
+  const disable = flags.disable ?? [];
+  if (args.length === 1 && (enable.length > 0 || disable.length > 0)) {
+    // Under the selector form the override rule already decides
+    // enablement; accepting the flags too would let one invocation
+    // say two contradictory things.
+    report(opts, exitCodeFor('invalid-selection'), usageError(
+      '--enable/--disable apply to the supervisor form; drop the service name or drop the flags',
+    ));
+    return;
+  }
+
+  const durations: Partial<Record<'readyTimeout' | 'stopTimeout' | 'shutdownTimeout', number>> = {};
+  for (const [key, flag] of [
+    ['readyTimeout', '--ready-timeout'],
+    ['stopTimeout', '--stop-timeout'],
+    ['shutdownTimeout', '--shutdown-timeout'],
+  ] as const) {
+    const raw = flags[key];
+    if (raw === undefined) continue;
+    const ms = parseDurationMs(raw);
+    if (ms === null) {
+      report(opts, exitCodeFor('config-invalid'), usageError(`${flag}: invalid duration "${raw}"`));
+      return;
+    }
+    durations[key] = ms;
+  }
+
+  const configs = applyTimeoutOverrides(
+    applyEnableDisable(opts.configs ?? {}, enable, disable),
+    durations.readyTimeout,
+    durations.stopTimeout,
+  );
+  const config: SupervisorConfig = {
+    ...opts.config,
+    ...(durations.shutdownTimeout !== undefined
+      ? { shutdownTimeoutMs: durations.shutdownTimeout }
+      : {}),
+  };
+
   const outcome = resolve(opts.registry, {
     args,
-    configs: opts.configs,
+    configs,
     policy: opts.policy,
   });
 
@@ -1481,12 +1626,12 @@ async function runServe(
   const sig = signalController();
   try {
     const sup = new Supervisor(opts.registry, {
-      config: opts.config,
+      config,
       publisher: opts.publisher,
       logger: opts.logger,
       escalate: sig.escalate,
     });
-    const res = await sup.run(sig.signal, outcome.selected, opts.configs ?? {});
+    const res = await sup.run(sig.signal, outcome.selected, configs);
     report(opts, res.exitCode, res.error);
   } finally {
     sig.stop();

@@ -1218,11 +1218,6 @@ by a fleet of tools that are not all the same language:
 port is the risk the default guards against. Service-specific keys
 live in the same block and are owned by the service.
 
-The `--enable` / `--disable` flags and their rules (supervisor form
-only, refused under the selector form, `--enable` implies configured)
-are contract; the `--ready-timeout` / `--stop-timeout` /
-`--shutdown-timeout` flags are contract as names.
-
 What is **not** contract: how a port resolves those keys. Go layers
 them through viper with flag → env → file → default precedence per
 key. A port whose config layer merges whole documents rather than
@@ -1231,6 +1226,39 @@ resolving dotted keys satisfies this section by reading the same key
 precedence engine first. The environment-variable spelling
 (`<TOOL>_SERVICES_API_ENABLED`) is contract only for a port that has
 env resolution at all.
+
+#### The `--enable` / `--disable` and timeout flags
+
+`--enable <name>` and `--disable <name>` MUST be accepted on `serve`
+as repeatable flags, and their rules from
+[Configuration surface](#configuration-surface) are contract in full:
+
+- They apply to the supervisor form only, and override
+  `services.<name>.enabled` for that one run.
+- `--enable` implies configured: a service with no `services.<name>`
+  block at all becomes configured and enabled when named, so the flag
+  is the aggregate equivalent of the selector's override rule and is
+  subject to the same configuration and policy validation.
+- `--disable` on an enabled service skips it silently, exactly as a
+  configured-but-disabled service is skipped, and MUST NOT affect the
+  exit code. A supervisor invocation that resolves to zero services
+  after the overrides still exits `2`.
+- `--enable` wins over `--disable` for the same name: the affirmative
+  act is the more specific one.
+- Either flag combined with the selector form is `USAGE`, exit `2`.
+  The override rule already decides enablement there, and accepting
+  both would let one invocation say two contradictory things.
+
+`--ready-timeout`, `--stop-timeout`, and `--shutdown-timeout` MUST be
+accepted by exactly those names, under both forms. The first two apply
+one budget to every resolved service, overriding
+`services.<name>.ready_timeout` and `services.<name>.stop_timeout`;
+the third overrides `services.shutdown_timeout` for the run. The
+duration spelling a port accepts is not contract.
+
+`contracts/parity/serve.json` records these as the
+`enable_disable_flags` and `timeout_flags` rows, so the fixture and
+this text list the same obligations.
 
 ### Explicitly not required
 
