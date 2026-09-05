@@ -142,8 +142,17 @@ func Dir() Completer {
 	return &fileCompleter{dirOnly: true}
 }
 
+// Complete returns the declared extensions as items. Cobra's
+// ShellCompDirectiveFilterFileExt carries the filter list in the
+// completions slice, so the extensions must survive into resolve.
+// Dir() declares none: FilterDirs with an empty slice means "any
+// directory".
 func (c *fileCompleter) Complete(_ context.Context, _ string) ([]Item, error) {
-	return nil, nil // items unused; directive drives shell behavior
+	items := make([]Item, len(c.extensions))
+	for i, e := range c.extensions {
+		items[i] = Item{Value: e}
+	}
+	return items, nil
 }
 
 // --- Registry ---
@@ -192,7 +201,8 @@ func (r *Registry) ForArg(cmd string, pos int) Completer {
 
 // BindFlag registers a Completer as cobra's flag completion function.
 func BindFlag(cmd *cobra.Command, flag string, c Completer) {
-	_ = cmd.RegisterFlagCompletionFunc(flag,
+	_ = cmd.RegisterFlagCompletionFunc(
+		flag,
 		func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			return resolve(cmd.Context(), c, toComplete)
 		},
@@ -210,12 +220,19 @@ func BindArgs(cmd *cobra.Command, c Completer) {
 
 // resolve converts Completer output to cobra's format.
 func resolve(ctx context.Context, c Completer, toComplete string) ([]string, cobra.ShellCompDirective) {
-	// File/Dir completers use directives, not items.
+	// File/Dir completers pair a directive with a filter list rather
+	// than with suggestions.
 	if fc, ok := c.(*fileCompleter); ok {
 		if fc.dirOnly {
+			// Empty list: complete any directory.
 			return nil, cobra.ShellCompDirectiveFilterDirs
 		}
-		return nil, cobra.ShellCompDirectiveFilterFileExt
+		if len(fc.extensions) == 0 {
+			// FilterFileExt with no extensions would filter every
+			// candidate out; fall back to plain file completion.
+			return nil, cobra.ShellCompDirectiveDefault
+		}
+		return append([]string(nil), fc.extensions...), cobra.ShellCompDirectiveFilterFileExt
 	}
 
 	items, err := c.Complete(ctx, toComplete)
