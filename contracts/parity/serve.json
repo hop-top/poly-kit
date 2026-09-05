@@ -141,18 +141,18 @@
       "config_keys": "PENDING"
     },
     "php": {
-      "implementation": null,
-      "note": "Commands mount on Symfony Console via sdk/experimental/php/src/Cli/KitCommand.php, so the command half is expressible today; serve itself is not implemented. The SDK has no event bus, so its lifecycle_events obligation would be satisfied through the log sink.",
-      "hierarchy": "PENDING",
-      "override_rule": "PENDING",
-      "list_flag": "PENDING",
-      "registration_seam": "PENDING",
-      "readiness": "PENDING",
-      "lifecycle_events": "PENDING",
-      "ordered_shutdown": "PENDING",
-      "failure_policy": "PENDING",
-      "exit_taxonomy": "PENDING",
-      "config_keys": "PENDING"
+      "implementation": "sdk/experimental/php/src/Serve, mounted as ServeCommand on a Symfony Console application",
+      "note": "The SDK has no event bus, so the lifecycle_events obligation is met through the log sink: the six transitions carry the fixed topic strings and the service/error/address payload keys as structured fields, at INFO for started/ready_reported/stopped and ERROR for failed. Signals need ext/pcntl, which is a builtin on the CI image; availability is probed with function_exists rather than extension_loaded, since disable_functions leaves the extension loaded while blanking every call. Where the pcntl functions are absent the port degrades to the caller-driven stop rather than inventing a different escalation.",
+      "hierarchy": "SHIPPED",
+      "override_rule": "SHIPPED",
+      "list_flag": "SHIPPED",
+      "registration_seam": "SHIPPED",
+      "readiness": "SHIPPED",
+      "lifecycle_events": "SHIPPED",
+      "ordered_shutdown": "SHIPPED",
+      "failure_policy": "SHIPPED",
+      "exit_taxonomy": "SHIPPED",
+      "config_keys": "SHIPPED"
     }
   }
 }
