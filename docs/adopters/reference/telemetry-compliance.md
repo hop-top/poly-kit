@@ -65,8 +65,11 @@ have both a static arm (the toolspec must declare X) and a runtime arm
 - **Runtime**: each subcommand exits 0 and emits structured output.
 - **Common failures**: missing `inspect` (the audit subcommand), or a
   declared subcommand that returns "command not found".
-- **Fix**: wire `kit/go/runtime/telemetry.RegisterConsentSubcommands(root)`
-  — it installs all five for you.
+- **Fix**: register the five subcommands under your `consent_command`
+  root and back them with `kit/go/core/consent.Store`. kit does not
+  ship a one-call registrar; the canonical set is
+  `{status, enable, disable, reset, inspect}`, locked in
+  `telemetryConsentSubcommandsCanonical`.
 
 ### c. `DO_NOT_TRACK=1` suppresses emission
 
@@ -74,9 +77,9 @@ have both a static arm (the toolspec must declare X) and a runtime arm
 - **Runtime**: with `DO_NOT_TRACK=1` set, run a command that would
   normally emit; assert zero events on the bus within 500 ms.
 - **Common failures**: env var declared but the emitter doesn't read it.
-- **Fix**: this is free if you emit via `telemetry.Emitter` —
-  `consent.Resolve` honors `DO_NOT_TRACK` non-overridably. Don't
-  hand-roll the check.
+- **Fix**: this is free if you emit via `telemetry.Emitter` and install
+  the consent hook with `consent.Install()`. `consent.DoNotTrackEnabled`
+  honors `DO_NOT_TRACK` non-overridably. Don't hand-roll the check.
 
 ### d. `<APP>_TELEMETRY_MODE=off` (or `KIT_TELEMETRY_MODE=off`) suppresses emission
 
@@ -87,8 +90,9 @@ have both a static arm (the toolspec must declare X) and a runtime arm
   the spec declares.
 - **Common failures**: declaring neither; declaring `<APP>_TELEMETRY`
   (no `_MODE` suffix).
-- **Fix**: same as (c) — use `consent.Resolve` and the precedence chain
-  handles it.
+- **Fix**: same as (c) — emit through `telemetry.Emitter` and let
+  `telemetry.SetAppPrefix("myapp")` bind the app-prefixed env. The mode
+  precedence chain handles the rest.
 
 ### e. First-run prompt fires-or-skips per precedence
 
@@ -99,8 +103,10 @@ have both a static arm (the toolspec must declare X) and a runtime arm
   (must NOT prompt).
 - **Common failures**: prompting on non-TTY (breaks CI), failing to
   prompt on TTY (silent default), prompting twice in one session.
-- **Fix**: wire `consent.Prompt(ctx)` at root cobra startup; the helper
-  short-circuits non-TTY without prompting.
+- **Fix**: kit ships no `consent.Prompt` helper; the prompt belongs to
+  the adopter's bootstrap. kit gates it: the prompt may fire only when
+  the adopter sets `cli.TelemetryConfig.PromptOnFirstRun` (see §7).
+  Default-deny on non-TTY, and persist the outcome via `consent.Store`.
 
 ### f. Decision persisted with `prompt_version` field
 
@@ -112,8 +118,16 @@ have both a static arm (the toolspec must declare X) and a runtime arm
 - **Common failures**: persisting `version: 1` (wrong field name);
   forgetting to bump `prompt_version` when the prompt copy changes
   materially.
-- **Fix**: use `consent.FileStore` — it writes the canonical shape.
+- **Fix**: use `consent.NewFileStore()` (or `consent.Install()`, which
+  builds one and installs the hook). It writes the canonical
+  `consent.Decision` shape — `state`, `decided_at`, `prompt_version`,
+  `decision_source` — into the `kit.telemetry.consent` block of
+  `<XDG_CONFIG_HOME>/kit/config.yaml`, preserving sibling keys.
   Bump `prompt_version` only when you change what telemetry collects.
+
+  Note the two `prompt_version` fields are different types: the toolspec
+  field is a string (`"v1"`), while the persisted
+  `consent.Decision.PromptVersion` is an `int`.
 
 ### g. `inspect` returns post-redact payload + audit topic fires
 
@@ -126,9 +140,11 @@ have both a static arm (the toolspec must declare X) and a runtime arm
   "raw PII absent" vacuously.
 - **Common failures**: rolling a custom inspect that reads the
   pre-redact spool; redactor not actually wired into the emit path.
-- **Fix**: use `telemetry.MustLoadRedactor()` + emit via
-  `telemetry.Emitter.Record`. The kit-default ruleset publishes the
-  audit topic automatically.
+- **Fix**: use `telemetry.MustLoadRedactor()` and emit via
+  `telemetry.Emitter.Record`. Redact matches surface through
+  `telemetry.RedactMatchObserver` (install with
+  `telemetry.SetRedactObserver`); the emitter republishes those matches
+  on `kit.telemetry.redact.matched`.
 
 ## 3. Canonical `toolspec.telemetry` block
 
@@ -165,32 +181,44 @@ designed, declare the toolspec block, you pass."** Per sub-condition:
 a. **Declare the toolspec block.** Copy §3 verbatim into
    `<bin>.toolspec.yaml`.
 
-b. **Wire consent subcommands.** In `main.go`:
+b. **Wire consent subcommands.** In `main.go`, bind the app env prefix
+   and install the consent hook:
 
    ```go
-   telemetry.SetAppPrefix("myapp")
-   telemetry.SetConsentHook(consent.NewHook(store))
+   telemetry.SetAppPrefix("myapp")        // reads MYAPP_TELEMETRY_MODE
+
+   store, err := consent.Install()        // NewFileStore + SetConsentHook
+   if err != nil {
+       // telemetry stays inert on failure — the safe default
+   }
    ```
 
-   The helper installs all five consent subcommands under your root
-   cobra command.
+   `consent.Install()` is idempotent and returns the `consent.Store` so
+   your subcommands can read and write the decision. It does NOT add
+   cobra commands: register the five subcommands yourself under the
+   `consent_command` root you declared in the toolspec.
 
-c. **Honor `DO_NOT_TRACK`.** Free with `telemetry.Emitter` +
-   `consent.Resolve`. Don't hand-roll the kill-switch check — every
-   hand-rolled implementation has shipped a regression.
+c. **Honor `DO_NOT_TRACK`.** Free with `telemetry.Emitter` plus the
+   hook from `consent.Install()`. Don't hand-roll the kill-switch check
+   — every hand-rolled implementation has shipped a regression.
 
 d. **Honor `<APP>_TELEMETRY_MODE=off`.** Same as (c).
 
-e. **Wire the first-run prompt.** Call `consent.Prompt(ctx)` at root
-   cobra startup. Default-deny on non-TTY is built in.
+e. **Wire the first-run prompt.** kit ships no prompt helper. Set
+   `cli.TelemetryConfig.PromptOnFirstRun: true` to authorize the prompt
+   (see §7), then fire it from your own bootstrap and default-deny on
+   non-TTY.
 
-f. **Persist the decision.** Use `consent.FileStore` — it writes the
-   canonical shape with `prompt_version` at the right field name.
+f. **Persist the decision.** Use `consent.NewFileStore()` — it writes
+   the canonical `consent.Decision` shape with `prompt_version` at the
+   right field name, atomically (tmp + rename, perms 0600).
 
 g. **Redact before egress.** Load via `telemetry.MustLoadRedactor()`
-   and emit via `telemetry.Emitter.Record`. The kit-default ruleset
-   publishes `kit.telemetry.redact.matched` to the bus on every match,
-   which is what the runtime check subscribes to.
+   (it panics rather than emit unprotected telemetry when the ruleset
+   loads zero rules) and emit via `telemetry.Emitter.Record`. Matches
+   reach the bus as `kit.telemetry.redact.matched`, which is what the
+   runtime check subscribes to. Redaction applies in `ModeFull`; in
+   `ModeAnon` events carry no argv or flag values to redact.
 
 If you used the `kit init` scaffold or copied `examples/spaced/`, all
 of the above is wired by default — flipping `enabled: true` in the

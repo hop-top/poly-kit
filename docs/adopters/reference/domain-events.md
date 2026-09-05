@@ -1,113 +1,160 @@
 # Domain Event Topic Catalog
 
-Topic format: `<app>.<entity>.<action>` (dot-separated, per `bus.Topic`).
+Catalog of the bus topics kit packages publish by default. Every topic
+follows the 4-segment form `[Source].[Category].[Object].[Action]` — see
+[bus-api.md](bus-api.md) for the grammar and the two validators.
 
-Wildcard rules (MQTT-style, per `bus/event.go`):
-- `*` matches one segment: `aps.profile.*` matches `aps.profile.created`
-- `#` matches zero+ trailing segments: `tlc.task.#` matches all task events
+Each package exposes its topics as a `Topics` struct plus a
+`DefaultTopics` value. Adopters override one action with `WithTopics`, or
+re-prefix the whole set with `WithTopicPrefix` (3-segment prefix,
+`source.category.object`). Empty fields in a `WithTopics` value fall back
+to the package default.
 
-Direction: all topics below are **outbound** (published by source app).
-Blocking: sync handlers can veto via error return; async handlers never block.
+## `go/ai/llm`
 
-## aps -- Agent Profile Service
+`llm.Topics`, defaults in `llm.DefaultTopics`. Package-level vars
+(`llm.TopicRequestStart`, …) read from the same struct.
 
-| Topic | Blocking | Payload Fields |
-|---|---|---|
-| `aps.profile.created` | false | `ProfileID string`, `DisplayName string`, `Email string`, `Department string`, `Capabilities []string` |
-| `aps.profile.updated` | false | `ProfileID string`, `Fields []string` (changed field names), `Department string` |
-| `aps.profile.deleted` | false | `ProfileID string` |
-| `aps.adapter.linked` | false | `ProfileID string`, `AdapterType string`, `AdapterID string` |
-| `aps.adapter.unlinked` | false | `ProfileID string`, `AdapterType string`, `AdapterID string` |
+| Field          | Default topic                | Payload struct         |
+|----------------|------------------------------|------------------------|
+| `RequestStart` | `kit.ai.request.started`     | `RequestStartPayload`  |
+| `RequestEnd`   | `kit.ai.response.received`   | `RequestEndPayload`    |
+| `RequestError` | `kit.ai.request.errored`     | `RequestErrorPayload`  |
+| `Fallback`     | `kit.ai.fallback.applied`    | `FallbackPayload`      |
+| `Route`        | `kit.ai.route.selected`      | `RoutePayload`         |
+| `EvaResult`    | `kit.ai.eva.evaluated`       | `EvaResultPayload`     |
 
-Source constant prefix: `"aps"`. Wildcard examples:
-- `aps.profile.*` -- all profile lifecycle events
-- `aps.#` -- everything from aps
+Payload fields:
 
-## tlc -- Task Lifecycle
+| Struct                | Fields |
+|-----------------------|--------|
+| `RequestStartPayload` | `Request Request` |
+| `RequestEndPayload`   | `Response Response`, `Duration time.Duration` |
+| `RequestErrorPayload` | `Err error` (json `-`), `ErrMessage string` (json `error`) |
+| `FallbackPayload`     | `From int`, `To int`, `Err error` (json `-`), `ErrMessage string` (json `error`) |
+| `RoutePayload`        | `Router string`, `Score float64`, `Model string` |
+| `EvaResultPayload`    | `Contract string`, `Passed bool`, `Violations []string` |
 
-| Topic | Blocking | Payload Fields |
-|---|---|---|
-| `tlc.task.created` | false | `TaskID string`, `Title string`, `TrackID string`, `AssignedTo string`, `Tags []string` |
-| `tlc.task.claimed` | false | `TaskID string`, `ClaimedBy string`, `TrackID string` |
-| `tlc.task.completed` | false | `TaskID string`, `CompletedBy string`, `TrackID string`, `DurationSec int64` |
-| `tlc.task.reopened` | false | `TaskID string`, `ReopenedBy string`, `Note string` |
-| `tlc.track.created` | false | `TrackID string`, `Title string`, `Type string` |
-| `tlc.track.activated` | false | `TrackID string`, `TriggerTaskID string` |
-| `tlc.track.completed` | false | `TrackID string`, `TaskCount int`, `DurationSec int64` |
+`Err` is `json:"-"`: it does not cross a process boundary. Cross-process
+subscribers read `ErrMessage`.
 
-Source constant prefix: `"tlc"`. Wildcard examples:
-- `tlc.task.*` -- all task state changes
-- `tlc.track.*` -- all track state changes
-- `tlc.#` -- everything from tlc
+## `go/runtime/domain` — Service[T] CRUD
 
-## ctxt -- Knowledge Engine (dpkms)
+`domain.Topics`, defaults in `domain.DefaultTopics`.
 
-| Topic | Blocking | Payload Fields |
-|---|---|---|
-| `ctxt.object.ingested` | false | `ObjectID string`, `Type string`, `Pipeline string`, `Tags []string`, `ProfileID string`, `DurationMs int64` |
-| `ctxt.object.updated` | false | `ObjectID string`, `Type string`, `Fields []string` |
-| `ctxt.object.deleted` | false | `ObjectID string` |
-| `ctxt.job.completed` | false | `JobID string`, `ObjectCount int`, `DurationMs int64` |
-| `ctxt.job.failed` | false | `JobID string`, `Error string`, `ObjectID string` |
+| Field          | Default topic                        | Phase |
+|----------------|--------------------------------------|-------|
+| `PreValidated` | `kit.runtime.entity.pre_validated`   | sync, before validation; error vetoes |
+| `PrePersisted` | `kit.runtime.entity.pre_persisted`   | sync, after validation and before the repo write; error vetoes |
+| `Created`      | `kit.runtime.entity.created`         | post-write, best effort |
+| `Updated`      | `kit.runtime.entity.updated`         | post-write, best effort |
+| `Deleted`      | `kit.runtime.entity.deleted`         | post-write, best effort |
 
-Source constant prefix: `"ctxt"`. Wildcard examples:
-- `ctxt.object.*` -- all object lifecycle events
-- `ctxt.job.*` -- pipeline job outcomes
-- `ctxt.#` -- everything from ctxt
+Pre-events are shared across create, update and delete. Their payload
+carries an `Op` field so subscribers discriminate on
+`payload.op == "delete"`. Subscriber errors on the post events are
+swallowed: they are notifications, not gates.
 
-## uhp -- Hook Protocol
+## `go/runtime/domain` — StateMachine
 
-| Topic | Blocking | Payload Fields |
-|---|---|---|
-| `uhp.hook.fired` | true | `HookID string`, `Event string`, `CLI string`, `Action string`, `DurationMs int64` |
-| `uhp.hook.blocked` | true | `HookID string`, `Event string`, `CLI string`, `Reason string` |
+`domain.StateMachineTopics`, defaults in
+`domain.DefaultStateMachineTopics`.
 
-Source constant prefix: `"uhp"`. Notes:
-- Both uhp topics are **blocking** (sync handlers); downstream can
-  observe/audit hook decisions before they finalize.
-- Wildcard: `uhp.hook.*` -- all hook outcomes
+| Field              | Default topic                             | Phase |
+|--------------------|-------------------------------------------|-------|
+| `PreTransitioned`  | `kit.runtime.state.pre_transitioned`      | sync, veto-able |
+| `PostTransitioned` | `kit.runtime.state.post_transitioned`     | fire-and-forget |
 
-## Go Convention
+## `go/core/stage`
 
-Topic constants and payload structs live in each app's
-`internal/events/events.go`, following the pattern in
-`kit/go/ai/llm/events.go`:
+`stage.Topics`, defaults in `stage.DefaultTopics`. Validated by
+`bus.ValidateTopic` in `init()`, so a typo in a default fails at load.
+
+| Field          | Default topic                     |
+|----------------|-----------------------------------|
+| `Proposed`     | `kit.runtime.stage.proposed`      |
+| `Transitioned` | `kit.runtime.stage.transitioned`  |
+| `Entered`      | `kit.runtime.stage.entered`       |
+| `Expired`      | `kit.runtime.stage.expired`       |
+| `Violated`     | `kit.runtime.stage.violated`      |
+
+## `go/core/upgrade`
+
+`upgrade.Topics`, defaults in `upgrade.DefaultTopics`.
+
+| Field        | Default topic                    | Meaning |
+|--------------|----------------------------------|---------|
+| `Released`   | `kit.core.upgrade.released`      | `Check` observed a new latest version |
+| `Downloaded` | `kit.core.upgrade.downloaded`    | asset fetched |
+| `Installed`  | `kit.core.upgrade.installed`     | running binary replaced |
+| `Snoozed`    | `kit.core.upgrade.snoozed`       | user deferred the notification |
+
+## `go/core/breaker`
+
+`breaker.Topics`, defaults in `breaker.DefaultTopics`.
+
+| Field        | Default topic                      |
+|--------------|------------------------------------|
+| `Tripped`    | `kit.core.breaker.tripped`         |
+| `Opened`     | `kit.core.breaker.opened`          |
+| `Closed`     | `kit.core.breaker.closed`          |
+| `HalfOpened` | `kit.core.breaker.half_opened`     |
+
+## `go/core/config` — reloadable snapshots
+
+`config.ReloadTopics`, defaults in `config.DefaultReloadTopics`.
+
+| Field          | Default topic                          |
+|----------------|----------------------------------------|
+| `Reloaded`     | `kit.config.snapshot.reloaded`         |
+| `ReloadFailed` | `kit.config.snapshot.reload_failed`    |
+
+## `go/transport/api` — HTTP middleware
+
+`api.Topics`, defaults in `api.DefaultTopics`.
+
+| Field          | Default topic               |
+|----------------|-----------------------------|
+| `RequestStart` | `kit.api.request.started`   |
+| `RequestEnd`   | `kit.api.request.ended`     |
+
+The middleware previously emitted `api.request.start` and
+`api.request.end`. Both were non-conformant (3 segments, present tense)
+and were removed with no back-compat alias.
+
+## Overriding topics
 
 ```go
-const (
-    TopicProfileCreated bus.Topic = "aps.profile.created"
-    TopicProfileUpdated bus.Topic = "aps.profile.updated"
-    // ...
-)
+// Re-prefix a whole set from a 3-segment prefix.
+svc := domain.NewService(repo,
+    domain.WithTopicPrefix[Workspace]("wsm.runtime.workspace"))
 
-type ProfileCreatedPayload struct {
-    ProfileID    string   `json:"profile_id"`
-    DisplayName  string   `json:"display_name"`
-    Email        string   `json:"email"`
-    Department   string   `json:"department"`
-    Capabilities []string `json:"capabilities"`
+// Override a single action; the rest keep their defaults.
+svc := domain.NewService(repo,
+    domain.WithTopics[Workspace](domain.Topics{
+        Created: "wsm.runtime.workspace.created",
+    }))
+```
+
+`WithTopicPrefix` panics when the prefix fails `bus.PrefixTopics`.
+Constructors are wired at boot, so a bad prefix is a programmer error;
+failing loudly beats silently falling back and leaving subscribers with
+no events.
+
+## Publishing
+
+`domain.EventPublisher` is the interface kit packages publish through:
+
+```go
+type EventPublisher interface {
+    Publish(ctx context.Context, topic, source string, payload any) error
 }
 ```
 
-Publish after successful state change (never before).
-Use `bus.NewEvent(topic, source, payload)` to construct.
+Implementations may wrap `bus` or any other pub/sub. Publish after a
+successful state change, never before.
 
-## Subscription Matrix
+## Related pages
 
-| Subscriber | Subscribes To | Purpose |
-|---|---|---|
-| ctxt | `aps.profile.*` | auto-provision knowledge profile |
-| tlc | `aps.profile.*` | assignee validation |
-| ops | `aps.profile.created` | email alias + filter provisioning |
-
-## Transport
-
-- Phase 1-2: `bus.SQLiteAdapter` (single-process, per-app)
-- Phase 3: `bus.NetworkAdapter` (WebSocket cross-process via dpkms hub)
-
-## References
-
-- Bus package: `kit/go/runtime/bus/`
-- LLM events pattern: `kit/go/ai/llm/events.go`
-- Publisher interface: `kit/go/runtime/domain/publisher.go`
-- Integration plan: `~/.ops/tracks/domain-bus/plan.md`
+- [`bus-api.md`](bus-api.md) — bus package reference, topic grammar
+- [`docs/adopters/concepts/bus-overview.md`](../concepts/bus-overview.md) — concepts
