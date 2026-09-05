@@ -8,6 +8,9 @@ Python implementation of the hop-top kit library.
   see [ADR 0001](../../docs/adr/0001-typeid-primitive.md))
 - [`hop_top_kit.mcp`](hop_top_kit/mcp/) — dual-spec MCP surface
   (extra `mcp`; see [MCP surface](#mcp-surface))
+- [`hop_top_kit.serve`](hop_top_kit/serve.py) — serve hierarchy and
+  service lifecycle (cross-language; see
+  [the contract](../../docs/contracts/serve-lifecycle.md))
 
 ## MCP surface
 
