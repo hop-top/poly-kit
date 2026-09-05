@@ -127,6 +127,8 @@
 //! ```
 
 mod cancel;
+#[cfg(feature = "serve-cli")]
+pub mod command;
 mod config;
 mod events;
 mod registry;
