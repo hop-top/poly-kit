@@ -116,8 +116,8 @@ Cap: 80 lines. Longer content moves to `docs/adopters` and is linked.
   uses the same question and neighbours and adds a "Parity" line pointing at
   the fixture row in [`contracts/parity`](../../contracts/parity/README.md).
 - No task ids, no track names, no attribution anywhere in the repo.
-- Caps are warnings in this release; they become failures once the tree is
-  under cap.
+- Caps are enforced: a README over its cap fails `make lint-readmes`.
+  Move the overflow to the matching page under `docs/adopters` and link it.
 
 ## Lint
 
@@ -125,11 +125,12 @@ Cap: 80 lines. Longer content moves to `docs/adopters` and is linked.
 make lint-readmes
 ```
 
-Checks, in order: allowlist and baseline are well formed; every qualifying
-directory has `README.md`, an allowlist entry, or a baseline entry; every
-relative link under a `## Contents` heading resolves; line counts stay under
-the shape cap (WARN). Exit 1 on a missing README outside the baseline, a
-broken Contents link, or a malformed allowlist line.
+Checks, in order: the allowlist is well formed; every qualifying directory
+has `README.md` or an allowlist entry; every relative link under a
+`## Contents` heading resolves; line counts stay under the shape cap. Exit 1
+on a missing README, a broken Contents link, a cap overrun, or a malformed
+allowlist line. `scripts/lint-readmes --caps-warn` downgrades cap overruns
+to warnings while a tree is being brought under cap.
 
 ### Allowlist: deliberate exceptions
 
@@ -143,15 +144,3 @@ go/core/xdg/scopetest   # test-only helper package, imported from _test.go files
 The reason is mandatory and should say which README covers the directory or
 why none ever will. The lint fails on an entry without a reason or pointing
 at a missing directory, and warns when an entry grows a README.
-
-### Baseline: known debt
-
-[`.readme-baseline`](../../.readme-baseline) lists directories that qualify
-today and still lack a README. Entries need no reason. When a README lands,
-delete its line; a stale line only warns, so parallel branches can land
-READMEs without touching the file. Regenerate the whole file only when
-introducing the lint to a new tree:
-
-```sh
-scripts/lint-readmes --write-baseline
-```
