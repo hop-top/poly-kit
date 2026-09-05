@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"hop.top/kit/engine/store"
@@ -200,4 +202,36 @@ func publishDocEvent(ctx context.Context, b bus.Bus, topic bus.Topic, source str
 		return
 	}
 	_ = b.Publish(ctx, bus.NewEvent(topic, source, payload))
+}
+
+// preconditionVersion extracts the version id from an If-Match header.
+//
+// An empty header means no precondition. A quoted entity tag yields the
+// version id it names. Weak tags (`W/"..."`) are refused because a weak
+// comparison cannot decide whether two document versions are the same
+// write, and `*` is refused because "any current version" is what an
+// unconditional PUT already means: honoring it would let a client
+// believe it had a guard when it had none.
+func preconditionVersion(header string) (string, error) {
+	h := strings.TrimSpace(header)
+	if h == "" {
+		return "", nil
+	}
+	if h == "*" {
+		return "", errors.New("If-Match: * is not supported; omit the header for an unconditional write")
+	}
+	if strings.HasPrefix(h, "W/") {
+		return "", errors.New("If-Match: weak entity tags are not supported")
+	}
+	if strings.Contains(h, ",") {
+		return "", errors.New("If-Match: a list of entity tags is not supported")
+	}
+	unquoted, err := strconv.Unquote(h)
+	if err != nil {
+		return "", errors.New("If-Match: entity tag must be a quoted string")
+	}
+	if unquoted == "" {
+		return "", errors.New("If-Match: entity tag must not be empty")
+	}
+	return unquoted, nil
 }
