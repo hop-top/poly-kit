@@ -10,9 +10,11 @@
 //
 // Enforcement is not process-wide, because Go provides no hook beneath
 // net.Dial. It covers net/http (netpolicy.Install) and any client whose
-// dialer is routed through netpolicy.GuardDial. A dependency that opens
-// its own socket and exposes no dialer hook is not covered; see the
-// netpolicy package doc, "Scope", for the exact boundary.
+// dialer is routed through netpolicy.GuardDial — which now includes
+// every egress path kit itself owns: SMTP, WebSocket and the TiDB
+// driver. A dependency that opens its own socket and exposes no dialer
+// hook is not covered; see the netpolicy package doc, "Scope", for the
+// exact boundary.
 // The override only forces opt-outs ON — it never un-sets an
 // explicitly passed --no-* flag.
 
