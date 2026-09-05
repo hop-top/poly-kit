@@ -38,6 +38,7 @@ how kit itself is implemented.
 - [`guides/expose-cli-over-mcp.md`](guides/expose-cli-over-mcp.md) — serve your commands as MCP tools (both spec revisions)
 - [`guides/expose-cli-over-rest.md`](guides/expose-cli-over-rest.md) — serve your commands as a versioned REST API with OpenAPI
 - [`guides/hook-cli-into-bus.md`](guides/hook-cli-into-bus.md) — first publish/subscribe
+- [`guides/migrate-to-served-commands.md`](guides/migrate-to-served-commands.md) — replace a hand-written `serve` or manual `cmdsurface` mounting with the built-in services
 - [`guides/run-the-engine.md`](guides/run-the-engine.md) — start the engine sidecar
 - [`guides/secure-remote-serving.md`](guides/secure-remote-serving.md) — auth beyond loopback, one permission gate, one audit trail
 - [`guides/serve-cli-over-unix-socket.md`](guides/serve-cli-over-unix-socket.md) — serve your commands over a local Unix socket

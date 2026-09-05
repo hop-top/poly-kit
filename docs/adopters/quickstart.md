@@ -43,14 +43,21 @@ For now, see:
 
 ## Step 3: expose it on REST
 
-TODO: mount the same command logic over `transport/api` so HTTP, WS,
-and ConnectRPC clients see the same surface.
+Nothing to mount: the scaffolded root registers the `api` and `socket`
+services, so every command you added in step 2 is already a route.
 
-For now, see:
+```bash
+./bin/mytool serve --list          # api and socket, configured / enabled / ready
+./bin/mytool serve api             # REST on 127.0.0.1:8080, OpenAPI at /openapi.json
+curl -s http://127.0.0.1:8080/v1/commands   # every command, invocable or withheld and why
+```
 
-- [`examples/multiprotocol/`](../../examples/multiprotocol/) — runnable
-  multi-protocol server example.
-- `go/transport/api/README.md` for the resource/router API.
+See [`guides/expose-cli-over-rest.md`](guides/expose-cli-over-rest.md)
+for the route shape and the policy on destructive commands, and
+[`guides/migrate-to-served-commands.md`](guides/migrate-to-served-commands.md)
+if you are bringing an existing `serve` command over. For WS and
+ConnectRPC beside REST, see
+[`examples/multiprotocol/`](../../examples/multiprotocol/).
 
 ## Step 4: verify the CLI contract
 
