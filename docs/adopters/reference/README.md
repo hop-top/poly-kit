@@ -18,6 +18,7 @@ Exact details per API: signatures, flags, exit codes, config shapes, wire format
 | [`go-primitives.md`](go-primitives.md) | index of every Go primitive kit ships, grouped by task | you would otherwise hand-roll something |
 | [`help-rendering.md`](help-rendering.md) | standard help layout across the three languages | you customise or verify help output |
 | [`log-api.md`](log-api.md) | themed logger reading `quiet` and `no-color` from config | you log from a kit-built CLI |
+| [`php-sdk.md`](php-sdk.md) | PHP SDK long-form surfaces: URI facade, output rules, MCP over PSR-15, offline enforcement, telemetry | you require the experimental package and need the detail behind its README |
 | [`py-api-reference.md`](py-api-reference.md) | Python CLI factory, `hop_top_kit.cli` | you build a CLI with Typer |
 | [`py-sdk.md`](py-sdk.md) | Python SDK long-form surfaces: MCP mount, URI facade, output rules, telemetry envelope | you have `hop-top-kit` installed and need the detail behind its README |
 | [`rs-sdk.md`](rs-sdk.md) | Rust SDK long-form surfaces: serve, output, MCP, storage, httpcache wire contract, telemetry, bus | you depend on the experimental crate and need the detail behind its README |
