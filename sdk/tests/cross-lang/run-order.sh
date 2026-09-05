@@ -152,7 +152,7 @@ run_lang() {
       php "${RUNNERS}/php/order.php"
       ;;
     go)
-      ( cd "${HERE}" && go run "${RUNNERS}/go/order.go" )
+      ( cd "${HERE}" && go run "${RUNNERS}/go/order" )
       ;;
   esac
 

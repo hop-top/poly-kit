@@ -1,0 +1,45 @@
+# Opt-in toolspec fixture for the cross-language compliance harness.
+#
+# telemetry.enabled is true, so every port must run its F13 check and
+# report a denominator of 13 rather than 12. The block is deliberately
+# WELL-FORMED across all seven F13 sub-conditions — the harness pins
+# agreement on the score, so a port that silently skips F13, or omits
+# the factor entirely, diverges on both `score` and `total`.
+#
+# The rest of the spec is shaped so the twelve pre-F13 static checks
+# land on a stable, non-trivial mix of pass and skip. Do not "tidy" it:
+# every field here is load-bearing for the expected score.
+name: probe
+schema_version: "1"
+
+state_introspection:
+  config_commands: ["config show"]
+
+commands:
+  - name: list
+    contract:
+      idempotent: true
+    output_schema:
+      format: json
+  - name: apply
+    contract:
+      idempotent: false
+      side_effects: ["writes files"]
+    preview_modes: ["--dry-run"]
+  - name: telemetry
+    children:
+      - name: status
+      - name: enable
+      - name: disable
+      - name: reset
+      - name: inspect
+
+telemetry:
+  enabled: true
+  categories: [invocation]
+  sinks: [bus]
+  consent_command: "probe telemetry"
+  consent_subcommands: [status, enable, disable, reset, inspect]
+  kill_switch_envs: [DO_NOT_TRACK, PROBE_TELEMETRY_MODE]
+  prompt_version: "v1"
+  redact_rules: kit-default
