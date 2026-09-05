@@ -300,9 +300,9 @@ check-template-sources: ## Verify mirrored templates ship Go sources (*.go, go.m
 	fi
 
 check-mirror-sync: check-template-sources ## Verify templates/ and internal/template/builtins/ are in sync
-	@if diff -rq templates/ internal/template/builtins/ | grep -v '^Only in templates: ' | grep -q .; then \
+	@if diff -rq templates internal/template/builtins | grep -Ev '^Only in templates/?: ' | grep -q .; then \
 		echo "Mirror drift detected between templates/ and internal/template/builtins/:"; \
-		diff -rq templates/ internal/template/builtins/ | grep -v '^Only in templates: '; \
+		diff -rq templates internal/template/builtins | grep -Ev '^Only in templates/?: '; \
 		echo ""; \
 		echo "Fix: copy diverged files from templates/ to internal/template/builtins/ (source is canonical),"; \
 		echo "or run: make builtins-sync"; \
