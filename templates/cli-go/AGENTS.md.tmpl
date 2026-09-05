@@ -3,17 +3,48 @@
 You are calling `{{.Name}}` over a transport, not a terminal. Follow
 these instructions.
 
-Start the surface you need:
+Start one surface. Each command below runs in the foreground until
+signalled, so pick ONE per process — do not run them in sequence and
+expect both.
+
+REST only:
 
 ```sh
 {{.Name}} serve api --addr 127.0.0.1:8080
-{{.Name}} serve socket
 ```
 
+Socket only:
+
+```sh
+{{.Name}} serve socket --socket /tmp/{{.Name}}.sock
+```
+
+Both, under one lifecycle:
+
+```sh
+{{.Name}} serve --addr 127.0.0.1:8080 --enable socket --socket /tmp/{{.Name}}.sock
+```
+
+A bare `{{.Name}} serve` starts every *enabled* service. This tool
+registers two: `api`, enabled by default, and `socket`, registered but
+off — so a bare `serve` gives you REST alone. Turn the socket on for
+that run with `--enable socket`, or persistently in the config file:
+
+```yaml
+services:
+  socket:
+    enabled: true
+    path: /tmp/{{.Name}}.sock
+```
+
+Run `{{.Name}} serve --list` to see which services are configured and
+enabled before you start.
+
 `serve api` binds loopback and refuses a non-loopback address without
-`--insecure-remote`. `serve socket` listens on
-`<runtime dir>/{{.Name}}/{{.Name}}.sock`, mode `0600`, and prints the
-resolved path on the `ready_reported` line under `address=`.
+`--insecure-remote`. The socket is mode `0600`. Whichever form you
+use, each service prints its resolved address on its
+`ready_reported` line under `address=`; wait for that rather than for
+a banner.
 
 ## Discover before you call
 

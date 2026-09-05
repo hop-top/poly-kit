@@ -62,6 +62,14 @@ func TestBootstrap_CLIGo_AgentsFragment(t *testing.T) {
 		assert.Contains(t, got, "# demo for agents")
 		assert.Contains(t, got, "demo serve api --addr 127.0.0.1:8080")
 		assert.Contains(t, got, "demo serve socket --socket /tmp/demo.sock")
+		// Each selector blocks in the foreground, so the opener must
+		// offer the both-surfaces form rather than listing two
+		// selectors an agent would run in sequence and hang on.
+		assert.Contains(t, got,
+			"demo serve --addr 127.0.0.1:8080 --enable socket --socket /tmp/demo.sock")
+		assert.Contains(t, got, "pick ONE per process")
+		assert.Contains(t, got, "a bare `serve` gives you REST alone",
+			"socket is registered but off, so the doc must not promise both")
 		assert.NotContains(t, got, "{{", "no unrendered template action may survive")
 		assert.NotContains(t, got, ".Name", "the variable must be substituted, not named")
 
@@ -102,10 +110,10 @@ func TestBootstrap_CLIGo_AgentsFragment(t *testing.T) {
 	}
 }
 
-// TestBootstrap_CLIGo_AgentsFragmentMatchesTemplate keeps the fragment
-// honest about the sample command the template actually ships: the
-// fragment tells an agent to read `route` and `method` off discovery,
-// so it must not hard-code a route for a command this template has.
+// TestBootstrap_CLIGo_AgentsFragmentDocumentsTheRealSurface keeps the
+// fragment honest about the surface the template actually ships: it
+// tells an agent to read `route` and `method` off discovery, so it
+// must not hard-code a route for a command this template has.
 func TestBootstrap_CLIGo_AgentsFragmentDocumentsTheRealSurface(t *testing.T) {
 	dir := augmentCLIGoAt(t, 3)
 	body, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
