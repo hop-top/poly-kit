@@ -546,10 +546,10 @@ collector that re-emits via `go/core/redact`.
 
 | Env var | Purpose |
 |---------|---------|
-| `KIT_TELEMETRY_MODE` | `off | anon | full` (SDK-level). |
+| `KIT_TELEMETRY_MODE` | `off \| anon \| full` (SDK-level). |
 | `<APP>_TELEMETRY_MODE` | Overrides KIT-level when `KIT_APP_PREFIX` is set. |
 | `KIT_TELEMETRY_ENDPOINT` | HTTPS sink target (used by `ClientOptions::from_env`). |
-| `KIT_TELEMETRY_SINK` | `https | jsonl` (used by `ClientOptions::from_env`). |
+| `KIT_TELEMETRY_SINK` | `https \| jsonl` (used by `ClientOptions::from_env`). |
 | `KIT_TELEMETRY_SINK_FILE` | JSONL path (used by `ClientOptions::from_env`). |
 | `KIT_TELEMETRY_QUEUE_SIZE` | Bounded channel capacity, defaults to 1024. |
 | `XDG_CONFIG_HOME` | Locates the consent file (`<HERE>/kit/config.yaml` at `kit.telemetry.consent`; legacy `<HERE>/kit/telemetry.yaml` read as fallback). |

@@ -187,7 +187,7 @@ breakers:
 
 | Key | Maps to | Notes |
 |-----|---------|-------|
-| `on_trip` | `OnTrip(Halt|Degrade|Warn)` | Default `halt` |
+| `on_trip` | `OnTrip(Halt\|Degrade\|Warn)` | Default `halt` |
 | `max_per_minute` | `MaxPerMinute(n)` | Bursty rate limiter |
 | `max_concurrent` | `MaxConcurrent(n)` | Bulkhead |
 | `timeout` | `Timeout(d)` | Go duration string (`30s`, `2m`) |

@@ -74,79 +74,79 @@ alert on warn-and-above, an audit file, all teed off the same bus:
 package main
 
 import (
-	"context"
-	"fmt"
-	"os"
+    "context"
+    "fmt"
+    "os"
 
-	"hop.top/kit/go/core/breaker"
-	"hop.top/kit/go/core/redact"
-	"hop.top/kit/go/runtime/bus"
-	"hop.top/kit/go/runtime/notify"
-	emailsink "hop.top/kit/go/runtime/notify/sinks/email"
-	osnotifysink "hop.top/kit/go/runtime/notify/sinks/osnotify"
-	webhooksink "hop.top/kit/go/runtime/notify/sinks/webhook"
+    "hop.top/kit/go/core/breaker"
+    "hop.top/kit/go/core/redact"
+    "hop.top/kit/go/runtime/bus"
+    "hop.top/kit/go/runtime/notify"
+    emailsink "hop.top/kit/go/runtime/notify/sinks/email"
+    osnotifysink "hop.top/kit/go/runtime/notify/sinks/osnotify"
+    webhooksink "hop.top/kit/go/runtime/notify/sinks/webhook"
 )
 
 func wireBus(ctx context.Context) (bus.Bus, error) {
-	red := redact.Default()
-	webBreaker := breaker.New("notify-webhook" /* policies */)
-	smtpBreaker := breaker.New("notify-email" /* policies */)
-	osBreaker := breaker.New("notify-osnotify" /* policies */)
+    red := redact.Default()
+    webBreaker := breaker.New("notify-webhook" /* policies */)
+    smtpBreaker := breaker.New("notify-email" /* policies */)
+    osBreaker := breaker.New("notify-osnotify" /* policies */)
 
-	deadLetter, err := bus.NewJSONLSinkFile("/var/log/kit/dl.jsonl")
-	if err != nil {
-		return nil, fmt.Errorf("open dead-letter sink: %w", err)
-	}
+    deadLetter, err := bus.NewJSONLSinkFile("/var/log/kit/dl.jsonl")
+    if err != nil {
+        return nil, fmt.Errorf("open dead-letter sink: %w", err)
+    }
 
-	pages := notify.NewRetrySink(
-		notify.NewFilterSink(
-			webhooksink.New(
-				os.Getenv("PAGERDUTY_URL"),
-				webhooksink.WithRedactor(red),
-				webhooksink.WithBreaker(webBreaker),
-			),
-			notify.WithMinSeverity(notify.SeverityCritical),
-		),
-		notify.WithMaxAttempts(5),
-		notify.WithDeadLetter(deadLetter),
-	)
+    pages := notify.NewRetrySink(
+        notify.NewFilterSink(
+            webhooksink.New(
+                os.Getenv("PAGERDUTY_URL"),
+                webhooksink.WithRedactor(red),
+                webhooksink.WithBreaker(webBreaker),
+            ),
+            notify.WithMinSeverity(notify.SeverityCritical),
+        ),
+        notify.WithMaxAttempts(5),
+        notify.WithDeadLetter(deadLetter),
+    )
 
-	subjectTmpl, _ := emailsink.TextTemplate("[{{.Topic}}] alert")
-	bodyTmpl, _ := emailsink.TextTemplate("{{.Source}}: {{.Payload}}")
-	summaries := notify.NewFilterSink(
-		emailsink.New(
-			emailsink.NewSMTPMailer("smtp.local", 25),
-			emailsink.WithRecipients("ops@example.com"),
-			emailsink.WithFrom("kit@example.com"),
-			emailsink.WithSubject(subjectTmpl),
-			emailsink.WithBody(bodyTmpl),
-			emailsink.WithRedactor(red),
-			emailsink.WithBreaker(smtpBreaker),
-		),
-		notify.WithMinSeverity(notify.SeverityWarn),
-		notify.WithTopicPattern("billing.#"),
-	)
+    subjectTmpl, _ := emailsink.TextTemplate("[{{.Topic}}] alert")
+    bodyTmpl, _ := emailsink.TextTemplate("{{.Source}}: {{.Payload}}")
+    summaries := notify.NewFilterSink(
+        emailsink.New(
+            emailsink.NewSMTPMailer("smtp.local", 25),
+            emailsink.WithRecipients("ops@example.com"),
+            emailsink.WithFrom("kit@example.com"),
+            emailsink.WithSubject(subjectTmpl),
+            emailsink.WithBody(bodyTmpl),
+            emailsink.WithRedactor(red),
+            emailsink.WithBreaker(smtpBreaker),
+        ),
+        notify.WithMinSeverity(notify.SeverityWarn),
+        notify.WithTopicPattern("billing.#"),
+    )
 
-	osSink, err := osnotifysink.New(
-		osnotifysink.WithTitle(osnotifysink.LiteralTemplate("kit alert")),
-		osnotifysink.WithText(osnotifysink.LiteralTemplate("see logs")),
-		osnotifysink.WithRedactor(red),
-		osnotifysink.WithBreaker(osBreaker),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("init os notify: %w", err)
-	}
-	desktop := notify.NewFilterSink(
-		osSink,
-		notify.WithMinSeverity(notify.SeverityWarn),
-	)
+    osSink, err := osnotifysink.New(
+        osnotifysink.WithTitle(osnotifysink.LiteralTemplate("kit alert")),
+        osnotifysink.WithText(osnotifysink.LiteralTemplate("see logs")),
+        osnotifysink.WithRedactor(red),
+        osnotifysink.WithBreaker(osBreaker),
+    )
+    if err != nil {
+        return nil, fmt.Errorf("init os notify: %w", err)
+    }
+    desktop := notify.NewFilterSink(
+        osSink,
+        notify.WithMinSeverity(notify.SeverityWarn),
+    )
 
-	audit, err := bus.NewJSONLSinkFile("/var/log/kit/audit.jsonl")
-	if err != nil {
-		return nil, fmt.Errorf("open audit sink: %w", err)
-	}
+    audit, err := bus.NewJSONLSinkFile("/var/log/kit/audit.jsonl")
+    if err != nil {
+        return nil, fmt.Errorf("open audit sink: %w", err)
+    }
 
-	return bus.NewTeeBus(bus.New(), []bus.Sink{pages, summaries, desktop, audit}, nil), nil
+    return bus.NewTeeBus(bus.New(), []bus.Sink{pages, summaries, desktop, audit}, nil), nil
 }
 ```
 
