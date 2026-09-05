@@ -1,160 +1,49 @@
 # xdg
 
-Per-user directory + file resolution for kit-based tools and agents.
+## What it answers
 
-Thin wrapper over [`github.com/adrg/xdg`](https://github.com/adrg/xdg) —
-XDG Base Directory Specification with OS-native fallbacks (macOS, Windows,
-Linux/BSD).
+Where a tool's config, data, cache, state, runtime and bin files live for
+this user on this OS, and where the user's own Documents, Downloads and
+similar directories are. Whether a resolved path may be touched is
+`go/core/scope`; parsing the file once resolved is `go/core/config`.
 
-```go
-import "hop.top/kit/go/core/xdg"
-```
+Thin wrapper over [`github.com/adrg/xdg`](https://github.com/adrg/xdg): the
+XDG Base Directory Specification with OS-native fallbacks.
 
-## When to use what
+## Use it when
 
-| Need | Use | Example path (Linux) |
-|---|---|---|
-| User-edited config (yaml, toml) | `ConfigDir` / `ConfigFile` | `~/.config/<tool>/` |
-| App data (DBs, caches that survive) | `DataDir` / `DataFile` | `~/.local/share/<tool>/` |
-| Disposable cache (regenerable) | `CacheDir` / `CacheFile` | `~/.cache/<tool>/` |
-| Volatile state (logs, history) | `StateDir` / `StateFile` | `~/.local/state/<tool>/` |
-| Sockets, PID files, IPC | `RuntimeDir` / `RuntimeFile` | `/run/user/<uid>/<tool>/` |
-| Installed user binaries | `BinHome` | `~/.local/bin/<tool>/` |
-| Read user's Documents/Downloads/etc. | `UserDir(name)` / `UserDirs()` | `~/Documents`, `~/Downloads` |
-| Look up org-wide defaults too | `Search*File` | `/etc/xdg/<tool>/...` |
-| Discover installed apps / fonts | `ApplicationDirs` / `FontDirs` | `/Applications`, `/usr/share/fonts` |
+- resolve a base dir, no I/O → `xdg.ConfigDir`, `DataDir`, `CacheDir`, `StateDir`, `RuntimeDir`, `BinHome`
+- resolve a file and create its parents → `xdg.ConfigFile`, `DataFile`, `CacheFile`, `StateFile`, `RuntimeFile`
+- honour org-wide defaults under `/etc/xdg` → `xdg.SearchConfigFile` and the other `Search*File`
+- act on the user's behalf → `xdg.Home`, `UserDir(name)`, `UserDirs`, `FontDirs`, `ApplicationDirs`
+- create a resolved dir → `xdg.MustEnsure(xdg.DataDir("mytool"))`
 
-## API surface
-
-### Base directories — `<base>/<tool>`
-
-```go
-xdg.ConfigDir(tool)   // $XDG_CONFIG_HOME/<tool>
-xdg.DataDir(tool)     // $XDG_DATA_HOME/<tool>
-xdg.CacheDir(tool)    // $XDG_CACHE_HOME/<tool>
-xdg.StateDir(tool)    // $XDG_STATE_HOME/<tool>
-xdg.RuntimeDir(tool)  // $XDG_RUNTIME_DIR/<tool>
-xdg.BinHome(tool)     // $XDG_BIN_HOME/<tool> (~/.local/bin/<tool>)
-```
-
-No filesystem side effects. Pair with `MustEnsure` to create.
-
-### File helpers — full path, parent dirs auto-created
-
-```go
-xdg.ConfigFile(tool, "app.yaml")   // ~/.config/<tool>/app.yaml
-xdg.DataFile(tool, "store.db")     // ~/.local/share/<tool>/store.db
-xdg.CacheFile(tool, "index.bin")   // ~/.cache/<tool>/index.bin
-xdg.StateFile(tool, "history.log") // ~/.local/state/<tool>/history.log
-xdg.RuntimeFile(tool, "agent.sock")// /run/user/<uid>/<tool>/agent.sock
-```
-
-`name` may include subdirs (`"sub/app.yaml"`); they're created on demand.
-
-### Search functions — user dir + system XDG\_\*\_DIRS
-
-```go
-xdg.SearchConfigFile(tool, "app.yaml")  // checks $XDG_CONFIG_DIRS too
-xdg.SearchDataFile(tool, "schema.json")
-xdg.SearchCacheFile(tool, "...")
-xdg.SearchStateFile(tool, "...")
-xdg.SearchRuntimeFile(tool, "...")
-```
-
-Returns the first existing match. Lets users / ops drop org-wide defaults
-under e.g. `/etc/xdg/<tool>/`.
-
-### User-facing directories — for agents acting on the user's behalf
-
-```go
-xdg.Home()                       // user home
-xdg.UserDir("documents")         // ~/Documents (case-insensitive)
-xdg.UserDir("downloads")         // ~/Downloads ("download" also accepted)
-xdg.UserDirs()                   // all 8 well-known dirs as a struct
-xdg.FontDirs()                   // [/usr/share/fonts, ~/.local/share/fonts, …]
-xdg.ApplicationDirs()            // [/Applications, /usr/share/applications, …]
-```
-
-Recognised `UserDir` names: `desktop`, `download(s)`, `documents`, `music`,
-`pictures`, `videos`, `templates`, `publicshare` / `public`.
-
-### Helper
-
-```go
-dir := xdg.MustEnsure(xdg.DataDir("mytool")) // mkdir -p with 0750; panics on err
-```
-
-## Examples
-
-Open the user's config, creating the file path if needed:
+## Quick start
 
 ```go
 path, err := xdg.ConfigFile("mytool", "app.yaml")
 // path = ~/.config/mytool/app.yaml; parent created
 ```
 
-Agent dropping a generated artifact in Downloads:
+## Contract
 
-```go
-dl, _ := xdg.UserDir("downloads")
-out := filepath.Join(dl, "report-2026-04-27.pdf")
-os.WriteFile(out, data, 0o644)
-```
+- `*Dir` and `BinHome` have no filesystem side effects; `*File` creates parent directories (`MkdirAll`), and `name` may include subdirs.
+- `Search*File` returns the first existing match across the user dir and `$XDG_*_DIRS`, else an error.
+- `UserDir` names are case-insensitive: `desktop`, `download(s)`, `documents`, `music`, `pictures`, `videos`, `templates`, `publicshare` / `public`.
+- `MustEnsure` does `mkdir -p` with 0750 and panics on error.
+- Every function is goroutine-safe; the package serializes the `adrg/xdg` refresh and the resolve that follows it, which the library alone does not.
+- The lock covers the resolve, so `*File` serializes `MkdirAll` and `Search*File` serializes its stats across goroutines. Hoist resolves out of hot loops.
+- The environment is read on every call: `t.Setenv` takes effect on the next call, with no cache and no refresh function.
+- macOS puts `Config*` under `~/Library/Preferences` and `Data*` / `State*` under `~/Library/Application Support`; Windows uses `%LocalAppData%` and `%AppData%`; Linux and BSD are pure XDG. `XDG_*_HOME` overrides all three.
 
-Daemon socket under runtime dir:
+## Neighbours
 
-```go
-sock, _ := xdg.RuntimeFile("mytool", "agent.sock")
-ln, _ := net.Listen("unix", sock)
-```
+- `go/core/scope`: whether a resolved path may be read, written or executed; `xdg.SetGuard` wires the hook.
+- `go/core/config`: loading and merging the files these helpers locate.
+- `go/core/xdg/scopetest`: test-only helper package for scope-guarded xdg tests.
 
-Honour an org-wide default config when present:
+## See also
 
-```go
-path, err := xdg.SearchConfigFile("mytool", "policy.yaml")
-// returns user file if present, else /etc/xdg/mytool/policy.yaml, else error
-```
-
-## Concurrency
-
-Every function is safe to call from multiple goroutines. Callers need no
-mutex of their own.
-
-The underlying `adrg/xdg` keeps its directories in package-level globals
-and rewrites all of them on each refresh, holding no lock — concurrent
-resolves through it directly are a data race. This package serializes the
-refresh and the read that follows it, which is what makes the wrapper
-safe where the library is not.
-
-Resolution reads the environment on every call, so changing an `XDG_*`
-variable takes effect on the very next call — no cache to invalidate, no
-refresh function to call. Tests can `t.Setenv` and resolve immediately.
-
-### What the lock costs
-
-The lock spans the refresh **and** the resolve that follows it — it has to,
-because `adrg/xdg`'s file helpers read the state the refresh rewrites. So
-the lock covers whatever the resolve does, and not every resolve is cheap:
-
-| Functions | Under the lock |
-|---|---|
-| `ConfigDir` / `DataDir` / `CacheDir` / `StateDir` / `RuntimeDir` / `BinHome`, the `Raw*` variants, `Home` / `UserDir(s)` / `FontDirs` / `ApplicationDirs` | env reads + string joins, no I/O |
-| `ConfigFile` / `DataFile` / `CacheFile` / `StateFile` / `RuntimeFile` | **creates parent directories** (`MkdirAll`); `RuntimeFile` also stats its candidate bases |
-| `Search*File` | **stats each search path** until one hits |
-
-The file and search helpers therefore serialize filesystem I/O across
-goroutines. Resolving a location once at startup does not care. Resolving
-files in a hot loop from several goroutines will queue on the lock — hoist
-the resolve out of the loop, since the path for a given `(tool, name)` does
-not change between iterations.
-
-## Platform notes
-
-- **macOS**: `Config*` uses `~/Library/Preferences`; `Data*`/`State*` use
-  `~/Library/Application Support` per Apple HIG. Honour `XDG_*_HOME` to
-  override (kit + adrg/xdg both respect it).
-- **Windows**: `%LocalAppData%\<tool>` (data/state/cache),
-  `%AppData%\<tool>` (config). `XDG_*_HOME` honoured when set.
-- **Linux/BSD**: pure XDG Base Directory Spec.
-
-Full per-platform path table: see [adrg/xdg README](https://github.com/adrg/xdg#default-locations).
+- [XDG reference](../../../docs/adopters/reference/xdg.md): full API surface, examples, concurrency cost table, platform notes
+- [Config reference](../../../docs/adopters/reference/config.md)
+- [adrg/xdg default locations](https://github.com/adrg/xdg#default-locations)
