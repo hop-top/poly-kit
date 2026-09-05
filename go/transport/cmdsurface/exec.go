@@ -364,6 +364,25 @@ func resetFlags(leaf *cobra.Command, baseline map[*pflag.Flag]flagState, passed 
 	}
 }
 
+// ResetFlagToDefault returns one flag to its declared default and
+// clears its Changed bit, the state it had before any command line
+// was parsed onto it.
+//
+// It is the primitive behind this package's per-invocation reset,
+// exported so a caller that re-parses a tree — a cobra root executed
+// more than once in a process — returns flags to their defaults the
+// same way, rather than growing a second implementation of the same
+// pflag edge cases: slice flags, which pflag appends to on every Set
+// after the first; callback-backed flags, whose Set is the adopter's
+// own function; and values whose String form does not round-trip
+// through Set.
+func ResetFlagToDefault(f *pflag.Flag) {
+	if f == nil {
+		return
+	}
+	restoreFlag(f, nil, false)
+}
+
 // restoreFlag puts one flag back to st. A flag the baseline never saw
 // (st nil: registered after the runner was built) goes to its
 // declared default. Callback-backed flags (pflag Func and BoolFunc)

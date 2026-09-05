@@ -342,6 +342,10 @@ type Root struct {
 	// when --help-all is on the args.
 	hiddenDefaultFlags []string
 	overrideArgs       []string // captured from SetArgs for pre-parse inspection
+	// executed records that Execute has parsed a command line onto
+	// this tree, so the next Execute knows it has a previous parse to
+	// reset before this one's argv lands. See resetForExecute.
+	executed bool
 	// configArgsErr stashes the most recent ParseConfigArgs failure
 	// from ConfigArgs/ConfigOverrides so Root.Validate() can surface
 	// it in the EnforceValidate pre-flight. Cleared on a successful
@@ -790,6 +794,19 @@ func (r *Root) dispatchValidationFailure(err error) (bool, error) {
 // Config.ValidationFailureMode here; Prepare returns it instead.
 func (r *Root) Execute(ctx context.Context) error {
 	r.prepareTree()
+
+	// Return every flag to its default before this call's argv is
+	// parsed onto the tree. Cobra parses into the flag set in place
+	// and never unsets anything, so without this a second Execute
+	// inherits the first one's values and Changed bits, and a flag
+	// omitted the second time still reads as if it had been passed.
+	//
+	// Only trees driven through Execute are reset here. A tree built
+	// by a root factory is prepared and then driven by the
+	// in-process runner, which does its own per-invocation reset
+	// against the baseline it captured, so it is neither reached nor
+	// double-reset by this one.
+	r.resetForExecute()
 
 	r.applyGroupVisibility()
 
