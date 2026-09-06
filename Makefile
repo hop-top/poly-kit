@@ -58,6 +58,15 @@ test-go: ## Go tests (skips long-running container tests)
 	@go test -short ./... -count=1 -timeout 1200s
 	@find go cmd contracts engine examples incubator -name "go.mod" -execdir go test -short ./... -count=1 -timeout 1200s \;
 
+# PROPERTY_ITERATIONS pins the iteration count of the engine/store
+# property tests (engine/store/property_iterations_test.go). Empty keeps
+# each test's full count; ci.yml sets 100 on pull requests and leaves
+# pushes and the nightly run at full. It rides its own variable rather
+# than -short because -short also skips the testcontainer and kit-serve
+# suites this target exists to run.
+PROPERTY_ITERATIONS ?=
+
+test-go-integration: export KIT_PROPERTY_ITERATIONS = $(PROPERTY_ITERATIONS)
 test-go-integration: ## Go tests including testcontainer integration
 	@go test ./... -count=1 -timeout 1200s
 	@find go cmd contracts engine examples incubator -name "go.mod" -execdir go test ./... -count=1 -timeout 1200s \;
