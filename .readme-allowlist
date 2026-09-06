@@ -51,3 +51,5 @@ go/console/cli/conformance/harness  # no Go source of its own; listed in cli/con
 go/core/upgrade/driver/configfile  # no own config; covered by driver/README.md backend table
 go/core/upgrade/driver/fsdir  # no own config; covered by driver/README.md backend table
 go/core/upgrade/driver/sqlite  # no own config; covered by driver/README.md backend table
+internal/tools/vendor-gitleaks       # internal/tools/README.md table plus the main.go package comment are the reference
+internal/tools/vendor-presidio       # internal/tools/README.md table plus the main.go package comment are the reference

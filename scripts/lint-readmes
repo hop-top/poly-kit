@@ -23,6 +23,7 @@
 #
 # Qualifying directory (any one is enough):
 #   - holds non-test source files directly (.go .ts .py .php .rs)
+#   - standalone tool: internal/tools/<name> (walked despite the internal prune)
 #   - template root:  templates/<name> without a scaffold-time README
 #   - contract set:   contracts/**/ holding files directly
 #   - docs section:   docs/**/ holding .md files directly
@@ -214,6 +215,8 @@ qualifies() {
   local dir="$1"
   in_payload "$dir" && return 1
   case "$dir" in
+    internal/tools/*/*) ;;
+    internal/tools/*)   return 0 ;;
     templates/*)   has_scaffolded_readme "$dir" && return 1; return 0 ;;
     contracts/*)   has_direct_file "$dir" '*' && return 0 ;;
     docs/*)        has_direct_file "$dir" '*.md' && return 0 ;;
@@ -277,7 +280,7 @@ while IFS= read -r dir; do
   walked+=("$dir")
   [ -f "$dir/README.md" ] && readmes+=("$dir/README.md")
   qualifies "$dir" && qualifying="$qualifying$dir"$'\n'
-done < <(find . -mindepth 1 -type d \( "${prune_expr[@]}" \) -prune -o -type d -print | LC_ALL=C sort)
+done < <({ find . -mindepth 1 -type d \( "${prune_expr[@]}" \) -prune -o -type d -print; [ -d ./internal/tools ] && find ./internal/tools -type d \( "${prune_expr[@]}" \) -prune -o -type d -print; } | LC_ALL=C sort -u)
 
 # is_index DIR: true when a qualifying directory sits below DIR.
 is_index() {

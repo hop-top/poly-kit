@@ -9,6 +9,8 @@ screen, what it is for and where to start. Two shapes, one lint
 A directory qualifies when any of these holds:
 
 - it holds non-test source files directly (`.go`, `.ts`, `.py`, `.php`, `.rs`)
+- it is a standalone tool: `internal/tools/<name>` (the one path walked under
+  the otherwise-pruned `internal/`)
 - it is a template root: `templates/<name>` (unless it carries `README.md.tmpl`,
   which is rendered for the adopter at scaffold time)
 - it is a contract set: a directory under `contracts/` holding files directly
@@ -22,7 +24,7 @@ Excluded, with everything below them:
 |----------|-----|
 | `testdata`, `fixtures`, `fixture` | test inputs |
 | `gen`, `*.pb.*`, `dist`, `target`, `build`, `vendor`, `node_modules`, `__pycache__`, `.venv`, `.pytest_cache` | generated or third-party output |
-| `internal` | private API; the parent README covers it |
+| `internal` (except `internal/tools`) | private API; the parent README covers it |
 | `cmd` | entry points documented by the parent README |
 | `test`, `tests`, `e2e`, `*_test` | test directories |
 | hidden directories (`.git`, `.github`, ...) | tooling |
