@@ -23,7 +23,7 @@ import { createCLI } from '@hop-top/kit/cli';
 ## Recommended path
 
 ```ts
-const program = createCLI({
+const { program } = createCLI({
   name: 'mytool',
   version: '1.0.0',
   description: 'does things',
@@ -34,13 +34,19 @@ program.command('list').action(() => { /* ... */ });
 program.parse();
 ```
 
+`createCLI` returns `{ program, theme }`, not the Commander command
+itself. Destructure `program`, or reach it as `result.program`.
+
 ## Verify the result
 
 ```bash
 mytool --help          # styled help
-mytool --version       # "mytool 1.0.0"
+mytool --version       # "mytool v1.0.0"
 mytool --help-all      # also shows hidden management groups
 ```
+
+The version line always carries a `v` prefix. Pass `version` without
+one; kit adds it.
 
 ---
 
@@ -51,44 +57,83 @@ mytool --help-all      # also shows hidden management groups
 ```ts
 interface CLIConfig {
   name: string;        // binary name (e.g. "mytool")
-  version: string;     // semver (e.g. "1.2.3")
+  version: string;     // semver, no leading "v" (e.g. "1.2.3")
   description: string; // one-line help description
-  groups?: GroupConfig[];
+  accent?: string;     // hex theme accent (e.g. "#FF0000"); default Neon
+
+  // Opt out of built-in global flags. Omit to keep all of them.
+  disable?: {
+    format?: boolean;
+    quiet?: boolean;
+    noColor?: boolean;
+    hints?: boolean;
+    offline?: boolean;
+  };
+
+  // Command groups for partitioned help.
+  groups?: Array<{
+    id: string;
+    title: string;
+    hidden?: boolean;
+  }>;
+
+  // Extra tool-specific persistent flags on the root command.
+  globals?: Array<{
+    name: string;     // long name without "--"
+    short?: string;   // single char
+    usage: string;
+    default?: string;
+  }>;
+
+  // Root --help layout overrides; defaults from contracts/parity.
+  help?: {
+    disclaimer?: string;
+    sectionOrder?: string[];
+    showAliases?: boolean;
+  };
 }
 ```
 
 ### createCLI
 
 ```ts
-function createCLI(cfg: CLIConfig): Command
+function createCLI(cfg: CLIConfig): CLIResult
+
+interface CLIResult {
+  program: Command; // configured Commander root
+  theme: Theme;     // derived from cfg.accent, or the Neon default
+}
 ```
 
-Returns a Commander `Command` pre-configured to the hop-top CLI
+`program` is a Commander `Command` pre-configured to the hop-top CLI
 contract:
 
 - No help/completion subcommands; `-h`/`--help` flag only.
-- `-v, --version` prints `<name> <version>` and exits.
-- Global options: `--format`, `--quiet`, `--no-color`.
+- `-v, --version` prints `<name> v<version>` and exits.
+- Global options: the `--format` suite (`--format`, `--format-opt`,
+  `--format-help`, `--cols`/`--columns`, `--template`, `-o`/`--output`),
+  plus `--quiet`, `--no-color`, `--no-hints` and `--offline`. Each is
+  suppressible through `disable`.
 - `showHelpAfterError` enabled.
 
 ### Command groups
 
-#### GroupConfig
+#### Declaring groups
+
+Groups are declared inline on `CLIConfig.groups`; there is no
+exported `GroupConfig` type to import.
 
 ```ts
-interface GroupConfig {
-  id: string;      // unique identifier (e.g. "management")
-  title: string;   // display title (e.g. "MANAGEMENT COMMANDS")
-  hidden: boolean; // true = excluded from default --help
-}
+groups?: Array<{
+  id: string;       // unique identifier (e.g. "management")
+  title: string;    // display title (e.g. "MANAGEMENT")
+  hidden?: boolean; // omitted or false = shown in default --help
+}>
 ```
 
-Default groups when none specified:
-
-| id | title | hidden |
-|----|-------|--------|
-| `commands` | COMMANDS | false |
-| `management` | MANAGEMENT COMMANDS | true |
+There are no default groups. Declare every group you intend to use;
+an unrecognised `groupId` leaves the command in the ungrouped
+`commands` section.
 
 #### setCommandGroup
 
@@ -100,7 +145,10 @@ Assigns a subcommand to a named group. Commands without assignment
 default to `commands`.
 
 ```ts
-const program = createCLI({ name: 'mytool', version: '1.0.0', description: '...' });
+const { program } = createCLI({
+  name: 'mytool', version: '1.0.0', description: '...',
+  groups: [{ id: 'management', title: 'MANAGEMENT', hidden: true }],
+});
 const configCmd = program.command('config').description('Manage configuration');
 setCommandGroup(configCmd, 'management');
 ```
@@ -108,7 +156,9 @@ setCommandGroup(configCmd, 'management');
 #### `--help-all`
 
 Root-level boolean option. When passed, the help formatter includes
-commands from hidden groups.
+commands from hidden groups. It is registered only when at least one
+declared group sets `hidden: true`; with no hidden group there is
+nothing for it to reveal and the flag does not appear.
 
 ```
 $ mytool --help          # shows COMMANDS only

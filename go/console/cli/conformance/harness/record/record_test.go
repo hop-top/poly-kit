@@ -120,10 +120,43 @@ func TestGroup_Surface(t *testing.T) {
 	assert.Contains(t, names, "record")
 }
 
+// TestRecord_ExitCodesUseSharedTaxonomy pins the leaf to kit's shared
+// exit-code bands. The leaf previously invented its own numbering
+// (3 usage, 4 io, 5 story), which collided with NOT_FOUND, CONFLICT
+// and UNAUTHORIZED for anything branching on the code alone.
+func TestRecord_ExitCodesUseSharedTaxonomy(t *testing.T) {
+	scPath, storyPath, bin := fixture(t)
+
+	t.Run("usage is 2", func(t *testing.T) {
+		_, err := runLeaf(t)
+		require.Error(t, err)
+		assert.Equal(t, 2, exitCodeOf(t, err))
+	})
+
+	t.Run("io is transient 6", func(t *testing.T) {
+		_, err := runLeaf(t, "--scenario", scPath,
+			"--binary", "/nonexistent/bin",
+			"--out", filepath.Join(t.TempDir(), "c"))
+		require.Error(t, err)
+		assert.Equal(t, output.ExitTransient, exitCodeOf(t, err))
+		assert.Equal(t, 6, exitCodeOf(t, err))
+	})
+
+	t.Run("story error never claims the auth slot", func(t *testing.T) {
+		require.NoError(t, os.Remove(storyPath))
+		_, err := runLeaf(t, "--scenario", scPath, "--binary", bin,
+			"--out", filepath.Join(t.TempDir(), "c"))
+		require.Error(t, err)
+		assert.NotEqual(t, 5, exitCodeOf(t, err),
+			"exit 5 is the shared UNAUTHORIZED slot")
+		assert.Equal(t, 2, exitCodeOf(t, err))
+	})
+}
+
 func TestRecord_MissingFlagsIsUsage(t *testing.T) {
 	_, err := runLeaf(t)
 	require.Error(t, err)
-	assert.Equal(t, 3, exitCodeOf(t, err))
+	assert.Equal(t, 2, exitCodeOf(t, err))
 	assert.Contains(t, err.Error(), "--scenario")
 }
 
@@ -131,7 +164,8 @@ func TestRecord_EndToEndWithDerivedRef(t *testing.T) {
 	scPath, _, bin := fixture(t)
 	out := filepath.Join(t.TempDir(), "cassette")
 
-	stdout, err := runLeaf(t,
+	stdout, err := runLeaf(
+		t,
 		"--scenario", scPath,
 		"--binary", bin,
 		"--out", out,
@@ -173,7 +207,8 @@ func TestRecord_EndToEndWithDerivedRef(t *testing.T) {
 func TestRecord_ScenarioRefOverride(t *testing.T) {
 	scPath, _, bin := fixture(t)
 	out := filepath.Join(t.TempDir(), "cassette")
-	_, err := runLeaf(t,
+	_, err := runLeaf(
+		t,
 		"--scenario", scPath, "--binary", bin, "--out", out,
 		"--scenario-ref", "acme/status-json@2.0.0",
 		"--format", "json",
@@ -187,12 +222,13 @@ func TestRecord_ScenarioRefOverride(t *testing.T) {
 
 func TestRecord_MalformedScenarioRefIsUsage(t *testing.T) {
 	scPath, _, bin := fixture(t)
-	_, err := runLeaf(t,
+	_, err := runLeaf(
+		t,
 		"--scenario", scPath, "--binary", bin, "--out", filepath.Join(t.TempDir(), "c"),
 		"--scenario-ref", "no-namespace",
 	)
 	require.Error(t, err)
-	assert.Equal(t, 3, exitCodeOf(t, err))
+	assert.Equal(t, 2, exitCodeOf(t, err))
 }
 
 func TestRecord_InvalidScenarioExits2(t *testing.T) {
@@ -214,28 +250,28 @@ func TestRecord_UnsupportedSchemaExits1(t *testing.T) {
 	assert.Equal(t, 1, exitCodeOf(t, err))
 }
 
-func TestRecord_MissingStoryExits5(t *testing.T) {
+func TestRecord_MissingStoryIsUsage(t *testing.T) {
 	scPath, storyPath, bin := fixture(t)
 	require.NoError(t, os.Remove(storyPath))
 	_, err := runLeaf(t, "--scenario", scPath, "--binary", bin, "--out", filepath.Join(t.TempDir(), "c"))
 	require.Error(t, err)
-	assert.Equal(t, 5, exitCodeOf(t, err))
+	assert.Equal(t, 2, exitCodeOf(t, err))
 }
 
-func TestRecord_StoryHashMismatchExits5(t *testing.T) {
+func TestRecord_StoryHashMismatchIsUsage(t *testing.T) {
 	scPath, storyPath, bin := fixture(t)
 	require.NoError(t, os.WriteFile(storyPath, []byte(storyDoc+"# drift\n"), 0o644))
 	_, err := runLeaf(t, "--scenario", scPath, "--binary", bin, "--out", filepath.Join(t.TempDir(), "c"))
 	require.Error(t, err)
-	assert.Equal(t, 5, exitCodeOf(t, err))
+	assert.Equal(t, 2, exitCodeOf(t, err))
 	assert.Contains(t, err.Error(), "hash mismatch")
 }
 
-func TestRecord_MissingBinaryExits4(t *testing.T) {
+func TestRecord_MissingBinaryIsTransient(t *testing.T) {
 	scPath, _, _ := fixture(t)
 	_, err := runLeaf(t, "--scenario", scPath, "--binary", "/nonexistent/bin", "--out", filepath.Join(t.TempDir(), "c"))
 	require.Error(t, err)
-	assert.Equal(t, 4, exitCodeOf(t, err))
+	assert.Equal(t, output.ExitTransient, exitCodeOf(t, err))
 }
 
 func TestRecord_NonEmptyOutRequiresForce(t *testing.T) {
@@ -246,13 +282,13 @@ func TestRecord_NonEmptyOutRequiresForce(t *testing.T) {
 	// Without --force: refused.
 	_, err := runLeaf(t, "--scenario", scPath, "--binary", bin, "--out", out)
 	require.Error(t, err)
-	assert.Equal(t, 3, exitCodeOf(t, err))
+	assert.Equal(t, 2, exitCodeOf(t, err))
 
 	// With --force but no manifest.yaml: still refused — the dir is
 	// not recognizably a prior recording.
 	_, err = runLeaf(t, "--scenario", scPath, "--binary", bin, "--out", out, "--force")
 	require.Error(t, err)
-	assert.Equal(t, 3, exitCodeOf(t, err))
+	assert.Equal(t, 2, exitCodeOf(t, err))
 	assert.Contains(t, err.Error(), "manifest.yaml")
 	_, statErr := os.Stat(filepath.Join(out, "unrelated.txt"))
 	assert.NoError(t, statErr, "refused --force must not delete anything")
@@ -267,7 +303,7 @@ func TestRecord_ForceReplacesPriorRecording(t *testing.T) {
 	// Second run without --force: refused.
 	_, err = runLeaf(t, "--scenario", scPath, "--binary", bin, "--out", out)
 	require.Error(t, err)
-	assert.Equal(t, 3, exitCodeOf(t, err))
+	assert.Equal(t, 2, exitCodeOf(t, err))
 
 	// With --force: re-recorded.
 	_, err = runLeaf(t, "--scenario", scPath, "--binary", bin, "--out", out, "--force", "--format", "json")

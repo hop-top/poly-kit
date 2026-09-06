@@ -40,11 +40,17 @@ curl -X DELETE http://localhost:9090/sync/remotes/go-app
 
 ## 2. Sync Modes
 
-| Mode   | Go Constant     | Behavior                        |
-|--------|-----------------|---------------------------------|
-| push   | `PushOnly`      | backup — send diffs, never pull |
-| pull   | `PullOnly`      | read replica — receive only     |
-| both   | `Bidirectional` | full peer — push and pull       |
+`sync.SyncMode` is an int enum with no custom marshaller, so the
+integer value is the wire contract for language ports:
+
+| Wire string | Go constant     | Value | Behavior                        |
+|-------------|-----------------|-------|---------------------------------|
+| `both`      | `Bidirectional` | 0     | full peer — push and pull       |
+| `push`      | `PushOnly`      | 1     | backup — send diffs, never pull |
+| `pull`      | `PullOnly`      | 2     | read replica — receive only     |
+
+`Bidirectional` is the zero value: a `Remote` with no explicit mode
+syncs both directions.
 
 **PushOnly** — one-way backup. Local changes replicate out; remote
 changes never arrive. Use for archival targets.
@@ -63,32 +69,28 @@ their configured interval. Default for peer-to-peer sync.
 curl http://localhost:9090/sync/status
 ```
 
-**Response:**
+The Go type behind this is `sync.RemoteStatus`, returned by
+`Replicator.Status()`:
 
-```json
-{
-  "remotes": [
-    {
-      "name": "go-app",
-      "connected": true,
-      "last_sync": "2026-04-19T10:05:00Z",
-      "pending_diffs": 3,
-      "last_error": null,
-      "lag_ms": 85
-    }
-  ]
-}
-```
+| Go field       | Type            | Meaning                                 |
+|----------------|-----------------|-----------------------------------------|
+| `Name`         | `string`        | remote name                             |
+| `Connected`    | `bool`          | transport reachable on last attempt     |
+| `LastSync`     | `time.Time`     | last successful push/pull; zero if never |
+| `PendingDiffs` | `int`           | diffs queued but not yet sent to remote |
+| `LastError`    | `error`         | last transport error, or nil            |
+| `Lag`          | `time.Duration` | time since last successful sync         |
 
-**Field meanings:**
+`RemoteStatus` declares **no JSON tags**. Marshaling it directly yields
+Go field names, not snake_case, and two fields do not survive the round
+trip usefully: `Lag` becomes an integer count of nanoseconds, and
+`LastError` is an `error` interface that marshals to `{}` for most error
+types rather than a message string.
 
-| Field         | Meaning                                    |
-|---------------|--------------------------------------------|
-| connected     | transport reachable on last attempt        |
-| last_sync     | timestamp of last successful push/pull     |
-| pending_diffs | diffs queued but not yet sent to remote    |
-| last_error    | null or last transport error string        |
-| lag_ms        | ms since last successful sync              |
+Engines exposing `/sync/status` therefore project `RemoteStatus` into
+their own response shape rather than marshaling it as-is. Treat the Go
+field table above as the source of truth for the values, and read the
+engine's own route documentation for the JSON key names it emits.
 
 ---
 
@@ -109,18 +111,32 @@ Each node maintains a Timestamp:
 }
 ```
 
-- `physical` — wall clock in UnixNano, advanced on every event
-- `logical` — tie-breaker when two events share physical time
-- `node_id` — originating peer fingerprint (final tie-breaker)
+`sync.Timestamp` is one of the few sync types that does carry JSON
+tags, so these three keys are stable across ports:
+
+| Key        | Go type  | Meaning                                        |
+|------------|----------|------------------------------------------------|
+| `physical` | `int64`  | wall clock in UnixNano                         |
+| `logical`  | `uint32` | tie-breaker when two events share physical time |
+| `node_id`  | `string` | originating peer fingerprint (final tie-break) |
 
 ### Resolution Rules
 
+`sync.LastWriteWins(local, remote)` applies:
+
 1. Higher `physical` wins
 2. If physical equal: higher `logical` wins
-3. If both equal: lexicographically greater `node_id` wins
+3. If both equal: the lexicographically greater `node_id` wins
 
-Conflicts emit `sync.conflict` event over `/events` WebSocket
-with both the winning and losing diff attached.
+The third rule breaks ties toward **local** when the node IDs are also
+equal: the comparison is `local.NodeID >= remote.NodeID`. Ports must use
+the same `>=` so both sides of a sync independently pick the same
+winner. A port using strict `>` diverges whenever a diff is compared
+against itself.
+
+A `Diff` carries `entity_id`, `entity_type`, `operation`, optional
+`before` / `after` JSON snapshots, `timestamp`, and `node_id`.
+`operation` is an int enum: `OpCreate`=0, `OpUpdate`=1, `OpDelete`=2.
 
 ---
 

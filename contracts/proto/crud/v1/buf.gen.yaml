@@ -9,8 +9,8 @@ plugins:
     out: .
     opt: paths=source_relative
   - remote: buf.build/bufbuild/es
-    out: ../../../sdk/ts/src/gen
+    out: ../../../../sdk/ts/src/gen
     opt: target=ts
   - remote: buf.build/connectrpc/es
-    out: ../../../sdk/ts/src/gen
+    out: ../../../../sdk/ts/src/gen
     opt: target=ts

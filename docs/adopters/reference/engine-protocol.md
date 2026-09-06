@@ -17,17 +17,37 @@ Implementations:
 ## Conventions
 
 - Base URL: `http://localhost:<port>` (port from engine stdout)
+- Paths below are written `/:type/:id` for readability. The router
+  itself uses Go 1.22 wildcard syntax (`/{type}/{id}`); the wire paths
+  are identical either way.
+- The **trailing slash is significant** on collection routes: the
+  registered patterns are `POST /:type/` and `GET /:type/`, so
+  `GET /notes` does not route — use `GET /notes/`.
 - Content-Type: `application/json` for all request/response bodies
 - `kit serve` prints startup JSON to stdout:
-  `{"port": 9090, "pid": 12345, "token": "..."}`. SDKs MUST send
-  `Authorization: Bearer <token>` on mutating HTTP methods when they
-  spawned the engine. Read-only `GET` and `HEAD` routes are public on
-  localhost.
-- Error format (all non-2xx responses):
+  `{"port": 9090, "pid": 12345, "token": "...", "shutdown_token": "..."}`
+  — four keys, one line, first line of stdout. `shutdown_token` is
+  distinct from `token`.
+- Auth is decided by **method, not path**: every `GET` and `HEAD` is
+  public, whatever the route. Every other method requires
+  `Authorization: Bearer <token>`, accepting either `token` or
+  `shutdown_token`. There are no path exemptions, so
+  `/identity`, `/peers`, `/sync/status`, `/sync/pull` and `/events` are
+  all readable without a token.
+- `POST /shutdown` is stricter than the middleware: it accepts **only**
+  `shutdown_token` and answers 401 to the ordinary auth token.
+- Error format (all non-2xx responses) carries **four** keys. `message`
+  and `error` always hold the same string; `error` is a legacy duplicate
+  retained for existing SDKs:
 
 ```json
-{"status": 404, "code": "not_found", "message": "document not found"}
+{"status": 404, "code": "not_found", "message": "not found", "error": "not found"}
 ```
+
+`code` values: `invalid_json`, `invalid_type`, `bad_request`,
+`unauthorized`, `not_found`, `conflict`, `internal_error`, and `error`
+as the fallback. The auth middleware emits the bare three-key form
+without `error`.
 
 | Status | Meaning             |
 |--------|---------------------|
@@ -97,10 +117,15 @@ GET /:type/?limit=N&offset=N&sort=field&search=term
 
 | Param  | Type   | Default | Notes               |
 |--------|--------|---------|---------------------|
-| limit  | int    | 100     | max items returned  |
-| offset | int    | 0       | pagination offset   |
-| sort   | string | created_at | `id`, `created_at`, or `updated_at` |
-| search | string | —       | full-text search    |
+| limit  | int    | 100     | max items; applied in the store, not at the HTTP layer. Non-integer or negative → 400 `invalid limit` |
+| offset | int    | 0       | pagination offset. Non-integer or negative → 400 `invalid offset` |
+| sort   | string | `created_at` | only `id`, `created_at`, `updated_at`. Any other value **silently falls back** to `created_at` — no 400 |
+| search | string | —       | SQL `LIKE '%term%'` substring match against the serialized `data` column; not field-scoped, not full-text |
+
+Ordering is always ascending. There is no descending option: no `-`
+prefix, no `:desc` suffix, no separate `order` parameter.
+
+An empty result is `[]`, never `null`.
 
 **Response (200):**
 
@@ -162,7 +187,16 @@ PUT /:type/:id
 
 **Response (200):** full document with new `updated_at`.
 
-**409** if concurrent write detected (optimistic locking).
+**404** if the document does not exist. `PUT` returns only 200, 400
+(`invalid type` / `invalid json`) or 404.
+
+> **No optimistic locking.** The engine has no `ETag`, no `If-Match`,
+> and no version field on the document envelope. The underlying write is
+> `UPDATE documents SET data = ?, updated_at = ? WHERE type = ? AND id = ?`
+> — the `WHERE` matches on identity alone, so concurrent writers
+> silently overwrite each other, last write wins. `PUT` never returns
+> 409. Clients needing conflict detection must implement it above the
+> engine.
 
 **curl:**
 
@@ -215,6 +249,14 @@ Returns version list (newest first).
 }
 ```
 
+`version` is the 1-based sequence number. `operation` is derived from
+it, not stored: `create` when `version == 1`, `update` for every other
+entry. A deleted document's history reports no `delete` operation.
+
+This shape is pinned by the cross-language SDK parity test, so the keys
+`version`, `data`, `timestamp` and `operation` are load-bearing for the
+TS and Python ports.
+
 **curl:**
 
 ```sh
@@ -235,7 +277,11 @@ POST /:type/:id/revert
 {"version": 2}
 ```
 
-**Response (200):** document at reverted state.
+**Response (200):** the full document envelope at the reverted state,
+not a version entry.
+
+Revert **appends** a new version rather than truncating history, so the
+version list grows by one.
 
 **409** if version does not exist.
 
@@ -633,6 +679,18 @@ curl 'http://localhost:9090/notes/abc/branches?live=1'
 
 ## Sync
 
+> **Status: the sync routes are a stub.** They are wired and answer with
+> well-formed bodies, but no diff is stored, transmitted or replayed.
+> `POST /sync/push` discards its input, `GET /sync/pull` always returns
+> `[]`, and the non-identifying fields of `GET /sync/status` are
+> hardcoded. The remote registry is an in-process map: it is not
+> persisted and is lost on restart. Treat this section as the intended
+> wire shape, not as working replication.
+>
+> The routes are registered only when sync is enabled. Under `--no-sync`
+> or `--offline` they are absent entirely, so requests get a routing 404
+> rather than an error body.
+
 ### Add Remote
 
 ```
@@ -661,6 +719,10 @@ POST /sync/remotes
 }
 ```
 
+`mode` accepts exactly `push`, `pull` or `both`. Omitted or empty
+defaults to `both`; anything else is 400 `invalid remote mode`.
+
+**400** `missing remote name or url` when either is empty.
 **409** if name already exists.
 
 **curl:**
@@ -679,7 +741,8 @@ curl -X POST http://localhost:9090/sync/remotes \
 DELETE /sync/remotes/:name
 ```
 
-**Response:** 204 No Content.
+**Response:** 204 No Content. Deleting an unknown name is also 204;
+there is no 404 on this route.
 
 **curl:**
 
@@ -697,31 +760,37 @@ GET /sync/status
 
 **Response (200):**
 
+Each entry echoes the four registered fields, then five status fields:
+
 ```json
 {
   "remotes": [
     {
       "name": "peer-b",
-      "connected": true,
-      "last_sync": "RFC3339",
+      "url": "http://192.168.1.50:8080",
+      "mode": "both",
+      "filter": "",
+      "connected": false,
+      "last_sync": null,
       "pending_diffs": 0,
       "last_error": null,
-      "lag_ms": 120
+      "lag_ms": 0
     }
   ]
 }
 ```
+
+`connected`, `last_sync`, `pending_diffs`, `last_error` and `lag_ms` are
+literal constants, not live state: they always read `false`, `null`,
+`0`, `null`, `0`. Entries are iterated from a Go map, so **the order of
+`remotes` is nondeterministic** between calls. Sort client-side if you
+need stability.
 
 **curl:**
 
 ```sh
 curl http://localhost:9090/sync/status
 ```
-
-`POST /sync/remotes` and `DELETE /sync/remotes/:name` are currently
-sidecar-local remote registry operations. They persist only for the
-running engine process; durable sync configuration is outside the
-MVP engine protocol.
 
 ---
 
@@ -768,6 +837,10 @@ objects matching Go's `sync.Diff` struct exactly:
 {"accepted": 1, "rejected": 0}
 ```
 
+`accepted` is simply the length of the array you sent and `rejected` is
+always `0`. The diffs are decoded, counted and discarded — nothing is
+applied to the store.
+
 **curl:**
 
 ```sh
@@ -787,10 +860,14 @@ curl -X POST http://localhost:9090/sync/push \
 GET /sync/pull?since_physical=N&since_logical=N&since_node=S
 ```
 
-Returns diffs since the given HLC timestamp. Peers call this
-to fetch changes they haven't seen yet.
+Intended to return diffs since the given HLC timestamp, for peers
+fetching changes they have not seen.
 
-**Query params:**
+> **Not implemented.** The handler ignores every query parameter and
+> unconditionally writes `[]`. The parameters below describe the planned
+> shape; sending them changes nothing today.
+
+**Query params (planned):**
 
 | Param         | Type   | Required | Notes                  |
 |---------------|--------|----------|------------------------|
@@ -798,7 +875,7 @@ to fetch changes they haven't seen yet.
 | since_logical | uint32 | yes      | logical counter        |
 | since_node    | string | yes      | originating node ID    |
 
-**Response (200):**
+**Response (200), planned shape:**
 
 ```json
 [
@@ -817,6 +894,8 @@ to fetch changes they haven't seen yet.
   }
 ]
 ```
+
+**Actual response today:** `[]`.
 
 **curl:**
 
@@ -1029,74 +1108,120 @@ curl http://localhost:9090/health
 POST /shutdown
 ```
 
-Graceful shutdown. Flushes pending syncs, closes connections.
+Graceful shutdown. Requires the **shutdown token** specifically:
+`Authorization: Bearer <shutdown_token>`. The ordinary auth token passes
+the middleware but is rejected by the handler with 401 `invalid token`.
 
-**Response:** 204 No Content. Engine process exits. Requires
-`Authorization: Bearer <token>`.
+**Response:** 204 No Content. Engine process exits.
 
 **curl:**
 
 ```sh
-curl -X POST http://localhost:9090/shutdown
+curl -X POST http://localhost:9090/shutdown \
+  -H "Authorization: Bearer $SHUTDOWN_TOKEN"
 ```
 
 ---
 
 ## WebSocket: /events
 
-Connect via WS to receive real-time bus events.
+Connect via WS to receive real-time events. The upgrade is a `GET`, so
+it is **not authenticated** — no bearer token is required or checked.
 
 ```
 ws://localhost:9090/events
 ```
 
-### Message Format
+> **Not yet delivering document events.** The engine publishes document
+> mutations to the internal bus, but nothing bridges the bus to the
+> WebSocket hub — `Hub.Publish` has no caller. A client today connects,
+> receives `welcome`, and can subscribe and be acked, but no
+> document event ever arrives. The framing below is accurate and stable;
+> the delivery is not yet wired.
 
-Each frame is a JSON object:
+Defaults: 65536-byte read limit, same-origin only, 64-message send
+buffer per client. Overflow drops the message rather than blocking.
 
-```json
-{
-  "topic": "document.created",
-  "source": "engine",
-  "timestamp": "RFC3339",
-  "payload": {
-    "type": "notes",
-    "id": "abc",
-    "data": {"title": "Hello"}
-  }
-}
-```
+### Frame format
 
-### Event Topics
-
-| Topic              | Fires when                    |
-|--------------------|-------------------------------|
-| document.created   | new document inserted         |
-| document.updated   | existing document modified    |
-| document.deleted   | document removed              |
-| sync.push.start    | push cycle begins             |
-| sync.push.complete | push cycle finishes           |
-| sync.pull.start    | pull cycle begins             |
-| sync.pull.complete | pull cycle finishes           |
-| sync.conflict      | LWW conflict resolved         |
-| peer.discovered    | new peer found via mDNS       |
-| peer.connected     | peer handshake complete       |
-| peer.disconnected  | peer connection lost          |
-
-### Subscribing (filter)
-
-Send a JSON frame after connecting to filter topics:
+Every frame, in both directions, is the same three-key envelope:
 
 ```json
-{"subscribe": ["document.*", "sync.*"]}
+{"type": "message", "topic": "kit.engine.document.created", "payload": {}}
 ```
 
-MQTT-style wildcards: `*` matches one segment, `#` matches
-all remaining segments.
+| Key       | Type   | Notes                              |
+|-----------|--------|------------------------------------|
+| `type`    | string | always present                     |
+| `topic`   | string | omitted when empty                 |
+| `payload` | any    | omitted when empty                 |
 
-### curl (wscat)
+There is no `source` or `timestamp` key on the frame.
+
+**Server to client** `type` values:
+
+| Value     | Meaning                                          |
+|-----------|--------------------------------------------------|
+| `welcome` | sent on connect; no topic, no payload            |
+| `ack`     | acknowledges a subscribe or unsubscribe; echoes `topic` |
+| `error`   | subscription limit (1000) exceeded; echoes `topic` |
+| `message` | a broadcast; carries `topic` and `payload`       |
+
+**Client to server** `type` values: `subscribe` and `unsubscribe`, each
+with one `topic`. Unknown types and unparseable frames are ignored
+silently.
+
+### Subscribing
+
+One topic per frame, using the same envelope — not an array:
+
+```json
+{"type": "subscribe", "topic": "kit.engine.document.*"}
+```
+
+The server replies `{"type":"ack","topic":"kit.engine.document.*"}`.
+
+Wildcards here are **not** the bus's MQTT set. The hub matches
+dot-separated segments with:
+
+| Pattern | Matches                        |
+|---------|--------------------------------|
+| `*`     | exactly one segment            |
+| `**`    | one or more segments           |
+
+Note `**`, not `#`, and `**` requires at least one segment.
+
+### Event topics
+
+Document mutations publish these bus topics, 4-segment per the kit
+convention, from source `kit.engine`:
+
+| Topic                          | Fires when                 |
+|--------------------------------|----------------------------|
+| `kit.engine.document.created`  | new document inserted      |
+| `kit.engine.document.updated`  | existing document modified |
+| `kit.engine.document.deleted`  | document removed           |
+
+These are the only topics `kit serve` emits. The `sync.*` and `peer.*`
+topics listed in earlier drafts of this page were never implemented.
+
+Payload is `DocumentEventPayload`:
+
+| Key          | Type   | Notes                                |
+|--------------|--------|--------------------------------------|
+| `type`       | string | document type                        |
+| `id`         | string | document id                          |
+| `created_at` | string | omitted when empty                   |
+| `updated_at` | string | omitted when empty                   |
+| `version_id` | string | omitted when empty                   |
+| `seq`        | int    | omitted when zero                    |
+
+On delete only `type` and `id` are populated. Note the payload carries
+`version_id` and `seq`, which the document envelope does not.
+
+### wscat
 
 ```sh
 wscat -c ws://localhost:9090/events
-> {"subscribe":["document.*"]}
+> {"type":"subscribe","topic":"kit.engine.document.*"}
 ```

@@ -81,10 +81,10 @@ Exit codes:
 
   0  cassette recorded
   1  scenario schema_version unsupported by this binary
-  2  scenario parse or validation error
-  3  usage error (missing flags, output dir conflicts)
-  4  io error (binary missing, step execution or write failure)
-  5  story error (source not found, content-hash mismatch)`,
+  2  usage error: missing flags, output dir conflicts, scenario parse
+     or validation failure, story not found or content-hash mismatch
+  6  transient io error (binary missing, step execution or write
+     failure) -- a retry may clear it`,
 		Args: cobra.NoArgs,
 		Example: `  kit conformance harness record --scenario ./scenarios/acme/status-json/1.0.0/scenario.yaml --binary ./bin/acme --out ./cassettes/status-json
   kit conformance harness record --scenario ./scenario.yaml --binary ./bin/acme --out ./out --story ./stories/status-json.yaml --workdir ./staged`,
@@ -174,7 +174,9 @@ func run(cmd *cobra.Command, v *viper.Viper, f recordFlags) error {
 	// Story resolution + the recorder's content-hash guard.
 	storyBytes, _, err := recorder.ResolveStory(f.scenarioPath, sc.StoryRef.StoryPath, f.story)
 	if err != nil {
-		return output.WrapError(err, "STORY_NOT_FOUND", 5)
+		// Bad input, not an auth failure: exit 5 is the shared
+		// UNAUTHORIZED slot.
+		return output.WrapError(err, "STORY_NOT_FOUND", 2)
 	}
 
 	// Manifest scenario ref: explicit flag wins, else derive from a
@@ -228,11 +230,14 @@ func run(cmd *cobra.Command, v *viper.Viper, f recordFlags) error {
 	if err != nil {
 		switch {
 		case recorder.IsStoryHashMismatch(err):
-			return output.WrapError(err, "STORY_HASH_MISMATCH", 5)
+			// A story that no longer matches its recorded hash is a
+			// bad input, not an auth failure: exit 5 is the shared
+			// UNAUTHORIZED slot, so this maps to usage.
+			return output.WrapError(err, "STORY_HASH_MISMATCH", 2)
 		case recorder.IsOutDirNotEmpty(err):
 			return usageError(err.Error() + " (pass --force to replace it)")
 		default:
-			return output.WrapError(err, "RECORD_IO", 4)
+			return output.WrapError(err, "RECORD_IO", output.ExitTransient)
 		}
 	}
 
@@ -312,21 +317,25 @@ func (r *recordReport) RenderHuman(w io.Writer) error {
 	return nil
 }
 
-// usageError mirrors the conformance tree's usage sentinel: exit 3.
+// usageError mirrors the conformance tree's usage sentinel
+// (conformance.CodeUsage): the kit-wide usage slot, exit 2.
 func usageError(detail string) error {
 	return &output.Error{
-		Code:     "USAGE",
-		Message:  "conformance harness record: " + detail,
-		ExitCode: 3,
+		Code:       output.CodeUsage,
+		Message:    "conformance harness record: " + detail,
+		ExitCode:   2,
+		Transience: output.TransiencePermanent,
 	}
 }
 
 // ioError maps environment/subprocess failures to the conformance
-// tree's io_error slot: exit 4.
+// tree's io_error slot (conformance.CodeIO): the kit-wide transient
+// slot, exit 6.
 func ioError(detail string) error {
 	return &output.Error{
-		Code:     "IO",
-		Message:  "conformance harness record: " + detail,
-		ExitCode: 4,
+		Code:       "IO",
+		Message:    "conformance harness record: " + detail,
+		ExitCode:   output.ExitTransient,
+		Transience: output.TransienceTransient,
 	}
 }

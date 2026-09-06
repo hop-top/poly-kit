@@ -26,14 +26,16 @@ persists it in the data directory:
 ```
 <data-dir>/
   identity/
-    public.pem      # PKIX-encoded Ed25519 public key
-    private.pem     # PKCS8-encoded Ed25519 private key
+    id_ed25519      # PKCS8-encoded Ed25519 private key, PEM, perms 0600
+    id_ed25519.pub  # PKIX-encoded Ed25519 public key, PEM
 ```
 
-If keys exist, the engine loads them. No manual key generation.
+If keys exist, the engine loads them (`identity.Store.LoadOrGenerate`).
+No manual key generation. Both files are written atomically.
 
-**Fingerprint** = first 8 bytes of SHA-256(public key), hex (16
-chars). Used as the engine's peer ID.
+**Fingerprint** = `Keypair.PublicKeyID()`: the first 16 hex chars of
+SHA-256(public key), i.e. the first 8 bytes. Used as the engine's peer
+ID (`PeerInfo.ID`).
 
 ## Identity API
 
@@ -118,12 +120,25 @@ receivers verify with the sender's stored public key.
 
 ### Trust levels
 
-| Level        | Meaning                            |
-|--------------|------------------------------------|
-| unknown      | never seen                         |
-| pending_tofu | discovered, awaiting user approval |
-| trusted      | explicitly approved, sync allowed  |
-| blocked      | rejected, all communication denied |
+`peer.TrustLevel` is an int enum. It carries no custom JSON marshaller,
+so `PeerRecord.trust` appears on the wire as the **integer**, not a
+name. Ports must map by value:
+
+| Value | Constant       | Meaning                            |
+|-------|----------------|------------------------------------|
+| 0     | `Unknown`      | never seen                         |
+| 1     | `Trusted`      | explicitly approved, sync allowed  |
+| 2     | `Blocked`      | rejected, all communication denied |
+| 3     | `PendingTOFU`  | discovered, awaiting user approval |
+
+Note the ordering: `PendingTOFU` is 3, not 1. A port that assumes
+declaration order matches the lifecycle order will mislabel every peer.
+
+`PeerRecord` marshals as its embedded `PeerInfo` fields plus `trust`,
+`first_seen`, `last_seen`. `PeerInfo` itself declares no JSON tags, so
+its fields serialize under their Go names — `ID`, `Name`, `Addrs`,
+`PublicKey`, `Metadata` — mixed in with the snake_case keys from
+`PeerRecord`.
 
 Promotion (illustration only — see [`trust-a-peer.md`](../guides/trust-a-peer.md) for the full how-to):
 

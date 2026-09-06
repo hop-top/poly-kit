@@ -257,5 +257,16 @@ bubbletea dependency in core):
 ```go
 import "hop.top/kit/go/console/wizard/wizardtui"
 
-wizard.Run(ctx, w, wizard.WithTUI(wizardtui.Run))
+wizard.Run(ctx, w, wizard.WithTUI(
+    func(ctx context.Context, w *wizard.Wizard) error {
+        return wizardtui.RunTUI(ctx, w, theme)
+    },
+))
 ```
+
+`WithTUI` takes a `wizard.TUIFrontend` (`func(context.Context,
+*wizard.Wizard) error`) so the wizard root carries no bubbletea
+dependency. `wizardtui.RunTUI` additionally takes a `cli.Theme`, so the
+adapter is a closure that supplies the theme. `wizardtui.NewFrontend()`
+returns a `*Frontend` whose `Run` method has the same three-argument
+shape.
