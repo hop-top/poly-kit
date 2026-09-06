@@ -436,6 +436,7 @@ func formatPruningOps(ops []pruningOp) string {
 // On any divergence, the failure message includes the seed +
 // iteration + op sequence so the failure reproduces.
 func TestVersionedPruning_Property(t *testing.T) {
+	t.Parallel()
 	iterations := propertyIterations(t, pruningPropertyIterations)
 	t.Logf("seed=0x%X iterations=%d ops=%d..%d",
 		pruningPropertySeed, iterations,

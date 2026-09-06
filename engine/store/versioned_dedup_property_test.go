@@ -289,6 +289,7 @@ func formatDedupOps(ops []dedupOp) string {
 // On any divergence, the failure message includes the seed +
 // iteration number + op sequence so the failure reproduces.
 func TestVersionedDedup_Property(t *testing.T) {
+	t.Parallel()
 	iterations := propertyIterations(t, dedupPropertyIterations)
 	t.Logf("seed=0x%X iterations=%d ops=%d..%d",
 		dedupPropertySeed, iterations,
