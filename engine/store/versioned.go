@@ -282,6 +282,90 @@ func (vs *VersionedDocumentStore) UpdateAndVersion(ctx context.Context, docType,
 	return doc, v, nil
 }
 
+// ErrPreconditionFailed reports that a conditional update named an
+// expected version that is not the document's current head. The
+// caller's view is stale; it must re-read before retrying.
+var ErrPreconditionFailed = errors.New("store: precondition failed")
+
+// CurrentVersionID returns the version identifier of the document's
+// head, the value a caller passes back as an update precondition. An
+// empty string means the document has no version history yet.
+func (vs *VersionedDocumentStore) CurrentVersionID(ctx context.Context, docType, id string) (string, error) {
+	parents, err := vs.parentsFor(ctx, docType, id)
+	if err != nil {
+		return "", err
+	}
+	if len(parents) == 0 {
+		return "", nil
+	}
+	return parents[0], nil
+}
+
+// UpdateAndVersionIfMatch is UpdateAndVersion with an optimistic
+// concurrency precondition. When expectedVersionID is non-empty the
+// write proceeds only if it names the current head, and otherwise
+// fails with [ErrPreconditionFailed] having changed nothing. An empty
+// expectedVersionID is an unconditional update, so existing callers
+// keep last-writer-wins.
+//
+// On a transactional store the check and the write share one
+// immediate transaction, so no concurrent writer can slip between
+// them. Without transaction support the check is best-effort: it
+// narrows the race rather than closing it, which is the same
+// guarantee the surrounding version bookkeeping already carries.
+func (vs *VersionedDocumentStore) UpdateAndVersionIfMatch(ctx context.Context, docType, id string, data json.RawMessage, expectedVersionID string) (Document, Version, error) {
+	if expectedVersionID == "" {
+		return vs.UpdateAndVersion(ctx, docType, id, data)
+	}
+	if txvs, ok := vs.versions.(txCapable); ok {
+		return vs.updateTxIfMatch(ctx, txvs, docType, id, data, expectedVersionID)
+	}
+	current, err := vs.CurrentVersionID(ctx, docType, id)
+	if err != nil {
+		return Document{}, Version{}, err
+	}
+	if current != expectedVersionID {
+		return Document{}, Version{}, ErrPreconditionFailed
+	}
+	return vs.UpdateAndVersion(ctx, docType, id, data)
+}
+
+// updateTxIfMatch checks the precondition inside the same immediate
+// transaction that performs the write.
+func (vs *VersionedDocumentStore) updateTxIfMatch(ctx context.Context, txvs txCapable, docType, id string, data json.RawMessage, expectedVersionID string) (Document, Version, error) {
+	conn, commit, err := beginImmediate(ctx, vs.store.DB())
+	if err != nil {
+		return Document{}, Version{}, err
+	}
+	parents, err := vs.parentsForTx(ctx, conn, docType, id)
+	if err != nil {
+		_ = commit(err)
+		return Document{}, Version{}, err
+	}
+	var current string
+	if len(parents) > 0 {
+		current = parents[0]
+	}
+	if current != expectedVersionID {
+		_ = commit(ErrPreconditionFailed)
+		return Document{}, Version{}, ErrPreconditionFailed
+	}
+	doc, err := vs.store.updateConn(ctx, conn, docType, id, data)
+	if err != nil {
+		_ = commit(err)
+		return Document{}, Version{}, err
+	}
+	v, err := txvs.appendVersionTx(ctx, conn, docType, id, data, parents)
+	if err != nil {
+		_ = commit(err)
+		return Document{}, Version{}, fmt.Errorf("store: record version: %w", err)
+	}
+	if cerr := commit(nil); cerr != nil {
+		return Document{}, Version{}, fmt.Errorf("store: update: commit: %w", cerr)
+	}
+	return doc, v, nil
+}
+
 func (vs *VersionedDocumentStore) updateTx(ctx context.Context, txvs txCapable, docType, id string, data json.RawMessage) (Document, Version, error) {
 	conn, commit, err := beginImmediate(ctx, vs.store.DB())
 	if err != nil {

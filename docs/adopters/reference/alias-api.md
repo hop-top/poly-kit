@@ -161,10 +161,35 @@ Returns a copy of all registered alias-to-target mappings.
 m := r.Aliases()  // map[string]string{"s": "serve", ...}
 ```
 
+### Root.LoadAliasStore
+
+Registers every entry of an `alias.Store` against the command tree,
+the store-backed counterpart to `LoadAliases`.
+
+```go
+store := alias.NewStore("~/.config/spaced/aliases.yaml")
+_ = store.Load()
+r.LoadAliasStore(store)
+```
+
+### Root.AliasCmd
+
+Returns an `alias` command group (list / add / remove) backed by an
+`alias.Store`, for tools that want end users to manage their own
+aliases.
+
+```go
+r.Cmd.AddCommand(r.AliasCmd(store))
+```
+
+Unlike `AliasesCmd` this group is visible, and its leaves carry kit's
+Layer-A conformance annotations.
+
 ### Root.AliasesCmd
 
-Hidden `aliases` subcommand listing active aliases. Supports
-`--format` (table/json/yaml).
+Hidden `aliases` subcommand listing active aliases. Renders via
+`output.Dispatch`, so it honours the root `--format` (`json`,
+`table`, `yaml`) and the rest of the output-flag suite.
 
 ```sh
 spaced aliases

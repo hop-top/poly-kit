@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -23,6 +24,7 @@ class Factor(IntEnum):
     PROVENANCE = 10
     EVOLUTION = 11
     AUTH_LIFECYCLE = 12
+    CONSENTING_TELEMETRY = 13
 
 
 FACTOR_NAMES = {
@@ -38,6 +40,7 @@ FACTOR_NAMES = {
     Factor.PROVENANCE: "Provenance",
     Factor.EVOLUTION: "Evolution",
     Factor.AUTH_LIFECYCLE: "Auth Lifecycle",
+    Factor.CONSENTING_TELEMETRY: "Consenting Telemetry",
 }
 
 
@@ -102,6 +105,48 @@ def _mutating_commands(cmds: list[dict]) -> list[dict]:
 
 def _dangerous_commands(cmds: list[dict]) -> list[dict]:
     return [c for c in _all_commands(cmds) if c.get("safety", {}).get("level") == "dangerous"]
+
+
+def _telemetry_opted_in(spec: dict) -> bool:
+    """True iff the toolspec declares telemetry with enabled: true.
+
+    Non-opt-in specs skip F13 entirely. A bare ``telemetry:`` key parses
+    as None rather than a mapping, so coerce before reading ``enabled``.
+    """
+    return bool((spec.get("telemetry") or {}).get("enabled"))
+
+
+# Subcommands an opt-in binary MUST expose under its consent command
+# (typically ``<bin> telemetry``).
+TELEMETRY_CONSENT_SUBCOMMANDS_CANONICAL = [
+    "status",
+    "enable",
+    "disable",
+    "reset",
+    "inspect",
+]
+
+# Matches ``<UPPERCASE_APP>_TELEMETRY_MODE``. The kit literal
+# ``KIT_TELEMETRY_MODE`` matches by construction, as does any
+# app-prefixed form like ``SPACED_TELEMETRY_MODE``.
+_TELEMETRY_MODE_ENV_SHAPE = re.compile(r"^[A-Z][A-Z0-9_]*_TELEMETRY_MODE$")
+
+
+def _has_telemetry_mode_env(envs: list[str]) -> bool:
+    return any(_TELEMETRY_MODE_ENV_SHAPE.match(e) for e in envs)
+
+
+def _command_path_exists(cmds: list[dict], path: list[str]) -> bool:
+    """True when the space-separated path exists in the command tree."""
+    if not path:
+        return False
+    for c in cmds:
+        if c.get("name") != path[0]:
+            continue
+        if len(path) == 1:
+            return True
+        return _command_path_exists(c.get("children", []), path[1:])
+    return False
 
 
 # --- Static Checks ---
@@ -243,6 +288,95 @@ def _check_auth_lifecycle(spec: dict) -> CheckResult:
             "no auth_commands — skipped (tool may not need auth)",
         )
     return _pass(f, "auth_commands present")
+
+
+def _check_consenting_telemetry(spec: dict) -> CheckResult:
+    """F13 static check.
+
+    When the toolspec opts into telemetry (``telemetry.enabled: true``),
+    asserts the block is well-formed across seven sub-conditions:
+
+    1. categories non-empty
+    2. consent_subcommands contains the canonical set
+       {status, enable, disable, reset, inspect}
+    3. kill_switch_envs contains DO_NOT_TRACK
+    4. kill_switch_envs contains a ``<APP>_TELEMETRY_MODE`` entry
+    5. prompt_version non-empty (canonical field name is locked —
+       aliases like ``consent_version`` are not read)
+    6. redact_rules non-empty
+    7. every declared consent_subcommand maps to a real command in
+       the commands tree
+
+    Failures aggregate into a single result: one row per factor.
+    """
+    f = Factor.CONSENTING_TELEMETRY
+    if not _telemetry_opted_in(spec):
+        return _skip(f, "binary does not opt into telemetry")
+
+    t = spec.get("telemetry") or {}
+    failures: list[str] = []
+
+    if not t.get("categories"):
+        failures.append("telemetry.categories is empty")
+
+    subs = t.get("consent_subcommands") or []
+    missing_subs = [req for req in TELEMETRY_CONSENT_SUBCOMMANDS_CANONICAL if req not in subs]
+    if missing_subs:
+        failures.append(
+            "telemetry.consent_subcommands missing required entries: " + ", ".join(missing_subs)
+        )
+
+    envs = t.get("kill_switch_envs") or []
+    if "DO_NOT_TRACK" not in envs:
+        failures.append("telemetry.kill_switch_envs missing DO_NOT_TRACK")
+    if not _has_telemetry_mode_env(envs):
+        failures.append(
+            "telemetry.kill_switch_envs missing a <APP>_TELEMETRY_MODE "
+            "entry (e.g. KIT_TELEMETRY_MODE or SPACED_TELEMETRY_MODE)"
+        )
+
+    if not str(t.get("prompt_version") or "").strip():
+        failures.append(
+            "telemetry.prompt_version is empty (canonical field name "
+            "is `prompt_version`; aliases like `consent_version` "
+            "are not accepted)"
+        )
+
+    if not str(t.get("redact_rules") or "").strip():
+        failures.append("telemetry.redact_rules is empty")
+
+    # The consent_command schema is ``<bin> telemetry [...]``; the
+    # leading ``<bin>`` is the binary name, not a top-level command, so
+    # strip it. Fall back to ``telemetry <sub>`` when the value is empty
+    # or a bare binary name.
+    consent_tokens = str(t.get("consent_command") or "").split()
+    consent_path = consent_tokens[1:] if len(consent_tokens) > 1 else ["telemetry"]
+    unmapped_subs = [
+        " ".join([*consent_path, sub])
+        for sub in subs
+        if not _command_path_exists(spec.get("commands", []), [*consent_path, sub])
+    ]
+    if unmapped_subs:
+        failures.append(
+            "telemetry.consent_subcommands declared but not in commands tree: "
+            + ", ".join(unmapped_subs)
+        )
+
+    if not failures:
+        return _pass(
+            f,
+            "telemetry block well-formed; all consent subcommands declared",
+        )
+
+    return _fail(
+        f,
+        "; ".join(failures),
+        "Fix the telemetry block: ensure categories, "
+        "consent_subcommands {status, enable, disable, reset, "
+        "inspect}, kill_switch_envs [DO_NOT_TRACK, <APP>_TELEMETRY_MODE], "
+        "prompt_version, redact_rules are set, and that each "
+        "consent_subcommand maps to a command in the commands tree.",
+    )
 
 
 def _run_static_checks(spec: dict) -> list[CheckResult]:
@@ -514,10 +648,18 @@ def run(
         spec = yaml.safe_load(f)
 
     results = _run_static_checks(spec)
+    results.append(_check_consenting_telemetry(spec))
 
     if binary_path:
         rt = _run_runtime_checks(binary_path, spec)
         results = _merge_results(results, rt)
+
+    # The denominator counts factors *eligible* to contribute. The 12
+    # pre-F13 factors always are, so a non-opt-in binary still scores
+    # N/12; only an opt-in binary adds F13 and scores N/13. Skips inside
+    # the eligible set (e.g. runtime-only factors on a static-only run)
+    # still count toward the denominator.
+    total = 13 if _telemetry_opted_in(spec) else 12
 
     score = sum(1 for r in results if r.status == "pass")
     return Report(
@@ -525,7 +667,7 @@ def run(
         toolspec=toolspec_path,
         results=results,
         score=score,
-        total=12,
+        total=total,
     )
 
 

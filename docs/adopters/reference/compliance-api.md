@@ -1,10 +1,9 @@
 # Compliance API Reference
 
 > Static + runtime checker that validates CLI tools against the
-> [12-factor AI CLI spec](../../../README.md). Three ports — Go, TS,
-> Python — with the same entry points, though only Go checks F13
-> (see [API surface](#api-surface)). CLI exposed via
-> `spaced compliance`.
+> [12-factor AI CLI spec](../../../README.md), plus the opt-in 13th
+> factor, Consenting Telemetry. Three-port API: Go, TS, Python. CLI
+> exposed via `spaced compliance`.
 
 ## Who this is for
 
@@ -25,6 +24,10 @@ built binary):
 ```bash
 spaced compliance --format json | jq -e '.score == .total'
 ```
+
+Compare against `.total`, not a literal — the denominator is 12 for a
+tool that does not opt into telemetry and 13 for one that does. See
+[Scoring](#scoring) below.
 
 ### From Go
 
@@ -58,14 +61,8 @@ print(format_report(report, "text"))
 
 ## Verify the result
 
-`score` is the count of passing factors; `total` is the denominator.
+`score` is the count of passing factors. `total` is the denominator.
 All-green is `score == total`.
-
-In the Go port `total` is 12 for most tools and 13 for one whose
-toolspec sets `telemetry.enabled: true`, which makes F13 (Consenting
-Telemetry) eligible. Compare against `total` rather than
-hard-coding `12`, or opting into telemetry later silently breaks the
-check.
 
 ```bash
 spaced compliance --format json | jq '{score, total}'
@@ -78,6 +75,27 @@ one of `pass`, `fail`, `skip`, `warn`. To see what failed:
 spaced compliance --format json |
   jq -r '.results[] | select(.status == "fail") | "\(.factor) \(.name): \(.suggestion)"'
 ```
+
+### Scoring
+
+`total` is 12 unless your toolspec sets `telemetry.enabled: true`, in
+which case F13 joins the denominator and `total` is 13:
+
+```bash
+# a toolspec with no telemetry block, or enabled: false
+spaced compliance --static --format json | jq '.total'   # 12
+
+# a toolspec with telemetry.enabled: true
+spaced compliance --static --format json | jq '.total'   # 13
+```
+
+The denominator counts factors *eligible* to contribute, so factors that
+skip for other reasons — the runtime-only checks on a `--static` run,
+Auth Lifecycle on a tool with no `auth_commands` — still count toward it.
+Only an F13 skip on a non-opt-in toolspec is excluded.
+
+All three ports apply the same rule, so a toolspec scores identically
+whichever one checks it.
 
 ---
 
@@ -97,6 +115,24 @@ fix instructions. Common fixes by factor:
 | 8 | Safe Delegation    | Add `safety.requires_confirmation`           |
 |11 | Evolution          | Set `schema_version` in toolspec root        |
 |12 | Auth Lifecycle     | Add `state_introspection.auth_commands`      |
+|13 | Consenting Telemetry | Complete the `telemetry` block — see below |
+
+F13 only runs when `telemetry.enabled: true`. Its `details` field lists
+every unsatisfied sub-condition at once, so one run tells you everything
+left to fix:
+
+| Sub-condition | Fix |
+|---------------|-----|
+| `categories is empty` | Add `telemetry.categories` |
+| `consent_subcommands missing required entries` | Declare all of `status, enable, disable, reset, inspect` |
+| `kill_switch_envs missing DO_NOT_TRACK` | Add `DO_NOT_TRACK` to `telemetry.kill_switch_envs` |
+| `missing a <APP>_TELEMETRY_MODE entry` | Add e.g. `MYTOOL_TELEMETRY_MODE` |
+| `prompt_version is empty` | Set `telemetry.prompt_version` (the field name is fixed — `consent_version` is not read) |
+| `redact_rules is empty` | Set `telemetry.redact_rules` |
+| `declared but not in commands tree` | Add the named command to `commands` |
+
+For the full contract behind each one, see
+[`telemetry-compliance.md`](telemetry-compliance.md).
 
 If `--static` passes but full run fails, the failure is in the
 binary, not the spec. Common runtime symptoms:
@@ -121,6 +157,9 @@ spaced compliance --format json | jq -e '.score == .total'
 go test ./go/core/compliance/... -v
 ```
 
+`.score == .total` keeps the gate correct the day you flip
+`telemetry.enabled: true` and the denominator moves from 12 to 13.
+
 ## Reference
 
 ### Static checks (toolspec YAML)
@@ -136,10 +175,11 @@ go test ./go/core/compliance/... -v
 | 8 | Safe Delegation    | dangerous commands have `safety` block      |
 |11 | Evolution          | `schema_version` is set                     |
 |12 | Auth Lifecycle     | `auth_commands` in state_introspection      |
-|13 | Consenting Telemetry | `telemetry` block well-formed *(Go only)* |
+|13 | Consenting Telemetry | `telemetry` block well-formed (opt-in only) |
 
 Factors 3 (Stream Discipline), 9 (Observable Ops), 10 (Provenance)
-are skipped in static-only mode.
+are skipped in static-only mode. Factor 13 is skipped unless the
+toolspec sets `telemetry.enabled: true`.
 
 F13 is skipped, and drops out of `total`, unless the toolspec sets
 `telemetry.enabled: true`. Once opted in it checks seven conditions
@@ -164,22 +204,15 @@ parse and read as missing); and non-empty `redact_rules`.
 |10 | Provenance         | JSON output has `_meta` field                   |
 |11 | Evolution          | `--version` exits 0                             |
 |12 | Auth Lifecycle     | `auth status` exits 0 (or skip if no auth)      |
-|13 | Consenting Telemetry | kill switches honoured, consent prompt and `inspect` behave; skip unless opted in *(Go only)* |
+|13 | Consenting Telemetry | kill switches honoured, consent prompt and `inspect` behave; skip unless opted in |
 
 ### API surface
 
-The three ports expose the same four entry points, each spelled in
-its own language's casing. Go additionally returns an `error`
-alongside every result; TS and Python throw instead.
+All three ports expose identical APIs and check the same thirteen
+factors, F13 included:
 
-They are not yet equivalent in coverage. **F13 (Consenting
-Telemetry) is implemented only in Go.** The TS and Python `Factor`
-enums stop at 12 and neither reads the toolspec `telemetry` block,
-so both always report `total: 12` — including for a spec that opts
-in, where Go reports 13. Use the Go port, or the `spaced compliance`
-CLI that wraps it, for any tool that ships telemetry; the other two
-would score it against the wrong denominator and pass a tool whose
-telemetry block is malformed.
+Go additionally returns an `error` alongside every result; TS and
+Python throw instead.
 
 | Go | TS | Python | Description |
 |----|----|--------|-------------|
