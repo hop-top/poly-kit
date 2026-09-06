@@ -52,5 +52,5 @@ echo "\n";
 
 ## See also
 
-- [Column ordering](../../../README.md#column-ordering)
+- [Column ordering](../../../../../../docs/adopters/reference/php-sdk.md#column-ordering)
 - [Go reference: `go/console/output`](../../../../../../go/console/output/README.md)

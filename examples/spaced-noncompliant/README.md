@@ -29,7 +29,8 @@ A compliance test against this fixture must assert:
 - F13 does NOT fail for any other sub-condition. The Suggestion is
   surgical — it names the missing env, not "kill switch is wrong".
 
-The matching test lives in `go/core/compliance/`.
+The matching test lives in `go/core/compliance/`; this fixture gives
+those tests a stable target to assert against.
 
 ## Layout
 

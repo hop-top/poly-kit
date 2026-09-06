@@ -109,6 +109,64 @@ tier: a `read` can be `egress:public`, a `destructive-local` can be
 Subprocess execution and bus publication carry `kit:exec:subprocess`
 and `kit:bus:publish`.
 
+### Safety vocabulary
+
+`cmdreflect` projects three orthogonal axes from a command's cobra
+annotations into `Safety.Level`, `Safety.RequiresConfirmation` and the
+typed `Safety.Permissions` slice. Reflection happens once, in
+[`cmdreflect`](cmdreflect.md); the reasons a command is reflected but
+withheld from the spec (`hidden-internal`, `deprecated`, `interactive`,
+`management-only`, `malformed-schema`, …) are the
+[non-invocable reasons](cmdreflect.md#non-invocable-reasons) defined
+there, not here.
+
+`RequiresConfirmation` is `true` when any of these hold:
+
+- the resolved tier is destructive (`destructive-local`,
+  `destructive-shared`, legacy `destructive`)
+- `kit/network` is `egress:private` or `ingress`, regardless of tier
+- the destructive-name heuristic inferred the tier
+- the adopter declared it explicitly (see
+  [two confirmation fields](cmdreflect.md#two-confirmation-fields))
+
+Two capability annotations add a permission token only when present:
+
+| Annotation        | Permission            | Meaning                              |
+|-------------------|-----------------------|--------------------------------------|
+| `kit/exec`        | `kit:exec:subprocess` | Spawns a subprocess                  |
+| `kit/bus-publish` | `kit:bus:publish`     | Publishes events to the kit event bus |
+
+#### Default policy table
+
+The harness-side decoder is the `policy` package
+([`go/ai/toolspec/policy/default.yaml`](../../../go/ai/toolspec/policy/default.yaml)
+is the shipped table; a `--policy <file>` overlay merges over it, overlay
+rules winning on collisions). It keys on the four side-effect classes and
+a three-value network axis:
+
+| Side effect × Network | `none`     | `local-only` | `egress` |
+|-----------------------|------------|--------------|----------|
+| `read`                | auto-allow | auto-allow   | prompt   |
+| `write`               | auto-allow | prompt       | prompt   |
+| `destructive`         | prompt     | prompt       | deny     |
+| `interactive`         | prompt     | prompt       | prompt   |
+
+Resolution rules, as implemented by `Table.Resolve`:
+
+- Exact `(side_effect, network)` match first, then the side effect's
+  `any` rule; anything else falls to a fail-safe `prompt` attributed to
+  `fallback`.
+- The manifest's `side_effect` carries what you wrote, not kit's
+  normalisation of it. A six-tier value such as `write-local` has no
+  rule in the shipped table today and therefore resolves to the
+  fail-safe prompt; the resolved tier reaches harnesses through the
+  permission tokens above instead.
+- A leaf with no `kit/side-effect` annotation is treated as
+  `destructive`, so unannotated commands fail safe.
+- The network axis is read from `kit/network` when present and
+  defaults to `none` otherwise; the decision reason notes when it
+  defaulted.
+
 ## Intent
 
 Classifies command purpose for AI routing.

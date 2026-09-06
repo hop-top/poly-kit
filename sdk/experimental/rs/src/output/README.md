@@ -58,5 +58,5 @@ assert_eq!(serde_json::from_slice::<serde_json::Value>(&buf).unwrap(), json!([{"
 ## See also
 
 - [CLI parity guide](../../../../../docs/adopters/guides/cli-parity-guide.md)
-- [Crate README, Output formatting](../../README.md#output-formatting)
+- [Crate README, Output formatting](../../../../../docs/adopters/reference/rs-sdk.md#output-formatting)
 - Go reference: [go/console/output](../../../../../go/console/output/README.md)

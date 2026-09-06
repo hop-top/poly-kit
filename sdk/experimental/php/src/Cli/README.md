@@ -69,6 +69,6 @@ $app->run(new ArrayInput(['command' => 'items', '--format' => 'json']));
 
 ## See also
 
-- [Output formatting](../../README.md#output-formatting)
+- [Output formatting](../../../../../docs/adopters/reference/php-sdk.md#output-formatting)
 - [CLI parity guide](../../../../../docs/adopters/guides/cli-parity-guide.md)
 - [Go reference: `go/console/cli`](../../../../../go/console/cli/README.md)

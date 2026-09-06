@@ -56,5 +56,5 @@ bus.publish(&event).unwrap();
 
 - [Hook a CLI into the bus](../../../../../docs/adopters/guides/hook-cli-into-bus.md)
 - [Configure bus enforcement](../../../../../docs/adopters/guides/configure-bus-enforcement.md)
-- [Crate README, Bus](../../README.md#bus)
+- [Crate README, Bus](../../../../../docs/adopters/reference/rs-sdk.md#bus)
 - Go reference: [go/runtime/bus](../../../../../go/runtime/bus/README.md)

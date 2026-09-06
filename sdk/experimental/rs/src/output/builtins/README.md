@@ -58,5 +58,5 @@ assert_eq!(String::from_utf8(buf).unwrap(), "{\n  \"name\": \"alpha\"\n}\n");
 
 ## See also
 
-- [Crate README, Output formatting](../../../README.md#output-formatting)
+- [Crate README, Output formatting](../../../../../../docs/adopters/reference/rs-sdk.md#output-formatting)
 - Go reference: [go/console/output](../../../../../../go/console/output/README.md)

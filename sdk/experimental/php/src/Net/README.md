@@ -57,5 +57,5 @@ var_dump(NetPolicy::isLoopbackHost('127.0.0.1:8080')); // bool(true)
 
 ## See also
 
-- [Offline enforcement](../../README.md#offline-enforcement)
+- [Offline enforcement](../../../../../docs/adopters/reference/php-sdk.md#offline-enforcement)
 - [Go reference: `go/core/netpolicy`](../../../../../go/core/netpolicy/)

@@ -54,8 +54,8 @@ assert_eq!(got.as_deref(), Some(&["build".to_string(), "test".to_string()][..]))
 
 ## See also
 
-- Crate README, [Storage](../../README.md#storage) and
-  [At-rest encryption](../../README.md#at-rest-encryption)
+- Crate README, [Storage](../../../../../docs/adopters/reference/rs-sdk.md#storage) and
+  [At-rest encryption](../../../../../docs/adopters/reference/rs-sdk.md#at-rest-encryption)
 - [`docs/adopters/guides/encrypt-engine-data.md`](../../../../../docs/adopters/guides/encrypt-engine-data.md)
 - [`go/storage/sqlstore`](../../../../../go/storage/sqlstore/) and
   [`go/core/identity`](../../../../../go/core/identity/README.md), the Go references

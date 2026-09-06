@@ -58,6 +58,6 @@ assert_eq!(fetches, 1, "second call served from cache");
 
 ## See also
 
-- Crate README, [httpcache wire contract](../../README.md#httpcache-wire-contract)
+- Crate README, [httpcache wire contract](../../../../../docs/adopters/reference/rs-sdk.md#httpcache-wire-contract)
 - [`contracts/kv-v1/keys.json`](../../../../../contracts/kv-v1/keys.json), the key-binding contract underneath
 - [`go/storage/httpcache`](../../../../../go/storage/httpcache/README.md), the Go reference

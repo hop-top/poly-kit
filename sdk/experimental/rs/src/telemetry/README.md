@@ -61,7 +61,7 @@ client.shutdown(Duration::from_millis(200)).await.unwrap();
 
 ## See also
 
-- Crate README, [Telemetry](../../README.md#telemetry)
+- Crate README, [Telemetry](../../../../../docs/adopters/reference/rs-sdk.md#telemetry)
 - [`docs/adopters/guides/telemetry.md`](../../../../../docs/adopters/guides/telemetry.md)
 - [`sdk/docs/telemetry-event-schema.md`](../../../../docs/telemetry-event-schema.md)
 - [`go/runtime/telemetry`](../../../../../go/runtime/telemetry/README.md), the Go reference

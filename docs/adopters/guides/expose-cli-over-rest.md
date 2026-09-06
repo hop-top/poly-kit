@@ -236,7 +236,7 @@ The command's exit code sets the HTTP status: `0` is `200`, `2`
 the response is `400` with the parser's message in `stderr`. A `path`
 naming no exposed command never reaches the command at all: the
 bridge refuses it as `404 unknown_command`, with no `exit_code`. See
-[the exit-code table](../../../go/transport/api/README.md#exit-codes)
+[the exit-code table](../reference/transport-api.md#exit-codes)
 for the full mapping.
 
 ### 6. Permit a destructive command

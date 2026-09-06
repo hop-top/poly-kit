@@ -515,7 +515,7 @@ command's flag, not the transport's.
 `FileSink` is one of four ready-made sinks. `LogSink` writes the same
 fields as `slog` attributes, `WebhookSink` posts the envelope to a
 URL, and `BusSink` publishes it; see
-[the cmdsurface reference](../../../go/transport/cmdsurface/README.md#sinks).
+[the cmdsurface reference](../reference/cmdsurface.md#sinks).
 Sinks are best-effort and cannot change a verdict.
 
 ### 7. Propagate request and trace ids
@@ -609,7 +609,7 @@ Absence here is deliberate; each of these belongs somewhere else:
   the socket service: wire format, permissions, restrictions
 - [serve-lifecycle contract](../../contracts/serve-lifecycle.md#security)
   — the normative rules this guide applies
-- [api README](../../../go/transport/api/README.md#auth) — claims
+- [api README](../reference/transport-api.md#auth) — claims
   shapes, request provenance, refusal codes
 - [socket README](../../../go/transport/socket/README.md) — request
   fields, error codes, the authenticator hook

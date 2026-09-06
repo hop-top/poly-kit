@@ -76,4 +76,4 @@ assert_eq!(res.exit_code, 0);
 ## See also
 
 - [Migrate to served commands](../../../../../docs/adopters/guides/migrate-to-served-commands.md)
-- [Crate README, Serve](../../README.md#serve)
+- [Crate README, Serve](../../../../../docs/adopters/reference/rs-sdk.md#serve)

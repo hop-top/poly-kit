@@ -74,6 +74,6 @@ echo (string) $handler->handle($request)->getBody();
 
 ## See also
 
-- [MCP surface](../../README.md#mcp-surface)
+- [MCP surface](../../../../../docs/adopters/reference/php-sdk.md#mcp-surface)
 - [Serve MCP from any SDK](../../../../../docs/adopters/guides/serve-mcp-from-any-sdk.md)
 - [Go reference: `go/transport/mcpsdk`](../../../../../go/transport/mcpsdk/README.md)

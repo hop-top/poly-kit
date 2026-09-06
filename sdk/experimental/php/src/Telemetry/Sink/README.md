@@ -52,6 +52,6 @@ Telemetry::setSink(new NullSink()); // CI or staging: every envelope is dropped
 
 ## See also
 
-- [Sink selection](../../../README.md#sink-selection)
-- [FPM caveat](../../../README.md#fpm-caveat-https-sink)
+- [Sink selection](../../../../../../docs/adopters/reference/php-sdk.md#sink-selection)
+- [FPM caveat](../../../../../../docs/adopters/reference/php-sdk.md#fpm-caveat-https-sink)
 - [Go reference: `go/runtime/telemetry`](../../../../../../go/runtime/telemetry/README.md)

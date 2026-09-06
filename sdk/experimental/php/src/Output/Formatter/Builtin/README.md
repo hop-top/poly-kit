@@ -65,5 +65,5 @@ $registry->lookup('count')->render(STDOUT, $rows, [], ['name']);
 
 ## See also
 
-- [Output formatting](../../../../README.md#output-formatting)
+- [Output formatting](../../../../../../../docs/adopters/reference/php-sdk.md#output-formatting)
 - [Go reference: `go/console/output`](../../../../../../../go/console/output/README.md)

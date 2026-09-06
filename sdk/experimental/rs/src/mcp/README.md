@@ -62,5 +62,5 @@ assert!(response.body_str().contains("pong"));
 - [Serve MCP from any SDK](../../../../../docs/adopters/guides/serve-mcp-from-any-sdk.md)
 - [Expose your CLI over MCP](../../../../../docs/adopters/guides/expose-cli-over-mcp.md)
 - [Parity README, MCP wire contract section](../../../../../contracts/parity/README.md)
-- [Crate README, MCP surface](../../README.md#mcp-surface)
+- [Crate README, MCP surface](../../../../../docs/adopters/reference/rs-sdk.md#mcp-surface)
 - Go reference: [go/transport/mcpsdk](../../../../../go/transport/mcpsdk/README.md)

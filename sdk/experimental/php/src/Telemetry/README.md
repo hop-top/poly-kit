@@ -64,7 +64,7 @@ echo file_get_contents($tmp . '/events.jsonl');
 
 ## See also
 
-- [Telemetry](../../README.md#telemetry)
+- [Telemetry](../../../../../docs/adopters/reference/php-sdk.md#telemetry)
 - [Adopter guide: telemetry](../../../../../docs/adopters/guides/telemetry.md)
 - [Event schema](../../../../docs/telemetry-event-schema.md)
 - [Go reference: `go/runtime/telemetry`](../../../../../go/runtime/telemetry/README.md)

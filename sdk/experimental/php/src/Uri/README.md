@@ -48,5 +48,5 @@ echo $plan->command, ' ', implode(' ', $plan->args), "\n"; // tlc -C org/repo ta
 
 ## See also
 
-- [URI facade](../../README.md#uri-facade)
+- [URI facade](../../../../../docs/adopters/reference/php-sdk.md#uri-facade)
 - [Go reference: `go/console/uri`](../../../../../go/console/uri/)

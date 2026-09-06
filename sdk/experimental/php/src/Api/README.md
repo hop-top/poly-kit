@@ -62,5 +62,5 @@ try {
 
 ## See also
 
-- [Offline enforcement](../../README.md#offline-enforcement)
-- [Client hardening notes](../../README.md#client-hardening-https-sink)
+- [Offline enforcement](../../../../../docs/adopters/reference/php-sdk.md#offline-enforcement)
+- [Client hardening notes](../../../../../docs/adopters/reference/php-sdk.md#client-hardening-https-sink)
