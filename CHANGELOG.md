@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.3...kit/v0.5.0-alpha.4) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **console:** kit conformance harness record exit codes change; scripts branching on 3, 4 or 5 need updating.
+* **conformance:** `hop.top/kit/go/console/cli/conformance/harness` and `.../verifynoleak/...` move to `hop.top/kit/go/conformance/harness` and `hop.top/kit/go/conformance/verifynoleak/...`. Adopters importing the harness toolkit update the import path; no API change. No forwarding aliases — kit ships breaking changes directly on the alpha channel.
+* **cli:** the api service refuses to start on a non-loopback address when no delegation policy is configured. Name a `--policy`, listen on loopback, or set `services.api.insecure_no_policy: true` to restore the previous behaviour.
+* **kv:** `kv.Open` requires importing the driver package for the chosen backend; sqlite and badger were previously linked in unconditionally.
+
+### Features
+
+* **bridge:** match payloads to manifest accept rules ([5fcabd3](https://github.com/hop-top/poly-kit/commit/5fcabd384b65c623a8f7e892ba7f2eeffe4560da))
+* **bridge:** match payloads to manifest accept rules ([af57a67](https://github.com/hop-top/poly-kit/commit/af57a67736c501ed701c5395631e95bee804fb62))
+* **engine:** optional If-Match precondition on document PUT ([#280](https://github.com/hop-top/poly-kit/issues/280)) ([4433446](https://github.com/hop-top/poly-kit/commit/443344686d0cbf548c414fad7c9bc45bd72085b6))
+* **kv:** add context-carrying opener alongside Opener ([6998bac](https://github.com/hop-top/poly-kit/commit/6998bac9414809b9d9a0dcdcdb8a3d99c024387f))
+* **sdk:** port the consenting-telemetry factor to the TS and Python compliance checkers ([#281](https://github.com/hop-top/poly-kit/issues/281)) ([6e205b8](https://github.com/hop-top/poly-kit/commit/6e205b889a365e2e3a648dff60f975d1d9dba0cd))
+
+
+### Bug Fixes
+
+* **cli:** deny remote serving without a delegation policy ([217f60e](https://github.com/hop-top/poly-kit/commit/217f60ef412c11e73e841749159835db648250d3))
+* **console:** resolve four doc-versus-source drifts ([#274](https://github.com/hop-top/poly-kit/issues/274)) ([a6582ff](https://github.com/hop-top/poly-kit/commit/a6582ffe1ac6467d69ce3a4c4c0a25ef892caf53))
+* **contracts:** correct buf es out path, drop orphan ts stubs ([#275](https://github.com/hop-top/poly-kit/issues/275)) ([6a8c185](https://github.com/hop-top/poly-kit/commit/6a8c18545a1ad3c2732eb4eecae485e3b30288ec))
+* **kv:** guard the TiDB driver dial ([d1c5d11](https://github.com/hop-top/poly-kit/commit/d1c5d11bdfbdbedc1167d5f49a06bd39ee0af011))
+* **kv:** police the initial connect in all four drivers ([74b4d98](https://github.com/hop-top/poly-kit/commit/74b4d98d5ef3ed67e5157268fb0060700aa738d0))
+* **kv:** police the initial connect through a context-carrying opener ([5d59531](https://github.com/hop-top/poly-kit/commit/5d5953116d5dc31b1ed4bfc94c3b201b3c73ba71))
+* **kv:** reach etcd and tidb through Open via driver registry ([3695db6](https://github.com/hop-top/poly-kit/commit/3695db625fbb72a6a5d17a240d104f9da139bbe9))
+* **netpolicy:** enforce --offline beyond net/http ([19d73b4](https://github.com/hop-top/poly-kit/commit/19d73b4656e8ca73ca6623bcaac36de3e7293241))
+* **netpolicy:** extend offline enforcement past net/http ([d9f55cf](https://github.com/hop-top/poly-kit/commit/d9f55cf50d09f444a1589140cb6896cbd0417f38))
+* **notify:** route SMTP dial through the offline guard ([db2d94f](https://github.com/hop-top/poly-kit/commit/db2d94f32c3816bb747ff344a26082bd73575764))
+* route kit's own egress call sites through the netpolicy guards ([b164f05](https://github.com/hop-top/poly-kit/commit/b164f05e807d248bf89aaae1edf427411a01010b))
+* **secret:** register file and openbao backends ([138957c](https://github.com/hop-top/poly-kit/commit/138957cc43348fabe13b5197c99828a66bad1a99))
+* **secret:** register file and openbao backends ([91e33cf](https://github.com/hop-top/poly-kit/commit/91e33cf94799f52d95d32dd4704cf8c55a07c403))
+* **transport,bus:** guard WebSocket handshakes explicitly ([db635ba](https://github.com/hop-top/poly-kit/commit/db635ba233e74d24a189971462cf59a0113b8e4a))
+
+
+### Performance
+
+* **engine:** parallelize and short-gate the store property tests ([#287](https://github.com/hop-top/poly-kit/issues/287)) ([08463ca](https://github.com/hop-top/poly-kit/commit/08463cacc1e5f8223592d359091cb8ece0d9403b))
+
+
+### Refactored
+
+* **conformance:** move adopter libraries out of the command tree ([4efdce2](https://github.com/hop-top/poly-kit/commit/4efdce25b6a040039fe830ad04a6173186e6b627))
+
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.2...kit/v0.5.0-alpha.3) (2026-09-05)
 
 
