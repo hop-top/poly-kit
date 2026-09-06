@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6) (2026-09-06)
+
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.6. This release includes new features.
+
+
+### Features
+
+* **sdk:** port the consenting-telemetry factor to the TS and Python compliance checkers
+
+Full diff: [kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6)
+
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.4...kit-py/v0.5.0-alpha.5) (2026-09-05)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.5. This release includes new features and bug fixes.
