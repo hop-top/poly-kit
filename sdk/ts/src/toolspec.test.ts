@@ -27,8 +27,8 @@ describe("loadToolSpec", () => {
     ]);
     expect(spec.stateIntrospection!.envVars).toEqual([
       "SPACED_FORMAT",
-      "SPACED_LOG_LEVEL",
       "SPACED_LOG_FORMAT",
+      "SPACED_LOG_LEVEL",
     ]);
   });
 

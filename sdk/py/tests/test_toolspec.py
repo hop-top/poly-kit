@@ -31,8 +31,8 @@ class TestLoadToolspec:
         assert si.config_commands == ["spaced config show"]
         assert si.env_vars == [
             "SPACED_FORMAT",
-            "SPACED_LOG_LEVEL",
             "SPACED_LOG_FORMAT",
+            "SPACED_LOG_LEVEL",
         ]
 
     def test_commands_loaded(self):
