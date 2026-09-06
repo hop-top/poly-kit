@@ -82,7 +82,7 @@ Fix:
 
 ### go build fails with `missing go.sum`
 
-Cause: known issue **T-0032**. The scaffold writes `go.mod` but
+Cause: known issue. The scaffold writes `go.mod` but
 not `go.sum`; first build needs a tidy.
 
 Fix:
@@ -124,7 +124,7 @@ Fix:
 
 ### Augment mode rendered into the wrong directory
 
-Cause: known issue **T-0002**. Augment mode uses the current
+Cause: known issue. Augment mode uses the current
 working directory as the render target; without a positional name
 and an explicit `--mode bootstrap`, an augment intended as a
 bootstrap can write into the parent project.

@@ -2,8 +2,6 @@
 // `list` (catalog of built-in templates) and `show <name>` (manifest
 // detail: variables, hooks, file rules). Both subcommands honor
 // --json for machine-readable output.
-//
-// Spec: ops/docs/superpowers/specs/2026-04-26-kit-init-design.md §17.
 package template
 
 import (

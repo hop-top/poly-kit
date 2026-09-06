@@ -1,4 +1,5 @@
-// Package kitinit — posthook_test.go covers the T-0774 contract:
+// Package kitinit — posthook_test.go covers the after-PR-open hook
+// contract:
 //   - Push path (liveness probe returns 2xx within 5s → no tlc task).
 //   - Pull path (probe fails / disabled → tlc task scheduled with all
 //     required fields).

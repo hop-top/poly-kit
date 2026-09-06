@@ -13,8 +13,8 @@ import (
 )
 
 // versioned_branching_property_test.go is the cross-backend property
-// test for the branching public API (Fork / Merge / Branches) added
-// by track engine-versioned-branching. The shape mirrors
+// test for the branching public API (Fork / Merge / Branches).
+// The shape mirrors
 // versioned_property_test.go (the linear-history property test) so
 // the two read as siblings: same fixed-seed pattern, same
 // fresh-stores-per-iteration discipline, same outcome-divergence-is-

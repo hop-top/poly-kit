@@ -1,4 +1,4 @@
-// Tests for the T-0772 `.github/workflows/*-caller.yml` generator.
+// Tests for the `.github/workflows/*-caller.yml` generator.
 //
 // White-box (package kitinit) so we can exercise renderWorkflows and the
 // manifest helpers directly. Real disk via t.TempDir; no network, no
@@ -546,12 +546,12 @@ func TestWriteManifest_OverwriteIdempotent(t *testing.T) {
 func TestRenderWorkflows_HopTopRefIsPinned(t *testing.T) {
 	// The default ref must be `v0` (matches existing poly-kit callers in
 	// .github/workflows/publish.yml). If you ever bump it, tighten the
-	// matching workflow assertions in track plan.md.
+	// matching workflow assertions below.
 	assert.Equal(t, "v0", workflowCallerRef)
 }
 
 // TestBootstrap_WithGitHubWorkflows verifies the end-to-end integration:
-// runBootstrap renders the cli-go template AND the T-0772 workflow callers,
+// runBootstrap renders the cli-go template AND the workflow callers,
 // and the summary carries the WorkflowAction list.
 func TestBootstrap_WithGitHubWorkflows(t *testing.T) {
 	tmpDir := t.TempDir()

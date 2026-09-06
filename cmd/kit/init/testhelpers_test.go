@@ -1,4 +1,4 @@
-// Shared test doubles for white-box tests in package kitinit (T-0952).
+// Shared test doubles for white-box tests in package kitinit.
 // Recording runners satisfy HookRunner / GitRunner / GitHubRunner; capture
 // invocation arguments without shelling out. Single source replaces the
 // per-file stubHookRunner / noopHookRunner / stubGitRunner / stubGitHubRunner

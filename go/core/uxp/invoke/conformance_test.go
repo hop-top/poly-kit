@@ -26,8 +26,8 @@ import (
 // out of the registry.
 //
 // This list is the de facto RegisteredAdapters() for the package
-// until invoke.Register() is wired up (T-0521 / T-0522 may move it
-// into the package itself).
+// until invoke.Register() is wired up, which may move it into the
+// package itself.
 var allAdapters = []invoke.InvocationAdapter{
 	claude.New(),
 	codex.New(),

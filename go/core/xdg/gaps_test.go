@@ -20,9 +20,9 @@ import (
 // checkpoint. But it is sqlite-specific and lives in storage/sqlstore.
 // tlc, rsx, and ctxt each hand-rolled the same pattern (per-tool
 // backup dir, timestamped name, mkdir, copy) for non-DB files: state
-// dirs, JSON snapshots, metadata blobs. Per the auto-memory note
-// "DB backups in .tlc/.dbs/", the convention is shared but the
-// helper is not.
+// dirs, JSON snapshots, metadata blobs. The convention of writing
+// backups into a sibling .dbs/ directory is shared, but the helper
+// is not.
 //
 // Desired API (in xdg, since the location convention is XDG-driven):
 //

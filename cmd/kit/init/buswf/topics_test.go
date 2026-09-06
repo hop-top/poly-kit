@@ -7,11 +7,10 @@ import (
 	"hop.top/kit/go/runtime/bus"
 )
 
-// TestTopicsPassValidateTopic is the load-bearing test for T-0776: a
-// previous dispatch was STOPped specifically because two of the four
-// pinned topics were 3-segment and failed bus.ValidateTopic. Asserting
-// all four pass here means a future spec edit that breaks the shape
-// fails CI immediately.
+// TestTopicsPassValidateTopic is load-bearing: an earlier revision had
+// two of the four pinned topics as 3-segment names, which failed
+// bus.ValidateTopic. Asserting all four pass here means a future spec
+// edit that breaks the shape fails CI immediately.
 func TestTopicsPassValidateTopic(t *testing.T) {
 	t.Parallel()
 	for _, topic := range buswf.Topics() {

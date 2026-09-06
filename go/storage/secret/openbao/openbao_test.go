@@ -174,7 +174,7 @@ func newStore(t *testing.T) *openbao.Store {
 		t.Skip("skipping openbao integration test in short mode")
 	}
 	if os.Getenv("CI") != "" {
-		t.Skip("skipping openbao test in CI until xrr nil-body bug is fixed (hop-top/xrr#T-0048)")
+		t.Skip("skipping openbao test in CI until the xrr nil-body bug is fixed")
 	}
 	testcontainers.SkipIfProviderIsNotHealthy(t)
 	mode := os.Getenv("XRR_MODE")

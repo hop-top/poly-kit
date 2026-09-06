@@ -5,8 +5,6 @@
 // mode to render only files whose tier matches the requested tier.
 // Bootstrap mode (tier=0) bypasses the filter; absent paths default
 // to tier [4].
-//
-// See docs/superpowers/specs/2026-04-26-kit-init-design.md §13.
 package template
 
 import (

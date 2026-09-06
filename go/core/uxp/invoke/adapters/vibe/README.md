@@ -6,7 +6,6 @@ Invocation adapter for Mistral Vibe CLI (`vibe` binary).
 
 - Date: 2026-05-09
 - Binary: `vibe` 2.9.3
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/vibe.txt`
 
 ## Distinctive shape: S-4 builtin-agent shim
 

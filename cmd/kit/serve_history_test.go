@@ -10,9 +10,9 @@ import (
 )
 
 // TestServe_HistoryAndRevert is a smoke test for GET /:type/:id/history
-// and POST /:type/:id/revert wired on top of VersionedDocumentStore
-// (T-0353). End-to-end durability across a process restart is
-// covered separately by T-0352.
+// and POST /:type/:id/revert wired on top of VersionedDocumentStore.
+// End-to-end durability across a process restart is covered
+// separately by serve_restart_test.go.
 func TestServe_HistoryAndRevert(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping E2E in short mode")

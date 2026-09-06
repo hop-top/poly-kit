@@ -13,7 +13,7 @@ import (
 	"hop.top/kit/go/conformance/verifynoleak/suppress"
 )
 
-// ── T-1227 suppression cases ─────────────────────────────────────
+// ── suppression cases ────────────────────────────────────────────
 
 func loadAllowlist(t *testing.T, root, body string) *suppress.Allowlist {
 	t.Helper()

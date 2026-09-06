@@ -1,9 +1,8 @@
 # kit init: .github wiring and PR hooks contract
 
-> Pinned contracts shared by the `kit-init-dotgithub-wiring` track.
-> Implementation tasks: T-0772 (workflow callers), T-0773 (before-PR hook),
-> T-0774 (after-PR hook), T-0775 (e2e), T-0776 (bus event workflows).
-> Refs: `tlc/T-0771`, track `kit-init-dotgithub-wiring`.
+> Pinned contracts for the `kit init` .github wiring: the workflow
+> callers, the before-PR hook, the after-PR hook, and the opt-in bus
+> event workflows.
 
 `kit init` generates the consumer-side wiring a hop-top project needs to
 plug into the shared `hop-top/.github` reusable workflows and into the local
@@ -252,7 +251,7 @@ So on macOS, in a clone of `hop-top/poly-kit`, the scratchpad lives at:
 $TMPDIR/github-com-hop-top-poly-kit.scratchpad
 ```
 
-## 5. Push/pull follow-up model (T-0774)
+## 5. Push/pull follow-up model
 
 The after-PR-open hook chooses between two delivery models, in this order.
 
@@ -427,7 +426,7 @@ rewriting its entry in `.kit/generated.json` — e.g. all generated files
 already match their manifest hashes and only `generatedAt` timestamps
 would change. No on-disk content under `path` is rewritten in this case.
 
-## 7. Before-PR hook failure semantics (T-0773)
+## 7. Before-PR hook failure semantics
 
 The before-PR hook (rendered at `.githooks/pre-pr` or installed via the
 repo's existing `.githooks/` convention) runs the following gates:
@@ -501,10 +500,10 @@ run so adopters who never operate a bus host don't see clutter in
 
 | Flag                              | Default | Effect                                                                     |
 |-----------------------------------|---------|----------------------------------------------------------------------------|
-| `--with-github-workflows`         | `true`  | Render `.github/workflows/*-caller.yml` stubs (T-0772).                    |
-| `--with-githook-pre-pr`           | `true`  | Render `.githooks/pre-pr` and helpers (T-0773).                            |
-| `--with-githook-post-pr-open`     | `true`  | Render `.githooks/post-pr-open` and helpers (T-0774).                      |
-| `--with-bus-workflows`            | `false` | Render `.github/workflows/kit-bus-*.yml` (T-0776). Opt-in. Disabled at runtime by default per Section 3. |
+| `--with-github-workflows`         | `true`  | Render `.github/workflows/*-caller.yml` stubs.                    |
+| `--with-githook-pre-pr`           | `true`  | Render `.githooks/pre-pr` and helpers.                            |
+| `--with-githook-post-pr-open`     | `true`  | Render `.githooks/post-pr-open` and helpers.                      |
+| `--with-bus-workflows`            | `false` | Render `.github/workflows/kit-bus-*.yml`. Opt-in. Disabled at runtime by default per Section 3. |
 | `--dry-run`                       | `false` | Compute the file list without writing; emit JSON report.                   |
 | `--format json`                   | (off)   | Emit machine-readable plan output (see Section 6).                         |
 
@@ -539,5 +538,3 @@ the files it did write.
 - Topic shape rules: [`docs/contracts/event-topics.md`](./event-topics.md)
 - Bus topic validator: [`go/runtime/bus/topics.go`](../../go/runtime/bus/topics.go)
 - Existing `kit init` implementation: [`cmd/kit/init/`](../../cmd/kit/init/)
-- Track plan: `kit-init-dotgithub-wiring` (tracked in tlc; the `.tlc/`
-  directory is gitignored and not committed to this repo).

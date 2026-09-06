@@ -6,7 +6,6 @@ Invocation adapter for GitHub Copilot CLI (`copilot` binary).
 
 - Date: 2026-05-09
 - Binary: GitHub Copilot CLI 1.0.15
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/copilot.txt`
 
 ## Distinctive shape
 

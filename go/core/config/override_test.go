@@ -210,8 +210,8 @@ func TestParseConfigArgs_DirectoryRejected(t *testing.T) {
 	}
 }
 
-// T-0433: bare-directory token resolves to <dir>/<projectMarker>
-// when WithProjectMarker is set and the marker file exists.
+// Bare-directory token resolves to <dir>/<projectMarker> when
+// WithProjectMarker is set and the marker file exists.
 func TestParseConfigArgs_DirectoryResolvedViaProjectMarker(t *testing.T) {
 	dir := t.TempDir()
 	markerRel := filepath.Join(".rlz", "config.yaml")
@@ -232,10 +232,9 @@ func TestParseConfigArgs_DirectoryResolvedViaProjectMarker(t *testing.T) {
 	}
 }
 
-// T-0433: bare-directory token errors clearly when WithProjectMarker
-// is set but the marker file is missing under the supplied directory.
-// The error mentions the resolved path so the user can fix their
-// inputs.
+// Bare-directory token errors clearly when WithProjectMarker is set
+// but the marker file is missing under the supplied directory. The
+// error mentions the resolved path so the user can fix their inputs.
 func TestParseConfigArgs_DirectoryWithMissingMarkerErrors(t *testing.T) {
 	dir := t.TempDir()
 	markerRel := filepath.Join(".rlz", "config.yaml")
@@ -252,8 +251,8 @@ func TestParseConfigArgs_DirectoryWithMissingMarkerErrors(t *testing.T) {
 	}
 }
 
-// T-0433: file-path tokens still work when WithProjectMarker is set
-// — the option only affects the bare-directory resolution branch.
+// File-path tokens still work when WithProjectMarker is set — the
+// option only affects the bare-directory resolution branch.
 func TestParseConfigArgs_FilePathStillWorksWithProjectMarker(t *testing.T) {
 	dir := t.TempDir()
 	fp := filepath.Join(dir, "extra.yaml")
@@ -273,8 +272,8 @@ func TestParseConfigArgs_FilePathStillWorksWithProjectMarker(t *testing.T) {
 	}
 }
 
-// T-0433: bare-directory token still errors (preserves legacy
-// behavior) when no project marker is configured.
+// Bare-directory token still errors (preserves legacy behavior)
+// when no project marker is configured.
 func TestParseConfigArgs_DirectoryWithoutMarkerStillErrors(t *testing.T) {
 	dir := t.TempDir()
 	_, _, err := ParseConfigArgs([]string{dir})
@@ -286,8 +285,8 @@ func TestParseConfigArgs_DirectoryWithoutMarkerStillErrors(t *testing.T) {
 	}
 }
 
-// T-0433: an absolute project marker is rejected as a programmer
-// error so adopters don't accidentally configure a global file.
+// An absolute project marker is rejected as a programmer error so
+// adopters don't accidentally configure a global file.
 func TestParseConfigArgs_AbsoluteProjectMarkerRejected(t *testing.T) {
 	dir := t.TempDir()
 	_, _, err := ParseConfigArgs(
@@ -299,7 +298,7 @@ func TestParseConfigArgs_AbsoluteProjectMarkerRejected(t *testing.T) {
 	}
 }
 
-// T-0433: = override tokens are unaffected by ProjectMarker.
+// = override tokens are unaffected by ProjectMarker.
 func TestParseConfigArgs_OverrideTokensUnaffectedByProjectMarker(t *testing.T) {
 	_, overrides, err := ParseConfigArgs(
 		[]string{"model=o3"},

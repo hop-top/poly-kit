@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "Expected compliance observation for fixtures/compliance.toolspec.yaml,",
+    "shared by go / ts / py. The fixture opts into telemetry, so `total` is",
+    "13 and factor 13 must be `pass` in every port. A port that omits F13",
+    "entirely, or skips it despite enabled:true, diverges on `total` and on",
+    "the `factors` map — which is exactly what this harness exists to catch.",
+    "",
+    "Only the static pass is observed (empty binary path), so the",
+    "runtime-only factors 3, 9 and 10 are `skip` and factor 12 is `skip`",
+    "because the fixture declares no auth_commands. Those skips still count",
+    "toward the denominator; only an F13 skip on a non-opt-in spec is",
+    "excluded, which is why the denominator is 13 here and not 12.",
+    "",
+    "`factors` is keyed by factor number, not ordered, because result",
+    "ORDER is not the contract this harness pins — the score, the",
+    "denominator and the per-factor verdicts are."
+  ],
+  "score": 9,
+  "total": 13,
+  "factors": {
+    "1": "pass",
+    "2": "pass",
+    "3": "skip",
+    "4": "pass",
+    "5": "pass",
+    "6": "pass",
+    "7": "pass",
+    "8": "pass",
+    "9": "skip",
+    "10": "skip",
+    "11": "pass",
+    "12": "skip",
+    "13": "pass"
+  },
+  "names": {
+    "1": "Self-Describing",
+    "2": "Structured I/O",
+    "3": "Stream Discipline",
+    "4": "Contracts & Errors",
+    "5": "Preview",
+    "6": "Idempotency",
+    "7": "State Transparency",
+    "8": "Safe Delegation",
+    "9": "Observable Ops",
+    "10": "Provenance",
+    "11": "Evolution",
+    "12": "Auth Lifecycle",
+    "13": "Consenting Telemetry"
+  }
+}

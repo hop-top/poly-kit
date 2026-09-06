@@ -55,10 +55,9 @@ func matchParts(topic, pattern []string) bool {
 
 // Event is the standard envelope for all bus messages.
 //
-// JSON keys follow tlc/docs/bus-topics-spec-0.1.md §4 (lowercase).
-// Cross-process subscribers (aps story 051, etc.) parse lowercase;
-// capitalized keys would break them. v0.2 (T-0196) closes the gap
-// alongside workspace_id (T-0194).
+// JSON keys are lowercase. Cross-process subscribers parse
+// lowercase; capitalized keys would break them. v0.2 closes the gap
+// alongside workspace_id.
 type Event struct {
 	// Topic identifies the event type (e.g. "llm.request").
 	Topic Topic `json:"topic"`
@@ -68,7 +67,7 @@ type Event struct {
 	Timestamp time.Time `json:"timestamp"`
 	// Payload carries event-specific data.
 	//
-	// TYPE ERASURE WARNING (T-0178):
+	// TYPE ERASURE WARNING:
 	// Payload is `any` and crosses process boundaries via JSON
 	// (NetworkAdapter, SQLiteAdapter, dpkms hub). In-process
 	// subscribers receive the original Go value publishers passed
@@ -86,11 +85,11 @@ type Event struct {
 	//
 	// Publishers SHOULD use structs whose fields round-trip
 	// cleanly via encoding/json (avoid time.Duration, channels,
-	// funcs, unexported fields). See aps/docs/dev/event-topics.md
-	// §3 and tlc/docs/bus-topics-spec-0.1.md §4 for the contract.
+	// funcs, unexported fields). See docs/contracts/event-topics.md
+	// for the contract.
 	Payload any `json:"payload"`
 	// WorkspaceID scopes the event to a wsm workspace (ULID).
-	// Empty = global event. Per bus-topics-spec-0.1 §4 v0.2.
+	// Empty = global event. Added in envelope v0.2.
 	WorkspaceID string `json:"workspace_id,omitempty"`
 }
 

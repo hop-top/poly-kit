@@ -1,7 +1,6 @@
 // Package claude implements the InvocationAdapter for Claude Code.
 //
-// Help-text basis: claude --version 2.1.118 (2026-05-09 capture at
-// .tlc/tracks/uxp-agent-cli-facade/help/claude.txt).
+// Help-text basis: claude --version 2.1.118 (2026-05-09 capture).
 package claude
 
 import (

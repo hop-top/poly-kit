@@ -9,8 +9,8 @@ import (
 	"hop.top/kit/go/console/cli"
 )
 
-// T-0433: Root.ConfigArgs returns the parse error directly so adopters
-// can surface it. Pre-fix the call swallowed errors and returned (nil,
+// Root.ConfigArgs returns the parse error directly so adopters can
+// surface it. Pre-fix the call swallowed errors and returned (nil,
 // nil), which dropped -c flags silently.
 func TestRoot_ConfigArgs_SurfacesParseError(t *testing.T) {
 	r := cli.New(cli.Config{Name: "tool", Version: "1.0.0", Short: "x", DisableValidate: true})
@@ -26,8 +26,8 @@ func TestRoot_ConfigArgs_SurfacesParseError(t *testing.T) {
 	}
 }
 
-// T-0433: when ProjectMarker is configured, a bare-directory token
-// resolves to <dir>/<marker>.
+// When ProjectMarker is configured, a bare-directory token resolves
+// to <dir>/<marker>.
 func TestRoot_ConfigArgs_ProjectMarkerResolvesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	markerRel := filepath.Join(".rlz", "config.yaml")
@@ -57,8 +57,8 @@ func TestRoot_ConfigArgs_ProjectMarkerResolvesDirectory(t *testing.T) {
 	}
 }
 
-// T-0433: missing project marker produces a clear error mentioning
-// the resolved path.
+// A missing project marker produces a clear error mentioning the
+// resolved path.
 func TestRoot_ConfigArgs_MissingProjectMarkerErrors(t *testing.T) {
 	dir := t.TempDir()
 	markerRel := filepath.Join(".rlz", "config.yaml")
@@ -82,8 +82,8 @@ func TestRoot_ConfigArgs_MissingProjectMarkerErrors(t *testing.T) {
 	}
 }
 
-// T-0433: Root.Validate() surfaces -c parse errors. Pre-fix the
-// comment said it did, but the implementation swallowed the error.
+// Root.Validate() surfaces -c parse errors. Pre-fix the comment said
+// it did, but the implementation swallowed the error.
 func TestRoot_Validate_SurfacesConfigArgsError(t *testing.T) {
 	r := cli.New(cli.Config{Name: "tool", Version: "1.0.0", Short: "x", DisableValidate: true})
 	r.Viper.Set("config", []string{"no-equals-and-no-such-file"})
@@ -97,9 +97,9 @@ func TestRoot_Validate_SurfacesConfigArgsError(t *testing.T) {
 	}
 }
 
-// T-0433: Validate clears past errors on a subsequent successful
-// ConfigArgs call (e.g. after the user fixes their flag and calls
-// Validate again from a long-running test harness).
+// Validate clears past errors on a subsequent successful ConfigArgs
+// call (e.g. after the user fixes their flag and calls Validate again
+// from a long-running test harness).
 func TestRoot_Validate_ClearsErrorOnSuccessfulRecheck(t *testing.T) {
 	r := cli.New(cli.Config{Name: "tool", Version: "1.0.0", Short: "x", DisableValidate: true})
 	r.Viper.Set("config", []string{"no-equals-and-no-such-file"})

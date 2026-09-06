@@ -20,7 +20,7 @@ import (
 // These constants name the default topics; adopters wiring
 // registerDocumentRoutes can override them with WithTopicPrefix /
 // WithTopics, mirroring the option pattern already established in
-// transport/api (T-0122) and core/upgrade.
+// transport/api and core/upgrade.
 const (
 	TopicDocumentCreated bus.Topic = "kit.engine.document.created"
 	TopicDocumentUpdated bus.Topic = "kit.engine.document.updated"

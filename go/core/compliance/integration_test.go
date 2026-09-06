@@ -3,9 +3,9 @@
 // Package compliance_test, integration build tag.
 //
 // End-to-end compliance check against the real `examples/spaced`
-// binary. This test is the GREEN-LIGHT verification for the
-// kit-telemetry-compliance track: build spaced, flip its
-// toolspec's `telemetry.enabled` from false to true (in a tmp
+// binary. This test is the GREEN-LIGHT verification for telemetry
+// compliance: build spaced, flip its toolspec's `telemetry.enabled`
+// from false to true (in a tmp
 // copy — the source toolspec stays at `enabled: false`), then run
 // compliance.Run end-to-end and assert against the observed score.
 //
@@ -157,8 +157,8 @@ func TestE2E_SpacedCompliance(t *testing.T) {
 	}
 
 	// 7. Pinpoint F13. The status here is the load-bearing
-	// signal for the kit-telemetry-compliance track — record it
-	// explicitly so future bumps catch sign flips.
+	// signal — record it explicitly so future bumps catch sign
+	// flips.
 	var f13 *compliance.CheckResult
 	for i := range report.Results {
 		if report.Results[i].Factor == compliance.FactorConsentingTelemetry {

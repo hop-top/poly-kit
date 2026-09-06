@@ -1,7 +1,7 @@
 package notify_test
 
 // End-to-end test for the kit-notify wiring shape from
-// docs/specs/notifications.md §9 + §10 (T-0375). Wires a single
+// the notifications spec §9 + §10. Wires a single
 // in-memory bus.Bus through a TeeBus that fans events to:
 //
 //   - a webhook sink wrapped in a FilterSink (pages-style:

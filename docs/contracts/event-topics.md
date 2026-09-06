@@ -59,9 +59,9 @@ events, you do not need to override anything.
 | `core/breaker.Breaker`       | `kit.core.breaker`          | `tripped`, `opened`, `closed`, `half_opened` |
 | `core/upgrade.Checker`       | `kit.core.upgrade`          | `released`, `downloaded`, `installed`, `snoozed` |
 
-`core/breaker` and `core/upgrade` are bus-emitting since
-T-0123/T-0124 — they require `WithPublisher` to opt in. The
-other emitters publish unconditionally when wired to a bus.
+`core/breaker` and `core/upgrade` are bus-emitting, but they
+require `WithPublisher` to opt in. The other emitters publish
+unconditionally when wired to a bus.
 
 ## When to override
 

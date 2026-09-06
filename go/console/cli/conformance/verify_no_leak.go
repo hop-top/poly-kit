@@ -311,8 +311,8 @@ type prBodyDocument struct {
 // isKitInternal reports whether the current scan is running against
 // the kit repo itself. The kit-internal default allowlist (which
 // exempts our own threat-model docs from tripping the detector)
-// should fire only here — adopters who mirror our .tlc/tracks/12fcc*/
-// layout in their own repos should still get full coverage.
+// should fire only here — adopters who mirror the same conformance
+// track layout in their own repos should still get full coverage.
 //
 // Detection order:
 //

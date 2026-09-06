@@ -8,8 +8,8 @@
 // it cannot describe what error messages mean, what multi-step
 // recipes are idiomatic, or what config commands an agent should run
 // to discover a tool's state. Adopters supply that knowledge through
-// these options; future format adapters (T-0336) decide how to
-// render each piece.
+// these options; future format adapters decide how to render each
+// piece.
 //
 // All options are optional. Tools that haven't curated yet pass
 // nothing; the resulting spec simply has the curation fields empty.

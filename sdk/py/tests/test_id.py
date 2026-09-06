@@ -26,10 +26,10 @@ from hop_top_kit.id import (
 )
 
 # ---------------------------------------------------------------------------
-# Canonical fixture set — see ADR 0001 / T-0751.
+# Canonical fixture set — see ADR 0001.
 #
 # These exact (prefix, uuidv7) pairs are the source of truth for cross-
-# language parity work in T-0753. Do not change without bumping the
+# language parity work. Do not change without bumping the
 # parity-fixture version across all five SDKs.
 # ---------------------------------------------------------------------------
 

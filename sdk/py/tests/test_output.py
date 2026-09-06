@@ -172,7 +172,7 @@ def test_render_table_empty_list_no_output():
 
 
 def test_render_unknown_format_raises():
-    # 'csv' + 'text' are now registered built-ins (T-1015/T-1016), so use a
+    # 'csv' + 'text' are registered built-ins, so use a
     # format name that nothing claims.
     with pytest.raises(ValueError, match="unknown"):
         _capture("nope", {"x": 1})

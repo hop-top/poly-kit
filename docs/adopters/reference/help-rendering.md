@@ -18,11 +18,21 @@ COMMANDS:
 FLAGS:
   -h, --help       Display help
   -v, --version    Print version and exit
-      --format     Output format (table|json|yaml)
+  -V, --verbose    Increase verbosity (repeatable)
+      --format     Output format (json|table|yaml)
       --quiet      Suppress non-essential output
       --no-color   Disable ANSI colour
       --help-all   Show all command groups
 ```
+
+The `--format` usage string is generated from the active output
+registry's keys, sorted. The three built-ins are `json`, `table` and
+`yaml`; adopters registering extra formatters see them listed here
+too.
+
+Kit's plumbing flags (`-C/--chdir`, `-c/--config`, `--format-opt`,
+`--cols`, `--template`, …) are registered hidden and appear only
+under `--help-all`.
 
 ## Command Groups
 
@@ -31,10 +41,15 @@ an ID, title, and visibility flag.
 
 ### Default Groups
 
-| Group | Title | Hidden | Contains |
-|-------|-------|--------|----------|
-| `commands` | COMMANDS | no | user-facing commands |
+| Group ID | Title | Hidden | Contains |
+|----------|-------|--------|----------|
+| `""` (empty) | COMMANDS | no | user-facing commands |
 | `management` | MANAGEMENT | yes | config, toolspec, doctor |
+
+The default group's ID is the empty string — cobra's ungrouped
+bucket, rendered under the COMMANDS heading. There is no group
+literally named `commands`; only `management` is registered via
+`AddGroup`.
 
 ### Custom Groups
 
@@ -63,8 +78,8 @@ TS:     setCommandGroup(cmd, 'management')
 Python: set_command_group('config', 'management')
 ```
 
-Unassigned commands go to the first group (default:
-`commands`).
+Unassigned commands (`GroupID` left empty) fall into cobra's
+ungrouped bucket and render under COMMANDS.
 
 ## Help Modes
 

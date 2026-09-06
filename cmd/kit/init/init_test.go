@@ -1,14 +1,14 @@
-// Integration tests for InitCmd's full RunE flow (T-0862).
+// Integration tests for InitCmd's full RunE flow.
 //
 // Drives detect → Gather → bootstrap/augment dispatch → output through the
 // cobra command rather than runBootstrap/runAugment directly. White-box
 // (package kitinit) for access to unexported sentinels (IsAlreadyKit,
 // IsOrgRequired) and to keep parity with bootstrap_test / augment_test.
 //
-// Strategy: avoid the built-in cli-go template (T-0954 PascalCase manifest
+// Strategy: avoid the built-in cli-go template (its PascalCase manifest
 // var lookup bug breaks `kit init --from=cli-go` end-to-end) by writing a
-// local fixture template per test. Once T-0954 lands, switching tests to
-// `--from=cli-go` is a one-line change.
+// local fixture template per test. Once that lookup bug is fixed,
+// switching tests to `--from=cli-go` is a one-line change.
 //
 // Real git on PATH is required for bootstrap success paths (init + initial
 // commit). Tests skip cleanly when git is absent. GitHub is bypassed via
@@ -32,7 +32,7 @@ import (
 )
 
 // fixtureInitTemplate writes a small synthetic template with lowercase
-// manifest variables (avoids the T-0954 PascalCase lookup bug). Returns
+// manifest variables (avoids the PascalCase lookup bug). Returns
 // the absolute path so InitCmd's --from flag can resolve it via Registry.
 // File set:
 //
@@ -175,7 +175,7 @@ func TestInit_Bootstrap_HappyPath(t *testing.T) {
 	for _, rel := range []string{"go.mod", "main.go", ".kit/version"} {
 		assert.FileExists(t, filepath.Join(target, rel))
 	}
-	// T-0773: pre-pr hook + manifest scaffolded under default flags.
+	// pre-pr hook + manifest scaffolded under default flags.
 	assert.FileExists(t, filepath.Join(target, ".githooks/pre-pr"))
 	assert.FileExists(t, filepath.Join(target, ".kit/generated.json"))
 
@@ -381,7 +381,7 @@ func TestInit_Augment_AlreadyKit(t *testing.T) {
 		"expected ErrAlreadyKit; got %v", err)
 }
 
-// TestInit_NilRoot_DoesNotPanic is the regression for T-0229..T-0231.
+// TestInit_NilRoot_DoesNotPanic is the nil-root regression test.
 // InitCmd is documented as accepting a nil *cli.Root; prior to the fix,
 // RunE deref'd root.Viper unconditionally and SIGSEGV'd. Drive the
 // command end-to-end with nil root through a benign code path

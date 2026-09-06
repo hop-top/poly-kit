@@ -1,7 +1,6 @@
 # Consume kit's toolspec contract from your harness
 
 Status: published
-Track: `kit-toolspec-ai-harness-contract`
 Audience: harness implementers (MCP hosts, agent frameworks, IDE
 extensions, custom Claude Code adapters).
 

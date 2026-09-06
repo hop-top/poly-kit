@@ -1,6 +1,6 @@
 /**
- * Captures verbatim output for each smoke command listed in T-1011 so the
- * track report can include real-world output samples. Run with:
+ * Captures verbatim output for each smoke command so a report can
+ * include real-world output samples. Run with:
  *
  *   pnpm exec tsx test/output/smoke-capture.ts
  */

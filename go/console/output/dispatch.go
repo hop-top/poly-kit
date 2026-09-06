@@ -25,7 +25,7 @@ const stdoutSentinel = "-"
 //
 // Resolution order:
 //  1. Resolve writer: empty or "-" output → cmd.OutOrStdout(); else open
-//     file (T-0989).
+//     file.
 //  2. --format-help short-circuit: when set, render the formatter
 //     catalog (or one formatter's options when --format is also set)
 //     and return without consuming data.
@@ -190,9 +190,9 @@ func commandFlag(cmd *cobra.Command, name string) *pflag.Flag {
 	return nil
 }
 
-// openOutputFile opens path with O_WRONLY|O_CREATE|O_TRUNC (T-0989). It
-// returns a clear error when path resolves to a directory rather than a
-// regular file.
+// openOutputFile opens path with O_WRONLY|O_CREATE|O_TRUNC. It returns
+// a clear error when path resolves to a directory rather than a regular
+// file.
 func openOutputFile(path string) (io.Writer, func(), error) {
 	if info, err := os.Stat(path); err == nil && info.IsDir() {
 		return nil, nil, fmt.Errorf("output path %q is a directory", path)

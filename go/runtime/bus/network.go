@@ -71,7 +71,7 @@ func WithAuth(a Authenticator) NetworkOption {
 // network events are re-forwarded to all connected peers EXCEPT the
 // origin peer. Default off — preserves prior point-to-point semantics.
 //
-// Use on a hub adapter that bridges multiple peers (T-0182).
+// Use on a hub adapter that bridges multiple peers.
 func WithRelay(enabled bool) NetworkOption {
 	return func(n *NetworkAdapter) { n.relay = enabled }
 }
@@ -99,7 +99,7 @@ type NetworkAdapter struct {
 	filter       TopicFilter
 	originID     string
 	auth         Authenticator
-	relay        bool // T-0182: star-topology relay (re-forward inbound to non-origin peers)
+	relay        bool // star-topology relay (re-forward inbound to non-origin peers)
 	offline      atomic.Bool
 	closed       atomic.Bool
 	wg           sync.WaitGroup
@@ -335,8 +335,8 @@ func (n *NetworkAdapter) Handler() http.Handler {
 // forwardToRemotes sends a local event to all connected peers.
 //
 // If excludeOriginID is non-empty, peers whose learned peerOriginID
-// equals excludeOriginID are skipped (relay mode origin exclusion,
-// T-0182). The wire-level Origin field carries the source publisher's
+// equals excludeOriginID are skipped (relay mode origin exclusion).
+// The wire-level Origin field carries the source publisher's
 // originID — preserved across relay so downstream peers can still
 // dedupe via the existing msg.Origin == n.originID loop check.
 func (n *NetworkAdapter) forwardToRemotes(e Event, excludeOriginID string) {

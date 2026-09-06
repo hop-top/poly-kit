@@ -16,7 +16,7 @@ type Topics struct {
 
 // DefaultTopics is the conformant default topic set.
 //
-// Note: prior to T-0122 the middleware emitted "api.request.start" and
+// Note: earlier releases emitted "api.request.start" and
 // "api.request.end" — both non-conformant (3 segments, present-tense).
 // Those topics have been removed with no back-compat alias.
 var DefaultTopics = Topics{

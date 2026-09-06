@@ -1,9 +1,6 @@
 // Package template provides the kit template engine: manifest schema,
 // file rules, hooks, and rendering. This file defines the Manifest
 // types, YAML parsing, and validation.
-//
-// See docs/superpowers/specs/2026-04-26-kit-init-design.md §6 for the
-// schema reference.
 package template
 
 import (

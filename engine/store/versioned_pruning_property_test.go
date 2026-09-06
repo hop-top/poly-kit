@@ -158,12 +158,11 @@ func runPruningOps(t *testing.T, vds *VersionedDocumentStore, ops []pruningOp, l
 			}
 		case "fork":
 			// Absorb "version N not found": with Prune freely
-			// interleaved (T-0432) the source seq may have been
-			// pruned by an earlier op. Both backends produce the same
-			// retain set under the same policy + state, so the same
-			// fork attempts hit the same not-found error at the same
-			// indices on both backends — cross-backend equivalence is
-			// preserved.
+			// interleaved, the source seq may have been pruned by an
+			// earlier op. Both backends produce the same retain set
+			// under the same policy + state, so the same fork attempts
+			// hit the same not-found error at the same indices on both
+			// backends — cross-backend equivalence is preserved.
 			if _, err := vds.Fork(ctx, docType, docID, op.seq1); err != nil &&
 				!isVersionNotFound(err) {
 				t.Fatalf("[%s] iter=%d op[%d] fork(seq=%d): %v", label, iter, i, op.seq1, err)
@@ -192,8 +191,8 @@ func runPruningOps(t *testing.T, vds *VersionedDocumentStore, ops []pruningOp, l
 			//   - ErrCannotAbandonLastLiveHead: seq is the only live
 			//     head left.
 			//   - "version N not found": seq doesn't exist (a prior
-			//     Prune removed it under T-0432's freely-interleaved
-			//     Prune model).
+			//     Prune removed it under the freely-interleaved Prune
+			//     model).
 			//
 			// All are deterministic given identical state, so both
 			// backends absorb them at the same op indices — preserving
@@ -239,8 +238,8 @@ func runPruningOps(t *testing.T, vds *VersionedDocumentStore, ops []pruningOp, l
 
 // isVersionNotFound returns true for the "version N not found" error
 // shape Fork/Merge/Revert/Abandon all surface when their target seq
-// is unknown. After T-0432 lifted the trailing-Prune restriction on
-// the property test, ops generated against the pre-Prune state may
+// is unknown. Since the trailing-Prune restriction on the property
+// test was lifted, ops generated against the pre-Prune state may
 // reference seqs an earlier Prune removed; both backends agree on
 // which seqs are gone, so absorbing the error here is safe — both
 // backends absorb it at the same op indices.
@@ -276,11 +275,10 @@ func assertAtLeastOneLiveHead(t *testing.T, vds *VersionedDocumentStore, label s
 //	abandon ≈ 13%  (falls back to update if zero or one live head)
 //	prune   ≈ 22%  (freely interleaved — see note)
 //
-// Note: Prune is freely interleaved with the other ops. Per T-0432,
-// both backends now derive the next seq from a per-(type, id)
-// high-water counter (in-memory: nextSeq map; SQLite:
-// version_seq_high_water table) that is never decremented by
-// DeleteVersions. Seq numbering is therefore monotonic across
+// Note: Prune is freely interleaved with the other ops. Both
+// backends derive the next seq from a per-(type, id) high-water
+// counter (in-memory: nextSeq map; SQLite: version_seq_high_water
+// table) that is never decremented by DeleteVersions. Seq numbering is therefore monotonic across
 // Prune, so a subsequent fork/merge cannot collide on version_id
 // (util.Short("type:id-seq-data")) by reissuing a since-pruned
 // version's seq. The earlier "trailing Prune only" workaround is
@@ -364,7 +362,7 @@ func generatePruningOps(rng *rand.Rand, n int) ([]pruningOp, pruningOpsStats) {
 			// exercises tight MaxAge on a single backend.
 			//
 			// prune does NOT append a version — nextSeq unchanged.
-			// Pruned seqs are NOT recycled (T-0432: cross-Prune seq
+			// Pruned seqs are NOT recycled (cross-Prune seq
 			// monotonicity), so it's safe to leave nextSeq alone.
 			if nextSeq > 1 {
 				op.policyMaxVersions = 1 + rng.Intn(nextSeq) // [1, current count]

@@ -1,7 +1,6 @@
 # Configure Claude Code permissions via the kit-toolspec contract
 
 Status: published
-Track: `kit-toolspec-ai-harness-contract`
 Audience: harness authors and Claude Code users adopting kit-powered
 CLIs (`tlc`, `ctxt`, `wsm`, …).
 

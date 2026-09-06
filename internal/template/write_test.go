@@ -1,7 +1,7 @@
-// Engine write-path tests covering Force semantics + sacred set
-// (T-0949). Force=false preserves the legacy .kit-suggested behavior
-// (covered in engine_test.go); these cases exercise Force=true on
-// non-sacred (overwrite) and sacred (still .kit-suggested) paths.
+// Engine write-path tests covering Force semantics + sacred set.
+// Force=false preserves the legacy .kit-suggested behavior (covered
+// in engine_test.go); these cases exercise Force=true on non-sacred
+// (overwrite) and sacred (still .kit-suggested) paths.
 package template_test
 
 import (

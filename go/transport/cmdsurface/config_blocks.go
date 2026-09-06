@@ -1,12 +1,11 @@
 package cmdsurface
 
 // This file defines the typed YAML shapes for the per-command
-// surface blocks documented in the cmdsurface spec
-// (.tlc/tracks/cmdsurf/spec.md). They are loaded by the same
-// Load / LoadFile entry points used for the rest of Config and
-// surface here so adopters can express webhook mappings, bus
-// bindings, cron schedules, and outbound sink fan-out in YAML
-// without resorting to free-form `any` maps.
+// surface blocks. They are loaded by the same Load / LoadFile entry
+// points used for the rest of Config and surface here so adopters
+// can express webhook mappings, bus bindings, cron schedules, and
+// outbound sink fan-out in YAML without resorting to free-form
+// `any` maps.
 //
 // The runtime surfaces (surface_webhook.go, surface_bus.go,
 // surface_cron.go, sink_*.go) take their bindings as Go structs
@@ -153,8 +152,7 @@ type SinkConfig struct {
 
 // TelemetryConfig is the top-level "telemetry:" block. It configures
 // the TelemetrySink that emits each cmdsurface invocation completion
-// to the kit-telemetry pipeline (see sink_telemetry.go and the
-// cmdsurf-telemetry track design note §1).
+// to the kit-telemetry pipeline (see sink_telemetry.go).
 //
 // Default disabled — adopters opt in by setting Enabled=true. When
 // absent from YAML the top-level Config.Telemetry field is nil; an

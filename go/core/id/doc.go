@@ -37,5 +37,5 @@
 // The same UUIDv7 fed to the Go, Rust, TypeScript, Python, and PHP
 // SDKs produces the same canonical string. The fixtures in id_test.go
 // are pinned by UUID input so other language agents can compare
-// against the same expected outputs (see tlc T-0753).
+// against the same expected outputs.
 package id

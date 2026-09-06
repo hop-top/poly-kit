@@ -6,7 +6,6 @@ Invocation adapter for Cursor Agent CLI (`cursor-agent` binary).
 
 - Date: 2026-05-09
 - Binary: `cursor-agent` 2025.10.01-f425367
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/cursor-agent.txt`
 
 ## Distinctive shape
 

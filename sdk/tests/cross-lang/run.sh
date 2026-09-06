@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cross-language telemetry contract harness (T-0709).
+# Cross-language telemetry contract harness.
 #
 # Drives the py / ts / rs / php SDK record() paths against a shared
 # deterministic fixture, captures each language's JSONL output, normalises

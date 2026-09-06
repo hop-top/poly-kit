@@ -1,5 +1,5 @@
-// prepr_test.go covers T-0773: the before-PR git hook scaffolder, its
-// manifest, and the slug/scratchpad-path helpers. Scope:
+// prepr_test.go covers the before-PR git hook scaffolder, its manifest,
+// and the slug/scratchpad-path helpers. Scope:
 //
 //   - GeneratePrePrHook on a fresh tree → write + manifest.
 //   - GeneratePrePrHook on an unchanged tree → skip-unchanged + manifest skip.

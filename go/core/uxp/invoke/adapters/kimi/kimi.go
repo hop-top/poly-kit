@@ -1,7 +1,6 @@
 // Package kimi implements the InvocationAdapter for Kimi Code CLI.
 //
-// Help-text basis: kimi (Moonshot AI) — see
-// .tlc/tracks/uxp-agent-cli-facade/help/kimi.txt (2026-05-09 capture).
+// Help-text basis: kimi (Moonshot AI), 2026-05-09 capture.
 //
 // Distinctive shape:
 //   - Native --plan flag for ApprovalPlan (no shim needed).

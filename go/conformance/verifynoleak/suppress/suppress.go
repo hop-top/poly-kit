@@ -80,7 +80,7 @@ func LoadAllowlist(repoRoot string) (*Allowlist, error) {
 }
 
 // Add appends a glob pattern to the allowlist. Used by the
-// kit-internal default allowlist (design.md §5).
+// kit-internal default allowlist.
 func (al *Allowlist) Add(globs ...string) {
 	for _, g := range globs {
 		negate := false
@@ -286,16 +286,14 @@ func FindIgnoreNextBlockFor(ds []IgnoreDirective, fenceLine int) (IgnoreDirectiv
 }
 
 // DefaultKitInternalGlobs returns the default allowlist patterns
-// active only when scanning the kit repo itself (design.md §5).
-// Wired in by the command layer when it detects the origin.
+// active only when scanning the kit repo itself. Wired in by the
+// command layer when it detects the origin.
+//
+// The task-tracking directory is excluded wholesale: it is developer
+// state, never part of a release artifact.
 func DefaultKitInternalGlobs() []string {
 	return []string{
-		".tlc/tracks/12fcc-leak/**",
-		".tlc/tracks/12fcc/**",
-		".tlc/tracks/12fcc-scen/**",
-		".tlc/tracks/12fcc-harness/**",
-		".tlc/tracks/12fcc-static/**",
-		".tlc/tracks/12fcc-client/**",
+		".tlc/**",
 		"contracts/scenario-rules.json",
 		"docs/**/*verify-no-leak*.md",
 		"docs/conformance/ci-integration.md",

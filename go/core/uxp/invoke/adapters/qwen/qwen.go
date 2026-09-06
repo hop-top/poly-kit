@@ -1,7 +1,6 @@
 // Package qwen implements the InvocationAdapter for Qwen Code CLI.
 //
-// Help-text basis: qwen 0.15.6 (2026-05-09 capture at
-// .tlc/tracks/uxp-agent-cli-facade/help/qwen.txt).
+// Help-text basis: qwen 0.15.6 (2026-05-09 capture).
 //
 // Qwen is the closest peer to gemini in shape but with full
 // --approval-mode parity (plan|default|auto-edit|yolo). Native

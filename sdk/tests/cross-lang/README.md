@@ -1,16 +1,18 @@
 # Cross-language contract harnesses
 
-This directory hosts two independent harnesses over the same runners tree:
+This directory hosts three independent harnesses over the same runners tree:
 
 | Harness | Entry point | Pins |
 |---------|-------------|------|
 | Telemetry envelope | `./run.sh` | Envelope shape + redactor placeholders across py/ts/rs/php |
 | Column ordering | `./run-order.sh` | The five column-order rules across go/py/ts/rs/php |
+| Compliance verdict | `./run-compliance.sh` | Score, denominator + per-factor status (F13 included) across go/ts/py |
 
 They share `fixtures/`, `expected/`, and `runners/` but have separate
 fixture files, comparison paths, and orchestrators. See
-[Column-ordering conformance](#column-ordering-conformance-harness) below for
-the second one.
+[Column-ordering conformance](#column-ordering-conformance-harness) and
+[Compliance conformance](#compliance-conformance-harness) below for the
+other two.
 
 ---
 
@@ -70,9 +72,9 @@ Per-language skips when prerequisites are missing:
 | Lang | Requires                                                                  |
 |------|---------------------------------------------------------------------------|
 | py   | `python3`, `pyyaml` (auto-skipped otherwise)                              |
-| ts   | `node`, `hops/main/sdk/ts/dist/telemetry/index.js` (run `npm run build`)  |
+| ts   | `node`, `sdk/ts/dist/telemetry/index.js` (run `npm run build`)  |
 | rs   | `cargo`                                                                   |
-| php  | `php`, `hops/main/sdk/experimental/php/vendor/autoload.php` (composer)    |
+| php  | `php`, `sdk/experimental/php/vendor/autoload.php` (composer)    |
 
 The harness exits 0 when every language that ran passed; skips do NOT
 fail. CI runs with all four toolchains installed.
@@ -93,7 +95,7 @@ key-level diff is meaningful.
 
 ## Known parity gaps (surfaced — NOT fixed by this task)
 
-These appear in the diff output today; T-0709 documents them so the
+These appear in the diff output today; they are documented here so the
 follow-up parity work can target the exact discrepancies:
 
 - **PHP omits `schema_version`** from its envelope entirely (every other
@@ -191,7 +193,7 @@ fixtures/ordering.json    # cases: spec, rows, --cols, formats
 expected/ordering.json    # expected sequences + known parity gaps
 compare_order.py          # ordered comparison, never sorts
 run-order.sh              # orchestrator
-runners/go/order.go       # reference runtime
+runners/go/order/         # reference runtime
 runners/py/order.py
 runners/ts/order.cjs      # needs `pnpm build` in sdk/ts/
 runners/rs/src/order.rs   # second binary in the shared runner crate
@@ -291,3 +293,88 @@ them and does not fail on them.
 When adding an ordering case, make the expected order disagree with
 alphabetical order *and* with declaration order where possible — an
 expectation that happens to match either can pass for the wrong reason.
+
+---
+
+# Compliance conformance harness
+
+`./run-compliance.sh` pins the **compliance verdict** across the three ports
+that ship a compliance checker — Go, TypeScript, Python. Where the other two
+harnesses cover the telemetry envelope and column order, this one covers what
+the 12-factor checker actually decides about a toolspec.
+
+```sh
+./run-compliance.sh            # every detected runtime
+./run-compliance.sh go py      # subset
+```
+
+## What it proves
+
+The fixture (`fixtures/compliance.toolspec.yaml`) **opts into telemetry**
+(`telemetry.enabled: true`), so a conforming port must run its F13
+"Consenting Telemetry" check and report a denominator of **13**. A port that
+never implemented F13 reports 12 and fails here even when all twelve of its
+other factors agree — the denominator is checked on its own line precisely
+because it is the half a factor-only comparison would miss.
+
+Three fields are compared, and nothing else:
+
+| Field | Why |
+|-------|-----|
+| `total` | The 12/13 denominator — opt-in must widen it |
+| `score` | Count of passing factors |
+| `factors` | Every factor's status, keyed by factor number |
+
+Factor *names* are checked too, since the rendered report prints them.
+
+## What it does not compare, and why not bytes
+
+Report bytes are not comparable across ports and never were: Go marshals a
+struct, TS an interface, Python a dataclass, and each carries its own elision
+rules for empty `details` / `suggestion` fields. None of that is contractual.
+
+Result **order** is also not the subject — `factors` is compared as a mapping
+keyed by factor number, not as a list. The sibling ordering harness is where
+sequence is the contract; conflating the two would make this suite fail on
+cosmetic reordering while still passing a genuine verdict divergence.
+
+Only the **static** pass runs (empty binary path). Runtime checks execute a
+binary that no two ports could agree on, and F13 is a static check in every
+port regardless.
+
+## Layout
+
+```
+fixtures/compliance.toolspec.yaml   # opt-in toolspec, well-formed telemetry block
+expected/compliance.json            # score, total, per-factor status + names
+compare_compliance.py               # verdict comparison
+run-compliance.sh                   # orchestrator
+runners/go/compliance/              # reference runtime (F13 landed here first)
+runners/py/compliance.py            # imports the in-tree SDK, not an installed copy
+runners/ts/compliance.cjs           # consumes a bundle built from working-tree source
+```
+
+## Prerequisites
+
+| Lang | Requires |
+|------|----------|
+| go   | `go` |
+| ts   | `node` + `sdk/ts/node_modules` (`pnpm install` in `sdk/ts/`) |
+| py   | `python3>=3.11` + pyyaml (`uv sync` in `sdk/py/`) |
+
+The TS runner does **not** read `dist/`. `compliance` is not in the package
+exports map and tsup does not build it, so there is no bundle to consume: the
+orchestrator bundles `src/compliance.ts` with the SDK's own esbuild into a
+temp file. That removes the stale-artifact hazard the ordering harness has to
+guard against explicitly — this harness always tests the working tree.
+
+Skips do not fail the harness, but a skipped runtime is reported as
+**skipped, never as passed**.
+
+## Changing the fixture
+
+Every field in `fixtures/compliance.toolspec.yaml` is load-bearing for the
+expected score — the twelve pre-F13 checks land on a deliberate mix of pass
+and skip. If you change it, re-derive `expected/compliance.json` from the Go
+runner (the reference implementation) and confirm ts and py still agree,
+rather than editing the expected file to match whatever came out.

@@ -175,10 +175,10 @@ func TestE2E_Wave2_WSCancellation(t *testing.T) {
 	defer cancel()
 
 	// 50 ticks at 500ms each = 25s. Read the first event, cancel, then
-	// assert the stream halts with a terminal frame: with the fix for
-	// T-1281, the surface writes terminal frames under the connection
-	// ctx (not the cancelled per-invocation ctx), so a cancelled
-	// invocation MUST deliver a closing error or result frame.
+	// assert the stream halts with a terminal frame: since the fix, the
+	// surface writes terminal frames under the connection ctx (not the
+	// cancelled per-invocation ctx), so a cancelled invocation MUST
+	// deliver a closing error or result frame.
 	wsWrite(t, ctx, c, wsRawFrame{
 		Op: "invoke",
 		ID: "long",
@@ -232,9 +232,9 @@ loop:
 	if eventsAfterCancel >= 40 {
 		t.Errorf("events after cancel=%d; cancel did not take effect", eventsAfterCancel)
 	}
-	// Terminal frame is now a hard requirement (T-1281 fix).
+	// Terminal frame is now a hard requirement (fixed).
 	if !terminated {
-		t.Errorf("no terminal frame received after cancel; T-1281 regression")
+		t.Errorf("no terminal frame received after cancel")
 	}
 }
 

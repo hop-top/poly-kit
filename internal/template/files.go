@@ -3,8 +3,6 @@
 // DecideFile classifies a single source path against FileRules and the
 // kit-conditional/.tmpl naming conventions, producing a FileDecision the
 // engine consumes when walking the template tree.
-//
-// See docs/superpowers/specs/2026-04-26-kit-init-design.md §7.
 package template
 
 import (

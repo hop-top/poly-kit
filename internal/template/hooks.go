@@ -2,8 +2,6 @@
 // /bin/sh in declared order, piping HookContext as JSON on stdin and
 // forwarding stdout/stderr with a "[hook:<basename>] " line prefix.
 // Aborts on first non-zero exit via NewHookFailedError.
-//
-// See docs/superpowers/specs/2026-04-26-kit-init-design.md §16.
 package template
 
 import (

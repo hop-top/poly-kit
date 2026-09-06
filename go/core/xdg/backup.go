@@ -10,8 +10,8 @@ import (
 )
 
 // backupSubdir is the conventional subdirectory under a file's parent
-// where backups are written, mirroring the auto-memory note "DB
-// backups in .tlc/.dbs/" so backups never sit next to the live file.
+// where backups are written, so backups never sit next to the live
+// file.
 const backupSubdir = ".dbs"
 
 // BackupBeforeMigrate copies srcPath to a timestamped backup under

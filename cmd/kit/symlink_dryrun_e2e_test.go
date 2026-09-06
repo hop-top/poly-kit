@@ -1,7 +1,7 @@
 // symlink_dryrun_e2e_test.go pins the end-to-end contract for
 // `kit symlink --dry-run`: the cobra command runs, the kit-global
 // flag flips the ctx, the FS / symlinker swap to dryrun impls,
-// and no real disk side effects happen (T-0475, ADR-0019).
+// and no real disk side effects happen (ADR-0019).
 //
 //go:build !windows
 

@@ -56,8 +56,8 @@ func TestInit_GitHop(t *testing.T) {
 	assert.NotEmpty(t, entries, "git hop init should populate dir")
 }
 
-// TestInit_GitHopMissing — T-1061: when --hop=true and git-hop is not on
-// PATH, Init must return (skipped=true, nil) rather than an error so the
+// TestInit_GitHopMissing — when --hop=true and git-hop is not on PATH,
+// Init must return (skipped=true, nil) rather than an error so the
 // surrounding flow can proceed best-effort. We simulate "missing git-hop"
 // by clearing PATH for the test; the parent `git` invocation is never
 // reached because the LookPath check short-circuits first.
