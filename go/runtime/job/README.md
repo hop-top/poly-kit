@@ -53,11 +53,11 @@ Verified by `example_test.go` in this directory.
 
 | Package | Storage | External service | Claim semantics |
 |---------|---------|------------------|-----------------|
-| [`mock/`](mock/README.md) | in-memory map | none | priority, then FIFO |
 | [`durabletask/`](durabletask/README.md) | SQLite `jobs` table | none | atomic priority + FIFO, stale-claim release |
-| [`temporal/`](temporal/README.md) | one Temporal workflow per job | Temporal server | signal by ID; queue claim via visibility List |
 | [`hatchet/`](hatchet/README.md) | Hatchet workflow runs | Hatchet server (adapter injects a client) | push-to-pull bridge; local cache when no client |
+| [`mock/`](mock/README.md) | in-memory map | none | priority, then FIFO |
 | [`restate/`](restate/README.md) | Restate virtual object per job | Restate ingress | local cache; ingress wiring pending |
+| [`temporal/`](temporal/README.md) | one Temporal workflow per job | Temporal server | signal by ID; queue claim via visibility List |
 
 ## Contract
 

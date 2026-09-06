@@ -11,8 +11,8 @@ the short entry point; this page carries the full record.
 |------|------|-------|-------|
 | `parity.json` | loaded constants (`status`, `spinner`, `anim`, `help`, `verbosity`, `streams`) | Go, TypeScript, Python | per-port block-registry guards |
 | `scope-defaults.json` | default deny patterns for the scope packages | per-language scope packages | `TestScopeDefaultsContractSync`, `TestScopeDefaultsRegistered` |
-| `serve.json` | serve lifecycle conformance record | Go reference; others `SHIPPED`/`PENDING`/`N/A` | `TestServeContractMatchesGo` |
 | `sdk/tests/cross-lang/fixtures/mcp-wire.json` | MCP wire bytes (18 cases, 1 sequence) | Go, TypeScript, Python, Rust, PHP | `make test-parity-mcp` |
+| `serve.json` | serve lifecycle conformance record | Go reference; others `SHIPPED`/`PENDING`/`N/A` | `TestServeContractMatchesGo` |
 
 ## What belongs in `parity.json`
 

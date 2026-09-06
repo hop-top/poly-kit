@@ -51,13 +51,13 @@ Source of truth: `Mappings()` in `mappings.go`.
 
 | Key | Native flag | Type |
 |---|---|---|
-| `gemini.policy` | `--policy` (repeatable) | comma-list of policy file paths |
 | `gemini.admin_policy` | `--admin-policy` (repeatable) | comma-list |
 | `gemini.allowed_mcp_server_names` | `--allowed-mcp-server-names` (repeatable) | comma-list |
 | `gemini.extensions` | `--extensions` / `-e` (repeatable) | comma-list of extension names |
-| `gemini.skip_trust` | `--skip-trust` | bool (true/1/yes/on) |
+| `gemini.policy` | `--policy` (repeatable) | comma-list of policy file paths |
 | `gemini.raw_output` | `--raw-output --accept-raw-output-risk` | bool — pairs both flags |
 | `gemini.screen_reader` | `--screen-reader` | bool |
+| `gemini.skip_trust` | `--skip-trust` | bool (true/1/yes/on) |
 
 `--allowed-tools` is documented as DEPRECATED in favor of `--policy` — adapter intentionally omits it. Pass via `ExtraArgs` if a caller needs the legacy surface.
 

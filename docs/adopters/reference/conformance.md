@@ -416,12 +416,12 @@ per-adapter mutation classifier (`go/conformance/harness/classifier`):
 
 | Adapter | Default classifier |
 |---------|--------------------|
-| http    | RFC 7231 — `GET/HEAD/OPTIONS` → Read; `POST/PUT/PATCH` → Write; `DELETE` → Destructive |
-| sql     | First verb of normalized query — `SELECT/SHOW/EXPLAIN` → Read; `INSERT/UPDATE/CREATE` → Write; `DELETE/DROP/TRUNCATE` → Destructive |
-| redis   | ~120-entry static table sourced from Redis 7.x docs; subcommand-aware for `CLUSTER`, `MEMORY`, `CLIENT`, `SCRIPT`, `FUNCTION`, `DEBUG`, `CONFIG` |
-| grpc    | Method-name prefix — `Get*/List*/Watch*` → Read; `Create*/Update*/Set*` → Write; `Delete*/Purge*/Reset*` → Destructive |
-| fs      | Op enum — `write/mkdir/chmod` → Write; `remove/rename/truncate` → Destructive (xrr fs adapter is mutations-only by design) |
 | exec    | Conservative default — every call is `Write`. Override via `harness.WithExecClassifier(fn)` |
+| fs      | Op enum — `write/mkdir/chmod` → Write; `remove/rename/truncate` → Destructive (xrr fs adapter is mutations-only by design) |
+| grpc    | Method-name prefix — `Get*/List*/Watch*` → Read; `Create*/Update*/Set*` → Write; `Delete*/Purge*/Reset*` → Destructive |
+| http    | RFC 7231 — `GET/HEAD/OPTIONS` → Read; `POST/PUT/PATCH` → Write; `DELETE` → Destructive |
+| redis   | ~120-entry static table sourced from Redis 7.x docs; subcommand-aware for `CLUSTER`, `MEMORY`, `CLIENT`, `SCRIPT`, `FUNCTION`, `DEBUG`, `CONFIG` |
+| sql     | First verb of normalized query — `SELECT/SHOW/EXPLAIN` → Read; `INSERT/UPDATE/CREATE` → Write; `DELETE/DROP/TRUNCATE` → Destructive |
 
 Overrides:
 

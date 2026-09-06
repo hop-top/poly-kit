@@ -221,11 +221,11 @@ that wires the standard flag suite onto your program.
 
 | Key     | Extensions     | Options                                                                           |
 | ------- | -------------- | --------------------------------------------------------------------------------- |
-| `json`  | `.json`        | `indent` (int, default 2)                                                         |
-| `yaml`  | `.yaml`, `.yml`| `flow-level` (int, default -1)                                                    |
-| `table` | (none)         | (none)                                                                            |
 | `csv`   | `.csv`         | `delimiter` (string), `no-header` (bool), `quote-all` (bool), `crlf` (bool)       |
+| `json`  | `.json`        | `indent` (int, default 2)                                                         |
+| `table` | (none)         | (none)                                                                            |
 | `text`  | `.txt`         | `style` (enum kv\|lines\|paragraph), `separator` (string, kv only)                |
+| `yaml`  | `.yaml`, `.yml`| `flow-level` (int, default -1)                                                    |
 
 ### Wiring into a Commander CLI
 

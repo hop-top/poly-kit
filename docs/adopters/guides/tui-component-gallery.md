@@ -12,15 +12,15 @@ components never hardcode colors.
 
 | Component | Go | TS | Python |
 |-----------|:--:|:--:|:------:|
-| Spinner   | x  |    |        |
-| Progress  | x  |    |        |
-| Badge     | x  |    |        |
-| Pills     | x  |    |        |
-| Status    | x  |    |        |
 | Anim      | x  |    |        |
+| Badge     | x  |    |        |
 | Confirm   | x  |    |        |
-| List      | x  |    |        |
 | Dialog    | x  |    |        |
+| List      | x  |    |        |
+| Pills     | x  |    |        |
+| Progress  | x  |    |        |
+| Spinner   | x  |    |        |
+| Status    | x  |    |        |
 
 TS and Python TUI packages are not yet implemented.
 

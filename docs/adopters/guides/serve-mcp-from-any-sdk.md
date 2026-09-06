@@ -34,10 +34,10 @@ no socket open.
 | Language | Package | Protocol layer | Mount call |
 |---|---|---|---|
 | Go | `hop.top/kit` | `modelcontextprotocol/go-sdk` v1.7.0 | `cmdsurface.MountMCP` |
-| TypeScript | `@hop-top/kit/mcp` | `@modelcontextprotocol/core` + `@modelcontextprotocol/server` 2.0.0 | `createMcpHandler` |
+| PHP | `hop-top/kit` | implemented directly — see below | `new RequestHandler(...)` |
 | Python | `hop-top-kit[mcp]` | `mcp` 2.0.0 + `mcp-types` 2.0.0 | `mount_mcp` |
 | Rust | `hop-top-kit` feature `mcp` | `rmcp` 3.1.4 | `Surface::mount` |
-| PHP | `hop-top/kit` | implemented directly — see below | `new RequestHandler(...)` |
+| TypeScript | `@hop-top/kit/mcp` | `@modelcontextprotocol/core` + `@modelcontextprotocol/server` 2.0.0 | `createMcpHandler` |
 
 ### TypeScript
 

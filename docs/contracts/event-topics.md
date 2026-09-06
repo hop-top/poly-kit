@@ -51,13 +51,13 @@ events, you do not need to override anything.
 
 | Package                      | Default prefix              | Topics |
 |------------------------------|-----------------------------|--------|
-| `runtime/domain.Service[T]`  | `kit.runtime.entity`        | `created`, `updated`, `deleted` |
-| `runtime/domain.StateMachine`| `kit.runtime.state`         | `pre_transitioned`, `post_transitioned` |
-| `ai/llm.Client`              | `kit.ai`                    | `request.started`, `response.received`, `request.errored`, `fallback.applied`, `route.selected`, `eva.evaluated` |
 | `ai/ext/hook.Bus`            | `kit.ext.hook`              | `<action>` (adopter-defined) |
-| `transport/api`              | `kit.api.request`           | `started`, `ended` |
+| `ai/llm.Client`              | `kit.ai`                    | `request.started`, `response.received`, `request.errored`, `fallback.applied`, `route.selected`, `eva.evaluated` |
 | `core/breaker.Breaker`       | `kit.core.breaker`          | `tripped`, `opened`, `closed`, `half_opened` |
 | `core/upgrade.Checker`       | `kit.core.upgrade`          | `released`, `downloaded`, `installed`, `snoozed` |
+| `runtime/domain.Service[T]`  | `kit.runtime.entity`        | `created`, `updated`, `deleted` |
+| `runtime/domain.StateMachine`| `kit.runtime.state`         | `pre_transitioned`, `post_transitioned` |
+| `transport/api`              | `kit.api.request`           | `started`, `ended` |
 
 `core/breaker` and `core/upgrade` are bus-emitting, but they
 require `WithPublisher` to opt in. The other emitters publish

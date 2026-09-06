@@ -40,21 +40,21 @@ Invocation adapter for goose CLI (Block, Inc.).
 
 | Key | Native flag | Type |
 |---|---|---|
-| `goose.provider` | `--provider` | string (override `GOOSE_PROVIDER` env) |
-| `goose.name` | `-n/--name <name>` | session name |
-| `goose.session_id` | `--session-id` | UUID — only emitted if not already set by resume routing |
-| `goose.system` | `--system <text>` | additional system instructions |
-| `goose.max_turns` | `--max-turns` | string-numeric |
-| `goose.max_tool_repetitions` | `--max-tool-repetitions` | string-numeric |
 | `goose.container` | `--container <id>` | container id for sandboxed extension execution |
-| `goose.with_extension` | `--with-extension` (repeatable) | comma-list of `'ENV1=v COMMAND ARGS'` strings |
-| `goose.with_streamable_http_extension` | `--with-streamable-http-extension` (repeatable) | comma-list of URLs |
-| `goose.with_builtin` | `--with-builtin <names>` | comma-separated builtin extension names |
+| `goose.max_tool_repetitions` | `--max-tool-repetitions` | string-numeric |
+| `goose.max_turns` | `--max-turns` | string-numeric |
+| `goose.name` | `-n/--name <name>` | session name |
 | `goose.no_profile` | `--no-profile` | bool — skip default extensions |
 | `goose.no_session` | `--no-session` | bool — execute without creating a session file |
+| `goose.provider` | `--provider` | string (override `GOOSE_PROVIDER` env) |
 | `goose.quiet` | `--quiet` / `-q` | bool — print only model response to stdout |
 | `goose.recipe_params` | `--params KEY=VALUE` (repeatable) | comma-list of `key=value` pairs |
+| `goose.session_id` | `--session-id` | UUID — only emitted if not already set by resume routing |
 | `goose.sub_recipe` | `--sub-recipe` (repeatable) | comma-list of sub-recipe names or paths |
+| `goose.system` | `--system <text>` | additional system instructions |
+| `goose.with_builtin` | `--with-builtin <names>` | comma-separated builtin extension names |
+| `goose.with_extension` | `--with-extension` (repeatable) | comma-list of `'ENV1=v COMMAND ARGS'` strings |
+| `goose.with_streamable_http_extension` | `--with-streamable-http-extension` (repeatable) | comma-list of URLs |
 
 ## Notes
 

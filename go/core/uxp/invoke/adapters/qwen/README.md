@@ -43,22 +43,22 @@ Invocation adapter for Qwen Code CLI (`qwen` binary).
 
 | Key | Native flag | Type |
 |---|---|---|
-| `qwen.system_prompt` | `--system-prompt` | string |
-| `qwen.append_system_prompt` | `--append-system-prompt` | string |
-| `qwen.max_session_turns` | `--max-session-turns` | string-numeric |
-| `qwen.session_id` | `--session-id` | string |
-| `qwen.chat_recording` | `--chat-recording` | bool |
-| `qwen.allowed_tools` | `--allowed-tools` (repeatable) | comma-list |
 | `qwen.allowed_mcp_server_names` | `--allowed-mcp-server-names` (repeatable) | comma-list |
+| `qwen.allowed_tools` | `--allowed-tools` (repeatable) | comma-list |
+| `qwen.append_system_prompt` | `--append-system-prompt` | string |
+| `qwen.auth_type` | `--auth-type` | one of `openai\|anthropic\|qwen-oauth\|gemini\|vertex-ai` |
+| `qwen.bare` | `--bare` | bool — minimal mode, skips startup auto-discovery |
+| `qwen.channel` | `--channel` | one of `VSCode\|ACP\|SDK\|CI` |
+| `qwen.chat_recording` | `--chat-recording` | bool |
 | `qwen.core_tools` | `--core-tools` (repeatable) | comma-list of tool paths |
 | `qwen.exclude_tools` | `--exclude-tools` (repeatable) | comma-list |
 | `qwen.extensions` | `-e/--extensions` (repeatable) | comma-list |
-| `qwen.auth_type` | `--auth-type` | one of `openai\|anthropic\|qwen-oauth\|gemini\|vertex-ai` |
-| `qwen.channel` | `--channel` | one of `VSCode\|ACP\|SDK\|CI` |
+| `qwen.max_session_turns` | `--max-session-turns` | string-numeric |
 | `qwen.openai_api_key` | `--openai-api-key` | string |
 | `qwen.openai_base_url` | `--openai-base-url` | string |
 | `qwen.screen_reader` | `--screen-reader` | bool |
-| `qwen.bare` | `--bare` | bool — minimal mode, skips startup auto-discovery |
+| `qwen.session_id` | `--session-id` | string |
+| `qwen.system_prompt` | `--system-prompt` | string |
 
 ## Notes
 

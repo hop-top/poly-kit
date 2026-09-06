@@ -16,15 +16,15 @@ Backends (registered by blank import, resolved by `secret.Open`): `env`,
 
 | Backend | Config fields | Writes | Pick it when |
 |---------|---------------|--------|--------------|
+| [`agefile`](agefile/README.md) | `Path`, `IdentityFile` | no | one age-encrypted YAML shared with a team |
 | [`env`](env/README.md) | `Prefix` | no | CI and containers export the value |
 | [`file`](file/README.md) | `Dir` | yes | one file per key on disk; add a `Keeper` for encryption |
-| [`agefile`](agefile/README.md) | `Path`, `IdentityFile` | no | one age-encrypted YAML shared with a team |
-| [`keyring`](keyring/README.md) | `Service` (default `kit`) | yes | a developer laptop with an OS keychain |
-| [`onepassword`](onepassword/README.md) | `Vault`, `ConnectURL`, `Token` | yes | the team already lives in 1Password |
 | [`ghsecrets`](ghsecrets/README.md) | `Repo` | write-only | pushing Actions secrets through `gh` |
-| [`openbao`](openbao/README.md) | `Addr`, `Token`, `Mount` (default `secret`) | yes | OpenBao or Vault KV v2 |
 | [`infisical`](infisical/README.md) | `Addr`, `Token`, `Project`, `Env` | yes | Infisical, cloud or self-hosted |
+| [`keyring`](keyring/README.md) | `Service` (default `kit`) | yes | a developer laptop with an OS keychain |
 | [`memory`](memory/README.md) | none | yes | tests |
+| [`onepassword`](onepassword/README.md) | `Vault`, `ConnectURL`, `Token` | yes | the team already lives in 1Password |
+| [`openbao`](openbao/README.md) | `Addr`, `Token`, `Mount` (default `secret`) | yes | OpenBao or Vault KV v2 |
 
 Not backends: [`local`](local/README.md) is the NaCl `Keeper` for `file`;
 [`composite`](composite/README.md) routes keys across several stores and

@@ -54,16 +54,16 @@ Source of truth: `Mappings()` in `mappings.go`. The package-level
 
 | Key | Native flag | Type |
 |---|---|---|
-| `claude.system_prompt` | `--system-prompt` | string |
-| `claude.append_system_prompt` | `--append-system-prompt` | string |
 | `claude.allowed_tools` | `--allowedTools` (repeatable) | comma-list (use `\,` to escape commas in values) |
+| `claude.append_system_prompt` | `--append-system-prompt` | string |
 | `claude.disallowed_tools` | `--disallowedTools` (repeatable) | comma-list |
-| `claude.tools` | `--tools` | string (e.g. `"Bash,Edit,Read"` or `"default"`) |
-| `claude.settings` | `--settings` | path or JSON string |
+| `claude.effort` | `--effort` | one of `low|medium|high|xhigh|max` |
+| `claude.fallback_model` | `--fallback-model` | model name |
 | `claude.max_budget_usd` | `--max-budget-usd` | string-numeric |
 | `claude.session_id` | `--session-id` | UUID |
-| `claude.fallback_model` | `--fallback-model` | model name |
-| `claude.effort` | `--effort` | one of `low|medium|high|xhigh|max` |
+| `claude.settings` | `--settings` | path or JSON string |
+| `claude.system_prompt` | `--system-prompt` | string |
+| `claude.tools` | `--tools` | string (e.g. `"Bash,Edit,Read"` or `"default"`) |
 
 Unknown `claude.*` keys emit an `info` diagnostic. Keys outside the `claude.*` namespace (other than the universal `uxp.*` keys) are silently ignored — that's by design so a single `Config` map can carry settings for multiple adapters.
 
