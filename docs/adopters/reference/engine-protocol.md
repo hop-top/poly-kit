@@ -57,6 +57,7 @@ without `error`.
 | 400    | Bad Request         |
 | 404    | Not Found           |
 | 409    | Conflict            |
+| 412    | Precondition Failed |
 | 500    | Internal Error      |
 
 ---
@@ -187,16 +188,33 @@ PUT /:type/:id
 
 **Response (200):** full document with new `updated_at`.
 
-**404** if the document does not exist. `PUT` returns only 200, 400
-(`invalid type` / `invalid json`) or 404.
+**404** if the document does not exist. `PUT` returns 200, 400
+(`invalid type` / `invalid json`, or a malformed `If-Match`), 404, or
+412 when an `If-Match` guard does not match.
 
-> **No optimistic locking.** The engine has no `ETag`, no `If-Match`,
-> and no version field on the document envelope. The underlying write is
-> `UPDATE documents SET data = ?, updated_at = ? WHERE type = ? AND id = ?`
-> — the `WHERE` matches on identity alone, so concurrent writers
-> silently overwrite each other, last write wins. `PUT` never returns
-> 409. Clients needing conflict detection must implement it above the
-> engine.
+**Optimistic concurrency (optional).**
+
+`GET /:type/:id` returns an `ETag` holding the document's current
+version id. Send it back as `If-Match` to make a write conditional:
+
+- header absent: unconditional write, last writer wins
+- header matches the current version: write applies, response carries
+  the new `ETag`
+- header names any other version: **412**, and nothing is written
+
+Only a single strong entity tag is accepted. `*`, weak tags (`W/"..."`)
+and tag lists are refused with **400** rather than silently treated as
+unconditional, so a client never believes it holds a guard it does not.
+
+**curl (conditional):**
+
+```sh
+etag=$(curl -sI http://localhost:9090/notes/abc | grep -i '^etag:' | cut -d' ' -f2 | tr -d '\r')
+curl -X PUT http://localhost:9090/notes/abc \
+  -H 'Content-Type: application/json' \
+  -H "If-Match: $etag" \
+  -d '{"title":"Updated"}'
+```
 
 **curl:**
 
