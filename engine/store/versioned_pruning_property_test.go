@@ -436,15 +436,16 @@ func formatPruningOps(ops []pruningOp) string {
 // On any divergence, the failure message includes the seed +
 // iteration + op sequence so the failure reproduces.
 func TestVersionedPruning_Property(t *testing.T) {
+	iterations := propertyIterations(t, pruningPropertyIterations)
 	t.Logf("seed=0x%X iterations=%d ops=%d..%d",
-		pruningPropertySeed, pruningPropertyIterations,
+		pruningPropertySeed, iterations,
 		pruningPropertyMinOps, pruningPropertyMaxOps)
 
 	rng := rand.New(rand.NewSource(pruningPropertySeed))
 
 	totals := pruningOpsStats{}
 
-	for iter := 0; iter < pruningPropertyIterations; iter++ {
+	for iter := 0; iter < iterations; iter++ {
 		iter := iter
 		n := pruningPropertyMinOps + rng.Intn(pruningPropertyMaxOps-pruningPropertyMinOps+1)
 		ops, stats := generatePruningOps(rng, n)
@@ -608,16 +609,16 @@ func TestVersionedPruning_Property(t *testing.T) {
 	// op weights need tuning).
 	total := totals.update + totals.fork + totals.merge + totals.revert + totals.abandon + totals.prune
 	t.Logf("op mix over %d iterations (total %d ops): update=%d fork=%d merge=%d revert=%d abandon=%d prune=%d",
-		pruningPropertyIterations, total,
+		iterations, total,
 		totals.update, totals.fork, totals.merge, totals.revert, totals.abandon, totals.prune,
 	)
 	require.Greaterf(t, totals.abandon, 0,
 		"abandon op never exercised across %d iterations — generator regression",
-		pruningPropertyIterations,
+		iterations,
 	)
 	require.Greaterf(t, totals.prune, 0,
 		"prune op never exercised across %d iterations — generator regression",
-		pruningPropertyIterations,
+		iterations,
 	)
 }
 

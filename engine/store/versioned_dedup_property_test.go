@@ -289,15 +289,16 @@ func formatDedupOps(ops []dedupOp) string {
 // On any divergence, the failure message includes the seed +
 // iteration number + op sequence so the failure reproduces.
 func TestVersionedDedup_Property(t *testing.T) {
+	iterations := propertyIterations(t, dedupPropertyIterations)
 	t.Logf("seed=0x%X iterations=%d ops=%d..%d",
-		dedupPropertySeed, dedupPropertyIterations,
+		dedupPropertySeed, iterations,
 		dedupPropertyMinOps, dedupPropertyMaxOps)
 
 	rng := rand.New(rand.NewSource(dedupPropertySeed))
 
 	totals := dedupOpsStats{}
 
-	for iter := 0; iter < dedupPropertyIterations; iter++ {
+	for iter := 0; iter < iterations; iter++ {
 		iter := iter
 		n := dedupPropertyMinOps + rng.Intn(dedupPropertyMaxOps-dedupPropertyMinOps+1)
 		ops, stats := generateDedupOps(rng, n)
@@ -384,14 +385,14 @@ func TestVersionedDedup_Property(t *testing.T) {
 
 	// Surface the empirical op mix — confirms the dup-update path
 	// was actually exercised. Total ops varies per run within the
-	// 5..30 inclusive range × dedupPropertyIterations iterations.
+	// 5..30 inclusive range × iterations.
 	total := totals.update + totals.fork + totals.merge + totals.revert + totals.dupUpdate
 	t.Logf("op mix over %d iterations (total %d ops): update=%d fork=%d merge=%d revert=%d dup-update=%d",
-		dedupPropertyIterations, total,
+		iterations, total,
 		totals.update, totals.fork, totals.merge, totals.revert, totals.dupUpdate,
 	)
 	require.Greaterf(t, totals.dupUpdate, 0,
 		"dup-update op never exercised across %d iterations — generator regression",
-		dedupPropertyIterations,
+		iterations,
 	)
 }

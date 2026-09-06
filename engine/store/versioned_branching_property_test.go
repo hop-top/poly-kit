@@ -250,13 +250,14 @@ func generateBranchingOps(rng *rand.Rand, n int) []branchingOp {
 // iteration number + op sequence so the failure reproduces. We
 // surface the seed at the top of the test log too.
 func TestVersionedBranching_Property(t *testing.T) {
+	iterations := propertyIterations(t, branchingPropertyIterations)
 	t.Logf("seed=0x%X iterations=%d ops=%d..%d",
-		branchingPropertySeed, branchingPropertyIterations,
+		branchingPropertySeed, iterations,
 		branchingPropertyMinOps, branchingPropertyMaxOps)
 
 	rng := rand.New(rand.NewSource(branchingPropertySeed))
 
-	for iter := 0; iter < branchingPropertyIterations; iter++ {
+	for iter := 0; iter < iterations; iter++ {
 		iter := iter
 		n := branchingPropertyMinOps + rng.Intn(branchingPropertyMaxOps-branchingPropertyMinOps+1)
 		ops := generateBranchingOps(rng, n)
