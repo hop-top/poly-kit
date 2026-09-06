@@ -424,7 +424,7 @@ refresh-secret-rules: ## Re-vendor gitleaks rules from latest tagged release
 	@echo "Fetching latest gitleaks release tag..."
 	@gh release view --repo gitleaks/gitleaks --json tagName -q .tagName > /tmp/gitleaks-tag
 	@echo "Tag: $$(cat /tmp/gitleaks-tag)"
-	@go run ./tools/vendor-gitleaks \
+	@go run ./internal/tools/vendor-gitleaks \
 		--tag $$(cat /tmp/gitleaks-tag) \
 		--out go/core/scope/rules/
 	@echo "Done. Review diff, run tests, commit."
@@ -433,7 +433,7 @@ refresh-pii-rules: ## Re-vendor Presidio PII rules from latest tagged release
 	@echo "Fetching latest Presidio release tag..."
 	@gh release view --repo microsoft/presidio --json tagName -q .tagName > /tmp/presidio-tag
 	@echo "Tag: $$(cat /tmp/presidio-tag)"
-	@go run ./tools/vendor-presidio \
+	@go run ./internal/tools/vendor-presidio \
 		--tag $$(cat /tmp/presidio-tag) \
 		--out go/core/redact/rules/
 	@echo "Done. Review diff, run tests, commit."

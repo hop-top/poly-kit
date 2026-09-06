@@ -1,4 +1,4 @@
-# tools/
+# internal tools
 
 Build-time generators. Not part of the kit binary, not published.
 
@@ -22,7 +22,7 @@ Refresh both at once: `make refresh-rules`.
   re-tagging upstream cannot silently change content.
 - **Self-documenting.** Each generator's package comment in
   `main.go` is the authoritative usage reference; `go doc
-  ./tools/<name>` prints it.
+  ./internal/tools/<name>` prints it.
 
 ## When to add a new tool here
 
@@ -31,7 +31,7 @@ Use this directory when:
 - The output is a vendored third-party artefact (rules,
   schemas, fixtures) embedded into kit at build time.
 - It needs provenance tracking (tag, SHA, license, attribution).
-- It runs from `go run ./tools/<name>` and is invoked from a
+- It runs from `go run ./internal/tools/<name>` and is invoked from a
   `make refresh-*` target, not from the runtime binary.
 
 For ad-hoc scripts or one-off generators, prefer `scripts/`.

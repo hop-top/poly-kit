@@ -18,5 +18,5 @@
 make refresh-secret-rules
 ```
 
-The Makefile target re-runs `tools/vendor-gitleaks` against the latest
+The Makefile target re-runs `internal/tools/vendor-gitleaks` against the latest
 tagged release. Same tag → byte-identical output.
