@@ -303,7 +303,7 @@ fn contract_entry_schema() {
     );
     assert_eq!(
         c.framing_headers.strip,
-        ["Content-Length", "Transfer-Encoding", "Connection"],
+        ["Connection", "Content-Length", "Transfer-Encoding"],
         "framing strip list"
     );
     assert!(c.framing_headers.strip_is_case_insensitive);
