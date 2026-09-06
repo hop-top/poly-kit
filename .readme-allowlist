@@ -39,8 +39,6 @@ go/integrations/repohost/gitlab      # go/integrations/README.md documents the S
 go/tools/provenancelint              # go/tools/README.md documents the analyzer and its driver
 go/transport/api/client              # client half of go/transport/api, documented there
 go/transport/rpc/client              # client half of go/transport/rpc, documented there
-tools/vendor-gitleaks                # tools/README.md table plus the main.go package comment are the reference
-tools/vendor-presidio                # tools/README.md table plus the main.go package comment are the reference
 sdk/experimental/rs/examples         # crate examples, documented by sdk/experimental/rs/README.md
 
 # Test doubles

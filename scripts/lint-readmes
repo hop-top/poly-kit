@@ -26,7 +26,6 @@
 #   - template root:  templates/<name> without a scaffold-time README
 #   - contract set:   contracts/**/ holding files directly
 #   - docs section:   docs/**/ holding .md files directly
-#   - standalone tool: tools/<name>
 #   - index: any walked directory with a qualifying directory below it
 #
 # Excluded directories are data, not conditions: edit the lists below.
@@ -216,8 +215,6 @@ qualifies() {
   in_payload "$dir" && return 1
   case "$dir" in
     templates/*)   has_scaffolded_readme "$dir" && return 1; return 0 ;;
-    tools/*/*) ;;
-    tools/*)       return 0 ;;
     contracts/*)   has_direct_file "$dir" '*' && return 0 ;;
     docs/*)        has_direct_file "$dir" '*.md' && return 0 ;;
   esac

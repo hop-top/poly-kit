@@ -9,7 +9,6 @@ screen, what it is for and where to start. Two shapes, one lint
 A directory qualifies when any of these holds:
 
 - it holds non-test source files directly (`.go`, `.ts`, `.py`, `.php`, `.rs`)
-- it is a standalone tool: `tools/<name>`
 - it is a template root: `templates/<name>` (unless it carries `README.md.tmpl`,
   which is rendered for the adopter at scaffold time)
 - it is a contract set: a directory under `contracts/` holding files directly

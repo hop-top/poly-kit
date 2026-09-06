@@ -16,7 +16,7 @@
 make refresh-pii-rules
 ```
 
-The Makefile target re-runs `tools/vendor-presidio` against the latest
+The Makefile target re-runs `internal/tools/vendor-presidio` against the latest
 tagged release. Same tag → byte-identical output (idempotent). See
 `go/core/redact/README.md` "Maintaining PII rules" for vetting guidance.
 

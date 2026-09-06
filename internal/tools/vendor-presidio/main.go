@@ -23,7 +23,7 @@
 //
 // Usage:
 //
-//	go run ./tools/vendor-presidio --tag 2.2.355 --out go/core/redact/rules/
+//	go run ./internal/tools/vendor-presidio --tag 2.2.355 --out go/core/redact/rules/
 package main
 
 import (
