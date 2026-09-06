@@ -2,6 +2,7 @@ package version
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -149,7 +150,10 @@ func (d *DAG) Children(id string) []string {
 	return out
 }
 
-// Heads returns all version IDs that have no children (tips of branches).
+// Heads returns all version IDs that have no children (tips of branches),
+// sorted by ID. The order is part of the contract: the underlying map
+// iterates in a random order, so callers that compare, log or serialize
+// the result need a stable sequence.
 func (d *DAG) Heads() []string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -160,6 +164,7 @@ func (d *DAG) Heads() []string {
 			heads = append(heads, id)
 		}
 	}
+	sort.Strings(heads)
 	return heads
 }
 
