@@ -24,16 +24,16 @@ name: dogfood-grade
 on:
   pull_request:
     paths:
+      - '.github/workflows/dogfood-grade.yml'
+      - 'cmd/**'
       - 'examples/spaced/**'
       - 'go/**'
-      - 'cmd/**'
-      - '.github/workflows/dogfood-grade.yml'
   push:
     branches: [main]
     paths:
+      - 'cmd/**'
       - 'examples/spaced/**'
       - 'go/**'
-      - 'cmd/**'
 
 permissions:
   contents: read

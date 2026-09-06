@@ -34,7 +34,7 @@
     "field_order": "Emit status, headers, body in that order so envelopes are byte-comparable across ports. Serializers that emit struct fields in declaration order do this for free; ones that sort keys alphabetically will produce body, headers, status and fail byte-exact comparison while remaining semantically valid."
   },
   "framing_headers": {
-    "strip": ["Content-Length", "Transfer-Encoding", "Connection"],
+    "strip": ["Connection", "Content-Length", "Transfer-Encoding"],
     "note": "These describe the wire framing of the ORIGINAL transfer, not the cached payload. The transport has already dechunked the body, so the stored bytes are authoritative for length. Carrying them into a reconstructed response produces states the HTTP spec forbids (for example a chunked Transfer-Encoding alongside an explicit content length).",
     "strip_at": "encode — the stored envelope never contains them",
     "strip_is_case_insensitive": true,

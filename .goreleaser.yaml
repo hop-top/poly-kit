@@ -8,8 +8,8 @@ builds:
     env:
       - CGO_ENABLED=0
     goos:
-      - linux
       - darwin
+      - linux
       - windows
     goarch:
       - amd64
@@ -33,9 +33,9 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
       - '^chore:'
       - '^ci:'
+      - '^docs:'
       - '^test:'
 
 release:

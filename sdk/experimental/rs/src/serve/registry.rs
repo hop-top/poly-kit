@@ -22,7 +22,7 @@ pub const NAME_PATTERN: &str = "^[a-z][a-z0-9-]*$";
 /// Names reserved for selector vocabulary. Registering one would make
 /// `serve <name>` ambiguous with an aggregate form, and is why the
 /// inspection form is a `--list` flag rather than a `serve list` child.
-pub const RESERVED_NAMES: &[&str] = &["all", "none", "list"];
+pub const RESERVED_NAMES: &[&str] = &["all", "list", "none"];
 
 /// Reports whether `name` is one of the reserved selector words.
 pub fn is_reserved_name(name: &str) -> bool {

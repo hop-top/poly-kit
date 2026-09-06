@@ -46,7 +46,7 @@ class TestLoadToolspec:
         assert launch.intent is not None
         assert launch.intent.domain == "space"
         assert launch.intent.category == "operations"
-        assert launch.intent.tags == ["mission", "launch"]
+        assert launch.intent.tags == ["launch", "mission"]
 
     def test_launch_contract(self):
         spec = load_toolspec(EXAMPLE_PATH)

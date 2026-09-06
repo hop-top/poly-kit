@@ -9,8 +9,8 @@
 # would also gate the scaffold changelogs under templates/ and
 # internal/template/, which release-please never writes.
 /CHANGELOG.md                     @hop-top/release
-/sdk/ts/CHANGELOG.md              @hop-top/release
-/sdk/py/CHANGELOG.md              @hop-top/release
-/sdk/experimental/rs/CHANGELOG.md @hop-top/release
-/sdk/experimental/php/CHANGELOG.md @hop-top/release
 /incubator/qmochi/CHANGELOG.md    @hop-top/release
+/sdk/experimental/php/CHANGELOG.md @hop-top/release
+/sdk/experimental/rs/CHANGELOG.md @hop-top/release
+/sdk/py/CHANGELOG.md              @hop-top/release
+/sdk/ts/CHANGELOG.md              @hop-top/release

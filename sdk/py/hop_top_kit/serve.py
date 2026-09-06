@@ -108,7 +108,7 @@ value at once, which is why the grammar is contract rather than a local
 convention.
 """
 
-RESERVED_NAMES: tuple[str, ...] = ("all", "none", "list")
+RESERVED_NAMES: tuple[str, ...] = ("all", "list", "none")
 """Names reserved for selector vocabulary.
 
 Registering one would make ``serve <name>`` ambiguous with a future

@@ -33,10 +33,10 @@ jobs:
         template:
           - name: cli-template-go
             repo: hop-top/cli-template-go
-          - name: cli-template-ts
-            repo: hop-top/cli-template-ts
           - name: cli-template-py
             repo: hop-top/cli-template-py
+          - name: cli-template-ts
+            repo: hop-top/cli-template-ts
     steps:
       - uses: actions/checkout@v7
         with:

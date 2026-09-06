@@ -29,7 +29,7 @@ type entry struct {
 // Transfer-Encoding alongside an explicit ContentLength, which the HTTP
 // spec forbids), so they are dropped at encode time. decodeEntry sets
 // ContentLength from the stored bytes.
-var framingHeaders = []string{"Content-Length", "Transfer-Encoding", "Connection"}
+var framingHeaders = []string{"Connection", "Content-Length", "Transfer-Encoding"}
 
 // encodeEntry serializes resp into the JSON envelope. It drains
 // resp.Body and refills it with a replayable buffer so the response

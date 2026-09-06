@@ -5,7 +5,7 @@
   "title": "kit story v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "story_id", "title", "intent", "binary", "steps"],
+  "required": ["binary", "intent", "schema_version", "steps", "story_id", "title"],
   "properties": {
     "schema_version": {
       "type": "string",
@@ -86,7 +86,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["exit_code", "stdout", "stderr", "duration_ms"]
+              "enum": ["duration_ms", "exit_code", "stderr", "stdout"]
             }
           }
         }

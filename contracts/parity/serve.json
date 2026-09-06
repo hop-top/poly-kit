@@ -15,7 +15,7 @@
     "description": "Values a conforming port MUST reproduce exactly. Unlike the per-language status table below, these do not vary by port.",
 
     "name_pattern": "^[a-z][a-z0-9-]*$",
-    "reserved_names": ["all", "none", "list"],
+    "reserved_names": ["all", "list", "none"],
 
     "topics": {
       "prefix": "kit.serve",
@@ -76,15 +76,15 @@
   "not_required": {
     "description": "Go-only affordances. A port is not non-conformant for lacking these; see the contract section 'Explicitly not required' for the reasoning on each.",
     "items": [
+      "cmdreflect_discovery",
+      "dependency_ordering_and_cycle_panic",
+      "execution_runner_contract",
+      "nearest_name_suggestion",
+      "permission_gate_provenance_audit",
       "rest_projection",
       "socket_service_and_transportsvc",
-      "cmdreflect_discovery",
-      "permission_gate_provenance_audit",
-      "execution_runner_contract",
       "toolspec_policy_table",
-      "withapi_compatibility",
-      "nearest_name_suggestion",
-      "dependency_ordering_and_cycle_panic"
+      "withapi_compatibility"
     ]
   },
 
