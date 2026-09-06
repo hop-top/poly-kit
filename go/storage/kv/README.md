@@ -16,9 +16,9 @@ streamed objects (`go/storage/blob`) or credentials (`go/storage/secret`).
 
 | Backend | Import path | Config fields | TTL | Pick it when |
 |---------|-------------|---------------|-----|--------------|
-| [`sqlite`](sqlite/README.md) | `hop.top/kit/go/storage/kv/sqlite` | `Path` (file) | yes | default; one file, cross-language readable |
 | [`badger`](badger/README.md) | `hop.top/kit/go/storage/kv/badger` | `Path` (dir) | yes | high write throughput, Go-only readers |
 | [`etcd`](etcd/README.md) | `hop.top/kit/go/storage/kv/etcd` | `Endpoints`, `Prefix` | no | coordination data on an existing cluster |
+| [`sqlite`](sqlite/README.md) | `hop.top/kit/go/storage/kv/sqlite` | `Path` (file) | yes | default; one file, cross-language readable |
 | [`tidb`](tidb/README.md) | `hop.top/kit/go/storage/kv/tidb` | `DSN`, `Table` (default `kv`) | no | MySQL-compatible server already provisioned |
 
 [`registry/`](registry/README.md) holds the test proving what `Open` says

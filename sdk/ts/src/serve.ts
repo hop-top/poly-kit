@@ -74,7 +74,7 @@ export const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
  * `serve <name>` ambiguous with a future aggregate form, and is why
  * `--list` is a flag rather than a `serve list` child.
  */
-export const RESERVED_NAMES: readonly string[] = ['all', 'none', 'list'];
+export const RESERVED_NAMES: readonly string[] = ['all', 'list', 'none'];
 
 /** Reports whether `name` is one of the reserved selector words. */
 export function isReservedName(name: string): boolean {

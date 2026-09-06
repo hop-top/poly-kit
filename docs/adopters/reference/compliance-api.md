@@ -124,7 +124,7 @@ left to fix:
 | Sub-condition | Fix |
 |---------------|-----|
 | `categories is empty` | Add `telemetry.categories` |
-| `consent_subcommands missing required entries` | Declare all of `status, enable, disable, reset, inspect` |
+| `consent_subcommands missing required entries` | Declare all of `disable, enable, inspect, reset, status` |
 | `kill_switch_envs missing DO_NOT_TRACK` | Add `DO_NOT_TRACK` to `telemetry.kill_switch_envs` |
 | `missing a <APP>_TELEMETRY_MODE entry` | Add e.g. `MYTOOL_TELEMETRY_MODE` |
 | `prompt_version is empty` | Set `telemetry.prompt_version` (the field name is fixed — `consent_version` is not read) |
@@ -184,7 +184,7 @@ toolspec sets `telemetry.enabled: true`.
 F13 is skipped, and drops out of `total`, unless the toolspec sets
 `telemetry.enabled: true`. Once opted in it checks seven conditions
 in one row: non-empty `categories`; `consent_subcommands` covering
-`status`, `enable`, `disable`, `reset` and `inspect`, each mapping
+`disable`, `enable`, `inspect`, `reset` and `status`, each mapping
 to a real command in the tree; `kill_switch_envs` holding
 `DO_NOT_TRACK` plus one `<APP>_TELEMETRY_MODE` entry; non-empty
 `prompt_version` (that exact field name — aliases are dropped at

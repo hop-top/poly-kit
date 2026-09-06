@@ -8,8 +8,8 @@ package compliance
 //
 //	A. Subcommand availability — for each canonical consent
 //	   subcommand declared in spec.Telemetry.ConsentSubcommands and
-//	   present in the canonical set {status, enable, disable, reset,
-//	   inspect}, run `<bin> telemetry <sub> --format json`. Require
+//	   present in the canonical set {disable, enable, inspect, reset,
+//	   status}, run `<bin> telemetry <sub> --format json`. Require
 //	   exit 0 and json.Valid(stdout). For `inspect` specifically,
 //	   require the top-level JSON value is an object or array (not
 //	   a primitive like `true`, `null`, or `123`).

@@ -23,10 +23,10 @@ final class Builtins
 {
     public static function register(Registry $r): void
     {
-        $r->register(new TableFormatter());
-        $r->register(new JsonFormatter());
-        $r->register(new YamlFormatter());
         $r->register(new CsvFormatter());
+        $r->register(new JsonFormatter());
+        $r->register(new TableFormatter());
         $r->register(new TextFormatter());
+        $r->register(new YamlFormatter());
     }
 }

@@ -24,7 +24,7 @@ final class Names
      *
      * @var list<string>
      */
-    public const array RESERVED = ['all', 'none', 'list'];
+    public const array RESERVED = ['all', 'list', 'none'];
 
     /** Reports whether $name is one of the reserved selector words. */
     public static function isReserved(string $name): bool

@@ -72,7 +72,7 @@ final class ResolverTest extends TestCase
 
     public function testReservesExactlyAllNoneAndList(): void
     {
-        $this->assertSame(['all', 'none', 'list'], Names::RESERVED);
+        $this->assertSame(['all', 'list', 'none'], Names::RESERVED);
         foreach (['all', 'none', 'list'] as $n) {
             $this->assertTrue(Names::isReserved($n));
             $this->assertNotNull(Names::validate($n), "{$n} must not be registrable");

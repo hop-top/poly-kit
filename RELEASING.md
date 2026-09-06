@@ -186,10 +186,10 @@ Promoting `next` to stable is the `next → main` merge described in
 | Component | Path | Type | Prerelease channel (`next`) |
 |-----------|------|------|------------------------------|
 | kit | `.` | Go | alpha → beta → rc |
-| kit-ts | `sdk/ts` | Node | alpha → beta → rc |
+| kit-php | `sdk/experimental/php` | PHP | experimental |
 | kit-py | `sdk/py` | Python | alpha → beta → rc |
 | kit-rs | `sdk/experimental/rs` | Rust | experimental |
-| kit-php | `sdk/experimental/php` | PHP | experimental |
+| kit-ts | `sdk/ts` | Node | alpha → beta → rc |
 | qmochi | `incubator/qmochi` | Go | alpha → beta → rc |
 
 `kit`, `kit-ts`, `kit-py`, `kit-rs`, and `kit-php` share a linked version.

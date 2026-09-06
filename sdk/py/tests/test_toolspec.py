@@ -31,8 +31,8 @@ class TestLoadToolspec:
         assert si.config_commands == ["spaced config show"]
         assert si.env_vars == [
             "SPACED_FORMAT",
-            "SPACED_LOG_LEVEL",
             "SPACED_LOG_FORMAT",
+            "SPACED_LOG_LEVEL",
         ]
 
     def test_commands_loaded(self):
@@ -46,7 +46,7 @@ class TestLoadToolspec:
         assert launch.intent is not None
         assert launch.intent.domain == "space"
         assert launch.intent.category == "operations"
-        assert launch.intent.tags == ["mission", "launch"]
+        assert launch.intent.tags == ["launch", "mission"]
 
     def test_launch_contract(self):
         spec = load_toolspec(EXAMPLE_PATH)

@@ -238,11 +238,11 @@ $ mycli list --format-help        # catalog of registered formats
 
 | Key     | Extensions     | Options                                                            |
 |---------|----------------|--------------------------------------------------------------------|
-| `json`  | `.json`        | `indent` (int, default 2; `0` -> compact)                          |
-| `yaml`  | `.yaml`,`.yml` | `default-flow-style` (bool, default false)                         |
-| `table` | (none)         | none                                                               |
 | `csv`   | `.csv`         | `delimiter`, `no-header`, `quote-all`, `crlf`                      |
+| `json`  | `.json`        | `indent` (int, default 2; `0` -> compact)                          |
+| `table` | (none)         | none                                                               |
 | `text`  | `.txt`         | `style` (`kv` / `lines` / `paragraph`), `separator` (kv only)      |
+| `yaml`  | `.yaml`,`.yml` | `default-flow-style` (bool, default false)                         |
 
 Discover at runtime:
 

@@ -10,12 +10,12 @@
         "documents": {
           "description": "Type-tagged JSON documents. (type, id) is the primary key. data is opaque JSON; the engine does not parse it.",
           "facets": ["type"],
-          "sortable_columns": ["created_at", "updated_at", "type", "id"]
+          "sortable_columns": ["created_at", "id", "type", "updated_at"]
         },
         "versions": {
           "description": "Persistent version DAG. seq is monotonic per (type, id); version_id is unique. See engine-versioned-sqlite spec.",
           "facets": ["type"],
-          "sortable_columns": ["created_at", "seq", "type", "id"]
+          "sortable_columns": ["created_at", "id", "seq", "type"]
         },
         "version_parents": {
           "description": "Parent edges in the version DAG. Schema supports branching even though VersionedDocumentStore appends linearly today."
@@ -63,12 +63,12 @@
             "patterns": [
               "api_key",
               "apikey",
-              "secret",
+              "credit_card",
               "password",
-              "token",
               "private_key",
+              "secret",
               "ssn",
-              "credit_card"
+              "token"
             ],
             "replacement": "[redacted]"
           }
@@ -78,12 +78,12 @@
             "patterns": [
               "api_key",
               "apikey",
-              "secret",
+              "credit_card",
               "password",
-              "token",
               "private_key",
+              "secret",
               "ssn",
-              "credit_card"
+              "token"
             ],
             "replacement": "[redacted]"
           }

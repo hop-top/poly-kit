@@ -30,16 +30,16 @@ Set `MYAPP_DB_PASSWORD=hunter2` in your shell; done.
 
 | Backend     | Package              | Use when                                                  |
 |-------------|----------------------|-----------------------------------------------------------|
+| agefile     | `secret/agefile`     | age-encrypted YAML; multi-recipient, hardware/SSH keys    |
+| composite   | `secret/composite`   | Routing keys across multiple backends (see below)         |
 | env         | `secret/env`         | Local dev, CI, 12-factor apps                             |
 | file        | `secret/file`        | Encrypted files, SOPS-style (NaCl secretbox via Keeper)   |
-| agefile     | `secret/agefile`     | age-encrypted YAML; multi-recipient, hardware/SSH keys    |
-| keyring     | `secret/keyring`     | Desktop apps, CLI tools                                   |
-| onepassword | `secret/onepassword` | 1Password vaults via op CLI or Connect API                |
 | ghsecrets   | `secret/ghsecrets`   | GitHub Actions repository secrets via gh CLI              |
-| openbao     | `secret/openbao`     | Production, team secrets                                  |
 | infisical   | `secret/infisical`   | Cloud-native, SaaS teams                                  |
+| keyring     | `secret/keyring`     | Desktop apps, CLI tools                                   |
 | memory      | `secret/memory`      | Testing                                                   |
-| composite   | `secret/composite`   | Routing keys across multiple backends (see below)         |
+| onepassword | `secret/onepassword` | 1Password vaults via op CLI or Connect API                |
+| openbao     | `secret/openbao`     | Production, team secrets                                  |
 
 ### env
 

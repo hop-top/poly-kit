@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 /// so the stored bytes are authoritative for length. Carrying these into a
 /// reconstructed response produces states HTTP forbids, such as a chunked
 /// `Transfer-Encoding` beside an explicit content length.
-pub(super) const FRAMING_HEADERS: [&str; 3] = ["Content-Length", "Transfer-Encoding", "Connection"];
+pub(super) const FRAMING_HEADERS: [&str; 3] = ["Connection", "Content-Length", "Transfer-Encoding"];
 
 /// Reports whether `name` is a framing header, ignoring case.
 pub(super) fn is_framing_header(name: &str) -> bool {

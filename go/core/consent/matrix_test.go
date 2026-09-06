@@ -6,7 +6,7 @@
 //   - resolve_test.go: precedence chain in isolation (pure resolver)
 //   - hook_test.go:    Store -> ConsentHook adapter
 //   - prompt_test.go (CLI): first-run prompt branches
-//   - status / enable / disable / reset / inspect _test.go (CLI): per-
+//   - disable / enable / inspect / reset / status _test.go (CLI): per-
 //     subcommand bodies
 //
 // What's missing from those is the COMBINATION: does the resolver

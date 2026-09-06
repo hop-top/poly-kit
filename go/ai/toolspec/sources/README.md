@@ -8,11 +8,11 @@ come from, and how far can a harness trust it".
 
 | Path | What it is | Start here when |
 |------|------------|-----------------|
-| [`help/`](help/README.md) | runs `<tool> --help`, parses sections; trust: medium, executes the tool | you need commands and flags for a binary on PATH |
 | [`completion/`](completion/README.md) | static parse of bash or zsh completion scripts; trust: medium, no exec | you have the completion script but not the binary |
-| [`tldr/`](tldr/README.md) | static parse of tldr-pages markdown into workflows; trust: medium, community content | you want example workflows for a well-known tool |
-| [`thefuck/`](thefuck/README.md) | static parse of thefuck Python rules into error patterns; trust: medium, heuristic | you want error-to-fix mappings without running anything |
+| [`help/`](help/README.md) | runs `<tool> --help`, parses sections; trust: medium, executes the tool | you need commands and flags for a binary on PATH |
 | [`llm/`](llm/README.md) | asks an LLM for commands, error patterns, workflows; trust: low, generated | nothing else covers the tool and a `llm.Completer` is wired |
+| [`thefuck/`](thefuck/README.md) | static parse of thefuck Python rules into error patterns; trust: medium, heuristic | you want error-to-fix mappings without running anything |
+| [`tldr/`](tldr/README.md) | static parse of tldr-pages markdown into workflows; trust: medium, community content | you want example workflows for a well-known tool |
 | [`usp/`](usp/README.md) | learns workflows from the operator's own agent sessions; trust: medium, local data | you want workflows that reflect how this operator actually uses the tool |
 
 ## Conventions

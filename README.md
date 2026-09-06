@@ -49,7 +49,7 @@ benchmarks — not flag parsers and output renderers.
   contract (Go / py / ts / rs / php). Adopters wire one
   [`go/runtime/telemetry`](go/runtime/telemetry/) emitter; users
   control consent via
-  [`kit telemetry status|enable|disable|reset|inspect`](docs/adopters/guides/telemetry.md).
+  [`kit telemetry disable|enable|inspect|reset|status`](docs/adopters/guides/telemetry.md).
 - **Engine.** Typed-JSON document store with versioning DAG;
   in-memory and SQLite backends.
 - **Storage abstractions.** Secret (10 backends), KV (4), blob (2).

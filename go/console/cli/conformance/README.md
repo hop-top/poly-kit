@@ -17,11 +17,11 @@ export.
 
 | Path | What it is | Start here when |
 |------|------------|-----------------|
+| `badge/` | `kit conformance badge` leaf: shields.io endpoint JSON | seeding or regenerating `.12fc.json` |
 | `grade/` | `kit conformance grade` leaf: uploads a cassette, prints the verdict | wiring CI grading or PR comments |
-| `svc/` | `kit conformance svc {serve,token}` operator tree | running the grading service |
 | `harness/` | group directory, no Go source; holds `record` | never directly |
 | `harness/record/` | `kit conformance harness record` leaf: scenario plus binary to cassette | producing input for `grade` |
-| `badge/` | `kit conformance badge` leaf: shields.io endpoint JSON | seeding or regenerating `.12fc.json` |
+| `svc/` | `kit conformance svc {serve,token}` operator tree | running the grading service |
 
 ## Quick start
 

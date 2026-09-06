@@ -60,7 +60,7 @@ have both a static arm (the toolspec must declare X) and a runtime arm
 ### b. Consent subcommands declared + mapped
 
 - **Static**: `consent_subcommands` lists exactly
-  `{status, enable, disable, reset, inspect}`. Each name resolves to a
+  `{disable, enable, inspect, reset, status}`. Each name resolves to a
   command in the binary's cobra tree under `consent_command`.
 - **Runtime**: each subcommand exits 0 and emits structured output.
 - **Common failures**: missing `inspect` (the audit subcommand), or a
@@ -68,7 +68,7 @@ have both a static arm (the toolspec must declare X) and a runtime arm
 - **Fix**: register the five subcommands under your `consent_command`
   root and back them with `kit/go/core/consent.Store`. kit does not
   ship a one-call registrar; the canonical set is
-  `{status, enable, disable, reset, inspect}`, locked in
+  `{disable, enable, inspect, reset, status}`, locked in
   `telemetryConsentSubcommandsCanonical`.
 
 ### c. `DO_NOT_TRACK=1` suppresses emission
@@ -154,7 +154,7 @@ telemetry:
   categories: [invocation, error]
   sinks: [bus, jsonl]
   consent_command: "<bin> telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, MYAPP_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -168,7 +168,7 @@ Field-by-field semantics:
 | `categories` | Event classes the emitter can publish. Compliance accepts any non-empty list. | `[invocation, error]` |
 | `sinks` | Where events flow. `bus` = in-process pub/sub; `jsonl` = on-disk spool. | `[bus, jsonl]` |
 | `consent_command` | Root verb for the five consent subcommands. | `"<bin> telemetry"` |
-| `consent_subcommands` | Must be exactly these five names. | `[status, enable, disable, reset, inspect]` |
+| `consent_subcommands` | Must be exactly these five names. | `[disable, enable, inspect, reset, status]` |
 | `kill_switch_envs` | Must include `DO_NOT_TRACK` AND at least one mode env. | `[DO_NOT_TRACK, MYAPP_TELEMETRY_MODE]` |
 | `prompt_version` | Locked field name. Bumped only when collection changes materially. | `"v1"` |
 | `redact_rules` | `kit-default` or a path to a custom ruleset. | `kit-default` |

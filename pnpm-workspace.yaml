@@ -1,7 +1,7 @@
 packages:
-  - sdk/ts
-  - examples/spaced/ts
   - engine/sdk/ts-kit-engine
+  - examples/spaced/ts
+  - sdk/ts
 # pnpm 11 strictDepBuilds: deps with install scripts must be explicitly
 # allowed (true) or denied (false). Without an entry, pnpm install exits 1.
 # See dotgithub SKILL.md "pnpm 11 strictDepBuilds blocks install on

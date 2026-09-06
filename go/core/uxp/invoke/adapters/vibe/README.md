@@ -57,9 +57,9 @@ This makes `Invocation.Agent` and `Invocation.Approval` mutually exclusive on vi
 
 | Key | Native flag | Type |
 |---|---|---|
-| `vibe.max_turns` | `--max-turns` | string-numeric |
-| `vibe.max_price` | `--max-price` | string-numeric (dollars) |
 | `vibe.enabled_tools` | `--enabled-tools` (repeatable) | comma-list of tool names, glob (`bash*`), or regex (`re:edit_.*`) |
+| `vibe.max_price` | `--max-price` | string-numeric (dollars) |
+| `vibe.max_turns` | `--max-turns` | string-numeric |
 | `vibe.trust` | `--trust` | bool — trust working dir for this invocation only |
 
 ## Notes

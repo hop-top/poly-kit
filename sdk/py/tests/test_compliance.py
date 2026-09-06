@@ -136,7 +136,7 @@ telemetry:
   categories: [invocation]
   sinks: [bus]
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, PROBE_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -219,7 +219,7 @@ class TestConsentingTelemetry:
     def test_fail_missing_subcommand(self):
         report = _f13_report(
             WELL_FORMED_TELEMETRY.replace(
-                "consent_subcommands: [status, enable, disable, reset, inspect]",
+                "consent_subcommands: [disable, enable, inspect, reset, status]",
                 "consent_subcommands: [status, enable, disable]",
             )
         )

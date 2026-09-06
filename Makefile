@@ -1,13 +1,11 @@
-.PHONY: setup lint lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-rs lint-docs lint-readmes lint-config lint-links lint-sdk-paths \
-	preflight \
-	tools tools-golangci-lint \
-	test test-go test-go-integration test-go-race test-ts test-py test-rs test-parity test-parity-typeid \
-	test-parity-kv \
-	proto openapi clients clients-ts clients-php clients-rs clients-test api \
-	job-test job-integration-hatchet job-integration-restate job-integration-temporal \
-	test-workflow test-hook test-release promote promote-alpha promote-beta promote-rc promote-release check \
-	test-templates lint-templates build builtins-sync check-template-sources check-mirror-sync refresh-secret-rules \
-	refresh-pii-rules refresh-rules
+.PHONY: api audit-php build builtins-sync check check-mirror-sync check-template-sources clients \
+	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
+	job-integration-temporal job-test lint lint-config lint-docs lint-go lint-links lint-lock-php \
+	lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
+	preflight promote promote-alpha promote-beta promote-rc promote-release proto refresh-pii-rules \
+	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook \
+	test-parity test-parity-kv test-parity-typeid test-py test-release test-rs test-templates test-ts \
+	test-workflow tools tools-golangci-lint
 
 # Tool versions — single source of truth for local + the kit repo's
 # own CI. `.github/workflows/ci.yml` consumes the pin by calling

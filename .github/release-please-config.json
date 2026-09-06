@@ -54,7 +54,7 @@
   "linked-versions": [
     {
       "group": "kit",
-      "components": ["kit", "kit-ts", "kit-py", "kit-rs", "kit-php"]
+      "components": ["kit", "kit-php", "kit-py", "kit-rs", "kit-ts"]
     }
   ],
   "packages": {
@@ -64,48 +64,26 @@
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "exclude-paths": [
-        "sdk/ts",
-        "sdk/py",
+        "incubator",
         "sdk/experimental",
-        "templates",
-        "incubator"
+        "sdk/py",
+        "sdk/ts",
+        "templates"
       ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
       "initial-version": "0.5.0-alpha.0"
     },
-    "sdk/ts": {
-      "release-type": "node",
-      "component": "kit-ts",
+    "incubator/qmochi": {
+      "release-type": "go",
+      "component": "qmochi",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
-      "initial-version": "0.5.0-alpha.0"
-    },
-    "sdk/py": {
-      "release-type": "python",
-      "component": "kit-py",
-      "package-name": "hop-top-kit",
-      "changelog-path": "CHANGELOG.md",
-      "bump-minor-pre-major": true,
-      "prerelease": true,
-      "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
-      "initial-version": "0.5.0-alpha.0"
-    },
-    "sdk/experimental/rs": {
-      "release-type": "rust",
-      "component": "kit-rs",
-      "package-name": "hop-top-kit",
-      "changelog-path": "CHANGELOG.md",
-      "bump-minor-pre-major": true,
-      "prerelease": true,
-      "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
-      "initial-version": "0.5.0-alpha.0"
+      "initial-version": "0.1.0-alpha.0"
     },
     "sdk/experimental/php": {
       "release-type": "php",
@@ -125,15 +103,37 @@
       "versioning": "prerelease",
       "initial-version": "0.5.0-alpha.0"
     },
-    "incubator/qmochi": {
-      "release-type": "go",
-      "component": "qmochi",
+    "sdk/experimental/rs": {
+      "release-type": "rust",
+      "component": "kit-rs",
+      "package-name": "hop-top-kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
-      "initial-version": "0.1.0-alpha.0"
+      "initial-version": "0.5.0-alpha.0"
+    },
+    "sdk/py": {
+      "release-type": "python",
+      "component": "kit-py",
+      "package-name": "hop-top-kit",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "prerelease": true,
+      "prerelease-type": "alpha.0",
+      "versioning": "prerelease",
+      "initial-version": "0.5.0-alpha.0"
+    },
+    "sdk/ts": {
+      "release-type": "node",
+      "component": "kit-ts",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "prerelease": true,
+      "prerelease-type": "alpha.0",
+      "versioning": "prerelease",
+      "initial-version": "0.5.0-alpha.0"
     }
   }
 }

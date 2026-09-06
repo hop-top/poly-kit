@@ -28,16 +28,11 @@ jobs:
           dir: .
           ecosystem: go
           mirror: hop-top/kit
-        kit-ts:
-          dir: sdk/ts
-          ecosystem: ts
-          package: "@hop-top/kit"
-          mirror: hop-top/kit-ts
-          node-version: '22'
-          # --exclude sqlstore.test.ts: depends on better-sqlite3
-          # native bindings; --ignore-scripts blocks them. Mirrors
-          # local `make test-ts`.
-          test-command: pnpm install --frozen-lockfile --ignore-scripts && pnpm vitest run --exclude src/sqlstore.test.ts
+        kit-php:
+          dir: sdk/experimental/php
+          ecosystem: php
+          package: hop-top/kit
+          mirror: hop-top/kit-php
         kit-py:
           dir: sdk/py
           ecosystem: py
@@ -61,11 +56,16 @@ jobs:
           # build it. Publishing does not run fmt/clippy, which are the
           # version-sensitive gates.
           rust-toolchain: stable
-        kit-php:
-          dir: sdk/experimental/php
-          ecosystem: php
-          package: hop-top/kit
-          mirror: hop-top/kit-php
+        kit-ts:
+          dir: sdk/ts
+          ecosystem: ts
+          package: "@hop-top/kit"
+          mirror: hop-top/kit-ts
+          node-version: '22'
+          # --exclude sqlstore.test.ts: depends on better-sqlite3
+          # native bindings; --ignore-scripts blocks them. Mirrors
+          # local `make test-ts`.
+          test-command: pnpm install --frozen-lockfile --ignore-scripts && pnpm vitest run --exclude src/sqlstore.test.ts
         qmochi:
           dir: incubator/qmochi
           ecosystem: go

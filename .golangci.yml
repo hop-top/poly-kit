@@ -6,38 +6,38 @@ formatters:
     - goimports
   exclusions:
     paths:
-      - vendor
-      - node_modules
       - .venv
+      - node_modules
+      - vendor
 
 linters:
   enable:
     - errcheck
     - govet
-    - staticcheck
-    - unused
     - ineffassign
     - misspell
+    - staticcheck
+    - unused
   disable:
     - depguard
   settings:
     errcheck:
       exclude-functions:
-        - (io.Closer).Close
+        - (*archive/tar.Writer).Close
+        - (*compress/gzip.Reader).Close
+        - (*compress/gzip.Writer).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Rows).Close
         - (*os.File).Close
+        - (*text/tabwriter.Writer).Flush
+        - (io.Closer).Close
         - (net/http.ResponseWriter).Write
-        - os.Remove
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
         - fmt.Fscanln
         - fmt.Sscanf
-        - (*database/sql.Rows).Close
-        - (*database/sql.DB).Close
-        - (*compress/gzip.Reader).Close
-        - (*compress/gzip.Writer).Close
-        - (*archive/tar.Writer).Close
-        - (*text/tabwriter.Writer).Flush
+        - os.Remove
     misspell:
       locale: US
   exclusions:
@@ -45,6 +45,9 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
+          - unused
+      - path: go/ai/llm/routellm/
+        linters:
           - unused
       - path: go/runtime/job/hatchet/
         linters:
@@ -55,10 +58,7 @@ linters:
       - path: go/runtime/job/temporal/
         linters:
           - unused
-      - path: go/ai/llm/routellm/
-        linters:
-          - unused
     paths:
-      - vendor
-      - node_modules
       - .venv
+      - node_modules
+      - vendor

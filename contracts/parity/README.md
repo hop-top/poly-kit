@@ -36,8 +36,8 @@ in the fixture must be explainable as an intended Go-side change.
 |------|-------|-------|
 | `parity.json` | blocks `status`, `spinner`, `anim`, `help`, `verbosity`, `streams` | `TestParityNoUnloadedBlocks`, `TestParityLoadedBlocksNonZero`, `sdk/ts/src/tui/parity.test.ts`, `sdk/py/tests/test_parity.py` |
 | `scope-defaults.json` | default deny patterns for the scope packages | `TestScopeDefaultsContractSync`, `TestScopeDefaultsRegistered` |
-| `serve.json` | serve lifecycle `constants`, `behaviors`, per-port `ports` status | `TestServeContractMatchesGo` (pinned against `go/console/serve`) |
 | `sdk/tests/cross-lang/fixtures/mcp-wire.json` | MCP wire bytes: 18 `cases`, 1 `sequences` entry with 5 steps | `make test-parity-mcp` (five runners) |
+| `serve.json` | serve lifecycle `constants`, `behaviors`, per-port `ports` status | `TestServeContractMatchesGo` (pinned against `go/console/serve`) |
 
 - All three ports read `parity.json` from this directory (Go `//go:embed`,
   TS bundler inlining, Python `hop_top_kit.parity`); there is no copy.

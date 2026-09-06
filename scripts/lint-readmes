@@ -40,23 +40,23 @@ set -euo pipefail
 # Directory names pruned with everything under them. Hidden directories
 # (.git, .github, .tlc, ...) are pruned too, by a separate glob below.
 PRUNE_NAMES=(
-  testdata
-  fixtures
-  fixture
-  gen
-  dist
-  target
-  build
-  vendor
-  node_modules
-  __pycache__
-  .venv
   .pytest_cache
-  internal   # internal/ packages: API is private, parent README covers them
+  .venv
+  __pycache__
+  build
   cmd        # cmd/ leaves: documented by the parent README
-  test
-  tests
+  dist
   e2e
+  fixture
+  fixtures
+  gen
+  internal   # internal/ packages: API is private, parent README covers them
+  node_modules
+  target
+  test
+  testdata
+  tests
+  vendor
 )
 
 # Trees whose immediate children are self-contained payloads (an example
@@ -75,9 +75,9 @@ SCAFFOLDED_README_MARKERS=(
 
 # Directory name globs pruned with everything under them.
 PRUNE_GLOBS=(
-  '.*'       # hidden
-  '*_test'   # test directories by suffix
   '*.pb.*'   # generated protobuf output
+  '*_test'   # test directories by suffix
+  '.*'       # hidden
 )
 
 # Directory names that need no README of their own when the parent already
@@ -99,20 +99,20 @@ MODULE_MANIFESTS=(
 # file matches a source glob and none of its test globs.
 SOURCE_GLOBS=(
   '*.go'
-  '*.ts'
-  '*.py'
   '*.php'
+  '*.py'
   '*.rs'
+  '*.ts'
 )
 TEST_FILE_GLOBS=(
-  '*_test.go'
-  '*.test.ts'
-  '*.spec.ts'
   '*.d.ts'
-  'test_*.py'
+  '*.spec.ts'
+  '*.test.ts'
+  '*_test.go'
   '*_test.py'
-  'conftest.py'
   '*Test.php'
+  'conftest.py'
+  'test_*.py'
 )
 
 # Shape caps (lines). A README with a "## Contents" heading is Shape A.

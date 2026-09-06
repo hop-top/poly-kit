@@ -23,9 +23,9 @@ pub use text::TextFormatter;
 pub use yaml::YamlFormatter;
 
 pub fn register_all(r: &Registry) {
-    let _ = r.register(Arc::new(TableFormatter));
-    let _ = r.register(Arc::new(JsonFormatter));
-    let _ = r.register(Arc::new(YamlFormatter));
     let _ = r.register(Arc::new(CsvFormatter));
+    let _ = r.register(Arc::new(JsonFormatter));
+    let _ = r.register(Arc::new(TableFormatter));
     let _ = r.register(Arc::new(TextFormatter));
+    let _ = r.register(Arc::new(YamlFormatter));
 }

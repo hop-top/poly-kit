@@ -214,18 +214,18 @@ only the dependencies of the backends it opens.
 
 | Package           | Type   | Backend                          |
 |-------------------|--------|----------------------------------|
-| `kv/sqlite`       | kv     | Embedded SQLite (default)        |
-| `kv/badger`       | kv     | Embedded Badger (high-throughput)|
-| `kv/etcd`         | kv     | Distributed etcd cluster         |
-| `kv/tidb`         | kv     | TiDB / MySQL-compatible          |
 | `blob/local`      | blob   | Local filesystem                 |
 | `blob/s3`         | blob   | AWS S3                           |
+| `kv/badger`       | kv     | Embedded Badger (high-throughput)|
+| `kv/etcd`         | kv     | Distributed etcd cluster         |
+| `kv/sqlite`       | kv     | Embedded SQLite (default)        |
+| `kv/tidb`         | kv     | TiDB / MySQL-compatible          |
 | `secret/env`      | secret | Environment variables            |
 | `secret/file`     | secret | Encrypted files on disk          |
-| `secret/keyring`  | secret | OS keychain                      |
-| `secret/openbao`  | secret | OpenBao / Vault                  |
 | `secret/infisical`| secret | Infisical cloud/self-hosted      |
+| `secret/keyring`  | secret | OS keychain                      |
 | `secret/memory`   | secret | In-memory (testing)              |
+| `secret/openbao`  | secret | OpenBao / Vault                  |
 
 ## Related pages
 

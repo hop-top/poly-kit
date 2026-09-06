@@ -39,10 +39,10 @@ Invocation adapter for Crush CLI (Charmbracelet).
 
 | Key | Native flag | Type |
 |---|---|---|
-| `crush.small_model` | `--small-model` | string |
 | `crush.data_dir` | `-D/--data-dir <dir>` | path |
 | `crush.host` | `-H/--host <unix-or-ws>` | string — connect to a running crush server |
 | `crush.quiet` | `--quiet` / `-q` | bool — hide spinner |
+| `crush.small_model` | `--small-model` | string |
 | `crush.verbose` | `--verbose` / `-v` | bool |
 
 ## Notes

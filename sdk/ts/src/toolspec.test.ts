@@ -27,8 +27,8 @@ describe("loadToolSpec", () => {
     ]);
     expect(spec.stateIntrospection!.envVars).toEqual([
       "SPACED_FORMAT",
-      "SPACED_LOG_LEVEL",
       "SPACED_LOG_FORMAT",
+      "SPACED_LOG_LEVEL",
     ]);
   });
 
@@ -40,7 +40,7 @@ describe("loadToolSpec", () => {
     expect(launch).toBeDefined();
     expect(launch!.intent?.domain).toBe("space");
     expect(launch!.intent?.category).toBe("operations");
-    expect(launch!.intent?.tags).toEqual(["mission", "launch"]);
+    expect(launch!.intent?.tags).toEqual(["launch", "mission"]);
   });
 
   it("loads contract fields", () => {

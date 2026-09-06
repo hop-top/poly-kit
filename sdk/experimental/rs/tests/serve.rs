@@ -327,7 +327,7 @@ fn rejects_anything_outside_the_name_grammar() {
 
 #[test]
 fn reserves_exactly_all_none_and_list() {
-    assert_eq!(RESERVED_NAMES, ["all", "none", "list"]);
+    assert_eq!(RESERVED_NAMES, ["all", "list", "none"]);
     for r in RESERVED_NAMES {
         assert!(is_reserved_name(r));
         assert!(

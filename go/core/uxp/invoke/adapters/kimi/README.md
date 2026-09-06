@@ -43,16 +43,16 @@ Invocation adapter for Kimi Code CLI (`kimi` binary, Moonshot AI).
 
 | Key | Native flag | Type |
 |---|---|---|
-| `kimi.thinking` | `--thinking` / `--no-thinking` | bool |
 | `kimi.afk` | `--afk` | bool — auto-all variant; auto-dismisses AskUserQuestion |
 | `kimi.agent_file` | `--agent-file <FILE>` | string |
-| `kimi.skills_dir` | `--skills-dir <DIR>` (repeatable) | comma-list |
-| `kimi.max_steps_per_turn` | `--max-steps-per-turn` | string-numeric |
-| `kimi.max_retries_per_step` | `--max-retries-per-step` | string-numeric |
+| `kimi.config_file` | `--config-file` | path |
 | `kimi.max_ralph_iterations` | `--max-ralph-iterations` | string-numeric (-1 = unlimited) |
+| `kimi.max_retries_per_step` | `--max-retries-per-step` | string-numeric |
+| `kimi.max_steps_per_turn` | `--max-steps-per-turn` | string-numeric |
 | `kimi.mcp_config` | `--mcp-config` (repeatable) | comma-list of inline JSON |
 | `kimi.mcp_config_file` | `--mcp-config-file` (repeatable) | comma-list of file paths |
-| `kimi.config_file` | `--config-file` | path |
+| `kimi.skills_dir` | `--skills-dir <DIR>` (repeatable) | comma-list |
+| `kimi.thinking` | `--thinking` / `--no-thinking` | bool |
 
 ## Notes
 

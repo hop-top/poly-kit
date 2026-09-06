@@ -142,11 +142,11 @@ function telemetryOptedIn(spec: SpecYAML): boolean {
 /** Subcommands an opt-in binary MUST expose under its consent
  *  command (typically `<bin> telemetry`). */
 const telemetryConsentSubcommandsCanonical = [
-  "status",
-  "enable",
   "disable",
-  "reset",
+  "enable",
   "inspect",
+  "reset",
+  "status",
 ];
 
 /** Matches `<UPPERCASE_APP>_TELEMETRY_MODE`. The kit literal
@@ -349,7 +349,7 @@ function checkAuthLifecycle(spec: SpecYAML): CheckResult {
  *
  *  1. categories non-empty
  *  2. consent_subcommands contains the canonical set
- *     {status, enable, disable, reset, inspect}
+ *     {disable, enable, inspect, reset, status}
  *  3. kill_switch_envs contains DO_NOT_TRACK
  *  4. kill_switch_envs contains a `<APP>_TELEMETRY_MODE` entry
  *  5. prompt_version non-empty (canonical field name is locked —
@@ -438,8 +438,8 @@ function checkConsentingTelemetry(spec: SpecYAML): CheckResult {
 
   return fail(f, failures.join("; "),
     "Fix the telemetry block: ensure categories, " +
-      "consent_subcommands {status, enable, disable, reset, " +
-      "inspect}, kill_switch_envs [DO_NOT_TRACK, <APP>_TELEMETRY_MODE], " +
+      "consent_subcommands {disable, enable, inspect, reset, " +
+      "status}, kill_switch_envs [DO_NOT_TRACK, <APP>_TELEMETRY_MODE], " +
       "prompt_version, redact_rules are set, and that each " +
       "consent_subcommand maps to a command in the commands tree.");
 }

@@ -6,15 +6,78 @@ state_introspection:
     - spaced config show
   env_vars:
     - SPACED_FORMAT
-    - SPACED_LOG_LEVEL
     - SPACED_LOG_FORMAT
+    - SPACED_LOG_LEVEL
 
 commands:
+  - name: config
+    children:
+      - name: show
+        intent:
+          domain: configuration
+          category: query
+          tags: [config, introspection]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+        output_schema:
+          format: yaml
+
+  - name: daemon
+    children:
+      - name: list
+        intent:
+          domain: ops
+          category: query
+          tags: [daemon, monitoring]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+        output_schema:
+          format: table
+          fields: [id, daemon, status, since]
+
+      - name: status
+        intent:
+          domain: ops
+          category: query
+          tags: [daemon, monitoring]
+        contract:
+          idempotent: true
+          retryable: true
+        safety:
+          level: safe
+
+      - name: stop
+        intent:
+          domain: ops
+          category: operations
+          tags: [daemon, lifecycle]
+        contract:
+          idempotent: false
+          retryable: true
+          side_effects:
+            - publishes bus event (kit.spaced.daemon.stopped)
+            - attempts daemon termination (always fails)
+        safety:
+          level: dangerous
+          requires_confirmation: false
+        flags:
+          - name: --all
+            type: bool
+            description: Attempt to stop all daemons
+        suggested_next:
+          - daemon list
+
   - name: launch
     intent:
       domain: space
       category: operations
-      tags: [mission, launch]
+      tags: [launch, mission]
     contract:
       idempotent: false
       retryable: false
@@ -68,7 +131,7 @@ commands:
         intent:
           domain: space
           category: query
-          tags: [mission, catalog]
+          tags: [catalog, mission]
         contract:
           idempotent: true
           retryable: true
@@ -86,75 +149,12 @@ commands:
           - launch
           - mission show
 
-  - name: daemon
-    children:
-      - name: list
-        intent:
-          domain: ops
-          category: query
-          tags: [daemon, monitoring]
-        contract:
-          idempotent: true
-          retryable: true
-        safety:
-          level: safe
-        output_schema:
-          format: table
-          fields: [id, daemon, status, since]
-
-      - name: status
-        intent:
-          domain: ops
-          category: query
-          tags: [daemon, monitoring]
-        contract:
-          idempotent: true
-          retryable: true
-        safety:
-          level: safe
-
-      - name: stop
-        intent:
-          domain: ops
-          category: operations
-          tags: [daemon, lifecycle]
-        contract:
-          idempotent: false
-          retryable: true
-          side_effects:
-            - publishes bus event (kit.spaced.daemon.stopped)
-            - attempts daemon termination (always fails)
-        safety:
-          level: dangerous
-          requires_confirmation: false
-        flags:
-          - name: --all
-            type: bool
-            description: Attempt to stop all daemons
-        suggested_next:
-          - daemon list
-
-  - name: config
-    children:
-      - name: show
-        intent:
-          domain: configuration
-          category: query
-          tags: [config, introspection]
-        contract:
-          idempotent: true
-          retryable: true
-        safety:
-          level: safe
-        output_schema:
-          format: yaml
-
 telemetry:
   enabled: false            # flip to true once kit-telemetry + kit-consent ship
-  categories: [invocation, error]
+  categories: [error, invocation]
   sinks: [bus, jsonl]
   consent_command: "spaced telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, SPACED_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default

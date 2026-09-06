@@ -3,17 +3,17 @@ name: Mirror Sync
 on:
   pull_request:
     paths:
-      - 'templates/**'
+      - '.github/workflows/mirror-sync.yml'
       - 'internal/template/builtins/**'
       - 'Makefile'
-      - '.github/workflows/mirror-sync.yml'
+      - 'templates/**'
   push:
     branches: [main]
     paths:
-      - 'templates/**'
+      - '.github/workflows/mirror-sync.yml'
       - 'internal/template/builtins/**'
       - 'Makefile'
-      - '.github/workflows/mirror-sync.yml'
+      - 'templates/**'
 
 jobs:
   mirror-sync:

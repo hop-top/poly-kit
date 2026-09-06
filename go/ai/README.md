@@ -9,13 +9,13 @@ extension points.
 | Path | What it is | Start here when |
 |------|------------|-----------------|
 | [`cmdreflect/`](cmdreflect/README.md) | single cobra reflector producing one `Descriptor` per command | you need a fact about a command that both the manifest and help rendering must agree on |
+| [`ext/`](ext/README.md) | extension contract, manager, hook bus, discovery, dispatch, config | you add plugin points to a kit-powered tool |
+| [`llm/`](llm/README.md) | provider-agnostic LLM client, routing, provider drivers | you call a model or route between providers |
 | [`toolspec/`](toolspec/README.md) | `ToolSpec` and `Manifest` data types, safety vocabulary, registry | you model a tool's commands, flags, risk and workflows |
-| [`toolspec/cli/`](toolspec/cli/README.md) | `<tool> spec` subcommand and cobra walker | your kit-powered CLI should publish its manifest |
 | [`toolspec/adapters/`](toolspec/adapters/README.md) | format adapters (kit-manifest, mcp) and MCP policy gate | you render the manifest or enforce policy on an MCP call |
+| [`toolspec/cli/`](toolspec/cli/README.md) | `<tool> spec` subcommand and cobra walker | your kit-powered CLI should publish its manifest |
 | [`toolspec/policy/`](toolspec/policy/README.md) | side-effect x network permission table | you decide auto-allow, prompt or deny for a command |
 | [`toolspec/sources/`](toolspec/sources/README.md) | help, completion, tldr, thefuck, llm, usp spec sources | you describe a tool kit does not own |
-| [`llm/`](llm/README.md) | provider-agnostic LLM client, routing, provider drivers | you call a model or route between providers |
-| [`ext/`](ext/README.md) | extension contract, manager, hook bus, discovery, dispatch, config | you add plugin points to a kit-powered tool |
 
 ## Conventions
 

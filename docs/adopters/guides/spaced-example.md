@@ -125,7 +125,7 @@ spaced currently scores 9/13 on the kit-compliance e2e. The gap is a
 naming collision: spaced already exposes a `telemetry` cobra command for
 **mission telemetry** (simulated live launch data, listed in the
 example's command table), which collides with kit-consent's expected
-`telemetry status|enable|disable|reset|inspect` subcommands.
+`telemetry disable|enable|inspect|reset|status` subcommands.
 
 The two `telemetry` concepts are distinct on purpose:
 
