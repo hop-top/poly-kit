@@ -23,6 +23,6 @@ func ExampleGroup() {
 		fmt.Println(cliErr.Message)
 	}
 	// Output:
-	// USAGE 3
+	// USAGE 2
 	// conformance harness record: --scenario is required
 }
