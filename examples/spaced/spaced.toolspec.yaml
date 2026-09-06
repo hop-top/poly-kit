@@ -6,8 +6,8 @@ state_introspection:
     - spaced config show
   env_vars:
     - SPACED_FORMAT
-    - SPACED_LOG_LEVEL
     - SPACED_LOG_FORMAT
+    - SPACED_LOG_LEVEL
 
 commands:
   - name: config
