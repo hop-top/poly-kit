@@ -53,12 +53,50 @@ mytool --help-all      # also shows hidden management groups
 
 ### Config
 
+Identity plus opt-in behaviour. Only `Name` is required; every other
+field has a working zero value.
+
 ```go
 type Config struct {
     Name    string // binary name (e.g. "mytool")
     Version string // semver (e.g. "1.2.3")
     Short   string // one-line description
-    Accent  string // optional hex colour (e.g. "#E040FB")
+    Accent  string // optional hex colour; ignored when Palette is set
+    Palette Palette // overrides the brand colour pair outright
+    Disable Disable // opt out of individual built-in global flags
+    Globals []Flag  // extra persistent flags on the root command
+    Help    HelpConfig // root --help layout
+
+    // ChdirResolver is called when -C <target> is not a directory.
+    // nil = path-only.
+    ChdirResolver func(target string) (dir string, err error)
+    Hooks         Hooks // additive PersistentPreRunE slots
+
+    EnforceValidate       bool // Layer-A pre-flight at Execute; default true
+    DisableValidate       bool // explicit opt-out
+    ValidationFailureMode ValidationFailureMode
+}
+```
+
+The struct carries further fields beyond these; `go doc
+hop.top/kit/go/console/cli.Config` is the complete list.
+
+`cli.New` sets `EnforceValidate` to true whenever `DisableValidate` is
+false, so setting `EnforceValidate: false` on its own has no effect —
+use `DisableValidate: true` to opt out.
+
+#### Disable
+
+```go
+type Disable struct {
+    Format   bool // suppress --format
+    Quiet    bool // suppress --quiet
+    NoColor  bool // suppress --no-color
+    Hints    bool // suppress --no-hints
+    Chdir    bool // suppress -C/--chdir
+    Progress bool // suppress --progress-format
+    Config   bool // suppress -c/--config
+    DryRun   bool // suppress the global --dry-run
 }
 ```
 
@@ -66,24 +104,42 @@ type Config struct {
 
 ```go
 type Root struct {
-    Cmd    *cobra.Command
-    Viper  *viper.Viper
-    Config Config
-    Theme  Theme
-    Hints  *output.HintSet
+    Cmd     *cobra.Command
+    Viper   *viper.Viper
+    Config  Config
+    Theme   Theme
+    Hints   *output.HintSet
+    Streams *StreamWriter    // stdout=data, stderr=human
+    Auth    AuthIntrospector // defaults to NoAuth
+
+    // Non-nil only when the matching option is used.
+    Identity     *identity.Keypair // WithIdentity
+    Mesh         *peer.Mesh        // WithPeers
+    PeerRegistry *peer.Registry    // WithPeers
+    PeerTrust    *peer.TrustManager // WithPeers
+    IdemStore    idemstore.Store   // WithIdempotencyStore
 }
 ```
 
 #### New
 
 ```go
-func New(cfg Config) *Root
+func New(cfg Config, opts ...func(*Root)) *Root
 ```
 
-Returns a Root pre-configured to the hop-top CLI contract:
+Returns a Root pre-configured to the hop-top CLI contract. The
+variadic options are the `With*` helpers (`WithIdentity`, `WithPeers`,
+`WithIdempotencyStore`, …). `NewE` is the variant that runs
+`Validate` at construction and returns the error instead of exiting.
 
-- No help/completion subcommands.
-- Persistent flags: `--quiet`, `--no-color`, `--format`.
+- The `help` subcommand is registered hidden; `-h`/`--help` is the
+  advertised surface.
+- Persistent flags in the parity contract: `--quiet`, `--no-color`,
+  `--format`, `-V/--verbose`.
+- Kit plumbing persistent flags, registered hidden and revealed by
+  `--help-all`: `-C/--chdir`, `-c/--config`, and the rest of the
+  output-flag suite (`--format-opt`, `--cols`, `--template`, …).
+- Each is suppressed individually via `Config.Disable`.
 - Version handled by fang (`-v`/`--version`).
 - Styled help via fang colour scheme.
 
@@ -102,8 +158,8 @@ help, error rendering, and man page generation.
 
 ```go
 type GroupConfig struct {
-    ID     string // unique identifier (e.g. "management")
-    Title  string // display title (e.g. "MANAGEMENT COMMANDS")
+    ID     string // cobra group ID (e.g. "management")
+    Title  string // section header (e.g. "MANAGEMENT")
     Hidden bool   // true = excluded from default --help
 }
 ```
@@ -112,16 +168,28 @@ type GroupConfig struct {
 
 ```go
 type HelpConfig struct {
-    Groups []GroupConfig
+    Disclaimer   string   // appended to Short as the Long description
+    SectionOrder []string // section order; empty = parity.json default
+    ShowAliases  bool     // display command aliases in help
+    Groups       []GroupConfig
 }
 ```
 
-Default groups when none specified:
+Built-in groups, always present:
 
 | ID | Title | Hidden |
 |----|-------|--------|
-| `commands` | COMMANDS | false |
-| `management` | MANAGEMENT COMMANDS | true |
+| `""` (empty) | COMMANDS | false |
+| `management` | MANAGEMENT | true |
+
+The default group's ID is the **empty string**, not `"commands"`: it
+is cobra's ungrouped bucket, rendered under the COMMANDS heading. Only
+`management` is registered with `AddGroup`. `Config.Help.Groups` adds
+further groups on top of these two.
+
+In Go, `SectionOrder` is validated but not re-applied — fang owns the
+help template and fixes COMMANDS before FLAGS. The field is consumed
+by the TS and Python adapters.
 
 #### Assigning a command to a group
 
@@ -136,12 +204,19 @@ cmd := &cobra.Command{
 root.Cmd.AddCommand(cmd)
 ```
 
-Commands without a `GroupID` default to the `commands` group.
+Commands without a `GroupID` fall into cobra's ungrouped bucket,
+rendered under COMMANDS.
 
 #### `--help-all`
 
-Persistent boolean flag on the root command. When set, the help
-template includes commands from all groups (including hidden ones).
+Boolean flag on the root command itself — a local flag, not a
+persistent one, so it is not inherited by subcommands. `NoOptDefVal`
+is `"true"`, so the bare `--help-all` form works. When set, the help
+output includes commands from all groups (including hidden ones) and
+also unhides kit's plumbing flags.
+
+A `--help-<id>` flag is registered per group on the same terms, and
+`help all` / `help <group>` are the subcommand equivalents.
 
 ```
 $ mytool --help          # shows COMMANDS only
@@ -152,17 +227,27 @@ $ mytool --help-all      # shows COMMANDS + MANAGEMENT
 
 ```go
 type Theme struct {
-    Accent    lipgloss.TerminalColor
-    Dim       lipgloss.TerminalColor
-    Success   lipgloss.TerminalColor
-    Warning   lipgloss.TerminalColor
-    Error     lipgloss.TerminalColor
-    Command   lipgloss.TerminalColor
-    Flag      lipgloss.TerminalColor
+    // Brand colors.
+    Palette Palette
+
+    // Semantic colors.
+    Accent    color.Color
+    Secondary color.Color
+    Muted     color.Color
+    Error     color.Color
+    Success   color.Color
+    Warn      color.Color
+
+    // Pre-built styles.
+    Title  lipgloss.Style
+    Subtle lipgloss.Style
+    Bold   lipgloss.Style
 }
 ```
 
-Built from CharmTone palette plus optional `Config.Accent`.
+Colours are `image/color.Color`, not `lipgloss.TerminalColor`. Built
+from the CharmTone palette: `Config.Palette` when set, otherwise Neon
+tinted by `Config.Accent`.
 
 ### Config inspection
 
@@ -190,8 +275,11 @@ Flags:
 
 | Flag | Values | Default | Effect |
 |---|---|---|---|
-| `--format` | `text` \| `json` \| `yaml` | `text` | Output format. Inherits `--format` from root if set. |
+| `--format` | `text` \| `json` \| `yaml` | `text` | Output format. This is a narrower set than the root `--format`, which defaults to `table`; a root `--format=table` is picked up here and rejected as unknown. |
 | `--from` | any directory path | `os.Getwd()` | Resolve the chain as if the working directory were this path. Not a scope filter: every rung is still printed. Applies to `config path` too, which then reports the winner for that directory. |
+
+`--format` is read from the shared flag only when it was explicitly
+set (`Changed`), so leaving the root flag alone gives `text` here.
 
 The path data comes from the `Resolver` the CLI registers, which
 returns an ordered slice of `ResolvedPath` (`{Path, Source, Scope,

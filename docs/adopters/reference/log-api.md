@@ -32,16 +32,23 @@ Wraps `charm.land/log/v2`. Config via `*viper.Viper`.
 
 #### Constructors
 
-| Function                  | Description                     |
-|---------------------------|---------------------------------|
-| `New(v *viper.Viper)`     | logger at InfoLevel             |
-| `WithLevel(v, level)`     | logger at explicit level        |
+| Function                      | Description                                        |
+|-------------------------------|----------------------------------------------------|
+| `New(v *viper.Viper)`         | logger at the contract's zero-verbosity level (info) |
+| `WithVerbose(v, verbose int)` | logger at the level implied by a `-V` repeat count |
+| `WithLevel(v, level)`         | logger at an explicit level                        |
+
+Verbosity counts resolve through `contracts/parity/parity.json`
+(`verbosity.levels`): `0` = info, `1` = debug, `2` = trace.
+
+`TraceLevel` is kit-local (`log.DebugLevel - 1`); `charm.land/log/v2`
+has no Trace of its own.
 
 #### Viper keys
 
 | Key        | Effect                                   |
 |------------|------------------------------------------|
-| `quiet`    | raises level to WarnLevel (suppresses INFO + DEBUG) |
+| `quiet`    | raises level to the contract's `verbosity.quiet_override` (currently `warn`) |
 | `no-color` | disables ANSI escape sequences           |
 
 `quiet` only raises; never lowers. If the caller requests
@@ -93,15 +100,18 @@ create_logger(quiet: bool = False, no_color: bool = False)
 
 All runtimes use the hop.top palette:
 
-| Level | Prefix | Color        | Hex       |
-|-------|--------|--------------|-----------|
-| ERROR | `ERRO` | Cherry (red) | `#ED4A5E` |
-| WARN  | `WARN` | Yam (amber)  | `#E5A14E` |
-| INFO  | `INFO` | Squid (muted)| `#858183` |
-| DEBUG | `DEBU` | Smoke (dim)  | `#BFBCC8` |
-| FATAL | `FATA` | Cherry (red) | `#ED4A5E` |
+| Level | Prefix | Color         | Hex       |
+|-------|--------|---------------|-----------|
+| ERROR | `ERRO` | Cherry (pink) | `#FF388B` |
+| WARN  | `WARN` | Yam (amber)   | `#FFB587` |
+| INFO  | `INFO` | Squid (muted) | `#858392` |
+| DEBUG | `DEBU` | Smoke (dim)   | `#BFBCC8` |
+| TRACE | `TRAC` | Smoke (dim)   | `#BFBCC8` |
+| FATAL | `FATA` | Cherry (pink) | `#FF388B` |
 
-ERROR and FATAL prefixes are bold; others are not.
+ERROR, WARN and FATAL prefixes are bold; INFO, DEBUG and TRACE are
+not. Hex values come from `charmtone`; the names are the source of
+truth, the hexes track the palette.
 
 ## Output format
 
@@ -117,6 +127,7 @@ message on the same line.
 | Feature         | Go     | TS       | Python   |
 |-----------------|--------|----------|----------|
 | Quiet mode      | yes    | planned  | planned  |
+| Verbosity (-V)  | yes    | planned  | planned  |
 | No-color        | yes    | planned  | planned  |
 | Level colors    | yes    | planned  | planned  |
 | Stderr output   | yes    | planned  | planned  |

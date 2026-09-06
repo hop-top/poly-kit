@@ -53,7 +53,8 @@ class CompletionItem:
 
 ### 1. Static / StaticValues
 
-Fixed list; case-insensitive prefix filter.
+Fixed list; case-insensitive prefix filter against the item `Value`
+(not the description). An empty prefix returns every item.
 
 **Go**
 ```go
@@ -173,11 +174,20 @@ config_keys_completer({"server.host": "...", "server.port": 8080})
 
 File glob with optional extension filter.
 
-**Go** -- signals cobra directive (shell handles actual glob):
+**Go** -- signals a cobra directive (the shell performs the glob):
 ```go
-completion.File(".json", ".yaml") // filter by extension
+completion.File(".json", ".yaml") // see the note below
 completion.File()                 // all files
 ```
+
+> **Known gap.** The Go `File` completer stores its extensions but
+> never emits them. It returns `ShellCompDirectiveFilterFileExt` with
+> an empty completion list, and cobra takes the extensions to filter
+> on *from that list* — so today `File(".json")` behaves exactly like
+> `File()` and no extension filtering happens. `Dir()` is unaffected:
+> `ShellCompDirectiveFilterDirs` needs no candidate list. Pass the
+> extensions explicitly through a `Func` completer if you need the
+> filter before this is fixed.
 
 **TS** -- returns `__file__` marker; `__complete` handler
 translates to shell-native directive:
@@ -255,7 +265,11 @@ Internally:
 - `BindArgs` sets `cmd.ValidArgsFunction`
 - `File`/`Dir` completers emit shell directives
   (`ShellCompDirectiveFilterFileExt`, `ShellCompDirectiveFilterDirs`)
-- All others emit `ShellCompDirectiveNoFileComp`
+  and no items — see the `File` gap noted above
+- All others emit `ShellCompDirectiveNoFileComp`, with each item
+  rendered as `value\tdescription` (the description omitted when
+  empty)
+- A completer returning an error yields `ShellCompDirectiveError`
 
 ### TS -- Commander
 
