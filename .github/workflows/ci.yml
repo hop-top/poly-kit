@@ -3,6 +3,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Nightly full-count run of the engine/store property tests on the
+  # default branch; pull requests trim them (see the go-test job).
+  schedule:
+    - cron: '0 3 * * *'
 
 jobs:
   # ── Stage 1: Lint ──────────────────────────────────────────────
@@ -110,6 +114,11 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make test-go-integration
+        # Property tests at 100 iterations on pull requests, full count
+        # (1000) on pushes and the nightly schedule. The Makefile turns
+        # PROPERTY_ITERATIONS into KIT_PROPERTY_ITERATIONS for go test.
+        env:
+          PROPERTY_ITERATIONS: ${{ github.event_name == 'pull_request' && '100' || '' }}
 
   # Runs alongside go-test, not after it: the race detector roughly
   # doubles wall time, and go-test is already the long pole of the test

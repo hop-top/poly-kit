@@ -46,7 +46,9 @@ by importing the package. In-process storage adapters live in
   versions outside `RetentionPolicy` that are not live heads and whose
   descendants are all prunable (ADR-0015).
 - Conformance suites (`versionstore_test.go`) and 1000-iteration property
-  tests run identical scenarios against both backends.
+  tests run identical scenarios against both backends. The
+  property tests run in parallel; `-short` or `KIT_PROPERTY_ITERATIONS=<n>`
+  trims the count (pull-request CI runs 100, nightly the full 1000).
 
 ## Neighbours
 

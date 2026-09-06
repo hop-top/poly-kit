@@ -23,7 +23,8 @@ import (
 const versionedPropertySeed int64 = 0xC0FFEE_2026_05_07
 
 // versionedPropertyIterations is the number of randomized sequences
-// the property test runs. Spec §7 calls for "at least 1000".
+// the property test runs. Spec §7 calls for "at least 1000";
+// propertyIterations trims that under -short or KIT_PROPERTY_ITERATIONS.
 const versionedPropertyIterations = 1000
 
 // opKind is the universe of operations the property test mixes.
@@ -68,13 +69,17 @@ type touchedKey struct {
 // broken. Per the task brief: STOP and report rather than shrink the
 // iteration count to make this pass.
 func TestVersioned_Property(t *testing.T) {
+	t.Parallel()
+	iterations := propertyIterations(t, versionedPropertyIterations)
+	t.Logf("seed=0x%X iterations=%d", versionedPropertySeed, iterations)
+
 	rng := rand.New(rand.NewSource(versionedPropertySeed))
 
 	// docTypes is intentionally small so iterations re-touch the same
 	// keys often, exercising long histories per document.
 	docTypes := []string{"note", "task", "doc"}
 
-	for iter := 0; iter < versionedPropertyIterations; iter++ {
+	for iter := 0; iter < iterations; iter++ {
 		iter := iter
 		seqLen := 5 + rng.Intn(26) // 5..30 ops per iteration
 		ops := generateOps(rng, docTypes, seqLen)

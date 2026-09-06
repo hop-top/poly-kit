@@ -59,6 +59,7 @@ separate jobs, and you can run either locally:
 | Target | Covers |
 | --- | --- |
 | `make test-go-integration` | Every Go module, testcontainer suites included. The `go-test` job. |
+| `make test-go-integration PROPERTY_ITERATIONS=100` | Same, with the `engine/store` property tests at 100 iterations instead of 1000: what the `go-test` job runs on pull requests. Pushes and the nightly schedule keep the full count. |
 | `make test-go-race` | The `go/` tree under `-race`. The `go-race` job. |
 
 `test-go-race` exists because a concurrency guard is invisible to a
