@@ -32,3 +32,17 @@ that wraps each leaf's RunE manually). The middleware:
 
 Ordering: call `WithFlagValidator` BEFORE `WrapRunE` (or before `Execute`, which calls
 `WrapRunE`). Validators registered after the subtree is wrapped are inert.
+
+## Sub-packages
+
+| Path | What it answers |
+|------|-----------------|
+| [`breaker/`](breaker/README.md) | `breaker` subcommand tree: which breakers are registered, their state, closing one |
+| [`cmdmeta/`](cmdmeta/README.md) | read the `kit/*` annotations on a cobra command without importing `cli` |
+| [`completion/`](completion/README.md) | dynamic shell completions for flags and positionals |
+| [`config/`](config/README.md) | `config path` and `config paths` subcommands: which file loads and the precedence chain |
+| [`conformance/`](conformance/README.md) | the `kit conformance` command tree and its exit codes |
+| [`idemstore/`](idemstore/README.md) | storage backend for `--idempotency-key` recorded results |
+| [`policy/`](policy/README.md) | delegation-safety policy YAML enforced per agent-driven invocation |
+| [`router/`](router/README.md) | `kit llm router` subtree: start, stop, list, inspect RouteLLM instances |
+| [`scope/`](scope/README.md) | `kit scope show`, `check`, `test`: would the path policy allow this path |

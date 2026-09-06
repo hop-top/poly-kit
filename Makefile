@@ -1,4 +1,4 @@
-.PHONY: setup lint lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-rs lint-docs lint-config lint-links lint-sdk-paths \
+.PHONY: setup lint lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-rs lint-docs lint-readmes lint-config lint-links lint-sdk-paths \
 	preflight \
 	tools tools-golangci-lint \
 	test test-go test-go-integration test-go-race test-ts test-py test-rs test-parity test-parity-typeid \
@@ -201,7 +201,7 @@ test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
 	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v
 
-lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-config lint-links lint-sdk-paths ## Run all linters
+lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths ## Run all linters
 
 lint-go: tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -250,6 +250,9 @@ lint-rs: ## Rust: cargo fmt --check + clippy (all features)
 
 lint-docs: ## Markdown: markdownlint
 	npx markdownlint-cli2 "README.md" "CHANGELOG.md" "RELEASING.md" "AGENTS.md" "docs/**/*.md" "cmd/kit/README.md" "incubator/**/*.md" --config examples/spaced/.markdownlint.yaml
+
+lint-readmes: ## Markdown: folder README coverage, Contents links, shape caps
+	scripts/lint-readmes
 
 lint-config: ## Validate configuration files and check for broken paths
 	@echo "Validating configuration files..."

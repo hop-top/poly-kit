@@ -57,3 +57,8 @@ The shell owns:
 
 See [`example_appshell_test.go`](example_appshell_test.go) for a
 runnable example.
+
+## Sub-packages
+
+- [`dialog/`](dialog/README.md): `Dialog` interface and immutable `Overlay` stack for modal dialogs over base content.
+- [`styles/`](styles/README.md): lipgloss `Styles` derived from a `cli.Theme`, threaded with terminal size through `Common`.

@@ -1,40 +1,22 @@
 # ps
 
-Process state monitoring and management for hop.top CLI tools.
+## What it answers
 
-The package gives every adopter a consistent `<tool> ps` subcommand
-plus the supervisory primitives needed to spawn, watch, and stop the
-child processes that subcommand reports on.
+Which child processes a hop.top tool has spawned, whether they are still
+alive, and how to stop them: one `<tool> ps` subcommand plus the
+spawn/observe/stop primitives behind it. Wrong package when the work is
+in-process (the bus, `hop.top/kit/go/runtime/bus`) or when you need the
+served lifecycle rather than raw children (`hop.top/kit/go/transport`).
 
-## Read side — observe processes
+## Use it when
 
-Use these when a process exists and you want to surface it in `ps`
-output, the ID-table renderer, or a status check.
+- your tool needs the standard `<tool> ps` subcommand → implement `Provider` (`List`) and mount `ps.Command(name, provider, viper)`
+- you surface an existing daemon → `ps.EntryFromPIDFile(path)` or `ps.LoadFromPIDDir(dir)`, then `ps.Render(w, entries, format, ...)`
+- you start a detached child → `ps.SpawnDetached(ctx, cmd, ps.SpawnOptions{PIDFile: ..., Stdout: ps.StdioFile, StdoutPath: ...})`
+- you shut one down → `ps.Stop(entry, grace)`; remove the PID file yourself
+- you only need liveness → `ps.IsAlive(pid)`
 
-| API                               | Purpose                                |
-|-----------------------------------|----------------------------------------|
-| `EntryFromPIDFile(path)`          | One PID file → one `Entry`             |
-| `LoadFromPIDDir(dir)`             | Glob `*.pid` in dir → `[]Entry`        |
-| `IsAlive(pid)`                    | Signal-0 liveness probe                |
-| `Render(w, entries, format, ...)` | Table / JSON / quiet output            |
-| `Command(name, provider, viper)`  | Wires a Cobra `ps` subcommand          |
-| `Provider`                        | Interface a tool implements: `List`    |
-
-## Write side — supervise processes
-
-Counterparts to the read side. Use these when your tool spawns a
-long-running child (a daemon, a backend service, a worker pool)
-that other invocations of the same tool will later observe via
-`Entry`.
-
-| API                            | Purpose                                       |
-|--------------------------------|-----------------------------------------------|
-| `WritePIDFile(path, entry)`    | Atomic write-then-rename; mode 0600           |
-| `SpawnDetached(ctx, cmd, opts)`| Detached child + stdio + PID file in one call |
-| `Stop(entry, grace)`           | SIGTERM → poll → SIGKILL escalator, idempotent|
-| `IsAlive(pid)`                 | Same probe used by the read side              |
-
-### Typical flow
+## Quick start
 
 ```go
 // Spawn — writes voice.pid, child detached from CLI's process group.
@@ -55,41 +37,32 @@ _ = ps.Stop(entry, 2*time.Second)
 os.Remove("/run/myapp/voice.pid") // caller policy
 ```
 
-### `SpawnDetached` options
+## Contract
 
-`SpawnDetached` accepts a fully built `*exec.Cmd` rather than wrapping
-`exec.Command` itself. This keeps `os/exec`'s entire surface (env,
-working dir, ExtraFiles, custom `SysProcAttr` bits) available to
-adopters; the package only forces `Setpgid=true` on POSIX and the
-requested stdio routing on top.
+- `WritePIDFile` is atomic (write-then-rename), mode 0600; `StdioFile`
+  truncate-opens its paths at mode 0600.
+- `SpawnDetached` takes a fully built `*exec.Cmd` and only forces
+  `Setpgid=true` on POSIX plus the requested stdio routing.
+- `Stop` is SIGTERM, poll, SIGKILL; idempotent; refuses `os.Getpid()`;
+  never removes the PID file. On Windows the graceful phase is
+  best-effort and SIGKILL maps to `TerminateProcess`.
+- `StdioBuffer` is for tests only.
+- `<tool> ps` standard columns (ID, Status, Worker, Scope, Duration,
+  Progress, optional Worktree and Track) and flags (`--json`, `--all`,
+  `--quiet`, `--watch`, `--interval`):
+  [Convention](../../../docs/adopters/reference/ps.md#convention).
 
-| `StdioMode`     | Effect                                              |
-|-----------------|-----------------------------------------------------|
-| `StdioInherit`  | Default. Leaves `cmd.Stdout/Stderr` as the caller   |
-|                 | configured them.                                    |
-| `StdioDiscard`  | Pipe the stream to `io.Discard`.                    |
-| `StdioFile`     | Truncate-open `StdoutPath`/`StderrPath` (mode 0600).|
-| `StdioBuffer`   | In-memory `bytes.Buffer`. **Tests only**.           |
+## Neighbours
 
-### `Stop` semantics
+- `hop.top/kit/go/console/cli`: the root that `ps.Command` mounts on and
+  the viper it reads `--json`/`--quiet` from
+- `hop.top/kit/go/console/output`: the table/JSON renderers `Render`
+  follows
 
-`Stop` is idempotent: empty / unparseable entries are no-ops, dead pids
-return `nil`, and re-calling on an already-stopped target does nothing.
-It refuses to act on `os.Getpid()` so a misconfigured caller cannot
-kill the host process. `Stop` does **not** remove a PID file — that
-policy belongs to the caller.
+## See also
 
-On Windows, the graceful signal phase is best-effort (the Go runtime
-does not deliver SIGTERM to non-self processes). The SIGKILL phase
-maps to `TerminateProcess`, which the OS does support.
-
-## Convention
-
-`<tool> ps` is the standard subcommand for every hop.top tool that
-manages asynchronous or long-running work. Standard columns: ID,
-Status (colored), Worker, Scope (truncated 40ch), Duration (since
-started), Progress (`done/total (pct%)`). Optional Worktree and Track
-columns appear only when at least one entry populates them.
-
-Standard flags: `--json`, `--all`/`-a`, `--quiet`/`-q`,
-`--watch`/`-w`, `--interval`/`-i` (default 5s).
+- [Process State API reference](../../../docs/adopters/reference/ps.md):
+  read-side and write-side API tables, `SpawnDetached` options, `Stop`
+  semantics, `<tool> ps` convention
+- `example_test.go` in this directory: `Render` in quiet mode and
+  `ProgressString`

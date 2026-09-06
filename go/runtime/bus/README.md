@@ -1,232 +1,71 @@
 # bus
 
-Event-driven message distribution and pub/sub for kit.
+## What it answers
 
-In-process publish/subscribe with MQTT-style wildcard patterns
-(`*` matches one segment, `#` matches zero or more trailing
-segments). Optional adapters fan events out to SQLite or to
-peer processes.
+How does one package tell the rest of the process that something
+happened, without knowing who listens? In-process publish/subscribe
+with MQTT-style wildcards (`*` one segment, `#` zero or more trailing
+segments); optional adapters fan events out to SQLite or to peer
+processes. Wrong package for request/response (call the function) and
+for durable cross-process queueing (`go/runtime/job`).
 
-## Topic grammar
+## Use it when
 
-Every published topic is **exactly four** dot-separated past-tense
-segments:
+- a command or service emits a lifecycle event → `bus.NewEvent` + `Publish`
+- another package must react, or veto, that event → `Subscribe` (sync, can veto) or `SubscribeAsync`
+- events must reach a log, a file or a human → `bus.NewTeeBus` with a `bus.Sink` (`JSONLSink`, `StdoutSink`, or `go/runtime/notify`)
+- you mint topics for a new emitter → `bus.TopicOf(...).Action(...)`, or `bus.PrefixTopics` for a rebrandable prefix
+- an event needs why / how / with-what / during-what → embed `bus.Qualifiers` in the payload
 
-```
-[Source].[Category].[Object].[Action]
-e.g.   kit.runtime.entity.created
-       kit.ai.response.received
-       myapp.core.breaker.tripped
-```
-
-Rules (enforced by `Validate` and `ValidateTopic`):
-
-- exactly 4 segments separated by `.`
-- each segment matches `^[a-z][a-z0-9_]*$` (lower snake_case)
-- total topic length ≤ 128 characters
-- the trailing Action segment is past tense (ends in `ed` or is
-  whitelisted — see `pastTenseWhitelist`)
-- wildcards (`*`, `#`) are NOT allowed in publish topics; they
-  remain valid in subscribe patterns
-
-### Optional Object modifier
-
-The Object segment may carry a snake_case modifier joined with an
-underscore. The wire form stays a single segment:
-
-```
-kit.config.snapshot_reload.failed
-                ^^^^^^^^^^
-                object   = snapshot
-                modifier = reload
-```
-
-Use the modifier when the same Object participates in distinct
-event flavours that should remain distinguishable on the wire
-(`snapshot` vs `snapshot_reload`). Multi-word modifiers are fine —
-parsing splits on the **first** underscore, so
-`snapshot_partial_reload` parses as object=`snapshot`,
-modifier=`partial_reload`.
-
-See ADR-0017 for the full grammar rationale and the design pivot
-from sigils to payload-side qualifiers.
-
-## Builder API
-
-`bus.TopicOf` is the typed-construction path for new emitters.
-Action is the terminal method — it validates and returns the final
-`bus.Topic`. Bad input panics at the construction site:
+## Quick start
 
 ```go
-import "hop.top/kit/go/runtime/bus"
+b := bus.New()
+defer b.Close(context.Background())
 
-t := bus.TopicOf("kit", "config", "snapshot").Action("reloaded")
-// → "kit.config.snapshot.reloaded"
+var wg sync.WaitGroup
+wg.Add(1)
 
-t := bus.TopicOf("kit", "config", "snapshot").
-    Mod("reload").
-    Action("failed")
-// → "kit.config.snapshot_reload.failed"
-```
-
-`bus.PrefixedTopicOf` is a convenience for fixed prefixes with an
-optional inline modifier:
-
-```go
-bus.PrefixedTopicOf("kit", "config", "snapshot", "reload").Action("failed")
-// → "kit.config.snapshot_reload.failed"
-```
-
-`bus.PrefixTopics` (the existing helper) keeps working for emitters
-that expand a 3-segment prefix into a `TopicMap` of past-tense
-actions. The two paths coexist; pick the one that fits your shape.
-
-## Parsing topics
-
-`bus.ParseTopic` is the inverse of the builder. It validates the
-input, splits the Object segment on the first underscore, and
-returns a builder plus the action so callers can re-render or
-retarget:
-
-```go
-b, action, err := bus.ParseTopic("kit.config.snapshot_reload.failed")
-// b.SourceSeg()   == "kit"
-// b.CategorySeg() == "config"
-// b.ObjectSeg()   == "snapshot"
-// b.ModifierSeg() == "reload"
-// action          == "failed"
-
-// Retarget by mutating the builder and re-rendering:
-again := b.Mod("retry").Action(action)
-// → "kit.config.snapshot_retry.failed"
-```
-
-Invalid input returns a `*bus.InvalidTopicError` (use `errors.As`
-to extract the offending topic and the reason).
-
-## Qualifiers convention
-
-The four semantic axes that describe why/how/with-what/during-what
-do **not** live in the topic string — they live in the payload via
-`bus.Qualifiers`:
-
-```go
-type Qualifiers struct {
-    Reason       string `json:"reason,omitempty"`       // why
-    Mechanism    string `json:"mechanism,omitempty"`    // how
-    Property     string `json:"property,omitempty"`     // with-attribute
-    Circumstance string `json:"circumstance,omitempty"` // during-context
-}
-```
-
-Embed `bus.Qualifiers` in any payload struct that wants qualifier
-semantics. Both anonymous and named embeds work:
-
-```go
-// Anonymous embed (preferred):
-type SnapshotReloadFailed struct {
-    bus.Qualifiers
-    SnapshotID string `json:"snapshot_id"`
-}
-
-// Named embed:
-type SnapshotReloadFailed struct {
-    Q          bus.Qualifiers `json:"qualifiers"`
-    SnapshotID string         `json:"snapshot_id"`
-}
-```
-
-The bus `Publish` API does not change. Subscribers extract
-qualifiers generically via `bus.QualifiersFrom`:
-
-```go
-b.Subscribe("kit.config.snapshot_reload.failed", func(ctx context.Context, e bus.Event) error {
-    if q, ok := bus.QualifiersFrom(e.Payload); ok {
-        // q.Reason, q.Mechanism, q.Property, q.Circumstance
-    }
-    return nil
+b.Subscribe("order.created", func(ctx context.Context, e bus.Event) error {
+	fmt.Printf("topic=%s source=%s payload=%v\n", e.Topic, e.Source, e.Payload)
+	wg.Done()
+	return nil
 })
+
+_ = b.Publish(context.Background(), bus.NewEvent("order.created", "checkout", "item-42"))
+wg.Wait()
+
+// Output:
+// topic=order.created source=checkout payload=item-42
 ```
 
-`Qualifiers` fields are opaque strings; adopters define the
-controlled vocabulary per event type. An empty `Qualifiers`
-JSON-marshals to `{}` because every field carries `omitempty`.
+Verified by `example_test.go` in this directory.
 
-## Migration: existing emitters
+## Contract
 
-For most emitters the migration is **none required**. Existing
-hand-written topic constants stay valid as long as they pass
-`Validate`. The new surface is purely additive.
+- Published topics are exactly four dot-separated segments,
+  `[Source].[Category].[Object].[Action]`, each `^[a-z][a-z0-9_]*$`,
+  total ≤ 128 chars, Action in past tense; wildcards only in
+  subscribe patterns. `Validate` runs on every `Publish`.
+- Enforcement mode: `ModeOff`, `ModeWarn` (default: report, then
+  publish), `ModeStrict` (report, return `*InvalidTopicError`, drop).
+  Precedence: `WithEnforce` > `kit.bus.enforce` config >
+  `KIT_BUS_ENFORCE` env > default.
+- Sync handlers run in registration order; the first error vetoes.
+  Async handlers start only after every sync handler succeeded.
+- Qualifiers (`Reason`, `Mechanism`, `Property`, `Circumstance`) travel
+  in the payload, never in the topic string. ADR-0017.
+- After `Close`, `Publish` returns `ErrBusClosed`.
 
-For new code, prefer the builder over hand-written strings:
+## Neighbours
 
-```diff
--const TopicSnapshotReloaded bus.Topic = "kit.config.snapshot.reloaded"
-+var TopicSnapshotReloaded = bus.TopicOf("kit", "config", "snapshot").Action("reloaded")
-```
-
-If your event currently encodes a reason / mechanism / property /
-circumstance in the topic itself (e.g. via a sigil-like character
-or extra dot segments), migrate the qualifier into the payload:
-
-```diff
--bus.NewEvent("kit.config.snapshot.reloaded?reason=sighup", "config", payload)
-+payload := SnapshotReloaded{
-+    Qualifiers: bus.Qualifiers{Reason: "sighup", Mechanism: "signal"},
-+    // ... other payload fields
-+}
-+bus.NewEvent(
-+    bus.TopicOf("kit", "config", "snapshot").Action("reloaded"),
-+    "config",
-+    payload,
-+)
-```
-
-Audit checklist for adopters on upgrade:
-
-1. Grep your topic constants for the sigil characters `?`, `+`,
-   `=`, `@` and for topics with more than 4 dot segments — none
-   are expected, but verify.
-2. Replace string-concatenated topic constants with
-   `bus.TopicOf(...).Action(...)` (or `Mod(...).Action(...)`).
-3. For events that distinguish via reason / mechanism / property /
-   circumstance, embed `bus.Qualifiers` in the payload struct and
-   stop encoding the qualifier in the topic.
-
-## Enforcement modes
-
-The bus runs `Validate` on every Publish; behaviour depends on the
-configured `Mode`:
-
-- `ModeOff` — validation skipped entirely.
-- `ModeWarn` — invalid topics reported via the configured
-  reporter; Publish proceeds.
-- `ModeStrict` — invalid topics reported AND Publish returns
-  `*InvalidTopicError`; the event is not delivered.
-
-Default is `ModeWarn`. Override precedence:
-explicit `WithEnforce` > `kit.bus.enforce` config > `KIT_BUS_ENFORCE`
-env > default.
-
-```go
-b := bus.New(bus.WithEnforce(bus.ModeStrict))
-b := bus.New(bus.WithEnforceFromEnv())            // KIT_BUS_ENFORCE=strict
-b := bus.New(bus.WithInvalidTopicReporter(report))
-```
-
-## Adopter rebrand example
-
-```go
-import "hop.top/kit/go/runtime/bus"
-
-tm, err := bus.PrefixTopics("myapp.runtime.user",
-    []string{"created", "updated", "deleted"})
-// tm["created"] == "myapp.runtime.user.created"
-```
-
-Most adopters do not call `PrefixTopics` directly — they pass a
-prefix to a package-level `WithTopicPrefix` option.
+- `go/runtime/notify`: outbound sinks (webhook, email, OS-native), filter and retry decorators built on `bus.Sink`.
+- `go/runtime/sideeffect`: dry-run wrapper that stamps `Mechanism: "dry_run"` on published payloads.
+- `go/transport/api`: WebSocket transport behind `WithNetwork`.
 
 ## See also
 
-- [`go/runtime/notify`](../notify/README.md) — outbound notification sinks (webhook / email / OS-native) built on `bus.Sink`
+- [Bus overview](../../../docs/adopters/concepts/bus-overview.md): topic grammar, object modifier, qualifiers, migrating existing emitters
+- [Bus API](../../../docs/adopters/reference/bus-api.md): types, builder, `ParseTopic`, qualifiers, enforcement, sinks
+- [Hook a CLI into the bus](../../../docs/adopters/guides/hook-cli-into-bus.md)
+- [Domain events](../../../docs/adopters/reference/domain-events.md): kit-emitted topic catalog

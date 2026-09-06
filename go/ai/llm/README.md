@@ -1,43 +1,25 @@
 # llm
 
-Provider-agnostic LLM client for Go.
+## What it answers
 
-Unified interface for completions, streaming, tool calling, image
-generation, speech synthesis, transcription, and video analysis
-across providers. Three-layer config merge: file < URI < env vars.
+How a Go tool talks to any LLM provider through one client: completions,
+streaming, tool calling, image generation, speech synthesis,
+transcription and video analysis, selected by a `scheme://model` URI with
+a file < URI < env config merge, fallback chains and bus events. Wrong
+package when you need model metadata itself (`hop.top/aim`) or a
+provider-specific wire detail (the adapter sub-packages below).
 
-## Install
+## Use it when
 
-```
-go get hop.top/llm
-```
+- you call a model without hard-coding a vendor → `llm.Resolve("anthropic://...")` then `llm.NewClient(provider).Chat(ctx, messages)`
+- you stream tokens → `client.StreamChat(ctx, messages)` and iterate `iter.Next()` / `iter.Token()`
+- you expose tools → `client.ChatWith(ctx, messages, []llm.ToolDef{...})` and read `resp.ToolCalls`
+- one provider may fail → `llm.WithFallback(secondary)`, `llm.OnFallback(fn)`
+- you pick a model by capability and budget → `llm.PickProvider(ctx, reg, profile, llm.BudgetBalanced)`; restrict with `llm.LoadPool()` + `PickProviderInPool`
+- you observe calls → `llm.OnRequest`/`OnResponse`/`OnError`/`OnRoute`/`OnEvaResult`, or `llm.WithBus(bus)`
+- you add a provider → `llm.Register("myscheme", func(cfg llm.ResolvedConfig) (llm.Provider, error) {...})`
 
-## Library
-
-### Provider URIs
-
-```
-scheme://model[?param=val]
-```
-
-| Scheme | Provider | Capabilities |
-|--------|----------|-------------|
-| `anthropic` | Anthropic | Complete, Stream, ToolCall |
-| `openai` | OpenAI | Complete, Stream, ToolCall, Image, Speech, Transcribe |
-| `openrouter` | OpenRouter | Complete, Stream, ToolCall |
-| `gemini`, `google` | Google Gemini | Complete, Stream, ToolCall |
-| `ollama` | Ollama | Complete, Stream, Image |
-| `xai` | xAI | Complete, Stream, ToolCall |
-| `groq` | Groq | Complete, Stream, ToolCall |
-| `together` | Together | Complete, Stream, ToolCall |
-| `fireworks` | Fireworks | Complete, Stream, ToolCall |
-| `deepseek` | DeepSeek | Complete, Stream, ToolCall |
-| `mistral` | Mistral | Complete, Stream, ToolCall |
-| `lmstudio` | LM Studio | Complete, Stream, ToolCall |
-| `routellm` | RouteLLM | Complete, Stream (routed) |
-| `triton` | NVIDIA Triton | Score (inference) |
-
-### Quick Start
+## Quick start
 
 ```go
 provider, _ := llm.Resolve("anthropic://claude-sonnet-4-5-20250514")
@@ -49,268 +31,39 @@ resp, _ := client.Chat(ctx, []llm.Message{
 fmt.Println(resp.Message.Content)
 ```
 
-### Streaming
+## Contract
 
-```go
-iter, _ := client.StreamChat(ctx, messages)
-for iter.Next() {
-    tok := iter.Token()
-    fmt.Print(tok.Text)
-}
-```
+- Provider URI: `scheme://model[?param=val]`; 14 schemes, capabilities per
+  scheme: [Provider URIs](../../../docs/adopters/reference/llm.md#provider-uris).
+- Config merge: file < URI params < env vars. Pool: file < env
+  (`LLM_POOL_DISABLE`) < CLI (`ResolvePool`).
+- Bus topics default to `kit.ai.{request.started, response.received,
+  request.errored, fallback.applied, route.selected, eva.evaluated}`;
+  `WithTopicPrefix` rebrands the `source.category` prefix,
+  `WithTopics` overrides individual topics.
+- Picker: filters on `aim.Filter` plus token bounds, ranks by budget tier,
+  tiebreaks alphabetically on `(Provider, ID)`; `ErrNoProviderMatches` +
+  `*NoMatchError`; `LLM_PICKER_TRACE` gates one `slog` event per call:
+  [Picker](../../../docs/adopters/reference/llm.md#picker).
+- Model metadata comes from `hop.top/aim` `v0.1.0-alpha.0` via
+  `llm.Default(ctx)`; inject with `llm.SetDefaultRegistry`.
+- License: MIT.
 
-### Tool Calling
+## Neighbours
 
-```go
-resp, _ := client.ChatWith(ctx, messages, []llm.ToolDef{
-    {Name: "weather", Description: "Get weather", InputSchema: schema},
-})
-for _, tc := range resp.ToolCalls {
-    fmt.Println(tc.Name, string(tc.Arguments))
-}
-```
+- [`anthropic/`](anthropic/README.md), [`openai/`](openai/README.md),
+  [`google/`](google/README.md), [`ollama/`](ollama/README.md),
+  [`triton/`](triton/README.md), [`routellm/`](routellm/README.md):
+  provider adapters
+- [`router/`](router/README.md): native routing engine (BERT, intent-based)
+- [`errors/`](errors/README.md): structured error types with fallback semantics
+- `hop.top/kit/go/runtime/bus`: the bus `WithBus` publishes to
 
-### Fallback Chains
+## See also
 
-```go
-client := llm.NewClient(primary,
-    llm.WithFallback(secondary),
-    llm.WithFallback(tertiary),
-    llm.OnFallback(func(from, to int, err error) {
-        log.Printf("fallback %d→%d: %v", from, to, err)
-    }),
-)
-```
-
-### Multimodal
-
-```go
-// Image generation
-img, _ := client.GenerateImage(ctx, llm.ImageRequest{
-    Prompt: "a sunset over mountains",
-})
-
-// Speech synthesis
-audio, _ := client.Synthesize(ctx, llm.SynthesizeRequest{
-    Text: "Hello world", Voice: "alloy",
-})
-
-// Transcription
-transcript, _ := client.Transcribe(ctx, llm.TranscribeRequest{
-    Source: llm.FileSource("recording.mp3"),
-})
-
-// Media sources
-llm.FileSource("path/to/file")
-llm.URLSource("https://example.com/image.png")
-llm.InlineSource(data, "image/png")
-```
-
-### Event Hooks
-
-```go
-llm.NewClient(provider,
-    llm.OnRequest(func(r llm.Request) { /* ... */ }),
-    llm.OnResponse(func(r llm.Response, d time.Duration) { /* ... */ }),
-    llm.OnError(func(err error) { /* ... */ }),
-    llm.OnRoute(func(router string, score float64, model string) { /* ... */ }),
-    llm.OnEvaResult(func(contract string, passed bool, violations []string) { /* ... */ }),
-    llm.WithBus(eventBus),
-)
-```
-
-### Bus topics
-
-`Client` publishes 6 topics by default — non-uniform action
-vocabulary on purpose, each event names the real verb:
-
-| Topic                          | When |
-|--------------------------------|------|
-| `kit.ai.request.started`       | request initiated |
-| `kit.ai.response.received`     | response complete |
-| `kit.ai.request.errored`       | request failed |
-| `kit.ai.fallback.applied`      | fallback chain advanced |
-| `kit.ai.route.selected`        | router picked a model |
-| `kit.ai.eva.evaluated`         | contract evaluation result |
-
-Override the 2-segment `source.category` prefix to rebrand all
-six at once (the trailing `object.action` pair is preserved):
-
-```go
-llm.NewClient(provider,
-    llm.WithTopicPrefix("myapp.ai"),
-)
-// myapp.ai.request.started, myapp.ai.response.received, ...
-```
-
-Use `llm.WithTopics(llm.Topics{ ... })` to override individual
-topics; empty fields fall back to `DefaultTopics`.
-
-### Configuration
-
-```go
-cfg, _ := llm.LoadConfig("anthropic://claude-sonnet-4-5-20250514?temperature=0.7")
-```
-
-Three-layer merge: config file < URI params < env vars.
-
-### Model registry
-
-`aim` (`hop.top/aim`, `v0.1.0-alpha.0`) is the source of truth for model
-metadata — capabilities, modalities, cost, context windows. The picker
-consumes this accessor; library code calls `llm.Default(ctx)` rather than
-constructing a registry directly so tests and embedders can inject custom
-sources via `llm.SetDefaultRegistry`. The lazy default reuses one
-`aim.NewRegistry` across calls; swapping the provider invalidates that cache.
-
-```go
-t := true
-reg, err := llm.Default(ctx)
-models, _ := reg.Models(ctx, aim.Filter{ToolCall: &t})
-```
-
-### Request profile and budget tier
-
-`RequestProfile` is the consumer-facing input to `PickProvider`:
-an `aim.Filter` plus `MaxInputTokens` / `MaxOutputTokens` bounds (the picker
-rejects models whose context window or output limit is smaller). `BudgetTier`
-(`cheap` / `balanced` / `premium`) captures the cost/capability trade-off as a
-stable categorical so the surface survives upstream pricing churn; use
-`ParseBudgetTier` for case-insensitive CLI input. Layering rule: consumers
-derive the profile from invocation context, kit picks the provider.
-
-```go
-t := true
-prof := llm.RequestProfile{
-    Filter:         aim.Filter{ToolCall: &t, StructuredOutput: &t},
-    MaxInputTokens: 8192,
-}
-```
-
-### Picker
-
-`PickProvider` selects a single `*aim.Model` for a profile and budget:
-
-```go
-func PickProvider(ctx context.Context, reg *aim.Registry, profile RequestProfile, budget BudgetTier) (*aim.Model, error)
-```
-
-- Filter: queries `reg.Models(ctx, profile.Filter)`, then drops candidates
-  whose known `Limit.Context` / `Limit.Output` falls below the profile's
-  bounds. Unknown limits (zero) pass through.
-- Rank: `BudgetCheap` minimises token-weighted price
-  (`0.75*Cost.Input + 0.25*Cost.Output`); `BudgetPremium` maximises
-  `Limit.Context` and tiebreaks on `Cost.Input`; `BudgetBalanced` picks
-  `survivors[len/2]` after the price-asc sort. For even-sized survivor
-  lists this is the upper-middle entry (e.g. `len=2` picks the more
-  expensive of the two). Nil-cost models are price 0 (Cheap prefers,
-  Premium loses tiebreaks).
-- Tiebreak: alphabetical `(Provider, ID)` makes every call deterministic.
-
-```go
-reg, _ := llm.Default(ctx)
-m, err := llm.PickProvider(ctx, reg, prof, llm.BudgetBalanced)
-```
-
-Errors are sentinel + structured: `errors.Is(err, llm.ErrNoProviderMatches)`
-detects the no-match case; `var nme *llm.NoMatchError; errors.As(err, &nme)`
-extracts `CandidateCount` and per-model `Eliminated` reasons for logs.
-
-### Pool configuration
-
-A `pool` block in `llm.yaml` restricts which `(scheme, model)` pairs the
-picker is allowed to pick. An empty or missing pool means "everything in
-aim's registry is fair game".
-
-```yaml
-pool:
-  - alias: fast
-    scheme: openai
-    model: gpt-4o-mini
-  - alias: legacy
-    scheme: openai
-    model: gpt-3.5-turbo
-    enabled: false
-```
-
-Resolution order is **file < env < CLI**: `LLM_POOL_DISABLE` is a comma-
-separated list of aliases or `scheme:model` strings that flips matching
-entries off; downstream CLIs that already parsed flags pass the same shape
-to `ResolvePool` for a final layer of overrides.
-
-```go
-pool, _ := llm.LoadPool()
-m, _ := llm.PickProviderInPool(ctx, reg, prof, llm.BudgetBalanced, pool)
-```
-
-Pool eliminations surface through `NoMatchError.Eliminated` with
-`Stage == "pool_disabled"` so operators can distinguish "pool too narrow"
-from "all pool members eliminated by budget caps".
-
-### Tracing
-
-`PickProvider` emits one structured `slog` event per call, gated on the
-`LLM_PICKER_TRACE` environment variable. Recognised truthy values (case-
-insensitive): `1`, `true`, `on`, `yes`. Anything else, including unset,
-suppresses the event. Tracing also stays silent on registry-query errors —
-only successful picks and `ErrNoProviderMatches` outcomes trace.
-
-Stable keys: `picker.budget`, `picker.filter.{tool_call,reasoning,structured_output,temperature,provider,family,input,output}`,
-`picker.profile.max_{input,output}_tokens`, `picker.candidate_count`,
-`picker.eliminated_count`, `picker.outcome` (`matched` / `no_match`), and on
-match `picker.chosen.provider` / `picker.chosen.model`. See the `picker.go`
-package doc for the full list.
-
-Sample line:
-
-```
-level=INFO msg=llm.pick picker.budget=balanced picker.filter.tool_call=true picker.filter.reasoning=<nil> picker.filter.structured_output=<nil> picker.filter.temperature=<nil> picker.profile.max_input_tokens=8192 picker.candidate_count=12 picker.eliminated_count=3 picker.outcome=matched picker.chosen.provider=openai picker.chosen.model=gpt-4o
-```
-
-Enable programmatically before invoking the picker:
-
-```go
-os.Setenv("LLM_PICKER_TRACE", "1")
-m, err := llm.PickProvider(ctx, reg, prof, llm.BudgetBalanced)
-```
-
-### Custom Adapters
-
-```go
-llm.Register("myscheme", func(cfg llm.ResolvedConfig) (llm.Provider, error) {
-    return &MyAdapter{model: cfg.Model}, nil
-})
-```
-
-## Interfaces
-
-| Interface | Methods |
-|-----------|---------|
-| `Provider` | Base provider |
-| `Completer` | `Complete(ctx, []Message) (Response, error)` |
-| `Streamer` | `Stream(ctx, []Message) (TokenIterator, error)` |
-| `ToolCaller` | `CompleteWithTools(ctx, []Message, []ToolDef) (Response, error)` |
-| `ImageGenerator` | `GenerateImage(ctx, ImageRequest) (ImageResponse, error)` |
-| `SpeechSynthesizer` | `Synthesize(ctx, SynthesizeRequest) (SynthesizeResponse, error)` |
-| `Transcriber` | `Transcribe(ctx, TranscribeRequest) (TranscribeResponse, error)` |
-| `VideoAnalyzer` | `AnalyzeVideo(ctx, ...)` |
-| `VideoGenerator` | `GenerateVideo(ctx, VideoGenRequest)` |
-
-## Sub-packages
-
-| Package | Description |
-|---------|-------------|
-| [anthropic/](anthropic/) | Anthropic Messages API adapter |
-| [openai/](openai/) | OpenAI-compatible adapter (+ OpenRouter, xAI, Groq, etc.) |
-| [google/](google/) | Google Gemini REST adapter |
-| [ollama/](ollama/) | Ollama local inference adapter |
-| [triton/](triton/) | NVIDIA Triton Inference Server scorer |
-| [routellm/](routellm/) | RouteLLM cost-aware routing adapter |
-| [router/](router/) | Native routing engine (BERT, intent-based) |
-| [errors/](errors/) | Structured error types with fallback semantics |
-
-## License
-
-MIT
+- [LLM client reference](../../../docs/adopters/reference/llm.md):
+  install, provider table, streaming, tools, fallback, multimodal, hooks,
+  topics, registry, picker, pool, tracing, interfaces
+- [Go primitives](../../../docs/adopters/reference/go-primitives.md)
 
 <!-- release: track hop.top/aim v0.1.0-alpha.0 -->

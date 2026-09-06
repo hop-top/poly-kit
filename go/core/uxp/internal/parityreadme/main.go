@@ -1,5 +1,5 @@
 // Command parityreadme generates the parity table block in
-// go/core/uxp/README.md from the static Mappings() and
+// docs/adopters/reference/uxp.md from the static Mappings() and
 // ToolCapabilities() declared by every registered adapter.
 //
 // Usage:
@@ -8,14 +8,14 @@
 //
 // The generator imports every adapter and emits two tables:
 //   - Universal-option × CLI matrix (replaces <!-- parity:start --> …
-//     <!-- parity:end --> in README.md).
+//     <!-- parity:end --> in the target page).
 //   - Tool-capability × CLI matrix (replaces <!-- tools:start --> …
 //     <!-- tools:end -->).
 //
 // CI runs `go generate ./...` and fails if either block diffs against
-// the committed README. That makes the parity README a structural
+// the committed page. That makes the parity table a structural
 // invariant of the package: edit an adapter's Mappings(), regenerate,
-// commit the README diff. There is no other source of truth.
+// commit the docs diff. There is no other source of truth.
 package main
 
 import (
@@ -76,7 +76,7 @@ var universalToolCapabilities = []string{
 func main() {
 	var (
 		updateFlag = flag.Bool("update", false, "rewrite the README.md block in-place")
-		readmePath = flag.String("readme", defaultReadmePath(), "path to the README to update")
+		readmePath = flag.String("readme", defaultReadmePath(), "path to the page to update")
 	)
 	flag.Parse()
 
@@ -104,9 +104,9 @@ func main() {
 
 func defaultReadmePath() string {
 	// `go generate` invokes the directive with cwd = directory of the
-	// source file containing it (go/core/uxp/generate.go), so the
-	// README is right there.
-	return "README.md"
+	// source file containing it (go/core/uxp/generate.go); the
+	// directive passes -readme explicitly to reach the docs page.
+	return "../../../docs/adopters/reference/uxp.md"
 }
 
 func renderParityTable() string {

@@ -40,14 +40,19 @@ func TestREADMEParityIsUpToDate(t *testing.T) {
 
 	got := normalizeBlocks(out.String())
 
-	readmeBytes, err := os.ReadFile(filepath.Join(pkgDir, "README.md"))
+	// The parity blocks live in the adopter reference page, not the
+	// package README: they exceed what a Shape B README may carry.
+	// Keep this path in sync with the -readme flag in generate.go.
+	docPath := filepath.Join(pkgDir, "..", "..", "..",
+		"docs", "adopters", "reference", "uxp.md")
+	readmeBytes, err := os.ReadFile(docPath)
 	if err != nil {
-		t.Fatalf("read README: %v", err)
+		t.Fatalf("read %s: %v", docPath, err)
 	}
 	want := normalizeBlocks(extractBlocks(string(readmeBytes)))
 
 	if got != want {
-		t.Errorf("README.md parity blocks are stale.\nRun: go generate ./go/core/uxp/...\n\n--- generated ---\n%s\n\n--- README ---\n%s",
+		t.Errorf("uxp.md parity blocks are stale.\nRun: go generate ./go/core/uxp/...\n\n--- generated ---\n%s\n\n--- doc ---\n%s",
 			got, want)
 	}
 }

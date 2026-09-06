@@ -81,3 +81,73 @@ adapter.
 - Catalog: [domain-events.md](../reference/domain-events.md) — canonical
   pre-defined topics.
 - Reference: [bus-api.md](../reference/bus-api.md) — types, methods, sinks.
+
+## Object modifier
+
+The Object segment may carry a snake_case modifier joined with an
+underscore. The wire form stays a single segment:
+
+```
+kit.config.snapshot_reload.failed
+                ^^^^^^^^^^
+                object   = snapshot
+                modifier = reload
+```
+
+Use the modifier when the same Object participates in distinct event
+flavours that should remain distinguishable on the wire (`snapshot`
+vs `snapshot_reload`). Multi-word modifiers are fine: parsing splits
+on the first underscore, so `snapshot_partial_reload` parses as
+object=`snapshot`, modifier=`partial_reload`. ADR-0017 records the
+full grammar rationale and the design pivot from sigils to
+payload-side qualifiers.
+
+## Qualifiers convention
+
+The four semantic axes that describe why / how / with-what /
+during-what do not live in the topic string. They live in the payload
+via `bus.Qualifiers` (`Reason`, `Mechanism`, `Property`,
+`Circumstance`), embedded in the payload struct and read back by
+subscribers with `bus.QualifiersFrom`. Signatures and embed shapes:
+[bus-api.md](../reference/bus-api.md#qualifiers).
+
+## Migrating existing emitters
+
+For most emitters no migration is required. Existing hand-written
+topic constants stay valid as long as they pass `Validate`; the
+builder and qualifier surface is purely additive.
+
+For new code, prefer the builder over hand-written strings:
+
+```diff
+-const TopicSnapshotReloaded bus.Topic = "kit.config.snapshot.reloaded"
++var TopicSnapshotReloaded = bus.TopicOf("kit", "config", "snapshot").Action("reloaded")
+```
+
+If an event currently encodes a reason / mechanism / property /
+circumstance in the topic itself (via a sigil-like character or extra
+dot segments), migrate the qualifier into the payload:
+
+```diff
+-bus.NewEvent("kit.config.snapshot.reloaded?reason=sighup", "config", payload)
++payload := SnapshotReloaded{
++    Qualifiers: bus.Qualifiers{Reason: "sighup", Mechanism: "signal"},
++    // ... other payload fields
++}
++bus.NewEvent(
++    bus.TopicOf("kit", "config", "snapshot").Action("reloaded"),
++    "config",
++    payload,
++)
+```
+
+Audit checklist on upgrade:
+
+1. Grep topic constants for the sigil characters `?`, `+`, `=`, `@`
+   and for topics with more than 4 dot segments; none are expected,
+   but verify.
+2. Replace string-concatenated topic constants with
+   `bus.TopicOf(...).Action(...)` (or `Mod(...).Action(...)`).
+3. For events that distinguish via reason / mechanism / property /
+   circumstance, embed `bus.Qualifiers` in the payload struct and stop
+   encoding the qualifier in the topic.

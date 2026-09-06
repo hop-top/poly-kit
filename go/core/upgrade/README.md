@@ -34,3 +34,8 @@ c := upgrade.New(
 `WithTopics` overrides individual actions; empty fields keep
 the default. Publishing is best-effort, fire-and-forget on a
 goroutine — it never blocks or fails the upgrade flow.
+
+## Sub-packages
+
+- [`driver/`](driver/README.md): `upgrade.SchemaDriver` backends, which store holds the schema version and how it is backed up.
+- [`skill/`](skill/README.md): renders the agent skill text that keeps a tool's binary current.

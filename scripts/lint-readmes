@@ -1,0 +1,366 @@
+#!/usr/bin/env bash
+# lint-readmes: every qualifying directory carries a README.md, every link in
+# a "## Contents" table resolves, and README length stays under the shape cap.
+#
+# Rules and the two README shapes: docs/contributors/readme-guide.md
+#
+# Usage:
+#   scripts/lint-readmes [--root DIR] [--allowlist FILE] [--caps-warn]
+#
+# One side file at the repo root:
+#   .readme-allowlist  deliberate exceptions, one path per line with a
+#                      "# reason"; never expected to gain a README
+#
+# Exit codes:
+#   0  every qualifying directory has a README or an allowlist entry, every
+#      Contents link resolves, and every README is under its shape cap
+#   1  missing README, broken Contents link, cap overrun (unless
+#      --caps-warn), or malformed allowlist
+#   2  usage error
+#
+# --caps-warn downgrades cap overruns to WARN, for a tree that is being
+# brought under cap.
+#
+# Qualifying directory (any one is enough):
+#   - holds non-test source files directly (.go .ts .py .php .rs)
+#   - template root:  templates/<name> without a scaffold-time README
+#   - contract set:   contracts/**/ holding files directly
+#   - docs section:   docs/**/ holding .md files directly
+#   - standalone tool: tools/<name>
+#   - index: any walked directory with a qualifying directory below it
+#
+# Excluded directories are data, not conditions: edit the lists below.
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Exclusion data
+# ---------------------------------------------------------------------------
+
+# Directory names pruned with everything under them. Hidden directories
+# (.git, .github, .tlc, ...) are pruned too, by a separate glob below.
+PRUNE_NAMES=(
+  testdata
+  fixtures
+  fixture
+  gen
+  dist
+  target
+  build
+  vendor
+  node_modules
+  __pycache__
+  .venv
+  .pytest_cache
+  internal   # internal/ packages: API is private, parent README covers them
+  cmd        # cmd/ leaves: documented by the parent README
+  test
+  tests
+  e2e
+)
+
+# Trees whose immediate children are self-contained payloads (an example
+# app, a scaffolding blueprint): one README at <tree>/<name> covers every
+# directory below it.
+PAYLOAD_TREES=(
+  examples
+  templates
+)
+
+# Files whose presence means the directory's README is rendered for the
+# adopter at scaffold time; a README.md next to it would ship verbatim.
+SCAFFOLDED_README_MARKERS=(
+  README.md.tmpl
+)
+
+# Directory name globs pruned with everything under them.
+PRUNE_GLOBS=(
+  '.*'       # hidden
+  '*_test'   # test directories by suffix
+  '*.pb.*'   # generated protobuf output
+)
+
+# Directory names that need no README of their own when the parent already
+# has one (language source roots covered by the module README). Children
+# are still walked.
+SRC_ROOT_NAMES=(
+  src
+)
+
+# Module manifests: a directory holding __init__.py whose parent holds one of
+# these is a Python source root and follows SRC_ROOT_NAMES semantics.
+MODULE_MANIFESTS=(
+  pyproject.toml
+  setup.py
+)
+
+# Source file globs that make a directory qualify, paired with the globs
+# that mark a file as test-only. A directory qualifies when at least one
+# file matches a source glob and none of its test globs.
+SOURCE_GLOBS=(
+  '*.go'
+  '*.ts'
+  '*.py'
+  '*.php'
+  '*.rs'
+)
+TEST_FILE_GLOBS=(
+  '*_test.go'
+  '*.test.ts'
+  '*.spec.ts'
+  '*.d.ts'
+  'test_*.py'
+  '*_test.py'
+  'conftest.py'
+  '*Test.php'
+)
+
+# Shape caps (lines). A README with a "## Contents" heading is Shape A.
+CAP_INDEX=40
+CAP_PACKAGE=80
+
+# ---------------------------------------------------------------------------
+# Args
+# ---------------------------------------------------------------------------
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ALLOWLIST=""
+CAPS_WARN=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --root) ROOT="$(cd "$2" && pwd)"; shift 2 ;;
+    --allowlist) ALLOWLIST="$2"; shift 2 ;;
+    --caps-warn) CAPS_WARN=1; shift ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    *) echo "lint-readmes: unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+[ -n "$ALLOWLIST" ] || ALLOWLIST="$ROOT/.readme-allowlist"
+
+cd "$ROOT"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+fail_count=0
+warn_count=0
+
+fail() { echo "FAIL: $*"; fail_count=$((fail_count + 1)); }
+warn() { echo "WARN: $*"; warn_count=$((warn_count + 1)); }
+
+# has_direct_file DIR GLOB: true when DIR holds a regular file matching GLOB.
+has_direct_file() {
+  local dir="$1" glob="$2"
+  [ -n "$(find "$dir" -mindepth 1 -maxdepth 1 -type f -name "$glob" -print -quit)" ]
+}
+
+# has_non_test_source DIR: true when DIR holds a source file outside every
+# test glob.
+has_non_test_source() {
+  local dir="$1" f name t is_test
+  for g in "${SOURCE_GLOBS[@]}"; do
+    while IFS= read -r f; do
+      name="${f##*/}"
+      is_test=0
+      for t in "${TEST_FILE_GLOBS[@]}"; do
+        # shellcheck disable=SC2254 # $t is a glob pattern on purpose
+        case "$name" in $t) is_test=1; break ;; esac
+      done
+      [ "$is_test" -eq 0 ] && return 0
+    done < <(find "$dir" -mindepth 1 -maxdepth 1 -type f -name "$g")
+  done
+  return 1
+}
+
+# is_src_root DIR: true when DIR is a language source root whose parent
+# README covers it.
+is_src_root() {
+  local dir="$1" name parent n m
+  name="${dir##*/}"
+  parent="$(dirname "$dir")"
+  [ -f "$parent/README.md" ] || return 1
+  for n in "${SRC_ROOT_NAMES[@]}"; do
+    [ "$name" = "$n" ] && return 0
+  done
+  if [ -f "$dir/__init__.py" ]; then
+    for m in "${MODULE_MANIFESTS[@]}"; do
+      [ -f "$parent/$m" ] && return 0
+    done
+  fi
+  return 1
+}
+
+# in_payload DIR: true when DIR sits below <tree>/<name> for a payload tree.
+in_payload() {
+  local dir="$1" t
+  for t in "${PAYLOAD_TREES[@]}"; do
+    case "$dir" in "$t"/*/*) return 0 ;; esac
+  done
+  return 1
+}
+
+# has_scaffolded_readme DIR: true when DIR carries a scaffold-time README.
+has_scaffolded_readme() {
+  local dir="$1" m
+  for m in "${SCAFFOLDED_README_MARKERS[@]}"; do
+    [ -f "$dir/$m" ] && return 0
+  done
+  return 1
+}
+
+# qualifies DIR: true when DIR must carry a README.
+qualifies() {
+  local dir="$1"
+  in_payload "$dir" && return 1
+  case "$dir" in
+    templates/*)   has_scaffolded_readme "$dir" && return 1; return 0 ;;
+    tools/*/*) ;;
+    tools/*)       return 0 ;;
+    contracts/*)   has_direct_file "$dir" '*' && return 0 ;;
+    docs/*)        has_direct_file "$dir" '*.md' && return 0 ;;
+  esac
+  is_src_root "$dir" && return 1
+  has_non_test_source "$dir"
+}
+
+# area DIR: the reporting bucket for the missing-README summary.
+area() {
+  local dir="$1"
+  case "$dir" in
+    sdk/experimental/*/*) echo "$dir" | cut -d/ -f1-3 ;;
+    go/*/*|sdk/*/*)       echo "$dir" | cut -d/ -f1-2 ;;
+    *)                    echo "${dir%%/*}" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Allowlist: one path per line, "# reason" after it. Blank and comment lines
+# are ignored. Every entry needs a reason and an existing directory.
+# ---------------------------------------------------------------------------
+
+allowed=$'\n'
+if [ -f "$ALLOWLIST" ]; then
+  lineno=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    lineno=$((lineno + 1))
+    case "$line" in ''|'#'*) continue ;; esac
+    path="${line%%#*}"
+    path="$(echo "$path" | sed -e 's/[[:space:]]*$//' -e 's#/*$##')"
+    reason="${line#*#}"
+    case "$line" in
+      *'#'*) ;;
+      *) fail "$ALLOWLIST:$lineno: entry '$path' has no '# reason'"; continue ;;
+    esac
+    reason="${reason#"${reason%%[![:space:]]*}"}"
+    [ -n "$reason" ] || fail "$ALLOWLIST:$lineno: entry '$path' has an empty reason"
+    [ -d "$path" ] || fail "$ALLOWLIST:$lineno: '$path' is not a directory"
+    allowed="$allowed$path"$'\n'
+  done < "$ALLOWLIST"
+fi
+
+# ---------------------------------------------------------------------------
+# Walk
+# ---------------------------------------------------------------------------
+
+prune_expr=()
+for n in "${PRUNE_NAMES[@]}"; do prune_expr+=(-name "$n" -o); done
+for g in "${PRUNE_GLOBS[@]}"; do prune_expr+=(-name "$g" -o); done
+unset 'prune_expr[${#prune_expr[@]}-1]'
+
+missing=()
+readmes=()
+walked=()
+qualifying=$'\n'
+
+while IFS= read -r dir; do
+  dir="${dir#./}"
+  [ "$dir" = "." ] && continue
+  walked+=("$dir")
+  [ -f "$dir/README.md" ] && readmes+=("$dir/README.md")
+  qualifies "$dir" && qualifying="$qualifying$dir"$'\n'
+done < <(find . -mindepth 1 -type d \( "${prune_expr[@]}" \) -prune -o -type d -print | LC_ALL=C sort)
+
+# is_index DIR: true when a qualifying directory sits below DIR.
+is_index() {
+  case "$qualifying" in *$'\n'"$1"/*) return 0 ;; esac
+  return 1
+}
+
+for dir in ${walked[@]+"${walked[@]}"}; do
+  case "$qualifying" in
+    *$'\n'"$dir"$'\n'*) ;;
+    *) is_index "$dir" || continue
+       is_src_root "$dir" && continue ;;
+  esac
+  [ -f "$dir/README.md" ] && continue
+  case "$allowed" in *$'\n'"$dir"$'\n'*) continue ;; esac
+  missing+=("$dir")
+done
+
+for dir in ${missing[@]+"${missing[@]}"}; do
+  fail "missing README.md: $dir/"
+done
+
+# Allowlist entries that have grown a README are stale.
+while IFS= read -r path; do
+  [ -n "$path" ] || continue
+  [ -f "$path/README.md" ] && warn "allowlist entry no longer needed (README present): $path"
+done <<< "$allowed"
+
+# ---------------------------------------------------------------------------
+# Contents links and caps
+# ---------------------------------------------------------------------------
+
+for readme in ${readmes[@]+"${readmes[@]}"}; do
+  dir="$(dirname "$readme")"
+  lines=$(wc -l < "$readme" | tr -d ' ')
+  if grep -q '^## Contents[[:space:]]*$' "$readme"; then
+    cap=$CAP_INDEX
+    shape=A
+    # Links inside the Contents section, up to the next level-2 heading.
+    while IFS= read -r target; do
+      case "$target" in
+        ''|'#'*|*'://'*|mailto:*) continue ;;
+      esac
+      target="${target%%#*}"
+      target="${target%%\?*}"
+      [ -n "$target" ] || continue
+      [ -e "$dir/$target" ] || fail "$readme: Contents link does not resolve: $target"
+    done < <(awk '/^## Contents[[:space:]]*$/{on=1; next} /^## /{on=0} on' "$readme" \
+             | grep -o '\]([^)]*)' | sed -e 's/^](//' -e 's/)$//' -e 's/^<//' -e 's/>$//' -e 's/ .*$//')
+  else
+    cap=$CAP_PACKAGE
+    shape=B
+  fi
+  if [ "$lines" -gt "$cap" ]; then
+    if [ "$CAPS_WARN" -eq 1 ]; then
+      warn "$readme: $lines lines, Shape $shape cap is $cap"
+    else
+      fail "$readme: $lines lines, Shape $shape cap is $cap"
+    fi
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+by_area() {
+  for dir in "$@"; do area "$dir"; done | LC_ALL=C sort | uniq -c \
+    | awk '{ printf "  %-28s %d\n", $2, $1 }'
+}
+
+if [ "${#missing[@]}" -gt 0 ]; then
+  echo
+  echo "Missing READMEs by area:"
+  by_area "${missing[@]}"
+fi
+
+# Self-test: an empty walk means the tree was not read at all.
+[ "${#readmes[@]}" -gt 0 ] || fail "no README.md found under $ROOT; the directory walk produced nothing"
+
+echo
+echo "lint-readmes: ${#readmes[@]} READMEs checked, ${#missing[@]} missing, $fail_count failures, $warn_count warnings"
+[ "$fail_count" -eq 0 ]

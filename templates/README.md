@@ -11,6 +11,7 @@ scaffolding and conformance tools for kit projects.
 
 - [lib.sh](lib.sh): shared utilities (sourced by scaffold + conform).
 - [shared/](shared/README.md): common infrastructure (CI, docs, scripts).
+- [ci/](ci/README.md): drop-in CI workflows for the `kit conformance` leaves.
 
 ## Blueprints
 
@@ -53,7 +54,7 @@ Every new project (and every existing one refreshed with
 `kit init --update`) gets:
 
 - `mise.toml` — SOT for tool versions; pinned from
-  [`shared/tool-versions.toml`](shared/README.md#tool-versionstoml).
+  [`shared/tool-versions.toml`](shared/README.md).
   Contributor entry point is `mise run install`.
 - `.devcontainer/devcontainer.json` + `docker-compose.yml` +
   `otel-config.yaml` — compose-mode, no Dockerfile. `mise` feature

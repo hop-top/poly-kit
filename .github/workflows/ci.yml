@@ -82,6 +82,7 @@ jobs:
         with:
           node-version: '22'
       - run: make lint-docs
+      - run: make lint-readmes
       - uses: lycheeverse/lychee-action@v2
         with:
           args: '--config examples/spaced/lychee.toml docs/ README.md'

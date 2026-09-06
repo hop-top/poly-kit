@@ -52,6 +52,47 @@ reports the package to import.
 
 Use when: caching, session state, config persistence, sync queue.
 
+#### Keys bind as TEXT
+
+The SQLite driver declares `key TEXT PRIMARY KEY`, and every implementation
+must bind keys as TEXT rather than BLOB. This is a correctness requirement,
+not a style preference.
+
+SQLite treats TEXT and BLOB as distinct storage classes and compares
+storage class before value, so a key written as a BLOB never equals the
+same bytes written as TEXT. Nothing raises an error when this goes wrong.
+Instead, reads become silent misses, `INSERT OR REPLACE` writes a shadow
+row beside the one it should have replaced, and prefix scans return
+disjoint sets.
+
+Two consequences are easy to miss:
+
+- **The column declaration is not what carries the contract; the bind type
+  is.** The table is created with `CREATE TABLE IF NOT EXISTS`, so whichever
+  process opens the file first wins and any other implementation's
+  declaration is inert. Declaring `TEXT` proves nothing about what a peer
+  actually binds.
+- **Keys are arbitrary byte sequences.** Go models them as `string`, which
+  admits bytes that are not valid UTF-8. A port whose string type cannot
+  hold those bytes must take a byte slice and bind it as TEXT without UTF-8
+  validation rather than reaching for BLOB.
+
+TEXT also gives the ordering callers rely on: the default `BINARY`
+collation is `memcmp` over stored bytes, which matches Go string
+comparison, so ordered scans agree across languages even for non-UTF-8
+keys. Note that `List` itself issues no `ORDER BY`; its result is a set.
+
+A test suite that round-trips within a single language cannot catch a
+binding mismatch, because both sides agree with themselves. The gate that
+crosses the boundary is driven from the shared corpus in
+[`contracts/kv-v1/keys.json`](../../../contracts/kv-v1/keys.json):
+`go/storage/kv/sqlite/crosslang_test.go` writes the corpus and has the Rust
+implementation read it back, and vice versa. It needs both toolchains, so
+it runs in the parity job (`make test-parity-kv`, which sets
+`KV_CROSSLANG=1`) rather than in `go test ./...`. The remaining cases in
+that file, including the one pinning the key column's storage class,
+always run.
+
 ### 2. `blob.Store` — object/blob
 
 Interface: `Put` / `Get` / `Delete` / `List` / `Exists`.
@@ -144,6 +185,30 @@ sqldb.Open()
 | Credentials / API keys        | `secret.Open(Config)`  |
 | Generic JSON documents        | `store.DocumentStore`  |
 | Raw SQL (local)               | `sqldb.Open()` direct  |
+
+## Network policy in the kv backends
+
+`kv.OpenContext` consults the offline marker before a network driver
+dials; `kv.Open` keeps its signature and supplies a background context,
+so it connects without consulting the policy. Prefer `OpenContext`
+wherever a context is at hand.
+
+A third-party driver registered through the older `kv.Opener` still
+works, because `OpenContext` falls back to it, but it connects
+unpoliced. Register through `kv.RegisterBackendContext` to be covered;
+all four shipped drivers do.
+
+The two network drivers reach the policy by different seams:
+
+- `tidb` routes the MySQL driver's `Config.DialFunc` through
+  `netpolicy.GuardDial`.
+- `etcd` cannot use that seam, because gRPC dials on its own background
+  context so the marker never arrives, and `clientv3.New` returns before
+  connecting at all. Its endpoints are checked with `netpolicy.CheckDial`
+  at open time.
+
+Registration is by import rather than by build tag, so a binary carries
+only the dependencies of the backends it opens.
 
 ## Reference: package list
 

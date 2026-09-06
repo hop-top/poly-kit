@@ -79,9 +79,50 @@ cmd.Annotations = map[string]string{
 }
 ```
 
-The four current side-effect classes (read | write | destructive |
-interactive) live in `go/console/cli/sideeffect.go`. A later release
-will expand this; today, pick the closest match.
+`kit/side-effect` accepts the six-tier ladder `read`, `write-local`,
+`write-shared`, `destructive-local`, `destructive-shared`,
+`interactive`. The legacy four-class values (`write`, `destructive`)
+still work; see [Migrate to the six-tier ladder](#migrate-to-the-six-tier-ladder).
+
+## Migrate to the six-tier ladder
+
+Most adopters need no change. Existing values keep working: the walker
+maps bare `write` to `write-shared` and bare `destructive` to
+`destructive-shared`, the conservative reading. Declare `write-local` or
+`destructive-local` explicitly when you mean CWD-local state.
+
+What a change buys you today:
+
+- `write` → `write-local`: `Safety.Level` stays `caution`, but the
+  permission token narrows from `kit:fs:write:shared` to
+  `kit:fs:write:local`, so a harness reading permissions can scope the
+  command to the working tree.
+- `destructive` → `destructive-local`: `Safety.Level` stays `dangerous`,
+  confirmation is still required, and the token narrows to
+  `kit:fs:destructive:local`.
+- A `read` that reaches an internal control plane: add
+  `kit/network: egress:private`. This sets `RequiresConfirmation=true`
+  and emits `kit:network:egress:private`.
+- A long-running `serve`: declare `kit/network: ingress`, which also
+  forces confirmation.
+
+What it does not change yet: the shipped policy table keys on the four
+classes and the `none` / `local-only` / `egress` network axis. A
+six-tier value has no rule there and resolves to the fail-safe prompt,
+and the manifest carries the value you wrote rather than kit's
+normalisation of it. See
+[Default policy table](../reference/toolspec-api.md#default-policy-table)
+for the exact resolution rules.
+
+Annotations are plain cobra `Annotations` map entries:
+
+```go
+cmd.Annotations = map[string]string{
+    "kit/side-effect": "write-local",
+    "kit/network":     "none",
+    "kit/idempotent":  "yes",
+}
+```
 
 ## Schema versioning
 

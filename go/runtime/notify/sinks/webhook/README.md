@@ -1,65 +1,19 @@
 # webhooksink
 
-HTTP POST sink for kit bus events. Renders an event through a
-`Template`, optionally redacts the rendered body, then POSTs it
-through a breaker-wrapped `http.RoundTripper`.
+## What it answers
 
-## Constructor
+How does a bus event become an HTTP POST? Renders the event through a
+`Template`, optionally redacts the rendered body, then POSTs it through
+a breaker-wrapped `http.RoundTripper`. Wrong package for a first-party
+messaging API client (write a separate sink) and for mail (`../email`).
 
-```go
-func New(url string, opts ...Option) bus.Sink
-```
+## Use it when
 
-No error: per spec decision #9, construction has no IO.
-Misconfiguration surfaces at the first `Drain`, not at startup.
+- the target is Slack, Discord, PagerDuty or any HTTP endpoint → `webhooksink.New(url, opts...)`
+- the target expects Slack's `{"text": ...}` shape → `webhooksink.WithTemplate(webhooksink.SlackTemplate(tmpl))`
+- the endpoint needs a bearer token → `webhooksink.WithAuthBearer(token)`
 
-## Options
-
-| Option | Default | Effect |
-|--------|---------|--------|
-| `WithHeader(k, v)` | none | Adds an HTTP header. Multiple calls accumulate (Add semantics, not Set). |
-| `WithAuthBearer(token)` | none | Sugar for `WithHeader("Authorization", "Bearer "+token)`. |
-| `WithTemplate(t)` | `DefaultJSONTemplate()` | Body renderer; nil ignored. |
-| `WithHTTPClient(c)` | `&http.Client{Timeout: 5s}` | When set, `WithTimeout` is ignored. `WithBreaker` still applies (wraps `c.Transport`). |
-| `WithTimeout(d)` | `5s` | Overall request deadline via `http.Client.Timeout`. Ignored when `WithHTTPClient` is set. |
-| `WithRedactor(r)` | `nil` | Applied via `r.ApplyBytes` to the rendered body before send. |
-| `WithBreaker(b)` | `nil` | Wraps the `http.RoundTripper` via `breaker.WrapHTTP`. Open circuit short-circuits before any HTTP egress. |
-
-## Pipeline
-
-Per the package-wide guardrail convention
-([`go/runtime/notify/guardrails.go`](../../guardrails.go)):
-
-```
-template.Render → redactor.ApplyBytes → http.Client.Do (transport wrapped by breaker.WrapHTTP)
-```
-
-The breaker integration lives at the `http.RoundTripper` layer.
-`client.Do` returns an error wrapping `breaker.ErrBrokenCircuit`
-when the circuit is open; `Drain` returns it wrapped via `%w` so
-`errors.Is(err, breaker.ErrBrokenCircuit)` keeps working. The
-surrounding `RetrySink` treats that as terminal — no retries.
-
-Non-2xx responses produce an error containing the status code and
-up to 512 bytes of the response body (limit-read; protects against
-megabyte error strings from misbehaving servers).
-
-## Templates
-
-```go
-type Template interface {
-    Render(e bus.Event) (body []byte, contentType string, err error)
-}
-```
-
-Two helpers ship out of the box:
-
-| Helper | Output |
-|--------|--------|
-| `DefaultJSONTemplate()` | Whole `bus.Event` marshalled as JSON; `application/json`. Default. Matches the JSONL line shape. |
-| `SlackTemplate(tmpl string)` | Parses `tmpl` as `text/template`, executes against `bus.Event`, JSON-encodes as `{"text": "<rendered>"}`. Parse errors fail at construction; rendering errors surface from `Drain`. |
-
-## Usage
+## Quick start
 
 Slack alert webhook with redaction + breaker, wrapped in a retry:
 
@@ -84,9 +38,30 @@ withRetry := notify.NewRetrySink(
 )
 ```
 
+## Contract
+
+- `New` returns `bus.Sink` with no error: construction has no IO
+  (spec decision #9); misconfiguration surfaces at the first `Drain`.
+- Pipeline: `template.Render → redactor.ApplyBytes → http.Client.Do`,
+  transport wrapped by `breaker.WrapHTTP`.
+- Open circuit: `Drain` returns an error wrapping
+  `breaker.ErrBrokenCircuit` (`errors.Is` works); `RetrySink` treats
+  it as terminal.
+- Non-2xx: error carries the status code and up to 512 bytes of the
+  response body.
+- `WithHTTPClient` makes `WithTimeout` a no-op; `WithBreaker` still
+  wraps `c.Transport`. Default client timeout 5s.
+- Default template: whole `bus.Event` as `application/json`, the
+  JSONL line shape.
+
+## Neighbours
+
+- `../email`, `../osnotify`: the other reference sinks.
+- `go/runtime/notify`: `FilterSink`, `RetrySink`, severity.
+
 ## See also
 
-- [`go/runtime/notify/README.md`](../../README.md) — package overview
-- [`go/runtime/notify/guardrails.go`](../../guardrails.go) — pipeline convention godoc
-- [`go/core/breaker/README.md`](../../../../core/breaker/README.md) — `WrapHTTP` semantics
-- [`go/core/redact/README.md`](../../../../core/redact/README.md) — `ApplyBytes` semantics
+- [Notify sink reference](../../../../../docs/adopters/reference/notify-sinks.md#webhook-webhooksink): options table, templates, pipeline
+- [`go/runtime/notify/guardrails.go`](../../guardrails.go): pipeline convention godoc
+- [`go/core/breaker/README.md`](../../../../core/breaker/README.md): `WrapHTTP` semantics
+- [`go/core/redact/README.md`](../../../../core/redact/README.md): `ApplyBytes` semantics
