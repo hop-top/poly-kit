@@ -32,10 +32,7 @@
 //	    source: wsm
 //
 // The schema version is intentionally tracked so future migrations can
-// reject forward-incompatible files via ErrSchemaUnsupported. See the
-// rux-connect design doc for the full schema and rationale:
-// docs/superpowers/specs/2026-04-25-rux-connect-design.md (sections
-// 6 and 13).
+// reject forward-incompatible files via ErrSchemaUnsupported.
 //
 // # Concurrency
 //

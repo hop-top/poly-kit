@@ -1,7 +1,6 @@
 // Package copilot implements the InvocationAdapter for GitHub Copilot CLI.
 //
-// Help-text basis: GitHub Copilot CLI 1.0.15 (2026-05-09 capture at
-// .tlc/tracks/uxp-agent-cli-facade/help/copilot.txt).
+// Help-text basis: GitHub Copilot CLI 1.0.15 (2026-05-09 capture).
 //
 // Distinctive shape:
 //   - run: copilot -p "<prompt>"

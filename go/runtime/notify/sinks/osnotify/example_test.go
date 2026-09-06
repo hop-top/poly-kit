@@ -41,7 +41,7 @@ import (
 //
 // Output is suppressed because constructor success is platform-
 // dependent (linux requires notify-send on PATH); the example proves
-// the API compiles, which is the point of T-0376.
+// the API compiles, which is the point of this example.
 func ExampleNew() {
 	red := redact.Default()
 	b := breaker.New("osnotify-example-new")

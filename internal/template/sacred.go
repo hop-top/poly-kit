@@ -7,8 +7,6 @@
 //   - go.mod             (module path + dep set; never auto-rewrite)
 //   - kit-template.yaml  (template's own manifest; recursive scaffold)
 //   - .git/*             (defensive — should never appear in templates)
-//
-// See docs/superpowers/specs/2026-04-26-kit-init-design.md §8 (T-0949).
 package template
 
 import "path"

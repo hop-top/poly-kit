@@ -1,9 +1,6 @@
 // Package cmdsurface — TelemetrySink fans cmdsurface invocation
 // outcomes into the kit-telemetry pipeline.
 //
-// See `.tlc/tracks/cmdsurf-telemetry/design-note.md` for the contracts
-// this implementation pins.
-//
 // Seam properties:
 //
 //   - Non-blocking: Emit returns within ~1ms regardless of downstream
@@ -39,8 +36,7 @@ const (
 
 // InvocationEvent is the cmdsurface-flavored intermediate value the
 // sink hands to its drain goroutine. It carries every canonical
-// telemetry.Event field plus a surface-only Surface stamp; see the
-// cmdsurf-telemetry design note §2 for full provenance.
+// telemetry.Event field plus a surface-only Surface stamp.
 //
 // The struct is part of the cmdsurface public surface so adopters
 // writing custom sinks (or audit subscribers) can read the same shape

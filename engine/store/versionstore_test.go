@@ -115,7 +115,7 @@ func TestVersionStoreConformance(t *testing.T) {
 		// already cover the sentinel via the SQLite backend with the
 		// internal upsertSnapshotBlob helper. The in-memory backend's
 		// matching ErrHashCollision branch is exercised through the
-		// property test added in T-0405.
+		// property test.
 	}
 
 	for _, b := range conformanceBackends() {
@@ -1123,7 +1123,7 @@ func runRefcountedDeleteCascadesCleanly(t *testing.T, vs VersionStore) {
 	assert.Equal(t, []byte(payload), []byte(gotFresh))
 }
 
-// runSeqMonotonicAcrossPrune is the T-0432 regression scenario:
+// runSeqMonotonicAcrossPrune is the regression scenario:
 // AppendVersion -> DeleteVersions (Prune) -> AppendVersion must
 // never reuse a seq already issued for that (type, id), and both
 // backends must produce the same seq + version_id for the
@@ -1168,9 +1168,9 @@ func runSeqMonotonicAcrossPrune(t *testing.T, vs VersionStore) {
 	v4, err := vs.AppendVersion(ctx, docType, id, json.RawMessage(`{"v":4}`), []string{v2.VersionID})
 	require.NoError(t, err, "AppendVersion after Prune of MAX(seq) row must succeed")
 	assert.Equal(t, 4, v4.Seq,
-		"AppendVersion after pruning seq=3 must issue seq=4, not reuse seq=3 (T-0432)")
+		"AppendVersion after pruning seq=3 must issue seq=4, not reuse seq=3")
 	assert.NotEqual(t, v3.VersionID, v4.VersionID,
-		"post-Prune append must NOT collide on the pruned version's version_id (T-0432)")
+		"post-Prune append must NOT collide on the pruned version's version_id")
 
 	// And another, just to confirm the counter keeps advancing.
 	v5, err := vs.AppendVersion(ctx, docType, id, json.RawMessage(`{"v":5}`), []string{v4.VersionID})

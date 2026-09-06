@@ -316,12 +316,10 @@ curl -X POST http://localhost:9090/notes/abc/revert \
 ## Branching
 
 Three additive routes plus a query parameter on history. Surfaces
-the branching public API on `VersionedDocumentStore` (track
-`engine-versioned-branching`, spec
-`docs/contributors/specs/engine-versioned-branching.md` §5). Schema is unchanged;
-existing linear callers see no behavioral difference. SDK parity
-(TS / Python) is gated on track `engine-sdk-protocol-reconcile` —
-SDKs do not yet expose these routes.
+the branching public API on `VersionedDocumentStore`. Schema is
+unchanged; existing linear callers see no behavioral difference.
+SDK parity (TS / Python) is gated on a protocol reconcile — SDKs do
+not yet expose these routes.
 
 Branch identity is the head version_id; there is no separate branch
 entity. A linear history has exactly one head; a branched history

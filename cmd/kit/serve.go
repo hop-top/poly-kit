@@ -7,7 +7,7 @@
 // docs/audits/engine-sdk-drift.md). Wire-shape changes here MUST
 // land in lockstep with both SDKs (engine/sdk/ts-kit-engine,
 // engine/sdk/py-kit-engine) and the parity test under
-// engine/sdk/parity, otherwise cross-SDK parity (T-0390) breaks.
+// engine/sdk/parity, otherwise cross-SDK parity breaks.
 
 package main
 
@@ -552,10 +552,10 @@ func registerDocumentRoutes(router routeRegistrar, vds *store.VersionedDocumentS
 // engine-versioned-branching, spec §5): when present, the response
 // includes per-version `parent_ids` plus a top-level `heads` slice
 // listing the DAG tips. Default (no query param) behavior is
-// unchanged from T-0353 — strict backward compat for linear callers.
-// vs is consulted directly for DAG topology since
-// [store.VersionedDocumentStore] does not surface parent edges
-// today.
+// unchanged from the original linear response shape — strict
+// backward compat for linear callers. vs is consulted directly for
+// DAG topology since [store.VersionedDocumentStore] does not surface
+// parent edges today.
 func registerHistoryRoutes(router routeRegistrar, vds *store.VersionedDocumentStore, vs store.VersionStore) {
 	router.Handle("GET", "/{type}/{id}/history", func(w http.ResponseWriter, r *http.Request) {
 		docType := api.PathParam(r, "type")
@@ -593,9 +593,9 @@ func registerHistoryRoutes(router routeRegistrar, vds *store.VersionedDocumentSt
 			return
 		}
 
-		// Default (linear) shape — unchanged from T-0353. Spec calls
-		// for newest-first; ListVersions returns ascending by seq, so
-		// reverse on the wire.
+		// Default (linear) shape — unchanged from the original
+		// response. Spec calls for newest-first; ListVersions returns
+		// ascending by seq, so reverse on the wire.
 		out := make([]map[string]any, 0, len(versions))
 		for i := len(versions) - 1; i >= 0; i-- {
 			v := versions[i]

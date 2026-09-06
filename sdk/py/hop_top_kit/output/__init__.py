@@ -2,8 +2,8 @@
 
 Public surface
 --------------
-- ``Formatter`` Protocol + ``OptionSpec`` + ``ColumnSpec`` (T-1012)
-- ``Registry``, ``default_registry``, ``new_registry`` (T-1013)
+- ``Formatter`` Protocol + ``OptionSpec`` + ``ColumnSpec``
+- ``Registry``, ``default_registry``, ``new_registry``
 - Built-ins json/yaml/table register against ``default_registry`` at import
 - ``render(w, format, v)`` legacy shim → ``default_registry.lookup``
 - ``parse_options`` per-formatter option parsing helper
@@ -135,7 +135,7 @@ def render(w: IO[str], format: str, v: Any) -> None:
 
 # ---------------------------------------------------------------------------
 # Register built-ins (json, yaml, table) at import time.
-# csv + text register from their own modules in T-1015 / T-1016.
+# csv + text register from their own modules.
 # ---------------------------------------------------------------------------
 
 

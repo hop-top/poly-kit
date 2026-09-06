@@ -21,8 +21,7 @@ Subcommands:
   token list     List existing claims (token_sha256 + scopes; never plaintext).
   token revoke   Revoke a claim by token_id.
 
-The service lives at hop.top/kit/go/conformance/svc; see design at
-.tlc/tracks/svc/design.md.`,
+The service lives at hop.top/kit/go/conformance/svc.`,
 		Args: cobra.NoArgs,
 	}
 	serve := serveCmd()

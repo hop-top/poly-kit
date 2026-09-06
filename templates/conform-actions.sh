@@ -24,7 +24,7 @@ has_lang() {
 }
 
 # ==========================================================
-# T-0794: Safe copy-from-template actions
+# Safe copy-from-template actions
 # ==========================================================
 
 # Copy a template file if target is missing.
@@ -171,7 +171,7 @@ GOVEOF
 }
 
 # ==========================================================
-# T-0795: Safe generated actions
+# Safe generated actions
 # ==========================================================
 
 # Build a dependabot ecosystem block
@@ -260,7 +260,7 @@ run_generated_actions() {
 }
 
 # ==========================================================
-# T-0796: Additive merge actions
+# Additive merge actions
 # ==========================================================
 
 run_merge_actions() {
@@ -434,7 +434,7 @@ _merge_gitignore() {
 }
 
 # ==========================================================
-# T-0797: LLM review item detection
+# LLM review item detection
 # ==========================================================
 
 run_review_checks() {

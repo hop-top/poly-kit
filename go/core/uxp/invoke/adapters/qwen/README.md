@@ -6,7 +6,6 @@ Invocation adapter for Qwen Code CLI (`qwen` binary).
 
 - Date: 2026-05-09
 - Binary: `qwen` 0.15.6
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/qwen.txt`
 
 ## Distinctive shape
 

@@ -17,7 +17,7 @@ import (
 // WithEventPublisher with no opts preserves backward compatibility for
 // adopters that don't care about topic strings.
 //
-// Note: prior to T-0122 the middleware emitted "api.request.start" and
+// Note: earlier releases emitted "api.request.start" and
 // "api.request.end". Those non-conformant topics have been removed with
 // no back-compat alias — adopters with subscribers MUST update topic
 // strings.

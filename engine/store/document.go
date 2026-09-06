@@ -53,11 +53,10 @@ const createTableSQL = `CREATE TABLE IF NOT EXISTS documents (
 // is wired — safe because empty tables cost nothing and CREATE ...
 // IF NOT EXISTS is idempotent.
 //
-// Schema shape per `engine-snapshot-dedup` §4: snapshots are stored
-// content-addressed in `snapshot_blobs(hash, data, refcount)` with
-// a per-version join `version_snapshots(version_id, hash)`. The old
-// `snapshots(version_id, data)` table from the original
-// `engine-versioned-sqlite` track is replaced; an idempotent
+// Snapshots are stored content-addressed in
+// `snapshot_blobs(hash, data, refcount)` with a per-version join
+// `version_snapshots(version_id, hash)`. The original
+// `snapshots(version_id, data)` table is replaced; an idempotent
 // migration in [migrateToDedup] walks any legacy rows and folds
 // them into the new shape on first boot of an upgraded install.
 const versionTablesSQL = `

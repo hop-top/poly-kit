@@ -1,5 +1,5 @@
 /**
- * Smoke tests mirroring T-1011's manual checklist. Each test exercises a
+ * Smoke tests mirroring the manual checklist. Each test exercises a
  * dispatch path end-to-end against an in-memory writer or temp file so the
  * suite is hermetic but covers the same surface a real `cli list` invocation
  * would.
@@ -44,7 +44,7 @@ const rows = [
   { id: '2', name: 'Bob', status: 'idle' },
 ];
 
-describe('smoke — T-1011 checklist', () => {
+describe('smoke — checklist', () => {
   it('cli list (default table)', async () => {
     const program = makeProgram([]);
     const cap = captureStdout();

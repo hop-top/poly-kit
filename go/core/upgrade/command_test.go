@@ -234,7 +234,7 @@ func TestMigrateCommand_StatusNoDrivers(t *testing.T) {
 // TestMigrateCommand_Status_OutputToFile_CSV exercises the Dispatch
 // migration: --output writes to a path, --format csv switches the
 // formatter, and the file extension matches the format. Regression
-// guard for the T-0990 callsite swap.
+// guard for the Dispatch callsite swap.
 func TestMigrateCommand_Status_OutputToFile_CSV(t *testing.T) {
 	resetRegistry()
 	defer resetRegistry()

@@ -29,11 +29,8 @@ A compliance test against this fixture must assert:
 - F13 does NOT fail for any other sub-condition. The Suggestion is
   surgical — it names the missing env, not "kill switch is wrong".
 
-The matching test lives in `hops/main/go/core/compliance/` and is
-authored under a sibling task in the
-[`kit-telemetry-compliance`](../../../.tlc/tracks/kit-telemetry-compliance/plan.md)
-track (T-0704 / T-0706 / follow-up). This fixture pre-lands as part of
-T-0705 so those tests have a stable target to assert against.
+The matching test lives in `go/core/compliance/`. This fixture exists
+so those tests have a stable target to assert against.
 
 ## Layout
 

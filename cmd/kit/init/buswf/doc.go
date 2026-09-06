@@ -2,8 +2,7 @@
 // that emit PR-lifecycle events onto the kit bus.
 //
 // Implements the consumer-side scaffolding contract pinned in
-// docs/contracts/kit-init-pr-wiring.md (T-0776). The four topic names
-// are:
+// docs/contracts/kit-init-pr-wiring.md. The four topic names are:
 //
 //   - github.pr.run.completed
 //   - github.pr.comment.created

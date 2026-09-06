@@ -1,9 +1,9 @@
 # Telemetry event schema (cross-language contract)
 
 > **Status**: Canonical contract for `schema_version = "1"`.
-> **Ground truth**: [`hops/main/go/runtime/telemetry/event.go`](../../go/runtime/telemetry/event.go).
+> **Ground truth**: [`go/runtime/telemetry/event.go`](../../go/runtime/telemetry/event.go).
 > **Diffed by**: cross-language contract test under
-> `hops/main/sdk/tests/cross-lang/telemetry/`.
+> `sdk/tests/cross-lang/`.
 
 This document is the single source of truth for the on-wire JSON shape
 that every kit telemetry runtime emits — the Go canonical
@@ -196,7 +196,7 @@ boundary:
 | `trace_id` | `TraceID` | `trace_id` | `traceId` | `trace_id` | `traceId` |
 
 Each SDK MUST round-trip a fixture JSON file from
-`hops/main/sdk/tests/cross-lang/telemetry/fixtures/` and assert that
+`sdk/tests/cross-lang/fixtures/` and assert that
 re-serialisation yields byte-identical output (see §6).
 
 ## 3. Reserved / extension fields
@@ -230,11 +230,11 @@ attribute keys until they ship as first-class envelope concerns.
 
 | Wire value | Runtime | Set by |
 |------------|---------|--------|
-| `go` | Go canonical (`hops/main/go/runtime/telemetry`) | `telemetry.SDKLang` const |
-| `py` | Python SDK (`hops/main/sdk/py`) | per-SDK module constant |
-| `ts` | TypeScript SDK (`hops/main/sdk/ts`) | per-SDK module constant |
-| `rs` | Rust SDK (`hops/main/sdk/experimental/rs`) | per-SDK crate constant |
-| `php` | PHP SDK (`hops/main/sdk/experimental/php`) | per-SDK package constant |
+| `go` | Go canonical (`go/runtime/telemetry`) | `telemetry.SDKLang` const |
+| `py` | Python SDK (`sdk/py`) | per-SDK module constant |
+| `ts` | TypeScript SDK (`sdk/ts`) | per-SDK module constant |
+| `rs` | Rust SDK (`sdk/experimental/rs`) | per-SDK crate constant |
+| `php` | PHP SDK (`sdk/experimental/php`) | per-SDK package constant |
 
 Any value not in this list is a producer bug. The cross-language
 contract test asserts each SDK emits its exact lang code; adopters
@@ -259,7 +259,7 @@ counter.
   SDK languages round-trip int vs float vs string inconsistently, so
   the wire shape is fixed.
 - **Current value**: `"1"`. Defined in
-  `hops/main/go/runtime/telemetry/event.go` as the `SchemaVersion`
+  `go/runtime/telemetry/event.go` as the `SchemaVersion`
   const.
 - **Bump policy**: bump major (`"2"`, `"3"`, ...) on breaking shape
   changes — removed field, renamed field, type change, semantics
@@ -270,11 +270,11 @@ counter.
   behind: emit with attrs dropped + log a debug warning. Otherwise:
   refuse + bump the dropped-event counter.
 - **Release coordination**: any bump lands in `event.go` first, then
-  ripples through SDK release coordination per task T-0710.
+  ripples through the SDKs as part of release coordination.
 
 ## 7. Canonical serialisation (byte-parity contract)
 
-The cross-language contract test (T-0709) asserts byte-identical
+The cross-language contract test asserts byte-identical
 output from every SDK on shared fixtures. To meet that bar:
 
 - **Field order**: declaration order from the Go `Event` struct (see
@@ -331,9 +331,9 @@ Redactor matches publish on:
 
 - **Canonical**: `kit.telemetry.redact.matched`
 
-This topic is subscribed by the `kit-telemetry-compliance` track
-(task T-0702 redact-check) to verify that redact actually fired on
-any Full payload before it reached a sink. Payload shape on the
+This topic is subscribed by the telemetry compliance redact-check,
+which verifies that redact actually fired on any Full payload
+before it reached a sink. Payload shape on the
 audit topic is OUT OF SCOPE for this document — it is a different
 contract.
 
@@ -345,15 +345,15 @@ audit subscriber; this is documented in each per-SDK README.
 
 ## 10. Per-SDK example payloads
 
-For now (T-0708 lands BEFORE per-SDK implementations), the Go example
-is real. The other four are TEMPLATES that SDK authors fill in as
-they implement T-0701..T-0707 and the cross-language contract test
-(T-0709) green-lights byte-parity.
+For now, this schema lands BEFORE the per-SDK implementations, so
+only the Go example is real. The other four are TEMPLATES that SDK
+authors fill in as they implement their emitters and the
+cross-language contract test green-lights byte-parity.
 
 ### 10a. Go (canonical)
 
 See §1a / §1b. Emitter:
-`hops/main/go/runtime/telemetry/emitter.go` (when T-0712 lands).
+`go/runtime/telemetry/emitter.go` (when the Go emitter lands).
 
 ### 10b. Python SDK (template)
 
@@ -416,6 +416,6 @@ semantics upstream.
 ## 12. References
 
 - **Code (canonical)**:
-  [`hops/main/go/runtime/telemetry/event.go`](../../go/runtime/telemetry/event.go)
+  [`go/runtime/telemetry/event.go`](../../go/runtime/telemetry/event.go)
 - **Cross-language contract test**:
-  `hops/main/sdk/tests/cross-lang/telemetry/`
+  `sdk/tests/cross-lang/`

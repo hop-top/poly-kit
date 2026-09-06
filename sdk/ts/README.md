@@ -597,9 +597,8 @@ canonical envelope (Go pins a typed `Event` struct). See
 
 ### Cross-SDK contract harness
 
-The harness at `hops/main/sdk/tests/cross-lang/` (planned in T-0709)
-diffs envelopes across SDKs. As of this revision the harness is not
-landed; TS-side wiring is deferred until the directory exists.
+The harness at `sdk/tests/cross-lang/` diffs envelopes across SDKs.
+As of this revision the TS-side telemetry wiring into it is deferred.
 
 ## License
 

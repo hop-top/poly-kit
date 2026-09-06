@@ -69,7 +69,7 @@ full symptom-indexed list. Quick hits:
 | `git init failed: not in a git repository` | Pass `--hop=false`, or run inside a hopspace. |
 | `gh: command not found` | Install gh, or pass `--account-type=none`. |
 | `tlc init` did not run | Install tlc; re-run `tlc init` inside the project. |
-| `go build` fails with `missing go.sum` | Known T-0032: run `go mod tidy`. |
+| `go build` fails with `missing go.sum` | Known issue: run `go mod tidy`. |
 
 ## Optional
 

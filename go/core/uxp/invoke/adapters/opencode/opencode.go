@@ -1,7 +1,6 @@
 // Package opencode implements the InvocationAdapter for opencode CLI.
 //
-// Help-text basis: opencode 1.14.30 (2026-05-09 capture at
-// .tlc/tracks/uxp-agent-cli-facade/help/opencode.txt).
+// Help-text basis: opencode 1.14.30 (2026-05-09 capture).
 //
 // Distinctive shape:
 //   - run: opencode run [message..]

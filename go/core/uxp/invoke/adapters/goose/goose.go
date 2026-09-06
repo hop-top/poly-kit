@@ -1,8 +1,7 @@
 // Package goose implements the InvocationAdapter for goose CLI (Block).
 //
-// Help-text basis: goose 1.33.1 (2026-05-09 capture at
-// .tlc/tracks/uxp-agent-cli-facade/help/goose.txt; includes goose
-// run + goose session subcommands).
+// Help-text basis: goose 1.33.1 (2026-05-09 capture of the
+// top-level help plus the goose run and goose session subcommands).
 //
 // Distinctive shape:
 //   - Subcommand routing: goose run / goose session.

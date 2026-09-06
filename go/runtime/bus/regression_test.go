@@ -142,7 +142,7 @@ func TestTruncateBehavior(t *testing.T) {
 	}
 }
 
-// --- Fix 6: bounded async goroutine pool (T-0735) ---
+// --- Fix 6: bounded async goroutine pool ---
 
 // Peak concurrency must never exceed pool size.
 func TestRegressionPoolPeakConcurrencyBounded(t *testing.T) {

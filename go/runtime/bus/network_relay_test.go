@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// TestNetworkAdapter_Relay_3Node_Fanout verifies star-topology relay
-// (T-0182): hub re-forwards inbound network events to peers OTHER than
-// the origin. Without WithRelay, A→hub→B is broken because hub's
+// TestNetworkAdapter_Relay_3Node_Fanout verifies star-topology relay:
+// the hub re-forwards inbound network events to peers OTHER than the
+// origin. Without WithRelay, A→hub→B is broken because hub's
 // outbound forwarder skips network-tagged events. With WithRelay, B
 // must receive A's publish through the hub.
 func TestNetworkAdapter_Relay_3Node_Fanout(t *testing.T) {

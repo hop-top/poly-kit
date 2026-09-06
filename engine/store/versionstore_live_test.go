@@ -12,7 +12,7 @@ import (
 
 // TestInMemorySetLive_HappyPath: SetLive(false) on a head version
 // flips Live to false in subsequent ListVersions output. Idempotent.
-// SetLive(true) restores. Sanity check for T-0422 in-memory plumbing.
+// SetLive(true) restores. Sanity check for the in-memory plumbing.
 func TestInMemorySetLive_HappyPath(t *testing.T) {
 	ctx := context.Background()
 	vs := NewInMemoryVersionStore()

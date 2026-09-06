@@ -192,10 +192,10 @@ func (t Table) Resolve(se SideEffect, net Network) Decision {
 
 // Merge overlays overlay onto base — overlay rules win on (side_effect,
 // network) collisions, base rules cover the rest. Used by the MCP
-// adapter's --policy <file> flag (T-0497): the user-supplied YAML
-// merges over the embedded default. SchemaVersion comes from overlay
-// when set, else from base; mismatches are caller-visible (Decision's
-// Source attribution shows which table the winning rule came from).
+// adapter's --policy <file> flag: the user-supplied YAML merges over
+// the embedded default. SchemaVersion comes from overlay when set,
+// else from base; mismatches are caller-visible (Decision's Source
+// attribution shows which table the winning rule came from).
 //
 // Non-mutating: returns a fresh Table; base and overlay are unchanged.
 func Merge(base, overlay Table) Table {

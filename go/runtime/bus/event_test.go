@@ -107,9 +107,8 @@ func TestNewEvent_SetsTimestamp(t *testing.T) {
 }
 
 // TestEvent_JSON_LowercaseFieldNames verifies bus.Event marshals with
-// lowercase JSON keys per tlc/docs/bus-topics-spec-0.1.md §4 (T-0196).
-// External cross-process subscribers parse lowercase; capitalized keys
-// are a v0.1 leak that breaks them.
+// lowercase JSON keys. External cross-process subscribers parse
+// lowercase; capitalized keys are a v0.1 leak that breaks them.
 func TestEvent_JSON_LowercaseFieldNames(t *testing.T) {
 	e := Event{
 		Topic:     "x.y",
@@ -135,9 +134,9 @@ func TestEvent_JSON_LowercaseFieldNames(t *testing.T) {
 	}
 }
 
-// TestEvent_WorkspaceID_RoundTrip verifies the v0.2 envelope addition
-// (T-0192 spec): WorkspaceID survives JSON round-trip with snake_case
-// key and is omitted when blank for backward-compat with v0.1 publishers.
+// TestEvent_WorkspaceID_RoundTrip verifies the v0.2 envelope addition:
+// WorkspaceID survives JSON round-trip with snake_case key and is
+// omitted when blank for backward-compat with v0.1 publishers.
 func TestEvent_WorkspaceID_RoundTrip(t *testing.T) {
 	// Set: workspace_id present.
 	e := Event{

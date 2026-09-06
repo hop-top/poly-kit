@@ -13,7 +13,7 @@ import (
 	"hop.top/kit/go/transport/api"
 )
 
-// In-process smoke tests for the pruning routes (T-0429, spec
+// In-process smoke tests for the pruning routes (spec
 // docs/specs/engine-version-pruning.md §5):
 //
 //	POST /:type/:id/prune
@@ -21,9 +21,9 @@ import (
 //	GET  /:type/:id/branches?live=1   (extension of branching route)
 //
 // End-to-end durability across a process restart is covered by
-// serve_pruning_integration_test.go (T-0428) — that file currently
-// drives through the engine Go API since the routes were not wired
-// at write-time; an HTTP-driven sibling is a follow-up.
+// serve_pruning_integration_test.go — that file currently drives
+// through the engine Go API since the routes were not wired at
+// write-time; an HTTP-driven sibling is a follow-up.
 //
 // We re-use the same fixture shape as serve_branches_test.go (real
 // SQLite-backed VersionedDocumentStore wired through the production

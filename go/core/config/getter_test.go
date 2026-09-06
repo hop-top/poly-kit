@@ -178,7 +178,7 @@ func TestGet_EmptyOptions(t *testing.T) {
 	assert.ErrorIs(t, err, config.ErrKeyNotFound)
 }
 
-// --- Backward compatibility (T-0413) ---
+// --- Backward compatibility ---
 
 func TestLoad_StillWorks(t *testing.T) {
 	dir := t.TempDir()

@@ -11,17 +11,15 @@ import (
 )
 
 // registerBranchingRoutes wires the three branching routes per
-// docs/engine-protocol.md §"Branching" (track
-// engine-versioned-branching, spec docs/specs/engine-versioned-branching.md
-// §5):
+// docs/adopters/reference/engine-protocol.md §"Branching":
 //
 //	GET  /:type/:id/branches  → list heads of the version DAG (most-recent-first).
 //	POST /:type/:id/fork      → divergent branch from a given seq.
 //	POST /:type/:id/merge     → caller-chosen merged payload with two parents.
 //
-// Wire shapes mirror /history and /revert (T-0353): the boundary
-// uses `seq` numbers (`from_seq`, `source_seq`, `target_seq`); the
-// store layer translates to opaque version_ids for parent edges.
+// Wire shapes mirror /history and /revert: the boundary uses `seq`
+// numbers (`from_seq`, `source_seq`, `target_seq`); the store layer
+// translates to opaque version_ids for parent edges.
 //
 // vs is consulted directly (alongside vds) to surface DAG topology
 // (parent_ids per version) without enlarging the public surface of

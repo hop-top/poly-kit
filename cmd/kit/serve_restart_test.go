@@ -18,10 +18,11 @@ import (
 
 // startServerAt runs `kit serve` against the supplied data dir
 // instead of the t.TempDir() that startServer in serve_test.go
-// hard-codes. T-0352 needs to point a fresh server at the SAME
-// on-disk SQLite file written by a previous run, so the data dir
-// must outlive a single startServer call. The two helpers diverge
-// only on this; the rest of the boot flow is byte-identical.
+// hard-codes. The restart-durability test needs to point a fresh
+// server at the SAME on-disk SQLite file written by a previous run,
+// so the data dir must outlive a single startServer call. The two
+// helpers diverge only on this; the rest of the boot flow is
+// byte-identical.
 func startServerAt(t *testing.T, bin, dataDir string) (serverInfo, context.CancelFunc) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -67,8 +68,8 @@ func startServerAt(t *testing.T, bin, dataDir string) (serverInfo, context.Cance
 }
 
 // TestServe_RestartPreservesHistory is the end-to-end durability
-// proof for the SQLite-backed VersionedDocumentStore wired in
-// T-0353. It writes versions through the HTTP API, kills the
+// proof for the SQLite-backed VersionedDocumentStore wired into
+// serve.go. It writes versions through the HTTP API, kills the
 // process, restarts a fresh server pointed at the SAME --data dir,
 // fetches history through HTTP, and asserts the histories from the
 // pre- and post-restart runs are byte-identical (same wire payload

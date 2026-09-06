@@ -426,7 +426,7 @@ func TestAliasCmd_List(t *testing.T) {
 
 // TestAliasCmd_List_OutputToFile_JSON exercises the Dispatch
 // migration: --output writes to a path, --format json switches the
-// formatter. Regression guard for the T-0990 callsite swap.
+// formatter. Regression guard for the Dispatch callsite swap.
 func TestAliasCmd_List_OutputToFile_JSON(t *testing.T) {
 	r := root()
 	cmd := &cobra.Command{Use: "deploy", Run: func(*cobra.Command, []string) {}}

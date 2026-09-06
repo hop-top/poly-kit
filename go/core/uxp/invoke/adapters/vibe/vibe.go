@@ -1,7 +1,6 @@
 // Package vibe implements the InvocationAdapter for Mistral Vibe CLI.
 //
-// Help-text basis: vibe 2.9.3 (2026-05-09 capture at
-// .tlc/tracks/uxp-agent-cli-facade/help/vibe.txt).
+// Help-text basis: vibe 2.9.3 (2026-05-09 capture).
 //
 // Distinctive shape:
 //   - S-4 builtin-agent shim: --agent {default|plan|accept-edits|

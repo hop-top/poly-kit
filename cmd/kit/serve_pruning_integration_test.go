@@ -15,25 +15,24 @@ import (
 
 // HTTP integration coverage for the prune track is gated on the
 // /:type/:id/abandon and /:type/:id/prune routes from spec §5, which
-// are owned by a parallel track (T-0429 P4) and are not present in
-// serve.go at the time T-0428 ships. Rather than block on the route
-// landing — and rather than test routes that don't exist — this file
-// drives the restart-durability proof through the engine's Go API
-// directly: open a SQLite-backed VersionedDocumentStore, build a
-// branched + merged + abandoned + pruned history, close, reopen
-// against the same on-disk DB, and assert the post-prune state
-// (history, branches both default and live-only, parent-slice
-// topology via LoadDAG) is byte-equivalent across the close/reopen
-// boundary.
+// are owned by a parallel workstream and are not present in serve.go
+// yet. Rather than block on the route landing — and rather than test
+// routes that don't exist — this file drives the restart-durability
+// proof through the engine's Go API directly: open a SQLite-backed
+// VersionedDocumentStore, build a branched + merged + abandoned +
+// pruned history, close, reopen against the same on-disk DB, and
+// assert the post-prune state (history, branches both default and
+// live-only, parent-slice topology via LoadDAG) is byte-equivalent
+// across the close/reopen boundary.
 //
 // This is the same shape as serve_restart_test.go's TestServe_
-// RestartPreservesHistory (T-0352 / T-0397) but at the engine layer
-// rather than the wire layer. When the /abandon and /prune routes
-// land, a sibling HTTP-driven version of this test should be added
-// — the spec §7 "kit serve restart preserves post-prune state" line
-// item is satisfied here for the durability question (does the live
-// bit and the deleted-versions state survive Close + reopen?). The
-// HTTP wire-equivalence question is a different test and a different
+// RestartPreservesHistory but at the engine layer rather than the
+// wire layer. When the /abandon and /prune routes land, a sibling
+// HTTP-driven version of this test should be added — the spec §7
+// "kit serve restart preserves post-prune state" line item is
+// satisfied here for the durability question (does the live bit and
+// the deleted-versions state survive Close + reopen?). The HTTP
+// wire-equivalence question is a different test and a different
 // surface.
 //
 // Why cmd/kit/ rather than engine/store/: this file exercises the

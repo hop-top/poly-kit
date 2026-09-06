@@ -5,7 +5,6 @@ Invocation adapter for Kimi Code CLI (`kimi` binary, Moonshot AI).
 ## Last verified
 
 - Date: 2026-05-09
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/kimi.txt`
 
 ## Distinctive shape
 

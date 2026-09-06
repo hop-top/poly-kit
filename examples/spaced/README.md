@@ -199,7 +199,7 @@ When emitted, events publish on the bus topic
 
 ### Compliance posture
 
-spaced currently scores 9/13 on the kit-compliance e2e (T-0706). The
+spaced currently scores 9/13 on the kit-compliance e2e. The
 gap is a naming collision: spaced already exposes a `telemetry` cobra
 command for **mission telemetry** (simulated live launch data — see
 the command table above), which collides with kit-consent's expected

@@ -346,7 +346,7 @@ assert_managed_files() {
     assert_file_contains "$gi" '^\.data/$' \
       "$tag .gitignore has common .data/ entry"
 
-    # Per-lang assertions. Post-T-0867, `scaffold.sh` honors the
+    # Per-lang assertions. `scaffold.sh` honors the
     # `--langs` subset: polyglot mode composes only the opted-in
     # lang sections into `.gitignore`. Exclusion assertions fire
     # for every lang NOT in the subset, regardless of polyglot vs.
@@ -423,7 +423,7 @@ assert_managed_files() {
     assert_file_contains "$ga" '^\*\.png[[:space:]][[:space:]]*binary$' \
       "$tag .gitattributes has common *.png binary rule"
 
-    # Per-lang assertions. Post-T-0867, `scaffold.sh` honors the
+    # Per-lang assertions. `scaffold.sh` honors the
     # `--langs` subset for polyglot composition. Exclusion
     # assertions fire for every lang NOT in the subset (mirrors
     # the `.gitignore` block above).
@@ -926,7 +926,7 @@ assert_managed_files "$TEST13C_DIR" "go" "postgres,redis" "test-app-with-svc"
 # Test 14: --langs subset go,ts (2-lang polyglot)
 # ======================================================
 #
-# Post-T-0867 polyglot honors --langs subset. Verify go + ts
+# Polyglot honors --langs subset. Verify go + ts
 # present, py + rs + php excluded from lang dirs and managed
 # files. Mirrors TEST2 (go,ts,py) shape.
 

@@ -82,7 +82,7 @@ func InstallationID() (string, error) {
 
 // Rotate atomically replaces the persisted bytes with 32 fresh
 // crypto/rand bytes and returns the new hex. Used by the
-// `kit consent reset` CLI (kit-consent track).
+// `kit consent reset` CLI.
 func Rotate() (string, error) {
 	path, err := InstallIDPath()
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 	"hop.top/kit/go/storage/kv/tidb"
 )
 
-// T-0732: prefixEnd overflow caused 0xff-heavy prefixes to return empty results.
+// Regression: prefixEnd overflow caused 0xff-heavy prefixes to return empty results.
 
 func TestRegression_T0732_FFPrefixReturnsResults(t *testing.T) {
 	if testing.Short() {

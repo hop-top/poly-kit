@@ -4,8 +4,6 @@
 //  2. @org/name          "@acme/internal"          → registry index → git
 //  3. Direct git URL     "github.com/foo/bar@v1"   → git clone + cache
 //  4. Filesystem path    "./local" or "/abs/path"  → os.DirFS
-//
-// Spec: ops/docs/superpowers/specs/2026-04-26-kit-init-design.md §9.
 package template
 
 import (

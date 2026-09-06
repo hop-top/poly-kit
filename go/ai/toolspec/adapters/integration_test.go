@@ -2,10 +2,9 @@
 //
 //	cobra tree → BuildManifest → JSON round-trip → EnforceMCPRequest
 //
-// Per task T-0499 (kit-toolspec-ai-harness-contract). The test
-// builds a fixture kit Root, walks it into a Manifest, marshals
-// the Manifest through JSON to validate the wire format, parses
-// it back, and runs the resolved Manifest through the policy
+// The test builds a fixture kit Root, walks it into a Manifest,
+// marshals the Manifest through JSON to validate the wire format,
+// parses it back, and runs the resolved Manifest through the policy
 // gate for every (side_effect, network) cell the default table
 // covers. Drift in the manifest schema OR the policy table OR the
 // gate surfaces here as a failed assertion.

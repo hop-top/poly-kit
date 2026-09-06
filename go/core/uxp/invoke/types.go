@@ -261,7 +261,7 @@ type InvocationAdapter interface {
 	Build(inv Invocation) (CommandSpec, Diagnostics, error)
 	// Mappings returns the static parity table for this CLI. The
 	// regenerate-on-build parity README at go/core/uxp/README.md
-	// is built from these slices (see spec §15.8 + T-0521).
+	// is built from these slices (see spec §15.8).
 	Mappings() []OptionMapping
 	// ToolCapabilities returns the built-in agent tool taxonomy for
 	// this CLI.

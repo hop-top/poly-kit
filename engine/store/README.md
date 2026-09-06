@@ -64,8 +64,8 @@ directly).
 
 `VersionedDocumentStore` exposes a public branching API on top of the
 existing version DAG. The schema didn't change — the `version_parents`
-table from the engine-versioned-sqlite track already supports
-many-to-one edges (locked in ADR-0011 decision 3). The new
+table already supports many-to-one edges (locked in ADR-0011
+decision 3). The new
 methods surface that capability:
 
 - `Fork(ctx, type, id, fromSeq) (Version, error)` — appends a new

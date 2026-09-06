@@ -1,5 +1,5 @@
 {
-  "$comment": "Authoritative shape/verbset for kit conformance verify-no-leak. See .tlc/tracks/12fcc-leak/design.md §3. schema_version bumps require a binary update; rules_version bumps re-ship this file only. Sibling track 12fcc-scen owns adding new verbs.",
+  "$comment": "Authoritative shape/verbset for kit conformance verify-no-leak. schema_version bumps require a binary update; rules_version bumps re-ship this file only.",
   "schema_version": "1",
   "rules_version": "2026.05.12.1",
   "verbs": [

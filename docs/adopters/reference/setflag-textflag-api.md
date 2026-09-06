@@ -162,11 +162,6 @@ cmd --tag +urgent --tag -draft
 One operator per flag occurrence: `--tag +urgent,-draft` would add
 the literal values `urgent` and `-draft`, not remove `draft`.
 
-### Tracked migrations
-
-- `tlc` task tags: `tlc#T-0665`
-- `aps` profile tags: `aps#T-0327`
-
 ### Steps
 
 1. Register via `RegisterSetFlag` / `RegisterTextFlag`

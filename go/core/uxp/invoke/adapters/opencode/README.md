@@ -6,7 +6,6 @@ Invocation adapter for opencode CLI.
 
 - Date: 2026-05-09
 - Binary: `opencode` 1.14.30
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/opencode.txt`
   (top-level + `run` subcommand)
 
 ## Distinctive shape

@@ -195,9 +195,9 @@ func TestCuratedToolSpec_NoCurationLeavesEmpty(t *testing.T) {
 // they must keep passing under the new signature, which they do (the
 // variadic gracefully accepts zero options). A dedicated
 // "with curation options registered without panic" test would
-// duplicate runSpec_RoundTrip_JSON without adding signal once
-// T-0335 wires curation through adapter dispatch; defer to that
-// task to add the integration test.
+// duplicate runSpec_RoundTrip_JSON without adding signal. Curation
+// is wired through adapter dispatch elsewhere; defer to that work
+// to add the integration test.
 
 // --- Adapter-registration error surfacing ------------------------
 

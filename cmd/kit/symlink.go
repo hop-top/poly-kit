@@ -5,8 +5,6 @@
 // auto-deploy property a `make build` workflow expects: rebuild the
 // binary, the live entry point keeps pointing at the fresh artifact
 // without a second install step.
-//
-// Spec: tlc T-0214.
 
 package main
 

@@ -3,9 +3,8 @@
 # bootstrap-scenarios-kit.sh — generate the local template for the
 # private grader repo `hop-top/scenarios-kit`.
 #
-# Layer C content per umbrella 12fcc spec lines 83-93. See
-# .tlc/tracks/12fcc-dog/design.md §2 for the layout this script
-# materialises and ADR-0028 for the dual-repo decision.
+# Layer C content per the umbrella 12fcc spec. See ADR-0028 for the
+# dual-repo decision.
 #
 # Usage:
 #   scripts/bootstrap-scenarios-kit.sh [TARGET_DIR]

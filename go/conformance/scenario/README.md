@@ -6,8 +6,8 @@ the wire-format vocabulary (verb roster, top-level keys, compound
 detection rules) lives in `contracts/scenario-rules.json` and is
 shared with the verify-no-leak detector.
 
-This README is the adopter authoring guide. The full design
-contract is in `.tlc/tracks/12fcc-scen/design.md`.
+This README is the adopter authoring guide, and the authoritative
+description of the scenario contract.
 
 ## Package shape
 
@@ -165,7 +165,7 @@ judge:
 
 The library ships only the `AIJudge` interface and a `Canned`
 stub. The production registry (model invocation) lives in the
-`12fcc-svc` service track. Callers wire their AIJudge into
+conformance grading service. Callers wire their AIJudge into
 `Input.Judge`; nil + any `judge_score_above` assertion ⇒
 `VerdictUngradable` with `JUDGE_UNAVAILABLE`.
 
@@ -261,6 +261,4 @@ Flags:
 
 ## See also
 
-- `.tlc/tracks/12fcc-scen/design.md` — full design contract.
-- `.tlc/tracks/12fcc-leak/design.md` — leak-rule consistency.
 - `go/conformance/story/` — story DSL the scenario binds to.

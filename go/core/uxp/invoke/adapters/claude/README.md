@@ -6,9 +6,8 @@ Invocation adapter for Claude Code (`claude` binary).
 
 - Date: 2026-05-09
 - Binary: `claude` 2.1.118 (Claude Code)
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/claude.txt`
 
-Re-run `claude --help > .tlc/tracks/uxp-agent-cli-facade/help/claude.txt` and update this section if the surface changes; if the diff touches a flag below, update the matrix in `go/core/uxp/README.md` (auto-generated from `Mappings()`).
+Re-run `claude --help` and update this section if the surface changes; if the diff touches a flag below, update the matrix in `go/core/uxp/README.md` (auto-generated from `Mappings()`).
 
 ## Mapping summary
 

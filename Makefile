@@ -144,7 +144,7 @@ test-parity: test-parity-typeid test-parity-kv test-parity-mcp ## Cross-language
 # the shared fixture file) fails this target. PHP is treated as
 # optional because the kit's PHP toolchain is experimental and not
 # every CI runner ships it — when `php` and `composer` are present we
-# run the PHP contract test too. tlc T-0753.
+# run the PHP contract test too.
 test-parity-typeid: ## TypeID v1 contract loaders across all 5 SDKs
 	@echo "==> typeid-v1 parity: Go"
 	go test ./go/core/id/... -run '^TestContract' -count=1 -timeout 60s
@@ -448,12 +448,12 @@ sync-managed-assets: ## Re-copy templates/shared/*.{sh,toml} into cmd/kit/init/m
 	    cmd/kit/init/managed_assets/
 	@if [ -f templates/shared/apply-services.sh ]; then \
 	    cp templates/shared/apply-services.sh cmd/kit/init/managed_assets/ ; \
-	    echo "  + apply-services.sh (T-0808)"; \
+	    echo "  + apply-services.sh"; \
 	fi
 	@if [ -d templates/shared/services ]; then \
 	    mkdir -p cmd/kit/init/managed_assets/services/env ; \
 	    cp templates/shared/services/*.yml cmd/kit/init/managed_assets/services/ ; \
 	    cp templates/shared/services/env/*.env cmd/kit/init/managed_assets/services/env/ ; \
-	    echo "  + services/ + services/env/ (T-0808 catalog)"; \
+	    echo "  + services/ + services/env/ (catalog)"; \
 	fi
 	@echo "Done. Review diff, rebuild kit, commit."

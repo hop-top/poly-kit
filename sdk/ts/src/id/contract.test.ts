@@ -1,4 +1,4 @@
-// Cross-language parity contract test (tlc T-0753).
+// Cross-language parity contract test.
 //
 // Loads contracts/typeid-v1/fixtures.json from the repo root and
 // asserts that this TS SDK's encode (via typeid-js's TypeID.fromUUID)

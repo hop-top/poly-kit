@@ -317,7 +317,3 @@ already carry the side-effect tag.
   reserved Qualifiers slot).
 - `cli-conventions-with-kit.md` §3.5 (`kit/side-effect` tier) and
   §3.6 (auto-wired `--dry-run` on write/destructive leaves).
-- `.tlc/tracks/kit-sideeffect-dry-run/plan.md` — original sideeffect
-  track plan.
-- `.tlc/tracks/kit-dryrun-sideeffect-unify/plan.md` — unification
-  track plan.

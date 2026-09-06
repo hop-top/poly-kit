@@ -4,11 +4,11 @@
 // Flag parsing populates a local FlagSet whose pointer fields are nil
 // until cmd.Flags().Changed(name) is true; this preserves the
 // nil=unset semantics that inputs.Gather relies on for its precedence
-// chain (T-0849).
+// chain.
 //
 // InitCmd accepts a nil *cli.Root so tests and embedding callers can
 // drive the cobra command directly without constructing a full Root.
-// See InitCmd's doc-comment for the fallback behavior (T-0229..T-0231).
+// See InitCmd's doc-comment for the fallback behavior.
 package kitinit
 
 import (
@@ -66,8 +66,8 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		withBusWorkflowsFlag         bool
 		withoutBusWorkflowsFlag      bool
 
-		// Managed-block refresh flags (T-0810). When any of these is
-		// set, RunE short-circuits before the detect/Gather flow and
+		// Managed-block refresh flags. When any of these is set,
+		// RunE short-circuits before the detect/Gather flow and
 		// dispatches to RunManaged. See cmd/kit/init/managed.go.
 		updateFlag        bool
 		checkFlag         bool
@@ -107,10 +107,10 @@ func InitCmd(root *cli.Root) *cobra.Command {
 				return fmt.Errorf("kit init: getwd: %w", err)
 			}
 
-			// T-0810 short-circuit: managed-block refresh / drift
-			// check / service ops. These flags bypass the full
-			// bootstrap/augment flow because their job is to operate
-			// on an existing project's managed blocks only.
+			// Managed-block short-circuit: refresh / drift check /
+			// service ops. These flags bypass the full bootstrap /
+			// augment flow because their job is to operate on an
+			// existing project's managed blocks only.
 			if updateFlag || checkFlag || addServiceFlag != "" || removeServiceFlag != "" {
 				return RunManaged(ctx, ManagedOptions{
 					Cwd:           cwd,
@@ -300,9 +300,9 @@ func InitCmd(root *cli.Root) *cobra.Command {
 	f.BoolVar(&withoutBusWorkflowsFlag, "without-bus-workflows", false,
 		"Skip rendering kit-bus PR-lifecycle workflows (no-op when already disabled)")
 
-	// T-0810: managed-block refresh / drift / service ops. These
-	// flags short-circuit the bootstrap/augment flow at the top of
-	// RunE; see managed.go for the orchestration logic.
+	// Managed-block refresh / drift / service ops. These flags
+	// short-circuit the bootstrap/augment flow at the top of RunE;
+	// see managed.go for the orchestration logic.
 	f.BoolVar(&updateFlag, "update", false,
 		"Refresh kit-managed blocks (mise.toml, devcontainer, compose, env) idempotently")
 	f.BoolVar(&checkFlag, "check", false,

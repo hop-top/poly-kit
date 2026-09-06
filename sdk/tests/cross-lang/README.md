@@ -72,9 +72,9 @@ Per-language skips when prerequisites are missing:
 | Lang | Requires                                                                  |
 |------|---------------------------------------------------------------------------|
 | py   | `python3`, `pyyaml` (auto-skipped otherwise)                              |
-| ts   | `node`, `hops/main/sdk/ts/dist/telemetry/index.js` (run `npm run build`)  |
+| ts   | `node`, `sdk/ts/dist/telemetry/index.js` (run `npm run build`)  |
 | rs   | `cargo`                                                                   |
-| php  | `php`, `hops/main/sdk/experimental/php/vendor/autoload.php` (composer)    |
+| php  | `php`, `sdk/experimental/php/vendor/autoload.php` (composer)    |
 
 The harness exits 0 when every language that ran passed; skips do NOT
 fail. CI runs with all four toolchains installed.
@@ -95,7 +95,7 @@ key-level diff is meaningful.
 
 ## Known parity gaps (surfaced — NOT fixed by this task)
 
-These appear in the diff output today; T-0709 documents them so the
+These appear in the diff output today; they are documented here so the
 follow-up parity work can target the exact discrepancies:
 
 - **PHP omits `schema_version`** from its envelope entirely (every other

@@ -9,7 +9,7 @@ import (
 	"hop.top/kit/go/conformance/verifynoleak/scanner"
 )
 
-// ── T-1226 negative cases ────────────────────────────────────────
+// ── negative cases ───────────────────────────────────────────────
 //
 // "Shape mimics but is not a scenario" — these legitimate file
 // shapes must NOT trip the detector even though they share

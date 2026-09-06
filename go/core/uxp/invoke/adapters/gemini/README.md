@@ -6,7 +6,6 @@ Invocation adapter for Google Gemini CLI (`gemini` binary).
 
 - Date: 2026-05-09
 - Binary: `gemini` 0.40.1
-- Help artifact: `.tlc/tracks/uxp-agent-cli-facade/help/gemini.txt`
 
 ## Mapping summary
 

@@ -1,6 +1,6 @@
-// T-1062: runTLCInit — best-effort tlc init wiring. Two scenarios under
-// test: (1) tlc absent from PATH → silent no-op (skipped=true, nil); (2)
-// tlc present but exits non-zero → wrapped error surfaces.
+// runTLCInit — best-effort tlc init wiring. Two scenarios under test:
+// (1) tlc absent from PATH → silent no-op (skipped=true, nil); (2) tlc
+// present but exits non-zero → wrapped error surfaces.
 //
 // We simulate "tlc missing" via t.Setenv("PATH", "") and "tlc failing"
 // by writing a one-shot stub script that exits with status 1, then

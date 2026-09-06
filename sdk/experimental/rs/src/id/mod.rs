@@ -338,7 +338,7 @@ impl<'de, T: Prefix> Deserialize<'de> for Typed<T> {
 /// Build a canonical typeid string deterministically from an explicit
 /// `prefix` and `uuid`. Useful for fixtures and cross-language parity
 /// tests where both sides must agree on the encoded form for a pinned
-/// input (tlc T-0753).
+/// input.
 ///
 /// # Errors
 ///
@@ -369,7 +369,7 @@ pub fn from_uuid(prefix: &str, uuid: Uuid) -> Result<String, IdError> {
     Ok(id.to_string())
 }
 
-/// Internal helper retained for parity fixture verification (T-0753).
+/// Internal helper retained for parity fixture verification.
 /// Mirrors [`from_uuid`] but bypasses the kit's empty-prefix rejection so
 /// the parity test suite can probe both paths from the same construction
 /// site without needing two crates' worth of test plumbing.
@@ -386,7 +386,7 @@ mod tests {
 
     // ------------------------------------------------------------------
     // Canonical fixtures — these UUID inputs are the cross-language parity
-    // anchors for T-0753. Do NOT change them; future SDKs (py/ts/php/go)
+    // anchors. Do NOT change them; other SDKs (py/ts/php/go)
     // must consume the same triples and produce matching typeid strings.
     // ------------------------------------------------------------------
     const FIXTURE_TASK_UUID: &str = "01940000-0000-7000-8000-000000000000";
