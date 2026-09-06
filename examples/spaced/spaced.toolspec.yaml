@@ -154,7 +154,7 @@ telemetry:
   categories: [error, invocation]
   sinks: [bus, jsonl]
   consent_command: "spaced telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, SPACED_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default

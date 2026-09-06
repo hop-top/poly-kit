@@ -7,25 +7,25 @@
  */
 
 import { defaultRegistry } from './registry';
-import { jsonFormatter } from './formatters/json';
-import { yamlFormatter } from './formatters/yaml';
-import { tableFormatter } from './formatters/table';
 import { csvFormatter } from './formatters/csv';
+import { jsonFormatter } from './formatters/json';
+import { tableFormatter } from './formatters/table';
 import { textFormatter } from './formatters/text';
+import { yamlFormatter } from './formatters/yaml';
 
 let registered = false;
 
 /**
- * Register the built-in formatters (json, yaml, table, csv, text) against
+ * Register the built-in formatters (csv, json, table, text, yaml) against
  * defaultRegistry. Idempotent — safe to call from multiple entry points.
  */
 export function registerBuiltins(): void {
   if (registered) return;
-  defaultRegistry.register(jsonFormatter);
-  defaultRegistry.register(yamlFormatter);
-  defaultRegistry.register(tableFormatter);
   defaultRegistry.register(csvFormatter);
+  defaultRegistry.register(jsonFormatter);
+  defaultRegistry.register(tableFormatter);
   defaultRegistry.register(textFormatter);
+  defaultRegistry.register(yamlFormatter);
   registered = true;
 }
 

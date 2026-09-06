@@ -18,7 +18,7 @@ telemetry:
   categories: [invocation, error]
   sinks: [bus, jsonl]
   consent_command: "<bin> telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, "<APP>_TELEMETRY_MODE"]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -37,7 +37,7 @@ telemetry:
 - `consent_command` (string) — top-level subcommand path that owns
   the consent subtree (e.g. `"spaced telemetry"`).
 - `consent_subcommands` ([]string) — must enumerate
-  `{status, enable, disable, reset, inspect}`; each maps to a
+  `{disable, enable, inspect, reset, status}`; each maps to a
   command in the toolspec tree.
 - `kill_switch_envs` ([]string) — env names that suppress emission.
   Must include `DO_NOT_TRACK` and at least one mode env
@@ -57,7 +57,7 @@ telemetry:
   categories: [invocation, error]
   sinks: [bus, jsonl]
   consent_command: "spaced telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, SPACED_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default

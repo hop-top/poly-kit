@@ -213,7 +213,7 @@ telemetry:
   categories: [invocation]
   sinks: [bus]
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, PROBE_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -289,7 +289,7 @@ telemetry:
   categories: [invocation, error, lifecycle]
   sinks: [bus, jsonl]
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, PROBE_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -301,7 +301,7 @@ telemetry:
 	assert.Equal(t, []string{"bus", "jsonl"}, s.Telemetry.Sinks)
 	assert.Equal(t, "probe telemetry", s.Telemetry.ConsentCommand)
 	assert.Equal(t,
-		[]string{"status", "enable", "disable", "reset", "inspect"},
+		[]string{"disable", "enable", "inspect", "reset", "status"},
 		s.Telemetry.ConsentSubcommands)
 	assert.Equal(t,
 		[]string{"DO_NOT_TRACK", "PROBE_TELEMETRY_MODE"},
@@ -340,7 +340,7 @@ telemetry:
   categories: [invocation]
   sinks: [bus]
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, PROBE_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -427,7 +427,7 @@ telemetry:
   categories: [invocation]
   sinks: [bus]
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, PROBE_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -454,7 +454,7 @@ telemetry:
   enabled: true
   categories: []
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, PROBE_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -506,7 +506,7 @@ telemetry:
   enabled: true
   categories: [invocation]
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [PROBE_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -532,7 +532,7 @@ telemetry:
   enabled: true
   categories: [invocation]
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -562,7 +562,7 @@ telemetry:
   enabled: true
   categories: [invocation]
   consent_command: "kit telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, KIT_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -587,7 +587,7 @@ telemetry:
   enabled: true
   categories: [invocation]
   consent_command: "spaced telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, SPACED_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default
@@ -612,7 +612,7 @@ telemetry:
   enabled: true
   categories: [invocation]
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, PROBE_TELEMETRY_MODE]
   prompt_version: ""
   redact_rules: kit-default
@@ -642,7 +642,7 @@ telemetry:
   enabled: true
   categories: [invocation]
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, PROBE_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: ""
@@ -671,7 +671,7 @@ telemetry:
   enabled: true
   categories: [invocation]
   consent_command: "probe telemetry"
-  consent_subcommands: [status, enable, disable, reset, inspect]
+  consent_subcommands: [disable, enable, inspect, reset, status]
   kill_switch_envs: [DO_NOT_TRACK, PROBE_TELEMETRY_MODE]
   prompt_version: "v1"
   redact_rules: kit-default

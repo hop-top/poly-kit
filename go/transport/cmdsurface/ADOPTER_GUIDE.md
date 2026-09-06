@@ -154,7 +154,7 @@ defer bridge.Close(ctx) // drains in-flight events
 ```
 
 Operators control consent and inspect captured events via
-`kit telemetry status | enable | disable | reset | inspect`.
+`kit telemetry disable | enable | inspect | reset | status`.
 
 See [README.md](README.md) "Telemetry sink" for the full reference
 (Anon vs Full, size cap, trace correlation, non-blocking guarantees).

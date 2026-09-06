@@ -238,7 +238,7 @@ func telemetryOptedIn(spec *toolspecYAML) bool {
 // subcommand names that an opt-in binary MUST expose under its
 // consent command (typically `<bin> telemetry`).
 var telemetryConsentSubcommandsCanonical = []string{
-	"status", "enable", "disable", "reset", "inspect",
+	"disable", "enable", "inspect", "reset", "status",
 }
 
 // telemetryModeEnvShape matches `<UPPERCASE_APP>_TELEMETRY_MODE`.
@@ -296,7 +296,7 @@ func commandPathExists(cmds []commandYAML, path []string) bool {
 //
 //  1. categories non-empty
 //  2. consent_subcommands contains the canonical set
-//     {status, enable, disable, reset, inspect}
+//     {disable, enable, inspect, reset, status}
 //  3. kill_switch_envs contains DO_NOT_TRACK
 //  4. kill_switch_envs contains at least one entry matching
 //     `<APP>_TELEMETRY_MODE` shape (`KIT_TELEMETRY_MODE` matches by
@@ -411,8 +411,8 @@ func checkConsentingTelemetry(spec *toolspecYAML, binary string) CheckResult {
 	return fail(FactorConsentingTelemetry,
 		strings.Join(failures, "; "),
 		"Fix the telemetry block: ensure categories, "+
-			"consent_subcommands {status, enable, disable, reset, "+
-			"inspect}, kill_switch_envs [DO_NOT_TRACK, <APP>_TELEMETRY_MODE], "+
+			"consent_subcommands {disable, enable, inspect, reset, "+
+			"status}, kill_switch_envs [DO_NOT_TRACK, <APP>_TELEMETRY_MODE], "+
 			"prompt_version, redact_rules are set, and that each "+
 			"consent_subcommand maps to a command in the commands tree.")
 }

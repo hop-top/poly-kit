@@ -810,7 +810,7 @@ during graceful shutdown.
 `kit telemetry inspect` reads spooled events post-redaction; use it to
 confirm what is actually leaving the binary on a given machine before
 shipping a config change. The same subcommand family
-(`kit telemetry status | enable | disable | reset | inspect`) drives the
+(`kit telemetry disable | enable | inspect | reset | status`) drives the
 user-facing consent UX — see the adopter guide cross-link below.
 
 ### Cross-references

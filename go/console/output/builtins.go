@@ -17,8 +17,8 @@ import (
 // keys emitted in --cols order.
 func init() {
 	Default.Register(jsonFormatter{})
-	Default.Register(yamlFormatter{})
 	Default.Register(tableFormatter{})
+	Default.Register(yamlFormatter{})
 }
 
 type jsonFormatter struct{}

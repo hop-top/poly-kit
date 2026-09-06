@@ -1,6 +1,6 @@
 // Package telemetry implements the `kit telemetry` subcommand tree.
 // This file owns the first-run interactive consent prompt; the
-// `status | enable | disable | reset | inspect` verbs land in sibling
+// `disable | enable | inspect | reset | status` verbs land in sibling
 // files.
 //
 // The prompt is the ONLY code path that may stamp

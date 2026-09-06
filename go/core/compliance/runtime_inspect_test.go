@@ -93,7 +93,7 @@ func inspectSpec() *toolspecYAML {
 		},
 		Telemetry: &telemetryYAML{
 			Enabled:            true,
-			ConsentSubcommands: []string{"status", "enable", "disable", "reset", "inspect"},
+			ConsentSubcommands: []string{"disable", "enable", "inspect", "reset", "status"},
 		},
 	}
 }
@@ -328,8 +328,8 @@ func TestIntersectCanonical(t *testing.T) {
 		{"empty", nil, []string{}},
 		{
 			"all-canonical",
-			[]string{"status", "enable", "disable", "reset", "inspect"},
-			[]string{"status", "enable", "disable", "reset", "inspect"},
+			[]string{"disable", "enable", "inspect", "reset", "status"},
+			[]string{"disable", "enable", "inspect", "reset", "status"},
 		},
 		{
 			"subset",

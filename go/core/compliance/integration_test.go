@@ -34,8 +34,8 @@
 //     `state_introspection.auth_commands`. Spaced has no auth
 //     surface; skip is the correct semantics.
 //   - F13 ConsentingTelemetry: FAIL — spaced declares
-//     `consent_subcommands: [status, enable, disable, reset,
-//     inspect]` but its `telemetry` command only exposes
+//     `consent_subcommands: [disable, enable, inspect, reset,
+//     status]` but its `telemetry` command only exposes
 //     `telemetry get <mission>`. The canonical consent
 //     subcommands are not yet wired in. This is the kit-consent
 //     adopter integration gap and is expected pending the
@@ -174,7 +174,7 @@ func TestE2E_SpacedCompliance(t *testing.T) {
 	// Today's baseline: F13 fails because spaced's `telemetry`
 	// command does not expose the canonical consent subcommands.
 	// Flip wantF13Status to "pass" once kit-consent lands and
-	// spaced wires telemetry status/enable/disable/reset/inspect.
+	// spaced wires telemetry disable/enable/inspect/reset/status.
 	const wantF13Status = "fail"
 	if f13.Status != wantF13Status {
 		t.Errorf("F13 status = %q, want %q. Details: %s",

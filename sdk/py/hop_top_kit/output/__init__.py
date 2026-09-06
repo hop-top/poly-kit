@@ -151,11 +151,11 @@ def _register_builtins() -> None:
     from hop_top_kit.output.formatters.yaml_formatter import YAMLFormatter
 
     for f in (
-        JSONFormatter(),
-        YAMLFormatter(),
-        TableFormatter(),
         CSVFormatter(),
+        JSONFormatter(),
+        TableFormatter(),
         TextFormatter(),
+        YAMLFormatter(),
     ):
         if default_registry.lookup(f.key) is None:
             default_registry.register(f)
