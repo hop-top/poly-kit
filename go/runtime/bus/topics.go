@@ -91,7 +91,7 @@ func ValidateTopic(t Topic) error {
 	action := parts[3]
 	if !isPastTense(action) {
 		return fmt.Errorf(
-			"topic %q action segment %q is not past-tense (e.g. \"started\", \"created\"); see bus.PastTenseWhitelist",
+			"topic %q action segment %q is not past-tense (e.g. \"started\", \"created\"); see pastTenseWhitelist in go/runtime/bus/topics.go",
 			s, action,
 		)
 	}
