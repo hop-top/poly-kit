@@ -89,9 +89,7 @@ func TestVersioned_Property(t *testing.T) {
 		// property check).
 		mem := newVersionedStore(t)
 		sqlitePath := filepath.Join(t.TempDir(), fmt.Sprintf("prop-%d.db", iter))
-		ds, err := NewDocumentStore(sqlitePath)
-		require.NoError(t, err)
-		t.Cleanup(func() { _ = ds.Close() })
+		ds := newTestDocumentStore(t, sqlitePath)
 		sqliteVS, err := NewSQLiteVersionStore(ds.DB())
 		require.NoError(t, err)
 		sqlite := NewVersionedDocumentStore(ds, sqliteVS)

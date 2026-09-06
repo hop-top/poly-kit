@@ -129,7 +129,16 @@ CREATE TABLE IF NOT EXISTS version_seq_high_water (
 // the legacy table is dropped. Re-running on an already-migrated DB
 // is a no-op.
 func NewDocumentStore(dbPath string) (*DocumentStore, error) {
-	db, err := sqldb.Open(sqldb.Options{Path: dbPath})
+	return newDocumentStore(sqldb.Options{Path: dbPath})
+}
+
+// newDocumentStore is the shared body of [NewDocumentStore] and the
+// test-only opener in testdb_test.go. Splitting it keeps the exported
+// constructor's signature — and its durable sqldb defaults — the one
+// thing production can reach: a caller outside the package cannot
+// hand in Options at all.
+func newDocumentStore(opts sqldb.Options) (*DocumentStore, error) {
+	db, err := sqldb.Open(opts)
 	if err != nil {
 		return nil, fmt.Errorf("store: open db: %w", err)
 	}

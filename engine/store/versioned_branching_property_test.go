@@ -106,9 +106,7 @@ func makeInMemoryVersionedStore(t *testing.T) *VersionedDocumentStore {
 func makeSQLiteVersionedStore(t *testing.T) *VersionedDocumentStore {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "branching-prop.db")
-	ds, err := NewDocumentStore(path)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ds.Close() })
+	ds := newTestDocumentStore(t, path)
 	vs, err := NewSQLiteVersionStore(ds.DB())
 	require.NoError(t, err)
 	return NewVersionedDocumentStore(ds, vs)
