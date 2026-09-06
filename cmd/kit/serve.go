@@ -473,10 +473,18 @@ func registerDocumentRoutes(router routeRegistrar, vds *store.VersionedDocumentS
 			jsonError(w, http.StatusBadRequest, "invalid type")
 			return
 		}
-		doc, err := vds.Get(r.Context(), docType, api.PathParam(r, "id"))
+		id := api.PathParam(r, "id")
+		doc, err := vds.Get(r.Context(), docType, id)
 		if err != nil {
 			jsonError(w, http.StatusNotFound, "not found")
 			return
+		}
+		// The ETag is the document's current version id, the token a
+		// client sends back as If-Match. Absent when the document has
+		// no version history, so a client cannot forge a precondition
+		// against a version that does not exist.
+		if vid, verr := vds.CurrentVersionID(r.Context(), docType, id); verr == nil && vid != "" {
+			w.Header().Set("ETag", strconv.Quote(vid))
 		}
 		_ = json.NewEncoder(w).Encode(doc)
 	})
@@ -493,10 +501,25 @@ func registerDocumentRoutes(router routeRegistrar, vds *store.VersionedDocumentS
 			jsonError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		doc, ver, err := vds.UpdateAndVersion(r.Context(), docType, api.PathParam(r, "id"), data)
+		// If-Match is optional: absent means an unconditional write,
+		// preserving last-writer-wins for clients that never opt in.
+		// Present means the write applies only to the named version.
+		expected, perr := preconditionVersion(r.Header.Get("If-Match"))
+		if perr != nil {
+			jsonError(w, http.StatusBadRequest, perr.Error())
+			return
+		}
+		doc, ver, err := vds.UpdateAndVersionIfMatch(r.Context(), docType, api.PathParam(r, "id"), data, expected)
+		if errors.Is(err, store.ErrPreconditionFailed) {
+			jsonError(w, http.StatusPreconditionFailed, "version precondition failed")
+			return
+		}
 		if err != nil {
 			jsonError(w, http.StatusNotFound, "not found")
 			return
+		}
+		if ver.VersionID != "" {
+			w.Header().Set("ETag", strconv.Quote(ver.VersionID))
 		}
 		publishDocEvent(r.Context(), eventBus, cfg.topics.Updated, cfg.source, payloadFromDoc(doc, ver))
 		_ = json.NewEncoder(w).Encode(doc)
