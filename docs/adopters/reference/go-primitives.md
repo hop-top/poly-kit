@@ -398,14 +398,16 @@ root, rather than an API to call.
 | config paths | `config path`, `config paths` | `hop.top/kit/go/console/cli/config` |
 | uri | Custom URI-scheme registration | `hop.top/kit/go/console/uri` |
 | llm router | `llm router start/stop/list/config` | `hop.top/kit/go/console/cli/router` |
-| uxp | Build and inspect agent-CLI invocations | `hop.top/kit/go/core/uxp/invoke/cmd/uxp` |
+| uxp | Build and inspect agent-CLI invocations; package clause is `uxpcmd`, so alias the import | `hop.top/kit/go/core/uxp/invoke/cmd/uxp` |
 | spec | `<tool> spec` — emit your toolspec manifest | `hop.top/kit/go/ai/toolspec/cli` |
 | upgrade | Self-upgrade and migration commands | `hop.top/kit/go/core/upgrade` |
 
 ## What is not in this index
 
-kit has 194 non-test packages under `go/`; this index lists the
-ones an adopter imports. The line drawn, and what fell outside it:
+`go list ./go/...` reports 198 packages; four of those hold only
+test files, leaving 194 with anything in them. This index lists
+the ones an adopter imports. The line drawn, and what fell outside
+it:
 
 **Internal decomposition.** Packages that exist to keep another
 package's dependencies or file count manageable, and that you reach
@@ -428,10 +430,13 @@ closed catalog of adapter mapping helpers), `runtime/policy/cel`
 `tools/provenancelint` is a `go/analysis` analyzer you run as a
 linter, not an API you call.
 
-**Test-only, no importable package.** `runtime/policy/e2e`,
-`conformance/verifynoleak` and its `citemplates`
-directory contain only `_test.go` files, so they do not appear in
-`go list` output as importable packages at all.
+**Test-only, nothing to import.** `runtime/policy/e2e`,
+`storage/kv/registry`, `conformance/verifynoleak` and its
+`citemplates` directory contain only `_test.go` files. They still
+appear in `go list` output, but export no symbols, so importing
+them gets you nothing. `storage/kv/registry` is a deliberately
+separate package so that the blank driver imports in `kv`'s own
+tests do not populate the registry it asserts against.
 `core/xdg/scopetest` is documented in its own source as
 intentionally empty, existing only to host tests.
 
@@ -456,29 +461,15 @@ explicitly experimental until promoted.
 ## Where this disagrees with the architecture page
 
 [`contributors/architecture/architecture.md`](../../contributors/architecture/architecture.md)
-is the contributor-facing view and covers 42 of the 194 packages.
-Where the two differ, the code wins. Known divergences at the time
-of writing:
+is the contributor-facing view: fewer packages, more on how they
+fit together. Where the two differ, the code wins.
 
-- It describes "seven role-based domains"; `go/` currently holds
-  eleven top-level areas — `ai`, `bridge`, `conformance`,
-  `console`, `core`, `integrations`, `runtime`, `security`,
-  `storage`, `tools`, `transport`.
-- It lists `storage/sqldb` as "PostgreSQL/MySQL via Go stdlib";
-  the package doc says SQLite connection management.
-- `go/README.md` lists six areas, omitting `bridge`,
-  `conformance`, `integrations`, `security` and `tools`. Several
-  area READMEs likewise list only a subset of their sub-packages —
-  `go/ai/README.md` omits `llm/`, `go/runtime/README.md` omits
-  `notify`, `policy`, `provenance` and `telemetry`, and
-  `go/transport/README.md` omits `cmdsurface`, `socket`, `mcpsdk`
-  and `transportsvc`.
-
-Two package-level docs are also stale against their own code:
-`go/integrations` says a repo-host adapter does not exist, though
-`integrations/repohost` ships with five drivers; and
-`go/conformance/README.md` names the wrong import path for
-`AssertCLI`, as noted above.
+The divergences this section used to list — a stale domain count,
+`storage/sqldb` described as PostgreSQL/MySQL, area READMEs
+missing sub-packages, and stale doc comments on `go/integrations`
+and `go/conformance/README.md` — have since been fixed at the
+source. Both pages and the eleven area READMEs now agree with the
+code. Nothing is known to diverge today.
 
 ## Related pages
 
