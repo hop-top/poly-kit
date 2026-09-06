@@ -1,4 +1,4 @@
-# internal/tools/
+# internal tools
 
 Build-time generators. Not part of the kit binary, not published.
 
