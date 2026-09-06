@@ -185,9 +185,25 @@ func TestBindFlag_FileCompleter(t *testing.T) {
 	c := File(".yaml", ".yml")
 	BindFlag(cmd, "config", c)
 
+	// Cobra carries the extension filter in the completions slice, not
+	// in the directive: returning the directive alone leaves the shell
+	// with nothing to filter on.
 	completions, dir := cobraFlagCompletions(cmd, "config", "")
-	assert.Empty(t, completions)
 	assert.Equal(t, cobra.ShellCompDirectiveFilterFileExt, dir)
+	assert.Equal(t, []string{".yaml", ".yml"}, completions)
+}
+
+func TestBindFlag_FileCompleterNoExtensions(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("any", "", "any file")
+
+	BindFlag(cmd, "any", File())
+
+	// No extensions declared means plain file completion; an empty
+	// FilterFileExt list would filter everything out.
+	completions, dir := cobraFlagCompletions(cmd, "any", "")
+	assert.Equal(t, cobra.ShellCompDirectiveDefault, dir)
+	assert.Empty(t, completions)
 }
 
 func TestBindFlag_DirCompleter(t *testing.T) {
