@@ -173,7 +173,9 @@ func renderPolicyError(cmd *cobra.Command, ce *output.Error) error {
 	_ = output.RenderError(cmd.ErrOrStderr(), format, ce)
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
-	return ce
+	// Tagged as written so the fang error handler doesn't print the same
+	// refusal a second time in its own styling. See error_render.go.
+	return markRendered(ce)
 }
 
 // promptConfirm renders the y/N prompt to stderr and reads one line
