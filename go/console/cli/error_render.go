@@ -224,12 +224,28 @@ const (
 // left alone: cobra's ArbitraryArgs never fails, and a nil Args is
 // also what makes cobra's Find fall back to its legacy unknown-command
 // check, which a wrapper would suppress.
+//
+// The hook is a three-stage chain over one seam, innermost first:
+//
+//  1. prev — the adopter's own FlagErrorFunc, or cobra's default.
+//  2. flagParseError — recognizes pflag's typed parse errors and
+//     enriches them into a USAGE envelope carrying the flag-name
+//     suggestion or the flag's legal value set. Anything it does not
+//     recognize passes through unchanged. See errcorrect.go.
+//  3. usageError — classifies whatever is still bare as USAGE.
+//     An enriched envelope from stage 2 already carries the code, so
+//     usageError returns it untouched and kitErrorHandler renders it.
+//
+// Chained rather than installed separately: cobra resolves one
+// FlagErrorFunc per invocation, so a second install would shadow this
+// one, and two installs that each render would double the stderr this
+// seam exists to keep single.
 func (r *Root) installUsageClassification() {
 	root := r.Cmd
 	if root.Annotations == nil || root.Annotations[usageFlagHookAnnotation] != "true" {
 		prev := root.FlagErrorFunc()
 		root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-			return usageError(cmd, prev(cmd, err))
+			return usageError(cmd, flagParseError(cmd, prev(cmd, err)))
 		})
 		annotate(root, usageFlagHookAnnotation)
 	}

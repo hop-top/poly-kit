@@ -135,8 +135,10 @@ func TestUnknown_FlagErrorsStayFlagErrors(t *testing.T) {
 	require.NotNil(t, ce)
 	assert.Equal(t, output.CodeUsage, ce.Code)
 	assert.Equal(t, 2, ce.ExitCode)
-	assert.Equal(t, "unknown flag: --nosuch", ce.Message,
+	assert.Equal(t, "unknown flag --nosuch", ce.Message,
 		"the flag is the first thing wrong; it must be what is reported")
+	assert.NotContains(t, ce.Message, "nope",
+		"the trailing word is not the diagnosis")
 }
 
 // TestUnknown_PassthroughLeafKeepsItsArgs: a leaf that declares it

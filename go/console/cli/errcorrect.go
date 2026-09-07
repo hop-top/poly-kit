@@ -69,8 +69,16 @@ func FormatError(err error, w io.Writer, noColor bool) {
 // Everything needed to correct the caller is already in hand at that
 // moment. pflag's typed errors carry the offending name and, for a missing
 // value, the *pflag.Flag itself; the command carries its whole flag table
-// and each flag's enum annotation. installFlagErrorFunc turns that into a
+// and each flag's enum annotation. flagParseError turns that into a
 // structured envelope so the correction arrives in the first response.
+//
+// One hook, not two. installUsageClassification already owns the root's
+// FlagErrorFunc, where it classifies a parse failure as USAGE (exit 2).
+// flagParseError runs inside that hook as the enricher ahead of the
+// classifier: it adds the suggestion, the enum set, and the exit code to
+// the errors it recognizes, and returns the rest untouched for the
+// classifier to handle. A second SetFlagErrorFunc would either shadow
+// the classifier or render the same failure twice.
 //
 // Deliberately NOT done: auto-applying a fuzzy match. The same path serves
 // destructive verbs, where silently running a guessed --force or a wrong
@@ -82,38 +90,6 @@ func FormatError(err error, w io.Writer, noColor bool) {
 // doubled character, and a wrong one; beyond that the "suggestion" is
 // noise, and a wrong suggestion on a destructive verb is worse than none.
 const flagErrorMaxDistance = 2
-
-// installFlagErrorFunc sets a FlagErrorFunc on cmd and its whole subtree
-// so parse failures come back as structured *output.Error envelopes.
-//
-// cobra resolves the error func by walking up to the root, so setting it
-// on the root would suffice for inherited resolution — but a subcommand
-// that sets its own must not be silently overridden, so the walk skips any
-// command that already has one.
-func (r *Root) installFlagErrorFunc() {
-	if r == nil || r.Cmd == nil {
-		return
-	}
-	installFlagErrorFuncTree(r.Cmd)
-}
-
-func installFlagErrorFuncTree(cmd *cobra.Command) {
-	if cmd.Annotations == nil || cmd.Annotations[flagErrorFuncAnnotation] != "true" {
-		cmd.SetFlagErrorFunc(flagParseError)
-		if cmd.Annotations == nil {
-			cmd.Annotations = make(map[string]string)
-		}
-		cmd.Annotations[flagErrorFuncAnnotation] = "true"
-	}
-	for _, c := range cmd.Commands() {
-		installFlagErrorFuncTree(c)
-	}
-}
-
-// flagErrorFuncAnnotation marks a command whose FlagErrorFunc kit already
-// installed, so a repeated Execute (tests, nested harnesses) is a no-op
-// rather than a re-wrap.
-const flagErrorFuncAnnotation = "kit.cli.flagError.installed"
 
 // flagParseError maps a pflag parse failure to a structured envelope.
 //
@@ -153,6 +129,10 @@ func missingFlagValueError(cmd *cobra.Command, e *pflag.ValueRequiredError) erro
 		Message:  "missing value for " + dashed,
 		Cause:    dashed + " requires a value",
 		ExitCode: int(ExitUsage),
+		// A malformed invocation is never cleared by retrying it
+		// unchanged. Set explicitly: a struct literal skips the
+		// code-derived default WrapError applies.
+		Transience: output.TransienceForCode(output.CodeUsage),
 	}
 
 	values := flagEnumValues(flag)
@@ -184,10 +164,11 @@ func unknownFlagError(cmd *cobra.Command, e *pflag.NotExistError) error {
 	helpPath := helpInvocation(cmd)
 
 	out := &output.Error{
-		Code:     output.CodeUsage,
-		Message:  "unknown flag " + dashed,
-		Cause:    "no flag named " + dashed + " on " + cmd.CommandPath(),
-		ExitCode: int(ExitUsage),
+		Code:       output.CodeUsage,
+		Message:    "unknown flag " + dashed,
+		Cause:      "no flag named " + dashed + " on " + cmd.CommandPath(),
+		ExitCode:   int(ExitUsage),
+		Transience: output.TransienceForCode(output.CodeUsage),
 	}
 
 	// Shorthand groups (-xyz) carry no name to match against; a single

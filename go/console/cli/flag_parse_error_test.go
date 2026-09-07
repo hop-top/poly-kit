@@ -109,7 +109,7 @@ func parseTree(t *testing.T) (*Root, *cobra.Command) {
 	r := &Root{Cmd: root}
 	r.WithFlagEnum("status", "TODO", "IN_PROGRESS", "DONE", "SKIPPED")
 	r.applyFlagEnums()
-	r.installFlagErrorFunc()
+	r.installUsageClassification()
 	return r, leaf
 }
 
@@ -183,7 +183,7 @@ func TestUnknownFlag_AmbiguousListsAlternatives(t *testing.T) {
 	leaf.Flags().Bool("count-only", false, "Count only")
 	root.AddCommand(leaf)
 	r := &Root{Cmd: root}
-	r.installFlagErrorFunc()
+	r.installUsageClassification()
 	r.Cmd.SetArgs([]string{"list", "--count"})
 	r.Cmd.SetOut(&strings.Builder{})
 	r.Cmd.SetErr(&strings.Builder{})
@@ -301,19 +301,33 @@ type errSentinelForParse struct{}
 
 func (errSentinelForParse) Error() string { return "some other parse failure" }
 
-func TestInstallFlagErrorFunc_Idempotent(t *testing.T) {
-	r, leaf := parseTree(t)
-	r.installFlagErrorFunc()
-	r.installFlagErrorFunc()
-	if leaf.Annotations[flagErrorFuncAnnotation] != "true" {
-		t.Error("leaf not marked installed")
+// The parse-error enricher shares the root's single FlagErrorFunc with
+// the usage classifier, so re-installing must neither re-wrap the hook
+// nor double the rendering. Asserted behaviorally: one envelope, one
+// suggestion, however many times the seam is installed.
+func TestParseErrorSeam_Idempotent(t *testing.T) {
+	r, _ := parseTree(t)
+	r.installUsageClassification()
+	r.installUsageClassification()
+	if r.Cmd.Annotations[usageFlagHookAnnotation] != "true" {
+		t.Error("root not marked installed")
 	}
-}
 
-func TestInstallFlagErrorFunc_NilSafe(t *testing.T) {
-	var r *Root
-	r.installFlagErrorFunc()
-	(&Root{}).installFlagErrorFunc()
+	var stderr strings.Builder
+	r.Cmd.SetArgs([]string{"list", "--count"})
+	r.Cmd.SetOut(&strings.Builder{})
+	r.Cmd.SetErr(&stderr)
+	env := toCLIError(r.Cmd.Execute())
+	if env == nil {
+		t.Fatal("no envelope")
+	}
+	if env.SuggestedFix != "--counters" {
+		t.Errorf("fix = %q, want --counters", env.SuggestedFix)
+	}
+	// A re-wrapped hook would enrich, then enrich the envelope again.
+	if n := strings.Count(stderr.String(), "unknown flag"); n > 1 {
+		t.Errorf("rendered %d times, want at most 1:\n%s", n, stderr.String())
+	}
 }
 
 func TestHelpInvocation_NilCmd(t *testing.T) {
