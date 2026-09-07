@@ -215,10 +215,20 @@ func rtStreamDiscipline(bin string, spec *toolspecYAML) CheckResult {
 	return pass(f, "stdout has data, stderr clean")
 }
 
-// Factor 4: bogus arg returns structured error
+// Factor 4: bogus arg returns structured error carrying a fix
+//
+// Two separate obligations, checked in order of severity:
+//
+//  1. Non-zero exit. A rejected flag that exits 0 is the worst outcome —
+//     the caller cannot tell the invocation failed. Hard fail.
+//  2. A structured envelope that carries recovery guidance. An error whose
+//     only content is "unknown flag: --x" is a dead end: the caller has to
+//     spend a --help round trip to learn what it should have typed. That
+//     round trip is the cost this factor exists to eliminate, so a
+//     structured error WITHOUT a fix is only a partial pass.
 func rtContractsErrors(bin string) CheckResult {
 	f := FactorContractsErrors
-	_, stderr, code := run(bin, "--bogus-arg-xyzzy")
+	_, stderr, code := run(bin, "--format", "json", "--bogus-arg-xyzzy")
 	if code == 0 {
 		return fail(f, "bogus arg didn't cause error exit",
 			"Unknown flags should cause non-zero exit")
@@ -228,7 +238,17 @@ func rtContractsErrors(bin string) CheckResult {
 		var obj map[string]any
 		if json.Unmarshal([]byte(strings.TrimSpace(stderr)), &obj) == nil {
 			if _, ok := obj["code"]; ok {
-				return pass(f, "structured error with code field")
+				if errorCarriesFix(obj) {
+					return pass(f, "structured error with code field and recovery guidance")
+				}
+				return CheckResult{
+					Factor:  f,
+					Name:    f.String(),
+					Status:  "warn",
+					Details: "structured error carries no recovery guidance",
+					Suggestion: "Populate suggested_fix (or alternatives) so the " +
+						"caller can correct without a --help round trip",
+				}
 			}
 		}
 	}
@@ -240,6 +260,30 @@ func rtContractsErrors(bin string) CheckResult {
 		Details:    "error output is not structured JSON",
 		Suggestion: "Return JSON errors with a 'code' field on stderr",
 	}
+}
+
+// errorCarriesFix reports whether a decoded error envelope offers the
+// caller a way forward.
+//
+// Either field satisfies it. A single unambiguous correction belongs in
+// suggested_fix; an ambiguous one belongs in alternatives, and a tool that
+// declines to guess between candidates is behaving correctly, not
+// incompletely. Empty strings and empty lists do not count — a present but
+// blank field is the same dead end as an absent one.
+func errorCarriesFix(obj map[string]any) bool {
+	if fix, ok := obj["suggested_fix"].(string); ok && strings.TrimSpace(fix) != "" {
+		return true
+	}
+	alts, ok := obj["alternatives"].([]any)
+	if !ok {
+		return false
+	}
+	for _, a := range alts {
+		if s, ok := a.(string); ok && strings.TrimSpace(s) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Factor 5: mutating command with --dry-run exits 0
