@@ -241,25 +241,15 @@ func rtContractsErrors(bin string) CheckResult {
 				if errorCarriesFix(obj) {
 					return pass(f, "structured error with code field and recovery guidance")
 				}
-				return CheckResult{
-					Factor:  f,
-					Name:    f.String(),
-					Status:  "warn",
-					Details: "structured error carries no recovery guidance",
-					Suggestion: "Populate suggested_fix (or alternatives) so the " +
-						"caller can correct without a --help round trip",
-				}
+				return warn(f, "structured error carries no recovery guidance",
+					"Populate suggested_fix (or alternatives) with a concrete "+
+						"correction so the caller does not need a --help round trip")
 			}
 		}
 	}
 	// Non-structured error is a warning, not a hard fail
-	return CheckResult{
-		Factor:     f,
-		Name:       f.String(),
-		Status:     "warn",
-		Details:    "error output is not structured JSON",
-		Suggestion: "Return JSON errors with a 'code' field on stderr",
-	}
+	return warn(f, "error output is not structured JSON",
+		"Return JSON errors with a 'code' field on stderr")
 }
 
 // errorCarriesFix reports whether a decoded error envelope offers the
@@ -270,8 +260,15 @@ func rtContractsErrors(bin string) CheckResult {
 // declines to guess between candidates is behaving correctly, not
 // incompletely. Empty strings and empty lists do not count — a present but
 // blank field is the same dead end as an absent one.
+//
+// A bare `--help` pointer does not count either, in EITHER field. "Run
+// tool --help for usage" is precisely the round trip this factor exists to
+// eliminate: it tells the caller to go read the page they would have read
+// anyway, and accepting it would let a tool pass "with recovery guidance"
+// for offering none. A fix that names --help alongside something concrete
+// still counts — the concrete part is the guidance.
 func errorCarriesFix(obj map[string]any) bool {
-	if fix, ok := obj["suggested_fix"].(string); ok && strings.TrimSpace(fix) != "" {
+	if fix, ok := obj["suggested_fix"].(string); ok && isConcreteFix(fix) {
 		return true
 	}
 	alts, ok := obj["alternatives"].([]any)
@@ -279,7 +276,38 @@ func errorCarriesFix(obj map[string]any) bool {
 		return false
 	}
 	for _, a := range alts {
-		if s, ok := a.(string); ok && strings.TrimSpace(s) != "" {
+		if s, ok := a.(string); ok && isConcreteFix(s) {
+			return true
+		}
+	}
+	return false
+}
+
+// isConcreteFix reports whether s is recovery guidance rather than a
+// pointer back at the help page.
+//
+// The test is what remains once every word that only exists to frame the
+// help invocation is removed. "run 'tool sub --help' for usage",
+// "tool --help", "see --help" all reduce to nothing and are refused;
+// "--counters", "--status TODO", "use --format json (not --help)" keep a
+// token of their own and are accepted.
+func isConcreteFix(s string) bool {
+	fields := strings.FieldsFunc(strings.ToLower(strings.TrimSpace(s)), func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == '\'' || r == '"' || r == '`' ||
+			r == ',' || r == '.' || r == ';' || r == ':' || r == '(' || r == ')'
+	})
+	for _, w := range fields {
+		switch w {
+		case "--help", "-h", "help", "run", "see", "try", "use", "for", "usage",
+			"the", "a", "an", "to", "and", "or", "then", "check", "consult", "with":
+			continue
+		}
+		// A word that is neither help-framing nor a command path segment
+		// leading up to --help is content. Command names are the one
+		// ambiguous case: "tool sub --help" names a path, not a fix, so
+		// treat a bare word as framing and require a flag, a value
+		// assignment, or punctuation-bearing token to count.
+		if strings.HasPrefix(w, "-") || strings.ContainsAny(w, "=<>[]{}/|@") {
 			return true
 		}
 	}

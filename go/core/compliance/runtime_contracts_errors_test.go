@@ -6,6 +6,7 @@ package compliance
 // against its own stub binary.
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -92,6 +93,68 @@ func TestRtContractsErrors_BlankFixIsNotGuidance(t *testing.T) {
 	}
 }
 
+func TestRtContractsErrors_HelpPointerIsNotGuidance(t *testing.T) {
+	// The round trip this factor exists to eliminate, dressed as a fix.
+	// A tool whose only answer is "go read --help" has offered nothing,
+	// so it must not pass "with recovery guidance".
+	for _, fix := range []string{
+		`run 'tool sub --help' for usage`,
+		`tool --help`,
+		`see --help`,
+		`--help`,
+		`Try tool list --help.`,
+	} {
+		t.Run(fix, func(t *testing.T) {
+			bin := stubBinary(t, `{"code":"USAGE","message":"unknown flag","suggested_fix":`+
+				quoteJSON(fix)+`}`, 2)
+			got := rtContractsErrors(bin)
+			if got.Status != "warn" {
+				t.Errorf("status = %q, want warn for a bare help pointer\n%+v", got.Status, got)
+			}
+		})
+	}
+}
+
+func TestRtContractsErrors_HelpPointerInAlternativesIsNotGuidance(t *testing.T) {
+	bin := stubBinary(t,
+		`{"code":"USAGE","message":"unknown flag","suggested_fix":"run 'tool --help' for usage",`+
+			`"alternatives":["tool --help","see help"]}`, 2)
+	if got := rtContractsErrors(bin); got.Status != "warn" {
+		t.Errorf("status = %q, want warn\n%+v", got.Status, got)
+	}
+}
+
+// quoteJSON renders s as a JSON string literal for embedding in a stub body.
+func quoteJSON(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// TestRtContractsErrors_KitHelpPointerFallbackWarns: kit's own no-match
+// fallback IS a help pointer (a bogus flag at the root matches nothing), so
+// the tier this factor added must not pass kit for offering exactly the
+// round trip it exists to eliminate. Asserted against the rendered envelope
+// rather than a live binary so the check stays a unit test.
+func TestRtContractsErrors_KitHelpPointerFallbackWarns(t *testing.T) {
+	// Verbatim from `flagerrtool --format json --bogus-arg-xyzzy`.
+	body := `{
+  "code": "USAGE",
+  "message": "unknown flag --bogus-arg-xyzzy",
+  "cause": "no flag named --bogus-arg-xyzzy on flagerrtool",
+  "suggested_fix": "run 'flagerrtool --help' for usage",
+  "exit_code": 2,
+  "transience": "permanent"
+}`
+	got := rtContractsErrors(stubBinary(t, body, 2))
+	if got.Status != "warn" {
+		t.Errorf("status = %q, want warn: kit's help-pointer fallback is not recovery guidance\n%+v",
+			got.Status, got)
+	}
+}
+
 func TestRtContractsErrors_UnstructuredWarns(t *testing.T) {
 	bin := stubBinary(t, "unknown flag: --bogus-arg-xyzzy", 2)
 	got := rtContractsErrors(bin)
@@ -107,6 +170,16 @@ func TestErrorCarriesFix(t *testing.T) {
 		want bool
 	}{
 		{"suggested_fix", map[string]any{"suggested_fix": "--counters"}, true},
+		// A bare help pointer is the round trip, not the fix.
+		{"help pointer sentence", map[string]any{"suggested_fix": "run 'tool sub --help' for usage"}, false},
+		{"help pointer bare", map[string]any{"suggested_fix": "--help"}, false},
+		{"help pointer shorthand", map[string]any{"suggested_fix": "-h"}, false},
+		{"help pointer with path", map[string]any{"suggested_fix": "tool widget list --help"}, false},
+		{"help pointer in alternatives", map[string]any{"alternatives": []any{"tool --help"}}, false},
+		// A fix that names --help alongside something concrete still
+		// counts: the concrete half is the guidance.
+		{"concrete plus help", map[string]any{"suggested_fix": "use --format json (see --help)"}, true},
+		{"flag with value", map[string]any{"suggested_fix": "--status TODO"}, true},
 		{"alternatives", map[string]any{"alternatives": []any{"--a", "--b"}}, true},
 		{"one blank one real alternative", map[string]any{"alternatives": []any{"", "--b"}}, true},
 		{"empty object", map[string]any{}, false},
