@@ -117,6 +117,19 @@ jobs:
         # Property tests at 100 iterations on pull requests, full count
         # (1000) on pushes and the nightly schedule. The Makefile turns
         # PROPERTY_ITERATIONS into KIT_PROPERTY_ITERATIONS for go test.
+        #
+        # The trimmed pull-request count survived the test stores
+        # dropping fsync (PRAGMA synchronous=OFF, engine/store's
+        # newTestDocumentStore). That cut the full count from 349s to
+        # 127-160s in a 4-CPU container on overlayfs — a real 2.4x, and
+        # most of the durability cost: system time more than halved
+        # (176s -> ~75s). It is still 2-3x what the gated run costs, on
+        # the package whose runner variance produced the 1200s timeout
+        # this gate was added for, so the full count stays off pull
+        # requests. Note that a tmpfs scratch dir is not the way out
+        # either: at the full count these tests write more than 2G of
+        # throwaway databases, so the run dies with "database or disk
+        # is full" on a 2G tmpfs before it finishes.
         env:
           PROPERTY_ITERATIONS: ${{ github.event_name == 'pull_request' && '100' || '' }}
 

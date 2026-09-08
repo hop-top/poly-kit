@@ -34,6 +34,17 @@ type Options struct {
 
 	// BusyTimeout in milliseconds. Default 5000.
 	BusyTimeout int
+
+	// Synchronous sets PRAGMA synchronous. Empty leaves it unset, so
+	// the database keeps SQLite's own default (FULL, or NORMAL under
+	// WAL) — that is what every production caller wants and gets.
+	//
+	// The only supported non-empty value is "OFF", and the only
+	// supported use is a throwaway test database: it trades crash
+	// durability for the fsync per commit that dominates wall-clock
+	// on a t.TempDir() store. Never set it on a database whose
+	// contents must survive a power loss.
+	Synchronous string
 }
 
 func (o Options) wal() bool {
@@ -41,6 +52,21 @@ func (o Options) wal() bool {
 		return true
 	}
 	return *o.WAL
+}
+
+// synchronous validates and normalizes the Synchronous option. The
+// value lands in a DSN pragma, so it is checked against an allowlist
+// rather than interpolated: an unrecognized mode is a caller bug, and
+// silently ignoring it would leave a test believing fsync was off.
+func (o Options) synchronous() (string, error) {
+	switch strings.ToUpper(strings.TrimSpace(o.Synchronous)) {
+	case "":
+		return "", nil
+	case "OFF":
+		return "OFF", nil
+	default:
+		return "", fmt.Errorf("unsupported synchronous mode %q: want \"\" or \"OFF\"", o.Synchronous)
+	}
 }
 
 func (o Options) busyTimeout() int {
@@ -110,6 +136,13 @@ func buildDSN(opts Options) (string, error) {
 	}
 	if opts.wal() {
 		pragmas = append(pragmas, "journal_mode=WAL")
+	}
+	sync, err := opts.synchronous()
+	if err != nil {
+		return "", err
+	}
+	if sync != "" {
+		pragmas = append(pragmas, "synchronous="+sync)
 	}
 
 	path := opts.Path
