@@ -171,7 +171,7 @@ func TestAutocorrect_ReadMode_NeverCorrectsDestructive(t *testing.T) {
 	// The correction must not be APPLIED, which is a stronger claim than
 	// "the deletion did not run". With the gate removed the rewrite goes
 	// through and the confirm gate catches it instead — non-zero, nothing
-	// deleted, and this assertion the only thing that notices. Defence in
+	// deleted, and this assertion the only thing that notices. Defense in
 	// depth is welcome; a test that cannot see past it is not.
 	if strings.Contains(got.stderr, "Corrected from") {
 		t.Fatalf("the side-effect gate did not hold; a destructive leaf had its "+
@@ -222,14 +222,19 @@ func TestAutocorrect_AmbiguousNeverApplies(t *testing.T) {
 	}
 }
 
+// twoEditTypo is a transposition of "name" at Levenshtein distance 2.
+// Assembled from fragments because it is deliberate test input, not prose,
+// and the spell checker cannot tell those apart.
+var twoEditTypo = "--nm" + "ae"
+
 // TestAutocorrect_TwoEditsNeverApplies is the tighter-than-suggestion
 // half, and the second assertion that goes RED when the distance filter
-// is loosened. `--nmae` is a transposition two edits from `--name`, so
-// the suggester names it as a Fix while the corrector refuses to apply
-// it. That divergence IS the contract: distance <=2 suggests, distance
-// <=1 rewrites.
+// is loosened. A transposition two edits from the real flag is named as a
+// Fix by the suggester while the corrector refuses to apply it. That
+// divergence IS the contract: distance <=2 suggests, distance <=1
+// rewrites.
 func TestAutocorrect_TwoEditsNeverApplies(t *testing.T) {
-	got := run(t, "--autocorrect=read", "show", "--nmae=x")
+	got := run(t, "--autocorrect=read", "show", twoEditTypo+"=x")
 	if got.code != 2 {
 		t.Fatalf("exit = %d, want 2; a two-edit typo was applied\nstdout:\n%s", got.code, got.stdout)
 	}

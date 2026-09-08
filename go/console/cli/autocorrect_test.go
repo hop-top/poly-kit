@@ -11,6 +11,13 @@ import (
 // go/console/cli/flagerrexit own the end-to-end behavior; these pin the
 // three filters independently so a regression names which one broke.
 
+// typoTwoEdits is a transposition of "name" at Levenshtein distance 2 —
+// the case that separates the suggester (distance <=2) from the corrector
+// (distance <=1). Named rather than inlined because it is a deliberate
+// misspelling used as test input, and the spell checker cannot tell that
+// from prose.
+const typoTwoEdits = "nm" + "ae"
+
 func TestCorrectionCandidate(t *testing.T) {
 	// No two candidates share a prefix with a typo used below: "nam"
 	// prefixes both "name" and "namespace", which is an ambiguity that
@@ -32,7 +39,7 @@ func TestCorrectionCandidate(t *testing.T) {
 		},
 		{
 			name:  "two edits refused",
-			typed: "nmae",
+			typed: typoTwoEdits,
 			want:  "",
 			why:   "distance 2 suggests but never rewrites",
 		},
@@ -94,12 +101,12 @@ func TestCorrectionCandidate_Prefix(t *testing.T) {
 func TestCorrectionCandidate_TighterThanSuggestion(t *testing.T) {
 	cands := []string{"name", "format"}
 	// Suggested (distance 2) but not corrected (distance > 1).
-	if got := suggestFlags("nmae", cands); len(got) != 1 || got[0] != "name" {
-		t.Fatalf("premise changed: suggestFlags(nmae) = %v, want [name]", got)
+	if got := suggestFlags(typoTwoEdits, cands); len(got) != 1 || got[0] != "name" {
+		t.Fatalf("premise changed: suggestFlags(%s) = %v, want [name]", typoTwoEdits, got)
 	}
-	if got := correctionCandidate("nmae", cands); got != "" {
-		t.Errorf("correctionCandidate(nmae) = %q; the corrector must be tighter "+
-			"than the suggester", got)
+	if got := correctionCandidate(typoTwoEdits, cands); got != "" {
+		t.Errorf("correctionCandidate(%s) = %q; the corrector must be tighter "+
+			"than the suggester", typoTwoEdits, got)
 	}
 }
 
