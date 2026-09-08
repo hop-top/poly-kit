@@ -602,9 +602,7 @@ def _run_runtime_checks(
                 obj = None
         if isinstance(obj, dict) and "code" in obj:
             if _error_carries_fix(obj):
-                results.append(
-                    _pass(f, "structured error with code field and recovery guidance")
-                )
+                results.append(_pass(f, "structured error with code field and recovery guidance"))
             else:
                 results.append(
                     _warn(

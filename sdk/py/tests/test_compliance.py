@@ -12,12 +12,12 @@ from hop_top_kit.compliance import (
     CheckResult,
     Factor,
     Report,
+    _error_carries_fix,
     factor_name,
     format_report,
     run,
     run_static,
 )
-from hop_top_kit.compliance import _error_carries_fix
 
 TOOLSPEC = os.path.join(
     os.path.dirname(__file__),
