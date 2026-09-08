@@ -1,15 +1,11 @@
 package cli
 
 import (
-	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
-	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/cli/policy"
 	"hop.top/kit/go/console/output"
@@ -66,26 +62,17 @@ func WithPolicy(loader PolicyLoader) func(*Root) {
 	}
 }
 
-// promptInputFn is the prompt input source — overridable in tests.
-// Default reads cmd.InOrStdin().
-var promptInputFn = func(cmd *cobra.Command) io.Reader {
-	return cmd.InOrStdin()
-}
-
-// promptIsTTYFn reports whether the prompt source is a terminal.
-// Tests override to force prompt-mode resolution.
-var promptIsTTYFn = func(cmd *cobra.Command) bool {
-	if f, ok := cmd.InOrStdin().(*os.File); ok {
-		return isatty.IsTerminal(f.Fd())
-	}
-	return false
-}
-
 // resolveConfirmMode parses the raw --confirm flag value, applying the
-// matrix in §8.6: empty value defaults to "prompt" on a TTY and "no"
-// otherwise. Invalid values default to "prompt"; the cli flag
-// registration uses string typing so the validator catches typos.
-func resolveConfirmMode(cmd *cobra.Command, raw string) confirmMode {
+// matrix in §8.6: empty value defaults to "prompt" when there is a
+// controlling terminal to ask on and "no" otherwise. Invalid values
+// fall through to that same default; the cli flag registration uses
+// string typing so the validator catches typos.
+//
+// Interactivity is the terminal's availability, not isatty on stdin.
+// `cmd < file` in a terminal used to resolve to "no" and be refused
+// even though the operator was sitting right there; and piped stdin
+// used to resolve to "prompt" and eat the payload.
+func resolveConfirmMode(src PromptSource, raw string) confirmMode {
 	switch confirmMode(strings.ToLower(strings.TrimSpace(raw))) {
 	case confirmYes:
 		return confirmYes
@@ -96,10 +83,21 @@ func resolveConfirmMode(cmd *cobra.Command, raw string) confirmMode {
 	case confirmPrompt:
 		return confirmPrompt
 	}
-	if promptIsTTYFn(cmd) {
+	if hasPromptTTY(src) {
 		return confirmPrompt
 	}
 	return confirmNo
+}
+
+// hasPromptTTY reports whether there is a terminal to prompt on.
+func hasPromptTTY(src PromptSource) bool {
+	if src == nil {
+		src = globalPromptSource
+	}
+	if src == nil {
+		src = ControllingTTY
+	}
+	return src() != nil
 }
 
 // flagValue returns the persistent flag's string value visible to cmd,
@@ -178,17 +176,20 @@ func renderPolicyError(cmd *cobra.Command, ce *output.Error) error {
 	return markRendered(ce)
 }
 
-// promptConfirm renders the y/N prompt to stderr and reads one line
-// from cmd.InOrStdin. Returns true when the answer is "y"/"yes"
-// (case-insensitive). EOF / blank → false ("aborted").
-func promptConfirm(cmd *cobra.Command, question string) bool {
-	fmt.Fprint(cmd.ErrOrStderr(), question+" [y/N] ")
-	r := bufio.NewReader(promptInputFn(cmd))
-	line, err := r.ReadString('\n')
-	if err != nil && line == "" {
+// promptConfirm asks the y/N question on the controlling terminal and
+// reads one line of answer from it. Returns true only for "y"/"yes"
+// (case-insensitive); EOF, blank and no-terminal all mean false
+// ("aborted").
+//
+// Both halves go to the terminal, never to the command's stdin or
+// stderr: reading stdin would consume the command's payload, and
+// writing a redirected stderr would put the question where the
+// operator cannot see it.
+func promptConfirm(src PromptSource, question string) bool {
+	answer, asked := promptAsk(src, question+" [y/N] ")
+	if !asked {
 		return false
 	}
-	answer := strings.ToLower(strings.TrimSpace(line))
 	return answer == "y" || answer == "yes"
 }
 
@@ -311,7 +312,7 @@ func (r *Root) wrapPolicyRunE(
 // given side-effect class. Returns a rendered *output.Error when the
 // user is refused or fails the prompt; nil to proceed.
 func (r *Root) gateConfirm(cmd *cobra.Command, se SideEffect) error {
-	mode := resolveConfirmMode(cmd, flagValue(cmd, confirmFlag))
+	mode := resolveConfirmMode(r.promptSource, flagValue(cmd, confirmFlag))
 	tokenRequired := requiresDestructiveToken(cmd)
 
 	// Typed-token destructives never let --confirm=yes alone proceed:
@@ -349,7 +350,7 @@ func (r *Root) gateConfirm(cmd *cobra.Command, se SideEffect) error {
 	case confirmPrompt:
 		q := fmt.Sprintf("This is a %s operation (%s). Continue?",
 			se, cmd.CommandPath())
-		if !promptConfirm(cmd, q) {
+		if !promptConfirm(r.promptSource, q) {
 			return renderPolicyError(cmd, output.UnauthorizedError(
 				"aborted by user at confirm prompt for "+cmd.CommandPath(),
 			))

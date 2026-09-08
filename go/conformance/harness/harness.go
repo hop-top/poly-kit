@@ -26,6 +26,7 @@ type config struct {
 	env            map[string]string
 	stdin          io.Reader
 	withTTY        bool
+	promptAnswers  io.Reader
 	configSnapshot map[string]any
 	configSnapFile string
 
@@ -95,8 +96,28 @@ func WithEnv(k, v string) Option {
 
 // WithStdin pipes r into the cmd as os.Stdin / cmd.SetIn. Default
 // is an empty bytes.Reader (EOF on first read).
+//
+// This feeds the command's PAYLOAD only. Interactive confirm prompts
+// read the controlling terminal, not stdin, so answering a prompt
+// needs WithPromptAnswers; a y/N line placed here is payload and is
+// delivered to the command as such.
 func WithStdin(r io.Reader) Option {
 	return func(c *config) { c.stdin = r }
+}
+
+// WithPromptAnswers supplies the answers interactive prompts read,
+// on a channel separate from the command's stdin.
+//
+// Implies WithTTY: a prompt only asks when there is a terminal, and
+// scripting answers is a statement that one is attached. Use it
+// together with WithStdin to exercise the shape that matters — a
+// payload on stdin and a y/N answer on the terminal — and assert the
+// payload arrives intact.
+func WithPromptAnswers(r io.Reader) Option {
+	return func(c *config) {
+		c.promptAnswers = r
+		c.withTTY = true
+	}
 }
 
 // WithExecClassifier overrides the default conservative exec

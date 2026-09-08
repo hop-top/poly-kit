@@ -304,6 +304,9 @@ type Root struct {
 	// (§8.6). nil means policy-file support is not wired; --confirm
 	// and --max-ops still work without it.
 	policyLoader PolicyLoader
+	// promptSource supplies the terminal interactive prompts use.
+	// nil means the real controlling terminal (ControllingTTY).
+	promptSource PromptSource
 	apiCfg       *APIConfig
 	// serveReg is the registry `serve` children register into, nil
 	// until the first WithService/WithServices/WithAPI option runs.
