@@ -17,6 +17,7 @@ from hop_top_kit.compliance import (
     run,
     run_static,
 )
+from hop_top_kit.compliance import _error_carries_fix
 
 TOOLSPEC = os.path.join(
     os.path.dirname(__file__),
@@ -310,3 +311,38 @@ class TestConsentingTelemetry:
         assert "not in commands tree" in r.details
         assert "telemetry inspect" in r.details
         assert report.total == 13
+
+
+class TestErrorCarriesFix:
+    """Factor 4's recovery-guidance test, ported from the Go scorer.
+
+    Either suggested_fix or alternatives satisfies the obligation, but a bare
+    ``--help`` pointer satisfies neither: that round trip is exactly the cost
+    the factor exists to eliminate.
+    """
+
+    @pytest.mark.parametrize(
+        ("obj", "want"),
+        [
+            ({"suggested_fix": "--counters"}, True),
+            ({"suggested_fix": "--status TODO"}, True),
+            ({"alternatives": ["--a", "--b"]}, True),
+            ({"alternatives": ["", "--b"]}, True),
+            ({"suggested_fix": "use --format json (see --help)"}, True),
+            ({}, False),
+            ({"suggested_fix": "  "}, False),
+            ({"alternatives": []}, False),
+            ({"alternatives": ["", " "]}, False),
+            ({"suggested_fix": 42}, False),
+            ({"alternatives": "--a"}, False),
+            # Bare help pointers, in either field.
+            ({"suggested_fix": "run 'tool sub --help' for usage"}, False),
+            ({"suggested_fix": "tool --help"}, False),
+            ({"suggested_fix": "--help"}, False),
+            ({"suggested_fix": "-h"}, False),
+            ({"suggested_fix": "tool widget list --help"}, False),
+            ({"alternatives": ["tool --help"]}, False),
+        ],
+    )
+    def test_cases(self, obj, want):
+        assert _error_carries_fix(obj) is want

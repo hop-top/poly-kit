@@ -211,6 +211,23 @@ function skip(
   };
 }
 
+// warn is a partial pass: the obligation is met in shape but not in
+// substance. It carries a suggestion like fail, because the point of a warn
+// is that there is something to do about it.
+function warn(
+  f: Factor,
+  details: string,
+  suggestion: string,
+): CheckResult {
+  return {
+    factor: f,
+    name: factorName(f),
+    status: "warn",
+    details,
+    suggestion,
+  };
+}
+
 // --- Static Checks ---
 
 function checkSelfDescribing(spec: SpecYAML): CheckResult {
@@ -491,6 +508,49 @@ function findReadCommand(spec: SpecYAML): string | undefined {
   return undefined;
 }
 
+// errorCarriesFix reports whether a decoded error envelope offers the caller
+// a way forward.
+//
+// Either field satisfies it. A single unambiguous correction belongs in
+// suggested_fix; an ambiguous one belongs in alternatives, and a tool that
+// declines to guess between candidates is behaving correctly, not
+// incompletely. Empty strings and empty lists do not count — a present but
+// blank field is the same dead end as an absent one.
+//
+// A bare `--help` pointer does not count either, in EITHER field. "Run tool
+// --help for usage" is precisely the round trip this factor exists to
+// eliminate, and accepting it would let a tool pass "with recovery guidance"
+// for offering none. A fix that names --help alongside something concrete
+// still counts — the concrete part is the guidance.
+function errorCarriesFix(obj: Record<string, unknown>): boolean {
+  const fix = obj["suggested_fix"];
+  if (typeof fix === "string" && isConcreteFix(fix)) return true;
+  const alts = obj["alternatives"];
+  if (!Array.isArray(alts)) return false;
+  return alts.some((a) => typeof a === "string" && isConcreteFix(a));
+}
+
+// HELP_FRAMING is every word that exists only to frame a help invocation. A
+// fix reduces to nothing once they are removed exactly when it is a pointer
+// back at the help page.
+const HELP_FRAMING = new Set([
+  "--help", "-h", "help", "run", "see", "try", "use", "for", "usage",
+  "the", "a", "an", "to", "and", "or", "then", "check", "consult", "with",
+]);
+
+// isConcreteFix reports whether s is recovery guidance rather than a pointer
+// back at the help page. A bare command-path word ("tool", "sub") counts as
+// framing too: "tool sub --help" names a path, not a fix, so a token must
+// carry a flag dash or punctuation of its own to count as content.
+function isConcreteFix(s: string): boolean {
+  const words = s.toLowerCase().split(/[\s'"`,.;:()]+/).filter(Boolean);
+  for (const w of words) {
+    if (HELP_FRAMING.has(w)) continue;
+    if (w.startsWith("-") || /[=<>[\]{}/|@]/.test(w)) return true;
+  }
+  return false;
+}
+
 function isValidJSON(s: string): boolean {
   try {
     JSON.parse(s.trim());
@@ -570,22 +630,46 @@ function runRuntimeChecks(
     }
   }
 
-  // F4: bogus arg
+  // F4: bogus arg returns a structured error carrying a fix
+  //
+  // Two separate obligations, checked in order of severity:
+  //
+  //  1. Non-zero exit. A rejected flag that exits 0 is the worst outcome —
+  //     the caller cannot tell the invocation failed. Hard fail.
+  //  2. A structured envelope that carries recovery guidance. An error whose
+  //     only content is "unknown flag: --x" is a dead end: the caller has to
+  //     spend a --help round trip to learn what it should have typed. That
+  //     round trip is the cost this factor exists to eliminate, so a
+  //     structured error WITHOUT a fix is only a partial pass.
   {
     const f = Factor.ContractsErrors;
-    const r = execBin(bin, ["--bogus-arg-xyzzy"]);
+    const r = execBin(bin, ["--format", "json", "--bogus-arg-xyzzy"]);
     if (r.code === 0) {
       results.push(fail(f, "bogus arg didn't cause error exit",
         "Unknown flags should cause non-zero exit"));
+    } else if (isValidJSON(r.stderr)) {
+      let obj: unknown;
+      try {
+        obj = JSON.parse(r.stderr.trim());
+      } catch {
+        obj = undefined;
+      }
+      if (obj && typeof obj === "object" && "code" in obj) {
+        if (errorCarriesFix(obj as Record<string, unknown>)) {
+          results.push(pass(f,
+            "structured error with code field and recovery guidance"));
+        } else {
+          results.push(warn(f, "structured error carries no recovery guidance",
+            "Populate suggested_fix (or alternatives) with a concrete " +
+              "correction so the caller does not need a --help round trip"));
+        }
+      } else {
+        results.push(warn(f, "error output is not structured JSON",
+          "Return JSON errors with a 'code' field on stderr"));
+      }
     } else {
-      results.push({
-        factor: f,
-        name: factorName(f),
-        status: "warn",
-        details: "error output is not structured JSON",
-        suggestion:
-          "Return JSON errors with a 'code' field on stderr",
-      });
+      results.push(warn(f, "error output is not structured JSON",
+        "Return JSON errors with a 'code' field on stderr"));
     }
   }
 
