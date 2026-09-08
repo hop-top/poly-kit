@@ -29,10 +29,65 @@ if [ -f "$CACHE_FILE" ] && [ "$(cat "$CACHE_FILE")" = "$CURRENT_SHA" ]; then
 fi
 
 # Determine which files changed vs the remote branch being pushed to.
+# $1 is the remote name git invoked the hook with (e.g. "origin").
+REMOTE_NAME="${1:-origin}"
 REMOTE_SHA=$(printf '%s\n' "$PUSH_INPUT" | awk 'NF >= 4 {sha=$4} END {print sha}')
-# New branch or force push: compare against merge-base with main.
+
+# Resolve a branch name to the commit published on the target remote.
+resolve_remote_ref() {
+    git rev-parse --verify --quiet "refs/remotes/$REMOTE_NAME/$1^{commit}" || return 1
+}
+
+# Resolve a branch name to a commit, preferring the remote-tracking ref
+# (what is actually published) over a possibly-stale local branch.
+resolve_ref() {
+    resolve_remote_ref "$1" \
+        || git rev-parse --verify --quiet "refs/heads/$1^{commit}" \
+        || return 1
+}
+
+# Nearest merge-base wins: among candidate bases, keep the one that is a
+# descendant of the others. Comparing against a base far up the history
+# (e.g. `main` while the trunk for PRs is `next`) inflates the changed set
+# with every commit the trunk gained meanwhile.
+nearest_base() {
+    head_sha=$(git rev-parse HEAD)
+    best=""
+    for cand in "$@"; do
+        [ -n "$cand" ] || continue
+        base=$(git merge-base HEAD "$cand" 2>/dev/null) || continue
+        # A base equal to HEAD yields an empty diff and would skip every
+        # check; treat it as unusable rather than a "very near" base.
+        [ "$base" = "$head_sha" ] && continue
+        if [ -z "$best" ] || git merge-base --is-ancestor "$best" "$base" 2>/dev/null; then
+            best="$base"
+        fi
+    done
+    [ -n "$best" ] || return 1
+    printf '%s\n' "$best"
+}
+
+# New branch or force push: no usable remote SHA on stdin. Fall back to the
+# nearest merge-base among the push destination and the long-lived branches.
 if [ -z "$REMOTE_SHA" ] || [ "$REMOTE_SHA" = "$ZERO_SHA" ]; then
-    REMOTE_SHA=$(git merge-base HEAD main 2>/dev/null || echo HEAD~1)
+    CANDIDATES=""
+    # The destination branch git is pushing to is better information than a
+    # guess; usable only once that branch exists ON THE REMOTE. Never fall
+    # back to the local branch of the same name — for a new branch that is
+    # HEAD itself, whose merge-base is HEAD, silently emptying the diff.
+    DEST_REF=$(printf '%s\n' "$PUSH_INPUT" | awk 'NF >= 3 { ref=$3 } END { print ref }')
+    case "$DEST_REF" in
+        refs/heads/*)
+            DEST_SHA=$(resolve_remote_ref "${DEST_REF#refs/heads/}" || true)
+            [ -n "$DEST_SHA" ] && CANDIDATES="$CANDIDATES $DEST_SHA"
+            ;;
+    esac
+    for b in next main master; do
+        SHA=$(resolve_ref "$b" || true)
+        [ -n "$SHA" ] && CANDIDATES="$CANDIDATES $SHA"
+    done
+    # shellcheck disable=SC2086 # CANDIDATES is a deliberate word list.
+    REMOTE_SHA=$(nearest_base $CANDIDATES 2>/dev/null || echo HEAD~1)
 fi
 
 CHANGED=$(git diff --name-only "$REMOTE_SHA" HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD)
@@ -86,15 +141,24 @@ echo "Running tests..."
 if [ -n "$HAS_GO" ] || [ -n "$HAS_CONTRACTS" ]; then
     if [ -n "$HAS_GO" ]; then
         # Extract unique Go packages from changed .go files, skipping
-        # directories that no longer exist (e.g. deleted in this push).
+        # directories that no longer exist (e.g. deleted in this push) and
+        # directories holding no .go files of their own (a parent that only
+        # carries subpackages) — `go test` on either yields "[setup failed]".
         # Packages inside a NESTED module (their own go.mod, e.g.
         # extensions/mcp-tasks) cannot be resolved by the root module's
-        # `go test` — passing them yields "[setup failed]". Split them out
-        # and test each nested module from its own directory.
+        # `go test` — passing them yields "[setup failed]" too. Split them
+        # out and test each nested module from its own directory.
         ALL_DIRS=$(echo "$CHANGED" | grep -E '\.go$' \
             | xargs -I{} dirname {} \
             | sort -u \
-            | while IFS= read -r d; do if [ -d "$d" ]; then printf '%s\n' "$d"; fi; done)
+            | while IFS= read -r d; do
+                [ -d "$d" ] || continue
+                for f in "$d"/*.go; do
+                    [ -e "$f" ] || continue
+                    printf '%s\n' "$d"
+                    break
+                done
+              done)
 
         GO_PKGS=""
         NESTED_MODS=""

@@ -35,6 +35,23 @@ go_pkgs_from() {
         | tr '\n' ' '
 }
 
+# Extract testable Go packages, dropping directories that do not exist or
+# hold no .go files of their own (mirrors hook logic).
+go_dirs_testable() {
+    local changed="$1"
+    echo "$changed" | grep -E '\.go$' \
+        | xargs -I{} dirname {} \
+        | sort -u \
+        | while IFS= read -r d; do
+            [ -d "$d" ] || continue
+            for f in "$d"/*.go; do
+                [ -e "$f" ] || continue
+                printf '%s\n' "$d"
+                break
+            done
+          done | tr '\n' ' '
+}
+
 # ---------------------------------------------------------------------------
 # Structure
 # ---------------------------------------------------------------------------
@@ -49,8 +66,8 @@ go_pkgs_from() {
 }
 
 @test "hook reads stdin (remote ref protocol)" {
-    # pre-push hooks receive lines on stdin; the script must read them.
-    grep -q 'while read' "$HOOK"
+    # pre-push hooks receive lines on stdin; the script captures them once.
+    grep -q 'PUSH_INPUT=$(cat)' "$HOOK"
 }
 
 @test "hook has SHA cache skip logic" {
@@ -161,4 +178,74 @@ go/runtime/bus/bus.go")
     [[ "$result" == *"./go/runtime/bus"* ]]
     [[ "$result" != *"./ts"* ]]
     [[ "$result" != *"README"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Base resolution
+# ---------------------------------------------------------------------------
+
+@test "base: no hardcoded merge-base against main" {
+    # The trunk for PRs is not necessarily main; a hardcoded main inflates
+    # the changed set by every commit the real trunk gained meanwhile.
+    ! grep -qE 'merge-base HEAD main' "$HOOK"
+}
+
+@test "base: considers next before main" {
+    grep -qE 'for b in next main' "$HOOK"
+}
+
+@test "base: uses the push destination ref from stdin" {
+    grep -q 'DEST_REF' "$HOOK"
+    grep -q 'resolve_remote_ref' "$HOOK"
+}
+
+@test "base: destination candidate never falls back to a local branch" {
+    # resolve_ref would resolve a brand-new branch to HEAD itself, whose
+    # merge-base is HEAD, silently emptying the diff.
+    ! grep -qE 'DEST_SHA=\$\(resolve_ref ' "$HOOK"
+}
+
+@test "base: falls back to HEAD~1 when nothing resolves" {
+    grep -q 'echo HEAD~1' "$HOOK"
+}
+
+@test "base: never selects a base equal to HEAD" {
+    grep -q 'base" = "$head_sha' "$HOOK"
+}
+
+# ---------------------------------------------------------------------------
+# Empty-package filtering
+# ---------------------------------------------------------------------------
+
+@test "hook filters directories with no direct .go files" {
+    # Guards against `go test` on a parent that only holds subpackages, or
+    # on a directory whose only .go file was deleted in this push: both
+    # abort the push with "[setup failed]".
+    grep -q 'for f in "$d"/\*.go' "$HOOK"
+}
+
+@test "go_dirs: skips directory with no direct .go files" {
+    tmp="$BATS_TEST_TMPDIR/nogo"
+    mkdir -p "$tmp/parent/child"
+    : > "$tmp/parent/child/x.go"
+    cd "$tmp"
+    result=$(go_dirs_testable "parent/only_subpackages.go")
+    [ -z "$(echo "$result" | tr -d ' ')" ]
+}
+
+@test "go_dirs: keeps directory that has direct .go files" {
+    tmp="$BATS_TEST_TMPDIR/hasgo"
+    mkdir -p "$tmp/pkg"
+    : > "$tmp/pkg/a.go"
+    cd "$tmp"
+    result=$(go_dirs_testable "pkg/a.go")
+    [[ "$result" == *"pkg"* ]]
+}
+
+@test "go_dirs: skips directory removed in this push" {
+    tmp="$BATS_TEST_TMPDIR/gone"
+    mkdir -p "$tmp"
+    cd "$tmp"
+    result=$(go_dirs_testable "deleted/pkg/a.go")
+    [ -z "$(echo "$result" | tr -d ' ')" ]
 }
