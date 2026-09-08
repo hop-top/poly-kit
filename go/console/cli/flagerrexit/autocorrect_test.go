@@ -681,3 +681,197 @@ func runOnPTY(t *testing.T, args []string, answer string) (string, int) {
 	}
 	return "", code
 }
+
+// --- two prompts on one terminal, with color detection live -------------
+
+// TestAutocorrect_PromptThenConfirm_ColorDetectionKeepsTerminal is the
+// regression for a hang between the autocorrect prompt and the confirm
+// gate.
+//
+// Both prompts fire in one invocation: a mistyped flag on a destructive
+// leaf asks "did you mean", and the corrected re-dispatch then reaches
+// the destructive confirm gate. Between them, kit used to hand the
+// first, DOOMED dispatch's error to fang's styled error handler. fang
+// styles by querying the terminal background — OSC 11 plus DA1, with the
+// terminal in RAW MODE, read twice at 2s each — and that read consumed
+// the keystrokes the confirm prompt was about to ask for. The confirm
+// prompt then blocked forever on a terminal whose answer had already
+// been eaten.
+//
+// Every other test in this file sets NO_COLOR=1 and TERM=dumb, which is
+// why none of them ever caught this: NO_COLOR does not reach fang's
+// probe, but a dumb terminal changes what is worth asserting. This one
+// deliberately runs with color ENABLED and a color-capable TERM, which
+// is the ordinary interactive shell the report describes.
+//
+// The assertion is the second answer landing. A pty in canonical mode
+// hands out one line per read, so a test that merely drives two prompts
+// can pass against the defect; what cannot pass is the leaf running,
+// because that requires the confirm prompt to have actually received the
+// "y" the probe would have swallowed.
+func TestAutocorrect_PromptThenConfirm_ColorDetectionKeepsTerminal(t *testing.T) {
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Skipf("no pty available: %v", err)
+	}
+	defer func() { _ = ptmx.Close() }()
+
+	cmd := exec.Command(toolBin, "--autocorrect=prompt", "delete", "--forc")
+	// Color ON. NO_COLOR and TERM are stripped rather than merely
+	// omitted: the test runner's own environment may carry either, and
+	// inheriting one would silence the very probe under test.
+	env := make([]string, 0, len(os.Environ())+1)
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "NO_COLOR=") || strings.HasPrefix(e, "TERM=") {
+			continue
+		}
+		env = append(env, e)
+	}
+	cmd.Env = append(env, "TERM=xterm-256color")
+	cmd.Stdin = tty
+	cmd.Stdout = tty
+	cmd.Stderr = tty
+	setControllingTTY(cmd, tty)
+
+	if err := cmd.Start(); err != nil {
+		_ = tty.Close()
+		t.Fatalf("start: %v", err)
+	}
+	_ = tty.Close()
+
+	// Answer both prompts. The gap is longer than one probe (2s) but
+	// shorter than the pair (4s), so a run that still probes has already
+	// swallowed the second answer by the time the confirm prompt asks.
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		_, _ = ptmx.Write([]byte("y\n"))
+		time.Sleep(700 * time.Millisecond)
+		_, _ = ptmx.Write([]byte("y\n"))
+	}()
+
+	outCh := make(chan string, 1)
+	go func() {
+		var b strings.Builder
+		buf := make([]byte, 4096)
+		for {
+			n, rerr := ptmx.Read(buf)
+			if n > 0 {
+				b.Write(buf[:n])
+			}
+			if rerr != nil {
+				break
+			}
+		}
+		outCh <- b.String()
+	}()
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatal("the confirm prompt never got its answer: background color detection read the terminal between the two prompts")
+	}
+	_ = ptmx.Close()
+
+	var out string
+	select {
+	case out = <-outCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("pty drain did not finish")
+	}
+
+	if !strings.Contains(out, "Did you mean --force") {
+		t.Fatalf("the autocorrect prompt never asked\npty:\n%s", out)
+	}
+	if !strings.Contains(out, "Continue?") {
+		t.Fatalf("the confirm gate never asked\npty:\n%s", out)
+	}
+	// The leaf running is the proof the confirm prompt read its answer.
+	// Nothing else in this transcript distinguishes "answered" from
+	// "asked and then blocked".
+	if !strings.Contains(out, "DELETED") {
+		t.Errorf("the confirm prompt did not receive its answer\npty:\n%s", out)
+	}
+	// The probe's own bytes must not be on the terminal at all. This is
+	// the direct assertion on the mechanism, independent of timing.
+	if strings.Contains(out, "\x1b]11;?") {
+		t.Errorf("a background-color query reached the terminal between the prompts\npty:\n%q", out)
+	}
+}
+
+// TestAutocorrect_ReadMode_NoTerminalQuery is the same mechanism on the
+// path that has no prompt to steal from, so it cannot hang and the cost
+// is latency instead: read mode used to spend four seconds on two
+// background queries before the corrected run produced any output.
+//
+// Asserted on the escape bytes rather than on a wall-clock budget, which
+// would be flaky on a loaded runner.
+func TestAutocorrect_ReadMode_NoTerminalQuery(t *testing.T) {
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Skipf("no pty available: %v", err)
+	}
+	defer func() { _ = ptmx.Close() }()
+
+	cmd := exec.Command(toolBin, "--autocorrect=read", "show", "--nam=x")
+	env := make([]string, 0, len(os.Environ())+1)
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "NO_COLOR=") || strings.HasPrefix(e, "TERM=") {
+			continue
+		}
+		env = append(env, e)
+	}
+	cmd.Env = append(env, "TERM=xterm-256color")
+	cmd.Stdin = tty
+	cmd.Stdout = tty
+	cmd.Stderr = tty
+	setControllingTTY(cmd, tty)
+
+	if err := cmd.Start(); err != nil {
+		_ = tty.Close()
+		t.Fatalf("start: %v", err)
+	}
+	_ = tty.Close()
+
+	outCh := make(chan string, 1)
+	go func() {
+		var b strings.Builder
+		buf := make([]byte, 4096)
+		for {
+			n, rerr := ptmx.Read(buf)
+			if n > 0 {
+				b.Write(buf[:n])
+			}
+			if rerr != nil {
+				break
+			}
+		}
+		outCh <- b.String()
+	}()
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatal("read-mode correction hung on the pty")
+	}
+	_ = ptmx.Close()
+
+	var out string
+	select {
+	case out = <-outCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("pty drain did not finish")
+	}
+
+	if !strings.Contains(out, "SHOW name=x") {
+		t.Fatalf("the corrected run did not reach the leaf\npty:\n%s", out)
+	}
+	if strings.Contains(out, "\x1b]11;?") {
+		t.Errorf("a background-color query reached the terminal on a corrected run\npty:\n%q", out)
+	}
+}

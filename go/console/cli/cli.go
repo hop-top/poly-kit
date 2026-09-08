@@ -11,6 +11,7 @@ import (
 
 	"charm.land/fang/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -887,7 +888,7 @@ func (r *Root) Execute(ctx context.Context) error {
 		return r.refuseUnknownSubcommand(err)
 	}
 
-	err := r.fangExecute(ctx)
+	err := r.executeMaybeCorrecting(ctx)
 
 	// Opt-in flag autocorrect (cli.autocorrect; off by default, so this
 	// is a nil check on every invocation that did not ask for it). The
@@ -903,6 +904,110 @@ func (r *Root) Execute(ctx context.Context) error {
 			return corrected
 		}
 	}
+	return err
+}
+
+// executeMaybeCorrecting runs the first dispatch, keeping fang's error
+// handler off a dispatch that autocorrect is about to discard.
+//
+// fang styles a failed run by calling mustColorscheme, which queries the
+// terminal background: it writes OSC 11 plus DA1, puts the terminal into
+// RAW MODE and reads for a reply, twice, up to 2s each. That read
+// consumes whatever the terminal holds — including the keystrokes a
+// prompt is about to ask for.
+//
+// On a corrected invocation the first dispatch's error is discarded:
+// applyPendingCorrection re-dispatches and returns the corrected run's
+// own result. Letting fang style an error nobody will see costs four
+// seconds and, when the corrected run reaches a confirm prompt, eats
+// that prompt's answer off the terminal and hangs it. The autocorrect
+// prompt and the confirm gate can both fire in one invocation, so the
+// window is real.
+//
+// The narrowing is deliberate. Only a dispatch that has parked a pending
+// correction skips fang, and it skips only fang's ERROR handler — the
+// error itself is already rendered (captureCorrection marks it so, and
+// kitErrorHandler would return without printing anyway). Every other
+// invocation, corrected or not, takes the fang path unchanged: the
+// re-dispatch below goes through fangExecute exactly as before, so help,
+// version, styling and error rendering are untouched for everyone else.
+func (r *Root) executeMaybeCorrecting(ctx context.Context) error {
+	if !r.autocorrectPossible() {
+		return r.fangExecute(ctx)
+	}
+	// Run cobra directly. fang's own pre-dispatch work (help/version
+	// commands, completion, signals) is already on the tree from
+	// prepareTree, and this dispatch's result is provisional: either a
+	// correction is pending and applyPendingCorrection supersedes it, or
+	// no correction was captured and the error is returned to fang's
+	// handler below for its normal rendering.
+	err := r.Cmd.ExecuteContext(ctx)
+	if err == nil || r.pending != nil {
+		// Nothing failed, or a re-dispatch owns the outcome. Either way
+		// fang has no error to style, so its terminal probe never runs.
+		return err
+	}
+	// A genuine failure with no correction pending: hand it to the same
+	// handler fang would have, so stderr is byte-identical to today.
+	// Styles are unused on every kit-envelope path, and fang's default
+	// handler is only reached for errors kit did not build.
+	return r.renderWithoutFang(err)
+}
+
+// autocorrectPossible reports whether cli.autocorrect could fire on this
+// invocation, so the dispatch that might park a correction avoids fang's
+// probing error handler.
+//
+// This runs BEFORE any parse, so the flag's Changed bit is not set yet
+// and autocorrectMode cannot see a --autocorrect on the command line.
+// The raw argv is therefore scanned directly, alongside the env and
+// config rungs autocorrectMode reads.
+//
+// Deliberately permissive: a false positive only routes an ordinary
+// failure through renderWithoutFang, which renders identically, while a
+// false negative would leave the hang in place.
+func (r *Root) autocorrectPossible() bool {
+	if r == nil || r.Cmd == nil {
+		return false
+	}
+	for _, a := range r.resolveArgs() {
+		if a == "--" {
+			break
+		}
+		if a == "--"+autocorrectFlag {
+			// `--autocorrect <value>`: the value is the next token, but
+			// any value other than "off" enables, and "off" costs only
+			// the identical rendering path. Treat the bare flag as on.
+			return true
+		}
+		if v, ok := strings.CutPrefix(a, "--"+autocorrectFlag+"="); ok {
+			m, valid := parseAutocorrectMode(v)
+			return !valid || m != AutocorrectOff
+		}
+	}
+	if m, ok := parseAutocorrectMode(os.Getenv(autocorrectEnv)); ok {
+		return m != AutocorrectOff
+	}
+	if r.Viper != nil {
+		if m, ok := parseAutocorrectMode(r.Viper.GetString(autocorrectViperKey)); ok {
+			return m != AutocorrectOff
+		}
+	}
+	return false
+}
+
+// renderWithoutFang writes err through kit's own error handler, the one
+// fang would have called, without fang's colorscheme probe.
+//
+// fang builds a full Styles to pass the handler; kitErrorHandler ignores
+// it for every error kit built (the envelope is rendered by
+// output.RenderError) and falls back to fang.DefaultErrorHandler only for
+// errors kit did not build. Those get the zero Styles here rather than a
+// probed one: a plain rendering is the right trade against a four-second
+// terminal query that can steal a pending prompt's answer.
+func (r *Root) renderWithoutFang(err error) error {
+	w := colorprofile.NewWriter(r.Cmd.ErrOrStderr(), os.Environ())
+	r.kitErrorHandler()(w, fang.Styles{}, err)
 	return err
 }
 
