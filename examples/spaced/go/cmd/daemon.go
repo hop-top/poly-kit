@@ -98,6 +98,11 @@ func daemonStopCmd(root *cli.Root, b bus.Bus) *cobra.Command {
 		Short: "Attempt to stop a daemon",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Deliberately still on SafetyGuard: --force is the
+			// bypass the cross-language parity suite asserts, and the
+			// Python twin has its own guard. Migrating this one leaf
+			// to the --confirm gate would diverge the three demos.
+			//nolint:staticcheck // SA1019: parity with the py/ts twins
 			if err := cli.SafetyGuard(cmd, cli.SafetyDangerous); err != nil {
 				return err
 			}
