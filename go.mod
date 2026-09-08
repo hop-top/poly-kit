@@ -235,3 +235,13 @@ require (
 )
 
 replace mcpext.example/tasks => ./extensions/mcp-tasks
+
+// Temporary: upstream fang queries the terminal background on every styled
+// error. The query ignores NO_COLOR and TERM=dumb, and runs even when stdin
+// is a pipe carrying the command's payload, costing ~4s on terminals that
+// never answer OSC 11. The fork gates the query on the resolved color
+// profile and on both streams being terminals.
+//
+// Retire this replace once the fix lands upstream and a release carrying it
+// is available.
+replace charm.land/fang/v2 => github.com/hop-top/fang/v2 v2.0.2-0.20260908203800-f1bd9314ef80
