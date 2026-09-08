@@ -143,6 +143,7 @@ binary, not the spec. Common runtime symptoms:
 | F2 fails: `--format json` invalid    | non-JSON noise on stdout           |
 | F3 fails: stderr has JSON            | mixed stream discipline            |
 | F4 fails: `--bogus-arg` exits 0      | unknown flags accepted silently    |
+| F4 warns: no recovery guidance       | error carries no `suggested_fix`/`alternatives`, or only a `--help` pointer |
 | F10 fails: no `_meta` field          | structured output missing provenance |
 
 ---
@@ -197,7 +198,7 @@ parse and read as missing); and non-empty `redact_rules`.
 | 1 | Self-Describing    | `--help` exits 0, contains COMMANDS/USAGE       |
 | 2 | Structured I/O     | read command `--format json` returns valid JSON |
 | 3 | Stream Discipline  | stdout has data, stderr has no JSON             |
-| 4 | Contracts & Errors | `--bogus-arg` causes non-zero exit              |
+| 4 | Contracts & Errors | `--format json --bogus-arg` exits non-zero with a structured envelope carrying a concrete `suggested_fix` or `alternatives` (a bare `--help` pointer warns) |
 | 5 | Preview            | mutating command `--dry-run` exits 0            |
 | 7 | State Transparency | `config show` exits 0                           |
 | 8 | Safe Delegation    | dangerous commands have safety metadata         |

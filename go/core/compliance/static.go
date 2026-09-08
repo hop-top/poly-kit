@@ -34,6 +34,13 @@ func skip(f Factor, details string) CheckResult {
 	return CheckResult{Factor: f, Name: f.String(), Status: "skip", Details: details}
 }
 
+// warn is a partial pass: the obligation is met in shape but not in
+// substance. It carries a suggestion like fail, because the point of a
+// warn is that there is something to do about it.
+func warn(f Factor, details, suggestion string) CheckResult {
+	return CheckResult{Factor: f, Name: f.String(), Status: "warn", Details: details, Suggestion: suggestion}
+}
+
 // allCommands flattens the command tree.
 func allCommands(cmds []commandYAML) []commandYAML {
 	var out []commandYAML

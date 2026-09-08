@@ -2,7 +2,9 @@ package cli
 
 import (
 	"errors"
+	"io"
 
+	"charm.land/fang/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"hop.top/kit/go/console/output"
@@ -86,9 +88,9 @@ func wrapRunE(orig func(*cobra.Command, []string) error) func(*cobra.Command, []
 		// so outer middleware can still match via errors.Is. The render
 		// already used toCLIError to extract the envelope.
 		if errors.Is(err, errFlagValidation) {
-			return err
+			return markRendered(err)
 		}
-		return ce
+		return markRendered(ce)
 	}
 }
 
@@ -222,12 +224,37 @@ const (
 // left alone: cobra's ArbitraryArgs never fails, and a nil Args is
 // also what makes cobra's Find fall back to its legacy unknown-command
 // check, which a wrapper would suppress.
+//
+// The hook is a three-stage chain over one seam, innermost first:
+//
+//  1. prev — the adopter's own FlagErrorFunc, or cobra's default.
+//  2. flagParseError — recognizes pflag's typed parse errors and
+//     enriches them into a USAGE envelope carrying the flag-name
+//     suggestion or the flag's legal value set. Anything it does not
+//     recognize passes through unchanged. See errcorrect.go.
+//  3. usageError — classifies whatever is still bare as USAGE, then
+//     writes the envelope, whatever its origin, to stderr and marks it
+//     rendered. Stage 3 is the single writer for this seam on every
+//     driver, fang or not; see usageError.
+//
+// Chained rather than installed separately: cobra resolves one
+// FlagErrorFunc per invocation, so a second install would shadow this
+// one, and two installs that each render would double the stderr this
+// seam exists to keep single.
 func (r *Root) installUsageClassification() {
 	root := r.Cmd
 	if root.Annotations == nil || root.Annotations[usageFlagHookAnnotation] != "true" {
 		prev := root.FlagErrorFunc()
+		// The kit-owned plumbing flags that leaf --help advertises. The
+		// suggester needs them so a typo of --dry-run is corrected
+		// rather than answered with a help pointer to the very page
+		// that lists it.
+		hiddenDefault := make(map[string]struct{}, len(r.hiddenDefaultFlags))
+		for _, name := range r.hiddenDefaultFlags {
+			hiddenDefault[name] = struct{}{}
+		}
 		root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-			return usageError(cmd, prev(cmd, err))
+			return usageError(cmd, flagParseError(cmd, hiddenDefault, prev(cmd, err)))
 		})
 		annotate(root, usageFlagHookAnnotation)
 	}
@@ -278,24 +305,47 @@ func wrapPreRunUsage(cmd *cobra.Command) func(*cobra.Command, []string) error {
 // usageError classifies err, raised by cobra while validating the
 // invocation of cmd, as USAGE and renders it the way wrapRunE renders
 // a handler failure, so the caller sees one envelope shape whichever
-// layer refused. nil and help requests pass through untouched, as does
-// an error that already carries a kit envelope: an adopter's own
-// validator that chose its code keeps it.
+// layer refused. nil and help requests pass through untouched.
+//
+// Every non-nil error leaves here rendered, marked, and silenced —
+// including one that already carried an envelope when it arrived (an
+// adopter's own FlagErrorFunc, or the parse-time enricher ahead of
+// this stage in the chain). Deferring that rendering to
+// kitErrorHandler would mean only the fang Execute path ever writes
+// it: Root.Prepare + Cmd.ExecuteContext, the in-process runner behind
+// the served surfaces, and the conformance harness all drive cobra
+// directly and install no fang handler, so they would emit cobra's
+// plaintext "Error: USAGE: unknown flag --count" and lose the JSON
+// envelope and its Fix. Rendering here instead makes the seam itself
+// the single writer on every driver; the marker keeps the fang handler
+// quiet so nothing is doubled where fang does run.
 func usageError(cmd *cobra.Command, err error) error {
 	if err == nil || errors.Is(err, pflag.ErrHelp) {
 		return err
 	}
+	// An error that already carries an envelope keeps it, and keeps its
+	// own identity too: the arriving error is what comes back, so an
+	// adopter's typed error stays matchable by its own type and the
+	// envelope stays reachable through errors.As.
 	var ce asCLIError
 	if errors.As(err, &ce) {
-		return err
+		if out := ce.AsCLIError(); out != nil {
+			renderUsage(cmd, out)
+			return markRendered(err)
+		}
 	}
 	out := output.WrapError(err, output.CodeUsage, int(ExitUsage))
 	out.SuggestedFix = "run '" + cmd.CommandPath() + " --help' for usage"
+	renderUsage(cmd, out)
+	return markRendered(out)
+}
+
+// renderUsage writes one envelope to cmd's stderr in the active format
+// and silences cobra's own printer so nothing doubles it.
+func renderUsage(cmd *cobra.Command, out *output.Error) {
 	_ = output.RenderError(cmd.ErrOrStderr(), activeFormat(cmd), out)
-	// Silence cobra's own printer so the envelope is not doubled.
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
-	return out
 }
 
 // annotate records a kit-owned marker on cmd.
@@ -304,4 +354,103 @@ func annotate(cmd *cobra.Command, key string) {
 		cmd.Annotations = make(map[string]string)
 	}
 	cmd.Annotations[key] = "true"
+}
+
+// --- fang error handler --------------------------------------------------
+//
+// fang always calls its error handler when root.ExecuteContext returns
+// non-nil (fang.go:172); cobra's SilenceErrors is set by fang itself and
+// does not reach that call. So wrapRunE, which already renders the
+// envelope to stderr and returns the error so the process exits non-zero,
+// got its output printed a second time in fang's styling:
+//
+//	GENERIC: unknown status "BOGUS"; valid values: A, B
+//	   ERROR
+//	  Generic: unknown status "BOGUS"; valid values: A, B.
+//
+// One failure, two renderings, disagreeing on capitalization. An agent
+// parsing stderr sees two errors.
+//
+// kitErrorHandler is the single stderr writer for a failed run. Errors the
+// RunE middleware already rendered are suppressed here; everything else —
+// notably parse-time flag errors, which fail before any RunE and so never
+// reach the middleware — is rendered through the same
+// output.RenderError path, so --format json|yaml callers get the envelope
+// instead of fang's prose.
+
+// renderedMarker is attached to an error the RunE middleware has already
+// written to stderr. The fang handler tests for it and stays quiet rather
+// than printing the same failure in a second format.
+type renderedMarker struct{ error }
+
+func (e renderedMarker) Unwrap() error { return e.error }
+
+// errAlreadyRendered is the sentinel carried by renderedMarker.
+var errAlreadyRendered = errors.New("kit/cli: error already rendered to stderr")
+
+// Is reports errAlreadyRendered in addition to whatever the wrapped error
+// matches, so the marker is transparent to sentinel checks either way.
+func (e renderedMarker) Is(target error) bool { return target == errAlreadyRendered }
+
+// markRendered tags err as already written to stderr. Returns err
+// unchanged when nil so callers can wrap unconditionally.
+func markRendered(err error) error {
+	if err == nil {
+		return nil
+	}
+	return renderedMarker{error: err}
+}
+
+// kitErrorHandler returns the fang error handler for r.
+//
+// format is resolved from the command the invocation named, not from the
+// root, so a --format the failing command owns is honored. The root's
+// persistent --format is the usual source and activeFormat finds it by
+// walking up from wherever it starts; a command that registers a
+// --format of its own (kit's `config` parent does) would otherwise have
+// its value ignored and the envelope rendered as plaintext.
+func (r *Root) kitErrorHandler() func(io.Writer, fang.Styles, error) {
+	return func(w io.Writer, styles fang.Styles, err error) {
+		if err == nil {
+			return
+		}
+		if errors.Is(err, errAlreadyRendered) {
+			// The RunE middleware owns this one's stderr. Printing again
+			// would be the double-render.
+			return
+		}
+		var ce asCLIError
+		if !errors.As(err, &ce) {
+			// Not a kit envelope (cobra's own "unknown command", a raw
+			// adopter error escaping a non-wrapped path). fang's styling
+			// is the best available rendering, so keep it.
+			fang.DefaultErrorHandler(w, styles, err)
+			return
+		}
+		env := toCLIError(err)
+		if env == nil {
+			fang.DefaultErrorHandler(w, styles, err)
+			return
+		}
+		_ = output.RenderError(w, activeFormat(r.failedCommand()), env)
+	}
+}
+
+// failedCommand returns the command the invocation named, so the error
+// handler reads --format from the same place every other renderer does.
+//
+// Resolution is cobra's own Find over the argv about to be (or already)
+// parsed, which is what cobra itself used to pick the command. A parse
+// failure can leave Find with nothing to go on; the root is then the
+// answer, and its persistent --format is what activeFormat would have
+// found anyway.
+func (r *Root) failedCommand() *cobra.Command {
+	if r == nil || r.Cmd == nil {
+		return nil
+	}
+	cmd, _, err := r.Cmd.Find(r.resolveArgs())
+	if err != nil || cmd == nil {
+		return r.Cmd
+	}
+	return cmd
 }

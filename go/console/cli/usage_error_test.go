@@ -78,9 +78,13 @@ func TestUsage_CobraValidationErrorsExitTwo(t *testing.T) {
 	}{
 		{"missing positional", []string{"do"}, "accepts 1 arg(s), received 0", nil},
 		{"extra positional", []string{"do", "a", "b"}, "accepts 1 arg(s), received 2", nil},
-		{"unknown flag", []string{"do", "--nosuch", "a"}, "unknown flag: --nosuch", &notExist},
-		{"unknown shorthand", []string{"do", "-Z", "a"}, "unknown shorthand flag: 'Z' in -Z", &notExist},
-		{"flag needs an argument", []string{"do", "--count"}, "flag needs an argument: --count", &valueRequired},
+		// The parse-time enricher rewrites pflag's prose into the kit
+		// envelope's own phrasing and adds the recovery guidance. The
+		// offending flag is still named, the class is still USAGE, and
+		// the pflag error is still retained. See errcorrect.go.
+		{"unknown flag", []string{"do", "--nosuch", "a"}, "unknown flag --nosuch", &notExist},
+		{"unknown shorthand", []string{"do", "-Z", "a"}, "unknown flag -Z", &notExist},
+		{"flag needs an argument", []string{"do", "--count"}, "missing value for --count", &valueRequired},
 		{"invalid flag value", []string{"do", "--count=x", "a"},
 			`invalid argument "x" for "--count" flag: strconv.ParseInt: parsing "x": invalid syntax`, &invalidValue},
 		{"flag group incomplete", []string{"do", "--name=n", "a"},
@@ -98,7 +102,14 @@ func TestUsage_CobraValidationErrorsExitTwo(t *testing.T) {
 			assert.Equal(t, output.TransiencePermanent, ce.Transience)
 			assert.Contains(t, stderr, "USAGE: "+tc.message,
 				"the envelope is rendered to stderr like any other kit error")
-			assert.Contains(t, stderr, "--help", "the fix names the help flag")
+			// Every usage refusal carries recovery guidance. The form
+			// varies by what kit can offer: a corrected flag name, a
+			// legal value, or the help invocation when it cannot
+			// improve on that. Any of the three satisfies Factor 4;
+			// requiring the help text specifically would reject the
+			// better answers.
+			assert.NotEmpty(t, ce.SuggestedFix, "the envelope carries a fix")
+			assert.Contains(t, stderr, "Fix: ", "the fix is rendered to stderr")
 			assert.False(t, reached, "the leaf must not run on a usage error")
 			if tc.retained != nil {
 				assert.True(t, errors.As(err, tc.retained),
@@ -216,7 +227,7 @@ func TestUsage_BridgeInvocationReportsExitTwo(t *testing.T) {
 			"accepts 1 arg(s), received 0"},
 		{"unknown flag", cmdsurface.Invocation{
 			Path: []string{"do"}, Args: []string{"a"}, Flags: map[string]any{"nosuch": "x"}, Meta: meta,
-		}, "unknown flag: --nosuch"},
+		}, "unknown flag --nosuch"},
 		{"invalid flag value", cmdsurface.Invocation{
 			Path: []string{"do"}, Args: []string{"a"}, Flags: map[string]any{"count": "x"}, Meta: meta,
 		}, `invalid argument "x" for "--count" flag`},

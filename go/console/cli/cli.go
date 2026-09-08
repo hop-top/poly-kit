@@ -377,6 +377,13 @@ type Root struct {
 	// registration must happen before WrapRunE for the validator to
 	// fire. See flag_validator.go.
 	flagValidators map[string]FlagValidator
+
+	// flagEnums is the registered set of closed value sets, keyed by
+	// command path plus flag name (an empty path is the tree-wide
+	// form). Stamped onto the matching pflag.Flag annotations at
+	// Execute time, then read by the parse-error suggester, the help
+	// writer, and the completion binder. See flag_enum.go.
+	flagEnums map[flagEnumKey][]string
 }
 
 // New returns a Root pre-configured to the hop-top CLI contract:
@@ -865,6 +872,12 @@ func (r *Root) Execute(ctx context.Context) error {
 		ctx, r.Cmd,
 		fang.WithVersion(r.Config.Version),
 		fang.WithColorSchemeFunc(brandColorScheme),
+		// Single stderr writer for a failed run: suppresses errors the
+		// RunE middleware already rendered (fang's default handler runs
+		// regardless of cobra's SilenceErrors) and routes parse-time
+		// flag errors through output.RenderError so --format json|yaml
+		// callers get the envelope. See error_render.go.
+		fang.WithErrorHandler(r.kitErrorHandler()),
 	)
 }
 
@@ -888,6 +901,15 @@ func (r *Root) prepareTree() {
 	}
 
 	r.installLeafHelp()
+
+	// Flag value-enum registry. Stamps each registered closed value set
+	// onto the matching pflag.Flag annotation, suffixes the help text,
+	// and binds shell completion — one walk, all three. Ahead of
+	// AutoRegisterFlags so the stamp is in place before any flag the
+	// tree grows below is parsed, and ahead of
+	// installUsageClassification (from WrapRunE) so the parse-error
+	// suggester can read the set. Idempotent. See flag_enum.go.
+	r.applyFlagEnums()
 
 	// Auto-register kit-managed flags (--dry-run on write/destructive
 	// leaves) before validation/parsing. Idempotent + independent of

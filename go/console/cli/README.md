@@ -33,6 +33,14 @@ that wraps each leaf's RunE manually). The middleware:
 Ordering: call `WithFlagValidator` BEFORE `WrapRunE` (or before `Execute`, which calls
 `WrapRunE`). Validators registered after the subtree is wrapped are inert.
 
+## Flag enums and parse-time errors
+
+`Root.WithFlagEnum` records a flag's legal values once; parse-time errors,
+help text and shell completion all read that one annotation. Unknown or
+value-less flags come back as a structured `USAGE` envelope carrying a
+concrete fix or alternatives — never auto-applied.
+See [flag-enums.md](../../../docs/adopters/reference/flag-enums.md).
+
 ## Sub-packages
 
 | Path | What it answers |

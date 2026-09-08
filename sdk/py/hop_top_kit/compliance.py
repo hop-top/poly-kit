@@ -91,6 +91,15 @@ def _skip(f: Factor, details: str) -> CheckResult:
     return CheckResult(f, factor_name(f), "skip", details)
 
 
+def _warn(f: Factor, details: str, suggestion: str) -> CheckResult:
+    """A partial pass: the obligation is met in shape but not in substance.
+
+    Carries a suggestion like _fail, because the point of a warn is that
+    there is something to do about it.
+    """
+    return CheckResult(f, factor_name(f), "warn", details, suggestion)
+
+
 def _all_commands(cmds: list[dict]) -> list[dict]:
     out: list[dict] = []
     for c in cmds:
@@ -424,6 +433,73 @@ def _find_read_command(spec: dict) -> str | None:
     return None
 
 
+# Every word that exists only to frame a help invocation. A fix reduces to
+# nothing once they are removed exactly when it is a pointer back at the help
+# page.
+_HELP_FRAMING = frozenset(
+    {
+        "--help",
+        "-h",
+        "help",
+        "run",
+        "see",
+        "try",
+        "use",
+        "for",
+        "usage",
+        "the",
+        "a",
+        "an",
+        "to",
+        "and",
+        "or",
+        "then",
+        "check",
+        "consult",
+        "with",
+    }
+)
+
+
+def _is_concrete_fix(s: str) -> bool:
+    """Report whether s is recovery guidance, not a pointer back at --help.
+
+    A bare command-path word ("tool", "sub") counts as framing too:
+    "tool sub --help" names a path, not a fix, so a token must carry a flag
+    dash or punctuation of its own to count as content.
+    """
+    for w in re.split(r"[\s'\"`,.;:()]+", s.lower()):
+        if not w or w in _HELP_FRAMING:
+            continue
+        if w.startswith("-") or re.search(r"[=<>\[\]{}/|@]", w):
+            return True
+    return False
+
+
+def _error_carries_fix(obj: dict) -> bool:
+    """Report whether a decoded error envelope offers the caller a way forward.
+
+    Either field satisfies it. A single unambiguous correction belongs in
+    suggested_fix; an ambiguous one belongs in alternatives, and a tool that
+    declines to guess between candidates is behaving correctly, not
+    incompletely. Empty strings and empty lists do not count — a present but
+    blank field is the same dead end as an absent one.
+
+    A bare ``--help`` pointer does not count either, in EITHER field. "Run
+    tool --help for usage" is precisely the round trip this factor exists to
+    eliminate, and accepting it would let a tool pass "with recovery
+    guidance" for offering none. A fix that names --help alongside something
+    concrete still counts — the concrete part is the guidance.
+    """
+    fix = obj.get("suggested_fix")
+    if isinstance(fix, str) and _is_concrete_fix(fix):
+        return True
+    alts = obj.get("alternatives")
+    if not isinstance(alts, list):
+        return False
+    return any(isinstance(a, str) and _is_concrete_fix(a) for a in alts)
+
+
 def _is_valid_json(s: str) -> bool:
     try:
         json.loads(s.strip())
@@ -498,9 +574,19 @@ def _run_runtime_checks(
         else:
             results.append(_pass(f, "stdout has data, stderr clean"))
 
-    # F4: bogus arg
+    # F4: bogus arg returns a structured error carrying a fix
+    #
+    # Two separate obligations, checked in order of severity:
+    #
+    #  1. Non-zero exit. A rejected flag that exits 0 is the worst outcome —
+    #     the caller cannot tell the invocation failed. Hard fail.
+    #  2. A structured envelope that carries recovery guidance. An error whose
+    #     only content is "unknown flag: --x" is a dead end: the caller has to
+    #     spend a --help round trip to learn what it should have typed. That
+    #     round trip is the cost this factor exists to eliminate, so a
+    #     structured error WITHOUT a fix is only a partial pass.
     f = Factor.CONTRACTS_ERRORS
-    _, _, code = _run_bin(binary, ["--bogus-arg-xyzzy"])
+    _, stderr, code = _run_bin(binary, ["--format", "json", "--bogus-arg-xyzzy"])
     if code == 0:
         results.append(
             _fail(
@@ -508,15 +594,32 @@ def _run_runtime_checks(
             )
         )
     else:
-        results.append(
-            CheckResult(
-                f,
-                factor_name(f),
-                "warn",
-                "error output is not structured JSON",
-                "Return JSON errors with a 'code' field on stderr",
+        obj = None
+        if _is_valid_json(stderr):
+            try:
+                obj = json.loads(stderr.strip())
+            except ValueError:
+                obj = None
+        if isinstance(obj, dict) and "code" in obj:
+            if _error_carries_fix(obj):
+                results.append(_pass(f, "structured error with code field and recovery guidance"))
+            else:
+                results.append(
+                    _warn(
+                        f,
+                        "structured error carries no recovery guidance",
+                        "Populate suggested_fix (or alternatives) with a concrete "
+                        "correction so the caller does not need a --help round trip",
+                    )
+                )
+        else:
+            results.append(
+                _warn(
+                    f,
+                    "error output is not structured JSON",
+                    "Return JSON errors with a 'code' field on stderr",
+                )
             )
-        )
 
     # F5: preview
     f = Factor.PREVIEW

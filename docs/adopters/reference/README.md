@@ -10,6 +10,7 @@ Exact details per API: signatures, flags, exit codes, config shapes, wire format
 | [`bus-api.md`](bus-api.md) | types, methods and sinks of `go/runtime/bus` | you have read the bus concept and need signatures |
 | [`cli-api-reference.md`](cli-api-reference.md) | Go CLI factory, `go/console/cli` | you build a CLI in Go |
 | [`completion-api.md`](completion-api.md) | dynamic flag and positional completion for cobra, Commander, Click/Typer | you add value completion to a flag |
+| [`flag-enums.md`](flag-enums.md) | flag value enums, parse-time flag errors and suggestions, `go/console/cli` | a mistyped or value-less flag should come back with a fix |
 | [`compliance-api.md`](compliance-api.md) | static + runtime checker against the 12-factor AI CLI spec | you run or extend `compliance check` |
 | [`domain-events.md`](domain-events.md) | `<app>.<entity>.<action>` topic catalog and wildcard rules | you subscribe with `*` or `#` patterns |
 | [`engine-protocol.md`](engine-protocol.md) | HTTP/WS wire format shared by Go-native and engine-backed peers | you implement or debug a peer |
