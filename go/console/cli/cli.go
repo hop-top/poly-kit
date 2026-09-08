@@ -384,6 +384,12 @@ type Root struct {
 	// Execute time, then read by the parse-error suggester, the help
 	// writer, and the completion binder. See flag_enum.go.
 	flagEnums map[flagEnumKey][]string
+
+	// pending holds the flag rewrite the parse seam authorized under
+	// cli.autocorrect, for Execute to apply on a second dispatch. nil
+	// on every invocation that was not corrected, which is every
+	// invocation under the default policy. See autocorrect.go.
+	pending *pendingCorrection
 }
 
 // New returns a Root pre-configured to the hop-top CLI contract:
@@ -578,6 +584,16 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		"Named delegation policy (loaded from $XDG_CONFIG_HOME/<tool>/policies/<name>.yaml).")
 	_ = v.BindPFlag(policyFlag, pf.Lookup(policyFlag))
 	hideFlag(policyFlag)
+
+	// Opt-in flag autocorrect. A separate consent from --confirm; see
+	// autocorrect.go. Bound to cli.autocorrect so a config file can set
+	// it, and read through Changed so the flag still beats KIT_AUTOCORRECT.
+	pf.String(autocorrectFlag, "",
+		"Act on a mistyped flag's correction (off|prompt|read). "+
+			"Default: off (suggest only). read applies it on read-only commands; "+
+			"prompt asks on a TTY.")
+	_ = v.BindPFlag(autocorrectViperKey, pf.Lookup(autocorrectFlag))
+	hideFlag(autocorrectFlag)
 
 	// --api-version (§13). Capability negotiation: when set, hides
 	// commands annotated kit/since:<ver> newer than requested and
@@ -868,6 +884,30 @@ func (r *Root) Execute(ctx context.Context) error {
 		return r.refuseUnknownSubcommand(err)
 	}
 
+	err := r.fangExecute(ctx)
+
+	// Opt-in flag autocorrect (cli.autocorrect; off by default, so this
+	// is a nil check on every invocation that did not ask for it). The
+	// parse seam recorded a rewrite it judged safe; apply it by running
+	// the corrected argv back through the whole path, fang included, so
+	// every gate sees the corrected flags. See autocorrect_dispatch.go.
+	if r.pending != nil {
+		if corrected, ran := r.applyPendingCorrection(func(args []string) error {
+			r.SetArgs(args)
+			r.resetForExecute()
+			return r.fangExecute(ctx)
+		}); ran {
+			return corrected
+		}
+	}
+	return err
+}
+
+// fangExecute drives the prepared tree through fang. Split out of
+// Execute so the autocorrect re-dispatch reaches cobra by the same
+// route the first attempt did, rather than by a shortcut that would
+// skip fang's own help, version and error handling.
+func (r *Root) fangExecute(ctx context.Context) error {
 	return fang.Execute(
 		ctx, r.Cmd,
 		fang.WithVersion(r.Config.Version),
