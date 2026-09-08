@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -433,6 +434,214 @@ def _find_read_command(spec: dict) -> str | None:
     return None
 
 
+def _run_bin_env(
+    binary: str,
+    args: list[str],
+    env: dict[str, str],
+) -> tuple[str, str, int]:
+    """Execute binary with extra environment entries, no shell.
+
+    For probes whose obligation is stated against a policy the tool reads
+    from the environment. The inherited environment is kept: a binary that
+    needs PATH or HOME to start at all must still start.
+    """
+    try:
+        result = subprocess.run(
+            [binary, *args],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env={**os.environ, **env},
+        )
+        return result.stdout, result.stderr, result.returncode
+    except Exception:
+        return "", "", -1
+
+
+# The environment name kit reads for its opt-in flag autocorrect policy. Set
+# by the probe below to elicit each mode from a tool that supports it; a tool
+# that does not simply ignores it, which is what makes the probe skip rather
+# than fail.
+AUTOCORRECT_ENV_VAR = "KIT_AUTOCORRECT"
+
+# The envelope key a tool MUST populate when it rewrote a flag for the caller.
+CORRECTED_FROM_FIELD = "corrected_from"
+
+
+def _rt_contracts_errors_envelope(binary: str) -> CheckResult:
+    """The original F4 obligation: non-zero exit plus a fix-carrying envelope."""
+    f = Factor.CONTRACTS_ERRORS
+    _, stderr, code = _run_bin(binary, ["--format", "json", "--bogus-arg-xyzzy"])
+    if code == 0:
+        return _fail(
+            f, "bogus arg didn't cause error exit", "Unknown flags should cause non-zero exit"
+        )
+    obj = None
+    if _is_valid_json(stderr):
+        try:
+            obj = json.loads(stderr.strip())
+        except ValueError:
+            obj = None
+    if isinstance(obj, dict) and "code" in obj:
+        if _error_carries_fix(obj):
+            return _pass(f, "structured error with code field and recovery guidance")
+        return _warn(
+            f,
+            "structured error carries no recovery guidance",
+            "Populate suggested_fix (or alternatives) with a concrete "
+            "correction so the caller does not need a --help round trip",
+        )
+    return _warn(
+        f,
+        "error output is not structured JSON",
+        "Return JSON errors with a 'code' field on stderr",
+    )
+
+
+def _rt_contracts_errors_autocorrect(binary: str, spec: dict) -> CheckResult:
+    """Check the per-mode semantics of an opt-in flag autocorrect.
+
+    The obligations differ by mode, and each is the thing that mode's
+    existence puts at risk:
+
+      - off (and the default, which is off): a mistyped flag exits non-zero.
+        This is the contract every other caller depends on, and a tool that
+        quietly corrects by default has broken it for every script that was
+        relying on the failure.
+      - read: IF a correction was applied — exit 0 on an invocation that
+        should have failed to parse — the envelope MUST carry corrected_from.
+        A run that silently becomes a different run is unauditable, and stderr
+        prose is not something a --format json consumer reads.
+
+    Aimed at a READ command, not the root, because a correction is only ever
+    legitimate on one: the side-effect gate is per-leaf, and a tool rewriting
+    a flag on an unannotated root would be violating that gate rather than
+    demonstrating the feature.
+
+    The near-miss token is a one-edit typo of --format. ``--formt`` rather
+    than ``--forma``: the latter is a PREFIX of --format, --format-opt and
+    --format-help, so it is ambiguous by construction and no compliant tool
+    would ever correct it — a probe built on it would skip for every tool and
+    measure nothing.
+
+    A tool with no autocorrect support ignores the environment variable and
+    keeps exiting non-zero, which is indistinguishable from mode off and so
+    reported as a skip rather than a failure: the factor does not require a
+    tool to HAVE this feature, only to be honest about it if it does.
+    """
+    f = Factor.CONTRACTS_ERRORS
+    near_miss = "--formt=json"
+
+    read_cmd = _find_read_command(spec)
+    if not read_cmd:
+        return _skip(f, "no read command found to probe autocorrect on")
+
+    # Obligation 1: the default is suggest-only.
+    if _run_bin(binary, [read_cmd, near_miss])[2] == 0:
+        return _fail(
+            f,
+            "a mistyped flag exited 0 with no autocorrect policy set",
+            "Keep autocorrect off by default: a bad flag must exit non-zero "
+            "unless the caller opted in",
+        )
+
+    # Obligation 2: explicit off behaves as the default does.
+    if _run_bin_env(binary, [read_cmd, near_miss], {AUTOCORRECT_ENV_VAR: "off"})[2] == 0:
+        return _fail(
+            f,
+            "a mistyped flag exited 0 under an explicit off policy",
+            "Honor the off value: it must not be read as unset",
+        )
+
+    # Obligation 3: under read, a correction that WAS applied is declared.
+    stdout, stderr, code = _run_bin_env(
+        binary,
+        [read_cmd, "--format", "json", near_miss],
+        {AUTOCORRECT_ENV_VAR: "read"},
+    )
+    if code != 0:
+        return _skip(
+            f,
+            "binary does not apply flag corrections under " + AUTOCORRECT_ENV_VAR + "=read",
+        )
+    # The envelope is on stderr, where kit writes every envelope, so the
+    # command's own data on stdout stays clean. Check both: a tool that put it
+    # on stdout still declared it, and this factor is about the declaration,
+    # not the stream (Factor 3 owns the stream).
+    if _correction_declared(stderr) or _correction_declared(stdout):
+        return _pass(f, "applied flag correction declares " + CORRECTED_FROM_FIELD)
+    return _fail(
+        f,
+        "a flag correction was applied but no " + CORRECTED_FROM_FIELD + " was reported",
+        "Emit " + CORRECTED_FROM_FIELD + " in the structured envelope naming the token "
+        "the caller typed, so an agent and an audit log can both see that the "
+        "command that ran is not the command that was asked for",
+    )
+
+
+def _correction_declared(s: str) -> bool:
+    """Report whether s carries a corrected_from field.
+
+    Tolerant of surrounding output on purpose: a tool may write the notice
+    alongside logs, and a probe that demanded the stream be exactly one JSON
+    document would be testing Factor 3's obligation, not this one. Each line
+    is tried as its own document, then the raw text as a fallback for a YAML
+    or plaintext rendering.
+    """
+    for line in s.splitlines():
+        t = line.strip()
+        if not t.startswith("{"):
+            continue
+        try:
+            obj = json.loads(t)
+        except ValueError:
+            continue
+        if isinstance(obj, dict):
+            v = obj.get(CORRECTED_FROM_FIELD)
+            if isinstance(v, str) and v.strip():
+                return True
+    if re.search(r'"corrected_from"\s*:\s*"[^"\s]', s):
+        return True
+    return CORRECTED_FROM_FIELD + ":" in s or "Corrected from:" in s
+
+
+def _aggregate_contracts_errors(*rs: CheckResult) -> CheckResult:
+    """Fold the two F4 runtime sub-checks into one row.
+
+    Precedence matches the F13 aggregator with one addition it needs and F13
+    does not: a warn survives. The envelope sub-check reports warn for a tool
+    whose error is unstructured or fix-less, and collapsing that to pass
+    because the autocorrect arm skipped would hide the finding on exactly the
+    tools that have not adopted autocorrect — which is most of them.
+    """
+    f = Factor.CONTRACTS_ERRORS
+    failed: list[str] = []
+    skipped: list[str] = []
+    first_warn: CheckResult | None = None
+    for r in rs:
+        if r.status == "fail":
+            failed.append(r.details or "")
+        elif r.status == "skip":
+            skipped.append(r.details or "")
+        elif r.status == "warn" and first_warn is None:
+            first_warn = r
+    if failed:
+        return _fail(
+            f,
+            "; ".join(failed),
+            "Address each failing sub-condition (structured error envelope; "
+            "autocorrect mode semantics)",
+        )
+    if first_warn is not None:
+        return first_warn
+    if len(skipped) == len(rs):
+        return _skip(f, "; ".join(dict.fromkeys(skipped)))
+    return _pass(
+        f,
+        "structured error with recovery guidance; autocorrect mode semantics honored",
+    )
+
+
 # Every word that exists only to frame a help invocation. A fix reduces to
 # nothing once they are removed exactly when it is a pointer back at the help
 # page.
@@ -585,41 +794,18 @@ def _run_runtime_checks(
     #     spend a --help round trip to learn what it should have typed. That
     #     round trip is the cost this factor exists to eliminate, so a
     #     structured error WITHOUT a fix is only a partial pass.
-    f = Factor.CONTRACTS_ERRORS
-    _, stderr, code = _run_bin(binary, ["--format", "json", "--bogus-arg-xyzzy"])
-    if code == 0:
-        results.append(
-            _fail(
-                f, "bogus arg didn't cause error exit", "Unknown flags should cause non-zero exit"
-            )
+    #
+    # Both are stated against the SUGGEST-ONLY behavior, which is what the
+    # envelope sub-check elicits: an argument no real flag is close to, and no
+    # autocorrect policy of its own. A tool invoked under an autocorrect
+    # policy is a different measurement, made by the second sub-check and
+    # folded into the same row.
+    results.append(
+        _aggregate_contracts_errors(
+            _rt_contracts_errors_envelope(binary),
+            _rt_contracts_errors_autocorrect(binary, spec),
         )
-    else:
-        obj = None
-        if _is_valid_json(stderr):
-            try:
-                obj = json.loads(stderr.strip())
-            except ValueError:
-                obj = None
-        if isinstance(obj, dict) and "code" in obj:
-            if _error_carries_fix(obj):
-                results.append(_pass(f, "structured error with code field and recovery guidance"))
-            else:
-                results.append(
-                    _warn(
-                        f,
-                        "structured error carries no recovery guidance",
-                        "Populate suggested_fix (or alternatives) with a concrete "
-                        "correction so the caller does not need a --help round trip",
-                    )
-                )
-        else:
-            results.append(
-                _warn(
-                    f,
-                    "error output is not structured JSON",
-                    "Return JSON errors with a 'code' field on stderr",
-                )
-            )
+    )
 
     # F5: preview
     f = Factor.PREVIEW

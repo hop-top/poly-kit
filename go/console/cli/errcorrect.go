@@ -114,8 +114,7 @@ func flagParseError(cmd *cobra.Command, hiddenDefault map[string]struct{}, err e
 	// replace all three, which contradicts the contract stated at
 	// installUsageClassification ("kit classifies whatever it returns
 	// bare"). Only a bare pflag error is kit's to enrich.
-	var enveloped *output.Error
-	if errors.As(err, &enveloped) {
+	if isEnvelopedError(err) {
 		return err
 	}
 	var notExist *pflag.NotExistError
@@ -127,6 +126,15 @@ func flagParseError(cmd *cobra.Command, hiddenDefault map[string]struct{}, err e
 		return missingFlagValueError(cmd, valueRequired)
 	}
 	return err
+}
+
+// isEnvelopedError reports whether err already carries an *output.Error,
+// meaning some layer below kit's parse enricher has already decided how
+// this failure renders. Both the enricher and the autocorrect capture
+// stand down on one: its code, exit code and fix are the adopter's.
+func isEnvelopedError(err error) bool {
+	var enveloped *output.Error
+	return errors.As(err, &enveloped)
 }
 
 // missingFlagValueError renders `--status` (no value) with the flag's legal

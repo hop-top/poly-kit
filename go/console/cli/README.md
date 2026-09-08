@@ -38,7 +38,13 @@ Ordering: call `WithFlagValidator` BEFORE `WrapRunE` (or before `Execute`, which
 `Root.WithFlagEnum` records a flag's legal values once; parse-time errors,
 help text and shell completion all read that one annotation. Unknown or
 value-less flags come back as a structured `USAGE` envelope carrying a
-concrete fix or alternatives — never auto-applied.
+concrete fix or alternatives.
+
+Suggest-only by default. `cli.autocorrect` (`off|prompt|read`, via
+`--autocorrect` / `KIT_AUTOCORRECT` / config) opts into applying the fix —
+`read` only on `kit/side-effect: read` leaves, `prompt` only on a terminal,
+answered from `/dev/tty`. An applied rewrite reports `corrected_from` in the
+envelope and re-dispatches through every gate.
 See [flag-enums.md](../../../docs/adopters/reference/flag-enums.md).
 
 ## Sub-packages
