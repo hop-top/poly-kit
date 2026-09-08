@@ -73,7 +73,7 @@ func (r *Root) captureCorrection(cmd *cobra.Command, err error) bool {
 	}
 
 	if mode == AutocorrectPrompt {
-		applied, asked := promptAutocorrect(typed, corrected, defaultYes)
+		applied, asked := promptAutocorrect(r.promptSource, typed, corrected, defaultYes)
 		if !asked {
 			// No terminal to ask on. Suggest-only, and never a block:
 			// this is the whole of non-negotiable 6's fallback.
