@@ -168,6 +168,16 @@ func TestAutocorrect_ReadMode_NeverCorrectsDestructive(t *testing.T) {
 	if strings.Contains(got.stdout, "DELETED") {
 		t.Fatalf("the side-effect gate did not hold; the deletion ran\nstdout:\n%s", got.stdout)
 	}
+	// The correction must not be APPLIED, which is a stronger claim than
+	// "the deletion did not run". With the gate removed the rewrite goes
+	// through and the confirm gate catches it instead — non-zero, nothing
+	// deleted, and this assertion the only thing that notices. Defence in
+	// depth is welcome; a test that cannot see past it is not.
+	if strings.Contains(got.stderr, "Corrected from") {
+		t.Fatalf("the side-effect gate did not hold; a destructive leaf had its "+
+			"flag rewritten and only the confirm gate stopped the run\nstderr:\n%s",
+			got.stderr)
+	}
 	if !strings.Contains(got.stderr, "--force") {
 		t.Errorf("the suggestion was not even offered:\n%s", got.stderr)
 	}
@@ -182,6 +192,9 @@ func TestAutocorrect_ReadMode_NeverCorrectsWrite(t *testing.T) {
 	}
 	if strings.Contains(got.stdout, "UPDATED") {
 		t.Fatalf("read mode corrected a write leaf\nstdout:\n%s", got.stdout)
+	}
+	if strings.Contains(got.stderr, "Corrected from") {
+		t.Fatalf("a write leaf had its flag rewritten in read mode\nstderr:\n%s", got.stderr)
 	}
 }
 
