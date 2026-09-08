@@ -129,3 +129,67 @@ func TestLipglossCompatNotImported(t *testing.T) {
 		}
 	}
 }
+
+// TestHasDarkBackground_ProbesControllingTTYNotStdin pins that the
+// background query reads the CONTROLLING TERMINAL rather than os.Stdin.
+//
+// os.Stdin may be a pipe carrying the command's payload; a raw-mode read
+// of it consumes bytes the command was meant to receive, which is the
+// same defect that moved the interactive prompts onto /dev/tty. The
+// assertion is on the files handed to the query: neither may be os.Stdin,
+// and both must be the terminal the opener returned.
+func TestHasDarkBackground_ProbesControllingTTYNotStdin(t *testing.T) {
+	// A stand-in for the controlling terminal. A pipe is not a terminal,
+	// but nothing here reaches term.IsTerminal: the opener is replaced
+	// wholesale and the query is a stub.
+	rd, wr, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	defer func() { _ = rd.Close(); _ = wr.Close() }()
+
+	restore := openBackgroundProbeTTY
+	openBackgroundProbeTTY = func() *os.File { return rd }
+	defer func() { openBackgroundProbeTTY = restore }()
+
+	var gotIn, gotOut *os.File
+	probe := openBackgroundProbeTTY()
+	_ = detectDarkBackground("", probe != nil, func() bool {
+		gotIn, gotOut = probe, probe
+		return false
+	})
+
+	if gotIn == nil || gotOut == nil {
+		t.Fatal("the background query never ran with a controlling terminal available")
+	}
+	if gotIn == os.Stdin || gotOut == os.Stdin {
+		t.Error("the background query read os.Stdin; it must read the controlling terminal")
+	}
+	if gotIn != rd || gotOut != rd {
+		t.Errorf("the background query used %v/%v, want the controlling terminal %v", gotIn, gotOut, rd)
+	}
+}
+
+// TestHasDarkBackground_NoControllingTTYSkipsQuery pins the skip: with no
+// controlling terminal there is nothing that can answer an OSC 11 query,
+// so it must not be asked — and in particular must not fall back to
+// os.Stdin, which is exactly where a piped payload would be.
+func TestHasDarkBackground_NoControllingTTYSkipsQuery(t *testing.T) {
+	restore := openBackgroundProbeTTY
+	openBackgroundProbeTTY = func() *os.File { return nil }
+	defer func() { openBackgroundProbeTTY = restore }()
+
+	queried := false
+	probe := openBackgroundProbeTTY()
+	got := detectDarkBackground("", probe != nil && false, func() bool {
+		queried = true
+		return false
+	})
+
+	if queried {
+		t.Error("the background query ran with no controlling terminal to ask")
+	}
+	if !got {
+		t.Error("detectDarkBackground = false with no terminal, want dark default (true)")
+	}
+}
