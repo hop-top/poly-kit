@@ -7,6 +7,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -32,6 +34,9 @@ func main() {
 	list.Flags().String("status", "", "Status filter")
 	list.Flags().Int("counters", 0, "Counter mode")
 	list.Flags().Int("limit", 0, "Max rows")
+	// A read-only leaf's flag that a single edit reaches from a typo, so
+	// the autocorrect candidate filter has an unambiguous target.
+	list.Flags().Bool("verbose-rows", false, "Verbose rows")
 
 	// A destructive leaf on the same tree: a mistyped flag here must be
 	// refused, never fuzzy-corrected into a run.
@@ -47,13 +52,88 @@ func main() {
 			// Marker on stdout: if this ever prints on a mistyped-flag
 			// run, kit auto-applied a guess. That is the failure the
 			// exit-code test is guarding.
-			cmd.Println("DELETED")
+			fmt.Fprintln(cmd.OutOrStdout(), "DELETED")
 			return nil
 		},
 	}
 	del.Flags().Bool("force", false, "Skip safety checks")
 
-	r.Cmd.AddCommand(list, del)
+	// A read-only leaf that echoes the flags it actually parsed, so a
+	// test can prove the corrected value — not the typed token — is what
+	// reached the command. --dry-run support makes the same leaf usable
+	// for the "gates see the corrected argv" assertion.
+	show := &cobra.Command{
+		Use:   "show",
+		Short: "Show a thing",
+		Long:  "Show a thing.",
+		Annotations: map[string]string{
+			"kit/side-effect":   "read",
+			"kit/idempotent":    "true",
+			"kit/dry-run":       "true",
+			"kit/output-schema": `{"type":"object"}`,
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			name, _ := cmd.Flags().GetString("name")
+			fmt.Fprintf(cmd.OutOrStdout(), "SHOW name=%s dryrun=%v\n", name, cli.IsDryRun(cmd))
+			return nil
+		},
+	}
+	show.Flags().String("name", "", "Thing name")
+
+	// Two flags a three-character typo sits equidistant from, so the
+	// ambiguity refusal has a case: --stage and --stale are both one
+	// edit from --stace.
+	amb := &cobra.Command{
+		Use:         "ambig",
+		Short:       "Ambiguous flag pair",
+		Long:        "Ambiguous flag pair.",
+		Annotations: map[string]string{"kit/side-effect": "read", "kit/idempotent": "true"},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			fmt.Fprintln(cmd.OutOrStdout(), "AMBIG RAN")
+			return nil
+		},
+	}
+	amb.Flags().Bool("stage", false, "Stage mode")
+	amb.Flags().Bool("stale", false, "Stale mode")
+
+	// A write leaf: correctable in prompt mode only, and never in read
+	// mode however close the typo is.
+	upd := &cobra.Command{
+		Use:   "update",
+		Short: "Update a thing",
+		Long:  "Update a thing.",
+		Annotations: map[string]string{
+			"kit/side-effect": "write",
+			"kit/idempotent":  "true",
+			"kit/dry-run":     "true",
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			fmt.Fprintln(cmd.OutOrStdout(), "UPDATED")
+			return nil
+		},
+	}
+	upd.Flags().Bool("force", false, "Skip safety checks")
+
+	// A read-only leaf whose stdin is DATA. If the autocorrect prompt
+	// ever reads stdin instead of /dev/tty, the payload this echoes back
+	// loses its first line.
+	imp := &cobra.Command{
+		Use:         "ingest",
+		Short:       "Ingest from stdin",
+		Long:        "Ingest from stdin.",
+		Annotations: map[string]string{"kit/side-effect": "read", "kit/idempotent": "true"},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			b, err := io.ReadAll(cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "INGESTED %q\n", string(b))
+			return nil
+		},
+	}
+	imp.Flags().Bool("strict", false, "Strict mode")
+
+	r.Cmd.AddCommand(list, del, show, amb, upd, imp)
 	r.WithFlagEnum("status", "TODO", "IN_PROGRESS", "DONE", "SKIPPED")
 
 	if err := r.Execute(context.Background()); err != nil {
