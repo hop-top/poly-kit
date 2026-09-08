@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -37,28 +39,34 @@ func destructiveLeaf(t *testing.T, name string) (*Root, *cobra.Command) {
 	return r, leaf
 }
 
-// runWithStdin runs the root with the given args, supplying stdin from
-// stdinText. Returns stdout, stderr, and the resulting err.
-func runWithStdin(t *testing.T, r *Root, args []string, stdinText string, isTTY bool) (string, string, error) {
+// runWithStdin runs the root with the given args, supplying the
+// PROMPT's answers from promptText. Returns stdout, stderr, and err.
+//
+// promptText goes to the prompt terminal, not to the command's stdin:
+// that separation is the fix under test. hasTTY=false installs a
+// PromptSource with no terminal, which is the CI / redirected shape.
+func runWithStdin(t *testing.T, r *Root, args []string, promptText string, hasTTY bool) (string, string, error) {
 	t.Helper()
-	var stdout, stderr bytes.Buffer
+	var stdout, stderr, promptOut bytes.Buffer
 	r.Cmd.SetOut(&stdout)
 	r.Cmd.SetErr(&stderr)
-	r.Cmd.SetIn(strings.NewReader(stdinText))
+	r.Cmd.SetIn(strings.NewReader(""))
 	r.Cmd.SetArgs(args)
 
-	prevTTY := promptIsTTYFn
-	promptIsTTYFn = func(*cobra.Command) bool { return isTTY }
-	t.Cleanup(func() { promptIsTTYFn = prevTTY })
-
-	prevInput := promptInputFn
-	promptInputFn = func(cmd *cobra.Command) io.Reader { return cmd.InOrStdin() }
-	t.Cleanup(func() { promptInputFn = prevInput })
+	if hasTTY {
+		r.promptSource = PromptSourceFromReadWriter(
+			strings.NewReader(promptText), &promptOut)
+	} else {
+		r.promptSource = func() *PromptTTY { return nil }
+	}
+	t.Cleanup(func() { r.promptSource = nil })
 
 	r.AutoRegisterFlags()
 	r.WrapRunE()
 	err := r.Cmd.Execute()
-	return stdout.String(), stderr.String(), err
+	// The prompt question now lands on the terminal rather than
+	// stderr; tests that assert on the question read it from there.
+	return stdout.String(), promptOut.String() + stderr.String(), err
 }
 
 func TestRunE_Middleware_PromptCancel_AbortsUnauthorized(t *testing.T) {
@@ -368,4 +376,160 @@ func TestRunE_Middleware_PolicyLoader_DefaultLoader_FromXDG(t *testing.T) {
 func sha256SumPath(path string) string {
 	h := sha256.Sum256([]byte(path))
 	return hex.EncodeToString(h[:6])
+}
+
+// TestRunE_Middleware_PromptDoesNotConsumeStdin asserts the payload a
+// command reads from stdin is byte-exact after a prompted confirm.
+//
+// The payload is deliberately larger than bufio's 4096-byte buffer:
+// the prompt used to read stdin through a bufio.Reader it then threw
+// away, so one buffer fill of payload disappeared with it. A payload
+// under 4KB vanishes entirely and a larger one is truncated, both at
+// exit 0 — a test with a short payload sees the same "empty" either
+// way and misses the truncation.
+func TestRunE_Middleware_PromptDoesNotConsumeStdin(t *testing.T) {
+	const payload = 9001
+	body := strings.Repeat("A", payload)
+
+	r := New(Config{Name: "ptool", Version: "0.0.0", Short: "p"})
+	var got []byte
+	leaf := &cobra.Command{
+		Use: "eat", Short: "eat",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			b, err := io.ReadAll(cmd.InOrStdin())
+			got = b
+			return err
+		},
+	}
+	SetSideEffect(leaf, SideEffectDestructive)
+	SetIdempotency(leaf, IdempotencyYes)
+	r.Cmd.AddCommand(leaf)
+
+	var stdout, promptOut bytes.Buffer
+	r.Cmd.SetOut(&stdout)
+	r.Cmd.SetErr(&bytes.Buffer{})
+	r.Cmd.SetIn(strings.NewReader(body))
+	r.Cmd.SetArgs([]string{"eat", "--confirm", "prompt"})
+	r.promptSource = PromptSourceFromReadWriter(
+		strings.NewReader("y\n"), &promptOut)
+
+	r.AutoRegisterFlags()
+	r.WrapRunE()
+	require.NoError(t, r.Cmd.Execute())
+
+	assert.Len(t, got, payload,
+		"prompt must not consume any of the command's stdin")
+	assert.Equal(t, body, string(got), "payload must arrive byte-exact")
+	assert.Contains(t, promptOut.String(), "[y/N]",
+		"question belongs on the prompt terminal, not on stderr")
+}
+
+// TestRunE_Middleware_PromptAnswerNotTakenFromStdin asserts stdin is
+// never mistaken for an answer. A payload whose first line reads "y"
+// must NOT authorize the operation; with no terminal there is nobody
+// to ask, so the gate refuses.
+func TestRunE_Middleware_PromptAnswerNotTakenFromStdin(t *testing.T) {
+	r, _ := destructiveLeaf(t, "delete")
+	var stdout bytes.Buffer
+	r.Cmd.SetOut(&stdout)
+	r.Cmd.SetErr(&bytes.Buffer{})
+	r.Cmd.SetIn(strings.NewReader("y\npayload\n"))
+	r.Cmd.SetArgs([]string{"delete", "--confirm", "prompt"})
+	r.promptSource = func() *PromptTTY { return nil }
+
+	r.AutoRegisterFlags()
+	r.WrapRunE()
+	err := r.Cmd.Execute()
+
+	require.Error(t, err, "a 'y' on stdin must not answer the prompt")
+	assert.Empty(t, stdout.String(), "RunE must not have run")
+}
+
+// TestRunE_Middleware_NoTTY_PromptDoesNotBlock asserts a prompted
+// confirm with no terminal refuses promptly instead of blocking on a
+// read nobody will answer. A hang is worse than a refusal.
+//
+// This has to run as a SUBPROCESS with a pipe held open on its stdin.
+// In-process the check is worthless: `go test` hands the test binary a
+// stdin that is already at EOF, so a prompt that wrongly reads stdin
+// returns immediately and looks identical to one that correctly
+// declined to ask. Only a writer still holding the pipe open
+// distinguishes "refused" from "waiting forever".
+func TestRunE_Middleware_NoTTY_PromptDoesNotBlock(t *testing.T) {
+	if os.Getenv("KIT_NOBLOCK_CHILD") == "1" {
+		r, _ := destructiveLeaf(t, "delete")
+		r.Cmd.SetArgs([]string{"delete", "--confirm", "prompt"})
+		r.AutoRegisterFlags()
+		r.WrapRunE()
+		if err := r.Cmd.Execute(); err != nil {
+			os.Exit(9) // refused, as it must be
+		}
+		os.Exit(0)
+	}
+
+	cmd := exec.Command(os.Args[0],
+		"-test.run", "TestRunE_Middleware_NoTTY_PromptDoesNotBlock",
+		"-test.timeout", "60s")
+	cmd.Env = append(os.Environ(), "KIT_NOBLOCK_CHILD=1")
+
+	// A pipe whose write end stays open for the whole test: a stdin
+	// read would block here rather than see EOF.
+	stdin, err := cmd.StdinPipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stdin.Close() })
+
+	require.NoError(t, cmd.Start())
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		var ee *exec.ExitError
+		require.ErrorAs(t, err, &ee,
+			"no terminal to ask on must refuse, not succeed")
+		assert.Equal(t, 9, ee.ExitCode(), "expected the refusal path")
+	case <-time.After(20 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatal("prompt blocked on stdin with no terminal to answer it")
+	}
+}
+
+// TestPromptTTY_RetainsReaderAcrossPrompts asserts a second prompt on
+// the same terminal reads the second answer.
+//
+// Constructing a bufio.Reader per prompt would fill the buffer from
+// the terminal, consume the first line and discard the rest, so the
+// second prompt would see EOF and silently decline. Retaining one
+// reader per terminal is what makes consecutive prompts answerable.
+func TestPromptTTY_RetainsReaderAcrossPrompts(t *testing.T) {
+	var out bytes.Buffer
+	src := PromptSourceFromReadWriter(strings.NewReader("y\ny\n"), &out)
+
+	assert.True(t, promptConfirm(src, "first?"), "first answer is y")
+	assert.True(t, promptConfirm(src, "second?"),
+		"second answer must survive the first prompt's buffering")
+}
+
+// TestResolveConfirmMode_TerminalDecidesDefault asserts the bare
+// default follows the terminal's availability, not stdin's shape.
+func TestResolveConfirmMode_TerminalDecidesDefault(t *testing.T) {
+	withTTY := PromptSourceFromReadWriter(strings.NewReader(""), &bytes.Buffer{})
+	noTTY := PromptSource(func() *PromptTTY { return nil })
+
+	assert.Equal(t, confirmPrompt, resolveConfirmMode(withTTY, ""),
+		"a terminal to ask on means prompt")
+	assert.Equal(t, confirmNo, resolveConfirmMode(noTTY, ""),
+		"no terminal means the non-interactive default")
+
+	// The explicit vocabulary is unaffected by terminal availability.
+	for _, tc := range []struct {
+		raw  string
+		want confirmMode
+	}{
+		{"yes", confirmYes}, {"no", confirmNo},
+		{"auto", confirmAuto}, {"prompt", confirmPrompt},
+	} {
+		assert.Equal(t, tc.want, resolveConfirmMode(noTTY, tc.raw), tc.raw)
+		assert.Equal(t, tc.want, resolveConfirmMode(withTTY, tc.raw), tc.raw)
+	}
 }
