@@ -63,10 +63,10 @@ func TestApplyFlagEnums_StampsAcrossTree(t *testing.T) {
 	r.WithFlagEnum("format", "json", "yaml")
 	r.applyFlagEnums()
 
-	if got := lookupFlagEnum(leaf, "status"); len(got) != 2 || got[0] != "TODO" {
+	if got := flagEnumValues(lookupFlag(leaf, "status")); len(got) != 2 || got[0] != "TODO" {
 		t.Errorf("leaf-local flag not stamped: %v", got)
 	}
-	if got := lookupFlagEnum(leaf, "format"); len(got) != 2 || got[0] != "json" {
+	if got := flagEnumValues(lookupFlag(leaf, "format")); len(got) != 2 || got[0] != "json" {
 		t.Errorf("root-persistent flag not stamped: %v", got)
 	}
 }
@@ -75,7 +75,7 @@ func TestApplyFlagEnums_UnknownNameIsInert(t *testing.T) {
 	r, leaf := enumTree()
 	r.WithFlagEnum("nosuchflag", "A", "B")
 	r.applyFlagEnums() // must not panic
-	if got := lookupFlagEnum(leaf, "nosuchflag"); got != nil {
+	if got := flagEnumValues(lookupFlag(leaf, "nosuchflag")); got != nil {
 		t.Errorf("unknown flag name produced an enum: %v", got)
 	}
 }
@@ -84,8 +84,7 @@ func TestApplyFlagEnumHelp_AppendsOnceAndOnlyForEnums(t *testing.T) {
 	r, leaf := enumTree()
 	r.WithFlagEnum("status", "TODO", "DONE")
 	r.applyFlagEnums()
-	r.applyFlagEnumHelp()
-	r.applyFlagEnumHelp() // idempotency: must not stack parentheticals
+	r.applyFlagEnums() // idempotency: must not stack parentheticals
 
 	usage := leaf.Flags().Lookup("status").Usage
 	want := "Status filter (one of: TODO, DONE)"
@@ -103,7 +102,6 @@ func TestApplyFlagEnumHelp_EmptyUsageGetsBareSuffix(t *testing.T) {
 	r := &Root{Cmd: root}
 	r.WithFlagEnum("mode", "fast", "slow")
 	r.applyFlagEnums()
-	r.applyFlagEnumHelp()
 	if got := root.Flags().Lookup("mode").Usage; got != "(one of: fast, slow)" {
 		t.Errorf("usage = %q", got)
 	}
@@ -113,7 +111,6 @@ func TestBindFlagEnumCompletions_ServesEnumPrefixFiltered(t *testing.T) {
 	r, leaf := enumTree()
 	r.WithFlagEnum("status", "TODO", "IN_PROGRESS", "DONE")
 	r.applyFlagEnums()
-	r.bindFlagEnumCompletions()
 
 	// Drive the registered completion the way cobra's __complete does.
 	out, directive := runFlagCompletion(t, leaf, "status", "")
@@ -140,7 +137,6 @@ func TestBindFlagEnumCompletions_AdopterCompleterWins(t *testing.T) {
 	}
 	r.WithFlagEnum("status", "TODO", "DONE")
 	r.applyFlagEnums()
-	r.bindFlagEnumCompletions()
 
 	out, _ := runFlagCompletion(t, leaf, "status", "")
 	if len(out) != 1 || out[0] != "adopter-supplied" {
@@ -182,7 +178,7 @@ func TestSortedFlagNames_ExcludesHidden(t *testing.T) {
 	leaf.Flags().String("status", "", "")
 	root.AddCommand(leaf)
 
-	names := sortedFlagNames(leaf)
+	names := sortedFlagNames(leaf, nil)
 	joined := strings.Join(names, ",")
 	if !strings.Contains(joined, "status") || !strings.Contains(joined, "format") {
 		t.Errorf("missing visible flags: %v", names)
@@ -199,7 +195,7 @@ func TestSortedFlagNames_ExcludesHidden(t *testing.T) {
 }
 
 func TestSortedFlagNames_NilCmd(t *testing.T) {
-	if got := sortedFlagNames(nil); got != nil {
+	if got := sortedFlagNames(nil, nil); got != nil {
 		t.Errorf("got %v", got)
 	}
 }

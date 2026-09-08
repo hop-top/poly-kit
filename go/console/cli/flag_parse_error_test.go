@@ -168,7 +168,7 @@ func TestUnknownFlag_InheritedFlagIsACandidate(t *testing.T) {
 
 func TestUnknownFlag_NoMatchPointsAtHelp(t *testing.T) {
 	env := parseErr(t, "list", "--zzzzzzzznope")
-	if env.SuggestedFix != "tool list --help" {
+	if env.SuggestedFix != "run 'tool list --help' for usage" {
 		t.Errorf("suggested_fix = %q, want the help invocation", env.SuggestedFix)
 	}
 	if len(env.Alternatives) != 0 {
@@ -194,7 +194,7 @@ func TestUnknownFlag_AmbiguousListsAlternatives(t *testing.T) {
 	}
 	// A tie must NOT be resolved by guessing: the fix points at help and
 	// the candidates are listed for the caller to pick from.
-	if env.SuggestedFix != "tool list --help" {
+	if env.SuggestedFix != "run 'tool list --help' for usage" {
 		t.Errorf("suggested_fix = %q, want the help invocation on a tie", env.SuggestedFix)
 	}
 	joined := strings.Join(env.Alternatives, ",")
@@ -209,7 +209,7 @@ func TestUnknownShorthand_PointsAtHelpWithoutGuessing(t *testing.T) {
 		t.Errorf("code = %q", env.Code)
 	}
 	// A single character is within edit distance of far too much.
-	if env.SuggestedFix != "tool list --help" {
+	if env.SuggestedFix != "run 'tool list --help' for usage" {
 		t.Errorf("suggested_fix = %q, want the help invocation", env.SuggestedFix)
 	}
 	if len(env.Alternatives) != 0 {
@@ -288,11 +288,11 @@ func TestFlagParseError_PassesThroughUnknownTypes(t *testing.T) {
 	// An error kit does not recognize must come back untouched — the exit
 	// code and message are all the caller has left.
 	sentinel := errSentinelForParse{}
-	got := flagParseError(&cobra.Command{Use: "x"}, sentinel)
+	got := flagParseError(&cobra.Command{Use: "x"}, nil, sentinel)
 	if got != error(sentinel) {
 		t.Errorf("got %v, want the original error", got)
 	}
-	if flagParseError(&cobra.Command{Use: "x"}, nil) != nil {
+	if flagParseError(&cobra.Command{Use: "x"}, nil, nil) != nil {
 		t.Error("nil should stay nil")
 	}
 }
@@ -331,7 +331,7 @@ func TestParseErrorSeam_Idempotent(t *testing.T) {
 }
 
 func TestHelpInvocation_NilCmd(t *testing.T) {
-	if got := helpInvocation(nil); got != "--help" {
+	if got := helpInvocation(nil); got != "run '--help' for usage" {
 		t.Errorf("got %q", got)
 	}
 }

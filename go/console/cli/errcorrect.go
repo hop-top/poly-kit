@@ -91,18 +91,36 @@ func FormatError(err error, w io.Writer, noColor bool) {
 // noise, and a wrong suggestion on a destructive verb is worse than none.
 const flagErrorMaxDistance = 2
 
+// flagSuggestMinLength is the shortest typed name kit will turn into a
+// single confident Fix. Below it the edit-distance signal is worthless:
+// every two-character name is within flagErrorMaxDistance of most of a
+// real flag table, so naming one winner asserts a certainty the match
+// does not carry. Short names still get their candidates as
+// Alternatives — the caller picks, kit does not guess.
+const flagSuggestMinLength = 3
+
 // flagParseError maps a pflag parse failure to a structured envelope.
 //
 // Unrecognized error types fall through to the original error untouched:
 // kit must never swallow a parse failure it does not understand, because
 // the exit code and the message are the only things the caller has left.
-func flagParseError(cmd *cobra.Command, err error) error {
+func flagParseError(cmd *cobra.Command, hiddenDefault map[string]struct{}, err error) error {
 	if err == nil {
 		return nil
 	}
+	// An adopter FlagErrorFunc that already produced an envelope owns
+	// the whole rendering: its code, its exit code, its fix. Enriching
+	// would match the retained pflag error THROUGH that envelope and
+	// replace all three, which contradicts the contract stated at
+	// installUsageClassification ("kit classifies whatever it returns
+	// bare"). Only a bare pflag error is kit's to enrich.
+	var enveloped *output.Error
+	if errors.As(err, &enveloped) {
+		return err
+	}
 	var notExist *pflag.NotExistError
 	if errors.As(err, &notExist) {
-		return unknownFlagError(cmd, notExist)
+		return unknownFlagError(cmd, hiddenDefault, notExist)
 	}
 	var valueRequired *pflag.ValueRequiredError
 	if errors.As(err, &valueRequired) {
@@ -158,7 +176,7 @@ func missingFlagValueError(cmd *cobra.Command, e *pflag.ValueRequiredError) erro
 
 // unknownFlagError renders `--count` with the correction when exactly one
 // real flag is close enough, and with the candidates when several are.
-func unknownFlagError(cmd *cobra.Command, e *pflag.NotExistError) error {
+func unknownFlagError(cmd *cobra.Command, hiddenDefault map[string]struct{}, e *pflag.NotExistError) error {
 	name := e.GetSpecifiedName()
 	dashed := flagRef(name, e.GetSpecifiedShortnames())
 	helpPath := helpInvocation(cmd)
@@ -178,10 +196,20 @@ func unknownFlagError(cmd *cobra.Command, e *pflag.NotExistError) error {
 		return out.Retaining(e)
 	}
 
-	switch matches := suggestFlags(name, sortedFlagNames(cmd)); len(matches) {
+	switch matches := suggestFlags(name, sortedFlagNames(cmd, hiddenDefault)); len(matches) {
 	case 0:
 		out.SuggestedFix = helpPath
 	case 1:
+		if len(name) < flagSuggestMinLength {
+			// Too short to be confident. `--x` is within one edit of
+			// half the flag table, and a single Fix reads as a
+			// correction the caller can trust. Offer the candidate as
+			// an alternative and point at help instead — the same
+			// refusal the shorthand branch above makes.
+			out.SuggestedFix = helpPath
+			out.Alternatives = []string{"--" + matches[0]}
+			break
+		}
 		out.SuggestedFix = "--" + matches[0]
 	default:
 		// Ambiguous. Naming a single winner here would be a guess, and
@@ -261,6 +289,13 @@ func suggestFlags(name string, candidates []string) []string {
 // levenshtein returns the edit distance between a and b using a
 // single-row DP (O(min(len)) space). Flag names are short; no dependency
 // is warranted for this.
+//
+// Rune-indexed, unlike serve.resolve's byte-indexed editDistance: a flag
+// name may be typed with a non-ASCII character, and a byte-wise distance
+// would score one such character as two or three edits and lose the
+// match. Sharing one implementation would mean exporting a symbol from
+// serve for cli's benefit, which is a wider public API than a short DP
+// is worth.
 func levenshtein(a, b string) int {
 	ar, br := []rune(a), []rune(b)
 	if len(ar) < len(br) {
@@ -317,12 +352,15 @@ func flagValuePlaceholder(flag *pflag.Flag) string {
 	return "value"
 }
 
-// helpInvocation is the --help command the caller should run when kit has
-// nothing better to offer. Full path so it works pasted as-is from a
+// helpInvocation is the --help pointer the caller should follow when kit
+// has nothing better to offer. One shape for the whole USAGE code: the
+// same sentence usageError and refuseUnknownSubcommand render, so a caller
+// (or a test) matching on the fix does not have to know which layer
+// refused. Full path so the quoted command works pasted as-is from a
 // nested subcommand.
 func helpInvocation(cmd *cobra.Command) string {
 	if cmd == nil {
-		return "--help"
+		return "run '--help' for usage"
 	}
-	return cmd.CommandPath() + " --help"
+	return "run '" + cmd.CommandPath() + " --help' for usage"
 }
