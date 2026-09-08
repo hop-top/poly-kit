@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,7 +19,10 @@ func runRuntimeChecks(binaryPath string, spec *toolspecYAML) []CheckResult {
 	results = append(results, rtSelfDescribing(binaryPath))
 	results = append(results, rtStructuredIO(binaryPath, spec))
 	results = append(results, rtStreamDiscipline(binaryPath, spec))
-	results = append(results, rtContractsErrors(binaryPath))
+	results = append(results, aggregateContractsErrors(
+		rtContractsErrors(binaryPath),
+		rtContractsErrorsAutocorrect(binaryPath, spec),
+	))
 	results = append(results, rtPreview(binaryPath, spec))
 	results = append(results, rtStateTransparency(binaryPath))
 	results = append(results, rtSafeDelegation(binaryPath, spec))
@@ -160,6 +164,29 @@ func run(bin string, args ...string) (stdout, stderr string, code int) {
 	return outBuf.String(), errBuf.String(), code
 }
 
+// runEnv is run with extra environment entries appended, for probes whose
+// obligation is stated against a policy the tool reads from the
+// environment. The inherited environment is kept: a binary that needs
+// PATH or HOME to start at all must still start.
+func runEnv(bin string, env []string, args ...string) (stdout, stderr string, code int) {
+	cmd := exec.Command(bin, args...)
+	cmd.Env = append(os.Environ(), env...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	code = 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			code = exitErr.ExitCode()
+		} else {
+			code = -1
+		}
+	}
+	return outBuf.String(), errBuf.String(), code
+}
+
 // Factor 1: binary --help exits 0
 func rtSelfDescribing(bin string) CheckResult {
 	f := FactorSelfDescribing
@@ -226,6 +253,18 @@ func rtStreamDiscipline(bin string, spec *toolspecYAML) CheckResult {
 //     spend a --help round trip to learn what it should have typed. That
 //     round trip is the cost this factor exists to eliminate, so a
 //     structured error WITHOUT a fix is only a partial pass.
+//
+// Both obligations are stated against the SUGGEST-ONLY behavior, which is
+// what the probe elicits: it passes an argument no real flag is close to
+// and no autocorrect policy of its own, so a tool whose autocorrect is
+// off — every tool, by default — is measured exactly as before.
+//
+// A tool invoked under an autocorrect policy is a different measurement,
+// and rtContractsErrorsAutocorrect below makes it. Keeping the two apart
+// matters: "exit non-zero on a bad flag" and "exit zero after fixing a
+// bad flag" are both correct, and a probe that conflated them would
+// either fail a compliant autocorrecting tool or stop noticing the
+// exit-0 failure it exists to catch.
 func rtContractsErrors(bin string) CheckResult {
 	f := FactorContractsErrors
 	_, stderr, code := run(bin, "--format", "json", "--bogus-arg-xyzzy")
@@ -250,6 +289,169 @@ func rtContractsErrors(bin string) CheckResult {
 	// Non-structured error is a warning, not a hard fail
 	return warn(f, "error output is not structured JSON",
 		"Return JSON errors with a 'code' field on stderr")
+}
+
+// aggregateContractsErrors folds the two Factor-4 runtime sub-checks —
+// the suggest-only envelope and the per-mode autocorrect semantics — into
+// one row, per the "one row per factor" model the F13 arm already follows.
+//
+// Precedence matches aggregateConsentingTelemetry, with one addition it
+// needs and F13 does not: a warn survives. The base sub-check reports warn
+// for a tool whose error is unstructured or fix-less, and collapsing that
+// to pass because the autocorrect arm skipped would hide the finding the
+// factor exists to surface.
+//
+//   - any fail → fail, every failing Details concatenated.
+//   - else any warn → warn, carrying that sub-check's guidance.
+//   - all skip → skip.
+//   - else pass.
+func aggregateContractsErrors(rs ...CheckResult) CheckResult {
+	f := FactorContractsErrors
+	var failed, skipped []string
+	var firstWarn *CheckResult
+	for i, r := range rs {
+		switch r.Status {
+		case "fail":
+			failed = append(failed, r.Details)
+		case "skip":
+			skipped = append(skipped, r.Details)
+		case "warn":
+			if firstWarn == nil {
+				firstWarn = &rs[i]
+			}
+		}
+	}
+	if len(failed) > 0 {
+		return fail(f, strings.Join(failed, "; "),
+			"Address each failing sub-condition (structured error envelope; "+
+				"autocorrect mode semantics)")
+	}
+	if firstWarn != nil {
+		return *firstWarn
+	}
+	if len(skipped) == len(rs) {
+		return skip(f, joinUnique(skipped, "; "))
+	}
+	return pass(f, "structured error with recovery guidance; "+
+		"autocorrect mode semantics honored")
+}
+
+// autocorrectEnvVar is the environment name kit reads for its opt-in flag
+// autocorrect policy. Set by the probe below to elicit each mode from a
+// tool that supports it; a tool that does not simply ignores it, which is
+// what makes the probe skip rather than fail.
+const autocorrectEnvVar = "KIT_AUTOCORRECT"
+
+// correctedFromField is the envelope key a tool MUST populate when it
+// rewrote a flag for the caller. Named here because the probe's whole
+// obligation is its presence.
+const correctedFromField = "corrected_from"
+
+// rtContractsErrorsAutocorrect checks the per-mode semantics of an opt-in
+// flag autocorrect, when the tool has one.
+//
+// The obligations differ by mode, and each is the thing that mode's
+// existence puts at risk:
+//
+//   - off (and the default, which is off): a mistyped flag exits
+//     non-zero. This is the contract every other caller depends on, and a
+//     tool that quietly corrects by default has broken it for every
+//     script that was relying on the failure.
+//   - read: IF a correction was applied — exit 0 on an invocation that
+//     should have failed to parse — the envelope MUST carry
+//     corrected_from. A run that silently becomes a different run is
+//     unauditable, and stderr prose is not something a --format json
+//     consumer reads.
+//
+// The probe is aimed at a READ command, not at the root, because a
+// correction is only ever legitimate on one: the side-effect gate is
+// per-leaf, and a tool that rewrote a flag on an unannotated root would
+// be violating the gate rather than demonstrating the feature. Same
+// read-command discovery the F2/F3 probes use, so a spec that names none
+// skips here too.
+//
+// The near-miss token is a one-edit typo of --format, which every kit
+// tool has. `--formt` rather than `--forma`: the latter is a PREFIX of
+// --format, --format-opt and --format-help, so it is ambiguous by
+// construction and no compliant tool would ever correct it — a probe
+// built on it would report skip for every tool on earth and measure
+// nothing.
+//
+// A tool with no autocorrect support ignores the environment variable and
+// keeps exiting non-zero, which is indistinguishable from mode off and so
+// reported as a skip rather than a failure: the factor does not require a
+// tool to HAVE this feature, only to be honest about it if it does.
+func rtContractsErrorsAutocorrect(bin string, spec *toolspecYAML) CheckResult {
+	f := FactorContractsErrors
+	const nearMiss = "--formt=json"
+
+	readCmd := findReadCommand(spec)
+	if readCmd == "" {
+		return skip(f, "no read command found to probe autocorrect on")
+	}
+
+	// Obligation 1: the default is suggest-only. No policy in the
+	// environment, a flag that cannot parse, and the exit must be
+	// non-zero.
+	if _, _, code := run(bin, readCmd, nearMiss); code == 0 {
+		return fail(f,
+			"a mistyped flag exited 0 with no autocorrect policy set",
+			"Keep autocorrect off by default: a bad flag must exit non-zero "+
+				"unless the caller opted in")
+	}
+
+	// Obligation 2: explicit off behaves as the default does.
+	if _, _, code := runEnv(bin, []string{autocorrectEnvVar + "=off"},
+		readCmd, nearMiss); code == 0 {
+		return fail(f,
+			"a mistyped flag exited 0 under an explicit off policy",
+			"Honor the off value: it must not be read as unset")
+	}
+
+	// Obligation 3: under read, a correction that WAS applied is
+	// declared. An unapplied one is equally correct — the tool may have
+	// no autocorrect, or may judge the candidate too weak — so only the
+	// exit-0 case carries an obligation.
+	stdout, stderr, code := runEnv(bin, []string{autocorrectEnvVar + "=read"},
+		readCmd, nearMiss)
+	if code != 0 {
+		return skip(f, "binary does not apply flag corrections under "+
+			autocorrectEnvVar+"=read")
+	}
+	// The envelope is on stderr, where kit writes every envelope, so the
+	// command's own data on stdout stays clean. Check both: a tool that
+	// put it on stdout still declared it, and this factor is about the
+	// declaration, not the stream (Factor 3 owns the stream).
+	if correctionDeclared(stderr) || correctionDeclared(stdout) {
+		return pass(f, "applied flag correction declares "+correctedFromField)
+	}
+	return fail(f,
+		"a flag correction was applied but no "+correctedFromField+" was reported",
+		"Emit "+correctedFromField+" in the structured envelope naming the token "+
+			"the caller typed, so an agent and an audit log can both see that the "+
+			"command that ran is not the command that was asked for")
+}
+
+// correctionDeclared reports whether s carries a corrected_from field.
+//
+// Tolerant of surrounding output on purpose: a tool may write the notice
+// alongside logs, and a probe that demanded the stream be exactly one
+// JSON document would be testing Factor 3's obligation, not this one.
+// Every document on the stream is tried, then the raw text as a fallback
+// for a YAML or plaintext rendering.
+func correctionDeclared(s string) bool {
+	dec := json.NewDecoder(strings.NewReader(s))
+	for {
+		var obj map[string]any
+		if err := dec.Decode(&obj); err != nil {
+			break
+		}
+		if v, ok := obj[correctedFromField].(string); ok && strings.TrimSpace(v) != "" {
+			return true
+		}
+	}
+	return strings.Contains(s, correctedFromField+":") ||
+		strings.Contains(s, "Corrected from:")
 }
 
 // errorCarriesFix reports whether a decoded error envelope offers the
