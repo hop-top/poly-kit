@@ -1,48 +1,27 @@
 package cli
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"strings"
-
-	"github.com/mattn/go-isatty"
 )
 
-// The autocorrect prompt reads /dev/tty, NOT stdin.
+// The autocorrect prompt reads the controlling terminal, NOT stdin.
 //
-// This is the one place in kit that must not reuse promptConfirm from
-// policy_runE.go. That helper reads cmd.InOrStdin(), which is stdin, and
-// for the confirm gate that has been survivable: a destructive command
-// whose stdin is a data stream is rare. The autocorrect prompt does not
-// get that luxury. It fires on a MISTYPED FLAG, which is orthogonal to
-// what the command does with stdin, so `tool import - --fmt=json` with a
-// heredoc on stdin would have its first line eaten as the answer to a
-// question about a flag name. The data would be silently truncated and
-// the answer would be whatever the payload happened to start with.
+// It must not read cmd.InOrStdin(). The prompt fires on a MISTYPED FLAG,
+// which is orthogonal to what the command does with stdin, so
+// `tool import - --fmt=json` with a heredoc on stdin would have its first
+// line eaten as the answer to a question about a flag name. The data would
+// be silently truncated and the answer would be whatever the payload
+// happened to start with.
 //
-// /dev/tty is the controlling terminal regardless of how stdin is
-// redirected, which is exactly the property needed: the question reaches
-// the operator and the payload reaches the command. When there is no
-// controlling terminal to open, there is no one to ask, and the caller
-// falls back to suggest-only rather than blocking.
-
-// autocorrectTTYFn opens the controlling terminal for the prompt.
-// Overridable in tests, which have no tty of their own. Returns nil when
-// no controlling terminal is available.
-var autocorrectTTYFn = func() *os.File {
-	f, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
-		return nil
-	}
-	if !isatty.IsTerminal(f.Fd()) {
-		// A /dev/tty that opened but is not a terminal is not something
-		// to prompt on. Close it rather than leaking the handle.
-		_ = f.Close()
-		return nil
-	}
-	return f
-}
+// The terminal handle comes from the shared prompt helper in ttyprompt.go,
+// which every interactive prompt in kit uses: one /dev/tty open per
+// process, one retained bufio.Reader. Opening and closing a terminal per
+// prompt would give each prompt a fresh 4096-byte buffer and lose whatever
+// the previous prompt read past its newline — the autocorrect prompt and
+// the confirm gate can both fire in a single invocation.
+//
+// When there is no controlling terminal to open, there is no one to ask,
+// and the caller falls back to suggest-only rather than blocking.
 
 // promptAutocorrect asks whether to apply the correction, reading the
 // answer from the controlling terminal.
@@ -54,13 +33,7 @@ var autocorrectTTYFn = func() *os.File {
 //
 // defaultYes chooses what a bare Enter means. It is true only for a
 // read-only leaf; anything that mutates requires the operator to type y.
-func promptAutocorrect(typed, corrected string, defaultYes bool) (applied, asked bool) {
-	tty := autocorrectTTYFn()
-	if tty == nil {
-		return false, false
-	}
-	defer func() { _ = tty.Close() }()
-
+func promptAutocorrect(src PromptSource, typed, corrected string, defaultYes bool) (applied, asked bool) {
 	hint := "[y/N]"
 	if defaultYes {
 		hint = "[Y/n]"
@@ -68,13 +41,15 @@ func promptAutocorrect(typed, corrected string, defaultYes bool) (applied, asked
 	// The question goes to the terminal too, not to stderr: stderr may be
 	// redirected to a file, and a prompt written somewhere the operator
 	// cannot see it is a hang with no explanation.
-	fmt.Fprintf(tty, "Did you mean --%s instead of --%s? %s ", corrected, typed, hint)
-
-	line, err := bufio.NewReader(tty).ReadString('\n')
-	answer := strings.ToLower(strings.TrimSpace(line))
-	if err != nil && answer == "" {
+	answer, asked, eof := promptAskEOF(src, fmt.Sprintf(
+		"Did you mean --%s instead of --%s? %s ", corrected, typed, hint))
+	if !asked {
+		return false, false
+	}
+	if eof {
 		// EOF on the terminal (^D) is a decline, not an unanswered
-		// question: the operator was asked and chose to end it.
+		// question: the operator was asked and chose to end it. Never
+		// the yes default, which belongs to a deliberate Enter.
 		return false, true
 	}
 	switch answer {

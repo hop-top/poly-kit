@@ -378,3 +378,143 @@ func TestCorrectionNotice_CarriesBothHalves(t *testing.T) {
 		t.Errorf("Message names only one half: %q", n.Message)
 	}
 }
+
+// --- two prompts, one terminal -------------------------------------------
+
+// TestPromptAutocorrect_ThenConfirm_ShareOneTerminal is the regression
+// the shared-terminal migration exists to prevent.
+//
+// Both prompts kit can ask in a single invocation are driven here in
+// order, over ONE terminal: the autocorrect question fires on a mistyped
+// flag, and the corrected re-dispatch then reaches the confirm gate. The
+// answers are supplied as a single script, so the first read buffers past
+// its own newline and the second prompt can only succeed by reading what
+// the first left behind.
+//
+// This goes RED two ways, which is the point of pinning it here rather
+// than only on a pty (whose canonical line discipline hands out one line
+// per read and hides the defect entirely):
+//
+//   - a bufio.Reader built per prompt discards the buffered "y\n", so the
+//     confirm prompt sees EOF and aborts;
+//   - a prompt that closes the terminal on return leaves the confirm gate
+//     with nothing to ask on at all.
+func TestPromptAutocorrect_ThenConfirm_ShareOneTerminal(t *testing.T) {
+	var asked strings.Builder
+	src := PromptSourceFromReadWriter(strings.NewReader("y\ny\n"), &asked)
+
+	applied, wasAsked := promptAutocorrect(src, "forc", "force", false)
+	if !wasAsked {
+		t.Fatal("the autocorrect prompt reported no terminal to ask on")
+	}
+	if !applied {
+		t.Fatal("the autocorrect prompt did not read its answer")
+	}
+
+	// The second prompt on the same terminal. Its answer was buffered by
+	// the first prompt's read; only a retained reader still has it.
+	if !promptConfirm(src, "This is a destructive operation. Continue?") {
+		t.Error("the confirm prompt lost its answer to the autocorrect prompt's buffer")
+	}
+
+	// Both questions reached the terminal, in order, and neither went to
+	// stderr.
+	out := asked.String()
+	if !strings.Contains(out, "Did you mean --force instead of --forc?") {
+		t.Errorf("the autocorrect question never reached the terminal:\n%s", out)
+	}
+	if !strings.Contains(out, "Continue?") {
+		t.Errorf("the confirm question never reached the terminal:\n%s", out)
+	}
+	if strings.Index(out, "Did you mean") > strings.Index(out, "Continue?") {
+		t.Errorf("the questions reached the terminal out of order:\n%s", out)
+	}
+}
+
+// TestPromptAutocorrect_ThenConfirm_SecondAnswerIsRead is the control for
+// the test above: same two prompts over one terminal, but the confirm
+// answer is "n". A second prompt that silently defaulted instead of
+// reading would pass the accept case and fail here.
+func TestPromptAutocorrect_ThenConfirm_SecondAnswerIsRead(t *testing.T) {
+	src := PromptSourceFromReadWriter(strings.NewReader("y\nn\n"), &strings.Builder{})
+
+	if applied, _ := promptAutocorrect(src, "forc", "force", false); !applied {
+		t.Fatal("the autocorrect prompt did not read its answer")
+	}
+	if promptConfirm(src, "Continue?") {
+		t.Error("the confirm prompt did not read the 'n' the script supplied")
+	}
+}
+
+// TestPromptAutocorrect_ThenConfirm_ThirdPromptStillReads extends the
+// chain past two, so the assertion is "the buffer is retained" rather
+// than "the first prompt happened to leave one line behind".
+func TestPromptAutocorrect_ThenConfirm_ThirdPromptStillReads(t *testing.T) {
+	src := PromptSourceFromReadWriter(strings.NewReader("y\ny\ny\n"), &strings.Builder{})
+
+	if applied, _ := promptAutocorrect(src, "forc", "force", false); !applied {
+		t.Fatal("prompt 1 did not read its answer")
+	}
+	if !promptConfirm(src, "first?") {
+		t.Fatal("prompt 2 did not read its answer")
+	}
+	if !promptConfirm(src, "second?") {
+		t.Error("prompt 3 did not read its answer")
+	}
+}
+
+// --- the prompt's own answers --------------------------------------------
+
+// TestPromptAutocorrect_Answers pins the answer vocabulary and the
+// side-effect-chosen default, including the hint the question advertises.
+func TestPromptAutocorrect_Answers(t *testing.T) {
+	tests := []struct {
+		name       string
+		script     string
+		defaultYes bool
+		want       bool
+		wantHint   string
+	}{
+		{"y accepts", "y\n", false, true, "[y/N]"},
+		{"yes accepts", "yes\n", false, true, "[y/N]"},
+		{"uppercase Y accepts", "Y\n", false, true, "[y/N]"},
+		{"n declines", "n\n", true, false, "[Y/n]"},
+		{"anything else declines", "maybe\n", true, false, "[Y/n]"},
+		{"Enter takes the yes default on a read leaf", "\n", true, true, "[Y/n]"},
+		{"Enter declines on a mutating leaf", "\n", false, false, "[y/N]"},
+		// EOF is the operator ending the question, never consent: it
+		// declines even where a bare Enter would have accepted.
+		{"EOF declines despite the yes default", "", true, false, "[Y/n]"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var asked strings.Builder
+			src := PromptSourceFromReadWriter(strings.NewReader(tc.script), &asked)
+
+			applied, wasAsked := promptAutocorrect(src, "nam", "name", tc.defaultYes)
+			if !wasAsked {
+				t.Fatal("asked = false with a terminal present")
+			}
+			if applied != tc.want {
+				t.Errorf("applied = %v, want %v", applied, tc.want)
+			}
+			if !strings.Contains(asked.String(), tc.wantHint) {
+				t.Errorf("question %q does not advertise %s", asked.String(), tc.wantHint)
+			}
+		})
+	}
+}
+
+// TestPromptAutocorrect_NoTerminalNeverBlocks is the non-TTY fallback at
+// unit level: asked=false, and no answer invented.
+func TestPromptAutocorrect_NoTerminalNeverBlocks(t *testing.T) {
+	noTTY := PromptSource(func() *PromptTTY { return nil })
+
+	applied, asked := promptAutocorrect(noTTY, "nam", "name", true)
+	if asked {
+		t.Error("asked = true with no terminal to ask on")
+	}
+	if applied {
+		t.Error("a correction was applied with nobody to ask")
+	}
+}

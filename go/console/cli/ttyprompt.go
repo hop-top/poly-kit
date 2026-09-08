@@ -166,7 +166,22 @@ func InstallGlobalPromptSource(src PromptSource) func() {
 // promptAsk writes question to the terminal and reads one answer
 // line. Returns asked=false when there is no terminal, which is the
 // caller's signal to take its non-interactive path rather than block.
+//
+// EOF on the terminal (^D) reads as a blank answer: the operator was
+// asked and chose to end it. Callers whose blank default is "yes" want
+// [promptAskEOF] instead, which keeps the two apart.
 func promptAsk(src PromptSource, question string) (answer string, asked bool) {
+	answer, asked, _ = promptAskEOF(src, question)
+	return answer, asked
+}
+
+// promptAskEOF is promptAsk plus the ended-at-EOF signal.
+//
+// A bare Enter and a ^D both yield a blank answer, and for a [y/N]
+// question the two collapse harmlessly. They do not collapse when the
+// blank default is yes: Enter means "take the offer", while ^D means
+// the operator walked away and must not be read as consent.
+func promptAskEOF(src PromptSource, question string) (answer string, asked, eof bool) {
 	if src == nil {
 		src = globalPromptSource
 	}
@@ -175,14 +190,12 @@ func promptAsk(src PromptSource, question string) (answer string, asked bool) {
 	}
 	tty := src()
 	if tty == nil {
-		return "", false
+		return "", false, false
 	}
 	fmt.Fprint(tty, question)
 	line, err := tty.ReadLine()
 	if err != nil && line == "" {
-		// EOF on the terminal (^D) is a decline, not an unanswered
-		// question: the operator was asked and chose to end it.
-		return "", true
+		return "", true, true
 	}
-	return strings.ToLower(strings.TrimSpace(line)), true
+	return strings.ToLower(strings.TrimSpace(line)), true, false
 }
