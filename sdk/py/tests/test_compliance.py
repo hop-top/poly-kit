@@ -8,6 +8,7 @@ import tempfile
 
 import pytest
 
+import hop_top_kit.compliance as compliance
 from hop_top_kit.compliance import (
     CheckResult,
     Factor,
@@ -346,3 +347,162 @@ class TestErrorCarriesFix:
     )
     def test_cases(self, obj, want):
         assert _error_carries_fix(obj) is want
+
+
+# --- Factor-4 autocorrect arm ---------------------------------------------
+#
+# Each obligation gets its own stub, because the whole point of the arm is
+# that a tool can be correct in one mode and wrong in another: a stub that
+# behaved identically under every policy would prove nothing.
+
+_USAGE_ENVELOPE = (
+    '{"code":"USAGE","message":"unknown flag --formt","suggested_fix":"--format","exit_code":2}'
+)
+
+
+def _autocorrect_stub(tmp_path, off_stderr, off_code, read_stderr, read_code):
+    """Write a stub that branches on KIT_AUTOCORRECT, as a real tool does."""
+    path = tmp_path / "stub"
+    path.write_text(
+        "#!/bin/sh\n"
+        'case "$KIT_AUTOCORRECT" in\n'
+        "read)\n"
+        "  cat >&2 <<'READ_EOF'\n" + read_stderr + "\nREAD_EOF\n"
+        f"  exit {read_code}\n"
+        "  ;;\n"
+        "*)\n"
+        "  cat >&2 <<'OFF_EOF'\n" + off_stderr + "\nOFF_EOF\n"
+        f"  exit {off_code}\n"
+        "  ;;\n"
+        "esac\n"
+    )
+    path.chmod(0o755)
+    return str(path)
+
+
+def _autocorrect_spec():
+    """Minimum spec the probe needs: one command _find_read_command picks."""
+    return {
+        "name": "stub",
+        "schema_version": "1.0",
+        "commands": [
+            {
+                "name": "list",
+                "contract": {"idempotent": True, "side_effects": ["read"]},
+                "output_schema": {"format": "json"},
+            }
+        ],
+    }
+
+
+def test_autocorrect_no_support_skips(tmp_path):
+    """An honest tool without the feature is not in violation."""
+    bin_ = _autocorrect_stub(tmp_path, _USAGE_ENVELOPE, 2, _USAGE_ENVELOPE, 2)
+    got = compliance._rt_contracts_errors_autocorrect(bin_, _autocorrect_spec())
+    assert got.status == "skip", got
+
+
+def test_autocorrect_no_read_command_skips(tmp_path):
+    """With nothing safe to probe on, the arm measures nothing."""
+    bin_ = _autocorrect_stub(tmp_path, _USAGE_ENVELOPE, 2, _USAGE_ENVELOPE, 2)
+    got = compliance._rt_contracts_errors_autocorrect(bin_, {"name": "stub"})
+    assert got.status == "skip"
+    assert "no read command" in got.details
+
+
+def test_autocorrect_correcting_by_default_fails(tmp_path):
+    """The regression the arm exists to catch: correction with no opt-in."""
+    corrected = '{"code":"OK","corrected_from":"--formt"}'
+    bin_ = _autocorrect_stub(tmp_path, corrected, 0, corrected, 0)
+    got = compliance._rt_contracts_errors_autocorrect(bin_, _autocorrect_spec())
+    assert got.status == "fail", got
+    assert "no autocorrect policy" in got.details
+
+
+def test_autocorrect_applied_with_corrected_from_passes(tmp_path):
+    bin_ = _autocorrect_stub(
+        tmp_path,
+        _USAGE_ENVELOPE,
+        2,
+        '{"code":"OK","message":"applied","corrected_from":"--formt","exit_code":0}',
+        0,
+    )
+    got = compliance._rt_contracts_errors_autocorrect(bin_, _autocorrect_spec())
+    assert got.status == "pass", got
+
+
+def test_autocorrect_applied_without_corrected_from_fails(tmp_path):
+    """The run silently became a different run, unauditable by a json caller."""
+    bin_ = _autocorrect_stub(
+        tmp_path, _USAGE_ENVELOPE, 2, '{"code":"OK","message":"applied","exit_code":0}', 0
+    )
+    got = compliance._rt_contracts_errors_autocorrect(bin_, _autocorrect_spec())
+    assert got.status == "fail", got
+    assert compliance.CORRECTED_FROM_FIELD in got.details
+
+
+def test_autocorrect_plaintext_notice_counts(tmp_path):
+    """The obligation is that it is DECLARED, not that it is declared as JSON."""
+    bin_ = _autocorrect_stub(
+        tmp_path, _USAGE_ENVELOPE, 2, "OK: applied\nCorrected from: --formt", 0
+    )
+    got = compliance._rt_contracts_errors_autocorrect(bin_, _autocorrect_spec())
+    assert got.status == "pass", got
+
+
+def test_aggregate_contracts_errors_warn_survives_a_skip():
+    """A fix-less-envelope warn must not be collapsed into a pass."""
+    base = compliance._warn(
+        compliance.Factor.CONTRACTS_ERRORS,
+        "structured error carries no recovery guidance",
+        "populate suggested_fix",
+    )
+    arm = compliance._skip(compliance.Factor.CONTRACTS_ERRORS, "no corrections applied")
+    got = compliance._aggregate_contracts_errors(base, arm)
+    assert got.status == "warn", got
+    assert got.details == base.details
+
+
+def test_aggregate_contracts_errors_fail_beats_everything():
+    got = compliance._aggregate_contracts_errors(
+        compliance._pass(compliance.Factor.CONTRACTS_ERRORS, "fine"),
+        compliance._fail(
+            compliance.Factor.CONTRACTS_ERRORS, "corrected with no policy set", "keep it off"
+        ),
+    )
+    assert got.status == "fail", got
+    assert "no policy set" in got.details
+
+
+def test_aggregate_contracts_errors_all_skip_dedupes():
+    got = compliance._aggregate_contracts_errors(
+        compliance._skip(compliance.Factor.CONTRACTS_ERRORS, "same reason"),
+        compliance._skip(compliance.Factor.CONTRACTS_ERRORS, "same reason"),
+    )
+    assert got.status == "skip", got
+    assert got.details == "same reason"
+
+
+def test_aggregate_contracts_errors_both_pass():
+    got = compliance._aggregate_contracts_errors(
+        compliance._pass(compliance.Factor.CONTRACTS_ERRORS, "structured"),
+        compliance._pass(compliance.Factor.CONTRACTS_ERRORS, "declared"),
+    )
+    assert got.status == "pass", got
+
+
+@pytest.mark.parametrize(
+    "text,want",
+    [
+        ('{"code":"OK","corrected_from":"--formt"}', True),
+        ("code: OK\ncorrected_from: --formt\n", True),
+        ("OK: applied\nCorrected from: --formt\n", True),
+        ('{"level":"info"}\n{"corrected_from":"--formt"}\n', True),
+        ('{"code":"OK","message":"applied"}', False),
+        ('{"corrected_from":""}', False),
+        ('{"corrected_from":"   "}', False),
+        ("", False),
+    ],
+)
+def test_correction_declared(text, want):
+    assert compliance._correction_declared(text) is want

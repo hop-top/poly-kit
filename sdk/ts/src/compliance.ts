@@ -499,6 +499,31 @@ function execBin(
   }
 }
 
+// execBinEnv is execBin with extra environment entries, for probes whose
+// obligation is stated against a policy the tool reads from the environment.
+// The inherited environment is kept: a binary needing PATH or HOME to start
+// at all must still start.
+function execBinEnv(
+  bin: string,
+  args: string[],
+  env: Record<string, string>,
+): { stdout: string; stderr: string; code: number } {
+  try {
+    const stdout = execFileSync(bin, args, {
+      timeout: 10000,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, ...env },
+    }).toString();
+    return { stdout, stderr: "", code: 0 };
+  } catch (e: any) {
+    return {
+      stdout: e.stdout?.toString() ?? "",
+      stderr: e.stderr?.toString() ?? "",
+      code: e.status ?? 1,
+    };
+  }
+}
+
 function findReadCommand(spec: SpecYAML): string | undefined {
   for (const c of allCommands(spec.commands ?? [])) {
     if (c.output_schema && c.contract?.idempotent === true) {
@@ -506,6 +531,173 @@ function findReadCommand(spec: SpecYAML): string | undefined {
     }
   }
   return undefined;
+}
+
+// autocorrectEnvVar is the environment name kit reads for its opt-in flag
+// autocorrect policy. Set by the probe below to elicit each mode from a tool
+// that supports it; a tool that does not simply ignores it, which is what
+// makes the probe skip rather than fail.
+const autocorrectEnvVar = "KIT_AUTOCORRECT";
+
+// correctedFromField is the envelope key a tool MUST populate when it
+// rewrote a flag for the caller.
+const correctedFromField = "corrected_from";
+
+// contractsErrorsEnvelope is the original F4 obligation: a bogus flag exits
+// non-zero and comes back as a structured envelope carrying a fix.
+function contractsErrorsEnvelope(bin: string): CheckResult {
+  const f = Factor.ContractsErrors;
+  const r = execBin(bin, ["--format", "json", "--bogus-arg-xyzzy"]);
+  if (r.code === 0) {
+    return fail(f, "bogus arg didn't cause error exit",
+      "Unknown flags should cause non-zero exit");
+  }
+  if (isValidJSON(r.stderr)) {
+    let obj: unknown;
+    try {
+      obj = JSON.parse(r.stderr.trim());
+    } catch {
+      obj = undefined;
+    }
+    if (obj && typeof obj === "object" && "code" in obj) {
+      if (errorCarriesFix(obj as Record<string, unknown>)) {
+        return pass(f, "structured error with code field and recovery guidance");
+      }
+      return warn(f, "structured error carries no recovery guidance",
+        "Populate suggested_fix (or alternatives) with a concrete " +
+          "correction so the caller does not need a --help round trip");
+    }
+  }
+  return warn(f, "error output is not structured JSON",
+    "Return JSON errors with a 'code' field on stderr");
+}
+
+// contractsErrorsAutocorrect checks the per-mode semantics of an opt-in flag
+// autocorrect, when the tool has one.
+//
+// The obligations differ by mode, and each is the thing that mode's existence
+// puts at risk:
+//
+//   - off (and the default, which is off): a mistyped flag exits non-zero.
+//     This is the contract every other caller depends on, and a tool that
+//     quietly corrects by default has broken it for every script that was
+//     relying on the failure.
+//   - read: IF a correction was applied — exit 0 on an invocation that should
+//     have failed to parse — the envelope MUST carry corrected_from. A run
+//     that silently becomes a different run is unauditable, and stderr prose
+//     is not something a --format json consumer reads.
+//
+// Aimed at a READ command, not the root, because a correction is only ever
+// legitimate on one: the side-effect gate is per-leaf, and a tool rewriting a
+// flag on an unannotated root would be violating that gate rather than
+// demonstrating the feature.
+//
+// The near-miss token is a one-edit typo of --format. `--formt` rather than
+// `--forma`: the latter is a PREFIX of --format, --format-opt and
+// --format-help, so it is ambiguous by construction and no compliant tool
+// would ever correct it — a probe built on it would skip for every tool and
+// measure nothing.
+function contractsErrorsAutocorrect(bin: string, spec: SpecYAML): CheckResult {
+  const f = Factor.ContractsErrors;
+  const nearMiss = "--formt=json";
+
+  const readCmd = findReadCommand(spec);
+  if (!readCmd) {
+    return skip(f, "no read command found to probe autocorrect on");
+  }
+
+  // Obligation 1: the default is suggest-only.
+  if (execBin(bin, [readCmd, nearMiss]).code === 0) {
+    return fail(f,
+      "a mistyped flag exited 0 with no autocorrect policy set",
+      "Keep autocorrect off by default: a bad flag must exit non-zero " +
+        "unless the caller opted in");
+  }
+
+  // Obligation 2: explicit off behaves as the default does.
+  if (execBinEnv(bin, [readCmd, nearMiss],
+    { [autocorrectEnvVar]: "off" }).code === 0) {
+    return fail(f,
+      "a mistyped flag exited 0 under an explicit off policy",
+      "Honor the off value: it must not be read as unset");
+  }
+
+  // Obligation 3: under read, a correction that WAS applied is declared.
+  const r = execBinEnv(bin, [readCmd, "--format", "json", nearMiss],
+    { [autocorrectEnvVar]: "read" });
+  if (r.code !== 0) {
+    return skip(f, "binary does not apply flag corrections under " +
+      autocorrectEnvVar + "=read");
+  }
+  if (correctionDeclared(r.stderr) || correctionDeclared(r.stdout)) {
+    return pass(f, "applied flag correction declares " + correctedFromField);
+  }
+  return fail(f,
+    "a flag correction was applied but no " + correctedFromField +
+      " was reported",
+    "Emit " + correctedFromField + " in the structured envelope naming the " +
+      "token the caller typed, so an agent and an audit log can both see " +
+      "that the command that ran is not the command that was asked for");
+}
+
+// correctionDeclared reports whether s carries a corrected_from field.
+//
+// Tolerant of surrounding output on purpose: a tool may write the notice
+// alongside logs, and a probe that demanded the stream be exactly one JSON
+// document would be testing Factor 3's obligation, not this one. Each line
+// is tried as its own document, then the raw text as a fallback for a YAML
+// or plaintext rendering.
+function correctionDeclared(s: string): boolean {
+  for (const line of s.split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("{")) continue;
+    try {
+      const obj = JSON.parse(t);
+      if (obj && typeof obj === "object") {
+        const v = (obj as Record<string, unknown>)[correctedFromField];
+        if (typeof v === "string" && v.trim() !== "") return true;
+      }
+    } catch {
+      // Not a standalone document; the raw-text fallback below still
+      // catches a pretty-printed one.
+    }
+  }
+  if (/"corrected_from"\s*:\s*"[^"\s]/.test(s)) return true;
+  return s.includes(correctedFromField + ":") ||
+    s.includes("Corrected from:");
+}
+
+// aggregateContractsErrors folds the two F4 runtime sub-checks into one row,
+// per the "one row per factor" model.
+//
+// Precedence matches the F13 aggregator with one addition it needs and F13
+// does not: a warn survives. The envelope sub-check reports warn for a tool
+// whose error is unstructured or fix-less, and collapsing that to pass
+// because the autocorrect arm skipped would hide the finding on exactly the
+// tools that have not adopted autocorrect — which is most of them.
+function aggregateContractsErrors(...rs: CheckResult[]): CheckResult {
+  const f = Factor.ContractsErrors;
+  const failed: string[] = [];
+  const skipped: string[] = [];
+  let firstWarn: CheckResult | undefined;
+  for (const r of rs) {
+    // details is optional on the wire; a sub-check that set none
+    // contributes nothing to the concatenation rather than "undefined".
+    if (r.status === "fail") failed.push(r.details ?? "");
+    else if (r.status === "skip") skipped.push(r.details ?? "");
+    else if (r.status === "warn" && !firstWarn) firstWarn = r;
+  }
+  if (failed.length > 0) {
+    return fail(f, failed.join("; "),
+      "Address each failing sub-condition (structured error envelope; " +
+        "autocorrect mode semantics)");
+  }
+  if (firstWarn) return firstWarn;
+  if (skipped.length === rs.length) {
+    return skip(f, [...new Set(skipped)].join("; "));
+  }
+  return pass(f, "structured error with recovery guidance; " +
+    "autocorrect mode semantics honored");
 }
 
 // errorCarriesFix reports whether a decoded error envelope offers the caller
@@ -641,37 +833,16 @@ function runRuntimeChecks(
   //     spend a --help round trip to learn what it should have typed. That
   //     round trip is the cost this factor exists to eliminate, so a
   //     structured error WITHOUT a fix is only a partial pass.
-  {
-    const f = Factor.ContractsErrors;
-    const r = execBin(bin, ["--format", "json", "--bogus-arg-xyzzy"]);
-    if (r.code === 0) {
-      results.push(fail(f, "bogus arg didn't cause error exit",
-        "Unknown flags should cause non-zero exit"));
-    } else if (isValidJSON(r.stderr)) {
-      let obj: unknown;
-      try {
-        obj = JSON.parse(r.stderr.trim());
-      } catch {
-        obj = undefined;
-      }
-      if (obj && typeof obj === "object" && "code" in obj) {
-        if (errorCarriesFix(obj as Record<string, unknown>)) {
-          results.push(pass(f,
-            "structured error with code field and recovery guidance"));
-        } else {
-          results.push(warn(f, "structured error carries no recovery guidance",
-            "Populate suggested_fix (or alternatives) with a concrete " +
-              "correction so the caller does not need a --help round trip"));
-        }
-      } else {
-        results.push(warn(f, "error output is not structured JSON",
-          "Return JSON errors with a 'code' field on stderr"));
-      }
-    } else {
-      results.push(warn(f, "error output is not structured JSON",
-        "Return JSON errors with a 'code' field on stderr"));
-    }
-  }
+  //
+  // Both are stated against the SUGGEST-ONLY behavior, which is what this
+  // probe elicits: an argument no real flag is close to, and no autocorrect
+  // policy of its own. A tool invoked under an autocorrect policy is a
+  // different measurement, made by the second sub-check below and folded
+  // into the same row.
+  results.push(aggregateContractsErrors(
+    contractsErrorsEnvelope(bin),
+    contractsErrorsAutocorrect(bin, spec),
+  ));
 
   // F5: preview
   {

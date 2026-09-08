@@ -28,6 +28,18 @@ type Error struct {
 	Alternatives []string `json:"alternatives,omitempty" yaml:"alternatives,omitempty"`
 	ExitCode     int      `json:"exit_code" yaml:"exit_code"`
 
+	// CorrectedFrom names the token the caller actually typed when the
+	// invocation that produced this envelope had a flag rewritten for
+	// them (kit's opt-in cli.autocorrect; off by default).
+	//
+	// On the wire, not just on stderr. A caller reading --format
+	// json|yaml has no other way to learn that the command it ran is
+	// not the command it asked for, and an audit record that shows only
+	// the corrected argv has lost the half a reviewer needs. Empty —
+	// and so absent — on every invocation nothing was corrected on,
+	// which is every invocation under the default policy.
+	CorrectedFrom string `json:"corrected_from,omitempty" yaml:"corrected_from,omitempty"`
+
 	// Transience classifies the failure for retry decisions (Factor 4):
 	// TransienceTransient (retry-worthy), TransiencePermanent (do not
 	// retry), or TransienceUnknown. Constructors and WrapError populate
@@ -313,6 +325,9 @@ func renderErrorPlain(w io.Writer, err *Error) error {
 	}
 	if err.Cause != "" {
 		fmt.Fprintf(&b, "Cause: %s\n", err.Cause)
+	}
+	if err.CorrectedFrom != "" {
+		fmt.Fprintf(&b, "Corrected from: %s\n", err.CorrectedFrom)
 	}
 	if err.SuggestedFix != "" {
 		fmt.Fprintf(&b, "Fix: %s\n", err.SuggestedFix)

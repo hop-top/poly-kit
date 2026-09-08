@@ -249,12 +249,25 @@ func (r *Root) installUsageClassification() {
 		// suggester needs them so a typo of --dry-run is corrected
 		// rather than answered with a help pointer to the very page
 		// that lists it.
-		hiddenDefault := make(map[string]struct{}, len(r.hiddenDefaultFlags))
-		for _, name := range r.hiddenDefaultFlags {
-			hiddenDefault[name] = struct{}{}
-		}
+		hiddenDefault := r.hiddenDefaultFlagSet()
 		root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-			return usageError(cmd, flagParseError(cmd, hiddenDefault, prev(cmd, err)))
+			// Stage 0: record a rewrite when cli.autocorrect asked for
+			// one. Reads the bare pflag error ahead of the enricher.
+			// See autocorrect_capture.go.
+			bare := prev(cmd, err)
+			if r.captureCorrection(cmd, bare) {
+				// A re-dispatch on the corrected argv is coming, and it
+				// will report the rewrite itself. Returning the error
+				// silenced rather than rendered keeps stderr to one
+				// envelope: the suggest-only one would otherwise sit
+				// there claiming exit_code 2 next to a run that
+				// succeeds, and two JSON documents on stderr parse as
+				// neither. Execute reads r.pending, not this error.
+				cmd.SilenceErrors = true
+				cmd.SilenceUsage = true
+				return markRendered(bare)
+			}
+			return usageError(cmd, flagParseError(cmd, hiddenDefault, bare))
 		})
 		annotate(root, usageFlagHookAnnotation)
 	}
