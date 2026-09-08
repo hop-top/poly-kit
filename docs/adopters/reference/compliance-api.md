@@ -144,6 +144,8 @@ binary, not the spec. Common runtime symptoms:
 | F3 fails: stderr has JSON            | mixed stream discipline            |
 | F4 fails: `--bogus-arg` exits 0      | unknown flags accepted silently    |
 | F4 warns: no recovery guidance       | error carries no `suggested_fix`/`alternatives`, or only a `--help` pointer |
+| F4 fails: corrected with no policy   | a mistyped flag exits 0 when `KIT_AUTOCORRECT` is unset or `off` |
+| F4 fails: no `corrected_from`        | a flag correction was applied but the envelope does not say which token was typed |
 | F10 fails: no `_meta` field          | structured output missing provenance |
 
 ---
@@ -198,7 +200,7 @@ parse and read as missing); and non-empty `redact_rules`.
 | 1 | Self-Describing    | `--help` exits 0, contains COMMANDS/USAGE       |
 | 2 | Structured I/O     | read command `--format json` returns valid JSON |
 | 3 | Stream Discipline  | stdout has data, stderr has no JSON             |
-| 4 | Contracts & Errors | `--format json --bogus-arg` exits non-zero with a structured envelope carrying a concrete `suggested_fix` or `alternatives` (a bare `--help` pointer warns) |
+| 4 | Contracts & Errors | `--format json --bogus-arg` exits non-zero with a structured envelope carrying a concrete `suggested_fix` or `alternatives` (a bare `--help` pointer warns); plus autocorrect mode semantics — see below |
 | 5 | Preview            | mutating command `--dry-run` exits 0            |
 | 7 | State Transparency | `config show` exits 0                           |
 | 8 | Safe Delegation    | dangerous commands have safety metadata         |
@@ -206,6 +208,28 @@ parse and read as missing); and non-empty `redact_rules`.
 |11 | Evolution          | `--version` exits 0                             |
 |12 | Auth Lifecycle     | `auth status` exits 0 (or skip if no auth)      |
 |13 | Consenting Telemetry | kill switches honoured, consent prompt and `inspect` behave; skip unless opted in |
+
+### Factor 4 and opt-in flag autocorrect
+
+The F4 row folds two runtime sub-checks. The first is the envelope check
+above. The second measures a tool's flag autocorrect, when it has one, and is
+aimed at a read command — a correction is only ever legitimate on one.
+
+| Mode                          | Obligation                                                    |
+|-------------------------------|---------------------------------------------------------------|
+| unset (the default) and `off` | a mistyped flag exits non-zero                                |
+| `read`, correction applied    | the envelope carries `corrected_from` naming the typed token   |
+| `read`, correction not applied | nothing — the row skips                                      |
+
+The probe sets `KIT_AUTOCORRECT` and passes a one-edit typo of `--format`. A
+tool that ignores the variable keeps exiting non-zero, which the row reports
+as a skip: having the feature is not required, being honest about it is.
+
+A `warn` from the envelope sub-check survives a skip from this one, so a
+fix-less envelope is still reported on a tool that has not adopted
+autocorrect.
+
+For the policy itself, see [`flag-enums.md`](flag-enums.md).
 
 ### API surface
 
