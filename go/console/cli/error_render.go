@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	"charm.land/fang/v2"
+	"github.com/hop-top/fang/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"hop.top/kit/go/console/output"

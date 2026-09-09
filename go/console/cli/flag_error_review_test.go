@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/fang/v2"
+	"github.com/hop-top/fang/v2"
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/output"
 )
@@ -179,11 +179,15 @@ func TestAdopterFlagErrorFunc_BareErrorIsStillEnriched(t *testing.T) {
 func scopedEnumTree() (*Root, *cobra.Command, *cobra.Command) {
 	root := &cobra.Command{Use: "tool", Short: "Tool", Long: "Tool."}
 	root.PersistentFlags().String("format", "table", "Output format")
-	list := &cobra.Command{Use: "list", Short: "List", Long: "List.",
-		RunE: func(*cobra.Command, []string) error { return nil }}
+	list := &cobra.Command{
+		Use: "list", Short: "List", Long: "List.",
+		RunE: func(*cobra.Command, []string) error { return nil },
+	}
 	list.Flags().String("type", "", "Record type")
-	export := &cobra.Command{Use: "export", Short: "Export", Long: "Export.",
-		RunE: func(*cobra.Command, []string) error { return nil }}
+	export := &cobra.Command{
+		Use: "export", Short: "Export", Long: "Export.",
+		RunE: func(*cobra.Command, []string) error { return nil },
+	}
 	export.Flags().String("type", "", "Output type")
 	root.AddCommand(list, export)
 	return &Root{Cmd: root}, list, export
@@ -347,8 +351,10 @@ func TestUnknownFlag_HiddenDefaultTypoIsCorrected(t *testing.T) {
 	if err := root.PersistentFlags().MarkHidden("dry-run"); err != nil {
 		t.Fatal(err)
 	}
-	leaf := &cobra.Command{Use: "delete", Short: "Delete", Long: "Delete.",
-		RunE: func(*cobra.Command, []string) error { return nil }}
+	leaf := &cobra.Command{
+		Use: "delete", Short: "Delete", Long: "Delete.",
+		RunE: func(*cobra.Command, []string) error { return nil },
+	}
 	root.AddCommand(leaf)
 
 	r := &Root{Cmd: root, hiddenDefaultFlags: []string{"dry-run"}}
@@ -371,8 +377,10 @@ func TestUnknownFlag_HiddenDefaultTypoIsCorrected(t *testing.T) {
 // does not carry.
 func TestUnknownFlag_ShortNameRefusesAConfidentFix(t *testing.T) {
 	root := &cobra.Command{Use: "tool", Short: "Tool", Long: "Tool."}
-	leaf := &cobra.Command{Use: "sub", Short: "Sub", Long: "Sub.",
-		RunE: func(*cobra.Command, []string) error { return nil }}
+	leaf := &cobra.Command{
+		Use: "sub", Short: "Sub", Long: "Sub.",
+		RunE: func(*cobra.Command, []string) error { return nil },
+	}
 	leaf.Flags().Bool("ab", false, "Two-char flag")
 	leaf.Flags().Int("limit", 0, "Max rows")
 	root.AddCommand(leaf)
