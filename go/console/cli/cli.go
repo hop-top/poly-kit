@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"charm.land/fang/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
+	"github.com/hop-top/fang/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -1621,7 +1621,8 @@ func (r *Root) installHelpTopicError(operands []string) {
 	helpCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		return output.UsageError(fmt.Sprintf(
 			"unknown help topic %q for %q%s", topic, r.Cmd.Name(),
-			suggestionsFor(r.Cmd, operands[0])))
+			suggestionsFor(r.Cmd, operands[0]),
+		))
 	}
 }
 
