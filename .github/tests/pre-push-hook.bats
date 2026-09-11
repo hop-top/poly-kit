@@ -67,7 +67,7 @@ go_dirs_testable() {
 
 @test "hook reads stdin (remote ref protocol)" {
     # pre-push hooks receive lines on stdin; the script captures them once.
-    grep -q 'PUSH_INPUT=$(cat)' "$HOOK"
+    grep -q 'PUSH_INPUT=' "$HOOK"
 }
 
 @test "hook has SHA cache skip logic" {
@@ -248,4 +248,186 @@ go/runtime/bus/bus.go")
     cd "$tmp"
     result=$(go_dirs_testable "deleted/pkg/a.go")
     [ -z "$(echo "$result" | tr -d ' ')" ]
+}
+
+# ---------------------------------------------------------------------------
+# Branch deletion / empty stdin
+#
+# `git push origin --delete <branch>` invokes the hook with either no ref
+# lines at all or a line whose LOCAL sha ($2) is the zero SHA. Neither case
+# has content to lint, and an invoker that leaves stdin open with no data
+# must not wedge the hook on a blocking read.
+# ---------------------------------------------------------------------------
+
+ZERO="0000000000000000000000000000000000000000"
+
+# A base whose diff against HEAD contains at least one .go file, so the
+# affected-area gating actually has something to fire on. Walking history
+# rather than assuming HEAD~1 keeps these tests independent of whatever the
+# most recent commit happened to touch.
+go_touching_base() {
+    local c
+    for c in $(git rev-list -40 HEAD); do
+        if git diff --name-only "$c" HEAD 2>/dev/null | grep -q '\.go$'; then
+            printf '%s\n' "$c"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Run the hook with stubbed `make`/`go` so no real build is triggered, and
+# with a hard wall-clock cap so a blocking read FAILS the test instead of
+# hanging the whole suite.
+#
+# Usage: run_hook_capped <seconds> <mode> [payload]
+#   mode `closed` : stdin redirected from /dev/null (EOF immediately)
+#   mode `open`   : stdin is a pipe held open by a writer that sends nothing
+#   mode `lines`  : payload written to stdin, then EOF
+run_hook_capped() {
+    local cap="$1" mode="$2" payload="${3:-}"
+    local stub="$BATS_TEST_TMPDIR/stub"
+    mkdir -p "$stub"
+    # Stubs record their invocation so tests can assert nothing ran.
+    for c in make go; do
+        cat > "$stub/$c" <<STUB
+#!/bin/sh
+echo "\$0 \$*" >> "$BATS_TEST_TMPDIR/invoked"
+exit 0
+STUB
+        chmod +x "$stub/$c"
+    done
+    : > "$BATS_TEST_TMPDIR/invoked"
+
+    # Never let the hook poison the real repo's SHA cache.
+    local gitdir; gitdir="$(git rev-parse --git-dir)"
+    local cache="$gitdir/pre-push-last-sha"
+    local saved=""
+    if [ -f "$cache" ]; then saved="$(cat "$cache")"; fi
+    rm -f "$cache"
+
+    HOOK_STATUS=""
+    case "$mode" in
+        closed)
+            PATH="$stub:$PATH" "$HOOK" origin file:///dev/null </dev/null \
+                >"$BATS_TEST_TMPDIR/out" 2>&1 &
+            ;;
+        open)
+            local fifo="$BATS_TEST_TMPDIR/fifo"
+            rm -f "$fifo"; mkfifo "$fifo"
+            # Holds the write end open for longer than the cap without
+            # ever writing a byte: exactly the hang condition.
+            sh -c "sleep $((cap + 5))" > "$fifo" &
+            HOLDER=$!
+            PATH="$stub:$PATH" "$HOOK" origin file:///dev/null <"$fifo" \
+                >"$BATS_TEST_TMPDIR/out" 2>&1 &
+            ;;
+        lines)
+            printf '%s\n' "$payload" | PATH="$stub:$PATH" \
+                "$HOOK" origin file:///dev/null \
+                >"$BATS_TEST_TMPDIR/out" 2>&1 &
+            ;;
+    esac
+    local hookpid=$!
+
+    # Poll for completion up to the cap; kill and mark TIMEOUT past it.
+    local waited=0
+    while kill -0 "$hookpid" 2>/dev/null; do
+        if [ "$waited" -ge "$cap" ]; then
+            kill -9 "$hookpid" 2>/dev/null || true
+            wait "$hookpid" 2>/dev/null || true
+            HOOK_STATUS="TIMEOUT"
+            break
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if [ "$HOOK_STATUS" != "TIMEOUT" ]; then
+        # A nonzero hook exit is a result to assert on, not a test error.
+        HOOK_STATUS=0
+        wait "$hookpid" || HOOK_STATUS=$?
+    fi
+    [ -n "${HOLDER:-}" ] && { kill "$HOLDER" 2>/dev/null || true; HOLDER=""; }
+
+    HOOK_OUT="$(cat "$BATS_TEST_TMPDIR/out" 2>/dev/null || true)"
+    HOOK_INVOKED="$(cat "$BATS_TEST_TMPDIR/invoked" 2>/dev/null || true)"
+
+    # Restore the cache exactly as found.
+    rm -f "$cache"
+    if [ -n "$saved" ]; then printf '%s\n' "$saved" > "$cache"; fi
+}
+
+@test "deletion: stdin closed exits 0 without running linters" {
+    run_hook_capped 20 closed
+    [ "$HOOK_STATUS" = "0" ]
+    [ -z "$HOOK_INVOKED" ]
+}
+
+@test "deletion: stdin open with no data exits 0 and does not hang" {
+    # THE HANG. Without a cap this wedges the suite rather than failing.
+    run_hook_capped 20 open
+    [ "$HOOK_STATUS" != "TIMEOUT" ]
+    [ "$HOOK_STATUS" = "0" ]
+    [ -z "$HOOK_INVOKED" ]
+}
+
+@test "deletion: a single deletion line exits 0 without running linters" {
+    # $4 on a deletion is the LIVE remote sha of the branch being removed,
+    # not the zero SHA. Use a sha that differs from HEAD so an unfixed hook
+    # produces a non-empty diff and actually invokes the linters — pinning
+    # $4 to HEAD would mask the defect behind an empty `git diff`.
+    run_hook_capped 60 lines "(delete) $ZERO refs/heads/gone $(go_touching_base)"
+    [ "$HOOK_STATUS" != "TIMEOUT" ]
+    [ "$HOOK_STATUS" = "0" ]
+    [ -z "$HOOK_INVOKED" ]
+}
+
+@test "deletion: mixed deletion + real push still lints the real ref" {
+    # An over-broad "any deletion present -> skip everything" fix would
+    # silently drop linting for the legitimate ref in the same push.
+    base="$(go_touching_base)"
+    [ -n "$base" ]
+    run_hook_capped 60 lines "(delete) $ZERO refs/heads/gone $(git rev-parse HEAD)
+refs/heads/work $(git rev-parse HEAD) refs/heads/work $base"
+    [ "$HOOK_STATUS" != "TIMEOUT" ]
+    [ -n "$HOOK_INVOKED" ]
+}
+
+@test "deletion: a normal push line still runs affected linters" {
+    base="$(go_touching_base)"
+    [ -n "$base" ]
+    run_hook_capped 60 lines "refs/heads/work $(git rev-parse HEAD) refs/heads/work $base"
+    [ "$HOOK_STATUS" != "TIMEOUT" ]
+    [ -n "$HOOK_INVOKED" ]
+}
+
+@test "deletion: protected-branch refusal still fires for a real push" {
+    run_hook_capped 30 lines "refs/heads/main $(git rev-parse HEAD) refs/heads/main $(git rev-parse HEAD~1)"
+    [ "$HOOK_STATUS" = "1" ]
+    [[ "$HOOK_OUT" == *"refusing direct push"* ]]
+}
+
+@test "deletion: deleting main is still allowed past the protected check" {
+    run_hook_capped 60 lines "(delete) $ZERO refs/heads/main $(go_touching_base)"
+    [ "$HOOK_STATUS" = "0" ]
+    [[ "$HOOK_OUT" != *"refusing direct push"* ]]
+    [ -z "$HOOK_INVOKED" ]
+}
+
+@test "hook does not use a bare blocking cat for stdin" {
+    # An unindented top-level `PUSH_INPUT=$(cat)` blocks forever when the
+    # invoker leaves stdin open with no ref lines to send. The same call
+    # indented inside the no-`read -t` fallback branch is fine.
+    ! grep -qE '^PUSH_INPUT=\$\(cat\)[[:space:]]*$' "$HOOK"
+    # And the guarded read must actually be present.
+    grep -qE 'read -r -t' "$HOOK"
+}
+
+@test "hook short-circuits before computing a diff base" {
+    # The deletion exit must happen before REMOTE_SHA / CHANGED work.
+    early=$(grep -n 'ALL_DELETIONS\|NON_DELETIONS' "$HOOK" | head -1 | cut -d: -f1)
+    base=$(grep -n '^CHANGED=' "$HOOK" | head -1 | cut -d: -f1)
+    [ -n "$early" ]
+    [ -n "$base" ]
+    [ "$early" -lt "$base" ]
 }

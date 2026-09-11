@@ -1,14 +1,61 @@
 #!/bin/sh
 set -e
 
+ZERO_SHA="0000000000000000000000000000000000000000"
+
 # Capture stdin once; pre-push receives ref info on stdin and we consult it
-# in two places below.
-PUSH_INPUT=$(cat)
+# in several places below.
+#
+# Git writes one "<local ref> <local sha> <remote ref> <remote sha>" line per
+# ref and then closes the stream, so a plain `cat` normally terminates. But a
+# push with nothing to send (a deletion, or an already-up-to-date ref) yields
+# ZERO lines, and an invoker that hands the hook an inherited stdin it never
+# closes leaves `cat` blocking on a stream that will never reach EOF — the
+# push then wedges with no output at all.
+#
+# Guard the FIRST read only. `read -t` is a bash/ksh extension (dash exits 2
+# on the unknown option) and `timeout` is absent from a stock macOS, so probe
+# for -t support at runtime and degrade to an unguarded read where it is
+# missing. Once a first line arrives, drain the rest with a plain blocking
+# read: git emits the whole list in one burst, so only the initial wait can
+# stall. That keeps a slow-but-real push intact — the timeout can never fire
+# mid-list and truncate refs, because it is armed exclusively before the
+# first line and disarmed the moment one is seen.
+PUSH_INPUT=""
+# shellcheck disable=SC3045 # Deliberate probe: rc 2 means -t is unsupported.
+if read -t 0 _probe </dev/null 2>/dev/null || [ $? -ne 2 ]; then
+    # shellcheck disable=SC3045 # -t guarded by the probe above.
+    if IFS= read -r -t "${PRE_PUSH_STDIN_TIMEOUT:-10}" _line; then
+        PUSH_INPUT="$_line"
+        while IFS= read -r _line; do
+            PUSH_INPUT="$PUSH_INPUT
+$_line"
+        done
+    fi
+else
+    PUSH_INPUT=$(cat)
+fi
+
+# --- Nothing to push, or only deletions: no content to check ---
+# A deletion line carries the zero SHA as its LOCAL sha ($2); its remote sha
+# ($4) is the live commit being removed, so letting it reach the diff below
+# would lint the entire branch just to drop a ref. Exit before any base
+# resolution. Gate on there being no NON-deletion line rather than on a
+# deletion being present, so a push mixing a deletion with a real ref still
+# runs every check for the real ref.
+NON_DELETIONS=$(printf '%s\n' "$PUSH_INPUT" | awk -v zero="$ZERO_SHA" '
+    NF == 0 { next }
+    $2 == zero { next }
+    { print; exit }
+')
+if [ -z "$NON_DELETIONS" ]; then
+    echo "Pre-push: nothing to check (branch deletion or empty ref list)."
+    exit 0
+fi
 
 # --- Refuse direct pushes to protected branches (main/master) ---
 # Bypass: git push --no-verify (use only for hotfixes you've consciously chosen)
 PROTECTED_REFS="refs/heads/main refs/heads/master"
-ZERO_SHA="0000000000000000000000000000000000000000"
 PROTECTED_HIT=$(printf '%s\n' "$PUSH_INPUT" | awk -v zero="$ZERO_SHA" '
     NF == 0 { next }
     $2 == zero { next }   # branch deletion: allow
