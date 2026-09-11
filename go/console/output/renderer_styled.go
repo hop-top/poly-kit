@@ -65,7 +65,17 @@ func renderStyledTable(w io.Writer, v any, selected []string, style TableStyle, 
 		rows[i] = row
 	}
 
-	visible := selectVisibleColumns(cols, rows, terminalWidth())
+	// The lipgloss table below is given an explicit Width and wraps
+	// overlong cells on its own, so an overflowing cell is already handled
+	// downstream — dropping a column for it would delete data the renderer
+	// was about to display. Dropping is therefore consulted only for the
+	// case it genuinely solves (too many columns for the terminal), and
+	// truncation trims the residue so wrapping stays a line or two rather
+	// than a screenful.
+	width := terminalWidth()
+	visible := selectVisibleColumns(cols, rows, width)
+	rows = fitCellsToWidth(visible, rows, width)
+
 	headers := make([]string, len(visible))
 	projected := make([][]string, len(rows))
 	for i, c := range visible {
@@ -87,7 +97,7 @@ func renderStyledTable(w io.Writer, v any, selected []string, style TableStyle, 
 	t := table.New().
 		Headers(headers...).
 		Rows(projected...).
-		Width(terminalWidth()).
+		Width(width).
 		Border(border).
 		BorderRow(false).
 		BorderColumn(true).
