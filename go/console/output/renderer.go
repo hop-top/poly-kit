@@ -272,7 +272,13 @@ func renderTable(w io.Writer, v any, selected []string) error {
 		rows[i] = row
 	}
 
-	visible := selectVisibleColumns(cols, rows, terminalWidth())
+	width := terminalWidth()
+	visible := selectVisibleColumns(cols, rows, width)
+	// Absorb any residual overflow by clipping cell contents. Dropping
+	// columns alone cannot fit a table whose single widest cell already
+	// exceeds the budget, and deleting data to hide that is worse than
+	// showing it elided.
+	rows = fitCellsToWidth(visible, rows, width)
 
 	tw := tabwriter.NewWriter(w, 0, 0, columnSeparator, ' ', 0)
 	defer tw.Flush()
@@ -353,9 +359,17 @@ func parseTableTag(tag string) (header string, priority int) {
 }
 
 // selectVisibleColumns drops the lowest-priority columns until the total
-// content width fits within ttyWidth. If even the highest-priority subset
-// overflows, returns all columns (caller's tabwriter handles overflow).
+// content width fits within ttyWidth. If no subset fits, returns all columns
+// and leaves the overflow to be absorbed by cell truncation downstream.
 // Column order is preserved (only hides; never reorders).
+//
+// Dropping is attempted only while it can still succeed. A column whose own
+// content exceeds the budget makes every subset containing it unfittable,
+// and since dropping never reorders, that column is retained to the end —
+// so continuing to drop around it would strip the whole table down to one
+// column without ever fitting. Truncation, not deletion, is the remedy for
+// an overlong cell; deletion is reserved for the case it actually solves,
+// namely many narrow columns on a genuinely narrow terminal.
 func selectVisibleColumns(cols []column, rows [][]string, ttyWidth int) []column {
 	if ttyWidth <= 0 {
 		return cols
@@ -365,17 +379,54 @@ func selectVisibleColumns(cols []column, rows [][]string, ttyWidth int) []column
 	}
 
 	// Hide columns one at a time, lowest priority first; ties broken by
-	// rightmost-first (later columns drop before earlier ones at same priority).
+	// rightmost-first (later columns drop before earlier ones at same
+	// priority). The candidate is tested BEFORE being adopted, so the
+	// "no subset fits" fallback below is genuinely reachable rather than
+	// bottoming out at a single surviving column.
 	visible := append([]column(nil), cols...)
 	for len(visible) > 1 {
-		dropAt := lowestPriorityIndex(visible)
-		visible = append(visible[:dropAt], visible[dropAt+1:]...)
+		candidate := dropColumnAt(visible, lowestPriorityIndex(visible))
+		if !fitsWidth(candidate, rows, ttyWidth) && !canEverFit(candidate, rows, ttyWidth) {
+			// No further dropping can reach the budget; keep the full set
+			// and let truncation absorb the remainder.
+			break
+		}
+		visible = candidate
 		if fitsWidth(visible, rows, ttyWidth) {
 			return visible
 		}
 	}
-	// Couldn't fit even with one column — fall back to original set.
+	// No subset fits — return the original set rather than an arbitrarily
+	// mutilated one. Cell truncation handles the overflow.
 	return cols
+}
+
+// dropColumnAt returns a copy of visible without the column at idx, leaving
+// the input untouched.
+func dropColumnAt(visible []column, idx int) []column {
+	out := make([]column, 0, len(visible)-1)
+	out = append(out, visible[:idx]...)
+	out = append(out, visible[idx+1:]...)
+	return out
+}
+
+// canEverFit reports whether any subset of cols could still fit within
+// ttyWidth. A single column wider than the budget on its own can never be
+// dropped away from (dropping preserves order and sheds by priority), so
+// once one exists no amount of further dropping helps.
+func canEverFit(cols []column, rows [][]string, ttyWidth int) bool {
+	for _, c := range cols {
+		w := displayWidth(c.header)
+		for _, row := range rows {
+			if cw := displayWidth(row[c.colIdx]); cw > w {
+				w = cw
+			}
+		}
+		if w > ttyWidth {
+			return false
+		}
+	}
+	return true
 }
 
 // lowestPriorityIndex returns the index of the lowest-priority column in
@@ -400,22 +451,16 @@ func fitsWidth(cols []column, rows [][]string, ttyWidth int) bool {
 }
 
 // tableWidth is the sum of per-column max widths plus separator padding.
+// Widths are measured in terminal cells, not bytes: a multibyte or East
+// Asian wide rune would otherwise be counted as several columns' worth of
+// space it does not occupy.
 func tableWidth(cols []column, rows [][]string) int {
 	if len(cols) == 0 {
 		return 0
 	}
-	total := 0
-	for i, c := range cols {
-		w := len(c.header)
-		for _, row := range rows {
-			if cell := row[c.colIdx]; len(cell) > w {
-				w = len(cell)
-			}
-		}
+	total := columnSeparator * (len(cols) - 1)
+	for _, w := range columnWidths(cols, rows) {
 		total += w
-		if i < len(cols)-1 {
-			total += columnSeparator
-		}
 	}
 	return total
 }
