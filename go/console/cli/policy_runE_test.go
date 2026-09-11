@@ -90,6 +90,121 @@ func TestRunE_Middleware_PromptCancel_AbortsUnauthorized(t *testing.T) {
 	assert.Contains(t, got.Message, "aborted by user")
 }
 
+// A confirm refusal is caller-fixable: re-invoking with --confirm=yes
+// (or answering the prompt) clears it, so the envelope must classify
+// transient even though UNAUTHORIZED defaults to permanent. An agent
+// reading "permanent" abandons a command that would succeed on the
+// next invocation with one added flag.
+//
+// The rest of the envelope is pinned deliberately: downstream adopters
+// match on the exact exit code, code, and message, so a "fix" that
+// reclassified by minting a new code or renumbering the exit would
+// break them and must not pass this test.
+func TestRunE_Middleware_ConfirmRefusal_IsTransient(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		promptText string
+		hasTTY     bool
+		wantMsg    string
+	}{
+		{
+			name:       "--confirm=no refusal",
+			args:       []string{"delete", "--confirm", "no", "--format", "json"},
+			promptText: "",
+			hasTTY:     true,
+			wantMsg:    "destructive command ptool delete refused: --confirm=no (or non-TTY default)",
+		},
+		{
+			name:       "declined at prompt",
+			args:       []string{"delete", "--format", "json"},
+			promptText: "\n", // empty answer = decline
+			hasTTY:     true,
+			wantMsg:    "aborted by user at confirm prompt for ptool delete",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r, _ := destructiveLeaf(t, "delete")
+			_, stderr, err := runWithStdin(t, r, tc.args, tc.promptText, tc.hasTTY)
+			require.Error(t, err)
+
+			jsonStart := strings.Index(stderr, "{")
+			require.Greater(t, jsonStart, -1, "stderr=%q", stderr)
+			var got output.Error
+			require.NoError(t, json.Unmarshal([]byte(stderr[jsonStart:]), &got))
+
+			assert.Equal(t, output.TransienceTransient, got.Transience,
+				"confirm refusal is cleared by re-invoking with --confirm=yes")
+
+			// Envelope parity — must NOT drift.
+			assert.Equal(t, output.CodeUnauthorized, got.Code)
+			assert.Equal(t, 5, got.ExitCode)
+			assert.Equal(t, tc.wantMsg, got.Message)
+		})
+	}
+}
+
+// The other UNAUTHORIZED refusals in the confirm/policy gate stay
+// permanent: no flag the caller can add to the next invocation clears
+// a policy denial or a typed-token failure.
+func TestRunE_Middleware_NonConfirmRefusals_StayPermanent(t *testing.T) {
+	t.Run("policy denial", func(t *testing.T) {
+		denyAll := policy.Policy{
+			Name: "deny",
+			Allow: map[policy.SideEffect][]string{
+				policy.SideEffectDestructive: {},
+			},
+		}
+		r := New(Config{Name: "ptool", Version: "0.0.0", Short: "p"},
+			WithPolicy(func(string) (policy.Policy, error) { return denyAll, nil }),
+		)
+		leaf := &cobra.Command{
+			Use: "delete", Short: "delete",
+			RunE: func(*cobra.Command, []string) error { return nil },
+		}
+		SetSideEffect(leaf, SideEffectDestructive)
+		SetIdempotency(leaf, IdempotencyYes)
+		r.Cmd.AddCommand(leaf)
+
+		_, stderr, err := runWithStdin(t, r,
+			[]string{"delete", "--policy", "deny", "--confirm", "yes", "--format", "json"},
+			"", true)
+		require.Error(t, err)
+		jsonStart := strings.Index(stderr, "{")
+		require.Greater(t, jsonStart, -1, "stderr=%q", stderr)
+		var got output.Error
+		require.NoError(t, json.Unmarshal([]byte(stderr[jsonStart:]), &got))
+		assert.Equal(t, output.TransiencePermanent, got.Transience)
+		assert.Equal(t, output.CodeUnauthorized, got.Code)
+		assert.Equal(t, 5, got.ExitCode)
+	})
+
+	t.Run("missing typed token", func(t *testing.T) {
+		r := New(Config{Name: "ptool", Version: "0.0.0", Short: "p"})
+		leaf := &cobra.Command{
+			Use: "drop-db", Short: "drop db",
+			RunE:        func(*cobra.Command, []string) error { return nil },
+			Annotations: map[string]string{destructiveTokenAnnotation: "required"},
+		}
+		SetSideEffect(leaf, SideEffectDestructive)
+		SetIdempotency(leaf, IdempotencyYes)
+		r.Cmd.AddCommand(leaf)
+
+		_, stderr, err := runWithStdin(t, r,
+			[]string{"drop-db", "--confirm", "yes", "--format", "json"},
+			"", true)
+		require.Error(t, err)
+		jsonStart := strings.Index(stderr, "{")
+		require.Greater(t, jsonStart, -1, "stderr=%q", stderr)
+		var got output.Error
+		require.NoError(t, json.Unmarshal([]byte(stderr[jsonStart:]), &got))
+		assert.Equal(t, output.TransiencePermanent, got.Transience)
+		assert.Equal(t, output.CodeUnauthorized, got.Code)
+		assert.Equal(t, 5, got.ExitCode)
+	})
+}
+
 func TestRunE_Middleware_PromptYes_Proceeds(t *testing.T) {
 	r, _ := destructiveLeaf(t, "delete")
 	stdout, _, err := runWithStdin(t, r,

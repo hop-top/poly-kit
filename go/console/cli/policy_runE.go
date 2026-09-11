@@ -343,17 +343,27 @@ func (r *Root) gateConfirm(cmd *cobra.Command, se SideEffect) error {
 	case confirmYes, confirmAuto:
 		return nil
 	case confirmNo:
+		// Transient, unlike the policy and token refusals above: the
+		// caller clears this by re-invoking with --confirm=yes. A
+		// policy denial cannot be cleared that way — it needs a
+		// different policy — so it keeps the code's permanent
+		// default. UNAUTHORIZED's default is permanent, so the
+		// override is explicit here.
 		return renderPolicyError(cmd, output.UnauthorizedError(
 			"destructive command "+cmd.CommandPath()+
 				" refused: --confirm=no (or non-TTY default)",
-		))
+		).WithTransience(output.TransienceTransient))
 	case confirmPrompt:
 		q := fmt.Sprintf("This is a %s operation (%s). Continue?",
 			se, cmd.CommandPath())
 		if !promptConfirm(r.promptSource, q) {
+			// Transient for the same reason as the --confirm=no arm:
+			// answering y, or passing --confirm=yes, clears it. The
+			// input the caller must change is the confirmation
+			// itself, not the command or the environment.
 			return renderPolicyError(cmd, output.UnauthorizedError(
 				"aborted by user at confirm prompt for "+cmd.CommandPath(),
-			))
+			).WithTransience(output.TransienceTransient))
 		}
 		return nil
 	}
