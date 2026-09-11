@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.4...kit/v0.5.0-alpha.5) (2026-09-11)
+
+
+### Bug Fixes
+
+* **hooks:** unblock pre-push on branch deletion ([7e4a795](https://github.com/hop-top/poly-kit/commit/7e4a795abb4ee0f43f3cc4f4c22ef004845edbc2))
+* **output:** truncate overlong table cells instead of dropping columns ([9c5ed6a](https://github.com/hop-top/poly-kit/commit/9c5ed6a02d93c62c2e26e246c8bf3fca77506290))
+
 ## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.3...kit/v0.5.0-alpha.4) (2026-09-08)
 
 
