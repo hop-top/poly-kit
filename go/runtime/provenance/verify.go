@@ -8,7 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"hop.top/kit/go/console/output"
+	// Aliased: this package already declares a local `envelope` type for
+	// the provenance wire shape in render.go.
+	outenv "hop.top/kit/go/console/output/envelope"
 )
 
 // Verify walks v finding every Synthesized[T] / Cached[T] wrapper and
@@ -17,8 +19,9 @@ import (
 // resolution uses reflect to walk v; struct field JSON tags decide
 // the path segment.
 //
-// Returns nil on success; *output.Error{Code: "PROVENANCE_MISSING",
-// ExitCode: 65} on the aggregated violations.
+// Returns nil on success; *outenv.Error{Code: "PROVENANCE_MISSING",
+// ExitCode: 65} on the aggregated violations. console/output aliases
+// that type, so callers may equally spell it *output.Error.
 //
 // Verify is pure — no I/O, just reflect over v and consult the
 // Tracker. Safe to call from tests; AssertProvenanceComplete is the
@@ -65,13 +68,23 @@ type pathErr struct {
 	err  error
 }
 
+// buildError renders the aggregated violations as the PROVENANCE_MISSING
+// envelope.
+//
+// Built from console/output/envelope, not console/output: the envelope is
+// a leaf, while the parent package carries the lipgloss-backed renderers.
+// Importing the parent for this one constructor put the whole terminal-UI
+// stack in the dependency graph of every consumer of this package,
+// including library trees that must not link it. *outenv.Error and
+// *output.Error are the same type — output aliases it — so callers that
+// errors.As against either spelling still match.
 func buildError(missing []string, invalid []pathErr) error {
 	parts := make([]string, 0, len(missing)+len(invalid))
 	parts = append(parts, missing...)
 	for _, ie := range invalid {
 		parts = append(parts, fmt.Sprintf("%s (%v)", ie.path, ie.err))
 	}
-	return output.ProvenanceMissingError(strings.Join(parts, ", "))
+	return outenv.ProvenanceMissingError(strings.Join(parts, ", "))
 }
 
 // walker recurses over a value graph, accumulating wrapper-field
