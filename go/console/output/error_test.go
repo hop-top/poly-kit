@@ -271,6 +271,76 @@ func TestTransienceForCode(t *testing.T) {
 	}
 }
 
+func TestTransienceForCode_ScenarioGraderCodes(t *testing.T) {
+	// The grader codes are kit-defined, not adopter-defined, so they
+	// must classify here rather than render "unknown" alongside a
+	// stranger's code. Each row states the retry answer the code's
+	// meaning forces, not the one its numeric exit code suggests.
+	tests := []struct {
+		code string
+		want string
+		why  string
+	}{
+		{output.CodeScenarioParseError, output.TransiencePermanent,
+			"the YAML is malformed; re-reading the same bytes reparses the same way"},
+		{output.CodeScenarioValidateError, output.TransiencePermanent,
+			"the document parsed and is semantically broken; the defect is in the file"},
+		{output.CodeScenarioSchemaUnsupported, output.TransiencePermanent,
+			"this binary does not implement that schema version; only a different binary clears it"},
+		{output.CodeGraderTooOld, output.TransiencePermanent,
+			"engine_min_grader_version exceeds this build; upgrading kit clears it, retrying never does"},
+		{output.CodeStoryHashMismatch, output.TransiencePermanent,
+			"sha256 is deterministic; the same bytes hash the same way forever"},
+		{output.CodeJudgeUnavailable, output.TransiencePermanent,
+			"no model is registered (ErrModelNotRegistered); an operator configures judges.yaml, a retry does not"},
+		{output.CodeJudgePromptUnresolved, output.TransiencePermanent,
+			"prompt_ref does not resolve; the reference is wrong, not momentarily unlucky"},
+		{output.CodeJudgeModelRejected, output.TransiencePermanent,
+			"the scenario's own model_allowlist forbids this model; the allowlist is static input"},
+		{output.CodeJudgeParseFailed, output.TransienceTransient,
+			"the judge answered but not in JSON; model sampling is nondeterministic, so the next attempt may parse"},
+		{output.CodeGraderInternal, output.TransienceUnknown,
+			"a grader defect; the retry answer is a property of the unknown bug, so naming one would be a guess"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.code, func(t *testing.T) {
+			assert.Equal(t, tc.want, output.TransienceForCode(tc.code), tc.why)
+		})
+	}
+}
+
+func TestTransienceForCode_JudgeCodesDoNotShareOneClass(t *testing.T) {
+	// The four JUDGE_* codes all carry exit 5, and classifying them off
+	// that number would collapse them onto one answer. They do not
+	// share one: three name a static fact about the configuration or
+	// the scenario, while a failed parse of the model's reply is the
+	// only one a bare retry can clear. If these ever collapse, an agent
+	// either retries three failures that can never clear or gives up on
+	// the one that would have.
+	assert.Equal(t, output.TransienceTransient,
+		output.TransienceForCode(output.CodeJudgeParseFailed))
+
+	for _, code := range []string{
+		output.CodeJudgeUnavailable,
+		output.CodeJudgePromptUnresolved,
+		output.CodeJudgeModelRejected,
+	} {
+		assert.Equal(t, output.TransiencePermanent, output.TransienceForCode(code))
+		assert.NotEqual(t, output.TransienceForCode(output.CodeJudgeParseFailed),
+			output.TransienceForCode(code))
+	}
+}
+
+func TestTransienceForCode_OKIsNotAFailureClass(t *testing.T) {
+	// OK is not a failure, so it never reaches an envelope and has no
+	// retry answer to give. It falls through to unknown like any code
+	// the function does not own — the point of this test is that the
+	// fallthrough is the contract, so nobody later "fixes" OK by
+	// mapping it to permanent and invites callers to branch on the
+	// class instead of on the absence of an error.
+	assert.Equal(t, output.TransienceUnknown, output.TransienceForCode(output.CodeOK))
+}
+
 func TestWrapError_DefaultsTransienceFromCode(t *testing.T) {
 	base := assert.AnError
 	assert.Equal(t, output.TransiencePermanent,
