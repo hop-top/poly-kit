@@ -99,6 +99,7 @@ func TestSentinelConstructors(t *testing.T) {
 		{"Transient", output.TransientError("upstream timeout"), output.CodeTransient, 6, output.TransienceTransient},
 		{"ProvenanceMissing", output.ProvenanceMissingError("/email"), output.CodeProvenanceMissing, 65, output.TransiencePermanent},
 		{"ConsentRefused", output.ConsentRefusedError("refused"), output.CodeConsentRefused, 7, output.TransienceTransient},
+		{"Prerequisite", output.PrerequisiteError("postgres unreachable"), output.CodePrerequisite, 70, output.TransienceTransient},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -164,6 +165,87 @@ func TestConsentRefusedIsDistinctFromUnauthorized(t *testing.T) {
 	assert.Equal(t, output.TransienceTransient, consent.Transience)
 }
 
+func TestPrerequisiteError(t *testing.T) {
+	// Exit 70 continues kit's contiguous extension band (64-69 are
+	// taken). Pinned as a literal so a later renumber has to change
+	// this line deliberately.
+	assert.Equal(t, 70, output.ExitPrerequisite)
+	assert.Equal(t, "PREREQUISITE", output.CodePrerequisite)
+
+	e := output.PrerequisiteError("postgres unreachable at 127.0.0.1:5432")
+	require.NotNil(t, e)
+	assert.Equal(t, output.CodePrerequisite, e.Code)
+	assert.Equal(t, output.ExitPrerequisite, e.ExitCode)
+	assert.Equal(t, "postgres unreachable at 127.0.0.1:5432", e.Message)
+	assert.Equal(t, "PREREQUISITE: postgres unreachable at 127.0.0.1:5432", e.Error())
+
+	// Transient by class default, no WithTransience at the call site:
+	// the operator starts the dependency and the identical command
+	// succeeds.
+	assert.Equal(t, output.TransienceTransient, e.Transience)
+	assert.Equal(t, output.TransienceTransient,
+		output.TransienceForCode(output.CodePrerequisite))
+}
+
+func TestPrerequisiteIsDistinctFromGenericAndTransient(t *testing.T) {
+	// Guards the two separations this code exists to make.
+	//
+	// vs GENERIC: GENERIC means stop, the failure is uncharacterized.
+	// PREREQUISITE means the invocation was correct and kit's logic
+	// never ran — repair the environment and re-run verbatim. If these
+	// collapse, an agent cannot tell "escalate" from "start the
+	// dependency" on $? alone.
+	//
+	// vs TRANSIENT: TRANSIENT says a retry may clear this on its own.
+	// A stopped dependency never comes up on its own, so a backoff loop
+	// burns its budget and fails. Same transience class, deliberately
+	// different code and exit number.
+	prereq := output.PrerequisiteError("nothing listening")
+	generic := output.GenericError("store corrupt")
+	transient := output.TransientError("upstream timeout")
+
+	assert.NotEqual(t, generic.Code, prereq.Code)
+	assert.NotEqual(t, generic.ExitCode, prereq.ExitCode)
+	assert.NotEqual(t, generic.Transience, prereq.Transience)
+
+	assert.NotEqual(t, transient.Code, prereq.Code)
+	assert.NotEqual(t, transient.ExitCode, prereq.ExitCode)
+	// Transience intentionally agrees with TRANSIENT; the exit code is
+	// what separates them.
+	assert.Equal(t, transient.Transience, prereq.Transience)
+}
+
+func TestExtensionBandSlotsAreUnique(t *testing.T) {
+	// kit allocates its extension band contiguously so no two features
+	// claim the same slot. 64-69 are spoken for (RATE_LIMITED,
+	// PROVENANCE_MISSING here; LEAK_DETECTED, CONFIG in
+	// go/console/cli/conformance; GRADE_FAIL, GRADE_UNGRADABLE in
+	// go/conformance/client). PREREQUISITE takes 70.
+	//
+	// The literals for the codes owned by other trees are repeated
+	// rather than imported: importing them here would make the console
+	// leaf depend on the conformance trees. This test's job is to fail
+	// if a future allocation lands on a slot already in use.
+	band := map[int]string{}
+	for _, a := range []struct {
+		exit int
+		name string
+	}{
+		{output.ExitRateLimited, "RATE_LIMITED"},
+		{output.ExitProvenanceMissing, "PROVENANCE_MISSING"},
+		{66, "LEAK_DETECTED"},
+		{67, "CONFIG"},
+		{68, "GRADE_FAIL"},
+		{69, "GRADE_UNGRADABLE"},
+		{output.ExitPrerequisite, "PREREQUISITE"},
+	} {
+		if prior, dup := band[a.exit]; dup {
+			t.Fatalf("exit %d claimed by both %s and %s", a.exit, prior, a.name)
+		}
+		band[a.exit] = a.name
+	}
+}
+
 func TestTransienceForCode(t *testing.T) {
 	tests := []struct {
 		code string
@@ -177,6 +259,7 @@ func TestTransienceForCode(t *testing.T) {
 		{output.CodeRateLimited, output.TransienceTransient},
 		{output.CodeTransient, output.TransienceTransient},
 		{output.CodeConsentRefused, output.TransienceTransient},
+		{output.CodePrerequisite, output.TransienceTransient},
 		{output.CodeGeneric, output.TransienceUnknown},
 		{"ADOPTER_SPECIFIC", output.TransienceUnknown},
 		{"", output.TransienceUnknown},

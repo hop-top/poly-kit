@@ -46,6 +46,7 @@ const (
 	CodeConsentRefused    = envelope.CodeConsentRefused    // exit 7
 	CodeProvenanceMissing = envelope.CodeProvenanceMissing // exit 65
 	CodeRateLimited       = envelope.CodeRateLimited       // exit 64
+	CodePrerequisite      = envelope.CodePrerequisite      // exit 70
 )
 
 // Scenario grader codes. Each maps to one of the existing numeric
@@ -70,6 +71,7 @@ const (
 	ExitConsentRefused    = envelope.ExitConsentRefused
 	ExitProvenanceMissing = envelope.ExitProvenanceMissing
 	ExitRateLimited       = envelope.ExitRateLimited
+	ExitPrerequisite      = envelope.ExitPrerequisite
 )
 
 // TransienceForCode returns the default transience class for one of the
@@ -103,6 +105,10 @@ func TransientError(msg string) *Error { return envelope.TransientError(msg) }
 // ConsentRefusedError returns an *Error with CodeConsentRefused and
 // ExitCode 7. See [envelope.ConsentRefusedError].
 func ConsentRefusedError(msg string) *Error { return envelope.ConsentRefusedError(msg) }
+
+// PrerequisiteError returns an *Error with CodePrerequisite and
+// ExitCode 70. See [envelope.PrerequisiteError].
+func PrerequisiteError(msg string) *Error { return envelope.PrerequisiteError(msg) }
 
 // RateLimitedError returns an *Error with CodeRateLimited and ExitCode 64.
 func RateLimitedError(msg string) *Error { return envelope.RateLimitedError(msg) }
