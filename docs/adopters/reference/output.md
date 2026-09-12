@@ -201,6 +201,7 @@ class, so adopters never hand-roll the numbers:
 | `ConsentRefusedError(msg)` | `CONSENT_REFUSED` | 7 (`ExitConsentRefused`) | transient |
 | `RateLimitedError(msg)` | `RATE_LIMITED` | 64 (`ExitRateLimited`) | transient |
 | `ProvenanceMissingError(detail)` | `PROVENANCE_MISSING` | 65 (`ExitProvenanceMissing`) | permanent |
+| `PrerequisiteError(msg)` | `PREREQUISITE` | 70 (`ExitPrerequisite`) | transient |
 
 `CONSENT_REFUSED` and `UNAUTHORIZED` both mean "kit declined to run the
 command", but they differ in what clears them, which is why they carry
@@ -211,6 +212,35 @@ gate declined (`--confirm=no`, the non-TTY default, a missing or
 mismatched `--confirm-token`, or `N` at the prompt), and re-invoking
 with `--confirm=yes` or the matching token clears it. An agent can act
 on `$?` alone without parsing the envelope.
+
+`PREREQUISITE` marks a declared external dependency kit could not
+contact: nothing listening on the configured endpoint, connection
+refused, dial timeout. It separates two things that otherwise both land
+on exit 1. `GENERIC` means stop — the failure is uncharacterized and a
+retry may make matters worse. `PREREQUISITE` means the invocation was
+correct and kit's own logic never ran, so the caller repairs the
+environment (starts the datastore, opens the port) and re-runs the
+identical command.
+
+It is also deliberately not `TRANSIENT`. `TRANSIENT` says a retry may
+clear the failure on its own; a dependency that is not running never
+comes up by itself, so a backoff loop against it exhausts its budget
+and fails anyway. `PREREQUISITE` tells the caller to stop backing off
+and surface the problem to an operator. Both classify `transient` — the
+exit code is what distinguishes them.
+
+Keep the class narrow, or it stops carrying one answer: a missing
+binary is `NOT_FOUND`, an unsupported platform is `USAGE` or `GENERIC`,
+a dependency that answered and then failed is `GENERIC`, and one that
+was never configured is `USAGE`. Only the contact failure belongs here.
+For a prerequisite that genuinely cannot be satisfied on the current
+host, override with `.WithTransience(output.TransiencePermanent)`.
+
+Note that a driver can only classify this at whichever call first
+attempts contact, and that is not always `Open`. kit's own tidb kv
+driver forces the connection with an explicit ping at open time, while
+etcd's `clientv3.New` returns before connecting at all and reaches the
+server only on first use.
 
 Build it with a struct literal when there is no underlying error:
 

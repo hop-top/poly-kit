@@ -103,7 +103,7 @@ func TransienceForCode(code string) string {
 	case CodeUsage, CodeNotFound, CodeConflict, CodeUnauthorized,
 		CodeProvenanceMissing:
 		return TransiencePermanent
-	case CodeRateLimited, CodeTransient, CodeConsentRefused:
+	case CodeRateLimited, CodeTransient, CodeConsentRefused, CodePrerequisite:
 		return TransienceTransient
 	}
 	return TransienceUnknown
@@ -203,6 +203,7 @@ const (
 	CodeConsentRefused    = "CONSENT_REFUSED"    // exit 7 — Factor-10 confirmation gate declined
 	CodeProvenanceMissing = "PROVENANCE_MISSING" // exit 65 — Factor-12 strict-mode refusal
 	CodeRateLimited       = "RATE_LIMITED"       // exit 64 — Factor-10 max-ops budget exceeded (§8.6)
+	CodePrerequisite      = "PREREQUISITE"       // exit 70 — declared dependency unreachable
 )
 
 // Scenario grader codes. Each maps to one of the existing numeric
@@ -261,6 +262,43 @@ const ExitProvenanceMissing = 65
 // refusals (--max-ops budget exceeded). See §8.1 / §8.6.
 const ExitRateLimited = 64
 
+// ExitPrerequisite is the exit code for a declared external dependency
+// kit could not establish contact with: nothing listening on the
+// configured endpoint, connection refused, dial timeout.
+//
+// Distinct from GENERIC/1 because the next action differs. GENERIC
+// means stop — the failure is uncharacterized and a retry may make
+// things worse. PREREQUISITE means the invocation was correct and
+// kit's own logic never ran: repair the environment and re-run the
+// identical command. An agent can act on $? alone.
+//
+// Distinct from TRANSIENT/6, which says a retry may clear the failure
+// on its own. A dependency that is not running will never come up by
+// itself, so a backoff loop against it burns its whole budget and
+// then fails. PREREQUISITE is the signal to stop backing off and tell
+// the operator.
+//
+// Classified transient: the operator starts the dependency and the
+// retry succeeds. A prerequisite that genuinely cannot be satisfied
+// on this host overrides per-instance with WithTransience.
+//
+// Scope is narrow by construction. A missing binary is NOT_FOUND; an
+// unsupported platform is USAGE or GENERIC; a store that answered and
+// then failed is GENERIC. Only the contact failure lives here — that
+// narrowness is what keeps the class to a single retry answer.
+//
+// Note that a driver decides this at whichever call first attempts
+// contact, which is not always Open: the tidb driver forces the
+// connection with an explicit ping at open time, while etcd's
+// clientv3.New returns before connecting at all and only reaches the
+// server on first use.
+//
+// Lives at 70, continuing kit's contiguous extension band: 64
+// RATE_LIMITED, 65 PROVENANCE_MISSING (here), 66 LEAK_DETECTED, 67
+// CONFIG (go/console/cli/conformance), 68 GRADE_FAIL, 69
+// GRADE_UNGRADABLE (go/conformance/client).
+const ExitPrerequisite = 70
+
 // GenericError returns an *Error with CodeGeneric and ExitCode 1: the
 // catch-all class for failures no more specific code describes.
 // Classified permanent because the adopter chose the class knowingly;
@@ -312,6 +350,24 @@ func ConsentRefusedError(msg string) *Error {
 		Code:       CodeConsentRefused,
 		Message:    msg,
 		ExitCode:   ExitConsentRefused,
+		Transience: TransienceTransient,
+	}
+}
+
+// PrerequisiteError returns an *Error with CodePrerequisite and
+// ExitCode 70. Use it when a declared external dependency could not be
+// contacted: nothing listening on the configured endpoint, connection
+// refused, dial timeout.
+//
+// Classified transient: the operator starts the dependency and the
+// same command succeeds. Do not use it for a dependency that answered
+// and then misbehaved — that is GenericError — nor for one that was
+// never configured, which is UsageError.
+func PrerequisiteError(msg string) *Error {
+	return &Error{
+		Code:       CodePrerequisite,
+		Message:    msg,
+		ExitCode:   ExitPrerequisite,
 		Transience: TransienceTransient,
 	}
 }
