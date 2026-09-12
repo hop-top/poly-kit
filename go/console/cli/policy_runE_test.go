@@ -468,6 +468,55 @@ func TestRunE_Middleware_PolicyFlag_NoLoader_UsageError(t *testing.T) {
 	assert.Equal(t, output.CodeUsage, got.Code)
 }
 
+func TestRunE_Middleware_PolicyLoader_LoadFailure_UsageError(t *testing.T) {
+	// A policy file that cannot be read or parsed is USAGE, not
+	// UNAUTHORIZED: the gate never ran, so nobody was denied. Exit 5
+	// would tell an agent to escalate for access when the real fix is
+	// repairing the file. Matches the no-loader branch above.
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+
+	policyDir := filepath.Join(tmp, "ptool", "policies")
+	require.NoError(t, os.MkdirAll(policyDir, 0o755))
+	// Malformed YAML: a mapping value where a block is expected.
+	require.NoError(t, os.WriteFile(
+		filepath.Join(policyDir, "broken.yaml"),
+		[]byte("name: broken\nallow: [unclosed\n"), 0o600))
+
+	for _, tc := range []struct {
+		name   string
+		policy string
+	}{
+		{"malformed", "broken"},
+		{"missing", "nosuchpolicy"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := New(Config{Name: "ptool", Version: "0.0.0", Short: "p"},
+				WithPolicy(DefaultPolicyLoader("ptool")),
+			)
+			leaf := &cobra.Command{
+				Use: "delete", Short: "delete",
+				RunE: func(*cobra.Command, []string) error { return nil },
+			}
+			SetSideEffect(leaf, SideEffectDestructive)
+			SetIdempotency(leaf, IdempotencyYes)
+			r.Cmd.AddCommand(leaf)
+
+			_, stderr, err := runWithStdin(t, r,
+				[]string{"delete", "--policy", tc.policy, "--confirm", "yes", "--format", "json"},
+				"", true)
+			require.Error(t, err)
+			jsonStart := strings.Index(stderr, "{")
+			require.Greater(t, jsonStart, -1)
+			var got output.Error
+			require.NoError(t, json.Unmarshal([]byte(stderr[jsonStart:]), &got))
+			assert.Equal(t, output.CodeUsage, got.Code)
+			assert.Equal(t, 2, got.ExitCode)
+			assert.Contains(t, got.Message, tc.policy)
+		})
+	}
+}
+
 func TestRunE_Middleware_PolicyLoader_DefaultLoader_FromXDG(t *testing.T) {
 	// Round-trip via DefaultPolicyLoader: write a YAML under a temp
 	// XDG_CONFIG_HOME, then load it through the loader.
