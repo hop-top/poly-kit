@@ -9,7 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"hop.top/kit/go/console/output"
+	// Aliased: this package already declares a local `envelope` type for
+	// the provenance wire shape in render.go.
+	outenv "hop.top/kit/go/console/output/envelope"
 )
 
 // TB is the minimal subset of testing.TB used by the harness assert
@@ -43,7 +45,7 @@ func AssertProvenanceComplete(t TB, ctx context.Context, v any) {
 		// the test reporter sees which paths are missing without
 		// having to crack open the Error envelope.
 		detail := err.Error()
-		var oe *output.Error
+		var oe *outenv.Error
 		if errors.As(err, &oe) && oe.Cause != "" {
 			detail = fmt.Sprintf("%s (paths: %s)", err.Error(), oe.Cause)
 		}
