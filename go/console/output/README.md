@@ -42,6 +42,9 @@ return output.Dispatch(cmd, v, data)
 
 ## Neighbours
 
+- [`envelope/`](envelope/README.md): the error envelope itself, as a leaf
+  with no lipgloss — import it from library code that must not link the
+  renderers; every name is aliased back into this package
 - `hop.top/kit/go/console/cli`: registers these flags on the root, wraps
   handler errors with `WrapError`, exposes `Root.TableStyle()`
 - [`sdk/ts/src/output`](../../../sdk/ts/src/output/README.md),
