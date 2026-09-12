@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.5...kit/v0.5.0-alpha.6) (2026-09-12)
+
+
+### Bug Fixes
+
+* **cli:** classify confirm refusals as transient ([#302](https://github.com/hop-top/poly-kit/issues/302)) ([5fd0872](https://github.com/hop-top/poly-kit/commit/5fd0872f86201a444f36712cba1b6e7fb5a30c1a))
+
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.4...kit/v0.5.0-alpha.5) (2026-09-11)
 
 
