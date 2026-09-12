@@ -97,6 +97,8 @@ func TestReExportedConstantsAgree(t *testing.T) {
 	assert.Equal(t, envelope.CodeConflict, output.CodeConflict)
 	assert.Equal(t, envelope.ExitRateLimited, output.ExitRateLimited)
 	assert.Equal(t, envelope.ExitProvenanceMissing, output.ExitProvenanceMissing)
+	assert.Equal(t, envelope.CodeConsentRefused, output.CodeConsentRefused)
+	assert.Equal(t, envelope.ExitConsentRefused, output.ExitConsentRefused)
 	assert.Equal(t, envelope.TransiencePermanent, output.TransiencePermanent)
 	assert.Equal(t, output.TransiencePermanent, output.TransienceForCode(output.CodeConflict))
 }
