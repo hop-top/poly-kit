@@ -198,8 +198,19 @@ class, so adopters never hand-roll the numbers:
 | `ConflictError(msg)` | `CONFLICT` | 4 | permanent |
 | `UnauthorizedError(msg)` | `UNAUTHORIZED` | 5 | permanent |
 | `TransientError(msg)` | `TRANSIENT` | 6 (`ExitTransient`) | transient |
+| `ConsentRefusedError(msg)` | `CONSENT_REFUSED` | 7 (`ExitConsentRefused`) | transient |
 | `RateLimitedError(msg)` | `RATE_LIMITED` | 64 (`ExitRateLimited`) | transient |
 | `ProvenanceMissingError(detail)` | `PROVENANCE_MISSING` | 65 (`ExitProvenanceMissing`) | permanent |
+
+`CONSENT_REFUSED` and `UNAUTHORIZED` both mean "kit declined to run the
+command", but they differ in what clears them, which is why they carry
+different exit codes. `UNAUTHORIZED` is permanent: the caller lacks
+credentials, or a policy forbids the operation, and retrying the same
+invocation cannot help. `CONSENT_REFUSED` is transient: a confirmation
+gate declined (`--confirm=no`, the non-TTY default, a missing or
+mismatched `--confirm-token`, or `N` at the prompt), and re-invoking
+with `--confirm=yes` or the matching token clears it. An agent can act
+on `$?` alone without parsing the envelope.
 
 Build it with a struct literal when there is no underlying error:
 

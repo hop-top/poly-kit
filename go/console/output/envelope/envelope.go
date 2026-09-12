@@ -103,7 +103,7 @@ func TransienceForCode(code string) string {
 	case CodeUsage, CodeNotFound, CodeConflict, CodeUnauthorized,
 		CodeProvenanceMissing:
 		return TransiencePermanent
-	case CodeRateLimited, CodeTransient:
+	case CodeRateLimited, CodeTransient, CodeConsentRefused:
 		return TransienceTransient
 	}
 	return TransienceUnknown
@@ -200,6 +200,7 @@ const (
 	CodeConflict          = "CONFLICT"           // exit 4
 	CodeUnauthorized      = "UNAUTHORIZED"       // exit 5
 	CodeTransient         = "TRANSIENT"          // exit 6 — Factor-11 transient/retryable failure
+	CodeConsentRefused    = "CONSENT_REFUSED"    // exit 7 — Factor-10 confirmation gate declined
 	CodeProvenanceMissing = "PROVENANCE_MISSING" // exit 65 — Factor-12 strict-mode refusal
 	CodeRateLimited       = "RATE_LIMITED"       // exit 64 — Factor-10 max-ops budget exceeded (§8.6)
 )
@@ -232,6 +233,18 @@ const ExitGeneric = 1
 // branch on it before parsing stderr: exit 6 means a retry may clear
 // the failure.
 const ExitTransient = 6
+
+// ExitConsentRefused is the exit code for a confirmation gate the
+// caller declined: --confirm=no, the non-TTY default, a missing or
+// mismatched --confirm-token, or answering N at the prompt.
+//
+// Distinct from UNAUTHORIZED/5 because the retry semantics differ.
+// An auth failure and a policy denial are permanent — the caller
+// needs new credentials or a different policy. A consent refusal is
+// cleared by re-invoking the same command with --confirm=yes (or the
+// matching token), so it classifies transient and an agent can act on
+// $? alone instead of parsing the envelope's transience field.
+const ExitConsentRefused = 7
 
 // ExitProvenanceMissing is the conventional exit code for Factor-12
 // strict-mode refusals. The Render boundary in
@@ -283,6 +296,24 @@ func UsageError(msg string) *Error {
 // timeouts, connection resets, service-unavailable responses.
 func TransientError(msg string) *Error {
 	return &Error{Code: CodeTransient, Message: msg, ExitCode: ExitTransient, Transience: TransienceTransient}
+}
+
+// ConsentRefusedError returns an *Error with CodeConsentRefused and
+// ExitCode 7. Use it when a confirmation gate declines to run a
+// destructive operation: --confirm=no, the non-TTY default, a missing
+// or mismatched --confirm-token, or N at the prompt.
+//
+// Classified transient: the caller clears it by re-invoking with
+// --confirm=yes (or the matching token). Do not use it for policy
+// denials, which no confirmation can clear — those stay
+// UnauthorizedError and permanent.
+func ConsentRefusedError(msg string) *Error {
+	return &Error{
+		Code:       CodeConsentRefused,
+		Message:    msg,
+		ExitCode:   ExitConsentRefused,
+		Transience: TransienceTransient,
+	}
 }
 
 // RateLimitedError returns an *Error with CodeRateLimited and

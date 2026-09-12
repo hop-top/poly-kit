@@ -98,6 +98,7 @@ func TestSentinelConstructors(t *testing.T) {
 		{"RateLimited", output.RateLimitedError("budget"), output.CodeRateLimited, 64, output.TransienceTransient},
 		{"Transient", output.TransientError("upstream timeout"), output.CodeTransient, 6, output.TransienceTransient},
 		{"ProvenanceMissing", output.ProvenanceMissingError("/email"), output.CodeProvenanceMissing, 65, output.TransiencePermanent},
+		{"ConsentRefused", output.ConsentRefusedError("refused"), output.CodeConsentRefused, 7, output.TransienceTransient},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -125,6 +126,44 @@ func TestGenericError(t *testing.T) {
 	assert.Nil(t, e.Unwrap())
 }
 
+func TestConsentRefusedError(t *testing.T) {
+	// Exit 7 sits just past the spec's core 0-6 band. Pinned as a
+	// literal so a later renumber has to change this line deliberately.
+	assert.Equal(t, 7, output.ExitConsentRefused)
+	assert.Equal(t, "CONSENT_REFUSED", output.CodeConsentRefused)
+
+	e := output.ConsentRefusedError("refused: --confirm=no")
+	require.NotNil(t, e)
+	assert.Equal(t, output.CodeConsentRefused, e.Code)
+	assert.Equal(t, output.ExitConsentRefused, e.ExitCode)
+	assert.Equal(t, "refused: --confirm=no", e.Message)
+	assert.Equal(t, "CONSENT_REFUSED: refused: --confirm=no", e.Error())
+
+	// The whole point of the code: transient by class default, with no
+	// WithTransience override at the call site. A caller clears it by
+	// re-invoking with --confirm=yes.
+	assert.Equal(t, output.TransienceTransient, e.Transience)
+	assert.Equal(t, output.TransienceTransient,
+		output.TransienceForCode(output.CodeConsentRefused))
+}
+
+func TestConsentRefusedIsDistinctFromUnauthorized(t *testing.T) {
+	// Guards the separation this code exists to make. An auth or policy
+	// denial is permanent; a declined confirmation is not. If these ever
+	// collapse back onto one code, exit number or transience class, an
+	// agent can no longer tell "never retry" from "retry with
+	// --confirm=yes" on $? alone.
+	consent := output.ConsentRefusedError("declined")
+	auth := output.UnauthorizedError("no credentials")
+
+	assert.NotEqual(t, auth.Code, consent.Code)
+	assert.NotEqual(t, auth.ExitCode, consent.ExitCode)
+	assert.NotEqual(t, auth.Transience, consent.Transience)
+
+	assert.Equal(t, output.TransiencePermanent, auth.Transience)
+	assert.Equal(t, output.TransienceTransient, consent.Transience)
+}
+
 func TestTransienceForCode(t *testing.T) {
 	tests := []struct {
 		code string
@@ -137,6 +176,7 @@ func TestTransienceForCode(t *testing.T) {
 		{output.CodeProvenanceMissing, output.TransiencePermanent},
 		{output.CodeRateLimited, output.TransienceTransient},
 		{output.CodeTransient, output.TransienceTransient},
+		{output.CodeConsentRefused, output.TransienceTransient},
 		{output.CodeGeneric, output.TransienceUnknown},
 		{"ADOPTER_SPECIFIC", output.TransienceUnknown},
 		{"", output.TransienceUnknown},

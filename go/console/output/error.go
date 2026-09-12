@@ -43,6 +43,7 @@ const (
 	CodeConflict          = envelope.CodeConflict          // exit 4
 	CodeUnauthorized      = envelope.CodeUnauthorized      // exit 5
 	CodeTransient         = envelope.CodeTransient         // exit 6
+	CodeConsentRefused    = envelope.CodeConsentRefused    // exit 7
 	CodeProvenanceMissing = envelope.CodeProvenanceMissing // exit 65
 	CodeRateLimited       = envelope.CodeRateLimited       // exit 64
 )
@@ -66,6 +67,7 @@ const (
 const (
 	ExitGeneric           = envelope.ExitGeneric
 	ExitTransient         = envelope.ExitTransient
+	ExitConsentRefused    = envelope.ExitConsentRefused
 	ExitProvenanceMissing = envelope.ExitProvenanceMissing
 	ExitRateLimited       = envelope.ExitRateLimited
 )
@@ -97,6 +99,10 @@ func UsageError(msg string) *Error { return envelope.UsageError(msg) }
 
 // TransientError returns an *Error with CodeTransient and ExitCode 6.
 func TransientError(msg string) *Error { return envelope.TransientError(msg) }
+
+// ConsentRefusedError returns an *Error with CodeConsentRefused and
+// ExitCode 7. See [envelope.ConsentRefusedError].
+func ConsentRefusedError(msg string) *Error { return envelope.ConsentRefusedError(msg) }
 
 // RateLimitedError returns an *Error with CodeRateLimited and ExitCode 64.
 func RateLimitedError(msg string) *Error { return envelope.RateLimitedError(msg) }
