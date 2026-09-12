@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.6...kit/v0.5.0-alpha.7) (2026-09-12)
+
+
+### Features
+
+* **output:** add CONSENT_REFUSED code at exit 7 ([#307](https://github.com/hop-top/poly-kit/issues/307)) ([210f5ef](https://github.com/hop-top/poly-kit/commit/210f5eff0b1d5664f0c172b140991849a543bcfc))
+* **output:** add PREREQUISITE code at exit 70 ([#310](https://github.com/hop-top/poly-kit/issues/310)) ([0aebeba](https://github.com/hop-top/poly-kit/commit/0aebebaadfeb2bccc842c9970ee77d2087f547c3))
+
+
+### Bug Fixes
+
+* **cli:** code policy load failure as USAGE, not UNAUTHORIZED ([#312](https://github.com/hop-top/poly-kit/issues/312)) ([fc9ea14](https://github.com/hop-top/poly-kit/commit/fc9ea14427d033e83ec461a7f4452a39abef69e2))
+* **output:** classify scenario-grader codes in TransienceForCode ([#311](https://github.com/hop-top/poly-kit/issues/311)) ([d85e829](https://github.com/hop-top/poly-kit/commit/d85e829dd4a1aa4ff804031d0283b00b56fd5e61))
+
 ## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.5...kit/v0.5.0-alpha.6) (2026-09-12)
 
 
