@@ -98,12 +98,49 @@ const (
 // standard codes above. Unrecognized (adopter-defined) codes map to
 // TransienceUnknown; adopters set Error.Transience (or use
 // WithTransience) to classify their own codes.
+//
+// CodeOK is deliberately absent. It is not a failure, so it never
+// reaches an envelope, and "what is the retry answer for success" has
+// no meaning — answering it would invite callers to branch on the
+// class instead of on the absence of an error. CodeGeneric is also
+// deliberately absent: GENERIC means uncharacterized by construction,
+// so unknown is the honest class rather than a gap. The named
+// constructor GenericError still stamps permanent at the call site,
+// because there the adopter chose the class knowingly.
+//
+// The scenario-grader codes below are kit-defined, not adopter-defined,
+// so they are classified here rather than falling through. They reach
+// this function through the AsCLIError passthrough in
+// go/console/cli/error_render.go, which defaults an unset Transience
+// from the code.
 func TransienceForCode(code string) string {
 	switch code {
 	case CodeUsage, CodeNotFound, CodeConflict, CodeUnauthorized,
 		CodeProvenanceMissing:
 		return TransiencePermanent
-	case CodeRateLimited, CodeTransient, CodeConsentRefused, CodePrerequisite:
+
+	// Scenario-grader codes that no retry can clear. Each names a fact
+	// about the inputs or the binary, not a moment in time: malformed
+	// or semantically broken scenario YAML, a schema version this
+	// binary does not implement, a grader older than the scenario
+	// demands, a story whose bytes do not hash to the manifest's
+	// claim, an unregistered judge model, and a model the scenario's
+	// own allowlist forbids. Re-running the identical command
+	// reproduces every one of them.
+	case CodeScenarioParseError, CodeScenarioValidateError,
+		CodeScenarioSchemaUnsupported, CodeGraderTooOld,
+		CodeStoryHashMismatch, CodeJudgeUnavailable,
+		CodeJudgePromptUnresolved, CodeJudgeModelRejected:
+		return TransiencePermanent
+
+	case CodeRateLimited, CodeTransient, CodeConsentRefused, CodePrerequisite,
+		// JUDGE_PARSE_FAILED is the one grader code a bare retry can
+		// clear: the judge answered, but the answer was not JSON or
+		// not the expected shape. Model sampling is not deterministic,
+		// so the same prompt can parse on the next attempt. svc agrees
+		// — it maps this code to 502 Bad Gateway, the retryable class,
+		// in HTTPStatus (go/conformance/svc/errors.go).
+		CodeJudgeParseFailed:
 		return TransienceTransient
 	}
 	return TransienceUnknown
@@ -221,6 +258,15 @@ const (
 	CodeJudgeModelRejected        = "JUDGE_MODEL_REJECTED"        // exit 5 — judge.model not in judge.model_allowlist
 	CodeJudgeParseFailed          = "JUDGE_PARSE_FAILED"          // exit 5 — model returned non-JSON or wrong shape
 	CodeGraderInternal            = "GRADER_INTERNAL"             // exit 1 — grader bug
+
+	// GRADER_INTERNAL is the one code in this block TransienceForCode
+	// leaves unknown, deliberately. It means the grader hit a defect in
+	// itself, so its retry answer is a property of the unknown bug, not
+	// of the class: a nil-guard tripped by one malformed input repeats
+	// forever, while a partially-initialized grader clears on the next
+	// call. Naming either answer would be a guess. This mirrors
+	// GENERIC, which is unknown for the same reason, and svc maps both
+	// to 500.
 )
 
 // ExitGeneric is the spec-assigned exit code for the catch-all failure
