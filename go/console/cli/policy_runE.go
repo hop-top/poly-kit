@@ -151,9 +151,17 @@ func (r *Root) newPolicyEngine(cmd *cobra.Command) (*policy.Engine, error) {
 				"--policy is set but no policy loader is wired (cli.WithPolicy)",
 			)
 		}
+		// A policy that cannot be read or parsed is a USAGE failure,
+		// not an authorization refusal: the gate never ran, so nobody
+		// was denied anything. The invocation named a policy it cannot
+		// use, exactly like the no-loader branch above. Coding it
+		// UNAUTHORIZED told an agent to escalate for access when the
+		// real fix is repairing the file. Not PREREQUISITE either —
+		// that class is contact failure against a declared external
+		// dependency, and this is a local read/parse.
 		loaded, err := r.policyLoader(policyName)
 		if err != nil {
-			return nil, output.UnauthorizedError(
+			return nil, output.UsageError(
 				fmt.Sprintf("policy %q: %v", policyName, err),
 			)
 		}
