@@ -4,6 +4,25 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4) (2026-09-13)
+
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.4. This release includes new features and bug fixes.
+
+
+### Features
+
+* **cli:** opt-in flag autocorrect for read-only commands
+* **cli:** suggest corrections on flag parse errors
+* **sdk:** port the consenting-telemetry factor to the TS and Python compliance checkers
+
+
+### Bug Fixes
+
+* **contracts:** correct buf es out path, drop orphan ts stubs
+* **sdk:** add CONSENT_REFUSED and PREREQUISITE to the four SDK ports
+
+Full diff: [kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4)
+
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3) (2026-09-05)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.3. This release includes new features and bug fixes.
