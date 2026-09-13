@@ -2,14 +2,18 @@ import { describe, it, expect } from 'vitest';
 import * as yaml from 'js-yaml';
 import {
   CODE_CONFLICT,
+  CODE_CONSENT_REFUSED,
   CODE_GENERIC,
   CODE_NOT_FOUND,
+  CODE_PREREQUISITE,
   CODE_PROVENANCE_MISSING,
   CODE_RATE_LIMITED,
   CODE_TRANSIENT,
   CODE_UNAUTHORIZED,
   CODE_USAGE,
+  EXIT_CONSENT_REFUSED,
   EXIT_GENERIC,
+  EXIT_PREREQUISITE,
   EXIT_PROVENANCE_MISSING,
   EXIT_RATE_LIMITED,
   EXIT_TRANSIENT,
@@ -17,8 +21,10 @@ import {
   TRANSIENCE_TRANSIENT,
   TRANSIENCE_UNKNOWN,
   conflictError,
+  consentRefusedError,
   genericError,
   notFoundError,
+  prerequisiteError,
   provenanceMissingError,
   rateLimitedError,
   renderError,
@@ -77,6 +83,20 @@ describe('constructors — code/exit/transience', () => {
       65,
       TRANSIENCE_PERMANENT,
     ],
+    [
+      'ConsentRefused',
+      consentRefusedError('declined'),
+      CODE_CONSENT_REFUSED,
+      7,
+      TRANSIENCE_TRANSIENT,
+    ],
+    [
+      'Prerequisite',
+      prerequisiteError('no listener'),
+      CODE_PREREQUISITE,
+      70,
+      TRANSIENCE_TRANSIENT,
+    ],
   ];
   it.each(cases)('%s', (_name, got, wantCode, wantExit, wantTransience) => {
     expect(got.code).toBe(wantCode);
@@ -84,16 +104,25 @@ describe('constructors — code/exit/transience', () => {
     expect(got.transience).toBe(wantTransience);
   });
 
-  it('exit-code table is unique, 1 generic / 6 transient / 65 provenance', () => {
+  // Mirrors Go's envelope exit-code table: the 0-6 core taxonomy plus
+  // CONSENT_REFUSED 7 and the kit extension band 64/65/70. Uniqueness
+  // pins the taxonomy; the per-number assertions pin which class owns
+  // which slot, so a port that adds a class at a number Go already
+  // spent fails here rather than on a user's machine.
+  it('exit-code table is unique and every slot is owned by its Go class', () => {
     const exits = new Map(cases.map(([, e]) => [e.exit_code, e.code]));
-    expect(exits.size).toBe(8);
+    expect(exits.size).toBe(10);
     expect(EXIT_GENERIC).toBe(1);
     expect(EXIT_TRANSIENT).toBe(6);
+    expect(EXIT_CONSENT_REFUSED).toBe(7);
     expect(EXIT_RATE_LIMITED).toBe(64);
     expect(EXIT_PROVENANCE_MISSING).toBe(65);
+    expect(EXIT_PREREQUISITE).toBe(70);
     expect(exits.get(1)).toBe(CODE_GENERIC);
     expect(exits.get(6)).toBe(CODE_TRANSIENT);
+    expect(exits.get(7)).toBe(CODE_CONSENT_REFUSED);
     expect(exits.get(65)).toBe(CODE_PROVENANCE_MISSING);
+    expect(exits.get(70)).toBe(CODE_PREREQUISITE);
   });
 });
 
@@ -106,6 +135,8 @@ describe('transienceForCode', () => {
     [CODE_PROVENANCE_MISSING, TRANSIENCE_PERMANENT],
     [CODE_RATE_LIMITED, TRANSIENCE_TRANSIENT],
     [CODE_TRANSIENT, TRANSIENCE_TRANSIENT],
+    [CODE_CONSENT_REFUSED, TRANSIENCE_TRANSIENT],
+    [CODE_PREREQUISITE, TRANSIENCE_TRANSIENT],
     [CODE_GENERIC, TRANSIENCE_UNKNOWN],
     ['ADOPTER_SPECIFIC', TRANSIENCE_UNKNOWN],
     ['', TRANSIENCE_UNKNOWN],

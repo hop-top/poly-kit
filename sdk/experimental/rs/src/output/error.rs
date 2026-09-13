@@ -31,8 +31,10 @@ pub const CODE_NOT_FOUND: &str = "NOT_FOUND"; // exit 3
 pub const CODE_CONFLICT: &str = "CONFLICT"; // exit 4
 pub const CODE_UNAUTHORIZED: &str = "UNAUTHORIZED"; // exit 5
 pub const CODE_TRANSIENT: &str = "TRANSIENT"; // exit 6 — Factor-11 transient/retryable failure
+pub const CODE_CONSENT_REFUSED: &str = "CONSENT_REFUSED"; // exit 7 — confirmation gate declined
 pub const CODE_PROVENANCE_MISSING: &str = "PROVENANCE_MISSING"; // exit 65 — Factor-12 strict-mode refusal
 pub const CODE_RATE_LIMITED: &str = "RATE_LIMITED"; // exit 64 — Factor-10 max-ops budget exceeded
+pub const CODE_PREREQUISITE: &str = "PREREQUISITE"; // exit 70 — declared dependency unreachable
 
 /// Spec-assigned exit code for the generic failure class: the command
 /// failed and no narrower code applies. Pair it with
@@ -43,6 +45,13 @@ pub const EXIT_GENERIC: i32 = 1;
 /// Agents branch on it before parsing stderr: exit 6 means a retry may
 /// clear the failure.
 pub const EXIT_TRANSIENT: i32 = 6;
+/// Exit code for a confirmation gate that declined to run a
+/// destructive operation (`--confirm=no`, the non-TTY default, a
+/// missing or mismatched `--confirm-token`, or `N` at the prompt).
+/// Classified transient: re-invoking with `--confirm=yes` clears it.
+/// Distinct from [`CODE_UNAUTHORIZED`] at exit 5, which is permanent
+/// because no confirmation can clear a policy denial.
+pub const EXIT_CONSENT_REFUSED: i32 = 7;
 /// Conventional exit code for Factor-10 rate-limit refusals.
 pub const EXIT_RATE_LIMITED: i32 = 64;
 /// Conventional exit code for Factor-12 strict-mode provenance refusals.
@@ -51,6 +60,14 @@ pub const EXIT_RATE_LIMITED: i32 = 64;
 /// per-tool codes, and kit as a library stays out of the low per-tool
 /// range.
 pub const EXIT_PROVENANCE_MISSING: i32 = 65;
+/// Exit code for a declared external dependency kit could not contact:
+/// nothing listening on the configured endpoint, connection refused,
+/// dial timeout. Separates a correct invocation whose logic never ran
+/// from the uncharacterized failures on exit 1. Classified transient,
+/// but deliberately not [`CODE_TRANSIENT`]: a dependency that is not
+/// running never comes up on its own, so the caller repairs the
+/// environment instead of backing off.
+pub const EXIT_PREREQUISITE: i32 = 70;
 
 /// Returns the default transience class for one of the standard codes.
 /// Unrecognized (adopter-defined) codes map to [`TRANSIENCE_UNKNOWN`];
@@ -63,7 +80,9 @@ pub fn transience_for_code(code: &str) -> &'static str {
         | CODE_CONFLICT
         | CODE_UNAUTHORIZED
         | CODE_PROVENANCE_MISSING => TRANSIENCE_PERMANENT,
-        CODE_RATE_LIMITED | CODE_TRANSIENT => TRANSIENCE_TRANSIENT,
+        CODE_RATE_LIMITED | CODE_TRANSIENT | CODE_CONSENT_REFUSED | CODE_PREREQUISITE => {
+            TRANSIENCE_TRANSIENT
+        }
         _ => TRANSIENCE_UNKNOWN,
     }
 }
@@ -147,6 +166,43 @@ impl CliError {
             CODE_TRANSIENT,
             message,
             EXIT_TRANSIENT,
+            TRANSIENCE_TRANSIENT,
+        )
+    }
+
+    /// CODE_CONSENT_REFUSED envelope with exit code 7. Use it when a
+    /// confirmation gate declines to run a destructive operation:
+    /// `--confirm=no`, the non-TTY default, a missing or mismatched
+    /// `--confirm-token`, or `N` at the prompt.
+    ///
+    /// Classified transient: the caller clears it by re-invoking with
+    /// `--confirm=yes` (or the matching token). Do not use it for
+    /// policy denials, which no confirmation can clear — those stay
+    /// [`CliError::unauthorized`] and permanent.
+    pub fn consent_refused(message: impl Into<String>) -> Self {
+        Self::standard(
+            CODE_CONSENT_REFUSED,
+            message,
+            EXIT_CONSENT_REFUSED,
+            TRANSIENCE_TRANSIENT,
+        )
+    }
+
+    /// CODE_PREREQUISITE envelope with exit code 70. Use it when a
+    /// declared external dependency could not be contacted: nothing
+    /// listening on the configured endpoint, connection refused, dial
+    /// timeout.
+    ///
+    /// Classified transient: the operator starts the dependency and the
+    /// same command succeeds. Do not use it for a dependency that
+    /// answered and then misbehaved — that is [`CliError::generic`] —
+    /// nor for one that was never configured, which is
+    /// [`CliError::usage`].
+    pub fn prerequisite(message: impl Into<String>) -> Self {
+        Self::standard(
+            CODE_PREREQUISITE,
+            message,
+            EXIT_PREREQUISITE,
             TRANSIENCE_TRANSIENT,
         )
     }

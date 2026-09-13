@@ -42,8 +42,10 @@ export const CODE_NOT_FOUND = 'NOT_FOUND'; // exit 3
 export const CODE_CONFLICT = 'CONFLICT'; // exit 4
 export const CODE_UNAUTHORIZED = 'UNAUTHORIZED'; // exit 5
 export const CODE_TRANSIENT = 'TRANSIENT'; // exit 6 — Factor-11 transient/retryable failure
+export const CODE_CONSENT_REFUSED = 'CONSENT_REFUSED'; // exit 7 — confirmation gate declined
 export const CODE_PROVENANCE_MISSING = 'PROVENANCE_MISSING'; // exit 65 — Factor-12 strict-mode refusal
 export const CODE_RATE_LIMITED = 'RATE_LIMITED'; // exit 64 — Factor-10 max-ops budget exceeded
+export const CODE_PREREQUISITE = 'PREREQUISITE'; // exit 70 — declared dependency unreachable
 
 /**
  * Spec-assigned exit code for the generic failure class: the command
@@ -58,6 +60,15 @@ export const EXIT_GENERIC = 1;
  * clear the failure.
  */
 export const EXIT_TRANSIENT = 6;
+/**
+ * Exit code for a confirmation gate that declined to run a destructive
+ * operation (`--confirm=no`, the non-TTY default, a missing or
+ * mismatched `--confirm-token`, or `N` at the prompt). Classified
+ * transient: re-invoking with `--confirm=yes` clears it. Distinct from
+ * {@link CODE_UNAUTHORIZED} at exit 5, which is permanent because no
+ * confirmation can clear a policy denial.
+ */
+export const EXIT_CONSENT_REFUSED = 7;
 /** Conventional exit code for Factor-10 rate-limit refusals. */
 export const EXIT_RATE_LIMITED = 64;
 /**
@@ -67,6 +78,16 @@ export const EXIT_RATE_LIMITED = 64;
  * codes, and kit as a library stays out of the low per-tool range.
  */
 export const EXIT_PROVENANCE_MISSING = 65;
+/**
+ * Exit code for a declared external dependency kit could not contact:
+ * nothing listening on the configured endpoint, connection refused,
+ * dial timeout. Separates a correct invocation whose logic never ran
+ * from the uncharacterized failures on exit 1. Classified transient,
+ * but deliberately not {@link CODE_TRANSIENT}: a dependency that is not
+ * running never comes up on its own, so the caller repairs the
+ * environment instead of backing off.
+ */
+export const EXIT_PREREQUISITE = 70;
 
 /**
  * Structured-error envelope rendered to stderr when `--format json|yaml`
@@ -110,6 +131,8 @@ export function transienceForCode(code: string): string {
       return TRANSIENCE_PERMANENT;
     case CODE_RATE_LIMITED:
     case CODE_TRANSIENT:
+    case CODE_CONSENT_REFUSED:
+    case CODE_PREREQUISITE:
       return TRANSIENCE_TRANSIENT;
     default:
       return TRANSIENCE_UNKNOWN;
@@ -225,6 +248,45 @@ export function transientError(message: string): CliError {
     code: CODE_TRANSIENT,
     message,
     exit_code: EXIT_TRANSIENT,
+    transience: TRANSIENCE_TRANSIENT,
+  };
+}
+
+/**
+ * CODE_CONSENT_REFUSED envelope with exit code 7. Use it when a
+ * confirmation gate declines to run a destructive operation:
+ * `--confirm=no`, the non-TTY default, a missing or mismatched
+ * `--confirm-token`, or `N` at the prompt.
+ *
+ * Classified transient: the caller clears it by re-invoking with
+ * `--confirm=yes` (or the matching token). Do not use it for policy
+ * denials, which no confirmation can clear — those stay
+ * {@link unauthorizedError} and permanent.
+ */
+export function consentRefusedError(message: string): CliError {
+  return {
+    code: CODE_CONSENT_REFUSED,
+    message,
+    exit_code: EXIT_CONSENT_REFUSED,
+    transience: TRANSIENCE_TRANSIENT,
+  };
+}
+
+/**
+ * CODE_PREREQUISITE envelope with exit code 70. Use it when a declared
+ * external dependency could not be contacted: nothing listening on the
+ * configured endpoint, connection refused, dial timeout.
+ *
+ * Classified transient: the operator starts the dependency and the same
+ * command succeeds. Do not use it for a dependency that answered and
+ * then misbehaved — that is {@link genericError} — nor for one that was
+ * never configured, which is {@link usageError}.
+ */
+export function prerequisiteError(message: string): CliError {
+  return {
+    code: CODE_PREREQUISITE,
+    message,
+    exit_code: EXIT_PREREQUISITE,
     transience: TRANSIENCE_TRANSIENT,
   };
 }

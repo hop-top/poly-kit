@@ -11,14 +11,18 @@ import yaml
 from hop_top_kit.output import error as err_mod
 from hop_top_kit.output.error import (
     CODE_CONFLICT,
+    CODE_CONSENT_REFUSED,
     CODE_GENERIC,
     CODE_NOT_FOUND,
+    CODE_PREREQUISITE,
     CODE_PROVENANCE_MISSING,
     CODE_RATE_LIMITED,
     CODE_TRANSIENT,
     CODE_UNAUTHORIZED,
     CODE_USAGE,
+    EXIT_CONSENT_REFUSED,
     EXIT_GENERIC,
+    EXIT_PREREQUISITE,
     EXIT_PROVENANCE_MISSING,
     EXIT_RATE_LIMITED,
     EXIT_TRANSIENT,
@@ -27,8 +31,10 @@ from hop_top_kit.output.error import (
     TRANSIENCE_UNKNOWN,
     CLIError,
     conflict_error,
+    consent_refused_error,
     generic_error,
     not_found_error,
+    prerequisite_error,
     provenance_missing_error,
     rate_limited_error,
     render_error,
@@ -50,6 +56,8 @@ from hop_top_kit.output.error import (
         (usage_error("bad flag"), CODE_USAGE, 2, TRANSIENCE_PERMANENT),
         (rate_limited_error("budget"), CODE_RATE_LIMITED, 64, TRANSIENCE_TRANSIENT),
         (transient_error("upstream timeout"), CODE_TRANSIENT, 6, TRANSIENCE_TRANSIENT),
+        (consent_refused_error("declined"), CODE_CONSENT_REFUSED, 7, TRANSIENCE_TRANSIENT),
+        (prerequisite_error("no listener"), CODE_PREREQUISITE, 70, TRANSIENCE_TRANSIENT),
         (
             provenance_missing_error("/email"),
             CODE_PROVENANCE_MISSING,
@@ -65,6 +73,8 @@ from hop_top_kit.output.error import (
         "Usage",
         "RateLimited",
         "Transient",
+        "ConsentRefused",
+        "Prerequisite",
         "ProvenanceMissing",
     ],
 )
@@ -75,8 +85,11 @@ def test_constructors_set_code_exit_transience(got, want_code, want_exit, want_t
 
 
 def test_exit_code_table_is_unique():
-    # Mirrors the harness exit-code table: 0-6 core taxonomy + kit
-    # extension band 64/65. Uniqueness pins the taxonomy.
+    # Mirrors Go's envelope exit-code table: the 0-6 core taxonomy plus
+    # CONSENT_REFUSED 7 and the kit extension band 64/65/70.
+    # Uniqueness pins the taxonomy; the per-number assertions pin which
+    # class owns which slot, so a port that adds a class at a number Go
+    # already spent fails here rather than on a user's machine.
     exits = {
         generic_error("m").exit_code: CODE_GENERIC,
         not_found_error("m").exit_code: CODE_NOT_FOUND,
@@ -84,17 +97,23 @@ def test_exit_code_table_is_unique():
         unauthorized_error("m").exit_code: CODE_UNAUTHORIZED,
         usage_error("m").exit_code: CODE_USAGE,
         transient_error("m").exit_code: CODE_TRANSIENT,
+        consent_refused_error("m").exit_code: CODE_CONSENT_REFUSED,
         rate_limited_error("m").exit_code: CODE_RATE_LIMITED,
         provenance_missing_error("m").exit_code: CODE_PROVENANCE_MISSING,
+        prerequisite_error("m").exit_code: CODE_PREREQUISITE,
     }
-    assert len(exits) == 8
+    assert len(exits) == 10
     assert EXIT_GENERIC == 1
     assert EXIT_TRANSIENT == 6
+    assert EXIT_CONSENT_REFUSED == 7
     assert EXIT_RATE_LIMITED == 64
     assert EXIT_PROVENANCE_MISSING == 65
+    assert EXIT_PREREQUISITE == 70
     assert exits[1] == CODE_GENERIC
     assert exits[6] == CODE_TRANSIENT
+    assert exits[7] == CODE_CONSENT_REFUSED
     assert exits[65] == CODE_PROVENANCE_MISSING
+    assert exits[70] == CODE_PREREQUISITE
 
 
 @pytest.mark.parametrize(
@@ -107,6 +126,8 @@ def test_exit_code_table_is_unique():
         (CODE_PROVENANCE_MISSING, TRANSIENCE_PERMANENT),
         (CODE_RATE_LIMITED, TRANSIENCE_TRANSIENT),
         (CODE_TRANSIENT, TRANSIENCE_TRANSIENT),
+        (CODE_CONSENT_REFUSED, TRANSIENCE_TRANSIENT),
+        (CODE_PREREQUISITE, TRANSIENCE_TRANSIENT),
         (CODE_GENERIC, TRANSIENCE_UNKNOWN),
         ("ADOPTER_SPECIFIC", TRANSIENCE_UNKNOWN),
         ("", TRANSIENCE_UNKNOWN),

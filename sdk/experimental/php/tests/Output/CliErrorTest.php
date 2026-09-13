@@ -35,6 +35,8 @@ class CliErrorTest extends TestCase
             'RateLimited' => [CliError::rateLimited('budget'), CliError::CODE_RATE_LIMITED, 64, CliError::TRANSIENCE_TRANSIENT],
             'Transient' => [CliError::transient('upstream timeout'), CliError::CODE_TRANSIENT, 6, CliError::TRANSIENCE_TRANSIENT],
             'ProvenanceMissing' => [CliError::provenanceMissing('/email'), CliError::CODE_PROVENANCE_MISSING, 65, CliError::TRANSIENCE_PERMANENT],
+            'ConsentRefused' => [CliError::consentRefused('declined'), CliError::CODE_CONSENT_REFUSED, 7, CliError::TRANSIENCE_TRANSIENT],
+            'Prerequisite' => [CliError::prerequisite('no listener'), CliError::CODE_PREREQUISITE, 70, CliError::TRANSIENCE_TRANSIENT],
         ];
     }
 
@@ -50,20 +52,31 @@ class CliErrorTest extends TestCase
         $this->assertSame($wantTransience, $got->transience);
     }
 
+    /**
+     * Mirrors Go's envelope exit-code table: the 0-6 core taxonomy plus
+     * CONSENT_REFUSED 7 and the kit extension band 64/65/70.
+     * Uniqueness pins the taxonomy; the per-number assertions pin which
+     * class owns which slot, so a port that adds a class at a number Go
+     * already spent fails here rather than on a user's machine.
+     */
     public function testExitCodeTableIsUnique(): void
     {
         $exits = [];
         foreach (self::constructorCases() as [$err]) {
             $exits[$err->exitCode] = $err->code;
         }
-        $this->assertCount(8, $exits);
+        $this->assertCount(10, $exits);
         $this->assertSame(1, CliError::EXIT_GENERIC);
         $this->assertSame(6, CliError::EXIT_TRANSIENT);
+        $this->assertSame(7, CliError::EXIT_CONSENT_REFUSED);
         $this->assertSame(64, CliError::EXIT_RATE_LIMITED);
         $this->assertSame(65, CliError::EXIT_PROVENANCE_MISSING);
+        $this->assertSame(70, CliError::EXIT_PREREQUISITE);
         $this->assertSame(CliError::CODE_GENERIC, $exits[1]);
         $this->assertSame(CliError::CODE_TRANSIENT, $exits[6]);
+        $this->assertSame(CliError::CODE_CONSENT_REFUSED, $exits[7]);
         $this->assertSame(CliError::CODE_PROVENANCE_MISSING, $exits[65]);
+        $this->assertSame(CliError::CODE_PREREQUISITE, $exits[70]);
     }
 
     /** @return array<string, array{string, string}> */
@@ -77,6 +90,8 @@ class CliErrorTest extends TestCase
             'provenance-missing' => [CliError::CODE_PROVENANCE_MISSING, CliError::TRANSIENCE_PERMANENT],
             'rate-limited' => [CliError::CODE_RATE_LIMITED, CliError::TRANSIENCE_TRANSIENT],
             'transient' => [CliError::CODE_TRANSIENT, CliError::TRANSIENCE_TRANSIENT],
+            'consent-refused' => [CliError::CODE_CONSENT_REFUSED, CliError::TRANSIENCE_TRANSIENT],
+            'prerequisite' => [CliError::CODE_PREREQUISITE, CliError::TRANSIENCE_TRANSIENT],
             'generic' => [CliError::CODE_GENERIC, CliError::TRANSIENCE_UNKNOWN],
             'adopter' => ['ADOPTER_SPECIFIC', CliError::TRANSIENCE_UNKNOWN],
             'empty' => ['', CliError::TRANSIENCE_UNKNOWN],

@@ -4,9 +4,10 @@
 #![cfg(feature = "output")]
 
 use hop_top_kit::output::{
-    render_error, transience_for_code, CliError, CODE_CONFLICT, CODE_GENERIC, CODE_NOT_FOUND,
-    CODE_PROVENANCE_MISSING, CODE_RATE_LIMITED, CODE_TRANSIENT, CODE_UNAUTHORIZED, CODE_USAGE,
-    EXIT_GENERIC, EXIT_PROVENANCE_MISSING, EXIT_RATE_LIMITED, EXIT_TRANSIENT, TRANSIENCE_PERMANENT,
+    render_error, transience_for_code, CliError, CODE_CONFLICT, CODE_CONSENT_REFUSED, CODE_GENERIC,
+    CODE_NOT_FOUND, CODE_PREREQUISITE, CODE_PROVENANCE_MISSING, CODE_RATE_LIMITED, CODE_TRANSIENT,
+    CODE_UNAUTHORIZED, CODE_USAGE, EXIT_CONSENT_REFUSED, EXIT_GENERIC, EXIT_PREREQUISITE,
+    EXIT_PROVENANCE_MISSING, EXIT_RATE_LIMITED, EXIT_TRANSIENT, TRANSIENCE_PERMANENT,
     TRANSIENCE_TRANSIENT, TRANSIENCE_UNKNOWN,
 };
 use serde_json::Value;
@@ -70,6 +71,18 @@ fn constructors_set_code_exit_transience() {
             65,
             TRANSIENCE_PERMANENT,
         ),
+        (
+            CliError::consent_refused("declined"),
+            CODE_CONSENT_REFUSED,
+            7,
+            TRANSIENCE_TRANSIENT,
+        ),
+        (
+            CliError::prerequisite("no listener"),
+            CODE_PREREQUISITE,
+            70,
+            TRANSIENCE_TRANSIENT,
+        ),
     ];
     for (got, code, exit, transience) in &cases {
         assert_eq!(got.code, *code);
@@ -77,15 +90,29 @@ fn constructors_set_code_exit_transience() {
         assert_eq!(got.transience, *transience);
     }
 
-    // Exit-code table is unique; 1 is generic, 6 transient, 65 provenance.
+    // Mirrors Go's envelope exit-code table: the 0-6 core taxonomy plus
+    // CONSENT_REFUSED 7 and the kit extension band 64/65/70.
+    // Uniqueness pins the taxonomy; the per-number assertions pin which
+    // class owns which slot, so a port that adds a class at a number Go
+    // already spent fails here rather than on a user's machine.
     let mut exits: Vec<i32> = cases.iter().map(|(e, ..)| e.exit_code).collect();
     exits.sort_unstable();
     exits.dedup();
     assert_eq!(exits.len(), cases.len());
     assert_eq!(EXIT_GENERIC, 1);
     assert_eq!(EXIT_TRANSIENT, 6);
+    assert_eq!(EXIT_CONSENT_REFUSED, 7);
     assert_eq!(EXIT_RATE_LIMITED, 64);
     assert_eq!(EXIT_PROVENANCE_MISSING, 65);
+    assert_eq!(EXIT_PREREQUISITE, 70);
+    for (got, code, ..) in &cases {
+        if got.exit_code == 7 {
+            assert_eq!(*code, CODE_CONSENT_REFUSED);
+        }
+        if got.exit_code == 70 {
+            assert_eq!(*code, CODE_PREREQUISITE);
+        }
+    }
 }
 
 // --- transience_for_code ------------------------------------------------
@@ -100,6 +127,8 @@ fn transience_for_code_table() {
         (CODE_PROVENANCE_MISSING, TRANSIENCE_PERMANENT),
         (CODE_RATE_LIMITED, TRANSIENCE_TRANSIENT),
         (CODE_TRANSIENT, TRANSIENCE_TRANSIENT),
+        (CODE_CONSENT_REFUSED, TRANSIENCE_TRANSIENT),
+        (CODE_PREREQUISITE, TRANSIENCE_TRANSIENT),
         (CODE_GENERIC, TRANSIENCE_UNKNOWN),
         ("ADOPTER_SPECIFIC", TRANSIENCE_UNKNOWN),
         ("", TRANSIENCE_UNKNOWN),

@@ -60,8 +60,10 @@ $app->run(new ArrayInput(['command' => 'items', '--cols' => ['count,name']]));
   explicit `--format` that disagrees with it is an error
 - `--template` and `--cols` are mutually exclusive; `{key}` and `{*}` are the only placeholders
 - `Registry::register()` throws on a duplicate key; use `override()` to replace a built-in
-- `CliError` codes and exits: `USAGE` 2, `NOT_FOUND` 3, `CONFLICT` 4, `UNAUTHORIZED` 5,
-  `TRANSIENT` 6, `RATE_LIMITED` 64, `PROVENANCE_MISSING` 65, `GENERIC` 1
+- `CliError` codes and exits are the `CODE_*` / `EXIT_*` constants — read those rather than a
+  list in prose, including this one: the line that used to sit here named eight classes and had
+  already gone stale on `CONSENT_REFUSED` 7 and `PREREQUISITE` 70. Transience is derived per
+  code by `CliError::transienceForCode()`
 - Parity: [`sdk/tests/cross-lang/fixtures/ordering.json`](../../../../tests/cross-lang/fixtures/ordering.json),
   runner `sdk/tests/cross-lang/runners/php/order.php`
 
