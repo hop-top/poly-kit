@@ -203,6 +203,19 @@ class, so adopters never hand-roll the numbers:
 | `ProvenanceMissingError(detail)` | `PROVENANCE_MISSING` | 65 (`ExitProvenanceMissing`) | permanent |
 | `PrerequisiteError(msg)` | `PREREQUISITE` | 70 (`ExitPrerequisite`) | transient |
 
+These numbers predate the 12-factor AI-CLI spec: they come from an older
+cross-tool convention kit already implemented. The spec has since been
+aligned to them, so kit and the spec now agree on 0-6 — including
+`CONFLICT` 4 and `UNAUTHORIZED` 5, which an earlier draft of the spec had
+in the opposite order. An older copy of that draft is not a mismatch to
+fix here.
+
+The TS, Python, Rust and PHP ports mirror this table, constructor for
+constructor, and pin it in their own test suites. Kit's Go tree is the
+reference: `envelope.ExitCodeForClass` is the single source of truth, and
+`envelope.ExtensionBand()` records the >6 band so a new slot cannot
+silently collide.
+
 `CONSENT_REFUSED` and `UNAUTHORIZED` both mean "kit declined to run the
 command", but they differ in what clears them, which is why they carry
 different exit codes. `UNAUTHORIZED` is permanent: the caller lacks

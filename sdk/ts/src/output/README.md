@@ -27,7 +27,7 @@ render(process.stdout, JSON_FORMAT, { ok: true });
 - `--template` and `--cols` are mutually exclusive; `dispatch` throws.
 - Format resolution: explicit `--format`, else the `--output` extension, else `table`.
 - Error envelope keys are wire snake_case; empty optionals stay off the wire (Go `omitempty`).
-- Exit codes are exported constants (`EXIT_GENERIC` 1, `EXIT_TRANSIENT` 6, `EXIT_RATE_LIMITED` 64, `EXIT_PROVENANCE_MISSING` 65); import them, never hardcode.
+- Exit codes are exported constants (`EXIT_*`); import them, never hardcode, and read the constants rather than a list in prose — the line that used to sit here named four and stopped at 65, so it read as a ceiling once `EXIT_PREREQUISITE` 70 existed.
 - Parity: [`sdk/tests/cross-lang/fixtures/ordering.json`](../../../tests/cross-lang/fixtures/ordering.json), replayed by `sdk/tests/cross-lang/run-order.sh`.
 
 ## Neighbours

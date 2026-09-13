@@ -45,8 +45,10 @@ final class CliError implements JsonSerializable, Stringable
     public const string CODE_CONFLICT = 'CONFLICT'; // exit 4
     public const string CODE_UNAUTHORIZED = 'UNAUTHORIZED'; // exit 5
     public const string CODE_TRANSIENT = 'TRANSIENT'; // exit 6 — Factor-11 transient/retryable
+    public const string CODE_CONSENT_REFUSED = 'CONSENT_REFUSED'; // exit 7 — confirmation declined
     public const string CODE_PROVENANCE_MISSING = 'PROVENANCE_MISSING'; // exit 65 — Factor-12 refusal
     public const string CODE_RATE_LIMITED = 'RATE_LIMITED'; // exit 64 — Factor-10 budget exceeded
+    public const string CODE_PREREQUISITE = 'PREREQUISITE'; // exit 70 — dependency unreachable
 
     /**
      * Spec-assigned exit code for the generic failure class: the
@@ -61,6 +63,15 @@ final class CliError implements JsonSerializable, Stringable
      * means a retry may clear the failure.
      */
     public const int EXIT_TRANSIENT = 6;
+    /**
+     * Exit code for a confirmation gate that declined to run a
+     * destructive operation (--confirm=no, the non-TTY default, a
+     * missing or mismatched --confirm-token, or N at the prompt).
+     * Classified transient: re-invoking with --confirm=yes clears it.
+     * Distinct from CODE_UNAUTHORIZED at exit 5, which is permanent
+     * because no confirmation can clear a policy denial.
+     */
+    public const int EXIT_CONSENT_REFUSED = 7;
     /** Conventional exit code for Factor-10 rate-limit refusals. */
     public const int EXIT_RATE_LIMITED = 64;
     /**
@@ -71,6 +82,16 @@ final class CliError implements JsonSerializable, Stringable
      * of the low per-tool range.
      */
     public const int EXIT_PROVENANCE_MISSING = 65;
+    /**
+     * Exit code for a declared external dependency kit could not
+     * contact: nothing listening on the configured endpoint,
+     * connection refused, dial timeout. Separates a correct invocation
+     * whose logic never ran from the uncharacterized failures on exit
+     * 1. Classified transient, but deliberately not CODE_TRANSIENT: a
+     * dependency that is not running never comes up on its own, so the
+     * caller repairs the environment instead of backing off.
+     */
+    public const int EXIT_PREREQUISITE = 70;
 
     /**
      * @param list<string> $alternatives
@@ -105,7 +126,9 @@ final class CliError implements JsonSerializable, Stringable
             self::CODE_UNAUTHORIZED,
             self::CODE_PROVENANCE_MISSING => self::TRANSIENCE_PERMANENT,
             self::CODE_RATE_LIMITED,
-            self::CODE_TRANSIENT => self::TRANSIENCE_TRANSIENT,
+            self::CODE_TRANSIENT,
+            self::CODE_CONSENT_REFUSED,
+            self::CODE_PREREQUISITE => self::TRANSIENCE_TRANSIENT,
             default => self::TRANSIENCE_UNKNOWN,
         };
     }
@@ -198,6 +221,48 @@ final class CliError implements JsonSerializable, Stringable
             code: self::CODE_TRANSIENT,
             message: $message,
             exitCode: self::EXIT_TRANSIENT,
+            transience: self::TRANSIENCE_TRANSIENT,
+        );
+    }
+
+    /**
+     * CODE_CONSENT_REFUSED envelope with exit code 7. Use it when a
+     * confirmation gate declines to run a destructive operation:
+     * --confirm=no, the non-TTY default, a missing or mismatched
+     * --confirm-token, or N at the prompt.
+     *
+     * Classified transient: the caller clears it by re-invoking with
+     * --confirm=yes (or the matching token). Do not use it for policy
+     * denials, which no confirmation can clear — those stay
+     * unauthorized() and permanent.
+     */
+    public static function consentRefused(string $message): self
+    {
+        return new self(
+            code: self::CODE_CONSENT_REFUSED,
+            message: $message,
+            exitCode: self::EXIT_CONSENT_REFUSED,
+            transience: self::TRANSIENCE_TRANSIENT,
+        );
+    }
+
+    /**
+     * CODE_PREREQUISITE envelope with exit code 70. Use it when a
+     * declared external dependency could not be contacted: nothing
+     * listening on the configured endpoint, connection refused, dial
+     * timeout.
+     *
+     * Classified transient: the operator starts the dependency and the
+     * same command succeeds. Do not use it for a dependency that
+     * answered and then misbehaved — that is generic() — nor for one
+     * that was never configured, which is usage().
+     */
+    public static function prerequisite(string $message): self
+    {
+        return new self(
+            code: self::CODE_PREREQUISITE,
+            message: $message,
+            exitCode: self::EXIT_PREREQUISITE,
             transience: self::TRANSIENCE_TRANSIENT,
         );
     }

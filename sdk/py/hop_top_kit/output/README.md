@@ -29,7 +29,7 @@ render(sys.stdout, "json", {"ok": True})
 - `--template` (Jinja2) and `--cols` are mutually exclusive.
 - Format resolution: explicit `--format`, else the `--output` extension, else `table`; an explicit `--format` that disagrees with the `--output` extension raises `typer.BadParameter`.
 - `register_output_flags` intercepts `app.command` and `app.add_typer`, so call it before registering commands.
-- Exit codes are exported constants (`EXIT_GENERIC`, `EXIT_TRANSIENT`, `EXIT_RATE_LIMITED`, `EXIT_PROVENANCE_MISSING`); import them, never hardcode.
+- Exit codes are exported constants (`EXIT_*`); import them, never hardcode, and read the constants rather than a list in prose — the line that used to sit here named four of them and had already gone stale.
 - Parity: [`sdk/tests/cross-lang/fixtures/ordering.json`](../../../tests/cross-lang/fixtures/ordering.json), replayed by `sdk/tests/cross-lang/run-order.sh`.
 
 ## Neighbours
