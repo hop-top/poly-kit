@@ -192,8 +192,10 @@ body, with its exit code mapped to a status:
 | 4  | `CONFLICT`           | 409 | |
 | 5  | `UNAUTHORIZED`       | 403 | see below |
 | 6  | `TRANSIENT`          | 503 | retry may clear it |
+| 7  | `CONSENT_REFUSED`    | 403 | re-send the same call with confirmation |
 | 64 | `RATE_LIMITED`       | 429 | |
 | 65 | `PROVENANCE_MISSING` | 422 | well-formed, cannot be acted on |
+| 70 | `PREREQUISITE`       | 503 | a declared dependency is unreachable; repair it and retry the identical call |
 
 Any other exit code is 500.
 
@@ -219,8 +221,26 @@ is about what this caller may do. It is distinct from
 is the deployment's policy, the denial is the caller's entitlement.
 
 An unconfirmed destructive command is refused by the command itself,
-not by the projection: it exits `UNAUTHORIZED` and the table above
-maps that to `403`, with the command's own message in `stderr`.
+not by the projection. A served request has no terminal to ask at, so
+the confirmation gate takes its non-TTY default and declines; the
+table above maps that to `403`, with the command's own message — which
+names the `confirm` flag to re-send — in `stderr`. Pass
+`{"flags":{"confirm":"yes"}}` to clear it.
+
+`CONSENT_REFUSED` and `UNAUTHORIZED` share `403` because both are the
+server declining a call it understood. They differ in who clears them
+and how: a consent refusal is cleared by the same caller re-sending
+the same command with confirmation, an authorization refusal by
+someone else granting the caller permission. Read the envelope's
+`code`, not the status, to tell them apart.
+
+`PREREQUISITE` is `503` rather than `500`: the request was correct and
+the command's own logic never ran, because a dependency it declared
+was unreachable. An operator repairs the dependency and the identical
+call succeeds, which is what `503` tells a client — unlike `TRANSIENT`,
+also `503`, a prerequisite failure will not clear on its own, so a
+backoff loop against it burns its budget. Branch on the envelope's
+`code` when that distinction matters.
 
 ### Auth
 

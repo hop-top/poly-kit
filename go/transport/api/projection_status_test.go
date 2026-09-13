@@ -19,17 +19,18 @@ import (
 //
 // Classes this package deliberately does not distinguish are excused
 // individually, with the status they collapse to recorded, so the
-// collapse is a decision rather than an omission.
+// collapse is a decision rather than an omission. Nothing is excused
+// today: CONSENT_REFUSED and PREREQUISITE were, on the reading that
+// neither reaches an HTTP surface, and both readings were wrong.
+// TestRootFactoryKeepsTheGatesOverREST in go/console/cli calls an
+// unconfirmed gated command over real HTTP and gets the confirmation
+// gate's refusal back in the body, so there IS a confirmation gate
+// here — a served request has no terminal, which is precisely the
+// non-TTY default the gate refuses on. PREREQUISITE is exported for
+// adopters rather than raised by kit, so its reachability is the
+// adopter's to create and not kit's to rule out.
 func TestEveryKitClassHasAStatus(t *testing.T) {
-	// CONSENT_REFUSED and PREREQUISITE are not reachable through this
-	// projection today: it executes commands over HTTP, where there is
-	// no TTY to confirm at and no operator to start a dependency. They
-	// collapse to 500 with the rest of the unclassified failures. If
-	// either becomes reachable, delete its line here and add a real row.
-	excused := map[string]string{
-		envelope.CodeConsentRefused: "no confirmation gate on this surface",
-		envelope.CodePrerequisite:   "no operator to repair the environment mid-request",
-	}
+	excused := map[string]string{}
 
 	for _, class := range envelope.ExitClasses() {
 		exit, ok := envelope.ExitCodeForClass(class)
@@ -87,5 +88,37 @@ func TestExitStatusTableEnumeratesEveryRow(t *testing.T) {
 func TestStatusForUnmappedCodeIs500(t *testing.T) {
 	if got := StatusForExitCode(199); got != http.StatusInternalServerError {
 		t.Errorf("StatusForExitCode(199) = %d, want 500", got)
+	}
+}
+
+// TestConsentAndPrerequisiteAnswerTheirNextAction pins the two rows
+// that used to fall through to 500, each against the action the status
+// is chosen to prompt.
+//
+// Both are worth pinning by name rather than leaving to the coverage
+// guard above, which only asks whether a row exists. A row answering
+// 500 would satisfy that guard and still tell an agent the server
+// broke, which is the failure this pair is here to prevent.
+func TestConsentAndPrerequisiteAnswerTheirNextAction(t *testing.T) {
+	// A consent refusal is cleared by re-sending the same call WITH
+	// confirmation. 403 says the server understood and declined; it
+	// does not invite a bare retry, which would refuse identically.
+	if got := StatusForExitCode(envelope.ExitConsentRefused); got != http.StatusForbidden {
+		t.Errorf("CONSENT_REFUSED (exit %d) = %d, want 403",
+			envelope.ExitConsentRefused, got)
+	}
+	// A prerequisite failure is cleared by an operator repairing the
+	// environment; the identical call then succeeds. 503 is the one
+	// status that says retry this call later rather than change it.
+	if got := StatusForExitCode(envelope.ExitPrerequisite); got != http.StatusServiceUnavailable {
+		t.Errorf("PREREQUISITE (exit %d) = %d, want 503",
+			envelope.ExitPrerequisite, got)
+	}
+	// Neither may quietly regress to the unclassified-failure answer.
+	for _, exit := range []int{envelope.ExitConsentRefused, envelope.ExitPrerequisite} {
+		if StatusForExitCode(exit) == http.StatusInternalServerError {
+			t.Errorf("exit %d answers 500; a classified refusal must not "+
+				"report itself as a server error", exit)
+		}
 	}
 }

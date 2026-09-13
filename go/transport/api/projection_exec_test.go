@@ -188,15 +188,22 @@ func TestExitCodeToStatusTable(t *testing.T) {
 	// The mapping is contract. Flipping a row is the mutation that
 	// must turn this red.
 	cases := map[int]int{
-		0:  http.StatusOK,
-		1:  http.StatusInternalServerError,
-		2:  http.StatusBadRequest,
-		3:  http.StatusNotFound,
-		4:  http.StatusConflict,
-		5:  http.StatusForbidden,
-		6:  http.StatusServiceUnavailable,
+		0: http.StatusOK,
+		1: http.StatusInternalServerError,
+		2: http.StatusBadRequest,
+		3: http.StatusNotFound,
+		4: http.StatusConflict,
+		5: http.StatusForbidden,
+		6: http.StatusServiceUnavailable,
+		// A consent refusal is cleared by re-sending WITH confirmation,
+		// so it shares 403 with UNAUTHORIZED rather than inviting a
+		// bare retry.
+		7:  http.StatusForbidden,
 		64: http.StatusTooManyRequests,
 		65: http.StatusUnprocessableEntity,
+		// A declared dependency is unreachable: the service is what is
+		// unavailable, and the identical call succeeds once it is back.
+		70: http.StatusServiceUnavailable,
 		// Undefined codes are unclassified failures.
 		99: http.StatusInternalServerError,
 	}
@@ -209,10 +216,12 @@ func TestExitCodeToStatusTable(t *testing.T) {
 func TestExitCodeDrivesResponseStatus(t *testing.T) {
 	// End-to-end: the table is what the handler actually applies.
 	for exit, want := range map[int]int{
-		0: http.StatusOK,
-		2: http.StatusBadRequest,
-		3: http.StatusNotFound,
-		5: http.StatusForbidden,
+		0:  http.StatusOK,
+		2:  http.StatusBadRequest,
+		3:  http.StatusNotFound,
+		5:  http.StatusForbidden,
+		7:  http.StatusForbidden,
+		70: http.StatusServiceUnavailable,
 	} {
 		ex := &stubExecutor{result: api.CommandResult{ExitCode: exit}}
 		r := newProjectedRouter(t, ex)
