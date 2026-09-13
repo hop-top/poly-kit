@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6) (2026-09-13)
+
+
+### Features
+
+* **cli:** opt-in flag autocorrect for read-only commands ([#291](https://github.com/hop-top/poly-kit/issues/291)) ([aae90c4](https://github.com/hop-top/poly-kit/commit/aae90c462444c78c3198c6ec4a43974e9905dc8e))
+* **cli:** suggest corrections on flag parse errors ([#290](https://github.com/hop-top/poly-kit/issues/290)) ([05a93d9](https://github.com/hop-top/poly-kit/commit/05a93d908d48f85b4ebf4e54c77bf3c9c6c7af75))
+* **sdk:** port the consenting-telemetry factor to the TS and Python compliance checkers ([#281](https://github.com/hop-top/poly-kit/issues/281)) ([6e205b8](https://github.com/hop-top/poly-kit/commit/6e205b889a365e2e3a648dff60f975d1d9dba0cd))
+
+
+### Bug Fixes
+
+* **sdk:** add CONSENT_REFUSED and PREREQUISITE to the four SDK ports ([#314](https://github.com/hop-top/poly-kit/issues/314)) ([c937bef](https://github.com/hop-top/poly-kit/commit/c937befdab1030f77bc13ee9f641430b44f43705))
+
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.4...kit-py/v0.5.0-alpha.5) (2026-09-05)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.5. This release includes new features and bug fixes.
