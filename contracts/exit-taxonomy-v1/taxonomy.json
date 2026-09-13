@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/exit-taxonomy-v1/taxonomy.json",
+  "_comment": [
+    "Cross-language exit-code taxonomy. Generated from",
+    "go/console/output/envelope — do not hand-edit. Regenerate with:",
+    "  go test ./go/console/output/envelope/ \\",
+    "      -run TestGenerateExitTaxonomyContract -update-taxonomy-contract",
+    "",
+    "`classes` is the complete set of standard classes kit defines,",
+    "in ascending exit order. Every port MUST export each `class`",
+    "symbol, MUST resolve it to `exit`, and MUST return `transience`",
+    "from its transience-for-code function. A port missing a row, or",
+    "answering a different number or transience, is a drift bug: the",
+    "exit code and the transience are what adopters and agents branch",
+    "on, so a port that disagrees gives wrong retry guidance rather",
+    "than merely lacking a constant.",
+    "",
+    "`extension_band` records every allocated slot above 6, including",
+    "the four owned by the conformance trees rather than by envelope.",
+    "Ports are NOT required to export the slots they do not own — see",
+    "`owner`. The rows are pinned here so a new slot cannot silently",
+    "double-book a number that is already spent.",
+    "",
+    "OK and GENERIC carry no transience by design: OK is not a",
+    "failure, and GENERIC is uncharacterized by construction, so",
+    "\"unknown\" is the honest answer rather than a gap. Both appear",
+    "with transience \"unknown\", which is what TransienceForCode",
+    "returns for them."
+  ],
+  "version": "v1",
+  "source": "hop.top/kit/go/console/output/envelope",
+  "transiences": [
+    "transient",
+    "permanent",
+    "unknown"
+  ],
+  "classes": [
+    {
+      "class": "OK",
+      "exit": 0,
+      "transience": "unknown"
+    },
+    {
+      "class": "GENERIC",
+      "exit": 1,
+      "transience": "unknown"
+    },
+    {
+      "class": "USAGE",
+      "exit": 2,
+      "transience": "permanent"
+    },
+    {
+      "class": "NOT_FOUND",
+      "exit": 3,
+      "transience": "permanent"
+    },
+    {
+      "class": "CONFLICT",
+      "exit": 4,
+      "transience": "permanent"
+    },
+    {
+      "class": "UNAUTHORIZED",
+      "exit": 5,
+      "transience": "permanent"
+    },
+    {
+      "class": "TRANSIENT",
+      "exit": 6,
+      "transience": "transient"
+    },
+    {
+      "class": "CONSENT_REFUSED",
+      "exit": 7,
+      "transience": "transient"
+    },
+    {
+      "class": "RATE_LIMITED",
+      "exit": 64,
+      "transience": "transient"
+    },
+    {
+      "class": "PROVENANCE_MISSING",
+      "exit": 65,
+      "transience": "permanent"
+    },
+    {
+      "class": "PREREQUISITE",
+      "exit": 70,
+      "transience": "transient"
+    }
+  ],
+  "extension_band": [
+    {
+      "exit": 64,
+      "class": "RATE_LIMITED",
+      "owner": "hop.top/kit/go/console/output/envelope"
+    },
+    {
+      "exit": 65,
+      "class": "PROVENANCE_MISSING",
+      "owner": "hop.top/kit/go/console/output/envelope"
+    },
+    {
+      "exit": 66,
+      "class": "LEAK_DETECTED",
+      "owner": "hop.top/kit/go/console/cli/conformance"
+    },
+    {
+      "exit": 67,
+      "class": "CONFIG",
+      "owner": "hop.top/kit/go/console/cli/conformance"
+    },
+    {
+      "exit": 68,
+      "class": "GRADE_FAIL",
+      "owner": "hop.top/kit/go/conformance/client"
+    },
+    {
+      "exit": 69,
+      "class": "GRADE_UNGRADABLE",
+      "owner": "hop.top/kit/go/conformance/client"
+    },
+    {
+      "exit": 70,
+      "class": "PREREQUISITE",
+      "owner": "hop.top/kit/go/console/output/envelope"
+    }
+  ]
+}

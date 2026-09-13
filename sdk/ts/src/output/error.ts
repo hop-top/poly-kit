@@ -48,12 +48,37 @@ export const CODE_RATE_LIMITED = 'RATE_LIMITED'; // exit 64 — Factor-10 max-op
 export const CODE_PREREQUISITE = 'PREREQUISITE'; // exit 70 — declared dependency unreachable
 
 /**
+ * Success. Present for completeness so a table of the full taxonomy can
+ * be written without a bare 0.
+ */
+export const EXIT_OK = 0;
+/**
  * Spec-assigned exit code for the generic failure class: the command
  * failed and no narrower code applies. Pair it with {@link genericError}
  * rather than hand-rolling exit 1, so the envelope carries a transience
  * class.
  */
 export const EXIT_GENERIC = 1;
+/**
+ * The caller's invocation being wrong: an unknown flag, a missing
+ * argument, a value the command cannot parse. Permanent by
+ * construction — the same argv fails identically.
+ */
+export const EXIT_USAGE = 2;
+/** A named resource the command could not locate. */
+export const EXIT_NOT_FOUND = 3;
+/**
+ * A request that cannot be satisfied against the current state: a
+ * precondition failed, a write raced, an identifier is already taken.
+ */
+export const EXIT_CONFLICT = 4;
+/**
+ * An authentication or authorization refusal. Permanent: the caller
+ * needs new credentials or a different policy, not a retry. Distinct
+ * from {@link EXIT_CONSENT_REFUSED}, which a re-invocation with
+ * `--confirm=yes` clears.
+ */
+export const EXIT_UNAUTHORIZED = 5;
 /**
  * Spec-assigned exit code for transient/retryable failures (Factor 11).
  * Agents branch on it before parsing stderr: exit 6 means a retry may
@@ -137,6 +162,62 @@ export function transienceForCode(code: string): string {
     default:
       return TRANSIENCE_UNKNOWN;
   }
+}
+
+/**
+ * The class-symbol-to-exit-code relation, as data. Mirrors Go's
+ * `exitCodeForClass` in `go/console/output/envelope/exitcodes.go`.
+ *
+ * Expressed as a table rather than as constants plus trailing comments
+ * because the string-to-number relationship is the thing consumers
+ * actually need, and a comment cannot be consumed — nor can it be
+ * checked against the cross-language contract. Pinned against
+ * `contracts/exit-taxonomy-v1/taxonomy.json` by
+ * `test/output/taxonomy-contract.test.ts`.
+ *
+ * Scope is the classes kit itself owns. The conformance band's
+ * tool-specific slots (66 LEAK_DETECTED, 67 CONFIG, 68 GRADE_FAIL,
+ * 69 GRADE_UNGRADABLE) are deliberately absent: they are declared by the
+ * packages that own them.
+ */
+const EXIT_CODE_FOR_CLASS: ReadonlyMap<string, number> = new Map([
+  [CODE_OK, EXIT_OK],
+  [CODE_GENERIC, EXIT_GENERIC],
+  [CODE_USAGE, EXIT_USAGE],
+  [CODE_NOT_FOUND, EXIT_NOT_FOUND],
+  [CODE_CONFLICT, EXIT_CONFLICT],
+  [CODE_UNAUTHORIZED, EXIT_UNAUTHORIZED],
+  [CODE_TRANSIENT, EXIT_TRANSIENT],
+  [CODE_CONSENT_REFUSED, EXIT_CONSENT_REFUSED],
+  [CODE_RATE_LIMITED, EXIT_RATE_LIMITED],
+  [CODE_PROVENANCE_MISSING, EXIT_PROVENANCE_MISSING],
+  [CODE_PREREQUISITE, EXIT_PREREQUISITE],
+]);
+
+/**
+ * Resolves a standard class symbol to its numeric exit code, or
+ * `undefined` for adopter-defined and tool-specific codes.
+ *
+ * Callers that must produce a number for an unknown class decide their
+ * own fallback. This function does not pick one: a built-in fallback
+ * turns "this class was added to kit and never copied here" into an
+ * assertion against exit 1 that looks like a real failure rather than a
+ * stale table.
+ */
+export function exitCodeForClass(code: string): number | undefined {
+  return EXIT_CODE_FOR_CLASS.get(code);
+}
+
+/**
+ * The class symbols kit defines, in ascending exit-code order (ties
+ * broken by symbol). Callers rendering the taxonomy iterate this rather
+ * than hard-coding rows, so a class added above appears without a
+ * second edit.
+ */
+export function exitClasses(): string[] {
+  return [...EXIT_CODE_FOR_CLASS.entries()]
+    .sort((a, b) => (a[1] !== b[1] ? a[1] - b[1] : a[0].localeCompare(b[0])))
+    .map(([code]) => code);
 }
 
 /**

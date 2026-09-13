@@ -13,6 +13,7 @@ the short entry point; this page carries the full record.
 | `scope-defaults.json` | default deny patterns for the scope packages | per-language scope packages | `TestScopeDefaultsContractSync`, `TestScopeDefaultsRegistered` |
 | `sdk/tests/cross-lang/fixtures/mcp-wire.json` | MCP wire bytes (18 cases, 1 sequence) | Go, TypeScript, Python, Rust, PHP | `make test-parity-mcp` |
 | `serve.json` | serve lifecycle conformance record | Go reference; others `SHIPPED`/`PENDING`/`N/A` | `TestServeContractMatchesGo` |
+| `contracts/exit-taxonomy-v1/taxonomy.json` | the exit-code taxonomy: class, exit number, default transience | Go, TypeScript, Python, Rust, PHP | `make test-parity-taxonomy` |
 
 ## What belongs in `parity.json`
 
@@ -236,6 +237,98 @@ That direction matters. A fixture pinned against hand-typed literals drifts
 the moment Go changes and nobody notices; pinned against the implementation,
 a Go-side change fails here and forces the fixture — and therefore the
 sibling ports' spec — to be updated in the same commit.
+
+## Exit-code taxonomy (`contracts/exit-taxonomy-v1/taxonomy.json`)
+
+The exit-code taxonomy is a parity contract, but not a `parity.json`
+block: it is not a set of constants the runtime loads, it is the
+**class → exit number → default transience** table each port implements
+in its own idiom. So it carries its own file and its own per-language
+runners, the way the MCP wire fixture does.
+
+Authority is `go/console/output/envelope`. The file is **generated** from
+it — `ExitClasses`, `ExitCodeForClass`, `TransienceForCode` and
+`ExtensionBand` — and never hand-edited.
+
+That direction is the whole design. Before this contract existed, each
+port hand-maintained its own copy of the table and nothing pinned them
+together. When Go gained `CONSENT_REFUSED` 7 and `PREREQUISITE` 70, all
+four other ports silently kept the old nine-class table for two
+releases — and worse than the missing constants,
+`transience_for_code("CONSENT_REFUSED")` returned `unknown` in all four
+where Go returns `transient`, so four runtimes gave agents wrong retry
+guidance. The ports were then brought level by hand, which is the same
+mechanism that let them drift.
+
+A hand-written JSON table would have reproduced exactly that: a second
+copy of the taxonomy, correct on the day it was typed. Generated from
+Go, the file cannot be stale without a test saying so.
+
+### What is in it
+
+| Key | Holds |
+|-----|-------|
+| `classes` | every standard class kit defines, ascending by exit: `class`, `exit`, `transience` |
+| `extension_band` | every allocated slot above 6, with the `owner` package that declares it |
+| `transiences` | the three-value transience vocabulary, so a port answering a fourth string fails |
+
+`extension_band` carries `owner` because kit's >6 band is allocated
+across three trees — `go/console/output/envelope` (64, 65, 70),
+`go/console/cli/conformance` (66 `LEAK_DETECTED`, 67 `CONFIG`) and
+`go/conformance/client` (68 `GRADE_FAIL`, 69 `GRADE_UNGRADABLE`). Ports
+MUST export the slots envelope owns and MUST NOT claim the others: a
+port minting `LEAK_DETECTED` would be spending a number the conformance
+tree owns. The foreign rows are recorded, not exported, so a future
+allocation cannot silently double-book a slot.
+
+### Runners
+
+| Port | Loader |
+|------|--------|
+| Go | `go/console/output/envelope/taxonomy_contract_gen_test.go` (drift gate) |
+| TypeScript | `sdk/ts/test/output/taxonomy-contract.test.ts` |
+| Python | `sdk/py/tests/test_taxonomy_contract.py` |
+| Rust | `sdk/experimental/rs/tests/taxonomy_contract.rs` (feature `output`) |
+| PHP | `sdk/experimental/php/tests/Output/TaxonomyContractTest.php`, run only when `php` and `composer` are on PATH |
+
+`make test-parity-taxonomy` runs all five. As with the MCP fixture, Go's
+entry is a **drift gate, not a replay**: it proves the checked-in file
+still matches what the live taxonomy emits. The four SDKs load the file
+and check their own table against it.
+
+The two halves compose into the gate this contract exists to be. A class
+added to Go turns the Go gate red; regenerating then turns all four SDK
+loaders red until they carry the class too. Neither half alone is
+enough — a generator with no consumers is documentation, and consumers
+with a hand-typed file are the copy that drifted.
+
+Each loader checks membership **in both directions**. A port carrying an
+extra class Go does not define is as much a divergence as a port missing
+one: an adopter branching on it gets a number no other runtime produces.
+
+### Regenerating
+
+```bash
+go test ./go/console/output/envelope/ -run TestGenerateExitTaxonomyContract \
+    -update-taxonomy-contract
+```
+
+Regenerating re-baselines every port, so a diff in this file must be
+explainable as an intended Go-side change — and the same commit is
+expected to carry the four port updates that follow from it.
+
+### Ports resolve the class → exit relation as data
+
+Each port exports `exit_code_for_class` / `exitCodeForClass` and
+`exit_classes` / `exitClasses` (PHP: `CliError::exitCodeForClass`,
+`CliError::exitClasses`), mirroring Go. Before this contract the ports
+carried the exit numbers only as trailing comments beside the `CODE_*`
+constants, which is why no loader could check them: a comment cannot be
+consumed. None of the five resolves an unknown class to a fallback
+number — an unknown class returns `undefined` / `None` / `null`, because
+a built-in fallback turns "kit added a class and this port never copied
+it" into an assertion against exit 1 that reads as a real failure rather
+than a stale table.
 
 ## `extends`
 

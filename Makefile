@@ -4,7 +4,8 @@
 	lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook \
-	test-parity test-parity-kv test-parity-typeid test-py test-release test-rs test-templates test-ts \
+	test-parity test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-typeid test-py \
+	test-release test-rs test-templates test-ts \
 	test-workflow tools tools-golangci-lint
 
 # Tool versions — single source of truth for local + the kit repo's
@@ -141,7 +142,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: test-parity-typeid test-parity-kv test-parity-mcp ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -196,6 +197,39 @@ test-parity-mcp: ## MCP dual-spec wire conformance across Go + 4 SDKs
 		cd sdk/experimental/php && composer install --no-progress --quiet && vendor/bin/phpunit tests/Mcp/WireConformanceTest.php; \
 	else \
 		echo "==> mcp-wire parity: PHP toolchain not present, skipping (experimental SDK)"; \
+	fi
+
+# Exit-code taxonomy gate over contracts/exit-taxonomy-v1/taxonomy.json.
+#
+# Go's entry is a DRIFT GATE, not a replay: the contract is generated
+# from go/console/output/envelope, so Go's job is to prove the
+# checked-in file still matches what the live taxonomy emits. The four
+# SDKs load the file and check their own class/exit/transience table
+# against it.
+#
+# That asymmetry is the whole point. A class added to Go turns the Go
+# gate red until the contract is regenerated, and regenerating then
+# turns all four SDK loaders red until they carry the class too — so a
+# taxonomy change cannot land in one language and reach none of the
+# others, which is how CONSENT_REFUSED 7 and PREREQUISITE 70 shipped in
+# Go and were missing from all four ports for two releases.
+#
+# PHP is optional for the same reason as test-parity-typeid: the PHP
+# toolchain is experimental and not every runner ships it.
+test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
+	@echo "==> exit-taxonomy parity: Go (contract drift gate)"
+	go test ./go/console/output/envelope/ -run '^TestGenerateExitTaxonomyContract$$|^TestExitTaxonomyContractIsSelfConsistent$$' -count=1 -timeout 60s
+	@echo "==> exit-taxonomy parity: Rust"
+	cd sdk/experimental/rs && cargo test --features output --test taxonomy_contract --locked
+	@echo "==> exit-taxonomy parity: TypeScript"
+	cd sdk/ts && pnpm vitest run test/output/taxonomy-contract.test.ts
+	@echo "==> exit-taxonomy parity: Python"
+	cd sdk/py && uv sync --all-extras -q && uv run pytest tests/test_taxonomy_contract.py
+	@if command -v php >/dev/null 2>&1 && command -v composer >/dev/null 2>&1; then \
+		echo "==> exit-taxonomy parity: PHP"; \
+		cd sdk/experimental/php && composer install --no-progress --quiet && vendor/bin/phpunit tests/Output/TaxonomyContractTest.php; \
+	else \
+		echo "==> exit-taxonomy parity: PHP toolchain not present, skipping (experimental SDK)"; \
 	fi
 
 # Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.

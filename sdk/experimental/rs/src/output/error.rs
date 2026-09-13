@@ -36,11 +36,28 @@ pub const CODE_PROVENANCE_MISSING: &str = "PROVENANCE_MISSING"; // exit 65 — F
 pub const CODE_RATE_LIMITED: &str = "RATE_LIMITED"; // exit 64 — Factor-10 max-ops budget exceeded
 pub const CODE_PREREQUISITE: &str = "PREREQUISITE"; // exit 70 — declared dependency unreachable
 
+/// Success. Present for completeness so a table of the full taxonomy
+/// can be written without a bare 0.
+pub const EXIT_OK: i32 = 0;
 /// Spec-assigned exit code for the generic failure class: the command
 /// failed and no narrower code applies. Pair it with
 /// [`CliError::generic`] rather than hand-rolling exit 1, so the
 /// envelope carries a transience class.
 pub const EXIT_GENERIC: i32 = 1;
+/// The caller's invocation being wrong: an unknown flag, a missing
+/// argument, a value the command cannot parse. Permanent by
+/// construction — the same argv fails identically.
+pub const EXIT_USAGE: i32 = 2;
+/// A named resource the command could not locate.
+pub const EXIT_NOT_FOUND: i32 = 3;
+/// A request that cannot be satisfied against the current state: a
+/// precondition failed, a write raced, an identifier is already taken.
+pub const EXIT_CONFLICT: i32 = 4;
+/// An authentication or authorization refusal. Permanent: the caller
+/// needs new credentials or a different policy, not a retry. Distinct
+/// from [`EXIT_CONSENT_REFUSED`], which a re-invocation with
+/// `--confirm=yes` clears.
+pub const EXIT_UNAUTHORIZED: i32 = 5;
 /// Spec-assigned exit code for transient/retryable failures (Factor 11).
 /// Agents branch on it before parsing stderr: exit 6 means a retry may
 /// clear the failure.
@@ -85,6 +102,62 @@ pub fn transience_for_code(code: &str) -> &'static str {
         }
         _ => TRANSIENCE_UNKNOWN,
     }
+}
+
+/// The class-symbol-to-exit-code relation, as data. Mirrors Go's
+/// `exitCodeForClass` in `go/console/output/envelope/exitcodes.go`.
+///
+/// Expressed as a table rather than as constants plus trailing comments
+/// because the string-to-number relationship is the thing consumers
+/// actually need, and a comment cannot be consumed — nor can it be
+/// checked against the cross-language contract. Pinned against
+/// `contracts/exit-taxonomy-v1/taxonomy.json` by
+/// `tests/taxonomy_contract.rs`.
+///
+/// Scope is the classes kit itself owns. The conformance band's
+/// tool-specific slots (66 LEAK_DETECTED, 67 CONFIG, 68 GRADE_FAIL,
+/// 69 GRADE_UNGRADABLE) are deliberately absent: they are declared by
+/// the packages that own them.
+///
+/// Ordered by ascending exit code so [`exit_classes`] can return it
+/// directly; the contract emits the same order from Go.
+const EXIT_CODE_FOR_CLASS: &[(&str, i32)] = &[
+    (CODE_OK, EXIT_OK),
+    (CODE_GENERIC, EXIT_GENERIC),
+    (CODE_USAGE, EXIT_USAGE),
+    (CODE_NOT_FOUND, EXIT_NOT_FOUND),
+    (CODE_CONFLICT, EXIT_CONFLICT),
+    (CODE_UNAUTHORIZED, EXIT_UNAUTHORIZED),
+    (CODE_TRANSIENT, EXIT_TRANSIENT),
+    (CODE_CONSENT_REFUSED, EXIT_CONSENT_REFUSED),
+    (CODE_RATE_LIMITED, EXIT_RATE_LIMITED),
+    (CODE_PROVENANCE_MISSING, EXIT_PROVENANCE_MISSING),
+    (CODE_PREREQUISITE, EXIT_PREREQUISITE),
+];
+
+/// Resolves a standard class symbol to its numeric exit code, or `None`
+/// for adopter-defined and tool-specific codes.
+///
+/// Callers that must produce a number for an unknown class decide their
+/// own fallback. This function does not pick one: a built-in fallback
+/// turns "this class was added to kit and never copied here" into an
+/// assertion against exit 1 that looks like a real failure rather than
+/// a stale table.
+pub fn exit_code_for_class(code: &str) -> Option<i32> {
+    EXIT_CODE_FOR_CLASS
+        .iter()
+        .find(|(class, _)| *class == code)
+        .map(|(_, exit)| *exit)
+}
+
+/// The class symbols kit defines, in ascending exit-code order (ties
+/// broken by symbol). Callers rendering the taxonomy iterate this
+/// rather than hard-coding rows, so a class added above appears without
+/// a second edit.
+pub fn exit_classes() -> Vec<&'static str> {
+    let mut out: Vec<(&'static str, i32)> = EXIT_CODE_FOR_CLASS.to_vec();
+    out.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(b.0)));
+    out.into_iter().map(|(class, _)| class).collect()
 }
 
 /// Structured-error envelope rendered to stderr when `--format

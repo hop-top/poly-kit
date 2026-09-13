@@ -58,6 +58,32 @@ final class CliError implements JsonSerializable, Stringable
      */
     public const int EXIT_GENERIC = 1;
     /**
+     * Success. Present for completeness so a table of the full
+     * taxonomy can be written without a bare 0.
+     */
+    public const int EXIT_OK = 0;
+    /**
+     * The caller's invocation being wrong: an unknown flag, a missing
+     * argument, a value the command cannot parse. Permanent by
+     * construction — the same argv fails identically.
+     */
+    public const int EXIT_USAGE = 2;
+    /** A named resource the command could not locate. */
+    public const int EXIT_NOT_FOUND = 3;
+    /**
+     * A request that cannot be satisfied against the current state: a
+     * precondition failed, a write raced, an identifier is already
+     * taken.
+     */
+    public const int EXIT_CONFLICT = 4;
+    /**
+     * An authentication or authorization refusal. Permanent: the
+     * caller needs new credentials or a different policy, not a retry.
+     * Distinct from EXIT_CONSENT_REFUSED, which a re-invocation with
+     * --confirm=yes clears.
+     */
+    public const int EXIT_UNAUTHORIZED = 5;
+    /**
      * Spec-assigned exit code for transient/retryable failures
      * (Factor 11). Agents branch on it before parsing stderr: exit 6
      * means a retry may clear the failure.
@@ -131,6 +157,76 @@ final class CliError implements JsonSerializable, Stringable
             self::CODE_PREREQUISITE => self::TRANSIENCE_TRANSIENT,
             default => self::TRANSIENCE_UNKNOWN,
         };
+    }
+
+    /**
+     * The class-symbol-to-exit-code relation, as data. Mirrors Go's
+     * exitCodeForClass in go/console/output/envelope/exitcodes.go.
+     *
+     * Expressed as a table rather than as constants plus trailing
+     * comments because the string-to-number relationship is the thing
+     * consumers actually need, and a comment cannot be consumed — nor
+     * can it be checked against the cross-language contract. Pinned
+     * against contracts/exit-taxonomy-v1/taxonomy.json by
+     * tests/Output/TaxonomyContractTest.php.
+     *
+     * Scope is the classes kit itself owns. The conformance band's
+     * tool-specific slots (66 LEAK_DETECTED, 67 CONFIG, 68 GRADE_FAIL,
+     * 69 GRADE_UNGRADABLE) are deliberately absent: they are declared
+     * by the packages that own them.
+     *
+     * @return array<string, int>
+     */
+    private static function exitCodeTable(): array
+    {
+        return [
+            self::CODE_OK => self::EXIT_OK,
+            self::CODE_GENERIC => self::EXIT_GENERIC,
+            self::CODE_USAGE => self::EXIT_USAGE,
+            self::CODE_NOT_FOUND => self::EXIT_NOT_FOUND,
+            self::CODE_CONFLICT => self::EXIT_CONFLICT,
+            self::CODE_UNAUTHORIZED => self::EXIT_UNAUTHORIZED,
+            self::CODE_TRANSIENT => self::EXIT_TRANSIENT,
+            self::CODE_CONSENT_REFUSED => self::EXIT_CONSENT_REFUSED,
+            self::CODE_RATE_LIMITED => self::EXIT_RATE_LIMITED,
+            self::CODE_PROVENANCE_MISSING => self::EXIT_PROVENANCE_MISSING,
+            self::CODE_PREREQUISITE => self::EXIT_PREREQUISITE,
+        ];
+    }
+
+    /**
+     * Resolves a standard class symbol to its numeric exit code, or
+     * null for adopter-defined and tool-specific codes.
+     *
+     * Callers that must produce a number for an unknown class decide
+     * their own fallback. This method does not pick one: a built-in
+     * fallback turns "this class was added to kit and never copied
+     * here" into an assertion against exit 1 that looks like a real
+     * failure rather than a stale table.
+     */
+    public static function exitCodeForClass(string $code): ?int
+    {
+        return self::exitCodeTable()[$code] ?? null;
+    }
+
+    /**
+     * The class symbols kit defines, in ascending exit-code order
+     * (ties broken by symbol). Callers rendering the taxonomy iterate
+     * this rather than hard-coding rows, so a class added above
+     * appears without a second edit.
+     *
+     * @return list<string>
+     */
+    public static function exitClasses(): array
+    {
+        $table = self::exitCodeTable();
+        $classes = array_keys($table);
+        usort(
+            $classes,
+            static fn (string $a, string $b): int => $table[$a] <=> $table[$b] ?: strcmp($a, $b),
+        );
+
+        return $classes;
     }
 
     /**
