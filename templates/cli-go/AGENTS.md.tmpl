@@ -241,10 +241,18 @@ an ungated command is `400 unknown flag: confirm`.
 | 4 | 409 | conflict with current state | Re-read state, then decide. |
 | 5 | 403 | refused: not permitted, or unconfirmed | No. Confirm, or ask a human. |
 | 6 | 503 | transient | Yes, with backoff. |
+| 7 | 403 | refused: consent declined at the gate | Only after re-sending with `confirm`. |
 | 64 | 429 | rate limited | Yes, with backoff. |
 | 65 | 422 | refused: provenance missing | No. |
+| 70 | 503 | a dependency this tool declared is unreachable | Not on your own. A human repairs it; then retry unchanged. |
 
 Any other code is 500 and unclassified.
+
+`6` and `70` are both `503`, and they want opposite things from you.
+`6` may clear on its own, so back off and retry. `70` will not — a
+dependency is down and nothing you do to the request changes that, so
+a backoff loop just burns its budget. Read `code` in the body to tell
+them apart before you retry.
 
 ## Never
 

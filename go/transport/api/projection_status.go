@@ -28,8 +28,10 @@ const (
 	exitConflict          = envelope.ExitConflict
 	exitUnauthorized      = envelope.ExitUnauthorized
 	exitTransient         = envelope.ExitTransient
+	exitConsentRefused    = envelope.ExitConsentRefused
 	exitRateLimited       = envelope.ExitRateLimited
 	exitProvenanceMissing = envelope.ExitProvenanceMissing
+	exitPrerequisite      = envelope.ExitPrerequisite
 )
 
 // exitStatusTable maps a command's exit code onto the HTTP status the
@@ -48,12 +50,32 @@ const (
 //     retry with credentials, and the projection's auth already ran
 //     and passed before the command executed: the refusal is about
 //     what this authenticated caller may do, which is 403's meaning.
-//   - TRANSIENT and RATE_LIMITED map to 503 and 429, the two statuses
-//     a retry wrapper already knows how to back off on.
+//   - CONSENT_REFUSED joins UNAUTHORIZED at 403. The command was
+//     understood and the server declines to run it until the caller
+//     confirms; what changes is the request, not the caller's
+//     identity or the server's health. 403 is also what this refusal
+//     already answered when the confirmation gate coded itself
+//     UNAUTHORIZED, so splitting the class out of exit 5 keeps the
+//     wire unchanged. The body still distinguishes the two: the
+//     command's own message names the confirm flag to re-send.
+//   - TRANSIENT, PREREQUISITE and RATE_LIMITED map to 503, 503 and
+//     429, the statuses a retry wrapper already knows how to back off
+//     on. PREREQUISITE is 503 rather than 500 because the service,
+//     not the request, is what is unavailable: a dependency it
+//     declared is unreachable, an operator repairs it, and the
+//     identical request then succeeds. That is 503's meaning, and it
+//     is the one status that tells a caller to retry the same call
+//     later rather than to change it.
 //   - PROVENANCE_MISSING is a refusal to act on unverifiable input,
 //     which is 422: the request was well-formed but cannot be acted
 //     upon.
 //   - Anything else, GENERIC included, is 500.
+//
+// Neither CONSENT_REFUSED nor PREREQUISITE is theoretical here.
+// The confirmation gate fires on this surface — a served request has
+// no terminal, so an unconfirmed gated command takes the non-TTY
+// default and refuses — and PREREQUISITE is exported for adopters,
+// whose commands reach datastores this projection serves over HTTP.
 var exitStatusTable = map[int]int{
 	exitOK:                http.StatusOK,
 	exitGeneric:           http.StatusInternalServerError,
@@ -62,8 +84,10 @@ var exitStatusTable = map[int]int{
 	exitConflict:          http.StatusConflict,
 	exitUnauthorized:      http.StatusForbidden,
 	exitTransient:         http.StatusServiceUnavailable,
+	exitConsentRefused:    http.StatusForbidden,
 	exitRateLimited:       http.StatusTooManyRequests,
 	exitProvenanceMissing: http.StatusUnprocessableEntity,
+	exitPrerequisite:      http.StatusServiceUnavailable,
 }
 
 // StatusForExitCode returns the HTTP status a command exiting with
@@ -91,8 +115,8 @@ type ExitStatusPair struct {
 func ExitStatusTable() []ExitStatusPair {
 	codes := []int{
 		exitOK, exitGeneric, exitUsage, exitNotFound, exitConflict,
-		exitUnauthorized, exitTransient, exitRateLimited,
-		exitProvenanceMissing,
+		exitUnauthorized, exitTransient, exitConsentRefused,
+		exitRateLimited, exitProvenanceMissing, exitPrerequisite,
 	}
 	out := make([]ExitStatusPair, 0, len(codes))
 	for _, c := range codes {

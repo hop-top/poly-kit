@@ -38,7 +38,7 @@ r := api.NewRouter(
 - Projection reflects at **service start**, not registration, and is additive: `Handlers` and `Resources` mount first, so an adopter route always wins a pattern collision.
 - Method selection: `read` becomes `GET`, `write` and `destructive` become `POST`, `interactive` is never mounted.
 - `GET /v1/commands` lists every reflected command, mounted or not; non-invocable entries carry `invocable: false` and a stable reason, no `method` or `route`.
-- Exit codes map to statuses (`0`→200, `2`→400, `3`→404, `4`→409, `5`→403, `6`→503, `64`→429, `65`→422, anything else 500). `UNAUTHORIZED` is 403, not 401.
+- Exit codes map to statuses (`0`→200, `2`→400, `3`→404, `4`→409, `5`→403, `6`→503, `7`→403, `64`→429, `65`→422, `70`→503, anything else 500). `UNAUTHORIZED` is 403, not 401. `CONSENT_REFUSED` (7) shares 403: re-send the same call with `confirm`. `PREREQUISITE` (70) is 503, not 500 — a declared dependency is unreachable, so the identical call succeeds once an operator repairs it.
 - Refusals where the command never ran: `not_invocable` (404), `destructive_blocked` (403), `permission_denied` (403).
 - The projection installs no auth. The service listens on `127.0.0.1:8080` and refuses a non-loopback address it would serve unauthenticated, at exit `2`, unless `services.api.insecure_remote` opts in.
 - Streaming is out of scope: the projection is request/reply.

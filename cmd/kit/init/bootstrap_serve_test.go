@@ -335,8 +335,13 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		for _, p := range shaped.ExitStatus {
 			mapping[p.ExitCode] = p.Status
 		}
+		// 7 CONSENT_REFUSED shares 403 with UNAUTHORIZED (re-send the
+		// same call with confirmation); 70 PREREQUISITE is 503, not
+		// 500, because a declared dependency is unreachable and the
+		// identical call succeeds once an operator repairs it.
 		assert.Equal(t, map[int]int{
-			0: 200, 1: 500, 2: 400, 3: 404, 4: 409, 5: 403, 6: 503, 64: 429, 65: 422,
+			0: 200, 1: 500, 2: 400, 3: 404, 4: 409, 5: 403, 6: 503, 7: 403,
+			64: 429, 65: 422, 70: 503,
 		}, mapping, "the fragment's exit-code table must be the tool's own")
 
 		// A read command runs over REST and answers in data, because
