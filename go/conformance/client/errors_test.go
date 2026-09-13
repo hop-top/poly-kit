@@ -61,6 +61,65 @@ func TestBandConstants(t *testing.T) {
 	}
 }
 
+// TestBandConstantsMatchKitAllocation pins this package's band slots
+// against kit's record of the allocation.
+//
+// The band is allocated across three trees, so the constant being 68
+// here and kit's list saying something else is a collision waiting to
+// happen that neither side can see alone. This package declares the
+// numbers; kit records who owns what; the two must agree.
+func TestBandConstantsMatchKitAllocation(t *testing.T) {
+	local := map[string]int{
+		CodeGradeFail:       ExitGradeFail,
+		CodeGradeUngradable: ExitGradeUngradable,
+	}
+	matched := 0
+	for _, slot := range output.ExtensionBand() {
+		want, mine := local[slot.Class]
+		if !mine {
+			continue
+		}
+		matched++
+		if slot.Exit != want {
+			t.Errorf("kit allocates %s to exit %d, this package declares %d",
+				slot.Class, slot.Exit, want)
+		}
+		if slot.Owner != "hop.top/kit/go/conformance/client" {
+			t.Errorf("kit records %s as owned by %s, but it is declared here",
+				slot.Class, slot.Owner)
+		}
+	}
+	if matched != len(local) {
+		t.Errorf("kit's band lists %d of this package's %d slots; a slot declared "+
+			"here and missing from envelope.ExtensionBand can be handed to "+
+			"another feature", matched, len(local))
+	}
+}
+
+// TestSharedSlotsUseKitsConstants guards against this package
+// re-deriving a number kit already names. Where a sentinel sits on a
+// shared class's slot, the value must be kit's constant, not a literal
+// that agrees with it today.
+func TestSharedSlotsUseKitsConstants(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		err  *sentinel
+		want int
+	}{
+		{"auth failed", ErrServiceAuthFailed, output.ExitUnauthorized},
+		{"service usage", ErrServiceUsage, output.ExitUsage},
+		{"cassette pack", ErrCassettePack, output.ExitGeneric},
+		{"cassette too large", ErrCassetteTooLarge, output.ExitUsage},
+		{"manifest parse", ErrManifestParse, output.ExitUsage},
+		{"service unavailable", ErrServiceUnreachable, output.ExitTransient},
+		{"rate limited", ErrRateLimited, output.ExitRateLimited},
+	} {
+		if c.err.exit != c.want {
+			t.Errorf("%s: exit = %d, want kit's %d", c.name, c.err.exit, c.want)
+		}
+	}
+}
+
 // TestWrappedSentinelKeepsExitAndTransience ensures the constructor-
 // wrapped form renders the same envelope class as its base identity.
 func TestWrappedSentinelKeepsExitAndTransience(t *testing.T) {

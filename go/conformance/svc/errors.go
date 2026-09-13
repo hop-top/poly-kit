@@ -6,16 +6,24 @@ import (
 	"time"
 
 	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/console/output/envelope"
 )
 
 // Symbolic error codes for the svc surface. Per design §10. Each code
-// corresponds to an HTTP status and a kit exit-code class (1/2/3/4/5/6/64).
+// corresponds to an HTTP status and a kit exit-code class.
 //
 // These constants intentionally live in this package rather than
 // kit/output so the scen track owns the scenario-internal codes
 // (STORY_HASH_MISMATCH, JUDGE_*, GRADER_*). When kit/output gains these
 // scen-side codes in a follow-up, svc will continue to reference its
 // own.
+//
+// A handful of the strings below — RATE_LIMITED, PROVENANCE_MISSING —
+// are kit's own class names rather than service-local ones. Those are
+// not a second vocabulary and must not be assigned a second number;
+// ExitForCode resolves them from kit and a guard in this package's
+// tests fails if any local code shadows a kit class with a different
+// exit code.
 const (
 	CodeSvcInternal             = "SVC_INTERNAL"
 	CodeGraderInternal          = "GRADER_INTERNAL"
@@ -81,33 +89,50 @@ func HTTPStatus(code string) int {
 	return http.StatusInternalServerError
 }
 
-// ExitForCode maps a Code to a kit exit code. Reuses the existing 1/2/3/4/5/6/64
-// vocabulary per the task's "no new numeric codes" rule.
+// ExitForCode maps a Code to a kit exit code.
+//
+// Most of this package's codes are service-local refinements — there is
+// no kit class named CASSETTE_GZIP_BOMB — so they are classified here by
+// hand into kit's numeric slots, which is the right shape: the mapping
+// is a judgement about this service's vocabulary, not a copy of kit's
+// table.
+//
+// The exceptions are the codes whose STRINGS are kit's own. Those must
+// answer kit's number, not a locally chosen one, and are resolved from
+// envelope rather than restated. PROVENANCE_MISSING is why: it was
+// mapped to 6 here while kit has assigned it 65 since the extension band
+// was introduced, so this service reported a provenance refusal as a
+// transient failure and an agent branching on the exit code would have
+// retried a refusal that no retry can clear.
 func ExitForCode(code string) int {
+	// Codes kit itself defines answer kit's number. Checked first so a
+	// shared string can never be given a second meaning here.
+	if exit, ok := envelope.ExitCodeForClass(code); ok {
+		return exit
+	}
+
 	switch code {
-	case "OK":
-		return 0
 	case CodeSvcInternal, CodeGraderInternal:
-		return 1
+		return envelope.ExitGeneric
 	case CodeCassetteMalformed, CodeCassetteManifestInvalid,
 		CodeScenarioParseError, CodeScenarioValidateError,
 		CodeScenarioRefMalformed, CodeTierInvalid, CodeAcceptUnsupported:
-		return 2
+		return envelope.ExitUsage
 	case CodeScenarioNotFound:
-		return 3
+		return envelope.ExitNotFound
 	case CodeIdempotencyKeyConflict, CodeStoryHashMismatch,
 		CodeCassetteSizeExceeded, CodeCassetteGzipBomb:
-		return 4
+		return envelope.ExitConflict
 	case CodeMissingBearer, CodeInvalidBearer, CodeScopeDenied,
 		CodeTierExceedsClaim, CodeJudgeUnavailable, CodeJudgeModelRejected,
 		CodeJudgePromptUnresolved, CodeJudgeParseFailed:
-		return 5
-	case CodeProvenanceMissing:
-		return 6
-	case CodeRateLimited, CodeJudgeQuotaExceeded:
-		return output.ExitRateLimited
+		return envelope.ExitUnauthorized
+	case CodeJudgeQuotaExceeded:
+		return envelope.ExitRateLimited
+	case CodeL4BNotImplemented:
+		return envelope.ExitGeneric
 	}
-	return 1
+	return envelope.ExitGeneric
 }
 
 // SvcError returns an *output.Error with the requested code, message,

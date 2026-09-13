@@ -146,7 +146,7 @@ var (
 
 	// ErrUsage is the identity sentinel for bad flags or invocations
 	// of reserved-but-unimplemented subcommands. Exit code 2.
-	ErrUsage = &conformanceSentinel{code: CodeUsage, exit: 2, transience: output.TransiencePermanent, msg: "conformance: usage error"}
+	ErrUsage = &conformanceSentinel{code: CodeUsage, exit: output.ExitUsage, transience: output.TransiencePermanent, msg: "conformance: usage error"}
 
 	// ErrIO is the identity sentinel for git/gh/environment failures
 	// the caller should retry. Exit code 6 (transient class).
@@ -245,7 +245,7 @@ func ExitCode(err error) (int, bool) {
 	case errors.Is(err, ErrLeakDetected):
 		return ExitLeakDetected, true
 	case errors.Is(err, ErrUsage):
-		return 2, true
+		return output.ExitUsage, true
 	case errors.Is(err, ErrIO):
 		return output.ExitTransient, true
 	case errors.Is(err, ErrConfig):

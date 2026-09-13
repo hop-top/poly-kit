@@ -5,30 +5,56 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/output/envelope"
 )
 
-// exitClassToCode mirrors the kit/output exit-code table. Kept here
-// so the harness package doesn't reach into kit/output's internal
-// codes when adopters use the harness in isolation.
+// The table this file used to carry has been deleted. It was a
+// hand-maintained copy of kit's exit-code table, refreshed by a comment
+// asking whoever grew the kit-side table to remember this one. They did
+// not: CONSENT_REFUSED (7) and PREREQUISITE (70) were added upstream and
+// never copied, and the 66-69 band was never included at all. Because
+// the lookup defaulted to 1 on a miss, a leaf declaring
+// kit/exit-codes=PREREQUISITE was asserted against exit 1 — a wrong
+// assertion that reads as a real failure.
 //
-// Source of truth: go/console/output/error.go. Refresh when the
-// kit-side table grows.
-var exitClassToCode = map[string]int{
-	"OK":                 0,
-	"GENERIC":            1,
-	"USAGE":              2,
-	"NOT_FOUND":          3,
-	"CONFLICT":           4,
-	"UNAUTHORIZED":       5,
-	"TRANSIENT":          6,
-	"RATE_LIMITED":       64,
-	"PROVENANCE_MISSING": 65,
+// The copy was justified by keeping the harness off kit/output when
+// adopters use it in isolation. That justification did not survive
+// contact with the import graph: this package already imports
+// hop.top/kit/go/console/cli, which pulls console/output and lipgloss
+// transitively. There was no isolation left to protect. The envelope
+// package the table now comes from is a leaf — stdlib plus the YAML
+// encoder — so reading the real table costs nothing the harness was not
+// already paying.
+
+// bandClassToCode carries the tool-specific >6 slots the conformance
+// tree owns. They are not in envelope's table by design: they are
+// declared by the packages that own them, and putting them in the leaf
+// would invert the dependency the leaf exists to avoid.
+//
+// Values are asserted against envelope.ExtensionBand in the drift guard,
+// so a slot renumbered on either side fails a test rather than silently
+// double-booking a number.
+var bandClassToCode = map[string]int{
+	"LEAK_DETECTED":    66,
+	"CONFIG":           67,
+	"GRADE_FAIL":       68,
+	"GRADE_UNGRADABLE": 69,
 }
 
-// ClassToExitCode resolves a kit exit-class symbol to its numeric
-// code, defaulting to GENERIC (1) on unknown class names.
+// ClassToExitCode resolves a kit exit-class symbol to its numeric code,
+// defaulting to GENERIC (1) on unknown class names.
+//
+// The default is retained rather than surfaced because an adopter may
+// legitimately declare a class of its own in kit/exit-codes, and the
+// harness cannot know that adopter's table. What changed is that a class
+// kit itself defines no longer falls through to it.
 func ClassToExitCode(class string) int {
-	if c, ok := exitClassToCode[strings.ToUpper(strings.TrimSpace(class))]; ok {
+	norm := strings.ToUpper(strings.TrimSpace(class))
+	if c, ok := envelope.ExitCodeForClass(norm); ok {
+		return c
+	}
+	if c, ok := bandClassToCode[norm]; ok {
 		return c
 	}
 	return 1
@@ -37,7 +63,10 @@ func ClassToExitCode(class string) int {
 // exitCodeToClass returns a human-readable class name for an
 // observed numeric exit code. Used in failure messages.
 func exitCodeToClass(code int) string {
-	for class, n := range exitClassToCode {
+	if class, ok := envelope.ClassForExitCode(code); ok {
+		return class
+	}
+	for class, n := range bandClassToCode {
 		if n == code {
 			return class
 		}

@@ -187,6 +187,47 @@ func TestBandConstants(t *testing.T) {
 	assert.Equal(t, 67, conformance.ExitConfigError)
 }
 
+// TestBandConstantsMatchKitAllocation pins this package's two slots
+// against kit's record of who owns what in the >6 band.
+//
+// The band is allocated across three trees. This package declaring 66
+// while kit's list hands 66 to someone else is a collision neither side
+// can see from its own constants, so the two must be asserted against
+// each other.
+func TestBandConstantsMatchKitAllocation(t *testing.T) {
+	local := map[string]int{
+		conformance.CodeLeakDetected: conformance.ExitLeakDetected,
+		conformance.CodeConfig:       conformance.ExitConfigError,
+	}
+	matched := 0
+	for _, slot := range output.ExtensionBand() {
+		want, mine := local[slot.Class]
+		if !mine {
+			continue
+		}
+		matched++
+		assert.Equal(t, want, slot.Exit,
+			"kit and this package disagree on the exit code for %s", slot.Class)
+		assert.Equal(t, "hop.top/kit/go/console/cli/conformance", slot.Owner,
+			"kit records %s as owned elsewhere", slot.Class)
+	}
+	assert.Equal(t, len(local), matched,
+		"a slot declared here and missing from kit's band list can be handed to another feature")
+}
+
+// TestSharedSlotsUseKitsConstants guards the two sentinels that sit on
+// shared-class slots rather than band slots: their numbers must be
+// kit's, not literals that happen to agree today.
+func TestSharedSlotsUseKitsConstants(t *testing.T) {
+	usage, ok := conformance.ExitCode(conformance.UsageError("x"))
+	require.True(t, ok)
+	assert.Equal(t, output.ExitUsage, usage)
+
+	io, ok := conformance.ExitCode(conformance.IOError("x", "", ""))
+	require.True(t, ok)
+	assert.Equal(t, output.ExitTransient, io)
+}
+
 func TestReservedChild_HelpLine(t *testing.T) {
 	out, err := runCmd(t, "--help")
 	require.NoError(t, err)
