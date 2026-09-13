@@ -29,9 +29,14 @@ func (e *DeniedError) AsCLIError() *envelope.Error {
 
 ## Contract
 
-- Constructors pin code, exit and transience (`GENERIC` 1, `USAGE` 2,
-  `NOT_FOUND` 3, `CONFLICT` 4, `UNAUTHORIZED` 5, `TRANSIENT` 6,
-  `RATE_LIMITED` 64, `PROVENANCE_MISSING` 65).
+- Constructors pin code, exit and transience. `ExitCodeForClass` is the
+  table — read it rather than a list in prose, including this one: the
+  line that used to sit here named eight classes and had already gone
+  stale on `CONSENT_REFUSED` 7 and `PREREQUISITE` 70.
+- `ExitClasses` enumerates the classes kit defines, `ClassForExitCode`
+  reverses the lookup, and `ExtensionBand` records the >6 allocation
+  including the slots owned by `console/cli/conformance` (66, 67) and
+  `conformance/client` (68, 69).
 - The retained error is unexported and never reaches the wire; `Cause` is
   the human-readable form, `Unwrap` the machine-matchable one.
 - `WithTransience` and `Retaining` copy rather than mutate, so a shared

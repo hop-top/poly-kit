@@ -32,10 +32,12 @@ return output.Dispatch(cmd, v, data)
   zero rows emits nothing; `priority` hides columns on overflow and never
   reorders them. Full rules and the per-runtime capability table:
   [Column ordering](../../../docs/adopters/reference/output.md#column-ordering).
-- Error constructors pin code, exit and transience (`GENERIC` 1, `USAGE` 2,
-  `NOT_FOUND` 3, `CONFLICT` 4, `UNAUTHORIZED` 5, `TRANSIENT` 6,
-  `RATE_LIMITED` 64, `PROVENANCE_MISSING` 65); the retained error never
-  reaches the wire. Table and `errors.Is` semantics:
+- Error constructors pin code, exit and transience; the retained error
+  never reaches the wire. `ExitCodeForClass` is the table — read it
+  rather than a list in prose, including this one: the line that used to
+  sit here named eight classes and had already gone stale on
+  `CONSENT_REFUSED` 7 and `PREREQUISITE` 70. Constructor table and
+  `errors.Is` semantics:
   [Errors](../../../docs/adopters/reference/output.md#errors).
 - The cross-runtime fixtures in `sdk/tests/cross-lang/` compare column
   order re-parsed from each runtime's output, never raw bytes.
