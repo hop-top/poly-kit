@@ -334,8 +334,8 @@ canceled (the new run would stop without serving).
 ## Exit behavior
 
 Codes come from the kit taxonomy in
-[`go/console/output`](../../go/console/output/error.go); this contract
-allocates no new numbers.
+[`go/console/output/envelope`](../../go/console/output/envelope/exitcodes.go);
+this contract allocates no new numbers.
 
 | Situation                                  | Code            | Exit |
 |--------------------------------------------|-----------------|------|
@@ -635,7 +635,7 @@ Rules:
 
 - `exit_code` is the code a kit structured error carries (`USAGE` is
   `2`, `UNAUTHORIZED` is `5`, and so on per
-  [`go/console/output/error.go`](../../go/console/output/error.go)).
+  [`go/console/output/envelope/exitcodes.go`](../../go/console/output/envelope/exitcodes.go)).
   A bare error with no code is `1`. An invocation the command's parser
   refuses — wrong positional count, unknown or malformed flag, missing
   required flag — is `USAGE`, `2`, with the parser's message in
@@ -1341,8 +1341,8 @@ work that has not started.
 - [`go/console/serve`](../../go/console/serve/) — Go types for this
   contract.
 - [event-topics.md](event-topics.md) — 4-segment topic convention.
-- [`go/console/output/error.go`](../../go/console/output/error.go) —
-  exit-code taxonomy.
+- [`go/console/output/envelope/exitcodes.go`](../../go/console/output/envelope/exitcodes.go)
+  — exit-code taxonomy.
 - [`go/transport/api/server.go`](../../go/transport/api/server.go) —
   the HTTP listen/shutdown primitive services build on.
 - [`go/transport/cmdsurface`](../../go/transport/cmdsurface/doc.go) —

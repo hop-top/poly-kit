@@ -416,7 +416,8 @@ A malformed line does not cost you the connection — the error comes
 back and the next request on the same connection is served normally.
 
 Command exit codes surface in `result.exit_code`, using the same
-[kit exit-code taxonomy](../../../go/console/output/error.go) the CLI uses, so
+[kit exit-code
+taxonomy](../../../go/console/output/envelope/exitcodes.go) the CLI uses, so
 `2` is a usage error and `5` is unauthorized whether the command was
 invoked from a shell or from this socket. A request with the wrong
 number of `args`, or a flag the command does not take, is `2` as well,
