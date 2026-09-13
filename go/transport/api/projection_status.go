@@ -1,22 +1,35 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
 
-// Exit codes from the kit taxonomy in go/console/output. They are
-// repeated as untyped constants rather than imported because
-// go/console/output is a console-layer package and the transport
-// layer does not otherwise depend on it; the numbers are contract,
-// not implementation detail.
+	"hop.top/kit/go/console/output/envelope"
+)
+
+// Exit codes from the kit taxonomy. These were previously repeated here
+// as local literals, on the reasoning that go/console/output is a
+// console-layer package and the transport layer should not depend on
+// it. That reasoning was sound when it was written and is no longer
+// binding: the envelope was extracted out of go/console/output into
+// go/console/output/envelope, a leaf importing only stdlib and the YAML
+// encoder. Importing the numbers now costs the transport layer no
+// terminal-UI dependency at all.
+//
+// The numbers being contract rather than implementation detail is the
+// argument for importing them, not against it: a contract retyped in a
+// second place is a contract with two versions. exitUnauthorized in
+// particular was a local literal only because kit exported no name for
+// exit 5 — it does now.
 const (
-	exitOK                = 0
-	exitGeneric           = 1
-	exitUsage             = 2
-	exitNotFound          = 3
-	exitConflict          = 4
-	exitUnauthorized      = 5
-	exitTransient         = 6
-	exitRateLimited       = 64
-	exitProvenanceMissing = 65
+	exitOK                = envelope.ExitOK
+	exitGeneric           = envelope.ExitGeneric
+	exitUsage             = envelope.ExitUsage
+	exitNotFound          = envelope.ExitNotFound
+	exitConflict          = envelope.ExitConflict
+	exitUnauthorized      = envelope.ExitUnauthorized
+	exitTransient         = envelope.ExitTransient
+	exitRateLimited       = envelope.ExitRateLimited
+	exitProvenanceMissing = envelope.ExitProvenanceMissing
 )
 
 // exitStatusTable maps a command's exit code onto the HTTP status the

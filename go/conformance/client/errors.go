@@ -58,12 +58,12 @@ const (
 var (
 	ErrServiceUnreachable = &sentinel{code: CodeServiceUnavailable, exit: output.ExitTransient, transience: output.TransienceTransient, msg: "grade service unavailable"}
 	ErrServiceUnavailable = ErrServiceUnreachable // alias to match design.md vocab
-	ErrServiceAuthFailed  = &sentinel{code: CodeServiceAuthFailed, exit: 5, transience: output.TransiencePermanent, msg: "grade service auth failed"}
+	ErrServiceAuthFailed  = &sentinel{code: CodeServiceAuthFailed, exit: output.ExitUnauthorized, transience: output.TransiencePermanent, msg: "grade service auth failed"}
 	ErrUnauthorized       = ErrServiceAuthFailed
-	ErrServiceUsage       = &sentinel{code: CodeServiceUsage, exit: 2, transience: output.TransiencePermanent, msg: "grade service rejected request"}
-	ErrCassettePack       = &sentinel{code: CodeCassettePack, exit: 1, transience: output.TransiencePermanent, msg: "could not pack cassette"}
-	ErrCassetteTooLarge   = &sentinel{code: CodeCassetteTooLarge, exit: 2, transience: output.TransiencePermanent, msg: "cassette exceeds size limit"}
-	ErrManifestParse      = &sentinel{code: CodeManifestParse, exit: 2, transience: output.TransiencePermanent, msg: "could not parse manifest.yaml"}
+	ErrServiceUsage       = &sentinel{code: CodeServiceUsage, exit: output.ExitUsage, transience: output.TransiencePermanent, msg: "grade service rejected request"}
+	ErrCassettePack       = &sentinel{code: CodeCassettePack, exit: output.ExitGeneric, transience: output.TransiencePermanent, msg: "could not pack cassette"}
+	ErrCassetteTooLarge   = &sentinel{code: CodeCassetteTooLarge, exit: output.ExitUsage, transience: output.TransiencePermanent, msg: "cassette exceeds size limit"}
+	ErrManifestParse      = &sentinel{code: CodeManifestParse, exit: output.ExitUsage, transience: output.TransiencePermanent, msg: "could not parse manifest.yaml"}
 	ErrGradeFail          = &sentinel{code: CodeGradeFail, exit: ExitGradeFail, transience: output.TransiencePermanent, msg: "grade verdict: fail"}
 	ErrGradeUngradable    = &sentinel{code: CodeGradeUngradable, exit: ExitGradeUngradable, transience: output.TransiencePermanent, msg: "grade verdict: ungradable"}
 	ErrRateLimited        = &sentinel{code: CodeRateLimited, exit: output.ExitRateLimited, transience: output.TransienceTransient, msg: "grade service rate-limited"}

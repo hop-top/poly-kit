@@ -65,14 +65,46 @@ const (
 )
 
 // Spec-assigned exit codes. See §8.1 / §8.6.
+//
+// ExitOK, ExitUsage, ExitNotFound, ExitConflict and ExitUnauthorized are
+// aliases of constants added to the envelope leaf; before that, those
+// five numbers existed only as trailing comments beside the Code*
+// constants above, so a package aligning to kit's table could import
+// ExitTransient but had to retype 5. See [envelope.ExitCodeForClass] for
+// the string-to-number relationship as data.
 const (
+	ExitOK                = envelope.ExitOK
 	ExitGeneric           = envelope.ExitGeneric
+	ExitUsage             = envelope.ExitUsage
+	ExitNotFound          = envelope.ExitNotFound
+	ExitConflict          = envelope.ExitConflict
+	ExitUnauthorized      = envelope.ExitUnauthorized
 	ExitTransient         = envelope.ExitTransient
 	ExitConsentRefused    = envelope.ExitConsentRefused
 	ExitProvenanceMissing = envelope.ExitProvenanceMissing
 	ExitRateLimited       = envelope.ExitRateLimited
 	ExitPrerequisite      = envelope.ExitPrerequisite
 )
+
+// ExitCodeForClass resolves a standard class symbol to its numeric exit
+// code. See [envelope.ExitCodeForClass].
+func ExitCodeForClass(class string) (int, bool) { return envelope.ExitCodeForClass(class) }
+
+// ClassForExitCode returns the class symbol carrying an exit code. See
+// [envelope.ClassForExitCode].
+func ClassForExitCode(code int) (string, bool) { return envelope.ClassForExitCode(code) }
+
+// ExitClasses returns kit's class symbols in ascending exit-code order.
+// See [envelope.ExitClasses].
+func ExitClasses() []string { return envelope.ExitClasses() }
+
+// ExtensionBandSlot is one allocated slot in kit's >6 extension band.
+// Alias of [envelope.ExtensionBandSlot].
+type ExtensionBandSlot = envelope.ExtensionBandSlot
+
+// ExtensionBand records every allocated slot in kit's >6 band. See
+// [envelope.ExtensionBand].
+func ExtensionBand() []ExtensionBandSlot { return envelope.ExtensionBand() }
 
 // TransienceForCode returns the default transience class for one of the
 // standard codes. See [envelope.TransienceForCode].
