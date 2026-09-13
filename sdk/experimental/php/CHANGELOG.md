@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.2...kit-php/v0.5.0-alpha.3) (2026-09-13)
+
+The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.3. This release includes maintenance release with bug fixes.
+
+
+### Bug Fixes
+
+* **sdk:** add CONSENT_REFUSED and PREREQUISITE to the four SDK ports
+
+Full diff: [kit-php/v0.5.0-alpha.2...kit-php/v0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.2...kit-php/v0.5.0-alpha.3)
+
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.1...kit-php/v0.5.0-alpha.2) (2026-09-05)
 
 The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.2. This release includes new features and bug fixes.
