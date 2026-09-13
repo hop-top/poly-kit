@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.7...kit/v0.5.0-alpha.8) (2026-09-13)
+
+
+### Bug Fixes
+
+* **sdk:** add CONSENT_REFUSED and PREREQUISITE to the four SDK ports ([#314](https://github.com/hop-top/poly-kit/issues/314)) ([c937bef](https://github.com/hop-top/poly-kit/commit/c937befdab1030f77bc13ee9f641430b44f43705))
+
 ## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.6...kit/v0.5.0-alpha.7) (2026-09-12)
 
 
