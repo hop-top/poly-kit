@@ -2,14 +2,15 @@
 
 A polyglot framework for building agent-friendly CLIs.
 
-Go (primary), TypeScript, Python. Rust and PHP experimental.
+Go (primary), TypeScript, Python, Rust, PHP.
+
+> **Status:** Active development. Usable today, with some rough edges as features evolve.
 
 - [Why kit](#why-kit)
 - [Features](#features)
 - [Primitives](#primitives)
 - [Install](#install)
 - [Getting started](#getting-started)
-- [Status](#status)
 - [License](#license)
 
 ## Why kit
@@ -112,11 +113,6 @@ point is `mise run install`. Bring an existing project current with
 `kit init --update`. See
 [`templates/README.md`](templates/README.md) and
 [`templates/RUNBOOK-UPGRADE.md`](templates/RUNBOOK-UPGRADE.md).
-
-## Status
-
-Pre-1.0. All components baseline at `0.1.0-alpha.0`. APIs may change
-before `1.0.0`; pin minor versions for stability.
 
 ## License
 
