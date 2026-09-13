@@ -643,6 +643,10 @@ the Go registry.
 - `exit_code_in` — `{values: []int}`
 - `exit_code_class` — `{classes: []string}` (kit class names)
 
+The class names are the ones in the [kit exit-code
+taxonomy](output.md#errors); `envelope.ExitClasses()` returns the same
+set at runtime.
+
 #### Output verbs
 
 - `output_field_equals` — `{path: string, value: any, parse?: "json"|"yaml"}`
