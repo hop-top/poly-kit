@@ -3,7 +3,7 @@ package mcpsdk
 // SEP-2663 tasks support. The wire behavior — tasks/get, tasks/update,
 // tasks/cancel, CreateTaskResult, capability negotiation, principal
 // isolation — lives in the standalone extension module
-// (mcpext.example/tasks); this file is kit's binding of that module to
+// (hop.top/mcp-tasks); this file is kit's binding of that module to
 // the bridge: which leaves are task-eligible, kit's safety gates
 // enforced at creation, principal derivation, and detached execution
 // through the Runner via Bridge.Invoke (no second execution path).
@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	taskext "mcpext.example/tasks"
+	taskext "hop.top/mcp-tasks"
 
 	"hop.top/kit/go/transport/cmdsurface"
 )

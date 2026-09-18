@@ -20,11 +20,10 @@ binds it to a kit command tree via `WithTasks`.
 > revision exactly. Breaking changes should be expected until the
 > extension stabilizes.
 
-> The module path `mcpext.example/tasks` is an interim placeholder (the
-> `.example` TLD is reserved by RFC 2606, so it cannot collide with a
-> real import path). The module is designed for contribution to the
-> `modelcontextprotocol` organization and will be renamed when it finds
-> its home.
+> The module path `hop.top/mcp-tasks` is interim. The module is
+> designed for contribution to the `modelcontextprotocol` organization
+> and will be renamed when it finds its home; until then it publishes
+> under `hop.top` so consumers can actually resolve it.
 
 ## Use it when
 

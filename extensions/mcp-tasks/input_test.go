@@ -14,7 +14,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"mcpext.example/tasks"
+	"hop.top/mcp-tasks"
 )
 
 // elicit is shorthand for an elicitation input request.

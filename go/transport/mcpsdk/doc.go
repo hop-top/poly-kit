@@ -31,7 +31,7 @@
 // leaves: durable pollable tool calls with tasks/get, tasks/update
 // and tasks/cancel, executed detached on the bridge Runner with
 // kit's safety gates enforced at task creation. The extension's wire
-// behavior lives in the standalone mcpext.example/tasks module
+// behavior lives in the standalone hop.top/mcp-tasks module
 // (in-repo under extensions/mcp-tasks); it exists beside the SDK
 // only because go-sdk v1.7.0 ships no tasks support — see the
 // README's tasks section for the contract and the reconcile canary.
