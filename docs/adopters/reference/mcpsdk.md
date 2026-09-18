@@ -186,7 +186,7 @@ s, err := mcpsdk.New(b, mcpsdk.WithTasks(mcpsdk.TasksConfig{
 ```
 
 The wire behavior lives in a standalone extension module
-(`mcpext.example/tasks`, in-repo under `extensions/mcp-tasks/`, built
+(`hop.top/mcp-tasks`, in-repo under `extensions/mcp-tasks/`, built
 against the [ext-tasks] draft pinned at revision `2c1425d9a288`,
 2026-08-13, and designed for donation to the MCP organization); this
 package only binds it to the bridge. Both are **experimental**, like

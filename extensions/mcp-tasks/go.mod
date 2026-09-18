@@ -1,8 +1,8 @@
 // Interim module path: this library is designed for donation to the
 // modelcontextprotocol organization and will be renamed when it moves.
-// The .example TLD is reserved (RFC 2606) so the placeholder can never
-// collide with or squat on a real import path.
-module mcpext.example/tasks
+// Until then it publishes under hop.top, which resolves, so consumers
+// of kit can build the mcpsdk binding that imports it.
+module hop.top/mcp-tasks
 
 go 1.25.0
 

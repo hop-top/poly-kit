@@ -19,7 +19,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	taskext "mcpext.example/tasks"
+	taskext "hop.top/mcp-tasks"
 
 	"hop.top/kit/go/transport/cmdsurface"
 )

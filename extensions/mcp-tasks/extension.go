@@ -29,7 +29,7 @@ const (
 // CallToolResult to the receiving middleware installed by Attach. It
 // exists in process memory only; the middleware strips it before
 // anything reaches the wire.
-const markerMetaKey = "mcpext.example/tasks#created"
+const markerMetaKey = "hop.top/mcp-tasks#created"
 
 // Options configures an Extension. The zero value (or nil) is usable:
 // in-memory store, default TTL and poll interval, and an empty

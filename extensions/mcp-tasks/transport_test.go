@@ -23,7 +23,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"mcpext.example/tasks"
+	"hop.top/mcp-tasks"
 )
 
 // newBareServer builds the same server the harness does but WITHOUT

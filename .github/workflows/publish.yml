@@ -28,6 +28,10 @@ jobs:
           dir: .
           ecosystem: go
           mirror: hop-top/kit
+        mcp-tasks:
+          dir: extensions/mcp-tasks
+          ecosystem: go
+          mirror: hop-top/mcp-tasks
         kit-php:
           dir: sdk/experimental/php
           ecosystem: php

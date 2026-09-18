@@ -15,7 +15,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"mcpext.example/tasks"
+	"hop.top/mcp-tasks"
 )
 
 // TestServerCapabilityAdvertised pins the server-side declaration:

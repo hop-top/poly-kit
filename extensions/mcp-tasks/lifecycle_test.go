@@ -16,7 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"mcpext.example/tasks"
+	"hop.top/mcp-tasks"
 )
 
 // TestStartTaskWithoutAttachFailsClosed pins the misuse mode: a host

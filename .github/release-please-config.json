@@ -54,7 +54,13 @@
   "linked-versions": [
     {
       "group": "kit",
-      "components": ["kit", "kit-php", "kit-py", "kit-rs", "kit-ts"]
+      "components": [
+        "kit",
+        "kit-php",
+        "kit-py",
+        "kit-rs",
+        "kit-ts"
+      ]
     }
   ],
   "packages": {
@@ -74,6 +80,16 @@
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
       "initial-version": "0.5.0-alpha.0"
+    },
+    "extensions/mcp-tasks": {
+      "release-type": "go",
+      "component": "mcp-tasks",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "prerelease": true,
+      "prerelease-type": "alpha.0",
+      "versioning": "prerelease",
+      "initial-version": "0.1.0-alpha.0"
     },
     "incubator/qmochi": {
       "release-type": "go",
