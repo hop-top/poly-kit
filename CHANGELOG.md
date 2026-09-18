@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.7...kit/v0.5.0-alpha.8) (2026-09-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcpsdk:** the tasks extension module path changes from mcpext.example/tasks to hop.top/mcp-tasks. The old path never resolved for consumers, so only in-repo importers are affected.
+
+### Features
+
+* **parity:** pin the exit-code taxonomy across all five ports ([#319](https://github.com/hop-top/poly-kit/issues/319)) ([dbe68c5](https://github.com/hop-top/poly-kit/commit/dbe68c5987738f62954597a8038e7b2929688005))
+
+
+### Bug Fixes
+
+* **ci:** detect promotions by value, not diff text ([649f634](https://github.com/hop-top/poly-kit/commit/649f6342da607171e9b46c6ff048292ed61f2bf3))
+* **deps:** require mcp-tasks v0.1.0-alpha.1 ([e6bb95d](https://github.com/hop-top/poly-kit/commit/e6bb95dc186b35cd4d52709e77a8b34b9ff32e38))
+* **mcpsdk:** rename tasks extension to hop.top/mcp-tasks ([9e0ecec](https://github.com/hop-top/poly-kit/commit/9e0ecec18c7ac2c294e2a418c498ff7bcd15e6a1))
+* **sdk:** add CONSENT_REFUSED and PREREQUISITE to the four SDK ports ([#314](https://github.com/hop-top/poly-kit/issues/314)) ([c937bef](https://github.com/hop-top/poly-kit/commit/c937befdab1030f77bc13ee9f641430b44f43705))
+* **transport:** map CONSENT_REFUSED and PREREQUISITE off 500 ([#318](https://github.com/hop-top/poly-kit/issues/318)) ([66a9c54](https://github.com/hop-top/poly-kit/commit/66a9c540ffde0c1d5a8207a6d26f750fe950f7e3))
+
 ## [0.5.0-alpha.7](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.6...kit/v0.5.0-alpha.7) (2026-09-12)
 
 
