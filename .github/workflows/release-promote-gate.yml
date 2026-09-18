@@ -35,11 +35,26 @@ jobs:
             | grep -v "^[+-][+-][+-]" \
             | grep -v "^$" || true)
 
-          # A PR that leaves prerelease-type alone is config maintenance,
-          # not a channel promotion; there is no transition to validate.
-          if ! echo "$CHANGED" | grep -q "prerelease-type"; then
-            echo "prerelease-type unchanged — not a promotion PR," \
-              "nothing to validate"
+          # A promotion changes the prerelease-type of a package that
+          # already existed. Compare parsed values rather than grepping
+          # the diff text: adding a new package inserts a prerelease-type
+          # line without promoting anything, and that is maintenance.
+          git show "${BASE_SHA}":.github/release-please-config.json \
+            > /tmp/rp-base.json
+          PROMOTED=$(jq -rn \
+            --slurpfile base /tmp/rp-base.json \
+            --slurpfile head .github/release-please-config.json '
+              ($base[0].packages // {}) as $b
+              | ($head[0].packages // {}) as $h
+              | [ $b | keys[]
+                  | select($h[.] != null)
+                  | select(($b[.]["prerelease-type"] // "release")
+                           != ($h[.]["prerelease-type"] // "release")) ]
+              | length')
+
+          if [ "$PROMOTED" -eq 0 ]; then
+            echo "no existing package changed prerelease-type —" \
+              "not a promotion PR, nothing to validate"
             exit 0
           fi
 

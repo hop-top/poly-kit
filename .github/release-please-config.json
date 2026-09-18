@@ -54,13 +54,7 @@
   "linked-versions": [
     {
       "group": "kit",
-      "components": [
-        "kit",
-        "kit-php",
-        "kit-py",
-        "kit-rs",
-        "kit-ts"
-      ]
+      "components": ["kit", "kit-php", "kit-py", "kit-rs", "kit-ts"]
     }
   ],
   "packages": {
