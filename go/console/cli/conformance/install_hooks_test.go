@@ -80,7 +80,7 @@ func TestInstallHooks_FreshInstall(t *testing.T) {
 	assert.Contains(t, string(cm), "--commit-msg-file=")
 
 	// core.hooksPath was set.
-	cfg, cfgErr := exec.Command("git", "-C", dir, "config", "--get", "core.hooksPath").Output()
+	cfg, cfgErr := exec.Command("git", "-C", dir, "config", "--local", "--get", "core.hooksPath").Output()
 	require.NoError(t, cfgErr)
 	assert.Equal(t, ".githooks", strings.TrimSpace(string(cfg)))
 
@@ -117,7 +117,7 @@ func TestInstallHooks_DryRunDoesNotWrite(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "dry-run must not create .githooks")
 
 	// core.hooksPath should NOT have been set.
-	cfg, _ := exec.Command("git", "-C", dir, "config", "--get", "core.hooksPath").Output()
+	cfg, _ := exec.Command("git", "-C", dir, "config", "--local", "--get", "core.hooksPath").Output()
 	assert.Empty(t, strings.TrimSpace(string(cfg)), "dry-run must not set core.hooksPath")
 
 	// Output advertises dry-run mode.
