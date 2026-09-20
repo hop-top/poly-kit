@@ -63,6 +63,15 @@ func activeFormat(cmd *cobra.Command) string {
 	return ""
 }
 
+// isMachineFormat reports whether format produces a structured document
+// that a caller parses rather than reads. Under these formats stderr
+// must carry exactly one envelope and nothing else, so human-only
+// affordances (previews, prompts, banners) have to be suppressed or
+// folded into the envelope.
+func isMachineFormat(format string) bool {
+	return format == output.JSON || format == output.YAML
+}
+
 // wrapRunE returns a RunE that runs orig and, on error, materializes an
 // *output.Error envelope and writes it to cmd's stderr. The original
 // error is returned so cobra/fang still see a non-nil error and the
