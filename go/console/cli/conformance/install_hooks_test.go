@@ -39,12 +39,31 @@ func initRepo(t *testing.T, dir string) {
 	require.NoErrorf(t, err, "git init failed: %s", out)
 }
 
-// scrubGitEnv unsets the GIT_* env vars that git inherits from a
-// parent process (notably from a pre-push hook). Without this, every
-// `git` subprocess we spawn in a tempdir would resolve back to the
-// outer repo via GIT_DIR / GIT_WORK_TREE. Empty-string values aren't
-// safe — git rejects an empty GIT_DIR — so we Unsetenv and restore on
-// cleanup.
+// scrubGitEnv isolates every `git` subprocess this test spawns — both
+// the ones below and the ones inside the code under test — from the
+// developer's ambient git state.
+//
+// Two distinct contamination sources, both fatal to assertions about
+// what the installer did or didn't write:
+//
+//  1. Inherited GIT_* vars (notably GIT_DIR / GIT_WORK_TREE, set when
+//     the suite runs under a pre-push hook) make git in a tempdir
+//     resolve back to the outer repo. Empty-string values aren't safe —
+//     git rejects an empty GIT_DIR — so we Unsetenv and restore.
+//
+//  2. The user's global / system config. `git config --get` searches
+//     local → global → system, so a developer with core.hooksPath set
+//     globally (a perfectly normal thing — it's how a machine-wide
+//     hook is installed) poisons every unscoped read. That cuts both
+//     ways: it can fail an assertion that the installer left a key
+//     unset, and — worse — it can silently satisfy an assertion that
+//     the installer set one, turning a real test into a no-op.
+//     Pointing GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM at /dev/null
+//     leaves the repo-local scope as the only source, so the config a
+//     test observes is exactly the config the installer wrote.
+//
+// Setting these via t.Setenv also propagates into the in-process
+// install-hooks command, whose own `git config --get` is unscoped.
 func scrubGitEnv(t *testing.T) {
 	t.Helper()
 	for _, v := range []string{
@@ -59,9 +78,13 @@ func scrubGitEnv(t *testing.T) {
 			t.Cleanup(func() { os.Setenv(key, orig) })
 		}
 	}
+	// t.Setenv restores the prior value (or unsets) on cleanup.
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 }
 
 func TestInstallHooks_FreshInstall(t *testing.T) {
+	scrubGitEnv(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 
@@ -80,7 +103,7 @@ func TestInstallHooks_FreshInstall(t *testing.T) {
 	assert.Contains(t, string(cm), "--commit-msg-file=")
 
 	// core.hooksPath was set.
-	cfg, cfgErr := exec.Command("git", "-C", dir, "config", "--get", "core.hooksPath").Output()
+	cfg, cfgErr := exec.Command("git", "-C", dir, "config", "--local", "--get", "core.hooksPath").Output()
 	require.NoError(t, cfgErr)
 	assert.Equal(t, ".githooks", strings.TrimSpace(string(cfg)))
 
@@ -90,6 +113,7 @@ func TestInstallHooks_FreshInstall(t *testing.T) {
 }
 
 func TestInstallHooks_Idempotent(t *testing.T) {
+	scrubGitEnv(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 
@@ -117,7 +141,7 @@ func TestInstallHooks_DryRunDoesNotWrite(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "dry-run must not create .githooks")
 
 	// core.hooksPath should NOT have been set.
-	cfg, _ := exec.Command("git", "-C", dir, "config", "--get", "core.hooksPath").Output()
+	cfg, _ := exec.Command("git", "-C", dir, "config", "--local", "--get", "core.hooksPath").Output()
 	assert.Empty(t, strings.TrimSpace(string(cfg)), "dry-run must not set core.hooksPath")
 
 	// Output advertises dry-run mode.
@@ -125,6 +149,7 @@ func TestInstallHooks_DryRunDoesNotWrite(t *testing.T) {
 }
 
 func TestInstallHooks_RefusesNonKitHookWithoutForce(t *testing.T) {
+	scrubGitEnv(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 
@@ -144,6 +169,7 @@ func TestInstallHooks_RefusesNonKitHookWithoutForce(t *testing.T) {
 }
 
 func TestInstallHooks_ForceOverridesNonKitHook(t *testing.T) {
+	scrubGitEnv(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 
@@ -160,6 +186,7 @@ func TestInstallHooks_ForceOverridesNonKitHook(t *testing.T) {
 
 func TestInstallHooks_RefreshesMarkedShimWithDifferentBody(t *testing.T) {
 	// An older marker-bearing shim must be refreshed without --force.
+	scrubGitEnv(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 	hooks := filepath.Join(dir, ".githooks")
@@ -176,6 +203,7 @@ func TestInstallHooks_RefreshesMarkedShimWithDifferentBody(t *testing.T) {
 }
 
 func TestInstallHooks_JSONOutput(t *testing.T) {
+	scrubGitEnv(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 
@@ -210,6 +238,7 @@ func TestInstallHooks_JSONOutput(t *testing.T) {
 
 func TestInstallHooks_RefusesLegacyHookWithoutForce(t *testing.T) {
 	// .git/hooks/pre-commit lacking marker should trigger refusal.
+	scrubGitEnv(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 
@@ -223,6 +252,7 @@ func TestInstallHooks_RefusesLegacyHookWithoutForce(t *testing.T) {
 }
 
 func TestInstallHooks_RejectsUnknownFormat(t *testing.T) {
+	scrubGitEnv(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 
