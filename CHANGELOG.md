@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.8...kit/v0.5.0-alpha.9) (2026-09-21)
+
+
+### Features
+
+* **routellm:** accept tier names in model field ([84db50a](https://github.com/hop-top/poly-kit/commit/84db50a9258883a86e67cefc52133d955ce797ae))
+
 ## [0.5.0-alpha.8](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.7...kit/v0.5.0-alpha.8) (2026-09-18)
 
 
