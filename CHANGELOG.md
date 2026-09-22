@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.10...kit/v0.5.0-alpha.11) (2026-09-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** root --help moves persistent globals out of FLAGS into a GLOBAL FLAGS section for every downstream CLI. Scripts scraping the root FLAGS block need updating. HelpConfig.SplitGlobals no longer exists; drop the field from any Config literal setting it.
+
+### Bug Fixes
+
+* **cli:** split GLOBAL FLAGS on root help by default ([dcd2b88](https://github.com/hop-top/poly-kit/commit/dcd2b88d7926ad408c00fbbb9f64d834c98cf117))
+* **cli:** strip GLOBAL FLAGS heading styling under --no-color ([15fd049](https://github.com/hop-top/poly-kit/commit/15fd0497f3e61dbfd6a788349779d5274a7819b1))
+
 ## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.9...kit/v0.5.0-alpha.10) (2026-09-22)
 
 
