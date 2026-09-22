@@ -2,9 +2,12 @@ package cli_test
 
 import (
 	"bytes"
+	"io"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/creack/pty"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -385,4 +388,226 @@ func TestRootHelp_SplitGlobals_WithSubcommands(t *testing.T) {
 	assert.Contains(t, subFlagsBody, "--watch")
 	assert.NotContains(t, subFlagsBody, "--format")
 	assert.Contains(t, strings.Join(subLines[subGlobal+1:], "\n"), "--format")
+}
+
+// ── GLOBAL FLAGS color ───────────────────────────────────────────────────
+//
+// The GLOBAL FLAGS heading is the one styled thing kit renders itself;
+// everything else in help comes from fang, which writes through a
+// colorprofile writer that strips escapes when color is off. These tests
+// pin that kit's own section goes through the same writer.
+//
+// Coverage deliberately targets a LEAF command. TestParityHelpNoColor
+// (parity_test.go) only ever invokes ROOT help, and the root had no
+// GLOBAL FLAGS section until SplitGlobals — so the single place this
+// escape is emitted went uninspected under --no-color. A root-only
+// assertion would leave that same gap open.
+
+// globalFlagsHeading returns the raw (unstripped) GLOBAL FLAGS heading
+// line from the given help output, or "" when the section is absent.
+func globalFlagsHeading(out string) string {
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(stripANSI(l), "GLOBAL FLAGS") {
+			return l
+		}
+	}
+	return ""
+}
+
+// rawLeafHelp runs `<root> sub --help` into a plain buffer and returns the
+// unstripped output. A bytes.Buffer is not a terminal, so the colorprofile
+// writer resolves to NoTTY and every escape must already be gone.
+func rawLeafHelp(t *testing.T, args ...string) string {
+	t.Helper()
+
+	r := cli.New(cli.Config{
+		Name:            "mytool",
+		Version:         "1.2.3",
+		Short:           "A test tool",
+		DisableValidate: true,
+	})
+	leaf := &cobra.Command{
+		Use:   "sub",
+		Short: "A subcommand",
+		Run:   func(cmd *cobra.Command, args []string) {},
+	}
+	leaf.Flags().Bool("thing", false, "Subcommand-only flag")
+	r.Cmd.AddCommand(leaf)
+
+	var buf bytes.Buffer
+	r.Cmd.SetOut(&buf)
+	r.SetArgs(append(append([]string{"sub"}, args...), "--help"))
+	require.NoError(t, r.Execute(t.Context()))
+	return buf.String()
+}
+
+// TestLeafHelp_GlobalFlagsNoANSI_NonTTY pins the non-terminal path: piped
+// leaf help must be escape-free with or without --no-color. This is the
+// shape the parity harness sees — it captures into a buffer too.
+func TestLeafHelp_GlobalFlagsNoANSI_NonTTY(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"plain", nil},
+		{"no-color", []string{"--no-color"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := rawLeafHelp(t, tc.args...)
+
+			heading := globalFlagsHeading(out)
+			require.NotEmpty(t, heading,
+				"leaf help must contain a GLOBAL FLAGS section")
+			assert.False(t, hasANSI(heading),
+				"GLOBAL FLAGS heading must not carry ANSI escapes off a terminal\ngot: %q", heading)
+			assert.False(t, hasANSI(out),
+				"leaf help must not contain ANSI escapes off a terminal\ngot: %q", out)
+		})
+	}
+}
+
+// ttyLeafHelp runs `<root> sub --help` with output on a real pseudo-terminal
+// and returns everything written to it.
+//
+// A pty, not a buffer: the colorprofile writer strips on any non-terminal
+// regardless of --no-color, so a buffer cannot tell "the flag was honored"
+// from "there was no terminal to color". Only a real terminal writer
+// distinguishes the two — the same reason the styled-table e2e tests
+// allocate one.
+func ttyLeafHelp(t *testing.T, args ...string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("creack/pty is unix-only")
+	}
+
+	master, slave, err := pty.Open()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = master.Close()
+		_ = slave.Close()
+	})
+
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, master)
+		done <- buf.String()
+	}()
+
+	r := cli.New(cli.Config{
+		Name:            "mytool",
+		Version:         "1.2.3",
+		Short:           "A test tool",
+		DisableValidate: true,
+	})
+	leaf := &cobra.Command{
+		Use:   "sub",
+		Short: "A subcommand",
+		Run:   func(cmd *cobra.Command, args []string) {},
+	}
+	leaf.Flags().Bool("thing", false, "Subcommand-only flag")
+	r.Cmd.AddCommand(leaf)
+
+	r.Cmd.SetOut(slave)
+	r.SetArgs(append(append([]string{"sub"}, args...), "--help"))
+	require.NoError(t, r.Execute(t.Context()))
+	require.NoError(t, slave.Close())
+
+	return <-done
+}
+
+// TestLeafHelp_GlobalFlagsHeadingStyledOnTTY is the control: on a real
+// terminal, with color on, the heading keeps its bold. Without this the
+// fix could "pass" by never styling anything.
+func TestLeafHelp_GlobalFlagsHeadingStyledOnTTY(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+
+	heading := globalFlagsHeading(ttyLeafHelp(t))
+	require.NotEmpty(t, heading, "leaf help must contain a GLOBAL FLAGS section")
+	assert.True(t, hasANSI(heading),
+		"GLOBAL FLAGS heading must stay styled on a color terminal\ngot: %q", heading)
+}
+
+// TestLeafHelp_GlobalFlagsHeadingPlainOnTTY_NoColorFlag is the regression
+// proper: --no-color on a color-capable terminal must strip the heading.
+// The env profile cannot see the flag, so this is what proves the clamp in
+// helpColorWriter rather than the ambient environment.
+func TestLeafHelp_GlobalFlagsHeadingPlainOnTTY_NoColorFlag(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+
+	heading := globalFlagsHeading(ttyLeafHelp(t, "--no-color"))
+	require.NotEmpty(t, heading, "leaf help must contain a GLOBAL FLAGS section")
+	assert.False(t, hasANSI(heading),
+		"--no-color must strip the GLOBAL FLAGS heading's escapes\ngot: %q", heading)
+}
+
+// TestLeafHelp_GlobalFlagsHeadingMatchesFangUnderNoColorEnv pins the
+// environment convention as an equivalence rather than an absolute.
+//
+// NO_COLOR on a terminal resolves to colorprofile.ASCII, which strips
+// colors but keeps attributes — only NoTTY strips bold. So the heading
+// legitimately stays bold here, exactly as fang's own USAGE and FLAGS
+// titles do. Asserting "no escapes" would demand behavior the shared
+// writer does not provide and would have this section diverge from the
+// rest of help; the contract worth pinning is that it does not.
+func TestLeafHelp_GlobalFlagsHeadingMatchesFangUnderNoColorEnv(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "")
+	t.Setenv("NO_COLOR", "1")
+
+	out := ttyLeafHelp(t)
+	heading := globalFlagsHeading(out)
+	require.NotEmpty(t, heading, "leaf help must contain a GLOBAL FLAGS section")
+
+	var fangTitle string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.TrimSpace(stripANSI(l)) == "FLAGS" {
+			fangTitle = l
+			break
+		}
+	}
+	require.NotEmpty(t, fangTitle, "leaf help must contain a FLAGS section")
+
+	assert.Equal(t, hasANSI(fangTitle), hasANSI(heading),
+		"GLOBAL FLAGS heading must style like fang's own titles under NO_COLOR\nfang: %q\nours: %q",
+		fangTitle, heading)
+
+	// Whatever the attributes, no color may survive NO_COLOR.
+	assert.NotRegexp(t, `\x1b\[[0-9;]*(3[0-79]|4[0-79]|9[0-7]|10[0-7]|38;|48;)`, heading,
+		"NO_COLOR must leave no color in the GLOBAL FLAGS heading\ngot: %q", heading)
+}
+
+// rawSplitGlobalsHelp mirrors splitGlobalsHelp but returns the unstripped
+// output — that helper strips ANSI, which would make an escape assertion
+// vacuous.
+func rawSplitGlobalsHelp(t *testing.T, extraArgs ...string) string {
+	t.Helper()
+
+	r := cli.New(cli.Config{
+		Name:            "sidecar",
+		Version:         "1.2.3",
+		Short:           "A single-command tool",
+		Help:            cli.HelpConfig{SplitGlobals: true},
+		DisableValidate: true,
+	})
+	r.Cmd.Flags().Bool("comments", false, "Include top comments")
+	r.Cmd.Run = func(cmd *cobra.Command, args []string) {}
+
+	var buf bytes.Buffer
+	r.Cmd.SetOut(&buf)
+	r.SetArgs(append(append([]string{}, extraArgs...), "--help"))
+	require.NoError(t, r.Execute(t.Context()))
+	return buf.String()
+}
+
+// TestRootHelp_SplitGlobals_NoANSIUnderNoColor extends the same guarantee
+// to the root's own split section, the surface TestParityHelpNoColor
+// exercises once SplitGlobals is on.
+func TestRootHelp_SplitGlobals_NoANSIUnderNoColor(t *testing.T) {
+	out := rawSplitGlobalsHelp(t, "--no-color")
+	require.NotEmpty(t, globalFlagsHeading(out),
+		"root must split with SplitGlobals")
+	assert.False(t, hasANSI(out),
+		"root help must not contain ANSI escapes under --no-color\ngot: %q", out)
 }
