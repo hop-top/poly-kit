@@ -235,13 +235,24 @@ func TestHelpTopicE2E_HelpAllFlag(t *testing.T) {
 		"--help-all reveals the hidden plumbing flags")
 }
 
-// TestHelpTopicE2E_HelpAllSubcommandKeepsFlagsHidden guards the one
-// documented asymmetry between the two "everything" forms: `help all`
-// reveals the groups but not the plumbing flags. Long-standing shipped
-// behavior, pinned so a later tidy-up is a deliberate choice.
-func TestHelpTopicE2E_HelpAllSubcommandKeepsFlagsHidden(t *testing.T) {
+// TestHelpTopicE2E_HelpAllSubcommandKeepsFlagsOutOfFlags guards what
+// separates the two "everything" forms now that the root splits like
+// every other command: `help all` still leaves the kit-owned plumbing
+// flags out of the FLAGS block, where --help-all reveals them. They
+// are reachable under GLOBAL FLAGS either way — the same place a leaf
+// has always listed them.
+func TestHelpTopicE2E_HelpAllSubcommandKeepsFlagsOutOfFlags(t *testing.T) {
 	t.Parallel()
 	_, out := runHelpStub(t, "help", "all")
-	assert.NotContains(t, out, "--config",
-		"help all must not reveal the plumbing flags --help-all does")
+	lines := strings.Split(out, "\n")
+	flagsIdx := findSection(lines, "FLAGS")
+	globalIdx := findSection(lines, "GLOBAL FLAGS")
+	require.GreaterOrEqual(t, flagsIdx, 0, "help all must render FLAGS")
+	require.GreaterOrEqual(t, globalIdx, 0, "help all must render GLOBAL FLAGS")
+
+	flagsBody := strings.Join(linesBetween(lines, flagsIdx, globalIdx), "\n")
+	assert.NotContains(t, flagsBody, "--config",
+		"help all must not reveal the plumbing flags under FLAGS")
+	assert.Contains(t, strings.Join(lines[globalIdx+1:], "\n"), "--config",
+		"the plumbing flags belong under GLOBAL FLAGS")
 }

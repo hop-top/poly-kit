@@ -329,6 +329,14 @@ func TestParityFlagsExactSet(t *testing.T) {
 		"--no-color", "--no-hints", "--offline", "--quiet", "--telemetry",
 		"--verbose", "--version"}
 	pyExtra := []string{"--help-commands", "--stream"}
+	// Go renders kit's persistent globals in their own GLOBAL FLAGS
+	// section on root help; the scrape below reads both sections, so
+	// they are part of what root help advertises. TS and Python have
+	// no equivalent split, hence Go-only rather than shared.
+	goExtra := []string{"--api-version", "--autocorrect", "--chdir",
+		"--cols", "--columns", "--config", "--confirm", "--dry-run",
+		"--format-help", "--format-opt", "--max-ops", "--output",
+		"--policy", "--progress-format", "--template"}
 
 	flagRE := regexp.MustCompile(`--[\w-]+`)
 
@@ -354,8 +362,11 @@ func TestParityFlagsExactSet(t *testing.T) {
 
 		want := make([]string, len(common))
 		copy(want, common)
-		if b.lang == "py" {
+		switch b.lang {
+		case "py":
 			want = append(want, pyExtra...)
+		case "go":
+			want = append(want, goExtra...)
 		}
 		sort.Strings(want)
 

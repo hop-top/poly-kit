@@ -90,17 +90,6 @@ type HelpConfig struct {
 	// Groups registers additional command groups beyond the built-in
 	// "COMMANDS" (default, GroupID="") and "MANAGEMENT" (GroupID="management", hidden).
 	Groups []GroupConfig
-	// SplitGlobals renders inherited/persistent globals in a separate
-	// GLOBAL FLAGS section on the ROOT command too. For single-command
-	// binaries (sidecars, plugins) whose root is also the leaf, where
-	// the leaf-only split can never fire and the tool's own flags would
-	// otherwise sit interleaved with kit's globals under one FLAGS
-	// block.
-	//
-	// Default false: a hierarchical CLI's root keeps rendering every
-	// flag under FLAGS, unchanged. Subcommand help is unaffected either
-	// way — leaves always split.
-	SplitGlobals bool
 }
 
 // ValidationFailureMode selects how cli.New / Execute report a
