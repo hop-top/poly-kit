@@ -14,16 +14,12 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// installLeafHelp walks the command tree and installs a leaf-aware help
-// renderer on every non-root command. The renderer asks fang to render help
-// with inherited persistent flags hidden, then appends a separate
-// "GLOBAL FLAGS" section listing those inherited flags. Mirrors the
-// kubectl/gh/docker convention so leaf help shows only command-specific
-// flags by default.
-//
-// Root help is left untouched by default — fang renders it normally with
-// all flags under FLAGS. Config.Help.SplitGlobals opts the root in; see
-// installRootHelp.
+// installLeafHelp walks the command tree and installs the FLAGS /
+// GLOBAL FLAGS split on every command, root included. The renderer asks
+// fang to render help with inherited persistent flags hidden, then
+// appends a separate "GLOBAL FLAGS" section listing those inherited
+// flags. Mirrors the kubectl/gh/docker convention so any command's help
+// shows only command-specific flags by default.
 func (r *Root) installLeafHelp() {
 	root := r.Cmd
 	hiddenDefault := make(map[string]struct{}, len(r.hiddenDefaultFlags))
@@ -33,16 +29,16 @@ func (r *Root) installLeafHelp() {
 	for _, c := range root.Commands() {
 		installHelpRecursive(root, c, hiddenDefault)
 	}
-	if r.Config.Help.SplitGlobals {
-		r.installRootHelp(hiddenDefault)
-	}
+	r.installRootHelp(hiddenDefault)
 }
 
 // installRootHelp arms the ROOT command's own help with the same
-// FLAGS / GLOBAL FLAGS split the leaves get. Opt-in via
-// Config.Help.SplitGlobals, for single-command binaries (sidecars,
-// plugins) whose root IS the leaf and would otherwise render its own
-// flags and kit's ~two dozen globals in one flat FLAGS block.
+// FLAGS / GLOBAL FLAGS split the leaves get, so every command in a kit
+// CLI renders the same shape at every depth. Matters most for
+// single-command binaries (sidecars, plugins) whose root IS the leaf:
+// the leaf-only split can never fire there, and the tool's own flags
+// would otherwise sit interleaved with kit's ~two dozen globals under
+// one flat FLAGS block.
 //
 // Why a flag-parse seam rather than a plain SetHelpFunc. fang installs
 // its own renderer with root.SetHelpFunc from inside fang.Execute

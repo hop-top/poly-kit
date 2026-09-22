@@ -154,13 +154,31 @@ func TestLeafHelp_LocalFlagNotInGlobalFlags(t *testing.T) {
 	}
 }
 
-func TestRootHelp_NoGlobalFlagsSection(t *testing.T) {
-	// Root help renders all flags under FLAGS; GLOBAL FLAGS is leaf-only.
+func TestRootHelp_HasGlobalFlagsSection(t *testing.T) {
+	// A hierarchical CLI that configures no help options at all: the
+	// root splits like every other command, no opt-in required.
 	lines := helpLines(t)
-	assert.Equal(t, -1, findSection(lines, "GLOBAL FLAGS"),
-		"root --help must not show a GLOBAL FLAGS section")
-	assert.GreaterOrEqual(t, findSection(lines, "FLAGS"), 0,
-		"root --help must still render FLAGS")
+	flagsIdx := findSection(lines, "FLAGS")
+	globalIdx := findSection(lines, "GLOBAL FLAGS")
+	require.GreaterOrEqual(t, flagsIdx, 0,
+		"root --help must still render FLAGS, got:\n%s", strings.Join(lines, "\n"))
+	require.GreaterOrEqual(t, globalIdx, 0,
+		"root --help must show a GLOBAL FLAGS section by default, got:\n%s",
+		strings.Join(lines, "\n"))
+	require.Less(t, flagsIdx, globalIdx, "FLAGS must come before GLOBAL FLAGS")
+
+	flagsBody := strings.Join(linesBetween(lines, flagsIdx, globalIdx), "\n")
+	globalBody := strings.Join(lines[globalIdx+1:], "\n")
+	// Kit's persistent globals move out of the root's FLAGS block.
+	for _, want := range []string{"--format", "--no-color", "--quiet", "-V --verbose"} {
+		assert.Contains(t, globalBody, want,
+			"%q must appear under GLOBAL FLAGS, body was:\n%s", want, globalBody)
+		assert.NotContains(t, flagsBody, want,
+			"%q must not remain under FLAGS, body was:\n%s", want, flagsBody)
+	}
+	// The root's own non-persistent flags stay put.
+	assert.Contains(t, flagsBody, "-h --help")
+	assert.Contains(t, flagsBody, "-v --version")
 }
 
 func TestNestedLeafHelp_HasGlobalFlagsSection(t *testing.T) {
@@ -213,11 +231,11 @@ func TestNestedLeafHelp_HasGlobalFlagsSection(t *testing.T) {
 	assert.True(t, foundParent, "--parent-only must appear under GLOBAL FLAGS")
 }
 
-// splitGlobalsHelp builds a single-command binary — a root with its own
+// rootSplitHelp builds a single-command binary — a root with its own
 // local flags and no subcommand worth speaking of — and returns its
-// root --help, split into stripped lines. splitGlobals selects the
-// opt-in; extraArgs are appended before --help.
-func splitGlobalsHelp(t *testing.T, splitGlobals bool, extraArgs ...string) []string {
+// root --help, split into stripped lines. extraArgs are appended
+// before --help.
+func rootSplitHelp(t *testing.T, extraArgs ...string) []string {
 	t.Helper()
 
 	r := cli.New(cli.Config{
@@ -228,7 +246,6 @@ func splitGlobalsHelp(t *testing.T, splitGlobals bool, extraArgs ...string) []st
 			Name:  "global-thing",
 			Usage: "Tool-wide global flag",
 		}},
-		Help:            cli.HelpConfig{SplitGlobals: splitGlobals},
 		DisableValidate: true,
 	})
 	// Root-local flags: what a single-command binary actually does.
@@ -243,24 +260,15 @@ func splitGlobalsHelp(t *testing.T, splitGlobals bool, extraArgs ...string) []st
 	return strings.Split(stripANSI(buf.String()), "\n")
 }
 
-func TestRootHelp_SplitGlobals_HasGlobalFlagsSection(t *testing.T) {
-	lines := splitGlobalsHelp(t, true)
+func TestRootSplit_HasGlobalFlagsSection(t *testing.T) {
+	lines := rootSplitHelp(t)
 	assert.GreaterOrEqual(t, findSection(lines, "GLOBAL FLAGS"), 0,
-		"root --help with SplitGlobals must contain a GLOBAL FLAGS section, got:\n%s",
+		"root --help must contain a GLOBAL FLAGS section, got:\n%s",
 		strings.Join(lines, "\n"))
 }
 
-func TestRootHelp_SplitGlobalsOff_NoGlobalFlagsSection(t *testing.T) {
-	// Same CLI, opt-in withheld: today's flat FLAGS block, unchanged.
-	lines := splitGlobalsHelp(t, false)
-	assert.Equal(t, -1, findSection(lines, "GLOBAL FLAGS"),
-		"root --help without SplitGlobals must not show a GLOBAL FLAGS section")
-	assert.GreaterOrEqual(t, findSection(lines, "FLAGS"), 0,
-		"root --help must still render FLAGS")
-}
-
-func TestRootHelp_SplitGlobals_LocalFlagsStayUnderFlags(t *testing.T) {
-	lines := splitGlobalsHelp(t, true)
+func TestRootSplit_LocalFlagsStayUnderFlags(t *testing.T) {
+	lines := rootSplitHelp(t)
 	flagsIdx := findSection(lines, "FLAGS")
 	globalIdx := findSection(lines, "GLOBAL FLAGS")
 	require.GreaterOrEqual(t, flagsIdx, 0, "FLAGS section missing")
@@ -280,8 +288,8 @@ func TestRootHelp_SplitGlobals_LocalFlagsStayUnderFlags(t *testing.T) {
 	}
 }
 
-func TestRootHelp_SplitGlobals_GlobalsMoveOutOfFlags(t *testing.T) {
-	lines := splitGlobalsHelp(t, true)
+func TestRootSplit_GlobalsMoveOutOfFlags(t *testing.T) {
+	lines := rootSplitHelp(t)
 	flagsIdx := findSection(lines, "FLAGS")
 	globalIdx := findSection(lines, "GLOBAL FLAGS")
 	require.GreaterOrEqual(t, flagsIdx, 0)
@@ -307,11 +315,11 @@ func TestRootHelp_SplitGlobals_GlobalsMoveOutOfFlags(t *testing.T) {
 	}
 }
 
-func TestRootHelp_SplitGlobals_HiddenDefaultsSurface(t *testing.T) {
+func TestRootSplit_HiddenDefaultsSurface(t *testing.T) {
 	// Kit-owned plumbing flags are Hidden=true so default --help's FLAGS
 	// matches the parity contract; the GLOBAL FLAGS section is where
 	// they are meant to show, exactly as on a leaf.
-	lines := splitGlobalsHelp(t, true)
+	lines := rootSplitHelp(t)
 	globalIdx := findSection(lines, "GLOBAL FLAGS")
 	require.GreaterOrEqual(t, globalIdx, 0)
 	body := strings.Join(lines[globalIdx+1:], "\n")
@@ -324,11 +332,11 @@ func TestRootHelp_SplitGlobals_HiddenDefaultsSurface(t *testing.T) {
 	}
 }
 
-func TestRootHelp_SplitGlobals_HelpAllStillSplits(t *testing.T) {
+func TestRootSplit_HelpAllStillSplits(t *testing.T) {
 	// --help-all unhides the plumbing flags and re-dispatches --help;
 	// the split must survive that rewrite rather than falling back to
 	// one flat block.
-	lines := splitGlobalsHelp(t, true, "--help-all")
+	lines := rootSplitHelp(t, "--help-all")
 	flagsIdx := findSection(lines, "FLAGS")
 	globalIdx := findSection(lines, "GLOBAL FLAGS")
 	require.GreaterOrEqual(t, globalIdx, 0,
@@ -341,7 +349,7 @@ func TestRootHelp_SplitGlobals_HelpAllStillSplits(t *testing.T) {
 	assert.Contains(t, strings.Join(lines[globalIdx+1:], "\n"), "--dry-run")
 }
 
-func TestRootHelp_SplitGlobals_WithSubcommands(t *testing.T) {
+func TestRootSplit_WithSubcommands(t *testing.T) {
 	// A plugin may carry a subcommand (foo-youtube has `status`).
 	// The root splits and the subcommand keeps splitting: same shape at
 	// every depth, and the subcommand's own flag stays local to it.
@@ -349,7 +357,6 @@ func TestRootHelp_SplitGlobals_WithSubcommands(t *testing.T) {
 		Name:            "sidecar",
 		Version:         "1.2.3",
 		Short:           "A single-command tool",
-		Help:            cli.HelpConfig{SplitGlobals: true},
 		DisableValidate: true,
 	})
 	r.Cmd.Flags().Bool("comments", false, "Include top comments")
@@ -369,7 +376,7 @@ func TestRootHelp_SplitGlobals_WithSubcommands(t *testing.T) {
 
 	rootFlags := findSection(rootLines, "FLAGS")
 	rootGlobal := findSection(rootLines, "GLOBAL FLAGS")
-	require.GreaterOrEqual(t, rootGlobal, 0, "root must split with SplitGlobals")
+	require.GreaterOrEqual(t, rootGlobal, 0, "root must split by default")
 	rootFlagsBody := strings.Join(linesBetween(rootLines, rootFlags, rootGlobal), "\n")
 	assert.Contains(t, rootFlagsBody, "--comments")
 	assert.NotContains(t, rootFlagsBody, "--format")
@@ -588,7 +595,6 @@ func rawSplitGlobalsHelp(t *testing.T, extraArgs ...string) string {
 		Name:            "sidecar",
 		Version:         "1.2.3",
 		Short:           "A single-command tool",
-		Help:            cli.HelpConfig{SplitGlobals: true},
 		DisableValidate: true,
 	})
 	r.Cmd.Flags().Bool("comments", false, "Include top comments")
