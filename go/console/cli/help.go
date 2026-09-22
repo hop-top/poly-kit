@@ -3,11 +3,13 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"unicode"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -123,8 +125,44 @@ func makeRootHelpFunc(fangHelp func(*cobra.Command, []string), hiddenDefault map
 			f.Hidden = was
 		}
 
-		renderGlobalFlags(c.OutOrStdout(), globals)
+		renderGlobalFlags(helpColorWriter(c), globals)
 	}
+}
+
+// helpColorWriter wraps a command's help destination the way fang wraps
+// its own (fang.go:131 — colorprofile.NewWriter over OutOrStdout with
+// os.Environ()). Going through the same writer is what keeps the
+// GLOBAL FLAGS section's styling in step with the rest of help: the
+// profile it derives already encodes NO_COLOR, CLICOLOR_FORCE,
+// TERM=dumb and "stdout is not a terminal", so none of those
+// conventions need restating here.
+//
+// The env profile cannot see kit's own --no-color flag, which is a
+// pflag bound to viper (cli.go:518), not an environment variable. When
+// it is set, clamp the profile to NoTTY — the value the writer already
+// uses for "strip every escape" — so the flag suppresses this section's
+// styling on a terminal, where the env profile would otherwise keep it.
+func helpColorWriter(c *cobra.Command) *colorprofile.Writer {
+	w := colorprofile.NewWriter(c.OutOrStdout(), os.Environ())
+	if noColorRequested(c) && w.Profile > colorprofile.NoTTY {
+		w.Profile = colorprofile.NoTTY
+	}
+	return w
+}
+
+// noColorRequested reports whether --no-color was parsed on this run.
+//
+// Read off the root's persistent flag set rather than viper: help
+// renders from cobra's own flag parse (the seam installRootHelp
+// documents), which is complete by then, while the viper binding is
+// only guaranteed to have been consulted once a RunE executes — and a
+// --help run never reaches one.
+func noColorRequested(c *cobra.Command) bool {
+	f := c.Root().PersistentFlags().Lookup("no-color")
+	if f == nil {
+		return false
+	}
+	return f.Value.String() == "true"
 }
 
 // collectRootGlobals returns the flags that move out of the root's
@@ -191,7 +229,7 @@ func makeLeafHelpFunc(root *cobra.Command, hiddenDefault map[string]struct{}) fu
 		}
 
 		// Append our own GLOBAL FLAGS section.
-		renderGlobalFlags(c.OutOrStdout(), inherited)
+		renderGlobalFlags(helpColorWriter(c), inherited)
 	}
 }
 
@@ -221,9 +259,15 @@ func collectInherited(c *cobra.Command, hiddenDefault map[string]struct{}) []*pf
 }
 
 // renderGlobalFlags writes a GLOBAL FLAGS section in the same visual shape
-// fang uses for FLAGS. We render uncolored so output stays legible across
-// terminals without taking a hard dependency on fang's unexported style
-// objects. The header is rendered uppercase to match fang's title casing.
+// fang uses for FLAGS. Only the heading is styled — the rows stay plain so
+// output remains legible across terminals without taking a hard dependency
+// on fang's unexported style objects. The header is rendered uppercase to
+// match fang's title casing.
+//
+// w must be the colorprofile writer from helpColorWriter, not the raw
+// command output: the heading's escapes are emitted unconditionally here
+// and stripped there. Writing straight to OutOrStdout would leak a bold
+// sequence into --no-color and non-terminal output.
 func renderGlobalFlags(w io.Writer, flags []*pflag.Flag) {
 	if len(flags) == 0 {
 		return
