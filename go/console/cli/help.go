@@ -19,8 +19,9 @@ import (
 // kubectl/gh/docker convention so leaf help shows only command-specific
 // flags by default.
 //
-// Root help is left untouched — fang renders it normally with all flags
-// under FLAGS.
+// Root help is left untouched by default — fang renders it normally with
+// all flags under FLAGS. Config.Help.SplitGlobals opts the root in; see
+// installRootHelp.
 func (r *Root) installLeafHelp() {
 	root := r.Cmd
 	hiddenDefault := make(map[string]struct{}, len(r.hiddenDefaultFlags))
@@ -30,6 +31,132 @@ func (r *Root) installLeafHelp() {
 	for _, c := range root.Commands() {
 		installHelpRecursive(root, c, hiddenDefault)
 	}
+	if r.Config.Help.SplitGlobals {
+		r.installRootHelp(hiddenDefault)
+	}
+}
+
+// installRootHelp arms the ROOT command's own help with the same
+// FLAGS / GLOBAL FLAGS split the leaves get. Opt-in via
+// Config.Help.SplitGlobals, for single-command binaries (sidecars,
+// plugins) whose root IS the leaf and would otherwise render its own
+// flags and kit's ~two dozen globals in one flat FLAGS block.
+//
+// Why a flag-parse seam rather than a plain SetHelpFunc. fang installs
+// its own renderer with root.SetHelpFunc from inside fang.Execute
+// (fang.go), which runs AFTER prepareTree — anything we set on the root
+// here is overwritten before a single line is rendered. Leaves are
+// immune because fang only touches the root and makeLeafHelpFunc
+// resolves root.HelpFunc() lazily, at render time.
+//
+// cobra's own order gives us the seam: Command.execute() parses flags
+// (command.go:919) and only then returns flag.ErrHelp, at which point
+// ExecuteC resolves cmd.HelpFunc() (command.go:1153). Wrapping the
+// root's --help pflag.Value means our Set runs between fang's install
+// and that lazy resolve, so the value we capture is fang's renderer and
+// the one we install is what cobra reaches for. --help-all takes the
+// same route: applyGroupVisibility unhides the plumbing flags and
+// rewrites the token to --help, which parses through this same Value.
+//
+// The swap is idempotent — a Root executed twice re-enters Set with the
+// wrapper already in place, and the guard keeps it from stacking.
+func (r *Root) installRootHelp(hiddenDefault map[string]struct{}) {
+	root := r.Cmd
+	// cobra registers --help at the last possible moment; do it now so
+	// there is a Value to wrap.
+	root.InitDefaultHelpFlag()
+	f := root.Flags().Lookup("help")
+	if f == nil {
+		return
+	}
+	if _, already := f.Value.(*rootHelpSwap); already {
+		return
+	}
+	f.Value = &rootHelpSwap{Value: f.Value, root: root, hiddenDefault: hiddenDefault}
+}
+
+// rootHelpSwap decorates the root's --help flag value. Parsing it to
+// true is the signal that root help is about to render, and the last
+// moment at which fang's renderer can be captured as our delegate.
+type rootHelpSwap struct {
+	pflag.Value
+	root          *cobra.Command
+	hiddenDefault map[string]struct{}
+	armed         bool
+}
+
+func (s *rootHelpSwap) Set(v string) error {
+	if err := s.Value.Set(v); err != nil {
+		return err
+	}
+	if s.armed || s.String() != "true" {
+		return nil
+	}
+	s.armed = true
+	s.root.SetHelpFunc(makeRootHelpFunc(s.root.HelpFunc(), s.hiddenDefault))
+	return nil
+}
+
+// Type reports the wrapped flag's type so cobra's help and completion
+// still see a bool and render "--help" without a value placeholder.
+func (s *rootHelpSwap) Type() string { return s.Value.Type() }
+
+// makeRootHelpFunc mirrors makeLeafHelpFunc for the root: hide the
+// globals so fang leaves them out of FLAGS, render, restore, then
+// append our own GLOBAL FLAGS section.
+//
+// fangHelp is fang's renderer, captured at parse time — calling it is
+// what keeps root help byte-identical apart from the flags that moved.
+func makeRootHelpFunc(fangHelp func(*cobra.Command, []string), hiddenDefault map[string]struct{}) func(*cobra.Command, []string) {
+	return func(c *cobra.Command, args []string) {
+		globals := collectRootGlobals(c.Root(), hiddenDefault)
+
+		prevHidden := make(map[*pflag.Flag]bool, len(globals))
+		for _, f := range globals {
+			prevHidden[f] = f.Hidden
+			f.Hidden = true
+		}
+
+		fangHelp(c, args)
+
+		for f, was := range prevHidden {
+			f.Hidden = was
+		}
+
+		renderGlobalFlags(c.OutOrStdout(), globals)
+	}
+}
+
+// collectRootGlobals returns the flags that move out of the root's
+// FLAGS section. InheritedFlags() is empty on a root by definition, so
+// the source is PersistentFlags() — the same set signatureGlobalFlagSet
+// calls the tool's globals, and exactly what every subcommand inherits.
+//
+// Root-local flags stay put: --help, --version and the --help-<group>
+// family are registered non-persistently on the root, so they are
+// absent from PersistentFlags() and keep rendering under FLAGS, which
+// is where a reader of root help expects them.
+//
+// Filtering matches collectInherited — a flag its owner marked Hidden
+// stays hidden unless it is one of the kit-owned plumbing defaults
+// (--chdir, --config, --dry-run, …), which are suppressed from FLAGS
+// for cross-language parity yet still belong in GLOBAL FLAGS. --help is
+// excluded for the same reason it is there: every command shows its own.
+func collectRootGlobals(root *cobra.Command, hiddenDefault map[string]struct{}) []*pflag.Flag {
+	var out []*pflag.Flag
+	root.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		if f.Hidden {
+			if _, ok := hiddenDefault[f.Name]; !ok {
+				return
+			}
+		}
+		if f.Name == "help" {
+			return
+		}
+		out = append(out, f)
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 func installHelpRecursive(root, c *cobra.Command, hiddenDefault map[string]struct{}) {
