@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.10](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.9...kit/v0.5.0-alpha.10) (2026-09-22)
+
+
+### Features
+
+* **cli:** opt-in GLOBAL FLAGS split on root help ([44fd503](https://github.com/hop-top/poly-kit/commit/44fd503f5a13a2346290d59021c734aa1d1e9b5b))
+
 ## [0.5.0-alpha.9](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.8...kit/v0.5.0-alpha.9) (2026-09-21)
 
 
