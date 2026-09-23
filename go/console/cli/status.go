@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/user"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -449,7 +450,28 @@ func runStatus(cmd *cobra.Command, r *Root) error {
 
 	out := StatusOutput{Sections: sections}
 	format := resolveStatusFormat(cmd)
+	// json/yaml receive the nested wire shape unchanged — scripts parse
+	// it. The tag-driven formats cannot express nesting, so they get the
+	// flat one-row-per-section projection instead; handing them
+	// StatusOutput resolves zero columns and prints nothing at all.
+	if isStatusTabular(format) {
+		return output.Render(cmd.OutOrStdout(), format, statusRows(sections))
+	}
 	return output.Render(cmd.OutOrStdout(), format, out)
+}
+
+// isStatusTabular reports whether format projects values through their
+// `table:""` tags into a flat, columnar document and therefore needs
+// the StatusRow projection rather than the nested StatusOutput.
+//
+// Mirrors output.isTagDriven, which is unexported.
+func isStatusTabular(format output.Format) bool {
+	switch format {
+	case output.Table, output.CSV, output.Text, output.Human:
+		return true
+	default:
+		return false
+	}
 }
 
 func runProvider(ctx context.Context, name string, fn StatusProvider) StatusSection {
@@ -574,4 +596,187 @@ func resolveStatusFormat(cmd *cobra.Command) output.Format {
 		}
 	}
 	return output.JSON
+}
+
+// StatusRow is the flat, one-row-per-section projection of
+// [StatusOutput] used by the tag-driven formats (table, csv, text,
+// human).
+//
+// StatusOutput itself cannot drive those formats: it is a struct
+// wrapping a slice, and the column resolver reads the tags of the
+// WRAPPER's fields, not the element's. Tagging StatusSection alone
+// would therefore still resolve zero columns. Worse, StatusSection
+// carries Data as `any` — an arbitrary per-provider payload with no
+// fixed field set — which a columnar projection cannot expand
+// generically. So the flattening happens here, explicitly, and Data
+// collapses into a single summary cell.
+type StatusRow struct {
+	// Section is the provider's title, the stable row key.
+	Section string `json:"section" yaml:"section" table:"SECTION,priority=9"`
+	// Status is the lookup outcome ("ok" / "empty" / "unavailable" /
+	// "error"), carried through verbatim from the section.
+	Status string `json:"status" yaml:"status" table:"STATUS,priority=8"`
+	// Detail is a one-line digest: the error message for failed
+	// sections, otherwise a compact rendering of Data. Nested
+	// payloads are summarized, never dumped — full fidelity lives in
+	// `--format json`.
+	Detail string `json:"detail,omitempty" yaml:"detail,omitempty" table:"DETAIL,priority=7"`
+}
+
+// statusRows flattens sections into the table projection, preserving
+// the caller's already-sorted order.
+func statusRows(sections []StatusSection) []StatusRow {
+	rows := make([]StatusRow, 0, len(sections))
+	for _, sec := range sections {
+		status := sec.Status
+		if status == "" {
+			status = StatusOK
+		}
+		rows = append(rows, StatusRow{
+			Section: sec.Title,
+			Status:  status,
+			Detail:  statusDetail(sec),
+		})
+	}
+	return rows
+}
+
+// statusDetail renders one section's payload as a single cell.
+//
+// ErrorMessage folds in here rather than taking a column of its own:
+// it is populated only when Status is "error" or "unavailable", which
+// is exactly when Data is nil, so the two never compete for the cell
+// and a dedicated column would be blank on every healthy row.
+func statusDetail(sec StatusSection) string {
+	if sec.ErrorMessage != "" {
+		return sec.ErrorMessage
+	}
+	if d := summarizeStatusData(sec.Data); d != "" {
+		return d
+	}
+	// A blank cell reads as "the renderer dropped something". Name the
+	// reason instead, so a section with nothing to report is visibly
+	// distinct from one whose payload failed to render.
+	switch sec.Status {
+	case StatusEmpty:
+		return "(no entries)"
+	case StatusUnavailable:
+		return "(unavailable)"
+	case StatusError:
+		return "(error)"
+	}
+	return ""
+}
+
+// statusDetailMaxKeys caps how many keys a map payload contributes to
+// the detail cell before the remainder collapses to a "+N more"
+// counter. Table cells are one line; an unbounded key dump would push
+// every other column off-screen for a payload the operator should be
+// reading via --format json anyway.
+const statusDetailMaxKeys = 4
+
+// summarizeStatusData reduces an arbitrary section payload to a
+// one-line digest.
+//
+// Scalars render as themselves. Maps render as up to
+// [statusDetailMaxKeys] sorted "k=v" pairs plus a "+N more" counter.
+// Slices render as a count. Anything else (nested structs, mixed
+// shapes) reports its kind and defers to --format json rather than
+// flattening a nested value into a cell where it would be unreadable
+// and would wreck the column widths.
+func summarizeStatusData(data any) string {
+	if data == nil {
+		return ""
+	}
+	switch v := data.(type) {
+	case string:
+		return v
+	case bool, int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64, float32, float64:
+		return fmt.Sprintf("%v", v)
+	case map[string]string:
+		pairs := make([]string, 0, len(v))
+		for k, vv := range v {
+			pairs = append(pairs, k+"="+vv)
+		}
+		return joinSummaryPairs(pairs)
+	case map[string]any:
+		pairs := make([]string, 0, len(v))
+		for k, vv := range v {
+			pairs = append(pairs, k+"="+scalarOrKind(vv))
+		}
+		return joinSummaryPairs(pairs)
+	}
+	return summarizeByReflection(data)
+}
+
+// summarizeByReflection handles payload shapes the type switch does
+// not name: slices report a count, everything else reports its kind.
+func summarizeByReflection(data any) string {
+	rv := reflect.ValueOf(data)
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		return fmt.Sprintf("%d item(s)", rv.Len())
+	case reflect.Ptr, reflect.Interface:
+		if rv.IsNil() {
+			return ""
+		}
+		return summarizeStatusData(rv.Elem().Interface())
+	default:
+		return fmt.Sprintf("(%s — see --format json)", rv.Kind())
+	}
+}
+
+// scalarOrKind renders a map value inline when it is a scalar, and as
+// a bare kind marker when it is not. Keeps one nested level readable
+// without ever expanding a sub-tree into the cell.
+func scalarOrKind(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return t
+	case bool, int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64, float32, float64:
+		return fmt.Sprintf("%v", t)
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		return fmt.Sprintf("[%d]", rv.Len())
+	case reflect.Map:
+		return fmt.Sprintf("{%d}", rv.Len())
+	default:
+		return "(" + rv.Kind().String() + ")"
+	}
+}
+
+// joinSummaryPairs sorts pairs for determinism, drops value-less keys,
+// truncates to [statusDetailMaxKeys], and appends a remainder counter.
+//
+// Map iteration order is random in Go, so sorting is what makes the
+// rendered table byte-stable across runs. Keys whose value is empty are
+// dropped from the visible prefix but still counted in the remainder:
+// with the budget at a handful of keys, spending it on "k=" entries
+// that carry no information would push every populated key out of an
+// operator'"'"'s view.
+func joinSummaryPairs(pairs []string) string {
+	sort.Strings(pairs)
+	populated := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		if strings.HasSuffix(p, "=") {
+			continue
+		}
+		populated = append(populated, p)
+	}
+	if len(populated) <= statusDetailMaxKeys {
+		kept := strings.Join(populated, " ")
+		if rest := len(pairs) - len(populated); rest > 0 {
+			return strings.TrimSpace(fmt.Sprintf("%s +%d more", kept, rest))
+		}
+		return kept
+	}
+	kept := strings.Join(populated[:statusDetailMaxKeys], " ")
+	return fmt.Sprintf("%s +%d more", kept, len(pairs)-statusDetailMaxKeys)
 }
