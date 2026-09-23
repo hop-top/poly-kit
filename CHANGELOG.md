@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.12](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.11...kit/v0.5.0-alpha.12) (2026-09-23)
+
+
+### Bug Fixes
+
+* **cli:** render status under tag-driven formats ([8a48e1d](https://github.com/hop-top/poly-kit/commit/8a48e1d6871d2a591c48bd352a68a1decfcc9151))
+
 ## [0.5.0-alpha.11](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.10...kit/v0.5.0-alpha.11) (2026-09-22)
 
 
