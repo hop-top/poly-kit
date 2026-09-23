@@ -247,6 +247,15 @@ func renderTable(w io.Writer, v any, selected []string) error {
 
 	cols := tableColumns(elemType)
 	if len(cols) == 0 {
+		// A type with no `table:""` tags renders as zero bytes with a nil
+		// error. This is a silent failure, not a contract: see
+		// docs/adopters/reference/output.md, which states emptiness is
+		// decided by row count, "never column count". Callers must not
+		// rely on it — hand the tag-driven formats a tagged row type (see
+		// the StatusRow projection in go/console/cli/status.go) rather
+		// than an untagged wrapper. Promoting this to an error is a
+		// breaking change across every adopter and several in-tree call
+		// sites still depend on the silence, so it needs its own change.
 		return nil
 	}
 	if len(selected) > 0 {

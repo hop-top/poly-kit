@@ -40,8 +40,9 @@ func (humanFormatter) Render(w io.Writer, data any, _ Options, cols []string) er
 		return hr.RenderHuman(w)
 	}
 	// Fallback: try table rendering. Types with `table:""` tags get a
-	// reasonable view; types without tags emit nothing (matches table
-	// formatter behavior).
+	// reasonable view; types without tags emit nothing, silently and
+	// with a nil error (matches table formatter behavior — see the
+	// zero-column note in renderTable).
 	if err := renderTable(w, data, cols); err != nil {
 		return fmt.Errorf("human formatter: no RenderHuman for %T and table fallback failed: %w", data, err)
 	}
