@@ -404,6 +404,9 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	for _, g := range cfg.Help.Groups {
 		cmd.AddGroup(&cobra.Group{ID: g.ID, Title: g.Title})
 	}
+	// Cobra's own renderer (adopters bypassing r.Execute) must not print
+	// a group header with no visible commands under it.
+	cmd.SetUsageTemplate(usageTemplate)
 
 	// Hide the default help command; -h/--help flag remains.
 	cmd.SetHelpCommand(&cobra.Command{Hidden: true})
