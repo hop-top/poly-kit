@@ -371,12 +371,18 @@ func reflectSafety(cmd *cobra.Command) Safety {
 	// An annotation that does not resolve is a defect, not a
 	// default: leave the tier unknown so decide() can report it.
 	// Only an ABSENT annotation falls through to the heuristic.
+	//
+	// An absent annotation that the heuristic does not catch
+	// resolves to TierUnannotated, never TierRead. "Nobody said"
+	// and "the adopter said read" are different facts, and
+	// collapsing them published every silent destructive command to
+	// agents as safe.
 	if s.Tier == TierUnknown && raw == "" {
 		if destructiveNames[cmd.Name()] {
 			s.Tier = TierDestructiveShared
 			s.TierInferred = true
 		} else {
-			s.Tier = TierRead
+			s.Tier = TierUnannotated
 		}
 	}
 

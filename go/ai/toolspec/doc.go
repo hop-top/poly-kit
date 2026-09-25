@@ -33,6 +33,26 @@
 // capability tokens. Permissions are namespace-prefixed so consumers
 // can extend without colliding (e.g. "myorg:db:write").
 //
+// # Undeclared is not read
+//
+// A command carrying no kit/side-effect at all is NOT classified
+// read. It resolves to
+// [hop.top/kit/go/ai/cmdreflect.TierUnannotated] and reaches the
+// manifest as the explicit value [SideEffectUnknown]; the same
+// applies to kit/idempotent and [IdempotentUnknown].
+//
+// The distinction is load-bearing. "The adopter declared read" and
+// "the adopter declared nothing" are different facts, and collapsing
+// them published every command an adopter forgot to annotate to
+// agents and safety gates as safe. Every consumer of an unknown
+// class must fail closed on it — kit's own
+// [hop.top/kit/go/ai/toolspec/adapters.EnforceMCPRequest] resolves
+// it as destructive.
+//
+// Adopters find and close the gap with `<tool> spec coverage`, which
+// reports the unannotated commands by path and exits CONFLICT below
+// a --min threshold.
+//
 // # Registry
 //
 // [Registry] resolves specs from ordered [Source] implementations with

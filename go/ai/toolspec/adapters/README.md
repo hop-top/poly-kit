@@ -38,8 +38,8 @@ if err := adapters.KitManifest().Render(os.Stdout, spec); err != nil {
 //         "list"
 //       ],
 //       "short": "",
-//       "side_effect": "",
-//       "idempotent": "",
+//       "side_effect": "unknown",
+//       "idempotent": "unknown",
 //       "retryable": false,
 //       "dry_run_supported": false
 //     }

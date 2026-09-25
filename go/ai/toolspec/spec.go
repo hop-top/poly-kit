@@ -137,6 +137,23 @@ type Manifest struct {
 	Commands []ManifestCommand `json:"commands"`
 }
 
+// SideEffectUnknown is the value ManifestCommand.SideEffect carries
+// when a command declared no kit/side-effect. It is a real value in
+// the manifest's vocabulary, not the absence of one, and it is never
+// equivalent to "read": a consumer that cannot fail closed on it
+// must refuse the command rather than assume it is safe.
+//
+// It matches the spelling
+// [hop.top/kit/go/conformance/harness/classifier.ClassUnknown]
+// already uses for the same idea on the cassette side, so a reader
+// meets one word for "kit could not establish this", not two.
+const SideEffectUnknown = "unknown"
+
+// IdempotentUnknown is SideEffectUnknown's counterpart for
+// ManifestCommand.Idempotent: no kit/idempotent annotation and no
+// kit verb default applied.
+const IdempotentUnknown = "unknown"
+
 // ManifestCommand is one leaf in the live cobra tree projected into the
 // manifest shape. Distinct from Command (the source-plugin data shape):
 // every field comes from cobra annotations or built-ins kit owns.
@@ -152,9 +169,24 @@ type ManifestCommand struct {
 	Path []string `json:"path"`
 	// Short is the one-line description (cobra.Command.Short).
 	Short string `json:"short"`
-	// SideEffect is the kit/side-effect class (read|write|destructive|interactive).
+	// SideEffect is the kit/side-effect class the adopter declared
+	// (read|write|write-local|write-shared|destructive|
+	// destructive-local|destructive-shared|interactive), or
+	// SideEffectUnknown when the command carries no annotation.
+	//
+	// Unknown is spelled out rather than omitted for the same
+	// reason Retryable's explicit false is: the value carries
+	// information. A missing field cannot distinguish "kit
+	// reflected this command and the adopter declared nothing"
+	// from "this manifest predates the field" or "this entry was
+	// truncated", and those call for different handling. An agent
+	// or gate reading SideEffectUnknown knows the silence is real
+	// and must fail closed on it — never treat it as read.
 	SideEffect string `json:"side_effect"`
-	// Idempotent is the kit/idempotent class (yes|no|conditional).
+	// Idempotent is the kit/idempotent class (yes|no|conditional),
+	// or IdempotentUnknown when the command carries no annotation
+	// and no kit verb default applied. Spelled out rather than
+	// omitted on the same reasoning as SideEffect.
 	Idempotent string `json:"idempotent"`
 	// Args lists declared positional arguments. Optional — cobra does
 	// not introspect arg names by default; this is populated from the

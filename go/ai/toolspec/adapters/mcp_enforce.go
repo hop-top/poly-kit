@@ -114,10 +114,15 @@ func EnforceMCPRequest(manifest toolspec.Manifest, path []string, table policy.T
 		}
 	}
 	se := policy.SideEffect(leaf.SideEffect)
-	if se == "" {
+	if se == "" || se == toolspec.SideEffectUnknown {
 		// Manifest entry without a kit/side-effect annotation: treat
 		// as the most-restrictive class (destructive) so unannotated
 		// commands fail safe rather than auto-allow.
+		//
+		// Both spellings are accepted. Kit now writes the explicit
+		// "unknown" marker, but a manifest emitted by an older kit,
+		// or by a non-Go port, still carries the empty string, and
+		// the gate must not open for either.
 		se = policy.SideEffectDestructive
 	}
 	net := networkAxisFor(leaf)

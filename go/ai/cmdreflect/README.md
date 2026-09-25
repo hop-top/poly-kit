@@ -50,6 +50,15 @@ for _, d := range tree.NonInvocable() {
   was set.
 - `Safety` reuses the `toolspec` six-tier ladder and `kit:` permission
   tokens; this package defines no competing vocabulary.
+- A command with no `kit/side-effect` resolves to `TierUnannotated`, not
+  `TierRead`, unless the destructive-name heuristic fires (`TierInferred`
+  marks that case). Check `Tier.Declared()` before treating a tier as the
+  adopter's word. Unannotated projects conservatively — `Caution`,
+  `kit:fs:write:local` — and stays invocable, because withholding it
+  would break working CLIs to punish missing metadata.
+- A `kit/side-effect` value that does not resolve is `TierUnknown` and a
+  declaration defect: the command is described and withheld with
+  `malformed-schema`, so a typo surfaces instead of shipping.
 
 ## Neighbours
 

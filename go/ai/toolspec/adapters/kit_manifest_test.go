@@ -126,7 +126,9 @@ func TestKitManifest_Render_ContractFlows(t *testing.T) {
 	}
 	require.NotNil(t, create)
 	assert.Equal(t, "write", create.SideEffect)
-	assert.Equal(t, "", create.Idempotent, "create.Idempotent=false → empty manifest field")
+	assert.Equal(t, toolspec.IdempotentUnknown, create.Idempotent,
+		"create.Idempotent=false carries no declaration, so the manifest says unknown "+
+			"rather than an empty string a consumer could read as a declared value")
 }
 
 func TestKitManifest_Render_DeprecationIncludedByDefault(t *testing.T) {
