@@ -163,3 +163,52 @@ func TestPolicy_DefaultEnabled_Fallback(t *testing.T) {
 		t.Fatalf("explicit DefaultEnabled must take precedence")
 	}
 }
+
+// TestUnannotatedDoesNotCrossDestructiveCeiling is the regression net
+// for the side-effect default change. Making an undeclared command
+// resolve to TierUnannotated rather than TierRead must not move it
+// across the bridge's destructive ceiling in EITHER direction:
+//
+//   - not INTO destructive, which would newly block commands that
+//     every remote surface serves today;
+//   - not out of whatever gate already applied, which would open a
+//     path that was previously closed.
+//
+// The ceiling keys off Safety.Destructive(), which names the two
+// destructive tiers explicitly, so the new tier is outside it by
+// construction. This test pins that, because the alternative — a
+// future edit folding "not declared" into the destructive band to
+// look safer — would silently break every adopter's remote surface.
+func TestUnannotatedDoesNotCrossDestructiveCeiling(t *testing.T) {
+	root := &cobra.Command{Use: "tool"}
+	silent := &cobra.Command{Use: "silent", Run: func(*cobra.Command, []string) {}}
+	root.AddCommand(silent)
+
+	cls := Classify(silent)
+	if cls.Destructive {
+		t.Fatal("an unannotated command must not be classified destructive")
+	}
+
+	p := DefaultPolicy()
+	for _, s := range []Surface{SurfaceCLI, SurfaceLib, SurfaceMCP, SurfaceREST} {
+		if !p.Allowed(cls, s) {
+			t.Errorf("surface %v refuses an unannotated command; the "+
+				"destructive ceiling moved", s)
+		}
+	}
+
+	// A genuinely destructive declaration is still confined, so the
+	// ceiling has not simply been lowered for everyone.
+	del := &cobra.Command{
+		Use:         "wipe",
+		Run:         func(*cobra.Command, []string) {},
+		Annotations: map[string]string{annSideEffect: "destructive"},
+	}
+	root.AddCommand(del)
+	if !Classify(del).Destructive {
+		t.Fatal("a declared destructive command must stay destructive")
+	}
+	if p.Allowed(Classify(del), SurfaceREST) {
+		t.Error("the destructive ceiling stopped confining declared destructive commands")
+	}
+}
