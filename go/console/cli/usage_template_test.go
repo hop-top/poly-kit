@@ -171,10 +171,16 @@ func TestCobraHelp_SubcommandGroupWithoutCommandsHasNoHeader(t *testing.T) {
 		&cobra.Group{ID: "run", Title: "RUN"},
 		&cobra.Group{ID: "idle", Title: "IDLE"},
 	)
-	svc.AddCommand(&cobra.Command{
-		Use: "start", Short: "Start a service", GroupID: "run",
-		Run: func(*cobra.Command, []string) {},
-	})
+	svc.AddCommand(
+		&cobra.Command{
+			Use: "start", Short: "Start a service", GroupID: "run",
+			Run: func(*cobra.Command, []string) {},
+		},
+		&cobra.Command{
+			Use: "secret", Short: "Hidden ungrouped", Hidden: true,
+			Run: func(*cobra.Command, []string) {},
+		},
+	)
 	r.Cmd.AddCommand(svc)
 
 	out := cobraHelp(t, r, "svc", "--help")
@@ -182,6 +188,8 @@ func TestCobraHelp_SubcommandGroupWithoutCommandsHasNoHeader(t *testing.T) {
 	assert.True(t, hasLine(out, "RUN"), "group with commands keeps its header:\n%s", out)
 	assert.False(t, hasLine(out, "IDLE"),
 		"subcommand group with no commands must not render its header:\n%s", out)
+	assert.False(t, hasLine(out, "Additional Commands:"),
+		"only hidden ungrouped commands, so no ungrouped header:\n%s", out)
 }
 
 // Fang, behind r.Execute, must hold the same rule.
@@ -197,4 +205,50 @@ func TestExecuteHelp_NoEmptyGroupHeaders(t *testing.T) {
 		assert.NotContains(t, out, h, "header %q has no visible commands", h)
 	}
 	assert.Contains(t, out, "EXTRAS")
+}
+
+// At the root, ungrouped commands are kit's default group: fang titles it
+// COMMANDS and renders it first. Cobra's "Additional Commands:" must not
+// stand in for it.
+func TestCobraHelp_RootUngroupedCommandsTitledCommandsFirst(t *testing.T) {
+	for _, args := range [][]string{{"--help"}, {"--help-all"}} {
+		out := cobraHelp(t, groupedRoot(), args...)
+		lines := strings.Split(out, "\n")
+
+		assert.False(t, hasLine(out, "Additional Commands:"), "%v:\n%s", args, out)
+		cmds := sectionIdx(lines, "COMMANDS")
+		require.GreaterOrEqual(t, cmds, 0, "%v: COMMANDS header missing:\n%s", args, out)
+		var body []string
+		for _, l := range lines[cmds+1:] {
+			if !strings.HasPrefix(l, "  ") {
+				break
+			}
+			body = append(body, l)
+		}
+		assert.Contains(t, strings.Join(body, "\n"), "Deploy the app",
+			"%v: default-group command under COMMANDS:\n%s", args, out)
+		for _, h := range []string{"EXTRAS", "MANAGEMENT"} {
+			if i := sectionIdx(lines, h); i >= 0 {
+				assert.Less(t, cmds, i, "%v: COMMANDS renders before %s", args, h)
+			}
+		}
+	}
+}
+
+// Below the root there is no kit default group: cobra's title stays.
+func TestCobraHelp_SubcommandUngroupedKeepsCobraTitle(t *testing.T) {
+	r := cli.New(cli.Config{Name: "mytool", Version: "0.1.0", Short: "A tool", DisableValidate: true})
+	run := func(*cobra.Command, []string) {}
+	svc := &cobra.Command{Use: "svc", Short: "Services"}
+	svc.AddGroup(&cobra.Group{ID: "run", Title: "RUN"})
+	svc.AddCommand(
+		&cobra.Command{Use: "start", Short: "Start a service", GroupID: "run", Run: run},
+		&cobra.Command{Use: "status", Short: "Service status", Run: run},
+	)
+	r.Cmd.AddCommand(svc)
+
+	out := cobraHelp(t, r, "svc", "--help")
+
+	assert.True(t, hasLine(out, "Additional Commands:"), "\n%s", out)
+	assert.False(t, hasLine(out, "COMMANDS"), "\n%s", out)
 }
