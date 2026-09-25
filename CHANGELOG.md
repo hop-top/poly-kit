@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0-alpha.13](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.12...kit/v0.5.0-alpha.13) (2026-09-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **toolspec:** manifest `side_effect` and `idempotent` carry `"unknown"` where they previously carried `""` for an unannotated command. Consumers matching on the empty string must accept both.
+
+### Features
+
+* **toolspec:** undeclared side-effect is unknown, not read ([2c53c89](https://github.com/hop-top/poly-kit/commit/2c53c897196db3fa0fc319d4c8f8b4c8417c4fc8))
+
+
+### Bug Fixes
+
+* **build:** pin Go toolchain and keep the push gate finishable ([b8d4e9a](https://github.com/hop-top/poly-kit/commit/b8d4e9a01c1b0ed8ad9f2c660d609e48e52ff838))
+* **toolspec:** render MCP tools per leaf, matching live server ([be86dec](https://github.com/hop-top/poly-kit/commit/be86dec0ff58252f04ab444795bd398b89d9fcf5))
+
 ## [0.5.0-alpha.12](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.11...kit/v0.5.0-alpha.12) (2026-09-23)
 
 
