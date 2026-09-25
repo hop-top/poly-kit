@@ -25,6 +25,7 @@ func fixtureManifest() toolspec.Manifest {
 			{Path: []string{"mytool", "delete"}, SideEffect: "destructive", Idempotent: "no"},
 			{Path: []string{"mytool", "shell"}, SideEffect: "interactive", Idempotent: "no"},
 			{Path: []string{"mytool", "weird"}, SideEffect: ""},
+			{Path: []string{"mytool", "silent"}, SideEffect: toolspec.SideEffectUnknown},
 		},
 	}
 }
@@ -73,6 +74,29 @@ func TestEnforce_MissingSideEffectFailsSafe(t *testing.T) {
 	env := adapters.EnforceMCPRequest(fixtureManifest(), []string{"mytool", "weird"}, policy.Default())
 	assert.Equal(t, policy.ActionPrompt, env.Decision.Action,
 		"unannotated → destructive → prompt at network=none")
+}
+
+// TestEnforce_UnknownSideEffectFailsSafe covers the spelling kit
+// actually emits today. The manifest now writes the explicit
+// "unknown" marker instead of an empty string, and the gate must
+// treat it exactly as it treats the empty one — as destructive.
+//
+// Without this the marker would fall through to "no rule matched",
+// which resolves to a fail-safe PROMPT rather than the destructive
+// row, quietly weakening the gate for every unannotated command the
+// moment the manifest started naming them honestly.
+func TestEnforce_UnknownSideEffectFailsSafe(t *testing.T) {
+	t.Parallel()
+	env := adapters.EnforceMCPRequest(fixtureManifest(), []string{"mytool", "silent"}, policy.Default())
+	assert.Equal(t, policy.ActionPrompt, env.Decision.Action,
+		"explicit unknown → destructive → prompt at network=none")
+
+	// Same verdict and same reason as the empty-string spelling: the
+	// two must not diverge, or a manifest from an older kit and one
+	// from this kit would be gated differently.
+	empty := adapters.EnforceMCPRequest(fixtureManifest(), []string{"mytool", "weird"}, policy.Default())
+	assert.Equal(t, empty.Decision.Action, env.Decision.Action)
+	assert.Equal(t, empty.Decision.Reason, env.Decision.Reason)
 }
 
 func TestEnforce_OverlayPolicyApplies(t *testing.T) {

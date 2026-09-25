@@ -111,6 +111,10 @@ func RegisterSpecCommand(root *kitcli.Root, schemaVersion string, opts ...Regist
 		{Title: "Filter to old clients", Command: toolName + " spec --api-version=1.0"},
 	})
 
+	// `spec coverage` mounts unconditionally: the annotation-coverage
+	// lint is only useful if every adopter has it without opting in.
+	registerCoverageCommand(cmd, root)
+
 	root.Cmd.AddCommand(cmd)
 	// Late-mount snapshot: the spec subcommand is reserved. Adopters
 	// calling RegisterSpecCommand AFTER cli.New still see it land in
@@ -284,11 +288,19 @@ func BuildManifest(root *kitcli.Root, schemaVersion string, includeDeprecated bo
 // manifestIncludes applies the manifest's inclusion policy to a
 // reflected descriptor.
 //
-// The manifest lists LEAVES: a command group has no invocation of
-// its own, so publishing it as a callable tool would be a lie. That
-// is exactly what cmdreflect records as ReasonNotRunnable, and what
-// ReasonBuiltin records for the framework's own help and completion
-// trees. Deprecation is the caller's choice.
+// The manifest lists INVOCABLE commands: a pure command group has no
+// invocation of its own, so publishing it as a callable tool would be
+// a lie. That is exactly what cmdreflect records as ReasonNotRunnable,
+// and what ReasonBuiltin records for the framework's own help and
+// completion trees. Deprecation is the caller's choice.
+//
+// Having subcommands is not by itself disqualifying. A command that
+// carries children AND its own Run is callable on its own terms —
+// kit's own `spec`, which the manifest must describe so an agent can
+// find the schema of every other entry, became exactly that when
+// `spec coverage` mounted under it. The test is whether the command
+// runs, which cobra already answers via Runnable; HasSubCommands is
+// only consulted to exclude the groups that do not.
 func manifestIncludes(d *cmdreflect.Descriptor, includeDeprecated bool) bool {
 	if d == nil || d.Cmd == nil || d.IsRoot() {
 		return false
@@ -297,7 +309,7 @@ func manifestIncludes(d *cmdreflect.Descriptor, includeDeprecated bool) bool {
 	case cmdreflect.ReasonNotRunnable, cmdreflect.ReasonBuiltin:
 		return false
 	}
-	if d.Surface.HasSubCommands {
+	if d.Surface.HasSubCommands && !d.Surface.Runnable {
 		return false
 	}
 	if d.Surface.Deprecated && !includeDeprecated {
@@ -315,8 +327,8 @@ func manifestCommand(d *cmdreflect.Descriptor) toolspec.ManifestCommand {
 		Path:            append([]string(nil), d.Path...),
 		Short:           d.Short,
 		Long:            d.Long,
-		SideEffect:      d.Safety.DeclaredSideEffect,
-		Idempotent:      d.Safety.Idempotent,
+		SideEffect:      declaredOrUnknown(d.Safety.DeclaredSideEffect),
+		Idempotent:      declaredOrUnknown(d.Safety.Idempotent),
 		ExitCodes:       d.Safety.ExitCodes,
 		Deprecated:      d.Surface.Deprecated,
 		DeprecatedSince: d.Surface.DeprecatedSince,
@@ -363,6 +375,19 @@ func manifestCommand(d *cmdreflect.Descriptor) toolspec.ManifestCommand {
 		}
 	}
 	return mc
+}
+
+// declaredOrUnknown returns raw, or the explicit unknown marker when
+// the adopter declared nothing. The manifest says "unknown" out loud
+// rather than emitting an empty string, so a consumer reading the
+// field learns that kit looked and found silence — an empty string
+// reads as a serialization accident, and a missing field cannot be
+// told apart from an older schema.
+func declaredOrUnknown(raw string) string {
+	if raw == "" {
+		return toolspec.SideEffectUnknown
+	}
+	return raw
 }
 
 // manifestFlags projects reflected flags into ManifestFlag entries.

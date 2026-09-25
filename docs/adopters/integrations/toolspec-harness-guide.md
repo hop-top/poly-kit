@@ -87,7 +87,9 @@ table = LoadOrDefault(custom_overlay_path)            // YAML overlay optional
 leaf  = manifest.commands.find(c => c.path == path)
 if leaf is None:
     return DENY("command not advertised in manifest")
-side_effect = leaf.side_effect or "destructive"        // fail safe
+side_effect = leaf.side_effect
+if side_effect in (None, "", "unknown"):               // fail safe
+    side_effect = "destructive"                        // NEVER "read"
 network     = leaf.network or "none"                   // stub today
 return table.resolve(side_effect, network)
 ```
@@ -108,6 +110,21 @@ env := adapters.EnforceMCPRequest(manifest, []string{"tlc", "task", "list"}, tab
 `env.Decision.Action` is one of the three constants in the
 `policy` package; `env.Decision.Reason` is the rationale string
 the harness should surface to the user.
+
+### `side_effect: "unknown"` is not `read`
+
+A command that declared no `kit/side-effect` carries the literal
+value `"unknown"` in the manifest. It is a real value in the
+vocabulary, not a gap: kit reflected the command and found no
+declaration.
+
+Treat it as the most restrictive class you have. The one handling
+that is always wrong is mapping it to `read` — that is how a
+destructive command an adopter forgot to annotate reaches an agent
+as safe. Older kit versions and non-Go ports may emit the empty
+string for the same condition, so accept both spellings.
+
+Kit's own `EnforceMCPRequest` does this for you.
 
 ## Step 4 — Render in your harness's permission shape
 

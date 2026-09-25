@@ -385,6 +385,20 @@ func TestSafetyMapping(t *testing.T) {
 	if got := resolveTier("nonsense"); got != TierUnknown {
 		t.Errorf("resolveTier of an unknown value = %q, want unknown", got)
 	}
+	// resolveTier maps ANNOTATIONS, so an absent one is unknown here;
+	// reflectSafety is what substitutes TierUnannotated. The
+	// projections for that tier are pinned separately, because they
+	// are the ones a consumer sees.
+	if got := resolveTier(""); got != TierUnknown {
+		t.Errorf("resolveTier(\"\") = %q, want unknown", got)
+	}
+	if got := safetyLevel(TierUnannotated); got != toolspec.SafetyLevelCaution {
+		t.Errorf("safetyLevel(unannotated) = %q, want caution: undeclared is never safe", got)
+	}
+	if got := fsPermission(TierUnannotated); got != toolspec.PermFSWriteLocal {
+		t.Errorf("fsPermission(unannotated) = %q, want kit:fs:write:local: "+
+			"kit:fs:read would claim the command touches nothing", got)
+	}
 }
 
 // TestNetworkMapping pins the kit/network axis.
@@ -689,5 +703,103 @@ func TestOutputReflection(t *testing.T) {
 	}
 	if tree.Lookup("list").Output.SchemaMalformed {
 		t.Error("a command with no schema reported one malformed")
+	}
+}
+
+// TestUnannotatedIsNotRead is the distinction the TierUnannotated
+// value exists to carry: a command that declared read and a command
+// that declared nothing must not reflect the same way.
+//
+// Before this, both resolved to TierRead with kit:fs:read and the
+// safe level, so a destructive command whose adopter forgot the
+// annotation reached agents and safety gates indistinguishable from
+// a genuine read-only one.
+func TestUnannotatedIsNotRead(t *testing.T) {
+	root := &cobra.Command{Use: "tool"}
+	declared := &cobra.Command{
+		Use:         "declared",
+		Run:         func(*cobra.Command, []string) {},
+		Annotations: map[string]string{annSideEffect: "read"},
+	}
+	silent := &cobra.Command{
+		Use: "silent",
+		Run: func(*cobra.Command, []string) {},
+	}
+	root.AddCommand(declared, silent)
+	tree := Reflect(root)
+
+	d := tree.Lookup("declared").Safety
+	s := tree.Lookup("silent").Safety
+
+	if d.Tier != TierRead {
+		t.Fatalf("declared Tier = %q, want read", d.Tier)
+	}
+	if s.Tier != TierUnannotated {
+		t.Fatalf("silent Tier = %q, want unannotated", s.Tier)
+	}
+	if s.Tier == d.Tier {
+		t.Fatal("declared read and declared-nothing must not share a tier")
+	}
+	if !d.Tier.Declared() {
+		t.Error("an explicit read IS a declaration")
+	}
+	if s.Tier.Declared() {
+		t.Error("silence is not a declaration")
+	}
+	if s.Level == toolspec.SafetyLevelSafe {
+		t.Error("an unannotated command must not project as safe")
+	}
+	if s.Permissions[0] == toolspec.PermFSRead {
+		t.Error("kit:fs:read claims the command touches nothing; kit was never told so")
+	}
+	if s.TierInferred {
+		t.Error("no heuristic fired for this name; TierInferred must stay false")
+	}
+}
+
+// TestUnannotatedStaysInvocable pins the deliberate limit on the
+// change: an undeclared command is described honestly, NOT withheld.
+// Kit's audited adopters leave a fifth to a third of their commands
+// unannotated, and making those non-invocable would break working
+// CLIs to punish missing metadata. The coverage report is the
+// pressure; the surface stays intact.
+func TestUnannotatedStaysInvocable(t *testing.T) {
+	root := &cobra.Command{Use: "tool"}
+	root.AddCommand(&cobra.Command{
+		Use: "silent",
+		Run: func(*cobra.Command, []string) {},
+	})
+	d := Reflect(root).Lookup("silent")
+
+	if !d.Invocable {
+		t.Fatalf("unannotated leaf withheld with reason %q", d.Reason)
+	}
+	if d.Reason != ReasonNone {
+		t.Errorf("Reason = %q, want none", d.Reason)
+	}
+}
+
+// TestMalformedOutranksUnannotated keeps the two silences apart. A
+// typo is a declaration defect (TierUnknown, withheld as
+// malformed-schema) while an absent annotation is not — an adopter
+// who wrote "destrutive" should learn about it, and one who wrote
+// nothing should keep a working command plus a coverage miss.
+func TestMalformedOutranksUnannotated(t *testing.T) {
+	root := &cobra.Command{Use: "tool"}
+	root.AddCommand(&cobra.Command{
+		Use:         "typo",
+		Run:         func(*cobra.Command, []string) {},
+		Annotations: map[string]string{annSideEffect: "destrutive"},
+	})
+	d := Reflect(root).Lookup("typo")
+
+	if d.Safety.Tier != TierUnknown {
+		t.Fatalf("Tier = %q, want unknown", d.Safety.Tier)
+	}
+	if d.Invocable {
+		t.Error("a malformed declaration must be withheld")
+	}
+	if d.Reason != ReasonMalformedSchema {
+		t.Errorf("Reason = %q, want malformed-schema", d.Reason)
 	}
 }

@@ -246,20 +246,55 @@ func TestWalkCobra_LegacyAnnotationJSONRoundTrip(t *testing.T) {
 	assert.Equal(t, "kit:fs:write:shared", upd.Safety.Permissions[0])
 }
 
-// TestWalkCobra_DefaultPermissionsForUnannotatedReadCommand pins the
+// TestWalkCobra_DefaultPermissionsForUnannotatedCommand pins the
 // shape produced for a typical unannotated leaf — no destructive
-// name, no kit/side-effect — to guard against accidental escalation
-// in the default-safety fallback.
-func TestWalkCobra_DefaultPermissionsForUnannotatedReadCommand(t *testing.T) {
+// name, no kit/side-effect.
+//
+// It asserts the leaf does NOT claim kit:fs:read. That token is a
+// positive statement that the command touches nothing, and kit has
+// no grounds to make it for a command that declared nothing; the
+// earlier version of this test pinned exactly that claim, which is
+// how an unannotated destructive command reached agents as safe.
+// Unannotated resolves to write-local and caution instead: strong
+// enough that a gate reading it does not auto-allow, weak enough
+// that it is not confused with a declared destructive tier.
+func TestWalkCobra_DefaultPermissionsForUnannotatedCommand(t *testing.T) {
 	root := rootWith("mytool", addChild("list"))
 	spec := WalkCobra(root)
 	cmd := findCommand(spec.Commands, "list")
 	require.NotNil(t, cmd)
 	require.NotNil(t, cmd.Safety)
-	assert.Equal(t, toolspec.SafetyLevelSafe, cmd.Safety.Level)
+	assert.Equal(t, toolspec.SafetyLevelCaution, cmd.Safety.Level)
 	assert.False(t, cmd.Safety.RequiresConfirmation)
 	assert.Equal(t,
-		[]string{"kit:fs:read", "kit:network:none"},
+		[]string{"kit:fs:write:local", "kit:network:none"},
 		cmd.Safety.Permissions,
 	)
+}
+
+// TestWalkCobra_DeclaredReadOutranksUnannotated is the distinction
+// the unannotated tier exists to preserve: a leaf that DECLARED
+// read keeps kit:fs:read and the safe level, while its unannotated
+// sibling does not. If both ever project the same shape again, the
+// manifest has stopped carrying the difference.
+func TestWalkCobra_DeclaredReadOutranksUnannotated(t *testing.T) {
+	root := rootWith("mytool",
+		addChild("declared", withAnnotations(map[string]string{
+			"kit/side-effect": "read",
+		})),
+		addChild("silent"),
+	)
+	spec := WalkCobra(root)
+
+	declared := findCommand(spec.Commands, "declared")
+	require.NotNil(t, declared)
+	require.NotNil(t, declared.Safety)
+	assert.Equal(t, toolspec.SafetyLevelSafe, declared.Safety.Level)
+	assert.Equal(t, "kit:fs:read", declared.Safety.Permissions[0])
+
+	silent := findCommand(spec.Commands, "silent")
+	require.NotNil(t, silent)
+	require.NotNil(t, silent.Safety)
+	assert.NotEqual(t, declared.Safety.Level, silent.Safety.Level)
+	assert.NotEqual(t, declared.Safety.Permissions[0], silent.Safety.Permissions[0])
 }

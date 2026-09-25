@@ -231,6 +231,13 @@ func sideEffectClass(t cmdreflect.Tier) api.SideEffectClass {
 		return api.SideEffectDestructive
 	case cmdreflect.TierInteractive:
 		return api.SideEffectInteractive
+	case cmdreflect.TierUnannotated:
+		// A command that declared nothing is projected as a write.
+		// The HTTP axis has no "unknown" value, and write is the
+		// weakest class whose method (POST) is non-safe and
+		// non-idempotent — exactly the handling an undeclared
+		// command warrants from a cache or a retrying client.
+		return api.SideEffectWrite
 	}
 	// An unresolved tier is treated as a write: it is the
 	// conservative read, and it never yields a method that claims

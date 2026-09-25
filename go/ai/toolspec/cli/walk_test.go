@@ -149,13 +149,18 @@ func TestWalkCobra_CustomSkip(t *testing.T) {
 
 // --- Safety inference ----------------------------------------------
 
-func TestWalkCobra_DefaultSafetySafe(t *testing.T) {
+// TestWalkCobra_DefaultSafetyCaution covers the unannotated leaf
+// whose name trips no heuristic. Caution, not safe: the level enum
+// has no "undeclared" value and safe is the one answer kit cannot
+// justify for a command that said nothing. Confirmation still stays
+// off — caution is a label for the agent, not a prompt for the user.
+func TestWalkCobra_DefaultSafetyCaution(t *testing.T) {
 	root := rootWith("mytool", addChild("list"))
 	spec := WalkCobra(root)
 	list := findCommand(spec.Commands, "list")
 	require.NotNil(t, list)
 	require.NotNil(t, list.Safety)
-	assert.Equal(t, toolspec.SafetyLevelSafe, list.Safety.Level)
+	assert.Equal(t, toolspec.SafetyLevelCaution, list.Safety.Level)
 	assert.False(t, list.Safety.RequiresConfirmation)
 }
 
@@ -377,7 +382,7 @@ func TestWalkCobra_RealisticTree(t *testing.T) {
 	root := rootWith("mytool")
 	root.PersistentFlags().String("config", "", "config")
 
-	// task list (read)
+	// task list (unannotated — declares nothing)
 	// task delete (destructive heuristic)
 	// task archive (annotation: write + idempotent)
 	root.AddCommand(&cobra.Command{
@@ -415,7 +420,9 @@ func TestWalkCobra_RealisticTree(t *testing.T) {
 	listCmd := findCommand(spec.Commands, "list")
 	require.NotNil(t, listCmd)
 	require.NotNil(t, listCmd.Safety)
-	assert.Equal(t, toolspec.SafetyLevelSafe, listCmd.Safety.Level)
+	// list declares nothing, so it is caution, not safe: the
+	// verb reads like an observation but kit was never told so.
+	assert.Equal(t, toolspec.SafetyLevelCaution, listCmd.Safety.Level)
 	assert.Nil(t, listCmd.Contract)
 
 	delCmd := findCommand(spec.Commands, "delete")

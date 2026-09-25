@@ -158,9 +158,15 @@ func appendManifestLeaves(out *[]toolspec.ManifestCommand, parentPath []string, 
 // walk), and surfaces the curated fields the wider Manifest doesn't
 // have at the per-command level.
 func projectManifestCommand(path []string, c toolspec.Command) toolspec.ManifestCommand {
+	// Both classes start at the explicit unknown marker and are
+	// overwritten only by a real declaration, so a leaf the walk
+	// could not classify says so rather than shipping an empty
+	// string a consumer might read as "read".
 	mc := toolspec.ManifestCommand{
-		Path:  path,
-		Short: c.Short,
+		Path:       path,
+		Short:      c.Short,
+		SideEffect: toolspec.SideEffectUnknown,
+		Idempotent: toolspec.IdempotentUnknown,
 	}
 	if c.Contract != nil {
 		if len(c.Contract.SideEffects) > 0 {

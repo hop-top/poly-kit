@@ -122,7 +122,9 @@ type Arg struct {
 type Safety struct {
 	// Tier is the resolved position on the six-tier side-effect
 	// ladder. Always set: a command with no annotation resolves to
-	// TierRead unless the destructive-name heuristic fires.
+	// TierUnannotated unless the destructive-name heuristic fires.
+	// Check Tier.Declared() before treating it as the adopter's
+	// word.
 	Tier Tier
 	// DeclaredSideEffect is the raw kit/side-effect annotation
 	// value, preserved so consumers can echo what the adopter

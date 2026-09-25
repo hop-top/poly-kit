@@ -28,8 +28,8 @@ func Example() {
 	//         "list"
 	//       ],
 	//       "short": "",
-	//       "side_effect": "",
-	//       "idempotent": "",
+	//       "side_effect": "unknown",
+	//       "idempotent": "unknown",
 	//       "retryable": false,
 	//       "dry_run_supported": false
 	//     }
