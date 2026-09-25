@@ -1,6 +1,58 @@
 #!/bin/sh
 set -e
 
+# --- Never let a KILLED gate look like a passing one ---
+# The failure this guards against: the remote closes the connection while the
+# hook is still working, the signal lands on a child, and a wrapper (make, a
+# test runner) turns it into a normal exit. Control then falls through to the
+# tail of this script, which prints "All checks passed", writes the success
+# cache, and exits 0 — while the ref never reached the remote. Anything
+# scripted on `git push` reads that as success.
+#
+# Trapping the termination signals makes the interrupted case explicit and
+# non-zero. 128+signo is the conventional encoding, matching what the shell
+# would have reported had the signal hit this process directly.
+_gate_interrupted() {
+    printf '\nPre-push: gate INTERRUPTED by SIG%s — checks did NOT complete.\n' "$1" >&2
+    printf 'The push is being aborted; nothing was verified.\n' >&2
+    # A killed run must never leave the "already verified this SHA" marker
+    # behind, or the next push skips every check.
+    [ -n "${CACHE_FILE:-}" ] && rm -f "$CACHE_FILE"
+    exit "$2"
+}
+trap '_gate_interrupted HUP 129' HUP
+trap '_gate_interrupted INT 130' INT
+trap '_gate_interrupted PIPE 141' PIPE
+trap '_gate_interrupted TERM 143' TERM
+
+# The traps above cover the case where the signal reaches THIS process. They
+# do not cover the other half: a signal that lands only on a child, which a
+# wrapper then reports as an ordinary non-zero exit (`make: *** [target]
+# Terminated: 15`). `set -e` aborts on that — but only for a command in a
+# plain position. Two shapes in this script escape it, and both used to end
+# with the script reaching its success tail:
+#
+#   cmd || true                  - status discarded outright
+#   [ -n "$X" ] && { ...; }      - a compound whose left test is false
+#
+# So success is asserted explicitly instead of inferred from falling off the
+# end: every exit path that should mean "verified" sets GATE_OK, and the EXIT
+# trap refuses to report success without it.
+GATE_OK=""
+_gate_exit() {
+    _status=$?
+    # A non-zero status already speaks for itself; only the "fell through
+    # with status 0 but never finished" case needs correcting.
+    if [ "$_status" -eq 0 ] && [ -z "$GATE_OK" ]; then
+        printf '\nPre-push: gate exited without completing its checks.\n' >&2
+        printf 'Refusing to report success. Re-run the push.\n' >&2
+        [ -n "${CACHE_FILE:-}" ] && rm -f "$CACHE_FILE"
+        exit 1
+    fi
+    exit "$_status"
+}
+trap _gate_exit EXIT
+
 ZERO_SHA="0000000000000000000000000000000000000000"
 
 # Capture stdin once; pre-push receives ref info on stdin and we consult it
@@ -50,6 +102,7 @@ NON_DELETIONS=$(printf '%s\n' "$PUSH_INPUT" | awk -v zero="$ZERO_SHA" '
 ')
 if [ -z "$NON_DELETIONS" ]; then
     echo "Pre-push: nothing to check (branch deletion or empty ref list)."
+    GATE_OK=1
     exit 0
 fi
 
@@ -72,6 +125,7 @@ CACHE_FILE="$(git rev-parse --git-dir)/pre-push-last-sha"
 CURRENT_SHA=$(git rev-parse HEAD)
 if [ -f "$CACHE_FILE" ] && [ "$(cat "$CACHE_FILE")" = "$CURRENT_SHA" ]; then
     echo "Pre-push: HEAD unchanged since last push, skipping checks."
+    GATE_OK=1
     exit 0
 fi
 
@@ -143,10 +197,50 @@ CHANGED=$(git diff --name-only "$REMOTE_SHA" HEAD 2>/dev/null || git diff --name
 HAS_GO=$(echo "$CHANGED" | grep -E '\.go$' || true)
 HAS_TS=$(echo "$CHANGED" | grep -E '^sdk/ts/' || true)
 HAS_PY=$(echo "$CHANGED" | grep -E '^sdk/py/' || true)
-HAS_CONTRACTS=$(echo "$CHANGED" | grep -E '^contracts/' || true)
 HAS_DOCS=$(echo "$CHANGED" | grep -E '\.md$' || true)
 HAS_CONFIG=$(echo "$CHANGED" | grep -E '(^|/)(\.github/|.*\.json|.*\.ya?ml)$' || true)
 HAS_SDK_LAYOUT=$(echo "$CHANGED" | grep -E '^sdk/' || true)
+
+# --- Activate the repo's pinned toolchain ---
+# Without this the hook lints with whatever `go` the caller's PATH happens to
+# resolve. A shell that never activated mise (a GUI git client, a `git push`
+# from an editor, a fresh terminal) gets the system Go, and the pinned
+# golangci-lint then fails to read its export data — surfacing as typecheck
+# errors in files the push never touched. Declaring the pin in mise.toml is
+# not enough; the gate has to actually run under it.
+#
+# Degrade, do not fail, when mise is absent: not every contributor uses it,
+# and `make check-go-version` gives a precise diagnosis a moment later if the
+# PATH toolchain is in fact wrong. This only removes the guesswork for the
+# people who DO have the pin available.
+if [ -z "${KIT_SKIP_MISE:-}" ] && command -v mise >/dev/null 2>&1; then
+    # Resolve Go SPECIFICALLY rather than via `mise env`. `mise env` is
+    # all-or-nothing: it exits non-zero and emits nothing if ANY tool in
+    # mise.toml fails to resolve. A GitHub rate limit while looking up the
+    # `rust` version list — observed, and entirely unrelated to Go — was
+    # enough to silently drop the Go pin and let the hook lint with the
+    # system toolchain, which is the exact failure this activation exists to
+    # prevent. Asking only for what the linters need keeps the pin working
+    # when an unrelated entry is unavailable.
+    MISE_GO_ROOT=$(mise where go 2>/dev/null || true)
+    if [ -n "$MISE_GO_ROOT" ] && [ -x "$MISE_GO_ROOT/bin/go" ]; then
+        PATH="$MISE_GO_ROOT/bin:$PATH"
+        export PATH
+        GOROOT="$MISE_GO_ROOT"
+        export GOROOT
+        echo "Pre-push: Go activated from mise.toml ($(go version 2>/dev/null))."
+    else
+        # `mise where` also fails on an untrusted config — the state every
+        # fresh clone of this repo starts in. Name the fix; the hook is the
+        # first place most people will meet it.
+        echo "Pre-push: mise present but Go is not resolvable from mise.toml." >&2
+        echo "          run: mise trust && mise install" >&2
+        echo "          continuing with the toolchain already on PATH." >&2
+    fi
+elif [ -z "${KIT_SKIP_MISE:-}" ]; then
+    echo "Pre-push: mise not installed; using the toolchain on PATH."
+    echo "          the repo pins Go in mise.toml — 'make check-go-version' verifies it."
+fi
 
 # --- Lint affected areas only ---
 # Cross-cutting config/link/sdk-paths linters always run; per-language
@@ -182,74 +276,26 @@ if [ -n "$HAS_SDK_LAYOUT" ] || [ -n "$HAS_CONFIG" ]; then
     make lint-sdk-paths
 fi
 
-# --- Test only affected packages ---
-echo "Running tests..."
-
-if [ -n "$HAS_GO" ] || [ -n "$HAS_CONTRACTS" ]; then
-    if [ -n "$HAS_GO" ]; then
-        # Extract unique Go packages from changed .go files, skipping
-        # directories that no longer exist (e.g. deleted in this push) and
-        # directories holding no .go files of their own (a parent that only
-        # carries subpackages) — `go test` on either yields "[setup failed]".
-        # Packages inside a NESTED module (their own go.mod, e.g.
-        # extensions/mcp-tasks) cannot be resolved by the root module's
-        # `go test` — passing them yields "[setup failed]" too. Split them
-        # out and test each nested module from its own directory.
-        ALL_DIRS=$(echo "$CHANGED" | grep -E '\.go$' \
-            | xargs -I{} dirname {} \
-            | sort -u \
-            | while IFS= read -r d; do
-                [ -d "$d" ] || continue
-                for f in "$d"/*.go; do
-                    [ -e "$f" ] || continue
-                    printf '%s\n' "$d"
-                    break
-                done
-              done)
-
-        GO_PKGS=""
-        NESTED_MODS=""
-        for d in $ALL_DIRS; do
-            # Walk up from $d looking for a go.mod above the repo root.
-            m="$d"
-            root_mod=""
-            while [ "$m" != "." ] && [ -n "$m" ]; do
-                if [ -f "$m/go.mod" ]; then root_mod="$m"; break; fi
-                m=$(dirname "$m")
-            done
-            if [ -n "$root_mod" ]; then
-                case " $NESTED_MODS " in
-                    *" $root_mod "*) ;;
-                    *) NESTED_MODS="$NESTED_MODS $root_mod" ;;
-                esac
-            else
-                GO_PKGS="$GO_PKGS ./$d"
-            fi
-        done
-
-        if [ -n "$GO_PKGS" ]; then
-            echo "  go (affected packages)..."
-            go test -short -count=1 $GO_PKGS
-        fi
-        for m in $NESTED_MODS; do
-            echo "  go (nested module $m)..."
-            ( cd "$m" && go test -short -count=1 ./... )
-        done
-    else
-        echo "  go (all, due to contract changes)..."
-        make test-go
-    fi
-fi
-
-[ -n "$HAS_TS" ] && { echo "  ts..."; make test-ts; }
-[ -n "$HAS_PY" ] && { echo "  py..."; make test-py; }
-
-# Parity tests when CLI or contracts change.
-HAS_CLI=$(echo "$CHANGED" | grep -E '^go/console/cli/' || true)
-if [ -n "$HAS_CLI" ] || [ -n "$HAS_CONTRACTS" ]; then
-    echo "Running parity tests..."
-    make test-parity
-fi
+# --- Tests do NOT run here ---
+# They used to. `make test-go`/`test-ts`/`test-py`/`test-parity` take many
+# minutes, and GitHub's SSH server closes the connection well before that
+# finishes: the push died with "Connection to github.com closed by remote
+# host" and a terminated suite. ServerAliveInterval is already set, so this
+# is a real duration limit, not a keepalive gap.
+#
+# The consequence was worse than a slow push. People reached for
+# --no-verify to get anything out at all, which skips the linters above as
+# well — the gate stopped gating. Keeping pre-push to the checks it can
+# actually finish is what keeps it running at all.
+#
+# The selection logic moved verbatim to scripts/test-affected.sh:
+#
+#   make test-affected     # same per-language selection, on demand
+#   make check             # the full suite
+#
+# CI remains the enforcing gate for tests.
+echo "Pre-push: linters only (tests run via 'make test-affected' / CI)."
 
 echo "All checks passed."
 echo "$CURRENT_SHA" > "$CACHE_FILE"
+GATE_OK=1
