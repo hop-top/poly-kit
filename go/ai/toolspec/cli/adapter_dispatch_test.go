@@ -96,10 +96,13 @@ func TestAdapterDispatch_FormatAliasesMCP(t *testing.T) {
 
 			var got map[string]any
 			require.NoError(t, json.Unmarshal([]byte(stdout), &got))
-			assert.Equal(t, "fixturetool", got["name"],
-				"%s alias dispatched to MCP (envelope has 'name', not 'tool')", alias)
-			_, hasInputSchema := got["inputSchema"]
-			assert.True(t, hasInputSchema, "MCP envelope has inputSchema")
+			// The MCP adapter emits a per-leaf tools array; the
+			// kit-manifest adapter emits a "tool" key. The presence
+			// of "tools" is what identifies the dispatch target.
+			assert.Contains(t, got, "tools",
+				"%s alias dispatched to MCP (tools array, not a manifest)", alias)
+			assert.NotContains(t, got, "tool",
+				"%s alias did not land on kit-manifest", alias)
 		})
 	}
 }
@@ -173,7 +176,7 @@ func TestAdapterDispatch_WithoutKitManifest(t *testing.T) {
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
-	assert.Equal(t, "fixturetool", got["name"], "fell through to MCP")
+	assert.Contains(t, got, "tools", "fell through to MCP")
 }
 
 // --- WithDefaultFormat overrides registry default ---------------
@@ -190,7 +193,7 @@ func TestAdapterDispatch_WithDefaultFormat(t *testing.T) {
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
-	assert.Equal(t, "fixturetool", got["name"], "default → MCP")
+	assert.Contains(t, got, "tools", "default → MCP")
 }
 
 // --- RegisterSpecCommand surfaces collision errors ---------------

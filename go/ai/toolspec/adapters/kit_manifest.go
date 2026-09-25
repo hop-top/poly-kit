@@ -160,7 +160,7 @@ func appendManifestLeaves(out *[]toolspec.ManifestCommand, parentPath []string, 
 func projectManifestCommand(path []string, c toolspec.Command) toolspec.ManifestCommand {
 	mc := toolspec.ManifestCommand{
 		Path:  path,
-		Short: "",
+		Short: c.Short,
 	}
 	if c.Contract != nil {
 		if len(c.Contract.SideEffects) > 0 {

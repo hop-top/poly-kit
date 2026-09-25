@@ -65,7 +65,12 @@ type ToolSpec struct {
 
 // Command is a (sub)command in a CLI tool's command tree.
 type Command struct {
-	Name            string        `json:"name"`
+	Name string `json:"name"`
+	// Short is the command's one-line summary (cobra.Command.Short).
+	// Carried so per-command renderers — the MCP adapter's per-leaf
+	// shape — can describe each command the way the live MCP server
+	// does, instead of falling back to a tool-wide string.
+	Short           string        `json:"short,omitempty"`
 	Aliases         []string      `json:"aliases,omitempty"`
 	Flags           []Flag        `json:"flags,omitempty"`
 	Children        []Command     `json:"children,omitempty"`
@@ -86,8 +91,13 @@ type Flag struct {
 	Short       string `json:"short,omitempty"`
 	Type        string `json:"type,omitempty"`
 	Description string `json:"description,omitempty"`
-	Deprecated  bool   `json:"deprecated,omitempty"`
-	ReplacedBy  string `json:"replaced_by,omitempty"`
+	// Required reports whether cobra marks the flag required
+	// (MarkFlagRequired). Carried so per-command schema renderers —
+	// the MCP adapter's per-leaf shape — can publish a real
+	// `required` list instead of declaring every argument optional.
+	Required   bool   `json:"required,omitempty"`
+	Deprecated bool   `json:"deprecated,omitempty"`
+	ReplacedBy string `json:"replaced_by,omitempty"`
 }
 
 // ErrorPattern maps a known error output to a fix.

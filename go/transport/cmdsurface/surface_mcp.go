@@ -1,10 +1,17 @@
 package cmdsurface
 
-// We intentionally diverge from go/ai/toolspec/adapters/mcp.go here.
-// That adapter is for `<tool> spec --format mcp` (one MCP tool per
-// CLI tool, with an "action" enum). This surface is for live MCP exec
-// (one MCP tool per leaf command). The type-mapping logic is small
-// enough that duplicating it beats coupling.
+// This surface and go/ai/toolspec/adapters/mcp.go emit the SAME tool
+// shape — one MCP tool per leaf command, dotted names, the same
+// inputSchema — from two projections: this one for live MCP exec,
+// that one for the static `<tool> spec --format mcp` descriptor.
+//
+// The code is duplicated rather than shared because go/console/cli
+// imports this package, so reaching for toolspec's cli walker here
+// would close an import cycle. The type-mapping table below is small
+// enough that duplicating it beats inverting the dependency graph;
+// what keeps the two from drifting is the static/live parity test in
+// surface_mcp_static_parity_test.go, not the duplication being
+// harmless. Change one projection's shape and that test fails.
 
 import (
 	"encoding/json"
