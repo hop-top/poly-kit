@@ -33,6 +33,10 @@ cmd.Annotations = map[string]string{
 - Reflection lives in `cmdreflect`: `WalkCobra` and `BuildManifest` are
   projections from its descriptors; the `NonInvocableReason` vocabulary
   is defined there, not here.
+- `Command.Short` and `Flag.Required` carry cobra's one-line summary and
+  its `MarkFlagRequired` marking through the projection, so per-command
+  renderers (the MCP adapter's per-leaf shape) can describe each command
+  and publish a real required list rather than a tool-wide fallback.
 - `kit/side-effect` accepts `read`, `write-local`, `write-shared`,
   `destructive-local`, `destructive-shared`, `interactive`; legacy `write`
   and `destructive` map conservatively to shared scope.

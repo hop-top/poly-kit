@@ -220,6 +220,7 @@ func specSkip(d *cmdreflect.Descriptor, cfg *walkConfig) bool {
 func projectCommand(tree *cmdreflect.Tree, d *cmdreflect.Descriptor, cfg *walkConfig) toolspec.Command {
 	cmd := toolspec.Command{
 		Name:     d.Cmd.Name(),
+		Short:    d.Short,
 		Aliases:  append([]string(nil), d.Aliases...),
 		Flags:    projectLocalFlags(d),
 		Children: projectChildren(tree, d, cfg),
@@ -297,6 +298,7 @@ func projectFlags(flags []cmdreflect.Flag) []toolspec.Flag {
 			Short:       f.Short,
 			Type:        f.Type,
 			Description: f.Description,
+			Required:    f.Required,
 			Deprecated:  f.Deprecated,
 		})
 	}

@@ -11,6 +11,14 @@ import (
 	"hop.top/kit/go/ai/toolspec"
 )
 
+// asActionEnum opts a render into the historical single-envelope
+// "action" enum shape. Every test below that asserts that shape
+// passes it explicitly: per-leaf is the default now, and the
+// back-compat path must be reached deliberately or it is not really
+// a back-compat path. The bulk of this file is therefore the proof
+// that the opt-in still produces the pre-per-leaf bytes.
+var asActionEnum = WithCustom(CustomKeyMCPShape, MCPShapeActionEnum)
+
 // --- Adapter metadata --------------------------------------------
 
 func TestMCP_Metadata(t *testing.T) {
@@ -37,10 +45,10 @@ func TestMCP_Render_NilSpec(t *testing.T) {
 	assert.Contains(t, err.Error(), "nil spec")
 }
 
-func TestMCP_Render_EnvelopeShape(t *testing.T) {
+func TestMCPActionEnum_Render_EnvelopeShape(t *testing.T) {
 	spec := minimalSpec()
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum))
 
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &env))
@@ -62,10 +70,10 @@ func TestMCP_Render_EnvelopeShape(t *testing.T) {
 	assert.Equal(t, "action", required[0], "action is always required")
 }
 
-func TestMCP_Render_ActionEnumFromCommands(t *testing.T) {
+func TestMCPActionEnum_Render_ActionEnumFromCommands(t *testing.T) {
 	spec := minimalSpec()
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum))
 
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &env))
@@ -79,12 +87,12 @@ func TestMCP_Render_ActionEnumFromCommands(t *testing.T) {
 	assert.ElementsMatch(t, []string{"list", "create", "delete"}, values)
 }
 
-func TestMCP_Render_NoCommandsNoEnum(t *testing.T) {
+func TestMCPActionEnum_Render_NoCommandsNoEnum(t *testing.T) {
 	// A spec with zero commands shouldn't crash; the action enum
 	// should be omitted (just type+description).
 	spec := &toolspec.ToolSpec{Name: "mytool"}
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum))
 
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &env))
@@ -96,10 +104,10 @@ func TestMCP_Render_NoCommandsNoEnum(t *testing.T) {
 
 // --- Render: flag projection -------------------------------------
 
-func TestMCP_Render_FlagPropertiesPresent(t *testing.T) {
+func TestMCPActionEnum_Render_FlagPropertiesPresent(t *testing.T) {
 	spec := minimalSpec()
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum))
 
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &env))
@@ -115,7 +123,7 @@ func TestMCP_Render_FlagPropertiesPresent(t *testing.T) {
 	assert.Equal(t, "boolean", verboseProp["type"], "bool → boolean in JSON Schema")
 }
 
-func TestMCP_Render_TypeMapping(t *testing.T) {
+func TestMCPActionEnum_Render_TypeMapping(t *testing.T) {
 	cases := map[string]string{
 		"bool":        "boolean",
 		"int":         "integer",
@@ -136,7 +144,7 @@ func TestMCP_Render_TypeMapping(t *testing.T) {
 				Flags: []toolspec.Flag{{Name: "x", Type: pflagType}},
 			}
 			var buf bytes.Buffer
-			require.NoError(t, MCP().Render(&buf, spec))
+			require.NoError(t, MCP().Render(&buf, spec, asActionEnum))
 
 			var env map[string]any
 			require.NoError(t, json.Unmarshal(buf.Bytes(), &env))
@@ -147,7 +155,7 @@ func TestMCP_Render_TypeMapping(t *testing.T) {
 	}
 }
 
-func TestMCP_Render_ArrayHasItemsType(t *testing.T) {
+func TestMCPActionEnum_Render_ArrayHasItemsType(t *testing.T) {
 	// Array-typed flags need an "items" sub-schema for MCP-side
 	// validators to accept them.
 	spec := &toolspec.ToolSpec{
@@ -155,7 +163,7 @@ func TestMCP_Render_ArrayHasItemsType(t *testing.T) {
 		Flags: []toolspec.Flag{{Name: "tags", Type: "stringSlice"}},
 	}
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum))
 
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &env))
@@ -168,7 +176,7 @@ func TestMCP_Render_ArrayHasItemsType(t *testing.T) {
 
 // --- Render: deprecation ------------------------------------------
 
-func TestMCP_Render_DeprecatedCommandIncludedByDefault(t *testing.T) {
+func TestMCPActionEnum_Render_DeprecatedCommandIncludedByDefault(t *testing.T) {
 	spec := &toolspec.ToolSpec{
 		Name: "mytool",
 		Commands: []toolspec.Command{
@@ -177,7 +185,7 @@ func TestMCP_Render_DeprecatedCommandIncludedByDefault(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum))
 
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &env))
@@ -186,7 +194,7 @@ func TestMCP_Render_DeprecatedCommandIncludedByDefault(t *testing.T) {
 	require.Len(t, enum, 2)
 }
 
-func TestMCP_Render_DeprecatedCommandFiltered(t *testing.T) {
+func TestMCPActionEnum_Render_DeprecatedCommandFiltered(t *testing.T) {
 	spec := &toolspec.ToolSpec{
 		Name: "mytool",
 		Commands: []toolspec.Command{
@@ -195,7 +203,7 @@ func TestMCP_Render_DeprecatedCommandFiltered(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec, WithIncludeDeprecated(false)))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum, WithIncludeDeprecated(false)))
 
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &env))
@@ -205,7 +213,7 @@ func TestMCP_Render_DeprecatedCommandFiltered(t *testing.T) {
 	assert.Equal(t, "current", enum[0])
 }
 
-func TestMCP_Render_DeprecatedFlagFiltered(t *testing.T) {
+func TestMCPActionEnum_Render_DeprecatedFlagFiltered(t *testing.T) {
 	spec := &toolspec.ToolSpec{
 		Name: "mytool",
 		Flags: []toolspec.Flag{
@@ -214,7 +222,7 @@ func TestMCP_Render_DeprecatedFlagFiltered(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec, WithIncludeDeprecated(false)))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum, WithIncludeDeprecated(false)))
 
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &env))
@@ -225,10 +233,10 @@ func TestMCP_Render_DeprecatedFlagFiltered(t *testing.T) {
 
 // --- Custom: description override --------------------------------
 
-func TestMCP_Render_DescriptionOverride(t *testing.T) {
+func TestMCPActionEnum_Render_DescriptionOverride(t *testing.T) {
 	spec := minimalSpec()
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec,
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum,
 		WithCustom(CustomKeyMCPDescription, "My amazing tool")))
 
 	var env map[string]any
@@ -236,10 +244,10 @@ func TestMCP_Render_DescriptionOverride(t *testing.T) {
 	assert.Equal(t, "My amazing tool", env["description"])
 }
 
-func TestMCP_Render_DescriptionFallback(t *testing.T) {
+func TestMCPActionEnum_Render_DescriptionFallback(t *testing.T) {
 	spec := minimalSpec()
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum))
 
 	var env map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &env))
@@ -248,14 +256,14 @@ func TestMCP_Render_DescriptionFallback(t *testing.T) {
 
 // --- Custom: required flags --------------------------------------
 
-func TestMCP_Render_AdditionalRequiredFlags(t *testing.T) {
+func TestMCPActionEnum_Render_AdditionalRequiredFlags(t *testing.T) {
 	spec := &toolspec.ToolSpec{
 		Name:     "mytool",
 		Commands: []toolspec.Command{{Name: "do"}},
 		Flags:    []toolspec.Flag{{Name: "task_id", Type: "string"}},
 	}
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec,
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum,
 		WithCustom(CustomKeyMCPRequiredFlags, []string{"task_id"})))
 
 	var env map[string]any
@@ -268,19 +276,19 @@ func TestMCP_Render_AdditionalRequiredFlags(t *testing.T) {
 
 // --- Pretty-printing ---------------------------------------------
 
-func TestMCP_Render_PrettyDefault(t *testing.T) {
+func TestMCPActionEnum_Render_PrettyDefault(t *testing.T) {
 	spec := minimalSpec()
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum))
 	// Indented output contains newlines and 2-space indentation.
 	out := buf.String()
 	assert.Contains(t, out, "\n  ", "default pretty-print uses 2-space indent")
 }
 
-func TestMCP_Render_Compact(t *testing.T) {
+func TestMCPActionEnum_Render_Compact(t *testing.T) {
 	spec := minimalSpec()
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec, WithPretty(false)))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum, WithPretty(false)))
 	out := buf.String()
 	// Compact JSON has no leading-space indentation; just one
 	// trailing newline from json.Encoder.
@@ -299,10 +307,10 @@ func TestMCP_Render_Compact(t *testing.T) {
 // caught, unlike the map[string]any assertions above which tolerate
 // extra keys.
 
-func TestMCP_Render_ByteIdentical_Pretty(t *testing.T) {
+func TestMCPActionEnum_Render_ByteIdentical_Pretty(t *testing.T) {
 	spec := minimalSpec()
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum))
 
 	const want = `{
   "description": "mytool CLI tool",
@@ -337,10 +345,10 @@ func TestMCP_Render_ByteIdentical_Pretty(t *testing.T) {
 	assert.Equal(t, want, buf.String(), "MCP envelope bytes must stay stable across spec revisions (ADR 0004: no change)")
 }
 
-func TestMCP_Render_ByteIdentical_Compact(t *testing.T) {
+func TestMCPActionEnum_Render_ByteIdentical_Compact(t *testing.T) {
 	spec := minimalSpec()
 	var buf bytes.Buffer
-	require.NoError(t, MCP().Render(&buf, spec, WithPretty(false)))
+	require.NoError(t, MCP().Render(&buf, spec, asActionEnum, WithPretty(false)))
 
 	const want = `{"description":"mytool CLI tool","inputSchema":{"properties":{"action":{"description":"The action to perform.","enum":["list","create","delete"],"type":"string"},"config":{"description":"config path","type":"string"},"verbose":{"description":"verbose","type":"boolean"}},"required":["action"],"type":"object"},"name":"mytool"}
 `

@@ -29,6 +29,12 @@
 // `tlc spec --format prompt` and have it land on the mcp adapter
 // transparently. New adopters write `--format mcp` directly.
 //
+// An alias selects an ADAPTER, not an output shape. A consumer that
+// needs mcp's pre-per-leaf "action" enum bytes asks for them by
+// shape (RenderConfig.Custom["mcp:shape"]); reaching them via the
+// "prompt" alias alone would make the alias a second, invisible
+// contract.
+//
 // # ToolSpec, not Manifest
 //
 // All adapters render from toolspec.ToolSpec — the recursive tree

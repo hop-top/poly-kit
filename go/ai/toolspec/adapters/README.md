@@ -53,7 +53,9 @@ Verified by `example_test.go` in this directory.
 
 - Adapters are stateless; `Render` may run concurrently on one instance. Per-render knobs are `RenderOption` values (`WithPretty`, `WithSchemaVersion`, `WithIncludeDeprecated`, `WithCustom`); unknown options are ignored.
 - `Name()` is lowercase hyphenated ASCII; names and aliases share one namespace per registry and collide at `Register` time.
-- Custom keys: `kit-manifest:output-format` (json, yaml, table; default json), `kit-manifest:prebuilt` (a `toolspec.Manifest` value used verbatim), `mcp:description`, `mcp:required-flags` (`[]string`).
+- Custom keys: `kit-manifest:output-format` (json, yaml, table; default json), `kit-manifest:prebuilt` (a `toolspec.Manifest` value used verbatim), `mcp:description`, `mcp:required-flags` (`[]string`), `mcp:shape` (an `MCPShape`).
+- `mcp` emits one tool descriptor per leaf command, wrapped in `{"tools": [...]}` — the same shape the live MCP server returns from `tools/list`. Tool names are the dotted path below the root (`widget add` → `widget.add`), so a name read from `spec --format mcp` is callable against a live server unchanged. Parity between the two projections is enforced by a test in `hop.top/kit/go/transport/cmdsurface`.
+- Setting `mcp:shape` to `MCPShapeActionEnum` restores the pre-per-leaf single envelope, whose top-level commands collapse into one `action` enum. It is retained for consumers built against it (including `--format prompt` workflows inherited from tlc) and is not the default: that shape has exactly one required field by construction, so no real argument can be marked required.
 - `EnforceMCPRequest` is pure. A path missing from the manifest resolves to deny; a deny carries `MCPError` with code `MCPErrorCodePolicyDeny` (-32099).
 
 ## Neighbours

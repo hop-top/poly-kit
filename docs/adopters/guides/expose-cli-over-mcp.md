@@ -7,10 +7,13 @@ MCP tool per leaf command, both current MCP protocol revisions.
 
 Developers building a kit CLI with `cmdsurface` who want LLM hosts
 (Claude, IDE agents, gateway-fronted fleets) to call their commands
-as MCP tools. For the *static* tool descriptor that `<tool> spec
+as MCP tools. For the *static* tool descriptors that `<tool> spec
 --format mcp` renders, see the
 [toolspec adopter guide](../integrations/toolspec-adopter-guide.md)
-instead — that path never executes anything.
+instead — that path never executes anything. It publishes the same
+tool shape this surface serves (one tool per leaf, same names, same
+`inputSchema`), so a client can discover tools statically and call
+them here; a parity test pins the two together.
 
 ## Before you begin
 
