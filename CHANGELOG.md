@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0-alpha.14](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.13...kit/v0.5.0-alpha.14) (2026-09-25)
+
+
+### Bug Fixes
+
+* **cli:** no command-group header without visible commands ([325e0db](https://github.com/hop-top/poly-kit/commit/325e0db4ea154598055cfe86533fbb3a6173ea74))
+* **cli:** title root's ungrouped commands COMMANDS in cobra help ([bde77a9](https://github.com/hop-top/poly-kit/commit/bde77a927a87eb1ab6324b5883daa238c956794a))
+
 ## [0.5.0-alpha.13](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.12...kit/v0.5.0-alpha.13) (2026-09-25)
 
 
