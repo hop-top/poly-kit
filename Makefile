@@ -1,4 +1,4 @@
-.PHONY: api audit-php build builtins-sync check check-mirror-sync check-template-sources clients \
+.PHONY: api audit-php build builtins-sync check check-go-version check-mirror-sync check-template-sources clients \
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
 	job-integration-temporal job-test lint lint-config lint-docs lint-go lint-links lint-lock-php \
 	lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
@@ -6,7 +6,7 @@
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook \
 	test-parity test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-templates test-ts \
-	test-workflow tools tools-golangci-lint
+	test-affected test-workflow tools tools-golangci-lint
 
 # Tool versions — single source of truth for local + the kit repo's
 # own CI. `.github/workflows/ci.yml` consumes the pin by calling
@@ -16,6 +16,19 @@
 # to OTHER hop-top repos via `workflow_call` and takes its own
 # `inputs.version` independently — it is NOT covered by this pin.
 GOLANGCI_LINT_VERSION ?= v2.11.4
+
+# Go toolchain pin — read from mise.toml, the kit-managed pin emitted by
+# `templates/shared/emit-mise.sh` from `templates/shared/tool-versions.toml`.
+# Only the MINOR is pinned (e.g. 1.26); the patch floats, matching how
+# `go.mod`'s `go` directive states a minimum rather than an exact build.
+#
+# Why this pin needs its own gate: golangci-lint reads Go EXPORT DATA, whose
+# format version is tied to the compiler that produced it. $(GOLANGCI_LINT_VERSION)
+# tops out at export data version 2; a Go newer than the pin emits version 4
+# and every package fails to typecheck. The resulting diagnostic names an
+# arbitrary file that merely happens to import "bytes" first, so without this
+# gate a toolchain mismatch presents as a lint failure in unrelated code.
+GO_VERSION_PIN := $(shell awk -F'"' '/^go = "/ { print $$2; exit }' $(CURDIR)/mise.toml 2>/dev/null)
 
 # lint-go invokes the binary from $(LOCAL_BIN) directly. The
 # `tools-golangci-lint` target is a hard dep, so the binary is
@@ -29,9 +42,38 @@ GOLANGCI_LINT := $(LOCAL_BIN)/golangci-lint
 preflight: ## Verify host toolchain matches the repo's declared minimum reqs
 	@scripts/preflight.sh
 
+check-go-version: ## Fail fast when the active Go minor differs from mise.toml's pin
+	@if [ -z "$(GO_VERSION_PIN)" ]; then \
+		echo "ERROR: no Go pin found in mise.toml." >&2; \
+		echo "  mise.toml is kit-managed; regenerate it with:" >&2; \
+		echo "    bash -c 'source templates/shared/emit-mise.sh && emit_mise \"\$$PWD\" go,ts,py,rs'" >&2; \
+		exit 1; \
+	fi
+	@have=$$(go version 2>/dev/null | awk '{ print $$3 }' | sed 's/^go//'); \
+	if [ -z "$$have" ]; then \
+		echo "ERROR: no 'go' on PATH (mise.toml pins go $(GO_VERSION_PIN))." >&2; \
+		echo "  fix: mise install    # or install Go $(GO_VERSION_PIN) by hand" >&2; \
+		exit 1; \
+	fi; \
+	have_mm=$$(echo "$$have" | awk -F. '{ print $$1"."$$2 }'); \
+	if [ "$$have_mm" != "$(GO_VERSION_PIN)" ]; then \
+		echo "ERROR: Go toolchain does not match the repo pin." >&2; \
+		echo "  active : go $$have  ($$(command -v go))" >&2; \
+		echo "  pinned : go $(GO_VERSION_PIN)  (mise.toml)" >&2; \
+		echo "" >&2; \
+		echo "  golangci-lint $(GOLANGCI_LINT_VERSION) cannot read export data from a" >&2; \
+		echo "  newer Go; it would report typecheck failures in files you never" >&2; \
+		echo "  touched. Refusing to lint against the wrong toolchain." >&2; \
+		echo "" >&2; \
+		echo "  fix: mise install && eval \"\$$(mise env -s bash)\"" >&2; \
+		echo "       (or run any make target through: mise exec -- make <target>)" >&2; \
+		exit 1; \
+	fi; \
+	echo "==> go $$have matches pin $(GO_VERSION_PIN)"
+
 tools: tools-golangci-lint ## Install pinned dev tools into bin/
 
-tools-golangci-lint: ## Install the pinned golangci-lint version into bin/
+tools-golangci-lint: check-go-version ## Install the pinned golangci-lint version into bin/
 	@mkdir -p $(LOCAL_BIN)
 	@if [ ! -x $(LOCAL_BIN)/golangci-lint ] || ! $(LOCAL_BIN)/golangci-lint version 2>/dev/null | grep -q "$(GOLANGCI_LINT_VERSION:v%=%)"; then \
 		echo "==> Installing golangci-lint $(GOLANGCI_LINT_VERSION) into $(LOCAL_BIN)"; \
@@ -54,6 +96,9 @@ setup: preflight ## Initialize all sub-projects and dependencies
 check: preflight lint test ## Run all linters and tests (full gate)
 
 test: preflight test-go test-ts test-py test-workflow test-hook ## Run all tests
+
+test-affected: ## Tests for the languages this branch actually touched (BASE=<ref>)
+	@BASE="$(BASE)" scripts/test-affected.sh
 
 test-go: ## Go tests (skips long-running container tests)
 	@go test -short ./... -count=1 -timeout 1200s
@@ -244,7 +289,7 @@ test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 
 lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths ## Run all linters
 
-lint-go: tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION)
+lint-go: check-go-version tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION + mise.toml Go pin)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
 	@find go cmd contracts engine examples incubator -name "go.mod" -execdir env GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./... \;
 

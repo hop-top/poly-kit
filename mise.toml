@@ -1,0 +1,33 @@
+# Managed by `kit init` — tools below the kit-managed marker are tracked
+# against the kit tool-versions manifest. Add your own tools above the
+# marker. Run `kit init --update` to refresh managed tools.
+
+# >>> kit-managed >>>
+[tools]
+go = "1.26"
+node = "22"
+pnpm = "9"
+python = "3.13"
+uv = "0.5"
+rust = "1.84"
+golangci-lint = "2.12"
+ruff = "0.8"
+lychee = "0.18"
+hadolint = "2.12"
+actionlint = "1.7"
+shellcheck = "0.10"
+shfmt = "3.10"
+"npm:release-please" = "16"
+
+[env]
+_.file = ".env"
+
+[tasks.install]
+description = "Install ecosystem dependencies (orchestrated by mise)"
+run = [
+  "go mod download",
+  "pnpm install",
+  "uv sync",
+  "cargo fetch"
+]
+# <<< kit-managed <<<

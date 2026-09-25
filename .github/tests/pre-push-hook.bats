@@ -8,6 +8,11 @@
 # Or:  make test-hook
 
 HOOK=".githooks/pre-push"
+# The per-language TEST SELECTION moved out of the hook and into this script
+# so the push path stays short enough to finish before the remote hangs up.
+# Assertions about which packages get tested target it; assertions about what
+# the push gate does still target $HOOK.
+TEST_AFFECTED="scripts/test-affected.sh"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -217,11 +222,11 @@ go/runtime/bus/bus.go")
 # Empty-package filtering
 # ---------------------------------------------------------------------------
 
-@test "hook filters directories with no direct .go files" {
+@test "affected-test selection filters directories with no direct .go files" {
     # Guards against `go test` on a parent that only holds subpackages, or
-    # on a directory whose only .go file was deleted in this push: both
-    # abort the push with "[setup failed]".
-    grep -q 'for f in "$d"/\*.go' "$HOOK"
+    # on a directory whose only .go file was deleted: both fail with
+    # "[setup failed]".
+    grep -q 'for f in "$d"/\*.go' "$TEST_AFFECTED"
 }
 
 @test "go_dirs: skips directory with no direct .go files" {
@@ -430,4 +435,81 @@ refs/heads/work $(git rev-parse HEAD) refs/heads/work $base"
     [ -n "$early" ]
     [ -n "$base" ]
     [ "$early" -lt "$base" ]
+}
+
+# ---------------------------------------------------------------------------
+# Gate integrity: a gate that cannot finish must never report success
+# ---------------------------------------------------------------------------
+
+@test "gate: killed hook exits non-zero instead of passing" {
+    # The defect: a push whose gate is terminated (GitHub's SSH server hangs
+    # up on a long run) reported exit 0 while the ref never left the machine.
+    # Drive it directly: run the hook, signal it mid-flight, read the status.
+    local stub="$BATS_TEST_TMPDIR/killstub"
+    mkdir -p "$stub"
+    # A `make` that never returns stands in for the long suite.
+    cat > "$stub/make" <<'STUB'
+#!/bin/sh
+sleep 120
+STUB
+    chmod +x "$stub/make"
+
+    local gitdir; gitdir="$(git rev-parse --git-dir)"
+    local cache="$gitdir/pre-push-last-sha"
+    local saved=""
+    if [ -f "$cache" ]; then saved="$(cat "$cache")"; fi
+    rm -f "$cache"
+
+    local base; base="$(go_touching_base)"
+    printf '%s\n' "refs/heads/work $(git rev-parse HEAD) refs/heads/work $base" \
+        | PATH="$stub:$PATH" "$HOOK" origin file:///dev/null \
+        >"$BATS_TEST_TMPDIR/killout" 2>&1 &
+    local hookpid=$!
+
+    # Let it reach the linters, then terminate it the way a dropped
+    # connection would.
+    sleep 3
+    kill -TERM "$hookpid" 2>/dev/null || true
+    local status=0
+    wait "$hookpid" || status=$?
+
+    if [ -n "$saved" ]; then printf '%s' "$saved" > "$cache"; else rm -f "$cache"; fi
+
+    # The whole point: NOT zero.
+    [ "$status" != "0" ]
+    grep -q 'INTERRUPTED' "$BATS_TEST_TMPDIR/killout"
+    # And no success marker may survive, or the next push skips every check.
+    [ ! -f "$cache" ] || [ -n "$saved" ]
+}
+
+@test "gate: success is asserted, never inferred from falling off the end" {
+    # `cmd || true` and `[ -n "$X" ] && { ...; }` both let a killed child
+    # surface as status 0. The EXIT trap refuses to call that a pass unless
+    # a success path explicitly set GATE_OK.
+    grep -q 'trap _gate_exit EXIT' "$HOOK"
+    grep -q 'GATE_OK' "$HOOK"
+    # Every `exit 0` must be preceded by a GATE_OK assignment.
+    local bad=0
+    while IFS= read -r line; do
+        local n="${line%%:*}"
+        local prev=$((n - 1))
+        sed -n "${prev}p" "$HOOK" | grep -q 'GATE_OK=1' || bad=1
+    done < <(grep -n '^\s*exit 0\s*$' "$HOOK")
+    [ "$bad" -eq 0 ]
+}
+
+@test "gate: the full test suite is not run from the push path" {
+    # A gate that cannot finish inside a push gets bypassed with
+    # --no-verify, which skips the linters too. Tests belong in
+    # `make test-affected` and CI, not here.
+    ! grep -qE '^\s*make (test-go|test-ts|test-py|test-parity)\b' "$HOOK"
+}
+
+@test "gate: the pinned toolchain is activated, not merely assumed" {
+    # Declaring the Go pin in mise.toml does nothing if the hook lints with
+    # whatever `go` the caller's PATH happens to hold.
+    grep -q 'mise env' "$HOOK"
+    # ...and it must degrade with a message rather than failing for the
+    # contributors who do not use mise.
+    grep -q 'mise not installed' "$HOOK"
 }
