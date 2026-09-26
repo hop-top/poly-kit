@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0-alpha.15](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.14...kit/v0.5.0-alpha.15) (2026-09-26)
+
+
+### Features
+
+* **cli:** compact GLOBAL FLAGS and --help-&lt;group&gt; row in Go help ([57dfe86](https://github.com/hop-top/poly-kit/commit/57dfe86aa19497e30a4feb8f9fa125aa93ebc9dd))
+
+
+### Bug Fixes
+
+* **cli:** keep --no-hints in default GLOBAL FLAGS ([45bcdc8](https://github.com/hop-top/poly-kit/commit/45bcdc867ba1e0545b4d9dffda10e2f2871faafd))
+* **cli:** keep root GLOBAL FLAGS split on repeat Execute ([a796930](https://github.com/hop-top/poly-kit/commit/a796930f29d203650e487573a4510e4983871a17))
+* **cli:** short --offline usage, matching TS/Python ([299e20a](https://github.com/hop-top/poly-kit/commit/299e20a8daa1951afc57ead6864f0d992dce5b29))
+
 ## [0.5.0-alpha.14](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.13...kit/v0.5.0-alpha.14) (2026-09-25)
 
 
