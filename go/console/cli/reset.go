@@ -64,6 +64,21 @@ func (r *Root) resetForExecute() {
 		return
 	}
 	ResetFlags(r.Cmd)
+	r.rearmRootHelp()
+}
+
+// rearmRootHelp lets the root's --help swap install its renderer again.
+// fang.Execute re-installs its own help func on every run, overwriting
+// the one the swap installed last time; left armed, the swap would skip
+// its install and a repeat run's root help would lose GLOBAL FLAGS.
+func (r *Root) rearmRootHelp() {
+	f := r.Cmd.Flags().Lookup("help")
+	if f == nil {
+		return
+	}
+	if s, ok := f.Value.(*rootHelpSwap); ok {
+		s.armed = false
+	}
 }
 
 // Reset restores all flags to defaults and clears args.
