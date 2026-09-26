@@ -19,12 +19,12 @@ import (
 // expands the full list.
 
 // kitCore are the kit globals default help keeps visible.
-var kitCore = []string{"--format", "-o --output", "--quiet", "-V --verbose", "--no-color", "--offline"}
+var kitCore = []string{"--format", "-o --output", "--quiet", "-V --verbose", "--no-color", "--no-hints", "--offline"}
 
 // kitCollapsed are kit globals default help folds behind --help-all.
 var kitCollapsed = []string{
 	"-C --chdir", "-c --config", "--dry-run", "--policy", "--max-ops",
-	"--api-version", "--confirm", "--no-hints", "--cols",
+	"--api-version", "--confirm", "--cols",
 	"--template", "--format-opt", "--autocorrect", "--progress-format",
 	"--columns", "--format-help",
 }
