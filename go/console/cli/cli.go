@@ -633,11 +633,12 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// cross-language parity FLAGS contract, unlike the hidden kit
 	// plumbing. Values reach leaves via the netglobals hook (see
 	// netglobals.go) which stamps them onto the command context.
-	pf.Bool(offlineFlag, false,
-		"Disable network access. Highest-precedence override: flips off "+
-			"per-command network opt-ins (peer discovery, sync, GitHub, push). "+
-			"Enforced beneath net/http and any client routed through "+
-			"netpolicy.GuardDial; loopback and diagnostics stay exempt.")
+	//
+	// Usage matches the TS/Python adapters. The full semantics —
+	// highest-precedence override of per-command network opt-ins,
+	// enforced beneath net/http and netpolicy.GuardDial, loopback and
+	// diagnostics exempt — live in the parity guide, not in help.
+	pf.Bool(offlineFlag, false, "Disable network access")
 	_ = v.BindPFlag(offlineFlag, pf.Lookup(offlineFlag))
 
 	// Every persistent flag so far is kit's; what follows is the tool's.
