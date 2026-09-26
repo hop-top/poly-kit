@@ -367,7 +367,9 @@ func TestHelpStructure_StdFlagsUnderFlagsSection(t *testing.T) {
 	flagIdx := sectionIdx(lines, "FLAGS")
 	require.GreaterOrEqual(t, flagIdx, 0, "FLAGS section not found")
 	flagLines := lines[flagIdx+1:]
-	for _, flag := range []string{"--format", "--quiet", "--no-color", "--no-hints"} {
+	// The parity contract's globals (cli-parity-guide, "Global Flags").
+	// --no-hints is kit plumbing: listed under --help-all only.
+	for _, flag := range []string{"--format", "--quiet", "--no-color", "--offline"} {
 		found := false
 		for _, l := range flagLines {
 			if strings.Contains(l, flag) {

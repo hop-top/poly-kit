@@ -172,6 +172,10 @@ type HelpConfig struct {
     SectionOrder []string // section order; empty = parity.json default
     ShowAliases  bool     // display command aliases in help
     Groups       []GroupConfig
+
+    // Go only: which globals GLOBAL FLAGS lists by default.
+    ShowGlobals     []string // kit globals to keep listed, e.g. "dry-run"
+    CollapseGlobals []string // globals to fold behind --help-all
 }
 ```
 
@@ -212,16 +216,46 @@ rendered under COMMANDS.
 Boolean flag on the root command itself — a local flag, not a
 persistent one, so it is not inherited by subcommands. `NoOptDefVal`
 is `"true"`, so the bare `--help-all` form works. When set, the help
-output includes commands from all groups (including hidden ones) and
-also unhides kit's plumbing flags.
+output includes commands from all groups (including hidden ones),
+unhides kit's plumbing flags, and lists every global under GLOBAL
+FLAGS. It works on any command: `mytool sub --help-all`.
 
 A `--help-<id>` flag is registered per group on the same terms, and
-`help all` / `help <group>` are the subcommand equivalents.
+`help all` / `help <group>` are the subcommand equivalents. With two
+or more groups, Go root help shows the family as one `--help-<group>`
+row naming the group IDs; each `--help-<id>` flag still works.
 
 ```
 $ mytool --help          # shows COMMANDS only
 $ mytool --help-all      # shows COMMANDS + MANAGEMENT
 ```
+
+#### Choose which globals GLOBAL FLAGS lists (Go)
+
+Every Go command's help ends with a GLOBAL FLAGS section. By default
+it lists your tool's own globals (`Config.Globals` and any persistent
+flag you add) plus kit's core set: `--format`, `-o/--output`,
+`--quiet`, `-V/--verbose`, `--no-color`, `--offline`. Kit's other
+globals fold into one closing line:
+
+```
+    +15 more global flags — run `mytool sub --help-all` to list them
+```
+
+Promote a kit global, or demote one of yours, by long name:
+
+```go
+cli.New(cli.Config{
+    Name: "mytool",
+    Help: cli.HelpConfig{
+        ShowGlobals:     []string{"dry-run"}, // listed by default
+        CollapseGlobals: []string{"trace"},   // behind --help-all
+    },
+})
+```
+
+Unknown names are ignored. Folding changes the help text only; every
+flag parses the same.
 
 ### Theme
 

@@ -34,6 +34,37 @@ Kit's plumbing flags (`-C/--chdir`, `-c/--config`, `--format-opt`,
 `--cols`, `--template`, …) are registered hidden and appear only
 under `--help-all`.
 
+### GLOBAL FLAGS (Go)
+
+Go help splits every command's flags in two: FLAGS for the command's
+own, GLOBAL FLAGS for the persistent ones it inherits. GLOBAL FLAGS
+lists the tool's own globals plus kit's core set (`--format`,
+`-o/--output`, `--quiet`, `-V/--verbose`, `--no-color`, `--offline`)
+and folds the rest into one line:
+
+```
+GLOBAL FLAGS:
+      --format       Output format (json|table|yaml)
+      --no-color     Disable ANSI colour
+      --offline      Disable network access
+  -o, --output       Write output to path
+      --quiet        Suppress non-essential output
+  -V, --verbose      Increase log verbosity
+
+  +15 more global flags — run `mytool --help-all` to list them
+```
+
+`--help-all` (or `help all`) lists every global. Adopters tune the
+default list with `HelpConfig.ShowGlobals` / `CollapseGlobals`; see
+[cli-api-reference](cli-api-reference.md).
+
+With two or more command groups, Go root help also collapses the
+`--help-<id>` rows into one:
+
+```
+      --help-<group>   Show only one group's commands: extras, management
+```
+
 ## Command Groups
 
 Groups partition commands into sections. Each group has
@@ -148,8 +179,9 @@ $ spaced help extras        # → same as --help-extras
 $ spaced help all           # → same as --help-all
 ```
 
-Note that `help all` reveals every group but, unlike `--help-all`,
-leaves kit's plumbing flags (`--config`, `--chdir`, …) hidden.
+Note that `help all` reveals every group and every global but,
+unlike `--help-all`, leaves kit's plumbing flags (`--config`,
+`--chdir`, …) out of the FLAGS block.
 
 #### Resolution order
 
