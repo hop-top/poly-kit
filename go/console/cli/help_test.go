@@ -397,6 +397,24 @@ func TestRootSplit_WithSubcommands(t *testing.T) {
 	assert.Contains(t, strings.Join(subLines[subGlobal+1:], "\n"), "--format")
 }
 
+func TestRootSplit_SurvivesRepeatExecute(t *testing.T) {
+	// A Root executed more than once (a REPL, a test) re-runs fang,
+	// which re-installs its own help renderer every time. The split
+	// must come back with it on every run, not just the first.
+	r := cli.New(cli.Config{Name: "mytool", Version: "1.2.3", Short: "A tool", DisableValidate: true})
+	r.Cmd.AddCommand(&cobra.Command{Use: "other", Short: "Other", Run: func(*cobra.Command, []string) {}})
+	var buf bytes.Buffer
+	r.Cmd.SetOut(&buf)
+	for i := range 3 {
+		buf.Reset()
+		r.SetArgs([]string{"--help"})
+		require.NoError(t, r.Execute(t.Context()))
+		out := stripANSI(buf.String())
+		assert.Equal(t, 1, strings.Count(out, "GLOBAL FLAGS"),
+			"run %d: root help must split exactly once, got:\n%s", i, out)
+	}
+}
+
 // ── GLOBAL FLAGS color ───────────────────────────────────────────────────
 //
 // The GLOBAL FLAGS heading is the one styled thing kit renders itself;
