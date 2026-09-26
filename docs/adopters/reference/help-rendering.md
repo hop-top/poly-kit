@@ -39,19 +39,20 @@ under `--help-all`.
 Go help splits every command's flags in two: FLAGS for the command's
 own, GLOBAL FLAGS for the persistent ones it inherits. GLOBAL FLAGS
 lists the tool's own globals plus kit's core set (`--format`,
-`-o/--output`, `--quiet`, `-V/--verbose`, `--no-color`, `--offline`)
-and folds the rest into one line:
+`-o/--output`, `--quiet`, `-V/--verbose`, `--no-color`,
+`--no-hints`, `--offline`) and folds the rest into one line:
 
 ```
 GLOBAL FLAGS:
       --format       Output format (json|table|yaml)
       --no-color     Disable ANSI colour
+      --no-hints     Suppress next-step hints
       --offline      Disable network access
   -o, --output       Write output to path
       --quiet        Suppress non-essential output
   -V, --verbose      Increase log verbosity
 
-  +15 more global flags — run `mytool --help-all` to list them
+  +14 more global flags — run `mytool --help-all` to list them
 ```
 
 `--help-all` (or `help all`) lists every global. Adopters tune the

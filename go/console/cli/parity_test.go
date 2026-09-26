@@ -331,12 +331,12 @@ func TestParityFlagsExactSet(t *testing.T) {
 	pyExtra := []string{"--help-commands", "--stream"}
 	// Go renders kit's persistent globals in their own GLOBAL FLAGS
 	// section on root help; the scrape below reads both sections, so
-	// they are part of what root help advertises. TS and Python have
-	// no equivalent split, hence Go-only rather than shared.
-	goExtra := []string{"--api-version", "--autocorrect", "--chdir",
-		"--cols", "--columns", "--config", "--confirm", "--dry-run",
-		"--format-help", "--format-opt", "--max-ops", "--output",
-		"--policy", "--progress-format", "--template"}
+	// they are part of what root help advertises. By default that is
+	// kit's core set; the other kit globals fold into a "+N more …
+	// --help-all" line. --output is the one core global outside the
+	// shared contract. TS and Python have no equivalent split, hence
+	// Go-only rather than shared.
+	goExtra := []string{"--output"}
 
 	flagRE := regexp.MustCompile(`--[\w-]+`)
 

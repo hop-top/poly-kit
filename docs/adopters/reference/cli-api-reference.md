@@ -235,11 +235,11 @@ $ mytool --help-all      # shows COMMANDS + MANAGEMENT
 Every Go command's help ends with a GLOBAL FLAGS section. By default
 it lists your tool's own globals (`Config.Globals` and any persistent
 flag you add) plus kit's core set: `--format`, `-o/--output`,
-`--quiet`, `-V/--verbose`, `--no-color`, `--offline`. Kit's other
-globals fold into one closing line:
+`--quiet`, `-V/--verbose`, `--no-color`, `--no-hints`,
+`--offline`. Kit's other globals fold into one closing line:
 
 ```
-    +15 more global flags — run `mytool sub --help-all` to list them
+    +14 more global flags — run `mytool sub --help-all` to list them
 ```
 
 Promote a kit global, or demote one of yours, by long name:

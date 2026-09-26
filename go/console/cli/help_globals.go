@@ -11,10 +11,10 @@ import (
 // coreGlobalFlags are the kit globals GLOBAL FLAGS keeps visible by
 // default: output shape and noise, the knobs a reader of any command's
 // help reaches for first, plus every global the cross-language parity
-// contract requires in help (--offline; cli-parity-guide, "Global
-// Flags"). Every other kit global folds into the "+N more" hint until
-// --help-all.
-var coreGlobalFlags = []string{"format", "output", "quiet", "verbose", "no-color", "offline"}
+// contract requires root help to advertise (--no-hints, --offline;
+// TestParityFlagsExactSet). Every other kit global folds into the
+// "+N more" hint until --help-all.
+var coreGlobalFlags = []string{"format", "output", "quiet", "verbose", "no-color", "no-hints", "offline"}
 
 // groupHelpRow is the render-only flag that stands in for the
 // --help-<id> family on root help. See foldGroupHelpFlags.
