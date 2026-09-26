@@ -105,10 +105,11 @@ func TestLeafHelp_GlobalFlagsUnderGlobalFlags(t *testing.T) {
 	require.GreaterOrEqual(t, globalIdx, 0, "GLOBAL FLAGS section missing")
 	body := lines[globalIdx+1:]
 
-	// Inherited persistents that must surface under GLOBAL FLAGS.
+	// Inherited persistents default help lists under GLOBAL FLAGS. Kit
+	// plumbing (--chdir, --no-hints, …) folds behind --help-all; see
+	// help_globals_test.go.
 	for _, want := range []string{
-		"--format", "--no-color", "--no-hints", "--quiet",
-		"-V --verbose", "-C --chdir", "--global-thing",
+		"--format", "--no-color", "--quiet", "-V --verbose", "--global-thing",
 	} {
 		found := false
 		for _, l := range body {
@@ -289,7 +290,8 @@ func TestRootSplit_LocalFlagsStayUnderFlags(t *testing.T) {
 }
 
 func TestRootSplit_GlobalsMoveOutOfFlags(t *testing.T) {
-	lines := rootSplitHelp(t)
+	// --help-all so every global is listed, collapsed ones included.
+	lines := rootSplitHelp(t, "--help-all")
 	flagsIdx := findSection(lines, "FLAGS")
 	globalIdx := findSection(lines, "GLOBAL FLAGS")
 	require.GreaterOrEqual(t, flagsIdx, 0)
@@ -317,9 +319,9 @@ func TestRootSplit_GlobalsMoveOutOfFlags(t *testing.T) {
 
 func TestRootSplit_HiddenDefaultsSurface(t *testing.T) {
 	// Kit-owned plumbing flags are Hidden=true so default --help's FLAGS
-	// matches the parity contract; the GLOBAL FLAGS section is where
-	// they are meant to show, exactly as on a leaf.
-	lines := rootSplitHelp(t)
+	// matches the parity contract; the GLOBAL FLAGS section under
+	// --help-all is where they are meant to show, exactly as on a leaf.
+	lines := rootSplitHelp(t, "--help-all")
 	globalIdx := findSection(lines, "GLOBAL FLAGS")
 	require.GreaterOrEqual(t, globalIdx, 0)
 	body := strings.Join(lines[globalIdx+1:], "\n")

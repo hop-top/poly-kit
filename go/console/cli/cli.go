@@ -90,6 +90,15 @@ type HelpConfig struct {
 	// Groups registers additional command groups beyond the built-in
 	// "COMMANDS" (default, GroupID="") and "MANAGEMENT" (GroupID="management", hidden).
 	Groups []GroupConfig
+	// ShowGlobals names kit globals (long name, no dashes) to keep in
+	// the default GLOBAL FLAGS list. Kit shows its core set (--format,
+	// --output, --quiet, --verbose, --no-color) and folds the rest
+	// behind a "+N more … --help-all" hint. Unknown names are ignored.
+	ShowGlobals []string
+	// CollapseGlobals names globals to fold behind the --help-all hint.
+	// The tool's own globals show by default; list one here to demote
+	// it. Also demotes kit core globals. Unknown names are ignored.
+	CollapseGlobals []string
 }
 
 // ValidationFailureMode selects how cli.New / Execute report a
@@ -345,7 +354,13 @@ type Root struct {
 	// cross-language parity contract, then revealed by applyGroupVisibility
 	// when --help-all is on the args.
 	hiddenDefaultFlags []string
-	overrideArgs       []string // captured from SetArgs for pre-parse inspection
+	// collapsedGlobals names the globals GLOBAL FLAGS folds into its
+	// "+N more" hint by default. See collapsedGlobalSet.
+	collapsedGlobals map[string]struct{}
+	// helpAll records that --help-all is on this Execute's args, so
+	// GLOBAL FLAGS renders every global. Set by applyGroupVisibility.
+	helpAll      bool
+	overrideArgs []string // captured from SetArgs for pre-parse inspection
 	// executed records that Execute has parsed a command line onto
 	// this tree, so the next Execute knows it has a previous parse to
 	// reset before this one's argv lands. See resetForExecute.
@@ -464,7 +479,7 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 
 	// --help-all: show all groups including hidden ones.
 	// Stored on Root; checked in Execute before fang runs.
-	cmd.Flags().Bool("help-all", false, "Show all commands including management")
+	cmd.Flags().Bool("help-all", false, "Show all commands and global flags")
 	cmd.Flags().Lookup("help-all").NoOptDefVal = "true"
 
 	// Per-group help flags: --help-<id> for each registered group.
@@ -625,6 +640,9 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 			"netpolicy.GuardDial; loopback and diagnostics stay exempt.")
 	_ = v.BindPFlag(offlineFlag, pf.Lookup(offlineFlag))
 
+	// Every persistent flag so far is kit's; what follows is the tool's.
+	collapsed := collapsedGlobalSet(pf, cfg.Help)
+
 	// Tool-specific extra persistent flags. When a pointer destination
 	// is provided (StringVar/BoolVar/IntVar) the flag is bound to that
 	// pointer in addition to viper; otherwise the flag falls back to a
@@ -661,6 +679,7 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		hiddenGroups:       hidden,
 		groupTitles:        groupTitles,
 		hiddenDefaultFlags: hiddenDefault,
+		collapsedGlobals:   collapsed,
 	}
 	r.initInvokedAs()
 
@@ -1471,14 +1490,17 @@ func (r *Root) ApplyGroupVisibility() { r.applyGroupVisibility() }
 
 func (r *Root) applyGroupVisibility() {
 	args := r.resolveArgs()
+	r.helpAll = false
 
 	// Check for the "help <operand...>" subcommand form.
 	if len(args) >= 2 && args[0] == "help" {
 		operands := args[1:]
-		// "help all" reveals every group. It stops short of the
-		// plumbing flags --help-all also unhides; that difference is
-		// long-standing shipped behavior, not an oversight here.
+		// "help all" reveals every group and lists every global. It
+		// stops short of the plumbing flags --help-all also unhides in
+		// FLAGS; that difference is long-standing shipped behavior,
+		// not an oversight here.
 		if len(operands) == 1 && operands[0] == "all" {
+			r.helpAll = true
 			r.Cmd.SetArgs([]string{"--help"})
 			return
 		}
@@ -1516,6 +1538,7 @@ func (r *Root) applyGroupVisibility() {
 		}
 	}
 	if helpAll {
+		r.helpAll = true
 		r.revealHiddenDefaultFlags()
 		cleaned := make([]string, 0, len(args))
 		for _, a := range args {

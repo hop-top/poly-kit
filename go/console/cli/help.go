@@ -27,7 +27,7 @@ func (r *Root) installLeafHelp() {
 		hiddenDefault[name] = struct{}{}
 	}
 	for _, c := range root.Commands() {
-		installHelpRecursive(root, c, hiddenDefault)
+		installHelpRecursive(r, c, hiddenDefault)
 	}
 	r.installRootHelp(hiddenDefault)
 }
@@ -70,7 +70,7 @@ func (r *Root) installRootHelp(hiddenDefault map[string]struct{}) {
 	if _, already := f.Value.(*rootHelpSwap); already {
 		return
 	}
-	f.Value = &rootHelpSwap{Value: f.Value, root: root, hiddenDefault: hiddenDefault}
+	f.Value = &rootHelpSwap{Value: f.Value, r: r, hiddenDefault: hiddenDefault}
 }
 
 // rootHelpSwap decorates the root's --help flag value. Parsing it to
@@ -78,7 +78,7 @@ func (r *Root) installRootHelp(hiddenDefault map[string]struct{}) {
 // moment at which fang's renderer can be captured as our delegate.
 type rootHelpSwap struct {
 	pflag.Value
-	root          *cobra.Command
+	r             *Root
 	hiddenDefault map[string]struct{}
 	armed         bool
 }
@@ -91,7 +91,8 @@ func (s *rootHelpSwap) Set(v string) error {
 		return nil
 	}
 	s.armed = true
-	s.root.SetHelpFunc(makeRootHelpFunc(s.root.HelpFunc(), s.hiddenDefault))
+	root := s.r.Cmd
+	root.SetHelpFunc(makeRootHelpFunc(s.r, root.HelpFunc(), s.hiddenDefault))
 	return nil
 }
 
@@ -101,11 +102,12 @@ func (s *rootHelpSwap) Type() string { return s.Value.Type() }
 
 // makeRootHelpFunc mirrors makeLeafHelpFunc for the root: hide the
 // globals so fang leaves them out of FLAGS, render, restore, then
-// append our own GLOBAL FLAGS section.
+// append our own GLOBAL FLAGS section. The --help-<id> rows fold into
+// one for the duration of the render; see foldGroupHelpFlags.
 //
 // fangHelp is fang's renderer, captured at parse time — calling it is
 // what keeps root help byte-identical apart from the flags that moved.
-func makeRootHelpFunc(fangHelp func(*cobra.Command, []string), hiddenDefault map[string]struct{}) func(*cobra.Command, []string) {
+func makeRootHelpFunc(r *Root, fangHelp func(*cobra.Command, []string), hiddenDefault map[string]struct{}) func(*cobra.Command, []string) {
 	return func(c *cobra.Command, args []string) {
 		globals := collectRootGlobals(c.Root(), hiddenDefault)
 
@@ -114,14 +116,16 @@ func makeRootHelpFunc(fangHelp func(*cobra.Command, []string), hiddenDefault map
 			prevHidden[f] = f.Hidden
 			f.Hidden = true
 		}
+		unfold := r.foldGroupHelpFlags(c)
 
 		fangHelp(c, args)
 
+		unfold()
 		for f, was := range prevHidden {
 			f.Hidden = was
 		}
 
-		renderGlobalFlags(helpColorWriter(c), globals)
+		r.renderGlobalFlags(helpColorWriter(c), c, globals)
 	}
 }
 
@@ -193,17 +197,18 @@ func collectRootGlobals(root *cobra.Command, hiddenDefault map[string]struct{}) 
 	return out
 }
 
-func installHelpRecursive(root, c *cobra.Command, hiddenDefault map[string]struct{}) {
-	c.SetHelpFunc(makeLeafHelpFunc(root, hiddenDefault))
+func installHelpRecursive(r *Root, c *cobra.Command, hiddenDefault map[string]struct{}) {
+	c.SetHelpFunc(makeLeafHelpFunc(r, hiddenDefault))
 	for _, sub := range c.Commands() {
-		installHelpRecursive(root, sub, hiddenDefault)
+		installHelpRecursive(r, sub, hiddenDefault)
 	}
 }
 
 // makeLeafHelpFunc returns a cobra HelpFunc that delegates to the root
 // command's HelpFunc (set by fang) with inherited persistent flags hidden,
 // then appends a "GLOBAL FLAGS" section.
-func makeLeafHelpFunc(root *cobra.Command, hiddenDefault map[string]struct{}) func(*cobra.Command, []string) {
+func makeLeafHelpFunc(r *Root, hiddenDefault map[string]struct{}) func(*cobra.Command, []string) {
+	root := r.Cmd
 	return func(c *cobra.Command, args []string) {
 		inherited := collectInherited(c, hiddenDefault)
 
@@ -225,7 +230,7 @@ func makeLeafHelpFunc(root *cobra.Command, hiddenDefault map[string]struct{}) fu
 		}
 
 		// Append our own GLOBAL FLAGS section.
-		renderGlobalFlags(helpColorWriter(c), inherited)
+		r.renderGlobalFlags(helpColorWriter(c), c, inherited)
 	}
 }
 
@@ -260,12 +265,28 @@ func collectInherited(c *cobra.Command, hiddenDefault map[string]struct{}) []*pf
 // on fang's unexported style objects. The header is rendered uppercase to
 // match fang's title casing.
 //
+// Unless --help-all is on the args, globals in r.collapsedGlobals are
+// left out and counted in one closing hint naming the command's own
+// --help-all, so the section stays a few rows long on every command.
+//
 // w must be the colorprofile writer from helpColorWriter, not the raw
 // command output: the heading's escapes are emitted unconditionally here
 // and stripped there. Writing straight to OutOrStdout would leak a bold
 // sequence into --no-color and non-terminal output.
-func renderGlobalFlags(w io.Writer, flags []*pflag.Flag) {
-	if len(flags) == 0 {
+func (r *Root) renderGlobalFlags(w io.Writer, c *cobra.Command, all []*pflag.Flag) {
+	flags := all
+	more := 0
+	if !r.helpAll {
+		flags = make([]*pflag.Flag, 0, len(all))
+		for _, f := range all {
+			if _, ok := r.collapsedGlobals[f.Name]; ok {
+				more++
+				continue
+			}
+			flags = append(flags, f)
+		}
+	}
+	if len(flags) == 0 && more == 0 {
 		return
 	}
 
@@ -299,6 +320,22 @@ func renderGlobalFlags(w io.Writer, flags []*pflag.Flag) {
 			strings.Repeat(" ", maxKey-len(key)+gap) + desc
 		_, _ = fmt.Fprintln(w, line)
 	}
+
+	if more > 0 {
+		if len(flags) > 0 {
+			_, _ = fmt.Fprintln(w)
+		}
+		_, _ = fmt.Fprintln(w, strings.Repeat(" ", leftPad)+moreGlobalsHint(more, c.CommandPath()))
+	}
+}
+
+// moreGlobalsHint is the line standing in for n collapsed globals.
+func moreGlobalsHint(n int, path string) string {
+	noun := "flags"
+	if n == 1 {
+		noun = "flag"
+	}
+	return fmt.Sprintf("+%d more global %s — run `%s --help-all` to list them", n, noun, path)
 }
 
 // flagKey formats a flag the way fang does: "-s --long" or just "--long".
