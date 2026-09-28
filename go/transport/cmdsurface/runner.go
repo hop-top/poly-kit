@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -218,6 +220,14 @@ func joinPath(path []string) string {
 //
 // Each Invocation runs a fresh process; SubprocessRunner is safe for
 // concurrent use.
+//
+// The child inherits the server's environment. When the Invocation
+// carries a trace context (Meta.Traceparent), the child also receives
+// it as TRACEPARENT and TRACESTATE, the environment-variable carrier
+// OpenTelemetry SDKs read at start-up, so a traced child continues
+// the caller's trace; any TRACEPARENT or TRACESTATE the server itself
+// inherited is replaced rather than duplicated. Without one the
+// environment passes through untouched.
 func SubprocessRunner(binaryPath string) Runner {
 	return &subprocessRunner{binary: binaryPath}
 }
@@ -238,6 +248,7 @@ func (r *subprocessRunner) Run(ctx context.Context, inv Invocation) (Result, err
 
 	argv := buildArgs(inv)
 	cmd := exec.CommandContext(ctx, r.binary, argv...)
+	cmd.Env = traceEnv(inv.Meta)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -293,6 +304,7 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 
 	argv := buildArgs(inv)
 	cmd := exec.CommandContext(ctx, r.binary, argv...)
+	cmd.Env = traceEnv(inv.Meta)
 
 	// Use io.Pipe pairs rather than cmd.StdoutPipe()/StderrPipe() so
 	// cmd.Wait() does NOT close the read end before scanLinesTee
@@ -347,6 +359,38 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 		}
 	}
 	return nil
+}
+
+// Environment variables carrying W3C trace context to a child
+// process, as the OpenTelemetry environment-carrier specification
+// names them.
+const (
+	envTraceparent = "TRACEPARENT"
+	envTracestate  = "TRACESTATE"
+)
+
+// traceEnv returns the child environment for meta: nil, meaning
+// "inherit unchanged", when meta carries no trace context; otherwise
+// the server's environment with its own trace variables removed and
+// meta's appended.
+func traceEnv(meta Meta) []string {
+	if meta.Traceparent == "" {
+		return nil
+	}
+	parent := os.Environ()
+	env := make([]string, 0, len(parent)+2)
+	for _, kv := range parent {
+		name, _, _ := strings.Cut(kv, "=")
+		if name == envTraceparent || name == envTracestate {
+			continue
+		}
+		env = append(env, kv)
+	}
+	env = append(env, envTraceparent+"="+meta.Traceparent)
+	if meta.Tracestate != "" {
+		env = append(env, envTracestate+"="+meta.Tracestate)
+	}
+	return env
 }
 
 // scanLinesTee is the streaming sibling of scanLines: it also copies

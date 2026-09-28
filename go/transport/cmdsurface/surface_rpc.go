@@ -395,6 +395,15 @@ func (s *rpcServer) preflight(
 				errors.New("confirmation_required"))
 		}
 	}
+	// W3C trace context rides the request headers on every protocol
+	// Connect serves; the message's own trace_id stays authoritative
+	// for correlation when the caller set it.
+	if inv.Meta.Traceparent == "" {
+		inv.Meta.Traceparent, inv.Meta.Tracestate = api.TraceContextFromHeader(header)
+	}
+	if inv.Meta.TraceID == "" {
+		inv.Meta.TraceID = api.TraceIDFromHeader(header)
+	}
 	// Canonicalise the invocation: resolved path + forced surface.
 	inv.Path = append([]string(nil), leaf.Path...)
 	inv.Meta.Surface = SurfaceRPC

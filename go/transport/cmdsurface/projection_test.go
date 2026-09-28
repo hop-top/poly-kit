@@ -414,3 +414,44 @@ func TestProjection_ReservedVerbsAreDescribedAndWithheld(t *testing.T) {
 	}
 	t.Error("ping is not described")
 }
+
+// The projection forwards the request's W3C trace context to the
+// runner and to an auth refusal's audit record.
+func TestProjectionForwardsTraceContext(t *testing.T) {
+	const tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	const ts = "vendor=opaque"
+	runner := &recordingRunner{}
+	sink := &auditSink{}
+	b := cmdsurface.New(projectionTree(false), cmdsurface.WithRunner(runner),
+		cmdsurface.WithSinks(cmdsurface.SinkSpec{Sink: sink, OnOK: true, OnError: true}))
+	b.Expose("*", cmdsurface.SurfaceREST)
+	r := api.NewRouter()
+	if err := cmdsurface.MountProjection(b, r, cmdsurface.WithProjectionAuth(
+		func(req *http.Request) (any, error) {
+			if req.Header.Get("Authorization") == "" {
+				return nil, errors.New("no credential")
+			}
+			return "alice", nil
+		})); err != nil {
+		t.Fatalf("MountProjection: %v", err)
+	}
+	url := serve(t, r)
+	hdr := map[string]string{"traceparent": tp, "tracestate": ts}
+
+	if status, body := do(t, http.MethodPost, url+"/v1/commands/widget/add", `{}`, hdr); status != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated: status=%d body=%s", status, body)
+	}
+	recs := sink.records()
+	if len(recs) != 1 || recs[0].inv.Meta.Traceparent != tp || recs[0].inv.Meta.Tracestate != ts {
+		t.Fatalf("auth refusal audit = %+v, want the trace context", recs)
+	}
+
+	hdr["Authorization"] = "Bearer t"
+	if status, body := do(t, http.MethodPost, url+"/v1/commands/widget/add", `{}`, hdr); status != http.StatusOK {
+		t.Fatalf("call: status=%d body=%s", status, body)
+	}
+	got := runner.captured()
+	if len(got) != 1 || got[0].Meta.Traceparent != tp || got[0].Meta.Tracestate != ts {
+		t.Fatalf("runner meta = %+v, want the trace context", got)
+	}
+}

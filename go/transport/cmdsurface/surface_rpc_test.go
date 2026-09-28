@@ -811,3 +811,41 @@ func TestRPCInvoke_BridgeSentinelMapping(t *testing.T) {
 		t.Errorf("bridge err=%v want=ErrSurfaceNotEnabled", brErr)
 	}
 }
+
+func TestRPCInvoke_TraceContextFromHeaders(t *testing.T) {
+	const tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	forEachProtocol(t, func(t *testing.T, p wireProtocol) {
+		f := newFixture(t)
+		f.start()
+
+		req := invocation("echo")
+		req.Header().Set("Traceparent", tp)
+		req.Header().Set("Tracestate", "vendor=x")
+		if _, err := f.client(p).Invoke(context.Background(), req); err != nil {
+			t.Fatalf("Invoke: %v", err)
+		}
+		f.runner.mu.Lock()
+		meta := f.runner.LastInvocation.Meta
+		f.runner.mu.Unlock()
+		if meta.Traceparent != tp || meta.Tracestate != "vendor=x" {
+			t.Errorf("Meta trace context = %q / %q, want %q / vendor=x", meta.Traceparent, meta.Tracestate, tp)
+		}
+		if meta.TraceID != "4bf92f3577b34da6a3ce929d0e0e4736" {
+			t.Errorf("Meta.TraceID = %q, want the traceparent's trace-id", meta.TraceID)
+		}
+
+		// The message's own trace_id stays authoritative.
+		req = connect.NewRequest(&cmdsurfacev1.Invocation{Path: []string{"echo"},
+			Meta: &cmdsurfacev1.Meta{TraceId: "from-message"}})
+		req.Header().Set("Traceparent", tp)
+		if _, err := f.client(p).Invoke(context.Background(), req); err != nil {
+			t.Fatalf("Invoke: %v", err)
+		}
+		f.runner.mu.Lock()
+		meta = f.runner.LastInvocation.Meta
+		f.runner.mu.Unlock()
+		if meta.TraceID != "from-message" || meta.Traceparent != tp {
+			t.Errorf("Meta = %+v, want trace_id from the message and traceparent from the header", meta)
+		}
+	})
+}

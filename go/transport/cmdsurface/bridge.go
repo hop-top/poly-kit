@@ -108,6 +108,7 @@ func (l *Leaf) PathKey() string { return strings.Join(l.Path, " ") }
 // bridgeConfig is the internal options bag set by Option funcs.
 type bridgeConfig struct {
 	runner     Runner
+	runnerMW   []func(Runner) Runner
 	policy     Policy
 	permission PermissionFunc
 	sinks      SinkSet
@@ -120,6 +121,21 @@ type Option func(*bridgeConfig)
 // WithRunner installs r as the bridge's Runner. Default is
 // InProcessRunner(root).
 func WithRunner(r Runner) Option { return func(c *bridgeConfig) { c.runner = r } }
+
+// WithRunnerMiddleware wraps the bridge's Runner, whichever one is
+// in force — the default in-process runner or one set with
+// [WithRunner] — in mw. The first middleware given is the outermost.
+// Repeated options append.
+//
+// A middleware sees exactly the invocations the gates admitted, on
+// both paths that reach a Runner: [Bridge.Invoke] and the streaming
+// surfaces that call [Bridge.Runner] directly. It is the seam for
+// cross-cutting instrumentation (a span per invocation, an in-flight
+// gauge) that must not care which Runner executes the command.
+// Refusals never reach it; observe those through a [Sink].
+func WithRunnerMiddleware(mw ...func(Runner) Runner) Option {
+	return func(c *bridgeConfig) { c.runnerMW = append(c.runnerMW, mw...) }
+}
 
 // WithPolicy installs p as the bridge's Policy. Default is
 // DefaultPolicy().
@@ -153,6 +169,11 @@ func New(root *cobra.Command, opts ...Option) *Bridge {
 	}
 	if cfg.runner == nil {
 		cfg.runner = InProcessRunner(root)
+	}
+	for i := len(cfg.runnerMW) - 1; i >= 0; i-- {
+		if cfg.runnerMW[i] != nil {
+			cfg.runner = cfg.runnerMW[i](cfg.runner)
+		}
 	}
 	if cfg.permission == nil {
 		cfg.permission = PermitAll

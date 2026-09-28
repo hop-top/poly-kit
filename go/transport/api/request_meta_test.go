@@ -120,6 +120,53 @@ func TestTraceIDFromRequest(t *testing.T) {
 	}
 }
 
+func TestTraceContextFromHeader(t *testing.T) {
+	const valid = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	cases := []struct {
+		name      string
+		hdr       map[string]string
+		wantTP    string
+		wantState string
+	}{
+		{name: "none"},
+		{name: "valid with state", hdr: map[string]string{"Traceparent": valid, "Tracestate": "vendor=x"}, wantTP: valid, wantState: "vendor=x"},
+		{name: "valid, whitespace trimmed", hdr: map[string]string{"Traceparent": " " + valid + " "}, wantTP: valid},
+		{name: "state without parent dropped", hdr: map[string]string{"Tracestate": "vendor=x"}},
+		{name: "uppercase is not well-formed", hdr: map[string]string{"Traceparent": "00-4BF92F3577B34DA6A3CE929D0E0E4736-00f067aa0ba902b7-01"}},
+		{name: "zero trace id", hdr: map[string]string{"Traceparent": "00-00000000000000000000000000000000-00f067aa0ba902b7-01"}},
+		{name: "zero parent id", hdr: map[string]string{"Traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01"}},
+		{name: "version ff forbidden", hdr: map[string]string{"Traceparent": "ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"}},
+		{name: "version 00 with extra field", hdr: map[string]string{"Traceparent": valid + "-zz"}},
+		{name: "future version may extend", hdr: map[string]string{"Traceparent": "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-ab"}, wantTP: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-ab"},
+		{name: "short parent id", hdr: map[string]string{"Traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa-01", "Tracestate": "vendor=x"}},
+		{name: "garbage", hdr: map[string]string{"Traceparent": "garbage"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := http.Header{}
+			for k, v := range c.hdr {
+				h.Set(k, v)
+			}
+			tp, ts := api.TraceContextFromHeader(h)
+			assert.Equal(t, c.wantTP, tp)
+			assert.Equal(t, c.wantState, ts)
+		})
+	}
+}
+
+func TestRequestMetaCarriesTraceContext(t *testing.T) {
+	const tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	r := httptest.NewRequest(http.MethodPost, "/", nil)
+	r.Header.Set("traceparent", tp)
+	r.Header.Set("tracestate", "vendor=x")
+
+	m := api.RequestMetaFrom(r)
+	assert.Equal(t, tp, m.Traceparent)
+	assert.Equal(t, "vendor=x", m.Tracestate)
+	assert.Equal(t, "4bf92f3577b34da6a3ce929d0e0e4736", m.TraceID)
+	assert.Equal(t, m.TraceID, api.TraceIDFromHeader(r.Header))
+}
+
 func TestAuthRefusalHookObservesEveryRefusal(t *testing.T) {
 	var got []error
 	var seen []string
@@ -227,4 +274,32 @@ func TestPermissionDeniedIs403WithStableCode(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &ae))
 	assert.Equal(t, api.CodePermissionDenied, ae.Code)
 	assert.Contains(t, ae.Message, "caller not entitled", "the body carries the gate's reason")
+}
+
+// derivedKey marks a context a middleware derived below the observer.
+type derivedKey struct{}
+
+func TestRecordRefusalReachesObserver(t *testing.T) {
+	refuse := func(code string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// A middleware below the observer derives a new request, as
+			// most do; the slot must survive it.
+			r = r.WithContext(context.WithValue(r.Context(), derivedKey{}, 1))
+			api.RecordRefusal(r, code)
+			api.RecordRefusal(r, "second")
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+		})
+	}
+
+	r, read := api.ObserveRefusal(httptest.NewRequest(http.MethodPost, "/", nil))
+	refuse("body_too_large").ServeHTTP(httptest.NewRecorder(), r)
+	assert.Equal(t, "body_too_large", read(), "first code wins")
+
+	r, read = api.ObserveRefusal(httptest.NewRequest(http.MethodGet, "/", nil))
+	http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}).ServeHTTP(httptest.NewRecorder(), r)
+	assert.Empty(t, read(), "nothing refused")
+
+	// Unobserved: recording is a no-op, not a panic.
+	api.RecordRefusal(httptest.NewRequest(http.MethodGet, "/", nil), "host_rejected")
+	api.RecordRefusal(nil, "host_rejected")
 }

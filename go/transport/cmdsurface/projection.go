@@ -287,6 +287,8 @@ func ProjectionAuthRefusal(b *Bridge) func(r *http.Request, err error) {
 				Surface:     SurfaceREST,
 				RequestID:   meta.RequestID,
 				TraceID:     meta.TraceID,
+				Traceparent: meta.Traceparent,
+				Tracestate:  meta.Tracestate,
 				RequestedAt: meta.ReceivedAt,
 				Extra: map[string]string{
 					"http_method": r.Method,
@@ -597,6 +599,8 @@ func metaFromRequest(m api.RequestMeta) Meta {
 		Surface:        SurfaceREST,
 		RequestID:      m.RequestID,
 		TraceID:        m.TraceID,
+		Traceparent:    m.Traceparent,
+		Tracestate:     m.Tracestate,
 		IdempotencyKey: m.IdempotencyKey,
 		RequestedAt:    m.ReceivedAt,
 	}

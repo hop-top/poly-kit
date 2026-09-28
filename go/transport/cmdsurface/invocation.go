@@ -66,6 +66,25 @@ type Meta struct {
 	// or an X-Trace-ID). Empty when the surface did not provide
 	// one.
 	TraceID string `json:"trace_id,omitempty"`
+	// Traceparent is the W3C traceparent of the span this
+	// invocation continues: the caller's, as its transport received
+	// it, or the invocation's own span once a tracing runner
+	// middleware has started one. It is the whole span context
+	// where TraceID is only its correlation id, and
+	// [SubprocessRunner] hands it to the child as TRACEPARENT so a
+	// traced child process joins the same trace. Empty when the
+	// surface received none or received a malformed one.
+	//
+	// It is not part of the serialized Meta: W3C trace context
+	// travels in the transport's own carrier — the traceparent
+	// header on HTTP and Connect, the environment for a child
+	// process — never in a message body, so the published
+	// cmdsurface.v1 schema has no field for it.
+	Traceparent string `json:"-"`
+	// Tracestate is the W3C tracestate that travels with
+	// Traceparent; empty without one. Not serialized, as
+	// Traceparent.
+	Tracestate string `json:"-"`
 	// IdempotencyKey is the caller-supplied key for a replayable
 	// write (the Idempotency-Key header over HTTP). The bridge
 	// forwards it to the leaf's --idempotency-key flag when the leaf

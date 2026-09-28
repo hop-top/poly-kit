@@ -649,6 +649,7 @@ of any of them.
 | `Surface`        | `rest`, pinned                                 | `socket`, pinned by the seam                |
 | `RequestID`      | `X-Request-ID`, issued when absent, echoed     | `request_id`, issued when absent            |
 | `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`      | `trace_id`                                  |
+| `Traceparent`, `Tracestate` | W3C `traceparent` when well-formed, and `tracestate` beside it | —                  |
 | `IdempotencyKey` | `Idempotency-Key`                              | `idempotency_key`                           |
 | `RequestedAt`    | receipt time                                   | receipt time                                |
 | `Extra`          | `remote_addr`, `scopes` (comma-joined claims)  | —                                           |
