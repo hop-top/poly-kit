@@ -21,8 +21,8 @@ import (
 // first-class backend for tests and ephemeral uses where restart
 // loss is acceptable.
 //
-// Mirrors the SQLite backend's content-addressed dedup shape from
-// spec `engine-snapshot-dedup` §3 #3: snapshot bytes live in a
+// Mirrors the SQLite backend's content-addressed dedup shape:
+// snapshot bytes live in a
 // `blobs` map keyed by hash with a refcount, and a per-version
 // `versionToHash` indirection lets GetSnapshot resolve a versionID
 // to its blob. The conformance principle requires both backends to

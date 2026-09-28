@@ -6,5 +6,5 @@
 // describing every shim or unsupported option encountered. Execution
 // (Runner) is optional and side-effecting; callers wire it explicitly.
 //
-// See docs/specs/uxp-agent-cli-facade.md for the design.
+// See docs/adopters/reference/uxp.md for the adopter view.
 package invoke

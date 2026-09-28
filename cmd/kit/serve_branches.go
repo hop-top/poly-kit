@@ -33,9 +33,9 @@ func registerBranchingRoutes(router routeRegistrar, vds *store.VersionedDocument
 		}
 		id := api.PathParam(r, "id")
 
-		// engine-version-pruning §5: ?live=1 filters to live heads
+		// ?live=1 filters to live heads
 		// only. Default (no query param) returns ALL heads — live and
-		// dead — preserving the pre-prune-track wire shape byte-for-
+		// dead — preserving the pre-pruning wire shape byte-for-
 		// byte for backward compat.
 		var opts []store.BranchesOption
 		if r.URL.Query().Get("live") == "1" {
@@ -135,10 +135,10 @@ func registerBranchingRoutes(router routeRegistrar, vds *store.VersionedDocument
 // byte-for-byte: version_id, seq, parent_ids (always non-nil for
 // JSON), timestamp.
 //
-// engine-version-pruning §5: dead versions (Live=false) carry an
+// Dead versions (Live=false) carry an
 // explicit "live": false key. Live=true versions omit the key
 // entirely — that's the default the SDK MarshalJSON convention on
-// [store.Version] picked, and it preserves the pre-prune-track wire
+// [store.Version] picked, and it preserves the pre-pruning wire
 // shape byte-for-byte for SDK callers that don't parse the field.
 func branchEntry(v store.Version, parents map[string][]string) map[string]any {
 	out := map[string]any{
@@ -196,7 +196,7 @@ func loadParentsIndex(ctx context.Context, vs store.VersionStore, docType, id st
 			continue
 		}
 		// version.DAG.Get returns parents in insertion order — preserved
-		// per engine-versioned-branching §3 decision 3 (Merge order).
+		// because Merge order is significant.
 		out[cur] = append([]string(nil), v.ParentIDs...)
 		queue = append(queue, v.ParentIDs...)
 	}

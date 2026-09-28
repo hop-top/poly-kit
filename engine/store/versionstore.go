@@ -9,7 +9,7 @@ import (
 )
 
 // Sentinel errors returned by [VersionStore] implementations under
-// the dedup invariants from spec `engine-snapshot-dedup` §3.
+// the content-addressed dedup invariants.
 //
 // ErrHashCollision: two distinct payloads hashed to the same key
 // (decision #1). util.Short(data, 16) has a birthday bound near

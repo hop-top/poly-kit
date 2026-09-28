@@ -14,7 +14,7 @@ import (
 	"hop.top/kit/go/storage/sqldb"
 )
 
-// seedLegacyDB synthesizes a pre-`engine-snapshot-dedup` database
+// seedLegacyDB synthesizes a pre-dedup database
 // state. It creates the document/version tables but with the old
 // `snapshots(version_id, data)` shape (no snapshot_blobs /
 // version_snapshots), seeds rows into versions + snapshots, and

@@ -14,8 +14,8 @@ import (
 	"hop.top/kit/go/transport/api"
 )
 
-// In-process smoke tests for the branching routes (spec
-// docs/specs/engine-versioned-branching.md §5). Exhaustive end-to-end
+// In-process smoke tests for the branching routes (see
+// docs/adopters/reference/engine-protocol.md). Exhaustive end-to-end
 // coverage (multi-step DAG topology, restart durability) lives in
 // serve_branches_integration_test.go. These tests focus on happy-path
 // wire shape + basic error mapping for each route, plus the

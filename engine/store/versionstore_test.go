@@ -572,7 +572,7 @@ func openConformanceSQLiteVersionedStore(t *testing.T) *VersionedDocumentStore {
 
 // TestVersionedDocumentStoreBranchingConformance is the cross-backend
 // conformance suite for the public branching API — Fork, Merge,
-// Branches — added by the engine-versioned-branching track. It runs
+// Branches. It runs
 // each scenario against every backend wired in
 // [versionedConformanceFactories], with the same expand-into-subtests
 // pattern as [TestVersionStoreConformance]. Use
@@ -1282,7 +1282,7 @@ func runConcurrencySmoke(t *testing.T, vs VersionStore) {
 
 // TestVersionedDocumentStorePruningConformance is the cross-backend
 // conformance suite for the public Prune + Abandon + Branches-with-
-// liveness API added by the engine-version-pruning track. It mirrors
+// liveness API. It mirrors
 // [TestVersionedDocumentStoreBranchingConformance] in shape: every
 // scenario runs once per backend wired in
 // [versionedConformanceFactories]. Use

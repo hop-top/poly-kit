@@ -13,8 +13,8 @@ import (
 	"hop.top/kit/go/transport/api"
 )
 
-// In-process smoke tests for the pruning routes (spec
-// docs/specs/engine-version-pruning.md §5):
+// In-process smoke tests for the pruning routes (see
+// docs/adopters/reference/engine-protocol.md):
 //
 //	POST /:type/:id/prune
 //	POST /:type/:id/abandon

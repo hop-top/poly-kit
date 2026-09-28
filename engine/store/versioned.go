@@ -546,7 +546,7 @@ func (vs *VersionedDocumentStore) Merge(ctx context.Context, docType, id string,
 	// tip becomes their child). The bit persists for any future
 	// liveness query.
 	//
-	// Lenient on non-head parents: existing pre-prune-track Merge
+	// Lenient on non-head parents: existing pre-pruning Merge
 	// allows source/target to already have children (e.g. a second
 	// merge of the same parents producing a redundant tip). In that
 	// case SetLive returns ErrNotAHead — we swallow it because the
@@ -582,7 +582,7 @@ type branchesOpts struct {
 
 // WithLiveOnly tells [VersionedDocumentStore.Branches] to filter the
 // returned heads to those with Live=true. Default behavior (no opts)
-// returns all heads — live and dead — preserving the pre-prune-track
+// returns all heads — live and dead — preserving the pre-pruning
 // public API byte-for-byte.
 func WithLiveOnly() BranchesOption {
 	return func(o *branchesOpts) { o.liveOnly = true }
@@ -601,7 +601,7 @@ func WithLiveOnly() BranchesOption {
 // Pass [WithLiveOnly] to filter to live heads only — useful for
 // surfaces (UI, sync) that want the operator's canonical-head
 // concept, not the full topology. The default behavior (no opts) is
-// unchanged from the pre-prune-track public API and returns all
+// unchanged from the pre-pruning public API and returns all
 // heads regardless of liveness.
 func (vs *VersionedDocumentStore) Branches(ctx context.Context, docType, id string, opts ...BranchesOption) ([]Version, error) {
 	o := branchesOpts{}

@@ -18,8 +18,8 @@ import (
 // page cache — instead of pure memory pressure. The in-memory
 // variant exercises the historic baseline.
 //
-// Spec acceptance (engine-store-versioned-sqlite §7): SQLite p50
-// within 2× of the in-memory baseline for typical doc size.
+// Acceptance bar: SQLite p50 within 2× of the in-memory baseline
+// for typical doc size.
 //
 // Run: go test -bench=BenchmarkVersionedUpdate -benchmem -count=5 ./engine/store/
 func BenchmarkVersionedUpdate(b *testing.B) {

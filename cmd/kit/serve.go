@@ -547,8 +547,8 @@ func registerDocumentRoutes(router routeRegistrar, vds *store.VersionedDocumentS
 // (sequence number) on the boundary; internally [store.Version]
 // uses Seq, so handlers map between the two.
 //
-// The history route also honors `?topology=1` (track
-// engine-versioned-branching, spec §5): when present, the response
+// The history route also honors `?topology=1` (see
+// docs/adopters/reference/engine-protocol.md): when present, the response
 // includes per-version `parent_ids` plus a top-level `heads` slice
 // listing the DAG tips. Default (no query param) behavior is
 // unchanged from the original linear response shape — strict

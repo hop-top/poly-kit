@@ -13,7 +13,7 @@ import (
 	"hop.top/kit/engine/store"
 )
 
-// HTTP integration coverage for the prune track is gated on the
+// HTTP integration coverage for pruning is gated on the
 // /:type/:id/abandon and /:type/:id/prune routes from spec §5, which
 // are owned by a parallel workstream and are not present in serve.go
 // yet. Rather than block on the route landing — and rather than test

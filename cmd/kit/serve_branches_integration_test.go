@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// HTTP integration coverage for the branching wire contract introduced
-// by the engine-versioned-branching work. The routes themselves live
+// HTTP integration coverage for the branching wire contract
+// (docs/adopters/reference/engine-protocol.md). The routes themselves live
 // in serve.go (List branches / Fork / Merge / History?topology=1);
 // this file drives them end-to-end through a real `kit serve` binary
 // against an on-disk SQLite database.

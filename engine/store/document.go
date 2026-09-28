@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS version_seq_high_water (
 //
 // On boot, [migrateToDedup] runs a one-shot idempotent migration
 // that folds any legacy `snapshots(version_id, data)` rows from a
-// pre-`engine-snapshot-dedup` install into the content-addressed
+// pre-dedup install into the content-addressed
 // `snapshot_blobs` + `version_snapshots` shape. After the migration
 // the legacy table is dropped. Re-running on an already-migrated DB
 // is a no-op.
@@ -162,7 +162,7 @@ func newDocumentStore(opts sqldb.Options) (*DocumentStore, error) {
 }
 
 // migrateAddLiveColumn is the additive migration for the live/dead
-// head model (engine-version-pruning decision #10). It is idempotent:
+// head model. It is idempotent:
 // on a fresh DB the `live` column is already present (CREATE TABLE
 // in versionTablesSQL includes it); on a legacy DB (predating this
 // track) we add it via ALTER TABLE with DEFAULT 1, which both
@@ -219,7 +219,7 @@ func migrateAddLiveColumn(db *sql.DB) error {
 }
 
 // migrateToDedup folds any legacy `snapshots(version_id, data)` rows
-// from a pre-`engine-snapshot-dedup` install into the new
+// from a pre-dedup install into the new
 // content-addressed shape. The migration runs in a single
 // transaction so a crash mid-walk leaves the DB in the
 // pre-migration state, recoverable on the next boot. It is

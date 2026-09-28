@@ -16,8 +16,8 @@ import (
 )
 
 // versioned_pruning_property_test.go is the cross-backend property
-// test for the prune track (Abandon / Prune / Branches+WithLiveOnly)
-// added by track engine-version-pruning. The shape mirrors
+// test for pruning (Abandon / Prune / Branches+WithLiveOnly).
+// The shape mirrors
 // versioned_branching_property_test.go and
 // versioned_dedup_property_test.go (the prior siblings in this
 // package) so the three read as a triplet: same fixed-seed pattern,
@@ -60,8 +60,8 @@ import (
 //   - Dedup invariants after Prune: SUM(refcount) over snapshot_blobs
 //     == COUNT(*) over version_snapshots; every retained
 //     version_snapshots.hash exists in snapshot_blobs; no refcount=0
-//     rows. These are the spec §7 dedup invariants restated for the
-//     prune track.
+//     rows. These are the dedup invariants restated for
+//     pruning.
 //
 //   - GetSnapshot byte-identity for retained versions across both
 //     backends — the cross-backend equivalence assertion guarantees

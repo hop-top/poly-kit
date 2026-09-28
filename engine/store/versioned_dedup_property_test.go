@@ -12,8 +12,7 @@ import (
 )
 
 // versioned_dedup_property_test.go is the cross-backend property
-// test for content-addressed snapshot dedup added by track
-// engine-snapshot-dedup. The shape mirrors
+// test for content-addressed snapshot dedup. The shape mirrors
 // versioned_branching_property_test.go (its immediate predecessor)
 // so the two read as siblings: same fixed-seed pattern, fresh-stores-
 // per-iteration, outcome-divergence-is-signal-not-flake stance.

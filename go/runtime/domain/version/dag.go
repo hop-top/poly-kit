@@ -137,7 +137,7 @@ func (d *DAG) CommonAncestor(a, b string) (string, bool) {
 //
 // Useful for bottom-up DAG walks (e.g. version pruning, where a
 // candidate is prunable iff all of its descendants are also
-// candidates — see engine-version-pruning spec §3 #3).
+// candidates).
 func (d *DAG) Children(id string) []string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
