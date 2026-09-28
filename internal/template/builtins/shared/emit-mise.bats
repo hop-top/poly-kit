@@ -38,8 +38,12 @@ teardown() {
   grep -qE '^shellcheck = "0\.10"$' "$PROJ/mise.toml"
   grep -qE '^shfmt = "3\.10"$'      "$PROJ/mise.toml"
   grep -qE '^"npm:release-please" = "17"$' "$PROJ/mise.toml"
-  grep -qE '^buf = "1\.73\.0"$'   "$PROJ/mise.toml"
-  grep -qE '^"npm:markdownlint-cli2" = "0\.23\.3"$' "$PROJ/mise.toml"
+}
+
+@test "emit_mise: kit's own CI tools (buf, markdownlint-cli2) stay out of scaffolds" {
+  emit_mise "$PROJ" "go,ts,py,rs"
+  ! grep -qE '^buf = '                     "$PROJ/mise.toml" || false
+  ! grep -qE '^"npm:markdownlint-cli2" = ' "$PROJ/mise.toml" || false
 }
 
 @test "emit_mise go: excludes node, python, rust, ruff" {

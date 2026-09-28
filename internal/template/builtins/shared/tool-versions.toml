@@ -22,5 +22,3 @@ actionlint           = "1.7"   # GitHub Actions workflow linter
 shellcheck           = "0.10"  # Shell script linter
 shfmt                = "3.10"  # Shell script formatter
 "npm:release-please" = "17"    # Release automation (npm-backed)
-buf                  = "1.73.0"  # Protobuf lint / format / codegen
-"npm:markdownlint-cli2" = "0.23.3"  # Markdown linter (npm-backed)
