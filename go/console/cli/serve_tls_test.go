@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -162,11 +163,29 @@ func TestAPIMutualTLS(t *testing.T) {
 	f := newTLSFixture(t)
 	rec := &auditRecorder{}
 	r := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}), WithAuditSinks(rec.spec()))
+	r.Cmd.AddCommand(&cobra.Command{
+		Use:   "secret",
+		Short: "a secret",
+		RunE:  func(cmd *cobra.Command, _ []string) error { cmd.Print("unlocked"); return nil },
+		Annotations: map[string]string{
+			"kit/side-effect":   "read",
+			"kit/auth-required": "true",
+		},
+	})
 	setKeys(r, f.mtlsKeys(APIServiceName))
 	base, stop := serveAPI(t, r)
 	defer stop()
 	base = strings.Replace(base, "http://", "https://", 1)
 
+	t.Run("the certificate is an established identity: kit/auth-required admits it", func(t *testing.T) {
+		resp, body := tlsGet(t, f.client(f.clientCert), base+"/v1/commands/secret")
+		require.Equal(t, http.StatusOK, resp.StatusCode, body)
+		assert.Contains(t, body, "unlocked")
+		inv, _, err := rec.last(t)
+		require.NoError(t, err)
+		assert.True(t, inv.Meta.Authenticated(), "an mTLS caller is established, not claimed")
+		assert.Equal(t, f.clientPrincipal, inv.Meta.Caller)
+	})
 	t.Run("accepted, attributed to the certificate", func(t *testing.T) {
 		resp, body := tlsGet(t, f.client(f.clientCert), base+"/v1/commands/list")
 		require.Equal(t, http.StatusOK, resp.StatusCode, body)
