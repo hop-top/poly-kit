@@ -3,7 +3,7 @@
 # verify-tier1.sh — guardrail that asserts the dogfood-grade workflow
 # never asks for Tier 2 / Tier 3 grader output.
 #
-# Per 12fcc-dog design §6.4 and ADR-0028: Tier 3 traces (assertion-
+# Tier 3 traces (assertion-
 # level diffs, prompt text, cassette excerpts) MUST stay private. The
 # private repo's grader hard-codes `--tier=1`. This script is the
 # public-side belt-and-suspenders: it greps the supplied workflow
@@ -42,7 +42,7 @@ for f in "${targets[@]}"; do
 done
 
 if [ "$bad" -ne 0 ]; then
-  die "Tier 2 / Tier 3 flags are forbidden in public workflows (see ADR-0028 §threat-model)"
+  die "Tier 2 / Tier 3 flags are forbidden in public workflows (their output must stay private)"
 fi
 
 echo "verify-tier1: ok — no Tier 2 / Tier 3 references in ${targets[*]}"

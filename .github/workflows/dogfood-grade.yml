@@ -13,7 +13,8 @@
 #
 # Implementation note (Mode C). The grader code lives in
 # `hop-top/scenarios-kit` and is invoked there, not here. The public
-# runner never has scenario rubric in memory. See ADR-0028.
+# runner never has scenario rubric in memory, so a rubric cannot leak
+# into public logs or agent context.
 #
 # The dispatch + capture steps below are gated behind
 # `DOGFOOD_DISPATCH_TOKEN`. Until the private repo exists and the
@@ -86,7 +87,7 @@ jobs:
       #
       # Cassette filenames MUST match the scenario_id in the private
       # repo's scenarios/spaced/<scenario_id>.yaml so grade-on-dispatch
-      # can pair them. See ADR-0028.
+      # can pair them.
       - name: capture cassettes (stub)
         run: |
           set -euo pipefail

@@ -3,8 +3,8 @@
 # bootstrap-scenarios-kit.sh — generate the local template for the
 # private grader repo `hop-top/scenarios-kit`.
 #
-# Layer C content per the umbrella 12fcc spec. See ADR-0028 for the
-# dual-repo decision.
+# Layer C content per the umbrella 12fcc spec. Rubrics live in this
+# separate private repo so public runners never hold them.
 #
 # Usage:
 #   scripts/bootstrap-scenarios-kit.sh [TARGET_DIR]
@@ -307,7 +307,7 @@ jobs:
         id: grade
         run: |
           set -euo pipefail
-          # Tier 1 hard-coded per dog design §6.4 + ADR-0028. The
+          # Tier 1 hard-coded: richer tiers stay private. The
           # dispatch payload MUST NOT carry a tier field; this
           # workflow ignores any such field if present.
           out='[]'

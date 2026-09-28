@@ -37,7 +37,7 @@ This document defines a language-agnostic, "self-aligning" repository architectu
 │   ├── build                   # Language-agnostic build trigger
 │   └── ship                    # Release preparation script
 ├── docs/                       # The Knowledge Graph (Source of Truth)
-│   ├── decisions/              # ADR-0001-slug.md (Architectural Decision Records)
+│   ├── decisions/              # NNNN-slug.md (Architectural Decision Records)
 │   ├── manuals/                # Operational guidance
 │   │   ├── user.md             # End-user documentation
 │   │   ├── dev.md              # Contributor/Internal documentation

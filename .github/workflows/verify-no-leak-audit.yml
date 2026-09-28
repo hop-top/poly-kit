@@ -2,7 +2,7 @@
 # kit tree and recent history. Catches accidental scenario rubric
 # leakage that slipped past the PR-time gate.
 #
-# Per 12fcc-dog design §6.2 + ADR-0028. Runs daily at 06:00 UTC and
+# Rubrics belong only in the private grader repo. Runs daily at 06:00 UTC and
 # on manual dispatch. Findings page the kit team via the configured
 # Slack / PagerDuty webhook (stub in v1; pluggable in v1.1).
 name: verify-no-leak-audit
