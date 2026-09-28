@@ -591,6 +591,8 @@ func errorCode(err error) string {
 		return api.CodeNotInvocable
 	case errors.Is(err, ErrDestructiveBlocked):
 		return "destructive_blocked"
+	case errors.Is(err, ErrInsufficientScope):
+		return api.CodeInsufficientScope
 	case errors.Is(err, ErrPermissionDenied):
 		return api.CodePermissionDenied
 	case errors.Is(err, ErrRateLimited):

@@ -169,6 +169,25 @@ func TestAuthenticatorReplacesClaimedIdentity(t *testing.T) {
 	assert.Equal(t, []string{"ping"}, rec.invs[1].Path)
 }
 
+// TestAuthenticatorScopesReachTheGate pins that the scopes an
+// Authenticator establishes reach the permission gate as the
+// credential's, and that a request cannot name its own.
+func TestAuthenticatorScopesReachTheGate(t *testing.T) {
+	t.Parallel()
+	path := socketPath(t)
+	runner := newRecordingRunner(false)
+	auth := func(context.Context, net.Conn, socket.Request) (socket.Identity, error) {
+		return socket.Identity{Principal: "alice", Scopes: []string{"items:read", "items:admin"}}, nil
+	}
+	startSocketWith(t, path, auth, transportsvc.WithBridgeOptions(cmdsurface.WithRunner(runner)))
+
+	resp := call(t, path, socket.Request{Path: []string{"ping"}})
+	require.True(t, resp.Ok, "%+v", resp.Error)
+	got := runner.invocation().Meta
+	assert.Equal(t, cmdsurface.EstablishedVerified, got.Established)
+	assert.Equal(t, "items:read,items:admin", got.Extra["scopes"])
+}
+
 func TestPermissionDeniedIsDeniedOnTheWire(t *testing.T) {
 	t.Parallel()
 	path := socketPath(t)

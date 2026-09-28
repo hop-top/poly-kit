@@ -244,8 +244,11 @@ type PermissionDecision struct {
 // surface-specific Extra. Confirmation is not its concern; that
 // stays the command's own gate.
 //
-// The bridge's default permits everything, so a bridge without one
-// behaves exactly as before the gate existed.
+// It runs after the bridge's built-in scope check, which already
+// refuses a remote caller lacking a scope the leaf declares under
+// kit/permissions (see [ErrInsufficientScope]), so it is asked only
+// about calls that check admitted and can narrow the answer, never
+// widen it. The default, [PermitAll], adds nothing to that check.
 type PermissionFunc func(ctx context.Context, meta Meta, leaf *Leaf) PermissionDecision
 
 // PermitAll is the default [PermissionFunc]: every invocation is

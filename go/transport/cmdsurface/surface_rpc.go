@@ -460,7 +460,9 @@ func mapBridgeError(err error, leaf *Leaf) error {
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, ErrDestructiveBlocked):
 		return connect.NewError(connect.CodePermissionDenied, err)
-	case errors.Is(err, ErrPermissionDenied):
+	case errors.Is(err, ErrInsufficientScope), errors.Is(err, ErrPermissionDenied):
+		// insufficient_scope shares PermissionDenied; the message
+		// starts with its sentinel.
 		return connect.NewError(connect.CodePermissionDenied, err)
 	case errors.Is(err, ErrRateLimited):
 		return rateLimitedConnectError(err)

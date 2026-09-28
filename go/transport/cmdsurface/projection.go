@@ -661,6 +661,10 @@ func translateProjectionError(err error) error {
 		return fmt.Errorf("%w: %s", api.ErrCommandNotInvocable, err.Error())
 	case errors.Is(err, ErrDestructiveBlocked):
 		return fmt.Errorf("%w: %s", api.ErrDestructiveBlocked, err.Error())
+	case errors.Is(err, ErrInsufficientScope):
+		// Both chains stay: the projection's sentinel picks the
+		// status, the bridge's error names the required scopes.
+		return fmt.Errorf("%w: %w", api.ErrInsufficientScope, err)
 	case errors.Is(err, ErrPermissionDenied):
 		return fmt.Errorf("%w: %s", api.ErrPermissionDenied, err.Error())
 	case errors.Is(err, ErrRateLimited):

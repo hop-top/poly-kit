@@ -22,6 +22,7 @@
 //	item add     write-local
 //	item tag     write-local        kit/requires-confirmation
 //	item sync    read               kit/auth-required
+//	item export  read               kit/permissions: runs for a caller holding items:export
 //	item purge   destructive-shared
 //	shell        interactive
 //	upgrade      write, kit/self-hosting
@@ -221,6 +222,24 @@ func itemCmd(root *cli.Root, st *store) *cobra.Command {
 	cli.SetSideEffect(syncCmd, cli.SideEffectRead)
 	cli.SetIdempotency(syncCmd, cli.IdempotencyYes)
 
+	// export declares kit/permissions: over a served surface it runs
+	// only for a caller whose verified credential holds items:export,
+	// or one the transport established as the owner (the socket, MCP
+	// over stdio).
+	export := &cobra.Command{
+		Use:         "export",
+		Short:       "Export every item",
+		Long:        "Export every item. Needs the items:export scope when served.",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"kit/permissions": "items:export"},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			fmt.Fprintf(cmd.OutOrStdout(), "exported %d items\n", len(st.list()))
+			return nil
+		},
+	}
+	cli.SetSideEffect(export, cli.SideEffectRead)
+	cli.SetIdempotency(export, cli.IdempotencyYes)
+
 	purge := &cobra.Command{
 		Use:   "purge",
 		Short: "Remove every item",
@@ -234,7 +253,7 @@ func itemCmd(root *cli.Root, st *store) *cobra.Command {
 	cli.SetSideEffect(purge, cli.SideEffectDestructiveShared)
 	cli.SetIdempotency(purge, cli.IdempotencyYes)
 
-	item.AddCommand(list, watchCmd(st), add, tag, syncCmd, purge)
+	item.AddCommand(list, watchCmd(st), add, tag, syncCmd, export, purge)
 	return item
 }
 

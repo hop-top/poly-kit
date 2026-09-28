@@ -422,6 +422,14 @@ func writeWebhookBridgeError(w http.ResponseWriter, err error) {
 			Code:    "destructive_blocked",
 			Message: err.Error(),
 		})
+	case errors.Is(err, ErrInsufficientScope):
+		// The sender is not a bearer client, so no challenge: the
+		// code alone names the class.
+		api.Error(w, http.StatusForbidden, &api.APIError{
+			Status:  http.StatusForbidden,
+			Code:    api.CodeInsufficientScope,
+			Message: err.Error(),
+		})
 	case errors.Is(err, ErrPermissionDenied):
 		api.Error(w, http.StatusForbidden, &api.APIError{
 			Status:  http.StatusForbidden,

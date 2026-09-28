@@ -621,6 +621,8 @@ func lambdaHTTPErrorCode(err error) (int, string) {
 		return 500, api.CodeNotInvocable
 	case errors.Is(err, ErrDestructiveBlocked):
 		return 403, "destructive_blocked"
+	case errors.Is(err, ErrInsufficientScope):
+		return 403, api.CodeInsufficientScope
 	case errors.Is(err, ErrPermissionDenied):
 		return 403, api.CodePermissionDenied
 	case errors.Is(err, ErrRateLimited):

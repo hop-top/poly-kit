@@ -854,17 +854,21 @@ func TestRESTPermissionDeniedIs403AndDiscoveryUnchanged(t *testing.T) {
 	base, stop := serveAPI(t, r)
 	defer stop()
 
-	// bob lacks the scope admin reset declares: 403 with the reason.
+	// bob lacks the scope admin reset declares: the built-in scope
+	// check answers 403 insufficient_scope, with the challenge naming
+	// the scope a token needs, before the adopter's gate is asked.
 	resp, body := postJSON(t, base+"/v1/commands/admin/reset", `{}`, map[string]string{"Authorization": "Bearer bob"})
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
+	assert.Equal(t, `Bearer error="insufficient_scope", scope="admin"`, resp.Header.Get("WWW-Authenticate"))
 	var ae api.APIError
 	require.NoError(t, json.Unmarshal(body, &ae))
-	assert.Equal(t, api.CodePermissionDenied, ae.Code)
+	assert.Equal(t, api.CodeInsufficientScope, ae.Code)
 	assert.Equal(t,
-		"api: permission denied: cmdsurface: permission denied: admin reset on rest: missing scope admin",
+		"api: insufficient scope: cmdsurface: insufficient scope: admin reset on rest: missing scope admin",
 		ae.Message)
 	inv, _, err := rec.last(t)
-	assert.ErrorIs(t, err, cmdsurface.ErrPermissionDenied)
+	assert.ErrorIs(t, err, cmdsurface.ErrInsufficientScope)
+	assert.ErrorIs(t, err, cmdsurface.ErrPermissionDenied, "the class degrades to a permission denial")
 	assert.Equal(t, "bob", inv.Meta.Caller)
 	assert.Equal(t, []string{"admin", "reset"}, inv.Path)
 

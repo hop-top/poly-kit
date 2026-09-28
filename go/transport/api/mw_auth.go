@@ -82,8 +82,8 @@ type Claims struct {
 	Tenant string `json:"tenant,omitempty"`
 	// Scopes are the entitlements the credential carries. They are
 	// forwarded to the permission gate as Meta.Extra["scopes"],
-	// comma-joined, so a policy can check them against a command's
-	// kit/permissions annotation.
+	// comma-joined, where the bridge's scope check requires every
+	// scope a command declares in its kit/permissions annotation.
 	Scopes []string `json:"scopes,omitempty"`
 }
 

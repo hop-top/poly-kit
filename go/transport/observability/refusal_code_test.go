@@ -18,3 +18,11 @@ func TestRefusalCodeDeadlineExceeded(t *testing.T) {
 	assert.Equal(t, OutcomeRefused, outcome)
 	assert.Equal(t, RefusalDeadlineExceeded, code)
 }
+
+// TestRefusalCodeInsufficientScope pins that a scope refusal is
+// counted as its own class, not as the permission denial it wraps.
+func TestRefusalCodeInsufficientScope(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", &cmdsurface.InsufficientScopeError{Path: "items peek", Missing: []string{"items:read"}})
+	assert.Equal(t, RefusalInsufficientScope, RefusalCode(err))
+	assert.Equal(t, RefusalPermissionDenied, RefusalCode(fmt.Errorf("%w: nope", cmdsurface.ErrPermissionDenied)))
+}

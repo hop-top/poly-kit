@@ -172,6 +172,12 @@ func WithPolicy(p Policy) Option { return func(c *bridgeConfig) { c.policy = p }
 // gate [Invoke] consults after the destructive ceiling and before
 // the Runner on every surface. A nil fn keeps the default,
 // [PermitAll].
+//
+// fn runs after the bridge's built-in scope check, which refuses a
+// remote caller lacking a scope the leaf declares under
+// kit/permissions (see [ErrInsufficientScope]); fn is asked only about
+// calls that check admitted, so it can narrow the answer but never
+// widen it.
 func WithPermission(fn PermissionFunc) Option {
 	return func(c *bridgeConfig) { c.permission = fn }
 }
@@ -402,7 +408,13 @@ func matchPattern(pattern string, path []string) bool {
 //     surfaces are the operator's own and pass.
 //  5. Destructive ceiling — ErrDestructiveBlocked: leaf is
 //     destructive and Policy disallows the surface.
-//  6. Permission — ErrPermissionDenied: the [PermissionFunc] refused
+//  6. Permission — first the built-in scope check, then the
+//     [PermissionFunc]. ErrInsufficientScope, as an
+//     [*InsufficientScopeError]: the leaf declares kit/permissions,
+//     the surface is remote, and the caller's verified credential
+//     lacks one of those scopes (a transport-established caller holds
+//     the owner's authority and passes; an unestablished one holds
+//     none). Then ErrPermissionDenied: the [PermissionFunc] refused
 //     this Meta for this leaf; the message carries its reason.
 //  7. Rate limit — ErrRateLimited, as a [*RateLimitedError] carrying
 //     the retry hint: the caller's bucket for the leaf's tier is
@@ -504,6 +516,12 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 	if !b.cfg.policy.Allowed(leaf.Class, surface) {
 		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",
 			ErrDestructiveBlocked, leaf.PathKey(), surface))
+	}
+	// Slot 6, the permission gate: the built-in scope check
+	// (scope.go), then the configured PermissionFunc. Each can only
+	// narrow.
+	if err := scopeCheck(inv.Meta, leaf); err != nil {
+		return nil, b.refuse(ctx, inv, err)
 	}
 	if dec := b.Permission(ctx, inv.Meta, leaf); !dec.Allowed {
 		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s: %s",

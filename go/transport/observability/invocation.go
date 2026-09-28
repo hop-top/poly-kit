@@ -311,6 +311,7 @@ const (
 	RefusalNotInvocable       = "not_invocable"
 	RefusalDestructiveBlocked = "destructive_blocked"
 	RefusalPermissionDenied   = "permission_denied"
+	RefusalInsufficientScope  = "insufficient_scope"
 	RefusalUnauthenticated    = "unauthenticated"
 	RefusalRateLimited        = "rate_limited"
 	RefusalDeadlineExceeded   = "deadline_exceeded"
@@ -349,6 +350,8 @@ func RefusalCode(err error) string {
 		return RefusalNotInvocable
 	case errors.Is(err, cmdsurface.ErrDestructiveBlocked):
 		return RefusalDestructiveBlocked
+	case errors.Is(err, cmdsurface.ErrInsufficientScope):
+		return RefusalInsufficientScope
 	case errors.Is(err, cmdsurface.ErrPermissionDenied):
 		return RefusalPermissionDenied
 	case errors.Is(err, cmdsurface.ErrRateLimited):

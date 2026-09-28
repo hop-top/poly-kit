@@ -361,6 +361,8 @@ func oauthWriteInvokeError(w http.ResponseWriter, p OAuthProvider, err error) {
 		oauthWriteError(w, p, http.StatusInternalServerError, api.CodeNotInvocable, err.Error())
 	case errors.Is(err, ErrDestructiveBlocked):
 		oauthWriteError(w, p, http.StatusForbidden, "destructive_blocked", err.Error())
+	case errors.Is(err, ErrInsufficientScope):
+		oauthWriteError(w, p, http.StatusForbidden, api.CodeInsufficientScope, err.Error())
 	case errors.Is(err, ErrPermissionDenied):
 		oauthWriteError(w, p, http.StatusForbidden, api.CodePermissionDenied, err.Error())
 	case errors.Is(err, ErrRateLimited):

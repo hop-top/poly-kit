@@ -32,6 +32,7 @@ import (
 //	ErrSurfaceNotEnabled  → 404 code=not_enabled
 //	ErrNotInvocable       → 404 code=not_invocable
 //	ErrDestructiveBlocked → 403 code=destructive_blocked
+//	ErrInsufficientScope  → 403 code=insufficient_scope, WWW-Authenticate
 //	ErrPermissionDenied   → 403 code=permission_denied
 //	body decode error     → 400 code=bad_request
 //	body over the cap     → 413 code=body_too_large
@@ -221,6 +222,8 @@ func writeBridgeError(w http.ResponseWriter, err error) {
 			Code:    "destructive_blocked",
 			Message: err.Error(),
 		})
+	case errors.Is(err, ErrInsufficientScope):
+		writeInsufficientScope(w, err)
 	case errors.Is(err, ErrPermissionDenied):
 		api.Error(w, http.StatusForbidden, &api.APIError{
 			Status:  http.StatusForbidden,

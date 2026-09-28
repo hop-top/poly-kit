@@ -374,6 +374,7 @@ func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 		"item add":     {Invocable: true},
 		"item tag":     {Invocable: true},
 		"item sync":    {Invocable: true},
+		"item export":  {Invocable: true},
 		"item purge":   {Reason: "unauthorized-destructive"},
 		"shell":        {Reason: "interactive"},
 		"upgrade":      {Reason: "self-hosting"},
@@ -390,7 +391,7 @@ func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 	// callable is not a route.
 	for name, v := range got {
 		if v.Invocable {
-			assert.Contains(t, []string{"item list", "item watch", "item add", "item tag", "item sync"}, name,
+			assert.Contains(t, []string{"item list", "item watch", "item add", "item tag", "item sync", "item export"}, name,
 				"unexpected invocable command %q", name)
 		}
 	}

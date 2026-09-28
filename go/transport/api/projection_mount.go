@@ -199,6 +199,10 @@ func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error)
 		WriteUnauthenticated(w, "", ae.Message)
 		return
 	}
+	if ae.Code == CodeInsufficientScope {
+		WriteInsufficientScope(w, requiredScopesOf(err), ae.Message)
+		return
+	}
 	if wait, ok := retryAfterOf(err); ok && ae.Status == http.StatusTooManyRequests {
 		SetRetryAfter(w.Header(), wait)
 	}
@@ -232,6 +236,14 @@ func projectionError(d CommandDescriptor, err error) *APIError {
 		return &APIError{
 			Status:  http.StatusForbidden,
 			Code:    CodeDestructiveBlocked,
+			Message: err.Error(),
+		}
+	case errors.Is(err, ErrInsufficientScope):
+		// 403 with the scope challenge: the caller is known, and the
+		// answer names what its token lacks.
+		return &APIError{
+			Status:  http.StatusForbidden,
+			Code:    CodeInsufficientScope,
 			Message: err.Error(),
 		}
 	case errors.Is(err, ErrPermissionDenied):

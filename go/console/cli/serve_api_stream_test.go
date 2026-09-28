@@ -159,15 +159,17 @@ func TestAPIStreamAppliesTheSameGates(t *testing.T) {
 	assert.ErrorIs(t, err, cmdsurface.ErrAuthRefused)
 	assert.Equal(t, []string{"admin", "reset"}, inv.Path)
 
-	// Authenticated, not permitted: 403 with the gate's reason.
+	// Authenticated, not permitted: 403 before anything streams, from
+	// the built-in scope check, naming the scope a token needs.
 	resp, body = doStream(t, http.MethodPost, url, `{}`, map[string]string{"Authorization": "Bearer bob"})
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
+	assert.Equal(t, `Bearer error="insufficient_scope", scope="admin"`, resp.Header.Get("WWW-Authenticate"))
 	var ae api.APIError
 	require.NoError(t, json.Unmarshal(body, &ae), string(body))
-	assert.Equal(t, api.CodePermissionDenied, ae.Code)
+	assert.Equal(t, api.CodeInsufficientScope, ae.Code)
 	assert.Contains(t, ae.Message, "missing scope admin")
 	inv, _, err = rec.last(t)
-	assert.ErrorIs(t, err, cmdsurface.ErrPermissionDenied)
+	assert.ErrorIs(t, err, cmdsurface.ErrInsufficientScope)
 	assert.Equal(t, "bob", inv.Meta.Caller)
 
 	// Permitted: streams.

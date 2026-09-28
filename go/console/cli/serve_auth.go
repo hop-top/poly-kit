@@ -36,16 +36,18 @@ type serveAuthState struct {
 // alike, so a caller is answered the same way whichever transport
 // carried the call.
 //
-// The gate composes with the tool's policy engine: a --policy that
-// refuses a command's side-effect class refuses it here too, for
-// every caller, before fn is asked. fn then decides for this caller
-// — typically by checking the credential's scopes
-// (Meta.Extra["scopes"] over REST) against the leaf's
-// kit/permissions annotation (leaf.Class.Permissions).
+// fn is the last of three deciders, and each can only narrow. The
+// bridge's built-in scope check runs first: a command declaring
+// kit/permissions runs on a served surface only for a caller whose
+// verified credential holds every scope it names, and is otherwise
+// refused insufficient_scope (see [cmdsurface.ErrInsufficientScope]).
+// Then the tool's policy engine: a --policy that refuses a command's
+// side-effect class refuses it here too, for every caller. fn is asked
+// last, for whatever else this caller may not do — a suspended
+// account, a tenant boundary, a rule richer than a scope list.
 //
-// Without this option every authenticated caller may run every
-// command the policy permits, which is the behavior tools had before
-// the gate existed.
+// Without this option every caller the scope check and the policy
+// admit may run the command.
 func WithPermission(fn cmdsurface.PermissionFunc) func(*Root) {
 	return func(r *Root) { r.serveAuth.permission = fn }
 }

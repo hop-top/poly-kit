@@ -92,6 +92,12 @@ func TestMCPOverStdioFromABuiltBinary(t *testing.T) {
 	assert.False(t, isErr, text)
 	assert.Equal(t, "synced 3 items\n", text)
 
+	// A kit/permissions leaf runs on the spawn's trust too: the peer
+	// holds the owner's authority, which no scope narrows.
+	text, _, isErr = mcpCall(t, sess, "item.export", nil)
+	assert.False(t, isErr, text)
+	assert.Equal(t, "exported 3 items\n", text)
+
 	// Confirmation-required runs once the host's user approves.
 	text, _, isErr = mcpCall(t, sess, "item.tag", map[string]any{"name": "nut"})
 	assert.False(t, isErr, text)

@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -144,6 +145,12 @@ type Identity struct {
 	Principal string
 	// Tenant is the verified tenant, empty for single-tenant tools.
 	Tenant string
+	// Scopes are the entitlements the verified caller holds. They
+	// reach the permission gate as Meta.Extra["scopes"], where the
+	// bridge checks them against a command's kit/permissions. A
+	// caller the socket file alone established holds the owner's
+	// authority instead and is not asked for scopes.
+	Scopes []string
 }
 
 // Authenticator verifies who is on the other end of a socket
@@ -382,6 +389,9 @@ func (t *Transport) dispatch(ctx context.Context, conn net.Conn, line []byte, in
 		invocation.Meta.Caller = id.Principal
 		invocation.Meta.Tenant = id.Tenant
 		invocation.Meta.Established = cmdsurface.EstablishedVerified
+		if len(id.Scopes) > 0 {
+			invocation.Meta.Extra = map[string]string{"scopes": strings.Join(id.Scopes, ",")}
+		}
 	} else {
 		// Bind created the socket SocketMode (owner-only): whoever
 		// connected already holds the owner's authority. That proves
@@ -416,6 +426,8 @@ func codeFor(err error) string {
 	case errors.Is(err, cmdsurface.ErrDestructiveBlocked):
 		return CodeBlocked
 	case errors.Is(err, cmdsurface.ErrPermissionDenied):
+		// insufficient_scope included: the class shares DENIED, and
+		// the message starts with its sentinel.
 		return CodeDenied
 	case errors.Is(err, cmdsurface.ErrRateLimited):
 		return CodeRateLimited
