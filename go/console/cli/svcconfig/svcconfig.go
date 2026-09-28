@@ -62,6 +62,10 @@ type Block struct {
 // implemented; reading a key through [Resolver.Lookup] that is not
 // registered here escapes validation.
 var blocks = []Block{
+	{Name: "auth", Keys: []string{"mode"}},
+	{Name: "auth.mtls", Keys: []string{"ca_file", "principal", "tenant_oid", "tenant_san_pattern"}},
+	{Name: "tls", Keys: []string{"enabled", "cert_file", "key_file", "min_version"}},
+	{Name: "tls.acme", Keys: []string{"enabled", "domains", "cache_dir", "email", "directory_url"}},
 	{Name: "tracing", Keys: []string{"enabled", "exporter", "endpoint", "headers", "sample_ratio"}},
 	{Name: "metrics", Keys: []string{"enabled", "exporter", "endpoint", "headers", "interval"}},
 	{Name: "metrics.scrape", Keys: []string{"enabled", "path", "allow_remote"}},

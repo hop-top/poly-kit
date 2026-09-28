@@ -200,6 +200,29 @@ type service struct {
 	root  *cli.Root
 	cfg   *Config
 	stdio *stdioStreams
+	// tls is the HTTP listener's resolved services.mcp.tls and
+	// auth.mode, set by validate and again at bind.
+	tls *cli.ServeTLS
+}
+
+// auth is the verifier every HTTP request passes: the
+// client-certificate verifier services.mcp.auth.mode: mtls selects,
+// else Config.Auth.
+func (s *service) auth() api.AuthFunc {
+	if f := s.tls.ClientCertAuth(); f != nil {
+		return f
+	}
+	return s.cfg.Auth
+}
+
+// resolveTLS resolves services.mcp.tls and auth.mode into s.tls.
+func (s *service) resolveTLS() error {
+	t, err := cli.ResolveServeTLS(s.root, ServiceName)
+	if err != nil {
+		return err
+	}
+	s.tls = t
+	return nil
 }
 
 // Class implements [serve.Classified].
@@ -362,10 +385,13 @@ func (s *service) validateHTTP() error {
 	if p := s.path(); !strings.HasPrefix(p, "/") {
 		return fmt.Errorf("path: %q must begin with \"/\"", p)
 	}
+	if err := s.resolveTLS(); err != nil {
+		return err
+	}
 	if cli.IsLoopbackAddr(addr) {
 		return nil
 	}
-	if s.cfg.Auth == nil && !s.optIn(subkeyInsecureRemote, s.cfg.InsecureRemote) {
+	if s.auth() == nil && !s.optIn(subkeyInsecureRemote, s.cfg.InsecureRemote) {
 		return fmt.Errorf(
 			"addr: %q is not a loopback address and the mcp service has no authentication; "+
 				"set mcpserve.Config.Auth, listen on 127.0.0.1, or set services.mcp.insecure_remote: true "+

@@ -73,6 +73,9 @@ func newHTTP(svc *service) *httpServing {
 // bind acquires the listener and reports the endpoint URL, which is
 // what an MCP client is configured with.
 func (h *httpServing) bind(context.Context) (string, error) {
+	if err := h.svc.resolveTLS(); err != nil {
+		return "", err
+	}
 	ln, err := net.Listen("tcp", h.svc.addr())
 	if err != nil {
 		return "", fmt.Errorf("listen: %w", err)
@@ -80,7 +83,7 @@ func (h *httpServing) bind(context.Context) (string, error) {
 	h.mu.Lock()
 	h.ln = ln
 	h.mu.Unlock()
-	return "http://" + ln.Addr().String() + h.svc.path(), nil
+	return h.svc.tls.Scheme() + "://" + ln.Addr().String() + h.svc.path(), nil
 }
 
 // serve runs the HTTP server until ctx is canceled or close runs.
@@ -116,7 +119,7 @@ func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
 	after := context.AfterFunc(ctx, func() { _ = h.close(context.Background()) })
 	defer after()
 
-	err := srv.Serve(ln)
+	err := h.svc.tls.Serve(srv, ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -211,9 +214,10 @@ func (h *httpServing) middleware() api.Middleware {
 			logger.Error("panic recovered", "error", v, "path", r.URL.Path)
 		}),
 	}
-	authed := h.svc.cfg.Auth != nil
+	auth := h.svc.auth()
+	authed := auth != nil
 	if authed {
-		mws = append(mws, api.Auth(h.svc.cfg.Auth, api.OnAuthRefused(h.auditAuthRefusal)))
+		mws = append(mws, api.Auth(auth, api.OnAuthRefused(h.auditAuthRefusal)))
 	}
 	mws = append(mws, mcpCallRecorder(authed))
 	return api.Chain(mws...)

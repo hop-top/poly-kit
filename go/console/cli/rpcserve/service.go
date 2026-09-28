@@ -191,6 +191,9 @@ type rpcService struct {
 	// serverOpts configure the rpc server. Not exposed: tests shorten
 	// the write timeout with it.
 	serverOpts []rpc.ServerOption
+	// tls is the listener's resolved services.rpc.tls and auth.mode,
+	// set by validate and again by Bind.
+	tls *cli.ServeTLS
 }
 
 var (
@@ -273,6 +276,25 @@ func (s *rpcService) optIn(subkey string, code bool) bool {
 	return code
 }
 
+// auth is the verifier every call passes: the client-certificate
+// verifier services.rpc.auth.mode: mtls selects, else Config.Auth.
+func (s *rpcService) auth() api.AuthFunc {
+	if f := s.tls.ClientCertAuth(); f != nil {
+		return f
+	}
+	return s.cfg.Auth
+}
+
+// resolveTLS resolves services.rpc.tls and auth.mode into s.tls.
+func (s *rpcService) resolveTLS() error {
+	t, err := cli.ResolveServeTLS(s.root, ServiceName)
+	if err != nil {
+		return err
+	}
+	s.tls = t
+	return nil
+}
+
 // maxBodyBytes is the per-message read bound.
 func (s *rpcService) maxBodyBytes() int {
 	if s.cfg.MaxBodyBytes > 0 {
@@ -290,8 +312,11 @@ func (s *rpcService) validate() error {
 	if _, _, err := net.SplitHostPort(addr); err != nil {
 		return fmt.Errorf("addr: %w", err)
 	}
+	if err := s.resolveTLS(); err != nil {
+		return err
+	}
 	if !cli.IsLoopbackAddr(addr) {
-		if s.cfg.Auth == nil && !s.optIn(subkeyInsecureRemote, s.cfg.InsecureRemote) {
+		if s.auth() == nil && !s.optIn(subkeyInsecureRemote, s.cfg.InsecureRemote) {
 			return fmt.Errorf(
 				"addr: %q is not a loopback address and the rpc service has no authentication; "+
 					"set rpcserve.Config.Auth, listen on 127.0.0.1, or set services.rpc.insecure_remote: true "+
@@ -327,6 +352,9 @@ type rpcTransport struct {
 // gRPC-Web or `buf curl` client is configured with; a gRPC client
 // dials its host:port.
 func (t *rpcTransport) Bind(context.Context) (string, error) {
+	if err := t.svc.resolveTLS(); err != nil {
+		return "", err
+	}
 	ln, err := net.Listen("tcp", t.svc.addr())
 	if err != nil {
 		return "", fmt.Errorf("listen: %w", err)
@@ -334,7 +362,7 @@ func (t *rpcTransport) Bind(context.Context) (string, error) {
 	t.mu.Lock()
 	t.ln = ln
 	t.mu.Unlock()
-	return "http://" + ln.Addr().String(), nil
+	return t.svc.tls.Scheme() + "://" + ln.Addr().String(), nil
 }
 
 // Serve mounts the Commands handler and serves until ctx is canceled
@@ -378,7 +406,8 @@ func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error 
 	after := context.AfterFunc(ctx, func() { _ = t.Close(context.Background()) })
 	defer after()
 
-	err := srv.Serve(ln)
+	// Over TLS the server offers HTTP/2 by ALPN in place of h2c.
+	err := t.svc.tls.Serve(srv, ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -424,9 +453,9 @@ func (t *rpcTransport) mountOptions(b *cmdsurface.Bridge) []cmdsurface.RPCOption
 		}),
 		cmdsurface.WithRPCHandlerOptions(connect.WithReadMaxBytes(t.svc.maxBodyBytes())),
 	}
-	if t.svc.cfg.Auth != nil {
+	if auth := t.svc.auth(); auth != nil {
 		opts = append(opts, cmdsurface.WithRPCInterceptors(
-			rpc.Authenticate(t.svc.cfg.Auth, rpc.OnAuthRefused(auditRPCAuthRefusal(b))),
+			rpc.Authenticate(auth, rpc.OnAuthRefused(auditRPCAuthRefusal(b))),
 		))
 	}
 	if len(t.svc.cfg.Interceptors) > 0 {

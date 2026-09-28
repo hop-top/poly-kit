@@ -69,6 +69,9 @@ type apiService struct {
 	// addrFlag records --addr, kept apart from cfg.Addr so the flag
 	// wins over services.api.addr for one run.
 	addrFlag string
+	// tls is the listener's resolved services.api.tls and auth.mode,
+	// set by Validate and again by Start.
+	tls *ServeTLS
 
 	mu   sync.Mutex
 	srv  *http.Server
@@ -115,6 +118,11 @@ func (a *apiService) Validate() error {
 	if _, _, err := net.SplitHostPort(addr); err != nil {
 		return fmt.Errorf("addr: %w", err)
 	}
+	t, err := ResolveServeTLS(a.root, APIServiceName)
+	if err != nil {
+		return err
+	}
+	a.tls = t
 	if err := a.validateExposure(addr); err != nil {
 		return err
 	}
@@ -159,7 +167,7 @@ func (a *apiService) validateExposure(addr string) error {
 		return nil
 	}
 	const fix = "listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback"
-	if a.cfg.Auth != nil && a.noAuth {
+	if (a.cfg.Auth != nil || a.tls.ClientCertAuth() != nil) && a.noAuth {
 		return fmt.Errorf(
 			"addr: %q is not a loopback address and --no-auth disables authentication; drop --no-auth, %s",
 			addr, fix,
@@ -213,10 +221,24 @@ func (a *apiService) insecureNoPolicy() bool {
 	return a.cfg.InsecureNoPolicy
 }
 
-// authenticates reports whether requests will pass through Auth: an
-// AuthFunc is configured and --no-auth did not disable it.
+// authenticates reports whether requests will pass through a
+// verifier: one is configured and --no-auth did not disable it. Plain
+// TLS is not one; auth.mode: mtls is.
 func (a *apiService) authenticates() bool {
-	return a.cfg.Auth != nil && !a.noAuth
+	return a.authFunc() != nil
+}
+
+// authFunc is the verifier every route passes: the client-certificate
+// verifier auth.mode: mtls selects, else APIConfig.Auth; nil under
+// --no-auth.
+func (a *apiService) authFunc() api.AuthFunc {
+	if a.noAuth {
+		return nil
+	}
+	if f := a.tls.ClientCertAuth(); f != nil {
+		return f
+	}
+	return a.cfg.Auth
 }
 
 // insecureRemote resolves the opt-in with the usual precedence: the
@@ -258,6 +280,11 @@ func (a *apiService) listenAddr() string {
 // Start binds the listener, reports ready, and serves until ctx is
 // canceled.
 func (a *apiService) Start(ctx context.Context, ready func()) error {
+	t, err := ResolveServeTLS(a.root, APIServiceName)
+	if err != nil {
+		return err
+	}
+	a.tls = t
 	handler, err := a.buildHandler(ctx)
 	if err != nil {
 		return err
@@ -285,7 +312,7 @@ func (a *apiService) Start(ctx context.Context, ready func()) error {
 	// deterministically has succeeded, so the service is ready.
 	ready()
 
-	err = srv.Serve(ln)
+	err = t.Serve(srv, ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -372,7 +399,7 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	guards = append(guards, a.compressionMiddleware()...)
 	if a.authenticates() {
 		// Auth, HTTP slot 12: every route, the documents included.
-		guards = append(guards, api.Auth(a.cfg.Auth,
+		guards = append(guards, api.Auth(a.authFunc(),
 			api.OnAuthRefused(cmdsurface.ProjectionAuthRefusal(bridge))))
 	}
 
