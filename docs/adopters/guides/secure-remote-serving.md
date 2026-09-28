@@ -1598,6 +1598,7 @@ observability](../reference/served-observability.md)).
 | `services.socket.auth.mode: peer` | unset | Names each socket caller by its kernel-reported uid, verified; replaces `SocketConfig.Auth`. `auth.peer.require_same_uid` refuses other uids, `auth.peer.resolve_names` uses the user name. A peer holds no scopes until `auth.peer.scopes` or `SocketConfig.PeerScopes` grants them. Linux, macOS, FreeBSD. |
 | `kit/permissions` annotation | none | Scopes a verified caller must all hold; otherwise `403 insufficient_scope`. The owner (socket file, stdio, CLI) is not asked. |
 | `cli.WithPermission(fn)` | permit all | Permission decision on every kit-shipped transport service, after the scope check and `--policy`; can only narrow. |
+| `cli.WithTokenCheck(fn)` | none | Revocation check on every credential the `auth.mode` verifier accepted (`jwt`, `jwks`, `oidc`, `apikey`); an error refuses it `401`. |
 | `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. Records are always redacted. |
 | `services.<svc>.audit.redact.secret_flags` | none | Extra flag names masked in audit records; `services.all` applies to every service. |
 | `services.<svc>.audit.redact.patterns` | none | Extra content patterns (RE2) masked in audit records. |
@@ -1650,8 +1651,10 @@ Absence here is deliberate; each of these belongs somewhere else:
 
 - **An identity provider.** Kit verifies tokens (`auth.mode: jwt`,
   `jwks`, `oidc`) but runs no login, consent or token endpoint; a
-  bearer mode has no revocation list beyond expiry (a code verifier
-  from `go/transport/authn` takes a `Check` hook for one). With
+  bearer mode has no revocation list of its own beyond expiry; plug
+  yours in with `cli.WithTokenCheck(fn)`, which every verifier
+  `auth.mode` selects (API keys included) runs on each credential it
+  accepted. With
   `auth.mode: mtls` kit verifies the certificate chain against your
   CA bundle; issuing and revoking certificates stays with you (no CRL
   or OCSP check).

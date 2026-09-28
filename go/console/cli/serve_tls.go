@@ -197,7 +197,7 @@ func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 			if err != nil {
 				return nil, err
 			}
-			t.apiKeys = &apiKeyVerifier{cfg: cfg}
+			t.apiKeys = &apiKeyVerifier{cfg: cfg, check: r.tokenCheck()}
 			t.bearer = t.apiKeys.AuthFunc()
 			return t, nil
 		}

@@ -90,7 +90,7 @@ func (t tlsResolver) checkAuthBlocks(mode string) error {
 }
 
 // bearerVerifier builds the verifier a bearer auth.mode selects, from
-// the block of that mode. It fetches nothing: a JWKS or OIDC key set
+// the block of that mode, with r's [WithTokenCheck] check. It fetches nothing: a JWKS or OIDC key set
 // is fetched on the first request that needs it.
 func (t tlsResolver) bearerVerifier(r *Root, mode string) (*authn.Verifier, error) {
 	switch mode {
@@ -108,6 +108,7 @@ func (t tlsResolver) bearerVerifier(r *Root, mode string) (*authn.Verifier, erro
 		if err != nil {
 			return nil, err
 		}
+		opts.Check = r.tokenCheck()
 		remote, err := t.remote(authJWKSBlock)
 		if err != nil {
 			return nil, err
@@ -125,6 +126,7 @@ func (t tlsResolver) bearerVerifier(r *Root, mode string) (*authn.Verifier, erro
 		if err != nil {
 			return nil, err
 		}
+		opts.Check = r.tokenCheck()
 		remote, err := t.remote(authOIDCBlock)
 		if err != nil {
 			return nil, err
@@ -165,6 +167,7 @@ func (t tlsResolver) jwtVerifier(r *Root) (*authn.Verifier, error) {
 	if err != nil {
 		return nil, err
 	}
+	opts.Check = r.tokenCheck()
 	var keys []authn.Key
 	if r != nil && r.Identity != nil {
 		keys = append(keys, authn.IdentityKey(r.Identity))

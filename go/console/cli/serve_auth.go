@@ -10,6 +10,7 @@ import (
 
 	"hop.top/kit/go/console/cli/policy"
 	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/transport/authn"
 	"hop.top/kit/go/transport/cmdsurface"
 )
 
@@ -29,6 +30,8 @@ type serveAuthState struct {
 	chains auditChains
 	// idem is the idempotency ledger every service shares.
 	idem serveIdempotencyState
+	// tokenCheck is the WithTokenCheck revocation hook; nil when unset.
+	tokenCheck func(ctx context.Context, t *authn.Token) error
 	// bridgeOpts are applied last on every kit-shipped service's
 	// bridge. Not exposed: tests use it to install a stub Runner
 	// behind the real serve path.
@@ -62,6 +65,32 @@ type serveAuthState struct {
 // its rules admit may run the command.
 func WithPermission(fn cmdsurface.PermissionFunc) func(*Root) {
 	return func(r *Root) { r.serveAuth.permission = fn }
+}
+
+// WithTokenCheck installs a revocation check on every credential
+// verifier services.<svc>.auth.mode selects: a jwt, jwks or oidc
+// bearer token, and a kit API key under apikey, which is presented as
+// the token [authn.APIKey.Token] describes (its principal, tenant,
+// scopes, and its id as jti). check runs after every other check
+// passed, as [authn.Options.Check] does; a non-nil error refuses the
+// credential as invalid — 401 unauthenticated, audited — naming the
+// error. It applies wherever the verifier is built from configuration:
+// every served listener and `token verify`. Look the token's jti,
+// subject or issue time up in a deny list; the call is on the request
+// path, so keep it fast.
+//
+// A verifier installed in code (APIConfig.Auth and its siblings) is
+// the adopter's own and is not wrapped; set authn.Options.Check there.
+func WithTokenCheck(check func(ctx context.Context, t *authn.Token) error) func(*Root) {
+	return func(r *Root) { r.serveAuth.tokenCheck = check }
+}
+
+// tokenCheck returns the WithTokenCheck check, nil when unset.
+func (r *Root) tokenCheck() func(ctx context.Context, t *authn.Token) error {
+	if r == nil {
+		return nil
+	}
+	return r.serveAuth.tokenCheck
 }
 
 // PermissionRuleCompiler turns the permissions: block of the active

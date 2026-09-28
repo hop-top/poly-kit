@@ -16,7 +16,7 @@ HTTP gate take it unchanged.
 - trust key files → `ParsePublicKeyPEM(data)`, then `NewJWT`
 - trust a JWKS URL → `NewJWKS(url, Remote{...}, opts)`
 - trust an OpenID provider → `NewOIDC(issuer, Remote{...}, opts)`
-- deny revoked tokens → `Options.Check`
+- deny revoked tokens → `Options.Check`; the same check on API keys → `APIKeys.WithCheck`; on a verifier `auth.mode` chose → `cli.WithTokenCheck`
 - issue and check API keys → `NewAPIKeys(kvStore, nil)`: `Create`, `List`, `Revoke`, `Verify`, `AuthFunc`
 - plug into a router → `Verifier.AuthFunc()`; check a token string → `Verifier.Verify(ctx, raw)`
 

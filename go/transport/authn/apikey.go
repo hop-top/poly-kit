@@ -86,6 +86,7 @@ type NewAPIKey struct {
 type APIKeys struct {
 	store kv.Store
 	now   func() time.Time
+	check func(ctx context.Context, t *Token) error
 }
 
 // NewAPIKeys returns API keys over store. now is the clock; nil means
@@ -95,6 +96,32 @@ func NewAPIKeys(store kv.Store, now func() time.Time) *APIKeys {
 		now = time.Now
 	}
 	return &APIKeys{store: store, now: now}
+}
+
+// WithCheck returns the keys with check run on every key that passed
+// verification, as [Options.Check] runs on a verified token: the key
+// is presented as its [APIKey.Token], and a non-nil error refuses it,
+// wrapping [ErrInvalidToken]. It is the revocation hook a deny list
+// shared with the token verifiers plugs into; `token key revoke`
+// remains the way to revoke one key.
+func (k *APIKeys) WithCheck(check func(ctx context.Context, t *Token) error) *APIKeys {
+	cp := *k
+	cp.check = check
+	return &cp
+}
+
+// Token presents the key as a verified token: its principal, tenant
+// and scopes, its id as jti, issued at its creation, expiring when it
+// does (zero when it never does).
+func (k *APIKey) Token() *Token {
+	return &Token{
+		Subject:  k.Principal,
+		Tenant:   k.Tenant,
+		Scopes:   k.Scopes,
+		ID:       k.ID,
+		IssuedAt: k.CreatedAt,
+		Expiry:   k.ExpiresAt,
+	}
 }
 
 // Create issues a key and returns it with its record. The key is
@@ -182,7 +209,8 @@ func (k *APIKeys) Revoke(ctx context.Context, id string) (*APIKey, error) {
 
 // Verify checks raw, a full API key, and returns its record. Refusals
 // wrap [ErrInvalidToken]: a malformed key, an unknown id, a secret that
-// does not match, a revoked or expired key.
+// does not match, a revoked or expired key, one the [APIKeys.WithCheck]
+// check refuses.
 func (k *APIKeys) Verify(ctx context.Context, raw string) (*APIKey, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -214,6 +242,11 @@ func (k *APIKeys) Verify(ctx context.Context, raw string) (*APIKey, error) {
 	}
 	if !rec.ExpiresAt.IsZero() && !now.Before(rec.ExpiresAt) {
 		return nil, invalid("api key %s expired", id)
+	}
+	if k.check != nil {
+		if err := k.check(ctx, rec.Token()); err != nil {
+			return nil, invalid("%v", err)
+		}
 	}
 	return rec, nil
 }

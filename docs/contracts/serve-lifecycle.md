@@ -1862,9 +1862,15 @@ its name under `services.<svc>.auth` or `services.all.auth`:
 - A token is accepted when it is signed under an asymmetric algorithm
   (never `none`, never HMAC) by a trusted key, carries `exp` and `sub`,
   is inside `exp`/`nbf`/`iat` with the skew, and matches `issuer` and
-  `audience` where set. Anything else is refused at slot 12 as
-  `unauthenticated`, audited like any refusal, with the
-  `WWW-Authenticate: Bearer` challenge.
+  `audience` where set, and, when the tool installs one
+  (`cli.WithTokenCheck`), passes the revocation check, which runs last
+  on a token every other check accepted. Anything else is refused at
+  slot 12 as `unauthenticated`, audited like any refusal, with the
+  `WWW-Authenticate: Bearer` challenge. The check is code, not
+  configuration: it applies to whichever verifier `auth.mode` selects
+  — `jwt`, `jwks`, `oidc`, and `apikey`, where the key is presented as
+  a token (principal as `sub`, its id as `jti`) — on every service and
+  in `token verify`; a code `Auth` is the adopter's and is not wrapped.
 - The claims are the call's identity: `sub` is `Caller`, the tenant
   claim `Tenant`, and the scopes — `scopes` (a list), else `scope`
   (space-delimited, RFC 8693), else `scp` — `Meta.Extra["scopes"]`.
@@ -1936,8 +1942,9 @@ kit HTTP listeners, sent as `X-API-Key: <key>` or
   reads the store on every request. A revoked key stays listed.
 - The key's principal, tenant and scopes are the call's `Caller`,
   `Tenant` and `Meta.Extra["scopes"]`; `Established` is `verified`.
-  An unknown, malformed, revoked or expired key is `unauthenticated`
-  at slot 12, audited. A store that cannot be read refuses the
+  An unknown, malformed, revoked or expired key, or one the
+  `cli.WithTokenCheck` check refuses, is `unauthenticated` at slot 12,
+  audited. A store that cannot be read refuses the
   request without judging the key.
 - The store is opened on the first request and closed when the
   listener stops serving; `sqlite` is shared with the `token key`

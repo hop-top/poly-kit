@@ -111,7 +111,9 @@ func openAPIKeyStore(ctx context.Context, cfg kv.Config) (kv.Store, error) {
 // one still draining as the service stops — opens the store for
 // itself, so it is judged, not refused.
 type apiKeyVerifier struct {
-	cfg    kv.Config
+	cfg kv.Config
+	// check is the WithTokenCheck revocation hook, nil when unset.
+	check  func(context.Context, *authn.Token) error
 	mu     sync.RWMutex
 	store  kv.Store
 	closed bool
@@ -134,7 +136,7 @@ func (v *apiKeyVerifier) acquire(ctx context.Context) (*authn.APIKeys, func(), e
 	for {
 		v.mu.RLock()
 		if v.store != nil {
-			return authn.NewAPIKeys(v.store, nil), v.mu.RUnlock, nil
+			return authn.NewAPIKeys(v.store, nil).WithCheck(v.check), v.mu.RUnlock, nil
 		}
 		v.mu.RUnlock()
 
@@ -145,7 +147,7 @@ func (v *apiKeyVerifier) acquire(ctx context.Context) (*authn.APIKeys, func(), e
 			if err != nil {
 				return nil, nil, err
 			}
-			return authn.NewAPIKeys(s, nil), func() { _ = s.Close() }, nil
+			return authn.NewAPIKeys(s, nil).WithCheck(v.check), func() { _ = s.Close() }, nil
 		}
 		if v.store == nil {
 			s, err := openAPIKeyStore(context.WithoutCancel(ctx), v.cfg)

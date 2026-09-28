@@ -260,7 +260,7 @@ func tokenVerifier(r *Root, svc string) (*authn.Verifier, string, error) {
 			"token verify: nothing to verify with: services.%s.auth.mode is not jwt, jwks or oidc, "+
 				"and the tool has no identity keypair", svc))
 	}
-	v, err := authn.NewJWT([]authn.Key{authn.IdentityKey(r.Identity)}, authn.Options{})
+	v, err := authn.NewJWT([]authn.Key{authn.IdentityKey(r.Identity)}, authn.Options{Check: r.tokenCheck()})
 	if err != nil {
 		return nil, "", err
 	}
