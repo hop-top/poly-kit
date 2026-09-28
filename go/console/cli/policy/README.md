@@ -47,9 +47,9 @@ fmt.Println(errors.Is(e.RecordOp(del), policy.ErrMaxOpsExceeded))
 
 ## Contract
 
-- YAML shape: `name`, `allow` (map of side-effect class to verb globs),
-  `max_ops`, `require_confirm` (command-path globs). A missing `name`
-  defaults to the file stem.
+- YAML shape: `name` (default: file stem), `allow` (class → verb globs),
+  `max_ops`, `require_confirm` (path globs), `permissions` (served-call
+  rules; `Load` checks their shape, `celpermission` compiles them).
 - `allow` semantics: no map at all permits everything; a class listed
   with an empty list refuses that class categorically; a class absent
   from the map is permitted. Read-tagged and untagged commands always

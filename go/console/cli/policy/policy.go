@@ -2,7 +2,8 @@
 // Adopter tools wire enforcement
 // once via cli.WithPolicy; this package owns:
 //
-//   - Policy: the loaded YAML shape (allow / max_ops / require_confirm)
+//   - Policy: the loaded YAML shape (allow / max_ops / require_confirm,
+//     and the permissions: rules a served tool compiles)
 //   - Engine: per-invocation enforcement state — Authorize gates the
 //     side-effect tag, RecordOp accounts mutating-op budget.
 //   - Load: reads $XDG_CONFIG_HOME/<tool>/policies/<name>.yaml.
@@ -19,6 +20,7 @@ package policy
 
 import (
 	"errors"
+	"fmt"
 )
 
 // SideEffect mirrors cli.SideEffect as a local type so the Policy
@@ -47,11 +49,77 @@ const (
 //     command is recognized via the kit/destructive-token annotation;
 //     this list adds extra command paths beyond annotation-driven
 //     ones.
+//   - Permissions: expression rules for served invocations, the
+//     `permissions:` block. Inert here: the Engine never reads them.
+//     A served tool compiles them into its permission gate, where
+//     they run after the scope check and Allow, and can only narrow
+//     (see PermissionRule).
 type Policy struct {
 	Name           string                  `yaml:"name"`
 	Allow          map[SideEffect][]string `yaml:"allow"`
 	MaxOps         int                     `yaml:"max_ops"`
 	RequireConfirm []string                `yaml:"require_confirm"`
+	Permissions    []PermissionRule        `yaml:"permissions"`
+}
+
+// PermissionRule is one entry of a policy's `permissions:` block: a
+// named boolean expression over a served invocation, in the rule
+// language of hop.top/kit/go/runtime/policy. Effect applies when When
+// is true, Otherwise when it is false; across rules deny overrides,
+// and a rule that fails to evaluate denies.
+//
+// This package only carries and validates the rules. Compiling and
+// evaluating them is the evaluator's job — the CEL one lives in
+// hop.top/kit/go/console/cli/celpermission — so a tool that never
+// serves links no expression engine.
+type PermissionRule struct {
+	// Name identifies the rule in refusals and audit records. Required
+	// and unique within the block.
+	Name string `yaml:"name"`
+	// When is the expression. Required.
+	When string `yaml:"when"`
+	// Effect is the verdict when When is true: allow or deny.
+	Effect string `yaml:"effect"`
+	// Otherwise is the verdict when When is false: allow or deny.
+	Otherwise string `yaml:"otherwise"`
+	// Message is the refusal's human-readable explanation.
+	Message string `yaml:"message"`
+}
+
+// Rule effects, the values PermissionRule.Effect and Otherwise take.
+const (
+	RuleAllow = "allow"
+	RuleDeny  = "deny"
+)
+
+// ValidatePermissionRules checks the shape of a permissions: block:
+// every rule named, names unique, an expression present, and both
+// effects allow or deny. It does not compile the expressions; the
+// evaluator does, and names the rule it cannot compile.
+func ValidatePermissionRules(rules []PermissionRule) error {
+	seen := make(map[string]struct{}, len(rules))
+	for i, r := range rules {
+		if r.Name == "" {
+			return fmt.Errorf("permissions[%d]: name required", i)
+		}
+		if _, dup := seen[r.Name]; dup {
+			return fmt.Errorf("permission rule %q: duplicate name", r.Name)
+		}
+		seen[r.Name] = struct{}{}
+		if r.When == "" {
+			return fmt.Errorf("permission rule %q: 'when' required", r.Name)
+		}
+		for _, f := range []struct{ field, value string }{{"effect", r.Effect}, {"otherwise", r.Otherwise}} {
+			switch f.value {
+			case RuleAllow, RuleDeny:
+			case "":
+				return fmt.Errorf("permission rule %q: %s required (allow|deny)", r.Name, f.field)
+			default:
+				return fmt.Errorf("permission rule %q: %s %q invalid (want allow|deny)", r.Name, f.field, f.value)
+			}
+		}
+	}
+	return nil
 }
 
 // ErrMaxOpsExceeded is returned by Engine.RecordOp when the per-
