@@ -31,9 +31,9 @@ import "reflect"
 // inspect qualifiers generically use [QualifiersFrom] on the
 // payload.
 //
-// See ADR-0017 (docs/adr/0017-bus-topic-naming-and-qualifiers.md)
-// for the rationale behind keeping these axes out of the topic
-// string (cardinality, subscriber pattern stability, metric
+// See docs/contracts/event-topics.md ("Qualifiers belong in the
+// payload") for the rationale behind keeping these axes out of the
+// topic string (cardinality, subscriber pattern stability, metric
 // series cap).
 type Qualifiers struct {
 	Reason       string `json:"reason,omitempty"`

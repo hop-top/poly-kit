@@ -279,9 +279,10 @@ type ReloadFailed struct {
 
 Topics function as routing keys; encoding qualifiers into the
 topic explodes the routing tree, fragments metric series, and
-breaks pinned subscribers when a new qualifier appears. See
-[ADR-0017](../adr/0017-bus-topic-naming-and-qualifiers.md) for
-the full rationale.
+breaks pinned subscribers when a new qualifier appears. For the
+same reason a modifier joins the Object segment with an underscore
+instead of adding a fifth segment: topics stay flat 4-segment
+strings that hash, log and match exactly as before.
 
 ## Cross-references
 
@@ -294,5 +295,4 @@ the full rationale.
 - [Bus API Reference](../adopters/reference/bus-api.md)
 - [Domain events guide](../adopters/reference/domain-events.md)
 - [`runtime/sync.Replicator`](../../go/runtime/sync/replicator.go)
-- [ADR-0017 Bus topic naming and Qualifiers](../adr/0017-bus-topic-naming-and-qualifiers.md)
 - [RELEASING.md](../releasing.md) — current release notes

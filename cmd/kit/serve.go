@@ -1,10 +1,9 @@
 // `kit serve` is the reference implementation of the engine wire
 // protocol, served as kit's own api service (see engine below).
 // Routes, request/response shapes, status codes, and the
-// error envelope below conform to docs/engine-protocol.md, with
-// per-row protocol-of-record decisions captured in
-// docs/adr/0018-engine-sdk-protocol-reconciliation.md (audit:
-// docs/audits/engine-sdk-drift.md). Wire-shape changes here MUST
+// error envelope below conform to
+// docs/adopters/reference/engine-protocol.md, which also records
+// which side is the protocol of record. Wire-shape changes here MUST
 // land in lockstep with both SDKs (engine/sdk/ts-kit-engine,
 // engine/sdk/py-kit-engine) and the parity test under
 // engine/sdk/parity, otherwise cross-SDK parity breaks.

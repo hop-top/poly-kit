@@ -15,8 +15,7 @@ A harness that:
    `auto-allow | prompt | deny`.
 3. Inherits policy for new kit-powered CLIs without code changes.
 
-The contract is anchored in [ADR-0022](../adr/0022-toolspec-ai-harness-contract.md);
-the artefact set this guide draws from lives under
+The contract is this guide plus the artefact set under
 `go/ai/toolspec/`.
 
 ## Step 1 — Discover the manifest
@@ -169,7 +168,6 @@ rules fill the gaps.
 
 ## Where to find things
 
-- ADR-0022 — protocol contract
 - `go/ai/toolspec/spec.go` — `Manifest` / `ManifestCommand` types
 - `go/ai/toolspec/policy/default.yaml` — the embedded default
 - `go/ai/toolspec/policy/policy.go` — `Table.Resolve`, `Merge`,

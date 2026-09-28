@@ -8,8 +8,8 @@ The engine wire protocol (`docs/engine-protocol.md`), the Go
 reference server (`cmd/kit/serve.go`), the TypeScript SDK
 (`engine/sdk/ts-kit-engine`), and the Python SDK
 (`engine/sdk/py-kit-engine`) now all describe the SAME contract.
-Per-row protocol-of-record decisions are in
-[ADR-0018](adr/0018-engine-sdk-protocol-reconciliation.md);
+The protocol-of-record rules are in
+[`engine-protocol.md`](../adopters/reference/engine-protocol.md);
 the input audit is [`docs/contributors/audits/engine-sdk-drift.md`](audits/engine-sdk-drift.md).
 
 Cross-SDK parity is locked by the integration test under
@@ -114,8 +114,7 @@ encoding semantic qualifiers there explodes the routing tree,
 fragments metric series, and breaks pinned subscribers when a new
 qualifier appears. Qualifiers belong in the payload.
 
-See [ADR-0017](adr/0017-bus-topic-naming-and-qualifiers.md)
-and [docs/contributors/contracts/event-topics.md](contracts/event-topics.md).
+See [`event-topics.md`](../contracts/event-topics.md).
 
 ### Signal-driven hot reload for `core/config`
 
@@ -149,8 +148,7 @@ Bus events (use the existing `domain.EventPublisher` shape):
 | `kit.config.snapshot.reloaded` | reload swapped successfully | `ReloadedPayload` (mutable diff + source paths) |
 | `kit.config.snapshot.reload_failed` | reload vetoed or `Load` failed | `ReloadFailedPayload` (reason + offending paths + error) |
 
-See [ADR-0016](adr/0016-config-signal-driven-hot-reload.md)
-and `go/core/config/README.md`.
+See `go/core/config/README.md`.
 
 ### `WallClock` interface for deterministic tests (`runtime/sync`)
 
@@ -222,8 +220,7 @@ process-local maps that were lost on every `kit serve` restart.
 **New default behavior** — `kit serve` defaults to a SQLite-backed
 `VersionStore`. Versioning rows live in the same engine database
 file `DocumentStore` already owns, so a document write and its
-version row commit in a single transaction (see
-[ADR-0011](adr/0011-engine-versioned-store-same-db.md)).
+version row commit in a single transaction.
 History survives process restarts.
 
 **Pluggable backend** — the `VersionStore` interface is the seam.
@@ -266,10 +263,9 @@ who saw intermittent `SQLITE_BUSY` / `SQLITE_BUSY_SNAPSHOT`
 errors under load: this release fixes the underlying contract
 violations.
 
-**Spec & ADR**
+**References**
 
 - Spec: [`docs/contributors/specs/engine-store-versioned-sqlite.md`](specs/engine-store-versioned-sqlite.md)
-- ADR: [`docs/contributors/adr/0011-engine-versioned-store-same-db.md`](adr/0011-engine-versioned-store-same-db.md)
 
 ### Branching public API for versioned documents (`engine/store`)
 
@@ -305,16 +301,17 @@ unchanged.
 **Schema unchanged.** Branching rides the existing `version_parents`
 many-to-one join table from the engine-versioned-sqlite track. No
 migration; no changes to `documents`, `versions`, or `snapshots`.
-ADR-0011 decision 3 locked the schema flexibility that made this
-track additive.
+The many-to-one `version_parents` shape, chosen when the table was
+introduced, is what made this track additive.
 
 **Sibling-materialization Fork semantics.** `Fork` is *not*
 idempotent — calling it twice at the same `fromSeq` produces two
 distinct sibling versions. That is the only way MVP expresses
-divergence without a separate `UpdateAt(seq, ...)` surface. Rationale,
-alternatives considered, and the consequences for `Update` /
-`Revert` / branch-aware behavior are recorded in
-[ADR-0013](adr/0013-engine-versioned-branching-fork-semantics.md).
+divergence without a separate `UpdateAt(seq, ...)` surface. An
+idempotent `Fork` returning `fromSeq` was rejected: extending a
+non-tip branch would then need `UpdateAt`, a wider API with no caller
+yet. Named branches were deferred too; anonymous branches identified
+by their head `version_id` suffice.
 
 **SQLite parent-order fix.** The SQLite `buildDAG` query now uses
 `ORDER BY rowid` when loading `version_parents`, so parent
@@ -353,10 +350,9 @@ the SQLite backend.
 - SDK parity (TS / Python). Deferred to follow-up work; the wire
   contract lands first and SDKs follow.
 
-**Spec & ADR**
+**References**
 
 - Spec: [`docs/contributors/specs/engine-versioned-branching.md`](specs/engine-versioned-branching.md)
-- ADR: [`docs/contributors/adr/0013-engine-versioned-branching-fork-semantics.md`](adr/0013-engine-versioned-branching-fork-semantics.md)
 - Wire contract: `docs/engine-protocol.md` (Branching section)
 
 ### Content-addressed snapshot dedup (`engine/store`)
@@ -456,11 +452,9 @@ files and faster `DeleteHistory` on documents with shared blobs.
   instances sharing a blob pool). Replication semantics; belongs
   to a separate sync / replication track.
 
-**Spec & ADR**
+**References**
 
 - Spec: [`docs/contributors/specs/engine-snapshot-dedup.md`](specs/engine-snapshot-dedup.md)
-- ADR: [`docs/contributors/adr/0014-engine-snapshot-dedup-content-addressing.md`](adr/0014-engine-snapshot-dedup-content-addressing.md)
-- Parent track ADR: [`docs/contributors/adr/0011-engine-versioned-store-same-db.md`](adr/0011-engine-versioned-store-same-db.md) — listed dedup as out of scope; this track closes that gap
 
 ### Version pruning + liveness (`engine/store`)
 
@@ -478,8 +472,7 @@ only live heads as the retain floor — without that distinction,
 pruning is provably a no-op on every topology reachable through
 the public API (the original "all heads always retained" rule
 made every leaf in `version.DAG` retained, transitively retaining
-every ancestor). See [ADR-0015](adr/0015-engine-version-pruning-live-dead-heads.md)
-for the rationale.
+every ancestor).
 
 **New public methods on `VersionedDocumentStore`**
 
@@ -603,13 +596,10 @@ close + reopen.
   wire contract lands first and SDK bindings for `Prune` /
   `Abandon` / `Branches({live:true})` follow.
 
-**Spec & ADR**
+**References**
 
 - Spec: [`docs/contributors/specs/engine-version-pruning.md`](specs/engine-version-pruning.md)
-- ADR: [`docs/contributors/adr/0015-engine-version-pruning-live-dead-heads.md`](adr/0015-engine-version-pruning-live-dead-heads.md)
 - Wire contract: `docs/engine-protocol.md` ("Pruning + Liveness" section)
-- Parent track ADR: [`docs/contributors/adr/0011-engine-versioned-store-same-db.md`](adr/0011-engine-versioned-store-same-db.md) — listed pruning as a follow-up; this track closes the loop
-- Sibling ADRs: [`docs/contributors/adr/0013-engine-versioned-branching-fork-semantics.md`](adr/0013-engine-versioned-branching-fork-semantics.md) (Merge / Revert side-effects compose with branching) and [`docs/contributors/adr/0014-engine-snapshot-dedup-content-addressing.md`](adr/0014-engine-snapshot-dedup-content-addressing.md) (refcount primitives `Prune` calls into)
 
 ### Notification sinks (`go/runtime/notify`)
 
@@ -672,7 +662,7 @@ bytes/strings → breaker-wrapped egress (HTTP `RoundTripper` for
 webhook via `breaker.WrapHTTP`; `Mailer.Send` for email via
 `breaker.WrapCtx`; `runner.Run` for osnotify via `breaker.WrapCtx`).
 An open circuit short-circuits one sink without affecting siblings
-on the same `TeeBus`. ADR: `docs/contributors/adr/0012-notify-build-on-bus-sink.md`.
+on the same `TeeBus`.
 
 **Out of scope (deliberate gaps)**
 
@@ -922,8 +912,6 @@ c := llm.NewClient(provider,
 - New `WithLogger(*log.Logger)` Options on: `core/scope`, `core/redact`,
   `core/breaker` (sig change), `runtime/sync`, `ai/llm/routellm`.
 
-- ADR: `docs/contributors/adr/0007-kit-log-over-slog.md`.
-
 ## Flow
 
 ```mermaid
@@ -998,9 +986,14 @@ does not silently promote itself to `1.0.0`.
 Post-1.0: standard semver. `feat:` → minor, `fix:`/`perf:` → patch,
 `feat!:`/`BREAKING CHANGE` → major.
 
-Rationale, the `release-please-config.json` knobs that encode it, and
-the path for retiring `bump-minor-pre-major` at `1.0` are documented
-in [ADR-0032](adr/0032-version-bump-policy.md).
+Rationale: pre-1.0 the API is in flux; adopters pin exact versions
+and read the changelog, so the version stream records forward motion
+rather than fix / feature / breaking distinctions. The knob is
+`bump-minor-pre-major: true` on every package in
+`.github/release-please-config.json` (no
+`bump-patch-for-minor-pre-major`). Retire it in a deliberate,
+reviewed change when `1.0.0` is tagged; leaving it for the first
+post-1.0 breaking change would silently re-enable major bumps.
 
 ## Promoting a release stage
 

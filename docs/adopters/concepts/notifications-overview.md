@@ -290,7 +290,7 @@ per matching event), so the per-payload cost amortises easily.
 Go-only MVP. `bus.Sink` and `bus.TeeBus` themselves are still
 Go-only (TS / Python ports of pub/sub exist but Sinks/Tee are
 marked `planned`). Notify ports are gated on the bus primitives
-porting first. See ADR-0012 and spec §3 decision #8.
+porting first. See spec §3 decision #8.
 
 ## See also
 
@@ -298,9 +298,8 @@ porting first. See ADR-0012 and spec §3 decision #8.
 
 - [`docs/contributors/specs/notifications.md`](../../contributors/specs/notifications.md) — full spec, decisions, test plan
 - [`go/runtime/notify/README.md`](../../../go/runtime/notify/README.md) — package README
-- [ADR-0012](../../contributors/adr/0012-notify-build-on-bus-sink.md) — build-on-bus-sink decision
 - [`docs/adopters/concepts/bus-overview.md`](bus-overview.md) — bus pub/sub primer
 - [`docs/contributors/audits/redact-egress-audit.md`](../../contributors/audits/redact-egress-audit.md) — egress audit
 - [`docs/contributors/audits/breaker-primitives-audit.md`](../../contributors/audits/breaker-primitives-audit.md) — breaker audit
-- [ADR-0005](../../contributors/adr/0005-kit-redact-egress-filtering.md) — redact egress filtering
-- [ADR-0006](../../contributors/adr/0006-kit-breaker-runtime-circuit-breakers.md) — breaker runtime
+- [redact reference](../reference/redact.md) — redact egress filtering
+- [breaker reference](../reference/breaker.md) — breaker runtime

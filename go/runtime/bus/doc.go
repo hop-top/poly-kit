@@ -18,10 +18,10 @@
 // The Object segment may carry an optional snake_case modifier
 // joined with an underscore — see [TopicOf] and [ParseTopic].
 //
-// See ADR-0017 (docs/adr/0017-bus-topic-naming-and-qualifiers.md)
-// for the full grammar and the rationale for keeping semantic
-// qualifiers (reason / mechanism / property / circumstance) in
-// the payload via [Qualifiers] rather than in the topic string.
+// See docs/contracts/event-topics.md for the full grammar and the
+// rationale for keeping semantic qualifiers (reason / mechanism /
+// property / circumstance) in the payload via [Qualifiers] rather
+// than in the topic string.
 //
 // # Builder API
 //

@@ -5,10 +5,18 @@ A Go app using kit natively and a TS app using kit serve speak
 the SAME sync/peer/bus wire protocol. This spec IS the interop
 contract.
 
-The protocol-of-record decisions and per-row migration table for
-the 2026-05 reconciliation pass live in
-[ADR-0018](../../contributors/adr/0018-engine-sdk-protocol-reconciliation.md), backed
-by [`docs/contributors/audits/engine-sdk-drift.md`](../../contributors/audits/engine-sdk-drift.md).
+Where the server, the SDKs and this document disagree, the protocol
+of record is:
+
+- **shipped `kit serve` behavior** for document CRUD, history
+  ordering, branch topology, pruning and liveness;
+- **this document** for error envelopes, auth-token propagation and
+  shutdown status — the server and SDKs conform to it;
+- sync remote management is process-local, in-memory state in
+  `kit serve`; route names match this document.
+
+Per-row input for the 2026-05 reconciliation:
+[`docs/contributors/audits/engine-sdk-drift.md`](../../contributors/audits/engine-sdk-drift.md).
 Implementations:
 [`cmd/kit/serve.go`](../../../cmd/kit/serve.go),
 [`engine/sdk/ts-kit-engine`](../../../engine/sdk/ts-kit-engine/README.md),

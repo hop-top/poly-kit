@@ -19,8 +19,8 @@ import (
 // Builders are safe to share across goroutines and to mutate via
 // chained calls without affecting the caller's instance.
 //
-// See ADR-0017 (docs/adr/0017-bus-topic-naming-and-qualifiers.md)
-// for the rationale behind the embedded-modifier choice.
+// See docs/contracts/event-topics.md ("Qualifiers belong in the
+// payload") for the rationale behind the embedded-modifier choice.
 type TopicBuilder struct {
 	source   string
 	category string
