@@ -7,14 +7,16 @@ ConnectRPC, WebSocket, SSE, MCP, webhooks, bus, cron, OAuth callback,
 signed URL, FaaS, in-process) without rewriting the command logic per
 transport. A `Bridge` wraps the cobra root; each `Mount*` projects the
 leaves onto one surface, gated by one `Policy` and executed by one
-`Runner`. REST is the `api` service's `/v1/commands` projection and
-MCP is the official SDK (`go/transport/mcpsdk`, served by the `mcp`
+`Runner`. REST is the `/v1/commands` command projection (the `api`
+service on a kit root, `MountProjection` on a bare bridge) and MCP is
+the official SDK (`go/transport/mcpsdk`, served by the `mcp`
 service); `MountREST` and `MountMCP` are deprecated. The lifecycle
 seam for a new transport is `go/transport/transportsvc`.
 
 ## Use it when
 
-- project the tree onto RPC or streaming → `MountRPC`, `MountWS`, `MountSSE`; REST is the `api` service (`cli.WithAPI`)
+- project the tree onto REST → `MountProjection`, or the `api` service (`cli.WithAPI`) on a kit root
+- project the tree onto RPC or streaming → `MountRPC`, `MountWS`, `MountSSE`
 - expose leaves as LLM tools → `mcpsdk.Mount`, or the `mcp` service (`mcpserve.With`)
 - accept third-party push or scheduled work → `MountWebhooks`, `MountBus`, `MountCron`
 - issue a one-shot exec link or an OAuth callback → `MountSigned`, `MountOAuth`
@@ -23,6 +25,7 @@ seam for a new transport is `go/transport/transportsvc`.
 - gate a call before committing to a stream, then stream it → `Bridge.Admit`, `Admission.Stream`
 - ask a person something between the gates and the run → `Bridge.Admit`, then `Admission.Run` or `Admission.Stream`
 - toggle a leaf per surface → `Bridge.Expose` / `Bridge.Hide`, or YAML `LoadFile` / `FromConfig`
+- declare webhooks, bus bindings, schedules or sinks in YAML → `Config.WebhookMappings`, `BusBindings`, `CronSchedules`, `SinkSpecs`
 
 ## Quick start
 

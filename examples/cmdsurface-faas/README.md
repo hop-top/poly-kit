@@ -32,13 +32,9 @@ curl -X POST http://localhost:8090/v1/commands/ping
 # → {"exit_code":0,"stdout":"pong\n"}
 
 curl -N http://localhost:8090/cmd/ping/stream
-# → event: event
-#   data: {"kind":"stdout","data":"pong","at":"..."}
-#   event: result
-#   data: {"exit_code":0,"stdout":"pong\n"}
+# → event: event … event: result {"exit_code":0,"stdout":"pong\n"}
 
-# MCP (official SDK, stateless): any streamable-HTTP client at
-# http://localhost:8090/mcp
+# MCP (official SDK, stateless): any streamable-HTTP client at /mcp
 ```
 
 Lambda, with the Runtime Interface Emulator:

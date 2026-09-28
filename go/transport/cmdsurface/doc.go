@@ -56,8 +56,9 @@ const (
 	// Always available; the bridge never disables this surface — it
 	// is the source the other surfaces project from.
 	SurfaceCLI Surface = "cli"
-	// SurfaceREST is request/reply over HTTP. POST /cmd/{path...}
-	// with an Invocation body returns a Result.
+	// SurfaceREST is request/reply over HTTP: the command projection
+	// under /v1/commands (MountProjection), and the deprecated
+	// MountREST (POST /cmd/{path...} with an Invocation body).
 	SurfaceREST Surface = "rest"
 	// SurfaceWS is bidirectional WebSocket. Frames carry Invocations
 	// in and Events out.

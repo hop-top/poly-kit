@@ -9,9 +9,9 @@ MCP + WS + … without rewriting handlers.
 | Surface | Direction | Mount |
 |---------|-----------|-------|
 | CLI | local | cobra (unchanged) |
-| REST | request/reply | `MountREST(b, r)` |
+| REST | request/reply (`/v1/commands` projection) | `MountProjection(b, r)` |
 | RPC | request/reply + server stream (Connect, gRPC, gRPC-Web) | `MountRPC(b, s)` |
-| MCP | LLM tool exec | `MountMCP(b, r)` |
+| MCP | LLM tool exec | `mcpsdk.Mount(b, r)` |
 | WS | bidirectional stream | `MountWS(b, r)` |
 | SSE | server stream | `MountSSE(b, r)` |
 | Bus | pub/sub | `MountBus(b, sub, pub, bindings)` |
@@ -29,15 +29,17 @@ MCP + WS + … without rewriting handlers.
 import (
     "hop.top/kit/go/transport/api"
     "hop.top/kit/go/transport/cmdsurface"
+    "hop.top/kit/go/transport/mcpsdk"
 )
 
 // Build the bridge from your existing cobra root.
 b := cmdsurface.New(rootCmd)
+b.Expose("*", cmdsurface.SurfaceREST, cmdsurface.SurfaceWS)
 
 // Mount surfaces.
 r := api.NewRouter()
-_ = cmdsurface.MountREST(b, r)
-_ = cmdsurface.MountMCP(b, r)
+_ = cmdsurface.MountProjection(b, r) // REST under /v1/commands
+_ = mcpsdk.Mount(b, r)
 _ = cmdsurface.MountWS(b, r)
 
 http.ListenAndServe(":8080", r)

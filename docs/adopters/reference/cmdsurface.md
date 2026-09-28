@@ -649,6 +649,12 @@ and confirmation checks answer 401 / 428 before that. Once the stream
 has begun, every further error is an `event: error` frame. See
 `go/transport/cmdsurface/surface_sse_test.go`.
 
+A client already using the REST projection streams through its
+`<route>/stream` twins instead: same frames, the command's projected
+method. `MountSSE` is the choice for a browser `EventSource` (every
+leaf a `GET`) or for streaming a command that is not on REST; see
+[Status](#status).
+
 ### Bus
 
 ```go
@@ -1429,9 +1435,9 @@ Deprecated — frozen, fixes only, no new options:
 
 | Deprecated | Use instead | Remains for, until removal |
 |------------|-------------|----------------------------|
-| `MountREST`, `RESTOption`, `WithREST*` | `cli.WithAPI` (the `/v1/commands` projection); `MountRPC` for a call envelope | existing callers; a bare bridge that needs REST on its own router |
-| `MountMCP`, `MCPOption`, `WithMCP*` | `mcpserve.With` (`serve mcp`); `mcpsdk.Mount` / `Handler` / `ServeStdio` on a bare bridge | existing callers; generating the cross-language MCP wire fixtures |
-| `CloudRunSurfaces.REST`, `CloudRunSurfaces.MCP` | `CloudRunConfig.Router` with the replacement mounted on it | existing callers |
+| `MountREST`, `RESTOption`, `WithREST*` | `MountProjection` on a bare bridge, `cli.WithAPI` on a kit root (both the `/v1/commands` projection); `MountRPC` for a call envelope | existing callers |
+| `MountMCP`, `MCPOption`, `WithMCP*` | `mcpserve.With` (`serve mcp`); `mcpsdk.Mount` / `Handler` / `ServeStdio` on a bare bridge | existing callers; the 2026-07-28 revision over HTTP until the `mcp` service serves it |
+| `CloudRunSurfaces.REST`, `CloudRunSurfaces.MCP` | `CloudRunSurfaces.Projection`; `mcpsdk.Mount` in a `CloudRunConfig.Mounts` entry | existing callers |
 | `Config.MCP`, `MCPConfig` (the `mcp:` block) | `services.mcp.*` on the `mcp` service | existing configs; nothing mounts from it |
 
 The deprecation notice ships in the first release after 0.5.0-alpha.15.
@@ -1440,11 +1446,23 @@ that notice, as a breaking change with the migration in its release
 notes, and only once each replacement covers what the mount still
 does:
 
-- REST: a bridge-level projection mount exists (a bare cobra tree gets
-  `/v1/commands` without a kit root), and `RunCloudRun` and
-  `examples/cmdsurface` use it.
-- MCP: `examples/cmdsurface` mounts `mcpsdk`, and the wire-fixture
-  generator no longer needs the exported mount.
+| Precondition | Status |
+|--------------|--------|
+| REST: a bridge-level projection mount, so a bare cobra tree gets `/v1/commands` without a kit root | done: `MountProjection`; the `api` service mounts through it |
+| REST: `RunCloudRun` off `MountREST` | done: `CloudRunSurfaces.Projection` |
+| REST + MCP: `examples/cmdsurface` off both mounts | done: `MountProjection` and `mcpsdk.Mount`, e2e-tested |
+| MCP: `RunCloudRun` can serve the SDK surface (this package cannot import `mcpsdk`) | done: `CloudRunConfig.Mounts`; `examples/cmdsurface-faas` mounts `mcpsdk` through it |
+| MCP: the wire-fixture generator needs no exported mount | done: it mounts through the unexported handlers, and a test refuses the exported names in it |
+| MCP: the `mcp` service serves the 2026-07-28 revision over HTTP (its stateful transport refuses it today; `MountMCP` serves both revisions on one path) | open |
+| MCP: Origin validation on the `mcp` service, replacing `WithMCPOriginAllowlist` | open: arrives with the served-command Origin check (`services.mcp.origin_check.allow`) |
+
+`MountSSE` is not deprecated. The projection's `<route>/stream` twins
+stream every served command with the same frames, and they are the
+streaming route for a client of the projection. `MountSSE` stays for
+what they do not cover: every leaf as a `GET` a browser `EventSource`
+can open (a write command's projected stream is a `POST`), and a
+separate `sse` surface to enable and gate, so a command can stream
+without being callable over REST.
 
 What goes with the deprecated MCP mount: gate refusals mirrored as
 HTTP 401 / 428 (the SDK reports `isError` only), zero-dependency MCP

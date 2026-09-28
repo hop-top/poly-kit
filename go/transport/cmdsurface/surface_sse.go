@@ -63,6 +63,14 @@ const defaultSSEHeartbeat = 15 * time.Second
 //     AuthFunc supplied via WithSSEAuth (default: deny-all → 401).
 //   - Class.RequiresConfirmation gates the route on the presence of
 //     an X-Confirm-Token header (value is not inspected).
+//
+// The command projection ([MountProjection]) streams too, at
+// <route>/stream on each served command, with the same frames and the
+// command's projected method. MountSSE is not a duplicate of it: every
+// leaf here is a GET, which a browser EventSource can open (a write
+// command's projected stream is a POST), and SurfaceSSE is enabled and
+// gated apart from SurfaceREST, so a command can stream without being
+// callable over REST.
 func MountSSE(b *Bridge, r *api.Router, opts ...SSEOption) error {
 	if b == nil {
 		return errors.New("cmdsurface: MountSSE: nil Bridge")
