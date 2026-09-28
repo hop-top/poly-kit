@@ -108,7 +108,7 @@ directing the caller to the appropriate path.
 ## Shims
 
 Six closed-set shims live in `invoke/shim/`. Adapters do not invent
-new shims; the catalog is fixed in spec §15.5.
+new shims; the catalog is closed.
 
 | Shim | Helper | Used by |
 |---|---|---|

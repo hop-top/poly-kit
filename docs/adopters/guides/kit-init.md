@@ -104,8 +104,9 @@ kit init mytool --dry-run --format json
 | `-y`, `--yes`       | `false`     | Non-interactive: skip wizard prompts                     |
 
 JSON summary output is controlled by the kit-owned global flag,
-`--format json` (parity contract §3.3) — there is no init-local
-`--json` flag.
+`--format json` (see
+[`cli-parity-guide.md` §"Global Flags"](cli-parity-guide.md#global-flags)):
+there is no init-local `--json` flag.
 
 Precedence: `flag > env (KIT_INIT_*) > defaults file > built-in default`.
 Defaults live in `~/.config/kit/defaults.yaml`.
