@@ -1,6 +1,7 @@
 // Package kitinit augment_test.go — tier matrix + conflict semantics
 // for runAugment. Synthetic fixture templates keep file sets predictable
-// so each tier's contract (per spec §13) is asserted directly.
+// so each tier's contract (docs/adopters/guides/kit-init.md#augment-tiers)
+// is asserted directly.
 //
 // White-box (package kitinit) so we can call unexported runAugment.
 package kitinit

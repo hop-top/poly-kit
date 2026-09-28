@@ -257,7 +257,7 @@ func TestInit_Bootstrap_JSON(t *testing.T) {
 	t.Chdir(work)
 
 	// JSON-summary toggle now reads from the kit-owned `--format` global
-	// (parity contract §3.3); the deprecated init-local --json flag was
+	// (cli-parity-guide.md §"Global Flags"); the deprecated init-local --json flag was
 	// removed. Inject a viper with format=json via a minimal cli.Root so
 	// InitCmd picks up the same value the wired CLI would.
 	vp := viper.New()

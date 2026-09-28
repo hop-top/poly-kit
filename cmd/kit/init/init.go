@@ -1,5 +1,5 @@
 // Package kitinit — init.go wires the cobra `kit init` command and
-// orchestrates Detect → Gather → bootstrap/augment → output (spec §17).
+// orchestrates Detect → Gather → bootstrap/augment → output.
 //
 // Flag parsing populates a local FlagSet whose pointer fields are nil
 // until cmd.Flags().Changed(name) is true; this preserves the
@@ -124,7 +124,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 			}
 
 			// 1. Mode resolution. Translate detect → typed errors early
-			// so callers get a hint-rich Error() (spec §19).
+			// so callers get a hint-rich Error().
 			override, err := parseModeOverride(modeFlag)
 			if err != nil {
 				return err
@@ -224,7 +224,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 			// --no-push is already true and stays true.
 			applyOfflineOverride(ctx, &inputs)
 			// JSON-summary toggle reads from the kit-owned `--format`
-			// global (parity contract §3.3): the deprecated --json
+			// global (cli-parity-guide.md §"Global Flags"): the deprecated --json
 			// init-local flag was removed in favor of `--format json`.
 			inputs.JSON = vp.GetString("format") == "json"
 

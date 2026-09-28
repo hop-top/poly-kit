@@ -1,4 +1,5 @@
-// Package kitinit — augment.go runs the augment flow per spec §12.
+// Package kitinit — augment.go runs the augment flow described in
+// docs/adopters/guides/kit-init.md#augment-tiers.
 //
 // Unlike bootstrap, augment operates on an existing project directory: it
 // renders the requested template tier into cwd, surfacing differing files
@@ -116,7 +117,7 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 		return Summary{}, fmt.Errorf("augment: render: %w", err)
 	}
 
-	// Step 6b: after-PR-open hook generation (contract §5/§6/§8).
+	// Step 6b: after-PR-open hook generation (kit-init-pr-wiring.md §5, §6, §8).
 	// Honors the same non-destructive semantics in augment mode:
 	// differing existing → .kit-suggested sibling.
 	postHookSummary, posterr := GeneratePostPROpenHook(cwd, in.WithGithookPostPROpen, in.DryRun)

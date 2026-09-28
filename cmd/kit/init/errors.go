@@ -2,7 +2,8 @@
 // var (errors.Is), typed struct with context (errors.As), and Is*
 // helper. NewXxxError factories chain to the sentinel via Go 1.20+
 // multi-error Unwrap so a single returned value satisfies all three
-// matching styles. Error() strings are hint-rich per spec §19.
+// matching styles. Error() strings are hint-rich: each names the
+// problem and the next step to take.
 //
 // Package name is kitinit (not init) to avoid confusion with Go's
 // reserved init() function semantics.

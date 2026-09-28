@@ -24,8 +24,8 @@ func TestTopicsPassValidateTopic(t *testing.T) {
 	}
 }
 
-// TestTopicsAreCanonical pins the exact four strings (spec §2) so a
-// drift in either direction (spec or code) is caught at PR time.
+// TestTopicsAreCanonical pins the exact four strings (kit-init-pr-wiring.md §2) so
+// a drift in either direction (contract or code) is caught at PR time.
 func TestTopicsAreCanonical(t *testing.T) {
 	t.Parallel()
 	want := []bus.Topic{

@@ -233,8 +233,8 @@ func TestWriteAllAcceptedSiblingCleanup(t *testing.T) {
 }
 
 // TestWriteAllSuggestSiblingManifestOnly: a generated workflow file
-// exists on disk but the manifest has no entry for it. The spec §6
-// dry-run JSON enum distinguishes this from a true user-edited
+// exists on disk but the manifest has no entry for it. The
+// kit-init-pr-wiring.md §6 dry-run JSON enum distinguishes this from a true user-edited
 // divergence: the action is still suggest-sibling, but the reason
 // must be "manifest-only" (not "user-edited"). See Comment 3293191449.
 func TestWriteAllSuggestSiblingManifestOnly(t *testing.T) {

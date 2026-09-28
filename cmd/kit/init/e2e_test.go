@@ -238,7 +238,7 @@ func TestE2E_JSON_Parses(t *testing.T) {
 	work := t.TempDir()
 
 	// JSON-summary toggle now reads from the kit-owned `--format` global
-	// (parity contract §3.3); the deprecated init-local --json flag was
+	// (cli-parity-guide.md §"Global Flags"); the deprecated init-local --json flag was
 	// removed in favor of `--format json`.
 	out, err := runKit(t, bin, work,
 		"--format", "json",

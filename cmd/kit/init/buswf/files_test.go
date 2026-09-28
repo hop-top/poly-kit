@@ -28,7 +28,7 @@ func TestFilesParseAsYAML(t *testing.T) {
 
 // TestFilesHaveBusGating asserts every generated workflow gates the
 // emit job on KIT_BUS_ENABLED + KIT_BUS_INGRESS_URL. This is the
-// "disabled by default" behavior pinned in spec §3.
+// "disabled by default" behavior pinned in docs/contracts/kit-init-pr-wiring.md §3.
 func TestFilesHaveBusGating(t *testing.T) {
 	t.Parallel()
 	for _, f := range buswf.Files() {
@@ -44,7 +44,7 @@ func TestFilesHaveBusGating(t *testing.T) {
 
 // TestFilesCarryAuthAndStrictEnv asserts every workflow forwards
 // KIT_BUS_TOKEN, KIT_BUS_SIGNING_KEY, and KIT_BUS_STRICT to the helper
-// binary (spec §3 auth + strict-mode env).
+// binary (kit-init-pr-wiring.md §3 auth + strict-mode env).
 func TestFilesCarryAuthAndStrictEnv(t *testing.T) {
 	t.Parallel()
 	required := []string{
@@ -65,7 +65,7 @@ func TestFilesCarryAuthAndStrictEnv(t *testing.T) {
 
 // TestFilesAreDeterministic ensures repeated Files() calls produce
 // byte-identical output. Determinism is load-bearing for the manifest
-// hash policy (spec §6).
+// hash policy (kit-init-pr-wiring.md §6).
 func TestFilesAreDeterministic(t *testing.T) {
 	t.Parallel()
 	a := buswf.Files()
@@ -125,8 +125,8 @@ func TestRunCompletedGuardsOnPRAssociation(t *testing.T) {
 
 // TestRunCompletedBaseSHAIsASHA asserts KIT_BUS_PR_BASE_SHA is wired
 // to a SHA, not a branch name. workflow_run.head_repository.default_branch
-// is a branch name (e.g. "main"), not the SHA the spec §2 envelope
-// promises in pr.base_sha. Use pull_requests[0].base.sha which is
+// is a branch name (e.g. "main"), not the SHA the kit-init-pr-wiring.md §2
+// envelope promises in pr.base_sha. Use pull_requests[0].base.sha which is
 // part of the pull_request_minimal object schema. See Comment 3293191443.
 func TestRunCompletedBaseSHAIsASHA(t *testing.T) {
 	t.Parallel()
@@ -147,7 +147,7 @@ func TestRunCompletedBaseSHAIsASHA(t *testing.T) {
 // TestRunCompletedPRURLIsHTMLURL asserts KIT_BUS_PR_URL is wired to a
 // human-facing URL, not the API URL. workflow_run.pull_requests[i] is
 // a pull_request_minimal object which exposes only the API .url field;
-// the canonical envelope (spec §2 "Common payload envelope") expects
+// the canonical envelope (kit-init-pr-wiring.md §2 "Common payload envelope") expects
 // pr.url to be the HTML URL. Construct it from server_url + repository
 // + number. See Comment 3293191437.
 func TestRunCompletedPRURLIsHTMLURL(t *testing.T) {
@@ -282,7 +282,7 @@ func TestFilesEmbedTopicInRunCmd(t *testing.T) {
 	}
 }
 
-// TestFilesDoNotEmbedFullLogsOrBodies guards spec §2's "no full logs,
+// TestFilesDoNotEmbedFullLogsOrBodies guards kit-init-pr-wiring.md §2's "no full logs,
 // no full PR bodies, no full comment bodies" rule. The workflow embeds
 // URLs, never the body text itself. The truncation lives in
 // kit-bus-emit; the workflow forwards env vars but those are bounded

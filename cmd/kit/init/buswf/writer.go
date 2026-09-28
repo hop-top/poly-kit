@@ -32,7 +32,7 @@ const (
 	ActionManifestUpdate Action = "manifest-update"
 )
 
-// Reason annotates an Action with the "why" (spec §6 dry-run JSON).
+// Reason annotates an Action with the "why" (kit-init-pr-wiring.md §6 dry-run JSON).
 type Reason string
 
 const (
@@ -42,7 +42,7 @@ const (
 	ReasonManifestOnly Reason = "manifest-only"
 )
 
-// PlanEntry is what dry-run reports per file. It mirrors the §6 dry-run
+// PlanEntry is what dry-run reports per file. It mirrors the contract's dry-run
 // JSON shape exactly so callers can serialize it without translation.
 type PlanEntry struct {
 	Path          string `json:"path"`
@@ -153,7 +153,7 @@ func WriteAll(opts WriteOpts) (Plan, error) {
 			// path (it still reflects what kit-init originally
 			// wrote).
 			//
-			// Distinguish the two "why" sub-cases so the spec §6
+			// Distinguish the two "why" sub-cases so the kit-init-pr-wiring.md §6
 			// dry-run JSON reason enum is accurate:
 			//
 			//   - hadEntry==false && fileExists==true → the manifest

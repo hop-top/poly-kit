@@ -1,5 +1,5 @@
 // Package kitinit — inputs.go resolves the final set of template variables
-// for an init run via the precedence chain defined in spec §14.
+// for an init run via the precedence chain below.
 //
 // Highest priority first:
 //  1. CLI flag value (FlagSet pointer fields — nil = unset)
@@ -120,7 +120,7 @@ type FlagSet struct {
 	ModeOverride *string // --mode flag value before parsing
 }
 
-// Gather resolves Inputs by walking the precedence chain (spec §14).
+// Gather resolves Inputs by walking the precedence chain.
 //
 // Behavior:
 //   - args: positional args; args[0] (when present) becomes the project Name
@@ -156,17 +156,17 @@ func Gather(
 	in.Yes = derefBool(flags.Yes, false)
 	in.DryRun = derefBool(flags.DryRun, false)
 	// Inputs.JSON is now populated by the caller from viper("format")
-	// after Gather returns (parity contract §3.3 — the init-local
+	// after Gather returns (cli-parity-guide.md §"Global Flags" — the init-local
 	// --json flag was removed in favor of `--format json`).
 	in.Force = derefBool(flags.Force, false)
 	in.NoGitHub = derefBool(flags.NoGitHub, false)
 	in.NoPush = derefBool(flags.NoPush, false)
-	// Bus event workflows are opt-in (spec §8): nil pointer →
+	// Bus event workflows are opt-in (kit-init-pr-wiring.md §8): nil pointer →
 	// default false. The --without-bus-workflows complement is a
 	// no-op when the default is already false; we still parse it
 	// for symmetry with the other --with/--without pairs.
 	in.WithBusWorkflows = derefBool(flags.WithBusWorkflows, false)
-	// Hop default is true (spec §17). Precedence: flag > defaults.yaml >
+	// Hop default is true. Precedence: flag > defaults.yaml >
 	// built-in. Both flag and defaults.Hop are *bool so unset (nil) falls
 	// through to the next layer; explicit false is honored.
 	switch {
@@ -418,7 +418,7 @@ func derefInt(p *int, fallback int) int {
 	return *p
 }
 
-// builtinLicense maps account-type to its conventional license. Spec §14:
+// builtinLicense maps account-type to its conventional license:
 // personal → MIT; org → Apache-2.0; none → MIT (treated as personal).
 func builtinLicense(accountType string) string {
 	switch accountType {

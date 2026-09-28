@@ -1,4 +1,4 @@
-// Package kitinit — bootstrap.go drives the empty-cwd flow per spec §11.
+// Package kitinit — bootstrap.go drives the empty-cwd flow.
 // Validates name, resolves+parses the template, renders into <cwd>/<name>,
 // runs lifecycle hooks, initializes git, optionally creates the GitHub
 // repo + applies branch protection, then pushes. All side-effecting
@@ -22,8 +22,8 @@ import (
 	tmpl "hop.top/kit/internal/template"
 )
 
-// nameRegex enforces the spec §11/§22 project-name shape.
-// kept in sync with the regex shown in InvalidNameError.Error().
+// nameRegex enforces the project-name shape: a lowercase letter, then
+// up to 63 lowercase letters, digits or dashes. Kept in sync with the regex shown in InvalidNameError.Error().
 var nameRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 
 // HookRunner abstracts template.Run so bootstrap can dispatch hooks
@@ -61,7 +61,7 @@ type Deps struct {
 	Output   io.Writer
 }
 
-// runBootstrap executes the spec §11 sequence end-to-end and returns
+// runBootstrap executes the bootstrap sequence end-to-end and returns
 // the rendered Summary. DryRun=true skips every side-effecting step
 // after engine render (no git, no github, no hooks beyond what the
 // engine itself simulates via DryRun).
@@ -90,7 +90,7 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 
 	// 4. Final var map: Inputs.Vars already carries built-ins + manifest
 	// vars resolved by Gather. Inject mode/tier so engine + hooks see
-	// the spec §6 reserved keys.
+	// the reserved mode/tier keys.
 	vars := cloneVars(in.Vars)
 	vars["mode"] = "bootstrap"
 	vars["tier"] = 0

@@ -182,7 +182,7 @@ emit_mise() {
 
   # If the file does not already exist, lay down the kit-
   # managed boilerplate header (the prose comment block
-  # above the markers per spec §3). On subsequent runs we
+  # above the markers). On subsequent runs we
   # leave whatever is above the markers untouched so users
   # can add their own tools there.
   if [[ ! -f "$out" ]]; then

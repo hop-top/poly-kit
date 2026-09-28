@@ -9,7 +9,7 @@
 //   - cli-py: pyproject.toml + src/<Name>/__init__.py (no pip install — CI cost)
 //   - shared: kit/template files (e.g. README.md, init.sh)
 //
-// Spec §11 mentioned multi-runtime / server / agent — none ship as built-ins
+// Bootstrap also targets multi-runtime / server / agent — none ship as built-ins
 // today; cases below skip via t.Skip when names absent so the suite stays
 // green as templates are added.
 package kitinit
