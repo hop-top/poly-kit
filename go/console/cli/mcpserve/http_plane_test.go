@@ -5,10 +5,12 @@ package mcpserve_test
 // refusals written as the MCP transport expects them.
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,6 +18,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/mcpserve"
+	"hop.top/kit/go/transport/cmdsurface"
 )
 
 // withConfig sets configuration keys on the root, as a config file
@@ -218,4 +221,52 @@ func TestMCPServiceHTTPHostCheckConfiguration(t *testing.T) {
 		assert.Equal(t, 2, oe.ExitCode)
 		assert.Contains(t, oe.Error(), "services.mcp.health.path_prefix")
 	})
+}
+
+// The client a trusted proxy forwards is the one the mcp listener
+// audits, for a tool call and for a refusal; from any other peer the
+// header is ignored.
+func TestMCPServiceTrustedProxies(t *testing.T) {
+	for _, trusted := range []bool{true, false} {
+		t.Run(map[bool]string{true: "trusted", false: "untrusted"}[trusted], func(t *testing.T) {
+			var (
+				mu    sync.Mutex
+				metas []cmdsurface.Meta
+			)
+			sink := sinkFunc(func(_ context.Context, inv cmdsurface.Invocation, _ cmdsurface.Result, _ error) error {
+				mu.Lock()
+				defer mu.Unlock()
+				metas = append(metas, inv.Meta)
+				return nil
+			})
+			set := map[string]any{}
+			if trusted {
+				set["services.mcp.trusted_proxies"] = "127.0.0.1, ::1"
+			}
+			_, endpoint := startMCP(t, mcpserve.Config{Auth: bearerAuth}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
+				withConfig(set), cli.WithAuditSinks(cmdsurface.SinkSpec{Sink: sink, OnError: true, OnOK: true}))
+
+			params := `{"name":"ping","arguments":{},` + modernMeta(`{}`) + `}`
+			fwd := map[string]string{"X-Forwarded-For": "198.51.100.7"}
+			r, _ := modernCall(t, endpoint, "tools/call", "ping", params, fwd)
+			require.Equal(t, http.StatusUnauthorized, r.status)
+			fwd["Authorization"] = "Bearer good"
+			r, res := modernCall(t, endpoint, "tools/call", "ping", params, fwd)
+			require.Equal(t, http.StatusOK, r.status)
+			require.False(t, res.Result.IsError)
+
+			mu.Lock()
+			defer mu.Unlock()
+			require.Len(t, metas, 2)
+			for _, m := range metas {
+				if trusted {
+					assert.Equal(t, "198.51.100.7", m.Extra["remote_addr"])
+					assert.True(t, strings.HasPrefix(m.Extra["peer_addr"], "127.0.0.1:"), m.Extra["peer_addr"])
+					continue
+				}
+				assert.True(t, strings.HasPrefix(m.Extra["remote_addr"], "127.0.0.1:"), m.Extra["remote_addr"])
+				assert.NotContains(t, m.Extra, "peer_addr")
+			}
+		})
+	}
 }

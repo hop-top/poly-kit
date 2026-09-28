@@ -19,6 +19,8 @@ console root does that before `serve` runs (`go/console/cli`).
 - a block only some services apply → name them in `Services` (`Validate` refuses it
   elsewhere); a key or value only an HTTP listener applies → `HTTPKeys`, `HTTPValues`
   (`ValidateNoHTTP` refuses them under a service with none)
+- a block that is itself a list (`trusted_proxies: [10.0.0.0/8]`) → a `Block` row with `Value: true` and no keys;
+  read it with `Lookup(svc, block, "")`
 - map a `<TOOL>_SERVICES_*` variable to its key → `svcconfig.EnvKey(name, tool, services)`
 
 ## Quick start
@@ -47,6 +49,7 @@ fmt.Println(r.Validate()) // services.all.addr: not a middleware key; ...
   registered block under `services.all`, are errors; `serve` reports them
   at exit 2. So is a list-of-entries key of the wrong shape: an entry that
   is neither a type nor a map, or a map with a key the entry does not take.
+  A value block must be a string or a list of strings.
 - Environment names split longest match first: service, then block, then
   key. A remainder that names no block is a service's own flat key.
 - Rules: [serve lifecycle, Middleware configuration](../../../../docs/contracts/serve-lifecycle.md#middleware-configuration).

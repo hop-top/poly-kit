@@ -715,3 +715,24 @@ func TestAuditRedaction_WithAuditRedactionAdds(t *testing.T) {
 		t.Errorf("unknown-path refusal: %+v", rec.calls)
 	}
 }
+
+// The addresses an HTTP transport stamps are provenance, not command
+// input: the client and the proxy it came through reach the audit
+// record as they are, where a PII rule would otherwise mask them.
+func TestAuditRedaction_KeepsClientAndPeerAddresses(t *testing.T) {
+	inv := Invocation{Path: []string{"list"}, Meta: Meta{Extra: map[string]string{
+		"remote_addr": "198.51.100.7",
+		"peer_addr":   "10.0.0.2:4321",
+		"note":        "198.51.100.7",
+	}}}
+	got, _, _ := redactForAudit(context.Background(), inv, Result{}, nil, false)
+	if g := got.Meta.Extra["remote_addr"]; g != "198.51.100.7" {
+		t.Errorf("remote_addr=%q", g)
+	}
+	if g := got.Meta.Extra["peer_addr"]; g != "10.0.0.2:4321" {
+		t.Errorf("peer_addr=%q", g)
+	}
+	if g := got.Meta.Extra["note"]; g == "198.51.100.7" {
+		t.Errorf("note=%q: the same value elsewhere is PII", g)
+	}
+}

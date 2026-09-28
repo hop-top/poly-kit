@@ -296,11 +296,7 @@ func ProjectionAuthRefusal(b *Bridge) func(r *http.Request, err error) {
 				Traceparent: meta.Traceparent,
 				Tracestate:  meta.Tracestate,
 				RequestedAt: meta.ReceivedAt,
-				Extra: map[string]string{
-					"http_method": r.Method,
-					"http_path":   r.URL.Path,
-					"remote_addr": meta.RemoteAddr,
-				},
+				Extra:       httpRefusalExtra(r, meta),
 			},
 		}
 		b.Audit(r.Context(), inv, Result{},
@@ -635,6 +631,9 @@ func metaFromRequest(m api.RequestMeta) Meta {
 	extra := map[string]string{}
 	if m.RemoteAddr != "" {
 		extra["remote_addr"] = m.RemoteAddr
+	}
+	if m.PeerAddr != "" {
+		extra["peer_addr"] = m.PeerAddr
 	}
 	if len(m.Scopes) > 0 {
 		extra["scopes"] = strings.Join(m.Scopes, ",")

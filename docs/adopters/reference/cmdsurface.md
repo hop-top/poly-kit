@@ -1220,7 +1220,7 @@ Also:
 
 - `Meta.Caller`, `Tenant`, `RequestID`, `TraceID` and
   `IdempotencyKey` are provenance and pass through. The `Extra` keys
-  kit's own transports stamp (`remote_addr`, `http_method`,
+  kit's own transports stamp (`remote_addr`, `peer_addr`, `http_method`,
   `http_path`, `scopes`, `oauth_issuer`, the `mcp_*` keys) skip the
   content rules, which would otherwise mask the remote address.
 - A field longer than 4 KiB, or `Data` whose strings total more, is
@@ -1412,7 +1412,9 @@ token bucket per caller and side-effect tier (`RateTierRead`,
 `RateTierWrite`, `RateTierDestructive`; `DefaultRateLimit` holds the
 defaults), counted on remote surfaces only. A caller is `Meta.Caller`
 with `Meta.Tenant`, else the client address in
-`Meta.Extra["remote_addr"]`, else the surface. The refusal is a
+`Meta.Extra["remote_addr"]` (behind a trusted proxy, the client it
+forwarded; see `services.<svc>.trusted_proxies`), else the surface.
+The refusal is a
 `*RateLimitedError` wrapping `ErrRateLimited`; `RetryAfter(err)` reads
 its hint. Without the option there is no limit; the kit-shipped
 services install it from `services.<svc>.rate_limit`.

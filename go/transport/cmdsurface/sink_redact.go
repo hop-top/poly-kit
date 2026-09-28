@@ -218,7 +218,7 @@ var secretWholeNames = map[string]bool{"key": true, "pass": true, "pin": true}
 // PII rules would otherwise mask the remote address an audit exists
 // to record. Known secret values are still substituted in them.
 var auditProvenanceExtra = map[string]bool{
-	"remote_addr": true, "http_method": true, "http_path": true,
+	"remote_addr": true, "peer_addr": true, "http_method": true, "http_path": true,
 	"scopes": true, "oauth_issuer": true, "mcp_spec_version": true,
 	"mcp_client_name": true, "mcp_client_version": true,
 	"mcp_confirm_rejection": true, cacheExtraKey: true,

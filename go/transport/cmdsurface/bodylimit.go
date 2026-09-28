@@ -32,14 +32,25 @@ func (b *Bridge) AuditBodyTooLarge(r *http.Request, surface Surface, path []stri
 			RequestID:   meta.RequestID,
 			TraceID:     meta.TraceID,
 			RequestedAt: meta.ReceivedAt,
-			Extra: map[string]string{
-				"http_method": r.Method,
-				"http_path":   r.URL.Path,
-				"remote_addr": meta.RemoteAddr,
-			},
+			Extra:       httpRefusalExtra(r, meta),
 		},
 	}
 	b.Audit(r.Context(), inv, Result{}, fmt.Errorf("%w: exceeds %d bytes", ErrBodyTooLarge, limit))
+}
+
+// httpRefusalExtra is the provenance an HTTP-plane refusal is audited
+// with: the request line and the client address, and the proxy it
+// arrived through when a trusted proxy forwarded it.
+func httpRefusalExtra(r *http.Request, meta api.RequestMeta) map[string]string {
+	extra := map[string]string{
+		"http_method": r.Method,
+		"http_path":   r.URL.Path,
+		"remote_addr": meta.RemoteAddr,
+	}
+	if meta.PeerAddr != "" {
+		extra["peer_addr"] = meta.PeerAddr
+	}
+	return extra
 }
 
 // ProjectionBodyTooLarge returns the hook [api.OnBodyTooLarge] takes

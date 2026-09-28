@@ -23,6 +23,7 @@ func TestEnvKey(t *testing.T) {
 		"TOOL_SERVICES_API_METRICS_SCRAPE_ENABLED":       "services.api.metrics.scrape.enabled",
 		"TOOL_SERVICES_ALL_METRICS_SCRAPE_ALLOW_REMOTE":  "services.all.metrics.scrape.allow_remote",
 		"TOOL_SERVICES_API_ORIGIN_CHECK":                 "services.api.origin_check",
+		"TOOL_SERVICES_API_TRUSTED_PROXIES":              "services.api.trusted_proxies",
 		"TOOL_SERVICES_ALL_RATE_LIMIT_ENABLED":           "services.all.rate_limit.enabled",
 		"TOOL_SERVICES_API_RATE_LIMIT_READ_PER_MINUTE":   "services.api.rate_limit.read.per_minute",
 		"TOOL_SERVICES_ALL_RATE_LIMIT_DESTRUCTIVE_BURST": "services.all.rate_limit.destructive.burst",

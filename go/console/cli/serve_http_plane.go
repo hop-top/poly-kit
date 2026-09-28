@@ -93,12 +93,12 @@ func ResolveServeHTTPListener(r *Root, l ServeHTTPListener) (ServeHTTPSettings, 
 }
 
 // ServeHTTPHandler wraps inner, the listener's router, in the
-// HTTP-plane chain kit owns, outermost first: request id, access log,
-// recovery, tracing and metrics (slots 1-5), security headers (6),
-// the health probes (7), the Host and Origin checks with the metrics
-// endpoint at their inner end (8), the body limit (10) and compression
-// (11). Slots 8-11 wrap inner as a whole, whatever path a request
-// addresses. Authentication (12) is the listener's own: put it in
+// HTTP-plane chain kit owns, outermost first: request id, client
+// address, access log, recovery, tracing and metrics (slots 1-5),
+// security headers (6), the health probes (7), the Host and Origin
+// checks with the metrics endpoint at their inner end (8), the body
+// limit (10) and compression (11). Slots 8-11 wrap inner as a whole,
+// whatever path a request addresses. Authentication (12) is the listener's own: put it in
 // inner, in front of its router, so it runs after the body limit.
 func ServeHTTPHandler(r *Root, l ServeHTTPListener, inner http.Handler) (http.Handler, error) {
 	p := httpPlane{root: r, l: l}
@@ -131,6 +131,9 @@ func (p httpPlane) setting(block, key string) string {
 // validate checks every HTTP-plane block the chain reads, in the
 // order the api service always has.
 func (p httpPlane) validate() error {
+	if err := p.validateTrustedProxies(); err != nil {
+		return err
+	}
 	if err := p.validateHealth(); err != nil {
 		return err
 	}
@@ -146,19 +149,24 @@ func (p httpPlane) validate() error {
 	return p.validateCompression()
 }
 
-// edge is HTTP-plane slots 1-5: request id, access log, recovery, and
-// the linked provider's tracing and metrics, which wrap every later
-// refusal, probes included.
-func (p httpPlane) edge() []api.Middleware {
+// edge is HTTP-plane slots 1-5: request id, client address, access
+// log, recovery, and the linked provider's tracing and metrics, which
+// wrap every later refusal, probes included.
+func (p httpPlane) edge() ([]api.Middleware, error) {
+	client, err := p.clientAddress()
+	if err != nil {
+		return nil, err
+	}
 	logger := kitlog.New(p.viper())
 	return []api.Middleware{
 		api.RequestID(),
+		client,
 		api.Logger(logger.Info),
 		api.Recovery(func(v any, r *http.Request) {
 			logger.Error("panic recovered", "error", v, "path", r.URL.Path)
 		}),
 		p.root.observeMiddleware(p.l.Service),
-	}
+	}, nil
 }
 
 // guards is HTTP-plane slots 10 and 11, the body limit and
@@ -183,5 +191,9 @@ func (p httpPlane) wrap(routed, routes http.Handler) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return api.Chain(p.edge()...)(p.securityHeaders(p.withHealth(checked, routes))), nil
+	edge, err := p.edge()
+	if err != nil {
+		return nil, err
+	}
+	return api.Chain(edge...)(p.securityHeaders(p.withHealth(checked, routes))), nil
 }

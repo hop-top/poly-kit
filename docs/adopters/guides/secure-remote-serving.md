@@ -884,8 +884,9 @@ default, each configured under its own `services.<svc>`:
   and `Content-Security-Policy: default-src 'none'; frame-ancestors
   'none'; base-uri 'none'; form-action 'none'`. The OpenAPI `/docs`
   page keeps its own, looser policy. `Strict-Transport-Security` is
-  sent only on requests that reached the server over TLS; a
-  TLS-terminating proxy sends its own.
+  sent only when the client reached the tool over TLS: on this
+  server, or at a [trusted proxy](#behind-a-proxy-name-it) that
+  forwarded `https`.
 
 Health probes are answered before the Host check, so an orchestrator
 addressing a pod by IP needs no entry.
@@ -981,12 +982,39 @@ Choose where TLS ends:
 | Who holds the certificate | the proxy (nginx, Caddy, a cloud load balancer) | the tool, `services.<svc>.tls` |
 | The tool's listener | plaintext, on loopback or a network only the proxy reaches | TLS only, HTTP/2 and HTTP/1.1 |
 | Who authenticates callers | the tool's `Auth`; a client certificate the proxy checks never reaches kit | the tool: `Auth`, or the client certificate with `auth.mode: mtls` |
-| `Strict-Transport-Security` | the proxy sends it | the api service sends it |
+| `Strict-Transport-Security` | the proxy sends it, or the tool when it trusts the proxy | the tool sends it |
+| The client address kit sees | the proxy, until you list it in `trusted_proxies` | the client |
 
 **Behind a proxy**, keep the tool on `127.0.0.1` and point the proxy
-at it; nothing in the tool changes. A proxy on another host reaches
+at it, then [name it](#behind-a-proxy-name-it). A proxy on another host reaches
 a non-loopback bind, which still needs `Auth` (or the `insecure_remote`
 opt-in, when only the proxy can reach that network) and a policy.
+
+#### Behind a proxy: name it
+
+Until you say otherwise every call comes from the proxy: one rate-limit
+bucket for everybody and the proxy's address in every audit record.
+List the proxies whose forwarding headers you trust:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  all:
+    trusted_proxies: [127.0.0.1, "::1"]   # the proxy on this host
+  api:
+    trusted_proxies: [10.0.0.0/8]         # replaces the shared list for api
+```
+
+From a listed peer, kit reads `Forwarded`, else `X-Forwarded-For`,
+else `X-Real-IP`, and walks right to left past every trusted hop to
+the first address you do not trust: that is the client. It becomes
+the rate limiter's key and `remote_addr` in the audit record, with
+the proxy in `peer_addr`; an `X-Forwarded-Proto: https` from it turns
+on HSTS. From any other peer the headers are ignored, so a client
+cannot name itself. Have the proxy overwrite the header it sets and
+strip the other: a request carrying `Forwarded` and `X-Forwarded-For`
+that disagree is attributed to the proxy. The rules are in
+[the contract](../../contracts/serve-lifecycle.md#client-address).
 
 **On the listener**, name a certificate and key:
 
@@ -1111,7 +1139,9 @@ counted as `rate_limited` in the refusal metrics.
 
 A caller is its authenticated principal and tenant; without one, its
 client address (an IPv6 address by its `/64`); without that, the
-surface, so bus and cron calls share one bucket. The defaults, per
+surface, so bus and cron calls share one bucket. Behind a reverse
+proxy the client address is the proxy's until you
+[list it in `trusted_proxies`](#behind-a-proxy-name-it). The defaults, per
 caller:
 
 | Tier | Commands | `per_minute` | `burst` |
@@ -1224,7 +1254,8 @@ answer that takes longer than `write` is cut whatever its deadline.
 | `services.api.host_check.allow` | `[]` | Hosts accepted beyond the listener's own; `name` or `name:port`. Required for a wildcard bind to check anything. |
 | `services.api.origin_check.enabled` | `true` | Refuse cross-origin browser writes (`403`, `origin_rejected`). |
 | `services.api.origin_check.allow` | `[]` (same-origin only) | Cross-origin browser origins permitted to write, `scheme://host[:port]`. |
-| `services.api.security_headers.enabled` | `true` | `nosniff`, `no-referrer`, a deny-all CSP; HSTS over TLS only. |
+| `services.api.security_headers.enabled` | `true` | `nosniff`, `no-referrer`, a deny-all CSP; HSTS over TLS only, here or at a trusted proxy. |
+| `services.<svc>.trusted_proxies` | `[]` | CIDRs and addresses of the proxies whose `Forwarded`, `X-Forwarded-For`, `X-Real-IP` and `X-Forwarded-Proto` are believed. Empty believes none. |
 | `services.<svc>.tls.cert_file`, `.key_file` | unset | Serve TLS only, HTTP/2 and HTTP/1.1, with this PEM chain and key. `tls.enabled: false` turns it off. |
 | `services.<svc>.tls.min_version` | `1.2` | `1.2` or `1.3`. |
 | `services.<svc>.tls.acme.domains` | unset | Obtain and renew the certificate by ACME for these names; `.email`, `.cache_dir`, `.directory_url` tune it. |

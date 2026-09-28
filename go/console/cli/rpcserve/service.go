@@ -585,6 +585,9 @@ func rpcCallMeta(ctx context.Context, req connect.AnyRequest, claimed cmdsurface
 	if peer.Addr != "" {
 		extra["remote_addr"] = peer.Addr
 	}
+	if proxy := api.PeerAddrFromContext(ctx); proxy != "" {
+		extra["peer_addr"] = proxy
+	}
 	if rpc.Authenticated(ctx) {
 		claims := rpc.ClaimsFromContext(ctx)
 		meta.Established = cmdsurface.EstablishedVerified
@@ -604,17 +607,21 @@ func rpcCallMeta(ctx context.Context, req connect.AnyRequest, claimed cmdsurface
 func auditRPCAuthRefusal(b *cmdsurface.Bridge) func(context.Context, rpc.RefusedCall, error) {
 	return func(ctx context.Context, call rpc.RefusedCall, err error) {
 		hr := (&http.Request{Header: call.Header}).WithContext(ctx)
+		extra := map[string]string{
+			"rpc_protocol":  call.Peer.Protocol,
+			"rpc_procedure": call.Procedure,
+			"remote_addr":   call.Peer.Addr,
+		}
+		if proxy := api.PeerAddrFromContext(ctx); proxy != "" {
+			extra["peer_addr"] = proxy
+		}
 		b.Audit(ctx, cmdsurface.Invocation{
 			Meta: cmdsurface.Meta{
 				Surface:     cmdsurface.SurfaceRPC,
 				RequestID:   api.RequestIDFromContext(ctx),
 				TraceID:     api.TraceIDFromRequest(hr),
 				RequestedAt: time.Now(),
-				Extra: map[string]string{
-					"rpc_protocol":  call.Peer.Protocol,
-					"rpc_procedure": call.Procedure,
-					"remote_addr":   call.Peer.Addr,
-				},
+				Extra:       extra,
 			},
 		}, cmdsurface.Result{}, fmt.Errorf("%w: %v", cmdsurface.ErrAuthRefused, err))
 	}

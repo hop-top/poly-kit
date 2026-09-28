@@ -176,10 +176,15 @@ func TestServeSocketRefusesHTTPOnlyBlocks(t *testing.T) {
 		"services.socket.tls.cert_file",
 		"services.socket.tls.acme.domains",
 		"services.socket.auth.mtls.ca_file",
+		"services.socket.trusted_proxies",
 	} {
 		t.Run(key, func(t *testing.T) {
 			r := socketRoot(t, cli.SocketConfig{Path: shortSocketPath(t)})
-			r.Viper.Set(key, 1)
+			var val any = 1
+			if key == "services.socket.trusted_proxies" {
+				val = []string{"10.0.0.0/8"} // a list: the value is the block
+			}
+			r.Viper.Set(key, val)
 			err := runServeArgs(t, r, []string{"serve", "socket"}, 2*time.Second)
 			require.Error(t, err)
 			var oe *output.Error

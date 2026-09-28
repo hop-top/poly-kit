@@ -90,6 +90,9 @@ func TestValidateRefusesUnknownKeys(t *testing.T) {
 		"sinks as a number":              {"services.api.audit.sinks", 3, "services.api.audit.sinks: must be a list of entries"},
 		"sink entry not a map":           {"services.all.audit.sinks", []any{"chain", 42}, "services.all.audit.sinks[1]: want a type or a map with keys fsync, "},
 		"unknown key in a sink entry":    {"services.api.audit.sinks", []any{map[string]any{"type": "chain", "rotate": true, "fsync": "always"}}, `services.api.audit.sinks[0]: unknown key rotate; an entry accepts fsync, max_bytes`},
+		"trusted_proxies as a block":     {"services.api.trusted_proxies.cidrs", []string{"10.0.0.0/8"}, "services.api.trusted_proxies: must be a list of strings"},
+		"trusted_proxies as a number":    {"services.all.trusted_proxies", 10, "services.all.trusted_proxies: must be a list of strings"},
+		"trusted_proxies entry a number": {"services.api.trusted_proxies", []any{"10.0.0.0/8", 7}, "services.api.trusted_proxies[1]: want a string"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -125,7 +128,10 @@ func TestValidateAcceptsKnownKeys(t *testing.T) {
 			"type": "chain", "path": "/x", "fsync": "1s", "max_bytes": 1, "max_files": 2,
 			"on": []any{"error"}, "surfaces": []any{"rest"}, "paths": []any{"a *"},
 		}},
-		"services.socket.audit.sinks": "chain, chain",
+		"services.socket.audit.sinks":  "chain, chain",
+		"services.api.trusted_proxies": []any{"10.0.0.0/8", "::1"},
+		"services.all.trusted_proxies": "10.0.0.0/8, 192.168.0.0/16",
+		"services.mcp.trusted_proxies": []string{"10.0.0.7"},
 	} {
 		v.Set(k, val)
 	}
@@ -176,6 +182,7 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 	v.Set("services.socket.tls.acme.domains", []string{"example.com"})
 	v.Set("services.socket.auth.mtls.ca_file", "ca.crt")
 	v.Set("services.socket.auth.mode", "mtls")
+	v.Set("services.socket.trusted_proxies", []string{"10.0.0.0/8"})
 	v.Set("services.socket.metrics.enabled", true)
 	v.Set("services.socket.tracing.enabled", true)
 	v.Set("services.socket.audit.redact.patterns", []string{"x"})
@@ -189,6 +196,7 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 	for _, want := range []string{
 		"services.socket.body_limit:", "services.socket.metrics.scrape:", "services.socket.health:",
 		"services.socket.tls:", "services.socket.tls.acme:", "services.socket.auth.mtls:",
+		"services.socket.trusted_proxies:",
 		"no HTTP listener",
 	} {
 		assert.Contains(t, msg, want)
@@ -201,7 +209,7 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 	assert.NoError(t, New(v).ValidateNoHTTP("worker"), "keys under another service are that service's")
 	assert.NoError(t, New(nil).ValidateNoHTTP("socket"))
 
-	for _, b := range []string{"security_headers", "health", "host_check", "origin_check", "body_limit", "compression", "metrics.scrape", "tls", "tls.acme", "auth.mtls"} {
+	for _, b := range []string{"security_headers", "health", "host_check", "origin_check", "body_limit", "compression", "metrics.scrape", "trusted_proxies", "tls", "tls.acme", "auth.mtls"} {
 		assert.True(t, HTTPOnly(b), b)
 	}
 	for _, b := range []string{"tracing", "metrics", "audit", "audit.redact", "auth", "rate_limit", "unregistered"} {

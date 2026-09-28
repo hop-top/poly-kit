@@ -675,7 +675,7 @@ of any of them.
 | `Traceparent`, `Tracestate` | W3C `traceparent` when well-formed, and `tracestate` beside it | —                  |
 | `IdempotencyKey` | `Idempotency-Key`                              | `idempotency_key`                           |
 | `RequestedAt`    | receipt time                                   | receipt time                                |
-| `Extra`          | `remote_addr`, `scopes` (comma-joined claims)  | `scopes` from `SocketConfig.Auth`'s identity, else — |
+| `Extra`          | `remote_addr`, `peer_addr` (see [Client address](#client-address)), `scopes` (comma-joined claims)  | `scopes` from `SocketConfig.Auth`'s identity, else — |
 
 - Claims MUST be extractable without the transport importing the
   adopter's types: a value implementing `api.Identity`, an
@@ -956,7 +956,7 @@ Provenance, by the same rule as the table in
 | `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`       | —                                |
 | `IdempotencyKey` | `Idempotency-Key`                               | —                                |
 | `RequestedAt`    | receipt time                                    | receipt time                     |
-| `Extra`          | `mcp_transport=http`, `remote_addr`, `scopes`, `mcp_client` | `mcp_transport=stdio`, `peer_pid`, `mcp_client` |
+| `Extra`          | `mcp_transport=http`, `remote_addr`, `peer_addr` (see [Client address](#client-address)), `scopes`, `mcp_client` | `mcp_transport=stdio`, `peer_pid`, `mcp_client` |
 
 `mcp_client` is the client's self-reported name from the MCP
 handshake: provenance, never a credential.
@@ -1161,7 +1161,7 @@ authentication, so without `Auth` such leaves are refused.
 | `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`, else the body's       |
 | `IdempotencyKey` | `Idempotency-Key`, else the body's                               |
 | `RequestedAt`    | receipt time                                                     |
-| `Extra`          | `rpc_protocol` (`connect`, `grpc`, `grpcweb`), `remote_addr`, `scopes` |
+| `Extra`          | `rpc_protocol` (`connect`, `grpc`, `grpcweb`), `remote_addr`, `peer_addr` (see [Client address](#client-address)), `scopes` |
 
 What never runs remotely is withheld as the REST projection withholds
 it: every command the reflector judges non-invocable under the Root's
@@ -1517,7 +1517,7 @@ socket service and stdio take the loopback column.
 | `trusted_proxies`  | http 2                                 | HTTP listeners                         | empty: no forwarded header trusted  | empty                                          | — |
 | `tracing`          | http 5; invocation (propagation)       | HTTP listeners; every remote surface   | propagate, export nothing           | same                                           | — |
 | `metrics`          | http 5; endpoint at the inner end of http 8 | HTTP listeners; every remote surface; endpoint (`metrics.scrape`) on HTTP listeners | off; endpoint off               | off; endpoint off, and refused without `scrape.allow_remote` | — |
-| `security_headers` | http 6                                 | HTTP listeners                         | on; HSTS only with `tls`            | on                                             | — |
+| `security_headers` | http 6                                 | HTTP listeners                         | on; HSTS only over TLS: `tls`, or https from a trusted proxy | on                                             | — |
 | `health`           | http 7                                 | HTTP listeners                         | on                                  | on                                             | — |
 | `host_check`       | http 8                                 | HTTP listeners                         | on, allowlist from the bound host   | on; a wildcard bind derives no restriction     | `host_rejected` |
 | `origin_check`     | http 8                                 | HTTP listeners                         | on, same-origin                     | on, same-origin                                | `origin_rejected` |
@@ -1535,11 +1535,12 @@ socket service and stdio take the loopback column.
 transport and the rpc server; each applies every block in its row
 under its own `services.<svc>`. A block whose reach is HTTP listeners
 alone — `security_headers`, `health`, `host_check`, `origin_check`,
-`body_limit`, `compression`, `metrics.scrape`, `tls`, `tls.acme`, and
-`auth.mtls` — set for a kit-shipped service with no HTTP listener
-(the socket service) would act on nothing, so it is refused at
-validation, exit `2`, rather than ignored. Under `services.all` it is a default, and a service it does
-not reach simply does not read it.
+`body_limit`, `compression`, `trusted_proxies`, `metrics.scrape`,
+`tls`, `tls.acme`, and `auth.mtls` — set for a kit-shipped service
+with no HTTP listener (the socket service) would act on nothing, so
+it is refused at validation, exit `2`, rather than ignored. Under
+`services.all` it is a default, and a service it does not reach
+simply does not read it.
 
 The same rule holds for a key or a value that only some services
 apply, as the table below states: under the socket, the server keys
@@ -1560,7 +1561,7 @@ reads no HTTP-listener key.
 | `timeouts` `read_header`, `read`, `write`, `idle` | api, mcp over HTTP, rpc              | socket                   |
 | `timeouts` `command`                    | bridge services                                | —                        |
 | `tracing`, `metrics`                    | HTTP half: api, mcp over HTTP, rpc; invocation half: bridge services | —  |
-| `metrics.scrape`, `security_headers`, `health`, `host_check`, `origin_check`, `body_limit`, `compression` | api, mcp over HTTP, rpc | socket |
+| `metrics.scrape`, `security_headers`, `health`, `host_check`, `origin_check`, `body_limit`, `compression`, `trusted_proxies` | api, mcp over HTTP, rpc | socket |
 | `rate_limit`                            | bridge services                                | —                        |
 | `idempotency`                           | bridge services                                | —                        |
 | `cache`                                 | api                                            | every other service      |
@@ -1584,6 +1585,64 @@ server. `auth.mode: mtls` does.
 Permission and confirmation have no block. Permission is configured
 by `--policy` and `cli.WithPermission`; confirmation belongs to the
 surface that asks the person.
+
+### Client address
+
+Slot 2 decides who the client is. Without configuration it is the
+immediate peer, and forwarding headers are the caller's say-so,
+never read. Behind a reverse proxy every caller is the proxy until
+the operator names it:
+
+```yaml
+services:
+  all:
+    trusted_proxies: [10.0.0.0/8, "2001:db8::/32"]
+  api:
+    trusted_proxies: [127.0.0.1]   # replaces the shared list for api
+```
+
+`trusted_proxies` is a list, not a block of keys: CIDRs and single
+addresses, IPv4 or IPv6. The service's list replaces the
+`services.all` list; a string is one entry or several, comma or space
+separated (`MYTOOL_SERVICES_ALL_TRUSTED_PROXIES="10.0.0.0/8 ::1"`).
+An entry that is neither, or a map where the list belongs, is refused
+at validation, exit `2`, naming the key. Empty trusts no proxy.
+
+- Forwarding headers MUST be read only when the immediate peer lies
+  in the list. From any other peer they are ignored, whatever they
+  say.
+- From a trusted peer, the header is walked right to left — each
+  entry was appended by the hop to its right — past every trusted
+  address; the first untrusted address is the client. When every
+  entry is trusted, the leftmost is.
+- The headers are `Forwarded` (RFC 7239, its `for=`),
+  `X-Forwarded-For`, and `X-Real-IP` only when neither of the others
+  is present. Nodes may carry a port; IPv6 nodes are bracketed in
+  `Forwarded` and may be bare in `X-Forwarded-For`; an IPv4-mapped
+  IPv6 address is its IPv4 address.
+- A header is believed whole or not at all. An entry the walk reaches
+  that is not an address (`unknown`, an obfuscated node, garbage), a
+  `Forwarded` element without `for=`, or two `X-Real-IP` values leave
+  the peer as the client. So do `Forwarded` and `X-Forwarded-For`
+  naming different clients: a proxy that sets one and passes the
+  other through from the client would otherwise let the client choose
+  its address. Configure the proxy to set one and strip the other.
+- The scheme the client used is taken only from a trusted peer: the
+  `proto=` of the `Forwarded` element naming the client, else
+  `X-Forwarded-Proto` — a single value, or the value aligned with the
+  client's `X-Forwarded-For` entry. It decides HSTS: `security_headers`
+  sends it when the request arrived over TLS on the listener or a
+  trusted proxy forwarded `https`.
+- The resolved client is the request's address for everything below
+  slot 2: the access log, the span's client address, the rate
+  limiter's key and every audit record, as `Extra["remote_addr"]` —
+  the bare IP for a forwarded client, `ip:port` for a peer. When a
+  trusted proxy forwarded the client, `Extra["peer_addr"]` records
+  the proxy's own address. Headers are left in place for adopter
+  routes.
+- The Host check still reads `Host`: kit does not honor
+  `X-Forwarded-Host`. A proxy that rewrites `Host` has its upstream
+  name listed in `host_check.allow`.
 
 ### TLS and client certificates
 

@@ -169,3 +169,41 @@ func TestRPCServiceHTTPPlaneConfigurationRefusals(t *testing.T) {
 	assert.Equal(t, 2, oe.ExitCode)
 	assert.Contains(t, oe.Error(), "compression.min_bytes")
 }
+
+// The client a trusted proxy forwards is the one the rpc listener
+// audits, on every protocol and on a refusal too; from any other peer
+// the header is ignored.
+func TestRPCServiceTrustedProxies(t *testing.T) {
+	for _, trusted := range []bool{true, false} {
+		t.Run(map[bool]string{true: "trusted", false: "untrusted"}[trusted], func(t *testing.T) {
+			rec := &recorder{}
+			set := map[string]any{}
+			if trusted {
+				set["services.rpc.trusted_proxies"] = []string{"127.0.0.1", "::1"}
+			}
+			base := startDefault(t, rpcserve.Config{Auth: bearerAuth}, withConfig(set), cli.WithAuditSinks(rec.spec()))
+			fwd := http.Header{"X-Forwarded-For": {"198.51.100.7"}}
+			for _, p := range protocols {
+				good := fwd.Clone()
+				good.Set("Authorization", "Bearer good")
+				_, err := client(base, p).Invoke(t.Context(), call("ping", good))
+				require.NoError(t, err, p.name)
+				_, err = client(base, p).Invoke(t.Context(), call("ping", fwd))
+				require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err), p.name)
+			}
+
+			rec.mu.Lock()
+			defer rec.mu.Unlock()
+			require.Len(t, rec.invs, 2*len(protocols))
+			for _, inv := range rec.invs {
+				if trusted {
+					assert.Equal(t, "198.51.100.7", inv.Meta.Extra["remote_addr"])
+					assert.True(t, strings.HasPrefix(inv.Meta.Extra["peer_addr"], "127.0.0.1:"), inv.Meta.Extra["peer_addr"])
+					continue
+				}
+				assert.True(t, strings.HasPrefix(inv.Meta.Extra["remote_addr"], "127.0.0.1:"), inv.Meta.Extra["remote_addr"])
+				assert.NotContains(t, inv.Meta.Extra, "peer_addr")
+			}
+		})
+	}
+}

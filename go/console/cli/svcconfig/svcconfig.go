@@ -52,6 +52,13 @@ type Block struct {
 	// else is a configuration error. The block's owner checks what the
 	// entries say.
 	Lists map[string][]string
+	// Value marks a block that is itself a list of strings —
+	// services.<svc>.trusted_proxies: [10.0.0.0/8] — rather than a
+	// block of keys. It has no Keys; a string value is one entry or
+	// several, comma or space separated, and a map where the list
+	// belongs is a configuration error. The block's owner checks
+	// what the entries say.
+	Value bool
 	// Note is appended to an unknown-key error, for a block whose
 	// shape needs explaining (a security floor with no off switch).
 	Note string
@@ -90,6 +97,7 @@ var blocks = []Block{
 		Name: "timeouts", Keys: []string{"read_header", "read", "write", "idle", "command"},
 		HTTPKeys: []string{"read_header", "read", "write", "idle"},
 	},
+	{Name: "trusted_proxies", Value: true},
 	{Name: "tracing", Keys: []string{"enabled", "exporter", "endpoint", "headers", "sample_ratio"}},
 	{Name: "metrics", Keys: []string{"enabled", "exporter", "endpoint", "headers", "interval"}},
 	{Name: "metrics.scrape", Keys: []string{"enabled", "path", "allow_remote"}},
@@ -131,7 +139,7 @@ var blocks = []Block{
 // the server timeouts, and auth.mode mtls.
 var httpOnly = []string{
 	"metrics.scrape", "security_headers", "health", "host_check",
-	"origin_check", "body_limit", "compression",
+	"origin_check", "body_limit", "compression", "trusted_proxies",
 	"tls", "tls.acme", "auth.mtls",
 }
 
@@ -423,6 +431,12 @@ func (r Resolver) checkBlocks(keys, scopes []string, bs []Block) []error {
 	for _, scope := range scopes {
 		for _, b := range bs {
 			base := Key(scope, b.Name, "")
+			if b.Value {
+				if err := r.checkValue(base, keys); err != nil {
+					errs = append(errs, err)
+				}
+				continue
+			}
 			for _, k := range keys {
 				if k == base {
 					errs = append(errs, fmt.Errorf("%s: must be a block with keys %s",
@@ -464,6 +478,33 @@ func (r Resolver) checkBlocks(keys, scopes []string, bs []Block) []error {
 		}
 	}
 	return errs
+}
+
+// checkValue checks the shape of a [Block.Value] block set at base:
+// a string, or a list of strings. A key below base means a map where
+// the list belongs.
+func (r Resolver) checkValue(base string, keys []string) error {
+	shape := fmt.Errorf("%s: must be a list of strings", base)
+	for _, k := range keys {
+		if strings.HasPrefix(k, base+".") {
+			return shape
+		}
+		if k != base {
+			continue
+		}
+		switch x := r.v.Get(base).(type) {
+		case string, []string:
+		case []any:
+			for i, e := range x {
+				if _, ok := e.(string); !ok {
+					return fmt.Errorf("%s[%d]: want a string", base, i)
+				}
+			}
+		default:
+			return shape
+		}
+	}
+	return nil
 }
 
 // checkList checks the shape of the list key full, set as k: k is

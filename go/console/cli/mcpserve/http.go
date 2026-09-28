@@ -43,6 +43,7 @@ type mcpCall struct {
 	TraceID        string   `json:"trace_id,omitempty"`
 	IdempotencyKey string   `json:"idempotency_key,omitempty"`
 	RemoteAddr     string   `json:"remote_addr,omitempty"`
+	PeerAddr       string   `json:"peer_addr,omitempty"`
 }
 
 // httpServing serves the surface over streamable HTTP on its own
@@ -236,6 +237,7 @@ func mcpCallRecorder(authed bool) api.Middleware {
 				TraceID:        m.TraceID,
 				IdempotencyKey: m.IdempotencyKey,
 				RemoteAddr:     m.RemoteAddr,
+				PeerAddr:       m.PeerAddr,
 			}
 			if authed {
 				call.Principal, call.Tenant, call.Scopes = m.Principal, m.Tenant, m.Scopes
@@ -257,18 +259,22 @@ func (h *httpServing) auditAuthRefusal(r *http.Request, err error) {
 		return
 	}
 	m := api.RequestMetaFrom(r)
+	extra := map[string]string{
+		"mcp_transport": TransportHTTP,
+		"http_method":   r.Method,
+		"http_path":     r.URL.Path,
+		"remote_addr":   m.RemoteAddr,
+	}
+	if m.PeerAddr != "" {
+		extra["peer_addr"] = m.PeerAddr
+	}
 	b.Audit(r.Context(), cmdsurface.Invocation{
 		Meta: cmdsurface.Meta{
 			Surface:     cmdsurface.SurfaceMCP,
 			RequestID:   m.RequestID,
 			TraceID:     m.TraceID,
 			RequestedAt: m.ReceivedAt,
-			Extra: map[string]string{
-				"mcp_transport": TransportHTTP,
-				"http_method":   r.Method,
-				"http_path":     r.URL.Path,
-				"remote_addr":   m.RemoteAddr,
-			},
+			Extra:       extra,
 		},
 	}, cmdsurface.Result{}, fmt.Errorf("%w: %v", cmdsurface.ErrAuthRefused, err))
 }
@@ -302,6 +308,9 @@ func (h *httpServing) callMeta(_ context.Context, req *mcp.CallToolRequest) cmds
 	extra := map[string]string{"mcp_transport": TransportHTTP}
 	if call.RemoteAddr != "" {
 		extra["remote_addr"] = call.RemoteAddr
+	}
+	if call.PeerAddr != "" {
+		extra["peer_addr"] = call.PeerAddr
 	}
 	if call.Verified && len(call.Scopes) > 0 {
 		extra["scopes"] = strings.Join(call.Scopes, ",")
