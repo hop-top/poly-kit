@@ -276,12 +276,16 @@ if [ -n "$HAS_SDK_LAYOUT" ] || [ -n "$HAS_CONFIG" ]; then
     make lint-sdk-paths
 fi
 # ADR mentions and out-of-repo references can land in any text file;
-# each scan is a handful of git greps.
+# each scan is a handful of git greps. Toolchain drift can come from
+# mise.toml, go.mod, a lockfile or a workflow alike; the parity check
+# reads a dozen small files.
 if [ -n "$CHANGED" ]; then
     echo "  lint-adr-refs..."
     make lint-adr-refs
     echo "  lint-internal-refs..."
     make lint-internal-refs
+    echo "  check-toolchain-parity..."
+    make check-toolchain-parity
 fi
 
 # --- Tests do NOT run here ---

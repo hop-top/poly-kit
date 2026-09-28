@@ -135,6 +135,17 @@ jobs:
           persist-credentials: false
       - run: make lint-internal-refs
 
+  # mise.toml pins the toolchain and the jobs here read it. go.mod,
+  # rust-toolchain.toml, uv.lock, workflow literals and the devcontainer
+  # carry their own copies; this fails when one of them drifts.
+  toolchain-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: make check-toolchain-parity
+
   proto-check:
     runs-on: ubuntu-latest
     steps:

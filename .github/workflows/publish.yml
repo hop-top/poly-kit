@@ -42,7 +42,7 @@ jobs:
           ecosystem: py
           package: hop-top-kit
           mirror: hop-top/kit-py
-          python-version: '3.11'
+          python-version: '3.11'  # toolchain-parity: allow (tests the requires-python floor, not the dev pin)
           test-command: pip install -e ".[dev]" && pytest
           # OIDC trusted publishing returned `invalid-publisher` despite
           # repeatedly correct pending-publisher claims (see uri-poly,
@@ -59,7 +59,7 @@ jobs:
           # a release must compile on current stable so consumers can
           # build it. Publishing does not run fmt/clippy, which are the
           # version-sensitive gates.
-          rust-toolchain: stable
+          rust-toolchain: stable  # toolchain-parity: allow (floats on purpose; see above)
         kit-ts:
           dir: sdk/ts
           ecosystem: ts
