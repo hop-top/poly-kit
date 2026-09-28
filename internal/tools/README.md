@@ -38,7 +38,7 @@ For ad-hoc scripts or one-off generators, prefer `scripts/`.
 
 ## See also
 
-- [`go/core/scope/rules/SOURCES.md`](../go/core/scope/rules/SOURCES.md)
+- [`go/core/scope/rules/SOURCES.md`](../../go/core/scope/rules/SOURCES.md)
   — gitleaks provenance + refresh notes
-- [`go/core/redact/README.md`](../go/core/redact/README.md)
+- [`go/core/redact/README.md`](../../go/core/redact/README.md)
   — Presidio rule maintenance + "when to refresh" guidance

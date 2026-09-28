@@ -34,7 +34,7 @@ outside the markers. Per-language `tiers.yaml` files must not list
 
 ## See also
 
-- [Shared template blueprints](../../docs/contributors/shared-template-blueprints.md):
+- [Shared template blueprints](../../../../docs/contributors/shared-template-blueprints.md):
   SOT format and update policy, composition order, the managed-block API
   and idempotency guarantees, every emitter's API and output, the
   services catalog layout and `KIT_QUEUE_DRIVER` precedence
