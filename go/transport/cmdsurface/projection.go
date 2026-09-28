@@ -516,17 +516,29 @@ type projectionExecutor struct {
 // id the middleware issued, the trace id and idempotency key the
 // caller propagated. ctx is the request's own, so a client that
 // disconnects cancels the command.
+//
+// A read the result cache handles carries its [CacheInfo] out as the
+// result's [api.CacheDirective], which the GET route renders as ETag
+// and Cache-Control and answers If-None-Match against.
 func (e *projectionExecutor) Execute(ctx context.Context, req api.CommandRequest) (api.CommandResult, error) {
-	res, err := e.bridge.Invoke(ctx, projectionInvocation(req))
+	adm, err := e.bridge.Admit(ctx, projectionInvocation(req))
 	if err != nil {
 		return api.CommandResult{}, translateProjectionError(err)
 	}
-	return api.CommandResult{
+	res, err := adm.Run(ctx)
+	if err != nil {
+		return api.CommandResult{}, translateProjectionError(err)
+	}
+	out := api.CommandResult{
 		ExitCode: res.ExitCode,
 		Data:     res.Data,
 		Stdout:   res.Stdout,
 		Stderr:   res.Stderr,
-	}, nil
+	}
+	if info, ok := adm.Cache(); ok {
+		out.Cache = &api.CacheDirective{ETag: info.ETag, MaxAge: info.MaxAge, Private: info.Private}
+	}
+	return out, nil
 }
 
 // OpenStream implements api.CommandStreamer.

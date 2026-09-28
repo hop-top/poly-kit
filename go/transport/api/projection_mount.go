@@ -56,6 +56,10 @@ type CommandResult struct {
 	Stdout string `json:"stdout,omitempty"`
 	// Stderr is the captured standard error.
 	Stderr string `json:"stderr,omitempty"`
+	// Cache, when set on a successful read, is rendered as ETag and
+	// Cache-Control on the GET route, which then answers a matching
+	// If-None-Match with 304. See [CacheDirective].
+	Cache *CacheDirective `json:"-"`
 }
 
 // Projection errors an executor may return. The projection maps each
@@ -168,7 +172,11 @@ func commandHandler(ex CommandExecutor, d CommandDescriptor) http.HandlerFunc {
 			writeProjectionError(w, d, err)
 			return
 		}
-		JSON(w, StatusForExitCode(res.ExitCode), res)
+		status := StatusForExitCode(res.ExitCode)
+		if res.Cache != nil && status == http.StatusOK && writeCacheHeaders(w, r, *res.Cache) {
+			return
+		}
+		JSON(w, status, res)
 	}
 }
 
