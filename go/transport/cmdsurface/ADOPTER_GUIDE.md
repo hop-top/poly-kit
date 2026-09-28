@@ -10,7 +10,7 @@ MCP + WS + … without rewriting handlers.
 |---------|-----------|-------|
 | CLI | local | cobra (unchanged) |
 | REST | request/reply | `MountREST(b, r)` |
-| RPC | request/reply (ConnectRPC) | `MountRPC(b, s)` |
+| RPC | request/reply + server stream (Connect, gRPC, gRPC-Web) | `MountRPC(b, s)` |
 | MCP | LLM tool exec | `MountMCP(b, r)` |
 | WS | bidirectional stream | `MountWS(b, r)` |
 | SSE | server stream | `MountSSE(b, r)` |

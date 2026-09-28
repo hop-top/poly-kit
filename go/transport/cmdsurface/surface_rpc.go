@@ -10,20 +10,23 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
+	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1"
+	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1/cmdsurfacev1connect"
 )
 
-// RPCServicePath is the fixed Connect service mount path. Surfaces
-// that want to address Invoke / InvokeStream directly construct URLs
-// against this prefix.
-const RPCServicePath = "/cmdsurface.v1.Commands/"
+// RPCServicePath is the fixed service mount path of
+// cmdsurface.v1.Commands. Surfaces that want to address Invoke /
+// InvokeStream directly construct URLs against this prefix.
+const RPCServicePath = "/" + cmdsurfacev1connect.CommandsName + "/"
 
 // Per-procedure paths (the URL suffixes Connect routes on).
 const (
 	// RPCInvokeProcedure is the unary Invoke method URL.
-	RPCInvokeProcedure = RPCServicePath + "Invoke"
+	RPCInvokeProcedure = cmdsurfacev1connect.CommandsInvokeProcedure
 	// RPCInvokeStreamProcedure is the server-streaming InvokeStream
 	// method URL.
-	RPCInvokeStreamProcedure = RPCServicePath + "InvokeStream"
+	RPCInvokeStreamProcedure = cmdsurfacev1connect.CommandsInvokeStreamProcedure
 )
 
 // confirmHeader is the request header clients set to satisfy
@@ -49,21 +52,29 @@ func WithRPCInterceptors(ic ...connect.Interceptor) RPCOption {
 	return func(c *rpcConfig) { c.interceptors = append(c.interceptors, ic...) }
 }
 
-// rpcServer wires a Bridge into the two Connect handlers. It is
+// rpcServer wires a Bridge into the generated Commands handler. It is
 // internal — callers reach it only via MountRPC.
 type rpcServer struct {
 	b     *Bridge
 	index map[string]*Leaf
 }
 
-// MountRPC registers a single ConnectRPC service on s that exposes
-// every Bridge leaf where SurfaceRPC is enabled. Two procedures are
-// installed under RPCServicePath:
+var _ cmdsurfacev1connect.CommandsHandler = (*rpcServer)(nil)
+
+// MountRPC registers the cmdsurface.v1.Commands service on s, exposing
+// every Bridge leaf where SurfaceRPC is enabled. The schema is
+// contracts/proto/cmdsurface/v1/commands.proto; clients generate stubs
+// from it or import the Go ones in gen/cmdsurfacev1/cmdsurfacev1connect.
+// Two procedures are installed under RPCServicePath:
 //
 //	Invoke(Invocation)       -> Result        // unary
 //	InvokeStream(Invocation) -> stream Event  // server-streaming
 //
-// The Connect handler:
+// The handler speaks every protocol connect-go serves: Connect (binary
+// proto and JSON), gRPC and gRPC-Web. gRPC needs HTTP/2; without TLS
+// that means an h2c server, which rpc.ListenAndServe provides.
+//
+// The handler:
 //   - forces inv.Meta.Surface = SurfaceRPC;
 //   - rejects unknown / non-enabled / destructive-blocked leaves with
 //     the codes in the package mapping table;
@@ -87,41 +98,16 @@ func MountRPC(b *Bridge, s rpcServerMount, opts ...RPCOption) error {
 
 	srv := &rpcServer{b: b, index: indexLeaves(b)}
 
-	// Compose handler options: server interceptors first, then any
-	// caller-supplied options, then the JSON codec override that lets
-	// Connect carry plain Go structs.
-	hopts := []connect.HandlerOption{
-		connect.WithCodec(jsonAnyCodec{name: "proto"}),
-		connect.WithCodec(jsonAnyCodec{name: "json"}),
-		connect.WithCodec(jsonAnyCodec{name: "json; charset=utf-8"}),
-	}
+	// Server interceptors first, then caller-supplied ones.
+	var hopts []connect.HandlerOption
 	ics := append([]connect.Interceptor{}, s.Interceptors()...)
 	ics = append(ics, cfg.interceptors...)
 	if len(ics) > 0 {
 		hopts = append(hopts, connect.WithInterceptors(ics...))
 	}
 
-	unary := connect.NewUnaryHandler(
-		RPCInvokeProcedure,
-		srv.invoke,
-		hopts...,
-	)
-	stream := connect.NewServerStreamHandler(
-		RPCInvokeStreamProcedure,
-		srv.invokeStream,
-		hopts...,
-	)
-
-	s.Handle(RPCServicePath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case RPCInvokeProcedure:
-			unary.ServeHTTP(w, r)
-		case RPCInvokeStreamProcedure:
-			stream.ServeHTTP(w, r)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+	path, handler := cmdsurfacev1connect.NewCommandsHandler(srv, hopts...)
+	s.Handle(path, handler)
 	return nil
 }
 
@@ -146,12 +132,12 @@ func indexLeaves(b *Bridge) map[string]*Leaf {
 	return out
 }
 
-// invoke implements the unary Invoke procedure.
-func (s *rpcServer) invoke(
+// Invoke implements the unary Invoke procedure.
+func (s *rpcServer) Invoke(
 	ctx context.Context,
-	req *connect.Request[Invocation],
-) (*connect.Response[Result], error) {
-	inv := *req.Msg
+	req *connect.Request[cmdsurfacev1.Invocation],
+) (*connect.Response[cmdsurfacev1.Result], error) {
+	inv := invocationFromProto(req.Msg)
 	leaf, cerr := s.preflight(req.Header(), &inv)
 	if cerr != nil {
 		return nil, cerr
@@ -160,18 +146,22 @@ func (s *rpcServer) invoke(
 	if err != nil {
 		return nil, mapBridgeError(err, leaf)
 	}
-	return connect.NewResponse(&res), nil
+	out, err := resultToProto(res)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(out), nil
 }
 
-// invokeStream implements the server-streaming InvokeStream procedure.
+// InvokeStream implements the server-streaming InvokeStream procedure.
 // Events from the Runner are forwarded one-per-Send; the goroutine
 // closes when the runner exits or ctx is canceled (client disconnect).
-func (s *rpcServer) invokeStream(
+func (s *rpcServer) InvokeStream(
 	ctx context.Context,
-	req *connect.Request[Invocation],
-	stream *connect.ServerStream[Event],
+	req *connect.Request[cmdsurfacev1.Invocation],
+	stream *connect.ServerStream[cmdsurfacev1.Event],
 ) error {
-	inv := *req.Msg
+	inv := invocationFromProto(req.Msg)
 	leaf, cerr := s.preflight(req.Header(), &inv)
 	if cerr != nil {
 		return cerr
@@ -193,14 +183,18 @@ func (s *rpcServer) invokeStream(
 		errc <- s.b.Runner().Stream(streamCtx, inv, events)
 	}()
 
+	// abort stops the runner and waits for it, so it never blocks on a
+	// full, unread channel.
+	abort := func() {
+		cancel()
+		drain(events)
+		<-errc
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
-			cancel()
-			// Drain remaining events so the runner goroutine can exit
-			// cleanly without blocking on a full / unread channel.
-			drain(events)
-			<-errc
+			abort()
 			return connect.NewError(connect.CodeCanceled, ctx.Err())
 		case ev, ok := <-events:
 			if !ok {
@@ -211,16 +205,14 @@ func (s *rpcServer) invokeStream(
 				}
 				return nil
 			}
-			if err := stream.Send(&ev); err != nil {
-				cancel()
-				drain(events)
-				<-errc
-				return err
+			msg, err := eventToProto(ev)
+			if err != nil {
+				abort()
+				return connect.NewError(connect.CodeInternal, err)
 			}
-			if ev.Kind == "done" {
-				// Runner has emitted its terminal event; let it close
-				// the channel naturally to release resources.
-				continue
+			if err := stream.Send(msg); err != nil {
+				abort()
+				return err
 			}
 		}
 	}
@@ -296,49 +288,33 @@ func drain(ch <-chan Event) {
 	}
 }
 
-// RPCClientOptions returns the connect.ClientOptions clients must
-// pass to NewClient when talking to a MountRPC service. Required
-// because cmdsurface's wire types (Invocation / Result / Event) are
-// plain Go structs, not proto.Messages — both ends must agree on the
-// JSON-over-arbitrary-Go-values codec.
+// RPCClientOptions returns connect.ClientOptions for a client built
+// on the Go types, connect.NewClient[Invocation, Result] or
+// [Invocation, Event]: they select a JSON codec over encoding/json,
+// which the service's JSON wire accepts and answers in kind.
+//
+// Deprecated: use the generated client,
+// cmdsurfacev1connect.NewCommandsClient, which speaks every protocol
+// the service serves (Connect, gRPC, gRPC-Web) with typed messages.
 func RPCClientOptions() []connect.ClientOption {
-	return []connect.ClientOption{
-		connect.WithCodec(jsonAnyCodec{name: "proto"}),
-		connect.WithCodec(jsonAnyCodec{name: "json"}),
-		connect.WithCodec(jsonAnyCodec{name: "json; charset=utf-8"}),
-	}
+	return []connect.ClientOption{connect.WithCodec(jsonGoCodec{})}
 }
 
-// jsonAnyCodec is a Codec that uses encoding/json to (un)marshal
-// arbitrary Go values. It is registered under the "proto" and "json"
-// codec names so Connect's default content-type negotiation picks it
-// instead of the protobuf-only built-in codecs. cmdsurface's wire
-// types (Invocation / Result / Event) are not proto.Messages — they
-// are plain Go structs with JSON tags.
-type jsonAnyCodec struct{ name string }
+// jsonGoCodec (un)marshals the Go wire types with encoding/json. Their
+// struct tags name the same keys commands.proto sets as json_name, so
+// the service's proto3 JSON codec reads what it writes and vice versa.
+type jsonGoCodec struct{}
 
-// Name implements connect.Codec.
-func (c jsonAnyCodec) Name() string { return c.name }
+// Name implements connect.Codec; "json" selects application/json.
+func (jsonGoCodec) Name() string { return "json" }
 
 // Marshal implements connect.Codec.
-func (c jsonAnyCodec) Marshal(v any) ([]byte, error) { return json.Marshal(v) }
+func (jsonGoCodec) Marshal(v any) ([]byte, error) { return json.Marshal(v) }
 
 // Unmarshal implements connect.Codec.
-func (c jsonAnyCodec) Unmarshal(data []byte, v any) error {
+func (jsonGoCodec) Unmarshal(data []byte, v any) error {
 	if len(data) == 0 {
-		// Mirror connect's protoJSONCodec contract; empty body is an
-		// invalid JSON object so callers see CodeInvalidArgument.
-		return errors.New("cmdsurface: zero-length request body")
+		return errors.New("cmdsurface: zero-length message body")
 	}
 	return json.Unmarshal(data, v)
 }
-
-// IsBinary implements connect.stableCodec — returning false declares
-// the wire format as text, which lets Connect set Content-Type
-// correctly.
-func (c jsonAnyCodec) IsBinary() bool { return false }
-
-// MarshalStable implements connect.stableCodec by delegating to
-// json.Marshal; for our purposes its output is already stable enough
-// for protocol replay.
-func (c jsonAnyCodec) MarshalStable(v any) ([]byte, error) { return json.Marshal(v) }

@@ -253,7 +253,12 @@ func BuildExample(ctx context.Context, logger *slog.Logger, opts ...ExampleOptio
 	}
 
 	httpSrv := &http.Server{Addr: ":8080", Handler: router}
-	rpcHTTP := &http.Server{Addr: ":8081", Handler: rpcSrv}
+	// h2c alongside HTTP/1.1, so native gRPC clients reach the RPC
+	// surface without TLS (grpcurl -plaintext localhost:8081 ...).
+	rpcProtocols := new(http.Protocols)
+	rpcProtocols.SetHTTP1(true)
+	rpcProtocols.SetUnencryptedHTTP2(true)
+	rpcHTTP := &http.Server{Addr: ":8081", Handler: rpcSrv, Protocols: rpcProtocols}
 
 	var cleanupOnce sync.Once
 	cleanup := func() {

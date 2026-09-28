@@ -219,10 +219,10 @@ type Result struct {
 	// Captured standard error.
 	Stderr string `protobuf:"bytes,3,opt,name=stderr,proto3" json:"stderr,omitempty"`
 	// Structured payload, set when the command wrote one JSON document
-	// for a declared output schema. A number whose value a double cannot
-	// hold exactly (a 64-bit id, a long decimal) is carried as a string
-	// holding the digits the command wrote; every other number is a
-	// number.
+	// for a declared output schema. A number stays a number when the
+	// nearest double reads back as the same value; one that does not (a
+	// 64-bit id, a long decimal, an out-of-range exponent) is carried as
+	// a string holding the digits the command wrote.
 	Data *structpb.Value `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	// The payload as compact JSON, every number spelled with the digits
 	// the command wrote. Empty when data is unset.

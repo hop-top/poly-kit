@@ -25,7 +25,7 @@ Generated files are committed so `go get` works without `buf`. CI runs `make pro
 | `commands.pb.go` | `buf.build/protocolbuffers/go` | `go/transport/cmdsurface/gen/cmdsurfacev1/` |
 | `cmdsurfacev1connect/commands.connect.go` | `buf.build/connectrpc/go` | same |
 
-JSON keys are snake_case (`exit_code`, `request_id`): each multi-word field sets `json_name`, so the proto3 JSON mapping matches the Go struct tags. `Result.exit_code` has presence, so a zero exit code stays on the wire. `Result.data` carries a number a double cannot hold exactly as a string of its digits; `Result.data_json` carries the whole payload with every digit intact.
+JSON keys are snake_case (`exit_code`, `request_id`): each multi-word field sets `json_name`, so the proto3 JSON mapping matches the Go struct tags. `Result.exit_code` has presence, so a zero exit code stays on the wire. `Result.data` carries a number whose nearest double reads back as a different value as a string of its digits; `Result.data_json` carries the whole payload with every digit intact.
 
 Plugin versions in `buf.gen.yaml` follow `google.golang.org/protobuf` and `connectrpc.com/connect` in `go.mod`; bump them together.
 

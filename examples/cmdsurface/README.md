@@ -23,7 +23,8 @@ runtimes (Lambda, Cloud Run) use
 ## Quick start
 
 ```sh
-# Start the servers (REST + MCP + WS + SSE on :8080, RPC on :8081).
+# Start the servers (REST + MCP + WS + SSE on :8080, RPC on :8081;
+# RPC answers Connect, gRPC over h2c and gRPC-Web).
 go run ./examples/cmdsurface
 
 # Invoke the same tree locally — arguments after the program name

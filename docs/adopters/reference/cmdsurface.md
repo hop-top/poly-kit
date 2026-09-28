@@ -299,11 +299,17 @@ The automatic REST projection the `api` service mounts under
 func MountRPC(b *Bridge, s rpcServerMount, opts ...RPCOption) error
 ```
 
-Wire shape: ConnectRPC at `RPCServicePath = "/cmdsurface.v1.Commands/"`.
+Wire shape: the `cmdsurface.v1.Commands` service at
+`RPCServicePath = "/cmdsurface.v1.Commands/"`, schema
+[`contracts/proto/cmdsurface/v1/commands.proto`](../../../contracts/proto/cmdsurface/v1/commands.proto).
 Two procedures: `Invoke` (unary) and `InvokeStream` (server-streaming).
-Wire codec is JSON over arbitrary Go values — `Invocation`, `Result`,
-and `Event` are plain structs with JSON tags, not proto messages.
-Clients must pass `RPCClientOptions()` to `connect.NewClient`.
+The handler answers Connect (binary proto and JSON), gRPC and gRPC-Web;
+gRPC needs HTTP/2, which `rpc.ListenAndServe` serves without TLS (h2c).
+JSON keys are the Go struct tags' snake_case names. Go clients use
+`cmdsurfacev1connect.NewCommandsClient` from
+`go/transport/cmdsurface/gen/cmdsurfacev1/cmdsurfacev1connect`;
+`RPCClientOptions()` is deprecated and kept for clients built on the
+Go structs with `connect.NewClient`.
 
 Options:
 

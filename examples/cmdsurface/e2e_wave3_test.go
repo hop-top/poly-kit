@@ -56,7 +56,7 @@ func startWithOpts(t *testing.T, opts ...ExampleOption) *liveExample {
 	}
 
 	httpSrv := &http.Server{Handler: app.Router}
-	rpcSrv := &http.Server{Handler: app.RPCSrv}
+	rpcSrv := &http.Server{Handler: app.RPCSrv, Protocols: app.RPCHTTP.Protocols}
 
 	go func() { _ = httpSrv.Serve(httpLis) }()
 	go func() { _ = rpcSrv.Serve(rpcLis) }()

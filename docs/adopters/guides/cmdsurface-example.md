@@ -88,11 +88,11 @@ curl -sS -X POST http://localhost:8081/cmdsurface.v1.Commands/Invoke \
 # → {"exit_code":0,"stdout":"widget add: name=foo tags=[]\n"}
 ```
 
-For typed clients, use the helpers in
-[`go/transport/cmdsurface`](../../../go/transport/cmdsurface):
-`connect.NewClient[Invocation, Result]` with
-`cmdsurface.RPCClientOptions()` for the unary `Invoke`, and
-`connect.NewClient[Invocation, Event]` for the streaming `InvokeStream`.
+For typed clients, generate stubs from
+[`commands.proto`](../../../contracts/proto/cmdsurface/v1/commands.proto)
+or, in Go, use `cmdsurfacev1connect.NewCommandsClient`
+from [`go/transport/cmdsurface/gen`](../../../go/transport/cmdsurface/gen).
+The example serves h2c, so native gRPC clients connect without TLS.
 
 #### MCP
 

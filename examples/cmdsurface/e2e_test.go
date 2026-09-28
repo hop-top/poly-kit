@@ -21,8 +21,11 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"hop.top/kit/go/transport/cmdsurface"
+	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1"
+	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1/cmdsurfacev1connect"
 )
 
 // liveExample bundles the listeners + app for a single test. start
@@ -62,7 +65,7 @@ func start(t *testing.T) *liveExample {
 	}
 
 	httpSrv := &http.Server{Handler: app.Router}
-	rpcSrv := &http.Server{Handler: app.RPCSrv}
+	rpcSrv := &http.Server{Handler: app.RPCSrv, Protocols: app.RPCHTTP.Protocols}
 
 	go func() { _ = httpSrv.Serve(httpLis) }()
 	go func() { _ = rpcSrv.Serve(rpcLis) }()
@@ -195,37 +198,43 @@ func TestE2E_RESTOpenAPI(t *testing.T) {
 
 // --- RPC ---
 
-func newUnaryRPCClient(baseURL string) *connect.Client[cmdsurface.Invocation, cmdsurface.Result] {
-	return connect.NewClient[cmdsurface.Invocation, cmdsurface.Result](
-		http.DefaultClient,
-		baseURL+cmdsurface.RPCInvokeProcedure,
-		cmdsurface.RPCClientOptions()...,
+// newRPCClient returns the generated Commands client speaking native
+// gRPC over h2c, the path a non-Go gRPC client takes.
+func newRPCClient(baseURL string) cmdsurfacev1connect.CommandsClient {
+	h2c := new(http.Protocols)
+	h2c.SetUnencryptedHTTP2(true)
+	return cmdsurfacev1connect.NewCommandsClient(
+		&http.Client{Transport: &http.Transport{Protocols: h2c}},
+		baseURL,
+		connect.WithGRPC(),
 	)
 }
 
-func newStreamRPCClient(baseURL string) *connect.Client[cmdsurface.Invocation, cmdsurface.Event] {
-	return connect.NewClient[cmdsurface.Invocation, cmdsurface.Event](
-		http.DefaultClient,
-		baseURL+cmdsurface.RPCInvokeStreamProcedure,
-		cmdsurface.RPCClientOptions()...,
-	)
+// rpcFlags builds an Invocation's flags Struct.
+func rpcFlags(t *testing.T, m map[string]any) *structpb.Struct {
+	t.Helper()
+	s, err := structpb.NewStruct(m)
+	if err != nil {
+		t.Fatalf("flags: %v", err)
+	}
+	return s
 }
 
 func TestE2E_RPCHappyPath(t *testing.T) {
 	le := start(t)
 
-	client := newUnaryRPCClient(le.rpcURL)
-	resp, err := client.CallUnary(context.Background(),
-		connect.NewRequest(&cmdsurface.Invocation{
+	client := newRPCClient(le.rpcURL)
+	resp, err := client.Invoke(context.Background(),
+		connect.NewRequest(&cmdsurfacev1.Invocation{
 			Path:  []string{"widget", "add"},
-			Flags: map[string]any{"name": "foo"},
+			Flags: rpcFlags(t, map[string]any{"name": "foo"}),
 		}),
 	)
 	if err != nil {
-		t.Fatalf("CallUnary: %v", err)
+		t.Fatalf("Invoke: %v", err)
 	}
-	if want := "widget add: name=foo"; !strings.Contains(resp.Msg.Stdout, want) {
-		t.Errorf("Stdout=%q want contains %q", resp.Msg.Stdout, want)
+	if want := "widget add: name=foo"; !strings.Contains(resp.Msg.GetStdout(), want) {
+		t.Errorf("Stdout=%q want contains %q", resp.Msg.GetStdout(), want)
 	}
 }
 
@@ -235,13 +244,13 @@ func TestE2E_RPCDestructiveBlocked(t *testing.T) {
 	// report purge is destructive AND auth-required; supply the auth
 	// header so we reach the destructive policy gate rather than the
 	// auth gate. The RPC surface should reject with PermissionDenied.
-	client := newUnaryRPCClient(le.rpcURL)
-	req := connect.NewRequest(&cmdsurface.Invocation{
+	client := newRPCClient(le.rpcURL)
+	req := connect.NewRequest(&cmdsurfacev1.Invocation{
 		Path:  []string{"report", "purge"},
-		Flags: map[string]any{"before": "yesterday"},
+		Flags: rpcFlags(t, map[string]any{"before": "yesterday"}),
 	})
 	req.Header().Set("Authorization", "Bearer test")
-	_, err := client.CallUnary(context.Background(), req)
+	_, err := client.Invoke(context.Background(), req)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -253,12 +262,12 @@ func TestE2E_RPCDestructiveBlocked(t *testing.T) {
 func TestE2E_RPCStream(t *testing.T) {
 	le := start(t)
 
-	client := newStreamRPCClient(le.rpcURL)
-	stream, err := client.CallServerStream(context.Background(),
-		connect.NewRequest(&cmdsurface.Invocation{Path: []string{"ping"}}),
+	client := newRPCClient(le.rpcURL)
+	stream, err := client.InvokeStream(context.Background(),
+		connect.NewRequest(&cmdsurfacev1.Invocation{Path: []string{"ping"}}),
 	)
 	if err != nil {
-		t.Fatalf("CallServerStream: %v", err)
+		t.Fatalf("InvokeStream: %v", err)
 	}
 	t.Cleanup(func() { _ = stream.Close() })
 
@@ -268,7 +277,7 @@ func TestE2E_RPCStream(t *testing.T) {
 	)
 	for stream.Receive() {
 		ev := stream.Msg()
-		switch ev.Kind {
+		switch ev.GetKind() {
 		case "stdout":
 			sawStdout = true
 		case "done":
