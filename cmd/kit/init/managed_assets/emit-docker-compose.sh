@@ -15,10 +15,19 @@
 #     it is user-extensible.
 #   - Two kit-managed blocks live below it:
 #       - `telemetry` — default otel-collector + jaeger services
-#       - `opted-in services` — empty by default; a later change
-#         will populate it via `--services`.
+#       - `opted-in services` — empty by default; populated by
+#         apply-services.sh when `--services` is passed.
 #
 # otel-config.yaml is entirely kit-managed (one unlabeled block).
+#
+# Marker indentation: kit-managed markers are emitted at column
+# 0 (managed-block.sh's universal convention), even though the
+# services they wrap are nested under `services:` at column 2.
+# Markers at column 2 would align visually with the services,
+# but YAML accepts comments at any column inside a mapping;
+# `docker compose config` parses both. Keeping the marker
+# convention uniform across file types (TOML, YAML, JSON-C,
+# .env) outweighs the cosmetic indent in this one file.
 #
 # Idempotent: re-emitting produces byte-identical files because
 # managed-block.sh writes via temp + `cmp -s` check, and the
@@ -127,10 +136,11 @@ YAML
 }
 
 # Body for the `opted-in services` block — empty by default.
-# A later change will replace this body via mb_write when
-# `--services` is passed. We emit a single comment line as a hint so the
-# block isn't visually empty, but the test expecting "empty"
-# treats this as empty (no real service definitions).
+# apply-services.sh replaces this body via mb_write when
+# `--services` is passed. We emit a single comment line as a
+# hint so the block isn't visually empty, but the test
+# expecting "empty" treats this as empty (no real service
+# definitions).
 _edc_opted_in_body() {
   cat <<'YAML'
   # postgres, redis, minio, mailpit, redpanda appended here by --services
@@ -192,6 +202,14 @@ emit_docker_compose() {
     return 2
   fi
 
+  # Surface mid-pipeline failures. Without pipefail, a body-producer
+  # crash gets swallowed and mb_write happily writes the empty
+  # half-broken output. Save prior state so we don't pollute callers
+  # (some bats tests source this file in a fresh shell without pipefail).
+  local _edc_prior_pipefail
+  if shopt -qo pipefail; then _edc_prior_pipefail=1; else _edc_prior_pipefail=0; fi
+  set -o pipefail
+
   mkdir -p "$project_dir/.devcontainer"
 
   local compose="$project_dir/.devcontainer/docker-compose.yml"
@@ -208,4 +226,6 @@ emit_docker_compose() {
 
   # 4. otel-config.yaml — entire file is one managed block.
   _edc_otel_config_body | mb_write "$otel"
+
+  if [[ "$_edc_prior_pipefail" = "0" ]]; then set +o pipefail; fi
 }
