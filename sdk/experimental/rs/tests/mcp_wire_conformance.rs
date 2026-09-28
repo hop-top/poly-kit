@@ -261,7 +261,7 @@ fn every_case_routes_to_the_era_the_fixture_names() {
         }
         let parsed = Request::from_slice(case.request.as_bytes()).expect("parse fixture request");
         // `era` names the serving handler, so the D2 case (an
-        // initialize carrying modern markers) is labelled legacy.
+        // initialize carrying modern markers) is labeled legacy.
         let want = match case.era.as_str() {
             "legacy" => Era::Legacy,
             _ => Era::Modern,

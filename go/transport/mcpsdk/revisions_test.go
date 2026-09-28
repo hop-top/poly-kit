@@ -64,7 +64,7 @@ func TestPerRequestRevisionRouting(t *testing.T) {
 // request of the cross-language wire fixtures the way the hand-rolled
 // surface that generated them routed it: by its era. The fixture's era
 // names the serving handler, so its D2 case (an initialize carrying
-// modern markers) is labelled legacy and needs no exception here.
+// modern markers) is labeled legacy and needs no exception here.
 func TestPerRequestRevisionRoutingMatchesWireFixtures(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "sdk", "tests", "cross-lang", "fixtures", "mcp-wire.json"))
 	if err != nil {
