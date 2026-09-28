@@ -692,7 +692,9 @@ $ mytool serve api --policy=team
 ```
 
 `max_ops` gives each matching principal, per tenant, a budget of write
-and destructive calls per window. It is counted in
+and destructive calls per window. Only a call every permission decider
+admits — the policy, its `permissions:` rules and your
+`cli.WithPermission` gate — spends from it. It is counted in
 `$XDG_STATE_HOME/mytool/usage.db`, so restarting the server does not
 reset it; pass `cli.WithUsageStore(store)` to count in a store several
 instances share. A caller who has spent it is refused until the window

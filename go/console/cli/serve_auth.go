@@ -158,7 +158,10 @@ func (r *Root) serveBridgeOptions(svc string, exp ServeExposure) ([]cmdsurface.O
 // kit-default unless it opted out with insecure_no_policy. The
 // policy's permissions: rules run second and the adopter's gate last,
 // for the caller-specific answer. The first refusal stands: a later
-// decider is never asked about a call an earlier one refused.
+// decider is never asked about a call an earlier one refused. A caller
+// rule's max_ops budget is checked at the policy's turn and charged
+// only once every decider has admitted the call, so a call the rules
+// or the adopter refuse spends nothing.
 func (r *Root) servePermission(exp ServeExposure) (cmdsurface.PermissionFunc, error) {
 	engine, err := r.newPolicyEngine(r.Cmd)
 	if err != nil {
@@ -173,7 +176,8 @@ func (r *Root) servePermission(exp ServeExposure) (cmdsurface.PermissionFunc, er
 			return nil, fmt.Errorf("policy %q: %w", engine.Policy().Name, err)
 		}
 	}
-	gates := []cmdsurface.PermissionFunc{permissionFromEngine(engine, ledger)}
+	eg := newEngineGate(engine, ledger)
+	gates := []cmdsurface.PermissionFunc{eg.decide}
 	rules, err := r.servePermissionRules(engine.Policy())
 	if err != nil {
 		return nil, err
@@ -183,6 +187,9 @@ func (r *Root) servePermission(exp ServeExposure) (cmdsurface.PermissionFunc, er
 	}
 	if adopter := r.serveAuth.permission; adopter != nil {
 		gates = append(gates, adopter)
+	}
+	if ledger != nil {
+		gates = append(gates, eg.charge)
 	}
 	if len(gates) == 1 {
 		return gates[0], nil
@@ -226,7 +233,16 @@ func refuseAll(err error) cmdsurface.PermissionFunc {
 	}
 }
 
-// permissionFromEngine adapts the policy engine to the bridge's gate.
+// permissionFromEngine adapts the policy engine to the bridge's gate,
+// checking a caller rule's max_ops budget without charging it; the
+// charge is engineGate.charge, which servePermission runs last.
+func permissionFromEngine(engine *policy.Engine, ledger *cmdsurface.UsageLedger) cmdsurface.PermissionFunc {
+	return newEngineGate(engine, ledger).decide
+}
+
+// engineGate adapts the policy engine to the bridge's permission slot,
+// in two halves: decide answers at the policy's turn, charge spends
+// the caller's budget once every later decider has admitted the call.
 //
 // The engine answers for the caller the transport established
 // (policyCaller): the first of the policy's caller rules matching it,
@@ -235,54 +251,83 @@ func refuseAll(err error) cmdsurface.PermissionFunc {
 // discovery withhold the command at mount rather than mount a route
 // that can only refuse; any other refusal is the caller's own.
 //
-// A caller rule with max_ops charges each admitted write or
-// destructive call against the caller's budget in ledger, and refuses
-// once the window's budget is spent. A probe (cmdsurface.IsProbe)
-// reads the budget without charging it. A ledger that cannot be read
+// A caller rule with max_ops counts each admitted write or destructive
+// call against the caller's budget in ledger. decide refuses once the
+// window's budget is spent, reading it only; charge takes one from it,
+// refusing if a concurrent call spent the last one first. A probe
+// (cmdsurface.IsProbe) is never charged. A ledger that cannot be read
 // or written refuses: a budget nobody can count is not enforced by
 // admitting everything.
 //
 // The engine is guarded by a mutex because it is documented as
 // unsafe for concurrent use, and a transport service answers
 // requests concurrently.
-func permissionFromEngine(engine *policy.Engine, ledger *cmdsurface.UsageLedger) cmdsurface.PermissionFunc {
-	var mu sync.Mutex
-	return func(ctx context.Context, meta cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
-		if engine == nil || leaf == nil || leaf.Cmd == nil {
-			return cmdsurface.PermissionDecision{Allowed: true}
-		}
-		caller := policyCaller(meta)
-		mu.Lock()
-		allowed, _, reason := engine.AuthorizeFor(leaf.Cmd, caller)
-		everyone := !allowed && engine.RefusedForEveryone(leaf.Cmd)
-		budget, budgeted := engine.BudgetFor(caller)
-		mu.Unlock()
-		if !allowed {
-			return cmdsurface.PermissionDecision{
-				Reason:            reason,
-				CallerIndependent: everyone,
-			}
-		}
-		if budgeted && ledger != nil && engine.Mutating(leaf.Cmd) {
-			return chargeBudget(ctx, ledger, budget)
-		}
-		return cmdsurface.PermissionDecision{Allowed: true}
-	}
+type engineGate struct {
+	mu     sync.Mutex
+	engine *policy.Engine
+	ledger *cmdsurface.UsageLedger
 }
 
-// chargeBudget counts one call against budget, or, on a probe, only
-// checks there is one left.
-func chargeBudget(ctx context.Context, ledger *cmdsurface.UsageLedger, b policy.Budget) cmdsurface.PermissionDecision {
+func newEngineGate(engine *policy.Engine, ledger *cmdsurface.UsageLedger) *engineGate {
+	return &engineGate{engine: engine, ledger: ledger}
+}
+
+// budget returns the budget a call to leaf by meta's caller counts
+// against, if any.
+func (g *engineGate) budget(meta cmdsurface.Meta, leaf *cmdsurface.Leaf) (policy.Budget, bool) {
+	if g.engine == nil || g.ledger == nil || leaf == nil || leaf.Cmd == nil {
+		return policy.Budget{}, false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	b, ok := g.engine.BudgetFor(policyCaller(meta))
+	return b, ok && g.engine.Mutating(leaf.Cmd)
+}
+
+func (g *engineGate) decide(ctx context.Context, meta cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+	if g.engine == nil || leaf == nil || leaf.Cmd == nil {
+		return cmdsurface.PermissionDecision{Allowed: true}
+	}
+	caller := policyCaller(meta)
+	g.mu.Lock()
+	allowed, _, reason := g.engine.AuthorizeFor(leaf.Cmd, caller)
+	everyone := !allowed && g.engine.RefusedForEveryone(leaf.Cmd)
+	g.mu.Unlock()
+	if !allowed {
+		return cmdsurface.PermissionDecision{
+			Reason:            reason,
+			CallerIndependent: everyone,
+		}
+	}
+	if b, ok := g.budget(meta, leaf); ok {
+		return budgetDecision(ctx, g.ledger, b, false)
+	}
+	return cmdsurface.PermissionDecision{Allowed: true}
+}
+
+func (g *engineGate) charge(ctx context.Context, meta cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+	if cmdsurface.IsProbe(ctx) {
+		return cmdsurface.PermissionDecision{Allowed: true}
+	}
+	if b, ok := g.budget(meta, leaf); ok {
+		return budgetDecision(ctx, g.ledger, b, true)
+	}
+	return cmdsurface.PermissionDecision{Allowed: true}
+}
+
+// budgetDecision checks there is a call left in b or, when take, counts
+// one against it.
+func budgetDecision(ctx context.Context, ledger *cmdsurface.UsageLedger, b policy.Budget, take bool) cmdsurface.PermissionDecision {
 	var (
 		u   cmdsurface.Usage
 		ok  bool
 		err error
 	)
-	if cmdsurface.IsProbe(ctx) {
+	if take {
+		u, ok, err = ledger.Take(ctx, b.Key, b.Window, int64(b.MaxOps))
+	} else {
 		u, err = ledger.Usage(ctx, b.Key, b.Window)
 		ok = u.Ops < int64(b.MaxOps)
-	} else {
-		u, ok, err = ledger.Take(ctx, b.Key, b.Window, int64(b.MaxOps))
 	}
 	switch {
 	case err != nil:

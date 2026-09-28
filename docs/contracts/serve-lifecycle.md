@@ -779,9 +779,12 @@ of any of them.
   `window`s (default one hour, aligned to the epoch), counted on
   `storage/kv` so a restart resets nothing: `$XDG_STATE_HOME/<tool>/usage.db`
   by default, or the store `cli.WithUsageStore` names. The permission
-  gate charges it and refuses a spent budget `permission_denied`,
-  naming when the window resets. A store that cannot be read refuses
-  the call.
+  gate refuses a spent budget `permission_denied` at the policy's turn,
+  naming when the window resets, and charges one call only after every
+  slot-6 decider — rules and adopter included — has admitted it; a call
+  any of them refuses spends nothing, and a discovery probe
+  (`cmdsurface.ProbeContext`, `Bridge.Verdict`) reads the budget
+  without charging it. A store that cannot be read refuses the call.
 - A refusal returns `ErrPermissionDenied` with a stable reason. It
   is `403 permission_denied` over REST and `DENIED` over the socket,
   distinct from the destructive ceiling's `403 destructive_blocked`
@@ -1387,8 +1390,10 @@ What each slot does:
   owner's authority and is not asked: whoever can speak on an
   owner-only socket or a spawned process's pipes could run the
   command from the CLI, where no scope is asked for. The `--policy`
-  engine answers for the established caller, and may charge a caller
-  rule's `max_ops` budget (see [Permission](#permission)).
+  engine answers for the established caller and checks a caller
+  rule's `max_ops` budget; the budget is charged only once the whole
+  slot, adopter included, admits the call (see
+  [Permission](#permission)).
 - **8.** A hit answers from a store and runs nothing: an idempotency
   replay for a call carrying a key the store has seen from the same
   principal, or a read-tier cache hit for a leaf declaring
