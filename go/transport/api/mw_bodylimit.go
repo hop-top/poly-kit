@@ -36,6 +36,7 @@ type BodyLimitOption func(*bodyLimitConfig)
 
 type bodyLimitConfig struct {
 	onTooLarge func(r *http.Request, limit int64)
+	refuse     RefusalWriter
 }
 
 // OnBodyTooLarge installs a hook that observes every request whose
@@ -47,6 +48,16 @@ type bodyLimitConfig struct {
 // the hook cannot change the verdict.
 func OnBodyTooLarge(fn func(r *http.Request, limit int64)) BodyLimitOption {
 	return func(c *bodyLimitConfig) { c.onTooLarge = fn }
+}
+
+// BodyTooLargeRefusal renders the 413 refusal with rw instead of an
+// [APIError] body, for a listener whose protocol carries errors
+// elsewhere: a JSON-RPC error body, a Connect error. rw receives the
+// [APIError] [WriteBodyTooLarge] would have written. It renders the
+// refusal decided from a declared Content-Length; a body of unknown
+// length is refused by the handler's own read, as before.
+func BodyTooLargeRefusal(rw RefusalWriter) BodyLimitOption {
+	return func(c *bodyLimitConfig) { c.refuse = rw }
 }
 
 // BodyLimit returns a middleware that caps the request body at
@@ -83,7 +94,11 @@ func BodyLimit(maxBytes int64, opts ...BodyLimitOption) Middleware {
 			}
 			if r.ContentLength > limit {
 				refused()
-				WriteBodyTooLarge(w, limit)
+				if cfg.refuse != nil {
+					cfg.refuse(w, r, bodyTooLargeError(limit))
+				} else {
+					WriteBodyTooLarge(w, limit)
+				}
 				return
 			}
 			if r.Body != nil && r.Body != http.NoBody {
@@ -131,9 +146,14 @@ func AsBodyTooLarge(err error) (limit int64, ok bool) {
 // uses for an oversized body: an [APIError] with code
 // [CodeBodyTooLarge] naming the cap.
 func WriteBodyTooLarge(w http.ResponseWriter, limit int64) {
-	Error(w, http.StatusRequestEntityTooLarge, &APIError{
+	Error(w, http.StatusRequestEntityTooLarge, bodyTooLargeError(limit))
+}
+
+// bodyTooLargeError is the refusal for a body over limit.
+func bodyTooLargeError(limit int64) *APIError {
+	return &APIError{
 		Status:  http.StatusRequestEntityTooLarge,
 		Code:    CodeBodyTooLarge,
 		Message: fmt.Sprintf("request body exceeds %d bytes", limit),
-	})
+	}
 }

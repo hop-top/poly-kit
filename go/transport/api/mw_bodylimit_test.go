@@ -187,3 +187,32 @@ func TestProjectionBodyLimit(t *testing.T) {
 		})
 	}
 }
+
+// A listener whose protocol carries errors elsewhere (a JSON-RPC body,
+// a Connect error) renders the refusal itself; the code, the status
+// and the recorded refusal stay the body limit's.
+func TestBodyLimitRefusalWriter(t *testing.T) {
+	var got *api.APIError
+	refuse := func(w http.ResponseWriter, _ *http.Request, e *api.APIError) {
+		got = e
+		w.WriteHeader(e.Status)
+		_, _ = io.WriteString(w, "protocol-shaped")
+	}
+	var fired int64
+	mw := api.BodyLimit(8, api.BodyTooLargeRefusal(refuse),
+		api.OnBodyTooLarge(func(_ *http.Request, limit int64) { fired = limit }))
+	var n int
+	rec := httptest.NewRecorder()
+	mw(readAllHandler(&n)).ServeHTTP(rec, sizedRequest(9))
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+	assert.Equal(t, "protocol-shaped", rec.Body.String())
+	require.NotNil(t, got)
+	assert.Equal(t, api.CodeBodyTooLarge, got.Code)
+	assert.Contains(t, got.Message, "8")
+	assert.Equal(t, int64(8), fired, "the hook still observes the refusal")
+
+	rec = httptest.NewRecorder()
+	mw(readAllHandler(&n)).ServeHTTP(rec, sizedRequest(8))
+	assert.Equal(t, http.StatusOK, rec.Code, "at the cap is admitted")
+}
