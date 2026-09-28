@@ -1786,6 +1786,7 @@ serving.
 | `tls.acme.directory_url`       | string | Let's Encrypt production        | another ACME directory (a staging one, a private CA) |
 | `auth.mode`                    | string | unset                           | `mtls`: the client certificate is the credential; `jwt`, `jwks`, `oidc`: a bearer token is (see [Bearer tokens](#bearer-tokens)); `apikey`: a kit-issued API key is (see [API keys](#api-keys)); `peer` is the socket's ([Socket peer credentials](#socket-peer-credentials)) |
 | `auth.mtls.ca_file`            | string | — (required under `mtls`)       | PEM bundle client certificates must chain to |
+| `auth.mtls.crl_file`           | string | —                               | revocation lists, PEM `X509 CRL` blocks or one DER list, client certificates are checked against |
 | `auth.mtls.principal`          | string | `san`                           | `san` (first URI, else DNS, else email SAN), `san_uri`, `san_dns`, `san_email`, `cn` |
 | `auth.mtls.tenant_oid`         | string | —                               | dotted OID of a subject attribute, else of an extension holding a string |
 | `auth.mtls.tenant_san_pattern` | string | —                               | RE2 matched against the SANs; the first capture group of the first match, else the whole match |
@@ -1797,16 +1798,18 @@ serving.
 - ACME answers the TLS-ALPN-01 challenge on the listener itself, so
   the CA must reach it on port 443 under every name in `domains`.
   Certificates from ACME renew themselves.
-- `cert_file`, `key_file` and `ca_file` load at start, and again
-  whenever a directory holding one changes, once it has been quiet for
-  250ms, as two sets: the certificate and key, and the bundle. A set
-  that loads — the key matches the certificate, no PEM block is cut
-  short, the bundle holds a certificate — replaces the one in force for
-  every new handshake; a connection already open keeps what it was
-  established with. A set that does not load is logged at warn and
-  ignored: the listener MUST keep serving the set in force, never a
-  pair it has not verified, and the other set still reloads. There is
-  no reload signal.
+- `cert_file`, `key_file`, `ca_file` and `crl_file` load at start, and
+  again whenever a directory holding one changes, once it has been
+  quiet for 250ms, as two sets: the certificate and key, and the
+  bundle with its lists. A set that loads — the key matches the
+  certificate, no PEM block is cut short, the bundle holds a
+  certificate, every list parses and verifies against the bundle's CA
+  of its issuer's name — replaces the one in force for every new
+  handshake; a connection already open keeps what it was established
+  with. A set that does not load is logged at warn and ignored: the
+  listener MUST keep serving the set in force, never a pair it has not
+  verified, and the other set still reloads. There is no reload
+  signal.
 - `auth.mode: mtls` needs TLS on and `ca_file`. The listener asks every
   client for a certificate, and a certificate that does not chain to
   the bundle ends the handshake. A request with no certificate reaches
@@ -1820,6 +1823,12 @@ serving.
   code `Auth` (`APIConfig.Auth`, `rpcserve.Config.Auth`,
   `mcpserve.Config.Auth`) is not consulted, and the api service's
   `--no-auth` disables it as it disables `Auth`.
+- Under `crl_file`, a client certificate — the leaf or an
+  intermediate of its verified chain — whose serial is on a list its
+  issuer signed fails the handshake, on a resumed session too. A list
+  past its next update is still enforced, and logged at warn. A
+  certificate whose issuer published no list here is not checked.
+  OCSP is not consulted.
 - A handshake that fails is not audited: no request exists to
   attribute. The listener takes it off the server's error log, logs it
   at debug with the client address and reason — a burst of five, then
@@ -1832,7 +1841,8 @@ serving.
   `min_version`, ACME with no domain, an unknown `auth.mode`, `mtls`
   without TLS or without `ca_file`, a bundle with no certificate, an
   unknown `principal`, both tenant sources, an OID or pattern that does
-  not parse, and an `auth.mtls` key under another mode.
+  not parse, a `crl_file` that does not load, and an `auth.mtls` key
+  under another mode.
 
 ### Bearer tokens
 

@@ -25,16 +25,18 @@ import (
 const tlsReloadSettle = 250 * time.Millisecond
 
 // tlsFiles is the part of a listener's TLS setting read from files —
-// the certificate and key, the client CA bundle — and the
-// configuration last built from them, which every new handshake is
-// served with.
+// the certificate and key, the client CA bundle and its revocation
+// lists — and the configuration last built from them, which every new
+// handshake is served with.
 //
 // The files are read at resolution and again whenever their
 // directories change, in two sets: the certificate and key, and the
-// bundle. A set that does not load — a half-written file, a key that
-// does not match its certificate, a bundle with no certificate — is
-// rejected and the one in force keeps serving, so the listener never
-// serves a pair it has not verified; the other set still reloads.
+// bundle with its lists. A set that does not load — a half-written
+// file, a key that does not match its certificate, a bundle with no
+// certificate — is rejected and the one in force keeps serving, so the
+// listener never serves a pair it has not verified; the other set
+// still reloads, so a broken certificate write does not hold back a
+// revocation.
 type tlsFiles struct {
 	svc string
 	// template is the configuration every snapshot starts from: the
@@ -45,6 +47,7 @@ type tlsFiles struct {
 
 	certFile, keyFile, certKey, keyKey string
 	caFile, caKey                      string
+	crlFile, crlKey                    string
 
 	current atomic.Pointer[tlsSnapshot]
 }
@@ -62,9 +65,10 @@ type tlsPairSet struct {
 	sum  [sha256.Size]byte
 }
 
-// tlsClientCASet is a loaded CA bundle.
+// tlsClientCASet is a loaded CA bundle and its revocation lists.
 type tlsClientCASet struct {
 	pool *x509.CertPool
+	crl  *crlSet // nil without crl_file
 	sum  [sha256.Size]byte
 }
 
@@ -112,7 +116,7 @@ func (f *tlsFiles) loadPair() (*tlsPairSet, error) {
 	return &tlsPairSet{cert: cert, sum: fileSum(certPEM, keyPEM)}, nil
 }
 
-// loadClientCAs reads ca_file; nil when not configured.
+// loadClientCAs reads ca_file and crl_file; nil when not configured.
 func (f *tlsFiles) loadClientCAs() (*tlsClientCASet, error) {
 	if f.caFile == "" {
 		return nil, nil
@@ -132,7 +136,16 @@ func (f *tlsFiles) loadClientCAs() (*tlsClientCASet, error) {
 	for _, c := range bundle {
 		set.pool.AddCert(c)
 	}
-	set.sum = fileSum(caPEM)
+	var raw []byte
+	if f.crlFile != "" {
+		if raw, err = os.ReadFile(f.crlFile); err != nil {
+			return nil, fmt.Errorf("%s: %w", f.crlKey, err)
+		}
+		if set.crl, err = parseCRLs(raw, bundle); err != nil {
+			return nil, fmt.Errorf("%s: %w", f.crlKey, err)
+		}
+	}
+	set.sum = fileSum(caPEM, raw)
 	return set, nil
 }
 
@@ -144,6 +157,9 @@ func (f *tlsFiles) build(pair *tlsPairSet, cas *tlsClientCASet) *tlsSnapshot {
 	}
 	if cas != nil {
 		cfg.ClientCAs = cas.pool
+		if cas.crl != nil {
+			cfg.VerifyConnection = cas.crl.verifyConnection
+		}
 	}
 	return &tlsSnapshot{config: cfg, pair: pair, cas: cas}
 }
@@ -184,7 +200,7 @@ func (c *tlsClientCASet) same(o *tlsClientCASet) bool {
 // directory) as well as one rewritten in place.
 func (f *tlsFiles) dirs() []string {
 	var out []string
-	for _, p := range []string{f.certFile, f.keyFile, f.caFile} {
+	for _, p := range []string{f.certFile, f.keyFile, f.caFile, f.crlFile} {
 		if p == "" {
 			continue
 		}
@@ -265,6 +281,20 @@ func (f *tlsFiles) reloadAndLog(logger *log.Logger) {
 	}
 	if swapped {
 		logger.Info("tls: reloaded certificate files", "service", f.svc)
+		f.warnStale(logger)
+	}
+}
+
+// warnStale warns of a revocation list past its next update: it is
+// still enforced, but revocations issued since are not in it.
+func (f *tlsFiles) warnStale(logger *log.Logger) {
+	snap := f.current.Load()
+	if snap == nil || snap.cas == nil || snap.cas.crl == nil {
+		return
+	}
+	if next, stale := snap.cas.crl.stale(time.Now()); stale {
+		logger.Warn("tls: revocation list is past its next update; later revocations are not enforced",
+			"service", f.svc, "file", f.crlFile, "next_update", next.Format(time.RFC3339))
 	}
 }
 

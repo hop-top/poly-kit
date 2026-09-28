@@ -61,7 +61,7 @@ func NewCA(t testing.TB, cn string) *CA {
 		Subject:               pkix.Name{CommonName: cn},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 	}
@@ -160,6 +160,26 @@ func (ca *CA) WriteCA(t testing.TB, dir, name string) string {
 	p := filepath.Join(dir, name+".crt")
 	write(t, p, ca.PEM)
 	return p
+}
+
+// CRL returns a revocation list the CA signed, PEM-encoded, revoking
+// each certificate in revoked. It is current for an hour.
+func (ca *CA) CRL(t testing.TB, revoked ...*x509.Certificate) []byte {
+	t.Helper()
+	tmpl := &x509.RevocationList{
+		Number:     serial(t),
+		ThisUpdate: time.Now().Add(-time.Minute),
+		NextUpdate: time.Now().Add(time.Hour),
+	}
+	for _, c := range revoked {
+		tmpl.RevokedCertificateEntries = append(tmpl.RevokedCertificateEntries,
+			x509.RevocationListEntry{SerialNumber: c.SerialNumber, RevocationTime: time.Now().Add(-time.Minute)})
+	}
+	der, err := x509.CreateRevocationList(rand.Reader, tmpl, ca.Cert, ca.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: der})
 }
 
 // Cert is the issued certificate, parsed.

@@ -90,7 +90,7 @@ var blocks = []Block{
 		Name: "auth", Keys: []string{"mode"},
 		HTTPValues: map[string][]string{"mode": {"mtls", "jwt", "jwks", "oidc", "apikey"}},
 	},
-	{Name: "auth.mtls", Keys: []string{"ca_file", "principal", "tenant_oid", "tenant_san_pattern"}},
+	{Name: "auth.mtls", Keys: []string{"ca_file", "crl_file", "principal", "tenant_oid", "tenant_san_pattern"}},
 	{Name: "auth.jwt", Keys: []string{"public_key_files", "issuer", "audience", "clock_skew", "tenant_claim"}},
 	{Name: "auth.jwks", Keys: []string{"url", "issuer", "audience", "clock_skew", "refresh", "tenant_claim"}},
 	{Name: "auth.oidc", Keys: []string{"issuer", "audience", "clock_skew", "refresh", "tenant_claim"}},

@@ -132,8 +132,8 @@ func (t *ServeTLS) Auth() api.AuthFunc {
 //
 // A failed handshake is taken off srv's ErrorLog: it is logged at
 // debug, rate-limited, and counted as the tls_handshake refusal by a
-// linked provider that implements [ServeHTTPRefusals]. Certificate
-// and CA files are watched while it serves, and a new
+// linked provider that implements [ServeHTTPRefusals]. Certificate,
+// CA and revocation files are watched while it serves, and a new
 // handshake is served with them once they change and load (see
 // [ResolveServeTLS]); a connection already open keeps the certificate
 // it was established with.
@@ -148,6 +148,7 @@ func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 	hs := newHandshakeLog(t.root, t.svc, logger)
 	srv.ErrorLog = api.HandshakeErrorLog(srv.ErrorLog, hs.failed)
 	if t.files != nil {
+		t.files.warnStale(logger)
 		defer t.files.watch(logger)()
 	}
 	srv.TLSConfig = t.config.Clone()
@@ -183,7 +184,8 @@ func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 // handshake on one the CA bundle does not verify, and leaves a
 // request that presented none to the verifier, which refuses it as
 // unauthenticated — so health probes still answer, and the refusal
-// is audited like any other.
+// is audited like any other. auth.mtls.crl_file, when set, also fails
+// the handshake of a certificate its revocation lists name.
 //
 // auth.mode: jwt, jwks or oidc selects a bearer-token verifier from
 // go/transport/authn, configured by auth.jwt, auth.jwks or auth.oidc;
@@ -191,7 +193,7 @@ func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 // plaintext beyond loopback can be replayed by anyone who sees it.
 // A key of a mode's block set under another mode is refused.
 //
-// The files — cert_file and key_file, ca_file — are read
+// The files — cert_file and key_file, ca_file, crl_file — are read
 // here, and a set that does not load is refused, naming the key. While
 // [ServeTLS.Serve] runs they are read again whenever their directories
 // change; a set that loads replaces the one in force for every new
@@ -429,8 +431,9 @@ func (t tlsResolver) minVersion() (uint16, error) {
 }
 
 // mtls resolves the auth.mtls block into files and the verifier's
-// configuration: the CA bundle client certificates must chain to, and
-// where the identity is read from. The files are read by [tlsFiles.load], not here.
+// configuration: the CA bundle client certificates must chain to, the
+// revocation lists they are checked against, and where the identity
+// is read from. The files are read by [tlsFiles.load], not here.
 func (t tlsResolver) mtls(files *tlsFiles) (api.ClientCertConfig, error) {
 	var verify api.ClientCertConfig
 	caFile, caKey := t.str(authMTLSBlock, "ca_file")
@@ -439,6 +442,7 @@ func (t tlsResolver) mtls(files *tlsFiles) (api.ClientCertConfig, error) {
 			caKey, AuthModeMTLS)
 	}
 	files.caFile, files.caKey = caFile, caKey
+	files.crlFile, files.crlKey = t.str(authMTLSBlock, "crl_file")
 
 	principal, pKey := t.str(authMTLSBlock, "principal")
 	principal = strings.ToLower(principal)

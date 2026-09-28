@@ -1364,6 +1364,25 @@ orchestrator needs none. Under `mtls` the certificate is the only
 verifier; `APIConfig.Auth` is not consulted. A replaced `ca_file` is
 picked up like a replaced certificate.
 
+To take a certificate out of service before it expires, publish a
+revocation list from the CA and name it:
+
+```yaml
+services:
+  all:
+    auth:
+      mtls:
+        ca_file: /etc/mytool/tls/clients-ca.crt
+        crl_file: /etc/mytool/tls/clients.crl     # PEM or DER, one or more lists
+```
+
+A client certificate the list names — or an intermediate its chain
+passes through — fails the handshake, on a resumed session too, and the
+listener picks up a reissued list without a restart. Keep the list
+current: one past its next update is still enforced, and logged as a
+warning, but a certificate revoked since is not in it. kit does not
+query OCSP responders.
+
 A failed handshake has no request to audit. The listener logs it at
 debug (run `serve -V` to see the reason), at most a few lines a second,
 and counts it as `tls_handshake` in `kit.serve.http.refusals` when
@@ -1636,6 +1655,7 @@ observability](../reference/served-observability.md)).
 | `services.<svc>.auth.apikey.backend`, `.path` | `sqlite`, `<data dir>/<tool>/apikeys.db` | The store `auth.mode: apikey` checks keys against, created owner-only (file `0600`, directory `0700`); `cli.WithAPIKeys` mounts `token key create|list|revoke`. Under `badger` the running service locks the store: stop it before `token key`. |
 | `services.<svc>.auth.<mode>.audience`, `.issuer`, `.clock_skew`, `.refresh`, `.tenant_claim` | audience required under `jwks`/`oidc`; skew `1m`; refresh `1h`; tenant claim `tenant` | Claim checks and key-set caching for the bearer modes. |
 | `services.<svc>.auth.mtls.ca_file` | unset | CA bundle client certificates must chain to; required under `mtls`. |
+| `services.<svc>.auth.mtls.crl_file` | unset | Revocation lists (PEM or DER) a client certificate is checked against; reloaded on change like the bundle. |
 | `services.<svc>.auth.mtls.principal` | `san` | `san`, `san_uri`, `san_dns`, `san_email` or `cn`. |
 | `services.<svc>.auth.mtls.tenant_oid` / `.tenant_san_pattern` | unset | Where the tenant comes from: a subject attribute or extension OID, or a SAN regular expression (first capture group). One or the other. |
 | `services.<svc>.timeouts.read_header` / `.read` / `.write` / `.idle` | `5s` / `5s` / `10s` / read | HTTP listener timeouts (api, rpc, mcp); stream responses are exempt from `write`. `0` is none. |
