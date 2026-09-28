@@ -29,6 +29,8 @@
 #                          (go_1_NN, nodejs_NN, python3NN) and the store
 #                          globs in its Dockerfile name the pinned
 #                          go minor, node major and python minor
+#   .nvmrc, .node-version, name the pinned node major / python minor
+#   .python-version        (setup-node/setup-python and mise can read them)
 #   scaffold manifest      templates/shared/tool-versions.toml and its
 #                          embedded copy in cmd/kit/init/managed_assets/
 #                          pin every tool they share with mise.toml at the
@@ -256,6 +258,25 @@ if [ -n "$go_pin" ] && [ -n "$node_pin" ] && [ -n "$python_pin" ]; then
             }
         ' "$dockerfile")
     fi
+fi
+
+# --- version files ------------------------------------------------------
+if [ -n "$node_pin" ] && [ -n "$python_pin" ]; then
+    node_major=${node_pin%%.*}
+    py_mm=$(major_minor "$python_pin")
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        ver=$(awk 'NF && $1 !~ /^#/ { print $1; exit }' "$f")
+        ver=${ver#v}
+        case "$f" in
+            *.python-version)
+                [ "$(major_minor "$ver")" = "$py_mm" ] ||
+                    report "$f:1" python "$ver" "$py_mm" "mise.toml python (minor)" ;;
+            *)
+                [ "${ver%%.*}" = "$node_major" ] ||
+                    report "$f:1" node "$ver" "$node_major" "mise.toml node (major)" ;;
+        esac
+    done < <(tracked '*.nvmrc' '*.node-version' '*.python-version')
 fi
 
 # --- scaffold manifest ----------------------------------------------------

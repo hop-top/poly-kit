@@ -97,6 +97,8 @@ hadolint             = "2.12"     # only the manifest pins this
     mkdir -p "$REPO/cmd/kit/init/managed_assets"
     cp "$REPO/templates/shared/tool-versions.toml" "$REPO/cmd/kit/init/managed_assets/"
     git -C "$REPO" add -A
+    write examples/app/ts/.nvmrc '22'
+    write examples/app/py/.python-version '3.13'
     write .devcontainer/Dockerfile 'COPY --from=builder /nix/store/*-go-1.26*/bin/* /go/bin/
 COPY --from=builder /nix/store/*-nodejs-22*/bin/* /node/bin/
 COPY --from=builder /nix/store/*-python3-3.13*/bin/* /py/bin/'
@@ -336,4 +338,30 @@ go 1.30.0'
     run_check
     [ "$status" -eq 0 ]
     lacks "hadolint"
+}
+
+@test ".nvmrc naming another node major fails" {
+    edit examples/app/ts/.nvmrc 's/22/20/'
+    run_check
+    [ "$status" -eq 1 ]
+    has "examples/app/ts/.nvmrc:1: node 20 disagrees with mise.toml node (major) 22"
+}
+
+@test ".nvmrc with a v-prefixed full version in the pinned major passes" {
+    edit examples/app/ts/.nvmrc 's/22/v22.23.2/'
+    run_check
+    [ "$status" -eq 0 ]
+}
+
+@test ".python-version naming another python minor fails" {
+    edit examples/app/py/.python-version 's/3.13/3.12.9/'
+    run_check
+    [ "$status" -eq 1 ]
+    has "examples/app/py/.python-version:1: python 3.12.9"
+}
+
+@test ".python-version with a patch release in the pinned minor passes" {
+    edit examples/app/py/.python-version 's/3.13/3.13.5/'
+    run_check
+    [ "$status" -eq 0 ]
 }
