@@ -51,6 +51,15 @@ final readonly class Response
         ));
     }
 
+    /**
+     * This response with the `WWW-Authenticate` challenge a 401 refusal
+     * carries, as Go's `api.WriteUnauthenticated` sets it.
+     */
+    public function unauthenticated(): self
+    {
+        return new self($this->status, $this->body, [...$this->headers, 'WWW-Authenticate' => 'Bearer']);
+    }
+
     /** The 202 notification acknowledgement: no body, no headers. */
     public static function accepted(): self
     {

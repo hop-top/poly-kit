@@ -18,9 +18,13 @@ namespace HopTop\Kit\Mcp;
  */
 final readonly class LegacyHandler
 {
+    /**
+     * @param (\Closure(Request): ?Identity)|null $verifier establishes the caller of each `tools/call`
+     */
     public function __construct(
         private Bridge $bridge,
         private ServerInfo $serverInfo = new ServerInfo(),
+        private ?\Closure $verifier = null,
     ) {
     }
 
@@ -93,8 +97,12 @@ final readonly class LegacyHandler
 
         // Gating is mirrored onto the result envelope so MCP-aware clients
         // see isError while HTTP-only clients see the matching status.
-        if ($leaf->class->authRequired && '' === $request->header('Authorization')) {
-            return Response::result($request, CallResult::errorBlock('authentication required'), 401);
+        // Only the mount's verifier authenticates: a bare Authorization
+        // header does not.
+        $identity = Identity::establish($this->verifier, $request);
+        if ($leaf->class->authRequired && null === $identity) {
+            return Response::result($request, CallResult::errorBlock('authentication required'), 401)
+                ->unauthenticated();
         }
 
         if ($leaf->class->requiresConfirmation && '' === $request->header('X-Confirm-Token')) {

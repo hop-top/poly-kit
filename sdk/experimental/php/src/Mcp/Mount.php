@@ -17,8 +17,15 @@ namespace HopTop\Kit\Mcp;
 final readonly class Mount
 {
     /**
-     * @param list<SpecVersion> $specVersions    revisions this mount serves
-     * @param list<string>      $originAllowlist allowed `Origin` values; empty disables the check
+     * `$verifier` establishes the caller of each `tools/call`: it checks a
+     * credential the request presents and returns the Identity, or null
+     * to refuse (throwing refuses too). Without one no call is
+     * established, so every `kit/auth-required` leaf is refused with 401:
+     * an `Authorization` header alone never admits one.
+     *
+     * @param list<SpecVersion>                   $specVersions    revisions this mount serves
+     * @param list<string>                        $originAllowlist allowed `Origin` values; empty disables the check
+     * @param (\Closure(Request): ?Identity)|null $verifier        establishes the caller of each `tools/call`
      */
     public function __construct(
         public string $path = '/mcp',
@@ -27,6 +34,7 @@ final readonly class Mount
         public CacheHints $cacheHints = new CacheHints(),
         public array $originAllowlist = [],
         public ?string $confirmationKey = null,
+        public ?\Closure $verifier = null,
     ) {
         if ([] === $specVersions) {
             throw new \InvalidArgumentException(
@@ -59,13 +67,14 @@ final readonly class Mount
     public function dispatcher(Bridge $bridge): Dispatcher
     {
         return new Dispatcher(
-            legacy: new LegacyHandler($bridge, $this->serverInfo),
+            legacy: new LegacyHandler($bridge, $this->serverInfo, $this->verifier),
             modern: new ModernHandler(
                 $bridge,
                 $this->serverInfo,
                 $this->cacheHints,
                 $this->originAllowlist,
                 $this->confirmationGate(),
+                $this->verifier,
             ),
             legacyEnabled: $this->serves(SpecVersion::Legacy),
             modernEnabled: $this->serves(SpecVersion::Modern),

@@ -18,7 +18,8 @@ namespace HopTop\Kit\Mcp;
 final readonly class ModernHandler
 {
     /**
-     * @param list<string> $originAllowlist
+     * @param list<string>                        $originAllowlist
+     * @param (\Closure(Request): ?Identity)|null $verifier        establishes the caller of each `tools/call`
      */
     public function __construct(
         private Bridge $bridge,
@@ -26,6 +27,7 @@ final readonly class ModernHandler
         private CacheHints $cacheHints = new CacheHints(),
         private array $originAllowlist = [],
         private ConfirmationGate $confirmationGate = new HeaderConfirmationGate(),
+        private ?\Closure $verifier = null,
     ) {
     }
 
@@ -260,8 +262,12 @@ final readonly class ModernHandler
             return Response::error($request, ErrorCodes::INVALID_PARAMS, 'unknown tool: '.$name, 200);
         }
 
-        if ($leaf->class->authRequired && '' === $request->header('Authorization')) {
-            return Response::result($request, $this->stamp(CallResult::errorBlock('authentication required')), 401);
+        // Only the mount's verifier authenticates: a bare Authorization
+        // header does not.
+        $identity = Identity::establish($this->verifier, $request);
+        if ($leaf->class->authRequired && null === $identity) {
+            return Response::result($request, $this->stamp(CallResult::errorBlock('authentication required')), 401)
+                ->unauthenticated();
         }
 
         $refusal = $this->confirmationGate->check($leaf, $params, $request);
