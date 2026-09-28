@@ -45,7 +45,8 @@ type FileDecision struct {
 // an expression (e.g. "kit-conditional.AccountType=org").
 const kitConditionalPrefix = "kit-conditional."
 
-// DecideFile classifies srcPath per spec §7. Precedence:
+// DecideFile classifies srcPath (manifest side:
+// docs/adopters/guides/kit-template-yaml.md#files). Precedence:
 //  1. files.exclude  → ActionSkip
 //  2. files.binary   → ActionCopyVerbatim (path segments substituted)
 //  3. kit-conditional.<expr>/ segment → ActionConditional

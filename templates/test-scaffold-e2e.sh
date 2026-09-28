@@ -863,8 +863,9 @@ assert_file_contains "$TEST12_DIR/.github/dependabot.yml" \
 # Test 13: assert_managed_files across the lang matrix
 # ======================================================
 #
-# Validates spec §3, §5, §6, §7, §8 against scaffolded outputs
-# for the canonical lang combos plus a `--services` case. We
+# Validates the managed files described in
+# docs/contributors/shared-template-blueprints.md against scaffolded
+# outputs for the canonical lang combos plus a `--services` case. We
 # reuse TEST1/TEST2/TEST11/TEST12 outputs (Go, polyglot
 # go,ts,py, Rust, polyglot+rs) and additionally scaffold dedicated
 # ts-only, py-only, and `--services postgres,redis` projects.

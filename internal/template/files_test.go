@@ -1,4 +1,4 @@
-// Per-rule unit tests for DecideFile (spec §7).
+// Per-rule unit tests for DecideFile.
 //
 // Each test exercises one branch of the precedence ladder
 // (exclude → binary → conditional → .tmpl → fallback render)

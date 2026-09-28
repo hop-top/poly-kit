@@ -12,9 +12,9 @@
 #     <lang-csv>     Comma-separated lang list. Subset of
 #                    "go,ts,py,rs". Order is ignored.
 #
-# Spec §3 shows per-line exemplar comments (e.g. `# if lang
-# includes go`); the emitter does not reproduce those — tests
-# assert on content, not on illustrative comments.
+# The emitter writes no per-line exemplar comments (e.g. `# if
+# lang includes go`) — tests assert on content, not on
+# illustrative comments.
 #
 # What gets emitted (always inside kit-managed markers):
 #
@@ -186,7 +186,7 @@ emit_mise() {
 
   # If the file does not already exist, lay down the kit-
   # managed boilerplate header (the prose comment block
-  # above the markers per spec §3). On subsequent runs we
+  # above the markers). On subsequent runs we
   # leave whatever is above the markers untouched so users
   # can add their own tools there.
   if [[ ! -f "$out" ]]; then

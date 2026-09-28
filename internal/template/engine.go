@@ -1,8 +1,8 @@
-// Engine renders a template fs.FS into a target directory per spec
-// §7-§8: walks the source tree, applies DecideFile per entry,
-// honors kit-conditional gating, filters by tier, and writes with
-// conflict-aware semantics. Hooks, registry resolution, and shelling
-// out to git/gh are NOT this engine's concern.
+// Engine renders a template fs.FS into a target directory: walks the
+// source tree, applies DecideFile per entry, honors kit-conditional
+// gating, filters by tier, and writes with conflict-aware semantics.
+// Hooks, registry resolution, and shelling out to git/gh are NOT this
+// engine's concern.
 package template
 
 import (

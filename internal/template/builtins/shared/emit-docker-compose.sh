@@ -23,7 +23,7 @@
 # Marker indentation: kit-managed markers are emitted at column
 # 0 (managed-block.sh's universal convention), even though the
 # services they wrap are nested under `services:` at column 2.
-# Spec §6 shows the markers at column 2 for visual alignment,
+# Markers at column 2 would align visually with the services,
 # but YAML accepts comments at any column inside a mapping;
 # `docker compose config` parses both. Keeping the marker
 # convention uniform across file types (TOML, YAML, JSON-C,

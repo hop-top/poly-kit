@@ -1,4 +1,4 @@
-// Black-box engine tests for Render and DryRun (spec §7-§8).
+// Black-box engine tests for Render and DryRun.
 //
 // Covers basic templating, path-segment vars, binary copy, exclude
 // rules, conditional true/false, tier filter (with bootstrap=0

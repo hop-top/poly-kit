@@ -1,4 +1,5 @@
-// Black-box tests for template.Run lifecycle hook executor (spec §16).
+// Black-box tests for template.Run lifecycle hook executor
+// (docs/adopters/guides/kit-template-yaml.md#hooks).
 //
 // Fixtures live in testdata/hooks/ and are tiny POSIX sh scripts
 // invoked via /bin/sh — no execute bit required.
