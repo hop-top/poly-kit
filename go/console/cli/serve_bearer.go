@@ -95,10 +95,6 @@ func (t tlsResolver) bearerVerifier(r *Root, mode string) (*authn.Verifier, erro
 	case AuthModeJWT:
 		return t.jwtVerifier(r)
 	case AuthModeJWKS:
-		opts, err := t.bearerOptions(authJWKSBlock, true)
-		if err != nil {
-			return nil, err
-		}
 		u, uKey := t.str(authJWKSBlock, "url")
 		if u == "" {
 			return nil, fmt.Errorf("%s: auth.mode %q needs the key set's URL", uKey, AuthModeJWKS)
@@ -106,22 +102,26 @@ func (t tlsResolver) bearerVerifier(r *Root, mode string) (*authn.Verifier, erro
 		if err := authn.CheckURL(u); err != nil {
 			return nil, fmt.Errorf("%s: %w", uKey, err)
 		}
+		opts, err := t.bearerOptions(authJWKSBlock, true)
+		if err != nil {
+			return nil, err
+		}
 		remote, err := t.remote(authJWKSBlock)
 		if err != nil {
 			return nil, err
 		}
 		return authn.NewJWKS(u, remote, opts)
 	case AuthModeOIDC:
+		issuer, issKey := t.str(authOIDCBlock, "issuer")
+		if issuer == "" {
+			return nil, fmt.Errorf("%s: auth.mode %q needs the provider's issuer URL", issKey, AuthModeOIDC)
+		}
+		if err := authn.CheckURL(issuer); err != nil {
+			return nil, fmt.Errorf("%s: %w", issKey, err)
+		}
 		opts, err := t.bearerOptions(authOIDCBlock, true)
 		if err != nil {
 			return nil, err
-		}
-		if opts.Issuer == "" {
-			return nil, fmt.Errorf("%s: auth.mode %q needs the provider's issuer URL",
-				svcconfig.Key(t.svc, authOIDCBlock, "issuer"), AuthModeOIDC)
-		}
-		if err := authn.CheckURL(opts.Issuer); err != nil {
-			return nil, fmt.Errorf("%s: %w", svcconfig.Key(t.svc, authOIDCBlock, "issuer"), err)
 		}
 		remote, err := t.remote(authOIDCBlock)
 		if err != nil {
