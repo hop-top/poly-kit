@@ -1754,7 +1754,7 @@ The key, per surface:
 |---|---|---|
 | REST (api service) | `Idempotency-Key` request header | `Idempotent-Replayed: true` response header, on unary and stream routes |
 | Connect (rpc service) | `Invocation.meta.idempotency_key`, else the `Idempotency-Key` request header | `Idempotent-Replayed: true` response header |
-| MCP | `params._meta["hop.top/idempotency-key"]`, else the `Idempotency-Key` header of an HTTP request | result `_meta["hop.top/idempotent-replayed"]: true` |
+| MCP | `params._meta["hop.top/idempotency-key"]`, else the `Idempotency-Key` header of an HTTP request; a task-augmented call carries none (its task id is the retry handle) | result `_meta["hop.top/idempotent-replayed"]: true` |
 | Socket | the request's `idempotency_key` | the response's `"replayed": true` |
 
 Rules:

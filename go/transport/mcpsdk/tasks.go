@@ -150,6 +150,11 @@ func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, l
 	if meta.Caller == "" {
 		meta.Caller = taskPrincipal(hdr)
 	}
+	// A task carries no idempotency key: its id is the client's handle
+	// for polling and retrying, and the detached run outlives the
+	// request a key's reservation is bound to, so a retry could not be
+	// told from a second call.
+	meta.IdempotencyKey = ""
 	// Arguments are checked first, as on the synchronous path: the
 	// admission carries the invocation exactly as it will run.
 	flags, args, err := decodeArguments(leaf, req.Params.Arguments)
@@ -179,6 +184,7 @@ func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, l
 	if leaf.Class.RequiresConfirmation && hdr.Get("X-Confirm-Token") == "" {
 		proceed, res := tb.confirmViaMRTR(req, leaf, hdr)
 		if !proceed {
+			adm.Abandon()
 			return res, nil
 		}
 	}

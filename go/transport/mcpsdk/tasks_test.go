@@ -22,6 +22,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"hop.top/kit/go/console/cli/idemstore"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -494,5 +495,35 @@ func TestTaskAdmittedOnce(t *testing.T) {
 	res := taskResult(t, taskPost(t, srv.URL+"/mcp", taskCallHeaders("slow", nil), taskCallBody(2, "slow", true, "")))
 	if res["resultType"] == "task" || res["isError"] != true {
 		t.Errorf("second call = %v, want a rate-limit refusal at creation", res)
+	}
+}
+
+// A task-augmented call carries no idempotency key: the task id is
+// the client's handle for retrying or polling, and the detached run
+// outlives the request a key's reservation is bound to. Each call
+// creates and runs its own task, and neither is a replay.
+func TestTaskCarriesNoIdempotencyKey(t *testing.T) {
+	var counter atomic.Int32
+	b := cmdsurface.New(tasksTree(&counter, nil),
+		cmdsurface.WithIdempotency(cmdsurface.NewIdempotencyLedger(idemstore.Memory()), time.Hour))
+	srv := mountTasksBridge(t, b, TasksConfig{Tools: []string{"slow"}})
+	hdr := taskCallHeaders("slow", map[string]string{"Idempotency-Key": "k1"})
+
+	for i := 1; i <= 2; i++ {
+		body := strings.Replace(taskCallBody(i, "slow", true, ""),
+			`"_meta":{`, `"_meta":{"`+cmdsurface.MCPMetaIdempotencyKey+`":"k1",`, 1)
+		env := taskPost(t, srv.URL+"/mcp", hdr, body)
+		created := taskResult(t, env)
+		if created["resultType"] != "task" {
+			t.Fatalf("call %d: create = %v, want CreateTaskResult", i, created)
+		}
+		final := taskPollUntil(t, srv, created["taskId"].(string), nil, "completed")
+		result, _ := final["result"].(map[string]any)
+		if m, _ := result["_meta"].(map[string]any); m[cmdsurface.MCPMetaIdempotentReplayed] == true {
+			t.Fatalf("call %d replayed: %v", i, result)
+		}
+	}
+	if got := counter.Load(); got != 2 {
+		t.Errorf("executions = %d, want 2: a task is not replayed", got)
 	}
 }
