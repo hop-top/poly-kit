@@ -412,6 +412,7 @@ which is a different answer from one that does not exist:
 | `BLOCKED` | destructive command refused by policy | `Policy.AllowDestructiveOn` does not name `cmdsurface.SurfaceSocket` |
 | `DENIED` | the permission gate refused this caller | `cli.WithPermission`, or a `--policy` that refuses the class; the message carries the reason |
 | `UNAUTHENTICATED` | `SocketConfig.Auth` refused the request | only sent when an authenticator is configured |
+| `RATE_LIMITED` | the caller's rate limit is spent | `services.socket.rate_limit.enabled: true`; wait `retry_after_ms` |
 | `INVALID` | the request line is malformed | bad JSON, or an empty `path` |
 | `INTERNAL` | anything else the runner returned | a bug worth reporting |
 

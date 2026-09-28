@@ -1253,6 +1253,16 @@ by the bridge's `PermissionFunc` (`WithPermission`), which runs after
 the destructive ceiling and before the Runner on every surface: the
 adopter's decision, kit's gate. The default permits everything.
 
+`WithRateLimit(cfg)` adds the rate-limit gate right after it: one
+token bucket per caller and side-effect tier (`RateTierRead`,
+`RateTierWrite`, `RateTierDestructive`; `DefaultRateLimit` holds the
+defaults), counted on remote surfaces only. A caller is `Meta.Caller`
+with `Meta.Tenant`, else the client address in
+`Meta.Extra["remote_addr"]`, else the surface. The refusal is a
+`*RateLimitedError` wrapping `ErrRateLimited`; `RetryAfter(err)` reads
+its hint. Without the option there is no limit; the kit-shipped
+services install it from `services.<svc>.rate_limit`.
+
 The mappings of bridge sentinel errors to wire format are uniform:
 
 | Bridge sentinel        | REST / SSE        | RPC               | WS / Bus / Webhook / Signed | OAuth        | Lambda            |
@@ -1262,6 +1272,7 @@ The mappings of bridge sentinel errors to wire format are uniform:
 | `ErrDestructiveBlocked`| 403 `destructive_blocked` | `CodePermissionDenied` | `destructive_blocked` | 403 / (mount-time refusal) | (mount-time refusal) |
 | `ErrNotInvocable`      | 404 `not_invocable` (projection: withheld at mount; SSE) | `CodeNotFound`; `NOT_INVOCABLE` (socket) | `not_invocable` (WS); passthrough | (mount-time refusal) | (mount-time refusal) |
 | `ErrPermissionDenied`  | 403 `permission_denied` (projection; SSE) | `CodePermissionDenied`; `DENIED` (socket) | `permission_denied` (WS); passthrough | passthrough | passthrough |
+| `ErrRateLimited`       | 429 `rate_limited` + `Retry-After` | `CodeResourceExhausted` + `Retry-After` metadata; `RATE_LIMITED` + `retry_after_ms` (socket) | `rate_limited` (WS, Bus); 429 (Webhook) | 429 + `Retry-After` | 429 `rate_limited` |
 
 Cross-references: `go/transport/cmdsurface/surface_rest.go`,
 `go/transport/cmdsurface/safety.go`,

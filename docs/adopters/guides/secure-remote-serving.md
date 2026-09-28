@@ -61,6 +61,11 @@ for your own command tree; substitute it.
 - **TLS where you want it.** Terminate it at your proxy, or on the
   listener itself with a certificate file or ACME; with client
   certificates (`auth.mode: mtls`) the certificate is the credential.
+- **A rate limit beyond loopback.** A service listening beyond
+  loopback bounds how fast each caller may invoke commands, per
+  side-effect tier, and answers the excess `429 rate_limited` with
+  `Retry-After`. On loopback it is off until you turn it on. See
+  [Bound how fast a caller may call](#11-bound-how-fast-a-caller-may-call).
 - **No reach from a browser tab.** The api service refuses requests
   whose `Host` it does not answer for (DNS rebinding) and writes from
   pages on other origins (cross-site request forgery), and sets
@@ -950,6 +955,65 @@ handshake fails, and the server logs it. The health probes answer
 without a certificate, so an orchestrator needs none. Under `mtls` the
 certificate is the only verifier; `APIConfig.Auth` is not consulted.
 
+### 11. Bound how fast a caller may call
+
+Every service listening beyond loopback counts each caller's calls in
+a token bucket per side-effect tier, with no configuration. The
+socket service, stdio, and a loopback bind leave it off. Once
+permission has admitted a call, a call with no token left is refused
+before it reaches storage, a person or the command:
+
+```console
+$ curl -si https://tool.example/v1/commands/widget/list -H 'Authorization: Bearer …'
+HTTP/1.1 429 Too Many Requests
+Retry-After: 1
+
+{"status":429,"code":"rate_limited","message":"api: rate limited: cmdsurface: rate limited: widget list on rest: read tier; retry after 100ms"}
+```
+
+The same refusal is Connect `ResourceExhausted` with `Retry-After`
+metadata over RPC, an `isError` result whose `_meta["hop.top/refusal"]`
+is `{"code":"rate_limited","retry_after_ms":100}` over MCP, and
+`RATE_LIMITED` with `retry_after_ms` on the socket. A client that
+turns it into an exit status uses `64` (`RATE_LIMITED`). Every
+refusal reaches the audit sinks as `cmdsurface.ErrRateLimited` and is
+counted as `rate_limited` in the refusal metrics.
+
+A caller is its authenticated principal and tenant; without one, its
+client address (an IPv6 address by its `/64`); without that, the
+surface, so bus and cron calls share one bucket. The defaults, per
+caller:
+
+| Tier | Commands | `per_minute` | `burst` |
+|---|---|---|---|
+| `read` | `kit/side-effect: read` | 600 | 60 |
+| `write` | the write tiers, and commands that declare no tier | 120 | 20 |
+| `destructive` | the destructive tiers | 12 | 3 |
+
+Change them per service, or for every service under `services.all`;
+each key resolves on its own:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  all:
+    rate_limit:
+      write:
+        per_minute: 60
+        burst: 10
+  api:
+    rate_limit:
+      read:
+        burst: 200          # api only; per_minute still comes from the default
+  socket:
+    rate_limit:
+      enabled: true         # on for the socket too
+```
+
+`enabled: false` lifts the limit; a `per_minute` or `burst` below 1
+is refused at startup with exit `2`, as is an unknown key. Buckets
+live in memory, one set per service, and start full on every restart.
+
 ## Option reference
 
 | Option | Default | Effect |
@@ -983,6 +1047,9 @@ certificate is the only verifier; `APIConfig.Auth` is not consulted.
 | `services.<svc>.auth.mtls.principal` | `san` | `san`, `san_uri`, `san_dns`, `san_email` or `cn`. |
 | `services.<svc>.auth.mtls.tenant_oid` / `.tenant_san_pattern` | unset | Where the tenant comes from: a subject attribute or extension OID, or a SAN regular expression (first capture group). One or the other. |
 | `services.all.<block>.<key>` | unset | Shared default for the blocks above; the service's own key wins. |
+| `services.<svc>.rate_limit.enabled` | on beyond loopback, off on loopback, the socket and stdio | Per-caller rate limit; over it is `429 rate_limited` with `Retry-After`, audited as `cmdsurface.ErrRateLimited`. |
+| `services.<svc>.rate_limit.<tier>.per_minute` | read `600`, write `120`, destructive `12` | Tokens a caller's bucket for the tier refills per minute. `services.all.rate_limit.*` applies to every service. |
+| `services.<svc>.rate_limit.<tier>.burst` | read `60`, write `20`, destructive `3` | Tokens the bucket holds at most. |
 
 Precedence for either opt-in is flag, then config key, then code.
 The guard keys have no flags: the service's key, then

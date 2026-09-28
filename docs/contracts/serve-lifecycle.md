@@ -776,8 +776,9 @@ Like every service that arrives through the registry, `mcp` is
 The service lives in its own package so that only a tool serving MCP
 links the MCP SDK: `go/console/cli` MUST NOT depend on it. It reaches
 the Root through the same exported hooks any out-of-package transport
-service can use — `cli.WithService`, `cli.ServeBridgeOptions`,
-`cli.ValidateServeBridge`, `cli.ServePolicyConfigured`, and
+service can use — `cli.WithService`, `cli.ServeBridgeOptions` (or
+`cli.ServeBridgeOptionsFor`, which states the service's exposure for
+the rate limit's default), `cli.ValidateServeBridge`, `cli.ServePolicyConfigured`, and
 `cli.IsLoopbackAddr` — and so meets exactly the gates the in-package
 services do.
 

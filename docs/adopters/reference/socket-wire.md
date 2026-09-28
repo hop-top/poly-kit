@@ -100,6 +100,7 @@ the socket nothing.
 | `BLOCKED` | destructive command refused because the policy does not name the `socket` surface |
 | `DENIED` | the permission gate refused this caller; the message carries its stable reason |
 | `UNAUTHENTICATED` | the configured `Authenticator` refused the request; never sent without one |
+| `RATE_LIMITED` | the caller's rate limit is spent; `retry_after_ms` says how long until it refills |
 | `INVALID` | malformed request line, or empty `path` |
 | `INTERNAL` | any other runner error |
 
@@ -179,7 +180,7 @@ directory.
 | `Request`, `Response`, `Error` | wire types |
 | `Authenticator`, `Identity` | the per-request verification hook and its verdict |
 | `Transport.Auth`, `Transport.OnRefused` | install the hook; observe its refusals |
-| `CodeNotFound`, `CodeNotEnabled`, `CodeNotInvocable`, `CodeBlocked`, `CodeDenied`, `CodeUnauthenticated`, `CodeInvalid`, `CodeInternal` | error-code constants |
+| `CodeNotFound`, `CodeNotEnabled`, `CodeNotInvocable`, `CodeBlocked`, `CodeDenied`, `CodeUnauthenticated`, `CodeRateLimited`, `CodeInvalid`, `CodeInternal` | error-code constants |
 | `SocketMode` | the `0600` the socket file is created with |
 
 Register it through
