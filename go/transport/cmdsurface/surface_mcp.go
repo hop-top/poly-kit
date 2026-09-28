@@ -134,6 +134,7 @@ func WithMCPConfirmationKey(key []byte) MCPOption {
 //
 //	initialize  → server info + capabilities
 //	tools/list  → enumerates tools with inputSchema derived from flags
+//	              and declared positional arguments (kit/args)
 //	tools/call  → invokes the leaf via bridge.Invoke; result rendered
 //	              as MCP content blocks
 //
@@ -141,7 +142,9 @@ func WithMCPConfirmationKey(key []byte) MCPOption {
 //   - Forces inv.Meta.Surface = SurfaceMCP for every call.
 //   - Maps flags from request "arguments" into inv.Flags; values are
 //     forwarded as-is (the bridge re-renders them with %v at apply
-//     time, so the cobra leaf parses them as strings).
+//     time, so the cobra leaf parses them as strings). A leaf that
+//     declares positional arguments takes them as an "args" array of
+//     strings, mapped to inv.Args in order (see MCPInputSchema).
 //   - Result.Stdout becomes a text content block. Result.Stderr (if
 //     any) becomes a second text block tagged "[stderr] ...". Non-zero
 //     ExitCode sets isError:true.

@@ -89,6 +89,13 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 		h.writeCallError(w, rpc, "authentication required", http.StatusUnauthorized)
 		return
 	}
+	// Arguments are checked before the confirmation gate: a person
+	// is never asked to approve a call that cannot run as sent.
+	flags, args, err := MCPSplitArguments(leaf, p.Arguments)
+	if err != nil {
+		h.writeCallError(w, rpc, err.Error(), http.StatusOK)
+		return
+	}
 	gate := h.confirm
 	if gate == nil {
 		gate = mcpHeaderConfirmationGate
@@ -100,7 +107,8 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 
 	inv := Invocation{
 		Path:  append([]string(nil), leaf.Path...),
-		Flags: p.Arguments,
+		Args:  args,
+		Flags: flags,
 		Meta: Meta{
 			Surface:     SurfaceMCP,
 			RequestedAt: time.Now(),

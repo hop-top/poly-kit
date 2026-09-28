@@ -6,9 +6,11 @@
 // It is the SDK-backed alternative to the hand-rolled MCP surface
 // mounted by [hop.top/kit/go/transport/cmdsurface.MountMCP]. Both
 // surfaces expose the same tool set (one MCP tool per bridge leaf,
-// dotted-path names, JSON Schema derived from cobra flags) and honor
-// the same safety posture (per-leaf enablement, destructive policy
-// ceiling, auth + confirmation gates). Adopters choose per mount:
+// dotted-path names, JSON Schema derived from cobra flags and
+// kit/args positionals, built by one shared cmdsurface function) and
+// honor the same safety posture (per-leaf enablement, destructive
+// policy ceiling, auth + confirmation gates). Adopters choose per
+// mount:
 //
 //   - cmdsurface.MountMCP — zero extra dependencies, single-POST
 //     JSON-RPC endpoint, protocol version 2024-11-05 only.

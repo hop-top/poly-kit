@@ -135,7 +135,10 @@ curl -s http://localhost:8080/mcp \
 ```
 
 Expect one entry per enabled leaf, with `name` as the dotted path and
-`inputSchema` built from that command's flags. If a command is
+`inputSchema` built from that command's flags and declared
+positional arguments (an `args` array; see
+[positional arguments](expose-cli-over-mcp.md#positional-arguments)).
+If a command is
 missing, it is either hidden/deprecated in cobra, not runnable, or
 disabled for `SurfaceMCP`.
 
@@ -290,7 +293,8 @@ either way.
 ### Richer tool descriptors
 
 `WithToolDecorator` runs per leaf after kit fills the defaults (name,
-description, flag-derived input schema, destructive hint) and may set
+description, input schema from flags and declared positional
+arguments, destructive hint) and may set
 or override any optional `mcp.Tool` field:
 
 ```go

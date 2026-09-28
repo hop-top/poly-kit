@@ -1,11 +1,12 @@
 package mcpsdk
 
-// The flag→JSON-Schema mapping below intentionally duplicates the
-// small type-mapping logic in cmdsurface's hand-rolled surface (which
-// itself duplicates go/ai/toolspec/adapters/mcp.go). All three call
-// sites agree that duplicating ~60 lines beats coupling packages
-// that evolve on independent schedules. The wire protocol, by
-// contrast, is never duplicated here — it is entirely the SDK's.
+// The tool descriptor (description and inputSchema) and the mapping
+// of call arguments back onto flags and positional arguments come
+// from cmdsurface (MCPToolDescription, MCPInputSchema,
+// MCPSplitArguments), the same functions the hand-rolled surface
+// uses: the two live servers cannot publish different schemas for
+// one leaf. The wire protocol, by contrast, is never duplicated
+// here — it is entirely the SDK's.
 
 import (
 	"context"
@@ -15,8 +16,6 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	taskext "hop.top/mcp-tasks"
 
 	"hop.top/kit/go/transport/cmdsurface"
@@ -28,19 +27,11 @@ import (
 // re-learning tool names. The destructive hint mirrors the bridge's
 // safety classification.
 func toolFor(leaf *cmdsurface.Leaf) *mcp.Tool {
-	props, required := collectFlags(leaf.Cmd)
-	schema := map[string]any{
-		"type":       "object",
-		"properties": props,
-	}
-	if len(required) > 0 {
-		schema["required"] = required
-	}
 	destructive := leaf.Class.Destructive
 	return &mcp.Tool{
 		Name:        toolName(leaf.Path),
-		Description: leaf.Cmd.Short,
-		InputSchema: schema,
+		Description: cmdsurface.MCPToolDescription(leaf),
+		InputSchema: cmdsurface.MCPInputSchema(leaf),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive},
 	}
 }
@@ -50,8 +41,11 @@ func toolFor(leaf *cmdsurface.Leaf) *mcp.Tool {
 //  1. Builds the call's provenance (see [WithCallMeta]).
 //  2. Applies the auth gate for kit/auth-required leaves (see
 //     [WithAuthenticated]; by default an Authorization header).
-//  3. Decodes the raw arguments into Invocation.Flags; values are
-//     forwarded as-is and re-rendered by the bridge at apply time.
+//  3. Decodes the raw arguments into Invocation.Flags and, for a
+//     leaf that declares positional arguments, its "args" array into
+//     Invocation.Args (cmdsurface.MCPSplitArguments); flag values
+//     are forwarded as-is and re-rendered by the bridge at apply
+//     time. A malformed or short "args" is an isError result.
 //  4. Admits the call through Bridge.Admit: surface enablement,
 //     invocability, the destructive policy ceiling and the permission
 //     gate, each refusal audited.
@@ -88,10 +82,13 @@ func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
 		if tb != nil && tb.eligible[name] && taskext.ClientDeclares(req) {
 			return tb.invokeAsTask(ctx, b, leaf, req, headerOf(req))
 		}
-		if len(req.Params.Arguments) > 0 {
-			if err := json.Unmarshal(req.Params.Arguments, &inv.Flags); err != nil {
-				return nil, fmt.Errorf("invalid arguments: %w", err)
+		var err error
+		inv.Flags, inv.Args, err = decodeArguments(leaf, req.Params.Arguments)
+		if err != nil {
+			if errors.Is(err, errMalformedArguments) {
+				return nil, err
 			}
+			return errorResult(err.Error()), nil
 		}
 
 		// Every machine gate answers before anything else happens:
@@ -215,69 +212,20 @@ func errorResult(msg string) *mcp.CallToolResult {
 // toolName renders a leaf path as a dotted MCP tool name.
 func toolName(path []string) string { return strings.Join(path, ".") }
 
-// jsonType maps a pflag type string to the corresponding JSON Schema
-// primitive.
-func jsonType(pflagType string) string {
-	switch pflagType {
-	case "bool":
-		return "boolean"
-	case "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64",
-		"count":
-		return "integer"
-	case "float32", "float64":
-		return "number"
-	case "stringArray", "stringSlice", "intSlice", "boolSlice":
-		return "array"
-	default:
-		return "string"
-	}
-}
+// errMalformedArguments marks arguments that are not a JSON object:
+// a protocol error rather than a tool result.
+var errMalformedArguments = errors.New("invalid arguments")
 
-// flagProperty maps one pflag.Flag to a JSON Schema property object.
-func flagProperty(f *pflag.Flag) map[string]any {
-	t := jsonType(f.Value.Type())
-	prop := map[string]any{
-		"type":        t,
-		"description": f.Usage,
-	}
-	if t == "array" {
-		prop["items"] = map[string]string{"type": "string"}
-	}
-	return prop
-}
-
-// isFlagRequired reports whether cobra's MarkFlagRequired annotation
-// is set on f.
-func isFlagRequired(f *pflag.Flag) bool {
-	_, ok := f.Annotations[cobra.BashCompOneRequiredFlag]
-	return ok
-}
-
-// collectFlags walks both local and inherited flags of cmd and
-// returns the schema properties + required-name list, filtering out
-// hidden / deprecated flags. Local flags win over inherited ones of
-// the same name.
-func collectFlags(cmd *cobra.Command) (map[string]any, []string) {
-	props := make(map[string]any)
-	var required []string
-	seen := make(map[string]bool)
-
-	visit := func(f *pflag.Flag) {
-		if f.Hidden || f.Deprecated != "" {
-			return
-		}
-		if seen[f.Name] {
-			return
-		}
-		seen[f.Name] = true
-		props[f.Name] = flagProperty(f)
-		if isFlagRequired(f) {
-			required = append(required, f.Name)
+// decodeArguments decodes a call's raw arguments object and splits it
+// into flags and positional arguments for leaf. Arguments that are
+// not a JSON object wrap errMalformedArguments; any other error is
+// the caller's to correct from an isError result.
+func decodeArguments(leaf *cmdsurface.Leaf, raw json.RawMessage) (map[string]any, []string, error) {
+	var arguments map[string]any
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &arguments); err != nil {
+			return nil, nil, fmt.Errorf("%w: %w", errMalformedArguments, err)
 		}
 	}
-
-	cmd.LocalFlags().VisitAll(visit)
-	cmd.InheritedFlags().VisitAll(visit)
-	return props, required
+	return cmdsurface.MCPSplitArguments(leaf, arguments)
 }

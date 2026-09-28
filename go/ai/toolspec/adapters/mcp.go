@@ -31,6 +31,15 @@
 // marks required (MarkFlagRequired), so a client can tell which
 // arguments it must supply.
 //
+// A leaf that declares positional arguments (kit/args) carries them
+// in one more property, "args": an array of strings in declared
+// order, required with minItems when any argument is required, and
+// described by the declared names ("Positional arguments in order:
+// name, note?"). The key and shape are the ones the REST request
+// body uses. A leaf whose positionals are undeclared, or whose
+// "args" name a flag already holds, publishes no such property and
+// says so in its description.
+//
 // Rendering the same shape both statically and live is the point:
 // a client that reads `<tool> spec --format mcp` and a client that
 // connects to the same tool's MCP server see the same tool surface.
@@ -240,7 +249,7 @@ func appendMCPLeafTools(out *[]map[string]any, parentPath []string, c toolspec.C
 // with the leaf's declaration winning on a name collision — the
 // same local-over-inherited precedence the live server applies.
 func buildMCPLeafTool(path []string, c toolspec.Command, spec *toolspec.ToolSpec, cfg *RenderConfig) map[string]any {
-	props, required := mcpLeafSchemaFields(c, spec, cfg)
+	props, required, argsPublished := mcpLeafSchemaFields(c, spec, cfg)
 
 	schema := map[string]any{
 		"type":       "object",
@@ -251,16 +260,18 @@ func buildMCPLeafTool(path []string, c toolspec.Command, spec *toolspec.ToolSpec
 	}
 	return map[string]any{
 		"name":        mcpToolName(path),
-		"description": mcpLeafDescription(c, cfg),
+		"description": mcpLeafDescription(c, argsPublished, cfg),
 		"inputSchema": schema,
 	}
 }
 
 // mcpLeafSchemaFields collects the JSON Schema properties and the
-// required-name list for one leaf. Local flags are visited first so
-// a leaf-local declaration overrides an inherited one of the same
-// name; the required list is sorted for stable output.
-func mcpLeafSchemaFields(c toolspec.Command, spec *toolspec.ToolSpec, cfg *RenderConfig) (map[string]any, []string) {
+// required-name list for one leaf, and whether its declared
+// positional arguments got the "args" property. Local flags are
+// visited first so a leaf-local declaration overrides an inherited
+// one of the same name; the required list is sorted for stable
+// output.
+func mcpLeafSchemaFields(c toolspec.Command, spec *toolspec.ToolSpec, cfg *RenderConfig) (map[string]any, []string, bool) {
 	props := make(map[string]any)
 	requiredSet := make(map[string]bool)
 	seen := make(map[string]bool)
@@ -296,12 +307,28 @@ func mcpLeafSchemaFields(c toolspec.Command, spec *toolspec.ToolSpec, cfg *Rende
 		}
 	}
 
+	// Declared positionals ride in "args" unless a flag already
+	// holds the name: the flag was in the schema first.
+	argsPublished := len(c.Args) > 0 && !seen[mcpArgsProperty]
+	if argsPublished {
+		prop := map[string]any{
+			"type":        "array",
+			"items":       map[string]string{"type": "string"},
+			"description": mcpArgsDescription(c.Args),
+		}
+		if n := mcpRequiredArgCount(c.Args); n > 0 {
+			prop["minItems"] = n
+			requiredSet[mcpArgsProperty] = true
+		}
+		props[mcpArgsProperty] = prop
+	}
+
 	required := make([]string, 0, len(requiredSet))
 	for name := range requiredSet {
 		required = append(required, name)
 	}
 	sort.Strings(required)
-	return props, required
+	return props, required, argsPublished
 }
 
 // mcpLeafDescription returns the description for one leaf: its own
@@ -310,14 +337,69 @@ func mcpLeafSchemaFields(c toolspec.Command, spec *toolspec.ToolSpec, cfg *Rende
 // unannotated leaf with no configured fallback renders an empty
 // description rather than a synthesized one — the live server does
 // the same, and inventing text would misdescribe the command.
-func mcpLeafDescription(c toolspec.Command, cfg *RenderConfig) string {
-	if c.Short != "" {
-		return c.Short
+//
+// A leaf whose positional arguments the tool cannot pass gets the
+// live server's note appended: undeclared (no kit/args), or declared
+// with the "args" property held by a flag (argsPublished false).
+func mcpLeafDescription(c toolspec.Command, argsPublished bool, cfg *RenderConfig) string {
+	desc := c.Short
+	if desc == "" {
+		if v, ok := cfg.Custom[CustomKeyMCPDescription].(string); ok {
+			desc = v
+		}
 	}
-	if v, ok := cfg.Custom[CustomKeyMCPDescription].(string); ok && v != "" {
-		return v
+	note := ""
+	switch {
+	case c.UndeclaredArgs:
+		note = mcpNoteUndeclaredArgs
+	case len(c.Args) > 0 && !argsPublished:
+		note = mcpNoteArgsFlagTaken
 	}
-	return ""
+	switch {
+	case note == "":
+		return desc
+	case desc == "":
+		return note
+	default:
+		return desc + " " + note
+	}
+}
+
+// Positional-argument rendering. Mirrors the live server
+// (go/transport/cmdsurface, surface_mcp_args.go) — the property
+// name, the note texts and the description wording are duplicated
+// across the package boundary and pinned by the parity test.
+const (
+	// mcpArgsProperty is the property carrying declared positionals.
+	mcpArgsProperty = "args"
+
+	mcpNoteUndeclaredArgs = "Takes positional arguments it does not declare (kit/args), so they cannot be passed over MCP."
+	mcpNoteArgsFlagTaken  = `Takes positional arguments that cannot be passed over MCP: its --args flag holds the "args" property.`
+)
+
+// mcpArgsDescription renders the declared names in order, optional
+// ones marked with "?" — the REST projection's wording.
+func mcpArgsDescription(args []toolspec.Arg) string {
+	names := make([]string, 0, len(args))
+	for _, a := range args {
+		n := a.Name
+		if !a.Required {
+			n += "?"
+		}
+		names = append(names, n)
+	}
+	return "Positional arguments in order: " + strings.Join(names, ", ")
+}
+
+// mcpRequiredArgCount counts the required declared arguments.
+func mcpRequiredArgCount(args []toolspec.Arg) int {
+	n := 0
+	for _, a := range args {
+		if a.Required {
+			n++
+		}
+	}
+	return n
 }
 
 // mcpToolName renders a leaf path as a dotted MCP tool name,

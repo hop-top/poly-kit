@@ -21,17 +21,9 @@ func (h *mcpHandler) handleToolsList(w http.ResponseWriter, rpc jsonRPCRequest) 
 
 // buildToolEnvelope renders one leaf as an MCP tool descriptor.
 func buildToolEnvelope(leaf *Leaf) map[string]any {
-	props, required := collectFlags(leaf.Cmd)
-	schema := map[string]any{
-		"type":       "object",
-		"properties": props,
-	}
-	if len(required) > 0 {
-		schema["required"] = required
-	}
 	return map[string]any{
 		"name":        toolName(leaf.Path),
-		"description": leaf.Cmd.Short,
-		"inputSchema": schema,
+		"description": MCPToolDescription(leaf),
+		"inputSchema": MCPInputSchema(leaf),
 	}
 }

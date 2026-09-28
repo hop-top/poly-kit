@@ -46,6 +46,13 @@ func (h *mcpHandler) handleToolsCall(w http.ResponseWriter, req *http.Request, r
 		writeJSONRPCResult(w, rpc.ID, errorResultBlock("authentication required"), http.StatusUnauthorized)
 		return
 	}
+	// Arguments are checked before the confirmation gate: a person
+	// is never asked to approve a call that cannot run as sent.
+	flags, args, err := MCPSplitArguments(leaf, p.Arguments)
+	if err != nil {
+		writeJSONRPCResult(w, rpc.ID, errorResultBlock(err.Error()), http.StatusOK)
+		return
+	}
 	if leaf.Class.RequiresConfirmation && req.Header.Get("X-Confirm-Token") == "" {
 		writeJSONRPCResult(w, rpc.ID, errorResultBlock("confirmation required"), http.StatusPreconditionRequired)
 		return
@@ -53,7 +60,8 @@ func (h *mcpHandler) handleToolsCall(w http.ResponseWriter, req *http.Request, r
 
 	inv := Invocation{
 		Path:  append([]string(nil), leaf.Path...),
-		Flags: p.Arguments,
+		Args:  args,
+		Flags: flags,
 		Meta:  Meta{Surface: SurfaceMCP, RequestedAt: time.Now()},
 	}
 

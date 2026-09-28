@@ -82,9 +82,49 @@ func main() {
 
 Every leaf becomes one MCP tool named by its dotted path
 (`widget add` → `widget.add`), with an `inputSchema` derived from
-its pflag set. MCP is in the default enablement set
-(`DefaultPolicy()` enables `cli`, `lib`, `mcp`), so no
-`Expose` call is needed unless you've narrowed enablement.
+its pflag set and its declared positional arguments. MCP is in the
+default enablement set (`DefaultPolicy()` enables `cli`, `lib`,
+`mcp`), so no `Expose` call is needed unless you've narrowed
+enablement.
+
+#### Positional arguments
+
+A tool can only carry the positional arguments its command declares.
+Name them, in order, in the `kit/args` annotation; a trailing `?`
+marks one optional:
+
+```go
+cmd := &cobra.Command{
+    Use:         "tag <name> [note]",
+    Args:        cobra.RangeArgs(1, 2),
+    Annotations: map[string]string{"kit/args": "name,note?"},
+    // ...
+}
+```
+
+The tool's `inputSchema` then gains one `args` property beside the
+flags — the key and shape REST and the socket already use:
+
+```json
+"args": {
+  "type": "array",
+  "items": {"type": "string"},
+  "description": "Positional arguments in order: name, note?",
+  "minItems": 1
+}
+```
+
+`args` is listed in `required` when any argument is required. A
+caller sends `{"args": ["bolt", "spare"], "force": true}`; a missing
+required argument or an `args` that is not an array of strings comes
+back as an `isError` result naming the problem, before any
+confirmation prompt.
+
+A command whose usage line names operands (`label <name>`) without
+declaring them in `kit/args` publishes no `args` property, and its
+tool description says the arguments cannot be passed; declare them to
+make the tool callable. The same note appears when a flag of the
+command is itself named `args`: the flag keeps the property.
 
 Options are validated at mount time — an unrecognized spec version,
 a negative cache TTL, an unknown cache scope, or an explicitly empty

@@ -352,3 +352,62 @@ func TestMCPPerLeaf_ByteIdentical_Compact(t *testing.T) {
 `
 	assert.Equal(t, want, buf.String())
 }
+
+// TestMCPPerLeaf_PositionalArgs pins how declared positional
+// arguments render: one "args" string array in declared order,
+// required with minItems when any argument is, and the notes for
+// positionals the tool cannot pass.
+func TestMCPPerLeaf_PositionalArgs(t *testing.T) {
+	spec := &toolspec.ToolSpec{
+		Name: "mytool",
+		Commands: []toolspec.Command{
+			{Name: "add", Short: "Add", Args: []toolspec.Arg{{Name: "name", Required: true}, {Name: "note"}},
+				Flags: []toolspec.Flag{{Name: "force", Type: "bool"}}},
+			{Name: "show", Short: "Show", Args: []toolspec.Arg{{Name: "id"}}},
+			{Name: "label", UndeclaredArgs: true},
+			{Name: "pin", Short: "Pin", Args: []toolspec.Arg{{Name: "id", Required: true}},
+				Flags: []toolspec.Flag{{Name: "args", Type: "string"}}},
+		},
+	}
+	tools := map[string]map[string]any{}
+	for _, tool := range renderPerLeaf(t, spec, WithCustom(CustomKeyMCPDescription, "mytool CLI")) {
+		tools[tool["name"].(string)] = tool
+	}
+	schemaOf := func(name string) map[string]any {
+		s, _ := tools[name]["inputSchema"].(map[string]any)
+		return s
+	}
+	propsOf := func(name string) map[string]any {
+		p, _ := schemaOf(name)["properties"].(map[string]any)
+		return p
+	}
+
+	assert.Equal(t, map[string]any{
+		"type":        "array",
+		"items":       map[string]any{"type": "string"},
+		"description": "Positional arguments in order: name, note?",
+		"minItems":    float64(1),
+	}, propsOf("add")["args"])
+	assert.Contains(t, propsOf("add"), "force")
+	assert.Equal(t, []any{"args"}, schemaOf("add")["required"])
+	assert.Equal(t, "Add", tools["add"]["description"])
+
+	assert.Equal(t, map[string]any{
+		"type":        "array",
+		"items":       map[string]any{"type": "string"},
+		"description": "Positional arguments in order: id?",
+	}, propsOf("show")["args"], "all-optional: no minItems")
+	assert.Nil(t, schemaOf("show")["required"])
+
+	assert.NotContains(t, propsOf("label"), "args")
+	assert.Equal(t,
+		"mytool CLI Takes positional arguments it does not declare (kit/args), so they cannot be passed over MCP.",
+		tools["label"]["description"], "the note follows the configured fallback")
+
+	pinArgs, _ := propsOf("pin")["args"].(map[string]any)
+	assert.Equal(t, "string", pinArgs["type"], "the flag keeps the name")
+	assert.Nil(t, schemaOf("pin")["required"])
+	assert.Equal(t,
+		`Pin Takes positional arguments that cannot be passed over MCP: its --args flag holds the "args" property.`,
+		tools["pin"]["description"])
+}

@@ -378,9 +378,13 @@ precedence rules, edge cases and the modern validation order:
 [Expose your CLI over MCP](../guides/expose-cli-over-mcp.md#routing-precedence).
 
 Tool name is the dotted leaf path (e.g. `widget.add`). Flag schema is
-derived from the leaf's pflag set; `Result.Stdout` becomes a text
-content block, non-zero `ExitCode` sets `isError: true`. The modern
-path additionally emits `Result.Data` as `structuredContent`.
+derived from the leaf's pflag set; positional arguments declared in
+`kit/args` ride in one `args` property, an array of strings in
+declared order (see
+[positional arguments](../guides/expose-cli-over-mcp.md#positional-arguments)).
+`Result.Stdout` becomes a text content block, non-zero `ExitCode` sets
+`isError: true`. The modern path additionally emits `Result.Data` as
+`structuredContent`.
 
 Options:
 

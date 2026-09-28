@@ -12,7 +12,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -154,6 +153,15 @@ func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, l
 		}
 		return errorResult(err.Error()), nil
 	}
+	// Arguments are checked before a person is asked: nobody
+	// approves a call that cannot run as sent.
+	flags, args, err := decodeArguments(leaf, req.Params.Arguments)
+	if err != nil {
+		if errors.Is(err, errMalformedArguments) {
+			return nil, err
+		}
+		return errorResult(err.Error()), nil
+	}
 	if leaf.Class.RequiresConfirmation && hdr.Get("X-Confirm-Token") == "" {
 		proceed, res := tb.confirmViaMRTR(req, leaf, hdr)
 		if !proceed {
@@ -161,14 +169,9 @@ func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, l
 		}
 	}
 
-	var flags map[string]any
-	if len(req.Params.Arguments) > 0 {
-		if err := json.Unmarshal(req.Params.Arguments, &flags); err != nil {
-			return nil, fmt.Errorf("invalid arguments: %w", err)
-		}
-	}
 	inv := cmdsurface.Invocation{
 		Path:  append([]string(nil), leaf.Path...),
+		Args:  args,
 		Flags: flags,
 		Meta: cmdsurface.Meta{
 			Surface:     cmdsurface.SurfaceMCP,

@@ -84,8 +84,8 @@ policy-blocked destructive leaf lists a tool that still refuses.
 ### Descriptor enrichment
 
 `WithToolDecorator(func(*cmdsurface.Leaf, *mcp.Tool))` runs per leaf
-after kit fills the defaults (name, description, flag-derived input
-schema, destructive hint): set `Title`, `OutputSchema`, `Icons`, or
+after kit fills the defaults (name, description, input schema from
+flags and `kit/args` positionals, destructive hint): set `Title`, `OutputSchema`, `Icons`, or
 any annotation. kit cannot derive `OutputSchema` mechanically, a
 bridge `Result.Data` is untyped at mount time, so output schemas are
 adopter knowledge and belong in the decorator.
@@ -115,7 +115,7 @@ enablement), pinned by tests.
 | Sessions / resumption / keep-alive | none | SDK-managed |
 | Auth/confirm block response | JSON-RPC result **and** mirrored HTTP status (401 / 428) | `isError` result only (HTTP status belongs to the SDK) |
 | Tool identity | dotted leaf path (`widget.add`) | identical |
-| Input schema | derived from cobra flags | identical derivation |
+| Input schema | cobra flags + `kit/args` positionals as `args` | identical (one shared derivation) |
 | Structured output | extra text block | native `structuredContent` |
 | Prompts / resources / templates | none | full, via SDK pass-through (`WithServerConfigurator`) |
 | Subscriptions + list/updated notifications | none | SDK-served (`SubscribeHandler`, `ResourceUpdated`, `tools/list_changed`) |

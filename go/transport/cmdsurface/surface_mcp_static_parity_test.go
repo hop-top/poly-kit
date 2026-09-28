@@ -44,6 +44,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,6 +53,7 @@ import (
 	speccli "hop.top/kit/go/ai/toolspec/cli"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
+	"hop.top/kit/go/transport/mcpsdk"
 )
 
 // parityTree is the shared fixture both projections render. It
@@ -88,6 +90,42 @@ func parityTree() *cobra.Command {
 		Annotations: map[string]string{"kit/side-effect": "destructive"},
 	}
 	widget.AddCommand(del)
+
+	// Positional arguments: declared (one required, one optional),
+	// undeclared (the usage line names an operand kit/args does
+	// not), and declared with the "args" name held by a flag.
+	tag := &cobra.Command{
+		Use:   "tag <name> [note]",
+		Short: "Tag a widget",
+		RunE:  func(*cobra.Command, []string) error { return nil },
+		Annotations: map[string]string{
+			"kit/side-effect": "write",
+			"kit/args":        "name,note?",
+		},
+	}
+	tag.Flags().Bool("force", false, "force flag")
+	widget.AddCommand(tag)
+
+	label := &cobra.Command{
+		Use:         "label <name>",
+		Short:       "Label a widget",
+		RunE:        func(*cobra.Command, []string) error { return nil },
+		Annotations: map[string]string{"kit/side-effect": "write"},
+	}
+	widget.AddCommand(label)
+
+	pin := &cobra.Command{
+		Use:   "pin <id>",
+		Short: "Pin a widget",
+		RunE:  func(*cobra.Command, []string) error { return nil },
+		Annotations: map[string]string{
+			"kit/side-effect": "write",
+			"kit/args":        "id",
+		},
+	}
+	pin.Flags().String("args", "", "extra arguments")
+	widget.AddCommand(pin)
+
 	root.AddCommand(widget)
 
 	ping := &cobra.Command{
@@ -276,6 +314,89 @@ func TestStaticLiveParity_HiddenAndDeprecatedFlagsExcluded(t *testing.T) {
 			assert.Contains(t, props, "tag")
 		})
 	}
+}
+
+// TestStaticLiveParity_PositionalArgs pins the positional-argument
+// projection on every MCP server kit ships — the hand-rolled surface
+// (MountMCP) and the SDK-backed one (mcpsdk), which the mcp service
+// uses — against the static rendering: the same "args" property,
+// the same required list and the same description, note included.
+func TestStaticLiveParity_PositionalArgs(t *testing.T) {
+	static := staticToolSet(t)
+	for label, live := range map[string]map[string]map[string]any{
+		"hand-rolled": liveToolSet(t),
+		"sdk":         sdkToolSet(t),
+	} {
+		t.Run(label, func(t *testing.T) {
+			for _, name := range []string{"widget.tag", "widget.label", "widget.pin", "widget.add", "ping"} {
+				liveTool, staticTool := live[name], static[name]
+				require.NotNil(t, liveTool, name)
+				require.NotNil(t, staticTool, name)
+				assert.Equal(t, normalizedSchema(t, staticTool), normalizedSchema(t, liveTool),
+					"%s: same inputSchema, byte for byte after sorting required", name)
+				assert.Equal(t, staticTool["description"], liveTool["description"], name)
+			}
+
+			tag := schemaOf(t, live["widget.tag"])
+			assert.Equal(t, map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "Positional arguments in order: name, note?",
+				"minItems":    float64(1),
+			}, propsOf(t, tag)["args"])
+			assert.Equal(t, []string{"args"}, requiredOf(tag))
+			assert.Equal(t, "Tag a widget", live["widget.tag"]["description"])
+
+			assert.NotContains(t, propsOf(t, schemaOf(t, live["widget.label"])), "args")
+			assert.Equal(t,
+				"Label a widget Takes positional arguments it does not declare (kit/args), so they cannot be passed over MCP.",
+				live["widget.label"]["description"])
+
+			pinArgs, _ := propsOf(t, schemaOf(t, live["widget.pin"]))["args"].(map[string]any)
+			assert.Equal(t, "string", pinArgs["type"], `the --args flag keeps the "args" property`)
+			assert.Contains(t, live["widget.pin"]["description"], `its --args flag holds the "args" property`)
+		})
+	}
+}
+
+// sdkToolSet lists the parity tree's tools through the SDK-backed
+// surface (hop.top/kit/go/transport/mcpsdk) with the official client,
+// and returns them as the JSON a client decodes, keyed by name.
+func sdkToolSet(t *testing.T) map[string]map[string]any {
+	t.Helper()
+
+	r := api.NewRouter()
+	require.NoError(t, mcpsdk.Mount(cmdsurface.New(parityTree()), r))
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "parity", Version: "0"}, nil)
+	sess, err := client.Connect(t.Context(), &mcp.StreamableClientTransport{Endpoint: srv.URL + "/mcp"}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close() })
+
+	res, err := sess.ListTools(t.Context(), nil)
+	require.NoError(t, err)
+	raw, err := json.Marshal(res.Tools)
+	require.NoError(t, err)
+	var tools []map[string]any
+	require.NoError(t, json.Unmarshal(raw, &tools))
+	return byToolName(t, tools)
+}
+
+// normalizedSchema returns a tool's inputSchema with its required
+// list sorted, so projections that list required names in different
+// orders compare equal.
+func normalizedSchema(t *testing.T, tool map[string]any) map[string]any {
+	t.Helper()
+	out := map[string]any{}
+	for k, v := range schemaOf(t, tool) {
+		out[k] = v
+	}
+	if req := requiredOf(out); req != nil {
+		out["required"] = req
+	}
+	return out
 }
 
 // --- helpers ------------------------------------------------------
