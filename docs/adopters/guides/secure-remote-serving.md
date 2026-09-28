@@ -274,6 +274,26 @@ func authenticate(r *http.Request) (any, error) {
 }
 ```
 
+A command annotated `kit/auth-required` runs only for a request your
+`AuthFunc` accepted, on every address, loopback included: a loopback
+listener is reachable by every local user, and an `Authorization`
+header nobody verified is not authentication. Without `Auth` such a
+command stays listed and answers every call with `401` and
+`WWW-Authenticate`:
+
+```http
+HTTP/1.1 401 Unauthorized
+Www-Authenticate: Bearer
+
+{"status":401,"code":"unauthenticated","message":"api: authentication required: ..."}
+```
+
+Returning no error is what counts as verified, so an `AuthFunc` that
+admits a path anonymously (as above) admits it for auth-required
+commands too; keep such exceptions to paths that run no command. Over
+the Unix socket the owner-only file is the authentication, and such a
+command runs for any caller who can open it.
+
 ### 4. The opt-ins, and what they mean
 
 There are two, one per gate, and neither implies the other.

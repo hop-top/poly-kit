@@ -250,10 +250,11 @@ func parseMCPConfirmRetry(rawParams json.RawMessage) mcpConfirmRetry {
 
 // mcpConfirmPrincipal derives the principal component of the state
 // binding from the request: hex SHA-256 of the Authorization value,
-// "" when the header is absent. Presence-only bearer checking is all
-// this surface does for auth (Class.AuthRequired), so the raw header
-// value is the closest stable principal identifier available; hashing
-// keeps credential material out of the MAC input.
+// "" when the header is absent. The surface itself verifies nothing
+// (an api.Auth on the router does, and admits Class.AuthRequired
+// leaves), so the raw header value is the closest stable principal
+// identifier available to every call; hashing keeps credential
+// material out of the MAC input.
 func mcpConfirmPrincipal(req *http.Request) string {
 	auth := req.Header.Get("Authorization")
 	if auth == "" {

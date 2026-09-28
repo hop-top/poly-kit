@@ -164,9 +164,10 @@ func WithSignedErrorRedirect(url string) SignedOption {
 //  5. Responds per ResponseMode (200 + Result JSON, or 302 to a
 //     success page).
 //
-// The signed URL IS the auth (a bearer token effectively); the
-// verifier skips Class.AuthRequired and Class.RequiresConfirmation
-// gates. Destructive leaves still require Policy.AllowDestructiveOn
+// The signed URL IS the auth (a bearer token effectively): a verified
+// token is [EstablishedVerified], which satisfies the bridge's
+// kit/auth-required gate, and the verifier skips the
+// Class.RequiresConfirmation gate. Destructive leaves still require Policy.AllowDestructiveOn
 // to include SurfaceSigned — otherwise MountSigned refuses to mount.
 //
 // MountSigned exposes the Verify+Invoke endpoint. The issuer is
@@ -238,6 +239,7 @@ func newSignedHandler(b *Bridge, key []byte, store NonceStore, cfg signedConfig)
 			Meta: Meta{
 				Surface:     SurfaceSigned,
 				Caller:      token.Caller,
+				Established: EstablishedVerified,
 				RequestedAt: time.Now(),
 			},
 		}

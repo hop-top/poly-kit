@@ -349,7 +349,10 @@ inventing one per language guarantees four incompatible designs. Auth
 server integration stays adopter-provided.
 
 What *is* ported, because it is wire-visible and fixture-pinned: the
-`Authorization` header check on `kit/auth-required` leaves, and the
+refusal of a `kit/auth-required` leaf called without an
+`Authorization` header (the Go surface goes further and refuses any
+request an `api.Auth` did not verify; the ports check the header's
+presence), and the
 `X-Confirm-Token` gate on `kit/requires-confirmation` leaves. The MRTR
 confirmation HMAC rides along in every port except TypeScript (see
 [Where the ports genuinely differ](#where-the-ports-genuinely-differ)).

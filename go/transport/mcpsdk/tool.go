@@ -40,7 +40,8 @@ func toolFor(leaf *cmdsurface.Leaf) *mcp.Tool {
 //
 //  1. Builds the call's provenance (see [WithCallMeta]).
 //  2. Applies the auth gate for kit/auth-required leaves (see
-//     [WithAuthenticated]; by default an Authorization header).
+//     [WithAuthenticated]; by default the Established of the call's
+//     Meta, never an Authorization header).
 //  3. Decodes the raw arguments into Invocation.Flags and, for a
 //     leaf that declares positional arguments, its "args" array into
 //     Invocation.Args (cmdsurface.MCPSplitArguments); flag values
@@ -74,13 +75,13 @@ func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		inv := cmdsurface.Invocation{Path: path, Meta: s.callMeta(ctx, req)}
 
-		if cls.AuthRequired && !s.authenticated(ctx, req) {
+		if !s.authenticated(ctx, req, &inv.Meta) && cls.AuthRequired {
 			b.Audit(ctx, inv, cmdsurface.Result{},
 				fmt.Errorf("%w: authentication required", cmdsurface.ErrAuthRefused))
 			return errorResult("authentication required"), nil
 		}
 		if tb != nil && tb.eligible[name] && taskext.ClientDeclares(req) {
-			return tb.invokeAsTask(ctx, b, leaf, req, headerOf(req))
+			return tb.invokeAsTask(ctx, b, leaf, req, headerOf(req), inv.Meta)
 		}
 		var err error
 		inv.Flags, inv.Args, err = decodeArguments(leaf, req.Params.Arguments)

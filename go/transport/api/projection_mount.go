@@ -75,6 +75,11 @@ var (
 	// this command for this caller. The wrapped message carries the
 	// gate's stable reason.
 	ErrPermissionDenied = errors.New("api: permission denied")
+	// ErrUnauthenticated reports that the command needs an
+	// authenticated caller and the request was not verified. It is
+	// answered 401 [CodeUnauthenticated] with a WWW-Authenticate
+	// challenge.
+	ErrUnauthenticated = errors.New("api: authentication required")
 )
 
 // ProjectionConfig configures MountCommandProjection.
@@ -185,6 +190,10 @@ func commandHandler(ex CommandExecutor, d CommandDescriptor) http.HandlerFunc {
 // rather than only that it failed.
 func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error) {
 	ae := projectionError(d, err)
+	if ae.Code == CodeUnauthenticated {
+		WriteUnauthenticated(w, "", ae.Message)
+		return
+	}
 	if wait, ok := retryAfterOf(err); ok && ae.Status == http.StatusTooManyRequests {
 		SetRetryAfter(w.Header(), wait)
 	}
@@ -196,6 +205,14 @@ func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error)
 // speak one vocabulary.
 func projectionError(d CommandDescriptor, err error) *APIError {
 	switch {
+	case errors.Is(err, ErrUnauthenticated):
+		// 401: identity is decided before authority, so an
+		// unauthenticated caller never learns the policy's answer.
+		return &APIError{
+			Status:  http.StatusUnauthorized,
+			Code:    CodeUnauthenticated,
+			Message: err.Error(),
+		}
 	case errors.Is(err, ErrCommandNotInvocable):
 		msg := "command is not invocable on this surface"
 		if d.Reason != "" {

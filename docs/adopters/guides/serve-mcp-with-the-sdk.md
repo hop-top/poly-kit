@@ -27,7 +27,7 @@ identically. They differ in who owns the server.
 | Lifecycle | `<tool> serve mcp`, under the serve supervisor | yours | yours |
 | Transport | streamable HTTP on its own listener, or stdio | streamable HTTP (sessions, SSE, stateless), stdio, any SDK transport | single-POST JSON-RPC |
 | Protocol versions | 2024-11-05 … 2025-11-25 in a session, 2026-07-28 statelessly, on one HTTP endpoint; all over stdio | 2024-11-05 … 2025-11-25 in a session, 2026-07-28 statelessly, on one endpoint; all statelessly with `WithStateless()`; all over stdio | 2024-11-05 and 2026-07-28 on one path |
-| `kit/auth-required` | verified by `Config.Auth` over HTTP; spawn trust over stdio | an `Authorization` header by default; `WithAuthenticated` to verify | `Authorization` header presence |
+| `kit/auth-required` | verified by `Config.Auth` over HTTP; spawn trust over stdio | refused by default; established by `WithCallMeta` or `WithAuthenticated` | verified by an `api.Auth` on the router |
 | Gate refusals | `isError` result | `isError` result | `isError` result **and** HTTP 401 / 428 |
 | Prompts, resources, subscriptions, pagination | `Config.ServerOptions` | full, via SDK pass-through | none |
 | Extra dependencies | the SDK | the SDK | none |
@@ -134,10 +134,12 @@ it has already read, then returns nil. To serve streams you hold
 instead of the process's own (a child's pipes, a test), connect
 `s.Server()` with `mcpsdk.NewStdioTransport(in, out)`.
 
-Stdio carries no HTTP headers, so with the default gates leaves marked
-auth-required or confirmation-required are never callable there — the
-header-based gates fail closed. `WithAuthenticated` and
-`WithConfirmationElicitation` replace them. See
+With the default gates, leaves marked auth-required or
+confirmation-required are never callable over stdio: nothing
+established the caller, and stdio carries no confirmation header.
+`WithCallMeta` (returning a `Meta` with `Established:
+cmdsurface.EstablishedTransport` for the spawning peer) or
+`WithAuthenticated`, and `WithConfirmationElicitation`, open them. See
 [Safety](#safety-and-the-trust-boundary).
 
 ## Verify the result
@@ -253,9 +255,11 @@ For those:
   }))
   ```
 
-- Auth-required leaves demand an `Authorization` header;
-  confirmation-required leaves an `X-Confirm-Token` header. Transports
-  without HTTP headers (stdio, in-memory) fail those gates closed.
+- Auth-required leaves run only for a caller your `WithCallMeta` or
+  `WithAuthenticated` established; an `Authorization` header's
+  presence is not authentication. Confirmation-required leaves need an
+  `X-Confirm-Token` header. Transports without HTTP headers (stdio,
+  in-memory) fail the confirmation gate closed.
 - Both checks re-run on **every call**, including calls to tools that
   are currently listed. Listing is advisory; the gate is
   authoritative.

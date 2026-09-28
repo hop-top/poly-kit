@@ -144,6 +144,32 @@ func do(t *testing.T, method, url, body string, headers map[string]string) (int,
 	return resp.StatusCode, string(raw)
 }
 
+// response is what doResp read.
+type response struct {
+	status int
+	header http.Header
+	body   string
+}
+
+// doResp is do for a caller that also reads the response headers.
+func doResp(t *testing.T, method, url string, headers map[string]string) response {
+	t.Helper()
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, url, err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	return response{status: resp.StatusCode, header: resp.Header, body: string(raw)}
+}
+
 func serve(t *testing.T, r *api.Router) string {
 	t.Helper()
 	srv := httptest.NewServer(r)
@@ -315,8 +341,61 @@ func TestMountProjection_RouterAuthLiftsTheRefusal(t *testing.T) {
 	if err := cmdsurface.MountProjection(b, r, cmdsurface.WithProjectionRouterAuth()); err != nil {
 		t.Fatalf("MountProjection: %v", err)
 	}
-	if status, body := do(t, http.MethodPost, serve(t, r)+"/v1/commands/widget/secure", "", nil); status != http.StatusOK {
-		t.Errorf("status=%d body=%s; the router owns authentication", status, body)
+}
+
+// Declaring that the router authenticates vouches for nobody: without
+// a verifier on the router an auth-required command is refused per
+// call, whatever header the caller sends; with one it runs as the
+// verified principal.
+func TestMountProjection_RouterAuthStillNeedsAVerifiedRequest(t *testing.T) {
+	b, sink := projectionBridge(true)
+	bare := api.NewRouter()
+	if err := cmdsurface.MountProjection(b, bare, cmdsurface.WithProjectionRouterAuth()); err != nil {
+		t.Fatalf("MountProjection: %v", err)
+	}
+	url := serve(t, bare)
+	for _, hdr := range []map[string]string{nil, {"Authorization": "Bearer anything"}} {
+		resp := doResp(t, http.MethodPost, url+"/v1/commands/widget/secure", hdr)
+		if resp.status != http.StatusUnauthorized || !strings.Contains(resp.body, `"code":"unauthenticated"`) {
+			t.Fatalf("header %v: status=%d body=%s, want 401 unauthenticated", hdr, resp.status, resp.body)
+		}
+		if resp.header.Get("WWW-Authenticate") == "" {
+			t.Errorf("401 without a WWW-Authenticate challenge")
+		}
+	}
+	for _, rec := range sink.records() {
+		if !errors.Is(rec.err, cmdsurface.ErrAuthRefused) {
+			t.Errorf("refusal audited as %v, want ErrAuthRefused", rec.err)
+		}
+	}
+	// A streamed call is refused before the stream commits.
+	if resp := doResp(t, http.MethodPost, url+"/v1/commands/widget/secure/stream", nil); resp.status != http.StatusUnauthorized {
+		t.Errorf("stream: status=%d, want 401", resp.status)
+	}
+	// Commands without the annotation are untouched.
+	if status, _ := do(t, http.MethodGet, url+"/v1/commands/widget/list", "", nil); status != http.StatusOK {
+		t.Errorf("plain command: status=%d", status)
+	}
+
+	b2, sink2 := projectionBridge(true)
+	verifying := api.NewRouter(api.WithMiddleware(api.Auth(func(r *http.Request) (any, error) {
+		if r.Header.Get("Authorization") != "Bearer good" {
+			return nil, errors.New("bad credential")
+		}
+		return api.Claims{Subject: "alice"}, nil
+	})))
+	if err := cmdsurface.MountProjection(b2, verifying, cmdsurface.WithProjectionRouterAuth()); err != nil {
+		t.Fatalf("MountProjection: %v", err)
+	}
+	status, body := do(t, http.MethodPost, serve(t, verifying)+"/v1/commands/widget/secure", "",
+		map[string]string{"Authorization": "Bearer good"})
+	if status != http.StatusOK {
+		t.Fatalf("verified call: status=%d body=%s", status, body)
+	}
+	recs := sink2.records()
+	if last := recs[len(recs)-1]; last.inv.Meta.Caller != "alice" ||
+		last.inv.Meta.Established != cmdsurface.EstablishedVerified {
+		t.Errorf("run meta=%+v, want alice, verified", last.inv.Meta)
 	}
 }
 

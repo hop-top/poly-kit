@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/transport/api"
@@ -325,6 +326,7 @@ func buildRouter(ctx context.Context, b *cmdsurface.Bridge) (*api.Router, error)
 	}
 	if err := cmdsurface.MountWS(b, r,
 		cmdsurface.WithWSContext(ctx),
+		cmdsurface.WithWSAuth(allowAnyAuth),
 	); err != nil {
 		return nil, fmt.Errorf("MountWS: %w", err)
 	}
@@ -344,7 +346,15 @@ func buildRPC(b *cmdsurface.Bridge, logger *slog.Logger) (*rpc.Server, error) {
 			logger.Error("rpc panic", "value", v)
 		}),
 	))
-	if err := cmdsurface.MountRPC(b, rpcSrv); err != nil {
+	// The kit/auth-required gate admits a call only when something
+	// verified it: Authenticate runs allowAnyAuth on every call, and
+	// the predicate reports its verdict.
+	if err := cmdsurface.MountRPC(b, rpcSrv,
+		cmdsurface.WithRPCInterceptors(rpc.Authenticate(allowAnyAuth)),
+		cmdsurface.WithRPCAuthenticated(func(ctx context.Context, _ connect.AnyRequest) bool {
+			return rpc.Authenticated(ctx)
+		}),
+	); err != nil {
 		return nil, fmt.Errorf("MountRPC: %w", err)
 	}
 	return rpcSrv, nil
@@ -487,6 +497,9 @@ func buildBridge(root *cobra.Command, logger *slog.Logger, cfg exampleConfig, te
 }
 
 // allowAnyAuth is a permissive AuthFunc: it authenticates the REST
-// projection and satisfies the SSE auth gate on `report purge`. Real
-// adopters supply a validator that inspects the request.
+// projection, the WebSocket upgrade and every RPC call, and satisfies
+// the SSE auth gate on `report purge`. A bare Authorization header
+// never does: the kit/auth-required gate admits only what a verifier
+// accepted. Real adopters supply a validator that inspects the
+// request.
 func allowAnyAuth(_ *http.Request) (any, error) { return struct{}{}, nil }

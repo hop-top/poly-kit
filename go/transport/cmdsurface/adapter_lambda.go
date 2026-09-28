@@ -174,8 +174,11 @@ func LambdaHandler(b *Bridge, cfg LambdaConfig) (func(ctx context.Context, event
 		return nil, fmt.Errorf("cmdsurface: leaf %q requires confirmation; Lambda has no confirm-token channel",
 			leaf.PathKey())
 	}
-	// Class.AuthRequired: the IAM permission to invoke the function
-	// is the auth; the bridge has no header to check here.
+	// Class.AuthRequired: for EventBridge, SQS and direct events the
+	// IAM permission to invoke the function is the auth, and the
+	// invocation is established by the platform. An API Gateway
+	// request is established only when a gateway authorizer verified
+	// it; otherwise the bridge refuses an auth-required leaf (401).
 
 	flagTmpls := make(map[string]*template.Template, len(cfg.Mapping.FlagMap))
 	for k, src := range cfg.Mapping.FlagMap {
@@ -234,6 +237,7 @@ func newLambdaAPIGWv2Handler(
 			Meta: Meta{
 				Surface:     SurfaceFaaS,
 				Caller:      "lambda",
+				Established: apigwv2Established(req),
 				TraceID:     req.Headers["x-request-id"],
 				RequestedAt: time.Now(),
 			},
@@ -284,6 +288,7 @@ func newLambdaAPIGWv1Handler(
 			Meta: Meta{
 				Surface:     SurfaceFaaS,
 				Caller:      "lambda",
+				Established: apigwv1Established(req),
 				TraceID:     req.Headers["X-Request-Id"],
 				RequestedAt: time.Now(),
 			},
@@ -334,6 +339,7 @@ func newLambdaEventBridgeHandler(
 			Meta: Meta{
 				Surface:     SurfaceFaaS,
 				Caller:      "lambda",
+				Established: EstablishedTransport,
 				TraceID:     ev.ID,
 				RequestedAt: time.Now(),
 			},
@@ -406,6 +412,7 @@ func invokeSQSRecord(
 		Meta: Meta{
 			Surface:     SurfaceFaaS,
 			Caller:      "lambda",
+			Established: EstablishedTransport,
 			TraceID:     rec.MessageId,
 			RequestedAt: time.Now(),
 		},
@@ -430,6 +437,9 @@ func newLambdaDirectHandler(b *Bridge, cfg LambdaConfig) func(context.Context, j
 		}
 		inv.Meta.Surface = SurfaceFaaS
 		inv.Meta.Caller = "lambda"
+		// Invoked directly, by a principal IAM let invoke the
+		// function; the event cannot claim more.
+		inv.Meta.Established = EstablishedTransport
 		inv.Meta.RequestedAt = time.Now()
 		res, err := b.Invoke(ctx, inv)
 		if cfg.ResultLog != nil {
@@ -600,6 +610,8 @@ func copyStringMap(m map[string]string) map[string]string {
 // as for an unknown one.
 func lambdaHTTPErrorCode(err error) (int, string) {
 	switch {
+	case errors.Is(err, ErrAuthRefused):
+		return 401, api.CodeUnauthenticated
 	case errors.Is(err, ErrUnknownCommand):
 		return 500, "unknown_command"
 	case errors.Is(err, ErrSurfaceNotEnabled):
@@ -635,7 +647,7 @@ func lambdaErrorBody(code, message string) []byte {
 func marshalAPIGWv2Response(status int, body []byte) (json.RawMessage, error) {
 	resp := events.APIGatewayV2HTTPResponse{
 		StatusCode: status,
-		Headers:    map[string]string{"Content-Type": "application/json"},
+		Headers:    apigwHeaders(status),
 		Body:       string(body),
 	}
 	return json.Marshal(resp)
@@ -646,7 +658,7 @@ func marshalAPIGWv2Response(status int, body []byte) (json.RawMessage, error) {
 func marshalAPIGWv1Response(status int, body []byte) (json.RawMessage, error) {
 	resp := events.APIGatewayProxyResponse{
 		StatusCode: status,
-		Headers:    map[string]string{"Content-Type": "application/json"},
+		Headers:    apigwHeaders(status),
 		Body:       string(body),
 	}
 	return json.Marshal(resp)
@@ -761,4 +773,33 @@ func walkLambdaArg(arg parse.Node) error {
 		return walkLambdaPipe(v)
 	}
 	return nil
+}
+
+// apigwHeaders are an API Gateway response's headers: JSON, and the
+// WWW-Authenticate challenge on a 401.
+func apigwHeaders(status int) map[string]string {
+	h := map[string]string{"Content-Type": "application/json"}
+	if status == 401 {
+		h["WWW-Authenticate"] = api.DefaultAuthChallenge
+	}
+	return h
+}
+
+// apigwv2Established reports an HTTP API or Function URL request a
+// gateway authorizer (JWT, IAM, Lambda) verified. Without one the
+// gateway forwarded whatever reached it, and nothing is established.
+func apigwv2Established(req events.APIGatewayV2HTTPRequest) Establishment {
+	if a := req.RequestContext.Authorizer; a != nil && (a.JWT != nil || a.IAM != nil || len(a.Lambda) > 0) {
+		return EstablishedVerified
+	}
+	return EstablishedNone
+}
+
+// apigwv1Established reports a REST API request a gateway authorizer
+// (Cognito, Lambda, IAM) verified.
+func apigwv1Established(req events.APIGatewayProxyRequest) Establishment {
+	if len(req.RequestContext.Authorizer) > 0 || req.RequestContext.Identity.UserArn != "" {
+		return EstablishedVerified
+	}
+	return EstablishedNone
 }

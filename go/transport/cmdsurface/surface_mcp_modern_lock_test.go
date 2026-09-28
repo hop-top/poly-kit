@@ -147,7 +147,7 @@ func modernLockServer(t *testing.T, build func(root *cobra.Command) *Bridge, mou
 		build = func(root *cobra.Command) *Bridge { return New(root) }
 	}
 	b := build(root)
-	r := api.NewRouter()
+	r := api.NewRouter(api.WithMiddleware(verifyGoodOnly))
 	if err := MountMCP(b, r, mountOpts...); err != nil {
 		t.Fatalf("MountMCP: %v", err)
 	}
@@ -845,9 +845,9 @@ func TestModernLock_PreFlight_AuthRequired_WithHeaderSucceeds(t *testing.T) {
 	srv := modernLockServer(t, nil)
 	client := hermeticHTTPClient()
 	headers := stdModernHeaders("tools/call", "secret")
-	headers["Authorization"] = "Bearer x"
+	headers["Authorization"] = goodBearer
 	runGoldenExchange(t, srv, client, goldenExchange{
-		name:       "auth-required leaf with Authorization header succeeds",
+		name:       "auth-required leaf with a verified Authorization header succeeds",
 		headers:    headers,
 		body:       []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"secret","_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`),
 		wantStatus: http.StatusOK,

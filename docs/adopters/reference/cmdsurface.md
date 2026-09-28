@@ -213,6 +213,26 @@ delivered first.
 
 ### Refusals
 
+`ErrAuthRefused` is the unauthenticated class. The bridge returns it
+for a leaf declaring `kit/auth-required` on a remote surface when the
+invocation's `Meta` carries no established identity, after
+invocability and before the destructive ceiling, so an
+unauthenticated caller never learns what the policy would say. Only
+the transport establishes an identity, by setting
+`Meta.Established`: `EstablishedVerified` when a verifier accepted a
+credential (an `api.Auth`, a socket `Authenticator`, a webhook
+signature, a signed URL, a consumed OAuth state), or
+`EstablishedTransport` when the transport proves the caller itself
+(the socket's owner-only file, the stdio spawn, a platform's IAM, the
+operator's cron opt-in). `Meta.Authenticated()` reports either. The
+field is never serialized, so no body, frame or payload can set it,
+and a claimed `Caller` never satisfies the gate. The CLI and library
+surfaces are the operator's own and pass. Transports answer it 401
+`unauthenticated` with `WWW-Authenticate` over HTTP, `Unauthenticated`
+over Connect, `UNAUTHENTICATED` over the socket; a transport that
+refuses a failed credential before the bridge reports the same
+sentinel through `Bridge.Audit`.
+
 `ErrBodyTooLarge` is never returned by the bridge: a transport
 reports it through `Bridge.Audit` (`Bridge.AuditBodyTooLarge` builds
 the record from the HTTP request) when it refuses a body over its
@@ -406,8 +426,11 @@ Options:
 - `WithProjectionAuth(api.AuthFunc)` — authenticate every projection
   route (other routes on the router are untouched); a refusal is a
   401, audited to the bridge's sinks as `ErrAuthRefused`.
-- `WithProjectionRouterAuth()` — the router authenticates, or only
-  trusted callers reach the listener.
+- `WithProjectionRouterAuth()` — the router authenticates, with its
+  own `api.Auth`. It vouches for nobody: an auth-required command
+  still runs only for a request an `api.Auth` verified, loopback
+  included, and is refused per call (401 `unauthenticated`)
+  otherwise.
 - `WithProjectionReserved(lookup)` — withhold a kit root's reserved
   verbs as `management-only`.
 - `WithProjectionStopping(ch)`, `WithProjectionHeartbeat(d)` — end
@@ -546,12 +569,15 @@ Options:
   `rpc.Authenticate`, which covers streaming calls;
   `rpc.AuthInterceptor` wraps unary calls only.
 - `WithRPCCallMeta(fn)` — supply each call's `Meta` from what the host
-  verified. `fn` receives the Meta the client claimed in the body and
-  returns the one to run with; `Surface` stays pinned. Without it the
-  claimed Meta is used as sent, caller included.
+  verified, `Established` included. `fn` receives the Meta the client
+  claimed in the body and returns the one to run with; `Surface`
+  stays pinned. Without it the claimed Meta is used as sent, caller
+  included, and is never established.
 - `WithRPCAuthenticated(fn)` — the predicate the `kit/auth-required`
-  gate asks. Without it, an `Authorization` header or a claimed caller
-  is enough.
+  gate asks; a call it accepts runs as `EstablishedVerified`. Without
+  it the gate reads the `Meta` `WithRPCCallMeta` returned. An
+  `Authorization` header or a claimed caller is never enough, so a
+  bare `MountRPC` refuses every auth-required leaf.
 - `WithRPCHandlerOptions(opts ...connect.HandlerOption)` — handler
   options such as `connect.WithReadMaxBytes`, which overrides
   `WithRPCMaxBodyBytes`.
@@ -567,9 +593,8 @@ Options:
   with `CodeResourceExhausted` on every protocol. The refusal happens
   before any interceptor or handler, so it is not audited.
 
-Per-leaf gates: `WithRPCAuthenticated`, or by default an
-`Authorization` header (or `inv.Meta.Caller`), when
-`Class.AuthRequired`; `X-Confirm-Token` header when
+Per-leaf gates: `WithRPCAuthenticated`, or by default an established
+`Meta`, when `Class.AuthRequired`; `X-Confirm-Token` header when
 `Class.RequiresConfirmation`. Both procedures then pass the bridge's
 gates through `Bridge.Admit` — `InvokeStream` before the first
 message — so a streamed refusal is the
@@ -684,6 +709,10 @@ Options:
   goroutine MountWS starts when no hub is supplied.
 - `WithWSAcceptOrigins(origins ...string)` — allow non-same-origin
   upgrades.
+- `WithWSAuth(api.AuthFunc)` — authenticate every upgrade through
+  `api.Auth`; its claims are the identity of every invocation on the
+  connection, replacing the caller a frame names. Without it an
+  `api.Auth` on the router is the only verifier.
 - `WithWSMaxMessageBytes(n int64)` — per-message read cap; `0` keeps
   `DefaultWSMaxMessageBytes` (32 KiB, the websocket library's own
   default), negative disables. A message over it closes the
@@ -691,7 +720,9 @@ Options:
   `ErrBodyTooLarge`.
 
 Safety gates fire at upgrade time using the aggregate matrix of every
-WS-enabled leaf (strictest wins). Each `invoke` frame is then admitted
+WS-enabled leaf (strictest wins): an auth-required leaf needs a
+verified upgrade request (401 `unauthenticated` otherwise; a bare
+`Authorization` header is not verification). Each `invoke` frame is then admitted
 through `Bridge.Admit`, with the gates, errors and audit of `Invoke`.
 A refusal is the invocation's only frame, an `error` frame for its id
 (`unknown_command`, `not_enabled`, `not_invocable`,
@@ -714,7 +745,8 @@ Options:
 
 - `WithSSEPrefix(prefix string)` — change the URL prefix.
 - `WithSSEAuth(api.AuthFunc)` — auth for leaves with
-  `Class.AuthRequired`.
+  `Class.AuthRequired`; its claims are the call's identity. Unset,
+  those leaves answer 401.
 - `WithSSEMiddleware(...func(http.Handler) http.Handler)` — install
   outermost middleware.
 
@@ -753,24 +785,31 @@ Wire shape: per `BusBinding`, the surface subscribes to `RequestTopic`,
 decodes each message payload as `{args, flags, meta}` JSON, invokes the
 bridge, and publishes the `Result` (or error envelope) to
 `ResponseTopic` when set. `Subscriber` is the adopter's pub/sub adapter
-(Kafka, NATS, Redis Streams, in-process). Per-message gates inspect
-`msg.Headers["authorization"]` and `msg.Headers["x-confirm-token"]`.
+(Kafka, NATS, Redis Streams, in-process). A message is authenticated
+only by the `BusAuthenticator` given with `WithBusAuth`; the
+confirmation gate inspects `msg.Headers["x-confirm-token"]`.
 
 Options:
 
 - `WithBusContext(ctx context.Context)` — parent context for every
   subscription.
 - `WithBusLogger(fn)` — printf-style logger for non-fatal errors.
+- `WithBusAuth(fn BusAuthenticator)` — verify every message (typically
+  its `authorization` header) and return claims; the message runs as
+  their principal, tenant and scopes, established. A message `fn`
+  refuses is answered `unauthenticated` and audited with
+  `ErrAuthRefused`. Without it nothing on the bus is authenticated
+  and `kit/auth-required` leaves are refused.
 
 All application failures (decode, bridge refusal, runner error) are
 conveyed as `{"error":{"code":"...","message":"..."}}` on the response
-topic. Refusal codes: `unknown_command`, `not_enabled`,
-`not_invocable`, `destructive_blocked`, `permission_denied`; anything
-else is `internal`. The handler returns `nil` to the subscriber in
-every case — bus protocols do not signal app errors via redelivery.
-The permission gate sees the `meta.caller` the message carries, which
-the publisher chooses: a `PermissionFunc` that decides per caller
-needs the bus adapter to verify the publisher and set it. See
+topic. Refusal codes: `unauthenticated`, `unknown_command`,
+`not_enabled`, `not_invocable`, `destructive_blocked`,
+`permission_denied`; anything else is `internal`. The handler returns
+`nil` to the subscriber in every case — bus protocols do not signal
+app errors via redelivery. Without `WithBusAuth` the permission gate
+sees the `meta.caller` the message carries, which the publisher
+chooses, as an unestablished claim; with it, the verified principal. See
 `go/transport/cmdsurface/surface_bus_test.go`.
 
 ### Cron
@@ -981,8 +1020,14 @@ without policy opt-in, and confirmation-required leaves all return
 errors. The bridge captures into the closure once and is reused across
 warm invocations.
 
+An API Gateway request is established only when a gateway authorizer
+(JWT, IAM, Lambda, Cognito) verified it; without one an auth-required
+leaf answers `401 unauthenticated`. EventBridge, SQS and direct
+events are invoked by a principal IAM let invoke the function, and are
+established by the platform.
+
 Bridge refusals on the API Gateway families answer
-`{"code","message"}`: `500 unknown_command`, `500 not_invocable` (the
+`{"code","message"}`: `401 unauthenticated`, `500 unknown_command`, `500 not_invocable` (the
 `Mapping` names the leaf, so it is the deployment's fault),
 `403 not_enabled`, `403 destructive_blocked`, `403 permission_denied`,
 anything else `500 internal_error`. EventBridge and direct events
@@ -1263,7 +1308,7 @@ How cobra annotations gate each surface:
 | Annotation                     | CLI / Lib | REST / SSE / WS    | RPC                | MCP   | Webhook              | OAuth     | Signed              | Bus                   | Cron               | FaaS                 |
 |--------------------------------|-----------|--------------------|--------------------|-------|----------------------|-----------|---------------------|-----------------------|--------------------|----------------------|
 | `kit/side-effect=destructive`  | allowed   | `Policy.AllowDestructiveOn` | same | same  | same                 | same      | same                | same                  | same               | same                 |
-| `kit/auth-required=true`       | n/a       | `api.Auth(authFn)` (deny-all if unset) | `Authorization` header or `Meta.Caller` | n/a | `WebhookAuth.Verify` is the gate; `AuthNone` is refused | state IS auth | signed URL IS auth | `headers.authorization` or `Meta.Caller` | refused unless `WithCronAllowAuth(true)` | IAM is the gate |
+| `kit/auth-required=true`       | n/a       | a verifying `api.Auth` (`WithRESTAuth`, `WithSSEAuth`, `WithWSAuth`, or the router's); 401 otherwise | `WithRPCAuthenticated` or an established `WithRPCCallMeta` | an `api.Auth` on the router | `WebhookAuth.Verify` is the gate; `AuthNone` is refused | state IS auth | signed URL IS auth | `WithBusAuth` | refused unless `WithCronAllowAuth(true)` | a gateway authorizer; IAM for queue, rule and direct events |
 | `kit/requires-confirmation=true` | n/a     | `X-Confirm-Token` header (428 when missing) | same | n/a | refused unless `WithWebhookAllowConfirmation()` | refused at mount | skipped | `headers.x-confirm-token` | (cron has no confirm channel — refused if also auth-required without opt-in) | refused at mount |
 | `kit/permissions=<csv>`        | `PermissionFunc` | `PermissionFunc` | same | same | same | same | same | same | same | same |
 

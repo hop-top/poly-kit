@@ -23,7 +23,7 @@ is unacceptable or an HTTP-only probe must see 401/428 statuses.
 - change the live tool list at runtime → `Surface.Hide` / `Expose` / `Sync`
 - enrich a tool descriptor, notably `OutputSchema` → `WithToolDecorator`
 - run long tool calls as pollable tasks → `WithTasks` (experimental)
-- attribute calls to a verified caller → `WithCallMeta`
+- attribute calls to a verified caller, and establish them for `kit/auth-required` → `WithCallMeta` (set `Meta.Established`)
 - answer the auth gate from your own authentication (a verified request, a spawned stdio peer) → `WithAuthenticated`
 - let a person confirm a `kit/requires-confirmation` call through the client → `WithConfirmationElicitation`
 - serve it as a `<tool> serve` service instead of mounting by hand → `mcpserve.With` in `go/console/cli/mcpserve`
@@ -45,7 +45,7 @@ if err := mcpsdk.Mount(b, r,
 
 ## Contract
 
-- kit gates what kit binds: leaves reach the surface only when enabled for `cmdsurface.SurfaceMCP`, destructive leaves are blocked unless `Policy.AllowDestructiveOn` names `mcp`, auth-required leaves demand an `Authorization` header (or `WithAuthenticated`'s verdict) and confirmation-required leaves an `X-Confirm-Token` (or, with `WithConfirmationElicitation`, an elicitation the client's user accepts). Under the default gates, transports without HTTP headers (stdio, in-memory) fail those gates closed.
+- kit gates what kit binds: leaves reach the surface only when enabled for `cmdsurface.SurfaceMCP`, destructive leaves are blocked unless `Policy.AllowDestructiveOn` names `mcp`, auth-required leaves run only for a caller the host established (`WithCallMeta` returning an established `Meta`, or `WithAuthenticated`'s verdict) — an `Authorization` header's presence never counts, so a bare `Mount` refuses them — and confirmation-required leaves need an `X-Confirm-Token` (or, with `WithConfirmationElicitation`, an elicitation the client's user accepts). Under the default gates, transports without HTTP headers (stdio, in-memory) fail the confirmation gate closed.
 - Gate refusals are audited through the bridge's sinks: `cmdsurface.ErrAuthRefused`, `ErrConfirmationRequired`, `ErrConfirmationDeclined`, `ErrConfirmationStateRejected`.
 - Every call is admitted by `Bridge.Admit` and then run by the admission; a call carrying a progress token streams through `Admission.Stream`, with the same gates and audit as a synchronous call.
 - Order on a confirmation-required call: auth gate, then every bridge gate (`Bridge.Admit`: resolution, enablement, invocability, destructive ceiling, permission), then the confirmation question, then the admission runs (`Admission.Run`, or `Admission.Stream` for a progress token). A call a machine gate refuses never prompts a person.

@@ -8,6 +8,47 @@ import (
 
 type claimsKey struct{}
 
+// verifiedKey marks a request context whose credential [Auth]
+// verified.
+type verifiedKey struct{}
+
+// CodeUnauthenticated is the refusal code of the unauthenticated
+// class: no credential, or one that failed verification, where the
+// request needed a verified caller. It is answered 401 with a
+// WWW-Authenticate challenge (see [WriteUnauthenticated]).
+const CodeUnauthenticated = "unauthenticated"
+
+// DefaultAuthChallenge is the WWW-Authenticate challenge a 401
+// carries unless an [Auth] option names another: the bearer scheme of
+// RFC 6750, which is what kit's verifiers accept.
+const DefaultAuthChallenge = "Bearer"
+
+// WriteUnauthenticated answers w with 401 [CodeUnauthenticated] and a
+// WWW-Authenticate header carrying challenge ([DefaultAuthChallenge]
+// when empty), as every kit HTTP surface answers the unauthenticated
+// class.
+func WriteUnauthenticated(w http.ResponseWriter, challenge, msg string) {
+	if challenge == "" {
+		challenge = DefaultAuthChallenge
+	}
+	w.Header().Set("WWW-Authenticate", challenge)
+	Error(w, http.StatusUnauthorized, &APIError{
+		Status:  http.StatusUnauthorized,
+		Code:    CodeUnauthenticated,
+		Message: msg,
+	})
+}
+
+// Authenticated reports whether [Auth] verified the request ctx
+// belongs to. It is the answer to "did this caller authenticate",
+// which a nil claims value cannot give: an [AuthFunc] may accept a
+// request and return no claims. A bare Authorization header is not
+// authentication; only a verifier's verdict sets this.
+func Authenticated(ctx context.Context) bool {
+	v, _ := ctx.Value(verifiedKey{}).(bool)
+	return v
+}
+
 // AuthFunc validates a request and returns claims on success.
 //
 // The claims value is the adopter's own; the api package stores it
@@ -154,8 +195,9 @@ func OnAuthRefused(fn func(r *http.Request, err error)) AuthOption {
 }
 
 // Auth returns a middleware that calls fn to authenticate each request.
-// On success, claims are stored in the request context. On error, a
-// 401 JSON response is written.
+// On success, claims are stored in the request context
+// ([ClaimsFromContext]) with the verified mark ([Authenticated]). On
+// error, a 401 JSON response is written.
 func Auth(fn AuthFunc, opts ...AuthOption) Middleware {
 	var cfg authConfig
 	for _, o := range opts {
@@ -176,6 +218,7 @@ func Auth(fn AuthFunc, opts ...AuthOption) Middleware {
 				return
 			}
 			ctx := context.WithValue(r.Context(), claimsKey{}, claims)
+			ctx = context.WithValue(ctx, verifiedKey{}, true)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

@@ -62,8 +62,9 @@ and `WithMCPOriginAllowlist`. Full walkthrough:
 
 ## MCP auth hardening (spec 2026-07-28)
 
-The MCP surface is auth-scheme-agnostic: `Class.AuthRequired` leaves
-are gated on `Authorization` header presence only. The 2026-07-28
+The MCP surface is auth-scheme-agnostic: it verifies nothing itself,
+and admits `Class.AuthRequired` leaves only for a request an
+`api.Auth` on the router verified, whatever scheme it speaks. The 2026-07-28
 authorization obligations bind the authorization server / resource
 server deployed in front of the mount — not the transport bridge:
 

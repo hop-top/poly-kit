@@ -284,6 +284,7 @@ func newWebhookHandler(
 			Meta: Meta{
 				Surface:     SurfaceWebhook,
 				Caller:      mapping.Name,
+				Established: webhookEstablished(mapping.Auth),
 				TraceID:     r.Header.Get("X-Request-ID"),
 				RequestedAt: time.Now(),
 			},
@@ -386,6 +387,8 @@ func isJSONContent(ct string) bool {
 // server's fault (500), not the sender's.
 func writeWebhookBridgeError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrAuthRefused):
+		writeUnauthenticated(w, err)
 	case errors.Is(err, ErrUnknownCommand):
 		api.Error(w, http.StatusInternalServerError, &api.APIError{
 			Status:  http.StatusInternalServerError,
@@ -422,4 +425,15 @@ func writeWebhookBridgeError(w http.ResponseWriter, err error) {
 		ae := api.MapError(err)
 		api.Error(w, ae.Status, ae)
 	}
+}
+
+// webhookEstablished is how a delivery's identity is established: by
+// the mapping's verifier, which ran before the invocation was built,
+// unless the mapping verifies nothing ([AuthNone]).
+func webhookEstablished(auth WebhookAuth) Establishment {
+	switch auth.(type) {
+	case nil, AuthNone, *AuthNone:
+		return EstablishedNone
+	}
+	return EstablishedVerified
 }

@@ -30,5 +30,10 @@
 // a caller identity and trace id that travel into
 // [hop.top/kit/go/transport/cmdsurface.Meta] where audit sinks read
 // them. A caller-supplied identity is provenance, not a credential —
-// nothing is granted on its basis.
+// nothing is granted on its basis. What the owner-only file proves is
+// that the caller holds the owner's authority, so every request
+// reaches the bridge with an established identity
+// ([hop.top/kit/go/transport/cmdsurface.EstablishedTransport], or
+// EstablishedVerified when an [Authenticator] verified it) and a
+// command declaring kit/auth-required runs.
 package socket

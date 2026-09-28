@@ -118,7 +118,7 @@ func modernTestTree() *cobra.Command {
 // live test server.
 func modernServerFor(t *testing.T, b *Bridge, mountOpts ...MCPOption) *httptest.Server {
 	t.Helper()
-	r := api.NewRouter()
+	r := api.NewRouter(api.WithMiddleware(verifyGoodOnly))
 	if err := MountMCP(b, r, mountOpts...); err != nil {
 		t.Fatalf("MountMCP: %v", err)
 	}

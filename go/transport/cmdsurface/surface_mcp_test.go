@@ -27,7 +27,7 @@ func newMCPHarness(t *testing.T, build func(root *cobra.Command) (*Bridge, error
 	if err != nil {
 		t.Fatalf("harness build: %v", err)
 	}
-	r := api.NewRouter()
+	r := api.NewRouter(api.WithMiddleware(verifyGoodOnly))
 	if err := MountMCP(b, r); err != nil {
 		t.Fatalf("MountMCP: %v", err)
 	}
@@ -429,8 +429,17 @@ func TestMCP_ToolsCall_AuthRequired(t *testing.T) {
 		t.Errorf("isError=%v want=true", m["isError"])
 	}
 
-	// With Authorization header, the call proceeds.
-	status, resp = postRPC(t, srv, map[string]string{"Authorization": "Bearer x"}, map[string]any{
+	// A bare Authorization header is presence, not authentication.
+	status, _ = postRPC(t, srv, map[string]string{"Authorization": "Bearer x"}, map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+		"params": map[string]any{"name": "secret"},
+	})
+	if status != http.StatusUnauthorized {
+		t.Errorf("status with unverified header=%d want=401", status)
+	}
+
+	// With a verified Authorization header, the call proceeds.
+	status, resp = postRPC(t, srv, map[string]string{"Authorization": goodBearer}, map[string]any{
 		"jsonrpc": "2.0", "id": 2, "method": "tools/call",
 		"params": map[string]any{"name": "secret"},
 	})

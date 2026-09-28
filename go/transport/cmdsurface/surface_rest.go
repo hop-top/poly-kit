@@ -27,6 +27,7 @@ import (
 //
 // Sentinel-error mapping:
 //
+//	ErrAuthRefused        → 401 code=unauthenticated, WWW-Authenticate
 //	ErrUnknownCommand     → 404 code=unknown_command
 //	ErrSurfaceNotEnabled  → 404 code=not_enabled
 //	ErrNotInvocable       → 404 code=not_invocable
@@ -45,7 +46,10 @@ import (
 // Per-leaf middleware:
 //
 //   - Class.AuthRequired wraps the route with api.Auth (caller must
-//     have supplied an AuthFunc via WithRESTAuth).
+//     have supplied an AuthFunc via WithRESTAuth). The bridge admits
+//     such a leaf only for a request an api.Auth verified — this one
+//     or one on the router — and a verified request's claims replace
+//     the body's meta.caller, meta.tenant and meta.extra.scopes.
 //   - Class.RequiresConfirmation gates the route on the presence of an
 //     X-Confirm-Token header; missing header → 428 code=confirmation_required.
 //     The token value is not validated here (issuance is a later task).
@@ -172,6 +176,8 @@ func newLeafHandler(b *Bridge, leaf *Leaf) http.HandlerFunc {
 		}
 		// The leaf path is authoritative; ignore any client-supplied path.
 		inv.Path = append([]string(nil), leaf.Path...)
+		// Identity is what api.Auth verified, never the body's claim.
+		inv.Meta = establishHTTP(inv.Meta, r)
 		inv.Meta.Surface = SurfaceREST
 		inv.Meta.RequestedAt = time.Now()
 
@@ -189,6 +195,8 @@ func newLeafHandler(b *Bridge, leaf *Leaf) http.HandlerFunc {
 // transport conventions stay uniform.
 func writeBridgeError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrAuthRefused):
+		writeUnauthenticated(w, err)
 	case errors.Is(err, ErrUnknownCommand):
 		api.Error(w, http.StatusNotFound, &api.APIError{
 			Status:  http.StatusNotFound,

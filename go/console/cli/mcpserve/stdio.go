@@ -150,7 +150,8 @@ func (s *stdioServing) close(context.Context) error {
 }
 
 // callMeta is the provenance of one tool call over stdio: the
-// transport and the peer's process id. No principal is invented.
+// transport and the peer's process id. No principal is invented, but
+// the caller is established by the spawn (see authenticated).
 func (s *stdioServing) callMeta(_ context.Context, req *mcp.CallToolRequest) cmdsurface.Meta {
 	extra := map[string]string{
 		"mcp_transport": TransportStdio,
@@ -162,6 +163,7 @@ func (s *stdioServing) callMeta(_ context.Context, req *mcp.CallToolRequest) cmd
 	return cmdsurface.Meta{
 		RequestID:   newRequestID(),
 		RequestedAt: time.Now(),
+		Established: cmdsurface.EstablishedTransport,
 		Extra:       extra,
 	}
 }

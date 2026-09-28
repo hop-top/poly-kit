@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -304,18 +305,80 @@ func TestAuthGate(t *testing.T) {
 		t.Errorf("unauthenticated call: isError=%t text=%q, want auth block", res.IsError, textOf(res))
 	}
 
-	// With Authorization: allowed.
-	authed := connect(t, srv.URL+"/mcp", map[string]string{"Authorization": "Bearer token"})
-	res, err = authed.CallTool(t.Context(), &mcp.CallToolParams{Name: "secret"})
+	// A bare Mount verifies nothing: an Authorization header is
+	// presence, not authentication.
+	presented := connect(t, srv.URL+"/mcp", map[string]string{"Authorization": "Bearer token"})
+	res, err = presented.CallTool(t.Context(), &mcp.CallToolParams{Name: "secret"})
 	if err != nil {
-		t.Fatalf("CallTool (authed): %v", err)
+		t.Fatalf("CallTool (header only): %v", err)
+	}
+	if !res.IsError || !strings.Contains(textOf(res), "authentication required") {
+		t.Errorf("header-only call: isError=%t text=%q, want auth block", res.IsError, textOf(res))
+	}
+}
+
+// A host that verifies the caller establishes it through WithCallMeta:
+// a credential the verifier rejects is refused, one it accepts runs as
+// the verified principal, never as anything the request claimed.
+func TestAuthGateReadsTheEstablishedMeta(t *testing.T) {
+	var seen []cmdsurface.Invocation
+	var mu sync.Mutex
+	srv, _ := newHarness(t, func(root *cobra.Command) *cmdsurface.Bridge {
+		return cmdsurface.New(root, cmdsurface.WithRunnerMiddleware(func(next cmdsurface.Runner) cmdsurface.Runner {
+			return recordingRunner{next: next, record: func(inv cmdsurface.Invocation) {
+				mu.Lock()
+				seen = append(seen, inv)
+				mu.Unlock()
+			}}
+		}))
+	}, WithCallMeta(func(_ context.Context, req *mcp.CallToolRequest) cmdsurface.Meta {
+		if req.Extra == nil || req.Extra.Header.Get("Authorization") != "Bearer good" {
+			return cmdsurface.Meta{}
+		}
+		return cmdsurface.Meta{Caller: "alice", Established: cmdsurface.EstablishedVerified}
+	}))
+
+	bad := connect(t, srv.URL+"/mcp", map[string]string{"Authorization": "Bearer bad"})
+	res, err := bad.CallTool(t.Context(), &mcp.CallToolParams{Name: "secret"})
+	if err != nil {
+		t.Fatalf("CallTool (rejected): %v", err)
+	}
+	if !res.IsError || !strings.Contains(textOf(res), "authentication required") {
+		t.Errorf("rejected credential: isError=%t text=%q, want auth block", res.IsError, textOf(res))
+	}
+
+	good := connect(t, srv.URL+"/mcp", map[string]string{"Authorization": "Bearer good"})
+	res, err = good.CallTool(t.Context(), &mcp.CallToolParams{Name: "secret"})
+	if err != nil {
+		t.Fatalf("CallTool (verified): %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("authed call IsError = true, text: %s", textOf(res))
+		t.Fatalf("verified call IsError = true, text: %s", textOf(res))
 	}
 	if got := textOf(res); !strings.Contains(got, "unlocked") {
 		t.Errorf("text = %q, want to contain %q", got, "unlocked")
 	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) != 1 || seen[0].Meta.Caller != "alice" || !seen[0].Meta.Authenticated() {
+		t.Errorf("runner saw %+v, want one call as alice, established", seen)
+	}
+}
+
+// recordingRunner records every invocation before running it.
+type recordingRunner struct {
+	next   cmdsurface.Runner
+	record func(cmdsurface.Invocation)
+}
+
+func (r recordingRunner) Run(ctx context.Context, inv cmdsurface.Invocation) (cmdsurface.Result, error) {
+	r.record(inv)
+	return r.next.Run(ctx, inv)
+}
+
+func (r recordingRunner) Stream(ctx context.Context, inv cmdsurface.Invocation, out chan<- cmdsurface.Event) error {
+	r.record(inv)
+	return r.next.Stream(ctx, inv, out)
 }
 
 func TestConfirmationGate(t *testing.T) {

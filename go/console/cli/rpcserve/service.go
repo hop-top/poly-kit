@@ -579,6 +579,7 @@ func rpcCallMeta(ctx context.Context, req connect.AnyRequest, claimed cmdsurface
 	}
 	if rpc.Authenticated(ctx) {
 		claims := rpc.ClaimsFromContext(ctx)
+		meta.Established = cmdsurface.EstablishedVerified
 		meta.Caller, meta.Tenant = api.IdentityOf(claims)
 		if scopes := api.ScopesOf(claims); len(scopes) > 0 {
 			extra["scopes"] = strings.Join(scopes, ",")

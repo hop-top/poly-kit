@@ -385,7 +385,8 @@ func (s *Surface) Mount(r *api.Router) error {
 // and end of input returns nil. stdio carries no HTTP headers,
 // so under the default gates leaves classified auth-required or
 // requires-confirmation fail closed on this transport. A host that
-// can vouch for its stdio peer answers the auth gate with
+// can vouch for its stdio peer establishes it in [WithCallMeta]
+// ([cmdsurface.EstablishedTransport]) or answers the auth gate with
 // [WithAuthenticated]; [WithConfirmationElicitation] lets a client
 // that supports elicitation confirm a call.
 func (s *Surface) ServeStdio(ctx context.Context) error {

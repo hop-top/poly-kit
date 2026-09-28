@@ -135,9 +135,13 @@ off `cmdsurface.SurfaceMCP`: a leaf enabled for `mcp` (config or
 `Expose`) is exposed by whichever MCP implementation the adopter
 mounts, and `Policy.AllowDestructiveOn` gates destructive leaves for
 both identically. Destructive leaves are **blocked by default**;
-auth-required leaves demand an `Authorization` header and
-confirmation-required leaves an `X-Confirm-Token` header. Transports
-without HTTP headers (stdio, in-memory) fail those gates closed.
+auth-required leaves run only for a caller the host established —
+through `WithCallMeta` (a `Meta` whose `Established` is set) or
+`WithAuthenticated` — never on an `Authorization` header's presence,
+so a bare `Mount` refuses them; confirmation-required leaves need an
+`X-Confirm-Token` header. Transports without HTTP headers (stdio,
+in-memory) fail the confirmation gate closed unless elicitation is
+on.
 
 That is where the guarantee ends. `WithServerConfigurator` and
 `Server()` hand you the raw `*mcp.Server`, deliberately, per the

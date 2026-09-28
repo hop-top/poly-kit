@@ -34,13 +34,18 @@ var ErrDestructiveBlocked = errors.New("cmdsurface: destructive command blocked 
 // caller's entitlement.
 var ErrPermissionDenied = errors.New("cmdsurface: permission denied")
 
-// ErrAuthRefused is the error a transport reports through
-// [Bridge.Audit] when it refuses a request before the bridge is
-// reached because the caller failed authentication. The bridge never
-// returns it — authentication is the transport's own gate — but
-// routing the refusal through the same sinks keeps the audit trail
-// whole: one stream carries "not authenticated", "not permitted",
-// and "ran", with the same provenance fields on each.
+// ErrAuthRefused is the one sentinel of the unauthenticated class.
+// The bridge returns it from its authentication gate, when a leaf
+// declaring kit/auth-required is invoked on a remote surface by a
+// caller whose [Meta] carries no established identity (see
+// [Meta.Established]). A transport reports it through [Bridge.Audit]
+// when it refuses a request before the bridge is reached because a
+// presented credential failed verification. Either way the refusal
+// reaches the same sinks: one stream carries "not authenticated",
+// "not permitted", and "ran", with the same provenance fields on
+// each. Transports answer it as their unauthenticated refusal: 401
+// with WWW-Authenticate over HTTP, Unauthenticated over Connect,
+// UNAUTHENTICATED over the socket.
 var ErrAuthRefused = errors.New("cmdsurface: authentication refused")
 
 // idempotencyKeyFlag mirrors the kit-managed --idempotency-key flag
@@ -379,11 +384,16 @@ func matchPattern(pattern string, path []string) bool {
 //  3. Invocability — ErrNotInvocable: the leaf is interactive or
 //     self-hosting and can never run through a transport; the
 //     message carries the reflector's reason.
-//  4. Destructive ceiling — ErrDestructiveBlocked: leaf is
+//  4. Authentication required — ErrAuthRefused: the leaf declares
+//     kit/auth-required, the surface is remote, and Meta carries no
+//     identity the transport established ([Meta.Authenticated]). A
+//     claimed Caller does not count; the CLI and in-process library
+//     surfaces are the operator's own and pass.
+//  5. Destructive ceiling — ErrDestructiveBlocked: leaf is
 //     destructive and Policy disallows the surface.
-//  5. Permission — ErrPermissionDenied: the [PermissionFunc] refused
+//  6. Permission — ErrPermissionDenied: the [PermissionFunc] refused
 //     this Meta for this leaf; the message carries its reason.
-//  6. Rate limit — ErrRateLimited, as a [*RateLimitedError] carrying
+//  7. Rate limit — ErrRateLimited, as a [*RateLimitedError] carrying
 //     the retry hint: the caller's bucket for the leaf's tier is
 //     empty. Only with [WithRateLimit], and only on remote surfaces.
 //
@@ -466,6 +476,10 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 	if reason := notInvocableReason(leaf); reason != cmdreflect.ReasonNone {
 		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s is %s (%s)",
 			ErrNotInvocable, leaf.PathKey(), surface, reason, reason.Explain()))
+	}
+	if leaf.Class.AuthRequired && surface.remote() && !inv.Meta.Authenticated() {
+		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s requires an authenticated caller",
+			ErrAuthRefused, leaf.PathKey(), surface))
 	}
 	if !b.cfg.policy.Allowed(leaf.Class, surface) {
 		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",

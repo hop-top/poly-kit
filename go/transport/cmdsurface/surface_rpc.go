@@ -36,11 +36,6 @@ const (
 // the bridge does not validate token contents.
 const confirmHeader = "X-Confirm-Token"
 
-// authHeader is the canonical request header inspected for presence
-// when SafetyClass.AuthRequired is true. An entry in inv.Meta.Caller
-// is treated as an acceptable substitute.
-const authHeader = "Authorization"
-
 // RPCOption configures MountRPC.
 type RPCOption func(*rpcConfig)
 
@@ -85,19 +80,25 @@ func WithRPCHandlerOptions(opts ...connect.HandlerOption) RPCOption {
 // to run with. Surface is pinned to [SurfaceRPC] and RequestedAt is
 // stamped afterwards whatever fn returns.
 //
-// fn fills Caller and Tenant only from an identity the host verified:
-// a caller named in the request body is a claim, not a principal.
-// Without fn the claimed Meta is used as sent, which is right only
-// when every client is trusted.
+// fn fills Caller and Tenant only from an identity the host verified,
+// and sets Established when it did: a caller named in the request body
+// is a claim, not a principal. Without fn the claimed Meta is used as
+// sent, which is right only when every client is trusted; it is never
+// established, since no body can carry [Meta.Established].
 func WithRPCCallMeta(fn func(ctx context.Context, req connect.AnyRequest, claimed Meta) Meta) RPCOption {
 	return func(c *rpcConfig) { c.callMeta = fn }
 }
 
 // WithRPCAuthenticated installs the predicate the gate for
 // kit/auth-required leaves asks: whether the caller is authenticated.
-// Without it the gate accepts any call carrying an Authorization
-// header or a claimed caller, which is presence, not verification — a
-// host that authenticates calls itself supplies the real answer here.
+// A call it accepts runs as [EstablishedVerified] (unless WithRPCCallMeta
+// already established it); one it refuses runs unestablished.
+//
+// Without it the gate reads the Meta WithRPCCallMeta returned: only
+// an established one is authenticated. An Authorization header or a
+// claimed caller is presence, not verification, so a bare MountRPC
+// refuses every kit/auth-required leaf until the host says who
+// verified the call.
 func WithRPCAuthenticated(fn func(ctx context.Context, req connect.AnyRequest) bool) RPCOption {
 	return func(c *rpcConfig) { c.authenticated = fn }
 }
@@ -344,14 +345,21 @@ func (s *rpcServer) invocation(
 	return inv
 }
 
-// authenticated answers the kit/auth-required gate: the installed
-// predicate, or, without one, the presence of an Authorization header
-// or a caller.
+// authenticated answers the kit/auth-required gate and records the
+// answer on inv.Meta: the installed predicate, or, without one,
+// whether the call's Meta is already established.
 func (s *rpcServer) authenticated(ctx context.Context, req connect.AnyRequest, inv *Invocation) bool {
-	if s.cfg.authenticated != nil {
-		return s.cfg.authenticated(ctx, req)
+	if s.cfg.authenticated == nil {
+		return inv.Meta.Authenticated()
 	}
-	return req.Header().Get(authHeader) != "" || inv.Meta.Caller != ""
+	if !s.cfg.authenticated(ctx, req) {
+		inv.Meta.Established = EstablishedNone
+		return false
+	}
+	if !inv.Meta.Authenticated() {
+		inv.Meta.Established = EstablishedVerified
+	}
+	return true
 }
 
 // preflight validates leaf existence, surface enablement, and the
@@ -383,11 +391,20 @@ func (s *rpcServer) preflight(
 			fmt.Errorf("%w: %s on %s",
 				ErrSurfaceNotEnabled, leaf.PathKey(), SurfaceRPC))
 	}
-	if leaf.Class.AuthRequired {
-		if !s.authenticated(ctx, req, inv) {
-			return nil, connect.NewError(connect.CodeUnauthenticated,
-				fmt.Errorf("auth required: %s", leaf.PathKey()))
+	if !s.authenticated(ctx, req, inv) && leaf.Class.AuthRequired {
+		// Answered here, before the confirmation gate, so an
+		// unauthenticated caller learns nothing else; the bridge
+		// refuses the same call at its own slot.
+		err := fmt.Errorf("%w: %s on %s requires an authenticated caller",
+			ErrAuthRefused, leaf.PathKey(), SurfaceRPC)
+		refused := *inv
+		refused.Path = append([]string(nil), leaf.Path...)
+		refused.Meta.Surface = SurfaceRPC
+		if refused.Meta.RequestedAt.IsZero() {
+			refused.Meta.RequestedAt = time.Now()
 		}
+		s.b.Audit(ctx, refused, Result{}, err)
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 	if leaf.Class.RequiresConfirmation {
 		if header.Get(confirmHeader) == "" {
@@ -424,6 +441,8 @@ func (s *rpcServer) preflight(
 func mapBridgeError(err error, leaf *Leaf) error {
 	_ = leaf
 	switch {
+	case errors.Is(err, ErrAuthRefused):
+		return connect.NewError(connect.CodeUnauthenticated, err)
 	case errors.Is(err, ErrUnknownCommand):
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, ErrSurfaceNotEnabled):

@@ -668,6 +668,7 @@ of any of them.
 |------------------|------------------------------------------------|---------------------------------------------|
 | `Caller`         | principal from the `Auth` claims               | verified by `SocketConfig.Auth`, else the request's `caller` as a claim |
 | `Tenant`         | tenant from the `Auth` claims                  | verified by `SocketConfig.Auth`, else the request's `tenant` as a claim |
+| `Established`    | `verified` when `Auth` verified the request, else empty | `verified` with `SocketConfig.Auth`, else `transport` (the `0600` file) |
 | `Surface`        | `rest`, pinned                                 | `socket`, pinned by the seam                |
 | `RequestID`      | `X-Request-ID`, issued when absent, echoed     | `request_id`, issued when absent            |
 | `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`      | `trace_id`                                  |
@@ -685,6 +686,12 @@ of any of them.
   is provenance, not a credential. The socket's `caller` and `tenant`
   are recorded as claimed; `SocketConfig.Auth` is what makes them
   verified, and its verdict replaces the claim.
+- `Established` is how the transport established the caller:
+  `verified` (a configured verifier accepted a credential) or
+  `transport` (the transport proves the caller itself). It MUST be
+  set only by the transport, from its own verdict, and MUST NOT be
+  serialized, so no request body, frame or payload can set it. A
+  claimed `Caller` without it is unauthenticated.
 - The request context MUST reach the bridge unchanged, so a client
   disconnect cancels the invocation on both transports. Whether the
   command stops is the runner's contract.
@@ -942,6 +949,7 @@ Provenance, by the same rule as the table in
 |------------------|-------------------------------------------------|----------------------------------|
 | `Caller`         | principal from the `Auth` claims                | —                                |
 | `Tenant`         | tenant from the `Auth` claims                   | —                                |
+| `Established`    | `verified` when `Auth` verified the request     | `transport` (the spawn)          |
 | `Surface`        | `mcp`, pinned by the seam                       | `mcp`, pinned by the seam        |
 | `RequestID`      | `X-Request-ID`, issued when absent              | issued per call                  |
 | `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`       | —                                |
@@ -1145,6 +1153,7 @@ authentication, so without `Auth` such leaves are refused.
 |------------------|------------------------------------------------------------------|
 | `Caller`         | principal from the `Auth` claims                                 |
 | `Tenant`         | tenant from the `Auth` claims                                    |
+| `Established`    | `verified` when `Auth` verified the call, else empty             |
 | `Surface`        | `rpc`, pinned by the seam                                        |
 | `RequestID`      | `X-Request-ID`, else the body's `request_id`, else issued        |
 | `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`, else the body's       |
@@ -1281,7 +1290,11 @@ What each slot does:
   configured verifier, or proven by the transport itself (the socket's
   owner-only file, the stdio spawn). `Meta` MUST distinguish an
   established identity from a claimed one, and this gate reads only
-  the former. The refusal returns `ErrAuthRefused`, the sentinel the
+  the former: `cmdsurface.Meta.Established`, `verified` or
+  `transport` (see [Provenance](#provenance)). The gate applies on
+  every remote surface, whatever mount serves it, deprecated ones
+  included; a transport with no verifier configured establishes
+  nobody, so such a leaf is refused there. The refusal returns `ErrAuthRefused`, the sentinel the
   edge already uses, so one class has one sentinel.
 - **6.** Three deciders, each able only to narrow: the built-in scope
   check (a leaf's `kit/permissions` against the caller's scopes,

@@ -35,7 +35,7 @@ go test -race ./examples/served/
 | `item watch` | read, long-running | `GET /v1/commands/item/watch/stream`, one event per line until done or disconnected |
 | `item add`   | write-local, `kit/args: name` | `POST /v1/commands/item/add` with `{"args":["washer"]}`; MCP tool `item.add` with the same `args` |
 | `item tag`   | write-local, `kit/requires-confirmation` | MCP tool `item.tag`: runs once a person approves the elicitation |
-| `item sync`  | read, `kit/auth-required` | MCP tool `item.sync`: refused over unauthenticated HTTP |
+| `item sync`  | read, `kit/auth-required` | `401 unauthenticated` over REST and HTTP MCP without `Auth`; runs over the socket and MCP stdio |
 | `item purge` | destructive-shared | withheld (`unauthorized-destructive`) until a surface is named, then needs `confirm` |
 | `shell`      | interactive        | never: 404 + `interactive` over REST, `NOT_INVOCABLE` over the socket |
 | `upgrade`    | `kit/self-hosting` | never: 404 + `self-hosting` over REST, `NOT_FOUND` over the socket |

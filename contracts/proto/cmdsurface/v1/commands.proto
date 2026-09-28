@@ -18,11 +18,11 @@ option go_package = "hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1;cmdsur
 // Commands runs a CLI command tree exposed through a cmdsurface Bridge.
 // Only leaves enabled for the rpc surface resolve; the rest answer
 // NOT_FOUND. Gates:
-//   - leaves marked auth-required need an authenticated caller, else
-//     UNAUTHENTICATED. The server decides what counts: the kit rpc
-//     service accepts only a call its Auth verified; a bare MountRPC
-//     without a verifier accepts an Authorization header or a
-//     non-empty meta.caller;
+//   - leaves marked auth-required need a caller the server verified,
+//     else UNAUTHENTICATED. An Authorization header or a meta.caller
+//     is never enough: the kit rpc service accepts only a call its
+//     Auth verified, and a bare MountRPC without a verifier refuses
+//     them all;
 //   - leaves requiring confirmation need an X-Confirm-Token header,
 //     else FAILED_PRECONDITION;
 //   - destructive leaves the bridge policy blocks on rpc answer
@@ -54,9 +54,9 @@ message Invocation {
 // verifies identity, such as the kit rpc service, drops them and takes
 // identity from the credentials it verified.
 message Meta {
-  // Stable identifier for the originating principal, as claimed. Only
-  // a server without a verifier (bare MountRPC) trusts it, including
-  // for the auth-required gate.
+  // Stable identifier for the originating principal, as claimed. A
+  // server without a verifier (bare MountRPC) records it as
+  // provenance; it never satisfies the auth-required gate.
   string caller = 1;
   // Tenant or organization the principal acts within, as claimed.
   string tenant = 2;

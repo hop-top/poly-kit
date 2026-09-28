@@ -325,3 +325,63 @@ func TestInteractiveCommandIsNotInvocableOnTheWire(t *testing.T) {
 	assert.Equal(t, socket.CodeNotInvocable, resp.Error.Code)
 	assert.Contains(t, resp.Error.Message, "shell on socket is interactive")
 }
+
+// startAuthRequiredSocket serves a root whose "open" command declares
+// kit/auth-required, with auth installed when non-nil.
+func startAuthRequiredSocket(t *testing.T, path string, auth socket.Authenticator, runner cmdsurface.Runner) {
+	t.Helper()
+	root := testRoot()
+	root.AddCommand(&cobra.Command{
+		Use:         "open",
+		Annotations: map[string]string{"kit/auth-required": "true"},
+		RunE:        func(*cobra.Command, []string) error { return nil },
+	})
+	tr := socket.New(path)
+	tr.Auth = auth
+	svc := transportsvc.NewTransportService("socket", root, cmdsurface.SurfaceSocket, tr,
+		transportsvc.Expose("*"), transportsvc.WithBridgeOptions(cmdsurface.WithRunner(runner)))
+	ctx, cancel := context.WithCancel(context.Background())
+	ready := make(chan struct{}, 1)
+	errCh := make(chan error, 1)
+	go func() { errCh <- svc.Start(ctx, func() { ready <- struct{}{} }) }()
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("never ready")
+	}
+	t.Cleanup(func() { _ = svc.Stop(context.Background()); cancel(); <-errCh })
+}
+
+// The owner-only socket file establishes the caller: an auth-required
+// command runs without an authenticator, and the claimed name stays a
+// claim beside the transport's proof.
+func TestOwnerOnlySocketEstablishesTheCaller(t *testing.T) {
+	t.Parallel()
+	path := socketPath(t)
+	runner := newRecordingRunner(false)
+	startAuthRequiredSocket(t, path, nil, runner)
+
+	resp := call(t, path, socket.Request{Path: []string{"open"}, Caller: "daemon"})
+	require.True(t, resp.Ok, "%+v", resp.Error)
+	got := runner.invocation().Meta
+	assert.Equal(t, cmdsurface.EstablishedTransport, got.Established)
+	assert.Equal(t, "daemon", got.Caller)
+}
+
+// With an authenticator, what it verified is the identity: an
+// auth-required command runs as the verified principal.
+func TestAuthenticatorEstablishesTheVerifiedCaller(t *testing.T) {
+	t.Parallel()
+	path := socketPath(t)
+	runner := newRecordingRunner(false)
+	startAuthRequiredSocket(t, path, func(context.Context, net.Conn, socket.Request) (socket.Identity, error) {
+		return socket.Identity{Principal: "alice"}, nil
+	}, runner)
+
+	resp := call(t, path, socket.Request{Path: []string{"open"}, Caller: "mallory"})
+	require.True(t, resp.Ok, "%+v", resp.Error)
+	got := runner.invocation().Meta
+	assert.Equal(t, cmdsurface.EstablishedVerified, got.Established)
+	assert.Equal(t, "alice", got.Caller)
+}

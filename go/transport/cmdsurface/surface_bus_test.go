@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 )
 
@@ -599,9 +600,9 @@ func TestMountBus_ConcurrentMessages(t *testing.T) {
 
 // --- supplementary coverage ---
 
-// Auth + confirmation gates should pass when the matching header is
-// present. Together with the missing-header tests above this proves
-// the gates are decidable in both directions.
+// Auth + confirmation gates should pass when the credential verifies
+// and the token is present. Together with the missing-header tests
+// above this proves the gates are decidable in both directions.
 func TestMountBus_AuthAndConfirmPresent(t *testing.T) {
 	runner := &busFakeRunner{}
 	br := busBridge(t, runner, cmdsurface.DefaultPolicy())
@@ -619,6 +620,12 @@ func TestMountBus_AuthAndConfirmPresent(t *testing.T) {
 				ResponseTopic: "cmd.confirm.resp",
 			},
 		},
+		cmdsurface.WithBusAuth(func(_ context.Context, msg cmdsurface.BusMessage) (any, error) {
+			if msg.Headers[cmdsurface.BusHeaderAuthorization] == "Bearer xyz" {
+				return api.Claims{Subject: "alice"}, nil
+			}
+			return nil, nil
+		}),
 	)
 	if err != nil {
 		t.Fatalf("MountBus: %v", err)

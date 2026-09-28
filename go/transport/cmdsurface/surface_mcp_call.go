@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+
+	"hop.top/kit/go/transport/api"
 )
 
 // callParams is the params shape for tools/call.
@@ -41,8 +43,11 @@ func (h *mcpHandler) handleToolsCall(w http.ResponseWriter, req *http.Request, r
 
 	// Auth + confirmation gating, mirrored on the result envelope so
 	// MCP-aware clients see isError while HTTP-only clients see the
-	// matching status code.
-	if leaf.Class.AuthRequired && req.Header.Get("Authorization") == "" {
+	// matching status code. Only an api.Auth on the router
+	// authenticates: a bare Authorization header does not.
+	meta := establishHTTP(Meta{}, req)
+	if leaf.Class.AuthRequired && !meta.Authenticated() {
+		w.Header().Set("WWW-Authenticate", api.DefaultAuthChallenge)
 		writeJSONRPCResult(w, rpc.ID, errorResultBlock("authentication required"), http.StatusUnauthorized)
 		return
 	}
@@ -58,11 +63,13 @@ func (h *mcpHandler) handleToolsCall(w http.ResponseWriter, req *http.Request, r
 		return
 	}
 
+	meta.Surface = SurfaceMCP
+	meta.RequestedAt = time.Now()
 	inv := Invocation{
 		Path:  append([]string(nil), leaf.Path...),
 		Args:  args,
 		Flags: flags,
-		Meta:  Meta{Surface: SurfaceMCP, RequestedAt: time.Now()},
+		Meta:  meta,
 	}
 
 	res, err := h.b.Invoke(req.Context(), inv)

@@ -34,8 +34,12 @@ import (
 //
 // Safety gates applied before the upgrade completes:
 //
-//   - SafetyClass.AuthRequired      → 401 when the Authorization header
-//     is missing on the initial HTTP request.
+//   - SafetyClass.AuthRequired      → 401 unauthenticated unless the
+//     initial HTTP request was verified: by the AuthFunc given with
+//     WithWSAuth, or by an api.Auth on the router. A bare
+//     Authorization header is not authentication. The verified claims
+//     are the identity of every invocation on the connection, replacing
+//     the caller a frame names.
 //   - SafetyClass.RequiresConfirmation → 428 when the X-Confirm-Token
 //     header is missing on the initial HTTP request.
 //
@@ -94,6 +98,9 @@ func MountWS(b *Bridge, r *api.Router, opts ...WSOption) error {
 	}
 
 	handler := newWSHandler(b, index, cfg)
+	if cfg.authFn != nil {
+		handler = api.Auth(cfg.authFn)(handler).ServeHTTP
+	}
 	r.Handle(http.MethodGet, cfg.path, handler)
 	return nil
 }
@@ -108,6 +115,18 @@ type wsConfig struct {
 	ctx            context.Context
 	originPatterns []string
 	maxMessage     int64
+	authFn         api.AuthFunc
+}
+
+// WithWSAuth authenticates every upgrade request with fn, through
+// api.Auth: a request fn refuses is answered 401 unauthenticated and
+// never upgraded, and one it accepts carries fn's claims as the
+// identity of every invocation on the connection. Without it the
+// surface relies on an api.Auth on the router, if any, and refuses the
+// upgrade when a WS-enabled leaf declares kit/auth-required and
+// nothing verified the request.
+func WithWSAuth(fn api.AuthFunc) WSOption {
+	return func(c *wsConfig) { c.authFn = fn }
 }
 
 // DefaultWSMaxMessageBytes is the per-message read cap MountWS
@@ -308,8 +327,8 @@ func newWSHandler(
 	requireAuth, requireConfirm := aggregateSafety(b)
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		if requireAuth && r.Header.Get(wsAuthHeader) == "" {
-			http.Error(w, "authentication required", http.StatusUnauthorized)
+		if requireAuth && !api.Authenticated(r.Context()) {
+			api.WriteUnauthenticated(w, "", "authentication required")
 			return
 		}
 		if requireConfirm && r.Header.Get(wsConfirmHeader) == "" {
@@ -334,14 +353,13 @@ func newWSHandler(
 		// error. Each invoke spawns a worker goroutine; cancel frames
 		// signal a worker via its registered cancel func.
 		ctx := r.Context()
-		runWSLoop(ctx, b, index, wc, func() { b.AuditBodyTooLarge(r, SurfaceWS, nil, limit) })
+		// Every frame's identity is the upgrade request's verdict.
+		identify := func(m Meta) Meta { return establishHTTP(m, r) }
+		runWSLoop(ctx, b, index, wc, identify, func() { b.AuditBodyTooLarge(r, SurfaceWS, nil, limit) })
 	}
 }
 
-const (
-	wsAuthHeader    = "Authorization"
-	wsConfirmHeader = "X-Confirm-Token"
-)
+const wsConfirmHeader = "X-Confirm-Token"
 
 // aggregateSafety scans all WS-enabled leaves and reports whether
 // ANY leaf requires auth or confirmation. Surfaces enforce the
@@ -372,6 +390,7 @@ func runWSLoop(
 	b *Bridge,
 	index map[string]*Leaf,
 	wc *wsConn,
+	identify func(Meta) Meta,
 	onTooLarge func(),
 ) {
 	for {
@@ -392,7 +411,7 @@ func runWSLoop(
 		}
 		switch f.Op {
 		case "invoke":
-			handleInvoke(ctx, b, index, wc, f)
+			handleInvoke(ctx, b, index, wc, identify, f)
 		case "cancel":
 			wc.cancelOne(f.ID)
 		default:
@@ -416,6 +435,7 @@ func handleInvoke(
 	b *Bridge,
 	index map[string]*Leaf,
 	wc *wsConn,
+	identify func(Meta) Meta,
 	f wsFrame,
 ) {
 	if f.Invocation == nil {
@@ -433,6 +453,7 @@ func handleInvoke(
 	if leaf, ok := index[strings.Join(inv.Path, " ")]; ok {
 		inv.Path = append([]string(nil), leaf.Path...)
 	}
+	inv.Meta = identify(inv.Meta)
 	inv.Meta.Surface = SurfaceWS
 	inv.Meta.RequestedAt = time.Now()
 
@@ -560,6 +581,8 @@ func runStream(
 // fall through to "internal" so clients have a stable enumeration.
 func errorCode(err error) string {
 	switch {
+	case errors.Is(err, ErrAuthRefused):
+		return api.CodeUnauthenticated
 	case errors.Is(err, ErrUnknownCommand):
 		return "unknown_command"
 	case errors.Is(err, ErrSurfaceNotEnabled):

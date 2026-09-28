@@ -315,7 +315,7 @@ bare bridge, [`mcpsdk`](serve-mcp-with-the-sdk.md) does.
 | `WithMCPPath` | `services.mcp.path` / `Config.Path` |
 | `WithMCPServerInfo` | the root's `Name` and `Version` |
 | `b.Expose` / `b.Hide` / `WithPolicy` on the bridge | `Config.Expose` / `Hide` / `Policy` |
-| `Authorization` header presence on auth-required leaves | `Config.Auth` verification over HTTP; spawn trust over stdio |
+| an `api.Auth` on the router verifying auth-required calls | `Config.Auth` verification over HTTP; spawn trust over stdio |
 | `WithMCPConfirmationKey` (MRTR) | built in: the service asks through elicitation, keyed per process |
 | `WithMCPSpecVersions` | negotiated by the SDK — see [Protocol versions](#protocol-versions) |
 | the `mcp:` config block | `services.mcp.*` |
@@ -671,9 +671,10 @@ remote surface, on both revisions:
   `SurfaceMCP` is in `Policy.AllowDestructiveOn`. A blocked call is
   an `isError` result, not an execution. No confirmation outcome
   ever relaxes this ceiling.
-- **`kit/auth-required=true`** leaves require an `Authorization`
-  header (presence-only; scheme-agnostic) — refused with an
-  `isError` result at HTTP 401 otherwise.
+- **`kit/auth-required=true`** leaves run only for a request an
+  `api.Auth` on the router verified — refused with an `isError`
+  result at HTTP 401 (with `WWW-Authenticate`) otherwise. An
+  `Authorization` header's presence is not verification.
 - **`kit/requires-confirmation=true`** leaves require the
   `X-Confirm-Token` header — refused with an `isError` result at
   HTTP 428 otherwise. This header gate is the default on both
@@ -770,9 +771,10 @@ cmdsurface.WithMCPCacheHints(5*time.Minute, cmdsurface.MCPCacheScopePublic)
 
 ### Auth posture
 
-The surface itself is **auth-scheme-agnostic**: it checks
-`Authorization` presence on `kit/auth-required` leaves and nothing
-else. The 2026-07-28 authorization hardening lives where each
+The surface itself is **auth-scheme-agnostic**: it verifies nothing,
+and admits a `kit/auth-required` leaf only for a request an `api.Auth`
+middleware on the router verified, whatever scheme that verifier
+speaks. The 2026-07-28 authorization hardening lives where each
 obligation belongs — kit never implemented client registration, token
 issuance, or an authorization server:
 

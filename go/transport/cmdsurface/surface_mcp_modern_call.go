@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"hop.top/kit/go/transport/api"
 )
 
 // mcpConfirmationGate decides whether a leaf classified
@@ -85,7 +87,11 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 	// Pre-flight gates, mirroring legacy: isError on the result
 	// envelope so MCP-aware clients see the failure while HTTP-only
 	// clients see the matching status code.
-	if leaf.Class.AuthRequired && req.Header.Get("Authorization") == "" {
+	// Only an api.Auth on the router authenticates: a bare
+	// Authorization header does not.
+	ident := establishHTTP(Meta{}, req)
+	if leaf.Class.AuthRequired && !ident.Authenticated() {
+		w.Header().Set("WWW-Authenticate", api.DefaultAuthChallenge)
 		h.writeCallError(w, rpc, "authentication required", http.StatusUnauthorized)
 		return
 	}
@@ -110,9 +116,12 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 		Args:  args,
 		Flags: flags,
 		Meta: Meta{
+			Caller:      ident.Caller,
+			Tenant:      ident.Tenant,
+			Established: ident.Established,
 			Surface:     SurfaceMCP,
 			RequestedAt: time.Now(),
-			Extra:       modernInvocationExtra(meta),
+			Extra:       modernInvocationExtra(meta, ident.Extra),
 		},
 	}
 
@@ -251,8 +260,11 @@ func (h *mcpModernHandler) writeCallError(w http.ResponseWriter, rpc jsonRPCRequ
 // modernInvocationExtra builds the Meta.Extra audit bag for a modern
 // invocation: the spec version always, and the client identity when
 // the request carried io.modelcontextprotocol/clientInfo.
-func modernInvocationExtra(meta modernRequestMeta) map[string]string {
+func modernInvocationExtra(meta modernRequestMeta, verified map[string]string) map[string]string {
 	extra := map[string]string{"mcp_spec_version": mcpModernProtocolVersion}
+	if s, ok := verified[scopesExtraKey]; ok {
+		extra[scopesExtraKey] = s
+	}
 	if meta.hasClientInfo {
 		extra["mcp_client_name"] = meta.clientName
 		extra["mcp_client_version"] = meta.clientVersion

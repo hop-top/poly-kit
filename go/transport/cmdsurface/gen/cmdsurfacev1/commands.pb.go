@@ -103,9 +103,9 @@ func (x *Invocation) GetMeta() *Meta {
 // identity from the credentials it verified.
 type Meta struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Stable identifier for the originating principal, as claimed. Only
-	// a server without a verifier (bare MountRPC) trusts it, including
-	// for the auth-required gate.
+	// Stable identifier for the originating principal, as claimed. A
+	// server without a verifier (bare MountRPC) records it as
+	// provenance; it never satisfies the auth-required gate.
 	Caller string `protobuf:"bytes,1,opt,name=caller,proto3" json:"caller,omitempty"`
 	// Tenant or organization the principal acts within, as claimed.
 	Tenant string `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`

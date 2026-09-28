@@ -544,10 +544,24 @@ func TestModernCall_AuthRequired401(t *testing.T) {
 	}
 }
 
-func TestModernCall_AuthHeaderPasses(t *testing.T) {
+func TestModernCall_AuthHeaderAloneIsRefused(t *testing.T) {
 	srv := modernServer(t)
 	headers := modernHeaders("tools/call", "auth-op")
 	headers["Authorization"] = "Bearer token"
+	status, m := postJSON(t, srv, "/mcp", headers, callBody(t, "auth-op", nil))
+	if status != http.StatusUnauthorized {
+		t.Fatalf("status=%d want=401: %v", status, m)
+	}
+	res, _ := m["result"].(map[string]any)
+	if res["isError"] != true {
+		t.Errorf("isError=%v want=true: %v", res["isError"], res)
+	}
+}
+
+func TestModernCall_VerifiedAuthPasses(t *testing.T) {
+	srv := modernServer(t)
+	headers := modernHeaders("tools/call", "auth-op")
+	headers["Authorization"] = goodBearer
 	status, m := postJSON(t, srv, "/mcp", headers, callBody(t, "auth-op", nil))
 	if status != http.StatusOK {
 		t.Fatalf("status=%d want=200: %v", status, m)

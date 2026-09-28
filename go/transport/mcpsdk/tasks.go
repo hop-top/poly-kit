@@ -141,12 +141,20 @@ func taskPrincipal(hdr http.Header) string {
 // re-checks enablement and policy at run time; nothing on the tasks
 // surface itself (get/update/cancel) can execute, re-execute, or
 // amplify a leaf.
-func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, leaf *cmdsurface.Leaf, req *mcp.CallToolRequest, hdr http.Header) (*mcp.CallToolResult, error) {
+//
+// meta is the call's provenance as the synchronous path built it
+// ([WithCallMeta], the auth gate's verdict); a call without a verified
+// Caller is attributed to its task principal.
+func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, leaf *cmdsurface.Leaf, req *mcp.CallToolRequest, hdr http.Header, meta cmdsurface.Meta) (*mcp.CallToolResult, error) {
+	meta.Surface = cmdsurface.SurfaceMCP
+	if meta.Caller == "" {
+		meta.Caller = taskPrincipal(hdr)
+	}
 	// Every machine gate before the person: a task the ceiling or the
 	// permission gate refuses is neither created nor confirmed.
 	if _, err := b.Admit(ctx, cmdsurface.Invocation{
 		Path: append([]string(nil), leaf.Path...),
-		Meta: cmdsurface.Meta{Surface: cmdsurface.SurfaceMCP, Caller: taskPrincipal(hdr)},
+		Meta: meta,
 	}); err != nil {
 		if isUncallable(err) {
 			return nil, err
@@ -169,15 +177,12 @@ func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, l
 		}
 	}
 
+	meta.RequestedAt = time.Now()
 	inv := cmdsurface.Invocation{
 		Path:  append([]string(nil), leaf.Path...),
 		Args:  args,
 		Flags: flags,
-		Meta: cmdsurface.Meta{
-			Surface:     cmdsurface.SurfaceMCP,
-			Caller:      taskPrincipal(hdr),
-			RequestedAt: time.Now(),
-		},
+		Meta:  meta,
 	}
 	return tb.ext.StartTask(ctx, req, func(runCtx context.Context, _ *taskext.Handle) (*mcp.CallToolResult, error) {
 		res, err := b.Invoke(runCtx, inv)

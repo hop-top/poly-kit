@@ -32,6 +32,10 @@ const (
 // the HTTP layer can vouch for, gathered in one place so the
 // executor does not read headers or the request context itself.
 type RequestMeta struct {
+	// Authenticated reports that the [Auth] middleware verified the
+	// request (see [Authenticated]). Principal, Tenant and Scopes are
+	// read only from a verified request.
+	Authenticated bool
 	// Principal is the authenticated caller, from the claims the
 	// [Auth] middleware stored (see [IdentityOf]). Empty when no
 	// auth ran or the claims carry no identity.
@@ -71,6 +75,7 @@ func RequestMetaFrom(r *http.Request) RequestMeta {
 	principal, tenant := IdentityOf(claims)
 	traceparent, tracestate := TraceContextFromHeader(r.Header)
 	return RequestMeta{
+		Authenticated:  Authenticated(r.Context()),
 		Principal:      principal,
 		Tenant:         tenant,
 		Scopes:         ScopesOf(claims),

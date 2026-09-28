@@ -42,11 +42,28 @@ type Invocation struct {
 // transport with an authenticator fills Caller and Tenant from the
 // verified identity; a transport without one records the caller's
 // claim as provenance and grants nothing on its basis.
+//
+// Established is what tells the two apart: only the transport sets
+// it, and only when it established who is calling. The bridge's
+// authentication gate reads nothing else.
 type Meta struct {
 	// Caller is a stable identifier for the originating principal
 	// (user id, service account, webhook source). Format is
-	// surface-defined; the bridge does not parse it.
+	// surface-defined; the bridge does not parse it. Without
+	// Established it is a claim.
 	Caller string `json:"caller,omitempty"`
+	// Established records how the transport established the
+	// caller's identity: [EstablishedVerified] when a configured
+	// verifier accepted a credential, [EstablishedTransport] when
+	// the transport itself proves the caller (the socket's
+	// owner-only file, the stdio spawn). Empty means nothing was
+	// established, whatever Caller says.
+	//
+	// It is never serialized, so no message body, frame or payload
+	// can set it: a transport sets it from its own verdict after
+	// decoding. A leaf declaring kit/auth-required runs on a remote
+	// surface only when it is set (see [Bridge.Admit]).
+	Established Establishment `json:"-"`
 	// Tenant is the tenant or organization the principal acts
 	// within, when the surface's authentication carries one. Empty
 	// for single-tenant tools and for surfaces without an
@@ -98,6 +115,36 @@ type Meta struct {
 	// downstream sinks may consume (HTTP headers, bus message
 	// headers, FaaS request id).
 	Extra map[string]string `json:"extra,omitempty"`
+}
+
+// Establishment is how a transport established a caller's identity,
+// as recorded in [Meta.Established].
+type Establishment string
+
+const (
+	// EstablishedNone is the zero value: the transport established
+	// nothing. Caller and Tenant, when present, are claims.
+	EstablishedNone Establishment = ""
+	// EstablishedVerified: a verifier the deployment configured
+	// accepted a credential the caller presented (an api.AuthFunc, a
+	// socket Authenticator, a webhook signature, a signed URL, a
+	// consumed OAuth state).
+	EstablishedVerified Establishment = "verified"
+	// EstablishedTransport: the transport proves the caller by
+	// construction, with no credential to check. The socket's
+	// owner-only file admits only the owner's processes; the stdio
+	// peer spawned the process and runs as its user; a platform
+	// invocation (Lambda) was authorized by the platform's IAM; a
+	// cron job was scheduled by the operator.
+	EstablishedTransport Establishment = "transport"
+)
+
+// Authenticated reports whether the transport established the
+// caller's identity: Established is [EstablishedVerified] or
+// [EstablishedTransport]. Any other value, the zero value included,
+// is unauthenticated.
+func (m Meta) Authenticated() bool {
+	return m.Established == EstablishedVerified || m.Established == EstablishedTransport
 }
 
 // Result is the unified return value of a Runner.Run. Surfaces map

@@ -13,12 +13,12 @@ import (
 )
 
 // Bus surface header keys. Bus messages carry safety/auth context via
-// the BusMessage.Headers map; the surface inspects only the presence
-// of these keys (validation is a later wave).
+// the BusMessage.Headers map.
 const (
-	// BusHeaderAuthorization is the credential the bridge inspects to
-	// satisfy SafetyClass.AuthRequired. Any non-empty value passes;
-	// callers MAY also set Invocation.Meta.Caller as a substitute.
+	// BusHeaderAuthorization is the conventional header a message
+	// carries its credential in, for the [BusAuthenticator] installed
+	// with [WithBusAuth] to verify. The surface never treats its
+	// presence as authentication, nor a Meta.Caller in the payload.
 	BusHeaderAuthorization = "authorization"
 	// BusHeaderConfirmToken is the confirmation token header the
 	// bridge inspects to satisfy SafetyClass.RequiresConfirmation.
@@ -107,6 +107,27 @@ type busError struct {
 type busConfig struct {
 	ctx    context.Context
 	logger func(format string, args ...any)
+	auth   BusAuthenticator
+}
+
+// BusAuthenticator verifies the credential a bus message carries —
+// typically msg.Headers[BusHeaderAuthorization] — and returns the
+// caller's claims, in any shape api.IdentityOf and api.ScopesOf read
+// (an api.Claims, an api.Identity, a map with "sub" and "tenant"). A
+// non-nil error refuses the message as unauthenticated.
+type BusAuthenticator func(ctx context.Context, msg BusMessage) (claims any, err error)
+
+// WithBusAuth verifies every message with fn before it is invoked. A
+// message fn accepts runs as the principal, tenant and scopes of the
+// claims fn returned, replacing the payload's meta.caller and
+// meta.tenant, and is what admits a leaf declaring kit/auth-required.
+// A message fn refuses is answered {error:{code:"unauthenticated"}}
+// and audited with [ErrAuthRefused], whatever the leaf.
+//
+// Without it nothing on the bus is authenticated: a payload's
+// meta.caller is a claim, and kit/auth-required leaves are refused.
+func WithBusAuth(fn BusAuthenticator) BusOption {
+	return func(c *busConfig) { c.auth = fn }
 }
 
 // BusOption configures MountBus.
@@ -150,10 +171,11 @@ func WithBusLogger(fn func(format string, args ...any)) BusOption {
 //
 // Per-leaf safety gates:
 //
-//   - Class.AuthRequired: handler inspects msg.Headers["authorization"];
-//     missing → response with {error:{code:"unauthenticated"}}. An
-//     Invocation.Meta.Caller carried in the request envelope is an
-//     acceptable substitute (matches RPC behavior).
+//   - Class.AuthRequired: the message must have been verified by the
+//     [BusAuthenticator] installed with [WithBusAuth]; otherwise →
+//     response with {error:{code:"unauthenticated"}}, audited with
+//     [ErrAuthRefused]. Neither an authorization header's presence
+//     nor a meta.caller in the request envelope authenticates.
 //   - Class.RequiresConfirmation: handler inspects
 //     msg.Headers["x-confirm-token"]; missing → response with
 //     {error:{code:"confirmation_required"}}.
@@ -269,7 +291,9 @@ func runCancels(cancels []func()) {
 //
 //  1. Decodes the JSON request envelope (or publishes a bad_request
 //     error envelope on parse failure).
-//  2. Checks auth and confirmation headers against the leaf class.
+//  2. Verifies the message with [WithBusAuth]'s authenticator when
+//     one is installed, then checks authentication and confirmation
+//     against the leaf class.
 //  3. Forces inv.Path = leaf.Path and inv.Meta.Surface = SurfaceBus.
 //  4. Calls Bridge.Invoke; publishes Result or error envelope on
 //     ResponseTopic (when non-empty).
@@ -296,14 +320,40 @@ func newBusHandler(
 				return nil
 			}
 		}
-		// Auth gate (header presence OR Meta.Caller).
-		if leaf.Class.AuthRequired {
-			if headerLookup(msg.Headers, BusHeaderAuthorization) == "" && req.Meta.Caller == "" {
-				publishError(ctx, pub, bd.ResponseTopic, cfg.logger,
-					"unauthenticated",
-					fmt.Sprintf("auth required: %s", leaf.PathKey()))
-				return nil
+		// The payload's meta is the sender's claim; identity is what
+		// the authenticator verified, never what the payload names.
+		meta := req.Meta
+		meta.Established = EstablishedNone
+		if _, claimed := meta.Extra[scopesExtraKey]; claimed {
+			meta.Extra = copyExtraWithout(meta.Extra, scopesExtraKey)
+		}
+		meta.Surface = SurfaceBus
+		meta.RequestedAt = time.Now()
+		refuse := func(err error) error {
+			b.Audit(ctx, Invocation{Path: append([]string(nil), leaf.Path...), Meta: meta},
+				Result{}, err)
+			publishError(ctx, pub, bd.ResponseTopic, cfg.logger,
+				api.CodeUnauthenticated, err.Error())
+			return nil
+		}
+		if cfg.auth != nil {
+			claims, aerr := cfg.auth(ctx, msg)
+			if aerr != nil {
+				return refuse(fmt.Errorf("%w: %v", ErrAuthRefused, aerr))
 			}
+			meta.Caller, meta.Tenant = api.IdentityOf(claims)
+			if scopes := api.ScopesOf(claims); len(scopes) > 0 {
+				meta.Extra = copyExtraWithout(meta.Extra, "")
+				meta.Extra[scopesExtraKey] = strings.Join(scopes, ",")
+			}
+			meta.Established = EstablishedVerified
+		}
+		// Answered before the confirmation gate, so an
+		// unauthenticated sender learns nothing else; the bridge
+		// refuses the same call at its own slot.
+		if leaf.Class.AuthRequired && !meta.Authenticated() {
+			return refuse(fmt.Errorf("%w: %s on %s requires an authenticated caller",
+				ErrAuthRefused, leaf.PathKey(), SurfaceBus))
 		}
 		// Confirmation gate.
 		if leaf.Class.RequiresConfirmation {
@@ -319,10 +369,8 @@ func newBusHandler(
 			Path:  append([]string(nil), leaf.Path...),
 			Args:  req.Args,
 			Flags: req.Flags,
-			Meta:  req.Meta,
+			Meta:  meta,
 		}
-		inv.Meta.Surface = SurfaceBus
-		inv.Meta.RequestedAt = time.Now()
 
 		res, ierr := b.Invoke(ctx, inv)
 		if ierr != nil {
@@ -361,6 +409,8 @@ func headerLookup(headers map[string]string, key string) string {
 // envelope's code field. Non-sentinel errors fall back to "internal".
 func bridgeErrorCode(err error) string {
 	switch {
+	case errors.Is(err, ErrAuthRefused):
+		return api.CodeUnauthenticated
 	case errors.Is(err, ErrUnknownCommand):
 		return "unknown_command"
 	case errors.Is(err, ErrSurfaceNotEnabled):

@@ -100,14 +100,19 @@ func WithProjectionMaxBodyBytes(n int64) ProjectionOption {
 	return func(c *projectionConfig) { c.maxBody = n }
 }
 
-// WithProjectionRouterAuth declares that the router already decides
-// who may call the projection: its own [api.Auth] middleware, or a
-// listener only trusted callers reach (a loopback-only server). It
-// lifts MountProjection's refusal to mount a command declaring
+// WithProjectionRouterAuth declares that the router decides who may
+// call the projection: its own [api.Auth] middleware, when it has
+// one. It lifts MountProjection's refusal to mount a command declaring
 // kit/auth-required without [WithProjectionAuth].
 //
+// It vouches for nobody. A command declaring kit/auth-required still
+// runs only for a request an [api.Auth] verified; without one it is
+// refused per call, 401 unauthenticated, loopback included — a
+// loopback listener is reachable by every local user.
+//
 // The kit root's api service passes it: it installs router-wide auth
-// itself and refuses a non-loopback address without it.
+// itself when configured, and refuses a non-loopback address without
+// it.
 func WithProjectionRouterAuth() ProjectionOption {
 	return func(c *projectionConfig) { c.routerAuth = true }
 }
@@ -206,7 +211,8 @@ func buildProjection(b *Bridge, cfg projectionConfig) api.ProjectionConfig {
 // projection installs none otherwise. A served command that declares
 // kit/auth-required is therefore refused at mount unless one of
 // [WithProjectionAuth] or [WithProjectionRouterAuth] says who
-// authenticates it.
+// authenticates it, and each call to it runs only when an
+// [api.Auth] verified the request (401 unauthenticated otherwise).
 func MountProjection(b *Bridge, r *api.Router, opts ...ProjectionOption) error {
 	if b == nil {
 		return errors.New("cmdsurface: MountProjection: nil Bridge")
@@ -603,7 +609,8 @@ func projectionInvocation(req api.CommandRequest) Invocation {
 // metaFromRequest maps the HTTP layer's provenance onto the bridge's
 // Meta. Scopes travel in Extra, comma-joined, because Meta has no
 // typed field for entitlements and the permission gate is the one
-// consumer.
+// consumer. A request [api.Auth] verified is [EstablishedVerified];
+// nothing else is.
 func metaFromRequest(m api.RequestMeta) Meta {
 	meta := Meta{
 		Caller:         m.Principal,
@@ -615,6 +622,9 @@ func metaFromRequest(m api.RequestMeta) Meta {
 		Tracestate:     m.Tracestate,
 		IdempotencyKey: m.IdempotencyKey,
 		RequestedAt:    m.ReceivedAt,
+	}
+	if m.Authenticated {
+		meta.Established = EstablishedVerified
 	}
 	extra := map[string]string{}
 	if m.RemoteAddr != "" {
@@ -634,6 +644,8 @@ func metaFromRequest(m api.RequestMeta) Meta {
 // rather than importing the bridge's.
 func translateProjectionError(err error) error {
 	switch {
+	case errors.Is(err, ErrAuthRefused):
+		return fmt.Errorf("%w: %s", api.ErrUnauthenticated, err.Error())
 	case errors.Is(err, ErrUnknownCommand),
 		errors.Is(err, ErrSurfaceNotEnabled),
 		errors.Is(err, ErrNotInvocable):

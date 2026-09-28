@@ -51,17 +51,26 @@ var (
 // is stamped when fn leaves it zero. Without it a call carries only
 // those two fields.
 //
-// fn fills Caller and Tenant only from an identity the host verified;
-// a claim the client made is provenance for Extra, not a principal.
+// fn fills Caller and Tenant only from an identity the host verified,
+// and sets Established to say how it was established (a verifier's
+// verdict, or the transport's own proof such as a stdio spawn); a
+// claim the client made is provenance for Extra, not a principal.
+// Without WithAuthenticated, the Established fn returns is what the
+// kit/auth-required gate reads.
 func WithCallMeta(fn func(ctx context.Context, req *mcp.CallToolRequest) cmdsurface.Meta) Option {
 	return func(c *config) { c.callMeta = fn }
 }
 
 // WithAuthenticated installs the predicate the gate for
 // kit/auth-required leaves asks: whether the caller of req is
-// authenticated. Without it the gate accepts any request carrying an
-// Authorization header, which is presence, not verification — a host
-// that authenticates requests itself supplies the real answer here.
+// authenticated. A call it accepts runs as
+// [cmdsurface.EstablishedVerified] unless [WithCallMeta] already
+// established it; one it refuses runs unestablished.
+//
+// Without it the gate reads the Meta [WithCallMeta] returned: only an
+// established one is authenticated. An Authorization header is
+// presence, not verification, so a bare Mount refuses every
+// kit/auth-required leaf until the host says who verified the call.
 func WithAuthenticated(fn func(ctx context.Context, req *mcp.CallToolRequest) bool) Option {
 	return func(c *config) { c.authenticated = fn }
 }
@@ -111,12 +120,21 @@ func (s *Surface) callMeta(ctx context.Context, req *mcp.CallToolRequest) cmdsur
 	return meta
 }
 
-// authenticated answers the kit/auth-required gate for req.
-func (s *Surface) authenticated(ctx context.Context, req *mcp.CallToolRequest) bool {
-	if s.cfg.authenticated != nil {
-		return s.cfg.authenticated(ctx, req)
+// authenticated answers the kit/auth-required gate for req and
+// records the answer on meta: the installed predicate, or, without
+// one, whether the call's Meta is already established.
+func (s *Surface) authenticated(ctx context.Context, req *mcp.CallToolRequest, meta *cmdsurface.Meta) bool {
+	if s.cfg.authenticated == nil {
+		return meta.Authenticated()
 	}
-	return headerOf(req).Get("Authorization") != ""
+	if !s.cfg.authenticated(ctx, req) {
+		meta.Established = cmdsurface.EstablishedNone
+		return false
+	}
+	if !meta.Authenticated() {
+		meta.Established = cmdsurface.EstablishedVerified
+	}
+	return true
 }
 
 // confirmGate answers the kit/requires-confirmation gate. A nil

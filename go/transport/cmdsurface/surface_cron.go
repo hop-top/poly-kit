@@ -110,7 +110,9 @@ func WithCronLogger(fn func(string, ...any)) CronOption {
 // WithCronAllowAuth permits scheduling leaves whose SafetyClass has
 // AuthRequired=true. Cron has no human caller, so the default is to
 // refuse such leaves at mount time. Setting this to true opts the
-// caller into running auth-required jobs as the cron principal.
+// caller into running auth-required jobs as the cron principal: the
+// operator who scheduled them is the identity, and every firing
+// carries it as established ([EstablishedTransport]).
 func WithCronAllowAuth(allow bool) CronOption {
 	return func(c *cronConfig) { c.allowAuth = allow }
 }
@@ -242,6 +244,7 @@ func makeCronJob(b *Bridge, s CronSchedule, cfg cronConfig) func() {
 			Meta: Meta{
 				Surface:     SurfaceCron,
 				Caller:      "cron",
+				Established: cronEstablished(cfg),
 				RequestedAt: time.Now(),
 			},
 		}
@@ -257,6 +260,15 @@ func makeCronJob(b *Bridge, s CronSchedule, cfg cronConfig) func() {
 		cfg.logger("cmdsurface: cron %s ran exit=%d",
 			strings.Join(frozen.Path, " "), res.ExitCode)
 	}
+}
+
+// cronEstablished is how a firing's identity is established: by the
+// operator's WithCronAllowAuth opt-in, else not at all.
+func cronEstablished(cfg cronConfig) Establishment {
+	if cfg.allowAuth {
+		return EstablishedTransport
+	}
+	return EstablishedNone
 }
 
 // copyFlags clones m so the scheduled job is insulated from

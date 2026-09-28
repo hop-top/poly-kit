@@ -150,7 +150,7 @@ func legacyLockServer(t *testing.T, build func(root *cobra.Command) *Bridge, mou
 		build = func(root *cobra.Command) *Bridge { return New(root) }
 	}
 	b := build(root)
-	r := api.NewRouter()
+	r := api.NewRouter(api.WithMiddleware(verifyGoodOnly))
 	if err := MountMCP(b, r, mountOpts...); err != nil {
 		t.Fatalf("MountMCP: %v", err)
 	}
@@ -550,10 +550,18 @@ func TestLegacyLock_SafetyGate_AuthRequired(t *testing.T) {
 	want := `{"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"authentication required","type":"text"}],"isError":true}}` + "\n"
 	assertByteExact(t, "auth required (no header)", raw, []byte(want))
 
+	// A bare Authorization header is presence, not authentication.
 	status, _, raw = rawPOST(t, srv, "/mcp", map[string]string{"Authorization": "Bearer x"},
+		[]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"secret"}}`))
+	if status != http.StatusUnauthorized {
+		t.Fatalf("status with unverified header=%d want=401", status)
+	}
+	assertByteExact(t, "auth required (unverified header)", raw, []byte(want))
+
+	status, _, raw = rawPOST(t, srv, "/mcp", map[string]string{"Authorization": goodBearer},
 		[]byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"secret"}}`))
 	if status != http.StatusOK {
-		t.Fatalf("status with auth=%d want=200", status)
+		t.Fatalf("status with verified auth=%d want=200", status)
 	}
 	want2 := `{"jsonrpc":"2.0","id":2,"result":{"content":[{"text":"","type":"text"}],"isError":false}}` + "\n"
 	assertByteExact(t, "auth required (with header)", raw, []byte(want2))

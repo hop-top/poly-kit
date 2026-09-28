@@ -60,7 +60,9 @@ const defaultSSEHeartbeat = 15 * time.Second
 // Per-leaf middleware:
 //
 //   - Class.AuthRequired wraps the route with api.Auth using the
-//     AuthFunc supplied via WithSSEAuth (default: deny-all → 401).
+//     AuthFunc supplied via WithSSEAuth (default: deny-all → 401). The
+//     bridge admits such a leaf only for a request an api.Auth
+//     verified, and the verified claims are the call's identity.
 //   - Class.RequiresConfirmation gates the route on the presence of
 //     an X-Confirm-Token header (value is not inspected).
 //
@@ -309,6 +311,7 @@ func buildSSEInvocation(r *http.Request, leaf *Leaf) Invocation {
 			inv.Flags[name] = append([]string(nil), vals...)
 		}
 	}
+	inv.Meta = establishHTTP(inv.Meta, r)
 	inv.Meta.Surface = SurfaceSSE
 	inv.Meta.RequestedAt = time.Now()
 	if tid := r.Header.Get("X-Request-ID"); tid != "" {
@@ -352,6 +355,8 @@ func sseWriteComment(w http.ResponseWriter, f http.Flusher) error {
 // MUST only be called before any SSE header/frame has been written.
 func writeSSEError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrAuthRefused):
+		writeUnauthenticated(w, err)
 	case errors.Is(err, ErrUnknownCommand):
 		api.Error(w, http.StatusNotFound, &api.APIError{
 			Status:  http.StatusNotFound,

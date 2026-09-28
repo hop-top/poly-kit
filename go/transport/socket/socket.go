@@ -108,8 +108,11 @@ const (
 	// caller. The message carries the gate's stable reason.
 	CodeDenied = "DENIED"
 	// CodeUnauthenticated is a request the transport's
-	// [Authenticator] refused. It is only ever sent when the
-	// transport has one.
+	// [Authenticator] refused, or one the bridge's authentication
+	// gate refused ([cmdsurface.ErrAuthRefused]). The transport
+	// establishes every caller — by the Authenticator when it has
+	// one, by the owner-only socket file otherwise — so in practice
+	// it is only sent by an Authenticator.
 	CodeUnauthenticated = "UNAUTHENTICATED"
 	// CodeRateLimited is a call the rate limit refused. The error
 	// carries retry_after_ms.
@@ -337,7 +340,9 @@ func (t *Transport) dispatch(ctx context.Context, conn net.Conn, line []byte, in
 		Meta: cmdsurface.Meta{
 			// Surface is pinned by the seam; setting it here would
 			// be overwritten. Without an authenticator, Caller and
-			// Tenant are the caller's claim, carried for audit only.
+			// Tenant are the caller's claim, carried for audit only;
+			// the caller is established by the owner-only socket
+			// file instead (see below).
 			Caller:         req.Caller,
 			Tenant:         req.Tenant,
 			RequestID:      req.RequestID,
@@ -361,6 +366,13 @@ func (t *Transport) dispatch(ctx context.Context, conn net.Conn, line []byte, in
 		// be, not who they said they were.
 		invocation.Meta.Caller = id.Principal
 		invocation.Meta.Tenant = id.Tenant
+		invocation.Meta.Established = cmdsurface.EstablishedVerified
+	} else {
+		// Bind created the socket SocketMode (owner-only): whoever
+		// connected already holds the owner's authority. That proves
+		// the caller without naming them, so the claim stays a claim
+		// while the identity counts as established.
+		invocation.Meta.Established = cmdsurface.EstablishedTransport
 	}
 
 	res, err := inv(ctx, invocation)
@@ -378,6 +390,8 @@ func (t *Transport) dispatch(ctx context.Context, conn net.Conn, line []byte, in
 // bridge documents are distinguished; anything else is internal.
 func codeFor(err error) string {
 	switch {
+	case errors.Is(err, cmdsurface.ErrAuthRefused):
+		return CodeUnauthenticated
 	case errors.Is(err, cmdsurface.ErrUnknownCommand):
 		return CodeNotFound
 	case errors.Is(err, cmdsurface.ErrSurfaceNotEnabled):

@@ -44,12 +44,12 @@ _ = http.ListenAndServe(":8080", r)
 
 - Fourteen surfaces are declared: `cli`, `rest`, `ws`, `sse`, `rpc`, `mcp`, `webhook`, `bus`, `cron`, `lib`, `oauth-cb`, `signed`, `faas`, `socket`. `socket` is the Unix socket service (`cli.WithSocket`), distinct from `rpc` (ConnectRPC).
 - `kit/side-effect=destructive` blocks every remote surface unless the surface is listed in `Policy.AllowDestructiveOn`; YAML `destructive_default: deny_remote` is the conservative default.
-- `kit/auth-required` and `kit/requires-confirmation` gate every surface through the same `Policy`.
+- `kit/auth-required` is a bridge gate on every remote surface: the leaf runs only when the transport established the caller (`Meta.Established`: a verifier accepted a credential, or the transport proves the caller, as the socket's `0600` file and the stdio spawn do), else `ErrAuthRefused`. A claimed `Meta.Caller` or a bare `Authorization` header never counts. `kit/requires-confirmation` gates every surface through the same `Policy`.
 - Webhook mappings targeting auth-required leaves with `AuthNone` are refused at mount; `WebhookAuth.Verify` runs before template execution.
 - Signed URLs carry single-use nonces, an expiry, and the exact `Invocation` baked into the token; `AuthRequired` and `RequiresConfirmation` are skipped, the destructive ceiling still applies.
 - Runners: `InProcessRunner` (shared tree, serialized), `InProcessRunner` with `WithRootFactory` (tree per invocation, parallel), `SubprocessRunner` (process per invocation, process-group cancellation on Unix).
 - Sinks shipped: Log, File, Webhook, Bus, Chain (tamper-evident, over `go/security`'s audit log; records the redacted invocation, never its output).
-- `MountRPC` serves `cmdsurface.v1.Commands`, schema `contracts/proto/cmdsurface/v1/commands.proto`, Go stubs in `gen/cmdsurfacev1`; Connect, gRPC and gRPC-Web on one handler, gRPC over h2c via `rpc.ListenAndServe`. `WithRPCCallMeta`, `WithRPCAuthenticated` and `WithRPCHandlerOptions` wire a host's verified identity, auth-required gate and size bound; the `rpc` service (`go/console/cli/rpcserve`) sets them all. `WithRPCAdmittedInterceptors` adds interceptors that see only admitted calls.
+- `MountRPC` serves `cmdsurface.v1.Commands`, schema `contracts/proto/cmdsurface/v1/commands.proto`, Go stubs in `gen/cmdsurfacev1`; Connect, gRPC and gRPC-Web on one handler, gRPC over h2c via `rpc.ListenAndServe`. `WithRPCCallMeta`, `WithRPCAuthenticated` and `WithRPCHandlerOptions` wire a host's verified identity, auth-required gate and size bound (a bare `MountRPC` refuses auth-required leaves); the `rpc` service (`go/console/cli/rpcserve`) sets them all. `WithRPCAdmittedInterceptors` adds interceptors that see only admitted calls.
 
 ## Neighbours
 

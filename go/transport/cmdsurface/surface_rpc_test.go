@@ -392,20 +392,27 @@ func TestRPCInvoke_AuthRequiredMissing(t *testing.T) {
 	})
 }
 
-func TestRPCInvoke_AuthRequiredPresent(t *testing.T) {
+// A bare MountRPC has no verifier: neither an Authorization header nor
+// a claimed caller authenticates, so an auth-required leaf is refused,
+// and the refusal is audited.
+func TestRPCInvoke_AuthRequiredHeaderIsNotAuthentication(t *testing.T) {
 	forEachProtocol(t, func(t *testing.T, p wireProtocol) {
 		f := newFixture(t)
 		f.start()
 
 		req := invocation("secret")
 		req.Header().Set("Authorization", "Bearer xxx")
-		if _, err := f.client(p).Invoke(context.Background(), req); err != nil {
-			t.Fatalf("Invoke: %v", err)
+		_, err := f.client(p).Invoke(context.Background(), req)
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Fatalf("code=%v want Unauthenticated (err=%v)", connect.CodeOf(err), err)
+		}
+		if f.runner.LastInvocation.Path != nil {
+			t.Errorf("runner reached: %+v", f.runner.LastInvocation)
 		}
 	})
 }
 
-func TestRPCInvoke_AuthRequiredCallerSubstitutes(t *testing.T) {
+func TestRPCInvoke_AuthRequiredClaimedCallerIsNotAuthentication(t *testing.T) {
 	forEachProtocol(t, func(t *testing.T, p wireProtocol) {
 		f := newFixture(t)
 		f.start()
@@ -414,11 +421,39 @@ func TestRPCInvoke_AuthRequiredCallerSubstitutes(t *testing.T) {
 			Path: []string{"secret"},
 			Meta: &cmdsurfacev1.Meta{Caller: "svc:ci"},
 		})
-		if _, err := f.client(p).Invoke(context.Background(), req); err != nil {
-			t.Fatalf("Invoke: %v", err)
+		_, err := f.client(p).Invoke(context.Background(), req)
+		if connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Fatalf("code=%v want Unauthenticated (err=%v)", connect.CodeOf(err), err)
 		}
-		if got := f.runner.LastInvocation.Meta.Caller; got != "svc:ci" {
-			t.Errorf("runner saw Meta.Caller=%q want=svc:ci", got)
+	})
+}
+
+// A host that verified the call says so through WithRPCCallMeta; the
+// verified caller, not the body's claim, is what the runner sees.
+func TestRPCInvoke_AuthRequiredEstablishedByCallMeta(t *testing.T) {
+	forEachProtocol(t, func(t *testing.T, p wireProtocol) {
+		f := newFixture(t)
+		f.start(cmdsurface.WithRPCCallMeta(func(_ context.Context, req connect.AnyRequest, _ cmdsurface.Meta) cmdsurface.Meta {
+			if req.Header().Get("Authorization") != "Bearer good" {
+				return cmdsurface.Meta{}
+			}
+			return cmdsurface.Meta{Caller: "alice", Established: cmdsurface.EstablishedVerified}
+		}))
+
+		req := connect.NewRequest(&cmdsurfacev1.Invocation{
+			Path: []string{"secret"},
+			Meta: &cmdsurfacev1.Meta{Caller: "root"},
+		})
+		req.Header().Set("Authorization", "Bearer bad")
+		if _, err := f.client(p).Invoke(context.Background(), req); connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Fatalf("rejected credential: code=%v want Unauthenticated", connect.CodeOf(err))
+		}
+		req.Header().Set("Authorization", "Bearer good")
+		if _, err := f.client(p).Invoke(context.Background(), req); err != nil {
+			t.Fatalf("verified call: %v", err)
+		}
+		if got := f.runner.LastInvocation.Meta; got.Caller != "alice" || got.Established != cmdsurface.EstablishedVerified {
+			t.Errorf("runner saw Meta=%+v want alice, verified", got)
 		}
 	})
 }

@@ -345,7 +345,8 @@ func TestMountCron_AuthRequiredRefusedByDefault(t *testing.T) {
 }
 
 func TestMountCron_AuthRequiredAllowed(t *testing.T) {
-	b := cronNewBridge(t, &cronFakeRunner{}, cmdsurface.DefaultPolicy())
+	runner := &cronFakeRunner{}
+	b := cronNewBridge(t, runner, cmdsurface.DefaultPolicy())
 	eng := newCronTestEngine()
 
 	cleanup, err := cmdsurface.MountCron(b, eng,
@@ -360,6 +361,16 @@ func TestMountCron_AuthRequiredAllowed(t *testing.T) {
 	defer cleanup()
 	if eng.jobCount() != 1 {
 		t.Fatalf("expected auth schedule allowed, got %d", eng.jobCount())
+	}
+	// The opt-in is the identity: a firing runs as the cron principal,
+	// established, past the bridge's kit/auth-required gate.
+	eng.triggerAll()
+	got := runner.captured()
+	if len(got) != 1 {
+		t.Fatalf("runner calls=%d want 1: the auth gate refused the firing", len(got))
+	}
+	if got[0].Meta.Caller != "cron" || got[0].Meta.Established != cmdsurface.EstablishedTransport {
+		t.Errorf("firing meta=%+v want cron, established by the transport", got[0].Meta)
 	}
 }
 

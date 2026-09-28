@@ -119,9 +119,10 @@ func WithOAuthAuthorizeFn(fn func(provider string) (string, error)) OAuthOption 
 //   - leaf has Class.RequiresConfirmation: error (a redirect-driven
 //     flow cannot surface a confirm-token prompt).
 //
-// Auth: the validated OAuth state IS the authentication. The bridge
-// treats Class.AuthRequired leaves as authenticated when state
-// consumes successfully — no separate AuthFunc is needed.
+// Auth: the validated OAuth state IS the authentication. A callback
+// whose state consumes successfully is [EstablishedVerified], which
+// satisfies the bridge's kit/auth-required gate — no separate
+// AuthFunc is needed.
 func MountOAuth(b *Bridge, r *api.Router, providers []OAuthProvider, store StateStore, opts ...OAuthOption) error {
 	if b == nil {
 		return errors.New("cmdsurface: nil Bridge")
@@ -272,6 +273,7 @@ func newOAuthCallbackHandler(b *Bridge, leaf *Leaf, p OAuthProvider, store State
 		meta := Meta{
 			Surface:     SurfaceOAuthCB,
 			Caller:      p.Name,
+			Established: EstablishedVerified,
 			TraceID:     r.Header.Get("X-Request-ID"),
 			RequestedAt: time.Now(),
 		}

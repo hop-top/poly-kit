@@ -41,7 +41,7 @@ func TestRPCLegacyJSONClient_Invoke(t *testing.T) {
 	f.start()
 
 	req := connect.NewRequest(&cmdsurface.Invocation{
-		Path: []string{"secret"},
+		Path: []string{"echo"},
 		Meta: cmdsurface.Meta{Caller: "u1", RequestID: "r1"},
 	})
 	resp, err := legacyUnaryClient(f.ts.URL).CallUnary(context.Background(), req)

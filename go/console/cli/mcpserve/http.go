@@ -349,6 +349,7 @@ func (h *httpServing) callMeta(_ context.Context, req *mcp.CallToolRequest) cmds
 	}
 	if call.Verified {
 		meta.Caller, meta.Tenant = call.Principal, call.Tenant
+		meta.Established = cmdsurface.EstablishedVerified
 	}
 	if meta.RequestID == "" {
 		meta.RequestID = newRequestID()
