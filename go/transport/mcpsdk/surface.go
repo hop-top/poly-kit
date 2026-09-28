@@ -47,6 +47,11 @@ type config struct {
 	// the option was given at all.
 	origins     []string
 	originCheck bool
+	// protected, protectAuth back WithProtectedResource; protectSet
+	// records that the option was given at all.
+	protected   *api.ProtectedResource
+	protectAuth api.AuthFunc
+	protectSet  bool
 }
 
 // Option configures the surface built by NewServer / Handler / Mount.
@@ -220,6 +225,9 @@ func New(b *cmdsurface.Bridge, opts ...Option) (*Surface, error) {
 		return nil, errors.New("mcpsdk: nil bridge")
 	}
 	cfg := newConfig(opts...)
+	if err := checkProtected(cfg); err != nil {
+		return nil, err
+	}
 
 	so := &mcp.ServerOptions{}
 	if cfg.serverOptions != nil {
@@ -359,9 +367,9 @@ func (s *Surface) Handler() http.Handler {
 	}
 	if s.cfg.stateless {
 		opts.Stateless = true
-		return s.originGuard(mcp.NewStreamableHTTPHandler(getServer, &opts))
+		return s.originGuard(s.protect(mcp.NewStreamableHTTPHandler(getServer, &opts)))
 	}
-	return s.originGuard(newRevisionRouter(getServer, opts))
+	return s.originGuard(s.protect(newRevisionRouter(getServer, opts)))
 }
 
 // Mount registers the streamable HTTP handler on the router at the
@@ -375,6 +383,13 @@ func (s *Surface) Mount(r *api.Router) error {
 	h := s.Handler()
 	for _, method := range []string{http.MethodPost, http.MethodGet, http.MethodDelete} {
 		r.Handle(method, s.cfg.path, h.ServeHTTP)
+	}
+	if pr := s.cfg.protected; pr != nil {
+		// Every method the endpoint takes, and the preflight: the
+		// guard answers each at this path, a read with the document.
+		for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPost, http.MethodDelete} {
+			r.Handle(method, pr.MetadataPath(), h.ServeHTTP)
+		}
 	}
 	return nil
 }

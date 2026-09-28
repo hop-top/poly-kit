@@ -110,8 +110,13 @@ func WithConfirmationElicitation(key []byte) Option {
 // callMeta returns the provenance for req with the surface pinned.
 func (s *Surface) callMeta(ctx context.Context, req *mcp.CallToolRequest) cmdsurface.Meta {
 	var meta cmdsurface.Meta
-	if s.cfg.callMeta != nil {
+	switch {
+	case s.cfg.callMeta != nil:
 		meta = s.cfg.callMeta(ctx, req)
+	case s.cfg.protected != nil:
+		// Past WithProtectedResource's verifier: the caller it
+		// accepted.
+		meta, _ = verifiedMeta(headerOf(req))
 	}
 	meta.Surface = cmdsurface.SurfaceMCP
 	if meta.RequestedAt.IsZero() {

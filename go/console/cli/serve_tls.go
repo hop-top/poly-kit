@@ -53,6 +53,23 @@ type ServeTLS struct {
 	// apiKeys is the auth.mode: apikey verifier, whose store Serve
 	// closes when serving ends.
 	apiKeys *apiKeyVerifier
+	// resource describes the listener as an OAuth protected resource,
+	// nil when the bearer mode names no authorization server or no
+	// URL audience.
+	resource *api.ProtectedResource
+}
+
+// ProtectedResource describes the listener as an OAuth 2.0 protected
+// resource (RFC 9728), for the metadata document and the 401
+// challenge that names it: under jwt, jwks or oidc, when the mode
+// names an authorization server (oidc's issuer, or the block's
+// issuer) and an audience that is an absolute URL — the resource, the
+// first such audience. Nil otherwise.
+func (t *ServeTLS) ProtectedResource() *api.ProtectedResource {
+	if t == nil {
+		return nil
+	}
+	return t.resource
 }
 
 // Enabled reports whether the listener speaks TLS.
@@ -178,6 +195,7 @@ func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 				return nil, err
 			}
 			t.bearer = v.AuthFunc()
+			t.resource = res.protectedResource(mode)
 		}
 		return t, nil
 	}

@@ -28,6 +28,7 @@ is unacceptable or an HTTP-only probe must see 401/428 statuses.
 - let a person confirm a `kit/requires-confirmation` call through the client → `WithConfirmationElicitation`
 - serve it as a `<tool> serve` service instead of mounting by hand → `mcpserve.With` in `go/console/cli/mcpserve`
 - validate `Origin` when serving on a listener of your own → `WithOriginAllowlist` (kit's api service already checks it)
+- let MCP clients sign in with OAuth (MCP authorization spec) → `WithProtectedResource(pr, fn)`: protected resource metadata, 401 with `resource_metadata`, the verified caller as each call's identity
 
 ## Quick start
 

@@ -38,6 +38,7 @@ cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: v.AuthFunc()})
 - Claims: `api.Claims{Subject: sub, Tenant: <TenantClaim, default "tenant">, Scopes: api.ScopesOf(payload)}`.
 - A fixed key set selects by `kid`, and tries every key when the `kid` matches none (an external signer's own naming): the signature decides.
 - API keys are `kit_<id>_<secret>` (64-bit id, 256-bit secret, hex), read from `X-API-Key` else `Authorization: Bearer`; the store keeps a SHA-256 of the domain-separated id and secret, compared in constant time, and the principal, tenant, scopes, expiry and revocation.
+- Audiences compare exactly except for a trailing slash (RFC 8707 resource indicators and minted `aud` values disagree on it).
 - A remote key set is fetched on first use, again after `Refresh` (default `1h`), and on an unknown `kid` at most once per `MinRefresh` (default `1m`); a failed refetch keeps the last good set. URLs are `https`, or `http` to a loopback host. OIDC discovery must name the configured issuer exactly.
 
 ## Neighbours

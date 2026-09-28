@@ -941,7 +941,10 @@ from what each transport can prove about its caller:
   Without `Auth`, auth-required leaves are refused on HTTP. With it,
   every request is authenticated before the SDK sees it, and a refusal
   is `401` plus an `ErrAuthRefused` audit record, exactly as on the
-  api service.
+  api service. `services.mcp.auth.mode` supplies the verifier from
+  configuration; under a bearer mode that names an issuer and a URL
+  audience, the `401` names the protected resource metadata (see
+  [Bearer tokens](#bearer-tokens)).
 - **stdio.** An auth-required leaf runs. The peer is the process that
   spawned the service: it holds the only ends of the service's stdin
   and stdout, and the service runs with that process's user, because
@@ -1794,6 +1797,26 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   not positive.
 - A bearer token sent over plain HTTP beyond loopback can be replayed
   by anyone who sees it; serve such a listener with `tls`.
+- **Protected resource metadata (RFC 9728).** Under `jwt`, `jwks` or
+  `oidc`, when the block names an authorization server (`oidc`'s
+  `issuer`, or the block's `issuer`) and an `audience` that is an
+  absolute URL, the api service and the mcp service's HTTP transport
+  describe themselves as an OAuth protected resource: the resource is
+  the first such audience, which every token must already carry; the
+  document `{resource, authorization_servers, bearer_methods_supported}`
+  answers at `/.well-known/oauth-protected-resource` followed by the
+  resource's path, without a token, ahead of slot 12, CORS-open; and
+  every `401` carries `WWW-Authenticate: Bearer
+  resource_metadata="<origin>/.well-known/oauth-protected-resource<path>"`.
+  This is the MCP authorization flow at the edge; a client refused
+  there finds the authorization server. Without an issuer or a URL
+  audience there is no document and the challenge stays `Bearer`.
+  `mcpsdk.WithProtectedResource` and `cmdsurface.WithMCPProtectedResource`
+  give a hand-mounted surface the same answers, pinned by the wire
+  fixture `go/transport/api/testdata/protected-resource-wire.json`.
+- An audience compares exactly except for a trailing slash, as RFC 8707
+  resource indicators and the `aud` issuers mint from them disagree on
+  it routinely.
 
 ### API keys
 

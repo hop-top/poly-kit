@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"hop.top/kit/go/console/cli/svcconfig"
+	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/authn"
 )
 
@@ -131,6 +132,30 @@ func (t tlsResolver) bearerVerifier(r *Root, mode string) (*authn.Verifier, erro
 		return authn.NewOIDC(opts.Issuer, remote, opts)
 	}
 	return nil, fmt.Errorf("%s: %q is not a bearer mode", svcconfig.Key(t.svc, authBlock, "mode"), mode)
+}
+
+// protectedResource is the OAuth protected resource a bearer mode
+// describes: its authorization server — oidc's issuer, else the
+// block's issuer — and its first audience that is an absolute http(s)
+// URL, which the verifier already requires every token to carry. Nil
+// when either is missing: a client refused there has nowhere to go.
+func (t tlsResolver) protectedResource(mode string) *api.ProtectedResource {
+	block := ""
+	for _, m := range authModes {
+		if m.mode == mode {
+			block = m.block
+		}
+	}
+	issuer, _ := t.str(block, "issuer")
+	if issuer == "" {
+		return nil
+	}
+	for _, aud := range t.list(block, "audience") {
+		if pr, err := api.NewProtectedResource(aud, []string{issuer}, nil); err == nil {
+			return pr
+		}
+	}
+	return nil
 }
 
 // jwtVerifier builds the auth.mode: jwt verifier: the tool's identity

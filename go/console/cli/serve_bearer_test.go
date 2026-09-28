@@ -348,3 +348,42 @@ func TestServeBearerKeyFiles(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, none, "no bearer mode, no verifier")
 }
+
+// TestAPIProtectedResourceMetadata pins RFC 9728 on the api service:
+// under oidc with a URL audience, the metadata document answers
+// without a token and every 401 names it; with an audience that is not
+// a URL there is no document and the challenge is plain Bearer.
+func TestAPIProtectedResourceMetadata(t *testing.T) {
+	srv, _ := jwksServer(t)
+	r := bearerRoot(t, map[string]any{
+		"services.api.auth.mode":          "oidc",
+		"services.api.auth.oidc.issuer":   srv.URL,
+		"services.api.auth.oidc.audience": []string{"kit-api", "https://api.example.com/v1"},
+	}, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
+	base, stop := serveAPI(t, r)
+	defer stop()
+
+	resp, body := get(t, base+"/.well-known/oauth-protected-resource/v1", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(body, &doc))
+	assert.Equal(t, "https://api.example.com/v1", doc["resource"], "the first URL audience")
+	assert.Equal(t, []any{srv.URL}, doc["authorization_servers"])
+
+	resp, _ = get(t, base+"/v1/commands/list", nil)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	assert.Equal(t, `Bearer resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/v1"`,
+		resp.Header.Get("WWW-Authenticate"))
+
+	r2 := bearerRoot(t, map[string]any{
+		"services.api.auth.mode":          "oidc",
+		"services.api.auth.oidc.issuer":   srv.URL,
+		"services.api.auth.oidc.audience": "kit-api",
+	}, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
+	base2, stop2 := serveAPI(t, r2)
+	defer stop2()
+	resp, _ = get(t, base2+"/v1/commands/list", nil)
+	assert.Equal(t, "Bearer", resp.Header.Get("WWW-Authenticate"))
+	resp, _ = get(t, base2+"/.well-known/oauth-protected-resource", nil)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, "no document without a URL audience")
+}

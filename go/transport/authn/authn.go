@@ -178,16 +178,16 @@ func (v *Verifier) Verify(ctx context.Context, raw string) (*Token, error) {
 	if std.Expiry == nil {
 		return nil, invalid("no exp: a token must expire")
 	}
-	exp := jwt.Expected{Issuer: v.opts.Issuer, AnyAudience: v.opts.Audience, Time: v.opts.now()}
+	exp := jwt.Expected{Issuer: v.opts.Issuer, Time: v.opts.now()}
 	if err := std.ValidateWithLeeway(exp, v.opts.skew()); err != nil {
-		switch {
-		case errors.Is(err, jwt.ErrInvalidIssuer):
+		if errors.Is(err, jwt.ErrInvalidIssuer) {
 			return nil, invalid("issuer %q is not %q", std.Issuer, v.opts.Issuer)
-		case errors.Is(err, jwt.ErrInvalidAudience):
-			return nil, invalid("audience %v does not include %s", []string(std.Audience),
-				strings.Join(v.opts.Audience, " or "))
 		}
 		return nil, invalid("%v", strings.TrimPrefix(err.Error(), "go-jose/go-jose/jwt: validation failed, "))
+	}
+	if len(v.opts.Audience) > 0 && !audienceMatches(std.Audience, v.opts.Audience) {
+		return nil, invalid("audience %v does not include %s", []string(std.Audience),
+			strings.Join(v.opts.Audience, " or "))
 	}
 	if std.Subject == "" {
 		return nil, invalid("no sub: the token names no principal")
@@ -251,6 +251,23 @@ func BearerToken(r *http.Request) (string, error) {
 		return "", fmt.Errorf("%w: the Authorization header is not a bearer token", ErrNoToken)
 	}
 	return strings.TrimSpace(tok), nil
+}
+
+// audienceMatches reports whether a token's aud names one of want.
+// Values compare exactly, except that a trailing slash is ignored: an
+// RFC 8707 resource indicator and the aud an issuer mints from it
+// disagree on it routinely (the MCP SDK's oauthex.MatchesResource
+// relaxes the same way), while scheme, host, port and the rest of the
+// path stay strict.
+func audienceMatches(aud jwt.Audience, want []string) bool {
+	for _, w := range want {
+		for _, a := range aud {
+			if a == w || strings.TrimSuffix(a, "/") == strings.TrimSuffix(w, "/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (o Options) tenantClaim() string {

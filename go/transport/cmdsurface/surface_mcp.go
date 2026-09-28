@@ -81,6 +81,12 @@ type mcpConfig struct {
 
 	// maxBody backs WithMCPMaxBodyBytes; zero is the kit default.
 	maxBody int64
+
+	// protected / protectAuth back WithMCPProtectedResource;
+	// protectSet records that the option was given at all.
+	protected   *api.ProtectedResource
+	protectAuth api.AuthFunc
+	protectSet  bool
 }
 
 // MCPOption configures the MCP surface mounted by MountMCP.
@@ -223,6 +229,10 @@ func mountMCP(b *Bridge, r *api.Router, cfg mcpConfig) error {
 	if cfg.confirmKeySet && len(cfg.confirmKey) == 0 {
 		return errors.New("cmdsurface: WithMCPConfirmationKey: empty key")
 	}
+	if cfg.protectSet && (cfg.protected == nil || cfg.protectAuth == nil) {
+		return errors.New("cmdsurface: WithMCPProtectedResource needs a resource and a verifier")
+	}
+	guard := mcpProtect(cfg)
 
 	legacy := &mcpHandler{b: b, cfg: cfg}
 
@@ -230,25 +240,32 @@ func mountMCP(b *Bridge, r *api.Router, cfg mcpConfig) error {
 	case enabled.legacy && !enabled.modern:
 		// Legacy only: mount today's handler directly. The dispatcher
 		// is not in the path; markers are ignored exactly as today.
-		r.Handle(http.MethodPost, cfg.path, mcpBodyLimit(b, cfg.maxBody, legacy.serveHTTP))
+		r.Handle(http.MethodPost, cfg.path, mcpBodyLimit(b, cfg.maxBody, guard(legacy.serveHTTP)))
 	case enabled.modern && !enabled.legacy:
 		// Modern only: every request routes to the modern handler; no
 		// special-casing of initialize (D2 does not apply when legacy
 		// is not enabled at all).
 		modern := newMCPModernHandler(b, cfg)
-		r.Handle(http.MethodPost, cfg.path, mcpBodyLimit(b, cfg.maxBody, func(w http.ResponseWriter, req *http.Request) {
+		r.Handle(http.MethodPost, cfg.path, mcpBodyLimit(b, cfg.maxBody, guard(func(w http.ResponseWriter, req *http.Request) {
 			modernOnlyServeHTTP(modern, w, req)
-		}))
-		r.Handle(http.MethodGet, cfg.path, mcp405Handler)
-		r.Handle(http.MethodDelete, cfg.path, mcp405Handler)
+		})))
+		r.Handle(http.MethodGet, cfg.path, guard(mcp405Handler))
+		r.Handle(http.MethodDelete, cfg.path, guard(mcp405Handler))
 	default:
 		// Both enabled (default): the era dispatcher decides per
 		// request (D1-D4).
 		modern := newMCPModernHandler(b, cfg)
 		d := &mcpDispatcher{legacy: legacy, modern: modern}
-		r.Handle(http.MethodPost, cfg.path, mcpBodyLimit(b, cfg.maxBody, d.ServeHTTP))
-		r.Handle(http.MethodGet, cfg.path, mcp405Handler)
-		r.Handle(http.MethodDelete, cfg.path, mcp405Handler)
+		r.Handle(http.MethodPost, cfg.path, mcpBodyLimit(b, cfg.maxBody, guard(d.ServeHTTP)))
+		r.Handle(http.MethodGet, cfg.path, guard(mcp405Handler))
+		r.Handle(http.MethodDelete, cfg.path, guard(mcp405Handler))
+	}
+	if cfg.protected != nil {
+		// The metadata document: the guard answers every method the
+		// endpoint takes, and the preflight, at this path.
+		for _, m := range []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPost, http.MethodDelete} {
+			r.Handle(m, cfg.protected.MetadataPath(), guard(http.NotFound))
+		}
 	}
 	return nil
 }

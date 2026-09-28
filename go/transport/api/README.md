@@ -22,6 +22,7 @@ adopter-driven mounting of arbitrary surfaces is
 - stream a long-running command's output as it is written → `<route>/stream`, server-sent events, same method and parameters
 - keep browser pages out (DNS rebinding, cross-site writes) → `api.HostCheck`, `api.ListenerHosts`, `api.OriginCheck`; on by default on kit's HTTP listeners (`api`, `mcp`, `rpc`)
 - set hardening response headers → `api.SecurityHeaders`
+- describe an endpoint as an OAuth protected resource (RFC 9728, the MCP authorization flow) → `api.NewProtectedResource`, then `pr.Guard(fn)`: the metadata document answers publicly, every 401 names it
 
 ## Quick start
 

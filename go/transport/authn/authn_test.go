@@ -160,6 +160,8 @@ func TestIssuerAndAudienceAreChecked(t *testing.T) {
 		{"any audience", authn.Options{Audience: []string{"nope", "other"}}, ""},
 		{"wrong issuer", authn.Options{Issuer: "https://elsewhere.test"}, `issuer "https://issuer.test" is not "https://elsewhere.test"`},
 		{"wrong audience", authn.Options{Audience: []string{"billing"}}, "does not include billing"},
+		{"audience trailing slash", authn.Options{Audience: []string{"kit-api/"}}, ""},
+		{"audience path is strict", authn.Options{Audience: []string{"kit-api/mcp"}}, "does not include"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			v, err := authn.NewJWT(keys, c.opts)

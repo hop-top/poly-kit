@@ -240,6 +240,39 @@ mcpserve.With(mcpserve.Config{
 `Auth` is an `api.AuthFunc`, the type `APIConfig.Auth` takes;
 [secure-remote-serving.md](secure-remote-serving.md) walks it.
 
+### Let MCP clients sign in (OAuth)
+
+An MCP client that speaks the MCP authorization spec finds your
+authorization server by itself when the service names it. Configure
+the provider and the endpoint's own URL as the audience:
+
+```yaml
+services:
+  mcp:
+    addr: 0.0.0.0:8081
+    auth:
+      mode: oidc
+      oidc:
+        issuer: https://login.example.com/
+        audience: https://mcp.example.com/mcp   # the endpoint URL clients use
+```
+
+A request without a valid token is answered `401` with
+`WWW-Authenticate: Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"`,
+and that document (RFC 9728) names the resource and the issuer, so the
+client runs the sign-in and retries with a token issued for this
+endpoint. A token for any other audience is refused. `jwks` and `jwt`
+do the same when their block names an `issuer`; with no issuer or no
+URL audience there is no document, and the challenge is plain
+`Bearer`. stdio is unchanged: the spawning process is the trust.
+
+Mounting the surface yourself, `mcpsdk.WithProtectedResource(pr, fn)`
+does the same in front of `mcpsdk.Mount` or `Handler`, with `pr` from
+`api.NewProtectedResource` and `fn` a verifier from
+`go/transport/authn`; the caller it verifies becomes each call's
+identity. The deprecated `MountMCP` takes
+`cmdsurface.WithMCPProtectedResource` with the same arguments.
+
 ### Positional arguments
 
 A tool can only carry the positional arguments its command declares.

@@ -417,8 +417,15 @@ func (a *apiService) buildHandler(ctx context.Context) (_ http.Handler, err erro
 	guards := plane.guards()
 	if a.authenticates() {
 		// Auth, HTTP slot 12: every route, the documents included.
-		guards = append(guards, api.Auth(a.authFunc(),
-			api.OnAuthRefused(cmdsurface.ProjectionAuthRefusal(bridge))))
+		// Under a bearer mode that describes an OAuth protected
+		// resource, its metadata document answers ahead of Auth and
+		// every refusal names it (RFC 9728).
+		refused := api.OnAuthRefused(cmdsurface.ProjectionAuthRefusal(bridge))
+		if pr := a.tls.ProtectedResource(); pr != nil {
+			guards = append(guards, pr.Guard(a.authFunc(), refused))
+		} else {
+			guards = append(guards, api.Auth(a.authFunc(), refused))
+		}
 	}
 
 	opts := []api.RouterOption{

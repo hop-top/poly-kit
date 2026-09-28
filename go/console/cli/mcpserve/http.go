@@ -192,7 +192,18 @@ func (h *httpServing) handler(mux *http.ServeMux) (http.Handler, error) {
 	auth := h.svc.auth()
 	authed := auth != nil
 	if authed {
-		inner = append(inner, api.Auth(auth, api.OnAuthRefused(h.auditAuthRefusal)))
+		// Under a bearer mode that describes an OAuth protected
+		// resource, the MCP authorization flow: the metadata document
+		// answers ahead of Auth, and every 401 names it in
+		// WWW-Authenticate (resource_metadata), so a client can find
+		// the authorization server. The verifier binds the token's
+		// audience to the resource.
+		refused := api.OnAuthRefused(h.auditAuthRefusal)
+		if pr := h.svc.tls.ProtectedResource(); pr != nil {
+			inner = append(inner, pr.Guard(auth, refused))
+		} else {
+			inner = append(inner, api.Auth(auth, refused))
+		}
 	}
 	inner = append(inner, mcpCallRecorder(authed))
 
