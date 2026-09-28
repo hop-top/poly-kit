@@ -4,7 +4,7 @@ Go CLI template entry points: the kit root and the commands mounted on it.
 
 ## What the rendered tier-3 project guarantees
 
-`root.go` builds the root with `cli.New` and three options, in this
+`root.go` builds the root with `cli.New` and four options, in this
 order:
 
 | Option | Why it is there |
@@ -12,6 +12,7 @@ order:
 | `cli.WithStatus(cli.StatusConfig{})` | every kit root is validated to carry the reserved `status` verb; without it `Execute` refuses to run |
 | `cli.WithAPI(cli.APIConfig{})` | registers the `api` service: the command tree over REST on `127.0.0.1:8080`, discovery at `/v1/commands`, an OpenAPI document; enabled by default under a bare `serve` |
 | `cli.WithSocket(cli.SocketConfig{})` | registers the `socket` service: the same tree over an owner-only Unix socket; registered but not enabled, per the serve contract's default |
+| `mcpserve.With(mcpserve.Config{})` | registers the `mcp` service: the same tree as MCP tools over streamable HTTP on `127.0.0.1:8081/mcp`, or over stdio with `--stdio`; registered but not enabled. It is the one option that links the MCP SDK (about 2 MB stripped); removing it and its import drops the SDK |
 
 It then mounts `spec` with `toolspec/cli.RegisterSpecCommand`: the
 manifest agents read, and `spec coverage`, which lists commands that
@@ -36,7 +37,7 @@ function — the convention every command file in this package follows
 — and carries the annotations kit validates at startup (`Short`,
 `Long`, `kit/side-effect`, `kit/idempotent`, `kit/top-level-verb`)
 plus an output schema, so it answers in `data` over REST and the
-socket.
+socket, and in `structuredContent` over MCP.
 
 ## What gates a change here
 
@@ -56,8 +57,12 @@ kit, and drives the binary:
 flags, `serve api` on loopback,
 discovery reasons (`unauthorized-destructive`, `self-hosting`,
 `management-only`), a read over REST answering in `data`, the 404 on
-a destructive route, the exit-2 refusal of `--addr 0.0.0.0:0`, and a
-socket path reaching the socket service through `-c`. Run it after
+a destructive route, the exit-2 refusal of `--addr 0.0.0.0:0`, a
+socket path reaching the socket service through `-c`, an MCP session
+over stdio spawned from the README's host entry, `serve mcp` on its
+own loopback listener, and the exit-2 refusal of
+`--mcp-addr 0.0.0.0:0`. The README's `serve --list` table is compared
+with the binary's output. Run it after
 every edit to a `.tmpl` here, then `make builtins-sync` so the
 embedded mirror under `internal/template/builtins/` matches.
 

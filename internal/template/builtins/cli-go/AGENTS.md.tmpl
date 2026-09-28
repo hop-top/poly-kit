@@ -19,16 +19,25 @@ Socket only:
 {{.Name}} serve socket --socket /tmp/{{.Name}}.sock
 ```
 
-Both, under one lifecycle:
+MCP only — over HTTP, or over stdio when you spawn the process
+yourself:
+
+```sh
+{{.Name}} serve mcp --mcp-addr 127.0.0.1:8081
+{{.Name}} serve mcp --stdio
+```
+
+REST and the socket, under one lifecycle:
 
 ```sh
 {{.Name}} serve --addr 127.0.0.1:8080 --enable socket --socket /tmp/{{.Name}}.sock
 ```
 
 A bare `{{.Name}} serve` starts every *enabled* service. This tool
-registers two: `api`, enabled by default, and `socket`, registered but
-off — so a bare `serve` gives you REST alone. Turn the socket on for
-that run with `--enable socket`, or persistently in the config file:
+registers three: `api`, enabled by default, and `socket` and `mcp`,
+registered but off — so a bare `serve` gives you REST alone. Turn the
+socket on for that run with `--enable socket`, or persistently in the
+config file:
 
 ```yaml
 services:
@@ -41,7 +50,8 @@ Run `{{.Name}} serve --list` to see which services are configured and
 enabled before you start.
 
 `serve api` binds loopback and refuses a non-loopback address without
-`--insecure-remote`. The socket is mode `0600`. Whichever form you
+`--insecure-remote`; `serve mcp` binds `127.0.0.1:8081` by the same
+rule. The socket is mode `0600`. Whichever form you
 use, each service prints its resolved address on its
 `ready_reported` line under `address=`; wait for that rather than for
 a banner.
@@ -184,6 +194,34 @@ The reply is an envelope. Branch on `ok`:
 An unknown flag over the socket is **not** a wire error: you get
 `ok: true` with `exit_code: 2` and a JSON usage error in
 `result.stderr`. Check `exit_code`, not just `ok`.
+
+## Invoke over MCP
+
+Every command discovery would mark `invocable: true` is one MCP tool,
+named by its path joined with dots (`["item","list"]` is `item.list`).
+Every command it would withhold is absent from `tools/list` — calling
+one is an unknown-tool error, not a refusal — so read `tools/list` as
+the whole of what you may call. Over HTTP the endpoint is the
+`address=` on the mcp service's `ready_reported` line
+(`http://127.0.0.1:8081/mcp` by default).
+
+A tool's arguments are the command's flags, keyed by long name with no
+dashes, as its `inputSchema` lists them. Positional arguments have no
+MCP form.
+
+A refusal is a tool result with `isError: true`, not a protocol error.
+Branch on its text:
+
+| Text | Meaning | Do |
+|------|---------|----|
+| `authentication required` | the command needs a verified caller; this HTTP endpoint has no authenticator | Ask a human. Over stdio the same command runs. |
+| `confirmation required` | the command needs a person's approval and your client cannot ask one | Retry from a client that supports elicitation, or send `X-Confirm-Token` over HTTP. |
+| `confirmation declined` | the person said no | Do not retry. |
+
+A command with a schema answers in `structuredContent`; parse that
+before the text block. A command that exits non-zero comes back with
+`isError: true` too, its stderr in a second text block prefixed
+`[stderr] `; MCP carries no exit code, so read the message.
 
 ## Read the result, not the output
 

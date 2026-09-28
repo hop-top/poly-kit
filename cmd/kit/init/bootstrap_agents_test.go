@@ -69,7 +69,10 @@ func TestBootstrap_CLIGo_AgentsFragment(t *testing.T) {
 			"demo serve --addr 127.0.0.1:8080 --enable socket --socket /tmp/demo.sock")
 		assert.Contains(t, got, "pick ONE per process")
 		assert.Contains(t, got, "a bare `serve` gives you REST alone",
-			"socket is registered but off, so the doc must not promise both")
+			"socket and mcp are registered but off, so the doc must not promise them")
+		assert.Contains(t, got, "registers three", "api, socket and mcp")
+		assert.Contains(t, got, "demo serve mcp --stdio")
+		assert.Contains(t, got, "demo serve mcp --mcp-addr 127.0.0.1:8081")
 		assert.NotContains(t, got, "{{", "no unrendered template action may survive")
 		assert.NotContains(t, got, ".Name", "the variable must be substituted, not named")
 
@@ -88,6 +91,13 @@ func TestBootstrap_CLIGo_AgentsFragment(t *testing.T) {
 			"DENIED", "UNAUTHENTICATED", "INVALID", "INTERNAL",
 		} {
 			assert.Contains(t, got, code, "every socket wire code must be documented")
+		}
+		// The mcp service's refusals are isError tool results; these
+		// are their texts, pinned beside the service in mcpsdk.
+		for _, text := range []string{
+			"authentication required", "confirmation required", "confirmation declined",
+		} {
+			assert.Contains(t, got, "| `"+text+"` |", "every MCP refusal text must be documented")
 		}
 		assert.Contains(t, got, "/v1/commands", "discovery is the entry point")
 		assert.Contains(t, got, "/openapi.json")

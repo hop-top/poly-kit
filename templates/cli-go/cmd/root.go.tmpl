@@ -3,10 +3,10 @@
 // The root carries the kit global flags (--format, --quiet, --no-color,
 // -c/--config, -v/--verbose, ...), the reserved `status` and `spec`
 // verbs (`spec coverage` is the side-effect annotation gate), and the
-// `serve` supervisor with the built-in api and socket services
-// registered. Every command added to root.Cmd is reachable
-// from the shell and, under `serve`, over REST and the Unix socket
-// behind the same safety policy — there is nothing to mount.
+// `serve` supervisor with the built-in api, socket and mcp services
+// registered. Every command added to root.Cmd is reachable from the
+// shell and, under `serve`, over REST, the Unix socket and MCP behind
+// the same safety policy — there is nothing to mount.
 package cmd
 
 import (
@@ -19,6 +19,7 @@ import (
 
 	speccli "hop.top/kit/go/ai/toolspec/cli"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/mcpserve"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/config"
 	"{{.Module}}/internal/version"
@@ -51,6 +52,14 @@ func newRoot() *cli.Root {
 		// Registered but not enabled; `serve socket` starts it, or set
 		// services.socket.enabled in the config file.
 		cli.WithSocket(cli.SocketConfig{}),
+		// `serve mcp`: the same tree as MCP tools, one per command, on
+		// its own listener at http://127.0.0.1:8081/mcp, or over stdio
+		// for a desktop host that spawns `{{.Name}} serve mcp --stdio`.
+		// Registered but not enabled, like the socket. It links the
+		// MCP SDK, which adds about 2 MB to a stripped release binary
+		// (3 MB with symbols); delete this option and its import to
+		// drop both.
+		mcpserve.With(mcpserve.Config{}),
 	)
 	// `spec`: the machine-readable manifest agents read, and `spec
 	// coverage`, which lists every command that declares no
@@ -89,7 +98,8 @@ func ExitCode(err error) int {
 // `-c key=value` overrides one key; both come from kit's own flag.
 //
 // Everything `serve` reads — services.api.addr, services.api.enabled,
-// services.socket.path, ... — resolves through here.
+// services.socket.path, services.mcp.transport, ... — resolves through
+// here.
 func loadConfig(r *cli.Root) error {
 	if err := config.BindEnv(r.Viper, "{{.NameUpper}}"); err != nil {
 		return err

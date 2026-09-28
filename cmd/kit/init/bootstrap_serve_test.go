@@ -5,8 +5,9 @@
 // rendered module at this checkout of kit, compiles it, and drives the
 // binary: `serve --list`, `serve api` on loopback, discovery, a read
 // over REST, the destructive ceiling, the unauthenticated-remote
-// refusal, and the socket through the config file. Every assertion is
-// against the built binary, so an exit code is the process's own.
+// refusal, the socket through the config file, and the mcp service
+// over stdio and HTTP. Every assertion is against the built binary, so
+// an exit code is the process's own.
 //
 // Unlike TestBootstrap_CLIGo_Builds this test does not skip on a build
 // failure: a template that does not compile is exactly the defect it
@@ -29,10 +30,12 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -138,13 +141,25 @@ func isolatedEnv(t *testing.T) []string {
 	)
 }
 
-var readyAddr = regexp.MustCompile(`service=api.*address=(\S+)|address=(\S+).*service=api`)
+// readyAddrOf matches one service's readiness line and captures the
+// address it carries, in either field order.
+func readyAddrOf(service string) *regexp.Regexp {
+	return regexp.MustCompile(`service=` + service + `\b.*address=(\S+)|address=(\S+).*service=` + service + `\b`)
+}
 
 // serveRendered starts `<bin> serve <args>` in the background and waits
 // for the api service's readiness line on stderr, returning the bound
 // address and a stop func that sends SIGINT and reports the exit code.
 func serveRendered(t *testing.T, bin string, args ...string) (addr string, stop func() int) {
 	t.Helper()
+	return serveRenderedUntil(t, bin, "api", args...)
+}
+
+// serveRenderedUntil is serveRendered waiting on the named service's
+// readiness line instead of the api's.
+func serveRenderedUntil(t *testing.T, bin, service string, args ...string) (addr string, stop func() int) {
+	t.Helper()
+	readyAddr := readyAddrOf(service)
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, bin, append([]string{"serve"}, args...)...)
 	cmd.Env = isolatedEnv(t)
@@ -173,7 +188,7 @@ func serveRendered(t *testing.T, bin string, args ...string) (addr string, stop 
 			if !ok {
 				cancel()
 				_ = cmd.Wait()
-				t.Fatalf("serve exited before the api reported ready:\n%s", strings.Join(trace, "\n"))
+				t.Fatalf("serve exited before %s reported ready:\n%s", service, strings.Join(trace, "\n"))
 			}
 			trace = append(trace, line)
 			if !strings.Contains(line, "ready_reported") {
@@ -185,7 +200,7 @@ func serveRendered(t *testing.T, bin string, args ...string) (addr string, stop 
 		case <-deadline:
 			cancel()
 			_ = cmd.Wait()
-			t.Fatalf("api never reported ready:\n%s", strings.Join(trace, "\n"))
+			t.Fatalf("%s never reported ready:\n%s", service, strings.Join(trace, "\n"))
 		}
 	}
 	// Keep draining so the child never blocks on a full pipe.
@@ -200,6 +215,50 @@ func serveRendered(t *testing.T, bin string, args ...string) (addr string, stop 
 		_ = cmd.Wait()
 		return cmd.ProcessState.ExitCode()
 	}
+}
+
+// readmeBlock returns the rendered README's text between the end of
+// start and the next occurrence of end.
+func readmeBlock(t *testing.T, project, start, end string) string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(project, "README.md"))
+	require.NoError(t, err)
+	_, after, found := strings.Cut(string(body), start)
+	require.True(t, found, "README has no %q", start)
+	block, _, found := strings.Cut(after, end)
+	require.True(t, found, "README block after %q is unterminated", start)
+	return block
+}
+
+// renderedMCPTools lists the tool names a session offers.
+func renderedMCPTools(ctx context.Context, t *testing.T, sess *mcp.ClientSession) []string {
+	t.Helper()
+	res, err := sess.ListTools(ctx, nil)
+	require.NoError(t, err)
+	names := make([]string, 0, len(res.Tools))
+	for _, tool := range res.Tools {
+		names = append(names, tool.Name)
+	}
+	return names
+}
+
+// lockedBuffer is a strings.Builder safe for a child's stderr copier
+// and the test to share.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }
 
 func httpGet(t *testing.T, url string) (int, []byte) {
@@ -270,13 +329,22 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		assert.Zero(t, rep.Unannotated)
 	})
 
-	t.Run("serve --list names api and socket", func(t *testing.T) {
+	t.Run("serve --list names api, socket and mcp", func(t *testing.T) {
 		stdout, stderr, code := runRendered(t, bin, "serve", "--list")
 		require.Equal(t, 0, code, stderr)
-		assert.Regexp(t, `(?m)^api\s`, stdout)
-		assert.Regexp(t, `(?m)^socket\s`, stdout)
+		// The README prints this table; only api is enabled out of the
+		// box, and nothing is ready when asked from the shell.
+		assert.Regexp(t, `(?m)^api\s+true\s+true\s+false\s*$`, stdout)
+		assert.Regexp(t, `(?m)^socket\s+false\s+false\s+false\s*$`, stdout)
+		assert.Regexp(t, `(?m)^mcp\s+false\s+false\s+false\s*$`, stdout)
 		assert.Less(t, strings.Index(stdout, "api"), strings.Index(stdout, "socket"),
 			"registration order: the template registers api before socket")
+		assert.Less(t, strings.Index(stdout, "socket"), strings.Index(stdout, "mcp"),
+			"registration order: the template registers socket before mcp")
+
+		// The README shows a fresh project's table verbatim.
+		assert.Equal(t, readmeBlock(t, project, "$ demo serve --list\n", "```"), stdout,
+			"README's serve --list table must be what the binary prints")
 	})
 
 	t.Run("serve --help carries the contract's flags", func(t *testing.T) {
@@ -285,10 +353,90 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		for _, flag := range []string{
 			"--list", "--enable", "--disable", "--ready-timeout", "--stop-timeout",
 			"--shutdown-timeout", "--addr", "--insecure-remote", "--socket",
+			"--stdio", "--mcp-addr",
 		} {
 			assert.Contains(t, help, flag)
 		}
-		assert.Contains(t, help, "Services: api, socket")
+		assert.Contains(t, help, "Services: api, socket, mcp")
+	})
+
+	t.Run("serve mcp --stdio answers a spawning host", func(t *testing.T) {
+		// What the README's desktop-host snippet does: spawn the tool,
+		// speak MCP on its stdin and stdout, close stdin to end. The
+		// SDK client rejects any stdout line that is not a protocol
+		// message, so the session working at all proves stdout is
+		// clean.
+		// Spawn exactly what the README's host entry names, with the
+		// built binary standing in for the command on PATH.
+		var hosts struct {
+			MCPServers map[string]struct {
+				Command string   `json:"command"`
+				Args    []string `json:"args"`
+			} `json:"mcpServers"`
+		}
+		snippet := readmeBlock(t, project, "```json\n{\n  \"mcpServers\"", "```")
+		require.NoError(t, json.Unmarshal([]byte(`{
+  "mcpServers"`+snippet), &hosts), snippet)
+		entry, ok := hosts.MCPServers["demo"]
+		require.True(t, ok, "the README's host entry is keyed by the tool's name")
+		assert.Equal(t, "demo", entry.Command)
+		require.Equal(t, []string{"serve", "mcp", "--stdio"}, entry.Args)
+
+		// A host that never gets an answer must fail the test, not hang
+		// it until the suite's deadline.
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+
+		cmd := exec.Command(bin, entry.Args...)
+		cmd.Env = isolatedEnv(t)
+		var stderr lockedBuffer
+		cmd.Stderr = &stderr
+		client := mcp.NewClient(&mcp.Implementation{Name: "desktop-host", Version: "0"}, nil)
+		sess, err := client.Connect(ctx,
+			&mcp.CommandTransport{Command: cmd, TerminateDuration: 10 * time.Second}, nil)
+		require.NoError(t, err, stderr.String())
+
+		tools := renderedMCPTools(ctx, t, sess)
+		assert.Contains(t, tools, "hello", "every invocable command is a tool")
+		for _, withheld := range []string{"nuke", "serve", "status"} {
+			assert.NotContains(t, tools, withheld,
+				"the tool list carries only what may run: %s is withheld", withheld)
+		}
+
+		res, err := sess.CallTool(ctx, &mcp.CallToolParams{Name: "hello", Arguments: map[string]any{}})
+		require.NoError(t, err)
+		require.False(t, res.IsError)
+		data, err := json.Marshal(res.StructuredContent)
+		require.NoError(t, err)
+		assert.Contains(t, string(data), "Hello, world!",
+			"the sample declares its schema, so it answers in structured content")
+
+		require.NoError(t, sess.Close())
+		require.NotNil(t, cmd.ProcessState)
+		assert.Equal(t, 0, cmd.ProcessState.ExitCode(),
+			"end of input is a clean stop:\n%s", stderr.String())
+		assert.Contains(t, stderr.String(), "service=mcp", "the lifecycle trace goes to stderr")
+	})
+
+	t.Run("serve mcp over HTTP binds its own loopback listener", func(t *testing.T) {
+		endpoint, stop := serveRenderedUntil(t, bin, "mcp", "mcp", "--mcp-addr", "127.0.0.1:0")
+		assert.Regexp(t, `^http://127\.0\.0\.1:\d+/mcp$`, endpoint)
+
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+		client := mcp.NewClient(&mcp.Implementation{Name: "http-host", Version: "0"}, nil)
+		sess, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: endpoint}, nil)
+		require.NoError(t, err)
+		assert.Contains(t, renderedMCPTools(ctx, t, sess), "hello")
+		_ = sess.Close()
+
+		assert.Equal(t, 0, stop(), "a signal-initiated stop is a clean stop")
+	})
+
+	t.Run("unauthenticated remote mcp is refused at exit 2", func(t *testing.T) {
+		_, stderr, code := runRendered(t, bin, "serve", "mcp", "--mcp-addr", "0.0.0.0:0")
+		assert.Equal(t, 2, code, stderr)
+		assert.Contains(t, stderr, "services.mcp.insecure_remote")
 	})
 
 	t.Run("serve api on loopback projects the tree", func(t *testing.T) {
