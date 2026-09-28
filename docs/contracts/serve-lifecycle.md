@@ -588,9 +588,14 @@ of any of them.
   (`Policy.Allowed`), then the permission gate (`PermissionFunc`).
   The invocability gate is the bridge's, so a transport that exposed
   the whole tree cannot admit an interactive leaf; the runner's own
-  refusal is a backstop. Over REST such commands are withheld at
-  mount, so the route is absent (`404`) and discovery carries the
-  reason; over the socket the answer is `NOT_INVOCABLE`.
+  refusal is a backstop. The REST projection (the api service's
+  `/v1/commands`, `cmdsurface.MountProjection`) withholds such
+  commands at mount, so the route is absent (`404`) and discovery
+  carries the reason. The deprecated `cmdsurface.MountREST` mounts
+  every leaf the bridge admits, interactive ones included, and the
+  bridge refuses the call (`404 not_invocable`); a self-hosting
+  command is never a leaf, so it has no route there either. Over the
+  socket the answer is `NOT_INVOCABLE`.
   Confirmation is not a bridge gate: it is the command's own flag and
   its own refusal, an exit code in the Result.
 - The permission gate MUST run on every surface, inside the bridge,
@@ -1348,7 +1353,7 @@ and `--no-auth` flags, and exits the same way.
 
 ### What changed observably
 
-Three differences are visible to an adopter who upgrades without
+Eight differences are visible to an adopter who upgrades without
 changing a line:
 
 1. **`serve` gained children and flags.** It accepts an optional
