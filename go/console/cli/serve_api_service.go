@@ -127,6 +127,9 @@ func (a *apiService) Validate() error {
 	if _, err := a.maxBodyBytes(); err != nil {
 		return err
 	}
+	if err := a.validateCompression(); err != nil {
+		return err
+	}
 	// The permission gate is built from --policy at start; a --policy
 	// that cannot be loaded is a configuration error, and belongs
 	// here rather than a second later as a start failure. A root
@@ -336,7 +339,7 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	a.mu.Unlock()
 
 	// HTTP-plane slots 1-6 wrap everything, health probes included.
-	// Slots 8 on (Host/Origin, body limit, auth) go in mws, inside
+	// Slots 8 on (Host/Origin, body limit, compression, auth) go in mws, inside
 	// the router, where probes never reach.
 	edge := []api.Middleware{
 		api.RequestID(),
@@ -350,6 +353,8 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 		// Body limit, HTTP slot 10: after Host/Origin and CORS, before compression and Auth.
 		a.bodyLimit(bridge),
 	}
+	// Compression: HTTP-plane slot 11, after the body limit, before auth.
+	mws = append(mws, a.compressionMiddleware()...)
 	if a.authenticates() {
 		mws = append(mws, api.Auth(a.cfg.Auth,
 			api.OnAuthRefused(cmdsurface.ProjectionAuthRefusal(bridge))))

@@ -4,9 +4,8 @@ Wire-level reference for
 [`go/transport/api`](../../../go/transport/api/README.md): bus
 integration topics, the REST command projection (route shape,
 parameters, discovery, response body, exit-code mapping, refusals),
-auth claims, request provenance, transport guards, and the OpenAPI
-document. The task
-walkthrough is
+auth claims, request provenance, transport guards, the OpenAPI
+document, and response compression. The task walkthrough is
 [expose-cli-over-rest.md](../guides/expose-cli-over-rest.md).
 
 ## Bus integration
@@ -587,6 +586,64 @@ An adopter route registered at exactly a probe path — through
 `APIConfig.Handlers` or `Resources` — wins, and kit answers only the
 probe the adopter left alone. A subtree mount at `/` does not claim
 the probe paths.
+
+## Response compression
+
+`api.Compress()` encodes response bodies with zstd or gzip, whichever
+the request's `Accept-Encoding` ranks higher (zstd on a tie), and
+sends identity when it accepts neither. The api service puts it in
+its middleware chain after the body limit and before auth, and only
+when enabled:
+
+```yaml
+services:
+  api:
+    compression:
+      enabled: true      # default false, on loopback and beyond it
+      min_bytes: 1024    # default api.DefaultCompressMinBytes
+```
+
+Either key may be set once for every service under
+`services.all.compression`; the service's own key wins. Compression
+is off by default: a loopback client gains nothing, and a reverse
+proxy in front of the service compresses for the clients beyond it.
+An unknown key in either block, or a negative `min_bytes`, is refused
+at validation, exit `2`.
+
+A response is encoded only when all of these hold:
+
+| Condition | Why |
+|---|---|
+| Content-Type on the allowlist: JSON, YAML, XML (with `+json`, `+yaml`, `+xml` suffixes, so the OpenAPI and problem types), every `text/*` except `text/event-stream` | binary and pre-compressed bodies do not shrink |
+| At least `min_bytes`, from `Content-Length` or what was written | a body that fits one packet gains nothing |
+| The handler set no `Content-Encoding` or `Content-Range` | a body is encoded once |
+| The request is not `HEAD` | a `HEAD` answer carries identity headers |
+
+Every response it considers carries `Vary: Accept-Encoding`. An
+encoded response drops the handler's `Content-Length` and
+`Accept-Ranges`, which no longer describe the body.
+
+Passed through untouched, with no `Vary`:
+
+- WebSocket upgrades and `CONNECT`.
+- Event streams: a request that accepts `text/event-stream`, and any
+  response whose Content-Type is `text/event-stream`. Every flush,
+  including the one that sends the headers before the first event,
+  reaches the client at once.
+- Connect, gRPC and gRPC-Web requests, which negotiate compression
+  per message themselves. On the RPC server that is
+  `cmdsurface.WithRPCCompression(minBytes)`, off unless passed to
+  `MountRPC`.
+
+A streaming response of an allowlisted type is not held back:
+`Flush` settles the decision and flushes the encoder and the
+connection. The writer implements `http.Flusher` and `Unwrap`, so
+`http.ResponseController` reaches deadlines and hijacking. MCP routes
+mounted on the router with `MountMCP` are covered the same way: JSON
+replies are encoded, streamed replies pass through.
+
+`WithCompressMinBytes(n)` and `WithCompressFilter(fn)` tune the
+middleware for a router you assemble yourself.
 
 ## Related pages
 
