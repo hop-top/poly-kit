@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -109,6 +110,56 @@ func init() {
 	kv.RegisterBackendContext("clitest-plain", func(context.Context, kv.Config) (kv.Store, error) {
 		return plainStore{memory.New()}, nil
 	})
+}
+
+// trackedStores records every store the clitest-tracked backend opens.
+var trackedStores struct {
+	sync.Mutex
+	all []*memory.Store
+}
+
+func init() {
+	kv.RegisterBackendContext("clitest-tracked", func(context.Context, kv.Config) (kv.Store, error) {
+		s := memory.New()
+		trackedStores.Lock()
+		trackedStores.all = append(trackedStores.all, s)
+		trackedStores.Unlock()
+		return s, nil
+	})
+}
+
+// A start that fails once the handler is built — the address taken,
+// the server timeouts unreadable — closes the result cache's store:
+// no Stop follows a failed start to close it.
+func TestAPIResultCache_ClosedWhenStartFails(t *testing.T) {
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer occupied.Close()
+
+	cases := map[string]map[string]any{
+		"listen fails":         {"services.api.addr": occupied.Addr().String()},
+		"server timeouts fail": {"services.api.timeouts.read": "soon"},
+	}
+	for name, keys := range cases {
+		t.Run(name, func(t *testing.T) {
+			keys["services.api.cache.backend"] = "clitest-tracked"
+			keys["services.api.cache.path"] = filepath.Join(t.TempDir(), "cache")
+			r, _ := cacheRoot(t, keys)
+			trackedStores.Lock()
+			before := len(trackedStores.all)
+			trackedStores.Unlock()
+
+			err := apiSvc(t, r).Start(t.Context(), func() { t.Error("ready on a failed start") })
+			require.Error(t, err)
+
+			trackedStores.Lock()
+			opened := trackedStores.all[before:]
+			trackedStores.Unlock()
+			require.Len(t, opened, 1, "the start opened the store")
+			_, _, err = opened[0].Get(t.Context(), "k")
+			assert.ErrorIs(t, err, memory.ErrClosed, "the failed start closed the store")
+		})
+	}
 }
 
 func TestAPIResultCache_RegisteredBackend(t *testing.T) {

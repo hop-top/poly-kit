@@ -283,8 +283,9 @@ func (a *apiService) listenAddr() string {
 }
 
 // Start binds the listener, reports ready, and serves until ctx is
-// canceled.
-func (a *apiService) Start(ctx context.Context, ready func()) error {
+// canceled. A start that fails closes the result cache's store
+// buildHandler opened: no Stop follows it to close the store.
+func (a *apiService) Start(ctx context.Context, ready func()) (err error) {
 	t, err := ResolveServeTLS(a.root, APIServiceName)
 	if err != nil {
 		return err
@@ -294,6 +295,11 @@ func (a *apiService) Start(ctx context.Context, ready func()) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			_ = a.closeResultCache()
+		}
+	}()
 
 	// Server timeouts come from the timeouts block, kit defaults
 	// (read header 5s, read 5s, write 10s) where it sets nothing.
