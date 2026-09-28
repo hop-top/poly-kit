@@ -144,7 +144,7 @@ func TestWalkCobra_NetworkMappingTable(t *testing.T) {
 			assert.Equal(t, tc.want, cmd.Safety.Permissions[1])
 
 			// Private egress / ingress escalate confirmation per
-			// ADR-0019 default policy.
+			// the default policy (policy/default.yaml).
 			assert.Equal(t, tc.confirm, cmd.Safety.RequiresConfirmation,
 				"network %q should set RequiresConfirmation=%v", tc.network, tc.confirm)
 		})

@@ -159,7 +159,7 @@ func TestModernCall_V9_MissingName_FailsV7First(t *testing.T) {
 	// sent. V7 requires the header unconditionally on tools/call and
 	// runs before V9's params decode, so this is a header-mismatch
 	// failure rather than reaching V9's own missing-name check (V7 <
-	// V9 in the pinned validation order). By ADR 0004's V7 rule
+	// V9 in the pinned validation order). By the V7 rule
 	// (header present, non-empty after decoding, params.name present,
 	// and the two byte-equal — any violation is -32020@400, checked
 	// ahead of any params-shape error), V9's "missing tool name"
@@ -279,7 +279,7 @@ func TestModernCall_V9_UnparseableParams(t *testing.T) {
 func TestModernCall_V9_UnparseableParams_MissingHeaderFailsV7First(t *testing.T) {
 	// Same malformed body as above, but with no Mcp-Name header: V7's
 	// presence check runs before the params decode and rejects first
-	// (-32020 @ 400), per ADR 0004 — a missing required header is a
+	// (-32020 @ 400), per docs/adopters/guides/expose-cli-over-mcp.md — a missing required header is a
 	// header-validation failure regardless of what else is wrong with
 	// the body.
 	srv := modernServer(t)

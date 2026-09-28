@@ -50,5 +50,3 @@ return provenance.Render(ctx, cmd.OutOrStdout(), "json", out)
 
 - [Provenance reference](../../../docs/adopters/reference/provenance.md): wrapper choice, happy path, mode table, envelope shape, lint findings, source wrappers, harness primitives, cassette normalisation, v1 limitations
 - [Go primitives index](../../../docs/adopters/reference/go-primitives.md)
-- ADR-0024: provenance lint and guardrail combination
-- ADR-0019: the `runtime/sideeffect` mirror precedent

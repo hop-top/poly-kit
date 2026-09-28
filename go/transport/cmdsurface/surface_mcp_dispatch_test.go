@@ -258,7 +258,7 @@ func TestDispatch_D4_NoMarkers_RoutesLegacy(t *testing.T) {
 	}
 }
 
-// --- ADR 0004 worked edge-case table (11 rows, both versions enabled) -
+// --- era-detection edge cases (11 rows, both versions enabled) -------
 
 func TestDispatch_WorkedEdgeCases(t *testing.T) {
 	srv := dispatchServer(t)

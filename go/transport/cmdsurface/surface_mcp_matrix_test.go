@@ -3,7 +3,7 @@ package cmdsurface
 // Dual-version matrix: one mount, both spec versions enabled,
 // interleaved legacy (2024-11-05) and modern (2026-07-28) exchanges
 // against the SAME httptest.Server / SAME Bridge instance, proving era
-// isolation with no cross-talk — the central claim of ADR 0004 ("one
+// isolation with no cross-talk — the central claim of the dual-spec design ("one
 // mount, per-request version detection... both spec versions are
 // served from one mount").
 //
@@ -165,7 +165,7 @@ func TestMatrix_LegacyAndModernInterleaved_NoCrossTalk(t *testing.T) {
 			wantBody:   []byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"method not found: nope/anywhere"}}` + "\n"),
 		}},
 		// 9. legacy tools/call with a mid-era MCP-Protocol-Version
-		//    header (the non-marker case ADR 0004 and the legacy
+		//    header (the non-marker case docs/adopters/guides/expose-cli-over-mcp.md and the legacy
 		//    lock's addendum both pin) — served on a mount where the
 		//    modern handler IS active for other requests, proving the
 		//    non-marker rule holds under real dual-serving, not just
@@ -201,7 +201,7 @@ func TestMatrix_LegacyAndModernInterleaved_NoCrossTalk(t *testing.T) {
 
 // TestMatrix_BothEnabledIsDefault_NoOptionNeeded proves the matrix
 // property holds with the exact zero-option MountMCP call every
-// pre-dual-spec caller already makes (ADR 0004: "Default configuration
+// pre-dual-spec caller already makes (design rule: "Default configuration
 // enables both versions; existing MountMCP calls compile and behave
 // unchanged") — this is the same mount surface_mcp_dispatch_test.go's
 // TestMountMCP_ExistingCallsCompileAndBehaveUnchanged exercises for a

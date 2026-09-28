@@ -28,7 +28,7 @@ by importing the package. In-process storage adapters live in
 | `Version` | SQLite tables `versions`, `version_parents`, `snapshot_blobs`, `version_snapshots` (default), or in-memory map (`--versions=memory`) | durable by default, in-memory opt-in |
 
 - A document write and its version row commit in one transaction (SQLite
-  backend, ADR-0011). Version tables are additive and present in every
+  backend). Version tables are additive and present in every
   engine DB; the in-memory backend ignores them.
 - `data` is opaque JSON; `id` comes from the JSON `"id"` field if present,
   else `util.Short`. Search is `LIKE` on the blob with backslash escaping.
@@ -36,15 +36,15 @@ by importing the package. In-process storage adapters live in
   `snapshot_blobs`). Delete history only through
   `VersionStore.DeleteHistory`, never `DELETE FROM versions`. Errors:
   `ErrHashCollision`, `ErrRefcountOverflow`, `ErrRefcountUnderflow`.
-  Legacy `snapshots` tables migrate automatically at first boot (ADR-0014).
+  Legacy `snapshots` tables migrate automatically at first boot.
 - `Fork` is not idempotent: two calls with the same `fromSeq` yield two
-  sibling versions (ADR-0013). `Merge` takes caller-supplied data;
+  sibling versions. `Merge` takes caller-supplied data;
   conflict detection is the caller's job.
 - Every version carries a `live` bit. `Abandon`, `Merge` and `Revert`
   retire heads; `Fork` and `Update` do not. `Abandon` returns
   `ErrNotAHead` or `ErrCannotAbandonLastLiveHead`. `Prune` removes only
   versions outside `RetentionPolicy` that are not live heads and whose
-  descendants are all prunable (ADR-0015).
+  descendants are all prunable.
 - Conformance suites (`versionstore_test.go`) and 1000-iteration property
   tests run identical scenarios against both backends. The
   property tests run in parallel; `-short` or `KIT_PROPERTY_ITERATIONS=<n>`

@@ -16,14 +16,14 @@
 // synthetic 201 Created.
 //
 // Bus semantics: when the payload embeds bus.Qualifiers (named or
-// anonymous, per ADR-0017), the wrapper augments the field with
+// anonymous), the wrapper augments the field with
 // Mechanism: "dry_run" before describing the publish. Payloads that
 // do not embed Qualifiers are described without augmentation; the
 // fact is logged once via the writer.
 //
 // Exec semantics: the argv is printed, the call returns nil with
 // zero exit code and (for Output) an empty []byte. Subprocess
-// containment is hopeless; documented in ADR-0019.
+// containment is hopeless; documented in docs/adopters/reference/sideeffect.md.
 package dryrun
 
 import (

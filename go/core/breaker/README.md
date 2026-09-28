@@ -51,4 +51,3 @@ err := breaker.WrapCtx(b, ctx, func(ctx context.Context) error {
 
 - [Breaker reference](../../../docs/adopters/reference/breaker.md): policy table, API surface, wrap helpers, examples, YAML schema, limitations
 - [Go primitives index](../../../docs/adopters/reference/go-primitives.md#i-need-guardrails-on-what-my-tool-can-do)
-- ADR-0006: why failsafe-go, alternatives considered

@@ -56,4 +56,3 @@ assertion returns.
 
 - [Conformance reference](../../docs/adopters/reference/conformance.md): every rule and failure bucket, the factor-to-annotation map, `ValidationFailureMode`, the error envelope, the grading client, the harness, the scenario and story DSLs
 - [enforce-cli-conformance.md](../../docs/adopters/guides/enforce-cli-conformance.md): the seven-step migration for an existing tool
-- ADR-0024: the 12fcc conformance contract

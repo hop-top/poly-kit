@@ -12,7 +12,7 @@ import (
 
 // TestDefault_LoadsAndParses asserts the embedded default.yaml
 // parses cleanly and surfaces every documented (side_effect,
-// network) cell from ADR-0019 §4.
+// network) cell from default.yaml.
 func TestDefault_LoadsAndParses(t *testing.T) {
 	t.Parallel()
 	tbl := policy.Default()
@@ -22,7 +22,7 @@ func TestDefault_LoadsAndParses(t *testing.T) {
 
 // TestDefault_EveryCellHasDecision walks every (side_effect, network)
 // tuple in the documented matrix and asserts the table has an
-// explicit decision for it. ADR-0019 promises every cell is
+// explicit decision for it. The contract promises every cell is
 // documented; this test makes that contract testable.
 func TestDefault_EveryCellHasDecision(t *testing.T) {
 	t.Parallel()
@@ -58,7 +58,7 @@ func TestDefault_EveryCellHasDecision(t *testing.T) {
 }
 
 // TestDefault_ExpectedDecisions locks the headline cells from
-// ADR-0019 §4 — the table consumers reason about. Drift here is
+// default.yaml — the table consumers reason about. Drift here is
 // deliberate: bumping the doc requires updating this test.
 func TestDefault_ExpectedDecisions(t *testing.T) {
 	t.Parallel()

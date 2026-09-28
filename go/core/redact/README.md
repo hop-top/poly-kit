@@ -48,4 +48,3 @@ resp, err := llmClient.Complete(clean)
 - [Redact reference](../../../docs/adopters/reference/redact.md): API table, RE2 rationale, strategies, allowlists, examples, rule sources, limits, PII pack maintenance
 - [PERF.md](PERF.md): performance budget and optimization roadmap
 - [Scope reference](../../../docs/adopters/reference/scope.md): sibling guardrail for FS paths
-- ADR-0005: cross-language port engine parity

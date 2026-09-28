@@ -9,7 +9,7 @@ import (
 // tag to decide whether confirmation, max-ops budget, or policy
 // gates apply.
 //
-// Two generations of values coexist (see ADR-0021):
+// Two generations of values coexist (see docs/adopters/integrations/toolspec-adopter-guide.md):
 //
 //   - Legacy 4-tier (read|write|destructive|interactive). Still
 //     supported. The toolspec walker maps these conservatively into
@@ -120,7 +120,7 @@ func SetSideEffect(cmd *cobra.Command, s SideEffect) {
 // cli-conventions-with-kit.md spec first.
 //
 // Both the legacy 4-tier vocabulary and the expanded 6-tier ladder
-// (ADR-0021) are valid declarations. The toolspec walker projects
+// are valid declarations. The toolspec walker projects
 // either into the harness-facing Safety.Permissions vocabulary.
 var validSideEffects = map[SideEffect]bool{
 	SideEffectRead:              true,

@@ -16,5 +16,5 @@
 // shape enforced by parser is the structural guarantee; the
 // validator's metadata-key denylist (sourced from the same
 // contracts/scenario-rules.json verify-no-leak uses) closes the
-// last escape hatch. See ADR-0026.
+// last escape hatch.
 package story

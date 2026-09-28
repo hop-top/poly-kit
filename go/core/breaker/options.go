@@ -234,7 +234,7 @@ func Fallback(fn FallbackFn) Option {
 // unset, kit/breaker resolves a *log.Logger via kitlog.New(viper.GetViper())
 // at use time so adopter --quiet / --no-color settings flow through.
 //
-// BREAKING (ADR-0007): the parameter type was *slog.Logger; it is now
+// BREAKING: the parameter type was *slog.Logger; it is now
 // charm.land/log/v2.*Logger. Adopters that constructed a slog logger
 // must build a charm/log logger instead (see kit/console/log).
 func Logger(l *log.Logger) Option {

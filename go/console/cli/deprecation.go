@@ -37,7 +37,7 @@ const (
 	// for manifest emission. Adopters set this on their cobra
 	// commands; the spec subcommand projects it into the Manifest.
 	//
-	//lint:ignore U1000 framework API surface (ADR-0031)
+	//lint:ignore U1000 framework API surface
 	kitArgs = "kit/args"
 	// API: framework — cobra annotation key for exit-code enumeration.
 	//
@@ -46,7 +46,7 @@ const (
 	// on their cobra commands; the spec subcommand projects it into
 	// the Manifest.
 	//
-	//lint:ignore U1000 framework API surface (ADR-0031)
+	//lint:ignore U1000 framework API surface
 	kitExitCodes = "kit/exit-codes"
 	// kitSpecCommandAnnotation marks the spec subcommand itself so
 	// the deprecation-warning middleware knows to skip it (warnings

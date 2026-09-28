@@ -2,7 +2,7 @@ package cmdsurface
 
 // Modern (2026-07-28) MCP handler: the stateless request core behind
 // the era dispatcher in surface_mcp_dispatch.go. This file implements
-// ADR 0004's validation order V1-V8, server/discover, the modern
+// the validation order V1-V8 in docs/adopters/guides/expose-cli-over-mcp.md, server/discover, the modern
 // error writers, result-envelope stamping (resultType + serverInfo
 // _meta), and cache-hint application. tools/list lives in
 // surface_mcp_modern_list.go; tools/call (V7/V9, pre-flight gates,
@@ -44,7 +44,7 @@ type mcpModernHandler struct {
 	b   *Bridge
 	cfg mcpConfig
 	// confirm is the strategy slot for the confirmation step in
-	// tools/call (ADR 0004 "MRTR confirmation slot"). The default is
+	// tools/call (MCP guide, "MRTR confirmation"). The default is
 	// the X-Confirm-Token header gate mirroring the legacy handler;
 	// mounts given key material via WithMCPConfirmationKey install
 	// the MRTR elicitation gate (surface_mcp_modern_confirm.go)
@@ -89,7 +89,7 @@ type modernRequestMeta struct {
 }
 
 // serveParsed is the modern entry point. The validation chain runs in
-// ADR 0004's order V1-V9; the first failure responds and stops. HTTP
+// the MCP guide's order V1-V9; the first failure responds and stops. HTTP
 // status is 400/404 only where the spec mandates it; application-level
 // JSON-RPC errors ride HTTP 200 (V9, in the per-method handlers).
 func (h *mcpModernHandler) serveParsed(w http.ResponseWriter, req *http.Request, rpc jsonRPCRequest) {
@@ -264,7 +264,7 @@ func validModernRequestID(raw json.RawMessage) bool {
 }
 
 // validateMethodHeader is the V6 step: Mcp-Method header presence and
-// header/body agreement (-32020 @ 400 on failure, per ADR 0004).
+// header/body agreement (-32020 @ 400 on failure, per the MCP guide).
 // Header names are matched case-insensitively per RFC 9110; header
 // values are compared case-sensitively against the body method.
 // Conflicting duplicate headers are a mismatch in their own right
@@ -428,7 +428,7 @@ func (h *mcpModernHandler) originAllowed(req *http.Request) bool {
 // message additionally names the supported protocol versions: a
 // legacy client has no fall-forward mechanism, so the version list in
 // the error text is its only recovery hint (spec SHOULD for
-// modern-only servers; see ADR 0004).
+// modern-only servers).
 func (h *mcpModernHandler) writeModernError(w http.ResponseWriter, rpc jsonRPCRequest, e *modernCheckError) {
 	msg := e.msg
 	if rpc.Method == "initialize" {

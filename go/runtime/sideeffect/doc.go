@@ -18,11 +18,11 @@
 // implementation via a struct field or constructor argument, and
 // the cli wrapper picks real/dryrun/testfake at the boundary.
 //
-// See ADR-0019 for the full design rationale of the package
-// (interfaces, three-impl model, dryrun-vs-testfake separation).
-// See ADR-0020 for the current --dry-run policy: tier-driven
+// See docs/adopters/reference/sideeffect.md for the full design rationale of the package
+// (interfaces, three-impl model, dryrun-vs-testfake separation)
+// and the current --dry-run policy: tier-driven
 // default-allow off kit/side-effect, with cli.OptOutDryRun() as
-// the explicit escape hatch. ADR-0019's per-command opt-in
+// the explicit escape hatch. The original per-command opt-in
 // registry is partially superseded; cli.SupportsDryRun() and the
 // kit/dry-run: supported annotation remain back-compat synonyms.
 package sideeffect

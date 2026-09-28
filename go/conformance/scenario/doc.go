@@ -43,7 +43,6 @@
 // schema_version, scored_at, grader_version, rules_version, tier,
 // verdict) appear at every tier.
 //
-//	and ADR-0027 for the full
-//
+// See docs/adopters/reference/conformance.md#scenario-dsl-and-grader for the full
 // design contract.
 package scenario

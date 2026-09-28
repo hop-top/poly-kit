@@ -187,8 +187,8 @@ func ParseTopic(s string) (TopicBuilder, string, error) {
 //
 // Validate vs ValidateTopic note: Action calls ValidateTopic, which
 // is stricter than Validate (it adds the past-tense check on the
-// Action segment). The two functions overlap — see ADR-0017 for
-// the duplication discussion and the planned consolidation.
+// Action segment). The two functions overlap; consolidating them
+// is planned.
 func (b TopicBuilder) Action(action string) Topic {
 	object := b.object
 	if b.modifier != "" {

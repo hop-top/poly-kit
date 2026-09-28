@@ -43,7 +43,7 @@ const (
 )
 
 // Unexported anchors shared by the dispatcher and (later) the modern
-// handler. Pinned by ADR 0004 so later work and tests agree on names.
+// handler. Pinned here so later work and tests agree on names.
 const (
 	headerMCPProtocolVersion = "MCP-Protocol-Version"
 	headerMCPMethod          = "Mcp-Method"
@@ -76,13 +76,13 @@ type modernMarkerParams struct {
 	Meta json.RawMessage `json:"_meta,omitempty"`
 }
 
-// detectMCPEra implements ADR 0004's per-request era detection,
+// detectMCPEra implements per-request era detection by routing
 // precedence D1-D4. It is called once per request by mcpDispatcher
 // after the body has already been parsed into rpc (D1 — parse — is
 // the caller's responsibility: detectMCPEra never fails, it only
 // classifies an already-valid jsonRPCRequest).
 //
-// Markers (ADR 0004 "Modern markers"):
+// Markers (the MCP guide, docs/adopters/guides/expose-cli-over-mcp.md#routing-precedence):
 //
 //	M1 — HTTP header Mcp-Method present
 //	M2 — HTTP header Mcp-Name present
@@ -93,7 +93,7 @@ type modernMarkerParams struct {
 //
 // Deliberate non-markers: bare params._meta presence (without the
 // reserved key) and the MCP-Protocol-Version header (any value) are
-// NOT markers — see ADR 0004 for the full rationale, locked
+// NOT markers — see the MCP guide for the full rationale, locked
 // separately by the legacy conformance suite.
 func detectMCPEra(req *http.Request, rpc jsonRPCRequest) mcpEra {
 	// D2 — initialize is legacy, unconditionally, even when modern
@@ -262,7 +262,7 @@ func (d *mcpDispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 // modernOnlyServeHTTP handles the "modern only" enabled-set case
-// (ADR 0004 "Interaction with enabled versions"): every request
+// (MCP guide, "Routing precedence"): every request
 // routes to the modern handler and is handled per the normal V1-V9
 // order, no special-casing of initialize anywhere — a bare legacy
 // initialize therefore fails the modern handler's own validation
@@ -288,7 +288,7 @@ func modernOnlyServeHTTP(modern *mcpModernHandler, w http.ResponseWriter, req *h
 }
 
 // mcp405Handler answers GET/DELETE at the mount path with HTTP 405,
-// per ADR 0004 "HTTP verbs": registered only when the modern version
+// per the MCP guide's version detection: registered only when the modern version
 // is enabled (post-session servers respond 405 to the session-era
 // verbs). The POST route is unaffected.
 func mcp405Handler(w http.ResponseWriter, _ *http.Request) {
@@ -320,7 +320,7 @@ func WithMCPSpecVersions(versions ...MCPSpecVersion) MCPOption {
 // WithMCPCacheHints sets the ttlMs and cacheScope values attached to
 // modern cacheable list results (server/discover, tools/list
 // complete-results). Absent defaults to ttlMs=0, cacheScope="private"
-// (see ADR 0004 "Cache hints"). ttl is truncated to whole
+// (see the MCP guide, "Cache hints"). ttl is truncated to whole
 // milliseconds; a negative ttl or an unrecognized scope causes
 // MountMCP to return an error at mount time.
 func WithMCPCacheHints(ttl time.Duration, scope MCPCacheScope) MCPOption {
@@ -334,7 +334,7 @@ func WithMCPCacheHints(ttl time.Duration, scope MCPCacheScope) MCPOption {
 // WithMCPOriginAllowlist enables Origin-header validation on the
 // modern path: a request carrying an Origin header not in origins is
 // rejected with HTTP 403. Absent (default) performs no Origin check —
-// see ADR 0004 "Acknowledged quirks" for the opt-in rationale.
+// see the MCP guide, "Origin validation", for the opt-in rationale.
 func WithMCPOriginAllowlist(origins ...string) MCPOption {
 	return func(c *mcpConfig) {
 		c.originAllowlist = append([]string(nil), origins...)

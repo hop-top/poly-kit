@@ -49,6 +49,4 @@ func pickFS(cmd *cobra.Command) sideeffect.FS {
 
 - [Side-effect reference](../../../docs/adopters/reference/sideeffect.md): interfaces, implementation table, flag mechanics, policy and annotation tables, adoption, opt-out, migration, bus auto-tagging, guarantees and non-guarantees
 - [CLI API reference](../../../docs/adopters/reference/cli-api-reference.md)
-- ADR-0020: `--dry-run` unified with `kit/side-effect` (current policy)
-- ADR-0019: this package and the global `--dry-run` (parent, partially superseded)
-- ADR-0017: bus topic grammar and the `Qualifiers` convention
+- [Bus overview](../../../docs/adopters/concepts/bus-overview.md): topic grammar and the `Qualifiers` convention

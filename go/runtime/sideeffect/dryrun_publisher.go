@@ -22,10 +22,10 @@ const DryRunMechanism = "dry_run"
 // Mechanism tagging is best-effort: payload authors who want the
 // tag applied must embed bus.Qualifiers (anonymous or named) in the
 // struct passed to Publish, and pass the payload by pointer so the
-// wrapper can mutate in place. See ADR-0017 for the embed convention
-// and ADR-0019 for the dry-run rationale.
+// wrapper can mutate in place. See docs/adopters/concepts/bus-overview.md
+// for the embed convention and docs/adopters/reference/sideeffect.md for the dry-run rationale.
 //
-// The wrapper is the chosen integration point per ADR-0019: less
+// The wrapper is the chosen integration point: less
 // invasive than mutating Publish in the bus core, fully testable in
 // isolation, and keeps the bus core unaware of cli runtime mode.
 //

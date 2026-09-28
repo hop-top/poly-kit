@@ -1,5 +1,5 @@
 // symlink_dryrun_test.go pins the pilot migration of `kit symlink`
-// onto sideeffect.FS / symlinkAdapter (ADR-0019). When installLink
+// onto sideeffect.FS / symlinkAdapter. When installLink
 // runs with the dryrun impls it MUST NOT touch disk.
 //
 //go:build !windows

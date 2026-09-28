@@ -1,6 +1,7 @@
 # default.yaml — kit's opinionated default permission policy table.
 #
-# ADR-0019 specifies the contract; this file is the authoritative
+# docs/adopters/integrations/claude-code-permissions.md describes the
+# contract; this file is the authoritative
 # data. Embedded into the binary via go:embed (see policy.go) and
 # loaded once on startup; harnesses or adopters that want a custom
 # table overlay this default via --policy <file> on the MCP adapter
@@ -19,8 +20,8 @@
 #   2. (side_effect, any) match catches the column-spanning rules.
 #   3. No match → action: prompt (fail-safe default).
 #
-# The matrix below is the same one ADR-0019 ships in §4 of its
-# Decision section. Update both together; tests in policy_test.go
+# The matrix below is the one claude-code-permissions.md summarises.
+# Update both together; tests in policy_test.go
 # assert every (side_effect, network) cell has a documented
 # decision.
 

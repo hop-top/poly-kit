@@ -20,17 +20,17 @@ const globalDryRunFlag = "dry-run"
 const globalDryRunViperKey = "kit.dry_run"
 
 // dryRunAnnotation is the cobra annotation key used by the legacy
-// SupportsDryRun opt-in (ADR-0019) and the new OptOutDryRun escape
-// hatch (ADR-0020). Both share the key; the value distinguishes
+// SupportsDryRun opt-in and the new OptOutDryRun escape
+// hatch. Both share the key; the value distinguishes
 // intent.
 const dryRunAnnotation = cmdmeta.KeyDryRun
 
-// dryRunSupported is the legacy ADR-0019 marker value. Retained as a
+// dryRunSupported is the legacy opt-in marker value. Retained as a
 // back-compat synonym for "tier-driven default-allow"; logs a
 // one-time deprecation warning at startup when found on any leaf.
 const dryRunSupported = cmdmeta.DryRunSupported
 
-// dryRunOptedOut is the ADR-0020 escape hatch value. Set via
+// dryRunOptedOut is the tier-driven policy's escape hatch value. Set via
 // OptOutDryRun for write|destructive leaves that genuinely cannot
 // honor --dry-run (compound state half-applied, downstream services
 // without preview semantics, etc.). The pre-execution hook rejects
@@ -39,7 +39,7 @@ const dryRunSupported = cmdmeta.DryRunSupported
 const dryRunOptedOut = cmdmeta.DryRunOptedOut
 
 // dryRunPolicy is the resolved decision the pre-execution hook makes
-// per leaf. See ADR-0020 for the policy table.
+// per leaf. See docs/adopters/reference/sideeffect.md for the policy table.
 type dryRunPolicy int
 
 const (
@@ -70,7 +70,7 @@ const (
 
 // SupportsDryRun marks cmd as honoring --dry-run.
 //
-// Deprecated under ADR-0020: prefer the kit/side-effect tier alone.
+// Superseded by the tier-driven policy: prefer the kit/side-effect tier alone.
 // This function is retained as a back-compat synonym and remains
 // safe to call: it sets kit/dry-run: supported, which the resolver
 // treats as "allow" (with a one-time deprecation log at startup).
@@ -107,7 +107,7 @@ func OptOutDryRun(cmd *cobra.Command) {
 }
 
 // resolveDryRunPolicy returns the policy decision for cmd per
-// ADR-0020. Resolution order:
+// the tier-driven policy. Resolution order:
 //
 //  1. kit/dry-run: opted-out → reject (explicit author decision).
 //  2. kit/dry-run: supported (legacy) → allow.
@@ -193,7 +193,7 @@ var legacyDryRunWarnOnce sync.Once
 
 // warnLegacySupportsDryRun emits a one-time deprecation note when
 // any leaf in the command tree carries the legacy
-// kit/dry-run: supported annotation. ADR-0020 keeps the annotation
+// kit/dry-run: supported annotation. The tier-driven policy keeps the annotation
 // as a back-compat synonym; the warning makes the deprecation
 // audible without breaking adopters mid-migration.
 func (r *Root) warnLegacySupportsDryRun() {
@@ -215,7 +215,7 @@ func (r *Root) warnLegacySupportsDryRun() {
 	legacyDryRunWarnOnce.Do(func() {
 		fmt.Fprintln(r.Cmd.ErrOrStderr(),
 			"[deprecation] kit/dry-run: supported annotation is "+
-				"superseded by ADR-0020. Drop the explicit "+
+				"superseded by tier-driven --dry-run. Drop the explicit "+
 				"cli.SupportsDryRun(cmd) call; the kit/side-effect "+
 				"tier already opts write|destructive leaves into "+
 				"--dry-run by default.")
@@ -224,7 +224,7 @@ func (r *Root) warnLegacySupportsDryRun() {
 
 // installDryRunHook returns a PersistentPreRunE func that wraps the
 // command's context with sideeffect.WithDryRun when the global flag
-// is set, and applies the ADR-0020 policy table. Composes into the
+// is set, and applies the tier-driven policy table. Composes into the
 // kit PersistentPreRunE chain via Hooks.PrePersistentRunE.
 func (r *Root) installDryRunHook() func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {

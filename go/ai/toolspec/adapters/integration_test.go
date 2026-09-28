@@ -1,4 +1,4 @@
-// integration_test.go covers the full ADR-0019 path:
+// integration_test.go covers the full toolspec-contract path:
 //
 //	cobra tree → BuildManifest → JSON round-trip → EnforceMCPRequest
 //

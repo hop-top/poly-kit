@@ -17,7 +17,7 @@ const eventSource = "core.breaker"
 
 // logger returns the configured *log.Logger or a viper-backed kit/log
 // default so listeners always have a destination. The default flows
-// adopter --quiet / --no-color settings through (ADR-0007).
+// adopter --quiet / --no-color settings through.
 func (b *breakerImpl) logger() *log.Logger {
 	if b.cfg != nil && b.cfg.logger != nil {
 		return b.cfg.logger

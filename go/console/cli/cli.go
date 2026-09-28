@@ -1099,9 +1099,9 @@ func (r *Root) prepareTree() {
 	r.serveHelpAddendum()
 
 	// Emit a one-time deprecation warning when any leaf still uses
-	// the legacy ADR-0019 kit/dry-run: supported annotation. The
+	// the legacy kit/dry-run: supported annotation. The
 	// annotation keeps working as a back-compat synonym; the
-	// warning makes the supersession (ADR-0020) audible.
+	// warning makes the supersession by the tier-driven policy audible.
 	r.warnLegacySupportsDryRun()
 }
 

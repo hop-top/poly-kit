@@ -57,6 +57,5 @@ compose.
 ## See also
 
 - [Conformance reference](../../../docs/adopters/reference/conformance.md#integration-harness): every primitive, the xrr wiring example, the full classifier and annotation tables, every option, failure-message shapes, hazards and mitigations
-- ADR-0021: the xrr-first integration model
 
 <!-- release: track hop.top/xrr v0.1.0-alpha.3 -->

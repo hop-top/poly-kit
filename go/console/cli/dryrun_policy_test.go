@@ -1,4 +1,4 @@
-// dryrun_policy_test.go locks the ADR-0020 tier-driven --dry-run
+// dryrun_policy_test.go locks the tier-driven --dry-run
 // policy: write|destructive accept by default, read silently
 // no-ops, interactive rejects with a friendly diagnostic, OptOutDryRun
 // rejects with an explicit-decision diagnostic, and the legacy
@@ -102,7 +102,7 @@ func TestPolicy_Untagged_Rejects(t *testing.T) {
 		"diagnostic must point at the missing tag")
 }
 
-// TestPolicy_LegacySupports_Allows: ADR-0019 callers who already
+// TestPolicy_LegacySupports_Allows: legacy opt-in callers who already
 // have cli.SupportsDryRun(cmd) keep working without the tier — the
 // annotation is a back-compat synonym.
 func TestPolicy_LegacySupports_Allows(t *testing.T) {

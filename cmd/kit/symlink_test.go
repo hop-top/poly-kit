@@ -32,7 +32,7 @@ func touch(t *testing.T, path string) {
 // Linux CI without booting cobra.
 //
 // Pre-pilot the helper called installLink with three args; the
-// pilot migration (ADR-0019) added sideeffect.FS + symlinkAdapter to
+// pilot migration to runtime/sideeffect added sideeffect.FS + symlinkAdapter to
 // the signature so dry-run can swap impls. The helper passes the
 // production impls so existing tests cover the real-effect path.
 func installLinkHere(t *testing.T, linkPath, target string, force bool) (linkResult, error) {

@@ -19,7 +19,7 @@ import (
 // --api-version=1.0 still get a usable filtered view.
 const kitToolspecSchemaVersion = "1.1"
 
-// toolspecCmd is the discovery surface ADR-0019 mandates on the kit
+// toolspecCmd is the discovery surface the toolspec contract mandates on the kit
 // binary itself — `kit toolspec` emits kit's own capability manifest
 // as JSON. Harnesses that want to discover that the kit-toolspec
 // contract exists at all start by invoking `kit toolspec` and
@@ -40,11 +40,12 @@ const kitToolspecSchemaVersion = "1.1"
 func toolspecCmd(root *kitcli.Root) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "toolspec",
-		Short: "Emit kit's capability manifest (ADR-0019 bootstrap)",
+		Short: "Emit kit's capability manifest (toolspec discovery anchor)",
 		Long: "Emit the kit binary's machine-readable capability " +
 			"manifest as JSON. Harnesses (Claude Code, Cursor, MCP " +
 			"hosts) use this as the discovery anchor for the kit-" +
-			"toolspec consumption contract — see ADR-0019 for the " +
+			"toolspec consumption contract — see " +
+			"docs/adopters/integrations/toolspec-harness-guide.md for the " +
 			"protocol, version negotiation, and default policy.",
 		Args: cobra.NoArgs,
 		Annotations: map[string]string{
@@ -110,7 +111,7 @@ func toolspecPolicyCmd() *cobra.Command {
 	// `toolspec` group; the shape pass accepts it without an extra
 	// annotation. No marker needed.
 	cmd.Flags().String("file", "",
-		"Custom policy YAML overlaid on the embedded default (see ADR-0019 §4)")
+		"Custom policy YAML overlaid on the embedded default")
 	cmd.RunE = func(c *cobra.Command, _ []string) error {
 		path, _ := c.Flags().GetString("file")
 		tbl, err := policy.LoadOrDefault(path)
@@ -124,11 +125,11 @@ func toolspecPolicyCmd() *cobra.Command {
 	return cmd
 }
 
-// negotiateSchemaVersion implements the ADR-0019 KIT_TOOLSPEC_SCHEMA
+// negotiateSchemaVersion implements the toolspec contract's KIT_TOOLSPEC_SCHEMA
 // downgrade rule. Today only "1.0" exists, so the function is a
 // degenerate negotiator: any well-formed request returns the binary
 // version (kit has nothing older to downgrade to). Malformed values
-// degrade silently to the binary version per the ADR.
+// degrade silently to the binary version per the contract.
 //
 // When kit-toolspec-safety-ladder ships "2.0", grow the lookup table
 // here. The function signature (request → resolved) is locked.
@@ -149,7 +150,7 @@ func negotiateSchemaVersion(binary, requested string) string {
 }
 
 // parseSchemaVersion returns major, minor, ok for a "MAJOR.MINOR"
-// string. Mirrors the ADR-0019 contract: malformed degrades silently
+// string. Mirrors the toolspec contract: malformed degrades silently
 // (ok=false → caller falls back).
 func parseSchemaVersion(s string) (int, int, bool) {
 	var major, minor int

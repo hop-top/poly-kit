@@ -54,7 +54,7 @@ Verified by `example_test.go` in this directory.
 - Sync handlers run in registration order; the first error vetoes.
   Async handlers start only after every sync handler succeeded.
 - Qualifiers (`Reason`, `Mechanism`, `Property`, `Circumstance`) travel
-  in the payload, never in the topic string. ADR-0017.
+  in the payload, never in the topic string.
 - After `Close`, `Publish` returns `ErrBusClosed`.
 
 ## Neighbours

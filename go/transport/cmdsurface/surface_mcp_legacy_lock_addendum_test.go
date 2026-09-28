@@ -62,7 +62,7 @@ import (
 // TestLegacyLock_NonMarker_BareMetaProgressToken locks today's bytes
 // for a tools/call whose params._meta carries a legitimate 2024-11-05
 // field (progressToken) and NOT the reserved modern key
-// "io.modelcontextprotocol/protocolVersion". ADR 0004 explicitly
+// "io.modelcontextprotocol/protocolVersion". docs/adopters/guides/expose-cli-over-mcp.md explicitly
 // calls this out as a deliberate non-marker (M3 requires the
 // *reserved* key; mere params._meta presence must not route modern).
 // Today's legacy handler doesn't read params._meta at all — callParams
@@ -83,7 +83,7 @@ func TestLegacyLock_NonMarker_BareMetaProgressToken(t *testing.T) {
 // bytes for tools/list and tools/call sent with the
 // MCP-Protocol-Version header a legacy-negotiated SDK client sends on
 // every request after a successful 2024-11-05 initialize handshake.
-// ADR 0004 is explicit that header *presence* must never be treated
+// The MCP guide is explicit that header *presence* must never be treated
 // as a modern-routing signal (would "brick their sessions"). Today's
 // legacy handler never inspects this header at all, so it is
 // silently tolerated.
@@ -116,7 +116,7 @@ func TestLegacyLock_NonMarker_MidEraProtocolVersionHeader(t *testing.T) {
 
 // TestLegacyLock_NonMarker_MidEraSessionAndLastEventIDHeaders locks
 // today's bytes for a request additionally carrying Mcp-Session-Id
-// and Last-Event-ID — both named in ADR 0004 as headers a dual-era
+// and Last-Event-ID — both named in the MCP guide as headers a dual-era
 // server must ignore (never minted, never echoed) rather than treat
 // as routing signals. Legacy code today reads neither.
 func TestLegacyLock_NonMarker_MidEraSessionAndLastEventIDHeaders(t *testing.T) {
@@ -157,8 +157,8 @@ func TestLegacyLock_NonMarker_InitializeFullLegacyParams(t *testing.T) {
 
 // TestLegacyLock_MethodNotFound_RealMCPMethodNames locks the current
 // -32601@200 quirk (see the parent lock's
-// TestLegacyLock_ErrorCode_MethodNotFound32601 and ADR 0004's
-// "Acknowledged quirks") for method names a dual-spec implementation
+// TestLegacyLock_ErrorCode_MethodNotFound32601; kept for byte-for-byte
+// legacy preservation) for method names a dual-spec implementation
 // is most likely to start handling on the legacy path: the
 // post-handshake notification every real client sends, plus three
 // list-style methods a naive "just add more methods to the shared

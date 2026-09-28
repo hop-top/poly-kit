@@ -24,7 +24,7 @@
 // The harness sits on xrr cassettes: each `Assert*` invocation
 // wraps the cobra command in an xrr Session, captures the
 // adapter-mediated side effects, and asserts on the shape of the
-// recorded cassette. See ADR-0021 (xrr-first integration model)
+// recorded cassette. See docs/adopters/reference/conformance.md#integration-harness
 // for the rationale.
 //
 // The harness's primary surface is this Go package. It is a

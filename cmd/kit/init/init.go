@@ -211,7 +211,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 				return err
 			}
 			inputs.Mode = mode
-			// Pilot for ADR-0019: route the kit-global --dry-run flag
+			// Pilot for the runtime/sideeffect seam: route the kit-global --dry-run flag
 			// (sideeffect.IsDryRun ctx tag) into the existing
 			// per-leaf in.DryRun field. The two flags compose: either
 			// path enables dry-run; both enable dry-run too.
@@ -316,7 +316,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 
 	// kit init scaffolds new project trees (mkdir/write) and
 	// augments existing ones — declare the side-effect tier per
-	// cli-conventions §3.5. ADR-0020 drives --dry-run support off
+	// cli-conventions §3.5. The tier-driven policy drives --dry-run support off
 	// this tier: write|destructive leaves accept --dry-run by
 	// default, so the kit-global --dry-run reaches RunE without an
 	// explicit opt-in. The pre-existing local --dry-run flag still

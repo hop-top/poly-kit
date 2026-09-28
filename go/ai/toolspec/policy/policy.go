@@ -1,5 +1,6 @@
 // Package policy implements the AI-harness permission policy table
-// described in ADR-0019. A Table maps a tool's risk metadata
+// described in docs/adopters/integrations/claude-code-permissions.md.
+// A Table maps a tool's risk metadata
 // (side-effect class × network axis) to one of three actions:
 // auto-allow, prompt, deny.
 //

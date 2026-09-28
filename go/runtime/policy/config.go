@@ -28,7 +28,7 @@ var ContextAttrsKey = &ctxKey{name: "policy.context.attrs"}
 // the default resolver picks it up.
 var ContextPrincipalKey = &ctxKey{name: "policy.context.principal"}
 
-// Allowed topics for the 'on:' field. Mirrors §3 of ADR 0008.
+// Allowed topics for the 'on:' field (the veto-able topics in README.md).
 //
 // kit/runtime/bus.Validate enforces 4-segment topic shape on
 // publishers but doesn't enumerate which topics are veto-able. Until
@@ -86,7 +86,7 @@ func ParseConfig(data []byte) (*Config, error) {
 		}
 		seen[rp.Name] = struct{}{}
 		if rp.Async {
-			return nil, fmt.Errorf("policy %q: async not supported (sync veto only — ADR 0008 §7)", rp.Name)
+			return nil, fmt.Errorf("policy %q: async not supported (sync veto only)", rp.Name)
 		}
 		if _, ok := allowedTopics[rp.On]; !ok {
 			return nil, fmt.Errorf("policy %q: 'on' %q not a veto-able topic (allowed: kit.runtime.state.pre_transitioned, kit.runtime.entity.pre_validated, kit.runtime.entity.pre_persisted)", rp.Name, rp.On)

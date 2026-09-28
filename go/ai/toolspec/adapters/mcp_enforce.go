@@ -1,4 +1,4 @@
-// mcp_enforce.go implements the policy-gate building block ADR-0019
+// mcp_enforce.go implements the policy-gate building block the toolspec contract
 // expects MCP hosts to invoke when they dispatch a tool-call request
 // against a kit-powered binary. The existing mcp.go FormatAdapter
 // emits the schema envelope; mcp_enforce.go covers the *runtime*
@@ -188,8 +188,7 @@ func pathsEqual(a, b []string) bool {
 // When the safety-ladder track lands, replace the body with the
 // real annotation read; the function signature stays.
 func networkAxisFor(_ *toolspec.ManifestCommand) policy.Network {
-	// Stub: see ADR-0019 §4 ("Integration with kit-toolspec-safety-
-	// ladder"). Until kit/network is populated, every command
+	// Stub: the network axis waits on the safety ladder. Until kit/network is populated, every command
 	// resolves at NetworkNone. This is documented behavior, NOT a
 	// silent default — the EnforceMCPRequest reason field calls it
 	// out per call.

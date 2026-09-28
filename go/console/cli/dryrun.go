@@ -7,10 +7,10 @@ import "github.com/spf13/cobra"
 // is a no-op for dry-run; future kit-managed per-leaf flags
 // (e.g. --confirm on destructive) hook in here.
 //
-// History (ADR-0019 → ADR-0020): originally this walker installed a
+// History (per-command opt-in → tier-driven policy): originally this walker installed a
 // hidden per-leaf --dry-run cobra flag on every write|destructive
 // leaf so cobra would parse `<tool> <leaf> --dry-run` without an
-// "unknown flag" error. Under ADR-0020 the kit-global --dry-run
+// "unknown flag" error. Under the tier-driven policy the kit-global --dry-run
 // lives on the root's persistent flag set (registered in cli.New)
 // and is inherited by every subcommand automatically; a per-leaf
 // flag would shadow that inherited flag and break the viper

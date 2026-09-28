@@ -1,7 +1,7 @@
 // Package cli — framework API inventory.
 //
 // This file lists every package-level symbol carrying the
-// `// API: framework` marker (see ADR-0031). Symbols here are
+// `// API: framework` marker. Symbols here are
 // consumed by adopters, not by kit itself. Deleting one is a build
 // break — that is the point.
 //
@@ -15,11 +15,11 @@
 //	//
 //	// <godoc body>
 //	//
-//	//lint:ignore U1000 framework API surface (ADR-0031)
+//	//lint:ignore U1000 framework API surface
 //
 // then add an assertion line below.
 //
-// Pilot package for ADR-0031.
+// Pilot package for the marker convention.
 package cli
 
 // Compile-time assertions that each framework-API symbol still

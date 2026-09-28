@@ -438,7 +438,7 @@ func TestModernLock_ToolsCall_ArgumentMapping(t *testing.T) {
 		t.Errorf(`Flags["count"]=%v (%T) want=float64(3)`, inv.Flags["count"], inv.Flags["count"])
 	}
 	// Meta.Extra audit bag: spec version always, client identity when
-	// clientInfo was present (ADR 0004 "One surface, not two").
+	// clientInfo was present (docs/adopters/guides/expose-cli-over-mcp.md, "Migration notes").
 	if inv.Meta.Extra["mcp_spec_version"] != "2026-07-28" {
 		t.Errorf(`Extra["mcp_spec_version"]=%v want=2026-07-28`, inv.Meta.Extra["mcp_spec_version"])
 	}
@@ -680,7 +680,7 @@ func TestModernLock_V7_SentinelDecodedBeforeCompare(t *testing.T) {
 
 // --- duplicate headers: conflicting -> -32020@400, identical -> tolerated
 //
-// ADR 0004 "Duplicate headers": a header sent more than once with
+// MCP guide, "Modern validation order": a header sent more than once with
 // byte-identical values is tolerated (benign proxy/intermediary
 // duplication); sent more than once with differing values is a
 // validation failure in its own right (-32020@400), without ever
@@ -813,8 +813,8 @@ func TestModernLock_V9_UnknownTool(t *testing.T) {
 
 // --- pre-flight gates + capability fallback ------------------------------
 //
-// ADR 0004 "Pre-flight gates (modern), mirroring legacy exactly" pins
-// three outcomes ahead of Bridge.Invoke, and "MRTR confirmation slot"
+// The MCP guide's "Destructive commands and confirmation" pins
+// three outcomes ahead of Bridge.Invoke, and "MRTR confirmation"
 // pins a fourth (capability-gated fallback): AuthRequired without an
 // Authorization header -> isError result @ 401; RequiresConfirmation
 // without X-Confirm-Token (the default gate) -> isError result @ 428;
@@ -904,7 +904,7 @@ func TestModernLock_PreFlight_NoElicitationCapability_HeaderFallback(t *testing.
 	// gate must fall back to the X-Confirm-Token header check exactly
 	// as an unkeyed mount would, and must never answer -32021
 	// (missing required client capability) — the capability is
-	// optional precisely because this fallback exists (ADR 0004).
+	// optional precisely because this fallback exists.
 	srv := modernLockServer(t, nil, WithMCPConfirmationKey(mcpLockConfirmKey))
 	client := hermeticHTTPClient()
 	runGoldenExchange(t, srv, client, goldenExchange{
@@ -919,7 +919,7 @@ func TestModernLock_PreFlight_NoElicitationCapability_HeaderFallback(t *testing.
 func TestModernLock_MRTR_DeclineRefuses(t *testing.T) {
 	// Round 1 mints a real requestState (construction-exact — see the
 	// MRTR section below for the rationale); round 2 echoes it with
-	// inputResponses.confirm.action == "decline", which ADR 0004 pins
+	// inputResponses.confirm.action == "decline", which the MCP guide pins
 	// as an isError "confirmation declined" complete result — never an
 	// execution, never a re-prompt.
 	srv := modernLockServer(t, nil, WithMCPConfirmationKey(mcpLockConfirmKey))
@@ -1041,7 +1041,7 @@ func TestModernLock_TasksExtension_DiscoverAdvertisesNoExtensionsMap(t *testing.
 	})
 }
 
-// --- era-detection marker permutations (ADR 0004 D1-D4, M1-M4) ----------
+// --- era-detection marker permutations (D1-D4, M1-M4) -------------------
 //
 // The dual-version matrix (surface_mcp_matrix_test.go) proves era
 // isolation for the marker combinations most likely on real traffic
@@ -1298,14 +1298,14 @@ func TestModernLock_MRTR_FullLoop(t *testing.T) {
 	// once round 2's own state is independently re-derived.
 	//
 	// Beyond resultType + non-empty requestState, this also pins (per
-	// ADR 0004): the inputRequests shape — exactly one entry under the
+	// the MCP guide): the inputRequests shape — exactly one entry under the
 	// reserved key "confirm", an elicitation/create form request — the
 	// v1.<expiry>.<mac> requestState FRAMING (three dot-separated
 	// parts, version tag "v1", numeric-decimal expiry; the mac segment
 	// itself is production-derived, never hardcoded, per the
 	// construction-exact exception), and the ABSENCE of ttlMs/
 	// cacheScope on the interim result ("Interim input_required results
-	// carry no cache hints and are never cached" — ADR 0004).
+	// carry no cache hints and are never cached").
 	body1 := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"purge","arguments":{"target":"data"},"_meta":{"io.modelcontextprotocol/clientCapabilities":{"elicitation":{}},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`)
 	req1, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp", bytes.NewReader(body1))
 	if err != nil {
@@ -1346,8 +1346,8 @@ func TestModernLock_MRTR_FullLoop(t *testing.T) {
 	}
 
 	// inputRequests shape: exactly one entry, reserved key "confirm",
-	// an elicitation/create form request (ADR 0004
-	// "confirmInputRequired").
+	// an elicitation/create form request (MCP guide,
+	// "MRTR confirmation").
 	reqs, ok := res1["inputRequests"].(map[string]any)
 	if !ok || len(reqs) != 1 {
 		t.Fatalf("round1 inputRequests=%v want single entry", res1["inputRequests"])
@@ -1386,7 +1386,7 @@ func TestModernLock_MRTR_FullLoop(t *testing.T) {
 	}
 
 	// Cache-hint absence: interim input_required results carry no
-	// ttlMs/cacheScope, ever (ADR 0004).
+	// ttlMs/cacheScope, ever.
 	if _, ok := res1["ttlMs"]; ok {
 		t.Errorf("round1 input_required must not carry ttlMs: %v", res1)
 	}
@@ -1467,7 +1467,7 @@ func TestModernLock_MRTR_FullLoop(t *testing.T) {
 	// Round 4 (expiry): mint an already-expired, otherwise-authentic
 	// state via the production minting helper and confirm it re-prompts
 	// (never errors, never executes) — the routine-re-prompt path is
-	// distinct from Round 3's tamper path per ADR 0004.
+	// distinct from Round 3's tamper path per the MCP guide.
 	expired := mintMCPConfirmState(mrtrLockKey, binding, time.Now().Add(-time.Minute))
 	if got := verifyMCPConfirmState(mrtrLockKey, expired, binding, time.Now()); got != mcpConfirmStateExpired {
 		t.Fatalf("expired state verify=%v want=Expired (sanity check)", got)

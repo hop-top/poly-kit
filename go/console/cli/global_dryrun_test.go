@@ -13,8 +13,8 @@ import (
 	"hop.top/kit/go/runtime/sideeffect"
 )
 
-// TestSupportsDryRun_Annotation covers the legacy ADR-0019 entry
-// point. Retained as a back-compat synonym under ADR-0020: setting
+// TestSupportsDryRun_Annotation covers the legacy opt-in entry
+// point. Retained as a back-compat synonym under the tier-driven policy: setting
 // the annotation still flips IsDryRunSupported to true regardless
 // of side-effect tier.
 func TestSupportsDryRun_Annotation(t *testing.T) {
@@ -80,7 +80,7 @@ func TestGlobalDryRun_RefusedOnUntaggedLeaf(t *testing.T) {
 }
 
 // TestGlobalDryRun_AcceptedOnLegacySupportsDryRun preserves the
-// ADR-0019 path: SupportsDryRun(cmd) opts the leaf in even when
+// legacy opt-in path: SupportsDryRun(cmd) opts the leaf in even when
 // the tier is unset. The deprecation warning fires once at
 // startup, which is asserted in TestGlobalDryRun_LegacyAnnotation_LogsDeprecation.
 func TestGlobalDryRun_AcceptedOnLegacySupportsDryRun(t *testing.T) {

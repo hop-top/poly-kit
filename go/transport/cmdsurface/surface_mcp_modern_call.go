@@ -45,7 +45,7 @@ func mcpHeaderConfirmationGate(req *http.Request, leaf *Leaf, _ jsonRPCRequest) 
 // the full params decode, so a header-validation failure (missing
 // Mcp-Name, empty-after-decode, absent params.name, mismatch) is
 // reported as -32020@400 even when the rest of params is unparseable
-// — ADR 0004: V7 precedes V9's params decode, and does not require
+// — docs/adopters/guides/expose-cli-over-mcp.md: V7 precedes V9's params decode, and does not require
 // the body to have decoded to run.
 func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Request, rpc jsonRPCRequest, meta modernRequestMeta) {
 	// V7 — Mcp-Name header agreement (slot; see below). Runs against a
@@ -68,7 +68,7 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 	// V9 — per-method params. Unreachable through a conforming HTTP
 	// request now that V7 requires params.name to be present and
 	// non-empty and to match a required, non-empty Mcp-Name header
-	// (ADR 0004): any request that could reach this branch would
+	// (MCP guide): any request that could reach this branch would
 	// already have failed V7. Kept as a defensive internal check for
 	// any future caller of this method that bypasses the V7 gate
 	// above.
@@ -138,7 +138,7 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 // decode, so V7 can run (and fail on a genuinely absent name)
 // independently of whatever else is wrong with the body. present
 // reports whether params is a JSON object carrying a "name" key at
-// all (ADR 0004 V7: "params.name absent" is a header-validation
+// all (MCP guide V7: "params.name absent" is a header-validation
 // failure, checked ahead of the full params decode). When present is
 // true but the key's value is not a JSON string, name is "" and
 // isString is false — V7 cannot compare a non-string value against
@@ -164,7 +164,7 @@ func rawToolCallName(rawParams json.RawMessage) (name string, present, isString 
 // validateNameHeader is the V7 step: on tools/call, Mcp-Name header
 // MUST be present, non-empty after Base64-sentinel (=?base64?...?=)
 // decoding, and byte-equal to params.name, which MUST itself be
-// present (-32020 @ 400 on any violation, per ADR 0004). Conflicting
+// present (-32020 @ 400 on any violation, per the MCP guide). Conflicting
 // duplicate Mcp-Name headers are a violation in their own right
 // (singleHeaderValue); byte-identical duplicates are tolerated. A
 // header value that merely looks like the sentinel (starts with the

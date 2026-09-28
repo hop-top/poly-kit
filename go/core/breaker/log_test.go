@@ -108,7 +108,7 @@ func TestLogger_OnTripWarn_LogsButDoesNotBlock(t *testing.T) {
 	assert.Contains(t, buf.String(), "warn-test")
 }
 
-// TestLogger_BufferCaptureContract is the new ADR-0007 acceptance test:
+// TestLogger_BufferCaptureContract is the kit/log switch acceptance test:
 // WithLogger(charmlog.NewWithOptions(buf, …)) captures transition
 // messages and the buffer contents match expected log lines.
 func TestLogger_BufferCaptureContract(t *testing.T) {

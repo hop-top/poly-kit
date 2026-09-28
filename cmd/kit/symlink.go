@@ -120,7 +120,7 @@ link or shim with a different target is refused unless --force.`,
 	cmd.Flags().BoolVar(&opts.force, "force", false, "Replace an existing link with a different target")
 
 	// kit symlink mutates filesystem state (links/shims) — declare
-	// the side-effect tier per cli-conventions §3.5. ADR-0020 drives
+	// the side-effect tier per cli-conventions §3.5. The tier-driven policy drives
 	// --dry-run support off this tier: write|destructive leaves
 	// accept --dry-run by default. The FS impl chosen by pickFS
 	// substitutes describing impls when sideeffect.IsDryRun(ctx)=true.
@@ -359,7 +359,7 @@ func installLink(linkPath, target string, force bool, fs sideeffect.FS, sym syml
 // Symlink) flow through the supplied sideeffect.FS / symlinkAdapter
 // so --dry-run can swap describing impls; reads (Readlink, Lstat)
 // stay on stdlib because they are safe and dry-run does not pretend
-// reads are unsafe (ADR-0019).
+// reads are unsafe (docs/adopters/reference/sideeffect.md).
 func installSymlinkUnix(linkPath, target string, force bool, sfs sideeffect.FS, sym symlinkAdapter) (linkResult, error) {
 	existing, err := os.Readlink(linkPath)
 	switch {
@@ -410,7 +410,7 @@ const shimTemplate = "@echo off\r\n\"%s\" %%*\r\n"
 // installShimWindows writes a .cmd shim. Idempotent when the
 // existing shim's target line matches. The mutating WriteFile flows
 // through the supplied sideeffect.FS so --dry-run can swap a
-// describing impl; reads stay on stdlib (ADR-0019).
+// describing impl; reads stay on stdlib.
 func installShimWindows(linkPath, target string, force bool, sfs sideeffect.FS) (linkResult, error) {
 	desired := fmt.Sprintf(shimTemplate, target)
 	existing, err := os.ReadFile(linkPath)

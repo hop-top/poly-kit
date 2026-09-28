@@ -152,7 +152,7 @@ func fixtureComment() []string {
 		"`era` is which handler must serve the request (legacy = 2024-11-05,",
 		"modern = 2026-07-28). It is documentation for the runner author,",
 		"not an input: era is detected per-request from the markers in",
-		"ADR 0042, and a port that routes a case to the wrong handler will",
+		"docs/adopters/guides/expose-cli-over-mcp.md, and a port that routes a case to the wrong handler will",
 		"fail on the response bytes anyway.",
 		"",
 		"`cases` each get a FRESH mount, so no case can observe state left",
@@ -169,8 +169,8 @@ func fixtureComment() []string {
 		"different key cannot replay round 2. A port that gates on the",
 		"X-Confirm-Token header alone fails round 1 outright.",
 		"",
-		"See ADR 0043 for the polyglot surface design and ADR 0042 for the",
-		"normative era-detection rules.",
+		"See docs/adopters/guides/serve-mcp-from-any-sdk.md for the polyglot surface design and",
+		"docs/adopters/guides/expose-cli-over-mcp.md for the normative era-detection rules.",
 	}
 }
 
@@ -450,7 +450,7 @@ func mcpFixtureMRTRCase(t *testing.T) *mcpFixtureMRTR {
 			"inputRequests.confirm.method":      "elicitation/create",
 			"inputRequests.confirm.params.mode": "form",
 		},
-		// Interim input_required results are never cached (ADR 0042).
+		// Interim input_required results are never cached.
 		Round1MustNotHave: []string{"ttlMs", "cacheScope"},
 		StateFraming:      "v1.<expiry-base10>.<mac> — three dot-separated parts; the mac is production-derived and never compared",
 		Round2Headers:     h2,

@@ -15,7 +15,7 @@
 // # Safety vocabulary
 //
 // The walker projects three orthogonal axes from cobra annotations
-// into the Safety record (see ADR-0019 for the full design):
+// into the Safety record (see docs/adopters/integrations/toolspec-adopter-guide.md for the full design):
 //
 //  1. kit/side-effect — six-tier ladder
 //     (read | write-local | write-shared | destructive-local |

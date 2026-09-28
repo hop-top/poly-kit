@@ -32,10 +32,10 @@ Verified by `example_test.go` in this directory.
 - Never blocks, never returns an error for a would-be call; a preview completes even where the real call would fail.
 - Output goes to `os.Stderr` unless `WithWriter` says otherwise; `WithWriter(nil)` resets to stderr.
 - `Bus.Publish` sets `Mechanism: "dry_run"` on payloads that embed `bus.Qualifiers`; other payloads are described without augmentation and the gap is logged once per Bus.
-- `Exec.Output` returns an empty byte slice; subprocess side effects cannot be contained (ADR-0019).
+- `Exec.Output` returns an empty byte slice; subprocess side effects cannot be contained.
 
 ## Neighbours
 
 - `hop.top/kit/go/runtime/sideeffect`: the interfaces and `IsDryRun`.
-- `hop.top/kit/go/console/cli`: installs the `--dry-run` flag and the ADR-0020 policy table.
+- `hop.top/kit/go/console/cli`: installs the `--dry-run` flag and the tier-driven policy table.
 - `hop.top/kit/go/runtime/sideeffect/testfake`: recording impls for tests.

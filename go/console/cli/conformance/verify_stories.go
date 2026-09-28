@@ -54,7 +54,7 @@ A metadata-key denylist sourced from contracts/scenario-rules.json
 rejects the same vocabulary the leak detector flags, so a valid
 story always round-trips clean through verify-no-leak.
 
- and ADR-0026.`,
+Reference: docs/adopters/reference/conformance.md (Story DSL).`,
 		Args: cobra.ArbitraryArgs,
 		Example: `  kit conformance verify-stories
   kit conformance verify-stories --paths=e2e/stories

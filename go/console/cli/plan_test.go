@@ -44,7 +44,7 @@ func TestPlan_RoundTrip_JSON(t *testing.T) {
 	assert.True(t, got.GeneratedAt.Equal(now), "GeneratedAt must round-trip")
 }
 
-// TestRoot_DryRun_PolicyAllow_OnDestructive confirms ADR-0020's
+// TestRoot_DryRun_PolicyAllow_OnDestructive confirms the tier-driven
 // convention: a destructive leaf accepts --dry-run by default
 // (resolved via the kit/side-effect tier; no per-command opt-in
 // required). The kit-global --dry-run on the root persistent flag
@@ -62,7 +62,7 @@ func TestRoot_DryRun_PolicyAllow_OnDestructive(t *testing.T) {
 	assert.Nil(t, nuke.Flags().Lookup("dry-run"),
 		"per-leaf --dry-run must not shadow the root persistent flag")
 	assert.True(t, cli.IsDryRunSupported(nuke),
-		"destructive leaves are dry-run-supported by default under ADR-0020")
+		"destructive leaves are dry-run-supported by default under the tier-driven policy")
 }
 
 // TestRoot_DryRun_PolicyAllow_OnWrite confirms write leaves are
@@ -75,11 +75,11 @@ func TestRoot_DryRun_PolicyAllow_OnWrite(t *testing.T) {
 	r.AutoRegisterFlags()
 
 	assert.True(t, cli.IsDryRunSupported(create),
-		"write leaves are dry-run-supported by default under ADR-0020")
+		"write leaves are dry-run-supported by default under the tier-driven policy")
 }
 
 // TestRoot_DryRun_NotSupported_OnRead confirms read leaves resolve
-// to "no-op" under ADR-0020: the flag is accepted silently when
+// to "no-op" under the tier-driven policy: the flag is accepted silently when
 // passed to a read command but the leaf is not "supported" in the
 // IsDryRunSupported sense (no help addendum, no ctx tag).
 func TestRoot_DryRun_NotSupported_OnRead(t *testing.T) {

@@ -56,4 +56,4 @@ findings := validator.ValidateOne(ps, validator.Options{Rules: doc})
 ## See also
 
 - [Conformance reference](../../../docs/adopters/reference/conformance.md#story-dsl): the package layout, the validator tier table, the embedding example, the three scenario-coupling tiers and how to compute a digest, leak-rule resistance, the schema version policy
-- ADR-0026: rationale and the scenario-coupling contract
+- [Story coupling](../../../docs/adopters/reference/conformance.md#story-coupling): the scenario-coupling contract

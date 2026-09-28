@@ -47,4 +47,3 @@ err = config.Load(&cfg, config.Options{
 
 - [Config reference](../../../docs/adopters/reference/config.md): CLI integration, `Set` vs `SetValue`, type coercion, migration, hot reload, bus events
 - [Inspect config paths](../../../docs/adopters/guides/inspect-config-paths.md): precedence chain and which file wins
-- ADR-0016: signal-driven hot reload design context

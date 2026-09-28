@@ -56,7 +56,7 @@ type HTTP interface {
 // The dryrun impl auto-tags bus.Qualifiers{Mechanism: "dry_run"} on
 // payloads that embed bus.Qualifiers. Payloads that do not embed
 // Qualifiers are published unchanged with a debug log line; tagging
-// is best-effort. See ADR-0019 for the rationale.
+// is best-effort; see docs/adopters/reference/sideeffect.md (bus auto-tagging).
 type Bus interface {
 	// Publish sends an event to the bus. Mirrors
 	// domain.EventPublisher.Publish.

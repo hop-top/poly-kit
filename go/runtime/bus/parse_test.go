@@ -39,7 +39,7 @@ func TestParseTopic_WithModifier(t *testing.T) {
 }
 
 func TestParseTopic_MultiUnderscoreModifier(t *testing.T) {
-	// Per ADR-0017: split on FIRST underscore. The remainder
+	// Topic grammar: split on FIRST underscore. The remainder
 	// (including additional underscores) is the modifier.
 	b, action, err := bus.ParseTopic("kit.config.snapshot_partial_reload.failed")
 	if err != nil {

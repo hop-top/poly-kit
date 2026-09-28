@@ -5,7 +5,7 @@
 //   - LoadOrDefault(path) — reads + merges; empty path returns the
 //     embedded default verbatim.
 //
-// Used by the MCP adapter's `--policy <file>` flag (ADR-0019 §4)
+// Used by the MCP adapter's `--policy <file>` flag
 // and by adopters wiring policy directly through their own
 // entrypoint. Precedence is fixed by Merge: overlay > default.
 
@@ -30,7 +30,7 @@ func LoadFromFile(path string) (Table, error) {
 // LoadOrDefault returns the embedded default when path is empty,
 // or the merged table (default + overlay from the file) when path
 // is set. Overlay rules win on (side_effect, network) collisions
-// per ADR-0019.
+// per Merge.
 func LoadOrDefault(path string) (Table, error) {
 	if path == "" {
 		return Default(), nil

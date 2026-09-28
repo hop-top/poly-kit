@@ -5,9 +5,9 @@ package toolspec
 // "kit:" namespace; consumers MAY define their own under their own
 // namespace prefix (e.g. "myorg:db:write") without colliding.
 //
-// See ADR-0021 (kit/ai/toolspec safety tier ladder + permissions
+// See docs/adopters/integrations/toolspec-adopter-guide.md (six-tier ladder + permissions
 // vocabulary) for the canonical mapping from cobra annotations to
-// permissions and for the harness default-policy table.
+// permissions; policy/default.yaml holds the harness default-policy table.
 type Permission string
 
 // Filesystem permissions. Exactly one is emitted per command, derived

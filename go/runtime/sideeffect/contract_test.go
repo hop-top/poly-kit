@@ -185,7 +185,7 @@ func TestContract_Exec_OutputZeroValue(t *testing.T) {
 // TestContract_FS_ReadOnlyOperationsBypassed reads still go through
 // stdlib regardless of impl: the FS interface deliberately omits
 // reads. This pins the design choice — adding read methods later
-// requires updating ADR-0019.
+// requires updating docs/adopters/reference/sideeffect.md.
 func TestContract_FS_ReadOnlyOperationsBypassed(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "f")

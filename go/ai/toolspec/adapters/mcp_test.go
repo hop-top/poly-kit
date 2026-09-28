@@ -297,7 +297,7 @@ func TestMCPActionEnum_Render_Compact(t *testing.T) {
 
 // --- Regression lock: byte-identical output ------------------------
 //
-// ADR 0004 records "no change" for this adapter under MCP 2026-07-28:
+// The MCP dual-spec work left this adapter unchanged under 2026-07-28:
 // the descriptor's required fields (name, description, inputSchema)
 // are unchanged and every new field the revision adds (title, icons,
 // outputSchema, annotations, x-mcp-header) is optional, so the
@@ -342,7 +342,7 @@ func TestMCPActionEnum_Render_ByteIdentical_Pretty(t *testing.T) {
   "name": "mytool"
 }
 `
-	assert.Equal(t, want, buf.String(), "MCP envelope bytes must stay stable across spec revisions (ADR 0004: no change)")
+	assert.Equal(t, want, buf.String(), "MCP envelope bytes must stay stable across spec revisions")
 }
 
 func TestMCPActionEnum_Render_ByteIdentical_Compact(t *testing.T) {
@@ -352,5 +352,5 @@ func TestMCPActionEnum_Render_ByteIdentical_Compact(t *testing.T) {
 
 	const want = `{"description":"mytool CLI tool","inputSchema":{"properties":{"action":{"description":"The action to perform.","enum":["list","create","delete"],"type":"string"},"config":{"description":"config path","type":"string"},"verbose":{"description":"verbose","type":"boolean"}},"required":["action"],"type":"object"},"name":"mytool"}
 `
-	assert.Equal(t, want, buf.String(), "MCP envelope bytes must stay stable across spec revisions (ADR 0004: no change)")
+	assert.Equal(t, want, buf.String(), "MCP envelope bytes must stay stable across spec revisions")
 }

@@ -417,8 +417,8 @@ func TestLegacyLock_ErrorCode_MethodNotFound32601(t *testing.T) {
 	srv := legacyLockServer(t, nil)
 	status, _, raw := rawPOST(t, srv, "/mcp", nil,
 		[]byte(`{"jsonrpc":"2.0","id":1,"method":"nope/anywhere"}`))
-	// Acknowledged current-behavior quirk (see ADR 0004 "Acknowledged
-	// quirks"): method-not-found rides HTTP 200 on the legacy path.
+	// Acknowledged current-behavior quirk, kept for byte-for-byte legacy
+	// preservation: method-not-found rides HTTP 200 on the legacy path.
 	// This is the exact case the "bugs included" clause in the task
 	// brief exists for — pinned as-is, not "fixed."
 	if status != http.StatusOK {

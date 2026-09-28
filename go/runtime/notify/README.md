@@ -52,7 +52,7 @@ the same file carries the end-to-end tee wiring.
 - Outbound pipeline on every sink:
   `template render → redactor → breaker → egress`
   ([`guardrails.go`](guardrails.go)).
-- Go-only MVP; ports wait on `bus.Sink` / `TeeBus` ports (ADR-0012).
+- Go-only MVP; ports wait on `bus.Sink` / `TeeBus` ports.
 
 ## Neighbours
 

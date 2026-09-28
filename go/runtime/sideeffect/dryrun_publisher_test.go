@@ -122,7 +122,7 @@ func TestDryRunPublisher_ValuePayloadIsBestEffort(t *testing.T) {
 	t.Parallel()
 	// A payload passed by value cannot be augmented because the
 	// reflected struct is non-addressable. The publisher MUST NOT
-	// panic and MUST NOT clone-and-augment (see ADR-0019). It just
+	// panic and MUST NOT clone-and-augment. It just
 	// delegates the value unchanged.
 	rec := &recordingPublisher{}
 	p := sideeffect.NewDryRunPublisher(rec)
