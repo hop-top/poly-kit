@@ -60,10 +60,6 @@ type httpServing struct {
 	srv    *http.Server
 	mcpSrv *mcp.Server
 	stop   context.CancelFunc
-
-	// unread holds connections whose first request's headers have not
-	// all arrived: never used, or stalled mid-header.
-	unread map[net.Conn]struct{}
 }
 
 func newHTTP(svc *service) *httpServing {
@@ -113,10 +109,10 @@ func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
 	srv := &http.Server{
 		Handler:     handler,
 		BaseContext: func(net.Listener) context.Context { return base },
-		ConnState:   h.trackUnread,
 	}
 	// Server timeouts come from the timeouts block, kit defaults
-	// where it sets nothing.
+	// where it sets nothing. A client stalled mid-header or mid-body
+	// does not hold the stop (api.ReleaseStalledOnShutdown).
 	if err := cli.ConfigureServeHTTP(h.svc.root, ServiceName, srv, api.DefaultServerTimeouts()); err != nil {
 		cancelBase()
 		_ = ln.Close()
@@ -157,7 +153,6 @@ func (h *httpServing) close(ctx context.Context) error {
 			_ = ss.Close()
 		}
 	}
-	h.closeUnread()
 	if srv == nil {
 		if ln != nil {
 			return ignoreClosed(ln.Close())
@@ -171,43 +166,6 @@ func (h *httpServing) close(ctx context.Context) error {
 	return nil
 }
 
-// trackUnread records which connections have not sent a complete
-// request header yet. net/http leaves a connection in StateNew until
-// its first request's headers are read, so this covers one a client
-// leaves unused (Go's transport parks a connection it dialed for a
-// request another connection served) and one stalled mid-header.
-// Shutdown waits five seconds before it counts either as idle. A stall
-// in a later request's headers needs no tracking: the connection is
-// StateIdle while it waits, and Shutdown closes idle connections.
-func (h *httpServing) trackUnread(c net.Conn, st http.ConnState) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if st == http.StateNew {
-		if h.unread == nil {
-			h.unread = make(map[net.Conn]struct{})
-		}
-		h.unread[c] = struct{}{}
-		return
-	}
-	delete(h.unread, c)
-}
-
-// closeUnread closes the connections that carry no complete request,
-// so Shutdown does not wait on them. Stopping has already canceled every
-// request in flight (and releaseOnStop has ended any body read); one
-// arriving now would not be served.
-func (h *httpServing) closeUnread() {
-	h.mu.Lock()
-	conns := make([]net.Conn, 0, len(h.unread))
-	for c := range h.unread {
-		conns = append(conns, c)
-	}
-	h.mu.Unlock()
-	for _, c := range conns {
-		_ = c.Close()
-	}
-}
-
 func ignoreClosed(err error) error {
 	if errors.Is(err, net.ErrClosed) {
 		return nil
@@ -215,8 +173,8 @@ func ignoreClosed(err error) error {
 	return err
 }
 
-// handler is the stack in front of mux, the SDK handler's: the stop
-// release first, then the HTTP-plane chain every kit listener shares
+// handler is the stack in front of mux, the SDK handler's: the
+// HTTP-plane chain every kit listener shares
 // (serve-lifecycle.md §"Middleware order on the HTTP plane": request
 // id, access log, recovery, tracing and metrics, security headers,
 // health probes, Host and Origin checks with the metrics endpoint,
@@ -243,7 +201,7 @@ func (h *httpServing) handler(mux *http.ServeMux) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return releaseOnStop()(chain), nil
+	return chain, nil
 }
 
 // surfaceOptions sets the SDK's copies of the HTTP-plane checks from
@@ -262,28 +220,6 @@ func (h *httpServing) surfaceOptions() ([]mcpsdk.Option, error) {
 		opts = append(opts, mcpsdk.WithoutLocalhostProtection())
 	}
 	return opts, nil
-}
-
-// releaseOnStop ends the read of a request body when the request's
-// context ends, which stopping the service does. A client that sends
-// headers and then stalls mid-body would otherwise hold the handler in
-// that read, and Shutdown with it, for the whole stop budget: canceling
-// the context does not interrupt a blocked read, a read deadline does.
-//
-// It must wrap the server's own ResponseWriter, so it sits first. The
-// release is withdrawn when the handler returns, before the server
-// reads the connection's next request.
-func releaseOnStop() api.Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			rc := http.NewResponseController(w)
-			release := context.AfterFunc(r.Context(), func() {
-				_ = rc.SetReadDeadline(time.Now())
-			})
-			defer release()
-			next.ServeHTTP(w, r)
-		})
-	}
 }
 
 // mcpCallRecorder writes [mcpCallHeader] from what the layers before

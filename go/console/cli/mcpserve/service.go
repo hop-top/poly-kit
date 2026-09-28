@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -429,21 +427,8 @@ func (s *service) httpListener() cli.ServeHTTPListener {
 		Service: ServiceName,
 		Addr:    s.addr(),
 		Ready:   s.Ready,
-		Refuse:  refuseAndClose,
+		Refuse:  mcpsdk.RefuseJSONRPC,
 	}
-}
-
-// refuseAndClose writes an HTTP-plane refusal as a JSON-RPC error body
-// and ends the connection after it, reading no more of the request. A
-// refusal is decided before anything reads the body, and net/http
-// reads the unread rest once the handler returns — outside
-// releaseOnStop, so a client that stalls mid-body would hold the stop
-// until it sent the rest. The read deadline ends that read at once;
-// the connection, its request unfinished, is not reused.
-func refuseAndClose(w http.ResponseWriter, r *http.Request, e *api.APIError) {
-	w.Header().Set("Connection", "close")
-	_ = http.NewResponseController(w).SetReadDeadline(time.Now())
-	mcpsdk.RefuseJSONRPC(w, r, e)
 }
 
 // serving is one transport's half of a run: acquire, serve a surface,

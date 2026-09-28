@@ -137,11 +137,13 @@ func validateServeTimeouts(r *Root, svc string) error {
 // the http.Server of one kit HTTP listener: the timeouts block's
 // read_header, read, write and idle keys, each falling back to the
 // matching field of fallback (the service's code default,
-// [api.DefaultServerTimeouts] for the kit-shipped services). Call it
-// once srv carries its Handler, before it serves. Validate has
-// already refused a block that does not parse; were one to reach
-// here, the error is returned rather than serving on timeouts nobody
-// wrote.
+// [api.DefaultServerTimeouts] for the kit-shipped services), and
+// [api.ReleaseStalledOnShutdown], so a client stalled mid-header or
+// mid-body holds neither a refusal's connection nor the stop for the
+// read timeout. Call it once srv carries its Handler and ConnState,
+// before it serves. Validate has already refused a block that does
+// not parse; were one to reach here, the error is returned rather
+// than serving on timeouts nobody wrote.
 func ConfigureServeHTTP(r *Root, svc string, srv *http.Server, fallback api.ServerTimeouts) error {
 	var v *viper.Viper
 	if r != nil {
@@ -152,5 +154,6 @@ func ConfigureServeHTTP(r *Root, svc string, srv *http.Server, fallback api.Serv
 		return err
 	}
 	t.Apply(srv)
+	api.ReleaseStalledOnShutdown(srv)
 	return nil
 }

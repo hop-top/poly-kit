@@ -1867,6 +1867,17 @@ Stopping a service ends what is in flight per transport:
   `503` and code `shutting_down`. Request/reply calls then drain:
   the service waits up to the stop budget for them to complete and
   does not cancel them.
+- On every HTTP listener (`api`, `rpc`, `mcp`), a client stalled
+  mid-header or mid-body MUST NOT hold the stop: when stopping
+  begins, a connection with no complete request is closed, and a body
+  read still waiting on the client is ended, so its handler returns.
+  A request whose body has been read is untouched.
+- Independently of stopping, a handler that returns with its body
+  unread — a refusal answered before the body, such as
+  `host_rejected` or `body_too_large` — MUST NOT leave the connection
+  waiting on the rest of the body for the read timeout: what has
+  already arrived is consumed, and a body still on the wire ends the
+  connection after the response (`Connection: close`).
 
 ### Isolation between invocations
 

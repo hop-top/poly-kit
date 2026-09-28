@@ -324,16 +324,15 @@ func (s *rpcService) httpListener() cli.ServeHTTPListener {
 // reading no more of the request. PermissionDenied for the Host and
 // Origin checks, ResourceExhausted for the body limit
 // (serve-lifecycle.md §"Refusals"). The refusal is decided before
-// anything reads the body, and net/http reads the unread rest once
-// the handler returns; the read deadline ends that read at once, so a
-// client stalled mid-body does not hold the stop.
+// anything reads the body; the stall guard cli.ConfigureServeHTTP
+// installs ends the connection after it without waiting on the rest
+// (api.ReleaseStalledOnShutdown), so a client stalled mid-body does
+// not hold the stop.
 func refuseRPC(w http.ResponseWriter, r *http.Request, e *api.APIError) {
 	code := connect.CodePermissionDenied
 	if e.Status == http.StatusRequestEntityTooLarge {
 		code = connect.CodeResourceExhausted
 	}
-	w.Header().Set("Connection", "close")
-	_ = http.NewResponseController(w).SetReadDeadline(time.Now())
 	_ = connect.NewErrorWriter().Write(w, r, connect.NewError(code, errors.New(e.Code+": "+e.Message)))
 }
 

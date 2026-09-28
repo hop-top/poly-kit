@@ -447,6 +447,16 @@ are streams lifts it for its own response with
 projection's stream routes, the rpc service's `InvokeStream` and the
 whole mcp endpoint are exempt this way; everything else keeps it.
 
+`ReleaseStalledOnShutdown(srv)` keeps a stalled client from holding
+`Shutdown`: when it begins, a connection whose first request's headers
+never finished is closed, and a body read still waiting on the client
+is ended so its handler returns; a request whose body was read drains
+untouched. It also ends a connection whose handler returned with the
+body still on the wire — a refusal answered before the body — rather
+than letting `net/http` wait for the rest of the body for the read
+timeout. Call it once `srv` has its `Handler` and `ConnState`; the api,
+rpc and mcp services install it with their timeouts.
+
 The api, rpc and mcp services read their timeouts from the `timeouts`
 block, per key: the service's own key, then `services.all`, then the
 default.

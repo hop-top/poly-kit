@@ -1,6 +1,8 @@
 package mcpserve_test
 
 import (
+	"io"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -72,4 +74,36 @@ func TestMCPServiceRefusesABadTimeoutsBlock(t *testing.T) {
 		withKeys(map[string]any{"services.mcp.timeouts.stall": "5s"}))
 	assert.Equal(t, 2, oe.ExitCode)
 	assert.Contains(t, oe.Error(), "services.mcp.timeouts.stall")
+}
+
+// TestMCPServiceStopIsNotHeldByStalledClients pins that stopping the
+// mcp service does not wait on clients stalled mid-header or mid-body,
+// even with read timeouts longer than the stop budget.
+func TestMCPServiceStopIsNotHeldByStalledClients(t *testing.T) {
+	run, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
+		withKeys(map[string]any{"services.mcp.timeouts.read": "1m", "services.mcp.timeouts.read_header": "1m"}))
+	host := strings.TrimSuffix(strings.TrimPrefix(endpoint, "http://"), "/mcp")
+	for _, raw := range []string{
+		"POST /mcp HTTP/1.1\r\nHost: " + host,
+		"POST /mcp HTTP/1.1\r\nHost: " + host +
+			"\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{\"js",
+	} {
+		c, err := net.Dial("tcp", host)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = c.Close() })
+		_, err = io.WriteString(c, raw)
+		require.NoError(t, err)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	start := time.Now()
+	run.stop()
+	select {
+	case err := <-run.errCh:
+		run.errCh <- err
+		assert.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve did not return with stalled clients open")
+	}
+	assert.Less(t, time.Since(start), 3*time.Second)
 }
