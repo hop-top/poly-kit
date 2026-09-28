@@ -19,6 +19,7 @@ import (
 
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
+	"hop.top/kit/go/transport/mcpsdk"
 	"hop.top/kit/go/transport/rpc"
 )
 
@@ -298,6 +299,11 @@ func BuildExample(ctx context.Context, logger *slog.Logger, opts ...ExampleOptio
 
 // buildRouter constructs the shared HTTP router and mounts every
 // HTTP-bound surface on it: REST, MCP, WebSocket, SSE.
+//
+// REST is the command projection: one route per command under
+// /v1/commands at the method its side-effect class selects, plus
+// discovery at GET /v1/commands, described into the router's OpenAPI
+// spec. MCP is the official SDK's streamable HTTP transport at /mcp.
 func buildRouter(ctx context.Context, b *cmdsurface.Bridge) (*api.Router, error) {
 	r := api.NewRouter(
 		api.WithMiddleware(api.RequestID(), api.Recovery(nil)),
@@ -306,18 +312,16 @@ func buildRouter(ctx context.Context, b *cmdsurface.Bridge) (*api.Router, error)
 			Version: "0.0.0",
 		}),
 	)
-	//nolint:staticcheck // SA1019: the example exercises every cmdsurface mount, deprecated ones included, until they are removed
-	if err := cmdsurface.MountREST(b, r,
-		cmdsurface.WithRESTOpenAPI(api.HumaAPI(r)), //nolint:staticcheck // SA1019: see MountREST above
-		cmdsurface.WithRESTAuth(allowAnyAuth),      //nolint:staticcheck // SA1019: see MountREST above
+	if err := cmdsurface.MountProjection(b, r,
+		cmdsurface.WithProjectionTool("cmdsurface-example", "0.0.0"),
+		cmdsurface.WithProjectionAuth(allowAnyAuth),
 	); err != nil {
-		return nil, fmt.Errorf("MountREST: %w", err)
+		return nil, fmt.Errorf("MountProjection: %w", err)
 	}
-	//nolint:staticcheck // SA1019: the example exercises every cmdsurface mount, deprecated ones included, until they are removed
-	if err := cmdsurface.MountMCP(b, r,
-		cmdsurface.WithMCPServerInfo("cmdsurface-example", "0.0.0"), //nolint:staticcheck // SA1019: see MountMCP above
+	if err := mcpsdk.Mount(b, r,
+		mcpsdk.WithServerInfo("cmdsurface-example", "0.0.0"),
 	); err != nil {
-		return nil, fmt.Errorf("MountMCP: %w", err)
+		return nil, fmt.Errorf("mcpsdk.Mount: %w", err)
 	}
 	if err := cmdsurface.MountWS(b, r,
 		cmdsurface.WithWSContext(ctx),
@@ -482,7 +486,7 @@ func buildBridge(root *cobra.Command, logger *slog.Logger, cfg exampleConfig, te
 	return b, sinkBuf
 }
 
-// allowAnyAuth is a permissive AuthFunc used to satisfy the
-// auth-required gating on `report purge` in the example. Real
+// allowAnyAuth is a permissive AuthFunc: it authenticates the REST
+// projection and satisfies the SSE auth gate on `report purge`. Real
 // adopters supply a validator that inspects the request.
 func allowAnyAuth(_ *http.Request) (any, error) { return struct{}{}, nil }

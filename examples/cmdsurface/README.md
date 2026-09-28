@@ -33,7 +33,10 @@ go run ./examples/cmdsurface widget add --name foo --tag a --tag b
 go run ./examples/cmdsurface tick --count 3 --interval 100ms
 ```
 
-OpenAPI spec: <http://localhost:8080/openapi.json>
+REST is the command projection under <http://localhost:8080/v1/commands>
+(`cmdsurface.MountProjection`), described at
+<http://localhost:8080/openapi.json>. MCP is the official SDK at
+<http://localhost:8080/mcp> (`mcpsdk.Mount`).
 
 End-to-end tests:
 
@@ -48,7 +51,8 @@ go test -tags=e2e -race -count=1 ./examples/cmdsurface/...
   `tick`, defined inline.
 - Destructive leaves (`widget delete`, `report purge`) run only on the
   CLI and Library surfaces; every remote surface refuses with
-  `destructive_blocked` / `PERMISSION_DENIED`.
+  `destructive_blocked` / `PERMISSION_DENIED`, and the REST projection
+  describes them as withheld and mounts no route.
 - `widget delete` is hidden from every remote surface: absent from the
   OpenAPI spec and the MCP `tools/list`.
 - `cmdsurface` never calls sinks itself; `sinkRunner` wraps

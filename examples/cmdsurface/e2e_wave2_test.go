@@ -575,7 +575,7 @@ func TestE2E_Wave2_SinkFanOut(t *testing.T) {
 	// Drive at least one invocation via REST so the sinkRunner fires.
 	// REST is sufficient — every surface goes through the same Runner.
 	body := strings.NewReader(`{"flags":{"name":"sink-test"}}`)
-	req, err := http.NewRequest(http.MethodPost, le.httpURL+"/cmd/widget/add", body)
+	req, err := http.NewRequest(http.MethodPost, le.httpURL+"/v1/commands/widget/add", body)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}

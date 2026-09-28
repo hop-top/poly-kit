@@ -21,8 +21,10 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1"
 	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1/cmdsurfacev1connect"
@@ -114,13 +116,13 @@ func TestE2E_CLI(t *testing.T) {
 	}
 }
 
-// --- REST ---
+// --- REST (the command projection) ---
 
 func TestE2E_RESTHappyPath(t *testing.T) {
 	le := start(t)
 
 	body := strings.NewReader(`{"flags":{"name":"foo"}}`)
-	req, err := http.NewRequest(http.MethodPost, le.httpURL+"/cmd/widget/add", body)
+	req, err := http.NewRequest(http.MethodPost, le.httpURL+"/v1/commands/widget/add", body)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
@@ -136,42 +138,62 @@ func TestE2E_RESTHappyPath(t *testing.T) {
 		raw, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status=%d body=%s", resp.StatusCode, raw)
 	}
-	var res cmdsurface.Result
+	var res api.CommandResult
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if want := "widget add: name=foo"; !strings.Contains(res.Stdout, want) {
-		t.Errorf("Result.Stdout=%q want contains %q", res.Stdout, want)
+		t.Errorf("Stdout=%q want contains %q", res.Stdout, want)
 	}
 }
 
-func TestE2E_RESTDestructiveBlocked(t *testing.T) {
+func TestE2E_RESTDestructiveWithheld(t *testing.T) {
 	le := start(t)
 
-	// report purge is destructive AND auth-required. The example's
-	// allowAnyAuth lets it through auth; the destructive policy then
-	// refuses on REST → 403 destructive_blocked. (widget delete is
-	// Hide()n entirely from REST, so /cmd/widget/delete is a 404
-	// rather than a 403 — we exercise the 403 path explicitly.)
-	body := strings.NewReader(`{"flags":{"before":"yesterday"}}`)
-	req, err := http.NewRequest(http.MethodPost, le.httpURL+"/cmd/report/purge", body)
+	// report purge is destructive and REST is not in
+	// AllowDestructiveOn, so the projection describes it with the
+	// reason and mounts no route for it. widget delete is Hide()n from
+	// REST, which discovery reports as withheld-by-config.
+	resp, err := http.Get(le.httpURL + "/v1/commands")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("discovery status=%d", resp.StatusCode)
+	}
+	var doc api.DiscoveryDocument
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	reasons := map[string]string{}
+	for _, e := range doc.Commands {
+		if !e.Invocable {
+			reasons[strings.Join(e.Path, " ")] = e.Reason
+		}
+	}
+	for cmd, want := range map[string]string{
+		"report purge":  "unauthorized-destructive",
+		"widget delete": cmdsurface.ReasonWithheldByConfig,
+	} {
+		if got := reasons[cmd]; got != want {
+			t.Errorf("%s: reason=%q want %q (withheld=%v)", cmd, got, want, reasons)
+		}
+	}
+
+	req, err := http.NewRequest(http.MethodPost, le.httpURL+"/v1/commands/report/purge",
+		strings.NewReader(`{"flags":{"before":"yesterday"}}`))
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer test")
-
-	resp, err := http.DefaultClient.Do(req)
+	purge, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("status=%d body=%s", resp.StatusCode, raw)
-	}
-	if !strings.Contains(string(raw), "destructive_blocked") {
-		t.Errorf("body=%s does not contain destructive_blocked", raw)
+	purge.Body.Close()
+	if purge.StatusCode != http.StatusNotFound {
+		t.Errorf("POST report/purge status=%d, want 404 (no route)", purge.StatusCode)
 	}
 }
 
@@ -187,12 +209,13 @@ func TestE2E_RESTOpenAPI(t *testing.T) {
 		t.Fatalf("status=%d", resp.StatusCode)
 	}
 	raw, _ := io.ReadAll(resp.Body)
-	if !bytes.Contains(raw, []byte("cmd_widget_add")) {
-		t.Errorf("OpenAPI spec missing cmd_widget_add operationId; body=%s", raw)
+	add := api.OperationIDFor([]string{"widget", "add"})
+	if !bytes.Contains(raw, []byte(add)) {
+		t.Errorf("OpenAPI spec missing %s operationId; body=%s", add, raw)
 	}
 	// widget delete is hidden from REST → its operation must NOT appear.
-	if bytes.Contains(raw, []byte("cmd_widget_delete")) {
-		t.Errorf("OpenAPI spec unexpectedly contains cmd_widget_delete")
+	if del := api.OperationIDFor([]string{"widget", "delete"}); bytes.Contains(raw, []byte(del)) {
+		t.Errorf("OpenAPI spec unexpectedly contains %s", del)
 	}
 }
 
@@ -295,57 +318,42 @@ func TestE2E_RPCStream(t *testing.T) {
 	}
 }
 
-// --- MCP ---
+// --- MCP (the official SDK) ---
 
-type mcpResp struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
+// mcpSession connects the official MCP client to the example's /mcp
+// endpoint over streamable HTTP.
+func mcpSession(t *testing.T, baseURL string) *mcp.ClientSession {
+	t.Helper()
+	client := mcp.NewClient(&mcp.Implementation{Name: "cmdsurface-e2e", Version: "0.0.1"}, nil)
+	sess, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
+		Endpoint: baseURL + "/mcp",
+	}, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = sess.Close() })
+	return sess
 }
 
-func mcpCall(t *testing.T, url string, payload string) mcpResp {
-	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, url+"/mcp", strings.NewReader(payload))
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
+func TestE2E_MCPInitialize(t *testing.T) {
+	le := start(t)
+
+	sess := mcpSession(t, le.httpURL)
+	info := sess.InitializeResult().ServerInfo
+	if info == nil || info.Name != "cmdsurface-example" {
+		t.Errorf("serverInfo=%+v, want cmdsurface-example", info)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("Do: %v", err)
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	var m mcpResp
-	if err := json.Unmarshal(raw, &m); err != nil {
-		t.Fatalf("decode %q: %v", raw, err)
-	}
-	return m
 }
 
 func TestE2E_MCPToolsList(t *testing.T) {
 	le := start(t)
 
-	m := mcpCall(t, le.httpURL,
-		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
-	)
-	if m.Error != nil {
-		t.Fatalf("error: %+v", *m.Error)
+	res, err := mcpSession(t, le.httpURL).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("tools/list: %v", err)
 	}
-	var result struct {
-		Tools []struct {
-			Name string `json:"name"`
-		} `json:"tools"`
-	}
-	if err := json.Unmarshal(m.Result, &result); err != nil {
-		t.Fatalf("decode result: %v", err)
-	}
-	names := make(map[string]bool, len(result.Tools))
-	for _, tool := range result.Tools {
+	names := make(map[string]bool, len(res.Tools))
+	for _, tool := range res.Tools {
 		names[tool.Name] = true
 	}
 	// Required entries.
@@ -366,47 +374,40 @@ func TestE2E_MCPToolsList(t *testing.T) {
 func TestE2E_MCPToolsCallHappyPath(t *testing.T) {
 	le := start(t)
 
-	m := mcpCall(t, le.httpURL,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/call",
-		  "params":{"name":"widget.add","arguments":{"name":"foo"}}}`,
-	)
-	if m.Error != nil {
-		t.Fatalf("error: %+v", *m.Error)
+	res, err := mcpSession(t, le.httpURL).CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "widget.add",
+		Arguments: map[string]any{"name": "foo"},
+	})
+	if err != nil {
+		t.Fatalf("tools/call: %v", err)
 	}
-	var result struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-		IsError bool `json:"isError"`
+	if res.IsError {
+		t.Errorf("isError=true, result=%+v", res)
 	}
-	if err := json.Unmarshal(m.Result, &result); err != nil {
-		t.Fatalf("decode result: %v", err)
+	var text strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			text.WriteString(tc.Text)
+		}
 	}
-	if result.IsError {
-		t.Errorf("isError=true, result=%+v", result)
-	}
-	if len(result.Content) == 0 {
-		t.Fatal("empty content")
-	}
-	if want := "widget add: name=foo"; !strings.Contains(result.Content[0].Text, want) {
-		t.Errorf("content[0]=%q want contains %q", result.Content[0].Text, want)
+	if want := "widget add: name=foo"; !strings.Contains(text.String(), want) {
+		t.Errorf("content=%q want contains %q", text.String(), want)
 	}
 }
 
 func TestE2E_MCPToolsCallUnknown(t *testing.T) {
 	le := start(t)
 
-	// widget.delete is Hide()n on MCP → tools/call returns JSON-RPC
-	// error -32602 (invalid params, unknown tool).
-	m := mcpCall(t, le.httpURL,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call",
-		  "params":{"name":"widget.delete","arguments":{}}}`,
-	)
-	if m.Error == nil {
-		t.Fatalf("expected JSON-RPC error, got result=%s", m.Result)
+	// widget.delete is Hide()n on MCP, so it is no tool: the call is a
+	// JSON-RPC error, not an isError result.
+	_, err := mcpSession(t, le.httpURL).CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "widget.delete",
+		Arguments: map[string]any{},
+	})
+	if err == nil {
+		t.Fatal("tools/call widget.delete succeeded; want an unknown-tool error")
 	}
-	if m.Error.Code != -32602 {
-		t.Errorf("code=%d want=-32602 (msg=%q)", m.Error.Code, m.Error.Message)
+	if !strings.Contains(err.Error(), "widget.delete") {
+		t.Errorf("err=%v does not name the tool", err)
 	}
 }

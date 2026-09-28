@@ -52,24 +52,25 @@ go run ./examples/cmdsurface widget delete 42
 
 #### REST
 
+REST is the [command projection](../reference/transport-api.md#command-projection),
+mounted with `cmdsurface.MountProjection`: one route per command under
+`/v1/commands`, at the method its side-effect class selects.
+
 ```sh
 # Happy path.
-curl -sS -X POST http://localhost:8080/cmd/widget/add \
+curl -sS -X POST http://localhost:8080/v1/commands/widget/add \
   -H 'Content-Type: application/json' \
   -d '{"flags":{"name":"foo","tag":["a","b"]}}'
 # → {"exit_code":0,"stdout":"widget add: name=foo tags=[a b]\n"}
 
-# Destructive blocked.
-curl -sS -X POST http://localhost:8080/cmd/report/purge \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer test' \
-  -d '{"flags":{"before":"yesterday"}}'
-# → HTTP 403 / {"code":"destructive_blocked", ...}
+# Discovery: every command, with the reason a withheld one is withheld.
+curl -sS http://localhost:8080/v1/commands | jq '.commands[] | select(.invocable|not) | {name, reason}'
+# → {"name":"widget delete","reason":"withheld-by-config"}   (Hide()n on REST)
+# → {"name":"report purge","reason":"unauthorized-destructive"}
+# ...
 
-# widget delete is Hide()n on REST → 404.
-curl -sS -i -X POST http://localhost:8080/cmd/widget/delete \
-  -H 'Content-Type: application/json' \
-  -d '{"args":["42"]}'
+# A withheld command has no route.
+curl -sS -i -X POST http://localhost:8080/v1/commands/report/purge
 # → HTTP 404
 
 # OpenAPI spec.
@@ -96,18 +97,17 @@ The example serves h2c, so native gRPC clients connect without TLS.
 
 #### MCP
 
-```sh
-# List tools (widget.delete is absent — hidden from MCP).
-curl -sS -X POST http://localhost:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+MCP is the official Go SDK's streamable HTTP transport at `/mcp`,
+mounted with `mcpsdk.Mount`. Connect any MCP client: the session
+starts with `initialize`, then `tools/list` (widget.delete is absent,
+hidden from MCP) and `tools/call`.
 
-# Call a tool.
-curl -sS -X POST http://localhost:8080/mcp \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call",
-       "params":{"name":"widget.add","arguments":{"name":"foo"}}}'
+```sh
+npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:8080/mcp
 ```
+
+The e2e suite drives it with the SDK's own client
+(`mcp.NewClient` + `mcp.StreamableClientTransport`).
 
 #### WebSocket
 
@@ -150,9 +150,11 @@ Cancel mid-flight:
 
 #### SSE
 
-The SSE surface mounts under `/cmd` (same prefix as REST — SSE
-endpoints are disambiguated by the `/stream` suffix). Query
-parameters: `arg=<v>` (positional), `flag.<name>=<v>` (flags).
+The SSE surface mounts under `/cmd`, every leaf as a `GET` so a
+browser `EventSource` can open it. Query parameters: `arg=<v>`
+(positional), `flag.<name>=<v>` (flags). The projection's own
+`/v1/commands/<path>/stream` routes speak the same frames at the
+command's projected method.
 
 ```sh
 # Happy path.
@@ -422,8 +424,8 @@ sinks = append(sinks, cmdsurface.SinkSpec{
 | Leaf            | CLI       | REST                  | RPC                       | MCP                | WS                          | SSE                          | Bus                  | Cron     |
 | --------------- | --------- | --------------------- | ------------------------- | ------------------ | --------------------------- | ---------------------------- | -------------------- | -------- |
 | `widget add`    | OK        | 200                   | OK                        | tools/call OK      | event+result frames         | event+result frames          | round-trip OK        | n/a      |
-| `widget delete` | OK        | 404 (hidden)          | NotFound (hidden)         | absent in list     | error: unknown_command      | 404 (hidden)                 | n/a (no binding)     | n/a      |
-| `report purge`  | OK        | 403 destructive_blocked | PermissionDenied        | isError + msg      | error: destructive_blocked  | 403 destructive_blocked       | error envelope       | rejected |
+| `widget delete` | OK        | 404; withheld-by-config | NotFound (hidden)         | absent in list     | error: unknown_command      | 404 (hidden)                 | n/a (no binding)     | n/a      |
+| `report purge`  | OK        | 404; unauthorized-destructive | PermissionDenied        | isError + msg      | error: destructive_blocked  | 403 destructive_blocked       | error envelope       | rejected |
 | `ping`          | OK        | 200                   | OK                        | tools/call OK      | event+result                | event+result                 | n/a                  | n/a      |
 | `tick`          | OK        | 200                   | OK / Stream OK            | tools/call OK      | multi-event + result        | multi-event + result          | n/a                  | n/a      |
 
@@ -472,7 +474,7 @@ kit telemetry enable
 #    that actually goes through the bridge — e.g. the REST endpoint.
 CMDSURFACE_DEMO_TELEMETRY=1 go run ./examples/cmdsurface &
 sleep 1
-curl -sS -X POST http://localhost:8080/cmd/ping
+curl -sS -X POST http://localhost:8080/v1/commands/ping
 # → {"exit_code":0,"stdout":"pong\n"}
 
 # 3. Inspect the captured event.
