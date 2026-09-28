@@ -287,7 +287,7 @@ started.
 
 ## Not implemented
 
-- A queued-invocations gauge: there is no admission queue yet.
+- A queued-invocations gauge: there is no capacity queue yet.
 - Trace context on the socket wire and MCP `_meta`. The socket carries
   `trace_id` only, so a socket invocation span starts a new trace; MCP
   over HTTP is traced by the HTTP middleware.
