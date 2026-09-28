@@ -803,7 +803,9 @@ services:
       path: ""             # file or directory for a file backend
 ```
 
-Every key may also be set under `services.all.cache`. `backend` names
+Every key may also be set under `services.all.cache`. Only the api
+service applies the block: set under any other service, it is refused
+at validation, exit `2`. `backend` names
 a `kv` driver that stores with a TTL: `memory`, or `sqlite` or `badger`
 once the binary imports `hop.top/kit/go/storage/kv/sqlite` (or
 `.../badger`), which then need `path`. A file backend keeps results

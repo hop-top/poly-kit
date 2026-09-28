@@ -1529,6 +1529,33 @@ alone — `security_headers`, `health`, `host_check`, `origin_check`,
 validation, exit `2`, rather than ignored. Under `services.all` it is a default, and a service it does
 not reach simply does not read it.
 
+The same rule holds for a key or a value that only some services
+apply, as the table below states: under the socket, the server keys
+of `timeouts` and `auth.mode: mtls`; under every service but `api`,
+the `cache` block, the adopter's services included. Each is refused
+at validation, exit `2`, and each stays a default under
+`services.all`.
+
+Which kit-shipped services apply each configurable block. "Bridge
+services" are `api`, `mcp`, `rpc`, `socket`, and an adopter's service
+built with `cli.ServeBridgeOptions`. The mcp service over stdio
+reads no HTTP-listener key.
+
+| Block                                   | Applied by                                     | Refused under            |
+|-----------------------------------------|------------------------------------------------|--------------------------|
+| `auth` (`mode`)                         | `mtls`: api, mcp over HTTP, rpc                | `mode: mtls`: socket     |
+| `auth.mtls`, `tls`, `tls.acme`          | api, mcp over HTTP, rpc                        | socket                   |
+| `timeouts` `read_header`, `read`, `write`, `idle` | api, mcp over HTTP, rpc              | socket                   |
+| `timeouts` `command`                    | bridge services                                | —                        |
+| `tracing`, `metrics`                    | HTTP half: api, mcp over HTTP, rpc; invocation half: bridge services | —  |
+| `metrics.scrape`, `security_headers`, `health`, `host_check`, `origin_check`, `body_limit`, `compression` | api, mcp over HTTP, rpc | socket |
+| `rate_limit`                            | bridge services                                | —                        |
+| `cache`                                 | api                                            | every other service      |
+| `audit`, `audit.redact`                 | bridge services                                | —                        |
+
+A block in the registry with no row here has no configuration keys
+yet.
+
 The defaults follow one rule. On loopback the caller is already on
 the machine, so what is on protects the machine from browsers and
 from unbounded work — Host and Origin checks, headers, the body limit,

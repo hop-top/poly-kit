@@ -208,3 +208,58 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 		assert.False(t, HTTPOnly(b), b)
 	}
 }
+
+// Keys of a block that reaches every service can still act on an HTTP
+// listener alone: the server timeouts, and auth.mode mtls, which is
+// client-certificate verification only a TLS listener performs. Under
+// a service with no HTTP listener they are refused; the block's other
+// keys and values, and services.all, are not.
+func TestValidateNoHTTPRefusesHTTPOnlyKeysAndValues(t *testing.T) {
+	v := viper.New()
+	for _, k := range []string{"read_header", "read", "write", "idle"} {
+		v.Set("services.socket.timeouts."+k, "1m")
+	}
+	v.Set("services.socket.timeouts.command", "30s")
+	v.Set("services.socket.auth.mode", "MTLS")
+	v.Set("services.all.timeouts.read", "1m")
+	v.Set("services.all.auth.mode", "mtls")
+
+	err := New(v).ValidateNoHTTP("socket")
+	require.Error(t, err)
+	msg := err.Error()
+	for _, want := range []string{
+		"services.socket.timeouts.read_header:", "services.socket.timeouts.read:",
+		"services.socket.timeouts.write:", "services.socket.timeouts.idle:",
+		`services.socket.auth.mode: "mtls"`,
+	} {
+		assert.Contains(t, msg, want)
+	}
+	for _, not := range []string{"timeouts.command", "services.all"} {
+		assert.NotContains(t, msg, not)
+	}
+
+	other := viper.New()
+	other.Set("services.socket.auth.mode", "peer")
+	other.Set("services.socket.timeouts.command", "30s")
+	assert.NoError(t, New(other).ValidateNoHTTP("socket"), "a mode the socket may apply is the socket's to check")
+}
+
+// A block only some services apply is refused under every other
+// service, the adopter's included; services.all stays a default.
+func TestValidateRefusesBlocksOutsideTheirServices(t *testing.T) {
+	for _, svc := range []string{"socket", "mcp", "rpc", "heartbeat"} {
+		v := viper.New()
+		v.Set("services."+svc+".cache.enabled", true)
+		err := New(v).Validate()
+		require.Error(t, err, svc)
+		assert.Contains(t, err.Error(), "services."+svc+".cache: only the api service applies cache")
+	}
+	v := viper.New()
+	v.Set("services.api.cache.enabled", true)
+	v.Set("services.all.cache.backend", "memory")
+	assert.NoError(t, New(v).Validate())
+
+	b, ok := Lookup("cache")
+	require.True(t, ok)
+	assert.Equal(t, []string{"api"}, b.Services)
+}

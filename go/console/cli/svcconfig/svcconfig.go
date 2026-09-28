@@ -55,6 +55,23 @@ type Block struct {
 	// Note is appended to an unknown-key error, for a block whose
 	// shape needs explaining (a security floor with no off switch).
 	Note string
+	// Services names the services that apply the block, when not
+	// every service does. Set under any other service, the adopter's
+	// included, the block would act on nothing, so [Resolver.Validate]
+	// refuses it; under services.all it is a default the other
+	// services do not read. Empty means every service its reach
+	// covers.
+	Services []string
+	// HTTPKeys names the keys of a block that otherwise reaches every
+	// service which act on an HTTP listener alone. Under a service
+	// with no HTTP listener [Resolver.ValidateNoHTTP] refuses them, as
+	// it refuses an [HTTPOnly] block.
+	HTTPKeys []string
+	// HTTPValues maps a key to the values of it only an HTTP listener
+	// can apply, compared without case. Under a service with no HTTP
+	// listener [Resolver.ValidateNoHTTP] refuses them; the key's other
+	// values are the service's own to check.
+	HTTPValues map[string][]string
 }
 
 // blocks is the registry, in the order the contract's block registry
@@ -62,11 +79,17 @@ type Block struct {
 // implemented; reading a key through [Resolver.Lookup] that is not
 // registered here escapes validation.
 var blocks = []Block{
-	{Name: "auth", Keys: []string{"mode"}},
+	{
+		Name: "auth", Keys: []string{"mode"},
+		HTTPValues: map[string][]string{"mode": {"mtls"}},
+	},
 	{Name: "auth.mtls", Keys: []string{"ca_file", "principal", "tenant_oid", "tenant_san_pattern"}},
 	{Name: "tls", Keys: []string{"enabled", "cert_file", "key_file", "min_version"}},
 	{Name: "tls.acme", Keys: []string{"enabled", "domains", "cache_dir", "email", "directory_url"}},
-	{Name: "timeouts", Keys: []string{"read_header", "read", "write", "idle", "command"}},
+	{
+		Name: "timeouts", Keys: []string{"read_header", "read", "write", "idle", "command"},
+		HTTPKeys: []string{"read_header", "read", "write", "idle"},
+	},
 	{Name: "tracing", Keys: []string{"enabled", "exporter", "endpoint", "headers", "sample_ratio"}},
 	{Name: "metrics", Keys: []string{"enabled", "exporter", "endpoint", "headers", "interval"}},
 	{Name: "metrics.scrape", Keys: []string{"enabled", "path", "allow_remote"}},
@@ -84,7 +107,7 @@ var blocks = []Block{
 	{Name: "rate_limit.write", Keys: []string{"per_minute", "burst"}},
 	{Name: "rate_limit.destructive", Keys: []string{"per_minute", "burst"}},
 	{Name: "idempotency", Keys: []string{"enabled", "ttl"}},
-	{Name: "cache", Keys: []string{"enabled", "backend", "path", "max_bytes"}},
+	{Name: "cache", Keys: []string{"enabled", "backend", "path", "max_bytes"}, Services: []string{"api"}},
 	{
 		Name: "audit", Keys: []string{"sinks"},
 		Lists: map[string][]string{
@@ -103,8 +126,9 @@ var blocks = []Block{
 // only a TLS listener can perform. A service with no HTTP listener
 // (the socket service) has nothing for them to act on, so
 // [Resolver.ValidateNoHTTP] refuses them under it. A block not named
-// here reaches every service; auth itself does, since its mode is
-// not only mtls.
+// here reaches every service, though a key or a value of it may still
+// act on an HTTP listener alone (Block.HTTPKeys, Block.HTTPValues):
+// the server timeouts, and auth.mode mtls.
 var httpOnly = []string{
 	"metrics.scrape", "security_headers", "health", "host_check",
 	"origin_check", "body_limit", "compression",
@@ -126,6 +150,15 @@ func Blocks() []Block {
 // clone deep-copies b, so a caller cannot edit the registry.
 func (b Block) clone() Block {
 	b.Keys = slices.Clone(b.Keys)
+	b.Services = slices.Clone(b.Services)
+	b.HTTPKeys = slices.Clone(b.HTTPKeys)
+	if b.HTTPValues != nil {
+		vals := make(map[string][]string, len(b.HTTPValues))
+		for k, v := range b.HTTPValues {
+			vals[k] = slices.Clone(v)
+		}
+		b.HTTPValues = vals
+	}
 	if b.Lists != nil {
 		lists := make(map[string][]string, len(b.Lists))
 		for k, v := range b.Lists {
@@ -213,12 +246,15 @@ func (r Resolver) IsConfigured(scope string) bool {
 //     belongs, is refused;
 //   - under services.all, anything outside a registered block —
 //     a lifecycle key, a service's own key, an unknown block — is
-//     refused, because services.all holds middleware defaults only.
+//     refused, because services.all holds middleware defaults only;
+//   - a block set under a service outside its Block.Services is
+//     refused, because nothing there would apply it.
 //
 // Every problem is reported, one per line, in key order.
 func (r Resolver) Validate() error {
 	keys := r.setKeys()
 	errs := r.checkBlocks(keys, nil, blocks)
+	errs = append(errs, checkServices(keys)...)
 	sharedPrefix := Root + "." + Shared + "."
 	var names []string
 	for _, b := range blocks {
@@ -242,9 +278,10 @@ func (r Resolver) Validate() error {
 }
 
 // ValidateNoHTTP refuses every key under services.<svc> that lies in
-// an [HTTPOnly] block, one error per block: svc is a service with no
-// HTTP listener, so nothing would apply the block and the setting
-// would be silently ignored. A key lies in the innermost registered
+// an [HTTPOnly] block, one error per block, and every key that is one
+// of its block's HTTPKeys or holds one of its HTTPValues, one error
+// per key: svc is a service with no HTTP listener, so nothing would
+// apply the setting and it would be silently ignored. A key lies in the innermost registered
 // block containing it, so metrics.scrape is refused while metrics
 // itself, which also instruments invocations, is not. services.all
 // is never refused here: a shared default a service does not use is
@@ -259,16 +296,81 @@ func (r Resolver) ValidateNoHTTP(svc string) error {
 			continue
 		}
 		block := innermostBlock(rest)
-		if block == "" || !HTTPOnly(block) || seen[block] {
+		if block == "" || seen[block] {
 			continue
 		}
-		seen[block] = true
-		errs = append(errs, fmt.Errorf(
-			"%s: the %s service has no HTTP listener, so %s does not apply to it; "+
-				"remove it, or set it under a service that serves HTTP",
-			Key(svc, block, ""), svc, block))
+		if HTTPOnly(block) {
+			seen[block] = true
+			errs = append(errs, fmt.Errorf(
+				"%s: the %s service has no HTTP listener, so %s does not apply to it; "+
+					"remove it, or set it under a service that serves HTTP",
+				Key(svc, block, ""), svc, block))
+			continue
+		}
+		if err := r.checkHTTPKey(svc, block, strings.TrimPrefix(rest, block+"."), k); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	return joinSorted(errs)
+}
+
+// checkHTTPKey refuses key k, which is key of block under svc, when
+// it is one of the block's HTTPKeys or holds one of its HTTPValues.
+func (r Resolver) checkHTTPKey(svc, block, key, k string) error {
+	b, ok := Lookup(block)
+	if !ok {
+		return nil
+	}
+	if slices.Contains(b.HTTPKeys, key) {
+		return fmt.Errorf(
+			"%s: the %s service has no HTTP listener, so %s.%s does not apply to it; "+
+				"remove it, or set it under a service that serves HTTP",
+			k, svc, block, key)
+	}
+	val := strings.ToLower(strings.TrimSpace(fmt.Sprint(r.v.Get(k))))
+	if slices.Contains(b.HTTPValues[key], val) {
+		return fmt.Errorf(
+			"%s: %q needs an HTTP listener, and the %s service has none; "+
+				"remove it, or set it under a service that serves HTTP",
+			k, val, svc)
+	}
+	return nil
+}
+
+// checkServices refuses, once per service and block, a block set
+// under a service outside its Block.Services.
+func checkServices(keys []string) []error {
+	var errs []error
+	seen := map[string]bool{}
+	for _, k := range keys {
+		rest, ok := strings.CutPrefix(k, Root+".")
+		if !ok {
+			continue
+		}
+		svc, rest, ok := strings.Cut(rest, ".")
+		if !ok || svc == Shared {
+			continue
+		}
+		for _, b := range blocks {
+			if len(b.Services) == 0 || slices.Contains(b.Services, svc) ||
+				(rest != b.Name && !strings.HasPrefix(rest, b.Name+".")) {
+				continue
+			}
+			at := Key(svc, b.Name, "")
+			if seen[at] {
+				continue
+			}
+			seen[at] = true
+			verb := "applies"
+			if len(b.Services) > 1 {
+				verb = "apply"
+			}
+			errs = append(errs, fmt.Errorf(
+				"%s: only the %s service %s %s; remove it, or set it under %s",
+				at, strings.Join(b.Services, ", "), verb, b.Name, Key(b.Services[0], b.Name, "")))
+		}
+	}
+	return errs
 }
 
 // innermostBlock is the most specific registered block that rest, a

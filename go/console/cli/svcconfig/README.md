@@ -16,6 +16,9 @@ console root does that before `serve` runs (`go/console/cli`).
 - the supervisor gates the whole `services` tree → `svcconfig.New(v).Validate()`
 - a new middleware block ships → add a `Block` row with its keys to the registry;
   a key holding a list of entries (`audit.sinks`) also names its entry keys in `Lists`
+- a block only some services apply → name them in `Services` (`Validate` refuses it
+  elsewhere); a key or value only an HTTP listener applies → `HTTPKeys`, `HTTPValues`
+  (`ValidateNoHTTP` refuses them under a service with none)
 - map a `<TOOL>_SERVICES_*` variable to its key → `svcconfig.EnvKey(name, tool, services)`
 
 ## Quick start
