@@ -69,7 +69,7 @@ const DEFAULT_QUEUE_SIZE = 1024;
 const FLUSH_INTERVAL_MS = 5_000;
 /** Threshold that triggers an early flush before the interval fires. */
 const FLUSH_BATCH_TRIGGER = 64;
-/** HTTPS connect timeout (per the ADR's "non-blocking" stance). */
+/** HTTPS connect timeout (telemetry must never block the caller). */
 const HTTPS_CONNECT_TIMEOUT_MS = 5_000;
 /** HTTPS overall timeout. */
 const HTTPS_TOTAL_TIMEOUT_MS = 10_000;

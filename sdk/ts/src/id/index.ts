@@ -14,7 +14,7 @@
  * URI composition (e.g. `tlc://task/task_…`) is NOT in this module —
  * callers should use the `@hop-top/cite` package directly. This
  * keeps `kit/id` free of any transitive dependency on the URI
- * registry, per the ADR's scope boundary.
+ * registry.
  */
 
 import { typeid, TypeID } from 'typeid-js';

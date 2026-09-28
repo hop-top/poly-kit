@@ -24,7 +24,7 @@ use Stringable;
  *   TaskId::parse('invoice_01j…');                  // PrefixMismatchException
  *
  * The class implements `JsonSerializable` and `Stringable` so the wire
- * form is the bare canonical TypeID string, matching the ADR.
+ * form is the bare canonical TypeID string.
  *
  * Construction invariant: every instance holds a string that (a) parses
  * as a valid canonical TypeID AND (b) carries this subclass's declared
