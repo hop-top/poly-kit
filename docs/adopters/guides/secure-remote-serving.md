@@ -584,7 +584,7 @@ services:
 ```
 
 A field longer than 4 KiB is withheld whole rather than shipped
-unscanned. See
+unscanned; `max_field_bytes` in the same block moves that limit. See
 [the cmdsurface reference](../reference/cmdsurface.md#redaction) for
 exactly what is scanned and what it costs.
 
@@ -773,6 +773,7 @@ names are in
 | `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. Records are always redacted. |
 | `services.<svc>.audit.redact.secret_flags` | none | Extra flag names masked in audit records; `services.all` applies to every service. |
 | `services.<svc>.audit.redact.patterns` | none | Extra content patterns (RE2) masked in audit records. |
+| `services.<svc>.audit.redact.max_field_bytes` | `4096` | Longest field the content rules scan; a longer one is withheld from the record whole. |
 | `cli.WithObservability(p)` | none | Links a tracing and metrics provider; `services.<svc>.tracing.enabled` / `.metrics.enabled` (or `services.all.*`) turn it on. |
 | `services.api.metrics.scrape.enabled` | `false` | Answer a Prometheus scrape at `/metrics`, after the Host check, before auth. Beyond loopback needs `services.api.metrics.scrape.allow_remote: true`. |
 | `--policy=<name>` | none | The tool's policy engine, applied to remote calls for every caller. Naming one permits a non-loopback address. |

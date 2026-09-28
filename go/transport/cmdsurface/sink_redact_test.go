@@ -519,7 +519,7 @@ func TestAuditRedaction_OutputDroppedWhenEverySinkIsBlind(t *testing.T) {
 // A field too long to scan is withheld, never shipped unscanned.
 func TestAuditRedaction_OversizeFieldWithheld(t *testing.T) {
 	rec := &sinkRecorder{}
-	big := strings.Repeat("x", auditScanLimit) + ghToken
+	big := strings.Repeat("x", DefaultAuditMaxFieldBytes) + ghToken
 	SinkSet{{Sink: rec, OnOK: true}}.Emit(context.Background(),
 		Invocation{Path: []string{"x"}, Meta: Meta{Surface: SurfaceREST}},
 		Result{Stdout: big, Data: []any{big}}, nil)
@@ -529,6 +529,52 @@ func TestAuditRedaction_OversizeFieldWithheld(t *testing.T) {
 	}
 	if s, _ := r.Data.(string); !strings.HasPrefix(s, "[withheld from audit: ") {
 		t.Errorf("data not withheld: %.80v", r.Data)
+	}
+}
+
+// MaxFieldBytes moves the withhold limit for one bridge: a lower
+// limit withholds a field the default would scan, a higher one scans
+// (and redacts) a field the default would withhold, and a zero keeps
+// the default. The last positive value wins.
+func TestAuditRedaction_MaxFieldBytes(t *testing.T) {
+	long := strings.Repeat("x", DefaultAuditMaxFieldBytes) + " " + ghToken
+	short := "rotate " + ghToken
+	run := func(stdout string, opts ...AuditRedaction) Result {
+		t.Helper()
+		root := &cobra.Command{Use: "app"}
+		root.AddCommand(&cobra.Command{Use: "sync", RunE: func(*cobra.Command, []string) error { return nil }})
+		rec := &sinkRecorder{}
+		bopts := []Option{
+			WithRunner(&fakeRunner{run: func(context.Context, Invocation) (Result, error) {
+				return Result{Stdout: stdout}, nil
+			}}),
+			WithSinks(SinkSpec{Sink: rec, OnOK: true, OnError: true}),
+		}
+		for _, o := range opts {
+			bopts = append(bopts, WithAuditRedaction(o))
+		}
+		b := New(root, bopts...)
+		b.Expose("sync", SurfaceREST)
+		if _, err := b.Invoke(context.Background(), Invocation{Path: []string{"sync"}, Meta: Meta{Surface: SurfaceREST}}); err != nil {
+			t.Fatal(err)
+		}
+		return rec.calls[0].res
+	}
+
+	if got := run(long).Stdout; !strings.HasPrefix(got, "[withheld from audit: ") ||
+		!strings.Contains(got, fmt.Sprintf("the %d-byte", DefaultAuditMaxFieldBytes)) {
+		t.Errorf("default limit: stdout=%.80q", got)
+	}
+	if got := run(long, AuditRedaction{MaxFieldBytes: 0}).Stdout; !strings.HasPrefix(got, "[withheld from audit: ") {
+		t.Errorf("zero keeps the default: stdout=%.80q", got)
+	}
+	raised := run(long, AuditRedaction{MaxFieldBytes: 1 << 13}).Stdout
+	if strings.HasPrefix(raised, "[withheld") || strings.Contains(raised, ghToken) || !strings.HasPrefix(raised, "xxxx") {
+		t.Errorf("raised limit: want scanned and redacted, got %.80q...%q", raised, raised[max(0, len(raised)-60):])
+	}
+	lowered := run(short, AuditRedaction{MaxFieldBytes: 1 << 13}, AuditRedaction{MaxFieldBytes: 16}, AuditRedaction{}).Stdout
+	if lowered != "[withheld from audit: 47 bytes exceed the 16-byte redaction scan limit]" {
+		t.Errorf("lowered limit (last positive wins): stdout=%q", lowered)
 	}
 }
 

@@ -64,7 +64,7 @@ var blocks = []Block{
 	{Name: "body_limit", Keys: []string{"enabled", "max_bytes"}},
 	{Name: "compression", Keys: []string{"enabled", "min_bytes"}},
 	{
-		Name: "audit.redact", Keys: []string{"secret_flags", "patterns"},
+		Name: "audit.redact", Keys: []string{"secret_flags", "patterns", "max_field_bytes"},
 		Note: "secret-flag redaction cannot be switched off",
 	},
 }

@@ -40,16 +40,18 @@ const (
 	// Same text as the redact package's Mask strategy, so a record
 	// reads the same whichever layer caught the value.
 	auditRedacted = "***REDACTED***"
-	// auditScanLimit caps the bytes of one field the content rules
-	// scan. Scanning costs roughly 10µs per byte with the default
-	// rule corpus (go/core/redact PERF.md); a longer field is
-	// withheld whole rather than shipped unscanned.
-	auditScanLimit = 4 << 10
 	// auditMinLiteral is the shortest secret value substituted
 	// wherever it recurs in the record. Shorter values ("1", "on")
 	// would blank unrelated text.
 	auditMinLiteral = 4
 )
+
+// DefaultAuditMaxFieldBytes is the longest field, in bytes, the
+// content rules scan unless [AuditRedaction.MaxFieldBytes] says
+// otherwise. A longer field is withheld from the record whole rather
+// than shipped unscanned; Result.Data counts as one field, the total
+// of its strings.
+const DefaultAuditMaxFieldBytes = 4 << 10
 
 // AuditRedaction adds to the redaction every audit record receives
 // (see [SinkSet.Emit]). It can only add: the annotation, the name
@@ -64,32 +66,44 @@ type AuditRedaction struct {
 	// know (an in-house token prefix). Build them with
 	// [redact.NewRule].
 	Rules []redact.Rule
+	// MaxFieldBytes is the longest field the content rules scan;
+	// a longer one is withheld whole, never shipped unscanned.
+	// Zero or negative keeps [DefaultAuditMaxFieldBytes]. Raising
+	// it keeps more of long outputs at the cost of scan time on
+	// the invocation path.
+	MaxFieldBytes int
 }
 
 // WithAuditRedaction installs extra audit redaction on the bridge.
 // It applies to every record the bridge emits and to SinkSet.Emit
 // calls made under the context the bridge hands its Runner. Repeated
-// options accumulate.
+// options accumulate flags and rules; the last positive MaxFieldBytes
+// wins.
 func WithAuditRedaction(r AuditRedaction) Option {
 	return func(c *bridgeConfig) {
 		c.redaction.SecretFlags = append(c.redaction.SecretFlags, r.SecretFlags...)
 		c.redaction.Rules = append(c.redaction.Rules, r.Rules...)
+		if r.MaxFieldBytes > 0 {
+			c.redaction.MaxFieldBytes = r.MaxFieldBytes
+		}
 	}
 }
 
 // auditExtra is an AuditRedaction resolved for use: the flag names
-// as a set and the rules compiled into one Redactor.
+// as a set, the rules compiled into one Redactor, and the field
+// limit (zero for the default).
 type auditExtra struct {
 	secretFlags map[string]bool
 	rules       *redact.Redactor
+	maxField    int
 }
 
-// newAuditExtra resolves r, or returns nil when it adds nothing.
+// newAuditExtra resolves r, or returns nil when it changes nothing.
 func newAuditExtra(r AuditRedaction) *auditExtra {
-	if len(r.SecretFlags) == 0 && len(r.Rules) == 0 {
+	if len(r.SecretFlags) == 0 && len(r.Rules) == 0 && r.MaxFieldBytes <= 0 {
 		return nil
 	}
-	x := &auditExtra{}
+	x := &auditExtra{maxField: max(r.MaxFieldBytes, 0)}
 	for _, f := range r.SecretFlags {
 		if x.secretFlags == nil {
 			x.secretFlags = map[string]bool{}
@@ -239,6 +253,8 @@ type auditRedactor struct {
 	rules    *redact.Redactor
 	scope    auditScope
 	literals []string
+	// limit is the longest field scanned; longer ones are withheld.
+	limit int
 }
 
 // redactForAudit returns copies of inv, res and err with every secret
@@ -256,9 +272,12 @@ type auditRedactor struct {
 // in the record. withOutput false drops Stdout, Stderr and Data.
 // The caller's values are never mutated.
 func redactForAudit(ctx context.Context, inv Invocation, res Result, err error, withOutput bool) (Invocation, Result, error) {
-	a := &auditRedactor{rules: redact.Default()}
+	a := &auditRedactor{rules: redact.Default(), limit: DefaultAuditMaxFieldBytes}
 	if ctx != nil {
 		a.scope, _ = ctx.Value(auditScopeKey{}).(auditScope)
+	}
+	if x := a.scope.extra; x != nil && x.maxField > 0 {
+		a.limit = x.maxField
 	}
 	secretArgs := a.collect(inv)
 
@@ -410,14 +429,14 @@ func (a *auditRedactor) substitute(s string) string {
 }
 
 // scrub substitutes known secret values, then applies the content
-// rules. A field longer than auditScanLimit is withheld whole: an
+// rules. A field longer than the limit is withheld whole: an
 // unscanned field could carry anything.
 func (a *auditRedactor) scrub(s string) string {
 	if s == "" {
 		return s
 	}
-	if len(s) > auditScanLimit {
-		return auditWithheld(len(s))
+	if len(s) > a.limit {
+		return a.withheld(len(s))
 	}
 	if s = a.substitute(s); s == auditRedacted {
 		return s
@@ -429,8 +448,8 @@ func (a *auditRedactor) scrub(s string) string {
 	return s
 }
 
-func auditWithheld(n int) string {
-	return fmt.Sprintf("[withheld from audit: %d bytes exceed the %d-byte redaction scan limit]", n, auditScanLimit)
+func (a *auditRedactor) withheld(n int) string {
+	return fmt.Sprintf("[withheld from audit: %d bytes exceed the %d-byte redaction scan limit]", n, a.limit)
 }
 
 // maskValue masks a secret flag's value whatever its type.
@@ -463,7 +482,7 @@ func (a *auditRedactor) value(v any) any {
 // data redacts Result.Data. Values that are not already the generic
 // JSON shape are round-tripped through JSON first, which is the form
 // every shipped sink serializes anyway. When its strings total more
-// than auditScanLimit the whole payload is withheld.
+// than the field limit the whole payload is withheld.
 func (a *auditRedactor) data(v any) any {
 	if v == nil {
 		return nil
@@ -473,18 +492,18 @@ func (a *auditRedactor) data(v any) any {
 	default:
 		raw, err := json.Marshal(v)
 		if err != nil {
-			return auditWithheld(0)
+			return a.withheld(0)
 		}
 		dec := json.NewDecoder(strings.NewReader(string(raw)))
 		dec.UseNumber()
 		if err := dec.Decode(&v); err != nil {
-			return auditWithheld(len(raw))
+			return a.withheld(len(raw))
 		}
 	}
 	scanned := 0
 	out := a.walk(v, &scanned)
-	if scanned > auditScanLimit {
-		return auditWithheld(scanned)
+	if scanned > a.limit {
+		return a.withheld(scanned)
 	}
 	return out
 }
@@ -492,12 +511,12 @@ func (a *auditRedactor) data(v any) any {
 // walk redacts a generic JSON value. Map entries under a secret-named
 // key are masked unless they are numbers or booleans; strings are
 // scrubbed. scanned accumulates the string bytes seen; once it passes
-// auditScanLimit scanning stops, as the caller withholds the value.
+// the field limit scanning stops, as the caller withholds the value.
 func (a *auditRedactor) walk(v any, scanned *int) any {
 	switch t := v.(type) {
 	case string:
 		*scanned += len(t)
-		if *scanned > auditScanLimit {
+		if *scanned > a.limit {
 			return auditRedacted
 		}
 		return a.scrub(t)

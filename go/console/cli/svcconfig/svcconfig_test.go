@@ -72,7 +72,7 @@ func TestValidateRefusesUnknownKeys(t *testing.T) {
 		"unknown key in a service block": {"services.api.body_limit.max_byte", 1, `services.api.body_limit.max_byte: unknown key "max_byte"; body_limit accepts enabled, max_bytes`},
 		"unknown key in services.all":    {"services.all.health.prefix", "/x", `services.all.health.prefix: unknown key "prefix"`},
 		"adopter service block":          {"services.heartbeat.compression.level", 9, `services.heartbeat.compression.level: unknown key "level"`},
-		"nested block":                   {"services.api.audit.redact.enabled", false, `unknown key "enabled"; audit.redact accepts secret_flags, patterns; secret-flag redaction cannot be switched off`},
+		"nested block":                   {"services.api.audit.redact.enabled", false, `unknown key "enabled"; audit.redact accepts secret_flags, patterns, max_field_bytes; secret-flag redaction cannot be switched off`},
 		"scalar block":                   {"services.api.origin_check", true, "services.api.origin_check: must be a block with keys enabled, allow"},
 		"nested scrape block":            {"services.all.metrics.scrape.allow_remot", true, `services.all.metrics.scrape.allow_remot: unknown key "allow_remot"; metrics.scrape accepts enabled, path, allow_remote`},
 		"scalar scrape block":            {"services.api.metrics.scrape", true, "services.api.metrics.scrape: must be a block with keys enabled, path, allow_remote"},

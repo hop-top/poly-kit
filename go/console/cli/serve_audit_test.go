@@ -41,6 +41,37 @@ func TestServeAuditRedaction_Resolution(t *testing.T) {
 	assert.Equal(t, []string{"dsn"}, got.SecretFlags, "another service keeps the shared value")
 }
 
+// max_field_bytes resolves like the other keys (service, then
+// services.all), accepts the string an environment variable carries,
+// and refuses anything that is not a positive whole number.
+func TestServeAuditRedaction_MaxFieldBytes(t *testing.T) {
+	v := viper.New()
+	got, err := serveAuditRedaction(v, APIServiceName)
+	require.NoError(t, err)
+	assert.Zero(t, got.MaxFieldBytes, "unset keeps the cmdsurface default")
+
+	v.Set("services.all.audit.redact.max_field_bytes", 8192)
+	got, err = serveAuditRedaction(v, APIServiceName)
+	require.NoError(t, err)
+	assert.Equal(t, 8192, got.MaxFieldBytes)
+
+	v.Set("services.api.audit.redact.max_field_bytes", "1024")
+	got, err = serveAuditRedaction(v, APIServiceName)
+	require.NoError(t, err)
+	assert.Equal(t, 1024, got.MaxFieldBytes, "the service's key wins")
+	got, err = serveAuditRedaction(v, SocketServiceName)
+	require.NoError(t, err)
+	assert.Equal(t, 8192, got.MaxFieldBytes, "another service keeps the shared value")
+
+	for _, bad := range []any{0, -1, "lots", 1.5, int64(1) << 40} {
+		v := viper.New()
+		v.Set("services.api.audit.redact.max_field_bytes", bad)
+		_, err := serveAuditRedaction(v, APIServiceName)
+		require.Error(t, err, "%v", bad)
+		assert.Contains(t, err.Error(), "services.api.audit.redact.max_field_bytes: ", "%v", bad)
+	}
+}
+
 func TestServeAuditRedaction_RefusesUnknownKeysAndBadPatterns(t *testing.T) {
 	v := viper.New()
 	v.Set("services.api.audit.redact.enabled", false)
@@ -101,6 +132,33 @@ func TestSocketAuditRedactsSecretFlags(t *testing.T) {
 		}
 		assert.NotContains(t, res.Stdout, secret)
 	}
+}
+
+// services.<svc>.audit.redact.max_field_bytes reaches the served
+// bridge: a field longer than it is withheld from the record.
+func TestSocketAuditMaxFieldBytes(t *testing.T) {
+	isolateHome(t)
+	rec := &auditRecorder{}
+	path := tmpSocket(t)
+	r := authRoot(t, WithSocket(SocketConfig{Path: path}), WithAuditSinks(rec.spec()))
+	r.Cmd.AddCommand(&cobra.Command{
+		Use:         "echo",
+		Short:       "print a line",
+		Annotations: map[string]string{"kit/side-effect": "read"},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cmd.Print("a line of thirty-two bytes......")
+			return nil
+		},
+	})
+	r.Viper.Set("services.socket.audit.redact.max_field_bytes", 16)
+
+	stop := serveSocket(t, r, path)
+	defer stop()
+
+	resp := socketCall(t, path, socket.Request{Path: []string{"echo"}})
+	require.True(t, resp.Ok, "%+v", resp.Error)
+	_, res, _ := rec.last(t)
+	assert.Equal(t, "[withheld from audit: 32 bytes exceed the 16-byte redaction scan limit]", res.Stdout)
 }
 
 func TestSocketAuditRedactRefusedAtValidate(t *testing.T) {

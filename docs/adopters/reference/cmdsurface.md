@@ -1082,26 +1082,28 @@ Also:
   content rules, which would otherwise mask the remote address.
 - A field longer than 4 KiB, or `Data` whose strings total more, is
   replaced by `[withheld from audit: …]` rather than shipped
-  unscanned.
+  unscanned. `AuditRedaction.MaxFieldBytes` (config
+  `services.<svc>.audit.redact.max_field_bytes`) moves the limit.
 - The error keeps its identity for `errors.Is` (`ErrAuthRefused`
   still matches) but has no `Unwrap`: unwrapping would reach the
   unredacted message.
 - When every matching sink ignores output — `FileSink` with the
   default format, `LogSink` above debug level, `TelemetrySink` —
   `Stdout`, `Stderr` and `Data` are dropped instead of scanned.
-- Cost: the default corpus scans at roughly 10 µs per byte (see
-  `go/core/redact/PERF.md`); a typical record of short flags costs
-  well under a millisecond, and the 4 KiB cap bounds one field at
-  about 40 ms.
+- Cost: a typical record of short flags and output costs about
+  50 µs; the redact package skips rules whose literals are absent
+  before running any regex. A 4 KiB field costs a few milliseconds at
+  most (see `go/core/redact/PERF.md`), so raising the limit trades
+  latency on every invocation for longer outputs kept.
 
 Declare a flag secret in code with `MarkFlagSecret`; the annotation
 lives on the flag, so a persistent flag marked on the root is secret
 on every command that inherits it. Add flags or rules for one bridge
 with `WithAuditRedaction(cmdsurface.AuditRedaction{...})`; kit-shipped
-services read `services.<svc>.audit.redact.secret_flags` and
-`.patterns` (then `services.all.audit.redact.*`) into it. The block
-can only add; it has no `enabled` key, and an unknown key is refused
-at validation.
+services read `services.<svc>.audit.redact.secret_flags`, `.patterns`
+and `.max_field_bytes` (then `services.all.audit.redact.*`) into it.
+The block cannot switch redaction off; it has no `enabled` key, and an
+unknown key is refused at validation.
 
 ## Telemetry sink
 
