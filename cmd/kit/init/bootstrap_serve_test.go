@@ -251,6 +251,25 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		assert.Contains(t, stdout, "Hello, world!", "the default rendering is the table")
 	})
 
+	t.Run("spec coverage is 100% out of the box", func(t *testing.T) {
+		// Every command the scaffold ships, and the fixture an adopter
+		// adds by copying it, declares its side-effect class, so the
+		// CI gate the template advertises passes on a fresh project.
+		stdout, stderr, code := runRendered(t, bin, "spec", "coverage", "--min", "100")
+		require.Equal(t, 0, code, "spec coverage --min 100 must pass:\n%s\n%s", stdout, stderr)
+		var rep struct {
+			Total       int  `json:"total"`
+			Annotated   int  `json:"annotated"`
+			Unannotated int  `json:"unannotated"`
+			Measurable  bool `json:"measurable"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(stdout), &rep), stdout)
+		assert.True(t, rep.Measurable)
+		assert.Positive(t, rep.Total)
+		assert.Equal(t, rep.Total, rep.Annotated)
+		assert.Zero(t, rep.Unannotated)
+	})
+
 	t.Run("serve --list names api and socket", func(t *testing.T) {
 		stdout, stderr, code := runRendered(t, bin, "serve", "--list")
 		require.Equal(t, 0, code, stderr)
@@ -309,10 +328,11 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		// absent exactly when a command has no route.
 		var shaped struct {
 			Commands []struct {
-				Name      string `json:"name"`
-				Invocable bool   `json:"invocable"`
-				Method    string `json:"method"`
-				Route     string `json:"route"`
+				Name             string `json:"name"`
+				Invocable        bool   `json:"invocable"`
+				Method           string `json:"method"`
+				Route            string `json:"route"`
+				SideEffectSource string `json:"side_effect_source"`
 			} `json:"commands"`
 			ExitStatus []struct {
 				ExitCode int `json:"exit_code"`
@@ -321,6 +341,10 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(body, &shaped))
 		for _, c := range shaped.Commands {
+			if c.Name == "hello" {
+				assert.Equal(t, "declared", c.SideEffectSource,
+					"the sample declares its class, and discovery says so")
+			}
 			if c.Invocable {
 				assert.NotEmpty(t, c.Route, "%s is invocable, so it has a route", c.Name)
 				assert.NotEmpty(t, c.Method, "%s is invocable, so it has a method", c.Name)

@@ -68,6 +68,7 @@ tool's exit-code-to-HTTP table). Each entry:
 | `name` | the same path, space-joined — the socket's key for it |
 | `summary` | one line |
 | `side_effect` | `read`, `write`, `destructive`, `interactive` |
+| `side_effect_source` | `declared` is the author's word; `inferred`, `unannotated`, `malformed` mean kit guessed. Treat a guessed `write` as possibly destructive. |
 | `invocable` | whether you may call it here |
 | `reason` | present only when `invocable` is false |
 | `method`, `route` | present only when `invocable` is true |
