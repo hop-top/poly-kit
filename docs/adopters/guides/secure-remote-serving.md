@@ -755,7 +755,9 @@ Idempotent-Replayed: true
 {"exit_code":0,"stdout":"added w1\n"}
 ```
 
-- The key is scoped to the caller: alice's key never answers bob.
+- The key is scoped to the caller: alice's key never answers bob. A
+  caller your `Auth` verified gets its answer on any service; a caller
+  merely named in a request is scoped to that service.
 - The same key for a different command or different flags is refused
   `422 idempotency_key_reused`; a retry while the first call still runs
   is refused `409 idempotency_conflict`.

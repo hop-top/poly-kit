@@ -254,6 +254,21 @@ func TestIdempotency_ScopedByPrincipal(t *testing.T) {
 			Meta{Surface: SurfaceREST, Extra: map[string]string{"remote_addr": "10.0.0.7:5001"}},
 			Meta{Surface: SurfaceREST, Extra: map[string]string{"remote_addr": "10.0.0.8:5001"}}, false},
 		{"anonymous socket", Meta{Surface: SurfaceSocket}, Meta{Surface: SurfaceSocket}, true},
+		{"established caller on another surface",
+			Meta{Surface: SurfaceREST, Caller: "alice", Established: EstablishedVerified},
+			Meta{Surface: SurfaceRPC, Caller: "alice", Established: EstablishedVerified}, true},
+		{"established caller, transport-established on the socket",
+			Meta{Surface: SurfaceREST, Caller: "alice", Established: EstablishedVerified},
+			Meta{Surface: SurfaceSocket, Caller: "alice", Established: EstablishedTransport}, true},
+		{"established caller, other tenant",
+			Meta{Surface: SurfaceREST, Caller: "alice", Tenant: "acme", Established: EstablishedVerified},
+			Meta{Surface: SurfaceRPC, Caller: "alice", Tenant: "globex", Established: EstablishedVerified}, false},
+		{"a claim never reaches an established caller's record",
+			Meta{Surface: SurfaceREST, Caller: "alice", Established: EstablishedVerified},
+			Meta{Surface: SurfaceREST, Caller: "alice"}, false},
+		{"an established caller never reaches a claim's record",
+			Meta{Surface: SurfaceREST, Caller: "alice"},
+			Meta{Surface: SurfaceREST, Caller: "alice", Established: EstablishedVerified}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -1727,11 +1727,13 @@ The key, per surface:
 
 Rules:
 
-- **Scope.** A key is scoped to the call's tenant, caller and surface;
-  a call without a caller is scoped to its client host, and with
-  neither to the surface. One principal's key never answers another's
-  call. The surface stays in the scope while a caller on some
-  surfaces is a claim rather than an identity slot 4 established.
+- **Scope.** A caller the transport established (`Meta.Authenticated`)
+  is scoped to its tenant and principal, so its key answers it on
+  every surface. Any other call is scoped to its tenant, claimed
+  caller and surface; one without a caller to its client host, and
+  with neither to the surface. One principal's key never answers
+  another's call, and a claimed caller never reaches an established
+  caller's records, whatever name it claims.
 - **Same call.** A key is bound to the invocation it was first used
   for: the command path, its arguments and its flags, as the runner
   renders them, less the key. A call reusing a key for a different

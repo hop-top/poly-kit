@@ -345,17 +345,24 @@ func (c *idemClaim) abandon() {
 // hashes the result, so a key is never answered for another caller
 // and the store holds no principal or key in the clear.
 //
-// The scope is the tenant, the caller and the surface. A call without
-// a caller is scoped to its client host, and with neither to the
-// surface alone — the socket's owner-only file and the stdio spawn
-// admit one local user, so their callers share one scope. The
-// surface stays in the scope because a caller on some surfaces is a
-// claim, not a verified identity, and a claim must not reach another
-// surface's records.
+// A caller the transport established ([Meta.Authenticated]) is scoped
+// to its tenant and principal alone, so its key answers it on every
+// surface. Any other call is scoped to its tenant, its claimed caller
+// and its surface; one without a caller to its client host, and with
+// neither to the surface alone — the socket's owner-only file and the
+// stdio spawn admit one local user, so their callers share one scope.
+// The two kinds of scope never meet: a claimed caller never reaches an
+// established caller's records, whatever name it claims, nor the
+// reverse.
 func idempotencyStoreKey(m Meta) string {
-	parts := []string{"served", string(m.Surface), m.Tenant, m.Caller}
-	if m.Caller == "" {
-		parts = append(parts, addrHost(m.Extra["remote_addr"]))
+	var parts []string
+	if m.Authenticated() && m.Caller != "" {
+		parts = []string{"served", "established", m.Tenant, m.Caller}
+	} else {
+		parts = []string{"served", "claimed", string(m.Surface), m.Tenant, m.Caller}
+		if m.Caller == "" {
+			parts = append(parts, addrHost(m.Extra["remote_addr"]))
+		}
 	}
 	parts = append(parts, m.IdempotencyKey)
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
