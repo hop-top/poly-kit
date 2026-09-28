@@ -50,8 +50,10 @@ fmt.Print(string(r.Output))
 - `Result.ExitCode` mirrors the original run's exit code (1 for unstructured
   failures, `output.Error.ExitCode` otherwise).
 - SQLite TTL: zero or negative `ttl` becomes `DefaultTTL` (24h). Expired rows
-  are hidden from `Lookup` but never purged; GC is out of band.
-  `Memory()` enforces no TTL.
+  are hidden from `Lookup` and deleted: all of them when the store opens, then
+  up to 1000 on the first `Record` after each interval (the TTL, at most one
+  hour); a full batch lets the next `Record` continue. A failed purge never
+  fails the open or the `Record`. `Memory()` enforces no TTL.
 - SQLite schema: table `idempotency(key text primary key, exit_code integer,
   output blob, recorded text)`, `recorded` as RFC3339Nano UTC. Parent
   directory is created with mode 0750.

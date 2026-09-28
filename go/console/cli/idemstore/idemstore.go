@@ -64,10 +64,18 @@ type Store interface {
 }
 
 // DefaultTTL is the kit default idempotency TTL (24h). After this
-// many wall-clock minutes the recorded result is treated as missing
-// on Lookup; expired rows are not auto-purged here (callers may run
-// GC out of band).
+// much wall-clock time the recorded result is treated as missing on
+// Lookup, and the sqlite Store deletes it (see [OpenSQLite]).
 const DefaultTTL = 24 * time.Hour
+
+// maxPurgeInterval is the longest a sqlite Store goes between purges
+// of expired rows while it is being written to. A shorter TTL purges
+// once per TTL.
+const maxPurgeInterval = time.Hour
+
+// defaultPurgeBatch bounds how many expired rows one periodic purge
+// deletes, so the write that triggers it pays a bounded cost.
+const defaultPurgeBatch = 1000
 
 // OpenSQLite opens (or creates) the sqlite-backed Store at path.
 // A zero or negative ttl is replaced with DefaultTTL. The parent
@@ -75,6 +83,14 @@ const DefaultTTL = 24 * time.Hour
 //
 // Use ":memory:" as path for an isolated in-memory sqlite Store
 // (separate from Memory(), which has no SQL layer).
+//
+// Expired rows are deleted, not only hidden: every expired row when
+// the Store opens, and then, at most once per TTL or per hour,
+// whichever is shorter, up to a bounded batch on the Record that
+// finds the interval elapsed. A batch that comes back full leaves the
+// next Record to continue, so a backlog drains without any one write
+// paying for all of it. Purging is best-effort: a failed purge leaves
+// the rows for the next one and never fails the open or the Record.
 func OpenSQLite(path string, ttl time.Duration) (Store, error) {
 	if path == "" {
 		return nil, errors.New("idemstore: path required")
@@ -96,7 +112,12 @@ create table if not exists idempotency (
 		_ = db.Close()
 		return nil, fmt.Errorf("idemstore: migrate: %w", err)
 	}
-	return &sqliteStore{db: db, ttl: ttl, now: time.Now}, nil
+	s := &sqliteStore{db: db, ttl: ttl, now: time.Now, purgeBatch: defaultPurgeBatch}
+	s.purgeEvery = min(ttl, maxPurgeInterval)
+	now := s.now()
+	_, _ = s.purge(context.Background(), now, -1)
+	s.nextPurge = now.Add(s.purgeEvery)
+	return s, nil
 }
 
 type sqliteStore struct {
@@ -105,6 +126,58 @@ type sqliteStore struct {
 	// now is the store's time source; time.Now outside tests.
 	// Injectable so TTL expiry is testable without wall-clock sleeps.
 	now func() time.Time
+
+	// purgeEvery is the interval between periodic purges and
+	// purgeBatch the most rows one deletes.
+	purgeEvery time.Duration
+	purgeBatch int
+
+	mu sync.Mutex
+	// nextPurge is when the next Record purges; zero means now.
+	nextPurge time.Time
+}
+
+// purge deletes up to limit rows recorded longer than the TTL before
+// now (every such row when limit is negative) and reports how many
+// it deleted. The comparison is on the instant, not the text: an
+// RFC3339Nano timestamp with no fraction does not sort as text among
+// ones with a fraction.
+func (s *sqliteStore) purge(ctx context.Context, now time.Time, limit int) (int64, error) {
+	cutoff := now.Add(-s.ttl)
+	if cutoff.Year() < 1 {
+		// A TTL longer than the calendar: nothing has expired.
+		return 0, nil
+	}
+	res, err := s.db.ExecContext(ctx,
+		`delete from idempotency where rowid in (
+		   select rowid from idempotency
+		   where julianday(recorded) < julianday(?)
+		   limit ?)`,
+		cutoff.UTC().Format(time.RFC3339Nano), limit)
+	if err != nil {
+		return 0, fmt.Errorf("idemstore: purge: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// maybePurge runs a periodic purge when its interval has elapsed. A
+// batch that comes back full schedules the next one immediately.
+func (s *sqliteStore) maybePurge(ctx context.Context) {
+	now := s.now()
+	s.mu.Lock()
+	if now.Before(s.nextPurge) {
+		s.mu.Unlock()
+		return
+	}
+	s.nextPurge = now.Add(s.purgeEvery)
+	s.mu.Unlock()
+
+	n, err := s.purge(ctx, now, s.purgeBatch)
+	if err == nil && n >= int64(s.purgeBatch) {
+		s.mu.Lock()
+		s.nextPurge = time.Time{}
+		s.mu.Unlock()
+	}
 }
 
 func (s *sqliteStore) Lookup(ctx context.Context, key string) (Result, bool, error) {
@@ -157,6 +230,7 @@ func (s *sqliteStore) Record(ctx context.Context, key string, r Result) error {
 	if err != nil {
 		return fmt.Errorf("idemstore: record: %w", err)
 	}
+	s.maybePurge(ctx)
 	return nil
 }
 
