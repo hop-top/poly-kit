@@ -275,10 +275,13 @@ if [ -n "$HAS_SDK_LAYOUT" ] || [ -n "$HAS_CONFIG" ]; then
     echo "  lint-sdk-paths..."
     make lint-sdk-paths
 fi
-# ADR mentions can land in any text file, and the scan is one git grep.
+# ADR mentions and out-of-repo references can land in any text file;
+# each scan is a handful of git greps.
 if [ -n "$CHANGED" ]; then
     echo "  lint-adr-refs..."
     make lint-adr-refs
+    echo "  lint-internal-refs..."
+    make lint-internal-refs
 fi
 
 # --- Tests do NOT run here ---

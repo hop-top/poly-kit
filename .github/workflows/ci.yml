@@ -110,6 +110,14 @@ jobs:
           persist-credentials: false
       - run: make lint-adr-refs
 
+  internal-refs-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: make lint-internal-refs
+
   proto-check:
     runs-on: ubuntu-latest
     steps:

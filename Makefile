@@ -1,9 +1,9 @@
 .PHONY: api audit-php build builtins-sync check check-go-version check-mirror-sync check-template-sources clients \
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
 	job-integration-temporal job-test lint lint-config lint-docs lint-go lint-links lint-lock-php \
-	lint-adr-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
+	lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
-	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook \
+	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	test-parity test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
@@ -287,7 +287,7 @@ test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
 	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v
 
-lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs ## Run all linters
+lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs lint-internal-refs ## Run all linters
 
 lint-go: check-go-version tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION + mise.toml Go pin)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -401,6 +401,13 @@ lint-adr-refs: ## Guard against ADR-number mentions (decision records live outsi
 		*) echo "error: git grep failed (exit $$status); scan did not run." >&2; exit $$status ;; \
 	esac
 
+# Sibling of lint-adr-refs for everything else a reader of the repo
+# cannot open: a real home directory, a workspace-private doc, a design
+# note, working note or tracker name. The patterns and the placeholder
+# users allowed in example paths live in the script header.
+lint-internal-refs: ## Guard against references to documents and paths outside the repo
+	@scripts/lint-internal-refs.sh
+
 proto: ## Generate protobuf + Connect/gRPC stubs
 # Generated files are committed for go-get compatibility.
 # Re-run after changing .proto files.
@@ -506,6 +513,9 @@ test-workflow: ## Run bats unit tests for cli-demo-media workflow shell logic
 
 test-hook: ## Run bats tests for pre-push hook
 	bats .github/tests/pre-push-hook.bats
+
+test-lint-scripts: ## Run bats tests for repo lint scripts
+	bats .github/tests/lint-internal-refs.bats
 
 job-test:
 	go test ./go/runtime/job/... -count=1
