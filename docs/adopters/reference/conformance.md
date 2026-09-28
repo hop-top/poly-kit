@@ -191,8 +191,6 @@ The kit `WrapRunE` middleware routes adopter `RunE` errors through
 the same envelope, so a misconfigured tree under `ValidationFailureError`
 mode emits the same shape as a runtime usage error.
 
-ADR-0024 (12fcc conformance contract) is forthcoming.
-
 ## Grading client
 
 `hop.top/kit/go/conformance/client` is the Go library for the
@@ -541,7 +539,6 @@ Adopters running under `go test -v` get the message verbatim;
 | `harness/diff` | cassette directory diff used by `PlanApplyReplay`; two dirs are equal iff the set of (adapter, fingerprint) pairs is the same |
 | `harness/predicates` | `testing.T`-free kernel returning `(ok bool, summary string)`; the scenario grader reuses it |
 
-Related: ADR-0021 (xrr-first integration model);
 `go/conformance/recorder` stamps `recorder_version` from the xrr
 module version in build info, so a bump moves recorded manifests too.
 
@@ -814,8 +811,8 @@ Flags:
 `go/conformance/story/` is the Go API for kit's story DSL: the
 closed-key YAML shape, parser, three-tier validator, and helpers
 that scenario tooling consumes. The user-facing CLI wrapper is
-`kit conformance verify-stories`; the rationale +
-scenario-coupling contract lives in ADR-0026.
+`kit conformance verify-stories`; the scenario-coupling contract is
+in [Story coupling](#story-coupling).
 
 ### What stories are
 

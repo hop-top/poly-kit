@@ -252,8 +252,11 @@ expected to integrate with both — see [`AGENTS.md` Guardrails][ag].
   implements them natively in
   [`policy/`](../../../go/core/breaker/policy/).
 
-Full rationale + alternatives considered (sony/gobreaker v2,
-cep21/circuit, afex/hystrix-go) live in ADR-0006.
+Alternatives rejected: `sony/gobreaker` v2 (circuit breaker only;
+rate limiting, bulkheads and timeouts would need 2–3 more deps),
+`cep21/circuit` (less active; a Hystrix-shaped `Manager` / `Circuit`
+ceremony instead of a flat `Allow` / `Record`), and `afex/hystrix-go`
+(unmaintained since 2020).
 
 ## Limitations
 

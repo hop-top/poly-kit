@@ -226,8 +226,8 @@ Protobuf definitions for cross-language CRUD (`v1`) and RouteL2M
 | `HopTop\Kit\Telemetry` *(experimental)* | `runtime/telemetry` |
 
 Every Rust module is feature-gated, and the crate's default feature set is
-empty. Distributed backends are deliberately absent from the Rust SDK
-(ADR 0040).
+empty. Distributed backends are deliberately absent from the Rust SDK;
+see [rs-sdk.md](../../adopters/reference/rs-sdk.md).
 
 Parity is enforced via `make test-parity` against shared contract
 fixtures. Two subsystems go further than fixture comparison. Telemetry

@@ -3,7 +3,8 @@
 Status: published
 Audience: adopters building a kit-powered CLI who want to expose
 their tool's capability manifest to AI harnesses (Claude Code, MCP
-hosts, agent frameworks) per ADR-0022.
+hosts, agent frameworks) per the
+[toolspec contract](claude-code-permissions.md#what-the-contract-gives-you).
 
 ## TL;DR — one line
 
@@ -40,7 +41,7 @@ $ mytool spec --format kit-manifest | head
 
 ### `<tool> manifest` alias
 
-The shorter spelling. ADR-0022 prefers this for harness consumption
+The shorter spelling. The contract prefers this for harness consumption
 ("agents read manifests, they don't author them"). Add via:
 
 ```go
@@ -208,7 +209,7 @@ Or run the round-trip test against your own fixtures (see
 
 ## See also
 
-- ADR-0022 — the contract
+- [claude-code-permissions.md](claude-code-permissions.md) — the contract
 - [harness consumption guide](toolspec-harness-guide.md) — the
   other side of the integration
 - [Claude Code worked example](claude-code-permissions.md) — what a

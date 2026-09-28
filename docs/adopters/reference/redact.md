@@ -214,7 +214,7 @@ first; conflicting Presidio rule ids get the `-pii` suffix.
   Callers wrapping a structured logger should redact the value side
   only, not keys (per kit/log conventions).
 - **Cross-language ports do not use RE2-equivalent engines.** v1 ships
-  with documented input-size guidance. See ADR-0005.
+  with documented input-size guidance.
 
 ## Maintaining PII rules
 

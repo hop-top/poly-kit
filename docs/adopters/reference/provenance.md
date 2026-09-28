@@ -19,8 +19,9 @@ records the metadata keyed by RFC 6901 JSON pointer. The `Render` boundary
 fires a strict-mode refusal when an emitted wrapper has no recorded
 `Provenance` entry.
 
-ADR-0024 records the design rationale and the lint-plus-guardrail
-combination.
+The design pairs a structural lint with a runtime mode: the lint
+catches undeclared wrappers, the mode catches declared ones left
+unpopulated, and neither alone covers both.
 
 ## Why this exists
 
@@ -247,5 +248,4 @@ and the xrr cassette recorder. Both apply the same normalisation so
 - [`go/runtime/provenance/wrap/README.md`](../../../go/runtime/provenance/wrap/README.md): the source-wrapper table
 - [conformance.md](conformance.md): the conformance harness that consumes these assertions
 - [go-primitives.md](go-primitives.md): Go primitives index
-- ADR-0024: provenance lint and guardrail combination
-- ADR-0019: the `runtime/sideeffect` mirror precedent for the context-bound seam idiom
+- [sideeffect.md](sideeffect.md): the `runtime/sideeffect` precedent for the context-bound seam idiom

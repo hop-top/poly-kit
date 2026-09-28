@@ -136,7 +136,7 @@ The version backend is pluggable via the `VersionStore` seam.
 `kit serve` defaults to the **SQLite-backed** implementation:
 versioning rows live in the same database file `DocumentStore`
 already owns, so a document write and its version row commit in a
-single transaction (see ADR-0011). History survives
+single transaction. History survives
 restart, no migration needed for upgrading installs (in-memory
 state was already lost on every restart).
 
@@ -168,7 +168,7 @@ directly).
 `VersionedDocumentStore` exposes a public branching API on top of the
 existing version DAG. The schema didn't change — the `version_parents`
 table already supports
-many-to-one edges (locked in ADR-0011 decision 3). The new
+many-to-one edges from the start. The new
 methods surface that capability:
 
 - `Fork(ctx, type, id, fromSeq) (Version, error)` — appends a new
@@ -186,14 +186,14 @@ methods surface that capability:
 > **Sibling-materialization semantics.** `Fork` is not idempotent —
 > calling it twice with the same `fromSeq` produces two distinct
 > sibling versions. That's how MVP expresses divergence without a
-> separate `UpdateAt` API. See ADR-0013 for the rationale.
+> separate `UpdateAt` API.
 
 The conformance suite (`versionstore_test.go` —
 `TestVersionedDocumentStoreBranchingConformance`) and a 1000-iteration
 property test (`versioned_branching_property_test.go`) run identical
 scenarios against both backends. SQLite-specific note: parent
 insertion order is preserved via `ORDER BY rowid` in the DAG-load
-query (see ADR-0011 amendment in ADR-0013).
+query.
 
 ### Snapshot deduplication
 
@@ -250,8 +250,6 @@ on re-boot — a post-migration DB has no `snapshots` table so the
 walk skips. The migration runs inside a single transaction; a
 crash mid-walk leaves the pre-migration state recoverable.
 
-ADR: ADR-0014.
-
 ### Pruning + liveness
 
 `VersionedDocumentStore` exposes opt-in retention via `Prune`,
@@ -293,7 +291,7 @@ The use cases this serves:
 - Revert orphans (`Revert` automatically retired the pre-revert
   head; in linear-revert topologies the pre-revert head remains
   an ancestor of the live revert tip and is therefore in the
-  retain floor — see ADR-0015 consequences)
+  retain floor)
 
 The escape hatch for "trim deep ancestry of an active live head"
 is a follow-up (`shallow-snapshots` / `parent-edge-rewriting`).
@@ -323,8 +321,6 @@ iterations) run identical scenarios against both backends. The
 restart integration test
 (`cmd/kit/serve_pruning_integration_test.go`) verifies live bits
 and post-prune state survive `kit serve` close + reopen.
-
-ADR: ADR-0015.
 
 ## Next
 

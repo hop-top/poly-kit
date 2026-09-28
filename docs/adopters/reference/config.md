@@ -226,8 +226,6 @@ on purpose — the bus failure event is the operator-facing channel. The
 signal set is caller-supplied: production wiring uses `syscall.SIGHUP`,
 tests use `SIGUSR1` / `SIGUSR2`.
 
-See ADR-0016 for the design context behind these choices.
-
 ## Related pages
 
 - [`go/core/config/README.md`](../../../go/core/config/README.md): package README

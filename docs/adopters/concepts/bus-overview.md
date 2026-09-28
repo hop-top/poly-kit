@@ -98,9 +98,9 @@ Use the modifier when the same Object participates in distinct event
 flavours that should remain distinguishable on the wire (`snapshot`
 vs `snapshot_reload`). Multi-word modifiers are fine: parsing splits
 on the first underscore, so `snapshot_partial_reload` parses as
-object=`snapshot`, modifier=`partial_reload`. ADR-0017 records the
-full grammar rationale and the design pivot from sigils to
-payload-side qualifiers.
+object=`snapshot`, modifier=`partial_reload`. Qualifiers
+travel in the payload, never as topic sigils; see
+[Qualifiers convention](#qualifiers-convention).
 
 ## Qualifiers convention
 

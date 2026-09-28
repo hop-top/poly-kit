@@ -15,8 +15,7 @@ intercept all four without duplicating logic.
 Shared interfaces cover the four side-effect categories that account for
 essentially all kit CLI mutations: `FS`, `HTTP`, `Bus`, `Exec`. Three
 implementations of each live in sub-packages so the same seam serves both
-dry-run preview and test mocking: `real`, `dryrun`, `testfake`. ADR-0019
-records the design rationale.
+dry-run preview and test mocking: `real`, `dryrun`, `testfake`.
 
 ## Why this exists
 
@@ -96,7 +95,7 @@ e  := dryrun.NewExec()                    // prints argv, returns zero
 ```
 
 The `Bus` impl augments `Mechanism: "dry_run"` on payloads that
-embed `bus.Qualifiers` (per ADR-0017). Payloads without the embed
+embed `bus.Qualifiers`. Payloads without the embed
 are described without augmentation; the gap is logged once per
 Bus.
 
@@ -129,7 +128,7 @@ accepts every call.
 `cli.New` registers `--dry-run` as a kit-managed persistent flag
 on the root command, bound to viper key `kit.dry_run`. The cli
 wrapper installs a `PersistentPreRunE` hook that resolves an
-ADR-0020 policy table per dispatched leaf, then tags the command's
+[policy table](#policy-table) per dispatched leaf, then tags the command's
 context via `sideeffect.WithDryRun(ctx, true)` when the policy
 allows. Inside RunE (or any library code), check the flag:
 
@@ -145,7 +144,7 @@ if sideeffect.IsDryRun(cmd.Context()) {
 in `cli`, so library code can branch on dry-run without taking a
 cli dependency.
 
-## Policy table (ADR-0020)
+## Policy table
 
 | `kit/side-effect` | `--dry-run` behaviour |
 |-------------------|------------------------|
@@ -162,7 +161,7 @@ Plus two annotation overrides:
 | Annotation                | Set via                     | Effect                                  |
 |---------------------------|-----------------------------|------------------------------------------|
 | `kit/dry-run: opted-out`  | `cli.OptOutDryRun(cmd)`     | Reject, point at the explicit decision  |
-| `kit/dry-run: supported`  | `cli.SupportsDryRun(cmd)`   | Allow (legacy ADR-0019; one-time warn)  |
+| `kit/dry-run: supported`  | `cli.SupportsDryRun(cmd)`   | Allow (legacy opt-in; one-time warn)    |
 
 ## How `kit/side-effect` resolves
 
@@ -240,9 +239,9 @@ points at the explicit decision rather than implying the command
 is unmigrated. Adopter doc-comments should explain why the opt-out
 is necessary so the audit trail survives.
 
-### Migration from ADR-0019
+### Migration from per-command opt-in
 
-Adopters that already shipped commands with the ADR-0019
+Adopters that already shipped commands with the original
 default-deny opt-in have two cleanup paths:
 
 1. **Drop the explicit opt-in.** If the command is already tagged
@@ -258,7 +257,7 @@ default-deny opt-in have two cleanup paths:
 
 The pilots in `cmd/kit/...` (`kit symlink`, `kit init`) take path
 (1): they were the only commands shipping with explicit opt-in
-under ADR-0019 and now opt in via the side-effect tier alone.
+under the original opt-in and now opt in via the side-effect tier alone.
 
 ### Bus auto-tagging
 
@@ -323,7 +322,7 @@ For commands that have opted in:
 
 ## Tier-driven default: every `write|destructive` leaf inherits `--dry-run`
 
-Updated under ADR-0020 (was default-deny under ADR-0019). The
+Replaces the original default-deny opt-in. The
 `kit/side-effect` tier kit already validates is the single source
 of truth. Adopters who follow that spec get `--dry-run`
 support automatically; the rare command that cannot honor it
@@ -331,10 +330,10 @@ declares `cli.OptOutDryRun(cmd)` with a doc-comment explaining
 why.
 
 The pilots in `cmd/kit/...` (`kit init`, `kit symlink`) shipped
-under ADR-0019; they now opt in via the side-effect tier alone.
+under the original opt-in; they now opt in via the side-effect tier alone.
 Adopter CLIs (`tlc`, `ctxt`, `wsm`, `hop`) inherit `--dry-run`
 support automatically once they sync to the kit version that
-includes ADR-0020, with no migration step required if their leaves
+includes the tier-driven default, with no migration step required if their leaves
 already carry the side-effect tag.
 
 ## Related pages
@@ -342,6 +341,4 @@ already carry the side-effect tag.
 - [`go/runtime/sideeffect/README.md`](../../../go/runtime/sideeffect/README.md): package README
 - [cli-api-reference.md](cli-api-reference.md): `cli.SetSideEffect`, `cli.OptOutDryRun`, `cli.SupportsDryRun`
 - [go-primitives.md](go-primitives.md): Go primitives index
-- ADR-0020: unify `--dry-run` opt-in with `kit/side-effect` (current policy, supersedes ADR-0019's per-command opt-in registry)
-- ADR-0019: the `runtime/sideeffect` package and the global `--dry-run` (parent ADR, partially superseded)
-- ADR-0017: bus topic naming grammar and the `Qualifiers` payload convention, whose reserved slot `Mechanism: "dry_run"` first consumes
+- [bus-overview.md](../concepts/bus-overview.md#qualifiers-convention): the `Qualifiers` payload convention whose reserved `Mechanism: "dry_run"` slot the dry-run bus fills

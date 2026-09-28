@@ -636,8 +636,10 @@ work should spawn a task themselves.
 The Go package's `NetworkAdapter` (WebSocket peer relay, reconnect and
 backoff, star topology, auth handshake) and its SQLite adapter are
 deliberately absent, as are kv's etcd/TiDB backends and blob's S3
-backend. See ADR 0040 for the rationale and for what to build should
-cross-process eventing become a real requirement.
+backend. No Rust consumer needs them today, and unported code is a
+maintenance liability. Should cross-process eventing become a real
+requirement, prefer a Unix-socket or SQLite-backed adapter over
+reimplementing the WebSocket star topology.
 
 ### Cross-references
 

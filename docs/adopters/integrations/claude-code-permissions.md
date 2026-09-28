@@ -33,7 +33,7 @@ CLIs can't inherit policy.
 
 ## What the contract gives you
 
-ADR-0022 defines a manifest consumption contract. A harness:
+Kit defines a manifest consumption contract. A harness:
 
 1. Discovers a kit-powered CLI's manifest via `<tool> manifest` or
    `<tool> spec --format kit-manifest`.
@@ -154,8 +154,16 @@ KIT_TOOLSPEC_SCHEMA=1.0 tlc manifest
 
 Today only `"1.0"` exists. When the safety-ladder track lands `"2.0"`
 (richer side-effect enum + network axis), pinning `1.0` keeps your
-harness on the legacy vocabulary while you migrate. See ADR-0022 §3
-for the negotiation rules.
+harness on the legacy vocabulary while you migrate. The rules:
+
+- **Unset**: the tool emits its native schema version.
+- **At or above the tool's version**: native version; unknown fields
+  pass through untouched.
+- **Below the tool's major**: best-effort downgrade to the highest
+  version the tool can emit at or below the request. No older schema
+  exists yet, so today every request resolves to the native version.
+- **Malformed**: ignored; the tool emits its native version, like
+  every other kit env var that fails to parse.
 
 ## What is and isn't shipped today
 
@@ -178,11 +186,11 @@ Pending kit-toolspec-safety-ladder:
   unchanged.
 - The richer `Safety.Permissions []string` vocabulary will plug
   into the gate as a higher-priority key than (side_effect,
-  network); ADR-0022 documents the upgrade path.
+  network).
 
 ## References
 
-- ADR-0022 — protocol, version negotiation, default policy
+- [toolspec-harness-guide.md](toolspec-harness-guide.md) — discovery, caching, policy resolution
 - `go/ai/toolspec/policy/default.yaml` — the table itself
 - `go/ai/toolspec/adapters/mcp_enforce.go` — the gate
 - `go/ai/toolspec/adapters/mcp.go` — the MCP envelope renderer
