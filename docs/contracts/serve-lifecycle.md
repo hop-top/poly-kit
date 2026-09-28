@@ -1626,8 +1626,9 @@ Rules:
   (a positive duration), else `timeouts.command`. The annotation wins,
   and a malformed one MUST be refused at validation, exit `2`.
 - The deadline is armed at slot 11, when the admitted call is about
-  to run, in `Admission.Run` and `Admission.Stream` alike, and covers
-  queue wait and execution. A caller whose context already carries an
+  to run, in `Admission.Run` and `Admission.Stream` alike — a
+  result-cache miss included, which, cut short, stores nothing — and
+  covers queue wait and execution. A caller whose context already carries an
   earlier deadline keeps it: a call can shorten the bound, never
   lengthen it.
 - When it passes, the runner cancels the command as

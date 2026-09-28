@@ -535,10 +535,7 @@ func (a *Admission) Run(ctx context.Context) (Result, error) {
 	// Stamped before the run, so a Runner emitting to its own SinkSet
 	// redacts the leaf's secret flags as the bridge's sinks do.
 	ctx = a.b.auditContext(ctx, a.leaf)
-	runCtx, cancel, bound := a.b.armDeadline(ctx, a.leaf)
-	defer cancel()
-	res, err := a.b.cfg.runner.Run(runCtx, a.inv)
-	err = deadlineError(runCtx, err, a.leaf, bound)
+	res, err := a.runBounded(ctx)
 	if a.inv.Meta.Surface.remote() {
 		a.b.Audit(ctx, a.inv, res, err)
 	}

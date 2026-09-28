@@ -122,6 +122,18 @@ func (b *Bridge) armDeadline(ctx context.Context, leaf *Leaf) (_ context.Context
 	return ctx, cancel, d
 }
 
+// runBounded runs the admitted invocation through the Runner's Run
+// under its per-command deadline: a run the deadline cut short
+// returns [ErrDeadlineExceeded]. Every path that runs a call — a plain
+// run, and a result-cache miss or its uncached fallback — goes
+// through it.
+func (a *Admission) runBounded(ctx context.Context) (Result, error) {
+	runCtx, cancel, bound := a.b.armDeadline(ctx, a.leaf)
+	defer cancel()
+	res, err := a.b.cfg.runner.Run(runCtx, a.inv)
+	return res, deadlineError(runCtx, err, a.leaf, bound)
+}
+
 // deadlineError reports a run that ended because ctx's deadline
 // passed as [ErrDeadlineExceeded], naming the command and, when the
 // bridge armed it, the bound. Only a runner error that is itself the

@@ -262,7 +262,7 @@ func (a *Admission) runCached(ctx context.Context) (Result, error) {
 	}
 	var entry *cacheEntry
 	defer func() { c.rc.land(c.key, f, entry) }()
-	res, err := a.b.cfg.runner.Run(ctx, a.inv)
+	res, err := a.runBounded(ctx)
 	if err == nil && res.ExitCode == 0 {
 		if e := c.store(ctx, res); e != nil {
 			entry = e
@@ -277,7 +277,7 @@ func (a *Admission) runCached(ctx context.Context) (Result, error) {
 
 // runUncached runs the invocation as Run does without a cache.
 func (a *Admission) runUncached(ctx context.Context) (Result, error) {
-	res, err := a.b.cfg.runner.Run(ctx, a.inv)
+	res, err := a.runBounded(ctx)
 	a.auditOutcome(ctx, a.inv, res, err)
 	return res, err
 }

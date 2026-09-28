@@ -5,10 +5,13 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/storage/kv/memory"
 )
 
 // deadlineTree is a root with commands that wait on their context:
@@ -272,4 +275,61 @@ func TestValidateCommandTimeouts_NamesEveryBadCommand(t *testing.T) {
 	if err := ValidateCommandTimeouts(deadlineTree()); err != nil {
 		t.Errorf("a well-formed tree = %v", err)
 	}
+}
+
+// A read the result cache handles runs under the same deadline: a
+// miss that runs past it is cut short as ErrDeadlineExceeded, and,
+// being an error, stores nothing.
+func TestDeadline_BoundsResultCacheMiss(t *testing.T) {
+	var calls atomic.Int64
+	run := &ctxRunner{run: func(ctx context.Context) (Result, error) {
+		if calls.Add(1) == 1 {
+			<-ctx.Done()
+			return Result{}, ctx.Err()
+		}
+		return Result{Data: map[string]any{"ok": true}}, nil
+	}}
+	store := memory.New()
+	t.Cleanup(func() { _ = store.Close() })
+	b := New(newCacheTree(), WithRunner(run), WithResultCache(store),
+		WithCommandTimeout(20*time.Millisecond))
+	b.Expose("*", SurfaceREST)
+
+	adm, err := b.Admit(context.Background(), cacheRESTCall("widget", "list"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := adm.Run(context.Background()); done <- err }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrDeadlineExceeded) {
+			t.Fatalf("Run = %v, want ErrDeadlineExceeded", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a cache miss ran past its deadline")
+	}
+
+	res, info, _ := call(t, b, cacheRESTCall("widget", "list"))
+	if info.Hit || res.Data == nil {
+		t.Fatalf("second call: Hit=%v Data=%v, want a fresh run", info.Hit, res.Data)
+	}
+	if n := calls.Load(); n != 2 {
+		t.Fatalf("runner ran %d times, want 2", n)
+	}
+}
+
+// ctxRunner runs every invocation through run, which sees the run's
+// context.
+type ctxRunner struct {
+	run func(ctx context.Context) (Result, error)
+}
+
+func (r *ctxRunner) Run(ctx context.Context, _ Invocation) (Result, error) { return r.run(ctx) }
+
+func (r *ctxRunner) Stream(ctx context.Context, _ Invocation, out chan<- Event) error {
+	defer close(out)
+	res, err := r.run(ctx)
+	out <- Event{Kind: "done", Data: &res}
+	return err
 }
