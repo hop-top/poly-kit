@@ -546,7 +546,7 @@ func TestRPCServiceExposureRefusals(t *testing.T) {
 	t.Run("unauthenticated remote", func(t *testing.T) {
 		oe := serveErr(t, rpcserve.Config{}, []string{"rpc", "--rpc-addr", "0.0.0.0:0"})
 		assert.Equal(t, 2, oe.ExitCode)
-		for _, want := range []string{"rpcserve.Config.Auth", "127.0.0.1", "services.rpc.insecure_remote"} {
+		for _, want := range []string{"services.rpc.auth.mode", "rpcserve.Config.Auth", "127.0.0.1", "services.rpc.insecure_remote"} {
 			assert.Contains(t, oe.Error(), want)
 		}
 	})

@@ -446,7 +446,7 @@ func TestMCPServiceHTTPExposureRefusals(t *testing.T) {
 	t.Run("unauthenticated remote", func(t *testing.T) {
 		oe := serveErr(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "0.0.0.0:0"})
 		assert.Equal(t, 2, oe.ExitCode)
-		for _, want := range []string{"mcpserve.Config.Auth", "127.0.0.1", "services.mcp.insecure_remote"} {
+		for _, want := range []string{"services.mcp.auth.mode", "mcpserve.Config.Auth", "127.0.0.1", "services.mcp.insecure_remote"} {
 			assert.Contains(t, oe.Error(), want)
 		}
 	})

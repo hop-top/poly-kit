@@ -600,8 +600,8 @@ are in [Middleware](#middleware).
 - The api service MUST refuse, at the configuration gate (exit `2`),
   a non-loopback address on which it would serve unauthenticated: no
   `APIConfig.Auth`, or `Auth` disabled by `--no-auth`. The message
-  MUST name the three remedies — set `Auth`, listen on loopback, or
-  opt in.
+  MUST name the three remedies — set `services.api.auth.mode` or
+  `Auth`, listen on loopback, or opt in.
 - The opt-in is `services.api.insecure_remote` (`--insecure-remote`,
   `APIConfig.InsecureRemote`), resolved flag, then config, then code.
   It permits unauthenticated serving on any address and changes
@@ -663,14 +663,16 @@ are in [Middleware](#middleware).
   so the filesystem permission is the access control. No address rule
   applies to it.
 - The mcp service's HTTP transport MUST apply every rule above to its
-  own listen address, with its own names: `mcpserve.Config.Auth` for
-  authentication, `services.mcp.insecure_remote` and
+  own listen address, with its own names: `services.mcp.auth.mode`
+  and `mcpserve.Config.Auth` for authentication,
+  `services.mcp.insecure_remote` and
   `services.mcp.insecure_no_policy` for the opt-ins, default address
   `127.0.0.1:8081`. The stdio transport has no address and no address
   rule; its trust model is in [The mcp service](#identity-and-trust).
 - The rpc service MUST apply every rule above to its own listen
-  address, with its own names: `rpcserve.Config.Auth` for
-  authentication, `services.rpc.insecure_remote` and
+  address, with its own names: `services.rpc.auth.mode` and
+  `rpcserve.Config.Auth` for authentication,
+  `services.rpc.insecure_remote` and
   `services.rpc.insecure_no_policy` for the opt-ins, default address
   `127.0.0.1:8082`.
 

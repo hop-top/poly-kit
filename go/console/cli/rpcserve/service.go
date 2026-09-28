@@ -357,7 +357,7 @@ func (s *rpcService) validate() error {
 		if s.auth() == nil && !s.optIn(subkeyInsecureRemote, s.cfg.InsecureRemote) {
 			return fmt.Errorf(
 				"addr: %q is not a loopback address and the rpc service has no authentication; "+
-					"set rpcserve.Config.Auth, listen on 127.0.0.1, or set services.rpc.insecure_remote: true "+
+					"set services.rpc.auth.mode or rpcserve.Config.Auth, listen on 127.0.0.1, or set services.rpc.insecure_remote: true "+
 					"to serve unauthenticated beyond loopback",
 				addr,
 			)

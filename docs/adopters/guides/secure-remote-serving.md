@@ -146,7 +146,7 @@ cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080"})
 
 ```console
 $ mytool serve
-USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and the api service has no authentication; set APIConfig.Auth, listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback
+USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and the api service has no authentication; set services.api.auth.mode or APIConfig.Auth, listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback
 $ echo $?
 2
 ```

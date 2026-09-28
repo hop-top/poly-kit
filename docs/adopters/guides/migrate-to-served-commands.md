@@ -287,7 +287,7 @@ leaf listened on `:8080`, the first `serve` after migration says:
 
 ```console
 $ mytool serve --addr :8080
-USAGE: service "api": addr: ":8080" is not a loopback address and the api service has no authentication; set APIConfig.Auth, listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback
+USAGE: service "api": addr: ":8080" is not a loopback address and the api service has no authentication; set services.api.auth.mode or APIConfig.Auth, listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback
 ```
 
 Pick one of the three, in this order of preference: set
@@ -809,7 +809,7 @@ func apiOption(widgets api.Service[Widget]) func(*cli.Root) {
 ### The address still says `:8080`
 
 ```console
-USAGE: service "api": addr: ":8080" is not a loopback address and the api service has no authentication; set APIConfig.Auth, listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback
+USAGE: service "api": addr: ":8080" is not a loopback address and the api service has no authentication; set services.api.auth.mode or APIConfig.Auth, listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback
 ```
 
 An empty host binds every interface, and that is not loopback. Step 4.

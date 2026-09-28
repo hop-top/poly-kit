@@ -181,7 +181,8 @@ func (a *apiService) validateExposure(addr string) error {
 		)
 	}
 	return fmt.Errorf(
-		"addr: %q is not a loopback address and the api service has no authentication; set APIConfig.Auth, %s",
+		"addr: %q is not a loopback address and the api service has no authentication; "+
+			"set services.api.auth.mode or APIConfig.Auth, %s",
 		addr, fix,
 	)
 }

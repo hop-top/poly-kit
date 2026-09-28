@@ -406,7 +406,7 @@ func (s *service) validateHTTP() error {
 	if s.auth() == nil && !s.optIn(subkeyInsecureRemote, s.cfg.InsecureRemote) {
 		return fmt.Errorf(
 			"addr: %q is not a loopback address and the mcp service has no authentication; "+
-				"set mcpserve.Config.Auth, listen on 127.0.0.1, or set services.mcp.insecure_remote: true "+
+				"set services.mcp.auth.mode or mcpserve.Config.Auth, listen on 127.0.0.1, or set services.mcp.insecure_remote: true "+
 				"to serve unauthenticated beyond loopback",
 			addr,
 		)
