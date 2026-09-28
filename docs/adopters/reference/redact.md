@@ -132,11 +132,9 @@ slog.SetDefault(slog.New(handler))
 ```
 
 > [!CAUTION]
-> Per-log-line wrapping is **NOT** safe for high-volume hot paths today —
-> `Apply` is currently ~880x over the documented 50µs budget on a clean
-> 4KB line. See [PERF.md](../../../go/core/redact/PERF.md). Use it for
-> low-frequency emitters (CLI output, error reports, daily summary lines)
-> until the Aho-Corasick pre-screen optimization lands.
+> Short lines cost microseconds, but a 4KB line still costs about 1.6ms
+> (about 30x the 50µs budget). Measure before wrapping a high-volume
+> emitter of long lines. See [PERF.md](../../../go/core/redact/PERF.md).
 
 ### LLM prompt cleaning
 
@@ -199,11 +197,11 @@ first; conflicting Presidio rule ids get the `-pii` suffix.
 
 ## Limits
 
-- **Performance** — current `Apply` cost is ~44ms on a 4KB clean payload
-  with the full ~250-rule default policy. ~880x over the design budget.
-  Roadmap in [PERF.md](../../../go/core/redact/PERF.md). Until
-  Aho-Corasick pre-screen lands, use audit-mode (`Scan`) or amortise
-  across heavyweight payloads.
+- **Performance** — a literal prefilter skips the rules that cannot
+  match an input before any regex runs, and never one that would. A
+  short field costs microseconds; a 4KB clean payload about 1.6ms with
+  the full default policy, still about 30x the design budget. Roadmap
+  in [PERF.md](../../../go/core/redact/PERF.md).
 - **No verified-secret check** — pattern matching only. We do not call
   provider APIs to confirm a match is a live key. That is trufflehog's
   territory, deliberately out of scope.

@@ -8,7 +8,8 @@
 //     Replacement strategy (Mask / Tag / Hash / Custom).
 //   - Apply runs every rule's compiled pattern across the input via
 //     regexp.ReplaceAllStringFunc, replaces each match per the strategy,
-//     and fires registered observers.
+//     and fires registered observers. A literal prefilter skips the
+//     rules that cannot match the input before any regex runs.
 //   - The engine is stdlib regexp (RE2). Linear-time matching is the entire
 //     reason this can run on adversarial input — LLM outputs, scraped pages,
 //     attacker-supplied prompts.
@@ -113,6 +114,13 @@ type Redactor struct {
 
 	exactAllowlist []string
 
+	// pf indexes the rules' required literals (see prefilter.go).
+	// Maintained by AddRule / AddRules alongside rules.
+	pf *prefilter
+	// noPrefilter runs every rule on every input; the reference
+	// behavior the prefilter is tested against.
+	noPrefilter bool
+
 	obsMu      sync.RWMutex
 	observers  []func(Match)
 	allowedObs []func(Match)
@@ -152,14 +160,39 @@ func (r *Redactor) AddRule(id, pattern, replacement string) (*Redactor, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.rules = append(r.rules, rule)
+	r.AddRules(rule)
 	return r, nil
 }
 
 // AddRules appends pre-compiled rules in bulk. Used by the loader.
 func (r *Redactor) AddRules(rules ...Rule) *Redactor {
-	r.rules = append(r.rules, rules...)
+	if r.pf == nil {
+		r.pf = &prefilter{}
+	}
+	for _, rule := range rules {
+		pattern := "" // a zero Rule screens as always-run
+		if rule.re != nil {
+			pattern = rule.re.String()
+		}
+		r.pf.add(pattern)
+		r.rules = append(r.rules, rule)
+	}
 	return r
+}
+
+// candidateRules returns the rules that may match s, or nil when every
+// rule must run. buf is scratch space the result may alias.
+func candidateRules[T string | []byte](r *Redactor, s T, buf []uint64) []uint64 {
+	if r.noPrefilter || r.pf == nil {
+		return nil
+	}
+	n := r.pf.words()
+	if n > len(buf) {
+		buf = make([]uint64, n)
+	}
+	buf = buf[:n]
+	candidates(r.pf, s, buf)
+	return buf
 }
 
 // SetReplacement chooses the replacement strategy. fn is required when
@@ -233,9 +266,15 @@ func (r *Redactor) Apply(s string) string {
 	if len(r.rules) == 0 || s == "" {
 		return s
 	}
+	var buf [4]uint64
+	cand := candidateRules(r, s, buf[:])
 	out := s
 	for i := range r.rules {
+		if cand != nil && !has(cand, i) {
+			continue
+		}
 		rule := &r.rules[i]
+		replaced := false
 		out = rule.re.ReplaceAllStringFunc(out, func(orig string) string {
 			if r.allowed(rule, orig) {
 				r.recordAllowed(rule, orig)
@@ -251,8 +290,14 @@ func (r *Redactor) Apply(s string) string {
 			m.Replacement = repl
 			r.fireObservers(m)
 			r.recordMatch(rule.id)
+			replaced = true
 			return repl
 		})
+		if replaced && cand != nil {
+			// A replacement can introduce text a later rule
+			// matches; screen the rewritten input again.
+			cand = candidateRules(r, out, cand)
+		}
 	}
 	return out
 }
@@ -262,9 +307,15 @@ func (r *Redactor) ApplyBytes(b []byte) []byte {
 	if len(r.rules) == 0 || len(b) == 0 {
 		return b
 	}
+	var buf [4]uint64
+	cand := candidateRules(r, b, buf[:])
 	out := b
 	for i := range r.rules {
+		if cand != nil && !has(cand, i) {
+			continue
+		}
 		rule := &r.rules[i]
+		replaced := false
 		out = rule.re.ReplaceAllFunc(out, func(orig []byte) []byte {
 			s := string(orig)
 			if r.allowed(rule, s) {
@@ -276,8 +327,12 @@ func (r *Redactor) ApplyBytes(b []byte) []byte {
 			m.Replacement = repl
 			r.fireObservers(m)
 			r.recordMatch(rule.id)
+			replaced = true
 			return []byte(repl)
 		})
+		if replaced && cand != nil {
+			cand = candidateRules(r, out, cand)
+		}
 	}
 	return out
 }
@@ -286,7 +341,12 @@ func (r *Redactor) ApplyBytes(b []byte) []byte {
 // for audit-mode tools that need to know what would be redacted.
 func (r *Redactor) Scan(s string) []Match {
 	var out []Match
+	var buf [4]uint64
+	cand := candidateRules(r, s, buf[:])
 	for i := range r.rules {
+		if cand != nil && !has(cand, i) {
+			continue
+		}
 		rule := &r.rules[i]
 		idxs := rule.re.FindAllStringIndex(s, -1)
 		for _, ix := range idxs {
