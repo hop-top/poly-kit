@@ -302,8 +302,62 @@ request modern — legacy `initialize` then fails validation with an
 error message naming the supported version, which is the correct
 signal for a legacy client with no fall-forward mechanism.
 
-Full precedence rules, worked edge cases, and rationale:
-[ADR 0004](../../adr/0004-mcp-dual-spec-surface.md).
+### Routing precedence
+
+The first rule that applies wins:
+
+| Rule | Condition | Route |
+|---|---|---|
+| D1 | body unreadable or not JSON | answered by the mount itself: `-32603` / `-32700` at HTTP 400, identical to the legacy responses, whatever the headers |
+| D2 | `method: "initialize"` | legacy, even with modern markers present |
+| D3 | any modern marker (M1 `Mcp-Method` header, M2 `Mcp-Name` header, M3 reserved `_meta` protocolVersion key, M4 `server/discover`) | modern; an incomplete or contradictory modern request is rejected with modern errors, never demoted |
+| D4 | no marker | legacy, byte-for-byte |
+
+With only one revision enabled the rules collapse: legacy-only mounts
+the legacy handler directly (markers ignored); modern-only sends every
+request through the modern validation below, and a rejected
+`initialize` names the supported version in its error message.
+
+Edge cases, both revisions enabled:
+
+| Request | Route | Response |
+|---|---|---|
+| `initialize`, with or without markers | legacy | 2024-11-05 initialize result |
+| `tools/list` / `tools/call` with only an `MCP-Protocol-Version: 2024-11-05` header | legacy | legacy response; header ignored |
+| unknown method, no markers | legacy | `-32601` at HTTP 200 |
+| `tools/call` with the `_meta` protocolVersion key only | modern | `-32602` at 400 (`clientCapabilities` missing) |
+| `tools/call` with complete `_meta`, no headers | modern | `-32020` at 400 (`MCP-Protocol-Version` header missing) |
+| `tools/call` with `Mcp-Method` header only | modern | `-32602` at 400 (required `_meta` missing) |
+| bare `server/discover` | modern | `-32602` at 400 |
+| unknown method in a valid modern envelope | modern | `-32601` at HTTP 404 |
+| notification (no `id`) with markers | modern | HTTP 202, empty body, not processed |
+| `id: null` with markers | modern | `-32600` at 400 |
+
+### Modern validation order
+
+A request routed modern is checked in this order; the first failure
+responds and stops:
+
+| Check | Rule | Failure |
+|---|---|---|
+| V1 | `jsonrpc` absent or `"2.0"` | `-32600` at 400 |
+| V2 | `id` absent → notification (202, discarded); present `id` must be a string or an integer — `null`, boolean, float, object and array are rejected | `-32600` at 400 |
+| V3 | `params._meta` carries `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` (`clientInfo` optional) | `-32602` at 400 |
+| V4 | `MCP-Protocol-Version` header present and equal to the `_meta` protocolVersion | `-32020` at 400 |
+| V5 | protocolVersion is `2026-07-28` | `-32022` at 400, `data: {"supported": ["2026-07-28"], "requested": ...}` |
+| V6 | `Mcp-Method` header present and equal to body `method` | `-32020` at 400 |
+| V7 | `tools/call` only: `Mcp-Name` header present, non-empty after Base64-sentinel (`=?base64?...?=`) decoding, and byte-equal to `params.name`, which must be present | `-32020` at 400 |
+| V8 | method is `server/discover`, `tools/list` or `tools/call` | `-32601` at 404 |
+| V9 | per-method params (e.g. unknown tool name) | `-32602` at 200 |
+
+V7 runs before params decoding, so a `tools/call` without `Mcp-Name`
+gets `-32020` even when `params` is malformed. A routing header sent
+twice with identical values counts once; sent twice with different
+values it fails its check with `-32020`, because gateways and the
+server could otherwise act on different values. `-32022`'s `supported`
+list omits 2024-11-05: that revision is reachable only through its
+handshake. Inbound `Mcp-Param-*`, `Mcp-Session-Id` and `Last-Event-ID`
+headers are ignored.
 
 ## Destructive commands and confirmation
 
@@ -470,8 +524,6 @@ Already mounting MCP? Nothing to do:
   full package reference, all surfaces
 - [cmdsurface ADOPTER_GUIDE](../../../go/transport/cmdsurface/ADOPTER_GUIDE.md)
   — quickstart + auth hardening + confirmation key sourcing
-- [ADR 0004](../../adr/0004-mcp-dual-spec-surface.md) — dual-spec
-  design record: detection precedence, validation order, wire shapes
 - [toolspec adopter guide](../integrations/toolspec-adopter-guide.md)
   — static MCP descriptors (`<tool> spec --format mcp`)
 - MCP specification:

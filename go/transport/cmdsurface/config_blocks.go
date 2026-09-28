@@ -197,7 +197,7 @@ type TelemetryConfig struct {
 
 // MCPConfig is the top-level "mcp:" block. It is the declarative
 // counterpart to the WithMCP* options MountMCP accepts (see
-// surface_mcp_dispatch.go and docs/adr/0004-mcp-dual-spec-surface.md):
+// surface_mcp_dispatch.go and docs/adopters/guides/expose-cli-over-mcp.md):
 // a caller building MountMCP's opts from YAML reads this block and
 // translates each field to the corresponding option. Load / FromConfig
 // parse this block but do not act on it — FromConfig does not mount

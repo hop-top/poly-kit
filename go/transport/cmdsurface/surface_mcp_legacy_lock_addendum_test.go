@@ -4,8 +4,9 @@ package cmdsurface
 // 2024-11-05), closing three coverage gaps left by the original lock
 // (surface_mcp_legacy_lock_test.go):
 //
-//  1. Era-misroute vectors: ADR 0004 ("docs/adr/0004-mcp-dual-spec-
-//     surface.md") names deliberate NON-markers a future era
+//  1. Era-misroute vectors: the dual-spec routing precedence
+//     (docs/adopters/guides/expose-cli-over-mcp.md) names
+//     deliberate NON-markers a future era
 //     dispatcher must NOT treat as signals to route a request to the
 //     modern handler — a bare params._meta without the reserved
 //     "io.modelcontextprotocol/protocolVersion" key, and mid-era

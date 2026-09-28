@@ -339,7 +339,8 @@ detection: `initialize` is always legacy; a modern marker
 (`Mcp-Method` / `Mcp-Name` header, the reserved `_meta`
 protocolVersion key, or `method: "server/discover"`) routes modern;
 everything else takes the legacy path byte-for-byte unchanged. Full
-precedence rules: `docs/adr/0004-mcp-dual-spec-surface.md`.
+precedence rules, edge cases and the modern validation order:
+[Expose your CLI over MCP](../guides/expose-cli-over-mcp.md#routing-precedence).
 
 Tool name is the dotted leaf path (e.g. `widget.add`). Flag schema is
 derived from the leaf's pflag set; `Result.Stdout` becomes a text

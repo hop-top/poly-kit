@@ -1,7 +1,8 @@
 package cmdsurface
 
 // Era detection + dispatch for the dual-spec MCP surface. This file
-// implements ADR 0004's precedence rules D1-D4 and the option/config
+// implements the routing precedence rules D1-D4 (documented in
+// docs/adopters/guides/expose-cli-over-mcp.md) and the option/config
 // surface that selects which spec version(s) MountMCP serves.
 //
 // The modern (2026-07-28) handler itself lives in

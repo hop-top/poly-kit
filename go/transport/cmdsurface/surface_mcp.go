@@ -126,8 +126,8 @@ func WithMCPConfirmationKey(key []byte) MCPOption {
 // By default both the 2024-11-05 and 2026-07-28 protocol revisions
 // are served from this one mount; WithMCPSpecVersions pins the
 // enabled set. Every request is routed to exactly one revision's
-// handler per the era-detection rules in
-// docs/adr/0004-mcp-dual-spec-surface.md — existing callers that sent
+// handler per the routing precedence in
+// docs/adopters/guides/expose-cli-over-mcp.md — existing callers that sent
 // no modern markers are unaffected by construction.
 //
 // Supported MCP methods (2024-11-05):
