@@ -89,3 +89,24 @@ func TestWithMiddleware(t *testing.T) {
 	assert.True(t, called)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
+
+// TestLoggerKeepsTheResponseControllable pins that a handler behind
+// Logger can still flush and set deadlines through
+// http.NewResponseController: a streaming response (SSE, MCP's
+// streamable HTTP) whose headers cannot be flushed never reaches the
+// client until the handler returns.
+func TestLoggerKeepsTheResponseControllable(t *testing.T) {
+	var flushErr error
+	h := api.Logger(func(any, ...any) {})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		flushErr = http.NewResponseController(w).Flush()
+	}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if flushErr != nil {
+		t.Fatalf("Flush behind Logger: %v", flushErr)
+	}
+	if !rec.Flushed {
+		t.Fatal("the flush did not reach the underlying writer")
+	}
+}
