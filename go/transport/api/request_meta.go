@@ -61,8 +61,13 @@ type RequestMeta struct {
 	Tracestate string
 	// IdempotencyKey is the Idempotency-Key header, else empty.
 	IdempotencyKey string
-	// RemoteAddr is the peer address as the server saw it.
+	// RemoteAddr is the client address: the peer as the server saw
+	// it, or the client a trusted proxy forwarded (see
+	// [ClientAddress]).
 	RemoteAddr string
+	// PeerAddr is the proxy the request arrived through when
+	// RemoteAddr is a forwarded client, else empty.
+	PeerAddr string
 	// ReceivedAt is when the projection began handling the request.
 	ReceivedAt time.Time
 }
@@ -85,6 +90,7 @@ func RequestMetaFrom(r *http.Request) RequestMeta {
 		Tracestate:     tracestate,
 		IdempotencyKey: r.Header.Get(HeaderIdempotencyKey),
 		RemoteAddr:     r.RemoteAddr,
+		PeerAddr:       PeerAddrFromContext(r.Context()),
 		ReceivedAt:     time.Now(),
 	}
 }

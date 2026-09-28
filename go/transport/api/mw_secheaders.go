@@ -36,10 +36,10 @@ type SecurityHeadersConfig struct {
 //   - Content-Security-Policy — [DefaultContentSecurityPolicy]. A
 //     handler serving a document of its own replaces it with
 //     Header().Set, as huma's /docs page does.
-//   - Strict-Transport-Security — only when the request arrived over
-//     TLS on this server (r.TLS set). A TLS-terminating proxy in
-//     front should send its own; a forwarded-proto header is not
-//     trusted for it.
+//   - Strict-Transport-Security — only when the client reached the
+//     service over TLS ([IsHTTPS]): TLS on this server, or https
+//     forwarded by a proxy [ClientAddress] trusts. A forwarded-proto
+//     header from any other peer is ignored.
 //
 // Headers are set before the handler runs and the ResponseWriter is
 // passed through untouched, so streaming (http.Flusher) and
@@ -63,7 +63,7 @@ func SecurityHeaders(cfg SecurityHeadersConfig) Middleware {
 			setIfEmpty(h, "X-Content-Type-Options", "nosniff")
 			setIfEmpty(h, "Referrer-Policy", "no-referrer")
 			setIfEmpty(h, "Content-Security-Policy", csp)
-			if hsts != "" && r.TLS != nil {
+			if hsts != "" && IsHTTPS(r) {
 				setIfEmpty(h, "Strict-Transport-Security", hsts)
 			}
 			next.ServeHTTP(w, r)
