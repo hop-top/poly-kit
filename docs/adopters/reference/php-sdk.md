@@ -285,6 +285,11 @@ Leaves are classified from `kit/*` annotations: `kit/side-effect`
 (`destructive`, `destructive-local`, `destructive-shared`),
 `kit/auth-required`, and `kit/requires-confirmation`.
 
+A `kit/auth-required` leaf runs only for a caller the mount's verifier
+established: `new Mount(verifier: fn (Request $r): ?Identity => ...)`.
+An `Authorization` header alone is refused with 401 and
+`WWW-Authenticate: Bearer`. See [Admit authenticated callers](../guides/serve-mcp-from-any-sdk.md#admit-authenticated-callers).
+
 ### Confirmation
 
 A `kit/requires-confirmation` leaf requires an `X-Confirm-Token` header by

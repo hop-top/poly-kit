@@ -20,6 +20,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { createMcpHandler } from './dispatch.js';
+import { headerValue } from './legacy.js';
+import type { McpMountOptions } from './types.js';
 import {
   legacyLockBridge,
   modernLockBridge,
@@ -110,16 +112,35 @@ function bridgeFor(c: { name: string }) {
   return c.name.startsWith('legacy/') ? legacyLockBridge() : modernLockBridge();
 }
 
+/**
+ * Maps a case's `mount` tokens onto mount options. The only token the
+ * cases carry is `verifier=bearer:<token>`: a verifier that establishes
+ * a request whose Authorization is exactly `Bearer <token>` and
+ * refuses every other. An unknown token fails the case rather than
+ * being silently ignored.
+ */
+function mountOptionsFor(c: { mount?: string[] }): McpMountOptions {
+  const opts: McpMountOptions = {};
+  for (const tok of c.mount ?? []) {
+    const bearer = /^verifier=bearer:(.+)$/.exec(tok);
+    if (bearer === null) throw new Error(`unknown mount token: ${tok}`);
+    const want = `Bearer ${bearer[1]}`;
+    opts.verifier = (req) =>
+      headerValue(req, 'authorization') === want ? { caller: 'fixture' } : null;
+  }
+  return opts;
+}
+
 describe('MCP wire conformance (cross-language fixtures)', () => {
   const doc = loadFixtures();
 
   it('loads the full fixture set', () => {
-    expect(doc.cases.length).toBe(18);
+    expect(doc.cases.length).toBe(23);
   });
 
   for (const c of doc.cases) {
     it(`${c.name} — ${c.why ?? ''}`, async () => {
-      const handler = createMcpHandler(bridgeFor(c));
+      const handler = createMcpHandler(bridgeFor(c), mountOptionsFor(c));
       const res = await handler({
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(c.headers ?? {}) },

@@ -36,6 +36,7 @@ from hop_top_kit.mcp import (
     Command,
     Flag,
     Headers,
+    Identity,
     Request,
     Result,
     mount_mcp,
@@ -201,7 +202,31 @@ def surface_for(case: dict[str, Any]):
     :func:`test_wire_sequence_is_byte_exact`.
     """
     tree = legacy_tree() if case["era"] == "legacy" else modern_tree()
-    return mount_mcp(Bridge(tree))
+    return mount_mcp(Bridge(tree), **mount_options(case.get("mount")))
+
+
+def mount_options(tokens: list[str] | None) -> dict[str, Any]:
+    """Map a case's ``mount`` tokens onto :func:`mount_mcp` options.
+
+    The only token the cases carry is ``verifier=bearer:<token>``: a
+    verifier that establishes a request whose ``Authorization`` is exactly
+    ``Bearer <token>`` and refuses every other. An unknown token fails the
+    case rather than being silently ignored.
+    """
+    options: dict[str, Any] = {}
+    for token in tokens or []:
+        prefix = "verifier=bearer:"
+        if not token.startswith(prefix):
+            raise AssertionError(f"unknown mount token: {token}")
+        want = "Bearer " + token[len(prefix) :]
+
+        def verifier(request: Request, want: str = want) -> Identity | None:
+            if request.headers.get("authorization") == want:
+                return Identity(caller="fixture")
+            return None
+
+        options["verifier"] = verifier
+    return options
 
 
 def surface_for_sequence(sequence: dict[str, Any]):
@@ -300,7 +325,7 @@ def test_fixture_covers_both_eras() -> None:
     """Guard against a fixture edit that silently drops one era's coverage."""
     eras = {case["era"] for case in CASES}
     assert eras == {"legacy", "modern"}
-    assert len(CASES) >= 17
+    assert len(CASES) >= 23
 
 
 def test_identical_requests_expect_identical_responses() -> None:
@@ -326,6 +351,7 @@ def test_identical_requests_expect_identical_responses() -> None:
     for case in CASES:
         key = (
             case["era"],
+            tuple(case.get("mount") or ()),
             tuple(sorted(_routing_headers(case.get("headers")).items())),
             _id_stripped(case["request"]),
         )

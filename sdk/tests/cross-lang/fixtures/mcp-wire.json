@@ -16,6 +16,12 @@
     "`mount` lists MountMCP options for the case, as `name=value`",
     "tokens. Absent means default mount: both eras, path /mcp, empty",
     "origin allowlist, cache hints ttlMs=0 / cacheScope=private.",
+    "`verifier=bearer:\u003ctoken\u003e` installs the port's verifier hook,",
+    "accepting a request whose Authorization is exactly",
+    "`Bearer \u003ctoken\u003e` and refusing every other. Without it no verifier",
+    "is installed, so no request is established: an Authorization",
+    "header alone, or a caller claimed in the body, never admits a",
+    "kit/auth-required leaf.",
     "",
     "`era` is which handler must serve the request (legacy = 2024-11-05,",
     "modern = 2026-07-28). It is documentation for the runner author,",
@@ -89,6 +95,31 @@
       "request": "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\"}}",
       "status": 401,
       "response": "{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"content\":[{\"text\":\"authentication required\",\"type\":\"text\"}],\"isError\":true}}\n"
+    },
+    {
+      "name": "legacy/tools-call/auth-header-only",
+      "era": "legacy",
+      "why": "an Authorization header no verifier checked is presence, not identity: refused",
+      "headers": {
+        "Authorization": "Bearer unverified"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\",\"_meta\":{\"caller\":\"admin\",\"scopes\":[\"admin\"]}}}",
+      "status": 401,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":10,\"result\":{\"content\":[{\"text\":\"authentication required\",\"type\":\"text\"}],\"isError\":true}}\n"
+    },
+    {
+      "name": "legacy/tools-call/auth-verified",
+      "era": "legacy",
+      "why": "auth-required leaf admitted once the verifier established the caller",
+      "mount": [
+        "verifier=bearer:fixture-verified-token"
+      ],
+      "headers": {
+        "Authorization": "Bearer fixture-verified-token"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\"}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":11,\"result\":{\"content\":[{\"text\":\"\",\"type\":\"text\"}],\"isError\":false}}\n"
     },
     {
       "name": "legacy/error/method-not-found",
@@ -207,6 +238,50 @@
       "request": "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"widget.delete\",\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
       "status": 200,
       "response": "{\"jsonrpc\":\"2.0\",\"id\":6,\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}},\"content\":[{\"text\":\"cmdsurface: destructive command blocked on this surface: widget delete on mcp\",\"type\":\"text\"}],\"isError\":true,\"resultType\":\"complete\"}}\n"
+    },
+    {
+      "name": "modern/tools-call/auth-required",
+      "era": "modern",
+      "why": "auth-required leaf without an established caller: 401 isError",
+      "headers": {
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "secret"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\",\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+      "status": 401,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}},\"content\":[{\"text\":\"authentication required\",\"type\":\"text\"}],\"isError\":true,\"resultType\":\"complete\"}}\n"
+    },
+    {
+      "name": "modern/tools-call/auth-header-only",
+      "era": "modern",
+      "why": "Authorization header plus a client-claimed identity, no verifier: refused",
+      "headers": {
+        "Authorization": "Bearer unverified",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "secret"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\",\"_meta\":{\"caller\":\"admin\",\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/clientInfo\":{\"name\":\"admin\",\"version\":\"1\"},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"scopes\":[\"admin\"]}}}",
+      "status": 401,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}},\"content\":[{\"text\":\"authentication required\",\"type\":\"text\"}],\"isError\":true,\"resultType\":\"complete\"}}\n"
+    },
+    {
+      "name": "modern/tools-call/auth-verified",
+      "era": "modern",
+      "why": "auth-required leaf admitted once the verifier established the caller",
+      "mount": [
+        "verifier=bearer:fixture-verified-token"
+      ],
+      "headers": {
+        "Authorization": "Bearer fixture-verified-token",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "secret"
+      },
+      "request": "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\",\"_meta\":{\"io.modelcontextprotocol/clientCapabilities\":{},\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+      "status": 200,
+      "response": "{\"jsonrpc\":\"2.0\",\"id\":10,\"result\":{\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"cmdsurface\",\"version\":\"0.0.0\"}},\"content\":[{\"text\":\"\",\"type\":\"text\"}],\"isError\":false,\"resultType\":\"complete\"}}\n"
     },
     {
       "name": "modern/initialize-is-legacy",

@@ -7,10 +7,12 @@ namespace HopTop\Kit\Tests\Mcp;
 use HopTop\Kit\Mcp\Bridge;
 use HopTop\Kit\Mcp\Command;
 use HopTop\Kit\Mcp\Dispatcher;
+use HopTop\Kit\Mcp\Identity;
 use HopTop\Kit\Mcp\LegacyHandler;
 use HopTop\Kit\Mcp\ModernHandler;
 use HopTop\Kit\Mcp\Mount;
 use HopTop\Kit\Mcp\Policy;
+use HopTop\Kit\Mcp\Request;
 use HopTop\Kit\Mcp\Response;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -44,14 +46,15 @@ final class WireConformanceTest extends TestCase
     {
         $cases = self::section('cases');
 
-        self::assertCount(18, $cases, 'fixture count changed — the parity contract moved');
+        self::assertCount(23, $cases, 'fixture count changed — the parity contract moved');
 
         foreach ($cases as $case) {
             $tree = str_starts_with($case['name'], 'legacy/')
                 ? LockTrees::legacy()
                 : LockTrees::modern();
 
-            $response = self::mount($tree)->dispatch($case['request'], self::headers($case));
+            $response = self::mount($tree, self::verifier($case['mount'] ?? []))
+                ->dispatch($case['request'], self::headers($case));
 
             self::assertSame(
                 $case['status'],
@@ -233,14 +236,39 @@ final class WireConformanceTest extends TestCase
      * Builds a default mount: both eras, the conservative policy, and the
      * fixtures' server identity and cache hints.
      */
-    private static function mount(Command $root): Dispatcher
+    private static function mount(Command $root, ?\Closure $verifier = null): Dispatcher
     {
         $bridge = new Bridge($root, Policy::default());
 
         return new Dispatcher(
-            legacy: new LegacyHandler($bridge),
-            modern: new ModernHandler($bridge),
+            legacy: new LegacyHandler($bridge, verifier: $verifier),
+            modern: new ModernHandler($bridge, verifier: $verifier),
         );
+    }
+
+    /**
+     * Maps a case's `mount` tokens onto a verifier. The only token the
+     * cases carry is `verifier=bearer:<token>`: a verifier that
+     * establishes a request whose Authorization is exactly
+     * `Bearer <token>` and refuses every other. An unknown token fails the
+     * case rather than being silently ignored.
+     *
+     * @param list<string> $tokens
+     */
+    private static function verifier(array $tokens): ?\Closure
+    {
+        $verifier = null;
+        foreach ($tokens as $token) {
+            if (!str_starts_with($token, 'verifier=bearer:')) {
+                self::fail('unknown mount token: '.$token);
+            }
+            $want = 'Bearer '.substr($token, \strlen('verifier=bearer:'));
+            $verifier = static fn (Request $r): ?Identity => $want === $r->header('Authorization')
+                ? new Identity(caller: 'fixture')
+                : null;
+        }
+
+        return $verifier;
     }
 
     /**

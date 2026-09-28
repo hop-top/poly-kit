@@ -102,6 +102,12 @@ Leaves are classified from `kit/*` annotations: `kit/side-effect`
 (`destructive`, `destructive-local`, `destructive-shared`),
 `kit/auth-required`, `kit/requires-confirmation`.
 
+A `kit/auth-required` leaf runs only for a caller the mount's verifier
+established: `mount_mcp(bridge, verifier=fn)`, where `fn(request)`
+returns an `Identity` or `None`. An `Authorization` header alone is
+refused with 401. The verified `caller`, `tenant` and `scopes` reach the
+bridge on `Invocation.meta`. See [Admit authenticated callers](../guides/serve-mcp-from-any-sdk.md#admit-authenticated-callers).
+
 This gate is unrelated to the Factor 10 `safety.py` `--force` helper,
 which is a CLI-time TTY check for delegation safety.
 

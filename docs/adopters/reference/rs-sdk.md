@@ -277,6 +277,12 @@ Leaves are classified from `kit/*` annotations: `kit/side-effect`
 (`destructive`, `destructive-local`, `destructive-shared`),
 `kit/auth-required`, `kit/requires-confirmation`.
 
+A `kit/auth-required` leaf runs only for a caller the mount's verifier
+established: `MountOptions::verifier`, a `Verifier::new(|req| ...)`
+returning `Option<Identity>`. An `Authorization` header alone is refused
+with 401, and the refusal's `Response::www_authenticate` carries the
+`Bearer` challenge for your binding to write. See [Admit authenticated callers](../guides/serve-mcp-from-any-sdk.md#admit-authenticated-callers).
+
 ### Long-lived mounts
 
 The surface holds no per-request cache: `tools/list` re-reads the

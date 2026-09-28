@@ -622,6 +622,13 @@ Leaves are classified from `kit/*` annotations: `kit/side-effect`
 (`destructive`, `destructive-local`, `destructive-shared`),
 `kit/auth-required`, `kit/requires-confirmation`.
 
+A `kit/auth-required` leaf runs only for a caller the mount's verifier
+established: `createMcpHandler(bridge, { verifier })`, where
+`verifier(req)` returns an `McpIdentity`, `null`, or a promise of
+either. An `Authorization` header alone is refused with 401. The
+verified `caller`, `tenant` and `scopes` reach the bridge on
+`inv.meta`. See [Admit authenticated callers](../guides/serve-mcp-from-any-sdk.md#admit-authenticated-callers).
+
 This gate is unrelated to the Factor 10 `safetyGuard` `--force` helper,
 which is a CLI-time TTY check for delegation safety.
 

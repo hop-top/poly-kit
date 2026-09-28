@@ -188,6 +188,60 @@ idiomatic. Defaults match Go exactly.
 | `WithMCPCacheHints` | `cacheHints` | `cache_ttl_ms` / `cache_scope` | `cache_ttl_ms` / `cache_scope` | `cacheHints` | `0` / `private` |
 | `WithMCPOriginAllowlist` | `originAllowlist` | `origin_allowlist` | `origin_allowlist` | `originAllowlist` | no check |
 | `WithMCPConfirmationKey` | `confirmationKey` | `confirmation_key` | `confirmation_key` | `confirmationKey` | header gate |
+| `api.Auth` on the router | `verifier` | `verifier` | `verifier` | `verifier` | none: every `kit/auth-required` leaf refused |
+
+### Admit authenticated callers
+
+A `kit/auth-required` leaf runs only for a caller your **verifier**
+established. The verifier is a function you supply: it receives the
+request, checks a credential it presents (a bearer token, a signed
+header), and returns the caller, or nothing to refuse. The mount calls
+it once per `tools/call`.
+
+```ts
+createMcpHandler(bridge, {
+  verifier: async (req) => {
+    const token = String(req.headers?.authorization ?? '').replace(/^Bearer /, '');
+    const user = token ? await sessions.lookup(token) : undefined;
+    return user ? { caller: user.id, tenant: user.org, scopes: user.scopes } : null;
+  },
+});
+```
+
+```python
+def verify(request: Request) -> Identity | None:
+    user = sessions.lookup(request.headers.get("authorization").removeprefix("Bearer "))
+    return Identity(caller=user.id, tenant=user.org, scopes=tuple(user.scopes)) if user else None
+
+app = mount_mcp(bridge, verifier=verify)
+```
+
+Rust takes `MountOptions { verifier: Some(Verifier::new(|req| ...)), ..MountOptions::default() }`
+returning `Option<Identity>`; PHP takes
+`new Mount(verifier: fn (Request $r): ?Identity => ...)`.
+
+What the gate never accepts, in any port or era:
+
+- **An `Authorization` header on its own.** Presence is not
+  verification. Without a verifier, every `kit/auth-required` leaf is
+  refused, whatever the request carries.
+- **A caller the request names.** A `caller`, `tenant`, or `scopes`
+  in `params._meta` or the arguments is a claim; only the verifier's
+  answer becomes identity.
+- **A verifier that fails.** Returning nothing, returning something
+  that is not an identity, or throwing all refuse the call.
+
+A refusal is the same bytes Go answers: HTTP `401` with
+`WWW-Authenticate: Bearer`, and an `isError` result reading
+`authentication required` (stamped with the modern envelope on the
+`2026-07-28` era). Rust hands the challenge back as
+`Response::www_authenticate` for your binding to write as a header.
+
+Leaves without `kit/auth-required` run whether or not the verifier
+accepts the caller. TypeScript and Python pass the verified caller,
+tenant, and scopes to the bridge on the invocation's meta; the Rust and
+PHP bridges carry no invocation meta, so there the verifier gates the
+call and nothing more.
 
 ### Mount-time errors are refused, not absorbed
 
@@ -309,8 +363,10 @@ page is wrong.
 
 This is the non-obvious part, and it was learned the hard way.
 
-- **`cases`** (18 of them) each get a **fresh mount**. No case can
-  observe state left by another.
+- **`cases`** (23 of them) each get a **fresh mount**. No case can
+  observe state left by another. A case's `mount` tokens configure that
+  mount; the one in use, `verifier=bearer:<token>`, installs a verifier
+  that accepts exactly `Authorization: Bearer <token>`.
 - **`sequences`** are the deliberate exception: ordered steps replayed
   against **one long-lived mount**, which is how adopters actually
   deploy.
@@ -349,10 +405,10 @@ inventing one per language guarantees four incompatible designs. Auth
 server integration stays adopter-provided.
 
 What *is* ported, because it is wire-visible and fixture-pinned: the
-refusal of a `kit/auth-required` leaf called without an
-`Authorization` header (the Go surface goes further and refuses any
-request an `api.Auth` did not verify; the ports check the header's
-presence), and the
+refusal of a `kit/auth-required` leaf for any caller the mount's
+verifier did not establish (see
+[Admit authenticated callers](#admit-authenticated-callers)), exactly
+as Go refuses any request an `api.Auth` did not verify, and the
 `X-Confirm-Token` gate on `kit/requires-confirmation` leaves. The MRTR
 confirmation HMAC rides along in every port except TypeScript (see
 [Where the ports genuinely differ](#where-the-ports-genuinely-differ)).

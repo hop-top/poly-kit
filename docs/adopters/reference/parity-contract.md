@@ -11,7 +11,7 @@ the short entry point; this page carries the full record.
 |------|------|-------|-------|
 | `parity.json` | loaded constants (`status`, `spinner`, `anim`, `help`, `verbosity`, `streams`) | Go, TypeScript, Python | per-port block-registry guards |
 | `scope-defaults.json` | default deny patterns for the scope packages | per-language scope packages | `TestScopeDefaultsContractSync`, `TestScopeDefaultsRegistered` |
-| `sdk/tests/cross-lang/fixtures/mcp-wire.json` | MCP wire bytes (18 cases, 1 sequence) | Go, TypeScript, Python, Rust, PHP | `make test-parity-mcp` |
+| `sdk/tests/cross-lang/fixtures/mcp-wire.json` | MCP wire bytes (23 cases, 1 sequence) | Go, TypeScript, Python, Rust, PHP | `make test-parity-mcp` |
 | `serve.json` | serve lifecycle conformance record | Go reference; others `SHIPPED`/`PENDING`/`N/A` | `TestServeContractMatchesGo` |
 | `contracts/exit-taxonomy-v1/taxonomy.json` | the exit-code taxonomy: class, exit number, default transience | Go, TypeScript, Python, Rust, PHP | `make test-parity-taxonomy` |
 
@@ -143,8 +143,11 @@ passes while emitting bytes no Go client would accept.
 
 The file has two sections, and running only the first is the easy mistake:
 
-- **`cases`** (18) each get a **fresh mount**, so no case can observe state
-  left by another.
+- **`cases`** (23) each get a **fresh mount**, so no case can observe state
+  left by another. A case's `mount` tokens configure that mount: the
+  `verifier=bearer:<token>` token installs the port's verifier, accepting
+  exactly `Authorization: Bearer <token>`. A runner that ignores `mount`
+  fails the `auth-verified` cases.
 - **`sequences`** (1, with 5 steps) are the deliberate exception: ordered
   steps replayed against **one long-lived mount** — which is how adopters
   actually deploy.

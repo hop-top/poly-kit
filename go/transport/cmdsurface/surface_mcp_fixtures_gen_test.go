@@ -58,6 +58,36 @@ func fixtureServer(t *testing.T, root *cobra.Command, cfg mcpConfig) *httptest.S
 	return srv
 }
 
+// fixtureVerifierToken is the one bearer credential the
+// `verifier=bearer:<token>` mount token accepts. Published in the
+// fixture so every runner installs a verifier that admits exactly it.
+const fixtureVerifierToken = "fixture-verified-token"
+
+// verifiedFixtureServer is fixtureServer behind a verifier: a request
+// whose Authorization is exactly "Bearer "+fixtureVerifierToken is
+// established by api.Auth; any other request passes through
+// unestablished, as a port's verifier hook refusing it would leave it.
+func verifiedFixtureServer(t *testing.T, root *cobra.Command, cfg mcpConfig) *httptest.Server {
+	t.Helper()
+	verify := api.Auth(func(*http.Request) (any, error) { return "fixture", nil })
+	r := api.NewRouter(api.WithMiddleware(func(next http.Handler) http.Handler {
+		verified := verify(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.Header.Get("Authorization") == "Bearer "+fixtureVerifierToken {
+				verified.ServeHTTP(w, req)
+				return
+			}
+			next.ServeHTTP(w, req)
+		})
+	}))
+	if err := mountMCP(New(root), r, cfg); err != nil {
+		t.Fatalf("mountMCP: %v", err)
+	}
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // rawPOSTURL is rawPOST against an explicit base URL. rawPOST takes a
 // *httptest.Server; the generator holds several servers at once and
 // captures against whichever the case needs.
@@ -168,6 +198,12 @@ func fixtureComment() []string {
 		"`mount` lists MountMCP options for the case, as `name=value`",
 		"tokens. Absent means default mount: both eras, path /mcp, empty",
 		"origin allowlist, cache hints ttlMs=0 / cacheScope=private.",
+		"`verifier=bearer:<token>` installs the port's verifier hook,",
+		"accepting a request whose Authorization is exactly",
+		"`Bearer <token>` and refusing every other. Without it no verifier",
+		"is installed, so no request is established: an Authorization",
+		"header alone, or a caller claimed in the body, never admits a",
+		"kit/auth-required leaf.",
 		"",
 		"`era` is which handler must serve the request (legacy = 2024-11-05,",
 		"modern = 2026-07-28). It is documentation for the runner author,",
@@ -257,6 +293,22 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 		nil, nil,
 		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"secret"}}`,
 		legacy)
+
+	capture("legacy/tools-call/auth-header-only", "legacy",
+		"an Authorization header no verifier checked is presence, not identity: refused",
+		nil, map[string]string{"Authorization": "Bearer unverified"},
+		`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"secret","_meta":{"caller":"admin","scopes":["admin"]}}}`,
+		legacy)
+
+	legacyVerified := func() string {
+		return verifiedFixtureServer(t, legacyLockTree(), defaultMCPConfig()).URL
+	}
+	capture("legacy/tools-call/auth-verified", "legacy",
+		"auth-required leaf admitted once the verifier established the caller",
+		[]string{"verifier=bearer:" + fixtureVerifierToken},
+		map[string]string{"Authorization": "Bearer " + fixtureVerifierToken},
+		`{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"secret"}}`,
+		legacyVerified)
 
 	capture("legacy/error/method-not-found", "legacy",
 		"-32601 for an unknown JSON-RPC method",
@@ -351,6 +403,42 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 		},
 		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"widget.delete",`+modernMeta+`}}`,
 		modern)
+
+	capture("modern/tools-call/auth-required", "modern",
+		"auth-required leaf without an established caller: 401 isError",
+		nil, map[string]string{
+			"MCP-Protocol-Version": "2026-07-28",
+			"Mcp-Method":           "tools/call",
+			"Mcp-Name":             "secret",
+		},
+		`{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"secret",`+modernMeta+`}}`,
+		modern)
+
+	capture("modern/tools-call/auth-header-only", "modern",
+		"Authorization header plus a client-claimed identity, no verifier: refused",
+		nil, map[string]string{
+			"Authorization":        "Bearer unverified",
+			"MCP-Protocol-Version": "2026-07-28",
+			"Mcp-Method":           "tools/call",
+			"Mcp-Name":             "secret",
+		},
+		`{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"secret","_meta":{"caller":"admin","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"admin","version":"1"},"io.modelcontextprotocol/protocolVersion":"2026-07-28","scopes":["admin"]}}}`,
+		modern)
+
+	modernVerified := func() string {
+		return verifiedFixtureServer(t, modernLockTree(), defaultMCPConfig()).URL
+	}
+	capture("modern/tools-call/auth-verified", "modern",
+		"auth-required leaf admitted once the verifier established the caller",
+		[]string{"verifier=bearer:" + fixtureVerifierToken},
+		map[string]string{
+			"Authorization":        "Bearer " + fixtureVerifierToken,
+			"MCP-Protocol-Version": "2026-07-28",
+			"Mcp-Method":           "tools/call",
+			"Mcp-Name":             "secret",
+		},
+		`{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"secret",`+modernMeta+`}}`,
+		modernVerified)
 
 	// era names the handler that serves the request, not the markers it
 	// carries: D2 sends every initialize to the legacy handshake, so this

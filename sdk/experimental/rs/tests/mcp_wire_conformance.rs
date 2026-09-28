@@ -23,7 +23,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use hop_top_kit::mcp::safety::{SafetyClass, Surface as SurfaceKind};
-use hop_top_kit::mcp::{Bridge, CallResult, FlagSchema, HttpRequest, Leaf, MountOptions, Surface};
+use hop_top_kit::mcp::{
+    Bridge, CallResult, FlagSchema, HttpRequest, Identity, Leaf, MountOptions, Surface, Verifier,
+};
 use serde_json::Value;
 
 /// Locates the shared fixture file from the crate root.
@@ -38,6 +40,7 @@ fn fixture_path() -> PathBuf {
 struct Case {
     name: String,
     era: String,
+    mount: Vec<String>,
     headers: Vec<(String, String)>,
     request: String,
     status: u16,
@@ -61,6 +64,7 @@ fn parse_case(c: &Value) -> Case {
     Case {
         name: c["name"].as_str().unwrap().to_owned(),
         era: c["era"].as_str().unwrap_or("legacy").to_owned(),
+        mount: mount_tokens(c),
         headers: c["headers"]
             .as_object()
             .map(|h| {
@@ -73,6 +77,39 @@ fn parse_case(c: &Value) -> Case {
         status: c["status"].as_u64().unwrap() as u16,
         response: c["response"].as_str().unwrap().to_owned(),
     }
+}
+
+/// The case's `mount` tokens, empty when absent.
+fn mount_tokens(c: &Value) -> Vec<String> {
+    c["mount"]
+        .as_array()
+        .map(|m| m.iter().map(|t| t.as_str().unwrap().to_owned()).collect())
+        .unwrap_or_default()
+}
+
+/// Maps a case's `mount` tokens onto mount options. The only token the
+/// cases carry is `verifier=bearer:<token>`: a verifier that establishes
+/// a request whose Authorization is exactly `Bearer <token>` and refuses
+/// every other. An unknown token fails the case rather than being
+/// silently ignored.
+fn mount_options(tokens: &[String]) -> MountOptions {
+    let mut options = MountOptions::default();
+    for token in tokens {
+        let bearer = token
+            .strip_prefix("verifier=bearer:")
+            .unwrap_or_else(|| panic!("unknown mount token: {token}"));
+        let want = format!("Bearer {bearer}");
+        options.verifier = Some(Verifier::new(move |req: &HttpRequest| {
+            req.headers
+                .iter()
+                .any(|(k, v)| k.eq_ignore_ascii_case("authorization") && *v == want)
+                .then(|| Identity {
+                    caller: "fixture".into(),
+                    ..Identity::default()
+                })
+        }));
+    }
+    options
 }
 
 fn load_sequences() -> Vec<Sequence> {
@@ -104,6 +141,7 @@ fn load_cases() -> Vec<Case> {
         .map(|c| Case {
             name: c["name"].as_str().unwrap().to_owned(),
             era: c["era"].as_str().unwrap().to_owned(),
+            mount: mount_tokens(c),
             headers: c["headers"]
                 .as_object()
                 .map(|h| {
@@ -211,13 +249,13 @@ fn surface_for(case: &Case) -> Surface {
     } else {
         modern_tree()
     };
-    Surface::mount(bridge, MountOptions::default()).expect("mount")
+    Surface::mount(bridge, mount_options(&case.mount)).expect("mount")
 }
 
 #[test]
 fn every_fixture_case_is_byte_exact() {
     let cases = load_cases();
-    assert_eq!(cases.len(), 18, "fixture count changed; re-review the port");
+    assert_eq!(cases.len(), 23, "fixture count changed; re-review the port");
 
     let mut failures = Vec::new();
     for case in &cases {
