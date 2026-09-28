@@ -64,3 +64,13 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	}
 	return w.ResponseWriter.Write(b)
 }
+
+// Flush forwards to the wrapped writer, so a streaming handler behind
+// the logger still delivers each frame as it is written.
+func (w *statusWriter) Flush() {
+	_ = http.NewResponseController(w.ResponseWriter).Flush()
+}
+
+// Unwrap exposes the wrapped writer to [http.ResponseController], so
+// a handler behind the logger can adjust its own deadlines.
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }

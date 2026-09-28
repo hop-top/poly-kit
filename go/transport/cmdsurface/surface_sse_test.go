@@ -618,3 +618,32 @@ func sseEqual(a, b []string) bool {
 	}
 	return true
 }
+
+// TestSSE_StreamsBehindLoggerMiddleware pins that api.Logger's
+// response wrapper still satisfies http.Flusher: a router configured
+// with the logger used to refuse every stream with a 500.
+func TestSSE_StreamsBehindLoggerMiddleware(t *testing.T) {
+	runner := &sseFakeRunner{}
+	b := cmdsurface.New(sseTestTree(), cmdsurface.WithRunner(runner))
+	b.Expose("echo", cmdsurface.SurfaceSSE)
+
+	router := api.NewRouter(api.WithMiddleware(api.Logger(func(any, ...any) {})))
+	if err := cmdsurface.MountSSE(b, router); err != nil {
+		t.Fatalf("MountSSE: %v", err)
+	}
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/cmd/echo/stream")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("Content-Type = %q", ct)
+	}
+}
