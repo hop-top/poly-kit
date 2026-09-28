@@ -746,7 +746,16 @@ contract, and both kit-shipped services pass the caller's: the `api`
 service the HTTP request's context, the `socket` service a
 per-connection context, so a client that disconnects mid-command
 cancels it on either transport (see [Security](#provenance)).
-Stopping the service cancels every command in flight.
+
+Stopping a service ends what is in flight per transport:
+
+- The `socket` service closes every connection, which cancels the
+  command each one carries.
+- The `api` service ends every open stream first: its command is
+  canceled and the stream's terminal frame is an `error` with status
+  `503` and code `shutting_down`. Request/reply calls then drain:
+  the service waits up to the stop budget for them to complete and
+  does not cancel them.
 
 ### Isolation between invocations
 
