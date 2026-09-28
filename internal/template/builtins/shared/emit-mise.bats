@@ -26,18 +26,20 @@ teardown() {
 
 @test "emit_mise go: includes go runtime + golangci-lint" {
   emit_mise "$PROJ" "go"
-  grep -qE '^go = "1\.26"$'            "$PROJ/mise.toml"
-  grep -qE '^golangci-lint = "2\.12"$' "$PROJ/mise.toml"
+  grep -qE '^go = "1\.26\.1"$'            "$PROJ/mise.toml"
+  grep -qE '^golangci-lint = "2\.11\.4"$' "$PROJ/mise.toml"
 }
 
 @test "emit_mise go: includes cross-cutting workflow tools" {
   emit_mise "$PROJ" "go"
-  grep -qE '^lychee = "0\.18"$'     "$PROJ/mise.toml"
+  grep -qE '^lychee = "0\.24\.2"$'     "$PROJ/mise.toml"
   grep -qE '^hadolint = "2\.12"$'   "$PROJ/mise.toml"
   grep -qE '^actionlint = "1\.7"$'  "$PROJ/mise.toml"
   grep -qE '^shellcheck = "0\.10"$' "$PROJ/mise.toml"
   grep -qE '^shfmt = "3\.10"$'      "$PROJ/mise.toml"
-  grep -qE '^"npm:release-please" = "16"$' "$PROJ/mise.toml"
+  grep -qE '^"npm:release-please" = "17"$' "$PROJ/mise.toml"
+  grep -qE '^buf = "1\.73\.0"$'   "$PROJ/mise.toml"
+  grep -qE '^"npm:markdownlint-cli2" = "0\.23\.3"$' "$PROJ/mise.toml"
 }
 
 @test "emit_mise go: excludes node, python, rust, ruff" {
@@ -85,8 +87,8 @@ teardown() {
 @test "emit_mise py: includes python, uv, ruff" {
   emit_mise "$PROJ" "py"
   grep -qE '^python = "3\.13"$' "$PROJ/mise.toml"
-  grep -qE '^uv = "0\.5"$'      "$PROJ/mise.toml"
-  grep -qE '^ruff = "0\.8"$'    "$PROJ/mise.toml"
+  grep -qE '^uv = "0\.12"$'     "$PROJ/mise.toml"
+  grep -qE '^ruff = "0\.15\.11"$' "$PROJ/mise.toml"
 }
 
 @test "emit_mise py: excludes golangci-lint and other runtimes" {

@@ -2,21 +2,25 @@
 # Single source of truth consumed by `scaffold.sh` and `kit init`.
 # Bumping a version here triggers `kit init --update` downstream.
 # See `templates/shared/README.md` for the update policy.
+# kit's own mise.toml carries these same pins (its CI runs them);
+# `make check-toolchain-parity` fails when the two disagree.
 
 [runtimes]
-go     = "1.26"  # Go toolchain
+go     = "1.26.1"  # Go toolchain (exact; matches kit's go.mod and CI)
 node   = "22"    # Node.js runtime
-pnpm   = "9"     # Node package manager
+pnpm   = "11"    # Node package manager
 python = "3.13"  # CPython
-uv     = "0.5"   # Python package + project manager
+uv     = "0.12"  # Python package + project manager
 rust   = "1.98.0"  # Rust toolchain (stable; matches rust-toolchain.toml)
 
 [workflow]
-golangci-lint        = "2.12"  # Go linter aggregator (v2.x — required for Go 1.26+ targets; v1.x refuses)
-ruff                 = "0.8"   # Python linter + formatter
-lychee               = "0.18"  # Markdown / URL link checker
+golangci-lint        = "2.11.4"  # Go linter aggregator (v2.x — required for Go 1.26+ targets; v1.x refuses)
+ruff                 = "0.15.11"  # Python linter + formatter
+lychee               = "0.24.2"  # Markdown / URL link checker
 hadolint             = "2.12"  # Dockerfile linter
 actionlint           = "1.7"   # GitHub Actions workflow linter
 shellcheck           = "0.10"  # Shell script linter
 shfmt                = "3.10"  # Shell script formatter
-"npm:release-please" = "16"    # Release automation (npm-backed)
+"npm:release-please" = "17"    # Release automation (npm-backed)
+buf                  = "1.73.0"  # Protobuf lint / format / codegen
+"npm:markdownlint-cli2" = "0.23.3"  # Markdown linter (npm-backed)

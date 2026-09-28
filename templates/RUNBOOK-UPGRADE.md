@@ -40,7 +40,7 @@ preserved verbatim.
 
 ## Migrating `.golangci.yml` to v2
 
-`tool-versions.toml` pins `golangci-lint = "2.12"`. v1.62.x was built
+`tool-versions.toml` pins `golangci-lint = "2.11.4"`. v1.62.x was built
 with Go 1.23 and refuses to lint Go 1.26+ targets:
 
     can't load config: the Go language version (go1.24) used to build
