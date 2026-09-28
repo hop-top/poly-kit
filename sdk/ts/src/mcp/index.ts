@@ -106,6 +106,7 @@ export {
   META_KEY_CLIENT_INFO,
   META_KEY_PROTOCOL_VERSION,
   META_KEY_SERVER_INFO,
+  MCP_AUTH_CHALLENGE,
   pathFromToolName,
   policyAllowed,
   RawJSON,
@@ -127,12 +128,17 @@ export {
   type Leaf,
   type McpBridge,
   type McpCacheScope,
+  type McpEstablishment,
+  type McpIdentity,
   type McpMountOptions,
   type McpSpecVersion,
+  type McpVerifier,
   type Policy,
   type ResolvedMcpConfig,
   type SafetyClass,
   type Surface,
 } from './types.js';
+
+export { establishCaller, invocationMeta, SCOPES_EXTRA_KEY } from './identity.js';
 
 export { commanderBridge, type CommanderBridgeOptions } from './bridge.js';

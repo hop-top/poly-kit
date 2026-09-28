@@ -305,7 +305,7 @@ describe('modern validation chain (V1-V9)', () => {
     expect(differing.body).toContain('conflicting duplicate values');
   });
 
-  it('auth-required leaves are gated on the Authorization header', async () => {
+  it('auth-required leaves are gated on a verified caller, not the Authorization header', async () => {
     const blocked = await handler()(
       post(
         { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'secret', _meta: MODERN_META } },
@@ -317,7 +317,17 @@ describe('modern validation chain (V1-V9)', () => {
     // The refusal is still a complete modern result envelope.
     expect(blocked.body).toContain('"resultType":"complete"');
 
-    const allowed = await handler()(
+    const presence = await handler()(
+      post(
+        { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'secret', _meta: MODERN_META } },
+        { ...MODERN_HEADERS('tools/call', 'secret'), Authorization: 'Bearer t' },
+      ),
+    );
+    expect(presence.status).toBe(401);
+
+    const allowed = await createMcpHandler(modernLockBridge(), {
+      verifier: () => ({ caller: 'alice' }),
+    })(
       post(
         { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'secret', _meta: MODERN_META } },
         { ...MODERN_HEADERS('tools/call', 'secret'), Authorization: 'Bearer t' },

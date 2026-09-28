@@ -34,7 +34,6 @@ import {
   META_KEY_SERVER_INFO,
   RESULT_TYPE_COMPLETE,
   renderCallResult,
-  SURFACE_MCP,
   type Leaf,
   type McpBridge,
   type RawJSON,
@@ -51,9 +50,11 @@ import {
   headerValues,
   isExposed,
   resolveLeaf,
+  unauthenticated,
   writeError,
   writeResult,
 } from './legacy.js';
+import { establishCaller, invocationMeta } from './identity.js';
 import { isTaskMethod, taskMethodNotFound } from './tasks.js';
 import {
   ElicitationConfirmGate,
@@ -309,9 +310,13 @@ export class ModernMcpHandler {
       );
     }
 
-    // Pre-flight gates, mirroring legacy exactly.
-    if (leaf.class?.authRequired && !headerValue(req, 'authorization')) {
-      return this.writeCallError(rpc, 'authentication required', 401);
+    // Pre-flight gates, mirroring legacy exactly: only the mount's
+    // verifier authenticates, never a bare Authorization header.
+    const ident = await establishCaller(this.cfg.verifier, req);
+    if (leaf.class?.authRequired && ident === undefined) {
+      return unauthenticated(
+        this.writeCallError(rpc, 'authentication required', 401),
+      );
     }
     // Confirmation gate. With a mounted key this is the MRTR
     // elicitation loop, which falls back to the header gate for
@@ -332,11 +337,7 @@ export class ModernMcpHandler {
       const res = await this.bridge.invoke({
         path: [...leaf.path],
         flags: params.arguments,
-        meta: {
-          surface: SURFACE_MCP,
-          requestedAt: new Date(),
-          extra: modernInvocationExtra(meta),
-        },
+        meta: invocationMeta(ident, modernInvocationExtra(meta)),
       });
       const out = renderCallResult(res);
       if (res.data !== undefined && res.data !== null) {

@@ -22,6 +22,8 @@ import {
   SERVER_INFO_META_KEY,
 } from '@modelcontextprotocol/server';
 
+import type { McpHttpRequest } from './dispatch.js';
+
 // --- protocol constants -------------------------------------------------
 
 /** Reserved `params._meta` / result `_meta` keys (from the v2 SDK). */
@@ -205,11 +207,32 @@ export interface Leaf {
   enabled?: Partial<Record<Surface, boolean>>;
 }
 
+/**
+ * How the surface established a caller, as recorded in
+ * `InvocationMeta.established`. Mirrors Go's `cmdsurface.Establishment`:
+ * `verified` means the mount's verifier accepted a credential the
+ * request presented. Absent means nothing was established; any caller
+ * the request claims is a claim, not an identity.
+ */
+export type McpEstablishment = 'verified';
+
 /** Metadata attached to one invocation, forwarded to audit sinks. */
 export interface InvocationMeta {
   surface: Surface;
   requestedAt: Date;
-  /** Free-form audit bag; the modern path records spec + client info. */
+  /**
+   * The principal the mount's verifier established. Never taken from
+   * the request body or headers.
+   */
+  caller?: string;
+  /** The tenant the verifier established, when it named one. */
+  tenant?: string;
+  /** Set only when the verifier established the caller. */
+  established?: McpEstablishment;
+  /**
+   * Free-form audit bag; the modern path records spec + client info.
+   * `scopes` (comma-joined) comes only from the verifier.
+   */
   extra?: Record<string, string>;
 }
 
@@ -246,6 +269,43 @@ export interface McpBridge {
   invoke(inv: Invocation): Promise<InvokeResult> | InvokeResult;
 }
 
+// --- caller verification ------------------------------------------------
+
+/**
+ * The caller a verifier established for one request. Mirrors the Go
+ * surfaces' `Meta` identity: `caller` is the stable principal (a user
+ * id, a service account, a client id), `tenant` the account it acts
+ * in, `scopes` what it was granted. All optional: a verifier may
+ * accept a credential that names no principal.
+ */
+export interface McpIdentity {
+  caller?: string;
+  tenant?: string;
+  scopes?: string[];
+}
+
+/**
+ * Establishes who is calling. The mount calls it once per `tools/call`
+ * with the request as received; it checks a credential the request
+ * presents (a bearer token, a signed header) and returns the caller,
+ * or `null`/`undefined` to refuse. Throwing refuses too.
+ *
+ * Only an identity a verifier returns authenticates a call: a
+ * `kit/auth-required` leaf is refused with 401 unless it does. An
+ * `Authorization` header is presence, not verification, and a caller
+ * or scopes the request claims in its body never become identity.
+ */
+export type McpVerifier = (
+  req: McpHttpRequest,
+) =>
+  | McpIdentity
+  | null
+  | undefined
+  | Promise<McpIdentity | null | undefined>;
+
+/** The challenge a 401 carries in WWW-Authenticate, as Go's api.DefaultAuthChallenge. */
+export const MCP_AUTH_CHALLENGE = 'Bearer';
+
 // --- mount options ------------------------------------------------------
 
 /**
@@ -271,6 +331,11 @@ export interface McpMountOptions {
   confirmationKey?: Uint8Array | string;
   /** Policy gate. Default: defaultPolicy(). */
   policy?: Policy;
+  /**
+   * Establishes the caller of each `tools/call`. Without one no call
+   * is established, so every `kit/auth-required` leaf is refused.
+   */
+  verifier?: McpVerifier;
 }
 
 /** Resolved, validated mount configuration. */
@@ -285,6 +350,7 @@ export interface ResolvedMcpConfig {
   originAllowlist: string[];
   confirmationKey?: Uint8Array;
   policy: Policy;
+  verifier?: McpVerifier;
 }
 
 /**
@@ -359,6 +425,7 @@ export function resolveMcpConfig(
     originAllowlist: opts.originAllowlist ?? [],
     confirmationKey,
     policy: opts.policy ?? defaultPolicy(),
+    verifier: opts.verifier,
   };
 }
 

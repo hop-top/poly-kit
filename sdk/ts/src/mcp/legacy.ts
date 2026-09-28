@@ -18,6 +18,7 @@ import {
   errorResultBlock,
   encodeEnvelope,
   buildToolEnvelope,
+  MCP_AUTH_CHALLENGE,
   MCP_ERR_INVALID_PARAMS,
   MCP_ERR_INVALID_REQUEST,
   MCP_ERR_METHOD_NOT_FOUND,
@@ -39,6 +40,7 @@ import {
 } from './types.js';
 import type { JsonRpcRequest, McpHttpRequest, McpHttpResponse } from './dispatch.js';
 import { jsonResponse } from './dispatch.js';
+import { establishCaller, invocationMeta } from './identity.js';
 
 /** Writes a successful JSON-RPC envelope. */
 export function writeResult(
@@ -210,12 +212,12 @@ export class LegacyMcpHandler {
 
     // Auth + confirmation gating, mirrored onto the result envelope so
     // MCP-aware clients see isError while HTTP-only clients see the
-    // matching status code.
-    if (leaf.class?.authRequired && !headerValue(req, 'authorization')) {
-      return writeResult(
-        rpc.id,
-        errorResultBlock('authentication required'),
-        401,
+    // matching status code. Only the mount's verifier authenticates:
+    // a bare Authorization header does not.
+    const ident = await establishCaller(this.cfg.verifier, req);
+    if (leaf.class?.authRequired && ident === undefined) {
+      return unauthenticated(
+        writeResult(rpc.id, errorResultBlock('authentication required'), 401),
       );
     }
     if (
@@ -233,7 +235,7 @@ export class LegacyMcpHandler {
       const res = await this.bridge.invoke({
         path: [...leaf.path],
         flags: params.arguments,
-        meta: { surface: SURFACE_MCP, requestedAt: new Date() },
+        meta: invocationMeta(ident),
       });
       return writeResult(rpc.id, renderCallResult(res), 200);
     } catch (err) {
@@ -256,6 +258,17 @@ export class LegacyMcpHandler {
       );
     }
   }
+}
+
+/**
+ * Stamps the WWW-Authenticate challenge on a 401 refusal, as Go's
+ * api.WriteUnauthenticated does at the edge.
+ */
+export function unauthenticated(res: McpHttpResponse): McpHttpResponse {
+  return {
+    ...res,
+    headers: { ...res.headers, 'WWW-Authenticate': MCP_AUTH_CHALLENGE },
+  };
 }
 
 /** Reports whether a leaf is exposed on the MCP surface. */
