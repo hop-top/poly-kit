@@ -6,7 +6,7 @@ package mcpsdk
 // (hop.top/mcp-tasks); this file is kit's binding of that module to
 // the bridge: which leaves are task-eligible, kit's safety gates
 // enforced at creation, principal derivation, and detached execution
-// through the Runner via Bridge.Invoke (no second execution path).
+// of the creation's Admission (no second execution path).
 
 import (
 	"context"
@@ -137,10 +137,10 @@ func taskPrincipal(hdr http.Header) string {
 // the synchronous path, or resolved synchronously through an MRTR
 // elicitation exchange (SEP-2663 mandates MRTR-before-
 // CreateTaskResult, which makes creation the natural gate). The
-// detached execution dispatches through Bridge.Invoke, which
-// re-checks enablement and policy at run time; nothing on the tasks
-// surface itself (get/update/cancel) can execute, re-execute, or
-// amplify a leaf.
+// detached execution runs the Admission creation obtained — the gates
+// answer once per call, as on the synchronous path; nothing on the
+// tasks surface itself (get/update/cancel) can execute, re-execute,
+// or amplify a leaf.
 //
 // meta is the call's provenance as the synchronous path built it
 // ([WithCallMeta], the auth gate's verdict); a call without a verified
@@ -150,25 +150,31 @@ func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, l
 	if meta.Caller == "" {
 		meta.Caller = taskPrincipal(hdr)
 	}
-	// Every machine gate before the person: a task the ceiling or the
-	// permission gate refuses is neither created nor confirmed.
-	if _, err := b.Admit(ctx, cmdsurface.Invocation{
-		Path: append([]string(nil), leaf.Path...),
-		Meta: meta,
-	}); err != nil {
-		if isUncallable(err) {
-			return nil, err
-		}
-		return refusalResult(err), nil
-	}
-	// Arguments are checked before a person is asked: nobody
-	// approves a call that cannot run as sent.
+	// Arguments are checked first, as on the synchronous path: the
+	// admission carries the invocation exactly as it will run.
 	flags, args, err := decodeArguments(leaf, req.Params.Arguments)
 	if err != nil {
 		if errors.Is(err, errMalformedArguments) {
 			return nil, err
 		}
 		return errorResult(err.Error()), nil
+	}
+	// Every machine gate before the person: a task the ceiling, the
+	// permission gate or the rate limit refuses is neither created nor
+	// confirmed. This is the call's only admission — the detached run
+	// executes it, so a task spends one rate token and its outcome is
+	// audited once.
+	adm, err := b.Admit(ctx, cmdsurface.Invocation{
+		Path:  append([]string(nil), leaf.Path...),
+		Args:  args,
+		Flags: flags,
+		Meta:  meta,
+	})
+	if err != nil {
+		if isUncallable(err) {
+			return nil, err
+		}
+		return refusalResult(err), nil
 	}
 	if leaf.Class.RequiresConfirmation && hdr.Get("X-Confirm-Token") == "" {
 		proceed, res := tb.confirmViaMRTR(req, leaf, hdr)
@@ -177,20 +183,11 @@ func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, l
 		}
 	}
 
-	meta.RequestedAt = time.Now()
-	inv := cmdsurface.Invocation{
-		Path:  append([]string(nil), leaf.Path...),
-		Args:  args,
-		Flags: flags,
-		Meta:  meta,
-	}
 	return tb.ext.StartTask(ctx, req, func(runCtx context.Context, _ *taskext.Handle) (*mcp.CallToolResult, error) {
-		res, err := b.Invoke(runCtx, inv)
+		// Run arms the per-command deadline when the run starts.
+		res, err := adm.Run(runCtx)
 		if err != nil {
-			if isUncallable(err) {
-				return nil, err // protocol fault: the task fails
-			}
-			return refusalResult(err), nil // completed, isError
+			return runErrorResult(err), nil // completed, isError
 		}
 		return renderResult(res), nil
 	})

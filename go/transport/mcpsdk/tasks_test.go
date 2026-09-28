@@ -78,7 +78,13 @@ func tasksTree(counter *atomic.Int32, release <-chan struct{}) *cobra.Command {
 // the given tools.
 func newTasksHarness(t *testing.T, root *cobra.Command, tcfg TasksConfig, extra ...Option) *httptest.Server {
 	t.Helper()
-	b := cmdsurface.New(root)
+	return mountTasksBridge(t, cmdsurface.New(root), tcfg, extra...)
+}
+
+// mountTasksBridge mounts b as newTasksHarness does, for tests that
+// configure the bridge themselves.
+func mountTasksBridge(t *testing.T, b *cmdsurface.Bridge, tcfg TasksConfig, extra ...Option) *httptest.Server {
+	t.Helper()
 	opts := append([]Option{WithStateless(), WithJSONResponse(), WithTasks(tcfg)}, extra...)
 	s, err := New(b, opts...)
 	if err != nil {
@@ -451,5 +457,42 @@ func TestTasksSurfaceCannotExecute(t *testing.T) {
 	}
 	if got := counter.Load(); got != 1 {
 		t.Errorf("executions after tasks/* storm = %d, want 1 — the tasks surface executed a leaf", got)
+	}
+}
+
+// TestTaskAdmittedOnce pins that a task is admitted once, at creation:
+// the detached run executes that admission rather than meeting the
+// gates again, so a task spends one rate token and its outcome is
+// audited once.
+func TestTaskAdmittedOnce(t *testing.T) {
+	var counter atomic.Int32
+	sink := &recordingSink{}
+	b := cmdsurface.New(tasksTree(&counter, nil),
+		cmdsurface.WithRateLimit(cmdsurface.RateLimit{Write: cmdsurface.RateRule{PerMinute: 1, Burst: 1}}),
+		cmdsurface.WithSinks(cmdsurface.SinkSpec{Sink: sink, OnError: true, OnOK: true}))
+	srv := mountTasksBridge(t, b, TasksConfig{Tools: []string{"slow"}})
+
+	env := taskPost(t, srv.URL+"/mcp", taskCallHeaders("slow", nil), taskCallBody(1, "slow", true, ""))
+	created := taskResult(t, env)
+	if created["resultType"] != "task" {
+		t.Fatalf("create = %v, want CreateTaskResult", created)
+	}
+	final := taskPollUntil(t, srv, created["taskId"].(string), nil, "completed")
+	result, _ := final["result"].(map[string]any)
+	if result["isError"] == true || !strings.Contains(contentText(result), "slow done") {
+		t.Fatalf("result = %v, want the leaf stdout — the run was admitted a second time", result)
+	}
+	if got := counter.Load(); got != 1 {
+		t.Errorf("executions = %d, want 1", got)
+	}
+	recs := sink.snapshot()
+	if len(recs) != 1 || recs[0].err != nil || recs[0].exit != 0 {
+		t.Errorf("audit records = %+v, want one successful run", recs)
+	}
+
+	// The one token is spent: the next call is refused at creation.
+	res := taskResult(t, taskPost(t, srv.URL+"/mcp", taskCallHeaders("slow", nil), taskCallBody(2, "slow", true, "")))
+	if res["resultType"] == "task" || res["isError"] != true {
+		t.Errorf("second call = %v, want a rate-limit refusal at creation", res)
 	}
 }

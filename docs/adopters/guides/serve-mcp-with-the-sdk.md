@@ -410,9 +410,9 @@ s, err := mcpsdk.New(b, mcpsdk.WithTasks(mcpsdk.TasksConfig{
 
 Creation is server-directed: an eligible leaf called by a client that
 declares the extension becomes a task; every other call returns inline
-exactly as before. kit's gates are enforced at creation, before any
-task exists, and detached execution still dispatches through
-`Bridge.Invoke`.
+exactly as before. kit's gates are enforced once, at creation, before
+any task exists; the detached run executes that admission, so a task
+spends one rate-limit token and is audited once, when it finishes.
 
 Both the extension and this binding are **experimental** and pinned to
 a draft spec — expect breaking changes. The wire behavior, deployment

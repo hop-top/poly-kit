@@ -66,7 +66,7 @@ func toolFor(leaf *cmdsurface.Leaf) *mcp.Tool {
 // declares the tasks extension for the request, the call diverts onto
 // the SEP-2663 task path (after the auth gate, which applies to every
 // path): destructive policy and confirmation are enforced at task
-// creation, and execution detaches onto the Runner via Bridge.Invoke.
+// creation, and the admitted call runs detached on the Runner.
 func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
 	b, tb := s.b, s.tasks
 	path := append([]string(nil), leaf.Path...)
