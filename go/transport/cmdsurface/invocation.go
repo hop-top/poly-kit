@@ -13,7 +13,9 @@ type Invocation struct {
 	// Path is the cobra command path from root to leaf, e.g.
 	// ["widget","add"]. Empty Path selects the root.
 	Path []string `json:"path"`
-	// Args are positional arguments passed after the path.
+	// Args are positional arguments passed after the path. They are
+	// arguments however they are spelled: a value starting with "-"
+	// is never read as a flag.
 	Args []string `json:"args,omitempty"`
 	// Flags is the parsed flag set keyed by long-name. Values are
 	// typed as the surface produced them; the Runner normalises to
@@ -23,6 +25,12 @@ type Invocation struct {
 	// context. Always populate Meta.Surface — the policy gate keys
 	// on it.
 	Meta Meta `json:"meta"`
+
+	// ownArgv marks a leaf that parses its own argv (cobra's
+	// DisableFlagParsing): its Args are forwarded verbatim, with no
+	// end-of-options marker ahead of them. The bridge sets it on
+	// admission so a runner holding no tree still knows.
+	ownArgv bool
 }
 
 // Meta carries provenance for an Invocation. Surfaces fill the

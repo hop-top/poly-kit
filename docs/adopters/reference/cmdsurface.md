@@ -46,7 +46,9 @@ the same Runner under provider invocation contracts.
   (`SurfaceREST`, `SurfaceMCP`, etc.). Fourteen surfaces are declared.
 - **Invocation** — the transport-agnostic call envelope: `Path`,
   `Args`, `Flags`, `Meta`. Every surface decodes its wire format into
-  this shape.
+  this shape. `Args` are positional however they are spelled: `-x` is
+  an argument, not a flag (see
+  [Arguments](../../contracts/serve-lifecycle.md#arguments)).
 - **Result** — the unified return value (`ExitCode`, `Stdout`,
   `Stderr`, optional `Data`). Surfaces map it onto their wire format.
   See [Execution](#execution) for how `Data` is populated.

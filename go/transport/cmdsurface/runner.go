@@ -131,13 +131,19 @@ func resolveLeaf(root *cobra.Command, path []string) (*cobra.Command, error) {
 
 // buildArgs converts an Invocation into the cobra argv form:
 //
-//	[<path...>, --flag=<value>..., <args...>]
+//	[<path...>, --flag=<value>..., --, <args...>]
 //
 // Bool flags whose value is true are emitted as --flag (no value);
 // false bool flags are omitted entirely. Other flag values are
 // rendered with fmt %v.
+//
+// The "--" end-of-options marker precedes the args whenever there
+// are any, so an argument spelled like a flag ("-x", "--help") is
+// read as the argument it is. A leaf that parses its own argv
+// (ownArgv) gets its args verbatim: nothing in kit parses them, and
+// the marker would reach the program it forwards to as an argument.
 func buildArgs(inv Invocation) []string {
-	out := make([]string, 0, len(inv.Path)+len(inv.Flags)*2+len(inv.Args))
+	out := make([]string, 0, len(inv.Path)+len(inv.Flags)+1+len(inv.Args))
 	out = append(out, inv.Path...)
 	for _, k := range sortedKeys(inv.Flags) {
 		v := inv.Flags[k]
@@ -149,6 +155,9 @@ func buildArgs(inv Invocation) []string {
 		default:
 			out = append(out, fmt.Sprintf("--%s=%v", k, v))
 		}
+	}
+	if len(inv.Args) > 0 && !inv.ownArgv {
+		out = append(out, "--")
 	}
 	out = append(out, inv.Args...)
 	return out
@@ -202,7 +211,10 @@ func joinPath(path []string) string {
 //
 // The binary is invoked as:
 //
-//	<binaryPath> <inv.Path...> [--flag=val ...] [inv.Args...]
+//	<binaryPath> <inv.Path...> [--flag=val ...] [-- inv.Args...]
+//
+// The "--" is omitted when there are no args, and for a leaf the
+// bridge admitted as parsing its own argv (cobra DisableFlagParsing).
 //
 // Each Invocation runs a fresh process; SubprocessRunner is safe for
 // concurrent use.

@@ -152,7 +152,12 @@ func (r *inProcessRunner) prepare(ctx context.Context, inv Invocation) (*executi
 	ex.selected = selected
 	ex.structured = declaresOutput(d) &&
 		strings.EqualFold(fmt.Sprint(flags[formatFlag]), jsonFormat)
-	ex.args = buildArgs(Invocation{Path: inv.Path, Args: inv.Args, Flags: flags})
+	ex.args = buildArgs(Invocation{
+		Path: inv.Path, Args: inv.Args, Flags: flags,
+		// The resolved leaf is the authority here, whether or not a
+		// bridge admitted the invocation.
+		ownArgv: leaf.DisableFlagParsing,
+	})
 
 	if r.newRoot == nil {
 		// Start from the baseline, whatever the previous invocation

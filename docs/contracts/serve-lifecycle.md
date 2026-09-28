@@ -1015,6 +1015,25 @@ invocations, and the classes of command that never run this way.
 Authority: [`go/transport/cmdsurface`](../../go/transport/cmdsurface/)
 (`runner.go`, `exec.go`, `result.go`).
 
+### Arguments
+
+An invocation's `Args` are positional arguments on every surface. A
+value that begins with `-` (`-x`, `--help`) is an argument, never a
+flag; flags travel only in `Flags`.
+
+- The runner MUST end the options before the arguments. The command
+  runs with the argv `<path...> <--flag=value...> -- <args...>`; the
+  `--` is omitted when there are no arguments.
+- A command that parses its own argv (cobra `DisableFlagParsing`, such
+  as a plugin that forwards to another binary) receives its arguments
+  verbatim, with no `--`: kit parses none of them, and the marker would
+  reach the forwarded program as an argument of its own. The bridge
+  records this on the admitted invocation, so a subprocess runner,
+  which holds no tree, applies the same rule.
+- The marker is visible to a command that inspects its argv:
+  `cmd.ArgsLenAtDash()` is `0`, and a subprocess's `os.Args` carries the
+  `--`, for every served invocation with arguments.
+
 ### Result
 
 Every invocation, whichever transport carried it, produces one
@@ -1419,6 +1438,14 @@ changing a line:
      socket's bridge admits as leaves, are now refused by the bridge
      (`NOT_INVOCABLE`), with the runner as a backstop, rather than
      run without a terminal.
+
+8. **Arguments stay arguments.** Every runner ends the options before
+   an invocation's `Args` ([Arguments](#arguments)). Before, an
+   argument beginning with `-` was parsed as a flag: `-x` failed as an
+   unknown flag, and `--help` answered with help text and exit 0
+   without running the command. A command that reads
+   `cmd.ArgsLenAtDash()` or `os.Args` now sees the `--`; a command
+   that parses its own argv receives its arguments as before.
 
 Migrating from a hand-written leaf `serve` command, or from a tree
 mounted on REST and MCP through `cmdsurface` by hand, is a mechanical

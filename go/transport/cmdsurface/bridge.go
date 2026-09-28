@@ -416,6 +416,9 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s: %s",
 			ErrPermissionDenied, leaf.PathKey(), surface, dec.Reason))
 	}
+	// A runner holding no tree (a subprocess) learns from the
+	// invocation whether the leaf parses its own argv.
+	inv.ownArgv = leaf.Cmd != nil && leaf.Cmd.DisableFlagParsing
 	return &Admission{b: b, inv: forwardIdempotencyKey(inv, leaf)}, nil
 }
 

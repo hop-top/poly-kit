@@ -237,6 +237,10 @@ func TestInProcessRunner_Stream_Error(t *testing.T) {
 // execute a real binary. Returns "" if neither is present, in which
 // case the calling test SHOULD t.Skip — these are integration-flavored
 // tests that depend on a POSIX shell.
+//
+// The shell's "-c <script>" rides in Invocation.Path: Args are
+// positional and follow an end-of-options marker, where sh would
+// read "-c" as a script file name.
 func findSh(t *testing.T) string {
 	t.Helper()
 	for _, candidate := range []string{"/bin/sh", "/usr/bin/sh"} {
@@ -254,7 +258,7 @@ func TestSubprocessRunner_Run_Success(t *testing.T) {
 	}
 	r := SubprocessRunner(sh)
 	res, err := r.Run(context.Background(), Invocation{
-		Args: []string{"-c", "printf hello"},
+		Path: []string{"-c", "printf hello"},
 	})
 	if err != nil {
 		t.Fatalf("Run err: %v", err)
@@ -277,7 +281,7 @@ func TestSubprocessRunner_Run_NonZeroExit(t *testing.T) {
 	}
 	r := SubprocessRunner(sh)
 	res, err := r.Run(context.Background(), Invocation{
-		Args: []string{"-c", "exit 7"},
+		Path: []string{"-c", "exit 7"},
 	})
 	if err != nil {
 		t.Fatalf("Run err: %v (ExitError should not bubble)", err)
@@ -294,7 +298,7 @@ func TestSubprocessRunner_Run_StderrCapture(t *testing.T) {
 	}
 	r := SubprocessRunner(sh)
 	res, err := r.Run(context.Background(), Invocation{
-		Args: []string{"-c", "printf hi >&2; exit 2"},
+		Path: []string{"-c", "printf hi >&2; exit 2"},
 	})
 	if err != nil {
 		t.Fatalf("Run err: %v", err)
@@ -332,7 +336,7 @@ func TestSubprocessRunner_Run_ContextCancel(t *testing.T) {
 	}()
 	start := time.Now()
 	_, err := r.Run(ctx, Invocation{
-		Args: []string{"-c", "sleep 30"},
+		Path: []string{"-c", "sleep 30"},
 	})
 	elapsed := time.Since(start)
 	if err == nil {
@@ -356,7 +360,7 @@ func TestSubprocessRunner_Run_Timeout(t *testing.T) {
 	defer cancel()
 	start := time.Now()
 	_, err := r.Run(ctx, Invocation{
-		Args: []string{"-c", "sleep 30"},
+		Path: []string{"-c", "sleep 30"},
 	})
 	elapsed := time.Since(start)
 	if err == nil {
@@ -380,7 +384,7 @@ func TestSubprocessRunner_Stream_Lines(t *testing.T) {
 	errc := make(chan error, 1)
 	go func() {
 		errc <- r.Stream(context.Background(), Invocation{
-			Args: []string{"-c", "printf 'a\\nb\\nc\\n'; printf 'warn1\\nwarn2\\n' >&2"},
+			Path: []string{"-c", "printf 'a\\nb\\nc\\n'; printf 'warn1\\nwarn2\\n' >&2"},
 		}, ch)
 	}()
 
@@ -438,7 +442,7 @@ func TestSubprocessRunner_Stream_NonZeroExit(t *testing.T) {
 	errc := make(chan error, 1)
 	go func() {
 		errc <- r.Stream(context.Background(), Invocation{
-			Args: []string{"-c", "exit 3"},
+			Path: []string{"-c", "exit 3"},
 		}, ch)
 	}()
 	var done *Event
@@ -474,7 +478,7 @@ func TestSubprocessRunner_Stream_ContextCancel(t *testing.T) {
 	errc := make(chan error, 1)
 	go func() {
 		errc <- r.Stream(ctx, Invocation{
-			Args: []string{"-c", "sleep 30"},
+			Path: []string{"-c", "sleep 30"},
 		}, ch)
 	}()
 	go func() {

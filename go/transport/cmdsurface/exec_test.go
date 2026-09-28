@@ -395,7 +395,7 @@ func TestSubprocessRunner_CancelKillsChild(t *testing.T) {
 			r := SubprocessRunner(sh)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			inv := Invocation{Args: []string{"-c", "sleep 30 & echo $!; wait"}}
+			inv := Invocation{Path: []string{"-c", "sleep 30 & echo $!; wait"}}
 
 			var stdout string
 			switch mode {
