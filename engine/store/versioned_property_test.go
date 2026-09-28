@@ -66,8 +66,8 @@ type touchedKey struct {
 // A divergence here is signal, not noise: it means one of the two
 // backends is doing something the other isn't, and the spec-level
 // guarantee that VersionedDocumentStore is backend-agnostic is
-// broken. Per the task brief: STOP and report rather than shrink the
-// iteration count to make this pass.
+// broken. Fix the backend rather than shrink the iteration count to
+// make this pass.
 func TestVersioned_Property(t *testing.T) {
 	t.Parallel()
 	iterations := propertyIterations(t, versionedPropertyIterations)

@@ -195,7 +195,7 @@ func promptInternal(ctx context.Context, store consent.Store, deps promptDeps) (
 	// Interactive path. Default is No: the highlighted answer the
 	// user accepts by hitting enter. Explicit "y" / "Y" / "yes"
 	// grants. Anything else (including a blank line, "n", or EOF)
-	// denies. Per task spec, this is the ONLY code path allowed to
+	// denies. This is the ONLY code path allowed to
 	// write SourcePrompt.
 	granted := askYesNo(deps.in, deps.out)
 	state := consent.StateDenied

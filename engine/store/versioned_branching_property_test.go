@@ -37,8 +37,8 @@ import (
 //     16); same inputs must produce same output. If a future backend
 //     deviates, this test surfaces it as a per-iteration divergence.
 //
-// Per the task brief: a divergence here is a real finding. STOP and
-// report rather than reroll the seed to silence it.
+// A divergence here is a real finding: fix the backend rather than
+// reroll the seed to silence it.
 
 // branchingPropertySeed is the fixed RNG seed driving
 // TestVersionedBranching_Property. Bumping it is allowed when adding

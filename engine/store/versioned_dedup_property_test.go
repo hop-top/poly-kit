@@ -42,9 +42,8 @@ import (
 //     ensures the equivalence is checked on hashes that have
 //     refcount >= 2 in the SQLite backend.
 //
-// Per the task brief and the branching property test's lead: a
-// divergence here is a real finding. STOP and report rather than
-// reroll the seed to silence it.
+// As in the branching property test, a divergence here is a real
+// finding: fix the backend rather than reroll the seed to silence it.
 
 // dedupPropertySeed is the fixed RNG seed driving
 // TestVersionedDedup_Property. Bumping it is allowed when adding a

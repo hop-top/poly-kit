@@ -17,8 +17,7 @@ type asCLIError interface {
 	AsCLIError() *output.Error
 }
 
-// toCLIError converts err to an *output.Error following the rules in the
-// task spec: typed errors implementing AsCLIError() pass through; bare
+// toCLIError converts err to an *output.Error: typed errors implementing AsCLIError() pass through; bare
 // errors are wrapped with CodeGeneric / ExitCode 1. Either way the
 // originating error is retained so errors.Is keeps matching sentinels
 // across the conversion.

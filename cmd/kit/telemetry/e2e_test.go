@@ -281,7 +281,7 @@ func TestE2E_InspectOnEmptySpool_PrintsInfo(t *testing.T) {
 // because we don't drive the emitter). Each step asserts the on-disk
 // state matches the verb's documented contract.
 //
-// The "next emit is no-op" claim from the task spec is covered by
+// The "next emit is no-op" claim is covered by
 // the consent_hook contract: the hook reads the FileStore on every
 // call, and the FileStore returns the most recent Set. We assert the
 // HOOK behavior via NewHook(s).Granted() — the same API

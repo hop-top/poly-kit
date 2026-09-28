@@ -67,9 +67,9 @@ import (
 //     backends — the cross-backend equivalence assertion guarantees
 //     bytes round-trip the dedup join post-prune.
 //
-// Per the task brief and the branching/dedup property tests' lead:
-// a divergence here is a real finding. STOP and report rather than
-// reroll the seed to silence it.
+// As in the branching/dedup property tests, a divergence here is a
+// real finding: fix the backend rather than reroll the seed to
+// silence it.
 
 // pruningPropertySeed is the fixed RNG seed driving
 // TestVersionedPruning_Property. Bumping it is allowed when adding a
