@@ -199,6 +199,13 @@ delivered first.
 
 ### Refusals
 
+`ErrBodyTooLarge` is never returned by the bridge: a transport
+reports it through `Bridge.Audit` (`Bridge.AuditBodyTooLarge` builds
+the record from the HTTP request) when it refuses a body over its
+cap, so oversized calls land in the same audit stream as the rest.
+Every HTTP surface caps bodies by default; see
+[Body limits](#body-limits).
+
 `ErrNotInvocable` is returned for a leaf that can never execute
 through a transport: an interactive command (no terminal here) or a
 self-hosting one (the runner is the process it would start a server
@@ -231,6 +238,28 @@ is audited the same way, and gets the same idempotency-key forwarding
 as `Invoke`. `Bridge.Runner()` still
 returns the Runner, but calling its `Run` or `Stream` directly skips
 every gate and the audit.
+
+## Body limits
+
+Every HTTP entry point caps the request body by default at
+`api.DefaultMaxBodyBytes` (1 MiB); `0` on any option keeps it,
+a negative value disables it.
+
+| Entry point | Option | Over the cap | Audited |
+|---|---|---|---|
+| `MountProjection` (routes and streams) | `WithProjectionMaxBodyBytes` | 413 `body_too_large` | yes |
+| `MountREST` | `WithRESTMaxBodyBytes` | 413 `body_too_large` | yes |
+| `MountMCP` | `WithMCPMaxBodyBytes` | 413, JSON-RPC `-32600` | yes |
+| `mcpsdk.Mount` / `Handler` | `mcpsdk.WithMaxBodyBytes` | 413, SDK plain text | no |
+| `MountRPC` | `WithRPCMaxBodyBytes` | `CodeResourceExhausted` | no |
+| `rpc.RPCResource` | `connect.WithReadMaxBytes` in opts | `CodeResourceExhausted` | no |
+| `MountWebhooks` | `WithWebhookMaxBody` | 413 `payload_too_large` | no |
+| `MountWS` (per message) | `WithWSMaxMessageBytes` (32 KiB) | close `1009` | yes |
+| `cli.WithAPI` service | `APIConfig.MaxBodyBytes`; `services.api.body_limit.*`, `services.all.body_limit.*` | 413 `body_too_large` | yes |
+
+A declared `Content-Length` over the cap is refused before any handler
+runs; a chunked or HTTP/2 body is refused on the read that crosses
+it. SSE, OAuth and signed-URL routes are GET-only and read no body.
 
 ## Surface matrix
 
@@ -380,6 +409,9 @@ Options:
   outermost middleware.
 - `WithRESTOpenAPI(humaAPI any)` — register one OpenAPI operation per
   mounted leaf (no second handler installed).
+- `WithRESTMaxBodyBytes(n int64)` — request body cap; `0` keeps
+  `api.DefaultMaxBodyBytes` (1 MiB), negative disables. Wraps
+  outermost, ahead of auth and `WithRESTMiddleware`.
 
 ```bash
 curl -X POST http://localhost:8080/cmd/widget/add \
@@ -390,8 +422,10 @@ curl -X POST http://localhost:8080/cmd/widget/add \
 Sentinel-error mapping: `ErrUnknownCommand` → 404 `unknown_command`,
 `ErrSurfaceNotEnabled` → 404 `not_enabled`, `ErrNotInvocable` → 404
 `not_invocable`, `ErrDestructiveBlocked` → 403 `destructive_blocked`,
-`ErrPermissionDenied` → 403 `permission_denied`; any other error goes
-through `api.MapError`. Confirmation-required leaves require an
+`ErrPermissionDenied` → 403 `permission_denied`, body over the cap →
+413 `body_too_large` (a declared `Content-Length` or a chunked body
+crossing the cap mid-read, audited as `ErrBodyTooLarge`); any other
+error goes through `api.MapError`. Confirmation-required leaves require an
 `X-Confirm-Token` header (presence-only, value not validated). See
 `go/transport/cmdsurface/surface_rest_test.go`.
 
@@ -486,14 +520,19 @@ Options:
   gate asks. Without it, an `Authorization` header or a claimed caller
   is enough.
 - `WithRPCHandlerOptions(opts ...connect.HandlerOption)` — handler
-  options such as `connect.WithReadMaxBytes`. Without one, a message
-  of any size is read.
+  options such as `connect.WithReadMaxBytes`, which overrides
+  `WithRPCMaxBodyBytes`.
 - `WithRPCAdmittedInterceptors(ic ...connect.Interceptor)` —
   interceptors that see only calls every gate admitted, around the
   run. A refused call never reaches them; a call they refuse does not
   run and is audited with their error. The request they see is the
   body as sent, so its `meta` is a claim; a streaming interceptor's
   conn replays the request message once.
+- `WithRPCMaxBodyBytes(n int64)` — per-message cap after
+  decompression, through `connect.WithReadMaxBytes`; `0` keeps 1 MiB,
+  negative disables. connect-go refuses an oversized message itself
+  with `CodeResourceExhausted` on every protocol. The refusal happens
+  before any interceptor or handler, so it is not audited.
 
 Per-leaf gates: `WithRPCAuthenticated`, or by default an
 `Authorization` header (or `inv.Meta.Caller`), when
@@ -564,6 +603,11 @@ Options:
 - `WithMCPOriginAllowlist(origins ...string)` — exact-match `Origin`
   validation on the modern path (403 on mismatch); absent = no check.
   Configure it (or bind to localhost) on any routable deployment.
+- `WithMCPMaxBodyBytes(n int64)` — request body cap, applied before
+  either revision's handler; `0` keeps 1 MiB, negative disables. Over
+  it: HTTP 413 with a JSON-RPC error, code `-32600`,
+  `data: {"reason":"body_too_large","limit":<n>}`, `id: null`,
+  audited as `ErrBodyTooLarge`.
 - `WithMCPConfirmationKey(key []byte)` — enable the spec 2026-07-28
   MRTR confirmation flow for `kit/requires-confirmation` leaves on
   the modern path: clients declaring the `elicitation` capability get
@@ -607,6 +651,11 @@ Options:
   goroutine MountWS starts when no hub is supplied.
 - `WithWSAcceptOrigins(origins ...string)` — allow non-same-origin
   upgrades.
+- `WithWSMaxMessageBytes(n int64)` — per-message read cap; `0` keeps
+  `DefaultWSMaxMessageBytes` (32 KiB, the websocket library's own
+  default), negative disables. A message over it closes the
+  connection with status `1009` (message too big), audited as
+  `ErrBodyTooLarge`.
 
 Safety gates fire at upgrade time using the aggregate matrix of every
 WS-enabled leaf (strictest wins). Each `invoke` frame is then admitted

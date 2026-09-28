@@ -78,6 +78,9 @@ type mcpConfig struct {
 	// error.
 	confirmKeySet bool
 	confirmKey    []byte
+
+	// maxBody backs WithMCPMaxBodyBytes; zero is the kit default.
+	maxBody int64
 }
 
 // MCPOption configures the MCP surface mounted by MountMCP.
@@ -148,6 +151,8 @@ func WithMCPConfirmationKey(key []byte) MCPOption {
 //
 // Behavior:
 //   - Forces inv.Meta.Surface = SurfaceMCP for every call.
+//   - Caps the request body at WithMCPMaxBodyBytes (default 1 MiB);
+//     an oversized body gets HTTP 413 and a JSON-RPC -32600 error.
 //   - Maps flags from request "arguments" into inv.Flags; values are
 //     forwarded as-is (the bridge re-renders them with %v at apply
 //     time, so the cobra leaf parses them as strings). A leaf that
@@ -225,15 +230,15 @@ func mountMCP(b *Bridge, r *api.Router, cfg mcpConfig) error {
 	case enabled.legacy && !enabled.modern:
 		// Legacy only: mount today's handler directly. The dispatcher
 		// is not in the path; markers are ignored exactly as today.
-		r.Handle(http.MethodPost, cfg.path, legacy.serveHTTP)
+		r.Handle(http.MethodPost, cfg.path, mcpBodyLimit(b, cfg.maxBody, legacy.serveHTTP))
 	case enabled.modern && !enabled.legacy:
 		// Modern only: every request routes to the modern handler; no
 		// special-casing of initialize (D2 does not apply when legacy
 		// is not enabled at all).
 		modern := newMCPModernHandler(b, cfg)
-		r.Handle(http.MethodPost, cfg.path, func(w http.ResponseWriter, req *http.Request) {
+		r.Handle(http.MethodPost, cfg.path, mcpBodyLimit(b, cfg.maxBody, func(w http.ResponseWriter, req *http.Request) {
 			modernOnlyServeHTTP(modern, w, req)
-		})
+		}))
 		r.Handle(http.MethodGet, cfg.path, mcp405Handler)
 		r.Handle(http.MethodDelete, cfg.path, mcp405Handler)
 	default:
@@ -241,7 +246,7 @@ func mountMCP(b *Bridge, r *api.Router, cfg mcpConfig) error {
 		// request (D1-D4).
 		modern := newMCPModernHandler(b, cfg)
 		d := &mcpDispatcher{legacy: legacy, modern: modern}
-		r.Handle(http.MethodPost, cfg.path, d.ServeHTTP)
+		r.Handle(http.MethodPost, cfg.path, mcpBodyLimit(b, cfg.maxBody, d.ServeHTTP))
 		r.Handle(http.MethodGet, cfg.path, mcp405Handler)
 		r.Handle(http.MethodDelete, cfg.path, mcp405Handler)
 	}

@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
 
+	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1"
 	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1/cmdsurfacev1connect"
 )
@@ -48,6 +50,17 @@ type rpcConfig struct {
 	handlerOpts   []connect.HandlerOption
 	callMeta      func(ctx context.Context, req connect.AnyRequest, claimed Meta) Meta
 	authenticated func(ctx context.Context, req connect.AnyRequest) bool
+	maxBody       int64
+}
+
+// WithRPCMaxBodyBytes caps each request message at n bytes, after
+// decompression, through connect.WithReadMaxBytes. Zero keeps the
+// default, api.DefaultMaxBodyBytes (1 MiB); a negative n disables the
+// cap. An oversized message is refused by connect-go itself with
+// CodeResourceExhausted on every protocol it serves (HTTP 429 on the
+// Connect unary wire, grpc-status 8 on gRPC and gRPC-Web).
+func WithRPCMaxBodyBytes(n int64) RPCOption {
+	return func(c *rpcConfig) { c.maxBody = n }
 }
 
 // WithRPCInterceptors appends interceptors run on top of the server's
@@ -58,8 +71,8 @@ func WithRPCInterceptors(ic ...connect.Interceptor) RPCOption {
 
 // WithRPCHandlerOptions passes options to the generated handler after
 // the interceptors: connect.WithReadMaxBytes to bound a request
-// message, connect.WithCompressMinBytes, and the like. Without a
-// read bound a handler reads a message of any size.
+// message, connect.WithCompressMinBytes, and the like. A
+// connect.WithReadMaxBytes here overrides the WithRPCMaxBodyBytes cap.
 func WithRPCHandlerOptions(opts ...connect.HandlerOption) RPCOption {
 	return func(c *rpcConfig) { c.handlerOpts = append(c.handlerOpts, opts...) }
 }
@@ -119,7 +132,8 @@ var _ cmdsurfacev1connect.CommandsHandler = (*rpcServer)(nil)
 //     the package mapping table;
 //   - returns Result with non-zero ExitCode as a success response
 //     (clients inspect ExitCode themselves);
-//   - cancels the running Stream goroutine when the client disconnects.
+//   - cancels the running Stream goroutine when the client disconnects;
+//   - caps each request message at WithRPCMaxBodyBytes (default 1 MiB).
 //
 // Options wire the host's own gates in: WithRPCInterceptors for
 // authentication and the like, WithRPCCallMeta for the provenance the
@@ -152,11 +166,25 @@ func MountRPC(b *Bridge, s rpcServerMount, opts ...RPCOption) error {
 	if len(ics) > 0 {
 		hopts = append(hopts, connect.WithInterceptors(ics...))
 	}
+	// The body cap goes before the caller's handler options, so an
+	// explicit connect.WithReadMaxBytes there wins over it.
+	if limit := api.MaxBodyBytesOrDefault(cfg.maxBody); limit > 0 {
+		hopts = append(hopts, connect.WithReadMaxBytes(clampReadMaxBytes(limit)))
+	}
 	hopts = append(hopts, cfg.handlerOpts...)
 
 	path, handler := cmdsurfacev1connect.NewCommandsHandler(srv, hopts...)
 	s.Handle(path, handler)
 	return nil
+}
+
+// clampReadMaxBytes narrows a byte cap to connect's int option,
+// saturating rather than wrapping on a 32-bit platform.
+func clampReadMaxBytes(n int64) int {
+	if n > int64(math.MaxInt) {
+		return math.MaxInt
+	}
+	return int(n)
 }
 
 // rpcServerMount is the subset of *rpc.Server MountRPC consumes. The

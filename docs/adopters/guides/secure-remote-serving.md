@@ -49,8 +49,15 @@ for your own command tree; substitute it.
   every transport. A caller cannot route around it by picking a
   different one.
 - **One audit trail.** Every refusal — not authenticated, not
-  permitted, not confirmed — and every command that ran over a remote
-  surface reaches the sinks you register, with the same fields.
+  permitted, not confirmed, body too large — and every command that
+  ran over a remote surface reaches the sinks you register, with the
+  same fields.
+- **Bounded request bodies.** Every route the api service serves —
+  the projection, your `Handlers` and `Resources` — refuses a body
+  over 1 MiB with `413` and code `body_too_large`, whether the
+  `Content-Length` declares it or a chunked body crosses the cap
+  mid-read. Raise or lower it with `services.api.body_limit.max_bytes`
+  (or `services.all.body_limit.max_bytes` for every service).
 
 The socket service needs none of the address rules: a Unix socket has
 no port and is not routable. The file is created `0600`, so the
@@ -568,6 +575,7 @@ on both transports; a command that honors its context stops.
 | `APIConfig.Auth` | none | Authenticates every route and permits any address. Claims attribute the call. |
 | `APIConfig.InsecureRemote` | `false` | Serve unauthenticated beyond loopback. `services.api.insecure_remote` / `--insecure-remote` set the same. |
 | `APIConfig.InsecureNoPolicy` | `false` | Serve beyond loopback with no delegation policy. `services.api.insecure_no_policy` / `--insecure-no-policy` set the same. |
+| `APIConfig.MaxBodyBytes` | `0` (1 MiB) | Request body cap on every api route; over it is `413 body_too_large`, audited as `cmdsurface.ErrBodyTooLarge`. Negative disables. `services.api.body_limit.max_bytes` / `.enabled`, then `services.all.body_limit.*`, override it. |
 | `SocketConfig.Auth` | none | Verifies each socket request; the verified identity replaces the claimed one. |
 | `cli.WithPermission(fn)` | permit all | Permission gate on every kit-shipped transport service. |
 | `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. |

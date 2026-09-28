@@ -18,12 +18,21 @@ import (
 // RPCResource bridges an api.Service[T] to a ConnectRPC
 // EntityService handler. Returns the mount path and handler,
 // matching the NewEntityServiceHandler signature.
+//
+// Each request message is capped at api.DefaultMaxBodyBytes (1 MiB)
+// through connect.WithReadMaxBytes; connect-go refuses a larger one
+// with CodeResourceExhausted. A connect.WithReadMaxBytes in opts
+// replaces the cap (zero there removes it), because options apply in
+// order and the default comes first.
 func RPCResource[T api.Entity](
 	svc api.Service[T],
 	opts ...connect.HandlerOption,
 ) (string, http.Handler) {
 	adapter := &serviceAdapter[T]{svc: svc}
-	return crudv1connect.NewEntityServiceHandler(adapter, opts...)
+	all := make([]connect.HandlerOption, 0, len(opts)+1)
+	all = append(all, connect.WithReadMaxBytes(int(api.DefaultMaxBodyBytes)))
+	all = append(all, opts...)
+	return crudv1connect.NewEntityServiceHandler(adapter, all...)
 }
 
 // serviceAdapter implements crudv1connect.EntityServiceHandler

@@ -121,6 +121,9 @@ func (a *apiService) Validate() error {
 	if err := a.validateHealth(); err != nil {
 		return err
 	}
+	if _, err := a.maxBodyBytes(); err != nil {
+		return err
+	}
 	// The permission gate is built from --policy at start; a --policy
 	// that cannot be loaded is a configuration error, and belongs
 	// here rather than a second later as a start failure. A root
@@ -336,6 +339,8 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	}
 	mws := []api.Middleware{
 		api.ContentType("application/json"),
+		// Body limit, HTTP slot 10: after Host/Origin and CORS, before compression and Auth.
+		a.bodyLimit(bridge),
 	}
 	if a.authenticates() {
 		mws = append(mws, api.Auth(a.cfg.Auth,
@@ -407,6 +412,9 @@ func (a *apiService) mountProjection(
 		cmdsurface.WithProjectionReserved(a.root),
 		cmdsurface.WithProjectionStopping(stopping),
 		cmdsurface.WithProjectionRouterAuth(),
+		// bodyLimit caps every route on the router, the projection's
+		// included; a second cap here would shadow its limit.
+		cmdsurface.WithProjectionMaxBodyBytes(-1),
 	)
 }
 

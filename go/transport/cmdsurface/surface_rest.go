@@ -33,7 +33,14 @@ import (
 //	ErrDestructiveBlocked → 403 code=destructive_blocked
 //	ErrPermissionDenied   → 403 code=permission_denied
 //	body decode error     → 400 code=bad_request
+//	body over the cap     → 413 code=body_too_large
 //	any other error       → api.MapError passthrough
+//
+// Every route caps its request body at WithRESTMaxBodyBytes (default
+// api.DefaultMaxBodyBytes, 1 MiB). The cap wraps outermost, ahead of
+// auth and any WithRESTMiddleware, so nothing reads an uncapped body;
+// each refusal is audited through the bridge's sinks as
+// ErrBodyTooLarge.
 //
 // Per-leaf middleware:
 //
@@ -71,6 +78,7 @@ func MountREST(b *Bridge, r *api.Router, opts ...RESTOption) error {
 		path := cfg.prefix + "/" + strings.Join(leaf.Path, "/")
 		handler := newLeafHandler(b, leaf)
 		wrapped := wrapMiddleware(handler, leaf, cfg)
+		wrapped = bodyLimitMiddleware(b, SurfaceREST, leaf.Path, cfg.maxBody)(wrapped).ServeHTTP
 		r.Handle(http.MethodPost, path, wrapped)
 
 		if cfg.humaRegister != nil {
@@ -90,6 +98,7 @@ type restConfig struct {
 	humaRegister func(b *Bridge, leaf *Leaf, path string)
 	middleware   []func(http.Handler) http.Handler
 	authFn       api.AuthFunc
+	maxBody      int64
 }
 
 func defaultRESTConfig() restConfig {
@@ -121,6 +130,15 @@ func WithRESTMiddleware(mw ...func(http.Handler) http.Handler) RESTOption {
 	}
 }
 
+// WithRESTMaxBodyBytes caps each route's request body at n bytes.
+// Zero keeps the default, api.DefaultMaxBodyBytes (1 MiB); a
+// negative n disables the cap. A body over the cap is refused with
+// 413 code=body_too_large, whether its Content-Length declares it
+// or a chunked body crosses the cap while it is read.
+func WithRESTMaxBodyBytes(n int64) RESTOption {
+	return func(c *restConfig) { c.maxBody = n }
+}
+
 // WithRESTAuth installs the AuthFunc used by api.Auth to wrap routes
 // whose leaf has Class.AuthRequired. When unset, AuthRequired leaves
 // are wrapped with a default AuthFunc that always returns an error,
@@ -140,6 +158,10 @@ func newLeafHandler(b *Bridge, leaf *Leaf) http.HandlerFunc {
 		if r.Body != nil && r.ContentLength != 0 {
 			dec := json.NewDecoder(r.Body)
 			if err := dec.Decode(&inv); err != nil {
+				if limit, over := api.AsBodyTooLarge(err); over {
+					api.WriteBodyTooLarge(w, limit)
+					return
+				}
 				api.Error(w, http.StatusBadRequest, &api.APIError{
 					Status:  http.StatusBadRequest,
 					Code:    "bad_request",

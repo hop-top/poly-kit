@@ -144,6 +144,12 @@ func MountCommandProjection(r *Router, cfg ProjectionConfig) {
 func commandHandler(ex CommandExecutor, d CommandDescriptor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req, err := decodeCommandRequest(r, d)
+		if limit, over := AsBodyTooLarge(err); over {
+			// A body of unknown length crossed the cap BodyLimit
+			// installed: that is a 413, not a malformed request.
+			WriteBodyTooLarge(w, limit)
+			return
+		}
 		if err != nil {
 			Error(w, http.StatusBadRequest, &APIError{
 				Status:  http.StatusBadRequest,

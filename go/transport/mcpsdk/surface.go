@@ -39,6 +39,7 @@ type config struct {
 	authenticated func(context.Context, *mcp.CallToolRequest) bool
 	elicitConfirm bool
 	elicitKey     []byte
+	maxBody       int64
 }
 
 // Option configures the surface built by NewServer / Handler / Mount.
@@ -75,6 +76,16 @@ func WithInstructions(text string) Option {
 // 2026-07-28 statelessly on the same endpoint.
 func WithStateless() Option {
 	return func(c *config) { c.stateless = true }
+}
+
+// WithMaxBodyBytes caps each HTTP request body at n bytes through
+// the SDK's own StreamableHTTPOptions.MaxRequestBodyBytes. Zero keeps
+// kit's default, api.DefaultMaxBodyBytes (1 MiB, tighter than the
+// SDK's 4 MiB); a negative n disables the cap. The SDK refuses an
+// oversized body with HTTP 413 and a plain-text reason, for
+// Content-Length, chunked and HTTP/2 bodies alike.
+func WithMaxBodyBytes(n int64) Option {
+	return func(c *config) { c.maxBody = n }
 }
 
 // WithJSONResponse makes streamable HTTP responses use
@@ -272,20 +283,23 @@ func (s *Surface) Hide(pattern string) *Surface {
 // every revision from the stateless handler alone.
 //
 // All protocol handling — version negotiation, session lifecycle,
-// message parsing, error shapes — is the SDK's. With WithTasks
+// message parsing, error shapes — is the SDK's, including the request
+// body cap (see WithMaxBodyBytes). With WithTasks
 // enabled, the extension's tasks/get, update and cancel methods are
 // registered on the server itself, so the SDK handlers dispatch them
 // alongside every standard method and they inherit the same transport
 // checks.
 func (s *Surface) Handler() http.Handler {
 	getServer := func(*http.Request) *mcp.Server { return s.srv }
+	maxBody := api.MaxBodyBytesOrDefault(s.cfg.maxBody)
 	if s.cfg.stateless {
 		return mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
-			Stateless:    true,
-			JSONResponse: s.cfg.jsonResponse,
+			Stateless:           true,
+			JSONResponse:        s.cfg.jsonResponse,
+			MaxRequestBodyBytes: maxBody,
 		})
 	}
-	return newRevisionRouter(getServer, s.cfg.jsonResponse)
+	return newRevisionRouter(getServer, s.cfg.jsonResponse, maxBody)
 }
 
 // Mount registers the streamable HTTP handler on the router at the

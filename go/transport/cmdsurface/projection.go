@@ -34,6 +34,7 @@ type projectionConfig struct {
 	heartbeat   time.Duration
 	auth        api.AuthFunc
 	routerAuth  bool
+	maxBody     int64
 }
 
 // ReservedLookup reports whether a depth-1 command name is one the
@@ -84,6 +85,19 @@ func WithProjectionHeartbeat(d time.Duration) ProjectionOption {
 // MountProjection only; [Projection] mounts nothing.
 func WithProjectionAuth(fn api.AuthFunc) ProjectionOption {
 	return func(c *projectionConfig) { c.auth = fn }
+}
+
+// WithProjectionMaxBodyBytes caps each projection request body — the
+// command routes and their streams — at n bytes, through
+// [api.BodyLimit]. A body over the cap is answered 413 body_too_large
+// and recorded in the bridge's sinks as [ErrBodyTooLarge] against the
+// command the URL addresses (see [ProjectionBodyTooLarge]). Zero keeps
+// [api.DefaultMaxBodyBytes] (1 MiB); a negative n mounts no cap, for
+// a router that caps bodies itself.
+//
+// MountProjection only; [Projection] mounts nothing.
+func WithProjectionMaxBodyBytes(n int64) ProjectionOption {
+	return func(c *projectionConfig) { c.maxBody = n }
 }
 
 // WithProjectionRouterAuth declares that the router already decides
@@ -185,6 +199,9 @@ func buildProjection(b *Bridge, cfg projectionConfig) api.ProjectionConfig {
 //	    cmdsurface.WithProjectionTool("widgets", version),
 //	    cmdsurface.WithProjectionAuth(verifyBearer))
 //
+// Request bodies are capped at 1 MiB unless
+// [WithProjectionMaxBodyBytes] says otherwise.
+//
 // Authentication is the router's or [WithProjectionAuth]'s; the
 // projection installs none otherwise. A served command that declares
 // kit/auth-required is therefore refused at mount unless one of
@@ -209,14 +226,23 @@ func MountProjection(b *Bridge, r *api.Router, opts ...ProjectionOption) error {
 		}
 	}
 
-	// The routes go on a group so WithProjectionAuth wraps the
-	// projection and nothing else on the router. The group shares
-	// the router's mux and middleware; the spec lives on the root,
-	// which is where huma was configured.
-	target := r
+	// The routes go on a group so the body cap and WithProjectionAuth
+	// wrap the projection and nothing else on the router. The group
+	// shares the router's mux and middleware; the spec lives on the
+	// root, which is where huma was configured. The cap runs before
+	// authentication, as on every kit HTTP listener.
+	var mws []api.Middleware
+	if limit := api.MaxBodyBytesOrDefault(cfg.maxBody); limit > 0 {
+		mws = append(mws, api.BodyLimit(limit,
+			api.OnBodyTooLarge(ProjectionBodyTooLarge(b))))
+	}
 	if cfg.auth != nil {
-		target = r.Group("", api.Auth(cfg.auth,
+		mws = append(mws, api.Auth(cfg.auth,
 			api.OnAuthRefused(ProjectionAuthRefusal(b))))
+	}
+	target := r
+	if len(mws) > 0 {
+		target = r.Group("", mws...)
 	}
 	api.MountCommandProjection(target, pcfg)
 	api.DescribeCommandProjection(r, pcfg)

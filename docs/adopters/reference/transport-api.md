@@ -377,6 +377,52 @@ any other address acceptable. The rules are normative in the
 the walkthrough is
 [secure-remote-serving.md](../guides/secure-remote-serving.md).
 
+#### Body limit
+
+`BodyLimit(maxBytes, opts...)` caps the request body: a declared
+`Content-Length` over the cap is refused with `413` before the handler
+runs, and any other body is wrapped in `http.MaxBytesReader`, so a
+chunked body fails the read that crosses the cap. `0` means
+`DefaultMaxBodyBytes` (1 MiB); negative disables. The refusal body is
+the usual `APIError` with code `body_too_large`
+(`CodeBodyTooLarge`):
+
+```json
+{"status":413,"code":"body_too_large","message":"request body exceeds 1048576 bytes"}
+```
+
+A handler that reads the body renders the mid-read case with
+`AsBodyTooLarge(err)` and `WriteBodyTooLarge(w, limit)`; the
+projection does, so an oversized `POST` is a `413`, never a `400`, and
+never reaches the executor. `OnBodyTooLarge(hook)` observes each
+refusal once, which is how the api service audits it.
+
+The api service installs it at HTTP slot 10 of the
+[middleware order](../../contracts/serve-lifecycle.md#middleware-order-on-the-http-plane):
+after the request id, access log, recovery, and the Host, Origin and
+CORS checks, and before compression and `Auth` — the limit costs
+nothing and reveals nothing, and nothing ahead of it reads the body.
+Health and metrics endpoints answer before it and are exempt.
+
+The cap is the `body_limit` block, resolved per key: the service's
+own key, then `services.all`, then `APIConfig.MaxBodyBytes`, then the
+1 MiB default.
+
+```yaml
+services:
+  all:
+    body_limit:
+      max_bytes: 2097152   # every service
+  api:
+    body_limit:
+      max_bytes: 4194304   # api only; 0 = the default
+      # enabled: false     # no cap for api
+```
+
+`max_bytes` must be a whole, non-negative number of bytes and
+`enabled` a boolean; anything else, or an unknown key in the block,
+fails validation at exit `2`, naming the key.
+
 #### Claims and identity
 
 `Auth` stores whatever claims the `AuthFunc` returns; the projection

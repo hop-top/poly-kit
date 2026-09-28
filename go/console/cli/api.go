@@ -55,6 +55,14 @@ type APIConfig struct {
 	// authorization are separate: a tool with Auth configured has
 	// said who may call, not what they may run.
 	InsecureNoPolicy bool
+	// MaxBodyBytes caps the request body of every route the service
+	// serves — the projection, Handlers and Resources alike. Zero
+	// means api.DefaultMaxBodyBytes (1 MiB); a negative value
+	// disables the cap. The body_limit block overrides it per key:
+	// services.api.body_limit.{max_bytes,enabled}, then
+	// services.all.body_limit.*. A body over the cap is refused with
+	// 413 and code body_too_large, and the refusal is audited.
+	MaxBodyBytes int64
 	// Handlers registers custom routes on the router.
 	Handlers func(r *api.Router)
 	// Resources registers ResourceRouters (called after router setup).

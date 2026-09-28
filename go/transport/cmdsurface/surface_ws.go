@@ -45,6 +45,10 @@ import (
 // SurfaceWS. This mirrors REST / RPC, where leaves with auth or
 // confirmation requirements gate the entire route at request time.
 //
+// Each client message is capped at WithWSMaxMessageBytes (default
+// DefaultWSMaxMessageBytes); one over the cap closes the connection
+// with status 1009 and is audited as ErrBodyTooLarge.
+//
 // Per-invocation gates fire inside the connection, through
 // [Bridge.Admit] — the gates, order, errors and audit of
 // [Bridge.Invoke] — before anything runs. A refusal is the
@@ -103,6 +107,30 @@ type wsConfig struct {
 	hub            *api.Hub
 	ctx            context.Context
 	originPatterns []string
+	maxMessage     int64
+}
+
+// DefaultWSMaxMessageBytes is the per-message read cap MountWS
+// applies when WithWSMaxMessageBytes is not given: 32 KiB, the
+// websocket library's own default, made explicit so it is visible
+// and configurable. It bounds one frame, not the connection.
+const DefaultWSMaxMessageBytes int64 = 32 << 10
+
+// WithWSMaxMessageBytes caps each client message at n bytes. Zero
+// keeps DefaultWSMaxMessageBytes; a negative n disables the cap. A
+// message over the cap closes the connection with status 1009
+// (message too big), the refusal the WebSocket protocol defines, and
+// is audited through the bridge's sinks as ErrBodyTooLarge.
+func WithWSMaxMessageBytes(n int64) WSOption {
+	return func(c *wsConfig) { c.maxMessage = n }
+}
+
+// wsReadLimit resolves the configured per-message cap.
+func wsReadLimit(n int64) int64 {
+	if n == 0 {
+		return DefaultWSMaxMessageBytes
+	}
+	return n
 }
 
 func defaultWSConfig() wsConfig {
@@ -296,6 +324,8 @@ func newWSHandler(
 			return
 		}
 		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+		limit := wsReadLimit(cfg.maxMessage)
+		conn.SetReadLimit(limit)
 
 		wc := newWSConn(conn)
 		defer wc.cancelAll()
@@ -304,7 +334,7 @@ func newWSHandler(
 		// error. Each invoke spawns a worker goroutine; cancel frames
 		// signal a worker via its registered cancel func.
 		ctx := r.Context()
-		runWSLoop(ctx, b, index, wc)
+		runWSLoop(ctx, b, index, wc, func() { b.AuditBodyTooLarge(r, SurfaceWS, nil, limit) })
 	}
 }
 
@@ -335,15 +365,21 @@ func aggregateSafety(b *Bridge) (auth, confirm bool) {
 // runWSLoop reads frames until the connection ends. Decode errors on
 // a single frame are reported back via an "error" frame and the loop
 // continues; the loop exits only on transport-level read errors.
+// onTooLarge observes a message over the read cap; the library has
+// already closed the connection with 1009 by the time it runs.
 func runWSLoop(
 	ctx context.Context,
 	b *Bridge,
 	index map[string]*Leaf,
 	wc *wsConn,
+	onTooLarge func(),
 ) {
 	for {
 		_, data, err := wc.conn.Read(ctx)
 		if err != nil {
+			if errors.Is(err, websocket.ErrMessageTooBig) {
+				onTooLarge()
+			}
 			return
 		}
 		var f wsFrame
