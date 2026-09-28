@@ -99,6 +99,30 @@ func TestAPIGuards_Defaults(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+// The Host and Origin checks wrap the router as a whole, so a
+// command's streaming twin is behind them exactly as its
+// request/reply route is: a refusal is a status before any stream
+// opens.
+func TestAPIGuards_CoverStreamRoutes(t *testing.T) {
+	r := guardRoot(t, nil)
+	base, stop := serveAPI(t, r)
+	defer stop()
+	port := base[strings.LastIndex(base, ":")+1:]
+
+	resp := guardDo(t, http.MethodPost, base+"/v1/commands/add/stream", "attacker.example:"+port, "")
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, api.CodeHostRejected, guardCode(t, resp))
+
+	resp = guardDo(t, http.MethodPost, base+"/v1/commands/add/stream", "", "https://attacker.example")
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, api.CodeOriginRejected, guardCode(t, resp))
+
+	resp = guardDo(t, http.MethodPost, base+"/v1/commands/add/stream", "localhost:"+port, "http://localhost:"+port)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.True(t, strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream"), resp.Header.Get("Content-Type"))
+	assert.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"))
+}
+
 // guardHandler returns the api service's slot 8 and slot 6 wrapping
 // around a 200 handler, for addresses a test cannot bind.
 func guardHandler(t *testing.T, r *Root, addr string) http.Handler {
