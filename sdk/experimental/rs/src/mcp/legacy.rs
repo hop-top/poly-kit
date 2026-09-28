@@ -12,6 +12,7 @@
 use serde_json::{Map, Value};
 
 use super::bridge::{Bridge, CallResult, InvokeError};
+use super::identity::Identity;
 use super::safety::Surface;
 use super::wire::{codes, error_response, result_response, ErrorObject, Request, Response};
 use super::HandlerConfig;
@@ -19,12 +20,26 @@ use super::HandlerConfig;
 /// The protocol revision this handler speaks.
 pub const PROTOCOL_VERSION: &str = "2024-11-05";
 
-/// Serves one already-parsed request on the legacy era.
+/// Serves one already-parsed request on the legacy era, unestablished.
+#[cfg(test)]
 pub(super) fn serve(
     cfg: &HandlerConfig,
     bridge: &Bridge,
     req: &Request,
     headers: &Headers,
+) -> Response {
+    serve_as(cfg, bridge, req, headers, None)
+}
+
+/// Serves one already-parsed request on the legacy era. `caller` is
+/// the identity the mount's verifier established, `None` when it
+/// established none.
+pub(super) fn serve_as(
+    cfg: &HandlerConfig,
+    bridge: &Bridge,
+    req: &Request,
+    headers: &Headers,
+    caller: Option<&Identity>,
 ) -> Response {
     if !req.jsonrpc_ok() {
         return error_response(
@@ -41,7 +56,7 @@ pub(super) fn serve(
     match req.method.as_str() {
         "initialize" => handle_initialize(cfg, req),
         "tools/list" => handle_tools_list(bridge, req),
-        "tools/call" => handle_tools_call(bridge, req, headers),
+        "tools/call" => handle_tools_call(bridge, req, headers, caller),
         other => error_response(
             // HTTP 200, not 404: the legacy era's convention, preserved.
             200,
@@ -113,7 +128,12 @@ fn handle_tools_list(bridge: &Bridge, req: &Request) -> Response {
 }
 
 /// `tools/call`: resolve, gate, invoke, render.
-fn handle_tools_call(bridge: &Bridge, req: &Request, headers: &Headers) -> Response {
+fn handle_tools_call(
+    bridge: &Bridge,
+    req: &Request,
+    headers: &Headers,
+    caller: Option<&Identity>,
+) -> Response {
     let params = req.params.as_ref();
     let name = params
         .and_then(|p| p.get("name"))
@@ -138,12 +158,15 @@ fn handle_tools_call(bridge: &Bridge, req: &Request, headers: &Headers) -> Respo
 
     // Pre-flight gates: mirrored on the result envelope so MCP-aware
     // clients see isError while HTTP-only clients see the status code.
-    if leaf.class.auth_required && headers.get("Authorization").is_none() {
+    // Only the mount's verifier authenticates: a bare Authorization
+    // header does not.
+    if leaf.class.auth_required && caller.is_none() {
         return result_response(
             401,
             req.id.as_ref(),
             &error_result_block("authentication required"),
-        );
+        )
+        .unauthenticated();
     }
     if leaf.class.requires_confirmation && headers.get("X-Confirm-Token").is_none() {
         return result_response(
@@ -266,12 +289,22 @@ mod tests {
             parse(r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"secret"}}"#);
         let resp = serve(&cfg(), &bridge, &req, &Headers(&[]));
         assert_eq!(resp.status, 401);
+        assert_eq!(resp.www_authenticate, Some("Bearer"));
         assert!(resp.body_str().contains("authentication required"));
 
-        // With the header present the gate opens.
+        // A header no verifier checked is presence, not identity.
         let headers = [("Authorization".to_string(), "Bearer x".to_string())];
         let resp = serve(&cfg(), &bridge, &req, &Headers(&headers));
+        assert_eq!(resp.status, 401);
+
+        // An established caller opens the gate.
+        let alice = Identity {
+            caller: "alice".into(),
+            ..Identity::default()
+        };
+        let resp = serve_as(&cfg(), &bridge, &req, &Headers(&headers), Some(&alice));
         assert_eq!(resp.status, 200);
+        assert_eq!(resp.www_authenticate, None);
     }
 
     #[test]

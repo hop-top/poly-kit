@@ -26,6 +26,7 @@
 use serde_json::{Map, Value};
 
 use super::bridge::{Bridge, InvokeError};
+use super::identity::Identity;
 use super::legacy::{error_result_block, render_call_result, Headers};
 use super::safety::Surface;
 use super::tasks;
@@ -123,12 +124,26 @@ pub fn request_meta(req: &Request) -> Option<RequestMeta> {
     parse_meta(req).ok()
 }
 
-/// Serves one already-parsed request on the modern era.
+/// Serves one already-parsed request on the modern era, unestablished.
+#[cfg(test)]
 pub(super) fn serve(
     cfg: &HandlerConfig,
     bridge: &Bridge,
     req: &Request,
     headers: &Headers,
+) -> Response {
+    serve_as(cfg, bridge, req, headers, None)
+}
+
+/// Serves one already-parsed request on the modern era. `caller` is
+/// the identity the mount's verifier established, `None` when it
+/// established none.
+pub(super) fn serve_as(
+    cfg: &HandlerConfig,
+    bridge: &Bridge,
+    req: &Request,
+    headers: &Headers,
+    caller: Option<&Identity>,
 ) -> Response {
     // Origin allowlist (opt-in) runs before any protocol validation.
     if !origin_allowed(cfg, headers) {
@@ -217,7 +232,7 @@ pub(super) fn serve(
     match req.method.as_str() {
         "server/discover" => handle_discover(cfg, req),
         "tools/list" => handle_tools_list(cfg, bridge, req),
-        "tools/call" => handle_tools_call(cfg, bridge, req, headers, &meta),
+        "tools/call" => handle_tools_call(cfg, bridge, req, headers, &meta, caller),
         other => write_error(
             req,
             &CheckError {
@@ -463,6 +478,7 @@ fn handle_tools_call(
     req: &Request,
     headers: &Headers,
     meta: &RequestMeta,
+    caller: Option<&Identity>,
 ) -> Response {
     // V7 — Mcp-Name agreement, run against a pre-decode peek of
     // params.name so a header failure is reported even when the rest of
@@ -493,8 +509,10 @@ fn handle_tools_call(
         return unknown_tool(cfg, req, name);
     };
 
-    if leaf.class.auth_required && headers.get("Authorization").is_none() {
-        return write_call_error(cfg, req, "authentication required", 401);
+    // Only the mount's verifier authenticates: a bare Authorization
+    // header does not.
+    if leaf.class.auth_required && caller.is_none() {
+        return write_call_error(cfg, req, "authentication required", 401).unauthenticated();
     }
 
     // Confirmation gate: the MRTR elicitation flow when the mount holds

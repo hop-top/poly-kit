@@ -70,6 +70,7 @@
 
 pub mod bridge;
 pub mod dispatch;
+pub mod identity;
 pub mod legacy;
 pub mod modern;
 pub mod safety;
@@ -78,6 +79,7 @@ pub mod wire;
 
 pub use bridge::{Bridge, CallResult, FlagSchema, InvokeError, Leaf};
 pub use dispatch::{detect_era, Era, HttpRequest, MountError, Surface};
+pub use identity::{Identity, Verifier};
 pub use modern::{request_meta, RequestMeta};
 pub use safety::{Policy, SafetyClass, Surface as SurfaceKind};
 pub use wire::{Request, Response};
@@ -160,6 +162,10 @@ pub struct MountOptions {
     pub confirmation_key: Option<Vec<u8>>,
     /// Whether to declare the tasks extension on `server/discover`.
     pub tasks_enabled: bool,
+    /// Establishes the caller of each `tools/call`. `None` establishes
+    /// no call, so every `kit/auth-required` leaf is refused with 401:
+    /// an `Authorization` header alone never admits one.
+    pub verifier: Option<Verifier>,
 }
 
 impl Default for MountOptions {
@@ -174,6 +180,7 @@ impl Default for MountOptions {
             origin_allowlist: Vec::new(),
             confirmation_key: None,
             tasks_enabled: false,
+            verifier: None,
         }
     }
 }
@@ -188,6 +195,7 @@ pub(crate) struct HandlerConfig {
     pub(crate) origin_allowlist: Vec<String>,
     pub(crate) confirmation_key: Option<Vec<u8>>,
     pub(crate) tasks_enabled: bool,
+    pub(crate) verifier: Option<Verifier>,
 }
 
 impl Default for HandlerConfig {
@@ -206,6 +214,7 @@ impl From<MountOptions> for HandlerConfig {
             origin_allowlist: options.origin_allowlist,
             confirmation_key: options.confirmation_key,
             tasks_enabled: options.tasks_enabled,
+            verifier: options.verifier,
         }
     }
 }

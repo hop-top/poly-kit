@@ -161,6 +161,9 @@ pub struct Response {
     pub content_type: Option<&'static str>,
     /// The response body, byte-exact.
     pub body: Vec<u8>,
+    /// `WWW-Authenticate` value, set on a 401 refusal. The binding must
+    /// write it as a response header.
+    pub www_authenticate: Option<&'static str>,
 }
 
 impl Response {
@@ -171,6 +174,7 @@ impl Response {
             status,
             content_type: Some("application/json"),
             body,
+            www_authenticate: None,
         }
     }
 
@@ -181,7 +185,16 @@ impl Response {
             status,
             content_type: None,
             body: Vec::new(),
+            www_authenticate: None,
         }
+    }
+
+    /// Stamps the `WWW-Authenticate` challenge on a 401 refusal, as Go's
+    /// `api.WriteUnauthenticated` does.
+    #[must_use]
+    pub fn unauthenticated(mut self) -> Self {
+        self.www_authenticate = Some(super::identity::AUTH_CHALLENGE);
+        self
     }
 
     /// The body as UTF-8, for assertions and logging.

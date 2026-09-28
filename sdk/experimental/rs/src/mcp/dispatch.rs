@@ -190,9 +190,22 @@ impl Surface {
             }
         };
 
+        // Only the mount's verifier establishes a caller, and only for
+        // the one method that invokes a leaf.
+        let caller = if parsed.method == "tools/call" {
+            self.cfg.verifier.as_ref().and_then(|v| v.verify(req))
+        } else {
+            None
+        };
+        let caller = caller.as_ref();
+
         match self.route(&req.headers, &parsed) {
-            Era::Modern => super::modern::serve(&self.cfg, &self.bridge, &parsed, &headers),
-            Era::Legacy => super::legacy::serve(&self.cfg, &self.bridge, &parsed, &headers),
+            Era::Modern => {
+                super::modern::serve_as(&self.cfg, &self.bridge, &parsed, &headers, caller)
+            }
+            Era::Legacy => {
+                super::legacy::serve_as(&self.cfg, &self.bridge, &parsed, &headers, caller)
+            }
         }
     }
 
