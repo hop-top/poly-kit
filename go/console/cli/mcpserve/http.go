@@ -46,9 +46,12 @@ type mcpCall struct {
 }
 
 // httpServing serves the surface over streamable HTTP on its own
-// listener. Sessions are stateful: the SDK issues Mcp-Session-Id and
-// server-to-client requests — a confirmation question among them —
-// travel on the open response stream.
+// listener, every protocol revision on one endpoint (mcpsdk's
+// Handler). A client that runs initialize gets a stateful session:
+// the SDK issues Mcp-Session-Id and server-to-client requests — a
+// confirmation question among them — travel on the open response
+// stream. A 2026-07-28 request is served statelessly; its
+// confirmation question comes back as an input_required result.
 type httpServing struct {
 	svc *service
 
@@ -57,6 +60,9 @@ type httpServing struct {
 	srv    *http.Server
 	mcpSrv *mcp.Server
 	stop   context.CancelFunc
+
+	// unread holds connections that have not yet sent a request.
+	unread map[net.Conn]struct{}
 }
 
 func newHTTP(svc *service) *httpServing {
@@ -95,6 +101,7 @@ func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
 		Handler:           h.middleware()(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return base },
+		ConnState:         h.trackUnread,
 	}
 
 	h.mu.Lock()
@@ -131,6 +138,7 @@ func (h *httpServing) close(ctx context.Context) error {
 			_ = ss.Close()
 		}
 	}
+	h.closeUnread()
 	if srv == nil {
 		if ln != nil {
 			return ignoreClosed(ln.Close())
@@ -142,6 +150,39 @@ func (h *httpServing) close(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// trackUnread records which connections have not sent a request yet.
+// An HTTP client may dial a connection it then leaves unused (Go's
+// transport parks a connection it dialed for a request another
+// connection served), and Shutdown waits five seconds before it
+// counts one of those as idle.
+func (h *httpServing) trackUnread(c net.Conn, st http.ConnState) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if st == http.StateNew {
+		if h.unread == nil {
+			h.unread = make(map[net.Conn]struct{})
+		}
+		h.unread[c] = struct{}{}
+		return
+	}
+	delete(h.unread, c)
+}
+
+// closeUnread closes the connections that carry no request, so
+// Shutdown does not wait on them. Stopping has already canceled every
+// request in flight; one arriving now would not be served.
+func (h *httpServing) closeUnread() {
+	h.mu.Lock()
+	conns := make([]net.Conn, 0, len(h.unread))
+	for c := range h.unread {
+		conns = append(conns, c)
+	}
+	h.mu.Unlock()
+	for _, c := range conns {
+		_ = c.Close()
+	}
 }
 
 func ignoreClosed(err error) error {

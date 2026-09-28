@@ -691,13 +691,19 @@ The cost is one more port. An adopter who needs one port mounts the
 SDK surface on `APIConfig.Handlers` by hand and accepts that it then
 lives inside the api service's lifecycle and exposure.
 
-HTTP sessions are stateful: the SDK issues an `Mcp-Session-Id`, and
-server-to-client requests travel on the open response stream. A
-stateful handler negotiates protocol versions through `2025-11-25`; a
-client asking for `2026-07-28` is answered at `2025-11-25`. The SDK
-serves `2026-07-28` only from a stateless handler, and a stateless
-handler has no server-to-client channel for the earlier protocols most
-hosts still speak. The stdio transport serves `2026-07-28` as well. The SDK's DNS-rebinding protection for loopback listeners stays
+The HTTP endpoint serves every protocol revision the SDK supports.
+A client that runs the `initialize` handshake (revisions through
+`2025-11-25`) gets a stateful session: the SDK issues an
+`Mcp-Session-Id`, and server-to-client requests travel on the open
+response stream. A `2026-07-28` request, which carries its revision
+per request and never calls `initialize`, is answered statelessly:
+no session, no `Mcp-Session-Id`. The SDK serves `2026-07-28` only from
+a stateless handler and keeps sessions only in a stateful one, so the
+service holds one of each and routes each request by the markers of
+the MCP guide's routing precedence: `initialize` and unmarked requests
+to the session handler, a request carrying a `2026-07-28` marker to
+the stateless one. Every response, error included, is the SDK's. The
+stdio transport serves `2026-07-28` as well. The SDK's DNS-rebinding protection for loopback listeners stays
 on. Every response streams through the middleware in front of the SDK
 handler, so each layer of it keeps the response flushable.
 
@@ -823,7 +829,7 @@ of:
    anything, `Approve execution of "<tool>"?`, with no form fields —
    the answer is the elicitation's action. `accept` runs the call once.
    `decline` or `cancel` refuses it (`confirmation declined`). A client
-   on protocol `2026-07-28` (stdio) receives the question as an
+   on protocol `2026-07-28` (HTTP or stdio) receives the question as an
    `input_required` result and retries with the answer and the echoed
    `requestState`; the state is bound by HMAC to the tool, the digest
    of the arguments, and the verified caller, and expires after five
