@@ -106,7 +106,7 @@ func toolHandler(b *cmdsurface.Bridge, leaf *cmdsurface.Leaf, tb *taskBinding) m
 		// the runner streams and each output line becomes an MCP
 		// progress notification on the requesting session.
 		if token := req.Params.GetProgressToken(); token != nil {
-			return streamInvoke(ctx, b, leaf, inv, req, token)
+			return streamInvoke(ctx, b, inv, req, token)
 		}
 
 		res, err := b.Invoke(ctx, inv)
@@ -120,25 +120,25 @@ func toolHandler(b *cmdsurface.Bridge, leaf *cmdsurface.Leaf, tb *taskBinding) m
 	}
 }
 
-// streamInvoke runs inv through Runner.Stream, forwarding one MCP
-// progress notification per output line to the requesting session
-// and returning the terminal Result as the call result. The policy
-// gates Bridge.Invoke would apply are applied here first, the same
-// way the bridge's other streaming surfaces do before reaching the
-// Runner directly.
-func streamInvoke(ctx context.Context, b *cmdsurface.Bridge, leaf *cmdsurface.Leaf, inv cmdsurface.Invocation, req *mcp.CallToolRequest, token any) (*mcp.CallToolResult, error) {
-	if !leaf.Enabled[cmdsurface.SurfaceMCP] {
-		return nil, fmt.Errorf("%w: %s on %s",
-			cmdsurface.ErrSurfaceNotEnabled, leaf.PathKey(), cmdsurface.SurfaceMCP)
+// streamInvoke admits inv through Bridge.Admit and runs it through
+// Admission.Stream, forwarding one MCP progress notification per
+// output line to the requesting session and returning the terminal
+// Result as the call result. Admit applies every gate Invoke would —
+// enablement, invocability, the destructive ceiling, the permission
+// gate — and audits a refusal; Admission.Stream audits the outcome.
+// A progress token changes how the call is observed and nothing about
+// whether it may run.
+func streamInvoke(ctx context.Context, b *cmdsurface.Bridge, inv cmdsurface.Invocation, req *mcp.CallToolRequest, token any) (*mcp.CallToolResult, error) {
+	adm, err := b.Admit(ctx, inv)
+	if err != nil {
+		if isUncallable(err) {
+			return nil, err
+		}
+		return errorResult(err.Error()), nil
 	}
-	if !b.Policy().Allowed(leaf.Class, cmdsurface.SurfaceMCP) {
-		return errorResult(fmt.Sprintf("%v: %s on %s",
-			cmdsurface.ErrDestructiveBlocked, leaf.PathKey(), cmdsurface.SurfaceMCP)), nil
-	}
-
 	events := make(chan cmdsurface.Event, 16)
 	errc := make(chan error, 1)
-	go func() { errc <- b.Runner().Stream(ctx, inv, events) }()
+	go func() { errc <- adm.Stream(ctx, events) }()
 
 	var res *cmdsurface.Result
 	var progress float64
