@@ -21,27 +21,6 @@ const EnvIdempotencyScope = "KIT_IDEMPOTENCY_SCOPE"
 // two namespaces visibly apart in the store.
 const servedKeyPrefix = "served:"
 
-type metaKey struct{}
-
-// ContextWithMeta returns ctx carrying m as the Meta of the served
-// invocation running on it. [InProcessRunner] stamps every invocation
-// it runs, so a command's context tells it that it is served and on
-// whose behalf; a custom in-process Runner does the same.
-func ContextWithMeta(ctx context.Context, m Meta) context.Context {
-	return context.WithValue(ctx, metaKey{}, m)
-}
-
-// MetaFromContext returns the Meta of the served invocation running
-// on ctx, and false when ctx carries none: the command was run from
-// its own command line, not served.
-func MetaFromContext(ctx context.Context) (Meta, bool) {
-	if ctx == nil {
-		return Meta{}, false
-	}
-	m, ok := ctx.Value(metaKey{}).(Meta)
-	return m, ok
-}
-
 // callerScope is who a per-caller store or bucket counts a call
 // against: the one decision idempotency ([IdempotencyScope]), the
 // result cache, the rate limit and quota ([QuotaKey]) share, so no two
@@ -121,7 +100,8 @@ func IdempotencyScope(m Meta) string {
 // replay middleware records and looks key up under.
 //
 // Outside a served invocation it is key itself: a local user's own
-// keys are theirs. Inside one — ctx carries the invocation's Meta, or
+// keys are theirs. Inside one — ctx carries the admitted Meta
+// ([AdmittedMeta]), or
 // the process is a [SubprocessRunner] child holding
 // [EnvIdempotencyScope] — it is key confined to the caller's
 // [IdempotencyScope] and hashed, so a caller who sends another
@@ -132,7 +112,7 @@ func ScopeIdempotencyKey(ctx context.Context, key string) string {
 		return ""
 	}
 	var scope string
-	if m, ok := MetaFromContext(ctx); ok {
+	if m, ok := AdmittedMeta(ctx); ok {
 		scope = IdempotencyScope(m)
 	} else if s := os.Getenv(EnvIdempotencyScope); s != "" {
 		scope = s

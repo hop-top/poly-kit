@@ -30,16 +30,20 @@ func IsProbe(ctx context.Context) bool {
 type admittedKey struct{}
 
 // withAdmitted stamps ctx with the Meta of the invocation the gates
-// admitted, for the command it runs.
+// admitted, for the command it runs. The bridge stamps the run's
+// context before handing it to any Runner, so every runner's command
+// sees it.
 func withAdmitted(ctx context.Context, meta Meta) context.Context {
 	return context.WithValue(ctx, admittedKey{}, meta)
 }
 
 // AdmittedMeta returns the Meta of the invocation the bridge admitted
 // and is now running, when ctx is that run's context — the context an
-// in-process command sees. It is how a command learns who it runs
-// for: the identity the transport established, not one a flag
-// claims. ok is false outside a served run.
+// in-process command sees, whichever Runner runs it. It is how a
+// command, and kit's own RunE middleware (--policy, a served
+// --idempotency-key), tells it is served and on whose behalf: the
+// identity the transport established, not one a flag claims. ok is
+// false outside a served run.
 func AdmittedMeta(ctx context.Context) (Meta, bool) {
 	if ctx == nil {
 		return Meta{}, false

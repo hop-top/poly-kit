@@ -19,7 +19,7 @@ func TestScopeIdempotencyKey_OutsideAServedInvocationIsTheKey(t *testing.T) {
 }
 
 func TestScopeIdempotencyKey_EmptyKeyStaysEmpty(t *testing.T) {
-	ctx := ContextWithMeta(context.Background(), Meta{Surface: SurfaceREST, Caller: "alice"})
+	ctx := withAdmitted(context.Background(), Meta{Surface: SurfaceREST, Caller: "alice"})
 	if got := ScopeIdempotencyKey(ctx, ""); got != "" {
 		t.Errorf("ScopeIdempotencyKey(empty) = %q, want empty", got)
 	}
@@ -33,7 +33,7 @@ func TestScopeIdempotencyKey_ServedKeyNeverMeetsTheLocalKey(t *testing.T) {
 		{Surface: SurfaceSocket, Established: EstablishedTransport},
 		{Surface: SurfaceREST, Caller: "alice", Established: EstablishedVerified},
 	} {
-		got := ScopeIdempotencyKey(ContextWithMeta(context.Background(), m), "k1")
+		got := ScopeIdempotencyKey(withAdmitted(context.Background(), m), "k1")
 		if got == "k1" {
 			t.Errorf("meta %+v: served key equals the local key", m)
 		}
@@ -86,8 +86,8 @@ func TestScopeIdempotencyKey_ScopedByPrincipal(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			a := ScopeIdempotencyKey(ContextWithMeta(context.Background(), c.a), "k1")
-			b := ScopeIdempotencyKey(ContextWithMeta(context.Background(), c.b), "k1")
+			a := ScopeIdempotencyKey(withAdmitted(context.Background(), c.a), "k1")
+			b := ScopeIdempotencyKey(withAdmitted(context.Background(), c.b), "k1")
 			if (a == b) != c.wantSame {
 				t.Errorf("same scope = %v, want %v (a=%s b=%s)", a == b, c.wantSame, a, b)
 			}
@@ -99,7 +99,7 @@ func TestScopeIdempotencyKey_ScopedByPrincipal(t *testing.T) {
 // the child's key must be the key the in-process runner would use.
 func TestScopeIdempotencyKey_FromTheEnvironment(t *testing.T) {
 	m := Meta{Surface: SurfaceREST, Caller: "alice", Established: EstablishedVerified}
-	want := ScopeIdempotencyKey(ContextWithMeta(context.Background(), m), "k1")
+	want := ScopeIdempotencyKey(withAdmitted(context.Background(), m), "k1")
 
 	t.Setenv(EnvIdempotencyScope, IdempotencyScope(m))
 	if got := ScopeIdempotencyKey(context.Background(), "k1"); got != want {
@@ -107,7 +107,7 @@ func TestScopeIdempotencyKey_FromTheEnvironment(t *testing.T) {
 	}
 	// The invocation on the context wins over an inherited variable.
 	other := Meta{Surface: SurfaceREST, Caller: "bob", Established: EstablishedVerified}
-	if got := ScopeIdempotencyKey(ContextWithMeta(context.Background(), other), "k1"); got == want {
+	if got := ScopeIdempotencyKey(withAdmitted(context.Background(), other), "k1"); got == want {
 		t.Error("an inherited scope overrode the invocation's own")
 	}
 }
@@ -116,25 +116,31 @@ func TestInProcessRunner_CarriesMetaToTheCommand(t *testing.T) {
 	var seen []Meta
 	root := &cobra.Command{Use: "tool"}
 	root.AddCommand(&cobra.Command{
-		Use: "who",
+		Use:         "who",
+		Annotations: map[string]string{"kit/side-effect": "read"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			m, ok := MetaFromContext(cmd.Context())
+			m, ok := AdmittedMeta(cmd.Context())
 			if !ok {
-				t.Error("command context carries no invocation Meta")
+				t.Error("command context carries no admitted Meta")
 			}
 			seen = append(seen, m)
 			return nil
 		},
 	})
-	r := InProcessRunner(root)
+	b := New(root, WithRunner(InProcessRunner(root)))
+	b.Expose("*", SurfaceREST)
 	meta := Meta{Surface: SurfaceREST, Caller: "alice", Established: EstablishedVerified}
 	inv := Invocation{Path: []string{"who"}, Meta: meta}
 
-	if _, err := r.Run(context.Background(), inv); err != nil {
-		t.Fatalf("Run: %v", err)
+	if _, err := b.Invoke(context.Background(), inv); err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	adm, err := b.Admit(context.Background(), inv)
+	if err != nil {
+		t.Fatalf("Admit: %v", err)
 	}
 	out := make(chan Event, 8)
-	if err := r.Stream(context.Background(), inv, out); err != nil {
+	if err := adm.Stream(context.Background(), out); err != nil {
 		t.Fatalf("Stream: %v", err)
 	}
 	for range out {

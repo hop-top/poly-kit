@@ -46,7 +46,6 @@ type Runner interface {
 // command that fails while ctx is done is reported as a cancellation
 // through the returned error, alongside the partial Result.
 func (r *inProcessRunner) Run(ctx context.Context, inv Invocation) (Result, error) {
-	ctx = ContextWithMeta(ctx, inv.Meta)
 	ex, err := r.prepare(ctx, inv)
 	if err != nil {
 		return Result{}, err
@@ -72,7 +71,6 @@ func (r *inProcessRunner) Stream(ctx context.Context, inv Invocation, out chan<-
 	}
 	defer close(out)
 
-	ctx = ContextWithMeta(ctx, inv.Meta)
 	ex, err := r.prepare(ctx, inv)
 	if err != nil {
 		return err

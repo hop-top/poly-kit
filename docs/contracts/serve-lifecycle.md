@@ -718,10 +718,11 @@ of any of them.
   transport only carries the key.
   A command's own `--idempotency-key` middleware MUST scope a served
   invocation's key to its caller with the same scope the bridge uses
-  (`cmdsurface.ScopeIdempotencyKey`, over `cmdsurface.IdempotencyScope`),
-  and a runner MUST carry the invocation's `Meta` to the command's
-  context (`cmdsurface.ContextWithMeta`), or to a child process as
-  `KIT_IDEMPOTENCY_SCOPE`.
+  (`cmdsurface.ScopeIdempotencyKey`, over `cmdsurface.IdempotencyScope`).
+  The bridge carries the admitted `Meta` on the run's context, whatever
+  the runner, and `cmdsurface.AdmittedMeta` is the one accessor a
+  command reads it with; a runner that hands the call to a child
+  process MUST pass the scope as `KIT_IDEMPOTENCY_SCOPE`.
 
 ### Permission
 
