@@ -1,6 +1,6 @@
 // Package id is kit's entity-ID primitive: a thin wrapper around
 // [go.jetify.com/typeid] (v1.3.0) implementing the cross-language
-// kit API shape per ADR 0001.
+// kit API shape (docs/announcements/2026-05-typeid-primitive.md).
 //
 // A TypeID is a self-describing identifier of the form
 // "prefix_<26-char-base32>", where the suffix is a UUIDv7 encoded in

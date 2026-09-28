@@ -12,7 +12,8 @@ use TypeID\TypeID;
  * kit's cross-language Id primitive (PHP binding).
  *
  * Thin static facade around `jewei/typeid-php` (Jetify TypeID spec v0.3.0).
- * Implements the kit-go + 4-SDK API shape defined in ADR 0001:
+ * Implements the kit-go + 4-SDK API shape defined in
+ * docs/announcements/2026-05-typeid-primitive.md:
  *
  *   - `Id::new($prefix)`        → fresh UUIDv7-backed typeid string
  *   - `Id::parse($s)`           → ParsedId { prefix, uuid }

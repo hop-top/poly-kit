@@ -1,7 +1,7 @@
 //! TypeID primitive — thin wrapper around the [`mti`] crate.
 //!
 //! Implements the cross-language kit API SHAPE defined in
-//! `docs/adr/0001-typeid-primitive.md` for Rust:
+//! `docs/announcements/2026-05-typeid-primitive.md` for Rust:
 //!
 //! - [`new`] — generate a `prefix_<26-char-base32>` string from a prefix.
 //! - [`parse`] — round-trip an existing canonical string back to its parts.
@@ -20,13 +20,13 @@
 //! # Spec
 //!
 //! Wraps the Jetify TypeID specification **v0.3.0** (UUIDv7 by default,
-//! 26-char Crockford base32 suffix). See ADR 0001 for the full rationale.
+//! 26-char Crockford base32 suffix). See the document above for the rationale.
 //!
 //! # Bus-factor warning
 //!
 //! The upstream [`mti`](https://github.com/Govcraft/mti) crate currently has
 //! a **single active contributor** and is the only actively-maintained
-//! Jetify-spec-compliant Rust implementation. ADR 0001 accepts this risk
+//! Jetify-spec-compliant Rust implementation. Kit accepts this risk
 //! with the following mitigations:
 //!
 //! 1. The dependency surface in this module is small and isolated; if the

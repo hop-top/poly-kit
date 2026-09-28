@@ -1,4 +1,4 @@
-"""Tests for hop_top_kit.id — TypeID primitive (ADR 0001).
+"""Tests for hop_top_kit.id — TypeID primitive.
 
 Intentionally does NOT use ``from __future__ import annotations``:
 ``TypeId["task"]`` is a *runtime* expression that returns a generated
@@ -26,7 +26,7 @@ from hop_top_kit.id import (
 )
 
 # ---------------------------------------------------------------------------
-# Canonical fixture set — see ADR 0001.
+# Canonical fixture set.
 #
 # These exact (prefix, uuidv7) pairs are the source of truth for cross-
 # language parity work. Do not change without bumping the
@@ -164,7 +164,7 @@ class TestPydanticIntegration:
     def test_stored_value_is_canonical_str(self):
         """Validator must return canonical str, not a TypeID instance.
 
-        Kit invariant (ADR 0001 § Wire form): a TypeID field IS the
+        Kit invariant ("Wire form" in the TypeID announcement): a TypeID field IS the
         canonical string everywhere — python dump, json dump, bus
         payloads, logs. ``model.field`` must be a plain :class:`str`.
         """

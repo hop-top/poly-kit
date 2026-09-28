@@ -29,7 +29,7 @@
       "uuid": "01940000-0000-7000-8000-000000000000",
       "typeid": "01jg000000e008000000000000",
       "skip_in": ["rs"],
-      "note": "The Rust kit wrapper (sdk/experimental/rs) rejects empty prefix in id::new and id::from_uuid as a kit-level policy. The bare-suffix form is still valid per the Jetify v0.3 spec and supported by go/ts/py/php — see ADR 0001."
+      "note": "The Rust kit wrapper (sdk/experimental/rs) rejects empty prefix in id::new and id::from_uuid as a kit-level policy. The bare-suffix form is still valid per the Jetify v0.3 spec and supported by go/ts/py/php — see docs/announcements/2026-05-typeid-primitive.md."
     },
     {
       "name": "underscore-prefix",

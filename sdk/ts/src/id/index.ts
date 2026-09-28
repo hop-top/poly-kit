@@ -3,7 +3,8 @@
  * @package @hop-top/kit
  *
  * TypeID primitive — thin wrapper around `typeid-js` (jetify-com)
- * implementing the cross-language kit API SHAPE per ADR 0001.
+ * implementing the cross-language kit API SHAPE per
+ * docs/announcements/2026-05-typeid-primitive.md.
  *
  * Canonical wire form: `<prefix>_<26-char-base32>` where the suffix is
  * a Crockford-base32-encoded UUIDv7. The TS surface adds a

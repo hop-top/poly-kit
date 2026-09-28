@@ -4,7 +4,8 @@ We do **not** delegate to the upstream
 ``typeid.integrations.pydantic.TypeIDField``: it validates into a
 ``typeid.TypeID`` instance and only serialises to a string in JSON mode,
 which would force every kit adopter to special-case ``mode="python"``
-dumps. Kit's invariant (per ADR 0001 § Wire form) is that a TypeID-typed
+dumps. Kit's invariant ("Wire form" in
+docs/announcements/2026-05-typeid-primitive.md) is that a TypeID-typed
 field *is* the canonical ``<prefix>_<suffix>`` string everywhere — JSON,
 ``model_dump()`` (python mode), bus payloads, logs.
 
@@ -127,8 +128,8 @@ class TypeId:
     Behaviour:
         - Accepts canonical ``<prefix>_<suffix>`` strings or already-parsed
           ``typeid.TypeID`` instances.
-        - Stores the canonical :class:`str` on the model (per ADR 0001 §
-          Wire form): ``model.id`` is always a string, ``model_dump()``
+        - Stores the canonical :class:`str` on the model (TypeID rules,
+          "Wire form"): ``model.id`` is always a string, ``model_dump()``
           emits the bare string in both ``python`` and ``json`` modes.
         - Raises ``pydantic.ValidationError`` on malformed strings or
           prefix mismatch (via :class:`PrefixMismatchError`, which

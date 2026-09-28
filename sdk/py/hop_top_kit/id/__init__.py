@@ -1,6 +1,7 @@
 """hop_top_kit.id — TypeID primitive for the kit ecosystem.
 
-Implements the cross-language kit API SHAPE from ADR 0001 on top of
+Implements the cross-language kit API SHAPE
+(docs/announcements/2026-05-typeid-primitive.md) on top of
 the upstream ``typeid-python`` package. The wire form is the canonical
 ``<prefix>_<suffix>`` string (UUIDv7 backing, Crockford base32 suffix).
 

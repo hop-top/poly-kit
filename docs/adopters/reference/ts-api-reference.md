@@ -190,7 +190,7 @@ Subpath imports follow the package's `exports` map (see
   clients (`node:net`, SQL drivers, gRPC) consult `isOffline()`
   themselves. Match the refusal with `isOfflineError(err)`.
 - `@hop-top/kit/id` — TypeID primitive (cross-language; see
-  [ADR 0001](../../adr/0001-typeid-primitive.md)). Source:
+  [TypeID primitive](../../announcements/2026-05-typeid-primitive.md)). Source:
   [`sdk/ts/src/id/`](../../../sdk/ts/src/id/).
 - `@hop-top/kit/xdg` — XDG Base Directory paths.
 - `@hop-top/kit/config` — config-file loading.

@@ -1,7 +1,8 @@
 """hop_top_kit.id._core — implementation guts.
 
 Thin wrapper around the upstream ``typeid-python`` package, exposing the
-cross-language kit API SHAPE defined in ADR 0001:
+cross-language kit API SHAPE defined in
+docs/announcements/2026-05-typeid-primitive.md:
 
     new(prefix) -> str
     parse(s)    -> Parsed(prefix: str, uuid: uuid.UUID)
@@ -59,7 +60,7 @@ class InvalidPrefixError(IdError):
     """The prefix segment failed grammar / length validation.
 
     Spec: ``^[a-z]([a-z0-9_]*[a-z0-9])?$`` and max 63 characters
-    (see ADR 0001 § Spec pin).
+    (TypeID rules, "Spec pin").
     """
 
 
@@ -118,7 +119,7 @@ class Typed(Generic[P]):
 
     ``Typed[P]`` is a typing-time annotation that evaluates to plain
     :class:`str` at runtime. Values flowing through it are the canonical
-    ``<prefix>_<suffix>`` form (per ADR 0001 § Wire form), so
+    ``<prefix>_<suffix>`` form (TypeID rules, "Wire form"), so
     ``isinstance(x, Typed[Literal["task"]])`` reduces to
     ``isinstance(x, str)`` and returns ``True`` for any TypeID string.
     This mirrors the Go ``TypeID[Prefix]`` and Rust newtype patterns at
@@ -188,7 +189,7 @@ def new(prefix: str) -> str:
         prefix: A valid TypeID prefix, matching
             ``^[a-z]([a-z0-9_]*[a-z0-9])?$`` and at most 63 chars.
             Pass ``""`` for a prefix-less TypeID (rare; bus payloads
-            should always carry a prefix per ADR 0001).
+            should always carry a prefix).
 
     Raises:
         InvalidPrefixError: if ``prefix`` violates the grammar.
