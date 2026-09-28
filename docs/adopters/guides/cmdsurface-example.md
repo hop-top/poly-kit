@@ -539,7 +539,10 @@ two managed-runtime contracts.
   via `LambdaConfig.Mapping`. Bridge constructed once at module init;
   every warm invocation reuses it.
 - Cloud Run is **containerised, request-scoped HTTP**: one binary
-  serving REST + SSE + MCP behind `$PORT`, with SIGTERM-driven drain.
+  serving the REST projection + SSE + MCP behind `$PORT`, with
+  SIGTERM-driven drain. MCP reaches the adapter through
+  `CloudRunConfig.Mounts` (a `cmdsurface.MountFunc` wrapping
+  `mcpsdk.Mount`, stateless).
 
 ### Cloud Run deployment
 

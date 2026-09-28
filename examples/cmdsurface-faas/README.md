@@ -16,8 +16,8 @@ use [`examples/cmdsurface`](../cmdsurface/README.md) instead.
 
 - you deploy one leaf per Lambda function → `cmd/lambda`, vary
   `CMDSURF_LEAF` and `CMDSURF_EVENT` per function
-- you deploy a request-scoped HTTP container → `cmd/cloudrun` (REST +
-  SSE + MCP behind `$PORT`, SIGTERM drain)
+- you deploy a request-scoped HTTP container → `cmd/cloudrun` (REST
+  projection + SSE + MCP behind `$PORT`, SIGTERM drain)
 - you need telemetry in a managed runtime → `shared.MaybeBuildTelemetry`,
   gated on `CMDSURFACE_DEMO_TELEMETRY=1`
 
@@ -26,20 +26,19 @@ use [`examples/cmdsurface`](../cmdsurface/README.md) instead.
 Cloud Run, locally:
 
 ```sh
-go run ./examples/cmdsurface-faas/cmd/cloudrun
+PORT=8090 go run ./examples/cmdsurface-faas/cmd/cloudrun
 # in another shell:
-curl -X POST http://localhost:8080/cmd/ping
+curl -X POST http://localhost:8090/v1/commands/ping
 # → {"exit_code":0,"stdout":"pong\n"}
 
-curl -N http://localhost:8080/cmd/ping/stream
+curl -N http://localhost:8090/cmd/ping/stream
 # → event: event
 #   data: {"kind":"stdout","data":"pong","at":"..."}
 #   event: result
 #   data: {"exit_code":0,"stdout":"pong\n"}
 
-curl -X POST http://localhost:8080/mcp \
-  -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+# MCP (official SDK, stateless): any streamable-HTTP client at
+# http://localhost:8090/mcp
 ```
 
 Lambda, with the Runtime Interface Emulator:
@@ -67,6 +66,9 @@ curl -X POST http://localhost:8080/2015-03-31/functions/function/invocations \
   construction, so a bad `CMDSURF_LEAF` fails the cold start.
 - Cloud Run honours SIGTERM with a 9-second drain
   (`CloudRunConfig.ShutdownGrace`).
+- Cloud Run mounts REST and SSE through `CloudRunSurfaces`
+  (`Projection`, `SSE`) and MCP through `CloudRunConfig.Mounts`: the
+  adapter cannot import `mcpsdk`, so the binary hands it the mount.
 
 ## Neighbours
 

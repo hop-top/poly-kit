@@ -7,15 +7,18 @@ package cmdsurface
 //   - Honors Cloud Run's signal contract: SIGTERM → drain in-flight
 //     requests within ~10s → exit. The default grace is 9s so the
 //     server replies cleanly before SIGKILL lands.
-//   - Mounts the bridge on the surfaces an adopter opts into (REST /
-//     SSE / MCP / WS — the surfaces that have meaningful defaults
-//     without per-adopter wiring).
+//   - Mounts the bridge on the surfaces an adopter opts into (the
+//     REST projection / SSE / WS — the surfaces that have meaningful
+//     defaults without per-adopter wiring), then runs the caller's
+//     CloudRunConfig.Mounts.
 //
 // Webhook / OAuth / Signed need mappings, providers, or key+store
-// configuration that has no universal default. Adopters that want
-// those build the *api.Router themselves and pass it via
-// CloudRunConfig.Router; RunCloudRun will start the server and
-// handle the lifecycle without mounting extras.
+// configuration that has no universal default, and MCP lives in
+// hop.top/kit/go/transport/mcpsdk, which imports this package. Each
+// reaches the router through a MountFunc in CloudRunConfig.Mounts, or
+// the adopter builds the *api.Router and passes it via
+// CloudRunConfig.Router; RunCloudRun starts the server and handles
+// the lifecycle either way.
 //
 // Reference Dockerfile (place in your binary's directory):
 //
@@ -76,6 +79,21 @@ type CloudRunConfig struct {
 	// mount surfaces manually; this field is for the common case.
 	Surfaces CloudRunSurfaces
 
+	// Mounts run after Surfaces, in order, against the same bridge
+	// and router. They are the seam for a surface this package
+	// cannot mount itself — MCP through the official SDK, which
+	// imports this package — and for any surface that needs options:
+	//
+	//	Mounts: []cmdsurface.MountFunc{
+	//	    func(b *cmdsurface.Bridge, r *api.Router) error {
+	//	        return mcpsdk.Mount(b, r, mcpsdk.WithStateless())
+	//	    },
+	//	}
+	//
+	// The first error stops startup and is returned by RunCloudRun,
+	// before the listener binds.
+	Mounts []MountFunc
+
 	// OnReady is called after the listener is up. Useful for
 	// startup-probe / health-check wiring and for tests that need
 	// to discover the bound address when Port is zero.
@@ -87,28 +105,40 @@ type CloudRunConfig struct {
 	OnShutdown func()
 }
 
+// MountFunc mounts one surface of b on r. [CloudRunConfig].Mounts
+// takes them; a surface in another package supplies one by closing
+// over its own mount call and options.
+type MountFunc func(b *Bridge, r *api.Router) error
+
 // CloudRunSurfaces selects which surfaces RunCloudRun mounts with
 // default options. For each field set true, the corresponding
 // Mount... helper is called against cfg.Router (or the default
-// router) with no surface options — equivalent to MountREST(b, r),
-// MountSSE(b, r), MountMCP(b, r), and MountWS(b, r).
+// router) with no surface options — equivalent to
+// MountProjection(b, r), MountSSE(b, r) and MountWS(b, r).
 //
-// Webhook / OAuth / Signed are intentionally absent: those surfaces
-// require adopter-supplied mappings, providers, or keys, and have
-// no safe defaults. Adopters that want them build the router
-// manually and pass it via CloudRunConfig.Router.
+// MCP, Webhook, OAuth and Signed are absent: MCP is served by
+// hop.top/kit/go/transport/mcpsdk, which this package cannot import,
+// and the others need adopter-supplied mappings, providers, or keys
+// with no safe default. Each reaches the router through
+// CloudRunConfig.Mounts.
 type CloudRunSurfaces struct {
+	// Projection mounts the REST command projection under
+	// /v1/commands (MountProjection with no options). A served
+	// command declaring kit/auth-required makes startup fail; mount
+	// the projection through CloudRunConfig.Mounts with
+	// WithProjectionAuth instead.
+	Projection bool
 	// REST mounts MountREST.
 	//
-	// Deprecated: MountREST is deprecated. The switch is removed or
-	// moved onto the command projection with it.
+	// Deprecated: MountREST is deprecated. Set Projection, which
+	// mounts the command projection under /v1/commands.
 	REST bool
 	SSE  bool
 	// MCP mounts MountMCP.
 	//
-	// Deprecated: MountMCP is deprecated. Mount the SDK surface on
-	// CloudRunConfig.Router instead:
-	// mcpsdk.Mount(b, r) from hop.top/kit/go/transport/mcpsdk.
+	// Deprecated: MountMCP is deprecated. Add the SDK surface to
+	// CloudRunConfig.Mounts: mcpsdk.Mount from
+	// hop.top/kit/go/transport/mcpsdk, wrapped in a MountFunc.
 	MCP bool
 	WS  bool
 }
@@ -124,7 +154,7 @@ type CloudRunSurfaces struct {
 //	func main() {
 //	    b := buildBridge()
 //	    err := cmdsurface.RunCloudRun(b, cmdsurface.CloudRunConfig{
-//	        Surfaces: cmdsurface.CloudRunSurfaces{SSE: true},
+//	        Surfaces: cmdsurface.CloudRunSurfaces{Projection: true, SSE: true},
 //	        OnReady:  func(addr string) { log.Printf("ready on %s", addr) },
 //	    })
 //	    if err != nil {
@@ -158,6 +188,14 @@ func runCloudRunCtx(ctx context.Context, b *Bridge, cfg CloudRunConfig) error {
 
 	if err := mountCloudRunSurfaces(b, r, cfg.Surfaces); err != nil {
 		return err
+	}
+	for i, mount := range cfg.Mounts {
+		if mount == nil {
+			continue
+		}
+		if err := mount(b, r); err != nil {
+			return fmt.Errorf("cmdsurface: CloudRunConfig.Mounts[%d]: %w", i, err)
+		}
 	}
 
 	srv := &http.Server{
@@ -238,6 +276,11 @@ func resolveCloudRunPort(cfgPort int, envPort string) (int, error) {
 // in s. Errors are wrapped with the surface name to keep diagnosis
 // short. A zero-valued CloudRunSurfaces mounts nothing.
 func mountCloudRunSurfaces(b *Bridge, r *api.Router, s CloudRunSurfaces) error {
+	if s.Projection {
+		if err := MountProjection(b, r); err != nil {
+			return fmt.Errorf("cmdsurface: mount projection: %w", err)
+		}
+	}
 	if s.REST {
 		if err := MountREST(b, r); err != nil {
 			return fmt.Errorf("cmdsurface: mount REST: %w", err)

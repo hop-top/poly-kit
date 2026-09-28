@@ -911,11 +911,29 @@ func RunCloudRun(b *Bridge, cfg CloudRunConfig) error
 
 Starts a Cloud Run-shaped HTTP server: reads `$PORT` (override via
 `cfg.Port`), serves until SIGTERM with `cfg.ShutdownGrace` (default 9s),
-and mounts the surfaces named in `cfg.Surfaces` (`REST`, `SSE`, `MCP`,
-`WS`). Webhook / OAuth / Signed require adopter-supplied router state
-and are not auto-mounted — adopters that want them build the
-`*api.Router` and pass it via `cfg.Router`. See
-`go/transport/cmdsurface/adapter_cloudrun_test.go`.
+mounts the surfaces named in `cfg.Surfaces` (`Projection`, `SSE`,
+`WS`) with default options, then runs `cfg.Mounts` in order on the
+same router. A `MountFunc` (`func(*Bridge, *api.Router) error`) is the
+seam for MCP — `mcpsdk` imports this package, so the adapter takes
+the mount from the caller — and for any surface that needs options:
+
+```go
+err := cmdsurface.RunCloudRun(b, cmdsurface.CloudRunConfig{
+    Surfaces: cmdsurface.CloudRunSurfaces{Projection: true, SSE: true},
+    Mounts: []cmdsurface.MountFunc{
+        func(b *cmdsurface.Bridge, r *api.Router) error {
+            return mcpsdk.Mount(b, r, mcpsdk.WithStateless())
+        },
+    },
+})
+```
+
+A failing mount stops startup before the listener binds. `REST` and
+`MCP` in `CloudRunSurfaces` are deprecated with the mounts they call.
+Webhook / OAuth / Signed go through `Mounts` too, or through a
+pre-built `cfg.Router`. See
+`go/transport/cmdsurface/adapter_cloudrun_test.go` and
+`examples/cmdsurface-faas/cmd/cloudrun`.
 
 ## Sinks
 

@@ -5,15 +5,12 @@
 // Cloud Run smoke) and exercise the real shared.BuildBridge wiring
 // end-to-end.
 //
-// The Cloud Run adapter (RunCloudRun) installs signal handlers in its
-// outer wrapper; the inner runCloudRunCtx that takes a context is
-// unexported. Rather than spawn the binary and probe its port (which
-// is what real adopters do, but cumbersome inside `go test`), these
-// tests assert the binary compiles cleanly and then exercise the
-// Lambda handler — which DOES take a context — directly. The Lambda
-// path covers the integration with shared.BuildBridge() and the
-// adapter's eager validation, which is the part of the example that
-// is unique to FaaS deployments.
+// The Cloud Run binary is spawned with $PORT and stopped with SIGTERM,
+// as Cloud Run runs it, in e2e_cloudrun_test.go (not on Windows,
+// which has no SIGTERM to send). The tests here assert both binaries
+// compile and exercise the Lambda handler — which takes a context —
+// directly: the integration with shared.BuildBridge() and the
+// adapter's eager validation.
 //
 // Run with:
 //

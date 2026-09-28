@@ -597,3 +597,128 @@ func TestCloudRun_DefaultRouter_AppliesMiddleware(t *testing.T) {
 		t.Error("missing X-Request-ID header (RequestID middleware not applied)")
 	}
 }
+
+func TestCloudRun_ProjectionSurfaceMounts(t *testing.T) {
+	runner := &cloudrunFakeRunner{
+		RunFn: func(_ context.Context, _ Invocation) (Result, error) {
+			return Result{Stdout: "pong"}, nil
+		},
+	}
+	b := cloudrunNewBridge(t, runner)
+
+	addr, errCh, cancel := cloudrunRun(t, b, CloudRunConfig{
+		Surfaces: CloudRunSurfaces{Projection: true},
+	})
+	defer func() {
+		cancel()
+		if err := <-errCh; err != nil {
+			t.Errorf("run err: %v", err)
+		}
+	}()
+
+	// ping is a read command, so the projection serves it as a GET.
+	resp, err := http.Get(httpURL(addr) + "/v1/commands/ping")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
+	}
+	var got api.CommandResult
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Stdout != "pong" {
+		t.Errorf("Stdout=%q want pong", got.Stdout)
+	}
+	runner.mu.Lock()
+	surface := runner.lastInvocation.Meta.Surface
+	runner.mu.Unlock()
+	if surface != SurfaceREST {
+		t.Errorf("surface=%q want rest", surface)
+	}
+}
+
+func TestCloudRun_MountsRunAfterSurfacesOnTheSameRouter(t *testing.T) {
+	b := cloudrunNewBridge(t, &cloudrunFakeRunner{})
+
+	var order []string
+	var gotBridge *Bridge
+	addr, errCh, cancel := cloudrunRun(t, b, CloudRunConfig{
+		Surfaces: CloudRunSurfaces{SSE: true},
+		Mounts: []MountFunc{
+			nil, // skipped
+			func(mb *Bridge, r *api.Router) error {
+				order = append(order, "first")
+				gotBridge = mb
+				r.Handle(http.MethodGet, "/extra", func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusTeapot)
+				})
+				return nil
+			},
+			func(*Bridge, *api.Router) error {
+				order = append(order, "second")
+				return nil
+			},
+		},
+	})
+	defer func() {
+		cancel()
+		if err := <-errCh; err != nil {
+			t.Errorf("run err: %v", err)
+		}
+	}()
+
+	if strings.Join(order, ",") != "first,second" {
+		t.Errorf("mount order=%v", order)
+	}
+	if gotBridge != b {
+		t.Error("MountFunc received a different bridge")
+	}
+	resp, err := http.Get(httpURL(addr) + "/extra")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusTeapot {
+		t.Errorf("/extra status=%d; the MountFunc's route is not served", resp.StatusCode)
+	}
+	// The Surfaces switch still mounted alongside.
+	sse, err := http.Get(httpURL(addr) + "/cmd/ping/stream")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	sse.Body.Close()
+	if sse.StatusCode != http.StatusOK {
+		t.Errorf("SSE status=%d", sse.StatusCode)
+	}
+}
+
+func TestCloudRun_MountErrorStopsStartup(t *testing.T) {
+	b := cloudrunNewBridge(t, &cloudrunFakeRunner{})
+	boom := errors.New("boom")
+	ready := false
+	// Bounded: were the mount error dropped, the server would serve
+	// until ctx ends and return nil, failing below rather than hanging.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err := runCloudRunCtx(ctx, b, CloudRunConfig{
+		Port:    pickFreePort(t),
+		OnReady: func(string) { ready = true },
+		Mounts: []MountFunc{
+			func(*Bridge, *api.Router) error { return nil },
+			func(*Bridge, *api.Router) error { return boom },
+		},
+	})
+	if !errors.Is(err, boom) {
+		t.Fatalf("err=%v, want the MountFunc's error", err)
+	}
+	if !strings.Contains(err.Error(), "Mounts[1]") {
+		t.Errorf("err=%q does not name the failing mount", err)
+	}
+	if ready {
+		t.Error("OnReady fired although a mount failed")
+	}
+}

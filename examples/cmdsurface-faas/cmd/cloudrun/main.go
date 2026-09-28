@@ -3,11 +3,19 @@
 // [cmdsurface.RunCloudRun] handles the lifecycle (signal-driven
 // shutdown, $PORT discovery, surface mounting).
 //
+// Surfaces: the REST command projection under /v1/commands, SSE under
+// /cmd, and MCP at /mcp through the official SDK. MCP is mounted
+// through CloudRunConfig.Mounts — mcpsdk imports cmdsurface, so the
+// adapter takes the mount from the caller — and stateless, because
+// Cloud Run routes a client's requests to any instance.
+//
 // Run locally:
 //
-//	go run ./examples/cmdsurface-faas/cmd/cloudrun
-//	curl http://localhost:8080/cmd/ping            # REST  → {exit_code:0, stdout:"pong\n"}
-//	curl http://localhost:8080/cmd/ping/stream     # SSE   → event stream
+//	PORT=8090 go run ./examples/cmdsurface-faas/cmd/cloudrun
+//	curl -X POST http://localhost:8090/v1/commands/ping   # REST → {"exit_code":0,"stdout":"pong\n"}
+//	curl http://localhost:8090/v1/commands                # REST discovery
+//	curl http://localhost:8090/cmd/ping/stream            # SSE  → event stream
+//	# MCP: any streamable-HTTP client at http://localhost:8090/mcp
 //
 // Deploy to Cloud Run from the repo root (uses the Dockerfile in
 // this directory):
@@ -25,7 +33,9 @@ import (
 	"time"
 
 	"hop.top/kit/examples/cmdsurface-faas/shared"
+	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
+	"hop.top/kit/go/transport/mcpsdk"
 )
 
 func main() {
@@ -53,14 +63,23 @@ func main() {
 
 	err := cmdsurface.RunCloudRun(bridge, cmdsurface.CloudRunConfig{
 		Surfaces: cmdsurface.CloudRunSurfaces{
-			REST: true, //nolint:staticcheck // SA1019: the example keeps the deprecated switch until it is removed
-			SSE:  true,
-			MCP:  true, //nolint:staticcheck // SA1019: the example keeps the deprecated switch until it is removed
+			Projection: true,
+			SSE:        true,
 		},
+		Mounts:     []cmdsurface.MountFunc{mountMCP},
 		OnReady:    func(addr string) { log.Printf("ready on %s", addr) },
 		OnShutdown: func() { log.Print("shutting down") },
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// mountMCP serves MCP through the official SDK. Stateless: no session
+// to pin a client to one instance.
+func mountMCP(b *cmdsurface.Bridge, r *api.Router) error {
+	return mcpsdk.Mount(b, r,
+		mcpsdk.WithServerInfo("cmdsurface-faas", "0.0.0"),
+		mcpsdk.WithStateless(),
+	)
 }
