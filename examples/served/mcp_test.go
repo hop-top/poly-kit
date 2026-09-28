@@ -89,6 +89,37 @@ func TestReadAnswersInStructuredContentOverMCP(t *testing.T) {
 	assert.Contains(t, toJSON(t, data), `"bolt"`)
 }
 
+func TestWriteTakesPositionalArgsOverMCP(t *testing.T) {
+	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
+	sess := mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)
+
+	// item add declares its operand (kit/args), so its tool publishes
+	// it as the "args" array and the call reaches the command as a
+	// positional argument.
+	res, err := sess.ListTools(t.Context(), nil)
+	require.NoError(t, err)
+	var schema map[string]any
+	for _, tool := range res.Tools {
+		if tool.Name == "item.add" {
+			schema, _ = tool.InputSchema.(map[string]any)
+		}
+	}
+	require.NotNil(t, schema, "item.add is listed")
+	assert.Equal(t, []any{"args"}, schema["required"])
+
+	text, _, isErr := mcpCall(t, sess, "item.add", map[string]any{"args": []any{"washer"}})
+	assert.False(t, isErr, text)
+	assert.Equal(t, "added washer\n", text)
+
+	_, data, isErr := mcpCall(t, sess, "item.list", nil)
+	require.False(t, isErr)
+	assert.Contains(t, toJSON(t, data), `"washer"`, "the next read sees the write")
+
+	text, _, isErr = mcpCall(t, sess, "item.add", nil)
+	assert.True(t, isErr)
+	assert.Equal(t, "missing required argument: name", text)
+}
+
 func TestDestructiveIsWithheldOverMCPByDefault(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
 	sess := mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)

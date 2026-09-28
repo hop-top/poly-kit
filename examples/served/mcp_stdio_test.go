@@ -68,17 +68,23 @@ func TestMCPOverStdioFromABuiltBinary(t *testing.T) {
 	require.NoError(t, err, stderr.String())
 
 	got := mcpTools(t, sess)
-	assert.Subset(t, got, []string{"item.list", "item.tag", "item.sync"})
+	assert.Subset(t, got, []string{"item.list", "item.add", "item.tag", "item.sync"})
 	assert.NotContains(t, got, "item.purge")
+
+	// A positional argument travels in the "args" array.
+	text, _, isErr := mcpCall(t, sess, "item.add", map[string]any{"args": []any{"washer"}})
+	assert.False(t, isErr, text)
+	assert.Equal(t, "added washer\n", text)
 
 	_, data, isErr := mcpCall(t, sess, "item.list", nil)
 	require.False(t, isErr)
 	assert.Contains(t, toJSON(t, data), `"nut"`)
+	assert.Contains(t, toJSON(t, data), `"washer"`)
 
 	// Auth-required runs on the spawn's trust over stdio.
-	text, _, isErr := mcpCall(t, sess, "item.sync", nil)
+	text, _, isErr = mcpCall(t, sess, "item.sync", nil)
 	assert.False(t, isErr, text)
-	assert.Equal(t, "synced 2 items\n", text)
+	assert.Equal(t, "synced 3 items\n", text)
 
 	// Confirmation-required runs once the host's user approves.
 	text, _, isErr = mcpCall(t, sess, "item.tag", map[string]any{"name": "nut"})

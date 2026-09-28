@@ -18,7 +18,7 @@ claim the contract makes about a conformant application command.
 |--------------|--------------------|------------------------------------------------------------|
 | `item list`  | read, output schema | `GET /v1/commands/item/list`, answers in `data`; MCP tool `item.list`, answers in `structuredContent` |
 | `item watch` | read, long-running | `GET /v1/commands/item/watch/stream`, one event per line until done or disconnected |
-| `item add`   | write-local        | `POST /v1/commands/item/add`                               |
+| `item add`   | write-local, `kit/args: name` | `POST /v1/commands/item/add` with `{"args":["washer"]}`; MCP tool `item.add` with the same `args` |
 | `item tag`   | write-local, `kit/requires-confirmation` | MCP tool `item.tag`: runs once a person approves the elicitation |
 | `item sync`  | read, `kit/auth-required` | MCP tool `item.sync`: refused over unauthenticated HTTP |
 | `item purge` | destructive-shared | withheld (`unauthorized-destructive`) until a surface is named, then needs `confirm` |
@@ -76,6 +76,9 @@ Each test name is the claim it pins:
   self-hosting commands.
 - `TestReadAnswersInStructuredContentOverMCP` — a schema-declaring read
   answers in `structuredContent`.
+- `TestWriteTakesPositionalArgsOverMCP` — `item.add` requires the
+  `args` array its `kit/args` declares, the positional reaches the
+  command, and a call without it is an error naming `name`.
 - `TestDestructiveIsWithheldOverMCPByDefault`,
   `TestDestructiveRunsOverMCPOnceNamedAndConfirmed` — refused until
   `Policy.AllowDestructiveOn` names `mcp`, then the command's own gate
@@ -98,7 +101,8 @@ host does:
 
 - `TestMCPOverStdioFromABuiltBinary` — `served serve mcp --stdio`
   spawned with pipes: every stdout line is a protocol message,
-  `item.sync` runs on the spawn's trust, `item.tag` runs once the
+  `item.add` takes its positional from `args`, `item.sync` runs on the
+  spawn's trust, `item.tag` runs once the
   host's user approves, closing stdin exits `0`, and the lifecycle
   trace is on stderr.
 - `TestMCPStdioRefusalsExitWithTheContractCodes` — `--stdio` with

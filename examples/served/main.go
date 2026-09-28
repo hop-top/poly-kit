@@ -150,11 +150,15 @@ func itemCmd(root *cli.Root, st *store) *cobra.Command {
 		panic(err)
 	}
 
+	// add takes its operand positionally and declares it in kit/args,
+	// which is what lets a transport that publishes a schema carry
+	// it: REST and the socket as "args", MCP as the "args" property.
 	add := &cobra.Command{
-		Use:   "add <name>",
-		Short: "Add an item",
-		Long:  "Add one item by name.",
-		Args:  cobra.ExactArgs(1),
+		Use:         "add <name>",
+		Short:       "Add an item",
+		Long:        "Add one item by name.",
+		Args:        cobra.ExactArgs(1),
+		Annotations: map[string]string{"kit/args": "name"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st.add(args[0])
 			fmt.Fprintf(cmd.OutOrStdout(), "added %s\n", args[0])
@@ -165,8 +169,8 @@ func itemCmd(root *cli.Root, st *store) *cobra.Command {
 	cli.SetIdempotency(add, cli.IdempotencyYes)
 
 	// tag declares kit/requires-confirmation: over MCP a person
-	// approves each call. It takes its operand as a flag, because MCP
-	// tools carry arguments by name.
+	// approves each call. It takes its operand as a named flag, the
+	// counterpart to add's positional one.
 	tag := &cobra.Command{
 		Use:         "tag",
 		Short:       "Tag an item",
