@@ -102,6 +102,19 @@ jobs:
           persist-credentials: false
       - run: make lint-sdk-paths
 
+  proto-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # buf only; lint, format and generate run inside `make proto-check`.
+      - uses: bufbuild/buf-action@v1
+        with:
+          version: 1.73.0
+          setup_only: true
+      - run: make proto-check
+
   # ── Stage 2: Test (after lint) ─────────────────────────────────
   go-test:
     needs: [go-lint]

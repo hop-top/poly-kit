@@ -2,7 +2,7 @@
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
 	job-integration-temporal job-test lint lint-config lint-docs lint-go lint-links lint-lock-php \
 	lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
-	preflight promote promote-alpha promote-beta promote-rc promote-release proto refresh-pii-rules \
+	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook \
 	test-parity test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-templates test-ts \
@@ -386,6 +386,24 @@ proto: ## Generate protobuf + Connect/gRPC stubs
 # Re-run after changing .proto files.
 	cd contracts/proto/routellm/v1 && buf generate
 	cd contracts/proto/crud/v1 && buf generate
+	cd contracts/proto/cmdsurface/v1 && buf generate
+
+# Proto modules whose buf.gen.yaml pins every plugin version, so a
+# regeneration is reproducible, and the paths their stubs land in.
+PROTO_PINNED_DIRS := contracts/proto/cmdsurface/v1
+PROTO_PINNED_OUT  := go/transport/cmdsurface/gen
+
+proto-check: ## Lint pinned protos, regenerate their stubs, fail on drift
+	@for d in $(PROTO_PINNED_DIRS); do \
+		(cd $$d && buf lint && buf format --diff --exit-code && buf generate) || exit 1; \
+	done
+	@if ! git diff --exit-code --stat -- $(PROTO_PINNED_DIRS) $(PROTO_PINNED_OUT) \
+		|| [ -n "$$(git status --porcelain --untracked-files=all -- $(PROTO_PINNED_OUT))" ]; then \
+		git status --short -- $(PROTO_PINNED_OUT); \
+		echo "Generated protobuf stubs are stale: run 'make proto' and commit the result."; \
+		exit 1; \
+	fi
+	@echo "Generated protobuf stubs match their .proto sources."
 
 openapi: ## Print OpenAPI extraction instructions (requires running server)
 	@echo "Start server, then: curl http://localhost:8080/openapi.json > openapi.json"

@@ -1,0 +1,103 @@
+syntax = "proto3";
+package cmdsurface.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1;cmdsurfacev1";
+
+// Schema source of truth for the cmdsurface RPC surface
+// (go/transport/cmdsurface MountRPC). The messages mirror the Go types
+// Invocation, Meta, Result and Event in go/transport/cmdsurface.
+//
+// JSON wire keys are snake_case: every multi-word field sets json_name
+// so the proto3 JSON mapping emits the same keys the Go struct tags do
+// (exit_code, request_id, ...), not lowerCamelCase. Parsers accept both
+// spellings.
+
+// Commands runs a CLI command tree exposed through a cmdsurface Bridge.
+// Only leaves enabled for the rpc surface resolve; the rest answer
+// NOT_FOUND. Gates:
+//   - leaves marked auth-required need an Authorization header or a
+//     non-empty meta.caller, else UNAUTHENTICATED;
+//   - leaves requiring confirmation need an X-Confirm-Token header,
+//     else FAILED_PRECONDITION;
+//   - destructive leaves the bridge policy blocks on rpc answer
+//     PERMISSION_DENIED.
+// A command that exits non-zero is a successful call: read exit_code.
+service Commands {
+  // Invoke runs one command to completion and returns its Result.
+  rpc Invoke(Invocation) returns (Result);
+  // InvokeStream runs one command and streams its output line by line,
+  // ending with a single Event of kind "done" that carries the Result.
+  rpc InvokeStream(Invocation) returns (stream Event);
+}
+
+// Invocation is one addressable command call.
+message Invocation {
+  // Command path from root to leaf, e.g. ["widget", "add"].
+  repeated string path = 1;
+  // Positional arguments passed after the path.
+  repeated string args = 2;
+  // Parsed flags keyed by long name. The runner converts each value to
+  // the flag's string form before applying it.
+  google.protobuf.Struct flags = 3;
+  // Provenance. The server overwrites surface and requested_at.
+  Meta meta = 4;
+}
+
+// Meta carries caller identity, originating surface and trace context.
+message Meta {
+  // Stable identifier for the originating principal. Satisfies the
+  // auth-required gate when no Authorization header is sent.
+  string caller = 1;
+  // Tenant or organization the principal acts within.
+  string tenant = 2;
+  // Transport that produced the invocation; forced to "rpc" server side.
+  string surface = 3;
+  // Per-request identifier on this transport.
+  string request_id = 4 [json_name = "request_id"];
+  // Distributed-trace identifier propagated across surfaces.
+  string trace_id = 5 [json_name = "trace_id"];
+  // Caller-supplied key for a replayable write; forwarded to the leaf's
+  // --idempotency-key flag when it registers one.
+  string idempotency_key = 6 [json_name = "idempotency_key"];
+  // When the surface received the request; stamped server side.
+  google.protobuf.Timestamp requested_at = 7 [json_name = "requested_at"];
+  // Surface-specific context for downstream sinks.
+  map<string, string> extra = 8;
+}
+
+// Result is the outcome of one command run.
+message Result {
+  // Process-style exit status; zero on success. Always set by the
+  // server, so the JSON form always carries it, zero included.
+  optional int32 exit_code = 1 [json_name = "exit_code"];
+  // Captured standard output.
+  string stdout = 2;
+  // Captured standard error.
+  string stderr = 3;
+  // Structured payload, set when the command wrote one JSON document
+  // for a declared output schema. A number whose value a double cannot
+  // hold exactly (a 64-bit id, a long decimal) is carried as a string
+  // holding the digits the command wrote; every other number is a
+  // number.
+  google.protobuf.Value data = 4;
+  // The payload as compact JSON, every number spelled with the digits
+  // the command wrote. Empty when data is unset.
+  string data_json = 5 [json_name = "data_json"];
+}
+
+// Event is one frame of InvokeStream.
+message Event {
+  // Channel: "stdout", "stderr", "progress", or the terminal "done".
+  string kind = 1;
+  // Payload: the line for stdout/stderr, the update for progress. On
+  // done it repeats result in JSON form, for JSON clients that read
+  // data; typed clients read result.
+  google.protobuf.Value data = 2;
+  // When the event was produced.
+  google.protobuf.Timestamp at = 3;
+  // Terminal result; set only when kind is "done".
+  Result result = 4;
+}

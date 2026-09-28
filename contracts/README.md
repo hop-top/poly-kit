@@ -24,6 +24,10 @@ shared schemas and cross-language constants.
 - [typeid-v1/](typeid-v1/README.md): kit `typeid` vectors, the `typeid` string
   every SDK must produce for a given `(prefix, uuid)` and recover from it.
 - [proto/](proto/README.md): shared protobuf definitions.
+  [proto/cmdsurface/v1/commands.proto](proto/cmdsurface/v1/commands.proto)
+  is the schema source of truth for the cmdsurface RPC surface
+  (`cmdsurface.v1.Commands`); Go stubs are generated into
+  `go/transport/cmdsurface/gen/`.
 - [ts/](ts/README.md): TypeScript copy of the `crud.v1` protobuf and Connect
   stubs kept under `contracts/`; the SDK builds against `sdk/ts/src/gen/`.
 - [parity/](parity/README.md): TUI constants shared across Go/TS/Py.

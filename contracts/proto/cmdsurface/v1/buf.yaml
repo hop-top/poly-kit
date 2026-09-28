@@ -1,0 +1,20 @@
+version: v2
+modules:
+  - path: .
+    name: buf.build/hop-top/cmdsurface
+lint:
+  use:
+    - STANDARD
+  except:
+    # Module root is the version directory, as in ../../crud/v1.
+    - PACKAGE_DIRECTORY_MATCH
+    # Service and message names are the wire contract the Go surface
+    # already served (/cmdsurface.v1.Commands/Invoke takes Invocation,
+    # returns Result); renaming them would move every path and type.
+    - SERVICE_SUFFIX
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_RESPONSE_UNIQUE
+breaking:
+  use:
+    - WIRE_JSON
