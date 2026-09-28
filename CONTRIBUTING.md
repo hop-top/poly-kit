@@ -119,6 +119,31 @@ make check-mirror-sync     # verify
 make builtins-sync         # regenerate the embed mirror from templates/
 ```
 
+## Protobuf stubs
+
+Generated stubs for `contracts/proto/{cmdsurface,crud,routellm}/v1` are
+committed. After editing a `.proto`, run `make proto` and commit the
+result; `make proto-check` (the `proto-check` CI job) lints, regenerates
+and fails on drift.
+
+Code generation uses remote plugins on the Buf Schema Registry, pinned
+by version in each `buf.gen.yaml`. The registry rate-limits anonymous
+callers, so two runs in a row can fail with `resource_exhausted: too
+many requests`. Authenticate to lift the limit:
+
+- locally: `buf registry login`, or export `BUF_TOKEN` for one shell
+- in CI: the `proto-check` job reads a repository secret named
+  `BUF_TOKEN`. A maintainer creates a Buf API token and adds it under
+  Settings → Secrets and variables → Actions. Without the secret (and on
+  pull requests from forks, which never see secrets) the job runs
+  anonymously and can hit the limit; re-run it.
+
+Remote plugins stay because the TypeScript stubs need
+`protoc-gen-connect-es` 1.x, whose peers (`@connectrpc/connect` 1.x,
+`@bufbuild/protobuf` 1.x) conflict with the 2.x runtime `sdk/ts`
+ships, so pinning it locally would mean a second, conflicting Node
+toolchain just for code generation.
+
 ## Issues
 
 - Search existing issues before opening a new one

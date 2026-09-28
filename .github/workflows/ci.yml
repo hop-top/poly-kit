@@ -129,7 +129,14 @@ jobs:
         with:
           version: 1.73.0
           setup_only: true
+      # buf.gen.yaml uses remote plugins, and the Buf registry rate-limits
+      # anonymous callers ("resource_exhausted: too many requests"). A
+      # BUF_TOKEN repository secret lifts the limit; a maintainer adds it
+      # (CONTRIBUTING.md, "Protobuf stubs"). Unset, as on fork pull
+      # requests, buf treats the empty value as absent and runs anonymously.
       - run: make proto-check
+        env:
+          BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
 
   # A generated project requires the kit release pinned in the cli-go
   # template. The release PR bumps the pin; this catches a release that
