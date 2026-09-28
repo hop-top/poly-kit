@@ -153,9 +153,9 @@ consumer can tell which is which.
 |-------------------|------|--------|------------------|------------------------|-----------------|-----------------|
 | a six-tier value (`read`, `write-local`, `write-shared`, `destructive-local`, `destructive-shared`, `interactive`) | as written | `declared` | `read` is `GET`, writes `POST`, destructive withheld unless policy permits it, `interactive` never | as written | passes | annotated |
 | legacy `write` / `destructive` | `write-shared` / `destructive-shared` | `declared` | `POST` / withheld unless permitted | as written | passes | annotated |
-| absent, and the name is `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` | `destructive-shared`, `TierInferred` true | `inferred` | withheld unless permitted; confirmation required | `unknown` | refused (missing) | unannotated, also counted as `inferred` |
-| absent, any other name | `unannotated` | `unannotated` | `POST`, still invocable; level `caution`, `kit:fs:write:local` | `unknown` | refused (missing) | unannotated |
-| a value kit does not recognize (`destrutive`) | `TierUnknown` | `malformed` | withheld: `malformed-schema` | as written | refused (invalid) | unannotated, also counted as `malformed` |
+| absent, and the name is `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` | `destructive-shared`, `TierInferred` true | `inferred` | withheld unless permitted; confirmation required | `unknown` | leaf refused (missing); runnable group warned | unannotated, also counted as `inferred` |
+| absent, any other name | `unannotated` | `unannotated` | `POST`, still invocable; level `caution`, `kit:fs:write:local` | `unknown` | leaf refused (missing); runnable group warned | unannotated |
+| a value kit does not recognize (`destrutive`) | `TierUnknown` | `malformed` | withheld: `malformed-schema` | as written | leaf refused (invalid); runnable group warned | unannotated, also counted as `malformed` |
 
 - **Source** is `side_effect_source` in the `GET /v1/commands` listing
   and `x-kit-side-effect-source` on each OpenAPI operation. In Go,
@@ -166,7 +166,14 @@ consumer can tell which is which.
   so kit does not claim it. It stays invocable so a working CLI keeps
   working while you annotate.
 - `Root.Validate` runs at `Execute` unless `DisableValidate` is set,
-  checks runnable leaves, exits 2, and points at `<tool> spec coverage`.
+  refuses runnable leaves, exits 2, and points at `<tool> spec coverage`.
+  A runnable group (a command with subcommands and its own `Run`) is
+  invoked like a leaf, so coverage, discovery and the manifest count
+  it; `Validate` names one without a tier in a stderr warning instead
+  of refusing it, so a tool that booted before keeps booting.
+  `QuietBootWarnings` silences the warning. Coverage and `Validate`
+  skip the same commands: the root, built-ins, kit-reserved verbs,
+  pure groups.
 - `<tool> spec coverage --min 100` is the CI gate: it lists every
   command without a declaration and exits 4 below the threshold. It is
   mounted by `toolspec/cli.RegisterSpecCommand`; a `kit init` project

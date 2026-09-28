@@ -229,8 +229,10 @@ type Config struct {
 	// kit/next-steps. Default false; flips per follow-up track.
 	EnforceGuidance bool
 	// QuietBootWarnings silences the soft stderr warnings emitted at
-	// cli.New for guidance/examples/next-steps absence. Useful for
-	// adopters mid-migration that don't want CI noise.
+	// boot: guidance/examples/next-steps absence, and Validate's
+	// warning about runnable command groups without a kit/side-effect
+	// tier. Useful for adopters mid-migration that don't want CI
+	// noise.
 	QuietBootWarnings bool
 	// MaxGuidanceBytes caps the encoded byte size of kit/examples and
 	// kit/next-steps annotation payloads. 0 selects the package
@@ -371,6 +373,10 @@ type Root struct {
 	// parse. Direct callers of ConfigArgs also get the error in the
 	// return value.
 	configArgsErr error
+	// warnedRunnableGroups records that Validate already warned
+	// about runnable groups without a tier, so NewE followed by
+	// Execute warns once.
+	warnedRunnableGroups bool
 	// reservedSubcommands is the set of subcommand names mounted by
 	// kit-shipped factories (via cli.With* opts) or by legacy
 	// Register*Command shims that call MarkReserved. Populated by
@@ -1137,7 +1143,10 @@ func (r *Root) validateTree() error {
 //
 // Built-in kit commands (completion, the auto-registered help) are
 // exempt, as are non-runnable shells (cobra prints help for these
-// so they make no real-world side-effect). Returns *ValidationError
+// so they make no real-world side-effect). A runnable group — a
+// command with subcommands and its own Run — without a valid
+// kit/side-effect tier is named in a one-time stderr warning, not
+// refused (see Config.QuietBootWarnings). Returns *ValidationError
 // when any check fails; nil otherwise.
 func (r *Root) Validate() error {
 	if r == nil {
@@ -1156,6 +1165,7 @@ func (r *Root) Validate() error {
 
 	ve := &ValidationError{}
 	r.collectShippedValidation(ve)
+	r.warnUnclassifiedRunnableGroups()
 	if r.Config.EnforceValidate {
 		r.collectLayerAValidation(ve)
 	}
