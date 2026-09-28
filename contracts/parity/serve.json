@@ -76,6 +76,7 @@
   "not_required": {
     "description": "Go-only affordances. A port is not non-conformant for lacking these; see the contract section 'Explicitly not required' for the reasoning on each.",
     "items": [
+      "api_health_routes",
       "cmdreflect_discovery",
       "dependency_ordering_and_cycle_panic",
       "execution_runner_contract",

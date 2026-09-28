@@ -35,6 +35,8 @@ You need:
   including the ones that are not mounted and why
 - **`/openapi.json`** — an OpenAPI document covering the projected
   routes
+- **`/healthz`** and **`/readyz`** — liveness and readiness probes
+  for orchestrators and load balancers, outside auth (step 12)
 
 **No `Expose` or `MountREST` call is required.** Adding a command to
 your tree adds its route the next time the server starts.
@@ -42,7 +44,9 @@ your tree adds its route the next time the server starts.
 Projection is additive. `APIConfig.Handlers` and
 `APIConfig.Resources` are mounted first, so your own routes always
 win a collision, and everything the projection adds lives under
-`/v1/commands` behind your existing auth.
+`/v1/commands` behind your existing auth. The two probe routes
+(step 12) answer outside auth, and give way to a route of yours at
+the same path.
 
 ## Steps
 
@@ -502,6 +506,50 @@ Frames, keep-alives and the comparison with RPC streaming and MCP
 tasks are in the
 [api reference](../reference/transport-api.md#streaming).
 
+### 12. Point an orchestrator or load balancer at it
+
+The api service answers `GET /healthz` (liveness) and `GET /readyz`
+(readiness) with no setup. Neither needs `Authorization`, even with
+`Auth` configured, so a probe with no credentials works:
+
+```bash
+curl -i http://127.0.0.1:8080/healthz   # 200 {"status":"ok"} while the process serves
+curl -i http://127.0.0.1:8080/readyz    # 200 once ready; 503 while starting, draining, or a dependency is down
+```
+
+If the api needs another service of yours to be useful — a store, a
+bus consumer — name it, and readiness follows it:
+
+```go
+cli.WithAPI(cli.APIConfig{DependsOn: []string{"store"}}),
+cli.WithService(store), // started first; /readyz is 503 while it is not ready
+```
+
+A Kubernetes container spec:
+
+```yaml
+livenessProbe:
+  httpGet: { path: /healthz, port: 8080 }
+  periodSeconds: 10
+readinessProbe:
+  httpGet: { path: /readyz, port: 8080 }
+  periodSeconds: 5
+```
+
+A load balancer health check targets `/readyz`: a draining instance
+answers `503` as soon as shutdown begins, so it leaves rotation
+before its listener closes. Liveness never consults dependencies —
+restarting the api would not fix a store that is down.
+
+On a non-loopback bind, the `503` body says only
+`{"status":"unavailable"}`; set `services.api.health.detail: true`
+to name the failing checks there too. Move both routes with
+`services.api.health.path_prefix: /_kit`, or turn them off with
+`services.api.health.enabled: false`. A route of your own at
+`/healthz` or `/readyz` takes precedence over kit's.
+The full table is in the
+[api reference](../reference/transport-api.md#health-and-readiness).
+
 ## Option reference
 
 | Option | Default | Effect |
@@ -514,6 +562,10 @@ tasks are in the
 | `APIConfig.Expose` | empty | Empty mounts the whole tree; a non-empty list is an allow-list. |
 | `APIConfig.Hide` | empty | Pattern list withheld from REST, applied after `Expose`. |
 | `APIConfig.Handlers` | nil | Your own routes, mounted before the projection. |
+| `APIConfig.DependsOn` | empty | Services started before the api; `/readyz` is `503` while any the run started is not ready (step 12). |
+| `services.api.health.enabled` | `true` | Serve `/healthz` and `/readyz`. |
+| `services.api.health.path_prefix` | `""` | Mount both probe routes under a prefix. |
+| `services.api.health.detail` | loopback only | Name failing checks in a `/readyz` `503`. |
 | `cli.WithRootFactory(newRoot)` | not set | Run requests in parallel, each on a tree `newRoot` builds (step 10). Unset serializes them on the tool's own tree. |
 
 ## Execution facts

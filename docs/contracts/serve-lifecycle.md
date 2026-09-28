@@ -222,6 +222,36 @@ service may still be idle, and it may later fail.
   (default 30s, `services.<name>.ready_timeout`) is treated as a
   start failure — see [Exit behavior](#exit-behavior).
 
+### Readiness over HTTP
+
+The api service surfaces readiness to orchestrators and load
+balancers as two routes. They are answered in front of its router
+and end the request there: inside the request id, access log,
+recovery, telemetry and security header layers, and before the Host
+and Origin checks, the body limit and authentication, because
+orchestrator probes address a pod by IP and carry no credentials. A
+route the adopter registered at exactly a probe path wins over it.
+
+- `GET /healthz` is liveness. It answers `200` whenever the process
+  answers HTTP at all, and never consults readiness or dependencies.
+- `GET /readyz` is readiness. It answers `200` only while the api
+  service is ready AND every service it declares in `DependsOn` is
+  ready in the current run; `503` otherwise — before the listener
+  reports ready, once `Stop` begins, or while a dependency is
+  starting, failed, stopped, or reports not ready.
+
+A dependency's readiness is the supervisor's record, not only the
+dependency's own `Ready`: a dependency that failed at runtime under
+`isolate` is not ready even if its `Ready` still says true. The
+supervisor exposes that record to every `Start` it calls, as a
+`RunView` on the start context. A dependency the run did not start is
+not consulted, the same rule [Ordering](#ordering) applies.
+
+The `503` body names failing checks only on a loopback bind unless
+`services.api.health.detail` says otherwise, and never carries a
+version, a path, or error text. The routes are not commands: they
+appear in neither command discovery nor the OpenAPI document.
+
 ### Surfaced events
 
 Readiness and lifecycle transitions publish to the bus using the
@@ -424,7 +454,14 @@ The kit-shipped services own these (the `mcp` service's keys are in
 | `services.api.addr`            | string | `127.0.0.1:8080`       | HTTP listen address; loopback unless authenticated or opted in |
 | `services.api.insecure_remote` | bool   | `false`                | serve the api unauthenticated on a non-loopback address        |
 | `services.api.insecure_no_policy` | bool | `false`             | serve the api beyond loopback with no delegation policy        |
+| `services.api.health.enabled`  | bool   | `true`                 | serve `/healthz` and `/readyz` ([Readiness over HTTP](#readiness-over-http)) |
+| `services.api.health.path_prefix` | string | `""`              | mount both probe routes under an absolute path prefix          |
+| `services.api.health.detail`   | bool   | `true` on loopback, else `false` | name failing checks in a `/readyz` `503`              |
 | `services.socket.path`         | string | runtime dir, see below | Unix socket path                                               |
+
+Each `services.api.health.*` key may also be set under
+`services.all.health.*`; the api's own key wins, key by key, and any
+other key in either block is refused at validation, exit `2`.
 
 `services.api.addr` defaults to a loopback address, and a non-loopback
 value is refused at validation unless `APIConfig.Auth` is set or
@@ -2180,6 +2217,7 @@ be described as non-conformant for lacking one.
 | The permission gate (`PermissionFunc`), provenance (`Meta`), audit sinks, and [Middleware](#middleware) | These are the [Security](#security) contract of the *transport services*. A port that serves nothing over a transport has no caller to authenticate, attribute, or audit. They become obligations for a port the day it ships a transport service, not before. |
 | The whole [Execution](#execution) section | Result shape, format selection, stream events, cancellation semantics, and tree isolation all describe what happens when a *transport* hands an invocation to a *runner*. Both ends are Go-only today. The flag-baseline and root-factory rules in particular exist because cobra and pflag keep parse state on the command tree; a port whose parser does not is not solving that problem. |
 | The `toolspec/policy` table implementation | The policy **gate** is required — a port MUST refuse a service whose declared class its policy denies, at `UNAUTHORIZED` exit `5`. What is not required is Go's YAML-driven `side_effect × network` table. A port satisfies the gate with a two-argument predicate; a port that has wired no policy at all passes every service, exactly as Go does with a nil gate. |
+| The api service's `/healthz` and `/readyz` routes ([Readiness over HTTP](#readiness-over-http)) | They belong to the Go api service, which no port ships. A port that ships an HTTP service SHOULD answer the same two routes with the same semantics; the readiness obligation itself — ready once per start, aggregate ready — is required either way. |
 | `WithAPI` compatibility, and everything in [Compatibility](#compatibility) | It is a migration path for existing Go adopters of a Go-only option. Nothing to mirror. |
 | Nearest-name suggestion on an unknown service | The refusal is contract — `NOT_FOUND`, exit `3`, naming the known services. The Levenshtein suggestion appended to it is a courtesy, and a port that omits it is still correct. |
 | Panic-on-dependency-cycle, and topological start ordering | Ordering is required *where a port supports dependency declarations at all*. A port whose registration seam has no `DependsOn` starts in registration order and stops in reverse, which is the same thing with an empty dependency graph. |

@@ -118,6 +118,9 @@ func (a *apiService) Validate() error {
 	if err := a.validatePolicyExposure(addr); err != nil {
 		return err
 	}
+	if err := a.validateHealth(); err != nil {
+		return err
+	}
 	// The permission gate is built from --policy at start; a --policy
 	// that cannot be loaded is a configuration error, and belongs
 	// here rather than a second later as a start failure. A root
@@ -321,12 +324,17 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	a.stopping = stopping
 	a.mu.Unlock()
 
-	mws := []api.Middleware{
+	// HTTP-plane slots 1-6 wrap everything, health probes included.
+	// Slots 8 on (Host/Origin, body limit, auth) go in mws, inside
+	// the router, where probes never reach.
+	edge := []api.Middleware{
 		api.RequestID(),
 		api.Logger(logger.Info),
 		api.Recovery(func(v any, r *http.Request) {
 			logger.Error("panic recovered", "error", v, "path", r.URL.Path)
 		}),
+	}
+	mws := []api.Middleware{
 		api.ContentType("application/json"),
 	}
 	if a.authenticates() {
@@ -356,7 +364,9 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	if err := a.mountProjection(router, bridge, stopping); err != nil {
 		return nil, err
 	}
-	return router, nil
+
+	// Health is slot 7: inside edge, in front of the router.
+	return api.Chain(edge...)(a.withHealth(ctx, router)), nil
 }
 
 // bridge builds the bridge the projection executes through. A tool

@@ -435,6 +435,66 @@ its method and its path. Full schemas are what `WithOpenAPI` buys.
 A request/reply route answers when the command finishes; for output
 as it is written, use the command's [streaming route](#streaming).
 
+## Health and readiness
+
+The api service answers two probe routes, for orchestrators and load
+balancers:
+
+| Route | Question | `200` when | `503` when |
+|---|---|---|---|
+| `GET /healthz` | Liveness: is the process serving HTTP? | always, while it answers | never |
+| `GET /readyz` | Readiness: should it get traffic? | the api service is ready AND every `APIConfig.DependsOn` service the run started is ready | before the listener reports ready, once `Stop` begins draining, or while a dependency is starting, failed, stopped, or not ready |
+
+Both answer `GET` and `HEAD` (`405` otherwise), send
+`Cache-Control: no-store`, and return a minimal body:
+
+```json
+{"status":"ok"}
+{"status":"unavailable","failing":["api","store"]}
+```
+
+`failing` names the checks that failed, and nothing else: no version,
+no path, no error text. It is present by default on a loopback bind
+only; `services.api.health.detail` turns it on or off explicitly.
+
+A dependency counts as ready when the serve supervisor recorded it
+ready and its own `Ready` still agrees, so a dependency that crashed
+under the `isolate` failure policy fails readiness even if it never
+reset its own flag. A dependency the run did not start (`serve api`
+alone) is not checked, the same way it does not constrain start
+order.
+
+**What a probe skips.** The routes are answered in front of the
+router, not registered on it, and the request ends there. They sit
+inside the request id, access log, recovery, telemetry and security
+header layers, and in front of everything else: the `Host` and
+`Origin` checks (orchestrators address a pod by IP), the body limit,
+`APIConfig.Auth`. The routes invoke no command, so nothing on the
+invocation plane — the permission gate, rate limits, audit — sees
+them either. The same wrapper is available outside the api service
+as `api.HealthRoutes(next, api.HealthConfig{...})`.
+
+**What a probe is not.** The routes are not commands and not API
+operations: they appear in neither `GET /v1/commands` nor
+`/openapi.json` nor the capabilities listing, so a generated client
+does not grow health methods, and moving them with `path_prefix`
+changes no published contract.
+
+| Key | Default | Effect |
+|---|---|---|
+| `services.api.health.enabled` | `true` | `false` serves neither route; the paths fall through to the router |
+| `services.api.health.path_prefix` | `""` | Mount under a prefix: `/_kit` serves `/_kit/healthz` and `/_kit/readyz`. Absolute, no trailing slash; anything else is refused at validation, exit `2` |
+| `services.api.health.detail` | `true` on loopback, else `false` | Name failing checks in the `503` body |
+
+Each key may also be set once under `services.all.health`; the api's
+own key wins, key by key. Any other key in either `health` block is
+refused at validation, exit `2`.
+
+An adopter route registered at exactly a probe path — through
+`APIConfig.Handlers` or `Resources` — wins, and kit answers only the
+probe the adopter left alone. A subtree mount at `/` does not claim
+the probe paths.
+
 ## Related pages
 
 - [expose-cli-over-rest.md](../guides/expose-cli-over-rest.md): the

@@ -62,6 +62,12 @@ type APIConfig struct {
 	// OnHub provides the WebSocket hub to the consumer (nil = no WS).
 	OnHub func(hub *api.Hub)
 
+	// DependsOn names the services the api needs to do its work — a
+	// store, a bus consumer — registered beside it. The supervisor
+	// starts them first, and /readyz answers 503 while any of them
+	// the run started is not ready. /healthz never consults them.
+	DependsOn []string
+
 	// Policy gates which projected commands may run over REST. The
 	// zero value withholds every destructive command, which is the
 	// safe default.
