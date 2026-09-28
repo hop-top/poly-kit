@@ -77,18 +77,25 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-// ListenAndServe starts an HTTP/2-capable server for Connect handlers
-// and blocks until ctx is canceled, then performs a graceful shutdown.
+// ListenAndServe starts a server for Connect handlers and blocks until
+// ctx is canceled, then performs a graceful shutdown. It serves
+// HTTP/1.1 and unencrypted HTTP/2 with prior knowledge (h2c) on the
+// same port: Connect and gRPC-Web clients work over either, native
+// gRPC clients need HTTP/2 and get it without TLS.
 func ListenAndServe(ctx context.Context, addr string, srv *Server, opts ...ServerOption) error {
 	for _, o := range opts {
 		o(srv.cfg)
 	}
 
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 	httpSrv := &http.Server{
 		Addr:         addr,
 		Handler:      srv,
 		ReadTimeout:  srv.cfg.readTimeout,
 		WriteTimeout: srv.cfg.writeTimeout,
+		Protocols:    protocols,
 	}
 
 	errCh := make(chan error, 1)

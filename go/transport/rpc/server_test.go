@@ -2,6 +2,8 @@ package rpc_test
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"testing"
@@ -87,3 +89,47 @@ func (f *fakeResponseWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 func (f *fakeResponseWriter) WriteHeader(code int) { f.statusCode = code }
+
+// TestListenAndServeServesH2C checks the server answers unencrypted
+// HTTP/2 with prior knowledge, the transport native gRPC clients use
+// without TLS, and still answers HTTP/1.1.
+func TestListenAndServeServesH2C(t *testing.T) {
+	srv := rpc.NewServer()
+	srv.Handle("/proto", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, r.Proto)
+	}))
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- rpc.ListenAndServe(ctx, addr, srv) }()
+	t.Cleanup(func() {
+		cancel()
+		<-errCh
+	})
+
+	h2c := new(http.Protocols)
+	h2c.SetUnencryptedHTTP2(true)
+	clients := map[string]*http.Client{
+		"HTTP/2.0": {Transport: &http.Transport{Protocols: h2c}},
+		"HTTP/1.1": {Transport: &http.Transport{}},
+	}
+	for want, c := range clients {
+		var body string
+		require.Eventually(t, func() bool {
+			resp, err := c.Get("http://" + addr + "/proto")
+			if err != nil {
+				return false
+			}
+			defer func() { _ = resp.Body.Close() }()
+			b, _ := io.ReadAll(resp.Body)
+			body = string(b)
+			return true
+		}, 5*time.Second, 20*time.Millisecond)
+		assert.Equal(t, want, body)
+	}
+}
