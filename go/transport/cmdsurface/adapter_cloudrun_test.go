@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -90,6 +91,13 @@ func cloudrunNewBridge(t *testing.T, runner Runner) *Bridge {
 	return New(cloudrunTestTree(), WithRunner(runner), WithPolicy(policy))
 }
 
+// cloudrunMustHappen bounds waits for events that are certain to
+// happen (the listener comes up, a request reaches its handler, a
+// shutdown returns). Success never waits for it, so it is sized for a
+// loaded CI runner rather than for speed: it only decides how long a
+// genuinely missing event takes to fail.
+const cloudrunMustHappen = 30 * time.Second
+
 // cloudrunReady is a synchronization helper. OnReady closes ch with
 // the bound address so tests can wait for the listener and then
 // dial it.
@@ -104,37 +112,46 @@ func (r *cloudrunReady) onReady(addr string) {
 	r.once.Do(func() { r.ch <- addr })
 }
 
-func (r *cloudrunReady) wait(t *testing.T) string {
-	t.Helper()
-	select {
-	case addr := <-r.ch:
-		return addr
-	case <-time.After(5 * time.Second):
-		t.Fatal("OnReady not called within 5s")
-		return ""
-	}
-}
-
-// cloudrunRun launches runCloudRunCtx in a goroutine with port=0 so
-// the OS assigns a free port. Returns the bound address, the run
-// goroutine's error channel, and a cancel function that triggers
-// graceful shutdown.
+// cloudrunRun launches runCloudRunCtx in a goroutine on a free port.
+// Returns the bound address, the run goroutine's error channel, and a
+// cancel function that triggers graceful shutdown.
+//
+// Readiness is signal-driven: it returns on OnReady, fails at once if
+// the run returns first, and fails after cloudrunMustHappen if OnReady
+// never fires. A port lost to another process between pickFreePort
+// and the adapter's bind is retried on a fresh port.
 func cloudrunRun(t *testing.T, b *Bridge, cfg CloudRunConfig) (addr string, runErr <-chan error, cancel context.CancelFunc) {
 	t.Helper()
-	ready := newCloudrunReady()
-	cfg.OnReady = chainOnReady(cfg.OnReady, ready.onReady)
-	if cfg.Port == 0 {
-		// Force the resolver to pick an OS-assigned port. resolveCloudRunPort
-		// would otherwise consult $PORT or fall back to 8080.
-		cfg.Port = pickFreePort(t)
+	pickPort := cfg.Port == 0
+	onReady := cfg.OnReady
+	for attempt := 1; ; attempt++ {
+		ready := newCloudrunReady()
+		cfg.OnReady = chainOnReady(onReady, ready.onReady)
+		if pickPort {
+			// Force the resolver to pick a free port. resolveCloudRunPort
+			// would otherwise consult $PORT or fall back to 8080.
+			cfg.Port = pickFreePort(t)
+		}
+
+		ctx, cancelFn := context.WithCancel(context.Background())
+		errCh := make(chan error, 1)
+		go func() { errCh <- runCloudRunCtx(ctx, b, cfg) }()
+
+		select {
+		case addr := <-ready.ch:
+			return addr, errCh, cancelFn
+		case err := <-errCh:
+			cancelFn()
+			if pickPort && attempt < 3 && errors.Is(err, syscall.EADDRINUSE) {
+				continue
+			}
+			t.Fatalf("runCloudRunCtx returned before OnReady: %v", err)
+		case <-time.After(cloudrunMustHappen):
+			cancelFn()
+			t.Fatalf("OnReady not called within %s", cloudrunMustHappen)
+		}
+		return "", nil, nil
 	}
-
-	ctx, cancelFn := context.WithCancel(context.Background())
-	errCh := make(chan error, 1)
-	go func() { errCh <- runCloudRunCtx(ctx, b, cfg) }()
-
-	addr = ready.wait(t)
-	return addr, errCh, cancelFn
 }
 
 // chainOnReady composes two OnReady callbacks; either may be nil.
@@ -459,7 +476,7 @@ func TestCloudRun_GracefulShutdown_WaitsForInflight(t *testing.T) {
 
 	select {
 	case <-requestStarted:
-	case <-time.After(2 * time.Second):
+	case <-time.After(cloudrunMustHappen):
 		t.Fatal("handler never started")
 	}
 
@@ -475,7 +492,7 @@ func TestCloudRun_GracefulShutdown_WaitsForInflight(t *testing.T) {
 		}
 	case err := <-errReqCh:
 		t.Fatalf("request error: %v", err)
-	case <-time.After(3 * time.Second):
+	case <-time.After(cloudrunMustHappen):
 		t.Fatal("request did not complete")
 	}
 
@@ -524,7 +541,7 @@ func TestCloudRun_GracefulShutdown_GraceExceeded(t *testing.T) {
 
 	select {
 	case <-requestStarted:
-	case <-time.After(2 * time.Second):
+	case <-time.After(cloudrunMustHappen):
 		t.Fatal("handler never started")
 	}
 
@@ -535,7 +552,7 @@ func TestCloudRun_GracefulShutdown_GraceExceeded(t *testing.T) {
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Errorf("err=%v want context.DeadlineExceeded", err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(cloudrunMustHappen):
 		t.Fatal("runCloudRunCtx did not return")
 	}
 }
