@@ -2143,7 +2143,8 @@ Per surface:
 - **HTTP.** The body is the `api.APIError` shape; `code` is the class
   code. The Connect codes are chosen so Connect's own HTTP mapping
   yields the same status as REST for every class except
-  `idempotency_key_reused`, which Connect reports as `400`.
+  `idempotency_key_reused`, which Connect reports as `400`, and
+  `body_too_large`, which it reports as `429`.
 - **Connect.** A retryable class carries `Retry-After` in the error's
   metadata.
 - **MCP.** A refusal decided on the HTTP plane, before the protocol
