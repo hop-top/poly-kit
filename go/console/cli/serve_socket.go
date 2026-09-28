@@ -171,6 +171,9 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 			if err := validateServeTimeouts(root, SocketServiceName); err != nil {
 				return err
 			}
+			if _, err := serveIdempotency(root.Viper, SocketServiceName); err != nil {
+				return err
+			}
 			// The bridge options func above cannot report an error, so
 			// the audit chains open here, where one can: a chain
 			// another process holds fails the service before it

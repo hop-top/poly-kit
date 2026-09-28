@@ -223,6 +223,9 @@ func streamHandler(
 			<-done
 		}
 
+		if rs, ok := stream.(replayedStream); ok {
+			markReplayed(w, rs.Replayed())
+		}
 		sw := &sseWriter{w: w, rc: rc}
 		if sw.open() != nil {
 			abandon()

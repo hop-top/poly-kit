@@ -24,6 +24,7 @@ seam for a new transport is `go/transport/transportsvc`.
 - invoke in-process from a REPL or test → `InvokeArgs`, `StreamArgs`
 - gate a call before committing to a stream, then stream it → `Bridge.Admit`, `Admission.Stream`
 - ask a person something between the gates and the run → `Bridge.Admit`, then `Admission.Run` or `Admission.Stream`
+- answer a repeated `Idempotency-Key` from its record → `WithIdempotency(NewIdempotencyLedger(store), ttl)`; `Result.Replayed`, `Admission.Replayed`
 - toggle a leaf per surface → `Bridge.Expose` / `Bridge.Hide`, or YAML `LoadFile` / `FromConfig`
 - declare webhooks, bus bindings, schedules or sinks in YAML → `Config.WebhookMappings`, `BusBindings`, `CronSchedules`, `SinkSpecs`
 

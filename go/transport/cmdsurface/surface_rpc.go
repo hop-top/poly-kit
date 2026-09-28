@@ -254,7 +254,9 @@ func (s *rpcServer) Invoke(
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
-		return connect.NewResponse(out), nil
+		resp := connect.NewResponse(out)
+		rpcMarkReplayed(resp.Header(), res.Replayed)
+		return resp, nil
 	}
 	return s.runAdmittedUnary(ctx, req, adm, run)
 }
@@ -294,6 +296,7 @@ func (s *rpcServer) stream(ctx context.Context, conn connect.StreamingHandlerCon
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	rpcMarkReplayed(conn.ResponseHeader(), adm.Replayed())
 	go func() {
 		errc <- adm.Stream(streamCtx, events)
 	}()
@@ -426,6 +429,7 @@ func (s *rpcServer) preflight(
 	if inv.Meta.TraceID == "" {
 		inv.Meta.TraceID = api.TraceIDFromHeader(header)
 	}
+	rpcIdempotencyKey(inv, header)
 	// Canonicalise the invocation: resolved path + forced surface.
 	inv.Path = append([]string(nil), leaf.Path...)
 	inv.Meta.Surface = SurfaceRPC
@@ -462,9 +466,11 @@ func mapBridgeError(err error, leaf *Leaf) error {
 		return rateLimitedConnectError(err)
 	case errors.Is(err, ErrDeadlineExceeded):
 		return connect.NewError(connect.CodeDeadlineExceeded, err)
-	default:
-		return connect.NewError(connect.CodeInternal, err)
 	}
+	if cerr, ok := rpcIdempotencyError(err); ok {
+		return cerr
+	}
+	return connect.NewError(connect.CodeInternal, err)
 }
 
 // drain reads remaining events from ch until it is closed. Used on

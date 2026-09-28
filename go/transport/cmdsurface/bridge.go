@@ -137,6 +137,9 @@ type bridgeConfig struct {
 	cache kv.TTLStore
 	// commandTimeout is the deadline of a leaf that declares none.
 	commandTimeout time.Duration
+	// idempotency is replay's configuration, nil when replay is off
+	// (see WithIdempotency).
+	idempotency *idempotencyConfig
 }
 
 // Option configures a Bridge at construction.
@@ -404,9 +407,15 @@ func matchPattern(pattern string, path []string) bool {
 //  7. Rate limit — ErrRateLimited, as a [*RateLimitedError] carrying
 //     the retry hint: the caller's bucket for the leaf's tier is
 //     empty. Only with [WithRateLimit], and only on remote surfaces.
+//  8. Replay — with [WithIdempotency], on a remote surface, a call
+//     whose key names a call still running is refused with
+//     ErrIdempotencyConflict, and a key used for another invocation
+//     with ErrIdempotencyKeyReused; a key already used for this
+//     invocation answers with the recorded Result and runs nothing.
 //
-// A read leaf declaring kit/cache-ttl may then be answered from the
-// result cache without running (see [WithResultCache]).
+// A read leaf declaring kit/cache-ttl that no replay answered may then
+// be answered from the result cache without running (see
+// [WithResultCache]).
 //
 // Confirmation is deliberately not a gate here: it is the command's
 // own flag and its own refusal, the same on every surface as on the
@@ -449,6 +458,9 @@ type Admission struct {
 	// cache is the result cache's part of the call, nil when the
 	// cache has nothing to do with it.
 	cache *cacheCall
+	// idem is slot 8's idempotency verdict: a replay, a reserved
+	// key, or nil.
+	idem *idemClaim
 }
 
 // Admit applies the gates [Bridge.Invoke] applies, in the same order
@@ -505,12 +517,37 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 	// A runner holding no tree (a subprocess) learns from the
 	// invocation whether the leaf parses its own argv.
 	inv.ownArgv = leaf.Cmd != nil && leaf.Cmd.DisableFlagParsing
-	adm := &Admission{b: b, inv: forwardIdempotencyKey(inv, leaf), leaf: leaf}
-	// Slot 8, after any idempotency replay: the read-tier result
-	// cache. A hit is answered by Run without running.
-	adm.cache = b.cacheLookup(ctx, inv, leaf)
+	// Slot 8, replay: idempotency first, then the read-tier result
+	// cache. A replay or a cache hit is answered by Run without
+	// running.
+	idem, err := b.admitIdempotency(ctx, inv)
+	if err != nil {
+		return nil, b.refuse(ctx, inv, err)
+	}
+	if idem != nil && idem.replay != nil {
+		inv = markReplayed(inv)
+	}
+	adm := &Admission{b: b, inv: forwardIdempotencyKey(inv, leaf), leaf: leaf, idem: idem}
+	if idem == nil || idem.replay == nil {
+		adm.cache = b.cacheLookup(ctx, inv, leaf)
+	}
 	return adm, nil
 }
+
+// Replayed reports whether the admission is an idempotency replay: it
+// answers with a recorded Result and runs nothing. A surface that
+// asks a person for confirmation between Admit and the run does not
+// ask for a replay.
+func (a *Admission) Replayed() bool {
+	_, ok := a.idem.replayed()
+	return ok
+}
+
+// Abandon releases what admission reserved for a run that will not
+// happen — the idempotency key of a call a person declined. The
+// request context ending does the same; Abandon frees the key sooner.
+// An abandoned Admission must not be run.
+func (a *Admission) Abandon() { a.idem.abandon() }
 
 // Invocation returns the admitted invocation as it will run.
 func (a *Admission) Invocation() Invocation { return a.inv }
@@ -518,6 +555,9 @@ func (a *Admission) Invocation() Invocation { return a.inv }
 // Run runs the admitted invocation through the Runner's Run and
 // returns its Result. On a remote surface the outcome is audited once,
 // after the run. Invoke is Admit followed by Run.
+//
+// An idempotency replay returns the recorded Result, marked Replayed,
+// and runs nothing; a run that succeeds under a key is recorded.
 //
 // The per-command deadline ([AnnotationTimeout], else
 // [WithCommandTimeout]) is armed here and bounds the run; a run the
@@ -529,13 +569,26 @@ func (a *Admission) Invocation() Invocation { return a.inv }
 // machine gate and before the run, without asking about a call the
 // gates would refuse and without answering the gates twice.
 func (a *Admission) Run(ctx context.Context) (Result, error) {
+	if res, ok := a.idem.replayed(); ok {
+		ctx = a.b.auditContext(ctx, a.leaf)
+		if a.inv.Meta.Surface.remote() {
+			a.b.Audit(ctx, a.inv, res, nil)
+		}
+		return res, nil
+	}
 	if a.cache != nil {
-		return a.runCached(ctx)
+		res, err := a.runCached(ctx)
+		// Slot 13: a keyed read the cache answered or ran is recorded
+		// like any run, and its reservation released.
+		a.idem.settle(ctx, res, err)
+		return res, err
 	}
 	// Stamped before the run, so a Runner emitting to its own SinkSet
 	// redacts the leaf's secret flags as the bridge's sinks do.
 	ctx = a.b.auditContext(ctx, a.leaf)
 	res, err := a.runBounded(ctx)
+	// Slot 13: a successful run is recorded under its key.
+	a.idem.settle(ctx, res, err)
 	if a.inv.Meta.Surface.remote() {
 		a.b.Audit(ctx, a.inv, res, err)
 	}
@@ -552,6 +605,9 @@ func (a *Admission) Run(ctx context.Context) (Result, error) {
 // Runner's — a cancellation when ctx ended the run, which is how a
 // client that disconnected mid-stream appears in the audit trail.
 //
+// An idempotency replay streams the recorded Result as a run would —
+// one Event per output line, then the done Event — and runs nothing.
+//
 // A result cache hit is answered as a single done Event carrying the
 // stored Result, and nothing runs. A miss streams as usual and stores
 // nothing: only Run fills the cache.
@@ -563,8 +619,19 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	if out == nil {
 		return errors.New("cmdsurface: nil event channel")
 	}
+	if res, ok := a.idem.replayed(); ok {
+		ctx = a.b.auditContext(ctx, a.leaf)
+		replayEvents(res, out)
+		close(out)
+		if a.inv.Meta.Surface.remote() {
+			a.b.Audit(ctx, a.inv, res, nil)
+		}
+		return nil
+	}
 	if a.cache != nil && a.cache.hit != nil {
-		return a.streamHit(ctx, out)
+		err := a.streamHit(ctx, out)
+		a.idem.settle(ctx, a.cache.hit.Result, err)
+		return err
 	}
 	ctx = a.b.auditContext(ctx, a.leaf)
 	runCtx, cancel, bound := a.b.armDeadline(ctx, a.leaf)
@@ -584,6 +651,9 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 		out <- ev
 	}
 	err := deadlineError(runCtx, <-errc, a.leaf, bound)
+	// Slot 13: the done Event carries the Result Run would have
+	// returned, so a successful stream is recorded as a run is.
+	a.idem.settle(ctx, res, err)
 	close(out)
 	if a.inv.Meta.Surface.remote() {
 		a.b.Audit(ctx, a.inv, res, err)

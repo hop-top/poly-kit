@@ -14,6 +14,7 @@ registration, output capture, and replay are the `RunE` middleware in
 - isolated sqlite without a file → `idemstore.OpenSQLite(":memory:", ttl)`
 - install on a kit root → `cli.WithIdempotencyStore(store)`; `nil` disables replay
 - custom backend → implement `idemstore.Store` (`Lookup`, `Record`, `Close`)
+- served transports' replay store → `cli.WithServeIdempotencyStore(store)`; default `serve-idempotency.db` in the tool's state dir
 
 ## Quick start
 

@@ -103,9 +103,11 @@ type Meta struct {
 	// Traceparent.
 	Tracestate string `json:"-"`
 	// IdempotencyKey is the caller-supplied key for a replayable
-	// write (the Idempotency-Key header over HTTP). The bridge
-	// forwards it to the leaf's --idempotency-key flag when the leaf
-	// registers one; it performs no dedupe of its own.
+	// write (the Idempotency-Key header over HTTP). On a remote
+	// surface with [WithIdempotency], the bridge replays the recorded
+	// Result for a key the same principal already used for the same
+	// invocation. It also forwards the key to the leaf's
+	// --idempotency-key flag when the leaf registers one.
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
 	// RequestedAt records when the surface received the request. It
 	// is the audit timestamp: the bridge stamps it at Invoke when a
@@ -161,6 +163,11 @@ type Result struct {
 	// (when the command writes typed output, e.g. via output.JSON).
 	// Surfaces that prefer typed responses prefer Data over Stdout.
 	Data any `json:"data,omitempty"`
+	// Replayed marks a Result answered from the idempotency ledger
+	// rather than by a run (see [WithIdempotency]). Each transport
+	// renders it as its own replay marker; it is not part of the
+	// serialized Result.
+	Replayed bool `json:"-"`
 }
 
 // Event is one frame of a streaming Runner.Stream call. Kind is

@@ -60,8 +60,11 @@ type Request struct {
 	RequestID string `json:"request_id,omitempty"`
 	// TraceID propagates a trace identifier across surfaces.
 	TraceID string `json:"trace_id,omitempty"`
-	// IdempotencyKey is forwarded to the command's --idempotency-key
-	// flag when it registers one.
+	// IdempotencyKey makes the request replayable: a second request
+	// from the same caller with the same key and the same command is
+	// answered from the first one's record, with Replayed set. It is
+	// also forwarded to the command's --idempotency-key flag when it
+	// registers one.
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
@@ -73,13 +76,17 @@ type Response struct {
 	Ok     bool               `json:"ok"`
 	Result *cmdsurface.Result `json:"result,omitempty"`
 	Error  *Error             `json:"error,omitempty"`
+	// Replayed is true when Result is the recorded answer to an
+	// earlier request with the same idempotency key: nothing ran.
+	Replayed bool `json:"replayed,omitempty"`
 }
 
 // Error is the wire form of a refused or failed invocation.
 type Error struct {
 	// Code is a stable symbol a client can branch on:
 	// NOT_FOUND, NOT_ENABLED, NOT_INVOCABLE, BLOCKED, DENIED,
-	// UNAUTHENTICATED, RATE_LIMITED, DEADLINE_EXCEEDED, INVALID, INTERNAL.
+	// UNAUTHENTICATED, RATE_LIMITED, DEADLINE_EXCEEDED, CONFLICT, INVALID,
+	// INTERNAL.
 	Code string `json:"code"`
 	// Message is the human-readable detail.
 	Message string `json:"message"`
@@ -120,6 +127,11 @@ const (
 	// CodeDeadlineExceeded is a command that ran past its
 	// per-command deadline and was canceled. Retrying may succeed.
 	CodeDeadlineExceeded = "DEADLINE_EXCEEDED"
+	// CodeConflict is a request whose idempotency key names a
+	// request still running, or was used for a different command;
+	// the message carries idempotency_conflict or
+	// idempotency_key_reused.
+	CodeConflict = "CONFLICT"
 	// CodeInvalid is a malformed request line.
 	CodeInvalid = "INVALID"
 	// CodeInternal is anything else the runner returned.
@@ -386,7 +398,7 @@ func (t *Transport) dispatch(ctx context.Context, conn net.Conn, line []byte, in
 		}
 		return resp
 	}
-	return Response{Ok: true, Result: &res}
+	return Response{Ok: true, Result: &res, Replayed: res.Replayed}
 }
 
 // codeFor maps a bridge error onto a wire code. The refusals the
@@ -409,6 +421,9 @@ func codeFor(err error) string {
 		return CodeRateLimited
 	case errors.Is(err, cmdsurface.ErrDeadlineExceeded):
 		return CodeDeadlineExceeded
+	case errors.Is(err, cmdsurface.ErrIdempotencyConflict),
+		errors.Is(err, cmdsurface.ErrIdempotencyKeyReused):
+		return CodeConflict
 	default:
 		return CodeInternal
 	}

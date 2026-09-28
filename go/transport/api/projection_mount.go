@@ -60,6 +60,10 @@ type CommandResult struct {
 	// Cache-Control on the GET route, which then answers a matching
 	// If-None-Match with 304. See [CacheDirective].
 	Cache *CacheDirective `json:"-"`
+	// Replayed marks a result answered from the idempotency record
+	// rather than by a run; the response carries
+	// HeaderIdempotentReplayed. Not part of the body.
+	Replayed bool `json:"-"`
 }
 
 // Projection errors an executor may return. The projection maps each
@@ -177,6 +181,7 @@ func commandHandler(ex CommandExecutor, d CommandDescriptor) http.HandlerFunc {
 			writeProjectionError(w, d, err)
 			return
 		}
+		markReplayed(w, res.Replayed)
 		status := StatusForExitCode(res.ExitCode)
 		if res.Cache != nil && status == http.StatusOK && writeCacheHeaders(w, r, *res.Cache) {
 			return
@@ -252,6 +257,9 @@ func projectionError(d CommandDescriptor, err error) *APIError {
 			Message: err.Error(),
 		}
 	default:
+		if ae, ok := idempotencyError(err); ok {
+			return ae
+		}
 		return MapError(err)
 	}
 }

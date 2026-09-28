@@ -540,6 +540,7 @@ func (e *projectionExecutor) Execute(ctx context.Context, req api.CommandRequest
 		Data:     res.Data,
 		Stdout:   res.Stdout,
 		Stderr:   res.Stderr,
+		Replayed: res.Replayed,
 	}
 	if info, ok := adm.Cache(); ok {
 		out.Cache = &api.CacheDirective{ETag: info.ETag, MaxAge: info.MaxAge, Private: info.Private}
@@ -568,6 +569,10 @@ type projectionStream struct {
 	adm *Admission
 }
 
+// Replayed reports whether the stream replays a recorded answer, so
+// the projection marks the response before it commits to the stream.
+func (s projectionStream) Replayed() bool { return s.adm.Replayed() }
+
 // Run implements api.CommandStream. The runner's terminal "done"
 // event becomes the returned result rather than a frame; every other
 // event is forwarded as it arrives.
@@ -592,6 +597,7 @@ func (s projectionStream) Run(ctx context.Context, events chan<- api.CommandEven
 		Data:     res.Data,
 		Stdout:   res.Stdout,
 		Stderr:   res.Stderr,
+		Replayed: res.Replayed,
 	}, err
 }
 
@@ -661,6 +667,10 @@ func translateProjectionError(err error) error {
 		// Both chains stay: the projection's sentinel picks the
 		// status, the bridge's error carries the retry hint.
 		return fmt.Errorf("%w: %w", api.ErrRateLimited, err)
+	case errors.Is(err, ErrIdempotencyConflict):
+		return fmt.Errorf("%w: %s", api.ErrIdempotencyConflict, err.Error())
+	case errors.Is(err, ErrIdempotencyKeyReused):
+		return fmt.Errorf("%w: %s", api.ErrIdempotencyKeyReused, err.Error())
 	}
 	return err
 }

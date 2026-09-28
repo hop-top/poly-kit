@@ -21,6 +21,8 @@ type serveAuthState struct {
 	// chains holds the audit chains services.<svc>.audit.sinks
 	// opened, shared by every service that names the same file.
 	chains auditChains
+	// idem is the idempotency ledger every service shares.
+	idem serveIdempotencyState
 	// bridgeOpts are applied last on every kit-shipped service's
 	// bridge. Not exposed: tests use it to install a stub Runner
 	// behind the real serve path.
@@ -67,7 +69,8 @@ func WithAuditSinks(specs ...cmdsurface.SinkSpec) func(*Root) {
 // transport service applies at Start: the composed permission gate,
 // the audit sinks — registered in code, then svc's audit.sinks list —
 // with svc's audit.redact block, svc's per-command deadline default
-// (timeouts.command), and any test-injected options. It is resolved at Start, not at
+// (timeouts.command), idempotency replay as svc's idempotency block
+// sets it, and any test-injected options. It is resolved at Start, not at
 // registration, because --policy is parsed and adopter options run
 // only after the service was constructed.
 func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
@@ -87,6 +90,10 @@ func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
 	if err != nil {
 		return nil, err
 	}
+	idem, err := r.serveIdempotencyOptions(svc)
+	if err != nil {
+		return nil, err
+	}
 	opts := []cmdsurface.Option{
 		cmdsurface.WithPermission(perm),
 		cmdsurface.WithSinks(r.serveAuth.sinks...),
@@ -94,6 +101,7 @@ func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
 		cmdsurface.WithAuditRedaction(redaction),
 		cmdsurface.WithCommandTimeout(commandTimeout),
 	}
+	opts = append(opts, idem...)
 	return append(opts, r.serveAuth.bridgeOpts...), nil
 }
 
@@ -276,6 +284,9 @@ func ValidateServeBridge(r *Root, svc string) error {
 		return err
 	}
 	if _, err := r.serveConfiguredAuditSinks(svc); err != nil {
+		return err
+	}
+	if _, err := serveIdempotency(r.Viper, svc); err != nil {
 		return err
 	}
 	return r.validateRootFactory()

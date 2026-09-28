@@ -159,6 +159,9 @@ func (a *apiService) Validate() error {
 	if err := validateServeTimeouts(a.root, APIServiceName); err != nil {
 		return err
 	}
+	if _, err := serveIdempotency(a.root.Viper, APIServiceName); err != nil {
+		return err
+	}
 	return a.root.validateRootFactory()
 }
 

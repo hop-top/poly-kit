@@ -157,6 +157,8 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	// Validation may open audit chains before a later step fails;
 	// whatever path this returns by, they are released.
 	defer func() { _ = root.closeAuditChains() }()
+	// The idempotency store is opened on the first keyed call.
+	defer func() { _ = root.closeServeIdempotency() }()
 	reg := root.serveReg
 	if reg == nil {
 		return output.UsageError("no services registered")

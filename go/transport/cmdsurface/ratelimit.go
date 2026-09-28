@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -347,12 +348,18 @@ const MCPRefusalMetaKey = "hop.top/refusal"
 
 // MCPRefusal returns how an MCP surface answers err as a tools/call
 // result when err is a refusal with a stable code — rate_limited,
-// with its retry hint, or deadline_exceeded, a run its per-command
-// deadline cut short: the text the isError result carries, starting
-// with the code, and the value for the result's [MCPRefusalMetaKey]
-// _meta entry. ok is false for any other error, which keeps its
-// surface's own answer.
+// with its retry hint; deadline_exceeded, a run its per-command
+// deadline cut short; idempotency_conflict or idempotency_key_reused:
+// the text the isError result carries, starting with the code, and
+// the value for the result's [MCPRefusalMetaKey] _meta entry. ok is
+// false for any other error, which keeps its surface's own answer.
 func MCPRefusal(err error) (text string, refusal map[string]any, ok bool) {
+	if code := IdempotencyRefusalCode(err); code != "" {
+		// The bridge's message already names the code after its
+		// package prefix; the text leads with the code once.
+		msg := strings.TrimPrefix(err.Error(), "cmdsurface: "+code+": ")
+		return code + ": " + msg, map[string]any{"code": code}, true
+	}
 	if errors.Is(err, ErrDeadlineExceeded) {
 		return CodeDeadlineExceeded + ": " + err.Error(), map[string]any{"code": CodeDeadlineExceeded}, true
 	}

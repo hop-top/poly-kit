@@ -74,6 +74,7 @@ func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
 	name := toolName(leaf.Path)
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		inv := cmdsurface.Invocation{Path: path, Meta: s.callMeta(ctx, req)}
+		inv.Meta.IdempotencyKey = callIdempotencyKey(req, inv.Meta.IdempotencyKey)
 
 		if !s.authenticated(ctx, req, &inv.Meta) && cls.AuthRequired {
 			b.Audit(ctx, inv, cmdsurface.Result{},
@@ -105,9 +106,11 @@ func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
 		}
 
 		// Only then is a person asked: a caller a machine gate refuses
-		// never sees a prompt.
-		if cls.RequiresConfirmation {
+		// never sees a prompt. A replay runs nothing, so nobody is
+		// asked about it.
+		if cls.RequiresConfirmation && !adm.Replayed() {
 			if res := s.confirmGate(ctx, req, leaf, inv); res != nil {
+				adm.Abandon()
 				return res, nil
 			}
 		}
@@ -198,6 +201,7 @@ func renderResult(res cmdsurface.Result) *mcp.CallToolResult {
 	if res.Data != nil {
 		out.StructuredContent = res.Data
 	}
+	markReplayed(out, res.Replayed)
 	return out
 }
 

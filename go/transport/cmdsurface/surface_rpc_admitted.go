@@ -49,6 +49,7 @@ func (s *rpcServer) runAdmittedUnary(
 	resp, err := next(ctx, req)
 	if err != nil {
 		if !ran {
+			adm.Abandon()
 			s.b.Audit(ctx, adm.Invocation(), Result{}, err)
 		}
 		return nil, err
@@ -80,6 +81,7 @@ func (s *rpcServer) runAdmittedStream(
 	}
 	err := next(ctx, &replayConn{StreamingHandlerConn: conn, msg: msg})
 	if err != nil && !ran {
+		adm.Abandon()
 		s.b.Audit(ctx, adm.Invocation(), Result{}, err)
 	}
 	return err

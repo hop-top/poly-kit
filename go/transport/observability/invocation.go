@@ -314,6 +314,9 @@ const (
 	RefusalUnauthenticated    = "unauthenticated"
 	RefusalRateLimited        = "rate_limited"
 	RefusalDeadlineExceeded   = "deadline_exceeded"
+
+	RefusalIdempotencyConflict  = cmdsurface.CodeIdempotencyConflict
+	RefusalIdempotencyKeyReused = cmdsurface.CodeIdempotencyKeyReused
 )
 
 // verdict classifies one emitted record: its outcome, and its refusal
@@ -353,5 +356,5 @@ func RefusalCode(err error) string {
 	case errors.Is(err, context.DeadlineExceeded):
 		return RefusalDeadlineExceeded
 	}
-	return ""
+	return cmdsurface.IdempotencyRefusalCode(err)
 }
