@@ -262,7 +262,9 @@ An unknown flag answers `exit_code: 2` with the parser's message in
 | `unauthenticated` | the authenticator refused you, or the command needs a verified caller and none is configured | Fix credentials, or ask a human. |
 | `failed_precondition` | the command needs a person's approval | A human approves; then retry with the `X-Confirm-Token` header. |
 | `permission_denied` | destructive and not permitted here, or refused by policy; the message says which | Ask a human. Do not retry unchanged. |
-| `resource_exhausted` | the request message is too large | Send less. |
+| `resource_exhausted` | the request message is too large, or you are over your rate limit or quota | With `Retry-After` in the error metadata: wait that long, then retry. Without: send less. |
+| `unavailable` | the service is at capacity | Wait for `Retry-After`, then retry. |
+| `deadline_exceeded` | the command ran past its deadline and was canceled | Do not retry unchanged; ask a human whether it needs longer. |
 
 ## Read the result, not the output
 

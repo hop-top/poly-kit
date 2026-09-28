@@ -592,6 +592,40 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		assert.Equal(t, 0, stop(), "a signal-initiated stop is a clean stop")
 	})
 
+	t.Run("serve api applies the scaffold's serve defaults", func(t *testing.T) {
+		// cmd/root.go sets middleware defaults under services.all. On a
+		// loopback bind kit alone leaves the rate limit off, so a 429
+		// here is the scaffold's default and nothing else.
+		addr, stop := serveRendered(t, bin, "api", "--addr", "127.0.0.1:0")
+		base := "http://" + addr
+
+		status, body := httpGet(t, base+"/healthz")
+		assert.Equal(t, http.StatusOK, status, "health routes are on: %s", body)
+
+		status, body = httpPost(t, base+"/v1/commands/hello", strings.Repeat("x", 1<<20+1))
+		assert.Equal(t, http.StatusRequestEntityTooLarge, status, string(body))
+		assert.Contains(t, string(body), "body_too_large")
+
+		// The read tier holds 60 tokens and refills 10 a second, so a
+		// tight loop drains it well inside the bound.
+		limited := false
+		for i := 0; i < 400 && !limited; i++ {
+			resp, err := http.Get(base + "/v1/commands/hello") //nolint:gosec // loopback test server
+			require.NoError(t, err)
+			out, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			require.NoError(t, err)
+			if resp.StatusCode == http.StatusTooManyRequests {
+				limited = true
+				assert.Contains(t, string(out), "rate_limited")
+				assert.NotEmpty(t, resp.Header.Get("Retry-After"))
+			}
+		}
+		assert.True(t, limited, "the rate limit is on for a loopback bind")
+
+		assert.Equal(t, 0, stop(), "a signal-initiated stop is a clean stop")
+	})
+
 	t.Run("unauthenticated remote serving is refused at exit 2", func(t *testing.T) {
 		_, stderr, code := runRendered(t, bin, "serve", "api", "--addr", "0.0.0.0:0")
 		assert.Equal(t, 2, code, stderr)

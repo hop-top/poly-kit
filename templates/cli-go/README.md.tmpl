@@ -119,6 +119,31 @@ What holds on every served surface:
 - **Readiness is in the trace.** The `ready_reported` log line carries
   the bound address under `address=`; wait for it rather than for a
   banner.
+- **Limits are on from the first run.** `serveDefaults` in
+  `cmd/root.go` sets them for every service: a request body over
+  1 MiB (4 MiB over gRPC) is refused `413`; a client gets 5s to send
+  its request and 10s to read a request/reply answer; a served command
+  is canceled after 5 minutes unless it declares `kit/timeout`; each
+  caller is rate-limited per side-effect tier, on loopback too, and
+  the excess gets `429` with `Retry-After`; `/healthz` and `/readyz`
+  answer without credentials. A key in the config file wins over
+  each, and a key under one service wins over `all`:
+
+  ```yaml
+  # ~/.config/{{.Name}}/config.yaml
+  services:
+    all:
+      timeouts:
+        command: 30m      # a longer deadline on every service
+    api:
+      rate_limit:
+        read:
+          burst: 200      # the api only; the default is 60
+  ```
+
+  Every key, its default, and what each refusal looks like on each
+  surface is in kit's
+  [served middleware reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/served-middleware.md).
 
 Move the listen address into configuration rather than a flag:
 

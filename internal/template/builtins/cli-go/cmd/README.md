@@ -20,6 +20,11 @@ manifest agents read, and `spec coverage`, which lists commands that
 declare no `kit/side-effect`. A fresh project passes
 `spec coverage --min 100`; keep it there.
 
+Last, `serveDefaults` sets middleware defaults under `services.all`,
+below every config source: body limit and health routes on, the
+HTTP timeouts (5s read, 10s write), a 5-minute command deadline, and
+the rate limit on loopback too. The generated README lists them.
+
 Nothing else is mounted by hand. Reflection happens when a service
 starts, so a command file added to this package is served the next
 time `serve` runs. The destructive ceiling, the confirmation gate, the

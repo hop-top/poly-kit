@@ -75,7 +75,38 @@ func newRoot() *cli.Root {
 	if err := speccli.RegisterSpecCommand(r, "1.0"); err != nil {
 		panic(err)
 	}
+	serveDefaults(r)
 	return r
+}
+
+// serveDefaults sets {{.Name}}'s middleware defaults for every served
+// service, under services.all. They sit below every config file,
+// environment variable and -c override: a key set there wins, and a
+// key under one service (services.api.rate_limit.enabled) wins over
+// the shared one. Every key is listed in kit's served middleware
+// reference.
+func serveDefaults(r *cli.Root) {
+	for key, value := range map[string]any{
+		// Refuse request bodies over the cap with 413 body_too_large:
+		// 1 MiB on the api and mcp listeners, 4 MiB on rpc.
+		"services.all.body_limit.enabled": true,
+		// Give a client 5s to send its request and 10s to read a
+		// request/reply answer; stream responses are exempt.
+		"services.all.timeouts.read_header": "5s",
+		"services.all.timeouts.read":        "5s",
+		"services.all.timeouts.write":       "10s",
+		// Cancel a served command after 5 minutes unless it declares
+		// its own kit/timeout; the caller gets deadline_exceeded.
+		"services.all.timeouts.command": "5m",
+		// Rate-limit each caller per side-effect tier, on loopback
+		// too (kit's own default starts it beyond loopback only); the
+		// excess gets 429 rate_limited with Retry-After.
+		"services.all.rate_limit.enabled": true,
+		// Answer /healthz and /readyz without credentials.
+		"services.all.health.enabled": true,
+	} {
+		r.Viper.SetDefault(key, value)
+	}
 }
 
 // Execute runs the CLI and returns the error the root reports.
