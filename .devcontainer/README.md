@@ -20,13 +20,13 @@ The `post-create.sh` script runs automatically to:
 
 ## Manual Setup
 
-If you prefer to set up the environment manually, you will need:
-
-### Core Tools
-- **Go**: 1.26+
-- **Node.js & pnpm**: For TypeScript SDK.
-- **Python 3.9+ & uv**: For Python SDK and engine.
-- **Nix & Devbox** (optional, but recommended for parity).
+If you prefer to set up the environment manually, install
+[mise](https://mise.jdx.dev) and run `mise trust && mise install` at the
+repo root. `mise.toml` pins Go, Node.js, pnpm, Python, uv, Rust and the
+linters at the versions CI uses; see
+[CONTRIBUTING.md](../CONTRIBUTING.md#toolchain-versions). PHP (for the
+experimental PHP SDK) is not in mise: install the version
+`sdk/experimental/php/composer.json` requires.
 
 ### Initializing Dependencies
 

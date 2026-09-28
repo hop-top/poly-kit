@@ -31,6 +31,26 @@ Quick start:
 make setup
 ```
 
+### Toolchain versions
+
+`mise.toml` pins every tool this repo builds, lints and tests with, and
+CI installs the same versions from it. With [mise](https://mise.jdx.dev)
+installed, `mise trust && mise install` gives you what CI runs.
+
+- To bump a tool, change its pin in `mise.toml`. CI picks it up; no
+  workflow edit needed.
+- A few files carry their own copy and must move with it: the `go`
+  directive in `go.mod`, `channel` in
+  `sdk/experimental/rs/rust-toolchain.toml`, the locked `ruff` in the
+  `uv.lock` files, and the devcontainer's Nix attributes.
+  `make check-toolchain-parity` names each one that disagrees; it runs
+  in CI (the `toolchain-parity` job) and in the pre-push hook.
+- PHP is the exception: mise would build it from source, so CI installs
+  the version `sdk/experimental/php/composer.json` requires, and the
+  check holds each workflow's `php-version` to that.
+- `templates/shared/tool-versions.toml` pins what `kit init` gives
+  generated projects, not this repo; the two can differ.
+
 ## Git Hooks
 
 This repo ships Git hooks in `.githooks/` to catch common mistakes locally before they hit CI:
