@@ -36,6 +36,7 @@ go test -race ./examples/served/
 | `item add`   | write-local, `kit/args: name` | `POST /v1/commands/item/add` with `{"args":["washer"]}`; MCP tool `item.add` with the same `args` |
 | `item tag`   | write-local, `kit/requires-confirmation` | MCP tool `item.tag`: runs once a person approves the elicitation |
 | `item sync`  | read, `kit/auth-required` | `401 unauthenticated` over REST and HTTP MCP without `Auth`; runs over the socket and MCP stdio |
+| `item export` | read, `kit/permissions: items:export` | `403 insufficient_scope` + `WWW-Authenticate` over REST, `isError` over HTTP MCP, for a caller without the scope; runs over the socket and MCP stdio (the owner) |
 | `item purge` | destructive-shared | withheld (`unauthorized-destructive`) until a surface is named, then needs `confirm` |
 | `shell`      | interactive        | never: 404 + `interactive` over REST, `NOT_INVOCABLE` over the socket |
 | `upgrade`    | `kit/self-hosting` | never: 404 + `self-hosting` over REST, `NOT_FOUND` over the socket |

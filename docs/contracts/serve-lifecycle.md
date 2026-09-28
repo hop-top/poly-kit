@@ -675,7 +675,7 @@ of any of them.
 | `Traceparent`, `Tracestate` | W3C `traceparent` when well-formed, and `tracestate` beside it | —                  |
 | `IdempotencyKey` | `Idempotency-Key`                              | `idempotency_key`                           |
 | `RequestedAt`    | receipt time                                   | receipt time                                |
-| `Extra`          | `remote_addr`, `scopes` (comma-joined claims)  | —                                           |
+| `Extra`          | `remote_addr`, `scopes` (comma-joined claims)  | `scopes` from `SocketConfig.Auth`'s identity, else — |
 
 - Claims MUST be extractable without the transport importing the
   adopter's types: a value implementing `api.Identity`, an
@@ -1301,7 +1301,15 @@ What each slot does:
 - **6.** Three deciders, each able only to narrow: the built-in scope
   check (a leaf's `kit/permissions` against the caller's scopes,
   refusing `insufficient_scope`), then the `--policy` engine, then the
-  adopter's `PermissionFunc`.
+  adopter's `PermissionFunc`. The scope check applies on remote
+  surfaces to a leaf that declares `kit/permissions`, and requires
+  every scope it lists, matched exactly. The caller's scopes are
+  those of an identity `Meta.Established` marks `verified`, carried as
+  `Meta.Extra["scopes"]`; an unestablished caller holds none, whatever
+  its request claimed. A `transport`-established caller holds the
+  owner's authority and is not asked: whoever can speak on an
+  owner-only socket or a spawned process's pipes could run the
+  command from the CLI, where no scope is asked for.
 - **8.** A hit answers from a store and runs nothing: an idempotency
   replay for a call carrying a key the store has seen from the same
   principal, or a read-tier cache hit for a leaf declaring

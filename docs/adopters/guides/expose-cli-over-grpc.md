@@ -400,7 +400,7 @@ A refusal is an RPC error, and the command never ran:
 | `not_found`           | unknown command, hidden by `Expose`/`Hide`, or never remote  |
 | `unauthenticated`     | `Auth` refused the call, or `kit/auth-required` without verified `Auth` |
 | `failed_precondition` | `kit/requires-confirmation` without `X-Confirm-Token`        |
-| `permission_denied`   | destructive ceiling, `--policy`, or `cli.WithPermission`; the message says which. Also the listener's Host and Origin checks, the message led by `host_rejected` or `origin_rejected` |
+| `permission_denied`   | destructive ceiling, a scope the command's `kit/permissions` names that `Auth`'s claims lack (message led by `cmdsurface: insufficient scope`), `--policy`, or `cli.WithPermission`; the message says which. Also the listener's Host and Origin checks, the message led by `host_rejected` or `origin_rejected` |
 | `resource_exhausted`  | request over the body limit: `services.rpc.body_limit.max_bytes`, else `MaxBodyBytes` |
 
 ## Option reference

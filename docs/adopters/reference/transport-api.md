@@ -236,6 +236,7 @@ Refusals where the command never ran are distinct from exit codes:
 |-----------|--------|------|
 | command withheld on this surface | 404 | `not_invocable` |
 | policy refuses a destructive command | 403 | `destructive_blocked` |
+| the caller's credential lacks a scope the command's `kit/permissions` names | 403 + `WWW-Authenticate: Bearer error="insufficient_scope", scope="…"` | `insufficient_scope` |
 | the permission gate refuses this caller | 403 | `permission_denied` |
 | the `Idempotency-Key` names a call still running | 409 | `idempotency_conflict` |
 | the `Idempotency-Key` was used for a different call | 422 | `idempotency_key_reused` |

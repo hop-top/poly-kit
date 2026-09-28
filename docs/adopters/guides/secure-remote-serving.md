@@ -44,10 +44,11 @@ for your own command tree; substitute it.
 - **One identity model on every transport.** The principal, tenant,
   request id, trace id, and idempotency key travel with each call
   into the same `Meta`, whether it arrived over HTTP or the socket.
-- **One permission gate.** A decision you write once runs inside the
-  bridge, after the destructive ceiling and before the command, on
-  every transport. A caller cannot route around it by picking a
-  different one.
+- **One permission gate.** A command's `kit/permissions` scopes are
+  enforced against the caller's verified credential, and a decision
+  you write once runs after them, inside the bridge, before the
+  command, on every transport. A caller cannot route around it by
+  picking a different one.
 - **One audit trail.** Every refusal — not authenticated, not
   permitted, not confirmed, body too large — and every command that
   ran over a remote surface reaches the sinks you register, with the
@@ -262,9 +263,10 @@ curl -s http://10.0.0.5:8080/v1/commands/widget/list \
 {"exit_code":0,"stdout":"widget-1\nwidget-2\n"}
 ```
 
-`Scopes` are not interpreted by kit. They reach the permission gate
-in step 5 as `Meta.Extra["scopes"]`, comma-joined, which is where a
-`kit/permissions` annotation gets enforced.
+`Scopes` are what a `kit/permissions` annotation is checked against:
+kit refuses a command to a caller whose scopes do not cover it (step
+5). They also reach your own permission decision as
+`Meta.Extra["scopes"]`, comma-joined.
 
 To publish the OpenAPI document to callers without a token, admit
 that path in your `AuthFunc`; returning no error with nil claims lets
@@ -376,9 +378,12 @@ development path and the caller is already on your machine. The
 socket service needs neither for the same reason: it is loopback by
 construction.
 
-### 5. Wire a permission policy
+### 5. Require scopes, then wire a permission policy
 
-Annotate a command with the entitlement it needs:
+Annotate a command with the scopes it needs. kit enforces the
+annotation itself: on every served surface, a command declaring
+`kit/permissions` runs only for a caller whose verified credential
+holds every scope it names.
 
 ```go
 package main
@@ -409,7 +414,8 @@ func widgetPurgeCmd() *cobra.Command {
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithAPI(cli.APIConfig{}),
+        cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
+        cli.WithSocket(cli.SocketConfig{}),
     )
     widget := &cobra.Command{Use: "widget", Short: "Manage widgets"}
     widget.AddCommand(widgetPurgeCmd())
@@ -421,9 +427,52 @@ func main() {
 }
 ```
 
-Then install the decision. `cli.WithPermission` runs it inside the
-bridge for the api service and the socket service alike, after the
-destructive ceiling and before the command:
+The scopes compared are the ones your `AuthFunc` returned in
+`api.Claims.Scopes` (or a `scopes` entry of a claims map). Matching is
+exact: `widgets:admin` does not imply `widgets:read`. List several,
+comma-separated, and the caller needs all of them.
+
+What a caller lacking the scope sees over REST — `403`, not `401`,
+because bob is authenticated and the refusal is about what bob may do.
+The `WWW-Authenticate` challenge ([RFC 6750](https://www.rfc-editor.org/rfc/rfc6750#section-3.1))
+names the scope a token needs, so a client can ask its authorization
+server for one that has it:
+
+```bash
+curl -si -X POST http://10.0.0.5:8080/v1/commands/widget/purge \
+  -H 'Authorization: Bearer t0k3n-bob' \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+```http
+HTTP/1.1 403 Forbidden
+Www-Authenticate: Bearer error="insufficient_scope", scope="widgets:admin"
+
+{"status":403,"code":"insufficient_scope","message":"api: insufficient scope: cmdsurface: insufficient scope: widget purge on rest: missing scope widgets:admin"}
+```
+
+The other surfaces answer the same class in their own protocol:
+Connect `permission_denied` over RPC, an MCP tool result with
+`isError` and `_meta["hop.top/refusal"].code` of
+`insufficient_scope`, and `DENIED` over the socket. In Go,
+`errors.Is(err, cmdsurface.ErrInsufficientScope)` holds, and so does
+`errors.Is(err, cmdsurface.ErrPermissionDenied)`.
+
+Whose scopes count depends on how the transport established the
+caller:
+
+| Caller | Scopes compared | A `kit/permissions` command |
+|---|---|---|
+| Verified by `Auth` (api, mcp, rpc), a socket `Auth`, a webhook or bus verifier | the credential's | runs when they cover the annotation |
+| Established by the transport: the `0600` socket file, MCP over stdio, a cron schedule | none — the caller holds the owner's authority | runs |
+| Unverified, including one naming itself in the request | none | refused `insufficient_scope` |
+| The CLI itself | none | runs |
+
+The socket and stdio rows are the owner: whoever can open an
+owner-only socket or spawn the process could run `mytool widget purge`
+directly with the same credentials. When you share a socket
+deliberately, give it an authenticator and return the caller's scopes
+from it:
 
 ```go
 package main
@@ -431,32 +480,21 @@ package main
 import (
     "context"
     "log"
-    "strings"
+    "net"
 
     "hop.top/kit/go/console/cli"
-    "hop.top/kit/go/transport/cmdsurface"
+    "hop.top/kit/go/transport/socket"
 )
 
-// requireScopes refuses a caller whose credential lacks a scope the
-// command declares under kit/permissions.
-func requireScopes(_ context.Context, meta cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
-    have := map[string]bool{}
-    for _, s := range strings.Split(meta.Extra["scopes"], ",") {
-        have[s] = true
-    }
-    for _, need := range leaf.Class.Permissions {
-        if !have[need] {
-            return cmdsurface.PermissionDecision{Reason: "missing scope " + need}
-        }
-    }
-    return cmdsurface.PermissionDecision{Allowed: true}
+// identifyPeer names the local caller and the scopes it holds. Stand-in
+// for your own lookup, e.g. from the peer's credentials on conn.
+func identifyPeer(_ context.Context, _ net.Conn, _ socket.Request) (socket.Identity, error) {
+    return socket.Identity{Principal: "ci", Scopes: []string{"widgets:read"}}, nil
 }
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
-        cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
-        cli.WithSocket(cli.SocketConfig{}),
-        cli.WithPermission(requireScopes),
+        cli.WithSocket(cli.SocketConfig{Path: "/run/mytool/shared.sock", Auth: identifyPeer}),
     )
     root.Cmd.AddCommand(widgetCmd())
 
@@ -466,36 +504,62 @@ func main() {
 }
 ```
 
-What a denied caller sees over REST — `403`, not `401`, because bob
-is authenticated and the refusal is about what bob may do:
+A command that declares no `kit/permissions` is not checked for
+scopes at all.
 
-```bash
-curl -s -X POST http://10.0.0.5:8080/v1/commands/widget/purge \
-  -H 'Authorization: Bearer t0k3n-bob' \
-  -H 'Content-Type: application/json' -d '{}'
+For anything a scope list cannot say — a suspended account, a tenant
+boundary — install a decision of your own. `cli.WithPermission` runs
+it inside the bridge on every kit-shipped service, after the scope
+check, and it can only narrow: it is asked only about calls the scope
+check admitted.
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/transport/cmdsurface"
+)
+
+// notSuspended refuses callers your account system has suspended.
+func notSuspended(_ context.Context, meta cmdsurface.Meta, _ *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+    if suspended(meta.Tenant, meta.Caller) {
+        return cmdsurface.PermissionDecision{Reason: "account suspended"}
+    }
+    return cmdsurface.PermissionDecision{Allowed: true}
+}
+
+func main() {
+    root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
+        cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
+        cli.WithSocket(cli.SocketConfig{}),
+        cli.WithPermission(notSuspended),
+    )
+    root.Cmd.AddCommand(widgetCmd())
+
+    if err := root.Execute(context.Background()); err != nil {
+        log.Fatal(err)
+    }
+}
 ```
+
+Its refusal is `403 permission_denied` with your reason:
 
 ```json
-{"status":403,"code":"permission_denied","message":"api: permission denied: cmdsurface: permission denied: widget purge on rest: missing scope widgets:admin"}
+{"status":403,"code":"permission_denied","message":"api: permission denied: cmdsurface: permission denied: widget purge on rest: account suspended"}
 ```
 
-The same caller over the socket gets the same verdict under the
-socket's own code:
-
-```console
-$ echo '{"path":["widget","purge"],"caller":"bob"}' | socat - UNIX-CONNECT:/tmp/mytool.sock
-{"ok":false,"error":{"code":"DENIED","message":"cmdsurface: permission denied: widget purge on socket: missing scope widgets:admin"}}
-```
-
-Over the socket there is no `Authorization` header, so `scopes` is
-absent and `caller` is what the request claimed: without an
-authenticator on the socket (`SocketConfig.Auth`), a decision that
-trusts `Meta.Caller` there is trusting the caller's word. Decide on
-what the transport verified, or give the socket an authenticator.
+Over the socket, without an authenticator, `caller` is what the
+request claimed: a decision that trusts `Meta.Caller` there is
+trusting the caller's word. Decide on what the transport verified, or
+give the socket an authenticator.
 
 Discovery does not change for a caller-specific refusal. `GET
 /v1/commands` cannot know who will call, so `widget purge` stays
-listed as invocable and the gate answers per call. A command your
+listed as invocable and the gates answer per call. A command your
 decision refuses **for everyone** is different: return
 `CallerIndependent: true` and discovery withholds it at mount with
 the reason `permission-denied`, exactly as it withholds an
@@ -505,11 +569,11 @@ interactive command:
 {"name": "widget purge", "invocable": false, "reason": "permission-denied"}
 ```
 
-The tool's policy engine is wired into the same gate, and naming one
-is what satisfies the second exposure gate from step 2. A `--policy`
-that refuses a side-effect class refuses it on every surface for
-every caller, before your decision is asked, and discovery reflects
-it the same way:
+The tool's policy engine is wired into the same gate, between the
+scope check and your decision, and naming one is what satisfies the
+second exposure gate from step 2. A `--policy` that refuses a
+side-effect class refuses it on every surface for every caller, before
+your decision is asked, and discovery reflects it the same way:
 
 ```console
 $ mytool serve api --policy=readonly
@@ -542,7 +606,6 @@ func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
         cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
         cli.WithSocket(cli.SocketConfig{}),
-        cli.WithPermission(requireScopes),
         cli.WithAuditSinks(cmdsurface.SinkSpec{
             Sink:    &cmdsurface.FileSink{W: os.Stderr},
             OnOK:    true, // executions
@@ -563,7 +626,7 @@ authenticated, ran, not permitted — with the same fields on each:
 ```json
 {"at":"2026-09-04T16:03:11Z","path":"widget list","surface":"rest","exit_code":0,"error":"cmdsurface: authentication refused: missing bearer token","request_id":"6d4a0f0e8c2b4b1e9f3a7c5d2e1b0a94"}
 {"at":"2026-09-04T16:03:12Z","path":"widget list","surface":"rest","exit_code":0,"request_id":"9c1e7b3a4d2f4e8b8a6c0d5e1f2a3b4c","caller":"alice","tenant":"acme"}
-{"at":"2026-09-04T16:03:13Z","path":"widget purge","surface":"rest","exit_code":0,"error":"cmdsurface: permission denied: widget purge on rest: missing scope widgets:admin","request_id":"0f2e4d6c8b1a4c3e9d7f5a2b1c0e8d94","caller":"bob","tenant":"acme"}
+{"at":"2026-09-04T16:03:13Z","path":"widget purge","surface":"rest","exit_code":0,"error":"cmdsurface: insufficient scope: widget purge on rest: missing scope widgets:admin","request_id":"0f2e4d6c8b1a4c3e9d7f5a2b1c0e8d94","caller":"bob","tenant":"acme"}
 ```
 
 Read the verdict from two fields: `error` is set when the call was
@@ -1145,8 +1208,9 @@ answer that takes longer than `write` is cut whatever its deadline.
 | `APIConfig.InsecureRemote` | `false` | Serve unauthenticated beyond loopback. `services.api.insecure_remote` / `--insecure-remote` set the same. |
 | `APIConfig.InsecureNoPolicy` | `false` | Serve beyond loopback with no delegation policy. `services.api.insecure_no_policy` / `--insecure-no-policy` set the same. |
 | `APIConfig.MaxBodyBytes` | `0` (1 MiB) | Request body cap on every api route; over it is `413 body_too_large`, audited as `cmdsurface.ErrBodyTooLarge`. Negative disables. `services.api.body_limit.max_bytes` / `.enabled`, then `services.all.body_limit.*`, override it. |
-| `SocketConfig.Auth` | none | Verifies each socket request; the verified identity replaces the claimed one. |
-| `cli.WithPermission(fn)` | permit all | Permission gate on every kit-shipped transport service. |
+| `SocketConfig.Auth` | none | Verifies each socket request; the verified identity, and its `Scopes`, replace the claimed one. |
+| `kit/permissions` annotation | none | Scopes a verified caller must all hold; otherwise `403 insufficient_scope`. The owner (socket file, stdio, CLI) is not asked. |
+| `cli.WithPermission(fn)` | permit all | Permission decision on every kit-shipped transport service, after the scope check and `--policy`; can only narrow. |
 | `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. Records are always redacted. |
 | `services.<svc>.audit.redact.secret_flags` | none | Extra flag names masked in audit records; `services.all` applies to every service. |
 | `services.<svc>.audit.redact.patterns` | none | Extra content patterns (RE2) masked in audit records. |

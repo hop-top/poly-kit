@@ -1381,12 +1381,31 @@ How cobra annotations gate each surface:
 | `kit/side-effect=destructive`  | allowed   | `Policy.AllowDestructiveOn` | same | same  | same                 | same      | same                | same                  | same               | same                 |
 | `kit/auth-required=true`       | n/a       | a verifying `api.Auth` (`WithRESTAuth`, `WithSSEAuth`, `WithWSAuth`, or the router's); 401 otherwise | `WithRPCAuthenticated` or an established `WithRPCCallMeta` | an `api.Auth` on the router | `WebhookAuth.Verify` is the gate; `AuthNone` is refused | state IS auth | signed URL IS auth | `WithBusAuth` | refused unless `WithCronAllowAuth(true)` | a gateway authorizer; IAM for queue, rule and direct events |
 | `kit/requires-confirmation=true` | n/a     | `X-Confirm-Token` header (428 when missing) | same | n/a | refused unless `WithWebhookAllowConfirmation()` | refused at mount | skipped | `headers.x-confirm-token` | (cron has no confirm channel — refused if also auth-required without opt-in) | refused at mount |
-| `kit/permissions=<csv>`        | `PermissionFunc` | `PermissionFunc` | same | same | same | same | same | same | same | same |
+| `kit/permissions=<csv>`        | allowed | every scope listed, from the verified credential; 403 `insufficient_scope` otherwise | same (`CodePermissionDenied`) | same (`isError`) | same | same | same | same | allowed (operator's schedule) | same; allowed for IAM-invoked events |
 
 `kit/permissions` is parsed into `Leaf.Class.Permissions` and enforced
-by the bridge's `PermissionFunc` (`WithPermission`), which runs after
-the destructive ceiling and before the Runner on every surface: the
-adopter's decision, kit's gate. The default permits everything.
+by the bridge itself, in the permission gate after the destructive
+ceiling and before the Runner. On a remote surface the leaf runs only
+when every listed scope is among the caller's: the comma-joined
+`Meta.Extra["scopes"]` of a caller whose `Meta.Established` is
+`verified`, which the transports fill from the verifier's claims
+(`api.Claims.Scopes`, a socket `Identity.Scopes`). A caller the
+transport established (`transport`: the `0600` socket file, MCP over
+stdio, a cron schedule, an IAM-invoked Lambda) holds the owner's
+authority and is not asked; an unestablished caller holds no scopes,
+whatever its request claimed. Matching is exact. A leaf with no
+`kit/permissions` is not checked.
+
+The refusal is an `*InsufficientScopeError` wrapping
+`ErrInsufficientScope`, which wraps `ErrPermissionDenied`;
+`RequiredScopes(err)` reads the annotation's scopes, which HTTP
+surfaces name in `WWW-Authenticate: Bearer error="insufficient_scope",
+scope="…"`.
+
+The `PermissionFunc` (`WithPermission`) runs after the scope check and
+is asked only about calls it admitted: the adopter's decision can
+narrow the answer, never widen it. The default, `PermitAll`, adds
+nothing.
 
 `WithRateLimit(cfg)` adds the rate-limit gate right after it: one
 token bucket per caller and side-effect tier (`RateTierRead`,
@@ -1406,6 +1425,7 @@ The mappings of bridge sentinel errors to wire format are uniform:
 | `ErrSurfaceNotEnabled` | 404 `not_enabled` | `CodeNotFound`    | `not_enabled`                | (mount-time refusal)     | (mount-time refusal) |
 | `ErrDestructiveBlocked`| 403 `destructive_blocked` | `CodePermissionDenied` | `destructive_blocked` | 403 / (mount-time refusal) | (mount-time refusal) |
 | `ErrNotInvocable`      | 404 `not_invocable` (projection: withheld at mount; SSE) | `CodeNotFound`; `NOT_INVOCABLE` (socket) | `not_invocable` (WS); passthrough | (mount-time refusal) | (mount-time refusal) |
+| `ErrInsufficientScope` | 403 `insufficient_scope` + `WWW-Authenticate` (projection; SSE; REST) | `CodePermissionDenied`; `DENIED` (socket) | `insufficient_scope` (WS, Bus); 403 (Webhook) | 403 `insufficient_scope` | 403 `insufficient_scope` |
 | `ErrPermissionDenied`  | 403 `permission_denied` (projection; SSE) | `CodePermissionDenied`; `DENIED` (socket) | `permission_denied` (WS); passthrough | passthrough | passthrough |
 | `ErrRateLimited`       | 429 `rate_limited` + `Retry-After` | `CodeResourceExhausted` + `Retry-After` metadata; `RATE_LIMITED` + `retry_after_ms` (socket) | `rate_limited` (WS, Bus); 429 (Webhook) | 429 + `Retry-After` | 429 `rate_limited` |
 
