@@ -55,6 +55,10 @@ type DiscoveryEntry struct {
 	// Route is the projected path, empty for a non-invocable
 	// command.
 	Route string `json:"route,omitempty"`
+	// StreamRoute is the streaming twin of Route, served on the same
+	// method as text/event-stream. Empty for a non-invocable
+	// command, or when the projection does not stream.
+	StreamRoute string `json:"stream_route,omitempty"`
 
 	// Flags are the command's declared flags.
 	Flags []CommandFlag `json:"flags,omitempty"`
@@ -103,6 +107,9 @@ func BuildDiscoveryDocument(cfg ProjectionConfig) DiscoveryDocument {
 		if d.Invocable {
 			e.Method = d.Method()
 			e.Route = d.Route()
+			if cfg.streams() {
+				e.StreamRoute = d.StreamRoute()
+			}
 		} else if d.Reason != "" && !seen[d.Reason] {
 			seen[d.Reason] = true
 			reasons = append(reasons, d.Reason)

@@ -39,6 +39,9 @@ func DescribeCommandProjection(r *Router, cfg ProjectionConfig) {
 			continue
 		}
 		describeCommandOp(spec, d)
+		if cfg.streams() {
+			describeStreamOp(spec, d)
+		}
 	}
 }
 

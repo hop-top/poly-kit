@@ -77,6 +77,13 @@ func buildMinimalSpec(cfg ProjectionConfig) map[string]any {
 			op[k] = v
 		}
 		entry[method] = op
+		if cfg.streams() {
+			sop := minimalStreamOp(d)
+			for k, v := range d.openAPIExtensions() {
+				sop[k] = v
+			}
+			paths[d.StreamRoute()] = map[string]any{method: sop}
+		}
 	}
 
 	title := cfg.ToolName

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // CommandExecutor runs one projected command. The projection decodes
@@ -86,13 +87,27 @@ type ProjectionConfig struct {
 	ToolName string
 	// ToolVersion labels the discovery document.
 	ToolVersion string
+	// StreamHeartbeat is the keep-alive interval on streaming
+	// routes; zero means [DefaultStreamHeartbeat].
+	StreamHeartbeat time.Duration
+	// Stopping, once closed, ends every open stream: its command is
+	// canceled and its terminal frame is an error with status 503
+	// and code [CodeShuttingDown]. A draining server waits for
+	// in-flight requests, and a stream has no end of its own; the
+	// server's owner closes this when it begins to stop. Nil never
+	// fires.
+	Stopping <-chan struct{}
 }
 
 // MountCommandProjection registers the projected command routes and
 // the discovery endpoint on r.
 //
 // Every invocable descriptor gets exactly one route, at the method
-// its side-effect class selects. Non-invocable descriptors are NOT
+// its side-effect class selects. When the executor also implements
+// [CommandStreamer], each gets a second, streaming route at
+// [CommandDescriptor.StreamRoute], on the same method, taking the
+// same parameters and passing the same gates. Non-invocable
+// descriptors are NOT
 // mounted; they appear in the discovery listing with invocable=false
 // and their stable reason, so the projection describes the whole tree
 // even though it serves part of it.
@@ -111,11 +126,16 @@ func MountCommandProjection(r *Router, cfg ProjectionConfig) {
 	if cfg.Executor == nil {
 		return
 	}
+	streamer, _ := cfg.Executor.(CommandStreamer)
 	for _, d := range cfg.Descriptors {
 		if !d.Invocable {
 			continue
 		}
 		r.Handle(d.Method(), d.Route(), commandHandler(cfg.Executor, d))
+		if streamer != nil {
+			r.Handle(d.Method(), d.StreamRoute(),
+				streamHandler(streamer, d, cfg.heartbeat(), cfg.Stopping))
+		}
 	}
 }
 
@@ -150,34 +170,41 @@ func commandHandler(ex CommandExecutor, d CommandDescriptor) http.HandlerFunc {
 // descriptor's reason travels in the message so a caller learns why
 // rather than only that it failed.
 func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error) {
+	ae := projectionError(d, err)
+	Error(w, ae.Status, ae)
+}
+
+// projectionError is the APIError an executor error maps onto. The
+// streaming route reports a run error with it too, so both routes
+// speak one vocabulary.
+func projectionError(d CommandDescriptor, err error) *APIError {
 	switch {
 	case errors.Is(err, ErrCommandNotInvocable):
 		msg := "command is not invocable on this surface"
 		if d.Reason != "" {
 			msg = msg + ": " + d.Reason
 		}
-		Error(w, StatusNotInvocable, &APIError{
+		return &APIError{
 			Status:  StatusNotInvocable,
 			Code:    CodeNotInvocable,
 			Message: msg,
-		})
+		}
 	case errors.Is(err, ErrDestructiveBlocked):
-		Error(w, http.StatusForbidden, &APIError{
+		return &APIError{
 			Status:  http.StatusForbidden,
 			Code:    CodeDestructiveBlocked,
 			Message: err.Error(),
-		})
+		}
 	case errors.Is(err, ErrPermissionDenied):
 		// 403, not 401: the caller is authenticated, and the refusal
 		// is about what this caller may do.
-		Error(w, http.StatusForbidden, &APIError{
+		return &APIError{
 			Status:  http.StatusForbidden,
 			Code:    CodePermissionDenied,
 			Message: err.Error(),
-		})
+		}
 	default:
-		ae := MapError(err)
-		Error(w, ae.Status, ae)
+		return MapError(err)
 	}
 }
 

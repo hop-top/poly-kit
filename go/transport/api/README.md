@@ -18,6 +18,7 @@ adopter-driven mounting of arbitrary surfaces is
 - permit a destructive command on REST → `cli.APIConfig{Policy: cmdsurface.Policy{AllowDestructiveOn: ...}}`
 - keep a command off REST → `cli.APIConfig{Hide: []string{"admin *"}}`
 - describe every projected operation → `WithOpenAPI`, served at `/openapi.json`
+- stream a long-running command's output as it is written → `<route>/stream`, server-sent events, same method and parameters
 
 ## Quick start
 
@@ -41,7 +42,8 @@ r := api.NewRouter(
 - Exit codes map to statuses (`0`→200, `2`→400, `3`→404, `4`→409, `5`→403, `6`→503, `7`→403, `64`→429, `65`→422, `70`→503, anything else 500). `UNAUTHORIZED` is 403, not 401. `CONSENT_REFUSED` (7) shares 403: re-send the same call with `confirm`. `PREREQUISITE` (70) is 503, not 500 — a declared dependency is unreachable, so the identical call succeeds once an operator repairs it.
 - Refusals where the command never ran: `not_invocable` (404), `destructive_blocked` (403), `permission_denied` (403).
 - The projection installs no auth. The service listens on `127.0.0.1:8080` and refuses a non-loopback address it would serve unauthenticated, at exit `2`, unless `services.api.insecure_remote` opts in.
-- Streaming is out of scope: the projection is request/reply.
+- Every invocable command also streams at `<route>/stream` (`api.StreamSuffix`), on the same method with the same parameters, as `text/event-stream`: `event` frames per output line, then one terminal `result` (the response body plus the mapped `status`) or `error` frame, with a `: ping` keep-alive every 15s. Refusals the transport or bridge make (400, 401, 404, 403) are statuses before the stream opens; the command's own outcomes, its confirmation refusal included, are the terminal frame. Disconnecting cancels the command; stopping the service ends open streams with a `503` `shutting_down` error frame. Mounted only when the executor implements `api.CommandStreamer`; the `api` service's does.
+- Long-running work: SSE here, `InvokeStream` on `cmdsurface.MountRPC`, the experimental MCP tasks extension (`mcpsdk.WithTasks`) for work that must outlive its caller. The comparison lives in the [reference](../../../docs/adopters/reference/transport-api.md#long-running-work-on-each-transport).
 
 ## Neighbours
 
@@ -52,7 +54,7 @@ r := api.NewRouter(
 
 ## See also
 
-- [api package reference](../../../docs/adopters/reference/transport-api.md): bus topics, route shape, parameters, discovery, response body, exit-code mapping, refusals, auth claims, request provenance, OpenAPI
+- [api package reference](../../../docs/adopters/reference/transport-api.md): bus topics, route shape, parameters, discovery, response body, exit-code mapping, refusals, streaming and long-running work, auth claims, request provenance, OpenAPI
 - [expose-cli-over-rest.md](../../../docs/adopters/guides/expose-cli-over-rest.md): the task walkthrough
 - [secure-remote-serving.md](../../../docs/adopters/guides/secure-remote-serving.md): auth beyond loopback, the permission gate, the audit trail
 - [serve lifecycle contract](../../../docs/contracts/serve-lifecycle.md)

@@ -2,7 +2,6 @@ package cmdsurface
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -320,13 +319,10 @@ func buildTerminalResult(fromRunner *Result, stdout, stderr string) Result {
 }
 
 // sseWriteFrame writes one "event: <name>\ndata: <json>\n\n" frame
-// and flushes the response. data is JSON-encoded.
+// and flushes the response. The framing is api.WriteSSEFrame's, the
+// same the api service's streaming routes emit.
 func sseWriteFrame(w http.ResponseWriter, f http.Flusher, name string, data any) error {
-	payload, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", name, payload); err != nil {
+	if err := api.WriteSSEFrame(w, name, data); err != nil {
 		return err
 	}
 	f.Flush()
@@ -336,7 +332,7 @@ func sseWriteFrame(w http.ResponseWriter, f http.Flusher, name string, data any)
 // sseWriteComment writes a comment frame ": ping\n\n" used as a
 // keep-alive. SSE clients ignore lines starting with ':'.
 func sseWriteComment(w http.ResponseWriter, f http.Flusher) error {
-	if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+	if err := api.WriteSSEComment(w); err != nil {
 		return err
 	}
 	f.Flush()
