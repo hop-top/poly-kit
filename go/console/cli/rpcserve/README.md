@@ -39,7 +39,8 @@ Task guide: [expose your CLI over gRPC](../../../../docs/adopters/guides/expose-
 ## Contract
 
 - Normative text: [serve-lifecycle contract §"The rpc service"](../../../../docs/contracts/serve-lifecycle.md#the-rpc-service).
-- Disabled by default; `serve rpc` starts it. Own listener, default `127.0.0.1:8082`; HTTP/1.1 and h2c on one port. Readiness carries the base URL.
+- Disabled by default; `serve rpc` starts it. Own listener, default `127.0.0.1:8082`; HTTP/1.1 and h2c on one port, or TLS with HTTP/2 by ALPN under `services.rpc.tls`. Readiness carries the base URL.
+- `services.rpc.auth.mode: mtls` authenticates by client certificate in place of `Auth`.
 - Keys: `services.rpc.{addr,insecure_remote,insecure_no_policy}`; flag `--rpc-addr`.
 - `Auth` (`api.AuthFunc`) gates every procedure, unary and streaming. Identity comes from what it verified; the body's `meta.caller`, `meta.tenant` and `meta.extra` are dropped.
 - `kit/auth-required` needs verified `Auth`; `kit/requires-confirmation` needs `X-Confirm-Token`.

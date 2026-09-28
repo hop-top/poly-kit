@@ -441,6 +441,26 @@ way. `Auth(fn, OnAuthRefused(hook))` lets a refusal be observed
 before the `401` is written, which is how the api service records it
 in the audit trail.
 
+#### Client certificates
+
+`ClientCertAuth(ClientCertConfig{...})` is an `AuthFunc` that reads
+the client certificate the TLS handshake verified and returns a
+`Claims`: the principal from `Principal` (`PrincipalSAN`, the
+default: first URI, else DNS, else email SAN; or `PrincipalSANURI`,
+`PrincipalSANDNS`, `PrincipalSANEmail`, `PrincipalCN`), the tenant
+from `TenantOID` (a subject attribute, else an extension holding a
+string) or `TenantSAN` (first capture group of the first SAN it
+matches). A request without a verified certificate, or whose
+certificate has no principal there, is refused. The server's
+`tls.Config` does the verifying (`ClientCAs`, `ClientAuth`);
+`ClientCertClaims` is the extraction alone.
+
+Set `http.Server.ConnContext` to `TLSConnContext` when the `AuthFunc`
+may see a synthetic request, as under `rpc.Authenticate`: `TLSState(r)`
+then finds the connection's TLS state through the request context.
+The kit-shipped services set both from `services.<svc>.auth.mode: mtls`;
+see the [serve-lifecycle contract](../../contracts/serve-lifecycle.md#tls-and-client-certificates).
+
 #### Request provenance
 
 Each projected call gathers a `RequestMeta` and hands it to the

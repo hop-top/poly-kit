@@ -625,6 +625,9 @@ are in [Middleware](#middleware).
   waives the policy requirement only. A tool that sets `Auth` still
   needs a policy or the second opt-in, because authenticating a
   caller says nothing about what that caller may run.
+- `services.<svc>.auth.mode: mtls` authenticates for these rules on
+  every kit HTTP listener, as `Auth` does; plain `tls` does not. See
+  [TLS and client certificates](#tls-and-client-certificates).
 - Loopback keeps allow-by-default under both rules. It is the
   development path, and the caller is already on the machine.
 - A tool that sets `Auth` keeps working on any address. `WithAPI`
@@ -1052,8 +1055,11 @@ reaches the Root through the exported hooks listed under
 One listener serves every protocol connect-go speaks: Connect (binary
 proto and JSON), gRPC, and gRPC-Web, over HTTP/1.1 and unencrypted
 HTTP/2 with prior knowledge (h2c) on the same port. Native gRPC needs
-HTTP/2, and gets it without TLS. The `ready_reported` address is the
-base URL, `http://<host>:<port>`; procedures live under
+HTTP/2, and gets it without TLS. With `services.rpc.tls` on, HTTP/2 is
+negotiated by ALPN instead and h2c is off
+([TLS and client certificates](#tls-and-client-certificates)). The
+`ready_reported` address is the base URL, `http://<host>:<port>`, or
+`https://` under TLS; procedures live under
 `/cmdsurface.v1.Commands/`. The listener is the service's own, for the
 reasons the mcp service gives.
 
@@ -1466,6 +1472,61 @@ server. `auth.mode: mtls` does.
 Permission and confirmation have no block. Permission is configured
 by `--policy` and `cli.WithPermission`; confirmation belongs to the
 surface that asks the person.
+
+### TLS and client certificates
+
+`tls` and `auth.mode: mtls` configure the kit HTTP listeners — the api
+service, the rpc service, the mcp service's HTTP transport — under
+`services.<svc>` or `services.all`, resolved like any block. Socket and
+stdio ignore them. `cli.ResolveServeTLS` is the one resolver, and
+`ServeTLS.Serve` the one place a listener starts serving.
+
+| Key                            | Type   | Default                         | Meaning |
+|--------------------------------|--------|---------------------------------|---------|
+| `tls.enabled`                  | bool   | on when a certificate source is set | serve TLS only |
+| `tls.cert_file`, `tls.key_file` | string | —                              | PEM certificate chain and key; one certificate source |
+| `tls.min_version`              | string | `1.2`                           | `1.2` or `1.3`; nothing lower is accepted |
+| `tls.acme.enabled`             | bool   | on when `domains` is set        | obtain and renew certificates by ACME; the other source |
+| `tls.acme.domains`             | list   | —                               | names certificates are issued for; no other name gets one |
+| `tls.acme.cache_dir`           | string | `<state dir>/<tool>/acme`       | account key and certificates |
+| `tls.acme.email`               | string | —                               | contact the CA may use |
+| `tls.acme.directory_url`       | string | Let's Encrypt production        | another ACME directory (a staging one, a private CA) |
+| `auth.mode`                    | string | unset                           | `mtls`: the client certificate is the credential |
+| `auth.mtls.ca_file`            | string | — (required under `mtls`)       | PEM bundle client certificates must chain to |
+| `auth.mtls.principal`          | string | `san`                           | `san` (first URI, else DNS, else email SAN), `san_uri`, `san_dns`, `san_email`, `cn` |
+| `auth.mtls.tenant_oid`         | string | —                               | dotted OID of a subject attribute, else of an extension holding a string |
+| `auth.mtls.tenant_san_pattern` | string | —                               | RE2 matched against the SANs; the first capture group of the first match, else the whole match |
+
+- With TLS on, the listener offers HTTP/2 and HTTP/1.1 by ALPN and
+  nothing in plaintext; the rpc service's h2c is off. The readiness
+  address carries `https`. `security_headers` sends HSTS on every
+  response to a request that arrived over it.
+- ACME answers the TLS-ALPN-01 challenge on the listener itself, so
+  the CA must reach it on port 443 under every name in `domains`.
+  Certificates from files load at start; a replaced file takes effect
+  on the next start.
+- `auth.mode: mtls` needs TLS on and `ca_file`. The listener asks every
+  client for a certificate, and a certificate that does not chain to
+  the bundle ends the handshake. A request with no certificate reaches
+  the HTTP plane and is refused at slot 12 as `unauthenticated`,
+  audited like a missing token, so health probes still answer without
+  one. A certificate with no principal where `principal` says is
+  refused the same way.
+- The certificate's principal and tenant are the call's `Caller` and
+  `Tenant`: an established identity for slot 4 and for the exposure
+  rules. The mode selects the verifier: under `mtls` the listener's
+  code `Auth` (`APIConfig.Auth`, `rpcserve.Config.Auth`,
+  `mcpserve.Config.Auth`) is not consulted, and the api service's
+  `--no-auth` disables it as it disables `Auth`.
+- A handshake that fails is logged by the server and not audited: no
+  request exists to attribute.
+- Each of these is refused at validation, exit `2`, naming the key:
+  `enabled: true` with no certificate source, both sources, one of
+  `cert_file` and `key_file`, a pair that does not load, an unsupported
+  `min_version`, ACME with no domain, an unknown `auth.mode`, `mtls`
+  without TLS or without `ca_file`, a bundle with no certificate, an
+  unknown `principal`, both tenant sources, an OID or pattern that does
+  not parse, and an `auth.mtls` key under another mode.
 
 ### Refusals
 

@@ -30,6 +30,7 @@ root := cli.New(cli.Config{Name: "mytool", Version: version},
 - Normative text: [serve-lifecycle contract §"The mcp service"](../../../../docs/contracts/serve-lifecycle.md#the-mcp-service).
 - Disabled by default; `serve mcp` starts it. HTTP on its own listener, default `127.0.0.1:8081`, path `/mcp`.
 - Keys: `services.mcp.{transport,addr,path,insecure_remote,insecure_no_policy}`; flags `--stdio`, `--mcp-addr`.
+- HTTP over TLS under `services.mcp.tls`; `services.mcp.auth.mode: mtls` authenticates by client certificate in place of `Auth`.
 - `kit/auth-required`: HTTP needs `Config.Auth`; stdio admits on the spawn's trust.
 - `kit/requires-confirmation`: an accepted elicitation, or `X-Confirm-Token` over HTTP; asked only after every machine gate.
 - stdio: stdout carries only protocol messages; end of input exits 0 once every request already read is answered.

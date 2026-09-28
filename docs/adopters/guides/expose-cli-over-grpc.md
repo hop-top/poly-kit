@@ -44,7 +44,9 @@ starts. Go stubs ship with kit in
 generates its own from the proto file.
 
 One listener answers Connect (binary proto and JSON), gRPC and
-gRPC-Web, over HTTP/1.1 and unencrypted HTTP/2 (h2c) on the same port.
+gRPC-Web, over HTTP/1.1 and unencrypted HTTP/2 (h2c) on the same port,
+or over TLS with HTTP/2 negotiated by ALPN once `services.rpc.tls` is
+set.
 
 ## Steps
 
@@ -415,8 +417,10 @@ A refusal is an RPC error, and the command never ran:
 ## What the service does not implement
 
 - **Server reflection.** Clients are given `commands.proto`.
-- **TLS.** The listener is plaintext, HTTP/1.1 and h2c. Terminate TLS
-  in front of it for traffic that leaves the machine.
+- **TLS by default.** The listener is plaintext, HTTP/1.1 and h2c,
+  until `services.rpc.tls` names a certificate; client certificates
+  authenticate with `services.rpc.auth.mode: mtls`. See
+  [secure-remote-serving.md](secure-remote-serving.md#10-encrypt-the-connection-at-a-proxy-or-on-the-listener).
 - **CORS, yet.** A browser client on another origin needs a proxy
   that answers CORS; see [step 5](#5-call-it-from-a-browser-over-grpc-web).
 - **A procedure per command.** Commands are addressed by path inside

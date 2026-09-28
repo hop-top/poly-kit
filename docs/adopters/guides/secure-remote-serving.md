@@ -58,6 +58,9 @@ for your own command tree; substitute it.
   `Content-Length` declares it or a chunked body crosses the cap
   mid-read. Raise or lower it with `services.api.body_limit.max_bytes`
   (or `services.all.body_limit.max_bytes` for every service).
+- **TLS where you want it.** Terminate it at your proxy, or on the
+  listener itself with a certificate file or ACME; with client
+  certificates (`auth.mode: mtls`) the certificate is the credential.
 - **No reach from a browser tab.** The api service refuses requests
   whose `Host` it does not answer for (DNS rebinding) and writes from
   pages on other origins (cross-site request forgery), and sets
@@ -833,6 +836,120 @@ it also needs `scrape.allow_remote: true`. Keys, span and instrument
 names are in
 [served-observability.md](../reference/served-observability.md).
 
+### 10. Encrypt the connection: at a proxy, or on the listener
+
+Everything above travels in plaintext unless something encrypts it.
+Choose where TLS ends:
+
+| | Proxy-terminated | Direct |
+|---|---|---|
+| Who holds the certificate | the proxy (nginx, Caddy, a cloud load balancer) | the tool, `services.<svc>.tls` |
+| The tool's listener | plaintext, on loopback or a network only the proxy reaches | TLS only, HTTP/2 and HTTP/1.1 |
+| Who authenticates callers | the tool's `Auth`; a client certificate the proxy checks never reaches kit | the tool: `Auth`, or the client certificate with `auth.mode: mtls` |
+| `Strict-Transport-Security` | the proxy sends it | the api service sends it |
+
+**Behind a proxy**, keep the tool on `127.0.0.1` and point the proxy
+at it; nothing in the tool changes. A proxy on another host reaches
+a non-loopback bind, which still needs `Auth` (or the `insecure_remote`
+opt-in, when only the proxy can reach that network) and a policy.
+
+**On the listener**, name a certificate and key:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  api:
+    addr: 0.0.0.0:8443
+    tls:
+      cert_file: /etc/mytool/tls/server.crt   # PEM chain, leaf first
+      key_file: /etc/mytool/tls/server.key
+```
+
+```bash
+curl -s -i --cacert ca.crt https://api.example.com:8443/v1/commands/item/list \
+  -H 'Authorization: Bearer t0k3n-alice'
+```
+
+```http
+HTTP/2 200
+content-type: application/json
+strict-transport-security: max-age=31536000
+x-content-type-options: nosniff
+
+{"exit_code":0,"data":[{"name":"bolt"},{"name":"nut"}]}
+```
+
+The listener no longer answers plaintext (`400 Client sent an HTTP
+request to an HTTPS server`), accepts TLS 1.2 and up
+(`tls.min_version: "1.3"` raises the floor), and loads the files at
+start, so restart after renewing them. The same keys under
+`services.rpc` or `services.mcp` encrypt those listeners; the rpc
+service then negotiates HTTP/2 for native gRPC by ALPN instead of
+serving h2c. Put the keys under `services.all.tls` to encrypt every
+listener with one certificate, and set `enabled: false` on a service
+to leave it plaintext.
+
+To have the tool obtain and renew its own certificate by ACME, name
+the domains instead of files. The CA's TLS-ALPN-01 challenge is
+answered on the listener itself, so it must be reachable on port 443
+under each name:
+
+```yaml
+services:
+  api:
+    addr: 0.0.0.0:443
+    tls:
+      acme:
+        domains: [api.example.com]
+        email: ops@example.com
+        # cache_dir defaults to <state dir>/mytool/acme; directory_url
+        # to Let's Encrypt production (point it at staging to rehearse)
+```
+
+TLS proves the server to the client, not the client to the server, so
+it does not satisfy step 2's refusal: a non-loopback address with TLS
+and no `Auth` is still refused at exit `2`.
+
+**Client certificates** are the exception. `auth.mode: mtls` makes the
+certificate the credential, and it satisfies the refusal the way
+`Auth` does:
+
+```yaml
+services:
+  all:
+    tls:
+      cert_file: /etc/mytool/tls/server.crt
+      key_file: /etc/mytool/tls/server.key
+    auth:
+      mode: mtls
+      mtls:
+        ca_file: /etc/mytool/tls/clients-ca.crt   # the CA your client certificates chain to
+        principal: san                             # URI SAN, else DNS, else email; or cn
+        tenant_oid: 2.5.4.11                       # OU; or tenant_san_pattern: '^spiffe://example\.org/tenant/([^/]+)/'
+```
+
+```bash
+curl -s --cacert ca.crt --cert alice.crt --key alice.key \
+  https://api.example.com:8443/v1/commands/item/list
+```
+
+The call is attributed to the certificate: the audit record reads
+`"caller":"spiffe://example.org/tenant/acme/svc/alice","tenant":"acme"`,
+and a `kit/auth-required` command admits it. A client that presents no
+certificate is answered like a missing token, and the refusal is
+audited:
+
+```http
+HTTP/2 401
+
+{"status":401,"code":"unauthorized","message":"client certificate required"}
+```
+
+A certificate the CA bundle does not verify never gets that far: the
+handshake fails, and the server logs it. The health probes answer
+without a certificate, so an orchestrator needs none. Under `mtls` the
+certificate is the only verifier; `APIConfig.Auth` is not consulted.
+
 ## Option reference
 
 | Option | Default | Effect |
@@ -858,7 +975,14 @@ names are in
 | `services.api.origin_check.enabled` | `true` | Refuse cross-origin browser writes (`403`, `origin_rejected`). |
 | `services.api.origin_check.allow` | `[]` (same-origin only) | Cross-origin browser origins permitted to write, `scheme://host[:port]`. |
 | `services.api.security_headers.enabled` | `true` | `nosniff`, `no-referrer`, a deny-all CSP; HSTS over TLS only. |
-| `services.all.<block>.<key>` | unset | Shared default for the three blocks above; the service's own key wins. |
+| `services.<svc>.tls.cert_file`, `.key_file` | unset | Serve TLS only, HTTP/2 and HTTP/1.1, with this PEM chain and key. `tls.enabled: false` turns it off. |
+| `services.<svc>.tls.min_version` | `1.2` | `1.2` or `1.3`. |
+| `services.<svc>.tls.acme.domains` | unset | Obtain and renew the certificate by ACME for these names; `.email`, `.cache_dir`, `.directory_url` tune it. |
+| `services.<svc>.auth.mode` | unset | `mtls`: the client certificate is the credential; counts as authentication beyond loopback. |
+| `services.<svc>.auth.mtls.ca_file` | unset | CA bundle client certificates must chain to; required under `mtls`. |
+| `services.<svc>.auth.mtls.principal` | `san` | `san`, `san_uri`, `san_dns`, `san_email` or `cn`. |
+| `services.<svc>.auth.mtls.tenant_oid` / `.tenant_san_pattern` | unset | Where the tenant comes from: a subject attribute or extension OID, or a SAN regular expression (first capture group). One or the other. |
+| `services.all.<block>.<key>` | unset | Shared default for the blocks above; the service's own key wins. |
 
 Precedence for either opt-in is flag, then config key, then code.
 The guard keys have no flags: the service's key, then
@@ -872,7 +996,9 @@ Absence here is deliberate; each of these belongs somewhere else:
 
 - **An identity provider.** `Auth` is yours. Kit verifies nothing
   about a token and issues none; it carries what your function
-  returns.
+  returns. With `auth.mode: mtls` kit verifies the certificate chain
+  against your CA bundle; issuing and revoking certificates stays
+  with you (no CRL or OCSP check).
 - **A tenant registry.** `Meta.Tenant` is a label your claims
   supply. Nothing scopes state by it.
 - **Socket peer credentials out of the box.** `SocketConfig.Auth`
