@@ -8,10 +8,10 @@
 //   - Mode-aware: Anon ships only bounded canonical fields. Full
 //     additionally ships post-redact Args/Flags and synthesizes the
 //     surface name as Flags["_surface"] (telemetry.Event has no
-//     Surface column today; see design-note §3).
+//     Surface column today).
 //   - Consent-deaf: cmdsurface never consults consent. The emitter
 //     no-ops when consent is denied; the channel may briefly fill in
-//     the denied window (cosmetic DroppedFull bump, see design-note §6).
+//     the denied window (cosmetic DroppedFull bump).
 //   - Size-capped: post-translation payloads exceeding MaxBytes are
 //     dropped, never truncated (truncation would defeat the redactor).
 package cmdsurface
@@ -51,7 +51,7 @@ type InvocationEvent struct {
 	ExitCode int `json:"exit_code"`
 	// DurationMS is the elapsed time from Meta.RequestedAt to event
 	// completion. -1 when RequestedAt was not stamped by the surface
-	// (sentinel per design-note §2).
+	// (sentinel).
 	DurationMS int64 `json:"duration_ms"`
 	// OccurredAt is the wall-clock time the cmdsurface materialized the
 	// event. RFC 3339 with nanos.
@@ -63,7 +63,7 @@ type InvocationEvent struct {
 	// Surface is the originating cmdsurface surface (cli, rest, mcp,
 	// …). Carried in-memory; the telemetry.Event has no Surface column
 	// so the sink translates it (drop in Anon, Flags["_surface"] in
-	// Full) before calling the emitter. See design-note §3.
+	// Full) before calling the emitter.
 	Surface string `json:"surface"`
 
 	// Args and Flags are populated only in Full mode. Args is the
@@ -105,8 +105,8 @@ type TelemetryStats struct {
 	// path).
 	DroppedDenied int64
 	// RequestedAtMissing counts events whose surface failed to stamp
-	// Meta.RequestedAt. The event still ships with DurationMS=-1
-	// (design-note §2); the counter surfaces the cosmetic issue to
+	// Meta.RequestedAt. The event still ships with DurationMS=-1;
+	// the counter surfaces the cosmetic issue to
 	// operators.
 	RequestedAtMissing int64
 }
@@ -124,9 +124,9 @@ type telemetryConfig struct {
 	kitVersion string
 }
 
-// WithChannelCap sets the buffered channel capacity. Defaults to 256;
-// see design-note §5 for the rationale on why this is tunable but does
-// not auto-grow.
+// WithChannelCap sets the buffered channel capacity. Defaults to 256.
+// Tunable but does not auto-grow: a full channel drops rather than
+// blocks the caller.
 func WithChannelCap(n int) TelemetryOption {
 	return func(c *telemetryConfig) {
 		if n > 0 {
@@ -136,7 +136,7 @@ func WithChannelCap(n int) TelemetryOption {
 }
 
 // WithMaxBytes sets the per-event byte cap applied after translation.
-// Defaults to 8192; see design-note §4 for sizing rationale.
+// Defaults to 8192.
 func WithMaxBytes(n int) TelemetryOption {
 	return func(c *telemetryConfig) {
 		if n > 0 {
@@ -275,7 +275,7 @@ func (s *TelemetrySink) Emit(ctx context.Context, inv Invocation, res Result, _ 
 	// Full-mode fields are placed on the InvocationEvent at queue time
 	// so the drain doesn't have to re-derive mode. The emitter
 	// independently strips Anon-tier events; this is the producer-side
-	// half of the two-layer strip (design-note §3).
+	// half of the two-layer strip.
 	if s.mode == telemetry.ModeFull {
 		if len(inv.Args) > 0 {
 			ev.Args = append([]string(nil), inv.Args...)
@@ -334,7 +334,7 @@ func (s *TelemetrySink) shipOne(ctx context.Context, ev InvocationEvent) {
 		TraceID:     ev.TraceID,
 	}
 
-	// Surface workaround (design-note §3): Anon drops Surface entirely
+	// Surface workaround: Anon drops Surface entirely
 	// because telemetry.Event has no Surface column and Anon's promise
 	// is "no flags". Full synthesizes Flags["_surface"] so adopters can
 	// route on surface without scraping out-of-band fields.
@@ -357,7 +357,7 @@ func (s *TelemetrySink) shipOne(ctx context.Context, ev InvocationEvent) {
 	// Size cap. Marshal once: this is the same JSON the bus codec
 	// will produce, so the byte count is faithful. We deliberately do
 	// NOT truncate — a redacted token straddling the cut point would
-	// leak its prefix (design-note §4).
+	// leak its prefix.
 	blob, err := json.Marshal(teleEv)
 	if err != nil {
 		// json.Marshal of a struct with only standard scalar fields

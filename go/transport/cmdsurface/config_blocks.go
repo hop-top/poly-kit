@@ -184,12 +184,12 @@ type TelemetryConfig struct {
 	// defaults to "anon" when Enabled (applied by ApplyDefaults).
 	Mode string `yaml:"mode,omitempty" json:"mode,omitempty"`
 	// ChannelCap is the buffered channel capacity. Zero defaults to
-	// 256 when Enabled (applied by ApplyDefaults). See design-note §5
-	// for sizing rationale; tunable but does not auto-grow.
+	// 256 when Enabled (applied by ApplyDefaults). Tunable but does not
+	// auto-grow: a full channel drops rather than blocks the caller.
 	ChannelCap int `yaml:"channel_cap,omitempty" json:"channel_cap,omitempty"`
 	// MaxBytes is the per-event JSON size cap applied after
 	// translation. Zero defaults to 8192 when Enabled (applied by
-	// ApplyDefaults). See design-note §4 for sizing rationale.
+	// ApplyDefaults).
 	MaxBytes int `yaml:"max_bytes,omitempty" json:"max_bytes,omitempty"`
 	// KitVersion is the build version forwarded verbatim to
 	// telemetry.Event.KitVersion. Optional; adopters typically inject

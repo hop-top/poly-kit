@@ -115,7 +115,7 @@ func TestTelemetrySink_AnonModeShape(t *testing.T) {
 	if len(ev.Flags) != 0 {
 		t.Errorf("Flags=%v want empty in Anon", ev.Flags)
 	}
-	// Surface MUST NOT leak in Anon — design-note §3.
+	// Surface MUST NOT leak in Anon.
 	if _, ok := ev.Flags["_surface"]; ok {
 		t.Errorf("_surface flag must not be present in Anon")
 	}
@@ -391,7 +391,7 @@ func TestTelemetrySink_Stats_Atomic(t *testing.T) {
 	}
 }
 
-// TestTelemetrySink_AnonNeverTripsSizeCap pins the design-note §4
+// TestTelemetrySink_AnonNeverTripsSizeCap pins the
 // invariant: "Anon never trips it. Bounded by construction." Even with
 // a tight 512-byte cap and 1000 emits carrying nominal command paths,
 // Anon mode events MUST NOT increment DroppedOversize — Args/Flags are
@@ -427,7 +427,7 @@ func TestTelemetrySink_AnonNeverTripsSizeCap(t *testing.T) {
 
 	st := s.Stats()
 	if st.DroppedOversize != 0 {
-		t.Errorf("DroppedOversize=%d want=0 (Anon must be bounded by construction; design-note §4)", st.DroppedOversize)
+		t.Errorf("DroppedOversize=%d want=0 (Anon must be bounded by construction)", st.DroppedOversize)
 	}
 	if st.Emitted != n {
 		t.Errorf("Emitted=%d want=%d", st.Emitted, n)
@@ -559,7 +559,7 @@ func TestTelemetrySink_MissingEmitterErrs(t *testing.T) {
 }
 
 // BenchmarkTelemetrySink_Emit measures the hot-path overhead. Pins the
-// design-note §5 non-blocking contract: target ~1ms; the bench asserts
+// non-blocking contract: target ~1ms; the bench asserts
 // well below that as a smoke alarm.
 func BenchmarkTelemetrySink_Emit(b *testing.B) {
 	em := &stubEmitter{}
