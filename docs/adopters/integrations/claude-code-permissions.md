@@ -37,7 +37,7 @@ Kit defines a manifest consumption contract. A harness:
 
 1. Discovers a kit-powered CLI's manifest via `<tool> manifest` or
    `<tool> spec --format kit-manifest`.
-2. Reads the per-leaf `side_effect` (and, post-safety-ladder, the
+2. Reads the per-leaf `side_effect` (and, once commands carry it, the
    `network` axis) from each manifest entry.
 3. Resolves the (`side_effect`, `network`) tuple through kit's
    default policy table (or a custom overlay) into one of
@@ -152,7 +152,7 @@ Harnesses signal their max-supported schema version via the env var
 KIT_TOOLSPEC_SCHEMA=1.0 tlc manifest
 ```
 
-Today only `"1.0"` exists. When the safety-ladder track lands `"2.0"`
+Today only `"1.0"` exists. When kit ships `"2.0"`
 (richer side-effect enum + network axis), pinning `1.0` keeps your
 harness on the legacy vocabulary while you migrate. The rules:
 
@@ -178,7 +178,7 @@ Today:
 - `adapters.EnforceMCPRequest()` is the runtime gate.
 - `kit toolspec policy --file <yaml>` inspects merged tables.
 
-Pending kit-toolspec-safety-ladder:
+Not yet shipped:
 
 - The `network` axis is not yet populated on individual commands
   (`networkAxisFor` returns NetworkNone today). Once kit ships
@@ -194,4 +194,4 @@ Pending kit-toolspec-safety-ladder:
 - `go/ai/toolspec/policy/default.yaml` — the table itself
 - `go/ai/toolspec/adapters/mcp_enforce.go` — the gate
 - `go/ai/toolspec/adapters/mcp.go` — the MCP envelope renderer
-- `~/.ops/docs/cli-conventions-with-kit.md` §13 — manifest schema lock
+- [toolspec-api.md](../reference/toolspec-api.md) — the manifest schema

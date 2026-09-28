@@ -34,6 +34,4 @@ Needs to orient fast, pass CI, get merged without friction.
 
 ## Referenced in
 
-- [plans/2026-04-04-conventions-design.md](../plans/2026-04-04-conventions-design.md)
-  — base persona in the kit conventions hierarchy; `kit-contributor`
-  extends this one.
+- [kit-contributor.md](kit-contributor.md) — extends this persona.

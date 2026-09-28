@@ -172,9 +172,8 @@ Invalid input returns a `*bus.InvalidTopicError` carrying the
 offending topic and the reason (`errors.As`); it unwraps to the
 sentinel `bus.ErrInvalidTopic` (`errors.Is`).
 
-The vocabulary of valid sources, categories, objects, and actions
-is the source of truth at
-`~/.ops/docs/glossary-event-names.md`.
+The convention for choosing each segment, and the topics kit itself
+emits, are in [event-topics.md](../../contracts/event-topics.md).
 
 ## Enforcement modes
 

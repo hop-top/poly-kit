@@ -9,8 +9,7 @@ reference server (`cmd/kit/serve.go`), the TypeScript SDK
 (`engine/sdk/ts-kit-engine`), and the Python SDK
 (`engine/sdk/py-kit-engine`) now all describe the SAME contract.
 The protocol-of-record rules are in
-[`engine-protocol.md`](../adopters/reference/engine-protocol.md);
-the input audit is [`docs/contributors/audits/engine-sdk-drift.md`](audits/engine-sdk-drift.md).
+[`engine-protocol.md`](../adopters/reference/engine-protocol.md).
 
 Cross-SDK parity is locked by the integration test under
 `engine/sdk/parity`, which runs the same
@@ -209,8 +208,6 @@ process-local `/sync/remotes`, and returns count-based
 that runs one `kit serve` process and executes the same
 create/update/history/revert workload through both SDKs.
 
-Audit: [`docs/contributors/audits/engine-sdk-drift.md`](audits/engine-sdk-drift.md)
-
 ### Persistent versioning for `kit serve` (`engine/store`)
 
 Document history (the `/history` and `/revert` HTTP routes) is now
@@ -262,10 +259,6 @@ Operators upgrading from a pre-`engine-versioned-sqlite` build
 who saw intermittent `SQLITE_BUSY` / `SQLITE_BUSY_SNAPSHOT`
 errors under load: this release fixes the underlying contract
 violations.
-
-**References**
-
-- Spec: [`docs/contributors/specs/engine-store-versioned-sqlite.md`](specs/engine-store-versioned-sqlite.md)
 
 ### Branching public API for versioned documents (`engine/store`)
 
@@ -352,7 +345,6 @@ the SQLite backend.
 
 **References**
 
-- Spec: [`docs/contributors/specs/engine-versioned-branching.md`](specs/engine-versioned-branching.md)
 - Wire contract: `docs/engine-protocol.md` (Branching section)
 
 ### Content-addressed snapshot dedup (`engine/store`)
@@ -451,10 +443,6 @@ files and faster `DeleteHistory` on documents with shared blobs.
 - **Cross-instance / network dedup** (multiple `kit serve`
   instances sharing a blob pool). Replication semantics; belongs
   to a separate sync / replication track.
-
-**References**
-
-- Spec: [`docs/contributors/specs/engine-snapshot-dedup.md`](specs/engine-snapshot-dedup.md)
 
 ### Version pruning + liveness (`engine/store`)
 
@@ -598,7 +586,6 @@ close + reopen.
 
 **References**
 
-- Spec: [`docs/contributors/specs/engine-version-pruning.md`](specs/engine-version-pruning.md)
 - Wire contract: `docs/engine-protocol.md` ("Pruning + Liveness" section)
 
 ### Notification sinks (`go/runtime/notify`)
@@ -846,7 +833,7 @@ preserve their own prior namespace can pass
 `api.WithTopicPrefix("myapp.api.request")`.
 
 **Convention reference** — new
-[`docs/contributors/contracts/event-topics.md`](contracts/event-topics.md)
+[`docs/contracts/event-topics.md`](../contracts/event-topics.md)
 documents the 4-segment past-tense rule, the past-tense
 whitelist, when to override defaults, subscription patterns
 (prefer suffix matching for action dispatch), and adopter

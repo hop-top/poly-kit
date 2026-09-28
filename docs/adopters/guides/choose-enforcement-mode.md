@@ -84,4 +84,5 @@ silent drop downstream.
   apply the chosen mode via option, config, or env
 - [hook-cli-into-bus.md](hook-cli-into-bus.md) — publish + subscribe
   end-to-end
-- `~/.ops/docs/glossary-event-names.md` — canonical topic vocabulary
+- [event-topics.md](../../contracts/event-topics.md) — topic convention and the
+  topics kit itself emits

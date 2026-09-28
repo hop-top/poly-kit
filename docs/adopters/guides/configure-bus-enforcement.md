@@ -127,8 +127,8 @@ still receive the event. In `strict`, `Publish` returns
 ### My topic is rejected in strict mode
 
 The 4-segment, lowercase, snake_case-allowed contract is hard.
-Check your topic against the rules and the canonical vocabulary at
-`~/.ops/docs/glossary-event-names.md`.
+Check your topic against the rules and the topics kit emits in
+[event-topics.md](../../contracts/event-topics.md).
 
 ### No warnings appear in warn mode
 
@@ -173,5 +173,5 @@ Later options win; the second `WithEnforce` overrides the first.
   the right mode for your stage
 - [hook-cli-into-bus.md](hook-cli-into-bus.md) — emit your first
   event
-- `~/.ops/docs/glossary-event-names.md` — canonical vocabulary
+- [event-topics.md](../../contracts/event-topics.md) — topic convention
 - [bus-api.md](../reference/bus-api.md) — full bus reference

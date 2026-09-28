@@ -32,8 +32,8 @@ the unified [`repohost.Config`](../../../go/integrations/repohost/config.go).
   missing).
 - **Where to create**: <https://github.com/settings/tokens>
 - **Rate limits**: 5,000 req/hour authenticated; 60/hour unauth.
-  See breaker integration in
-  [`docs/contributors/audits/breaker-primitives-audit.md`](../../audits/breaker-primitives-audit.md).
+  See the [breaker reference](../../reference/breaker.md) for how
+  429s trip the breaker.
 - **Provider docs**: <https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens>
 
 ## GitLab
@@ -149,9 +149,7 @@ For Gitea, step 3 still requires `Config.BaseURL` (no SaaS default).
 
 ## See also
 
-- [`docs/contributors/specs/integrations-repo-host.md`](../../specs/integrations-repo-host.md)
-  — full spec, including the unified-types contract.
 - [`go/integrations/repohost/config.go`](../../../go/integrations/repohost/config.go)
   — `Config` shape and field semantics.
-- [`docs/contributors/audits/breaker-primitives-audit.md`](../../audits/breaker-primitives-audit.md)
+- [breaker reference](../../reference/breaker.md)
   — how the breaker integration handles 429s across drivers.

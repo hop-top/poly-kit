@@ -66,7 +66,7 @@ Do not reach for it when:
 
 ## Quick start
 
-The spec §9 wiring end to end: a webhook for criticals with retry
+The full wiring end to end: a webhook for criticals with retry
 and a dead-letter file, an email for billing warnings, a desktop
 alert on warn-and-above, an audit file, all teed off the same bus:
 
@@ -182,9 +182,6 @@ mutating `bus.Event` itself. Resolution order:
    or a number in `[SeverityDebug, SeverityCritical]`.
 3. Otherwise `SeverityInfo` (the default).
 
-See [spec §5](../../contributors/specs/notifications.md#5-severity-convention) for
-the full wire contract.
-
 ## Composition pattern
 
 Decorators are `bus.Sink`s. Outermost first:
@@ -236,13 +233,13 @@ Cases where a new sink makes sense:
   end-user notifications: welcome emails, preference-driven
   multi-channel routing, in-app inbox. The MVP does not ship one
   — a `novusink` / `couriersink` adapter is a deliberate seam,
-  see [spec §11](../../contributors/specs/notifications.md#11-out-of-scope-follow-ups).
+  not yet built.
 - A messaging product with first-party API semantics
   (Slack-incoming-webhook is already covered by `SlackTemplate`
   in `webhooksink`; a real Slack Web API client would be a new
   sink).
 - A digest / batching layer that buffers N events over a window
-  and sends one summary. Out of scope for MVP; sketched in spec §11.
+  and sends one summary. Out of scope for MVP.
 
 When you write the sink, follow the
 [guardrail integration convention](../../../go/runtime/notify/guardrails.go):
@@ -290,16 +287,13 @@ per matching event), so the per-payload cost amortises easily.
 Go-only MVP. `bus.Sink` and `bus.TeeBus` themselves are still
 Go-only (TS / Python ports of pub/sub exist but Sinks/Tee are
 marked `planned`). Notify ports are gated on the bus primitives
-porting first. See spec §3 decision #8.
+porting first, so every language shares one sink contract.
 
 ## See also
 
 - [notify-sinks.md](../reference/notify-sinks.md): webhook, email and osnotify constructors, options, templates, pipelines
 
-- [`docs/contributors/specs/notifications.md`](../../contributors/specs/notifications.md) — full spec, decisions, test plan
 - [`go/runtime/notify/README.md`](../../../go/runtime/notify/README.md) — package README
 - [`docs/adopters/concepts/bus-overview.md`](bus-overview.md) — bus pub/sub primer
-- [`docs/contributors/audits/redact-egress-audit.md`](../../contributors/audits/redact-egress-audit.md) — egress audit
-- [`docs/contributors/audits/breaker-primitives-audit.md`](../../contributors/audits/breaker-primitives-audit.md) — breaker audit
 - [redact reference](../reference/redact.md) — redact egress filtering
 - [breaker reference](../reference/breaker.md) — breaker runtime

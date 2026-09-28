@@ -15,7 +15,7 @@ You need:
   [create-cli-project.md](create-cli-project.md))
 - `hop.top/kit/go/runtime/bus` importable
 - A topic that fits `[Source].[Category].[Object].[Action]` —
-  see `~/.ops/docs/glossary-event-names.md`
+  see [event-topics.md](../../contracts/event-topics.md)
 
 For a tool named `mytool` emitting a deploy-started event, the
 topic is:
@@ -115,7 +115,7 @@ If nothing prints, check:
 ### Publish returns `bus: invalid topic ...`
 
 Strict mode rejected your topic. Either fix the topic to fit the
-4-segment shape (see `~/.ops/docs/glossary-event-names.md`) or
+4-segment shape (see [event-topics.md](../../contracts/event-topics.md)) or
 relax the mode for development — see
 [configure-bus-enforcement.md](configure-bus-enforcement.md).
 
@@ -187,4 +187,5 @@ are never allowed in published topics.
 - [choose-enforcement-mode.md](choose-enforcement-mode.md) — pick
   the right mode for your stage
 - [bus-api.md](../reference/bus-api.md) — full type and method reference
-- `~/.ops/docs/glossary-event-names.md` — canonical topic vocabulary
+- [event-topics.md](../../contracts/event-topics.md) — topic convention and the
+  topics kit itself emits

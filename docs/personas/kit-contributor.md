@@ -38,11 +38,5 @@ monorepo boundary between conventions, sdk/ts/, sdk/py/ packages.
 
 - [features/FT-0002.md](../features/FT-0002.md) — reproducible dev
   environment feature targets this persona.
-- [stories/US-0002.md](../stories/US-0002.md) — bootstrap dev
-  environment in one step.
-- [stories/US-0003.md](../stories/US-0003.md) — install AI coding
-  tools on demand.
-- [stories/US-0004.md](../stories/US-0004.md) — CI reuses dev
-  container image.
-- [plans/2026-04-04-conventions-design.md](../plans/2026-04-04-conventions-design.md)
-  — extends `oss-contributor` in the conventions hierarchy.
+- [oss-contributor.md](oss-contributor.md) — the base persona this
+  one extends.

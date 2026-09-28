@@ -49,8 +49,8 @@ tlc config paths
 SCOPE     SOURCE                                             EXISTS  WINS
 default   (built-in)                                         -       -
 system    /etc/tlc/config.yaml                               no      -
-user      /Users/jadb/.config/tlc/config.yaml                yes     -
-project   /Users/jadb/.w/.../my-repo/.tlc/config.yaml        yes     *
+user      /Users/alice/.config/tlc/config.yaml               yes     -
+project   /Users/alice/src/my-repo/.tlc/config.yaml          yes     *
 flag      (--config not set)                                 -       -
 ```
 
@@ -75,8 +75,8 @@ Add `--format json` for scripting:
 ```json
 [
   {"scope":"default","source":"(built-in)","exists":false,"wins":false},
-  {"scope":"user","source":"/Users/jadb/.config/tlc/config.yaml","exists":true,"wins":false},
-  {"scope":"project","source":"/Users/jadb/.w/repo/.tlc/config.yaml","exists":true,"wins":true}
+  {"scope":"user","source":"/Users/alice/.config/tlc/config.yaml","exists":true,"wins":false},
+  {"scope":"project","source":"/Users/alice/src/my-repo/.tlc/config.yaml","exists":true,"wins":true}
 ]
 ```
 
@@ -176,7 +176,5 @@ layers.
 
 - [cli-api-reference.md](../reference/cli-api-reference.md) — `Config inspection`
   section for `--format` and `--from` flags.
-- `~/.ops/docs/cli-conventions-with-kit.md` §7 — the layering rules
-  these paths implement.
-- `~/.ops/runbooks/debug-config-precedence.md` — full runbook for
-  resolving "why is this value winning" incidents.
+- [go/core/config](../../../go/core/config/README.md) — the `Loader`
+  whose layering these paths implement.

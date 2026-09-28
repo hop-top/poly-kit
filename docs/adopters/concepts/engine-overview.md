@@ -57,9 +57,9 @@ Long-running engines can bound history growth with opt-in pruning:
 `(type, id)` documents whose history has dead heads (from
 `Abandon`, `Merge`, or `Revert`). See
 [Pruning + liveness](#pruning--liveness)
-for the live/dead head model and the spec at
-[`docs/contributors/specs/engine-version-pruning.md`](../../contributors/specs/engine-version-pruning.md)
-for the full algorithm.
+for the live/dead head model and
+[engine-protocol.md](../reference/engine-protocol.md#pruning--liveness)
+for the routes and their semantics.
 
 ## Bus relationship
 

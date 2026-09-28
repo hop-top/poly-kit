@@ -319,8 +319,9 @@ The path data comes from the `Resolver` the CLI registers, which
 returns an ordered slice of `ResolvedPath` (`{Path, Source, Scope,
 Exists}`), highest-precedence first. There is no `wins` field: the
 winner is the first entry with `exists: true`. Every kit CLI MUST
-expose `path` and `paths`; see
-`~/.ops/docs/cli-conventions-with-kit.md` §10.
+expose `path` and `paths`, so an operator can find the winning file
+without reading source; see
+[inspect-config-paths.md](../guides/inspect-config-paths.md).
 
 ## Related pages
 

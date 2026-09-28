@@ -15,8 +15,6 @@ of record is:
 - sync remote management is process-local, in-memory state in
   `kit serve`; route names match this document.
 
-Per-row input for the 2026-05 reconciliation:
-[`docs/contributors/audits/engine-sdk-drift.md`](../../contributors/audits/engine-sdk-drift.md).
 Implementations:
 [`cmd/kit/serve.go`](../../../cmd/kit/serve.go),
 [`engine/sdk/ts-kit-engine`](../../../engine/sdk/ts-kit-engine/README.md),
@@ -528,9 +526,7 @@ curl 'http://localhost:9090/notes/abc/history?topology=1'
 ## Pruning + Liveness
 
 Two additive routes plus a query parameter on `/branches`. Surfaces
-the prune + liveness public API on `VersionedDocumentStore` (track
-`engine-version-pruning`, spec
-`docs/contributors/specs/engine-version-pruning.md` §5). Schema gains an additive
+the prune + liveness public API on `VersionedDocumentStore`. Schema gains an additive
 `live` column on the `versions` table; existing rows take the
 default (`live=true`) and existing linear callers see no behavioral
 difference.
@@ -654,7 +650,7 @@ GET /:type/:id/branches
 GET /:type/:id/branches?live=1
 ```
 
-Default behavior unchanged from the `engine-versioned-branching`
+Default behavior unchanged from the branching
 section above: returns ALL heads (live and dead) ordered most-
 recent-first. The `?live=1` query parameter filters to live heads
 only — the operationally meaningful tip set after `Abandon` /

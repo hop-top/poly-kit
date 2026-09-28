@@ -132,8 +132,8 @@ with the kit `toolspec.Manifest` schema, NOT with your binary's
 semver. Semver describes the binary's behaviour; `schema_version`
 describes the manifest layout.
 
-Today every kit-powered CLI is on `"1.0"`. When the safety-ladder
-track ships `"2.0"` (richer side-effect enum + populated network
+Today every kit-powered CLI is on `"1.0"`. When kit ships
+`"2.0"` (richer side-effect enum + populated network
 axis), upgrade your call:
 
 ```go
@@ -214,5 +214,5 @@ Or run the round-trip test against your own fixtures (see
   other side of the integration
 - [Claude Code worked example](claude-code-permissions.md) — what a
   harness does with your manifest
-- `~/.ops/docs/cli-conventions-with-kit.md` §13 — the manifest
-  schema lock
+- [toolspec-api.md](../reference/toolspec-api.md) — the manifest
+  schema

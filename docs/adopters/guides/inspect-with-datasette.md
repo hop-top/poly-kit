@@ -266,6 +266,5 @@ Tracked separately. Until then, this recipe is the canonical path.
 
 - [Datasette docs](https://docs.datasette.io/)
 - [`docs/adopters/concepts/engine-overview.md`](../concepts/engine-overview.md) — what `kit serve` writes to disk
-- [`docs/contributors/specs/engine-store-versioned-sqlite.md`](../../contributors/specs/engine-store-versioned-sqlite.md) — schema for `versions`, `version_parents`, `snapshots`
 - SQLite driver: kit uses `modernc.org/sqlite`, which writes standard SQLite files, so Datasette reads them as-is
 - [`docs/adopters/guides/inspect-config-paths.md`](inspect-config-paths.md) — sibling debugging recipe for kit configuration

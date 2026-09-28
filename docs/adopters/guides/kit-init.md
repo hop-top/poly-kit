@@ -53,7 +53,7 @@ Worked example — augment an existing hop worktree at tier 2
 (lint + CI only), no GitHub side-effects:
 
 ```bash
-cd ~/.w/labspace/myproj/hops/fix/widgets
+cd ~/src/myproj/hops/fix/widgets
 kit init --mode augment --tier 2 --no-github -y
 ```
 

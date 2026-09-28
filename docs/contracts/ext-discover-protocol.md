@@ -204,5 +204,3 @@ Compile, save the resulting JS as `kit-scrape` with a Node shebang,
   — Go reference implementation of the host side.
 - [`go/ai/ext/ext.go`](../../go/ai/ext/ext.go) — `Extension` /
   `Capability` / `Metadata` types.
-- [extending-kit.md](../workflows/extending-kit.md) — broader extension model
-  (registry / hook / discover / config).

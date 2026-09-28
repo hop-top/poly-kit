@@ -123,7 +123,7 @@ tree: it resolves to the hop-aware path, which adds the two
 behaviors below.
 
 ```bash
-cd ~/.w/labspace/myproj/hops/fix/widgets
+cd ~/src/myproj/hops/fix/widgets
 kit init --mode augment --tier 2 --from cli-go --no-github -y
 ```
 
