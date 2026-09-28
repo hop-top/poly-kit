@@ -270,6 +270,18 @@ do the same when their block names an `issuer`; with no issuer or no
 URL audience there is no document, and the challenge is plain
 `Bearer`. stdio is unchanged: the spawning process is the trust.
 
+A token that is valid but lacks a scope a tool declares under
+`kit/permissions` is answered `403` rather than with a tool result, so
+the client can ask for a token that has it and retry:
+
+```http
+HTTP/1.1 403 Forbidden
+WWW-Authenticate: Bearer error="insufficient_scope", scope="items:write", resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"
+```
+
+Every other refusal (`permission_denied`, `rate_limited`, ...) stays an
+`isError` tool result: a new token would not change it.
+
 Mounting the surface yourself, `mcpsdk.WithProtectedResource(pr, fn)`
 does the same in front of `mcpsdk.Mount` or `Handler`, with `pr` from
 `api.NewProtectedResource` and `fn` a verifier from

@@ -541,24 +541,11 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 
 	leaf, err := b.resolveLeaf(inv.Path)
 	ctx = b.auditContext(ctx, leaf)
+	if err == nil {
+		err = b.callerIndependentGates(inv, leaf)
+	}
 	if err != nil {
 		return nil, b.refuse(ctx, inv, err)
-	}
-	if !leaf.Enabled[surface] {
-		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",
-			ErrSurfaceNotEnabled, leaf.PathKey(), surface))
-	}
-	if reason := notInvocableReason(leaf); reason != cmdreflect.ReasonNone {
-		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s is %s (%s)",
-			ErrNotInvocable, leaf.PathKey(), surface, reason, reason.Explain()))
-	}
-	if leaf.Class.AuthRequired && surface.remote() && !inv.Meta.Authenticated() {
-		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s requires an authenticated caller",
-			ErrAuthRefused, leaf.PathKey(), surface))
-	}
-	if !b.cfg.policy.Allowed(leaf.Class, surface) {
-		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",
-			ErrDestructiveBlocked, leaf.PathKey(), surface))
 	}
 	// Slot 6, the permission gate: the built-in scope check
 	// (scope.go), then the configured PermissionFunc. Each can only
@@ -602,6 +589,58 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 		}
 	}
 	return adm, nil
+}
+
+// callerIndependentGates is slots 2–5 for a resolved leaf: surface
+// enablement, invocability, authentication required, the destructive
+// ceiling. It returns the refusal, unaudited, or nil.
+func (b *Bridge) callerIndependentGates(inv Invocation, leaf *Leaf) error {
+	surface := inv.Meta.Surface
+	if !leaf.Enabled[surface] {
+		return fmt.Errorf("%w: %s on %s", ErrSurfaceNotEnabled, leaf.PathKey(), surface)
+	}
+	if reason := notInvocableReason(leaf); reason != cmdreflect.ReasonNone {
+		return fmt.Errorf("%w: %s on %s is %s (%s)",
+			ErrNotInvocable, leaf.PathKey(), surface, reason, reason.Explain())
+	}
+	if leaf.Class.AuthRequired && surface.remote() && !inv.Meta.Authenticated() {
+		return fmt.Errorf("%w: %s on %s requires an authenticated caller",
+			ErrAuthRefused, leaf.PathKey(), surface)
+	}
+	if !b.cfg.policy.Allowed(leaf.Class, surface) {
+		return fmt.Errorf("%w: %s on %s", ErrDestructiveBlocked, leaf.PathKey(), surface)
+	}
+	return nil
+}
+
+// ScopeRefusal answers the built-in scope check — slot 6's first
+// decider — for inv ahead of Admit, for a transport that must answer
+// a scope refusal in its own HTTP response while a protocol stack
+// beneath it answers everything else in the protocol's envelope: the
+// MCP HTTP surfaces answer it 403 with the RFC 6750 challenge before
+// the MCP SDK reads the call.
+//
+// It returns nil when the scope check admits the call, and when an
+// earlier slot (1–5) would refuse it: that call meets every gate, in
+// order, where the transport runs it. Otherwise it audits the refusal
+// as Admit does and returns it — an [*InsufficientScopeError] wrapping
+// [ErrInsufficientScope], naming the scopes. It runs, charges and
+// counts nothing, and asks no [PermissionFunc].
+func (b *Bridge) ScopeRefusal(ctx context.Context, inv Invocation) error {
+	if inv.Meta.Surface == "" {
+		inv.Meta.Surface = SurfaceLib
+	}
+	if inv.Meta.RequestedAt.IsZero() {
+		inv.Meta.RequestedAt = time.Now()
+	}
+	leaf, err := b.resolveLeaf(inv.Path)
+	if err != nil || b.callerIndependentGates(inv, leaf) != nil {
+		return nil
+	}
+	if err := scopeCheck(inv.Meta, leaf); err != nil {
+		return b.refuse(b.auditContext(ctx, leaf), inv, err)
+	}
+	return nil
 }
 
 // Replayed reports whether the admission is an idempotency replay: it

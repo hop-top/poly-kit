@@ -75,7 +75,14 @@ func mcpCommands(r *cli.Root) {
 	}
 	linger.Flags().Duration("for", time.Minute, "how long to wait")
 	cli.SetSideEffect(linger, cli.SideEffectRead)
-	r.Cmd.AddCommand(ping, nuke, secret, deploy, shell, linger)
+	locker := &cobra.Command{
+		Use:         "locker",
+		Short:       "Needs the items:write scope",
+		Annotations: map[string]string{"kit/permissions": "items:write"},
+		RunE:        func(cmd *cobra.Command, _ []string) error { cmd.Print("opened"); return nil },
+	}
+	cli.SetSideEffect(locker, cli.SideEffectRead)
+	r.Cmd.AddCommand(ping, nuke, secret, deploy, shell, linger, locker)
 }
 
 // mcpRun is one background `test serve mcp ...` invocation.

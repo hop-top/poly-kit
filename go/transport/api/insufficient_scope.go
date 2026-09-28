@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -47,6 +48,35 @@ func InsufficientScopeChallenge(scopes []string) string {
 		challenge += `, scope="` + strings.Join(valid, " ") + `"`
 	}
 	return challenge
+}
+
+// ScopeChallenge is [InsufficientScopeChallenge] for a request r: when
+// a [ProtectedResource.Guard] passed r, the challenge also names the
+// resource's metadata document (resource_metadata, RFC 9728 §5.1), as
+// the MCP authorization spec asks of a 403 insufficient_scope, so a
+// client stepping up its authorization finds the authorization server
+// from the refusal alone.
+func ScopeChallenge(r *http.Request, scopes []string) string {
+	challenge := InsufficientScopeChallenge(scopes)
+	if r == nil {
+		return challenge
+	}
+	if p := ProtectedResourceFrom(r.Context()); p != nil {
+		challenge += fmt.Sprintf(", resource_metadata=%q", p.MetadataURL())
+	}
+	return challenge
+}
+
+// BearerPresented reports whether r carries a bearer credential: an
+// Authorization header of the Bearer scheme (RFC 6750 §2.1). A
+// refusal a new token could lift — insufficient_scope — is answered
+// with a bearer challenge only to a caller who presented one.
+func BearerPresented(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	scheme, _, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+	return ok && strings.EqualFold(scheme, "Bearer")
 }
 
 // WriteInsufficientScope answers w with 403 [CodeInsufficientScope]

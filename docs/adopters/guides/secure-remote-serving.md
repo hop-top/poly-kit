@@ -514,7 +514,9 @@ Www-Authenticate: Bearer error="insufficient_scope", scope="widgets:admin"
 The other surfaces answer the same class in their own protocol:
 Connect `permission_denied` over RPC, an MCP tool result with
 `isError` and `_meta["hop.top/refusal"].code` of
-`insufficient_scope`, and `DENIED` over the socket. In Go,
+`insufficient_scope` (over HTTP, a caller that sent a bearer token gets
+this `403` and challenge instead, as the MCP authorization spec asks),
+and `DENIED` over the socket. In Go,
 `errors.Is(err, cmdsurface.ErrInsufficientScope)` holds, and so does
 `errors.Is(err, cmdsurface.ErrPermissionDenied)`.
 

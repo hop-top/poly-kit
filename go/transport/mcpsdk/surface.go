@@ -355,6 +355,10 @@ func (s *Surface) Hide(pattern string) *Surface {
 // alongside every standard method and they inherit the same transport
 // checks.
 //
+// A tools/call whose bearer token lacks a scope the tool declares is
+// answered at the HTTP layer, ahead of the SDK: 403 with the RFC 6750
+// insufficient_scope challenge, as the MCP authorization spec asks.
+//
 // With WithOriginAllowlist the handler is wrapped in Origin
 // validation. The SDK's own DNS-rebinding check on loopback
 // connections is always in force beneath it.
@@ -368,9 +372,9 @@ func (s *Surface) Handler() http.Handler {
 	}
 	if s.cfg.stateless {
 		opts.Stateless = true
-		return s.originGuard(s.protect(mcp.NewStreamableHTTPHandler(getServer, &opts)))
+		return s.originGuard(s.protect(s.scopeChallenge(mcp.NewStreamableHTTPHandler(getServer, &opts))))
 	}
-	return s.originGuard(s.protect(newRevisionRouter(getServer, opts)))
+	return s.originGuard(s.protect(s.scopeChallenge(newRevisionRouter(getServer, opts))))
 }
 
 // Mount registers the streamable HTTP handler on the router at the

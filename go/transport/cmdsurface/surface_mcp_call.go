@@ -96,7 +96,7 @@ func (h *mcpHandler) handleToolsCall(w http.ResponseWriter, req *http.Request, r
 			writeJSONRPCResult(w, rpc.ID, errorResultBlock(err.Error()), http.StatusOK)
 			return
 		default:
-			writeJSONRPCResult(w, rpc.ID, mcpRefusalBlock(err), http.StatusOK)
+			writeJSONRPCResult(w, rpc.ID, mcpRefusalBlock(err), mcpRefusalStatus(w, req, err))
 			return
 		}
 	}
@@ -145,4 +145,20 @@ func errorResultBlock(msg string) map[string]any {
 		},
 		"isError": true,
 	}
+}
+
+// mcpRefusalStatus is the HTTP status a refused tools/call is answered
+// with alongside its isError result: 403 for a scope refusal of a
+// caller who presented a bearer token, with the RFC 6750 §3.1
+// challenge the MCP authorization spec asks for set on w (the scopes
+// the tool needs, and resource_metadata behind a protected resource),
+// so the client can step up its authorization; 200 for every other
+// refusal, which a new token cannot lift.
+func mcpRefusalStatus(w http.ResponseWriter, req *http.Request, err error) int {
+	if !errors.Is(err, ErrInsufficientScope) || !api.BearerPresented(req) {
+		return http.StatusOK
+	}
+	scopes, _ := RequiredScopes(err)
+	w.Header().Set("WWW-Authenticate", api.ScopeChallenge(req, scopes))
+	return http.StatusForbidden
 }

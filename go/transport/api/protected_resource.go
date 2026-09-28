@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -120,6 +121,10 @@ func (p *ProtectedResource) Handler() http.Handler {
 // at [ProtectedResource.MetadataPath] to anyone, and every other
 // request must pass fn, refused with the resource's challenge. opts
 // apply to the Auth middleware; a challenge among them is replaced.
+//
+// A request it passes carries the resource on its context
+// ([ProtectedResourceFrom]), so a later refusal names the same
+// metadata document ([ScopeChallenge]).
 func (p *ProtectedResource) Guard(fn AuthFunc, opts ...AuthOption) Middleware {
 	doc := p.Handler()
 	path := p.MetadataPath()
@@ -131,7 +136,19 @@ func (p *ProtectedResource) Guard(fn AuthFunc, opts ...AuthOption) Middleware {
 				doc.ServeHTTP(w, r)
 				return
 			}
-			authed.ServeHTTP(w, r)
+			authed.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), protectedResourceKey{}, p)))
 		})
 	}
+}
+
+type protectedResourceKey struct{}
+
+// ProtectedResourceFrom returns the protected resource whose
+// [ProtectedResource.Guard] passed the request ctx belongs to, or nil.
+func ProtectedResourceFrom(ctx context.Context) *ProtectedResource {
+	if ctx == nil {
+		return nil
+	}
+	p, _ := ctx.Value(protectedResourceKey{}).(*ProtectedResource)
+	return p
 }

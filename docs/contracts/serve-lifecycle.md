@@ -1899,7 +1899,9 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   resource_metadata="<origin>/.well-known/oauth-protected-resource<path>"`.
   This is the MCP authorization flow at the edge; a client refused
   there finds the authorization server. Without an issuer or a URL
-  audience there is no document and the challenge stays `Bearer`.
+  audience there is no document and the challenge stays `Bearer`. A
+  `403 insufficient_scope` behind the resource names the same document
+  (`api.ScopeChallenge`).
   `mcpsdk.WithProtectedResource` and `cmdsurface.WithMCPProtectedResource`
   give a hand-mounted surface the same answers, pinned by the wire
   fixture `go/transport/api/testdata/protected-resource-wire.json`.
@@ -2086,7 +2088,7 @@ given in [Permission](#permission) and by each surface.
 | Code                     | Slot     | HTTP                                  | Connect             | MCP                        | Socket              | Class (exit)       |
 |--------------------------|----------|---------------------------------------|---------------------|----------------------------|---------------------|--------------------|
 | `unauthenticated`        | edge, 4  | `401` + `WWW-Authenticate`            | `Unauthenticated`   | edge: `401`; 4: `isError`  | `UNAUTHENTICATED`   | `UNAUTHORIZED` (5) |
-| `insufficient_scope`     | 6        | `403` + `WWW-Authenticate: Bearer error="insufficient_scope", scope="…"` | `PermissionDenied` | `isError`      | `DENIED`            | `UNAUTHORIZED` (5) |
+| `insufficient_scope`     | 6        | `403` + `WWW-Authenticate: Bearer error="insufficient_scope", scope="…"` | `PermissionDenied` | bearer over HTTP: `403` + the challenge; else `isError` | `DENIED` | `UNAUTHORIZED` (5) |
 | `rate_limited`           | 7        | `429` + `Retry-After`                 | `ResourceExhausted` | `isError`                  | `RATE_LIMITED`      | `RATE_LIMITED` (64)|
 | `quota_exceeded`         | 9        | `429` + `Retry-After` (window reset)  | `ResourceExhausted` | `isError`                  | `QUOTA_EXCEEDED`    | `RATE_LIMITED` (64)|
 | `overloaded`             | 11       | `503` + `Retry-After`                 | `Unavailable`       | `isError`                  | `OVERLOADED`        | `TRANSIENT` (6)    |
@@ -2111,10 +2113,24 @@ Per surface:
   decided on the invocation plane for a known tool is a `tools/call`
   result with `isError: true`, its text starting with the code, and a
   result `_meta` entry `hop.top/refusal` of `{"code", "retry_after_ms"}`.
-  An unknown tool stays a JSON-RPC invalid-params error. Over HTTP,
-  `insufficient_scope` SHOULD instead be answered `403` with the scope
-  challenge once MCP authorization is in force, because that is the
-  step-up signal the MCP authorization specification defines.
+  An unknown tool stays a JSON-RPC invalid-params error.
+  `insufficient_scope` for a `tools/call` over HTTP whose caller
+  presented a bearer token is instead answered `403` with
+  `WWW-Authenticate: Bearer error="insufficient_scope", scope="<the
+  tool's kit/permissions>"`, plus `resource_metadata="<document URL>"`
+  behind a protected resource (RFC 6750 §3.1, RFC 9728 §5.1): the
+  runtime insufficient-scope answer of the MCP authorization
+  specification, the step-up signal a client acts on. The mcp service
+  and a hand-mounted `mcpsdk` surface decide it at the HTTP layer,
+  before the MCP SDK reads the call, through
+  `cmdsurface.Bridge.ScopeRefusal` — slots 1–5 then the scope check,
+  audited, running and charging nothing — and answer with a JSON-RPC
+  error for the call's id whose `data` carries the code and the scopes.
+  The deprecated `MountMCP` sets the status and challenge beside its
+  `isError` result. Every other refusal stays an `isError` result at
+  `200`, because a new token cannot lift it, and so does a scope
+  refusal of a caller that presented no bearer token (unverified, or
+  verified by a client certificate), which has no token to step up.
 - **Socket.** `Error.code` is the socket code; a retryable class
   carries `retry_after_ms`. The socket has no body limit class: its
   1 MiB line bound ends the connection instead.

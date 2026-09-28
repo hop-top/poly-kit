@@ -168,3 +168,38 @@ func TestMCPServiceHTTPAuthorizationFlow(t *testing.T) {
 	require.False(t, isErr, text)
 	assert.Equal(t, "unlocked", text)
 }
+
+// TestMCPServiceHTTPInsufficientScopeChallenge pins the runtime
+// insufficient-scope answer of the MCP authorization spec on the mcp
+// service under services.mcp.auth.mode: oidc: a tools/call whose token
+// lacks a scope the tool declares is 403 with WWW-Authenticate naming
+// error="insufficient_scope", the scope, and the protected resource
+// metadata document.
+func TestMCPServiceHTTPInsufficientScopeChallenge(t *testing.T) {
+	idp := newOIDCProvider(t)
+	addr := freeAddr(t)
+	resource := "http://" + addr + "/mcp"
+	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", addr},
+		func(r *cli.Root) {
+			r.Viper.Set("services.mcp.auth.mode", "oidc")
+			r.Viper.Set("services.mcp.auth.oidc.issuer", idp.URL)
+			r.Viper.Set("services.mcp.auth.oidc.audience", resource)
+		})
+
+	req, err := http.NewRequest(http.MethodPost, endpoint,
+		strings.NewReader(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"locker"}}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+idp.token(t, resource))
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	cs, err := oauthex.ParseWWWAuthenticate(resp.Header.Values("WWW-Authenticate"))
+	require.NoError(t, err)
+	require.Len(t, cs, 1)
+	assert.Equal(t, "insufficient_scope", cs[0].Params["error"])
+	assert.Equal(t, "items:write", cs[0].Params["scope"])
+	assert.Equal(t, "http://"+addr+"/.well-known/oauth-protected-resource/mcp", cs[0].Params["resource_metadata"])
+}

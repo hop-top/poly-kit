@@ -57,6 +57,12 @@ var (
 // claim the client made is provenance for Extra, not a principal.
 // Without WithAuthenticated, the Established fn returns is what the
 // kit/auth-required gate reads.
+//
+// fn, and the WithAuthenticated predicate, are also asked about a
+// tools/list request, and, over HTTP, about a tools/call before the
+// SDK reads it (the insufficient_scope challenge). That second request
+// carries the HTTP headers in Extra but no Session, so fn reads the
+// caller from the HTTP layer, not the session.
 func WithCallMeta(fn func(ctx context.Context, req *mcp.CallToolRequest) cmdsurface.Meta) Option {
 	return func(c *config) { c.callMeta = fn }
 }

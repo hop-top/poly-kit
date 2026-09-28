@@ -311,3 +311,52 @@ func TestScopeCheck_WireCodes(t *testing.T) {
 		t.Errorf("projection translation = %v", got)
 	}
 }
+
+// TestScopeRefusal pins the scope check a transport asks ahead of
+// Admit: it refuses, audited, what Admit's scope check refuses; it
+// answers nil for a call an earlier slot refuses (that call meets its
+// gates, in order, where it runs), for a call the check admits, and
+// for an unknown path; it runs and asks the PermissionFunc nothing.
+func TestScopeRefusal(t *testing.T) {
+	sink := &admitSink{}
+	runs, asked := 0, 0
+	b := New(scopeTree(),
+		WithRunner(countingRunner(&runs, nil)),
+		WithPermission(func(context.Context, Meta, *Leaf) PermissionDecision {
+			asked++
+			return PermissionDecision{Allowed: true}
+		}),
+		WithSinks(SinkSpec{Sink: sink, OnError: true}),
+	)
+	b.Expose("*", SurfaceMCP)
+	at := func(path string, m Meta) Invocation {
+		return Invocation{Path: []string{"items", path}, Meta: m}
+	}
+
+	err := b.ScopeRefusal(context.Background(), at("peek", verified(SurfaceMCP, "items:other")))
+	var scopeErr *InsufficientScopeError
+	if !errors.As(err, &scopeErr) || !errors.Is(err, ErrInsufficientScope) {
+		t.Fatalf("missing scope: err = %v, want an *InsufficientScopeError", err)
+	}
+	for name, inv := range map[string]Invocation{
+		"scope held":         at("peek", verified(SurfaceMCP, "items:read")),
+		"auth-required (4)":  at("vault", Meta{Surface: SurfaceMCP}),
+		"destructive (5)":    at("wipe", verified(SurfaceMCP, "")),
+		"unknown (1)":        at("nope", verified(SurfaceMCP, "")),
+		"not enabled (2)":    {Path: []string{"items", "peek"}, Meta: verified(SurfaceREST, "")},
+		"declares no scopes": at("list", verified(SurfaceMCP, "")),
+	} {
+		if err := b.ScopeRefusal(context.Background(), inv); err != nil {
+			t.Errorf("%s: err = %v, want nil", name, err)
+		}
+	}
+	sink.mu.Lock()
+	got := append([]error(nil), sink.errs...)
+	sink.mu.Unlock()
+	if len(got) != 1 || !errors.Is(got[0], ErrInsufficientScope) {
+		t.Fatalf("audited errors = %v, want the one scope refusal", got)
+	}
+	if runs != 0 || asked != 0 {
+		t.Fatalf("runs = %d, PermissionFunc asked %d times; want neither", runs, asked)
+	}
+}

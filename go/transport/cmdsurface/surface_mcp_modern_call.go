@@ -134,8 +134,9 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 			writeJSONRPCError(w, rpc.ID, mcpErrInvalidParams, "unknown tool: "+p.Name, http.StatusOK)
 		default:
 			// ErrDestructiveBlocked and every other invoke failure are
-			// complete isError results at HTTP 200, as on legacy.
-			writeJSONRPCResult(w, rpc.ID, h.stampResultEnvelope(mcpRefusalBlock(err)), http.StatusOK)
+			// complete isError results at HTTP 200, as on legacy; a
+			// bearer caller's scope refusal is 403 with its challenge.
+			writeJSONRPCResult(w, rpc.ID, h.stampResultEnvelope(mcpRefusalBlock(err)), mcpRefusalStatus(w, req, err))
 		}
 		return
 	}
