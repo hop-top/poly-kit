@@ -1436,7 +1436,7 @@ Deprecated — frozen, fixes only, no new options:
 | Deprecated | Use instead | Remains for, until removal |
 |------------|-------------|----------------------------|
 | `MountREST`, `RESTOption`, `WithREST*` | `MountProjection` on a bare bridge, `cli.WithAPI` on a kit root (both the `/v1/commands` projection); `MountRPC` for a call envelope | existing callers |
-| `MountMCP`, `MCPOption`, `WithMCP*` | `mcpserve.With` (`serve mcp`); `mcpsdk.Mount` / `Handler` / `ServeStdio` on a bare bridge | existing callers; the 2026-07-28 revision over HTTP until the `mcp` service serves it |
+| `MountMCP`, `MCPOption`, `WithMCP*` | `mcpserve.With` (`serve mcp`); `mcpsdk.Mount` / `Handler` / `ServeStdio` on a bare bridge | existing callers |
 | `CloudRunSurfaces.REST`, `CloudRunSurfaces.MCP` | `CloudRunSurfaces.Projection`; `mcpsdk.Mount` in a `CloudRunConfig.Mounts` entry | existing callers |
 | `Config.MCP`, `MCPConfig` (the `mcp:` block) | `services.mcp.*` on the `mcp` service | existing configs; nothing mounts from it |
 
@@ -1453,7 +1453,7 @@ does:
 | REST + MCP: `examples/cmdsurface` off both mounts | done: `MountProjection` and `mcpsdk.Mount`, e2e-tested |
 | MCP: `RunCloudRun` can serve the SDK surface (this package cannot import `mcpsdk`) | done: `CloudRunConfig.Mounts`; `examples/cmdsurface-faas` mounts `mcpsdk` through it |
 | MCP: the wire-fixture generator needs no exported mount | done: it mounts through the unexported handlers, and a test refuses the exported names in it |
-| MCP: the `mcp` service serves the 2026-07-28 revision over HTTP (its stateful transport refuses it today; `MountMCP` serves both revisions on one path) | open |
+| MCP: the `mcp` service serves the 2026-07-28 revision over HTTP | done: sessions through 2025-11-25 and 2026-07-28 statelessly on one endpoint, as `MountMCP` serves both revisions on one path |
 | MCP: Origin validation on the `mcp` service, replacing `WithMCPOriginAllowlist` | open: arrives with the served-command Origin check (`services.mcp.origin_check.allow`) |
 
 `MountSSE` is not deprecated. The projection's `<route>/stream` twins
