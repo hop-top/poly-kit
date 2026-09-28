@@ -384,18 +384,46 @@ func TestMCPServiceHTTPStopsPromptlyWithAnUnusedConnection(t *testing.T) {
 	assert.Less(t, time.Since(start), 2*time.Second, "stop waited on a connection that carried no request")
 }
 
-// TestMCPServiceHTTPStopsPromptlyWithAStalledHeader: a client that
-// sends part of a request's headers and then stalls does not hold the
-// stop for the read-header timeout, whether the stall opens the
-// connection or follows a request it already carried.
-func TestMCPServiceHTTPStopsPromptlyWithAStalledHeader(t *testing.T) {
-	const partial = "POST /mcp HTTP/1.1\r\nHost: stalled\r\nContent-Type: appl"
+// TestMCPServiceHTTPKeepsAliveAcrossRequests: releasing a stalled
+// read on stop must not end reads while the service runs — every
+// request on one kept-alive connection is answered.
+func TestMCPServiceHTTPKeepsAliveAcrossRequests(t *testing.T) {
+	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
+	u, err := url.Parse(endpoint)
+	require.NoError(t, err)
+	conn, err := net.Dial("tcp", u.Host)
+	require.NoError(t, err)
+	defer conn.Close()
+	br := bufio.NewReader(conn)
+	for i := range 200 {
+		_, err = io.WriteString(conn, "GET /elsewhere HTTP/1.1\r\nHost: kept\r\n\r\n")
+		require.NoError(t, err, "request %d", i)
+		resp, err := http.ReadResponse(br, nil)
+		require.NoError(t, err, "request %d", i)
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		require.Equal(t, http.StatusNotFound, resp.StatusCode, "request %d", i)
+	}
+}
+
+// TestMCPServiceHTTPStopsPromptlyWithAStalledRequest: a client that
+// sends part of a request and then stalls does not hold the stop —
+// not for the read-header timeout when it stalls mid-header, whether
+// that opens the connection or follows a request it already carried,
+// and not for the whole stop budget when it stalls mid-body.
+func TestMCPServiceHTTPStopsPromptlyWithAStalledRequest(t *testing.T) {
+	const midHeader = "POST /mcp HTTP/1.1\r\nHost: stalled\r\nContent-Type: appl"
+	const midBody = "POST /mcp HTTP/1.1\r\nHost: stalled\r\n" +
+		"Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\n" +
+		"Content-Length: 200\r\n\r\n{\"jsonrpc\":"
 	for _, tc := range []struct {
-		name  string
-		first string // a complete request sent before the stall, if any
+		name    string
+		first   string // a complete request sent before the stall, if any
+		partial string
 	}{
-		{name: "first request"},
-		{name: "after a request", first: "GET /elsewhere HTTP/1.1\r\nHost: stalled\r\n\r\n"},
+		{name: "mid-header, first request", partial: midHeader},
+		{name: "mid-header, after a request", first: "GET /elsewhere HTTP/1.1\r\nHost: stalled\r\n\r\n", partial: midHeader},
+		{name: "mid-body", partial: midBody},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			run, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
@@ -412,7 +440,7 @@ func TestMCPServiceHTTPStopsPromptlyWithAStalledHeader(t *testing.T) {
 				_, _ = io.Copy(io.Discard, resp.Body)
 				resp.Body.Close()
 			}
-			_, err = io.WriteString(conn, partial)
+			_, err = io.WriteString(conn, tc.partial)
 			require.NoError(t, err)
 			// A request on another connection: once it is answered, the
 			// server has accepted the stalled one and is reading from it.
@@ -427,7 +455,7 @@ func TestMCPServiceHTTPStopsPromptlyWithAStalledHeader(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("serve did not return after cancellation")
 			}
-			assert.Less(t, time.Since(start), 2*time.Second, "stop waited on a connection stalled mid-header")
+			assert.Less(t, time.Since(start), 2*time.Second, "stop waited on a stalled request")
 		})
 	}
 }

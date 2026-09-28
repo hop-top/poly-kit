@@ -176,7 +176,8 @@ func (h *httpServing) trackUnread(c net.Conn, st http.ConnState) {
 
 // closeUnread closes the connections that carry no complete request,
 // so Shutdown does not wait on them. Stopping has already canceled every
-// request in flight; one arriving now would not be served.
+// request in flight (and releaseOnStop has ended any body read); one
+// arriving now would not be served.
 func (h *httpServing) closeUnread() {
 	h.mu.Lock()
 	conns := make([]net.Conn, 0, len(h.unread))
@@ -196,13 +197,14 @@ func ignoreClosed(err error) error {
 	return err
 }
 
-// middleware is the stack in front of the SDK handler: request ids,
-// request logging, panic recovery, the adopter's Auth when set, and
-// the call header last, so it records what the layers before it
-// established.
+// middleware is the stack in front of the SDK handler: the stop
+// release first, then request ids, request logging, panic recovery,
+// the adopter's Auth when set, and the call header last, so it records
+// what the layers before it established.
 func (h *httpServing) middleware() api.Middleware {
 	logger := kitlog.New(h.svc.root.Viper)
 	mws := []api.Middleware{
+		releaseOnStop(),
 		api.RequestID(),
 		api.Logger(logger.Info),
 		api.Recovery(func(v any, r *http.Request) {
@@ -215,6 +217,28 @@ func (h *httpServing) middleware() api.Middleware {
 	}
 	mws = append(mws, mcpCallRecorder(authed))
 	return api.Chain(mws...)
+}
+
+// releaseOnStop ends the read of a request body when the request's
+// context ends, which stopping the service does. A client that sends
+// headers and then stalls mid-body would otherwise hold the handler in
+// that read, and Shutdown with it, for the whole stop budget: canceling
+// the context does not interrupt a blocked read, a read deadline does.
+//
+// It must wrap the server's own ResponseWriter, so it sits first. The
+// release is withdrawn when the handler returns, before the server
+// reads the connection's next request.
+func releaseOnStop() api.Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rc := http.NewResponseController(w)
+			release := context.AfterFunc(r.Context(), func() {
+				_ = rc.SetReadDeadline(time.Now())
+			})
+			defer release()
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // mcpCallRecorder writes [mcpCallHeader] from what the layers before
