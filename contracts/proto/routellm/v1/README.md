@@ -12,10 +12,11 @@ The `routellm.v1` gRPC surface an LLM router exposes: `RouterService` (get/updat
 ## Quick start
 
 ```sh
-make proto
+make proto        # regenerate every proto module
+make proto-check  # lint, regenerate, fail when committed stubs differ
 ```
 
-Runs `buf generate` here (and in `../../crud/v1`); `buf.gen.yaml` writes Go protobuf and gRPC stubs to `gen/go/` with `paths=source_relative`. Generated files are committed.
+`make proto` runs `buf generate` here (and in the other proto modules); `buf.gen.yaml` writes Go protobuf and gRPC stubs to `gen/go/` with `paths=source_relative`, plugins pinned (`protocolbuffers/go` to `go.mod`, `grpc/go` to the release that produced `gen/go`). Generated files are committed; CI runs `make proto-check`.
 
 ## Contract
 

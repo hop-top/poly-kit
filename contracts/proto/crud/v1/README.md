@@ -12,20 +12,23 @@ The `crud.v1.EntityService` wire contract: generic Create/Get/List/Update/Delete
 ## Quick start
 
 ```sh
-make proto
+make proto        # regenerate every proto module
+make proto-check  # lint, regenerate, fail when committed stubs differ
 ```
 
-Runs `buf generate` in this directory (and in `../../routellm/v1`). Generated files are committed so `go get` works without `buf`.
+`make proto` runs `buf generate` in this directory (and in the other proto modules). Generated files are committed so `go get` works without `buf`. CI runs `make proto-check`.
 
 ## Contract
 
-`crud.proto` defines `EntityService` and its request/response messages; `ListRequest` carries `limit`, `offset` and `sort`. `buf.gen.yaml` emits, with managed mode on:
+`crud.proto` defines `EntityService` and its request/response messages; `ListRequest` carries `limit`, `offset` and `sort`. `buf.gen.yaml` emits, with managed mode on and every plugin pinned (Go plugins to `go.mod`, `es` to `sdk/ts/package.json`) so a regeneration is reproducible:
 
-| Output | Plugin | Where |
-|--------|--------|-------|
+| Output | Plugin (pinned) | Where |
+|--------|-----------------|-------|
 | `crud.pb.go` | `buf.build/protocolbuffers/go` | here, `paths=source_relative` |
 | `crudv1connect/crud.connect.go` | `buf.build/connectrpc/go` | here |
 | `crud_pb.ts`, `crud_connect.ts` | `buf.build/bufbuild/es`, `buf.build/connectrpc/es` | `sdk/ts/src/gen/` |
+
+Bump a pin in `buf.gen.yaml` together with the dependency it tracks, then `make proto`.
 
 Consumers: `go/transport/rpc/resource.go` and `go/transport/rpc/client/client.go` import `crudv1`; the rpc tests import `crudv1connect`; `sdk/ts/src/rpc.ts` imports `./gen/crud_pb.js`.
 
