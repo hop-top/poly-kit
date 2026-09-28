@@ -1547,9 +1547,12 @@ surface that asks the person.
 
 `tls` and `auth.mode: mtls` configure the kit HTTP listeners — the api
 service, the rpc service, the mcp service's HTTP transport — under
-`services.<svc>` or `services.all`, resolved like any block. Socket and
-stdio ignore them. `cli.ResolveServeTLS` is the one resolver, and
-`ServeTLS.Serve` the one place a listener starts serving.
+`services.<svc>` or `services.all`, resolved like any block. Under
+`services.socket` they are refused at validation, exit `2`, as every
+block that acts on an HTTP listener alone is; the mcp service's stdio
+transport does not read them. `cli.ResolveServeTLS` is the one
+resolver, and `ServeTLS.Serve` the one place a listener starts
+serving.
 
 | Key                            | Type   | Default                         | Meaning |
 |--------------------------------|--------|---------------------------------|---------|
