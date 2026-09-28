@@ -310,6 +310,8 @@ func mcp405Handler(w http.ResponseWriter, _ *http.Request) {
 // enabled. An empty call (WithMCPSpecVersions() with zero arguments)
 // or any unrecognized version causes MountMCP to return an error at
 // mount time. Duplicate versions are deduplicated.
+//
+// Deprecated: an option of MountMCP, which is deprecated.
 func WithMCPSpecVersions(versions ...MCPSpecVersion) MCPOption {
 	return func(c *mcpConfig) {
 		c.specVersionsSet = true
@@ -323,6 +325,8 @@ func WithMCPSpecVersions(versions ...MCPSpecVersion) MCPOption {
 // (see the MCP guide, "Cache hints"). ttl is truncated to whole
 // milliseconds; a negative ttl or an unrecognized scope causes
 // MountMCP to return an error at mount time.
+//
+// Deprecated: an option of MountMCP, which is deprecated.
 func WithMCPCacheHints(ttl time.Duration, scope MCPCacheScope) MCPOption {
 	return func(c *mcpConfig) {
 		c.cacheHintsSet = true
@@ -335,6 +339,9 @@ func WithMCPCacheHints(ttl time.Duration, scope MCPCacheScope) MCPOption {
 // modern path: a request carrying an Origin header not in origins is
 // rejected with HTTP 403. Absent (default) performs no Origin check —
 // see the MCP guide, "Origin validation", for the opt-in rationale.
+//
+// Deprecated: an option of MountMCP, which is deprecated. The mcp
+// service takes the same allowlist as services.mcp.origin_allowlist.
 func WithMCPOriginAllowlist(origins ...string) MCPOption {
 	return func(c *mcpConfig) {
 		c.originAllowlist = append([]string(nil), origins...)

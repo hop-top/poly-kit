@@ -306,14 +306,16 @@ func buildRouter(ctx context.Context, b *cmdsurface.Bridge) (*api.Router, error)
 			Version: "0.0.0",
 		}),
 	)
+	//nolint:staticcheck // SA1019: the example exercises every cmdsurface mount, deprecated ones included, until they are removed
 	if err := cmdsurface.MountREST(b, r,
-		cmdsurface.WithRESTOpenAPI(api.HumaAPI(r)),
-		cmdsurface.WithRESTAuth(allowAnyAuth),
+		cmdsurface.WithRESTOpenAPI(api.HumaAPI(r)), //nolint:staticcheck // SA1019: see MountREST above
+		cmdsurface.WithRESTAuth(allowAnyAuth),      //nolint:staticcheck // SA1019: see MountREST above
 	); err != nil {
 		return nil, fmt.Errorf("MountREST: %w", err)
 	}
+	//nolint:staticcheck // SA1019: the example exercises every cmdsurface mount, deprecated ones included, until they are removed
 	if err := cmdsurface.MountMCP(b, r,
-		cmdsurface.WithMCPServerInfo("cmdsurface-example", "0.0.0"),
+		cmdsurface.WithMCPServerInfo("cmdsurface-example", "0.0.0"), //nolint:staticcheck // SA1019: see MountMCP above
 	); err != nil {
 		return nil, fmt.Errorf("MountMCP: %w", err)
 	}

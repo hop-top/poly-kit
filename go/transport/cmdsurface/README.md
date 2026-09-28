@@ -7,14 +7,15 @@ ConnectRPC, WebSocket, SSE, MCP, webhooks, bus, cron, OAuth callback,
 signed URL, FaaS, in-process) without rewriting the command logic per
 transport. A `Bridge` wraps the cobra root; each `Mount*` projects the
 leaves onto one surface, gated by one `Policy` and executed by one
-`Runner`. Serving MCP through the official SDK instead is
-`go/transport/mcpsdk`; the lifecycle seam for a new transport is
-`go/transport/transportsvc`.
+`Runner`. REST is the `api` service's `/v1/commands` projection and
+MCP is the official SDK (`go/transport/mcpsdk`, served by the `mcp`
+service); `MountREST` and `MountMCP` are deprecated. The lifecycle
+seam for a new transport is `go/transport/transportsvc`.
 
 ## Use it when
 
-- project the tree onto HTTP, RPC or streaming → `MountREST`, `MountRPC`, `MountWS`, `MountSSE`
-- expose leaves as LLM tools → `MountMCP`
+- project the tree onto RPC or streaming → `MountRPC`, `MountWS`, `MountSSE`; REST is the `api` service (`cli.WithAPI`)
+- expose leaves as LLM tools → `mcpsdk.Mount`, or the `mcp` service (`mcpserve.With`)
 - accept third-party push or scheduled work → `MountWebhooks`, `MountBus`, `MountCron`
 - issue a one-shot exec link or an OAuth callback → `MountSigned`, `MountOAuth`
 - deploy the same leaves as a function → `LambdaHandler`, `RunCloudRun`
@@ -28,11 +29,10 @@ leaves onto one surface, gated by one `Policy` and executed by one
 ```go
 root := buildCobraTree()
 b := cmdsurface.New(root)
-b.Expose("*", cmdsurface.SurfaceREST, cmdsurface.SurfaceMCP, cmdsurface.SurfaceWS)
+b.Expose("*", cmdsurface.SurfaceMCP, cmdsurface.SurfaceWS)
 
 r := api.NewRouter()
-_ = cmdsurface.MountREST(b, r)
-_ = cmdsurface.MountMCP(b, r)
+_ = mcpsdk.Mount(b, r)
 _ = cmdsurface.MountWS(b, r)
 _ = http.ListenAndServe(":8080", r)
 ```
@@ -50,7 +50,7 @@ _ = http.ListenAndServe(":8080", r)
 
 ## Neighbours
 
-- `go/transport/mcpsdk`: the SDK-backed MCP surface, an alternative to `MountMCP`.
+- `go/transport/mcpsdk`: the MCP surface, replacing the deprecated `MountMCP`.
 - `go/transport/api`: the router, the hub, and the automatic `/v1/commands` REST projection.
 - `go/transport/transportsvc`: the serve-lifecycle seam for a transport of your own.
 - `go/ai/cmdreflect`: the `Descriptor` reflection each leaf is built from.

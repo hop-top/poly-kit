@@ -20,6 +20,9 @@ import (
 //
 // When the argument is not a huma.API (e.g. nil because the caller's
 // router has no WithOpenAPI), the option becomes a no-op.
+//
+// Deprecated: an option of MountREST, which is deprecated. The
+// projection describes its own routes (api.DescribeCommandProjection).
 func WithRESTOpenAPI(humaAPI any) RESTOption {
 	return func(c *restConfig) {
 		if humaAPI == nil {

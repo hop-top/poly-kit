@@ -235,11 +235,11 @@ every gate and the audit.
 | Surface         | Direction           | Mount function   | Typical use                             | Reuses                          |
 |-----------------|---------------------|------------------|-----------------------------------------|---------------------------------|
 | `cli`           | local invocation    | (cobra itself)   | adopter's binary                        | `go/console/cli`                |
-| `rest`          | request / reply     | `MountREST`      | machine-to-machine RPC over HTTP        | `api.Router` + huma             |
+| `rest`          | request / reply     | `cli.WithAPI` (`serve api`); `MountREST` deprecated | machine-to-machine calls over HTTP | the `api` service's projection under `/v1/commands` |
 | `ws`            | bidirectional       | `MountWS`        | interactive streaming clients           | `api.Hub` + `coder/websocket`   |
 | `sse`           | server-stream       | `MountSSE`       | one-way streaming to browsers           | `api.Router`                    |
 | `rpc`           | request / reply + server-stream | `MountRPC`    | strongly-typed Go/JS clients            | `transport/rpc` (ConnectRPC)    |
-| `mcp`           | discovery + exec    | `MountMCP`       | LLM tool calls                          | MCP JSON-RPC over `api.Router`  |
+| `mcp`           | discovery + exec    | `mcpserve.With` (`serve mcp`), `mcpsdk.Mount`; `MountMCP` deprecated | LLM tool calls | official MCP Go SDK (`transport/mcpsdk`) |
 | `webhook`       | inbound HTTP        | `MountWebhooks`  | third-party push (GitHub, Stripe, …)    | `api.Router` + `text/template`  |
 | `bus`           | pub/sub             | `MountBus`       | async workflows, fan-in                 | `transport/api.EventPublisher`  |
 | `cron`          | scheduled           | `MountCron`      | recurring jobs                          | `robfig/cron/v3` (pluggable)    |
@@ -249,12 +249,24 @@ every gate and the audit.
 | `faas`          | provider-driven     | `LambdaHandler` / `RunCloudRun` | Lambda + Cloud Run               | aws-lambda-go, `net/http`       |
 | `socket`        | request / reply     | `cli.WithSocket` (`serve socket`) | local daemons, sidecars, agents on the host | `transport/socket` + `transportsvc` |
 
+REST and MCP each have one canonical implementation. REST is the
+[command projection](transport-api.md#command-projection) the `api`
+service mounts; a client that wants a call envelope rather than one
+route per command uses `rpc`, whose Connect JSON `Invoke` takes the
+same `Invocation` and returns the same `Result`. MCP is the official
+SDK: the `mcp` service for a kit root
+([serve-lifecycle contract](../../contracts/serve-lifecycle.md#the-mcp-service)),
+[`mcpsdk`](mcpsdk.md) on a bare bridge. `MountREST` and `MountMCP` are
+deprecated and frozen; see [Status](#status) for what they remain for
+and when they go.
+
 ## Quick start
 
 ```go
 import (
     "hop.top/kit/go/transport/api"
     "hop.top/kit/go/transport/cmdsurface"
+    "hop.top/kit/go/transport/mcpsdk"
 )
 
 // 1. Build the cobra tree (your existing CLI).
@@ -264,18 +276,20 @@ root := buildCobraTree()
 b := cmdsurface.New(root)
 
 // 3. Expose leaves on the surfaces you want, then mount.
-b.Expose("*", cmdsurface.SurfaceREST, cmdsurface.SurfaceMCP, cmdsurface.SurfaceWS)
+b.Expose("*", cmdsurface.SurfaceMCP, cmdsurface.SurfaceWS, cmdsurface.SurfaceSSE)
 
 r := api.NewRouter()
-_ = cmdsurface.MountREST(b, r)
-_ = cmdsurface.MountMCP(b, r)
+_ = mcpsdk.Mount(b, r)
 _ = cmdsurface.MountWS(b, r)
+_ = cmdsurface.MountSSE(b, r)
 
 // 4. Serve.
 _ = http.ListenAndServe(":8080", r)
 ```
 
-Three lines per surface. Same cobra tree, same handlers, same policy.
+One line per surface. Same cobra tree, same handlers, same policy.
+A tree built with `cli.New` skips all of this for REST and MCP:
+`cli.WithAPI` and `mcpserve.With` serve them under `<tool> serve`.
 
 ## Per-surface reference
 
@@ -284,6 +298,10 @@ Three lines per surface. Same cobra tree, same handlers, same policy.
 ```go
 func MountREST(b *Bridge, r *api.Router, opts ...RESTOption) error
 ```
+
+**Deprecated.** Serve REST through the `api` service's projection;
+send a call envelope over `rpc` instead. Frozen until removal; see
+[Status](#status).
 
 Wire shape: `POST {prefix}/{path}` with a JSON `Invocation` body,
 returns a JSON `Result`. `prefix` defaults to `/cmd`; path segments are
@@ -311,8 +329,8 @@ Sentinel-error mapping: `ErrUnknownCommand` → 404 `unknown_command`,
 `X-Confirm-Token` header (presence-only, value not validated). See
 `go/transport/cmdsurface/surface_rest_test.go`.
 
-The automatic REST projection the `api` service mounts under
-`/v1/commands` is a different, additive path; its wire format is in
+The REST projection the `api` service mounts under `/v1/commands` is
+the canonical REST surface; its wire format is in
 [transport-api.md](transport-api.md#command-projection).
 
 ### RPC
@@ -356,6 +374,10 @@ unauthenticated → `CodeUnauthenticated`, confirmation missing →
 ```go
 func MountMCP(b *Bridge, r *api.Router, opts ...MCPOption) error
 ```
+
+**Deprecated.** Serve MCP with the `mcp` service (`mcpserve.With`) or
+mount [`mcpsdk`](mcpsdk.md) on a bridge. Frozen until removal; see
+[Status](#status).
 
 Wire shape: MCP JSON-RPC 2.0 at the configured path (default `/mcp`),
 serving **both protocol revisions from the one mount**:
@@ -1057,22 +1079,16 @@ b, _ := cmdsurface.FromConfig(root, cfg)
 
 ### Migrating an existing kit-CLI to REST/MCP
 
-The migration is additive — no cobra handler changes:
-
-1. Build the bridge: `b := cmdsurface.New(root)`.
-2. Pick the surfaces to expose: `b.Expose("read-only *",
-   cmdsurface.SurfaceREST, cmdsurface.SurfaceMCP)`.
-3. Mount them: `cmdsurface.MountREST(b, r)`,
-   `cmdsurface.MountMCP(b, r)`.
-4. Wire `WithRESTAuth` for `kit/auth-required=true` leaves.
-
-The cobra binary keeps working unchanged. Destructive leaves stay
-unreachable on REST/MCP unless explicitly opted in via `Policy.
-AllowDestructiveOn`.
-
-To replace manual mounting with the built-in `api` and `socket`
-services, see
+The migration is additive — no cobra handler changes. Make the tree a
+kit root (`cli.New`) and register the services: `cli.WithAPI` serves
+REST under `/v1/commands`, `mcpserve.With` serves MCP, both under
+`<tool> serve`, with the root factory, the permission gate and audit
+wired for you. Walkthrough:
 [migrate-to-served-commands.md](../guides/migrate-to-served-commands.md).
+
+A tree that stays a bare cobra root mounts `mcpsdk.Mount(b, r)` for
+MCP. Destructive leaves stay unreachable on REST and MCP unless
+`Policy.AllowDestructiveOn` names the surface.
 
 ## Threat model
 
@@ -1112,6 +1128,33 @@ Implemented (this package):
 - FaaS adapters: AWS Lambda (5 event types), Cloud Run.
 - Sinks: Log, File, Webhook, Bus.
 
+Deprecated — frozen, fixes only, no new options:
+
+| Deprecated | Use instead | Remains for, until removal |
+|------------|-------------|----------------------------|
+| `MountREST`, `RESTOption`, `WithREST*` | `cli.WithAPI` (the `/v1/commands` projection); `MountRPC` for a call envelope | existing callers; a bare bridge that needs REST on its own router |
+| `MountMCP`, `MCPOption`, `WithMCP*` | `mcpserve.With` (`serve mcp`); `mcpsdk.Mount` / `Handler` / `ServeStdio` on a bare bridge | existing callers; generating the cross-language MCP wire fixtures |
+| `CloudRunSurfaces.REST`, `CloudRunSurfaces.MCP` | `CloudRunConfig.Router` with the replacement mounted on it | existing callers |
+
+The deprecation notice ships in the first release after 0.5.0-alpha.15.
+Removal comes no earlier than kit 0.6.0, at least one release after
+that notice, as a breaking change with the migration in its release
+notes, and only once each replacement covers what the mount still
+does:
+
+- REST: a bridge-level projection mount exists (a bare cobra tree gets
+  `/v1/commands` without a kit root), and `RunCloudRun` and
+  `examples/cmdsurface` use it.
+- MCP: the `mcp` service serves the 2026-07-28 revision over HTTP
+  (its stateful transport refuses it today; `MountMCP` serves both
+  revisions on one path), `examples/cmdsurface` mounts `mcpsdk`, and
+  the wire-fixture generator no longer needs the exported mount.
+
+What goes with the deprecated MCP mount: gate refusals mirrored as
+HTTP 401 / 428 (the SDK reports `isError` only), zero-dependency MCP
+(a tool serving MCP links the SDK; one that does not, does not), and
+the `ttlMs` / `cacheScope` knobs.
+
 Runners: `InProcessRunner` (shared tree, serialized, isolated per
 invocation), `InProcessRunner` with `WithRootFactory` (tree per
 invocation, parallel), `SubprocessRunner` (process per invocation,
@@ -1149,7 +1192,7 @@ Cross-references: `go/transport/cmdsurface/bridge_test.go`,
 - [expose-cli-over-rest.md](../guides/expose-cli-over-rest.md): the
   automatic REST projection
 - [expose-cli-over-mcp.md](../guides/expose-cli-over-mcp.md): the
-  hand-rolled MCP surface, both revisions
+  hand-rolled MCP surface (deprecated), both revisions
 - [serve-mcp-with-the-sdk.md](../guides/serve-mcp-with-the-sdk.md):
   the SDK-backed MCP surface
 - [secure-remote-serving.md](../guides/secure-remote-serving.md): the

@@ -53,9 +53,9 @@ func main() {
 
 	err := cmdsurface.RunCloudRun(bridge, cmdsurface.CloudRunConfig{
 		Surfaces: cmdsurface.CloudRunSurfaces{
-			REST: true,
+			REST: true, //nolint:staticcheck // SA1019: the example keeps the deprecated switch until it is removed
 			SSE:  true,
-			MCP:  true,
+			MCP:  true, //nolint:staticcheck // SA1019: the example keeps the deprecated switch until it is removed
 		},
 		OnReady:    func(addr string) { log.Printf("ready on %s", addr) },
 		OnShutdown: func() { log.Print("shutting down") },

@@ -81,15 +81,21 @@ type mcpConfig struct {
 }
 
 // MCPOption configures the MCP surface mounted by MountMCP.
+//
+// Deprecated: MCPOption configures MountMCP, which is deprecated.
 type MCPOption func(*mcpConfig)
 
 // WithMCPPath overrides the default mount path ("/mcp").
+//
+// Deprecated: an option of MountMCP, which is deprecated.
 func WithMCPPath(path string) MCPOption {
 	return func(c *mcpConfig) { c.path = path }
 }
 
 // WithMCPServerInfo sets the server identity returned by the
 // `initialize` method. Defaults: name="cmdsurface", version="0.0.0".
+//
+// Deprecated: an option of MountMCP, which is deprecated.
 func WithMCPServerInfo(name, version string) MCPOption {
 	return func(c *mcpConfig) {
 		c.serverName = name
@@ -112,6 +118,8 @@ func WithMCPServerInfo(name, version string) MCPOption {
 // header gate for every client; with it, clients that declare the
 // elicitation capability get the spec-native input_required
 // round-trip while all other clients keep the header gate.
+//
+// Deprecated: an option of MountMCP, which is deprecated.
 func WithMCPConfirmationKey(key []byte) MCPOption {
 	return func(c *mcpConfig) {
 		c.confirmKeySet = true
@@ -148,6 +156,15 @@ func WithMCPConfirmationKey(key []byte) MCPOption {
 //   - Result.Stdout becomes a text content block. Result.Stderr (if
 //     any) becomes a second text block tagged "[stderr] ...". Non-zero
 //     ExitCode sets isError:true.
+//
+// Deprecated: kit's MCP protocol layer is the official MCP Go SDK.
+// Serve MCP with the mcp service (mcpserve.With in
+// hop.top/kit/go/console/cli/mcpserve), or mount it on a Bridge by
+// hand with mcpsdk.Mount, mcpsdk.Handler or mcpsdk.ServeStdio
+// (hop.top/kit/go/transport/mcpsdk). MountMCP is frozen (fixes only)
+// and is removed no earlier than kit 0.6.0; its handlers stay,
+// unexported, as the generator of the cross-language MCP wire
+// fixtures.
 func MountMCP(b *Bridge, r *api.Router, opts ...MCPOption) error {
 	if b == nil {
 		return errors.New("cmdsurface: MountMCP: nil bridge")

@@ -98,10 +98,19 @@ type CloudRunConfig struct {
 // no safe defaults. Adopters that want them build the router
 // manually and pass it via CloudRunConfig.Router.
 type CloudRunSurfaces struct {
+	// REST mounts MountREST.
+	//
+	// Deprecated: MountREST is deprecated. The switch is removed or
+	// moved onto the command projection with it.
 	REST bool
 	SSE  bool
-	MCP  bool
-	WS   bool
+	// MCP mounts MountMCP.
+	//
+	// Deprecated: MountMCP is deprecated. Mount the SDK surface on
+	// CloudRunConfig.Router instead:
+	// mcpsdk.Mount(b, r) from hop.top/kit/go/transport/mcpsdk.
+	MCP bool
+	WS  bool
 }
 
 // RunCloudRun starts the Cloud Run-shaped HTTP server. It reads
@@ -115,7 +124,7 @@ type CloudRunSurfaces struct {
 //	func main() {
 //	    b := buildBridge()
 //	    err := cmdsurface.RunCloudRun(b, cmdsurface.CloudRunConfig{
-//	        Surfaces: cmdsurface.CloudRunSurfaces{REST: true},
+//	        Surfaces: cmdsurface.CloudRunSurfaces{SSE: true},
 //	        OnReady:  func(addr string) { log.Printf("ready on %s", addr) },
 //	    })
 //	    if err != nil {

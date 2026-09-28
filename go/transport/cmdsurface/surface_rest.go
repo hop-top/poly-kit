@@ -40,6 +40,16 @@ import (
 //   - Class.RequiresConfirmation gates the route on the presence of an
 //     X-Confirm-Token header; missing header → 428 code=confirmation_required.
 //     The token value is not validated here (issuance is a later task).
+//
+// Deprecated: the canonical REST surface is the command projection
+// under /v1/commands, which the api service mounts (cli.WithAPI in
+// hop.top/kit/go/console/cli): one route per command, the method its
+// side-effect class selects, discovery and OpenAPI. A client that
+// wants this mount's Invocation-in, Result-out envelope uses MountRPC,
+// whose Connect JSON Invoke procedure takes the same envelope.
+// MountREST is frozen (fixes only) and is removed no earlier than
+// kit 0.6.0, once a Bridge-level projection mount exists for trees
+// without a kit root.
 func MountREST(b *Bridge, r *api.Router, opts ...RESTOption) error {
 	if b == nil {
 		return errors.New("cmdsurface: nil Bridge")
@@ -69,6 +79,8 @@ func MountREST(b *Bridge, r *api.Router, opts ...RESTOption) error {
 }
 
 // RESTOption configures MountREST.
+//
+// Deprecated: RESTOption configures MountREST, which is deprecated.
 type RESTOption func(*restConfig)
 
 type restConfig struct {
@@ -85,6 +97,8 @@ func defaultRESTConfig() restConfig {
 // WithRESTPrefix sets the URL prefix for every mounted route. Default
 // is "/cmd". A trailing "/" on prefix is stripped to avoid producing
 // "/cmd//widget/add".
+//
+// Deprecated: an option of MountREST, which is deprecated.
 func WithRESTPrefix(prefix string) RESTOption {
 	return func(c *restConfig) {
 		for len(prefix) > 1 && strings.HasSuffix(prefix, "/") {
@@ -97,6 +111,8 @@ func WithRESTPrefix(prefix string) RESTOption {
 // WithRESTMiddleware installs middleware applied to every mounted
 // route, after any per-leaf safety wrapping (auth / confirmation).
 // Middleware is applied in the order given: first wraps outermost.
+//
+// Deprecated: an option of MountREST, which is deprecated.
 func WithRESTMiddleware(mw ...func(http.Handler) http.Handler) RESTOption {
 	return func(c *restConfig) {
 		c.middleware = append(c.middleware, mw...)
@@ -107,6 +123,8 @@ func WithRESTMiddleware(mw ...func(http.Handler) http.Handler) RESTOption {
 // whose leaf has Class.AuthRequired. When unset, AuthRequired leaves
 // are wrapped with a default AuthFunc that always returns an error,
 // so unauthenticated calls receive 401.
+//
+// Deprecated: an option of MountREST, which is deprecated.
 func WithRESTAuth(fn api.AuthFunc) RESTOption {
 	return func(c *restConfig) { c.authFn = fn }
 }
