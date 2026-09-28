@@ -45,12 +45,13 @@ const authHeader = "Authorization"
 type RPCOption func(*rpcConfig)
 
 type rpcConfig struct {
-	interceptors  []connect.Interceptor
-	admitted      []connect.Interceptor
-	handlerOpts   []connect.HandlerOption
-	callMeta      func(ctx context.Context, req connect.AnyRequest, claimed Meta) Meta
-	authenticated func(ctx context.Context, req connect.AnyRequest) bool
-	maxBody       int64
+	interceptors     []connect.Interceptor
+	admitted         []connect.Interceptor
+	handlerOpts      []connect.HandlerOption
+	callMeta         func(ctx context.Context, req connect.AnyRequest, claimed Meta) Meta
+	authenticated    func(ctx context.Context, req connect.AnyRequest) bool
+	maxBody          int64
+	compressMinBytes int
 }
 
 // WithRPCMaxBodyBytes caps each request message at n bytes, after
@@ -71,8 +72,9 @@ func WithRPCInterceptors(ic ...connect.Interceptor) RPCOption {
 
 // WithRPCHandlerOptions passes options to the generated handler after
 // the interceptors: connect.WithReadMaxBytes to bound a request
-// message, connect.WithCompressMinBytes, and the like. A
-// connect.WithReadMaxBytes here overrides the WithRPCMaxBodyBytes cap.
+// message, connect.WithCompressMinBytes, and the like. They apply
+// last: a connect.WithReadMaxBytes here overrides WithRPCMaxBodyBytes,
+// and a connect.WithCompressMinBytes overrides WithRPCCompression.
 func WithRPCHandlerOptions(opts ...connect.HandlerOption) RPCOption {
 	return func(c *rpcConfig) { c.handlerOpts = append(c.handlerOpts, opts...) }
 }
@@ -99,6 +101,25 @@ func WithRPCCallMeta(fn func(ctx context.Context, req connect.AnyRequest, claime
 func WithRPCAuthenticated(fn func(ctx context.Context, req connect.AnyRequest) bool) RPCOption {
 	return func(c *rpcConfig) { c.authenticated = fn }
 }
+
+// WithRPCCompression turns on gzip compression of response messages
+// of at least minBytes, for clients that accept it; zero or less
+// compresses every message. api.DefaultCompressMinBytes is the floor
+// the REST surface uses. Connect, gRPC and gRPC-Web each negotiate
+// compression per message in their own headers, which is why this is
+// a handler option and the api package's HTTP Compress middleware
+// passes their requests through.
+//
+// Without it, responses are sent uncompressed. Compressed requests are
+// accepted either way.
+func WithRPCCompression(minBytes int) RPCOption {
+	return func(c *rpcConfig) { c.compressMinBytes = max(minBytes, 0) }
+}
+
+// rpcNoCompression is a message-size floor no message reaches: the
+// handler keeps gzip registered, so compressed requests still decode,
+// but never compresses a response.
+const rpcNoCompression = math.MaxInt32
 
 // rpcServer wires a Bridge into the generated Commands handler. It is
 // internal — callers reach it only via MountRPC.
@@ -133,7 +154,8 @@ var _ cmdsurfacev1connect.CommandsHandler = (*rpcServer)(nil)
 //   - returns Result with non-zero ExitCode as a success response
 //     (clients inspect ExitCode themselves);
 //   - cancels the running Stream goroutine when the client disconnects;
-//   - caps each request message at WithRPCMaxBodyBytes (default 1 MiB).
+//   - caps each request message at WithRPCMaxBodyBytes (default 1 MiB);
+//   - sends responses uncompressed unless [WithRPCCompression] opts in.
 //
 // Options wire the host's own gates in: WithRPCInterceptors for
 // authentication and the like, WithRPCCallMeta for the provenance the
@@ -152,7 +174,7 @@ func MountRPC(b *Bridge, s rpcServerMount, opts ...RPCOption) error {
 	if s == nil {
 		return errors.New("cmdsurface: MountRPC: nil server")
 	}
-	cfg := rpcConfig{}
+	cfg := rpcConfig{compressMinBytes: rpcNoCompression}
 	for _, o := range opts {
 		o(&cfg)
 	}
@@ -160,7 +182,7 @@ func MountRPC(b *Bridge, s rpcServerMount, opts ...RPCOption) error {
 	srv := &rpcServer{b: b, index: indexLeaves(b), cfg: cfg}
 
 	// Server interceptors first, then caller-supplied ones.
-	var hopts []connect.HandlerOption
+	hopts := []connect.HandlerOption{connect.WithCompressMinBytes(cfg.compressMinBytes)}
 	ics := append([]connect.Interceptor{}, s.Interceptors()...)
 	ics = append(ics, cfg.interceptors...)
 	if len(ics) > 0 {
