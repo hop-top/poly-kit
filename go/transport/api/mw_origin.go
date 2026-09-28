@@ -58,6 +58,7 @@ func OriginCheck(cfg OriginCheckConfig) (Middleware, error) {
 		if origin == "" {
 			origin = "Sec-Fetch-Site: " + r.Header.Get("Sec-Fetch-Site")
 		}
+		RecordRefusal(r, CodeOriginRejected)
 		cfg.Refuse.write(w, r, &APIError{
 			Status:  http.StatusForbidden,
 			Code:    CodeOriginRejected,

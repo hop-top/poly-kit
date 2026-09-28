@@ -61,3 +61,11 @@ func RecordRefusal(r *http.Request, code string) {
 		slot.code = code
 	}
 }
+
+// refusalObserved reports whether an observer installed by
+// [ObserveRefusal] is waiting on r, so a middleware can skip work that
+// only serves recording.
+func refusalObserved(r *http.Request) bool {
+	_, ok := r.Context().Value(refusalSlotKey{}).(*refusalSlot)
+	return ok
+}

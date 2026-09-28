@@ -161,7 +161,9 @@ series by requesting commands that do not exist.
 | `unknown_command`, `not_enabled`, `not_invocable`, `destructive_blocked`, `permission_denied` | `kit.serve.refusals` | the bridge's gates |
 | `unauthenticated` | `kit.serve.refusals` | the transport edge, reported through `Bridge.Audit` |
 | `deadline_exceeded` | `kit.serve.refusals` | an invocation whose context deadline passed |
-| any HTTP-plane code (`body_too_large`, `host_rejected`, `origin_rejected`, …) | `kit.serve.http.refusals` | middleware calling `api.RecordRefusal(r, code)` |
+| `body_too_large` | `kit.serve.http.refusals` | `api.BodyLimit`: a declared length over the cap, or a body of unknown length crossing it |
+| `host_rejected`, `origin_rejected` | `kit.serve.http.refusals` | `api.HostCheck`, `api.OriginCheck` |
+| any other HTTP-plane code | `kit.serve.http.refusals` | middleware calling `api.RecordRefusal(r, code)` |
 
 HTTP-plane middleware that refuses a request calls
 `api.RecordRefusal(r, code)` before writing its response; the tracing

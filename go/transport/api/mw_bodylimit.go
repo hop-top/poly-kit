@@ -60,7 +60,8 @@ func OnBodyTooLarge(fn func(r *http.Request, limit int64)) BodyLimitOption {
 // handler's read fails with an [*http.MaxBytesError], which
 // [AsBodyTooLarge] recognizes and [WriteBodyTooLarge] renders. The
 // server also closes the connection after the response rather than
-// draining the rest.
+// draining the rest. Either way the refusal is recorded with
+// [RecordRefusal] as [CodeBodyTooLarge].
 //
 // Place it before any middleware or handler that reads the body.
 func BodyLimit(maxBytes int64, opts ...BodyLimitOption) Middleware {
@@ -74,17 +75,21 @@ func BodyLimit(maxBytes int64, opts ...BodyLimitOption) Middleware {
 			return next
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.ContentLength > limit {
+			refused := func() {
+				RecordRefusal(r, CodeBodyTooLarge)
 				if cfg.onTooLarge != nil {
 					cfg.onTooLarge(r, limit)
 				}
+			}
+			if r.ContentLength > limit {
+				refused()
 				WriteBodyTooLarge(w, limit)
 				return
 			}
 			if r.Body != nil && r.Body != http.NoBody {
 				body := http.MaxBytesReader(w, r.Body, limit)
-				if cfg.onTooLarge != nil {
-					body = &observedBody{ReadCloser: body, fire: func() { cfg.onTooLarge(r, limit) }}
+				if cfg.onTooLarge != nil || refusalObserved(r) {
+					body = &observedBody{ReadCloser: body, fire: refused}
 				}
 				r.Body = body
 			}
