@@ -98,12 +98,16 @@ func (x *Invocation) GetMeta() *Meta {
 }
 
 // Meta carries caller identity, originating surface and trace context.
+// caller, tenant and extra are the client's claims: a server that
+// verifies identity, such as the kit rpc service, drops them and takes
+// identity from the credentials it verified.
 type Meta struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Stable identifier for the originating principal. Satisfies the
-	// auth-required gate when no Authorization header is sent.
+	// Stable identifier for the originating principal, as claimed. Only
+	// a server without a verifier (bare MountRPC) trusts it, including
+	// for the auth-required gate.
 	Caller string `protobuf:"bytes,1,opt,name=caller,proto3" json:"caller,omitempty"`
-	// Tenant or organization the principal acts within.
+	// Tenant or organization the principal acts within, as claimed.
 	Tenant string `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	// Transport that produced the invocation; forced to "rpc" server side.
 	Surface string `protobuf:"bytes,3,opt,name=surface,proto3" json:"surface,omitempty"`
