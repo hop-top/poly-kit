@@ -20,6 +20,7 @@ leaves onto one surface, gated by one `Policy` and executed by one
 - deploy the same leaves as a function → `LambdaHandler`, `RunCloudRun`
 - invoke in-process from a REPL or test → `InvokeArgs`, `StreamArgs`
 - gate a call before committing to a stream, then stream it → `Bridge.Admit`, `Admission.Stream`
+- ask a person something between the gates and the run → `Bridge.Admit`, then `Admission.Run` or `Admission.Stream`
 - toggle a leaf per surface → `Bridge.Expose` / `Bridge.Hide`, or YAML `LoadFile` / `FromConfig`
 
 ## Quick start

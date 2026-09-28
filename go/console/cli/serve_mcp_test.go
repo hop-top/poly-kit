@@ -476,3 +476,28 @@ func TestMCPServiceIsListedAndDisabledByDefault(t *testing.T) {
 	require.ErrorAs(t, err, &oe)
 	assert.Equal(t, 2, oe.ExitCode)
 }
+
+// TestMCPServiceAsksAPersonOnlyAfterTheMachineGates pins the order: a
+// caller the permission gate refuses is refused without a prompt.
+func TestMCPServiceAsksAPersonOnlyAfterTheMachineGates(t *testing.T) {
+	deny := func(_ context.Context, _ cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+		if leaf.PathKey() == "deploy" {
+			return cmdsurface.PermissionDecision{Reason: "deploys are frozen"}
+		}
+		return cmdsurface.PermissionDecision{Allowed: true}
+	}
+	_, endpoint := startMCP(t, cli.MCPConfig{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
+		cli.WithPermission(deny))
+
+	var asked atomic.Int32
+	sess := dialMCP(t, endpoint, nil, &mcp.ClientOptions{
+		ElicitationHandler: func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+			asked.Add(1)
+			return &mcp.ElicitResult{Action: "accept"}, nil
+		},
+	})
+	text, isErr := callTool(t, sess, "deploy", nil)
+	assert.True(t, isErr)
+	assert.Contains(t, text, "deploys are frozen")
+	assert.Zero(t, asked.Load(), "no question about a call the permission gate refuses")
+}

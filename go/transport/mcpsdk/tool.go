@@ -49,17 +49,18 @@ func toolFor(leaf *cmdsurface.Leaf) *mcp.Tool {
 //
 //  1. Builds the call's provenance (see [WithCallMeta]).
 //  2. Applies the auth gate for kit/auth-required leaves (see
-//     [WithAuthenticated]; by default an Authorization header) and the
-//     confirmation gate for kit/requires-confirmation leaves (the
-//     X-Confirm-Token header, or an accepted elicitation with
-//     [WithConfirmationElicitation]). A refusal is audited through
-//     the bridge's sinks and returned as an isError result.
+//     [WithAuthenticated]; by default an Authorization header).
 //  3. Decodes the raw arguments into Invocation.Flags; values are
 //     forwarded as-is and re-rendered by the bridge at apply time.
-//  4. Dispatches through Bridge.Invoke — or Bridge.InvokeStream for a
-//     call carrying a progress token — which re-checks surface
-//     enablement, invocability, the destructive policy ceiling and
-//     the permission gate.
+//  4. Admits the call through Bridge.Admit: surface enablement,
+//     invocability, the destructive policy ceiling and the permission
+//     gate, each refusal audited.
+//  5. For a kit/requires-confirmation leaf, only then applies the
+//     confirmation gate (the X-Confirm-Token header, or an accepted
+//     elicitation with [WithConfirmationElicitation]): a person is
+//     never asked about a call a machine gate refuses.
+//  6. Runs the admission — Admission.Run, or Admission.Stream for a
+//     call carrying a progress token — which audits the outcome.
 //
 // Error mapping matches the hand-rolled surface's contract: a leaf
 // that is unknown or no longer enabled is a protocol error; policy
@@ -87,15 +88,29 @@ func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
 		if tb != nil && tb.eligible[name] && taskext.ClientDeclares(req) {
 			return tb.invokeAsTask(ctx, b, leaf, req, headerOf(req))
 		}
-		if cls.RequiresConfirmation {
-			if res := s.confirmGate(ctx, req, leaf, inv); res != nil {
-				return res, nil
-			}
-		}
-
 		if len(req.Params.Arguments) > 0 {
 			if err := json.Unmarshal(req.Params.Arguments, &inv.Flags); err != nil {
 				return nil, fmt.Errorf("invalid arguments: %w", err)
+			}
+		}
+
+		// Every machine gate answers before anything else happens:
+		// resolution, enablement, invocability, the destructive
+		// ceiling, the permission gate. A refusal is audited by the
+		// bridge.
+		adm, err := b.Admit(ctx, inv)
+		if err != nil {
+			if isUncallable(err) {
+				return nil, err
+			}
+			return errorResult(err.Error()), nil
+		}
+
+		// Only then is a person asked: a caller a machine gate refuses
+		// never sees a prompt.
+		if cls.RequiresConfirmation {
+			if res := s.confirmGate(ctx, req, leaf, inv); res != nil {
+				return res, nil
 			}
 		}
 
@@ -103,36 +118,24 @@ func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
 		// the runner streams and each output line becomes an MCP
 		// progress notification on the requesting session.
 		if token := req.Params.GetProgressToken(); token != nil {
-			return streamInvoke(ctx, b, inv, req, token)
+			return streamAdmitted(ctx, adm, req, token)
 		}
 
-		res, err := b.Invoke(ctx, inv)
+		res, err := adm.Run(ctx)
 		if err != nil {
-			if isUncallable(err) {
-				return nil, err
-			}
 			return errorResult(err.Error()), nil
 		}
 		return renderResult(res), nil
 	}
 }
 
-// streamInvoke admits inv through Bridge.Admit and runs it through
-// Admission.Stream, forwarding one MCP progress notification per
-// output line to the requesting session and returning the terminal
-// Result as the call result. Admit applies every gate Invoke would —
-// enablement, invocability, the destructive ceiling, the permission
-// gate — and audits a refusal; Admission.Stream audits the outcome.
-// A progress token changes how the call is observed and nothing about
-// whether it may run.
-func streamInvoke(ctx context.Context, b *cmdsurface.Bridge, inv cmdsurface.Invocation, req *mcp.CallToolRequest, token any) (*mcp.CallToolResult, error) {
-	adm, err := b.Admit(ctx, inv)
-	if err != nil {
-		if isUncallable(err) {
-			return nil, err
-		}
-		return errorResult(err.Error()), nil
-	}
+// streamAdmitted runs an admitted call through Admission.Stream,
+// forwarding one MCP progress notification per output line to the
+// requesting session and returning the terminal Result as the call
+// result. The gates have already answered in Bridge.Admit; a progress
+// token changes how the call is observed and nothing about whether it
+// may run.
+func streamAdmitted(ctx context.Context, adm *cmdsurface.Admission, req *mcp.CallToolRequest, token any) (*mcp.CallToolResult, error) {
 	events := make(chan cmdsurface.Event, 16)
 	errc := make(chan error, 1)
 	go func() { errc <- adm.Stream(ctx, events) }()

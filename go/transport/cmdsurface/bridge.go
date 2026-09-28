@@ -360,11 +360,7 @@ func (b *Bridge) Invoke(ctx context.Context, inv Invocation) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	res, err := b.cfg.runner.Run(ctx, adm.inv)
-	if adm.inv.Meta.Surface.remote() {
-		b.Audit(ctx, adm.inv, res, err)
-	}
-	return res, err
+	return adm.Run(ctx)
 }
 
 // Admission is an invocation every gate of [Bridge.Invoke] has
@@ -425,6 +421,22 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 
 // Invocation returns the admitted invocation as it will run.
 func (a *Admission) Invocation() Invocation { return a.inv }
+
+// Run runs the admitted invocation through the Runner's Run and
+// returns its Result. On a remote surface the outcome is audited once,
+// after the run. Invoke is Admit followed by Run.
+//
+// Holding the Admission between the two is what lets a transport put
+// something only a person can supply — a confirmation — after every
+// machine gate and before the run, without asking about a call the
+// gates would refuse and without answering the gates twice.
+func (a *Admission) Run(ctx context.Context) (Result, error) {
+	res, err := a.b.cfg.runner.Run(ctx, a.inv)
+	if a.inv.Meta.Surface.remote() {
+		a.b.Audit(ctx, a.inv, res, err)
+	}
+	return res, err
+}
 
 // Stream runs the admitted invocation through the Runner's Stream and
 // forwards every Event to out, the terminal "done" Event included.

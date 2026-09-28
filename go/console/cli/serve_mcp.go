@@ -422,7 +422,7 @@ func (t *mcpTransport) Close(ctx context.Context) error {
 }
 
 // surface builds the SDK surface over the service's bridge. Every
-// call dispatches through Bridge.Invoke (or InvokeStream), so the
+// call is admitted by Bridge.Admit before it runs, so the
 // policy, invocability and permission gates the seam promises hold on
 // both transports.
 func (t *mcpTransport) surface(ctx context.Context, impl mcpServing) (*mcpsdk.Surface, error) {

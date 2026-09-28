@@ -325,3 +325,45 @@ func TestConfirmationElicitationLegacyClientOverStdio(t *testing.T) {
 		t.Fatalf("tools/call result = %s, want the resumed call to run", raw)
 	}
 }
+
+// TestNoQuestionForACallTheMachineGatesRefuse pins the ordering: a
+// person is asked only after every machine gate has admitted the
+// call. A caller the permission gate or the destructive ceiling
+// refuses must never trigger a confirmation prompt.
+func TestNoQuestionForACallTheMachineGatesRefuse(t *testing.T) {
+	root := newTestTree()
+	// A destructive leaf that also asks for confirmation.
+	for _, c := range root.Commands() {
+		if c.Name() == "deploy" {
+			c.Annotations["kit/side-effect"] = "destructive"
+		}
+	}
+	denyDeploy := func(_ context.Context, _ cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+		return cmdsurface.PermissionDecision{Reason: "deploys are frozen"}
+	}
+	cases := []struct {
+		name string
+		opts []cmdsurface.Option
+		want string
+	}{
+		{"destructive ceiling", nil, "destructive command blocked"},
+		{"permission gate", []cmdsurface.Option{
+			cmdsurface.WithPolicy(cmdsurface.Policy{AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceMCP}}),
+			cmdsurface.WithPermission(denyDeploy),
+		}, "deploys are frozen"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _, _ := newSurfaceHarness(t, root, tc.opts, WithConfirmationElicitation(nil))
+			asked := 0
+			sess := elicitClient(t, srv.URL+"/mcp", "accept", &asked)
+			text, isErr := callText(t, sess, "deploy")
+			if !isErr || !strings.Contains(text, tc.want) {
+				t.Fatalf("isError=%t text=%q, want the machine gate's refusal", isErr, text)
+			}
+			if asked != 0 {
+				t.Fatalf("a person was asked %d time(s) about a call the machine gates refuse", asked)
+			}
+		})
+	}
+}

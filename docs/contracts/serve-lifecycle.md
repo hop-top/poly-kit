@@ -787,7 +787,12 @@ by the program on the other end of REST or the socket.
 
 **The MCP confirmation gate** applies to a leaf that declares
 `kit/requires-confirmation`, and it is the one that puts a person in
-the loop. It is satisfied per call, and only by one of:
+the loop. A person is asked only after every machine gate has admitted
+the call — resolution, enablement, invocability, the auth-required
+gate above, the destructive ceiling, and the permission gate, in that
+order (`Bridge.Admit`) — so a caller a machine gate refuses is
+refused without a prompt. It is satisfied per call, and only by one
+of:
 
 1. **An elicitation the client's user accepts.** When the client has
    declared form elicitation, the service asks it, before running
@@ -812,9 +817,11 @@ and no configuration makes it do so. Confirmation refusals are
 audited.
 
 An accepted elicitation satisfies only this gate. It does not supply a
-destructive command's `confirm` argument, and it does not lift the
-destructive ceiling or the permission gate, both of which run after
-it inside `Bridge.Invoke`.
+destructive command's `confirm` argument, and it lifts nothing: the
+destructive ceiling and the permission gate have already answered
+before the question, and what runs is the admission they granted
+(`Admission.Run`). A retry that carries the answer is a new call and
+is admitted afresh.
 
 ### stdio stream discipline
 

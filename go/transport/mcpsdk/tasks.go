@@ -133,8 +133,8 @@ func taskPrincipal(hdr http.Header) string {
 
 // invokeAsTask is the tools/call task path for an eligible leaf and a
 // declaring client. Everything kit's safety contract demands is
-// enforced HERE, at creation, before any task exists: the destructive
-// policy ceiling, and confirmation — via X-Confirm-Token exactly like
+// enforced HERE, at creation, before any task exists: the bridge's
+// machine gates (Bridge.Admit), then confirmation — via X-Confirm-Token exactly like
 // the synchronous path, or resolved synchronously through an MRTR
 // elicitation exchange (SEP-2663 mandates MRTR-before-
 // CreateTaskResult, which makes creation the natural gate). The
@@ -143,9 +143,16 @@ func taskPrincipal(hdr http.Header) string {
 // surface itself (get/update/cancel) can execute, re-execute, or
 // amplify a leaf.
 func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, leaf *cmdsurface.Leaf, req *mcp.CallToolRequest, hdr http.Header) (*mcp.CallToolResult, error) {
-	if !b.Policy().Allowed(leaf.Class, cmdsurface.SurfaceMCP) {
-		return errorResult(fmt.Sprintf("%v: %s on %s",
-			cmdsurface.ErrDestructiveBlocked, leaf.PathKey(), cmdsurface.SurfaceMCP)), nil
+	// Every machine gate before the person: a task the ceiling or the
+	// permission gate refuses is neither created nor confirmed.
+	if _, err := b.Admit(ctx, cmdsurface.Invocation{
+		Path: append([]string(nil), leaf.Path...),
+		Meta: cmdsurface.Meta{Surface: cmdsurface.SurfaceMCP, Caller: taskPrincipal(hdr)},
+	}); err != nil {
+		if isUncallable(err) {
+			return nil, err
+		}
+		return errorResult(err.Error()), nil
 	}
 	if leaf.Class.RequiresConfirmation && hdr.Get("X-Confirm-Token") == "" {
 		proceed, res := tb.confirmViaMRTR(req, leaf, hdr)
