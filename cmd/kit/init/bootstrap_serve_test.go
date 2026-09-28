@@ -5,8 +5,9 @@
 // rendered module at this checkout of kit, compiles it, and drives the
 // binary: `serve --list`, `serve api` on loopback, discovery, a read
 // over REST, the destructive ceiling, the unauthenticated-remote
-// refusal, the socket through the config file, and the mcp service
-// over stdio and HTTP. Every assertion is against the built binary, so
+// refusal, the socket through the config file, the mcp service over
+// stdio and HTTP, and the rpc service answering the README's call.
+// Every assertion is against the built binary, so
 // an exit code is the process's own.
 //
 // Unlike TestBootstrap_CLIGo_Builds this test does not skip on a build
@@ -329,7 +330,7 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		assert.Zero(t, rep.Unannotated)
 	})
 
-	t.Run("serve --list names api, socket and mcp", func(t *testing.T) {
+	t.Run("serve --list names api, socket, mcp and rpc", func(t *testing.T) {
 		stdout, stderr, code := runRendered(t, bin, "serve", "--list")
 		require.Equal(t, 0, code, stderr)
 		// The README prints this table; only api is enabled out of the
@@ -337,10 +338,13 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		assert.Regexp(t, `(?m)^api\s+true\s+true\s+false\s*$`, stdout)
 		assert.Regexp(t, `(?m)^socket\s+false\s+false\s+false\s*$`, stdout)
 		assert.Regexp(t, `(?m)^mcp\s+false\s+false\s+false\s*$`, stdout)
+		assert.Regexp(t, `(?m)^rpc\s+false\s+false\s+false\s*$`, stdout)
 		assert.Less(t, strings.Index(stdout, "api"), strings.Index(stdout, "socket"),
 			"registration order: the template registers api before socket")
 		assert.Less(t, strings.Index(stdout, "socket"), strings.Index(stdout, "mcp"),
 			"registration order: the template registers socket before mcp")
+		assert.Less(t, strings.Index(stdout, "mcp"), strings.Index(stdout, "rpc"),
+			"registration order: the template registers mcp before rpc")
 
 		// The README shows a fresh project's table verbatim.
 		assert.Equal(t, readmeBlock(t, project, "$ demo serve --list\n", "```"), stdout,
@@ -353,11 +357,11 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		for _, flag := range []string{
 			"--list", "--enable", "--disable", "--ready-timeout", "--stop-timeout",
 			"--shutdown-timeout", "--addr", "--insecure-remote", "--socket",
-			"--stdio", "--mcp-addr",
+			"--stdio", "--mcp-addr", "--rpc-addr",
 		} {
 			assert.Contains(t, help, flag)
 		}
-		assert.Contains(t, help, "Services: api, socket, mcp")
+		assert.Contains(t, help, "Services: api, socket, mcp, rpc")
 	})
 
 	t.Run("serve mcp --stdio answers a spawning host", func(t *testing.T) {
@@ -437,6 +441,40 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		_, stderr, code := runRendered(t, bin, "serve", "mcp", "--mcp-addr", "0.0.0.0:0")
 		assert.Equal(t, 2, code, stderr)
 		assert.Contains(t, stderr, "services.mcp.insecure_remote")
+	})
+
+	t.Run("serve rpc answers the README's call on its own loopback listener", func(t *testing.T) {
+		// The README's curl: its procedure path and body, and the
+		// reply it shows, against the built binary.
+		section := readmeBlock(t, project, "### Call it over gRPC\n", "\n## ")
+		curl := regexp.MustCompile(`(?s)demo serve rpc\ncurl -s http://127\.0\.0\.1:8082(/\S+).*?-d '([^']*)'`).
+			FindStringSubmatch(section)
+		require.Len(t, curl, 3, "README has no serve rpc + curl example:\n%s", section)
+		procedure, payload := curl[1], curl[2]
+		assert.Equal(t, "/cmdsurface.v1.Commands/Invoke", procedure)
+		shown := regexp.MustCompile("(?s)```json\n(.*?)\n```").FindStringSubmatch(section)
+		require.Len(t, shown, 2, "README shows no reply for the call")
+
+		base, stop := serveRenderedUntil(t, bin, "rpc", "rpc", "--rpc-addr", "127.0.0.1:0")
+		require.Regexp(t, `^http://127\.0\.0\.1:\d+$`, base, "the rpc service binds loopback")
+
+		status, body := httpPost(t, base+procedure, payload)
+		require.Equal(t, http.StatusOK, status, string(body))
+		assert.JSONEq(t, shown[1], string(body), "README's reply must be what the binary answers")
+
+		// A withheld destructive command is refused before it runs,
+		// as the README says.
+		status, body = httpPost(t, base+procedure, `{"path":["nuke"]}`)
+		assert.Equal(t, http.StatusForbidden, status, string(body))
+		assert.Contains(t, string(body), `"permission_denied"`)
+
+		assert.Equal(t, 0, stop(), "a signal-initiated stop is a clean stop")
+	})
+
+	t.Run("unauthenticated remote rpc is refused at exit 2", func(t *testing.T) {
+		_, stderr, code := runRendered(t, bin, "serve", "rpc", "--rpc-addr", "0.0.0.0:0")
+		assert.Equal(t, 2, code, stderr)
+		assert.Contains(t, stderr, "services.rpc.insecure_remote")
 	})
 
 	t.Run("serve api on loopback projects the tree", func(t *testing.T) {

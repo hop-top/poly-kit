@@ -18,6 +18,7 @@
 | Drive {{.Name}} from an agent | [Agent surface](#what-name-is) |
 | Call {{.Name}} over HTTP or a socket | [Serve it](#serve-it) |
 | Plug {{.Name}} into Claude Desktop or an IDE | [Connect an MCP host](#connect-an-mcp-host) |
+| Call {{.Name}} from a gRPC or Connect client | [Call it over gRPC](#call-it-over-grpc) |
 | Embed {{.Name}} in your own code | [Library API](https://pkg.go.dev/{{.Module}}) |
 | Look up a command or flag | `{{.Name}} --help` · `{{.Name}} spec --format json` |
 | Debug a failure | [Troubleshooting](docs/troubleshooting.md) |
@@ -48,8 +49,8 @@ Four surfaces, one binary:
   effects, and idempotency. Agents drive {{.Name}} from this, not from
   `--help`.
 - **Served commands** — `{{.Name}} serve` projects the same commands
-  onto REST, a local Unix socket, and MCP, behind the same safety
-  policy. See [Serve it](#serve-it).
+  onto REST, a local Unix socket, MCP, and gRPC, behind the same
+  safety policy. See [Serve it](#serve-it).
 - **Library** — `import "{{.Module}}"` and use the same primitives from
   your own Go code.
 
@@ -66,14 +67,15 @@ Every command in `cmd/` is also a route. There is nothing to mount:
 {{.Name}} serve socket        # the same commands over an owner-only Unix socket
 {{.Name}} serve mcp           # the same commands as MCP tools on 127.0.0.1:8081/mcp
 {{.Name}} serve mcp --stdio   # MCP over stdin/stdout, for a host that spawns {{.Name}}
+{{.Name}} serve rpc           # the same commands to gRPC, Connect and gRPC-Web clients on 127.0.0.1:8082
 {{.Name}} serve               # every enabled service under one lifecycle
 ```
 
 `serve --list` names every registered service and, per service,
 whether the supervisor has a configuration for it (CONFIGURED — from
 your config file, or from `api`'s built-in default), whether a bare
-`serve` would start it (ENABLED — `api` is on by default, `socket` and
-`mcp` are off until you enable them), and whether it is accepting work
+`serve` would start it (ENABLED — `api` is on by default, `socket`,
+`mcp` and `rpc` are off until you enable them), and whether it is accepting work
 right now (READY — true only inside a running `serve`, so always false
 when you ask from the shell). A fresh project prints:
 
@@ -83,6 +85,7 @@ SERVICE              CONFIGURED  ENABLED  READY
 api                  true        true     false
 socket               false       false    false
 mcp                  false       false    false
+rpc                  false       false    false
 ```
 
 ```sh
@@ -96,17 +99,19 @@ curl -s 'http://127.0.0.1:8080/v1/commands/hello?arg=Ada'
 
 What holds on every served surface:
 
-- **Loopback by default.** The api listens on `127.0.0.1:8080` and the
-  mcp service on `127.0.0.1:8081`; each refuses, at exit 2, to serve
-  unauthenticated anywhere else. Set `Auth` in `cmd/root.go` to serve
-  beyond loopback, or opt in by name with
-  `services.api.insecure_remote: true` (`services.mcp.insecure_remote`
-  for MCP).
+- **Loopback by default.** The api listens on `127.0.0.1:8080`, the
+  mcp service on `127.0.0.1:8081` and the rpc service on
+  `127.0.0.1:8082`; each refuses, at exit 2, to serve unauthenticated
+  anywhere else. Set `Auth` in `cmd/root.go` to serve beyond loopback,
+  or opt in by name with `services.api.insecure_remote: true`
+  (`services.mcp.insecure_remote` for MCP, `services.rpc.insecure_remote`
+  for gRPC).
 - **Reads are `GET`, writes are `POST`, destructive commands are
   withheld** until you name the surface in `APIConfig.Policy`,
-  `SocketConfig.Policy` or `mcpserve.Config.Policy` — and even then the
-  command's own `confirm` gate still applies. Over MCP a withheld
-  command is simply not in the tool list.
+  `SocketConfig.Policy`, `mcpserve.Config.Policy` or
+  `rpcserve.Config.Policy` — and even then the command's own `confirm`
+  gate still applies. Over MCP a withheld command is simply not in the
+  tool list; over gRPC it is refused with `permission_denied`.
 - **Discovery tells you why.** A command that is not mounted still
   appears in `/v1/commands` with `invocable: false` and a reason:
   `unauthorized-destructive`, `interactive`, `self-hosting`,
@@ -126,15 +131,17 @@ services:
     enabled: true
   mcp:
     addr: 127.0.0.1:9091
+  rpc:
+    addr: 127.0.0.1:9092
 ```
 
 Add a service of your own with `cli.WithService` in `cmd/root.go`; it
-appears in `serve --list` beside `api`, `socket` and `mcp` and starts
-under the same supervisor.
+appears in `serve --list` beside `api`, `socket`, `mcp` and `rpc` and
+starts under the same supervisor.
 
 [`AGENTS.md`](AGENTS.md) is the agent-facing description of this
 surface: discovery, the refusal vocabulary, invocation over REST, the
-socket and MCP, the confirmation gates, and the exit-code taxonomy.
+socket, MCP and gRPC, the confirmation gates, and the exit-code taxonomy.
 Hand it to an agent that has to call `{{.Name}}` without a terminal.
 
 ### Connect an MCP host
@@ -177,6 +184,39 @@ Serving MCP links the MCP Go SDK into `{{.Name}}`: about 2 MB on a
 stripped release build, 3 MB with symbols. If you will never serve
 MCP, delete the `mcpserve.With(...)` option and its import from
 `cmd/root.go` and the SDK drops out of the build.
+
+### Call it over gRPC
+
+`serve rpc` serves every command as one typed service,
+`cmdsurface.v1.Commands`, defined in
+[`commands.proto`](https://github.com/hop-top/poly-kit/blob/main/contracts/proto/cmdsurface/v1/commands.proto).
+A call names the command by path, with its flags and positional
+arguments; adding a command to `cmd/` needs no new stubs. One port
+answers Connect (JSON and binary protobuf), gRPC-Web, and gRPC over
+unencrypted HTTP/2. Connect JSON is plain HTTP, so `curl` works:
+
+```sh
+{{.Name}} serve rpc
+curl -s http://127.0.0.1:8082/cmdsurface.v1.Commands/Invoke \
+  -H 'Content-Type: application/json' \
+  -d '{"path":["hello"],"args":["Ada"]}'
+```
+
+```json
+{"exit_code":0,"data":[{"message":"Hello, Ada!","name":"Ada"}],"data_json":"[{\"message\":\"Hello, Ada!\",\"name\":\"Ada\"}]"}
+```
+
+Go clients use the stubs kit ships in
+`hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1`; other languages
+generate theirs from the proto file. A command that ran and failed is
+still a successful call, so read `exit_code`; a refusal is an RPC
+error with a code, and nothing ran. `InvokeStream` returns each output
+line as it is written, then the result.
+
+Serving gRPC adds about 0.4 MB to a stripped release build of
+`{{.Name}}`, 0.6 MB with symbols: kit already links the Connect and
+protobuf runtimes it uses. If you will never serve gRPC, delete the
+`rpcserve.With(...)` option and its import from `cmd/root.go`.
 
 ## Configuration
 

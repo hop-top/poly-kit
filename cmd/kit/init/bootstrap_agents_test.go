@@ -69,10 +69,12 @@ func TestBootstrap_CLIGo_AgentsFragment(t *testing.T) {
 			"demo serve --addr 127.0.0.1:8080 --enable socket --socket /tmp/demo.sock")
 		assert.Contains(t, got, "pick ONE per process")
 		assert.Contains(t, got, "a bare `serve` gives you REST alone",
-			"socket and mcp are registered but off, so the doc must not promise them")
-		assert.Contains(t, got, "registers three", "api, socket and mcp")
+			"socket, mcp and rpc are registered but off, so the doc must not promise them")
+		assert.Contains(t, got, "registers four", "api, socket, mcp and rpc")
 		assert.Contains(t, got, "demo serve mcp --stdio")
 		assert.Contains(t, got, "demo serve mcp --mcp-addr 127.0.0.1:8081")
+		assert.Contains(t, got, "demo serve rpc --rpc-addr 127.0.0.1:8082")
+		assert.Contains(t, got, "/cmdsurface.v1.Commands/Invoke")
 		assert.NotContains(t, got, "{{", "no unrendered template action may survive")
 		assert.NotContains(t, got, ".Name", "the variable must be substituted, not named")
 
@@ -98,6 +100,15 @@ func TestBootstrap_CLIGo_AgentsFragment(t *testing.T) {
 			"authentication required", "confirmation required", "confirmation declined",
 		} {
 			assert.Contains(t, got, "| `"+text+"` |", "every MCP refusal text must be documented")
+		}
+		// The rpc service refuses with Connect codes before anything
+		// runs; the serve test observes permission_denied and
+		// not_found on the built binary.
+		for _, code := range []string{
+			"not_found", "unauthenticated", "failed_precondition",
+			"permission_denied", "resource_exhausted",
+		} {
+			assert.Contains(t, got, "| `"+code+"` |", "every RPC refusal code must be documented")
 		}
 		assert.Contains(t, got, "/v1/commands", "discovery is the entry point")
 		assert.Contains(t, got, "/openapi.json")

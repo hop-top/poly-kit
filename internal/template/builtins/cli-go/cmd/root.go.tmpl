@@ -3,10 +3,10 @@
 // The root carries the kit global flags (--format, --quiet, --no-color,
 // -c/--config, -v/--verbose, ...), the reserved `status` and `spec`
 // verbs (`spec coverage` is the side-effect annotation gate), and the
-// `serve` supervisor with the built-in api, socket and mcp services
-// registered. Every command added to root.Cmd is reachable from the
-// shell and, under `serve`, over REST, the Unix socket and MCP behind
-// the same safety policy — there is nothing to mount.
+// `serve` supervisor with the built-in api, socket, mcp and rpc
+// services registered. Every command added to root.Cmd is reachable
+// from the shell and, under `serve`, over REST, the Unix socket, MCP
+// and gRPC behind the same safety policy — there is nothing to mount.
 package cmd
 
 import (
@@ -20,6 +20,7 @@ import (
 	speccli "hop.top/kit/go/ai/toolspec/cli"
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/mcpserve"
+	"hop.top/kit/go/console/cli/rpcserve"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/config"
 	"{{.Module}}/internal/version"
@@ -60,6 +61,12 @@ func newRoot() *cli.Root {
 		// (3 MB with symbols); delete this option and its import to
 		// drop both.
 		mcpserve.With(mcpserve.Config{}),
+		// `serve rpc`: the same tree as the cmdsurface.v1.Commands
+		// service, for Connect, gRPC and gRPC-Web clients on one port,
+		// 127.0.0.1:8082. Registered but not enabled, like the socket.
+		// It adds about 0.4 MB to a stripped release binary (0.6 MB with
+		// symbols); delete this option and its import to drop it.
+		rpcserve.With(rpcserve.Config{}),
 	)
 	// `spec`: the machine-readable manifest agents read, and `spec
 	// coverage`, which lists every command that declares no
@@ -98,8 +105,8 @@ func ExitCode(err error) int {
 // `-c key=value` overrides one key; both come from kit's own flag.
 //
 // Everything `serve` reads — services.api.addr, services.api.enabled,
-// services.socket.path, services.mcp.transport, ... — resolves through
-// here.
+// services.socket.path, services.mcp.transport, services.rpc.addr, ...
+// — resolves through here.
 func loadConfig(r *cli.Root) error {
 	if err := config.BindEnv(r.Viper, "{{.NameUpper}}"); err != nil {
 		return err

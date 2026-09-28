@@ -4,7 +4,7 @@ Go CLI template entry points: the kit root and the commands mounted on it.
 
 ## What the rendered tier-3 project guarantees
 
-`root.go` builds the root with `cli.New` and four options, in this
+`root.go` builds the root with `cli.New` and five options, in this
 order:
 
 | Option | Why it is there |
@@ -13,6 +13,7 @@ order:
 | `cli.WithAPI(cli.APIConfig{})` | registers the `api` service: the command tree over REST on `127.0.0.1:8080`, discovery at `/v1/commands`, an OpenAPI document; enabled by default under a bare `serve` |
 | `cli.WithSocket(cli.SocketConfig{})` | registers the `socket` service: the same tree over an owner-only Unix socket; registered but not enabled, per the serve contract's default |
 | `mcpserve.With(mcpserve.Config{})` | registers the `mcp` service: the same tree as MCP tools over streamable HTTP on `127.0.0.1:8081/mcp`, or over stdio with `--stdio`; registered but not enabled. It is the one option that links the MCP SDK (about 2 MB stripped); removing it and its import drops the SDK |
+| `rpcserve.With(rpcserve.Config{})` | registers the `rpc` service: the same tree as the `cmdsurface.v1.Commands` service for Connect, gRPC and gRPC-Web clients on `127.0.0.1:8082`; registered but not enabled. It adds about 0.4 MB stripped (0.6 MB with symbols); removing it and its import drops it |
 
 It then mounts `spec` with `toolspec/cli.RegisterSpecCommand`: the
 manifest agents read, and `spec coverage`, which lists commands that
@@ -29,15 +30,16 @@ withheld from every served surface until the adopter names one.
 `root.go` also layers configuration into `root.Viper` from kit's own
 `-c/--config` flag, the `<NAME>_*` environment, and the
 system/user/project files `config.OptionsForTool` resolves. That is
-what carries `services.api.addr`, `services.socket.path`, and the
-rest of the `services.*` block to the supervisor.
+what carries `services.api.addr`, `services.socket.path`,
+`services.rpc.addr`, and the rest of the `services.*` block to the
+supervisor.
 
 `hello.go` is the sample command. It registers itself from an `init`
 function — the convention every command file in this package follows
 — and carries the annotations kit validates at startup (`Short`,
 `Long`, `kit/side-effect`, `kit/idempotent`, `kit/top-level-verb`)
-plus an output schema, so it answers in `data` over REST and the
-socket, and in `structuredContent` over MCP.
+plus an output schema, so it answers in `data` over REST, the socket
+and gRPC, and in `structuredContent` over MCP.
 
 ## What gates a change here
 
@@ -60,10 +62,11 @@ discovery reasons (`unauthorized-destructive`, `self-hosting`,
 a destructive route, the exit-2 refusal of `--addr 0.0.0.0:0`, a
 socket path reaching the socket service through `-c`, an MCP session
 over stdio spawned from the README's host entry, `serve mcp` on its
-own loopback listener, and the exit-2 refusal of
-`--mcp-addr 0.0.0.0:0`. The README's `serve --list` table is compared
-with the binary's output. Run it after
-every edit to a `.tmpl` here, then `make builtins-sync` so the
+own loopback listener, the exit-2 refusal of `--mcp-addr 0.0.0.0:0`,
+the README's `Invoke` call answered by `serve rpc` on its own loopback
+listener, and the exit-2 refusal of `--rpc-addr 0.0.0.0:0`. The
+README's `serve --list` table is compared with the binary's output.
+Run it after every edit to a `.tmpl` here, then `make builtins-sync` so the
 embedded mirror under `internal/template/builtins/` matches.
 
 Go template actions and Go composite literals share `{{`: write

@@ -27,6 +27,12 @@ yourself:
 {{.Name}} serve mcp --stdio
 ```
 
+gRPC only — Connect, gRPC and gRPC-Web on one port:
+
+```sh
+{{.Name}} serve rpc --rpc-addr 127.0.0.1:8082
+```
+
 REST and the socket, under one lifecycle:
 
 ```sh
@@ -34,8 +40,8 @@ REST and the socket, under one lifecycle:
 ```
 
 A bare `{{.Name}} serve` starts every *enabled* service. This tool
-registers three: `api`, enabled by default, and `socket` and `mcp`,
-registered but off — so a bare `serve` gives you REST alone. Turn the
+registers four: `api`, enabled by default, and `socket`, `mcp` and
+`rpc`, registered but off — so a bare `serve` gives you REST alone. Turn the
 socket on for that run with `--enable socket`, or persistently in the
 config file:
 
@@ -50,8 +56,8 @@ Run `{{.Name}} serve --list` to see which services are configured and
 enabled before you start.
 
 `serve api` binds loopback and refuses a non-loopback address without
-`--insecure-remote`; `serve mcp` binds `127.0.0.1:8081` by the same
-rule. The socket is mode `0600`. Whichever form you
+`--insecure-remote`; `serve mcp` binds `127.0.0.1:8081` and
+`serve rpc` binds `127.0.0.1:8082` by the same rule. The socket is mode `0600`. Whichever form you
 use, each service prints its resolved address on its
 `ready_reported` line under `address=`; wait for that rather than for
 a banner.
@@ -223,6 +229,40 @@ A command with a schema answers in `structuredContent`; parse that
 before the text block. A command that exits non-zero comes back with
 `isError: true` too, its stderr in a second text block prefixed
 `[stderr] `; MCP carries no exit code, so read the message.
+
+## Invoke over gRPC
+
+The rpc service is one typed service, `cmdsurface.v1.Commands`, for
+every command: `Invoke` runs one to completion and returns its result;
+`InvokeStream` returns each output line as it is written, then the
+result. The base URL is the `address=` on the rpc service's
+`ready_reported` line (`http://127.0.0.1:8082` by default). Over
+Connect JSON it is a plain POST:
+
+```sh
+curl -s http://127.0.0.1:8082/cmdsurface.v1.Commands/Invoke \
+  -H 'Content-Type: application/json' \
+  -d '{"path":["item","add"],"args":["widget"],"flags":{}}'
+```
+
+The request is the socket's: `path` (required), `args`, `flags` keyed
+by long name with no dashes. `meta.caller`, `meta.tenant` and
+`meta.extra` are ignored; identity comes only from the service's
+authenticator. The reply is the REST result, `exit_code` first, plus
+`data_json`, the same `data` as JSON text with every digit of every
+number intact.
+
+A command that ran and failed is a successful call: read `exit_code`.
+An unknown flag answers `exit_code: 2` with the parser's message in
+`stderr`. A refusal is an RPC error, and the command never ran:
+
+| Code | Meaning | Do |
+|------|---------|----|
+| `not_found` | no such command, hidden by configuration, or never remote | Re-read discovery. Do not retry the path. |
+| `unauthenticated` | the authenticator refused you, or the command needs a verified caller and none is configured | Fix credentials, or ask a human. |
+| `failed_precondition` | the command needs a person's approval | A human approves; then retry with the `X-Confirm-Token` header. |
+| `permission_denied` | destructive and not permitted here, or refused by policy; the message says which | Ask a human. Do not retry unchanged. |
+| `resource_exhausted` | the request message is too large | Send less. |
 
 ## Read the result, not the output
 
