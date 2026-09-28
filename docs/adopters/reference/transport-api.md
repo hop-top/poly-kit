@@ -4,7 +4,8 @@ Wire-level reference for
 [`go/transport/api`](../../../go/transport/api/README.md): bus
 integration topics, the REST command projection (route shape,
 parameters, discovery, response body, exit-code mapping, refusals),
-auth claims, request provenance, and the OpenAPI document. The task
+auth claims, request provenance, transport guards, and the OpenAPI
+document. The task
 walkthrough is
 [expose-cli-over-rest.md](../guides/expose-cli-over-rest.md).
 
@@ -458,6 +459,52 @@ The request's own context is passed through unchanged, so a client
 disconnect cancels the command. The executor maps all of this onto
 `cmdsurface.Meta`; scopes travel as `Meta.Extra["scopes"]`,
 comma-joined, for the permission gate.
+
+### Transport guards
+
+Three middlewares keep a browser from reaching the server on a page's
+behalf. The api service installs all three by default (keys and
+defaults in
+[secure-remote-serving.md](../guides/secure-remote-serving.md#8-keep-browsers-out-host-origin-response-headers));
+an adopter serving a router of its own composes them the same way:
+
+```go
+hosts, wildcard := api.ListenerHosts(addr)
+origin, err := api.OriginCheck(api.OriginCheckConfig{})
+if err != nil {
+    return err
+}
+guards := []api.Middleware{api.SecurityHeaders(api.SecurityHeadersConfig{})}
+if !wildcard {
+    guards = append(guards, api.HostCheck(api.HostCheckConfig{Allow: hosts}))
+}
+guards = append(guards, origin)
+srv := &http.Server{Addr: addr, Handler: api.Chain(guards...)(router)}
+```
+
+Wrap the whole handler, never `WithMiddleware`: router middleware runs
+per route, and huma's own routes (`/docs`, `/openapi.json`,
+`/schemas`), `/capabilities` and unmatched paths never pass through
+it.
+
+| Middleware | Refuses | Behavior |
+|---|---|---|
+| `HostCheck(HostCheckConfig{Allow})` | `403` `host_rejected` | `Host` must match an `Allow` entry: `name`, IP literal, or either with `:port` (an entry without a port matches any). Case and a trailing dot are ignored; `"*"` accepts all. No `Host` (HTTP/1.0) passes. |
+| `OriginCheck(OriginCheckConfig{Allow})` | `403` `origin_rejected` | `http.CrossOriginProtection`: safe methods, requests with neither `Origin` nor `Sec-Fetch-Site`, and same-origin requests pass; `Allow` adds cross-origin `scheme://host[:port]` origins; `"*"` disables. Errors on a malformed entry. |
+| `SecurityHeaders(SecurityHeadersConfig{})` | — | Sets `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Content-Security-Policy` (`DefaultContentSecurityPolicy`, or `ContentSecurityPolicy`), and over TLS only `Strict-Transport-Security` (`HSTSMaxAge`, default one year; negative disables). A value an outer layer set is kept; a handler replaces the CSP with `Header().Set`. The `ResponseWriter` passes through, so SSE and WebSocket upgrades are unaffected. |
+
+`ListenerHosts(addr)` derives the allowlist a listen address implies:
+`LoopbackHosts` (`localhost`, `127.0.0.1`, `::1`) plus the host for a
+loopback bind, the host itself for a named or IP bind, and
+`wildcard == true` with no hosts for `0.0.0.0`, `::` or an empty host.
+
+Both checks write an `APIError` body by default. `Refuse` on either
+config takes a `RefusalWriter` for a protocol that reports errors
+elsewhere; `mcpsdk` uses it to answer with a JSON-RPC error. Put Host
+before Origin: the Origin check's "same origin" compares against
+`Host`, so it means a host the server answers for only once Host is
+checked. A WebSocket upgrade is a `GET`; `WSHandler` applies its own
+same-origin check (`WithAcceptOrigins`).
 
 ### OpenAPI
 

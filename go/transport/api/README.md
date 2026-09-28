@@ -19,6 +19,8 @@ adopter-driven mounting of arbitrary surfaces is
 - keep a command off REST → `cli.APIConfig{Hide: []string{"admin *"}}`
 - describe every projected operation → `WithOpenAPI`, served at `/openapi.json`
 - stream a long-running command's output as it is written → `<route>/stream`, server-sent events, same method and parameters
+- keep browser pages out (DNS rebinding, cross-site writes) → `api.HostCheck`, `api.ListenerHosts`, `api.OriginCheck`; on by default in the `api` service
+- set hardening response headers → `api.SecurityHeaders`
 
 ## Quick start
 
@@ -44,6 +46,7 @@ r := api.NewRouter(
 - The projection installs no auth. The service listens on `127.0.0.1:8080` and refuses a non-loopback address it would serve unauthenticated, at exit `2`, unless `services.api.insecure_remote` opts in.
 - Every invocable command also streams at `<route>/stream` (`api.StreamSuffix`), on the same method with the same parameters, as `text/event-stream`: `event` frames per output line, then one terminal `result` (the response body plus the mapped `status`) or `error` frame, with a `: ping` keep-alive every 15s. Refusals the transport or bridge make (400, 401, 404, 403) are statuses before the stream opens; the command's own outcomes, its confirmation refusal included, are the terminal frame. Disconnecting cancels the command; stopping the service ends open streams with a `503` `shutting_down` error frame. Mounted only when the executor implements `api.CommandStreamer`; the `api` service's does.
 - Long-running work: SSE here, `InvokeStream` on `cmdsurface.MountRPC`, the experimental MCP tasks extension (`mcpsdk.WithTasks`) for work that must outlive its caller. The comparison lives in the [reference](../../../docs/adopters/reference/transport-api.md#long-running-work-on-each-transport).
+- The `api` service refuses a `Host` its listener does not answer for (`403` `host_rejected`) and a cross-origin browser write (`403` `origin_rejected`), and sets `nosniff`, `no-referrer` and a deny-all CSP on every response. Keys: `services.api.host_check`, `origin_check`, `security_headers`.
 
 ## Neighbours
 
@@ -54,7 +57,7 @@ r := api.NewRouter(
 
 ## See also
 
-- [api package reference](../../../docs/adopters/reference/transport-api.md): bus topics, route shape, parameters, discovery, response body, exit-code mapping, refusals, streaming and long-running work, auth claims, request provenance, OpenAPI
+- [api package reference](../../../docs/adopters/reference/transport-api.md): bus topics, route shape, parameters, discovery, response body, exit-code mapping, refusals, streaming and long-running work, auth claims, request provenance, transport guards, OpenAPI
 - [expose-cli-over-rest.md](../../../docs/adopters/guides/expose-cli-over-rest.md): the task walkthrough
 - [secure-remote-serving.md](../../../docs/adopters/guides/secure-remote-serving.md): auth beyond loopback, the permission gate, the audit trail
 - [serve lifecycle contract](../../../docs/contracts/serve-lifecycle.md)
