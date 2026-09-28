@@ -42,6 +42,7 @@ type Claims struct {
 	Issuer    string   `json:"iss,omitempty"`
 	KeyID     string   `json:"kid,omitempty"`
 	Audience  Audience `json:"aud,omitempty"`
+	Tenant    string   `json:"tenant,omitempty"`
 	Scopes    []string `json:"scopes,omitempty"`
 	IssuedAt  int64    `json:"iat"`
 	ExpiresAt int64    `json:"exp,omitempty"`

@@ -91,6 +91,9 @@ var blocks = []Block{
 		HTTPValues: map[string][]string{"mode": {"mtls"}},
 	},
 	{Name: "auth.mtls", Keys: []string{"ca_file", "principal", "tenant_oid", "tenant_san_pattern"}},
+	{Name: "auth.jwt", Keys: []string{"public_key_files", "issuer", "audience", "clock_skew", "tenant_claim"}},
+	{Name: "auth.jwks", Keys: []string{"url", "issuer", "audience", "clock_skew", "refresh", "tenant_claim"}},
+	{Name: "auth.oidc", Keys: []string{"issuer", "audience", "clock_skew", "refresh", "tenant_claim"}},
 	{Name: "tls", Keys: []string{"enabled", "cert_file", "key_file", "min_version"}},
 	{Name: "tls.acme", Keys: []string{"enabled", "domains", "cache_dir", "email", "directory_url"}},
 	{
@@ -137,11 +140,13 @@ var blocks = []Block{
 // [Resolver.ValidateNoHTTP] refuses them under it. A block not named
 // here reaches every service, though a key or a value of it may still
 // act on an HTTP listener alone (Block.HTTPKeys, Block.HTTPValues):
-// the server timeouts, and auth.mode mtls.
+// the server timeouts, and the HTTP credential modes of auth. The
+// bearer blocks are HTTP-only: the token rides the Authorization
+// header.
 var httpOnly = []string{
 	"metrics.scrape", "security_headers", "health", "host_check",
 	"origin_check", "body_limit", "compression", "trusted_proxies",
-	"tls", "tls.acme", "auth.mtls",
+	"tls", "tls.acme", "auth.mtls", "auth.jwt", "auth.jwks", "auth.oidc",
 }
 
 // HTTPOnly reports whether block acts on an HTTP listener alone.

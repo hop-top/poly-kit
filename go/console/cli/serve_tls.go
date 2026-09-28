@@ -38,10 +38,10 @@ const (
 // client certificate the listener's credential.
 const AuthModeMTLS = "mtls"
 
-// ServeTLS is the resolved TLS setting of one kit HTTP listener —
-// services.<svc>.tls and, with auth.mode: mtls, services.<svc>.auth —
-// and the one place such a listener starts serving. The zero value
-// and nil serve plain HTTP.
+// ServeTLS is the resolved TLS and authentication setting of one kit
+// HTTP listener — services.<svc>.tls and services.<svc>.auth — and the
+// one place such a listener starts serving. The zero value and nil
+// serve plain HTTP and select no verifier.
 //
 // The api service and the services in go/console/cli/rpcserve and
 // go/console/cli/mcpserve resolve one in Validate, so a bad
@@ -49,6 +49,7 @@ const AuthModeMTLS = "mtls"
 type ServeTLS struct {
 	config     *tls.Config
 	clientAuth api.AuthFunc
+	bearer     api.AuthFunc
 }
 
 // Enabled reports whether the listener speaks TLS.
@@ -63,13 +64,28 @@ func (t *ServeTLS) Scheme() string {
 }
 
 // ClientCertAuth is the verifier auth.mode: mtls configures, nil
-// under any other mode. A service installs it where it installs its
-// code AuthFunc, and in its place: the mode selects the verifier.
+// under any other mode.
 func (t *ServeTLS) ClientCertAuth() api.AuthFunc {
 	if t == nil {
 		return nil
 	}
 	return t.clientAuth
+}
+
+// Auth is the verifier auth.mode selects: the client certificate under
+// mtls, the bearer token under jwt, jwks and oidc; nil when the mode
+// is unset. A service installs it where it installs its code AuthFunc
+// (APIConfig.Auth, rpcserve.Config.Auth, mcpserve.Config.Auth), and in
+// its place: a configured mode wins, and the code AuthFunc applies
+// only while auth.mode is unset.
+func (t *ServeTLS) Auth() api.AuthFunc {
+	if t == nil {
+		return nil
+	}
+	if t.clientAuth != nil {
+		return t.clientAuth
+	}
+	return t.bearer
 }
 
 // Serve serves srv on ln, over TLS when t is enabled, else plain.
@@ -98,9 +114,10 @@ func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 	return srv.ServeTLS(ln, "", "")
 }
 
-// ResolveServeTLS resolves the TLS setting of service svc's HTTP
-// listener from services.<svc>.tls, services.<svc>.auth and their
-// services.all defaults. Every refusal names the key at fault.
+// ResolveServeTLS resolves the TLS and authentication setting of
+// service svc's HTTP listener from services.<svc>.tls,
+// services.<svc>.auth and their services.all defaults. Every refusal
+// names the key at fault.
 //
 // TLS is on when tls.enabled is true, or unset and a certificate
 // source is configured: cert_file and key_file, or tls.acme. The
@@ -110,24 +127,25 @@ func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 // request that presented none to the verifier, which refuses it as
 // unauthenticated — so health probes still answer, and the refusal
 // is audited like any other.
+//
+// auth.mode: jwt, jwks or oidc selects a bearer-token verifier from
+// go/transport/authn, configured by auth.jwt, auth.jwks or auth.oidc;
+// it needs no TLS of the listener, though a bearer token sent in
+// plaintext beyond loopback can be replayed by anyone who sees it.
+// A key of a mode's block set under another mode is refused.
 func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 	if r == nil || r.Viper == nil {
 		return &ServeTLS{}, nil
 	}
 	cfg := svcconfig.New(r.Viper)
-	for _, b := range []string{tlsBlock, tlsACMEBlock, authBlock, authMTLSBlock} {
+	for _, b := range []string{tlsBlock, tlsACMEBlock} {
 		if err := cfg.ValidateBlock(b, svc, svcconfig.Shared); err != nil {
 			return nil, err
 		}
 	}
-	res := tlsResolver{cfg: cfg, svc: svc}
-
-	mode, modeKey := res.str(authBlock, "mode")
-	mode = strings.ToLower(mode)
-	switch mode {
-	case "", AuthModeMTLS:
-	default:
-		return nil, fmt.Errorf("%s: unknown mode %q; kit supports %q", modeKey, mode, AuthModeMTLS)
+	res, mode, modeKey, err := resolveAuthMode(cfg, svc)
+	if err != nil {
+		return nil, err
 	}
 
 	tc, err := res.tlsConfig(r.Config.Name)
@@ -135,14 +153,15 @@ func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 		return nil, err
 	}
 	if mode != AuthModeMTLS {
-		if k := res.anySet(authMTLSBlock, "ca_file", "principal", "tenant_oid", "tenant_san_pattern"); k != "" {
-			return nil, fmt.Errorf("%s: set, but %s is not %q", k,
-				svcconfig.Key(svc, authBlock, "mode"), AuthModeMTLS)
+		t := &ServeTLS{config: tc}
+		if mode != "" {
+			v, err := res.bearerVerifier(r, mode)
+			if err != nil {
+				return nil, err
+			}
+			t.bearer = v.AuthFunc()
 		}
-		if tc == nil {
-			return &ServeTLS{}, nil
-		}
-		return &ServeTLS{config: tc}, nil
+		return t, nil
 	}
 	if tc == nil {
 		return nil, fmt.Errorf("%s: %q needs TLS; set %s and %s, or %s",
@@ -195,16 +214,6 @@ func (t tlsResolver) list(block, key string) []string {
 		out = append(out, strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' })...)
 	}
 	return out
-}
-
-// anySet returns the first of block's keys that is set, or "".
-func (t tlsResolver) anySet(block string, keys ...string) string {
-	for _, key := range keys {
-		if _, k, ok := t.cfg.Lookup(t.svc, block, key); ok {
-			return k
-		}
-	}
-	return ""
 }
 
 // tlsConfig is the server configuration, nil when TLS is off.

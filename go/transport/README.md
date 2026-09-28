@@ -5,6 +5,7 @@ network exposure; API and RPC surfaces.
 ## Sub-packages
 
 - [api/](api/README.md): REST API toolkit.
+- [authn/](authn/README.md): bearer-token verifiers: JWT, JWKS, OpenID Connect.
 - [cmdsurface/](cmdsurface/README.md): one cobra tree projected onto many transports.
 - [mcpsdk/](mcpsdk/README.md): SDK-backed Model Context Protocol surface.
 - [rpc/](rpc/README.md): Connect/gRPC services.

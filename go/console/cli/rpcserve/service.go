@@ -276,10 +276,11 @@ func (s *rpcService) optIn(subkey string, code bool) bool {
 	return code
 }
 
-// auth is the verifier every call passes: the client-certificate
-// verifier services.rpc.auth.mode: mtls selects, else Config.Auth.
+// auth is the verifier every call passes: the one
+// services.rpc.auth.mode selects (mtls, jwt, jwks, oidc), else
+// Config.Auth.
 func (s *rpcService) auth() api.AuthFunc {
-	if f := s.tls.ClientCertAuth(); f != nil {
+	if f := s.tls.Auth(); f != nil {
 		return f
 	}
 	return s.cfg.Auth

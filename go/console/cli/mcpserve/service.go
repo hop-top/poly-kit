@@ -205,11 +205,11 @@ type service struct {
 	tls *cli.ServeTLS
 }
 
-// auth is the verifier every HTTP request passes: the
-// client-certificate verifier services.mcp.auth.mode: mtls selects,
-// else Config.Auth.
+// auth is the verifier every HTTP request passes: the one
+// services.mcp.auth.mode selects (mtls, jwt, jwks, oidc), else
+// Config.Auth.
 func (s *service) auth() api.AuthFunc {
-	if f := s.tls.ClientCertAuth(); f != nil {
+	if f := s.tls.Auth(); f != nil {
 		return f
 	}
 	return s.cfg.Auth

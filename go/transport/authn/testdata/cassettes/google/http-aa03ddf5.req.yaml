@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: aa03ddf5
+recorded_at: "2026-09-28T18:39:39Z"
+payload:
+    method: GET
+    url: https://www.googleapis.com/oauth2/v3/certs

@@ -131,10 +131,14 @@ func TestValidateAcceptsKnownKeys(t *testing.T) {
 			"type": "chain", "path": "/x", "fsync": "1s", "max_bytes": 1, "max_files": 2,
 			"on": []any{"error"}, "surfaces": []any{"rest"}, "paths": []any{"a *"},
 		}},
-		"services.socket.audit.sinks":  "chain, chain",
-		"services.api.trusted_proxies": []any{"10.0.0.0/8", "::1"},
-		"services.all.trusted_proxies": "10.0.0.0/8, 192.168.0.0/16",
-		"services.mcp.trusted_proxies": []string{"10.0.0.7"},
+		"services.socket.audit.sinks":            "chain, chain",
+		"services.api.trusted_proxies":           []any{"10.0.0.0/8", "::1"},
+		"services.all.trusted_proxies":           "10.0.0.0/8, 192.168.0.0/16",
+		"services.mcp.trusted_proxies":           []string{"10.0.0.7"},
+		"services.api.auth.jwt.public_key_files": []string{"a.pem"},
+		"services.all.auth.jwks.refresh":         "1h",
+		"services.rpc.auth.oidc.issuer":          "https://idp.example",
+		"services.mcp.auth.oidc.tenant_claim":    "tid",
 	} {
 		v.Set(k, val)
 	}
@@ -184,6 +188,9 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 	v.Set("services.socket.tls.cert_file", "server.crt")
 	v.Set("services.socket.tls.acme.domains", []string{"example.com"})
 	v.Set("services.socket.auth.mtls.ca_file", "ca.crt")
+	v.Set("services.socket.auth.jwt.issuer", "me")
+	v.Set("services.socket.auth.jwks.url", "https://idp.example/jwks")
+	v.Set("services.socket.auth.oidc.issuer", "https://idp.example")
 	v.Set("services.socket.auth.mode", "mtls")
 	v.Set("services.socket.trusted_proxies", []string{"10.0.0.0/8"})
 	v.Set("services.socket.metrics.enabled", true)
@@ -200,6 +207,7 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 		"services.socket.body_limit:", "services.socket.metrics.scrape:", "services.socket.health:",
 		"services.socket.tls:", "services.socket.tls.acme:", "services.socket.auth.mtls:",
 		"services.socket.trusted_proxies:",
+		"services.socket.auth.jwt:", "services.socket.auth.jwks:", "services.socket.auth.oidc:",
 		"no HTTP listener",
 	} {
 		assert.Contains(t, msg, want)
@@ -212,7 +220,7 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 	assert.NoError(t, New(v).ValidateNoHTTP("worker"), "keys under another service are that service's")
 	assert.NoError(t, New(nil).ValidateNoHTTP("socket"))
 
-	for _, b := range []string{"security_headers", "health", "host_check", "origin_check", "body_limit", "compression", "metrics.scrape", "trusted_proxies", "tls", "tls.acme", "auth.mtls"} {
+	for _, b := range []string{"security_headers", "health", "host_check", "origin_check", "body_limit", "compression", "metrics.scrape", "trusted_proxies", "tls", "tls.acme", "auth.mtls", "auth.jwt", "auth.jwks", "auth.oidc"} {
 		assert.True(t, HTTPOnly(b), b)
 	}
 	for _, b := range []string{"tracing", "metrics", "audit", "audit.redact", "auth", "rate_limit", "unregistered"} {

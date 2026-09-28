@@ -301,6 +301,30 @@ commands too; keep such exceptions to paths that run no command. Over
 the Unix socket the owner-only file is the authentication, and such a
 command runs for any caller who can open it.
 
+**Let kit verify the token.** Instead of writing `Auth`, name a
+verifier in configuration. It satisfies the refusal in step 2 the
+same way, on the api, rpc and mcp services:
+
+```yaml
+services:
+  all:
+    auth:
+      mode: oidc                         # or jwks, or jwt
+      oidc:
+        issuer: https://login.example.com/   # discovery finds the key set
+        audience: https://api.example.com    # required: tokens minted for this API only
+```
+
+`jwks` names the key set by URL (`auth.jwks.url`) instead of
+discovering it; `jwt` trusts the tool's own identity keypair
+(`cli.WithIdentity`) and any public keys in
+`auth.jwt.public_key_files`. The token's `sub` is the caller, its
+`tenant` claim (`tenant_claim` to rename) the tenant, and its
+`scope`, `scopes` or `scp` the scopes. A configured mode replaces
+`APIConfig.Auth` for that service; with no mode, `Auth` applies. The
+keys, defaults and refusals are in the contract's
+[Bearer tokens](../../contracts/serve-lifecycle.md#bearer-tokens).
+
 ### 4. The opt-ins, and what they mean
 
 There are two, one per gate, and neither implies the other.
@@ -1423,7 +1447,10 @@ observability](../reference/served-observability.md)).
 | `services.<svc>.tls.cert_file`, `.key_file` | unset | Serve TLS only, HTTP/2 and HTTP/1.1, with this PEM chain and key. `tls.enabled: false` turns it off. |
 | `services.<svc>.tls.min_version` | `1.2` | `1.2` or `1.3`. |
 | `services.<svc>.tls.acme.domains` | unset | Obtain and renew the certificate by ACME for these names; `.email`, `.cache_dir`, `.directory_url` tune it. |
-| `services.<svc>.auth.mode` | unset | `mtls`: the client certificate is the credential; counts as authentication beyond loopback. |
+| `services.<svc>.auth.mode` | unset | `mtls`: the client certificate is the credential; `jwt`, `jwks`, `oidc`: a verified bearer token is. Counts as authentication beyond loopback, and replaces the code `Auth`. |
+| `services.<svc>.auth.jwt.public_key_files` | unset | PEM public keys trusted beside the tool's identity key under `jwt`. |
+| `services.<svc>.auth.jwks.url` / `auth.oidc.issuer` | unset | The key set, or the provider whose discovery yields it; `https` (or loopback `http`). |
+| `services.<svc>.auth.<mode>.audience`, `.issuer`, `.clock_skew`, `.refresh`, `.tenant_claim` | audience required under `jwks`/`oidc`; skew `1m`; refresh `1h`; tenant claim `tenant` | Claim checks and key-set caching for the bearer modes. |
 | `services.<svc>.auth.mtls.ca_file` | unset | CA bundle client certificates must chain to; required under `mtls`. |
 | `services.<svc>.auth.mtls.principal` | `san` | `san`, `san_uri`, `san_dns`, `san_email` or `cn`. |
 | `services.<svc>.auth.mtls.tenant_oid` / `.tenant_san_pattern` | unset | Where the tenant comes from: a subject attribute or extension OID, or a SAN regular expression (first capture group). One or the other. |
@@ -1447,11 +1474,13 @@ in their own guides and are unchanged.
 
 Absence here is deliberate; each of these belongs somewhere else:
 
-- **An identity provider.** `Auth` is yours. Kit verifies nothing
-  about a token and issues none; it carries what your function
-  returns. With `auth.mode: mtls` kit verifies the certificate chain
-  against your CA bundle; issuing and revoking certificates stays
-  with you (no CRL or OCSP check).
+- **An identity provider.** Kit verifies tokens (`auth.mode: jwt`,
+  `jwks`, `oidc`) but runs no login, consent or token endpoint; a
+  bearer mode has no revocation list beyond expiry (a code verifier
+  from `go/transport/authn` takes a `Check` hook for one). With
+  `auth.mode: mtls` kit verifies the certificate chain against your
+  CA bundle; issuing and revoking certificates stays with you (no CRL
+  or OCSP check).
 - **A tenant registry.** `Meta.Tenant` is a label your claims
   supply. Nothing scopes state by it.
 - **Socket peer credentials out of the box.** `SocketConfig.Auth`

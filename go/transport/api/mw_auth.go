@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"reflect"
+	"strings"
 )
 
 type claimsKey struct{}
@@ -114,8 +115,17 @@ func IdentityOf(claims any) (principal, tenant string) {
 }
 
 // ScopesOf returns the scopes a claims value carries: the Scopes of
-// a [Claims], or a "scopes" entry of a string-keyed map holding a
-// []string or []any of strings. Nil when there are none.
+// a [Claims], or, from a string-keyed map (a decoded JWT payload), the
+// first of these entries present:
+//
+//   - "scopes": a []string or []any of strings (kit's own tokens), or
+//     a single string, one scope;
+//   - "scope": a space-delimited string (RFC 8693, RFC 9068 — what
+//     OAuth 2.0 issuers mint);
+//   - "scp": a list of strings, or a space-delimited string (Azure AD
+//     and Okta spell it so).
+//
+// Nil when there are none.
 func ScopesOf(claims any) []string {
 	switch c := claims.(type) {
 	case Claims:
@@ -130,10 +140,20 @@ func ScopesOf(claims any) []string {
 	if !rv.IsValid() || rv.Kind() != reflect.Map || rv.Type().Key().Kind() != reflect.String {
 		return nil
 	}
-	v := rv.MapIndex(reflect.ValueOf("scopes"))
-	if !v.IsValid() {
-		return nil
+	if v := rv.MapIndex(reflect.ValueOf("scopes")); v.IsValid() {
+		return scopeList(v, false)
 	}
+	for _, key := range []string{"scope", "scp"} {
+		if v := rv.MapIndex(reflect.ValueOf(key)); v.IsValid() {
+			return scopeList(v, true)
+		}
+	}
+	return nil
+}
+
+// scopeList reads a scopes claim value: a list of strings, or a
+// string — split on whitespace when delimited, else one scope.
+func scopeList(v reflect.Value, delimited bool) []string {
 	for v.Kind() == reflect.Interface {
 		if v.IsNil() {
 			return nil
@@ -154,6 +174,12 @@ func ScopesOf(claims any) []string {
 		}
 		return out
 	case reflect.String:
+		if delimited {
+			if f := strings.Fields(v.String()); len(f) > 0 {
+				return f
+			}
+			return nil
+		}
 		return []string{v.String()}
 	}
 	return nil

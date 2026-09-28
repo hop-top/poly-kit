@@ -175,7 +175,7 @@ func (a *apiService) validateExposure(addr string) error {
 		return nil
 	}
 	const fix = "listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback"
-	if (a.cfg.Auth != nil || a.tls.ClientCertAuth() != nil) && a.noAuth {
+	if (a.cfg.Auth != nil || a.tls.Auth() != nil) && a.noAuth {
 		return fmt.Errorf(
 			"addr: %q is not a loopback address and --no-auth disables authentication; drop --no-auth, %s",
 			addr, fix,
@@ -236,14 +236,14 @@ func (a *apiService) authenticates() bool {
 	return a.authFunc() != nil
 }
 
-// authFunc is the verifier every route passes: the client-certificate
-// verifier auth.mode: mtls selects, else APIConfig.Auth; nil under
-// --no-auth.
+// authFunc is the verifier every route passes: the one
+// services.api.auth.mode selects (mtls, jwt, jwks, oidc), else
+// APIConfig.Auth; nil under --no-auth.
 func (a *apiService) authFunc() api.AuthFunc {
 	if a.noAuth {
 		return nil
 	}
-	if f := a.tls.ClientCertAuth(); f != nil {
+	if f := a.tls.Auth(); f != nil {
 		return f
 	}
 	return a.cfg.Auth

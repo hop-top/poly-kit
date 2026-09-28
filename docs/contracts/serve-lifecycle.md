@@ -629,9 +629,11 @@ are in [Middleware](#middleware).
   waives the policy requirement only. A tool that sets `Auth` still
   needs a policy or the second opt-in, because authenticating a
   caller says nothing about what that caller may run.
-- `services.<svc>.auth.mode: mtls` authenticates for these rules on
-  every kit HTTP listener, as `Auth` does; plain `tls` does not. See
-  [TLS and client certificates](#tls-and-client-certificates).
+- `services.<svc>.auth.mode` authenticates for these rules on every
+  kit HTTP listener, as `Auth` does, whichever mode it names (`mtls`,
+  `jwt`, `jwks`, `oidc`); plain `tls` does not. See
+  [TLS and client certificates](#tls-and-client-certificates) and
+  [Bearer tokens](#bearer-tokens).
 - Loopback keeps allow-by-default under both rules. It is the
   development path, and the caller is already on the machine.
 - A tool that sets `Auth` keeps working on any address. `WithAPI`
@@ -1560,9 +1562,9 @@ transport and the rpc server; each applies every block in its row
 under its own `services.<svc>`. A block whose reach is HTTP listeners
 alone — `security_headers`, `health`, `host_check`, `origin_check`,
 `body_limit`, `compression`, `trusted_proxies`, `metrics.scrape`,
-`tls`, `tls.acme`, and `auth.mtls` — set for a kit-shipped service
-with no HTTP listener (the socket service) would act on nothing, so
-it is refused at validation, exit `2`, rather than ignored. Under
+`tls`, `tls.acme`, `auth.mtls`, `auth.jwt`, `auth.jwks` and
+`auth.oidc` — set for a kit-shipped service with no HTTP listener
+(the socket service) would act on nothing, so it is refused at validation, exit `2`, rather than ignored. Under
 `services.all` it is a default, and a service it does not reach
 simply does not read it.
 
@@ -1581,7 +1583,7 @@ reads no HTTP-listener key.
 | Block                                   | Applied by                                     | Refused under            |
 |-----------------------------------------|------------------------------------------------|--------------------------|
 | `auth` (`mode`)                         | `mtls`: api, mcp over HTTP, rpc                | `mode: mtls`: socket     |
-| `auth.mtls`, `tls`, `tls.acme`          | api, mcp over HTTP, rpc                        | socket                   |
+| `auth.mtls`, `auth.jwt`, `auth.jwks`, `auth.oidc`, `tls`, `tls.acme` | api, mcp over HTTP, rpc | socket |
 | `timeouts` `read_header`, `read`, `write`, `idle` | api, mcp over HTTP, rpc              | socket                   |
 | `timeouts` `command`                    | bridge services                                | —                        |
 | `tracing`, `metrics`                    | HTTP half: api, mcp over HTTP, rpc; invocation half: bridge services | —  |
@@ -1690,7 +1692,7 @@ serving.
 | `tls.acme.cache_dir`           | string | `<state dir>/<tool>/acme`       | account key and certificates |
 | `tls.acme.email`               | string | —                               | contact the CA may use |
 | `tls.acme.directory_url`       | string | Let's Encrypt production        | another ACME directory (a staging one, a private CA) |
-| `auth.mode`                    | string | unset                           | `mtls`: the client certificate is the credential |
+| `auth.mode`                    | string | unset                           | `mtls`: the client certificate is the credential; `jwt`, `jwks`, `oidc`: a bearer token is (see [Bearer tokens](#bearer-tokens)) |
 | `auth.mtls.ca_file`            | string | — (required under `mtls`)       | PEM bundle client certificates must chain to |
 | `auth.mtls.principal`          | string | `san`                           | `san` (first URI, else DNS, else email SAN), `san_uri`, `san_dns`, `san_email`, `cn` |
 | `auth.mtls.tenant_oid`         | string | —                               | dotted OID of a subject attribute, else of an extension holding a string |
@@ -1726,6 +1728,65 @@ serving.
   without TLS or without `ca_file`, a bundle with no certificate, an
   unknown `principal`, both tenant sources, an OID or pattern that does
   not parse, and an `auth.mtls` key under another mode.
+
+### Bearer tokens
+
+`auth.mode: jwt`, `jwks` or `oidc` makes a bearer token the credential
+on the kit HTTP listeners: `Authorization: Bearer <JWT>` on every
+request, verified by `go/transport/authn`. Each mode reads the block of
+its name under `services.<svc>.auth` or `services.all.auth`:
+
+| Key                        | Modes            | Default                       | Meaning |
+|----------------------------|------------------|-------------------------------|---------|
+| `auth.jwt.public_key_files` | `jwt`           | —                             | PEM public keys (Ed25519, RSA, ECDSA) trusted beside the tool's identity key |
+| `auth.jwks.url`            | `jwks`           | — (required)                  | the JSON Web Key Set; `https`, or `http` to a loopback host |
+| `auth.oidc.issuer`         | `oidc`           | — (required)                  | the provider; discovery at `<issuer>/.well-known/openid-configuration` yields its `jwks_uri` |
+| `<block>.issuer`           | `jwt`, `jwks`    | —                             | the token's `iss` must equal it (under `oidc`, the issuer always is checked) |
+| `<block>.audience`         | all              | — (required under `jwks`, `oidc`) | the token's `aud` must include one of these |
+| `<block>.clock_skew`       | all              | `1m`                          | tolerance on `exp`, `nbf`, `iat`; `0` tolerates none |
+| `<block>.refresh`          | `jwks`, `oidc`   | `1h`                          | how long a fetched key set is used before it is fetched again |
+| `<block>.tenant_claim`     | all              | `tenant`                      | the claim the tenant is read from |
+
+- `jwt` trusts the tool's own identity keypair (`cli.WithIdentity`) and
+  every key in `public_key_files`; with neither it is refused. A
+  token's `kid` selects the key; a key left in `public_key_files` after
+  rotation keeps verifying what it signed.
+- `jwks` and `oidc` fetch nothing at start. The key set is fetched on
+  the first request that needs it, again once older than `refresh`,
+  and again — at most once a minute — when a token names a `kid` the
+  cached set lacks. A refetch that fails keeps the last good set; a
+  set never fetched answers `unauthenticated`. The discovery document
+  must name the configured issuer exactly.
+- `audience` is required for `jwks` and `oidc`: a third-party issuer
+  mints tokens for every application it serves, and without it a
+  token minted for any of them would be accepted.
+- A token is accepted when it is signed under an asymmetric algorithm
+  (never `none`, never HMAC) by a trusted key, carries `exp` and `sub`,
+  is inside `exp`/`nbf`/`iat` with the skew, and matches `issuer` and
+  `audience` where set. Anything else is refused at slot 12 as
+  `unauthenticated`, audited like any refusal, with the
+  `WWW-Authenticate: Bearer` challenge.
+- The claims are the call's identity: `sub` is `Caller`, the tenant
+  claim `Tenant`, and the scopes — `scopes` (a list), else `scope`
+  (space-delimited, RFC 8693), else `scp` — `Meta.Extra["scopes"]`.
+  `Established` is `verified`.
+- The mode selects the verifier. Under any mode the listener's code
+  `Auth` (`APIConfig.Auth`, `rpcserve.Config.Auth`,
+  `mcpserve.Config.Auth`) is not consulted; with `auth.mode` unset it
+  applies as before. The api service's `--no-auth` disables either.
+- A service names one mode. A key of another mode's block under the
+  service is refused at validation, exit `2`; one under
+  `services.all` is refused too while the mode in force is the shared
+  one, and is a default the service does not use once the service
+  names its own mode.
+- Each of these is refused at validation, exit `2`, naming the key:
+  `jwt` with no key, a key file that does not load, `jwks` without a
+  URL, `oidc` without an issuer, a URL that is neither `https` nor
+  loopback `http`, `jwks` or `oidc` without an audience, a skew or
+  refresh that does not parse, a negative skew, and a refresh that is
+  not positive.
+- A bearer token sent over plain HTTP beyond loopback can be replayed
+  by anyone who sees it; serve such a listener with `tls`.
 
 ### Timeouts
 

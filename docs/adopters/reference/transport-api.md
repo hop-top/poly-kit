@@ -504,10 +504,25 @@ understands three shapes without importing an adopter's types:
 | string-keyed map (any element type, named types included) | `"sub"` | `"tenant"` |
 
 Anything else authenticates the call and leaves it unattributed.
-`ScopesOf` reads `Claims.Scopes` or a map's `"scopes"` entry the same
-way. `Auth(fn, OnAuthRefused(hook))` lets a refusal be observed
+`ScopesOf` reads `Claims.Scopes`, or from a map the first of
+`"scopes"` (a list, or one scope), `"scope"` (space-delimited, as OAuth
+issuers mint it) and `"scp"` (a list or space-delimited).
+`Auth(fn, OnAuthRefused(hook))` lets a refusal be observed
 before the `401` is written, which is how the api service records it
 in the audit trail.
+
+#### Bearer-token verifiers
+
+`go/transport/authn` builds ready `AuthFunc`s that verify a JWT from
+`Authorization: Bearer`: `NewJWT` over fixed keys (`IdentityKey` for
+the tool's identity keypair, `ParsePublicKeyPEM` for key files),
+`NewJWKS` over a key set URL, `NewOIDC` over an issuer's discovery.
+Each takes `Options` (issuer, audience, clock skew, tenant claim, a
+`Check` revocation hook) and returns a `*Verifier`; `AuthFunc()`
+returns `Claims` with the principal, tenant and scopes. The
+kit-shipped services build one from `services.<svc>.auth.mode: jwt`,
+`jwks` or `oidc`; see the
+[serve-lifecycle contract](../../contracts/serve-lifecycle.md#bearer-tokens).
 
 #### Client certificates
 

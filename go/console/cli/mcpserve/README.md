@@ -31,7 +31,7 @@ root := cli.New(cli.Config{Name: "mytool", Version: version},
 - Normative text: [serve-lifecycle contract §"The mcp service"](../../../../docs/contracts/serve-lifecycle.md#the-mcp-service).
 - Disabled by default; `serve mcp` starts it. HTTP on its own listener, default `127.0.0.1:8081`, path `/mcp`.
 - Keys: `services.mcp.{transport,addr,path,insecure_remote,insecure_no_policy}`; flags `--stdio`, `--mcp-addr`.
-- HTTP over TLS under `services.mcp.tls`; `services.mcp.auth.mode: mtls` authenticates by client certificate in place of `Auth`.
+- HTTP over TLS under `services.mcp.tls`; `services.mcp.auth.mode` authenticates in place of `Auth`: `mtls` by client certificate, `jwt`, `jwks` or `oidc` by bearer token.
 - HTTP-plane middleware on the HTTP transport: the chain every kit listener shares, from `services.mcp.<block>`; refusals are JSON-RPC errors. The SDK's body cap follows `body_limit`; its DNS-rebinding check stays beneath kit's Host check unless `host_check` admits other names.
 - `kit/auth-required`: HTTP needs `Config.Auth`; stdio admits on the spawn's trust.
 - `kit/requires-confirmation`: an accepted elicitation, or `X-Confirm-Token` over HTTP; asked only after every machine gate.

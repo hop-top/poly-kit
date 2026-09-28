@@ -57,6 +57,23 @@ func TestIdentityOfUnderstandsThreeShapes(t *testing.T) {
 			name: "map[string]string", claims: map[string]string{"sub": "fay", "tenant": "t"},
 			wantP: "fay", wantT: "t",
 		},
+		{
+			name: "OAuth scope string", claims: map[string]any{"sub": "gil", "scope": "items:export other"},
+			wantP: "gil", wantScopes: []string{"items:export", "other"},
+		},
+		{
+			name: "scp list", claims: map[string]any{"sub": "hal", "scp": []any{"a", "b"}},
+			wantP: "hal", wantScopes: []string{"a", "b"},
+		},
+		{
+			name: "scp string", claims: map[string]any{"sub": "hal", "scp": "a b"},
+			wantP: "hal", wantScopes: []string{"a", "b"},
+		},
+		{
+			name: "scopes wins over scope", claims: map[string]any{"sub": "ivy", "scopes": []any{"x"}, "scope": "y"},
+			wantP: "ivy", wantScopes: []string{"x"},
+		},
+		{name: "empty scope string", claims: map[string]any{"sub": "jo", "scope": "  "}, wantP: "jo"},
 		{name: "unrecognized", claims: 42, explainAbsence: "an int carries no identity"},
 		{name: "map with non-string sub", claims: map[string]any{"sub": 7}},
 	}

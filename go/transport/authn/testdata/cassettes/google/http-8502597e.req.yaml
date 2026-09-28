@@ -1,0 +1,7 @@
+xrr: "1"
+adapter: http
+fingerprint: 8502597e
+recorded_at: "2026-09-28T18:39:39Z"
+payload:
+    method: GET
+    url: https://accounts.google.com/.well-known/openid-configuration
