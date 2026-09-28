@@ -24,6 +24,7 @@ Exact details per API: signatures, flags, exit codes, config shapes, wire format
 | [`py-sdk.md`](py-sdk.md) | Python SDK long-form surfaces: MCP mount, URI facade, output rules, telemetry envelope | you have `hop-top-kit` installed and need the detail behind its README |
 | [`qmochi-charts.md`](qmochi-charts.md) | every qmochi chart type with options and worked examples, SVG output, automatic selection | you pick a terminal chart type or reach for one of its options |
 | [`rs-sdk.md`](rs-sdk.md) | Rust SDK long-form surfaces: serve, output, MCP, storage, httpcache wire contract, telemetry, bus | you depend on the experimental crate and need the detail behind its README |
+| [`served-middleware.md`](served-middleware.md) | every `services.<svc>` middleware key, its default and reach, the order, and each refusal per surface | you configure auth or limits on a served tool, or map a refusal |
 | [`served-observability.md`](served-observability.md) | tracing and metrics for served commands: propagation, keys, spans, instruments | you trace or measure the api, socket or RPC services |
 | [`setflag-textflag-api.md`](setflag-textflag-api.md) | multi-value flags with prefix operators, Go, TS, Python | you replace `--add-X` / `--remove-X` pairs |
 | [`telemetry-compliance.md`](telemetry-compliance.md) | F13 `ConsentingTelemetry` checklist for binaries opting into telemetry | your toolspec sets `telemetry.enabled: true` |

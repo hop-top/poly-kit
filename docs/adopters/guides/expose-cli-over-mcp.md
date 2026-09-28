@@ -190,15 +190,19 @@ off. Listing is advisory; every call still passes the bridge's gates.
 
 | Gate | Over HTTP | Over stdio |
 |------|-----------|------------|
-| Exposure | loopback by default; a non-loopback address needs `Config.Auth` or `services.mcp.insecure_remote` (refused at exit `2` otherwise), and with no `--policy` enforces `kit-default` unless `services.mcp.insecure_no_policy` | no address, no rule |
-| `kit/auth-required` | runs only when `Config.Auth` verified the request; a bare `Authorization` header is not authentication | runs: the peer spawned the process and already holds your user's authority |
+| Exposure | loopback by default; a non-loopback address needs a verifier (`services.mcp.auth.mode` or `Config.Auth`) or `services.mcp.insecure_remote` (refused at exit `2` otherwise), and with no `--policy` enforces `kit-default` unless `services.mcp.insecure_no_policy` | no address, no rule |
+| `kit/auth-required` | runs only when a verifier (`auth.mode` or `Config.Auth`) verified the request; a bare `Authorization` header is not authentication | runs: the peer spawned the process and already holds your user's authority |
 | `kit/requires-confirmation` | an elicitation the client's user accepts, or an `X-Confirm-Token` header | an elicitation the client's user accepts |
 | destructive | withheld until `Policy.AllowDestructiveOn` names `cmdsurface.SurfaceMCP`; then the command's own `confirm` argument | same |
 | permission, audit | `cli.WithPermission`, `cli.WithAuditSinks` | same |
 
-A refusal is an `isError` tool result, never an HTTP status:
+A gate's refusal is an `isError` tool result, not an HTTP status:
 `authentication required`, `confirmation required` (naming both
-remedies), or `confirmation declined`. The confirmation question is
+remedies), `confirmation declined`, or a result whose text leads with
+a refusal code (`rate_limited`, `overloaded`, ...). Over HTTP, what the
+listener refuses before MCP reads the call (a missing token, a
+rejected `Host`, a body over the limit) is an HTTP status, and so is
+[`insufficient_scope` for a bearer caller](#let-mcp-clients-sign-in-oauth). The confirmation question is
 asked only after every machine gate has admitted the call, so a
 caller a machine gate refuses never sees a prompt, and an accepted
 answer lifts nothing but that one gate.
@@ -243,6 +247,56 @@ mcpserve.With(mcpserve.Config{
 
 `Auth` is an `api.AuthFunc`, the type `APIConfig.Auth` takes;
 [secure-remote-serving.md](secure-remote-serving.md) walks it.
+
+### Enable auth and limits
+
+Over HTTP, name a verifier and the service checks every request to
+the endpoint with it; with one it may listen beyond loopback. Over
+stdio nothing changes: the process that spawned the server is the
+caller, and HTTP keys are not read.
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  mcp:
+    enabled: true
+    addr: 0.0.0.0:8081
+    tls:
+      cert_file: /etc/mytool/tls/server.crt
+      key_file: /etc/mytool/tls/server.key
+    auth:
+      mode: jwks                              # or oidc, jwt, apikey, mtls
+      jwks:
+        url: https://login.example.com/.well-known/jwks.json
+        issuer: https://login.example.com/
+        audience: https://mcp.example.com/mcp
+    rate_limit:
+      write:
+        per_minute: 60                        # the default is 120
+    concurrency:
+      max_inflight: 8
+```
+
+A request without a valid token is answered `401` before the MCP
+layer reads it. Once admitted, every `tools/call` meets the same gates
+as REST, and a limit's refusal is a tool result the client can act
+on:
+
+```json
+{"content":[{"type":"text","text":"rate_limited: ... retry after 1s"}],"isError":true,"_meta":{"hop.top/refusal":{"code":"rate_limited","retry_after_ms":1000}}}
+```
+
+The limits need no configuration: beyond loopback a per-caller rate
+limit per side-effect tier, and on every bind a 1 MiB body cap (`413`
+with a JSON-RPC `-32600` error), server timeouts (the endpoint is a
+stream route, exempt from the write timeout), and 32 calls at once
+with 64 queued. The block above only tunes them. Every key and its
+default, and each refusal on each surface, is in
+[served-middleware.md](../reference/served-middleware.md).
+
+`mcpserve.Config.Auth` verifies requests in code instead, when no
+`auth.mode` is set; the keys, API keys and client certificates are
+walked in [secure-remote-serving.md](secure-remote-serving.md).
 
 ### Let MCP clients sign in (OAuth)
 

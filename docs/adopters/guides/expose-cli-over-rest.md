@@ -367,11 +367,61 @@ Without `OpenAPI` set, projection still mounts and a minimal
 document is served at the same path — enough to find every
 operation, its method and its path.
 
-### 9. Put it behind auth
+### 9. Enable auth and limits
 
-`APIConfig.Auth` gates the projected routes and the discovery
-endpoint exactly as it gates your own, and it is what permits a
-non-loopback address:
+Name a verifier in configuration and the api service checks every
+request against it — projected routes, discovery, `/openapi.json`,
+your own `Handlers` — before any command runs. Only `/healthz` and
+`/readyz` answer without a credential. A configured verifier is what
+lets the service listen beyond loopback:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  api:
+    addr: 0.0.0.0:8443
+    tls:
+      cert_file: /etc/mytool/tls/server.crt
+      key_file: /etc/mytool/tls/server.key
+    auth:
+      mode: oidc                             # or jwks, jwt, apikey, mtls
+      oidc:
+        issuer: https://login.example.com/
+        audience: https://api.example.com/v1 # tokens minted for this API only
+    rate_limit:
+      read:
+        burst: 120                           # the default is 60
+    timeouts:
+      command: 30s                           # no default deadline
+```
+
+A call without a valid token gets `401` and a `WWW-Authenticate`
+challenge; one whose token lacks a scope the command declares in
+`kit/permissions` gets `403 insufficient_scope`, naming the scope:
+
+```http
+HTTP/1.1 403 Forbidden
+Www-Authenticate: Bearer error="insufficient_scope", scope="items:export", resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/v1"
+
+{"status":403,"code":"insufficient_scope","message":"..."}
+```
+
+`resource_metadata` appears because the audience is the API's own
+URL and the block names an issuer: the service then publishes its
+OAuth protected resource metadata, and an OAuth client finds the
+provider from the refusal alone.
+
+The limits are on already. Beyond loopback each caller gets a rate
+limit per side-effect tier (`429 rate_limited` with `Retry-After`),
+and on every bind the service caps request bodies at 1 MiB (`413
+body_too_large`), times out slow clients (5s to send a request, 10s
+to receive a request/reply answer), and runs 32 calls at once with 64
+queued (`503 overloaded`). The block above only tunes them; every
+key, its default and its refusal is in
+[served-middleware.md](../reference/served-middleware.md).
+
+To verify tokens yourself, set `APIConfig.Auth` in code instead; it
+applies when no `auth.mode` is configured:
 
 ```go
 import (
@@ -392,18 +442,15 @@ cli.WithAPI(cli.APIConfig{
 })
 ```
 
-The projection installs no auth of its own and no second mechanism.
-An unauthenticated call gets `401` before the command runs. The
-claims you return attribute each call: return an `api.Claims`, a
-value implementing `api.Identity`, or a string-keyed map with `sub`
-and `tenant`, and the principal and tenant reach the permission gate
-and the audit trail as `Meta.Caller` and `Meta.Tenant`.
+Return an `api.Claims`, a value implementing `api.Identity`, or a
+string-keyed map with `sub` and `tenant`; the principal, tenant and
+scopes reach the permission gate and the audit trail as
+`Meta.Caller`, `Meta.Tenant` and the verified scopes.
 
-Forgetting `Auth` on a non-loopback address is refused at `serve`,
-exit `2`, with a message naming the fix. The complete walkthrough —
-the refusal, the opt-in, a permission gate, the audit trail, request
-and trace ids — is
-[secure-remote-serving.md](secure-remote-serving.md).
+A non-loopback address with neither is refused at `serve`, exit `2`,
+with a message naming the fix. The walkthrough — the refusal, the
+opt-ins, API keys and client certificates, a permission policy, the
+audit trail — is [secure-remote-serving.md](secure-remote-serving.md).
 
 ### 10. Run requests in parallel
 
@@ -585,6 +632,7 @@ The full table is in the
 | `cli.WithRootFactory(newRoot)` | not set | Run requests in parallel, each on a tree `newRoot` builds (step 10). Unset serializes them on the tool's own tree. |
 | `services.api.cache.enabled` | `true` | Serve reads that declare `kit/cache-ttl` from a result cache, with `ETag` and `304`. `backend` (default `memory`), `max_bytes`, `path`; see [result cache](../reference/transport-api.md#result-cache). |
 | `services.api.compression.enabled` | `false` | gzip/zstd response bodies for clients that accept them. `min_bytes` (default `1024`) sets the floor; `services.all.compression` sets both for every service. See [response compression](../reference/transport-api.md#response-compression). |
+| `services.api.auth`, `rate_limit`, `timeouts`, `body_limit`, ... | see reference | Every middleware block, its keys and defaults: [served-middleware.md](../reference/served-middleware.md). |
 
 ## Execution facts
 

@@ -56,6 +56,7 @@ how kit itself is implemented.
 - [`reference/ts-api-reference.md`](reference/ts-api-reference.md) — TypeScript CLI factory
 - [`reference/py-api-reference.md`](reference/py-api-reference.md) — Python CLI factory
 - [`reference/bus-api.md`](reference/bus-api.md) — bus types, methods, sinks
+- [`reference/served-middleware.md`](reference/served-middleware.md) — served middleware keys, order and refusals
 - [`reference/engine-protocol.md`](reference/engine-protocol.md) — HTTP/WS wire format
 - [`reference/engine-security.md`](reference/engine-security.md) — identity, trust, encryption
 - [`reference/compliance-api.md`](reference/compliance-api.md) — 12-factor checker

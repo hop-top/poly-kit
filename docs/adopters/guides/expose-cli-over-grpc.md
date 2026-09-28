@@ -323,11 +323,50 @@ A hidden command answers `not_found`. Interactive, self-hosting and
 management-only commands (`shell`, `serve`, `status`) never run over
 RPC, exactly as they are never mounted over REST.
 
-### 10. Put it behind auth
+### 10. Enable auth and limits
 
-`rpcserve.Config.Auth` takes the same `api.AuthFunc` the REST service
-takes, so one function authenticates both. It runs on every call,
-unary and streaming, before anything else:
+Name a verifier in configuration and the service checks every call
+with it, unary and streaming, before anything else; with one it may
+listen beyond loopback:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  rpc:
+    enabled: true
+    addr: 0.0.0.0:8443
+    tls:                                   # native gRPC clients need TLS or h2c
+      cert_file: /etc/mytool/tls/server.crt
+      key_file: /etc/mytool/tls/server.key
+    auth:
+      mode: mtls                           # or jwt, jwks, oidc, apikey
+      mtls:
+        ca_file: /etc/mytool/tls/clients-ca.crt
+    rate_limit:
+      enabled: true                        # already on beyond loopback
+    timeouts:
+      command: 1m
+```
+
+```bash
+mytool serve rpc --policy=readonly
+```
+
+A refused call is `unauthenticated` and is recorded in the audit
+trail. A limit answers with a code a gRPC client already retries on:
+`resource_exhausted` over the rate limit or the quota, `unavailable`
+when every slot and the queue are full, each with `Retry-After` in the
+error metadata, and `deadline_exceeded` past `timeouts.command`.
+Beyond loopback the rate limit is on without configuration, and on
+every bind the service caps a request at 4 MiB, times out slow clients
+(`InvokeStream` is exempt from the write timeout) and runs 32 calls at
+once with 64 queued. The block above only tunes them; every key, its
+default and each refusal per surface is in
+[served-middleware.md](../reference/served-middleware.md).
+
+To verify calls yourself, set `rpcserve.Config.Auth`, the same
+`api.AuthFunc` the REST service takes, so one function authenticates
+both. It applies when no `auth.mode` is configured:
 
 ```go
 import (
@@ -348,24 +387,20 @@ rpcserve.With(rpcserve.Config{
 })
 ```
 
-```bash
-mytool serve rpc --policy=readonly
-```
-
 The function sees the call's headers and peer address; it must not
-read the URL or body. A refused call is `unauthenticated` and is
-recorded in the audit trail.
+read the URL or body.
 
-Identity comes only from what `Auth` verified. The `meta.caller`,
-`meta.tenant` and `meta.extra` a client puts in the request body are
-dropped, so no client can name itself a principal. A command annotated
-`kit/auth-required` runs only for a call `Auth` verified; without
-`Auth` it is refused, whatever header the client sends.
+Identity comes only from what the verifier established. The
+`meta.caller`, `meta.tenant` and `meta.extra` a client puts in the
+request body are dropped, so no client can name itself a principal.
+A command annotated `kit/auth-required` runs only for a verified
+call; without a verifier it is refused, whatever header the client
+sends.
 
-Beyond loopback, the service refuses to start (exit `2`) without
-`Auth` unless you opt out by name with `services.rpc.insecure_remote`,
-and without a `--policy` it enforces `kit-default` unless you opt out
-with `services.rpc.insecure_no_policy`.
+Beyond loopback, the service refuses to start (exit `2`) without a
+verifier unless you opt out by name with
+`services.rpc.insecure_remote`, and without a `--policy` it enforces
+`kit-default` unless you opt out with `services.rpc.insecure_no_policy`.
 The permission gate (`cli.WithPermission`), the audit sinks
 (`cli.WithAuditSinks`) and the walkthrough are shared with the other
 services: [secure-remote-serving.md](secure-remote-serving.md).
@@ -373,8 +408,9 @@ services: [secure-remote-serving.md](secure-remote-serving.md).
 ### 11. Add your own interceptors
 
 `rpcserve.Config.Interceptors` takes Connect interceptors for your
-own concerns: metering, quotas, tracing. They run inside kit's gates,
-so they see only calls kit admitted:
+own concerns, such as metering against your own billing. Rate limits,
+quotas and tracing are built in (step 10). They run inside kit's
+gates, so they see only calls kit admitted:
 
 ```go
 rpcserve.With(rpcserve.Config{
@@ -383,8 +419,9 @@ rpcserve.With(rpcserve.Config{
 })
 ```
 
-A call that `Auth`, `kit/auth-required`, confirmation, `Expose`, the
-destructive ceiling or the permission gate refuses never reaches them.
+A call that authentication, `kit/auth-required`, confirmation,
+`Expose`, the destructive ceiling, the permission gate or a limit
+refuses never reaches them.
 A call they refuse does not run; the client gets their error and the
 audit trail records it. They apply in order, the first outermost.
 
@@ -399,10 +436,14 @@ A refusal is an RPC error, and the command never ran:
 | Code                  | When                                                         |
 |-----------------------|--------------------------------------------------------------|
 | `not_found`           | unknown command, hidden by `Expose`/`Hide`, or never remote  |
-| `unauthenticated`     | `Auth` refused the call, or `kit/auth-required` without verified `Auth` |
+| `unauthenticated`     | the verifier refused the call, or `kit/auth-required` without a verified caller |
 | `failed_precondition` | `kit/requires-confirmation` without `X-Confirm-Token`        |
 | `permission_denied`   | destructive ceiling, a scope the command's `kit/permissions` names that `Auth`'s claims lack (message led by `cmdsurface: insufficient scope`), `--policy`, or `cli.WithPermission`; the message says which. Also the listener's Host and Origin checks, the message led by `host_rejected` or `origin_rejected` |
-| `resource_exhausted`  | request over the body limit: `services.rpc.body_limit.max_bytes`, else `MaxBodyBytes` |
+| `resource_exhausted`  | request over the body limit (`services.rpc.body_limit.max_bytes`, else `MaxBodyBytes`), or the caller is over its rate limit or quota (with `Retry-After` metadata) |
+| `unavailable`         | every in-flight slot and the queue are full (`concurrency`); retry after `Retry-After` |
+| `deadline_exceeded`   | the command ran past its deadline (`kit/timeout`, else `timeouts.command`) |
+| `aborted`             | the same idempotency key is still running |
+| `invalid_argument`    | an idempotency key reused for a different call |
 
 ## Option reference
 
