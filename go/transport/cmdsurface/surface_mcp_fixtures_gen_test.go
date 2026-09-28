@@ -16,6 +16,11 @@ package cmdsurface
 // agree — RunFixtureSelfCheck below re-drives every emitted case and
 // fails if the surface has drifted from the committed fixture.
 //
+// The generator mounts through the unexported mountMCP, never the
+// deprecated MountMCP or its options, so the fixtures outlive that
+// public API; TestMCPFixtureGeneratorUsesNoDeprecatedAPI holds it to
+// that.
+//
 // Regenerate with:
 //
 //	go test ./go/transport/cmdsurface/ -run TestGenerateMCPWireFixtures -update-mcp-fixtures
@@ -35,8 +40,23 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"hop.top/kit/go/transport/api"
 )
+
+// fixtureServer mounts the MCP handlers with cfg over a fresh bridge on
+// root, through the unexported mountMCP, and returns a live server.
+func fixtureServer(t *testing.T, root *cobra.Command, cfg mcpConfig) *httptest.Server {
+	t.Helper()
+	r := api.NewRouter()
+	if err := mountMCP(New(root), r, cfg); err != nil {
+		t.Fatalf("mountMCP: %v", err)
+	}
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	return srv
+}
 
 // rawPOSTURL is rawPOST against an explicit base URL. rawPOST takes a
 // *httptest.Server; the generator holds several servers at once and
@@ -181,7 +201,7 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 	var out []mcpFixtureCase
 
 	// --- legacy era (2024-11-05) ---
-	legacy := func() string { return legacyLockServer(t, nil).URL }
+	legacy := func() string { return fixtureServer(t, legacyLockTree(), defaultMCPConfig()).URL }
 
 	// A FRESH server per case. Cobra attaches help flags lazily on first
 	// execution, so a long-lived server lets an earlier tools/call leak a
@@ -271,7 +291,7 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 		`{"jsonrpc":"2.0","id":8,"method":"tools/list"}`, legacy)
 
 	// --- modern era (2026-07-28) ---
-	modern := func() string { return modernLockServer(t, nil).URL }
+	modern := func() string { return fixtureServer(t, modernLockTree(), defaultMCPConfig()).URL }
 
 	modernMeta := `"_meta":{"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}`
 
@@ -354,7 +374,7 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 // notice.
 func mcpFixtureSequences(t *testing.T) []mcpFixtureSeq {
 	t.Helper()
-	srv := legacyLockServer(t, nil).URL
+	srv := fixtureServer(t, legacyLockTree(), defaultMCPConfig()).URL
 	step := func(name, why, body string) mcpFixtureCase {
 		status, _, raw := rawPOSTURL(t, srv, "/mcp", nil, []byte(body))
 		return mcpFixtureCase{
@@ -395,13 +415,10 @@ func mcpFixtureSequences(t *testing.T) []mcpFixtureSeq {
 func mcpFixtureMRTRCase(t *testing.T) *mcpFixtureMRTR {
 	t.Helper()
 	root, _ := mrtrLockTree()
-	b := New(root)
-	r := api.NewRouter()
-	if err := MountMCP(b, r, WithMCPConfirmationKey(mrtrLockKey)); err != nil {
-		t.Fatalf("MountMCP: %v", err)
-	}
-	srv := httptest.NewServer(r)
-	t.Cleanup(srv.Close)
+	cfg := defaultMCPConfig()
+	cfg.confirmKeySet = true
+	cfg.confirmKey = append([]byte(nil), mrtrLockKey...)
+	srv := fixtureServer(t, root, cfg)
 
 	h1 := map[string]string{
 		headerMCPProtocolVersion: mcpModernProtocolVersion,

@@ -172,16 +172,31 @@ func MountMCP(b *Bridge, r *api.Router, opts ...MCPOption) error {
 	if r == nil {
 		return errors.New("cmdsurface: MountMCP: nil router")
 	}
-	cfg := mcpConfig{
+	cfg := defaultMCPConfig()
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return mountMCP(b, r, cfg)
+}
+
+// defaultMCPConfig is the configuration MountMCP starts from before
+// its options apply.
+func defaultMCPConfig() mcpConfig {
+	return mcpConfig{
 		path:          defaultMCPPath,
 		serverName:    defaultMCPServerName,
 		serverVersion: defaultMCPServerVersion,
 		cacheScope:    MCPCacheScopePrivate,
 	}
-	for _, o := range opts {
-		o(&cfg)
-	}
+}
 
+// mountMCP validates cfg and mounts the MCP handlers on r. It is
+// MountMCP past its argument checks and option parsing, and the
+// entry point the cross-language wire-fixture generator
+// (surface_mcp_fixtures_gen_test.go) mounts through, so the fixtures
+// keep a generator once MountMCP and its options are removed. b and
+// r are non-nil.
+func mountMCP(b *Bridge, r *api.Router, cfg mcpConfig) error {
 	enabled := mcpEnabledSet{legacy: true, modern: true}
 	if cfg.specVersionsSet {
 		var err error
