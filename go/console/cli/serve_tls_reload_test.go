@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -106,4 +107,55 @@ func TestAPIMutualTLSReloadsTheCABundle(t *testing.T) {
 		assert.Contains(t, logs.String(), "holds no PEM certificate")
 		assert.True(t, accepted(f.client(bob), url))
 	})
+}
+
+// Reload leaves the verifier auth.mode selected in place: under a
+// bearer mode the replaced certificate is served and a token is still
+// verified, a request without one still refused.
+func TestAPITLSReloadKeepsTheBearerVerifier(t *testing.T) {
+	f := newTLSFixture(t)
+	idp, priv := jwksServer(t)
+	keys := f.tlsKeys(APIServiceName)
+	for k, v := range map[string]any{
+		"services.api.auth.mode":          "jwks",
+		"services.api.auth.jwks.url":      idp.URL + "/jwks.json",
+		"services.api.auth.jwks.audience": "kit-api",
+		"services.api.auth.jwks.issuer":   idp.URL,
+	} {
+		keys[k] = v
+	}
+	logs := &logBuffer{}
+	r := bearerRoot(t, keys, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
+	r.Cmd.SetErr(logs)
+	base, stop := serveAPI(t, r)
+	defer stop()
+	base = strings.Replace(base, "http://", "https://", 1)
+	token := rsaToken(t, priv, map[string]any{"sub": "svc-a", "aud": "kit-api", "iss": idp.URL,
+		"exp": time.Now().Add(time.Hour).Unix()})
+	secret := func() int {
+		req, err := http.NewRequest(http.MethodGet, base+"/v1/commands/secret", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := f.client().Do(req)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	anonymous := func() int {
+		resp, _ := tlsGet(t, f.client(), base+"/v1/commands/secret")
+		return resp.StatusCode
+	}
+	require.Equal(t, http.StatusOK, secret())
+	require.Equal(t, http.StatusUnauthorized, anonymous())
+
+	next := f.ca.Localhost(t)
+	require.NoError(t, os.WriteFile(f.certFile, next.CertPEM, 0o600))
+	require.NoError(t, os.WriteFile(f.keyFile, next.KeyPEM, 0o600))
+	eventually(t, func() bool {
+		s := servedSerial(t, f.client(), base+"/healthz")
+		return s != nil && s.Cmp(next.Cert().SerialNumber) == 0
+	}, "the replaced certificate is served\n%s", logs)
+
+	assert.Equal(t, http.StatusOK, secret(), "the bearer verifier still admits a token after reload")
+	assert.Equal(t, http.StatusUnauthorized, anonymous(), "and still refuses no token")
 }
