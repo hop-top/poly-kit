@@ -70,6 +70,24 @@
         "sdk/ts",
         "templates"
       ],
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "templates/cli-go/go.mod.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "templates/cli-go/kit-template.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "internal/template/builtins/cli-go/go.mod.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "internal/template/builtins/cli-go/kit-template.yaml"
+        }
+      ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",

@@ -14,6 +14,13 @@ generated, embedded via `//go:embed`, and committed to the repo.
 
 Refresh both at once: `make refresh-rules`.
 
+One checker lives here too, because it is Go for the same reason the
+generators are: it needs `golang.org/x/mod`'s semver ordering.
+
+| Tool | Purpose | Target |
+|------|---------|--------|
+| [`check-kit-pin/`](check-kit-pin/main.go) | Fail when the cli-go template's kit pin lags `proxy.golang.org` by more than one release | `make check-template-kit-pin` |
+
 ## Properties
 
 - **Idempotent.** Same `--tag` (and unchanged `curated.go`, for

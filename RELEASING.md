@@ -194,6 +194,25 @@ Promoting `next` to stable is the `next → main` merge described in
 
 `kit`, `kit-ts`, `kit-py`, `kit-rs`, and `kit-php` share a linked version.
 
+### The cli-go template's kit pin
+
+A project `kit init --from cli-go` generates requires the kit release
+pinned in `templates/cli-go/go.mod.tmpl`, and `kit_version` in
+`templates/cli-go/kit-template.yaml` names the same release. Both lines,
+and their copies under `internal/template/builtins/cli-go/`, carry the
+`x-release-please-version` annotation and are generic `extra-files` of
+the `kit` package, so each `kit` release PR sets them to the version it
+cuts. In `go.mod.tmpl` the annotation is a template comment
+(`{{- /* x-release-please-version */}}`), so it never reaches a
+generated project.
+
+`make check-template-kit-pin` (the `template-kit-pin` CI job, also
+nightly) fails when more than one version on
+`proxy.golang.org/hop.top/kit/@v/list` is newer than the pin. It reads
+the proxy, not local tags: the proxy is what a generated project's
+`go get` resolves against. `go test ./cmd/kit/init/` holds the pin equal
+to the manifest's `kit` version.
+
 ## Bump policy
 
 Bump size is the same on both branches; only the prerelease suffix differs

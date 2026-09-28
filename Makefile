@@ -490,6 +490,10 @@ check-mirror-sync: check-template-sources ## Verify templates/ and internal/temp
 	fi
 	@echo "Mirror in sync."
 
+.PHONY: check-template-kit-pin
+check-template-kit-pin: ## Fail when the cli-go template's kit pin lags proxy.golang.org by more than one release
+	@go run ./internal/tools/check-kit-pin
+
 test-templates: ## Run bats tests for template scripts
 	bats templates/tests/lib.bats templates/tests/conform.bats
 
