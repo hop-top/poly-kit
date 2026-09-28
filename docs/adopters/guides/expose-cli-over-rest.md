@@ -574,6 +574,8 @@ be lying about what your commands promise:
   loopback, the permission gate, the audit trail
 - [expose-cli-over-mcp.md](expose-cli-over-mcp.md) — the same tree
   as MCP tools, for LLM hosts
+- [expose-cli-over-grpc.md](expose-cli-over-grpc.md) — the same tree
+  as one typed RPC service, for Connect, gRPC and gRPC-Web clients
 - [serve-lifecycle contract](../../contracts/serve-lifecycle.md) —
   how services start, report ready, and stop
 - [cmdsurface README](../../../go/transport/cmdsurface/README.md) —

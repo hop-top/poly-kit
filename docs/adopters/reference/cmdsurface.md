@@ -238,7 +238,7 @@ every gate and the audit.
 | `rest`          | request / reply     | `cli.WithAPI` (`serve api`); `MountREST` deprecated | machine-to-machine calls over HTTP | the `api` service's projection under `/v1/commands` |
 | `ws`            | bidirectional       | `MountWS`        | interactive streaming clients           | `api.Hub` + `coder/websocket`   |
 | `sse`           | server-stream       | `MountSSE`       | one-way streaming to browsers           | `api.Router`                    |
-| `rpc`           | request / reply + server-stream | `MountRPC`    | strongly-typed Go/JS clients            | `transport/rpc` (ConnectRPC)    |
+| `rpc`           | request / reply + server-stream | `rpcserve.With` (`serve rpc`), `MountRPC` | typed clients: Connect, gRPC, gRPC-Web  | `transport/rpc` (ConnectRPC)    |
 | `mcp`           | discovery + exec    | `mcpserve.With` (`serve mcp`), `mcpsdk.Mount`; `MountMCP` deprecated | LLM tool calls | official MCP Go SDK (`transport/mcpsdk`) |
 | `webhook`       | inbound HTTP        | `MountWebhooks`  | third-party push (GitHub, Stripe, …)    | `api.Router` + `text/template`  |
 | `bus`           | pub/sub             | `MountBus`       | async workflows, fan-in                 | `transport/api.EventPublisher`  |
@@ -339,24 +339,96 @@ the canonical REST surface; its wire format is in
 func MountRPC(b *Bridge, s rpcServerMount, opts ...RPCOption) error
 ```
 
+To serve the tool's own tree under `<tool> serve` with no mounting
+code, register the built-in service instead:
+`rpcserve.With(rpcserve.Config{})` from `go/console/cli/rpcserve`
+([task guide](../guides/expose-cli-over-grpc.md)). It calls `MountRPC`
+with every option below wired to the shared auth, permission gate and
+audit sinks. This section is for mounting by hand.
+
 Wire shape: the `cmdsurface.v1.Commands` service at
-`RPCServicePath = "/cmdsurface.v1.Commands/"`, schema
-[`contracts/proto/cmdsurface/v1/commands.proto`](../../../contracts/proto/cmdsurface/v1/commands.proto).
-Two procedures: `Invoke` (unary) and `InvokeStream` (server-streaming).
-The handler answers Connect (binary proto and JSON), gRPC and gRPC-Web;
-gRPC needs HTTP/2, which `rpc.ListenAndServe` serves without TLS (h2c).
-JSON keys are the Go struct tags' snake_case names. Go clients use
-`cmdsurfacev1connect.NewCommandsClient` from
-`go/transport/cmdsurface/gen/cmdsurfacev1/cmdsurfacev1connect`;
+`RPCServicePath = "/cmdsurface.v1.Commands/"`. Two procedures:
+`Invoke` (unary) and `InvokeStream` (server-streaming).
+
+**Schema.**
+[`contracts/proto/cmdsurface/v1/commands.proto`](../../../contracts/proto/cmdsurface/v1/commands.proto)
+is the source of truth; the Go types `Invocation`, `Meta`, `Result`
+and `Event` mirror it. Go stubs are committed in
+`go/transport/cmdsurface/gen/cmdsurfacev1`; other languages generate
+their own from the proto file. The server offers no reflection
+service, so clients are given the schema. Commands are addressed by
+`Invocation.path`, not by procedure, so the schema does not change
+when the command tree does.
+
+**Codecs and protocols.** The handler is the generated Connect
+handler, so it answers every protocol connect-go serves: Connect with
+binary proto (`application/proto`) or JSON (`application/json`),
+gRPC (`application/grpc`) and gRPC-Web (`application/grpc-web+proto`).
+JSON keys are snake_case (`exit_code`, `request_id`, `data_json`), the
+Go struct tags' names; parsers accept lowerCamelCase too.
+
+**Transport.** gRPC needs HTTP/2. `rpc.ListenAndServe`, and
+`rpc.Server.HTTPServer` for a caller that binds its own listener,
+serve HTTP/1.1 and unencrypted HTTP/2 with prior knowledge (h2c) on
+one port, so all three protocols share it without TLS. Their write
+timeout (10s) cuts an `InvokeStream` that runs longer; lift it per
+call with `http.ResponseController.SetWriteDeadline`, as the `rpc`
+service does.
+
+**Clients.**
+
+```go
+// connect-go, Connect protocol over HTTP/1.1 or HTTP/2
+client := cmdsurfacev1connect.NewCommandsClient(http.DefaultClient, "http://127.0.0.1:8082")
+res, err := client.Invoke(ctx, connect.NewRequest(&cmdsurfacev1.Invocation{
+    Path: []string{"widget", "list"},
+}))
+
+// native gRPC: connect.WithGRPC() and an h2c HTTP client
+p := new(http.Protocols)
+p.SetUnencryptedHTTP2(true)
+grpcClient := cmdsurfacev1connect.NewCommandsClient(
+    &http.Client{Transport: &http.Transport{Protocols: p}},
+    "http://127.0.0.1:8082", connect.WithGRPC(),
+)
+```
+
+```bash
+# any protocol from a shell: --protocol connect (default), grpc, grpcweb
+buf curl --schema contracts/proto/cmdsurface/v1 \
+  --protocol grpc --http2-prior-knowledge \
+  --data '{"path":["widget","list"]}' \
+  http://127.0.0.1:8082/cmdsurface.v1.Commands/Invoke
+```
+
+```ts
+// gRPC-Web from a browser, stubs from protoc-gen-es
+const client = createClient(Commands, createGrpcWebTransport({ baseUrl: "http://127.0.0.1:8082" }));
+const res = await client.invoke({ path: ["widget", "list"] });
+```
+
 `RPCClientOptions()` is deprecated and kept for clients built on the
 Go structs with `connect.NewClient`.
 
 Options:
 
 - `WithRPCInterceptors(ic ...connect.Interceptor)` — append
-  interceptors on top of the server's own.
+  interceptors on top of the server's own. Authenticate with
+  `rpc.Authenticate`, which covers streaming calls;
+  `rpc.AuthInterceptor` wraps unary calls only.
+- `WithRPCCallMeta(fn)` — supply each call's `Meta` from what the host
+  verified. `fn` receives the Meta the client claimed in the body and
+  returns the one to run with; `Surface` stays pinned. Without it the
+  claimed Meta is used as sent, caller included.
+- `WithRPCAuthenticated(fn)` — the predicate the `kit/auth-required`
+  gate asks. Without it, an `Authorization` header or a claimed caller
+  is enough.
+- `WithRPCHandlerOptions(opts ...connect.HandlerOption)` — handler
+  options such as `connect.WithReadMaxBytes`. Without one, a message
+  of any size is read.
 
-Per-leaf gates: `Authorization` header (or `inv.Meta.Caller`) when
+Per-leaf gates: `WithRPCAuthenticated`, or by default an
+`Authorization` header (or `inv.Meta.Caller`), when
 `Class.AuthRequired`; `X-Confirm-Token` header when
 `Class.RequiresConfirmation`. Both procedures then pass the bridge's
 gates: `Invoke` through `Bridge.Invoke`, `InvokeStream` through
@@ -1233,7 +1305,6 @@ Deferred (out of scope):
 
 - GraphQL surface (schema mismatch is severe; defer until requested).
 - Slack slash command / inbound email (build on Webhook).
-- gRPC-raw (`.proto`) alongside ConnectRPC.
 - Multi-tenant signed-URL issuance with per-tenant keys.
 - OpenTelemetry context propagation through `Invocation.Meta`.
 

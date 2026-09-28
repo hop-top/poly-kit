@@ -1,0 +1,405 @@
+# Expose your CLI over gRPC
+
+Serve your cobra tree as a typed RPC service that Connect, gRPC and
+gRPC-Web clients call on one port, with no mounting code.
+
+## Who this is for
+
+Developers building a kit CLI who want other services, other
+languages, or a browser to call their commands through generated,
+typed stubs. Registering the `rpc` service is the whole setup: the
+tree is reflected when the server starts, and every conformant
+command is reachable through one published service,
+`cmdsurface.v1.Commands`. For plain HTTP and OpenAPI, see
+[expose-cli-over-rest.md](expose-cli-over-rest.md); for LLM hosts, see
+[expose-cli-over-mcp.md](expose-cli-over-mcp.md).
+
+## Before you begin
+
+You need:
+
+- A kit project with a cobra root (see
+  [create-cli-project.md](create-cli-project.md))
+- `hop.top/kit/go/console/cli/rpcserve` importable
+- Commands annotated with `kit/side-effect`; the annotation gates what
+  may run remotely
+- [`buf`](https://buf.build/docs/installation) to call the service from
+  a shell in the examples below
+
+## What you get
+
+`rpcserve.With` serves **one service for your whole command tree**,
+defined in
+[`contracts/proto/cmdsurface/v1/commands.proto`](../../../contracts/proto/cmdsurface/v1/commands.proto):
+
+- **`Invoke(Invocation) → Result`**: run a command to completion
+- **`InvokeStream(Invocation) → stream Event`**: run it and receive
+  each output line as it is written, then the result
+
+The proto file is the contract. Commands are addressed by path inside
+the `Invocation` rather than by procedure, so adding a command to your
+tree needs no new stubs: it is callable the next time the server
+starts. Go stubs ship with kit in
+`go/transport/cmdsurface/gen/cmdsurfacev1`; any other language
+generates its own from the proto file.
+
+One listener answers Connect (binary proto and JSON), gRPC and
+gRPC-Web, over HTTP/1.1 and unencrypted HTTP/2 (h2c) on the same port.
+
+## Steps
+
+### 1. Register the rpc service
+
+```go
+package main
+
+import (
+    "context"
+
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/rpcserve"
+)
+
+func main() {
+    root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
+        rpcserve.With(rpcserve.Config{}), // listens on 127.0.0.1:8082
+    )
+    _ = root.Execute(context.Background())
+}
+```
+
+```bash
+mytool serve rpc
+```
+
+```text
+INFO serve: ready_reported object=service service=rpc address=http://127.0.0.1:8082
+```
+
+The service is off until you name it: `serve rpc` starts it alone,
+`serve --enable rpc` starts it beside every enabled service (the `api`
+service, when you also registered `WithAPI`), and
+`services.rpc.enabled: true` in config makes a bare `serve` start it.
+`--rpc-addr` overrides the address for one run.
+
+The service lives in its own package so that a CLI that never serves
+RPC does not link the RPC server.
+
+### 2. Call a command
+
+Every call names the command by path, with its flags and positional
+arguments:
+
+```bash
+buf curl --schema contracts/proto/cmdsurface/v1 \
+  --data '{"path":["item","add"],"args":["washer"]}' \
+  http://127.0.0.1:8082/cmdsurface.v1.Commands/Invoke
+```
+
+```json
+{
+  "exit_code": 0,
+  "stdout": "added washer\n"
+}
+```
+
+`--schema` points at the proto directory in a kit checkout; outside
+one, copy `commands.proto` beside your client. The server offers no
+reflection service, so every client is given the schema.
+
+A command that declares an output schema answers in `data`, its
+output decoded, and in `data_json`, the same payload as JSON text with
+every digit of every number intact:
+
+```bash
+buf curl --schema contracts/proto/cmdsurface/v1 \
+  --data '{"path":["item","list"]}' \
+  http://127.0.0.1:8082/cmdsurface.v1.Commands/Invoke
+```
+
+```json
+{
+  "exit_code": 0,
+  "data": [{"name": "bolt"}, {"name": "nut"}],
+  "data_json": "[{\"name\":\"bolt\"},{\"name\":\"nut\"}]"
+}
+```
+
+A command that ran and failed is still a successful call: read
+`exit_code`. A flag the command does not take, for example, answers
+`exit_code: 2` with the parser's message in `stderr`. A call the
+service refuses before anything runs is an RPC error instead; see
+[Refusals](#refusals).
+
+### 3. Call it over native gRPC
+
+gRPC needs HTTP/2. Without TLS, the client speaks h2c, which gRPC
+clients call plaintext or insecure mode:
+
+```bash
+buf curl --schema contracts/proto/cmdsurface/v1 \
+  --protocol grpc --http2-prior-knowledge \
+  --data '{"path":["item","list"]}' \
+  http://127.0.0.1:8082/cmdsurface.v1.Commands/Invoke
+```
+
+Any gRPC client works the same way: dial `127.0.0.1:8082` without
+transport security, with stubs generated from `commands.proto`.
+
+### 4. Call it from Go
+
+The generated Connect client speaks all three protocols:
+
+```go
+import (
+    "context"
+    "net/http"
+
+    "connectrpc.com/connect"
+
+    "hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1"
+    "hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1/cmdsurfacev1connect"
+)
+
+func listItems(ctx context.Context) (string, error) {
+    client := cmdsurfacev1connect.NewCommandsClient(
+        http.DefaultClient, "http://127.0.0.1:8082",
+    )
+    res, err := client.Invoke(ctx, connect.NewRequest(&cmdsurfacev1.Invocation{
+        Path: []string{"item", "list"},
+    }))
+    if err != nil {
+        return "", err // a refusal: connect.CodeOf(err) says which
+    }
+    return res.Msg.GetDataJson(), nil
+}
+```
+
+For native gRPC, pass `connect.WithGRPC()` and an HTTP client that
+speaks h2c:
+
+```go
+protocols := new(http.Protocols)
+protocols.SetUnencryptedHTTP2(true)
+h2c := &http.Client{Transport: &http.Transport{Protocols: protocols}}
+
+client := cmdsurfacev1connect.NewCommandsClient(
+    h2c, "http://127.0.0.1:8082", connect.WithGRPC(),
+)
+```
+
+Flags travel as a `google.protobuf.Struct`; build it with
+`structpb.NewStruct(map[string]any{"limit": 5})`.
+
+### 5. Call it from a browser over gRPC-Web
+
+Generate TypeScript from `commands.proto` with
+[`protoc-gen-es`](https://github.com/bufbuild/protobuf-es) and call it
+through Connect-Web's gRPC-Web transport:
+
+```ts
+import { createClient } from "@connectrpc/connect";
+import { createGrpcWebTransport } from "@connectrpc/connect-web";
+import { Commands } from "./gen/commands_pb";
+
+const transport = createGrpcWebTransport({ baseUrl: "http://127.0.0.1:8082" });
+const client = createClient(Commands, transport);
+
+const res = await client.invoke({ path: ["item", "list"] });
+console.log(res.dataJson);
+```
+
+The service sets no CORS headers. Serve the page from the same origin,
+or put the service behind a proxy that answers CORS for you.
+`createConnectTransport` works against the same port if you prefer the
+Connect protocol.
+
+### 6. Stream a long-running command
+
+`InvokeStream` delivers each line the command writes as a `stdout` or
+`stderr` event, then one `done` event carrying the result:
+
+```bash
+buf curl --schema contracts/proto/cmdsurface/v1 --protocol grpcweb \
+  --data '{"path":["item","watch"],"flags":{"count":2,"interval":"1s"}}' \
+  http://127.0.0.1:8082/cmdsurface.v1.Commands/InvokeStream
+```
+
+```json
+{"kind": "stdout", "data": "tick 1: 2 items", "at": "2026-09-28T04:28:52.186894Z"}
+{"kind": "stdout", "data": "tick 2: 2 items", "at": "2026-09-28T04:28:53.187933Z"}
+{"kind": "done", "data": {"exit_code": 0, "stdout": "tick 1: 2 items\ntick 2: 2 items\n"}, "at": "2026-09-28T04:28:53.187971Z", "result": {"exit_code": 0, "stdout": "tick 1: 2 items\ntick 2: 2 items\n"}}
+```
+
+Typed clients read `result`; `data` repeats it for JSON clients.
+
+Every command can be streamed; nothing to register. What to rely on:
+
+- **Refusals come before the first event.** A stream the service
+  refuses ends with the refusal as its error and no event sent.
+- **A stream may run as long as the command does.** The server's
+  10-second write timeout applies to unary calls only.
+- **Closing the stream cancels the command.** To stop when the
+  client goes away, your command watches `cmd.Context()`. Stopping the
+  service ends open streams too.
+- **Long streams want a root factory.** Without
+  `cli.WithRootFactory`, a running stream holds the tool's command
+  tree and every other call waits for it; see
+  [step 10 of the REST guide](expose-cli-over-rest.md#10-run-requests-in-parallel).
+
+### 7. Permit a destructive command
+
+Destructive commands are refused over RPC by default:
+
+```json
+{"code": "permission_denied",
+ "message": "cmdsurface: destructive command blocked on this surface: item purge on rpc"}
+```
+
+Permit them by naming the RPC surface:
+
+```go
+import "hop.top/kit/go/transport/cmdsurface"
+
+rpcserve.With(rpcserve.Config{
+    Policy: cmdsurface.Policy{
+        AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+    },
+})
+```
+
+That lifts the transport's ceiling; the command's own confirmation
+still applies. An unconfirmed call now runs and is refused by the
+command, with a non-zero `exit_code`. Send the confirmation as a flag:
+
+```json
+{"path": ["item", "purge"], "flags": {"confirm": "yes"}}
+```
+
+Naming `SurfaceRPC` widens RPC only: REST, MCP and the socket keep
+their own ceilings.
+
+### 8. Satisfy confirmation-gated commands
+
+A command annotated `kit/requires-confirmation` needs an
+`X-Confirm-Token` header on every call:
+
+```bash
+buf curl --schema contracts/proto/cmdsurface/v1 \
+  -H 'X-Confirm-Token: yes' \
+  --data '{"path":["item","tag"],"flags":{"name":"bolt"}}' \
+  http://127.0.0.1:8082/cmdsurface.v1.Commands/Invoke
+```
+
+Without it the call is `failed_precondition` with the message
+`confirmation_required`, and nothing runs.
+
+### 9. Keep commands off RPC
+
+`Expose` and `Hide` take command patterns and apply to RPC only:
+
+```go
+rpcserve.With(rpcserve.Config{
+    Expose: []string{"item *"},      // only these; empty means the whole tree
+    Hide:   []string{"item purge"},  // carved out after Expose
+})
+```
+
+A hidden command answers `not_found`. Interactive, self-hosting and
+management-only commands (`shell`, `serve`, `status`) never run over
+RPC, exactly as they are never mounted over REST.
+
+### 10. Put it behind auth
+
+`rpcserve.Config.Auth` takes the same `api.AuthFunc` the REST service
+takes, so one function authenticates both. It runs on every call,
+unary and streaming, before anything else:
+
+```go
+import (
+    "net/http"
+
+    "hop.top/kit/go/transport/api"
+)
+
+rpcserve.With(rpcserve.Config{
+    Addr: "0.0.0.0:8082",
+    Auth: func(r *http.Request) (any, error) {
+        claims, err := validateToken(r.Header.Get("Authorization"))
+        if err != nil {
+            return nil, err
+        }
+        return api.Claims{Subject: claims.User, Tenant: claims.Org, Scopes: claims.Scopes}, nil
+    },
+})
+```
+
+```bash
+mytool serve rpc --policy=readonly
+```
+
+The function sees the call's headers and peer address; it must not
+read the URL or body. A refused call is `unauthenticated` and is
+recorded in the audit trail.
+
+Identity comes only from what `Auth` verified. The `meta.caller`,
+`meta.tenant` and `meta.extra` a client puts in the request body are
+dropped, so no client can name itself a principal. A command annotated
+`kit/auth-required` runs only for a call `Auth` verified; without
+`Auth` it is refused, whatever header the client sends.
+
+Beyond loopback, the service refuses to start (exit `2`) without
+`Auth`, and again without a `--policy`, unless you opt out by name
+with `services.rpc.insecure_remote` or `services.rpc.insecure_no_policy`.
+The permission gate (`cli.WithPermission`), the audit sinks
+(`cli.WithAuditSinks`) and the walkthrough are shared with the other
+services: [secure-remote-serving.md](secure-remote-serving.md).
+
+## Refusals
+
+A refusal is an RPC error, and the command never ran:
+
+| Code                  | When                                                         |
+|-----------------------|--------------------------------------------------------------|
+| `not_found`           | unknown command, hidden by `Expose`/`Hide`, or never remote  |
+| `unauthenticated`     | `Auth` refused the call, or `kit/auth-required` without verified `Auth` |
+| `failed_precondition` | `kit/requires-confirmation` without `X-Confirm-Token`        |
+| `permission_denied`   | destructive ceiling, `--policy`, or `cli.WithPermission`; the message says which |
+| `resource_exhausted`  | request message over `MaxBodyBytes`                          |
+
+## Option reference
+
+| Option | Default | Effect |
+|---|---|---|
+| `Config.Addr` | `127.0.0.1:8082` | Listen address. `services.rpc.addr`, then `--rpc-addr`, override it. |
+| `Config.Auth` | none | Authenticates every call; permits a non-loopback address. |
+| `Config.InsecureRemote` | `false` | Serve unauthenticated beyond loopback. `services.rpc.insecure_remote` sets the same. |
+| `Config.InsecureNoPolicy` | `false` | Serve beyond loopback with no `--policy`. `services.rpc.insecure_no_policy` sets the same. |
+| `Config.Policy` | zero | Zero refuses every destructive command. `AllowDestructiveOn: [SurfaceRPC]` permits them. |
+| `Config.Expose` | empty | Empty reaches the whole tree; a non-empty list is an allow-list. |
+| `Config.Hide` | empty | Patterns withheld from RPC, applied after `Expose`. |
+| `Config.MaxBodyBytes` | 4 MiB | Largest request message; larger is `resource_exhausted`. |
+
+## What the service does not implement
+
+- **Server reflection.** Clients are given `commands.proto`.
+- **TLS.** The listener is plaintext, HTTP/1.1 and h2c. Terminate TLS
+  in front of it for traffic that leaves the machine.
+- **CORS.** A browser client on another origin needs a proxy.
+- **A procedure per command.** Commands are addressed by path inside
+  one service, so the schema never changes when your tree does.
+- **Interactive and self-hosting commands.** They need a terminal or
+  would replace the process serving the call.
+
+## Related pages
+
+- [rpc README](../../../go/transport/rpc/README.md): the server, the
+  interceptors, h2c
+- [rpcserve README](../../../go/console/cli/rpcserve/README.md): the
+  service at a glance
+- [cmdsurface reference §RPC](../reference/cmdsurface.md#rpc):
+  `MountRPC`, the wire mapping, mounting the service by hand
+- [secure-remote-serving.md](secure-remote-serving.md): auth beyond
+  loopback, the permission gate, the audit trail
+- [serve-lifecycle contract §"The rpc service"](../../contracts/serve-lifecycle.md#the-rpc-service):
+  the normative text

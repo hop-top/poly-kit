@@ -638,7 +638,7 @@ the [transport seam](#transport-services) exactly as `socket` does, so
 everything this page says about registration, reflection at `Start`,
 readiness, stop, exit codes, the root factory, the permission gate,
 and audit applies to it unchanged. Its surface is pinned to `mcp`
-([`cmdsurface.SurfaceMCP`](../../go/transport/cmdsurface/surface.go)),
+([`cmdsurface.SurfaceMCP`](../../go/transport/cmdsurface/doc.go)),
 and the protocol layer is the official MCP Go SDK through
 [`go/transport/mcpsdk`](../../go/transport/mcpsdk/README.md); kit
 implements no MCP wire behavior of its own here.
@@ -899,7 +899,7 @@ as the published `cmdsurface.v1.Commands` service
 everything this page says about registration, reflection at `Start`,
 readiness, stop, exit codes, the root factory, the permission gate,
 and audit applies to it unchanged. Its surface is pinned to `rpc`
-([`cmdsurface.SurfaceRPC`](../../go/transport/cmdsurface/surface.go)),
+([`cmdsurface.SurfaceRPC`](../../go/transport/cmdsurface/doc.go)),
 and the handler is `cmdsurface.MountRPC` over the generated Connect
 handler; kit implements no wire behavior of its own here.
 

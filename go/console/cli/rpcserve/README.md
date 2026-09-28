@@ -33,6 +33,8 @@ buf curl --schema contracts/proto/cmdsurface/v1 \
   http://127.0.0.1:8082/cmdsurface.v1.Commands/Invoke
 ```
 
+Task guide: [expose your CLI over gRPC](../../../../docs/adopters/guides/expose-cli-over-grpc.md).
+
 ## Contract
 
 - Normative text: [serve-lifecycle contract §"The rpc service"](../../../../docs/contracts/serve-lifecycle.md#the-rpc-service).

@@ -349,7 +349,7 @@ OpenAPI document describes each as its own operation
 | Transport | Long-running call | Client holds | Survives a disconnect |
 |---|---|---|---|
 | REST (`api` service) | `/v1/commands/<path>/stream`, server-sent events | the HTTP response | no: disconnecting cancels the command |
-| RPC (`cmdsurface.MountRPC`) | `InvokeStream`, server-streaming | the RPC stream | no: canceling the stream cancels the command |
+| RPC (`rpc` service, `cmdsurface.MountRPC`) | `InvokeStream`, server-streaming | the RPC stream | no: canceling the stream cancels the command |
 | MCP (`mcpsdk.WithTasks`, experimental) | a task: `tools/call` returns a task id, then `tasks/get` / `tasks/cancel` | nothing between polls | yes: the task outlives the request |
 
 REST and RPC stream a command's output while a client holds the
