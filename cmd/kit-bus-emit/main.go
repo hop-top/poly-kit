@@ -1,7 +1,7 @@
 // kit-bus-emit entrypoint. Reads inputs from env (set by the workflow
 // from `${{ github.event.* }}`), builds a payload, POSTs to ingress.
 //
-// Exit semantics (spec §3):
+// Exit semantics (docs/contracts/kit-init-pr-wiring.md §3, "Failure modes"):
 //   - Default: fail-open. Non-2xx → log, exit 0. CI does not break.
 //   - KIT_BUS_STRICT="true" → fail-closed. Non-2xx → exit 1.
 //

@@ -1,6 +1,6 @@
 // HTTP delivery: signature/bearer auth, fail-open/closed semantics.
 //
-// Auth precedence (spec §3): KIT_BUS_SIGNING_KEY (HMAC-SHA256 in
+// Auth precedence (kit-init-pr-wiring.md §3): KIT_BUS_SIGNING_KEY (HMAC-SHA256 in
 // X-Kit-Bus-Signature) wins over KIT_BUS_TOKEN (Authorization: Bearer).
 // If both are set, the signing key is used and the bearer header is
 // omitted. If neither is set, the request is sent without auth (the

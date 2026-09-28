@@ -13,7 +13,8 @@ import (
 	"hop.top/kit/go/runtime/bus"
 )
 
-// maxExcerptBytes bounds failure_summary and excerpt fields (spec §2).
+// maxExcerptBytes bounds failure_summary and excerpt fields
+// (kit-init-pr-wiring.md §2).
 const maxExcerptBytes = 256
 
 // Inputs gathers everything the helper needs to build a payload. All
@@ -153,7 +154,7 @@ func BuildPayload(in Inputs) (bus.Topic, []byte, error) {
 	return topic, body, nil
 }
 
-// truncate enforces the §2 256-byte bound by trimming on rune
+// truncate enforces the 256-byte excerpt bound by trimming on rune
 // boundaries and appending an ellipsis ("…", 3 bytes UTF-8). When the
 // input is already within the limit it is returned unchanged.
 //

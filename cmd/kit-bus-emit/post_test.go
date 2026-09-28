@@ -59,7 +59,7 @@ func TestPostBearerOnly(t *testing.T) {
 	}
 }
 
-// TestPostSigningKeyWinsOverBearer asserts spec §3 auth precedence:
+// TestPostSigningKeyWinsOverBearer asserts kit-init-pr-wiring.md §3 auth precedence:
 // signing key beats bearer when both are configured.
 func TestPostSigningKeyWinsOverBearer(t *testing.T) {
 	t.Parallel()

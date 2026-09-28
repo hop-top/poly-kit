@@ -116,7 +116,7 @@ func TestBuildPayloadRunCompletedFailureCarriesSummary(t *testing.T) {
 	}
 }
 
-// TestFailureSummaryBound enforces spec §2 256-byte bound.
+// TestFailureSummaryBound enforces the kit-init-pr-wiring.md §2 256-byte bound.
 func TestFailureSummaryBound(t *testing.T) {
 	t.Parallel()
 	hugeName := strings.Repeat("workflow-with-very-long-name-", 50)
@@ -141,7 +141,8 @@ func TestFailureSummaryBound(t *testing.T) {
 	}
 }
 
-// TestExcerptBound enforces spec §2 256-byte bound on comment excerpt.
+// TestExcerptBound enforces the kit-init-pr-wiring.md §2 256-byte bound on
+// comment excerpt.
 func TestExcerptBound(t *testing.T) {
 	t.Parallel()
 	body := strings.Repeat("Consider extracting this branch into a helper. ", 20)
