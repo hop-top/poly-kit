@@ -211,6 +211,53 @@ error, wrapping `context.Canceled` or `context.DeadlineExceeded`,
 alongside the partial `Result`; under `Stream` the `done` event is
 delivered first.
 
+### Deadlines
+
+A command can bound how long one served call may run:
+
+```go
+cmd.Annotations[cmdsurface.AnnotationTimeout] = "30s" // "kit/timeout"
+```
+
+`WithCommandTimeout(d)` sets the bound for every leaf that declares
+none; the kit-shipped services set it from
+`services.<svc>.timeouts.command`. The annotation wins over it. Neither
+is set by default, so nothing is bounded unless you ask.
+
+The deadline is armed by `Admission.Run` and `Admission.Stream`, when
+the admitted call is about to run, and covers the run (and any queue
+wait ahead of it). Time spent between `Admit` and the run — a person
+answering a confirmation — does not count. A caller whose context
+already carries an earlier deadline keeps it (a Connect or gRPC client's
+own timeout, a library caller's `context.WithTimeout`): a call can
+shorten the bound, never lengthen it.
+
+When it passes, the runner cancels the command as described under
+[Cancellation](#cancellation), and a command that fails because of it
+is returned as `ErrDeadlineExceeded` (it wraps
+`context.DeadlineExceeded`), with the partial `Result`. The message
+names the command and the bound. A command that ignores its context
+and completes anyway is a completion. Under `Stream` the `done` event
+is delivered first. Each surface answers with the code
+`deadline_exceeded`:
+
+| Surface | Answer |
+|---|---|
+| REST projection, `MountREST` | `504`, `APIError` code `deadline_exceeded`; a stream route's terminal `error` frame carries the same |
+| RPC | `CodeDeadlineExceeded` |
+| MCP (`mcpsdk`) | `isError` result, text starting `deadline_exceeded:`, `_meta["hop.top/refusal"].code` |
+| Socket | `DEADLINE_EXCEEDED` |
+| WebSocket | error frame code `deadline_exceeded` |
+
+A malformed annotation is ignored by the bridge (the default applies)
+and refused by the kit-shipped services at validation, exit `2`;
+`ValidateCommandTimeouts(root)` runs the same check.
+
+A long-running command is better served as a stream than given a
+large deadline: the HTTP servers' write timeout (10s by default) cuts a
+request/reply response that takes longer, whatever the deadline, while
+stream responses are exempt from it.
+
 ### Refusals
 
 `ErrAuthRefused` is the unauthenticated class. The bridge returns it

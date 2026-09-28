@@ -243,6 +243,14 @@ func projectionError(d CommandDescriptor, err error) *APIError {
 			Code:    CodeRateLimited,
 			Message: err.Error(),
 		}
+	case errors.Is(err, context.DeadlineExceeded):
+		// The command ran past its per-command deadline and was
+		// canceled; the message names the command and the bound.
+		return &APIError{
+			Status:  http.StatusGatewayTimeout,
+			Code:    CodeDeadlineExceeded,
+			Message: err.Error(),
+		}
 	default:
 		return MapError(err)
 	}

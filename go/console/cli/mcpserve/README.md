@@ -35,5 +35,7 @@ root := cli.New(cli.Config{Name: "mytool", Version: version},
 - HTTP-plane middleware on the HTTP transport: the chain every kit listener shares, from `services.mcp.<block>`; refusals are JSON-RPC errors. The SDK's body cap follows `body_limit`; its DNS-rebinding check stays beneath kit's Host check unless `host_check` admits other names.
 - `kit/auth-required`: HTTP needs `Config.Auth`; stdio admits on the spawn's trust.
 - `kit/requires-confirmation`: an accepted elicitation, or `X-Confirm-Token` over HTTP; asked only after every machine gate.
+- HTTP server timeouts from `services.mcp.timeouts.*` (then `services.all.timeouts.*`); the endpoint is a stream route, exempt from `write`.
+- `timeouts.command` or a command's `kit/timeout` bounds each call; past it the result is `isError`, text `deadline_exceeded: …`, `_meta["hop.top/refusal"].code`.
 - stdio: stdout carries only protocol messages; end of input exits 0 once every request already read is answered.
 - `go/console/cli` does not import this package or the SDK; a test in `go/console/cli` pins that.

@@ -310,6 +310,11 @@ func (s *rpcServer) stream(ctx context.Context, conn connect.StreamingHandlerCon
 		select {
 		case <-ctx.Done():
 			abort()
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				// The caller's own deadline (Connect-Timeout-Ms,
+				// grpc-timeout) ran out.
+				return connect.NewError(connect.CodeDeadlineExceeded, ctx.Err())
+			}
 			return connect.NewError(connect.CodeCanceled, ctx.Err())
 		case ev, ok := <-events:
 			if !ok {
@@ -455,6 +460,8 @@ func mapBridgeError(err error, leaf *Leaf) error {
 		return connect.NewError(connect.CodePermissionDenied, err)
 	case errors.Is(err, ErrRateLimited):
 		return rateLimitedConnectError(err)
+	case errors.Is(err, ErrDeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
 	default:
 		return connect.NewError(connect.CodeInternal, err)
 	}

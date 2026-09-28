@@ -141,6 +141,9 @@ const (
 	// refuses a command for this caller. The message carries the
 	// gate's stable reason.
 	CodePermissionDenied = "permission_denied"
+	// CodeDeadlineExceeded is returned, with 504, when a command ran
+	// past its per-command deadline and was canceled.
+	CodeDeadlineExceeded = "deadline_exceeded"
 )
 
 // StatusNotInvocable is the status for addressing a non-invocable

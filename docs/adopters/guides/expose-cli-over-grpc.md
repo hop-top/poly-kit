@@ -249,7 +249,10 @@ Every command can be streamed; nothing to register. What to rely on:
 - **Refusals come before the first event.** A stream the service
   refuses ends with the refusal as its error and no event sent.
 - **A stream may run as long as the command does.** The server's
-  10-second write timeout applies to unary calls only.
+  write timeout (`services.rpc.timeouts.write`, 10 seconds by
+  default) applies to unary calls only. A deadline you set —
+  `kit/timeout` on the command, or `services.rpc.timeouts.command` —
+  bounds both, and a call past it fails `DeadlineExceeded`.
 - **Closing the stream cancels the command.** To stop when the
   client goes away, your command watches `cmd.Context()`. Stopping the
   service ends open streams too.

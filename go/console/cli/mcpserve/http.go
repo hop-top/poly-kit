@@ -100,7 +100,10 @@ func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
 	// otherwise hold Shutdown until its budget ran out.
 	base, cancelBase := context.WithCancel(context.WithoutCancel(ctx))
 	mux := http.NewServeMux()
-	mux.Handle(h.svc.path(), s.Handler())
+	// The endpoint is a stream route: a response may stay open for
+	// server-to-client messages and for a confirmation that waits on
+	// a person, so it is exempt from the write deadline.
+	mux.Handle(h.svc.path(), api.LiftWriteDeadline(s.Handler()))
 	handler, err := h.handler(mux)
 	if err != nil {
 		cancelBase()
@@ -108,10 +111,16 @@ func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
 		return err
 	}
 	srv := &http.Server{
-		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
-		BaseContext:       func(net.Listener) context.Context { return base },
-		ConnState:         h.trackUnread,
+		Handler:     handler,
+		BaseContext: func(net.Listener) context.Context { return base },
+		ConnState:   h.trackUnread,
+	}
+	// Server timeouts come from the timeouts block, kit defaults
+	// where it sets nothing.
+	if err := cli.ConfigureServeHTTP(h.svc.root, ServiceName, srv, api.DefaultServerTimeouts()); err != nil {
+		cancelBase()
+		_ = ln.Close()
+		return err
 	}
 
 	h.mu.Lock()

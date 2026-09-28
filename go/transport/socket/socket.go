@@ -79,7 +79,7 @@ type Response struct {
 type Error struct {
 	// Code is a stable symbol a client can branch on:
 	// NOT_FOUND, NOT_ENABLED, NOT_INVOCABLE, BLOCKED, DENIED,
-	// UNAUTHENTICATED, RATE_LIMITED, INVALID, INTERNAL.
+	// UNAUTHENTICATED, RATE_LIMITED, DEADLINE_EXCEEDED, INVALID, INTERNAL.
 	Code string `json:"code"`
 	// Message is the human-readable detail.
 	Message string `json:"message"`
@@ -117,6 +117,9 @@ const (
 	// CodeRateLimited is a call the rate limit refused. The error
 	// carries retry_after_ms.
 	CodeRateLimited = "RATE_LIMITED"
+	// CodeDeadlineExceeded is a command that ran past its
+	// per-command deadline and was canceled. Retrying may succeed.
+	CodeDeadlineExceeded = "DEADLINE_EXCEEDED"
 	// CodeInvalid is a malformed request line.
 	CodeInvalid = "INVALID"
 	// CodeInternal is anything else the runner returned.
@@ -404,6 +407,8 @@ func codeFor(err error) string {
 		return CodeDenied
 	case errors.Is(err, cmdsurface.ErrRateLimited):
 		return CodeRateLimited
+	case errors.Is(err, cmdsurface.ErrDeadlineExceeded):
+		return CodeDeadlineExceeded
 	default:
 		return CodeInternal
 	}

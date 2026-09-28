@@ -48,5 +48,6 @@ Task guide: [expose your CLI over gRPC](../../../../docs/adopters/guides/expose-
 - `kit/auth-required` needs verified `Auth`; `kit/requires-confirmation` needs `X-Confirm-Token`.
 - `Config.Interceptors` see only calls every gate admitted; a call they refuse does not run and is audited.
 - No CORS: a browser on another origin needs a proxy in front.
-- `InvokeStream` is exempt from the server's write timeout; stopping the service ends open streams.
+- Server timeouts from `services.rpc.timeouts.{read_header,read,write,idle}` (then `services.all.timeouts.*`); `InvokeStream` is exempt from the write timeout; stopping the service ends open streams.
+- `timeouts.command` or a command's `kit/timeout` bounds each call; past it the call fails `CodeDeadlineExceeded`.
 - `go/console/cli` does not import this package or `go/transport/rpc`; a test in `go/console/cli` pins that.

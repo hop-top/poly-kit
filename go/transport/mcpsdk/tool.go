@@ -121,7 +121,7 @@ func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
 
 		res, err := adm.Run(ctx)
 		if err != nil {
-			return errorResult(err.Error()), nil
+			return runErrorResult(err), nil
 		}
 		return renderResult(res), nil
 	}
@@ -165,7 +165,7 @@ func streamAdmitted(ctx context.Context, adm *cmdsurface.Admission, req *mcp.Cal
 		if isUncallable(err) {
 			return nil, err
 		}
-		return errorResult(err.Error()), nil
+		return runErrorResult(err), nil
 	}
 	if res == nil {
 		return errorResult("streaming produced no result"), nil
@@ -200,6 +200,12 @@ func renderResult(res cmdsurface.Result) *mcp.CallToolResult {
 	}
 	return out
 }
+
+// runErrorResult is the isError result of a run that failed. A run
+// its per-command deadline cut short is the deadline_exceeded
+// refusal: its text starts with the code, and _meta carries it (see
+// [refusalResult]).
+func runErrorResult(err error) *mcp.CallToolResult { return refusalResult(err) }
 
 // errorResult returns an isError tool result carrying msg as its
 // single text block.

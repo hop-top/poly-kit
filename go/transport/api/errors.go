@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -27,7 +28,9 @@ var (
 	ErrInvalidTransition = domain.ErrInvalidTransition
 )
 
-// MapError converts a domain error into an APIError.
+// MapError converts a domain error into an APIError. A context
+// deadline is a 504 with code deadline_exceeded: the work was cut
+// off, and a retry may succeed.
 func MapError(err error) *APIError {
 	var ve *ValidationError
 	if errors.As(err, &ve) {
@@ -58,6 +61,12 @@ func MapError(err error) *APIError {
 			Status:  http.StatusConflict,
 			Code:    "invalid_transition",
 			Message: "invalid transition",
+		}
+	case errors.Is(err, context.DeadlineExceeded):
+		return &APIError{
+			Status:  http.StatusGatewayTimeout,
+			Code:    CodeDeadlineExceeded,
+			Message: "deadline exceeded",
 		}
 	default:
 		return &APIError{

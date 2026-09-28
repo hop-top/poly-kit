@@ -433,6 +433,45 @@ services:
 `enabled` a boolean; anything else, or an unknown key in the block,
 fails validation at exit `2`, naming the key.
 
+#### Server timeouts
+
+`ServerTimeouts` holds an `http.Server`'s four timeouts;
+`DefaultServerTimeouts()` is what every kit HTTP listener uses unless
+configured — read header 5s, read 5s, write 10s, idle falling back to
+read. `Apply(srv)` sets them, `ServerTimeoutsOf(srv)` reads them back.
+
+The write timeout is sized for request/reply. A route whose responses
+are streams lifts it for its own response with
+`http.ResponseController.SetWriteDeadline(time.Time{})`;
+`LiftWriteDeadline(h)` does that for every response `h` writes. The
+projection's stream routes, the rpc service's `InvokeStream` and the
+whole mcp endpoint are exempt this way; everything else keeps it.
+
+The api, rpc and mcp services read their timeouts from the `timeouts`
+block, per key: the service's own key, then `services.all`, then the
+default.
+
+```yaml
+services:
+  all:
+    timeouts:
+      idle: 2m            # every service
+  api:
+    timeouts:
+      read_header: 5s
+      read: 30s           # slow uploads
+      write: 10s
+      command: 1m         # per-command deadline; see below
+```
+
+Every value is a duration (`5s`, `2m`); `0` means none (a zero
+`read_header` or `idle` falls back to `read`, as in `net/http`). A
+negative value, a bare number, or an unknown key fails validation at
+exit `2`, naming the key. `command` is the per-command deadline for
+commands that declare no `kit/timeout`, answered `504`
+`deadline_exceeded` when it passes; it reaches the socket service too.
+See [Deadlines](cmdsurface.md#deadlines).
+
 #### Claims and identity
 
 `Auth` stores whatever claims the `AuthFunc` returns; the projection

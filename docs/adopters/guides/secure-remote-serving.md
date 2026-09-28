@@ -1047,6 +1047,51 @@ services:
 is refused at startup with exit `2`, as is an unknown key. Buckets
 live in memory, one set per service, and start full on every restart.
 
+### 12. Bound slow clients and long commands
+
+Every HTTP listener (api, rpc, mcp) gives a client 5s to send its
+headers and its whole request, and 10s to receive a request/reply
+answer. Stream responses — the projection's `/stream` routes, rpc
+`InvokeStream`, the mcp endpoint — are exempt from the 10s, since a
+stream outlives it by design. Change them per service or for all:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  api:
+    timeouts:
+      read: 30s      # a slow upload
+      write: 30s
+```
+
+Nothing bounds how long a command runs until you ask. Give one command
+a deadline with its annotation, or every command of a service one with
+`timeouts.command`:
+
+```go
+exportCmd.Annotations["kit/timeout"] = "2m" // cmdsurface.AnnotationTimeout
+```
+
+```yaml
+services:
+  all:
+    timeouts:
+      command: 30s   # commands without kit/timeout
+```
+
+The annotation wins. The deadline starts when the call is admitted to
+run, so a person answering a confirmation does not spend it, and a
+caller can only shorten it (a gRPC or Connect client's own timeout).
+When it passes the command is canceled — cooperatively in process,
+its whole process group in a subprocess — and the caller gets `504`
+with code `deadline_exceeded` (Connect `DeadlineExceeded`, an MCP
+`isError` result, the socket's `DEADLINE_EXCEEDED`); the audit record
+carries `cmdsurface.ErrDeadlineExceeded`.
+
+A command that routinely runs longer than 10s should be called on its
+stream route, not given a longer write timeout: a request/reply
+answer that takes longer than `write` is cut whatever its deadline.
+
 ## Option reference
 
 | Option | Default | Effect |
@@ -1079,6 +1124,8 @@ live in memory, one set per service, and start full on every restart.
 | `services.<svc>.auth.mtls.ca_file` | unset | CA bundle client certificates must chain to; required under `mtls`. |
 | `services.<svc>.auth.mtls.principal` | `san` | `san`, `san_uri`, `san_dns`, `san_email` or `cn`. |
 | `services.<svc>.auth.mtls.tenant_oid` / `.tenant_san_pattern` | unset | Where the tenant comes from: a subject attribute or extension OID, or a SAN regular expression (first capture group). One or the other. |
+| `services.<svc>.timeouts.read_header` / `.read` / `.write` / `.idle` | `5s` / `5s` / `10s` / read | HTTP listener timeouts (api, rpc, mcp); stream responses are exempt from `write`. `0` is none. |
+| `services.<svc>.timeouts.command` | none | Per-command deadline for commands without `kit/timeout`; past it, `504 deadline_exceeded`. Reaches the socket too. |
 | `services.all.<block>.<key>` | unset | Shared default for the blocks above; the service's own key wins. |
 | `services.<svc>.rate_limit.enabled` | on beyond loopback, off on loopback, the socket and stdio | Per-caller rate limit; over it is `429 rate_limited` with `Retry-After`, audited as `cmdsurface.ErrRateLimited`. |
 | `services.<svc>.rate_limit.<tier>.per_minute` | read `600`, write `120`, destructive `12` | Tokens a caller's bucket for the tier refills per minute. `services.all.rate_limit.*` applies to every service. |

@@ -445,8 +445,17 @@ func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error 
 	base, cancelBase := context.WithCancel(context.WithoutCancel(ctx))
 	srv := rs.HTTPServer()
 	srv.Handler = handler
-	srv.ReadHeaderTimeout = 5 * time.Second
 	srv.BaseContext = func(net.Listener) context.Context { return base }
+	// Server timeouts come from the timeouts block; where it sets
+	// nothing, the rpc server's own (read 5s, write 10s) and the kit
+	// read-header default.
+	fallback := api.ServerTimeoutsOf(srv)
+	fallback.ReadHeader = api.DefaultReadHeaderTimeout
+	if err := cli.ConfigureServeHTTP(t.svc.root, ServiceName, srv, fallback); err != nil {
+		cancelBase()
+		_ = ln.Close()
+		return err
+	}
 
 	t.mu.Lock()
 	t.srv = srv

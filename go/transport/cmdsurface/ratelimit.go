@@ -341,16 +341,21 @@ func writeRateLimited(w http.ResponseWriter, err error) {
 }
 
 // MCPRefusalMetaKey is the tools/call result _meta key under which a
-// refusal decided on the invocation plane carries its code and retry
-// hint: {"code", "retry_after_ms"}.
+// refusal decided on the invocation plane carries its code and, when
+// it has one, its retry hint: {"code", "retry_after_ms"}.
 const MCPRefusalMetaKey = "hop.top/refusal"
 
 // MCPRefusal returns how an MCP surface answers err as a tools/call
-// result when err is a refusal carrying a retry hint (rate_limited):
-// the text the isError result carries, starting with the code, and
-// the value for the result's [MCPRefusalMetaKey] _meta entry. ok is
-// false for any other error, which keeps its surface's own answer.
+// result when err is a refusal with a stable code — rate_limited,
+// with its retry hint, or deadline_exceeded, a run its per-command
+// deadline cut short: the text the isError result carries, starting
+// with the code, and the value for the result's [MCPRefusalMetaKey]
+// _meta entry. ok is false for any other error, which keeps its
+// surface's own answer.
 func MCPRefusal(err error) (text string, refusal map[string]any, ok bool) {
+	if errors.Is(err, ErrDeadlineExceeded) {
+		return CodeDeadlineExceeded + ": " + err.Error(), map[string]any{"code": CodeDeadlineExceeded}, true
+	}
 	if !errors.Is(err, ErrRateLimited) {
 		return "", nil, false
 	}

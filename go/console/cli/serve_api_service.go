@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/serve"
@@ -155,6 +154,11 @@ func (a *apiService) Validate() error {
 	if _, _, err := serveRateLimit(a.root.Viper, APIServiceName, false); err != nil {
 		return err
 	}
+	// The timeouts block: the server timeouts and the per-command
+	// deadline, and every kit/timeout annotation in the tree.
+	if err := validateServeTimeouts(a.root, APIServiceName); err != nil {
+		return err
+	}
 	return a.root.validateRootFactory()
 }
 
@@ -288,16 +292,17 @@ func (a *apiService) Start(ctx context.Context, ready func()) error {
 		return err
 	}
 
+	// Server timeouts come from the timeouts block, kit defaults
+	// (read header 5s, read 5s, write 10s) where it sets nothing.
+	// Stream routes lift the write deadline for their own response.
+	srv := &http.Server{Handler: handler}
+	if err := ConfigureServeHTTP(a.root, APIServiceName, srv, api.DefaultServerTimeouts()); err != nil {
+		return err
+	}
+
 	ln, err := net.Listen("tcp", a.listenAddr())
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
-	}
-
-	srv := &http.Server{
-		Handler:           handler,
-		ReadTimeout:       5 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	a.mu.Lock()

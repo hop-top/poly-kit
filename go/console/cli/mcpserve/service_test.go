@@ -59,7 +59,23 @@ func mcpCommands(r *cli.Root) {
 		RunE:  func(cmd *cobra.Command, _ []string) error { cmd.Print("shell"); return nil },
 	}
 	cli.SetSideEffect(shell, cli.SideEffectInteractive)
-	r.Cmd.AddCommand(ping, nuke, secret, deploy, shell)
+	linger := &cobra.Command{
+		Use:   "linger",
+		Short: "Wait --for, or until canceled",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			d, _ := cmd.Flags().GetDuration("for")
+			select {
+			case <-cmd.Context().Done():
+				return cmd.Context().Err()
+			case <-time.After(d):
+				cmd.Print("waited")
+				return nil
+			}
+		},
+	}
+	linger.Flags().Duration("for", time.Minute, "how long to wait")
+	cli.SetSideEffect(linger, cli.SideEffectRead)
+	r.Cmd.AddCommand(ping, nuke, secret, deploy, shell, linger)
 }
 
 // mcpRun is one background `test serve mcp ...` invocation.

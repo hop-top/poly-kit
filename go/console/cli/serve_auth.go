@@ -66,7 +66,8 @@ func WithAuditSinks(specs ...cmdsurface.SinkSpec) func(*Root) {
 // serveBridgeOptions returns the bridge options every kit-shipped
 // transport service applies at Start: the composed permission gate,
 // the audit sinks — registered in code, then svc's audit.sinks list —
-// with svc's audit.redact block, and any test-injected options. It is resolved at Start, not at
+// with svc's audit.redact block, svc's per-command deadline default
+// (timeouts.command), and any test-injected options. It is resolved at Start, not at
 // registration, because --policy is parsed and adopter options run
 // only after the service was constructed.
 func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
@@ -82,11 +83,16 @@ func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
 	if err != nil {
 		return nil, err
 	}
+	commandTimeout, err := serveCommandTimeout(r.Viper, svc)
+	if err != nil {
+		return nil, err
+	}
 	opts := []cmdsurface.Option{
 		cmdsurface.WithPermission(perm),
 		cmdsurface.WithSinks(r.serveAuth.sinks...),
 		cmdsurface.WithSinks(configured...),
 		cmdsurface.WithAuditRedaction(redaction),
+		cmdsurface.WithCommandTimeout(commandTimeout),
 	}
 	return append(opts, r.serveAuth.bridgeOpts...), nil
 }
@@ -251,10 +257,11 @@ func ServeBridgeOptionsFor(r *Root, svc string, loopback bool) ([]cmdsurface.Opt
 // ValidateServeBridge is the configuration check the kit-shipped
 // transport service svc runs in its Validate hook: a --policy that
 // cannot load, an audit.redact block, audit.sinks list or rate_limit
-// block [ServeBridgeOptions] would refuse, an audit chain that cannot open,
-// or a root factory that cannot build a usable tree, is a usage error
-// before anything binds. The chains it opens are the ones Start
-// reuses.
+// block [ServeBridgeOptions] would refuse, an audit chain that cannot
+// open, a timeouts block that does not parse or a kit/timeout
+// annotation that does not, or a root factory that cannot build a
+// usable tree, is a usage error before anything binds. The chains it
+// opens are the ones Start reuses.
 func ValidateServeBridge(r *Root, svc string) error {
 	if _, err := r.servePermission(); err != nil {
 		return err
@@ -263,6 +270,9 @@ func ValidateServeBridge(r *Root, svc string) error {
 		return err
 	}
 	if _, _, err := serveRateLimit(r.Viper, svc, false); err != nil {
+		return err
+	}
+	if err := validateServeTimeouts(r, svc); err != nil {
 		return err
 	}
 	if _, err := r.serveConfiguredAuditSinks(svc); err != nil {

@@ -1113,7 +1113,8 @@ Connect, gRPC and gRPC-Web through, so nothing is compressed twice.
 Off, the default, no response is compressed and a compressed request
 is still read.
 
-The server's write deadline (10s) is sized for request/reply.
+The server's write deadline (`timeouts.write`, 10s by default) is
+sized for request/reply.
 `InvokeStream` responses MUST be exempt from it: a stream outlives it
 by design, and a stream cut at the deadline would end without its
 terminal `done` event. Every other call keeps it. Stopping the service
@@ -1378,7 +1379,7 @@ verifier admit that path. Per-route middleware exists only at 13.
 
 Server settings sit outside the chain and have no slot: `timeouts`
 (read header, read, write, idle — stream routes exempt from the write
-deadline) and `tls`.
+deadline; see [Timeouts](#timeouts)) and `tls`.
 
 Why this order:
 
@@ -1596,6 +1597,48 @@ stdio ignore them. `cli.ResolveServeTLS` is the one resolver, and
   without TLS or without `ca_file`, a bundle with no certificate, an
   unknown `principal`, both tenant sources, an OID or pattern that does
   not parse, and an `auth.mtls` key under another mode.
+
+### Timeouts
+
+The `timeouts` block holds the HTTP listener's server timeouts and
+the per-command deadline:
+
+| Key                                  | Default     | Meaning                                                        |
+|--------------------------------------|-------------|----------------------------------------------------------------|
+| `services.<svc>.timeouts.read_header` | `5s`        | reading a request's headers                                    |
+| `services.<svc>.timeouts.read`        | `5s`        | reading a whole request, body included                         |
+| `services.<svc>.timeouts.write`       | `10s`       | writing a response; stream responses exempt                    |
+| `services.<svc>.timeouts.idle`        | `read`      | a keep-alive connection waiting for its next request           |
+| `services.<svc>.timeouts.command`     | none        | the deadline of a command that declares no `kit/timeout`       |
+
+Rules:
+
+- Every value is a duration; `0` means none, except that a zero
+  `read_header` or `idle` falls back to `read`. A negative value, a
+  bare number, or an unknown key MUST be refused at validation, exit
+  `2`, naming the key.
+- The four server keys bind every kit HTTP listener: `api`, `rpc`,
+  `mcp`. A stream response MUST be exempt from `write`: the api
+  service's stream routes, the rpc service's `InvokeStream`, and the
+  mcp service's endpoint as a whole, which is a streamable-HTTP stream
+  route. The socket service reads only `command`.
+- The per-command deadline is the command's `kit/timeout` annotation
+  (a positive duration), else `timeouts.command`. The annotation wins,
+  and a malformed one MUST be refused at validation, exit `2`.
+- The deadline is armed at slot 11, when the admitted call is about
+  to run, in `Admission.Run` and `Admission.Stream` alike, and covers
+  queue wait and execution. A caller whose context already carries an
+  earlier deadline keeps it: a call can shorten the bound, never
+  lengthen it.
+- When it passes, the runner cancels the command as
+  [Cancellation](#cancellation) describes — cooperatively in process,
+  the process group in a subprocess — and the bridge returns
+  `ErrDeadlineExceeded` with the partial `Result`. A command that
+  completes despite it is a completion. Under `Stream`, the `done`
+  event is delivered first.
+
+A request/reply response still ends at `write`, whatever the
+deadline: a command meant to run longer is called on a stream.
 
 ### Refusals
 

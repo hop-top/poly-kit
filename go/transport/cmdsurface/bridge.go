@@ -105,6 +105,10 @@ type Leaf struct {
 	// Always non-nil for a leaf the bridge discovered.
 	Descriptor *cmdreflect.Descriptor
 
+	// Timeout is the command's [AnnotationTimeout], zero when it
+	// declares none or the annotation does not parse.
+	Timeout time.Duration
+
 	// secretFlags names the flags carrying AnnotationSecretFlag,
 	// resolved once at discovery for the audit redactor.
 	secretFlags map[string]bool
@@ -131,6 +135,8 @@ type bridgeConfig struct {
 	// cache is the slot-8 result cache from WithResultCache, nil when
 	// the cache is off.
 	cache kv.TTLStore
+	// commandTimeout is the deadline of a leaf that declares none.
+	commandTimeout time.Duration
 }
 
 // Option configures a Bridge at construction.
@@ -247,12 +253,14 @@ func (b *Bridge) discover() {
 		for k, v := range defaultSet {
 			enabled[k] = v
 		}
+		timeout, _ := CommandTimeout(d.Cmd)
 		leaf := &Leaf{
 			Path:       append([]string(nil), d.Path[1:]...),
 			Cmd:        d.Cmd,
 			Class:      classFromDescriptor(d),
 			Enabled:    enabled,
 			Descriptor: d,
+			Timeout:    timeout,
 
 			secretFlags: secretFlagSet(d.Cmd),
 			cacheTTL:    cacheTTLOf(d),
@@ -511,6 +519,11 @@ func (a *Admission) Invocation() Invocation { return a.inv }
 // returns its Result. On a remote surface the outcome is audited once,
 // after the run. Invoke is Admit followed by Run.
 //
+// The per-command deadline ([AnnotationTimeout], else
+// [WithCommandTimeout]) is armed here and bounds the run; a run the
+// deadline cut short returns [ErrDeadlineExceeded] with its partial
+// Result.
+//
 // Holding the Admission between the two is what lets a transport put
 // something only a person can supply — a confirmation — after every
 // machine gate and before the run, without asking about a call the
@@ -522,7 +535,10 @@ func (a *Admission) Run(ctx context.Context) (Result, error) {
 	// Stamped before the run, so a Runner emitting to its own SinkSet
 	// redacts the leaf's secret flags as the bridge's sinks do.
 	ctx = a.b.auditContext(ctx, a.leaf)
-	res, err := a.b.cfg.runner.Run(ctx, a.inv)
+	runCtx, cancel, bound := a.b.armDeadline(ctx, a.leaf)
+	defer cancel()
+	res, err := a.b.cfg.runner.Run(runCtx, a.inv)
+	err = deadlineError(runCtx, err, a.leaf, bound)
 	if a.inv.Meta.Surface.remote() {
 		a.b.Audit(ctx, a.inv, res, err)
 	}
@@ -542,6 +558,10 @@ func (a *Admission) Run(ctx context.Context) (Result, error) {
 // A result cache hit is answered as a single done Event carrying the
 // stored Result, and nothing runs. A miss streams as usual and stores
 // nothing: only Run fills the cache.
+//
+// The per-command deadline is armed as in [Admission.Run]; a stream
+// it cuts short still delivers its done Event and then returns
+// [ErrDeadlineExceeded].
 func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	if out == nil {
 		return errors.New("cmdsurface: nil event channel")
@@ -550,9 +570,11 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 		return a.streamHit(ctx, out)
 	}
 	ctx = a.b.auditContext(ctx, a.leaf)
+	runCtx, cancel, bound := a.b.armDeadline(ctx, a.leaf)
+	defer cancel()
 	events := make(chan Event, cap(out))
 	errc := make(chan error, 1)
-	go func() { errc <- a.b.cfg.runner.Stream(ctx, a.inv, events) }()
+	go func() { errc <- a.b.cfg.runner.Stream(runCtx, a.inv, events) }()
 
 	var res Result
 	// The Runner contract closes events when the run ends.
@@ -564,7 +586,7 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 		}
 		out <- ev
 	}
-	err := <-errc
+	err := deadlineError(runCtx, <-errc, a.leaf, bound)
 	close(out)
 	if a.inv.Meta.Surface.remote() {
 		a.b.Audit(ctx, a.inv, res, err)
