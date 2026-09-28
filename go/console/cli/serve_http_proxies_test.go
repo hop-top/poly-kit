@@ -137,3 +137,35 @@ func TestAPIServiceRefusesBadTrustedProxies(t *testing.T) {
 		})
 	}
 }
+
+// Behind a trusted proxy an anonymous caller's idempotency scope is
+// its forwarded client address: another client sending the same key
+// gets its own run, and the first client's retry replays.
+func TestAPIServiceTrustedProxyScopesIdempotencyByClient(t *testing.T) {
+	isolateHome(t)
+	r := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
+	r.Viper.Set("services.api.trusted_proxies", []string{"127.0.0.1", "::1"})
+	base, stop := serveAPI(t, r)
+	defer stop()
+	add := func(client string) (status int, replayed string) {
+		req, err := http.NewRequest(http.MethodPost, base+"/v1/commands/add", strings.NewReader(`{}`))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "k1")
+		req.Header.Set("X-Forwarded-For", client)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		return resp.StatusCode, resp.Header.Get(cmdsurface.HeaderIdempotentReplayed)
+	}
+
+	status, replayed := add("198.51.100.1")
+	require.Equal(t, http.StatusOK, status)
+	assert.Empty(t, replayed)
+	status, replayed = add("198.51.100.2")
+	require.Equal(t, http.StatusOK, status)
+	assert.Empty(t, replayed, "another client behind the proxy does not get the first client's answer")
+	status, replayed = add("198.51.100.1")
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, "true", replayed, "the first client's retry replays")
+}
