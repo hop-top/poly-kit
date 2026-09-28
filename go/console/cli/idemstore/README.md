@@ -41,14 +41,11 @@ fmt.Print(string(r.Output))
 
 ## Contract
 
-- `Lookup` returns `(Result{}, false, nil)` for unknown or expired keys and
-  `(Result{}, false, err)` only on backend errors.
-- `Record` is last-write-wins per key. `Result.Recorded` is stamped with
-  `time.Now().UTC()` when zero.
+- `Lookup` returns `(Result{}, false, nil)` for unknown or expired keys and `(Result{}, false, err)` only on backend errors.
+- `Record` is last-write-wins per key. `Result.Recorded` is stamped with `time.Now().UTC()` when zero.
 - `Result.Output` is opaque bytes, replayed verbatim to stdout. Redaction
   before recording is the adopter's responsibility; the store never redacts.
-- `Result.ExitCode` mirrors the original run's exit code (1 for unstructured
-  failures, `output.Error.ExitCode` otherwise).
+- `Result.ExitCode` mirrors the original run's exit code (1 for unstructured failures, `output.Error.ExitCode` otherwise).
 - SQLite TTL: zero or negative `ttl` becomes `DefaultTTL` (24h). Expired rows
   are hidden from `Lookup` and deleted: all of them when the store opens, then
   up to 1000 on the first `Record` after each interval (the TTL, at most one
@@ -58,9 +55,7 @@ fmt.Print(string(r.Output))
   output blob, recorded text)`, `recorded` as RFC3339Nano UTC. Parent
   directory is created with mode 0750.
 - Persistence is per tool: one database per `<tool>`, no cross-tool replay.
-- Middleware behavior: on a `Lookup` error the original command runs anyway
-  (over-execute rather than refuse); flag-validation rejections are not
-  recorded.
+- Middleware behavior: on a `Lookup` error the original command runs anyway (over-execute rather than refuse); flag-validation rejections are not recorded.
 - Keys are scoped by caller. A key typed on the command line is stored as
   typed. A key that reaches a served command (the `Idempotency-Key` header,
   the socket's `idempotency_key`, or the flag set in a request) is stored as
@@ -74,10 +69,8 @@ fmt.Print(string(r.Output))
 
 ## Neighbours
 
-- `hop.top/kit/go/console/cli`: `--idempotency-key` flag, `WrapRunE` replay
-  middleware, `Idempotency` annotations.
-- `hop.top/kit/go/storage/sqldb`: sqlite open and pragmas used by
-  `OpenSQLite`.
+- `hop.top/kit/go/console/cli`: `--idempotency-key` flag, `WrapRunE` replay middleware, `Idempotency` annotations.
+- `hop.top/kit/go/storage/sqldb`: sqlite open and pragmas used by `OpenSQLite`.
 - `hop.top/kit/go/core/xdg`: `StateFile` for the default database location.
 
 ## See also
