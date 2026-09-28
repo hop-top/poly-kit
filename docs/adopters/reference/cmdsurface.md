@@ -208,6 +208,21 @@ reflector's reason. `SubprocessRunner` holds no tree and cannot
 classify; discovery and the bridge withhold both classes before it is
 reached.
 
+### Admission
+
+`Bridge.Invoke` is two halves a streaming transport uses apart.
+`Bridge.Admit(ctx, inv)` applies every gate above, in the same order
+with the same errors, audits a refusal exactly as `Invoke` does, and
+runs nothing; it returns an `*Admission` carrying the normalized
+invocation (surface defaulted, `RequestedAt` stamped, idempotency key
+forwarded). `Admission.Stream(ctx, out)` then runs it through the
+Runner's `Stream`, forwards every event (the `done` event included),
+closes `out`, and audits the outcome once on a remote surface — a
+client that disconnected appears as a cancellation. A transport that
+must answer a refusal before it commits to a stream — an HTTP status
+rather than a frame inside a `200` — admits first; the `api`
+service's streaming routes do.
+
 ## Surface matrix
 
 | Surface         | Direction           | Mount function   | Typical use                             | Reuses                          |
@@ -684,7 +699,8 @@ surface, path pattern, success/error).
 Two paths reach a sink:
 
 - **Bridge-registered sinks** (`WithSinks`, or the telemetry sink
-  `FromConfig` adds). `Bridge.Invoke` emits to them for every refusal
+  `FromConfig` adds). `Bridge.Invoke` (and `Bridge.Admit` /
+  `Admission.Stream`) emits to them for every refusal
   — unknown command, surface not enabled, the destructive ceiling,
   the permission gate — and for every execution on a remote surface
   (every surface but `cli` and `lib`). A transport reports its own

@@ -19,6 +19,7 @@ leaves onto one surface, gated by one `Policy` and executed by one
 - issue a one-shot exec link or an OAuth callback → `MountSigned`, `MountOAuth`
 - deploy the same leaves as a function → `LambdaHandler`, `RunCloudRun`
 - invoke in-process from a REPL or test → `InvokeArgs`, `StreamArgs`
+- gate a call before committing to a stream, then stream it → `Bridge.Admit`, `Admission.Stream`
 - toggle a leaf per surface → `Bridge.Expose` / `Bridge.Hide`, or YAML `LoadFile` / `FromConfig`
 
 ## Quick start

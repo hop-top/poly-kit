@@ -351,7 +351,45 @@ func matchPattern(pattern string, path []string) bool {
 //
 // The Runner's own errors are returned as-is (wrapped runners are
 // responsible for their own error contracts).
+//
+// Invoke is [Bridge.Admit] followed by a run. A transport that
+// streams uses the two halves separately: Admit, then
+// [Admission.Stream].
 func (b *Bridge) Invoke(ctx context.Context, inv Invocation) (Result, error) {
+	adm, err := b.Admit(ctx, inv)
+	if err != nil {
+		return Result{}, err
+	}
+	res, err := b.cfg.runner.Run(ctx, adm.inv)
+	if adm.inv.Meta.Surface.remote() {
+		b.Audit(ctx, adm.inv, res, err)
+	}
+	return res, err
+}
+
+// Admission is an invocation every gate of [Bridge.Invoke] has
+// admitted and that has not run yet. It exists so a streaming
+// transport can answer a refusal before it commits to a stream — an
+// HTTP status rather than an error frame inside a 200, say — and
+// still run the command under exactly the gates, audit and
+// idempotency forwarding Invoke applies.
+//
+// An Admission runs at most once.
+type Admission struct {
+	b   *Bridge
+	inv Invocation
+}
+
+// Admit applies the gates [Bridge.Invoke] applies, in the same order
+// and with the same errors, without running anything. A refusal is
+// audited exactly as Invoke audits it and returned with a nil
+// Admission. On success the Admission carries the normalized
+// invocation: Surface defaulted, RequestedAt stamped, the idempotency
+// key forwarded.
+//
+// Admission alone emits nothing to the sinks: the record for an
+// admitted invocation is written when it runs, carrying its outcome.
+func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) {
 	if inv.Meta.Surface == "" {
 		// Library callers may omit the field; treat as SurfaceLib so
 		// in-process Invoke calls Just Work.
@@ -364,32 +402,63 @@ func (b *Bridge) Invoke(ctx context.Context, inv Invocation) (Result, error) {
 
 	leaf, err := b.resolveLeaf(inv.Path)
 	if err != nil {
-		return Result{}, b.refuse(ctx, inv, err)
+		return nil, b.refuse(ctx, inv, err)
 	}
 	if !leaf.Enabled[surface] {
-		return Result{}, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",
+		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",
 			ErrSurfaceNotEnabled, leaf.PathKey(), surface))
 	}
 	if reason := notInvocableReason(leaf); reason != cmdreflect.ReasonNone {
-		return Result{}, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s is %s (%s)",
+		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s is %s (%s)",
 			ErrNotInvocable, leaf.PathKey(), surface, reason, reason.Explain()))
 	}
 	if !b.cfg.policy.Allowed(leaf.Class, surface) {
-		return Result{}, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",
+		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s",
 			ErrDestructiveBlocked, leaf.PathKey(), surface))
 	}
 	if dec := b.Permission(ctx, inv.Meta, leaf); !dec.Allowed {
-		return Result{}, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s: %s",
+		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s: %s",
 			ErrPermissionDenied, leaf.PathKey(), surface, dec.Reason))
 	}
+	return &Admission{b: b, inv: forwardIdempotencyKey(inv, leaf)}, nil
+}
 
-	inv = forwardIdempotencyKey(inv, leaf)
+// Invocation returns the admitted invocation as it will run.
+func (a *Admission) Invocation() Invocation { return a.inv }
 
-	res, err := b.cfg.runner.Run(ctx, inv)
-	if surface.remote() {
-		b.Audit(ctx, inv, res, err)
+// Stream runs the admitted invocation through the Runner's Stream and
+// forwards every Event to out, the terminal "done" Event included.
+// It closes out when the run ends, as a Runner does, so the caller
+// must keep receiving until then.
+//
+// On a remote surface the outcome is audited once, after the run:
+// the Result is the one the done Event carried, and the error is the
+// Runner's — a cancellation when ctx ended the run, which is how a
+// client that disconnected mid-stream appears in the audit trail.
+func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
+	if out == nil {
+		return errors.New("cmdsurface: nil event channel")
 	}
-	return res, err
+	events := make(chan Event, cap(out))
+	errc := make(chan error, 1)
+	go func() { errc <- a.b.cfg.runner.Stream(ctx, a.inv, events) }()
+
+	var res Result
+	// The Runner contract closes events when the run ends.
+	for ev := range events {
+		if ev.Kind == "done" {
+			if r, ok := ev.Data.(*Result); ok && r != nil {
+				res = *r
+			}
+		}
+		out <- ev
+	}
+	err := <-errc
+	close(out)
+	if a.inv.Meta.Surface.remote() {
+		a.b.Audit(ctx, a.inv, res, err)
+	}
+	return err
 }
 
 // refuse emits a pre-execution refusal to the sinks when the surface

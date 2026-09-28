@@ -294,8 +294,11 @@ These are consequences for you as the author, not background theory:
   either; see
   [secure-remote-serving.md](secure-remote-serving.md).
 - **No streaming.** `Invoker` is request/response. For incremental
-  output, reach the runner through the bridge — see
-  [`Bridge.Runner`](../../../go/transport/cmdsurface/bridge.go).
+  output, admit the call through the bridge's gates with
+  `Bridge.Admit`, answer a refusal in your own protocol, then run it
+  with `Admission.Stream` — the same gates, audit and idempotency
+  forwarding as `Invoke`. See
+  [`bridge.go`](../../../go/transport/cmdsurface/bridge.go).
 - **No retries or backpressure.** Concurrency and load shedding are
   yours.
 
