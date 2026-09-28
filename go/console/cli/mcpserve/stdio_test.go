@@ -53,8 +53,20 @@ func (a *stdioAudit) Emit(_ context.Context, inv cmdsurface.Invocation, _ cmdsur
 
 // stdioCommands mounts one leaf per class stdio treats differently,
 // plus one that writes past its captured streams to the process's own
-// standard output.
+// standard output and one that is still running when a host that
+// does not wait for answers has already closed its end.
 func stdioCommands(r *cli.Root) {
+	nap := &cobra.Command{Use: "nap", Short: "Answer after a pause",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			select {
+			case <-cmd.Context().Done():
+				return cmd.Context().Err()
+			case <-time.After(200 * time.Millisecond):
+			}
+			cmd.Print("rested")
+			return nil
+		}}
+	cli.SetSideEffect(nap, cli.SideEffectRead)
 	ping := &cobra.Command{Use: "ping", Short: "Answer pong",
 		RunE: func(cmd *cobra.Command, _ []string) error { cmd.Print("pong"); return nil }}
 	cli.SetSideEffect(ping, cli.SideEffectRead)
@@ -73,7 +85,7 @@ func stdioCommands(r *cli.Root) {
 		Annotations: map[string]string{"kit/requires-confirmation": "true"},
 		RunE:        func(cmd *cobra.Command, _ []string) error { cmd.Print("deployed"); return nil }}
 	cli.SetSideEffect(deploy, cli.SideEffectWriteLocal)
-	r.Cmd.AddCommand(ping, leak, secret, deploy)
+	r.Cmd.AddCommand(ping, leak, secret, deploy, nap)
 }
 
 // startStdio runs `serve mcp --stdio` on a root whose stdio transport
@@ -367,4 +379,40 @@ func TestMCPServiceClassFollowsTheTransport(t *testing.T) {
 	p.initialize(false)
 	text, _ := p.call(2, "ping")
 	assert.Equal(t, "pong", text)
+}
+
+// TestMCPStdioAnswersEverythingReadBeforeEndOfInput is a host that
+// writes its requests and closes its end at once, without waiting for
+// a single answer: every call is still answered, then end of input
+// stops the service cleanly.
+func TestMCPStdioAnswersEverythingReadBeforeEndOfInput(t *testing.T) {
+	p := startStdio(t)
+
+	p.send(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"stdio-host","version":"1"}}}`)
+	p.send(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	p.send(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
+	p.send(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ping","arguments":{}}}`)
+	p.send(`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"nap","arguments":{}}}`)
+	require.NoError(t, p.w.Close())
+
+	got := map[float64]map[string]any{}
+	for len(got) < 4 {
+		m := p.next()
+		id, ok := m["id"].(float64)
+		require.True(t, ok, "a response: %v", m)
+		got[id] = m
+	}
+	text, isErr := resultText(t, got[3])
+	assert.False(t, isErr)
+	assert.Equal(t, "pong", text)
+	text, isErr = resultText(t, got[4])
+	assert.False(t, isErr)
+	assert.Equal(t, "rested", text, "the call still running at end of input is answered")
+
+	select {
+	case <-p.finished:
+		assert.NoError(t, p.err, "end of input is a clean stop")
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve did not return at end of input")
+	}
 }

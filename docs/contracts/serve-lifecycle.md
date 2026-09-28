@@ -876,7 +876,11 @@ service serves stdio:
   the tool result.
 
 End of input — the host closing the session — ends the service
-cleanly: `Start` returns nil, and `serve mcp --stdio` exits `0`. A
+cleanly: `Start` returns nil, and `serve mcp --stdio` exits `0`. Every
+request read before end of input is answered first, so a host may
+write its requests and close its end without waiting. A call still
+waiting on the host at that point — a confirmation question — can
+never be answered and is abandoned; that is still a clean stop. A
 signal is a clean stop as on every service.
 
 ### Readiness, class, and stop

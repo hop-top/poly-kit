@@ -40,7 +40,9 @@
 //
 // This package contains no MCP protocol logic of its own. Kit-side
 // code is limited to binding bridge leaves to SDK tool handlers,
-// safety gating, principal derivation, and mounting. See README.md
+// safety gating, principal derivation, and mounting, plus one
+// transport workaround: StdioTransport answers the requests read
+// before end of input, which the SDK's stdio transports abandon. See README.md
 // in this directory for the full comparison and the honest
 // tradeoffs.
 package mcpsdk

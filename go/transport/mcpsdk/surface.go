@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -302,15 +303,18 @@ func (s *Surface) Mount(r *api.Router) error {
 	return nil
 }
 
-// ServeStdio runs the Surface on the stdio transport until ctx is
-// canceled or the client disconnects. stdio carries no HTTP headers,
+// ServeStdio runs the Surface on the process's standard input and
+// output ([StdioTransport]) until ctx is canceled or the client ends
+// its input; the calls read before end of input are answered first,
+// and end of input returns nil. stdio carries no HTTP headers,
 // so under the default gates leaves classified auth-required or
 // requires-confirmation fail closed on this transport. A host that
 // can vouch for its stdio peer answers the auth gate with
 // [WithAuthenticated]; [WithConfirmationElicitation] lets a client
 // that supports elicitation confirm a call.
 func (s *Surface) ServeStdio(ctx context.Context) error {
-	return s.srv.Run(ctx, &mcp.StdioTransport{})
+	t := NewStdioTransport(os.Stdin, os.Stdout)
+	return t.SessionEnd(s.srv.Run(ctx, t))
 }
 
 // NewServer builds an *mcp.Server bound to the bridge: one MCP tool

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -121,4 +124,62 @@ func TestMCPStdioRefusalsExitWithTheContractCodes(t *testing.T) {
 	require.ErrorAs(t, err, &exitErr, "%s", out)
 	assert.Equal(t, 2, exitErr.ExitCode(), "%s", out)
 	assert.Contains(t, string(out), "--mcp-addr")
+}
+
+// TestMCPStdioAnswersAHostThatClosesStdinAtOnce is a host that pipes
+// its requests in and closes stdin without waiting for an answer
+// (`printf ... | served serve mcp --stdio`): every request is still
+// answered on stdout, then end of input exits 0.
+func TestMCPStdioAnswersAHostThatClosesStdinAtOnce(t *testing.T) {
+	bin := buildServed(t)
+
+	cmd := exec.Command(bin, "serve", "mcp", "--stdio")
+	cmd.Env = isolatedEnv(t)
+	cmd.Stdin = strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"pipe","version":"0"}}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"item.list","arguments":{}}}`,
+	}, "\n") + "\n")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+
+	require.NoError(t, cmd.Run(), "end of input exits 0: %s", stderr.String())
+
+	got := map[float64]map[string]any{}
+	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+		var m map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &m), "stdout carries only protocol messages: %q", line)
+		if id, ok := m["id"].(float64); ok {
+			got[id] = m
+		}
+	}
+	for _, id := range []float64{1, 2, 3} {
+		require.Contains(t, got, id, "request %v answered; stdout: %s; stderr: %s", id, stdout.String(), stderr.String())
+		assert.Nil(t, got[id]["error"], "%v", got[id])
+	}
+	assert.Contains(t, toJSON(t, got[3]["result"]), `"nut"`)
+	assert.Contains(t, stderr.String(), "reason=clean-stop")
+}
+
+// TestMCPStdioEndOfInputWhileAskingTheHostIsACleanStop: a call that
+// asks the host to confirm cannot be answered once the host has closed
+// stdin. The question goes out, the call is abandoned, and the process
+// still exits 0: the host ended the session.
+func TestMCPStdioEndOfInputWhileAskingTheHostIsACleanStop(t *testing.T) {
+	bin := buildServed(t)
+
+	cmd := exec.Command(bin, "serve", "mcp", "--stdio")
+	cmd.Env = isolatedEnv(t)
+	cmd.Stdin = strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{"elicitation":{}},"clientInfo":{"name":"pipe","version":"0"}}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"item.tag","arguments":{"name":"nut"}}}`,
+	}, "\n") + "\n")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+
+	require.NoError(t, cmd.Run(), "end of input exits 0: %s", stderr.String())
+	assert.Contains(t, stdout.String(), `"method":"elicitation/create"`, "the question reached the host")
+	assert.Contains(t, stderr.String(), "reason=clean-stop")
 }

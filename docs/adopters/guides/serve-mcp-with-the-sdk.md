@@ -129,6 +129,11 @@ if err := mcpsdk.ServeStdio(ctx, b,
 }
 ```
 
+When the host closes standard input, `ServeStdio` answers every request
+it has already read, then returns nil. To serve streams you hold
+instead of the process's own (a child's pipes, a test), connect
+`s.Server()` with `mcpsdk.NewStdioTransport(in, out)`.
+
 Stdio carries no HTTP headers, so with the default gates leaves marked
 auth-required or confirmation-required are never callable there — the
 header-based gates fail closed. `WithAuthenticated` and

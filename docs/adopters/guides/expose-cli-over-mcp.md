@@ -101,7 +101,8 @@ mytool serve mcp --stdio
 
 Standard output then carries protocol messages only; logs, the
 lifecycle trace and hints go to standard error. When the host closes
-standard input the service stops and the process exits `0`.
+standard input the service answers every request it has already read,
+then stops, and the process exits `0`.
 
 Both surfaces under one supervisor: `mytool serve --enable mcp` runs
 `api` on `127.0.0.1:8080` and `mcp` on `127.0.0.1:8081`.
@@ -156,6 +157,17 @@ answers in `structuredContent`, with an empty text block beside it:
 ```text
 event: message
 data: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":""}],"structuredContent":[{"name":"bolt"},{"name":"nut"}]}}
+```
+
+Over stdio, pipe the requests in; each is answered on standard output
+before the process exits `0`:
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"sh","version":"0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' |
+  mytool serve mcp --stdio
 ```
 
 In practice, point an MCP client at the endpoint rather than curl: the

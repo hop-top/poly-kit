@@ -35,6 +35,7 @@ if err := mcpsdk.Mount(b, r,
 | `mcpsdk.Handler(b, opts...)` | a bare `http.Handler` to mount however you like |
 | `mcpsdk.NewServer(b, opts...)` | the underlying `*mcp.Server`, for custom transports or direct `server.Connect` wiring |
 | `mcpsdk.ServeStdio(ctx, b, opts...)` | serve a local client over stdio (`mycli mcp serve`-style commands) |
+| `mcpsdk.NewStdioTransport(in, out)` | an `mcp.Transport` over streams you hold (a child's pipes, a test's); connect it with `Server().Connect` and pass what the session's `Wait` returns through its `SessionEnd` |
 
 Options: `WithPath`, `WithServerInfo`, `WithInstructions`,
 `WithStateless` (SEP-2567 sessionless mode; GET/DELETE become 405),
@@ -161,6 +162,28 @@ under **your** responsibility, outside kit's gates:
 None of this is reachable by a remote client on its own, it takes
 adopter code registering it, but the boundary is real and worth
 naming: kit gates what kit binds; what you register is yours.
+
+## End of input over stdio
+
+A host ends a stdio session by closing the server's standard input.
+`ServeStdio` and `StdioTransport` answer every request read before end
+of input, then end the session: `ServeStdio` returns nil, and
+`SessionEnd` maps the session's result to nil. A host may therefore
+write its requests and close its end without waiting for the answers.
+A call still waiting on the host at that point (an `elicitation/create`
+question, a server ping) can never be answered; the SDK abandons it,
+and the session still ends cleanly.
+
+The SDK's own stdio transports behave differently: go-sdk v1.7.0
+treats end of input as a broken connection, cancels every call in
+flight, and refuses to write their responses, so a host that closes
+early gets no answer and the session ends with `server is closing:
+EOF`. `StdioTransport` holds end of input back from the SDK until the
+calls it has read are answered, tracking requests and responses on the
+wire; the framing and every protocol behavior stay the SDK's.
+`TestSDKIOTransportAbandonsCallsAtEndOfInput` pins the SDK behavior
+and turns red when a future SDK answers such calls itself, the signal
+to drop the workaround.
 
 ## Version negotiation (as pinned by tests)
 

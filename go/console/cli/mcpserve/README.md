@@ -32,5 +32,5 @@ root := cli.New(cli.Config{Name: "mytool", Version: version},
 - Keys: `services.mcp.{transport,addr,path,insecure_remote,insecure_no_policy}`; flags `--stdio`, `--mcp-addr`.
 - `kit/auth-required`: HTTP needs `Config.Auth`; stdio admits on the spawn's trust.
 - `kit/requires-confirmation`: an accepted elicitation, or `X-Confirm-Token` over HTTP; asked only after every machine gate.
-- stdio: stdout carries only protocol messages; end of input exits 0.
+- stdio: stdout carries only protocol messages; end of input exits 0 once every request already read is answered.
 - `go/console/cli` does not import this package or the SDK; a test in `go/console/cli` pins that.

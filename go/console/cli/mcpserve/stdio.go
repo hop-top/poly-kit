@@ -42,8 +42,8 @@ type stdioServing struct {
 	streams *stdioStreams
 
 	mu      sync.Mutex
-	in      io.ReadCloser
-	out     io.WriteCloser
+	in      io.Reader
+	out     io.Writer
 	restore func()
 	ss      *mcp.ServerSession
 }
@@ -73,8 +73,8 @@ func (s *stdioServing) bind(context.Context) (string, error) {
 	os.Stdin = empty
 
 	s.mu.Lock()
-	s.in = readCloser(in)
-	s.out = nopWriteCloser{out}
+	s.in = in
+	s.out = out
 	s.restore = sync.OnceFunc(func() {
 		os.Stdin, os.Stdout = origIn, origOut
 		_ = empty.Close()
@@ -85,7 +85,8 @@ func (s *stdioServing) bind(context.Context) (string, error) {
 
 // serve runs one session until the peer ends it or ctx is canceled.
 // The peer closing its end — end of input — is how a host ends a
-// stdio server, so it is a clean stop.
+// stdio server, so it is a clean stop, reached once every call read
+// before it has been answered (mcpsdk.StdioTransport).
 func (s *stdioServing) serve(ctx context.Context, surf *mcpsdk.Surface) error {
 	s.mu.Lock()
 	in, out := s.in, s.out
@@ -94,7 +95,8 @@ func (s *stdioServing) serve(ctx context.Context, surf *mcpsdk.Surface) error {
 		return errors.New("mcp: serve called before bind")
 	}
 
-	ss, err := surf.Server().Connect(ctx, &mcp.IOTransport{Reader: in, Writer: out}, nil)
+	tr := mcpsdk.NewStdioTransport(in, out)
+	ss, err := surf.Server().Connect(ctx, tr, nil)
 	if err != nil {
 		return err
 	}
@@ -106,7 +108,7 @@ func (s *stdioServing) serve(ctx context.Context, surf *mcpsdk.Surface) error {
 	go func() { done <- ss.Wait() }()
 	select {
 	case err := <-done:
-		return sessionEnd(err)
+		return sessionEnd(tr.SessionEnd(err))
 	case <-ctx.Done():
 		_ = ss.Close()
 		select {
@@ -170,19 +172,3 @@ func (s *stdioServing) callMeta(_ context.Context, req *mcp.CallToolRequest) cmd
 // peer already holds every credential the command would use — the
 // socket's owner-only argument, applied to a pair of pipes.
 func (s *stdioServing) authenticated(context.Context, *mcp.CallToolRequest) bool { return true }
-
-// readCloser returns r as an io.ReadCloser, closing it when it can be
-// closed so that ending the session unblocks a pending read.
-func readCloser(r io.Reader) io.ReadCloser {
-	if rc, ok := r.(io.ReadCloser); ok {
-		return rc
-	}
-	return io.NopCloser(r)
-}
-
-// nopWriteCloser keeps the protocol stream open when the session
-// closes: closing the process's standard output would let the next
-// file the process opens take its descriptor.
-type nopWriteCloser struct{ io.Writer }
-
-func (nopWriteCloser) Close() error { return nil }

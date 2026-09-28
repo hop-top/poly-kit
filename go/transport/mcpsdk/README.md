@@ -18,6 +18,7 @@ is unacceptable or an HTTP-only probe must see 401/428 statuses.
 - mount a bare handler yourself → `mcpsdk.Handler(b, opts...)`
 - reach the raw server for a custom transport → `mcpsdk.NewServer(b, opts...)`, `Surface.Server()`
 - serve a local client over stdio → `mcpsdk.ServeStdio(ctx, b, opts...)`
+- serve stdio on streams you hold (a child's pipes, a test) → `Server().Connect(ctx, mcpsdk.NewStdioTransport(in, out), nil)`, then `SessionEnd` on what the session's `Wait` returns
 - add prompts, resources, subscriptions, completions → `WithServerOptions`, `WithServerConfigurator`
 - change the live tool list at runtime → `Surface.Hide` / `Expose` / `Sync`
 - enrich a tool descriptor, notably `OutputSchema` → `WithToolDecorator`
@@ -53,6 +54,7 @@ if err := mcpsdk.Mount(b, r,
 - Legacy `initialize` echoes 2024-11-05, 2025-03-26, 2025-06-18 and 2025-11-25 verbatim; anything else falls back to 2025-11-25. The 2026-07-28 protocol negotiates per request, handled entirely by the SDK. `Handler`/`Mount` serve both on one endpoint: `initialize` and unmarked requests reach a stateful SDK handler, requests carrying a 2026-07-28 marker a stateless one (the routing precedence of `cmdsurface.MountMCP`); `WithStateless` serves everything statelessly.
 - Gate refusals surface as `isError` tool results only; there is no HTTP status mirroring.
 - `WithTasks` and the extension it binds are experimental and pinned to a draft spec.
+- stdio end of input: `ServeStdio` and `StdioTransport` answer every request read before it, then end the session with nil. The SDK's own stdio transports abandon those requests; `TestSDKIOTransportAbandonsCallsAtEndOfInput` turns red when a future SDK stops doing so.
 
 ## Neighbours
 
