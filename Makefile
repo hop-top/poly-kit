@@ -8,19 +8,30 @@
 	test-release test-rs test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
 
-# Tool versions — single source of truth for local + the kit repo's
-# own CI. `.github/workflows/ci.yml` consumes the pin by calling
-# `make lint-go`, which in turn depends on `tools-golangci-lint`.
+# Tool versions — mise.toml is the single source of truth for local and
+# the repo's own CI; scripts/toolchain-pins.sh reads it. CI jobs feed the
+# same pins to their setup actions, and `make check-toolchain-parity`
+# fails when a file that carries its own copy (go.mod,
+# rust-toolchain.toml, a workflow literal) disagrees.
+#
+# golangci-lint is installed by `tools-golangci-lint` rather than taken
+# from mise so contributors without mise lint with the same release;
+# `.github/workflows/ci.yml` reaches it through `make lint-go`.
 #
 # Note: `.github/workflows/lint.yml` is a reusable workflow exposed
 # to OTHER hop-top repos via `workflow_call` and takes its own
 # `inputs.version` independently — it is NOT covered by this pin.
-GOLANGCI_LINT_VERSION ?= v2.11.4
+TOOLCHAIN_PINS := $(CURDIR)/scripts/toolchain-pins.sh
+ifndef GOLANGCI_LINT_VERSION
+GOLANGCI_LINT_VERSION := v$(shell $(TOOLCHAIN_PINS) golangci-lint)
+endif
+MARKDOWNLINT_CLI2_VERSION := $(shell $(TOOLCHAIN_PINS) markdownlint-cli2)
 
-# Go toolchain pin — read from mise.toml, the kit-managed pin emitted by
-# `templates/shared/emit-mise.sh` from `templates/shared/tool-versions.toml`.
-# Only the MINOR is pinned (e.g. 1.26); the patch floats, matching how
-# `go.mod`'s `go` directive states a minimum rather than an exact build.
+# Go toolchain pin — the `go` entry in mise.toml. It equals go.mod's
+# `go` directive (check-toolchain-parity enforces it), which is what
+# setup-go installs in CI. This gate compares only the MINOR: that is
+# the granularity export data breaks at (below), and a contributor on a
+# newer patch lints correctly; mise and CI both run the exact pin.
 #
 # Why this pin needs its own gate: golangci-lint reads Go EXPORT DATA, whose
 # format version is tied to the compiler that produced it. $(GOLANGCI_LINT_VERSION)
@@ -28,7 +39,8 @@ GOLANGCI_LINT_VERSION ?= v2.11.4
 # and every package fails to typecheck. The resulting diagnostic names an
 # arbitrary file that merely happens to import "bytes" first, so without this
 # gate a toolchain mismatch presents as a lint failure in unrelated code.
-GO_VERSION_PIN := $(shell awk -F'"' '/^go = "/ { print $$2; exit }' $(CURDIR)/mise.toml 2>/dev/null)
+GO_VERSION_PIN := $(shell $(TOOLCHAIN_PINS) go 2>/dev/null)
+GO_VERSION_PIN_MINOR := $(shell echo '$(GO_VERSION_PIN)' | awk -F. '{ print $$1"."$$2 }')
 
 # lint-go invokes the binary from $(LOCAL_BIN) directly. The
 # `tools-golangci-lint` target is a hard dep, so the binary is
@@ -45,8 +57,8 @@ preflight: ## Verify host toolchain matches the repo's declared minimum reqs
 check-go-version: ## Fail fast when the active Go minor differs from mise.toml's pin
 	@if [ -z "$(GO_VERSION_PIN)" ]; then \
 		echo "ERROR: no Go pin found in mise.toml." >&2; \
-		echo "  mise.toml is kit-managed; regenerate it with:" >&2; \
-		echo "    bash -c 'source templates/shared/emit-mise.sh && emit_mise \"\$$PWD\" go,ts,py,rs'" >&2; \
+		echo "  add go = \"<go.mod's go directive>\" under [tools], then run" >&2; \
+		echo "  make check-toolchain-parity" >&2; \
 		exit 1; \
 	fi
 	@have=$$(go version 2>/dev/null | awk '{ print $$3 }' | sed 's/^go//'); \
@@ -56,7 +68,7 @@ check-go-version: ## Fail fast when the active Go minor differs from mise.toml's
 		exit 1; \
 	fi; \
 	have_mm=$$(echo "$$have" | awk -F. '{ print $$1"."$$2 }'); \
-	if [ "$$have_mm" != "$(GO_VERSION_PIN)" ]; then \
+	if [ "$$have_mm" != "$(GO_VERSION_PIN_MINOR)" ]; then \
 		echo "ERROR: Go toolchain does not match the repo pin." >&2; \
 		echo "  active : go $$have  ($$(command -v go))" >&2; \
 		echo "  pinned : go $(GO_VERSION_PIN)  (mise.toml)" >&2; \
@@ -69,7 +81,7 @@ check-go-version: ## Fail fast when the active Go minor differs from mise.toml's
 		echo "       (or run any make target through: mise exec -- make <target>)" >&2; \
 		exit 1; \
 	fi; \
-	echo "==> go $$have matches pin $(GO_VERSION_PIN)"
+	echo "==> go $$have matches pin $(GO_VERSION_PIN_MINOR) (mise.toml and CI: $(GO_VERSION_PIN))"
 
 tools: tools-golangci-lint ## Install pinned dev tools into bin/
 
@@ -334,8 +346,8 @@ lint-rs: ## Rust: cargo fmt --check + clippy (all features)
 	cd sdk/experimental/rs && cargo fmt --all -- --check
 	cd sdk/experimental/rs && cargo clippy --all-features --all-targets -- -D warnings
 
-lint-docs: ## Markdown: markdownlint
-	npx markdownlint-cli2 "README.md" "CHANGELOG.md" "RELEASING.md" "AGENTS.md" "docs/**/*.md" "cmd/kit/README.md" "incubator/**/*.md" --config examples/spaced/.markdownlint.yaml
+lint-docs: ## Markdown: markdownlint (version pinned in mise.toml)
+	npx --yes markdownlint-cli2@$(MARKDOWNLINT_CLI2_VERSION) "README.md" "CHANGELOG.md" "RELEASING.md" "AGENTS.md" "docs/**/*.md" "cmd/kit/README.md" "incubator/**/*.md" --config examples/spaced/.markdownlint.yaml
 
 lint-readmes: ## Markdown: folder README coverage, Contents links, shape caps
 	scripts/lint-readmes
