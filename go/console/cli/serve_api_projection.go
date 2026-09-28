@@ -35,6 +35,7 @@ func projectionBridge(r *Root, cfg *APIConfig) (*cmdsurface.Bridge, error) {
 	// bridge builds its shared-tree runner over root. The shared
 	// options go last so a test-injected Runner still wins.
 	opts := append([]cmdsurface.Option{cmdsurface.WithPolicy(cfg.Policy)}, r.serveRunnerOptions()...)
+	opts = append(opts, r.serveObservabilityOptions(APIServiceName)...)
 	opts = append(opts, shared...)
 	bridge := cmdsurface.New(r.Cmd, opts...)
 	// Exposing REST here is what "no adopter mounting code" means:

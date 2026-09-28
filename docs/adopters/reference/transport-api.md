@@ -451,6 +451,7 @@ executor on `CommandRequest.Meta`:
 | `Principal`, `Tenant`, `Scopes` | the stored claims |
 | `RequestID` | the `RequestID` middleware (`X-Request-ID`, issued when absent, echoed) |
 | `TraceID` | the trace-id field of `traceparent`, else `X-Trace-ID` |
+| `Traceparent`, `Tracestate` | the W3C headers, when `traceparent` is well-formed (`TraceContextFromHeader`) |
 | `IdempotencyKey` | `Idempotency-Key` |
 | `RemoteAddr`, `ReceivedAt` | the request |
 
@@ -458,6 +459,24 @@ The request's own context is passed through unchanged, so a client
 disconnect cancels the command. The executor maps all of this onto
 `cmdsurface.Meta`; scopes travel as `Meta.Extra["scopes"]`,
 comma-joined, for the permission gate.
+
+#### Refusal codes for metrics
+
+Middleware that refuses a request on the HTTP plane calls
+`RecordRefusal(r, code)` with the stable refusal code
+(`body_too_large`, `host_rejected`, …) before writing the response.
+An observer installed further out with `ObserveRefusal(r)` reads the
+code once the handler returns; the tracing and metrics middleware
+([served-observability.md](served-observability.md)) is that observer.
+With no observer, recording is a no-op, and the first code recorded
+for a request wins.
+
+`ObserveRoute(r)` works the same way for the route a `Router`
+matched: middleware that wraps the router from outside never sees
+`Request.Pattern`, which the mux sets on the request it dispatches.
+The tracing and metrics middleware reads it back to name its span
+`<METHOD> <route>`. An empty read means no route matched: a health
+probe, a refusal ahead of the router, or an unmatched path.
 
 ### Transport guards
 

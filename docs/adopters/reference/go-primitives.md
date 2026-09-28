@@ -174,6 +174,7 @@ onto other surfaces without rewriting it.
 |---|---|---|---|
 | cmdsurface | The bridge projecting one cobra tree onto REST, WebSocket, SSE, MCP, RPC, cron, webhooks, Lambda | Any "expose my CLI as X" job | `hop.top/kit/go/transport/cmdsurface` |
 | transportsvc | Registration seam for transport services: reflect once at start, pinned surface, readiness, ordered stop | Writing your own transport | `hop.top/kit/go/transport/transportsvc` |
+| observability | OpenTelemetry spans and metrics for served commands: one trace from the caller through the invocation to a child process; requests, latency, in-flight, refusals by code | Tracing or measuring the api, socket or RPC services | `hop.top/kit/go/transport/observability` |
 | serve | Service contract, registry, supervisor, failure policy; imports no transport | Running services with lifecycle management | `hop.top/kit/go/console/serve` |
 | api | HTTP toolkit: router, middleware, resources, OpenAPI 3.1, WebSocket, Huma | Building a JSON API by hand | `hop.top/kit/go/transport/api` |
 | api/client | Typed REST and WebSocket clients for kit API services | Calling a kit service from Go | `hop.top/kit/go/transport/api/client` |

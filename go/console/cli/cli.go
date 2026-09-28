@@ -339,6 +339,7 @@ type Root struct {
 	// serveAuth is the permission gate and audit sinks every
 	// kit-shipped transport service shares; see serve_auth.go.
 	serveAuth    serveAuthState
+	serveObs     ServeObservability // tracing and metrics; see serve_observability.go
 	identityCfg  *IdentityConfig
 	peerCfg      *PeerConfig
 	telemetryCfg *TelemetryConfig

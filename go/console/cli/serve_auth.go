@@ -187,8 +187,9 @@ func (r *Root) servePolicyConfigured() bool {
 // ServeBridgeOptions returns the bridge options the kit-shipped
 // transport service svc applies when it starts: the per-invocation
 // runner when [WithRootFactory] is set (carrying the operator's
-// replayed root flags), then the composed permission gate
-// ([WithPermission] after the --policy engine), the audit sinks
+// replayed root flags), the invocation tracing and metrics of the
+// provider [WithObservability] linked, then the composed permission
+// gate ([WithPermission] after the --policy engine), the audit sinks
 // ([WithAuditSinks]) with svc's audit.redact block, and any
 // test-injected options. It is the same set the socket service's
 // bridge gets, and it must be called at Start — --policy is parsed
@@ -202,7 +203,8 @@ func ServeBridgeOptions(r *Root, svc string) ([]cmdsurface.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(r.serveRunnerOptions(), shared...), nil
+	opts := append(r.serveRunnerOptions(), r.serveObservabilityOptions(svc)...)
+	return append(opts, shared...), nil
 }
 
 // ValidateServeBridge is the configuration check the kit-shipped

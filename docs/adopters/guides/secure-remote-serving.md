@@ -601,7 +601,8 @@ X-Request-ID: req-42
 | Header | Lands in | Notes |
 |---|---|---|
 | `X-Request-ID` | `Meta.RequestID` | issued by the server when absent; echoed on the response |
-| `traceparent` | `Meta.TraceID` | the W3C trace-id field; `X-Trace-ID` is the fallback |
+| `traceparent` | `Meta.TraceID`, `Meta.Traceparent` | the W3C trace-id field; `X-Trace-ID` is the fallback. A well-formed value also lands whole in `Meta.Traceparent` and reaches a subprocess as `TRACEPARENT` |
+| `tracestate` | `Meta.Tracestate` | kept only beside a well-formed `traceparent` |
 | `Idempotency-Key` | `Meta.IdempotencyKey` | forwarded to the command's `--idempotency-key` flag when it has one |
 
 Over the socket the same values are request fields:
@@ -706,6 +707,38 @@ To turn a check off, set its block's `enabled: false`. An origin you
 grant through `api.CORS` is only readable by that page; to let it
 write, list it in `origin_check.allow` too.
 
+### 9. Trace and measure served commands
+
+Propagation needs nothing. To export spans and metrics, link the
+provider once in `main`:
+
+```go
+root := cli.New(cfg,
+    cli.WithAPI(apiCfg),
+    cli.WithObservability(observability.NewServe()), // hop.top/kit/go/transport/observability
+)
+```
+
+Then turn it on in configuration; both signals default to off:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  all:
+    tracing:
+      enabled: true
+      endpoint: http://127.0.0.1:4318   # your OTLP collector; this is the default
+    metrics:
+      enabled: true
+```
+
+The call from step 7 now produces one trace: the HTTP server span
+(child of the caller's `traceparent`), an `invoke widget list` span
+below it, and anything the command or a child process records below
+that. Metrics count every verdict per service and surface, refusals by
+code. Keys, span and instrument names are in
+[served-observability.md](../reference/served-observability.md).
+
 ## Option reference
 
 | Option | Default | Effect |
@@ -720,6 +753,7 @@ write, list it in `origin_check.allow` too.
 | `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. Records are always redacted. |
 | `services.<svc>.audit.redact.secret_flags` | none | Extra flag names masked in audit records; `services.all` applies to every service. |
 | `services.<svc>.audit.redact.patterns` | none | Extra content patterns (RE2) masked in audit records. |
+| `cli.WithObservability(p)` | none | Links a tracing and metrics provider; `services.<svc>.tracing.enabled` / `.metrics.enabled` (or `services.all.*`) turn it on. |
 | `--policy=<name>` | none | The tool's policy engine, applied to remote calls for every caller. Naming one permits a non-loopback address. |
 | `services.api.host_check.enabled` | `true` | Refuse a `Host` the listener does not answer for (`403`, `host_rejected`). |
 | `services.api.host_check.allow` | `[]` | Hosts accepted beyond the listener's own; `name` or `name:port`. Required for a wildcard bind to check anything. |
@@ -764,6 +798,8 @@ Absence here is deliberate; each of these belongs somewhere else:
   service: routes, discovery, destructive commands, confirmation
 - [serve-cli-over-unix-socket.md](serve-cli-over-unix-socket.md) —
   the socket service: wire format, permissions, restrictions
+- [served-observability.md](../reference/served-observability.md) —
+  tracing and metrics keys, spans and instruments
 - [serve-lifecycle contract](../../contracts/serve-lifecycle.md#security)
   — the normative rules this guide applies
 - [api README](../reference/transport-api.md#auth) — claims

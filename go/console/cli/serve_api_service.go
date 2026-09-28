@@ -338,15 +338,18 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	a.stopping = stopping
 	a.mu.Unlock()
 
-	// HTTP-plane slots 1-6 wrap everything, health probes included.
-	// Slots 8 on (Host/Origin, body limit, compression, auth) go in mws, inside
-	// the router, where probes never reach.
+	// HTTP-plane slots 1-6 wrap everything, health probes included;
+	// edge holds 1-5 (request id, access log, recovery, tracing and
+	// metrics). Slots 8 on (Host/Origin, body limit, compression,
+	// auth) go in mws, inside the router, where probes never reach.
 	edge := []api.Middleware{
 		api.RequestID(),
 		api.Logger(logger.Info),
 		api.Recovery(func(v any, r *http.Request) {
 			logger.Error("panic recovered", "error", v, "path", r.URL.Path)
 		}),
+		// Slot 5: tracing and metrics wrap every later refusal, probes included.
+		a.root.observeMiddleware(APIServiceName),
 	}
 	mws := []api.Middleware{
 		api.ContentType("application/json"),

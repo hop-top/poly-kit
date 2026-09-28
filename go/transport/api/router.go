@@ -81,9 +81,12 @@ func (r *Router) MountResource(prefix string, h http.Handler, ops ...string) {
 	}
 }
 
-// ServeHTTP implements http.Handler.
+// ServeHTTP implements http.Handler. The mux sets req.Pattern on the
+// request it dispatches; ServeHTTP reports it to an [ObserveRoute]
+// observer outside the router.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mux.ServeHTTP(w, req)
+	recordRoute(req)
 }
 
 // PathParam extracts a path parameter from the request using

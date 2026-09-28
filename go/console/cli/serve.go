@@ -201,6 +201,15 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	ctx, escalate, stop := serve.SignalContext(cmd.Context())
 	defer stop()
 
+	// Tracing and metrics start before any service and flush after
+	// the last one stops, so every request the services answer is
+	// recorded and exported.
+	flushObservability, err := root.startObservability(ctx, reg.Names())
+	if err != nil {
+		return err
+	}
+	defer flushObservability()
+
 	// The trace goes to the command's stderr rather than straight to
 	// os.Stderr, so a caller that redirects the command's streams
 	// (a test, a wrapper, a supervisor capturing output) still sees

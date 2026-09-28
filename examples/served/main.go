@@ -44,6 +44,7 @@ import (
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/runtime/bus"
 	"hop.top/kit/go/transport/cmdsurface"
+	"hop.top/kit/go/transport/observability"
 )
 
 // Item is one row of `item list`. The json tags name the fields in
@@ -104,14 +105,24 @@ type options struct {
 	// heartbeat is the adopter-owned service registered beside api and
 	// socket, so a test can observe it start.
 	heartbeat *heartbeat
+	// observe is the tracing and metrics provider. nil links the
+	// default one, which configuration leaves off.
+	observe *observability.Serve
+	// config is set on the root's configuration before it runs, the
+	// way a config file would set it.
+	config map[string]any
 }
 
 // newRoot builds the fixture's root. This is the whole of the wiring
 // an adopter writes: the root, the reserved status verb, the four
-// kit-shipped services, one service of their own, and the commands.
+// kit-shipped services, one service of their own, the observability
+// provider an operator can turn on, and the commands.
 func newRoot(opts options) *cli.Root {
 	if opts.heartbeat == nil {
 		opts.heartbeat = newHeartbeat()
+	}
+	if opts.observe == nil {
+		opts.observe = observability.NewServe()
 	}
 	policy := cmdsurface.Policy{AllowDestructiveOn: opts.allowDestructiveOn}
 
@@ -127,7 +138,11 @@ func newRoot(opts options) *cli.Root {
 		rpcserve.With(rpcserve.Config{Policy: policy}),
 		cli.WithService(opts.heartbeat),
 		cli.WithServiceBus(opts.bus),
+		cli.WithObservability(opts.observe),
 	)
+	for k, v := range opts.config {
+		root.Viper.Set(k, v)
+	}
 
 	st := newStore()
 	root.Cmd.AddCommand(itemCmd(root, st), shellCmd(), upgradeCmd())

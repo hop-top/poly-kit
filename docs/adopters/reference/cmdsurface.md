@@ -170,6 +170,20 @@ What no runner isolates: process-wide effects of the command's own
 code or the tree's hooks — the working directory, the environment,
 package-level variables, `cobra.OnInitialize` state.
 
+`SubprocessRunner` hands the child the invocation's trace context:
+when `Meta.Traceparent` is set, the child's environment carries it as
+`TRACEPARENT` (and `Meta.Tracestate` as `TRACESTATE`), replacing any
+the server inherited, so a traced child continues the caller's trace.
+Without it the environment passes through untouched.
+
+`WithRunnerMiddleware(mw...)` wraps whichever runner is in force —
+the default, or one from `WithRunner` — first given outermost. A
+middleware sees exactly the invocations the gates admitted, on both
+`Invoke` and the streaming surfaces that call `Bridge.Runner()`;
+refusals never reach it, so observe those through a sink. It is the
+seam [served-observability.md](served-observability.md) uses for the
+invocation span and the in-flight gauge.
+
 ### Structured output
 
 `Result.Data` is populated by decoding, never by scraping text:
@@ -1148,9 +1162,11 @@ the cut point; whole-event drop is observable via
 `telemetry.Event.TraceID` (`omitempty`, so an unset trace ID disappears
 from the wire). Surfaces that already populate `Meta.TraceID` (RPC
 interceptors, REST middleware, signed-URL token claims) light up
-trace-joined telemetry with no extra wiring. Adopters who want OTel
-spans on top of cmdsurface invocations stamp the trace ID once in
-their surface auth middleware; the sink does the rest.
+trace-joined telemetry with no extra wiring. The full W3C span context
+travels beside it in `Meta.Traceparent` and `Meta.Tracestate` (REST and
+RPC read them from the `traceparent` / `tracestate` headers). OpenTelemetry
+spans for served invocations — request, invocation, child process —
+are [served-observability.md](served-observability.md).
 
 ### Non-blocking guarantee
 
@@ -1545,6 +1561,11 @@ Implemented (this package):
   Webhook, OAuth callback, Signed URL.
 - FaaS adapters: AWS Lambda (5 event types), Cloud Run.
 - Sinks: Log, File, Webhook, Bus.
+- Trace context: W3C `traceparent` / `tracestate` carried in
+  `Invocation.Meta` from REST and RPC headers into sinks and a
+  subprocess's environment; OpenTelemetry spans and metrics through
+  `WithRunnerMiddleware` and a sink, in
+  [`go/transport/observability`](served-observability.md).
 
 Deprecated — frozen, fixes only, no new options:
 
@@ -1594,7 +1615,8 @@ Deferred (out of scope):
 - GraphQL surface (schema mismatch is severe; defer until requested).
 - Slack slash command / inbound email (build on Webhook).
 - Multi-tenant signed-URL issuance with per-tenant keys.
-- OpenTelemetry context propagation through `Invocation.Meta`.
+- Trace context on the socket wire and in MCP `_meta` (the socket
+  carries `trace_id` only).
 
 ## Testing and end-to-end
 

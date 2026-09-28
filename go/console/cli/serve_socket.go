@@ -140,7 +140,8 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 			if err != nil {
 				return nil
 			}
-			return append(root.serveRunnerOptions(), shared...)
+			opts := append(root.serveRunnerOptions(), root.serveObservabilityOptions(SocketServiceName)...)
+			return append(opts, shared...)
 		}),
 		transportsvc.WithValidate(func() error {
 			if err := validateSocketPath(root, cfg); err != nil {
