@@ -277,6 +277,55 @@ func TestRESTSurface_DestructiveBlocked(t *testing.T) {
 	}
 }
 
+// TestRESTSurface_GateRefusals pins the REST answer to the two gates
+// that sit beside the destructive ceiling: a permission refusal is 403
+// permission_denied and a non-invocable (interactive) leaf is 404
+// not_invocable, the codes SSE uses. Neither reaches the Runner, and
+// each is audited once.
+func TestRESTSurface_GateRefusals(t *testing.T) {
+	cases := []struct {
+		leaf   string
+		status int
+		code   string
+		want   error
+	}{
+		{"locked", http.StatusForbidden, "permission_denied", cmdsurface.ErrPermissionDenied},
+		{"shell", http.StatusNotFound, "not_invocable", cmdsurface.ErrNotInvocable},
+	}
+	for _, tc := range cases {
+		t.Run(tc.leaf, func(t *testing.T) {
+			runner := &recordingRunner{}
+			sink := &gateSink{}
+			b := cmdsurface.New(gateTree(),
+				cmdsurface.WithRunner(runner),
+				cmdsurface.WithPermission(denyLocked),
+				cmdsurface.WithSinks(cmdsurface.SinkSpec{Sink: sink, OnOK: true, OnError: true}),
+			)
+			b.Expose("*", cmdsurface.SurfaceREST)
+			url, stop := newServer(t, b)
+			defer stop()
+
+			status, body := post(t, url+"/cmd/"+tc.leaf, cmdsurface.Invocation{}, nil)
+			if status != tc.status {
+				t.Fatalf("status=%d want %d; body=%s", status, tc.status, body)
+			}
+			var ae api.APIError
+			if err := json.Unmarshal(body, &ae); err != nil {
+				t.Fatalf("decode: %v; body=%s", err, body)
+			}
+			if ae.Code != tc.code {
+				t.Errorf("code=%q want %q", ae.Code, tc.code)
+			}
+			if got := runner.captured(); len(got) != 0 {
+				t.Errorf("runner saw invocations despite refusal: %v", got)
+			}
+			if err := sink.awaitOne(t); !errors.Is(err, tc.want) {
+				t.Errorf("audited %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestRESTSurface_DestructiveAllowed(t *testing.T) {
 	runner := &recordingRunner{
 		RunFn: func(_ context.Context, _ cmdsurface.Invocation) (cmdsurface.Result, error) {

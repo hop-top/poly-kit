@@ -29,7 +29,9 @@ import (
 //
 //	ErrUnknownCommand     → 404 code=unknown_command
 //	ErrSurfaceNotEnabled  → 404 code=not_enabled
+//	ErrNotInvocable       → 404 code=not_invocable
 //	ErrDestructiveBlocked → 403 code=destructive_blocked
+//	ErrPermissionDenied   → 403 code=permission_denied
 //	body decode error     → 400 code=bad_request
 //	any other error       → api.MapError passthrough
 //
@@ -177,10 +179,22 @@ func writeBridgeError(w http.ResponseWriter, err error) {
 			Code:    "not_enabled",
 			Message: err.Error(),
 		})
+	case errors.Is(err, ErrNotInvocable):
+		api.Error(w, api.StatusNotInvocable, &api.APIError{
+			Status:  api.StatusNotInvocable,
+			Code:    api.CodeNotInvocable,
+			Message: err.Error(),
+		})
 	case errors.Is(err, ErrDestructiveBlocked):
 		api.Error(w, http.StatusForbidden, &api.APIError{
 			Status:  http.StatusForbidden,
 			Code:    "destructive_blocked",
+			Message: err.Error(),
+		})
+	case errors.Is(err, ErrPermissionDenied):
+		api.Error(w, http.StatusForbidden, &api.APIError{
+			Status:  http.StatusForbidden,
+			Code:    api.CodePermissionDenied,
 			Message: err.Error(),
 		})
 	default:

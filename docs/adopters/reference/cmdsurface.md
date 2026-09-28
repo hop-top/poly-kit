@@ -326,8 +326,10 @@ curl -X POST http://localhost:8080/cmd/widget/add \
 ```
 
 Sentinel-error mapping: `ErrUnknownCommand` → 404 `unknown_command`,
-`ErrSurfaceNotEnabled` → 404 `not_enabled`, `ErrDestructiveBlocked` →
-403 `destructive_blocked`. Confirmation-required leaves require an
+`ErrSurfaceNotEnabled` → 404 `not_enabled`, `ErrNotInvocable` → 404
+`not_invocable`, `ErrDestructiveBlocked` → 403 `destructive_blocked`,
+`ErrPermissionDenied` → 403 `permission_denied`; any other error goes
+through `api.MapError`. Confirmation-required leaves require an
 `X-Confirm-Token` header (presence-only, value not validated). See
 `go/transport/cmdsurface/surface_rest_test.go`.
 
