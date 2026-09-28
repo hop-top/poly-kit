@@ -48,7 +48,7 @@ _ = http.ListenAndServe(":8080", r)
 - Webhook mappings targeting auth-required leaves with `AuthNone` are refused at mount; `WebhookAuth.Verify` runs before template execution.
 - Signed URLs carry single-use nonces, an expiry, and the exact `Invocation` baked into the token; `AuthRequired` and `RequiresConfirmation` are skipped, the destructive ceiling still applies.
 - Runners: `InProcessRunner` (shared tree, serialized), `InProcessRunner` with `WithRootFactory` (tree per invocation, parallel), `SubprocessRunner` (process per invocation, process-group cancellation on Unix).
-- Sinks shipped: Log, File, Webhook, Bus.
+- Sinks shipped: Log, File, Webhook, Bus, Chain (tamper-evident, over `go/security`'s audit log; records the redacted invocation, never its output).
 - `MountRPC` serves `cmdsurface.v1.Commands`, schema `contracts/proto/cmdsurface/v1/commands.proto`, Go stubs in `gen/cmdsurfacev1`; Connect, gRPC and gRPC-Web on one handler, gRPC over h2c via `rpc.ListenAndServe`. `WithRPCCallMeta`, `WithRPCAuthenticated` and `WithRPCHandlerOptions` wire a host's verified identity, auth-required gate and size bound; the `rpc` service (`go/console/cli/rpcserve`) sets them all. `WithRPCAdmittedInterceptors` adds interceptors that see only admitted calls.
 
 ## Neighbours

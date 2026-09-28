@@ -1039,6 +1039,14 @@ Built-in implementations:
 - `WebhookSink` — POST `{invocation, result, error}` envelope to a URL,
   with optional HMAC signing via `Sign func(body) (header, value)`.
 - `BusSink` — publish the same envelope via an `api.EventPublisher`.
+- `ChainSink` — append to a tamper-evident, hash-chained log
+  (`security.AuditLog`): who ran what, with args, flags and the
+  verdict, never the output. Each record carries the SHA-256 of the
+  one before it; `security.VerifyAuditLog` reports the first record
+  that was edited, deleted, reordered or inserted. Kit-shipped
+  services open one from `services.<svc>.audit.sinks: [chain]`, and
+  `cli.WithAuditCommand` mounts `<tool> audit verify`; see
+  [the secure serving guide](../guides/secure-remote-serving.md#keep-a-tamper-evident-trail).
 - `TelemetrySink` — fan-out into the kit-telemetry pipeline. See the
   "Telemetry sink" section below.
 
