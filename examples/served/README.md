@@ -7,8 +7,8 @@ hand, meet every claim the
 [serve-lifecycle contract](../../docs/contracts/serve-lifecycle.md) makes
 about a conformant application command? `main.go` registers the reserved
 `status` and `audit` verbs, the kit-shipped `api`, `socket`, `mcp` and `rpc` services,
-one adopter-owned service (`heartbeat`) and a bus, plus one command per
-class the contract distinguishes. For the surface matrix without the
+one adopter-owned service (`heartbeat`), a bus and an identity keypair,
+plus one command per class the contract distinguishes. For the surface matrix without the
 serve lifecycle, see [`examples/cmdsurface`](../cmdsurface/README.md).
 
 ## Use it when
@@ -43,6 +43,7 @@ go test -race ./examples/served/
 | `serve`      | kit's own          | never: `self-hosting`                                      |
 | `status`     | reserved           | never: `management-only`                                   |
 | `audit verify` | reserved         | never: `management-only`                                   |
+| `token create`, `token verify` | reserved | never: `management-only`; `create` signs with the identity keypair |
 
 The tests drive the real `Execute` path, the one that installs the
 confirmation and policy gates, with the arguments an operator would
@@ -62,6 +63,9 @@ claim out.
 - `permission_rules_test.go`: the `permissions:` rules of a `--policy`
   file in `$XDG_CONFIG_HOME/served/policies/`, refusing over REST, and a
   rule that does not compile refusing the start (exit 2)
+- `token_test.go`: `token create`, then `serve` with
+  `services.all.auth.mode: jwt`, then `item sync` with the token over
+  REST and RPC
 
 ## See also
 

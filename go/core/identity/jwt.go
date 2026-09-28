@@ -36,7 +36,9 @@ func (a *Audience) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Claims represents JWT claims.
+// Claims represents JWT claims. Scopes and Scope carry the same set:
+// Scopes as a list, Scope space-delimited (RFC 8693), the form OAuth 2.0
+// resource servers read; a signer sets either or both.
 type Claims struct {
 	Subject   string   `json:"sub"`
 	Issuer    string   `json:"iss,omitempty"`
@@ -44,6 +46,7 @@ type Claims struct {
 	Audience  Audience `json:"aud,omitempty"`
 	Tenant    string   `json:"tenant,omitempty"`
 	Scopes    []string `json:"scopes,omitempty"`
+	Scope     string   `json:"scope,omitempty"`
 	IssuedAt  int64    `json:"iat"`
 	ExpiresAt int64    `json:"exp,omitempty"`
 	Nonce     string   `json:"nonce,omitempty"`

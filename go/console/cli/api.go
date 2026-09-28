@@ -111,7 +111,9 @@ type APIConfig struct {
 
 // WithAPI returns a Root option that stores the API config, registers
 // the HTTP API as the "api" service, and adds the "token" command when
-// Auth is set.
+// Auth is set or the tool has an identity keypair (WithIdentity, in
+// either order): claims, decode and verify, and create, which signs
+// with the identity keypair, when there is one.
 //
 // The API now reaches the command surface as a service under the
 // kit-owned `serve` parent rather than as a leaf `serve` command
@@ -135,7 +137,7 @@ func WithAPI(cfg APIConfig) func(*Root) {
 		r.mountAPIServeFlags()
 
 		if cfg.Auth != nil {
-			r.Cmd.AddCommand(tokenCmd(r))
+			r.mountTokenCmd()
 		}
 	}
 }

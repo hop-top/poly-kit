@@ -697,6 +697,11 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	for _, o := range opts {
 		o(r)
 	}
+	// The token command, once every option has run: WithAPI and
+	// WithIdentity may come in either order.
+	if r.apiCfg != nil && (r.apiCfg.Auth != nil || r.identityCfg != nil) {
+		r.mountTokenCmd()
+	}
 	// Snapshot kit-shipped subcommands now, BEFORE adopters mount
 	// their own commands (which happen AFTER cli.New returns).
 	// Subsequent late-mount factories (e.g. RegisterSpecCommand) call

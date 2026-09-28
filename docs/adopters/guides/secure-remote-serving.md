@@ -318,7 +318,30 @@ services:
 `jwks` names the key set by URL (`auth.jwks.url`) instead of
 discovering it; `jwt` trusts the tool's own identity keypair
 (`cli.WithIdentity`) and any public keys in
-`auth.jwt.public_key_files`. The token's `sub` is the caller, its
+`auth.jwt.public_key_files`.
+
+With `jwt` the tool issues its own tokens. `WithAPI` plus
+`WithIdentity` mounts `token create`, which signs with the keypair,
+and `token verify`, which checks a token the way a service would
+(`--service rpc` for another one; exit `5` when refused):
+
+```console
+$ export TOKEN=$(mytool token create --sub ci-bot --tenant acme --scopes widgets:read --expires 1h)
+$ curl -s https://api.example.com/v1/commands/widget/list -H "Authorization: Bearer $TOKEN"
+$ mytool token verify "$TOKEN"
+{
+  "valid": true,
+  "service": "api",
+  "mode": "jwt",
+  "sub": "ci-bot",
+  ...
+}
+```
+
+The scopes are written as `scope` (space-delimited, the claim OAuth
+resource servers read) and as `scopes` (a list). `token claims` still
+prints an unsigned template for an external signer, and `token`
+itself is never served: remote callers cannot mint tokens. The token's `sub` is the caller, its
 `tenant` claim (`tenant_claim` to rename) the tenant, and its
 `scope`, `scopes` or `scp` the scopes. A configured mode replaces
 `APIConfig.Auth` for that service; with no mode, `Auth` applies. The

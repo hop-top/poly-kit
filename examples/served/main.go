@@ -113,6 +113,10 @@ type options struct {
 	// config is set on the root's configuration before it runs, the
 	// way a config file would set it.
 	config map[string]any
+	// identity gives the tool an identity keypair, which `token create`
+	// signs with and services.<svc>.auth.mode: jwt trusts. nil gives it
+	// none.
+	identity *cli.IdentityConfig
 }
 
 // newRoot builds the fixture's root. This is the whole of the wiring
@@ -120,7 +124,8 @@ type options struct {
 // --policy files from $XDG_CONFIG_HOME/served/policies with their
 // permissions: rules evaluated, the four kit-shipped services, one
 // service of their own, the observability provider an operator can
-// turn on, and the commands.
+// turn on, the identity keypair tokens are signed with, and the
+// commands.
 func newRoot(opts options) *cli.Root {
 	if opts.heartbeat == nil {
 		opts.heartbeat = newHeartbeat()
@@ -130,11 +135,7 @@ func newRoot(opts options) *cli.Root {
 	}
 	policy := cmdsurface.Policy{AllowDestructiveOn: opts.allowDestructiveOn}
 
-	root := cli.New(cli.Config{
-		Name:    "served",
-		Version: "0.1.0",
-		Short:   "Conformance fixture for served commands",
-	},
+	wiring := []func(*cli.Root){
 		cli.WithStatus(cli.StatusConfig{}),
 		cli.WithAuditCommand(),
 		cli.WithPolicy(cli.DefaultPolicyLoader("served")),
@@ -146,7 +147,17 @@ func newRoot(opts options) *cli.Root {
 		cli.WithService(opts.heartbeat),
 		cli.WithServiceBus(opts.bus),
 		cli.WithObservability(opts.observe),
-	)
+	}
+	if opts.identity != nil {
+		// The tool's keypair: `token create` signs with it, and
+		// services.<svc>.auth.mode: jwt trusts it.
+		wiring = append(wiring, cli.WithIdentity(*opts.identity))
+	}
+	root := cli.New(cli.Config{
+		Name:    "served",
+		Version: "0.1.0",
+		Short:   "Conformance fixture for served commands",
+	}, wiring...)
 	for k, v := range opts.config {
 		root.Viper.Set(k, v)
 	}
@@ -350,7 +361,7 @@ func exitCode(err error) int {
 }
 
 func main() {
-	root := newRoot(options{bus: bus.New()})
+	root := newRoot(options{bus: bus.New(), identity: &cli.IdentityConfig{}})
 	if err := root.Execute(context.Background()); err != nil {
 		os.Exit(exitCode(err))
 	}

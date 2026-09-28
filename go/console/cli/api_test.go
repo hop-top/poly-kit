@@ -63,6 +63,7 @@ func TestWithAPI_WithAuth_AddsTokenCommand(t *testing.T) {
 func TestWithAPI_WithAuth_ValidatingRootStarts(t *testing.T) {
 	r := cli.New(cli.Config{Name: "test", Version: "0.1.0", Short: "t"},
 		cli.WithStatus(cli.StatusConfig{}),
+		cli.WithIdentity(cli.IdentityConfig{Dir: t.TempDir()}),
 		cli.WithAPI(cli.APIConfig{
 			Auth: func(r *http.Request) (any, error) { return nil, nil },
 		}))

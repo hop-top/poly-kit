@@ -1751,6 +1751,13 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   every key in `public_key_files`; with neither it is refused. A
   token's `kid` selects the key; a key left in `public_key_files` after
   rotation keeps verifying what it signed.
+- `token create` (mounted with `WithAPI` and `WithIdentity`) signs a
+  token `jwt` accepts: EdDSA, the keypair's `kid` in the header, `sub`,
+  `exp`, and optionally `tenant`, `aud`, `iss` and the scopes, written
+  as `scope` (space-delimited) and `scopes` (a list). `token verify
+  <token>` checks one as `--service` (default `api`) would: exit `0`
+  valid, `5` refused, `6` key set unreachable, `2` nothing to verify
+  with. The `token` command is kit-reserved and never served.
 - `jwks` and `oidc` fetch nothing at start. The key set is fetched on
   the first request that needs it, again once older than `refresh`,
   and again — at most once a minute — when a token names a `kid` the
