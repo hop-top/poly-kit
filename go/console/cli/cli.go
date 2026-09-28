@@ -1160,9 +1160,29 @@ func (r *Root) Validate() error {
 		r.collectLayerAValidation(ve)
 	}
 	if ve.HasIssues() {
+		ve.coverageHint = r.specCoverageHint()
 		return ve
 	}
 	return nil
+}
+
+// specCoverageHint names the command that measures side-effect
+// annotation coverage, or how to mount it when the tree lacks it:
+// pointing at a command the binary does not have would send the
+// adopter to an "unknown command".
+func (r *Root) specCoverageHint() string {
+	name := r.Config.Name
+	if name == "" && r.Cmd != nil {
+		name = r.Cmd.Name()
+	}
+	cov := name + " spec coverage"
+	if r.Cmd != nil {
+		if c, _, err := r.Cmd.Find([]string{"spec", "coverage"}); err == nil &&
+			c != nil && c.Name() == "coverage" && c.Parent() != nil && c.Parent().Name() == "spec" {
+			return fmt.Sprintf("run %q to track annotation coverage; --min gates CI on it", cov)
+		}
+	}
+	return fmt.Sprintf("mount %q with toolspec/cli.RegisterSpecCommand to track annotation coverage", cov)
 }
 
 // collectShippedValidation runs the original side-effect +

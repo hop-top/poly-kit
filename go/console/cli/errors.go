@@ -85,12 +85,27 @@ type ValidationError struct {
 	// PassthroughRejected lists paths annotated kit/passthrough
 	// when Config.PassthroughStrictness is "reject".
 	PassthroughRejected []string
+
+	// coverageHint points at `<tool> spec coverage`, set by
+	// Root.Validate. Rendered only when a side-effect bucket
+	// (Missing, Invalid) is populated.
+	coverageHint string
+}
+
+// sideEffectHint returns the spec-coverage pointer when a side-effect
+// bucket is populated, empty otherwise.
+func (e *ValidationError) sideEffectHint() string {
+	if e == nil || len(e.Missing)+len(e.Invalid) == 0 {
+		return ""
+	}
+	return e.coverageHint
 }
 
 // Error returns a multi-line message that lists side-effect issues
 // first, then idempotency issues, then the additional Layer-A
 // buckets. Format is stable for adopter test assertions; new buckets
-// append at the end in the order they were added.
+// append at the end in the order they were added. A side-effect
+// failure ends with a pointer to `<tool> spec coverage`.
 func (e *ValidationError) Error() string {
 	var b strings.Builder
 	b.WriteString("cli validation failed")
@@ -125,6 +140,10 @@ func (e *ValidationError) Error() string {
 	appendBucket("at depth>=3 missing kit/hierarchical chain", e.UnannotatedDepthExceedance)
 	appendBucket("exceeding MaxHierarchyDepth", e.HierarchyDepthExceeded)
 	appendBucket("annotated kit/passthrough under reject strictness", e.PassthroughRejected)
+	if hint := e.sideEffectHint(); hint != "" {
+		b.WriteString("; ")
+		b.WriteString(hint)
+	}
 	return b.String()
 }
 
