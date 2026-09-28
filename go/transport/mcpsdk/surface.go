@@ -2,6 +2,7 @@ package mcpsdk
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -40,6 +41,10 @@ type config struct {
 	elicitConfirm bool
 	elicitKey     []byte
 	maxBody       int64
+	// origins backs WithOriginAllowlist; originCheck records that
+	// the option was given at all.
+	origins     []string
+	originCheck bool
 }
 
 // Option configures the surface built by NewServer / Handler / Mount.
@@ -131,6 +136,34 @@ func WithToolDecorator(fn func(*cmdsurface.Leaf, *mcp.Tool)) Option {
 	return func(c *config) { c.toolDecorator = fn }
 }
 
+// WithOriginAllowlist validates the Origin header in front of the
+// SDK handler — the option cmdsurface.MountMCP spells
+// WithMCPOriginAllowlist. origins, each "scheme://host[:port]", are
+// the cross-origin browser pages permitted to call; none at all
+// permits same-origin only.
+//
+// A request with no Origin (a non-browser client) or a same-origin
+// one passes; a POST or DELETE from any other origin is refused with
+// 403 and a JSON-RPC error body (id null) whose message starts with
+// [api.CodeOriginRejected]. The check is [api.OriginCheck]. A GET
+// needs no check: it carries Mcp-Session-Id, which a cross-origin
+// page cannot send without a CORS preflight the handler never
+// grants.
+//
+// It is opt-in because the listener in front usually owns the check:
+// kit's api service validates Host and Origin for every route it
+// serves, a mount on its router included, and a second check here
+// with a different allowlist would refuse what the service's
+// configuration permits. Give it when serving Handler on a listener
+// of your own. New returns an error for an entry that is not a bare
+// origin.
+func WithOriginAllowlist(origins ...string) Option {
+	return func(c *config) {
+		c.originCheck = true
+		c.origins = append(c.origins, origins...)
+	}
+}
+
 func newConfig(opts ...Option) config {
 	cfg := config{
 		path:          defaultPath,
@@ -154,6 +187,9 @@ type Surface struct {
 	srv     *mcp.Server
 	tasks   *taskBinding // nil unless WithTasks
 	confirm *confirmer   // nil unless WithConfirmationElicitation
+	// originGuard wraps the SDK handler in Origin validation when
+	// WithOriginAllowlist was given, and is the identity otherwise.
+	originGuard api.Middleware
 
 	mu         sync.Mutex
 	registered map[string]bool // dotted tool name -> currently added
@@ -183,6 +219,10 @@ func New(b *cmdsurface.Bridge, opts ...Option) (*Surface, error) {
 	if err != nil {
 		return nil, err
 	}
+	originGuard, err := newOriginGuard(cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	var conf *confirmer
 	if cfg.elicitConfirm {
@@ -192,10 +232,11 @@ func New(b *cmdsurface.Bridge, opts ...Option) (*Surface, error) {
 	}
 
 	s := &Surface{
-		b:       b,
-		cfg:     cfg,
-		tasks:   tb,
-		confirm: conf,
+		b:           b,
+		cfg:         cfg,
+		tasks:       tb,
+		confirm:     conf,
+		originGuard: originGuard,
 		srv: mcp.NewServer(
 			&mcp.Implementation{Name: cfg.serverName, Version: cfg.serverVersion},
 			so,
@@ -289,17 +330,21 @@ func (s *Surface) Hide(pattern string) *Surface {
 // registered on the server itself, so the SDK handlers dispatch them
 // alongside every standard method and they inherit the same transport
 // checks.
+//
+// With WithOriginAllowlist the handler is wrapped in Origin
+// validation. The SDK's own DNS-rebinding check on loopback
+// connections is always in force beneath it.
 func (s *Surface) Handler() http.Handler {
 	getServer := func(*http.Request) *mcp.Server { return s.srv }
 	maxBody := api.MaxBodyBytesOrDefault(s.cfg.maxBody)
 	if s.cfg.stateless {
-		return mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
+		return s.originGuard(mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
 			Stateless:           true,
 			JSONResponse:        s.cfg.jsonResponse,
 			MaxRequestBodyBytes: maxBody,
-		})
+		}))
 	}
-	return newRevisionRouter(getServer, s.cfg.jsonResponse, maxBody)
+	return s.originGuard(newRevisionRouter(getServer, s.cfg.jsonResponse, maxBody))
 }
 
 // Mount registers the streamable HTTP handler on the router at the
@@ -372,4 +417,38 @@ func ServeStdio(ctx context.Context, b *cmdsurface.Bridge, opts ...Option) error
 		return err
 	}
 	return s.ServeStdio(ctx)
+}
+
+// newOriginGuard builds the WithOriginAllowlist check, or the
+// identity when the option was not given.
+func newOriginGuard(cfg config) (api.Middleware, error) {
+	if !cfg.originCheck {
+		return func(h http.Handler) http.Handler { return h }, nil
+	}
+	mw, err := api.OriginCheck(api.OriginCheckConfig{
+		Allow:  cfg.origins,
+		Refuse: refuseJSONRPC,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mcpsdk: %w", err)
+	}
+	return mw, nil
+}
+
+// refuseJSONRPC writes an HTTP-plane refusal the way the MCP
+// transport expects one: the HTTP status, and a JSON-RPC error with
+// a null id (the request was never parsed), its message led by the
+// stable code.
+func refuseJSONRPC(w http.ResponseWriter, _ *http.Request, e *api.APIError) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(e.Status)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      nil,
+		"error": map[string]any{
+			"code":    -32600,
+			"message": e.Code + ": " + e.Message,
+			"data":    map[string]string{"code": e.Code},
+		},
+	})
 }

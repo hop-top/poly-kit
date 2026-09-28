@@ -283,6 +283,49 @@ None of this is reachable by a remote client on its own — it takes
 your code to register it — but the line is real: **kit gates what kit
 binds; what you register is yours.**
 
+### Browsers: Host and Origin
+
+The MCP transport requires a server to validate `Origin`, because a
+web page can otherwise drive a local server's tools through the
+operator's browser. Who does it depends on where the handler is
+served:
+
+- **Mounted on kit's api service** (`APIConfig.Handlers`): the service
+  checks `Host` and `Origin` for every route it serves, `/mcp`
+  included, from `services.api.host_check` and
+  `services.api.origin_check` (see
+  [secure-remote-serving.md](secure-remote-serving.md#8-keep-browsers-out-host-origin-response-headers)).
+  Add nothing here; a second check would refuse origins the service's
+  configuration permits.
+- **Served on a listener of your own** (`Handler`, or `Mount` on a
+  router you serve yourself): give `WithOriginAllowlist`, the option
+  `cmdsurface.MountMCP` spells `WithMCPOriginAllowlist`:
+
+  ```go
+  mcpsdk.Mount(b, r,
+      mcpsdk.WithOriginAllowlist("https://console.example.com"),
+  )
+  ```
+
+  With no arguments it admits same-origin pages only. A request with
+  no `Origin` (every non-browser MCP client) or a same-origin one
+  passes; a `POST` or `DELETE` from any other origin is answered
+  `403` with a JSON-RPC error, `id` null, whose message starts with
+  `origin_rejected`. An entry that is not `scheme://host[:port]` makes
+  `New` / `Mount` return an error.
+
+The SDK's own DNS-rebinding check applies beneath either: a request
+that arrives on a loopback address with a non-loopback `Host` is
+refused with `403`. Beyond loopback, check `Host` in front of the
+handler with `api.HostCheck` (see the
+[api reference](../reference/transport-api.md#transport-guards)).
+
+Unlike `WithMCPOriginAllowlist`, which matches entries exactly and
+checks every method, `WithOriginAllowlist` also admits same-origin
+requests and leaves `GET` alone: the `GET` stream needs an
+`Mcp-Session-Id` header, which a cross-origin page cannot send
+without a CORS preflight the handler never grants.
+
 ## Optional
 
 ### Live tool list
