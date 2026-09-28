@@ -39,6 +39,7 @@ const (
 	MetricRequests       = "kit.serve.requests"
 	MetricDuration       = "kit.serve.request.duration"
 	MetricActive         = "kit.serve.requests.active"
+	MetricQueued         = "kit.serve.requests.queued"
 	MetricRefusals       = "kit.serve.refusals"
 	MetricHTTPActive     = "kit.serve.http.requests.active"
 	MetricHTTPRefusals   = "kit.serve.http.refusals"
@@ -63,6 +64,7 @@ type instruments struct {
 	requests     metric.Int64Counter
 	duration     metric.Float64Histogram
 	active       metric.Int64UpDownCounter
+	queued       metric.Int64UpDownCounter
 	refusals     metric.Int64Counter
 	httpActive   metric.Int64UpDownCounter
 	httpRefusals metric.Int64Counter
@@ -81,6 +83,9 @@ func newInstruments(m metric.Meter) (*instruments, error) {
 	in.active, e = m.Int64UpDownCounter(MetricActive, metric.WithUnit("{request}"),
 		metric.WithDescription("Served invocations running now, past every gate."))
 	err = errors.Join(err, e)
+	in.queued, e = m.Int64UpDownCounter(MetricQueued, metric.WithUnit("{request}"),
+		metric.WithDescription("Served invocations waiting for an in-flight slot."))
+	err = errors.Join(err, e)
 	in.refusals, e = m.Int64Counter(MetricRefusals, metric.WithUnit("{refusal}"),
 		metric.WithDescription("Served invocations refused, by refusal code."))
 	err = errors.Join(err, e)
@@ -98,16 +103,36 @@ func newInstruments(m metric.Meter) (*instruments, error) {
 
 // BridgeOptions returns the cmdsurface bridge options that instrument
 // service's invocations: a runner middleware (a span per invocation,
-// the in-flight gauge) and an audit sink (every verdict counted and
-// timed, refusals by code). It returns nil when the Provider records
-// nothing.
+// the in-flight gauge), a queue observer (the in-queue gauge) and an
+// audit sink (every verdict counted and timed, refusals by code). It
+// returns nil when the Provider records nothing.
 func (p *Provider) BridgeOptions(service string) []cmdsurface.Option {
 	if !p.Enabled() {
 		return nil
 	}
 	return []cmdsurface.Option{
 		cmdsurface.WithRunnerMiddleware(p.RunnerMiddleware(service)),
+		cmdsurface.WithQueueObserver(p.QueueObserver(service)),
 		cmdsurface.WithSinks(p.Sink(service)),
+	}
+}
+
+// QueueObserver returns the capacity-queue observer that keeps
+// service's in-queue gauge, kit.serve.requests.queued, labeled by
+// service and surface: invocations waiting for an in-flight slot. The
+// in-flight count is kit.serve.requests.active, which the runner
+// middleware keeps, since a call holds its slot exactly while it
+// runs. It returns nil when metrics are off.
+func (p *Provider) QueueObserver(service string) cmdsurface.QueueObserver {
+	if p == nil || p.inst == nil {
+		return nil
+	}
+	in := p.inst
+	return func(ctx context.Context, inv cmdsurface.Invocation, delta int) {
+		in.queued.Add(ctx, int64(delta), metric.WithAttributeSet(attribute.NewSet(
+			AttrService.String(service),
+			AttrSurface.String(string(inv.Meta.Surface)),
+		)))
 	}
 }
 
@@ -314,6 +339,7 @@ const (
 	RefusalInsufficientScope  = "insufficient_scope"
 	RefusalUnauthenticated    = "unauthenticated"
 	RefusalRateLimited        = "rate_limited"
+	RefusalOverloaded         = "overloaded"
 	RefusalDeadlineExceeded   = "deadline_exceeded"
 
 	RefusalIdempotencyConflict  = cmdsurface.CodeIdempotencyConflict
@@ -356,6 +382,8 @@ func RefusalCode(err error) string {
 		return RefusalPermissionDenied
 	case errors.Is(err, cmdsurface.ErrRateLimited):
 		return RefusalRateLimited
+	case errors.Is(err, cmdsurface.ErrOverloaded):
+		return RefusalOverloaded
 	case errors.Is(err, context.DeadlineExceeded):
 		return RefusalDeadlineExceeded
 	}

@@ -127,9 +127,18 @@ func (b *Bridge) armDeadline(ctx context.Context, leaf *Leaf) (_ context.Context
 // returns [ErrDeadlineExceeded]. Every path that runs a call — a plain
 // run, and a result-cache miss or its uncached fallback — goes
 // through it.
+//
+// The capacity gate's slot is taken here, once the deadline is armed:
+// a call waits for a slot under its deadline, and one that outwaits
+// it returns [ErrDeadlineExceeded] without having run.
 func (a *Admission) runBounded(ctx context.Context) (Result, error) {
 	runCtx, cancel, bound := a.b.armDeadline(ctx, a.leaf)
 	defer cancel()
+	release, err := a.acquire(runCtx)
+	if err != nil {
+		return Result{}, queueDeadlineError(runCtx, err, a.leaf, bound)
+	}
+	defer release()
 	res, err := a.b.cfg.runner.Run(runCtx, a.inv)
 	return res, deadlineError(runCtx, err, a.leaf, bound)
 }

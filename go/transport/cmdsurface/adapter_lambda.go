@@ -627,6 +627,8 @@ func lambdaHTTPErrorCode(err error) (int, string) {
 		return 403, api.CodePermissionDenied
 	case errors.Is(err, ErrRateLimited):
 		return http.StatusTooManyRequests, api.CodeRateLimited
+	case errors.Is(err, ErrOverloaded):
+		return http.StatusServiceUnavailable, api.CodeOverloaded
 	default:
 		return 500, "internal_error"
 	}

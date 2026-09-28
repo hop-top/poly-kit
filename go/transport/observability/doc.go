@@ -73,7 +73,10 @@
 //     refused) and, when refused, kit.refusal.reason.
 //   - kit.serve.request.duration: seconds from receipt to verdict,
 //     refusals included.
-//   - kit.serve.requests.active: invocations running now.
+//   - kit.serve.requests.active: invocations running now; with the
+//     capacity gate on, the ones holding an in-flight slot.
+//   - kit.serve.requests.queued: invocations waiting in the capacity
+//     gate's queue for a slot.
 //   - kit.serve.refusals: refusals by kit.refusal.reason.
 //   - kit.serve.http.requests.active: HTTP requests in progress,
 //     beside the http.server.* instruments otelhttp records.

@@ -338,6 +338,48 @@ func TestInFlightGaugeCountsRunningInvocations(t *testing.T) {
 	assert.Equal(t, map[string]int64{"socket": 0}, sumBy(t, collect(t, reader)[MetricActive], AttrSurface))
 }
 
+func TestCapacityQueueAndOverloadAreMeasured(t *testing.T) {
+	reader, mp := manualMeter(t)
+	p, err := New(context.Background(), Config{Metrics: Signal{Enabled: true}}, WithMeterProvider(mp))
+	require.NoError(t, err)
+
+	started, release := make(chan struct{}, 1), make(chan struct{})
+	root := tree(func(context.Context) { started <- struct{}{}; <-release })
+	opts := append(p.BridgeOptions("api"), cmdsurface.WithConcurrency(cmdsurface.Concurrency{MaxInflight: 1, MaxQueue: 1}))
+	bridge := cmdsurface.New(root, opts...)
+	bridge.Expose("*", cmdsurface.SurfaceREST)
+	invoke := func() error {
+		_, err := bridge.Invoke(context.Background(), cmdsurface.Invocation{Path: []string{"hello"},
+			Meta: cmdsurface.Meta{Surface: cmdsurface.SurfaceREST}})
+		return err
+	}
+
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() { defer wg.Done(); _ = invoke() }()
+	}
+	<-started
+	require.Eventually(t, func() bool {
+		load, _ := bridge.Capacity()
+		return load.Queued == 1
+	}, 2*time.Second, time.Millisecond)
+	got := collect(t, reader)
+	assert.Equal(t, map[string]int64{"rest": 1}, sumBy(t, got[MetricActive], AttrSurface), "one holds the slot")
+	assert.Equal(t, map[string]int64{"rest": 1}, sumBy(t, got[MetricQueued], AttrSurface), "one waits for it")
+
+	require.ErrorIs(t, invoke(), cmdsurface.ErrOverloaded)
+	release <- struct{}{}
+	<-started
+	close(release)
+	wg.Wait()
+
+	got = collect(t, reader)
+	assert.Equal(t, map[string]int64{"api": 0}, sumBy(t, got[MetricQueued], AttrService), "the queue drained")
+	assert.Equal(t, map[string]int64{RefusalOverloaded: 1}, sumBy(t, got[MetricRefusals], AttrRefusalReason))
+	assert.Equal(t, RefusalOverloaded, RefusalCode(fmt.Errorf("wrapped: %w", &cmdsurface.OverloadedError{})))
+}
+
 func TestHTTPPlaneRefusalIsCountedByCode(t *testing.T) {
 	reader, mp := manualMeter(t)
 	rec, tp := recorder(t)

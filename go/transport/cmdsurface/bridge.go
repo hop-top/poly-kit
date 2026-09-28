@@ -82,7 +82,10 @@ type Bridge struct {
 	// rcache is the read-tier result cache from WithResultCache, nil
 	// when it is off.
 	rcache *resultCache
-	mu     sync.RWMutex
+	// capacity is the slot-11 gate from WithConcurrency, nil when it
+	// is off.
+	capacity *capacity
+	mu       sync.RWMutex
 }
 
 // Leaf is the per-command view surface implementations need. Path
@@ -140,6 +143,11 @@ type bridgeConfig struct {
 	// idempotency is replay's configuration, nil when replay is off
 	// (see WithIdempotency).
 	idempotency *idempotencyConfig
+	// concurrency is the slot-11 capacity gate's configuration from
+	// WithConcurrency, nil when the gate is off.
+	concurrency *Concurrency
+	// queueObservers are told of every change to the gate's queue.
+	queueObservers []QueueObserver
 }
 
 // Option configures a Bridge at construction.
@@ -203,6 +211,16 @@ func New(root *cobra.Command, opts ...Option) *Bridge {
 	if cfg.runner == nil {
 		cfg.runner = InProcessRunner(root)
 	}
+	// The capacity gate reads the runner's own bound before any
+	// middleware hides it.
+	var capGate *capacity
+	if cfg.concurrency != nil {
+		parallel := 0
+		if pr, ok := cfg.runner.(parallelRunner); ok {
+			parallel = pr.parallelism()
+		}
+		capGate = newCapacity(*cfg.concurrency, parallel, time.Now)
+	}
 	for i := len(cfg.runnerMW) - 1; i >= 0; i-- {
 		if cfg.runnerMW[i] != nil {
 			cfg.runner = cfg.runnerMW[i](cfg.runner)
@@ -212,12 +230,13 @@ func New(root *cobra.Command, opts ...Option) *Bridge {
 		cfg.permission = PermitAll
 	}
 	b := &Bridge{
-		root:   root,
-		cfg:    cfg,
-		byPath: make(map[string]*Leaf),
-		sinks:  append(SinkSet(nil), cfg.sinks...),
-		audit:  newAuditExtra(cfg.redaction),
-		rcache: newResultCache(cfg.cache),
+		root:     root,
+		cfg:      cfg,
+		byPath:   make(map[string]*Leaf),
+		sinks:    append(SinkSet(nil), cfg.sinks...),
+		audit:    newAuditExtra(cfg.redaction),
+		rcache:   newResultCache(cfg.cache),
+		capacity: capGate,
 	}
 	b.discover()
 	return b
@@ -427,7 +446,11 @@ func matchPattern(pattern string, path []string) bool {
 //
 // A read leaf declaring kit/cache-ttl that no replay answered may then
 // be answered from the result cache without running (see
-// [WithResultCache]).
+// [WithResultCache]). A call that runs then takes an in-flight slot,
+// or waits for one in a bounded queue: ErrOverloaded, as an
+// [*OverloadedError] carrying a retry hint, when both are full. Only
+// with [WithConcurrency], and only on remote surfaces. A replay or a
+// cache hit runs nothing and takes no slot.
 //
 // Confirmation is deliberately not a gate here: it is the command's
 // own flag and its own refusal, the same on every surface as on the
@@ -473,6 +496,13 @@ type Admission struct {
 	// idem is slot 8's idempotency verdict: a replay, a reserved
 	// key, or nil.
 	idem *idemClaim
+	// ticket is the call's place at the capacity gate, nil until it
+	// takes one; inQueue reports that it is counted as queued.
+	ticket  *capTicket
+	inQueue bool
+	// refused is the capacity gate's refusal from Reserve: the call
+	// never runs.
+	refused error
 }
 
 // Admit applies the gates [Bridge.Invoke] applies, in the same order
@@ -580,13 +610,18 @@ func (a *Admission) Invocation() Invocation { return a.inv }
 // The per-command deadline ([AnnotationTimeout], else
 // [WithCommandTimeout]) is armed here and bounds the run; a run the
 // deadline cut short returns [ErrDeadlineExceeded] with its partial
-// Result.
+// Result. The capacity gate ([WithConcurrency]) is taken under it, so
+// time spent queued counts against the deadline.
 //
 // Holding the Admission between the two is what lets a transport put
 // something only a person can supply — a confirmation — after every
 // machine gate and before the run, without asking about a call the
 // gates would refuse and without answering the gates twice.
 func (a *Admission) Run(ctx context.Context) (Result, error) {
+	if a.refused != nil {
+		return Result{}, a.refused
+	}
+	defer a.dropPlace(ctx)
 	if res, ok := a.idem.replayed(); ok {
 		ctx = a.b.auditContext(ctx, a.leaf)
 		if a.inv.Meta.Surface.remote() {
@@ -630,13 +665,22 @@ func (a *Admission) Run(ctx context.Context) (Result, error) {
 // stored Result, and nothing runs. A miss streams as usual and stores
 // nothing: only Run fills the cache.
 //
-// The per-command deadline is armed as in [Admission.Run]; a stream
-// it cuts short still delivers its done Event and then returns
-// [ErrDeadlineExceeded].
+// The per-command deadline and the capacity gate are taken as in
+// [Admission.Run]; a stream the deadline cuts short still delivers
+// its done Event and then returns [ErrDeadlineExceeded]. A call the
+// gate refuses, or whose deadline passes while it waits, sends no
+// Event: out is closed and the error returned. A streaming transport
+// that must answer an overload before it commits calls
+// [Admission.Reserve] first.
 func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	if out == nil {
 		return errors.New("cmdsurface: nil event channel")
 	}
+	if a.refused != nil {
+		close(out)
+		return a.refused
+	}
+	defer a.dropPlace(ctx)
 	if res, ok := a.idem.replayed(); ok {
 		ctx = a.b.auditContext(ctx, a.leaf)
 		replayEvents(res, out)
@@ -654,6 +698,16 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	ctx = a.b.auditContext(ctx, a.leaf)
 	runCtx, cancel, bound := a.b.armDeadline(ctx, a.leaf)
 	defer cancel()
+	release, qerr := a.acquire(runCtx)
+	if qerr != nil {
+		qerr = queueDeadlineError(runCtx, qerr, a.leaf, bound)
+		close(out)
+		if a.inv.Meta.Surface.remote() {
+			a.b.Audit(ctx, a.inv, Result{}, qerr)
+		}
+		return qerr
+	}
+	defer release()
 	events := make(chan Event, cap(out))
 	errc := make(chan error, 1)
 	go func() { errc <- a.b.cfg.runner.Stream(runCtx, a.inv, events) }()

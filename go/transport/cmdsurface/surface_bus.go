@@ -425,6 +425,8 @@ func bridgeErrorCode(err error) string {
 		return api.CodePermissionDenied
 	case errors.Is(err, ErrRateLimited):
 		return api.CodeRateLimited
+	case errors.Is(err, ErrOverloaded):
+		return api.CodeOverloaded
 	default:
 		return "internal"
 	}

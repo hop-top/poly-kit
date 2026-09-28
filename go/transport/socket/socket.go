@@ -86,14 +86,14 @@ type Response struct {
 type Error struct {
 	// Code is a stable symbol a client can branch on:
 	// NOT_FOUND, NOT_ENABLED, NOT_INVOCABLE, BLOCKED, DENIED,
-	// UNAUTHENTICATED, RATE_LIMITED, DEADLINE_EXCEEDED, CONFLICT, INVALID,
-	// INTERNAL.
+	// UNAUTHENTICATED, RATE_LIMITED, OVERLOADED, DEADLINE_EXCEEDED,
+	// CONFLICT, INVALID, INTERNAL.
 	Code string `json:"code"`
 	// Message is the human-readable detail.
 	Message string `json:"message"`
 	// RetryAfterMs is how long to wait before retrying, in whole
-	// milliseconds, on a retryable refusal (RATE_LIMITED). Absent
-	// otherwise.
+	// milliseconds, on a retryable refusal (RATE_LIMITED,
+	// OVERLOADED). Absent otherwise.
 	RetryAfterMs int64 `json:"retry_after_ms,omitempty"`
 }
 
@@ -125,6 +125,10 @@ const (
 	// CodeRateLimited is a call the rate limit refused. The error
 	// carries retry_after_ms.
 	CodeRateLimited = "RATE_LIMITED"
+	// CodeOverloaded is a call the service's capacity gate refused:
+	// every in-flight slot is taken and the queue is full. The error
+	// carries retry_after_ms.
+	CodeOverloaded = "OVERLOADED"
 	// CodeDeadlineExceeded is a command that ran past its
 	// per-command deadline and was canceled. Retrying may succeed.
 	CodeDeadlineExceeded = "DEADLINE_EXCEEDED"
@@ -431,6 +435,8 @@ func codeFor(err error) string {
 		return CodeDenied
 	case errors.Is(err, cmdsurface.ErrRateLimited):
 		return CodeRateLimited
+	case errors.Is(err, cmdsurface.ErrOverloaded):
+		return CodeOverloaded
 	case errors.Is(err, cmdsurface.ErrDeadlineExceeded):
 		return CodeDeadlineExceeded
 	case errors.Is(err, cmdsurface.ErrIdempotencyConflict),

@@ -203,7 +203,8 @@ func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error)
 		WriteInsufficientScope(w, requiredScopesOf(err), ae.Message)
 		return
 	}
-	if wait, ok := retryAfterOf(err); ok && ae.Status == http.StatusTooManyRequests {
+	if wait, ok := retryAfterOf(err); ok &&
+		(ae.Status == http.StatusTooManyRequests || ae.Status == http.StatusServiceUnavailable) {
 		SetRetryAfter(w.Header(), wait)
 	}
 	Error(w, ae.Status, ae)
@@ -258,6 +259,12 @@ func projectionError(d CommandDescriptor, err error) *APIError {
 		return &APIError{
 			Status:  http.StatusTooManyRequests,
 			Code:    CodeRateLimited,
+			Message: err.Error(),
+		}
+	case errors.Is(err, ErrOverloaded):
+		return &APIError{
+			Status:  http.StatusServiceUnavailable,
+			Code:    CodeOverloaded,
 			Message: err.Error(),
 		}
 	case errors.Is(err, context.DeadlineExceeded):

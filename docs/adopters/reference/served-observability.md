@@ -140,7 +140,8 @@ Invocation plane, labeled `kit.service` and `kit.surface`:
 |---|---|---|---|
 | `kit.serve.requests` | counter | `{request}` | `kit.outcome` (`ok`, `error`, `refused`), `kit.refusal.reason` when refused, `kit.command` when the path resolved |
 | `kit.serve.request.duration` | histogram | `s` | as above; receipt to verdict, refusals included; buckets 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10 |
-| `kit.serve.requests.active` | up-down counter | `{request}` | invocations running now, past every gate |
+| `kit.serve.requests.active` | up-down counter | `{request}` | invocations running now, past every gate: those holding an in-flight slot of the `concurrency` block |
+| `kit.serve.requests.queued` | up-down counter | `{request}` | invocations waiting in the `concurrency` block's queue for a slot |
 | `kit.serve.refusals` | counter | `{refusal}` | `kit.refusal.reason` |
 
 HTTP plane, labeled `kit.service`:
@@ -182,7 +183,9 @@ series by requesting commands that do not exist.
 | `unknown_command`, `not_enabled`, `not_invocable`, `destructive_blocked`, `insufficient_scope`, `permission_denied` | `kit.serve.refusals` | the bridge's gates |
 | `unauthenticated` | `kit.serve.refusals` | the bridge's `kit/auth-required` gate, and the transport edge reported through `Bridge.Audit` |
 | `unauthenticated` | `kit.serve.http.refusals` | `api.Auth` refusing a credential |
-| `deadline_exceeded` | `kit.serve.refusals` | an invocation whose context deadline passed |
+| `rate_limited` | `kit.serve.refusals` | the rate-limit gate (`rate_limit` block) |
+| `overloaded` | `kit.serve.refusals` | the capacity gate (`concurrency` block): every slot taken and the queue full |
+| `deadline_exceeded` | `kit.serve.refusals` | an invocation whose context deadline passed, running or queued |
 | `body_too_large` | `kit.serve.http.refusals` | `api.BodyLimit`: a declared length over the cap, or a body of unknown length crossing it |
 | `host_rejected`, `origin_rejected` | `kit.serve.http.refusals` | `api.HostCheck`, `api.OriginCheck` |
 | any other HTTP-plane code | `kit.serve.http.refusals` | middleware calling `api.RecordRefusal(r, code)` |

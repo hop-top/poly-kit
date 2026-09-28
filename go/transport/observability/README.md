@@ -5,7 +5,7 @@
 How a served command tree is traced and measured with OpenTelemetry:
 one trace from the caller's `traceparent` through the HTTP or RPC
 request and the command invocation into any child process, and
-request, latency, in-flight and refusal metrics per service and
+request, latency, in-flight, queued and refusal metrics per service and
 surface. Off until configured; linked only by tools that ask for it.
 
 ## Use it when

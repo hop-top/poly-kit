@@ -232,6 +232,8 @@ func writeBridgeError(w http.ResponseWriter, err error) {
 		})
 	case errors.Is(err, ErrRateLimited):
 		writeRateLimited(w, err)
+	case errors.Is(err, ErrOverloaded):
+		writeOverloaded(w, err)
 	default:
 		ae := api.MapError(err)
 		api.Error(w, ae.Status, ae)

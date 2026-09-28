@@ -178,6 +178,12 @@ func newSSEHandler(b *Bridge, leaf *Leaf, cfg sseConfig) http.HandlerFunc {
 			writeSSEError(w, err)
 			return
 		}
+		// The call's place at the capacity gate too: an overload is a
+		// 503, not a frame. The stream below always runs adm.
+		if err := adm.Reserve(r.Context()); err != nil {
+			writeSSEError(w, err)
+			return
+		}
 
 		// Open the stream: set headers, status 200, flush. Past this
 		// point, errors are SSE frames, not HTTP status codes.
@@ -392,6 +398,8 @@ func writeSSEError(w http.ResponseWriter, err error) {
 		})
 	case errors.Is(err, ErrRateLimited):
 		writeRateLimited(w, err)
+	case errors.Is(err, ErrOverloaded):
+		writeOverloaded(w, err)
 	default:
 		ae := api.MapError(err)
 		api.Error(w, ae.Status, ae)

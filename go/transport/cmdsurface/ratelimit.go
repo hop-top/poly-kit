@@ -133,8 +133,8 @@ func (e *RateLimitedError) Error() string {
 func (e *RateLimitedError) Unwrap() error { return ErrRateLimited }
 
 // RetryAfter reports how long a refused caller should wait before
-// retrying, when err carries such a hint (a [*RateLimitedError]
-// anywhere in its chain). The duration is never below one
+// retrying, when err carries such a hint (a [*RateLimitedError] or an
+// [*OverloadedError] anywhere in its chain). The duration is never below one
 // millisecond, so a surface rounding it up to its own unit never
 // tells a caller to retry immediately.
 func RetryAfter(err error) (time.Duration, bool) {
@@ -321,7 +321,20 @@ func (r *rateLimiter) size() int {
 // refusal: ResourceExhausted, which Connect's HTTP mapping reports as
 // 429 like REST, with Retry-After in the error's metadata.
 func rateLimitedConnectError(err error) *connect.Error {
-	ce := connect.NewError(connect.CodeResourceExhausted, err)
+	return retryableConnectError(connect.CodeResourceExhausted, err)
+}
+
+// overloadedConnectError is the Connect answer to a capacity refusal:
+// Unavailable, which Connect's HTTP mapping reports as 503 like REST,
+// with Retry-After in the error's metadata.
+func overloadedConnectError(err error) *connect.Error {
+	return retryableConnectError(connect.CodeUnavailable, err)
+}
+
+// retryableConnectError is a Connect error of code carrying err's
+// retry hint, when it has one, as Retry-After metadata.
+func retryableConnectError(code connect.Code, err error) *connect.Error {
+	ce := connect.NewError(code, err)
 	if wait, ok := RetryAfter(err); ok {
 		ce.Meta().Set("Retry-After", strconv.Itoa(RetryAfterSeconds(wait)))
 	}
@@ -331,14 +344,22 @@ func rateLimitedConnectError(err error) *connect.Error {
 // writeRateLimited answers a rate-limit refusal on an HTTP surface:
 // 429 rate_limited, with Retry-After when the error carries a hint.
 func writeRateLimited(w http.ResponseWriter, err error) {
+	writeRetryable(w, http.StatusTooManyRequests, api.CodeRateLimited, err)
+}
+
+// writeOverloaded answers a capacity refusal on an HTTP surface: 503
+// overloaded, with Retry-After when the error carries a hint.
+func writeOverloaded(w http.ResponseWriter, err error) {
+	writeRetryable(w, http.StatusServiceUnavailable, api.CodeOverloaded, err)
+}
+
+// writeRetryable answers a retryable refusal on an HTTP surface with
+// status and code, and Retry-After when the error carries a hint.
+func writeRetryable(w http.ResponseWriter, status int, code string, err error) {
 	if wait, ok := RetryAfter(err); ok {
 		api.SetRetryAfter(w.Header(), wait)
 	}
-	api.Error(w, http.StatusTooManyRequests, &api.APIError{
-		Status:  http.StatusTooManyRequests,
-		Code:    api.CodeRateLimited,
-		Message: err.Error(),
-	})
+	api.Error(w, status, &api.APIError{Status: status, Code: code, Message: err.Error()})
 }
 
 // MCPRefusalMetaKey is the tools/call result _meta key under which a
@@ -347,34 +368,38 @@ func writeRateLimited(w http.ResponseWriter, err error) {
 const MCPRefusalMetaKey = "hop.top/refusal"
 
 // MCPRefusal returns how an MCP surface answers err as a tools/call
-// result when err is a refusal with a stable code — rate_limited,
-// with its retry hint; insufficient_scope; deadline_exceeded, a run
-// its per-command deadline cut short; idempotency_conflict or
-// idempotency_key_reused: the text the isError result carries,
-// starting with the code, and the value for the result's
-// [MCPRefusalMetaKey] _meta entry. ok is false for any other error,
-// which keeps its surface's own answer.
+// result when err is a refusal with a stable code — rate_limited and
+// overloaded, with their retry hints; insufficient_scope;
+// deadline_exceeded, a run its per-command deadline cut short;
+// idempotency_conflict or idempotency_key_reused: the text the isError
+// result carries, starting with the code, and the value for the
+// result's [MCPRefusalMetaKey] _meta entry. ok is false for any other
+// error, which keeps its surface's own answer.
 func MCPRefusal(err error) (text string, refusal map[string]any, ok bool) {
-	if code := IdempotencyRefusalCode(err); code != "" {
+	msg := err.Error()
+	var code string
+	switch {
+	case IdempotencyRefusalCode(err) != "":
+		code = IdempotencyRefusalCode(err)
 		// The bridge's message already names the code after its
 		// package prefix; the text leads with the code once.
-		msg := strings.TrimPrefix(err.Error(), "cmdsurface: "+code+": ")
-		return code + ": " + msg, map[string]any{"code": code}, true
-	}
-	if errors.Is(err, ErrDeadlineExceeded) {
-		return CodeDeadlineExceeded + ": " + err.Error(), map[string]any{"code": CodeDeadlineExceeded}, true
-	}
-	if errors.Is(err, ErrInsufficientScope) {
-		return api.CodeInsufficientScope + ": " + err.Error(), map[string]any{"code": api.CodeInsufficientScope}, true
-	}
-	if !errors.Is(err, ErrRateLimited) {
+		msg = strings.TrimPrefix(msg, "cmdsurface: "+code+": ")
+	case errors.Is(err, ErrDeadlineExceeded):
+		code = CodeDeadlineExceeded
+	case errors.Is(err, ErrInsufficientScope):
+		code = api.CodeInsufficientScope
+	case errors.Is(err, ErrOverloaded):
+		code = CodeOverloaded
+	case errors.Is(err, ErrRateLimited):
+		code = api.CodeRateLimited
+	default:
 		return "", nil, false
 	}
-	refusal = map[string]any{"code": api.CodeRateLimited}
+	refusal = map[string]any{"code": code}
 	if wait, hinted := RetryAfter(err); hinted {
 		refusal["retry_after_ms"] = RetryAfterMillis(wait)
 	}
-	return api.CodeRateLimited + ": " + err.Error(), refusal, true
+	return code + ": " + msg, refusal, true
 }
 
 // mcpRefusalBlock is the tools/call isError result for a gate

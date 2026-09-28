@@ -83,6 +83,17 @@ type inProcessRunner struct {
 	mu       sync.Mutex
 }
 
+// parallelism is how many invocations the runner runs at once: one on
+// a shared tree, no bound with a root factory. The capacity gate
+// ([WithConcurrency]) reads it, so over a shared tree its callers wait
+// in the gate's bounded queue rather than on mu.
+func (r *inProcessRunner) parallelism() int {
+	if r.newRoot != nil {
+		return 0
+	}
+	return 1
+}
+
 // formatFlag is the output package's --format flag, the one an
 // invocation uses to ask for a rendering. jsonFormat is the
 // structured rendering the runner selects on the caller's behalf

@@ -549,11 +549,16 @@ func (e *projectionExecutor) Execute(ctx context.Context, req api.CommandRequest
 // The bridge's gates run here, through Admit, before the projection
 // commits the response to a stream: a refusal returns the same
 // translated error Execute returns, so the streaming route answers it
-// with the same status. The admitted invocation runs, and is audited,
-// when the stream's Run is called.
+// with the same status. The call's place at the capacity gate is
+// reserved here too, so an overload is a 503 rather than an error
+// frame. The admitted invocation runs, and is audited, when the
+// stream's Run is called; the streaming route always calls it.
 func (e *projectionExecutor) OpenStream(ctx context.Context, req api.CommandRequest) (api.CommandStream, error) {
 	adm, err := e.bridge.Admit(ctx, projectionInvocation(req))
 	if err != nil {
+		return nil, translateProjectionError(err)
+	}
+	if err := adm.Reserve(ctx); err != nil {
 		return nil, translateProjectionError(err)
 	}
 	return projectionStream{adm: adm}, nil
@@ -674,6 +679,8 @@ func translateProjectionError(err error) error {
 		return fmt.Errorf("%w: %s", api.ErrIdempotencyConflict, err.Error())
 	case errors.Is(err, ErrIdempotencyKeyReused):
 		return fmt.Errorf("%w: %s", api.ErrIdempotencyKeyReused, err.Error())
+	case errors.Is(err, ErrOverloaded):
+		return fmt.Errorf("%w: %w", api.ErrOverloaded, err)
 	}
 	return err
 }

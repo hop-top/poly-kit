@@ -370,6 +370,11 @@ func oauthWriteInvokeError(w http.ResponseWriter, p OAuthProvider, err error) {
 			api.SetRetryAfter(w.Header(), wait)
 		}
 		oauthWriteError(w, p, http.StatusTooManyRequests, api.CodeRateLimited, err.Error())
+	case errors.Is(err, ErrOverloaded):
+		if wait, ok := RetryAfter(err); ok {
+			api.SetRetryAfter(w.Header(), wait)
+		}
+		oauthWriteError(w, p, http.StatusServiceUnavailable, api.CodeOverloaded, err.Error())
 	default:
 		oauthWriteError(w, p, http.StatusInternalServerError, "internal_error", err.Error())
 	}

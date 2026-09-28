@@ -3,6 +3,7 @@ package mcpsdk
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -44,5 +45,16 @@ func TestOtherRefusalsKeepTheirMessage(t *testing.T) {
 	res := refusalResult(cmdsurface.ErrPermissionDenied)
 	if textOf(res) != cmdsurface.ErrPermissionDenied.Error() || res.Meta != nil {
 		t.Fatalf("result = %q %v", textOf(res), res.Meta)
+	}
+}
+
+func TestOverloadedCallIsARefusalResult(t *testing.T) {
+	res := refusalResult(&cmdsurface.OverloadedError{Path: "ping", MaxInflight: 1, RetryAfter: 1500 * time.Millisecond})
+	if !res.IsError || !strings.HasPrefix(textOf(res), "overloaded: ") {
+		t.Fatalf("isError=%t text=%q, want an overloaded refusal", res.IsError, textOf(res))
+	}
+	refusal, _ := res.Meta[cmdsurface.MCPRefusalMetaKey].(map[string]any)
+	if refusal["code"] != cmdsurface.CodeOverloaded || refusal["retry_after_ms"] != int64(1500) {
+		t.Fatalf("_meta = %v, want the code and retry hint", res.Meta)
 	}
 }

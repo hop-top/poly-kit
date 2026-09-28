@@ -1419,6 +1419,24 @@ The refusal is a
 its hint. Without the option there is no limit; the kit-shipped
 services install it from `services.<svc>.rate_limit`.
 
+`WithConcurrency(cfg)` adds the capacity gate, which a call passes
+when it is about to run — in `Admission.Run` or `Admission.Stream`,
+after any confirmation a surface asks for: `MaxInflight` calls run at
+once and `MaxQueue` more wait, first come first served
+(`DefaultConcurrency` holds the defaults, 32 and 64), counted on
+remote surfaces only. The per-command deadline is armed before a call
+queues, so waiting counts against it; a caller that goes away gives
+its place up. Over the shared-tree `InProcessRunner`, which runs one
+invocation at a time, one runs and the rest queue; with
+`WithRootFactory` up to `MaxInflight` run in parallel;
+`Bridge.Capacity()` reports the bound in force. The refusal is an
+`*OverloadedError` wrapping `ErrOverloaded`, with a retry hint
+`RetryAfter(err)` reads. A streaming transport calls
+`Admission.Reserve` before it commits, so an overload is answered
+with a status rather than inside the stream. `WithQueueObserver`
+counts calls in and out of the queue. The kit-shipped services
+install it from `services.<svc>.concurrency`.
+
 The mappings of bridge sentinel errors to wire format are uniform:
 
 | Bridge sentinel        | REST / SSE        | RPC               | WS / Bus / Webhook / Signed | OAuth        | Lambda            |
@@ -1430,6 +1448,7 @@ The mappings of bridge sentinel errors to wire format are uniform:
 | `ErrInsufficientScope` | 403 `insufficient_scope` + `WWW-Authenticate` (projection; SSE; REST) | `CodePermissionDenied`; `DENIED` (socket) | `insufficient_scope` (WS, Bus); 403 (Webhook) | 403 `insufficient_scope` | 403 `insufficient_scope` |
 | `ErrPermissionDenied`  | 403 `permission_denied` (projection; SSE) | `CodePermissionDenied`; `DENIED` (socket) | `permission_denied` (WS); passthrough | passthrough | passthrough |
 | `ErrRateLimited`       | 429 `rate_limited` + `Retry-After` | `CodeResourceExhausted` + `Retry-After` metadata; `RATE_LIMITED` + `retry_after_ms` (socket) | `rate_limited` (WS, Bus); 429 (Webhook) | 429 + `Retry-After` | 429 `rate_limited` |
+| `ErrOverloaded`        | 503 `overloaded` + `Retry-After` | `CodeUnavailable` + `Retry-After` metadata; `OVERLOADED` + `retry_after_ms` (socket) | `overloaded` (WS, Bus); 503 (Webhook) | 503 + `Retry-After` | 503 `overloaded` |
 
 Cross-references: `go/transport/cmdsurface/surface_rest.go`,
 `go/transport/cmdsurface/safety.go`,
