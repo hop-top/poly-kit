@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"strconv"
 	"strings"
 	"text/template"
 	"text/template/parse"
@@ -122,7 +124,8 @@ type LambdaMapping struct {
 //     nil. Responses are an [events.APIGatewayV2HTTPResponse] (or
 //     v1 equivalent) with StatusCode derived from the bridge error
 //     class (see the package error table) or 200/500 from the
-//     command's ExitCode.
+//     command's ExitCode. A rate-limit refusal is 429 with a
+//     Retry-After header, as on every HTTP surface.
 //   - EventEventBridge: the template root is {body, headers, query,
 //     path, detail} where detail is the JSON-decoded event.Detail
 //     and the other keys are nil. The response is the bridge Result
@@ -247,8 +250,7 @@ func newLambdaAPIGWv2Handler(
 			cfg.ResultLog(cfg, res, err)
 		}
 		if err != nil {
-			status, code := lambdaHTTPErrorCode(err)
-			return marshalAPIGWv2Response(status, lambdaErrorBody(code, err.Error()))
+			return marshalAPIGWv2Error(err)
 		}
 		status := 200
 		if res.ExitCode != 0 {
@@ -298,8 +300,7 @@ func newLambdaAPIGWv1Handler(
 			cfg.ResultLog(cfg, res, err)
 		}
 		if err != nil {
-			status, code := lambdaHTTPErrorCode(err)
-			return marshalAPIGWv1Response(status, lambdaErrorBody(code, err.Error()))
+			return marshalAPIGWv1Error(err)
 		}
 		status := 200
 		if res.ExitCode != 0 {
@@ -623,7 +624,7 @@ func lambdaHTTPErrorCode(err error) (int, string) {
 	case errors.Is(err, ErrPermissionDenied):
 		return 403, api.CodePermissionDenied
 	case errors.Is(err, ErrRateLimited):
-		return 429, api.CodeRateLimited
+		return http.StatusTooManyRequests, api.CodeRateLimited
 	default:
 		return 500, "internal_error"
 	}
@@ -639,6 +640,40 @@ func lambdaErrorBody(code, message string) []byte {
 		return []byte(`{"code":"internal_error","message":"marshal failed"}`)
 	}
 	return b
+}
+
+// marshalAPIGWv2Error answers a bridge refusal or run error as an
+// APIGatewayV2HTTPResponse: the status and code of
+// [lambdaHTTPErrorCode], and Retry-After on a rate-limit refusal.
+func marshalAPIGWv2Error(err error) (json.RawMessage, error) {
+	status, code := lambdaHTTPErrorCode(err)
+	resp := events.APIGatewayV2HTTPResponse{
+		StatusCode: status,
+		Headers:    apigwErrorHeaders(status, err),
+		Body:       string(lambdaErrorBody(code, err.Error())),
+	}
+	return json.Marshal(resp)
+}
+
+// marshalAPIGWv1Error is marshalAPIGWv2Error for REST API events.
+func marshalAPIGWv1Error(err error) (json.RawMessage, error) {
+	status, code := lambdaHTTPErrorCode(err)
+	resp := events.APIGatewayProxyResponse{
+		StatusCode: status,
+		Headers:    apigwErrorHeaders(status, err),
+		Body:       string(lambdaErrorBody(code, err.Error())),
+	}
+	return json.Marshal(resp)
+}
+
+// apigwErrorHeaders are apigwHeaders plus Retry-After, in whole
+// seconds, when a 429 carries a retry hint.
+func apigwErrorHeaders(status int, err error) map[string]string {
+	h := apigwHeaders(status)
+	if wait, ok := RetryAfter(err); ok && status == http.StatusTooManyRequests {
+		h["Retry-After"] = strconv.Itoa(RetryAfterSeconds(wait))
+	}
+	return h
 }
 
 // marshalAPIGWv2Response wraps body as an APIGatewayV2HTTPResponse

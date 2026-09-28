@@ -740,3 +740,46 @@ func TestLambda_MissingEvent(t *testing.T) {
 		t.Fatal("LambdaHandler with empty Event succeeded; want error")
 	}
 }
+
+// TestLambda_APIGateway_RateLimitedRetryAfter pins that a rate-limit
+// refusal on an API Gateway event answers 429 with Retry-After, as
+// every other HTTP surface does.
+func TestLambda_APIGateway_RateLimitedRetryAfter(t *testing.T) {
+	for _, event := range []cmdsurface.LambdaEventType{cmdsurface.EventAPIGatewayV2, cmdsurface.EventAPIGatewayV1} {
+		t.Run(string(event), func(t *testing.T) {
+			b := cmdsurface.New(lambdaTestTree(),
+				cmdsurface.WithRunner(&lambdaFakeRunner{}),
+				cmdsurface.WithRateLimit(cmdsurface.RateLimit{Write: cmdsurface.RateRule{PerMinute: 1, Burst: 1}}))
+			b.Expose("notify message", cmdsurface.SurfaceFaaS)
+			h, err := cmdsurface.LambdaHandler(b, cmdsurface.LambdaConfig{
+				Event:   event,
+				Mapping: cmdsurface.LambdaMapping{Path: []string{"notify", "message"}},
+			})
+			if err != nil {
+				t.Fatalf("LambdaHandler: %v", err)
+			}
+			var status int
+			var headers map[string]string
+			for range 2 {
+				raw, err := h(context.Background(), json.RawMessage(`{"body":"{}"}`))
+				if err != nil {
+					t.Fatalf("handler error: %v", err)
+				}
+				var resp struct {
+					StatusCode int               `json:"statusCode"`
+					Headers    map[string]string `json:"headers"`
+				}
+				if err := json.Unmarshal(raw, &resp); err != nil {
+					t.Fatalf("decode response: %v", err)
+				}
+				status, headers = resp.StatusCode, resp.Headers
+			}
+			if status != 429 {
+				t.Fatalf("second call status = %d, want 429", status)
+			}
+			if got := headers["Retry-After"]; got != "60" {
+				t.Errorf("Retry-After = %q, want 60 (headers %v)", got, headers)
+			}
+		})
+	}
+}
