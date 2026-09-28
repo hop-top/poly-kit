@@ -47,6 +47,10 @@ import (
 	"hop.top/kit/go/runtime/bus"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/observability"
+
+	// The API key store's driver: services.<svc>.auth.mode: apikey
+	// keeps keys in sqlite unless configured otherwise.
+	_ "hop.top/kit/go/storage/kv/sqlite"
 )
 
 // Item is one row of `item list`. The json tags name the fields in
@@ -117,6 +121,9 @@ type options struct {
 	// signs with and services.<svc>.auth.mode: jwt trusts. nil gives it
 	// none.
 	identity *cli.IdentityConfig
+	// apiKeys is the API key store's file; empty is the default under
+	// the data dir.
+	apiKeys string
 }
 
 // newRoot builds the fixture's root. This is the whole of the wiring
@@ -147,6 +154,7 @@ func newRoot(opts options) *cli.Root {
 		cli.WithService(opts.heartbeat),
 		cli.WithServiceBus(opts.bus),
 		cli.WithObservability(opts.observe),
+		cli.WithAPIKeys(cli.APIKeysConfig{Path: opts.apiKeys}),
 	}
 	if opts.identity != nil {
 		// The tool's keypair: `token create` signs with it, and

@@ -33,8 +33,8 @@ var (
 	// issuer or audience, or refused by [Options.Check].
 	ErrInvalidToken = errors.New("authn: invalid token")
 	// ErrKeySetUnavailable is a remote key set (JWKS or OIDC) that
-	// could not be fetched: the token was not judged, and a later
-	// attempt may succeed.
+	// could not be fetched, or an API key store that could not be
+	// read: the token was not judged, and a later attempt may succeed.
 	ErrKeySetUnavailable = errors.New("authn: key set unavailable")
 )
 

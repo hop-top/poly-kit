@@ -14,6 +14,9 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/rpcserve"
 	"hop.top/kit/go/core/identity"
+	"hop.top/kit/go/storage/kv"
+	_ "hop.top/kit/go/storage/kv/sqlite"
+	"hop.top/kit/go/transport/authn"
 	"hop.top/kit/go/transport/cmdsurface"
 )
 
@@ -82,4 +85,27 @@ func TestRPCServiceBearerModeAuthenticatesForExposure(t *testing.T) {
 	rpcCommands(r)
 	err := runServeArgs(t, r, []string{"serve", "rpc", "--rpc-addr", "0.0.0.0:0"}, 2*time.Second)
 	assert.NoError(t, err)
+}
+
+// TestRPCServiceAPIKeyMode pins services.rpc.auth.mode: apikey: a key
+// in the store the service names authenticates a call in X-API-Key.
+func TestRPCServiceAPIKeyMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "apikeys.db")
+	store, err := kv.Open(kv.Config{Backend: "sqlite", Path: path})
+	require.NoError(t, err)
+	key, _, err := authn.NewAPIKeys(store, nil).Create(t.Context(), authn.NewAPIKey{Principal: "ci-bot"})
+	require.NoError(t, err)
+	require.NoError(t, store.Close())
+
+	_, base := startRPC(t, rpcserve.With(rpcserve.Config{}), []string{"rpc", "--rpc-addr", "127.0.0.1:0"},
+		func(r *cli.Root) {
+			r.Viper.Set("services.rpc.auth.mode", "apikey")
+			r.Viper.Set("services.rpc.auth.apikey.path", path)
+		})
+	c := client(base, protocols[0])
+	resp, err := c.Invoke(t.Context(), call("secret", http.Header{"X-API-Key": {key}}))
+	require.NoError(t, err)
+	assert.Equal(t, "unlocked", resp.Msg.GetStdout())
+	_, err = c.Invoke(t.Context(), call("ping", nil))
+	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
 }

@@ -1562,8 +1562,8 @@ transport and the rpc server; each applies every block in its row
 under its own `services.<svc>`. A block whose reach is HTTP listeners
 alone — `security_headers`, `health`, `host_check`, `origin_check`,
 `body_limit`, `compression`, `trusted_proxies`, `metrics.scrape`,
-`tls`, `tls.acme`, `auth.mtls`, `auth.jwt`, `auth.jwks` and
-`auth.oidc` — set for a kit-shipped service with no HTTP listener
+`tls`, `tls.acme`, `auth.mtls`, `auth.jwt`, `auth.jwks`,
+`auth.oidc` and `auth.apikey` — set for a kit-shipped service with no HTTP listener
 (the socket service) would act on nothing, so it is refused at validation, exit `2`, rather than ignored. Under
 `services.all` it is a default, and a service it does not reach
 simply does not read it.
@@ -1583,7 +1583,7 @@ reads no HTTP-listener key.
 | Block                                   | Applied by                                     | Refused under            |
 |-----------------------------------------|------------------------------------------------|--------------------------|
 | `auth` (`mode`)                         | `mtls`: api, mcp over HTTP, rpc                | `mode: mtls`: socket     |
-| `auth.mtls`, `auth.jwt`, `auth.jwks`, `auth.oidc`, `tls`, `tls.acme` | api, mcp over HTTP, rpc | socket |
+| `auth.mtls`, `auth.jwt`, `auth.jwks`, `auth.oidc`, `auth.apikey`, `tls`, `tls.acme` | api, mcp over HTTP, rpc | socket |
 | `timeouts` `read_header`, `read`, `write`, `idle` | api, mcp over HTTP, rpc              | socket                   |
 | `timeouts` `command`                    | bridge services                                | —                        |
 | `tracing`, `metrics`                    | HTTP half: api, mcp over HTTP, rpc; invocation half: bridge services | —  |
@@ -1692,7 +1692,7 @@ serving.
 | `tls.acme.cache_dir`           | string | `<state dir>/<tool>/acme`       | account key and certificates |
 | `tls.acme.email`               | string | —                               | contact the CA may use |
 | `tls.acme.directory_url`       | string | Let's Encrypt production        | another ACME directory (a staging one, a private CA) |
-| `auth.mode`                    | string | unset                           | `mtls`: the client certificate is the credential; `jwt`, `jwks`, `oidc`: a bearer token is (see [Bearer tokens](#bearer-tokens)) |
+| `auth.mode`                    | string | unset                           | `mtls`: the client certificate is the credential; `jwt`, `jwks`, `oidc`: a bearer token is (see [Bearer tokens](#bearer-tokens)); `apikey`: a kit-issued API key is (see [API keys](#api-keys)) |
 | `auth.mtls.ca_file`            | string | — (required under `mtls`)       | PEM bundle client certificates must chain to |
 | `auth.mtls.principal`          | string | `san`                           | `san` (first URI, else DNS, else email SAN), `san_uri`, `san_dns`, `san_email`, `cn` |
 | `auth.mtls.tenant_oid`         | string | —                               | dotted OID of a subject attribute, else of an extension holding a string |
@@ -1794,6 +1794,41 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   not positive.
 - A bearer token sent over plain HTTP beyond loopback can be replayed
   by anyone who sees it; serve such a listener with `tls`.
+
+### API keys
+
+`auth.mode: apikey` makes a kit-issued API key the credential on the
+kit HTTP listeners, sent as `X-API-Key: <key>` or
+`Authorization: Bearer <key>` (`X-API-Key` wins when both are sent).
+
+| Key                  | Default                        | Meaning |
+|----------------------|--------------------------------|---------|
+| `auth.apikey.backend` | `APIKeysConfig.Backend`, else `sqlite` | the kv backend holding the keys: `sqlite` or `badger`; its driver must be imported |
+| `auth.apikey.path`    | `APIKeysConfig.Path`, else `<data dir>/<tool>/apikeys.db` | the store's file (sqlite) or directory (badger) |
+
+- A key is `kit_<id>_<secret>`: a 64-bit id and a 256-bit secret,
+  hex. The store keeps, per id, the principal, tenant, scopes,
+  creation, expiry, revocation, and a SHA-256 of the domain-separated
+  id and secret, compared in constant time. The secret is never
+  stored and is shown once, at issue. No slow KDF: a 256-bit random
+  secret cannot be guessed, and a KDF would only cost every request.
+- `cli.WithAPIKeys` mounts `token key create --sub [--tenant]
+  [--scopes] [--expires]`, `token key list` and `token key revoke
+  <id>` (exit `3` for an unknown id); each opens the store of
+  `--service` (default `api`). Revocation is immediate: the service
+  reads the store on every request. A revoked key stays listed.
+- The key's principal, tenant and scopes are the call's `Caller`,
+  `Tenant` and `Meta.Extra["scopes"]`; `Established` is `verified`.
+  An unknown, malformed, revoked or expired key is `unauthenticated`
+  at slot 12, audited. A store that cannot be read refuses the
+  request without judging the key.
+- The store is opened on the first request and closed when the
+  listener stops serving; `sqlite` is shared with the `token key`
+  verbs of another process, `badger` locks it, so run them while the
+  service is stopped.
+- Refused at validation, exit `2`, naming the key: a backend other
+  than `sqlite` or `badger`, a backend whose driver is not imported,
+  and an `auth.apikey` key under another mode.
 
 ### Timeouts
 

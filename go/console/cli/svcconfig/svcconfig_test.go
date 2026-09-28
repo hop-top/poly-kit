@@ -220,7 +220,7 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 	assert.NoError(t, New(v).ValidateNoHTTP("worker"), "keys under another service are that service's")
 	assert.NoError(t, New(nil).ValidateNoHTTP("socket"))
 
-	for _, b := range []string{"security_headers", "health", "host_check", "origin_check", "body_limit", "compression", "metrics.scrape", "trusted_proxies", "tls", "tls.acme", "auth.mtls", "auth.jwt", "auth.jwks", "auth.oidc"} {
+	for _, b := range []string{"security_headers", "health", "host_check", "origin_check", "body_limit", "compression", "metrics.scrape", "trusted_proxies", "tls", "tls.acme", "auth.mtls", "auth.jwt", "auth.jwks", "auth.oidc", "auth.apikey"} {
 		assert.True(t, HTTPOnly(b), b)
 	}
 	for _, b := range []string{"tracing", "metrics", "audit", "audit.redact", "auth", "rate_limit", "unregistered"} {

@@ -7,7 +7,7 @@ hand, meet every claim the
 [serve-lifecycle contract](../../docs/contracts/serve-lifecycle.md) makes
 about a conformant application command? `main.go` registers the reserved
 `status` and `audit` verbs, the kit-shipped `api`, `socket`, `mcp` and `rpc` services,
-one adopter-owned service (`heartbeat`), a bus and an identity keypair,
+one adopter-owned service (`heartbeat`), a bus, an identity keypair and API keys,
 plus one command per class the contract distinguishes. For the surface matrix without the
 serve lifecycle, see [`examples/cmdsurface`](../cmdsurface/README.md).
 
@@ -43,7 +43,7 @@ go test -race ./examples/served/
 | `serve`      | kit's own          | never: `self-hosting`                                      |
 | `status`     | reserved           | never: `management-only`                                   |
 | `audit verify` | reserved         | never: `management-only`                                   |
-| `token create`, `token verify` | reserved | never: `management-only`; `create` signs with the identity keypair |
+| `token create`, `token verify`, `token key ...` | reserved | never: `management-only`; `create` signs with the identity keypair, `key` issues API keys into sqlite |
 
 The tests drive the real `Execute` path, the one that installs the
 confirmation and policy gates, with the arguments an operator would
@@ -65,7 +65,8 @@ claim out.
   rule that does not compile refusing the start (exit 2)
 - `token_test.go`: `token create`, then `serve` with
   `services.all.auth.mode: jwt`, then `item sync` with the token over
-  REST and RPC
+  REST and RPC; the same with `token key create`, `auth.mode: apikey`
+  and `token key revoke`
 
 ## See also
 

@@ -18,8 +18,9 @@ import (
 )
 
 // mountTokenCmd mounts the kit-owned `token` command, or completes one
-// already mounted: claims, decode and verify always, and create when
-// the tool has an identity keypair to sign with (cli.WithIdentity).
+// already mounted: claims, decode and verify always, create when the
+// tool has an identity keypair to sign with (cli.WithIdentity), and
+// key create|list|revoke when it issues API keys (cli.WithAPIKeys).
 // It is idempotent, so WithAPI and New can both call it whichever
 // order the options ran in.
 func (r *Root) mountTokenCmd() {
@@ -52,6 +53,9 @@ func (r *Root) mountTokenCmd() {
 	}
 	if !has["create"] && r.identityCfg != nil {
 		cmd.AddCommand(tokenCreateCmd(r))
+	}
+	if !has["key"] && r.apiKeysCfg != nil {
+		cmd.AddCommand(tokenKeyCmd(r))
 	}
 }
 

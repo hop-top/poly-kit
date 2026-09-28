@@ -38,6 +38,7 @@ var authModes = []struct{ mode, block string }{
 	{AuthModeJWT, authJWTBlock},
 	{AuthModeJWKS, authJWKSBlock},
 	{AuthModeOIDC, authOIDCBlock},
+	{AuthModeAPIKey, authAPIKeyBlock},
 }
 
 // authModeNames is the auth.mode values, quoted, for messages.
@@ -225,7 +226,7 @@ func (t tlsResolver) duration(block, key string) (d time.Duration, set bool, err
 // lowercased, "" when unset, and the key that set it.
 func resolveAuthMode(cfg svcconfig.Resolver, svc string) (tlsResolver, string, string, error) {
 	res := tlsResolver{cfg: cfg, svc: svc}
-	for _, b := range []string{authBlock, authMTLSBlock, authJWTBlock, authJWKSBlock, authOIDCBlock} {
+	for _, b := range []string{authBlock, authMTLSBlock, authJWTBlock, authJWKSBlock, authOIDCBlock, authAPIKeyBlock} {
 		if err := cfg.ValidateBlock(b, svc, svcconfig.Shared); err != nil {
 			return res, "", "", err
 		}

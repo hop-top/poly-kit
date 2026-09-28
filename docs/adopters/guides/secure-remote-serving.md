@@ -339,7 +339,15 @@ $ mytool token verify "$TOKEN"
 ```
 
 The scopes are written as `scope` (space-delimited, the claim OAuth
-resource servers read) and as `scopes` (a list). `token claims` still
+resource servers read) and as `scopes` (a list).
+
+For machine callers that should not carry a JWT, `auth.mode: apikey`
+checks kit-issued API keys. Add `cli.WithAPIKeys(cli.APIKeysConfig{})`
+and import the store's driver (`_ "hop.top/kit/go/storage/kv/sqlite"`);
+then `mytool token key create --sub ci-bot --scopes widgets:read`
+prints a key once, callers send it as `X-API-Key`, `token key list`
+shows every key's state, and `token key revoke <id>` stops one at
+once. `token claims` still
 prints an unsigned template for an external signer, and `token`
 itself is never served: remote callers cannot mint tokens. The token's `sub` is the caller, its
 `tenant` claim (`tenant_claim` to rename) the tenant, and its
@@ -1473,6 +1481,7 @@ observability](../reference/served-observability.md)).
 | `services.<svc>.auth.mode` | unset | `mtls`: the client certificate is the credential; `jwt`, `jwks`, `oidc`: a verified bearer token is. Counts as authentication beyond loopback, and replaces the code `Auth`. |
 | `services.<svc>.auth.jwt.public_key_files` | unset | PEM public keys trusted beside the tool's identity key under `jwt`. |
 | `services.<svc>.auth.jwks.url` / `auth.oidc.issuer` | unset | The key set, or the provider whose discovery yields it; `https` (or loopback `http`). |
+| `services.<svc>.auth.apikey.backend`, `.path` | `sqlite`, `<data dir>/<tool>/apikeys.db` | The store `auth.mode: apikey` checks keys against; `cli.WithAPIKeys` mounts `token key create|list|revoke`. |
 | `services.<svc>.auth.<mode>.audience`, `.issuer`, `.clock_skew`, `.refresh`, `.tenant_claim` | audience required under `jwks`/`oidc`; skew `1m`; refresh `1h`; tenant claim `tenant` | Claim checks and key-set caching for the bearer modes. |
 | `services.<svc>.auth.mtls.ca_file` | unset | CA bundle client certificates must chain to; required under `mtls`. |
 | `services.<svc>.auth.mtls.principal` | `san` | `san`, `san_uri`, `san_dns`, `san_email` or `cn`. |

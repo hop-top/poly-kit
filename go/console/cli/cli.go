@@ -344,6 +344,7 @@ type Root struct {
 	serveAuth    serveAuthState
 	serveObs     ServeObservability // tracing and metrics; see serve_observability.go
 	identityCfg  *IdentityConfig
+	apiKeysCfg   *APIKeysConfig
 	peerCfg      *PeerConfig
 	telemetryCfg *TelemetryConfig
 	// rootFactory rebuilds the tool's root for one served invocation;
@@ -699,7 +700,7 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	}
 	// The token command, once every option has run: WithAPI and
 	// WithIdentity may come in either order.
-	if r.apiCfg != nil && (r.apiCfg.Auth != nil || r.identityCfg != nil) {
+	if r.apiCfg != nil && (r.apiCfg.Auth != nil || r.identityCfg != nil || r.apiKeysCfg != nil) {
 		r.mountTokenCmd()
 	}
 	// Snapshot kit-shipped subcommands now, BEFORE adopters mount

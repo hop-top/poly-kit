@@ -268,7 +268,7 @@ func TestServeBearerConfigErrors(t *testing.T) {
 		want     string
 	}{
 		{"unknown mode lists the modes", map[string]any{"services.api.auth.mode": "kerberos"}, true,
-			`services.api.auth.mode: unknown mode "kerberos"; kit supports "mtls", "jwt", "jwks", "oidc"`},
+			`services.api.auth.mode: unknown mode "kerberos"; kit supports "mtls", "jwt", "jwks", "oidc", "apikey"`},
 		{"jwt with no key", map[string]any{"services.api.auth.mode": "jwt"}, false,
 			`services.api.auth.mode: auth.mode "jwt" has no key to verify with`},
 		{"jwt key file missing", map[string]any{"services.api.auth.mode": "jwt",

@@ -50,6 +50,9 @@ type ServeTLS struct {
 	config     *tls.Config
 	clientAuth api.AuthFunc
 	bearer     api.AuthFunc
+	// apiKeys is the auth.mode: apikey verifier, whose store Serve
+	// closes when serving ends.
+	apiKeys *apiKeyVerifier
 }
 
 // Enabled reports whether the listener speaks TLS.
@@ -73,8 +76,8 @@ func (t *ServeTLS) ClientCertAuth() api.AuthFunc {
 }
 
 // Auth is the verifier auth.mode selects: the client certificate under
-// mtls, the bearer token under jwt, jwks and oidc; nil when the mode
-// is unset. A service installs it where it installs its code AuthFunc
+// mtls, the bearer token under jwt, jwks and oidc, the API key under
+// apikey; nil when the mode is unset. A service installs it where it installs its code AuthFunc
 // (APIConfig.Auth, rpcserve.Config.Auth, mcpserve.Config.Auth), and in
 // its place: a configured mode wins, and the code AuthFunc applies
 // only while auth.mode is unset.
@@ -95,7 +98,13 @@ func (t *ServeTLS) Auth() api.AuthFunc {
 // never negotiates — and records each connection in its requests'
 // context (api.TLSConnContext), so a verifier handed a synthetic
 // request still finds the client certificate.
+//
+// When serving ends it releases what the verifier holds open: the API
+// key store under auth.mode: apikey.
 func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
+	if t != nil && t.apiKeys != nil {
+		defer func() { _ = t.apiKeys.Close() }()
+	}
 	if !t.Enabled() {
 		return srv.Serve(ln)
 	}
@@ -154,6 +163,15 @@ func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 	}
 	if mode != AuthModeMTLS {
 		t := &ServeTLS{config: tc}
+		if mode == AuthModeAPIKey {
+			cfg, err := res.apiKeyStoreConfig(r)
+			if err != nil {
+				return nil, err
+			}
+			t.apiKeys = &apiKeyVerifier{cfg: cfg}
+			t.bearer = t.apiKeys.AuthFunc()
+			return t, nil
+		}
 		if mode != "" {
 			v, err := res.bearerVerifier(r, mode)
 			if err != nil {

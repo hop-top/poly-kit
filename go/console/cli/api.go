@@ -111,9 +111,10 @@ type APIConfig struct {
 
 // WithAPI returns a Root option that stores the API config, registers
 // the HTTP API as the "api" service, and adds the "token" command when
-// Auth is set or the tool has an identity keypair (WithIdentity, in
-// either order): claims, decode and verify, and create, which signs
-// with the identity keypair, when there is one.
+// Auth is set, the tool has an identity keypair (WithIdentity) or
+// issues API keys (WithAPIKeys), in any option order: claims, decode
+// and verify; create, which signs with the identity keypair, when
+// there is one; key create|list|revoke with API keys.
 //
 // The API now reaches the command surface as a service under the
 // kit-owned `serve` parent rather than as a leaf `serve` command

@@ -17,7 +17,11 @@
 //   - [NewOIDC]: an OpenID Connect issuer; discovery resolves its
 //     jwks_uri, which is then handled as [NewJWKS] handles its URL.
 //
-// Every token is checked the same way: a signature by one of the
+// [APIKeys] is the opaque alternative: kit-issued keys held hashed in
+// a kv store, each standing for a principal, tenant and scopes, until
+// it expires or is revoked.
+//
+// Every JWT is checked the same way: a signature by one of the
 // source's keys under an asymmetric algorithm ("none" and HMAC are
 // never accepted), exp present and not past, nbf and iat not in the
 // future, each with the [Options.ClockSkew] tolerance, the issuer and
