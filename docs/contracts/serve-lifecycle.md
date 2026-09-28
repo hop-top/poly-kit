@@ -708,9 +708,11 @@ event carrying the `Result` — `data` included — that `Run` would have
 returned. Run and Stream are one execution observed two ways; a
 command does not behave differently under either.
 
-The kit-shipped `api` and `socket` services are request/reply and use
-`Run`. The WebSocket, SSE, and RPC surfaces in `cmdsurface` use
-`Stream`.
+The kit-shipped `socket` service is request/reply and uses `Run`. The
+`api` service uses `Run` for its request/reply routes and `Stream`
+for their streaming twins (`<route>/stream`), which it admits through
+the same gates before opening the stream. The WebSocket, SSE, and RPC
+surfaces in `cmdsurface` use `Stream`.
 
 ### Cancellation
 

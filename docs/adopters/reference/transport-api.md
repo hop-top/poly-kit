@@ -61,7 +61,10 @@ Everything lives under a versioned prefix:
 
 ```text
 /v1/commands/<command>/<subcommand>
+/v1/commands/<command>/<subcommand>/stream
 ```
+
+The second is the command's [streaming](#streaming) twin.
 
 The version is in the path rather than a header because the shape of
 the projection is derived from the command tree: adding a required
@@ -112,17 +115,20 @@ the supported surface.
 
 `GET /v1/commands` lists **every** reflected command, mounted or not.
 Non-invocable entries carry `invocable: false` and a stable reason;
-they carry no `method` or `route`, since advertising a route that can
-only 404 helps nobody.
+they carry no `method`, `route` or `stream_route`, since advertising
+a route that can only 404 helps nobody. `stream_route` is served on
+`method`; see [Streaming](#streaming).
 
 ```json
 {
   "prefix": "/v1/commands",
   "commands": [
     {"name": "list", "side_effect": "read", "side_effect_source": "declared",
-     "invocable": true, "method": "GET", "route": "/v1/commands/list"},
+     "invocable": true, "method": "GET", "route": "/v1/commands/list",
+     "stream_route": "/v1/commands/list/stream"},
     {"name": "sync", "side_effect": "write", "side_effect_source": "unannotated",
-     "invocable": true, "method": "POST", "route": "/v1/commands/sync"},
+     "invocable": true, "method": "POST", "route": "/v1/commands/sync",
+     "stream_route": "/v1/commands/sync/stream"},
     {"name": "shell", "side_effect": "interactive", "side_effect_source": "declared",
      "invocable": false, "reason": "interactive"}
   ],
@@ -257,6 +263,101 @@ also `503`, a prerequisite failure will not clear on its own, so a
 backoff loop against it burns its budget. Branch on the envelope's
 `code` when that distinction matters.
 
+### Streaming
+
+Every projected command has a streaming twin one segment down:
+
+```text
+/v1/commands/<command>/<subcommand>/stream
+```
+
+It is served on the **same method** as the command's own route and
+takes the **same parameters**: a read streams on `GET` with its flags
+in the query string, which is what a browser `EventSource` can open;
+a write or a destructive command streams on `POST` with the JSON
+body, so streaming never turns a call that changes state into a
+`GET`. The segment cannot collide with a command, because only leaves
+are projected and a leaf has no children.
+
+```sh
+curl -N 'http://127.0.0.1:8080/v1/commands/item/watch/stream?count=3'
+```
+
+```text
+event: event
+data: {"kind":"stdout","data":"tick 1: 2 items","at":"2026-09-27T12:00:00Z"}
+
+event: event
+data: {"kind":"stdout","data":"tick 2: 2 items","at":"2026-09-27T12:00:01Z"}
+
+event: event
+data: {"kind":"stdout","data":"tick 3: 2 items","at":"2026-09-27T12:00:02Z"}
+
+event: result
+data: {"status":200,"exit_code":0,"stdout":"tick 1: 2 items\ntick 2: 2 items\ntick 3: 2 items\n"}
+```
+
+The response is `text/event-stream`, in the frame vocabulary the
+`cmdsurface` SSE surface uses:
+
+| Frame | Data | When |
+|---|---|---|
+| `event` | `{"kind", "data", "at"}`: one line of `stdout` or `stderr` as the command writes it, or a `progress` payload | while the command runs |
+| `result` | the [response body](#response-body) plus `status`, the status the request/reply route would have answered for this exit code | once, last, when the command ran to an exit code |
+| `error` | an `APIError` (`status`, `code`, `message`), mapped as the request/reply route maps it; `503` `shutting_down` when the server is stopping | once, last, when the run failed without an exit code, or the server stopped it |
+| `: ping` | comment | every 15 seconds while the command is silent, so proxies keep the connection open |
+
+**Refusals come before the stream.** Everything the transport or the
+bridge refuses is answered with an ordinary status and JSON body,
+exactly as on the request/reply route, and nothing runs: a malformed
+request (`400`), a failed authentication (`401`), a withheld command
+(`404` — the stream route is not mounted either), the destructive
+ceiling and the permission gate (`403`). Every refusal is audited as
+it is on the request/reply route.
+
+**Outcomes come in the terminal frame.** Once admitted the stream
+opens at once, and the command's outcome — success, failure, or its
+own confirmation refusal — is the `result` frame. The confirmation
+gate belongs to the command, not the projection: its verdict is an
+exit code, which exists only once the command has run. The frame's
+`status` is `403` there, the same answer the request/reply route
+gives, so a client classifies both routes' outcomes with one table.
+Pass `confirm` in the body to clear it, as on the request/reply route.
+
+**A client that disconnects cancels the command.** The request's
+context is the command's; closing the connection cancels it, and the
+run is audited as a cancellation. The server's write deadline, sized
+for request/reply, is lifted for stream responses only.
+
+**Stopping the service ends open streams.** A draining server waits
+for in-flight requests, and a stream has no end of its own, so the
+`api` service cancels every streaming command when it begins to stop
+and ends each stream with an `error` frame, `503` `shutting_down`.
+Request/reply calls drain as before.
+
+**One tree, one command at a time.** Unless the tool opts in with
+`cli.WithRootFactory`, commands share the tool's command tree and run
+one at a time — a stream that runs for an hour holds the tree for an
+hour. Serve long-running commands with a root factory.
+
+Discovery advertises each invocable command's `stream_route`, and the
+OpenAPI document describes each as its own operation
+(`stream_commands_<path>`, `200` as `text/event-stream`).
+
+#### Long-running work on each transport
+
+| Transport | Long-running call | Client holds | Survives a disconnect |
+|---|---|---|---|
+| REST (`api` service) | `/v1/commands/<path>/stream`, server-sent events | the HTTP response | no: disconnecting cancels the command |
+| RPC (`cmdsurface.MountRPC`) | `InvokeStream`, server-streaming | the RPC stream | no: canceling the stream cancels the command |
+| MCP (`mcpsdk.WithTasks`, experimental) | a task: `tools/call` returns a task id, then `tasks/get` / `tasks/cancel` | nothing between polls | yes: the task outlives the request |
+
+REST and RPC stream a command's output while a client holds the
+connection. MCP's tasks extension is the one shape for work that
+must outlive its caller; it is experimental and follows a draft
+specification. See [mcpsdk.md](mcpsdk.md#tasks-extension-sep-2663-experimental)
+and the [cmdsurface reference](cmdsurface.md#rpc).
+
 ### Auth
 
 The projection installs no auth. Routes are registered through the
@@ -327,10 +428,8 @@ Without `WithOpenAPI`, projection still mounts, and a **minimal** spec
 is served at the same `/openapi.json` — enough to find every operation,
 its method and its path. Full schemas are what `WithOpenAPI` buys.
 
-Streaming is out of scope: the projection is request/reply, and a
-command's output arrives when it finishes. The response is the
-command's structured result where it declares one, and its default
-rendering in `stdout` where it does not.
+A request/reply route answers when the command finishes; for output
+as it is written, use the command's [streaming route](#streaming).
 
 ## Related pages
 

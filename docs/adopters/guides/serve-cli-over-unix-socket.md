@@ -585,7 +585,8 @@ Stated plainly, so you can decide what to put in front of it:
 - **No protobuf.** The wire format is JSON. For protobuf over
   ConnectRPC, use [`go/transport/rpc`](../../../go/transport/rpc/).
 - **No streaming.** One request, one response. Long-running commands
-  return when they finish.
+  return when they finish; the `api` service streams them — see
+  [streaming](../reference/transport-api.md#streaming).
 - **No interactive or self-hosting commands.** A command tiered
   `interactive` is refused by the bridge's gate, before the policy
   gate, with `NOT_INVOCABLE` — there is no terminal on a socket — and

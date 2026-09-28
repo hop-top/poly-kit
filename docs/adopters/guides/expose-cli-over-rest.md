@@ -29,6 +29,8 @@ You need:
 
 - **`/v1/commands/<path>`** — one route per invocable command, with
   the method its side-effect class selects
+- **`/v1/commands/<path>/stream`** — the same command, its output
+  streamed as server-sent events while it runs
 - **`GET /v1/commands`** — a discovery listing of *every* command,
   including the ones that are not mounted and why
 - **`/openapi.json`** — an OpenAPI document covering the projected
@@ -448,6 +450,58 @@ What you get, and what you owe:
 - A `newRoot` that cannot build a valid tree is refused when `serve`
   validates, at exit `2`, before the server binds.
 
+### 11. Stream a long-running command
+
+A request/reply route answers when the command finishes. For a
+command that runs for a while — a watch, a migration, a build — call
+its streaming twin instead: the same path plus `/stream`, the same
+method, the same parameters. Nothing to register; every invocable
+command has one.
+
+```bash
+# A read streams on GET, with its flags in the query string.
+curl -N 'http://127.0.0.1:8080/v1/commands/item/watch/stream?interval=1s'
+
+# A write streams on POST, with the same JSON body.
+curl -N -X POST http://127.0.0.1:8080/v1/commands/db/migrate/stream \
+  -H 'Content-Type: application/json' -d '{"flags":{"to":"42"}}'
+```
+
+Each line the command writes arrives as an `event` frame as it is
+written; the stream ends with one `result` frame carrying the exit
+code and `status`, the status the request/reply route would have
+answered:
+
+```text
+event: event
+data: {"kind":"stdout","data":"tick 1: 2 items","at":"2026-09-27T12:00:00Z"}
+
+event: result
+data: {"status":200,"exit_code":0,"stdout":"tick 1: 2 items\n"}
+```
+
+Your command needs nothing new, with one exception: to stop when the
+client goes away, it must watch `cmd.Context()`. Closing the
+connection cancels that context.
+
+- **Refusals are statuses, not streams.** A malformed request, a
+  failed authentication, a withheld command, the destructive ceiling
+  and the permission gate answer exactly as the request/reply route
+  does — `400`, `401`, `404`, `403` with a JSON body — and nothing
+  runs.
+- **The command's own verdicts are the last frame.** Once admitted
+  the stream opens at once, so a failure, and an unconfirmed
+  destructive command's refusal, arrive as the `result` frame with
+  `status` `403` rather than as a `403` response. Send `confirm` in
+  the body, as on the request/reply route.
+- **Long streams want a root factory.** Without step 10, a running
+  stream holds the tool's command tree and every other request waits
+  for it.
+
+Frames, keep-alives and the comparison with RPC streaming and MCP
+tasks are in the
+[api reference](../reference/transport-api.md#streaming).
+
 ## Option reference
 
 | Option | Default | Effect |
@@ -504,9 +558,11 @@ be lying about what your commands promise:
   self-modifying commands with the annotation.
 - **Forced remote execution.** Commands the policy refuses stay
   refused. There is no override that runs one anyway.
-- **Streaming.** A command's output arrives when it finishes. The
-  response is `data` where the command declares a schema and its
-  default rendering in `stdout` where it does not.
+- **Work that outlives its caller.** A stream lasts as long as the
+  connection: disconnecting cancels the command, and nothing records
+  its progress for a later poll. For durable, pollable work, serve the
+  command over MCP with the experimental tasks extension; see
+  [long-running work on each transport](../reference/transport-api.md#long-running-work-on-each-transport).
 - **A choice of rendering.** `format` is not accepted. A caller who
   wants a table renders `data` itself.
 
