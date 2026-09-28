@@ -188,7 +188,7 @@ func commandHandler(ex CommandExecutor, d CommandDescriptor) http.HandlerFunc {
 		// reach the command.
 		res, err := ex.Execute(r.Context(), req)
 		if err != nil {
-			writeProjectionError(w, d, err)
+			writeProjectionError(w, r, d, err)
 			return
 		}
 		markReplayed(w, res.Replayed)
@@ -202,15 +202,17 @@ func commandHandler(ex CommandExecutor, d CommandDescriptor) http.HandlerFunc {
 
 // writeProjectionError maps an executor refusal onto a status. The
 // descriptor's reason travels in the message so a caller learns why
-// rather than only that it failed.
-func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error) {
+// rather than only that it failed. r is the refused request: behind a
+// protected resource an insufficient_scope answer names its metadata
+// document.
+func writeProjectionError(w http.ResponseWriter, r *http.Request, d CommandDescriptor, err error) {
 	ae := projectionError(d, err)
 	if ae.Code == CodeUnauthenticated {
 		WriteUnauthenticated(w, "", ae.Message)
 		return
 	}
 	if ae.Code == CodeInsufficientScope {
-		WriteInsufficientScope(w, requiredScopesOf(err), ae.Message)
+		writeScopeRefusal(w, r, requiredScopesOf(err), ae.Message)
 		return
 	}
 	if wait, ok := retryAfterOf(err); ok &&

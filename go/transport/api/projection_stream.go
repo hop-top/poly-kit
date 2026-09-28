@@ -188,7 +188,7 @@ func streamHandler(
 
 		stream, err := st.OpenStream(ctx, req)
 		if err != nil {
-			writeProjectionError(w, d, err)
+			writeProjectionError(w, r, d, err)
 			return
 		}
 

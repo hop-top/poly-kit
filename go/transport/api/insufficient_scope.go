@@ -85,7 +85,20 @@ func BearerPresented(r *http.Request) bool {
 // client holding a token without the scope reads the header to ask
 // its authorization server for one that has it.
 func WriteInsufficientScope(w http.ResponseWriter, scopes []string, msg string) {
-	w.Header().Set("WWW-Authenticate", InsufficientScopeChallenge(scopes))
+	writeInsufficientScope(w, InsufficientScopeChallenge(scopes), msg)
+}
+
+// writeScopeRefusal is [WriteInsufficientScope] for a request r: behind
+// a protected resource the challenge also names its metadata document
+// ([ScopeChallenge]).
+func writeScopeRefusal(w http.ResponseWriter, r *http.Request, scopes []string, msg string) {
+	writeInsufficientScope(w, ScopeChallenge(r, scopes), msg)
+}
+
+// writeInsufficientScope answers w with 403 [CodeInsufficientScope]
+// under challenge.
+func writeInsufficientScope(w http.ResponseWriter, challenge, msg string) {
+	w.Header().Set("WWW-Authenticate", challenge)
 	Error(w, http.StatusForbidden, &APIError{
 		Status:  http.StatusForbidden,
 		Code:    CodeInsufficientScope,

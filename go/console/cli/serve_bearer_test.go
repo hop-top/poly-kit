@@ -424,3 +424,44 @@ func TestAPIBearerScopeClaimMeetsTheScopeCheck(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
 	assert.Contains(t, string(body), api.CodeInsufficientScope)
 }
+
+// TestAPIInsufficientScopeNamesProtectedResource pins RFC 9728 §5.1 on
+// the api service's 403: behind a protected resource, a bearer caller
+// refused insufficient_scope is pointed at the metadata document, on
+// the request/reply route and the stream route alike, as the mcp
+// service points its callers.
+func TestAPIInsufficientScopeNamesProtectedResource(t *testing.T) {
+	isolateHome(t)
+	srv, priv := jwksServer(t)
+	r := bearerRoot(t, map[string]any{
+		"services.api.auth.mode":          "oidc",
+		"services.api.auth.oidc.issuer":   srv.URL,
+		"services.api.auth.oidc.audience": "https://api.example.com/v1",
+	}, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
+	r.Cmd.AddCommand(&cobra.Command{
+		Use:   "export",
+		Short: "export items",
+		RunE:  func(cmd *cobra.Command, _ []string) error { cmd.Print("exported"); return nil },
+		Annotations: map[string]string{
+			"kit/side-effect": "read",
+			"kit/permissions": "items:export",
+		},
+	})
+	base, stop := serveAPI(t, r)
+	defer stop()
+	hdr := bearerHdr(rsaToken(t, priv, map[string]any{
+		"sub": "svc-a", "aud": "https://api.example.com/v1", "iss": srv.URL, "scope": "items:read",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	}))
+	want := `Bearer error="insufficient_scope", scope="items:export", ` +
+		`resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/v1"`
+
+	resp, body := get(t, base+"/v1/commands/export", hdr)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
+	assert.Contains(t, string(body), api.CodeInsufficientScope)
+	assert.Equal(t, want, resp.Header.Get("WWW-Authenticate"), "request/reply route")
+
+	resp, body = doStream(t, http.MethodGet, base+"/v1/commands/export/stream", "", hdr)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
+	assert.Equal(t, want, resp.Header.Get("WWW-Authenticate"), "stream route")
+}
