@@ -221,8 +221,26 @@ func (r *Root) servePolicyConfigured() bool {
 // A service living outside this package — the MCP service in
 // go/console/cli/mcpserve — builds its bridge from it, so it meets
 // exactly the gates the built-in services do.
+//
+// The rate limit (services.<svc>.rate_limit) takes its beyond-loopback
+// default here, on unless configured off: a service that does not say
+// where it listens is not assumed to be local. A service that knows
+// uses [ServeBridgeOptionsFor].
 func ServeBridgeOptions(r *Root, svc string) ([]cmdsurface.Option, error) {
+	return ServeBridgeOptionsFor(r, svc, false)
+}
+
+// ServeBridgeOptionsFor is [ServeBridgeOptions] for a service whose
+// exposure is known. loopback is true for a service reachable only
+// from this machine — bound to a loopback address, a Unix socket, or
+// stdio — which turns the rate limit's default off.
+func ServeBridgeOptionsFor(r *Root, svc string, loopback bool) ([]cmdsurface.Option, error) {
 	shared, err := r.serveBridgeOptions(svc)
+	if err == nil {
+		var limit []cmdsurface.Option
+		limit, err = r.serveRateLimitOptions(svc, loopback)
+		shared = append(limit, shared...)
+	}
 	if err != nil {
 		return []cmdsurface.Option{cmdsurface.WithPermission(refuseAll(err))}, err
 	}
@@ -232,8 +250,8 @@ func ServeBridgeOptions(r *Root, svc string) ([]cmdsurface.Option, error) {
 
 // ValidateServeBridge is the configuration check the kit-shipped
 // transport service svc runs in its Validate hook: a --policy that
-// cannot load, an audit.redact block or audit.sinks list
-// [ServeBridgeOptions] would refuse, an audit chain that cannot open,
+// cannot load, an audit.redact block, audit.sinks list or rate_limit
+// block [ServeBridgeOptions] would refuse, an audit chain that cannot open,
 // or a root factory that cannot build a usable tree, is a usage error
 // before anything binds. The chains it opens are the ones Start
 // reuses.
@@ -242,6 +260,9 @@ func ValidateServeBridge(r *Root, svc string) error {
 		return err
 	}
 	if err := validateServeAudit(r, svc); err != nil {
+		return err
+	}
+	if _, _, err := serveRateLimit(r.Viper, svc, false); err != nil {
 		return err
 	}
 	if _, err := r.serveConfiguredAuditSinks(svc); err != nil {

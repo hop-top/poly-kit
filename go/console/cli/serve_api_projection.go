@@ -17,11 +17,18 @@ const ReasonWithheldByConfig = cmdsurface.ReasonWithheldByConfig
 // WithAPI runs while the tree is still being assembled, and a tree
 // reflected mid-construction describes commands the binary does not
 // expose. By the time a service starts, cobra has the whole tree.
-func projectionBridge(r *Root, cfg *APIConfig) (*cmdsurface.Bridge, error) {
+//
+// loopback is the service's exposure; it picks the rate limit's
+// default.
+func projectionBridge(r *Root, cfg *APIConfig, loopback bool) (*cmdsurface.Bridge, error) {
 	// The permission gate and the audit sinks are resolved now, at
 	// start: --policy is parsed by then and every adopter option has
 	// run.
 	shared, err := r.serveBridgeOptions(APIServiceName)
+	if err != nil {
+		return nil, err
+	}
+	limit, err := r.serveRateLimitOptions(APIServiceName, loopback)
 	if err != nil {
 		return nil, err
 	}
@@ -36,6 +43,7 @@ func projectionBridge(r *Root, cfg *APIConfig) (*cmdsurface.Bridge, error) {
 	// options go last so a test-injected Runner still wins.
 	opts := append([]cmdsurface.Option{cmdsurface.WithPolicy(cfg.Policy)}, r.serveRunnerOptions()...)
 	opts = append(opts, r.serveObservabilityOptions(APIServiceName)...)
+	opts = append(opts, limit...)
 	opts = append(opts, shared...)
 	bridge := cmdsurface.New(r.Cmd, opts...)
 	// Exposing REST here is what "no adopter mounting code" means:

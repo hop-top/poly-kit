@@ -76,6 +76,13 @@ var blocks = []Block{
 	{Name: "body_limit", Keys: []string{"enabled", "max_bytes"}},
 	{Name: "compression", Keys: []string{"enabled", "min_bytes"}},
 	{
+		Name: "rate_limit", Keys: []string{"enabled"},
+		Note: "the per-tier limits are the read, write and destructive blocks, each with per_minute and burst",
+	},
+	{Name: "rate_limit.read", Keys: []string{"per_minute", "burst"}},
+	{Name: "rate_limit.write", Keys: []string{"per_minute", "burst"}},
+	{Name: "rate_limit.destructive", Keys: []string{"per_minute", "burst"}},
+	{
 		Name: "audit", Keys: []string{"sinks"},
 		Lists: map[string][]string{
 			"sinks": {"fsync", "max_bytes", "max_files", "on", "path", "paths", "surfaces", "type"},

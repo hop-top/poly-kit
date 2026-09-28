@@ -218,7 +218,7 @@ func newService(root *cli.Root, cfg *Config) *rpcService {
 			// On error these refuse every call. Validate has already
 			// refused the configuration that errs here, so this is
 			// unreachable in practice.
-			shared, _ := cli.ServeBridgeOptions(root, ServiceName)
+			shared, _ := cli.ServeBridgeOptionsFor(root, ServiceName, cli.IsLoopbackAddr(s.addr()))
 			return shared
 		}),
 		transportsvc.WithValidate(s.validate),

@@ -255,7 +255,9 @@ func newService(root *cli.Root, cfg *Config, stdio *stdioStreams) *service {
 			// On error these refuse every call. Validate has already
 			// refused the configuration that errs here, so this is
 			// unreachable in practice.
-			shared, _ := cli.ServeBridgeOptions(root, ServiceName)
+			// stdio is reachable only by the process that spawned it.
+			loopback := s.transport() == TransportStdio || cli.IsLoopbackAddr(s.addr())
+			shared, _ := cli.ServeBridgeOptionsFor(root, ServiceName, loopback)
 			return shared
 		}),
 		transportsvc.WithValidate(s.validate),

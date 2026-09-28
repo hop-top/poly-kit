@@ -157,6 +157,9 @@ func (a *apiService) Validate() error {
 	if err := validateServeAudit(a.root, APIServiceName); err != nil {
 		return err
 	}
+	if _, _, err := serveRateLimit(a.root.Viper, APIServiceName, false); err != nil {
+		return err
+	}
 	return a.root.validateRootFactory()
 }
 
@@ -455,7 +458,7 @@ func (a *apiService) bridge() (*cmdsurface.Bridge, error) {
 	if a.root == nil || a.root.Cmd == nil {
 		return nil, nil
 	}
-	return projectionBridge(a.root, a.cfg)
+	return projectionBridge(a.root, a.cfg, isLoopbackAddr(a.listenAddr()))
 }
 
 // mountProjection mounts the versioned REST projection plus its

@@ -142,7 +142,14 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 			if err != nil {
 				return []cmdsurface.Option{cmdsurface.WithPermission(refuseAll(err))}
 			}
+			// A Unix socket is reachable only from this machine: the
+			// rate limit's loopback default applies.
+			limit, err := root.serveRateLimitOptions(SocketServiceName, true)
+			if err != nil {
+				return []cmdsurface.Option{cmdsurface.WithPermission(refuseAll(err))}
+			}
 			opts := append(root.serveRunnerOptions(), root.serveObservabilityOptions(SocketServiceName)...)
+			opts = append(opts, limit...)
 			return append(opts, shared...)
 		}),
 		transportsvc.WithValidate(func() error {
@@ -153,6 +160,9 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 				return err
 			}
 			if err := validateServeAudit(root, SocketServiceName); err != nil {
+				return err
+			}
+			if _, _, err := serveRateLimit(root.Viper, SocketServiceName, true); err != nil {
 				return err
 			}
 			// The bridge options func above cannot report an error, so
