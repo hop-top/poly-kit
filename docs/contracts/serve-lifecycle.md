@@ -1937,6 +1937,7 @@ connection the socket caller's identity, through
 | `auth.mode`                  | string | unset | `peer`: the peer's credentials are the credential |
 | `auth.peer.require_same_uid` | bool | `false` | refuse a peer whose uid is not the server process's |
 | `auth.peer.resolve_names`    | bool | `false` | the principal is the user name, not `uid:<n>` |
+| `auth.peer.scopes`           | list | unset | the scopes every admitted peer holds |
 
 - The principal is `uid:<n>`, the peer's effective uid as of connect
   (`SO_PEERCRED` on Linux, `LOCAL_PEERCRED` on macOS and FreeBSD), or
@@ -1946,6 +1947,14 @@ connection the socket caller's identity, through
 - `Extra` carries `peer_uid`, `peer_gid` and, where the platform
   reports it, `peer_pid`, on an admitted and a refused request alike.
   Audit redaction treats them as provenance.
+- An admitted peer's scopes are `auth.peer.scopes` when set, else
+  what `SocketConfig.PeerScopes` returns for its credentials, else
+  none. A set list replaces the function, never joins it, as a
+  configured list replaces a code value throughout `services.*`; an
+  empty list grants none. They reach the permission gate as
+  `Meta.Extra["scopes"]`, as a verified token's do, beside the peer
+  keys; a scope-less peer is refused a `kit/permissions` leaf as
+  insufficient scope.
 - A peer the kernel cannot describe, and under `require_same_uid` a
   peer of another uid, is refused `UNAUTHENTICATED` and audited as
   `ErrAuthRefused`.
@@ -1955,11 +1964,11 @@ connection the socket caller's identity, through
   platform without peer credentials, an HTTP credential mode (`mtls`,
   `jwt`, `jwks`, `oidc`, `apikey`) or an unknown mode under
   `services.socket`, an `auth.peer` key under another mode, a value
-  that is not a bool, and `peer` or an `auth.peer` key under any other
-  service. An HTTP credential mode under `services.all.auth.mode` is
-  the HTTP listeners' default and the socket does not read it;
-  `services.all.auth.mode: peer` is the socket's, and an HTTP listener
-  does not read it.
+  that is not a bool, `scopes` that is not a list of names, and `peer`
+  or an `auth.peer` key under any other service. An HTTP credential
+  mode under `services.all.auth.mode` is the HTTP listeners' default
+  and the socket does not read it; `services.all.auth.mode: peer` is
+  the socket's, and an HTTP listener does not read it.
 
 ### Timeouts
 

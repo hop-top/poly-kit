@@ -323,5 +323,5 @@ func TestAuthPeerBlockKeys(t *testing.T) {
 	err := New(v).Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(),
-		`services.all.auth.peer.allow_root: unknown key "allow_root"; auth.peer accepts require_same_uid, resolve_names`)
+		`services.all.auth.peer.allow_root: unknown key "allow_root"; auth.peer accepts require_same_uid, resolve_names, scopes`)
 }

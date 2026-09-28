@@ -209,3 +209,48 @@ func TestPeerAuthenticatorUnsupportedPlatform(t *testing.T) {
 	_, err := socket.NewPeerAuthenticator(socket.PeerAuthConfig{})
 	require.ErrorIs(t, err, socket.ErrPeerCredUnsupported)
 }
+
+// Scopes maps an admitted peer's credentials to its scopes: they
+// become the identity's, trimmed and deduplicated, and a peer the
+// function grants nothing holds none.
+func TestPeerAuthenticatorScopesFromTheCredentials(t *testing.T) {
+	t.Parallel()
+	requirePeerCreds(t)
+	uid := uint32(4040)
+	cfg := socket.PeerAuthConfig{Scopes: func(c socket.PeerCred) []string {
+		if c.UID == 4040 {
+			return []string{" items:admin", "items:read", "", "items:admin"}
+		}
+		return nil
+	}}
+	creds := func(net.Conn) (socket.PeerCred, error) { return socket.PeerCred{UID: uid, GID: 20}, nil }
+	auth, err := socket.NewPeerAuthenticatorWithCreds(cfg, creds)
+	require.NoError(t, err)
+
+	id, err := auth(context.Background(), nil, socket.Request{})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"items:admin", "items:read"}, id.Scopes)
+
+	uid = 4041
+	id, err = auth(context.Background(), nil, socket.Request{})
+	require.NoError(t, err)
+	assert.Empty(t, id.Scopes)
+}
+
+// A refused peer is not asked about, and holds no scopes.
+func TestPeerAuthenticatorScopesNotAskedForARefusedPeer(t *testing.T) {
+	t.Parallel()
+	requirePeerCreds(t)
+	asked := false
+	cfg := socket.PeerAuthConfig{RequireSameUID: true, Scopes: func(socket.PeerCred) []string {
+		asked = true
+		return []string{"items:admin"}
+	}}
+	auth, err := socket.NewPeerAuthenticatorWithCreds(cfg,
+		func(net.Conn) (socket.PeerCred, error) { return socket.PeerCred{UID: myUID() + 1}, nil })
+	require.NoError(t, err)
+	id, err := auth(context.Background(), nil, socket.Request{})
+	require.Error(t, err)
+	assert.Empty(t, id.Scopes)
+	assert.False(t, asked)
+}

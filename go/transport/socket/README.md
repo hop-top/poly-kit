@@ -15,6 +15,7 @@ over TCP is `go/transport/api`; a schema-typed RPC is
 - construct the transport by hand → `socket.New(path)`
 - verify each request before it runs → `Transport.Auth` (an `Authenticator`), `cli.SocketConfig.Auth`
 - name each caller by its kernel-reported uid → `NewPeerAuthenticator(PeerAuthConfig{...})`, or `services.socket.auth.mode: peer` on the built-in service
+- grant a peer scopes for `kit/permissions` commands → `PeerAuthConfig.Scopes`, `cli.SocketConfig.PeerScopes`, or `services.socket.auth.peer.scopes`
 - ask the kernel who is on a connection → `PeerCredentials(conn)`
 - observe refusals → `Transport.OnRefused`, which the built-in service routes into `Bridge.Audit`
 - read a response → `Request`, `Response`, `Error` wire types
@@ -38,7 +39,7 @@ constructing the service by hand.
 ## Contract
 
 - `path` must be non-empty. Without an `Authenticator`, `caller` and `tenant` are recorded, never verified, and grant nothing.
-- The peer authenticator's principal is `uid:<n>` (the user name with `ResolveNames`, falling back to `uid:<n>`); it records `peer_uid`, `peer_gid`, `peer_pid` in `Meta.Extra`, on refusals too. Linux (`SO_PEERCRED`), macOS and FreeBSD (`LOCAL_PEERCRED`); elsewhere `NewPeerAuthenticator` returns `ErrPeerCredUnsupported`.
+- The peer authenticator's principal is `uid:<n>` (the user name with `ResolveNames`, falling back to `uid:<n>`); it records `peer_uid`, `peer_gid`, `peer_pid` in `Meta.Extra`, on refusals too. A peer holds no scopes unless `Scopes` grants them. Linux (`SO_PEERCRED`), macOS and FreeBSD (`LOCAL_PEERCRED`); elsewhere `NewPeerAuthenticator` returns `ErrPeerCredUnsupported`.
 - `ok:true` with a non-zero `exit_code` means the command ran and failed; `ok:false` means it never ran.
 - A malformed line does not close the connection; the next request is served normally.
 - The resolved path is made absolute. Paths longer than **103 bytes** are refused at startup with exit `2` (the lower of the platform `sun_path` bounds, so a configuration is portable).

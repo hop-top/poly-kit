@@ -120,7 +120,9 @@ request before it is invoked. It receives the connection, so it may
 read peer credentials from the kernel, and the request, so it may
 verify something the caller sent. A non-nil error answers
 `UNAUTHENTICATED`; the returned `Identity` replaces the request's
-claimed `caller` and `tenant` in `Meta`.
+claimed `caller` and `tenant` in `Meta`, and its `Scopes` become
+`Meta.Extra["scopes"]`, which the permission gate checks against a
+command's `kit/permissions` as it checks a verified token's.
 
 A refusal never reaches the bridge, so the transport reports it
 through `Transport.OnRefused` with an error wrapping
@@ -147,7 +149,8 @@ client can forge the answer.
 |---|---|
 | `Meta.Caller` | `uid:<n>`, the peer's effective uid; its user name with `ResolveNames`, `uid:<n>` when the uid has no user entry |
 | `Meta.Tenant` | empty |
-| `Meta.Extra` | `peer_uid`, `peer_gid` (effective), `peer_pid` (absent on FreeBSD) |
+| `Meta.Extra` | `peer_uid`, `peer_gid` (effective), `peer_pid` (absent on FreeBSD); `scopes` when the peer holds any |
+| scopes | what `PeerAuthConfig.Scopes(cred)` returns for an admitted peer; none when it is nil |
 | refusal | `UNAUTHENTICATED`: `peer uid <n> is not the server's uid <m>` under `RequireSameUID`; `socket: peer credentials: ...` when the kernel cannot answer |
 
 `RequireSameUID` refuses every uid but the server process's. The
@@ -156,6 +159,28 @@ turns root away too. On any other platform `NewPeerAuthenticator`
 returns `ErrPeerCredUnsupported`, and the built-in service refuses
 `mode: peer` at exit `2`. `socket.PeerCredentials(conn)` is the
 kernel query on its own, for an authenticator you write.
+
+A peer holds no scopes by default, so a command declaring
+`kit/permissions` is refused over the socket as `DENIED`, led by
+`cmdsurface: insufficient scope`, until something grants them. On the
+built-in service, `services.socket.auth.peer.scopes` grants its list
+to every admitted peer; without it, `cli.SocketConfig.PeerScopes`
+maps each peer's credentials to its scopes:
+
+```go
+cli.WithSocket(cli.SocketConfig{
+    PeerScopes: func(c socket.PeerCred) []string {
+        if c.UID == 0 {
+            return []string{"widgets:admin"}
+        }
+        return []string{"widgets:read"}
+    },
+})
+```
+
+A configured list replaces `PeerScopes` rather than joining it, as a
+configured list replaces a code value everywhere under `services.*`;
+an empty list grants nothing.
 
 ## Cancellation
 
@@ -177,13 +202,16 @@ reading responses is not observed until the backlog drains.
 | `services.socket.auth.mode` | string | unset: no authenticator; `peer` installs the [peer authenticator](#peer-credentials) |
 | `services.socket.auth.peer.require_same_uid` | bool | `false` |
 | `services.socket.auth.peer.resolve_names` | bool | `false` |
+| `services.socket.auth.peer.scopes` | list of strings | unset: `SocketConfig.PeerScopes`, else no scopes |
 
 The `auth` keys may also be set under `services.all`. Refused at
 exit `2`, naming the key: `auth.mode: mtls` under `services.socket`
-(it needs a TLS listener; under `services.all` it is the HTTP
+(it needs an HTTP listener; under `services.all` it is the HTTP
 listeners' default and the socket does not read it), an unknown
 mode, an `auth.peer` key without `mode: peer`, a value that is not a
-bool, and `mode: peer` on a platform without peer credentials.
+bool, `scopes` that is not a list of names, `mode: peer` on a platform
+without peer credentials, and an `auth.peer` key under any service but
+the socket.
 
 Path precedence, highest first:
 

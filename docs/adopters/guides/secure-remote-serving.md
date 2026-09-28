@@ -1584,7 +1584,7 @@ observability](../reference/served-observability.md)).
 | `APIConfig.InsecureNoPolicy` | `false` | Beyond loopback with no `--policy`, serve with no policy instead of `kit-default`. `services.api.insecure_no_policy` / `--insecure-no-policy` set the same. |
 | `APIConfig.MaxBodyBytes` | `0` (1 MiB) | Request body cap on every api route; over it is `413 body_too_large`, audited as `cmdsurface.ErrBodyTooLarge`. Negative disables. `services.api.body_limit.max_bytes` / `.enabled`, then `services.all.body_limit.*`, override it. |
 | `SocketConfig.Auth` | none | Verifies each socket request; the verified identity, and its `Scopes`, replace the claimed one. |
-| `services.socket.auth.mode: peer` | unset | Names each socket caller by its kernel-reported uid, verified; replaces `SocketConfig.Auth`. `auth.peer.require_same_uid` refuses other uids, `auth.peer.resolve_names` uses the user name. Linux, macOS, FreeBSD. |
+| `services.socket.auth.mode: peer` | unset | Names each socket caller by its kernel-reported uid, verified; replaces `SocketConfig.Auth`. `auth.peer.require_same_uid` refuses other uids, `auth.peer.resolve_names` uses the user name. A peer holds no scopes until `auth.peer.scopes` or `SocketConfig.PeerScopes` grants them. Linux, macOS, FreeBSD. |
 | `kit/permissions` annotation | none | Scopes a verified caller must all hold; otherwise `403 insufficient_scope`. The owner (socket file, stdio, CLI) is not asked. |
 | `cli.WithPermission(fn)` | permit all | Permission decision on every kit-shipped transport service, after the scope check and `--policy`; can only narrow. |
 | `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. Records are always redacted. |

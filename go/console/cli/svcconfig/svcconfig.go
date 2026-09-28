@@ -96,7 +96,7 @@ var blocks = []Block{
 	{Name: "auth.oidc", Keys: []string{"issuer", "audience", "clock_skew", "refresh", "tenant_claim"}},
 	{Name: "auth.apikey", Keys: []string{"backend", "path"}},
 	{
-		Name: "auth.peer", Keys: []string{"require_same_uid", "resolve_names"},
+		Name: "auth.peer", Keys: []string{"require_same_uid", "resolve_names", "scopes"},
 		Services: []string{"socket"},
 	},
 	{Name: "tls", Keys: []string{"enabled", "cert_file", "key_file", "min_version"}},

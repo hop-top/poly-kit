@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -76,6 +77,17 @@ type SocketConfig struct {
 	// authenticator ([socket.NewPeerAuthenticator]) instead: the mode
 	// selects the verifier, and Auth is not consulted under it.
 	Auth socket.Authenticator
+
+	// PeerScopes, under services.socket.auth.mode: peer, maps an
+	// admitted peer's kernel-reported credentials to the scopes it
+	// holds, as a token's scopes reach the permission gate: a leaf
+	// declaring kit/permissions runs for a peer holding every scope
+	// it names. services.socket.auth.peer.scopes, or its services.all
+	// default, replaces it when set: the operator's list is every
+	// admitted peer's scopes, and PeerScopes is not consulted. With
+	// neither, a peer holds no scopes and such a leaf is refused as
+	// insufficient scope.
+	PeerScopes func(socket.PeerCred) []string
 }
 
 // WithSocket returns a Root option registering the built-in `socket`
@@ -322,7 +334,7 @@ func resolveSocketAuth(root *Root, cfg *SocketConfig) (socket.Authenticator, err
 			modeKey, mode, SocketServiceName, AuthModePeer)
 	}
 	if mode != AuthModePeer {
-		if k := res.anySet(authPeerBlock, "require_same_uid", "resolve_names"); k != "" {
+		if k := res.anySet(authPeerBlock, "require_same_uid", "resolve_names", "scopes"); k != "" {
 			return nil, fmt.Errorf("%s: set, but %s is not %q", k,
 				svcconfig.Key(SocketServiceName, authBlock, "mode"), AuthModePeer)
 		}
@@ -337,11 +349,44 @@ func resolveSocketAuth(root *Root, cfg *SocketConfig) (socket.Authenticator, err
 	if peer.ResolveNames, _, err = res.boolean(authPeerBlock, "resolve_names"); err != nil {
 		return nil, err
 	}
+	if peer.Scopes, err = resolvePeerScopes(res, cfg); err != nil {
+		return nil, err
+	}
 	auth, err := socket.NewPeerAuthenticator(peer)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", modeKey, err)
 	}
 	return auth, nil
+}
+
+// resolvePeerScopes is the peer authenticator's scope source:
+// auth.peer.scopes from services.socket, then services.all, granted to
+// every admitted peer; else SocketConfig.PeerScopes; else none. A set
+// list replaces the code function rather than joining it, as a
+// configured list replaces a code value everywhere in services.*: a
+// merged grant is one nobody wrote, and the operator keeps the last
+// word on what a peer may do.
+func resolvePeerScopes(res tlsResolver, cfg *SocketConfig) (func(socket.PeerCred) []string, error) {
+	raw, k, ok := res.cfg.Lookup(res.svc, authPeerBlock, "scopes")
+	if !ok {
+		if cfg == nil {
+			return nil, nil
+		}
+		return cfg.PeerScopes, nil
+	}
+	switch v := raw.(type) {
+	case string, []string:
+	case []any:
+		for _, e := range v {
+			if _, ok := e.(string); !ok {
+				return nil, fmt.Errorf("%s: must be a list of scope names", k)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("%s: must be a list of scope names", k)
+	}
+	scopes := res.list(authPeerBlock, "scopes")
+	return func(socket.PeerCred) []string { return slices.Clone(scopes) }, nil
 }
 
 // resolveSocketPath applies the configuration precedence: the --socket

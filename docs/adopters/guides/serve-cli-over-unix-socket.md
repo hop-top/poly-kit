@@ -553,12 +553,46 @@ What changes:
   the refusal reaches your audit sinks with its `peer_*` entries.
 - The mode picks the verifier: `SocketConfig.Auth` is not consulted
   while it is set.
+- A peer holds no scopes, so a command declaring `kit/permissions` is
+  answered `DENIED`, led by `cmdsurface: insufficient scope`, until
+  you grant them (below).
+
+To let peers run commands that declare `kit/permissions`, grant
+scopes. The operator's way gives every admitted peer the same list:
+
+```yaml
+services:
+  socket:
+    auth:
+      mode: peer
+      peer:
+        scopes: [widgets:read, widgets:admin]
+```
+
+Your code's way decides per peer, from the kernel's account of it:
+
+```go
+cli.WithSocket(cli.SocketConfig{
+    PeerScopes: func(c socket.PeerCred) []string {
+        if c.UID == 0 {
+            return []string{"widgets:read", "widgets:admin"}
+        }
+        return []string{"widgets:read"}
+    },
+})
+```
+
+When `auth.peer.scopes` is set, it replaces `PeerScopes` rather than
+adding to it: the operator's configuration has the last word, and an
+empty list grants nothing.
 
 Peer credentials come from `SO_PEERCRED` on Linux and
 `LOCAL_PEERCRED` on macOS and FreeBSD. On any other platform `serve`
 refuses the mode at exit `2` before the socket binds. So do
-`mode: mtls` (the socket has no TLS listener), an unknown mode, and an
-`auth.peer` key without `mode: peer`, each named in the message.
+`mode: mtls` (the socket has no TLS listener), an unknown mode, an
+`auth.peer` key without `mode: peer`, `scopes` that is not a list of
+names, and an `auth.peer` key under any other service, each named in
+the message.
 
 ## Option reference
 
@@ -569,6 +603,7 @@ refuses the mode at exit `2` before the socket binds. So do
 | `Hide` | `[]string` | none | patterns carved out of `Expose` |
 | `Policy` | `cmdsurface.Policy` | zero value | safety gate; zero behaves as `cmdsurface.DefaultPolicy()`; the socket invokes as `cmdsurface.SurfaceSocket` |
 | `Auth` | `socket.Authenticator` | none | verifies each request; its identity replaces the claimed `caller` and `tenant`; not consulted under `services.socket.auth.mode: peer` (step 12) |
+| `PeerScopes` | `func(socket.PeerCred) []string` | none | under `auth.mode: peer`, an admitted peer's scopes; `services.socket.auth.peer.scopes` replaces it when set (step 12) |
 
 Parallel execution is a root option rather than a field:
 `cli.WithRootFactory(newRoot)` (step 11). Without it, requests run one

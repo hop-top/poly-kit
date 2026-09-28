@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/user"
 	"runtime"
+	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -91,6 +93,13 @@ type PeerAuthConfig struct {
 	// than uid:<n>. A uid with no user entry keeps the uid:<n> form,
 	// which no user name can take, since a name never contains ':'.
 	ResolveNames bool
+	// Scopes returns the scopes an admitted peer holds, from its
+	// credentials. They become [Identity.Scopes], which reach the
+	// permission gate as a verified credential's scopes, so a leaf
+	// declaring kit/permissions runs for a peer holding every scope it
+	// names. It is not asked about a refused peer. Nil grants none:
+	// such a leaf is refused as insufficient scope.
+	Scopes func(PeerCred) []string
 }
 
 // NewPeerAuthenticator returns an [Authenticator] that identifies each
@@ -135,6 +144,23 @@ func newPeerAuthenticator(cfg PeerAuthConfig, creds func(net.Conn) (PeerCred, er
 				principal = u.Username
 			}
 		}
-		return Identity{Principal: principal, Extra: extra}, nil
+		var scopes []string
+		if cfg.Scopes != nil {
+			scopes = cleanScopes(cfg.Scopes(cred))
+		}
+		return Identity{Principal: principal, Scopes: scopes, Extra: extra}, nil
 	}, nil
+}
+
+// cleanScopes returns scopes trimmed, without empty entries and
+// duplicates, in first-seen order, in a slice of its own.
+func cleanScopes(scopes []string) []string {
+	var out []string
+	for _, s := range scopes {
+		s = strings.TrimSpace(s)
+		if s != "" && !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
