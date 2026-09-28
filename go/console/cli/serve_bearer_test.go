@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/core/identity"
+	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 )
 
@@ -386,4 +387,40 @@ func TestAPIProtectedResourceMetadata(t *testing.T) {
 	assert.Equal(t, "Bearer", resp.Header.Get("WWW-Authenticate"))
 	resp, _ = get(t, base2+"/.well-known/oauth-protected-resource", nil)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, "no document without a URL audience")
+}
+
+// A bearer token's space-delimited scope claim is what the built-in
+// scope check reads: a kit/permissions leaf runs for a token holding
+// its scope and is refused insufficient_scope for one that does not.
+func TestAPIBearerScopeClaimMeetsTheScopeCheck(t *testing.T) {
+	srv, priv := jwksServer(t)
+	r := bearerRoot(t, map[string]any{
+		"services.api.auth.mode":          "jwks",
+		"services.api.auth.jwks.url":      srv.URL + "/jwks.json",
+		"services.api.auth.jwks.audience": "kit-api",
+		"services.api.auth.jwks.issuer":   srv.URL,
+	}, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
+	r.Cmd.AddCommand(&cobra.Command{
+		Use:   "export",
+		Short: "export items",
+		RunE:  func(cmd *cobra.Command, _ []string) error { cmd.Print("exported"); return nil },
+		Annotations: map[string]string{
+			"kit/side-effect": "read",
+			"kit/permissions": "items:export",
+		},
+	})
+	base, stop := serveAPI(t, r)
+	defer stop()
+	token := func(scope string) map[string]string {
+		return bearerHdr(rsaToken(t, priv, map[string]any{
+			"sub": "svc-a", "aud": "kit-api", "iss": srv.URL, "scope": scope,
+			"exp": time.Now().Add(time.Hour).Unix(),
+		}))
+	}
+
+	resp, body := get(t, base+"/v1/commands/export", token("items:read items:export"))
+	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	resp, body = get(t, base+"/v1/commands/export", token("items:read"))
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
+	assert.Contains(t, string(body), api.CodeInsufficientScope)
 }
