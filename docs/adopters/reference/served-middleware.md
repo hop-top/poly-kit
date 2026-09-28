@@ -77,7 +77,7 @@ service, the mcp service over HTTP), outermost first:
 | 6 | security headers | `security_headers` | — |
 | 7 | `/healthz`, `/readyz` | `health` | — (answers, ends the request) |
 | 8 | Host and Origin checks, then the scrape endpoint | `host_check`, `origin_check`, `metrics.scrape` | `host_rejected`, `origin_rejected` |
-| 9 | CORS | — ([not configurable yet](#not-configurable-yet)) | — |
+| 9 | CORS | `cors` | — (a preflight is answered and ends the request) |
 | 10 | body limit | `body_limit` | `body_too_large` |
 | 11 | compression | `compression` | — |
 | 12 | authentication | `auth` | `unauthenticated` |
@@ -122,7 +122,7 @@ over stdio, and a service of yours built with `cli.ServeBridgeOptions`.
 | `timeouts` `read_header`, `read`, `write`, `idle` | HTTP | socket |
 | `timeouts` `command` | bridge | — |
 | `tracing`, `metrics` | HTTP requests; bridge invocations | — |
-| `metrics.scrape`, `security_headers`, `health`, `host_check`, `origin_check`, `body_limit`, `compression`, `trusted_proxies` | HTTP | socket |
+| `metrics.scrape`, `security_headers`, `health`, `host_check`, `origin_check`, `cors`, `body_limit`, `compression`, `trusted_proxies` | HTTP | socket |
 | `rate_limit`, `idempotency`, `quota`, `concurrency`, `audit`, `audit.redact` | bridge | — |
 | `cache` | api | every other service |
 
@@ -220,7 +220,7 @@ of the [gate order](../../contracts/serve-lifecycle.md#gate-order-on-the-invocat
 | `host_check.enabled` | `true` | refuse a `Host` the listener does not answer for |
 | `host_check.allow` | `[]` | extra hosts, `name` or `name:port`; a wildcard bind checks only these |
 | `origin_check.enabled` | `true` | refuse cross-origin browser writes |
-| `origin_check.allow` | `[]` | origins allowed to write, `scheme://host[:port]` |
+| `origin_check.allow` | `[]` | origins allowed to write, `scheme://host[:port]`; `cors.allow_origins` adds its named origins |
 | `security_headers.enabled` | `true` | `nosniff`, `no-referrer`, a deny-all CSP; HSTS over TLS |
 | `trusted_proxies` | `[]` | CIDRs and addresses whose forwarding headers are believed; a list, not a block |
 | `health.enabled` | `true` | serve `/healthz` and `/readyz` |
@@ -231,6 +231,26 @@ of the [gate order](../../contracts/serve-lifecycle.md#gate-order-on-the-invocat
 
 Rules: [Client address](../../contracts/serve-lifecycle.md#client-address),
 [Readiness over HTTP](../../contracts/serve-lifecycle.md#readiness-over-http).
+
+### CORS
+
+| Key | Default | Meaning |
+|---|---|---|
+| `cors.enabled` | on when `allow_origins` lists an origin | answer CORS at slot 9 |
+| `cors.allow_origins` | `[]` | origins whose pages may call and read, `scheme://host[:port]`; `"*"` alone for every origin |
+| `cors.allow_methods` | the listener's | methods a preflight admits |
+| `cors.allow_headers` | the listener's | request headers a preflight admits; `"*"` for any |
+| `cors.expose_headers` | the listener's | response headers a page may read |
+| `cors.allow_credentials` | `false` | let a page send cookies or a client certificate; refused with `"*"` |
+| `cors.max_age` | none | how long a browser caches a preflight, e.g. `10m` |
+
+An origin you list by name may also write: the Origin check (slot 8)
+admits it. `"*"` grants reading only; every other origin's writes are
+still refused `origin_rejected`. Each listener's defaults cover its
+protocol's browser clients (the MCP session id, the Connect and
+gRPC-Web headers); a list you set replaces them. Defaults, refusals
+and the reasoning:
+[CORS](../../contracts/serve-lifecycle.md#cors).
 
 ### Replay, cache and audit
 
@@ -272,13 +292,6 @@ Redaction of declared secret flags cannot be switched off. Rules:
 Nothing exports until the tool links a provider
 (`cli.WithObservability`) and a key enables it. Names of spans and
 instruments: [served-observability.md](served-observability.md).
-
-### Not configurable yet
-
-- **CORS (HTTP slot 9).** No kit-shipped listener answers CORS, and
-  no block configures it. A browser app on another origin reaches the
-  service through a proxy that answers CORS, or through your own
-  router built with `api.CORS`.
 
 ## Refusals by surface
 

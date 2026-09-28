@@ -211,17 +211,24 @@ const res = await client.invoke({ path: ["item", "list"] });
 console.log(res.dataJson);
 ```
 
-The service does not answer CORS yet, so a browser only reaches it
-from the same origin. For a page on another origin, put a proxy in
-front that answers the preflight (`OPTIONS`) and adds the CORS headers:
-allow your page's origin, `GET` and `POST`, and the request headers
-Connect and gRPC-Web clients send (`Content-Type`,
-`Connect-Protocol-Version`, `Connect-Timeout-Ms`, `Grpc-Timeout`,
-`X-Grpc-Web`, `X-User-Agent`, plus `Authorization` and
-`X-Confirm-Token` if you use them), and expose `Grpc-Status`,
-`Grpc-Message` and `Grpc-Status-Details-Bin` so the client can read
-errors. [connectrpc.com/cors](https://pkg.go.dev/connectrpc.com/cors)
-lists the same values if your proxy is written in Go.
+A page on the listener's own origin needs nothing more. For a page on
+another origin, grant its origin:
+
+```yaml
+services:
+  rpc:
+    cors:
+      allow_origins: ["https://console.example.com"]
+```
+
+The service then answers the browser's preflight, admits the page's
+calls past the Origin check, and lets it read the status headers.
+The defaults already allow `GET` and `POST` and the headers Connect
+and gRPC-Web clients send and read (the list
+[connectrpc.com/cors](https://pkg.go.dev/connectrpc.com/cors)
+publishes), plus `Authorization`, `Idempotency-Key` and
+`X-Confirm-Token`; see
+[served-middleware.md](../reference/served-middleware.md#cors).
 `createConnectTransport` works against the same port if you prefer the
 Connect protocol.
 
@@ -466,8 +473,6 @@ A refusal is an RPC error, and the command never ran:
   until `services.rpc.tls` names a certificate; client certificates
   authenticate with `services.rpc.auth.mode: mtls`. See
   [secure-remote-serving.md](secure-remote-serving.md#10-encrypt-the-connection-at-a-proxy-or-on-the-listener).
-- **CORS, yet.** A browser client on another origin needs a proxy
-  that answers CORS; see [step 5](#5-call-it-from-a-browser-over-grpc-web).
 - **A procedure per command.** Commands are addressed by path inside
   one service, so the schema never changes when your tree does.
 - **Interactive and self-hosting commands.** They need a terminal or

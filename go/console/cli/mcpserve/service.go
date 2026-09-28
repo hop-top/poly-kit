@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -424,7 +425,22 @@ func (s *service) httpListener() cli.ServeHTTPListener {
 		Addr:    s.addr(),
 		Ready:   s.Ready,
 		Refuse:  mcpsdk.RefuseJSONRPC,
+		CORS:    mcpCORS,
 	}
+}
+
+// mcpCORS is what a browser client of the streamable HTTP transport
+// needs from the cors block: POST for messages, GET for the event
+// stream, DELETE to end a session; the session, protocol-version and
+// routing headers it sends; and the session id it must read to send
+// the next request. A tool whose input schema binds a parameter to a
+// header (x-mcp-header) adds its Mcp-Param-* header to allow_headers.
+var mcpCORS = cli.ServeCORS{
+	Methods: []string{http.MethodGet, http.MethodPost, http.MethodDelete},
+	AllowHeaders: []string{
+		"Mcp-Session-Id", "Mcp-Protocol-Version", "Mcp-Method", "Mcp-Name", "Last-Event-ID",
+	},
+	ExposeHeaders: []string{"Mcp-Session-Id", "Mcp-Protocol-Version"},
 }
 
 // serving is one transport's half of a run: acquire, serve a surface,

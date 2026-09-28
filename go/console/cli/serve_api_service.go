@@ -127,7 +127,7 @@ func (a *apiService) Validate() error {
 		return err
 	}
 	// The HTTP-plane blocks: health, metrics.scrape, host_check,
-	// origin_check, security_headers, body_limit, compression.
+	// origin_check, cors, security_headers, body_limit, compression.
 	if err := a.plane().validate(); err != nil {
 		return err
 	}
@@ -390,7 +390,7 @@ func (a *apiService) buildHandler(ctx context.Context) (_ http.Handler, err erro
 	a.mu.Unlock()
 
 	// The HTTP-plane chain every kit listener shares (serve_http_plane.go).
-	// Slots 10-12 (body limit, compression, auth) go in guards, which
+	// Slots 9-12 (CORS, body limit, compression, auth) go in guards, which
 	// wrap the router as a whole: huma's operations and documents,
 	// /capabilities and unmatched paths are registered on its mux
 	// directly, so per-route middleware would miss them. Slots 1-8
@@ -398,7 +398,10 @@ func (a *apiService) buildHandler(ctx context.Context) (_ http.Handler, err erro
 	plane := a.plane()
 	plane.l.Checks = a.dependencyChecks(ctx)
 	plane.l.OnBodyTooLarge = cmdsurface.ProjectionBodyTooLarge(bridge)
-	guards := plane.guards()
+	guards, err := plane.guards()
+	if err != nil {
+		return nil, err
+	}
 	if a.authenticates() {
 		// Auth, HTTP slot 12: every route, the documents included.
 		// Under a bearer mode that describes an OAuth protected
@@ -457,6 +460,7 @@ func (a *apiService) plane() httpPlane {
 		Addr:         a.listenAddr(),
 		Ready:        a.Ready,
 		MaxBodyBytes: a.cfg.MaxBodyBytes,
+		CORS:         apiServeCORS,
 	}}
 }
 

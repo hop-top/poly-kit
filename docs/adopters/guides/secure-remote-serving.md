@@ -1218,10 +1218,28 @@ services:
       allow: [api.example.com]   # api answers to this, not tool.internal
 ```
 
-To turn a check off, set its block's `enabled: false`. Kit's own
-listeners answer no CORS preflight; on a router you assemble yourself,
-an origin you grant through `api.CORS` is only readable by that page,
-and to let it write, list it in `origin_check.allow` too.
+To turn a check off, set its block's `enabled: false`.
+
+For a browser app on another origin to call the service, grant its
+origin in the `cors` block. Kit answers its preflight, lets the page
+read the responses, and admits its writes past the Origin check:
+
+```yaml
+services:
+  api:
+    cors:
+      allow_origins: ["https://console.example.com"]
+```
+
+List each origin by name. `"*"` lets every page read, never write, and
+is refused beside `allow_credentials: true`, as is an origin with a
+path or a pattern such as `https://*.example.com` — exit `2`. Each
+listener's defaults already cover what its protocol's browser clients
+send and read, the MCP session id and the Connect and gRPC-Web headers
+included; the keys and defaults are in
+[served-middleware.md](../reference/served-middleware.md#cors). On a
+router you assemble yourself, `api.CORS` grants reading only; list the
+origin in `origin_check.allow` too to let it write.
 
 ### 9. Trace and measure served commands
 
@@ -1661,7 +1679,7 @@ observability](../reference/served-observability.md)).
 
 What you set in code, and the opt-ins. Every `services.<svc>` block —
 `auth`, `tls`, `rate_limit`, `quota`, `concurrency`, `timeouts`,
-`body_limit`, `host_check`, `origin_check`, `security_headers`,
+`body_limit`, `host_check`, `origin_check`, `cors`, `security_headers`,
 `trusted_proxies`, `health`, `audit`, `tracing`, `metrics` — is in
 [served-middleware.md](../reference/served-middleware.md), with its
 keys, defaults and refusals.
@@ -1700,9 +1718,6 @@ Middleware keys have no flags: the service's key, then
 - **OCSP.** Under `auth.mode: mtls` kit checks client certificates
   against the revocation lists you name (`auth.mtls.crl_file`) and
   queries no OCSP responder.
-- **CORS on kit's listeners.** A browser app on another origin reaches
-  a kit service through a proxy that answers CORS; see
-  [served-middleware.md](../reference/served-middleware.md#not-configurable-yet).
 - **Limits shared across replicas.** Rate-limit buckets and
   concurrency slots live in memory, per process. Idempotency records
   are shared when replicas share a store

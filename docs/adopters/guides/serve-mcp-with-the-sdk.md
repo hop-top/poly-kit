@@ -300,7 +300,13 @@ served:
   `services.api.origin_check` (see
   [secure-remote-serving.md](secure-remote-serving.md#8-keep-browsers-out-host-origin-response-headers)).
   Add nothing here; a second check would refuse origins the service's
-  configuration permits.
+  configuration permits. A page on another origin is granted in
+  `services.api.cors`, whose header defaults are the REST
+  projection's. A list you set replaces its default, so list the
+  headers the page needs in full: `allow_headers` with
+  `Content-Type`, `Authorization`, `Mcp-Session-Id`,
+  `Mcp-Protocol-Version` and `Last-Event-ID`, and `expose_headers`
+  with `Mcp-Session-Id`.
 - **Served on a listener of your own** (`Handler`, or `Mount` on a
   router you serve yourself): give `WithOriginAllowlist`, the option
   `cmdsurface.MountMCP` spells `WithMCPOriginAllowlist`:

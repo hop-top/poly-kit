@@ -113,6 +113,13 @@ var blocks = []Block{
 	{Name: "health", Keys: []string{"enabled", "path_prefix", "detail"}},
 	{Name: "host_check", Keys: []string{"enabled", "allow"}},
 	{Name: "origin_check", Keys: []string{"enabled", "allow"}},
+	{
+		Name: "cors",
+		Keys: []string{
+			"enabled", "allow_origins", "allow_methods", "allow_headers",
+			"expose_headers", "allow_credentials", "max_age",
+		},
+	},
 	{Name: "body_limit", Keys: []string{"enabled", "max_bytes"}},
 	{Name: "compression", Keys: []string{"enabled", "min_bytes"}},
 	{
@@ -152,7 +159,7 @@ var blocks = []Block{
 // a Block.Services entry.
 var httpOnly = []string{
 	"metrics.scrape", "security_headers", "health", "host_check",
-	"origin_check", "body_limit", "compression", "trusted_proxies",
+	"origin_check", "cors", "body_limit", "compression", "trusted_proxies",
 	"tls", "tls.acme", "auth.mtls", "auth.jwt", "auth.jwks", "auth.oidc", "auth.apikey",
 }
 

@@ -42,6 +42,9 @@ type ServeHTTPListener struct {
 	// Origin, body limit — in the listener's protocol. Nil writes an
 	// [api.APIError].
 	Refuse api.RefusalWriter
+	// CORS is what the listener's protocol needs from the cors block
+	// (slot 9): the defaults of its method and header lists.
+	CORS ServeCORS
 }
 
 // ServeHTTPSettings is the resolved configuration of the HTTP-plane
@@ -96,13 +99,18 @@ func ResolveServeHTTPListener(r *Root, l ServeHTTPListener) (ServeHTTPSettings, 
 // HTTP-plane chain kit owns, outermost first: request id, client
 // address, access log, recovery, tracing and metrics (slots 1-5),
 // security headers (6), the health probes (7), the Host and Origin
-// checks with the metrics endpoint at their inner end (8), the body
-// limit (10) and compression (11). Slots 8-11 wrap inner as a whole,
-// whatever path a request addresses. Authentication (12) is the listener's own: put it in
-// inner, in front of its router, so it runs after the body limit.
+// checks with the metrics endpoint at their inner end (8), CORS (9),
+// the body limit (10) and compression (11). Slots 8-11 wrap inner as
+// a whole, whatever path a request addresses. Authentication (12) is
+// the listener's own: put it in inner, in front of its router, so it
+// runs after the body limit.
 func ServeHTTPHandler(r *Root, l ServeHTTPListener, inner http.Handler) (http.Handler, error) {
 	p := httpPlane{root: r, l: l}
-	return p.wrap(api.Chain(p.guards()...)(inner), l.Routes)
+	guards, err := p.guards()
+	if err != nil {
+		return nil, err
+	}
+	return p.wrap(api.Chain(guards...)(inner), l.Routes)
 }
 
 // httpPlane is the HTTP-plane chain of one listener: the listener,
@@ -140,6 +148,9 @@ func (p httpPlane) validate() error {
 	if err := p.validateMetricsScrape(); err != nil {
 		return err
 	}
+	if err := p.validateCORS(); err != nil {
+		return err
+	}
 	if err := p.validateGuards(); err != nil { // host_check, origin_check, security_headers
 		return err
 	}
@@ -169,11 +180,16 @@ func (p httpPlane) edge() ([]api.Middleware, error) {
 	}, nil
 }
 
-// guards is HTTP-plane slots 10 and 11, the body limit and
+// guards is HTTP-plane slots 9 to 11, CORS, the body limit and
 // compression, which wrap the router as a whole. Authentication (12)
 // is the listener's to append.
-func (p httpPlane) guards() []api.Middleware {
-	return append([]api.Middleware{p.bodyLimit()}, p.compressionMiddleware()...)
+func (p httpPlane) guards() ([]api.Middleware, error) {
+	cors, err := p.corsMiddleware()
+	if err != nil {
+		return nil, err
+	}
+	guards := append(cors, p.bodyLimit())
+	return append(guards, p.compressionMiddleware()...), nil
 }
 
 // wrap puts slots 1-8 around routed, the router its guards already

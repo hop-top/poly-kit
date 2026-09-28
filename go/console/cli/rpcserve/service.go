@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	connectcors "connectrpc.com/cors"
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/ai/cmdreflect"
@@ -320,7 +321,17 @@ func (s *rpcService) httpListener() cli.ServeHTTPListener {
 		Ready:        s.Ready,
 		MaxBodyBytes: s.codeMaxBodyBytes(),
 		Refuse:       refuseRPC,
+		CORS:         rpcCORS,
 	}
+}
+
+// rpcCORS is what a browser client of Connect or gRPC-Web needs from
+// the cors block: the methods, request headers and response headers
+// the Connect project lists for its protocols.
+var rpcCORS = cli.ServeCORS{
+	Methods:       connectcors.AllowedMethods(),
+	AllowHeaders:  connectcors.AllowedHeaders(),
+	ExposeHeaders: connectcors.ExposedHeaders(),
 }
 
 // refuseRPC writes an HTTP-plane refusal as a Connect error in the

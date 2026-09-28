@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"net/http"
+	"slices"
 
 	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/transport/api"
@@ -79,8 +80,9 @@ func (a *apiService) hostOriginChecks(h http.Handler) (http.Handler, error) {
 // probe addressing a pod by IP is answered before them, and outside
 // the metrics endpoint, CORS, limits and authentication, so a
 // rebinding or cross-origin request is refused before anything else
-// reads it. Host runs first,
-// so "same origin" means a host this server answers for.
+// reads it. Host runs first, so "same origin" means a host this server
+// answers for. The Origin check admits, beside origin_check.allow, the
+// origins the cors block grants by name.
 //
 // The allowed hosts are the listener's own — [api.ListenerHosts] of
 // the configured address — plus host_check.allow. A wildcard bind
@@ -97,7 +99,11 @@ func (p httpPlane) hostOriginChecks(h http.Handler) (http.Handler, error) {
 		}
 	}
 	if g.originCheck {
-		origin, err := api.OriginCheck(api.OriginCheckConfig{Allow: g.allowOrigins, Refuse: p.l.Refuse})
+		// An origin the cors block grants by name may write too: a
+		// grant to read a service whose calls are POSTs would grant
+		// nothing. Every other origin stays refused.
+		allow := append(slices.Clone(g.allowOrigins), p.corsOrigins()...)
+		origin, err := api.OriginCheck(api.OriginCheckConfig{Allow: allow, Refuse: p.l.Refuse})
 		if err != nil {
 			return nil, fmt.Errorf("%s%s.%s.allow: %w", serveKeyPrefix, p.l.Service, blockOriginCheck, err)
 		}

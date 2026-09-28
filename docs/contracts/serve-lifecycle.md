@@ -1261,8 +1261,9 @@ refuses does not run, answers with their error, and is audited with
 it. The request they see is the body as sent; identity is read from
 the verified claims, never from `meta`.
 
-The service installs no CORS handling: a browser client on another
-origin reaches it only through a proxy that answers CORS.
+A browser client on another origin reaches it through the `cors`
+block, whose rpc defaults grant what Connect and gRPC-Web need (see
+[CORS](#cors)).
 
 ## Middleware
 
@@ -1538,8 +1539,9 @@ Why this order:
   exactly its path wins, as for the probes.
 - The Host and Origin checks run before CORS and authentication: a
   rebinding or cross-origin request is refused before anything else
-  reads it. CORS answers preflights before authentication, because a
-  preflight carries no credentials.
+  reads it; an origin CORS names is admitted there (see
+  [CORS](#cors)). CORS answers preflights before authentication,
+  because a preflight carries no credentials.
 - The body limit precedes authentication because it costs nothing
   and reveals nothing; authentication reads headers, never the body.
 
@@ -1637,7 +1639,7 @@ socket service and stdio take the loopback column.
 | `health`           | http 7                                 | HTTP listeners                         | on                                  | on                                             | — |
 | `host_check`       | http 8                                 | HTTP listeners                         | on, allowlist from the bound host   | on; a wildcard bind derives no restriction     | `host_rejected` |
 | `origin_check`     | http 8                                 | HTTP listeners                         | on, same-origin                     | on, same-origin                                | `origin_rejected` |
-| `cors`             | http 9                                 | HTTP listeners                         | off                                 | off                                            | — |
+| `cors`             | http 9                                 | HTTP listeners                         | off; on when an origin is listed    | off; on when an origin is listed               | — |
 | `body_limit`       | http 10                                | HTTP listeners                         | on, 1 MiB; rpc 4 MiB                | on, 1 MiB; rpc 4 MiB                           | `body_too_large` |
 | `compression`      | http 11                                | HTTP listeners; never `text/event-stream`; per message on the RPC server | off                   | off                                            | — |
 | `rate_limit`       | invocation 7                           | every remote surface                   | off                                 | on, per-tier limits documented with the block  | `rate_limited` |
@@ -1651,7 +1653,7 @@ socket service and stdio take the loopback column.
 transport and the rpc server; each applies every block in its row
 under its own `services.<svc>`. A block whose reach is HTTP listeners
 alone — `security_headers`, `health`, `host_check`, `origin_check`,
-`body_limit`, `compression`, `trusted_proxies`, `metrics.scrape`,
+`cors`, `body_limit`, `compression`, `trusted_proxies`, `metrics.scrape`,
 `tls`, `tls.acme`, `auth.mtls`, `auth.jwt`, `auth.jwks`,
 `auth.oidc` and `auth.apikey` — set for a kit-shipped service with no HTTP listener
 (the socket service) would act on nothing, so it is refused at validation, exit `2`, rather than ignored. Under
@@ -1681,7 +1683,7 @@ reads no HTTP-listener key.
 | `timeouts` `read_header`, `read`, `write`, `idle` | api, mcp over HTTP, rpc              | socket                   |
 | `timeouts` `command`                    | bridge services                                | —                        |
 | `tracing`, `metrics`                    | HTTP half: api, mcp over HTTP, rpc; invocation half: bridge services | —  |
-| `metrics.scrape`, `security_headers`, `health`, `host_check`, `origin_check`, `body_limit`, `compression`, `trusted_proxies` | api, mcp over HTTP, rpc | socket |
+| `metrics.scrape`, `security_headers`, `health`, `host_check`, `origin_check`, `cors`, `body_limit`, `compression`, `trusted_proxies` | api, mcp over HTTP, rpc | socket |
 | `rate_limit`                            | bridge services                                | —                        |
 | `idempotency`                           | bridge services                                | —                        |
 | `cache`                                 | api                                            | every other service      |
@@ -1765,6 +1767,115 @@ at validation, exit `2`, naming the key. Empty trusts no proxy.
 - The Host check still reads `Host`: kit does not honor
   `X-Forwarded-Host`. A proxy that rewrites `Host` has its upstream
   name listed in `host_check.allow`.
+
+### CORS
+
+Slot 9 answers the CORS protocol of the Fetch standard for the origins
+the operator grants, so a browser app on another origin calls a kit
+listener without a proxy in front. It is off until an origin is
+listed:
+
+```yaml
+services:
+  api:
+    cors:
+      allow_origins: ["https://console.example.com"]
+      max_age: 10m
+```
+
+| Key                      | Type     | Default                                  | Meaning |
+|--------------------------|----------|------------------------------------------|---------|
+| `cors.enabled`           | bool     | on when `allow_origins` lists an origin  | answer CORS at slot 9 |
+| `cors.allow_origins`     | list     | —                                        | origins granted, each `scheme://host[:port]`; `"*"` alone grants every origin |
+| `cors.allow_methods`     | list     | the listener's (below)                   | methods a preflight admits |
+| `cors.allow_headers`     | list     | the listener's                           | request headers a preflight admits, without case; `"*"` admits any |
+| `cors.expose_headers`    | list     | the listener's                           | response headers beyond the CORS-safelisted ones a granted page may read |
+| `cors.allow_credentials` | bool     | `false`                                  | a granted page may send cookies, HTTP authentication or a client certificate |
+| `cors.max_age`           | duration | none sent                                | how long a browser caches a preflight answer, in whole seconds |
+
+- Each of these is refused at validation, exit `2`, naming the key:
+  `enabled: true` with no origin; an `allow_origins` entry that is not
+  a bare origin — a path, query, fragment or user, a pattern such as
+  `https://*.example.com`, or `null`; `"*"` beside other origins;
+  `allow_credentials` with `"*"`, which the Fetch standard forbids;
+  `expose_headers: ["*"]` with credentials, which exposes nothing; a
+  method or header that is not an HTTP token; a negative or
+  sub-second `max_age`; an unknown key. Under the socket service the
+  block is refused, as every block acting on an HTTP listener alone
+  is.
+- An origin is compared as a browser sends it: scheme and host
+  lowercased, the scheme's default port dropped.
+  `HTTPS://Console.Example.com:443` grants
+  `https://console.example.com`.
+- A preflight — `OPTIONS` with `Access-Control-Request-Method` — is
+  answered at slot 9 with `204` and goes no further. It carries no
+  credentials, so it never reaches authentication. From a granted
+  origin, for an admitted method and admitted headers, the answer
+  carries the grant; otherwise it carries no `Access-Control-*`
+  header, and the browser refuses the call. An `OPTIONS` without that
+  header is not a preflight and continues down the chain.
+- Any other request continues down the chain. From a granted origin
+  its response, a refusal included, carries
+  `Access-Control-Allow-Origin`, the exposed headers and, when
+  allowed, `Access-Control-Allow-Credentials`. The grant is the
+  request's origin, never `*`, unless `allow_origins` is `"*"`.
+- Every response slot 9 handles carries `Vary: Origin`; a preflight's
+  also names `Access-Control-Request-Method` and
+  `Access-Control-Request-Headers`. A shared cache never serves one
+  origin's grant to another.
+- Lists follow the block rules: the service's list replaces the
+  `services.all` list, and a list that is set replaces the listener's
+  default. A string is one entry or several, comma or space
+  separated.
+- The Host and Origin checks at slot 8 run first, and the scrape
+  endpoint answers ahead of slot 9 without CORS.
+- The OAuth protected-resource metadata document (see
+  [Bearer tokens](#bearer-tokens)) keeps its own answer, open to
+  every origin, whatever the block grants: a client reads it before
+  any grant could name the client's origin.
+
+**The Origin check admits what CORS names.** CORS decides what a page
+may read; the Origin check at slot 8 decides whether a cross-origin
+write runs. An origin listed by name in `cors.allow_origins`, with the
+block on, is admitted by the Origin check as if it were in
+`origin_check.allow`. Every other cross-origin write is still refused
+`origin_rejected`, and `"*"` admits none. Why:
+
+- On a kit listener nearly every call is a write to the Origin check:
+  a projected command, an MCP message and a Connect or gRPC-Web call
+  are all `POST`s. A grant to read whose calls were all refused would
+  grant nothing, and every operator would list each origin twice.
+- Naming an origin is the operator's statement that the page may call
+  the service. Its calls still pass the preflight and authentication.
+- `"*"` is the Fetch standard's grant to any page, for requests
+  without credentials. The Origin check guards against requests that
+  carry a credential the page never sees — a client certificate under
+  `auth.mode: mtls`, a cookie a proxy in front checks — and a browser
+  sends a simple cross-origin `POST` without asking first. The server
+  cannot tell whether a write carries such a credential, so a
+  wildcard read grant never widens the check. Letting every origin
+  write is `origin_check.allow: ["*"]` or `origin_check.enabled:
+  false`, said where a reviewer looks for it.
+- `cors.enabled: false` withdraws the admission with the grant.
+
+Each listener's defaults are what its protocol's browser clients
+need. Every listener allows `Authorization`, `Content-Type`,
+`Traceparent`, `Tracestate`, `X-Trace-ID`, `X-Request-ID`,
+`Idempotency-Key` and `X-Confirm-Token`, and exposes `X-Request-ID`,
+`Idempotent-Replayed`, `Retry-After` and `WWW-Authenticate`; beyond
+those:
+
+| Listener      | `allow_methods`                     | `allow_headers`                                                                     | `expose_headers` |
+|---------------|-------------------------------------|-------------------------------------------------------------------------------------|------------------|
+| api           | GET, HEAD, POST, PUT, PATCH, DELETE | `If-None-Match`                                                                     | `ETag`, `Location` |
+| mcp over HTTP | GET, POST, DELETE                   | `Mcp-Session-Id`, `Mcp-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Last-Event-ID` | `Mcp-Session-Id`, `Mcp-Protocol-Version` |
+| rpc           | GET, POST                           | `Connect-Protocol-Version`, `Connect-Timeout-Ms`, `Grpc-Timeout`, `X-Grpc-Web`, `X-User-Agent` | `Grpc-Status`, `Grpc-Message`, `Grpc-Status-Details-Bin` |
+
+A deployment adds, to the listener's list, the headers only it knows:
+an MCP tool whose input schema binds a parameter to a header
+(`x-mcp-header`) sends `Mcp-Param-<Name>`; a Connect unary response
+carries its trailers as `Trailer-<Name>` headers; and an adopter
+route's own headers.
 
 ### TLS and client certificates
 
