@@ -1206,8 +1206,10 @@ func (r *Root) collectShippedValidation(ve *ValidationError) {
 		if !cmd.Runnable() {
 			return
 		}
+		// An empty value declares nothing: missing, as discovery,
+		// coverage and --dry-run read it, not invalid.
 		s, ok := GetSideEffect(cmd)
-		if !ok {
+		if !ok || s == "" {
 			ve.Missing = append(ve.Missing, cmd.CommandPath())
 		} else if !validSideEffects[s] {
 			ve.Invalid = append(ve.Invalid,

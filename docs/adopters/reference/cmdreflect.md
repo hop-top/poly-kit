@@ -153,8 +153,8 @@ consumer can tell which is which.
 |-------------------|------|--------|------------------|------------------------|-----------------|-----------------|
 | a six-tier value (`read`, `write-local`, `write-shared`, `destructive-local`, `destructive-shared`, `interactive`) | as written | `declared` | `read` is `GET`, writes `POST`, destructive withheld unless policy permits it, `interactive` never | as written | passes | annotated |
 | legacy `write` / `destructive` | `write-shared` / `destructive-shared` | `declared` | `POST` / withheld unless permitted | as written | passes | annotated |
-| absent, and the name is `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` | `destructive-shared`, `TierInferred` true | `inferred` | withheld unless permitted; confirmation required | `unknown` | leaf refused (missing); runnable group warned | unannotated, also counted as `inferred` |
-| absent, any other name | `unannotated` | `unannotated` | `POST`, still invocable; level `caution`, `kit:fs:write:local` | `unknown` | leaf refused (missing); runnable group warned | unannotated |
+| absent or empty, and the name is `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` | `destructive-shared`, `TierInferred` true | `inferred` | withheld unless permitted; confirmation required | `unknown` | leaf refused (missing); runnable group warned | unannotated, also counted as `inferred` |
+| absent or empty, any other name | `unannotated` | `unannotated` | `POST`, still invocable; level `caution`, `kit:fs:write:local` | `unknown` | leaf refused (missing); runnable group warned | unannotated |
 | a value kit does not recognize (`destrutive`) | `TierUnknown` | `malformed` | withheld: `malformed-schema` | as written | leaf refused (invalid); runnable group warned | unannotated, also counted as `malformed` |
 
 - **Source** is `side_effect_source` in the `GET /v1/commands` listing

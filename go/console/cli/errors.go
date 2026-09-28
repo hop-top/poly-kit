@@ -17,7 +17,8 @@ import (
 // (dry-run rationale, destructive token, guidance) plus the
 // noun-verb shape pass.
 type ValidationError struct {
-	// Missing is the list of command paths lacking kit/side-effect.
+	// Missing is the list of command paths lacking kit/side-effect
+	// (absent, or present and empty).
 	Missing []string
 	// Invalid is the list of command paths whose kit/side-effect
 	// tag is not one of the recognized values, formatted as

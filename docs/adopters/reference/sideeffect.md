@@ -173,8 +173,8 @@ guesses never do.
 |-------------------|------------------|--------|-------------|-----------------|
 | a six-tier value (`read` … `interactive`) | as written | `declared` | per the policy table above | annotated |
 | legacy `write` / `destructive` | `write-shared` / `destructive-shared` | `declared` | supported | annotated |
-| absent, name `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` | destructive (heuristic) | `inferred` | rejected: missing tag | unannotated |
-| absent, any other name | unannotated: never read | `unannotated` | rejected: missing tag | unannotated |
+| absent or empty, name `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` | destructive (heuristic) | `inferred` | rejected: missing tag | unannotated |
+| absent or empty, any other name | unannotated: never read | `unannotated` | rejected: missing tag | unannotated |
 | a value kit does not recognize | a declaration defect | `malformed` | rejected: missing tag | unannotated |
 
 How each row reaches REST, the manifest and `Root.Validate` is in the
