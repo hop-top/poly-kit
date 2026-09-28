@@ -285,6 +285,9 @@ func TestServeTLSConfigErrors(t *testing.T) {
 			"services.api.auth.mtls.tenant_san_pattern:"},
 		{"mtls keys without the mode", map[string]any{"services.api.auth.mtls.ca_file": f.caFile},
 			`services.api.auth.mtls.ca_file: set, but services.api.auth.mode is not "mtls"`},
+		{"peer on an HTTP listener", map[string]any{"services.api.auth.mode": "peer"},
+			`services.api.auth.mode: "peer" reads a Unix socket peer's credentials, and only the socket service has a peer; ` +
+				`an HTTP listener supports "mtls"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -294,6 +297,19 @@ func TestServeTLSConfigErrors(t *testing.T) {
 			assert.Contains(t, oe.Message, tc.want)
 		})
 	}
+}
+
+// services.all.auth.mode: peer and services.all.auth.peer are the
+// socket's defaults: an HTTP listener does not read them.
+func TestServeTLSIgnoresSharedPeerAuth(t *testing.T) {
+	r := guardRoot(t, map[string]any{
+		"services.all.auth.mode":                  "peer",
+		"services.all.auth.peer.require_same_uid": true,
+	})
+	st, err := ResolveServeTLS(r, APIServiceName)
+	require.NoError(t, err)
+	assert.False(t, st.Enabled())
+	assert.Nil(t, st.ClientCertAuth())
 }
 
 func withKeys(m map[string]any, kv ...any) map[string]any {

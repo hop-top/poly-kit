@@ -258,6 +258,15 @@ func resolveAuthMode(cfg svcconfig.Resolver, svc string) (tlsResolver, string, s
 	}
 	mode, modeKey := res.str(authBlock, "mode")
 	mode = strings.ToLower(mode)
+	if mode == AuthModePeer {
+		if modeKey == svcconfig.Key(svc, authBlock, "mode") {
+			return res, "", "", fmt.Errorf("%s: %q reads a Unix socket peer's credentials, and only the %s service has a peer; "+
+				"an HTTP listener supports %s", modeKey, mode, SocketServiceName, authModeNames())
+		}
+		// services.all.auth.mode: peer is the socket's default, which
+		// an HTTP listener does not read.
+		mode = ""
+	}
 	if mode != "" && !isAuthMode(mode) {
 		return res, "", "", fmt.Errorf("%s: unknown mode %q; kit supports %s", modeKey, mode, authModeNames())
 	}

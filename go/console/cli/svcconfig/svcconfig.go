@@ -95,6 +95,10 @@ var blocks = []Block{
 	{Name: "auth.jwks", Keys: []string{"url", "issuer", "audience", "clock_skew", "refresh", "tenant_claim"}},
 	{Name: "auth.oidc", Keys: []string{"issuer", "audience", "clock_skew", "refresh", "tenant_claim"}},
 	{Name: "auth.apikey", Keys: []string{"backend", "path"}},
+	{
+		Name: "auth.peer", Keys: []string{"require_same_uid", "resolve_names"},
+		Services: []string{"socket"},
+	},
 	{Name: "tls", Keys: []string{"enabled", "cert_file", "key_file", "min_version"}},
 	{Name: "tls.acme", Keys: []string{"enabled", "domains", "cache_dir", "email", "directory_url"}},
 	{
@@ -144,7 +148,8 @@ var blocks = []Block{
 // act on an HTTP listener alone (Block.HTTPKeys, Block.HTTPValues):
 // the server timeouts, and the HTTP credential modes of auth. The
 // bearer blocks are HTTP-only: the token rides the Authorization
-// header.
+// header. The reverse, a block only the socket applies (auth.peer), is
+// a Block.Services entry.
 var httpOnly = []string{
 	"metrics.scrape", "security_headers", "health", "host_check",
 	"origin_check", "body_limit", "compression", "trusted_proxies",

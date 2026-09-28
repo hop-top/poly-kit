@@ -100,7 +100,7 @@ the socket nothing.
 | `NOT_INVOCABLE` | the command can never run through a transport — interactive, or self-hosting — refused by the bridge's gate; the message names the reason |
 | `BLOCKED` | destructive command refused because the policy does not name the `socket` surface |
 | `DENIED` | the permission gate refused this caller; the message carries its stable reason |
-| `UNAUTHENTICATED` | the configured `Authenticator` refused the request; never sent without one |
+| `UNAUTHENTICATED` | the configured `Authenticator` refused the request (the [peer authenticator](#peer-credentials) or your own); never sent without one |
 | `RATE_LIMITED` | the caller's rate limit is spent; `retry_after_ms` says how long until it refills |
 | `CONFLICT` | the `idempotency_key` names a request still running (`idempotency_conflict` in the message), or was used for a different command (`idempotency_key_reused`) |
 | `QUOTA_EXCEEDED` | the caller's quota for the window is spent; `retry_after_ms` says how long until the window resets |
@@ -126,7 +126,36 @@ A refusal never reaches the bridge, so the transport reports it
 through `Transport.OnRefused` with an error wrapping
 `cmdsurface.ErrAuthRefused`; the built-in service routes that into
 `Bridge.Audit`, so the refusal lands in the same audit stream as the
-bridge's own verdicts.
+bridge's own verdicts. `Identity.Extra` becomes the invocation's
+`Meta.Extra` whichever way the authenticator decided, so a refusal's
+audit record carries what it saw.
+
+An identity an authenticator returned is `verified`
+(`cmdsurface.EstablishedVerified`); without an authenticator it is
+`transport` (the `0600` file). Both run a `kit/auth-required` command.
+
+### Peer credentials
+
+`socket.NewPeerAuthenticator(socket.PeerAuthConfig{...})` is the
+authenticator kit ships, and what `services.socket.auth.mode: peer`
+installs on the built-in service in place of `SocketConfig.Auth`. It
+asks the kernel who opened the connection — `SO_PEERCRED` on Linux,
+`LOCAL_PEERCRED` (plus `LOCAL_PEERPID`) on macOS and FreeBSD — so no
+client can forge the answer.
+
+| Result | Value |
+|---|---|
+| `Meta.Caller` | `uid:<n>`, the peer's effective uid; its user name with `ResolveNames`, `uid:<n>` when the uid has no user entry |
+| `Meta.Tenant` | empty |
+| `Meta.Extra` | `peer_uid`, `peer_gid` (effective), `peer_pid` (absent on FreeBSD) |
+| refusal | `UNAUTHENTICATED`: `peer uid <n> is not the server's uid <m>` under `RequireSameUID`; `socket: peer credentials: ...` when the kernel cannot answer |
+
+`RequireSameUID` refuses every uid but the server process's. The
+`0600` file already confines callers to that uid and root; the option
+turns root away too. On any other platform `NewPeerAuthenticator`
+returns `ErrPeerCredUnsupported`, and the built-in service refuses
+`mode: peer` at exit `2`. `socket.PeerCredentials(conn)` is the
+kernel query on its own, for an authenticator you write.
 
 ## Cancellation
 
@@ -145,6 +174,16 @@ reading responses is not observed until the backlog drains.
 | `services.socket.path` | string | `<runtime dir>/<tool>/<tool>.sock` |
 | `services.socket.ready_timeout` | duration | `30s` |
 | `services.socket.stop_timeout` | duration | `30s` |
+| `services.socket.auth.mode` | string | unset: no authenticator; `peer` installs the [peer authenticator](#peer-credentials) |
+| `services.socket.auth.peer.require_same_uid` | bool | `false` |
+| `services.socket.auth.peer.resolve_names` | bool | `false` |
+
+The `auth` keys may also be set under `services.all`. Refused at
+exit `2`, naming the key: `auth.mode: mtls` under `services.socket`
+(it needs a TLS listener; under `services.all` it is the HTTP
+listeners' default and the socket does not read it), an unknown
+mode, an `auth.peer` key without `mode: peer`, a value that is not a
+bool, and `mode: peer` on a platform without peer credentials.
 
 Path precedence, highest first:
 
@@ -182,6 +221,10 @@ directory.
 | `Transport` | implements `transportsvc.Transport` |
 | `Request`, `Response`, `Error` | wire types |
 | `Authenticator`, `Identity` | the per-request verification hook and its verdict |
+| `NewPeerAuthenticator`, `PeerAuthConfig` | the peer-credential authenticator and its options |
+| `PeerCredentials`, `PeerCred` | the kernel's uid, gid and pid for a connection |
+| `ErrPeerCredUnsupported` | returned on a platform without peer credentials |
+| `ExtraPeerUID`, `ExtraPeerGID`, `ExtraPeerPID` | the `Meta.Extra` keys the peer authenticator records |
 | `Transport.Auth`, `Transport.OnRefused` | install the hook; observe its refusals |
 | `CodeNotFound`, `CodeNotEnabled`, `CodeNotInvocable`, `CodeBlocked`, `CodeDenied`, `CodeUnauthenticated`, `CodeRateLimited`, `CodeInvalid`, `CodeInternal` | error-code constants |
 | `SocketMode` | the `0600` the socket file is created with |

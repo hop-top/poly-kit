@@ -71,6 +71,10 @@ type SocketConfig struct {
 	// tenant a request carries are recorded as provenance only —
 	// nothing is granted on their basis. With one, the verified
 	// identity replaces them and a refusal answers UNAUTHENTICATED.
+	//
+	// services.socket.auth.mode: peer selects kit's peer-credential
+	// authenticator ([socket.NewPeerAuthenticator]) instead: the mode
+	// selects the verifier, and Auth is not consulted under it.
 	Auth socket.Authenticator
 }
 
@@ -157,6 +161,9 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 			if err := validateSocketPath(root, cfg); err != nil {
 				return err
 			}
+			if _, err := resolveSocketAuth(root, cfg); err != nil {
+				return err
+			}
 			if _, err := root.servePermission(ServeExposure{Loopback: true}); err != nil {
 				return err
 			}
@@ -230,8 +237,12 @@ func (l *lazySocket) Bind(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	auth, err := resolveSocketAuth(l.root, l.cfg)
+	if err != nil {
+		return "", err
+	}
 	l.tr = socket.New(path)
-	l.tr.Auth = l.cfg.Auth
+	l.tr.Auth = auth
 	l.tr.OnRefused = l.refused
 	return l.tr.Bind(ctx)
 }
@@ -263,6 +274,74 @@ func (l *lazySocket) Close(ctx context.Context) error {
 		return nil
 	}
 	return l.tr.Close(ctx)
+}
+
+// resolveSocketAuth resolves the socket's authenticator from
+// services.socket.auth and its services.all default: the peer
+// authenticator under auth.mode: peer, configured by auth.peer, else
+// SocketConfig.Auth. Every refusal names the key at fault.
+//
+// auth.mode: mtls set under services.socket is refused, since the
+// socket has no TLS listener to ask for a certificate; under
+// services.all it is the HTTP listeners' default, and the socket does
+// not read it. peer on a platform without peer credentials is refused
+// here, so the service fails validation rather than refusing every
+// caller.
+func resolveSocketAuth(root *Root, cfg *SocketConfig) (socket.Authenticator, error) {
+	var code socket.Authenticator
+	if cfg != nil {
+		code = cfg.Auth
+	}
+	if root == nil || root.Viper == nil {
+		return code, nil
+	}
+	c := svcconfig.New(root.Viper)
+	for _, b := range []string{authBlock, authPeerBlock} {
+		if err := c.ValidateBlock(b, SocketServiceName, svcconfig.Shared); err != nil {
+			return nil, err
+		}
+	}
+	res := tlsResolver{cfg: c, svc: SocketServiceName}
+
+	mode, modeKey := res.str(authBlock, "mode")
+	mode = strings.ToLower(mode)
+	switch {
+	case mode == "" || mode == AuthModePeer:
+	case isAuthMode(mode):
+		// An HTTP listener's credential mode (mtls, jwt, jwks, oidc,
+		// apikey). Set for the socket itself, validation refuses it
+		// first (svcconfig HTTPValues); services.all's is the HTTP
+		// listeners' default, which the socket does not read.
+		if modeKey == svcconfig.Key(SocketServiceName, authBlock, "mode") {
+			return nil, fmt.Errorf("%s: %q needs an HTTP listener, and the %s service has none; it supports %q",
+				modeKey, mode, SocketServiceName, AuthModePeer)
+		}
+		mode = ""
+	default:
+		return nil, fmt.Errorf("%s: unknown mode %q; the %s service supports %q",
+			modeKey, mode, SocketServiceName, AuthModePeer)
+	}
+	if mode != AuthModePeer {
+		if k := res.anySet(authPeerBlock, "require_same_uid", "resolve_names"); k != "" {
+			return nil, fmt.Errorf("%s: set, but %s is not %q", k,
+				svcconfig.Key(SocketServiceName, authBlock, "mode"), AuthModePeer)
+		}
+		return code, nil
+	}
+
+	var peer socket.PeerAuthConfig
+	var err error
+	if peer.RequireSameUID, _, err = res.boolean(authPeerBlock, "require_same_uid"); err != nil {
+		return nil, err
+	}
+	if peer.ResolveNames, _, err = res.boolean(authPeerBlock, "resolve_names"); err != nil {
+		return nil, err
+	}
+	auth, err := socket.NewPeerAuthenticator(peer)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", modeKey, err)
+	}
+	return auth, nil
 }
 
 // resolveSocketPath applies the configuration precedence: the --socket

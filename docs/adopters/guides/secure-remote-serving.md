@@ -615,7 +615,11 @@ Its refusal is `403 permission_denied` with your reason:
 Over the socket, without an authenticator, `caller` is what the
 request claimed: a decision that trusts `Meta.Caller` there is
 trusting the caller's word. Decide on what the transport verified, or
-give the socket an authenticator.
+give the socket an authenticator:
+`services.socket.auth.mode: peer` makes `Meta.Caller` the uid the
+kernel reports (`uid:501`, or the user name with
+`auth.peer.resolve_names`), and `SocketConfig.Auth` takes one you
+write.
 
 Discovery answers for the caller who asks. `GET /v1/commands` from a
 request your `AuthFunc` verified lists what that caller may run: bob,
@@ -1580,6 +1584,7 @@ observability](../reference/served-observability.md)).
 | `APIConfig.InsecureNoPolicy` | `false` | Beyond loopback with no `--policy`, serve with no policy instead of `kit-default`. `services.api.insecure_no_policy` / `--insecure-no-policy` set the same. |
 | `APIConfig.MaxBodyBytes` | `0` (1 MiB) | Request body cap on every api route; over it is `413 body_too_large`, audited as `cmdsurface.ErrBodyTooLarge`. Negative disables. `services.api.body_limit.max_bytes` / `.enabled`, then `services.all.body_limit.*`, override it. |
 | `SocketConfig.Auth` | none | Verifies each socket request; the verified identity, and its `Scopes`, replace the claimed one. |
+| `services.socket.auth.mode: peer` | unset | Names each socket caller by its kernel-reported uid, verified; replaces `SocketConfig.Auth`. `auth.peer.require_same_uid` refuses other uids, `auth.peer.resolve_names` uses the user name. Linux, macOS, FreeBSD. |
 | `kit/permissions` annotation | none | Scopes a verified caller must all hold; otherwise `403 insufficient_scope`. The owner (socket file, stdio, CLI) is not asked. |
 | `cli.WithPermission(fn)` | permit all | Permission decision on every kit-shipped transport service, after the scope check and `--policy`; can only narrow. |
 | `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. Records are always redacted. |
@@ -1641,10 +1646,11 @@ Absence here is deliberate; each of these belongs somewhere else:
   or OCSP check).
 - **A tenant registry.** `Meta.Tenant` is a label your claims
   supply. Nothing scopes state by it.
-- **Socket peer credentials out of the box.** `SocketConfig.Auth`
-  receives the connection so an authenticator can ask the kernel
-  (`SO_PEERCRED`, `LOCAL_PEERCRED`) who is on the other end; kit
-  ships no such authenticator.
+- **Socket peer credentials on Windows and most BSDs.**
+  `services.socket.auth.mode: peer` names each socket caller by the
+  uid the kernel reports, on Linux, macOS and FreeBSD only; elsewhere
+  it is refused at start. See
+  [serve-cli-over-unix-socket.md](serve-cli-over-unix-socket.md#12-know-who-is-calling).
 - **Conflict detection across processes.** Replicas that share a
   store (`cli.WithServeIdempotencyStore`) replay each other's records,
   but a call still running is known only to its own process: the same

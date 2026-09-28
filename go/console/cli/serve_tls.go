@@ -32,11 +32,17 @@ const (
 	tlsACMEBlock  = "tls.acme"
 	authBlock     = "auth"
 	authMTLSBlock = "auth.mtls"
+	authPeerBlock = "auth.peer"
 )
 
 // AuthModeMTLS is the services.<svc>.auth.mode value that makes the
 // client certificate the listener's credential.
 const AuthModeMTLS = "mtls"
+
+// AuthModePeer is the services.socket.auth.mode value that makes the
+// Unix socket peer's kernel-reported credentials the caller's
+// identity. Only the socket service has a peer to ask.
+const AuthModePeer = "peer"
 
 // ServeTLS is the resolved TLS and authentication setting of one kit
 // HTTP listener — services.<svc>.tls and services.<svc>.auth — and the
@@ -145,6 +151,12 @@ func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 // services.<svc>.auth and their services.all defaults. Every refusal
 // names the key at fault.
 //
+// auth.mode: peer belongs to the socket service: set under svc it is
+// refused, and a services.all auth.mode of peer is a default for the
+// socket that an HTTP listener does not read. The auth.peer block is
+// registered for the socket alone, so serve validation refuses it
+// under svc before this runs.
+//
 // TLS is on when tls.enabled is true, or unset and a certificate
 // source is configured: cert_file and key_file, or tls.acme. The
 // minimum version is TLS 1.2. auth.mode: mtls needs TLS on and
@@ -218,6 +230,17 @@ func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 type tlsResolver struct {
 	cfg svcconfig.Resolver
 	svc string
+}
+
+// anySet returns the configured key of the first of keys set under
+// block, for svc or services.all, and "" when none is.
+func (t tlsResolver) anySet(block string, keys ...string) string {
+	for _, key := range keys {
+		if _, k, ok := t.cfg.Lookup(t.svc, block, key); ok {
+			return k
+		}
+	}
+	return ""
 }
 
 func (t tlsResolver) str(block, key string) (string, string) {

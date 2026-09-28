@@ -683,16 +683,16 @@ of any of them.
 
 | Field            | api service                                    | socket service                              |
 |------------------|------------------------------------------------|---------------------------------------------|
-| `Caller`         | principal from the `Auth` claims               | verified by `SocketConfig.Auth`, else the request's `caller` as a claim |
-| `Tenant`         | tenant from the `Auth` claims                  | verified by `SocketConfig.Auth`, else the request's `tenant` as a claim |
-| `Established`    | `verified` when `Auth` verified the request, else empty | `verified` with `SocketConfig.Auth`, else `transport` (the `0600` file) |
+| `Caller`         | principal from the `Auth` claims               | verified by the socket's authenticator (`auth.mode: peer`, else `SocketConfig.Auth`), else the request's `caller` as a claim |
+| `Tenant`         | tenant from the `Auth` claims                  | verified by the socket's authenticator (empty under `peer`), else the request's `tenant` as a claim |
+| `Established`    | `verified` when `Auth` verified the request, else empty | `verified` with an authenticator, else `transport` (the `0600` file) |
 | `Surface`        | `rest`, pinned                                 | `socket`, pinned by the seam                |
 | `RequestID`      | `X-Request-ID`, issued when absent, echoed     | `request_id`, issued when absent            |
 | `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`      | `trace_id`                                  |
 | `Traceparent`, `Tracestate` | W3C `traceparent` when well-formed, and `tracestate` beside it | —                  |
 | `IdempotencyKey` | `Idempotency-Key`                              | `idempotency_key`                           |
 | `RequestedAt`    | receipt time                                   | receipt time                                |
-| `Extra`          | `remote_addr`, `peer_addr` (see [Client address](#client-address)), `scopes` (comma-joined claims)  | `scopes` from `SocketConfig.Auth`'s identity, else — |
+| `Extra`          | `remote_addr`, `peer_addr` (see [Client address](#client-address)), `scopes` (comma-joined claims)  | what the authenticator recorded (`peer_uid`, `peer_gid`, `peer_pid` under `peer`, on a refusal too), and `scopes` from its identity |
 
 - Claims MUST be extractable without the transport importing the
   adopter's types: a value implementing `api.Identity`, an
@@ -1641,8 +1641,10 @@ simply does not read it.
 The same rule holds for a key or a value that only some services
 apply, as the table below states: under the socket, the server keys
 of `timeouts` and the HTTP credential modes of `auth.mode` (`mtls`,
-`jwt`, `jwks`, `oidc`, `apikey`); under every service but `api`,
-the `cache` block, the adopter's services included. Each is refused
+`jwt`, `jwks`, `oidc`, `apikey`); under the HTTP listeners,
+`auth.mode: peer`; under every service but `api`, the `cache` block,
+and under every service but `socket`, the `auth.peer` block, the
+adopter's services included. Each is refused
 at validation, exit `2`, and each stays a default under
 `services.all`.
 
@@ -1653,7 +1655,8 @@ reads no HTTP-listener key.
 
 | Block                                   | Applied by                                     | Refused under            |
 |-----------------------------------------|------------------------------------------------|--------------------------|
-| `auth` (`mode`)                         | `mtls`, `jwt`, `jwks`, `oidc`, `apikey`: api, mcp over HTTP, rpc | those modes: socket |
+| `auth` (`mode`)                         | `mtls`, `jwt`, `jwks`, `oidc`, `apikey`: api, mcp over HTTP, rpc; `peer`: socket | those modes: socket; `peer`: api, mcp over HTTP, rpc |
+| `auth.peer`                             | socket                                         | every other service      |
 | `auth.mtls`, `auth.jwt`, `auth.jwks`, `auth.oidc`, `auth.apikey`, `tls`, `tls.acme` | api, mcp over HTTP, rpc | socket |
 | `timeouts` `read_header`, `read`, `write`, `idle` | api, mcp over HTTP, rpc              | socket                   |
 | `timeouts` `command`                    | bridge services                                | —                        |
@@ -1764,7 +1767,7 @@ serving.
 | `tls.acme.cache_dir`           | string | `<state dir>/<tool>/acme`       | account key and certificates |
 | `tls.acme.email`               | string | —                               | contact the CA may use |
 | `tls.acme.directory_url`       | string | Let's Encrypt production        | another ACME directory (a staging one, a private CA) |
-| `auth.mode`                    | string | unset                           | `mtls`: the client certificate is the credential; `jwt`, `jwks`, `oidc`: a bearer token is (see [Bearer tokens](#bearer-tokens)); `apikey`: a kit-issued API key is (see [API keys](#api-keys)) |
+| `auth.mode`                    | string | unset                           | `mtls`: the client certificate is the credential; `jwt`, `jwks`, `oidc`: a bearer token is (see [Bearer tokens](#bearer-tokens)); `apikey`: a kit-issued API key is (see [API keys](#api-keys)); `peer` is the socket's ([Socket peer credentials](#socket-peer-credentials)) |
 | `auth.mtls.ca_file`            | string | — (required under `mtls`)       | PEM bundle client certificates must chain to |
 | `auth.mtls.principal`          | string | `san`                           | `san` (first URI, else DNS, else email SAN), `san_uri`, `san_dns`, `san_email`, `cn` |
 | `auth.mtls.tenant_oid`         | string | —                               | dotted OID of a subject attribute, else of an extension holding a string |
@@ -1921,6 +1924,42 @@ kit HTTP listeners, sent as `X-API-Key: <key>` or
 - Refused at validation, exit `2`, naming the key: a backend other
   than `sqlite` or `badger`, a backend whose driver is not imported,
   and an `auth.apikey` key under another mode.
+
+### Socket peer credentials
+
+`services.socket.auth.mode: peer` makes the kernel's account of the
+connection the socket caller's identity, through
+`socket.NewPeerAuthenticator`. The socket service resolves it, and
+`auth.peer`, from `services.socket` and `services.all`.
+
+| Key                          | Type | Default | Meaning |
+|------------------------------|------|---------|---------|
+| `auth.mode`                  | string | unset | `peer`: the peer's credentials are the credential |
+| `auth.peer.require_same_uid` | bool | `false` | refuse a peer whose uid is not the server process's |
+| `auth.peer.resolve_names`    | bool | `false` | the principal is the user name, not `uid:<n>` |
+
+- The principal is `uid:<n>`, the peer's effective uid as of connect
+  (`SO_PEERCRED` on Linux, `LOCAL_PEERCRED` on macOS and FreeBSD), or
+  the user name under `resolve_names`, `uid:<n>` when the uid has no
+  user entry. The tenant is empty. `Established` is `verified`, so a
+  `kit/auth-required` leaf runs.
+- `Extra` carries `peer_uid`, `peer_gid` and, where the platform
+  reports it, `peer_pid`, on an admitted and a refused request alike.
+  Audit redaction treats them as provenance.
+- A peer the kernel cannot describe, and under `require_same_uid` a
+  peer of another uid, is refused `UNAUTHENTICATED` and audited as
+  `ErrAuthRefused`.
+- The mode selects the verifier: under `peer`, `SocketConfig.Auth` is
+  not consulted.
+- Refused at validation, exit `2`, naming the key: `peer` on a
+  platform without peer credentials, an HTTP credential mode (`mtls`,
+  `jwt`, `jwks`, `oidc`, `apikey`) or an unknown mode under
+  `services.socket`, an `auth.peer` key under another mode, a value
+  that is not a bool, and `peer` or an `auth.peer` key under any other
+  service. An HTTP credential mode under `services.all.auth.mode` is
+  the HTTP listeners' default and the socket does not read it;
+  `services.all.auth.mode: peer` is the socket's, and an HTTP listener
+  does not read it.
 
 ### Timeouts
 

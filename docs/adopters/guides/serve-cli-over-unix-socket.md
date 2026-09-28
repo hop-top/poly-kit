@@ -410,8 +410,8 @@ which is a different answer from one that does not exist:
 | `NOT_ENABLED` | the command exists but not on this surface | excluded by your `Expose` / `Hide` patterns |
 | `NOT_INVOCABLE` | the command can never run through a transport | an `interactive` command; the message names the reason |
 | `BLOCKED` | destructive command refused by policy | `Policy.AllowDestructiveOn` does not name `cmdsurface.SurfaceSocket` |
-| `DENIED` | the permission gate refused this caller | `cli.WithPermission`, or a `--policy` that refuses the class; the message carries the reason. Led by `cmdsurface: insufficient scope`, the `SocketConfig.Auth` identity lacks a scope the command's `kit/permissions` names — return it in `Identity.Scopes` |
-| `UNAUTHENTICATED` | `SocketConfig.Auth` refused the request | only sent when an authenticator is configured |
+| `DENIED` | the permission gate refused this caller | `cli.WithPermission`, or a `--policy` that refuses the class; the message carries the reason. Led by `cmdsurface: insufficient scope`, the verified identity lacks a scope the command's `kit/permissions` names — return it in `Identity.Scopes` |
+| `UNAUTHENTICATED` | the authenticator refused the request | only sent under `auth.mode: peer` (step 12) or with `SocketConfig.Auth` |
 | `RATE_LIMITED` | the caller's rate limit is spent | `services.socket.rate_limit.enabled: true`; wait `retry_after_ms` |
 | `QUOTA_EXCEEDED` | the caller's quota for the window is spent | `services.socket.quota.ops` or `.bytes`; wait `retry_after_ms`, or `quota reset` |
 | `OVERLOADED` | every in-flight slot is taken and the queue is full | more callers than `services.socket.concurrency` admits; wait `retry_after_ms` |
@@ -516,6 +516,50 @@ What you get, and what you owe:
 - A `newRoot` that cannot build a valid tree is refused when `serve`
   validates, at exit `2`, before the socket binds.
 
+### 12. Know who is calling
+
+Without an authenticator the socket knows the caller holds your
+authority, not which account it is: a request's `caller` is only
+what the client wrote. To have every request name its caller from
+the kernel's account of the connection, set the peer mode:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  socket:
+    auth:
+      mode: peer
+      peer:
+        require_same_uid: true   # turn away every other uid, root included
+        resolve_names: true      # "alice" rather than "uid:501"
+```
+
+The same keys work from the command line
+(`mytool -c services.socket.auth.mode=peer serve socket`) and the
+environment (`MYTOOL_SERVICES_SOCKET_AUTH_MODE=peer`).
+
+What changes:
+
+- Every request's `Meta.Caller` is `uid:<n>` — the effective uid the
+  kernel reports for the connection — or the user name with
+  `resolve_names`, falling back to `uid:<n>` for a uid with no user
+  entry. A `caller` the client sent is ignored.
+- The caller counts as verified, so permission rules keyed on the
+  caller can trust it, and `kit/auth-required` commands run.
+- `Meta.Extra` carries `peer_uid`, `peer_gid`, and `peer_pid` for your
+  audit sinks. `peer_pid` is absent on FreeBSD, which does not report it.
+- With `require_same_uid`, a peer of another uid is answered
+  `UNAUTHENTICATED` — `peer uid 0 is not the server's uid 501` — and
+  the refusal reaches your audit sinks with its `peer_*` entries.
+- The mode picks the verifier: `SocketConfig.Auth` is not consulted
+  while it is set.
+
+Peer credentials come from `SO_PEERCRED` on Linux and
+`LOCAL_PEERCRED` on macOS and FreeBSD. On any other platform `serve`
+refuses the mode at exit `2` before the socket binds. So do
+`mode: mtls` (the socket has no TLS listener), an unknown mode, and an
+`auth.peer` key without `mode: peer`, each named in the message.
+
 ## Option reference
 
 | Field | Type | Default | Meaning |
@@ -524,7 +568,7 @@ What you get, and what you owe:
 | `Expose` | `[]string` | every invocable command | patterns the socket may reach |
 | `Hide` | `[]string` | none | patterns carved out of `Expose` |
 | `Policy` | `cmdsurface.Policy` | zero value | safety gate; zero behaves as `cmdsurface.DefaultPolicy()`; the socket invokes as `cmdsurface.SurfaceSocket` |
-| `Auth` | `socket.Authenticator` | none | verifies each request; its identity replaces the claimed `caller` and `tenant` |
+| `Auth` | `socket.Authenticator` | none | verifies each request; its identity replaces the claimed `caller` and `tenant`; not consulted under `services.socket.auth.mode: peer` (step 12) |
 
 Parallel execution is a root option rather than a field:
 `cli.WithRootFactory(newRoot)` (step 11). Without it, requests run one
@@ -575,9 +619,9 @@ as it applies to the socket:
 Stated plainly, so you can decide what to put in front of it:
 
 - **No authentication by default.** Access control is the socket
-  file's permission. `SocketConfig.Auth` adds a per-request
-  authenticator — it receives the connection, so it can ask the
-  kernel who the peer is — but kit ships none.
+  file's permission. `services.socket.auth.mode: peer` (step 12)
+  names each caller by its uid; `SocketConfig.Auth` takes any other
+  per-request authenticator you write.
 - **Caller identity is provenance, not a credential.** Without an
   authenticator, the `caller` and `tenant` fields are recorded as
   claimed and travel to audit sinks with `request_id`, `trace_id`, and

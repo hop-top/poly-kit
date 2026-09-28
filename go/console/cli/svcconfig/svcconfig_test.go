@@ -282,3 +282,46 @@ func TestValidateRefusesBlocksOutsideTheirServices(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, []string{"api"}, b.Services)
 }
+
+// auth.peer reads a Unix socket peer's credentials, which only the
+// socket service has: set under any other service, the adopter's
+// included, it is refused, one line per service; under the socket and
+// services.all it is accepted.
+func TestValidateRefusesAuthPeerOutsideTheSocket(t *testing.T) {
+	v := viper.New()
+	v.Set("services.api.auth.peer.require_same_uid", true)
+	v.Set("services.api.auth.peer.resolve_names", true)
+	v.Set("services.api.auth.mode", "mtls")
+	v.Set("services.api.auth.mtls.ca_file", "ca.crt")
+	v.Set("services.mcp.auth.peer.resolve_names", true)
+	v.Set("services.all.auth.peer.resolve_names", true)
+	v.Set("services.socket.auth.peer.require_same_uid", true)
+
+	err := New(v).Validate()
+	require.Error(t, err)
+	assert.Equal(t,
+		"services.api.auth.peer: only the socket service applies auth.peer; remove it, or set it under services.socket.auth.peer\n"+
+			"services.mcp.auth.peer: only the socket service applies auth.peer; remove it, or set it under services.socket.auth.peer",
+		err.Error(), "nothing for auth, auth.mtls, the socket or services.all")
+	assert.NoError(t, New(v).ValidateNoHTTP("socket"), "auth.peer is the socket's own block")
+
+	b, ok := Lookup("auth.peer")
+	require.True(t, ok)
+	assert.Equal(t, []string{"socket"}, b.Services)
+	assert.False(t, HTTPOnly("auth.peer"))
+}
+
+// auth.peer is a registered block: an unknown key inside it is refused
+// under any service and services.all.
+func TestAuthPeerBlockKeys(t *testing.T) {
+	v := viper.New()
+	v.Set("services.socket.auth.peer.require_same_uid", true)
+	v.Set("services.socket.auth.peer.resolve_names", false)
+	require.NoError(t, New(v).Validate())
+
+	v.Set("services.all.auth.peer.allow_root", true)
+	err := New(v).Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(),
+		`services.all.auth.peer.allow_root: unknown key "allow_root"; auth.peer accepts require_same_uid, resolve_names`)
+}
