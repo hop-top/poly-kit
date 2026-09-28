@@ -23,7 +23,7 @@ import (
 const versionedPropertySeed int64 = 0xC0FFEE_2026_05_07
 
 // versionedPropertyIterations is the number of randomized sequences
-// the property test runs. Spec §7 calls for "at least 1000";
+// the property test runs: at least 1000;
 // propertyIterations trims that under -short or KIT_PROPERTY_ITERATIONS.
 const versionedPropertyIterations = 1000
 

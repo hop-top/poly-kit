@@ -80,7 +80,7 @@ const pruningPropertySeed int64 = 0xBADD_2026_05_07
 
 // pruningPropertyIterations is the number of randomized sequences the
 // property test runs. Matches the branching/dedup property tests'
-// count (spec §7 calls for "at least 1000").
+// count (at least 1000).
 const pruningPropertyIterations = 1000
 
 // pruningPropertyMinOps / pruningPropertyMaxOps bound the per-
@@ -248,8 +248,8 @@ func isVersionNotFound(err error) bool {
 }
 
 // assertAtLeastOneLiveHead fails the test if Branches(WithLiveOnly())
-// returns zero heads — the load-bearing invariant from spec §3 #2 +
-// #10. A violation means Abandon's pre-flight check is broken (or
+// returns zero heads — the load-bearing at-least-one-live-head
+// invariant. A violation means Abandon's pre-flight check is broken (or
 // Prune somehow stripped the only live head, which it must not).
 func assertAtLeastOneLiveHead(t *testing.T, vds *VersionedDocumentStore, label string, iter, opIdx int, opKind string) {
 	t.Helper()
@@ -417,7 +417,7 @@ func formatPruningOps(ops []pruningOp) string {
 //     parity is the prune-track-specific addition vs. branching/dedup
 //     property tests.
 //  4. Per-version parent-slice equivalence via LoadDAG — same load-
-//     bearing assertion as branching property test §3.
+//     bearing assertion as the branching property test's step 3.
 //  5. Branches() set parity (all heads, live or dead).
 //  6. Branches(WithLiveOnly()) set parity (live heads only).
 //  7. PruneResult.VersionsRemoved set-equal across backends per Prune
@@ -492,7 +492,7 @@ func TestVersionedPruning_Property(t *testing.T) {
 		}
 
 		// 4. Parent-slice equivalence via LoadDAG. Load-bearing
-		// assertion — same as branching/dedup property tests §3. Plus,
+		// assertion — same as branching/dedup property tests' step 3. Plus,
 		// after Prune, this also catches any parent_ids that point at
 		// versions that were removed (dangling parents) when compared
 		// across backends.
@@ -580,7 +580,7 @@ func TestVersionedPruning_Property(t *testing.T) {
 			)
 		}
 
-		// 8. SQLite dedup invariants (spec §7).
+		// 8. SQLite dedup invariants.
 		assertSQLiteDedupInvariants(t, sqliteVDS, iter, ops)
 
 		// 10. GetSnapshot byte-identity: every retained version, both
@@ -623,7 +623,7 @@ func TestVersionedPruning_Property(t *testing.T) {
 	)
 }
 
-// assertSQLiteDedupInvariants checks the spec §7 dedup invariants on
+// assertSQLiteDedupInvariants checks the dedup invariants on
 // the SQLite backend post-ops:
 //
 //   - SUM(refcount) over snapshot_blobs == COUNT(*) over

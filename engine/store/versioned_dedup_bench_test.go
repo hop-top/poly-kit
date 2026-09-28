@@ -44,14 +44,13 @@ import (
 const dedupBenchVersions = 1000
 
 // dedupBenchPayloadSize is the approximate size of a single payload
-// in bytes. Chosen to match the realistic-document range from spec
-// §1 (~200 KB documents are flagged as the worst-case storage
-// cost), scaled down so the bench file size stays tractable. At
+// in bytes. Chosen to match realistic documents (~200 KB is the
+// worst-case storage cost), scaled down so the bench file size stays tractable. At
 // 4 KiB × 1000 versions = ~4 MB unique data in the worst case.
 const dedupBenchPayloadSize = 4 * 1024
 
 // BenchmarkDedup_StorageSavings measures blob count vs. version
-// count across three workload shapes from spec §8:
+// count across three workload shapes:
 //
 //   - worst:  every Update produces a unique payload — no dedup wins.
 //     Expected: blobs == versions, savings ratio = 1.0×.
@@ -62,7 +61,7 @@ const dedupBenchPayloadSize = 4 * 1024
 //     so most snapshots are 95%+ identical to predecessors —
 //     but still UNIQUE, since the content-addressed dedup
 //     only collapses byte-identical payloads (delta storage
-//     is out of scope per §9). So "middle" here exercises a
+//     is out of scope). So "middle" here exercises a
 //     cycling pattern over a small distinct-payload set: a
 //     rotating window of K distinct payloads where each
 //     Update picks the next one in the cycle. Expected:

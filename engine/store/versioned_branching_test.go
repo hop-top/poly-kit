@@ -57,8 +57,7 @@ func TestVersionedBranching_ForkAtSeqThenUpdate(t *testing.T) {
 	// Fork at seq 1: appends a sibling of v1 carrying v1's data. The
 	// fork tip becomes the latest seq, so subsequent Update parents
 	// on it naturally — that's how this MVP expresses divergence
-	// without an UpdateAt(branchTip) surface (deferred per spec §3
-	// decision 2).
+	// without an UpdateAt(branchTip) surface (deferred).
 	fork, err := vs.Fork(ctx, "note", "n1", 1)
 	require.NoError(t, err)
 	assert.Equal(t, 3, fork.Seq, "fork tip is the latest seq after Fork appends")
@@ -106,7 +105,7 @@ func TestVersionedBranching_MergeAppendsTwoParentVersion(t *testing.T) {
 	require.True(t, ok, "merge version reachable via DAG")
 	require.Len(t, mergeNode.ParentIDs, 2, "merge records two parent edges")
 
-	// Order matters per spec §4: [sourceVersionID, targetVersionID].
+	// Order matters: [sourceVersionID, targetVersionID].
 	assert.Equal(t, hist[1].VersionID, mergeNode.ParentIDs[0], "first parent is source seq")
 	assert.Equal(t, hist[2].VersionID, mergeNode.ParentIDs[1], "second parent is target seq")
 }

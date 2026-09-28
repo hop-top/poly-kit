@@ -104,10 +104,9 @@ func (s *inMemoryVersionStore) AppendVersion(_ context.Context, docType, id stri
 	vid := util.Short([]byte(fmt.Sprintf("%s-%d-%s", key, seq, data)), 16)
 	hash := util.Short(data, 16)
 
-	// Dedup-aware blob upsert (spec §3 #1, #4). The bytes
-	// comparison protects against the hash-collision corner case
-	// (decision #1); the overflow guard mirrors the SQLite WHERE
-	// refcount < INT64_MAX clause (decision #4).
+	// Dedup-aware blob upsert. The bytes comparison protects
+	// against the hash-collision corner case; the overflow guard
+	// mirrors the SQLite WHERE refcount < INT64_MAX clause.
 	if entry, ok := s.blobs[hash]; ok {
 		if !bytes.Equal(entry.data, data) {
 			return Version{}, ErrHashCollision
@@ -214,7 +213,7 @@ func (s *inMemoryVersionStore) GetSnapshot(_ context.Context, versionID string) 
 
 // DeleteHistory implements VersionStore. No-op when there is no
 // recorded history for (docType, id). Decrements per-blob refcounts
-// and deletes blob entries whose count reaches zero (spec §3 #5).
+// and deletes blob entries whose count reaches zero.
 func (s *inMemoryVersionStore) DeleteHistory(_ context.Context, docType, id string) error {
 	key := docKey(docType, id)
 	s.mu.Lock()
@@ -333,8 +332,8 @@ func (s *inMemoryVersionStore) DeleteVersions(_ context.Context, docType, id str
 	for _, v := range kept {
 		// Lookup the original parent_ids from the DAG before we
 		// replace it. Surviving versions keep their original parent
-		// edges byte-for-byte (spec §3: pruning never rewrites
-		// retained versions' parent_ids).
+		// edges byte-for-byte (pruning never rewrites retained
+		// versions' parent_ids).
 		parents := s.parentsOf(key, v.VersionID)
 		if err := newDAG.Append(version.Version{
 			ID:        v.VersionID,

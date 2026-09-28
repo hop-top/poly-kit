@@ -19,7 +19,7 @@ const propertyIterationsEnv = "KIT_PROPERTY_ITERATIONS"
 
 // shortPropertyIterations is the count under -short, the flag
 // `make test-go` and the pre-push hook already pass. One tenth of the
-// spec §7 floor keeps the local loop fast while still exercising every
+// 1000-iteration floor keeps the local loop fast while still exercising every
 // op kind in each generator.
 const shortPropertyIterations = 100
 

@@ -48,7 +48,7 @@ const createTableSQL = `CREATE TABLE IF NOT EXISTS documents (
 )`
 
 // versionTablesSQL is the additive migration for the SQLite-backed
-// VersionStore (spec §5). Created unconditionally on every boot so
+// VersionStore. Created unconditionally on every boot so
 // the schema is present whether or not the SQLite version backend
 // is wired — safe because empty tables cost nothing and CREATE ...
 // IF NOT EXISTS is idempotent.
@@ -226,7 +226,7 @@ func migrateAddLiveColumn(db *sql.DB) error {
 // idempotent: when the legacy table is already absent (fresh boot
 // or post-migration) the function returns immediately.
 //
-// Per spec §6: each legacy row is hashed via util.Short(data, 16),
+// Each legacy row is hashed via util.Short(data, 16),
 // inserted into snapshot_blobs (deduping by hash with refcount
 // aggregation via ON CONFLICT), and joined through
 // version_snapshots. The legacy table is dropped at the end.

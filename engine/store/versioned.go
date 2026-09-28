@@ -15,7 +15,7 @@ import (
 //
 // Live carries the load-bearing live/dead head distinction the prune
 // algorithm walks: only live heads contribute their ancestor sets to
-// the retain floor (decision #3, #4). The default is true — every
+// the retain floor. The default is true — every
 // version is born live; only an explicit Abandon (or an internal
 // Merge / Revert side-effect) flips it.
 //
@@ -72,7 +72,8 @@ func (v Version) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON parses Version from JSON, treating an absent `live`
-// field as live=true (the default; spec §6 schema convention).
+// field as live=true, matching the column default for rows written
+// before the live bit existed.
 func (v *Version) UnmarshalJSON(data []byte) error {
 	var w versionWire
 	if err := json.Unmarshal(data, &w); err != nil {
@@ -98,7 +99,7 @@ func (v *Version) UnmarshalJSON(data []byte) error {
 // ([NewInMemoryVersionStore]) preserves today's ephemeral behavior;
 // the SQLite implementation ([NewSQLiteVersionStore]) makes history
 // durable across process restarts and commits document + version
-// writes in a single transaction (spec §6).
+// writes in a single transaction.
 //
 // Public API on this type — Create/Update/Get/List/Delete/History/
 // Revert — is independent of the chosen backend. Wire-protocol
@@ -147,8 +148,7 @@ type sqlExec interface {
 //
 // The executor is sqlExec rather than *sql.Tx so the shared-tx
 // driver can use a *sql.Conn running an explicit BEGIN IMMEDIATE.
-// See spec §6 and the SQLite concurrency notes in
-// versionstore_sqlite.go.
+// See the SQLite concurrency notes in versionstore_sqlite.go.
 //
 // Kept unexported so the txCapable contract is an internal
 // implementation detail of this package — VersionStore consumers
@@ -451,10 +451,9 @@ func (vs *VersionedDocumentStore) History(ctx context.Context, docType, id strin
 // extends the branch tip Fork just produced; the original linear
 // chain is left intact and its old head remains a head of the DAG.
 //
-// Anonymous-branches model (spec §3 decision 1): branches are not
-// named — their identity is the head version_id this call returns.
+// Anonymous-branches model: branches are not named — their identity is the head version_id this call returns.
 // Two Forks at the same fromSeq produce two divergent branch tips
-// (the spec's idempotency language is interpreted as "same shape,
+// (idempotency is interpreted as "same shape,
 // not same row" — repeated Fork calls without intervening writes
 // each materialize a sibling because Phase 1 ships no UpdateAt
 // surface to extend a specific tip; sibling materialization is the
@@ -501,11 +500,11 @@ func (vs *VersionedDocumentStore) Fork(ctx context.Context, docType, id string, 
 
 // Merge appends a version with both source and target as parents.
 // data is the merged payload chosen by the caller; conflict
-// detection is the caller's job in MVP (spec §3 decision 5). The
+// detection is the caller's job in MVP. The
 // returned Version has parent edges [sourceVersionID,
 // targetVersionID] in that order.
 //
-// Live/dead side-effect (decision #10): both source and target are
+// Live/dead side-effect: both source and target are
 // marked dead BEFORE the merge tip is appended. At call time they
 // are still graph-topology heads (no children); after the append
 // they are non-heads (the merge tip is their child) but the dead
@@ -699,8 +698,9 @@ func (vs *VersionedDocumentStore) Abandon(ctx context.Context, docType, id strin
 
 	// Count current live heads. If exactly one and it's the target,
 	// refuse — this is the at-least-one-live-head invariant
-	// (decision #2). Operators wanting to drop the last live head
-	// should call Delete (document goes away).
+	// that keeps the prune retain floor non-empty. Operators wanting
+	// to drop the last live head should call Delete (document goes
+	// away).
 	headIDs := dag.Heads()
 	liveHeads := 0
 	for _, h := range headIDs {
@@ -727,7 +727,7 @@ func (vs *VersionedDocumentStore) Abandon(ctx context.Context, docType, id strin
 // reuses Update internally, so it benefits automatically from the
 // shared-tx path when the backend supports it.
 //
-// Live/dead side-effect (decision #10): the pre-revert head (the
+// Live/dead side-effect: the pre-revert head (the
 // latest-seq version at call time, on the live branch the revert
 // targets) is marked dead BEFORE Update appends the revert tip.
 // After Update, the pre-revert head has the revert tip as a child
@@ -821,10 +821,10 @@ func docKey(docType, id string) string {
 //
 // Both fields are optional; zero-value means "no limit on this
 // dimension." If both are set, a version is a prune candidate only
-// when it exceeds BOTH limits (AND-rule, spec §3 decision #1).
+// when it exceeds BOTH limits (AND-rule: the conservative compose).
 //
 // A prune candidate is then evaluated against the DAG-aware
-// "is this safe to remove" rule (spec §3 decision #3): a candidate
+// "is this safe to remove" rule: a candidate
 // is actually pruned only when it is not a head and none of its
 // descendants are retained. See [VersionedDocumentStore.Prune].
 type RetentionPolicy struct {
@@ -852,13 +852,14 @@ type PruneResult struct {
 }
 
 // Prune walks the version DAG for (docType, id), removes prunable
-// versions per policy (spec §3 decision #3), decrements refcounts
+// versions per policy, decrements refcounts
 // on their snapshot blobs through the existing dedup primitives,
 // deletes blobs that hit refcount 0, and returns what was removed.
 //
-// Heads are always retained (spec §3 #2). Pruning never rewrites
-// retained versions' parent_ids; a candidate with a retained
-// descendant is retained transitively (spec §3 #3, #4).
+// Live heads are always retained. Pruning never rewrites retained
+// versions' parent_ids, so a candidate with a retained descendant
+// is retained transitively. The algorithm and its use cases are in
+// docs/adopters/concepts/engine-overview.md#prune-algorithm.
 //
 // Prune is a single write transaction. SQLite uses BEGIN IMMEDIATE;
 // in-memory uses its existing mutex. Under concurrent AppendVersion,
@@ -892,7 +893,7 @@ func (vs *VersionedDocumentStore) Prune(ctx context.Context, docType, id string,
 
 	// Order prunable IDs by seq (oldest first) — DeleteVersions
 	// accepts any order, but PruneResult.VersionsRemoved contract is
-	// "seq order (oldest first)" per spec §4.
+	// "seq order (oldest first)".
 	ids := make([]string, 0, len(prunable))
 	for _, v := range versions {
 		if _, ok := prunable[v.VersionID]; ok {
@@ -915,7 +916,7 @@ func (vs *VersionedDocumentStore) Prune(ctx context.Context, docType, id string,
 	return out, nil
 }
 
-// computePrunable applies the spec §3 decision #3 + #10 rule to the
+// computePrunable applies the live-head prune rule to the
 // supplied (versions, dag, policy, now) snapshot and returns the set
 // of version_ids that are safe to remove.
 //
@@ -923,11 +924,13 @@ func (vs *VersionedDocumentStore) Prune(ctx context.Context, docType, id string,
 //
 //  1. live_heads = {graph-head h | versions[h].Live == true}.
 //  2. retain_floor = union(ancestors(h) ∪ {h}) for h in live_heads —
-//     the protected set. Pruning never touches it. (decision #4)
+//     the protected set. Pruning never touches it; a branched doc
+//     therefore prunes per live branch.
 //  3. Initial candidate set: versions exceeding policy bounds AND
 //     not in retain_floor. Dead heads (graph-head h with Live=false)
 //     can now be candidates — that's the load-bearing change vs. the
-//     old rule, which excluded ALL graph-heads. (decision #10)
+//     old rule, which excluded ALL graph-heads and so never pruned
+//     anything reachable through the public API.
 //  4. Bottom-up fixed-point: a candidate is prunable iff every child
 //     is also a candidate (a dead head with no children is vacuously
 //     prunable). Repeat until no candidate is removed. The retain
@@ -937,8 +940,8 @@ func (vs *VersionedDocumentStore) Prune(ctx context.Context, docType, id string,
 // Returns the set of prunable version_ids. The empty map is the
 // no-op signal (linear-history-with-single-live-head, etc).
 //
-// Pre-condition: at least one live head exists (decision #2; enforced
-// by Abandon's at-least-one-live-head check). If somehow no live
+// Pre-condition: at least one live head exists (enforced by
+// Abandon's at-least-one-live-head check). If somehow no live
 // heads exist (defense-in-depth — caller should not reach here),
 // returns nil to refuse the prune; emptying the document is Delete's
 // concern, not Prune's.
@@ -1034,7 +1037,7 @@ func computePrunable(versions []Version, dag *version.DAG, policy RetentionPolic
 // versions are retained, so v is over the count bound iff
 // (totalVersions - index) > MaxVersions.
 //
-// AND-rule (spec §3 #1): when both MaxVersions and MaxAge are set,
+// AND-rule: when both MaxVersions and MaxAge are set,
 // v must exceed BOTH to be a candidate. When only one is set, that
 // dimension alone decides. When neither is set, v is never a
 // candidate (Prune is a no-op).

@@ -46,7 +46,8 @@ import (
 const branchingPropertySeed int64 = 0xB12A_2026_05_07
 
 // branchingPropertyIterations is the number of randomized sequences
-// the property test runs. Spec §7 calls for "at least 1000".
+// the property test runs: at least 1000, so rare op interleavings
+// show up in a normal run.
 const branchingPropertyIterations = 1000
 
 // branchingPropertyMinOps / branchingPropertyMaxOps bound the per-
@@ -299,8 +300,8 @@ func TestVersionedBranching_Property(t *testing.T) {
 		//    load-bearing assertion: it's what would have caught the
 		//    pre-fe875f7 SQLite parent-ordering bug. For every version
 		//    common to both DAGs, mem.ParentIDs MUST equal
-		//    sqlite.ParentIDs slice-by-slice (order matters per spec
-		//    §4 for Merge).
+		//    sqlite.ParentIDs slice-by-slice (order matters: Merge
+		//    records [source, target]).
 		ctx := context.Background()
 		memDAG, err := memVDS.versions.LoadDAG(ctx, "doc", "prop")
 		require.NoErrorf(t, err, "iter=%d: mem LoadDAG", iter)

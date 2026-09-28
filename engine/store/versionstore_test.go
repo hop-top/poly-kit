@@ -612,7 +612,7 @@ func TestVersionedDocumentStoreBranchingConformance(t *testing.T) {
 // becomes the latest seq, so the DAG ends with two heads (the
 // original linear tip + the fork sibling). A second Fork at the same
 // fromSeq materializes a third sibling — divergence is expressed by
-// repeated Fork calls in MVP (spec §3 decision 1).
+// repeated Fork calls in MVP.
 func runForkMaterializesNewVersion(t *testing.T, vds *VersionedDocumentStore) {
 	ctx := context.Background()
 
@@ -656,7 +656,7 @@ func runForkMaterializesNewVersion(t *testing.T, vds *VersionedDocumentStore) {
 
 	// A second Fork at the same fromSeq materializes a third sibling.
 	// MVP idempotency reading: repeated Fork calls each produce a new
-	// row (spec §3 decision 1).
+	// row.
 	fork2, err := vds.Fork(ctx, "note", "n1", 2)
 	require.NoError(t, err)
 	assert.Equal(t, 5, fork2.Seq)
@@ -689,7 +689,7 @@ func runForkMaterializesNewVersion(t *testing.T, vds *VersionedDocumentStore) {
 // runMergePreservesParentOrder is the bug-catching scenario for the
 // SQLite buildDAG ORDER BY rowid fix in fe875f7. The contract: a
 // Merge(sourceSeq, targetSeq, ...) records parents
-// [sourceVersionID, targetVersionID] in that order (spec §4). Pre-fix
+// [sourceVersionID, targetVersionID] in that order. Pre-fix
 // the SQLite backend returned parents lex-by-parent_id, so the order
 // would silently rearrange after the round trip through LoadDAG.
 //
@@ -765,7 +765,7 @@ func runBranchesIdentifiesHeads(t *testing.T, vds *VersionedDocumentStore) {
 	ctx := context.Background()
 
 	// Empty document: Branches returns an error matching History's
-	// shape (spec §4: "no history" surfaces as a higher-level error).
+	// shape ("no history" surfaces as a higher-level error).
 	_, err := vds.Branches(ctx, "ghost", "missing")
 	require.Error(t, err, "Branches on unknown doc returns an error")
 
@@ -1289,10 +1289,10 @@ func runConcurrencySmoke(t *testing.T, vs VersionStore) {
 // `go test -run TestVersionedDocumentStorePruningConformance/sqlite/PruneByCountWithAbandonedForkTail`
 // to target a specific cell.
 //
-// The scenarios encode spec §7's locked list. The load-bearing cases
+// The load-bearing cases
 // — PruneByCountWithMergedTails and PruneByCountWithRevertOrphan —
 // cross-check that Merge/Revert's automatic dead-head marking
-// (decision #10) is observable through the public API on BOTH
+// is observable through the public API on BOTH
 // backends, not just the in-memory one. A divergence here surfaces a
 // SetLive integration gap on the SQLite path.
 func TestVersionedDocumentStorePruningConformance(t *testing.T) {
@@ -1332,7 +1332,7 @@ func TestVersionedDocumentStorePruningConformance(t *testing.T) {
 }
 
 // runPruneByCountLinearNoOp: a linear history of 10 versions with
-// MaxVersions=5 must be a no-op. Spec §3 #3: every ancestor of the
+// MaxVersions=5 must be a no-op: every ancestor of the
 // single live head is a retained descendant of the next-older
 // candidate, so the bottom-up fixed-point removes every candidate
 // from the prune set.
@@ -1350,7 +1350,7 @@ func runPruneByCountLinearNoOp(t *testing.T, vds *VersionedDocumentStore) {
 	res, err := vds.Prune(ctx, "note", doc.ID, RetentionPolicy{MaxVersions: 5})
 	require.NoError(t, err)
 	assert.Empty(t, res.VersionsRemoved,
-		"linear-history single-live-head must never prune (spec §3 #3)")
+		"linear-history single-live-head must never prune")
 
 	hist, err := vds.History(ctx, "note", doc.ID)
 	require.NoError(t, err)
@@ -1374,7 +1374,7 @@ func runPruneByCountLinearNoOp(t *testing.T, vds *VersionedDocumentStore) {
 // spec scenario's intent: an abandoned fork-tail chain prunes
 // cleanly while the main line is untouched.
 //
-// Load-bearing for spec §3 decisions #3, #4, #10: live/dead head
+// Load-bearing for the prune rule: the live/dead head
 // distinction makes pruning fire exactly on operator-abandoned
 // subtrees.
 func runPruneByCountWithAbandonedForkTail(t *testing.T, vds *VersionedDocumentStore) {
@@ -1427,18 +1427,18 @@ func runPruneByCountWithAbandonedForkTail(t *testing.T, vds *VersionedDocumentSt
 
 // runPruneByCountWithMergedTails: linear of 5, fork at seq 2 →
 // seq 6 (sibling), Merge(5, 6) → seq 7 (which marks BOTH seq 5 and
-// seq 6 as dead per spec §2 + decision #10).
+// seq 6 as dead).
 //
 // Load-bearing assertion for cross-backend Merge → dead-head
 // behavior: BOTH backends must mark seqs 5 and 6 Live=false at
-// Merge time via SetLive (spec §2). The History row's Live flag is
+// Merge time via SetLive. The History row's Live flag is
 // the public-API observable.
 //
 // Prune with MaxAge=1ns is then a no-op because the merge tip seq 7
 // is the only live head and its retain floor covers every ancestor
 // — the dead heads seqs 5 and 6 are non-graph-heads now (the merge
 // tip is their child) and their ancestor set is fully in seq 7's
-// retain floor. Pruning per spec §3 #3 only fires when a candidate
+// retain floor. Pruning only fires when a candidate
 // has NO retained descendant; here every candidate has seq 7 as a
 // descendant.
 func runPruneByCountWithMergedTails(t *testing.T, vds *VersionedDocumentStore) {
@@ -1466,7 +1466,7 @@ func runPruneByCountWithMergedTails(t *testing.T, vds *VersionedDocumentStore) {
 		switch v.Seq {
 		case 5, 6:
 			assert.False(t, v.Live,
-				"Merge consumed seq %d → must be Live=false (spec §2 + #10)", v.Seq)
+				"Merge consumed seq %d → must be Live=false", v.Seq)
 		default:
 			assert.True(t, v.Live,
 				"non-consumed seq %d stays Live=true", v.Seq)
@@ -1489,8 +1489,7 @@ func runPruneByCountWithMergedTails(t *testing.T, vds *VersionedDocumentStore) {
 }
 
 // runPruneByCountWithRevertOrphan: linear of 5, Revert(seq=2) →
-// seq 6 (which marks pre-revert head seq 5 as dead per spec §2 +
-// decision #10).
+// seq 6 (which marks pre-revert head seq 5 as dead).
 //
 // Load-bearing assertion for cross-backend Revert → dead-head
 // behavior: BOTH backends must flip seq 5's Live=false at Revert
@@ -1528,7 +1527,7 @@ func runPruneByCountWithRevertOrphan(t *testing.T, vds *VersionedDocumentStore) 
 		switch v.Seq {
 		case 5:
 			assert.False(t, v.Live,
-				"Revert pre-revert head seq 5 → Live=false (spec §2 + #10)")
+				"Revert pre-revert head seq 5 → Live=false")
 		default:
 			assert.True(t, v.Live,
 				"non-pre-revert seq %d stays Live=true", v.Seq)
@@ -1583,7 +1582,7 @@ func runPruneByAge(t *testing.T, vds *VersionedDocumentStore) {
 	}
 }
 
-// runPruneWithBothLimits: AND-rule per spec §3 #1. With
+// runPruneWithBothLimits: AND-rule. With
 // MaxVersions=5 + MaxAge=1ms, a version is a candidate iff it
 // exceeds BOTH limits.
 //
@@ -1633,7 +1632,7 @@ func runPruneWithBothLimits(t *testing.T, vds *VersionedDocumentStore) {
 }
 
 // runPruneNeverEmpties: a fresh document with one (live) version
-// against any policy is a no-op (spec §3 #2). And Abandon on the
+// against any policy is a no-op. And Abandon on the
 // only live head returns ErrCannotAbandonLastLiveHead.
 func runPruneNeverEmpties(t *testing.T, vds *VersionedDocumentStore) {
 	ctx := context.Background()
@@ -1661,8 +1660,8 @@ func runPruneNeverEmpties(t *testing.T, vds *VersionedDocumentStore) {
 // runPruneRespectsLiveBranches: doc with two LIVE heads sharing
 // some ancestors. Even with an aggressive policy, nothing prunes
 // because every version is in some live head's retain floor.
-// Verifies spec §3 decision #4 — branched docs prune per-branch
-// (union of live-ancestors).
+// Verifies branched docs prune per-branch (union of
+// live-ancestors).
 func runPruneRespectsLiveBranches(t *testing.T, vds *VersionedDocumentStore) {
 	ctx := context.Background()
 
@@ -1689,8 +1688,7 @@ func runPruneRespectsLiveBranches(t *testing.T, vds *VersionedDocumentStore) {
 
 // runPruneAfterAbandoningOneOfTwoLiveHeads: doc with two live heads
 // A and B sharing ancestors. Abandon(B). Prune → ancestors UNIQUE
-// to B's chain prune; ancestors SHARED with A retain. Spec §3
-// decision #4.
+// to B's chain prune; ancestors SHARED with A retain.
 //
 // Topology:
 //
@@ -1735,7 +1733,8 @@ func runPruneAfterAbandoningOneOfTwoLiveHeads(t *testing.T, vds *VersionedDocume
 // for-byte (per dedup spec). After Abandon + Prune, the shared
 // blob's refcount decrements but the blob survives (still
 // referenced by the source version on the live branch); the
-// unique-to-fork-tail blob is freed. Verifies spec §3 decision #5.
+// unique-to-fork-tail blob is freed. Verifies pruning frees blobs
+// through the dedup refcount path.
 func runPruneWithDedup(t *testing.T, vds *VersionedDocumentStore) {
 	ctx := context.Background()
 
@@ -1852,7 +1851,7 @@ func runAbandonIdempotent(t *testing.T, vds *VersionedDocumentStore) {
 // runBranchesDefaultIncludesDead: after Abandon, default Branches()
 // returns BOTH heads (live and dead) — dead head has Live=false.
 // Branches(WithLiveOnly()) filters to live heads only. Verifies
-// spec §4 default-returns-all backward-compat decision.
+// default-returns-all backward compatibility.
 func runBranchesDefaultIncludesDead(t *testing.T, vds *VersionedDocumentStore) {
 	ctx := context.Background()
 

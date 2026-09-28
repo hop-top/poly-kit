@@ -105,7 +105,7 @@ func TestVersionedBranchingSQLite_MergeParentOrder(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, mergeNode.ParentIDs, 2)
 	assert.Equal(t, hist[1].VersionID, mergeNode.ParentIDs[0],
-		"first parent is source seq (spec §4 ordering)")
+		"first parent is source seq (Merge records [source, target])")
 	assert.Equal(t, hist[2].VersionID, mergeNode.ParentIDs[1],
 		"second parent is target seq")
 }

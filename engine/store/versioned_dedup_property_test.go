@@ -52,7 +52,7 @@ const dedupPropertySeed int64 = 0xDED0_2026_05_07
 
 // dedupPropertyIterations is the number of randomized sequences the
 // property test runs. Matches the branching property test's count
-// (spec §7 calls for "at least 1000").
+// (at least 1000).
 const dedupPropertyIterations = 1000
 
 // dedupPropertyMinOps / dedupPropertyMaxOps bound the per-iteration
@@ -281,7 +281,7 @@ func formatDedupOps(ops []dedupOp) string {
 //     blobs join (vs. the in-memory snapshot map). Divergence here
 //     means the dedup join lookup is corrupting bytes — a real bug.
 //  3. Per-version parent-slice equivalence via LoadDAG — the load-
-//     bearing assertion. Same as branching property test §3.
+//     bearing assertion. Same as the branching property test's step 3.
 //  4. Branches set parity — same head version_ids, same count.
 //
 // On any divergence, the failure message includes the seed +

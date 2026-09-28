@@ -12,18 +12,19 @@ import (
 // the content-addressed dedup invariants.
 //
 // ErrHashCollision: two distinct payloads hashed to the same key
-// (decision #1). util.Short(data, 16) has a birthday bound near
+// (the dedup key is the same util.Short hash Version.Hash uses).
+// util.Short(data, 16) has a birthday bound near
 // 2^64, so realistic kit workloads (millions of versions) never see
 // it; the sentinel exists so callers can distinguish corruption from
 // "hash already present, payload matches" (the normal dedup hit).
 //
 // ErrRefcountOverflow: refcount + 1 would exceed int64 max
-// (decision #4). Effectively unreachable in practice (would require
+// Effectively unreachable in practice (would require
 // 9.2 quintillion references to one payload), but guarded
 // explicitly so callers see a clean error rather than silent wrap.
 //
 // ErrRefcountUnderflow: a decrement would drive refcount below zero
-// (decision #5). Indicates a bug — the version_snapshots join got
+// Indicates a bug — the version_snapshots join got
 // out of sync with snapshot_blobs. Logged at error level by the
 // implementation and surfaced to the caller; the SQL-level
 // CHECK (refcount >= 0) constraint provides the same protection at
@@ -38,7 +39,7 @@ var (
 	// version is not a current DAG head — i.e. has at least one
 	// child. The live/dead flag is only meaningful on heads:
 	// non-head versions are retained transitively by the prune rule
-	// (decision #3) regardless of liveness, so toggling the bit on
+	// regardless of liveness, so toggling the bit on
 	// them would silently no-op.
 	ErrNotAHead = errors.New("store: not a head")
 
@@ -46,7 +47,7 @@ var (
 	// [VersionedDocumentStore.Abandon] when abandoning the target
 	// would leave the document with zero live heads. At least one
 	// live head must always exist so the prune retain-floor (the
-	// union of live heads' ancestors) is non-empty (decision #2).
+	// union of live heads' ancestors) is non-empty.
 	// Operators wanting to drop the last live head should call
 	// Delete (the document goes away) or Update / Fork to create a
 	// new live head before abandoning the old one.

@@ -19,7 +19,7 @@ import (
 // sqliteVersionStore is the SQLite-backed [VersionStore]. It writes
 // to the same *sql.DB the [DocumentStore] owns so that document
 // mutations and version writes can commit in a single transaction
-// (spec §6). For callers who don't need cross-write atomicity
+// For callers who don't need cross-write atomicity
 // (e.g. tests), every public VersionStore method also works on a
 // standalone basis using its own transaction.
 //
@@ -160,12 +160,11 @@ func (s *sqliteVersionStore) appendVersionTx(ctx context.Context, tx sqlExec, do
 	createdAt := now.UTC().Format(time.RFC3339Nano)
 
 	// 4. Insert into versions, version_parents, snapshot_blobs +
-	//    version_snapshots. The snapshot path is content-addressed
-	//    per spec §4: try to insert a fresh blob row; on hash
-	//    conflict bump the existing row's refcount, with overflow
-	//    and collision guards (decisions #4 / #1). The
-	//    version_snapshots join row is the single source of truth
-	//    that ties this version_id to its hash.
+	//    version_snapshots. The snapshot path is content-addressed:
+	//    try to insert a fresh blob row; on hash conflict bump
+	//    the existing row's refcount, with overflow and collision
+	//    guards. The version_snapshots join row is the single source
+	//    of truth that ties this version_id to its hash.
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO versions (type, id, version_id, seq, hash, timestamp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		docType, id, vid, nextSeq, hash, now.UnixNano(), createdAt,
@@ -269,7 +268,7 @@ func (s *sqliteVersionStore) GetSnapshot(ctx context.Context, versionID string) 
 
 // getSnapshotTx looks up a snapshot using the supplied executor if
 // non-nil, otherwise the underlying DB. Reads through the
-// version_snapshots join into snapshot_blobs (spec §4).
+// version_snapshots join into snapshot_blobs.
 func (s *sqliteVersionStore) getSnapshotTx(ctx context.Context, tx sqlExec, versionID string) (json.RawMessage, error) {
 	const q = `SELECT b.data
 	           FROM version_snapshots vs
@@ -293,7 +292,7 @@ func (s *sqliteVersionStore) getSnapshotTx(ctx context.Context, tx sqlExec, vers
 }
 
 // upsertSnapshotBlob is the dedup-aware blob insert path used by
-// AppendVersion (spec §3 #1, #4). It performs:
+// AppendVersion. It performs:
 //
 //  1. INSERT OR IGNORE INTO snapshot_blobs (hash, data, refcount=1).
 //     If the row is newly inserted, RowsAffected==1 and we're done.
@@ -334,7 +333,7 @@ func upsertSnapshotBlob(ctx context.Context, tx sqlExec, hash string, data json.
 	}
 
 	// Bump refcount with overflow guard. The WHERE clause prevents
-	// silent wrap if the row sits at INT64_MAX (decision #4).
+	// silent wrap if the row sits at INT64_MAX.
 	bumped, err := tx.ExecContext(ctx,
 		`UPDATE snapshot_blobs SET refcount = refcount + 1 WHERE hash = ? AND refcount < ?`,
 		hash, int64(math.MaxInt64),
@@ -355,7 +354,7 @@ func upsertSnapshotBlob(ctx context.Context, tx sqlExec, hash string, data json.
 // DeleteHistory implements VersionStore. Relies on FK ON DELETE
 // CASCADE for versions → version_parents and version_snapshots,
 // then decrements snapshot_blobs.refcount per affected hash and
-// deletes blob rows whose count reaches zero (spec §3 #5).
+// deletes blob rows whose count reaches zero.
 func (s *sqliteVersionStore) DeleteHistory(ctx context.Context, docType, id string) error {
 	conn, commit, err := beginImmediate(ctx, s.db)
 	if err != nil {
@@ -421,8 +420,8 @@ func (s *sqliteVersionStore) deleteHistoryTx(ctx context.Context, tx sqlExec, do
 	//
 	//    Then delete blob rows that reached refcount=0. SQLite
 	//    won't run our refcount-decrement trigger from the FK
-	//    cascade above (spec §4: refcount logic stays in code so
-	//    the in-memory backend can mirror it without triggers).
+	//    cascade above (refcount logic stays in code so the
+	//    in-memory backend can mirror it without triggers).
 	for hash, n := range hashCounts {
 		if err := decrementSnapshotBlob(ctx, tx, hash, n); err != nil {
 			return err
@@ -874,13 +873,13 @@ func (s *sqliteVersionStore) buildDAG(ctx context.Context, docType, id string) (
 		}
 		// ORDER BY rowid recovers insertion order, which is the only
 		// way to preserve the [sourceVersionID, targetVersionID]
-		// ordering Merge guarantees per spec §4. The PRIMARY KEY
+		// ordering Merge guarantees. The PRIMARY KEY
 		// (version_id, parent_id) sorts lexicographically by
 		// parent_id; without an explicit ORDER BY rowid the SQLite
 		// planner returns rows in whatever scan order it picks,
 		// which is not insertion order. rowid is intrinsic to
 		// non-WITHOUT-ROWID tables, so this needs no schema change
-		// (decision #8 holds).
+		// (the schema stays unchanged).
 		q := fmt.Sprintf(
 			`SELECT version_id, parent_id FROM version_parents WHERE version_id IN (%s) ORDER BY rowid`,
 			placeholders,

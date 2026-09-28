@@ -43,7 +43,8 @@ func TestPrune_EmptyPolicy(t *testing.T) {
 	assert.Len(t, versions, 3)
 }
 
-// TestPrune_LinearHistory_NoOp confirms spec §3 #3: in a linear
+// TestPrune_LinearHistory_NoOp confirms the retain-transitively rule:
+// in a linear
 // history with a single head, every ancestor of the head is a
 // retained descendant of the next-older candidate, so the bottom-up
 // fixed-point removes every candidate from the prune set. Linear
@@ -73,7 +74,7 @@ func TestPrune_LinearHistory_NoOp(t *testing.T) {
 
 // TestPrune_AbandonedForkTail confirms the prime use case: a fork
 // that was never extended produces a sibling head that is
-// "abandoned"; Prune leaves it alone (heads are retained per §3 #2).
+// "abandoned"; Prune leaves it alone (live heads are retained).
 //
 // To exercise the actual prune fire path, this test uses an
 // abandoned-tail pattern: linear history, fork at an early seq,
@@ -103,7 +104,7 @@ func TestPrune_LinearHistory_NoOp(t *testing.T) {
 // Final: nothing prunable. This confirms the spec's locked-in
 // behavior — even with a fork, every ancestor of EITHER head is
 // retained transitively. Pruning fires only on truly orphaned
-// subtrees (which the spec §3 explicitly notes are the use case;
+// subtrees (the intended use case;
 // reachable through Revert / Merge artifacts that abandon a tail).
 func TestPrune_ForkBothHeadsAlive_NoOp(t *testing.T) {
 	vs := newVersionedStore(t)
@@ -124,7 +125,7 @@ func TestPrune_ForkBothHeadsAlive_NoOp(t *testing.T) {
 	res, err := vs.Prune(ctx, "note", doc.ID, RetentionPolicy{MaxVersions: 2})
 	require.NoError(t, err)
 	assert.Empty(t, res.VersionsRemoved,
-		"every ancestor of either head is retained transitively per spec §3 #3/#4")
+		"every ancestor of either live head is retained transitively")
 }
 
 // TestPrune_MergedBranchTip_Prunable demonstrates the realistic case
@@ -181,7 +182,7 @@ func TestPrune_MergedBranches_NoOp(t *testing.T) {
 }
 
 // TestPrune_HeadRetainedOnTinyDoc: a single-version doc with any
-// policy is a no-op (the only version is a head; spec §3 #2).
+// policy is a no-op (the only version is a live head).
 func TestPrune_HeadRetainedOnTinyDoc(t *testing.T) {
 	vs := newVersionedStore(t)
 	ctx := context.Background()
@@ -237,7 +238,7 @@ func TestPrune_AgeBased_LinearNoOp(t *testing.T) {
 }
 
 // TestPrune_AbandonedForkTail_Fires demonstrates the headline use
-// case for the live/dead head model (decision #10): an explicitly
+// case for the live/dead head model: an explicitly
 // Abandoned fork tail becomes prunable because its head is no longer
 // in the retain floor.
 //
@@ -396,7 +397,7 @@ func TestPrune_RevertLinear_NoOp(t *testing.T) {
 // freed (seq 1 still references it). Seq 5 has unique bytes →
 // freed.
 //
-// Verifies dedup composition (spec §3 #5): pruning calls
+// Verifies dedup composition: pruning calls
 // unrefBlob / decrementSnapshotBlob, which delete-on-zero. Shared
 // blobs survive.
 func TestPrune_BlobRefcountDecrement(t *testing.T) {
