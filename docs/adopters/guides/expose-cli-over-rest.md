@@ -227,6 +227,18 @@ Values are converted to the flag's declared type, so `limit=5`
 arrives as a number. `data` is present because `widget list` declares
 an output schema (step 3); undeclared query parameters are ignored.
 
+A read that may be answered from a cache declares for how long:
+
+```go
+cli.SetCacheTTL(listCmd, 30*time.Second) // kit/cache-ttl: 30s
+```
+
+The same call from the same caller is then served without running for
+30 seconds, with an `ETag` and `Cache-Control: max-age` on the
+response; a client sending the ETag back in `If-None-Match` gets `304`.
+What is keyed, who shares an entry, and the `services.api.cache` block:
+[result cache](../reference/transport-api.md#result-cache).
+
 ### 5. Call a write command
 
 Anything not annotated `read` is a `POST`, with flags and arguments
@@ -567,6 +579,7 @@ The full table is in the
 | `services.api.health.path_prefix` | `""` | Mount both probe routes under a prefix. |
 | `services.api.health.detail` | loopback only | Name failing checks in a `/readyz` `503`. |
 | `cli.WithRootFactory(newRoot)` | not set | Run requests in parallel, each on a tree `newRoot` builds (step 10). Unset serializes them on the tool's own tree. |
+| `services.api.cache.enabled` | `true` | Serve reads that declare `kit/cache-ttl` from a result cache, with `ETag` and `304`. `backend` (default `memory`), `max_bytes`, `path`; see [result cache](../reference/transport-api.md#result-cache). |
 | `services.api.compression.enabled` | `false` | gzip/zstd response bodies for clients that accept them. `min_bytes` (default `1024`) sets the floor; `services.all.compression` sets both for every service. See [response compression](../reference/transport-api.md#response-compression). |
 
 ## Execution facts

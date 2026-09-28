@@ -86,6 +86,11 @@ type ValidationError struct {
 	// PassthroughRejected lists paths annotated kit/passthrough
 	// when Config.PassthroughStrictness is "reject".
 	PassthroughRejected []string
+	// InvalidCacheTTL lists leaves whose kit/cache-ttl is not a
+	// duration greater than zero, or sits on a command not declared
+	// kit/side-effect: read, formatted as "<path>=<value>". Always
+	// checked, like the side-effect and idempotency arms.
+	InvalidCacheTTL []string
 
 	// coverageHint points at `<tool> spec coverage`, set by
 	// Root.Validate. Rendered only when a side-effect bucket
@@ -141,6 +146,7 @@ func (e *ValidationError) Error() string {
 	appendBucket("at depth>=3 missing kit/hierarchical chain", e.UnannotatedDepthExceedance)
 	appendBucket("exceeding MaxHierarchyDepth", e.HierarchyDepthExceeded)
 	appendBucket("annotated kit/passthrough under reject strictness", e.PassthroughRejected)
+	appendBucket("with invalid kit/cache-ttl", e.InvalidCacheTTL)
 	if hint := e.sideEffectHint(); hint != "" {
 		b.WriteString("; ")
 		b.WriteString(hint)
@@ -162,7 +168,7 @@ func (e *ValidationError) HasIssues() bool {
 		len(e.MissingExamples)+len(e.MissingNextSteps)+
 		len(e.UnannotatedTopLevelLeaf)+len(e.TooManyTopLevelVerbs)+
 		len(e.UnannotatedDepthExceedance)+len(e.HierarchyDepthExceeded)+
-		len(e.PassthroughRejected) > 0
+		len(e.PassthroughRejected)+len(e.InvalidCacheTTL) > 0
 }
 
 // AsCLIError converts the validation error into a kit-style error

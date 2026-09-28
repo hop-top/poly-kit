@@ -5,7 +5,8 @@ Wire-level reference for
 integration topics, the REST command projection (route shape,
 parameters, discovery, response body, exit-code mapping, refusals),
 auth claims, request provenance, transport guards, the OpenAPI
-document, and response compression. The task walkthrough is
+document, response compression, and the read result cache. The task
+walkthrough is
 [expose-cli-over-rest.md](../guides/expose-cli-over-rest.md).
 
 ## Bus integration
@@ -683,6 +684,71 @@ replies are encoded, streamed replies pass through.
 
 `WithCompressMinBytes(n)` and `WithCompressFilter(fn)` tune the
 middleware for a router you assemble yourself.
+
+## Result cache
+
+A read command can be answered without running: declare how long one
+result stays good, and the api service serves it from a cache for that
+long, with a validator the client can revalidate against.
+
+```go
+list := &cobra.Command{
+	Use:         "list",
+	Annotations: map[string]string{"kit/side-effect": "read"},
+	RunE:        listWidgets,
+}
+cli.SetCacheTTL(list, 30*time.Second) // kit/cache-ttl: 30s
+```
+
+```bash
+curl -si 'http://127.0.0.1:8080/v1/commands/widget/list?limit=5'
+# HTTP/1.1 200 OK
+# Cache-Control: public, max-age=30
+# Etag: W/"9f2c…"
+
+curl -si -H 'If-None-Match: W/"9f2c…"' 'http://127.0.0.1:8080/v1/commands/widget/list?limit=5'
+# HTTP/1.1 304 Not Modified
+```
+
+What is cached, and for whom:
+
+| Rule | Detail |
+|---|---|
+| Only reads | the command declares `kit/side-effect: read` itself. Write, destructive, interactive, unannotated and name-inferred commands are never cached; `kit/cache-ttl` on one is refused at `Root.Validate` |
+| Only successes | exit code `0` and no error; a failure is never stored or shared |
+| One entry per call and caller | the key is the command path, flags (in any order) and args, plus the caller's principal, tenant and scopes. One caller is never answered with another's result, and each gets its own ETag |
+| `Cache-Control` | `max-age` is what is left of the TTL; `private` when the call carries a principal, tenant or scopes, `public` otherwise |
+| `ETag` | weak (`W/"…"`), so a compressed response keeps it. `If-None-Match` with it, or `*`, answers `304` and no body |
+| Identical calls in flight | wait for the one already running and share its result, instead of running again. A waiter whose client leaves stops waiting; the run goes on |
+| Audit | every call is audited; one answered without running carries `cache: "hit"` (from the store) or `cache: "coalesced"` (shared a run in flight) |
+| Streams | the `/stream` route of a cached read answers a stored result as its final frame; a miss streams live and stores nothing |
+
+The cache is on by default and does nothing until a command declares
+`kit/cache-ttl`. Its block:
+
+```yaml
+services:
+  api:
+    cache:
+      enabled: true        # default
+      backend: memory      # default; bounded, emptied on restart
+      max_bytes: 67108864  # memory only; default 64 MiB, least recently used evicted
+      path: ""             # file or directory for a file backend
+```
+
+Every key may also be set under `services.all.cache`. `backend` names
+a `kv` driver that stores with a TTL: `memory`, or `sqlite` or `badger`
+once the binary imports `hop.top/kit/go/storage/kv/sqlite` (or
+`.../badger`), which then need `path`. A file backend keeps results
+on disk across restarts; point `path` somewhere only the service can
+read. An unknown key, an unregistered backend, `etcd` or `tidb` (no
+TTL), a file backend without `path`, or `max_bytes` on anything but
+`memory` is refused at validation, exit `2`.
+
+A bridge you assemble yourself turns the cache on with
+`cmdsurface.WithResultCache(store)`; [`MountProjection`](cmdsurface.md)
+then renders the headers. An executor of your own sets
+`CommandResult.Cache` (an `api.CacheDirective`) for the same effect.
 
 ## Related pages
 

@@ -1223,6 +1223,9 @@ func (r *Root) collectShippedValidation(ve *ValidationError) {
 			ve.InvalidIdempotency = append(ve.InvalidIdempotency,
 				fmt.Sprintf("%s=%q", cmd.CommandPath(), string(i)))
 		}
+		if entry, bad := checkCacheTTL(cmd); bad {
+			ve.InvalidCacheTTL = append(ve.InvalidCacheTTL, entry)
+		}
 	})
 }
 

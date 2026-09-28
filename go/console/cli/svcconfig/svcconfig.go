@@ -82,6 +82,7 @@ var blocks = []Block{
 	{Name: "rate_limit.read", Keys: []string{"per_minute", "burst"}},
 	{Name: "rate_limit.write", Keys: []string{"per_minute", "burst"}},
 	{Name: "rate_limit.destructive", Keys: []string{"per_minute", "burst"}},
+	{Name: "cache", Keys: []string{"enabled", "backend", "path", "max_bytes"}},
 	{
 		Name: "audit", Keys: []string{"sinks"},
 		Lists: map[string][]string{

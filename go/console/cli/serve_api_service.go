@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"sync"
@@ -79,6 +80,8 @@ type apiService struct {
 	// stopping is closed when Stop begins, ending every open stream
 	// so the drain is not held by a command with no end.
 	stopping chan struct{}
+	// cacheStore is the result cache's store, closed after the drain.
+	cacheStore io.Closer
 }
 
 // newAPIService returns the api service over cfg. addr overrides
@@ -131,6 +134,9 @@ func (a *apiService) Validate() error {
 	// The HTTP-plane blocks: health, metrics.scrape, host_check,
 	// origin_check, security_headers, body_limit, compression.
 	if err := a.plane().validate(); err != nil {
+		return err
+	}
+	if err := a.validateResultCache(); err != nil {
 		return err
 	}
 	// The permission gate is built from --policy at start; a --policy
@@ -339,13 +345,25 @@ func (a *apiService) Stop(ctx context.Context) error {
 	}
 	a.mu.Unlock()
 
-	if srv == nil {
+	if srv != nil {
+		if err := srv.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+	return a.closeResultCache()
+}
+
+// closeResultCache closes the result cache's store, once the drain has
+// ended every call that could still write to it.
+func (a *apiService) closeResultCache() error {
+	a.mu.Lock()
+	store := a.cacheStore
+	a.cacheStore = nil
+	a.mu.Unlock()
+	if store == nil {
 		return nil
 	}
-	if err := srv.Shutdown(ctx); err != nil {
-		return err
-	}
-	return nil
+	return store.Close()
 }
 
 // buildHandler assembles the router exactly as the leaf `serve`
@@ -355,11 +373,16 @@ func (a *apiService) Stop(ctx context.Context) error {
 // because the auth middleware reports its refusals into the bridge's
 // audit sinks: an unauthenticated call and a permitted one must land
 // in the same stream, and only the bridge knows where that is.
-func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
-	bridge, err := a.bridge()
+func (a *apiService) buildHandler(ctx context.Context) (_ http.Handler, err error) {
+	bridge, err := a.bridge(ctx)
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			_ = a.closeResultCache()
+		}
+	}()
 	stopping := make(chan struct{})
 	a.mu.Lock()
 	a.stopping = stopping
@@ -429,13 +452,29 @@ func (a *apiService) plane() httpPlane {
 	}}
 }
 
-// bridge builds the bridge the projection executes through. A tool
-// with no command root projects nothing and audits nothing.
-func (a *apiService) bridge() (*cmdsurface.Bridge, error) {
+// bridge builds the bridge the projection executes through, with the
+// result cache the cache block configures. A tool with no command root
+// projects nothing and audits nothing.
+func (a *apiService) bridge(ctx context.Context) (*cmdsurface.Bridge, error) {
 	if a.root == nil || a.root.Cmd == nil {
 		return nil, nil
 	}
-	return projectionBridge(a.root, a.cfg, isLoopbackAddr(a.listenAddr()))
+	cacheOpt, store, err := a.openResultCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var extra []cmdsurface.Option
+	if cacheOpt != nil {
+		extra = append(extra, cacheOpt)
+		a.mu.Lock()
+		a.cacheStore = store
+		a.mu.Unlock()
+	}
+	b, err := projectionBridge(a.root, a.cfg, isLoopbackAddr(a.listenAddr()), extra...)
+	if err != nil {
+		_ = a.closeResultCache()
+	}
+	return b, err
 }
 
 // mountProjection mounts the versioned REST projection plus its
