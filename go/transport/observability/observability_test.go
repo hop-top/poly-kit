@@ -360,9 +360,28 @@ func TestCapacityQueueAndOverloadAreMeasured(t *testing.T) {
 		go func() { defer wg.Done(); _ = invoke() }()
 	}
 	<-started
+	// The gate counts the waiter before its observer records it: wait
+	// for the queue gauge's point, not only the gate's count.
 	require.Eventually(t, func() bool {
-		load, _ := bridge.Capacity()
-		return load.Queued == 1
+		if load, _ := bridge.Capacity(); load.Queued != 1 {
+			return false
+		}
+		var rm metricdata.ResourceMetrics
+		if err := reader.Collect(context.Background(), &rm); err != nil {
+			return false
+		}
+		for _, sm := range rm.ScopeMetrics {
+			for _, m := range sm.Metrics {
+				if s, ok := m.Data.(metricdata.Sum[int64]); ok && m.Name == MetricQueued {
+					for _, dp := range s.DataPoints {
+						if dp.Value == 1 {
+							return true
+						}
+					}
+				}
+			}
+		}
+		return false
 	}, 2*time.Second, time.Millisecond)
 	got := collect(t, reader)
 	assert.Equal(t, map[string]int64{"rest": 1}, sumBy(t, got[MetricActive], AttrSurface), "one holds the slot")
