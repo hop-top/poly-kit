@@ -17,15 +17,17 @@ consent-gated usage reporting.
 | Level | Needs | What you get |
 |---|---|---|
 | Propagation | nothing; always on | the caller's W3C `traceparent` / `tracestate` reach `Meta.Traceparent` / `Meta.Tracestate` on REST and RPC, the audit sinks, and a subprocess's `TRACEPARENT` / `TRACESTATE` |
-| Export | the tool links the provider; the operator enables it | spans per request and per invocation, request / latency / in-flight / refusal metrics, exported over OTLP or to stdout, or scraped from the api service's `/metrics` |
+| Export | the tool links the provider; the operator enables it | spans per request and per invocation, request / latency / in-flight / refusal metrics, exported over OTLP or to stdout, or scraped from an HTTP listener's `/metrics` |
 
 Nothing is exported by default, anywhere. Linking the provider
 enables nothing; configuration does.
 
-The built-in `mcp` and `rpc` services get the per-invocation spans
-and metrics through their bridges, under `services.mcp.*` and
-`services.rpc.*`; their own listeners carry no HTTP request spans or
-metrics yet.
+The built-in `mcp` and `rpc` services get the same per-invocation
+spans and metrics through their bridges, and their HTTP listeners the
+same request spans and metrics as the api service's, under
+`services.mcp.*` and `services.rpc.*`. The rpc service wires no
+`otelconnect` interceptor of its own, so `rpc.server.*` appears only
+when you add one.
 
 ## Linking the provider
 
@@ -94,7 +96,7 @@ service keeps the others from `services.all`.
 | `headers` | both | none | map of headers sent with every OTLP request (a collector token) |
 | `sample_ratio` | `tracing` | `1` | fraction of new traces recorded; a caller's sampled parent is always followed |
 | `interval` | `metrics` | `60s` | metrics export period |
-| `scrape.enabled` | `metrics` | `false` | answer a Prometheus scrape on the api service ([Scrape endpoint](#scrape-endpoint)); needs `enabled: true` |
+| `scrape.enabled` | `metrics` | `false` | answer a Prometheus scrape on the service's HTTP listener ([Scrape endpoint](#scrape-endpoint)); needs `enabled: true` |
 | `scrape.path` | `metrics` | `/metrics` | where the endpoint answers: an absolute, clean path, not `/` |
 | `scrape.allow_remote` | `metrics` | `false` | let the endpoint answer on a non-loopback bind |
 
@@ -119,7 +121,7 @@ One trace per call, from the caller down to any child process:
 
 | Span | Kind | Parent | Started by |
 |---|---|---|---|
-| `<METHOD> <route>` (e.g. `GET /v1/commands/item/list`) | server | the caller's `traceparent` | HTTP middleware (otelhttp), api service |
+| `<METHOD> <route>` (e.g. `GET /v1/commands/item/list`) | server | the caller's `traceparent` | HTTP middleware (otelhttp), every kit HTTP listener |
 | `<service>/<Procedure>` (e.g. `cmdsurface.v1.Commands/Invoke`) | server | the caller's `traceparent` | RPC interceptor (otelconnect) |
 | `invoke <command path>` | internal; server when no request span exists (socket) | the request span, else `Meta.Traceparent` | bridge runner middleware |
 | whatever the command records | — | the invocation span | the command, via `trace.SpanFromContext(cmd.Context())` |
@@ -184,7 +186,9 @@ series by requesting commands that do not exist.
 | `unauthenticated` | `kit.serve.refusals` | the bridge's `kit/auth-required` gate, and the transport edge reported through `Bridge.Audit` |
 | `unauthenticated` | `kit.serve.http.refusals` | `api.Auth` refusing a credential |
 | `rate_limited` | `kit.serve.refusals` | the rate-limit gate (`rate_limit` block) |
+| `quota_exceeded` | `kit.serve.refusals` | the quota gate (`quota` block) |
 | `overloaded` | `kit.serve.refusals` | the capacity gate (`concurrency` block): every slot taken and the queue full |
+| `idempotency_conflict`, `idempotency_key_reused` | `kit.serve.refusals` | the idempotency gate (`idempotency` block) |
 | `deadline_exceeded` | `kit.serve.refusals` | an invocation whose context deadline passed, running or queued |
 | `body_too_large` | `kit.serve.http.refusals` | `api.BodyLimit`: a declared length over the cap, or a body of unknown length crossing it |
 | `host_rejected`, `origin_rejected` | `kit.serve.http.refusals` | `api.HostCheck`, `api.OriginCheck` |
@@ -252,7 +256,7 @@ carries `service.name` and `service.version`. So
 
 ## Chain position
 
-On the api service's HTTP chain the middleware sits at slot 5 of the
+On every kit HTTP listener's chain the middleware sits at slot 5 of the
 [serve-lifecycle contract](../../contracts/serve-lifecycle.md): after
 request id, client address, access log and recovery, before security
 headers and everything that can refuse, so every refusal below it is
@@ -296,7 +300,6 @@ started.
 
 ## Not implemented
 
-- A queued-invocations gauge: there is no capacity queue yet.
 - Trace context on the socket wire and MCP `_meta`. The socket carries
   `trace_id` only, so a socket invocation span starts a new trace; MCP
   over HTTP is traced by the HTTP middleware.
@@ -304,6 +307,8 @@ started.
 ## Related pages
 
 - [cmdsurface.md](cmdsurface.md) — the bridge, runners and sinks
+- [served-middleware.md](served-middleware.md) — every middleware
+  key and refusal code
 - [transport-api.md](transport-api.md) — request provenance and the
   api middleware
 - [secure-remote-serving.md](../guides/secure-remote-serving.md) — the
