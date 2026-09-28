@@ -26,7 +26,7 @@ import (
 //	server → client  {"op":"result","id":"<corr-id>","result":{Result}}
 //	server → client  {"op":"error","id":"<corr-id>","error":{"code":"...","message":"..."}}
 //
-// Per invocation, the surface ALWAYS streams via Runner.Stream and
+// Per invocation, the surface ALWAYS streams via Admission.Stream and
 // emits a terminal "result" frame derived from the run's accumulated
 // stdout / stderr and (when present) the ExitCode carried on the
 // runner's terminal "done" event Data field. Clients that just want
@@ -45,12 +45,19 @@ import (
 // SurfaceWS. This mirrors REST / RPC, where leaves with auth or
 // confirmation requirements gate the entire route at request time.
 //
-// Per-invocation policy gates fire inside the connection:
+// Per-invocation gates fire inside the connection, through
+// [Bridge.Admit] — the gates, order, errors and audit of
+// [Bridge.Invoke] — before anything runs. A refusal is the
+// invocation's only frame, an "error" frame for its id; the
+// connection stays open for other invocations:
 //
 //   - Unknown leaf path → "error" code=unknown_command.
 //   - Leaf not enabled on SurfaceWS → "error" code=not_enabled.
+//   - Interactive or self-hosting leaf → "error" code=not_invocable.
 //   - Destructive without Policy.AllowDestructiveOn → "error"
 //     code=destructive_blocked.
+//   - Refused by the bridge's PermissionFunc → "error"
+//     code=permission_denied.
 //
 // MountWS forces inv.Path to the resolved leaf path and inv.Meta.Surface
 // to SurfaceWS. Concurrent invocations on the same connection are
@@ -365,9 +372,9 @@ func runWSLoop(
 	}
 }
 
-// handleInvoke validates the invoke frame, resolves the leaf, gates
-// destructive policy, and spawns a streamer goroutine that forwards
-// events as frames and emits a terminal result.
+// handleInvoke validates the invoke frame, canonicalises the
+// invocation, and spawns a streamer goroutine that admits it, forwards
+// events as frames and emits a terminal frame.
 func handleInvoke(
 	parent context.Context,
 	b *Bridge,
@@ -384,43 +391,12 @@ func handleInvoke(
 		return
 	}
 	inv := *f.Invocation
-	key := strings.Join(inv.Path, " ")
-	leaf, ok := index[key]
-	if !ok {
-		_ = wc.writeFrame(parent, wsFrame{
-			Op:    "error",
-			ID:    f.ID,
-			Error: &wsErrorPayload{Code: "unknown_command", Message: ErrUnknownCommand.Error() + ": " + joinPath(inv.Path)},
-		})
-		return
+	// Canonicalise: resolved path + forced surface, so callers cannot
+	// spoof Meta.Surface through the frame. An unknown path is left
+	// as sent; admission refuses it.
+	if leaf, ok := index[strings.Join(inv.Path, " ")]; ok {
+		inv.Path = append([]string(nil), leaf.Path...)
 	}
-	if !leaf.Enabled[SurfaceWS] {
-		_ = wc.writeFrame(parent, wsFrame{
-			Op: "error",
-			ID: f.ID,
-			Error: &wsErrorPayload{
-				Code:    "not_enabled",
-				Message: fmt.Sprintf("%s: %s on %s", ErrSurfaceNotEnabled.Error(), leaf.PathKey(), SurfaceWS),
-			},
-		})
-		return
-	}
-	if !b.Policy().Allowed(leaf.Class, SurfaceWS) {
-		_ = wc.writeFrame(parent, wsFrame{
-			Op: "error",
-			ID: f.ID,
-			Error: &wsErrorPayload{
-				Code:    "destructive_blocked",
-				Message: fmt.Sprintf("%s: %s on %s", ErrDestructiveBlocked.Error(), leaf.PathKey(), SurfaceWS),
-			},
-		})
-		return
-	}
-
-	// Canonicalise: resolved path + forced surface. Bridge.Invoke does
-	// the same enforcement, but we want the runner to see SurfaceWS
-	// directly so callers cannot spoof Meta.Surface through the frame.
-	inv.Path = append([]string(nil), leaf.Path...)
 	inv.Meta.Surface = SurfaceWS
 	inv.Meta.RequestedAt = time.Now()
 
@@ -441,12 +417,20 @@ func handleInvoke(
 	go runStream(parent, invCtx, b, wc, f.ID, inv)
 }
 
-// runStream calls Runner.Stream and forwards every Event as a frame.
-// On the terminal "done" event, it derives a Result from accumulated
-// stdout / stderr and (when the runner provided one) the Result on
-// the done event's Data field. A final "result" frame is always
-// emitted on clean termination; a final "error" frame is emitted if
-// Stream returns a non-nil error.
+// runStream admits inv through [Bridge.Admit], then runs it with
+// [Admission.Stream] and forwards every Event as a frame. A refusal
+// is the invocation's only frame: an "error" frame carrying the
+// sentinel's wire code, audited by the bridge. On the terminal "done"
+// event, it derives a Result from accumulated stdout / stderr and
+// (when the runner provided one) the Result on the done event's Data
+// field. A final "result" frame is always emitted on clean
+// termination; a final "error" frame is emitted if the run returns a
+// non-nil error.
+//
+// Admission runs here, on the invocation's own goroutine and under
+// runCtx, so a slow permission decision never holds up the
+// connection's read loop, and a "cancel" frame for this id cancels
+// the context the decision is made under.
 //
 // parent is the connection-scoped context; runCtx is the per-invocation
 // context that can be canceled by a client "cancel" op. Terminal
@@ -462,10 +446,23 @@ func runStream(
 ) {
 	defer wc.finishCancel(id)
 
+	adm, err := b.Admit(runCtx, inv)
+	if err != nil {
+		_ = wc.writeFrame(parent, wsFrame{
+			Op: "error",
+			ID: id,
+			Error: &wsErrorPayload{
+				Code:    errorCode(err),
+				Message: err.Error(),
+			},
+		})
+		return
+	}
+
 	events := make(chan Event, 16)
 	errc := make(chan error, 1)
 	go func() {
-		errc <- b.Runner().Stream(runCtx, inv, events)
+		errc <- adm.Stream(runCtx, events)
 	}()
 
 	res := Result{}
@@ -531,8 +528,12 @@ func errorCode(err error) string {
 		return "unknown_command"
 	case errors.Is(err, ErrSurfaceNotEnabled):
 		return "not_enabled"
+	case errors.Is(err, ErrNotInvocable):
+		return api.CodeNotInvocable
 	case errors.Is(err, ErrDestructiveBlocked):
 		return "destructive_blocked"
+	case errors.Is(err, ErrPermissionDenied):
+		return api.CodePermissionDenied
 	case errors.Is(err, context.Canceled):
 		return "canceled"
 	default:

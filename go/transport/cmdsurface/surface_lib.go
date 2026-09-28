@@ -121,34 +121,27 @@ func InvokeArgs(ctx context.Context, b *Bridge, argv []string, opts ...InvokeOpt
 }
 
 // StreamArgs is the streaming counterpart of InvokeArgs. It parses
-// argv, builds the same Invocation, and hands it to b.Runner().Stream
-// after applying the bridge's policy gate (leaf resolution + surface
-// enablement + destructive check). Events flow on out; the Runner
-// closes out when streaming completes.
+// argv, builds the same Invocation, admits it through [Bridge.Admit]
+// — the gates [Bridge.Invoke] applies, in the same order and with the
+// same errors — and runs it with [Admission.Stream]. Events flow on
+// out, the terminal "done" Event included; out is closed when
+// streaming completes.
 //
 // StreamArgs returns the first non-nil error from leaf resolution,
-// the policy gate, or the Runner. After the policy gate passes,
-// transport errors flow through as the Runner produced them.
+// the bridge's gates (ErrUnknownCommand, ErrSurfaceNotEnabled,
+// ErrNotInvocable, ErrDestructiveBlocked, ErrPermissionDenied), or
+// the Runner. A refusal leaves out open: nothing was sent on it.
+// After admission, errors flow through as the Runner produced them.
 func StreamArgs(ctx context.Context, b *Bridge, argv []string, out chan<- Event, opts ...InvokeOption) error {
 	inv, err := buildLibInvocation(b, argv, opts)
 	if err != nil {
 		return err
 	}
-	// Re-run the same policy checks Bridge.Invoke applies. Stream
-	// bypasses Bridge.Invoke so we have to gate explicitly; without
-	// this, an adopter could reach a destructive leaf via the
-	// streaming path while the synchronous path refuses.
-	leaf, err := b.resolveLeaf(inv.Path)
+	adm, err := b.Admit(ctx, inv)
 	if err != nil {
 		return err
 	}
-	if !leaf.Enabled[inv.Meta.Surface] {
-		return errSurfaceDisabled(leaf, inv.Meta.Surface)
-	}
-	if !b.cfg.policy.Allowed(leaf.Class, inv.Meta.Surface) {
-		return errDestructiveBlocked(leaf, inv.Meta.Surface)
-	}
-	return b.cfg.runner.Stream(ctx, inv, out)
+	return adm.Stream(ctx, out)
 }
 
 // buildLibInvocation parses argv, applies opts, and returns the
@@ -280,14 +273,4 @@ func parseArgsAndFlags(tokens []string) ([]string, map[string]any) {
 // out-of-line so the hot path in InvokeArgs stays terse.
 func errUnknownCommand(argv []string) error {
 	return fmt.Errorf("%w: no leaf matches %s", ErrUnknownCommand, joinPath(argv))
-}
-
-// errSurfaceDisabled renders an ErrSurfaceNotEnabled for leaf+s.
-func errSurfaceDisabled(leaf *Leaf, s Surface) error {
-	return fmt.Errorf("%w: %s on %s", ErrSurfaceNotEnabled, leaf.PathKey(), s)
-}
-
-// errDestructiveBlocked renders an ErrDestructiveBlocked for leaf+s.
-func errDestructiveBlocked(leaf *Leaf, s Surface) error {
-	return fmt.Errorf("%w: %s on %s", ErrDestructiveBlocked, leaf.PathKey(), s)
 }

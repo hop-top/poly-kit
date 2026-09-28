@@ -580,7 +580,11 @@ of any of them.
   Confirmation is not a bridge gate: it is the command's own flag and
   its own refusal, an exit code in the Result.
 - The permission gate MUST run on every surface, inside the bridge,
-  so no transport can bypass it. The default permits everything.
+  so no transport can bypass it. A transport that streams admits the
+  invocation with `Bridge.Admit` — the same gates, order, errors and
+  audit as `Invoke` — before it opens the stream, and runs it with
+  `Admission.Stream`; it MUST NOT call the runner directly. The
+  default permits everything.
 - `cli.WithPermission` installs the adopter's decision on the api
   and socket services. It composes after the tool's policy engine:
   a `--policy` that refuses a side-effect class refuses it for every

@@ -220,8 +220,15 @@ Runner's `Stream`, forwards every event (the `done` event included),
 closes `out`, and audits the outcome once on a remote surface — a
 client that disconnected appears as a cancellation. A transport that
 must answer a refusal before it commits to a stream — an HTTP status
-rather than a frame inside a `200` — admits first; the `api`
-service's streaming routes do.
+rather than a frame inside a `200` — admits first.
+
+The `api` service's streaming routes, `MountSSE`, `MountWS`, RPC
+`InvokeStream` and `StreamArgs` all admit before they stream. A
+streamed call passes the same gates, is refused with the same errors,
+is audited the same way, and gets the same idempotency-key forwarding
+as `Invoke`. `Bridge.Runner()` still
+returns the Runner, but calling its `Run` or `Stream` directly skips
+every gate and the audit.
 
 ## Surface matrix
 
@@ -333,10 +340,16 @@ Options:
 
 Per-leaf gates: `Authorization` header (or `inv.Meta.Caller`) when
 `Class.AuthRequired`; `X-Confirm-Token` header when
-`Class.RequiresConfirmation`. Error mapping: unknown / not-enabled →
-`CodeNotFound`, destructive-blocked → `CodePermissionDenied`,
-unauthenticated → `CodeUnauthenticated`. See
-`go/transport/cmdsurface/surface_rpc_test.go`.
+`Class.RequiresConfirmation`. Both procedures then pass the bridge's
+gates: `Invoke` through `Bridge.Invoke`, `InvokeStream` through
+`Bridge.Admit` before the first message, so a streamed refusal is the
+stream's error with no event sent. Error mapping: unknown /
+not-enabled / not-invocable → `CodeNotFound`, destructive-blocked and
+permission-denied → `CodePermissionDenied` (the message names which),
+unauthenticated → `CodeUnauthenticated`, confirmation missing →
+`CodeFailedPrecondition`. See
+`go/transport/cmdsurface/surface_rpc_test.go` and
+`surface_stream_gates_test.go`.
 
 ### MCP
 
@@ -431,8 +444,13 @@ Options:
   upgrades.
 
 Safety gates fire at upgrade time using the aggregate matrix of every
-WS-enabled leaf (strictest wins). Per-invocation policy gates fire on
-each `invoke` frame. See `go/transport/cmdsurface/surface_ws_test.go`.
+WS-enabled leaf (strictest wins). Each `invoke` frame is then admitted
+through `Bridge.Admit`, with the gates, errors and audit of `Invoke`.
+A refusal is the invocation's only frame, an `error` frame for its id
+(`unknown_command`, `not_enabled`, `not_invocable`,
+`destructive_blocked`, `permission_denied`); the connection stays
+open for other invocations. See
+`go/transport/cmdsurface/surface_ws_test.go`.
 
 ### SSE
 
@@ -457,9 +475,14 @@ Options:
 curl -N 'http://localhost:8080/cmd/widget/list/stream?flag.format=json'
 ```
 
-Pre-stream sentinel errors map to HTTP status codes (404 / 403 / 401 /
-428). Once the stream has begun, every further error is an `event:
-error` frame. See `go/transport/cmdsurface/surface_sse_test.go`.
+The request is admitted through `Bridge.Admit` before the stream
+opens, with the gates, errors and audit of `Invoke`, so a refusal is
+an HTTP status with a JSON body, never a frame inside a `200`:
+`unknown_command` / `not_enabled` / `not_invocable` → 404,
+`destructive_blocked` / `permission_denied` → 403; the route's auth
+and confirmation checks answer 401 / 428 before that. Once the stream
+has begun, every further error is an `event: error` frame. See
+`go/transport/cmdsurface/surface_sse_test.go`.
 
 ### Bus
 
@@ -531,7 +554,12 @@ func StreamArgs(ctx context.Context, b *Bridge, argv []string, out chan<- Event,
 ```
 
 Parses `argv` as the same shape cobra parses on the command line,
-forces `Meta.Surface = SurfaceLib`, and dispatches via the bridge.
+forces `Meta.Surface = SurfaceLib`, and dispatches via the bridge:
+`InvokeArgs` through `Bridge.Invoke`, `StreamArgs` through
+`Bridge.Admit` and `Admission.Stream`, so both return the same
+refusals (`ErrPermissionDenied`, `ErrNotInvocable`, …). A refused
+`StreamArgs` leaves `out` open; an admitted one closes it when the
+run ends. In-process calls are not audited.
 
 Options:
 
@@ -869,8 +897,8 @@ The mappings of bridge sentinel errors to wire format are uniform:
 | `ErrUnknownCommand`    | 404 `unknown_command` | `CodeNotFound`  | `unknown_command`            | 500 (mount-time refusal) | event-type response |
 | `ErrSurfaceNotEnabled` | 404 `not_enabled` | `CodeNotFound`    | `not_enabled`                | (mount-time refusal)     | (mount-time refusal) |
 | `ErrDestructiveBlocked`| 403 `destructive_blocked` | `CodePermissionDenied` | `destructive_blocked` | 403 / (mount-time refusal) | (mount-time refusal) |
-| `ErrNotInvocable`      | 404 `not_invocable` (withheld at mount) | `NOT_INVOCABLE` (socket) | passthrough | (mount-time refusal) | (mount-time refusal) |
-| `ErrPermissionDenied`  | 403 `permission_denied` (projection) | `DENIED` (socket) | passthrough | passthrough | passthrough |
+| `ErrNotInvocable`      | 404 `not_invocable` (projection: withheld at mount; SSE) | `CodeNotFound`; `NOT_INVOCABLE` (socket) | `not_invocable` (WS); passthrough | (mount-time refusal) | (mount-time refusal) |
+| `ErrPermissionDenied`  | 403 `permission_denied` (projection; SSE) | `CodePermissionDenied`; `DENIED` (socket) | `permission_denied` (WS); passthrough | passthrough | passthrough |
 
 Cross-references: `go/transport/cmdsurface/surface_rest.go`,
 `go/transport/cmdsurface/safety.go`,

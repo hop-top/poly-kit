@@ -76,8 +76,11 @@ var _ cmdsurfacev1connect.CommandsHandler = (*rpcServer)(nil)
 //
 // The handler:
 //   - forces inv.Meta.Surface = SurfaceRPC;
-//   - rejects unknown / non-enabled / destructive-blocked leaves with
-//     the codes in the package mapping table;
+//   - admits every call, unary or streaming, through the bridge's
+//     gates (Bridge.Invoke / Bridge.Admit), which audit refusals, and
+//     rejects unknown / non-enabled / non-invocable /
+//     destructive-blocked / permission-denied leaves with the codes in
+//     the package mapping table;
 //   - returns Result with non-zero ExitCode as a success response
 //     (clients inspect ExitCode themselves);
 //   - cancels the running Stream goroutine when the client disconnects.
@@ -154,8 +157,11 @@ func (s *rpcServer) Invoke(
 }
 
 // InvokeStream implements the server-streaming InvokeStream procedure.
-// Events from the Runner are forwarded one-per-Send; the goroutine
-// closes when the runner exits or ctx is canceled (client disconnect).
+// The invocation passes [Bridge.Admit] — the gates, order, errors and
+// audit of [Bridge.Invoke] — before the first message, so a refusal is
+// the stream's error with no Event sent. Events from the admitted run
+// are forwarded one-per-Send; the goroutine closes when the runner
+// exits or ctx is canceled (client disconnect).
 func (s *rpcServer) InvokeStream(
 	ctx context.Context,
 	req *connect.Request[cmdsurfacev1.Invocation],
@@ -166,10 +172,9 @@ func (s *rpcServer) InvokeStream(
 	if cerr != nil {
 		return cerr
 	}
-	if !s.b.Policy().Allowed(leaf.Class, SurfaceRPC) {
-		return connect.NewError(connect.CodePermissionDenied,
-			fmt.Errorf("%w: %s on %s",
-				ErrDestructiveBlocked, leaf.PathKey(), SurfaceRPC))
+	adm, err := s.b.Admit(ctx, inv)
+	if err != nil {
+		return mapBridgeError(err, leaf)
 	}
 
 	// Run the streamer in its own goroutine so we can multiplex Event
@@ -180,7 +185,7 @@ func (s *rpcServer) InvokeStream(
 	defer cancel()
 
 	go func() {
-		errc <- s.b.Runner().Stream(streamCtx, inv, events)
+		errc <- adm.Stream(streamCtx, events)
 	}()
 
 	// abort stops the runner and waits for it, so it never blocks on a
@@ -267,6 +272,13 @@ func (s *rpcServer) preflight(
 // mapBridgeError translates the package sentinels to Connect codes
 // per the mandatory mapping table. leaf is the resolved leaf (may be
 // nil if mapping fires before resolution).
+//
+// A non-invocable leaf is NotFound, as over REST, where such a
+// command is withheld and its route is absent: the command exists but
+// is not reachable here, the same answer as a leaf not enabled on the
+// surface. FailedPrecondition stays the confirmation refusal's code.
+// A permission refusal shares PermissionDenied with the destructive
+// ceiling; the message's sentinel tells them apart.
 func mapBridgeError(err error, leaf *Leaf) error {
 	_ = leaf
 	switch {
@@ -274,7 +286,11 @@ func mapBridgeError(err error, leaf *Leaf) error {
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, ErrSurfaceNotEnabled):
 		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, ErrNotInvocable):
+		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, ErrDestructiveBlocked):
+		return connect.NewError(connect.CodePermissionDenied, err)
+	case errors.Is(err, ErrPermissionDenied):
 		return connect.NewError(connect.CodePermissionDenied, err)
 	default:
 		return connect.NewError(connect.CodeInternal, err)

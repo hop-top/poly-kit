@@ -542,9 +542,10 @@ func (b *Bridge) resolveLeaf(path []string) (*Leaf, error) {
 	return nil, fmt.Errorf("%w: %s", ErrUnknownCommand, joinPath(path))
 }
 
-// Runner exposes the configured Runner. Surfaces that need to call
-// Stream (WS / SSE) reach the Runner directly through this getter
-// after the bridge has applied the policy gate to the leaf.
+// Runner exposes the configured Runner, for callers that wrap or
+// inspect it. Calling its Run or Stream directly skips every gate and
+// the audit: a surface that streams admits the invocation with
+// [Bridge.Admit] and runs it with [Admission.Stream].
 func (b *Bridge) Runner() Runner {
 	return b.cfg.runner
 }

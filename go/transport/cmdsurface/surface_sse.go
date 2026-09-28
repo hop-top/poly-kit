@@ -3,7 +3,6 @@ package cmdsurface
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -40,11 +39,16 @@ const defaultSSEHeartbeat = 15 * time.Second
 // path is authoritative. Meta.TraceID is taken from X-Request-ID
 // when present.
 //
-// Pre-stream sentinel error mapping (status sent before any frame):
+// Before the stream opens, the invocation passes [Bridge.Admit]: the
+// gates, in the order and with the errors [Bridge.Invoke] applies, and
+// the same audit. A refusal is answered with a status before any
+// frame:
 //
 //	ErrUnknownCommand       → 404 code=unknown_command
 //	ErrSurfaceNotEnabled    → 404 code=not_enabled
+//	ErrNotInvocable         → 404 code=not_invocable
 //	ErrDestructiveBlocked   → 403 code=destructive_blocked
+//	ErrPermissionDenied     → 403 code=permission_denied
 //	auth required, missing  → 401 code=unauthorized
 //	confirmation required   → 428 code=confirmation_required
 //	http.Flusher cast fail  → 500 code=server_error
@@ -134,29 +138,17 @@ func withSSEHeartbeat(d time.Duration) SSEOption {
 	return func(c *sseConfig) { c.heartbeat = d }
 }
 
-// newSSEHandler returns the HandlerFunc that opens the stream for
-// leaf and forwards Runner.Stream events as SSE frames.
+// newSSEHandler returns the HandlerFunc that admits the invocation,
+// opens the stream for leaf and forwards the run's events as SSE
+// frames.
 func newSSEHandler(b *Bridge, leaf *Leaf, cfg sseConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Build invocation from the URL query.
 		inv := buildSSEInvocation(r, leaf)
 
-		// Pre-flight: check surface enablement + policy via a non-
-		// executing path. We do this BEFORE writing any header so
-		// sentinel errors can map to real HTTP status codes.
-		if !leaf.Enabled[SurfaceSSE] {
-			writeSSEError(w, fmt.Errorf("%w: %s on %s",
-				ErrSurfaceNotEnabled, leaf.PathKey(), SurfaceSSE))
-			return
-		}
-		if !b.Policy().Allowed(leaf.Class, SurfaceSSE) {
-			writeSSEError(w, fmt.Errorf("%w: %s on %s",
-				ErrDestructiveBlocked, leaf.PathKey(), SurfaceSSE))
-			return
-		}
-
 		// Verify the response writer supports flushing. SSE without
-		// flush is broken; refuse rather than buffer-and-pretend.
+		// flush is broken; refuse rather than buffer-and-pretend. This
+		// precedes admission so an admitted invocation always runs.
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			api.Error(w, http.StatusInternalServerError, &api.APIError{
@@ -164,6 +156,15 @@ func newSSEHandler(b *Bridge, leaf *Leaf, cfg sseConfig) http.HandlerFunc {
 				Code:    "server_error",
 				Message: "sse not supported: ResponseWriter is not an http.Flusher",
 			})
+			return
+		}
+
+		// Admit BEFORE writing any header: every gate Bridge.Invoke
+		// applies runs here, a refusal is audited, and its sentinel
+		// maps to a real HTTP status instead of a frame inside a 200.
+		adm, err := b.Admit(r.Context(), inv)
+		if err != nil {
+			writeSSEError(w, err)
 			return
 		}
 
@@ -184,7 +185,7 @@ func newSSEHandler(b *Bridge, leaf *Leaf, cfg sseConfig) http.HandlerFunc {
 		events := make(chan Event, 16)
 		errc := make(chan error, 1)
 		go func() {
-			errc <- b.Runner().Stream(streamCtx, inv, events)
+			errc <- adm.Stream(streamCtx, events)
 		}()
 
 		hb := time.NewTicker(cfg.heartbeat)
@@ -355,10 +356,22 @@ func writeSSEError(w http.ResponseWriter, err error) {
 			Code:    "not_enabled",
 			Message: err.Error(),
 		})
+	case errors.Is(err, ErrNotInvocable):
+		api.Error(w, api.StatusNotInvocable, &api.APIError{
+			Status:  api.StatusNotInvocable,
+			Code:    api.CodeNotInvocable,
+			Message: err.Error(),
+		})
 	case errors.Is(err, ErrDestructiveBlocked):
 		api.Error(w, http.StatusForbidden, &api.APIError{
 			Status:  http.StatusForbidden,
 			Code:    "destructive_blocked",
+			Message: err.Error(),
+		})
+	case errors.Is(err, ErrPermissionDenied):
+		api.Error(w, http.StatusForbidden, &api.APIError{
+			Status:  http.StatusForbidden,
+			Code:    api.CodePermissionDenied,
 			Message: err.Error(),
 		})
 	default:
