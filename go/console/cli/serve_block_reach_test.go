@@ -27,6 +27,10 @@ func TestServeRefusesSettingsNoServiceApplies(t *testing.T) {
 		"socket write":       {"services.socket.timeouts.write", "5s", "services.socket.timeouts.write: the socket service has no HTTP listener"},
 		"socket idle":        {"services.socket.timeouts.idle", "5s", "services.socket.timeouts.idle: the socket service has no HTTP listener"},
 		"socket auth mtls":   {"services.socket.auth.mode", "mtls", `services.socket.auth.mode: "mtls" needs an HTTP listener`},
+		"socket auth jwt":    {"services.socket.auth.mode", "jwt", `services.socket.auth.mode: "jwt" needs an HTTP listener`},
+		"socket auth jwks":   {"services.socket.auth.mode", "jwks", `services.socket.auth.mode: "jwks" needs an HTTP listener`},
+		"socket auth oidc":   {"services.socket.auth.mode", "oidc", `services.socket.auth.mode: "oidc" needs an HTTP listener`},
+		"socket auth apikey": {"services.socket.auth.mode", "apikey", `services.socket.auth.mode: "apikey" needs an HTTP listener`},
 		"socket cache":       {"services.socket.cache.enabled", true, "services.socket.cache: only the api service applies cache"},
 		"mcp cache":          {"services.mcp.cache.backend", "memory", "services.mcp.cache: only the api service applies cache"},
 		"rpc cache":          {"services.rpc.cache.enabled", false, "services.rpc.cache: only the api service applies cache"},
@@ -47,7 +51,7 @@ func TestServeRefusesSettingsNoServiceApplies(t *testing.T) {
 	r := socketRoot(t, cli.SocketConfig{Path: shortSocketPath(t)})
 	r.Viper.Set("services.socket.timeouts.command", "30s")
 	r.Viper.Set("services.all.timeouts.read", "5s")
-	r.Viper.Set("services.all.auth.mode", "mtls")
+	r.Viper.Set("services.all.auth.mode", "jwt")
 	r.Viper.Set("services.all.cache.enabled", true)
 	err := runServeArgs(t, r, []string{"serve", "socket"}, 2*time.Second)
 	assert.NoError(t, err, "a key the socket applies and shared defaults are accepted")

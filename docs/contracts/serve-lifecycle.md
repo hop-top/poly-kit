@@ -1573,7 +1573,8 @@ simply does not read it.
 
 The same rule holds for a key or a value that only some services
 apply, as the table below states: under the socket, the server keys
-of `timeouts` and `auth.mode: mtls`; under every service but `api`,
+of `timeouts` and the HTTP credential modes of `auth.mode` (`mtls`,
+`jwt`, `jwks`, `oidc`, `apikey`); under every service but `api`,
 the `cache` block, the adopter's services included. Each is refused
 at validation, exit `2`, and each stays a default under
 `services.all`.
@@ -1585,7 +1586,7 @@ reads no HTTP-listener key.
 
 | Block                                   | Applied by                                     | Refused under            |
 |-----------------------------------------|------------------------------------------------|--------------------------|
-| `auth` (`mode`)                         | `mtls`: api, mcp over HTTP, rpc                | `mode: mtls`: socket     |
+| `auth` (`mode`)                         | `mtls`, `jwt`, `jwks`, `oidc`, `apikey`: api, mcp over HTTP, rpc | those modes: socket |
 | `auth.mtls`, `auth.jwt`, `auth.jwks`, `auth.oidc`, `auth.apikey`, `tls`, `tls.acme` | api, mcp over HTTP, rpc | socket |
 | `timeouts` `read_header`, `read`, `write`, `idle` | api, mcp over HTTP, rpc              | socket                   |
 | `timeouts` `command`                    | bridge services                                | —                        |
