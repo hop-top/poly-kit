@@ -102,6 +102,13 @@ func TestQuotaKey(t *testing.T) {
 	claimed := Meta{Caller: "mallory", Surface: SurfaceREST, Extra: map[string]string{"remote_addr": "10.0.0.9:5555"}}
 	assert.Equal(t, "quota/api/address/10.0.0.9", QuotaKey(q, claimed), "a claim selects no quota")
 	assert.Equal(t, "quota/api/surface/bus", QuotaKey(q, Meta{Surface: SurfaceBus}))
+
+	// A caller the transport vouches for is the owner: one count per
+	// transport, never the name or tenant it claims.
+	sock := Meta{Surface: SurfaceSocket, Caller: "alice", Tenant: "acme", Established: EstablishedTransport}
+	assert.Equal(t, "quota/api/transport/socket", QuotaKey(q, sock), "a socket claim of alice spends none of alice's quota")
+	q.Per = QuotaPerPrincipal
+	assert.Equal(t, "quota/api/transport/socket", QuotaKey(q, sock))
 }
 
 func TestQuota_RefusalOnMCPAndOff(t *testing.T) {

@@ -761,8 +761,11 @@ of any of them.
   first rule matching the established principal, tenant, or a scope
   its credential holds answers for the classes it declares, and the
   policy's own `allow` for the rest. An unestablished caller is
-  answered by the policy's own rules alone, and a transport-established
-  caller holds every scope, as at the scope check. The command runs
+  answered by the policy's own rules alone. A transport-established
+  caller (the owner-only socket, stdio) holds every scope, as at the
+  scope check, and is matched by no name it claims; a caller a verifier
+  established, peer credentials on the socket included, holds its
+  credential's scopes only. The command runs
   under the same answer: the in-process run sees the admitted `Meta`
   (`cmdsurface.AdmittedMeta`), so the `--policy` check inside the
   command asks for the same caller. The policy's `permissions:` rules

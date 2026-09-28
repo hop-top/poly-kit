@@ -169,4 +169,50 @@ func TestPolicyCaller(t *testing.T) {
 	owner := policyCaller(cmdsurface.Meta{Established: cmdsurface.EstablishedTransport})
 	require.NotNil(t, owner)
 	assert.True(t, owner.Owner)
+
+	// The transport vouched for the connection, not a name: the owner
+	// matches no rule, and spends no budget, of the name it claims.
+	claim := policyCaller(cmdsurface.Meta{Caller: "alice", Tenant: "acme",
+		Surface: cmdsurface.SurfaceSocket, Established: cmdsurface.EstablishedTransport})
+	require.NotNil(t, claim)
+	assert.Equal(t, policy.Caller{Owner: true}, *claim)
+
+	// A verifier on the socket (peer credentials) establishes a caller
+	// like any other: it holds its credential's scopes, not every scope.
+	peer := policyCaller(cmdsurface.Meta{Caller: "uid:501",
+		Surface: cmdsurface.SurfaceSocket, Established: cmdsurface.EstablishedVerified})
+	require.NotNil(t, peer)
+	assert.False(t, peer.Owner)
+	assert.Empty(t, peer.Scopes)
+}
+
+// A caller rule that requires a scope admits a verified socket caller
+// (peer credentials) only when its credential holds that scope: holding
+// every scope is the transport-vouched owner's alone, whatever the
+// surface.
+func TestServedPolicy_ScopeRuleRefusesAVerifiedSocketCallerWithoutIt(t *testing.T) {
+	p := policy.Policy{
+		Name:  "team",
+		Allow: map[policy.SideEffect][]string{policy.SideEffectWrite: {}},
+		Callers: []policy.CallerRule{{
+			Scope: "widgets:write",
+			Allow: map[policy.SideEffect][]string{policy.SideEffectWrite: {"*"}},
+		}},
+	}
+	r := authRoot(t)
+	gate := permissionFromEngine(policy.NewEngine(p, 0), nil)
+	add, _, err := r.Cmd.Find([]string{"add"})
+	require.NoError(t, err)
+	leaf := &cmdsurface.Leaf{Cmd: add, Path: []string{"add"}}
+	ctx := context.Background()
+
+	peer := cmdsurface.Meta{Surface: cmdsurface.SurfaceSocket, Caller: "uid:501",
+		Established: cmdsurface.EstablishedVerified}
+	assert.False(t, gate(ctx, peer, leaf).Allowed, "a peer caller with no scopes does not match the scope rule")
+
+	peer.Extra = map[string]string{"scopes": "widgets:write"}
+	assert.True(t, gate(ctx, peer, leaf).Allowed, "one holding the scope does")
+
+	owner := cmdsurface.Meta{Surface: cmdsurface.SurfaceSocket, Established: cmdsurface.EstablishedTransport}
+	assert.True(t, gate(ctx, owner, leaf).Allowed, "the owner-only socket's caller holds every scope")
 }

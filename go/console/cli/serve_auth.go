@@ -296,18 +296,24 @@ func chargeBudget(ctx context.Context, ledger *cmdsurface.UsageLedger, b policy.
 }
 
 // policyCaller is the policy's view of the caller meta describes: nil
-// unless the transport established it. A transport-established caller
-// holds the owner's authority; a verified one holds its credential's
-// scopes.
+// unless the transport established it. A caller the transport itself
+// vouches for (the owner-only socket, stdio) holds the owner's
+// authority and is named by nothing it claims: it matches no rule and
+// spends no budget of another's name. A verified caller — by any
+// verifier, peer credentials on the socket included — holds its
+// credential's scopes only.
 func policyCaller(meta cmdsurface.Meta) *policy.Caller {
-	if !meta.Authenticated() {
+	switch meta.Established {
+	case cmdsurface.EstablishedTransport:
+		return &policy.Caller{Owner: true}
+	case cmdsurface.EstablishedVerified:
+		return &policy.Caller{
+			Principal: meta.Caller,
+			Tenant:    meta.Tenant,
+			Scopes:    meta.Scopes(),
+		}
+	default:
 		return nil
-	}
-	return &policy.Caller{
-		Principal: meta.Caller,
-		Tenant:    meta.Tenant,
-		Scopes:    meta.Scopes(),
-		Owner:     meta.Established == cmdsurface.EstablishedTransport,
 	}
 }
 

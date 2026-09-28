@@ -1438,8 +1438,10 @@ services:
       enabled: false        # not for the owner's socket
 ```
 
-The caller is counted as the rate limit counts it: the authenticated
-principal and tenant, else the client address, else the surface. Only
+The caller is counted as the rate limit counts it: the principal and
+tenant your `Auth` verified; on the owner-only socket, the owner, one
+count whatever name a request claims; else the client address, else
+the surface. Only
 a call that ran successfully is counted, after it ran; a replay or a
 result served from the cache is free. Once the window's quota is spent the next call
 is refused until the window resets, and `Retry-After` says when:

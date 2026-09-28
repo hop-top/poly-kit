@@ -129,10 +129,14 @@ func (e *QuotaExceededError) RetryAfterHint() time.Duration { return e.RetryAfte
 func QuotaKey(q Quota, meta Meta) string {
 	prefix := "quota/" + url.PathEscape(q.Scope) + "/"
 	switch {
-	case meta.Authenticated() && q.Per == QuotaPerTenant && meta.Tenant != "":
+	case meta.Established == EstablishedVerified && q.Per == QuotaPerTenant && meta.Tenant != "":
 		return prefix + "tenant/" + url.PathEscape(meta.Tenant)
-	case meta.Authenticated() && meta.Caller != "":
+	case meta.Established == EstablishedVerified && meta.Caller != "":
 		return prefix + "principal/" + url.PathEscape(meta.Caller) + "/" + url.PathEscape(meta.Tenant)
+	case meta.Established == EstablishedTransport:
+		// The owner, as the rate limit counts it: one count per
+		// transport, whatever name or tenant a request claims.
+		return prefix + "transport/" + url.PathEscape(string(meta.Surface))
 	case clientHost(meta) != "":
 		return prefix + "address/" + url.PathEscape(clientHost(meta))
 	default:
