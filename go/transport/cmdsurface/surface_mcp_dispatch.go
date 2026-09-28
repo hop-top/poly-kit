@@ -341,7 +341,7 @@ func WithMCPCacheHints(ttl time.Duration, scope MCPCacheScope) MCPOption {
 // see the MCP guide, "Origin validation", for the opt-in rationale.
 //
 // Deprecated: an option of MountMCP, which is deprecated. The mcp
-// service takes the same allowlist as services.mcp.origin_allowlist.
+// service's Origin check is services.mcp.origin_check.allow.
 func WithMCPOriginAllowlist(origins ...string) MCPOption {
 	return func(c *mcpConfig) {
 		c.originAllowlist = append([]string(nil), origins...)

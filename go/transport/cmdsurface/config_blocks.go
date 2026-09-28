@@ -10,9 +10,10 @@ package cmdsurface
 // The runtime surfaces (surface_webhook.go, surface_bus.go,
 // surface_cron.go, sink_*.go) take their bindings as Go structs
 // via Mount* / SinkSet at call time. These YAML structs are the
-// declarative counterpart: a caller building Mount* inputs from
-// YAML reads CommandConfig.Webhook / Bus / Cron / Sinks and
-// translates each entry to the corresponding runtime struct.
+// declarative counterpart: Config.WebhookMappings, BusBindings and
+// CronSchedules (config_translate.go) turn the webhook, bus and cron
+// blocks into exactly what MountWebhooks, MountBus and MountCron
+// take. The sinks block is not translated yet.
 
 // WebhookConfig is the per-command "webhook:" block. It maps an
 // inbound HTTP webhook onto the leaf:
@@ -72,8 +73,8 @@ type WebhookConfig struct {
 // adopter's Subscriber as an opaque consumer-group label.
 type BusConfig struct {
 	// RequestTopic is the topic the surface subscribes to. Required
-	// for the block to take effect; an empty value disables the
-	// binding.
+	// once any key of the block is set: BusBindings refuses a block
+	// without it.
 	RequestTopic string `yaml:"request_topic,omitempty"`
 	// ResponseTopic is the topic Results are published to. Empty →
 	// fire-and-forget.
@@ -97,8 +98,8 @@ type BusConfig struct {
 // positional / flag values into the invocation issued on every
 // tick.
 type CronConfig struct {
-	// Expr is the 5-field cron expression. Required for the block
-	// to take effect.
+	// Expr is the 5-field cron expression. Required once any key of
+	// the block is set: CronSchedules refuses a block without it.
 	Expr string `yaml:"expr,omitempty"`
 	// Timezone is the IANA zone name. Empty defaults to UTC.
 	Timezone string `yaml:"timezone,omitempty"`
@@ -200,8 +201,7 @@ type TelemetryConfig struct {
 // surface_mcp_dispatch.go and docs/adopters/guides/expose-cli-over-mcp.md):
 // a caller building MountMCP's opts from YAML reads this block and
 // translates each field to the corresponding option. Load / FromConfig
-// parse this block but do not act on it — FromConfig does not mount
-// surfaces, consistent with the webhook/bus/cron blocks above.
+// parse this block but do not act on it.
 //
 //	mcp:
 //	  spec_versions: ["2024-11-05", "2026-07-28"]  # empty = both
@@ -209,6 +209,14 @@ type TelemetryConfig struct {
 //	  cache_ttl_ms: 0                                # 0 = stale
 //	  cache_scope: private                           # "" = private
 //	  origin_allowlist: ["https://app.example.com"]
+//
+// Deprecated: the block configures MountMCP, which is deprecated. The
+// mcp service (hop.top/kit/go/console/cli/mcpserve) is configured
+// under services.mcp.*: path is services.mcp.path, and
+// origin_allowlist is superseded by the served-command Origin check,
+// services.mcp.origin_check.allow. spec_versions, cache_ttl_ms and
+// cache_scope have no equivalent there: the SDK negotiates protocol
+// versions and sets cache hints itself. Nothing reads this block.
 type MCPConfig struct {
 	// SpecVersions lists the enabled MCP protocol revisions
 	// ("2024-11-05", "2026-07-28"). Empty means both — the

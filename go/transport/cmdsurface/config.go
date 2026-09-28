@@ -12,12 +12,11 @@ import (
 	"hop.top/kit/go/runtime/telemetry"
 )
 
-// Config is the YAML-loadable shape that drives a Bridge. The
-// foundation wave covers Surfaces (per-leaf enablement) and Policy
-// (destructive default + DefaultEnabled). Surface-specific config
-// blocks (webhook, bus, cron, sinks) are reserved on the struct
-// but ignored by the loader until later waves add the surface
-// implementations.
+// Config is the YAML-loadable shape that drives a Bridge. FromConfig
+// applies Surfaces (per-leaf enablement), Policy (destructive default
+// + DefaultEnabled) and Telemetry. The per-command webhook, bus and
+// cron blocks reach their mounts through WebhookMappings, BusBindings
+// and CronSchedules; FromConfig mounts nothing itself.
 type Config struct {
 	Surfaces SurfacesConfig `yaml:"surfaces"`
 	Policy   PolicyConfig   `yaml:"policy"`
@@ -31,10 +30,12 @@ type Config struct {
 	// MCP is the optional declarative MCP surface configuration. Like
 	// Telemetry, a pointer so absence is distinguishable from an
 	// explicit empty block. Declarative-only: FromConfig does not
-	// mount the MCP surface from this field (matching the
-	// webhook/bus/cron blocks) — adopters read cfg.MCP and translate
-	// to WithMCP* options when calling MountMCP themselves. See
-	// MCPConfig godoc.
+	// mount the MCP surface from this field — adopters read cfg.MCP
+	// and translate to WithMCP* options when calling MountMCP
+	// themselves. See MCPConfig godoc.
+	//
+	// Deprecated: see MCPConfig. Configure the mcp service under
+	// services.mcp.* instead.
 	MCP *MCPConfig `yaml:"mcp,omitempty" json:"mcp,omitempty"`
 
 	// TelemetryEmitterProvider is invoked by FromConfig when
@@ -70,9 +71,9 @@ type SurfacesConfig struct {
 // bridge's per-leaf surface set; the Webhook / Bus / Cron / Sinks
 // blocks are the declarative counterpart to the Go-side mount
 // inputs (WebhookMapping, BusBinding, CronSchedule, SinkSpec).
-// The blocks are parsed by Load and surfaced unchanged; callers
-// building Mount* inputs from YAML translate each block to the
-// corresponding runtime struct.
+// Config.WebhookMappings, BusBindings and CronSchedules translate
+// the first three; a block binds one command, so it belongs under an
+// exact path, never a wildcard pattern.
 type CommandConfig struct {
 	// Enabled lists the surfaces this command is exposed on. When
 	// empty the bridge falls back to SurfacesConfig.Defaults (or

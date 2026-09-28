@@ -433,9 +433,8 @@ Options:
   shared across instances; mount fails on an empty key.
 
 The declarative `mcp:` config block (`MCPConfig`) mirrors these
-options field-for-field; `FromConfig` parses it but does not mount —
-adopters translate it to options themselves, like the webhook / bus /
-cron blocks.
+options field-for-field and is deprecated with them; see
+[Declarative surface blocks](#declarative-surface-blocks).
 
 Protocol reference: <https://modelcontextprotocol.io/specification>.
 Adopter walkthrough:
@@ -980,6 +979,74 @@ b := cmdsurface.New(root, cmdsurface.WithPolicy(cmdsurface.Policy{
 `WithRunner` / `WithPolicy` layered on top of `FromConfig` override
 the YAML — explicit options always win.
 
+### Declarative surface blocks
+
+A command entry can also declare the webhook, bus subscription or
+schedule that reaches it. `FromConfig` mounts nothing — each surface
+needs something only you hold (a router, a `Subscriber`, a
+`CronEngine`, secrets) — so three methods on `Config` turn the blocks
+into exactly what the mounts take:
+
+```yaml
+surfaces:
+  commands:
+    "widget add":
+      enabled: [cli, webhook, bus]
+      webhook:
+        name: widget-create
+        map: { name: "{{ .body.title }}" }
+        auth: hmac                     # none | hmac | bearer
+        header: X-Hub-Signature-256
+        prefix: "sha256="
+        secret_env: WIDGET_HOOK_SECRET # bearer: token_env
+      bus:
+        request_topic: widgets.create.req
+        response_topic: widgets.create.resp
+    "report daily":
+      enabled: [cli, cron]
+      cron:
+        expr: "0 9 * * *"
+        timezone: America/New_York
+```
+
+```go
+cfg, _ := cmdsurface.LoadFile(path)
+b, _ := cmdsurface.FromConfig(root, cfg)
+
+hooks, err := cfg.WebhookMappings(os.LookupEnv)
+// ...
+err = cmdsurface.MountWebhooks(b, r, hooks)
+
+bindings, err := cfg.BusBindings()
+stopBus, err := cmdsurface.MountBus(b, sub, pub, bindings)
+
+schedules, err := cfg.CronSchedules()
+stopCron, err := cmdsurface.MountCron(b, cmdsurface.DefaultCronEngine(), schedules)
+```
+
+Each method refuses, with the command pattern in the error:
+
+- a block under a wildcard pattern (`"widget *"`, `"*"`): a block
+  binds exactly one command;
+- a block missing its required key (`webhook.name`,
+  `bus.request_topic`, `cron.expr`) while setting another;
+- a webhook `auth` other than `none`, `hmac` or `bearer`, a key that
+  belongs to another scheme, and a `secret_env` / `token_env`
+  variable that `lookupEnv` reports unset or empty — at startup, not
+  as a 401 on every request.
+
+The mount then checks the rest: the command exists, the surface is
+enabled on it, the destructive ceiling, auth and confirmation rules.
+The per-command `sinks:` list is parsed and not yet translated.
+
+The top-level `mcp:` block (`Config.MCP`) is deprecated with
+`MountMCP`, which it configures, and nothing reads it. The `mcp`
+service reads its own keys: `path` is `services.mcp.path`;
+`origin_allowlist` is superseded by the served-command Origin check,
+`services.mcp.origin_check.allow`; `spec_versions`, `cache_ttl_ms` and
+`cache_scope` have no equivalent, because the SDK negotiates protocol
+versions and sets cache hints itself.
+
 ## Adopter responsibilities
 
 The package projects a cobra tree onto surfaces. Adopters supply:
@@ -1122,7 +1189,8 @@ Implemented (this package):
 
 - Foundation: `Bridge`, `Leaf`, `Invocation` / `Result` / `Event`,
   `Runner` / `InProcessRunner`, `SafetyClass` / `Policy`, YAML
-  `Config` / `LoadFile` / `FromConfig`.
+  `Config` / `LoadFile` / `FromConfig`, and the block translators
+  `WebhookMappings` / `BusBindings` / `CronSchedules`.
 - Surfaces: CLI (cobra), REST, RPC, MCP, WS, SSE, Bus, Cron, Lib,
   Webhook, OAuth callback, Signed URL.
 - FaaS adapters: AWS Lambda (5 event types), Cloud Run.
@@ -1135,6 +1203,7 @@ Deprecated — frozen, fixes only, no new options:
 | `MountREST`, `RESTOption`, `WithREST*` | `cli.WithAPI` (the `/v1/commands` projection); `MountRPC` for a call envelope | existing callers; a bare bridge that needs REST on its own router |
 | `MountMCP`, `MCPOption`, `WithMCP*` | `mcpserve.With` (`serve mcp`); `mcpsdk.Mount` / `Handler` / `ServeStdio` on a bare bridge | existing callers; generating the cross-language MCP wire fixtures |
 | `CloudRunSurfaces.REST`, `CloudRunSurfaces.MCP` | `CloudRunConfig.Router` with the replacement mounted on it | existing callers |
+| `Config.MCP`, `MCPConfig` (the `mcp:` block) | `services.mcp.*` on the `mcp` service | existing configs; nothing mounts from it |
 
 The deprecation notice ships in the first release after 0.5.0-alpha.15.
 Removal comes no earlier than kit 0.6.0, at least one release after
