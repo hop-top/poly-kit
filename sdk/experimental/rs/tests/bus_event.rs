@@ -31,8 +31,8 @@ fn new_event_sets_timestamp() {
     assert!(e.timestamp.starts_with("20"), "timestamp = {}", e.timestamp);
 }
 
-/// Verifies the envelope marshals with lowercase JSON keys per the bus
-/// topics spec §4. Cross-process subscribers parse lowercase;
+/// Verifies the envelope marshals with lowercase JSON keys, matching
+/// `go/runtime/bus/event.go`. Cross-process subscribers parse lowercase;
 /// capitalized keys would break them.
 #[test]
 fn event_json_lowercase_field_names() {

@@ -1,7 +1,7 @@
 //! The [`Event`] envelope carried by the bus.
 //!
-//! Mirrors `go/runtime/bus/event.go`. JSON keys are lowercase per the
-//! bus topics spec §4 — cross-process subscribers parse lowercase, so
+//! Mirrors `go/runtime/bus/event.go`. JSON keys are lowercase, as
+//! there — cross-process subscribers parse lowercase, so
 //! capitalized keys would break them. `workspace_id` is snake_case and
 //! omitted when empty, for backward compatibility with v0.1 publishers.
 
