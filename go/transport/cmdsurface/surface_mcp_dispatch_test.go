@@ -1,8 +1,8 @@
 package cmdsurface
 
 // Coverage for the dual-spec era dispatcher (surface_mcp_dispatch.go):
-// D1-D4 detection precedence, the ADR's 11-row worked edge-case
-// table, the WithMCPSpecVersions / WithMCPCacheHints /
+// D1-D4 detection precedence (see docs/adopters/guides/expose-cli-over-mcp.md), the 11-row worked
+// edge-case table, the WithMCPSpecVersions / WithMCPCacheHints /
 // WithMCPOriginAllowlist option surface, legacy-only bypass, and the
 // MCPConfig declarative block.
 //

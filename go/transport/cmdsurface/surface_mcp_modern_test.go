@@ -662,7 +662,7 @@ func TestModern_V6_CaseVariantHeaderNameAccepted(t *testing.T) {
 
 func TestModern_V6_DuplicateHeaderConflictingValuesRejected(t *testing.T) {
 	// A duplicate Mcp-Method with differing values is itself a
-	// validation failure per the amended ADR: conflicting duplicates
+	// validation failure: conflicting duplicates
 	// are the multiple-sources-of-truth hazard the header/body check
 	// exists to close, so neither value is trusted.
 	srv := modernServer(t)

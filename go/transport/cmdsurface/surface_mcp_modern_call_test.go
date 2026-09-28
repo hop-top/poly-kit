@@ -183,7 +183,7 @@ func TestModernCall_V9_MissingName_FailsV7First(t *testing.T) {
 func TestModernCall_V7_EmptyRawHeaderValueRejected(t *testing.T) {
 	// Mcp-Name sent as a literal empty string (not sentinel-encoded):
 	// empty after "decoding" (a no-op for a non-sentinel value) is a
-	// header-validation failure per the amended ADR V7 rule, same as
+	// header-validation failure per rule V7, same as
 	// an absent header.
 	srv := modernServer(t)
 	headers := map[string]string{
@@ -229,7 +229,7 @@ func TestModernCall_V7_HeaderPresentParamsNameAbsentRejected(t *testing.T) {
 	// Mcp-Name is present, non-empty, and well-formed, but params.name
 	// is altogether absent from the body: a header claiming a name
 	// the body never supplied is a header-validation failure per the
-	// amended ADR V7 rule, not a V9 params error.
+	// V7 rule, not a V9 params error.
 	srv := modernServer(t)
 	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"_meta":{` +
 		`"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}`

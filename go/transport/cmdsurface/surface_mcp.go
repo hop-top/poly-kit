@@ -54,7 +54,7 @@ type mcpConfig struct {
 	// specVersionsSet distinguishes "option not supplied" (both
 	// versions enabled, the default) from an explicit empty call
 	// (WithMCPSpecVersions() with zero args), which is a mount-time
-	// error per the ADR's option table.
+	// error.
 	specVersionsSet bool
 	specVersions    []MCPSpecVersion
 

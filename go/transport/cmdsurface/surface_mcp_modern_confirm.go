@@ -25,8 +25,8 @@ package cmdsurface
 // state this surface deliberately does not keep; the short TTL bounds
 // the window.
 //
-// Two verification-failure cases are deliberately distinct (ADR
-// 0004): an expired-but-authentic state is a routine re-prompt; a
+// Two verification-failure cases are deliberately distinct: an
+// expired-but-authentic state is a routine re-prompt; a
 // state failing HMAC verification is never honored — the rejection is
 // recorded as a security-relevant audit event first, and only then is
 // a fresh prompt (with newly minted state) issued. Tampering can

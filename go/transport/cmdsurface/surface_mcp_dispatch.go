@@ -160,7 +160,7 @@ type mcpEnabledSet struct {
 
 // errMCPNoSpecVersions is returned by MountMCP when
 // WithMCPSpecVersions is called with zero arguments (an explicit
-// empty set), per the ADR's "mount-time refusal" rule.
+// empty set): an empty set is refused at mount time.
 var errMCPNoSpecVersions = errors.New("cmdsurface: WithMCPSpecVersions: at least one spec version required")
 
 // resolveMCPSpecVersions dedupes and validates the versions passed to

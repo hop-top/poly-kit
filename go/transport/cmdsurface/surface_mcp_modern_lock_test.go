@@ -7,8 +7,8 @@ package cmdsurface
 // surface_mcp_modern_list.go, surface_mcp_modern_call.go,
 // surface_mcp_modern_confirm.go) byte-for-byte, in the same style as
 // surface_mcp_legacy_lock_test.go: every response body asserted here
-// is a literal string constant (or, where the ADR pins construction
-// rather than bytes — MRTR requestState — derived via the package's
+// is a literal string constant (or, where the contract pins
+// construction rather than bytes — MRTR requestState — derived via the package's
 // own exported/unexported helpers), never copied from the production
 // code under test.
 //
@@ -34,7 +34,7 @@ package cmdsurface
 // specific goldens are construction-exact (built via mintMCPConfirmState/
 // mcpConfirmBinding/mcpConfirmArgsDigest — the same helpers the
 // production gate uses) rather than byte-exact against a literal
-// string: byte-exact where the ADR pins bytes, construction-exact
+// string: byte-exact where the contract pins bytes, construction-exact
 // where it pins construction.
 //
 // Fixture convention: this file defines its own cobra tree
@@ -247,7 +247,7 @@ func runGoldenExchange(t *testing.T, srv *httptest.Server, client *http.Client, 
 // NAME sent with more than one value (duplicate-header golden
 // exchanges — see the "duplicate headers" section below). A
 // map[string]string collapses repeated keys to one; http.Header.Add
-// preserves every occurrence in send order, which is what the ADR's
+// preserves every occurrence in send order, which is what the
 // "sent more than once" cases require to actually exercise the
 // production request. Otherwise identical in spirit and shape to
 // goldenExchange (request in, status+body bytes out) — a fixture
@@ -991,7 +991,7 @@ func TestModernLock_InitializeRejection_NamesSupportedVersions(t *testing.T) {
 // --- tasks extension ABSENCE conformance ---------------------------------
 //
 // The tasks extension (io.modelcontextprotocol/tasks: tasks/get,
-// tasks/update) was deliberately descoped by ADR decision. This suite
+// tasks/update) was deliberately descoped. This suite
 // does NOT implement
 // it; these goldens instead lock the two proofs of its absence: the
 // extension methods answer -32601 at 404 like any other unrecognized
@@ -1046,12 +1046,12 @@ func TestModernLock_TasksExtension_DiscoverAdvertisesNoExtensionsMap(t *testing.
 // The dual-version matrix (surface_mcp_matrix_test.go) proves era
 // isolation for the marker combinations most likely on real traffic
 // (M1+M2+M3 together, or no markers at all). This section locks the
-// distinctive individual-marker and precedence-rule wire outcomes ADR
-// 0004 pins but the matrix does not exercise in isolation: a single
+// distinctive individual-marker and precedence-rule wire outcomes the
+// routing contract (docs/adopters/guides/expose-cli-over-mcp.md) pins but the matrix does not exercise in isolation: a single
 // marker alone routing modern (M2-only, M3-only, M4-only), the D2
 // initialize-wins-over-markers quirk, and the D1 parse-failure path
 // under modern headers. A port that requires M1 (Mcp-Method) for
-// modern routing — a natural but ADR-noncompliant implementation —
+// modern routing — a natural but noncompliant implementation —
 // would pass every other case in this suite while misrouting M2/M3/M4
 // -only requests to the legacy handler; these goldens catch exactly
 // that. Mounted with both spec versions enabled (the default), so
@@ -1110,7 +1110,7 @@ func TestModernLock_EraDetection_M2Only_RoutesModern(t *testing.T) {
 }
 
 func TestModernLock_EraDetection_InitializeWithMarkers_RoutesLegacy(t *testing.T) {
-	// D2 (the ADR-acknowledged quirk): method == "initialize" routes
+	// D2 (the acknowledged quirk): method == "initialize" routes
 	// legacy UNCONDITIONALLY, even carrying both header markers (M1)
 	// and a _meta protocolVersion key (M3) that would otherwise route
 	// modern. The response is the ordinary legacy initialize result —
@@ -1229,13 +1229,13 @@ func TestModernLock_HTTP_DELETE405(t *testing.T) {
 // --- MRTR full loop + tamper + expiry (construction-exact) --------------
 //
 // requestState is HMAC-derived, so these goldens cannot be literal
-// string constants — a byte-identical ADR-pinned FRAMING
+// string constants — a byte-identical pinned FRAMING
 // (v1.<expiry>.<mac>) holds, but the mac's own encoding is only
 // reproducible by calling the package's own mintMCPConfirmState/
 // verifyMCPConfirmState/mcpConfirmBinding/mcpConfirmArgsDigest/
 // mcpConfirmPrincipal helpers — the same ones the production gate
 // uses — rather than hardcoding an opaque string that would break the
-// moment an unrelated, ADR-conforming encoding detail (e.g. base64
+// moment an unrelated, conforming encoding detail (e.g. base64
 // alphabet choice within spec bounds) changed. This is
 // construction-exact, not byte-exact.
 
@@ -1370,7 +1370,7 @@ func TestModernLock_MRTR_FullLoop(t *testing.T) {
 	// requestState framing: v1.<expiry>.<mac> — three dot-separated
 	// parts, version tag exactly "v1", expiry a base-10 integer. The
 	// mac segment's actual bytes are never asserted against a literal
-	// (construction-exact exception); only the ADR-pinned FRAMING is.
+	// (construction-exact exception); only the pinned FRAMING is.
 	stateParts := strings.Split(state, ".")
 	if len(stateParts) != 3 {
 		t.Fatalf("round1 requestState framing=%q want 3 dot-separated parts (v1.<expiry>.<mac>)", state)
@@ -1415,7 +1415,7 @@ func TestModernLock_MRTR_FullLoop(t *testing.T) {
 	// must classify this Invalid (never Expired), so the gate issues a
 	// fresh input_required rather than executing or hard-erroring —
 	// derived via the package's own verify helper so this assertion
-	// tracks the ADR's construction rule, not a hardcoded guess at the
+	// tracks the construction rule, not a hardcoded guess at the
 	// tamper detection outcome.
 	tampered := tamperMCPConfirmState(state)
 	binding := mcpConfirmBinding{
@@ -1513,8 +1513,8 @@ func TestModernLock_MRTR_FullLoop(t *testing.T) {
 // tamperMCPConfirmState flips the last character of the MAC segment of
 // an otherwise-valid "v1.<expiry>.<mac>" state, producing a state that
 // is authentic-looking (right shape, right version tag) but fails HMAC
-// verification — the exact "tampered, not merely malformed" case ADR
-// 0004 distinguishes from a structurally-broken string.
+// verification — the exact "tampered, not merely malformed" case the
+// contract distinguishes from a structurally-broken string.
 func tamperMCPConfirmState(state string) string {
 	if len(state) == 0 {
 		return state
