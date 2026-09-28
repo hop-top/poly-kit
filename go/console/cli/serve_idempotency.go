@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"sync"
 	"time"
@@ -146,12 +145,33 @@ func (r *Root) serveIdempotencyLedger() *cmdsurface.IdempotencyLedger {
 		if err != nil {
 			return nil, err
 		}
-		// Each service applies its own ttl when it reads a record, so
-		// the store keeps every record it is given.
-		return idemstore.OpenSQLite(path, time.Duration(math.MaxInt64))
+		// Each service applies its own ttl when it reads a record; the
+		// store keeps, and purges past, the longest of them.
+		return idemstore.OpenSQLite(path, r.serveIdempotencyStoreTTL())
 	})
 	st.owned = true
 	return st.ledger
+}
+
+// serveIdempotencyStoreTTL is how long kit's own store keeps a record:
+// the longest ttl among the registered services that replay, so the
+// store's purge never deletes a record a service would still answer
+// with. With none, it is [idemstore.DefaultTTL].
+func (r *Root) serveIdempotencyStoreTTL() time.Duration {
+	var longest time.Duration
+	if r.serveReg != nil {
+		for _, svc := range r.serveReg.Names() {
+			cfg, err := serveIdempotency(r.Viper, svc)
+			if err != nil || !cfg.enabled {
+				continue
+			}
+			longest = max(longest, cfg.ttl)
+		}
+	}
+	if longest <= 0 {
+		return idemstore.DefaultTTL
+	}
+	return longest
 }
 
 // serveToolName names the tool's state directory.

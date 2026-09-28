@@ -160,3 +160,52 @@ func TestAPIServiceIdempotencyValidation(t *testing.T) {
 		})
 	}
 }
+
+// Kit's own store purges what it deems expired, so it keeps records as
+// long as the longest ttl any registered service replays them for; a
+// service switched off does not count, and with none set it is the
+// default.
+func TestServeIdempotencyStoreTTLIsTheLongestServiceTTL(t *testing.T) {
+	isolateHome(t)
+	r, _ := idemRoot(t, WithSocket(SocketConfig{}))
+	assert.Equal(t, idemstore.DefaultTTL, r.serveIdempotencyStoreTTL())
+
+	r.Viper.Set("services.socket.idempotency.ttl", "72h")
+	assert.Equal(t, 72*time.Hour, r.serveIdempotencyStoreTTL())
+
+	r.Viper.Set("services.socket.idempotency.enabled", false)
+	r.Viper.Set("services.all.idempotency.ttl", "2h")
+	assert.Equal(t, 2*time.Hour, r.serveIdempotencyStoreTTL(), "only services that replay count")
+}
+
+// Kit's store is opened with that ttl: on open it purges a record
+// older than the longest service ttl, and keeps one a service would
+// still replay.
+func TestServeIdempotencyStorePurgesPastTheServiceTTL(t *testing.T) {
+	isolateHome(t)
+	r, _ := idemRoot(t)
+	r.Viper.Set("services.api.idempotency.ttl", "72h")
+	db := filepath.Join(os.Getenv("XDG_STATE_HOME"), "tool", serveIdempotencyFile)
+	require.NoError(t, os.MkdirAll(filepath.Dir(db), 0o750))
+
+	now := time.Now().UTC()
+	seed, err := idemstore.OpenSQLite(db, 1000*time.Hour)
+	require.NoError(t, err)
+	require.NoError(t, seed.Record(t.Context(), "within", idemstore.Result{Output: []byte("w"), Recorded: now.Add(-48 * time.Hour)}))
+	require.NoError(t, seed.Record(t.Context(), "past", idemstore.Result{Output: []byte("p"), Recorded: now.Add(-100 * time.Hour)}))
+	require.NoError(t, seed.Close())
+
+	h := projectionHandler(t, r)
+	require.Equal(t, http.StatusOK, mint(t, h, "k1").Code, "a keyed call opens the store")
+	require.NoError(t, r.closeServeIdempotency())
+
+	check, err := idemstore.OpenSQLite(db, 1000*time.Hour)
+	require.NoError(t, err)
+	defer check.Close()
+	_, hit, err := check.Lookup(t.Context(), "within")
+	require.NoError(t, err)
+	assert.True(t, hit, "a record within the service's 72h ttl is kept")
+	_, hit, err = check.Lookup(t.Context(), "past")
+	require.NoError(t, err)
+	assert.False(t, hit, "a record past every service's ttl is purged")
+}
