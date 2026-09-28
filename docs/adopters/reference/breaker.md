@@ -233,9 +233,7 @@ return breaker.WrapCtx(b, ctx, func(ctx context.Context) error {
 
 The two answer different questions. Use scope to bound *what*; use
 breaker to bound *how much*. A new fs-touching primitive is
-expected to integrate with both — see [`AGENTS.md` Guardrails][ag].
-
-[ag]: ../../../AGENTS.md#guardrails
+expected to integrate with both.
 
 ## Why we wrap failsafe-go
 

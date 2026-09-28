@@ -1,5 +1,5 @@
-// Package webhooksink_test mirrors the webhook code blocks in
-// docs/specs/notifications.md §8.1 into compile-tested examples.
+// Package webhooksink_test holds compile-tested examples of the
+// webhook sink.
 package webhooksink_test
 
 import (
@@ -15,9 +15,9 @@ import (
 	webhooksink "hop.top/kit/go/runtime/notify/sinks/webhook"
 )
 
-// ExampleNew demonstrates the §8.1 constructor signature
+// ExampleNew demonstrates the constructor signature
 // `func New(url string, opts ...Option) bus.Sink` along with every
-// Option from the spec table:
+// Option:
 //   - WithHeader(k, v)
 //   - WithAuthBearer(token)
 //   - WithTemplate(t Template)
@@ -26,7 +26,7 @@ import (
 //   - WithRedactor(r)
 //   - WithBreaker(b)
 //
-// Construction has no IO and cannot fail (spec decision #9 + §8.1).
+// Construction has no IO and cannot fail.
 func ExampleNew() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -57,8 +57,8 @@ func ExampleNew() {
 	// Output: ok
 }
 
-// ExampleSlackTemplate covers the SlackTemplate helper named in §8.1:
-// "A SlackTemplate(msg string) helper produces Slack's text: JSON."
+// ExampleSlackTemplate covers the SlackTemplate helper, which
+// produces Slack's text: JSON.
 func ExampleSlackTemplate() {
 	tmpl, err := webhooksink.SlackTemplate(`alert: {{.Topic}}`)
 	if err != nil {
@@ -77,8 +77,7 @@ func ExampleSlackTemplate() {
 	// application/json
 }
 
-// ExampleDefaultJSONTemplate confirms the default Template documented
-// in §8.1: marshal the bus.Event as JSON with application/json.
+// ExampleDefaultJSONTemplate confirms the default Template: marshal the bus.Event as JSON with application/json.
 func ExampleDefaultJSONTemplate() {
 	tmpl := webhooksink.DefaultJSONTemplate()
 	_, ct, err := tmpl.Render(bus.Event{Topic: "kit.test", Source: "ex"})

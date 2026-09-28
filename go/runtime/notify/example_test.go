@@ -1,8 +1,6 @@
-// Package notify_test mirrors every Go code block in
-// docs/specs/notifications.md into compile-tested examples. The point
-// is: if the spec drifts from reality, this file fails to build,
-// breaking CI. See docs/specs/notifications.md §10 "Spec example
-// compile-check" for the rationale.
+// Package notify_test holds compile-tested examples of the notify
+// API. The point is: if the documented shapes drift from reality,
+// this file fails to build, breaking CI.
 //
 // Examples that depend on time / network / random behavior omit the
 // // Output: comment but still execute (the test framework runs every
@@ -40,8 +38,7 @@ type failingSink struct{ err error }
 func (f failingSink) Drain(_ context.Context, _ bus.Event) error { return f.err }
 func (failingSink) Close() error                                 { return nil }
 
-// ExampleSeverity demonstrates the Severity type and its String form,
-// per docs/specs/notifications.md §5.
+// ExampleSeverity demonstrates the Severity type and its String form.
 func ExampleSeverity() {
 	for _, s := range []notify.Severity{
 		notify.SeverityDebug,
@@ -60,14 +57,14 @@ func ExampleSeverity() {
 	// critical
 }
 
-// typedPayload demonstrates the WithSeverity optional interface from
-// docs/specs/notifications.md §5. SeverityOf checks for this interface
+// typedPayload demonstrates the WithSeverity optional interface.
+// SeverityOf checks for this interface
 // before falling back to map[string]any lookup.
 type typedPayload struct{ sev notify.Severity }
 
 func (t typedPayload) Severity() notify.Severity { return t.sev }
 
-// ExampleSeverityOf shows the resolution order in §5: WithSeverity
+// ExampleSeverityOf shows the resolution order: WithSeverity
 // interface first, then map[string]any "severity" key, otherwise
 // SeverityInfo.
 func ExampleSeverityOf() {
@@ -92,12 +89,11 @@ func ExampleSeverityOf() {
 	// info
 }
 
-// ExampleNewFilterSink mirrors the composition example from
-// docs/specs/notifications.md §6. The spec calls webhooksink.New with
-// a Slack URL; this example substitutes httptest + nopSink so the
-// example is runnable without external state. The shape (filter
-// wrapping a sink, severity + topic pattern options) matches §6
-// verbatim.
+// ExampleNewFilterSink shows the composition pattern. Production
+// wiring calls webhooksink.New with a Slack URL; this example
+// substitutes httptest + nopSink so it runs without external state.
+// The shape (filter wrapping a sink, severity + topic pattern
+// options) is the production one.
 func ExampleNewFilterSink() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -110,11 +106,11 @@ func ExampleNewFilterSink() {
 		notify.WithMinSeverity(notify.SeverityWarn),
 	)
 	audit := notify.NewFilterSink(
-		nopSink{}, // stand-in for bus.NewJSONLSinkFile in the spec example
+		nopSink{}, // stand-in for bus.NewJSONLSinkFile
 		notify.WithTopicPattern("kit.#"),
 	)
 
-	// In the spec example: bus.NewTeeBus(bus.New(), []bus.Sink{alerts, audit}, onErr).
+	// In production: bus.NewTeeBus(bus.New(), []bus.Sink{alerts, audit}, onErr).
 	// Show that both compose as bus.Sink without a TeeBus to keep the example
 	// runnable in isolation.
 	_ = alerts
@@ -124,7 +120,7 @@ func ExampleNewFilterSink() {
 	// Output: ok
 }
 
-// ExampleWithPredicate shows the third FilterOption from §6.
+// ExampleWithPredicate shows the third FilterOption.
 func ExampleWithPredicate() {
 	sink := notify.NewFilterSink(
 		nopSink{},
@@ -144,8 +140,8 @@ func ExampleWithPredicate() {
 	// Output: ok
 }
 
-// ExampleExponentialBackoff mirrors the BackoffFunc + ExponentialBackoff
-// signature from docs/specs/notifications.md §7. Spec lines:
+// ExampleExponentialBackoff shows the BackoffFunc + ExponentialBackoff
+// signatures:
 //
 //	BackoffFunc func(attempt int) time.Duration
 //	ExponentialBackoff(base, factor, jitter) BackoffFunc
@@ -164,7 +160,7 @@ func ExampleExponentialBackoff() {
 	// 800ms
 }
 
-// ExampleNewRetrySink mirrors the RetrySink usage from §7. Three
+// ExampleNewRetrySink shows RetrySink usage. Three
 // options compose: WithMaxAttempts, WithBackoff, WithDeadLetter. The
 // example uses a nopSink as dead-letter so RetrySink.Drain returns
 // nil when retries exhaust.
@@ -186,7 +182,7 @@ func ExampleNewRetrySink() {
 }
 
 // ExampleNewRetrySink_openCircuit shows the open-circuit-is-terminal
-// rule from §7.5.2: an inner sink returning breaker.ErrBrokenCircuit
+// rule: an inner sink returning breaker.ErrBrokenCircuit
 // stops further retries immediately and routes to the dead-letter sink.
 func ExampleNewRetrySink_openCircuit() {
 	r := notify.NewRetrySink(
@@ -201,21 +197,20 @@ func ExampleNewRetrySink_openCircuit() {
 	// Output: true
 }
 
-// ExampleNewTeeBus_endToEnd mirrors the wiring example from
-// docs/specs/notifications.md §9. The spec example calls
-// breaker.New(name, /* policies */); webhooksink.New(os.Getenv(...));
+// ExampleNewTeeBus_endToEnd shows the full wiring. Production wiring
+// calls breaker.New(name, /* policies */); webhooksink.New(os.Getenv(...));
 // emailsink.New(emailsink.NewSMTPMailer(...)); osnotifysink.New(...);
 // bus.NewJSONLSinkFile(...). All of those are real shipped APIs.
 //
 // This example substitutes httptest + MailerFunc + a nopSink standing
 // in for the file-backed JSONL sink and the OS sink, so it runs
-// hermetically in `go test` (the spec's variant requires a real SMTP
+// hermetically in `go test` (production wiring needs a real SMTP
 // host, a real OS notify-send / osascript, and writable /var/log).
 // The COMPOSITION shape — filter → retry → dead-letter, multiple sinks
 // teed off one bus — is preserved verbatim.
 //
 // NOTE on osnotify: omitted from this example because osnotifysink.New
-// can fail at construction (decision #9 — platform probe). The
+// can fail at construction (platform probe). The
 // per-package example_test.go in sinks/osnotify covers the
 // constructor.
 func ExampleNewTeeBus_endToEnd() {
@@ -230,7 +225,7 @@ func ExampleNewTeeBus_endToEnd() {
 	smtpBreaker := breaker.New("notify-email-example")
 	defer breaker.Unregister("notify-email-example")
 
-	deadLetter := nopSink{} // spec uses bus.NewJSONLSinkFile("/var/log/kit/dl.jsonl")
+	deadLetter := nopSink{} // production uses bus.NewJSONLSinkFile("/var/log/kit/dl.jsonl")
 
 	pages := notify.NewRetrySink(
 		notify.NewFilterSink(
@@ -250,7 +245,7 @@ func ExampleNewTeeBus_endToEnd() {
 	mailer := emailsink.MailerFunc(func(_ context.Context, _ emailsink.Message) error { return nil })
 	summaries := notify.NewFilterSink(
 		emailsink.New(
-			mailer, // spec uses emailsink.NewSMTPMailer("smtp.local", 25)
+			mailer, // production uses emailsink.NewSMTPMailer("smtp.local", 25)
 			emailsink.WithRecipients("ops@example.com"),
 			emailsink.WithSubject(subj),
 			emailsink.WithBody(body),
@@ -261,7 +256,7 @@ func ExampleNewTeeBus_endToEnd() {
 		notify.WithTopicPattern("billing.#"),
 	)
 
-	audit := nopSink{} // spec uses bus.NewJSONLSinkFile("/var/log/kit/audit.jsonl")
+	audit := nopSink{} // production uses bus.NewJSONLSinkFile("/var/log/kit/audit.jsonl")
 
 	teed := bus.NewTeeBus(bus.New(), []bus.Sink{pages, summaries, audit}, nil)
 	defer teed.Close(context.Background())

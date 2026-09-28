@@ -39,7 +39,7 @@ ops := emailsink.New(
 ## Contract
 
 - `New` returns `bus.Sink` with no error: construction has no IO
-  (spec decision #9). Recipients, subject and body templates are
+  so it cannot fail. Recipients, subject and body templates are
   validated at `Drain`; a misconfigured sink returns a per-event
   error instead of panicking.
 - Pipeline: `render(subject) + render(body) → redactor.Apply on each →

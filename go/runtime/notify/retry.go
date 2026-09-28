@@ -23,7 +23,7 @@ import (
 //
 // # Open-circuit is terminal
 //
-// Per spec §3 decision #11, an error matching
+// An error matching
 // errors.Is(err, breaker.ErrBrokenCircuit) is the breaker's signal
 // that egress is currently degraded. RetrySink treats it as terminal
 // and short-circuits straight to the dead-letter sink (or returns the
@@ -45,8 +45,6 @@ import (
 // open-circuit error) is returned unwrapped, keeping
 // errors.Is/errors.As behavior identical to calling the inner Sink
 // directly. RetrySink is transparent in the error chain.
-//
-// Spec: docs/specs/notifications.md §3 #5, #6, #11; §7.
 type RetrySink struct {
 	inner bus.Sink
 	opts  retryOpts

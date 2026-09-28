@@ -1,18 +1,8 @@
-// Package osnotifysink_test mirrors the OS-native notification code
-// blocks in docs/specs/notifications.md §8.3 into compile-tested
-// examples.
-//
-// Spec drift exposed by these examples (reported, not fixed; the spec
-// is locked):
-//
-//   - The shipped option for the body template is WithText; spec §8.3
-//     names it WithBody. The shipped name wins because callers depend
-//     on it. Spec needs renaming WithBody → WithText (or shipped code
-//     needs renaming) at next revision; the examples below exercise
-//     the shipped name.
+// Package osnotifysink_test holds compile-tested examples of the
+// OS-native notification sink.
 //
 // Constructor portability note: osnotifysink.New(opts...) probes the
-// platform at construction time per §8.3 + decision #9. On darwin it
+// platform at construction time. On darwin it
 // always succeeds; on linux it requires notify-send on PATH; on
 // windows it returns an error. The examples therefore tolerate a
 // constructor error without asserting on output (running `go test` on
@@ -28,14 +18,11 @@ import (
 	osnotifysink "hop.top/kit/go/runtime/notify/sinks/osnotify"
 )
 
-// ExampleNew demonstrates the §8.3 constructor signature
+// ExampleNew demonstrates the constructor signature
 // `func New(opts ...Option) (bus.Sink, error)` and every Option:
 //
 //   - WithTitle(t Template)
-//   - WithBody(t Template) — NOTE: shipped as WithText; spec §8.3
-//     names this WithBody. Drift reported; example uses the shipped
-//     name so future spec edits to "WithBody" will fail to compile
-//     and prompt a real reconciliation.
+//   - WithText(t Template)
 //   - WithRedactor(r)
 //   - WithBreaker(b)
 //
@@ -49,15 +36,13 @@ func ExampleNew() {
 
 	sink, err := osnotifysink.New(
 		osnotifysink.WithTitle(osnotifysink.LiteralTemplate("kit alert")),
-		// NOTE: spec §8.3 names this WithBody; shipped code is
-		// WithText. Update spec at next revision.
 		osnotifysink.WithText(osnotifysink.LiteralTemplate("queue depth high")),
 		osnotifysink.WithRedactor(red),
 		osnotifysink.WithBreaker(b),
 	)
 	if err != nil {
 		// Linux without notify-send / windows / unsupported platform.
-		// Surface the error path documented in §8.3 instead of failing.
+		// Surface the documented error path instead of failing.
 		fmt.Println("init:", err != nil)
 		return
 	}
@@ -68,7 +53,7 @@ func ExampleNew() {
 	// notify-send, and windows alike.
 }
 
-// ExampleTextTemplate covers the helper §8.3 names for templating
+// ExampleTextTemplate covers the helper for templating
 // title + text against bus.Event fields ({{.Topic}}, {{.Source}}, etc.).
 func ExampleTextTemplate() {
 	tmpl, err := osnotifysink.TextTemplate(`{{.Source}}/{{.Topic}}`)
@@ -82,8 +67,8 @@ func ExampleTextTemplate() {
 }
 
 // ExampleLiteralTemplate covers the static-string Template helper
-// referenced from §8.3 ("Title and Body are templated against
-// bus.Event") for the constant-string case.
+// for the constant-string case (title and text are otherwise
+// templated against bus.Event).
 func ExampleLiteralTemplate() {
 	tmpl := osnotifysink.LiteralTemplate("constant title")
 	_ = tmpl

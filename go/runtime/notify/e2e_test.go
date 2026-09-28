@@ -1,7 +1,6 @@
 package notify_test
 
-// End-to-end test for the kit-notify wiring shape from
-// the notifications spec §9 + §10. Wires a single
+// End-to-end test for the kit-notify wiring shape. Wires a single
 // in-memory bus.Bus through a TeeBus that fans events to:
 //
 //   - a webhook sink wrapped in a FilterSink (pages-style:
@@ -372,8 +371,8 @@ func TestE2E_AllSinksWiredThroughTeeBus(t *testing.T) {
 }
 
 // -----------------------------------------------------------------
-// TestE2E_GuardrailScenarios — covers spec §3 #10 (redaction) and
-// #11 (open-circuit terminal + isolation across sinks on a TeeBus).
+// TestE2E_GuardrailScenarios — covers redaction and
+// open-circuit terminal + isolation across sinks on a TeeBus).
 // -----------------------------------------------------------------
 
 func TestE2E_GuardrailScenarios(t *testing.T) {

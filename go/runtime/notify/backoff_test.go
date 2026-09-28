@@ -118,7 +118,7 @@ func TestExponentialBackoff_NegativeBase(t *testing.T) {
 // assertion that ExponentialBackoff satisfies the BackoffFunc shape
 // (int -> time.Duration). The point is to document — and lock in —
 // the absence of a context parameter. Cancellation lives in the
-// caller (RetrySink), per docs/specs/notifications.md §7.
+// caller (RetrySink).
 func TestBackoffFunc_NoContextHandling(t *testing.T) {
 	t.Parallel()
 	//nolint:staticcheck // QF1011 — explicit type asserts ExponentialBackoff implements BackoffFunc

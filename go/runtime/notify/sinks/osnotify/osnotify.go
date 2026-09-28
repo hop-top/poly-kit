@@ -8,15 +8,13 @@
 //
 //	template render (title + text) → redactor.Apply → breaker.WrapCtx → runner.Run
 //
-// Constructor signature is the spec exception case (decision #9):
+// Constructor signature is the exception to the no-error constructor
+// convention:
 // New(opts...) (bus.Sink, error) — because we probe platform tooling
 // at construction (notify-send on linux). The other reference sinks
 // (webhook, email) follow the no-error constructor convention.
 //
 // See:
-//   - docs/specs/notifications.md §3 decisions #9, #10, #11
-//   - docs/specs/notifications.md §7.5 Guardrails
-//   - docs/specs/notifications.md §8.3 osnotify sink
 //   - go/runtime/notify/guardrails.go (package-wide convention)
 package osnotifysink
 
@@ -152,7 +150,7 @@ func withRunner(r runner) Option {
 
 // New returns a Sink configured for the host platform.
 //
-// Platform probe (decision #9):
+// Platform probe:
 //   - darwin:  osascript ships with macOS; not probed. Runtime exec
 //     failure is informative enough for the rare stripped-down case.
 //   - linux:   notify-send is probed via exec.LookPath. Missing →

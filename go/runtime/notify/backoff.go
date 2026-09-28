@@ -14,8 +14,8 @@ import (
 // and returns a duration. It does NOT accept a context and cannot
 // wake early. Context cancellation is the responsibility of the
 // caller (RetrySink in this package), which owns the timer/select
-// around the sleep. See docs/specs/notifications.md §7 for the
-// cancellation-ownership rationale.
+// around the sleep, so one select covers both backoff and
+// cancellation.
 type BackoffFunc func(attempt int) time.Duration
 
 // ExponentialBackoff returns a BackoffFunc that grows the delay

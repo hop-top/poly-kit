@@ -10,8 +10,8 @@
 // # Guardrail integration convention (outbound sinks)
 //
 // Outbound sinks cross trust boundaries (network, OS shell-out) and
-// must integrate with the kit guardrail layers per
-// AGENTS.md §Guardrails. Every reference outbound sink (webhook,
+// must integrate with the kit guardrail layers (go/core/redact and
+// go/core/breaker). Every reference outbound sink (webhook,
 // email, osnotify) MUST expose two options with the following
 // shapes; sinks that do not cross a trust boundary (JSONLSink,
 // StdoutSink — both in go/runtime/bus) are tracked separately by the
@@ -88,13 +88,6 @@
 //
 // # Cross-references
 //
-//   - docs/specs/notifications.md §3 decisions #10, #11
-//   - docs/specs/notifications.md §7.5 Guardrails (redaction,
-//     breakers, boundedness)
-//   - docs/audits/redact-egress-audit.md (entries #14, #15 cover
-//     JSONLSink + StdoutSink)
-//   - docs/audits/breaker-primitives-audit.md (network + exec
-//     egress requirements)
 //   - go/core/redact/README.md (Redactor surface; Apply / ApplyBytes
 //     semantics; rule loading)
 //   - go/core/breaker/README.md (Breaker surface; WrapHTTP /
@@ -102,10 +95,10 @@
 //
 // # Why this file exists
 //
-// This file holds the godoc only. Each P3 sink task description
-// references it as the canonical convention spec; reviewers
+// This file holds the godoc only. It is the canonical convention
+// for outbound sinks; reviewers
 // checking a sink PR can read this file once and verify the sink
-// matches without re-deriving the convention from the spec each
+// matches without re-deriving the convention each
 // time. Keeping it in package notify (rather than in each sink
 // subpackage) makes the convention visible to anyone browsing the
 // notify package and lets `go doc hop.top/kit/go/runtime/notify`

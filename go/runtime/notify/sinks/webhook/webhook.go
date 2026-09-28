@@ -11,9 +11,7 @@
 // WithBreaker wraps client.Transport via breaker.WrapHTTP, so an
 // open circuit short-circuits before any HTTP egress and surfaces
 // breaker.ErrBrokenCircuit through client.Do. The surrounding
-// RetrySink (P2) treats ErrBrokenCircuit as terminal via errors.Is.
-//
-// Spec: docs/specs/notifications.md §3 #9–#11, §7.5, §8.1.
+// RetrySink treats ErrBrokenCircuit as terminal via errors.Is.
 package webhooksink
 
 import (
@@ -31,7 +29,7 @@ import (
 
 // defaultTimeout is the default overall request deadline applied via
 // http.Client.Timeout when the caller has not supplied a custom
-// http.Client. Per spec §8.1.
+// http.Client.
 const defaultTimeout = 5 * time.Second
 
 // Sink POSTs rendered bus events to the configured URL. Construct via
@@ -111,7 +109,7 @@ func WithHTTPClient(c *http.Client) Option {
 
 // WithTimeout sets the overall request deadline applied via
 // http.Client.Timeout. Ignored when WithHTTPClient is also supplied.
-// Default is 5 * time.Second per spec §8.1.
+// Default is 5 * time.Second.
 func WithTimeout(d time.Duration) Option {
 	return func(o *opts) {
 		o.timeout = d
@@ -142,7 +140,7 @@ func WithBreaker(b breaker.Breaker) Option {
 }
 
 // New returns a webhook sink that POSTs rendered bus events to url.
-// Construction has no IO and cannot fail (per spec decision #9).
+// Construction has no IO and cannot fail.
 //
 // Defaults applied when the corresponding Option is not supplied:
 //

@@ -41,7 +41,7 @@ withRetry := notify.NewRetrySink(
 ## Contract
 
 - `New` returns `bus.Sink` with no error: construction has no IO
-  (spec decision #9); misconfiguration surfaces at the first `Drain`.
+  so it cannot fail; misconfiguration surfaces at the first `Drain`.
 - Pipeline: `template.Render → redactor.ApplyBytes → http.Client.Do`,
   transport wrapped by `breaker.WrapHTTP`.
 - Open circuit: `Drain` returns an error wrapping

@@ -11,11 +11,10 @@
 //   - Filter decorator. FilterSink wraps any Sink and drops events
 //     that fail a topic pattern, severity floor, or arbitrary
 //     predicate. See filter.go.
-//   - Retry + dead-letter (P2). RetrySink wraps any Sink with at-
+//   - Retry + dead-letter. RetrySink wraps any Sink with at-
 //     least-once delivery semantics; exhausted attempts route to a
-//     configurable dead-letter Sink. (Not in this file; landing in
-//     phase 2.)
-//   - Reference sinks (P3). Out-of-tree subpackages
+//     configurable dead-letter Sink. See retry.go.
+//   - Reference sinks. Subpackages
 //     (sinks/webhook, sinks/email, sinks/osnotify) implement the
 //     three transports the catalog ships. See guardrails.go for the
 //     WithRedactor + WithBreaker convention every outbound sink
@@ -24,8 +23,6 @@
 // Cross-language parity. The MVP is Go-only. bus.Sink and bus.TeeBus
 // themselves are still Go-only (TS/Python ports exist for pub/sub
 // only); notify ports are gated on those primitives porting first.
-//
-// Spec: docs/specs/notifications.md.
 package notify
 
 import (

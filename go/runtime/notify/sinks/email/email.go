@@ -7,14 +7,13 @@
 //
 //	render subject + body → redactor.Apply on each → breaker-wrapped Mailer.Send
 //
-// Construction cannot fail (notifications.md §3 decision #9). Required
+// Construction cannot fail (no IO at construction). Required
 // fields (recipients, subject template, body template) are validated
 // at Drain time so a misconfigured sink surfaces as a per-event error
 // rather than a constructor panic.
 //
 // Cross-references:
 //
-//   - docs/specs/notifications.md §3 #9, #10, #11; §7.5; §8.2
 //   - go/runtime/notify/guardrails.go (pipeline order, ErrBrokenCircuit
 //     terminal semantics for RetrySink)
 //   - go/core/redact/README.md (Redactor.Apply semantics)
@@ -173,7 +172,7 @@ func WithBreaker(b breaker.Breaker) Option {
 }
 
 // New returns an email sink that renders + sends bus events through
-// the given Mailer. Constructor cannot fail (decision #9): if any
+// the given Mailer. Constructor cannot fail: if any
 // required field is missing, Drain returns an error per call. Pass
 // any combination of Option closures to configure the sink.
 func New(m Mailer, options ...Option) bus.Sink {

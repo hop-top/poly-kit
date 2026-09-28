@@ -39,8 +39,8 @@ desktop := notify.NewFilterSink(
 
 ## Contract
 
-- `New` returns `(bus.Sink, error)`: the one exception to spec
-  decision #9, because construction probes platform tooling so a
+- `New` returns `(bus.Sink, error)`: the one exception to the
+  no-error constructor rule, because construction probes platform tooling so a
   missing `notify-send` fails at startup, not on the first event.
 - Platforms: darwin via `osascript` (no probe); linux via
   `notify-send`, probed once with `exec.LookPath` at construction (a

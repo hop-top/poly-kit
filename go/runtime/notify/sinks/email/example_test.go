@@ -1,17 +1,6 @@
-// Package emailsink_test mirrors the email code blocks in
-// docs/specs/notifications.md §8.2 into compile-tested examples.
-//
-// Spec drift exposed by these examples (reported, not fixed; the spec
-// is locked):
-//
-//   - WithContentType is shipped but missing from the §8.2 options
-//     list. Example below demonstrates it; spec needs the option
-//     added at next revision.
-//
-// Other shipped helpers not enumerated by §8.2 (LiteralTemplate,
-// TextTemplate, MailerFunc) are demonstrated below as well; the spec
-// could either name them as part of the public surface or stay silent
-// and treat them as supporting types — that's a §8.2 revision call.
+// Package emailsink_test holds compile-tested examples of the email
+// sink, including the supporting helpers (LiteralTemplate,
+// TextTemplate, MailerFunc).
 package emailsink_test
 
 import (
@@ -24,9 +13,9 @@ import (
 	emailsink "hop.top/kit/go/runtime/notify/sinks/email"
 )
 
-// ExampleNew demonstrates the §8.2 constructor signature
+// ExampleNew demonstrates the constructor signature
 // `func New(m Mailer, opts ...Option) bus.Sink` along with every
-// Option from the spec:
+// Option:
 //
 //   - WithSubject(t Template)
 //   - WithBody(t Template)
@@ -34,9 +23,7 @@ import (
 //   - WithFrom(addr)
 //   - WithRedactor(r *redact.Redactor)
 //   - WithBreaker(b breaker.Breaker)
-//
-// And the WithContentType option (shipped, not in the §8.2 spec
-// listing — drift item #3 in the P4.2 docs report).
+//   - WithContentType(ct)
 func ExampleNew() {
 	captured := ""
 	mailer := emailsink.MailerFunc(func(_ context.Context, msg emailsink.Message) error {
@@ -61,7 +48,6 @@ func ExampleNew() {
 		emailsink.WithRecipients("a@example.com", "c@example.com"),
 		emailsink.WithSubject(subj),
 		emailsink.WithBody(body),
-		// NOTE: spec §8.2 does not list WithContentType; shipped code does.
 		emailsink.WithContentType("text/plain; charset=utf-8"),
 		emailsink.WithRedactor(red),
 		emailsink.WithBreaker(b),
@@ -76,10 +62,10 @@ func ExampleNew() {
 	// Output: alert: kit.runtime.breaker.tripped
 }
 
-// ExampleNewSMTPMailer demonstrates the §8.2 SMTP transport
+// ExampleNewSMTPMailer demonstrates the SMTP transport
 // constructor: `func NewSMTPMailer(host string, port int, opts ...SMTPOption) Mailer`.
 // Construction does not dial; SMTP dial happens lazily inside
-// SMTPMailer.Send (spec §8.2). The returned Mailer is wired into
+// SMTPMailer.Send. The returned Mailer is wired into
 // emailsink.New like any other Mailer.
 func ExampleNewSMTPMailer() {
 	mailer := emailsink.NewSMTPMailer("smtp.local", 25)
@@ -96,9 +82,8 @@ func ExampleNewSMTPMailer() {
 	// Output: wired
 }
 
-// ExampleMessage shows the §8.2 Message struct shape:
-// `type Message struct { To []string; Subject, Body string; From string; ContentType string }`.
-// The shipped struct has the same fields (different declared order).
+// ExampleMessage shows the Message struct shape:
+// To, Subject, Body, From and ContentType.
 func ExampleMessage() {
 	msg := emailsink.Message{
 		To:          []string{"a@example.com"},
