@@ -60,12 +60,18 @@ const (
 	// unmigrated.
 	dryRunPolicyRejectOptOut
 	// dryRunPolicyRejectUntagged: --dry-run is refused because the
-	// command has no kit/side-effect tag and no legacy
-	// SupportsDryRun annotation. Root.Validate normally catches
-	// this earlier; we keep the policy as a backstop so adopters
-	// running with EnforceValidate=false still get a coherent
-	// answer.
+	// command has no kit/side-effect tag (absent or empty) and no
+	// legacy SupportsDryRun annotation. Root.Validate normally
+	// catches this earlier; we keep the policy as a backstop so
+	// adopters running with EnforceValidate=false still get a
+	// coherent answer.
 	dryRunPolicyRejectUntagged
+	// dryRunPolicyRejectMalformed: --dry-run is refused because the
+	// kit/side-effect value is present but names no tier. Same
+	// backstop role as dryRunPolicyRejectUntagged; the diagnostic
+	// names the value instead of calling it missing, the split
+	// discovery publishes as side_effect_source "malformed".
+	dryRunPolicyRejectMalformed
 )
 
 // SupportsDryRun marks cmd as honoring --dry-run.
@@ -114,7 +120,8 @@ func OptOutDryRun(cmd *cobra.Command) {
 //  3. kit/side-effect = write|destructive → allow.
 //  4. kit/side-effect = read → silent no-op.
 //  5. kit/side-effect = interactive → reject with diagnostic.
-//  6. No tag → reject (untagged-leaf backstop).
+//  6. No tag, or an empty one → reject (untagged-leaf backstop).
+//  7. Any other value → reject as malformed.
 func resolveDryRunPolicy(cmd *cobra.Command) dryRunPolicy {
 	if cmd == nil {
 		return dryRunPolicyRejectUntagged
@@ -128,7 +135,7 @@ func resolveDryRunPolicy(cmd *cobra.Command) dryRunPolicy {
 		}
 	}
 	s, ok := GetSideEffect(cmd)
-	if !ok {
+	if !ok || s == "" {
 		return dryRunPolicyRejectUntagged
 	}
 	if isWriteLike(s) || isDestructiveLike(s) {
@@ -140,7 +147,7 @@ func resolveDryRunPolicy(cmd *cobra.Command) dryRunPolicy {
 	case SideEffectInteractive:
 		return dryRunPolicyRejectInteractive
 	}
-	return dryRunPolicyRejectUntagged
+	return dryRunPolicyRejectMalformed
 }
 
 // IsDryRunSupported reports whether cmd would honor --dry-run under
@@ -270,6 +277,14 @@ func (r *Root) installDryRunHook() func(*cobra.Command, []string) error {
 					"adopter must call cli.SetSideEffect(cmd, ...) "+
 					"to declare the tier",
 				cmd.CommandPath())
+		case dryRunPolicyRejectMalformed:
+			s, _ := GetSideEffect(cmd)
+			return fmt.Errorf(
+				"--dry-run cannot be applied to %q: the command "+
+					"has a malformed kit/side-effect tag %q that "+
+					"names no tier; adopter must pass one of the "+
+					"cli.SideEffect constants to cli.SetSideEffect",
+				cmd.CommandPath(), string(s))
 		}
 		return nil
 	}

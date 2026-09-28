@@ -79,6 +79,66 @@ func TestGlobalDryRun_RefusedOnUntaggedLeaf(t *testing.T) {
 	}
 }
 
+// TestGlobalDryRun_RefusalNamesMissingOrMalformedTag pins the split
+// discovery publishes as side_effect_source: a leaf with no
+// kit/side-effect value (absent, or empty) is refused as missing the
+// tag; a leaf whose value is present but not a tier is refused as
+// malformed, naming the value, never as missing.
+func TestGlobalDryRun_RefusalNamesMissingOrMalformedTag(t *testing.T) {
+	cases := []struct {
+		name    string
+		ann     map[string]string
+		want    []string
+		notWant []string
+	}{
+		{
+			name:    "absent",
+			ann:     nil,
+			want:    []string{"missing the required kit/side-effect tag"},
+			notWant: []string{"malformed"},
+		},
+		{
+			name:    "empty",
+			ann:     map[string]string{"kit/side-effect": ""},
+			want:    []string{"missing the required kit/side-effect tag"},
+			notWant: []string{"malformed"},
+		},
+		{
+			name:    "malformed",
+			ann:     map[string]string{"kit/side-effect": "wrte"},
+			want:    []string{"malformed kit/side-effect tag", `"wrte"`},
+			notWant: []string{"missing"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := cli.New(cli.Config{Name: "t", Version: "0.1.0", Short: "t", DisableValidate: true})
+			leaf := &cobra.Command{
+				Use:         "do",
+				Args:        cobra.NoArgs,
+				Annotations: tc.ann,
+				RunE: func(cmd *cobra.Command, _ []string) error {
+					t.Fatalf("RunE must not be reached when --dry-run is refused")
+					return nil
+				},
+			}
+			r.Cmd.AddCommand(leaf)
+			r.Cmd.SetArgs([]string{"do", "--dry-run"})
+			var buf bytes.Buffer
+			r.Cmd.SetOut(&buf)
+			r.Cmd.SetErr(&buf)
+			err := r.Execute(context.Background())
+			require.Error(t, err)
+			for _, w := range tc.want {
+				assert.Contains(t, err.Error(), w)
+			}
+			for _, nw := range tc.notWant {
+				assert.NotContains(t, err.Error(), nw)
+			}
+		})
+	}
+}
+
 // TestGlobalDryRun_AcceptedOnLegacySupportsDryRun preserves the
 // legacy opt-in path: SupportsDryRun(cmd) opts the leaf in even when
 // the tier is unset. The deprecation warning fires once at
