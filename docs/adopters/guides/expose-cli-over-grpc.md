@@ -209,8 +209,17 @@ const res = await client.invoke({ path: ["item", "list"] });
 console.log(res.dataJson);
 ```
 
-The service sets no CORS headers. Serve the page from the same origin,
-or put the service behind a proxy that answers CORS for you.
+The service does not answer CORS yet, so a browser only reaches it
+from the same origin. For a page on another origin, put a proxy in
+front that answers the preflight (`OPTIONS`) and adds the CORS headers:
+allow your page's origin, `GET` and `POST`, and the request headers
+Connect and gRPC-Web clients send (`Content-Type`,
+`Connect-Protocol-Version`, `Connect-Timeout-Ms`, `Grpc-Timeout`,
+`X-Grpc-Web`, `X-User-Agent`, plus `Authorization` and
+`X-Confirm-Token` if you use them), and expose `Grpc-Status`,
+`Grpc-Message` and `Grpc-Status-Details-Bin` so the client can read
+errors. [connectrpc.com/cors](https://pkg.go.dev/connectrpc.com/cors)
+lists the same values if your proxy is written in Go.
 `createConnectTransport` works against the same port if you prefer the
 Connect protocol.
 
@@ -355,6 +364,28 @@ The permission gate (`cli.WithPermission`), the audit sinks
 (`cli.WithAuditSinks`) and the walkthrough are shared with the other
 services: [secure-remote-serving.md](secure-remote-serving.md).
 
+### 11. Add your own interceptors
+
+`rpcserve.Config.Interceptors` takes Connect interceptors for your
+own concerns: metering, quotas, tracing. They run inside kit's gates,
+so they see only calls kit admitted:
+
+```go
+rpcserve.With(rpcserve.Config{
+    Auth:         verify,
+    Interceptors: []connect.Interceptor{meter},
+})
+```
+
+A call that `Auth`, `kit/auth-required`, confirmation, `Expose`, the
+destructive ceiling or the permission gate refuses never reaches them.
+A call they refuse does not run; the client gets their error and the
+audit trail records it. They apply in order, the first outermost.
+
+The request they see is the body as the client sent it, so
+`req.Msg.Meta.Caller` is a claim. Read the caller from the verified
+claims: `api.IdentityOf(rpc.ClaimsFromContext(ctx))`.
+
 ## Refusals
 
 A refusal is an RPC error, and the command never ran:
@@ -379,13 +410,15 @@ A refusal is an RPC error, and the command never ran:
 | `Config.Expose` | empty | Empty reaches the whole tree; a non-empty list is an allow-list. |
 | `Config.Hide` | empty | Patterns withheld from RPC, applied after `Expose`. |
 | `Config.MaxBodyBytes` | 4 MiB | Largest request message; larger is `resource_exhausted`. |
+| `Config.Interceptors` | none | Your Connect interceptors, run only for calls kit admitted. |
 
 ## What the service does not implement
 
 - **Server reflection.** Clients are given `commands.proto`.
 - **TLS.** The listener is plaintext, HTTP/1.1 and h2c. Terminate TLS
   in front of it for traffic that leaves the machine.
-- **CORS.** A browser client on another origin needs a proxy.
+- **CORS, yet.** A browser client on another origin needs a proxy
+  that answers CORS; see [step 5](#5-call-it-from-a-browser-over-grpc-web).
 - **A procedure per command.** Commands are addressed by path inside
   one service, so the schema never changes when your tree does.
 - **Interactive and self-hosting commands.** They need a terminal or

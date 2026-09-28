@@ -992,6 +992,18 @@ A command that ran and exited non-zero is a success response carrying
 its `exit_code`: the call reached the command, and the command
 answered.
 
+`rpcserve.Config.Interceptors` are the adopter's Connect interceptors.
+They MUST run inside every gate above: a call `Auth`, the
+`kit/auth-required` or confirmation gate, exposure, the destructive
+ceiling or the permission gate refuses never reaches them. They wrap
+the run of an admitted call, the first outermost. A call one of them
+refuses does not run, answers with their error, and is audited with
+it. The request they see is the body as sent; identity is read from
+the verified claims, never from `meta`.
+
+The service installs no CORS handling: a browser client on another
+origin reaches it only through a proxy that answers CORS.
+
 ## Execution
 
 A transport service does not run commands; it hands an invocation to

@@ -16,6 +16,7 @@ generated Connect handler for
 - expose it beyond loopback → `Config.Auth` plus `--policy`, or the `services.rpc.insecure_*` opt-ins
 - permit destructive commands over RPC → `Config.Policy.AllowDestructiveOn` naming `cmdsurface.SurfaceRPC`
 - bound request size → `Config.MaxBodyBytes` (default 4 MiB)
+- meter, trace or rate-limit admitted calls → `Config.Interceptors`, run inside kit's gates
 
 ## Quick start
 
@@ -42,5 +43,7 @@ Task guide: [expose your CLI over gRPC](../../../../docs/adopters/guides/expose-
 - Keys: `services.rpc.{addr,insecure_remote,insecure_no_policy}`; flag `--rpc-addr`.
 - `Auth` (`api.AuthFunc`) gates every procedure, unary and streaming. Identity comes from what it verified; the body's `meta.caller`, `meta.tenant` and `meta.extra` are dropped.
 - `kit/auth-required` needs verified `Auth`; `kit/requires-confirmation` needs `X-Confirm-Token`.
+- `Config.Interceptors` see only calls every gate admitted; a call they refuse does not run and is audited.
+- No CORS: a browser on another origin needs a proxy in front.
 - `InvokeStream` is exempt from the server's write timeout; stopping the service ends open streams.
 - `go/console/cli` does not import this package or `go/transport/rpc`; a test in `go/console/cli` pins that.
