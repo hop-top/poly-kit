@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
+
+	"hop.top/kit/go/transport/api"
 )
 
 // LambdaEventType selects how an inbound AWS Lambda event payload is
@@ -593,15 +595,21 @@ func copyStringMap(m map[string]string) map[string]string {
 
 // lambdaHTTPErrorCode maps a bridge sentinel error to the (status,
 // code) tuple used in API Gateway responses. Unrecognized errors
-// fall through to 500 / "internal_error".
+// fall through to 500 / "internal_error". The Mapping names the leaf,
+// so a leaf that can never run here is the deployment's fault: 500,
+// as for an unknown one.
 func lambdaHTTPErrorCode(err error) (int, string) {
 	switch {
 	case errors.Is(err, ErrUnknownCommand):
 		return 500, "unknown_command"
 	case errors.Is(err, ErrSurfaceNotEnabled):
 		return 403, "not_enabled"
+	case errors.Is(err, ErrNotInvocable):
+		return 500, api.CodeNotInvocable
 	case errors.Is(err, ErrDestructiveBlocked):
 		return 403, "destructive_blocked"
+	case errors.Is(err, ErrPermissionDenied):
+		return 403, api.CodePermissionDenied
 	default:
 		return 500, "internal_error"
 	}

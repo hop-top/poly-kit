@@ -381,7 +381,9 @@ func isJSONContent(ct string) bool {
 
 // writeWebhookBridgeError maps bridge sentinel errors to the
 // surface's HTTP contract. Anything unrecognized falls through to
-// api.MapError so kit transport conventions remain uniform.
+// api.MapError so kit transport conventions remain uniform. The
+// mapping names the leaf, so an unknown or non-invocable one is the
+// server's fault (500), not the sender's.
 func writeWebhookBridgeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrUnknownCommand):
@@ -396,10 +398,22 @@ func writeWebhookBridgeError(w http.ResponseWriter, err error) {
 			Code:    "not_enabled",
 			Message: err.Error(),
 		})
+	case errors.Is(err, ErrNotInvocable):
+		api.Error(w, http.StatusInternalServerError, &api.APIError{
+			Status:  http.StatusInternalServerError,
+			Code:    api.CodeNotInvocable,
+			Message: err.Error(),
+		})
 	case errors.Is(err, ErrDestructiveBlocked):
 		api.Error(w, http.StatusForbidden, &api.APIError{
 			Status:  http.StatusForbidden,
 			Code:    "destructive_blocked",
+			Message: err.Error(),
+		})
+	case errors.Is(err, ErrPermissionDenied):
+		api.Error(w, http.StatusForbidden, &api.APIError{
+			Status:  http.StatusForbidden,
+			Code:    api.CodePermissionDenied,
 			Message: err.Error(),
 		})
 	default:

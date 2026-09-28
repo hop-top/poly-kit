@@ -347,15 +347,20 @@ func oauthWriteError(w http.ResponseWriter, p OAuthProvider, status int, code, m
 }
 
 // oauthWriteInvokeError maps Bridge.Invoke sentinel errors to
-// surface-appropriate responses.
+// surface-appropriate responses. The provider names the leaf, so an
+// unknown, disabled or non-invocable one is the server's fault (500).
 func oauthWriteInvokeError(w http.ResponseWriter, p OAuthProvider, err error) {
 	switch {
 	case errors.Is(err, ErrUnknownCommand):
 		oauthWriteError(w, p, http.StatusInternalServerError, "unknown_command", err.Error())
 	case errors.Is(err, ErrSurfaceNotEnabled):
 		oauthWriteError(w, p, http.StatusInternalServerError, "not_enabled", err.Error())
+	case errors.Is(err, ErrNotInvocable):
+		oauthWriteError(w, p, http.StatusInternalServerError, api.CodeNotInvocable, err.Error())
 	case errors.Is(err, ErrDestructiveBlocked):
 		oauthWriteError(w, p, http.StatusForbidden, "destructive_blocked", err.Error())
+	case errors.Is(err, ErrPermissionDenied):
+		oauthWriteError(w, p, http.StatusForbidden, api.CodePermissionDenied, err.Error())
 	default:
 		oauthWriteError(w, p, http.StatusInternalServerError, "internal_error", err.Error())
 	}

@@ -365,8 +365,12 @@ func bridgeErrorCode(err error) string {
 		return "unknown_command"
 	case errors.Is(err, ErrSurfaceNotEnabled):
 		return "not_enabled"
+	case errors.Is(err, ErrNotInvocable):
+		return api.CodeNotInvocable
 	case errors.Is(err, ErrDestructiveBlocked):
 		return "destructive_blocked"
+	case errors.Is(err, ErrPermissionDenied):
+		return api.CodePermissionDenied
 	default:
 		return "internal"
 	}

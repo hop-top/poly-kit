@@ -616,10 +616,15 @@ Options:
   subscription.
 - `WithBusLogger(fn)` — printf-style logger for non-fatal errors.
 
-All application failures (decode, unknown leaf, destructive-blocked,
-runner error) are conveyed as `{"error":{"code":"...","message":"..."}}`
-on the response topic. The handler returns `nil` to the subscriber in
-every case — bus protocols do not signal app errors via redelivery. See
+All application failures (decode, bridge refusal, runner error) are
+conveyed as `{"error":{"code":"...","message":"..."}}` on the response
+topic. Refusal codes: `unknown_command`, `not_enabled`,
+`not_invocable`, `destructive_blocked`, `permission_denied`; anything
+else is `internal`. The handler returns `nil` to the subscriber in
+every case — bus protocols do not signal app errors via redelivery.
+The permission gate sees the `meta.caller` the message carries, which
+the publisher chooses: a `PermissionFunc` that decides per caller
+needs the bus adapter to verify the publisher and set it. See
 `go/transport/cmdsurface/surface_bus_test.go`.
 
 ### Cron
@@ -719,7 +724,14 @@ m := cmdsurface.WebhookMapping{
 
 `AuthHMAC` and `AuthBearer` use constant-time comparison. Mappings
 targeting auth-required leaves with `AuthNone` are refused at mount.
-See `go/transport/cmdsurface/surface_webhook_test.go`.
+
+Bridge refusals: the mapping names the leaf, so a leaf the server
+cannot run here is the server's fault — `500 unknown_command`,
+`500 not_invocable` — while `403 not_enabled`,
+`403 destructive_blocked` and `403 permission_denied` refuse the call.
+Anything else goes through `api.MapError`. The permission gate sees
+the mapping's `Name` as the caller. See
+`go/transport/cmdsurface/surface_webhook_test.go`.
 
 ### OAuth callback
 
@@ -754,7 +766,14 @@ issuer rides `Meta.Extra["oauth_issuer"]`; map `"iss"` in
 `InMemoryStateStore` is provided for single-process adopters; multi-
 replica deployments wire a shared store. Leaves with
 `Class.RequiresConfirmation` are refused at mount (redirect flow has
-no token-prompt surface). See
+no token-prompt surface).
+
+Bridge refusals render as `OAuth callback error: <code>` (or a 302 to
+`ErrorRedirect` with `?error=<code>`): `unknown_command`,
+`not_enabled` and `not_invocable` are 500 (the provider names the
+leaf, so it is the server's fault), `destructive_blocked` and
+`permission_denied` are 403, anything else `500 internal_error`. The
+permission gate sees the provider's `Name` as the caller. See
 `go/transport/cmdsurface/surface_oauth_test.go`.
 
 ### Signed URL
@@ -784,8 +803,14 @@ The signed URL IS the auth (effectively a bearer token):
 Destructive leaves still require `Policy.AllowDestructiveOn` to include
 `SurfaceSigned` — otherwise MountSigned refuses to mount.
 `InMemoryNonceStore` is provided for single-process adopters; multi-
-replica deployments need a shared backend (Redis, DB). See
-`go/transport/cmdsurface/surface_signed_test.go`.
+replica deployments need a shared backend (Redis, DB).
+
+Token failures answer `400 malformed`, `401 bad_signature` /
+`expired` / `nonce_used` (or a 302 to the error redirect). Bridge
+refusals use the [REST](#rest) mapping — `404 not_invocable`,
+`403 permission_denied` among them — as JSON, whatever the error
+redirect. The permission gate sees the token's `Caller`, which the
+issuer signed. See `go/transport/cmdsurface/surface_signed_test.go`.
 
 ### FaaS — AWS Lambda
 
@@ -808,8 +833,17 @@ Webhook surface. Validation happens at handler-build time: unknown
 leaves, leaves without `SurfaceFaaS` enabled, destructive leaves
 without policy opt-in, and confirmation-required leaves all return
 errors. The bridge captures into the closure once and is reused across
-warm invocations. See
-`go/transport/cmdsurface/adapter_lambda_test.go`.
+warm invocations.
+
+Bridge refusals on the API Gateway families answer
+`{"code","message"}`: `500 unknown_command`, `500 not_invocable` (the
+`Mapping` names the leaf, so it is the deployment's fault),
+`403 not_enabled`, `403 destructive_blocked`, `403 permission_denied`,
+anything else `500 internal_error`. EventBridge and direct events
+return the error itself; SQS reports the record in
+`BatchItemFailures`, so a refusal is redelivered until the queue's
+redrive policy stops it. The permission gate sees `lambda` as the
+caller. See `go/transport/cmdsurface/adapter_lambda_test.go`.
 
 ### FaaS — Cloud Run
 
