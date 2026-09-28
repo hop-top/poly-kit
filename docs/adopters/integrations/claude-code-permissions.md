@@ -35,7 +35,7 @@ CLIs can't inherit policy.
 
 Kit defines a manifest consumption contract. A harness:
 
-1. Discovers a kit-powered CLI's manifest via `<tool> manifest` or
+1. Discovers a kit-powered CLI's manifest via
    `<tool> spec --format kit-manifest`.
 2. Reads the per-leaf `side_effect` (and, once commands carry it, the
    `network` axis) from each manifest entry.
@@ -145,25 +145,38 @@ Overlay rules win on collision; default rules fill the gaps.
 
 ## Capability negotiation for harness implementers
 
+Two manifest schema versions exist:
+
+| `schema_version` | What it carries |
+|------------------|-----------------|
+| `"1.0"` | The original layout. |
+| `"1.1"` | Adds per-command fields that surface kit's command annotations. Additive: a harness that ignores unknown fields reads a 1.1 manifest as it reads 1.0. |
+
+`kit toolspec` emits `"1.1"`. A kit-powered CLI's `<tool> spec`
+emits the label its author passed to `cli.RegisterSpecCommand`; the
+manifest it builds has the same fields whatever that label says.
+Always read `schema_version` from the payload (or `<tool> spec
+--version`) rather than assume it.
+
 Harnesses signal their max-supported schema version via the env var
 `KIT_TOOLSPEC_SCHEMA`:
 
 ```sh
-KIT_TOOLSPEC_SCHEMA=1.0 tlc manifest
+KIT_TOOLSPEC_SCHEMA=1.0 kit toolspec
 ```
 
-Today only `"1.0"` exists. When kit ships `"2.0"`
-(richer side-effect enum + network axis), pinning `1.0` keeps your
-harness on the legacy vocabulary while you migrate. The rules:
+`kit toolspec` applies these rules:
 
-- **Unset**: the tool emits its native schema version.
-- **At or above the tool's version**: native version; unknown fields
-  pass through untouched.
-- **Below the tool's major**: best-effort downgrade to the highest
-  version the tool can emit at or below the request. No older schema
-  exists yet, so today every request resolves to the native version.
-- **Malformed**: ignored; the tool emits its native version, like
-  every other kit env var that fails to parse.
+- **Unset**: emits its native version, `"1.1"`.
+- **Well-formed `MAJOR.MINOR`, at, above or below the native
+  version**: still the native version. kit never downgrades: it has
+  no older layout to emit, and a 1.0 harness reads 1.1 because the
+  change is additive.
+- **Malformed**: ignored; the native version, like every other kit
+  env var that fails to parse.
+
+`<tool> spec` does not read `KIT_TOOLSPEC_SCHEMA`; setting it there
+has no effect.
 
 ## What is and isn't shipped today
 
@@ -171,8 +184,10 @@ Today:
 
 - Manifest schema is published and stable
   (`go/ai/toolspec/spec.go`).
-- `kit toolspec`, `<tool> spec`, and `<tool> manifest` discovery
-  surfaces all work and emit identical JSON.
+- `kit toolspec` and `<tool> spec` discovery surfaces emit the same
+  manifest shape. The `<tool> manifest` subcommand was retired with
+  schema 1.1; `--format manifest` remains an alias of
+  `--format kit-manifest`.
 - The default policy table at `go/ai/toolspec/policy/default.yaml`
   ships embedded; resolve via `policy.Default().Resolve(...)`.
 - `adapters.EnforceMCPRequest()` is the runtime gate.

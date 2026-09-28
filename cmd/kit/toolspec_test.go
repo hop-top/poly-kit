@@ -121,7 +121,7 @@ func TestNegotiateSchemaVersion_DefaultsToBinary(t *testing.T) {
 	}{
 		{"unset", "", "1.0"},
 		{"matching", "1.0", "1.0"},
-		{"future-major", "2.0", "1.0"}, // kit downgrades to highest known
+		{"future-major", "2.0", "1.0"}, // above the binary: binary version
 		{"malformed", "garbage", "1.0"},
 		{"partial", "1", "1.0"},
 	}
@@ -129,6 +129,19 @@ func TestNegotiateSchemaVersion_DefaultsToBinary(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := negotiateSchemaVersion("1.0", tc.requested)
 			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestNegotiateSchemaVersion_NeverDowngrades pins the documented rule:
+// kit has one layout to emit, so a well-formed request below the
+// native version still resolves to the native version. 1.1 is
+// additive over 1.0, so a 1.0 reader handles it.
+func TestNegotiateSchemaVersion_NeverDowngrades(t *testing.T) {
+	for _, requested := range []string{"1.0", "1.1", "0.9", "2.0"} {
+		t.Run(requested, func(t *testing.T) {
+			got := negotiateSchemaVersion(kitToolspecSchemaVersion, requested)
+			assert.Equal(t, "1.1", got)
 		})
 	}
 }

@@ -13,10 +13,9 @@ import (
 )
 
 // kitToolspecSchemaVersion is the schema version kit's own manifest
-// claims.
-// (13 new fields on ManifestCommand surfacing Layer-A annotations).
-// Schema 1.0 clients ignore unknown fields; agents requesting
-// --api-version=1.0 still get a usable filtered view.
+// claims. 1.1 adds per-command fields on ManifestCommand that surface
+// kit's command annotations; it is additive, so 1.0 clients that
+// ignore unknown fields read it unchanged.
 const kitToolspecSchemaVersion = "1.1"
 
 // toolspecCmd is the discovery surface the toolspec contract mandates on the kit
@@ -29,7 +28,8 @@ const kitToolspecSchemaVersion = "1.1"
 // kit-powered CLI gains via RegisterSpecCommand): `kit toolspec` is
 // the bootstrap manifest of the kit binary itself, used as the
 // well-known anchor for protocol discovery. The legacy
-// `<tool> manifest` alias was retired in schema 1.1; adopters now use `<tool> spec --format json` exclusively.
+// `<tool> manifest` subcommand was retired in schema 1.1; adopters
+// serve `<tool> spec` only.
 //
 // Implementation is deliberately thin: BuildManifest already does
 // the cobra-tree projection. We honor KIT_TOOLSPEC_SCHEMA via the
@@ -124,21 +124,21 @@ func toolspecPolicyCmd() *cobra.Command {
 	return cmd
 }
 
-// negotiateSchemaVersion implements the toolspec contract's KIT_TOOLSPEC_SCHEMA
-// downgrade rule. Today only "1.0" exists, so the function is a
-// degenerate negotiator: any well-formed request returns the binary
-// version (kit has nothing older to downgrade to). Malformed values
-// degrade silently to the binary version per the contract.
+// negotiateSchemaVersion implements the toolspec contract's
+// KIT_TOOLSPEC_SCHEMA rule: kit never downgrades. It emits one layout
+// (kitToolspecSchemaVersion), so every well-formed request, at, above
+// or below it, resolves to the binary version; 1.1 is additive, so a
+// 1.0 reader handles it. Malformed values degrade silently to the
+// binary version per the contract.
 //
-// When kit ships "2.0", grow the lookup table
-// here. The function signature (request → resolved) is locked.
+// If kit ever emits more than one layout, grow a lookup table here.
+// The function signature (request → resolved) is locked.
 func negotiateSchemaVersion(binary, requested string) string {
 	if requested == "" {
 		return binary
 	}
-	// Stub: validate MAJOR.MINOR shape; if the request parses, return
-	// it whenever it does not exceed the binary version. Until kit
-	// ships multiple versions we always return the binary value.
+	// Validate the MAJOR.MINOR shape only; with one layout to emit,
+	// every parsed request resolves to the binary value.
 	major, minor, ok := parseSchemaVersion(requested)
 	if !ok {
 		return binary

@@ -20,15 +20,15 @@ The contract is this guide plus the artefact set under
 
 ## Step 1 — Discover the manifest
 
-Three discovery surfaces, in priority order:
+Two discovery surfaces, in priority order:
 
 | Surface                                | When to use                                                               |
 |----------------------------------------|---------------------------------------------------------------------------|
 | `<tool> spec --format kit-manifest`    | Default. Every kit-powered CLI gains this via `cli.RegisterSpecCommand`.  |
-| `<tool> manifest`                      | Adopter opted into the shorter spelling (see adopter guide).              |
 | `kit toolspec`                         | Bootstrap manifest for the kit binary itself; protocol-discovery anchor.  |
 
-All three emit identical `toolspec.Manifest` JSON. The output is
+Both emit `toolspec.Manifest` JSON; `--format manifest` is an alias
+of `--format kit-manifest`. The output is
 self-describing — the top-level `schema_version` field is your
 single source of truth for breaking changes.
 
@@ -46,16 +46,16 @@ $ tlc spec --format kit-manifest | jq '.commands[0]'
 }
 ```
 
-Negotiate the schema version by setting `KIT_TOOLSPEC_SCHEMA` in the
-process env before invoking the binary:
+Two schema versions exist: `"1.0"` and `"1.1"`, which only adds
+per-command fields. `kit toolspec` emits `"1.1"`; a kit-powered
+CLI's `<tool> spec` emits the label its author registered. Ignore
+fields you do not know and either version reads the same.
 
-```sh
-$ KIT_TOOLSPEC_SCHEMA=1.0 tlc spec --format kit-manifest
-```
-
-Today only `"1.0"` exists, so the env var is forward-compatibility
-plumbing — pin it once you start consuming the contract so future
-schema bumps don't surprise you.
+`KIT_TOOLSPEC_SCHEMA` states the highest version your harness
+supports. `kit toolspec` reads it but never downgrades, so today it
+always answers `"1.1"`; `<tool> spec` does not read it. The full rule
+set is in
+[capability negotiation](claude-code-permissions.md#capability-negotiation-for-harness-implementers).
 
 ## Step 2 — Cache by binary fingerprint
 

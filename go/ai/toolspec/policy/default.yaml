@@ -4,8 +4,8 @@
 # contract; this file is the authoritative
 # data. Embedded into the binary via go:embed (see policy.go) and
 # loaded once on startup; harnesses or adopters that want a custom
-# table overlay this default via --policy <file> on the MCP adapter
-# or cli.WithPolicy() at RegisterManifestCommand time.
+# table overlay this default via --policy <file> on the MCP adapter;
+# `kit toolspec policy --file <yaml>` prints the merged result.
 #
 # Schema:
 #   schema_version: "1.0"

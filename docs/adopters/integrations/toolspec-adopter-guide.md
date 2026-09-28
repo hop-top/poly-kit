@@ -20,10 +20,10 @@ cli.RegisterSpecCommand(root, "1.0")
 Your binary now serves `<your-tool> spec --format kit-manifest`
 and harnesses can consume it. That's the whole adoption.
 
-## Three publishing surfaces
+## Publishing surfaces
 
-Pick whichever matches your tool's voice. They emit the same
-payload; choose by ergonomics.
+`<tool> spec` is the one you serve; `kit toolspec` ships with kit.
+Both emit the same manifest shape.
 
 ### `<tool> spec`
 
@@ -39,17 +39,11 @@ $ mytool spec --format kit-manifest | head
 }
 ```
 
-### `<tool> manifest` alias
+### No `<tool> manifest` subcommand
 
-The shorter spelling. The contract prefers this for harness consumption
-("agents read manifests, they don't author them"). Add via:
-
-```go
-cli.RegisterManifestCommand(root, "1.0")
-```
-
-You can register both — they're independent subcommands with
-identical behaviour.
+The `<tool> manifest` subcommand was retired with schema 1.1. Serve
+the manifest from `<tool> spec`; `--format manifest` is accepted as
+an alias of `--format kit-manifest`.
 
 ### `kit toolspec` (kit binary only)
 
@@ -132,16 +126,16 @@ with the kit `toolspec.Manifest` schema, NOT with your binary's
 semver. Semver describes the binary's behaviour; `schema_version`
 describes the manifest layout.
 
-Today every kit-powered CLI is on `"1.0"`. When kit ships
-`"2.0"` (richer side-effect enum + populated network
-axis), upgrade your call:
+Two versions exist: `"1.0"`, the original layout, and `"1.1"`,
+which adds per-command fields surfacing kit's command annotations.
+1.1 is additive, so harnesses that ignore unknown fields read either.
+`kit toolspec` itself emits `"1.1"`.
 
-```go
-cli.RegisterSpecCommand(root, "2.0")
-```
-
-…after you have annotated all your leaves with the new vocabulary.
-Until then, hold at `"1.0"`.
+The string you pass to `cli.RegisterSpecCommand` is the label your
+manifest carries; the manifest kit builds has the same fields whatever
+the label says. `<tool> spec` does not read `KIT_TOOLSPEC_SCHEMA` —
+see [capability negotiation](claude-code-permissions.md#capability-negotiation-for-harness-implementers)
+for what a harness can and cannot request.
 
 ## Optional: curate
 
