@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"hop.top/kit/go/core/netpolicy"
+	"hop.top/kit/go/transport/api"
 )
 
 // ScopeName is the instrumentation scope of every span and instrument
@@ -35,12 +36,14 @@ const ScopeName = "hop.top/kit/go/transport/observability"
 //
 // A Provider is safe for concurrent use.
 type Provider struct {
-	tp     trace.TracerProvider // nil when tracing is off
-	mp     metric.MeterProvider // nil when metrics are off
-	tracer trace.Tracer
-	inst   *instruments // nil when metrics are off
-	prop   propagation.TextMapPropagator
-	stops  []func(context.Context) error
+	tp      trace.TracerProvider // nil when tracing is off
+	mp      metric.MeterProvider // nil when metrics are off
+	tracer  trace.Tracer
+	inst    *instruments // nil when metrics are off
+	prop    propagation.TextMapPropagator
+	stops   []func(context.Context) error
+	scrape  Scrape       // the scrape endpoint's configuration
+	scrapeH http.Handler // nil when the scrape endpoint is off
 }
 
 // Option adjusts how [New] builds a Provider.
@@ -127,18 +130,35 @@ func New(ctx context.Context, cfg Config, opts ...Option) (*Provider, error) {
 	switch {
 	case !cfg.Metrics.Enabled:
 	case o.mp != nil:
+		if cfg.Metrics.Scrape.Enabled {
+			_ = p.Shutdown(ctx)
+			return nil, errors.New("metrics.scrape needs the meter provider this package builds; " +
+				"a tool that supplies its own with WithMeterProvider serves its own endpoint")
+		}
 		p.mp = o.mp
 	default:
-		exp, err := newMetricExporter(ctx, cfg.Metrics, o.out)
-		if err != nil {
-			_ = p.Shutdown(ctx)
-			return nil, err
+		mopts := []sdkmetric.Option{sdkmetric.WithResource(res)}
+		if cfg.Metrics.Exporter != ExporterNone {
+			exp, err := newMetricExporter(ctx, cfg.Metrics, o.out)
+			if err != nil {
+				_ = p.Shutdown(ctx)
+				return nil, err
+			}
+			mopts = append(mopts, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp,
+				sdkmetric.WithInterval(cfg.Metrics.Interval))))
 		}
-		smp := sdkmetric.NewMeterProvider(
-			sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp,
-				sdkmetric.WithInterval(cfg.Metrics.Interval))),
-			sdkmetric.WithResource(res),
-		)
+		if cfg.Metrics.Scrape.Enabled {
+			// A second reader, cumulative and read on demand: each
+			// scrape collects what every instrument has aggregated.
+			reader := sdkmetric.NewManualReader()
+			mopts = append(mopts, sdkmetric.WithReader(reader))
+			p.scrape = cfg.Metrics.Scrape
+			if p.scrape.Path == "" {
+				p.scrape.Path = api.DefaultMetricsPath
+			}
+			p.scrapeH = scrapeHandler{reader: reader}
+		}
+		smp := sdkmetric.NewMeterProvider(mopts...)
 		p.mp = smp
 		p.stops = append(p.stops, smp.Shutdown)
 	}
@@ -165,6 +185,21 @@ func (p *Provider) Tracing() bool { return p != nil && p.tp != nil }
 
 // Metrics reports whether the Provider records metrics.
 func (p *Provider) Metrics() bool { return p != nil && p.mp != nil }
+
+// MetricsEndpoint returns the path and handler of the metrics scrape
+// endpoint, and whether it may answer on a non-loopback bind; "", nil
+// and false when the endpoint is off. The handler writes the text
+// exposition of every instrument the Provider records and answers any
+// method: an HTTP service mounts it with [api.MetricsRoute], which
+// limits it to GET and HEAD at the path, at HTTP-plane slot 7. The
+// endpoint skips authentication, so the service mounting it must
+// refuse a non-loopback bind unless allowRemote is true.
+func (p *Provider) MetricsEndpoint() (path string, h http.Handler, allowRemote bool) {
+	if p == nil || p.scrapeH == nil {
+		return "", nil, false
+	}
+	return p.scrape.Path, p.scrapeH, p.scrape.AllowRemote
+}
 
 // Shutdown flushes and stops the providers New built. Providers
 // supplied through options are left to their owner.

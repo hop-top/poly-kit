@@ -108,6 +108,16 @@ func (s *Serve) HTTPMiddleware(service string) func(http.Handler) http.Handler {
 	return s.Provider(service).HTTPMiddleware(service)
 }
 
+// MetricsEndpoint returns the path and handler of service's metrics
+// scrape endpoint and whether it may answer beyond loopback, or "",
+// nil and false when it is off for service (see
+// [Provider.MetricsEndpoint]). Services whose configuration is
+// identical share a Provider, so one endpoint then reports all of
+// them, each series labeled kit.service.
+func (s *Serve) MetricsEndpoint(service string) (path string, h http.Handler, allowRemote bool) {
+	return s.Provider(service).MetricsEndpoint()
+}
+
 // BridgeOptions returns the bridge options that instrument service's
 // invocations, or nil when nothing is enabled for it.
 func (s *Serve) BridgeOptions(service string) []cmdsurface.Option {

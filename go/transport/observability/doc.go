@@ -29,6 +29,8 @@
 //	    metrics:
 //	      enabled: true             # default false
 //	      interval: 60s
+//	      scrape:
+//	        enabled: true           # GET /metrics on the api service; default false
 //
 // Without it, [New] builds a [Provider] from a [Config] (or from
 // providers the tool already owns, via [WithTracerProvider] and
@@ -44,6 +46,15 @@
 // traffic is diagnostics, so it rides
 // [hop.top/kit/go/core/netpolicy.ObservabilityTransport] and is not
 // muted by --offline, the same carve-out product telemetry has.
+//
+// # Scrape endpoint
+//
+// With metrics.scrape enabled, the api service answers a Prometheus
+// scrape (text exposition format) at /metrics, at HTTP-plane slot 7
+// beside the health probes: ahead of the Host check and
+// authentication, so a non-loopback bind needs
+// metrics.scrape.allow_remote. Exporter "none" pushes nothing, for a
+// service read by scraping alone. See [Provider.MetricsEndpoint].
 //
 // # What is recorded
 //

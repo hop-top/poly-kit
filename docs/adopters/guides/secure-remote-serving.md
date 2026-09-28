@@ -752,7 +752,11 @@ The call from step 7 now produces one trace: the HTTP server span
 (child of the caller's `traceparent`), an `invoke widget list` span
 below it, and anything the command or a child process records below
 that. Metrics count every verdict per service and surface, refusals by
-code. Keys, span and instrument names are in
+code. To have Prometheus scrape them instead, set
+`services.api.metrics.scrape.enabled: true` (and `exporter: none` to
+push nothing); the endpoint skips authentication, so beyond loopback
+it also needs `scrape.allow_remote: true`. Keys, span and instrument
+names are in
 [served-observability.md](../reference/served-observability.md).
 
 ## Option reference
@@ -770,6 +774,7 @@ code. Keys, span and instrument names are in
 | `services.<svc>.audit.redact.secret_flags` | none | Extra flag names masked in audit records; `services.all` applies to every service. |
 | `services.<svc>.audit.redact.patterns` | none | Extra content patterns (RE2) masked in audit records. |
 | `cli.WithObservability(p)` | none | Links a tracing and metrics provider; `services.<svc>.tracing.enabled` / `.metrics.enabled` (or `services.all.*`) turn it on. |
+| `services.api.metrics.scrape.enabled` | `false` | Answer a Prometheus scrape at `/metrics`, before the Host check and auth. Beyond loopback needs `services.api.metrics.scrape.allow_remote: true`. |
 | `--policy=<name>` | none | The tool's policy engine, applied to remote calls for every caller. Naming one permits a non-loopback address. |
 | `services.api.host_check.enabled` | `true` | Refuse a `Host` the listener does not answer for (`403`, `host_rejected`). |
 | `services.api.host_check.allow` | `[]` | Hosts accepted beyond the listener's own; `name` or `name:port`. Required for a wildcard bind to check anything. |

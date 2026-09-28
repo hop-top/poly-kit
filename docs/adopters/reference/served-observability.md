@@ -17,7 +17,7 @@ consent-gated usage reporting.
 | Level | Needs | What you get |
 |---|---|---|
 | Propagation | nothing; always on | the caller's W3C `traceparent` / `tracestate` reach `Meta.Traceparent` / `Meta.Tracestate` on REST and RPC, the audit sinks, and a subprocess's `TRACEPARENT` / `TRACESTATE` |
-| Export | the tool links the provider; the operator enables it | spans per request and per invocation, request / latency / in-flight / refusal metrics, exported over OTLP or to stdout |
+| Export | the tool links the provider; the operator enables it | spans per request and per invocation, request / latency / in-flight / refusal metrics, exported over OTLP or to stdout, or scraped from the api service's `/metrics` |
 
 Nothing is exported by default, anywhere. Linking the provider
 enables nothing; configuration does.
@@ -89,11 +89,14 @@ service keeps the others from `services.all`.
 | Key | Blocks | Default | Meaning |
 |---|---|---|---|
 | `enabled` | both | `false` | export this signal for this service |
-| `exporter` | both | `otlp` | `otlp` (OTLP over HTTP, protobuf) or `stdout` (JSON lines) |
+| `exporter` | both | `otlp` | `otlp` (OTLP over HTTP, protobuf) or `stdout` (JSON lines); for `metrics` also `none`, which pushes nothing and needs `scrape.enabled` |
 | `endpoint` | both | `http://127.0.0.1:4318` | OTLP base URL. When unset, `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_{TRACES,METRICS}_ENDPOINT` wins over the loopback default |
 | `headers` | both | none | map of headers sent with every OTLP request (a collector token) |
 | `sample_ratio` | `tracing` | `1` | fraction of new traces recorded; a caller's sampled parent is always followed |
 | `interval` | `metrics` | `60s` | metrics export period |
+| `scrape.enabled` | `metrics` | `false` | answer a Prometheus scrape on the api service ([Scrape endpoint](#scrape-endpoint)); needs `enabled: true` |
+| `scrape.path` | `metrics` | `/metrics` | where the endpoint answers: an absolute, clean path, not `/` |
+| `scrape.allow_remote` | `metrics` | `false` | let the endpoint answer on a non-loopback bind |
 
 - An unknown key inside a `tracing` or `metrics` block, an unknown
   exporter, a ratio outside `[0, 1]` or a non-positive interval is a
@@ -170,6 +173,51 @@ HTTP-plane middleware that refuses a request calls
 and metrics middleware, which sits outside it, counts the code. A
 refusal the bridge decides is counted once, on the invocation plane.
 
+## Scrape endpoint
+
+For a Prometheus-style scraper instead of, or beside, an OTLP
+collector:
+
+```yaml
+services:
+  api:
+    metrics:
+      enabled: true
+      exporter: none          # scrape only; keep otlp to push as well
+      scrape:
+        enabled: true         # GET /metrics
+```
+
+The api service then answers `GET` and `HEAD` at `/metrics` with the
+text exposition format (`text/plain; version=0.0.4`) of every
+instrument above. Names follow the OpenTelemetry-to-Prometheus rules
+the upstream Prometheus exporter applies: dots become underscores, `s`
+becomes a `_seconds` suffix and `By` `_bytes`, counters end in
+`_total`, every series carries `otel_scope_name`, and `target_info`
+carries `service.name` and `service.version`. So
+`kit.serve.requests` is `kit_serve_requests_total` and
+`kit.serve.request.duration` is `kit_serve_request_duration_seconds`.
+
+- The endpoint answers at slot 7 of the HTTP chain, beside the health
+  probes: before the Host check and authentication, because a scraper
+  addresses the target by IP and carries no credentials. Request id,
+  access log, telemetry and security headers still wrap it, so scrapes
+  appear in `http.server.*` like any request.
+- Because it skips authentication, a non-loopback bind is refused at
+  validation, exit `2`, unless `scrape.allow_remote: true`, even when
+  `APIConfig.Auth` is set. Put it behind a network boundary you trust.
+- An adopter route at exactly the endpoint's path wins over it.
+- It is not a command: it appears in neither discovery nor OpenAPI.
+- It needs the provider's own meter provider: combined with
+  `WithMeterProvider`, `scrape.enabled` fails `serve` at start. A tool
+  with its own SDK serves its own endpoint.
+- A provider linked through `cli.WithObservability` serves it only if
+  it implements `cli.ServeMetricsEndpoint`; kit's does. Otherwise
+  `scrape.enabled` is refused at validation.
+- Services with identical resolved metrics configuration share one
+  provider, so `services.all.metrics` makes the api's endpoint report
+  the socket's invocations too, labeled by `kit.service`.
+
 ## Chain position
 
 On the api service's HTTP chain the middleware sits at slot 5 of the
@@ -216,9 +264,6 @@ started.
 
 ## Not implemented
 
-- A Prometheus `/metrics` endpoint. Metrics are pushed (OTLP) or
-  printed (`stdout`); a collector turns OTLP into Prometheus where one
-  is wanted. The contract reserves slot 7 for such an endpoint.
 - A queued-invocations gauge: there is no admission queue yet.
 - Trace context on the socket wire and MCP `_meta`. The socket carries
   `trace_id` only, so a socket invocation span starts a new trace; MCP

@@ -1308,6 +1308,14 @@ Why this order:
   probes address a pod by IP, not by name, and a health answer
   discloses nothing a Host allowlist protects. They bypass everything
   from 8 on, and are never audited or rate limited.
+- The metrics endpoint (`metrics.scrape`) answers in the same slot for
+  the same reason: a scraper addresses its target by IP and carries no
+  credentials. Unlike the probes it discloses what the service is
+  doing, so it is off by default, and on a non-loopback bind it MUST be
+  refused at validation, exit `2`, unless `metrics.scrape.allow_remote`
+  is true — authentication does not waive this, because the endpoint
+  never sees it. An adopter route at exactly its path wins, as for the
+  probes.
 - The Host and Origin checks run before CORS and authentication: a
   rebinding or cross-origin request is refused before anything else
   reads it. CORS answers preflights before authentication, because a
@@ -1392,7 +1400,7 @@ socket service and stdio take the loopback column.
 | `timeouts`         | http server; invocation 11–12          | HTTP listeners; every remote surface   | read header 5s, read 5s, write 10s; no command deadline | same                                           | `deadline_exceeded` |
 | `trusted_proxies`  | http 2                                 | HTTP listeners                         | empty: no forwarded header trusted  | empty                                          | — |
 | `tracing`          | http 5; invocation (propagation)       | HTTP listeners; every remote surface   | propagate, export nothing           | same                                           | — |
-| `metrics`          | http 5; endpoint at http 7             | HTTP listeners                         | off                                 | off                                            | — |
+| `metrics`          | http 5; endpoint at http 7             | HTTP listeners; endpoint on the api service | off; endpoint off               | off; endpoint off, and refused without `scrape.allow_remote` | — |
 | `security_headers` | http 6                                 | HTTP listeners                         | on; HSTS only with `tls`            | on                                             | — |
 | `health`           | http 7                                 | api service                            | on                                  | on                                             | — |
 | `host_check`       | http 8                                 | HTTP listeners                         | on, allowlist from the bound host   | on; a wildcard bind derives no restriction     | `host_rejected` |

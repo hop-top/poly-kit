@@ -47,11 +47,12 @@ type ServeObservability interface {
 }
 
 // The configuration blocks an operator uses to turn observability on,
-// under services.<svc> or services.all. The provider owns their keys;
-// the blocks and their enabled key are named here only so a tool that
-// links no provider can refuse a configuration asking for one instead
-// of ignoring it.
-var observabilityBlocks = []string{"tracing", "metrics"}
+// under services.<svc> or services.all, and the metrics block's scrape
+// endpoint sub-block. The provider owns their keys; the blocks and
+// their enabled key are named here only so a tool that links no
+// provider can refuse a configuration asking for one instead of
+// ignoring it.
+var observabilityBlocks = []string{"tracing", "metrics", metricsScrapeKey}
 
 // observabilityStopBudget bounds the final flush of buffered spans
 // and metrics once every service has stopped. It is separate from the
@@ -72,7 +73,9 @@ const observabilityStopBudget = 5 * time.Second
 // included), and the bridges of the api and socket services — and of
 // any service built with [ServeBridgeOptions], such as mcp and rpc —
 // gain a span per invocation plus request, latency, in-flight and
-// refusal metrics labeled by service and surface.
+// refusal metrics labeled by service and surface. With
+// services.api.metrics.scrape enabled as well, the api service
+// answers a Prometheus scrape at /metrics (see [ServeMetricsEndpoint]).
 func WithObservability(p ServeObservability) func(*Root) {
 	return func(r *Root) { r.serveObs = p }
 }

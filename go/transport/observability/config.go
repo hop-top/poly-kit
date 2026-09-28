@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -28,6 +29,9 @@ const (
 	// ExporterStdout writes spans or metrics as JSON lines to the
 	// process's standard output (or the writer given by [WithOutput]).
 	ExporterStdout = "stdout"
+	// ExporterNone pushes nothing (metrics only). It is for a service
+	// whose metrics are read from its scrape endpoint alone.
+	ExporterNone = "none"
 )
 
 // DefaultEndpoint is where the OTLP exporters send when neither the
@@ -51,8 +55,13 @@ const (
 var (
 	commonKeys  = []string{"enabled", "exporter", "endpoint", "headers"}
 	tracingKeys = append(slices.Clone(commonKeys), "sample_ratio")
-	metricsKeys = append(slices.Clone(commonKeys), "interval")
+	metricsKeys = append(slices.Clone(commonKeys), "interval", scrapeBlock)
+	scrapeKeys  = []string{"enabled", "path", "allow_remote"}
 )
+
+// scrapeBlock is the metrics block's scrape endpoint sub-block,
+// services.<svc>.metrics.scrape.
+const scrapeBlock = "scrape"
 
 // Signal is one block's resolved configuration.
 type Signal struct {
@@ -72,6 +81,25 @@ type Signal struct {
 	// Interval is the metrics export period (metrics only). Default
 	// DefaultMetricsInterval.
 	Interval time.Duration
+	// Scrape is the metrics scrape endpoint (metrics only).
+	Scrape Scrape
+}
+
+// Scrape is the configuration of a service's metrics scrape endpoint:
+// the Prometheus text exposition of everything the service's Provider
+// records, answered by an HTTP service at HTTP-plane slot 7, ahead of
+// the Host check and authentication. It needs metrics enabled; with
+// ExporterNone it is the only place the metrics go.
+type Scrape struct {
+	// Enabled serves the endpoint. Default false.
+	Enabled bool
+	// Path is where the endpoint answers. Empty means
+	// api.DefaultMetricsPath (/metrics).
+	Path string
+	// AllowRemote lets the endpoint answer on a non-loopback bind.
+	// The endpoint skips authentication, so the service hosting it
+	// refuses such a bind unless this is set. Default false.
+	AllowRemote bool
 }
 
 // Config is one service's tracing and metrics configuration.
@@ -145,6 +173,14 @@ func resolveSignal(v *viper.Viper, service, block string) (Signal, error) {
 		case ExporterOTLP, ExporterStdout:
 			sig.Exporter = s
 			return nil
+		case ExporterNone:
+			if block == BlockMetrics {
+				sig.Exporter = s
+				return nil
+			}
+		}
+		if block == BlockMetrics {
+			return fmt.Errorf("unknown exporter %q (want %q, %q or %q)", s, ExporterOTLP, ExporterStdout, ExporterNone)
 		}
 		return fmt.Errorf("unknown exporter %q (want %q or %q)", s, ExporterOTLP, ExporterStdout)
 	})
@@ -171,8 +207,44 @@ func resolveSignal(v *viper.Viper, service, block string) (Signal, error) {
 			}
 			return nil
 		})
+		get(scrapeBlock+".enabled", func(val any) error { return decode(val, &sig.Scrape.Enabled) })
+		get(scrapeBlock+".allow_remote", func(val any) error { return decode(val, &sig.Scrape.AllowRemote) })
+		get(scrapeBlock+".path", func(val any) error {
+			if err := decode(val, &sig.Scrape.Path); err != nil {
+				return err
+			}
+			return validScrapePath(sig.Scrape.Path)
+		})
+		if len(errs) == 0 {
+			errs = append(errs, checkScrape(sig, service))
+		}
 	}
 	return sig, errors.Join(errs...)
+}
+
+// checkScrape refuses a scrape endpoint that could serve nothing, and
+// a push-nothing exporter nothing reads: both are configurations that
+// look like they measure the service and do not.
+func checkScrape(sig Signal, service string) error {
+	switch {
+	case sig.Scrape.Enabled && !sig.Enabled:
+		return fmt.Errorf("service %q: metrics.scrape.enabled is true but metrics.enabled is not; "+
+			"the endpoint serves the metrics the service records", service)
+	case sig.Enabled && sig.Exporter == ExporterNone && !sig.Scrape.Enabled:
+		return fmt.Errorf("service %q: metrics.exporter is %q but metrics.scrape.enabled is not true; "+
+			"nothing would read the metrics", service, ExporterNone)
+	}
+	return nil
+}
+
+// validScrapePath refuses a path no scraper can be pointed at
+// unambiguously: it must be absolute and clean, and not the root.
+func validScrapePath(p string) error {
+	if !strings.HasPrefix(p, "/") || path.Clean(p) != p || p == "/" ||
+		strings.ContainsAny(p, "?# \t") {
+		return fmt.Errorf("%q must be an absolute URL path with no trailing slash, like /metrics", p)
+	}
+	return nil
 }
 
 // Validate refuses an unknown key inside any tracing or metrics block
@@ -194,16 +266,31 @@ func Validate(v *viper.Viper) error {
 				errs = append(errs, fmt.Errorf("%s: must be a block of keys", prefix))
 				continue
 			}
-			sub := v.GetStringMap(prefix)
-			for _, key := range slices.Sorted(maps.Keys(sub)) {
-				if !slices.Contains(allowed, key) {
-					errs = append(errs, fmt.Errorf("%s.%s: unknown key (known: %s)",
-						prefix, key, strings.Join(allowed, ", ")))
+			errs = append(errs, unknownKeys(v, prefix, allowed)...)
+			if block == BlockMetrics && v.IsSet(prefix+"."+scrapeBlock) {
+				sub := prefix + "." + scrapeBlock
+				if _, isBlock := v.Get(sub).(map[string]any); !isBlock {
+					errs = append(errs, fmt.Errorf("%s: must be a block of keys", sub))
+					continue
 				}
+				errs = append(errs, unknownKeys(v, sub, scrapeKeys)...)
 			}
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// unknownKeys returns an error per key under prefix not in allowed.
+func unknownKeys(v *viper.Viper, prefix string, allowed []string) []error {
+	var errs []error
+	sub := v.GetStringMap(prefix)
+	for _, key := range slices.Sorted(maps.Keys(sub)) {
+		if !slices.Contains(allowed, key) {
+			errs = append(errs, fmt.Errorf("%s.%s: unknown key (known: %s)",
+				prefix, key, strings.Join(allowed, ", ")))
+		}
+	}
+	return errs
 }
 
 // decode converts a configuration value into dst with viper's own
