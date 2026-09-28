@@ -154,12 +154,33 @@ cli dependency.
 | `destructive`     | supported by default                       |
 | `interactive`     | rejected with friendly diagnostic          |
 
+A command with no `kit/side-effect`, or one kit does not recognize,
+rejects `--dry-run`: see below.
+
 Plus two annotation overrides:
 
 | Annotation                | Set via                     | Effect                                  |
 |---------------------------|-----------------------------|------------------------------------------|
 | `kit/dry-run: opted-out`  | `cli.OptOutDryRun(cmd)`     | Reject, point at the explicit decision  |
 | `kit/dry-run: supported`  | `cli.SupportsDryRun(cmd)`   | Allow (legacy ADR-0019; one-time warn)  |
+
+## How `kit/side-effect` resolves
+
+What kit does with each form of the annotation. `--dry-run` reads the
+annotation itself, so only a declaration opts a command in; kit's
+guesses never do.
+
+| `kit/side-effect` | Kit treats it as | Source | `--dry-run` | `spec coverage` |
+|-------------------|------------------|--------|-------------|-----------------|
+| a six-tier value (`read` … `interactive`) | as written | `declared` | per the policy table above | annotated |
+| legacy `write` / `destructive` | `write-shared` / `destructive-shared` | `declared` | supported | annotated |
+| absent, name `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` | destructive (heuristic) | `inferred` | rejected: missing tag | unannotated |
+| absent, any other name | unannotated: never read | `unannotated` | rejected: missing tag | unannotated |
+| a value kit does not recognize | a declaration defect | `malformed` | rejected: missing tag | unannotated |
+
+How each row reaches REST, the manifest and `Root.Validate` is in the
+[command reflection reference](cmdreflect.md#how-kitside-effect-resolves).
+Run `<tool> spec coverage` to list the commands in the last three rows.
 
 ## Adoption
 

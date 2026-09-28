@@ -141,6 +141,37 @@ needs to know whether the adopter asked for a confirmation *channel*
 on top of that, which is a different question from whether the command
 is dangerous.
 
+## How `kit/side-effect` resolves
+
+Every command gets a `Safety.Tier`, annotated or not. Only a declared
+tier is your word; the rest are kit's conservative stand-ins, and every
+consumer can tell which is which.
+
+| `kit/side-effect` | Tier | Source | Served over REST | Manifest `side_effect` | `Root.Validate` | `spec coverage` |
+|-------------------|------|--------|------------------|------------------------|-----------------|-----------------|
+| a six-tier value (`read`, `write-local`, `write-shared`, `destructive-local`, `destructive-shared`, `interactive`) | as written | `declared` | `read` is `GET`, writes `POST`, destructive withheld unless policy permits it, `interactive` never | as written | passes | annotated |
+| legacy `write` / `destructive` | `write-shared` / `destructive-shared` | `declared` | `POST` / withheld unless permitted | as written | passes | annotated |
+| absent, and the name is `delete`, `remove`, `rm`, `destroy`, `purge` or `drop` | `destructive-shared`, `TierInferred` true | `inferred` | withheld unless permitted; confirmation required | `unknown` | refused (missing) | unannotated, also counted as `inferred` |
+| absent, any other name | `unannotated` | `unannotated` | `POST`, still invocable; level `caution`, `kit:fs:write:local` | `unknown` | refused (missing) | unannotated |
+| a value kit does not recognize (`destrutive`) | `TierUnknown` | `malformed` | withheld: `malformed-schema` | as written | refused (invalid) | unannotated, also counted as `malformed` |
+
+- **Source** is `side_effect_source` in the `GET /v1/commands` listing
+  and `x-kit-side-effect-source` on each OpenAPI operation. In Go,
+  `Safety.Tier.Declared()` is false for `unannotated` and `TierUnknown`;
+  check `Safety.TierInferred` too, because the heuristic sets a tier
+  that looks declared.
+- An unannotated command is never `read`: nobody said it reads nothing,
+  so kit does not claim it. It stays invocable so a working CLI keeps
+  working while you annotate.
+- `Root.Validate` runs at `Execute` unless `DisableValidate` is set,
+  checks runnable leaves, exits 2, and points at `<tool> spec coverage`.
+- `<tool> spec coverage --min 100` is the CI gate: it lists every
+  command without a declaration and exits 4 below the threshold. It is
+  mounted by `toolspec/cli.RegisterSpecCommand`; a `kit init` project
+  has it from the start.
+- Dry-run follows the same annotation: see the
+  [side-effect reference](sideeffect.md#how-kitside-effect-resolves).
+
 ## Reflect a completed tree
 
 `Reflect` expects a fully assembled root: every subcommand registered,

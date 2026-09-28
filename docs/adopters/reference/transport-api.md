@@ -79,7 +79,13 @@ adopter-driven path. Projection is the automatic one.
 | `read`            | `GET`  | safe and cacheable |
 | `write`           | `POST` | not safe, not cacheable |
 | `destructive`     | `POST` | as above; also gated by policy |
+| unannotated       | `POST` | no `kit/side-effect`: kit cannot claim the call is safe, so it is never `GET` |
 | `interactive`     | —      | never mounted |
+
+The class comes from `kit/side-effect`. A command that declares none is
+projected as `write`, and discovery marks it `side_effect_source:
+"unannotated"`; see
+[how `kit/side-effect` resolves](cmdreflect.md#how-kitside-effect-resolves).
 
 Only two methods. A finer mapping (`PUT` for idempotent writes,
 `DELETE` for destructive ones) reads better in isolation but cannot be
@@ -113,9 +119,12 @@ only 404 helps nobody.
 {
   "prefix": "/v1/commands",
   "commands": [
-    {"name": "list", "invocable": true,
-     "method": "GET", "route": "/v1/commands/list"},
-    {"name": "shell", "invocable": false, "reason": "interactive"}
+    {"name": "list", "side_effect": "read", "side_effect_source": "declared",
+     "invocable": true, "method": "GET", "route": "/v1/commands/list"},
+    {"name": "sync", "side_effect": "write", "side_effect_source": "unannotated",
+     "invocable": true, "method": "POST", "route": "/v1/commands/sync"},
+    {"name": "shell", "side_effect": "interactive", "side_effect_source": "declared",
+     "invocable": false, "reason": "interactive"}
   ],
   "reasons": ["interactive"],
   "exit_status": [{"exit_code": 0, "status": 200}]
@@ -126,6 +135,12 @@ Invocable commands sort first. The reason vocabulary is the reflector's
 (`interactive`, `unauthorized-destructive`, `hidden-internal`,
 `deprecated`, `not-runnable`, `builtin`, `management-only`,
 `malformed-schema`) and appears in the OpenAPI document as an enum.
+
+`side_effect_source` is on every entry and says whether `side_effect`
+is the adopter's word: `declared`, or kit's conservative stand-in —
+`inferred` (the destructive-name heuristic), `unannotated` (no
+annotation; projected as `write`), `malformed` (an annotation kit could
+not resolve). Treat anything but `declared` as a guess.
 
 ### Policy
 
@@ -300,7 +315,9 @@ at `/openapi.json`: parameters or request body per the method, the
 declared output schema on `data` where the adopter declared one, the
 confirmation flags where a command is gated (`confirm` as an enum of
 its accepted values), and `[destructive]` in the summary
-so danger is visible in a generated client's method list. Operation
+so danger is visible in a generated client's method list. Every
+operation carries `x-kit-side-effect` and `x-kit-side-effect-source`,
+the discovery fields, in the minimal spec too. Operation
 ids are `commands_<path_with_underscores>`.
 
 Only handlers registered on the raw router serve traffic; the huma

@@ -88,6 +88,7 @@ curl -s http://127.0.0.1:8080/v1/commands
     {
       "name": "widget list",
       "side_effect": "read",
+      "side_effect_source": "declared",
       "invocable": true,
       "method": "GET",
       "route": "/v1/commands/widget/list"
@@ -95,12 +96,14 @@ curl -s http://127.0.0.1:8080/v1/commands
     {
       "name": "shell",
       "side_effect": "interactive",
+      "side_effect_source": "declared",
       "invocable": false,
       "reason": "interactive"
     },
     {
       "name": "serve",
       "side_effect": "write",
+      "side_effect_source": "declared",
       "invocable": false,
       "reason": "self-hosting"
     }
@@ -116,6 +119,13 @@ why — `interactive`, `self-hosting`, `unauthorized-destructive`,
 the reflector's vocabulary. Read it before assuming a missing route
 is a bug. `serve` is always `self-hosting`: it is the process you are
 talking to.
+
+`side_effect_source` says whether `side_effect` is your declaration.
+A command without `kit/side-effect` shows `unannotated` and is served
+as a `POST`, never a `GET`; one caught by the destructive-name
+heuristic (`delete`, `rm`, …) shows `inferred`. Run
+`mytool spec coverage` to list them, and annotate each one
+([how `kit/side-effect` resolves](../reference/cmdreflect.md#how-kitside-effect-resolves)).
 
 ### 3. Get structured output
 
