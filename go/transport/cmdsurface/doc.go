@@ -1,6 +1,7 @@
 // Package cmdsurface bridges a single cobra command tree to many
 // invocation surfaces (CLI, REST, WebSocket, SSE, ConnectRPC, MCP,
-// webhook, bus, cron, library, OAuth callback, signed URL, FaaS).
+// webhook, bus, cron, library, OAuth callback, signed URL, FaaS,
+// Unix socket).
 //
 // Kit already gives every adopter a unified command tree via the
 // cobra root produced by [hop.top/kit/go/console/cli] and projects
@@ -85,6 +86,11 @@ const (
 	// SurfaceFaaS is a FaaS adapter (AWS Lambda, Cloud Run) wrapping
 	// the same Runner under provider invocation contracts.
 	SurfaceFaaS Surface = "faas"
+	// SurfaceSocket is newline-delimited JSON over a local Unix domain
+	// socket (see [hop.top/kit/go/transport/socket]). It is its own
+	// surface, not an alias of SurfaceRPC: a destructive grant on one
+	// never reaches the other, and audit records name the socket.
+	SurfaceSocket Surface = "socket"
 )
 
 // AllSurfaces is the canonical list of every defined Surface,
@@ -96,6 +102,7 @@ func AllSurfaces() []Surface {
 		SurfaceCLI, SurfaceREST, SurfaceWS, SurfaceSSE, SurfaceRPC,
 		SurfaceMCP, SurfaceWebhook, SurfaceBus, SurfaceCron,
 		SurfaceLib, SurfaceOAuthCB, SurfaceSigned, SurfaceFaaS,
+		SurfaceSocket,
 	}
 }
 

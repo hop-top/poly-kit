@@ -299,10 +299,11 @@ Destructive commands are refused by default:
 ```console
 $ echo '{"path":["widget","delete"],"args":["7"]}' \
     | socat - UNIX-CONNECT:/tmp/mytool.sock
-{"ok":false,"error":{"code":"BLOCKED","message":"cmdsurface: destructive command blocked on this surface: widget delete on rpc"}}
+{"ok":false,"error":{"code":"BLOCKED","message":"cmdsurface: destructive command blocked on this surface: widget delete on socket"}}
 ```
 
-Permit them by naming the socket's surface:
+Permit them by naming the socket's surface, `cmdsurface.SurfaceSocket`
+(`socket` in config):
 
 ```go
 package main
@@ -319,7 +320,7 @@ func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.0.0"},
         cli.WithSocket(cli.SocketConfig{
             Policy: cmdsurface.Policy{
-                AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+                AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceSocket},
             },
         }),
     )
@@ -355,7 +356,9 @@ A command annotated for typed confirmation additionally needs
 `confirm-token`; the refusal message tells the caller the exact token.
 
 Naming a surface widens **that surface only** — permitting destructive
-commands on the socket does not make them reachable over MCP or REST.
+commands on the socket does not make them reachable over MCP, REST, or
+ConnectRPC. The reverse holds too: `SurfaceRPC` is ConnectRPC, and
+naming it does not lift the socket's ceiling.
 
 ### 8. Restrict which commands are reachable
 
@@ -396,7 +399,7 @@ A command that exists but is not exposed here is reported as such,
 which is a different answer from one that does not exist:
 
 ```console
-{"ok":false,"error":{"code":"NOT_ENABLED","message":"cmdsurface: surface not enabled for command: widget delete on rpc"}}
+{"ok":false,"error":{"code":"NOT_ENABLED","message":"cmdsurface: surface not enabled for command: widget delete on socket"}}
 ```
 
 ### 9. Read errors
@@ -406,7 +409,7 @@ which is a different answer from one that does not exist:
 | `NOT_FOUND` | the path resolves to no reachable command | typo; or a hidden, deprecated, or self-hosting command the reflector excluded — `serve` itself answers this |
 | `NOT_ENABLED` | the command exists but not on this surface | excluded by your `Expose` / `Hide` patterns |
 | `NOT_INVOCABLE` | the command can never run through a transport | an `interactive` command; the message names the reason |
-| `BLOCKED` | destructive command refused by policy | `Policy.AllowDestructiveOn` does not name this surface |
+| `BLOCKED` | destructive command refused by policy | `Policy.AllowDestructiveOn` does not name `cmdsurface.SurfaceSocket` |
 | `DENIED` | the permission gate refused this caller | `cli.WithPermission`, or a `--policy` that refuses the class; the message carries the reason |
 | `UNAUTHENTICATED` | `SocketConfig.Auth` refused the request | only sent when an authenticator is configured |
 | `INVALID` | the request line is malformed | bad JSON, or an empty `path` |
@@ -513,7 +516,7 @@ What you get, and what you owe:
 | `Path` | `string` | runtime dir (see step 2) | socket path; `services.socket.path` and `--socket` override it |
 | `Expose` | `[]string` | every invocable command | patterns the socket may reach |
 | `Hide` | `[]string` | none | patterns carved out of `Expose` |
-| `Policy` | `cmdsurface.Policy` | zero value | safety gate; zero behaves as `cmdsurface.DefaultPolicy()` |
+| `Policy` | `cmdsurface.Policy` | zero value | safety gate; zero behaves as `cmdsurface.DefaultPolicy()`; the socket invokes as `cmdsurface.SurfaceSocket` |
 | `Auth` | `socket.Authenticator` | none | verifies each request; its identity replaces the claimed `caller` and `tenant` |
 
 Parallel execution is a root option rather than a field:

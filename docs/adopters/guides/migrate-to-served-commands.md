@@ -536,7 +536,7 @@ func serviceOptions() []func(*cli.Root) {
         }),
         cli.WithSocket(cli.SocketConfig{
             Policy: cmdsurface.Policy{
-                AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+                AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceSocket},
             },
         }),
     }

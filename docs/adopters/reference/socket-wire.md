@@ -3,9 +3,9 @@
 Wire reference for
 [`go/transport/socket`](../../../go/transport/socket/README.md), which
 serves a kit command tree over a Unix domain socket as
-newline-delimited JSON: the request and response shapes, error codes,
-authentication, cancellation, configuration keys, path limits and
-permissions, and the Go API. The task walkthrough is
+newline-delimited JSON: the request and response shapes, the
+surface, error codes, authentication, cancellation, configuration
+keys, path limits and permissions, and the Go API. The task walkthrough is
 [serve-cli-over-unix-socket.md](../guides/serve-cli-over-unix-socket.md).
 
 ## Wire protocol
@@ -81,14 +81,23 @@ connections the bridge's runner serializes in-process commands, one
 at a time, unless the tool opts in with `cli.WithRootFactory`, which
 runs each request on a tree of its own, in parallel.
 
+## Surface
+
+The built-in service (`cli.WithSocket`) invokes every request as
+`cmdsurface.SurfaceSocket` (`socket`), a surface of its own. Policy, enablement, and audit sinks key
+off that value: a destructive command runs only when
+`Policy.AllowDestructiveOn` names `SurfaceSocket`, and audit records
+carry `surface: socket`. `SurfaceRPC` is ConnectRPC; naming it grants
+the socket nothing.
+
 ## Error codes
 
 | Code | Cause |
 |---|---|
 | `NOT_FOUND` | `path` resolves to no reachable command, including one the reflector excluded (hidden, deprecated) |
-| `NOT_ENABLED` | the command exists but is not exposed on this surface |
+| `NOT_ENABLED` | the command exists but is not exposed on the `socket` surface |
 | `NOT_INVOCABLE` | the command can never run through a transport — interactive, or self-hosting — refused by the bridge's gate; the message names the reason |
-| `BLOCKED` | destructive command refused because the policy does not name this surface |
+| `BLOCKED` | destructive command refused because the policy does not name the `socket` surface |
 | `DENIED` | the permission gate refused this caller; the message carries its stable reason |
 | `UNAUTHENTICATED` | the configured `Authenticator` refused the request; never sent without one |
 | `INVALID` | malformed request line, or empty `path` |

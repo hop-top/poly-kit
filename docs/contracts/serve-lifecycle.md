@@ -542,7 +542,7 @@ of any of them.
 |------------------|------------------------------------------------|---------------------------------------------|
 | `Caller`         | principal from the `Auth` claims               | verified by `SocketConfig.Auth`, else the request's `caller` as a claim |
 | `Tenant`         | tenant from the `Auth` claims                  | verified by `SocketConfig.Auth`, else the request's `tenant` as a claim |
-| `Surface`        | `rest`, pinned                                 | `rpc`, pinned by the seam                   |
+| `Surface`        | `rest`, pinned                                 | `socket`, pinned by the seam                |
 | `RequestID`      | `X-Request-ID`, issued when absent, echoed     | `request_id`, issued when absent            |
 | `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`      | `trace_id`                                  |
 | `IdempotencyKey` | `Idempotency-Key`                              | `idempotency_key`                           |

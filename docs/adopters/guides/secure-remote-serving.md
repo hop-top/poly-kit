@@ -423,7 +423,7 @@ socket's own code:
 
 ```console
 $ echo '{"path":["widget","purge"],"caller":"bob"}' | socat - UNIX-CONNECT:/tmp/mytool.sock
-{"ok":false,"error":{"code":"DENIED","message":"cmdsurface: permission denied: widget purge on rpc: missing scope widgets:admin"}}
+{"ok":false,"error":{"code":"DENIED","message":"cmdsurface: permission denied: widget purge on socket: missing scope widgets:admin"}}
 ```
 
 Over the socket there is no `Authorization` header, so `scopes` is

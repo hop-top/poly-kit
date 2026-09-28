@@ -105,7 +105,7 @@ func TestRequestProvenanceReachesMeta(t *testing.T) {
 	assert.Equal(t, "req-7", got.RequestID)
 	assert.Equal(t, "trace-7", got.TraceID)
 	assert.Equal(t, "key-7", got.IdempotencyKey)
-	assert.Equal(t, cmdsurface.SurfaceRPC, got.Surface, "the seam pins the surface")
+	assert.Equal(t, cmdsurface.SurfaceSocket, got.Surface, "the seam pins the surface")
 	assert.False(t, got.RequestedAt.IsZero(), "the transport stamps the audit timestamp")
 }
 
@@ -165,7 +165,7 @@ func TestAuthenticatorReplacesClaimedIdentity(t *testing.T) {
 	require.Len(t, rec.invs, 2, "one execution record and one refusal record")
 	assert.ErrorIs(t, rec.errs[1], cmdsurface.ErrAuthRefused)
 	assert.Equal(t, "req-x", rec.invs[1].Meta.RequestID)
-	assert.Equal(t, cmdsurface.SurfaceRPC, rec.invs[1].Meta.Surface)
+	assert.Equal(t, cmdsurface.SurfaceSocket, rec.invs[1].Meta.Surface)
 	assert.Equal(t, []string{"ping"}, rec.invs[1].Path)
 }
 
@@ -185,7 +185,7 @@ func TestPermissionDeniedIsDeniedOnTheWire(t *testing.T) {
 	require.False(t, resp.Ok)
 	assert.Equal(t, socket.CodeDenied, resp.Error.Code)
 	assert.Equal(t,
-		"cmdsurface: permission denied: ping on rpc: mallory may not ping",
+		"cmdsurface: permission denied: ping on socket: mallory may not ping",
 		resp.Error.Message)
 
 	resp = call(t, path, socket.Request{Path: []string{"ping"}, Caller: "alice"})
@@ -260,12 +260,12 @@ func startSocketWith(t *testing.T, path string, auth socket.Authenticator, opts 
 	tr := socket.New(path)
 	tr.Auth = auth
 	opts = append([]transportsvc.TransportOption{transportsvc.Expose("*")}, opts...)
-	svc := transportsvc.NewTransportService("socket", testRoot(), cmdsurface.SurfaceRPC, tr, opts...)
+	svc := transportsvc.NewTransportService("socket", testRoot(), cmdsurface.SurfaceSocket, tr, opts...)
 	// Route the transport's own refusals into the bridge's sinks, as
 	// the cli wiring does.
 	tr.OnRefused = func(ctx context.Context, inv cmdsurface.Invocation, err error) {
 		if b := svc.Bridge(); b != nil {
-			inv.Meta.Surface = cmdsurface.SurfaceRPC
+			inv.Meta.Surface = cmdsurface.SurfaceSocket
 			b.Audit(ctx, inv, cmdsurface.Result{}, err)
 		}
 	}
@@ -304,7 +304,7 @@ func TestInteractiveCommandIsNotInvocableOnTheWire(t *testing.T) {
 		Annotations: map[string]string{"kit/side-effect": "interactive"},
 		RunE:        func(cmd *cobra.Command, _ []string) error { cmd.Print("never"); return nil },
 	})
-	svc := transportsvc.NewTransportService("socket", root, cmdsurface.SurfaceRPC, socket.New(path),
+	svc := transportsvc.NewTransportService("socket", root, cmdsurface.SurfaceSocket, socket.New(path),
 		transportsvc.Expose("*"))
 	ctx, cancel := context.WithCancel(context.Background())
 	ready := make(chan struct{}, 1)
@@ -323,5 +323,5 @@ func TestInteractiveCommandIsNotInvocableOnTheWire(t *testing.T) {
 	resp := call(t, path, socket.Request{Path: []string{"shell"}})
 	require.False(t, resp.Ok)
 	assert.Equal(t, socket.CodeNotInvocable, resp.Error.Code)
-	assert.Contains(t, resp.Error.Message, "shell on rpc is interactive")
+	assert.Contains(t, resp.Error.Message, "shell on socket is interactive")
 }

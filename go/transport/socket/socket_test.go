@@ -63,7 +63,7 @@ func startSocket(t *testing.T, path string, opts ...transportsvc.TransportOption
 	t.Helper()
 	opts = append([]transportsvc.TransportOption{transportsvc.Expose("*")}, opts...)
 	svc := transportsvc.NewTransportService(
-		"socket", testRoot(), cmdsurface.SurfaceRPC, socket.New(path), opts...,
+		"socket", testRoot(), cmdsurface.SurfaceSocket, socket.New(path), opts...,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -243,7 +243,7 @@ func TestCallerAndTraceTravelIntoMeta(t *testing.T) {
 	var got cmdsurface.Meta
 	tr := socket.New(path)
 	svc := transportsvc.NewTransportService(
-		"socket", testRoot(), cmdsurface.SurfaceRPC, tr,
+		"socket", testRoot(), cmdsurface.SurfaceSocket, tr,
 		transportsvc.Expose("*"),
 		transportsvc.WithBridgeOptions(cmdsurface.WithRunner(recorder{&got})),
 	)
@@ -262,7 +262,7 @@ func TestCallerAndTraceTravelIntoMeta(t *testing.T) {
 
 	assert.Equal(t, "alice", got.Caller)
 	assert.Equal(t, "trace-1", got.TraceID)
-	assert.Equal(t, cmdsurface.SurfaceRPC, got.Surface, "surface is pinned by the seam")
+	assert.Equal(t, cmdsurface.SurfaceSocket, got.Surface, "surface is pinned by the seam")
 }
 
 // recorder is a Runner that captures the Meta it was handed.
@@ -282,7 +282,7 @@ func TestStopUnlinksSocketAndRefusesNewConnections(t *testing.T) {
 	path := socketPath(t)
 
 	svc := transportsvc.NewTransportService(
-		"socket", testRoot(), cmdsurface.SurfaceRPC, socket.New(path),
+		"socket", testRoot(), cmdsurface.SurfaceSocket, socket.New(path),
 		transportsvc.Expose("*"),
 	)
 	ctx, cancel := context.WithCancel(context.Background())

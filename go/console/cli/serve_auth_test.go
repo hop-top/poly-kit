@@ -802,7 +802,7 @@ func TestSocketProvenanceReachesMetaAndAudit(t *testing.T) {
 	inv, res, err := rec.last(t)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, res.ExitCode)
-	assert.Equal(t, cmdsurface.SurfaceRPC, inv.Meta.Surface)
+	assert.Equal(t, cmdsurface.SurfaceSocket, inv.Meta.Surface)
 	assert.Equal(t, "daemon", inv.Meta.Caller, "claimed, recorded as provenance")
 	assert.Equal(t, "acme", inv.Meta.Tenant)
 	assert.Equal(t, "req-s", inv.Meta.RequestID)
@@ -831,7 +831,7 @@ func TestSocketAuthenticatorRefusalIsAudited(t *testing.T) {
 	inv, _, err := rec.last(t)
 	assert.ErrorIs(t, err, cmdsurface.ErrAuthRefused)
 	assert.Equal(t, "req-a", inv.Meta.RequestID)
-	assert.Equal(t, cmdsurface.SurfaceRPC, inv.Meta.Surface)
+	assert.Equal(t, cmdsurface.SurfaceSocket, inv.Meta.Surface)
 
 	resp = socketCall(t, path, socket.Request{Path: []string{"list"}, Caller: "mallory", Flags: map[string]any{"token": "ok"}})
 	require.True(t, resp.Ok, "%+v", resp.Error)
@@ -997,7 +997,7 @@ func TestPolicyEngineDeniesOnTheSocket(t *testing.T) {
 	require.False(t, resp.Ok)
 	assert.Equal(t, socket.CodeDenied, resp.Error.Code)
 	assert.Equal(t,
-		"cmdsurface: permission denied: add on rpc: policy: write not allowed for add",
+		"cmdsurface: permission denied: add on socket: policy: write not allowed for add",
 		resp.Error.Message)
 	inv, _, err := rec.last(t)
 	assert.ErrorIs(t, err, cmdsurface.ErrPermissionDenied)
@@ -1130,7 +1130,7 @@ func TestInteractiveCommandRefusedCentrallyOnBothTransports(t *testing.T) {
 	require.False(t, resp.Ok)
 	assert.Equal(t, socket.CodeNotInvocable, resp.Error.Code)
 	assert.Equal(t,
-		"cmdsurface: command not invocable through a runner: shell on rpc is interactive (interactive: requires a terminal and a human)",
+		"cmdsurface: command not invocable through a runner: shell on socket is interactive (interactive: requires a terminal and a human)",
 		resp.Error.Message)
 	inv, _, err := rec.last(t)
 	assert.ErrorIs(t, err, cmdsurface.ErrNotInvocable)

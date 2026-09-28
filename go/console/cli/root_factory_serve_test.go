@@ -104,7 +104,7 @@ func (f *factoryFixture) build() *cli.Root {
 		return cmdsurface.Policy{AllowDestructiveOn: []cmdsurface.Surface{s}}
 	}
 	opts := []func(*cli.Root){
-		cli.WithSocket(cli.SocketConfig{Path: f.socket, Policy: destructiveOn(cmdsurface.SurfaceRPC)}),
+		cli.WithSocket(cli.SocketConfig{Path: f.socket, Policy: destructiveOn(cmdsurface.SurfaceSocket)}),
 		cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0", Policy: destructiveOn(cmdsurface.SurfaceREST)}),
 		cli.WithRootFactory(f.build),
 	}

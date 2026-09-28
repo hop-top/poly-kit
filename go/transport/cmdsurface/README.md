@@ -37,7 +37,7 @@ _ = http.ListenAndServe(":8080", r)
 
 ## Contract
 
-- Thirteen surfaces are declared: `cli`, `rest`, `ws`, `sse`, `rpc`, `mcp`, `webhook`, `bus`, `cron`, `lib`, `oauth-cb`, `signed`, `faas`.
+- Fourteen surfaces are declared: `cli`, `rest`, `ws`, `sse`, `rpc`, `mcp`, `webhook`, `bus`, `cron`, `lib`, `oauth-cb`, `signed`, `faas`, `socket`. `socket` is the Unix socket service (`cli.WithSocket`), distinct from `rpc` (ConnectRPC).
 - `kit/side-effect=destructive` blocks every remote surface unless the surface is listed in `Policy.AllowDestructiveOn`; YAML `destructive_default: deny_remote` is the conservative default.
 - `kit/auth-required` and `kit/requires-confirmation` gate every surface through the same `Policy`.
 - Webhook mappings targeting auth-required leaves with `AuthNone` are refused at mount; `WebhookAuth.Verify` runs before template execution.

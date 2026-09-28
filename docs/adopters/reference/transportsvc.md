@@ -79,6 +79,13 @@ func NewTransportService(
 ) *TransportService
 ```
 
+`surface` is the value every invocation carries in `Meta.Surface`:
+the key `Policy.AllowDestructiveOn`, `Enabled`, and audit sinks match
+on. A policy or sink cannot tell apart two transports that invoke as
+the same surface, so a distinct transport gets a distinct surface: the
+built-in socket service invokes as `cmdsurface.SurfaceSocket`, not
+`SurfaceRPC` (ConnectRPC).
+
 `name` must match `^[a-z][a-z0-9-]*$` and must not be `all`, `none`,
 or `list`. An invalid name, or a nil `Transport`, panics at
 construction — both are wiring bugs in `main`.

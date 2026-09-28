@@ -43,7 +43,7 @@ the same Runner under provider invocation contracts.
 - **Descriptor** — the canonical reflection of one command, from
   `go/ai/cmdreflect`. See [Command reflection](#command-reflection).
 - **Surface** — a transport projection identified by a string constant
-  (`SurfaceREST`, `SurfaceMCP`, etc.). Thirteen surfaces are declared.
+  (`SurfaceREST`, `SurfaceMCP`, etc.). Fourteen surfaces are declared.
 - **Invocation** — the transport-agnostic call envelope: `Path`,
   `Args`, `Flags`, `Meta`. Every surface decodes its wire format into
   this shape.
@@ -225,6 +225,7 @@ reached.
 | `oauth-cb`      | inbound HTTP        | `MountOAuth`     | OAuth provider callback                 | `api.Router` + `StateStore`     |
 | `signed`        | inbound HTTP        | `MountSigned`    | one-shot magic-link exec                | `api.Router` + `NonceStore`     |
 | `faas`          | provider-driven     | `LambdaHandler` / `RunCloudRun` | Lambda + Cloud Run               | aws-lambda-go, `net/http`       |
+| `socket`        | request / reply     | `cli.WithSocket` (`serve socket`) | local daemons, sidecars, agents on the host | `transport/socket` + `transportsvc` |
 
 ## Quick start
 

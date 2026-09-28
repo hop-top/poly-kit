@@ -54,11 +54,13 @@ type SocketConfig struct {
 	// socket's surface:
 	//
 	//	Policy: cmdsurface.Policy{
-	//		AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+	//		AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceSocket},
 	//	}
 	//
-	// Naming a surface here widens that surface only; every other
-	// transport keeps the ceiling it had.
+	// The socket invokes as [cmdsurface.SurfaceSocket], so only that
+	// entry lifts its ceiling; naming SurfaceRPC here has no effect
+	// on the socket. This Policy belongs to the socket's own bridge,
+	// so no other transport's ceiling changes either.
 	Policy cmdsurface.Policy
 
 	// Auth, when set, verifies every request before it is invoked;
@@ -160,7 +162,7 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 	}
 
 	svc := transportsvc.NewTransportService(
-		SocketServiceName, root.Cmd, cmdsurface.SurfaceRPC, tr, opts...,
+		SocketServiceName, root.Cmd, cmdsurface.SurfaceSocket, tr, opts...,
 	)
 	// The transport reports its own refusals into the service's
 	// bridge, which exists only once the service has started.
@@ -200,7 +202,7 @@ func (l *lazySocket) refused(ctx context.Context, inv cmdsurface.Invocation, err
 	if b == nil {
 		return
 	}
-	inv.Meta.Surface = cmdsurface.SurfaceRPC
+	inv.Meta.Surface = cmdsurface.SurfaceSocket
 	b.Audit(ctx, inv, cmdsurface.Result{}, err)
 }
 

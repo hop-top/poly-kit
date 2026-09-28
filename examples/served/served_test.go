@@ -482,10 +482,28 @@ func TestDestructiveIsRefusedOverTheSocketByDefault(t *testing.T) {
 	assert.Equal(t, socket.CodeBlocked, resp.Error.Code)
 }
 
-func TestDestructiveRunsOverTheSocketOnceNamedAndConfirmed(t *testing.T) {
+func TestDestructiveOverTheSocketIsNotGrantedByNamingRPC(t *testing.T) {
 	path := shortSocketPath(t)
 	run := startServe(t,
 		options{allowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC}},
+		"socket", "--socket", path)
+	run.waitReady(t, "socket")
+
+	// The socket is its own surface: a grant on rpc (ConnectRPC) does
+	// not reach it, even for a confirmed call.
+	resp := callSocket(t, path, socket.Request{
+		Path: []string{"item", "purge"}, Flags: map[string]any{"confirm": "yes"},
+	})
+	require.False(t, resp.Ok)
+	require.NotNil(t, resp.Error)
+	assert.Equal(t, socket.CodeBlocked, resp.Error.Code)
+	assert.Contains(t, resp.Error.Message, "item purge on socket")
+}
+
+func TestDestructiveRunsOverTheSocketOnceNamedAndConfirmed(t *testing.T) {
+	path := shortSocketPath(t)
+	run := startServe(t,
+		options{allowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceSocket}},
 		"socket", "--socket", path)
 	run.waitReady(t, "socket")
 
@@ -506,7 +524,7 @@ func TestDestructiveRunsOverTheSocketOnceNamedAndConfirmed(t *testing.T) {
 func TestInteractiveAndSelfHostingAreNeverInvocableOverTheSocket(t *testing.T) {
 	path := shortSocketPath(t)
 	run := startServe(t,
-		options{allowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC}},
+		options{allowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceSocket}},
 		"socket", "--socket", path)
 	run.waitReady(t, "socket")
 

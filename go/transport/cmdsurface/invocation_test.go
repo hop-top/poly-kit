@@ -138,3 +138,26 @@ func TestSurface_IsValid(t *testing.T) {
 		t.Errorf("unknown surface should not be valid")
 	}
 }
+
+func TestSurface_SocketIsDistinctFromRPC(t *testing.T) {
+	if SurfaceSocket != "socket" {
+		t.Fatalf("SurfaceSocket = %q, want %q", SurfaceSocket, "socket")
+	}
+	if SurfaceSocket == SurfaceRPC {
+		t.Fatal("the socket surface must not alias rpc")
+	}
+	if !SurfaceSocket.IsValid() {
+		t.Error("socket must be a valid surface")
+	}
+	if !SurfaceSocket.remote() {
+		t.Error("socket is a transport surface: it is gated and audited like rpc")
+	}
+	// A grant on rpc must not reach the socket, nor the reverse.
+	destructive := SafetyClass{Destructive: true}
+	if (Policy{AllowDestructiveOn: []Surface{SurfaceRPC}}).Allowed(destructive, SurfaceSocket) {
+		t.Error("allowing destructive on rpc must not allow it on socket")
+	}
+	if (Policy{AllowDestructiveOn: []Surface{SurfaceSocket}}).Allowed(destructive, SurfaceRPC) {
+		t.Error("allowing destructive on socket must not allow it on rpc")
+	}
+}

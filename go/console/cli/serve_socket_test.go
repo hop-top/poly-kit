@@ -243,7 +243,33 @@ func TestSocketRefusesDestructiveByDefault(t *testing.T) {
 	require.NotNil(t, resp.Error)
 	assert.Equal(t, socket.CodeBlocked, resp.Error.Code)
 	assert.Equal(t,
-		"cmdsurface: destructive command blocked on this surface: nuke on rpc",
+		"cmdsurface: destructive command blocked on this surface: nuke on socket",
+		resp.Error.Message)
+}
+
+func TestSocketPolicyNamingRPCDoesNotWidenTheSocket(t *testing.T) {
+	path := shortSocketPath(t)
+	r := destructiveRoot(t, cli.SocketConfig{
+		Path: path,
+		Policy: cmdsurface.Policy{
+			AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+		},
+	})
+
+	stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
+	defer stop()
+
+	// rpc is ConnectRPC, a network transport. The socket is its own
+	// surface, so a grant on rpc leaves the socket's ceiling in place.
+	resp := callSocket(t, path, socket.Request{
+		Path:  []string{"nuke"},
+		Flags: map[string]any{"confirm": "yes"},
+	})
+	require.False(t, resp.Ok, "a grant on rpc must not reach the socket")
+	require.NotNil(t, resp.Error)
+	assert.Equal(t, socket.CodeBlocked, resp.Error.Code)
+	assert.Equal(t,
+		"cmdsurface: destructive command blocked on this surface: nuke on socket",
 		resp.Error.Message)
 }
 
@@ -252,7 +278,7 @@ func TestSocketPermitsDestructiveWhenPolicyNamesTheSurface(t *testing.T) {
 	r := destructiveRoot(t, cli.SocketConfig{
 		Path: path,
 		Policy: cmdsurface.Policy{
-			AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+			AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceSocket},
 		},
 	})
 
@@ -290,20 +316,20 @@ func TestSocketPolicyDoesNotWidenOtherSurfaces(t *testing.T) {
 	// local owner-only channel is a different trust context from a
 	// network one.
 	p := cmdsurface.Policy{
-		AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceRPC},
+		AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceSocket},
 	}
 	destructive := cmdsurface.SafetyClass{Destructive: true}
 
-	assert.True(t, p.Allowed(destructive, cmdsurface.SurfaceRPC),
+	assert.True(t, p.Allowed(destructive, cmdsurface.SurfaceSocket),
 		"the named surface is permitted")
 	for _, s := range cmdsurface.AllSurfaces() {
-		if s == cmdsurface.SurfaceRPC || s == cmdsurface.SurfaceCLI || s == cmdsurface.SurfaceLib {
+		if s == cmdsurface.SurfaceSocket || s == cmdsurface.SurfaceCLI || s == cmdsurface.SurfaceLib {
 			// CLI and Lib are local-runtime surfaces the gate always
 			// allows, independent of this policy.
 			continue
 		}
 		assert.False(t, p.Allowed(destructive, s),
-			"naming rpc must not widen %s", s)
+			"naming socket must not widen %s", s)
 	}
 }
 

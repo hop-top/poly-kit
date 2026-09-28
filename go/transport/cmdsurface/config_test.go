@@ -62,6 +62,33 @@ surfaces:
 	}
 }
 
+func TestFromConfig_SocketIsAKnownSurface(t *testing.T) {
+	cfg, err := Load(strings.NewReader(`
+surfaces:
+  commands:
+    "widget add":
+      enabled: [cli, socket]
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	b, err := FromConfig(newBridgeTree(), cfg)
+	if err != nil {
+		t.Fatalf("FromConfig must accept the socket surface: %v", err)
+	}
+	for _, l := range b.Leaves() {
+		if l.PathKey() != "widget add" {
+			continue
+		}
+		if !l.Enabled[SurfaceSocket] {
+			t.Errorf("widget add: socket not enabled")
+		}
+		if l.Enabled[SurfaceRPC] {
+			t.Errorf("widget add: naming socket must not enable rpc")
+		}
+	}
+}
+
 func TestFromConfig_PerLeafEnablement(t *testing.T) {
 	cfg, err := Load(strings.NewReader(fixtureYAML))
 	if err != nil {
