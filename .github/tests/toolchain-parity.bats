@@ -84,6 +84,19 @@ version = "0.15.11"'
             python313
             python313Packages.pip
           ];'
+    write templates/shared/tool-versions.toml '# manifest
+[runtimes]
+go     = "1.26.1"  # Go toolchain
+node   = "22"      # Node.js
+rust   = "1.98.0"
+
+[workflow]
+ruff                 = "0.15.11"  # Python linter
+hadolint             = "2.12"     # only the manifest pins this
+"npm:markdownlint-cli2" = "0.23.3"'
+    mkdir -p "$REPO/cmd/kit/init/managed_assets"
+    cp "$REPO/templates/shared/tool-versions.toml" "$REPO/cmd/kit/init/managed_assets/"
+    git -C "$REPO" add -A
     write .devcontainer/Dockerfile 'COPY --from=builder /nix/store/*-go-1.26*/bin/* /go/bin/
 COPY --from=builder /nix/store/*-nodejs-22*/bin/* /node/bin/
 COPY --from=builder /nix/store/*-python3-3.13*/bin/* /py/bin/'
@@ -296,4 +309,31 @@ go 1.30.0'
     edit mise.toml 's/^node = .*/node = 22/'
     run_check
     [ "$status" -eq 2 ]
+}
+
+@test "scaffold manifest pin differing from mise.toml fails" {
+    edit templates/shared/tool-versions.toml 's/^ruff  *= "0.15.11"/ruff = "0.8"/'
+    run_check
+    [ "$status" -eq 1 ]
+    has "templates/shared/tool-versions.toml:8: ruff 0.8 disagrees with mise.toml ruff 0.15.11"
+}
+
+@test "scaffold manifest: quoted backend key is compared under its tool name" {
+    edit templates/shared/tool-versions.toml 's/"npm:markdownlint-cli2" = "0.23.3"/"npm:markdownlint-cli2" = "0.22.0"/'
+    run_check
+    [ "$status" -eq 1 ]
+    has "tool-versions.toml:10: markdownlint-cli2 0.22.0"
+}
+
+@test "stale embedded manifest copy for kit init fails" {
+    edit cmd/kit/init/managed_assets/tool-versions.toml 's/^go     = "1.26.1"/go     = "1.26"/'
+    run_check
+    [ "$status" -eq 1 ]
+    has "cmd/kit/init/managed_assets/tool-versions.toml:3: go 1.26 disagrees with mise.toml go 1.26.1"
+}
+
+@test "scaffold manifest: tools mise.toml does not pin are ignored" {
+    run_check
+    [ "$status" -eq 0 ]
+    lacks "hadolint"
 }

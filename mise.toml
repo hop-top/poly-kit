@@ -4,10 +4,9 @@
 #
 # This repo's own toolchain source of truth: CI reads these pins
 # (scripts/toolchain-pins.sh), and `make check-toolchain-parity` fails when
-# go.mod, rust-toolchain.toml, a workflow or the devcontainer disagrees.
-# The pins here are this repo's, not the scaffold defaults in
-# templates/shared/tool-versions.toml; after any `kit init --update`, run
-# `make check-toolchain-parity`.
+# go.mod, rust-toolchain.toml, a workflow, the devcontainer or the scaffold
+# manifest (templates/shared/tool-versions.toml, which the block below is
+# emitted from) disagrees.
 
 # >>> kit-managed >>>
 [tools]

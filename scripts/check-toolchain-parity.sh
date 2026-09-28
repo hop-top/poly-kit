@@ -29,6 +29,13 @@
 #                          (go_1_NN, nodejs_NN, python3NN) and the store
 #                          globs in its Dockerfile name the pinned
 #                          go minor, node major and python minor
+#   scaffold manifest      templates/shared/tool-versions.toml and its
+#                          embedded copy in cmd/kit/init/managed_assets/
+#                          pin every tool they share with mise.toml at the
+#                          same version: this repo's mise.toml block is
+#                          emitted from that manifest, so a disagreement
+#                          is a revert waiting for the next
+#                          `kit init --update`
 #
 # A literal that differs on purpose (a release job that tests the oldest
 # supported Python, say) carries `toolchain-parity: allow` in a comment on
@@ -37,8 +44,9 @@
 # Expressions (`${{ ... }}`) are not literals and are skipped: that is how
 # a workflow reads a pin (`${{ steps.pins.outputs.node }}`).
 #
-# Files under templates/ and internal/template/ pin SCAFFOLDED projects'
-# tools, not this repo's, and are out of scope.
+# Other files under templates/ and internal/template/ describe
+# SCAFFOLDED projects (their workflows, go.mod templates) and are out of
+# scope.
 #
 # Usage: scripts/check-toolchain-parity.sh   (from anywhere inside the repo)
 # Exit:  0 agree, 1 disagreement found, 2 a pin or file could not be read.
@@ -249,6 +257,33 @@ if [ -n "$go_pin" ] && [ -n "$node_pin" ] && [ -n "$python_pin" ]; then
         ' "$dockerfile")
     fi
 fi
+
+# --- scaffold manifest ----------------------------------------------------
+for manifest in templates/shared/tool-versions.toml cmd/kit/init/managed_assets/tool-versions.toml; do
+    [ -f "$manifest" ] || continue
+    while IFS=$'\t' read -r line tool ver; do
+        want=$(pin "$tool")
+        # A tool only the manifest declares is a scaffold-only concern.
+        [ -n "$want" ] || continue
+        [ "$ver" = "$want" ] || report "$manifest:$line" "$tool" "$ver" "$want" "mise.toml $tool"
+    done < <(awk '
+        function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+        /^[[:space:]]*\[/ { sec = trim($0); in_tbl = (sec == "[runtimes]" || sec == "[workflow]"); next }
+        !in_tbl { next }
+        /^[[:space:]]*(#|$)/ { next }
+        {
+            eq = index($0, "=")
+            if (eq == 0) next
+            k = trim(substr($0, 1, eq - 1))
+            v = trim(substr($0, eq + 1))
+            sub(/[[:space:]]+#.*$/, "", v)
+            if (k ~ /^".*"$/) k = substr(k, 2, length(k) - 2)
+            sub(/^[a-z]+:/, "", k)
+            if (v ~ /^".*"$/) v = substr(v, 2, length(v) - 2)
+            print NR "\t" k "\t" v
+        }
+    ' "$manifest")
+done
 
 if [ "$findings" -gt 0 ]; then
     echo "" >&2

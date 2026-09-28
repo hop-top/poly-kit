@@ -49,7 +49,9 @@ installed, `mise trust && mise install` gives you what CI runs.
   the version `sdk/experimental/php/composer.json` requires, and the
   check holds each workflow's `php-version` to that.
 - `templates/shared/tool-versions.toml` pins what `kit init` gives
-  generated projects, not this repo; the two can differ.
+  generated projects, and this repo's `mise.toml` block is emitted from
+  it, so a bump goes in both (then `make sync-managed-assets
+  builtins-sync`). The check fails when they disagree.
 
 ## Git Hooks
 
