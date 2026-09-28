@@ -173,6 +173,9 @@ func TestServeSocketRefusesHTTPOnlyBlocks(t *testing.T) {
 		"services.socket.security_headers.enabled",
 		"services.socket.compression.enabled",
 		"services.socket.metrics.scrape.enabled",
+		"services.socket.tls.cert_file",
+		"services.socket.tls.acme.domains",
+		"services.socket.auth.mtls.ca_file",
 	} {
 		t.Run(key, func(t *testing.T) {
 			r := socketRoot(t, cli.SocketConfig{Path: shortSocketPath(t)})

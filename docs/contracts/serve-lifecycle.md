@@ -1507,10 +1507,10 @@ socket service and stdio take the loopback column.
 transport and the rpc server; each applies every block in its row
 under its own `services.<svc>`. A block whose reach is HTTP listeners
 alone — `security_headers`, `health`, `host_check`, `origin_check`,
-`body_limit`, `compression`, and `metrics.scrape` — set for a
-kit-shipped service with no HTTP listener (the socket service) would
-act on nothing, so it is refused at validation, exit `2`, rather than
-ignored. Under `services.all` it is a default, and a service it does
+`body_limit`, `compression`, `metrics.scrape`, `tls`, `tls.acme`, and
+`auth.mtls` — set for a kit-shipped service with no HTTP listener
+(the socket service) would act on nothing, so it is refused at
+validation, exit `2`, rather than ignored. Under `services.all` it is a default, and a service it does
 not reach simply does not read it.
 
 The defaults follow one rule. On loopback the caller is already on

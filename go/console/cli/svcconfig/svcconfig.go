@@ -96,12 +96,16 @@ var blocks = []Block{
 
 // httpOnly names the registered blocks that act on an HTTP listener
 // and nowhere else — HTTP-plane middleware with no invocation-plane
-// half. A service with no HTTP listener (the socket service) has
-// nothing for them to act on, so [Resolver.ValidateNoHTTP] refuses
-// them under it. A block not named here reaches every service.
+// half, the listener's TLS, and the client-certificate verification
+// only a TLS listener can perform. A service with no HTTP listener
+// (the socket service) has nothing for them to act on, so
+// [Resolver.ValidateNoHTTP] refuses them under it. A block not named
+// here reaches every service; auth itself does, since its mode is
+// not only mtls.
 var httpOnly = []string{
 	"metrics.scrape", "security_headers", "health", "host_check",
 	"origin_check", "body_limit", "compression",
+	"tls", "tls.acme", "auth.mtls",
 }
 
 // HTTPOnly reports whether block acts on an HTTP listener alone.

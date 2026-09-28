@@ -172,6 +172,10 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 	v.Set("services.socket.body_limit.max_bytes", 10)
 	v.Set("services.socket.metrics.scrape.enabled", true)
 	v.Set("services.socket.health", "on")
+	v.Set("services.socket.tls.cert_file", "server.crt")
+	v.Set("services.socket.tls.acme.domains", []string{"example.com"})
+	v.Set("services.socket.auth.mtls.ca_file", "ca.crt")
+	v.Set("services.socket.auth.mode", "mtls")
 	v.Set("services.socket.metrics.enabled", true)
 	v.Set("services.socket.tracing.enabled", true)
 	v.Set("services.socket.audit.redact.patterns", []string{"x"})
@@ -184,11 +188,12 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 	msg := err.Error()
 	for _, want := range []string{
 		"services.socket.body_limit:", "services.socket.metrics.scrape:", "services.socket.health:",
+		"services.socket.tls:", "services.socket.tls.acme:", "services.socket.auth.mtls:",
 		"no HTTP listener",
 	} {
 		assert.Contains(t, msg, want)
 	}
-	for _, not := range []string{"metrics.enabled", "tracing", "audit", "services.all", "services.api", "services.socket.enabled"} {
+	for _, not := range []string{"metrics.enabled", "tracing", "audit", "services.all", "services.api", "services.socket.enabled", "services.socket.auth:"} {
 		assert.NotContains(t, msg, not)
 	}
 	assert.Equal(t, 1, strings.Count(msg, "services.socket.body_limit:"), "one line per block")
@@ -196,10 +201,10 @@ func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
 	assert.NoError(t, New(v).ValidateNoHTTP("worker"), "keys under another service are that service's")
 	assert.NoError(t, New(nil).ValidateNoHTTP("socket"))
 
-	for _, b := range []string{"security_headers", "health", "host_check", "origin_check", "body_limit", "compression", "metrics.scrape"} {
+	for _, b := range []string{"security_headers", "health", "host_check", "origin_check", "body_limit", "compression", "metrics.scrape", "tls", "tls.acme", "auth.mtls"} {
 		assert.True(t, HTTPOnly(b), b)
 	}
-	for _, b := range []string{"tracing", "metrics", "audit", "audit.redact", "unregistered"} {
+	for _, b := range []string{"tracing", "metrics", "audit", "audit.redact", "auth", "rate_limit", "unregistered"} {
 		assert.False(t, HTTPOnly(b), b)
 	}
 }
