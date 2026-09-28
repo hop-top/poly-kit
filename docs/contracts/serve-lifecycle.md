@@ -161,7 +161,7 @@ re-implement any of the following:
 | Centralized             | What it means for a transport                          |
 |-------------------------|--------------------------------------------------------|
 | Reflection              | the command tree is reflected once, at `Start`          |
-| Policy                  | every invocation passes the surface and destructive gates |
+| Policy                  | every invocation passes every invocation-plane gate     |
 | Readiness               | ready is reported once, after `Bind` returns            |
 | Address                 | `Bind`'s return value is surfaced via `Addressed`       |
 | Stop                    | `Close` is called once, bounded, and is idempotent      |
@@ -409,8 +409,11 @@ then config file, then default.
 
 Service-specific keys live under the same block and are owned by the
 service: `services.api.addr`, `services.socket.path`, and so on. Kit
-does not reserve names inside a service's own block beyond the four
-lifecycle keys above.
+reserves names inside a service's own block only for the lifecycle
+keys above and for the middleware block names in
+[the block registry](#block-registry), which every service shares.
+`services.all` holds middleware defaults for every service; see
+[Middleware configuration](#middleware-configuration).
 
 The kit-shipped services own these (the `mcp` service's keys are in
 [The mcp service](#keys-and-flags), the `rpc` service's in
@@ -521,15 +524,18 @@ see Permission below).
 
 | Concern | Plane |
 |---|---|
-| authn (verify credential, produce claims) | HTTP, plus the per-transport equivalent for stdio and socket |
-| authz, scopes, per-caller policy, quotas, rate limit by principal | invocation (bridge) |
-| rate limit by IP, body limit, timeouts, TLS, headers, proxy IP | HTTP |
-| audit, redaction, idempotency replay | invocation (bridge) |
-| compression, caching, ETag | HTTP |
+| authn: verify a presented credential, produce claims | edge: HTTP, or the socket and stdio equivalent |
+| authn: enforce `kit/auth-required` | invocation (bridge) |
+| authz, scopes, per-caller policy, quotas, rate limit (by principal, else client address) | invocation (bridge) |
+| body limit, server timeouts, TLS, headers, Host/Origin, resolving the client address behind a proxy | HTTP |
+| audit, redaction, idempotency replay, result-cache lookup | invocation (bridge) |
+| compression, ETag and conditional responses | HTTP |
 
 The test for where a new middleware goes: if it must hold for a
 caller on MCP stdio, it belongs in the bridge. If it only makes sense
-with a TCP connection, it belongs on the router.
+with a TCP connection, it belongs on the router. The order each plane
+runs its middleware in, and the configuration and refusals they share,
+are in [Middleware](#middleware).
 
 ### Exposure
 
@@ -633,6 +639,8 @@ of any of them.
   self-hosting leaf is refused with `ErrNotInvocable` naming the
   reflector's reason, whatever the surface), the destructive ceiling
   (`Policy.Allowed`), then the permission gate (`PermissionFunc`).
+  [Middleware](#gate-order-on-the-invocation-plane) places the gates
+  middleware adds among these without reordering them.
   The invocability gate is the bridge's, so a transport that exposed
   the whole tree cannot admit an interactive leaf; the runner's own
   refusal is a backstop. The REST projection (the api service's
@@ -643,8 +651,10 @@ of any of them.
   bridge refuses the call (`404 not_invocable`); a self-hosting
   command is never a leaf, so it has no route there either. Over the
   socket the answer is `NOT_INVOCABLE`.
-  Confirmation is not a bridge gate: it is the command's own flag and
-  its own refusal, an exit code in the Result.
+  The command's own confirmation is not a bridge gate: it is the
+  command's own flag and its own refusal, an exit code in the Result.
+  Confirmation a surface obtains from a person has its own slot,
+  after every machine gate (see [Middleware](#middleware)).
 - The permission gate MUST run on every surface, inside the bridge,
   so no transport can bypass it. A transport that streams admits the
   invocation with `Bridge.Admit` — the same gates, order, errors and
@@ -1065,6 +1075,366 @@ the verified claims, never from `meta`.
 
 The service installs no CORS handling: a browser client on another
 origin reaches it only through a proxy that answers CORS.
+## Middleware
+
+Middleware is kit-shipped, configuration-driven behavior wrapped around
+a served invocation: authentication, limits, hardening, observability,
+replay. Every middleware sits on one of the [two planes](#two-planes-not-one),
+or declares one half on each. This section fixes, for all of them, the
+order they run in, the configuration shape, the refusal vocabulary, and
+what is on by default. Each middleware's own keys and behavior are
+specified with it; nothing it specifies may contradict this section.
+
+Authority: [`go/transport/cmdsurface`](../../go/transport/cmdsurface/)
+for the invocation plane; [`go/transport/api`](../../go/transport/api/)
+and [`go/transport/rpc`](../../go/transport/rpc/) for the HTTP plane.
+
+### Declaring a middleware
+
+A kit middleware MUST declare the fields below, and the change that
+ships it MUST add its row to [the block registry](#block-registry):
+
+| Field      | Declares                                                                   |
+|------------|----------------------------------------------------------------------------|
+| Block      | its configuration block name, `snake_case`, unique across kit              |
+| Plane      | `http`, `invocation`, or both — a middleware with two halves declares each |
+| Slot       | the position of each half in the order tables below                        |
+| Reach      | the surfaces (invocation plane) or listeners (HTTP plane) it applies to    |
+| Defaults   | on or off, and its values, on loopback and beyond loopback                 |
+| Refusals   | the refusal codes it may produce, from [Refusals](#refusals)               |
+
+Rules:
+
+- A middleware runs at its slot and nowhere else. Adopters cannot
+  reorder kit middleware, and a middleware MUST NOT be reachable at a
+  second position through another mount path.
+- Invocation-plane middleware applies to every remote surface — every
+  surface except `cli` and `lib` — unless its row narrows the reach and
+  says why. It never applies to `cli` or `lib`: the first is the
+  operator's own act, the second has no caller.
+- HTTP-plane middleware applies to every kit HTTP listener: the api
+  service's router, the RPC server, and the mcp service's HTTP
+  listener. Socket and stdio have no HTTP plane; what they need from
+  it they get from their own transport (the socket's line bound and
+  `0600` file, the stdio spawn).
+- A transport MUST NOT re-implement an invocation-plane middleware. It
+  receives every gate with its `Invoker`, as it already receives the
+  destructive ceiling and the permission gate.
+- A streaming invocation MUST pass the same gates, in the same order,
+  before the runner streams. Streaming is a way of observing a call,
+  never a way around its gates.
+- Adopter code extends at two points only. On the HTTP plane, adopter
+  routes and per-route middleware run inside the route, after kit
+  authentication, so no adopter middleware sits in front of kit's
+  checks. On the invocation plane, the adopter's `PermissionFunc` runs
+  at the permission slot, and a wrapped `Runner` runs innermost, after
+  every gate.
+- Where a gate keys on the caller and the invocation carries no
+  authenticated caller, it keys on the client address, then on the
+  surface. `bus` and `cron` invocations therefore share one bucket per
+  surface.
+
+### Gate order on the invocation plane
+
+Before the bridge, the transport's **edge** decodes the request,
+verifies a credential if one was presented, and fills `Meta`. A
+presented credential that fails verification is refused there as
+`unauthenticated` and audited with `ErrAuthRefused`, whatever the leaf.
+
+Inside the bridge, in this order. `Bridge.Invoke` is `Bridge.Admit`
+followed by `Admission.Run`; a transport that streams calls the same
+two halves, running with `Admission.Stream`:
+
+| #  | Gate                    | Refuses with                                          | Block          |
+|----|-------------------------|-------------------------------------------------------|----------------|
+| 1  | Resolution              | `unknown_command`                                     | —              |
+| 2  | Enablement              | `not_enabled`                                         | —              |
+| 3  | Invocability            | `not_invocable`                                       | —              |
+| 4  | Authentication required | `unauthenticated`                                     | `auth`         |
+| 5  | Destructive ceiling     | `destructive_blocked`                                 | —              |
+| 6  | Permission              | `insufficient_scope`, `permission_denied`             | —              |
+| 7  | Rate limit              | `rate_limited`                                        | `rate_limit`   |
+| 8  | Replay                  | `idempotency_conflict`, `idempotency_key_reused`      | `idempotency`, `cache` |
+| 9  | Quota                   | `quota_exceeded`                                      | `quota`        |
+| 10 | Confirmation by a person | `confirmation_required`                               | —              |
+| 11 | Capacity                | `overloaded`                                          | `concurrency`  |
+| 12 | Run                     | `deadline_exceeded`; the command's own exit codes     | `timeouts`     |
+| 13 | Record                  | never refuses                                         | `idempotency`, `quota`, `audit` |
+
+Slots 1–9 are the machine gates, and run in `Bridge.Admit`. Slot 10
+belongs to the surface, between `Admit` and the run: the mcp service
+asks its person there ([Confirmation](#confirmation)), and a surface
+that asks nobody passes through it. Slots 11–13 run in
+`Admission.Run` or `Admission.Stream`; the `Admission` value `Admit`
+returns carries a call through them.
+
+What each slot does:
+
+- **4.** A leaf declaring `kit/auth-required` runs only when `Meta`
+  carries an identity the transport *established*: verified by a
+  configured verifier, or proven by the transport itself (the socket's
+  owner-only file, the stdio spawn). `Meta` MUST distinguish an
+  established identity from a claimed one, and this gate reads only
+  the former. The refusal returns `ErrAuthRefused`, the sentinel the
+  edge already uses, so one class has one sentinel.
+- **6.** Three deciders, each able only to narrow: the built-in scope
+  check (a leaf's `kit/permissions` against the caller's scopes,
+  refusing `insufficient_scope`), then the `--policy` engine, then the
+  adopter's `PermissionFunc`.
+- **8.** A hit answers from a store and runs nothing: an idempotency
+  replay for a call carrying a key the store has seen from the same
+  principal, or a read-tier cache hit for a leaf declaring
+  `kit/cache-ttl`. A miss continues.
+- **10.** The confirmation a surface obtains from a person: an MCP
+  elicitation, an `X-Confirm-Token`. The command's own `--confirm`
+  gate is unchanged; it runs inside the command, at 12, and answers
+  with an exit code in the `Result`.
+- **11.** An in-flight slot, or a place in a bounded queue. The
+  per-command deadline (`kit/timeout`, else `timeouts.command`) is
+  armed here and covers queue wait and execution.
+- **13.** On success, the idempotency record and quota usage are
+  written. Every verdict of 1–12 reaches the audit sinks, redacted
+  before any sink sees it.
+
+Why this order:
+
+- **Identity before authority (4 before 5 and 6).** An unauthenticated
+  caller gets `401`, never a `403` that describes the deployment's
+  policy. Slots 1–3 disclose nothing discovery does not already list.
+- **Caller-independent before caller-dependent (5 before 6).** The
+  ceiling is static and free; the permission gate may consult and
+  charge per-caller state (`max_ops` budgets, per-caller policy). A
+  call the ceiling refuses must not charge a budget. This keeps the
+  shipped order.
+- **Decide before counting (6 before 7 and 9).** Only a call policy
+  would admit consumes a rate token or quota. Flooding before
+  authentication is the HTTP plane's to bound — timeouts, body limit,
+  connection bounds — and a verifier SHOULD bound its own per-request
+  cost.
+- **Cheap before persisted (7 before 9).** The rate limiter is memory;
+  quota is storage. A burst is turned away before it reaches storage.
+- **Replay before spending (8 before 9–12).** A replay does no work,
+  so it consumes no quota, asks no person, and holds no slot. It still
+  passes permission — a revoked caller cannot replay — and still
+  counts as a request against the rate limit.
+- **Machines before people (10 after 1–9).** A person is never asked
+  to approve a call a machine gate would refuse, and the rate limit
+  precedes the question, so no caller can flood a person with
+  prompts.
+- **Slots only for work that will run (11 after 10).** A call waiting
+  on a person holds no concurrency slot, and the deadline does not
+  run while a person decides; the surface bounds that wait itself.
+
+### Middleware order on the HTTP plane
+
+Outermost first, on every kit HTTP listener:
+
+| #  | Middleware                   | Refuses with                         | Block              |
+|----|------------------------------|--------------------------------------|--------------------|
+| 1  | Request id                   | —                                    | —                  |
+| 2  | Client address               | —                                    | `trusted_proxies`  |
+| 3  | Access log                   | —                                    | —                  |
+| 4  | Recovery                     | —                                    | —                  |
+| 5  | Tracing and metrics          | —                                    | `tracing`, `metrics` |
+| 6  | Security headers             | —                                    | `security_headers` |
+| 7  | Health and metrics endpoints | — (terminal)                         | `health`, `metrics`|
+| 8  | Host and Origin checks       | `host_rejected`, `origin_rejected`   | `host_check`, `origin_check` |
+| 9  | CORS                         | —                                    | `cors`             |
+| 10 | Body limit                   | `body_too_large`                     | `body_limit`       |
+| 11 | Compression                  | —                                    | `compression`      |
+| 12 | Authentication (edge)        | `unauthenticated`                    | `auth`             |
+| 13 | Route: adopter routes, projection, per-route middleware → `Invoker` | invocation plane | — |
+
+Server settings sit outside the chain and have no slot: `timeouts`
+(read header, read, write, idle — stream routes exempt from the write
+deadline) and `tls`.
+
+Why this order:
+
+- The request id and the real client address come first, so every
+  log line, metric, audit record, and refusal below carries both.
+- Telemetry wraps every refusal, so refused requests are measured by
+  code. Security headers wrap them too, so a refusal is not the one
+  response without `nosniff`.
+- Health endpoints answer before the Host check because orchestrator
+  probes address a pod by IP, not by name, and a health answer
+  discloses nothing a Host allowlist protects. They bypass everything
+  from 8 on, and are never audited or rate limited.
+- The Host and Origin checks run before CORS and authentication: a
+  rebinding or cross-origin request is refused before anything else
+  reads it. CORS answers preflights before authentication, because a
+  preflight carries no credentials.
+- The body limit precedes authentication because it costs nothing
+  and reveals nothing; authentication reads headers, never the body.
+
+The RPC server applies the same slots where Connect has them —
+interceptors for tracing and authentication, handler options for the
+read limit and compression — and the mcp service's listener applies
+them in front of the SDK. The SDK's own DNS-rebinding protection on
+loopback satisfies `host_check` there; it does not replace it beyond
+loopback.
+
+### Middleware configuration
+
+Each block lives in the service's own block, and MAY be set once for
+every service under `services.all`:
+
+```yaml
+services:
+  all:                      # defaults for every service
+    rate_limit:
+      enabled: true
+  api:
+    addr: 0.0.0.0:8443
+    body_limit:
+      max_bytes: 4194304    # api only
+    rate_limit:
+      enabled: false        # overrides services.all for api only
+```
+
+Rules:
+
+- `services.<svc>.<block>.<key>` MUST work on its own. `services.all`
+  is a convenience, never a requirement.
+- `all` is already a reserved service name, so `services.all` can
+  never collide with a service. Only middleware blocks are read under
+  it. A lifecycle key or service-owned key there (`enabled`, `addr`,
+  `path`, the insecure opt-ins) MUST be refused at validation, exit
+  `2`, rather than silently ignored.
+- Resolution is **per key, specificity before source**: the service's
+  key from any source (flag, env, file), then the `services.all` key,
+  then the code option, then the kit default for the exposure (below).
+  An operator who scoped a value to one service meant that service,
+  even when a shared value arrives from a higher-precedence source.
+- Blocks merge key by key. Setting one key under `services.api.rate_limit`
+  keeps the others from `services.all.rate_limit`. A list value
+  replaces, never concatenates: a merged allowlist is one nobody
+  wrote.
+- Every block that can be switched off has an `enabled` key. A
+  security floor — redaction of secret flags, the exposure rules
+  above — has no off switch, and its block carries no `enabled` key.
+- An unknown key inside a registered block is a configuration failure
+  at exit `2`. A misspelled key that silently leaves a limit off is
+  the failure this prevents.
+- The block names in the registry are reserved inside **every**
+  `services.<svc>` block, the adopter's services included, because
+  invocation-plane middleware reaches every transport service.
+- Environment variables follow the kit convention:
+  `MYTOOL_SERVICES_API_BODY_LIMIT_MAX_BYTES`,
+  `MYTOOL_SERVICES_ALL_RATE_LIMIT_ENABLED`.
+- Middleware keys have no flags unless a block's row names one. A
+  limit is a deployment decision; configuration is where a reviewer
+  finds it, and per-service flags are refused under the supervisor
+  form anyway.
+
+There is no `middleware` segment in the path. The api service's `tls`
+block and its `addr` key are equally "how this service is served", an
+operator never needs to know which one kit implements as middleware,
+and the segment would lengthen every key and variable for nothing.
+
+### Block registry
+
+"Loopback" is the literal-host rule of [Exposure](#exposure). The
+socket service and stdio take the loopback column.
+
+| Block              | Plane · slot                           | Reach                                  | Loopback default                    | Beyond loopback default                        | Refusals |
+|--------------------|----------------------------------------|----------------------------------------|-------------------------------------|------------------------------------------------|----------|
+| `auth`             | http 12, socket/stdio edge; invocation 4 | every remote surface                  | no verifier; socket and stdio identity satisfy slot 4 | required, per [Exposure](#exposure)            | `unauthenticated` |
+| `tls`              | http server                            | HTTP listeners                         | off                                 | off                                            | — |
+| `timeouts`         | http server; invocation 11–12          | HTTP listeners; every remote surface   | read header 5s, read 5s, write 10s; no command deadline | same                                           | `deadline_exceeded` |
+| `trusted_proxies`  | http 2                                 | HTTP listeners                         | empty: no forwarded header trusted  | empty                                          | — |
+| `tracing`          | http 5; invocation (propagation)       | HTTP listeners; every remote surface   | propagate, export nothing           | same                                           | — |
+| `metrics`          | http 5; endpoint at http 7             | HTTP listeners                         | off                                 | off                                            | — |
+| `security_headers` | http 6                                 | HTTP listeners                         | on; HSTS only with `tls`            | on                                             | — |
+| `health`           | http 7                                 | api service                            | on                                  | on                                             | — |
+| `host_check`       | http 8                                 | HTTP listeners                         | on, allowlist from the bound host   | on; a wildcard bind derives no restriction     | `host_rejected` |
+| `origin_check`     | http 8                                 | HTTP listeners                         | on, same-origin                     | on, same-origin                                | `origin_rejected` |
+| `cors`             | http 9                                 | HTTP listeners                         | off                                 | off                                            | — |
+| `body_limit`       | http 10                                | HTTP listeners                         | on, 1 MiB                           | on, 1 MiB                                      | `body_too_large` |
+| `compression`      | http 11                                | HTTP listeners; never `text/event-stream` | off                              | off                                            | — |
+| `rate_limit`       | invocation 7                           | every remote surface                   | off                                 | on, per-tier limits documented with the block  | `rate_limited` |
+| `idempotency`      | invocation 8, 13                       | every remote surface                   | on; inert without a key             | on                                             | `idempotency_conflict`, `idempotency_key_reused` |
+| `cache`            | invocation 8; HTTP renders ETag, `304`, `Cache-Control` | `rest`, read tier only   | inert without `kit/cache-ttl`       | same                                           | — |
+| `quota`            | invocation 9, 13                       | every remote surface                   | off                                 | off                                            | `quota_exceeded` |
+| `concurrency`      | invocation 11                          | every remote surface                   | on, bounded queue                   | on, bounded queue                              | `overloaded` |
+| `audit`            | invocation 13                          | every remote surface                   | the registered sinks; redaction always | same                                        | — |
+
+The defaults follow one rule. On loopback the caller is already on
+the machine, so what is on protects the machine from browsers and
+from unbounded work — Host and Origin checks, headers, the body limit,
+a bounded queue — and nothing polices the caller. Beyond loopback,
+the rate limit joins them, on top of the authentication and policy
+the exposure rules already demand. Nothing exports telemetry by
+default, anywhere.
+
+Plain `tls` does not satisfy the authentication requirement beyond
+loopback: it proves the server to the client, not the client to the
+server. `auth.mode: mtls` does.
+
+Permission and confirmation have no block. Permission is configured
+by `--policy` and `cli.WithPermission`; confirmation belongs to the
+surface that asks the person.
+
+### Refusals
+
+Each refusal class has one stable code, the same string on every
+surface, carried wherever the surface's protocol puts machine-readable
+detail. The classes below are added by middleware; `unknown_command`,
+`not_enabled`, `not_invocable`, `destructive_blocked`,
+`permission_denied`, and `confirmation_required` keep the mappings
+given in [Permission](#permission) and by each surface.
+
+| Code                     | Slot     | HTTP                                  | Connect             | MCP                        | Socket              | Class (exit)       |
+|--------------------------|----------|---------------------------------------|---------------------|----------------------------|---------------------|--------------------|
+| `unauthenticated`        | edge, 4  | `401` + `WWW-Authenticate`            | `Unauthenticated`   | edge: `401`; 4: `isError`  | `UNAUTHENTICATED`   | `UNAUTHORIZED` (5) |
+| `insufficient_scope`     | 6        | `403` + `WWW-Authenticate: Bearer error="insufficient_scope", scope="…"` | `PermissionDenied` | `isError`      | `DENIED`            | `UNAUTHORIZED` (5) |
+| `rate_limited`           | 7        | `429` + `Retry-After`                 | `ResourceExhausted` | `isError`                  | `RATE_LIMITED`      | `RATE_LIMITED` (64)|
+| `quota_exceeded`         | 9        | `429` + `Retry-After` (window reset)  | `ResourceExhausted` | `isError`                  | `QUOTA_EXCEEDED`    | `RATE_LIMITED` (64)|
+| `overloaded`             | 11       | `503` + `Retry-After`                 | `Unavailable`       | `isError`                  | `OVERLOADED`        | `TRANSIENT` (6)    |
+| `deadline_exceeded`      | 12       | `504`                                 | `DeadlineExceeded`  | `isError`                  | `DEADLINE_EXCEEDED` | `TRANSIENT` (6)    |
+| `idempotency_conflict`   | 8        | `409`                                 | `Aborted`           | `isError`                  | `CONFLICT`          | `CONFLICT` (4)     |
+| `idempotency_key_reused` | 8        | `422`                                 | `InvalidArgument`   | `isError`                  | `CONFLICT`          | `USAGE` (2)        |
+| `body_too_large`         | http 10  | `413`                                 | `ResourceExhausted` | `413`, JSON-RPC `-32600`   | — (line bound)      | `USAGE` (2)        |
+| `host_rejected`          | http 8   | `403`                                 | `PermissionDenied`  | `403`                      | —                   | `UNAUTHORIZED` (5) |
+| `origin_rejected`        | http 8   | `403`                                 | `PermissionDenied`  | `403`                      | —                   | `UNAUTHORIZED` (5) |
+
+Per surface:
+
+- **HTTP.** The body is the `api.APIError` shape; `code` is the class
+  code. The Connect codes are chosen so Connect's own HTTP mapping
+  yields the same status as REST for every class except
+  `idempotency_key_reused`, which Connect reports as `400`.
+- **Connect.** A retryable class carries `Retry-After` in the error's
+  metadata.
+- **MCP.** A refusal decided on the HTTP plane, before the protocol
+  layer reads the request, is an HTTP status with a JSON-RPC error
+  body where one applies (`id` null when the id is unknown). A refusal
+  decided on the invocation plane for a known tool is a `tools/call`
+  result with `isError: true`, its text starting with the code, and a
+  result `_meta` entry `hop.top/refusal` of `{"code", "retry_after_ms"}`.
+  An unknown tool stays a JSON-RPC invalid-params error. Over HTTP,
+  `insufficient_scope` SHOULD instead be answered `403` with the scope
+  challenge once MCP authorization is in force, because that is the
+  step-up signal the MCP authorization specification defines.
+- **Socket.** `Error.code` is the socket code; a retryable class
+  carries `retry_after_ms`. The socket has no body limit class: its
+  1 MiB line bound ends the connection instead.
+- **Class** is the exit-code class a client reports when it turns a
+  refusal into a process exit. No new numbers are allocated.
+
+Sentinels, in `cmdsurface`: slot 4 returns `ErrAuthRefused`; the others
+are `ErrInsufficientScope`, `ErrRateLimited`, `ErrQuotaExceeded`,
+`ErrOverloaded`, `ErrDeadlineExceeded`, `ErrIdempotencyConflict`, and
+`ErrIdempotencyKeyReused`. A new sentinel MUST wrap its nearest
+existing class — `ErrInsufficientScope` wraps `ErrPermissionDenied`,
+`ErrQuotaExceeded` wraps `ErrRateLimited`, `ErrDeadlineExceeded` wraps
+`context.DeadlineExceeded` — so a transport that predates a class
+degrades to the nearest existing answer rather than to `internal`.
+
+Every invocation-plane refusal reaches the audit sinks, as today.
+HTTP-plane refusals MUST be counted by code in metrics and logged,
+and SHOULD reach the sinks through `Bridge.Audit` when the request
+addresses a projected command, as authentication refusals already do.
 
 ## Execution
 
@@ -1807,7 +2177,7 @@ be described as non-conformant for lacking one.
 | The built-in `mcp` service | It is a transport service on the Go seam over a reflected cobra tree. Ports serve MCP through their own surfaces; the protocol parity they owe is the MCP surface contract, not this service's wiring. |
 | The built-in `rpc` service | Same reason. The wire contract a port owes is `contracts/proto/cmdsurface/v1/commands.proto`, not this service's wiring. |
 | `cmdreflect`-driven discovery, and the `invocable: false` reason vocabulary | The reasons (`interactive`, `self-hosting`, `management-only`) are properties of a reflected Go command tree. A port with no reflector has nothing to attach them to. |
-| The permission gate (`PermissionFunc`), provenance (`Meta`), and audit sinks | These are the [Security](#security) contract of the *transport services*. A port that serves nothing over a transport has no caller to authenticate, attribute, or audit. They become obligations for a port the day it ships a transport service, not before. |
+| The permission gate (`PermissionFunc`), provenance (`Meta`), audit sinks, and [Middleware](#middleware) | These are the [Security](#security) contract of the *transport services*. A port that serves nothing over a transport has no caller to authenticate, attribute, or audit. They become obligations for a port the day it ships a transport service, not before. |
 | The whole [Execution](#execution) section | Result shape, format selection, stream events, cancellation semantics, and tree isolation all describe what happens when a *transport* hands an invocation to a *runner*. Both ends are Go-only today. The flag-baseline and root-factory rules in particular exist because cobra and pflag keep parse state on the command tree; a port whose parser does not is not solving that problem. |
 | The `toolspec/policy` table implementation | The policy **gate** is required — a port MUST refuse a service whose declared class its policy denies, at `UNAUTHORIZED` exit `5`. What is not required is Go's YAML-driven `side_effect × network` table. A port satisfies the gate with a two-argument predicate; a port that has wired no policy at all passes every service, exactly as Go does with a nil gate. |
 | `WithAPI` compatibility, and everything in [Compatibility](#compatibility) | It is a migration path for existing Go adopters of a Go-only option. Nothing to mirror. |
