@@ -1,5 +1,4 @@
 # Per-file tier mapping for shared template.
-# See spec §13: kit-init-design.md.
 files:
   "gitignore/common.gitignore": [1, 2, 3, 4]
   "gitignore/go.gitignore": [1, 2, 3, 4]

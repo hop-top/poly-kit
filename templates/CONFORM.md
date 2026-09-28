@@ -32,8 +32,7 @@ conform.sh [flags]
 
 ## Managed blocks
 
-The managed-block refresh is delegated to `kit init --update`
-(track: `scaffold-emits-mise-toml-devcontainer-compose`, §4).
+The managed-block refresh is delegated to `kit init --update`.
 These files contain `kit-managed:` marker pairs; only the content
 between markers is rewritten — user-owned content above/below is
 preserved verbatim.

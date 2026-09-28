@@ -1,5 +1,4 @@
 # Per-file tier mapping for cli-ts template.
-# See spec §13: kit-init-design.md.
 files:
   ".eslintrc.cjs": [1, 2, 3, 4]
   ".prettierrc": [1, 2, 3, 4]

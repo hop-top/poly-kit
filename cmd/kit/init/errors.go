@@ -58,7 +58,7 @@ func IsInvalidName(err error) bool {
 }
 
 // ModeBareWorktreeError: cwd resolved to a bare-repo worktree (e.g.
-// labspace hop layout); kit init does not yet support this.
+// a git hop layout); kit init does not yet support this.
 type ModeBareWorktreeError struct{ CommonDir, GitDir string }
 
 func (e *ModeBareWorktreeError) Error() string {

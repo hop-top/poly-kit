@@ -3,8 +3,7 @@
 # emit-env-example.sh — Emit `.env.example` with kit-adapter env vars
 #
 # Writes a project's `.env.example` containing five labeled
-# kit-managed blocks (telemetry, storage, queue, log, config)
-# per the scaffold-emits-mise-toml-devcontainer-compose spec §7.
+# kit-managed blocks (telemetry, storage, queue, log, config).
 #
 # Default values match SQLite/local-XDG paths; redis and postgres
 # URLs are commented out. `OTEL_SERVICE_NAME` is interpolated

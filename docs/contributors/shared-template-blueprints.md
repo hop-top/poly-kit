@@ -171,8 +171,7 @@ The comment character is chosen from the file path:
 | TOML, YAML, `.env`, shell, Dockerfile   | `# >>> kit-managed >>>`           | `# <<< kit-managed <<<`           |
 | JSON-C (`devcontainer.json`, `*.jsonc`) | `// >>> kit-managed >>>`          | `// <<< kit-managed <<<`          |
 
-Blocks may carry an optional **label** (per the
-scaffold-emits-mise-toml-devcontainer-compose spec). Labeled
+Blocks may carry an optional **label**. Labeled
 markers look like:
 
 ```
@@ -401,8 +400,7 @@ idempotency, and (if `docker compose` is available)
 ## emit-env-example.sh
 
 `emit-env-example.sh` writes a project's `.env.example`
-containing the five labeled kit-managed blocks described in the
-scaffold-emits-mise-toml-devcontainer-compose spec §7:
+containing five labeled kit-managed blocks:
 `telemetry`, `storage`, `queue`, `log`, `config`. Defaults match
 SQLite + local-XDG paths; redis and postgres URLs are commented
 out. `OTEL_SERVICE_NAME` is interpolated from the project name.

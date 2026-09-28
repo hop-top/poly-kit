@@ -33,7 +33,7 @@
 _KIT_EMIT_DEVCONTAINER_JSON_LOADED=1
 
 # ----------------------------------------------------------
-# Extension map — per spec §5 and task brief.
+# Extension map.
 # ----------------------------------------------------------
 #
 # Always emitted (kit conventions):

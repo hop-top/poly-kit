@@ -15,8 +15,6 @@
 //	--add-service NAME  Append a curated service to docker-compose
 //	--remove-service N  Inverse of --add-service
 //
-// Track: scaffold-emits-mise-toml-devcontainer-compose (spec §4).
-//
 // IMPORTANT: managed_assets/ is a copy of templates/shared/*.sh and
 // templates/shared/tool-versions.toml. Keep it in sync via `make
 // sync-managed-assets` (see Makefile) or by re-running the copy.
