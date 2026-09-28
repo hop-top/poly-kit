@@ -8,30 +8,38 @@ with your commands.
 
 ## Who this is for
 
-Developers with a kit CLI who want an MCP server that speaks current
-protocol versions, manages sessions, and can offer more than tools.
+Developers who want the SDK's MCP server under their own control: a
+bare cobra tree with no kit root, their own router or process
+lifecycle, stateless or task-enabled serving, or prompts and resources
+beside the commands.
 
 ## Which surface?
 
-kit has two MCP surfaces. They expose the **same tools** — one tool per
-bridge leaf, dotted names (`widget.add`), input schemas derived the
-same way from cobra flags — and gate them identically. They differ in
-what carries the protocol underneath.
+kit's MCP surfaces expose the **same tools** — one tool per bridge
+leaf, dotted names (`widget.add`), input schemas derived the same way
+from cobra flags and declared positional arguments — and gate them
+identically. They differ in who owns the server.
 
-| | `cmdsurface.MountMCP` | `mcpsdk.Mount` (this guide) |
-|---|---|---|
-| Protocol layer | hand-rolled in kit | official MCP Go SDK |
-| Extra dependencies | none | the SDK and its indirects |
-| Protocol versions | 2024-11-05 only | 2024-11-05 … 2026-07-28, negotiated |
-| Transport | single-POST JSON-RPC | streamable HTTP (sessions, SSE, stateless), stdio, any SDK transport |
-| Gate refusals | `isError` result **and** matching HTTP status (401 / 428) | `isError` result only |
-| Prompts, resources, subscriptions, pagination | none | full, via SDK pass-through |
+| | the `mcp` service (`mcpserve.With`) | `mcpsdk` (this guide) | `cmdsurface.MountMCP` (deprecated) |
+|---|---|---|---|
+| Starts from | a kit root (`cli.New`) | a `cmdsurface.Bridge` | a `cmdsurface.Bridge` |
+| Protocol layer | official MCP Go SDK, through `mcpsdk` | official MCP Go SDK | hand-rolled in kit |
+| Lifecycle | `<tool> serve mcp`, under the serve supervisor | yours | yours |
+| Transport | streamable HTTP on its own listener, or stdio | streamable HTTP (sessions, SSE, stateless), stdio, any SDK transport | single-POST JSON-RPC |
+| Protocol versions | 2024-11-05 … 2025-11-25 over HTTP; 2026-07-28 too over stdio | 2024-11-05 … 2025-11-25 stateful; 2026-07-28 with `WithStateless()` or over stdio | 2024-11-05 and 2026-07-28 on one path |
+| `kit/auth-required` | verified by `Config.Auth` over HTTP; spawn trust over stdio | an `Authorization` header by default; `WithAuthenticated` to verify | `Authorization` header presence |
+| Gate refusals | `isError` result | `isError` result | `isError` result **and** HTTP 401 / 428 |
+| Prompts, resources, subscriptions, pagination | `Config.ServerOptions` | full, via SDK pass-through | none |
+| Extra dependencies | the SDK | the SDK | none |
 
-Pick the hand-rolled surface when a zero-dependency, single-endpoint
-MCP server is enough and HTTP-status-visible refusals matter — see
-[expose-cli-over-mcp.md](expose-cli-over-mcp.md). Pick this one when
-you want current protocol coverage or anything beyond tools. Mount one
-per deployment, not both on the same router path.
+On a kit root, use the service — see
+[expose-cli-over-mcp.md](expose-cli-over-mcp.md). It is this package
+wired into the serve lifecycle, and every option below reaches it
+through `mcpserve.Config.ServerOptions`. Use `mcpsdk` directly when you
+have no kit root or need the server in your own hands. `MountMCP` is
+deprecated; the
+[migration table](expose-cli-over-mcp.md#move-off-mountmcp) maps its
+options. Mount one surface per path, never two.
 
 ## Before you begin
 
@@ -108,7 +116,10 @@ Patterns are **space-separated leaf paths**, not dotted tool names:
 
 ### 3. Serve over stdio instead (optional)
 
-For a `acme mcp serve` command a local client launches:
+On a kit root, `acme serve mcp --stdio` already does this, with the
+auth and confirmation gates adapted to a spawned process — see
+[expose-cli-over-mcp.md](expose-cli-over-mcp.md#3-connect-a-host).
+On a bare bridge:
 
 ```go
 if err := mcpsdk.ServeStdio(ctx, b,
@@ -118,9 +129,11 @@ if err := mcpsdk.ServeStdio(ctx, b,
 }
 ```
 
-Stdio carries no HTTP headers, so leaves marked auth-required or
-confirmation-required are never callable there — the header-based
-gates fail closed. See [Safety](#safety-and-the-trust-boundary).
+Stdio carries no HTTP headers, so with the default gates leaves marked
+auth-required or confirmation-required are never callable there — the
+header-based gates fail closed. `WithAuthenticated` and
+`WithConfirmationElicitation` replace them. See
+[Safety](#safety-and-the-trust-boundary).
 
 ## Verify the result
 
@@ -362,15 +375,18 @@ On the legacy `initialize` handshake, protocol versions 2024-11-05,
 Anything else — including 2026-07-28, which replaces `initialize`
 altogether, and unknown versions — falls back to 2025-11-25. The
 2026-07-28 protocol is instead negotiated per request via `_meta` and
-`Mcp-*` framing headers, handled entirely by the SDK.
+`Mcp-*` framing headers, handled entirely by the SDK, and only where
+there is no session to hold: a handler built with `WithStateless()`,
+or stdio. A stateful HTTP handler — the default, and the mcp
+service's — answers at 2025-11-25.
 
 ## Tradeoffs
 
 - **Dependency weight.** The SDK and its transitive modules join your
-  build. The hand-rolled surface costs nothing extra.
+  build: about 2 MB on a stripped binary, 3 MB with symbols.
 - **No HTTP status mirroring.** Gate refusals come back as `isError`
   tool results only; an HTTP-only probe cannot tell 401 from 428 the
-  way it can against the hand-rolled surface.
+  way it can against the deprecated `MountMCP`.
 - **Direct bridge mutation needs `Sync()`.** See
   [Live tool list](#live-tool-list).
 - **Advertised is not callable.** A policy-blocked destructive leaf is
@@ -382,8 +398,8 @@ altogether, and unknown versions — falls back to 2025-11-25. The
 
 ## Related pages
 
-- [expose-cli-over-mcp.md](expose-cli-over-mcp.md) — the hand-rolled,
-  zero-dependency MCP surface
+- [expose-cli-over-mcp.md](expose-cli-over-mcp.md) — the built-in `mcp`
+  service on a kit root, and moving off the deprecated `MountMCP`
 - [`go/transport/mcpsdk/README.md`](../../../go/transport/mcpsdk/README.md)
   — full option and behavior reference for this package
 - [`extensions/mcp-tasks/README.md`](../../../extensions/mcp-tasks/README.md)

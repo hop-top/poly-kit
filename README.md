@@ -38,10 +38,14 @@ benchmarks — not flag parsers and output renderers.
 - **Command surface bridge.** One cobra tree projects to 13
   transport surfaces: CLI, REST, RPC, MCP, WS, SSE, Bus, Cron,
   Library, Webhook, OAuth callback, Signed URL, FaaS (AWS Lambda,
-  Cloud Run). The MCP surface serves both spec revisions
-  (2024-11-05 + 2026-07-28) from one mount, neither deprecated.
-  Destructive commands locked from remote surfaces by
+  Cloud Run). Destructive commands locked from remote surfaces by
   default. See [`go/transport/cmdsurface/`](go/transport/cmdsurface/).
+- **Served commands.** `<tool> serve` supervises three kit-shipped
+  services over the same tree and gates: `api` (REST, discovery,
+  OpenAPI), `socket` (owner-only Unix socket), and `mcp` (MCP tools
+  over streamable HTTP or stdio, via the official MCP Go SDK). See
+  [`docs/contracts/serve-lifecycle.md`](docs/contracts/serve-lifecycle.md)
+  and [`docs/adopters/guides/expose-cli-over-mcp.md`](docs/adopters/guides/expose-cli-over-mcp.md).
 - **Guardrail primitives.** Path scoping (`go/core/scope`), egress
   filtering (`go/core/redact`), runtime circuit breakers
   (`go/core/breaker`), operating-mode declarations (`go/core/stage`).

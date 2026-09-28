@@ -1,93 +1,234 @@
 # Expose your CLI over MCP
 
-Mount your cobra tree as a live MCP server: one HTTP endpoint, one
-MCP tool per leaf command, both current MCP protocol revisions.
+Serve your command tree as MCP tools with kit's built-in `mcp`
+service: one tool per command, over streamable HTTP or over stdio for
+a host that spawns your tool, behind the same gates as REST and the
+socket.
 
 ## Who this is for
 
-Developers building a kit CLI with `cmdsurface` who want LLM hosts
-(Claude, IDE agents, gateway-fronted fleets) to call their commands
-as MCP tools. For the *static* tool descriptors that `<tool> spec
---format mcp` renders, see the
+Developers with a kit CLI who want LLM hosts — Claude Desktop, Claude
+Code, IDE agents, gateway-fronted fleets — to call their commands as
+MCP tools. For the *static* tool descriptors `<tool> spec --format mcp`
+renders, see the
 [toolspec adopter guide](../integrations/toolspec-adopter-guide.md)
 instead — that path never executes anything. It publishes the same
-tool shape this surface serves (one tool per leaf, same names, same
+tool shape this service serves (one tool per command, same names, same
 `inputSchema`), so a client can discover tools statically and call
 them here; a parity test pins the two together.
+
+Serving a bare cobra tree without a kit root, or wanting the SDK
+server in your own hands? See
+[serve-mcp-with-the-sdk.md](serve-mcp-with-the-sdk.md). Already
+calling `cmdsurface.MountMCP`? It is deprecated; see
+[Move off MountMCP](#move-off-mountmcp).
 
 ## Before you begin
 
 You need:
 
-- A kit project with a cobra root (see
-  [create-cli-project.md](create-cli-project.md))
-- `hop.top/kit/go/transport/cmdsurface` and
-  `hop.top/kit/go/transport/api` importable
-
-## What you get
-
-`MountMCP` serves **two MCP protocol revisions from one mount**:
-
-- **2024-11-05** — the `initialize` handshake era. Plain JSON-RPC
-  over POST; `initialize`, `tools/list`, `tools/call`.
-- **2026-07-28** — the stateless era. No handshake, no sessions;
-  every request carries its protocol version and client capabilities
-  in `params._meta`; adds `server/discover`, cacheable list results,
-  and mid-call confirmation round-trips (MRTR).
-
-Every incoming POST is routed to exactly one revision's handler by
-per-request detection (below). Both revisions expose the same tools,
-run through the same safety policy, and dispatch through the same
-bridge — there is no way to reach a command on one revision that the
-other would have blocked.
-
-**Nothing is deprecated.** 2024-11-05 support is preserved
-byte-for-byte and has no retirement schedule. Existing `MountMCP`
-calls and existing clients keep working unchanged; supporting the
-new revision required no opt-in and removed nothing.
+- A kit root built with `cli.New` (see
+  [create-cli-project.md](create-cli-project.md)). A project generated
+  by `kit init --from cli-go` already registers the service: skip to
+  [step 2](#2-serve-it).
+- Safety annotations on your commands — `kit/side-effect`,
+  `kit/auth-required`, `kit/requires-confirmation`. The gates below
+  read them.
+- Room for the SDK. Serving MCP links the official MCP Go SDK: about
+  2 MB on a stripped build (`-ldflags "-s -w"`) and about 3 MB with
+  symbols, measured on the cli-go scaffold for linux/amd64 and
+  darwin/arm64. A tool that does not register the service does not
+  link the SDK.
 
 ## Steps
 
-### 1. Mount the surface
+### 1. Register the service
 
 ```go
 package main
 
 import (
-    "log"
-    "net/http"
-    "time"
+    "context"
+    "os"
 
-    "hop.top/kit/go/transport/api"
-    "hop.top/kit/go/transport/cmdsurface"
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/mcpserve"
 )
 
 func main() {
-    root := buildCobraTree() // your existing CLI root
-
-    b := cmdsurface.New(root)
-
-    r := api.NewRouter()
-    if err := cmdsurface.MountMCP(b, r,
-        cmdsurface.WithMCPServerInfo("mytool", "1.4.2"),
-        cmdsurface.WithMCPCacheHints(30*time.Second, cmdsurface.MCPCacheScopePrivate),
-        cmdsurface.WithMCPOriginAllowlist("https://app.example.com"),
-    ); err != nil {
-        log.Fatal(err)
+    root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2", Short: "Manage widgets"},
+        cli.WithStatus(cli.StatusConfig{}),
+        cli.WithAPI(cli.APIConfig{}),
+        mcpserve.With(mcpserve.Config{}),
+    )
+    root.Cmd.AddCommand(widgetCmd())
+    if err := root.Execute(context.Background()); err != nil {
+        os.Exit(1)
     }
-
-    log.Fatal(http.ListenAndServe("127.0.0.1:8080", r))
 }
 ```
 
-Every leaf becomes one MCP tool named by its dotted path
-(`widget add` → `widget.add`), with an `inputSchema` derived from
-its pflag set and its declared positional arguments. MCP is in the
-default enablement set (`DefaultPolicy()` enables `cli`, `lib`,
-`mcp`), so no `Expose` call is needed unless you've narrowed
-enablement.
+`mcpserve.With` registers a service named `mcp`. Like `socket`, it is
+registered and not enabled: a bare `mytool serve` leaves it off,
+`mytool serve mcp` starts it, and `services.mcp.enabled: true` puts it
+under a bare `serve`. It does not need the `api` service; register it
+alone if MCP is all you serve.
 
-#### Positional arguments
+Every command the REST projection would mount becomes one tool, named
+by its path joined with dots (`widget add` → `widget.add`). Its
+`inputSchema` lists the command's flags by long name and, when the
+command declares its positional arguments, one `args` array — see
+[Positional arguments](#positional-arguments).
+
+### 2. Serve it
+
+Over streamable HTTP, on the service's own listener:
+
+```console
+$ mytool serve mcp
+INFO serve: ready_reported object=service elapsed_ms=0 service=mcp address=http://127.0.0.1:8081/mcp
+```
+
+The listener is the service's own, not the api's: `serve mcp` runs
+without the api, and stopping one never stops the other. Wait for the
+`ready_reported` line and read the endpoint from `address=`.
+
+Over stdio, for a host that spawns the tool:
+
+```sh
+mytool serve mcp --stdio
+```
+
+Standard output then carries protocol messages only; logs, the
+lifecycle trace and hints go to standard error. When the host closes
+standard input the service stops and the process exits `0`.
+
+Both surfaces under one supervisor: `mytool serve --enable mcp` runs
+`api` on `127.0.0.1:8080` and `mcp` on `127.0.0.1:8081`.
+
+### 3. Connect a host
+
+Hosts that spawn MCP servers read an `mcpServers` map —
+`claude_desktop_config.json` for Claude Desktop, `.mcp.json` at the
+project root for Claude Code, `mcp.json` for Cursor:
+
+```json
+{
+  "mcpServers": {
+    "mytool": {
+      "command": "/usr/local/bin/mytool",
+      "args": ["serve", "mcp", "--stdio"]
+    }
+  }
+}
+```
+
+Give `command` an absolute path: a desktop app does not inherit your
+shell's `PATH`. A host that connects over HTTP takes the `address=`
+from the `ready_reported` line instead.
+
+## Verify the result
+
+Streamable HTTP wants both media types in `Accept`, and the
+`initialize` answer names the session every later request carries:
+
+```bash
+curl -si http://127.0.0.1:8081/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+```
+
+```text
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Mcp-Session-Id: SBRE7GW3BZQNZXVRSF6OQEIQJ6
+
+event: message
+data: {"jsonrpc":"2.0","id":1,"result":{"capabilities":{"logging":{},"tools":{"listChanged":true}},"protocolVersion":"2025-06-18","serverInfo":{"name":"mytool","version":"1.4.2"}}}
+```
+
+Send `notifications/initialized`, then `tools/list` and `tools/call`
+with the `Mcp-Session-Id` and `MCP-Protocol-Version` headers. A read
+command that declares an output schema (`cli.SetOutputSchema`)
+answers in `structuredContent`, with an empty text block beside it:
+
+```text
+event: message
+data: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":""}],"structuredContent":[{"name":"bolt"},{"name":"nut"}]}}
+```
+
+In practice, point an MCP client at the endpoint rather than curl: the
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector)
+connects to either transport.
+
+## What the service enforces
+
+The tool list is what may run and nothing else. The service withholds
+exactly what the REST projection withholds at mount — interactive,
+management-only (kit's reserved verbs such as `status`) and
+self-hosting commands, a destructive command `Policy` does not permit
+on `mcp`, and a command the permission gate refuses for every caller.
+A call naming a withheld tool is an unknown tool. Listing is advisory;
+every call still passes the bridge's gates.
+
+| Gate | Over HTTP | Over stdio |
+|------|-----------|------------|
+| Exposure | loopback by default; a non-loopback address needs `Config.Auth` or `services.mcp.insecure_remote`, and a `--policy` or `services.mcp.insecure_no_policy` — refused at exit `2` otherwise | no address, no rule |
+| `kit/auth-required` | runs only when `Config.Auth` verified the request; a bare `Authorization` header is not authentication | runs: the peer spawned the process and already holds your user's authority |
+| `kit/requires-confirmation` | an elicitation the client's user accepts, or an `X-Confirm-Token` header | an elicitation the client's user accepts |
+| destructive | withheld until `Policy.AllowDestructiveOn` names `cmdsurface.SurfaceMCP`; then the command's own `confirm` argument | same |
+| permission, audit | `cli.WithPermission`, `cli.WithAuditSinks` | same |
+
+A refusal is an `isError` tool result, never an HTTP status:
+`authentication required`, `confirmation required` (naming both
+remedies), or `confirmation declined`. The confirmation question is
+asked only after every machine gate has admitted the call, so a
+caller a machine gate refuses never sees a prompt, and an accepted
+answer lifts nothing but that one gate.
+
+The normative text is the
+[serve-lifecycle contract, "The mcp service"](../../contracts/serve-lifecycle.md#the-mcp-service).
+
+## Configure it
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `services.mcp.enabled` | `false` | start under a bare `serve` |
+| `services.mcp.transport` | `http` | `http` or `stdio`; `--stdio` wins for one run |
+| `services.mcp.addr` | `127.0.0.1:8081` | HTTP listen address; `--mcp-addr` wins for one run |
+| `services.mcp.path` | `/mcp` | HTTP endpoint path |
+| `services.mcp.insecure_remote` | `false` | serve HTTP unauthenticated beyond loopback |
+| `services.mcp.insecure_no_policy` | `false` | serve HTTP beyond loopback with no `--policy` |
+
+The two opt-ins have no flags — `--insecure-remote` and
+`--insecure-no-policy` name the api service — so a reviewer finds
+every such deployment by key. `--mcp-addr` with the stdio transport is
+refused at exit `2`: it would name an address nothing listens on.
+
+`mcpserve.Config` holds the code defaults under the same names, plus
+what only code can say:
+
+```go
+mcpserve.With(mcpserve.Config{
+    // Verify every HTTP request; admits kit/auth-required commands.
+    Auth: verifyBearer,
+    // Permit destructive commands over MCP; each still needs its
+    // own confirm argument.
+    Policy: cmdsurface.Policy{
+        AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceMCP},
+    },
+    // Keep admin commands off the tool list.
+    Hide: []string{"admin *"},
+    // Offered to clients at initialization.
+    Instructions: "Widget inventory. Read before you write.",
+})
+```
+
+`Auth` is an `api.AuthFunc`, the type `APIConfig.Auth` takes;
+[secure-remote-serving.md](secure-remote-serving.md) walks it.
+
+### Positional arguments
 
 A tool can only carry the positional arguments its command declares.
 Name them, in order, in the `kit/args` annotation; a trailing `?`
@@ -126,12 +267,119 @@ tool description says the arguments cannot be passed; declare them to
 make the tool callable. The same note appears when a flag of the
 command is itself named `args`: the flag keeps the property.
 
+### Prompts, resources, and the rest of the SDK
+
+`Config.ServerOptions` takes `mcpsdk` options and hands them to the
+SDK surface before the service's own, so identity, provenance and the
+gates always win. `mcpsdk.WithServerConfigurator` registers prompts,
+resources and templates on the raw `*mcp.Server`; what you register
+there runs outside kit's gates —
+[serve-mcp-with-the-sdk.md](serve-mcp-with-the-sdk.md#beyond-tools-the-rest-of-the-sdk)
+covers the options and the trust boundary.
+
+### Protocol versions
+
+HTTP sessions are stateful and negotiate protocol versions through
+`2025-11-25`; a client asking for `2026-07-28` over HTTP is answered
+at `2025-11-25`. The stdio transport serves `2026-07-28` as well.
+
+## Move off MountMCP
+
+`cmdsurface.MountMCP`, its `MCPOption` / `WithMCP*` options and the
+`mcp:` config block are deprecated: frozen, fixes only, with removal
+no earlier than kit 0.6.0 and only once the replacements cover what
+the mount still does — the
+[cmdsurface reference's Status](../reference/cmdsurface.md#status)
+holds the schedule. On a kit root the mcp service replaces it; on a
+bare bridge, [`mcpsdk`](serve-mcp-with-the-sdk.md) does.
+
+| With `MountMCP` | With the mcp service |
+|-----------------|----------------------|
+| `cmdsurface.New(root)` + a router + `http.ListenAndServe` | `mcpserve.With(mcpserve.Config{})`; the service owns the listener and lifecycle |
+| a bridge built in `APIConfig.Handlers` to share the api's port | its own listener, `services.mcp.addr` |
+| `WithMCPPath` | `services.mcp.path` / `Config.Path` |
+| `WithMCPServerInfo` | the root's `Name` and `Version` |
+| `b.Expose` / `b.Hide` / `WithPolicy` on the bridge | `Config.Expose` / `Hide` / `Policy` |
+| `Authorization` header presence on auth-required leaves | `Config.Auth` verification over HTTP; spawn trust over stdio |
+| `WithMCPConfirmationKey` (MRTR) | built in: the service asks through elicitation, keyed per process |
+| `WithMCPSpecVersions` | negotiated by the SDK — see [Protocol versions](#protocol-versions) |
+| the `mcp:` config block | `services.mcp.*` |
+| no stdio | `--stdio` |
+
+What does not carry over: gate refusals mirrored as HTTP `401` /
+`428` (the SDK reports `isError` only), the zero-dependency build, the
+`ttlMs` / `cacheScope` cache hints, `WithMCPOriginAllowlist` (the SDK's
+DNS-rebinding protection stays on for loopback listeners; beyond
+loopback, `Auth` and a proxy own origin policy), and `2026-07-28` over
+HTTP.
+
+## The deprecated `MountMCP` mount
+
+Reference for existing callers until removal.
+
+### What it serves
+
+`MountMCP` serves **two MCP protocol revisions from one mount**:
+
+- **2024-11-05** — the `initialize` handshake era. Plain JSON-RPC
+  over POST; `initialize`, `tools/list`, `tools/call`.
+- **2026-07-28** — the stateless era. No handshake, no sessions;
+  every request carries its protocol version and client capabilities
+  in `params._meta`; adds `server/discover`, cacheable list results,
+  and mid-call confirmation round-trips (MRTR).
+
+Every incoming POST is routed to exactly one revision's handler by
+per-request detection (below). Both revisions expose the same tools,
+run through the same safety policy, and dispatch through the same
+bridge — there is no way to reach a command on one revision that the
+other would have blocked.
+
+### Mount it
+
+```go
+package main
+
+import (
+    "log"
+    "net/http"
+    "time"
+
+    "hop.top/kit/go/transport/api"
+    "hop.top/kit/go/transport/cmdsurface"
+)
+
+func main() {
+    root := buildCobraTree() // your existing CLI root
+
+    b := cmdsurface.New(root)
+
+    r := api.NewRouter()
+    if err := cmdsurface.MountMCP(b, r,
+        cmdsurface.WithMCPServerInfo("mytool", "1.4.2"),
+        cmdsurface.WithMCPCacheHints(30*time.Second, cmdsurface.MCPCacheScopePrivate),
+        cmdsurface.WithMCPOriginAllowlist("https://app.example.com"),
+    ); err != nil {
+        log.Fatal(err)
+    }
+
+    log.Fatal(http.ListenAndServe("127.0.0.1:8080", r))
+}
+```
+
+Every leaf becomes one MCP tool named by its dotted path
+(`widget add` → `widget.add`), with an `inputSchema` derived from
+its pflag set and its declared positional arguments
+([Positional arguments](#positional-arguments) applies unchanged).
+MCP is in the default enablement set (`DefaultPolicy()` enables
+`cli`, `lib`, `mcp`), so no `Expose` call is needed unless you've
+narrowed enablement.
+
 Options are validated at mount time — an unrecognized spec version,
 a negative cache TTL, an unknown cache scope, or an explicitly empty
 confirmation key makes `MountMCP` return an error instead of
 mounting a half-configured surface.
 
-### 2. Verify the legacy path
+### Verify the legacy path
 
 A 2024-11-05 client needs nothing special:
 
@@ -156,7 +404,7 @@ curl -s http://127.0.0.1:8080/mcp \
 `tools/list` and `tools/call` work the same way — plain JSON-RPC
 bodies, no extra headers.
 
-### 3. Verify the modern path
+### Verify the modern path
 
 A 2026-07-28 request is stricter: two reserved `_meta` keys in the
 body and matching HTTP headers (`Mcp-Name` additionally on
@@ -248,10 +496,10 @@ a `[stderr]&#32;`-prefixed block; structured `Result.Data` is emitted
 both as a JSON text block and as `structuredContent`. A non-zero
 exit code sets `isError: true`.
 
-### 4. Configure from YAML (optional)
+### Configure from YAML
 
-The `mcp:` config block is the declarative counterpart of the
-mount options:
+The `mcp:` config block, deprecated with the mount, is the
+declarative counterpart of its options:
 
 ```yaml
 mcp:
@@ -298,7 +546,7 @@ func mcpOptions(cfg *cmdsurface.MCPConfig) []cmdsurface.MCPOption {
 }
 ```
 
-## Option reference
+### Option reference
 
 | Option | Default | Effect |
 |---|---|---|
@@ -309,7 +557,7 @@ func mcpOptions(cfg *cmdsurface.MCPConfig) []cmdsurface.MCPOption {
 | `WithMCPOriginAllowlist(origins...)` | no check | Exact-match `Origin` validation on the modern path; mismatch → HTTP 403. |
 | `WithMCPConfirmationKey(key)` | header gate | Enables the MRTR confirmation round-trip for confirmation-gated leaves (below). Key must be non-empty and shared across instances. |
 
-## How version detection works
+### How version detection works
 
 You never pick a version per request — the mount does, from the
 request itself:
@@ -342,7 +590,7 @@ request modern — legacy `initialize` then fails validation with an
 error message naming the supported version, which is the correct
 signal for a legacy client with no fall-forward mechanism.
 
-### Routing precedence
+#### Routing precedence
 
 The first rule that applies wins:
 
@@ -373,7 +621,7 @@ Edge cases, both revisions enabled:
 | notification (no `id`) with markers | modern | HTTP 202, empty body, not processed |
 | `id: null` with markers | modern | `-32600` at 400 |
 
-### Modern validation order
+#### Modern validation order
 
 A request routed modern is checked in this order; the first failure
 responds and stops:
@@ -399,7 +647,7 @@ list omits 2024-11-05: that revision is reachable only through its
 handshake. Inbound `Mcp-Param-*`, `Mcp-Session-Id` and `Last-Event-ID`
 headers are ignored.
 
-## Destructive commands and confirmation
+### Destructive commands and confirmation
 
 Safety annotations gate the MCP surface exactly like every other
 remote surface, on both revisions:
@@ -416,7 +664,7 @@ remote surface, on both revisions:
   HTTP 428 otherwise. This header gate is the default on both
   revisions.
 
-### MRTR confirmation (2026-07-28 opt-in)
+#### MRTR confirmation (2026-07-28 opt-in)
 
 The modern revision can replace the confirmation header with the
 spec-native in-band round-trip. Provisioning key material is
@@ -470,7 +718,7 @@ on the bridge's registered sinks, then re-prompted with fresh
 state. Clients that don't declare `elicitation` keep the
 `X-Confirm-Token` header gate even when a key is configured.
 
-## Origin validation — configure it
+### Origin validation — configure it
 
 The MCP spec requires servers to validate the `Origin` header
 (DNS-rebinding defense). Kit cannot know which origins are valid
@@ -490,7 +738,7 @@ Requests without an `Origin` header (curl, server-to-server) are
 never refused by the allowlist; a present-but-unlisted Origin gets
 HTTP 403.
 
-## Cache hints
+### Cache hints
 
 Modern `server/discover` and `tools/list` results carry `ttlMs` and
 `cacheScope` so clients and gateways can cache them. The defaults
@@ -505,14 +753,13 @@ cmdsurface.WithMCPCacheHints(5*time.Minute, cmdsurface.MCPCacheScopePublic)
 
 `tools/call` results are never cacheable and carry no hints.
 
-## Auth posture
+### Auth posture
 
 The surface itself is **auth-scheme-agnostic**: it checks
 `Authorization` presence on `kit/auth-required` leaves and nothing
 else. The 2026-07-28 authorization hardening lives where each
-obligation belongs, and none of it required deprecating anything in
-kit — kit never implemented client registration, token issuance, or
-an authorization server:
+obligation belongs — kit never implemented client registration, token
+issuance, or an authorization server:
 
 - **RFC 9207 issuer validation** — the client half ships in kit on
   the OAuth *callback* surface: set `OAuthProvider.ExpectedIssuer`
@@ -525,7 +772,7 @@ an authorization server:
 Full deployment guidance:
 [cmdsurface ADOPTER_GUIDE](../../../go/transport/cmdsurface/ADOPTER_GUIDE.md).
 
-## What the surface does not implement
+### What the surface does not implement
 
 Absence is spec-conformant — capabilities not advertised are
 capabilities not supported:
@@ -540,31 +787,19 @@ capabilities not supported:
 - Optional 2026-07-28 tool-descriptor fields (`title`, `icons`,
   `outputSchema`, `annotations`).
 
-## Migration notes
-
-Already mounting MCP? Nothing to do:
-
-- Existing `MountMCP(b, r)` calls compile and behave unchanged;
-  both revisions are enabled by default and every request a
-  2024-11-05 client can send takes today's exact code path.
-- New-revision clients get `server/discover`, per-request stateless
-  calls, header-routable requests, cache hints, and (with a key)
-  MRTR confirmations — from the same mount, against the same tools,
-  under the same policy.
-- The spec version each call arrived on is visible to audit sinks
-  as `Meta.Extra["mcp_spec_version"]`, with client identity in
-  `mcp_client_name` / `mcp_client_version` when the client sends
-  `clientInfo`.
-- There is no deprecation: 2024-11-05 support has no sunset date,
-  and pinning to it via `WithMCPSpecVersions` remains supported.
-
 ## Related pages
 
-- [cmdsurface README](../../../go/transport/cmdsurface/README.md) —
-  full package reference, all surfaces
-- [cmdsurface ADOPTER_GUIDE](../../../go/transport/cmdsurface/ADOPTER_GUIDE.md)
-  — quickstart + auth hardening + confirmation key sourcing
+- [serve-lifecycle contract, "The mcp service"](../../contracts/serve-lifecycle.md#the-mcp-service)
+  — the normative rules for the service
+- [`go/console/cli/mcpserve`](../../../go/console/cli/mcpserve/README.md)
+  — the package
+- [serve-mcp-with-the-sdk.md](serve-mcp-with-the-sdk.md) — the SDK
+  surface on a bare bridge, prompts, resources, the trust boundary
+- [secure-remote-serving.md](secure-remote-serving.md) — `Auth`, the
+  permission gate, the audit trail
 - [toolspec adopter guide](../integrations/toolspec-adopter-guide.md)
   — static MCP descriptors (`<tool> spec --format mcp`)
+- [cmdsurface reference](../reference/cmdsurface.md) — the bridge and
+  the deprecation schedule
 - MCP specification:
   <https://modelcontextprotocol.io/specification/2026-07-28>

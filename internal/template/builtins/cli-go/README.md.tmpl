@@ -159,7 +159,8 @@ project root for Claude Code, `mcp.json` for Cursor:
 A desktop app does not read your shell's `PATH`, so give `command` the
 absolute path (`which {{.Name}}`) when the host cannot find the binary.
 Every command that may run is one tool, named by its path with dots
-(`item list` is `item.list`), its flags the tool's arguments.
+(`item list` is `item.list`); its flags, and its positional arguments
+when it declares them in `kit/args`, are the tool's arguments.
 
 What the host can call:
 

@@ -69,6 +69,9 @@ this package is the authority for signatures only. Points a caller gets wrong:
 
 - `hop.top/kit/go/console/cli`: `serve` command, `WithService`,
   `WithServiceOverride`, `WithServicePolicy`, `services.*` resolution
+- kit-shipped services: `api` (`cli.WithAPI`) and `socket`
+  (`cli.WithSocket`) in `go/console/cli`; `mcp` (`mcpserve.With`) in
+  `hop.top/kit/go/console/cli/mcpserve`
 - `hop.top/kit/go/transport/transportsvc`: transport-backed `Service` implementations
 - `hop.top/kit/go/runtime/bus`: `Event`, `TopicMap`, `ValidateTopic`
 

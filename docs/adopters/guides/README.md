@@ -15,7 +15,7 @@ Task-oriented how-tos for adopters: one outcome per page, with the audience name
 | [`create-cli-project.md`](create-cli-project.md) | scaffold a runnable kit-based CLI in one command | you start a new tool on kit's template runtime |
 | [`encrypt-engine-data.md`](encrypt-engine-data.md) | encrypt engine SQLite documents at rest | you run the engine and need data encrypted on disk |
 | [`expose-cli-over-grpc.md`](expose-cli-over-grpc.md) | serve a cobra tree as one typed RPC service over Connect, gRPC and gRPC-Web | you want generated clients, other languages or a browser to call your commands |
-| [`expose-cli-over-mcp.md`](expose-cli-over-mcp.md) | mount a cobra tree as an MCP server, one tool per leaf, both protocol revisions | you want LLM hosts to call your commands |
+| [`expose-cli-over-mcp.md`](expose-cli-over-mcp.md) | serve your commands as MCP tools with the built-in `mcp` service, over HTTP or stdio | you want LLM hosts to call your commands |
 | [`expose-cli-over-rest.md`](expose-cli-over-rest.md) | serve a cobra tree as a versioned REST API with OpenAPI | you want scripts or services to call your commands |
 | [`getting-started-cli.md`](getting-started-cli.md) | first hop-top CLI in Go, TypeScript or Python | you build your first tool and want the extended walkthrough |
 | [`hook-cli-into-bus.md`](hook-cli-into-bus.md) | publish events from a command and observe them with a sink | you want commands to emit events other packages react to |

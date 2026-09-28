@@ -43,17 +43,20 @@ For now, see:
 
 ## Step 3: expose it on REST
 
-Nothing to mount: the scaffolded root registers the `api` and `socket`
-services, so every command you added in step 2 is already a route.
+Nothing to mount: the scaffolded root registers the `api`, `socket`
+and `mcp` services, so every command you added in step 2 is already a
+route and an MCP tool.
 
 ```bash
-./bin/mytool serve --list          # registered services: api enabled by default, socket off, neither ready until serving
+./bin/mytool serve --list          # registered services: api enabled by default, socket and mcp off, none ready until serving
 ./bin/mytool serve api             # REST on 127.0.0.1:8080, OpenAPI at /openapi.json
 curl -s http://127.0.0.1:8080/v1/commands   # every command, invocable or withheld and why
 ```
 
 See [`guides/expose-cli-over-rest.md`](guides/expose-cli-over-rest.md)
-for the route shape and the policy on destructive commands, and
+for the route shape and the policy on destructive commands,
+[`guides/expose-cli-over-mcp.md`](guides/expose-cli-over-mcp.md) to
+plug the tool into Claude Desktop or an IDE with `serve mcp --stdio`, and
 [`guides/migrate-to-served-commands.md`](guides/migrate-to-served-commands.md)
 if you are bringing an existing `serve` command over. For WS and
 ConnectRPC beside REST, see

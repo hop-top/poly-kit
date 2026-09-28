@@ -205,9 +205,10 @@ the whole of what you may call. Over HTTP the endpoint is the
 `address=` on the mcp service's `ready_reported` line
 (`http://127.0.0.1:8081/mcp` by default).
 
-A tool's arguments are the command's flags, keyed by long name with no
-dashes, as its `inputSchema` lists them. Positional arguments have no
-MCP form.
+A tool's arguments are exactly what its `inputSchema` lists: the
+command's flags, keyed by long name with no dashes, and an `args`
+array of positional arguments when the command declares them. Send
+nothing else.
 
 A refusal is a tool result with `isError: true`, not a protocol error.
 Branch on its text:
