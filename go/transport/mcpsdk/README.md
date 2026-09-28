@@ -25,7 +25,7 @@ is unacceptable or an HTTP-only probe must see 401/428 statuses.
 - attribute calls to a verified caller → `WithCallMeta`
 - answer the auth gate from your own authentication (a verified request, a spawned stdio peer) → `WithAuthenticated`
 - let a person confirm a `kit/requires-confirmation` call through the client → `WithConfirmationElicitation`
-- serve it as a `<tool> serve` service instead of mounting by hand → `cli.WithMCP` in `go/console/cli`
+- serve it as a `<tool> serve` service instead of mounting by hand → `mcpserve.With` in `go/console/cli/mcpserve`
 
 ## Quick start
 

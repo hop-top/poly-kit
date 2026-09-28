@@ -334,16 +334,6 @@ type Root struct {
 	// socketFlag is the --socket value when the operator passed one;
 	// it wins over config at bind time.
 	socketFlag string
-	// mcpCfg is the built-in mcp service's configuration, nil until
-	// WithMCP runs.
-	mcpCfg *MCPConfig
-	// mcpStdioFlag and mcpAddrFlag are this run's --stdio and
-	// --mcp-addr; see applyMCPFlags.
-	mcpStdioFlag bool
-	mcpAddrFlag  string
-	// mcpStdio overrides the stdio transport's streams; nil serves the
-	// process's own. Tests only.
-	mcpStdio *mcpStdioStreams
 	// serveAuth is the permission gate and audit sinks every
 	// kit-shipped transport service shares; see serve_auth.go.
 	serveAuth    serveAuthState

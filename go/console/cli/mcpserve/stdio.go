@@ -1,4 +1,4 @@
-package cli
+package mcpserve
 
 import (
 	"context"
@@ -15,21 +15,21 @@ import (
 	"hop.top/kit/go/transport/mcpsdk"
 )
 
-// mcpStdioStreams overrides the streams the stdio transport speaks
-// on. nil on a Root means the process's own standard input and
-// output; tests set it to a pipe pair.
-type mcpStdioStreams struct {
+// stdioStreams overrides the streams the stdio transport speaks on.
+// nil means the process's own standard input and output; tests set it
+// to a pipe pair.
+type stdioStreams struct {
 	in  io.Reader
 	out io.Writer
 }
 
-// mcpStdioDrain bounds how long a stop waits for the session to wind
+// stdioDrain bounds how long a stop waits for the session to wind
 // down after it is closed. Closing the session closes its input, but a
 // read blocked on a terminal is not always interruptible; the process
 // is exiting, so the reader is abandoned rather than holding the stop.
-const mcpStdioDrain = 2 * time.Second
+const stdioDrain = 2 * time.Second
 
-// mcpStdio serves the surface on standard input and output.
+// stdioServing serves the surface on standard input and output.
 //
 // Standard output IS the protocol here, so for as long as the service
 // serves, every other writer in the process is pointed away from it:
@@ -38,8 +38,8 @@ const mcpStdioDrain = 2 * time.Second
 // command, a hook, or a library then lands in the operator's log
 // rather than in the middle of a frame, and nothing but the SDK
 // consumes a request byte.
-type mcpStdio struct {
-	root *Root
+type stdioServing struct {
+	streams *stdioStreams
 
 	mu      sync.Mutex
 	in      io.ReadCloser
@@ -48,14 +48,14 @@ type mcpStdio struct {
 	ss      *mcp.ServerSession
 }
 
-func newMCPStdio(root *Root) *mcpStdio { return &mcpStdio{root: root} }
+func newStdio(streams *stdioStreams) *stdioServing { return &stdioServing{streams: streams} }
 
 // bind acquires the streams and redirects the process's own. There is
 // no address: the peer is whoever spawned the process.
-func (s *mcpStdio) bind(context.Context) (string, error) {
+func (s *stdioServing) bind(context.Context) (string, error) {
 	var in io.Reader = os.Stdin
 	var out io.Writer = os.Stdout
-	if st := s.root.mcpStdio; st != nil {
+	if st := s.streams; st != nil {
 		if st.in != nil {
 			in = st.in
 		}
@@ -86,7 +86,7 @@ func (s *mcpStdio) bind(context.Context) (string, error) {
 // serve runs one session until the peer ends it or ctx is canceled.
 // The peer closing its end — end of input — is how a host ends a
 // stdio server, so it is a clean stop.
-func (s *mcpStdio) serve(ctx context.Context, surf *mcpsdk.Surface) error {
+func (s *stdioServing) serve(ctx context.Context, surf *mcpsdk.Surface) error {
 	s.mu.Lock()
 	in, out := s.in, s.out
 	s.mu.Unlock()
@@ -111,7 +111,7 @@ func (s *mcpStdio) serve(ctx context.Context, surf *mcpsdk.Surface) error {
 		_ = ss.Close()
 		select {
 		case <-done:
-		case <-time.After(mcpStdioDrain):
+		case <-time.After(stdioDrain):
 		}
 		return nil
 	}
@@ -134,7 +134,7 @@ func sessionEnd(err error) error {
 }
 
 // close ends the session and gives the process its streams back.
-func (s *mcpStdio) close(context.Context) error {
+func (s *stdioServing) close(context.Context) error {
 	s.mu.Lock()
 	ss, restore := s.ss, s.restore
 	s.mu.Unlock()
@@ -149,16 +149,16 @@ func (s *mcpStdio) close(context.Context) error {
 
 // callMeta is the provenance of one tool call over stdio: the
 // transport and the peer's process id. No principal is invented.
-func (s *mcpStdio) callMeta(_ context.Context, req *mcp.CallToolRequest) cmdsurface.Meta {
+func (s *stdioServing) callMeta(_ context.Context, req *mcp.CallToolRequest) cmdsurface.Meta {
 	extra := map[string]string{
-		"mcp_transport": MCPTransportStdio,
+		"mcp_transport": TransportStdio,
 		"peer_pid":      strconv.Itoa(os.Getppid()),
 	}
-	if name := mcpClientName(req); name != "" {
+	if name := clientName(req); name != "" {
 		extra["mcp_client"] = name
 	}
 	return cmdsurface.Meta{
-		RequestID:   newMCPRequestID(),
+		RequestID:   newRequestID(),
 		RequestedAt: time.Now(),
 		Extra:       extra,
 	}
@@ -169,7 +169,7 @@ func (s *mcpStdio) callMeta(_ context.Context, req *mcp.CallToolRequest) cmdsurf
 // standard streams, and the process runs with the peer's user, so the
 // peer already holds every credential the command would use — the
 // socket's owner-only argument, applied to a pair of pipes.
-func (s *mcpStdio) authenticated(context.Context, *mcp.CallToolRequest) bool { return true }
+func (s *stdioServing) authenticated(context.Context, *mcp.CallToolRequest) bool { return true }
 
 // readCloser returns r as an io.ReadCloser, closing it when it can be
 // closed so that ending the session unblocks a pending read.

@@ -186,7 +186,6 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	serveTimeoutOverrides(configs, readyTO, stopTO)
 	applyAPICompat(cmd, root, configs)
 	applySocketFlags(cmd, root)
-	applyMCPFlags(cmd, root)
 
 	outcome := serve.Resolve(reg, serve.Request{
 		Args:    args,

@@ -186,3 +186,51 @@ func (r *Root) servePolicyConfigured() bool {
 	}
 	return strings.TrimSpace(flagValue(r.Cmd, policyFlag)) != ""
 }
+
+// The hooks below are package functions rather than Root methods on
+// purpose: the linker keeps every exported method of a type that can
+// reach reflection, so a method would link the serve bridge machinery
+// into every kit CLI, served or not. A function nobody calls is
+// dropped.
+
+// ServeBridgeOptions returns the bridge options a kit-shipped
+// transport service applies when it starts: the per-invocation runner
+// when [WithRootFactory] is set (carrying the operator's replayed root
+// flags), then the composed permission gate ([WithPermission] after
+// the --policy engine), the audit sinks ([WithAuditSinks]), and any
+// test-injected options. It is the same set the socket service's
+// bridge gets, and it must be called at Start — --policy is parsed
+// and every Root option has run only by then.
+//
+// A service living outside this package — the MCP service in
+// go/console/cli/mcpserve — builds its bridge from it, so it meets
+// exactly the gates the built-in services do.
+func ServeBridgeOptions(r *Root) ([]cmdsurface.Option, error) {
+	shared, err := r.serveBridgeOptions()
+	if err != nil {
+		return nil, err
+	}
+	return append(r.serveRunnerOptions(), shared...), nil
+}
+
+// ValidateServeBridge is the configuration check every kit-shipped
+// transport service runs in its Validate hook: a --policy that cannot
+// load, or a root factory that cannot build a usable tree, is a usage
+// error before anything binds.
+func ValidateServeBridge(r *Root) error {
+	if _, err := r.servePermission(); err != nil {
+		return err
+	}
+	return r.validateRootFactory()
+}
+
+// ServePolicyConfigured reports whether a delegation policy (--policy)
+// is in force for this run — whether the permission gate the transport
+// services share can refuse anything at all. Exposure checks use it to
+// refuse an unbounded surface beyond loopback.
+func ServePolicyConfigured(r *Root) bool { return r.servePolicyConfigured() }
+
+// IsLoopbackAddr reports whether a host:port listen address binds a
+// loopback interface only: 127.0.0.0/8, ::1, or the name localhost.
+// An empty host binds every interface and is not loopback.
+func IsLoopbackAddr(addr string) bool { return isLoopbackAddr(addr) }

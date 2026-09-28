@@ -533,7 +533,7 @@ and `cmdsurface.Bridge.Audit` in
   so the filesystem permission is the access control. No address rule
   applies to it.
 - The mcp service's HTTP transport MUST apply every rule above to its
-  own listen address, with its own names: `MCPConfig.Auth` for
+  own listen address, with its own names: `mcpserve.Config.Auth` for
   authentication, `services.mcp.insecure_remote` and
   `services.mcp.insecure_no_policy` for the opt-ins, default address
   `127.0.0.1:8081`. The stdio transport has no address and no address
@@ -622,7 +622,9 @@ of any of them.
 
 ## The mcp service
 
-`cli.WithMCP` registers the third kit-shipped service, `mcp`: the
+`mcpserve.With` (package
+[`go/console/cli/mcpserve`](../../go/console/cli/mcpserve/)) registers
+the third kit-shipped service, `mcp`: the
 tool's command tree served as Model Context Protocol tools, one tool
 per invocable leaf, named by its dotted path (`item.add`). It rides
 the [transport seam](#transport-services) exactly as `socket` does, so
@@ -636,6 +638,14 @@ implements no MCP wire behavior of its own here.
 
 Like every service that arrives through the registry, `mcp` is
 `enabled: false` by default. `<tool> serve mcp` starts it.
+
+The service lives in its own package so that only a tool serving MCP
+links the MCP SDK: `go/console/cli` MUST NOT depend on it. It reaches
+the Root through the same exported hooks any out-of-package transport
+service can use — `cli.WithService`, `cli.ServeBridgeOptions`,
+`cli.ValidateServeBridge`, `cli.ServePolicyConfigured`, and
+`cli.IsLoopbackAddr` — and so meets exactly the gates the in-package
+services do.
 
 ### Transports
 
@@ -694,8 +704,9 @@ handler, so each layer of it keeps the response flushable.
 | `services.mcp.insecure_remote`     | bool   | `false`          | serve HTTP unauthenticated on a non-loopback address          |
 | `services.mcp.insecure_no_policy`  | bool   | `false`          | serve HTTP beyond loopback with no delegation policy          |
 
-`MCPConfig` carries the code defaults under the same names; the
-precedence is flag, then config, then `MCPConfig`, then the default.
+`mcpserve.Config` carries the code defaults under the same names; the
+precedence is flag, then config, then `mcpserve.Config`, then the
+default.
 
 Flags, registered on `serve` like `--socket` and inert unless `mcp` is
 the service running:
@@ -709,12 +720,12 @@ The two insecure opt-ins have **no flags**. The existing
 `--insecure-remote` and `--insecure-no-policy` name the api service;
 widening them to cover `mcp` would change what an existing script
 opts into without its author choosing it. They are set by key or by
-`MCPConfig`, which is also where a configuration reviewer finds them.
+`mcpserve.Config`, which is also where a configuration reviewer finds them.
 
 ### The tool catalog
 
 The tool list is what a model reads before it calls anything, so it
-lists what may run and nothing else. Empty `MCPConfig.Expose` exposes
+lists what may run and nothing else. Empty `mcpserve.Config.Expose` exposes
 the whole tree, `Hide` carves exceptions after it, and then the
 service withholds, the way the REST projection withholds at mount:
 
@@ -733,7 +744,7 @@ withheld tool is refused as an unknown tool.
 The service's rule for a leaf declaring `kit/auth-required` follows
 from what each transport can prove about its caller:
 
-- **HTTP.** An auth-required leaf runs only when `MCPConfig.Auth`
+- **HTTP.** An auth-required leaf runs only when `mcpserve.Config.Auth`
   verified the request. A bare `Authorization` header is not
   authentication, and a loopback TCP listener is reachable by every
   local user, so loopback does not carry the socket's argument below.

@@ -39,6 +39,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/mcpserve"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/runtime/bus"
 	"hop.top/kit/go/transport/cmdsurface"
@@ -121,7 +122,7 @@ func newRoot(opts options) *cli.Root {
 		cli.WithStatus(cli.StatusConfig{}),
 		cli.WithAPI(cli.APIConfig{Policy: policy}),
 		cli.WithSocket(cli.SocketConfig{Policy: policy}),
-		cli.WithMCP(cli.MCPConfig{Policy: policy}),
+		mcpserve.With(mcpserve.Config{Policy: policy}),
 		cli.WithService(opts.heartbeat),
 		cli.WithServiceBus(opts.bus),
 	)

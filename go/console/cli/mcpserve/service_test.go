@@ -1,4 +1,4 @@
-package cli_test
+package mcpserve_test
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/mcpserve"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/runtime/bus"
@@ -72,7 +73,7 @@ type mcpRun struct {
 
 // startMCP runs `serve <args>` on a root carrying the mcp service and
 // the commands above, and waits for the mcp service's readiness.
-func startMCP(t *testing.T, cfg cli.MCPConfig, args []string, opts ...func(*cli.Root)) (*mcpRun, string) {
+func startMCP(t *testing.T, cfg mcpserve.Config, args []string, opts ...func(*cli.Root)) (*mcpRun, string) {
 	t.Helper()
 	b := bus.New()
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
@@ -82,12 +83,12 @@ func startMCP(t *testing.T, cfg cli.MCPConfig, args []string, opts ...func(*cli.
 		err:   &strings.Builder{},
 	}
 	b.Subscribe("kit.serve.service.ready_reported", func(_ context.Context, e bus.Event) error {
-		if p, ok := e.Payload.(serve.EventPayload); ok && p.Service == cli.MCPServiceName {
+		if p, ok := e.Payload.(serve.EventPayload); ok && p.Service == mcpserve.ServiceName {
 			run.ready <- p
 		}
 		return nil
 	})
-	all := append([]func(*cli.Root){cli.WithMCP(cfg), cli.WithServiceBus(b)}, opts...)
+	all := append([]func(*cli.Root){mcpserve.With(cfg), cli.WithServiceBus(b)}, opts...)
 	run.root = newServeRoot(t, all...)
 	mcpCommands(run.root)
 	run.root.Cmd.SetErr(&lockedWriter{w: run.err})
@@ -184,7 +185,7 @@ func callTool(t *testing.T, sess *mcp.ClientSession, name string, args map[strin
 }
 
 func TestMCPServiceHTTPListsAndCallsTools(t *testing.T) {
-	_, endpoint := startMCP(t, cli.MCPConfig{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
+	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
 	require.True(t, strings.HasPrefix(endpoint, "http://127.0.0.1:"), endpoint)
 	require.True(t, strings.HasSuffix(endpoint, "/mcp"), "readiness carries the endpoint URL: %s", endpoint)
 
@@ -203,7 +204,7 @@ func TestMCPServiceHTTPListsAndCallsTools(t *testing.T) {
 }
 
 func TestMCPServiceHTTPRefusesDestructiveByDefault(t *testing.T) {
-	_, endpoint := startMCP(t, cli.MCPConfig{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
+	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
 	sess := dialMCP(t, endpoint, nil, nil)
 
 	// Withheld from the catalog, and a call naming it anyway is
@@ -214,7 +215,7 @@ func TestMCPServiceHTTPRefusesDestructiveByDefault(t *testing.T) {
 }
 
 func TestMCPServiceHTTPDestructiveOnceNamedStillNeedsItsConfirm(t *testing.T) {
-	_, endpoint := startMCP(t, cli.MCPConfig{
+	_, endpoint := startMCP(t, mcpserve.Config{
 		Policy: cmdsurface.Policy{AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceMCP}},
 	}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
 	sess := dialMCP(t, endpoint, nil, nil)
@@ -232,7 +233,7 @@ func TestMCPServiceHTTPDestructiveOnceNamedStillNeedsItsConfirm(t *testing.T) {
 }
 
 func TestMCPServiceHTTPAuthRequiredNeedsVerifiedAuth(t *testing.T) {
-	_, endpoint := startMCP(t, cli.MCPConfig{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
+	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
 
 	// A bare Authorization header is presence, not authentication.
 	sess := dialMCP(t, endpoint, http.Header{"Authorization": {"Bearer made-up"}}, nil)
@@ -278,7 +279,7 @@ func TestMCPServiceHTTPAuthAttributesAndAudits(t *testing.T) {
 		errs = append(errs, err)
 		return nil
 	})
-	_, endpoint := startMCP(t, cli.MCPConfig{Auth: bearerAuth},
+	_, endpoint := startMCP(t, mcpserve.Config{Auth: bearerAuth},
 		[]string{"mcp", "--mcp-addr", "127.0.0.1:0"},
 		cli.WithAuditSinks(cmdsurface.SinkSpec{Sink: sink, OnError: true, OnOK: true}))
 
@@ -316,7 +317,7 @@ func TestMCPServiceHTTPAuthAttributesAndAudits(t *testing.T) {
 }
 
 func TestMCPServiceHTTPConfirmationByElicitation(t *testing.T) {
-	_, endpoint := startMCP(t, cli.MCPConfig{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
+	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
 
 	var asked atomic.Int32
 	accepting := dialMCP(t, endpoint, nil, &mcp.ClientOptions{
@@ -366,7 +367,7 @@ func TestMCPServicePermissionGateWithholdsAndRefuses(t *testing.T) {
 		}
 		return cmdsurface.PermissionDecision{Allowed: true}
 	}
-	_, endpoint := startMCP(t, cli.MCPConfig{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
+	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
 		cli.WithPermission(deny))
 	sess := dialMCP(t, endpoint, http.Header{"X-Confirm-Token": {"yes"}}, nil)
 
@@ -380,7 +381,7 @@ func TestMCPServicePermissionGateWithholdsAndRefuses(t *testing.T) {
 }
 
 func TestMCPServiceExposeNarrowsAndHideCarves(t *testing.T) {
-	_, endpoint := startMCP(t, cli.MCPConfig{Expose: []string{"ping", "secret"}, Hide: []string{"secret"}},
+	_, endpoint := startMCP(t, mcpserve.Config{Expose: []string{"ping", "secret"}, Hide: []string{"secret"}},
 		[]string{"mcp", "--mcp-addr", "127.0.0.1:0"})
 	sess := dialMCP(t, endpoint, nil, nil)
 	assert.Equal(t, []string{"ping"}, toolNames(t, sess))
@@ -391,11 +392,11 @@ func TestMCPServiceRunsOnTheRootFactory(t *testing.T) {
 	var factory func() *cli.Root
 	factory = func() *cli.Root {
 		builds.Add(1)
-		r := newServeRoot(t, cli.WithMCP(cli.MCPConfig{}), cli.WithRootFactory(factory))
+		r := newServeRoot(t, mcpserve.With(mcpserve.Config{}), cli.WithRootFactory(factory))
 		mcpCommands(r)
 		return r
 	}
-	_, endpoint := startMCP(t, cli.MCPConfig{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
+	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
 		cli.WithRootFactory(factory))
 	sess := dialMCP(t, endpoint, nil, nil)
 
@@ -407,9 +408,9 @@ func TestMCPServiceRunsOnTheRootFactory(t *testing.T) {
 
 // serveErr runs `serve <args>` on a root with the mcp service and
 // returns the refusal it ends with.
-func serveErr(t *testing.T, cfg cli.MCPConfig, args []string, opts ...func(*cli.Root)) *output.Error {
+func serveErr(t *testing.T, cfg mcpserve.Config, args []string, opts ...func(*cli.Root)) *output.Error {
 	t.Helper()
-	r := newServeRoot(t, append([]func(*cli.Root){cli.WithMCP(cfg)}, opts...)...)
+	r := newServeRoot(t, append([]func(*cli.Root){mcpserve.With(cfg)}, opts...)...)
 	mcpCommands(r)
 	err := runServeArgs(t, r, append([]string{"serve"}, args...), 5*time.Second)
 	require.Error(t, err)
@@ -420,38 +421,38 @@ func serveErr(t *testing.T, cfg cli.MCPConfig, args []string, opts ...func(*cli.
 
 func TestMCPServiceHTTPExposureRefusals(t *testing.T) {
 	t.Run("unauthenticated remote", func(t *testing.T) {
-		oe := serveErr(t, cli.MCPConfig{}, []string{"mcp", "--mcp-addr", "0.0.0.0:0"})
+		oe := serveErr(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "0.0.0.0:0"})
 		assert.Equal(t, 2, oe.ExitCode)
-		for _, want := range []string{"MCPConfig.Auth", "127.0.0.1", "services.mcp.insecure_remote"} {
+		for _, want := range []string{"mcpserve.Config.Auth", "127.0.0.1", "services.mcp.insecure_remote"} {
 			assert.Contains(t, oe.Error(), want)
 		}
 	})
 	t.Run("authenticated but unbounded", func(t *testing.T) {
-		oe := serveErr(t, cli.MCPConfig{Auth: bearerAuth}, []string{"mcp", "--mcp-addr", "0.0.0.0:0"})
+		oe := serveErr(t, mcpserve.Config{Auth: bearerAuth}, []string{"mcp", "--mcp-addr", "0.0.0.0:0"})
 		assert.Equal(t, 2, oe.ExitCode)
 		for _, want := range []string{"--policy", "127.0.0.1", "services.mcp.insecure_no_policy"} {
 			assert.Contains(t, oe.Error(), want)
 		}
 	})
 	t.Run("bad address", func(t *testing.T) {
-		oe := serveErr(t, cli.MCPConfig{}, []string{"mcp", "--mcp-addr", "nope"})
+		oe := serveErr(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "nope"})
 		assert.Equal(t, 2, oe.ExitCode)
 		assert.Contains(t, oe.Error(), "addr")
 	})
 	t.Run("bad path", func(t *testing.T) {
-		oe := serveErr(t, cli.MCPConfig{Path: "mcp"}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
+		oe := serveErr(t, mcpserve.Config{Path: "mcp"}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
 		assert.Equal(t, 2, oe.ExitCode)
 		assert.Contains(t, oe.Error(), "path")
 	})
 	t.Run("unknown transport", func(t *testing.T) {
-		oe := serveErr(t, cli.MCPConfig{Transport: "carrier-pigeon"}, []string{"mcp"})
+		oe := serveErr(t, mcpserve.Config{Transport: "carrier-pigeon"}, []string{"mcp"})
 		assert.Equal(t, 2, oe.ExitCode)
 		assert.Contains(t, oe.Error(), "carrier-pigeon")
 	})
 }
 
 func TestMCPServiceInsecureOptInsAreConfigKeys(t *testing.T) {
-	r := newServeRoot(t, cli.WithMCP(cli.MCPConfig{}))
+	r := newServeRoot(t, mcpserve.With(mcpserve.Config{}))
 	mcpCommands(r)
 	r.Viper.Set("services.mcp.insecure_remote", true)
 	r.Viper.Set("services.mcp.insecure_no_policy", true)
@@ -461,7 +462,7 @@ func TestMCPServiceInsecureOptInsAreConfigKeys(t *testing.T) {
 }
 
 func TestMCPServiceIsListedAndDisabledByDefault(t *testing.T) {
-	r := newServeRoot(t, cli.WithMCP(cli.MCPConfig{}))
+	r := newServeRoot(t, mcpserve.With(mcpserve.Config{}))
 	var out strings.Builder
 	r.Cmd.SetOut(&out)
 	r.SetArgs([]string{"serve", "--list"})
@@ -470,7 +471,7 @@ func TestMCPServiceIsListedAndDisabledByDefault(t *testing.T) {
 
 	// The supervisor form with nothing enabled is a usage error, not
 	// a server nobody asked for.
-	r2 := newServeRoot(t, cli.WithMCP(cli.MCPConfig{}))
+	r2 := newServeRoot(t, mcpserve.With(mcpserve.Config{}))
 	err := runServeArgs(t, r2, []string{"serve"}, 2*time.Second)
 	var oe *output.Error
 	require.ErrorAs(t, err, &oe)
@@ -486,7 +487,7 @@ func TestMCPServiceAsksAPersonOnlyAfterTheMachineGates(t *testing.T) {
 		}
 		return cmdsurface.PermissionDecision{Allowed: true}
 	}
-	_, endpoint := startMCP(t, cli.MCPConfig{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
+	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
 		cli.WithPermission(deny))
 
 	var asked atomic.Int32
@@ -500,4 +501,35 @@ func TestMCPServiceAsksAPersonOnlyAfterTheMachineGates(t *testing.T) {
 	assert.True(t, isErr)
 	assert.Contains(t, text, "deploys are frozen")
 	assert.Zero(t, asked.Load(), "no question about a call the permission gate refuses")
+}
+
+// newServeRoot builds a root carrying opts, with the validator off so
+// test trees need no annotations beyond what they exercise.
+func newServeRoot(t *testing.T, opts ...func(*cli.Root)) *cli.Root {
+	t.Helper()
+	return cli.New(cli.Config{Name: "test", Version: "0.1.0", DisableValidate: true}, opts...)
+}
+
+// runServeArgs executes the root with args and returns the error,
+// canceling after settle so a run that started comes back.
+func runServeArgs(t *testing.T, r *cli.Root, args []string, settle time.Duration) error {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	r.SetArgs(args)
+	errCh := make(chan error, 1)
+	go func() { errCh <- r.Execute(ctx) }()
+	select {
+	case err := <-errCh:
+		return err
+	case <-time.After(settle):
+		cancel()
+	}
+	select {
+	case err := <-errCh:
+		return err
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve did not return after cancellation")
+		return nil
+	}
 }

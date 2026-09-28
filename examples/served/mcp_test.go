@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/mcpserve"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -67,7 +67,7 @@ func accept(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 
 func TestMCPToolsListMirrorsWhatMayRun(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
-	endpoint := run.waitReady(t, cli.MCPServiceName).Address
+	endpoint := run.waitReady(t, mcpserve.ServiceName).Address
 	require.True(t, strings.HasPrefix(endpoint, "http://127.0.0.1:"), endpoint)
 	require.True(t, strings.HasSuffix(endpoint, "/mcp"), endpoint)
 
@@ -80,7 +80,7 @@ func TestMCPToolsListMirrorsWhatMayRun(t *testing.T) {
 
 func TestReadAnswersInStructuredContentOverMCP(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
-	sess := mcpDial(t, run.waitReady(t, cli.MCPServiceName).Address, nil)
+	sess := mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)
 
 	// A read that declares a schema answers in structured content.
 	_, data, isErr := mcpCall(t, sess, "item.list", nil)
@@ -91,7 +91,7 @@ func TestReadAnswersInStructuredContentOverMCP(t *testing.T) {
 
 func TestDestructiveIsWithheldOverMCPByDefault(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
-	sess := mcpDial(t, run.waitReady(t, cli.MCPServiceName).Address, nil)
+	sess := mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)
 
 	_, err := sess.CallTool(t.Context(), &mcp.CallToolParams{Name: "item.purge", Arguments: map[string]any{}})
 	require.Error(t, err, "a withheld destructive tool is not callable")
@@ -100,7 +100,7 @@ func TestDestructiveIsWithheldOverMCPByDefault(t *testing.T) {
 func TestDestructiveRunsOverMCPOnceNamedAndConfirmed(t *testing.T) {
 	run := startServe(t, options{allowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceMCP}},
 		"mcp", "--mcp-addr", "127.0.0.1:0")
-	sess := mcpDial(t, run.waitReady(t, cli.MCPServiceName).Address, nil)
+	sess := mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)
 
 	text, _, isErr := mcpCall(t, sess, "item.purge", nil)
 	assert.True(t, isErr)
@@ -113,7 +113,7 @@ func TestDestructiveRunsOverMCPOnceNamedAndConfirmed(t *testing.T) {
 
 func TestConfirmationRequiredIsApprovedByAPersonOverMCP(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
-	endpoint := run.waitReady(t, cli.MCPServiceName).Address
+	endpoint := run.waitReady(t, mcpserve.ServiceName).Address
 
 	text, _, isErr := mcpCall(t, mcpDial(t, endpoint, &mcp.ClientOptions{ElicitationHandler: accept}),
 		"item.tag", map[string]any{"name": "bolt"})
@@ -127,7 +127,7 @@ func TestConfirmationRequiredIsApprovedByAPersonOverMCP(t *testing.T) {
 
 func TestAuthRequiredIsRefusedOverUnauthenticatedHTTP(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
-	sess := mcpDial(t, run.waitReady(t, cli.MCPServiceName).Address, nil)
+	sess := mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)
 
 	text, _, isErr := mcpCall(t, sess, "item.sync", nil)
 	assert.True(t, isErr)
@@ -149,7 +149,7 @@ func TestUnauthenticatedRemoteMCPIsRefused(t *testing.T) {
 func TestMCPServesBesideTheOthersUnderTheSupervisor(t *testing.T) {
 	run := startServe(t, options{}, "--enable", "mcp", "--mcp-addr", "127.0.0.1:0")
 	run.waitReady(t, "api")
-	endpoint := run.waitReady(t, cli.MCPServiceName).Address
+	endpoint := run.waitReady(t, mcpserve.ServiceName).Address
 	run.waitSupervisorReady(t)
 
 	resp, err := http.Get(strings.TrimSuffix(endpoint, "/mcp") + "/v1/commands")

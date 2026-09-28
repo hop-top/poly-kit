@@ -1,4 +1,4 @@
-package cli
+package mcpserve
 
 import (
 	"bufio"
@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -29,7 +30,7 @@ type stdioPeer struct {
 	w     io.WriteCloser
 	lines chan string
 	errs  chan error
-	root  *Root
+	root  *cli.Root
 	// finished closes when Execute returns; err is what it returned.
 	finished chan struct{}
 	err      error
@@ -53,39 +54,39 @@ func (a *stdioAudit) Emit(_ context.Context, inv cmdsurface.Invocation, _ cmdsur
 // stdioCommands mounts one leaf per class stdio treats differently,
 // plus one that writes past its captured streams to the process's own
 // standard output.
-func stdioCommands(r *Root) {
+func stdioCommands(r *cli.Root) {
 	ping := &cobra.Command{Use: "ping", Short: "Answer pong",
 		RunE: func(cmd *cobra.Command, _ []string) error { cmd.Print("pong"); return nil }}
-	SetSideEffect(ping, SideEffectRead)
+	cli.SetSideEffect(ping, cli.SideEffectRead)
 	leak := &cobra.Command{Use: "leak", Short: "Print past the runner's capture",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			fmt.Println("LEAKED-TO-PROCESS-STDOUT")
 			cmd.Print("leaked")
 			return nil
 		}}
-	SetSideEffect(leak, SideEffectRead)
+	cli.SetSideEffect(leak, cli.SideEffectRead)
 	secret := &cobra.Command{Use: "secret", Short: "Needs the caller's credentials",
 		Annotations: map[string]string{"kit/auth-required": "true"},
 		RunE:        func(cmd *cobra.Command, _ []string) error { cmd.Print("unlocked"); return nil }}
-	SetSideEffect(secret, SideEffectRead)
+	cli.SetSideEffect(secret, cli.SideEffectRead)
 	deploy := &cobra.Command{Use: "deploy", Short: "Deploy, after a person approves",
 		Annotations: map[string]string{"kit/requires-confirmation": "true"},
 		RunE:        func(cmd *cobra.Command, _ []string) error { cmd.Print("deployed"); return nil }}
-	SetSideEffect(deploy, SideEffectWriteLocal)
+	cli.SetSideEffect(deploy, cli.SideEffectWriteLocal)
 	r.Cmd.AddCommand(ping, leak, secret, deploy)
 }
 
 // startStdio runs `serve mcp --stdio` on a root whose stdio transport
 // speaks on pipes, and returns the host's end.
-func startStdio(t *testing.T, opts ...func(*Root)) *stdioPeer {
+func startStdio(t *testing.T, opts ...func(*cli.Root)) *stdioPeer {
 	t.Helper()
 	svcIn, hostW := io.Pipe()
 	hostR, svcOut := io.Pipe()
 
-	all := append([]func(*Root){WithMCP(MCPConfig{})}, opts...)
-	r := New(Config{Name: "test", Version: "0.1.0", DisableValidate: true}, all...)
+	streams := &stdioStreams{in: svcIn, out: svcOut}
+	all := append([]func(*cli.Root){with(Config{}, streams)}, opts...)
+	r := cli.New(cli.Config{Name: "test", Version: "0.1.0", DisableValidate: true}, all...)
 	stdioCommands(r)
-	r.mcpStdio = &mcpStdioStreams{in: svcIn, out: svcOut}
 	r.Cmd.SetErr(io.Discard)
 
 	p := &stdioPeer{t: t, w: hostW, lines: make(chan string, 64), errs: make(chan error, 1),
@@ -247,7 +248,7 @@ func TestMCPStdioKeepsStdoutForTheProtocol(t *testing.T) {
 
 func TestMCPStdioAdmitsAuthRequiredOnSpawnTrust(t *testing.T) {
 	audit := &stdioAudit{}
-	p := startStdio(t, WithAuditSinks(cmdsurface.SinkSpec{Sink: audit, OnOK: true, OnError: true}))
+	p := startStdio(t, cli.WithAuditSinks(cmdsurface.SinkSpec{Sink: audit, OnOK: true, OnError: true}))
 	p.initialize(false)
 
 	text, isErr := p.call(2, "secret")
@@ -269,7 +270,7 @@ func TestMCPStdioAdmitsAuthRequiredOnSpawnTrust(t *testing.T) {
 func TestMCPStdioConfirmationNeedsElicitation(t *testing.T) {
 	t.Run("refused without elicitation", func(t *testing.T) {
 		audit := &stdioAudit{}
-		p := startStdio(t, WithAuditSinks(cmdsurface.SinkSpec{Sink: audit, OnOK: true, OnError: true}))
+		p := startStdio(t, cli.WithAuditSinks(cmdsurface.SinkSpec{Sink: audit, OnOK: true, OnError: true}))
 		p.initialize(false)
 		text, isErr := p.call(2, "deploy")
 		assert.True(t, isErr)
@@ -330,7 +331,7 @@ func TestMCPStdioConfirmationNeedsElicitation(t *testing.T) {
 }
 
 func TestMCPStdioRefusesAnHTTPAddress(t *testing.T) {
-	r := New(Config{Name: "test", Version: "0.1.0", DisableValidate: true}, WithMCP(MCPConfig{}))
+	r := cli.New(cli.Config{Name: "test", Version: "0.1.0", DisableValidate: true}, With(Config{}))
 	r.Cmd.SetErr(io.Discard)
 	r.SetArgs([]string{"serve", "mcp", "--stdio", "--mcp-addr", "127.0.0.1:0"})
 	err := r.Execute(context.Background())
@@ -352,8 +353,8 @@ func (denyListeners) Allow(_, network string) (bool, string) {
 
 func TestMCPServiceClassFollowsTheTransport(t *testing.T) {
 	// A policy that forbids listeners refuses the HTTP transport...
-	r := New(Config{Name: "test", Version: "0.1.0", DisableValidate: true},
-		WithMCP(MCPConfig{}), WithServicePolicy(denyListeners{}))
+	r := cli.New(cli.Config{Name: "test", Version: "0.1.0", DisableValidate: true},
+		With(Config{}), cli.WithServicePolicy(denyListeners{}))
 	r.Cmd.SetErr(io.Discard)
 	r.SetArgs([]string{"serve", "mcp", "--mcp-addr", "127.0.0.1:0"})
 	err := r.Execute(context.Background())
@@ -362,7 +363,7 @@ func TestMCPServiceClassFollowsTheTransport(t *testing.T) {
 	assert.Equal(t, 5, oe.ExitCode)
 
 	// ...and still admits a stdio server, which listens on nothing.
-	p := startStdio(t, WithServicePolicy(denyListeners{}))
+	p := startStdio(t, cli.WithServicePolicy(denyListeners{}))
 	p.initialize(false)
 	text, _ := p.call(2, "ping")
 	assert.Equal(t, "pong", text)

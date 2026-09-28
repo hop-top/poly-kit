@@ -57,9 +57,10 @@ command tree through the same gates (policy, `WithPermission`,
 |--------|---------|------------|
 | `WithAPI(APIConfig{})` | `api` (on by default) | REST under `/v1/commands`, `127.0.0.1:8080` |
 | `WithSocket(SocketConfig{})` | `socket` | NDJSON over a `0600` Unix socket |
-| `WithMCP(MCPConfig{})` | `mcp` | MCP tools over streamable HTTP (`127.0.0.1:8081/mcp`), or stdio with `serve mcp --stdio` |
+| `mcpserve.With(mcpserve.Config{})` | `mcp` | MCP tools over streamable HTTP (`127.0.0.1:8081/mcp`), or stdio with `serve mcp --stdio` |
 
-`mcp` over stdio admits `kit/auth-required` leaves on the spawn's trust
+The `mcp` service lives in [`mcpserve/`](mcpserve/) so a CLI that
+does not serve MCP does not link the MCP SDK. `mcp` over stdio admits `kit/auth-required` leaves on the spawn's trust
 and keeps stdout for the protocol; `kit/requires-confirmation` leaves need
 an accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
 [serve-lifecycle contract](../../../docs/contracts/serve-lifecycle.md#the-mcp-service).
