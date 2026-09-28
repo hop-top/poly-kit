@@ -28,7 +28,9 @@ type routeSlot struct {
 // there (HTTP-plane slot 5) and names its span by route, so it
 // installs this slot and reads the pattern back. An empty read means
 // no Router matched a route: a probe answered ahead of it, a refusal
-// before it, or an unmatched path.
+// by middleware outside it, or an unmatched path. A refusal by the
+// Router's own outer middleware (see [WithOuterMiddleware]) still
+// reports the route the request addressed.
 func ObserveRoute(r *http.Request) (*http.Request, func() string) {
 	slot := &routeSlot{}
 	r = r.WithContext(context.WithValue(r.Context(), routeSlotKey{}, slot))
@@ -46,7 +48,16 @@ func ObserveRoute(r *http.Request) (*http.Request, func() string) {
 // then replaces it, so the route reported is the one the full path
 // matched.
 func recordRoute(r *http.Request) {
-	if r == nil || r.Pattern == "" {
+	if r == nil {
+		return
+	}
+	recordPattern(r, r.Pattern)
+}
+
+// recordPattern notes pattern for an observer installed by
+// [ObserveRoute]; a no-op when nothing observes or pattern is empty.
+func recordPattern(r *http.Request, pattern string) {
+	if pattern == "" {
 		return
 	}
 	slot, ok := r.Context().Value(routeSlotKey{}).(*routeSlot)
@@ -55,5 +66,12 @@ func recordRoute(r *http.Request) {
 	}
 	slot.mu.Lock()
 	defer slot.mu.Unlock()
-	slot.pattern = r.Pattern
+	slot.pattern = pattern
+}
+
+// routeObserved reports whether an observer installed by
+// [ObserveRoute] is waiting on r.
+func routeObserved(r *http.Request) bool {
+	_, ok := r.Context().Value(routeSlotKey{}).(*routeSlot)
+	return ok
 }

@@ -27,6 +27,18 @@
 // level/style the caller's logger has. stdlib slog's `slog.Info` is
 // NOT directly assignable — wrap it or migrate to kit/log.
 //
+// [WithMiddleware] wraps each route registered through Handle and
+// Mount. Routes registered on the mux directly — huma's operations,
+// /openapi.json, /docs and /schemas, /capabilities — and unmatched
+// paths never pass through it. Middleware that guards the whole
+// Router (authentication, body limits, compression) goes in
+// [WithOuterMiddleware], which every request passes:
+//
+//	r := api.NewRouter(
+//		api.WithOpenAPI(api.OpenAPIConfig{Title: "svc", Version: "1.0.0"}),
+//		api.WithOuterMiddleware(api.Auth(verify)),
+//	)
+//
 // # OpenAPI
 //
 // Pass [WithOpenAPI] to enable OpenAPI 3.1 spec generation via huma.

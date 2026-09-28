@@ -19,6 +19,11 @@ type Router struct {
 	humaAPI    huma.API
 	capCfg     *capConfig
 	routes     []routeEntry
+	// outer is the middleware that wraps the router as a whole (see
+	// [WithOuterMiddleware]); serve is outer applied around the mux,
+	// built once by NewRouter.
+	outer []Middleware
+	serve http.Handler
 }
 
 // NewRouter creates a Router with the given options.
@@ -32,7 +37,31 @@ func NewRouter(opts ...RouterOption) *Router {
 	if r.capCfg != nil {
 		r.registerCapabilitiesEndpoint()
 	}
+	if len(r.outer) > 0 {
+		r.serve = Chain(r.outer...)(http.HandlerFunc(r.dispatch))
+	}
 	return r
+}
+
+// WithOuterMiddleware adds middleware that wraps the Router as a
+// whole: every request the Router receives passes through it, whether
+// it matches a route registered with Handle or Mount, one registered
+// on the mux directly (huma's operations, /openapi.json, /docs and
+// /schemas, /capabilities), or nothing at all.
+//
+// [WithMiddleware] is per route: it wraps each handler registered
+// through Handle and Mount, and nothing else. Middleware that guards
+// the Router — authentication, body limits, compression — belongs
+// here, where no route can be registered around it. Outer middleware
+// runs before any per-route middleware, in the order given.
+//
+// A request outer middleware refuses never reaches the mux, yet an
+// observer installed with [ObserveRoute] still learns the route it
+// addressed.
+func WithOuterMiddleware(mws ...Middleware) RouterOption {
+	return func(r *Router) {
+		r.outer = append(r.outer, mws...)
+	}
 }
 
 // Handle registers a handler for the given method and path.
@@ -84,7 +113,24 @@ func (r *Router) MountResource(prefix string, h http.Handler, ops ...string) {
 // ServeHTTP implements http.Handler. The mux sets req.Pattern on the
 // request it dispatches; ServeHTTP reports it to an [ObserveRoute]
 // observer outside the router.
+//
+// Outer middleware (see [WithOuterMiddleware]) runs first. The route
+// is resolved ahead of it for an observer, so a request it refuses is
+// still reported by route rather than as unmatched.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if r.serve == nil {
+		r.dispatch(w, req)
+		return
+	}
+	if routeObserved(req) {
+		_, pattern := r.mux.Handler(req)
+		recordPattern(req, pattern)
+	}
+	r.serve.ServeHTTP(w, req)
+}
+
+// dispatch hands req to the mux and reports the pattern it matched.
+func (r *Router) dispatch(w http.ResponseWriter, req *http.Request) {
 	r.mux.ServeHTTP(w, req)
 	recordRoute(req)
 }

@@ -18,8 +18,10 @@ type capConfig struct {
 // WithCapabilities enables the GET /capabilities endpoint that returns
 // a CapabilitySet built from all registered routes on the Router.
 //
-// Security: the endpoint is unauthenticated by default and exposes route
-// topology. Pass authentication middleware to restrict access.
+// Security: the endpoint exposes route topology. The Router's
+// per-route middleware ([WithMiddleware]) does not reach it; its
+// outer middleware ([WithOuterMiddleware]) does, and so does any mw
+// passed here.
 func WithCapabilities(svc, version string, mw ...Middleware) RouterOption {
 	return func(r *Router) {
 		r.capCfg = &capConfig{serviceName: svc, version: version, middleware: mw}

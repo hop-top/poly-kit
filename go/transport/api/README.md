@@ -12,6 +12,7 @@ adopter-driven mounting of arbitrary surfaces is
 ## Use it when
 
 - build the router and wrap handlers → `api.NewRouter`, `APIConfig.Handlers`, `APIConfig.Resources`
+- guard every route, huma's and unmatched paths included → `api.WithOuterMiddleware`; `api.WithMiddleware` wraps only routes registered through `Handle` and `Mount`
 - publish request start and end on the bus → `api.WithBusIntegration(b, ...)`
 - rebrand the emitted topics → `api.WithTopicPrefix`, `api.WithTopics`
 - get every conformant command as a REST route for free → register the `api` service; no `Expose`, no `MountREST`
