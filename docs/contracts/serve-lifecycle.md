@@ -696,8 +696,9 @@ of any of them.
   disconnect cancels the invocation on both transports. Whether the
   command stops is the runner's contract.
 - The idempotency key MUST reach the leaf's `--idempotency-key` flag
-  when the leaf registers one and the caller did not set it. Dedupe
-  is the command's own middleware; the transport keeps no store.
+  when the leaf registers one and the caller did not set it. Replay
+  is the bridge's, at slot 8 ([Idempotency](#idempotency)); a
+  transport only carries the key.
 
 ### Permission
 
@@ -1304,7 +1305,8 @@ What each slot does:
 - **8.** A hit answers from a store and runs nothing: an idempotency
   replay for a call carrying a key the store has seen from the same
   principal, or a read-tier cache hit for a leaf declaring
-  `kit/cache-ttl`. A miss continues.
+  `kit/cache-ttl`. Idempotency is consulted first
+  ([Idempotency](#idempotency)). A miss continues.
 - **10.** The confirmation a surface obtains from a person: an MCP
   elicitation, an `X-Confirm-Token`. The command's own `--confirm`
   gate is unchanged; it runs inside the command, at 12, and answers
@@ -1704,6 +1706,74 @@ Every invocation-plane refusal reaches the audit sinks, as today.
 HTTP-plane refusals MUST be counted by code in metrics and logged,
 and SHOULD reach the sinks through `Bridge.Audit` when the request
 addresses a projected command, as authentication refusals already do.
+
+### Idempotency
+
+The `idempotency` block (invocation 8 and 13). A remote call that
+carries an idempotency key and repeats a call its principal already
+completed is answered with that call's recorded `Result`, and nothing
+runs. Authority:
+[`go/transport/cmdsurface`](../../go/transport/cmdsurface/)
+(`idempotency.go`).
+
+The key, per surface:
+
+| Surface | Carries the key in | Marks a replay with |
+|---|---|---|
+| REST (api service) | `Idempotency-Key` request header | `Idempotent-Replayed: true` response header, on unary and stream routes |
+| Connect (rpc service) | `Invocation.meta.idempotency_key`, else the `Idempotency-Key` request header | `Idempotent-Replayed: true` response header |
+| MCP | `params._meta["hop.top/idempotency-key"]`, else the `Idempotency-Key` header of an HTTP request | result `_meta["hop.top/idempotent-replayed"]: true` |
+| Socket | the request's `idempotency_key` | the response's `"replayed": true` |
+
+Rules:
+
+- **Scope.** A key is scoped to the call's tenant, caller and surface;
+  a call without a caller is scoped to its client host, and with
+  neither to the surface. One principal's key never answers another's
+  call. The surface stays in the scope while a caller on some
+  surfaces is a claim rather than an identity slot 4 established.
+- **Same call.** A key is bound to the invocation it was first used
+  for: the command path, its arguments and its flags, as the runner
+  renders them, less the key. A call reusing a key for a different
+  invocation is refused `idempotency_key_reused`, whether the first
+  call is running or recorded.
+- **Still running.** A call whose key names a call from the same scope
+  that has not finished is refused `idempotency_conflict`. A caller
+  retries after the first call ends and receives its answer.
+- **Record.** At 13, a run that returned no error and exit code `0` is
+  recorded under its key. A failed run is not: the caller's retry
+  runs again. A stream is recorded like a run, from the `Result` its
+  done event carries, and a replayed stream sends the recorded output
+  line by line, then the result.
+- **Replay.** A replay runs nothing: it consumes no quota, is never
+  put to a person (slot 10), and holds no concurrency slot. It has
+  passed slots 1–7 like any call and is audited, the record's
+  `Extra` carrying `idempotent_replayed: "true"`.
+- **Order within 8.** Idempotency replay answers first; the read-tier
+  result cache is consulted only for a call it let through.
+- **Lifetime.** A record replays for `ttl` after it was recorded
+  (default `24h`); an older one is ignored and the key is free again.
+  A reservation for a call admitted and never run is released when
+  its request ends, or sooner when the surface abandons the
+  admission.
+- **Store.** Records live in `serve-idempotency.db` in the tool's
+  state directory, separate from the CLI's own `--idempotency-key`
+  store, opened on the first keyed call. `cli.WithServeIdempotencyStore`
+  replaces it (a shared store for replicas, a memory store in
+  tests). Calls in flight are tracked per process: two processes
+  sharing a store replay each other's records, but do not see each
+  other's running calls.
+- **Store failure.** A keyed call whose store cannot be opened or read
+  fails as an internal error rather than run unprotected. A record
+  that cannot be written is dropped; the caller still receives the
+  run's answer.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `services.<svc>.idempotency.enabled` | `true` | `false` runs every call, key or not |
+| `services.<svc>.idempotency.ttl` | `24h` | how long a record replays; a positive duration |
+
+Both keys may be set under `services.all`.
 
 ## Execution
 

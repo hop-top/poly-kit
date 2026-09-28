@@ -237,6 +237,14 @@ Refusals where the command never ran are distinct from exit codes:
 | command withheld on this surface | 404 | `not_invocable` |
 | policy refuses a destructive command | 403 | `destructive_blocked` |
 | the permission gate refuses this caller | 403 | `permission_denied` |
+| the `Idempotency-Key` names a call still running | 409 | `idempotency_conflict` |
+| the `Idempotency-Key` was used for a different call | 422 | `idempotency_key_reused` |
+
+A call that repeats one its caller already completed under the same
+`Idempotency-Key` is not a refusal: it answers with the first call's
+status and body, and `Idempotent-Replayed: true` (`CommandResult.Replayed`
+on the executor side). Rules:
+[contract, Idempotency](../../contracts/serve-lifecycle.md#idempotency).
 
 A `not_invocable` body carries the descriptor's reason, which is what
 separates "no such command" from "that command exists and is withheld".
@@ -532,7 +540,7 @@ executor on `CommandRequest.Meta`:
 | `RequestID` | the `RequestID` middleware (`X-Request-ID`, issued when absent, echoed) |
 | `TraceID` | the trace-id field of `traceparent`, else `X-Trace-ID` |
 | `Traceparent`, `Tracestate` | the W3C headers, when `traceparent` is well-formed (`TraceContextFromHeader`) |
-| `IdempotencyKey` | `Idempotency-Key` |
+| `IdempotencyKey` | `Idempotency-Key`; see replay above |
 | `RemoteAddr`, `ReceivedAt` | the request |
 
 The request's own context is passed through unchanged, so a client

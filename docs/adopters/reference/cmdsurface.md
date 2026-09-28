@@ -298,6 +298,30 @@ reflector's reason. `SubprocessRunner` holds no tree and cannot
 classify; discovery and the bridge withhold both classes before it is
 reached.
 
+### Idempotency replay
+
+`WithIdempotency(ledger, ttl)` turns replay on: a remote call whose
+`Meta.IdempotencyKey` its principal already used for the same
+invocation is answered with the recorded `Result`, `Replayed` set, and
+nothing runs. A key still running is refused `ErrIdempotencyConflict`
+(wraps `domain.ErrConflict`); a key used for another invocation,
+`ErrIdempotencyKeyReused` (wraps `domain.ErrValidation`).
+`IdempotencyRefusalCode(err)` names either. A run that succeeds is
+recorded; a failed one is not.
+
+```go
+ledger := cmdsurface.NewIdempotencyLedger(idemstore.Memory())
+b := cmdsurface.New(root, cmdsurface.WithIdempotency(ledger, time.Hour))
+```
+
+Share one ledger between bridges that answer for the same keys; the
+kit-shipped services share one per process
+(`cli.WithServeIdempotencyStore` sets its store).
+`Admission.Replayed()` tells a surface before the run that nothing
+will run, so it asks no person; `Admission.Abandon()` frees the key of
+an admission that will not run. Rules, markers and keys:
+[contract, Idempotency](../../contracts/serve-lifecycle.md#idempotency).
+
 ### Admission
 
 `Bridge.Invoke` is two halves a streaming transport uses apart.

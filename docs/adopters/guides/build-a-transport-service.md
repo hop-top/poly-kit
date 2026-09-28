@@ -286,7 +286,9 @@ These are consequences for you as the author, not background theory:
   local host, authenticate before calling the invoker, and put only a
   verified principal and tenant in `Meta.Caller` and `Meta.Tenant`;
   fill `Meta.RequestID`, `Meta.TraceID`, and `Meta.IdempotencyKey`
-  from whatever your wire format carries. Report a refused
+  from whatever your wire format carries — the bridge replays a
+  repeated key and marks the `Result` `Replayed`, which your wire
+  format should tell the caller. Report a refused
   authentication through `Bridge.Audit` with
   `cmdsurface.ErrAuthRefused` so it lands in the same audit trail as
   the bridge's own verdicts. The permission gate and the audit sinks
@@ -297,7 +299,8 @@ These are consequences for you as the author, not background theory:
   output, admit the call through the bridge's gates with
   `Bridge.Admit`, answer a refusal in your own protocol, then run it
   with `Admission.Stream` — the same gates, audit and idempotency
-  forwarding as `Invoke`. See
+  replay as `Invoke`. An admission you decide not to run releases its
+  key with `Admission.Abandon`. See
   [`bridge.go`](../../../go/transport/cmdsurface/bridge.go).
 - **No retries or backpressure.** Concurrency and load shedding are
   yours.

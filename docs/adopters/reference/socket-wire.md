@@ -28,7 +28,7 @@ are answered in order. A connection may carry any number of requests.
 | `tenant` | `string` | no | claimed tenant, under the same terms as `caller` |
 | `request_id` | `string` | no | request identifier for the audit trail; issued by the server when absent |
 | `trace_id` | `string` | no | trace identifier propagated across surfaces |
-| `idempotency_key` | `string` | no | forwarded to the command's `--idempotency-key` flag when it registers one |
+| `idempotency_key` | `string` | no | makes the request replayable: a repeat of a request that succeeded, from the same `caller`, is answered from its record with `"replayed":true` and nothing runs ([contract](../../contracts/serve-lifecycle.md#idempotency)); also forwarded to the command's `--idempotency-key` flag when it registers one |
 
 `path` must be non-empty. Without an [`Authenticator`](#authentication),
 `caller` and `tenant` are **not** credentials: they are recorded,
@@ -59,6 +59,7 @@ never verified, and grant nothing.
 | `error` | `object` | present when `ok` is `false` |
 | `error.code` | `string` | stable symbol, table below |
 | `error.message` | `string` | human-readable detail |
+| `replayed` | `bool` | `true` when `result` is the recorded answer to an earlier request with the same `idempotency_key`; omitted otherwise |
 
 `ok:true` with a non-zero `exit_code` means the command ran and
 failed. `ok:false` means it never ran.
@@ -101,6 +102,7 @@ the socket nothing.
 | `DENIED` | the permission gate refused this caller; the message carries its stable reason |
 | `UNAUTHENTICATED` | the configured `Authenticator` refused the request; never sent without one |
 | `RATE_LIMITED` | the caller's rate limit is spent; `retry_after_ms` says how long until it refills |
+| `CONFLICT` | the `idempotency_key` names a request still running (`idempotency_conflict` in the message), or was used for a different command (`idempotency_key_reused`) |
 | `INVALID` | malformed request line, or empty `path` |
 | `INTERNAL` | any other runner error |
 

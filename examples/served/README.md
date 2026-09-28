@@ -54,6 +54,8 @@ claim out.
   `audit verify` (exit 71 on an edited record)
 - `mcp_test.go`: the `mcp` service over HTTP
 - `rpc_test.go`: the `rpc` service over Connect, gRPC (h2c) and gRPC-Web
+- `idempotency_test.go`: a write retried with its `Idempotency-Key` runs
+  once, over REST and the socket
 - `mcp_stdio_test.go`: the built binary as a desktop host spawns it,
   `serve mcp --stdio`
 

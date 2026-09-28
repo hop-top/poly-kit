@@ -726,7 +726,7 @@ X-Request-ID: req-42
 | `X-Request-ID` | `Meta.RequestID` | issued by the server when absent; echoed on the response |
 | `traceparent` | `Meta.TraceID`, `Meta.Traceparent` | the W3C trace-id field; `X-Trace-ID` is the fallback. A well-formed value also lands whole in `Meta.Traceparent` and reaches a subprocess as `TRACEPARENT` |
 | `tracestate` | `Meta.Tracestate` | kept only beside a well-formed `traceparent` |
-| `Idempotency-Key` | `Meta.IdempotencyKey` | forwarded to the command's `--idempotency-key` flag when it has one |
+| `Idempotency-Key` | `Meta.IdempotencyKey` | makes the call replayable (below); also forwarded to the command's `--idempotency-key` flag when it has one |
 
 Over the socket the same values are request fields:
 
@@ -737,6 +737,38 @@ $ echo '{"path":["widget","list"],"request_id":"req-42","trace_id":"4bf92f3577b3
 
 A caller that disconnects mid-command cancels the command's context
 on both transports; a command that honors its context stops.
+
+A caller that retries a write sends the same `Idempotency-Key` again.
+If the first call finished, the retry gets its answer and nothing runs
+twice:
+
+```bash
+curl -s -i -X POST http://10.0.0.5:8080/v1/commands/widget/add \
+  -H 'Authorization: Bearer t0k3n-alice' \
+  -H 'Idempotency-Key: 8f1c2a' -d '{"flags":{"name":"w1"}}'
+```
+
+```http
+HTTP/1.1 200 OK
+Idempotent-Replayed: true
+
+{"exit_code":0,"stdout":"added w1\n"}
+```
+
+- The key is scoped to the caller: alice's key never answers bob.
+- The same key for a different command or different flags is refused
+  `422 idempotency_key_reused`; a retry while the first call still runs
+  is refused `409 idempotency_conflict`.
+- Only a call that succeeded (exit code `0`) is recorded, so a failed
+  call retried with its key runs again.
+- A record replays for 24 hours; set `services.<svc>.idempotency.ttl`
+  to change it, or `services.<svc>.idempotency.enabled: false` to run
+  every call. The records live in `serve-idempotency.db` in the tool's
+  state directory.
+
+The rpc and mcp services and the socket take the key too; the
+[contract](../../contracts/serve-lifecycle.md#idempotency) lists where
+each carries it and how each marks a replay.
 
 ### 8. Keep browsers out: Host, Origin, response headers
 
@@ -1152,8 +1184,10 @@ Absence here is deliberate; each of these belongs somewhere else:
   receives the connection so an authenticator can ask the kernel
   (`SO_PEERCRED`, `LOCAL_PEERCRED`) who is on the other end; kit
   ships no such authenticator.
-- **A dedupe store.** The idempotency key reaches the command's flag
-  and the audit record; replay is the command's own middleware.
+- **Conflict detection across processes.** Replicas that share a
+  store (`cli.WithServeIdempotencyStore`) replay each other's records,
+  but a call still running is known only to its own process: the same
+  key sent to two replicas at the same moment runs on both.
 - **Forced remote execution.** Interactive commands, destructive
   commands the policy withholds, and commands the permission gate
   refuses stay refused. There is no override.
