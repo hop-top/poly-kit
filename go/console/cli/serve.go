@@ -154,6 +154,9 @@ func serveParentCmd(root *Root) *cobra.Command {
 
 // runServe resolves the invocation and runs the resulting set.
 func runServe(cmd *cobra.Command, root *Root, args []string) error {
+	// Validation may open audit chains before a later step fails;
+	// whatever path this returns by, they are released.
+	defer func() { _ = root.closeAuditChains() }()
 	reg := root.serveReg
 	if reg == nil {
 		return output.UsageError("no services registered")
@@ -236,6 +239,11 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	)
 
 	res := sup.Run(ctx, outcome.Selected, configs)
+	// Every service has stopped: nothing can audit any more, so the
+	// chains they opened are synced and released.
+	if err := root.closeAuditChains(); err != nil && res.Err == nil {
+		return err
+	}
 	if res.Err != nil {
 		return res.Err
 	}

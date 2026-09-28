@@ -18,6 +18,9 @@ import (
 type serveAuthState struct {
 	permission cmdsurface.PermissionFunc
 	sinks      cmdsurface.SinkSet
+	// chains holds the audit chains services.<svc>.audit.sinks
+	// opened, shared by every service that names the same file.
+	chains auditChains
 	// bridgeOpts are applied last on every kit-shipped service's
 	// bridge. Not exposed: tests use it to install a stub Runner
 	// behind the real serve path.
@@ -62,8 +65,8 @@ func WithAuditSinks(specs ...cmdsurface.SinkSpec) func(*Root) {
 
 // serveBridgeOptions returns the bridge options every kit-shipped
 // transport service applies at Start: the composed permission gate,
-// the audit sinks with svc's audit.redact block, and any
-// test-injected options. It is resolved at Start, not at
+// the audit sinks — registered in code, then svc's audit.sinks list —
+// with svc's audit.redact block, and any test-injected options. It is resolved at Start, not at
 // registration, because --policy is parsed and adopter options run
 // only after the service was constructed.
 func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
@@ -75,9 +78,14 @@ func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
 	if err != nil {
 		return nil, err
 	}
+	configured, err := r.serveConfiguredAuditSinks(svc)
+	if err != nil {
+		return nil, err
+	}
 	opts := []cmdsurface.Option{
 		cmdsurface.WithPermission(perm),
 		cmdsurface.WithSinks(r.serveAuth.sinks...),
+		cmdsurface.WithSinks(configured...),
 		cmdsurface.WithAuditRedaction(redaction),
 	}
 	return append(opts, r.serveAuth.bridgeOpts...), nil
@@ -105,6 +113,15 @@ func (r *Root) servePermission() (cmdsurface.PermissionFunc, error) {
 		}
 		return adopter(ctx, meta, leaf)
 	}, nil
+}
+
+// refuseAll is the permission gate of a bridge whose shared options
+// could not be resolved: it refuses every call with why, so a service
+// never runs a command without its gate and audit sinks.
+func refuseAll(err error) cmdsurface.PermissionFunc {
+	return func(context.Context, cmdsurface.Meta, *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+		return cmdsurface.PermissionDecision{Reason: err.Error(), CallerIndependent: true}
+	}
 }
 
 // permissionFromEngine adapts the policy engine to the bridge's gate.
@@ -190,10 +207,16 @@ func (r *Root) servePolicyConfigured() bool {
 // replayed root flags), the invocation tracing and metrics of the
 // provider [WithObservability] linked, then the composed permission
 // gate ([WithPermission] after the --policy engine), the audit sinks
-// ([WithAuditSinks]) with svc's audit.redact block, and any
-// test-injected options. It is the same set the socket service's
-// bridge gets, and it must be called at Start — --policy is parsed
-// and every Root option has run only by then.
+// ([WithAuditSinks], then svc's audit.sinks list) with svc's
+// audit.redact block, and any test-injected options. It is the same
+// set the socket service's bridge gets, and it must be called at
+// Start — --policy is parsed and every Root option has run only by
+// then.
+//
+// On error the options returned refuse every call: a caller that
+// cannot report the error builds its bridge from them rather than
+// serve ungated or unaudited. [ValidateServeBridge] makes that path
+// unreachable in practice.
 //
 // A service living outside this package — the MCP service in
 // go/console/cli/mcpserve — builds its bridge from it, so it meets
@@ -201,7 +224,7 @@ func (r *Root) servePolicyConfigured() bool {
 func ServeBridgeOptions(r *Root, svc string) ([]cmdsurface.Option, error) {
 	shared, err := r.serveBridgeOptions(svc)
 	if err != nil {
-		return nil, err
+		return []cmdsurface.Option{cmdsurface.WithPermission(refuseAll(err))}, err
 	}
 	opts := append(r.serveRunnerOptions(), r.serveObservabilityOptions(svc)...)
 	return append(opts, shared...), nil
@@ -209,14 +232,19 @@ func ServeBridgeOptions(r *Root, svc string) ([]cmdsurface.Option, error) {
 
 // ValidateServeBridge is the configuration check the kit-shipped
 // transport service svc runs in its Validate hook: a --policy that
-// cannot load, an audit.redact block [ServeBridgeOptions] would
-// refuse, or a root factory that cannot build a usable tree, is a
-// usage error before anything binds.
+// cannot load, an audit.redact block or audit.sinks list
+// [ServeBridgeOptions] would refuse, an audit chain that cannot open,
+// or a root factory that cannot build a usable tree, is a usage error
+// before anything binds. The chains it opens are the ones Start
+// reuses.
 func ValidateServeBridge(r *Root, svc string) error {
 	if _, err := r.servePermission(); err != nil {
 		return err
 	}
-	if _, err := serveAuditRedaction(r.Viper, svc); err != nil {
+	if err := validateServeAudit(r, svc); err != nil {
+		return err
+	}
+	if _, err := r.serveConfiguredAuditSinks(svc); err != nil {
 		return err
 	}
 	return r.validateRootFactory()

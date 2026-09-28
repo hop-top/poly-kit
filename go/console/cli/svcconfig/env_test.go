@@ -18,6 +18,7 @@ func TestEnvKey(t *testing.T) {
 		"TOOL_SERVICES_ALL_HEALTH_PATH_PREFIX":           "services.all.health.path_prefix",
 		"TOOL_SERVICES_ALL_AUDIT_REDACT_SECRET_FLAGS":    "services.all.audit.redact.secret_flags",
 		"TOOL_SERVICES_API_AUDIT_REDACT_MAX_FIELD_BYTES": "services.api.audit.redact.max_field_bytes",
+		"TOOL_SERVICES_API_AUDIT_SINKS":                  "services.api.audit.sinks",
 		"TOOL_SERVICES_API_METRICS_ENDPOINT":             "services.api.metrics.endpoint",
 		"TOOL_SERVICES_API_METRICS_SCRAPE_ENABLED":       "services.api.metrics.scrape.enabled",
 		"TOOL_SERVICES_ALL_METRICS_SCRAPE_ALLOW_REMOTE":  "services.all.metrics.scrape.allow_remote",

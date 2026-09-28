@@ -77,3 +77,13 @@ func serveAuditRedaction(v *viper.Viper, svc string) (cmdsurface.AuditRedaction,
 	}
 	return out, nil
 }
+
+// validateServeAudit refuses svc's audit configuration when either
+// block does not parse: the audit.redact block or the audit.sinks list.
+func validateServeAudit(r *Root, svc string) error {
+	if _, err := serveAuditRedaction(r.Viper, svc); err != nil {
+		return err
+	}
+	_, err := serveAuditSinkConfigs(r.Viper, r.Config.Name, svc)
+	return err
+}

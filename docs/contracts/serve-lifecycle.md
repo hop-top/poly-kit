@@ -739,6 +739,15 @@ of any of them.
   the verdict: the refusing error, or the command's Result.
 - `cli.WithAuditSinks` registers sinks on every kit-shipped transport
   service. Sinks are best-effort and MUST NOT change a verdict.
+- `services.<svc>.audit.sinks` (then `services.all.audit.sinks`) adds
+  sinks from configuration. `chain` appends to a hash-chained log
+  (`go/security`); services in one process naming the same file MUST
+  share one log, and a second process MUST be refused at start rather
+  than fork the chain. An entry that does not parse is refused at
+  validation.
+- `<tool> audit verify`, mounted by `cli.WithAuditCommand`, is
+  kit-reserved and so `management-only` on every served surface. A
+  broken chain exits 71, `TAMPER_DETECTED`.
 - CLI and in-process library invocations are not audited: the first
   is the operator's own act, the second has no caller to attribute.
 
@@ -1395,6 +1404,10 @@ Rules:
 - An unknown key inside a registered block is a configuration failure
   at exit `2`. A misspelled key that silently leaves a limit off is
   the failure this prevents.
+- A list-of-entries key (`audit.sinks`) is checked for shape the same
+  way: each entry is a bare type or a map of the keys an entry
+  accepts, and anything else — a map where the list belongs, an
+  unknown entry key — is refused at exit `2`.
 - The block names in the registry are reserved inside **every**
   `services.<svc>` block, the adopter's services included, because
   invocation-plane middleware reaches every transport service.

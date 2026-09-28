@@ -130,7 +130,9 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 		// The permission gate and audit sinks are resolved at Start:
 		// --policy is parsed and every adopter option has run only
 		// then. Validate has already refused a --policy that cannot
-		// load, so the error path here is unreachable in practice.
+		// load and opened the audit chains, so the error path here is
+		// unreachable in practice; were it reached, the bridge refuses
+		// every call rather than run one unaudited or ungated.
 		// The runner is resolved at Start for the same reason: a root
 		// factory replays the operator's parsed root flags onto every
 		// tree it builds. The shared options go last so a
@@ -138,7 +140,7 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 		transportsvc.WithBridgeOptionsFunc(func() []cmdsurface.Option {
 			shared, err := root.serveBridgeOptions(SocketServiceName)
 			if err != nil {
-				return nil
+				return []cmdsurface.Option{cmdsurface.WithPermission(refuseAll(err))}
 			}
 			opts := append(root.serveRunnerOptions(), root.serveObservabilityOptions(SocketServiceName)...)
 			return append(opts, shared...)
@@ -150,7 +152,14 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 			if _, err := root.servePermission(); err != nil {
 				return err
 			}
-			if _, err := serveAuditRedaction(root.Viper, SocketServiceName); err != nil {
+			if err := validateServeAudit(root, SocketServiceName); err != nil {
+				return err
+			}
+			// The bridge options func above cannot report an error, so
+			// the audit chains open here, where one can: a chain
+			// another process holds fails the service before it
+			// starts. Start reuses what this opened.
+			if _, err := root.serveConfiguredAuditSinks(SocketServiceName); err != nil {
 				return err
 			}
 			return root.validateRootFactory()

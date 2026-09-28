@@ -80,6 +80,12 @@ func TestValidateRefusesUnknownKeys(t *testing.T) {
 		"service key under all":          {"services.all.addr", "0.0.0.0:1", "services.all.addr: not a middleware key"},
 		"unknown block under all":        {"services.all.ratelimit.enabled", true, "services.all.ratelimit.enabled: not a middleware key"},
 		"scalar services.all":            {"services.all", "x", "services.all: must be a block"},
+		"unknown key in audit":           {"services.api.audit.sink", []string{"chain"}, `services.api.audit.sink: unknown key "sink"; audit accepts sinks`},
+		"scalar audit block":             {"services.all.audit", "chain", "services.all.audit: must be a block with keys sinks"},
+		"sinks as a map":                 {"services.api.audit.sinks", map[string]any{"type": "chain"}, "services.api.audit.sinks: must be a list of entries, each a type or a map with keys fsync, max_bytes, max_files, on, path, paths, surfaces, type"},
+		"sinks as a number":              {"services.api.audit.sinks", 3, "services.api.audit.sinks: must be a list of entries"},
+		"sink entry not a map":           {"services.all.audit.sinks", []any{"chain", 42}, "services.all.audit.sinks[1]: want a type or a map with keys fsync, "},
+		"unknown key in a sink entry":    {"services.api.audit.sinks", []any{map[string]any{"type": "chain", "rotate": true, "fsync": "always"}}, `services.api.audit.sinks[0]: unknown key rotate; an entry accepts fsync, max_bytes`},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -107,6 +113,12 @@ func TestValidateAcceptsKnownKeys(t *testing.T) {
 		"services.heartbeat.interval":            "1s",
 		"services.heartbeat.health.path_prefix":  "/h",
 		"services.all.audit.redact.secret_flags": []string{"dsn"},
+		"services.all.audit.sinks":               []string{"chain"},
+		"services.api.audit.sinks": []any{"chain", map[string]any{
+			"type": "chain", "path": "/x", "fsync": "1s", "max_bytes": 1, "max_files": 2,
+			"on": []any{"error"}, "surfaces": []any{"rest"}, "paths": []any{"a *"},
+		}},
+		"services.socket.audit.sinks": "chain, chain",
 	} {
 		v.Set(k, val)
 	}

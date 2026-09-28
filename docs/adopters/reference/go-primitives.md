@@ -258,6 +258,7 @@ interchangeable — this is the table that tells them apart.
 | consent | Telemetry consent state machine, `DO_NOT_TRACK` precedence | Asking before collecting anything | `hop.top/kit/go/core/consent` |
 | sideeffect | Four interfaces (Exec, FS, HTTP, Bus) as the canonical mutation seam | You want `--dry-run` to work by construction | `hop.top/kit/go/runtime/sideeffect` |
 | provenance | Records where each field of an output came from | Proving an answer's origin | `hop.top/kit/go/runtime/provenance` |
+| security | A hash-chained, append-only audit log and its verifier | Proving a record was not edited, deleted or reordered after the fact | `hop.top/kit/go/security` |
 
 Two caveats worth knowing before you rely on these. `netpolicy`
 guards `net/http` only — raw `net.Dial`, `database/sql`, gRPC and
@@ -401,6 +402,7 @@ root, rather than an API to call.
 | llm router | `llm router start/stop/list/config` | `hop.top/kit/go/console/cli/router` |
 | uxp | Build and inspect agent-CLI invocations; package clause is `uxpcmd`, so alias the import | `hop.top/kit/go/core/uxp/invoke/cmd/uxp` |
 | spec | `<tool> spec` — emit your toolspec manifest | `hop.top/kit/go/ai/toolspec/cli` |
+| audit | `audit verify` — check the served transports' audit chain; mount with `cli.WithAuditCommand()` | `hop.top/kit/go/console/cli` |
 | upgrade | Self-upgrade and migration commands | `hop.top/kit/go/core/upgrade` |
 
 ## What is not in this index
@@ -441,15 +443,15 @@ tests do not populate the registry it asserts against.
 `core/xdg/scopetest` is documented in its own source as
 intentionally empty, existing only to host tests.
 
-**Defined but not yet importable.** `go/security` exports nothing
-today, but its scope is fixed: trust in artifacts and execution —
-artifact signature verification (cosign, minisign, SLSA) for
-`upgrade`, sandboxed exec behind `sideeffect`'s `Exec` seam, a
-hash-chained audit log feeding `provenance`, and SARIF
-normalization for scanner findings. Keys stay in `identity`,
-secrets in `secret`, egress in `netpolicy`, rules in `policy` and
-`scope`; repository trust scoring is out of scope. Each family
-gets a row in the tables above when it ships.
+**Partly importable.** `go/security`'s scope is fixed: trust in
+artifacts and execution — artifact signature verification (cosign,
+minisign, SLSA) for `upgrade`, sandboxed exec behind `sideeffect`'s
+`Exec` seam, a hash-chained audit log, and SARIF normalization for
+scanner findings. Only the audit log ships today (its row is in the
+guardrails table above). Keys stay in `identity`, secrets in
+`secret`, egress in `netpolicy`, rules in `policy` and `scope`;
+repository trust scoring is out of scope. Each remaining family gets
+a row when it ships.
 
 **Declared placeholder.** `go/integrations` itself exports nothing
 and says so in its doc comment; its one child, `repohost`, is

@@ -212,12 +212,10 @@ func newService(root *cli.Root, cfg *Config) *rpcService {
 		transportsvc.Expose("*"),
 		transportsvc.WithBridgeOptions(cmdsurface.WithPolicy(cfg.Policy)),
 		transportsvc.WithBridgeOptionsFunc(func() []cmdsurface.Option {
-			shared, err := cli.ServeBridgeOptions(root, ServiceName)
-			if err != nil {
-				// Validate has already refused a --policy that cannot
-				// load, so this path is unreachable in practice.
-				return nil
-			}
+			// On error these refuse every call. Validate has already
+			// refused the configuration that errs here, so this is
+			// unreachable in practice.
+			shared, _ := cli.ServeBridgeOptions(root, ServiceName)
 			return shared
 		}),
 		transportsvc.WithValidate(s.validate),

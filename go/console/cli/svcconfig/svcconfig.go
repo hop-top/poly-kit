@@ -44,6 +44,14 @@ type Block struct {
 	// Keys are the keys the block accepts. Any other key inside the
 	// block is a configuration error.
 	Keys []string
+	// Lists names the keys in Keys whose value is a list of entries,
+	// with the keys a map entry accepts. An entry is a bare string
+	// (a type, every option at its default) or a map of those keys; a
+	// string value is one entry or several, comma or space separated,
+	// the way an environment variable or -c carries a list. Anything
+	// else is a configuration error. The block's owner checks what the
+	// entries say.
+	Lists map[string][]string
 	// Note is appended to an unknown-key error, for a block whose
 	// shape needs explaining (a security floor with no off switch).
 	Note string
@@ -64,6 +72,12 @@ var blocks = []Block{
 	{Name: "body_limit", Keys: []string{"enabled", "max_bytes"}},
 	{Name: "compression", Keys: []string{"enabled", "min_bytes"}},
 	{
+		Name: "audit", Keys: []string{"sinks"},
+		Lists: map[string][]string{
+			"sinks": {"fsync", "max_bytes", "max_files", "on", "path", "paths", "surfaces", "type"},
+		},
+	},
+	{
 		Name: "audit.redact", Keys: []string{"secret_flags", "patterns", "max_field_bytes"},
 		Note: "secret-flag redaction cannot be switched off",
 	},
@@ -73,18 +87,29 @@ var blocks = []Block{
 func Blocks() []Block {
 	out := make([]Block, len(blocks))
 	for i, b := range blocks {
-		b.Keys = slices.Clone(b.Keys)
-		out[i] = b
+		out[i] = b.clone()
 	}
 	return out
+}
+
+// clone deep-copies b, so a caller cannot edit the registry.
+func (b Block) clone() Block {
+	b.Keys = slices.Clone(b.Keys)
+	if b.Lists != nil {
+		lists := make(map[string][]string, len(b.Lists))
+		for k, v := range b.Lists {
+			lists[k] = slices.Clone(v)
+		}
+		b.Lists = lists
+	}
+	return b
 }
 
 // Lookup returns the registered block named name.
 func Lookup(name string) (Block, bool) {
 	for _, b := range blocks {
 		if b.Name == name {
-			b.Keys = slices.Clone(b.Keys)
-			return b, true
+			return b.clone(), true
 		}
 	}
 	return Block{}, false
@@ -235,6 +260,15 @@ func (r Resolver) checkBlocks(keys, scopes []string, bs []Block) []error {
 				}
 				name, _, _ := strings.Cut(rest, ".")
 				if slices.Contains(b.Keys, name) {
+					entryKeys, isList := b.Lists[name]
+					full := base + "." + name
+					if !isList || seen[full] {
+						continue
+					}
+					if err := r.checkList(full, k, entryKeys); err != nil {
+						seen[full] = true
+						errs = append(errs, err)
+					}
 					continue
 				}
 				if _, sub := Lookup(b.Name + "." + name); sub {
@@ -255,6 +289,59 @@ func (r Resolver) checkBlocks(keys, scopes []string, bs []Block) []error {
 		}
 	}
 	return errs
+}
+
+// checkList checks the shape of the list key full, set as k: k is
+// full itself, holding a string or a list whose entries are strings
+// or maps of entryKeys. A key below full means a map where the list
+// belongs.
+func (r Resolver) checkList(full, k string, entryKeys []string) error {
+	shape := fmt.Errorf("%s: must be a list of entries, each a type or a map with keys %s",
+		full, strings.Join(entryKeys, ", "))
+	if k != full {
+		return shape
+	}
+	var entries []any
+	switch x := r.v.Get(full).(type) {
+	case string:
+		return nil
+	case []string:
+		return nil
+	case []any:
+		entries = x
+	default:
+		return shape
+	}
+	for i, e := range entries {
+		var keys []string
+		switch m := e.(type) {
+		case string:
+			continue
+		case map[string]any:
+			for k := range m {
+				keys = append(keys, k)
+			}
+		case map[any]any:
+			for k := range m {
+				keys = append(keys, fmt.Sprint(k))
+			}
+		default:
+			return fmt.Errorf("%s[%d]: want a type or a map with keys %s",
+				full, i, strings.Join(entryKeys, ", "))
+		}
+		var unknown []string
+		for _, k := range keys {
+			if !slices.Contains(entryKeys, k) {
+				unknown = append(unknown, k)
+			}
+		}
+		if len(unknown) > 0 {
+			sort.Strings(unknown)
+			return fmt.Errorf("%s[%d]: unknown key %s; an entry accepts %s",
+				full, i, strings.Join(unknown, ", "), strings.Join(entryKeys, ", "))
+		}
+	}
+	return nil
 }
 
 // scopesOf is every services.<scope> the keys mention.

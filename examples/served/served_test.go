@@ -369,16 +369,17 @@ func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 	got := discover(t, base)
 
 	want := map[string]verdict{
-		"item list":  {Invocable: true},
-		"item watch": {Invocable: true},
-		"item add":   {Invocable: true},
-		"item tag":   {Invocable: true},
-		"item sync":  {Invocable: true},
-		"item purge": {Reason: "unauthorized-destructive"},
-		"shell":      {Reason: "interactive"},
-		"upgrade":    {Reason: "self-hosting"},
-		"serve":      {Reason: "self-hosting"},
-		"status":     {Reason: "management-only"},
+		"item list":    {Invocable: true},
+		"item watch":   {Invocable: true},
+		"item add":     {Invocable: true},
+		"item tag":     {Invocable: true},
+		"item sync":    {Invocable: true},
+		"item purge":   {Reason: "unauthorized-destructive"},
+		"shell":        {Reason: "interactive"},
+		"upgrade":      {Reason: "self-hosting"},
+		"serve":        {Reason: "self-hosting"},
+		"status":       {Reason: "management-only"},
+		"audit verify": {Reason: "management-only"},
 	}
 	for name, v := range want {
 		require.Contains(t, got, name, "%s must be described", name)

@@ -588,6 +588,80 @@ unscanned; `max_field_bytes` in the same block moves that limit. See
 [the cmdsurface reference](../reference/cmdsurface.md#redaction) for
 exactly what is scanned and what it costs.
 
+#### Keep a tamper-evident trail
+
+A JSON-Lines file proves nothing once someone with write access has
+edited it. Name a chain instead, and every record carries the SHA-256
+of the one before it, so an edit, a deletion, a reorder or an
+insertion anywhere in the file is detectable afterwards. Mount the
+command that checks it when you build the root:
+
+```go
+root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
+    cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
+    cli.WithSocket(cli.SocketConfig{}),
+    cli.WithAuditCommand(), // <tool> audit verify
+)
+```
+
+The operator turns the chain on in configuration, for every service or
+per service (the service's list replaces the `services.all` one):
+
+```yaml
+services:
+  all:
+    audit:
+      sinks: [chain]        # $XDG_STATE_HOME/mytool/audit.chain
+```
+
+Each record holds who ran what — surface, command, args, flags,
+caller, tenant, request and trace ids — and the verdict, redacted like
+every audit record and never the command's output:
+
+```json
+{"v":1,"seq":2,"at":"2026-09-28T05:04:25.638373Z","prev":"add2c04c…","rec":{"path":"item add","surface":"socket","exit_code":0,"request_id":"5af7d8ee…","args":["spring"],"flags":{"token":"***REDACTED***"}},"hash":"fc21a39a…"}
+```
+
+`audit verify` checks every configured chain, or one `--file`:
+
+```console
+$ mytool audit verify
+FILE                                    STATUS    RECORDS  FIRST  HEAD  HEAD HASH  BREAK
+/home/op/.local/state/mytool/audit.chain  tampered  1        1      1     add2c04c…  …/audit.chain:2: hash does not match the record's bytes: the record was edited
+TAMPER_DETECTED: audit chain broken at …/audit.chain:2: hash does not match the record's bytes: the record was edited
+$ echo $?
+71
+```
+
+| Exit | Class | Means |
+|---|---|---|
+| 0 | `OK` | every chain holds |
+| 71 | `TAMPER_DETECTED` | a record was edited, deleted, reordered or inserted; the break names file and line. Permanent: keep the file as evidence |
+| 3 | `NOT_FOUND` | no chain is configured, or a configured one does not exist |
+| 1 | `GENERIC` | a chain could not be read |
+
+`audit verify` is kit-reserved, so every served surface lists it as
+`management-only` and never runs it: a remote caller cannot ask the
+tool to vouch for its own trail.
+
+What a chain cannot show on its own: records cut from the end leave a
+shorter chain that still holds. Record the `HEAD` hash somewhere the
+tool cannot write (a ticket, another host) and compare it later.
+
+Durability, rotation and retention are per entry:
+
+| Key | Default | Effect |
+|---|---|---|
+| `path` | `$XDG_STATE_HOME/<tool>/audit.chain` | The active file. Services naming the same path share one chain; a second process opening it is refused at startup. |
+| `fsync` | `never` | `never`: one `write(2)` per record, safe from a process crash, not from power loss. `always`: synced before the call returns (one fsync per record). A duration such as `1s`: synced at most that often. |
+| `max_bytes` | `0` (never) | Rotate before the file would pass this size. The rotated file is renamed `<path>.<first seq>` and the chain continues across it. |
+| `max_files` | `0` (keep all) | Rotated files kept; the oldest are deleted after a rotation. Verification then starts at the oldest kept record. |
+| `on`, `surfaces`, `paths` | every outcome, surface and command | Filters, as in `cmdsurface.SinkSpec`. |
+
+A write cut short by a crash leaves a final line with no newline;
+`audit verify` reports it as a torn tail, not tampering, and the next
+start moves it to `<path>.torn-<time>` before appending.
+
 ### 7. Propagate request and trace ids
 
 Send the standard headers and they travel into `Meta` and the audit
@@ -774,6 +848,8 @@ names are in
 | `services.<svc>.audit.redact.secret_flags` | none | Extra flag names masked in audit records; `services.all` applies to every service. |
 | `services.<svc>.audit.redact.patterns` | none | Extra content patterns (RE2) masked in audit records. |
 | `services.<svc>.audit.redact.max_field_bytes` | `4096` | Longest field the content rules scan; a longer one is withheld from the record whole. |
+| `services.<svc>.audit.sinks` | none | Audit sinks from configuration; `[chain]` appends to a tamper-evident log. See [Keep a tamper-evident trail](#keep-a-tamper-evident-trail). |
+| `cli.WithAuditCommand()` | not mounted | Mounts `<tool> audit verify` (exit 71 `TAMPER_DETECTED` on a broken chain); management-only when served. |
 | `cli.WithObservability(p)` | none | Links a tracing and metrics provider; `services.<svc>.tracing.enabled` / `.metrics.enabled` (or `services.all.*`) turn it on. |
 | `services.api.metrics.scrape.enabled` | `false` | Answer a Prometheus scrape at `/metrics`, after the Host check, before auth. Beyond loopback needs `services.api.metrics.scrape.allow_remote: true`. |
 | `--policy=<name>` | none | The tool's policy engine, applied to remote calls for every caller. Naming one permits a non-loopback address. |

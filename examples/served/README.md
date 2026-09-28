@@ -6,7 +6,7 @@ Does a kit CLI built with `cli.New` and options alone, nothing mounted by
 hand, meet every claim the
 [serve-lifecycle contract](../../docs/contracts/serve-lifecycle.md) makes
 about a conformant application command? `main.go` registers the reserved
-`status` verb, the kit-shipped `api`, `socket`, `mcp` and `rpc` services,
+`status` and `audit` verbs, the kit-shipped `api`, `socket`, `mcp` and `rpc` services,
 one adopter-owned service (`heartbeat`) and a bus, plus one command per
 class the contract distinguishes. For the surface matrix without the
 serve lifecycle, see [`examples/cmdsurface`](../cmdsurface/README.md).
@@ -41,6 +41,7 @@ go test -race ./examples/served/
 | `upgrade`    | `kit/self-hosting` | never: 404 + `self-hosting` over REST, `NOT_FOUND` over the socket |
 | `serve`      | kit's own          | never: `self-hosting`                                      |
 | `status`     | reserved           | never: `management-only`                                   |
+| `audit verify` | reserved         | never: `management-only`                                   |
 
 The tests drive the real `Execute` path, the one that installs the
 confirmation and policy gates, with the arguments an operator would
@@ -49,7 +50,8 @@ claim out.
 
 - `served_test.go`: the serve hierarchy and `--list`, readiness on the
   bus and the log, discovery, REST and the socket, the destructive
-  ceiling, exposure refusals, the adopter service
+  ceiling, exposure refusals, the adopter service, the audit chain and
+  `audit verify` (exit 71 on an edited record)
 - `mcp_test.go`: the `mcp` service over HTTP
 - `rpc_test.go`: the `rpc` service over Connect, gRPC (h2c) and gRPC-Web
 - `mcp_stdio_test.go`: the built binary as a desktop host spawns it,

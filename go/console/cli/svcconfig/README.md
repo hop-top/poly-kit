@@ -14,7 +14,8 @@ console root does that before `serve` runs (`go/console/cli`).
 - a service reads a middleware key → `svcconfig.New(v).Lookup(svc, block, key)`
 - a service validates its block → `svcconfig.New(v).ValidateBlock(block, svc, svcconfig.Shared)`
 - the supervisor gates the whole `services` tree → `svcconfig.New(v).Validate()`
-- a new middleware block ships → add a `Block` row with its keys to the registry
+- a new middleware block ships → add a `Block` row with its keys to the registry;
+  a key holding a list of entries (`audit.sinks`) also names its entry keys in `Lists`
 - map a `<TOOL>_SERVICES_*` variable to its key → `svcconfig.EnvKey(name, tool, services)`
 
 ## Quick start
@@ -41,7 +42,8 @@ fmt.Println(r.Validate()) // services.all.addr: not a middleware key; ...
   file, the environment and `-c` is validated whole.
 - An unknown key inside a registered block, and anything outside a
   registered block under `services.all`, are errors; `serve` reports them
-  at exit 2.
+  at exit 2. So is a list-of-entries key of the wrong shape: an entry that
+  is neither a type nor a map, or a map with a key the entry does not take.
 - Environment names split longest match first: service, then block, then
   key. A remainder that names no block is a service's own flat key.
 - Rules: [serve lifecycle, Middleware configuration](../../../../docs/contracts/serve-lifecycle.md#middleware-configuration).

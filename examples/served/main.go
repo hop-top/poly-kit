@@ -114,7 +114,7 @@ type options struct {
 }
 
 // newRoot builds the fixture's root. This is the whole of the wiring
-// an adopter writes: the root, the reserved status verb, the four
+// an adopter writes: the root, the reserved status and audit verbs, the four
 // kit-shipped services, one service of their own, the observability
 // provider an operator can turn on, and the commands.
 func newRoot(opts options) *cli.Root {
@@ -132,6 +132,7 @@ func newRoot(opts options) *cli.Root {
 		Short:   "Conformance fixture for served commands",
 	},
 		cli.WithStatus(cli.StatusConfig{}),
+		cli.WithAuditCommand(),
 		cli.WithAPI(cli.APIConfig{Policy: policy}),
 		cli.WithSocket(cli.SocketConfig{Policy: policy}),
 		mcpserve.With(mcpserve.Config{Policy: policy}),
