@@ -108,3 +108,42 @@ func TestOriginAllowlistRejectsMalformedEntry(t *testing.T) {
 		t.Error("New accepted an allowlist entry that is not an origin")
 	}
 }
+
+// postInitializeAs sends the initialize request with the Host header
+// set to host, the way a DNS-rebinding page's request arrives.
+func postInitializeAs(t *testing.T, url, host string) int {
+	t.Helper()
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = host
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode
+}
+
+// The SDK's DNS-rebinding check is in force on every handler, stateful
+// and stateless, until a listener that checks Host itself turns it off.
+func TestLocalhostProtection(t *testing.T) {
+	for _, stateless := range []bool{false, true} {
+		var base []Option
+		if stateless {
+			base = append(base, WithStateless())
+		}
+		srv, _ := newHarness(t, defaultBridge, base...)
+		if got := postInitializeAs(t, srv.URL+"/mcp", "tool.example"); got != http.StatusForbidden {
+			t.Errorf("stateless=%v: status = %d, want the SDK's 403", stateless, got)
+		}
+		srv, _ = newHarness(t, defaultBridge, append(base, WithoutLocalhostProtection())...)
+		if got := postInitializeAs(t, srv.URL+"/mcp", "tool.example"); got != http.StatusOK {
+			t.Errorf("stateless=%v, protection off: status = %d, want 200", stateless, got)
+		}
+	}
+}

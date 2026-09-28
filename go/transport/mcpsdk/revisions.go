@@ -37,27 +37,24 @@ type revisionRouter struct {
 	maxBody    int64
 }
 
-// newRevisionRouter builds both handlers with the same body cap,
-// maxBody (negative: none). The router peeks at most that much to
-// classify a request; with no cap it peeks the SDK's default.
+// newRevisionRouter builds both handlers from the same options — the
+// body cap (MaxRequestBodyBytes, negative: none) and the transport
+// checks alike — the per-request one stateless. The router peeks at
+// most the cap to classify a request; with no cap it peeks the SDK's
+// default.
 func newRevisionRouter(
-	getServer func(*http.Request) *mcp.Server, jsonResponse bool, maxBody int64,
+	getServer func(*http.Request) *mcp.Server, opts mcp.StreamableHTTPOptions,
 ) *revisionRouter {
-	peek := maxBody
+	peek := opts.MaxRequestBodyBytes
 	if peek <= 0 {
 		peek = mcp.DefaultMaxRequestBodyBytes
 	}
+	sessions, perRequest := opts, opts
+	sessions.Stateless, perRequest.Stateless = false, true
 	return &revisionRouter{
-		sessions: mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
-			JSONResponse:        jsonResponse,
-			MaxRequestBodyBytes: maxBody,
-		}),
-		perRequest: mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
-			Stateless:           true,
-			JSONResponse:        jsonResponse,
-			MaxRequestBodyBytes: maxBody,
-		}),
-		maxBody: peek,
+		sessions:   mcp.NewStreamableHTTPHandler(getServer, &sessions),
+		perRequest: mcp.NewStreamableHTTPHandler(getServer, &perRequest),
+		maxBody:    peek,
 	}
 }
 

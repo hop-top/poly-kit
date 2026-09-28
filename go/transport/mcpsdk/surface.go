@@ -41,6 +41,8 @@ type config struct {
 	elicitConfirm bool
 	elicitKey     []byte
 	maxBody       int64
+	// noLocalhostProtection backs WithoutLocalhostProtection.
+	noLocalhostProtection bool
 	// origins backs WithOriginAllowlist; originCheck records that
 	// the option was given at all.
 	origins     []string
@@ -91,6 +93,19 @@ func WithStateless() Option {
 // Content-Length, chunked and HTTP/2 bodies alike.
 func WithMaxBodyBytes(n int64) Option {
 	return func(c *config) { c.maxBody = n }
+}
+
+// WithoutLocalhostProtection turns off the SDK's DNS-rebinding check,
+// which refuses a request arriving on a loopback connection whose Host
+// is not a loopback name, with 403 and a plain-text reason. Give it
+// only when the listener in front runs a Host check of its own and
+// that check admits other names — kit's services.<svc>.host_check
+// with an allow list, or switched off by the operator — so the SDK's
+// narrower check would refuse what the listener's configuration
+// allows. Without it the SDK's check stays in force beneath any
+// listener.
+func WithoutLocalhostProtection() Option {
+	return func(c *config) { c.noLocalhostProtection = true }
 }
 
 // WithJSONResponse makes streamable HTTP responses use
@@ -337,14 +352,16 @@ func (s *Surface) Hide(pattern string) *Surface {
 func (s *Surface) Handler() http.Handler {
 	getServer := func(*http.Request) *mcp.Server { return s.srv }
 	maxBody := api.MaxBodyBytesOrDefault(s.cfg.maxBody)
-	if s.cfg.stateless {
-		return s.originGuard(mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
-			Stateless:           true,
-			JSONResponse:        s.cfg.jsonResponse,
-			MaxRequestBodyBytes: maxBody,
-		}))
+	opts := mcp.StreamableHTTPOptions{
+		JSONResponse:               s.cfg.jsonResponse,
+		MaxRequestBodyBytes:        maxBody,
+		DisableLocalhostProtection: s.cfg.noLocalhostProtection,
 	}
-	return s.originGuard(newRevisionRouter(getServer, s.cfg.jsonResponse, maxBody))
+	if s.cfg.stateless {
+		opts.Stateless = true
+		return s.originGuard(mcp.NewStreamableHTTPHandler(getServer, &opts))
+	}
+	return s.originGuard(newRevisionRouter(getServer, opts))
 }
 
 // Mount registers the streamable HTTP handler on the router at the
@@ -427,7 +444,7 @@ func newOriginGuard(cfg config) (api.Middleware, error) {
 	}
 	mw, err := api.OriginCheck(api.OriginCheckConfig{
 		Allow:  cfg.origins,
-		Refuse: refuseJSONRPC,
+		Refuse: RefuseJSONRPC,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("mcpsdk: %w", err)
@@ -435,11 +452,13 @@ func newOriginGuard(cfg config) (api.Middleware, error) {
 	return mw, nil
 }
 
-// refuseJSONRPC writes an HTTP-plane refusal the way the MCP
+// RefuseJSONRPC writes an HTTP-plane refusal the way the MCP
 // transport expects one: the HTTP status, and a JSON-RPC error with
-// a null id (the request was never parsed), its message led by the
-// stable code.
-func refuseJSONRPC(w http.ResponseWriter, _ *http.Request, e *api.APIError) {
+// a null id (the request was never parsed), code -32600, its message
+// led by the stable code and data.code carrying it. It is an
+// [api.RefusalWriter], for a listener serving Handler that runs its
+// own Host, Origin or body-limit checks in front of it.
+func RefuseJSONRPC(w http.ResponseWriter, _ *http.Request, e *api.APIError) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(e.Status)
 	_ = json.NewEncoder(w).Encode(map[string]any{
