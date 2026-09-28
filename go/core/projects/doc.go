@@ -27,7 +27,7 @@
 //	schema: 1
 //	projects:
 //	  ops:
-//	    path: /Users/jadb/.ops
+//	    path: /Users/alice/src/ops
 //	    startup_cmd: zsh
 //	    source: wsm
 //

@@ -33,7 +33,7 @@ func ExampleRead() {
 	defer withTempXDG()()
 
 	if err := projects.Write("ops", projects.Entry{
-		Path:   "/Users/jadb/.ops",
+		Path:   "/Users/alice/src/ops",
 		Source: projects.SourceWSM,
 	}); err != nil {
 		panic(err)
@@ -45,14 +45,14 @@ func ExampleRead() {
 	}
 
 	fmt.Println(file.Projects["ops"].Path)
-	// Output: /Users/jadb/.ops
+	// Output: /Users/alice/src/ops
 }
 
 func ExampleWrite() {
 	defer withTempXDG()()
 
 	err := projects.Write("kit", projects.Entry{
-		Path:       "/Users/jadb/.w/ideacrafterslabs/kit",
+		Path:       "/Users/alice/src/kit",
 		StartupCmd: "zsh",
 		Source:     projects.SourceWSM,
 	})

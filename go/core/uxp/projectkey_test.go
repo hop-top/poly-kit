@@ -3,7 +3,7 @@ package uxp
 import "testing"
 
 func TestDeriveKey(t *testing.T) {
-	const cwd = "/Users/jadb/.w/ideacrafterslabs/uhp"
+	const cwd = "/Users/alice/src/uhp"
 
 	tests := []struct {
 		name     string
@@ -13,22 +13,22 @@ func TestDeriveKey(t *testing.T) {
 		{
 			name:     "SlashToDash",
 			strategy: SlashToDash,
-			want:     "Users-jadb-.w-ideacrafterslabs-uhp",
+			want:     "Users-alice-src-uhp",
 		},
 		{
 			name:     "SHA1",
 			strategy: SHA1,
-			want:     "dc46c5c89af35341f834cfb93af103343ac31158",
+			want:     "84e4bbeecedfc5721695045d99448b9ed90fa89c",
 		},
 		{
 			name:     "SHA256",
 			strategy: SHA256,
-			want:     "b2e9434903c3d2059d2c5c0d60467de55a64165e331ac29fb235ee4a0d7b64b9",
+			want:     "8f9a157a38322a312d26f0b08f3ba69cdf82f673d1ad96e54fd88a0cb06de6f3",
 		},
 		{
 			name:     "MD5",
 			strategy: MD5,
-			want:     "04c0ec06e2a2388290e4bffa13f97131",
+			want:     "6dea3d72ee66901f03a84cf93c065544",
 		},
 		{
 			name:     "BasenameAlias",
@@ -67,7 +67,7 @@ func TestDeriveKey_SlashToDashEdgeCases(t *testing.T) {
 		{"empty string", "", ""},
 		{"root only", "/", ""},
 		{"single segment", "foo", "foo"},
-		{"trailing slash", "/Users/jadb/", "Users-jadb"},
+		{"trailing slash", "/Users/alice/", "Users-alice"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

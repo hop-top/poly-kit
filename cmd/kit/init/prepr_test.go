@@ -482,9 +482,9 @@ func TestDeriveSlugFromOrigin_WorkedExamples(t *testing.T) {
 }
 
 func TestDeriveSlugFromPath_WorkedExample(t *testing.T) {
-	// Contract Section 4: "/Users/jad/work/My Project" → "users-jad-work-my-project".
-	got := DeriveSlugFromPath("/Users/jad/work/My Project")
-	assert.Equal(t, "users-jad-work-my-project", got)
+	// Contract Section 4: "/Users/alice/work/My Project" → "users-alice-work-my-project".
+	got := DeriveSlugFromPath("/Users/alice/work/My Project")
+	assert.Equal(t, "users-alice-work-my-project", got)
 }
 
 func TestProjectIDSlug_FallbackToPath(t *testing.T) {

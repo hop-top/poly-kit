@@ -237,7 +237,7 @@ that share the same `origin` remote. Algorithm:
 | `git@github.com:hop-top/poly-kit.git`       | `github-com-hop-top-poly-kit` |
 | `https://github.com/hop-top/poly-kit.git`   | `github-com-hop-top-poly-kit` |
 | `https://gitea.example.org/team/Repo.Name`  | `gitea-example-org-team-repo-name` |
-| (no `origin`) `/Users/jad/work/My Project`  | `users-jad-work-my-project`   |
+| (no `origin`) `/Users/alice/work/My Project` | `users-alice-work-my-project` |
 
 When the path-based fallback is used (no `origin`), the slug visibly bakes
 in a user-scoped path component (e.g. `users-jad-...`). This is by design,
