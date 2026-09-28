@@ -90,6 +90,17 @@ Each test name is the claim it pins:
 - `TestMCPServesBesideTheOthersUnderTheSupervisor` — `serve --enable
   mcp` runs it on its own listener beside `api`.
 
+`mcp_stdio_test.go` builds the fixture and runs it the way a desktop
+host does:
+
+- `TestMCPOverStdioFromABuiltBinary` — `served serve mcp --stdio`
+  spawned with pipes: every stdout line is a protocol message,
+  `item.sync` runs on the spawn's trust, `item.tag` runs once the
+  host's user approves, closing stdin exits `0`, and the lifecycle
+  trace is on stderr.
+- `TestMCPStdioRefusalsExitWithTheContractCodes` — `--stdio` with
+  `--mcp-addr` exits `2`.
+
 ## Run
 
 ```sh
@@ -97,6 +108,7 @@ go run ./examples/served item list
 go run ./examples/served serve --list
 go run ./examples/served serve api --addr 127.0.0.1:0
 go run ./examples/served serve mcp --mcp-addr 127.0.0.1:0
+go run ./examples/served serve mcp --stdio
 ```
 
 ## Test

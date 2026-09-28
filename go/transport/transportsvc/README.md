@@ -48,6 +48,7 @@ once.
 ## Neighbours
 
 - `go/transport/socket`: a complete transport on this seam.
+- `go/console/cli` `WithMCP`: the built-in `mcp` service, on this seam over `go/transport/mcpsdk`, speaking streamable HTTP or stdio.
 - `go/console/serve`: the lifecycle contract this seam implements. It cannot live there: the command-tree half reaches `cmdsurface`, which reaches `cmdreflect`, which reaches `go/console/cli`, which registers services back into `serve`. Keeping the contract package free of the transport stack is what keeps that acyclic.
 - `go/transport/cmdsurface`: invocations, results, policy, surfaces.
 

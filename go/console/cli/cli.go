@@ -341,6 +341,9 @@ type Root struct {
 	// --mcp-addr; see applyMCPFlags.
 	mcpStdioFlag bool
 	mcpAddrFlag  string
+	// mcpStdio overrides the stdio transport's streams; nil serves the
+	// process's own. Tests only.
+	mcpStdio *mcpStdioStreams
 	// serveAuth is the permission gate and audit sinks every
 	// kit-shipped transport service shares; see serve_auth.go.
 	serveAuth    serveAuthState

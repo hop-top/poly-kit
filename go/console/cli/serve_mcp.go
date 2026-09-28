@@ -317,6 +317,12 @@ func (r *Root) mcpBool(subkey string, code bool) bool {
 // before anything binds.
 func (r *Root) validateMCP(cfg *MCPConfig) error {
 	switch transport := r.mcpTransport(cfg); transport {
+	case MCPTransportStdio:
+		if r.mcpAddrFlag != "" {
+			return errors.New(
+				"addr: --mcp-addr applies to the http transport, and --stdio selects stdio; drop one of them",
+			)
+		}
 	case MCPTransportHTTP:
 		if err := r.validateMCPHTTP(cfg); err != nil {
 			return err
@@ -385,7 +391,13 @@ type mcpTransport struct {
 }
 
 func (t *mcpTransport) Bind(ctx context.Context) (string, error) {
-	var impl mcpServing = newMCPHTTP(t.root, t.cfg, t.svc)
+	var impl mcpServing
+	switch t.root.mcpTransport(t.cfg) {
+	case MCPTransportStdio:
+		impl = newMCPStdio(t.root)
+	default:
+		impl = newMCPHTTP(t.root, t.cfg, t.svc)
+	}
 	addr, err := impl.bind(ctx)
 	if err != nil {
 		return "", err
