@@ -66,6 +66,9 @@ type apiService struct {
 	// noPolicyFlag records --insecure-no-policy, kept apart from
 	// cfg.InsecureNoPolicy for the same precedence reason.
 	noPolicyFlag bool
+	// addrFlag records --addr, kept apart from cfg.Addr so the flag
+	// wins over services.api.addr for one run.
+	addrFlag string
 
 	mu   sync.Mutex
 	srv  *http.Server
@@ -237,9 +240,12 @@ func (a *apiService) Class() (sideEffect, network string) {
 	return string(SideEffectWriteShared), "listen"
 }
 
-// listenAddr resolves the listen address: services.api.addr when set,
-// otherwise the APIConfig default that --addr also writes to.
+// listenAddr resolves the listen address: --addr, then
+// services.api.addr, then APIConfig.Addr.
 func (a *apiService) listenAddr() string {
+	if a.addrFlag != "" {
+		return a.addrFlag
+	}
 	if a.root != nil && a.root.Viper != nil {
 		if v := a.root.Viper.GetString(serveKeyPrefix + APIServiceName + apiSubkeyAddr); v != "" {
 			return v
@@ -495,6 +501,7 @@ func applyAPIFlags(cmd *cobra.Command, root *Root) {
 	if f := cmd.Flags().Lookup("addr"); f != nil && f.Changed {
 		addr, _ := cmd.Flags().GetString("addr")
 		a.cfg.Addr = addr
+		a.addrFlag = addr
 	}
 	if noAuth, err := cmd.Flags().GetBool("no-auth"); err == nil {
 		a.noAuth = noAuth

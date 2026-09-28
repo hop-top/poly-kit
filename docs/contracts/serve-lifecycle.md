@@ -427,7 +427,17 @@ A service is **configured** when a `services.<name>` block resolves,
 and **enabled** when that block's `enabled` key resolves to true.
 Resolution follows the standard kit precedence in
 [`go/core/config`](../../go/core/config/README.md): flag, then env,
-then config file, then default.
+then config file, then default. A `-c key=value` override counts as a
+flag and a `-c <path>` file as a config file.
+
+`serve` layers every `services.*` key from these sources itself,
+before any service reads one, whether or not the tool loads its own
+configuration: the `services` block of the tool's system, user
+(`~/.config/<tool>/config.yaml`) and project config files and of each
+`-c <path>`, every `<TOOL>_SERVICES_*` variable, and every
+`-c services.<key>=<value>`. Keys outside `services` resolve exactly
+as the tool wired them. A service configured only by environment
+variables is configured.
 
 | Key                                | Type       | Default | Meaning                                     |
 |------------------------------------|------------|---------|---------------------------------------------|
@@ -486,9 +496,14 @@ filesystem permission IS the access control — the socket has no port
 and is not routable — so the service is loopback-only by construction
 and grants nothing on the basis of a caller-supplied identity.
 
-Environment variables follow the kit convention — `<TOOL>` prefix,
-uppercase, dots to underscores:
-`MYTOOL_SERVICES_API_ENABLED`, `MYTOOL_SERVICES_API_ADDR`.
+Environment variables follow the kit convention — `<TOOL>` prefix
+(the tool name upper-cased, dashes to underscores), uppercase, dots to
+underscores: `MYTOOL_SERVICES_API_ENABLED`, `MYTOOL_SERVICES_API_ADDR`.
+Underscores inside a name are resolved longest match first — a
+registered service (or `all`), then a middleware block, then a key —
+so `MYTOOL_SERVICES_API_BODY_LIMIT_MAX_BYTES` is
+`services.api.body_limit.max_bytes` and
+`MYTOOL_SERVICES_API_INSECURE_REMOTE` is `services.api.insecure_remote`.
 
 Flags:
 

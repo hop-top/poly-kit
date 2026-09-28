@@ -6,7 +6,8 @@
 services block valid?" It holds the middleware block registry and the one
 resolver every block reads through: `services.<svc>.<block>.<key>`, then
 `services.all.<block>.<key>`, then the caller's code option and default.
-Loading configuration into the Viper is not here.
+Loading files, the environment and `-c` into the Viper is not here; the
+console root does that before `serve` runs (`go/console/cli`).
 
 ## Use it when
 
@@ -14,6 +15,7 @@ Loading configuration into the Viper is not here.
 - a service validates its block → `svcconfig.New(v).ValidateBlock(block, svc, svcconfig.Shared)`
 - the supervisor gates the whole `services` tree → `svcconfig.New(v).Validate()`
 - a new middleware block ships → add a `Block` row with its keys to the registry
+- map a `<TOOL>_SERVICES_*` variable to its key → `svcconfig.EnvKey(name, tool, services)`
 
 ## Quick start
 
@@ -40,10 +42,13 @@ fmt.Println(r.Validate()) // services.all.addr: not a middleware key; ...
 - An unknown key inside a registered block, and anything outside a
   registered block under `services.all`, are errors; `serve` reports them
   at exit 2.
+- Environment names split longest match first: service, then block, then
+  key. A remainder that names no block is a service's own flat key.
 - Rules: [serve lifecycle, Middleware configuration](../../../../docs/contracts/serve-lifecycle.md#middleware-configuration).
 
 ## Neighbours
 
-- `go/console/cli`: reads the api and socket blocks and gates `serve`.
+- `go/console/cli`: layers the sources into the root's Viper and reads the
+  api and socket blocks.
 - `go/transport/observability`: reads the `tracing` and `metrics` blocks.
 - `go/core/config`: file paths, `-c` parsing, typed config loading.

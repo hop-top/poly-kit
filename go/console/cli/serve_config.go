@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/console/serve"
 )
 
@@ -50,7 +52,7 @@ func serveConfigs(v *viper.Viper, names []string, enable, disable []string) map[
 		key := serveKeyPrefix + name
 		want, isForced := forced[name]
 
-		if v == nil || !v.IsSet(key) {
+		if !svcconfig.New(v).IsConfigured(name) {
 			// An unconfigured service becomes configured the moment
 			// an operator names it in --enable: the flag is the
 			// aggregate equivalent of the selector's override.

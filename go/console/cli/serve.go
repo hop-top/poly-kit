@@ -158,6 +158,9 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	if reg == nil {
 		return output.UsageError("no services registered")
 	}
+	if err := root.loadServiceConfig(); err != nil {
+		return err
+	}
 	// The configuration gate every service shares: an unknown key in
 	// a middleware block of any service, or anything but a middleware
 	// block under services.all, is refused before a service is chosen.
@@ -246,6 +249,9 @@ func runServeList(cmd *cobra.Command, root *Root) error {
 	reg := root.serveReg
 	if reg == nil {
 		return output.UsageError("no services registered")
+	}
+	if err := root.loadServiceConfig(); err != nil {
+		return err
 	}
 
 	configs := serveConfigs(root.Viper, reg.Names(), nil, nil)
