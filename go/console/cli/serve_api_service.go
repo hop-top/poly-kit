@@ -403,20 +403,22 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	}
 
 	// HTTP-plane slot 8 (Host/Origin) wraps the router itself, and so
-	// every route it serves. Slot 7 (health probes and the metrics
-	// endpoint) answers ahead of it and inspects the bare router for
-	// adopter routes at its paths; slot 6 (security headers) and edge
-	// wrap everything, slot 7 included. See serve_api_guard.go,
-	// serve_api_health.go and serve_api_metrics.go.
-	checked, err := a.hostOriginChecks(router)
+	// every route it serves; the metrics endpoint answers at its inner
+	// end, Host checked but ahead of the router's own guards. Slot 7
+	// (health probes) answers ahead of slot 8. Both endpoints inspect
+	// the bare router for adopter routes at their paths; slot 6
+	// (security headers) and edge wrap everything, slot 7 included.
+	// See serve_api_guard.go, serve_api_health.go and
+	// serve_api_metrics.go.
+	scraped, err := a.withMetrics(router, router)
 	if err != nil {
 		return nil, err
 	}
-	slot7, err := a.withMetrics(checked, router)
+	checked, err := a.hostOriginChecks(scraped)
 	if err != nil {
 		return nil, err
 	}
-	return api.Chain(edge...)(a.securityHeaders(a.withHealth(ctx, slot7, router))), nil
+	return api.Chain(edge...)(a.securityHeaders(a.withHealth(ctx, checked, router))), nil
 }
 
 // bridge builds the bridge the projection executes through. A tool

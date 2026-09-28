@@ -45,7 +45,7 @@ func serveVia(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	return rec
 }
 
-func TestAPIMetrics_AnsweredAtSlot7(t *testing.T) {
+func TestAPIMetrics_AnsweredAfterTheHostCheck(t *testing.T) {
 	deny := func(*http.Request) (any, error) { return nil, errors.New("no") }
 	h := projectionHandler(t, metricsRoot(t, APIConfig{Auth: deny}, &scrapeProvider{on: true, path: api.DefaultMetricsPath}))
 
@@ -55,15 +55,44 @@ func TestAPIMetrics_AnsweredAtSlot7(t *testing.T) {
 	assert.Equal(t, "api", rec.Header().Get("X-Observed"), "slot 5 wraps it")
 	assert.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"), "slot 6 wraps it")
 
-	byIP := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	byIP.Host = "10.1.2.3:8080" // a scraper addressing the pod by IP
-	assert.Equal(t, http.StatusOK, serveVia(h, byIP).Code, "the Host check does not see a scrape")
+	for _, host := range []string{"localhost:8080", "[::1]:8080"} {
+		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		req.Host = host
+		assert.Equal(t, http.StatusOK, serveVia(h, req).Code, "a local scraper's Host is allowed: %s", host)
+	}
 
-	other := httptest.NewRequest(http.MethodGet, "/v1/commands", nil)
-	other.Host = "10.1.2.3:8080"
-	assert.Equal(t, http.StatusForbidden, serveVia(h, other).Code, "everything else is still Host checked")
+	// DNS rebinding: a page on evil.example whose name now resolves to
+	// 127.0.0.1 reads the endpoint from the victim's browser.
+	rebound := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rebound.Host = "evil.example"
+	rec = serveVia(h, rebound)
+	assert.Equal(t, http.StatusForbidden, rec.Code, "the Host check sees a scrape")
+	assert.Contains(t, rec.Body.String(), api.CodeHostRejected)
+	assert.NotContains(t, rec.Body.String(), "kit_serve_requests_total")
+	assert.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"), "the refusal carries slot 6")
+
 	assert.Equal(t, http.StatusUnauthorized, serveVia(h, loopbackRequest(http.MethodGet, "/v1/commands", nil)).Code,
-		"and authenticated")
+		"everything else is still authenticated")
+}
+
+func TestAPIMetrics_RemoteScrapeByPodIP(t *testing.T) {
+	byIP := func() *http.Request {
+		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		req.Host = "10.1.2.3:8080" // a scraper addressing the pod by IP
+		return req
+	}
+
+	// A wildcard bind derives no Host restriction: the scrape is answered.
+	r := remoteMetricsRoot(t, &scrapeProvider{on: true, path: "/metrics", allowRemote: true})
+	assert.Equal(t, http.StatusOK, serveVia(projectionHandler(t, r), byIP()).Code)
+
+	// host_check.allow on a wildcard bind covers the scrape too, so the
+	// address the scraper uses must be on the list.
+	r = remoteMetricsRoot(t, &scrapeProvider{on: true, path: "/metrics", allowRemote: true})
+	r.Viper.Set("services.api.host_check.allow", []string{"tool.example.com"})
+	rec := serveVia(projectionHandler(t, r), byIP())
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Contains(t, rec.Body.String(), api.CodeHostRejected)
 }
 
 func TestAPIMetrics_Absent(t *testing.T) {

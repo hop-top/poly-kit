@@ -78,9 +78,10 @@ type Signal struct {
 
 // Scrape is the configuration of a service's metrics scrape endpoint:
 // the Prometheus text exposition of everything the service's Provider
-// records, answered by an HTTP service at HTTP-plane slot 7, ahead of
-// the Host check and authentication. It needs metrics enabled; with
-// ExporterNone it is the only place the metrics go.
+// records, answered by an HTTP service at the inner end of HTTP-plane
+// slot 8: after the Host check, ahead of authentication. It needs
+// metrics enabled; with ExporterNone it is the only place the metrics
+// go.
 type Scrape struct {
 	// Enabled serves the endpoint. Default false.
 	Enabled bool

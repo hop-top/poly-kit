@@ -1290,8 +1290,8 @@ Outermost first, on every kit HTTP listener:
 | 4  | Recovery                     | —                                    | —                  |
 | 5  | Tracing and metrics          | —                                    | `tracing`, `metrics` |
 | 6  | Security headers             | —                                    | `security_headers` |
-| 7  | Health and metrics endpoints | — (terminal)                         | `health`, `metrics`|
-| 8  | Host and Origin checks       | `host_rejected`, `origin_rejected`   | `host_check`, `origin_check` |
+| 7  | Health endpoints             | — (terminal)                         | `health`           |
+| 8  | Host and Origin checks, then the metrics endpoint | `host_rejected`, `origin_rejected`; the endpoint is terminal | `host_check`, `origin_check`; `metrics` |
 | 9  | CORS                         | —                                    | `cors`             |
 | 10 | Body limit                   | `body_too_large`                     | `body_limit`       |
 | 11 | Compression                  | —                                    | `compression`      |
@@ -1302,9 +1302,11 @@ Slots 8–12 wrap the listener's router as a whole, never route by
 route. Every request past slot 7 passes them, whatever it addresses: a
 projected or adopter route, a route a library registers on the mux
 directly (the OpenAPI document, the docs UI, schemas, capabilities),
-or a path that matches nothing. With `auth` configured, then, the
-OpenAPI document and the discovery listing require credentials like
-any other route; the only unauthenticated answers are slot 7's. A
+or a path that matches nothing. The one exception is a scrape, which
+the metrics endpoint answers once slot 8's checks have passed, ahead
+of 9–12. With `auth` configured, then, the OpenAPI document and the
+discovery listing require credentials like any other route; the only
+unauthenticated answers are the health probes and the scrape. A
 deployment that publishes its OpenAPI document does so by having its
 verifier admit that path. Per-route middleware exists only at 13.
 
@@ -1323,14 +1325,20 @@ Why this order:
   probes address a pod by IP, not by name, and a health answer
   discloses nothing a Host allowlist protects. They bypass everything
   from 8 on, and are never audited or rate limited.
-- The metrics endpoint (`metrics.scrape`) answers in the same slot for
-  the same reason: a scraper addresses its target by IP and carries no
-  credentials. Unlike the probes it discloses what the service is
-  doing, so it is off by default, and on a non-loopback bind it MUST be
-  refused at validation, exit `2`, unless `metrics.scrape.allow_remote`
-  is true — authentication does not waive this, because the endpoint
-  never sees it. An adopter route at exactly its path wins, as for the
-  probes.
+- The metrics endpoint (`metrics.scrape`) answers after the Host and
+  Origin checks, not beside the probes: it discloses command names,
+  surfaces and refusal counts, so a DNS-rebinding page MUST NOT read
+  it, and a scraper already sends a host the check allows — on a
+  loopback bind the derived hosts are the ones a local scraper uses,
+  and a wildcard bind derives no restriction (with `host_check.allow`
+  set, the scraper's target has to be on that list, like any caller's). It still
+  answers before CORS, the body limit, compression and
+  authentication, because a scraper carries no credentials. For what
+  it discloses, it is off by default, and on a non-loopback bind it
+  MUST be refused at validation, exit `2`, unless
+  `metrics.scrape.allow_remote` is true — authentication does not
+  waive this, because the endpoint never sees it. An adopter route at
+  exactly its path wins, as for the probes.
 - The Host and Origin checks run before CORS and authentication: a
   rebinding or cross-origin request is refused before anything else
   reads it. CORS answers preflights before authentication, because a
@@ -1415,7 +1423,7 @@ socket service and stdio take the loopback column.
 | `timeouts`         | http server; invocation 11–12          | HTTP listeners; every remote surface   | read header 5s, read 5s, write 10s; no command deadline | same                                           | `deadline_exceeded` |
 | `trusted_proxies`  | http 2                                 | HTTP listeners                         | empty: no forwarded header trusted  | empty                                          | — |
 | `tracing`          | http 5; invocation (propagation)       | HTTP listeners; every remote surface   | propagate, export nothing           | same                                           | — |
-| `metrics`          | http 5; endpoint at http 7             | HTTP listeners; endpoint on the api service | off; endpoint off               | off; endpoint off, and refused without `scrape.allow_remote` | — |
+| `metrics`          | http 5; endpoint at the inner end of http 8 | HTTP listeners; endpoint on the api service | off; endpoint off               | off; endpoint off, and refused without `scrape.allow_remote` | — |
 | `security_headers` | http 6                                 | HTTP listeners                         | on; HSTS only with `tls`            | on                                             | — |
 | `health`           | http 7                                 | api service                            | on                                  | on                                             | — |
 | `host_check`       | http 8                                 | HTTP listeners                         | on, allowlist from the bound host   | on; a wildcard bind derives no restriction     | `host_rejected` |

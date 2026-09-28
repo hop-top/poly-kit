@@ -191,7 +191,7 @@ func (p *Provider) Metrics() bool { return p != nil && p.mp != nil }
 // and false when the endpoint is off. The handler writes the text
 // exposition of every instrument the Provider records and answers any
 // method: an HTTP service mounts it with [api.MetricsRoute], which
-// limits it to GET and HEAD at the path, at HTTP-plane slot 7. The
+// limits it to GET and HEAD at the path, inside the Host check. The
 // endpoint skips authentication, so the service mounting it must
 // refuse a non-loopback bind unless allowRemote is true.
 func (p *Provider) MetricsEndpoint() (path string, h http.Handler, allowRemote bool) {

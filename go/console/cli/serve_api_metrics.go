@@ -54,8 +54,8 @@ func (a *apiService) metricsScrapeBool(key string) bool {
 }
 
 // validateMetricsScrape is the scrape endpoint's half of the
-// configuration gate. The endpoint answers ahead of the Host check and
-// authentication, so beyond loopback it is refused unless the
+// configuration gate. The endpoint answers ahead of authentication, so
+// beyond loopback it is refused unless the
 // operator allowed it by name; a provider that serves no endpoint
 // cannot honor the request at all.
 func (a *apiService) validateMetricsScrape(addr string) error {
@@ -78,12 +78,16 @@ func (a *apiService) validateMetricsScrape(addr string) error {
 	)
 }
 
-// withMetrics puts the metrics scrape endpoint in front of h: HTTP-plane
-// slot 7, beside health, answered before the Host check and
-// authentication and ending the request there. routes is the bare
-// router, inspected for an adopter route at the endpoint's path, which
-// wins. With no provider linked, or the endpoint off, h is returned
-// as is.
+// withMetrics puts the metrics scrape endpoint in front of h, the
+// router: the inner end of HTTP-plane slot 8, so the Host and Origin
+// checks wrap it, answered before the router's own guards (body
+// limit, compression, authentication) and ending the request there.
+// Unlike the health probes (slot 7) it discloses what the service
+// does — command names, surfaces, refusal counts — so a rebinding
+// page must not read it, and a scraper already sends a host the check
+// allows. routes is the bare router, inspected for an adopter route
+// at the endpoint's path, which wins. With no provider linked, or the
+// endpoint off, h is returned as is.
 //
 // The exposure check is repeated here against the provider's own
 // resolution, so a disagreement with validateMetricsScrape fails

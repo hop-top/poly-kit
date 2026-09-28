@@ -25,16 +25,18 @@ type MetricsConfig struct {
 // MetricsRoute returns a handler that answers the metrics scrape
 // endpoint with cfg.Handler and passes every other request to next.
 //
-// It sits beside [HealthRoutes], at the same place in the chain and
-// for the same reason: a scraper addresses a target by IP and carries
-// no credentials, so the endpoint is answered BEFORE next and ends the
-// request there, and nothing next usually applies — Host and Origin
-// checks, body limits, authentication — sees a scrape. Middleware that
-// must cover it too (request id, access log, recovery, telemetry,
-// security headers) wraps the handler MetricsRoute returns. Because it
-// skips authentication, whoever mounts it decides where it may be
-// reached; kit's api service refuses a non-loopback bind unless the
-// operator allows it.
+// A scraper carries no credentials, so the endpoint is answered BEFORE
+// next and ends the request there: nothing next applies — body
+// limits, compression, authentication — sees a scrape. Middleware
+// that must cover it too wraps the handler MetricsRoute returns. Unlike
+// [HealthRoutes], that includes the Host and Origin checks: the
+// exposition discloses what the service does, so a DNS-rebinding page
+// must not read it, and a scraper already sends a host the check
+// allows. kit's api service mounts it inside those checks, below the
+// request id, access log, recovery, telemetry and security headers.
+// Because it skips authentication, whoever mounts it decides where it
+// may be reached; kit's api service refuses a non-loopback bind unless
+// the operator allows it.
 //
 // A route the adopter registered at exactly cfg.Path wins, as it does
 // for the health routes. The endpoint answers GET and HEAD, never

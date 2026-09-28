@@ -22,7 +22,7 @@ var scrapeOnly = map[string]any{
 }
 
 // scrapeAs GETs base+path with the Host header set to host and no
-// credentials, the way a scraper addressing the pod by IP does.
+// credentials, the way a scraper does.
 func scrapeAs(t *testing.T, base, path, host string) (int, string) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, base+path, nil)
@@ -43,8 +43,8 @@ func TestMetricsEndpointServesTheServeInstruments(t *testing.T) {
 	status, _ := httpDo(t, http.MethodGet, base+"/v1/commands/item/list", "")
 	require.Equal(t, http.StatusOK, status)
 
-	status, body := scrapeAs(t, base, "/metrics", "10.0.0.7:8080")
-	require.Equal(t, http.StatusOK, status, "a scrape skips the Host check")
+	status, body := scrapeAs(t, base, "/metrics", "127.0.0.1")
+	require.Equal(t, http.StatusOK, status, "a local scraper needs no credentials")
 	for _, want := range []string{
 		"# TYPE kit_serve_requests_total counter",
 		`kit_command="item list"`,
@@ -56,8 +56,12 @@ func TestMetricsEndpointServesTheServeInstruments(t *testing.T) {
 		assert.Contains(t, body, want)
 	}
 
-	status, _ = scrapeAs(t, base, "/v1/commands/item/list", "10.0.0.7:8080")
-	assert.Equal(t, http.StatusForbidden, status, "every other route is still Host checked")
+	// A DNS-rebinding page reaches the loopback listener under its own
+	// name; the Host check refuses it before the exposition is written.
+	status, body = scrapeAs(t, base, "/metrics", "evil.example")
+	assert.Equal(t, http.StatusForbidden, status)
+	assert.Contains(t, body, "host_rejected")
+	assert.NotContains(t, body, "kit_serve_requests_total")
 }
 
 func TestMetricsEndpointIsOffByDefault(t *testing.T) {

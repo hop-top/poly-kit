@@ -198,11 +198,16 @@ carries `service.name` and `service.version`. So
 `kit.serve.requests` is `kit_serve_requests_total` and
 `kit.serve.request.duration` is `kit_serve_request_duration_seconds`.
 
-- The endpoint answers at slot 7 of the HTTP chain, beside the health
-  probes: before the Host check and authentication, because a scraper
-  addresses the target by IP and carries no credentials. Request id,
-  access log, telemetry and security headers still wrap it, so scrapes
-  appear in `http.server.*` like any request.
+- The endpoint answers after the Host and Origin checks and before
+  authentication: a scraper carries no credentials, but the exposition
+  names your commands, so a DNS-rebinding page must not read it.
+  A scraper already sends a host the check allows: on a loopback bind
+  that is `localhost`, `127.0.0.1` or `::1` with any port, and a
+  wildcard bind derives no restriction. With `host_check.allow` set on
+  a wildcard bind, list the address your scraper targets too, or it
+  gets `403 host_rejected`. Request id, access log, telemetry and
+  security headers still wrap it, so scrapes appear in `http.server.*`
+  like any request.
 - Because it skips authentication, a non-loopback bind is refused at
   validation, exit `2`, unless `scrape.allow_remote: true`, even when
   `APIConfig.Auth` is set. Put it behind a network boundary you trust.

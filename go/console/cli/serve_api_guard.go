@@ -69,8 +69,9 @@ func (a *apiService) validateGuards() error {
 // hostOriginChecks wraps h in the Host and Origin checks, HTTP-plane
 // slot 8: inside the health endpoints (slot 7), so an orchestrator
 // probe addressing a pod by IP is answered before them, and outside
-// CORS, limits and authentication, so a rebinding or cross-origin
-// request is refused before anything else reads it. Host runs first,
+// the metrics endpoint, CORS, limits and authentication, so a
+// rebinding or cross-origin request is refused before anything else
+// reads it. Host runs first,
 // so "same origin" means a host this server answers for.
 //
 // The allowed hosts are the listener's own — [api.ListenerHosts] of
