@@ -14,6 +14,8 @@ over TCP is `go/transport/api`; a schema-typed RPC is
 - serve the tree on a socket → `cli.WithSocket(cli.SocketConfig{...})`
 - construct the transport by hand → `socket.New(path)`
 - verify each request before it runs → `Transport.Auth` (an `Authenticator`), `cli.SocketConfig.Auth`
+- name each caller by its kernel-reported uid → `NewPeerAuthenticator(PeerAuthConfig{...})`, or `services.socket.auth.mode: peer` on the built-in service
+- ask the kernel who is on a connection → `PeerCredentials(conn)`
 - observe refusals → `Transport.OnRefused`, which the built-in service routes into `Bridge.Audit`
 - read a response → `Request`, `Response`, `Error` wire types
 - branch on a refusal → `CodeNotFound`, `CodeNotEnabled`, `CodeNotInvocable`, `CodeBlocked`, `CodeDenied`, `CodeUnauthenticated`, `CodeRateLimited` and `CodeOverloaded` (with `RetryAfterMs`), `CodeDeadlineExceeded`, `CodeConflict`, `CodeInvalid`, `CodeInternal`
@@ -36,6 +38,7 @@ constructing the service by hand.
 ## Contract
 
 - `path` must be non-empty. Without an `Authenticator`, `caller` and `tenant` are recorded, never verified, and grant nothing.
+- The peer authenticator's principal is `uid:<n>` (the user name with `ResolveNames`, falling back to `uid:<n>`); it records `peer_uid`, `peer_gid`, `peer_pid` in `Meta.Extra`, on refusals too. Linux (`SO_PEERCRED`), macOS and FreeBSD (`LOCAL_PEERCRED`); elsewhere `NewPeerAuthenticator` returns `ErrPeerCredUnsupported`.
 - `ok:true` with a non-zero `exit_code` means the command ran and failed; `ok:false` means it never ran.
 - A malformed line does not close the connection; the next request is served normally.
 - The resolved path is made absolute. Paths longer than **103 bytes** are refused at startup with exit `2` (the lower of the platform `sun_path` bounds, so a configuration is portable).
@@ -52,7 +55,7 @@ constructing the service by hand.
 
 ## See also
 
-- [socket wire reference](../../../docs/adopters/reference/socket-wire.md): request and response fields, error codes, authentication, cancellation, configuration keys, path limits and permissions, the Go API
+- [socket wire reference](../../../docs/adopters/reference/socket-wire.md): request and response fields, error codes, authentication and peer credentials, cancellation, configuration keys, path limits and permissions, the Go API
 - [serve-cli-over-unix-socket.md](../../../docs/adopters/guides/serve-cli-over-unix-socket.md): the task walkthrough
 - [serve lifecycle contract](../../../docs/contracts/serve-lifecycle.md): the Security section states the provenance and permission rules
 - [secure-remote-serving.md](../../../docs/adopters/guides/secure-remote-serving.md): the permission gate and audit trail

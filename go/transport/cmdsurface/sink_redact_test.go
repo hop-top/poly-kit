@@ -736,3 +736,39 @@ func TestAuditRedaction_KeepsClientAndPeerAddresses(t *testing.T) {
 		t.Errorf("note=%q: the same value elsewhere is PII", g)
 	}
 }
+
+// The socket's peer credentials are provenance, like remote_addr: an
+// operator content rule broad enough to match a number leaves them
+// readable, while the same value under another Extra key is scanned.
+func TestAuditRedaction_PeerCredentialsAreProvenance(t *testing.T) {
+	root := &cobra.Command{Use: "app"}
+	root.AddCommand(&cobra.Command{Use: "sync", RunE: func(*cobra.Command, []string) error { return nil }})
+	rule, err := redact.NewRule("digits", `[0-9]{3,}`, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := &sinkRecorder{}
+	b := New(root,
+		WithRunner(&fakeRunner{run: func(context.Context, Invocation) (Result, error) { return Result{}, nil }}),
+		WithSinks(SinkSpec{Sink: rec, OnOK: true, OnError: true}),
+		WithAuditRedaction(AuditRedaction{Rules: []redact.Rule{rule}}),
+	)
+	b.Expose("sync", SurfaceSocket)
+	if _, err := b.Invoke(context.Background(), Invocation{
+		Path: []string{"sync"},
+		Meta: Meta{Surface: SurfaceSocket, Extra: map[string]string{
+			"peer_uid": "501", "peer_gid": "2020", "peer_pid": "40312", "note": "501",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := rec.calls[0].inv.Meta.Extra
+	for k, want := range map[string]string{"peer_uid": "501", "peer_gid": "2020", "peer_pid": "40312"} {
+		if got[k] != want {
+			t.Errorf("Extra[%s]=%q, want %q kept as provenance", k, got[k], want)
+		}
+	}
+	if got["note"] == "501" {
+		t.Errorf("Extra[note]=%q: the rule should apply outside provenance", got["note"])
+	}
+}

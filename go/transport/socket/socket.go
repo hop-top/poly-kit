@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -159,7 +160,18 @@ type Identity struct {
 	// caller the socket file alone established holds the owner's
 	// authority instead and is not asked for scopes.
 	Scopes []string
+	// Extra becomes the invocation's Meta.Extra: provenance the
+	// authenticator read beside its verdict, such as the peer
+	// credentials [NewPeerAuthenticator] records. It is recorded on a
+	// refusal too, so a refused caller's audit record says what the
+	// authenticator saw. A "scopes" entry is dropped; scopes come
+	// from Scopes alone.
+	Extra map[string]string
 }
+
+// scopesExtraKey is the Meta.Extra entry the permission gate reads a
+// verified caller's scopes from.
+const scopesExtraKey = "scopes"
 
 // Authenticator verifies who is on the other end of a socket
 // request. It sees the connection, so an implementation may read
@@ -170,9 +182,10 @@ type Identity struct {
 //
 // The transport ships without one: the socket is owner-only by
 // construction, and for the common case the file permission is the
-// authentication. An authenticator is for the case where the socket
-// is shared deliberately and the tool must know which local caller
-// is speaking.
+// authentication. An authenticator is for the case where the tool
+// must know which local caller is speaking, or the socket is shared
+// deliberately. [NewPeerAuthenticator] is the one kit ships: it names
+// the caller by the uid the kernel reports for the connection.
 type Authenticator func(ctx context.Context, conn net.Conn, req Request) (Identity, error)
 
 // Transport is the [transportsvc.Transport] serving NDJSON over a
@@ -384,6 +397,13 @@ func (t *Transport) dispatch(ctx context.Context, conn net.Conn, line []byte, in
 
 	if t.Auth != nil {
 		id, err := t.Auth(ctx, conn, req)
+		// What the authenticator read is provenance whichever way
+		// it decided, so a refusal's audit record carries it too.
+		// A request carries no Extra of its own to merge with. A
+		// "scopes" entry in it is dropped: scopes reach the gate from
+		// Identity.Scopes on an admitted call only.
+		invocation.Meta.Extra = maps.Clone(id.Extra)
+		delete(invocation.Meta.Extra, scopesExtraKey)
 		if err != nil {
 			if t.OnRefused != nil {
 				t.OnRefused(ctx, invocation,
@@ -398,7 +418,12 @@ func (t *Transport) dispatch(ctx context.Context, conn net.Conn, line []byte, in
 		invocation.Meta.Tenant = id.Tenant
 		invocation.Meta.Established = cmdsurface.EstablishedVerified
 		if len(id.Scopes) > 0 {
-			invocation.Meta.Extra = map[string]string{"scopes": strings.Join(id.Scopes, ",")}
+			// Merged beside the provenance the authenticator
+			// recorded, never in place of it.
+			if invocation.Meta.Extra == nil {
+				invocation.Meta.Extra = make(map[string]string, 1)
+			}
+			invocation.Meta.Extra[scopesExtraKey] = strings.Join(id.Scopes, ",")
 		}
 	} else {
 		// Bind created the socket SocketMode (owner-only): whoever

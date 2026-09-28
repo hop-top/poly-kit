@@ -24,10 +24,11 @@
 // open the path. Access control is therefore filesystem access
 // control, and the socket is created owner-only ([SocketMode]).
 //
-// The service does not authenticate callers beyond that. Remote
-// access and per-principal authorization are out of scope here; the
-// seam carries them when they land, because [Request] already accepts
-// a caller identity and trace id that travel into
+// Beyond that, a transport authenticates callers only when given an
+// [Authenticator]. [NewPeerAuthenticator] is the one kit ships: it
+// names each caller by the uid the kernel reports for its connection
+// ([PeerCredentials]). Remote access is out of scope here. [Request]
+// accepts a caller identity and trace id that travel into
 // [hop.top/kit/go/transport/cmdsurface.Meta] where audit sinks read
 // them. A caller-supplied identity is provenance, not a credential —
 // nothing is granted on its basis. What the owner-only file proves is

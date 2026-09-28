@@ -188,6 +188,60 @@ func TestAuthenticatorScopesReachTheGate(t *testing.T) {
 	assert.Equal(t, "items:read,items:admin", got.Extra["scopes"])
 }
 
+// TestAuthenticatorScopesKeepTheRecordedProvenance pins that the
+// scopes an Authenticator establishes are merged beside the Extra it
+// recorded, such as the peer credentials, never in place of it, and
+// that a "scopes" entry in that Extra grants nothing.
+func TestAuthenticatorScopesKeepTheRecordedProvenance(t *testing.T) {
+	t.Parallel()
+	path := socketPath(t)
+	runner := newRecordingRunner(false)
+	auth := func(context.Context, net.Conn, socket.Request) (socket.Identity, error) {
+		return socket.Identity{
+			Principal: "uid:501",
+			Scopes:    []string{"items:read"},
+			Extra: map[string]string{
+				socket.ExtraPeerUID: "501",
+				socket.ExtraPeerGID: "20",
+				socket.ExtraPeerPID: "4242",
+				"scopes":            "items:admin",
+			},
+		}, nil
+	}
+	startSocketWith(t, path, auth, transportsvc.WithBridgeOptions(cmdsurface.WithRunner(runner)))
+
+	resp := call(t, path, socket.Request{Path: []string{"ping"}})
+	require.True(t, resp.Ok, "%+v", resp.Error)
+	got := runner.invocation().Meta
+	assert.Equal(t, cmdsurface.EstablishedVerified, got.Established)
+	assert.Equal(t, map[string]string{
+		socket.ExtraPeerUID: "501",
+		socket.ExtraPeerGID: "20",
+		socket.ExtraPeerPID: "4242",
+		"scopes":            "items:read",
+	}, got.Extra, "scopes come from Identity.Scopes, beside the recorded peer credentials")
+}
+
+// An Authenticator's Extra cannot name scopes: with no
+// Identity.Scopes the caller holds none, whatever Extra says.
+func TestAuthenticatorExtraGrantsNoScopes(t *testing.T) {
+	t.Parallel()
+	path := socketPath(t)
+	runner := newRecordingRunner(false)
+	auth := func(context.Context, net.Conn, socket.Request) (socket.Identity, error) {
+		return socket.Identity{
+			Principal: "uid:501",
+			Extra:     map[string]string{socket.ExtraPeerUID: "501", "scopes": "items:admin"},
+		}, nil
+	}
+	startSocketWith(t, path, auth, transportsvc.WithBridgeOptions(cmdsurface.WithRunner(runner)))
+
+	resp := call(t, path, socket.Request{Path: []string{"ping"}})
+	require.True(t, resp.Ok, "%+v", resp.Error)
+	got := runner.invocation().Meta
+	assert.Equal(t, map[string]string{socket.ExtraPeerUID: "501"}, got.Extra)
+}
+
 func TestPermissionDeniedIsDeniedOnTheWire(t *testing.T) {
 	t.Parallel()
 	path := socketPath(t)

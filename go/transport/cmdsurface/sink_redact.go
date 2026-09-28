@@ -222,6 +222,7 @@ var auditProvenanceExtra = map[string]bool{
 	"scopes": true, "oauth_issuer": true, "mcp_spec_version": true,
 	"mcp_client_name": true, "mcp_client_version": true,
 	"mcp_confirm_rejection": true, cacheExtraKey: true,
+	"peer_uid": true, "peer_gid": true, "peer_pid": true,
 }
 
 // auditOutputBlind is implemented by shipped sinks that never read
