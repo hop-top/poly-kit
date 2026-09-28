@@ -579,7 +579,7 @@ Stated plainly, so you can decide what to put in front of it:
   may claim any value. A permission gate that decides on
   `Meta.Caller` over an unauthenticated socket is trusting the
   caller's word; see
-  [secure-remote-serving.md](secure-remote-serving.md#5-wire-a-permission-policy).
+  [secure-remote-serving.md](secure-remote-serving.md#5-require-scopes-then-wire-a-permission-policy).
 - **No remote access.** A Unix socket is local by construction. There
   is no listen address, no TLS, and no way to reach it from another
   host without you forwarding it yourself.
