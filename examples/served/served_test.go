@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -347,6 +348,7 @@ func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 
 	want := map[string]verdict{
 		"item list":  {Invocable: true},
+		"item watch": {Invocable: true},
 		"item add":   {Invocable: true},
 		"item purge": {Reason: "unauthorized-destructive"},
 		"shell":      {Reason: "interactive"},
@@ -363,7 +365,7 @@ func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 	// callable is not a route.
 	for name, v := range got {
 		if v.Invocable {
-			assert.Contains(t, []string{"item list", "item add"}, name,
+			assert.Contains(t, []string{"item list", "item watch", "item add"}, name,
 				"unexpected invocable command %q", name)
 		}
 	}
@@ -395,6 +397,61 @@ func TestReadAndWriteRunOverREST(t *testing.T) {
 	require.Equal(t, http.StatusOK, status)
 	assert.Equal(t, []string{"bolt", "nut", "washer"}, items(t, decodeResult(t, body).Data),
 		"the write reached the same state the read reports")
+}
+
+func TestLongRunningReadStreamsOverREST(t *testing.T) {
+	run := startServe(t, options{}, "api", "--addr", "127.0.0.1:0")
+	base := "http://" + run.waitReady(t, "api").Address
+
+	// A bounded run: one event frame per line, then the result.
+	status, body := httpDo(t, http.MethodGet,
+		base+"/v1/commands/item/watch/stream?count=3&interval=10ms", "")
+	require.Equal(t, http.StatusOK, status, string(body))
+	text := string(body)
+	assert.Equal(t, 3, strings.Count(text, "event: event\n"), text)
+	assert.Contains(t, text, `"data":"tick 3: 2 items"`)
+	require.Contains(t, text, "event: result\n", text)
+	last := text[strings.LastIndex(text, "data: ")+len("data: "):]
+	var res struct {
+		Status   int `json:"status"`
+		ExitCode int `json:"exit_code"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(last)), &res), last)
+	assert.Equal(t, http.StatusOK, res.Status)
+	assert.Equal(t, 0, res.ExitCode)
+
+	// An unbounded run ends when the client leaves. The fixture
+	// serves one tree, so a command still running would hold it and
+	// the next call would wait: that the next call answers is the
+	// proof the disconnect canceled the command.
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		base+"/v1/commands/item/watch/stream?interval=10ms", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	_, err = bufio.NewReader(resp.Body).ReadString('\n')
+	require.NoError(t, err)
+	cancel()
+	_ = resp.Body.Close()
+
+	done := make(chan int, 1)
+	go func() {
+		resp, err := http.Get(base + "/v1/commands/item/list")
+		if err != nil {
+			done <- 0
+			return
+		}
+		_ = resp.Body.Close()
+		done <- resp.StatusCode
+	}()
+	select {
+	case status := <-done:
+		assert.Equal(t, http.StatusOK, status)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the disconnected watch never stopped")
+	}
 }
 
 func TestDestructiveIsWithheldOverRESTByDefault(t *testing.T) {

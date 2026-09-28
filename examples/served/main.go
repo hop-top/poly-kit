@@ -18,6 +18,7 @@
 // class the contract distinguishes:
 //
 //	item list    read               declares an output schema
+//	item watch   read               long-running: streams until done or canceled
 //	item add     write-local
 //	item purge   destructive-shared
 //	shell        interactive
@@ -31,6 +32,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -171,8 +173,46 @@ func itemCmd(root *cli.Root, st *store) *cobra.Command {
 	cli.SetSideEffect(purge, cli.SideEffectDestructiveShared)
 	cli.SetIdempotency(purge, cli.IdempotencyYes)
 
-	item.AddCommand(list, add, purge)
+	item.AddCommand(list, watchCmd(st), add, purge)
 	return item
+}
+
+// watchCmd is the long-running read: it reports the item count once
+// per interval until it has reported count times, or forever when
+// count is 0, and stops as soon as its context is canceled. Served,
+// it is what the streaming route is for: GET
+// /v1/commands/item/watch/stream delivers each line as it is written,
+// and a client that disconnects cancels it.
+func watchCmd(st *store) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "watch",
+		Short: "Report the item count until stopped",
+		Long:  "Report the item count once per interval, count times, or until canceled when count is 0.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			count, _ := cmd.Flags().GetInt("count")
+			interval, _ := cmd.Flags().GetDuration("interval")
+			tick := time.NewTicker(interval)
+			defer tick.Stop()
+			for i := 1; count == 0 || i <= count; i++ {
+				fmt.Fprintf(cmd.OutOrStdout(), "tick %d: %d items\n", i, len(st.list()))
+				if count != 0 && i == count {
+					return nil
+				}
+				select {
+				case <-cmd.Context().Done():
+					return cmd.Context().Err()
+				case <-tick.C:
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().Int("count", 0, "stop after this many reports; 0 runs until canceled")
+	cmd.Flags().Duration("interval", time.Second, "time between reports")
+	cli.SetSideEffect(cmd, cli.SideEffectRead)
+	cli.SetIdempotency(cmd, cli.IdempotencyYes)
+	return cmd
 }
 
 // shellCmd is the interactive class: it needs a terminal and a human,

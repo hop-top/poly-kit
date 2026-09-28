@@ -16,6 +16,7 @@ claim the contract makes about a conformant application command.
 | Command      | Class              | Served as                                                  |
 |--------------|--------------------|------------------------------------------------------------|
 | `item list`  | read, output schema | `GET /v1/commands/item/list`, answers in `data`            |
+| `item watch` | read, long-running | `GET /v1/commands/item/watch/stream`, one event per line until done or disconnected |
 | `item add`   | write-local        | `POST /v1/commands/item/add`                               |
 | `item purge` | destructive-shared | withheld (`unauthorized-destructive`) until a surface is named, then needs `confirm` |
 | `shell`      | interactive        | never: 404 + `interactive` over REST, `NOT_INVOCABLE` over the socket |
@@ -41,6 +42,10 @@ Each test name is the claim it pins:
 - `TestReadAndWriteRunOverREST`, `TestReadAndWriteRunOverTheSocket` —
   a read answers in `data` with `stdout` empty; a write runs and the
   next read sees it.
+- `TestLongRunningReadStreamsOverREST` — `item watch` streams one
+  `event` frame per line and a terminal `result` frame with the exit
+  code and mapped status; a client that disconnects cancels it, so the
+  next call is not held behind it.
 - `TestDestructiveIsWithheldOverRESTByDefault`,
   `TestDestructiveIsRefusedOverTheSocketByDefault` — 404 with the
   discovery reason; `BLOCKED` over the socket.
