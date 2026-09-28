@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/cli/idemstore"
+	"hop.top/kit/go/transport/cmdsurface"
 )
 
 // idempotencyKeyFlag is the auto-registered flag name. Adopters MUST
@@ -66,6 +67,14 @@ func installIdempotencyKeyFlag(cmd *cobra.Command) {
 // When --idempotency-key is empty or the flag isn't registered on
 // the command, orig runs unchanged.
 //
+// The store key is the flag's value on the command line. Under a
+// served invocation it is that value confined to the caller
+// ([cmdsurface.ScopeIdempotencyKey]): the invocation's established
+// principal and tenant, else its surface, claimed caller and client
+// host. A caller who sends another caller's key is not answered with
+// that caller's recorded output, and served and local keys never
+// meet.
+//
 // store must be non-nil; callers (Root.WrapRunE) supply r.IdemStore
 // or skip the wrap when it's nil.
 func wrapIdempotencyRunE(
@@ -80,12 +89,14 @@ func wrapIdempotencyRunE(
 		if flag == nil {
 			return orig(cmd, args)
 		}
-		key := flag.Value.String()
+		ctx := cmd.Context()
+		// A served invocation's key is confined to its caller; a
+		// local user's key is used as typed.
+		key := cmdsurface.ScopeIdempotencyKey(ctx, flag.Value.String())
 		if key == "" {
 			return orig(cmd, args)
 		}
 
-		ctx := cmd.Context()
 		if r, hit, err := store.Lookup(ctx, key); err == nil && hit {
 			_, _ = cmd.OutOrStdout().Write(r.Output)
 			return nil

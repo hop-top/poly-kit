@@ -699,6 +699,12 @@ of any of them.
   when the leaf registers one and the caller did not set it. Replay
   is the bridge's, at slot 8 ([Idempotency](#idempotency)); a
   transport only carries the key.
+  A command's own `--idempotency-key` middleware MUST scope a served
+  invocation's key to its caller with the same scope the bridge uses
+  (`cmdsurface.ScopeIdempotencyKey`, over `cmdsurface.IdempotencyScope`),
+  and a runner MUST carry the invocation's `Meta` to the command's
+  context (`cmdsurface.ContextWithMeta`), or to a child process as
+  `KIT_IDEMPOTENCY_SCOPE`.
 
 ### Permission
 

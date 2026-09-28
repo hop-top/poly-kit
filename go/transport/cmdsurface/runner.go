@@ -46,6 +46,7 @@ type Runner interface {
 // command that fails while ctx is done is reported as a cancellation
 // through the returned error, alongside the partial Result.
 func (r *inProcessRunner) Run(ctx context.Context, inv Invocation) (Result, error) {
+	ctx = ContextWithMeta(ctx, inv.Meta)
 	ex, err := r.prepare(ctx, inv)
 	if err != nil {
 		return Result{}, err
@@ -71,6 +72,7 @@ func (r *inProcessRunner) Stream(ctx context.Context, inv Invocation, out chan<-
 	}
 	defer close(out)
 
+	ctx = ContextWithMeta(ctx, inv.Meta)
 	ex, err := r.prepare(ctx, inv)
 	if err != nil {
 		return err
@@ -227,7 +229,10 @@ func joinPath(path []string) string {
 // OpenTelemetry SDKs read at start-up, so a traced child continues
 // the caller's trace; any TRACEPARENT or TRACESTATE the server itself
 // inherited is replaced rather than duplicated. Without one the
-// environment passes through untouched.
+// server's own trace variables pass through. The child also receives
+// the invocation's [IdempotencyScope] as [EnvIdempotencyScope], so
+// its --idempotency-key replay is confined to the caller exactly as
+// an in-process run's is (see [ScopeIdempotencyKey]).
 func SubprocessRunner(binaryPath string) Runner {
 	return &subprocessRunner{binary: binaryPath}
 }
@@ -248,7 +253,7 @@ func (r *subprocessRunner) Run(ctx context.Context, inv Invocation) (Result, err
 
 	argv := buildArgs(inv)
 	cmd := exec.CommandContext(ctx, r.binary, argv...)
-	cmd.Env = traceEnv(inv.Meta)
+	cmd.Env = childEnv(inv.Meta)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -304,7 +309,7 @@ func (r *subprocessRunner) Stream(ctx context.Context, inv Invocation, out chan<
 
 	argv := buildArgs(inv)
 	cmd := exec.CommandContext(ctx, r.binary, argv...)
-	cmd.Env = traceEnv(inv.Meta)
+	cmd.Env = childEnv(inv.Meta)
 
 	// Use io.Pipe pairs rather than cmd.StdoutPipe()/StderrPipe() so
 	// cmd.Wait() does NOT close the read end before scanLinesTee
@@ -369,26 +374,30 @@ const (
 	envTracestate  = "TRACESTATE"
 )
 
-// traceEnv returns the child environment for meta: nil, meaning
-// "inherit unchanged", when meta carries no trace context; otherwise
-// the server's environment with its own trace variables removed and
-// meta's appended.
-func traceEnv(meta Meta) []string {
-	if meta.Traceparent == "" {
-		return nil
-	}
+// childEnv returns the child environment for meta: the server's
+// environment with meta's idempotency scope set as
+// [EnvIdempotencyScope], and, when meta carries a trace context, the
+// server's own trace variables replaced by meta's. An inherited
+// scope is always replaced: it belongs to whoever served the server.
+func childEnv(meta Meta) []string {
 	parent := os.Environ()
-	env := make([]string, 0, len(parent)+2)
+	env := make([]string, 0, len(parent)+3)
 	for _, kv := range parent {
 		name, _, _ := strings.Cut(kv, "=")
-		if name == envTraceparent || name == envTracestate {
+		if name == EnvIdempotencyScope {
+			continue
+		}
+		if meta.Traceparent != "" && (name == envTraceparent || name == envTracestate) {
 			continue
 		}
 		env = append(env, kv)
 	}
-	env = append(env, envTraceparent+"="+meta.Traceparent)
-	if meta.Tracestate != "" {
-		env = append(env, envTracestate+"="+meta.Tracestate)
+	env = append(env, EnvIdempotencyScope+"="+IdempotencyScope(meta))
+	if meta.Traceparent != "" {
+		env = append(env, envTraceparent+"="+meta.Traceparent)
+		if meta.Tracestate != "" {
+			env = append(env, envTracestate+"="+meta.Tracestate)
+		}
 	}
 	return env
 }

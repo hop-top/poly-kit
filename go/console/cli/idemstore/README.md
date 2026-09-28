@@ -59,6 +59,16 @@ fmt.Print(string(r.Output))
 - Middleware behavior: on a `Lookup` error the original command runs anyway
   (over-execute rather than refuse); flag-validation rejections are not
   recorded.
+- Keys are scoped by caller. A key typed on the command line is stored as
+  typed. A key that reaches a served command (the `Idempotency-Key` header,
+  the socket's `idempotency_key`, or the flag set in a request) is stored as
+  `served:<hash>` of the key and the caller's scope
+  (`cmdsurface.ScopeIdempotencyKey`), so one caller's key never replays
+  another caller's output and served keys never meet local ones. The scope is
+  the tenant and principal the transport verified; for a caller it did not
+  verify, the service, claimed caller and, without one, the client host.
+  Unverified callers from one host share a scope: authenticate the service
+  to scope per caller.
 
 ## Neighbours
 

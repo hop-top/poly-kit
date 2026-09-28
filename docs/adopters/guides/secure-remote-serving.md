@@ -789,7 +789,7 @@ X-Request-ID: req-42
 | `X-Request-ID` | `Meta.RequestID` | issued by the server when absent; echoed on the response |
 | `traceparent` | `Meta.TraceID`, `Meta.Traceparent` | the W3C trace-id field; `X-Trace-ID` is the fallback. A well-formed value also lands whole in `Meta.Traceparent` and reaches a subprocess as `TRACEPARENT` |
 | `tracestate` | `Meta.Tracestate` | kept only beside a well-formed `traceparent` |
-| `Idempotency-Key` | `Meta.IdempotencyKey` | makes the call replayable (below); also forwarded to the command's `--idempotency-key` flag when it has one |
+| `Idempotency-Key` | `Meta.IdempotencyKey` | makes the call replayable (below); also forwarded to the command's `--idempotency-key` flag when it has one, scoped to the caller the same way |
 
 Over the socket the same values are request fields:
 
@@ -820,7 +820,10 @@ Idempotent-Replayed: true
 
 - The key is scoped to the caller: alice's key never answers bob. A
   caller your `Auth` verified gets its answer on any service; a caller
-  merely named in a request is scoped to that service.
+  merely named in a request is scoped to that service and, when it
+  names none, its client host, so unauthenticated callers behind one
+  host or proxy share a scope: authenticate the service to separate
+  them.
 - The same key for a different command or different flags is refused
   `422 idempotency_key_reused`; a retry while the first call still runs
   is refused `409 idempotency_conflict`.
@@ -834,6 +837,12 @@ Idempotent-Replayed: true
 The rpc and mcp services and the socket take the key too; the
 [contract](../../contracts/serve-lifecycle.md#idempotency) lists where
 each carries it and how each marks a replay.
+
+A command with its own `--idempotency-key` replay (`cli.WithIdempotencyStore`)
+gets the key too, scoped the same way: a served key never replays a
+record made on your own command line, and a command run by
+`cmdsurface.SubprocessRunner` receives the scope through
+`KIT_IDEMPOTENCY_SCOPE`.
 
 ### 8. Keep browsers out: Host, Origin, response headers
 

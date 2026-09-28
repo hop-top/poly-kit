@@ -41,6 +41,10 @@ var ErrNotInvocable = errors.New("cmdsurface: command not invocable through a ru
 //
 // The runner does not mutate the tree beyond that: writers, argv,
 // context, stdin, and the silence bits are restored on return.
+//
+// The command's context carries the invocation's Meta
+// ([MetaFromContext]), which is how a command, and kit's own RunE
+// middleware, tells it is served and on whose behalf.
 func InProcessRunner(root *cobra.Command, opts ...RunnerOption) Runner {
 	r := &inProcessRunner{root: root}
 	for _, o := range opts {
