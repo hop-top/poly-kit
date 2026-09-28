@@ -550,12 +550,11 @@ func TestRPCServiceExposureRefusals(t *testing.T) {
 			assert.Contains(t, oe.Error(), want)
 		}
 	})
-	t.Run("authenticated but unbounded", func(t *testing.T) {
-		oe := serveErr(t, rpcserve.Config{Auth: bearerAuth}, []string{"rpc", "--rpc-addr", "0.0.0.0:0"})
-		assert.Equal(t, 2, oe.ExitCode)
-		for _, want := range []string{"--policy", "127.0.0.1", "services.rpc.insecure_no_policy"} {
-			assert.Contains(t, oe.Error(), want)
-		}
+	t.Run("authenticated with no policy serves under kit-default", func(t *testing.T) {
+		r := newServeRoot(t, rpcserve.With(rpcserve.Config{Auth: bearerAuth}))
+		rpcCommands(r)
+		err := runServeArgs(t, r, []string{"serve", "rpc", "--rpc-addr", "0.0.0.0:0"}, 2*time.Second)
+		assert.NoError(t, err)
 	})
 	t.Run("bad address", func(t *testing.T) {
 		oe := serveErr(t, rpcserve.Config{}, []string{"rpc", "--rpc-addr", "nope"})

@@ -18,18 +18,18 @@ const ReasonWithheldByConfig = cmdsurface.ReasonWithheldByConfig
 // reflected mid-construction describes commands the binary does not
 // expose. By the time a service starts, cobra has the whole tree.
 //
-// loopback is the service's exposure; it picks the rate limit's
-// default. extra are further bridge options the service resolved
+// exp is the service's exposure; it picks the rate limit's default
+// and whether kit-default applies. extra are further bridge options the service resolved
 // itself (the result cache); they go before the shared options.
-func projectionBridge(r *Root, cfg *APIConfig, loopback bool, extra ...cmdsurface.Option) (*cmdsurface.Bridge, error) {
+func projectionBridge(r *Root, cfg *APIConfig, exp ServeExposure, extra ...cmdsurface.Option) (*cmdsurface.Bridge, error) {
 	// The permission gate and the audit sinks are resolved now, at
 	// start: --policy is parsed by then and every adopter option has
 	// run.
-	shared, err := r.serveBridgeOptions(APIServiceName)
+	shared, err := r.serveBridgeOptions(APIServiceName, exp)
 	if err != nil {
 		return nil, err
 	}
-	limit, err := r.serveRateLimitOptions(APIServiceName, loopback)
+	limit, err := r.serveRateLimitOptions(APIServiceName, exp.Loopback)
 	if err != nil {
 		return nil, err
 	}

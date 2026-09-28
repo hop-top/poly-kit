@@ -47,10 +47,11 @@ type APIConfig struct {
 	// question, and a non-loopback address needs an answer to both.
 	InsecureRemote bool
 	// InsecureNoPolicy permits serving on a non-loopback address with
-	// NO delegation policy in force. Without a policy the permission
-	// gate permits every command for every caller, so this is an
-	// explicit acceptance that any caller the surface admits may run
-	// the whole command tree, destructive commands included.
+	// NO delegation policy in force. Without it, and with no --policy
+	// named, the service enforces kit-default there. With it the
+	// permission gate permits every command for every caller, so this
+	// is an explicit acceptance that any caller the surface admits may
+	// run the whole command tree, destructive commands included.
 	// services.api.insecure_no_policy and --insecure-no-policy set the
 	// same thing. It changes nothing when --policy names a policy.
 	//
@@ -177,7 +178,7 @@ func (r *Root) mountAPIServeFlags() {
 		}
 		if c.Flags().Lookup(insecureNoPolicyFlag) == nil {
 			c.Flags().Bool(insecureNoPolicyFlag, false,
-				"Serve the api service on a non-loopback address with no delegation policy")
+				"Serve the api service on a non-loopback address with no delegation policy, rather than kit-default")
 		}
 		return
 	}

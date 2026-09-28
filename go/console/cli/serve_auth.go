@@ -108,8 +108,8 @@ func WithAuditSinks(specs ...cmdsurface.SinkSpec) func(*Root) {
 // sets it, and any test-injected options. It is resolved at Start, not at
 // registration, because --policy is parsed and adopter options run
 // only after the service was constructed.
-func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
-	perm, err := r.servePermission()
+func (r *Root) serveBridgeOptions(svc string, exp ServeExposure) ([]cmdsurface.Option, error) {
+	perm, err := r.servePermission(exp)
 	if err != nil {
 		return nil, err
 	}
@@ -148,14 +148,19 @@ func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
 // servePermission builds the permission gate the services share. The
 // policy engine's verdict comes first: it answers the same question
 // wrapPolicyRunE asks on the CLI, from the same --policy, for the
-// caller the transport established (see permissionFromEngine). The
+// caller the transport established (see permissionFromEngine). With no
+// --policy named, a service exposed beyond loopback enforces
+// kit-default unless it opted out with insecure_no_policy. The
 // policy's permissions: rules run second and the adopter's gate last,
 // for the caller-specific answer. The first refusal stands: a later
 // decider is never asked about a call an earlier one refused.
-func (r *Root) servePermission() (cmdsurface.PermissionFunc, error) {
+func (r *Root) servePermission(exp ServeExposure) (cmdsurface.PermissionFunc, error) {
 	engine, err := r.newPolicyEngine(r.Cmd)
 	if err != nil {
 		return nil, err
+	}
+	if exp.kitDefault() && !r.servePolicyConfigured() {
+		engine = policy.NewEngine(policy.KitDefault(), flagInt(r.Cmd, maxOpsFlag))
 	}
 	var ledger *cmdsurface.UsageLedger
 	if engine.Policy().HasBudgets() {
@@ -253,7 +258,7 @@ func permissionFromEngine(engine *policy.Engine, ledger *cmdsurface.UsageLedger)
 				CallerIndependent: everyone,
 			}
 		}
-		if budgeted && ledger != nil && policy.Mutating(leaf.Cmd) {
+		if budgeted && ledger != nil && engine.Mutating(leaf.Cmd) {
 			return chargeBudget(ctx, ledger, budget)
 		}
 		return cmdsurface.PermissionDecision{Allowed: true}
@@ -324,9 +329,10 @@ func isLoopbackAddr(addr string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// servePolicyConfigured reports whether a delegation policy is in
-// force for this invocation — that is, whether the permission gate
-// the transport services share can refuse anything at all.
+// servePolicyConfigured reports whether a delegation policy was named
+// for this invocation. Without one, a service on loopback, or one that
+// opted out with insecure_no_policy, has a permission gate that cannot
+// refuse anything at all; any other enforces kit-default.
 //
 // It asks the flag rather than the engine because a "no policy"
 // engine is not nil: newPolicyEngine always returns one, and with
@@ -384,12 +390,43 @@ func ServeBridgeOptions(r *Root, svc string) ([]cmdsurface.Option, error) {
 // ServeBridgeOptionsFor is [ServeBridgeOptions] for a service whose
 // exposure is known. loopback is true for a service reachable only
 // from this machine — bound to a loopback address, a Unix socket, or
-// stdio — which turns the rate limit's default off.
+// stdio — which turns the rate limit's default off, and keeps the
+// permission gate from defaulting to kit-default. The
+// insecure_no_policy opt-in is read from services.<svc>.insecure_no_policy;
+// a service with an opt-in of its own in code or on a flag uses
+// [ServeBridgeOptionsExposed].
 func ServeBridgeOptionsFor(r *Root, svc string, loopback bool) ([]cmdsurface.Option, error) {
-	shared, err := r.serveBridgeOptions(svc)
+	return ServeBridgeOptionsExposed(r, svc, ServeExposure{
+		Loopback:         loopback,
+		InsecureNoPolicy: r.serveConfigOptIn(svc, "insecure_no_policy"),
+	})
+}
+
+// ServeExposure is how far a served service reaches, as far as the
+// bridge options it applies depend on it.
+type ServeExposure struct {
+	// Loopback is true for a service reachable only from this
+	// machine: bound to a loopback address, a Unix socket, or stdio.
+	Loopback bool
+	// InsecureNoPolicy is the service's resolved insecure_no_policy
+	// opt-in: beyond loopback, serve with no policy at all rather
+	// than kit-default when no --policy is named.
+	InsecureNoPolicy bool
+}
+
+// kitDefault reports whether the exposure calls for kit-default when
+// no --policy is named: beyond loopback, without the opt-in.
+func (e ServeExposure) kitDefault() bool { return !e.Loopback && !e.InsecureNoPolicy }
+
+// ServeBridgeOptionsExposed is [ServeBridgeOptionsFor] with the whole
+// exposure given: beyond loopback, with no --policy named and no
+// insecure_no_policy opt-in, the permission gate enforces
+// [policy.KitDefault]; the rate limit defaults on.
+func ServeBridgeOptionsExposed(r *Root, svc string, exp ServeExposure) ([]cmdsurface.Option, error) {
+	shared, err := r.serveBridgeOptions(svc, exp)
 	if err == nil {
 		var limit []cmdsurface.Option
-		limit, err = r.serveRateLimitOptions(svc, loopback)
+		limit, err = r.serveRateLimitOptions(svc, exp.Loopback)
 		shared = append(limit, shared...)
 	}
 	if err != nil {
@@ -408,7 +445,7 @@ func ServeBridgeOptionsFor(r *Root, svc string, loopback bool) ([]cmdsurface.Opt
 // build a usable tree, is a usage error before anything binds. The
 // chains it opens are the ones Start reuses.
 func ValidateServeBridge(r *Root, svc string) error {
-	if _, err := r.servePermission(); err != nil {
+	if _, err := r.servePermission(ServeExposure{Loopback: true}); err != nil {
 		return err
 	}
 	if err := validateServeAudit(r, svc); err != nil {
@@ -432,13 +469,22 @@ func ValidateServeBridge(r *Root, svc string) error {
 	return r.validateRootFactory()
 }
 
-// ServePolicyConfigured reports whether a delegation policy (--policy)
-// is in force for this run — whether the permission gate the transport
-// services share can refuse anything at all. Exposure checks use it to
-// refuse an unbounded surface beyond loopback.
+// ServePolicyConfigured reports whether a delegation policy was named
+// (--policy) for this run. Without one, a service beyond loopback
+// enforces kit-default unless it opted out with insecure_no_policy.
 func ServePolicyConfigured(r *Root) bool { return r.servePolicyConfigured() }
 
 // IsLoopbackAddr reports whether a host:port listen address binds a
 // loopback interface only: 127.0.0.0/8, ::1, or the name localhost.
 // An empty host binds every interface and is not loopback.
 func IsLoopbackAddr(addr string) bool { return isLoopbackAddr(addr) }
+
+// serveConfigOptIn reads services.<svc>.<key> as a bool: false when
+// unset.
+func (r *Root) serveConfigOptIn(svc, key string) bool {
+	if r == nil || r.Viper == nil {
+		return false
+	}
+	k := serveKeyPrefix + svc + "." + key
+	return r.Viper.IsSet(k) && r.Viper.GetBool(k)
+}

@@ -363,8 +363,9 @@ dropped, so no client can name itself a principal. A command annotated
 `Auth` it is refused, whatever header the client sends.
 
 Beyond loopback, the service refuses to start (exit `2`) without
-`Auth`, and again without a `--policy`, unless you opt out by name
-with `services.rpc.insecure_remote` or `services.rpc.insecure_no_policy`.
+`Auth` unless you opt out by name with `services.rpc.insecure_remote`,
+and without a `--policy` it enforces `kit-default` unless you opt out
+with `services.rpc.insecure_no_policy`.
 The permission gate (`cli.WithPermission`), the audit sinks
 (`cli.WithAuditSinks`) and the walkthrough are shared with the other
 services: [secure-remote-serving.md](secure-remote-serving.md).
@@ -410,7 +411,7 @@ A refusal is an RPC error, and the command never ran:
 | `Config.Addr` | `127.0.0.1:8082` | Listen address. `services.rpc.addr`, then `--rpc-addr`, override it. |
 | `Config.Auth` | none | Authenticates every call; permits a non-loopback address. |
 | `Config.InsecureRemote` | `false` | Serve unauthenticated beyond loopback. `services.rpc.insecure_remote` sets the same. |
-| `Config.InsecureNoPolicy` | `false` | Serve beyond loopback with no `--policy`. `services.rpc.insecure_no_policy` sets the same. |
+| `Config.InsecureNoPolicy` | `false` | Beyond loopback with no `--policy`, serve with no policy instead of `kit-default`. `services.rpc.insecure_no_policy` sets the same. |
 | `Config.Policy` | zero | Zero refuses every destructive command. `AllowDestructiveOn: [SurfaceRPC]` permits them. |
 | `Config.Expose` | empty | Empty reaches the whole tree; a non-empty list is an allow-list. |
 | `Config.Hide` | empty | Patterns withheld from RPC, applied after `Expose`. |

@@ -146,7 +146,11 @@ func (r *Root) newPolicyEngine(cmd *cobra.Command) (*policy.Engine, error) {
 	policyName := flagValue(cmd, policyFlag)
 
 	var p policy.Policy
-	if policyName != "" {
+	switch {
+	case policyName == policy.KitDefaultName:
+		// Reserved: the shipped policy, whatever loader is wired.
+		p = policy.KitDefault()
+	case policyName != "":
 		if r.policyLoader == nil {
 			return nil, output.UsageError(
 				"--policy is set but no policy loader is wired (cli.WithPolicy)",
@@ -298,7 +302,7 @@ func (r *Root) wrapPolicyRunE(
 		// Policy gate first — refusals here aren't bypassed by
 		// --confirm=yes: a policy refusal is final.
 		var policyConfirm bool
-		if hasSE && !r.startsServices(cmd) {
+		if !r.startsServices(cmd) {
 			allowed, requireConfirm, reason := engine.AuthorizeFor(cmd, runCaller(cmd))
 			if !allowed {
 				return renderPolicyError(cmd,
@@ -311,7 +315,7 @@ func (r *Root) wrapPolicyRunE(
 		// when policy.require_confirm matched the verb. --dry-run
 		// short-circuits: dry runs have no real side-effect to confirm.
 		if !IsDryRun(cmd) {
-			if hasSE && (isDestructiveLike(se) || policyConfirm) {
+			if (hasSE && isDestructiveLike(se)) || policyConfirm {
 				if err := r.gateConfirm(cmd, se); err != nil {
 					return err
 				}

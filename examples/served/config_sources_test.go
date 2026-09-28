@@ -239,10 +239,13 @@ func TestBinaryServicesInsecureRemote(t *testing.T) {
 				args = append([]string{"-c", "services.api.insecure_remote=true"}, args...)
 			}
 			r := runBinary(t, newHome(t, ""), env, args...)
-			require.False(t, r.ready, r.output())
-			assert.Equal(t, 2, r.exitCode(), r.output())
-			assert.NotContains(t, r.output(), "no authentication", "the opt-in was read")
-			assert.Contains(t, r.output(), "no delegation policy is configured")
+			require.True(t, r.ready, "the opt-in was read: %s", r.output())
+			// No --policy named beyond loopback: kit-default answers,
+			// and nobody is established, so writes are refused.
+			url := strings.Replace(r.apiURL, "0.0.0.0", "127.0.0.1", 1)
+			status, got := httpDo(t, http.MethodPost, url+"/v1/commands/item/add", `{"args":["a"]}`)
+			assert.Equal(t, http.StatusForbidden, status, string(got))
+			assert.Contains(t, string(got), "policy kit-default:")
 		})
 	}
 }

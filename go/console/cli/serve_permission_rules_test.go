@@ -67,7 +67,7 @@ func TestPermissionRulesSitBetweenThePolicyAndTheAdopter(t *testing.T) {
 	r := authRoot(t, WithPermissionRules(compile), WithPermission(adopter))
 	setPolicy(t, r, rulesPolicy)
 
-	gate, err := r.servePermission()
+	gate, err := r.servePermission(ServeExposure{Loopback: true})
 	require.NoError(t, err)
 	assert.Equal(t, rulesPolicy.Permissions, compiled, "the compiler receives the policy's permissions: block")
 
@@ -95,7 +95,7 @@ func TestPermissionRulesWithoutAnEvaluatorRefuseToServe(t *testing.T) {
 	r := authRoot(t)
 	setPolicy(t, r, rulesPolicy)
 
-	_, err := r.servePermission()
+	_, err := r.servePermission(ServeExposure{Loopback: true})
 	require.Error(t, err)
 	var ce *output.Error
 	require.True(t, errors.As(err, &ce), "a usage error: %v", err)
@@ -134,7 +134,7 @@ func TestNoPermissionRulesCompilesNothing(t *testing.T) {
 	}
 	r := authRoot(t, WithPermissionRules(compile))
 	setPolicy(t, r, policy.Policy{Name: "plain"})
-	_, err := r.servePermission()
+	_, err := r.servePermission(ServeExposure{Loopback: true})
 	require.NoError(t, err)
 	assert.False(t, called)
 }

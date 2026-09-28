@@ -69,6 +69,11 @@ type CallerRule struct {
 	Allow     map[SideEffect][]string `yaml:"allow,omitempty"`
 	MaxOps    int                     `yaml:"max_ops,omitempty"`
 	Window    time.Duration           `yaml:"window,omitempty"`
+	// RequireDeclaredScope lists classes the rule admits only for a
+	// command declaring kit/permissions: an explicit scope, which the
+	// scope check then requires the caller to hold. A command of such
+	// a class declaring none is refused to the rule's callers.
+	RequireDeclaredScope []SideEffect `yaml:"require_declared_scope,omitempty"`
 }
 
 // Matches reports whether the rule applies to c.
@@ -132,11 +137,14 @@ func (p Policy) HasBudgets() bool {
 	return false
 }
 
-// validate checks the callers section. It is the only part of a
-// policy Load refuses on: the rest keeps the lenient reading policy
-// files have always had.
+// validate checks the callers section and unannotated. They are the
+// only parts of a policy Load refuses on: the rest keeps the lenient
+// reading policy files have always had.
 func (p Policy) validate() error {
 	var errs []error
+	if _, known := classOf(p.Unannotated); p.Unannotated != "" && !known {
+		errs = append(errs, fmt.Errorf("unannotated: unknown side-effect class %q", p.Unannotated))
+	}
 	for i, r := range p.Callers {
 		at := func(format string, args ...any) {
 			errs = append(errs, fmt.Errorf("callers[%d]: "+format, append([]any{i}, args...)...))
@@ -149,6 +157,11 @@ func (p Policy) validate() error {
 		for class := range r.Allow {
 			if _, known := classOf(class); !known {
 				at("allow: unknown side-effect class %q", class)
+			}
+		}
+		for _, class := range r.RequireDeclaredScope {
+			if _, known := classOf(class); !known {
+				at("require_declared_scope: unknown side-effect class %q", class)
 			}
 		}
 		if r.MaxOps < 0 {

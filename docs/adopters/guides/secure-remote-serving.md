@@ -154,23 +154,27 @@ USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and --no-au
 `--no-auth` still works on loopback, as it always did.
 
 Authentication is only the first gate. Configure `Auth` (step 3) and
-the same address is refused again, this time for what it does not
-bound:
+the same address serves, and with no `--policy` named it serves under
+`kit-default`, the policy kit ships for exactly this case:
 
-```console
-$ mytool serve
-USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and no delegation policy is configured; set --policy, listen on 127.0.0.1, or set services.api.insecure_no_policy: true (or --insecure-no-policy) to serve every command beyond loopback
-$ echo $?
-2
+| Caller | May run |
+|---|---|
+| not established (no verified credential) | read commands |
+| an established principal | read and write commands |
+| an established principal, destructive command | only one declaring `kit/permissions`, whose scopes it holds; the command's own confirmation still applies |
+
+A command that declares no `kit/side-effect` counts as a write. Every
+refusal names the policy and the way past it:
+
+```json
+{"status":403,"code":"permission_denied","message":"api: permission denied: cmdsurface: permission denied: widget add on rest: policy: write not allowed for widget add (policy kit-default: kit's default beyond loopback: writes need an authenticated caller, destructive commands a declared kit/permissions scope; name a --policy to choose otherwise)"}
 ```
 
-Without a `--policy` the permission gate permits every command for
-every caller — the same verdict it would give if there were no gate
-at all — so an authenticated caller may still run your destructive
-commands. The three ways forward are again the three the message
-names: name a policy (step 5), go back to loopback, or accept it by
-name (step 4). Both gates apply independently: a non-loopback address
-must satisfy each.
+Without it, a tool that names no `--policy` would have a permission
+gate that permits every command for every caller, destructive included.
+Name your own policy (step 5) to choose other rules, or accept an
+unbounded surface by name (step 4). Loopback is unaffected: there, no
+`--policy` still means no policy.
 
 ### 3. Expose beyond loopback with Auth
 
@@ -409,22 +413,22 @@ services:
 $ mytool serve --insecure-no-policy
 ```
 
-Same precedence: flag, then config key, then code. With it set, any
-caller the surface admits may run the whole command tree, destructive
-commands included, because nothing bounds what the permission gate
-allows.
+Same precedence: flag, then config key, then code. With it set and no
+`--policy` named, `kit-default` does not apply: any caller the surface
+admits may run the whole command tree, destructive commands included,
+because nothing bounds what the permission gate allows.
 
 The two are deliberately separate keys, because they waive different
 things. `insecure_remote` says you accept unidentified callers;
-`insecure_no_policy` says you accept unbounded ones. A tool with
-`Auth` configured has answered the first question and not the second,
-and a tool with a `--policy` and no `Auth` has answered the second and
-not the first. Setting one never sets the other, so a config review
-can see exactly which of the two you accepted:
+`insecure_no_policy` says you accept unbounded ones. Setting one never
+sets the other, so a config review can see exactly which of the two
+you accepted. Under `insecure_remote` alone nobody is established, so
+`kit-default` lets every caller read and refuses every write:
 
 ```console
 $ mytool serve --addr 0.0.0.0:8080 --insecure-remote
-USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and no delegation policy is configured; ...
+$ curl -s -X POST http://10.0.0.5:8080/v1/commands/widget/add -d '{}' | jq -r .message
+api: permission denied: cmdsurface: permission denied: widget add on rest: policy: write not allowed for widget add (policy kit-default: ...)
 ```
 
 Loopback needs neither. Serving on `127.0.0.1` keeps
@@ -634,8 +638,8 @@ with the reason `permission-denied`, exactly as it withholds an
 interactive command.
 
 The tool's policy engine is wired into the same gate, between the
-scope check and your decision, and naming one is what satisfies the
-second exposure gate from step 2. A `--policy` that refuses a
+scope check and your decision, and naming one replaces the
+`kit-default` rules from step 2. A `--policy` that refuses a
 side-effect class refuses it on every surface, before your decision is
 asked, and discovery reflects it the same way:
 
@@ -1514,7 +1518,7 @@ observability](../reference/served-observability.md)).
 | `APIConfig.Addr` | `127.0.0.1:8080` | Listen address. Non-loopback needs `Auth` or `InsecureRemote`. |
 | `APIConfig.Auth` | none | Authenticates every route (OpenAPI document, docs and unmatched paths included; not the health probes) and permits any address. Claims attribute the call. |
 | `APIConfig.InsecureRemote` | `false` | Serve unauthenticated beyond loopback. `services.api.insecure_remote` / `--insecure-remote` set the same. |
-| `APIConfig.InsecureNoPolicy` | `false` | Serve beyond loopback with no delegation policy. `services.api.insecure_no_policy` / `--insecure-no-policy` set the same. |
+| `APIConfig.InsecureNoPolicy` | `false` | Beyond loopback with no `--policy`, serve with no policy instead of `kit-default`. `services.api.insecure_no_policy` / `--insecure-no-policy` set the same. |
 | `APIConfig.MaxBodyBytes` | `0` (1 MiB) | Request body cap on every api route; over it is `413 body_too_large`, audited as `cmdsurface.ErrBodyTooLarge`. Negative disables. `services.api.body_limit.max_bytes` / `.enabled`, then `services.all.body_limit.*`, override it. |
 | `SocketConfig.Auth` | none | Verifies each socket request; the verified identity, and its `Scopes`, replace the claimed one. |
 | `kit/permissions` annotation | none | Scopes a verified caller must all hold; otherwise `403 insufficient_scope`. The owner (socket file, stdio, CLI) is not asked. |
@@ -1527,7 +1531,7 @@ observability](../reference/served-observability.md)).
 | `cli.WithAuditCommand()` | not mounted | Mounts `<tool> audit verify` (exit 71 `TAMPER_DETECTED` on a broken chain); management-only when served. |
 | `cli.WithObservability(p)` | none | Links a tracing and metrics provider; `services.<svc>.tracing.enabled` / `.metrics.enabled` (or `services.all.*`) turn it on. |
 | `services.api.metrics.scrape.enabled` | `false` | Answer a Prometheus scrape at `/metrics`, after the Host check, before auth. Beyond loopback needs `services.api.metrics.scrape.allow_remote: true`. |
-| `--policy=<name>` | none | The tool's policy engine, applied to remote calls; its `callers` section answers per caller. Naming one permits a non-loopback address. |
+| `--policy=<name>` | `kit-default` beyond loopback, none on loopback | The tool's policy engine, applied to remote calls; its `callers` section answers per caller. `kit-default` is reserved for the shipped policy. |
 | `cli.WithUsageStore(store)` | `$XDG_STATE_HOME/<tool>/usage.db` | Where the `max_ops` budgets of a policy's caller rules are counted. |
 | `services.api.host_check.enabled` | `true` | Refuse a `Host` the listener does not answer for (`403`, `host_rejected`). |
 | `services.api.host_check.allow` | `[]` | Hosts accepted beyond the listener's own; `name` or `name:port`. Required for a wildcard bind to check anything. |
@@ -1586,9 +1590,6 @@ Absence here is deliberate; each of these belongs somewhere else:
 - **Forced remote execution.** Interactive commands, destructive
   commands the policy withholds, and commands the permission gate
   refuses stay refused. There is no override.
-- **A default policy.** Kit ships none and infers none. A tool with
-  no `--policy` is unbounded, which is why serving beyond loopback
-  makes you either name one or accept the absence by name.
 
 ## Related pages
 

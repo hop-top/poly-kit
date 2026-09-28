@@ -101,9 +101,10 @@ func (e *Engine) AuthorizeFor(cmd *cobra.Command, c *Caller) (allowed bool, requ
 		return true, false, ""
 	}
 
-	se, ok := readSideEffect(cmd)
+	se, ok := e.sideEffect(cmd)
 	if !ok {
-		// Untagged: defer to the validator (which refuses missing
+		// Untagged, and the policy says nothing about untagged
+		// commands: defer to the validator (which refuses missing
 		// tags). Allow here so we don't double-error.
 		return true, false, ""
 	}
@@ -114,7 +115,11 @@ func (e *Engine) AuthorizeFor(cmd *cobra.Command, c *Caller) (allowed bool, requ
 	verb := verbOf(cmd)
 	rule, _, matched := e.policy.RuleFor(c)
 	if !e.allows(rule.Allow, matched, se, verb) {
-		return false, false, "policy: " + string(se) + " not allowed for " + verb
+		return false, false, e.refusal("policy: " + string(se) + " not allowed for " + verb)
+	}
+	if matched && requiresDeclaredScope(rule, se) && !declaresScope(cmd) {
+		return false, false, e.refusal("policy: " + string(se) + " command " + verb +
+			" declares no kit/permissions scope")
 	}
 
 	// require_confirm match: any matching glob bumps the flag.
@@ -148,7 +153,7 @@ func (e *Engine) RefusedForEveryone(cmd *cobra.Command) bool {
 	if e == nil {
 		return false
 	}
-	se, ok := readSideEffect(cmd)
+	se, ok := e.sideEffect(cmd)
 	if !ok || se == SideEffectRead {
 		return false
 	}
@@ -157,7 +162,8 @@ func (e *Engine) RefusedForEveryone(cmd *cobra.Command) bool {
 		return false
 	}
 	for _, r := range e.policy.Callers {
-		if e.allows(r.Allow, true, se, verb) {
+		if e.allows(r.Allow, true, se, verb) &&
+			(!requiresDeclaredScope(r, se) || declaresScope(cmd)) {
 			return false
 		}
 	}
@@ -182,15 +188,57 @@ func (e *Engine) BudgetFor(c *Caller) (Budget, bool) {
 	return Budget{Key: e.policy.budgetKey(index, c), MaxOps: rule.MaxOps, Window: window}, true
 }
 
-// Mutating reports whether cmd's side-effect tag counts against a
-// budget: a write or destructive tier.
-func Mutating(cmd *cobra.Command) bool {
-	se, ok := readSideEffect(cmd)
+// Mutating reports whether cmd counts against a budget: its
+// side-effect tier — or, untagged, the policy's unannotated class — is
+// a write or destructive one.
+func (e *Engine) Mutating(cmd *cobra.Command) bool {
+	se, ok := e.sideEffect(cmd)
 	if !ok {
 		return false
 	}
 	class, _ := classOf(se)
 	return class == SideEffectWrite || class == SideEffectDestructive
+}
+
+// sideEffect is cmd's declared tier, else the policy's unannotated
+// class. ok is false when neither says anything.
+func (e *Engine) sideEffect(cmd *cobra.Command) (SideEffect, bool) {
+	if se, ok := readSideEffect(cmd); ok {
+		return se, true
+	}
+	if e.policy.Unannotated != "" {
+		return e.policy.Unannotated, true
+	}
+	return "", false
+}
+
+// refusal appends the policy's remedy, if it has one, to reason.
+func (e *Engine) refusal(reason string) string {
+	if e.policy.Remedy == "" {
+		return reason
+	}
+	return reason + " (policy " + e.policy.Name + ": " + e.policy.Remedy + ")"
+}
+
+// permissionsAnnotation is the cobra annotation a command declares the
+// scopes it requires under; mirrored, like sideEffectAnnotation.
+const permissionsAnnotation = "kit/permissions"
+
+// declaresScope reports whether cmd declares a kit/permissions scope.
+func declaresScope(cmd *cobra.Command) bool {
+	return cmd != nil && strings.TrimSpace(strings.ReplaceAll(cmd.Annotations[permissionsAnnotation], ",", "")) != ""
+}
+
+// requiresDeclaredScope reports whether r admits tier se only for a
+// command declaring a scope.
+func requiresDeclaredScope(r CallerRule, se SideEffect) bool {
+	class, _ := classOf(se)
+	for _, want := range r.RequireDeclaredScope {
+		if want == se || want == class {
+			return true
+		}
+	}
+	return false
 }
 
 // verbOf is the command path minus the root name, so allow globs match

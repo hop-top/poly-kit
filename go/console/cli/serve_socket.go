@@ -139,7 +139,7 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 		// tree it builds. The shared options go last so a
 		// test-injected Runner still wins.
 		transportsvc.WithBridgeOptionsFunc(func() []cmdsurface.Option {
-			shared, err := root.serveBridgeOptions(SocketServiceName)
+			shared, err := root.serveBridgeOptions(SocketServiceName, ServeExposure{Loopback: true})
 			if err != nil {
 				return []cmdsurface.Option{cmdsurface.WithPermission(refuseAll(err))}
 			}
@@ -157,7 +157,7 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 			if err := validateSocketPath(root, cfg); err != nil {
 				return err
 			}
-			if _, err := root.servePermission(); err != nil {
+			if _, err := root.servePermission(ServeExposure{Loopback: true}); err != nil {
 				return err
 			}
 			if err := validateServeAudit(root, SocketServiceName); err != nil {

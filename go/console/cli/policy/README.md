@@ -4,8 +4,8 @@
 
 "May an agent-driven invocation run this command, and how many mutating
 ops has it used?" Loads a delegation-safety policy YAML and enforces it
-per invocation. Path guardrails belong to `hop.top/kit/go/core/scope`;
-runtime breaker policy belongs to `hop.top/kit/go/runtime/policy`.
+per invocation, or per served caller. Path guardrails and breaker
+policy are separate engines (see Neighbours).
 
 ## Use it when
 
@@ -20,14 +20,8 @@ runtime breaker policy belongs to `hop.top/kit/go/runtime/policy`.
 
 ```go
 root := &cobra.Command{Use: "kit"}
-del := &cobra.Command{
-    Use:         "delete",
-    Annotations: map[string]string{"kit/side-effect": "destructive"},
-}
-drop := &cobra.Command{
-    Use:         "drop",
-    Annotations: map[string]string{"kit/side-effect": "destructive"},
-}
+del := &cobra.Command{Use: "delete", Annotations: map[string]string{"kit/side-effect": "destructive"}}
+drop := &cobra.Command{Use: "drop", Annotations: map[string]string{"kit/side-effect": "destructive"}}
 root.AddCommand(del, drop)
 
 p := policy.Policy{
@@ -47,20 +41,26 @@ fmt.Println(errors.Is(e.RecordOp(del), policy.ErrMaxOpsExceeded))
 ## Contract
 
 - YAML: `name` (default: file stem), `allow` (class → verb globs),
-  `max_ops`, `require_confirm` (path globs), `callers`, `permissions`
-  (served-call rules, `celpermission` compiles them). Unknown top-level
-  keys are ignored; `Load` refuses a malformed `callers`/`permissions`.
+  `max_ops`, `require_confirm` (path globs), `unannotated` (the class an
+  untagged command counts as), `callers`, `permissions` (served-call
+  rules, `celpermission` compiles them). Unknown top-level keys are
+  ignored; `Load` refuses a malformed `callers`/`unannotated`/`permissions`.
 - `allow`: no map permits everything; a class with an empty list is
   refused; an absent class is permitted; read and untagged always pass.
   An expanded tier (`write-shared`, …) is answered by its own entry,
   else its legacy class (`write`, `destructive`).
 - `callers`: rules matching `principal`, `tenant` (globs; `*` matches
   anything) and `scope` (held by the credential; the owner holds all),
-  with `allow`, `max_ops`, `window` (default `1h`). The first match
+  with `allow`, `max_ops`, `window` (default `1h`) and
+  `require_declared_scope` (classes run only by a command declaring
+  kit/permissions). The first match
   answers the classes it declares, the policy's `allow` the rest; a nil
   `Caller` (CLI, unestablished call) gets the policy's own rules.
   `BudgetFor` keys a budget by policy, rule, principal and tenant; cli
   counts it on a `cmdsurface.UsageLedger`.
+- `KitDefault()`: untagged is write; unestablished callers read,
+  established ones write, destructive needs a declared scope. The name
+  `kit-default` is reserved: `LoadNamed` never reads a file for it.
 - Verb = command path minus root; `path.Match` globs; `prefix:*` matches `prefix` and below.
 - `RecordOp` returns `ErrMaxOpsExceeded` once the count exceeds
   `MaxOps` (0 = unlimited; `NewEngine(p, n>0)` overrides); cli maps it

@@ -22,7 +22,9 @@ func projectionFixture(t *testing.T) *Root {
 	t.Helper()
 
 	r := New(Config{Name: "fix", Version: "9.9.9", DisableValidate: true},
-		WithAPI(APIConfig{Addr: ":0"}))
+		// Beyond loopback without kit-default: these tests are about
+		// the projection, not the policy.
+		WithAPI(APIConfig{Addr: ":0", InsecureNoPolicy: true}))
 
 	read := &cobra.Command{
 		Use:   "list",

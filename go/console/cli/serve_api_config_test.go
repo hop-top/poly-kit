@@ -20,6 +20,9 @@ import (
 func configFixture(t *testing.T, cfg APIConfig) *Root {
 	t.Helper()
 	cfg.Addr = ":0"
+	// A wildcard bind is beyond loopback, where kit-default would
+	// answer; these tests are about the projection, not the policy.
+	cfg.InsecureNoPolicy = true
 
 	r := New(Config{Name: "fix", Version: "1.0.0", DisableValidate: true},
 		WithAPI(cfg))

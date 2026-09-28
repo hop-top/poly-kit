@@ -483,8 +483,12 @@ func TestInsecureRemoteOptIn(t *testing.T) {
 
 // --- The policy exposure gate ----------------------------------------
 
-const refusalNoPolicy = `service "api": addr: "0.0.0.0:0" is not a loopback address and no delegation policy is configured; ` +
-	`set --policy, listen on 127.0.0.1, or set services.api.insecure_no_policy: true (or --insecure-no-policy) to serve every command beyond loopback`
+// local rewrites a wildcard base URL to a dialable loopback one.
+func local(base string) string { return strings.Replace(base, "0.0.0.0", "127.0.0.1", 1) }
+
+// kitDefaultRefusal is the reason kit-default gives an unestablished
+// caller's write to add.
+const kitDefaultRefusal = "policy: write not allowed for add (policy kit-default:"
 
 // policyRoot builds an authenticating root whose --policy resolves to
 // p, so a test can serve beyond loopback with a real policy in force.
@@ -530,34 +534,57 @@ func TestZeroPolicyEngineIsAsToothlessAsNil(t *testing.T) {
 	assert.Contains(t, reason, "policy:")
 }
 
-func TestNonLoopbackWithoutPolicyIsRefusedAtValidate(t *testing.T) {
-	// Auth is configured, so the authentication gate is satisfied and
-	// the refusal under test is the policy one alone.
-	r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", Auth: bearer(nil)}))
+func TestNonLoopbackWithoutPolicyServesKitDefault(t *testing.T) {
+	// Beyond loopback with no --policy named, the api service serves
+	// under kit-default rather than refusing to start.
+	alice := map[string]string{"Authorization": "Bearer alice"}
+	for name, arrange := range map[string]struct {
+		cfg  APIConfig
+		args []string
+	}{
+		"config addr":     {APIConfig{Addr: "0.0.0.0:0", Auth: bearer(nil)}, nil},
+		"--addr":          {APIConfig{Auth: bearer(nil)}, []string{"--addr", "0.0.0.0:0"}},
+		"supervisor form": {APIConfig{Addr: "0.0.0.0:0", Auth: bearer(nil)}, nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := authRoot(t, WithAPI(arrange.cfg))
+			base, stop := serveAPI(t, r, arrange.args...)
+			defer stop()
+			resp, body := get(t, local(base)+"/v1/commands/list", alice)
+			assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+			// An authenticated principal writes under kit-default.
+			resp, body = postJSON(t, local(base)+"/v1/commands/add", `{}`, alice)
+			assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+		})
+	}
 
-	err := runServeExpect(t, r, []string{"serve", "api"}, 2*time.Second)
-	oe := usageErr(t, err)
-	assert.Equal(t, refusalNoPolicy, oe.Message)
-	assert.Empty(t, apiSvc(t, r).Addr(), "nothing may bind when validation refuses")
-
-	// The supervisor form validates the same way.
-	r = authRoot(t, WithAPI(APIConfig{Addr: ":0", Auth: bearer(nil)}))
-	oe = usageErr(t, runServeExpect(t, r, []string{"serve"}, 2*time.Second))
-	assert.Contains(t, oe.Message, `addr: ":0" is not a loopback address and no delegation policy is configured`)
-
-	// --addr on the command line cannot widen what the config could not.
-	r = authRoot(t, WithAPI(APIConfig{Auth: bearer(nil)}))
-	oe = usageErr(t, runServeExpect(t, r,
-		[]string{"serve", "api", "--addr", "0.0.0.0:0"}, 2*time.Second))
-	assert.Equal(t, refusalNoPolicy, oe.Message)
-
-	// An unauthenticated non-loopback surface is refused for the
-	// authentication reason first: that gate runs before this one, so
-	// the message names the missing Auth rather than the missing
-	// policy. Fixing only the policy still leaves it refused.
-	r = authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0"}))
-	oe = usageErr(t, runServeExpect(t, r, []string{"serve", "api"}, 2*time.Second))
+	// An unauthenticated non-loopback surface is still refused for the
+	// authentication reason: kit-default answers what a caller may run,
+	// never who is calling.
+	r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0"}))
+	oe := usageErr(t, runServeExpect(t, r, []string{"serve", "api"}, 2*time.Second))
 	assert.Equal(t, refusalNoAuth, oe.Message)
+}
+
+// TestKitDefaultRefusesAnUnestablishedWrite: under insecure_remote no
+// caller is established, and kit-default lets such a caller read only,
+// naming itself and the remedy in the refusal.
+func TestKitDefaultRefusesAnUnestablishedWrite(t *testing.T) {
+	r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", InsecureRemote: true}))
+	base, stop := serveAPI(t, r)
+	defer stop()
+	resp, body := get(t, local(base)+"/v1/commands/list", nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
+	resp, body = postJSON(t, local(base)+"/v1/commands/add", `{}`, nil)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
+	assert.Contains(t, string(body), kitDefaultRefusal)
+	assert.Contains(t, string(body), "name a --policy to choose otherwise")
+
+	// The shared listing still lists add: an established caller could
+	// run it.
+	resp, body = get(t, local(base)+"/v1/commands", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, string(body), `"name":"add"`)
 }
 
 // TestLoopbackWithoutPolicyServes is the regression this fix must not
@@ -626,31 +653,36 @@ func TestInsecureNoPolicyOptIn(t *testing.T) {
 	}
 	for name, arrange := range cases {
 		t.Run(name, func(t *testing.T) {
-			r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", Auth: bearer(nil)}))
+			// No caller is established under insecure_remote, so
+			// kit-default would refuse the write; the opt-in lifts it.
+			r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", InsecureRemote: true}))
 			args := arrange(r)
 			base, stop := serveAPI(t, r, args...)
 			defer stop()
-			resp, body := get(t,
-				strings.Replace(base, "0.0.0.0", "127.0.0.1", 1)+"/v1/commands/list",
-				map[string]string{"Authorization": "Bearer alice"})
+			resp, body := postJSON(t, local(base)+"/v1/commands/add", `{}`, nil)
 			assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 		})
 	}
 
 	t.Run("config key false overrides the code default", func(t *testing.T) {
 		r := authRoot(t, WithAPI(APIConfig{
-			Addr: "0.0.0.0:0", Auth: bearer(nil), InsecureNoPolicy: true,
+			Addr: "0.0.0.0:0", InsecureRemote: true, InsecureNoPolicy: true,
 		}))
 		r.Viper.Set("services.api.insecure_no_policy", false)
-		oe := usageErr(t, runServeExpect(t, r, []string{"serve", "api"}, 2*time.Second))
-		assert.Equal(t, refusalNoPolicy, oe.Message)
+		base, stop := serveAPI(t, r)
+		defer stop()
+		resp, body := postJSON(t, local(base)+"/v1/commands/add", `{}`, nil)
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
+		assert.Contains(t, string(body), kitDefaultRefusal)
 	})
 
 	t.Run("flag overrides a config key", func(t *testing.T) {
-		r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", Auth: bearer(nil)}))
+		r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0", InsecureRemote: true}))
 		r.Viper.Set("services.api.insecure_no_policy", false)
-		_, stop := serveAPI(t, r, "--"+insecureNoPolicyFlag)
-		stop()
+		base, stop := serveAPI(t, r, "--"+insecureNoPolicyFlag)
+		defer stop()
+		resp, body := postJSON(t, local(base)+"/v1/commands/add", `{}`, nil)
+		assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	})
 
 	t.Run("the flag is registered beside --insecure-remote", func(t *testing.T) {
@@ -675,7 +707,8 @@ func TestInsecureNoPolicyOptIn(t *testing.T) {
 // the separation: the two keys answer different questions, so
 // accepting unauthenticated callers is not also an acceptance that
 // they may run anything. An adopter who set only insecure_remote
-// gets the policy refusal, and must say the second thing too.
+// gets kit-default's refusal for a write, and must say the second
+// thing too to lift it.
 func TestInsecureRemoteDoesNotWaiveThePolicyGate(t *testing.T) {
 	for name, arrange := range map[string]func(*Root) []string{
 		"flag": func(*Root) []string { return []string{"--insecure-remote"} },
@@ -691,10 +724,12 @@ func TestInsecureRemoteDoesNotWaiveThePolicyGate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			r := authRoot(t, WithAPI(APIConfig{Addr: "0.0.0.0:0"}))
 			args := arrange(r)
-			oe := usageErr(t, runServeExpect(t, r,
-				append([]string{"serve", "api"}, args...), 2*time.Second))
-			assert.Equal(t, refusalNoPolicy, oe.Message,
-				"insecure_remote waives authentication, not the policy requirement")
+			base, stop := serveAPI(t, r, args...)
+			defer stop()
+			resp, body := postJSON(t, local(base)+"/v1/commands/add", `{}`, nil)
+			assert.Equal(t, http.StatusForbidden, resp.StatusCode, string(body))
+			assert.Contains(t, string(body), kitDefaultRefusal,
+				"insecure_remote waives authentication, not the policy")
 		})
 	}
 
@@ -704,8 +739,7 @@ func TestInsecureRemoteDoesNotWaiveThePolicyGate(t *testing.T) {
 	}))
 	base, stop := serveAPI(t, r)
 	defer stop()
-	resp, body := get(t,
-		strings.Replace(base, "0.0.0.0", "127.0.0.1", 1)+"/v1/commands/list", nil)
+	resp, body := postJSON(t, local(base)+"/v1/commands/add", `{}`, nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 }
 
@@ -720,6 +754,9 @@ func TestSocketUnaffectedByPolicyExposureGate(t *testing.T) {
 	defer stop()
 
 	resp := socketCall(t, path, socket.Request{Path: []string{"list"}})
+	require.True(t, resp.Ok, "%+v", resp.Error)
+	// Nor does kit-default: the owner writes with no policy named.
+	resp = socketCall(t, path, socket.Request{Path: []string{"add"}})
 	require.True(t, resp.Ok, "%+v", resp.Error)
 
 	// And the exposure gate is genuinely absent rather than merely

@@ -190,7 +190,7 @@ off. Listing is advisory; every call still passes the bridge's gates.
 
 | Gate | Over HTTP | Over stdio |
 |------|-----------|------------|
-| Exposure | loopback by default; a non-loopback address needs `Config.Auth` or `services.mcp.insecure_remote`, and a `--policy` or `services.mcp.insecure_no_policy` — refused at exit `2` otherwise | no address, no rule |
+| Exposure | loopback by default; a non-loopback address needs `Config.Auth` or `services.mcp.insecure_remote` (refused at exit `2` otherwise), and with no `--policy` enforces `kit-default` unless `services.mcp.insecure_no_policy` | no address, no rule |
 | `kit/auth-required` | runs only when `Config.Auth` verified the request; a bare `Authorization` header is not authentication | runs: the peer spawned the process and already holds your user's authority |
 | `kit/requires-confirmation` | an elicitation the client's user accepts, or an `X-Confirm-Token` header | an elicitation the client's user accepts |
 | destructive | withheld until `Policy.AllowDestructiveOn` names `cmdsurface.SurfaceMCP`; then the command's own `confirm` argument | same |
@@ -215,7 +215,7 @@ The normative text is the
 | `services.mcp.addr` | `127.0.0.1:8081` | HTTP listen address; `--mcp-addr` wins for one run |
 | `services.mcp.path` | `/mcp` | HTTP endpoint path |
 | `services.mcp.insecure_remote` | `false` | serve HTTP unauthenticated beyond loopback |
-| `services.mcp.insecure_no_policy` | `false` | serve HTTP beyond loopback with no `--policy` |
+| `services.mcp.insecure_no_policy` | `false` | beyond loopback with no `--policy`, serve HTTP with no policy instead of `kit-default` |
 
 The two opt-ins have no flags — `--insecure-remote` and
 `--insecure-no-policy` name the api service — so a reviewer finds

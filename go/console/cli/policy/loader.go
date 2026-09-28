@@ -63,8 +63,13 @@ func Resolve(tool, name string) (string, error) {
 	return filepath.Join(dir, "policies", name+".yaml"), nil
 }
 
-// LoadNamed combines Resolve and Load for the common case.
+// LoadNamed combines Resolve and Load for the common case. The name
+// [KitDefaultName] is reserved: it always returns [KitDefault], and
+// no file is read.
 func LoadNamed(tool, name string) (Policy, error) {
+	if name == KitDefaultName {
+		return KitDefault(), nil
+	}
 	p, err := Resolve(tool, name)
 	if err != nil {
 		return Policy{}, err

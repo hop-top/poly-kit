@@ -465,7 +465,7 @@ The kit-shipped services own these (the `mcp` service's keys are in
 |--------------------------------|--------|------------------------|----------------------------------------------------------------|
 | `services.api.addr`            | string | `127.0.0.1:8080`       | HTTP listen address; loopback unless authenticated or opted in |
 | `services.api.insecure_remote` | bool   | `false`                | serve the api unauthenticated on a non-loopback address        |
-| `services.api.insecure_no_policy` | bool | `false`             | serve the api beyond loopback with no delegation policy        |
+| `services.api.insecure_no_policy` | bool | `false`             | beyond loopback with no `--policy`, serve with no policy rather than `kit-default` |
 | `services.api.health.enabled`  | bool   | `true`                 | serve `/healthz` and `/readyz` ([Readiness over HTTP](#readiness-over-http)) |
 | `services.api.health.path_prefix` | string | `""`              | mount both probe routes under an absolute path prefix          |
 | `services.api.health.detail`   | bool   | `true` on loopback, else `false` | name failing checks in a `/readyz` `503`              |
@@ -479,9 +479,9 @@ validation, exit `2`.
 
 `services.api.addr` defaults to a loopback address, and a non-loopback
 value is refused at validation unless `APIConfig.Auth` is set or
-`services.api.insecure_remote` is true, and refused again unless a
-`--policy` is in force or `services.api.insecure_no_policy` is true —
-see [Security](#security).
+`services.api.insecure_remote` is true; with no `--policy` named it
+enforces `kit-default` unless `services.api.insecure_no_policy` is
+true — see [Security](#security).
 
 The socket's default path is `<runtime dir>/<tool>/<tool>.sock`, where
 the runtime dir is `$XDG_RUNTIME_DIR` when set, and otherwise the
@@ -609,32 +609,47 @@ are in [Middleware](#middleware).
   reviewer MUST be able to find every such deployment by that key.
 - `--no-auth` MUST NOT widen exposure: it is accepted on a loopback
   address, or under the opt-in, and refused otherwise.
-- The api service MUST refuse, at the same gate (exit `2`), a
-  non-loopback address on which no delegation policy is in force. A
-  tool that names no `--policy` has a permission gate whose verdict
-  is indistinguishable from having none: the engine's allow map is
-  absent, so every side-effect class is permitted for every caller,
-  destructive included. Authentication answers who is calling; a
-  policy answers what any caller may run, and a surface reachable
-  from other hosts MUST have an answer to both. The message MUST
-  name the three remedies — set `--policy`, listen on loopback, or
-  opt in.
-- The opt-in is `services.api.insecure_no_policy`
+- Beyond loopback, a service with no `--policy` named MUST enforce
+  `kit-default`, the policy kit ships (`policy.KitDefault`), rather
+  than serve with a gate that bounds nothing. A tool that names no
+  `--policy` would otherwise have a permission gate whose verdict is
+  indistinguishable from having none: every side-effect class
+  permitted for every caller, destructive included. Authentication
+  answers who is calling; a policy answers what any caller may run,
+  and a surface reachable from other hosts MUST have an answer to
+  both. `kit-default`:
+  - lets a caller the transport did not establish read only;
+  - lets an established principal read and write;
+  - lets an established principal run a destructive command only when
+    the command declares `kit/permissions` — an explicit scope, which
+    the scope check then requires the caller to hold — and never
+    waives the command's own confirmation or the destructive ceiling;
+  - treats a command declaring no `kit/side-effect` as a write;
+  - names itself and the remedy in every refusal
+    (`… (policy kit-default: …; name a --policy to choose otherwise)`).
+  `--policy=kit-default` names it explicitly, on any address; the
+  name is reserved and never read from a file.
+- The opt-out is `services.api.insecure_no_policy`
   (`--insecure-no-policy`, `APIConfig.InsecureNoPolicy`), resolved
-  flag, then config, then code. Its name is part of the contract on
+  flag, then config, then code: beyond loopback with no `--policy`,
+  serve with no policy at all. Its name is part of the contract on
   the same terms as `insecure_remote`: a configuration reviewer MUST
   be able to find every unbounded remote surface by that key.
 - The two opt-ins are independent and neither implies the other.
   `insecure_remote` waives authentication only; `insecure_no_policy`
-  waives the policy requirement only. A tool that sets `Auth` still
-  needs a policy or the second opt-in, because authenticating a
-  caller says nothing about what that caller may run.
+  waives the policy default only. A tool that sets `Auth` still
+  serves under `kit-default` without a `--policy`, because
+  authenticating a caller says nothing about what that caller may
+  run; under `insecure_remote` alone no caller is established, so
+  `kit-default` lets every caller read only.
 - `services.<svc>.auth.mode` authenticates for these rules on every
   kit HTTP listener, as `Auth` does, whichever mode it names (`mtls`,
   `jwt`, `jwks`, `oidc`); plain `tls` does not. See
   [TLS and client certificates](#tls-and-client-certificates) and
   [Bearer tokens](#bearer-tokens).
-- Loopback keeps allow-by-default under both rules. It is the
+- Loopback keeps allow-by-default under both rules: no `--policy`
+  there means no policy, and the socket service and stdio are
+  loopback. It is the
   development path, and the caller is already on the machine.
 - A tool that sets `Auth` keeps working on any address. `WithAPI`
   adopters whose address was the old default keep working on
@@ -913,7 +928,7 @@ service runs over HTTP.
 | `services.mcp.addr`                | string | `127.0.0.1:8081` | HTTP listen address; loopback unless authenticated or opted in |
 | `services.mcp.path`                | string | `/mcp`           | HTTP endpoint path; MUST begin with `/`                       |
 | `services.mcp.insecure_remote`     | bool   | `false`          | serve HTTP unauthenticated on a non-loopback address          |
-| `services.mcp.insecure_no_policy`  | bool   | `false`          | serve HTTP beyond loopback with no delegation policy          |
+| `services.mcp.insecure_no_policy`  | bool   | `false`          | beyond loopback with no `--policy`, no policy rather than `kit-default` |
 
 `mcpserve.Config` carries the code defaults under the same names; the
 precedence is flag, then config, then `mcpserve.Config`, then the
@@ -1175,7 +1190,7 @@ the drain for the whole stop budget.
 |------------------------------------|--------|------------------|----------------------------------------------------------|
 | `services.rpc.addr`                | string | `127.0.0.1:8082` | listen address; loopback unless authenticated or opted in |
 | `services.rpc.insecure_remote`     | bool   | `false`          | serve unauthenticated on a non-loopback address          |
-| `services.rpc.insecure_no_policy`  | bool   | `false`          | serve beyond loopback with no delegation policy          |
+| `services.rpc.insecure_no_policy`  | bool   | `false`          | beyond loopback with no `--policy`, no policy rather than `kit-default` |
 
 `rpcserve.Config` carries the code defaults under the same names. The
 flag `--rpc-addr`, registered on `serve` like `--mcp-addr`, overrides
@@ -2562,6 +2577,24 @@ changing a line:
    without running the command. A command that reads
    `cmd.ArgsLenAtDash()` or `os.Args` now sees the `--`; a command
    that parses its own argv receives its arguments as before.
+9. **Beyond loopback, no `--policy` means `kit-default`, not a
+   refusal.** The api, rpc and mcp services used to refuse, at exit
+   `2`, a non-loopback address with no `--policy`. They now serve
+   under `kit-default`: unestablished callers read only, established
+   principals read and write, destructive commands need a declared
+   `kit/permissions` scope. An adopter who set
+   `insecure_no_policy: true` is unaffected. One who named a
+   `--policy` is unaffected. One who relied on the refusal to keep a
+   misconfigured deployment from starting now gets a bounded server;
+   one who wants the old unbounded surface sets
+   `services.<svc>.insecure_no_policy: true`, and one who wants their
+   own rules names a `--policy`.
+10. **A policy class entry governs its expanded tiers.** `write: []`
+   refuses `write-local` and `write-shared` commands, and
+   `destructive: []` the `-local` and `-shared` destructive ones; they
+   used to pass. A policy that meant to allow them names them
+   (`write-shared: ["*"]`). The `serve` command itself is not gated by
+   the `--policy` it carries.
 
 Migrating from a hand-written leaf `serve` command, or from a tree
 mounted on REST and MCP through `cmdsurface` by hand, is a mechanical

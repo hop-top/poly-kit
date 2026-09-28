@@ -669,25 +669,23 @@ func TestUnauthenticatedRemoteServingIsRefused(t *testing.T) {
 	}
 }
 
-func TestUnboundedRemoteServingIsRefused(t *testing.T) {
+func TestRemoteServingWithoutPolicyEnforcesKitDefault(t *testing.T) {
 	// --insecure-remote answers who may call. What any caller may run
-	// is still unanswered, so the surface stays refused, and the
-	// message names its own remedies rather than repeating the
-	// authentication ones.
-	root := newRoot(options{})
-	err := runToCompletion(t, root,
-		[]string{"serve", "api", "--addr", "0.0.0.0:0", "--insecure-remote"},
-		5*time.Second)
-	require.Error(t, err)
+	// is answered by kit-default when no --policy is named: nobody is
+	// established, so every caller reads and no caller writes, and the
+	// refusal names the policy and its remedy.
+	run := startServe(t, options{}, "api", "--addr", "0.0.0.0:0", "--insecure-remote")
+	p := run.waitReady(t, "api")
+	_, port, err := net.SplitHostPort(p.Address)
+	require.NoError(t, err)
+	base := "http://127.0.0.1:" + port
 
-	var kitErr *output.Error
-	require.ErrorAs(t, err, &kitErr)
-	assert.Equal(t, output.CodeUsage, kitErr.Code)
-	assert.Equal(t, 2, kitErr.ExitCode, "refused at the configuration gate")
-	assert.Contains(t, kitErr.Message, "no delegation policy is configured")
-	for _, remedy := range []string{"--policy", "127.0.0.1", "services.api.insecure_no_policy"} {
-		assert.Contains(t, kitErr.Message, remedy, "the message names every remedy")
-	}
+	status, _ := httpDo(t, http.MethodGet, base+"/v1/commands/item/list", "")
+	assert.Equal(t, http.StatusOK, status)
+	status, body := httpDo(t, http.MethodPost, base+"/v1/commands/item/add", `{"args":["a"]}`)
+	assert.Equal(t, http.StatusForbidden, status, string(body))
+	assert.Contains(t, string(body), "policy kit-default:")
+	assert.Contains(t, string(body), "name a --policy")
 }
 
 // TestInsecureRemoteOptInIsHonoredByName pins that --insecure-remote

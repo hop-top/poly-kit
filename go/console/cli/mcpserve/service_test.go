@@ -443,12 +443,11 @@ func TestMCPServiceHTTPExposureRefusals(t *testing.T) {
 			assert.Contains(t, oe.Error(), want)
 		}
 	})
-	t.Run("authenticated but unbounded", func(t *testing.T) {
-		oe := serveErr(t, mcpserve.Config{Auth: bearerAuth}, []string{"mcp", "--mcp-addr", "0.0.0.0:0"})
-		assert.Equal(t, 2, oe.ExitCode)
-		for _, want := range []string{"--policy", "127.0.0.1", "services.mcp.insecure_no_policy"} {
-			assert.Contains(t, oe.Error(), want)
-		}
+	t.Run("authenticated with no policy serves under kit-default", func(t *testing.T) {
+		r := newServeRoot(t, mcpserve.With(mcpserve.Config{Auth: bearerAuth}))
+		mcpCommands(r)
+		err := runServeArgs(t, r, []string{"serve", "mcp", "--mcp-addr", "0.0.0.0:0"}, 2*time.Second)
+		assert.NoError(t, err)
 	})
 	t.Run("bad address", func(t *testing.T) {
 		oe := serveErr(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "nope"})

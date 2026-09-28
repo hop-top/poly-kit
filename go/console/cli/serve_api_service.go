@@ -36,7 +36,7 @@ const (
 	// the configuration form of --insecure-no-policy.
 	apiSubkeyInsecureNoPolicy = ".insecure_no_policy"
 	// insecureNoPolicyFlag is the flag that opts into serving beyond
-	// loopback with no delegation policy in force.
+	// loopback with no delegation policy in force, not kit-default.
 	insecureNoPolicyFlag = "insecure-no-policy"
 )
 
@@ -95,16 +95,15 @@ func (a *apiService) Name() string { return APIServiceName }
 // is a usage error caught before anything binds, rather than a start
 // failure discovered a second later.
 //
-// It is also the exposure gate, in two parts. A listen address that
-// is not loopback is refused when nothing authenticates the callers
-// it admits — no Auth configured, or Auth disabled with --no-auth —
-// and refused again when no delegation policy bounds what those
-// callers may run. Either refusal is waived only by the adopter
-// accepting it by name: services.api.insecure_remote for the first,
-// services.api.insecure_no_policy for the second. Refusing at
-// validation, at exit 2, is what keeps "I forgot Auth" and "I forgot
-// --policy" from becoming "every host on the network can run every
-// command": each message names the ways to proceed.
+// It is also the exposure gate. A listen address that is not
+// loopback is refused when nothing authenticates the callers it
+// admits — no Auth configured, or Auth disabled with --no-auth —
+// unless the adopter accepts it by name with
+// services.api.insecure_remote. Refusing at validation, at exit 2, is
+// what keeps "I forgot Auth" from becoming "every host on the network
+// can run every command". What those callers may run is bounded at
+// start instead: with no --policy named, kit-default, unless
+// services.api.insecure_no_policy opts out (see exposure).
 //
 // Authentication and policy are separate refusals because they
 // answer separate questions — who is calling, and what any caller
@@ -127,9 +126,6 @@ func (a *apiService) Validate() error {
 	if err := a.validateExposure(addr); err != nil {
 		return err
 	}
-	if err := a.validatePolicyExposure(addr); err != nil {
-		return err
-	}
 	// The HTTP-plane blocks: health, metrics.scrape, host_check,
 	// origin_check, security_headers, body_limit, compression.
 	if err := a.plane().validate(); err != nil {
@@ -142,7 +138,7 @@ func (a *apiService) Validate() error {
 	// that cannot be loaded is a configuration error, and belongs
 	// here rather than a second later as a start failure. A root
 	// factory that cannot build a usable tree is the same class.
-	if _, err := a.root.servePermission(); err != nil {
+	if _, err := a.root.servePermission(a.exposure()); err != nil {
 		return err
 	}
 	// The audit.redact block and the audit.sinks list are
@@ -187,30 +183,14 @@ func (a *apiService) validateExposure(addr string) error {
 	)
 }
 
-// validatePolicyExposure refuses a non-loopback address when no
-// delegation policy is in force, unless the opt-in is set.
-//
-// The permission gate the transport services share is built from
-// --policy. Without one it permits every command for every caller —
-// the same verdict it would give if there were no gate at all — so a
-// tool serving beyond loopback with no policy exposes its whole
-// command tree, destructive commands included. That is a defensible
-// choice on a trusted network, but it must be a choice: this refusal
-// makes the adopter write it down.
-//
-// Loopback keeps allow-by-default. It is the development path, the
-// same reasoning that lets loopback serve without Auth, and the
-// caller is already on the machine.
-func (a *apiService) validatePolicyExposure(addr string) error {
-	if isLoopbackAddr(addr) || a.root.servePolicyConfigured() || a.insecureNoPolicy() {
-		return nil
+// exposure is how far the api service reaches: beyond loopback with
+// no --policy named, it enforces kit-default unless it opted out with
+// insecure_no_policy.
+func (a *apiService) exposure() ServeExposure {
+	return ServeExposure{
+		Loopback:         isLoopbackAddr(a.listenAddr()),
+		InsecureNoPolicy: a.insecureNoPolicy(),
 	}
-	return fmt.Errorf(
-		"addr: %q is not a loopback address and no delegation policy is configured; "+
-			"set --policy, listen on 127.0.0.1, or set services.api.insecure_no_policy: true "+
-			"(or --insecure-no-policy) to serve every command beyond loopback",
-		addr,
-	)
 }
 
 // insecureNoPolicy resolves the policy opt-in with the same
@@ -494,7 +474,7 @@ func (a *apiService) bridge(ctx context.Context) (*cmdsurface.Bridge, error) {
 		a.cacheStore = store
 		a.mu.Unlock()
 	}
-	b, err := projectionBridge(a.root, a.cfg, isLoopbackAddr(a.listenAddr()), extra...)
+	b, err := projectionBridge(a.root, a.cfg, a.exposure(), extra...)
 	if err != nil {
 		_ = a.closeResultCache()
 	}

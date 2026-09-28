@@ -64,11 +64,21 @@ type Policy struct {
 	RequireConfirm []string                `yaml:"require_confirm"`
 	Permissions    []PermissionRule        `yaml:"permissions"`
 
+	// Unannotated is the side-effect class a command declaring no
+	// kit/side-effect is authorized as. Empty keeps the default: such
+	// a command passes, and the validator refuses it separately.
+	Unannotated SideEffect `yaml:"unannotated,omitempty"`
+
 	// Callers are the per-caller rules, consulted for a caller whose
 	// identity the transport established. The first rule that
 	// matches the caller answers for the side-effect classes it
 	// declares and may set a budget; the fields above answer the rest.
 	Callers []CallerRule `yaml:"callers,omitempty"`
+
+	// Remedy, when set, is appended to every refusal the policy
+	// gives, telling the caller how to get past it. Code only: the
+	// shipped policies set it.
+	Remedy string `yaml:"-"`
 }
 
 // PermissionRule is one entry of a policy's `permissions:` block: a

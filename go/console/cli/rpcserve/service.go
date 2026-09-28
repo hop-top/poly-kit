@@ -85,8 +85,9 @@ type Config struct {
 	InsecureRemote bool
 
 	// InsecureNoPolicy permits serving on a non-loopback address with
-	// NO delegation policy in force. services.rpc.insecure_no_policy
-	// sets the same thing.
+	// NO delegation policy in force, rather than kit-default, when no
+	// --policy is named. services.rpc.insecure_no_policy sets the same
+	// thing.
 	InsecureNoPolicy bool
 
 	// Expose lists the command patterns the service may invoke, in
@@ -218,7 +219,10 @@ func newService(root *cli.Root, cfg *Config) *rpcService {
 			// On error these refuse every call. Validate has already
 			// refused the configuration that errs here, so this is
 			// unreachable in practice.
-			shared, _ := cli.ServeBridgeOptionsFor(root, ServiceName, cli.IsLoopbackAddr(s.addr()))
+			shared, _ := cli.ServeBridgeOptionsExposed(root, ServiceName, cli.ServeExposure{
+				Loopback:         cli.IsLoopbackAddr(s.addr()),
+				InsecureNoPolicy: s.optIn(subkeyInsecureNoPolicy, s.cfg.InsecureNoPolicy),
+			})
 			return shared
 		}),
 		transportsvc.WithValidate(s.validate),
@@ -355,14 +359,6 @@ func (s *rpcService) validate() error {
 				"addr: %q is not a loopback address and the rpc service has no authentication; "+
 					"set rpcserve.Config.Auth, listen on 127.0.0.1, or set services.rpc.insecure_remote: true "+
 					"to serve unauthenticated beyond loopback",
-				addr,
-			)
-		}
-		if !cli.ServePolicyConfigured(s.root) && !s.optIn(subkeyInsecureNoPolicy, s.cfg.InsecureNoPolicy) {
-			return fmt.Errorf(
-				"addr: %q is not a loopback address and no delegation policy is configured; "+
-					"set --policy, listen on 127.0.0.1, or set services.rpc.insecure_no_policy: true "+
-					"to serve every command beyond loopback",
 				addr,
 			)
 		}

@@ -100,7 +100,8 @@ type Config struct {
 	InsecureRemote bool
 
 	// InsecureNoPolicy permits serving HTTP on a non-loopback address
-	// with NO delegation policy in force.
+	// with NO delegation policy in force, rather than kit-default, when
+	// no --policy is named.
 	// services.mcp.insecure_no_policy sets the same thing.
 	InsecureNoPolicy bool
 
@@ -257,7 +258,10 @@ func newService(root *cli.Root, cfg *Config, stdio *stdioStreams) *service {
 			// unreachable in practice.
 			// stdio is reachable only by the process that spawned it.
 			loopback := s.transport() == TransportStdio || cli.IsLoopbackAddr(s.addr())
-			shared, _ := cli.ServeBridgeOptionsFor(root, ServiceName, loopback)
+			shared, _ := cli.ServeBridgeOptionsExposed(root, ServiceName, cli.ServeExposure{
+				Loopback:         loopback,
+				InsecureNoPolicy: s.optIn(subkeyInsecureNoPolicy, s.cfg.InsecureNoPolicy),
+			})
 			return shared
 		}),
 		transportsvc.WithValidate(s.validate),
@@ -404,14 +408,6 @@ func (s *service) validateHTTP() error {
 			"addr: %q is not a loopback address and the mcp service has no authentication; "+
 				"set mcpserve.Config.Auth, listen on 127.0.0.1, or set services.mcp.insecure_remote: true "+
 				"to serve unauthenticated beyond loopback",
-			addr,
-		)
-	}
-	if !cli.ServePolicyConfigured(s.root) && !s.optIn(subkeyInsecureNoPolicy, s.cfg.InsecureNoPolicy) {
-		return fmt.Errorf(
-			"addr: %q is not a loopback address and no delegation policy is configured; "+
-				"set --policy, listen on 127.0.0.1, or set services.mcp.insecure_no_policy: true "+
-				"to serve every command beyond loopback",
 			addr,
 		)
 	}
