@@ -802,7 +802,7 @@ What is cached, and for whom:
 |---|---|
 | Only reads | the command declares `kit/side-effect: read` itself. Write, destructive, interactive, unannotated and name-inferred commands are never cached; `kit/cache-ttl` on one is refused at `Root.Validate` |
 | Only successes | exit code `0` and no error; a failure is never stored or shared |
-| One entry per call and caller | the key is the command path, flags (in any order) and args, plus the principal, tenant and scopes the transport verified (`Auth`, a client certificate). A caller or tenant that is only claimed is keyed as anonymous. One caller is never answered with another's result, and each gets its own ETag |
+| One entry per call and caller | the key is the command path, flags (in any order) and args, plus the principal, tenant and scopes the transport verified (`Auth`, a client certificate). A caller the transport itself vouches for is keyed by its transport, never by the name it claims. A caller or tenant that is only claimed is keyed as anonymous. One caller is never answered with another's result, and each gets its own ETag |
 | `Cache-Control` | `max-age` is what is left of the TTL; `private` when the call carries a verified principal, tenant or scopes, `public` otherwise |
 | `ETag` | weak (`W/"…"`), so a compressed response keeps it. `If-None-Match` with it, or `*`, answers `304` and no body |
 | Identical calls in flight | wait for the one already running and share its result, instead of running again. A waiter whose client leaves stops waiting; the run goes on |

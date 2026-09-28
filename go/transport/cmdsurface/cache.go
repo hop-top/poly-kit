@@ -366,13 +366,14 @@ func decodeCanonical(raw []byte, v any) error {
 // cacheKeyDoc is what a cache key is the hash of. The surface is not in
 // it: the same call answers the same way whichever surface carries it.
 type cacheKeyDoc struct {
-	Tool   string         `json:"tool"`
-	Path   []string       `json:"path"`
-	Args   []string       `json:"args"`
-	Flags  map[string]any `json:"flags"`
-	Caller string         `json:"caller"`
-	Tenant string         `json:"tenant"`
-	Scopes []string       `json:"scopes"`
+	Tool  string         `json:"tool"`
+	Path  []string       `json:"path"`
+	Args  []string       `json:"args"`
+	Flags map[string]any `json:"flags"`
+	// Caller is the caller's [IdempotencyScope] when the transport
+	// established it, else empty: the anonymous entry.
+	Caller string   `json:"caller"`
+	Scopes []string `json:"scopes"`
 }
 
 // cacheKeyPrefix namespaces result-cache keys in a shared store.
@@ -380,10 +381,15 @@ const cacheKeyPrefix = "kit/cache/v1/"
 
 // cacheKey is the store key for inv: a hash of the canonical invocation
 // — path, flags, args — and the caller's identity. Flags are encoded
-// with sorted keys, so their order in a request never matters. The
-// identity counts only when the transport established it
-// ([Meta.Authenticated]); a claimed one is keyed as anonymous, so it
-// never reaches the entry of the identity it names.
+// with sorted keys, so their order in a request never matters.
+//
+// The identity counts only when the transport established it
+// ([Meta.Authenticated]), and is scoped as idempotency scopes it
+// ([IdempotencyScope]): a verified principal by its tenant and
+// principal, plus its credential's scopes; a caller the transport
+// vouches for by that transport, whatever name it claims. A claimed
+// identity is keyed as anonymous, so no claim — whichever transport
+// carries it — reaches the entry of the identity it names.
 func cacheKey(root interface{ Name() string }, inv Invocation) (string, error) {
 	doc := cacheKeyDoc{
 		Path:  inv.Path,
@@ -391,8 +397,9 @@ func cacheKey(root interface{ Name() string }, inv Invocation) (string, error) {
 		Flags: inv.Flags,
 	}
 	if inv.Meta.Authenticated() {
-		doc.Caller = inv.Meta.Caller
-		doc.Tenant = inv.Meta.Tenant
+		doc.Caller = IdempotencyScope(inv.Meta)
+	}
+	if inv.Meta.Established == EstablishedVerified {
 		doc.Scopes = callerScopes(inv.Meta)
 	}
 	if root != nil {
@@ -415,11 +422,16 @@ func callerScopes(m Meta) []string {
 }
 
 // callerScoped reports whether a result belongs to one caller: the
-// transport established an identity naming a principal, a tenant or
-// scopes. A claimed identity is keyed as anonymous, and so is not.
+// transport vouches for the caller (the owner), or a verifier
+// established an identity naming a principal, a tenant or scopes. A
+// claimed identity is keyed as anonymous, and so is not.
 func callerScoped(m Meta) bool {
-	if !m.Authenticated() {
+	switch m.Established {
+	case EstablishedTransport:
+		return true
+	case EstablishedVerified:
+		return m.Caller != "" || m.Tenant != "" || len(callerScopes(m)) > 0
+	default:
 		return false
 	}
-	return m.Caller != "" || m.Tenant != "" || len(callerScopes(m)) > 0
 }

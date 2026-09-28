@@ -42,32 +42,65 @@ func MetaFromContext(ctx context.Context) (Meta, bool) {
 	return m, ok
 }
 
+// callerScope is who a per-caller store or bucket counts a call
+// against: the one decision idempotency ([IdempotencyScope]), the
+// result cache, the rate limit and quota ([QuotaKey]) share, so no two
+// of them can disagree about whose call it is.
+//
+// A caller a verifier established ([EstablishedVerified]) with a
+// principal is scoped to its tenant and principal. A caller the
+// transport itself vouches for ([EstablishedTransport]: the owner-only
+// socket, the stdio spawn, a cron firing, an IAM-signed Lambda call)
+// is the server's owner, scoped to that transport as
+// transport/<surface>, never by the name or tenant it claims. Anything
+// else is unestablished; each consumer says what an unestablished call
+// shares, because that is where they legitimately differ: a claim
+// never splits a rate-limit bucket or a quota, isolates an idempotency
+// record, and shares the anonymous cache entry.
+type callerScope struct {
+	// established is EstablishedVerified, EstablishedTransport, or
+	// EstablishedNone for every other call.
+	established Establishment
+	// tenant and principal name a verified caller.
+	tenant, principal string
+	// surface names a transport caller's transport.
+	surface Surface
+}
+
+func scopeOf(m Meta) callerScope {
+	switch {
+	case m.Established == EstablishedVerified && m.Caller != "":
+		return callerScope{established: EstablishedVerified, tenant: m.Tenant, principal: m.Caller}
+	case m.Established == EstablishedTransport:
+		return callerScope{established: EstablishedTransport, surface: m.Surface}
+	default:
+		return callerScope{established: EstablishedNone}
+	}
+}
+
 // IdempotencyScope returns the opaque scope an idempotency key is
 // confined to for the caller m describes, so one caller's key never
 // answers another.
 //
-// A caller a verifier established ([EstablishedVerified]) is scoped to
-// its tenant and principal alone, so its key answers it on every
-// surface. A caller the transport itself vouches for
-// ([EstablishedTransport]: the owner-only socket, the stdio spawn, a
-// cron firing, an IAM-signed Lambda call) is the server's owner: it is
-// scoped to that transport, never by the name it claims. Any other
-// call is scoped to its surface, tenant and claimed caller; one
-// without a caller to its client host too. The kinds of scope never
-// meet: no claimed name, whichever transport carries it, reaches a
-// verified caller's records, nor the reverse. Request and trace ids
-// never scope.
+// The caller is scoped as every per-caller gate scopes it: a verified
+// principal to its tenant and principal alone, so its key answers it
+// on every surface; a caller the transport vouches for to that
+// transport, never by the name it claims. Any other call is scoped to
+// its surface, tenant and claimed caller; one without a caller to its
+// client host too. The kinds of scope never meet: no claimed name,
+// whichever transport carries it, reaches a verified caller's records,
+// nor the reverse. Request and trace ids never scope.
 //
-// The bridge's idempotency ledger and a command's own
-// --idempotency-key middleware ([ScopeIdempotencyKey]) both scope by
-// it.
+// The bridge's idempotency ledger, its read-tier result cache and a
+// command's own --idempotency-key middleware ([ScopeIdempotencyKey])
+// all scope by it.
 func IdempotencyScope(m Meta) string {
 	var parts []string
-	switch {
-	case m.Established == EstablishedVerified && m.Caller != "":
-		parts = []string{"verified", m.Tenant, m.Caller}
-	case m.Established == EstablishedTransport:
-		parts = []string{"transport", string(m.Surface)}
+	switch s := scopeOf(m); s.established {
+	case EstablishedVerified:
+		parts = []string{"verified", s.tenant, s.principal}
+	case EstablishedTransport:
+		parts = []string{"transport", string(s.surface)}
 	default:
 		parts = []string{"claimed", string(m.Surface), m.Tenant, m.Caller}
 		if m.Caller == "" {

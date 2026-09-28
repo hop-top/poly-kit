@@ -636,3 +636,38 @@ func TestResultCache_SinksRecordTheMark(t *testing.T) {
 		}
 	}
 }
+
+// A caller the transport vouches for is the server's owner, scoped to
+// that transport as idempotency and the rate limit scope it: the name
+// it claims never reaches the entry of the verified identity it names,
+// nor splits the owner's entry.
+func TestResultCache_TransportCallerScopedToTransport(t *testing.T) {
+	run := &tallyRunner{result: func(Invocation) (Result, error) {
+		return Result{Data: map[string]any{"same": true}}, nil
+	}}
+	b := newCacheBridge(t, run, nil)
+
+	as := func(est Establishment, caller string) Invocation {
+		inv := cacheRESTCall("widget", "list")
+		inv.Meta.Caller, inv.Meta.Tenant = caller, "acme"
+		inv.Meta.Extra = map[string]string{"scopes": "read"}
+		inv.Meta.Established = est
+		return inv
+	}
+	if _, info, _ := call(t, b, as(EstablishedVerified, "alice")); info.Hit {
+		t.Fatal("verified alice: want a miss")
+	}
+	_, info, _ := call(t, b, as(EstablishedTransport, "alice"))
+	if info.Hit {
+		t.Fatal("a transport caller claiming alice read verified alice's entry")
+	}
+	if !info.Private {
+		t.Fatal("the owner's result must be private")
+	}
+	if _, info, _ = call(t, b, as(EstablishedTransport, "bob")); !info.Hit {
+		t.Fatal("the owner's entry is split by the name it claims")
+	}
+	if n := run.calls.Load(); n != 2 {
+		t.Fatalf("runner ran %d times, want 2 (verified alice, owner)", n)
+	}
+}

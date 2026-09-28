@@ -200,18 +200,19 @@ func (b *Bridge) rateLimit(inv Invocation, leaf *Leaf) error {
 // tenants spends two budgets), else the client address, else the
 // surface, so bus and cron invocations share one bucket per surface.
 //
-// The principal is Meta.Caller only when a verifier established it
-// ([EstablishedVerified]). A caller the transport itself vouches for
-// ([EstablishedTransport]) is the server's owner and draws from its
-// transport's bucket, whatever name it claims. A caller or tenant
-// merely claimed never selects or splits a bucket: it neither escapes
-// its address's budget nor spends a principal's.
+// The caller is scoped as every per-caller gate scopes it
+// ([callerScope]): a verified principal by its tenant and principal, a
+// caller the transport itself vouches for by its transport, whatever
+// name it claims. A caller or tenant merely claimed never selects or
+// splits a bucket: it neither escapes its address's budget nor spends
+// a principal's.
 func rateKey(meta Meta, tier RateTier) string {
+	s := scopeOf(meta)
 	switch {
-	case meta.Established == EstablishedVerified && meta.Caller != "":
-		return "p\x00" + meta.Caller + "\x00" + meta.Tenant + "\x00" + string(tier)
-	case meta.Established == EstablishedTransport:
-		return "t\x00" + string(meta.Surface) + "\x00" + string(tier)
+	case s.established == EstablishedVerified:
+		return "p\x00" + s.principal + "\x00" + s.tenant + "\x00" + string(tier)
+	case s.established == EstablishedTransport:
+		return "t\x00" + string(s.surface) + "\x00" + string(tier)
 	case clientHost(meta) != "":
 		return "a\x00" + clientHost(meta) + "\x00" + string(tier)
 	default:

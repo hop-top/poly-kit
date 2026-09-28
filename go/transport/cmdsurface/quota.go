@@ -128,15 +128,16 @@ func (e *QuotaExceededError) RetryAfterHint() time.Duration { return e.RetryAfte
 // The management verbs use it to find and reset a caller's count.
 func QuotaKey(q Quota, meta Meta) string {
 	prefix := "quota/" + url.PathEscape(q.Scope) + "/"
+	s := scopeOf(meta)
 	switch {
 	case meta.Established == EstablishedVerified && q.Per == QuotaPerTenant && meta.Tenant != "":
 		return prefix + "tenant/" + url.PathEscape(meta.Tenant)
-	case meta.Established == EstablishedVerified && meta.Caller != "":
-		return prefix + "principal/" + url.PathEscape(meta.Caller) + "/" + url.PathEscape(meta.Tenant)
-	case meta.Established == EstablishedTransport:
+	case s.established == EstablishedVerified:
+		return prefix + "principal/" + url.PathEscape(s.principal) + "/" + url.PathEscape(s.tenant)
+	case s.established == EstablishedTransport:
 		// The owner, as the rate limit counts it: one count per
 		// transport, whatever name or tenant a request claims.
-		return prefix + "transport/" + url.PathEscape(string(meta.Surface))
+		return prefix + "transport/" + url.PathEscape(string(s.surface))
 	case clientHost(meta) != "":
 		return prefix + "address/" + url.PathEscape(clientHost(meta))
 	default:

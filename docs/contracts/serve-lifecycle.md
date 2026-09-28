@@ -1314,10 +1314,18 @@ Rules:
   checks. On the invocation plane, the adopter's `PermissionFunc` runs
   at the permission slot, and a wrapped `Runner` runs innermost, after
   every gate.
-- Where a gate keys on the caller and the invocation carries no
-  authenticated caller, it keys on the client address, then on the
-  surface. `bus` and `cron` invocations therefore share one bucket per
-  surface.
+- Every gate that keys on the caller — rate limit, idempotency, the
+  result cache, quota — scopes an established caller the same way,
+  decided in one place in `cmdsurface`: a verified principal
+  (`EstablishedVerified`) by its tenant and principal, a caller the
+  transport vouches for (`EstablishedTransport`) as
+  `transport/<surface>`, never by the name or tenant it claims. They
+  differ only in what an unestablished call shares, each for its own
+  reason: the rate limit and quota key it on the client address, then
+  on the surface, so a claim never splits a bucket (`bus` and `cron`
+  invocations therefore share one bucket per surface); idempotency
+  isolates its records by the claim; the cache answers it from the
+  anonymous entry.
 
 ### Gate order on the invocation plane
 
@@ -1399,10 +1407,13 @@ What each slot does:
   principal, or a read-tier cache hit for a leaf declaring
   `kit/cache-ttl`. Idempotency is consulted first
   ([Idempotency](#idempotency)). A miss continues. The cache keys the
-  identity the transport established; a claimed caller, tenant or
-  scopes is keyed as anonymous, so a command whose output depends on
-  who calls requires an established identity (`kit/auth-required`) or
-  declares no `kit/cache-ttl`.
+  identity the transport established, scoped as idempotency scopes it
+  (`cmdsurface.IdempotencyScope`) plus a verified caller's scopes: a
+  caller the transport vouches for is keyed as `transport/<surface>`,
+  so a name it claims never reads that principal's entry. A claimed
+  caller, tenant or scopes is keyed as anonymous, so a command whose
+  output depends on who calls requires an established identity
+  (`kit/auth-required`) or declares no `kit/cache-ttl`.
 - **9.** The `quota` block: calls (`ops`) and output bytes (`bytes`:
   stdout, stderr and structured data) per caller per fixed `window`
   (default `1h`, aligned to the epoch, so `24h` is a UTC day), counted
@@ -2144,7 +2155,8 @@ The key, per surface:
 Rules:
 
 - **Scope.** `cmdsurface.IdempotencyScope` is the one scope, for this
-  ledger and for a command's own `--idempotency-key` middleware alike.
+  ledger, the read-tier result cache and a command's own
+  `--idempotency-key` middleware alike.
   A caller a verifier established (`EstablishedVerified`) is scoped to
   its tenant and principal, so its key answers it on every surface. A
   caller the transport itself vouches for (`EstablishedTransport`: the
