@@ -9,10 +9,10 @@ node   = "22"    # Node.js runtime
 pnpm   = "9"     # Node package manager
 python = "3.13"  # CPython
 uv     = "0.5"   # Python package + project manager
-rust   = "1.84"  # Rust toolchain (stable)
+rust   = "1.98.0"  # Rust toolchain (stable; matches rust-toolchain.toml)
 
 [workflow]
-golangci-lint        = "1.62"  # Go linter aggregator
+golangci-lint        = "2.12"  # Go linter aggregator (v2.x — required for Go 1.26+ targets; v1.x refuses)
 ruff                 = "0.8"   # Python linter + formatter
 lychee               = "0.18"  # Markdown / URL link checker
 hadolint             = "2.12"  # Dockerfile linter
