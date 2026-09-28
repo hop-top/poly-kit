@@ -49,7 +49,7 @@ See [flag-enums.md](../../../docs/adopters/reference/flag-enums.md).
 
 ## Served commands
 
-`<tool> serve` supervises services; kit ships three, each projecting the
+`<tool> serve` supervises services; kit ships four, each projecting the
 command tree through the same gates (policy, `WithPermission`,
 `WithAuditSinks`, `WithRootFactory`):
 
@@ -58,12 +58,16 @@ command tree through the same gates (policy, `WithPermission`,
 | `WithAPI(APIConfig{})` | `api` (on by default) | REST under `/v1/commands`, `127.0.0.1:8080` |
 | `WithSocket(SocketConfig{})` | `socket` | NDJSON over a `0600` Unix socket |
 | `mcpserve.With(mcpserve.Config{})` | `mcp` | MCP tools over streamable HTTP (`127.0.0.1:8081/mcp`), or stdio with `serve mcp --stdio` |
+| `rpcserve.With(rpcserve.Config{})` | `rpc` | `cmdsurface.v1.Commands` over Connect, gRPC and gRPC-Web, h2c on `127.0.0.1:8082` |
 
 The `mcp` service lives in [`mcpserve/`](mcpserve/) so a CLI that
 does not serve MCP does not link the MCP SDK. `mcp` over stdio admits `kit/auth-required` leaves on the spawn's trust
 and keeps stdout for the protocol; `kit/requires-confirmation` leaves need
 an accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
 [serve-lifecycle contract](../../../docs/contracts/serve-lifecycle.md#the-mcp-service).
+The `rpc` service lives in [`rpcserve/`](rpcserve/) for the same
+reason: only a CLI that serves RPC links `go/transport/rpc`. Normative
+text: [the rpc service](../../../docs/contracts/serve-lifecycle.md#the-rpc-service).
 
 ## Sub-packages
 

@@ -190,8 +190,8 @@ Rules:
 
 Registration, naming, and enablement are unchanged: a transport
 service registers like any other, its identifier obeys the naming
-rules above, and `enabled` defaults to `false`. Kit ships `socket` and
-`mcp` on this seam; `api` predates it and keeps its own
+rules above, and `enabled` defaults to `false`. Kit ships `socket`,
+`mcp` and `rpc` on this seam; `api` predates it and keeps its own
 implementation.
 
 Adopters start from the task guides rather than this section: [serve
@@ -413,7 +413,8 @@ does not reserve names inside a service's own block beyond the four
 lifecycle keys above.
 
 The kit-shipped services own these (the `mcp` service's keys are in
-[The mcp service](#keys-and-flags)):
+[The mcp service](#keys-and-flags), the `rpc` service's in
+[The rpc service](#rpc-keys-and-flags)):
 
 | Key                            | Type   | Default                | Meaning                                                        |
 |--------------------------------|--------|------------------------|----------------------------------------------------------------|
@@ -538,6 +539,11 @@ and `cmdsurface.Bridge.Audit` in
   `services.mcp.insecure_no_policy` for the opt-ins, default address
   `127.0.0.1:8081`. The stdio transport has no address and no address
   rule; its trust model is in [The mcp service](#identity-and-trust).
+- The rpc service MUST apply every rule above to its own listen
+  address, with its own names: `rpcserve.Config.Auth` for
+  authentication, `services.rpc.insecure_remote` and
+  `services.rpc.insecure_no_policy` for the opt-ins, default address
+  `127.0.0.1:8082`.
 
 ### Provenance
 
@@ -594,14 +600,15 @@ of any of them.
   `Admission.Stream`; it MUST NOT call the runner directly. The
   default permits everything.
 - `cli.WithPermission` installs the adopter's decision on the api,
-  socket, and mcp services. It composes after the tool's policy engine:
+  socket, mcp, and rpc services. It composes after the tool's policy engine:
   a `--policy` that refuses a side-effect class refuses it for every
   caller, on every surface, before the adopter's decision is asked —
   the same `Engine.Authorize` the CLI runs.
 - A refusal returns `ErrPermissionDenied` with a stable reason. It
   is `403 permission_denied` over REST and `DENIED` over the socket,
   distinct from the destructive ceiling's `403 destructive_blocked`
-  and `BLOCKED`, because different people fix them.
+  and `BLOCKED`, because different people fix them. Over RPC both
+  are `permission_denied`, told apart by the message's sentinel.
 - Discovery MUST keep a command invocable when the verdict depends
   on the caller; a per-caller answer cannot be pre-computed. A
   decision marked `CallerIndependent` MAY be reflected at mount with
@@ -880,6 +887,111 @@ the gates `Bridge.Invoke` does, in the same order, and audits the same
 verdicts, and then runs through `Admission.Stream`; streaming is a way
 of observing a call, never a way around its gates.
 
+## The rpc service
+
+`rpcserve.With` (package
+[`go/console/cli/rpcserve`](../../go/console/cli/rpcserve/)) registers
+the fourth kit-shipped service, `rpc`: the tool's command tree served
+as the published `cmdsurface.v1.Commands` service
+([`contracts/proto/cmdsurface/v1/commands.proto`](../../contracts/proto/cmdsurface/v1/commands.proto))
+— `Invoke`, unary, and `InvokeStream`, server-streaming. It rides the
+[transport seam](#transport-services) as `socket` and `mcp` do, so
+everything this page says about registration, reflection at `Start`,
+readiness, stop, exit codes, the root factory, the permission gate,
+and audit applies to it unchanged. Its surface is pinned to `rpc`
+([`cmdsurface.SurfaceRPC`](../../go/transport/cmdsurface/surface.go)),
+and the handler is `cmdsurface.MountRPC` over the generated Connect
+handler; kit implements no wire behavior of its own here.
+
+Like every service that arrives through the registry, `rpc` is
+`enabled: false` by default. `<tool> serve rpc` starts it.
+
+The service lives in its own package for the reason `mcp` does:
+`go/transport/rpc` registers protobuf types at init, which the linker
+cannot drop, so a CLI that never serves RPC MUST NOT link it.
+`go/console/cli` MUST NOT depend on `go/transport/rpc`. The service
+reaches the Root through the exported hooks listed under
+[The mcp service](#the-mcp-service).
+
+### Wire
+
+One listener serves every protocol connect-go speaks: Connect (binary
+proto and JSON), gRPC, and gRPC-Web, over HTTP/1.1 and unencrypted
+HTTP/2 with prior knowledge (h2c) on the same port. Native gRPC needs
+HTTP/2, and gets it without TLS. The `ready_reported` address is the
+base URL, `http://<host>:<port>`; procedures live under
+`/cmdsurface.v1.Commands/`. The listener is the service's own, for the
+reasons the mcp service gives.
+
+A request message larger than `rpcserve.Config.MaxBodyBytes` (default
+4 MiB, the gRPC implementations' receive default) is refused with
+`resource_exhausted` before it is decoded.
+
+The server's write deadline (10s) is sized for request/reply.
+`InvokeStream` responses MUST be exempt from it: a stream outlives it
+by design, and a stream cut at the deadline would end without its
+terminal `done` event. Every other call keeps it. Stopping the service
+ends every open stream, so a stream with no end of its own cannot hold
+the drain for the whole stop budget.
+
+### RPC keys and flags
+
+| Key                                | Type   | Default          | Meaning                                                  |
+|------------------------------------|--------|------------------|----------------------------------------------------------|
+| `services.rpc.addr`                | string | `127.0.0.1:8082` | listen address; loopback unless authenticated or opted in |
+| `services.rpc.insecure_remote`     | bool   | `false`          | serve unauthenticated on a non-loopback address          |
+| `services.rpc.insecure_no_policy`  | bool   | `false`          | serve beyond loopback with no delegation policy          |
+
+`rpcserve.Config` carries the code defaults under the same names. The
+flag `--rpc-addr`, registered on `serve` like `--mcp-addr`, overrides
+`services.rpc.addr` for one run. The insecure opt-ins have no flags,
+for the reason the mcp service's have none.
+
+### Identity and gates
+
+`rpcserve.Config.Auth` is an `api.AuthFunc`, the type the api and mcp
+services take, applied as a Connect interceptor to every procedure,
+unary and streaming alike, before the handler runs. A refusal is
+`unauthenticated` in the protocol the client spoke, plus an
+`ErrAuthRefused` audit record naming the procedure.
+
+Identity comes from what `Auth` verified, never from the request body.
+The body's `meta.caller`, `meta.tenant` and `meta.extra` are claims: the
+service drops them, so a client cannot name itself a principal or
+write a `scopes` entry the permission gate would read as a
+credential's. A leaf declaring `kit/auth-required` runs only when
+`Auth` verified the call; a bare `Authorization` header is not
+authentication, so without `Auth` such leaves are refused.
+
+| Field            | rpc service                                                      |
+|------------------|------------------------------------------------------------------|
+| `Caller`         | principal from the `Auth` claims                                 |
+| `Tenant`         | tenant from the `Auth` claims                                    |
+| `Surface`        | `rpc`, pinned by the seam                                        |
+| `RequestID`      | `X-Request-ID`, else the body's `request_id`, else issued        |
+| `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`, else the body's       |
+| `IdempotencyKey` | `Idempotency-Key`, else the body's                               |
+| `RequestedAt`    | receipt time                                                     |
+| `Extra`          | `rpc_protocol` (`connect`, `grpc`, `grpcweb`), `remote_addr`, `scopes` |
+
+What never runs remotely is withheld as the REST projection withholds
+it: every command the reflector judges non-invocable under the Root's
+reserved verbs — `interactive`, `management-only`, `self-hosting` — is
+hidden from the surface and answers `not_found`. The other refusals
+map onto Connect codes:
+
+| Refusal                                               | Code                  |
+|-------------------------------------------------------|-----------------------|
+| unknown, withheld, or not exposed on `rpc`            | `not_found`           |
+| `kit/auth-required` without verified `Auth`, or `Auth` refused | `unauthenticated` |
+| `kit/requires-confirmation` without `X-Confirm-Token` | `failed_precondition` |
+| destructive ceiling, permission gate                  | `permission_denied`   |
+| oversized message                                     | `resource_exhausted`  |
+
+A command that ran and exited non-zero is a success response carrying
+its `exit_code`: the call reached the command, and the command
+answered.
+
 ## Execution
 
 A transport service does not run commands; it hands an invocation to
@@ -985,8 +1097,9 @@ The kit-shipped `socket` service is request/reply and uses `Run`. The
 for their streaming twins (`<route>/stream`), which it admits through
 the same gates before opening the stream. The `mcp` service uses
 `Run`, and `Stream` for a call carrying a progress token, admitted the
-same way (`Bridge.Admit`, then `Admission.Stream`). The WebSocket,
-SSE, and RPC surfaces in `cmdsurface` use `Stream`.
+same way (`Bridge.Admit`, then `Admission.Stream`). The `rpc` service
+uses `Run` for `Invoke` and `Stream` for `InvokeStream`, admitted the
+same way. The WebSocket and SSE surfaces in `cmdsurface` use `Stream`.
 
 ### Cancellation
 
@@ -1081,7 +1194,7 @@ variable, no closure over a struct another invocation writes.
 A kit root supplies the factory through `cli.WithRootFactory(build)`,
 where `build` is the tool's own construction — `cli.New` plus every
 command it mounts, the function `main` already has. The kit-shipped
-`api`, `socket`, and `mcp` services then hand their bridge the factory runner
+`api`, `socket`, `mcp`, and `rpc` services then hand their bridge the factory runner
 instead of the shared-tree one, and for every tree the factory
 returns:
 
@@ -1591,6 +1704,7 @@ be described as non-conformant for lacking one.
 | The REST / OpenAPI projection of the command tree | It exists because `cmdreflect` can walk a cobra tree and describe it. It is a projection of Go's command model, not of this contract, and no other SDK has a reflector to project from. |
 | The Unix socket service and `transportsvc` seam | Same reason, plus a platform floor: a socket service is not portable to every runtime a kit SDK targets. |
 | The built-in `mcp` service | It is a transport service on the Go seam over a reflected cobra tree. Ports serve MCP through their own surfaces; the protocol parity they owe is the MCP surface contract, not this service's wiring. |
+| The built-in `rpc` service | Same reason. The wire contract a port owes is `contracts/proto/cmdsurface/v1/commands.proto`, not this service's wiring. |
 | `cmdreflect`-driven discovery, and the `invocable: false` reason vocabulary | The reasons (`interactive`, `self-hosting`, `management-only`) are properties of a reflected Go command tree. A port with no reflector has nothing to attach them to. |
 | The permission gate (`PermissionFunc`), provenance (`Meta`), and audit sinks | These are the [Security](#security) contract of the *transport services*. A port that serves nothing over a transport has no caller to authenticate, attribute, or audit. They become obligations for a port the day it ships a transport service, not before. |
 | The whole [Execution](#execution) section | Result shape, format selection, stream events, cancellation semantics, and tree isolation all describe what happens when a *transport* hands an invocation to a *runner*. Both ends are Go-only today. The flag-baseline and root-factory rules in particular exist because cobra and pflag keep parse state on the command tree; a port whose parser does not is not solving that problem. |

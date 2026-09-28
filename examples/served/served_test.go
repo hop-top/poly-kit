@@ -294,10 +294,11 @@ func TestServeExistsWithContractFlagsAndChildren(t *testing.T) {
 	assert.NotNil(t, serveCmd.Flags().Lookup("socket"), "--socket")
 	assert.NotNil(t, serveCmd.Flags().Lookup("stdio"), "--stdio")
 	assert.NotNil(t, serveCmd.Flags().Lookup("mcp-addr"), "--mcp-addr")
+	assert.NotNil(t, serveCmd.Flags().Lookup("rpc-addr"), "--rpc-addr")
 
-	// The children, in registration order: kit's three, then the adopter's.
+	// The children, in registration order: kit's four, then the adopter's.
 	require.NotNil(t, root.ServeRegistry())
-	assert.Equal(t, []string{"api", "socket", "mcp", "heartbeat"}, root.ServeRegistry().Names())
+	assert.Equal(t, []string{"api", "socket", "mcp", "rpc", "heartbeat"}, root.ServeRegistry().Names())
 }
 
 func TestServeListNamesEveryService(t *testing.T) {
@@ -310,10 +311,12 @@ func TestServeListNamesEveryService(t *testing.T) {
 	assert.Regexp(t, `(?m)^api\s`, got)
 	assert.Regexp(t, `(?m)^socket\s`, got)
 	assert.Regexp(t, `(?m)^mcp\s`, got)
+	assert.Regexp(t, `(?m)^rpc\s`, got)
 	assert.Regexp(t, `(?m)^heartbeat\s`, got)
 	assert.Less(t, strings.Index(got, "api"), strings.Index(got, "socket"))
 	assert.Less(t, strings.Index(got, "socket"), strings.Index(got, "\nmcp"))
-	assert.Less(t, strings.Index(got, "\nmcp"), strings.Index(got, "heartbeat"),
+	assert.Less(t, strings.Index(got, "\nmcp"), strings.Index(got, "\nrpc"))
+	assert.Less(t, strings.Index(got, "\nrpc"), strings.Index(got, "heartbeat"),
 		"the listing mirrors registration order")
 }
 

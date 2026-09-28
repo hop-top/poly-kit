@@ -6,9 +6,9 @@
 // — the one that installs the confirmation and policy gates — and
 // assert every claim the serve-lifecycle contract makes about a
 // conformant application command: the serve hierarchy exists, the
-// api, socket and mcp services are listed, readiness reaches the bus and the log,
+// api, socket, mcp and rpc services are listed, readiness reaches the bus and the log,
 // discovery describes every command with the right reason, reads and
-// writes run over REST and the socket, destructive commands are
+// writes run over REST, the socket and RPC, destructive commands are
 // withheld until a surface is named and confirmed, interactive and
 // self-hosting commands never run remotely, the api binds loopback
 // and refuses unauthenticated remote serving, and an adopter service
@@ -40,6 +40,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/mcpserve"
+	"hop.top/kit/go/console/cli/rpcserve"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/runtime/bus"
 	"hop.top/kit/go/transport/cmdsurface"
@@ -106,7 +107,7 @@ type options struct {
 }
 
 // newRoot builds the fixture's root. This is the whole of the wiring
-// an adopter writes: the root, the reserved status verb, the three
+// an adopter writes: the root, the reserved status verb, the four
 // kit-shipped services, one service of their own, and the commands.
 func newRoot(opts options) *cli.Root {
 	if opts.heartbeat == nil {
@@ -123,6 +124,7 @@ func newRoot(opts options) *cli.Root {
 		cli.WithAPI(cli.APIConfig{Policy: policy}),
 		cli.WithSocket(cli.SocketConfig{Policy: policy}),
 		mcpserve.With(mcpserve.Config{Policy: policy}),
+		rpcserve.With(rpcserve.Config{Policy: policy}),
 		cli.WithService(opts.heartbeat),
 		cli.WithServiceBus(opts.bus),
 	)

@@ -2,12 +2,12 @@
 
 Conformance fixture for kit's zero-wiring serve capability.
 
-`main.go` is a kit CLI built with `cli.New` and six options — the
-reserved `status` verb, the kit-shipped `api`, `socket` and `mcp`
-services, one adopter-owned service, and a bus — plus one command per class the
+`main.go` is a kit CLI built with `cli.New` and seven options — the
+reserved `status` verb, the kit-shipped `api`, `socket`, `mcp` and
+`rpc` services, one adopter-owned service, and a bus — plus one command per class the
 [serve-lifecycle contract](../../docs/contracts/serve-lifecycle.md)
 distinguishes. Nothing is mounted by hand. `served_test.go` and
-`mcp_test.go` drive the
+`mcp_test.go` and `rpc_test.go` drive the
 real `Execute` path (the one that installs the confirmation and policy
 gates) with the arguments an operator would type and asserts every
 claim the contract makes about a conformant application command.
@@ -34,8 +34,8 @@ Each test name is the claim it pins:
 - `TestServeExistsWithContractFlagsAndChildren` — `serve` carries
   `--list`, `--enable`, `--disable`, the three timeouts, `--addr`
   defaulting to `127.0.0.1:8080`, `--insecure-remote`, `--socket`,
-  `--stdio`, `--mcp-addr`; the registry lists `api`, `socket`, `mcp`,
-  `heartbeat` in registration order.
+  `--stdio`, `--mcp-addr`, `--rpc-addr`; the registry lists `api`,
+  `socket`, `mcp`, `rpc`, `heartbeat` in registration order.
 - `TestServeListNamesEveryService` — `serve --list` mirrors that order.
 - `TestReadinessReachesTheBusAndTheLog` —
   `kit.serve.service.ready_reported` carries the bound address; the
@@ -95,6 +95,26 @@ Each test name is the claim it pins:
   MCP tool, and every command REST mounts is one.
 - `TestMCPServesBesideTheOthersUnderTheSupervisor` — `serve --enable
   mcp` runs it on its own listener beside `api`.
+
+`rpc_test.go` pins the `rpc` service, each over Connect, gRPC (h2c)
+and gRPC-Web where the protocol matters:
+
+- `TestReadAnswersOverEveryRPCProtocol` — `item list` answers in
+  `data_json` with exit code 0.
+- `TestLongRunningReadStreamsOverRPC` — `InvokeStream` of `item watch`
+  delivers one `stdout` event per line, then `done` with the result.
+- `TestDestructiveRunsOverRPCOnceNamedAndConfirmed` —
+  `permission_denied` until `Policy.AllowDestructiveOn` names `rpc`,
+  then the command's own gate refuses without `confirm` and runs with
+  it.
+- `TestConfirmationAndAuthGatesOverRPC` — `item tag` needs
+  `X-Confirm-Token`; `item sync` is `unauthenticated` without `Auth`,
+  bare header or not.
+- `TestRPCAndRESTWithholdTheSameCommands` — nothing REST discovery
+  withholds runs over RPC; `shell`, `upgrade`, `serve` and `status`
+  are `not_found`.
+- `TestUnauthenticatedRemoteRPCIsRefused` — `--rpc-addr 0.0.0.0:0`
+  exits 2 naming `services.rpc.insecure_remote`.
 
 `mcp_stdio_test.go` builds the fixture and runs it the way a desktop
 host does:
