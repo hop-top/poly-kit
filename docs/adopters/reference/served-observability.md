@@ -139,7 +139,7 @@ Invocation plane, labeled `kit.service` and `kit.surface`:
 | Instrument | Type | Unit | Extra attributes |
 |---|---|---|---|
 | `kit.serve.requests` | counter | `{request}` | `kit.outcome` (`ok`, `error`, `refused`), `kit.refusal.reason` when refused, `kit.command` when the path resolved |
-| `kit.serve.request.duration` | histogram | `s` | as above; receipt to verdict, refusals included |
+| `kit.serve.request.duration` | histogram | `s` | as above; receipt to verdict, refusals included; buckets 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10 |
 | `kit.serve.requests.active` | up-down counter | `{request}` | invocations running now, past every gate |
 | `kit.serve.refusals` | counter | `{refusal}` | `kit.refusal.reason` |
 
@@ -151,6 +151,24 @@ HTTP plane, labeled `kit.service`:
 | `kit.serve.http.requests.active` | up-down counter | HTTP requests in progress |
 | `kit.serve.http.refusals` | counter | requests refused by HTTP-plane middleware, by `kit.refusal.reason` |
 | `rpc.server.*` | per otelconnect | RPC duration and sizes, when the RPC interceptor is wired |
+
+The duration buckets are the OpenTelemetry semantic conventions'
+recommendation for `http.server.request.duration`. They are an advisory
+on the instrument: with `WithMeterProvider`, a view on your own meter
+provider overrides them.
+
+`http.server.*` follows the HTTP semantic conventions otelhttp v0.60
+emits by default, the pre-stable ones: `http.server.duration` in
+milliseconds (`http_server_duration_milliseconds` when scraped) and
+the counters `http.server.request.size` and `http.server.response.size`
+(`http_server_request_size_bytes_total`,
+`http_server_response_size_bytes_total`). Set
+`OTEL_SEMCONV_STABILITY_OPT_IN=http/dup` to record the stable names
+beside them: `http.server.request.duration` in seconds and the
+`http.server.request.body.size` and `http.server.response.body.size`
+histograms. The defaults change when kit moves to an otelhttp release
+that emits the stable names by default; a dashboard built on the old
+names should move with it.
 
 An unresolved command path never becomes a label: a caller cannot mint
 series by requesting commands that do not exist.

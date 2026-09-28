@@ -180,6 +180,34 @@ func TestInvalidScrapeConfigurationIsRefused(t *testing.T) {
 	}
 }
 
+func TestDurationHistogramUsesSecondBuckets(t *testing.T) {
+	p := scraped(t)
+	_, h, _ := p.MetricsEndpoint()
+	require.NotNil(t, h)
+	bridge := cmdsurface.New(tree(nil), p.BridgeOptions("api")...)
+	bridge.Expose("*", cmdsurface.SurfaceREST)
+	_, err := bridge.Invoke(context.Background(), cmdsurface.Invocation{Path: []string{"hello"},
+		Meta: cmdsurface.Meta{Surface: cmdsurface.SurfaceREST}})
+	require.NoError(t, err)
+
+	_, body := scrape(t, h, http.MethodGet)
+	var bounds []string
+	for line := range strings.SplitSeq(body, "\n") {
+		if !strings.HasPrefix(line, "kit_serve_request_duration_seconds_bucket{") {
+			continue
+		}
+		_, rest, _ := strings.Cut(line, `le="`)
+		le, _, _ := strings.Cut(rest, `"`)
+		bounds = append(bounds, le)
+	}
+	// The OpenTelemetry semantic conventions' boundaries for
+	// http.server.request.duration, in seconds.
+	assert.Equal(t, []string{
+		"0.005", "0.01", "0.025", "0.05", "0.075", "0.1", "0.25", "0.5",
+		"0.75", "1", "2.5", "5", "7.5", "10", "+Inf",
+	}, bounds)
+}
+
 func TestExpositionFormat(t *testing.T) {
 	scope := instrumentation.Scope{Name: "s", Version: "1"}
 	attrs := attribute.NewSet(

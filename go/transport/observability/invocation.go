@@ -46,6 +46,16 @@ const (
 	invocationSpanPrefix = "invoke "
 )
 
+// durationBuckets are the bucket boundaries of [MetricDuration], in
+// seconds: the OpenTelemetry semantic conventions' recommendation for
+// http.server.request.duration. The SDK's default boundaries (0 to
+// 10000) suit milliseconds and would put nearly every sample in the
+// first bucket. They are an advisory on the instrument, so a view on
+// an adopter's own meter provider still overrides them.
+var durationBuckets = []float64{
+	0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10,
+}
+
 // instruments are the metric instruments kit records served commands
 // with. One set serves every service a Provider instruments; the
 // service is an attribute.
@@ -65,7 +75,8 @@ func newInstruments(m metric.Meter) (*instruments, error) {
 		metric.WithDescription("Served invocations by verdict: ran ok, ran and failed, or refused."))
 	err = errors.Join(err, e)
 	in.duration, e = m.Float64Histogram(MetricDuration, metric.WithUnit("s"),
-		metric.WithDescription("Time from receipt to verdict of a served invocation, refusals included."))
+		metric.WithDescription("Time from receipt to verdict of a served invocation, refusals included."),
+		metric.WithExplicitBucketBoundaries(durationBuckets...))
 	err = errors.Join(err, e)
 	in.active, e = m.Int64UpDownCounter(MetricActive, metric.WithUnit("{request}"),
 		metric.WithDescription("Served invocations running now, past every gate."))
