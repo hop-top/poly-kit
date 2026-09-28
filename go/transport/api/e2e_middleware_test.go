@@ -144,6 +144,8 @@ func TestE2E_Middleware_CORS_Preflight(t *testing.T) {
 	t.Run("preflight OPTIONS returns 204 with headers", func(t *testing.T) {
 		req, _ := http.NewRequest("OPTIONS", srv.URL+"/data", nil)
 		req.Header.Set("Origin", "https://example.com")
+		req.Header.Set("Access-Control-Request-Method", "GET")
+		req.Header.Set("Access-Control-Request-Headers", "authorization")
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -152,7 +154,7 @@ func TestE2E_Middleware_CORS_Preflight(t *testing.T) {
 		assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 		assert.Equal(t, "https://example.com", resp.Header.Get("Access-Control-Allow-Origin"))
 		assert.Contains(t, resp.Header.Get("Access-Control-Allow-Methods"), "GET")
-		assert.Contains(t, resp.Header.Get("Access-Control-Allow-Headers"), "Authorization")
+		assert.Equal(t, "authorization", resp.Header.Get("Access-Control-Allow-Headers"))
 		assert.Equal(t, "true", resp.Header.Get("Access-Control-Allow-Credentials"))
 		assert.Equal(t, "3600", resp.Header.Get("Access-Control-Max-Age"))
 	})

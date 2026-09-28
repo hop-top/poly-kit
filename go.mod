@@ -73,6 +73,7 @@ require (
 require (
 	connectrpc.com/otelconnect v0.9.0
 	github.com/hop-top/fang/v2 v2.0.2-hop.1
+	github.com/rs/cors v1.11.1
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.43.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.43.0
 	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.43.0
