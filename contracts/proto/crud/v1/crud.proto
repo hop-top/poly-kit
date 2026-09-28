@@ -1,8 +1,9 @@
 syntax = "proto3";
 package crud.v1;
-option go_package = "hop.top/kit/contracts/proto/crud/v1;crudv1";
 
 import "google/protobuf/struct.proto";
+
+option go_package = "hop.top/kit/contracts/proto/crud/v1;crudv1";
 
 // EntityService provides generic CRUD operations over arbitrary
 // domain entities. Payloads use google.protobuf.Struct so callers

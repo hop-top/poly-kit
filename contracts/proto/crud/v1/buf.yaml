@@ -2,3 +2,9 @@ version: v2
 modules:
   - path: .
     name: buf.build/hop-top/crud
+lint:
+  use:
+    - STANDARD
+  except:
+    # Module root is the version directory; the package is crud.v1.
+    - PACKAGE_DIRECTORY_MATCH

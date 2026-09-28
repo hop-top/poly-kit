@@ -409,9 +409,10 @@ proto: ## Generate protobuf + Connect/gRPC stubs
 	cd contracts/proto/cmdsurface/v1 && buf generate
 
 # Proto modules whose buf.gen.yaml pins every plugin version, so a
-# regeneration is reproducible, and the paths their stubs land in.
-PROTO_PINNED_DIRS := contracts/proto/cmdsurface/v1
-PROTO_PINNED_OUT  := go/transport/cmdsurface/gen
+# regeneration is reproducible, and the paths their stubs land in
+# (crud and routellm also generate inside their module directory).
+PROTO_PINNED_DIRS := contracts/proto/cmdsurface/v1 contracts/proto/crud/v1 contracts/proto/routellm/v1
+PROTO_PINNED_OUT  := go/transport/cmdsurface/gen contracts/proto/crud/v1 contracts/proto/routellm/v1/gen sdk/ts/src/gen
 
 proto-check: ## Lint pinned protos, regenerate their stubs, fail on drift
 	@for d in $(PROTO_PINNED_DIRS); do \

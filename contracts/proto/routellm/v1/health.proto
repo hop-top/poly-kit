@@ -1,5 +1,6 @@
 syntax = "proto3";
 package routellm.v1;
+
 option go_package = "hop.top/kit/contracts/proto/routellm/v1;routellmv1";
 
 service HealthService {

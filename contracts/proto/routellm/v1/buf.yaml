@@ -2,6 +2,24 @@ version: v2
 lint:
   use:
     - STANDARD
+  except:
+    # Module root is the version directory; the package is routellm.v1.
+    - PACKAGE_DIRECTORY_MATCH
+  ignore_only:
+    # health.proto mirrors grpc.health.v1: Check and Watch share
+    # HealthCheckRequest/Response, and the ServingStatus values are
+    # UNKNOWN / SERVING / NOT_SERVING. Renaming either moves the wire
+    # contract health clients already speak.
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - health.proto
+    RPC_REQUEST_STANDARD_NAME:
+      - health.proto
+    RPC_RESPONSE_STANDARD_NAME:
+      - health.proto
+    ENUM_VALUE_PREFIX:
+      - health.proto
+    ENUM_ZERO_VALUE_SUFFIX:
+      - health.proto
 breaking:
   use:
     - FILE
