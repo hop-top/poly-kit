@@ -62,7 +62,7 @@ func buildMinimalSpec(cfg ProjectionConfig) map[string]any {
 			entry = map[string]any{}
 			paths[d.Route()] = entry
 		}
-		entry[method] = map[string]any{
+		op := map[string]any{
 			"operationId": OperationIDFor(d.Path),
 			"summary":     summaryOf(d),
 			"tags":        []string{"commands"},
@@ -73,6 +73,10 @@ func buildMinimalSpec(cfg ProjectionConfig) map[string]any {
 				"500": map[string]any{"description": "Command failed"},
 			},
 		}
+		for k, v := range d.openAPIExtensions() {
+			op[k] = v
+		}
+		entry[method] = op
 	}
 
 	title := cfg.ToolName

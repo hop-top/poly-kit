@@ -39,6 +39,9 @@ type DiscoveryEntry struct {
 	Summary string `json:"summary,omitempty"`
 	// SideEffect is the resolved side-effect tier.
 	SideEffect SideEffectClass `json:"side_effect"`
+	// SideEffectSource says whether SideEffect is the adopter's
+	// declaration or kit's stand-in. Always present.
+	SideEffectSource SideEffectSource `json:"side_effect_source" enum:"declared,inferred,unannotated,malformed"`
 
 	// Invocable reports whether the command is mounted.
 	Invocable bool `json:"invocable"`
@@ -86,6 +89,7 @@ func BuildDiscoveryDocument(cfg ProjectionConfig) DiscoveryDocument {
 			Name:                 d.PathKey(),
 			Summary:              d.Summary,
 			SideEffect:           d.SideEffect,
+			SideEffectSource:     d.Source(),
 			Invocable:            d.Invocable,
 			Reason:               d.Reason,
 			Flags:                d.sortedFlags(),

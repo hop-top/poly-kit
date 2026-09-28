@@ -44,6 +44,41 @@ const (
 	SideEffectInteractive SideEffectClass = "interactive"
 )
 
+// SideEffectSource says where a descriptor's SideEffect came from.
+//
+// The class alone cannot carry it: kit projects a command that
+// declared nothing onto write (POST), so without the source a caller
+// sees `write` for a declared write and for kit's guess alike, and
+// cannot tell which one to trust. Only SideEffectSourceDeclared is
+// the adopter's word; every other value is kit's conservative stand-in.
+type SideEffectSource string
+
+// Side-effect sources, a closed set.
+const (
+	// SideEffectSourceDeclared: the adopter's kit/side-effect
+	// annotation, resolved as written.
+	SideEffectSourceDeclared SideEffectSource = "declared"
+	// SideEffectSourceInferred: no annotation; kit's
+	// destructive-name heuristic (delete, rm, purge, …) fired.
+	SideEffectSourceInferred SideEffectSource = "inferred"
+	// SideEffectSourceUnannotated: no annotation and no heuristic.
+	// Kit projects it as write — never read.
+	SideEffectSourceUnannotated SideEffectSource = "unannotated"
+	// SideEffectSourceMalformed: an annotation kit could not
+	// resolve. The command is withheld with malformed-schema.
+	SideEffectSourceMalformed SideEffectSource = "malformed"
+)
+
+// OpenAPI operation extensions carrying the side-effect facts, so a
+// client generated from the spec needs no discovery call to learn
+// that a POST is kit's guess rather than the adopter's declaration.
+const (
+	// OpenAPIExtSideEffect carries the SideEffectClass.
+	OpenAPIExtSideEffect = "x-kit-side-effect"
+	// OpenAPIExtSideEffectSource carries the SideEffectSource.
+	OpenAPIExtSideEffectSource = "x-kit-side-effect-source"
+)
+
 // MethodFor returns the HTTP method a command of class c is projected
 // onto.
 //
@@ -135,6 +170,9 @@ type CommandDescriptor struct {
 
 	// SideEffect is the resolved tier, which selects the method.
 	SideEffect SideEffectClass `json:"side_effect"`
+	// SideEffectSource says whether SideEffect was declared or is
+	// kit's stand-in. Empty is read through [CommandDescriptor.Source].
+	SideEffectSource SideEffectSource `json:"side_effect_source,omitempty"`
 	// Flags are the flags declared on this command.
 	Flags []CommandFlag `json:"flags,omitempty"`
 	// Args are the declared positional arguments.
@@ -208,6 +246,29 @@ func ConfirmFlagsFor(d CommandDescriptor) []CommandFlag {
 
 // Method returns the HTTP method this descriptor projects onto.
 func (d CommandDescriptor) Method() string { return MethodFor(d.SideEffect) }
+
+// Source returns where SideEffect came from. A descriptor built by
+// hand with a class and no source reports declared: the caller stated
+// the class, and that statement is the declaration. With no class
+// either, it reports unannotated.
+func (d CommandDescriptor) Source() SideEffectSource {
+	switch {
+	case d.SideEffectSource != "":
+		return d.SideEffectSource
+	case d.SideEffect != "":
+		return SideEffectSourceDeclared
+	}
+	return SideEffectSourceUnannotated
+}
+
+// openAPIExtensions returns the operation extensions every projected
+// operation carries, in the full and the minimal spec alike.
+func (d CommandDescriptor) openAPIExtensions() map[string]any {
+	return map[string]any{
+		OpenAPIExtSideEffect:       string(d.SideEffect),
+		OpenAPIExtSideEffectSource: string(d.Source()),
+	}
+}
 
 // Route returns the projected path for this descriptor.
 func (d CommandDescriptor) Route() string { return RouteFor(d.Path) }

@@ -126,6 +126,7 @@ func descriptorToProjection(
 		Summary:              d.Short,
 		Description:          d.Long,
 		SideEffect:           sideEffectClass(d.Safety.Tier),
+		SideEffectSource:     sideEffectSource(d.Safety),
 		Invocable:            d.Invocable,
 		Reason:               string(d.Reason),
 		RequiresConfirmation: d.Safety.RequiresConfirmation,
@@ -243,6 +244,23 @@ func sideEffectClass(t cmdreflect.Tier) api.SideEffectClass {
 	// conservative read, and it never yields a method that claims
 	// the call is safe.
 	return api.SideEffectWrite
+}
+
+// sideEffectSource says whether the tier behind the projected class
+// is the adopter's declaration or kit's stand-in. The heuristic is
+// checked first: it sets a declared-looking tier (destructive-shared)
+// that Tier.Declared alone would report as the adopter's word.
+func sideEffectSource(s cmdreflect.Safety) api.SideEffectSource {
+	switch {
+	case s.TierInferred:
+		return api.SideEffectSourceInferred
+	case s.Tier == cmdreflect.TierUnannotated:
+		return api.SideEffectSourceUnannotated
+	case !s.Tier.Declared():
+		// TierUnknown: an annotation was written and did not resolve.
+		return api.SideEffectSourceMalformed
+	}
+	return api.SideEffectSourceDeclared
 }
 
 // bridgeExecutor runs a projected command through the cmdsurface

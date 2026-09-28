@@ -78,6 +78,7 @@ func describeCommandOp(spec *huma.OpenAPI, d CommandDescriptor) {
 		Description: d.Description,
 		Tags:        []string{"commands"},
 		Responses:   commandResponses(spec, d),
+		Extensions:  d.openAPIExtensions(),
 	}
 
 	// Where the parameters go mirrors decodeCommandRequest: a GET
