@@ -1081,6 +1081,16 @@ services:
 is refused at startup with exit `2`, as is an unknown key. Buckets
 live in memory, one set per service, and start full on every restart.
 
+To ship different numbers with the tool, set them in code; a
+configured key still wins, key by key, and the code does not switch
+the limit on where it is off:
+
+```go
+cli.New(cfg, cli.WithServeRateLimit(cmdsurface.RateLimit{
+    Destructive: cmdsurface.RateRule{PerMinute: 6, Burst: 1},
+}))
+```
+
 ### 12. Bound slow clients and long commands
 
 Every HTTP listener (api, rpc, mcp) gives a client 5s to send its

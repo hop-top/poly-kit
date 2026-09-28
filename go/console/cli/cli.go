@@ -336,6 +336,9 @@ type Root struct {
 	// socketFlag is the --socket value when the operator passed one;
 	// it wins over config at bind time.
 	socketFlag string
+	// serveRateLimitCode is the rate_limit code default; see
+	// WithServeRateLimit.
+	serveRateLimitCode rateLimitCode
 	// serveAuth is the permission gate and audit sinks every
 	// kit-shipped transport service shares; see serve_auth.go.
 	serveAuth    serveAuthState

@@ -207,3 +207,35 @@ func TestServeBridgeOptionsForSelectsTheColumn(t *testing.T) {
 		"a configuration that does not resolve refuses every call")
 	assert.Error(t, ValidateServeBridge(r, "heartbeat"))
 }
+
+// WithServeRateLimit is the code default under the rate_limit keys:
+// each tier key it sets applies when no configuration source sets
+// that key, and enablement still follows exposure and enabled.
+func TestWithServeRateLimitIsTheCodeDefault(t *testing.T) {
+	isolateHome(t)
+	r := authRoot(t, WithServeRateLimit(cmdsurface.RateLimit{
+		Read: cmdsurface.RateRule{PerMinute: 1, Burst: 1},
+	}))
+	invokeN := func(n int) error {
+		opts, err := ServeBridgeOptions(r, "heartbeat")
+		require.NoError(t, err)
+		b := cmdsurface.New(r.Cmd, opts...)
+		b.Expose("*", cmdsurface.SurfaceBus)
+		for range n {
+			if _, err := b.Invoke(t.Context(), cmdsurface.Invocation{Path: []string{"list"},
+				Meta: cmdsurface.Meta{Surface: cmdsurface.SurfaceBus}}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	assert.ErrorIs(t, invokeN(2), cmdsurface.ErrRateLimited, "the code's burst of one applies")
+
+	r.Viper.Set("services.all.rate_limit.read.burst", 2)
+	assert.NoError(t, invokeN(2), "a configured key beats the code default")
+	assert.ErrorIs(t, invokeN(3), cmdsurface.ErrRateLimited)
+
+	r.Viper.Set("services.heartbeat.rate_limit.enabled", false)
+	assert.NoError(t, invokeN(3), "enabled: false lifts a code-set limit too")
+}

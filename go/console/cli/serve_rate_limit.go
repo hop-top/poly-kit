@@ -39,7 +39,8 @@ import (
 //	        burst: 40              # api only; the other keys still come from all
 //
 // Every key resolves on its own: the service's key from any source,
-// then the services.all key, then the kit default (the numbers above,
+// then the services.all key, then the tool's code default
+// ([WithServeRateLimit]), then the kit default (the numbers above,
 // cmdsurface.DefaultRateLimit). Buckets live in memory, per service.
 const (
 	rateLimitBlock     = "rate_limit"
@@ -53,15 +54,35 @@ var rateLimitTiers = []cmdsurface.RateTier{
 	cmdsurface.RateTierRead, cmdsurface.RateTierWrite, cmdsurface.RateTierDestructive,
 }
 
-// serveRateLimit resolves svc's rate_limit block. on reports whether
+// rateLimitCode is the Root field type holding WithServeRateLimit's
+// value.
+type rateLimitCode = cmdsurface.RateLimit
+
+// WithServeRateLimit sets the tool's code defaults for the rate_limit
+// block of every kit-shipped service: each tier's per_minute and
+// burst apply where no configuration source sets that key, and a zero
+// field keeps the kit default. It does not switch the limit on:
+// enablement stays with the enabled key and the service's exposure.
+func WithServeRateLimit(cfg cmdsurface.RateLimit) func(*Root) {
+	return func(r *Root) { r.serveRateLimitCode = cfg }
+}
+
+// serveRateLimit resolves svc's rate_limit block over no code
+// defaults; see serveRateLimitOver.
+func serveRateLimit(v *viper.Viper, svc string, loopback bool) (cmdsurface.RateLimit, bool, error) {
+	return serveRateLimitOver(v, svc, loopback, cmdsurface.RateLimit{})
+}
+
+// serveRateLimitOver resolves svc's rate_limit block, code supplying
+// each tier key no configuration source sets. on reports whether
 // the gate is installed: the enabled key when set, else true beyond
 // loopback and false on loopback. An unknown key, a value of the
 // wrong type, or a count that is not a positive whole number is a
 // configuration error naming the key, whether or not the gate is on.
-func serveRateLimit(v *viper.Viper, svc string, loopback bool) (cfg cmdsurface.RateLimit, on bool, err error) {
+func serveRateLimitOver(v *viper.Viper, svc string, loopback bool, code cmdsurface.RateLimit) (cfg cmdsurface.RateLimit, on bool, err error) {
 	on = !loopback
 	if v == nil {
-		return cfg, on, nil
+		return code, on, nil
 	}
 	r := svcconfig.New(v)
 	if err := r.ValidateBlock(rateLimitBlock, svc, svcconfig.Shared); err != nil {
@@ -79,7 +100,7 @@ func serveRateLimit(v *viper.Viper, svc string, loopback bool) (cfg cmdsurface.R
 		if err := r.ValidateBlock(block, svc, svcconfig.Shared); err != nil {
 			return cfg, false, err
 		}
-		var rule cmdsurface.RateRule
+		rule := tierRule(code, tier)
 		for _, k := range []string{rateLimitPerMinute, rateLimitBurst} {
 			raw, key, ok := r.Lookup(svc, block, k)
 			if !ok {
@@ -107,12 +128,24 @@ func serveRateLimit(v *viper.Viper, svc string, loopback bool) (cfg cmdsurface.R
 	return cfg, on, nil
 }
 
+// tierRule is cfg's rule for tier, as set (zero fields unset).
+func tierRule(cfg cmdsurface.RateLimit, tier cmdsurface.RateTier) cmdsurface.RateRule {
+	switch tier {
+	case cmdsurface.RateTierRead:
+		return cfg.Read
+	case cmdsurface.RateTierDestructive:
+		return cfg.Destructive
+	default:
+		return cfg.Write
+	}
+}
+
 // serveRateLimitOptions returns the bridge option installing svc's
 // rate limit, or none when the limit is off. loopback is the service's
 // exposure: the literal-host rule, with the socket service and stdio
 // on the loopback side.
 func (r *Root) serveRateLimitOptions(svc string, loopback bool) ([]cmdsurface.Option, error) {
-	cfg, on, err := serveRateLimit(r.Viper, svc, loopback)
+	cfg, on, err := serveRateLimitOver(r.Viper, svc, loopback, r.serveRateLimitCode)
 	if err != nil || !on {
 		return nil, err
 	}
