@@ -3,49 +3,19 @@ package cli
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
-	"github.com/spf13/viper"
-
+	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/transport/api"
 )
 
 // Middleware blocks the api service's transport guards read, each
 // under services.api.<block> and, as a shared default, under
-// services.all.<block>.
+// services.all.<block>. Their keys are registered in svcconfig.
 const (
 	blockHostCheck       = "host_check"
 	blockOriginCheck     = "origin_check"
 	blockSecurityHeaders = "security_headers"
 )
-
-// guardBlockKeys lists the keys each guard block accepts; any other
-// key inside one of these blocks is a configuration error.
-var guardBlockKeys = map[string][]string{
-	blockHostCheck:       {"enabled", "allow"},
-	blockOriginCheck:     {"enabled", "allow"},
-	blockSecurityHeaders: {"enabled"},
-}
-
-// middlewareKey resolves one middleware key to the config key that
-// supplies it: services.<svc>.<block>.<key> from any source, then
-// services.all.<block>.<key>. ok is false when neither is set and
-// the code default applies.
-//
-// It is the only place guard keys are looked up, so a shared
-// resolver can replace it without touching the guards.
-func middlewareKey(v *viper.Viper, svc, block, key string) (string, bool) {
-	if v == nil {
-		return "", false
-	}
-	for _, scope := range []string{svc, serveAllScope} {
-		k := serveKeyPrefix + scope + "." + block + "." + key
-		if v.IsSet(k) {
-			return k, true
-		}
-	}
-	return "", false
-}
 
 // guardConfig is the resolved transport-guard configuration.
 type guardConfig struct {
@@ -62,18 +32,19 @@ func (a *apiService) guardConfig() guardConfig {
 		return g
 	}
 	v := a.root.Viper
+	cfg := svcconfig.New(v)
 	boolKey := func(block string, dst *bool) {
-		if k, ok := middlewareKey(v, APIServiceName, block, "enabled"); ok {
+		if _, k, ok := cfg.Lookup(APIServiceName, block, "enabled"); ok {
 			*dst = v.GetBool(k)
 		}
 	}
 	boolKey(blockHostCheck, &g.hostCheck)
 	boolKey(blockOriginCheck, &g.originCheck)
 	boolKey(blockSecurityHeaders, &g.headers)
-	if k, ok := middlewareKey(v, APIServiceName, blockHostCheck, "allow"); ok {
+	if _, k, ok := cfg.Lookup(APIServiceName, blockHostCheck, "allow"); ok {
 		g.allowHosts = v.GetStringSlice(k)
 	}
-	if k, ok := middlewareKey(v, APIServiceName, blockOriginCheck, "allow"); ok {
+	if _, k, ok := cfg.Lookup(APIServiceName, blockOriginCheck, "allow"); ok {
 		g.allowOrigins = v.GetStringSlice(k)
 	}
 	return g
@@ -83,44 +54,16 @@ func (a *apiService) guardConfig() guardConfig {
 // unknown key inside one, or an allowed origin that is not a bare
 // origin, fails validation rather than the start.
 func (a *apiService) validateGuards() error {
-	if a.root != nil && a.root.Viper != nil {
-		if err := checkGuardBlockKeys(a.root.Viper, APIServiceName); err != nil {
-			return err
+	if a.root != nil {
+		cfg := svcconfig.New(a.root.Viper)
+		for _, block := range []string{blockHostCheck, blockOriginCheck, blockSecurityHeaders} {
+			if err := cfg.ValidateBlock(block, APIServiceName, svcconfig.Shared); err != nil {
+				return err
+			}
 		}
 	}
 	_, err := a.hostOriginChecks(http.NotFoundHandler())
 	return err
-}
-
-func checkGuardBlockKeys(v *viper.Viper, svc string) error {
-	for _, k := range v.AllKeys() {
-		for _, scope := range []string{svc, serveAllScope} {
-			for block, known := range guardBlockKeys {
-				prefix := serveKeyPrefix + scope + "." + block
-				if k == prefix {
-					return fmt.Errorf("%s: must be a block with keys %s", k, strings.Join(known, ", "))
-				}
-				rest, found := strings.CutPrefix(k, prefix+".")
-				if !found {
-					continue
-				}
-				if !containsString(known, rest) {
-					return fmt.Errorf("%s: unknown key %q; %s accepts %s",
-						k, rest, block, strings.Join(known, ", "))
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func containsString(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 // hostOriginChecks wraps h in the Host and Origin checks, HTTP-plane

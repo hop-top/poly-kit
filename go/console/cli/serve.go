@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli/svcconfig"
 	kitlog "hop.top/kit/go/console/log"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
@@ -155,6 +157,12 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	reg := root.serveReg
 	if reg == nil {
 		return output.UsageError("no services registered")
+	}
+	// The configuration gate every service shares: an unknown key in
+	// a middleware block of any service, or anything but a middleware
+	// block under services.all, is refused before a service is chosen.
+	if err := svcconfig.New(root.Viper).Validate(); err != nil {
+		return output.UsageError(err.Error())
 	}
 
 	supCfg, badPolicy := serveSupervisorConfig(root.Viper)

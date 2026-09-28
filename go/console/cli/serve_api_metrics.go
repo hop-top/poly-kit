@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/transport/api"
 )
 
@@ -37,16 +38,11 @@ const (
 // for the api service — its own block first, then services.all — or
 // "" when neither does.
 func (a *apiService) metricsScrapeSetting(key string) string {
-	if a.root == nil || a.root.Viper == nil {
+	if a.root == nil {
 		return ""
 	}
-	for _, svc := range []string{APIServiceName, sharedServiceBlock} {
-		k := serveKeyPrefix + svc + "." + metricsScrapeKey + "." + key
-		if a.root.Viper.IsSet(k) {
-			return k
-		}
-	}
-	return ""
+	_, k, _ := svcconfig.New(a.root.Viper).Lookup(APIServiceName, metricsScrapeKey, key)
+	return k
 }
 
 // metricsScrapeBool resolves one boolean scrape key, default false.

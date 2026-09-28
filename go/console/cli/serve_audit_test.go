@@ -46,7 +46,7 @@ func TestServeAuditRedaction_RefusesUnknownKeysAndBadPatterns(t *testing.T) {
 	v.Set("services.api.audit.redact.enabled", false)
 	_, err := serveAuditRedaction(v, APIServiceName)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "services.api.audit.redact: unknown key enabled")
+	assert.Contains(t, err.Error(), `services.api.audit.redact.enabled: unknown key "enabled"`)
 	assert.Contains(t, err.Error(), "cannot be switched off")
 
 	v = viper.New()
@@ -109,7 +109,7 @@ func TestSocketAuditRedactRefusedAtValidate(t *testing.T) {
 	r := authRoot(t, WithSocket(SocketConfig{Path: path}))
 	r.Viper.Set("services.all.audit.redact.enabled", false)
 	oe := usageErr(t, runServeExpect(t, r, []string{"serve", "socket"}, 2*time.Second))
-	assert.True(t, strings.Contains(oe.Message, "unknown key enabled"), oe.Message)
+	assert.True(t, strings.Contains(oe.Message, `services.all.audit.redact.enabled: unknown key "enabled"`), oe.Message)
 }
 
 // A service outside this package (mcp, rpc) gets its own audit.redact

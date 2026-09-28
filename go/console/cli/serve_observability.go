@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/viper"
 
+	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -118,7 +119,7 @@ func observabilityRequested(v *viper.Viper, services []string) string {
 	if v == nil {
 		return ""
 	}
-	for _, svc := range append([]string{serveAllScope}, services...) {
+	for _, svc := range append([]string{svcconfig.Shared}, services...) {
 		for _, block := range observabilityBlocks {
 			key := serveKeyPrefix + svc + "." + block + serveSubkeyEnabled
 			if v.GetBool(key) {

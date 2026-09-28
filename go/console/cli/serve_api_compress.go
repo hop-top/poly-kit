@@ -2,27 +2,24 @@ package cli
 
 import (
 	"fmt"
-	"sort"
-	"strings"
 
+	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/transport/api"
 )
 
 // compressionBlock is the api service's response-compression block:
 // services.api.compression, with shared defaults under
-// services.all.compression.
+// services.all.compression. Its keys are registered in svcconfig.
 const compressionBlock = "compression"
 
-// compressionKeys are the keys the compression block accepts.
-var compressionKeys = map[string]bool{"enabled": true, "min_bytes": true}
-
-// compressionKey resolves one compression key through middlewareKey:
+// compressionKey resolves one compression key:
 // services.api.compression.<key>, then services.all.compression.<key>.
 func (a *apiService) compressionKey(key string) (string, bool) {
 	if a.root == nil {
 		return "", false
 	}
-	return middlewareKey(a.root.Viper, APIServiceName, compressionBlock, key)
+	_, k, ok := svcconfig.New(a.root.Viper).Lookup(APIServiceName, compressionBlock, key)
+	return k, ok
 }
 
 // compressionEnabled resolves compression.enabled. It is off by
@@ -49,20 +46,10 @@ func (a *apiService) compressionMinBytes() int {
 // block and a negative threshold, at validation rather than as a
 // silently ignored setting.
 func (a *apiService) validateCompression() error {
-	if a.root != nil && a.root.Viper != nil {
-		for _, svc := range []string{APIServiceName, serveAllScope} {
-			prefix := serveKeyPrefix + svc + "." + compressionBlock
-			var unknown []string
-			for k := range a.root.Viper.GetStringMap(prefix) {
-				if !compressionKeys[strings.ToLower(k)] {
-					unknown = append(unknown, k)
-				}
-			}
-			if len(unknown) > 0 {
-				sort.Strings(unknown)
-				return fmt.Errorf("%s: unknown key %s; accepted keys are enabled, min_bytes",
-					prefix, strings.Join(unknown, ", "))
-			}
+	if a.root != nil {
+		err := svcconfig.New(a.root.Viper).ValidateBlock(compressionBlock, APIServiceName, svcconfig.Shared)
+		if err != nil {
+			return err
 		}
 	}
 	if n := a.compressionMinBytes(); n < 0 {

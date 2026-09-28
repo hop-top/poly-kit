@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"path"
-	"sort"
 	"strings"
 
+	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/transport/api"
 )
@@ -16,6 +16,7 @@ import (
 // under services.all.health.*. Each key resolves on its own — the
 // service's key, then the services.all key, then the default — so
 // setting one key for the api keeps the others from services.all.
+// The keys are registered in svcconfig.
 const (
 	healthBlock = "health"
 	// healthKeyEnabled (default true, on every bind): serve /healthz
@@ -29,45 +30,22 @@ const (
 	// Defaults to true on a loopback bind and false on any other,
 	// because the routes answer without authentication.
 	healthKeyDetail = "detail"
-
-	// sharedServiceBlock is services.all, where shared middleware
-	// defaults live. "all" is a reserved service name, so it can
-	// never collide with a service.
-	sharedServiceBlock = "all"
 )
-
-// healthKeys is every key the health block accepts.
-var healthKeys = map[string]bool{
-	healthKeyEnabled: true, healthKeyPathPrefix: true, healthKeyDetail: true,
-}
 
 // DependsOn is the api service's [serve.Dependent] declaration:
 // APIConfig.DependsOn. The supervisor starts those services first, and
 // /readyz reports not ready while any of them is not.
 func (a *apiService) DependsOn() []string { return a.cfg.DependsOn }
 
-// healthBlockKey is services.<svc>.health[.<key>].
-func healthBlockKey(svc, key string) string {
-	k := serveKeyPrefix + svc + "." + healthBlock
-	if key != "" {
-		k += "." + key
-	}
-	return k
-}
-
 // healthSetting returns the full key that sets key for the api
 // service — its own block first, then services.all — or "" when
 // neither does.
 func (a *apiService) healthSetting(key string) string {
-	if a.root == nil || a.root.Viper == nil {
+	if a.root == nil {
 		return ""
 	}
-	for _, svc := range []string{APIServiceName, sharedServiceBlock} {
-		if k := healthBlockKey(svc, key); a.root.Viper.IsSet(k) {
-			return k
-		}
-	}
-	return ""
+	_, k, _ := svcconfig.New(a.root.Viper).Lookup(APIServiceName, healthBlock, key)
+	return k
 }
 
 // healthEnabled resolves health.enabled, default true.
@@ -102,24 +80,10 @@ func (a *apiService) healthDetail() bool {
 // absolute, clean URL path would mount probes somewhere no
 // orchestrator is pointed at.
 func (a *apiService) validateHealth() error {
-	if a.root != nil && a.root.Viper != nil {
-		for _, svc := range []string{APIServiceName, sharedServiceBlock} {
-			block := healthBlockKey(svc, "")
-			if !a.root.Viper.IsSet(block) {
-				continue
-			}
-			var unknown []string
-			for k := range a.root.Viper.GetStringMap(block) {
-				if !healthKeys[k] {
-					unknown = append(unknown, block+"."+k)
-				}
-			}
-			if len(unknown) > 0 {
-				sort.Strings(unknown)
-				return fmt.Errorf("%s: unknown key; %s accepts %s, %s and %s",
-					strings.Join(unknown, ", "), block,
-					healthKeyEnabled, healthKeyPathPrefix, healthKeyDetail)
-			}
+	if a.root != nil {
+		err := svcconfig.New(a.root.Viper).ValidateBlock(healthBlock, APIServiceName, svcconfig.Shared)
+		if err != nil {
+			return err
 		}
 	}
 

@@ -3,11 +3,12 @@ package cli
 import (
 	"fmt"
 	"math"
-	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
+
+	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -16,55 +17,10 @@ import (
 // services.<svc>.body_limit, with shared defaults under
 // services.all.body_limit.
 const (
-	bodyLimitBlock      = "body_limit"
-	bodyLimitMaxBytes   = "max_bytes"
-	bodyLimitEnabled    = "enabled"
-	serveSharedServices = "all"
+	bodyLimitBlock    = "body_limit"
+	bodyLimitMaxBytes = "max_bytes"
+	bodyLimitEnabled  = "enabled"
 )
-
-// serviceBlockKey looks one middleware key up for service svc,
-// specificity before source: services.<svc>.<block>.<key> from any
-// source (flag, env, file), then services.all.<block>.<key>. It
-// returns the raw value and the key that supplied it.
-//
-// It is the only place the lookup order lives, so a shared
-// services.all resolver can replace it without touching callers.
-func serviceBlockKey(v *viper.Viper, svc, block, key string) (raw any, from string, ok bool) {
-	if v == nil {
-		return nil, "", false
-	}
-	for _, scope := range []string{svc, serveSharedServices} {
-		k := serveKeyPrefix + scope + "." + block + "." + key
-		if v.IsSet(k) {
-			return v.Get(k), k, true
-		}
-	}
-	return nil, "", false
-}
-
-// checkBlockKeys refuses a key inside services.<svc>.<block> or
-// services.all.<block> that the block does not define: a misspelled
-// key that silently leaves a limit at its default is the failure
-// this prevents.
-func checkBlockKeys(v *viper.Viper, svc, block string, known ...string) error {
-	if v == nil {
-		return nil
-	}
-	for _, scope := range []string{svc, serveSharedServices} {
-		k := serveKeyPrefix + scope + "." + block
-		m, isMap := v.Get(k).(map[string]any)
-		if !isMap {
-			continue
-		}
-		for name := range m {
-			if !slices.Contains(known, name) {
-				return fmt.Errorf("%s.%s: unknown key; %s takes %s",
-					k, name, block, strings.Join(known, ", "))
-			}
-		}
-	}
-	return nil
-}
 
 // serviceMaxBodyBytes resolves the request body cap for service name,
 // per key: services.<name>.body_limit.* first, then
@@ -77,11 +33,12 @@ func checkBlockKeys(v *viper.Viper, svc, block string, known ...string) error {
 // which the service reports from Validate rather than serving with a
 // limit nobody wrote.
 func serviceMaxBodyBytes(v *viper.Viper, name string, fallback int64) (int64, error) {
-	if err := checkBlockKeys(v, name, bodyLimitBlock, bodyLimitEnabled, bodyLimitMaxBytes); err != nil {
+	cfg := svcconfig.New(v)
+	if err := cfg.ValidateBlock(bodyLimitBlock, name, svcconfig.Shared); err != nil {
 		return 0, err
 	}
 	limit := fallback
-	if raw, key, ok := serviceBlockKey(v, name, bodyLimitBlock, bodyLimitMaxBytes); ok {
+	if raw, key, ok := cfg.Lookup(name, bodyLimitBlock, bodyLimitMaxBytes); ok {
 		n, err := wholeBytes(raw)
 		if err == nil && n < 0 {
 			err = fmt.Errorf("%d is negative; set %s: false to disable the limit", n, bodyLimitEnabled)
@@ -91,7 +48,7 @@ func serviceMaxBodyBytes(v *viper.Viper, name string, fallback int64) (int64, er
 		}
 		limit = n
 	}
-	if raw, key, ok := serviceBlockKey(v, name, bodyLimitBlock, bodyLimitEnabled); ok {
+	if raw, key, ok := cfg.Lookup(name, bodyLimitBlock, bodyLimitEnabled); ok {
 		on, err := boolValue(raw)
 		if err != nil {
 			return 0, fmt.Errorf("%s: %w", key, err)

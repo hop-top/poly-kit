@@ -75,3 +75,4 @@ accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
 | [`policy/`](policy/README.md) | delegation-safety policy YAML enforced per agent-driven invocation |
 | [`router/`](router/README.md) | `kit llm router` subtree: start, stop, list, inspect RouteLLM instances |
 | [`scope/`](scope/README.md) | `kit scope show`, `check`, `test`: would the path policy allow this path |
+| [`svcconfig/`](svcconfig/README.md) | which value a served service's middleware key resolves to, and whether the `services` block is valid |

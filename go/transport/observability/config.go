@@ -3,14 +3,14 @@ package observability
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"path"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
+
+	"hop.top/kit/go/console/cli/svcconfig"
 )
 
 // The configuration blocks this package owns. Each lives in a
@@ -43,25 +43,16 @@ const DefaultEndpoint = "http://127.0.0.1:4318"
 // DefaultMetricsInterval is how often metrics are exported.
 const DefaultMetricsInterval = 60 * time.Second
 
-// servicesKey and allServices spell the configuration path segments.
-const (
-	servicesKey = "services"
-	allServices = "all"
-)
+// The keys each block accepts are registered in svcconfig: enabled,
+// exporter, endpoint and headers in both, plus sample_ratio for
+// tracing, interval for metrics, and the metrics.scrape sub-block's
+// enabled, path and allow_remote. An unknown key inside a block is a
+// configuration error: a misspelled key that silently leaves export
+// off is the failure this prevents.
 
-// Keys every block accepts, and the ones one block adds. An unknown key
-// inside a block is a configuration error: a misspelled key that
-// silently leaves export off is the failure this prevents.
-var (
-	commonKeys  = []string{"enabled", "exporter", "endpoint", "headers"}
-	tracingKeys = append(slices.Clone(commonKeys), "sample_ratio")
-	metricsKeys = append(slices.Clone(commonKeys), "interval", scrapeBlock)
-	scrapeKeys  = []string{"enabled", "path", "allow_remote"}
-)
-
-// scrapeBlock is the metrics block's scrape endpoint sub-block,
-// services.<svc>.metrics.scrape.
-const scrapeBlock = "scrape"
+// BlockMetricsScrape is the metrics block's scrape endpoint
+// sub-block, services.<svc>.metrics.scrape.
+const BlockMetricsScrape = BlockMetrics + ".scrape"
 
 // Signal is one block's resolved configuration.
 type Signal struct {
@@ -127,34 +118,14 @@ func Resolve(v *viper.Viper, service string) (Config, error) {
 	return cfg, nil
 }
 
-// lookup is the one place a key is resolved: the service's own key,
-// then the services.all key. It returns the full key it found, for
-// error messages, and ok=false when neither is set.
-//
-// It is deliberately small so a resolver shared by every middleware
-// block can replace it without touching the callers.
-func lookup(v *viper.Viper, service, block, key string) (value any, from string, ok bool) {
-	if v == nil {
-		return nil, "", false
-	}
-	for _, svc := range []string{service, allServices} {
-		if svc == "" {
-			continue
-		}
-		k := strings.Join([]string{servicesKey, svc, block, key}, ".")
-		if v.IsSet(k) {
-			return v.Get(k), k, true
-		}
-	}
-	return nil, "", false
-}
-
-// resolveSignal resolves one block for service, key by key.
+// resolveSignal resolves one block for service, key by key, through
+// the resolver every middleware block shares.
 func resolveSignal(v *viper.Viper, service, block string) (Signal, error) {
 	sig := Signal{Exporter: ExporterOTLP, SampleRatio: 1, Interval: DefaultMetricsInterval}
+	cfg := svcconfig.New(v)
 	var errs []error
-	get := func(key string, set func(val any) error) {
-		val, from, ok := lookup(v, service, block, key)
+	getIn := func(blk, key string, set func(val any) error) {
+		val, from, ok := cfg.Lookup(service, blk, key)
 		if !ok {
 			return
 		}
@@ -162,6 +133,7 @@ func resolveSignal(v *viper.Viper, service, block string) (Signal, error) {
 			errs = append(errs, fmt.Errorf("%s: %w", from, err))
 		}
 	}
+	get := func(key string, set func(val any) error) { getIn(block, key, set) }
 
 	get("enabled", func(val any) error { return decode(val, &sig.Enabled) })
 	get("exporter", func(val any) error {
@@ -207,9 +179,9 @@ func resolveSignal(v *viper.Viper, service, block string) (Signal, error) {
 			}
 			return nil
 		})
-		get(scrapeBlock+".enabled", func(val any) error { return decode(val, &sig.Scrape.Enabled) })
-		get(scrapeBlock+".allow_remote", func(val any) error { return decode(val, &sig.Scrape.AllowRemote) })
-		get(scrapeBlock+".path", func(val any) error {
+		getIn(BlockMetricsScrape, "enabled", func(val any) error { return decode(val, &sig.Scrape.Enabled) })
+		getIn(BlockMetricsScrape, "allow_remote", func(val any) error { return decode(val, &sig.Scrape.AllowRemote) })
+		getIn(BlockMetricsScrape, "path", func(val any) error {
 			if err := decode(val, &sig.Scrape.Path); err != nil {
 				return err
 			}
@@ -251,46 +223,12 @@ func validScrapePath(p string) error {
 // in v, under every service and services.all, so a misspelling fails
 // at start instead of silently leaving export off.
 func Validate(v *viper.Viper) error {
-	if v == nil {
-		return nil
-	}
-	services := v.GetStringMap(servicesKey)
-	var errs []error
-	for _, svc := range slices.Sorted(maps.Keys(services)) {
-		for block, allowed := range map[string][]string{BlockTracing: tracingKeys, BlockMetrics: metricsKeys} {
-			prefix := strings.Join([]string{servicesKey, svc, block}, ".")
-			if !v.IsSet(prefix) {
-				continue
-			}
-			if _, isBlock := v.Get(prefix).(map[string]any); !isBlock {
-				errs = append(errs, fmt.Errorf("%s: must be a block of keys", prefix))
-				continue
-			}
-			errs = append(errs, unknownKeys(v, prefix, allowed)...)
-			if block == BlockMetrics && v.IsSet(prefix+"."+scrapeBlock) {
-				sub := prefix + "." + scrapeBlock
-				if _, isBlock := v.Get(sub).(map[string]any); !isBlock {
-					errs = append(errs, fmt.Errorf("%s: must be a block of keys", sub))
-					continue
-				}
-				errs = append(errs, unknownKeys(v, sub, scrapeKeys)...)
-			}
-		}
-	}
-	return errors.Join(errs...)
-}
-
-// unknownKeys returns an error per key under prefix not in allowed.
-func unknownKeys(v *viper.Viper, prefix string, allowed []string) []error {
-	var errs []error
-	sub := v.GetStringMap(prefix)
-	for _, key := range slices.Sorted(maps.Keys(sub)) {
-		if !slices.Contains(allowed, key) {
-			errs = append(errs, fmt.Errorf("%s.%s: unknown key (known: %s)",
-				prefix, key, strings.Join(allowed, ", ")))
-		}
-	}
-	return errs
+	cfg := svcconfig.New(v)
+	return errors.Join(
+		cfg.ValidateBlock(BlockTracing),
+		cfg.ValidateBlock(BlockMetrics),
+		cfg.ValidateBlock(BlockMetricsScrape),
+	)
 }
 
 // decode converts a configuration value into dst with viper's own
