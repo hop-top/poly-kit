@@ -10,28 +10,22 @@ values for a persistent flag and routes the rejection through kit's structured
 
 ```go
 root.WithFlagValidator("api-version", func(v string) *output.Error {
-    if !semver.IsValid(v) {
-        return &output.Error{
-            Code:     "INVALID_API_VERSION",
-            Message:  "api-version must be semver",
-            ExitCode: 2,
-        }
+    if semver.IsValid(v) {
+        return nil
     }
-    return nil
+    return &output.Error{Code: "INVALID_API_VERSION",
+        Message: "api-version must be semver", ExitCode: 2}
 })
 root.WrapRunE() // installs the validator on every leaf
 ```
 
-This replaces the hand-rolled tree-walking pattern (e.g. an `installAPIVersionGuard`
-that wraps each leaf's RunE manually). The middleware:
+The middleware:
 
 - runs once per leaf invocation, AFTER cobra parses the flag and BEFORE the adopter RunE
 - only fires when the user actually set the flag (`flag.Changed == true`); defaults pass through
 - last-registered wins for a given name (ergonomic for tests)
 - silently never fires when the named flag doesn't exist anywhere on the tree (no panic)
-
-Ordering: call `WithFlagValidator` BEFORE `WrapRunE` (or before `Execute`, which calls
-`WrapRunE`). Validators registered after the subtree is wrapped are inert.
+- is inert unless registered BEFORE `WrapRunE` (or `Execute`, which calls it)
 
 ## Flag enums and parse-time errors
 
@@ -60,14 +54,13 @@ command tree through the same gates (policy, `WithPermission`,
 | `mcpserve.With(mcpserve.Config{})` | `mcp` | MCP tools over streamable HTTP (`127.0.0.1:8081/mcp`), or stdio with `serve mcp --stdio` |
 | `rpcserve.With(rpcserve.Config{})` | `rpc` | `cmdsurface.v1.Commands` over Connect, gRPC and gRPC-Web, h2c on `127.0.0.1:8082` |
 
-The `mcp` service lives in [`mcpserve/`](mcpserve/) so a CLI that
-does not serve MCP does not link the MCP SDK. `mcp` over stdio admits `kit/auth-required` leaves on the spawn's trust
-and keeps stdout for the protocol; `kit/requires-confirmation` leaves need
-an accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
-[serve-lifecycle contract](../../../docs/contracts/serve-lifecycle.md#the-mcp-service).
-The `rpc` service lives in [`rpcserve/`](rpcserve/) for the same
-reason: only a CLI that serves RPC links `go/transport/rpc`. Normative
-text: [the rpc service](../../../docs/contracts/serve-lifecycle.md#the-rpc-service).
+`mcp` lives in [`mcpserve/`](mcpserve/) and `rpc` in [`rpcserve/`](rpcserve/),
+so only a CLI that serves them links the MCP SDK or `go/transport/rpc`.
+`mcp` over stdio admits `kit/auth-required` leaves on the spawn's trust and
+keeps stdout for the protocol; `kit/requires-confirmation` leaves need an
+accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
+[the mcp service](../../../docs/contracts/serve-lifecycle.md#the-mcp-service),
+[the rpc service](../../../docs/contracts/serve-lifecycle.md#the-rpc-service).
 
 ## Sub-packages
 

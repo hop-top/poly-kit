@@ -4,9 +4,8 @@
 
 Which services `<tool> serve [service]` runs, in what order, and what exit
 code the run ends on: Registry, Resolve, StartOrder, ExitCodeFor, Supervisor.
-Mounting the cobra command and reading the `services.*` config block is the
-job of `hop.top/kit/go/console/cli`; building a transport is the job of
-`hop.top/kit/go/transport/...`.
+The cobra command and the `services.*` config block belong to
+`hop.top/kit/go/console/cli`; transports to `hop.top/kit/go/transport/...`.
 
 ## Use it when
 
@@ -22,9 +21,8 @@ job of `hop.top/kit/go/console/cli`; building a transport is the job of
 
 ## Quick start
 
-`noopService` is any `serve.Service` implementation.
-
 ```go
+// noopService is any serve.Service implementation.
 reg := serve.NewRegistry()
 reg.Register(noopService{name: "api"})
 reg.Register(noopService{name: "mcp"})
@@ -69,9 +67,8 @@ this package is the authority for signatures only. Points a caller gets wrong:
 
 - `hop.top/kit/go/console/cli`: `serve` command, `WithService`,
   `WithServiceOverride`, `WithServicePolicy`, `services.*` resolution
-- kit-shipped services: `api` (`cli.WithAPI`) and `socket` (`cli.WithSocket`)
-  in `go/console/cli`; `mcp` (`mcpserve.With`) and `rpc` (`rpcserve.With`)
-  in `hop.top/kit/go/console/cli/{mcpserve,rpcserve}`
+- kit-shipped services: `api` (`cli.WithAPI`), `socket` (`cli.WithSocket`),
+  `mcp` (`mcpserve.With`), `rpc` (`rpcserve.With`), all under `go/console/cli`
 - `hop.top/kit/go/transport/transportsvc`: transport-backed `Service` implementations
 - `hop.top/kit/go/runtime/bus`: `Event`, `TopicMap`, `ValidateTopic`
 
