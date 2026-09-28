@@ -33,7 +33,7 @@ func compressFixture(t *testing.T, cfg APIConfig, keys map[string]any) *Root {
 
 func encodingOf(t *testing.T, h http.Handler, path string, hdr http.Header) (int, string) {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req := loopbackRequest(http.MethodGet, path, nil)
 	for k, v := range hdr {
 		req.Header[k] = v
 	}
