@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"hop.top/kit/go/transport/api"
@@ -13,6 +14,17 @@ import (
 type callParams struct {
 	Name      string         `json:"name"`
 	Arguments map[string]any `json:"arguments,omitempty"`
+	Meta      map[string]any `json:"_meta,omitempty"`
+}
+
+// idempotencyKey is the key a tools/call carries, from the sources the
+// SDK surface reads: params._meta[MCPMetaIdempotencyKey], else the
+// request's Idempotency-Key header.
+func (p callParams) idempotencyKey(req *http.Request) string {
+	if k, ok := p.Meta[MCPMetaIdempotencyKey].(string); ok && strings.TrimSpace(k) != "" {
+		return k
+	}
+	return req.Header.Get(api.HeaderIdempotencyKey)
 }
 
 // handleToolsCall decodes a tools/call request, looks up the leaf,
@@ -65,6 +77,7 @@ func (h *mcpHandler) handleToolsCall(w http.ResponseWriter, req *http.Request, r
 
 	meta.Surface = SurfaceMCP
 	meta.RequestedAt = time.Now()
+	meta.IdempotencyKey = p.idempotencyKey(req)
 	inv := Invocation{
 		Path:  append([]string(nil), leaf.Path...),
 		Args:  args,
@@ -113,10 +126,14 @@ func renderCallResult(res Result) map[string]any {
 			})
 		}
 	}
-	return map[string]any{
+	out := map[string]any{
 		"content": content,
 		"isError": res.ExitCode != 0,
 	}
+	if res.Replayed {
+		out["_meta"] = map[string]any{MCPMetaIdempotentReplayed: true}
+	}
+	return out
 }
 
 // errorResultBlock returns a tools/call result envelope flagged

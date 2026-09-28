@@ -116,12 +116,13 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 		Args:  args,
 		Flags: flags,
 		Meta: Meta{
-			Caller:      ident.Caller,
-			Tenant:      ident.Tenant,
-			Established: ident.Established,
-			Surface:     SurfaceMCP,
-			RequestedAt: time.Now(),
-			Extra:       modernInvocationExtra(meta, ident.Extra),
+			Caller:         ident.Caller,
+			Tenant:         ident.Tenant,
+			Established:    ident.Established,
+			Surface:        SurfaceMCP,
+			RequestedAt:    time.Now(),
+			IdempotencyKey: p.idempotencyKey(req),
+			Extra:          modernInvocationExtra(meta, ident.Extra),
 		},
 	}
 
