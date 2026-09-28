@@ -51,6 +51,7 @@ buf curl --schema contracts/proto/crud/v1 \
 - `Authenticate` runs on every handler call, unary and streaming, before the handler. A refusal is `unauthenticated` in the caller's protocol. The `AuthFunc` sees a synthetic request: the call's headers, context and peer address only.
 - `AuthInterceptor` is deprecated: it wraps unary calls only, so a streaming procedure behind it runs unauthenticated.
 - `RPCResource` maps `domain.ErrNotFound`, `ErrConflict`, `ErrValidation` and `ErrInvalidTransition` to `not_found`, `already_exists`, `invalid_argument` and `failed_precondition`; anything else is `internal` with the detail withheld.
+- `rpc/client` returns every Connect error as an `*api.APIError` whose code is the Connect code (`not_found`, …) and whose status is the code's HTTP mapping. A `resource_exhausted` carrying `Retry-After` — a rate-limit refusal — is a `*client.RateLimitedError`: status 429, code `rate_limited`, `errors.Is(err, api.ErrRateLimited)`, and the wait in `RetryAfter`.
 - Importing this package registers the `crud.v1` protobuf types at init. `go/console/cli` does not import it, so a CLI that serves no RPC does not carry them.
 
 ## Neighbours

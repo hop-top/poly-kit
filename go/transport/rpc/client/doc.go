@@ -16,6 +16,13 @@
 //   - [WithHTTPClient]: custom *http.Client (e.g. h2c transport)
 //   - [WithAuth]: Bearer token sent via connect interceptor headers
 //
+// # Errors
+//
+// Every Connect error comes back as an *api.APIError carrying the
+// Connect code and its HTTP status. A rate-limit refusal —
+// ResourceExhausted with Retry-After — is a [*RateLimitedError]: 429
+// rate_limited, errors.Is api.ErrRateLimited, and the server's wait.
+//
 // Entity ↔ protobuf Struct conversion is handled by kit/rpc helpers
 // (EntityToStruct, StructToEntity), making the client generic over any
 // type satisfying [api.Entity].

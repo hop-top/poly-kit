@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -132,7 +135,27 @@ func (c *Client[T]) setHeaders(req connect.AnyRequest) {
 	}
 }
 
-// mapConnectError converts a Connect error to an *api.APIError.
+// RateLimitedError is a call the server's rate limit refused:
+// Connect ResourceExhausted carrying a Retry-After in its metadata, as
+// kit's rate-limit gate answers. It is an [*api.APIError] with status
+// 429 and code rate_limited (errors.As reaches it), errors.Is
+// [api.ErrRateLimited] holds, and RetryAfter is how long the server
+// asked the caller to wait.
+type RateLimitedError struct {
+	*api.APIError
+	// RetryAfter is the server's retry hint, never below one second.
+	RetryAfter time.Duration
+}
+
+// Unwrap exposes the API error and [api.ErrRateLimited].
+func (e *RateLimitedError) Unwrap() []error { return []error{e.APIError, api.ErrRateLimited} }
+
+// RetryAfterHint reports RetryAfter, the hint a retry wrapper reads
+// (cmdsurface.RetryAfter reads the same method).
+func (e *RateLimitedError) RetryAfterHint() time.Duration { return e.RetryAfter }
+
+// mapConnectError converts a Connect error to an *api.APIError. A
+// ResourceExhausted carrying Retry-After is a [*RateLimitedError].
 func mapConnectError(err error) error {
 	var ce *connect.Error
 	if !errors.As(err, &ce) {
@@ -142,11 +165,38 @@ func mapConnectError(err error) error {
 			Message: err.Error(),
 		}
 	}
-	return &api.APIError{
+	ae := &api.APIError{
 		Status:  codeToStatus(ce.Code()),
 		Code:    ce.Code().String(),
 		Message: ce.Message(),
 	}
+	if ce.Code() == connect.CodeResourceExhausted {
+		if wait, ok := parseRetryAfter(ce.Meta().Get("Retry-After"), time.Now()); ok {
+			ae.Code = api.CodeRateLimited
+			return &RateLimitedError{APIError: ae, RetryAfter: wait}
+		}
+	}
+	return ae
+}
+
+// parseRetryAfter reads a Retry-After value — delay seconds or an
+// HTTP date — as a wait of at least one second. ok is false when v is
+// absent or neither form.
+func parseRetryAfter(v string, now time.Time) (time.Duration, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, false
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		if secs < 0 {
+			return 0, false
+		}
+		return max(time.Duration(secs)*time.Second, time.Second), true
+	}
+	if at, err := http.ParseTime(v); err == nil {
+		return max(at.Sub(now).Round(time.Second), time.Second), true
+	}
+	return 0, false
 }
 
 func codeToStatus(code connect.Code) int {
@@ -165,6 +215,9 @@ func codeToStatus(code connect.Code) int {
 		return http.StatusForbidden
 	case connect.CodeUnimplemented:
 		return http.StatusNotImplemented
+	case connect.CodeResourceExhausted:
+		// Connect's HTTP mapping: a rate limit, a quota, a body limit.
+		return http.StatusTooManyRequests
 	default:
 		return http.StatusInternalServerError
 	}
