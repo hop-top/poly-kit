@@ -103,6 +103,7 @@ the socket nothing.
 | `UNAUTHENTICATED` | the configured `Authenticator` refused the request; never sent without one |
 | `RATE_LIMITED` | the caller's rate limit is spent; `retry_after_ms` says how long until it refills |
 | `CONFLICT` | the `idempotency_key` names a request still running (`idempotency_conflict` in the message), or was used for a different command (`idempotency_key_reused`) |
+| `QUOTA_EXCEEDED` | the caller's quota for the window is spent; `retry_after_ms` says how long until the window resets |
 | `INVALID` | malformed request line, or empty `path` |
 | `INTERNAL` | any other runner error |
 

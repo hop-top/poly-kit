@@ -340,6 +340,7 @@ const (
 	RefusalUnauthenticated    = "unauthenticated"
 	RefusalRateLimited        = "rate_limited"
 	RefusalOverloaded         = "overloaded"
+	RefusalQuotaExceeded      = "quota_exceeded"
 	RefusalDeadlineExceeded   = "deadline_exceeded"
 
 	RefusalIdempotencyConflict  = cmdsurface.CodeIdempotencyConflict
@@ -380,6 +381,8 @@ func RefusalCode(err error) string {
 		return RefusalInsufficientScope
 	case errors.Is(err, cmdsurface.ErrPermissionDenied):
 		return RefusalPermissionDenied
+	case errors.Is(err, cmdsurface.ErrQuotaExceeded):
+		return RefusalQuotaExceeded
 	case errors.Is(err, cmdsurface.ErrRateLimited):
 		return RefusalRateLimited
 	case errors.Is(err, cmdsurface.ErrOverloaded):

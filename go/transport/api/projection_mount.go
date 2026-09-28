@@ -265,6 +265,12 @@ func projectionError(d CommandDescriptor, err error) *APIError {
 			Code:    CodePermissionDenied,
 			Message: err.Error(),
 		}
+	case errors.Is(err, ErrQuotaExceeded):
+		return &APIError{
+			Status:  http.StatusTooManyRequests,
+			Code:    CodeQuotaExceeded,
+			Message: err.Error(),
+		}
 	case errors.Is(err, ErrRateLimited):
 		return &APIError{
 			Status:  http.StatusTooManyRequests,

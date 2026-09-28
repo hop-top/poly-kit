@@ -14,13 +14,14 @@ import (
 )
 
 // usageFile is the file, in the tool's XDG state directory, that holds
-// the served usage counts — policy budgets — when no store was given
-// with [WithUsageStore].
+// the served usage counts — policy budgets and quotas — when no store
+// was given with [WithUsageStore].
 const usageFile = "usage.db"
 
 // usageState is the Root's usage ledger: one per process, shared by
 // every service, so a principal's budget is one budget whichever
-// surface it calls on.
+// surface it calls on. Quotas keep a count per service in the same
+// ledger.
 type usageState struct {
 	store  kv.Store
 	once   sync.Once
@@ -29,7 +30,8 @@ type usageState struct {
 }
 
 // WithUsageStore keeps the served usage counts — the per-caller
-// budgets a --policy's callers section sets — in store instead of the
+// budgets a --policy's callers section sets, and the services' quota
+// blocks' counts — in store instead of the
 // default SQLite file $XDG_STATE_HOME/<tool>/usage.db. Pass a shared
 // store (etcd, TiDB) when several instances serve the same callers
 // and must count them together. The Root does not close it.

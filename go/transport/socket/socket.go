@@ -86,14 +86,14 @@ type Response struct {
 type Error struct {
 	// Code is a stable symbol a client can branch on:
 	// NOT_FOUND, NOT_ENABLED, NOT_INVOCABLE, BLOCKED, DENIED,
-	// UNAUTHENTICATED, RATE_LIMITED, OVERLOADED, DEADLINE_EXCEEDED,
-	// CONFLICT, INVALID, INTERNAL.
+	// UNAUTHENTICATED, RATE_LIMITED, QUOTA_EXCEEDED, OVERLOADED,
+	// DEADLINE_EXCEEDED, CONFLICT, INVALID, INTERNAL.
 	Code string `json:"code"`
 	// Message is the human-readable detail.
 	Message string `json:"message"`
 	// RetryAfterMs is how long to wait before retrying, in whole
 	// milliseconds, on a retryable refusal (RATE_LIMITED,
-	// OVERLOADED). Absent otherwise.
+	// QUOTA_EXCEEDED, OVERLOADED). Absent otherwise.
 	RetryAfterMs int64 `json:"retry_after_ms,omitempty"`
 }
 
@@ -129,6 +129,10 @@ const (
 	// every in-flight slot is taken and the queue is full. The error
 	// carries retry_after_ms.
 	CodeOverloaded = "OVERLOADED"
+	// CodeQuotaExceeded is a call the quota refused: the caller has
+	// used its calls or bytes for the window. The error carries
+	// retry_after_ms, the time until the window resets.
+	CodeQuotaExceeded = "QUOTA_EXCEEDED"
 	// CodeDeadlineExceeded is a command that ran past its
 	// per-command deadline and was canceled. Retrying may succeed.
 	CodeDeadlineExceeded = "DEADLINE_EXCEEDED"
@@ -433,6 +437,8 @@ func codeFor(err error) string {
 		// insufficient_scope included: the class shares DENIED, and
 		// the message starts with its sentinel.
 		return CodeDenied
+	case errors.Is(err, cmdsurface.ErrQuotaExceeded):
+		return CodeQuotaExceeded
 	case errors.Is(err, cmdsurface.ErrRateLimited):
 		return CodeRateLimited
 	case errors.Is(err, cmdsurface.ErrOverloaded):

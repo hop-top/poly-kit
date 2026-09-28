@@ -372,13 +372,13 @@ func writeRetryable(w http.ResponseWriter, status int, code string, err error) {
 const MCPRefusalMetaKey = "hop.top/refusal"
 
 // MCPRefusal returns how an MCP surface answers err as a tools/call
-// result when err is a refusal with a stable code — rate_limited and
-// overloaded, with their retry hints; insufficient_scope;
-// deadline_exceeded, a run its per-command deadline cut short;
-// idempotency_conflict or idempotency_key_reused: the text the isError
-// result carries, starting with the code, and the value for the
-// result's [MCPRefusalMetaKey] _meta entry. ok is false for any other
-// error, which keeps its surface's own answer.
+// result when err is a refusal with a stable code — rate_limited,
+// quota_exceeded and overloaded, with their retry hints;
+// insufficient_scope; deadline_exceeded, a run its per-command
+// deadline cut short; idempotency_conflict or idempotency_key_reused:
+// the text the isError result carries, starting with the code, and the
+// value for the result's [MCPRefusalMetaKey] _meta entry. ok is false
+// for any other error, which keeps its surface's own answer.
 func MCPRefusal(err error) (text string, refusal map[string]any, ok bool) {
 	msg := err.Error()
 	var code string
@@ -394,6 +394,9 @@ func MCPRefusal(err error) (text string, refusal map[string]any, ok bool) {
 		code = api.CodeInsufficientScope
 	case errors.Is(err, ErrOverloaded):
 		code = CodeOverloaded
+	case errors.Is(err, ErrQuotaExceeded):
+		// Before rate_limited: a quota refusal wraps it.
+		code = CodeQuotaExceeded
 	case errors.Is(err, ErrRateLimited):
 		code = api.CodeRateLimited
 	default:

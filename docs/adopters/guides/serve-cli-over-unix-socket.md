@@ -413,6 +413,7 @@ which is a different answer from one that does not exist:
 | `DENIED` | the permission gate refused this caller | `cli.WithPermission`, or a `--policy` that refuses the class; the message carries the reason. Led by `cmdsurface: insufficient scope`, the `SocketConfig.Auth` identity lacks a scope the command's `kit/permissions` names — return it in `Identity.Scopes` |
 | `UNAUTHENTICATED` | `SocketConfig.Auth` refused the request | only sent when an authenticator is configured |
 | `RATE_LIMITED` | the caller's rate limit is spent | `services.socket.rate_limit.enabled: true`; wait `retry_after_ms` |
+| `QUOTA_EXCEEDED` | the caller's quota for the window is spent | `services.socket.quota.ops` or `.bytes`; wait `retry_after_ms`, or `quota reset` |
 | `OVERLOADED` | every in-flight slot is taken and the queue is full | more callers than `services.socket.concurrency` admits; wait `retry_after_ms` |
 | `INVALID` | the request line is malformed | bad JSON, or an empty `path` |
 | `INTERNAL` | anything else the runner returned | a bug worth reporting |

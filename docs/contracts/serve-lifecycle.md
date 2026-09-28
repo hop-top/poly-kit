@@ -1395,6 +1395,22 @@ What each slot does:
   scopes is keyed as anonymous, so a command whose output depends on
   who calls requires an established identity (`kit/auth-required`) or
   declares no `kit/cache-ttl`.
+- **9.** The `quota` block: calls (`ops`) and output bytes (`bytes`:
+  stdout, stderr and structured data) per caller per fixed `window`
+  (default `1h`, aligned to the epoch, so `24h` is a UTC day), counted
+  `per` principal (with its tenant) or tenant; the caller is resolved
+  as the rate limit resolves it. The block is on when a limit is set,
+  unless `enabled: false`; `enabled: true` with no limit, a window
+  under a second, a negative limit or an unknown `per` is refused at
+  validation, exit `2`. A call is refused when the window has already
+  counted its limit; slot 13 counts a run that completed without
+  error, so the call that crosses a limit completes and a replay or a
+  cache hit counts nothing. Counts live in the usage store
+  (`$XDG_STATE_HOME/<tool>/usage.db`, or `cli.WithUsageStore`), per
+  service, so a restart resets nothing. `quota show` and
+  `quota reset`, mounted by `cli.WithQuotaCommand`, are kit-reserved
+  and so `management-only` on every served surface. A store that
+  cannot be read refuses the call.
 - **10.** The confirmation a surface obtains from a person: an MCP
   elicitation, an `X-Confirm-Token`. The command's own `--confirm`
   gate is unchanged; it runs inside the command, at 12, and answers
@@ -1643,6 +1659,7 @@ reads no HTTP-listener key.
 | `rate_limit`                            | bridge services                                | —                        |
 | `idempotency`                           | bridge services                                | —                        |
 | `cache`                                 | api                                            | every other service      |
+| `quota`                                 | bridge services                                | —                        |
 | `concurrency`                           | bridge services                                | —                        |
 | `audit`, `audit.redact`                 | bridge services                                | —                        |
 

@@ -18,6 +18,22 @@ var ErrRateLimited = errors.New("api: rate limited")
 // CodeRateLimited is the refusal code of the rate-limit gate.
 const CodeRateLimited = "rate_limited"
 
+// ErrQuotaExceeded reports that the invocation plane's quota refused
+// the call: the caller has used its calls or bytes for the window. The
+// projection answers it 429 quota_exceeded, with Retry-After at the
+// window's reset. It wraps [ErrRateLimited].
+var ErrQuotaExceeded error = quotaExceeded{}
+
+// quotaExceeded is [ErrQuotaExceeded]'s type: its own spelling, still
+// unwrapping to [ErrRateLimited].
+type quotaExceeded struct{}
+
+func (quotaExceeded) Error() string { return "api: quota exceeded" }
+func (quotaExceeded) Unwrap() error { return ErrRateLimited }
+
+// CodeQuotaExceeded is the refusal code of the quota gate.
+const CodeQuotaExceeded = "quota_exceeded"
+
 // retryAfterOf returns the retry hint err carries, if any.
 func retryAfterOf(err error) (time.Duration, bool) {
 	var hint interface{ RetryAfterHint() time.Duration }

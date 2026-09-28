@@ -65,7 +65,8 @@ for your own command tree; substitute it.
 - **A rate limit beyond loopback.** A service listening beyond
   loopback bounds how fast each caller may invoke commands, per
   side-effect tier, and answers the excess `429 rate_limited` with
-  `Retry-After`. On loopback it is off until you turn it on. See
+  `Retry-After`. On loopback it is off until you turn it on. A quota
+  caps what each caller uses per hour or day, and survives restarts. See
   [Bound how fast a caller may call](#11-bound-how-fast-a-caller-may-call).
 - **No reach from a browser tab.** The api service refuses requests
   whose `Host` it does not answer for (DNS rebinding) and writes from
@@ -1414,6 +1415,62 @@ cli.New(cfg, cli.WithServeRateLimit(cmdsurface.RateLimit{
 }))
 ```
 
+#### Cap how much a caller uses per hour or day
+
+A rate limit bounds bursts and forgets on restart. A quota bounds
+totals, and remembers: set how many calls, or how many bytes of
+output, each caller may use per window, and kit counts them in
+`$XDG_STATE_HOME/mytool/usage.db` (or the store
+`cli.WithUsageStore` names), so a restart resets nothing. It is off
+until you set a limit:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  all:
+    quota:
+      window: 24h           # default 1h; days run midnight to midnight UTC
+      ops: 10000            # calls per window
+      bytes: 104857600      # output bytes per window (stdout, stderr, data)
+      per: principal        # or tenant: a tenant's principals share one quota
+  socket:
+    quota:
+      enabled: false        # not for the owner's socket
+```
+
+The caller is counted as the rate limit counts it: the authenticated
+principal and tenant, else the client address, else the surface. Only
+a call that ran successfully is counted, after it ran; a replay or a
+result served from the cache is free. Once the window's quota is spent the next call
+is refused until the window resets, and `Retry-After` says when:
+
+```console
+$ curl -si https://tool.example/v1/commands/widget/list -H 'Authorization: Bearer …'
+HTTP/1.1 429 Too Many Requests
+Retry-After: 2143
+
+{"status":429,"code":"quota_exceeded","message":"api: quota exceeded: cmdsurface: quota exceeded: widget list on rest: 10000 of 10000 ops per 24h0m0s used; resets at 2026-09-29T00:00:00Z"}
+```
+
+Over RPC it is `ResourceExhausted`, over MCP an `isError` result with
+`_meta["hop.top/refusal"]` of `{"code":"quota_exceeded","retry_after_ms":…}`,
+and `QUOTA_EXCEEDED` with `retry_after_ms` on the socket; exit class
+`64`. In Go, `errors.Is(err, cmdsurface.ErrQuotaExceeded)` holds, and
+so does `errors.Is(err, cmdsurface.ErrRateLimited)`.
+
+Mount the management verbs with `cli.WithQuotaCommand()` to read and
+clear the counts. Like `audit verify` they are management-only: no
+served surface reaches them.
+
+```console
+$ mytool quota show
+SERVICE  CALLER                 OPS    MAX OPS  BYTES     MAX BYTES  WINDOW    RESETS
+api      principal/alice/acme   10000  10000    52428800  104857600  24h0m0s   2026-09-29T00:00:00Z
+$ mytool quota reset principal/alice/acme
+reset 1 quota count(s)
+$ mytool quota reset --all --service api
+```
+
 ### 12. Bound slow clients and long commands
 
 Every HTTP listener (api, rpc, mcp) gives a client 5s to send its
@@ -1532,7 +1589,7 @@ observability](../reference/served-observability.md)).
 | `cli.WithObservability(p)` | none | Links a tracing and metrics provider; `services.<svc>.tracing.enabled` / `.metrics.enabled` (or `services.all.*`) turn it on. |
 | `services.api.metrics.scrape.enabled` | `false` | Answer a Prometheus scrape at `/metrics`, after the Host check, before auth. Beyond loopback needs `services.api.metrics.scrape.allow_remote: true`. |
 | `--policy=<name>` | `kit-default` beyond loopback, none on loopback | The tool's policy engine, applied to remote calls; its `callers` section answers per caller. `kit-default` is reserved for the shipped policy. |
-| `cli.WithUsageStore(store)` | `$XDG_STATE_HOME/<tool>/usage.db` | Where the `max_ops` budgets of a policy's caller rules are counted. |
+| `cli.WithUsageStore(store)` | `$XDG_STATE_HOME/<tool>/usage.db` | Where quotas and the `max_ops` budgets of a policy's caller rules are counted. |
 | `services.api.host_check.enabled` | `true` | Refuse a `Host` the listener does not answer for (`403`, `host_rejected`). |
 | `services.api.host_check.allow` | `[]` | Hosts accepted beyond the listener's own; `name` or `name:port`. Required for a wildcard bind to check anything. |
 | `services.api.origin_check.enabled` | `true` | Refuse cross-origin browser writes (`403`, `origin_rejected`). |
@@ -1554,6 +1611,9 @@ observability](../reference/served-observability.md)).
 | `services.<svc>.timeouts.command` | none | Per-command deadline for commands without `kit/timeout`; past it, `504 deadline_exceeded`. Reaches the socket too. |
 | `services.all.<block>.<key>` | unset | Shared default for the blocks above; the service's own key wins. |
 | `services.<svc>.rate_limit.enabled` | on beyond loopback, off on loopback, the socket and stdio | Per-caller rate limit; over it is `429 rate_limited` with `Retry-After`, audited as `cmdsurface.ErrRateLimited`. |
+| `services.<svc>.quota.ops` / `.bytes` | unset (no quota) | Calls, and output bytes, each caller may use per window; over either is `429 quota_exceeded` with `Retry-After` at the window's reset. Counted in the usage store, so restarts keep them. `enabled: false` switches a set quota off. |
+| `services.<svc>.quota.window` / `.per` | `1h` / `principal` | The window (aligned to the epoch; `24h` is a UTC day) and what is counted: `principal` or `tenant`. |
+| `cli.WithQuotaCommand()` | not mounted | Mounts `<tool> quota show` and `quota reset`; management-only when served. |
 | `services.<svc>.rate_limit.<tier>.per_minute` | read `600`, write `120`, destructive `12` | Tokens a caller's bucket for the tier refills per minute. `services.all.rate_limit.*` applies to every service. |
 | `services.<svc>.rate_limit.<tier>.burst` | read `60`, write `20`, destructive `3` | Tokens the bucket holds at most. |
 | `services.<svc>.concurrency.enabled` | `true`, on loopback and beyond | Bound calls running at once; past the queue is `503 overloaded` with `Retry-After`, audited as `cmdsurface.ErrOverloaded`. |

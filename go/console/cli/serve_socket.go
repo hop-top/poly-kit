@@ -169,6 +169,9 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 			if _, _, err := serveConcurrency(root.Viper, SocketServiceName); err != nil {
 				return err
 			}
+			if _, _, err := serveQuota(root.Viper, SocketServiceName); err != nil {
+				return err
+			}
 			// timeouts.command reaches the socket; the server keys
 			// have no listener to bound here.
 			if err := validateServeTimeouts(root, SocketServiceName); err != nil {

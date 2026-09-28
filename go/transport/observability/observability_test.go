@@ -312,6 +312,8 @@ func TestRateLimitRefusalsAreCountedByCode(t *testing.T) {
 	assert.Equal(t, map[string]int64{RefusalRateLimited: 2}, sumBy(t, got[MetricRefusals], AttrRefusalReason))
 	assert.Equal(t, map[string]int64{OutcomeOK: 1, OutcomeRefused: 2}, sumBy(t, got[MetricRequests], AttrOutcome))
 	assert.Equal(t, RefusalRateLimited, RefusalCode(fmt.Errorf("wrapped: %w", &cmdsurface.RateLimitedError{})))
+	assert.Equal(t, RefusalQuotaExceeded, RefusalCode(fmt.Errorf("wrapped: %w", &cmdsurface.QuotaExceededError{})),
+		"the quota is counted as itself, not as the rate limit it wraps")
 }
 
 func TestInFlightGaugeCountsRunningInvocations(t *testing.T) {

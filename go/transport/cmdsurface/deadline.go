@@ -130,10 +130,10 @@ func (b *Bridge) armDeadline(ctx context.Context, leaf *Leaf) (_ context.Context
 //
 // The capacity gate's slot is taken here, once the deadline is armed:
 // a call waits for a slot under its deadline, and one that outwaits
-// it returns [ErrDeadlineExceeded] without having run.
+// it returns [ErrDeadlineExceeded] without having run. The run's
+// context carries the admitted Meta ([AdmittedMeta]), and a
+// successful run is recorded against the caller's quota.
 func (a *Admission) runBounded(ctx context.Context) (Result, error) {
-	// The command sees the Meta the gates admitted ([AdmittedMeta]),
-	// whichever path runs it.
 	runCtx, cancel, bound := a.b.armDeadline(withAdmitted(ctx, a.inv.Meta), a.leaf)
 	defer cancel()
 	release, err := a.acquire(runCtx)
@@ -142,7 +142,11 @@ func (a *Admission) runBounded(ctx context.Context) (Result, error) {
 	}
 	defer release()
 	res, err := a.b.cfg.runner.Run(runCtx, a.inv)
-	return res, deadlineError(runCtx, err, a.leaf, bound)
+	err = deadlineError(runCtx, err, a.leaf, bound)
+	if err == nil {
+		a.recordQuota(ctx, resultBytes(res))
+	}
+	return res, err
 }
 
 // deadlineError reports a run that ended because ctx's deadline

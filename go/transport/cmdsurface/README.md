@@ -27,7 +27,7 @@ seam for a new transport is `go/transport/transportsvc`.
 - answer a repeated `Idempotency-Key` from its record → `WithIdempotency(NewIdempotencyLedger(store), ttl)`; `Result.Replayed`, `Admission.Replayed`
 - ask what the permission gate would answer a caller, without running or charging → `Bridge.Verdict`
 - learn, inside a served run, who it runs for → `AdmittedMeta(cmd.Context())`
-- count calls and bytes per key over fixed windows that survive a restart → `NewUsageLedger(kvStore)`
+- count calls and bytes per key over fixed windows that survive a restart → `NewUsageLedger(kvStore)`; cap them per caller → `WithQuota`
 - toggle a leaf per surface → `Bridge.Expose` / `Bridge.Hide`, or YAML `LoadFile` / `FromConfig`
 - declare webhooks, bus bindings, schedules or sinks in YAML → `Config.WebhookMappings`, `BusBindings`, `CronSchedules`, `SinkSpecs`
 

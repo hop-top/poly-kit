@@ -403,6 +403,7 @@ root, rather than an API to call.
 | uxp | Build and inspect agent-CLI invocations; package clause is `uxpcmd`, so alias the import | `hop.top/kit/go/core/uxp/invoke/cmd/uxp` |
 | spec | `<tool> spec` — emit your toolspec manifest | `hop.top/kit/go/ai/toolspec/cli` |
 | audit | `audit verify` — check the served transports' audit chain; mount with `cli.WithAuditCommand()` | `hop.top/kit/go/console/cli` |
+| quota | `quota show`, `quota reset` — read and clear the served quotas' counts; mount with `cli.WithQuotaCommand()` | `hop.top/kit/go/console/cli` |
 | upgrade | Self-upgrade and migration commands | `hop.top/kit/go/core/upgrade` |
 
 ## What is not in this index

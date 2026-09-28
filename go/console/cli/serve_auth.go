@@ -105,9 +105,9 @@ func WithAuditSinks(specs ...cmdsurface.SinkSpec) func(*Root) {
 // the audit sinks — registered in code, then svc's audit.sinks list —
 // with svc's audit.redact block, svc's per-command deadline default
 // (timeouts.command), idempotency replay as svc's idempotency block
-// sets it, and any test-injected options. It is resolved at Start, not at
-// registration, because --policy is parsed and adopter options run
-// only after the service was constructed.
+// sets it, svc's quota block, and any test-injected options. It is
+// resolved at Start, not at registration, because --policy is parsed
+// and adopter options run only after the service was constructed.
 func (r *Root) serveBridgeOptions(svc string, exp ServeExposure) ([]cmdsurface.Option, error) {
 	perm, err := r.servePermission(exp)
 	if err != nil {
@@ -133,6 +133,10 @@ func (r *Root) serveBridgeOptions(svc string, exp ServeExposure) ([]cmdsurface.O
 	if err != nil {
 		return nil, err
 	}
+	quota, err := r.serveQuotaOptions(svc)
+	if err != nil {
+		return nil, err
+	}
 	opts := []cmdsurface.Option{
 		cmdsurface.WithPermission(perm),
 		cmdsurface.WithSinks(r.serveAuth.sinks...),
@@ -142,6 +146,7 @@ func (r *Root) serveBridgeOptions(svc string, exp ServeExposure) ([]cmdsurface.O
 	}
 	opts = append(opts, idem...)
 	opts = append(opts, capacity...)
+	opts = append(opts, quota...)
 	return append(opts, r.serveAuth.bridgeOpts...), nil
 }
 
@@ -455,6 +460,9 @@ func ValidateServeBridge(r *Root, svc string) error {
 		return err
 	}
 	if _, _, err := serveConcurrency(r.Viper, svc); err != nil {
+		return err
+	}
+	if _, _, err := serveQuota(r.Viper, svc); err != nil {
 		return err
 	}
 	if err := validateServeTimeouts(r, svc); err != nil {

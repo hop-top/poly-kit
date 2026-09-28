@@ -1419,6 +1419,17 @@ The refusal is a
 its hint. Without the option there is no limit; the kit-shipped
 services install it from `services.<svc>.rate_limit`.
 
+`WithQuota(q, ledger)` adds the quota gate (slot 9), after any idempotency replay
+or result cache hit: `q.Ops` calls and `q.Bytes` output bytes per caller per
+fixed `q.Window`, counted `q.Per` principal or tenant in a
+`UsageLedger` over a `kv.Store` (`NewUsageLedger`), so counts survive
+a restart. A run that completes without error is counted afterwards;
+a replay or a cache hit is not. The refusal is a `*QuotaExceededError` wrapping
+`ErrQuotaExceeded`, which wraps `ErrRateLimited`; `RetryAfter(err)`
+reads the time to the window's reset, and `QuotaKey(q, meta)` names
+the caller's count. The kit-shipped services install it from
+`services.<svc>.quota`.
+
 `WithConcurrency(cfg)` adds the capacity gate, which a call passes
 when it is about to run — in `Admission.Run` or `Admission.Stream`,
 after any confirmation a surface asks for: `MaxInflight` calls run at
@@ -1447,6 +1458,7 @@ The mappings of bridge sentinel errors to wire format are uniform:
 | `ErrNotInvocable`      | 404 `not_invocable` (projection: withheld at mount; SSE) | `CodeNotFound`; `NOT_INVOCABLE` (socket) | `not_invocable` (WS); passthrough | (mount-time refusal) | (mount-time refusal) |
 | `ErrInsufficientScope` | 403 `insufficient_scope` + `WWW-Authenticate` (projection; SSE; REST) | `CodePermissionDenied`; `DENIED` (socket) | `insufficient_scope` (WS, Bus); 403 (Webhook) | 403 `insufficient_scope` | 403 `insufficient_scope` |
 | `ErrPermissionDenied`  | 403 `permission_denied` (projection; SSE) | `CodePermissionDenied`; `DENIED` (socket) | `permission_denied` (WS); passthrough | passthrough | passthrough |
+| `ErrQuotaExceeded`     | 429 `quota_exceeded` + `Retry-After` (projection); else as `ErrRateLimited` | `CodeResourceExhausted` + `Retry-After` metadata; `QUOTA_EXCEEDED` + `retry_after_ms` (socket) | as `ErrRateLimited` | as `ErrRateLimited` | as `ErrRateLimited` |
 | `ErrRateLimited`       | 429 `rate_limited` + `Retry-After` | `CodeResourceExhausted` + `Retry-After` metadata; `RATE_LIMITED` + `retry_after_ms` (socket) | `rate_limited` (WS, Bus); 429 (Webhook) | 429 + `Retry-After` | 429 `rate_limited` |
 | `ErrOverloaded`        | 503 `overloaded` + `Retry-After` | `CodeUnavailable` + `Retry-After` metadata; `OVERLOADED` + `retry_after_ms` (socket) | `overloaded` (WS, Bus); 503 (Webhook) | 503 + `Retry-After` | 503 `overloaded` |
 

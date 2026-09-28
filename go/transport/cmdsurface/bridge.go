@@ -135,6 +135,8 @@ type bridgeConfig struct {
 	// rateLimit is the slot-7 limiter from WithRateLimit, nil when
 	// the gate is off.
 	rateLimit *rateLimiter
+	// quota is the slot-9 gate from WithQuota, nil when it is off.
+	quota *quotaGate
 	// cache is the slot-8 result cache from WithResultCache, nil when
 	// the cache is off.
 	cache kv.TTLStore
@@ -446,11 +448,19 @@ func matchPattern(pattern string, path []string) bool {
 //
 // A read leaf declaring kit/cache-ttl that no replay answered may then
 // be answered from the result cache without running (see
-// [WithResultCache]). A call that runs then takes an in-flight slot,
-// or waits for one in a bounded queue: ErrOverloaded, as an
-// [*OverloadedError] carrying a retry hint, when both are full. Only
-// with [WithConcurrency], and only on remote surfaces. A replay or a
-// cache hit runs nothing and takes no slot.
+// [WithResultCache]). Otherwise:
+//
+//  9. Quota — ErrQuotaExceeded (wrapping ErrRateLimited), as a
+//     [*QuotaExceededError] carrying the window's reset: the caller
+//     has used its calls or bytes for the window. Only with
+//     [WithQuota], and only on remote surfaces; a successful run is
+//     counted against it afterwards.
+//
+// A call that runs then takes an in-flight slot, or waits for one in a
+// bounded queue: ErrOverloaded, as an [*OverloadedError] carrying a
+// retry hint, when both are full. Only with [WithConcurrency], and only
+// on remote surfaces. A replay or a cache hit runs nothing: it spends
+// no quota and takes no slot.
 //
 // Confirmation is deliberately not a gate here: it is the command's
 // own flag and its own refusal, the same on every surface as on the
@@ -503,6 +513,9 @@ type Admission struct {
 	// refused is the capacity gate's refusal from Reserve: the call
 	// never runs.
 	refused error
+	// quotaKey is the ledger key slot 13 counts the run under, empty
+	// when no quota applies.
+	quotaKey string
 }
 
 // Admit applies the gates [Bridge.Invoke] applies, in the same order
@@ -578,6 +591,15 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 	adm := &Admission{b: b, inv: forwardIdempotencyKey(inv, leaf), leaf: leaf, idem: idem}
 	if idem == nil || idem.replay == nil {
 		adm.cache = b.cacheLookup(ctx, inv, leaf)
+		// Slot 9: quota (quota.go). A replay or a cache hit runs
+		// nothing and spends none.
+		if adm.cache == nil || adm.cache.hit == nil {
+			if err := b.quotaCheck(ctx, adm); err != nil {
+				// The call never runs: free its idempotency key now.
+				adm.idem.abandon()
+				return nil, b.refuse(ctx, inv, err)
+			}
+		}
 	}
 	return adm, nil
 }
@@ -727,6 +749,9 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	// returned, so a successful stream is recorded as a run is.
 	a.idem.settle(ctx, res, err)
 	close(out)
+	if err == nil {
+		a.recordQuota(ctx, resultBytes(res))
+	}
 	if a.inv.Meta.Surface.remote() {
 		a.b.Audit(ctx, a.inv, res, err)
 	}
