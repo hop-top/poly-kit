@@ -409,6 +409,9 @@ and trace ids — is
 
 By default the projection runs one command at a time: every request
 runs on the tool's own command tree, and the runner serializes them.
+The others wait in a bounded queue, 64 deep; past it a request is
+refused `503 overloaded` with `Retry-After` (see
+[bounding calls](secure-remote-serving.md#13-bound-how-many-calls-run-at-once)).
 To run requests in parallel, hand kit the function that builds your
 root — the one `main` already has — with `cli.WithRootFactory`. Every
 request then runs on a tree of its own.
@@ -452,8 +455,9 @@ mytool serve
 
 What you get, and what you owe:
 
-- Requests run concurrently on isolated trees. Nothing is shared
-  between them, and no request waits for another.
+- Requests run concurrently on isolated trees, up to
+  `services.api.concurrency.max_inflight` (32) at once; more wait in
+  the queue. Nothing is shared between them.
 - Every gate still applies. Kit prepares each tree before it runs, so
   an unconfirmed destructive command is refused with `403`, a
   typed-token command needs its token, and interactive and

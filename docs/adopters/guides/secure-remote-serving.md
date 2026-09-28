@@ -1229,6 +1229,58 @@ A command that routinely runs longer than 10s should be called on its
 stream route, not given a longer write timeout: a request/reply
 answer that takes longer than `write` is cut whatever its deadline.
 
+### 13. Bound how many calls run at once
+
+Every service, on loopback or beyond it, runs at most 32 calls at once
+and queues 64 more, first come first served, with no configuration.
+A call that finds every slot taken and the queue full is refused at
+once rather than piling up:
+
+```console
+$ curl -si http://127.0.0.1:8080/v1/commands/widget/list
+HTTP/1.1 503 Service Unavailable
+Retry-After: 1
+
+{"status":503,"code":"overloaded","message":"api: overloaded: cmdsurface: overloaded: widget list on rest: 1 running and 64 queued; retry after 1s"}
+```
+
+The same refusal is Connect `Unavailable` with `Retry-After` metadata
+over RPC, an `isError` result whose `_meta["hop.top/refusal"]` is
+`{"code":"overloaded","retry_after_ms":1000}` over MCP, and
+`OVERLOADED` with `retry_after_ms` on the socket; a stream route
+answers it before the stream opens. A client that turns it into an
+exit status uses `6` (`TRANSIENT`). It reaches the audit sinks as
+`cmdsurface.ErrOverloaded` and is counted as `overloaded`. The retry
+hint is how long the queue ahead would take to drain, from recent run
+times: between 1s and 30s.
+
+How many actually run at once depends on how your tool builds its
+tree. Without `cli.WithRootFactory` every call runs on one shared
+tree, one at a time: the service runs one and queues the rest, as the
+`1 running` above shows. With a root factory, up to `max_inflight`
+run in parallel. Either way the time a call waits counts against its
+command deadline (step 12), and a caller that disconnects gives its
+place up.
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  all:
+    concurrency:
+      max_inflight: 8     # with a root factory; a shared tree runs one
+      max_queue: 16
+  socket:
+    concurrency:
+      max_queue: 0        # socket only: refuse at once, never wait
+```
+
+`enabled: false` lifts the bound, and callers wait for the runner as
+they did before it existed. A `max_inflight` below 1, a `max_queue`
+below 0, or an unknown key is refused at startup with exit `2`. The
+running and waiting counts are the `kit.serve.requests.active` and
+`kit.serve.requests.queued` gauges ([served
+observability](../reference/served-observability.md)).
+
 ## Option reference
 
 | Option | Default | Effect |
@@ -1269,6 +1321,9 @@ answer that takes longer than `write` is cut whatever its deadline.
 | `services.<svc>.rate_limit.enabled` | on beyond loopback, off on loopback, the socket and stdio | Per-caller rate limit; over it is `429 rate_limited` with `Retry-After`, audited as `cmdsurface.ErrRateLimited`. |
 | `services.<svc>.rate_limit.<tier>.per_minute` | read `600`, write `120`, destructive `12` | Tokens a caller's bucket for the tier refills per minute. `services.all.rate_limit.*` applies to every service. |
 | `services.<svc>.rate_limit.<tier>.burst` | read `60`, write `20`, destructive `3` | Tokens the bucket holds at most. |
+| `services.<svc>.concurrency.enabled` | `true`, on loopback and beyond | Bound calls running at once; past the queue is `503 overloaded` with `Retry-After`, audited as `cmdsurface.ErrOverloaded`. |
+| `services.<svc>.concurrency.max_inflight` | `32` | Calls running at once; one at a time over a shared tree (no `cli.WithRootFactory`). |
+| `services.<svc>.concurrency.max_queue` | `64` | Calls waiting for a slot, first come first served; `0` refuses at once. |
 
 Precedence for either opt-in is flag, then config key, then code.
 The guard keys have no flags: the service's key, then

@@ -1323,9 +1323,10 @@ What each slot does:
   elicitation, an `X-Confirm-Token`. The command's own `--confirm`
   gate is unchanged; it runs inside the command, at 12, and answers
   with an exit code in the `Result`.
-- **11.** An in-flight slot, or a place in a bounded queue. The
-  per-command deadline (`kit/timeout`, else `timeouts.command`) is
-  armed here and covers queue wait and execution.
+- **11.** An in-flight slot, or a place in a bounded queue (see
+  [Capacity](#capacity)). The per-command deadline (`kit/timeout`,
+  else `timeouts.command`) is armed here and covers queue wait and
+  execution.
 - **13.** On success, the idempotency record and quota usage are
   written. Every verdict of 1–12 reaches the audit sinks, redacted
   before any sink sees it.
@@ -1528,7 +1529,7 @@ socket service and stdio take the loopback column.
 | `idempotency`      | invocation 8, 13                       | every remote surface                   | on; inert without a key             | on                                             | `idempotency_conflict`, `idempotency_key_reused` |
 | `cache`            | invocation 8; HTTP renders ETag, `304`, `Cache-Control` | `rest`, read tier only   | inert without `kit/cache-ttl`       | same                                           | — |
 | `quota`            | invocation 9, 13                       | every remote surface                   | off                                 | off                                            | `quota_exceeded` |
-| `concurrency`      | invocation 11                          | every remote surface                   | on, bounded queue                   | on, bounded queue                              | `overloaded` |
+| `concurrency`      | invocation 11                          | every remote surface                   | on, bounded queue (32 in flight, 64 queued) | on, bounded queue (32 in flight, 64 queued) | `overloaded` |
 | `audit`            | invocation 13                          | every remote surface                   | the registered sinks; redaction always | same                                        | — |
 
 "HTTP listeners" are the api service's router, the mcp service's HTTP
@@ -1565,6 +1566,7 @@ reads no HTTP-listener key.
 | `rate_limit`                            | bridge services                                | —                        |
 | `idempotency`                           | bridge services                                | —                        |
 | `cache`                                 | api                                            | every other service      |
+| `concurrency`                           | bridge services                                | —                        |
 | `audit`, `audit.redact`                 | bridge services                                | —                        |
 
 A block in the registry with no row here has no configuration keys
@@ -1744,6 +1746,50 @@ Rules:
 
 A request/reply response still ends at `write`, whatever the
 deadline: a command meant to run longer is called on a stream.
+
+### Capacity
+
+The `concurrency` block bounds how many invocations a service runs at
+once:
+
+| Key                                        | Default | Meaning                                               |
+|--------------------------------------------|---------|-------------------------------------------------------|
+| `services.<svc>.concurrency.enabled`       | `true`  | the gate is installed, on loopback and beyond it      |
+| `services.<svc>.concurrency.max_inflight`  | `32`    | invocations running at once, at least `1`             |
+| `services.<svc>.concurrency.max_queue`     | `64`    | invocations waiting for a slot; `0` is no queue       |
+
+Rules:
+
+- At slot 11 an admitted call on a remote surface takes an in-flight
+  slot, or a place in a first-come-first-served queue. With every slot
+  taken and the queue full it is refused as `overloaded`, and
+  audited. A slot frees when the run ends and passes to the head of
+  the queue. The CLI and library surfaces are not counted; a
+  result-cache hit, and a call waiting on an identical call's run,
+  take no slot.
+- The per-command deadline is armed before the call queues, so the
+  wait counts against it; a call that outwaits it is
+  `deadline_exceeded` without having run. A caller that goes away
+  while queued gives its place up at once.
+- `max_inflight` is an upper bound. A runner over one shared tree
+  runs one invocation at a time: over it the gate admits one and
+  queues the rest, so a waiting caller is bounded, counted and
+  cancelable rather than blocked on the runner's lock. With a root
+  factory (`cli.WithRootFactory`) up to `max_inflight` run in
+  parallel.
+- A transport that commits its response before running — an SSE or
+  projection stream — takes the call's place before it commits
+  (`Admission.Reserve`), so an overload is answered with `503` and
+  `Retry-After`, not inside an open stream. The wait itself happens
+  in `Run` or `Stream`, under the deadline.
+- The retry hint is how long the queue ahead would take to drain,
+  estimated from recent run times: at least 1s, at most 30s.
+- Slots and queue live in memory, per service. The in-flight count is
+  `kit.serve.requests.active` and the queue's is
+  `kit.serve.requests.queued`, both by service and surface.
+- A `max_inflight` below `1`, a `max_queue` below `0`, a value that is
+  not a whole number, or an unknown key is refused at validation,
+  exit `2`, naming the key.
 
 ### Refusals
 

@@ -96,6 +96,10 @@ func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
 	if err != nil {
 		return nil, err
 	}
+	capacity, err := r.serveConcurrencyOptions(svc)
+	if err != nil {
+		return nil, err
+	}
 	opts := []cmdsurface.Option{
 		cmdsurface.WithPermission(perm),
 		cmdsurface.WithSinks(r.serveAuth.sinks...),
@@ -104,6 +108,7 @@ func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
 		cmdsurface.WithCommandTimeout(commandTimeout),
 	}
 	opts = append(opts, idem...)
+	opts = append(opts, capacity...)
 	return append(opts, r.serveAuth.bridgeOpts...), nil
 }
 
@@ -224,10 +229,12 @@ func (r *Root) servePolicyConfigured() bool {
 // provider [WithObservability] linked, then the composed permission
 // gate ([WithPermission] after the --policy engine), the audit sinks
 // ([WithAuditSinks], then svc's audit.sinks list) with svc's
-// audit.redact block, and any test-injected options. It is the same
-// set the socket service's bridge gets, and it must be called at
-// Start — --policy is parsed and every Root option has run only by
-// then.
+// audit.redact block, the per-command deadline (timeouts.command),
+// the capacity gate (services.<svc>.concurrency, on by default
+// wherever the service listens), and any test-injected options. It is
+// the same set the socket service's bridge gets, and it must be
+// called at Start — --policy is parsed and every Root option has run
+// only by then.
 //
 // On error the options returned refuse every call: a caller that
 // cannot report the error builds its bridge from them rather than
@@ -266,12 +273,12 @@ func ServeBridgeOptionsFor(r *Root, svc string, loopback bool) ([]cmdsurface.Opt
 
 // ValidateServeBridge is the configuration check the kit-shipped
 // transport service svc runs in its Validate hook: a --policy that
-// cannot load, an audit.redact block, audit.sinks list or rate_limit
-// block [ServeBridgeOptions] would refuse, an audit chain that cannot
-// open, a timeouts block that does not parse or a kit/timeout
-// annotation that does not, or a root factory that cannot build a
-// usable tree, is a usage error before anything binds. The chains it
-// opens are the ones Start reuses.
+// cannot load, an audit.redact block, audit.sinks list, rate_limit or
+// concurrency block [ServeBridgeOptions] would refuse, an audit chain
+// that cannot open, a timeouts block that does not parse or a
+// kit/timeout annotation that does not, or a root factory that cannot
+// build a usable tree, is a usage error before anything binds. The
+// chains it opens are the ones Start reuses.
 func ValidateServeBridge(r *Root, svc string) error {
 	if _, err := r.servePermission(); err != nil {
 		return err
@@ -280,6 +287,9 @@ func ValidateServeBridge(r *Root, svc string) error {
 		return err
 	}
 	if _, _, err := serveRateLimit(r.Viper, svc, false); err != nil {
+		return err
+	}
+	if _, _, err := serveConcurrency(r.Viper, svc); err != nil {
 		return err
 	}
 	if err := validateServeTimeouts(r, svc); err != nil {

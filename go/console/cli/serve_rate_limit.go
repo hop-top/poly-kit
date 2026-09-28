@@ -156,6 +156,20 @@ func (r *Root) serveRateLimitOptions(svc string, loopback bool) ([]cmdsurface.Op
 // string holding one, of at least 1. A limit of zero would refuse
 // every call; switch the block off with enabled: false instead.
 func positiveCount(raw any) (int, error) {
+	n, err := wholeCount(raw)
+	if err != nil {
+		return 0, err
+	}
+	if n < 1 || n > math.MaxInt32 {
+		return 0, fmt.Errorf("%d is out of range; want 1 to %d (set %s: false to lift the limit)",
+			n, math.MaxInt32, rateLimitEnabled)
+	}
+	return int(n), nil
+}
+
+// wholeCount reads a whole number from a config value: an integer, or
+// a string holding one. The caller checks its range.
+func wholeCount(raw any) (int64, error) {
 	var n int64
 	switch x := raw.(type) {
 	case int:
@@ -183,9 +197,5 @@ func positiveCount(raw any) (int, error) {
 	default:
 		return 0, fmt.Errorf("%v is not a whole number", raw)
 	}
-	if n < 1 || n > math.MaxInt32 {
-		return 0, fmt.Errorf("%d is out of range; want 1 to %d (set %s: false to lift the limit)",
-			n, math.MaxInt32, rateLimitEnabled)
-	}
-	return int(n), nil
+	return n, nil
 }

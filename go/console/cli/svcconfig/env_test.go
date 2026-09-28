@@ -27,6 +27,8 @@ func TestEnvKey(t *testing.T) {
 		"TOOL_SERVICES_ALL_RATE_LIMIT_ENABLED":           "services.all.rate_limit.enabled",
 		"TOOL_SERVICES_API_RATE_LIMIT_READ_PER_MINUTE":   "services.api.rate_limit.read.per_minute",
 		"TOOL_SERVICES_ALL_RATE_LIMIT_DESTRUCTIVE_BURST": "services.all.rate_limit.destructive.burst",
+		"TOOL_SERVICES_API_CONCURRENCY_MAX_INFLIGHT":     "services.api.concurrency.max_inflight",
+		"TOOL_SERVICES_ALL_CONCURRENCY_MAX_QUEUE":        "services.all.concurrency.max_queue",
 		"TOOL_SERVICES_ALL_ADDR":                         "services.all.addr",
 		"TOOL_SERVICES_API":                              "services.api",
 		"TOOL_SERVICES_MY_SVC_METRICS_INTERVAL":          "services.my-svc.metrics.interval",

@@ -154,6 +154,9 @@ func (a *apiService) Validate() error {
 	if _, _, err := serveRateLimit(a.root.Viper, APIServiceName, false); err != nil {
 		return err
 	}
+	if _, _, err := serveConcurrency(a.root.Viper, APIServiceName); err != nil {
+		return err
+	}
 	// The timeouts block: the server timeouts and the per-command
 	// deadline, and every kit/timeout annotation in the tree.
 	if err := validateServeTimeouts(a.root, APIServiceName); err != nil {

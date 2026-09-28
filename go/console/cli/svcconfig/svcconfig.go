@@ -116,6 +116,7 @@ var blocks = []Block{
 	{Name: "rate_limit.destructive", Keys: []string{"per_minute", "burst"}},
 	{Name: "idempotency", Keys: []string{"enabled", "ttl"}},
 	{Name: "cache", Keys: []string{"enabled", "backend", "path", "max_bytes"}, Services: []string{"api"}},
+	{Name: "concurrency", Keys: []string{"enabled", "max_inflight", "max_queue"}},
 	{
 		Name: "audit", Keys: []string{"sinks"},
 		Lists: map[string][]string{

@@ -413,6 +413,7 @@ which is a different answer from one that does not exist:
 | `DENIED` | the permission gate refused this caller | `cli.WithPermission`, or a `--policy` that refuses the class; the message carries the reason. Led by `cmdsurface: insufficient scope`, the `SocketConfig.Auth` identity lacks a scope the command's `kit/permissions` names — return it in `Identity.Scopes` |
 | `UNAUTHENTICATED` | `SocketConfig.Auth` refused the request | only sent when an authenticator is configured |
 | `RATE_LIMITED` | the caller's rate limit is spent | `services.socket.rate_limit.enabled: true`; wait `retry_after_ms` |
+| `OVERLOADED` | every in-flight slot is taken and the queue is full | more callers than `services.socket.concurrency` admits; wait `retry_after_ms` |
 | `INVALID` | the request line is malformed | bad JSON, or an empty `path` |
 | `INTERNAL` | anything else the runner returned | a bug worth reporting |
 
@@ -448,7 +449,10 @@ process is still listening on is refused, rather than silently stolen.
 ### 11. Run requests in parallel
 
 By default the service runs one command at a time: every request runs
-on the tool's own command tree, and the runner serializes them. To
+on the tool's own command tree, and the runner serializes them. The
+others wait in a bounded queue, 64 deep; past it a request is refused
+`OVERLOADED` with `retry_after_ms`
+(`services.socket.concurrency`). To
 run requests in parallel, hand kit the function that builds your root
 — the one `main` already has — with `cli.WithRootFactory`. Every
 request then runs on a tree of its own.
@@ -495,8 +499,9 @@ mytool serve socket
 
 What you get, and what you owe:
 
-- Requests run concurrently on isolated trees, across connections.
-  Nothing is shared between them, and no request waits for another.
+- Requests run concurrently on isolated trees, across connections,
+  up to `services.socket.concurrency.max_inflight` (32) at once; more
+  wait in the queue. Nothing is shared between them.
 - Every gate still applies. Kit prepares each tree before it runs, so
   an unconfirmed destructive command is refused with exit `5` in its
   result, a typed-token command needs its token, and interactive and
