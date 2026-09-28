@@ -437,3 +437,36 @@ func TestWalkCobra_RealisticTree(t *testing.T) {
 	assert.True(t, archCmd.Contract.Idempotent)
 	assert.Equal(t, []string{"write"}, archCmd.Contract.SideEffects)
 }
+
+// TestWalkCobra_PositionalArgs pins the projection of declared and
+// undeclared positional arguments onto toolspec.Command.
+func TestWalkCobra_PositionalArgs(t *testing.T) {
+	root := &cobra.Command{Use: "tool"}
+	noop := func(*cobra.Command, []string) error { return nil }
+	root.AddCommand(
+		&cobra.Command{Use: "add <name> [note]", RunE: noop,
+			Annotations: map[string]string{"kit/args": "name,note?"}},
+		&cobra.Command{Use: "label <name>", RunE: noop},
+		&cobra.Command{Use: "list", RunE: noop},
+	)
+	spec := WalkCobra(root)
+	byName := map[string]toolspec.Command{}
+	for _, c := range spec.Commands {
+		byName[c.Name] = c
+	}
+
+	if got := byName["add"].Args; len(got) != 2 ||
+		got[0] != (toolspec.Arg{Name: "name", Required: true}) ||
+		got[1] != (toolspec.Arg{Name: "note"}) {
+		t.Errorf("add Args = %+v, want name (required), note (optional)", got)
+	}
+	if byName["add"].UndeclaredArgs {
+		t.Error("add declares its arguments")
+	}
+	if !byName["label"].UndeclaredArgs || byName["label"].Args != nil {
+		t.Errorf("label = %+v, want undeclared arguments", byName["label"])
+	}
+	if byName["list"].UndeclaredArgs || byName["list"].Args != nil {
+		t.Errorf("list = %+v, want no arguments", byName["list"])
+	}
+}

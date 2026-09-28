@@ -40,6 +40,8 @@ type Command struct {
     Name            string
     Aliases         []string
     Flags           []Flag
+    Args            []Arg          // kit/args, in order: {Name, Required}
+    UndeclaredArgs  bool           // usage line names operands kit/args does not
     Children        []Command
     Contract        *Contract
     Safety          *Safety

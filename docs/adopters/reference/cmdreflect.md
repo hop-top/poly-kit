@@ -119,8 +119,10 @@ Three groups of facts:
 
 - **Identity** — `Path`, `Use`, `Short`, `Long`, `Aliases`.
 - **Interface** — `Flags` (type, default, required, hidden,
-  deprecated, since-version), `Args`, `Output` (schema, version,
-  examples, next steps).
+  deprecated, since-version), `Args` (from `kit/args`),
+  `UndeclaredArgs` (the usage line names operands `kit/args` does
+  not declare; the `Args` validator is never run to find out),
+  `Output` (schema, version, examples, next steps).
 - **Governance** — `Safety` (tier, permission tokens, confirmation,
   auth, idempotency, exit codes), `Surface` (hidden, deprecated,
   reserved, transport annotations), and `Invocable` / `Reason`.

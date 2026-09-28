@@ -803,3 +803,52 @@ func TestMalformedOutranksUnannotated(t *testing.T) {
 		t.Errorf("Reason = %q, want malformed-schema", d.Reason)
 	}
 }
+
+// TestUndeclaredArgs pins when a command is reported as taking
+// positional arguments it does not declare: its usage line lists
+// operands and kit/args names none. The Args validator is never run
+// to find out.
+func TestUndeclaredArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		use  string
+		ann  map[string]string
+		want bool
+	}{
+		{"bare name", "x", nil, false},
+		{"flags placeholder", "x [flags]", nil, false},
+		{"command placeholder", "x [command]", nil, false},
+		{"flag syntax", "x [--json] [-v]", nil, false},
+		{"flag syntax then operand", "x [-v] <name>", nil, true},
+		{"required operand", "x <name>", nil, true},
+		{"optional operand", "x [file]", nil, true},
+		{"variadic operand", "x SRC... DEST", nil, true},
+		{"declared", "x <name>", map[string]string{"kit/args": "name"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ran := false
+			cmd := &cobra.Command{
+				Use:         tt.use,
+				Annotations: tt.ann,
+				Args: func(*cobra.Command, []string) error {
+					ran = true
+					return nil
+				},
+				RunE: func(*cobra.Command, []string) error { return nil },
+			}
+			root := &cobra.Command{Use: "root"}
+			root.AddCommand(cmd)
+			d := Reflect(root).Lookup("x")
+			if d == nil {
+				t.Fatal("x not reflected")
+			}
+			if d.UndeclaredArgs != tt.want {
+				t.Errorf("UndeclaredArgs = %v, want %v", d.UndeclaredArgs, tt.want)
+			}
+			if ran {
+				t.Error("reflection ran the Args validator")
+			}
+		})
+	}
+}

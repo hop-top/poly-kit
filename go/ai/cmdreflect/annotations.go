@@ -28,6 +28,31 @@ func reflectArgs(cmd *cobra.Command) []Arg {
 	return out
 }
 
+// takesPositionals reports whether cmd's usage line names positional
+// arguments: any word after the command name other than cobra's own
+// "[flags]" / "[command]" placeholders and flag syntax ("[--json]").
+// The usage line is where cobra's convention puts operands
+// ("add <name>", "cp SRC... DEST"). The Args validator is not
+// consulted: it cannot be introspected without running it, and a
+// wrapped validator reports a refusal as it happens.
+func takesPositionals(cmd *cobra.Command) bool {
+	words := strings.Fields(cmd.Use)
+	if len(words) < 2 {
+		return false
+	}
+	for _, w := range words[1:] {
+		switch w {
+		case "[flags]", "[command]":
+			continue
+		}
+		if strings.HasPrefix(strings.TrimLeft(w, "[<("), "-") {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // reflectFlags projects a pflag set. Every flag is reflected,
 // hidden ones included, with Hidden recorded — dropping them here
 // would repeat the mistake this package exists to fix. Consumers

@@ -225,6 +225,11 @@ func projectCommand(tree *cmdreflect.Tree, d *cmdreflect.Descriptor, cfg *walkCo
 		Flags:    projectLocalFlags(d),
 		Children: projectChildren(tree, d, cfg),
 		Safety:   projectSafety(d, cfg),
+
+		UndeclaredArgs: d.UndeclaredArgs,
+	}
+	for _, a := range d.Args {
+		cmd.Args = append(cmd.Args, toolspec.Arg{Name: a.Name, Required: a.Required})
 	}
 
 	if cfg.includeDeprecated && d.Surface.Deprecated {

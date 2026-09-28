@@ -70,9 +70,18 @@ type Command struct {
 	// Carried so per-command renderers — the MCP adapter's per-leaf
 	// shape — can describe each command the way the live MCP server
 	// does, instead of falling back to a tool-wide string.
-	Short           string        `json:"short,omitempty"`
-	Aliases         []string      `json:"aliases,omitempty"`
-	Flags           []Flag        `json:"flags,omitempty"`
+	Short   string   `json:"short,omitempty"`
+	Aliases []string `json:"aliases,omitempty"`
+	Flags   []Flag   `json:"flags,omitempty"`
+	// Args are the command's declared positional arguments, in
+	// order (the kit/args annotation). Carried so the MCP adapter's
+	// per-leaf shape can publish them the way the live MCP server
+	// does.
+	Args []Arg `json:"args,omitempty"`
+	// UndeclaredArgs reports that the command takes positional
+	// arguments it does not declare in kit/args: renderers that
+	// publish an argument schema say so instead of guessing names.
+	UndeclaredArgs  bool          `json:"undeclared_args,omitempty"`
 	Children        []Command     `json:"children,omitempty"`
 	Contract        *Contract     `json:"contract,omitempty"`
 	Safety          *Safety       `json:"safety,omitempty"`
@@ -83,6 +92,15 @@ type Command struct {
 	ReplacedBy      string        `json:"replaced_by,omitempty"`
 	Intent          *Intent       `json:"intent,omitempty"`
 	SuggestedNext   []string      `json:"suggested_next,omitempty"`
+}
+
+// Arg describes one declared positional argument.
+type Arg struct {
+	// Name is the argument name as declared in kit/args.
+	Name string `json:"name"`
+	// Required is false for an argument declared optional (a
+	// trailing "?" in kit/args).
+	Required bool `json:"required,omitempty"`
 }
 
 // Flag describes a single CLI flag.

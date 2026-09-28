@@ -41,6 +41,12 @@ type Descriptor struct {
 	// names, so a command that declares none has an empty slice
 	// even when it accepts positionals.
 	Args []Arg
+	// UndeclaredArgs reports that the command takes positional
+	// arguments kit/args does not name: its usage line lists
+	// operands ("add <name>") and Args is empty. A surface that
+	// publishes an argument schema cannot describe them, and says
+	// so rather than guessing names.
+	UndeclaredArgs bool
 
 	// Safety is the resolved risk profile: tier, permissions,
 	// confirmation.

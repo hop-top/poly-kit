@@ -274,6 +274,7 @@ func describe(cmd *cobra.Command, path []string, root *cobra.Command, cfg *confi
 		Args:    reflectArgs(cmd),
 		Cmd:     cmd,
 	}
+	d.UndeclaredArgs = len(d.Args) == 0 && takesPositionals(cmd)
 	d.Surface = reflectSurface(cmd, root, cfg)
 	d.Output = reflectOutput(cmd)
 	d.Safety = reflectSafety(cmd)
