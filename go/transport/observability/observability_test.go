@@ -450,3 +450,34 @@ func TestServeSharesOneProviderPerConfigurationAndFlushesOnStop(t *testing.T) {
 	assert.Contains(t, out.String(), `"Name":"invoke hello"`, "stop flushed the batch")
 	assert.Contains(t, out.String(), `"Value":"tool"`, "the tool names the service")
 }
+
+// The server span records the client address kit resolved, not the
+// first X-Forwarded-For entry a client can write; the handler still
+// sees the header as sent.
+func TestHTTPSpanClientAddressIgnoresSpoofedForwardedFor(t *testing.T) {
+	rec, tp := recorder(t)
+	p := traced(t, WithTracerProvider(tp))
+
+	var seen []string
+	h := p.HTTPMiddleware("api")(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Values("X-Forwarded-For")
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/v1/commands", nil)
+	req.RemoteAddr = "192.0.2.10:5555"
+	req.Header.Add("X-Forwarded-For", "6.6.6.6, 198.51.100.1")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	assert.Equal(t, []string{"6.6.6.6, 198.51.100.1"}, seen, "the handler sees the header as sent")
+	assert.Equal(t, []string{"6.6.6.6, 198.51.100.1"}, req.Header.Values("X-Forwarded-For"), "the caller's request is untouched")
+	span := spanNamed(t, rec, "GET")
+	var client string
+	for _, kv := range span.Attributes() {
+		// client.address in the stable conventions, http.client_ip in
+		// the older ones otelhttp emits by default.
+		if kv.Key == "client.address" || kv.Key == "http.client_ip" {
+			client = kv.Value.AsString()
+		}
+		assert.NotEqual(t, "6.6.6.6", kv.Value.Emit(), "attribute %s", kv.Key)
+	}
+	assert.Equal(t, "192.0.2.10", client)
+}

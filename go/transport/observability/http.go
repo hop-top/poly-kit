@@ -1,6 +1,8 @@
 package observability
 
 import (
+	"context"
+	"net"
 	"net/http"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -52,6 +54,7 @@ func (p *Provider) HTTPMiddleware(service string) func(http.Handler) http.Handle
 	svc := attribute.NewSet(AttrService.String(service))
 	return func(next http.Handler) http.Handler {
 		counted := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			restoreForwardedFor(r)
 			r, refused := api.ObserveRefusal(r)
 			r, route := api.ObserveRoute(r)
 			if in := p.inst; in != nil {
@@ -75,7 +78,45 @@ func (p *Provider) HTTPMiddleware(service string) func(http.Handler) http.Handle
 					AttrService.String(service), AttrRefusalReason.String(code)))
 			}
 		})
-		return otelhttp.NewHandler(counted, service, opts...)
+		instrumented := otelhttp.NewHandler(counted, service, opts...)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			instrumented.ServeHTTP(w, maskForwardedFor(r))
+		})
+	}
+}
+
+type forwardedForKey struct{}
+
+// maskForwardedFor shows otelhttp the client address slot 2 resolved.
+// otelhttp records the first X-Forwarded-For entry as client.address
+// whoever sent it, and that entry is whatever the client wrote; kit
+// believes forwarding headers only from a trusted proxy and has
+// already made the client the request's RemoteAddr. The span sees an
+// X-Forwarded-For of that address alone, and [restoreForwardedFor]
+// puts the original back before the handler runs.
+func maskForwardedFor(r *http.Request) *http.Request {
+	orig, ok := r.Header[api.HeaderXForwardedFor]
+	if !ok {
+		return r
+	}
+	r = r.Clone(context.WithValue(r.Context(), forwardedForKey{}, orig))
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if host == "" {
+		r.Header.Del(api.HeaderXForwardedFor)
+	} else {
+		r.Header.Set(api.HeaderXForwardedFor, host)
+	}
+	return r
+}
+
+// restoreForwardedFor undoes [maskForwardedFor] on the request the
+// handler receives.
+func restoreForwardedFor(r *http.Request) {
+	if orig, ok := r.Context().Value(forwardedForKey{}).([]string); ok {
+		r.Header[api.HeaderXForwardedFor] = orig
 	}
 }
 
