@@ -25,6 +25,9 @@ seam for a new transport is `go/transport/transportsvc`.
 - gate a call before committing to a stream, then stream it → `Bridge.Admit`, `Admission.Stream`
 - ask a person something between the gates and the run → `Bridge.Admit`, then `Admission.Run` or `Admission.Stream`
 - answer a repeated `Idempotency-Key` from its record → `WithIdempotency(NewIdempotencyLedger(store), ttl)`; `Result.Replayed`, `Admission.Replayed`
+- ask what the permission gate would answer a caller, without running or charging → `Bridge.Verdict`
+- learn, inside a served run, who it runs for → `AdmittedMeta(cmd.Context())`
+- count calls and bytes per key over fixed windows that survive a restart → `NewUsageLedger(kvStore)`
 - toggle a leaf per surface → `Bridge.Expose` / `Bridge.Hide`, or YAML `LoadFile` / `FromConfig`
 - declare webhooks, bus bindings, schedules or sinks in YAML → `Config.WebhookMappings`, `BusBindings`, `CronSchedules`, `SinkSpecs`
 
@@ -46,6 +49,7 @@ _ = http.ListenAndServe(":8080", r)
 - Fourteen surfaces are declared: `cli`, `rest`, `ws`, `sse`, `rpc`, `mcp`, `webhook`, `bus`, `cron`, `lib`, `oauth-cb`, `signed`, `faas`, `socket`. `socket` is the Unix socket service (`cli.WithSocket`), distinct from `rpc` (ConnectRPC).
 - `kit/side-effect=destructive` blocks every remote surface unless the surface is listed in `Policy.AllowDestructiveOn`; YAML `destructive_default: deny_remote` is the conservative default.
 - `kit/auth-required` is a bridge gate on every remote surface: the leaf runs only when the transport established the caller (`Meta.Established`: a verifier accepted a credential, or the transport proves the caller, as the socket's `0600` file and the stdio spawn do), else `ErrAuthRefused`. A claimed `Meta.Caller` or a bare `Authorization` header never counts. `kit/requires-confirmation` gates every surface through the same `Policy`.
+- Discovery answers per caller: `MountProjection`'s `GET /v1/commands` from a request an `api.Auth` verified asks `Bridge.Verdict` for each served command and lists a refusal as `invocable: false` with `insufficient-scope` or `permission-denied`; an anonymous request gets the shared listing. `Bridge.Verdict` asks the `PermissionFunc` on a `ProbeContext`, which must charge nothing.
 - Webhook mappings targeting auth-required leaves with `AuthNone` are refused at mount; `WebhookAuth.Verify` runs before template execution.
 - Signed URLs carry single-use nonces, an expiry, and the exact `Invocation` baked into the token; `AuthRequired` and `RequiresConfirmation` are skipped, the destructive ceiling still applies.
 - Runners: `InProcessRunner` (shared tree, serialized), `InProcessRunner` with `WithRootFactory` (tree per invocation, parallel), `SubprocessRunner` (process per invocation, process-group cancellation on Unix).

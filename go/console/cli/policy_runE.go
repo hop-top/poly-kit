@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/cli/policy"
 	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/transport/cmdsurface"
 )
 
 // Policy globals. Registered automatically on the root in
@@ -170,6 +171,27 @@ func (r *Root) newPolicyEngine(cmd *cobra.Command) (*policy.Engine, error) {
 	return policy.NewEngine(p, maxOps), nil
 }
 
+// startsServices reports whether cmd is the root's serve command. Its
+// --policy names the policy the served surfaces enforce on the calls
+// they carry; it does not gate the operator's act of starting them,
+// which a policy refusing its write tier would otherwise refuse.
+func (r *Root) startsServices(cmd *cobra.Command) bool {
+	return r.Cmd != nil && cmd.Parent() == r.Cmd && cmd.Name() == "serve"
+}
+
+// runCaller is the caller a served run executes for: the identity the
+// transport established for the invocation the bridge admitted, so
+// the policy's caller rules answer inside the command exactly as they
+// answered at the bridge's permission gate. nil on the CLI and for a
+// served caller nobody established.
+func runCaller(cmd *cobra.Command) *policy.Caller {
+	meta, ok := cmdsurface.AdmittedMeta(cmd.Context())
+	if !ok {
+		return nil
+	}
+	return policyCaller(meta)
+}
+
 // renderPolicyError writes ce to cmd's stderr in the active --format
 // and silences cobra so the envelope isn't double-printed. Mirrors
 // the post-RunE error_render path so policy failures look identical
@@ -276,8 +298,8 @@ func (r *Root) wrapPolicyRunE(
 		// Policy gate first — refusals here aren't bypassed by
 		// --confirm=yes: a policy refusal is final.
 		var policyConfirm bool
-		if hasSE {
-			allowed, requireConfirm, reason := engine.Authorize(cmd)
+		if hasSE && !r.startsServices(cmd) {
+			allowed, requireConfirm, reason := engine.AuthorizeFor(cmd, runCaller(cmd))
 			if !allowed {
 				return renderPolicyError(cmd,
 					output.UnauthorizedError(reason))

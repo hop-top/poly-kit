@@ -110,6 +110,16 @@ type ProjectionConfig struct {
 	// server's owner closes this when it begins to stop. Nil never
 	// fires.
 	Stopping <-chan struct{}
+	// Personalize, when set, is asked on every discovery request for
+	// the verdicts of the caller the request carries. It returns nil
+	// when the request carries no caller of its own — nobody
+	// established one — and the shared listing is served. Otherwise
+	// it returns a function naming, for a command the shared listing
+	// marks invocable, the reason this caller may not run it ("" when
+	// it may); the listing served to the request then marks those
+	// commands non-invocable with that reason. Routes are unchanged:
+	// every call still meets its gates.
+	Personalize func(r *http.Request) func(CommandDescriptor) string
 }
 
 // MountCommandProjection registers the projected command routes and

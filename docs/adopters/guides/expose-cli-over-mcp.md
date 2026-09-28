@@ -181,8 +181,12 @@ exactly what the REST projection withholds at mount — interactive,
 management-only (kit's reserved verbs such as `status`) and
 self-hosting commands, a destructive command `Policy` does not permit
 on `mcp`, and a command the permission gate refuses for every caller.
-A call naming a withheld tool is an unknown tool. Listing is advisory;
-every call still passes the bridge's gates.
+A call naming a withheld tool is an unknown tool. A client whose
+identity the service established — verified by `Config.Auth` over
+HTTP, the spawning peer over stdio — also gets its own list: a tool
+the permission gate would refuse it (a missing `kit/permissions` scope,
+a `--policy` caller rule, your `cli.WithPermission` decision) is left
+off. Listing is advisory; every call still passes the bridge's gates.
 
 | Gate | Over HTTP | Over stdio |
 |------|-----------|------------|

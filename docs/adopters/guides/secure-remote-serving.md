@@ -612,23 +612,32 @@ request claimed: a decision that trusts `Meta.Caller` there is
 trusting the caller's word. Decide on what the transport verified, or
 give the socket an authenticator.
 
-Discovery does not change for a caller-specific refusal. `GET
-/v1/commands` cannot know who will call, so `widget purge` stays
-listed as invocable and the gates answer per call. A command your
-decision refuses **for everyone** is different: return
-`CallerIndependent: true` and discovery withholds it at mount with
-the reason `permission-denied`, exactly as it withholds an
-interactive command:
+Discovery answers for the caller who asks. `GET /v1/commands` from a
+request your `AuthFunc` verified lists what that caller may run: bob,
+lacking `widgets:admin`, sees
 
 ```json
-{"name": "widget purge", "invocable": false, "reason": "permission-denied"}
+{"name": "widget purge", "invocable": false, "reason": "insufficient-scope"}
 ```
+
+and a command your decision refuses him is listed with the reason
+`permission-denied`. The MCP tool list leaves such tools off for him.
+The listing asks the same gates a call would, charges nothing, and is
+advisory: every call still meets every gate.
+
+A request nobody verified — a loopback listener without `Auth` — gets
+the shared listing, which cannot know who will call: a caller-specific
+refusal leaves the command listed as invocable. A command your
+decision refuses **for everyone** is different: return
+`CallerIndependent: true` and the shared listing withholds it at mount
+with the reason `permission-denied`, exactly as it withholds an
+interactive command.
 
 The tool's policy engine is wired into the same gate, between the
 scope check and your decision, and naming one is what satisfies the
 second exposure gate from step 2. A `--policy` that refuses a
-side-effect class refuses it on every surface for every caller, before
-your decision is asked, and discovery reflects it the same way:
+side-effect class refuses it on every surface, before your decision is
+asked, and discovery reflects it the same way:
 
 ```console
 $ mytool serve api --policy=readonly
@@ -638,6 +647,56 @@ $ curl -s http://127.0.0.1:8080/v1/commands | jq '.commands[] | select(.name=="w
 ```json
 {"name": "widget purge", "side_effect": "write", "invocable": false, "reason": "permission-denied"}
 ```
+
+A class is refused by its legacy name or its exact tier: `write: []`
+refuses `write`, `write-local` and `write-shared` commands alike.
+
+#### Different rules for different callers
+
+A policy applies the same rules to everyone until you give it a
+`callers` section. Each rule names who it is for — a principal, a
+tenant, a scope the caller's credential holds, any of them, as globs —
+and answers for the side-effect classes it declares. The first rule
+that matches a caller answers; the policy's own `allow` answers the
+rest, and answers every caller nobody verified.
+
+```yaml
+# ~/.config/mytool/policies/team.yaml
+name: team
+allow:
+  write: []                 # nobody writes by default
+  destructive: []
+callers:
+  - principal: "svc-*"      # service accounts write, 100 calls an hour
+    allow:
+      write: ["*"]
+    max_ops: 100
+    window: 1h
+  - scope: widgets:admin    # holders of the admin scope may purge
+    allow:
+      write: ["*"]
+      destructive: ["widget purge"]
+```
+
+```console
+$ mytool serve api --policy=team
+```
+
+`max_ops` gives each matching principal, per tenant, a budget of write
+and destructive calls per window. It is counted in
+`$XDG_STATE_HOME/mytool/usage.db`, so restarting the server does not
+reset it; pass `cli.WithUsageStore(store)` to count in a store several
+instances share. A caller who has spent it is refused until the window
+resets:
+
+```json
+{"status":403,"code":"permission_denied","message":"api: permission denied: cmdsurface: permission denied: widget add on rest: policy: max_ops budget of 100 per 1h0m0s spent; resets at 2026-09-28T15:00:00Z"}
+```
+
+The rule decides inside the command too: the served run knows who it
+runs for, so the `--policy` check a command makes asks for the same
+caller. On the CLI, where there is no established caller, the policy's
+own rules apply, and `max_ops` stays a per-invocation cap.
 
 #### Write permission rules in the policy file
 
@@ -1468,7 +1527,8 @@ observability](../reference/served-observability.md)).
 | `cli.WithAuditCommand()` | not mounted | Mounts `<tool> audit verify` (exit 71 `TAMPER_DETECTED` on a broken chain); management-only when served. |
 | `cli.WithObservability(p)` | none | Links a tracing and metrics provider; `services.<svc>.tracing.enabled` / `.metrics.enabled` (or `services.all.*`) turn it on. |
 | `services.api.metrics.scrape.enabled` | `false` | Answer a Prometheus scrape at `/metrics`, after the Host check, before auth. Beyond loopback needs `services.api.metrics.scrape.allow_remote: true`. |
-| `--policy=<name>` | none | The tool's policy engine, applied to remote calls for every caller. Naming one permits a non-loopback address. |
+| `--policy=<name>` | none | The tool's policy engine, applied to remote calls; its `callers` section answers per caller. Naming one permits a non-loopback address. |
+| `cli.WithUsageStore(store)` | `$XDG_STATE_HOME/<tool>/usage.db` | Where the `max_ops` budgets of a policy's caller rules are counted. |
 | `services.api.host_check.enabled` | `true` | Refuse a `Host` the listener does not answer for (`403`, `host_rejected`). |
 | `services.api.host_check.allow` | `[]` | Hosts accepted beyond the listener's own; `name` or `name:port`. Required for a wildcard bind to check anything. |
 | `services.api.origin_check.enabled` | `true` | Refuse cross-origin browser writes (`403`, `origin_rejected`). |
@@ -1529,8 +1589,6 @@ Absence here is deliberate; each of these belongs somewhere else:
 - **A default policy.** Kit ships none and infers none. A tool with
   no `--policy` is unbounded, which is why serving beyond loopback
   makes you either name one or accept the absence by name.
-- **A per-caller discovery listing.** Discovery is one document for
-  every caller; caller-specific verdicts are given per call.
 
 ## Related pages
 

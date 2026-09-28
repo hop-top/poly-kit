@@ -132,7 +132,9 @@ func (b *Bridge) armDeadline(ctx context.Context, leaf *Leaf) (_ context.Context
 // a call waits for a slot under its deadline, and one that outwaits
 // it returns [ErrDeadlineExceeded] without having run.
 func (a *Admission) runBounded(ctx context.Context) (Result, error) {
-	runCtx, cancel, bound := a.b.armDeadline(ctx, a.leaf)
+	// The command sees the Meta the gates admitted ([AdmittedMeta]),
+	// whichever path runs it.
+	runCtx, cancel, bound := a.b.armDeadline(withAdmitted(ctx, a.inv.Meta), a.leaf)
 	defer cancel()
 	release, err := a.acquire(runCtx)
 	if err != nil {

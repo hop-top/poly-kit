@@ -739,24 +739,51 @@ of any of them.
   default permits everything.
 - `cli.WithPermission` installs the adopter's decision on the api,
   socket, mcp, and rpc services. It composes after the tool's policy engine:
-  a `--policy` that refuses a side-effect class refuses it for every
-  caller, on every surface, before the adopter's decision is asked —
-  the same `Engine.Authorize` the CLI runs. The policy's `permissions:`
-  rules sit between the two (see slot 6 under
+  a `--policy` that refuses a side-effect class refuses it on every
+  surface, before the adopter's decision is asked — the same
+  `Engine.AuthorizeFor` the CLI runs, for the caller the transport
+  established. The policy's `callers` section answers per caller: the
+  first rule matching the established principal, tenant, or a scope
+  its credential holds answers for the classes it declares, and the
+  policy's own `allow` for the rest. An unestablished caller is
+  answered by the policy's own rules alone, and a transport-established
+  caller holds every scope, as at the scope check. The command runs
+  under the same answer: the in-process run sees the admitted `Meta`
+  (`cmdsurface.AdmittedMeta`), so the `--policy` check inside the
+  command asks for the same caller. The policy's `permissions:` rules
+  sit between the policy and the adopter's decision (see slot 6 under
   [Middleware](#gate-order-on-the-invocation-plane)).
 - A `PermissionFunc` reads the invocation's args and flags from its
   context (`cmdsurface.InvocationFromContext`); a mount-time query
   carries none.
+- A caller rule with `max_ops` gives each matching principal, per
+  tenant, a budget of admitted write and destructive calls over fixed
+  `window`s (default one hour, aligned to the epoch), counted on
+  `storage/kv` so a restart resets nothing: `$XDG_STATE_HOME/<tool>/usage.db`
+  by default, or the store `cli.WithUsageStore` names. The permission
+  gate charges it and refuses a spent budget `permission_denied`,
+  naming when the window resets. A store that cannot be read refuses
+  the call.
 - A refusal returns `ErrPermissionDenied` with a stable reason. It
   is `403 permission_denied` over REST and `DENIED` over the socket,
   distinct from the destructive ceiling's `403 destructive_blocked`
   and `BLOCKED`, because different people fix them. Over RPC both
   are `permission_denied`, told apart by the message's sentinel.
-- Discovery MUST keep a command invocable when the verdict depends
-  on the caller; a per-caller answer cannot be pre-computed. A
-  decision marked `CallerIndependent` MAY be reflected at mount with
-  the reason `permission-denied`, owned by `cmdsurface`, beside the
-  reflector's own vocabulary.
+- The shared listing — the one served to a request whose caller
+  nobody established — MUST keep a command invocable when the verdict
+  depends on the caller; it cannot know who will call. A decision
+  marked `CallerIndependent` MAY be reflected at mount with the reason
+  `permission-denied`, owned by `cmdsurface`, beside the reflector's
+  own vocabulary. The policy engine marks a refusal caller-independent
+  only when no caller rule could lift it.
+- A listing requested by a caller the transport established MUST
+  reflect slot 6 for that caller — the scope check, the policy, the
+  `PermissionFunc` — asked as a probe (`cmdsurface.Bridge.Verdict`,
+  `cmdsurface.IsProbe`) that runs, charges and audits nothing. Over
+  REST a command it refuses is listed `invocable: false` with the
+  reason `insufficient-scope` or `permission-denied`, and the listing
+  is `Cache-Control: private`; the MCP tool list leaves it off. Routes
+  are not affected: every call still meets every gate.
 
 ### Audit
 
@@ -921,7 +948,11 @@ service withholds, the way the REST projection withholds at mount:
 - a **destructive** leaf `Policy` does not permit on `mcp`
   (`Policy.AllowDestructiveOn` must name `cmdsurface.SurfaceMCP`);
 - a leaf the permission gate refuses **for every caller**
-  (`CallerIndependent`).
+  (`CallerIndependent`);
+- for a `tools/list` whose caller the transport established — over
+  HTTP one `Config.Auth` verified, over stdio the spawning peer — a
+  leaf the permission gate refuses **that caller**, asked as the
+  [Permission](#permission) listing rule says.
 
 The two catalogs therefore agree: a command REST discovery marks
 `invocable: false` is not an MCP tool, and every command REST mounts
@@ -1337,7 +1368,9 @@ What each slot does:
   its request claimed. A `transport`-established caller holds the
   owner's authority and is not asked: whoever can speak on an
   owner-only socket or a spawned process's pipes could run the
-  command from the CLI, where no scope is asked for.
+  command from the CLI, where no scope is asked for. The `--policy`
+  engine answers for the established caller, and may charge a caller
+  rule's `max_ops` budget (see [Permission](#permission)).
 - **8.** A hit answers from a store and runs nothing: an idempotency
   replay for a call carrying a key the store has seen from the same
   principal, or a read-tier cache hit for a leaf declaring

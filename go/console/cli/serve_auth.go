@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"hop.top/kit/go/console/cli/policy"
 	"hop.top/kit/go/console/output"
@@ -32,6 +33,9 @@ type serveAuthState struct {
 	// bridge. Not exposed: tests use it to install a stub Runner
 	// behind the real serve path.
 	bridgeOpts []cmdsurface.Option
+	// usage is the ledger policy budgets are counted in; see
+	// serve_usage.go.
+	usage usageState
 }
 
 // WithPermission installs the permission gate every kit-shipped
@@ -47,8 +51,9 @@ type serveAuthState struct {
 // verified credential holds every scope it names, and is otherwise
 // refused insufficient_scope (see [cmdsurface.ErrInsufficientScope]).
 // Then the tool's policy engine: a --policy that refuses a command's
-// side-effect class refuses it here too, for every caller. Then the
-// policy's permissions: rules, when an evaluator is wired
+// side-effect class refuses it here too — for every caller, or, under
+// the policy's callers section, for the callers its rules name. Then
+// the policy's permissions: rules, when an evaluator is wired
 // ([WithPermissionRules]). fn is asked last, for whatever else this
 // caller may not do — a suspended account, a tenant boundary, a
 // decision that needs your own data.
@@ -141,19 +146,24 @@ func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
 }
 
 // servePermission builds the permission gate the services share. The
-// policy engine's verdict comes first and is caller-independent: it
-// answers the same question wrapPolicyRunE asks on the CLI, from the
-// same --policy, so a command the policy refuses is refused on every
-// surface for everyone and discovery can say so at mount. The policy's
-// permissions: rules run second and the adopter's gate last, for the
-// caller-specific answer. The first refusal stands: a later decider is
-// never asked about a call an earlier one refused.
+// policy engine's verdict comes first: it answers the same question
+// wrapPolicyRunE asks on the CLI, from the same --policy, for the
+// caller the transport established (see permissionFromEngine). The
+// policy's permissions: rules run second and the adopter's gate last,
+// for the caller-specific answer. The first refusal stands: a later
+// decider is never asked about a call an earlier one refused.
 func (r *Root) servePermission() (cmdsurface.PermissionFunc, error) {
 	engine, err := r.newPolicyEngine(r.Cmd)
 	if err != nil {
 		return nil, err
 	}
-	gates := []cmdsurface.PermissionFunc{permissionFromEngine(engine)}
+	var ledger *cmdsurface.UsageLedger
+	if engine.Policy().HasBudgets() {
+		if ledger, err = usageLedgerOf(r); err != nil {
+			return nil, fmt.Errorf("policy %q: %w", engine.Policy().Name, err)
+		}
+	}
+	gates := []cmdsurface.PermissionFunc{permissionFromEngine(engine, ledger)}
 	rules, err := r.servePermissionRules(engine.Policy())
 	if err != nil {
 		return nil, err
@@ -207,30 +217,87 @@ func refuseAll(err error) cmdsurface.PermissionFunc {
 }
 
 // permissionFromEngine adapts the policy engine to the bridge's gate.
-// Engine.Authorize reads only the command's annotations and the
-// loaded policy, so its verdict holds for every caller; the decision
-// says so, which is what lets discovery withhold the command at mount
-// rather than mount a route that can only refuse.
+//
+// The engine answers for the caller the transport established
+// (policyCaller): the first of the policy's caller rules matching it,
+// then the policy's own rules. A refusal no caller rule could lift
+// holds for every caller, and the decision says so, which is what lets
+// discovery withhold the command at mount rather than mount a route
+// that can only refuse; any other refusal is the caller's own.
+//
+// A caller rule with max_ops charges each admitted write or
+// destructive call against the caller's budget in ledger, and refuses
+// once the window's budget is spent. A probe (cmdsurface.IsProbe)
+// reads the budget without charging it. A ledger that cannot be read
+// or written refuses: a budget nobody can count is not enforced by
+// admitting everything.
 //
 // The engine is guarded by a mutex because it is documented as
 // unsafe for concurrent use, and a transport service answers
 // requests concurrently.
-func permissionFromEngine(engine *policy.Engine) cmdsurface.PermissionFunc {
+func permissionFromEngine(engine *policy.Engine, ledger *cmdsurface.UsageLedger) cmdsurface.PermissionFunc {
 	var mu sync.Mutex
-	return func(_ context.Context, _ cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
+	return func(ctx context.Context, meta cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
 		if engine == nil || leaf == nil || leaf.Cmd == nil {
 			return cmdsurface.PermissionDecision{Allowed: true}
 		}
+		caller := policyCaller(meta)
 		mu.Lock()
-		allowed, _, reason := engine.Authorize(leaf.Cmd)
+		allowed, _, reason := engine.AuthorizeFor(leaf.Cmd, caller)
+		everyone := !allowed && engine.RefusedForEveryone(leaf.Cmd)
+		budget, budgeted := engine.BudgetFor(caller)
 		mu.Unlock()
-		if allowed {
-			return cmdsurface.PermissionDecision{Allowed: true}
+		if !allowed {
+			return cmdsurface.PermissionDecision{
+				Reason:            reason,
+				CallerIndependent: everyone,
+			}
 		}
-		return cmdsurface.PermissionDecision{
-			Reason:            reason,
-			CallerIndependent: true,
+		if budgeted && ledger != nil && policy.Mutating(leaf.Cmd) {
+			return chargeBudget(ctx, ledger, budget)
 		}
+		return cmdsurface.PermissionDecision{Allowed: true}
+	}
+}
+
+// chargeBudget counts one call against budget, or, on a probe, only
+// checks there is one left.
+func chargeBudget(ctx context.Context, ledger *cmdsurface.UsageLedger, b policy.Budget) cmdsurface.PermissionDecision {
+	var (
+		u   cmdsurface.Usage
+		ok  bool
+		err error
+	)
+	if cmdsurface.IsProbe(ctx) {
+		u, err = ledger.Usage(ctx, b.Key, b.Window)
+		ok = u.Ops < int64(b.MaxOps)
+	} else {
+		u, ok, err = ledger.Take(ctx, b.Key, b.Window, int64(b.MaxOps))
+	}
+	switch {
+	case err != nil:
+		return cmdsurface.PermissionDecision{Reason: "policy: max_ops budget unavailable: " + err.Error()}
+	case !ok:
+		return cmdsurface.PermissionDecision{Reason: fmt.Sprintf(
+			"policy: max_ops budget of %d per %s spent; resets at %s",
+			b.MaxOps, b.Window, u.Reset.UTC().Format(time.RFC3339))}
+	}
+	return cmdsurface.PermissionDecision{Allowed: true}
+}
+
+// policyCaller is the policy's view of the caller meta describes: nil
+// unless the transport established it. A transport-established caller
+// holds the owner's authority; a verified one holds its credential's
+// scopes.
+func policyCaller(meta cmdsurface.Meta) *policy.Caller {
+	if !meta.Authenticated() {
+		return nil
+	}
+	return &policy.Caller{
+		Principal: meta.Caller,
+		Tenant:    meta.Tenant,
+		Scopes:    meta.Scopes(),
+		Owner:     meta.Established == cmdsurface.EstablishedTransport,
 	}
 }
 

@@ -156,3 +156,13 @@ func writeInsufficientScope(w http.ResponseWriter, err error) {
 	scopes, _ := RequiredScopes(err)
 	api.WriteInsufficientScope(w, scopes, err.Error())
 }
+
+// Scopes returns the scopes the caller's verified credential holds:
+// Extra["scopes"] when [Meta.Established] is [EstablishedVerified],
+// nil otherwise. A scopes entry on a call nobody verified is a claim.
+func (m Meta) Scopes() []string {
+	if m.Established != EstablishedVerified {
+		return nil
+	}
+	return splitCSV(m.Extra[scopesExtraKey])
+}

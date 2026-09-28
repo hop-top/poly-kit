@@ -841,7 +841,7 @@ func TestSocketAuthenticatorRefusalIsAudited(t *testing.T) {
 
 // --- Central permission enforcement ------------------------------------
 
-func TestRESTPermissionDeniedIs403AndDiscoveryUnchanged(t *testing.T) {
+func TestRESTPermissionDeniedIs403AndDiscoveryPerCaller(t *testing.T) {
 	rec := &auditRecorder{}
 	r := authRoot(
 		t,
@@ -877,17 +877,17 @@ func TestRESTPermissionDeniedIs403AndDiscoveryUnchanged(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode, string(body))
 	assert.Contains(t, string(body), "reset")
 
-	// A caller-specific verdict cannot be pre-computed: discovery
-	// keeps listing the command as invocable, for bob as for alice.
-	for _, who := range []string{"alice", "bob"} {
+	// Discovery answers for the verified caller: alice's listing
+	// serves the command, bob's names the scope refusal he would meet.
+	for who, want := range map[string]string{"alice": "", "bob": cmdsurface.ReasonInsufficientScope} {
 		resp, body = get(t, base+"/v1/commands", map[string]string{"Authorization": "Bearer " + who})
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		var doc api.DiscoveryDocument
 		require.NoError(t, json.Unmarshal(body, &doc))
 		for _, e := range doc.Commands {
 			if e.Name == "admin reset" {
-				assert.True(t, e.Invocable, "%s: caller-specific denial must not hide the command", who)
-				assert.Empty(t, e.Reason)
+				assert.Equal(t, want == "", e.Invocable, who)
+				assert.Equal(t, want, e.Reason, who)
 			}
 		}
 	}

@@ -181,7 +181,39 @@ func buildProjection(b *Bridge, cfg projectionConfig) api.ProjectionConfig {
 		pcfg.Descriptors = append(pcfg.Descriptors,
 			descriptorToProjection(d, b, leaves[d.PathKey()]))
 	}
+	pcfg.Personalize = callerListing(b, leaves)
 	return pcfg
+}
+
+// callerListing is the projection's [api.ProjectionConfig.Personalize]:
+// for a request whose caller the router's [api.Auth] verified, each
+// command the shared listing serves is re-asked of the permission gate
+// (slot 6) for that caller, through [Bridge.Verdict], so the caller
+// sees what it may run. An anonymous request gets the shared listing.
+func callerListing(b *Bridge, leaves map[string]*Leaf) func(*http.Request) func(api.CommandDescriptor) string {
+	return func(r *http.Request) func(api.CommandDescriptor) string {
+		meta := metaFromRequest(api.RequestMetaFrom(r))
+		if !meta.Authenticated() {
+			return nil
+		}
+		ctx := r.Context()
+		return func(d api.CommandDescriptor) string {
+			return verdictReason(b.Verdict(ctx, meta, leaves[d.PathKey()]))
+		}
+	}
+}
+
+// verdictReason is the discovery reason of a [Bridge.Verdict]
+// refusal, "" for none.
+func verdictReason(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, ErrInsufficientScope):
+		return ReasonInsufficientScope
+	default:
+		return ReasonPermissionDenied
+	}
 }
 
 // MountProjection mounts b's command projection on r: one route per

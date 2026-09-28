@@ -31,6 +31,9 @@ func Load(path string) (Policy, error) {
 	if err := ValidatePermissionRules(p.Permissions); err != nil {
 		return Policy{}, fmt.Errorf("policy: parse %s: %w", path, err)
 	}
+	if err := p.validate(); err != nil {
+		return Policy{}, fmt.Errorf("policy: %s: %w", path, err)
+	}
 	if p.Name == "" {
 		// Default Name to the file's stem so audit output has a
 		// human-friendly handle even when the YAML omits "name:".

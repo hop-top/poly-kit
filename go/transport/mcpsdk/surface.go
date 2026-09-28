@@ -267,6 +267,7 @@ func New(b *cmdsurface.Bridge, opts ...Option) (*Surface, error) {
 		registered: make(map[string]bool),
 	}
 	s.Sync()
+	s.srv.AddReceivingMiddleware(s.callerToolList)
 	if tb != nil {
 		if err := tb.ext.Attach(s.srv); err != nil {
 			return nil, fmt.Errorf("mcpsdk: attaching tasks extension: %w", err)

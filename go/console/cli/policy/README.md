@@ -12,7 +12,8 @@ runtime breaker policy belongs to `hop.top/kit/go/runtime/policy`.
 - wire enforcement into an adopter root → `cli.WithPolicy(...)` in `hop.top/kit/go/console/cli`; it constructs the Engine
 - read a policy file by path → `policy.Load(path)`
 - read `$XDG_CONFIG_HOME/<tool>/policies/<name>.yaml` → `policy.LoadNamed(tool, name)` or `policy.Resolve(tool, name)`
-- gate a command before RunE → `engine.Authorize(cmd)`
+- gate a command before RunE → `engine.Authorize(cmd)`; for a served caller → `engine.AuthorizeFor(cmd, caller)`
+- read a served caller's budget, or whether anyone may run cmd → `engine.BudgetFor(caller)`, `engine.RefusedForEveryone(cmd)`
 - charge a successful write or destructive run against the budget → `engine.RecordOp(cmd)`
 
 ## Quick start
@@ -40,39 +41,39 @@ allowed, confirm, _ := e.Authorize(del)
 fmt.Println("delete:", allowed, confirm)
 allowed, _, reason := e.Authorize(drop)
 fmt.Println("drop:", allowed, reason)
-
-fmt.Println(e.RecordOp(del))
 fmt.Println(errors.Is(e.RecordOp(del), policy.ErrMaxOpsExceeded))
 ```
 
 ## Contract
 
-- YAML shape: `name` (default: file stem), `allow` (class → verb globs),
-  `max_ops`, `require_confirm` (path globs), `permissions` (served-call
-  rules; `Load` checks their shape, `celpermission` compiles them).
-- `allow` semantics: no map at all permits everything; a class listed
-  with an empty list refuses that class categorically; a class absent
-  from the map is permitted. Read-tagged and untagged commands always
-  pass.
-- Verb = command path minus the root name. Patterns match via
-  `path.Match`; `*` matches all; `prefix:*` matches `prefix` or `prefix <sub...>`.
-- `RecordOp` counts every call and returns `ErrMaxOpsExceeded` once the
-  count exceeds `MaxOps`; 0 means unlimited. `NewEngine(p, n)` with
-  n > 0 overrides `p.MaxOps`.
-- cli maps `ErrMaxOpsExceeded` to `output.RateLimitedError`, exit 64.
-- Engine is per-invocation, not concurrency-safe. A nil or zero Engine
-  default-permits and counts without a cap.
-- `SideEffect` values must equal `cli.SideEffect*`: `read`, `write`,
-  `destructive`, `interactive`.
+- YAML: `name` (default: file stem), `allow` (class → verb globs),
+  `max_ops`, `require_confirm` (path globs), `callers`, `permissions`
+  (served-call rules, `celpermission` compiles them). Unknown top-level
+  keys are ignored; `Load` refuses a malformed `callers`/`permissions`.
+- `allow`: no map permits everything; a class with an empty list is
+  refused; an absent class is permitted; read and untagged always pass.
+  An expanded tier (`write-shared`, …) is answered by its own entry,
+  else its legacy class (`write`, `destructive`).
+- `callers`: rules matching `principal`, `tenant` (globs; `*` matches
+  anything) and `scope` (held by the credential; the owner holds all),
+  with `allow`, `max_ops`, `window` (default `1h`). The first match
+  answers the classes it declares, the policy's `allow` the rest; a nil
+  `Caller` (CLI, unestablished call) gets the policy's own rules.
+  `BudgetFor` keys a budget by policy, rule, principal and tenant; cli
+  counts it on a `cmdsurface.UsageLedger`.
+- Verb = command path minus root; `path.Match` globs; `prefix:*` matches `prefix` and below.
+- `RecordOp` returns `ErrMaxOpsExceeded` once the count exceeds
+  `MaxOps` (0 = unlimited; `NewEngine(p, n>0)` overrides); cli maps it
+  to `output.RateLimitedError`, exit 64.
+- Engine is per-invocation, not concurrency-safe; a nil or zero Engine
+  default-permits. `SideEffect` values equal `cli.SideEffect*`.
 
 ## Neighbours
 
-- `hop.top/kit/go/console/cli`: `WithPolicy`, RunE middleware, `--max-ops`
-  and `--confirm` flags, typed-token confirmation.
-- `hop.top/kit/go/console/output`: `RateLimitedError`, `ExitRateLimited`.
-- `hop.top/kit/go/core/scope`: path allow/deny, a separate policy.
-- `hop.top/kit/go/runtime/policy`, `hop.top/kit/go/core/breaker/policy`:
-  breaker policy, a separate engine.
+- `hop.top/kit/go/console/cli`: `WithPolicy`, RunE middleware, `--max-ops`,
+  `--confirm`, typed tokens; `output`: `RateLimitedError`.
+- `hop.top/kit/go/core/scope`, `go/runtime/policy`, `go/core/breaker/policy`:
+  path allow/deny and breaker policy, separate engines.
 
 ## See also
 

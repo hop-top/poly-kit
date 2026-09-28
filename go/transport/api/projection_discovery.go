@@ -131,9 +131,37 @@ func BuildDiscoveryDocument(cfg ProjectionConfig) DiscoveryDocument {
 }
 
 // discoveryHandler serves the discovery document.
+//
+// With [ProjectionConfig.Personalize] set, a request carrying a caller
+// of its own is served that caller's listing, marked private so no
+// shared cache keeps it for another.
 func discoveryHandler(cfg ProjectionConfig) http.HandlerFunc {
 	doc := BuildDiscoveryDocument(cfg)
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if cfg.Personalize != nil {
+			if verdict := cfg.Personalize(r); verdict != nil {
+				w.Header().Set("Cache-Control", "private")
+				w.Header().Add("Vary", "Authorization")
+				JSON(w, http.StatusOK, BuildDiscoveryDocument(personalized(cfg, verdict)))
+				return
+			}
+		}
 		JSON(w, http.StatusOK, doc)
 	}
+}
+
+// personalized returns cfg with every invocable descriptor verdict
+// refuses marked non-invocable with verdict's reason.
+func personalized(cfg ProjectionConfig, verdict func(CommandDescriptor) string) ProjectionConfig {
+	descs := make([]CommandDescriptor, len(cfg.Descriptors))
+	for i, d := range cfg.Descriptors {
+		if d.Invocable {
+			if reason := verdict(d); reason != "" {
+				d.Invocable, d.Reason = false, reason
+			}
+		}
+		descs[i] = d
+	}
+	cfg.Descriptors = descs
+	return cfg
 }

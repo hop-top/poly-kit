@@ -54,12 +54,21 @@ const (
 //     A served tool compiles them into its permission gate, where
 //     they run after the scope check and Allow, and can only narrow
 //     (see PermissionRule).
+//   - Callers: per-caller rules for served surfaces, a section of its
+//     own (see [CallerRule]). A policy without it applies the same
+//     rules to every caller, as it always has.
 type Policy struct {
 	Name           string                  `yaml:"name"`
 	Allow          map[SideEffect][]string `yaml:"allow"`
 	MaxOps         int                     `yaml:"max_ops"`
 	RequireConfirm []string                `yaml:"require_confirm"`
 	Permissions    []PermissionRule        `yaml:"permissions"`
+
+	// Callers are the per-caller rules, consulted for a caller whose
+	// identity the transport established. The first rule that
+	// matches the caller answers for the side-effect classes it
+	// declares and may set a budget; the fields above answer the rest.
+	Callers []CallerRule `yaml:"callers,omitempty"`
 }
 
 // PermissionRule is one entry of a policy's `permissions:` block: a

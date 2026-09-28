@@ -696,7 +696,7 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 		return err
 	}
 	ctx = a.b.auditContext(ctx, a.leaf)
-	runCtx, cancel, bound := a.b.armDeadline(ctx, a.leaf)
+	runCtx, cancel, bound := a.b.armDeadline(withAdmitted(ctx, a.inv.Meta), a.leaf)
 	defer cancel()
 	release, qerr := a.acquire(runCtx)
 	if qerr != nil {
@@ -797,7 +797,9 @@ func InvocationFromContext(ctx context.Context) (Invocation, bool) {
 // carries only the surface, and honor a refusal there only when the
 // decision is CallerIndependent — a caller-specific verdict cannot
 // be known before a caller exists. At mount time the context carries
-// no invocation ([InvocationFromContext] reports false).
+// no invocation ([InvocationFromContext] reports false). A listing
+// made for a caller the transport established asks [Bridge.Verdict]
+// instead.
 func (b *Bridge) Permission(ctx context.Context, meta Meta, leaf *Leaf) PermissionDecision {
 	if leaf == nil {
 		return PermissionDecision{Allowed: true}
