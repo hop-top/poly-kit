@@ -786,9 +786,9 @@ long, with a validator the client can revalidate against.
 
 ```go
 list := &cobra.Command{
-	Use:         "list",
-	Annotations: map[string]string{"kit/side-effect": "read"},
-	RunE:        listWidgets,
+    Use:         "list",
+    Annotations: map[string]string{"kit/side-effect": "read"},
+    RunE:        listWidgets,
 }
 cli.SetCacheTTL(list, 30*time.Second) // kit/cache-ttl: 30s
 ```

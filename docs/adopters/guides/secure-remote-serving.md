@@ -1652,7 +1652,7 @@ observability](../reference/served-observability.md)).
 | `services.<svc>.auth.mode` | unset | `mtls`: the client certificate is the credential; `jwt`, `jwks`, `oidc`: a verified bearer token is. Counts as authentication beyond loopback, and replaces the code `Auth`. |
 | `services.<svc>.auth.jwt.public_key_files` | unset | PEM public keys trusted beside the tool's identity key under `jwt`. |
 | `services.<svc>.auth.jwks.url` / `auth.oidc.issuer` | unset | The key set, or the provider whose discovery yields it; `https` (or loopback `http`). |
-| `services.<svc>.auth.apikey.backend`, `.path` | `sqlite`, `<data dir>/<tool>/apikeys.db` | The store `auth.mode: apikey` checks keys against, created owner-only (file `0600`, directory `0700`); `cli.WithAPIKeys` mounts `token key create|list|revoke`. Under `badger` the running service locks the store: stop it before `token key`. |
+| `services.<svc>.auth.apikey.backend`, `.path` | `sqlite`, `<data dir>/<tool>/apikeys.db` | The store `auth.mode: apikey` checks keys against, created owner-only (file `0600`, directory `0700`); `cli.WithAPIKeys` mounts `token key create`, `list` and `revoke`. Under `badger` the running service locks the store: stop it before `token key`. |
 | `services.<svc>.auth.<mode>.audience`, `.issuer`, `.clock_skew`, `.refresh`, `.tenant_claim` | audience required under `jwks`/`oidc`; skew `1m`; refresh `1h`; tenant claim `tenant` | Claim checks and key-set caching for the bearer modes. |
 | `services.<svc>.auth.mtls.ca_file` | unset | CA bundle client certificates must chain to; required under `mtls`. |
 | `services.<svc>.auth.mtls.crl_file` | unset | Revocation lists (PEM or DER) a client certificate is checked against; reloaded on change like the bundle. |

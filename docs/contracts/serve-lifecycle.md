@@ -1261,6 +1261,7 @@ the verified claims, never from `meta`.
 
 The service installs no CORS handling: a browser client on another
 origin reaches it only through a proxy that answers CORS.
+
 ## Middleware
 
 Middleware is kit-shipped, configuration-driven behavior wrapped around
