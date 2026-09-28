@@ -20,7 +20,7 @@ here.
 | Centralized | Consequence for a transport author |
 |---|---|
 | reflection of the command tree, once, at `Start` | you get the complete tree; do not cache leaves |
-| the policy path | you never read an annotation or gate a command |
+| the policy path | you never read an annotation or gate a command — see [why the HTTP router and the bridge stay two planes](../../contracts/serve-lifecycle.md#two-planes-not-one) |
 | surface pinning | you cannot invoke as another surface, and need not set one |
 | readiness | reported after `Bind` returns nil |
 | address | `Bind`'s return value reaches the supervisor |

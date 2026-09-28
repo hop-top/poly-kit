@@ -484,6 +484,53 @@ that encode it are `cmdsurface.Meta`, `cmdsurface.PermissionFunc`,
 and `cmdsurface.Bridge.Audit` in
 [`go/transport/cmdsurface`](../../go/transport/cmdsurface/).
 
+### Two planes, not one
+
+Exposure lives on the HTTP router; provenance, permission, and audit
+live in the bridge. The two MUST NOT be collapsed into one middleware
+stack.
+
+- Not every surface has HTTP. Socket is NDJSON over a Unix socket, MCP
+  is stdio, and the in-process `lib`, cron, and bus surfaces have no
+  request object at all. A concern that must hold for every caller of
+  a command — authorization, quotas, confirmation, audit — cannot
+  live in `func(http.Handler) http.Handler`. It has to sit where every
+  surface already funnels through one call: `Invoker` at the seam,
+  `Bridge.Invoke` behind it.
+- Some concerns exist only on the wire. TLS, compression, security
+  headers, Origin/Host checks, trusted-proxy IP, and body size limits
+  are properties of an HTTP connection. Lifting them into the
+  invocation plane would force a fake HTTP shape onto stdio and
+  socket, or leave them as no-ops there.
+- This is what keeps the transport contract in
+  [transportsvc](../adopters/reference/transportsvc.md) true: a
+  transport receives an `Invoker` with the surface pinned and the
+  gate wired, and never reads an annotation or gates a command
+  itself. Collapsing the planes would put transport-specific code
+  back in the business of deciding policy, which is exactly the shape
+  that let the socket and RPC surfaces drift onto different rules
+  before this contract existed.
+
+What the two planes still share: one identity model (the HTTP plane
+authenticates and produces claims; the bridge only ever consumes
+`Caller`/`Tenant`/scopes off `Meta` — see Provenance below); one
+config surface (`services.<name>.*`, so an adopter never needs to know
+which plane a knob lives in); one refusal vocabulary (bridge sentinel
+errors map onto HTTP status, socket codes, and MCP `isError` alike —
+see Permission below).
+
+| Concern | Plane |
+|---|---|
+| authn (verify credential, produce claims) | HTTP, plus the per-transport equivalent for stdio and socket |
+| authz, scopes, per-caller policy, quotas, rate limit by principal | invocation (bridge) |
+| rate limit by IP, body limit, timeouts, TLS, headers, proxy IP | HTTP |
+| audit, redaction, idempotency replay | invocation (bridge) |
+| compression, caching, ETag | HTTP |
+
+The test for where a new middleware goes: if it must hold for a
+caller on MCP stdio, it belongs in the bridge. If it only makes sense
+with a TCP connection, it belongs on the router.
+
 ### Exposure
 
 - The api service MUST default to a loopback listen address
