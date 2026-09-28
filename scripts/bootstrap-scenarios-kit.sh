@@ -433,7 +433,7 @@ Next steps (run on a kit maintainer's laptop, NOT in CI):
 
 After the repo exists:
 
-  - Configure secrets per design §3:
+  - Configure secrets (least privilege, one scope each):
       * KIT_RO_TOKEN     (actions:read on hop-top/kit)
       * KIT_STATUS_TOKEN (statuses:write on hop-top/kit)
   - Add DOGFOOD_DISPATCH_TOKEN to hop-top/kit's repo secrets

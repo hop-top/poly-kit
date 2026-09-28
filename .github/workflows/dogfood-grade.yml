@@ -1,4 +1,5 @@
-# dogfood-grade — public-side workflow for the 12fcc-dog track.
+# dogfood-grade — public-side workflow for grading kit against its own
+# example CLI.
 #
 # When a PR (or a push to main) touches `examples/spaced/**`,
 # `go/**`, or `cmd/**`, this workflow:
@@ -59,7 +60,7 @@ jobs:
           go build -o /tmp/spaced ./examples/spaced/go/
           # xrr install: `go install hop.top/kit/cmd/xrr@latest` once xrr ships.
 
-      # Both gates run on every PR per design §4. Each story must
+      # Both gates run on every PR. Each story must
       # pass both. If either gate fails, the PR is red and the
       # downstream capture/dispatch never runs.
       - name: verify stories
@@ -105,7 +106,7 @@ jobs:
       # Only fires if the dispatch token is configured AND we're on
       # a trusted ref (PR from the same repo, or push to main).
       # External-fork PRs are dispatched at merge-time only — the
-      # token is not exposed to fork CI per design §3.
+      # token must never be exposed to fork CI.
       #
       # GitHub-supplied context (numeric PR number, SHA, repo full
       # name) is shape-validated by GitHub before reaching us, but
