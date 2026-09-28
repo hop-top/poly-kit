@@ -21,8 +21,10 @@ import (
 
 // stallServer serves h behind the guard, with read timeouts far longer
 // than any test waits, so only the guard can end a stall promptly. It
-// returns the address and the server.
-func stallServer(t *testing.T, h http.Handler, protocols *http.Protocols) (string, *http.Server) {
+// returns the address and the server. onState, when set, observes
+// connection states beside the guard; it is installed before the
+// server starts, as ConnState must be.
+func stallServer(t *testing.T, h http.Handler, protocols *http.Protocols, onState ...func(net.Conn, http.ConnState)) (string, *http.Server) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -31,6 +33,9 @@ func stallServer(t *testing.T, h http.Handler, protocols *http.Protocols) (strin
 		ReadHeaderTimeout: time.Minute,
 		ReadTimeout:       time.Minute,
 		Protocols:         protocols,
+	}
+	for _, f := range onState {
+		srv.ConnState = f
 	}
 	api.ReleaseStalledOnShutdown(srv)
 	go func() { _ = srv.Serve(ln) }()
@@ -203,14 +208,11 @@ func TestReleaseStalledOnShutdown_LeavesARunningCallAlone(t *testing.T) {
 // keep-alive intact: 200 requests with bodies reuse one connection.
 func TestReleaseStalledOnShutdown_KeepAlive200(t *testing.T) {
 	var conns atomic.Int32
-	addr, srv := stallServer(t, readAll(nil), nil)
-	prev := srv.ConnState
-	srv.ConnState = func(c net.Conn, st http.ConnState) {
+	addr, srv := stallServer(t, readAll(nil), nil, func(_ net.Conn, st http.ConnState) {
 		if st == http.StateNew {
 			conns.Add(1)
 		}
-		prev(c, st)
-	}
+	})
 
 	client := &http.Client{Transport: &http.Transport{MaxIdleConnsPerHost: 1}}
 	defer client.CloseIdleConnections()
@@ -277,14 +279,11 @@ func TestReleaseStalledOnShutdown_RefusalBeforeTheBody(t *testing.T) {
 // that works: closing replaces the drain, whatever the body's state.
 func TestReleaseStalledOnShutdown_RefusalClosesTheConnection(t *testing.T) {
 	var conns atomic.Int32
-	addr, srv := stallServer(t, refuse, nil)
-	prev := srv.ConnState
-	srv.ConnState = func(c net.Conn, st http.ConnState) {
+	addr, _ := stallServer(t, refuse, nil, func(_ net.Conn, st http.ConnState) {
 		if st == http.StateNew {
 			conns.Add(1)
 		}
-		prev(c, st)
-	}
+	})
 	client := &http.Client{}
 	for range 3 {
 		resp, err := client.Post("http://"+addr+"/", "application/json", strings.NewReader(`{"small":"body"}`))
