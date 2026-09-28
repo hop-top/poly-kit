@@ -31,12 +31,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ steps.pins.outputs.node }}
       - uses: pnpm/action-setup@v4
         with:
-          version: 11
+          version: ${{ steps.pins.outputs.pnpm }}
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: make lint-ts
 
@@ -46,10 +49,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: ${{ steps.pins.outputs.python }}
       - uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ steps.pins.outputs.uv }}
       # --locked fails when uv.lock disagrees with pyproject.toml instead
       # of silently rewriting it. A plain `uv sync` masks lock drift in CI
       # and surfaces it later as an unrelated dirty file in contributor
@@ -64,12 +72,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@stable
         with:
-          # Keep in step with sdk/experimental/rs/rust-toolchain.toml.
           # This action requires an explicit toolchain and runs
-          # `rustup default` with it, so it does not read that file.
-          toolchain: "1.98.0"
+          # `rustup default` with it, so it does not read
+          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # it reads is held equal to that file by
+          # `make check-toolchain-parity`.
+          toolchain: ${{ steps.pins.outputs.rust }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
@@ -82,13 +95,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ steps.pins.outputs.node }}
       - run: make lint-docs
       - run: make lint-readmes
       - uses: lycheeverse/lychee-action@v2
         with:
+          lycheeVersion: v${{ steps.pins.outputs.lychee }}
           args: '--config examples/spaced/lychee.toml docs/ README.md'
           fail: false
       - name: Fail on broken internal links
@@ -124,10 +141,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       # buf only; lint, format and generate run inside `make proto-check`.
       - uses: bufbuild/buf-action@v1
         with:
-          version: 1.73.0
+          version: ${{ steps.pins.outputs.buf }}
           setup_only: true
       # buf.gen.yaml uses remote plugins, and the Buf registry rate-limits
       # anonymous callers ("resource_exhausted: too many requests"). A
@@ -209,12 +229,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ steps.pins.outputs.node }}
       - uses: pnpm/action-setup@v4
         with:
-          version: 11
+          version: ${{ steps.pins.outputs.pnpm }}
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: make test-ts
 
@@ -225,10 +248,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: ${{ steps.pins.outputs.python }}
       - uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ steps.pins.outputs.uv }}
       - run: cd sdk/py && uv sync --all-extras --locked
       - run: cd engine/sdk/py-kit-engine && uv sync --all-extras --locked
       - run: make test-py
@@ -240,12 +268,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@stable
         with:
-          # Keep in step with sdk/experimental/rs/rust-toolchain.toml.
           # This action requires an explicit toolchain and runs
-          # `rustup default` with it, so it does not read that file.
-          toolchain: "1.98.0"
+          # `rustup default` with it, so it does not read
+          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # it reads is held equal to that file by
+          # `make check-toolchain-parity`.
+          toolchain: ${{ steps.pins.outputs.rust }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: sdk/experimental/rs
@@ -291,28 +324,35 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ steps.pins.outputs.node }}
       - uses: pnpm/action-setup@v4
         with:
-          version: 11
+          version: ${{ steps.pins.outputs.pnpm }}
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: ${{ steps.pins.outputs.python }}
       - uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ steps.pins.outputs.uv }}
       # Rust toolchain + cache for the typeid-v1 contract loader.
       # test-parity (via test-parity-typeid) runs
       # `cargo test --features id --test contract` on every build.
       - uses: dtolnay/rust-toolchain@stable
         with:
-          # Keep in step with sdk/experimental/rs/rust-toolchain.toml.
           # This action requires an explicit toolchain and runs
-          # `rustup default` with it, so it does not read that file.
-          toolchain: "1.98.0"
+          # `rustup default` with it, so it does not read
+          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # it reads is held equal to that file by
+          # `make check-toolchain-parity`.
+          toolchain: ${{ steps.pins.outputs.rust }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: sdk/experimental/rs

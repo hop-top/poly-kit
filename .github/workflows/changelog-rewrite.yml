@@ -122,12 +122,19 @@ jobs:
           echo "php=$php" >> "$GITHUB_OUTPUT"
           echo "pyproject changed: $py; composer.json changed: $php"
 
+      # Tool versions from mise.toml, as ci.yml and a local `mise install`
+      # get them; uv's version decides the lockfile it writes.
+      - id: pins
+        if: steps.detect.outputs.py == 'true'
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
         if: steps.detect.outputs.py == 'true'
         with:
-          python-version: '3.13'
+          python-version: ${{ steps.pins.outputs.python }}
       - uses: astral-sh/setup-uv@v4
         if: steps.detect.outputs.py == 'true'
+        with:
+          version: ${{ steps.pins.outputs.uv }}
       - name: Regenerate uv.lock
         if: steps.detect.outputs.py == 'true'
         run: cd sdk/py && uv lock
