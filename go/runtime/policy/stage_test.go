@@ -45,8 +45,7 @@ type matrixCase struct {
 
 // TestStageYAML_AllowDenyMatrix exhaustively exercises stage.yaml
 // against the 6 stages × {feature track create, fix task create, doc
-// task create, update, delete}. Mirrors the acceptance matrix in the
-// track plan.
+// task create, update, delete}: the full acceptance matrix.
 func TestStageYAML_AllowDenyMatrix(t *testing.T) {
 	cfg, err := policy.LoadConfig("stage.yaml")
 	require.NoError(t, err)

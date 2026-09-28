@@ -9,7 +9,7 @@ import (
 	"hop.top/kit/go/runtime/domain"
 )
 
-// Topics watched. Mirror the ADR.
+// Topics watched. Renaming one breaks every policy that matches it.
 const (
 	topicStatePreTransitioned = "kit.runtime.state.pre_transitioned"
 	topicEntityPreValidated   = "kit.runtime.entity.pre_validated"

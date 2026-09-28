@@ -24,6 +24,5 @@
 //	hop.top/kit/go/runtime/provenance/wrap/sqlwrap  -- SQL source wrapper
 //	hop.top/kit/go/runtime/provenance/wrap/execwrap -- os/exec source wrapper
 //
-// See the package README for the adopter happy-path. The design doc
-// at
+// See the package README for the adopter happy-path.
 package provenance
