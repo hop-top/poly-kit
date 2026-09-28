@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"testing"
@@ -613,6 +614,58 @@ func BenchmarkSinkSetEmit_Redacted(b *testing.B) {
 			blind.Emit(context.Background(), inv, res, err)
 		}
 	})
+}
+
+// auditEmitBudget gates BenchmarkSinkSetEmit_Redacted/with-output,
+// the record every Invoke redacts. The target is 100µs; the record
+// measured about 45µs on an Apple M1 Pro under load, and 2.6ms before
+// the redact package screened rules by literal. The budget leaves 5x
+// headroom over the target for slow or busy CI runners while still
+// failing, by 5x, if the screen stops working.
+const auditEmitBudget = 500 * time.Microsecond
+
+// TestSinkSetEmit_RedactionBudget is the regression gate for the
+// audit hot path. It times the benchmark record in 7 rounds of 50
+// emits and compares the fastest round's per-emit mean with
+// auditEmitBudget: the minimum discards rounds slowed by other load
+// on the machine. Skipped under the race detector, whose
+// instrumentation makes timings meaningless.
+func TestSinkSetEmit_RedactionBudget(t *testing.T) {
+	if raceBuild() {
+		t.Skip("timing gate: not meaningful under -race")
+	}
+	inv, res, err := secretInvocation()
+	rec := &sinkRecorder{}
+	set := SinkSet{{Sink: rec, OnOK: true, OnError: true}}
+	set.Emit(context.Background(), inv, res, err) // loads the default corpus
+	best := time.Duration(1<<63 - 1)
+	for range 7 {
+		const n = 50
+		start := time.Now()
+		for range n {
+			rec.calls = nil
+			set.Emit(context.Background(), inv, res, err)
+		}
+		best = min(best, time.Since(start)/n)
+	}
+	t.Logf("fastest round: %v per emit (budget %v)", best, auditEmitBudget)
+	if best > auditEmitBudget {
+		t.Errorf("redacting one audit record takes %v, over the %v budget; see go/core/redact/PERF.md", best, auditEmitBudget)
+	}
+}
+
+// raceBuild reports whether the test binary was built with -race.
+func raceBuild() bool {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return false
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "-race" {
+			return s.Value == "true"
+		}
+	}
+	return false
 }
 
 // WithAuditRedaction adds flags and content rules; it never removes
