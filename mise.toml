@@ -30,9 +30,6 @@ buf = "1.73.0"
 
 [env]
 _.file = ".env"
-# uv prefers its own downloaded interpreters over the one on PATH; CI has
-# none, so it runs the pinned python. Prefer PATH (mise's pin) here too.
-UV_PYTHON_PREFERENCE = "system"
 
 [tasks.install]
 description = "Install ecosystem dependencies (orchestrated by mise)"

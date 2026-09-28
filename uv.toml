@@ -1,0 +1,4 @@
+# uv prefers interpreters it downloaded itself over the one on PATH. CI has
+# none, so it runs the python pinned in mise.toml; prefer PATH here too so
+# a local `uv sync` uses the same interpreter.
+python-preference = "system"
