@@ -20,10 +20,9 @@ import (
 //	POST /:type/:id/abandon
 //	GET  /:type/:id/branches?live=1   (extension of branching route)
 //
-// End-to-end durability across a process restart is covered by
-// serve_pruning_integration_test.go — that file currently drives
-// through the engine Go API since the routes were not wired at
-// write-time; an HTTP-driven sibling is a follow-up.
+// Durability across a process restart is covered by
+// serve_pruning_integration_test.go, which drives the engine Go API
+// rather than these routes.
 //
 // We re-use the same fixture shape as serve_branches_test.go (real
 // SQLite-backed VersionedDocumentStore wired through the production

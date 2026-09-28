@@ -13,12 +13,10 @@ import (
 	"hop.top/kit/engine/store"
 )
 
-// HTTP integration coverage for pruning is gated on the
-// /:type/:id/abandon and /:type/:id/prune routes, which
-// are owned by a parallel workstream and are not present in serve.go
-// yet. Rather than block on the route landing — and rather than test
-// routes that don't exist — this file drives the restart-durability
-// proof through the engine's Go API directly: open a SQLite-backed
+// Restart durability for pruning, driven through the engine's Go API
+// rather than the /:type/:id/abandon and /:type/:id/prune routes
+// (serve_pruning.go; their wire contract is pinned in-process by
+// serve_pruning_test.go). Open a SQLite-backed
 // VersionedDocumentStore, build a branched + merged + abandoned +
 // pruned history, close, reopen against the same on-disk DB, and
 // assert the post-prune state (history, branches both default and
@@ -27,13 +25,11 @@ import (
 //
 // This is the same shape as serve_restart_test.go's TestServe_
 // RestartPreservesHistory but at the engine layer rather than the
-// wire layer. When the /abandon and /prune routes land, a sibling
-// HTTP-driven version of this test should be added — the
-// "kit serve restart preserves post-prune state" requirement is
-// satisfied here for the durability question (does the live bit and
-// the deleted-versions state survive Close + reopen?). The HTTP
-// wire-equivalence question is a different test and a different
-// surface.
+// wire layer. It answers the durability question (does the live bit
+// and the deleted-versions state survive Close + reopen?); an
+// HTTP-driven restart test over the two routes would answer the
+// wire-equivalence question, which is a different test and a
+// different surface, and none exists yet.
 //
 // Why cmd/kit/ rather than engine/store/: this file exercises the
 // full kit serve construction path (NewDocumentStore boots the
