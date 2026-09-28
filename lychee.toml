@@ -5,7 +5,7 @@
 #   - `.tlc/tracks/**` — internal task tracking (not part of release artifact)
 #   - `specs/12fcc/**` — internal program spec
 #   - `docs/stories/**`, `docs/plans/**` — historical planning docs not archived in this release
-#   - `docs/adopters/adr/`, `docs/adopters/audits/`, `docs/adopters/specs/`,
+#   - `docs/adopters/audits/`, `docs/adopters/specs/`,
 #     `docs/contributors/specs/2026-04-18-cli-demo-media-workflow-design/*.mmd`,
 #     and `docs/go/**` — cross-refs whose targets were curated out of the
 #     minimum doc set; will be reinstated when the full docs tree ships
@@ -16,10 +16,8 @@ exclude = [
   'specs/12fcc/',
   'docs/stories(/|$)',
   'docs/plans(/|$)',
-  'docs/adopters/adr(/|$)',
   'docs/adopters/audits(/|$)',
   'docs/adopters/specs(/|$)',
-  'docs/contributors/adr(/|$)',
   'docs/contributors/audits(/|$)',
   'docs/contributors/conformance(/|$)',
   'docs/contributors/contracts(/|$)',
@@ -28,7 +26,6 @@ exclude = [
   'docs/contributors/stories(/|$)',
   'docs/contributors/workflows(/|$)',
   'docs/go(/|$)',
-  'docs/adr(/|$)',
   'docs/releasing\.md',
   'docs/workflows(/|$)',
   'kit/hops/go/',
