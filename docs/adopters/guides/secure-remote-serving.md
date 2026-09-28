@@ -167,7 +167,10 @@ must satisfy each.
 
 `APIConfig.Auth` is what permits a non-loopback address. It runs
 before every route, projected and your own, and the claims it returns
-are how each call is attributed. Return an [`api.Claims`](../../../go/transport/api/mw_auth.go),
+are how each call is attributed. "Every route" includes
+`/openapi.json`, the `/docs` page and `/schemas` that `APIConfig.OpenAPI`
+serves, and paths that match nothing (a `401`, not a `404`); only the
+`/healthz` and `/readyz` probes answer without credentials. Return an [`api.Claims`](../../../go/transport/api/mw_auth.go),
 any value implementing `api.Identity`, or a string-keyed map with
 `sub` and `tenant`; the transport reads the principal and tenant out
 of any of them without knowing your type.
@@ -249,6 +252,19 @@ curl -s http://10.0.0.5:8080/v1/commands/widget/list \
 `Scopes` are not interpreted by kit. They reach the permission gate
 in step 5 as `Meta.Extra["scopes"]`, comma-joined, which is where a
 `kit/permissions` annotation gets enforced.
+
+To publish the OpenAPI document to callers without a token, admit
+that path in your `AuthFunc`; returning no error with nil claims lets
+the request through unattributed:
+
+```go
+func authenticate(r *http.Request) (any, error) {
+    if r.Method == http.MethodGet && r.URL.Path == "/openapi.json" {
+        return nil, nil // the spec is public; every command still needs a token
+    }
+    // ... verify the bearer token as above
+}
+```
 
 ### 4. The opt-ins, and what they mean
 
@@ -744,7 +760,7 @@ code. Keys, span and instrument names are in
 | Option | Default | Effect |
 |---|---|---|
 | `APIConfig.Addr` | `127.0.0.1:8080` | Listen address. Non-loopback needs `Auth` or `InsecureRemote`. |
-| `APIConfig.Auth` | none | Authenticates every route and permits any address. Claims attribute the call. |
+| `APIConfig.Auth` | none | Authenticates every route (OpenAPI document, docs and unmatched paths included; not the health probes) and permits any address. Claims attribute the call. |
 | `APIConfig.InsecureRemote` | `false` | Serve unauthenticated beyond loopback. `services.api.insecure_remote` / `--insecure-remote` set the same. |
 | `APIConfig.InsecureNoPolicy` | `false` | Serve beyond loopback with no delegation policy. `services.api.insecure_no_policy` / `--insecure-no-policy` set the same. |
 | `APIConfig.MaxBodyBytes` | `0` (1 MiB) | Request body cap on every api route; over it is `413 body_too_large`, audited as `cmdsurface.ErrBodyTooLarge`. Negative disables. `services.api.body_limit.max_bytes` / `.enabled`, then `services.all.body_limit.*`, override it. |

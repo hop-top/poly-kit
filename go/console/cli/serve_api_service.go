@@ -340,8 +340,11 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 
 	// HTTP-plane slots 1-6 wrap everything, health probes included;
 	// edge holds 1-5 (request id, access log, recovery, tracing and
-	// metrics). Slots 8 on (Host/Origin, body limit, compression,
-	// auth) go in mws, inside the router, where probes never reach.
+	// metrics). Slots 10-12 (body limit, compression, auth) go in
+	// guards, which wrap the router as a whole: huma's operations and
+	// documents, /capabilities and unmatched paths are registered on
+	// its mux directly, so per-route middleware would miss them. Slot
+	// 8 (Host/Origin) wraps the router from outside, below.
 	edge := []api.Middleware{
 		api.RequestID(),
 		api.Logger(logger.Info),
@@ -351,19 +354,23 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 		// Slot 5: tracing and metrics wrap every later refusal, probes included.
 		a.root.observeMiddleware(APIServiceName),
 	}
-	mws := []api.Middleware{
-		api.ContentType("application/json"),
+	guards := []api.Middleware{
 		// Body limit, HTTP slot 10: after Host/Origin and CORS, before compression and Auth.
 		a.bodyLimit(bridge),
 	}
 	// Compression: HTTP-plane slot 11, after the body limit, before auth.
-	mws = append(mws, a.compressionMiddleware()...)
+	guards = append(guards, a.compressionMiddleware()...)
 	if a.authenticates() {
-		mws = append(mws, api.Auth(a.cfg.Auth,
+		// Auth, HTTP slot 12: every route, the documents included.
+		guards = append(guards, api.Auth(a.cfg.Auth,
 			api.OnAuthRefused(cmdsurface.ProjectionAuthRefusal(bridge))))
 	}
 
-	opts := []api.RouterOption{api.WithMiddleware(mws...)}
+	opts := []api.RouterOption{
+		api.WithOuterMiddleware(guards...),
+		// Per route, inside auth: a default for handlers that set none.
+		api.WithMiddleware(api.ContentType("application/json")),
+	}
 	if a.cfg.OpenAPI != nil {
 		opts = append(opts, api.WithOpenAPI(*a.cfg.OpenAPI))
 	}
@@ -386,12 +393,11 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 		return nil, err
 	}
 
-	// HTTP-plane slot 8 (Host/Origin) wraps the router itself, not its
-	// per-route mws, which huma's routes, /capabilities and unmatched
-	// paths bypass. Slot 7 (health) answers probes ahead of it and
-	// inspects the bare router for adopter routes at the probe paths;
-	// slot 6 (security headers) and edge wrap everything, probes
-	// included. See serve_api_guard.go and serve_api_health.go.
+	// HTTP-plane slot 8 (Host/Origin) wraps the router itself, and so
+	// every route it serves. Slot 7 (health) answers probes ahead of
+	// it and inspects the bare router for adopter routes at the probe
+	// paths; slot 6 (security headers) and edge wrap everything,
+	// probes included. See serve_api_guard.go and serve_api_health.go.
 	checked, err := a.hostOriginChecks(router)
 	if err != nil {
 		return nil, err

@@ -555,7 +555,7 @@ The full table is in the
 | Option | Default | Effect |
 |---|---|---|
 | `APIConfig.Addr` | `127.0.0.1:8080` | Listen address. `--addr` overrides it. Non-loopback needs `Auth` or `InsecureRemote`. |
-| `APIConfig.Auth` | none | Gates every route, projected and adopter-owned, and permits any address. `--no-auth` disables it on loopback. |
+| `APIConfig.Auth` | none | Gates every route, projected and adopter-owned, `/openapi.json` and unmatched paths included (not the health probes), and permits any address. `--no-auth` disables it on loopback. |
 | `APIConfig.InsecureRemote` | `false` | Serve unauthenticated beyond loopback. `services.api.insecure_remote` / `--insecure-remote` set the same. |
 | `APIConfig.OpenAPI` | nil | Full spec at `/openapi.json`. Unset still serves a minimal one. |
 | `APIConfig.Policy` | zero | Zero withholds all destructive commands. `AllowDestructiveOn: [SurfaceREST]` permits them. |

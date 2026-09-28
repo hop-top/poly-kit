@@ -27,8 +27,11 @@ type APIConfig struct {
 	// OpenAPI configures OpenAPI spec generation (nil = disabled).
 	OpenAPI *api.OpenAPIConfig
 	// Auth validates requests (nil = no auth). It gates every
-	// route, projected and adopter-owned, and is what permits a
-	// non-loopback Addr. The claims it returns attribute each call:
+	// route, projected and adopter-owned, the OpenAPI document,
+	// docs and schemas included, and paths that match nothing; only
+	// the health probes answer without it. It is what permits a
+	// non-loopback Addr. To publish the OpenAPI document, admit its
+	// path here: a nil error with nil claims lets a request through. The claims it returns attribute each call:
 	// see [api.IdentityOf] for the shapes that carry a principal and
 	// tenant into the audit trail and the permission gate.
 	Auth api.AuthFunc

@@ -1283,6 +1283,16 @@ Outermost first, on every kit HTTP listener:
 | 12 | Authentication (edge)        | `unauthenticated`                    | `auth`             |
 | 13 | Route: adopter routes, projection, per-route middleware → `Invoker` | invocation plane | — |
 
+Slots 8–12 wrap the listener's router as a whole, never route by
+route. Every request past slot 7 passes them, whatever it addresses: a
+projected or adopter route, a route a library registers on the mux
+directly (the OpenAPI document, the docs UI, schemas, capabilities),
+or a path that matches nothing. With `auth` configured, then, the
+OpenAPI document and the discovery listing require credentials like
+any other route; the only unauthenticated answers are slot 7's. A
+deployment that publishes its OpenAPI document does so by having its
+verifier admit that path. Per-route middleware exists only at 13.
+
 Server settings sit outside the chain and have no slot: `timeouts`
 (read header, read, write, idle — stream routes exempt from the write
 deadline) and `tls`.
