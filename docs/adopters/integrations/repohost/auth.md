@@ -90,7 +90,7 @@ the unified [`repohost.Config`](../../../../go/integrations/repohost/config.go).
   via [`ParseURL`].
 - **Provider docs**: <https://gitee.com/api/v5/swagger>
 
-[`ParseURL`]: ../../../go/integrations/repohost/url.go
+[`ParseURL`]: ../../../../go/integrations/repohost/url.go
 
 ## Bitbucket
 
