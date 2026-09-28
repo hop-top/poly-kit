@@ -1539,10 +1539,14 @@ func (r *Root) applyGroupVisibility() {
 		return
 	}
 
+	// The flag forms below are read from the raw argv, so they stop
+	// where cobra stops: at "--", after which nothing is a flag.
+	flagArgs := beforeEndOfOptions(args)
+
 	// Check for --help-<id> flag form.
 	for id := range r.groupTitles {
 		flag := "--help-" + id
-		for _, a := range args {
+		for _, a := range flagArgs {
 			if a == flag {
 				r.installGroupHelp(id)
 				return
@@ -1552,7 +1556,7 @@ func (r *Root) applyGroupVisibility() {
 
 	// Check for --help-all.
 	helpAll := false
-	for _, a := range args {
+	for _, a := range flagArgs {
 		if a == "--help-all" {
 			helpAll = true
 			break
@@ -1562,8 +1566,8 @@ func (r *Root) applyGroupVisibility() {
 		r.helpAll = true
 		r.revealHiddenDefaultFlags()
 		cleaned := make([]string, 0, len(args))
-		for _, a := range args {
-			if a == "--help-all" {
+		for i, a := range args {
+			if i < len(flagArgs) && a == "--help-all" {
 				cleaned = append(cleaned, "--help")
 			} else {
 				cleaned = append(cleaned, a)
@@ -1690,6 +1694,17 @@ func (r *Root) installGroupHelp(groupID string) {
 func (r *Root) SetArgs(args []string) {
 	r.overrideArgs = args
 	r.Cmd.SetArgs(args)
+}
+
+// beforeEndOfOptions returns the part of args ahead of the first
+// "--", the only part in which a token can be a flag.
+func beforeEndOfOptions(args []string) []string {
+	for i, a := range args {
+		if a == "--" {
+			return args[:i]
+		}
+	}
+	return args
 }
 
 // resolveArgs returns the args that will be used by cobra's Execute.

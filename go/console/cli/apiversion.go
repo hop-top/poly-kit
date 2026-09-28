@@ -261,9 +261,10 @@ func (r *Root) CheckMinAPIVersion(requested string) error {
 // scanArgsForAPIVersion peeks at the resolved args (SetArgs override
 // or os.Args) for --api-version=<v> or --api-version <v>. Returns "" if
 // not present. Pre-parse so we can apply filters before cobra dispatch.
+// The scan stops at "--": what follows is an argument, never the flag.
 func (r *Root) scanArgsForAPIVersion() string {
 	args := r.resolveArgs()
-	for i, a := range args {
+	for i, a := range beforeEndOfOptions(args) {
 		if a == "--"+apiVersionFlag {
 			if i+1 < len(args) {
 				return args[i+1]
