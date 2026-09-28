@@ -8,7 +8,7 @@ import (
 )
 
 // ShutdownSignals is the set the supervisor listens for, matching
-// api.ListenAndServeWithSignals (contract §"Signals"). SIGKILL and
+// api.ListenAndServeWithSignals (serve-lifecycle.md §"Signals"). SIGKILL and
 // SIGSTOP are not catchable and are out of contract.
 var ShutdownSignals = []os.Signal{syscall.SIGINT, syscall.SIGTERM}
 
@@ -17,7 +17,7 @@ var ShutdownSignals = []os.Signal{syscall.SIGINT, syscall.SIGTERM}
 //
 // The first signal begins graceful shutdown; a second signal of either
 // kind during shutdown aborts the drain, so an operator can escalate
-// without reaching for SIGKILL (contract §"Signals"). The caller
+// without reaching for SIGKILL (serve-lifecycle.md §"Signals"). The caller
 // selects on escalate alongside the run and abandons the drain when it
 // fires.
 //

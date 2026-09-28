@@ -46,7 +46,7 @@ import (
 // Everything else a transport service needs — reflecting the command
 // tree, applying the policy gate, reporting readiness, stopping in
 // order — is centralized in [NewTransportService] and is identical
-// for every transport (contract §"Transport services").
+// for every transport (serve-lifecycle.md §"Transport services").
 //
 // An implementation is expected to be small. MCP, RPC, SSE, a bus
 // consumer, and the built-in socket transport differ only in Bind and
@@ -59,7 +59,7 @@ type Transport interface {
 	//
 	// Bind is the acquisition the readiness contract is about: the
 	// service reports ready when Bind returns nil, and never
-	// before (contract §"Readiness").
+	// before (serve-lifecycle.md §"Readiness").
 	Bind(ctx context.Context) (addr string, err error)
 
 	// Serve accepts work until ctx is canceled or it fails,
@@ -77,7 +77,7 @@ type Transport interface {
 	// unlinks the socket file, detaches the subscription. It is
 	// called once, bounded by the service's stop timeout, and must
 	// respect ctx rather than assume it will be allowed to finish
-	// (contract §"Ordered stop").
+	// (serve-lifecycle.md §"Ordered stop").
 	//
 	// Close MUST make Serve return. A Close that leaves the listener
 	// open leaves the process holding a port after `serve` has
@@ -181,7 +181,7 @@ func WithClass(sideEffect, network string) TransportOption {
 }
 
 // WithDependsOn declares the services that must start before this one
-// (contract §"Ordering").
+// (serve-lifecycle.md §"Ordering").
 func WithDependsOn(names ...string) TransportOption {
 	return func(c *transportConfig) { c.dependsOn = append(c.dependsOn, names...) }
 }

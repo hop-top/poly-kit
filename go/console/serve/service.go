@@ -10,7 +10,7 @@ import (
 // Service is one long-running thing a tool can serve: an HTTP API, a
 // local socket, an MCP channel, an RPC listener, a bus consumer. The
 // four methods are the minimum a registration must provide
-// (contract §"Service registration").
+// (serve-lifecycle.md §"Service registration").
 //
 // Implementations are transport-specific and adopter- or kit-owned;
 // this package never constructs one.
@@ -18,19 +18,19 @@ type Service interface {
 	// Name is the stable service identifier. It is a CLI word, a
 	// config key segment, and a bus topic payload value at once, so
 	// it must satisfy [ValidateName] and must not change across
-	// releases (contract §"Naming rules").
+	// releases (serve-lifecycle.md §"Naming rules").
 	Name() string
 
 	// Start begins serving and blocks until ctx is canceled or the
 	// service fails. Returning nil after cancellation is a clean
 	// stop; returning a non-nil error is a failure, and under the
 	// default failure policy brings the whole supervisor down
-	// (contract §"One service fails while others run").
+	// (serve-lifecycle.md §"One service fails while others run").
 	//
 	// Start must report readiness through ready exactly once, after
 	// every acquisition that can fail deterministically has
 	// succeeded — the listener bound, the socket file created, the
-	// subscription attached (contract §"Readiness").
+	// subscription attached (serve-lifecycle.md §"Readiness").
 	Start(ctx context.Context, ready func()) error
 
 	// Ready reports whether the service is currently accepting work.
@@ -42,14 +42,14 @@ type Service interface {
 	// bounds it with the service's stop timeout and abandons a Stop
 	// that exceeds it, so an implementation must respect ctx rather
 	// than assume it will be allowed to finish
-	// (contract §"Ordered stop").
+	// (serve-lifecycle.md §"Ordered stop").
 	Stop(ctx context.Context) error
 }
 
 // Validator is the optional configuration gate a [Service] may
 // implement. Resolution calls it as the second of the three
 // validation gates, before the policy gate and after registration
-// (contract §"The override rule").
+// (serve-lifecycle.md §"The override rule").
 //
 // A nil return means the resolved configuration is complete and
 // usable. Any error is a configuration failure and exits 2.
@@ -60,7 +60,7 @@ type Validator interface {
 // Dependent is the optional ordering declaration a [Service] may
 // implement. Start order is topological over DependsOn with ties
 // broken by registration order; stop order is the exact reverse of
-// the order services actually started (contract §"Ordering").
+// the order services actually started (serve-lifecycle.md §"Ordering").
 type Dependent interface {
 	DependsOn() []string
 }
@@ -91,7 +91,7 @@ type Classified interface {
 // Default lifecycle budgets. These mirror the existing HTTP defaults
 // in hop.top/kit/go/transport/api so a service built on
 // api.ListenAndServe inherits the same numbers it already had
-// (contract §"Configuration surface").
+// (serve-lifecycle.md §"Configuration surface").
 const (
 	// DefaultReadyTimeout is the budget from Start to readiness.
 	// Config key: services.<name>.ready_timeout.
@@ -108,7 +108,7 @@ const (
 )
 
 // Config is the resolved services.<name> block for one service
-// (contract §"Configuration surface"). Service-specific keys live in
+// (serve-lifecycle.md §"Configuration surface"). Service-specific keys live in
 // the same block and are read by the service itself; only the
 // lifecycle keys are modeled here.
 type Config struct {
@@ -127,13 +127,13 @@ type Config struct {
 	StopTimeout time.Duration
 }
 
-// nameRE is the identifier grammar from contract §"Naming rules":
+// nameRE is the identifier grammar from serve-lifecycle.md §"Naming rules":
 // lowercase ASCII, digits, and internal hyphens.
 var nameRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // reservedNames may not be registered. They are reserved for
 // selector vocabulary and would be ambiguous with a service of the
-// same name (contract §"Naming rules").
+// same name (serve-lifecycle.md §"Naming rules").
 var reservedNames = map[string]struct{}{
 	"all":  {},
 	"none": {},

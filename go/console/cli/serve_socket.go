@@ -81,7 +81,7 @@ type SocketConfig struct {
 // WithAPI's default-on behavior is a compatibility obligation to
 // adopters whose `serve` predates the hierarchy; a service arriving
 // through the registry for the first time gets the contract's default
-// instead, which is `enabled: false` (contract §"Configuration
+// instead, which is `enabled: false` (serve-lifecycle.md §"Configuration
 // surface"). Start it with `<tool> serve socket`, which overrides
 // enablement, or set services.socket.enabled.
 func WithSocket(cfg SocketConfig) func(*Root) {
@@ -270,7 +270,7 @@ func expandSocketPath(p string) (string, error) {
 // validateSocketPath is the service's configuration gate: a path that
 // cannot resolve, or whose parent is a file rather than a directory,
 // is a usage error caught before anything binds rather than a start
-// failure a second later (contract §"The override rule").
+// failure a second later (serve-lifecycle.md §"The override rule").
 func validateSocketPath(root *Root, cfg *SocketConfig) error {
 	path, err := resolveSocketPath(root, cfg)
 	if err != nil {

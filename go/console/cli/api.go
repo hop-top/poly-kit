@@ -98,7 +98,7 @@ type APIConfig struct {
 //
 // The API now reaches the command surface as a service under the
 // kit-owned `serve` parent rather than as a leaf `serve` command
-// (contract §"Compatibility"). For a tool whose only service is the
+// (serve-lifecycle.md §"Compatibility"). For a tool whose only service is the
 // API this is not observable: `<tool> serve` still starts the HTTP
 // server with the same `--addr` and `--no-auth` flags and the same
 // behavior. A tool that registers services of its own gains them as

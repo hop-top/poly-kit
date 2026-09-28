@@ -14,7 +14,7 @@ import (
 
 // stopAll invokes Stop in the exact reverse of the order services
 // actually started, one at a time, so a dependent is always fully
-// stopped before its dependency (contract §"Ordered stop").
+// stopped before its dependency (serve-lifecycle.md §"Ordered stop").
 //
 // Each Stop is bounded by that service's stop timeout. A Stop that
 // exceeds its budget is abandoned — logged, emitted as failed, and the
@@ -136,7 +136,7 @@ func (s *Supervisor) stopOne(
 //
 // A failure that wraps a kit transient error propagates exit 6
 // unchanged, so agents and retry wrappers keep their existing branch
-// (contract §"Exit behavior").
+// (serve-lifecycle.md §"Exit behavior").
 func failureError(o LifecycleOutcome, failed map[string]error) *output.Error {
 	msg := failureMessage(o, failed)
 

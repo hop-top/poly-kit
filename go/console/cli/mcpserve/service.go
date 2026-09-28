@@ -332,7 +332,7 @@ func (s *service) optIn(subkey string, code bool) bool {
 	return code
 }
 
-// validate is the service's configuration gate (contract §"The
+// validate is the service's configuration gate (serve-lifecycle.md §"The
 // override rule"): every refusal here is a usage error at exit 2,
 // before anything binds.
 func (s *service) validate() error {

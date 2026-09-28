@@ -46,7 +46,7 @@ const (
 // It wraps exactly the server construction the leaf `serve` command
 // performed — the same middleware stack, the same router options, the
 // same WebSocket hub — so a tool whose only service is the API behaves
-// as it did before (contract §"Compatibility").
+// as it did before (serve-lifecycle.md §"Compatibility").
 //
 // The one behavioral difference is readiness. The leaf command bound
 // its listener inside http.Server.ListenAndServe, which reports
@@ -403,7 +403,7 @@ func (a *apiService) mountProjection(
 // applyAPICompat maps the leaf `serve` command's own flags onto the
 // api service and preserves its default-on behavior.
 //
-// Two things keep an existing adopter working (contract
+// Two things keep an existing adopter working (serve-lifecycle.md
 // §"Compatibility"):
 //
 //   - --addr and --no-auth reach the api service, because they were

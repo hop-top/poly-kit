@@ -6,7 +6,7 @@ import (
 )
 
 // Registry is the seam kit-owned and adopter-owned services register
-// into (contract §"Service registration"). A tool builds one in main
+// into (serve-lifecycle.md §"Service registration"). A tool builds one in main
 // before the root command executes; the supervisor reads it.
 //
 // Register panics on a duplicate name. A collision is a wiring bug in
@@ -83,7 +83,7 @@ func (r *Registry) Lookup(name string) (Service, bool) {
 
 // Names returns every registered identifier in registration order, so
 // `serve --list` and the startup log mirror the adopter's wiring
-// (contract §"Ordering").
+// (serve-lifecycle.md §"Ordering").
 func (r *Registry) Names() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

@@ -4,7 +4,7 @@ import "fmt"
 
 // StartOrder returns selected in topological order over the optional
 // [Dependent] declarations, ties broken by the order in selected
-// (which [Resolve] already returns in registration order) — contract
+// (which [Resolve] already returns in registration order) — serve-lifecycle.md
 // §"Ordering".
 //
 // A dependency naming a service outside selected is ignored rather

@@ -50,7 +50,7 @@ func WithServiceOverride(svc serve.Service) func(*Root) {
 }
 
 // WithServicePolicy wires the gate the third validation step consults
-// (contract §"The override rule"). Without one, every service passes
+// (serve-lifecycle.md §"The override rule"). Without one, every service passes
 // the policy gate: a tool that has not wired a policy table has not
 // expressed a restriction.
 func WithServicePolicy(gate serve.PolicyGate) func(*Root) {
@@ -73,7 +73,7 @@ func WithServiceBus(p serve.Publisher) func(*Root) {
 // ensureServeRegistry creates the registry and mounts the serve parent
 // on first use. Mounting here rather than in New is what lets the
 // registry take the `serve` word away from WithAPI's leaf: whichever
-// option runs, exactly one command owns the word (contract
+// option runs, exactly one command owns the word (serve-lifecycle.md
 // §"Compatibility").
 func (r *Root) ensureServeRegistry() {
 	if r.serveReg != nil {
@@ -104,7 +104,7 @@ func (r *Root) ServeRegistry() *serve.Registry { return r.serveReg }
 // which overrides aggregate enablement. Both forms share one lifecycle
 // implementation, so a single service started by the selector observes
 // the same readiness, shutdown, and exit semantics as the same service
-// started by the supervisor (contract §"Command hierarchy").
+// started by the supervisor (serve-lifecycle.md §"Command hierarchy").
 func serveParentCmd(root *Root) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve [service]",
@@ -197,7 +197,7 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	}
 
 	// The supervisor owns the signals from here: the first begins the
-	// drain, a second aborts it (contract §"Signals").
+	// drain, a second aborts it (serve-lifecycle.md §"Signals").
 	ctx, escalate, stop := serve.SignalContext(cmd.Context())
 	defer stop()
 
@@ -224,7 +224,7 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 
 // runServeList prints the registered services with their configured,
 // enabled, and ready state, in registration order so the listing
-// mirrors the adopter's wiring (contract §"Command hierarchy").
+// mirrors the adopter's wiring (serve-lifecycle.md §"Command hierarchy").
 func runServeList(cmd *cobra.Command, root *Root) error {
 	reg := root.serveReg
 	if reg == nil {

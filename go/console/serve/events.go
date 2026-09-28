@@ -9,7 +9,7 @@ import (
 // EventPayload is the body of every serve lifecycle event. The
 // service identifier travels here rather than in the topic, so
 // subscribers are not forced to re-bind when a tool gains a service
-// (contract §"Surfaced events").
+// (serve-lifecycle.md §"Surfaced events").
 //
 // Fields round-trip cleanly through encoding/json: Elapsed is
 // milliseconds rather than a time.Duration, because a Duration
@@ -47,7 +47,7 @@ type EventPayload struct {
 //
 // A nil Publisher means events are not published; the log counterpart
 // still runs, so a tool with no bus still produces an operator-legible
-// startup trace (contract §"Surfaced events").
+// startup trace (serve-lifecycle.md §"Surfaced events").
 type Publisher interface {
 	Publish(ctx context.Context, e bus.Event) error
 }
@@ -77,7 +77,7 @@ type emitter struct {
 
 // emit publishes the "<object>.<action>" topic with payload, and logs
 // the same transition. A failed action logs at ERROR; everything else
-// logs at INFO (contract §"Surfaced events").
+// logs at INFO (serve-lifecycle.md §"Surfaced events").
 func (e *emitter) emit(ctx context.Context, object, action string, payload EventPayload) {
 	e.logEvent(object, action, payload)
 

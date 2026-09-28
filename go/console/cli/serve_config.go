@@ -7,7 +7,7 @@ import (
 	"hop.top/kit/go/console/serve"
 )
 
-// Config keys for the serve hierarchy (contract §"Configuration
+// Config keys for the serve hierarchy (serve-lifecycle.md §"Configuration
 // surface"). Resolution follows the standard kit precedence — flag,
 // env, config file, default — because these are read through the
 // Root's viper rather than from a file directly.

@@ -283,7 +283,7 @@ func (s *rpcService) maxBodyBytes() int {
 	return DefaultMaxBodyBytes
 }
 
-// validate is the configuration gate (contract §"The override rule"):
+// validate is the configuration gate (serve-lifecycle.md §"The override rule"):
 // every refusal here is a usage error at exit 2, before anything
 // binds. The exposure refusals are the api service's, under this
 // service's names.

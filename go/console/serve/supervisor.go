@@ -13,7 +13,7 @@ import (
 )
 
 // SupervisorConfig is the supervisor-scoped half of the services
-// block (contract §"Configuration surface"). The per-service half
+// block (serve-lifecycle.md §"Configuration surface"). The per-service half
 // travels in [Request].Configs.
 type SupervisorConfig struct {
 	// FailurePolicy is services.failure_policy. Empty means
@@ -68,7 +68,7 @@ func WithClock(now func() time.Time) Option {
 // WithEscalation wires the second-signal channel from
 // [SignalContext]. A receive on it during shutdown abandons the drain
 // and ends the run with the crash code, so an operator can escalate
-// without reaching for SIGKILL (contract §"Signals").
+// without reaching for SIGKILL (serve-lifecycle.md §"Signals").
 func WithEscalation(ch <-chan os.Signal) Option {
 	return func(s *Supervisor) { s.escalate = ch }
 }
@@ -76,7 +76,7 @@ func WithEscalation(ch <-chan os.Signal) Option {
 // Supervisor runs a resolved set of services under one lifecycle:
 // ordered start, per-service readiness, policy-driven reaction to
 // failure, and ordered stop bounded by the configured budgets
-// (contract §"Readiness", §"Shutdown", §"One service fails while
+// (serve-lifecycle.md §"Readiness", §"Shutdown", §"One service fails while
 // others run").
 //
 // A Supervisor holds no global state and no package-level registry:
@@ -120,7 +120,7 @@ func NewSupervisor(reg *Registry, cfg SupervisorConfig, opts ...Option) *Supervi
 // Result is what one supervised run produced.
 type Result struct {
 	// Outcome is the worst outcome observed across the whole run,
-	// which is what the process exits on (contract §"Exit behavior").
+	// which is what the process exits on (serve-lifecycle.md §"Exit behavior").
 	Outcome LifecycleOutcome
 
 	// Err is the rendered failure carrying Code and ExitCode, nil on
@@ -368,7 +368,7 @@ func (s *Supervisor) startAll(
 
 // awaitReady blocks until name reports ready, fails, or exhausts its
 // readiness budget. A service that has not reported ready within the
-// budget is a start failure (contract §"Readiness").
+// budget is a start failure (serve-lifecycle.md §"Readiness").
 func (s *Supervisor) awaitReady(
 	ctx context.Context,
 	name string,
@@ -442,7 +442,7 @@ func (s *Supervisor) awaitReady(
 }
 
 // emitAggregateReady publishes the supervisor-scoped readiness event
-// once every started service is ready (contract §"Readiness").
+// once every started service is ready (serve-lifecycle.md §"Readiness").
 func (s *Supervisor) emitAggregateReady(ctx context.Context, st *runState, em *emitter) {
 	st.mu.Lock()
 	allReady := len(st.ready) == len(st.started) && len(st.started) > 0

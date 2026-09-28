@@ -2,7 +2,7 @@ package serve
 
 import "hop.top/kit/go/console/output"
 
-// Outcome kinds a serve run can end in (contract §"Exit behavior").
+// Outcome kinds a serve run can end in (serve-lifecycle.md §"Exit behavior").
 // Every kind maps onto an existing code in
 // hop.top/kit/go/console/output; this package allocates no new
 // numbers.
@@ -97,7 +97,7 @@ func IsFailure(o LifecycleOutcome) bool { return ExitCodeFor(o) != 0 }
 // everything observed during a run. Under FailurePolicy Isolate the
 // process may survive several service failures, and the exit code
 // must reflect the worst outcome across the whole run rather than the
-// last one (contract §"Exit behavior").
+// last one (serve-lifecycle.md §"Exit behavior").
 //
 // "Worst" is severity, not exit-code magnitude: any failure beats a
 // clean stop, and among failures the first one observed wins, because

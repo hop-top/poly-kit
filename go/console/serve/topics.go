@@ -7,7 +7,7 @@ import "hop.top/kit/go/runtime/bus"
 // other kit emitter's prefix is (see docs/contracts/event-topics.md).
 const DefaultTopicPrefix = "kit.serve"
 
-// Action segments for serve lifecycle events (contract
+// Action segments for serve lifecycle events (serve-lifecycle.md
 // §"Surfaced events"). Each satisfies bus.ValidateTopic without
 // extending the past-tense whitelist: started/failed/stopped are
 // listed there, and ready_reported is a snake_case multi-word action

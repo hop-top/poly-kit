@@ -9,7 +9,7 @@ import (
 )
 
 // FailurePolicy is the supervisor's answer to "one service failed
-// while the others are running" (contract §"One service fails while
+// while the others are running" (serve-lifecycle.md §"One service fails while
 // others run"). Config key: services.failure_policy.
 type FailurePolicy string
 
@@ -38,7 +38,7 @@ func (p FailurePolicy) IsValid() bool {
 func (p FailurePolicy) String() string { return string(p) }
 
 // PolicyGate decides whether a service's declared class is permitted
-// to run. It is the third validation gate (contract §"The override
+// to run. It is the third validation gate (serve-lifecycle.md §"The override
 // rule"), and is satisfied in production by a table from
 // hop.top/kit/go/ai/toolspec/policy.
 //
@@ -93,7 +93,7 @@ type Outcome struct {
 }
 
 // Resolve turns a `serve` invocation into a runnable set, applying
-// the hierarchy and override rules from contract §"Command hierarchy"
+// the hierarchy and override rules from serve-lifecycle.md §"Command hierarchy"
 // and §"The override rule". It is pure: no service is started, no
 // listener is bound, and nothing is written.
 //
