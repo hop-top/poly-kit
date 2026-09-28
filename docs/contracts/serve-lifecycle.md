@@ -1950,6 +1950,10 @@ kit HTTP listeners, sent as `X-API-Key: <key>` or
   listener stops serving; `sqlite` is shared with the `token key`
   verbs of another process, `badger` locks it, so run them while the
   service is stopped.
+- What kit creates for the store is owner-only, whatever the umask:
+  its directory `0700`, the `sqlite` file `0600` (its journal and WAL
+  files inherit the mode), the `badger` directory `0700`. A store that
+  already exists keeps its permissions.
 - Refused at validation, exit `2`, naming the key: a backend other
   than `sqlite` or `badger`, a backend whose driver is not imported,
   and an `auth.apikey` key under another mode.

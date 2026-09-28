@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -97,11 +99,32 @@ func (t tlsResolver) apiKeyStoreConfig(r *Root) (kv.Config, error) {
 	return cfg, nil
 }
 
-// openAPIKeyStore opens the store cfg names, creating the directory
-// it lives in, owner-only.
+// openAPIKeyStore opens the store cfg names. What it creates is
+// owner-only, whatever the umask: the directory the store lives in
+// (0700), and the store itself — the sqlite file (0600, which its
+// journal and WAL files inherit) or the badger directory (0700). A
+// store that already exists keeps its permissions.
 func openAPIKeyStore(ctx context.Context, cfg kv.Config) (kv.Store, error) {
 	if err := os.MkdirAll(filepath.Dir(cfg.Path), 0o700); err != nil {
 		return nil, err
+	}
+	switch cfg.Backend {
+	case "sqlite":
+		// An empty file is an empty database; creating it here fixes
+		// its mode before the driver would create it 0644.
+		f, err := os.OpenFile(cfg.Path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		switch {
+		case err == nil:
+			if err := f.Close(); err != nil {
+				return nil, err
+			}
+		case !errors.Is(err, fs.ErrExist):
+			return nil, err
+		}
+	case "badger":
+		if err := os.MkdirAll(cfg.Path, 0o700); err != nil {
+			return nil, err
+		}
 	}
 	return kv.OpenContext(ctx, cfg)
 }

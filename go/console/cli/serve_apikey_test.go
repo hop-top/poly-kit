@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -185,4 +187,30 @@ func TestAPIKeyVerifierReleasesItsStore(t *testing.T) {
 	_, err = v.AuthFunc()(req)
 	require.NoError(t, err, "a request draining after Close is judged")
 	assert.Nil(t, v.store, "and holds nothing open")
+}
+
+// TestAPIKeyStoreIsOwnerOnly pins the key store's permissions: the
+// sqlite file kit creates is 0600 and the directory it creates for it
+// 0700, whatever the umask lets through, so another local user cannot
+// read the key hashes and principals.
+func TestAPIKeyStoreIsOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits")
+	}
+	dir := filepath.Join(t.TempDir(), "keys")
+	path := filepath.Join(dir, "apikeys.db")
+	_, err := runKey(t, path, "create", "--sub", "ci-bot")
+	require.NoError(t, err)
+
+	fi, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm(), "the store file")
+	di, err := os.Stat(dir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), di.Mode().Perm(), "the directory kit created")
+	for _, side := range []string{"-wal", "-shm", "-journal"} {
+		if si, err := os.Stat(path + side); err == nil {
+			assert.Equal(t, os.FileMode(0o600), si.Mode().Perm(), side)
+		}
+	}
 }
