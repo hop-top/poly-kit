@@ -1764,9 +1764,9 @@ Rules:
   slot, or a place in a first-come-first-served queue. With every slot
   taken and the queue full it is refused as `overloaded`, and
   audited. A slot frees when the run ends and passes to the head of
-  the queue. The CLI and library surfaces are not counted; a
-  result-cache hit, and a call waiting on an identical call's run,
-  take no slot.
+  the queue. The CLI and library surfaces are not counted; an
+  idempotency replay, a result-cache hit, and a call waiting on an
+  identical call's run take no slot.
 - The per-command deadline is armed before the call queues, so the
   wait counts against it; a call that outwaits it is
   `deadline_exceeded` without having run. A caller that goes away

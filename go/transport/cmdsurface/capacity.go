@@ -285,9 +285,13 @@ func (t *capTicket) drop(ran bool) {
 }
 
 // capacityGated reports whether the admitted call passes the capacity
-// gate: the bridge has one, the surface is remote, and the call is not
-// answered from the result cache.
+// gate: the bridge has one, the surface is remote, and the call is
+// answered neither by an idempotency replay nor from the result cache,
+// which run nothing.
 func (a *Admission) capacityGated() bool {
+	if _, replay := a.idem.replayed(); replay {
+		return false
+	}
 	return a.b.capacity != nil && a.inv.Meta.Surface.remote() &&
 		(a.cache == nil || a.cache.hit == nil)
 }
@@ -306,7 +310,8 @@ func (a *Admission) capacityGated() bool {
 // theirs, and ends the Admission: Run and Stream return it again
 // without running. An Admission that reserved must be run, or its
 // place is held until it is. Reserve is a no-op without a gate, on a
-// local surface, for a result cache hit, and when called again.
+// local surface, for an idempotency replay or a result cache hit,
+// and when called again.
 func (a *Admission) Reserve(ctx context.Context) error {
 	if a.refused != nil || a.ticket != nil || !a.capacityGated() {
 		return a.refused
