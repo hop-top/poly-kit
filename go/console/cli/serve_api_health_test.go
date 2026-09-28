@@ -139,7 +139,7 @@ func TestAPIHealth_NotReadyBeforeStartOrAfterStop(t *testing.T) {
 
 	get := func(path string) (int, api.HealthStatus) {
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		h.ServeHTTP(rec, loopbackRequest(http.MethodGet, path, nil))
 		var st api.HealthStatus
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &st))
 		return rec.Code, st
@@ -241,7 +241,7 @@ func TestAPIHealth_AbsentFromDiscoveryAndOpenAPI(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, api.OpenAPISpecPath, nil))
+	h.ServeHTTP(rec, loopbackRequest(http.MethodGet, api.OpenAPISpecPath, nil))
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.NotContains(t, rec.Body.String(), "healthz")
 	assert.NotContains(t, rec.Body.String(), "readyz")
@@ -254,7 +254,7 @@ func TestAPIHealth_Disabled(t *testing.T) {
 
 	for _, p := range []string{"/healthz", "/readyz"} {
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
+		h.ServeHTTP(rec, loopbackRequest(http.MethodGet, p, nil))
 		assert.Equal(t, http.StatusNotFound, rec.Code, p)
 	}
 }
@@ -287,7 +287,7 @@ func TestAPIHealth_DetailFollowsBind(t *testing.T) {
 	allow := func(*http.Request) (any, error) { return "caller", nil }
 	failing := func(r *Root) []string {
 		rec := httptest.NewRecorder()
-		projectionHandler(t, r).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+		projectionHandler(t, r).ServeHTTP(rec, loopbackRequest(http.MethodGet, "/readyz", nil))
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 		var st api.HealthStatus
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &st))
@@ -313,7 +313,7 @@ func TestAPIHealth_SharedDefaultsFromServicesAll(t *testing.T) {
 	r.Viper.Set("services.all.health.enabled", false)
 	h := projectionHandler(t, r)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	h.ServeHTTP(rec, loopbackRequest(http.MethodGet, "/healthz", nil))
 	assert.Equal(t, http.StatusNotFound, rec.Code, "services.all.health.enabled applies to api")
 
 	r = healthRoot(t, APIConfig{})
@@ -322,7 +322,7 @@ func TestAPIHealth_SharedDefaultsFromServicesAll(t *testing.T) {
 	r.Viper.Set("services.all.health.path_prefix", "/_kit")
 	h = projectionHandler(t, r)
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/_kit/healthz", nil))
+	h.ServeHTTP(rec, loopbackRequest(http.MethodGet, "/_kit/healthz", nil))
 	assert.Equal(t, http.StatusOK, rec.Code,
 		"the service's own key wins over services.all, key by key")
 }
@@ -346,18 +346,18 @@ func TestAPIHealth_AdopterRouteAtTheSamePathWins(t *testing.T) {
 	h := projectionHandler(t, r)
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	h.ServeHTTP(rec, loopbackRequest(http.MethodGet, "/healthz", nil))
 	assert.Equal(t, http.StatusTeapot, rec.Code)
 
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	h.ServeHTTP(rec, loopbackRequest(http.MethodGet, "/readyz", nil))
 	assert.Equal(t, http.StatusServiceUnavailable, rec.Code, "kit still answers the probe the adopter left alone")
 }
 
 func TestAPIHealth_InsideTheRequestIDLayer(t *testing.T) {
 	h := projectionHandler(t, healthRoot(t, APIConfig{}))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	h.ServeHTTP(rec, loopbackRequest(http.MethodGet, "/healthz", nil))
 	assert.NotEmpty(t, rec.Header().Get("X-Request-ID"),
 		"request id, access log and recovery wrap the probes")
 }

@@ -89,7 +89,7 @@ func configFixture(t *testing.T, cfg APIConfig) *Root {
 func discoveryOf(t *testing.T, h http.Handler) map[string]api.DiscoveryEntry {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/commands", nil))
+	h.ServeHTTP(rec, loopbackRequest(http.MethodGet, "/v1/commands", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	var doc api.DiscoveryDocument

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -230,4 +231,14 @@ func TestAPIGuards_ConfigErrors(t *testing.T) {
 			assert.Contains(t, err.Error(), c.want)
 		})
 	}
+}
+
+// loopbackRequest is httptest.NewRequest addressed the way a local
+// client addresses the api service. httptest's default Host,
+// example.com, is one the Host check correctly refuses on a loopback
+// bind, so tests of the middleware behind it must not use it.
+func loopbackRequest(method, target string, body io.Reader) *http.Request {
+	req := httptest.NewRequest(method, target, body)
+	req.Host = "127.0.0.1"
+	return req
 }

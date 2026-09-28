@@ -56,7 +56,7 @@ func TestAPIServiceBodyLimit(t *testing.T) {
 			r := authRoot(t, WithAPI(APIConfig{MaxBodyBytes: limit}), WithAuditSinks(rec.spec()))
 			h := projectionHandler(t, r)
 
-			req := httptest.NewRequest(http.MethodPost, "/v1/commands/add", c.wrap(addBody(t, c.size)))
+			req := loopbackRequest(http.MethodPost, "/v1/commands/add", c.wrap(addBody(t, c.size)))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Request-ID", "req-big")
 			w := httptest.NewRecorder()
@@ -95,7 +95,7 @@ func TestAPIServiceBodyLimitCoversStreamRoutes(t *testing.T) {
 			r := authRoot(t, WithAPI(APIConfig{MaxBodyBytes: limit}), WithAuditSinks(rec.spec()))
 			h := projectionHandler(t, r)
 
-			req := httptest.NewRequest(http.MethodPost, "/v1/commands/add/stream", wrap(addBody(t, limit+1)))
+			req := loopbackRequest(http.MethodPost, "/v1/commands/add/stream", wrap(addBody(t, limit+1)))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, req)
@@ -133,11 +133,11 @@ func TestAPIServiceBodyLimitCoversAdopterRoutes(t *testing.T) {
 	h := projectionHandler(t, r)
 
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/upload", unsizedBody{strings.NewReader(strings.Repeat("x", 65))}))
+	h.ServeHTTP(w, loopbackRequest(http.MethodPost, "/upload", unsizedBody{strings.NewReader(strings.Repeat("x", 65))}))
 	requireTooLarge(t, w.Code, w.Body.Bytes())
 
 	w = httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader(strings.Repeat("x", 64))))
+	h.ServeHTTP(w, loopbackRequest(http.MethodPost, "/upload", strings.NewReader(strings.Repeat("x", 64))))
 	assert.Equal(t, http.StatusNoContent, w.Code)
 }
 
@@ -150,7 +150,7 @@ func TestAPIServiceBodyLimitDefault(t *testing.T) {
 
 	h := projectionHandler(t, r)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/commands/add",
+	req := loopbackRequest(http.MethodPost, "/v1/commands/add",
 		strings.NewReader(addBody(t, int(api.DefaultMaxBodyBytes)+1)))
 	h.ServeHTTP(w, req)
 	requireTooLarge(t, w.Code, w.Body.Bytes())
@@ -169,7 +169,7 @@ func TestAPIServiceBodyLimitConfigKey(t *testing.T) {
 
 	h := projectionHandler(t, r)
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/commands/add",
+	h.ServeHTTP(w, loopbackRequest(http.MethodPost, "/v1/commands/add",
 		strings.NewReader(addBody(t, 129))))
 	requireTooLarge(t, w.Code, w.Body.Bytes())
 
@@ -241,7 +241,7 @@ func TestAPIServiceBodyLimitDisabledServesUncapped(t *testing.T) {
 	r.Viper.Set("services.api.body_limit.enabled", false)
 	h := projectionHandler(t, r)
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/commands/add",
+	h.ServeHTTP(w, loopbackRequest(http.MethodPost, "/v1/commands/add",
 		unsizedBody{strings.NewReader(addBody(t, int(api.DefaultMaxBodyBytes)+1))}))
 	assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
 }

@@ -33,7 +33,7 @@ func TestProjectionServesAuthRequiredUnderRouterAuth(t *testing.T) {
 
 	h := projectionHandler(t, r)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/commands/rotate", nil))
+	h.ServeHTTP(rec, loopbackRequest(http.MethodPost, "/v1/commands/rotate", nil))
 	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), "rotated")
 }
