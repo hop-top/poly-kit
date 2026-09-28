@@ -380,6 +380,14 @@ there is no session to hold: a handler built with `WithStateless()`,
 or stdio. A stateful HTTP handler — the default, and the mcp
 service's — answers at 2025-11-25.
 
+Both are served on one endpoint: a client that runs `initialize` gets
+a stateful session, and a 2026-07-28 request is answered statelessly,
+with no session. kit routes each request to one of two SDK handlers by
+the markers in
+[Routing precedence](expose-cli-over-mcp.md#routing-precedence);
+`WithStateless()` drops the sessions and serves every revision
+statelessly.
+
 ## Tradeoffs
 
 - **Dependency weight.** The SDK and its transitive modules join your

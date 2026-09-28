@@ -171,6 +171,16 @@ The 2026-07-28 protocol is served through its own per-request
 negotiation (`_meta` version/capabilities plus `Mcp-*` framing
 headers), handled entirely by the SDK.
 
+`Handler` and `Mount` serve both on one endpoint. The SDK serves
+2026-07-28 only from a stateless handler, so kit holds a stateful and
+a stateless SDK handler over the same server and routes each request
+by the [routing precedence](../guides/expose-cli-over-mcp.md#routing-precedence)
+of kit's MCP surfaces: `initialize` and every unmarked request go to
+the stateful handler (sessions, `Mcp-Session-Id`, server-to-client
+requests); a request carrying a 2026-07-28 marker goes to the
+stateless one. Every response is the SDK's. `WithStateless` serves
+every revision from the stateless handler alone.
+
 ## Tasks extension (SEP-2663), experimental
 
 `WithTasks` enables the `io.modelcontextprotocol/tasks` extension:

@@ -65,9 +65,13 @@ func WithInstructions(text string) Option {
 }
 
 // WithStateless serves the streamable HTTP transport in stateless
-// mode: no Mcp-Session-Id header, a temporary session per request,
-// and GET/DELETE rejected with 405. Suitable for serverless and
+// mode only: no Mcp-Session-Id header, a temporary session per
+// request, and GET/DELETE rejected with 405 — for every protocol
+// revision, so a client on a revision before 2026-07-28 gets no
+// server-to-client requests. Suitable for serverless and
 // load-balanced deployments where session affinity is unavailable.
+// Without it, Handler keeps sessions for those revisions and serves
+// 2026-07-28 statelessly on the same endpoint.
 func WithStateless() Option {
 	return func(c *config) { c.stateless = true }
 }
@@ -255,21 +259,32 @@ func (s *Surface) Hide(pattern string) *Surface {
 }
 
 // Handler returns an http.Handler serving the Surface over the MCP
-// streamable HTTP transport (stateful sessions by default; see
-// WithStateless). All protocol handling — version negotiation,
-// session lifecycle, message parsing, error shapes — is the SDK's.
-// With WithTasks enabled, the extension's tasks/get, update and cancel
-// methods are registered on the server itself, so this one SDK handler
-// dispatches them alongside every standard method and they inherit the
-// same transport checks.
+// streamable HTTP transport, every protocol revision on one endpoint.
+// A client that runs the initialize handshake (revisions through
+// 2025-11-25) gets a stateful session: Mcp-Session-Id, and
+// server-to-client requests on the open stream. A 2026-07-28 request
+// carries its revision per request and is served statelessly, with
+// no initialize and no session. The SDK serves the two only from two
+// handlers, so each request is routed to one by the routing
+// precedence of kit's MCP surfaces; see
+// docs/adopters/guides/expose-cli-over-mcp.md. [WithStateless] serves
+// every revision from the stateless handler alone.
+//
+// All protocol handling — version negotiation, session lifecycle,
+// message parsing, error shapes — is the SDK's. With WithTasks
+// enabled, the extension's tasks/get, update and cancel methods are
+// registered on the server itself, so the SDK handlers dispatch them
+// alongside every standard method and they inherit the same transport
+// checks.
 func (s *Surface) Handler() http.Handler {
-	return mcp.NewStreamableHTTPHandler(
-		func(*http.Request) *mcp.Server { return s.srv },
-		&mcp.StreamableHTTPOptions{
-			Stateless:    s.cfg.stateless,
+	getServer := func(*http.Request) *mcp.Server { return s.srv }
+	if s.cfg.stateless {
+		return mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
+			Stateless:    true,
 			JSONResponse: s.cfg.jsonResponse,
-		},
-	)
+		})
+	}
+	return newRevisionRouter(getServer, s.cfg.jsonResponse)
 }
 
 // Mount registers the streamable HTTP handler on the router at the

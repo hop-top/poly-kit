@@ -275,7 +275,11 @@ func TestHideExposeLiveToolList(t *testing.T) {
 	if listNames()["ping"] {
 		t.Error("ping still listed after Hide")
 	}
-	if _, err := sess.CallTool(t.Context(), &mcp.CallToolParams{Name: "ping"}); err == nil {
+	// Asked from a second client: on protocol 2026-07-28 the SDK
+	// answers an unknown tool with HTTP 400, and its client closes the
+	// connection that received it.
+	probe := connectOpts(t, srv.URL+"/mcp", nil)
+	if _, err := probe.CallTool(t.Context(), &mcp.CallToolParams{Name: "ping"}); err == nil {
 		t.Error("hidden tool still callable")
 	}
 
