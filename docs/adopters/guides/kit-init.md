@@ -108,7 +108,7 @@ JSON summary output is controlled by the kit-owned global flag,
 [`cli-parity-guide.md` §"Global Flags"](cli-parity-guide.md#global-flags)):
 there is no init-local `--json` flag.
 
-Precedence: `flag > env (KIT_INIT_*) > defaults file > built-in default`.
+Precedence: `flag > env (KIT_<UPPER_NAME>, e.g. KIT_ORG, KIT_ACCOUNT_TYPE) > defaults file > built-in default`.
 Defaults live in `~/.config/kit/defaults.yaml`.
 
 ## Augment tiers
