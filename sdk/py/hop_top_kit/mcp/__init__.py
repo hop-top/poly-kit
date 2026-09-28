@@ -47,6 +47,12 @@ from .dispatch import (
     detect_era,
     mount_mcp,
 )
+from .identity import (
+    ESTABLISHED_NONE,
+    ESTABLISHED_VERIFIED,
+    Identity,
+    Verifier,
+)
 from .legacy import LegacyHandler
 from .modern import ModernHandler, header_confirmation_gate
 from .modern_confirm import ElicitationConfirmationGate
@@ -79,6 +85,8 @@ __all__ = [
     "DEFAULT_PATH",
     "ERA_LEGACY",
     "ERA_MODERN",
+    "ESTABLISHED_NONE",
+    "ESTABLISHED_VERIFIED",
     "LEGACY_PROTOCOL_VERSION",
     "MODERN_PROTOCOL_VERSION",
     "SPEC_VERSIONS",
@@ -88,6 +96,7 @@ __all__ = [
     "ElicitationConfirmationGate",
     "Flag",
     "Headers",
+    "Identity",
     "InMemoryTaskStore",
     "Invocation",
     "Leaf",
@@ -106,6 +115,7 @@ __all__ = [
     "TaskStore",
     "TasksExtension",
     "UnknownCommandError",
+    "Verifier",
     "classify",
     "default_policy",
     "detect_era",

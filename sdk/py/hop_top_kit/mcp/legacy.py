@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .bridge import Bridge, Invocation, Leaf, Meta, Result, tool_path
+from .bridge import Bridge, Invocation, Leaf, Result, tool_path
+from .identity import Identity, Verifier, establish_caller, invocation_meta, unauthenticated
 from .protocol import (
     ERR_INVALID_PARAMS,
     ERR_INVALID_REQUEST,
@@ -52,10 +53,18 @@ class LegacyHandler:
     one instance safely serves concurrent requests.
     """
 
-    def __init__(self, bridge: Bridge, *, server_name: str, server_version: str) -> None:
+    def __init__(
+        self,
+        bridge: Bridge,
+        *,
+        server_name: str,
+        server_version: str,
+        verifier: Verifier | None = None,
+    ) -> None:
         self._bridge = bridge
         self._server_name = server_name
         self._server_version = server_version
+        self._verifier = verifier
 
     def serve(self, request: Request, rpc: RPCRequest) -> Response:
         """Route one already-parsed request by method."""
@@ -111,6 +120,15 @@ class LegacyHandler:
         if leaf is None:
             return write_error(rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK)
 
+        ident = establish_caller(self._verifier, request)
+        if auth_refused(leaf, ident):
+            return unauthenticated(
+                write_result(
+                    rpc.id_raw,
+                    error_result_block("authentication required"),
+                    STATUS_UNAUTHORIZED,
+                )
+            )
         gate = preflight_refusal(request, leaf)
         if gate is not None:
             message, status = gate
@@ -120,7 +138,7 @@ class LegacyHandler:
         inv = Invocation(
             path=leaf.path,
             flags=arguments if isinstance(arguments, dict) else {},
-            meta=Meta(surface=Surface.MCP),
+            meta=invocation_meta(ident),
         )
         try:
             result = self._bridge.invoke(inv)
@@ -160,16 +178,25 @@ def resolve_exposed_leaf(bridge: Bridge, name: str) -> Leaf | None:
     return leaf
 
 
+def auth_refused(leaf: Leaf, ident: Identity | None) -> bool:
+    """Whether the ``kit/auth-required`` gate refuses the call.
+
+    Both eras ask this one question, so they cannot drift on what
+    "authenticated" means: only an identity the mount's verifier
+    established admits the leaf. An ``Authorization`` header is
+    presence, not verification.
+    """
+    return leaf.cls.auth_required and ident is None
+
+
 def preflight_refusal(request: Request, leaf: Leaf) -> tuple[str, int] | None:
-    """Apply the auth and confirmation header gates.
+    """Apply the legacy confirmation header gate.
 
     Returns ``(message, status)`` when the call must be refused, or
-    ``None`` to proceed. The modern path reuses the auth half and swaps
-    the confirmation half for a strategy slot, so the two eras cannot
-    drift on what "authenticated" means.
+    ``None`` to proceed. The auth gate runs first, through
+    :func:`auth_refused`; the modern path swaps this confirmation gate
+    for a strategy slot.
     """
-    if leaf.cls.auth_required and not request.headers.get("authorization"):
-        return "authentication required", STATUS_UNAUTHORIZED
     if leaf.cls.requires_confirmation and not request.headers.get("x-confirm-token"):
         return "confirmation required", STATUS_PRECONDITION_REQUIRED
     return None

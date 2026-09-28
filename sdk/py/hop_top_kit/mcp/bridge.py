@@ -168,10 +168,25 @@ class Result:
 
 @dataclass
 class Meta:
-    """Per-invocation metadata carried alongside the flags."""
+    """Per-invocation metadata carried alongside the flags.
+
+    ``caller``, ``tenant`` and ``established`` mirror Go's ``Meta``: a
+    surface sets them only from an identity it established (on MCP, the
+    mount's verifier), never from anything the request claims.
+    ``established`` is ``""`` when nothing was, ``"verified"`` when a
+    verifier accepted a credential the request presented.
+    """
 
     surface: Surface = Surface.LIB
     extra: dict[str, str] = field(default_factory=dict)
+    caller: str = ""
+    tenant: str = ""
+    established: str = ""
+
+    @property
+    def authenticated(self) -> bool:
+        """Whether the surface established the caller's identity."""
+        return self.established == "verified"
 
 
 @dataclass

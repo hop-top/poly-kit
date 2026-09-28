@@ -52,6 +52,7 @@ import json
 from typing import Any
 
 from .bridge import Bridge
+from .identity import Verifier
 from .legacy import LegacyHandler
 from .modern import ModernHandler, header_confirmation_gate
 from .protocol import (
@@ -158,6 +159,7 @@ class McpSurface:
         origin_allowlist: tuple[str, ...] = (),
         confirmation_key: bytes | None = None,
         extensions: tuple[Any, ...] = (),
+        verifier: Verifier | None = None,
     ) -> None:
         self.path = path
         self._legacy_enabled, self._modern_enabled = _resolve_spec_versions(spec_versions)
@@ -166,7 +168,12 @@ class McpSurface:
         if confirmation_key is not None and not confirmation_key:
             raise MountError("mcp: confirmation_key: empty key")
 
-        self.legacy = LegacyHandler(bridge, server_name=server_name, server_version=server_version)
+        self.legacy = LegacyHandler(
+            bridge,
+            server_name=server_name,
+            server_version=server_version,
+            verifier=verifier,
+        )
 
         gate = header_confirmation_gate
         if confirmation_key:
@@ -190,6 +197,7 @@ class McpSurface:
             confirmation_gate=gate,
             extensions=advertised,
             method_handlers=method_handlers,
+            verifier=verifier,
         )
         for extension in extensions:
             extension.bind(self.modern)
@@ -283,6 +291,11 @@ def mount_mcp(bridge: Bridge, **options: Any) -> McpSurface:
     spec versions, cache hints, origin allowlist, confirmation key — with
     the same defaults: both eras enabled, path ``/mcp``, no origin check,
     and cache hints ``ttlMs = 0`` / ``cacheScope = "private"``.
+
+    ``verifier`` establishes the caller of each ``tools/call`` (see
+    :data:`~hop_top_kit.mcp.identity.Verifier`). Without one no call is
+    established, so every ``kit/auth-required`` leaf is refused with 401:
+    an ``Authorization`` header alone never admits one.
     """
     return McpSurface(bridge, **options)
 

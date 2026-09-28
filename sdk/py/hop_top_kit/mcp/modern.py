@@ -38,11 +38,13 @@ from collections.abc import Callable
 from typing import Any
 
 from ._json import Raw
-from .bridge import Bridge, Invocation, Leaf, Meta
+from .bridge import Bridge, Invocation, Leaf
+from .identity import Verifier, establish_caller, invocation_meta, unauthenticated
 from .legacy import (
     STATUS_OK,
     STATUS_PRECONDITION_REQUIRED,
     STATUS_UNAUTHORIZED,
+    auth_refused,
     error_result_block,
     exposed_tools,
     render_call_result,
@@ -75,7 +77,6 @@ from .protocol import (
 )
 from .safety import (
     DestructiveBlockedError,
-    Surface,
     SurfaceNotEnabledError,
     UnknownCommandError,
 )
@@ -153,8 +154,10 @@ class ModernHandler:
         confirmation_gate: ConfirmationGate | None = None,
         extensions: dict[str, Any] | None = None,
         method_handlers: dict[str, Callable[..., Response]] | None = None,
+        verifier: Verifier | None = None,
     ) -> None:
         self._bridge = bridge
+        self._verifier = verifier
         self._server_name = server_name
         self._server_version = server_version
         self._cache_ttl_ms = cache_ttl_ms
@@ -417,8 +420,13 @@ class ModernHandler:
         if leaf is None:
             return write_error(rpc.id_raw, ERR_INVALID_PARAMS, f"unknown tool: {name}", STATUS_OK)
 
-        if leaf.cls.auth_required and not request.headers.get("authorization"):
-            return self._call_error(rpc, "authentication required", STATUS_UNAUTHORIZED)
+        # Only the mount's verifier authenticates: a bare Authorization
+        # header does not.
+        ident = establish_caller(self._verifier, request)
+        if auth_refused(leaf, ident):
+            return unauthenticated(
+                self._call_error(rpc, "authentication required", STATUS_UNAUTHORIZED)
+            )
 
         refusal = self._confirm(request, leaf, rpc)
         if refusal is not None:
@@ -429,7 +437,7 @@ class ModernHandler:
         inv = Invocation(
             path=leaf.path,
             flags=arguments if isinstance(arguments, dict) else {},
-            meta=Meta(surface=Surface.MCP, extra=invocation_extra(meta)),
+            meta=invocation_meta(ident, invocation_extra(meta)),
         )
         try:
             result = self._bridge.invoke(inv)
