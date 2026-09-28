@@ -170,6 +170,11 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	if err := svcconfig.New(root.Viper).Validate(); err != nil {
 		return output.UsageError(err.Error())
 	}
+	// A service with no HTTP listener has nothing for an HTTP-plane
+	// block to act on; one set for it is refused, not ignored.
+	if err := validateSocketBlocks(root); err != nil {
+		return output.UsageError(err.Error())
+	}
 
 	supCfg, badPolicy := serveSupervisorConfig(root.Viper)
 	if badPolicy != "" {

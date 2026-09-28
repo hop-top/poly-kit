@@ -160,6 +160,39 @@ func TestServeSocketRejectsOverlongPath(t *testing.T) {
 	assert.Contains(t, err.Error(), "path")
 }
 
+// The socket has no HTTP listener: an HTTP-plane block set for it
+// would act on nothing, so it is refused at exit 2 rather than
+// ignored. Invocation-plane blocks and services.all defaults stay
+// accepted.
+func TestServeSocketRefusesHTTPOnlyBlocks(t *testing.T) {
+	for _, key := range []string{
+		"services.socket.body_limit.max_bytes",
+		"services.socket.health.enabled",
+		"services.socket.host_check.enabled",
+		"services.socket.origin_check.enabled",
+		"services.socket.security_headers.enabled",
+		"services.socket.compression.enabled",
+		"services.socket.metrics.scrape.enabled",
+	} {
+		t.Run(key, func(t *testing.T) {
+			r := socketRoot(t, cli.SocketConfig{Path: shortSocketPath(t)})
+			r.Viper.Set(key, 1)
+			err := runServeArgs(t, r, []string{"serve", "socket"}, 2*time.Second)
+			require.Error(t, err)
+			var oe *output.Error
+			require.ErrorAs(t, err, &oe)
+			assert.Equal(t, 2, oe.ExitCode)
+			assert.Contains(t, err.Error(), "no HTTP listener")
+		})
+	}
+
+	r := socketRoot(t, cli.SocketConfig{Path: shortSocketPath(t)})
+	r.Viper.Set("services.all.body_limit.max_bytes", 2048)
+	r.Viper.Set("services.socket.audit.redact.patterns", []string{"tok_[a-z]+"})
+	err := runServeArgs(t, r, []string{"serve", "socket"}, 2*time.Second)
+	assert.NoError(t, err, "a shared default and an invocation-plane block are accepted")
+}
+
 func TestServeSocketRejectsPathUnderAFile(t *testing.T) {
 	dir, err := os.MkdirTemp("", "cs")
 	require.NoError(t, err)

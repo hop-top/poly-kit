@@ -270,6 +270,8 @@ a negative value disables it.
 | `MountWebhooks` | `WithWebhookMaxBody` | 413 `payload_too_large` | no |
 | `MountWS` (per message) | `WithWSMaxMessageBytes` (32 KiB) | close `1009` | yes |
 | `cli.WithAPI` service | `APIConfig.MaxBodyBytes`; `services.api.body_limit.*`, `services.all.body_limit.*` | 413 `body_too_large` | yes |
+| `mcpserve` service (HTTP) | `services.mcp.body_limit.*`, `services.all.body_limit.*` | 413, JSON-RPC `-32600` | no |
+| `rpcserve` service | `rpcserve.Config.MaxBodyBytes` (4 MiB); `services.rpc.body_limit.*`, `services.all.body_limit.*` | `CodeResourceExhausted` | no |
 
 A declared `Content-Length` over the cap is refused before any handler
 runs; a chunked or HTTP/2 body is refused on the read that crosses

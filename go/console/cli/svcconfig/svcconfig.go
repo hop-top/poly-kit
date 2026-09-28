@@ -94,6 +94,19 @@ var blocks = []Block{
 	},
 }
 
+// httpOnly names the registered blocks that act on an HTTP listener
+// and nowhere else — HTTP-plane middleware with no invocation-plane
+// half. A service with no HTTP listener (the socket service) has
+// nothing for them to act on, so [Resolver.ValidateNoHTTP] refuses
+// them under it. A block not named here reaches every service.
+var httpOnly = []string{
+	"metrics.scrape", "security_headers", "health", "host_check",
+	"origin_check", "body_limit", "compression",
+}
+
+// HTTPOnly reports whether block acts on an HTTP listener alone.
+func HTTPOnly(block string) bool { return slices.Contains(httpOnly, block) }
+
 // Blocks returns the registered blocks.
 func Blocks() []Block {
 	out := make([]Block, len(blocks))
@@ -219,6 +232,48 @@ func (r Resolver) Validate() error {
 			k, strings.Join(names, ", ")))
 	}
 	return joinSorted(errs)
+}
+
+// ValidateNoHTTP refuses every key under services.<svc> that lies in
+// an [HTTPOnly] block, one error per block: svc is a service with no
+// HTTP listener, so nothing would apply the block and the setting
+// would be silently ignored. A key lies in the innermost registered
+// block containing it, so metrics.scrape is refused while metrics
+// itself, which also instruments invocations, is not. services.all
+// is never refused here: a shared default a service does not use is
+// not an error.
+func (r Resolver) ValidateNoHTTP(svc string) error {
+	prefix := Root + "." + svc + "."
+	var errs []error
+	seen := map[string]bool{}
+	for _, k := range r.setKeys() {
+		rest, ok := strings.CutPrefix(k, prefix)
+		if !ok {
+			continue
+		}
+		block := innermostBlock(rest)
+		if block == "" || !HTTPOnly(block) || seen[block] {
+			continue
+		}
+		seen[block] = true
+		errs = append(errs, fmt.Errorf(
+			"%s: the %s service has no HTTP listener, so %s does not apply to it; "+
+				"remove it, or set it under a service that serves HTTP",
+			Key(svc, block, ""), svc, block))
+	}
+	return joinSorted(errs)
+}
+
+// innermostBlock is the most specific registered block that rest, a
+// key path inside a service block, is or lies in; "" when none.
+func innermostBlock(rest string) string {
+	best := ""
+	for _, b := range blocks {
+		if (rest == b.Name || strings.HasPrefix(rest, b.Name+".")) && len(b.Name) > len(best) {
+			best = b.Name
+		}
+	}
+	return best
 }
 
 // ValidateBlock checks one registered block: an unknown key inside it,

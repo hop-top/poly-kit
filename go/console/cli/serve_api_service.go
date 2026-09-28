@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	kitlog "hop.top/kit/go/console/log"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
@@ -129,19 +128,9 @@ func (a *apiService) Validate() error {
 	if err := a.validatePolicyExposure(addr); err != nil {
 		return err
 	}
-	if err := a.validateHealth(); err != nil {
-		return err
-	}
-	if err := a.validateMetricsScrape(addr); err != nil {
-		return err
-	}
-	if err := a.validateGuards(); err != nil { // host_check, origin_check, security_headers
-		return err
-	}
-	if _, err := a.maxBodyBytes(); err != nil {
-		return err
-	}
-	if err := a.validateCompression(); err != nil {
+	// The HTTP-plane blocks: health, metrics.scrape, host_check,
+	// origin_check, security_headers, body_limit, compression.
+	if err := a.plane().validate(); err != nil {
 		return err
 	}
 	// The permission gate is built from --policy at start; a --policy
@@ -367,8 +356,6 @@ func (a *apiService) Stop(ctx context.Context) error {
 // audit sinks: an unauthenticated call and a permitted one must land
 // in the same stream, and only the bridge knows where that is.
 func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
-	logger := kitlog.New(a.root.Viper)
-
 	bridge, err := a.bridge()
 	if err != nil {
 		return nil, err
@@ -378,28 +365,16 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	a.stopping = stopping
 	a.mu.Unlock()
 
-	// HTTP-plane slots 1-6 wrap everything, health probes included;
-	// edge holds 1-5 (request id, access log, recovery, tracing and
-	// metrics). Slots 10-12 (body limit, compression, auth) go in
-	// guards, which wrap the router as a whole: huma's operations and
-	// documents, /capabilities and unmatched paths are registered on
-	// its mux directly, so per-route middleware would miss them. Slot
-	// 8 (Host/Origin) wraps the router from outside, below.
-	edge := []api.Middleware{
-		api.RequestID(),
-		api.Logger(logger.Info),
-		api.Recovery(func(v any, r *http.Request) {
-			logger.Error("panic recovered", "error", v, "path", r.URL.Path)
-		}),
-		// Slot 5: tracing and metrics wrap every later refusal, probes included.
-		a.root.observeMiddleware(APIServiceName),
-	}
-	guards := []api.Middleware{
-		// Body limit, HTTP slot 10: after Host/Origin and CORS, before compression and Auth.
-		a.bodyLimit(bridge),
-	}
-	// Compression: HTTP-plane slot 11, after the body limit, before auth.
-	guards = append(guards, a.compressionMiddleware()...)
+	// The HTTP-plane chain every kit listener shares (serve_http_plane.go).
+	// Slots 10-12 (body limit, compression, auth) go in guards, which
+	// wrap the router as a whole: huma's operations and documents,
+	// /capabilities and unmatched paths are registered on its mux
+	// directly, so per-route middleware would miss them. Slots 1-8
+	// wrap the router from outside, below.
+	plane := a.plane()
+	plane.l.Checks = a.dependencyChecks(ctx)
+	plane.l.OnBodyTooLarge = cmdsurface.ProjectionBodyTooLarge(bridge)
+	guards := plane.guards()
 	if a.authenticates() {
 		// Auth, HTTP slot 12: every route, the documents included.
 		guards = append(guards, api.Auth(a.authFunc(),
@@ -438,18 +413,20 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	// end, Host checked but ahead of the router's own guards. Slot 7
 	// (health probes) answers ahead of slot 8. Both endpoints inspect
 	// the bare router for adopter routes at their paths; slot 6
-	// (security headers) and edge wrap everything, slot 7 included.
-	// See serve_api_guard.go, serve_api_health.go and
-	// serve_api_metrics.go.
-	scraped, err := a.withMetrics(router, router)
-	if err != nil {
-		return nil, err
-	}
-	checked, err := a.hostOriginChecks(scraped)
-	if err != nil {
-		return nil, err
-	}
-	return api.Chain(edge...)(a.securityHeaders(a.withHealth(ctx, checked, router))), nil
+	// (security headers) and slots 1-5 wrap everything, slot 7
+	// included.
+	return plane.wrap(router, router)
+}
+
+// plane is the api service's HTTP-plane chain, over the address this
+// run resolves.
+func (a *apiService) plane() httpPlane {
+	return httpPlane{root: a.root, l: ServeHTTPListener{
+		Service:      APIServiceName,
+		Addr:         a.listenAddr(),
+		Ready:        a.Ready,
+		MaxBodyBytes: a.cfg.MaxBodyBytes,
+	}}
 }
 
 // bridge builds the bridge the projection executes through. A tool

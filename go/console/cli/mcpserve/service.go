@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -370,6 +372,12 @@ func (s *service) validate() error {
 		if err := s.validateHTTP(); err != nil {
 			return err
 		}
+		// The HTTP-plane blocks under services.mcp (and services.all):
+		// the stdio transport has no HTTP plane, so they are read, and
+		// checked, on this transport only.
+		if err := cli.ValidateServeHTTPListener(s.root, s.httpListener()); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("transport: unknown transport %q; use %q or %q",
 			transport, TransportHTTP, TransportStdio)
@@ -410,6 +418,32 @@ func (s *service) validateHTTP() error {
 		)
 	}
 	return nil
+}
+
+// httpListener describes the HTTP transport's listener to the
+// HTTP-plane chain kit's listeners share: its blocks are
+// services.mcp.*, its readiness the service's, and its refusals
+// JSON-RPC error bodies.
+func (s *service) httpListener() cli.ServeHTTPListener {
+	return cli.ServeHTTPListener{
+		Service: ServiceName,
+		Addr:    s.addr(),
+		Ready:   s.Ready,
+		Refuse:  refuseAndClose,
+	}
+}
+
+// refuseAndClose writes an HTTP-plane refusal as a JSON-RPC error body
+// and ends the connection after it, reading no more of the request. A
+// refusal is decided before anything reads the body, and net/http
+// reads the unread rest once the handler returns — outside
+// releaseOnStop, so a client that stalls mid-body would hold the stop
+// until it sent the rest. The read deadline ends that read at once;
+// the connection, its request unfinished, is not reused.
+func refuseAndClose(w http.ResponseWriter, r *http.Request, e *api.APIError) {
+	w.Header().Set("Connection", "close")
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now())
+	mcpsdk.RefuseJSONRPC(w, r, e)
 }
 
 // serving is one transport's half of a run: acquire, serve a surface,
@@ -509,6 +543,15 @@ func (t *transport) surface(ctx context.Context, impl serving) (*mcpsdk.Surface,
 		)
 	}
 	opts = append(opts, mcpsdk.WithConfirmationElicitation(nil))
+	if h, ok := impl.(interface {
+		surfaceOptions() ([]mcpsdk.Option, error)
+	}); ok {
+		more, err := h.surfaceOptions()
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, more...)
+	}
 	return mcpsdk.New(b, opts...)
 }
 

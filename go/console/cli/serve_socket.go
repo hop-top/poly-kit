@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/socket"
@@ -323,6 +324,21 @@ func validateSocketPath(root *Root, cfg *SocketConfig) error {
 // socket path: sockaddr_un.sun_path is 104 bytes on darwin and the
 // BSDs, 108 on Linux.
 const maxSocketPathLen = 103
+
+// validateSocketBlocks refuses an HTTP-plane middleware block set for
+// the socket service: it has no HTTP listener, and gets what it needs
+// from that plane from its own transport (the line bound, the
+// owner-only file). The invocation-plane blocks — tracing, metrics,
+// audit — apply to it as to every transport service.
+func validateSocketBlocks(root *Root) error {
+	if root.socketCfg == nil || root.serveReg == nil {
+		return nil
+	}
+	if _, ok := root.serveReg.Lookup(SocketServiceName); !ok {
+		return nil
+	}
+	return svcconfig.New(root.Viper).ValidateNoHTTP(SocketServiceName)
+}
 
 // applySocketFlags records the --socket flag so the service resolves
 // it at bind time. It mirrors applyAPICompat's role for --addr.

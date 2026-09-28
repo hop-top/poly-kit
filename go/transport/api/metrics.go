@@ -32,10 +32,10 @@ type MetricsConfig struct {
 // [HealthRoutes], that includes the Host and Origin checks: the
 // exposition discloses what the service does, so a DNS-rebinding page
 // must not read it, and a scraper already sends a host the check
-// allows. kit's api service mounts it inside those checks, below the
+// allows. kit's HTTP listeners mount it inside those checks, below the
 // request id, access log, recovery, telemetry and security headers.
 // Because it skips authentication, whoever mounts it decides where it
-// may be reached; kit's api service refuses a non-loopback bind unless
+// may be reached; kit's HTTP listeners refuse a non-loopback bind unless
 // the operator allows it.
 //
 // A route the adopter registered at exactly cfg.Path wins, as it does

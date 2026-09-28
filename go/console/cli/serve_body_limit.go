@@ -10,7 +10,6 @@ import (
 
 	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/transport/api"
-	"hop.top/kit/go/transport/cmdsurface"
 )
 
 // Middleware block keys for the body limit. The block is
@@ -114,22 +113,30 @@ func wholeBytes(raw any) (int64, error) {
 }
 
 // maxBodyBytes is the api service's resolved body cap.
-func (a *apiService) maxBodyBytes() (int64, error) {
-	var v *viper.Viper
-	if a.root != nil {
-		v = a.root.Viper
-	}
-	return serviceMaxBodyBytes(v, APIServiceName, a.cfg.MaxBodyBytes)
+func (a *apiService) maxBodyBytes() (int64, error) { return a.plane().maxBodyBytes() }
+
+// maxBodyBytes is the listener's resolved body cap.
+func (p httpPlane) maxBodyBytes() (int64, error) {
+	return serviceMaxBodyBytes(p.viper(), p.l.Service, p.l.MaxBodyBytes)
 }
 
-// bodyLimit returns the api service's body-cap middleware, auditing
-// each refusal into the bridge's sinks as the auth middleware does.
-// The cap was validated in Validate; an error here falls back to the
-// default rather than serving uncapped.
-func (a *apiService) bodyLimit(bridge *cmdsurface.Bridge) api.Middleware {
-	limit, err := a.maxBodyBytes()
+// bodyLimit returns the listener's body-cap middleware, HTTP-plane
+// slot 10, reporting each refusal to the listener's hook (the api
+// service audits it into the bridge's sinks, as the auth middleware
+// does) and writing it in the listener's protocol. The cap was
+// validated in Validate; an error here falls back to the default
+// rather than serving uncapped.
+func (p httpPlane) bodyLimit() api.Middleware {
+	limit, err := p.maxBodyBytes()
 	if err != nil {
 		limit = api.DefaultMaxBodyBytes
 	}
-	return api.BodyLimit(limit, api.OnBodyTooLarge(cmdsurface.ProjectionBodyTooLarge(bridge)))
+	var opts []api.BodyLimitOption
+	if p.l.OnBodyTooLarge != nil {
+		opts = append(opts, api.OnBodyTooLarge(p.l.OnBodyTooLarge))
+	}
+	if p.l.Refuse != nil {
+		opts = append(opts, api.BodyTooLargeRefusal(p.l.Refuse))
+	}
+	return api.BodyLimit(limit, opts...)
 }

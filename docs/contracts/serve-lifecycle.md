@@ -224,9 +224,10 @@ service may still be idle, and it may later fail.
 
 ### Readiness over HTTP
 
-The api service surfaces readiness to orchestrators and load
-balancers as two routes. They are answered in front of its router
-and end the request there: inside the request id, access log,
+Every kit HTTP listener — the api service's, the mcp service's HTTP
+transport, the rpc service's — surfaces readiness to orchestrators
+and load balancers as two routes. They are answered in front of the
+listener's router and end the request there: inside the request id, access log,
 recovery, telemetry and security header layers, and before the Host
 and Origin checks, the body limit and authentication, because
 orchestrator probes address a pod by IP and carry no credentials. A
@@ -234,11 +235,12 @@ route the adopter registered at exactly a probe path wins over it.
 
 - `GET /healthz` is liveness. It answers `200` whenever the process
   answers HTTP at all, and never consults readiness or dependencies.
-- `GET /readyz` is readiness. It answers `200` only while the api
-  service is ready AND every service it declares in `DependsOn` is
-  ready in the current run; `503` otherwise — before the listener
-  reports ready, once `Stop` begins, or while a dependency is
-  starting, failed, stopped, or reports not ready.
+- `GET /readyz` is readiness. It answers `200` only while the
+  listener's service is ready AND, for the api service, every service
+  it declares in `DependsOn` is ready in the current run; `503`
+  otherwise — before the listener reports ready, once `Stop` begins,
+  or while a dependency is starting, failed, stopped, or reports not
+  ready.
 
 A dependency's readiness is the supervisor's record, not only the
 dependency's own `Ready`: a dependency that failed at runtime under
@@ -248,7 +250,7 @@ supervisor exposes that record to every `Start` it calls, as a
 not consulted, the same rule [Ordering](#ordering) applies.
 
 The `503` body names failing checks only on a loopback bind unless
-`services.api.health.detail` says otherwise, and never carries a
+`services.<svc>.health.detail` says otherwise, and never carries a
 version, a path, or error text. The routes are not commands: they
 appear in neither command discovery nor the OpenAPI document.
 
@@ -469,9 +471,11 @@ The kit-shipped services own these (the `mcp` service's keys are in
 | `services.api.health.detail`   | bool   | `true` on loopback, else `false` | name failing checks in a `/readyz` `503`              |
 | `services.socket.path`         | string | runtime dir, see below | Unix socket path                                               |
 
-Each `services.api.health.*` key may also be set under
-`services.all.health.*`; the api's own key wins, key by key, and any
-other key in either block is refused at validation, exit `2`.
+The mcp and rpc services read the same keys for their own listeners,
+under `services.mcp.health.*` and `services.rpc.health.*`. Each may
+also be set under `services.all.health.*`; the service's own key
+wins, key by key, and any other key in either block is refused at
+validation, exit `2`.
 
 `services.api.addr` defaults to a loopback address, and a non-loopback
 value is refused at validation unless `APIConfig.Auth` is set or
@@ -778,9 +782,12 @@ links the MCP SDK: `go/console/cli` MUST NOT depend on it. It reaches
 the Root through the same exported hooks any out-of-package transport
 service can use — `cli.WithService`, `cli.ServeBridgeOptions` (or
 `cli.ServeBridgeOptionsFor`, which states the service's exposure for
-the rate limit's default), `cli.ValidateServeBridge`, `cli.ServePolicyConfigured`, and
-`cli.IsLoopbackAddr` — and so meets exactly the gates the in-package
-services do.
+the rate limit's default), `cli.ValidateServeBridge`,
+`cli.ServePolicyConfigured`, `cli.IsLoopbackAddr`, and for its
+listener `cli.ServeHTTPHandler`, `cli.ValidateServeHTTPListener` and
+`cli.ResolveServeHTTPListener` — and so meets exactly the gates and
+the [HTTP-plane middleware](#middleware-order-on-the-http-plane) the
+in-package services do.
 
 ### Transports
 
@@ -831,9 +838,24 @@ service holds one of each and routes each request by the markers of
 the MCP guide's routing precedence: `initialize` and unmarked requests
 to the session handler, a request carrying a `2026-07-28` marker to
 the stateless one. Every response, error included, is the SDK's. The
-stdio transport serves `2026-07-28` as well. The SDK's DNS-rebinding protection for loopback listeners stays
-on. Every response streams through the middleware in front of the SDK
-handler, so each layer of it keeps the response flushable.
+stdio transport serves `2026-07-28` as well. Every response streams
+through the middleware in front of the SDK handler, so each layer of
+it keeps the response flushable.
+
+The HTTP transport's listener carries the
+[HTTP-plane middleware](#middleware-order-on-the-http-plane) every kit
+listener does, configured by `services.mcp.*`: security headers, the
+health probes, the Host and Origin checks, the metrics endpoint, the
+body limit, compression. A refusal there is written as the MCP
+transport expects one — the HTTP status and a JSON-RPC error with a
+null id — and ends the connection. The SDK keeps its own copies of
+two checks beneath, set from the same blocks so it never refuses
+what the service's configuration allows: its request body cap is
+`body_limit`'s, and its DNS-rebinding check, which admits loopback
+names only, stays on unless `host_check` admits other names (an
+`allow` list) or is switched off. The stdio transport has no HTTP
+plane; the HTTP-plane blocks are read, and validated, only when the
+service runs over HTTP.
 
 ### Keys and flags
 
@@ -1064,9 +1086,24 @@ negotiated by ALPN instead and h2c is off
 `/cmdsurface.v1.Commands/`. The listener is the service's own, for the
 reasons the mcp service gives.
 
-A request message larger than `rpcserve.Config.MaxBodyBytes` (default
-4 MiB, the gRPC implementations' receive default) is refused with
-`resource_exhausted` before it is decoded.
+The listener carries the
+[HTTP-plane middleware](#middleware-order-on-the-http-plane) every kit
+listener does, configured by `services.rpc.*`. A refusal there is a
+Connect error in the protocol the client spoke —
+`permission_denied` for the Host and Origin checks,
+`resource_exhausted` for the body limit — and ends the connection.
+
+A request larger than the body limit — `services.rpc.body_limit`,
+else `rpcserve.Config.MaxBodyBytes`, else 4 MiB, the gRPC
+implementations' receive default — is refused with
+`resource_exhausted` before it is decoded, on every protocol and for
+streams alike. Connect's own read limit is set to the same number, so
+no message is admitted by one layer and refused by the other beyond
+its 5-byte envelope. Compression is Connect's, per message:
+`services.rpc.compression` sets it, and the HTTP compressor passes
+Connect, gRPC and gRPC-Web through, so nothing is compressed twice.
+Off, the default, no response is compressed and a compressed request
+is still read.
 
 The server's write deadline (10s) is sized for request/reply.
 `InvokeStream` responses MUST be exempt from it: a stream outlives it
@@ -1362,12 +1399,20 @@ Why this order:
 - The body limit precedes authentication because it costs nothing
   and reveals nothing; authentication reads headers, never the body.
 
-The RPC server applies the same slots where Connect has them —
-interceptors for tracing and authentication, handler options for the
-read limit and compression — and the mcp service's listener applies
-them in front of the SDK. The SDK's own DNS-rebinding protection on
-loopback satisfies `host_check` there; it does not replace it beyond
-loopback.
+The api service's router, the rpc server and the mcp service's HTTP
+listener build this chain with one constructor, each from its own
+`services.<svc>.*` blocks. Slots 1–11 are the same middleware on all
+three; slot 12 is each listener's own — an HTTP middleware on the api
+and mcp listeners, a Connect interceptor on the RPC server. Where a
+protocol layer keeps a copy of a slot, the copy is set from the same
+block, so the two never disagree: on the RPC server, Connect's read
+limit (`body_limit`) and per-message compression (`compression`,
+which the HTTP compressor leaves to Connect); on the mcp listener, the
+SDK's body cap (`body_limit`) and its loopback DNS-rebinding check,
+which stays beneath kit's Host check and steps aside when
+`host_check` admits other names or is switched off. A refusal decided
+on this plane is written in the listener's protocol (see
+[Refusals](#refusals)).
 
 ### Middleware configuration
 
@@ -1382,7 +1427,7 @@ services:
   api:
     addr: 0.0.0.0:8443
     body_limit:
-      max_bytes: 4194304    # api only
+      max_bytes: 4194304    # this service only
     rate_limit:
       enabled: false        # overrides services.all for api only
 ```
@@ -1443,20 +1488,30 @@ socket service and stdio take the loopback column.
 | `timeouts`         | http server; invocation 11–12          | HTTP listeners; every remote surface   | read header 5s, read 5s, write 10s; no command deadline | same                                           | `deadline_exceeded` |
 | `trusted_proxies`  | http 2                                 | HTTP listeners                         | empty: no forwarded header trusted  | empty                                          | — |
 | `tracing`          | http 5; invocation (propagation)       | HTTP listeners; every remote surface   | propagate, export nothing           | same                                           | — |
-| `metrics`          | http 5; endpoint at the inner end of http 8 | HTTP listeners; endpoint on the api service | off; endpoint off               | off; endpoint off, and refused without `scrape.allow_remote` | — |
+| `metrics`          | http 5; endpoint at the inner end of http 8 | HTTP listeners; every remote surface; endpoint (`metrics.scrape`) on HTTP listeners | off; endpoint off               | off; endpoint off, and refused without `scrape.allow_remote` | — |
 | `security_headers` | http 6                                 | HTTP listeners                         | on; HSTS only with `tls`            | on                                             | — |
-| `health`           | http 7                                 | api service                            | on                                  | on                                             | — |
+| `health`           | http 7                                 | HTTP listeners                         | on                                  | on                                             | — |
 | `host_check`       | http 8                                 | HTTP listeners                         | on, allowlist from the bound host   | on; a wildcard bind derives no restriction     | `host_rejected` |
 | `origin_check`     | http 8                                 | HTTP listeners                         | on, same-origin                     | on, same-origin                                | `origin_rejected` |
 | `cors`             | http 9                                 | HTTP listeners                         | off                                 | off                                            | — |
-| `body_limit`       | http 10                                | HTTP listeners                         | on, 1 MiB                           | on, 1 MiB                                      | `body_too_large` |
-| `compression`      | http 11                                | HTTP listeners; never `text/event-stream` | off                              | off                                            | — |
+| `body_limit`       | http 10                                | HTTP listeners                         | on, 1 MiB; rpc 4 MiB                | on, 1 MiB; rpc 4 MiB                           | `body_too_large` |
+| `compression`      | http 11                                | HTTP listeners; never `text/event-stream`; per message on the RPC server | off                   | off                                            | — |
 | `rate_limit`       | invocation 7                           | every remote surface                   | off                                 | on, per-tier limits documented with the block  | `rate_limited` |
 | `idempotency`      | invocation 8, 13                       | every remote surface                   | on; inert without a key             | on                                             | `idempotency_conflict`, `idempotency_key_reused` |
 | `cache`            | invocation 8; HTTP renders ETag, `304`, `Cache-Control` | `rest`, read tier only   | inert without `kit/cache-ttl`       | same                                           | — |
 | `quota`            | invocation 9, 13                       | every remote surface                   | off                                 | off                                            | `quota_exceeded` |
 | `concurrency`      | invocation 11                          | every remote surface                   | on, bounded queue                   | on, bounded queue                              | `overloaded` |
 | `audit`            | invocation 13                          | every remote surface                   | the registered sinks; redaction always | same                                        | — |
+
+"HTTP listeners" are the api service's router, the mcp service's HTTP
+transport and the rpc server; each applies every block in its row
+under its own `services.<svc>`. A block whose reach is HTTP listeners
+alone — `security_headers`, `health`, `host_check`, `origin_check`,
+`body_limit`, `compression`, and `metrics.scrape` — set for a
+kit-shipped service with no HTTP listener (the socket service) would
+act on nothing, so it is refused at validation, exit `2`, rather than
+ignored. Under `services.all` it is a default, and a service it does
+not reach simply does not read it.
 
 The defaults follow one rule. On loopback the caller is already on
 the machine, so what is on protects the machine from browsers and

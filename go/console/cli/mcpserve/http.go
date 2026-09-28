@@ -15,7 +15,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	kitlog "hop.top/kit/go/console/log"
+	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/mcpsdk"
@@ -101,8 +101,14 @@ func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
 	base, cancelBase := context.WithCancel(context.WithoutCancel(ctx))
 	mux := http.NewServeMux()
 	mux.Handle(h.svc.path(), s.Handler())
+	handler, err := h.handler(mux)
+	if err != nil {
+		cancelBase()
+		_ = ln.Close()
+		return err
+	}
 	srv := &http.Server{
-		Handler:           h.middleware()(mux),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return base },
 		ConnState:         h.trackUnread,
@@ -119,7 +125,7 @@ func (h *httpServing) serve(ctx context.Context, s *mcpsdk.Surface) error {
 	after := context.AfterFunc(ctx, func() { _ = h.close(context.Background()) })
 	defer after()
 
-	err := h.svc.tls.Serve(srv, ln)
+	err = h.svc.tls.Serve(srv, ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -200,27 +206,53 @@ func ignoreClosed(err error) error {
 	return err
 }
 
-// middleware is the stack in front of the SDK handler: the stop
-// release first, then request ids, request logging, panic recovery,
-// the adopter's Auth when set, and the call header last, so it records
-// what the layers before it established.
-func (h *httpServing) middleware() api.Middleware {
-	logger := kitlog.New(h.svc.root.Viper)
-	mws := []api.Middleware{
-		releaseOnStop(),
-		api.RequestID(),
-		api.Logger(logger.Info),
-		api.Recovery(func(v any, r *http.Request) {
-			logger.Error("panic recovered", "error", v, "path", r.URL.Path)
-		}),
-	}
+// handler is the stack in front of mux, the SDK handler's: the stop
+// release first, then the HTTP-plane chain every kit listener shares
+// (serve-lifecycle.md §"Middleware order on the HTTP plane": request
+// id, access log, recovery, tracing and metrics, security headers,
+// health probes, Host and Origin checks with the metrics endpoint,
+// body limit, compression), read from services.mcp.*; then the
+// verifier when set (slot 12: the client certificate under
+// auth.mode: mtls, else Config.Auth), and the call header last, so it
+// records what the layers before it established.
+//
+// The SDK's own copies of two checks sit beneath: its body cap and
+// its DNS-rebinding check, set from the same blocks by
+// surfaceOptions.
+func (h *httpServing) handler(mux *http.ServeMux) (http.Handler, error) {
+	var inner []api.Middleware
 	auth := h.svc.auth()
 	authed := auth != nil
 	if authed {
-		mws = append(mws, api.Auth(auth, api.OnAuthRefused(h.auditAuthRefusal)))
+		inner = append(inner, api.Auth(auth, api.OnAuthRefused(h.auditAuthRefusal)))
 	}
-	mws = append(mws, mcpCallRecorder(authed))
-	return api.Chain(mws...)
+	inner = append(inner, mcpCallRecorder(authed))
+
+	l := h.svc.httpListener()
+	l.Routes = mux
+	chain, err := cli.ServeHTTPHandler(h.svc.root, l, api.Chain(inner...)(mux))
+	if err != nil {
+		return nil, err
+	}
+	return releaseOnStop()(chain), nil
+}
+
+// surfaceOptions sets the SDK's copies of the HTTP-plane checks from
+// services.mcp.*, so the SDK never refuses what the service's
+// configuration allows: its body cap is the body_limit block's, and
+// its DNS-rebinding check — which admits loopback names only — steps
+// aside when host_check admits other names (an allow list) or is
+// switched off. Otherwise it stays in force beneath kit's Host check.
+func (h *httpServing) surfaceOptions() ([]mcpsdk.Option, error) {
+	set, err := cli.ResolveServeHTTPListener(h.svc.root, h.svc.httpListener())
+	if err != nil {
+		return nil, err
+	}
+	opts := []mcpsdk.Option{mcpsdk.WithMaxBodyBytes(set.MaxBodyBytes)}
+	if !set.HostCheck || len(set.AllowHosts) > 0 {
+		opts = append(opts, mcpsdk.WithoutLocalhostProtection())
+	}
+	return opts, nil
 }
 
 // releaseOnStop ends the read of a request body when the request's

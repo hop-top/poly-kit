@@ -1,6 +1,7 @@
 package svcconfig
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -161,4 +162,44 @@ func TestValidateBlockScopes(t *testing.T) {
 	assert.Error(t, r.ValidateBlock("body_limit"), "no scope named: every service")
 	assert.NoError(t, r.ValidateBlock("compression"))
 	assert.Error(t, r.ValidateBlock("no_such_block"))
+}
+
+// A service with no HTTP listener has nothing for an HTTP-plane block
+// to act on: set under it, the block is refused rather than ignored.
+// The invocation-plane blocks, and services.all, stay accepted.
+func TestValidateNoHTTPRefusesHTTPOnlyBlocks(t *testing.T) {
+	v := viper.New()
+	v.Set("services.socket.body_limit.max_bytes", 10)
+	v.Set("services.socket.metrics.scrape.enabled", true)
+	v.Set("services.socket.health", "on")
+	v.Set("services.socket.metrics.enabled", true)
+	v.Set("services.socket.tracing.enabled", true)
+	v.Set("services.socket.audit.redact.patterns", []string{"x"})
+	v.Set("services.socket.enabled", true)
+	v.Set("services.all.compression.enabled", true)
+	v.Set("services.api.host_check.enabled", false)
+
+	err := New(v).ValidateNoHTTP("socket")
+	require.Error(t, err)
+	msg := err.Error()
+	for _, want := range []string{
+		"services.socket.body_limit:", "services.socket.metrics.scrape:", "services.socket.health:",
+		"no HTTP listener",
+	} {
+		assert.Contains(t, msg, want)
+	}
+	for _, not := range []string{"metrics.enabled", "tracing", "audit", "services.all", "services.api", "services.socket.enabled"} {
+		assert.NotContains(t, msg, not)
+	}
+	assert.Equal(t, 1, strings.Count(msg, "services.socket.body_limit:"), "one line per block")
+
+	assert.NoError(t, New(v).ValidateNoHTTP("worker"), "keys under another service are that service's")
+	assert.NoError(t, New(nil).ValidateNoHTTP("socket"))
+
+	for _, b := range []string{"security_headers", "health", "host_check", "origin_check", "body_limit", "compression", "metrics.scrape"} {
+		assert.True(t, HTTPOnly(b), b)
+	}
+	for _, b := range []string{"tracing", "metrics", "audit", "audit.redact", "unregistered"} {
+		assert.False(t, HTTPOnly(b), b)
+	}
 }

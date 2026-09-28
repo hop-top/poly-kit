@@ -397,8 +397,8 @@ A refusal is an RPC error, and the command never ran:
 | `not_found`           | unknown command, hidden by `Expose`/`Hide`, or never remote  |
 | `unauthenticated`     | `Auth` refused the call, or `kit/auth-required` without verified `Auth` |
 | `failed_precondition` | `kit/requires-confirmation` without `X-Confirm-Token`        |
-| `permission_denied`   | destructive ceiling, `--policy`, or `cli.WithPermission`; the message says which |
-| `resource_exhausted`  | request message over `MaxBodyBytes`                          |
+| `permission_denied`   | destructive ceiling, `--policy`, or `cli.WithPermission`; the message says which. Also the listener's Host and Origin checks, the message led by `host_rejected` or `origin_rejected` |
+| `resource_exhausted`  | request over the body limit: `services.rpc.body_limit.max_bytes`, else `MaxBodyBytes` |
 
 ## Option reference
 
@@ -411,7 +411,7 @@ A refusal is an RPC error, and the command never ran:
 | `Config.Policy` | zero | Zero refuses every destructive command. `AllowDestructiveOn: [SurfaceRPC]` permits them. |
 | `Config.Expose` | empty | Empty reaches the whole tree; a non-empty list is an allow-list. |
 | `Config.Hide` | empty | Patterns withheld from RPC, applied after `Expose`. |
-| `Config.MaxBodyBytes` | 4 MiB | Largest request message; larger is `resource_exhausted`. |
+| `Config.MaxBodyBytes` | 4 MiB | Largest request; larger is `resource_exhausted`. `services.rpc.body_limit.max_bytes` / `.enabled`, then `services.all.body_limit.*`, override it. |
 | `Config.Interceptors` | none | Your Connect interceptors, run only for calls kit admitted. |
 
 ## What the service does not implement

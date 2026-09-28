@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/transport/api"
 )
 
@@ -25,8 +24,8 @@ type ServeMetricsEndpoint interface {
 }
 
 // The metrics block's scrape sub-block, services.<svc>.metrics.scrape.
-// The observability provider owns and validates every key in it; the
-// api service reads the two its exposure gate needs, before the
+// The observability provider owns and validates every key in it; an
+// HTTP listener reads the two its exposure gate needs, before the
 // provider starts, the way observabilityRequested reads enabled.
 const (
 	metricsScrapeKey         = "metrics.scrape"
@@ -35,20 +34,16 @@ const (
 )
 
 // metricsScrapeSetting returns the full key that sets the scrape key
-// for the api service — its own block first, then services.all — or
-// "" when neither does.
-func (a *apiService) metricsScrapeSetting(key string) string {
-	if a.root == nil {
-		return ""
-	}
-	_, k, _ := svcconfig.New(a.root.Viper).Lookup(APIServiceName, metricsScrapeKey, key)
-	return k
+// for the listener's service — its own block first, then
+// services.all — or "" when neither does.
+func (p httpPlane) metricsScrapeSetting(key string) string {
+	return p.setting(metricsScrapeKey, key)
 }
 
 // metricsScrapeBool resolves one boolean scrape key, default false.
-func (a *apiService) metricsScrapeBool(key string) bool {
-	if k := a.metricsScrapeSetting(key); k != "" {
-		return a.root.Viper.GetBool(k)
+func (p httpPlane) metricsScrapeBool(key string) bool {
+	if k := p.metricsScrapeSetting(key); k != "" {
+		return p.root.Viper.GetBool(k)
 	}
 	return false
 }
@@ -58,23 +53,24 @@ func (a *apiService) metricsScrapeBool(key string) bool {
 // beyond loopback it is refused unless the
 // operator allowed it by name; a provider that serves no endpoint
 // cannot honor the request at all.
-func (a *apiService) validateMetricsScrape(addr string) error {
-	if !a.metricsScrapeBool(metricsScrapeEnabled) {
+func (p httpPlane) validateMetricsScrape() error {
+	if !p.metricsScrapeBool(metricsScrapeEnabled) {
 		return nil
 	}
-	key := a.metricsScrapeSetting(metricsScrapeEnabled)
-	if obs := a.root.serveObs; obs != nil {
+	key := p.metricsScrapeSetting(metricsScrapeEnabled)
+	if obs := p.root.serveObs; obs != nil {
 		if _, ok := obs.(ServeMetricsEndpoint); !ok {
 			return fmt.Errorf("%s: the linked observability provider serves no metrics endpoint", key)
 		}
 	}
-	if isLoopbackAddr(addr) || a.metricsScrapeBool(metricsScrapeAllowRemote) {
+	addr := p.l.Addr
+	if isLoopbackAddr(addr) || p.metricsScrapeBool(metricsScrapeAllowRemote) {
 		return nil
 	}
 	return fmt.Errorf(
 		"%s: %q is not a loopback address and the metrics endpoint answers without authentication; "+
-			"listen on 127.0.0.1, or set services.api.metrics.scrape.allow_remote: true to serve it beyond loopback",
-		key, addr,
+			"listen on 127.0.0.1, or set %s%s.%s.%s: true to serve it beyond loopback",
+		key, addr, serveKeyPrefix, p.l.Service, metricsScrapeKey, metricsScrapeAllowRemote,
 	)
 }
 
@@ -92,16 +88,16 @@ func (a *apiService) validateMetricsScrape(addr string) error {
 // The exposure check is repeated here against the provider's own
 // resolution, so a disagreement with validateMetricsScrape fails
 // closed rather than exposing the endpoint.
-func (a *apiService) withMetrics(h, routes http.Handler) (http.Handler, error) {
-	ep, ok := a.root.serveObs.(ServeMetricsEndpoint)
+func (p httpPlane) withMetrics(h, routes http.Handler) (http.Handler, error) {
+	ep, ok := p.root.serveObs.(ServeMetricsEndpoint)
 	if !ok {
 		return h, nil
 	}
-	path, mh, allowRemote := ep.MetricsEndpoint(APIServiceName)
+	path, mh, allowRemote := ep.MetricsEndpoint(p.l.Service)
 	if mh == nil {
 		return h, nil
 	}
-	if addr := a.listenAddr(); !isLoopbackAddr(addr) && !allowRemote {
+	if addr := p.l.Addr; !isLoopbackAddr(addr) && !allowRemote {
 		return nil, fmt.Errorf("metrics endpoint: %q is not a loopback address and metrics.scrape.allow_remote is not true", addr)
 	}
 	return api.MetricsRoute(h, api.MetricsConfig{Path: path, Handler: mh, Routes: routes}), nil

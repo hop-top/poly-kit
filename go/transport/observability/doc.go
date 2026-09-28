@@ -49,11 +49,12 @@
 //
 // # Scrape endpoint
 //
-// With metrics.scrape enabled, the api service answers a Prometheus
-// scrape (text exposition format) at /metrics, at the inner end of
-// HTTP-plane slot 8: after the Host check, which a scraper passes by
-// sending an allowed host, and ahead of authentication, so a
-// non-loopback bind needs metrics.scrape.allow_remote. Exporter "none" pushes nothing, for a
+// With metrics.scrape enabled, a kit HTTP listener (api, mcp, rpc)
+// answers a Prometheus scrape (text exposition format) at /metrics,
+// at the inner end of HTTP-plane slot 8: after the Host check, which a
+// scraper passes by sending an allowed host, and ahead of
+// authentication, so a non-loopback bind needs
+// metrics.scrape.allow_remote. Exporter "none" pushes nothing, for a
 // service read by scraping alone. See [Provider.MetricsEndpoint].
 //
 // # What is recorded

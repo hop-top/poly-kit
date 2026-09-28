@@ -20,7 +20,7 @@ adopter-driven mounting of arbitrary surfaces is
 - keep a command off REST → `cli.APIConfig{Hide: []string{"admin *"}}`
 - describe every projected operation → `WithOpenAPI`, served at `/openapi.json`
 - stream a long-running command's output as it is written → `<route>/stream`, server-sent events, same method and parameters
-- keep browser pages out (DNS rebinding, cross-site writes) → `api.HostCheck`, `api.ListenerHosts`, `api.OriginCheck`; on by default in the `api` service
+- keep browser pages out (DNS rebinding, cross-site writes) → `api.HostCheck`, `api.ListenerHosts`, `api.OriginCheck`; on by default on kit's HTTP listeners (`api`, `mcp`, `rpc`)
 - set hardening response headers → `api.SecurityHeaders`
 
 ## Quick start

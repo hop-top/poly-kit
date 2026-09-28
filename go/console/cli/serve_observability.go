@@ -14,7 +14,7 @@ import (
 )
 
 // ServeObservability is a tracing and metrics provider for the
-// kit-shipped services (api, socket). kit ships one in
+// kit-shipped services (api, socket, mcp, rpc). kit ships one in
 // hop.top/kit/go/transport/observability; a tool opts in by linking
 // it with [WithObservability], and an operator turns it on in config.
 //
@@ -68,15 +68,17 @@ const observabilityStopBudget = 5 * time.Second
 // (services.all.metrics.enabled), and both default to off. Trace
 // context is propagated either way; only export needs a provider.
 //
-// With a provider linked and enabled, the api service's middleware
-// chain gains the tracing and metrics middleware at its slot (a span
-// and HTTP metrics per request, refusals by later middleware
-// included), and the bridges of the api and socket services — and of
-// any service built with [ServeBridgeOptions], such as mcp and rpc —
-// gain a span per invocation plus request, latency, in-flight and
-// refusal metrics labeled by service and surface. With
-// services.api.metrics.scrape enabled as well, the api service
-// answers a Prometheus scrape at /metrics (see [ServeMetricsEndpoint]).
+// With a provider linked and enabled, the middleware chain of every
+// kit HTTP listener — the api service's, the mcp service's HTTP
+// transport, the rpc service's — gains the tracing and metrics
+// middleware at its slot (a span and HTTP metrics per request,
+// refusals by later middleware included), and the bridges of the api
+// and socket services — and of any service built with
+// [ServeBridgeOptions], such as mcp and rpc — gain a span per
+// invocation plus request, latency, in-flight and refusal metrics
+// labeled by service and surface. With services.<svc>.metrics.scrape
+// enabled as well, that listener answers a Prometheus scrape at
+// /metrics (see [ServeMetricsEndpoint]).
 func WithObservability(p ServeObservability) func(*Root) {
 	return func(r *Root) { r.serveObs = p }
 }

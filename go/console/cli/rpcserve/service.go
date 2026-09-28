@@ -23,7 +23,6 @@ import (
 
 	"hop.top/kit/go/ai/cmdreflect"
 	"hop.top/kit/go/console/cli"
-	kitlog "hop.top/kit/go/console/log"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
@@ -112,9 +111,10 @@ type Config struct {
 	// X-Confirm-Token header on every call.
 	Policy cmdsurface.Policy
 
-	// MaxBodyBytes bounds one request message (default
-	// [DefaultMaxBodyBytes]). A larger message is refused with
-	// ResourceExhausted before it is decoded.
+	// MaxBodyBytes bounds one request (default
+	// [DefaultMaxBodyBytes]); services.rpc.body_limit overrides it. A
+	// larger request is refused with ResourceExhausted before it is
+	// decoded, on every protocol, streams included.
 	MaxBodyBytes int
 
 	// Interceptors are the adopter's Connect interceptors — metering,
@@ -295,12 +295,46 @@ func (s *rpcService) resolveTLS() error {
 	return nil
 }
 
-// maxBodyBytes is the per-message read bound.
-func (s *rpcService) maxBodyBytes() int {
+// codeMaxBodyBytes is the code option for the body limit: Config's,
+// or [DefaultMaxBodyBytes]. services.rpc.body_limit overrides it.
+func (s *rpcService) codeMaxBodyBytes() int64 {
 	if s.cfg.MaxBodyBytes > 0 {
-		return s.cfg.MaxBodyBytes
+		return int64(s.cfg.MaxBodyBytes)
 	}
 	return DefaultMaxBodyBytes
+}
+
+// httpListener describes the service's listener to the HTTP-plane
+// chain kit's listeners share: its blocks are services.rpc.*, its
+// readiness the service's, and its refusals Connect errors in the
+// caller's protocol.
+func (s *rpcService) httpListener() cli.ServeHTTPListener {
+	return cli.ServeHTTPListener{
+		Service:      ServiceName,
+		Addr:         s.addr(),
+		Ready:        s.Ready,
+		MaxBodyBytes: s.codeMaxBodyBytes(),
+		Refuse:       refuseRPC,
+	}
+}
+
+// refuseRPC writes an HTTP-plane refusal as a Connect error in the
+// protocol the request speaks — Connect, gRPC or gRPC-Web — its
+// message led by the stable code, and ends the connection after it,
+// reading no more of the request. PermissionDenied for the Host and
+// Origin checks, ResourceExhausted for the body limit
+// (serve-lifecycle.md §"Refusals"). The refusal is decided before
+// anything reads the body, and net/http reads the unread rest once
+// the handler returns; the read deadline ends that read at once, so a
+// client stalled mid-body does not hold the stop.
+func refuseRPC(w http.ResponseWriter, r *http.Request, e *api.APIError) {
+	code := connect.CodePermissionDenied
+	if e.Status == http.StatusRequestEntityTooLarge {
+		code = connect.CodeResourceExhausted
+	}
+	w.Header().Set("Connection", "close")
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now())
+	_ = connect.NewErrorWriter().Write(w, r, connect.NewError(code, errors.New(e.Code+": "+e.Message)))
 }
 
 // validate is the configuration gate (serve-lifecycle.md §"The override rule"):
@@ -332,6 +366,10 @@ func (s *rpcService) validate() error {
 				addr,
 			)
 		}
+	}
+	// The HTTP-plane blocks under services.rpc (and services.all).
+	if err := cli.ValidateServeHTTPListener(s.root, s.httpListener()); err != nil {
+		return err
 	}
 	return cli.ValidateServeBridge(s.root, ServiceName)
 }
@@ -381,8 +419,22 @@ func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error 
 	}
 	withholdUnserved(b, t.svc.root, cmdsurface.SurfaceRPC)
 
+	l := t.svc.httpListener()
+	set, err := cli.ResolveServeHTTPListener(t.svc.root, l)
+	if err != nil {
+		_ = ln.Close()
+		return err
+	}
 	rs := rpc.NewServer(t.svc.serverOpts...)
-	if err := cmdsurface.MountRPC(b, rs, t.mountOptions(b)...); err != nil {
+	if err := cmdsurface.MountRPC(b, rs, t.mountOptions(b, set)...); err != nil {
+		_ = ln.Close()
+		return err
+	}
+	// The HTTP-plane chain every kit listener shares, slots 1-11, in
+	// front of the Commands handler; authentication (12) is the
+	// interceptor mountOptions installs.
+	handler, err := cli.ServeHTTPHandler(t.svc.root, l, liftStreamWriteDeadline(rs))
+	if err != nil {
 		_ = ln.Close()
 		return err
 	}
@@ -392,7 +444,7 @@ func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error 
 	// otherwise hold Shutdown until its budget ran out.
 	base, cancelBase := context.WithCancel(context.WithoutCancel(ctx))
 	srv := rs.HTTPServer()
-	srv.Handler = t.middleware()(liftStreamWriteDeadline(rs))
+	srv.Handler = handler
 	srv.ReadHeaderTimeout = 5 * time.Second
 	srv.BaseContext = func(net.Listener) context.Context { return base }
 
@@ -407,7 +459,7 @@ func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error 
 	defer after()
 
 	// Over TLS the server offers HTTP/2 by ALPN in place of h2c.
-	err := t.svc.tls.Serve(srv, ln)
+	err = t.svc.tls.Serve(srv, ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -442,16 +494,30 @@ func (t *rpcTransport) Close(ctx context.Context) error {
 // mountOptions wires the service's gates into the Commands handler:
 // Auth as an interceptor on every procedure, the call's provenance
 // from what the server verified rather than what the body claims, the
-// kit/auth-required gate answered by that verification, and the
-// message size bound; then the adopter's interceptors, inside them
-// all.
-func (t *rpcTransport) mountOptions(b *cmdsurface.Bridge) []cmdsurface.RPCOption {
+// kit/auth-required gate answered by that verification, and Connect's
+// own read limit and per-message compression, set from the body_limit
+// and compression blocks; then the adopter's interceptors, inside
+// them all.
+func (t *rpcTransport) mountOptions(b *cmdsurface.Bridge, set cli.ServeHTTPSettings) []cmdsurface.RPCOption {
 	opts := []cmdsurface.RPCOption{
 		cmdsurface.WithRPCCallMeta(rpcCallMeta),
 		cmdsurface.WithRPCAuthenticated(func(ctx context.Context, _ connect.AnyRequest) bool {
 			return rpc.Authenticated(ctx)
 		}),
-		cmdsurface.WithRPCHandlerOptions(connect.WithReadMaxBytes(t.svc.maxBodyBytes())),
+		// body_limit: Connect's read limit is the listener's body cap.
+		// The cap bounds the whole request, the read limit each
+		// message after decompression; a unary or server-streaming
+		// call carries one message, so the two agree up to its
+		// framing, and a message is never admitted by one layer and
+		// refused by the other.
+		cmdsurface.WithRPCMaxBodyBytes(set.MaxBodyBytes),
+	}
+	// compression: Connect compresses per message, and api.Compress
+	// passes Connect, gRPC and gRPC-Web through untouched, so the
+	// block is applied here instead, never twice. Off (the default),
+	// no response is compressed; a compressed request is still read.
+	if set.Compression {
+		opts = append(opts, cmdsurface.WithRPCCompression(set.CompressMinBytes))
 	}
 	if auth := t.svc.auth(); auth != nil {
 		opts = append(opts, cmdsurface.WithRPCInterceptors(
@@ -462,19 +528,6 @@ func (t *rpcTransport) mountOptions(b *cmdsurface.Bridge) []cmdsurface.RPCOption
 		opts = append(opts, cmdsurface.WithRPCAdmittedInterceptors(t.svc.cfg.Interceptors...))
 	}
 	return opts
-}
-
-// middleware is the HTTP stack in front of the handler: request ids,
-// request logging, and panic recovery, as on the api and mcp services.
-func (t *rpcTransport) middleware() api.Middleware {
-	logger := kitlog.New(t.svc.root.Viper)
-	return api.Chain(
-		api.RequestID(),
-		api.Logger(logger.Info),
-		api.Recovery(func(v any, r *http.Request) {
-			logger.Error("panic recovered", "error", v, "path", r.URL.Path)
-		}),
-	)
 }
 
 // liftStreamWriteDeadline lifts the server's write deadline for

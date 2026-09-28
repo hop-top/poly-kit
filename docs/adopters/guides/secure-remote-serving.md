@@ -718,7 +718,9 @@ on both transports; a command that honors its context stops.
 Loopback is not private from a browser. Any page the operator opens
 can make the browser send requests to `127.0.0.1:8080`, and a page
 that re-resolves its own name to `127.0.0.1` (DNS rebinding) can read
-the answers too. The api service closes both paths by default:
+the answers too. Every kit HTTP listener — the api service, the mcp
+service's HTTP transport, the rpc service — closes both paths by
+default, each configured under its own `services.<svc>`:
 
 - **Host check.** The `Host` header must name a host the listener
   answers for. A loopback bind answers to `localhost`, `127.0.0.1` and
@@ -765,6 +767,12 @@ the answers too. The api service closes both paths by default:
 
 Health probes are answered before the Host check, so an orchestrator
 addressing a pod by IP needs no entry.
+
+On the mcp and rpc listeners the same checks run under
+`services.mcp.*` and `services.rpc.*`. A refusal arrives in the
+listener's protocol: a JSON-RPC error with a null id over MCP, a
+Connect `permission_denied` over RPC, its message led by
+`host_rejected` or `origin_rejected`.
 
 Serving under a DNS name, or to a browser app on another origin, is
 configuration:

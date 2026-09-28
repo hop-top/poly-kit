@@ -15,6 +15,7 @@ registers the `mcp` service; the protocol is the official Go SDK via
 - expose it beyond loopback → `Config.Auth` plus `--policy`, or the `services.mcp.insecure_*` opt-ins
 - permit destructive commands over MCP → `Config.Policy.AllowDestructiveOn` naming `cmdsurface.SurfaceMCP`
 - add prompts or resources → `Config.ServerOptions` with `mcpsdk.WithServerConfigurator`
+- tune the HTTP listener's middleware (body limit, Host allowlist, compression, health, metrics scrape) → `services.mcp.<block>`, as on the `api` service
 
 ## Quick start
 
@@ -31,6 +32,7 @@ root := cli.New(cli.Config{Name: "mytool", Version: version},
 - Disabled by default; `serve mcp` starts it. HTTP on its own listener, default `127.0.0.1:8081`, path `/mcp`.
 - Keys: `services.mcp.{transport,addr,path,insecure_remote,insecure_no_policy}`; flags `--stdio`, `--mcp-addr`.
 - HTTP over TLS under `services.mcp.tls`; `services.mcp.auth.mode: mtls` authenticates by client certificate in place of `Auth`.
+- HTTP-plane middleware on the HTTP transport: the chain every kit listener shares, from `services.mcp.<block>`; refusals are JSON-RPC errors. The SDK's body cap follows `body_limit`; its DNS-rebinding check stays beneath kit's Host check unless `host_check` admits other names.
 - `kit/auth-required`: HTTP needs `Config.Auth`; stdio admits on the spawn's trust.
 - `kit/requires-confirmation`: an accepted elicitation, or `X-Confirm-Token` over HTTP; asked only after every machine gate.
 - stdio: stdout carries only protocol messages; end of input exits 0 once every request already read is answered.

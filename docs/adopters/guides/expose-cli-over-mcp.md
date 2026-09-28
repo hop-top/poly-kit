@@ -324,8 +324,9 @@ bare bridge, [`mcpsdk`](serve-mcp-with-the-sdk.md) does.
 What does not carry over: gate refusals mirrored as HTTP `401` /
 `428` (the SDK reports `isError` only), the zero-dependency build, the
 `ttlMs` / `cacheScope` cache hints, and `WithMCPOriginAllowlist` (the
-SDK's DNS-rebinding protection stays on for loopback listeners; beyond
-loopback, `Auth` and a proxy own origin policy).
+service's listener runs kit's Host and Origin checks instead, set by
+`services.mcp.host_check` and `services.mcp.origin_check`; the SDK's
+DNS-rebinding check stays on beneath them for loopback names).
 
 ## The deprecated `MountMCP` mount
 

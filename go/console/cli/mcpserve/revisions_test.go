@@ -396,7 +396,7 @@ func TestMCPServiceHTTPKeepsAliveAcrossRequests(t *testing.T) {
 	defer conn.Close()
 	br := bufio.NewReader(conn)
 	for i := range 200 {
-		_, err = io.WriteString(conn, "GET /elsewhere HTTP/1.1\r\nHost: kept\r\n\r\n")
+		_, err = io.WriteString(conn, "GET /elsewhere HTTP/1.1\r\nHost: "+u.Host+"\r\n\r\n")
 		require.NoError(t, err, "request %d", i)
 		resp, err := http.ReadResponse(br, nil)
 		require.NoError(t, err, "request %d", i)
@@ -410,25 +410,35 @@ func TestMCPServiceHTTPKeepsAliveAcrossRequests(t *testing.T) {
 // sends part of a request and then stalls does not hold the stop —
 // not for the read-header timeout when it stalls mid-header, whether
 // that opens the connection or follows a request it already carried,
-// and not for the whole stop budget when it stalls mid-body.
+// and not for the whole stop budget when it stalls mid-body, whether
+// the SDK is reading the body or the Host check refused the request
+// before anything read it.
 func TestMCPServiceHTTPStopsPromptlyWithAStalledRequest(t *testing.T) {
-	const midHeader = "POST /mcp HTTP/1.1\r\nHost: stalled\r\nContent-Type: appl"
-	const midBody = "POST /mcp HTTP/1.1\r\nHost: stalled\r\n" +
+	const midHeader = "POST /mcp HTTP/1.1\r\nHost: {host}\r\nContent-Type: appl"
+	const midBody = "POST /mcp HTTP/1.1\r\nHost: {host}\r\n" +
 		"Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\n" +
 		"Content-Length: 200\r\n\r\n{\"jsonrpc\":"
 	for _, tc := range []struct {
 		name    string
 		first   string // a complete request sent before the stall, if any
 		partial string
+		host    string // the Host sent; the listener's own when empty
 	}{
 		{name: "mid-header, first request", partial: midHeader},
-		{name: "mid-header, after a request", first: "GET /elsewhere HTTP/1.1\r\nHost: stalled\r\n\r\n", partial: midHeader},
+		{name: "mid-header, after a request", first: "GET /elsewhere HTTP/1.1\r\nHost: {host}\r\n\r\n", partial: midHeader},
 		{name: "mid-body", partial: midBody},
+		{name: "mid-body, refused unread", partial: midBody, host: "evil.example"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			run, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
 			u, err := url.Parse(endpoint)
 			require.NoError(t, err)
+			host := tc.host
+			if host == "" {
+				host = u.Host
+			}
+			tc.first = strings.ReplaceAll(tc.first, "{host}", host)
+			tc.partial = strings.ReplaceAll(tc.partial, "{host}", host)
 			conn, err := net.Dial("tcp", u.Host)
 			require.NoError(t, err)
 			defer conn.Close()
