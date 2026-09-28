@@ -241,10 +241,15 @@ curl -s -i http://10.0.0.5:8080/v1/commands/widget/list
 ```http
 HTTP/1.1 401 Unauthorized
 Content-Type: application/json
+Www-Authenticate: Bearer
 X-Request-ID: 6d4a0f0e8c2b4b1e9f3a7c5d2e1b0a94
 
-{"status":401,"code":"unauthorized","message":"missing bearer token"}
+{"status":401,"code":"unauthenticated","message":"missing bearer token"}
 ```
+
+The challenge is `Bearer` unless `api.AuthChallenge` names another
+scheme. The refusal is counted by code in the HTTP refusal metrics and
+recorded in the audit trail.
 
 With a token, the call runs and is attributed to `alice` of `acme`:
 

@@ -373,7 +373,16 @@ included.
 The api service listens on `127.0.0.1:8080` by default and refuses a
 non-loopback address it would serve unauthenticated, at exit `2`,
 unless `services.api.insecure_remote` opts in. `Auth` is what makes
-any other address acceptable. The rules are normative in the
+any other address acceptable.
+
+`Auth(fn)` refuses a request `fn` rejects with `401`, code
+`unauthenticated` (`CodeUnauthenticated`), `fn`'s error as the
+message, and `WWW-Authenticate: Bearer`; `AuthChallenge(s)` names
+another challenge. The refusal is recorded with `RecordRefusal`, so
+the HTTP refusal metrics count it. A request `fn` accepts carries its
+claims and the verified mark `Authenticated(ctx)`; a command declaring
+`kit/auth-required` runs only for such a request, loopback included,
+and is answered with the same `401` otherwise. The rules are normative in the
 [serve lifecycle contract](../../contracts/serve-lifecycle.md#security);
 the walkthrough is
 [secure-remote-serving.md](../guides/secure-remote-serving.md).
@@ -469,6 +478,7 @@ executor on `CommandRequest.Meta`:
 
 | Field | Source |
 |---|---|
+| `Authenticated` | `Authenticated(ctx)`: `Auth` verified the request |
 | `Principal`, `Tenant`, `Scopes` | the stored claims |
 | `RequestID` | the `RequestID` middleware (`X-Request-ID`, issued when absent, echoed) |
 | `TraceID` | the trace-id field of `traceparent`, else `X-Trace-ID` |

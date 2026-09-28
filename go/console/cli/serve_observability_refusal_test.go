@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -79,4 +80,17 @@ func TestAPIAdmittedRequestRecordsNoRefusal(t *testing.T) {
 	status, codes := refusalCounted(t, nil, loopbackRequest(http.MethodGet, "/v1/commands/list", nil))
 	assert.Equal(t, http.StatusOK, status)
 	assert.Empty(t, codes)
+}
+
+func TestAPIAuthRefusalIsCountedByTheMetricsSlot(t *testing.T) {
+	c := &refusalCounter{}
+	r := authRequiredFixture(func(*http.Request) (any, error) {
+		return nil, errors.New("missing bearer token")
+	})
+	WithObservability(c)(r)
+	rec := httptest.NewRecorder()
+	projectionHandler(t, r).ServeHTTP(rec, loopbackRequest(http.MethodGet, "/v1/commands", nil))
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Equal(t, []string{api.CodeUnauthenticated}, c.codes)
+	assert.Equal(t, api.DefaultAuthChallenge, rec.Header().Get("WWW-Authenticate"))
 }

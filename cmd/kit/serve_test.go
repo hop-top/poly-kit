@@ -233,6 +233,7 @@ func TestServeE2E(t *testing.T) {
 		if resp.StatusCode != 401 {
 			t.Fatalf("expected 401 for POST with wrong token, got %d", resp.StatusCode)
 		}
+		assertUnauthenticated(t, resp)
 	})
 
 	t.Run("post_with_valid_token", func(t *testing.T) {
@@ -261,6 +262,20 @@ func TestServeE2E(t *testing.T) {
 		}
 	})
 
+	t.Run("shutdown_with_auth_token_is_unauthenticated", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", base+"/shutdown", nil)
+		req.Header.Set("Authorization", "Bearer "+info.Token)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 401 {
+			t.Fatalf("expected 401, got %d", resp.StatusCode)
+		}
+		assertUnauthenticated(t, resp)
+	})
+
 	// Shutdown — server may close connection before response is fully read.
 	t.Run("shutdown", func(t *testing.T) {
 		req, _ := http.NewRequest("POST", base+"/shutdown", nil)
@@ -275,4 +290,22 @@ func TestServeE2E(t *testing.T) {
 			t.Fatalf("expected 204, got %d", resp.StatusCode)
 		}
 	})
+}
+
+// assertUnauthenticated checks a 401 is the unauthenticated class: the
+// stable code and a WWW-Authenticate challenge.
+func assertUnauthenticated(t *testing.T, resp *http.Response) {
+	t.Helper()
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode 401 body: %v", err)
+	}
+	if body.Code != "unauthenticated" {
+		t.Errorf("code=%q want unauthenticated", body.Code)
+	}
+	if resp.Header.Get("WWW-Authenticate") == "" {
+		t.Error("401 without a WWW-Authenticate challenge")
+	}
 }

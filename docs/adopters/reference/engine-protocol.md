@@ -51,9 +51,9 @@ Implementations:
 ```
 
 `code` values: `invalid_json`, `invalid_type`, `bad_request`,
-`unauthorized`, `not_found`, `conflict`, `internal_error`, and `error`
-as the fallback. The auth middleware emits the bare three-key form
-without `error`.
+`unauthenticated`, `not_found`, `conflict`, `internal_error`, and
+`error` as the fallback. The auth middleware emits the bare three-key
+form without `error`. Every `401` carries `WWW-Authenticate: Bearer`.
 
 | Status | Meaning             |
 |--------|---------------------|

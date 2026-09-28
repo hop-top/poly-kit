@@ -107,7 +107,8 @@ func WithWebhookAllowConfirmation() WebhookOption {
 //
 //   - Body is read with an io.LimitReader at WithWebhookMaxBody.
 //     413 payload_too_large when the cap is exceeded.
-//   - mapping.Auth.Verify(r, body) is called. 401 unauthorized on error.
+//   - mapping.Auth.Verify(r, body) is called. 401 unauthenticated,
+//     with WWW-Authenticate, on error; audited as ErrAuthRefused.
 //   - Body is JSON-decoded into .body when Content-Type indicates
 //     JSON; otherwise .body is nil.
 //   - FlagMap and ArgsTemplate are executed against the root keys.
@@ -235,11 +236,19 @@ func newWebhookHandler(
 		}
 
 		if err := mapping.Auth.Verify(r, body); err != nil {
-			api.Error(w, http.StatusUnauthorized, &api.APIError{
-				Status:  http.StatusUnauthorized,
-				Code:    "unauthorized",
-				Message: err.Error(),
-			})
+			// The unauthenticated class, as api.Auth answers it:
+			// recorded for metrics, audited, 401 with a challenge.
+			api.RecordRefusal(r, api.CodeUnauthenticated)
+			b.Audit(r.Context(), Invocation{
+				Path: append([]string(nil), leaf.Path...),
+				Meta: Meta{
+					Surface:     SurfaceWebhook,
+					Caller:      mapping.Name,
+					TraceID:     r.Header.Get("X-Request-ID"),
+					RequestedAt: time.Now(),
+				},
+			}, Result{}, fmt.Errorf("%w: %v", ErrAuthRefused, err))
+			api.WriteUnauthenticated(w, "", err.Error())
 			return
 		}
 

@@ -220,7 +220,8 @@ func TestE2E_Middleware_Auth(t *testing.T) {
 
 		var apiErr api.APIError
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&apiErr))
-		assert.Equal(t, "unauthorized", apiErr.Code)
+		assert.Equal(t, "unauthenticated", apiErr.Code)
+		assert.Equal(t, api.DefaultAuthChallenge, resp.Header.Get("WWW-Authenticate"))
 	})
 
 	t.Run("valid token returns 200 with claims", func(t *testing.T) {

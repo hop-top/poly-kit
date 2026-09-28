@@ -49,7 +49,7 @@ const defaultSSEHeartbeat = 15 * time.Second
 //	ErrNotInvocable         → 404 code=not_invocable
 //	ErrDestructiveBlocked   → 403 code=destructive_blocked
 //	ErrPermissionDenied     → 403 code=permission_denied
-//	auth required, missing  → 401 code=unauthorized
+//	auth required, missing  → 401 code=unauthenticated, WWW-Authenticate
 //	confirmation required   → 428 code=confirmation_required
 //	http.Flusher cast fail  → 500 code=server_error
 //	any other error         → api.MapError passthrough

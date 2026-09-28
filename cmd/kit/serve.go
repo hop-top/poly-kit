@@ -46,6 +46,10 @@ var validTypeRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 func validType(t string) bool { return validTypeRe.MatchString(t) }
 
 func jsonError(w http.ResponseWriter, status int, msg string) {
+	if status == http.StatusUnauthorized {
+		// The unauthenticated class, as the auth middleware answers it.
+		w.Header().Set("WWW-Authenticate", api.DefaultAuthChallenge)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(struct {
@@ -73,7 +77,7 @@ func errorCode(status int, msg string) string {
 			return "bad_request"
 		}
 	case http.StatusUnauthorized:
-		return "unauthorized"
+		return api.CodeUnauthenticated
 	case http.StatusNotFound:
 		return "not_found"
 	case http.StatusConflict:

@@ -180,7 +180,8 @@ series by requesting commands that do not exist.
 | Code | Counted in | From |
 |---|---|---|
 | `unknown_command`, `not_enabled`, `not_invocable`, `destructive_blocked`, `permission_denied` | `kit.serve.refusals` | the bridge's gates |
-| `unauthenticated` | `kit.serve.refusals` | the transport edge, reported through `Bridge.Audit` |
+| `unauthenticated` | `kit.serve.refusals` | the bridge's `kit/auth-required` gate, and the transport edge reported through `Bridge.Audit` |
+| `unauthenticated` | `kit.serve.http.refusals` | `api.Auth` refusing a credential |
 | `deadline_exceeded` | `kit.serve.refusals` | an invocation whose context deadline passed |
 | `body_too_large` | `kit.serve.http.refusals` | `api.BodyLimit`: a declared length over the cap, or a body of unknown length crossing it |
 | `host_rejected`, `origin_rejected` | `kit.serve.http.refusals` | `api.HostCheck`, `api.OriginCheck` |

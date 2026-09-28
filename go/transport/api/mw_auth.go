@@ -183,6 +183,15 @@ type AuthOption func(*authConfig)
 
 type authConfig struct {
 	onRefused func(r *http.Request, err error)
+	challenge string
+}
+
+// AuthChallenge sets the WWW-Authenticate challenge a refusal
+// carries, for a verifier that speaks another scheme than
+// [DefaultAuthChallenge] (`Basic realm="tool"`, a bearer challenge
+// naming a realm or resource metadata). Empty keeps the default.
+func AuthChallenge(challenge string) AuthOption {
+	return func(c *authConfig) { c.challenge = challenge }
 }
 
 // OnAuthRefused installs a hook that observes every request the
@@ -197,7 +206,11 @@ func OnAuthRefused(fn func(r *http.Request, err error)) AuthOption {
 // Auth returns a middleware that calls fn to authenticate each request.
 // On success, claims are stored in the request context
 // ([ClaimsFromContext]) with the verified mark ([Authenticated]). On
-// error, a 401 JSON response is written.
+// error the request is refused as the unauthenticated class: 401,
+// code [CodeUnauthenticated], fn's error as the message, and a
+// WWW-Authenticate challenge ([AuthChallenge], else
+// [DefaultAuthChallenge]). The refusal is recorded for an observer
+// installed by [ObserveRefusal], so metrics count it by code.
 func Auth(fn AuthFunc, opts ...AuthOption) Middleware {
 	var cfg authConfig
 	for _, o := range opts {
@@ -210,11 +223,8 @@ func Auth(fn AuthFunc, opts ...AuthOption) Middleware {
 				if cfg.onRefused != nil {
 					cfg.onRefused(r, err)
 				}
-				Error(w, http.StatusUnauthorized, &APIError{
-					Status:  http.StatusUnauthorized,
-					Code:    "unauthorized",
-					Message: err.Error(),
-				})
+				RecordRefusal(r, CodeUnauthenticated)
+				WriteUnauthenticated(w, cfg.challenge, err.Error())
 				return
 			}
 			ctx := context.WithValue(r.Context(), claimsKey{}, claims)

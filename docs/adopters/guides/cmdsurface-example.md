@@ -272,17 +272,17 @@ curl -sS -i -X POST http://localhost:8080/hooks/notify \
   -d "$BODY"
 # → HTTP 202 (empty body); the leaf ran with --source=github --title="PR opened"
 
-# Wrong signature → 401 unauthorized.
+# Wrong signature → 401 unauthenticated.
 curl -sS -i -X POST http://localhost:8080/hooks/notify \
   -H 'Content-Type: application/json' \
   -H 'X-Webhook-Signature: sha256=deadbeef' \
   -d "$BODY"
-# → HTTP 401 / {"code":"unauthorized", ...}
+# → HTTP 401 / {"code":"unauthenticated", ...}
 
-# Missing signature → 401 unauthorized.
+# Missing signature → 401 unauthenticated.
 curl -sS -i -X POST http://localhost:8080/hooks/notify \
   -H 'Content-Type: application/json' -d "$BODY"
-# → HTTP 401 / {"code":"unauthorized", ...}
+# → HTTP 401 / {"code":"unauthenticated", ...}
 
 # Body over 1 MiB cap → 413 payload_too_large.
 head -c 2097152 /dev/urandom | base64 | curl -sS -i -X POST \

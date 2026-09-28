@@ -266,8 +266,8 @@ func TestWebhook_AuthHMAC_Invalid(t *testing.T) {
 	if err := json.Unmarshal(body2, &ae); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if ae.Code != "unauthorized" {
-		t.Errorf("code=%q want unauthorized", ae.Code)
+	if ae.Code != api.CodeUnauthenticated {
+		t.Errorf("code=%q want unauthenticated", ae.Code)
 	}
 }
 
