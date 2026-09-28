@@ -7,8 +7,8 @@ trail that records who asked for what and what happened.
 
 ## Who this is for
 
-Developers running a kit CLI as a service — the `api` service over
-HTTP, the `socket` service over a Unix socket, or both — who need to
+Developers running a kit CLI as a service — the `api`, `rpc` or
+`mcp` service over HTTP, the `socket` service over a Unix socket — who need to
 answer "who can reach this, what may they run, and how do I know what
 they ran." It targets the
 [go-toolmaker](../../personas/go-toolmaker.md) wiring the tool and the
@@ -36,11 +36,20 @@ for your own command tree; substitute it.
 
 ## What you get
 
+Everything below is built in, and configured under
+`services.<svc>` or, for every service at once, `services.all`. Every
+key and default is in
+[served-middleware.md](../reference/served-middleware.md).
+
 - **Loopback by default.** `WithAPI` listens on `127.0.0.1:8080`
   unless you say otherwise. Saying otherwise without authentication
   is refused before anything binds, and so is saying it without a
   delegation policy: exposure needs an answer to who may call and to
   what any caller may run.
+- **Verifiers you configure, not write.** `auth.mode` checks OIDC,
+  JWKS or self-issued JWT bearer tokens, kit-issued API keys, or
+  client certificates, on the api, rpc and mcp services alike
+  (step 3). A verifier of your own is one function.
 - **One identity model on every transport.** The principal, tenant,
   request id, trace id, and idempotency key travel with each call
   into the same `Meta`, whether it arrived over HTTP or the socket.
@@ -50,29 +59,29 @@ for your own command tree; substitute it.
   command, on every transport. A caller cannot route around it by
   picking a different one.
 - **One audit trail.** Every refusal — not authenticated, not
-  permitted, not confirmed, body too large — and every command that
-  ran over a remote surface reaches the sinks you register, with the
-  same fields and with secrets redacted.
-- **Bounded request bodies.** Every route the api service serves —
-  the projection, your `Handlers` and `Resources` — refuses a body
-  over 1 MiB with `413` and code `body_too_large`, whether the
-  `Content-Length` declares it or a chunked body crosses the cap
-  mid-read. Raise or lower it with `services.api.body_limit.max_bytes`
-  (or `services.all.body_limit.max_bytes` for every service).
-- **TLS where you want it.** Terminate it at your proxy, or on the
-  listener itself with a certificate file or ACME; with client
-  certificates (`auth.mode: mtls`) the certificate is the credential.
+  permitted, not confirmed, rate limited, body too large — and every
+  command that ran over a remote surface reaches the sinks you
+  register, with the same fields and with secrets redacted.
+- **No reach from a browser tab.** Every HTTP listener refuses
+  requests whose `Host` it does not answer for (DNS rebinding) and
+  writes from pages on other origins (cross-site request forgery),
+  and sets hardening headers on every response (step 8).
+- **Bounded work, on every bind.** Request bodies over 1 MiB (4 MiB
+  on rpc) are refused `413 body_too_large`; a client gets 5s to send
+  its request and 10s to receive a request/reply answer; 32 calls run
+  at once with 64 queued, and past that a caller gets `503
+  overloaded` (steps 12 and 13).
 - **A rate limit beyond loopback.** A service listening beyond
   loopback bounds how fast each caller may invoke commands, per
   side-effect tier, and answers the excess `429 rate_limited` with
   `Retry-After`. On loopback it is off until you turn it on. A quota
-  caps what each caller uses per hour or day, and survives restarts. See
-  [Bound how fast a caller may call](#11-bound-how-fast-a-caller-may-call).
-- **No reach from a browser tab.** The api service refuses requests
-  whose `Host` it does not answer for (DNS rebinding) and writes from
-  pages on other origins (cross-site request forgery), and sets
-  hardening headers on every response. All on by default, loopback
-  and beyond.
+  caps what each caller uses per hour or day, and survives restarts
+  (step 11).
+- **TLS where you want it.** Terminate it at your proxy, or on the
+  listener itself with a certificate file or ACME (step 10).
+- **Probes outside auth.** `/healthz` and `/readyz` answer
+  orchestrators without credentials, ahead of every check that could
+  refuse them.
 
 The socket service needs none of the address rules: a Unix socket has
 no port and is not routable. The file is created `0600`, so the
@@ -143,8 +152,9 @@ $ echo $?
 ```
 
 Nothing bound. The three ways forward are the three the message
-names: configure `Auth` (step 3), go back to loopback, or accept the
-exposure by name (step 4). `--addr` on the command line is refused
+names: configure a verifier (step 3; `services.api.auth.mode` does it
+without code, `APIConfig.Auth` in code), go back to loopback, or
+accept the exposure by name (step 4). `--addr` on the command line is refused
 the same way, and so is `--no-auth` on a non-loopback address:
 
 ```console
@@ -154,8 +164,8 @@ USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and --no-au
 
 `--no-auth` still works on loopback, as it always did.
 
-Authentication is only the first gate. Configure `Auth` (step 3) and
-the same address serves, and with no `--policy` named it serves under
+Authentication is only the first gate. Configure a verifier (step 3)
+and the same address serves, and with no `--policy` named it serves under
 `kit-default`, the policy kit ships for exactly this case:
 
 | Caller | May run |
@@ -177,17 +187,137 @@ Name your own policy (step 5) to choose other rules, or accept an
 unbounded surface by name (step 4). Loopback is unaffected: there, no
 `--policy` still means no policy.
 
-### 3. Expose beyond loopback with Auth
+### 3. Expose beyond loopback with a verifier
 
-`APIConfig.Auth` is what permits a non-loopback address. It runs
-before every route, projected and your own, and the claims it returns
-are how each call is attributed. "Every route" includes
-`/openapi.json`, the `/docs` page and `/schemas` that `APIConfig.OpenAPI`
-serves, and paths that match nothing (a `401`, not a `404`); only the
-`/healthz` and `/readyz` probes answer without credentials. Return an [`api.Claims`](../../../go/transport/api/mw_auth.go),
-any value implementing `api.Identity`, or a string-keyed map with
-`sub` and `tenant`; the transport reads the principal and tenant out
-of any of them without knowing your type.
+A verifier decides who is calling. Name one in configuration and the
+service checks every request with it, and may listen beyond loopback:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  all:                                     # api, rpc and mcp alike
+    auth:
+      mode: oidc
+      oidc:
+        issuer: https://login.example.com/     # discovery finds the key set
+        audience: https://api.example.com/v1   # tokens minted for this API only
+  api:
+    addr: 0.0.0.0:8080
+```
+
+Kit ships five verifiers; pick the one your callers already hold a
+credential for:
+
+| `auth.mode` | The caller sends | Pick it when |
+|---|---|---|
+| `oidc` | a bearer token from your provider; keys found by discovery | you run an OpenID provider |
+| `jwks` | a bearer token; keys at `auth.jwks.url` | your issuer publishes a key set but no discovery |
+| `jwt` | a bearer token the tool signed (`token create`), or one signed by a key in `auth.jwt.public_key_files` | the tool issues its own tokens |
+| `apikey` | a kit-issued key, as `X-API-Key` | machine callers, each revocable on its own |
+| `mtls` | a client certificate | you run a CA ([step 10](#10-encrypt-the-connection-at-a-proxy-or-on-the-listener)) |
+
+The verifier runs before every route, projected and your own.
+"Every route" includes `/openapi.json`, the `/docs` page and
+`/schemas`, and paths that match nothing (a `401`, not a `404`); only
+the `/healthz` and `/readyz` probes answer without credentials. An
+unauthenticated call is answered before any command runs:
+
+```bash
+curl -s -i http://10.0.0.5:8080/v1/commands/widget/list
+```
+
+```http
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+Www-Authenticate: Bearer resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/v1"
+X-Request-ID: 6d4a0f0e8c2b4b1e9f3a7c5d2e1b0a94
+
+{"status":401,"code":"unauthenticated","message":"authn: no bearer token"}
+```
+
+Because the audience is the service's own URL and the block names an
+issuer, each of the api, rpc and mcp services publishes its OAuth
+protected resource metadata (RFC 9728) at
+`/.well-known/oauth-protected-resource<path>`, and the challenge
+names it, so an OAuth client finds the provider by itself. With an
+audience that is not a URL the challenge is plain `Bearer`. The
+refusal is counted by code in the HTTP refusal metrics and recorded
+in the audit trail.
+
+With a token, the call runs and is attributed to the token's `sub`
+and its `tenant` claim (`tenant_claim` renames it):
+
+```bash
+curl -s http://10.0.0.5:8080/v1/commands/widget/list \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{"exit_code":0,"stdout":"widget-1\nwidget-2\n"}
+```
+
+The token's `scope`, `scopes` or `scp` claim is what a
+`kit/permissions` annotation is checked against: kit refuses a
+command to a caller whose scopes do not cover it (step 5), and over
+REST and MCP a refused bearer caller is pointed at the same metadata
+document so it can ask for a token that has the scope. The scopes also reach your
+own permission decision as `Meta.Extra["scopes"]`, comma-joined.
+
+**Issue your own tokens with `jwt`.** It trusts the tool's identity
+keypair (`cli.WithIdentity`) and any keys in
+`auth.jwt.public_key_files`. `WithAPI` plus `WithIdentity` mounts
+`token create`, which signs with the keypair, and `token verify`,
+which checks a token the way a service would (`--service rpc` for
+another one; exit `5` when refused):
+
+```console
+$ export TOKEN=$(mytool token create --sub ci-bot --tenant acme --scopes widgets:read --expires 1h)
+$ curl -s https://api.example.com/v1/commands/widget/list -H "Authorization: Bearer $TOKEN"
+$ mytool token verify "$TOKEN"
+{
+  "valid": true,
+  "service": "api",
+  "mode": "jwt",
+  "sub": "ci-bot",
+  ...
+}
+```
+
+The scopes are written as `scope` (space-delimited, the claim OAuth
+resource servers read) and as `scopes` (a list). `token claims`
+prints an unsigned template for an external signer. `token` itself is
+never served: remote callers cannot mint tokens.
+
+**Hand out API keys with `apikey`.** Add
+`cli.WithAPIKeys(cli.APIKeysConfig{})` and import the store's driver
+(`_ "hop.top/kit/go/storage/kv/sqlite"`); then
+`mytool token key create --sub ci-bot --scopes widgets:read` prints a
+key once, callers send it as `X-API-Key`, `token key list` shows every
+key's state, and `token key revoke <id>` stops one at once. The
+default `sqlite` store is created owner-only (`0600`) and can be
+written while the service runs; a `badger` store is locked by the
+running service, so stop it before running `token key`.
+
+**Revoke before expiry.** `cli.WithTokenCheck(fn)` runs on every
+credential an `auth.mode` verifier accepted, API keys included; an
+error refuses the call `401`.
+
+Every key, default and refusal of the `auth` block is in
+[served-middleware.md](../reference/served-middleware.md#auth); the
+rules are in the contract's
+[Bearer tokens](../../contracts/serve-lifecycle.md#bearer-tokens) and
+[API keys](../../contracts/serve-lifecycle.md#api-keys).
+
+#### Verify in code instead
+
+For a credential none of the five covers, write the verifier yourself.
+`APIConfig.Auth` (and `rpcserve.Config.Auth`, `mcpserve.Config.Auth`)
+takes an `api.AuthFunc`; it applies when no `auth.mode` is set, and
+satisfies step 2's refusal the same way. Return an
+[`api.Claims`](../../../go/transport/api/mw_auth.go), any value
+implementing `api.Identity`, or a string-keyed map with `sub` and
+`tenant`; the transport reads the principal and tenant out of any of
+them without knowing your type.
 
 ```go
 package main
@@ -238,40 +368,9 @@ func main() {
 }
 ```
 
-An unauthenticated call is answered before any command runs:
-
-```bash
-curl -s -i http://10.0.0.5:8080/v1/commands/widget/list
-```
-
-```http
-HTTP/1.1 401 Unauthorized
-Content-Type: application/json
-Www-Authenticate: Bearer
-X-Request-ID: 6d4a0f0e8c2b4b1e9f3a7c5d2e1b0a94
-
-{"status":401,"code":"unauthenticated","message":"missing bearer token"}
-```
-
-The challenge is `Bearer` unless `api.AuthChallenge` names another
-scheme. The refusal is counted by code in the HTTP refusal metrics and
-recorded in the audit trail.
-
-With a token, the call runs and is attributed to `alice` of `acme`:
-
-```bash
-curl -s http://10.0.0.5:8080/v1/commands/widget/list \
-  -H 'Authorization: Bearer t0k3n-alice'
-```
-
-```json
-{"exit_code":0,"stdout":"widget-1\nwidget-2\n"}
-```
-
-`Scopes` are what a `kit/permissions` annotation is checked against:
-kit refuses a command to a caller whose scopes do not cover it (step
-5). They also reach your own permission decision as
-`Meta.Extra["scopes"]`, comma-joined.
+Its refusal is the same `401`, with a `Bearer` challenge unless
+`api.AuthChallenge` names another scheme. `Scopes` in the claims are
+what `kit/permissions` is checked against.
 
 To publish the OpenAPI document to callers without a token, admit
 that path in your `AuthFunc`; returning no error with nil claims lets
@@ -286,10 +385,16 @@ func authenticate(r *http.Request) (any, error) {
 }
 ```
 
-A command annotated `kit/auth-required` runs only for a request your
-`AuthFunc` accepted, on every address, loopback included: a loopback
+Returning no error is what counts as verified, so an `AuthFunc` that
+admits a path anonymously admits it for `kit/auth-required` commands
+too; keep such exceptions to paths that run no command.
+
+#### Commands that need a verified caller
+
+A command annotated `kit/auth-required` runs only for a request a
+verifier accepted, on every address, loopback included: a loopback
 listener is reachable by every local user, and an `Authorization`
-header nobody verified is not authentication. Without `Auth` such a
+header nobody verified is not authentication. With no verifier such a
 command stays listed and answers every call with `401` and
 `WWW-Authenticate`:
 
@@ -300,75 +405,10 @@ Www-Authenticate: Bearer
 {"status":401,"code":"unauthenticated","message":"api: authentication required: ..."}
 ```
 
-Returning no error is what counts as verified, so an `AuthFunc` that
-admits a path anonymously (as above) admits it for auth-required
-commands too; keep such exceptions to paths that run no command. Over
-the Unix socket the owner-only file is the authentication, and such a
-command runs for any caller who can open it.
-
-**Let kit verify the token.** Instead of writing `Auth`, name a
-verifier in configuration. It satisfies the refusal in step 2 the
-same way, on the api, rpc and mcp services:
-
-```yaml
-services:
-  all:
-    auth:
-      mode: oidc                         # or jwks, or jwt
-      oidc:
-        issuer: https://login.example.com/   # discovery finds the key set
-        audience: https://api.example.com    # required: tokens minted for this API only
-```
-
-When `audience` is the service's own URL and the block names an
-issuer, each of the api, rpc and mcp services also publishes its OAuth
-protected resource metadata (RFC 9728) at
-`/.well-known/oauth-protected-resource<path>`, and a refused request's
-`WWW-Authenticate` names it, so an OAuth client finds the provider by
-itself.
-
-`jwks` names the key set by URL (`auth.jwks.url`) instead of
-discovering it; `jwt` trusts the tool's own identity keypair
-(`cli.WithIdentity`) and any public keys in
-`auth.jwt.public_key_files`.
-
-With `jwt` the tool issues its own tokens. `WithAPI` plus
-`WithIdentity` mounts `token create`, which signs with the keypair,
-and `token verify`, which checks a token the way a service would
-(`--service rpc` for another one; exit `5` when refused):
-
-```console
-$ export TOKEN=$(mytool token create --sub ci-bot --tenant acme --scopes widgets:read --expires 1h)
-$ curl -s https://api.example.com/v1/commands/widget/list -H "Authorization: Bearer $TOKEN"
-$ mytool token verify "$TOKEN"
-{
-  "valid": true,
-  "service": "api",
-  "mode": "jwt",
-  "sub": "ci-bot",
-  ...
-}
-```
-
-The scopes are written as `scope` (space-delimited, the claim OAuth
-resource servers read) and as `scopes` (a list).
-
-For machine callers that should not carry a JWT, `auth.mode: apikey`
-checks kit-issued API keys. Add `cli.WithAPIKeys(cli.APIKeysConfig{})`
-and import the store's driver (`_ "hop.top/kit/go/storage/kv/sqlite"`);
-then `mytool token key create --sub ci-bot --scopes widgets:read`
-prints a key once, callers send it as `X-API-Key`, `token key list`
-shows every key's state, and `token key revoke <id>` stops one at
-once. The default `sqlite` store is created owner-only (`0600`) and can
-be written while the service runs; a `badger` store is locked by the
-running service, so stop it before running `token key`. `token claims` still
-prints an unsigned template for an external signer, and `token`
-itself is never served: remote callers cannot mint tokens. The token's `sub` is the caller, its
-`tenant` claim (`tenant_claim` to rename) the tenant, and its
-`scope`, `scopes` or `scp` the scopes. A configured mode replaces
-`APIConfig.Auth` for that service; with no mode, `Auth` applies. The
-keys, defaults and refusals are in the contract's
-[Bearer tokens](../../contracts/serve-lifecycle.md#bearer-tokens).
+Over the Unix socket the owner-only file is the authentication, and
+such a command runs for any caller who can open it;
+`services.socket.auth.mode: peer` names each socket caller by its
+uid instead ([serve-cli-over-unix-socket.md](serve-cli-over-unix-socket.md#12-know-who-is-calling)).
 
 ### 4. The opt-ins, and what they mean
 
@@ -534,7 +574,7 @@ caller:
 
 | Caller | Scopes compared | A `kit/permissions` command |
 |---|---|---|
-| Verified by `Auth` (api, mcp, rpc), a socket `Auth`, a webhook or bus verifier | the credential's | runs when they cover the annotation |
+| Verified by `auth.mode` or `Auth` (api, mcp, rpc), the socket's peer mode or `Auth`, a webhook or bus verifier | the credential's | runs when they cover the annotation |
 | Established by the transport: the `0600` socket file, MCP over stdio, a cron schedule | none — the caller holds the owner's authority | runs |
 | Unverified, including one naming itself in the request | none | refused `insufficient_scope` |
 | The CLI itself | none | runs |
@@ -645,7 +685,7 @@ and a command your decision refuses him is listed with the reason
 The listing asks the same gates a call would, charges nothing, and is
 advisory: every call still meets every gate.
 
-A request nobody verified — a loopback listener without `Auth` — gets
+A request nobody verified — a loopback listener without a verifier — gets
 the shared listing, which cannot know who will call: a caller-specific
 refusal leaves the command listed as invocable. A command your
 decision refuses **for everyone** is different: return
@@ -1055,7 +1095,7 @@ Idempotent-Replayed: true
 ```
 
 - The key is scoped to the caller: alice's key never answers bob. A
-  caller your `Auth` verified gets its answer on any service. On the
+  caller a verifier established gets its answer on any service. On the
   owner-only socket every caller is you, the owner, whatever name a
   request claims. A caller merely named in a request is scoped to that
   service and, when it names none, its client host, so unauthenticated
@@ -1178,9 +1218,10 @@ services:
       allow: [api.example.com]   # api answers to this, not tool.internal
 ```
 
-To turn a check off, set its block's `enabled: false`. An origin you
-grant through `api.CORS` is only readable by that page; to let it
-write, list it in `origin_check.allow` too.
+To turn a check off, set its block's `enabled: false`. Kit's own
+listeners answer no CORS preflight; on a router you assemble yourself,
+an origin you grant through `api.CORS` is only readable by that page,
+and to let it write, list it in `origin_check.allow` too.
 
 ### 9. Trace and measure served commands
 
@@ -1227,13 +1268,13 @@ Choose where TLS ends:
 |---|---|---|
 | Who holds the certificate | the proxy (nginx, Caddy, a cloud load balancer) | the tool, `services.<svc>.tls` |
 | The tool's listener | plaintext, on loopback or a network only the proxy reaches | TLS only, HTTP/2 and HTTP/1.1 |
-| Who authenticates callers | the tool's `Auth`; a client certificate the proxy checks never reaches kit | the tool: `Auth`, or the client certificate with `auth.mode: mtls` |
+| Who authenticates callers | the tool's verifier (`auth.mode` or `Auth`); a client certificate the proxy checks never reaches kit | the tool's verifier, the client certificate included (`auth.mode: mtls`) |
 | `Strict-Transport-Security` | the proxy sends it, or the tool when it trusts the proxy | the tool sends it |
 | The client address kit sees | the proxy, until you list it in `trusted_proxies` | the client |
 
 **Behind a proxy**, keep the tool on `127.0.0.1` and point the proxy
 at it, then [name it](#behind-a-proxy-name-it). A proxy on another host reaches
-a non-loopback bind, which still needs `Auth` (or the `insecure_remote`
+a non-loopback bind, which still needs a verifier (or the `insecure_remote`
 opt-in, when only the proxy can reach that network) and a policy.
 
 #### Behind a proxy: name it
@@ -1321,11 +1362,11 @@ services:
 
 TLS proves the server to the client, not the client to the server, so
 it does not satisfy step 2's refusal: a non-loopback address with TLS
-and no `Auth` is still refused at exit `2`.
+and no verifier is still refused at exit `2`.
 
 **Client certificates** are the exception. `auth.mode: mtls` makes the
 certificate the credential, and it satisfies the refusal the way
-`Auth` does:
+the bearer modes do:
 
 ```yaml
 services:
@@ -1355,7 +1396,7 @@ audited:
 ```http
 HTTP/2 401
 
-{"status":401,"code":"unauthorized","message":"client certificate required"}
+{"status":401,"code":"unauthenticated","message":"client certificate required"}
 ```
 
 A certificate the CA bundle does not verify never gets that far: the
@@ -1412,7 +1453,7 @@ turns it into an exit status uses `64` (`RATE_LIMITED`). Every
 refusal reaches the audit sinks as `cmdsurface.ErrRateLimited` and is
 counted as `rate_limited` in the refusal metrics.
 
-A caller is the principal and tenant your `Auth` verified; on a
+A caller is the principal and tenant a verifier established; on a
 transport that vouches only for the connection (the owner-only socket,
 cron) it is the owner, one bucket per transport whatever name a request
 claims; otherwise its client address (an IPv6 address by its `/64`);
@@ -1485,7 +1526,7 @@ services:
 ```
 
 The caller is counted as the rate limit counts it: the principal and
-tenant your `Auth` verified; on the owner-only socket, the owner, one
+tenant a verifier established; on the owner-only socket, the owner, one
 count whatever name a request claims; else the client address, else
 the surface. Only
 a call that ran successfully is counted, after it ran; a replay or a
@@ -1618,92 +1659,60 @@ observability](../reference/served-observability.md)).
 
 ## Option reference
 
+What you set in code, and the opt-ins. Every `services.<svc>` block —
+`auth`, `tls`, `rate_limit`, `quota`, `concurrency`, `timeouts`,
+`body_limit`, `host_check`, `origin_check`, `security_headers`,
+`trusted_proxies`, `health`, `audit`, `tracing`, `metrics` — is in
+[served-middleware.md](../reference/served-middleware.md), with its
+keys, defaults and refusals.
+
 | Option | Default | Effect |
 |---|---|---|
-| `APIConfig.Addr` | `127.0.0.1:8080` | Listen address. Non-loopback needs `Auth` or `InsecureRemote`. |
-| `APIConfig.Auth` | none | Authenticates every route (OpenAPI document, docs and unmatched paths included; not the health probes) and permits any address. Claims attribute the call. |
+| `APIConfig.Addr` | `127.0.0.1:8080` | Listen address. Non-loopback needs a verifier or `InsecureRemote`. |
+| `APIConfig.Auth` | none | A verifier of your own, used when no `auth.mode` is set. Authenticates every route (OpenAPI document, docs and unmatched paths included; not the health probes) and permits any address. Claims attribute the call. |
 | `APIConfig.InsecureRemote` | `false` | Serve unauthenticated beyond loopback. `services.api.insecure_remote` / `--insecure-remote` set the same. |
 | `APIConfig.InsecureNoPolicy` | `false` | Beyond loopback with no `--policy`, serve with no policy instead of `kit-default`. `services.api.insecure_no_policy` / `--insecure-no-policy` set the same. |
-| `APIConfig.MaxBodyBytes` | `0` (1 MiB) | Request body cap on every api route; over it is `413 body_too_large`, audited as `cmdsurface.ErrBodyTooLarge`. Negative disables. `services.api.body_limit.max_bytes` / `.enabled`, then `services.all.body_limit.*`, override it. |
-| `SocketConfig.Auth` | none | Verifies each socket request; the verified identity, and its `Scopes`, replace the claimed one. |
-| `services.socket.auth.mode: peer` | unset | Names each socket caller by its kernel-reported uid, verified; replaces `SocketConfig.Auth`. `auth.peer.require_same_uid` refuses other uids, `auth.peer.resolve_names` uses the user name. A peer holds no scopes until `auth.peer.scopes` or `SocketConfig.PeerScopes` grants them. Linux, macOS, FreeBSD. |
+| `APIConfig.MaxBodyBytes` | `0` (1 MiB) | The api's body cap below `services.api.body_limit.max_bytes`; negative disables. |
+| `SocketConfig.Auth` | none | Verifies each socket request; the verified identity, and its `Scopes`, replace the claimed one. `services.socket.auth.mode: peer` replaces it. |
+| `SocketConfig.PeerScopes` | none | Scopes of a peer-authenticated socket caller when `auth.peer.scopes` is unset. |
 | `kit/permissions` annotation | none | Scopes a verified caller must all hold; otherwise `403 insufficient_scope`. The owner (socket file, stdio, CLI) is not asked. |
-| `cli.WithPermission(fn)` | permit all | Permission decision on every kit-shipped transport service, after the scope check and `--policy`; can only narrow. |
-| `cli.WithTokenCheck(fn)` | none | Revocation check on every credential the `auth.mode` verifier accepted (`jwt`, `jwks`, `oidc`, `apikey`); an error refuses it `401`. |
-| `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. Records are always redacted. |
-| `services.<svc>.audit.redact.secret_flags` | none | Extra flag names masked in audit records; `services.all` applies to every service. |
-| `services.<svc>.audit.redact.patterns` | none | Extra content patterns (RE2) masked in audit records. |
-| `services.<svc>.audit.redact.max_field_bytes` | `4096` | Longest field the content rules scan; a longer one is withheld from the record whole. |
-| `services.<svc>.audit.sinks` | none | Audit sinks from configuration; `[chain]` appends to a tamper-evident log. See [Keep a tamper-evident trail](#keep-a-tamper-evident-trail). |
-| `cli.WithAuditCommand()` | not mounted | Mounts `<tool> audit verify` (exit 71 `TAMPER_DETECTED` on a broken chain); management-only when served. |
-| `cli.WithObservability(p)` | none | Links a tracing and metrics provider; `services.<svc>.tracing.enabled` / `.metrics.enabled` (or `services.all.*`) turn it on. |
-| `services.api.metrics.scrape.enabled` | `false` | Answer a Prometheus scrape at `/metrics`, after the Host check, before auth. Beyond loopback needs `services.api.metrics.scrape.allow_remote: true`. |
 | `--policy=<name>` | `kit-default` beyond loopback, none on loopback | The tool's policy engine, applied to remote calls; its `callers` section answers per caller. `kit-default` is reserved for the shipped policy. |
+| `cli.WithPermission(fn)` | permit all | Permission decision on every kit-shipped transport service, after the scope check and `--policy`; can only narrow. |
+| `cli.WithIdentity(cfg)` | none | The keypair `auth.mode: jwt` trusts; with `WithAPI`, mounts `token create` and `token verify`. |
+| `cli.WithAPIKeys(cfg)` | not mounted | Mounts `token key create`, `list` and `revoke` for `auth.mode: apikey`. |
+| `cli.WithTokenCheck(fn)` | none | Revocation check on every credential the `auth.mode` verifier accepted (`jwt`, `jwks`, `oidc`, `apikey`); an error refuses it `401`. |
+| `cli.WithServeRateLimit(cfg)` | kit tiers | The tool's own tier numbers below `rate_limit.*`; does not switch the limit on. |
 | `cli.WithUsageStore(store)` | `$XDG_STATE_HOME/<tool>/usage.db` | Where quotas and the `max_ops` budgets of a policy's caller rules are counted. |
-| `services.api.host_check.enabled` | `true` | Refuse a `Host` the listener does not answer for (`403`, `host_rejected`). |
-| `services.api.host_check.allow` | `[]` | Hosts accepted beyond the listener's own; `name` or `name:port`. Required for a wildcard bind to check anything. |
-| `services.api.origin_check.enabled` | `true` | Refuse cross-origin browser writes (`403`, `origin_rejected`). |
-| `services.api.origin_check.allow` | `[]` (same-origin only) | Cross-origin browser origins permitted to write, `scheme://host[:port]`. |
-| `services.api.security_headers.enabled` | `true` | `nosniff`, `no-referrer`, a deny-all CSP; HSTS over TLS only, here or at a trusted proxy. |
-| `services.<svc>.trusted_proxies` | `[]` | CIDRs and addresses of the proxies whose `Forwarded`, `X-Forwarded-For`, `X-Real-IP` and `X-Forwarded-Proto` are believed. Empty believes none. |
-| `services.<svc>.tls.cert_file`, `.key_file` | unset | Serve TLS only, HTTP/2 and HTTP/1.1, with this PEM chain and key. `tls.enabled: false` turns it off. |
-| `services.<svc>.tls.min_version` | `1.2` | `1.2` or `1.3`. |
-| `services.<svc>.tls.acme.domains` | unset | Obtain and renew the certificate by ACME for these names; `.email`, `.cache_dir`, `.directory_url` tune it. |
-| `services.<svc>.auth.mode` | unset | `mtls`: the client certificate is the credential; `jwt`, `jwks`, `oidc`: a verified bearer token is. Counts as authentication beyond loopback, and replaces the code `Auth`. |
-| `services.<svc>.auth.jwt.public_key_files` | unset | PEM public keys trusted beside the tool's identity key under `jwt`. |
-| `services.<svc>.auth.jwks.url` / `auth.oidc.issuer` | unset | The key set, or the provider whose discovery yields it; `https` (or loopback `http`). |
-| `services.<svc>.auth.apikey.backend`, `.path` | `sqlite`, `<data dir>/<tool>/apikeys.db` | The store `auth.mode: apikey` checks keys against, created owner-only (file `0600`, directory `0700`); `cli.WithAPIKeys` mounts `token key create`, `list` and `revoke`. Under `badger` the running service locks the store: stop it before `token key`. |
-| `services.<svc>.auth.<mode>.audience`, `.issuer`, `.clock_skew`, `.refresh`, `.tenant_claim` | audience required under `jwks`/`oidc`; skew `1m`; refresh `1h`; tenant claim `tenant` | Claim checks and key-set caching for the bearer modes. |
-| `services.<svc>.auth.mtls.ca_file` | unset | CA bundle client certificates must chain to; required under `mtls`. |
-| `services.<svc>.auth.mtls.crl_file` | unset | Revocation lists (PEM or DER) a client certificate is checked against; reloaded on change like the bundle. |
-| `services.<svc>.auth.mtls.principal` | `san` | `san`, `san_uri`, `san_dns`, `san_email` or `cn`. |
-| `services.<svc>.auth.mtls.tenant_oid` / `.tenant_san_pattern` | unset | Where the tenant comes from: a subject attribute or extension OID, or a SAN regular expression (first capture group). One or the other. |
-| `services.<svc>.timeouts.read_header` / `.read` / `.write` / `.idle` | `5s` / `5s` / `10s` / read | HTTP listener timeouts (api, rpc, mcp); stream responses are exempt from `write`. `0` is none. |
-| `services.<svc>.timeouts.command` | none | Per-command deadline for commands without `kit/timeout`; past it, `504 deadline_exceeded`. Reaches the socket too. |
-| `services.all.<block>.<key>` | unset | Shared default for the blocks above; the service's own key wins. |
-| `services.<svc>.rate_limit.enabled` | on beyond loopback, off on loopback, the socket and stdio | Per-caller rate limit; over it is `429 rate_limited` with `Retry-After`, audited as `cmdsurface.ErrRateLimited`. |
-| `services.<svc>.quota.ops` / `.bytes` | unset (no quota) | Calls, and output bytes, each caller may use per window; over either is `429 quota_exceeded` with `Retry-After` at the window's reset. Counted in the usage store, so restarts keep them. `enabled: false` switches a set quota off. |
-| `services.<svc>.quota.window` / `.per` | `1h` / `principal` | The window (aligned to the epoch; `24h` is a UTC day) and what is counted: `principal` or `tenant`. |
 | `cli.WithQuotaCommand()` | not mounted | Mounts `<tool> quota show` and `quota reset`; management-only when served. |
-| `services.<svc>.rate_limit.<tier>.per_minute` | read `600`, write `120`, destructive `12` | Tokens a caller's bucket for the tier refills per minute. `services.all.rate_limit.*` applies to every service. |
-| `services.<svc>.rate_limit.<tier>.burst` | read `60`, write `20`, destructive `3` | Tokens the bucket holds at most. |
-| `services.<svc>.concurrency.enabled` | `true`, on loopback and beyond | Bound calls running at once; past the queue is `503 overloaded` with `Retry-After`, audited as `cmdsurface.ErrOverloaded`. |
-| `services.<svc>.concurrency.max_inflight` | `32` | Calls running at once; one at a time over a shared tree (no `cli.WithRootFactory`). |
-| `services.<svc>.concurrency.max_queue` | `64` | Calls waiting for a slot, first come first served; `0` refuses at once. |
+| `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service, beside `audit.sinks`. Records are always redacted. |
+| `cli.WithAuditCommand()` | not mounted | Mounts `<tool> audit verify` (exit 71 `TAMPER_DETECTED` on a broken chain); management-only when served. |
+| `cli.WithObservability(p)` | none | Links a tracing and metrics provider; `tracing.enabled` / `metrics.enabled` turn it on. |
 
 Precedence for either opt-in is flag, then config key, then code.
-The guard keys have no flags: the service's key, then
-`services.all`, then the default. The
-socket path, exposure patterns, and destructive policy are documented
-in their own guides and are unchanged.
+Middleware keys have no flags: the service's key, then
+`services.all`, then the code option, then the kit default.
 
 ## What it does not implement
 
-Absence here is deliberate; each of these belongs somewhere else:
-
-- **An identity provider.** Kit verifies tokens (`auth.mode: jwt`,
-  `jwks`, `oidc`) but runs no login, consent or token endpoint; a
-  bearer mode has no revocation list of its own beyond expiry; plug
-  yours in with `cli.WithTokenCheck(fn)`, which every verifier
-  `auth.mode` selects (API keys included) runs on each credential it
-  accepted. With
-  `auth.mode: mtls` kit verifies the certificate chain against your
-  CA bundle; issuing and revoking certificates stays with you (no CRL
-  or OCSP check).
-- **A tenant registry.** `Meta.Tenant` is a label your claims
-  supply. Nothing scopes state by it.
+- **An identity provider.** Kit verifies tokens and keys but runs no
+  login, consent or token endpoint. Plug a revocation list into
+  `cli.WithTokenCheck`.
+- **OCSP.** Under `auth.mode: mtls` kit checks client certificates
+  against the revocation lists you name (`auth.mtls.crl_file`) and
+  queries no OCSP responder.
+- **CORS on kit's listeners.** A browser app on another origin reaches
+  a kit service through a proxy that answers CORS; see
+  [served-middleware.md](../reference/served-middleware.md#not-configurable-yet).
+- **Limits shared across replicas.** Rate-limit buckets and
+  concurrency slots live in memory, per process. Idempotency records
+  are shared when replicas share a store
+  (`cli.WithServeIdempotencyStore`), but a call still running is known
+  only to its own process: the same key sent to two replicas at the
+  same moment runs on both.
 - **Socket peer credentials on Windows and most BSDs.**
-  `services.socket.auth.mode: peer` names each socket caller by the
-  uid the kernel reports, on Linux, macOS and FreeBSD only; elsewhere
-  it is refused at start. See
+  `services.socket.auth.mode: peer` runs on Linux, macOS and FreeBSD
+  only; elsewhere it is refused at start. See
   [serve-cli-over-unix-socket.md](serve-cli-over-unix-socket.md#12-know-who-is-calling).
-- **Conflict detection across processes.** Replicas that share a
-  store (`cli.WithServeIdempotencyStore`) replay each other's records,
-  but a call still running is known only to its own process: the same
-  key sent to two replicas at the same moment runs on both.
-- **Forced remote execution.** Interactive commands, destructive
-  commands the policy withholds, and commands the permission gate
-  refuses stay refused. There is no override.
 
 ## Related pages
 
@@ -1711,6 +1720,8 @@ Absence here is deliberate; each of these belongs somewhere else:
   service: routes, discovery, destructive commands, confirmation
 - [serve-cli-over-unix-socket.md](serve-cli-over-unix-socket.md) —
   the socket service: wire format, permissions, restrictions
+- [served-middleware.md](../reference/served-middleware.md) — every
+  middleware key, its default, the order, and each refusal per surface
 - [served-observability.md](../reference/served-observability.md) —
   tracing and metrics keys, spans and instruments
 - [serve-lifecycle contract](../../contracts/serve-lifecycle.md#security)
