@@ -210,7 +210,7 @@
     },
     {
       "name": "modern/initialize-is-legacy",
-      "era": "modern",
+      "era": "legacy",
       "why": "D2: initialize routes legacy even when modern markers are present",
       "headers": {
         "MCP-Protocol-Version": "2026-07-28",

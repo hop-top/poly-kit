@@ -260,18 +260,11 @@ fn every_case_routes_to_the_era_the_fixture_names() {
             continue;
         }
         let parsed = Request::from_slice(case.request.as_bytes()).expect("parse fixture request");
+        // `era` names the serving handler, so the D2 case (an
+        // initialize carrying modern markers) is labelled legacy.
         let want = match case.era.as_str() {
             "legacy" => Era::Legacy,
             _ => Era::Modern,
-        };
-
-        // `modern/initialize-is-legacy` is labelled modern (it is a
-        // modern-era *case*) but D2 routes it to the legacy handler,
-        // which is the very behavior it pins.
-        let want = if case.name == "modern/initialize-is-legacy" {
-            Era::Legacy
-        } else {
-            want
         };
 
         assert_eq!(

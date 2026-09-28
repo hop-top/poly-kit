@@ -352,7 +352,11 @@ func mcpFixtureCases(t *testing.T) []mcpFixtureCase {
 		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"widget.delete",`+modernMeta+`}}`,
 		modern)
 
-	capture("modern/initialize-is-legacy", "modern",
+	// era names the handler that serves the request, not the markers it
+	// carries: D2 sends every initialize to the legacy handshake, so this
+	// case is legacy despite its modern headers and _meta. The name keeps
+	// the modern/ prefix because the request is built from modern markers.
+	capture("modern/initialize-is-legacy", "legacy",
 		"D2: initialize routes legacy even when modern markers are present",
 		nil, map[string]string{
 			"MCP-Protocol-Version": "2026-07-28",
