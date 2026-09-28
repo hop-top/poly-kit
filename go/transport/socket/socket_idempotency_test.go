@@ -67,12 +67,14 @@ func TestIdempotencyKeyReplaysOverTheSocket(t *testing.T) {
 	assert.Equal(t, first.Result.Stdout, second.Result.Stdout)
 	assert.EqualValues(t, 1, run.calls.Load())
 
-	// Another caller's key is its own.
+	// The owner-only socket vouches for the connection, not the name
+	// a request claims: a caller naming itself bob is still the owner,
+	// and the owner's key replays.
 	bob := req
 	bob.Caller = "bob"
 	resp := call(t, path, bob)
 	require.True(t, resp.Ok)
-	assert.False(t, resp.Replayed)
+	assert.True(t, resp.Replayed)
 
 	reused := req
 	reused.Args = []string{"b"}
@@ -80,7 +82,7 @@ func TestIdempotencyKeyReplaysOverTheSocket(t *testing.T) {
 	require.False(t, resp.Ok)
 	assert.Equal(t, socket.CodeConflict, resp.Error.Code)
 	assert.Contains(t, resp.Error.Message, cmdsurface.CodeIdempotencyKeyReused)
-	assert.EqualValues(t, 2, run.calls.Load())
+	assert.EqualValues(t, 1, run.calls.Load())
 }
 
 func TestIdempotencyKeyInFlightIsAConflict(t *testing.T) {

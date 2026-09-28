@@ -87,6 +87,14 @@ func TestServedIdempotencyKey_ReplayIsScopedToTheCaller(t *testing.T) {
 			assert.Equal(t, "secret for alice\n", mintAs(t, b, alice, "alice-2"),
 				"alice's own key still replays her recorded output")
 
+			// A socket caller the owner-only file let in claims
+			// alice's name: the transport vouched for the connection,
+			// not the name, so it never reaches verified alice's record.
+			sockAlice := cmdsurface.Meta{Surface: cmdsurface.SurfaceSocket, Caller: "alice",
+				Established: cmdsurface.EstablishedTransport, IdempotencyKey: "k1"}
+			assert.Equal(t, "secret for mallory\n", mintAs(t, b, sockAlice, "mallory"),
+				"a transport-established claim of alice's name must not receive her output")
+
 			assert.Equal(t, "secret for carol\n", mintAs(t, b, carol, "carol"))
 			assert.Equal(t, "secret for dave\n", mintAs(t, b, dave, "dave"),
 				"a socket caller sending another's key must not receive its output")

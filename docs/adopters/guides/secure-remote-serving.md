@@ -819,11 +819,12 @@ Idempotent-Replayed: true
 ```
 
 - The key is scoped to the caller: alice's key never answers bob. A
-  caller your `Auth` verified gets its answer on any service; a caller
-  merely named in a request is scoped to that service and, when it
-  names none, its client host, so unauthenticated callers behind one
-  host or proxy share a scope: authenticate the service to separate
-  them.
+  caller your `Auth` verified gets its answer on any service. On the
+  owner-only socket every caller is you, the owner, whatever name a
+  request claims. A caller merely named in a request is scoped to that
+  service and, when it names none, its client host, so unauthenticated
+  callers behind one host or proxy share a scope: authenticate the
+  service to separate them.
 - The same key for a different command or different flags is refused
   `422 idempotency_key_reused`; a retry while the first call still runs
   is refused `409 idempotency_conflict`.
@@ -1146,9 +1147,11 @@ turns it into an exit status uses `64` (`RATE_LIMITED`). Every
 refusal reaches the audit sinks as `cmdsurface.ErrRateLimited` and is
 counted as `rate_limited` in the refusal metrics.
 
-A caller is its authenticated principal and tenant; without one, its
-client address (an IPv6 address by its `/64`); without that, the
-surface, so bus and cron calls share one bucket. Behind a reverse
+A caller is the principal and tenant your `Auth` verified; on a
+transport that vouches only for the connection (the owner-only socket,
+cron) it is the owner, one bucket per transport whatever name a request
+claims; otherwise its client address (an IPv6 address by its `/64`);
+without that, the surface, so bus calls share one bucket. Behind a reverse
 proxy the client address is the proxy's until you
 [list it in `trusted_proxies`](#behind-a-proxy-name-it). The defaults, per
 caller:

@@ -46,20 +46,29 @@ func MetaFromContext(ctx context.Context) (Meta, bool) {
 // confined to for the caller m describes, so one caller's key never
 // answers another.
 //
-// A caller the transport established ([Meta.Authenticated]) is scoped
-// to its tenant and principal alone, so its key answers it on every
-// surface. Any other call is scoped to its surface, tenant and claimed
-// caller; one without a caller to its client host too. With neither,
-// every caller of that surface shares one scope: the socket's
-// owner-only file and the stdio spawn admit one local user. The two
-// kinds of scope never meet: a claimed caller never reaches an
-// established caller's records, whatever name it claims, nor the
-// reverse. Request and trace ids never scope.
+// A caller a verifier established ([EstablishedVerified]) is scoped to
+// its tenant and principal alone, so its key answers it on every
+// surface. A caller the transport itself vouches for
+// ([EstablishedTransport]: the owner-only socket, the stdio spawn, a
+// cron firing, an IAM-signed Lambda call) is the server's owner: it is
+// scoped to that transport, never by the name it claims. Any other
+// call is scoped to its surface, tenant and claimed caller; one
+// without a caller to its client host too. The kinds of scope never
+// meet: no claimed name, whichever transport carries it, reaches a
+// verified caller's records, nor the reverse. Request and trace ids
+// never scope.
+//
+// The bridge's idempotency ledger and a command's own
+// --idempotency-key middleware ([ScopeIdempotencyKey]) both scope by
+// it.
 func IdempotencyScope(m Meta) string {
 	var parts []string
-	if m.Authenticated() && m.Caller != "" {
-		parts = []string{"established", m.Tenant, m.Caller}
-	} else {
+	switch {
+	case m.Established == EstablishedVerified && m.Caller != "":
+		parts = []string{"verified", m.Tenant, m.Caller}
+	case m.Established == EstablishedTransport:
+		parts = []string{"transport", string(m.Surface)}
+	default:
 		parts = []string{"claimed", string(m.Surface), m.Tenant, m.Caller}
 		if m.Caller == "" {
 			// The host alone: a caller's next connection, from

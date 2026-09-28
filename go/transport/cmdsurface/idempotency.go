@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"strings"
 	"sync"
 	"time"
@@ -341,41 +340,14 @@ func (c *idemClaim) abandon() {
 	c.release()
 }
 
-// idempotencyStoreKey scopes the caller's key to its principal and
-// hashes the result, so a key is never answered for another caller
-// and the store holds no principal or key in the clear.
-//
-// A caller the transport established ([Meta.Authenticated]) is scoped
-// to its tenant and principal alone, so its key answers it on every
-// surface. Any other call is scoped to its tenant, its claimed caller
-// and its surface; one without a caller to its client host, and with
-// neither to the surface alone — the socket's owner-only file and the
-// stdio spawn admit one local user, so their callers share one scope.
-// The two kinds of scope never meet: a claimed caller never reaches an
-// established caller's records, whatever name it claims, nor the
-// reverse.
+// idempotencyStoreKey confines the caller's key to its
+// [IdempotencyScope] — the one scope a command's own --idempotency-key
+// middleware uses too — and hashes the result, so a key is never
+// answered for another caller and the store holds no principal or key
+// in the clear.
 func idempotencyStoreKey(m Meta) string {
-	var parts []string
-	if m.Authenticated() && m.Caller != "" {
-		parts = []string{"served", "established", m.Tenant, m.Caller}
-	} else {
-		parts = []string{"served", "claimed", string(m.Surface), m.Tenant, m.Caller}
-		if m.Caller == "" {
-			parts = append(parts, addrHost(m.Extra["remote_addr"]))
-		}
-	}
-	parts = append(parts, m.IdempotencyKey)
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	sum := sha256.Sum256([]byte("served\x00" + IdempotencyScope(m) + "\x00" + m.IdempotencyKey))
 	return hex.EncodeToString(sum[:])
-}
-
-// addrHost is the host of a host:port client address, so a caller's
-// next connection, from another port, is the same client.
-func addrHost(addr string) string {
-	if host, _, err := net.SplitHostPort(addr); err == nil {
-		return host
-	}
-	return addr
 }
 
 // idempotencyFingerprint identifies the invocation a key was used for:

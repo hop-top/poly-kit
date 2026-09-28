@@ -34,9 +34,12 @@ func TestRateLimitedCallCarriesRetryAfter(t *testing.T) {
 	assert.LessOrEqual(t, resp.Error.RetryAfterMs, int64(60_000))
 	assert.Greater(t, resp.Error.RetryAfterMs, int64(55_000))
 
-	// Another caller has its own bucket.
+	// The owner-only socket vouches for the connection, not the name
+	// a request claims: every caller on it is the owner, and shares
+	// the owner's bucket.
 	other := call(t, path, socket.Request{Path: []string{"ping"}, Caller: "bob"})
-	assert.True(t, other.Ok, "%+v", other.Error)
+	require.False(t, other.Ok)
+	assert.Equal(t, socket.CodeRateLimited, other.Error.Code, "a claimed name buys no fresh budget")
 }
 
 // retry_after_ms is on the wire only for a retryable refusal.
