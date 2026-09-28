@@ -10,10 +10,7 @@ package mcpsdk
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -65,9 +62,9 @@ func WithTasks(cfg TasksConfig) Option {
 
 // taskBinding ties the tasks extension to the bridge.
 type taskBinding struct {
-	ext        *taskext.Extension
-	eligible   map[string]bool
-	confirmKey []byte
+	ext      *taskext.Extension
+	eligible map[string]bool
+	confirm  *confirmer
 }
 
 // newTaskBinding validates cfg against the bridge, declares the
@@ -91,9 +88,9 @@ func newTaskBinding(b *cmdsurface.Bridge, cfg *TasksConfig, so *mcp.ServerOption
 		}
 		eligible[name] = true
 	}
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		return nil, fmt.Errorf("mcpsdk: WithTasks: generating confirm key: %w", err)
+	conf, err := newConfirmer(nil, confirmStateTTL)
+	if err != nil {
+		return nil, fmt.Errorf("mcpsdk: WithTasks: %w", err)
 	}
 
 	// Declare capabilities.extensions on a copy so an adopter-supplied
@@ -112,8 +109,8 @@ func newTaskBinding(b *cmdsurface.Bridge, cfg *TasksConfig, so *mcp.ServerOption
 			PollInterval: cfg.PollInterval,
 			Principal:    taskPrincipal,
 		}),
-		eligible:   eligible,
-		confirmKey: key,
+		eligible: eligible,
+		confirm:  conf,
 	}, nil
 }
 
@@ -196,8 +193,10 @@ func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, l
 func (tb *taskBinding) confirmViaMRTR(req *mcp.CallToolRequest, leaf *cmdsurface.Leaf, hdr http.Header) (proceed bool, res *mcp.CallToolResult) {
 	p := req.Params
 	if len(p.InputResponses) > 0 || p.RequestState != "" {
-		key, ok := tb.verifyConfirmState(p.RequestState, leaf.PathKey(), taskPrincipal(hdr))
-		if !ok {
+		key, st := tb.confirm.verify(p.RequestState, confirmBinding{
+			leaf: leaf.PathKey(), principal: taskPrincipal(hdr),
+		})
+		if st != confirmValid {
 			return false, errorResult("confirmation required")
 		}
 		er, ok := p.InputResponses[key].(*mcp.ElicitResult)
@@ -210,7 +209,7 @@ func (tb *taskBinding) confirmViaMRTR(req *mcp.CallToolRequest, leaf *cmdsurface
 		return true, nil
 	}
 
-	key, state := tb.newConfirmState(leaf.PathKey(), taskPrincipal(hdr))
+	key, state := tb.confirm.mint(confirmBinding{leaf: leaf.PathKey(), principal: taskPrincipal(hdr)})
 	return false, &mcp.CallToolResult{
 		InputRequests: mcp.InputRequestMap{
 			key: &mcp.ElicitParams{
@@ -219,67 +218,4 @@ func (tb *taskBinding) confirmViaMRTR(req *mcp.CallToolRequest, leaf *cmdsurface
 		},
 		RequestState: state,
 	}
-}
-
-// confirmClaim is the signed content of a confirmation requestState.
-type confirmClaim struct {
-	Nonce     string `json:"n"`
-	Leaf      string `json:"l"`
-	Principal string `json:"p"`
-	Expiry    int64  `json:"e"`
-}
-
-// newConfirmState mints the MRTR key and its signed requestState.
-func (tb *taskBinding) newConfirmState(leafKey, principal string) (key, state string) {
-	var nb [8]byte
-	if _, err := rand.Read(nb[:]); err != nil {
-		panic(fmt.Sprintf("mcpsdk: crypto/rand unavailable: %v", err))
-	}
-	nonce := hex.EncodeToString(nb[:])
-	claim, _ := json.Marshal(confirmClaim{
-		Nonce:     nonce,
-		Leaf:      leafKey,
-		Principal: principal,
-		Expiry:    time.Now().Add(confirmStateTTL).Unix(),
-	})
-	payload := base64.RawURLEncoding.EncodeToString(claim)
-	return "confirm/" + nonce, payload + "." + tb.sign(payload)
-}
-
-// verifyConfirmState validates a retry's requestState and returns the
-// MRTR key the confirmation response must appear under.
-func (tb *taskBinding) verifyConfirmState(state, leafKey, principal string) (key string, ok bool) {
-	payload, mac, found := cutLast(state)
-	if !found || !hmac.Equal([]byte(mac), []byte(tb.sign(payload))) {
-		return "", false
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(payload)
-	if err != nil {
-		return "", false
-	}
-	var claim confirmClaim
-	if json.Unmarshal(raw, &claim) != nil {
-		return "", false
-	}
-	if claim.Leaf != leafKey || claim.Principal != principal || time.Now().Unix() > claim.Expiry {
-		return "", false
-	}
-	return "confirm/" + claim.Nonce, true
-}
-
-// sign returns the hex HMAC-SHA256 of payload under the binding key.
-func (tb *taskBinding) sign(payload string) string {
-	m := hmac.New(sha256.New, tb.confirmKey)
-	m.Write([]byte(payload))
-	return hex.EncodeToString(m.Sum(nil))
-}
-
-// cutLast splits s at its final dot.
-func cutLast(s string) (before, after string, found bool) {
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] == '.' {
-			return s[:i], s[i+1:], true
-		}
-	}
-	return s, "", false
 }

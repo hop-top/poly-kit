@@ -22,6 +22,10 @@ is unacceptable or an HTTP-only probe must see 401/428 statuses.
 - change the live tool list at runtime → `Surface.Hide` / `Expose` / `Sync`
 - enrich a tool descriptor, notably `OutputSchema` → `WithToolDecorator`
 - run long tool calls as pollable tasks → `WithTasks` (experimental)
+- attribute calls to a verified caller → `WithCallMeta`
+- answer the auth gate from your own authentication (a verified request, a spawned stdio peer) → `WithAuthenticated`
+- let a person confirm a `kit/requires-confirmation` call through the client → `WithConfirmationElicitation`
+- serve it as a `<tool> serve` service instead of mounting by hand → `cli.WithMCP` in `go/console/cli`
 
 ## Quick start
 
@@ -39,7 +43,10 @@ if err := mcpsdk.Mount(b, r,
 
 ## Contract
 
-- kit gates what kit binds: leaves reach the surface only when enabled for `cmdsurface.SurfaceMCP`, destructive leaves are blocked unless `Policy.AllowDestructiveOn` names `mcp`, auth-required leaves demand an `Authorization` header and confirmation-required leaves an `X-Confirm-Token`. Transports without HTTP headers (stdio, in-memory) fail those gates closed.
+- kit gates what kit binds: leaves reach the surface only when enabled for `cmdsurface.SurfaceMCP`, destructive leaves are blocked unless `Policy.AllowDestructiveOn` names `mcp`, auth-required leaves demand an `Authorization` header (or `WithAuthenticated`'s verdict) and confirmation-required leaves an `X-Confirm-Token` (or, with `WithConfirmationElicitation`, an elicitation the client's user accepts). Under the default gates, transports without HTTP headers (stdio, in-memory) fail those gates closed.
+- Gate refusals are audited through the bridge's sinks: `cmdsurface.ErrAuthRefused`, `ErrConfirmationRequired`, `ErrConfirmationDeclined`, `ErrConfirmationStateRejected`.
+- A call carrying a progress token runs through `Bridge.InvokeStream`: the same gates and audit as a synchronous call.
+- Elicited confirmation: one question per call, answered by the elicitation action; `requestState` is HMAC-bound to tool, argument digest and caller for five minutes. Stateful HTTP negotiates up to 2025-11-25 and asks with a server-initiated `elicitation/create`; 2026-07-28 (stateless handlers, stdio) receives `input_required`.
 - Anything registered through `WithServerConfigurator` or `Server()` runs **outside** kit's gates. The SDK's `AddTool` silently replaces a same-name tool, so kit's dotted leaf names are reserved. `Bridge.Runner().Run` bypasses the policy gate; dispatch through `Bridge.Invoke`.
 - Both checks re-run on every call: the tool listing is advisory, the gate is authoritative.
 - Legacy `initialize` echoes 2024-11-05, 2025-03-26, 2025-06-18 and 2025-11-25 verbatim; anything else falls back to 2025-11-25. The 2026-07-28 protocol negotiates per request, handled entirely by the SDK.

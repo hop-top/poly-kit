@@ -12,9 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -49,57 +47,56 @@ func toolFor(leaf *cmdsurface.Leaf) *mcp.Tool {
 
 // toolHandler binds one leaf to an SDK ToolHandler. Per call it:
 //
-//  1. Applies the auth + confirmation gates from the leaf's safety
-//     class against the transport's HTTP headers (absent headers —
-//     e.g. on stdio — fail closed).
-//  2. Decodes the raw arguments into Invocation.Flags; values are
+//  1. Builds the call's provenance (see [WithCallMeta]).
+//  2. Applies the auth gate for kit/auth-required leaves (see
+//     [WithAuthenticated]; by default an Authorization header) and the
+//     confirmation gate for kit/requires-confirmation leaves (the
+//     X-Confirm-Token header, or an accepted elicitation with
+//     [WithConfirmationElicitation]). A refusal is audited through
+//     the bridge's sinks and returned as an isError result.
+//  3. Decodes the raw arguments into Invocation.Flags; values are
 //     forwarded as-is and re-rendered by the bridge at apply time.
-//  3. Dispatches through Bridge.Invoke, which re-checks surface
-//     enablement and the destructive policy ceiling.
+//  4. Dispatches through Bridge.Invoke — or Bridge.InvokeStream for a
+//     call carrying a progress token — which re-checks surface
+//     enablement, invocability, the destructive policy ceiling and
+//     the permission gate.
 //
 // Error mapping matches the hand-rolled surface's contract: a leaf
 // that is unknown or no longer enabled is a protocol error; policy
 // blocks, runner failures, and non-zero exit codes are isError
 // results so the calling model can read and react to them.
 //
-// When tb names the leaf task-eligible and the client declares the
-// tasks extension for the request, the call diverts onto the SEP-2663
-// task path (after the auth gate, which applies to every path):
-// destructive policy and confirmation are enforced at task creation,
-// and execution detaches onto the Runner via Bridge.Invoke.
-func toolHandler(b *cmdsurface.Bridge, leaf *cmdsurface.Leaf, tb *taskBinding) mcp.ToolHandler {
+// When the tasks binding names the leaf task-eligible and the client
+// declares the tasks extension for the request, the call diverts onto
+// the SEP-2663 task path (after the auth gate, which applies to every
+// path): destructive policy and confirmation are enforced at task
+// creation, and execution detaches onto the Runner via Bridge.Invoke.
+func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
+	b, tb := s.b, s.tasks
 	path := append([]string(nil), leaf.Path...)
 	cls := leaf.Class
 	name := toolName(leaf.Path)
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var hdr http.Header
-		if req.Extra != nil {
-			hdr = req.Extra.Header
-		}
-		if cls.AuthRequired && hdr.Get("Authorization") == "" {
+		inv := cmdsurface.Invocation{Path: path, Meta: s.callMeta(ctx, req)}
+
+		if cls.AuthRequired && !s.authenticated(ctx, req) {
+			b.Audit(ctx, inv, cmdsurface.Result{},
+				fmt.Errorf("%w: authentication required", cmdsurface.ErrAuthRefused))
 			return errorResult("authentication required"), nil
 		}
 		if tb != nil && tb.eligible[name] && taskext.ClientDeclares(req) {
-			return tb.invokeAsTask(ctx, b, leaf, req, hdr)
+			return tb.invokeAsTask(ctx, b, leaf, req, headerOf(req))
 		}
-		if cls.RequiresConfirmation && hdr.Get("X-Confirm-Token") == "" {
-			return errorResult("confirmation required"), nil
-		}
-
-		var flags map[string]any
-		if len(req.Params.Arguments) > 0 {
-			if err := json.Unmarshal(req.Params.Arguments, &flags); err != nil {
-				return nil, fmt.Errorf("invalid arguments: %w", err)
+		if cls.RequiresConfirmation {
+			if res := s.confirmGate(ctx, req, leaf, inv); res != nil {
+				return res, nil
 			}
 		}
 
-		inv := cmdsurface.Invocation{
-			Path:  path,
-			Flags: flags,
-			Meta: cmdsurface.Meta{
-				Surface:     cmdsurface.SurfaceMCP,
-				RequestedAt: time.Now(),
-			},
+		if len(req.Params.Arguments) > 0 {
+			if err := json.Unmarshal(req.Params.Arguments, &inv.Flags); err != nil {
+				return nil, fmt.Errorf("invalid arguments: %w", err)
+			}
 		}
 
 		// A progress token opts the call into progressive delivery:

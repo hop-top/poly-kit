@@ -34,6 +34,10 @@ type config struct {
 	configurators []func(*mcp.Server)
 	toolDecorator func(*cmdsurface.Leaf, *mcp.Tool)
 	tasks         *TasksConfig
+	callMeta      func(context.Context, *mcp.CallToolRequest) cmdsurface.Meta
+	authenticated func(context.Context, *mcp.CallToolRequest) bool
+	elicitConfirm bool
+	elicitKey     []byte
 }
 
 // Option configures the surface built by NewServer / Handler / Mount.
@@ -129,10 +133,11 @@ func newConfig(opts ...Option) config {
 // SDK tool add/remove calls, which in turn make connected sessions
 // receive tools/list_changed notifications (SDK behavior).
 type Surface struct {
-	b     *cmdsurface.Bridge
-	cfg   config
-	srv   *mcp.Server
-	tasks *taskBinding // nil unless WithTasks
+	b       *cmdsurface.Bridge
+	cfg     config
+	srv     *mcp.Server
+	tasks   *taskBinding // nil unless WithTasks
+	confirm *confirmer   // nil unless WithConfirmationElicitation
 
 	mu         sync.Mutex
 	registered map[string]bool // dotted tool name -> currently added
@@ -163,10 +168,18 @@ func New(b *cmdsurface.Bridge, opts ...Option) (*Surface, error) {
 		return nil, err
 	}
 
+	var conf *confirmer
+	if cfg.elicitConfirm {
+		if conf, err = newConfirmer(cfg.elicitKey, elicitConfirmTTL); err != nil {
+			return nil, err
+		}
+	}
+
 	s := &Surface{
-		b:     b,
-		cfg:   cfg,
-		tasks: tb,
+		b:       b,
+		cfg:     cfg,
+		tasks:   tb,
+		confirm: conf,
 		srv: mcp.NewServer(
 			&mcp.Implementation{Name: cfg.serverName, Version: cfg.serverVersion},
 			so,
@@ -204,7 +217,7 @@ func (s *Surface) Sync() {
 		enabled := leaf.Enabled[cmdsurface.SurfaceMCP]
 		switch {
 		case enabled && !s.registered[name]:
-			s.srv.AddTool(s.toolFor(leaf), toolHandler(s.b, leaf, s.tasks))
+			s.srv.AddTool(s.toolFor(leaf), s.toolHandler(leaf))
 			s.registered[name] = true
 		case !enabled && s.registered[name]:
 			s.srv.RemoveTools(name)
@@ -275,10 +288,12 @@ func (s *Surface) Mount(r *api.Router) error {
 }
 
 // ServeStdio runs the Surface on the stdio transport until ctx is
-// canceled or the client disconnects. Note that stdio carries no
-// HTTP headers, so leaves classified auth-required or
-// requires-confirmation are never callable on this transport — the
-// header-based gates fail closed.
+// canceled or the client disconnects. stdio carries no HTTP headers,
+// so under the default gates leaves classified auth-required or
+// requires-confirmation fail closed on this transport. A host that
+// can vouch for its stdio peer answers the auth gate with
+// [WithAuthenticated]; [WithConfirmationElicitation] lets a client
+// that supports elicitation confirm a call.
 func (s *Surface) ServeStdio(ctx context.Context) error {
 	return s.srv.Run(ctx, &mcp.StdioTransport{})
 }
