@@ -1,26 +1,38 @@
 # Managed by `kit init` — tools below the kit-managed marker are tracked
 # against the kit tool-versions manifest. Add your own tools above the
 # marker. Run `kit init --update` to refresh managed tools.
+#
+# This repo's own toolchain source of truth: CI reads these pins
+# (scripts/toolchain-pins.sh), and `make check-toolchain-parity` fails when
+# go.mod, rust-toolchain.toml, a workflow or the devcontainer disagrees.
+# The pins here are this repo's, not the scaffold defaults in
+# templates/shared/tool-versions.toml; after any `kit init --update`, run
+# `make check-toolchain-parity`.
 
 # >>> kit-managed >>>
 [tools]
-go = "1.26"
+go = "1.26.1"
 node = "22"
-pnpm = "9"
+pnpm = "11"
 python = "3.13"
-uv = "0.5"
+uv = "0.12"
 rust = "1.98.0"
-golangci-lint = "2.12"
-ruff = "0.8"
-lychee = "0.18"
+golangci-lint = "2.11.4"
+ruff = "0.15.11"
+lychee = "0.24.2"
 hadolint = "2.12"
 actionlint = "1.7"
 shellcheck = "0.10"
 shfmt = "3.10"
-"npm:release-please" = "16"
+"npm:release-please" = "17"
+buf = "1.73.0"
+"npm:markdownlint-cli2" = "0.23.3"
 
 [env]
 _.file = ".env"
+# uv prefers its own downloaded interpreters over the one on PATH; CI has
+# none, so it runs the pinned python. Prefer PATH (mise's pin) here too.
+UV_PYTHON_PREFERENCE = "system"
 
 [tasks.install]
 description = "Install ecosystem dependencies (orchestrated by mise)"
