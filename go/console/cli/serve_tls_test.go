@@ -2,6 +2,7 @@ package cli
 
 import (
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/internal/testpki"
 )
@@ -173,7 +175,13 @@ func TestAPIMutualTLS(t *testing.T) {
 		},
 	})
 	setKeys(r, f.mtlsKeys(APIServiceName))
-	base, stop := serveAPI(t, r)
+	// The listener's own account of a refused handshake: counted, and
+	// logged with its reason at -V.
+	handshakes := &handshakeCounter{}
+	WithObservability(handshakes)(r)
+	logs := &logBuffer{}
+	r.Cmd.SetErr(logs)
+	base, stop := serveAPI(t, r, "-V")
 	defer stop()
 	base = strings.Replace(base, "http://", "https://", 1)
 
@@ -209,13 +217,27 @@ func TestAPIMutualTLS(t *testing.T) {
 	})
 	t.Run("a certificate the CA bundle does not verify fails the handshake", func(t *testing.T) {
 		before := rec.count()
-		_, err := f.rogueClient().Get(base + "/v1/commands/list")
+		resp, err := f.rogueClient().Get(base + "/v1/commands/list")
+		// Under TLS 1.3 the client's half of the handshake is done
+		// before the server has verified the certificate, and the client
+		// goes on to write its first HTTP/2 frames. What it sees next is
+		// a race with the server's refusal: the alert read back ("remote
+		// error: tls: unknown certificate authority"), the HTTP/2
+		// connection never established, or, the server having closed the
+		// connection with those frames unread, the write failing (broken
+		// pipe, connection reset by peer). Each is the connection
+		// refused, and which one is not the assertion. What is: no
+		// response at all, so no status of any kind; the server's
+		// handshake refusing the certificate; nothing reaching the
+		// service.
 		require.Error(t, err)
-		// Under TLS 1.3 the server refuses the client certificate after
-		// the client's half of the handshake, so the client sees either
-		// the TLS alert or the HTTP/2 connection it never got.
-		msg := err.Error()
-		assert.True(t, strings.Contains(msg, "tls") || strings.Contains(msg, "client conn could not be established"), msg)
+		require.Nil(t, resp, "a refused handshake answers nothing")
+		var clientSide *tls.CertificateVerificationError
+		assert.False(t, errors.As(err, &clientSide), "the client refused the server, not the reverse: %v", err)
+		eventually(t, func() bool { return len(handshakes.counted()) == 1 }, "the listener counts one refused handshake: %v", handshakes.counted())
+		assert.Equal(t, []string{"api " + api.CodeTLSHandshake}, handshakes.counted())
+		eventually(t, func() bool { return strings.Contains(logs.String(), "failed to verify certificate") },
+			"the handshake failed on the client certificate\n%s", logs)
 		assert.Equal(t, before, rec.count(), "the request never reached the service")
 	})
 }
