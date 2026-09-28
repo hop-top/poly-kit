@@ -16,7 +16,8 @@ import (
 // applies Surfaces (per-leaf enablement), Policy (destructive default
 // + DefaultEnabled) and Telemetry. The per-command webhook, bus and
 // cron blocks reach their mounts through WebhookMappings, BusBindings
-// and CronSchedules; FromConfig mounts nothing itself.
+// and CronSchedules, and the sinks lists reach the bridge through
+// SinkSpecs and WithSinks; FromConfig mounts nothing itself.
 type Config struct {
 	Surfaces SurfacesConfig `yaml:"surfaces"`
 	Policy   PolicyConfig   `yaml:"policy"`
@@ -73,7 +74,8 @@ type SurfacesConfig struct {
 // inputs (WebhookMapping, BusBinding, CronSchedule, SinkSpec).
 // Config.WebhookMappings, BusBindings and CronSchedules translate
 // the first three; a block binds one command, so it belongs under an
-// exact path, never a wildcard pattern.
+// exact path, never a wildcard pattern. Config.SinkSpecs translates
+// the sinks lists, under any pattern: the pattern is the path filter.
 type CommandConfig struct {
 	// Enabled lists the surfaces this command is exposed on. When
 	// empty the bridge falls back to SurfacesConfig.Defaults (or
@@ -170,8 +172,9 @@ func FromConfig(root *cobra.Command, cfg Config, opts ...Option) (*Bridge, error
 
 	// Telemetry sink wiring. The kit-telemetry sink is the
 	// first sink that FromConfig constructs on the bridge's behalf —
-	// other sinks (bus/file/webhook/log) remain adopter-wired via the
-	// sinkRunner pattern documented in README.md. Telemetry is the
+	// other sinks (bus/file/webhook/log) need backends only the caller
+	// holds, so Config.SinkSpecs builds them from those and the caller
+	// passes them in with WithSinks. Telemetry is the
 	// exception because the kit-telemetry pipeline owns identity,
 	// redaction, and consent, and adopters should not have to
 	// re-implement that wiring per command.

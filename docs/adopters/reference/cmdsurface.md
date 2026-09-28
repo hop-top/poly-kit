@@ -943,8 +943,10 @@ surface, path pattern, success/error).
 
 Two paths reach a sink:
 
-- **Bridge-registered sinks** (`WithSinks`, or the telemetry sink
-  `FromConfig` adds). `Bridge.Invoke` (and `Bridge.Admit` /
+- **Bridge-registered sinks** (`WithSinks` — from Go, or from a YAML
+  `sinks:` list through
+  [`Config.SinkSpecs`](#declarative-surface-blocks) — or the telemetry
+  sink `FromConfig` adds). `Bridge.Invoke` (and `Bridge.Admit` /
   `Admission.Stream`) emits to them for every refusal
   — unknown command, surface not enabled, the destructive ceiling,
   the permission gate — and for every execution on a remote surface
@@ -977,8 +979,9 @@ The telemetry sink fans every cmdsurface invocation completion into the
 kit-telemetry pipeline so operators can observe what their binary is
 doing without each adopter rebuilding identity, redaction, consent, and
 transport. It is the first (and currently the only) sink type that
-`FromConfig` constructs on the bridge's behalf; the other sinks remain
-adopter-wired via the `sinkRunner` pattern documented above. The
+`FromConfig` constructs on the bridge's behalf; the other sinks need
+backends only the adopter holds, so `Config.SinkSpecs` builds them and
+the adopter passes them to `WithSinks` (or wraps the Runner). The
 telemetry sink is the exception because the kit-telemetry pipeline owns
 contracts (identity, redaction, mode, consent) that should not be
 re-implemented per command.
@@ -1229,7 +1232,41 @@ Each method refuses, with the command pattern in the error:
 
 The mount then checks the rest: the command exists, the surface is
 enabled on it, the destructive ceiling, auth and confirmation rules.
-The per-command `sinks:` list is parsed and not yet translated.
+
+The per-command `sinks:` list reaches the bridge the same way, through
+`Config.SinkSpecs` and the `WithSinks` option. Unlike the blocks
+above it may sit under any pattern: the pattern is the sink's path
+filter.
+
+```yaml
+surfaces:
+  commands:
+    "*":
+      sinks:
+        - { type: log, level: warn, on: [error] }
+    "widget *":
+      sinks:
+        - { type: bus, topic: widgets.audit }
+        - { type: webhook, url: https://audit.example/x, headers: { X-Team: core } }
+        - { type: file, path: /var/log/widgets.jsonl, surfaces: [rest, mcp] }
+```
+
+```go
+sinks, err := cfg.SinkSpecs(cmdsurface.SinkDeps{
+    Publisher: pub, // type: bus
+    OpenFile: func(p string) (io.Writer, error) { // type: file; you close these
+        return os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+    },
+})
+b, err := cmdsurface.FromConfig(root, cfg, cmdsurface.WithSinks(sinks...))
+```
+
+`SinkSpecs` refuses, with the pattern and entry index in the error, a
+missing or unknown `type`, a type's required key missing (`url`,
+`topic`, `path`), a key that belongs to another type, an `on` token
+other than `success` / `error`, an unknown surface, a `paths` key
+under any pattern but `"*"`, and a type whose dependency `SinkDeps`
+lacks. Files open only after every entry is valid.
 
 The top-level `mcp:` block (`Config.MCP`) is deprecated with
 `MountMCP`, which it configures, and nothing reads it. The `mcp`
@@ -1382,7 +1419,7 @@ Implemented (this package):
 - Foundation: `Bridge`, `Leaf`, `Invocation` / `Result` / `Event`,
   `Runner` / `InProcessRunner`, `SafetyClass` / `Policy`, YAML
   `Config` / `LoadFile` / `FromConfig`, and the block translators
-  `WebhookMappings` / `BusBindings` / `CronSchedules`.
+  `WebhookMappings` / `BusBindings` / `CronSchedules` / `SinkSpecs`.
 - Surfaces: CLI (cobra), REST, RPC, MCP, WS, SSE, Bus, Cron, Lib,
   Webhook, OAuth callback, Signed URL.
 - FaaS adapters: AWS Lambda (5 event types), Cloud Run.

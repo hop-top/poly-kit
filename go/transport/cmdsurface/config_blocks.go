@@ -13,7 +13,8 @@ package cmdsurface
 // declarative counterpart: Config.WebhookMappings, BusBindings and
 // CronSchedules (config_translate.go) turn the webhook, bus and cron
 // blocks into exactly what MountWebhooks, MountBus and MountCron
-// take. The sinks block is not translated yet.
+// take, and Config.SinkSpecs (config_translate_sinks.go) turns the
+// sinks lists into the SinkSpecs WithSinks takes.
 
 // WebhookConfig is the per-command "webhook:" block. It maps an
 // inbound HTTP webhook onto the leaf:
