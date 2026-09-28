@@ -739,7 +739,12 @@ of any of them.
   socket, mcp, and rpc services. It composes after the tool's policy engine:
   a `--policy` that refuses a side-effect class refuses it for every
   caller, on every surface, before the adopter's decision is asked —
-  the same `Engine.Authorize` the CLI runs.
+  the same `Engine.Authorize` the CLI runs. The policy's `permissions:`
+  rules sit between the two (see slot 6 under
+  [Middleware](#gate-order-on-the-invocation-plane)).
+- A `PermissionFunc` reads the invocation's args and flags from its
+  context (`cmdsurface.InvocationFromContext`); a mount-time query
+  carries none.
 - A refusal returns `ErrPermissionDenied` with a stable reason. It
   is `403 permission_denied` over REST and `DENIED` over the socket,
   distinct from the destructive ceiling's `403 destructive_blocked`
@@ -1304,10 +1309,22 @@ What each slot does:
   included; a transport with no verifier configured establishes
   nobody, so such a leaf is refused there. The refusal returns `ErrAuthRefused`, the sentinel the
   edge already uses, so one class has one sentinel.
-- **6.** Three deciders, each able only to narrow: the built-in scope
-  check (a leaf's `kit/permissions` against the caller's scopes,
-  refusing `insufficient_scope`), then the `--policy` engine, then the
-  adopter's `PermissionFunc`. The scope check applies on remote
+- **6.** Up to four deciders, each able only to narrow, and none asked
+  about a call an earlier one refused: the built-in scope check (a
+  leaf's `kit/permissions` against the caller's scopes, refusing
+  `insufficient_scope`), then the `--policy` engine's `allow` lists,
+  then the policy's `permissions:` rules, then the adopter's
+  `PermissionFunc`. The rules are CEL, the rule language of
+  `runtime/policy`, evaluated by the evaluator it uses
+  (`celpermission.With()`); they read the caller, tenant, verified
+  scopes, establishment, command path, side-effect tier, surface,
+  client address, args and flags. Every rule MUST compile when the
+  service starts — one that does not, or rules with no evaluator
+  wired, refuse the start as a usage error (exit 2) naming the rule.
+  Across rules deny overrides, and a rule that fails to evaluate
+  denies. A rule refusal is `permission_denied` with the reason
+  `permission rule "<name>": <message>`, which the audit record
+  carries. The scope check applies on remote
   surfaces to a leaf that declares `kit/permissions`, and requires
   every scope it lists, matched exactly. The caller's scopes are
   those of an identity `Meta.Established` marks `verified`, carried as

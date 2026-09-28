@@ -584,6 +584,106 @@ $ curl -s http://127.0.0.1:8080/v1/commands | jq '.commands[] | select(.name=="w
 {"name": "widget purge", "side_effect": "write", "invocable": false, "reason": "permission-denied"}
 ```
 
+#### Write permission rules in the policy file
+
+Rules that depend on the call — who, from where, with which arguments —
+can live in the same policy file instead of in Go. Wire the evaluator
+once:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/celpermission"
+)
+
+func main() {
+    root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
+        cli.WithPolicy(cli.DefaultPolicyLoader("mytool")),
+        cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080", Auth: authenticate}),
+        celpermission.With(),
+    )
+    root.Cmd.AddCommand(widgetCmd())
+
+    if err := root.Execute(context.Background()); err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+Then add a `permissions:` block beside the policy's other keys. Each
+rule is a [CEL](https://cel.dev) expression, the same rule language
+kit's bus guards use:
+
+```yaml
+# ~/.config/mytool/policies/ops.yaml
+allow:
+  destructive: []
+permissions:
+  - name: tenant-boundary
+    when: principal.tenant == "acme"
+    effect: allow
+    otherwise: deny
+    message: acme tenants only
+  - name: bulk-needs-admin
+    when: has(payload.flags.all) && !("widgets:admin" in principal.scopes)
+    effect: deny
+    otherwise: allow
+    message: --all needs widgets:admin
+  - name: writes-from-the-office
+    when: resource.tier != "read" && !context.client_addr.startsWith("10.")
+    effect: deny
+    otherwise: allow
+    message: writes only from the office network
+```
+
+```console
+$ mytool serve api --policy=ops
+```
+
+What a rule can read:
+
+| Binding | Value |
+|---|---|
+| `principal.id`, `principal.tenant` | the caller and tenant the transport recorded |
+| `principal.scopes` | the verified credential's scopes; empty for anyone else |
+| `principal.established`, `principal.source` | whether the transport established the caller; `verified`, `transport` or `none` |
+| `resource.id`, `resource.path` | the command, `"widget purge"` and `["widget", "purge"]` |
+| `resource.tier` | its side-effect tier: `read`, `write-local`, `write-shared`, `destructive-local`, `destructive-shared` |
+| `context.surface` | `rest`, `mcp`, `rpc`, `socket`, ... |
+| `context.client_addr` | the caller's IP, no port; empty over the socket and stdio |
+| `payload.args`, `payload.flags` | the positional arguments, and the flags the caller set |
+
+Any rule that denies refuses the call. A rule that cannot be evaluated
+denies too, so guard a flag the caller may not have set with `has()`.
+Rules run after the scope check and the policy's `allow` lists, and
+before your `cli.WithPermission` decision: they can only narrow. The
+refusal names the rule, over the wire and in the audit record:
+
+```json
+{"status":403,"code":"permission_denied","message":"api: permission denied: cmdsurface: permission denied: widget purge on rest: permission rule \"bulk-needs-admin\": --all needs widgets:admin"}
+```
+
+Every rule compiles when the service starts. One that does not refuses
+the start with exit 2, naming it:
+
+```console
+$ mytool serve api --policy=ops
+USAGE: service "api": USAGE: policy "ops": permission rule "tenant-boundary" does not compile: ERROR: <input>:1:... Syntax error: ...
+$ echo $?
+2
+```
+
+A policy that declares rules in a tool that does not wire
+`celpermission.With()` is refused the same way, rather than served
+without them. A decision costs a few microseconds per call; see the
+[package contract](../../../go/console/cli/celpermission/README.md#contract)
+for the budget.
+
 ### 6. Read the audit trail
 
 Register a sink. `cli.WithAuditSinks` applies it to the api service
