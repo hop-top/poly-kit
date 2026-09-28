@@ -177,6 +177,9 @@ func commandHandler(ex CommandExecutor, d CommandDescriptor) http.HandlerFunc {
 // rather than only that it failed.
 func writeProjectionError(w http.ResponseWriter, d CommandDescriptor, err error) {
 	ae := projectionError(d, err)
+	if wait, ok := retryAfterOf(err); ok && ae.Status == http.StatusTooManyRequests {
+		SetRetryAfter(w.Header(), wait)
+	}
 	Error(w, ae.Status, ae)
 }
 
@@ -207,6 +210,12 @@ func projectionError(d CommandDescriptor, err error) *APIError {
 		return &APIError{
 			Status:  http.StatusForbidden,
 			Code:    CodePermissionDenied,
+			Message: err.Error(),
+		}
+	case errors.Is(err, ErrRateLimited):
+		return &APIError{
+			Status:  http.StatusTooManyRequests,
+			Code:    CodeRateLimited,
 			Message: err.Error(),
 		}
 	default:

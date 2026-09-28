@@ -377,12 +377,17 @@ func (h *mcpModernHandler) stampResultEnvelope(m map[string]any) map[string]any 
 	if _, ok := m["resultType"]; !ok {
 		m["resultType"] = mcpResultTypeComplete
 	}
-	m["_meta"] = map[string]any{
-		metaKeyServerInfo: map[string]any{
-			"name":    h.cfg.serverName,
-			"version": h.cfg.serverVersion,
-		},
+	// Merged, not replaced: a refusal result already carries its
+	// own _meta entry.
+	meta, _ := m["_meta"].(map[string]any)
+	if meta == nil {
+		meta = map[string]any{}
 	}
+	meta[metaKeyServerInfo] = map[string]any{
+		"name":    h.cfg.serverName,
+		"version": h.cfg.serverVersion,
+	}
+	m["_meta"] = meta
 	return m
 }
 

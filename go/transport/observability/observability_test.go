@@ -293,6 +293,27 @@ func TestVerdictsAreCountedAndRefusalsByCode(t *testing.T) {
 	assert.Equal(t, uint64(7), n, "every verdict is timed, refusals included")
 }
 
+func TestRateLimitRefusalsAreCountedByCode(t *testing.T) {
+	reader, mp := manualMeter(t)
+	p, err := New(context.Background(), Config{Metrics: Signal{Enabled: true}}, WithMeterProvider(mp))
+	require.NoError(t, err)
+
+	opts := append(p.BridgeOptions("api"), cmdsurface.WithRateLimit(cmdsurface.RateLimit{
+		Read: cmdsurface.RateRule{PerMinute: 1, Burst: 1},
+	}))
+	bridge := cmdsurface.New(tree(nil), opts...)
+	bridge.Expose("*", cmdsurface.SurfaceREST)
+	for range 3 {
+		_, _ = bridge.Invoke(context.Background(), cmdsurface.Invocation{Path: []string{"hello"},
+			Meta: cmdsurface.Meta{Surface: cmdsurface.SurfaceREST, Caller: "alice"}})
+	}
+
+	got := collect(t, reader)
+	assert.Equal(t, map[string]int64{RefusalRateLimited: 2}, sumBy(t, got[MetricRefusals], AttrRefusalReason))
+	assert.Equal(t, map[string]int64{OutcomeOK: 1, OutcomeRefused: 2}, sumBy(t, got[MetricRequests], AttrOutcome))
+	assert.Equal(t, RefusalRateLimited, RefusalCode(fmt.Errorf("wrapped: %w", &cmdsurface.RateLimitedError{})))
+}
+
 func TestInFlightGaugeCountsRunningInvocations(t *testing.T) {
 	reader, mp := manualMeter(t)
 	p, err := New(context.Background(), Config{Metrics: Signal{Enabled: true}}, WithMeterProvider(mp))

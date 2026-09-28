@@ -100,7 +100,7 @@ func (s *Surface) toolHandler(leaf *cmdsurface.Leaf) mcp.ToolHandler {
 			if isUncallable(err) {
 				return nil, err
 			}
-			return errorResult(err.Error()), nil
+			return refusalResult(err), nil
 		}
 
 		// Only then is a person asked: a caller a machine gate refuses

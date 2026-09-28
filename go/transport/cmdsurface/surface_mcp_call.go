@@ -76,7 +76,7 @@ func (h *mcpHandler) handleToolsCall(w http.ResponseWriter, req *http.Request, r
 			writeJSONRPCResult(w, rpc.ID, errorResultBlock(err.Error()), http.StatusOK)
 			return
 		default:
-			writeJSONRPCResult(w, rpc.ID, errorResultBlock(err.Error()), http.StatusOK)
+			writeJSONRPCResult(w, rpc.ID, mcpRefusalBlock(err), http.StatusOK)
 			return
 		}
 	}

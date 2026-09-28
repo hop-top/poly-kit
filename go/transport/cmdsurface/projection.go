@@ -633,6 +633,10 @@ func translateProjectionError(err error) error {
 		return fmt.Errorf("%w: %s", api.ErrDestructiveBlocked, err.Error())
 	case errors.Is(err, ErrPermissionDenied):
 		return fmt.Errorf("%w: %s", api.ErrPermissionDenied, err.Error())
+	case errors.Is(err, ErrRateLimited):
+		// Both chains stay: the projection's sentinel picks the
+		// status, the bridge's error carries the retry hint.
+		return fmt.Errorf("%w: %w", api.ErrRateLimited, err)
 	}
 	return err
 }

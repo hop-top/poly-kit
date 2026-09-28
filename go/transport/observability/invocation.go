@@ -312,6 +312,7 @@ const (
 	RefusalDestructiveBlocked = "destructive_blocked"
 	RefusalPermissionDenied   = "permission_denied"
 	RefusalUnauthenticated    = "unauthenticated"
+	RefusalRateLimited        = "rate_limited"
 	RefusalDeadlineExceeded   = "deadline_exceeded"
 )
 
@@ -347,6 +348,8 @@ func RefusalCode(err error) string {
 		return RefusalDestructiveBlocked
 	case errors.Is(err, cmdsurface.ErrPermissionDenied):
 		return RefusalPermissionDenied
+	case errors.Is(err, cmdsurface.ErrRateLimited):
+		return RefusalRateLimited
 	case errors.Is(err, context.DeadlineExceeded):
 		return RefusalDeadlineExceeded
 	}

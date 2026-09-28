@@ -434,6 +434,8 @@ func mapBridgeError(err error, leaf *Leaf) error {
 		return connect.NewError(connect.CodePermissionDenied, err)
 	case errors.Is(err, ErrPermissionDenied):
 		return connect.NewError(connect.CodePermissionDenied, err)
+	case errors.Is(err, ErrRateLimited):
+		return rateLimitedConnectError(err)
 	default:
 		return connect.NewError(connect.CodeInternal, err)
 	}

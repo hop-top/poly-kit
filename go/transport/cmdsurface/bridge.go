@@ -113,6 +113,9 @@ type bridgeConfig struct {
 	permission PermissionFunc
 	sinks      SinkSet
 	redaction  AuditRedaction
+	// rateLimit is the slot-7 limiter from WithRateLimit, nil when
+	// the gate is off.
+	rateLimit *rateLimiter
 }
 
 // Option configures a Bridge at construction.
@@ -368,6 +371,9 @@ func matchPattern(pattern string, path []string) bool {
 //     destructive and Policy disallows the surface.
 //  5. Permission — ErrPermissionDenied: the [PermissionFunc] refused
 //     this Meta for this leaf; the message carries its reason.
+//  6. Rate limit — ErrRateLimited, as a [*RateLimitedError] carrying
+//     the retry hint: the caller's bucket for the leaf's tier is
+//     empty. Only with [WithRateLimit], and only on remote surfaces.
 //
 // Confirmation is deliberately not a gate here: it is the command's
 // own flag and its own refusal, the same on every surface as on the
@@ -449,6 +455,11 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 	if dec := b.Permission(ctx, inv.Meta, leaf); !dec.Allowed {
 		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s: %s",
 			ErrPermissionDenied, leaf.PathKey(), surface, dec.Reason))
+	}
+	// Slot 7: rate limit (ratelimit.go). Only a call policy admits
+	// spends a token.
+	if err := b.rateLimit(inv, leaf); err != nil {
+		return nil, b.refuse(ctx, inv, err)
 	}
 	// A runner holding no tree (a subprocess) learns from the
 	// invocation whether the leaf parses its own argv.

@@ -361,6 +361,11 @@ func oauthWriteInvokeError(w http.ResponseWriter, p OAuthProvider, err error) {
 		oauthWriteError(w, p, http.StatusForbidden, "destructive_blocked", err.Error())
 	case errors.Is(err, ErrPermissionDenied):
 		oauthWriteError(w, p, http.StatusForbidden, api.CodePermissionDenied, err.Error())
+	case errors.Is(err, ErrRateLimited):
+		if wait, ok := RetryAfter(err); ok {
+			api.SetRetryAfter(w.Header(), wait)
+		}
+		oauthWriteError(w, p, http.StatusTooManyRequests, api.CodeRateLimited, err.Error())
 	default:
 		oauthWriteError(w, p, http.StatusInternalServerError, "internal_error", err.Error())
 	}

@@ -125,7 +125,7 @@ func (h *mcpModernHandler) handleToolsCall(w http.ResponseWriter, req *http.Requ
 		default:
 			// ErrDestructiveBlocked and every other invoke failure are
 			// complete isError results at HTTP 200, as on legacy.
-			h.writeCallError(w, rpc, err.Error(), http.StatusOK)
+			writeJSONRPCResult(w, rpc.ID, h.stampResultEnvelope(mcpRefusalBlock(err)), http.StatusOK)
 		}
 		return
 	}

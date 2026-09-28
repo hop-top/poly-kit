@@ -416,6 +416,8 @@ func writeWebhookBridgeError(w http.ResponseWriter, err error) {
 			Code:    api.CodePermissionDenied,
 			Message: err.Error(),
 		})
+	case errors.Is(err, ErrRateLimited):
+		writeRateLimited(w, err)
 	default:
 		ae := api.MapError(err)
 		api.Error(w, ae.Status, ae)

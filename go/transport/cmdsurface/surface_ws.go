@@ -570,6 +570,8 @@ func errorCode(err error) string {
 		return "destructive_blocked"
 	case errors.Is(err, ErrPermissionDenied):
 		return api.CodePermissionDenied
+	case errors.Is(err, ErrRateLimited):
+		return api.CodeRateLimited
 	case errors.Is(err, context.Canceled):
 		return "canceled"
 	default:

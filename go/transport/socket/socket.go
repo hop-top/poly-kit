@@ -79,10 +79,14 @@ type Response struct {
 type Error struct {
 	// Code is a stable symbol a client can branch on:
 	// NOT_FOUND, NOT_ENABLED, NOT_INVOCABLE, BLOCKED, DENIED,
-	// UNAUTHENTICATED, INVALID, INTERNAL.
+	// UNAUTHENTICATED, RATE_LIMITED, INVALID, INTERNAL.
 	Code string `json:"code"`
 	// Message is the human-readable detail.
 	Message string `json:"message"`
+	// RetryAfterMs is how long to wait before retrying, in whole
+	// milliseconds, on a retryable refusal (RATE_LIMITED). Absent
+	// otherwise.
+	RetryAfterMs int64 `json:"retry_after_ms,omitempty"`
 }
 
 // Wire error codes.
@@ -107,6 +111,9 @@ const (
 	// [Authenticator] refused. It is only ever sent when the
 	// transport has one.
 	CodeUnauthenticated = "UNAUTHENTICATED"
+	// CodeRateLimited is a call the rate limit refused. The error
+	// carries retry_after_ms.
+	CodeRateLimited = "RATE_LIMITED"
 	// CodeInvalid is a malformed request line.
 	CodeInvalid = "INVALID"
 	// CodeInternal is anything else the runner returned.
@@ -358,13 +365,17 @@ func (t *Transport) dispatch(ctx context.Context, conn net.Conn, line []byte, in
 
 	res, err := inv(ctx, invocation)
 	if err != nil {
-		return errResponse(codeFor(err), err.Error())
+		resp := errResponse(codeFor(err), err.Error())
+		if wait, ok := cmdsurface.RetryAfter(err); ok {
+			resp.Error.RetryAfterMs = cmdsurface.RetryAfterMillis(wait)
+		}
+		return resp
 	}
 	return Response{Ok: true, Result: &res}
 }
 
-// codeFor maps a bridge error onto a wire code. The five the bridge
-// documents are distinguished; anything else is internal.
+// codeFor maps a bridge error onto a wire code. The refusals the
+// bridge documents are distinguished; anything else is internal.
 func codeFor(err error) string {
 	switch {
 	case errors.Is(err, cmdsurface.ErrUnknownCommand):
@@ -377,6 +388,8 @@ func codeFor(err error) string {
 		return CodeBlocked
 	case errors.Is(err, cmdsurface.ErrPermissionDenied):
 		return CodeDenied
+	case errors.Is(err, cmdsurface.ErrRateLimited):
+		return CodeRateLimited
 	default:
 		return CodeInternal
 	}

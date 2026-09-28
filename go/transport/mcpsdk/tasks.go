@@ -151,7 +151,7 @@ func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, l
 		if isUncallable(err) {
 			return nil, err
 		}
-		return errorResult(err.Error()), nil
+		return refusalResult(err), nil
 	}
 	// Arguments are checked before a person is asked: nobody
 	// approves a call that cannot run as sent.
@@ -185,7 +185,7 @@ func (tb *taskBinding) invokeAsTask(ctx context.Context, b *cmdsurface.Bridge, l
 			if isUncallable(err) {
 				return nil, err // protocol fault: the task fails
 			}
-			return errorResult(err.Error()), nil // completed, isError
+			return refusalResult(err), nil // completed, isError
 		}
 		return renderResult(res), nil
 	})

@@ -16,7 +16,7 @@ over TCP is `go/transport/api`; a schema-typed RPC is
 - verify each request before it runs → `Transport.Auth` (an `Authenticator`), `cli.SocketConfig.Auth`
 - observe refusals → `Transport.OnRefused`, which the built-in service routes into `Bridge.Audit`
 - read a response → `Request`, `Response`, `Error` wire types
-- branch on a refusal → `CodeNotFound`, `CodeNotEnabled`, `CodeNotInvocable`, `CodeBlocked`, `CodeDenied`, `CodeUnauthenticated`, `CodeInvalid`, `CodeInternal`
+- branch on a refusal → `CodeNotFound`, `CodeNotEnabled`, `CodeNotInvocable`, `CodeBlocked`, `CodeDenied`, `CodeUnauthenticated`, `CodeRateLimited` (with `RetryAfterMs`), `CodeInvalid`, `CodeInternal`
 
 ## Quick start
 
