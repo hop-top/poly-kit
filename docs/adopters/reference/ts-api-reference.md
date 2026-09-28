@@ -8,7 +8,7 @@
 
 TypeScript authors building a tool with kit's CLI factory. If you
 are adopting kit for the first time, start with the
-[top-level README](../../../README.md#ts-tools).
+[top-level README](../../../README.md#typescript).
 
 ## Before you begin
 

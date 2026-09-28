@@ -8,7 +8,7 @@
 
 Go authors building a tool with kit's CLI factory. If you are
 adopting kit for the first time, start with the
-[top-level README](../../../README.md#go-tools).
+[top-level README](../../../README.md#go).
 
 ## Before you begin
 
