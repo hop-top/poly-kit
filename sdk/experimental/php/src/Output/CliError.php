@@ -37,7 +37,7 @@ final class CliError implements JsonSerializable, Stringable
     /** Marks a failure kit cannot classify; retries are best-effort and bounded. */
     public const string TRANSIENCE_UNKNOWN = 'unknown';
 
-    // Standard codes mapping the cross-tool exit codes (conventions §8.1).
+    // Standard codes mapping the cross-tool exit codes.
     public const string CODE_OK = 'OK'; // exit 0
     public const string CODE_GENERIC = 'GENERIC'; // exit 1
     public const string CODE_USAGE = 'USAGE'; // exit 2

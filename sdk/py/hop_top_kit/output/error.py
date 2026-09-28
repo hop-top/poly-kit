@@ -33,7 +33,7 @@ TRANSIENCE_PERMANENT = "permanent"
 TRANSIENCE_UNKNOWN = "unknown"
 
 # ---------------------------------------------------------------------------
-# Standard codes mapping the cross-tool exit codes (conventions §8.1)
+# Standard codes mapping the cross-tool exit codes
 # ---------------------------------------------------------------------------
 
 CODE_OK = "OK"  # exit 0

@@ -18,10 +18,10 @@
  *     a fail-closed posture.
  *   - **Default Mode is Off**: `resolveMode()` is consulted at the same
  *     gating step. Anything other than `anon` / `full` no-ops.
- *   - **Envelope shape**: matches the cross-language event-schema doc
- *     for the common fields. NOTE: per the task spec, the TS+Py SDKs
- *     diverge from Go by carrying free-form `event` (string) + `attrs`
- *     (object) at the envelope root. See event-schema §3.
+ *   - **Envelope shape**: matches the cross-language event schema
+ *     for the common fields. NOTE: the TS+Py SDKs diverge from Go by
+ *     carrying free-form `event` (string) + `attrs` (object) at the
+ *     envelope root.
  *   - **install_id caching**: `getInstallId()` does file I/O; we resolve
  *     it lazily and cache the resolved promise.
  *

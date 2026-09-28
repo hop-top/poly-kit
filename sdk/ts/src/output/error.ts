@@ -32,7 +32,7 @@ export const TRANSIENCE_PERMANENT = 'permanent';
 export const TRANSIENCE_UNKNOWN = 'unknown';
 
 // ---------------------------------------------------------------------------
-// Standard codes mapping the cross-tool exit codes (conventions §8.1)
+// Standard codes mapping the cross-tool exit codes
 // ---------------------------------------------------------------------------
 
 export const CODE_OK = 'OK'; // exit 0

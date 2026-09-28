@@ -23,7 +23,7 @@ pub const TRANSIENCE_PERMANENT: &str = "permanent";
 /// best-effort and bounded.
 pub const TRANSIENCE_UNKNOWN: &str = "unknown";
 
-// Standard codes mapping the cross-tool exit codes (conventions §8.1).
+// Standard codes mapping the cross-tool exit codes.
 pub const CODE_OK: &str = "OK"; // exit 0
 pub const CODE_GENERIC: &str = "GENERIC"; // exit 1
 pub const CODE_USAGE: &str = "USAGE"; // exit 2
