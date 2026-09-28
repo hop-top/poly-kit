@@ -40,7 +40,7 @@ import (
 )
 
 // Adapter ordering in the table follows the canonical column order
-// defined in spec §15.4: reference adapters first (claude, gemini,
+// of the parity matrix: reference adapters first (claude, gemini,
 // codex, opencode), then expansion adapters in the order they were
 // added (copilot, cursor-agent, qwen, kimi, vibe, goose, crush).
 var orderedAdapters = []invoke.InvocationAdapter{
@@ -57,7 +57,7 @@ var orderedAdapters = []invoke.InvocationAdapter{
 	crush.New(),
 }
 
-// universalOptions is the row order. Mirrors spec §15.4 grouping.
+// universalOptions is the row order, grouped by option family.
 var universalOptions = []string{
 	"ModeRun", "ModeInteractive", "ModeResume", "Continue", "Fork",
 	"CWD", "Model", "Agent",

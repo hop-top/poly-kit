@@ -3,7 +3,8 @@ package claude
 import "hop.top/kit/go/core/uxp/invoke"
 
 // Mappings implements invoke.InvocationAdapter. The slice covers
-// every universal option in the order they appear in spec §15.4.
+// every universal option in the order of the parity matrix in
+// docs/adopters/reference/uxp.md#universal-option-parity.
 func (Adapter) Mappings() []invoke.OptionMapping {
 	return []invoke.OptionMapping{
 		{Universal: "ModeRun", Support: invoke.MappingNative, Native: []string{"-p"}},

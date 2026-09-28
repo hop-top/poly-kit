@@ -10,7 +10,7 @@
 // The contract asserted here:
 //
 //   - kit/side-effect + kit/idempotent on every runnable leaf
-//   - Short / Long discipline (§2 hard tier)
+//   - Short / Long discipline (pass 2 hard tier, see README.md)
 //   - kit/output-schema validity when declared
 //   - reserved `<tool> status` subcommand present
 //   - noun-verb shape with explicit annotations for top-level

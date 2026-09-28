@@ -409,7 +409,7 @@ func TestTelemetrySink_AnonNeverTripsSizeCap(t *testing.T) {
 	}
 
 	// Args + Flags below would EASILY blow a 512-byte cap if shipped,
-	// but Anon strips them at queue time (sink_telemetry.go §3).
+	// but Anon strips them at queue time (WithMode in sink_telemetry.go).
 	huge := strings.Repeat("y", 4096)
 	inv := Invocation{
 		Path:  []string{"widget", "add"},

@@ -176,7 +176,7 @@ func TestTranscriptSupportConstants(t *testing.T) {
 
 // stubAdapter exists only to confirm InvocationAdapter is satisfiable
 // with all five methods. No adapter implementations live in this
-// package — they go under invoke/adapters/<cli>/ per spec §16.1.
+// package — they go under invoke/adapters/<cli>/.
 type stubAdapter struct{ name uxp.CLIName }
 
 func (s stubAdapter) CLI() uxp.CLIName { return s.name }

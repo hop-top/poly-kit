@@ -30,7 +30,7 @@ func (m Mode) Valid() bool {
 // OutputFormat is the desired stdout shape from a run.
 //
 // OutputJSON resolves to final-message JSON (one object). OutputStreamJSON
-// resolves to the CLI's native event stream. See spec §16.3.
+// resolves to the CLI's native event stream.
 type OutputFormat string
 
 const (
@@ -78,7 +78,8 @@ func (s SandboxMode) Valid() bool {
 //
 // ApprovalAutoEdit must never silently degrade to a target CLI's
 // auto-all/yolo flag. Adapters with no auto-edit equivalent return
-// MappingUnsupported and refuse the build. See spec §15.5 anti-shims.
+// MappingUnsupported and refuse the build (the anti-shims in
+// go/core/uxp/README.md#contract).
 type ApprovalMode string
 
 const (
@@ -106,7 +107,7 @@ func (a ApprovalMode) Valid() bool {
 // translates it to native argv for a specific CLI.
 //
 // Files and AddDirs may both be set; adapters reduce them per the
-// per-CLI shim policy (see spec §15.5). Config holds per-adapter
+// per-CLI shim policy (see docs/adopters/reference/uxp.md#shims). Config holds per-adapter
 // extras keyed as "<cli>.<key>" or "uxp.<key>" for cross-adapter
 // settings.
 type Invocation struct {
@@ -173,7 +174,7 @@ type OptionMapping struct {
 
 // ToolPermission classifies the broad capability a built-in agent tool
 // exercises. Distinct from go/ai/toolspec's permission tokens, which
-// describe a CLI's own command tree (see spec §16.5).
+// describe a CLI's own command tree.
 type ToolPermission string
 
 const (
@@ -261,7 +262,7 @@ type InvocationAdapter interface {
 	Build(inv Invocation) (CommandSpec, Diagnostics, error)
 	// Mappings returns the static parity table for this CLI. The
 	// regenerate-on-build parity README at go/core/uxp/README.md
-	// is built from these slices (see spec §15.8).
+	// is built from these slices, so the table cannot drift from code.
 	Mappings() []OptionMapping
 	// ToolCapabilities returns the built-in agent tool taxonomy for
 	// this CLI.

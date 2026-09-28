@@ -59,8 +59,8 @@ var happyPathOverrides = map[uxp.CLIName]happyPathOverride{
 }
 
 // universalOptions enumerates every option name an adapter's
-// Mappings() must cover. Drift here is a spec change, not a test
-// change — the universal contract lives in spec §15.4.
+// Mappings() must cover. Drift here is a contract change, not a test
+// change — the universal matrix is docs/adopters/reference/uxp.md#universal-option-parity.
 var universalOptions = []string{
 	"ModeRun", "ModeInteractive", "ModeResume", "Continue", "Fork",
 	"CWD", "Model", "Agent",
@@ -71,7 +71,7 @@ var universalOptions = []string{
 }
 
 // universalToolCapabilities are the ToolCapability slots adapters
-// must populate. Spec §8 defines this as the seed list; every
+// must populate (the rows of docs/adopters/reference/uxp.md#tool-capability-parity); every
 // adapter declares native, shim, or unsupported for each slot.
 var universalToolCapabilities = []string{
 	"shell.exec", "file.read", "file.write", "file.edit", "file.search",

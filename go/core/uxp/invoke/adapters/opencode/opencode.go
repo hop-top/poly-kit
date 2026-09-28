@@ -165,7 +165,7 @@ func (Adapter) Build(inv invoke.Invocation) (invoke.CommandSpec, invoke.Diagnost
 
 	// AddDirs: opencode has no --add-dir. S-2 shim: enumerate dir →
 	// repeated --file args. Honor uxp.shim.dir_to_files_max
-	// (default 200); overflow → hard error per spec §15.5 S-2.
+	// (default 200); overflow → hard error, never a silent truncation.
 	if len(inv.AddDirs) > 0 {
 		max := DefaultDirToFilesMax
 		if v := inv.Config["uxp.shim.dir_to_files_max"]; v != "" {

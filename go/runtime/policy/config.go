@@ -57,7 +57,7 @@ type rawPolicy struct {
 	Effect    string `yaml:"effect"`
 	Otherwise string `yaml:"otherwise"`
 	Message   string `yaml:"message"`
-	Async     bool   `yaml:"async"` // rejected at parse — see §7
+	Async     bool   `yaml:"async"` // rejected at parse: sync veto only
 }
 
 // LoadConfig reads and validates a policy YAML file.

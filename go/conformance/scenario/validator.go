@@ -215,7 +215,8 @@ func Validate(s *Scenario) error {
 		errs = append(errs, &ValidateError{Field: "assertions", Issue: "required, must be non-empty"})
 	} else {
 		seen := map[string]struct{}{}
-		// Track judge IDs referenced by assertions for §10 cross-check.
+		// Track judge IDs referenced by assertions for the step-10
+		// cross-check.
 		referencedJudges := map[string]struct{}{}
 		anyJudgeAssertion := false
 		for i, a := range s.Assertions {

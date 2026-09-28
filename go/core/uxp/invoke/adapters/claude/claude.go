@@ -31,7 +31,7 @@ func (Adapter) CLI() uxp.CLIName { return uxp.CLIClaude }
 //
 // Returned Diagnostics carry shim notes and unknown-Config-key info.
 // A non-nil error is reserved for impossible inputs (missing required
-// fields) and refused mappings (anti-shim policy in spec §15.5).
+// fields) and refused mappings (anti-shims in go/core/uxp/README.md#contract).
 func (Adapter) Build(inv invoke.Invocation) (invoke.CommandSpec, invoke.Diagnostics, error) {
 	var ds invoke.Diagnostics
 
@@ -102,7 +102,7 @@ func (Adapter) Build(inv invoke.Invocation) (invoke.CommandSpec, invoke.Diagnost
 	}
 
 	// Approval. Anti-shim: ApprovalAutoEdit is native; the rejection
-	// rule in §15.5 applies to CLIs *without* it. claude has it.
+	// rule applies to CLIs *without* it. claude has it.
 	switch inv.Approval {
 	case invoke.ApprovalDefault, invoke.ApprovalAsk:
 		// claude defaults to "default" — leave alone.
@@ -129,7 +129,7 @@ func (Adapter) Build(inv invoke.Invocation) (invoke.CommandSpec, invoke.Diagnost
 	}
 
 	// Sandbox. claude has no first-class sandbox tier; map onto
-	// permission-mode shims per §15.4.
+	// permission-mode shims (the S cells in the parity matrix).
 	switch inv.Sandbox {
 	case invoke.SandboxDefault:
 		// nothing

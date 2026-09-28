@@ -1,6 +1,6 @@
 // Package shim holds the small set of mapping helpers that adapters
 // reuse when a target CLI is missing a universal option's exact
-// equivalent. The catalog is closed (S-1…S-6 in spec §15.5);
+// equivalent. The catalog is closed (S-1…S-6 in docs/adopters/reference/uxp.md#shims);
 // adapters do not invent new shims locally.
 package shim
 
@@ -165,8 +165,8 @@ func relTo(base, p string) string {
 }
 
 // RefuseDangerousDegradation builds the standard error-level
-// Diagnostic for the "never silently widen authority" rule (spec
-// §15.5 anti-shims). option is the universal option name (e.g.
+// Diagnostic for the "never silently widen authority" rule (the
+// anti-shims in go/core/uxp/README.md#contract). option is the universal option name (e.g.
 // "Approval"); requested is the value the caller asked for; nativeFlag
 // is the dangerous native flag the adapter might have used; safer
 // lists alternative values the caller could pick instead.
