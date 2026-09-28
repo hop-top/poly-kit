@@ -1,6 +1,7 @@
 //! Era detection and dispatch.
 //!
-//! Implements ADR 0042's normative precedence rules D1–D4 and the
+//! Implements the normative precedence rules D1–D4 in
+//! docs/adopters/guides/expose-cli-over-mcp.md and the
 //! mount-option surface that selects which revisions a mount serves.
 //!
 //! # Modern markers
@@ -61,7 +62,7 @@ pub enum Era {
 ///
 /// Binding this to an HTTP server is the adopter's job — see
 /// [`Surface::call`], which is the `tower::Service`-shaped function
-/// ADR 0043 §2 specifies. The type deliberately depends on no HTTP
+/// the polyglot hosting model specifies. The type deliberately depends on no HTTP
 /// framework, so the conformance suite drives it with no socket.
 #[derive(Debug)]
 pub struct Surface {

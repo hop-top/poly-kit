@@ -1,6 +1,6 @@
 """The ASGI hosting contract.
 
-ADR 0043 fixes the hosting model as a transport-agnostic handler that the
+Kit fixes the hosting model as a transport-agnostic handler that the
 adopter binds to their own server: kit does not own anyone's HTTP stack,
 and a surface that hard-bound to one would force that dependency on every
 consumer and make this very suite spin up a socket to test wire bytes.

@@ -3,7 +3,7 @@
  * @package @hop-top/kit
  *
  * The 2026-07-28 MCP handler: the stateless request core behind the
- * era dispatcher. Implements ADR 0042's validation order V1-V9,
+ * era dispatcher. Implements expose-cli-over-mcp.md's validation order V1-V9,
  * `server/discover`, the modern error writers (-32020 / -32021 /
  * -32022 with their status mapping), result-envelope stamping
  * (`resultType` + serverInfo `_meta`), and cache-hint application.
@@ -109,7 +109,7 @@ export class ModernMcpHandler {
   }
 
   /**
-   * The modern entry point. The validation chain runs in ADR 0042's
+   * The modern entry point. The validation chain runs in the guide's
    * order V1-V9; the first failure responds and stops. HTTP status is
    * 400/404 only where the spec mandates it — application-level
    * JSON-RPC errors ride HTTP 200, matching legacy's convention.

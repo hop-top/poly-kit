@@ -3,8 +3,9 @@
 //! One mount serves **both** MCP revisions — 2024-11-05 (the
 //! `initialize` handshake) and 2026-07-28 (the stateless per-request
 //! envelope) — with the era detected per request. Ports Go's
-//! `go/transport/cmdsurface` MCP surface; see ADR 0043 for the polyglot
-//! design and ADR 0042 for the normative detection and validation rules.
+//! `go/transport/cmdsurface` MCP surface; see
+//! docs/adopters/guides/serve-mcp-from-any-sdk.md for the polyglot design and
+//! docs/adopters/guides/expose-cli-over-mcp.md for the normative detection and validation rules.
 //!
 //! # Parity contract
 //!
@@ -16,7 +17,7 @@
 //! # Hosting
 //!
 //! [`Surface::call`] is a plain request → response function, the
-//! `tower::Service` shape ADR 0043 §2 fixes. This crate binds to no HTTP
+//! `tower::Service` shape the polyglot design fixes. This crate binds to no HTTP
 //! server: adopters wire it to axum, hyper, warp, or anything else, and
 //! the conformance suite drives it with no socket at all.
 //!
@@ -126,7 +127,8 @@ impl CacheScope {
 
 /// Mount-time configuration.
 ///
-/// The option *set* is normative across all four ports (ADR 0043 §3);
+/// The option *set* is normative across all four ports (see the option reference in
+/// serve-mcp-from-any-sdk.md);
 /// the spelling is idiomatic per language. Defaults match Go exactly:
 /// both eras enabled, path `/mcp`, empty origin allowlist, and cache
 /// hints `ttl_ms = 0` / `cache_scope = private`.

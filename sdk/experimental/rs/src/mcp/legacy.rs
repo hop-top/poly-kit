@@ -1,7 +1,7 @@
 //! The 2024-11-05 handler.
 //!
 //! This module is **frozen**: it reproduces Go's original `mcpHandler`
-//! exactly, and the dual-spec work is additive only. ADR 0043 §7 makes
+//! exactly, and the dual-spec work is additive only. The module layout makes
 //! the three-way split load-bearing precisely so a reviewer can confirm
 //! a modern-era change did not reach in here.
 //!

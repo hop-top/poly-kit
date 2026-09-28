@@ -30,7 +30,7 @@ use serde_json::{Map, Value};
 /// JSON-RPC error codes this surface emits.
 ///
 /// Every value is taken from `rmcp::model::ErrorCode` rather than
-/// spelled locally: ADR 0043 §1 fixes the official SDK as the protocol
+/// spelled locally: the official SDK is the protocol
 /// layer, so the `-3202x` codes reserved by MCP 2026-07-28 and the
 /// classic JSON-RPC range have exactly one source of truth.
 pub mod codes {

@@ -1,6 +1,6 @@
 /**
  * Unit coverage for behavior the 17 shared wire fixtures do not
- * reach: the era-detection edge cases in ADR 0042's worked table,
+ * reach: the era-detection edge cases in expose-cli-over-mcp.md's table,
  * the modern validation chain V1-V9, mount-option refusals, cache
  * hints, the tasks-extension slot, and the safety gate itself.
  *
@@ -58,7 +58,7 @@ function parsed(body: unknown) {
   );
 }
 
-describe('era detection (ADR 0042 D1-D4, markers M1-M4)', () => {
+describe('era detection (D1-D4, markers M1-M4)', () => {
   it('D2: initialize is legacy even with every modern marker present', () => {
     const req = post(
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { _meta: MODERN_META } },

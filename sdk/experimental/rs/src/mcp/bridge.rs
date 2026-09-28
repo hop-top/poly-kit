@@ -105,7 +105,7 @@ pub enum InvokeError {
     /// The policy gate refused a destructive leaf on this surface.
     ///
     /// Renders as an `isError` result at HTTP 200 on both eras — never
-    /// as a transport error (ADR 0043 §5).
+    /// as a transport error: the call was understood and declined.
     DestructiveBlocked {
         /// Space-joined leaf path, e.g. `widget delete`.
         command: String,

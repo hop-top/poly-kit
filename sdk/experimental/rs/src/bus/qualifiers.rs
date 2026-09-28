@@ -1,7 +1,7 @@
 //! [`Qualifiers`] — the four payload-side semantic axes the topic does
 //! not encode.
 //!
-//! Mirrors `go/runtime/bus/qualifiers.go`. See ADR 0017 in the Go tree
+//! Mirrors `go/runtime/bus/qualifiers.go`. See docs/adopters/concepts/bus-overview.md
 //! for why these axes stay out of the topic string (cardinality,
 //! subscriber pattern stability, metric series cap).
 

@@ -11,7 +11,8 @@ namespace HopTop\Kit\Mcp;
  * era is decided per request rather than per connection, because the
  * 2026-07-28 revision has no handshake to negotiate with.
  *
- * Detection follows ADR 0042's normative rules. Two signals are
+ * Detection follows the normative rules in
+ * docs/adopters/guides/expose-cli-over-mcp.md. Two signals are
  * deliberately *not* markers, and both matter:
  *
  *  - A bare `params._meta` does not imply the modern era — 2024-11-05

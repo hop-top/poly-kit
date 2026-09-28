@@ -6,7 +6,7 @@
  * `tools/call`, plain JSON-RPC over one POST path, no sessions, no
  * SSE.
  *
- * This module is byte-for-byte frozen. ADR 0042's hard invariant is
+ * This module is byte-for-byte frozen. The dual-spec hard invariant is
  * "2024-11-05 behavior is preserved byte-for-byte; additive only; no
  * deprecation", and the three-way module split (legacy / modern /
  * dispatch) exists precisely so a reviewer can confirm a modern-era

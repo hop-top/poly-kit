@@ -11,7 +11,7 @@
  * and a trailing newline; a serializer that differs must reorder to
  * match, not normalize the comparison away.
  *
- * The fixtures are the parity contract. Where ADR 0042/0043 and these
+ * The fixtures are the parity contract. Where the MCP guides and these
  * bytes disagree, the bytes win.
  */
 

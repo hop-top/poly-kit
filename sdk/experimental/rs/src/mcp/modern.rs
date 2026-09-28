@@ -1,6 +1,7 @@
 //! The 2026-07-28 handler: the stateless request core.
 //!
-//! Implements ADR 0042's normative validation order V1–V9. The first
+//! Implements the normative validation order V1–V9 in
+//! docs/adopters/guides/expose-cli-over-mcp.md. The first
 //! failure responds and stops. HTTP status is 400/404 only where the
 //! spec mandates it; application-level JSON-RPC errors ride HTTP 200,
 //! matching the legacy convention.
@@ -33,7 +34,7 @@ use super::HandlerConfig;
 
 /// The protocol revision this handler speaks.
 ///
-/// ADR 0043 §1 fixes `rmcp` as the protocol layer, so this string is not
+/// `rmcp` is the protocol layer (official SDKs only), so this string is not
 /// an independent spelling: `protocol_version_matches_sdk` below asserts
 /// it equals `rmcp::model::ProtocolVersion::V_2026_07_28`, which cannot
 /// be used directly in const position (it wraps a `Cow`).
@@ -787,7 +788,7 @@ mod tests {
 
     #[test]
     fn protocol_version_matches_sdk() {
-        // ADR 0043 §1: rmcp is the protocol layer. The const above
+        // rmcp is the protocol layer. The const above
         // cannot reference ProtocolVersion directly (it wraps a Cow),
         // so this pins the two together instead.
         assert_eq!(

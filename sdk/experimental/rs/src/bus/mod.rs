@@ -16,9 +16,9 @@
 //!
 //! The Go package also ships a `NetworkAdapter` (WebSocket peer relay,
 //! reconnect/backoff, star topology, auth handshake) and a SQLite-backed
-//! adapter. Neither is ported. See ADR 0040 for the rationale and for
-//! what to build instead should cross-process eventing become a real
-//! requirement.
+//! adapter. Neither is ported: no Rust consumer needs them. Should
+//! cross-process eventing become a real requirement, build a Unix-socket
+//! or SQLite-backed adapter rather than the WebSocket star topology.
 //!
 //! Dispatch is synchronous — see [`mem`] for that decision and its
 //! consequences.

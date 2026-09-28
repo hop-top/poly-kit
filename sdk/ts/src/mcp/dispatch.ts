@@ -5,20 +5,20 @@
  * Era detection + dispatch for the dual-spec MCP surface, plus the
  * framework-free handler export.
  *
- * Hosting model (ADR 0043 §2): this module exports a
+ * Hosting model (serve-mcp-from-any-sdk.md): this module exports a
  * transport-agnostic request handler, not a server. Binding it to
  * node:http, hono, express, fastify, or a Worker is the adopter's
  * job — kit does not own the adopter's HTTP stack, and a pure
  * request→response function is directly testable against the wire
  * fixtures with no socket.
  *
- * Detection implements ADR 0042's normative rules literally: the
+ * Detection implements expose-cli-over-mcp.md's normative rules literally: the
  * marker set M1-M4, the two deliberate non-markers, and the
  * precedence chain D1-D4. It deliberately does NOT delegate to the
  * v2 SDK's own `classifyInboundRequest`: that classifier treats a
  * modern `MCP-Protocol-Version` header as a routing signal and
  * routes `initialize`-plus-modern-envelope to the modern era, both
- * of which contradict ADR 0042 (and the wire fixtures, which are the
+ * of which contradict those rules (and the wire fixtures, which are the
  * parity contract). The SDK is still the source of the protocol
  * constants and error codes — see types.ts.
  */
@@ -98,7 +98,7 @@ export interface JsonRpcRequest {
 export type McpEra = 'legacy' | 'modern';
 
 /**
- * Implements ADR 0042's per-request era detection, precedence D1-D4.
+ * Implements per-request era detection, precedence D1-D4.
  * Never fails — it only classifies an already-parsed request; D1
  * (parse) is the caller's responsibility.
  *

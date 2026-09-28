@@ -4,7 +4,7 @@
  *
  * The `io.modelcontextprotocol/tasks` extension slot.
  *
- * kit does not implement the tasks extension (ADR 0042 gap matrix:
+ * kit does not implement the tasks extension (design gap matrix:
  * "Not implemented. capabilities.extensions omitted from
  * server/discover (= unsupported); tasks/* → -32601 @ 404"). This
  * module makes that decision explicit and testable rather than

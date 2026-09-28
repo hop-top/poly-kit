@@ -7,7 +7,7 @@
 //! This is **not** the Factor 10 delegation guard (`--force` / TTY
 //! checks). That mechanism answers "may this CLI invocation proceed
 //! unattended"; this one answers "may this *transport* reach this leaf
-//! at all". ADR 0043 §5 keeps them separate deliberately.
+//! at all". They stay separate deliberately.
 //!
 //! The default is deny-by-default for remote destruction:
 //! [`Policy::default_policy`] leaves `allow_destructive_on` empty, so no
@@ -29,7 +29,7 @@ pub enum Surface {
     Lib,
     /// MCP surface. One value for **both** spec revisions: enablement,
     /// policy, and sink filters treat 2024-11-05 and 2026-07-28 as a
-    /// single transport (ADR 0042, "One surface, not two").
+    /// single transport: one surface, not two.
     Mcp,
     /// JSON-RPC surface.
     Rpc,

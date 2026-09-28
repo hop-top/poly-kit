@@ -29,7 +29,7 @@
  * this surface deliberately does not keep, so the short TTL bounds the
  * window instead.
  *
- * Two verification failures are deliberately distinct (ADR 0004): an
+ * Two verification failures are deliberately distinct: an
  * expired-but-authentic state is a routine re-prompt; a state failing
  * HMAC verification is never honored — the rejection is recorded as a
  * security-relevant audit event first, and only then is a fresh prompt
