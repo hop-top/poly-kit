@@ -72,6 +72,9 @@ type apiService struct {
 	srv  *http.Server
 	addr string
 	up   bool
+	// stopping is closed when Stop begins, ending every open stream
+	// so the drain is not held by a command with no end.
+	stopping chan struct{}
 }
 
 // newAPIService returns the api service over cfg. addr overrides
@@ -278,11 +281,17 @@ func (a *apiService) Addr() string {
 	return a.addr
 }
 
-// Stop drains in-flight requests within the caller's budget.
+// Stop drains in-flight requests within the caller's budget. Open
+// streams are ended first: a stream has no end of its own, so a
+// drain that waited for it would always spend the whole budget.
 func (a *apiService) Stop(ctx context.Context) error {
 	a.mu.Lock()
 	srv := a.srv
 	a.up = false
+	if a.stopping != nil {
+		close(a.stopping)
+		a.stopping = nil
+	}
 	a.mu.Unlock()
 
 	if srv == nil {
@@ -308,6 +317,11 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	stopping := make(chan struct{})
+	a.mu.Lock()
+	a.stopping = stopping
+	a.mu.Unlock()
+	pcfg.Stopping = stopping
 
 	mws := []api.Middleware{
 		api.RequestID(),
@@ -318,7 +332,8 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 		api.ContentType("application/json"),
 	}
 	if a.authenticates() {
-		mws = append(mws, api.Auth(a.cfg.Auth, api.OnAuthRefused(auditAuthRefusal(bridge))))
+		mws = append(mws, api.Auth(a.cfg.Auth,
+			api.OnAuthRefused(auditAuthRefusal(bridge, commandPaths(pcfg)))))
 	}
 
 	opts := []api.RouterOption{api.WithMiddleware(mws...)}
@@ -386,14 +401,16 @@ func (a *apiService) mountProjection(router *api.Router, cfg api.ProjectionConfi
 // invocation that never ran, carrying what the transport knows at
 // that point: the request id, the trace id, the peer, and the
 // command the URL addressed when it is a projected route.
-func auditAuthRefusal(bridge *cmdsurface.Bridge) func(r *http.Request, err error) {
+func auditAuthRefusal(
+	bridge *cmdsurface.Bridge, known map[string]bool,
+) func(r *http.Request, err error) {
 	return func(r *http.Request, err error) {
 		if bridge == nil {
 			return
 		}
 		meta := api.RequestMetaFrom(r)
 		inv := cmdsurface.Invocation{
-			Path: projectedPathOf(r.URL.Path),
+			Path: projectedPathOf(r.URL.Path, known),
 			Meta: cmdsurface.Meta{
 				Surface:     cmdsurface.SurfaceREST,
 				RequestID:   meta.RequestID,
@@ -413,7 +430,14 @@ func auditAuthRefusal(bridge *cmdsurface.Bridge) func(r *http.Request, err error
 
 // projectedPathOf returns the command path a projected route
 // addresses, or nil for any other URL.
-func projectedPathOf(urlPath string) []string {
+//
+// A streaming route addresses the command before its trailing
+// "stream" segment. known — the projected commands, keyed by
+// space-joined path — settles which reading applies: a command is
+// only ever projected as a leaf, so a URL naming a known command is
+// that command, and one whose path minus "stream" is known is that
+// command's stream. An unknown URL keeps every segment.
+func projectedPathOf(urlPath string, known map[string]bool) []string {
 	prefix := api.CommandProjectionPrefix + "/"
 	if !strings.HasPrefix(urlPath, prefix) {
 		return nil
@@ -422,7 +446,22 @@ func projectedPathOf(urlPath string) []string {
 	if rest == "" {
 		return nil
 	}
-	return strings.Split(rest, "/")
+	path := strings.Split(rest, "/")
+	suffix := strings.TrimPrefix(api.StreamSuffix, "/")
+	if n := len(path); n > 1 && path[n-1] == suffix &&
+		!known[strings.Join(path, " ")] && known[strings.Join(path[:n-1], " ")] {
+		return path[:n-1]
+	}
+	return path
+}
+
+// commandPaths indexes the projected commands by space-joined path.
+func commandPaths(cfg api.ProjectionConfig) map[string]bool {
+	out := make(map[string]bool, len(cfg.Descriptors))
+	for _, d := range cfg.Descriptors {
+		out[d.PathKey()] = true
+	}
+	return out
 }
 
 // applyAPICompat maps the leaf `serve` command's own flags onto the

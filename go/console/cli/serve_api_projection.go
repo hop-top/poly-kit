@@ -302,6 +302,66 @@ func (e *bridgeExecutor) Execute(
 	}, nil
 }
 
+// OpenStream implements api.CommandStreamer.
+//
+// The bridge's gates run here, through Admit, before the projection
+// commits the response to a stream: a refusal returns the same
+// translated error Execute returns, so the streaming route answers it
+// with the same status. The admitted invocation runs, and is audited,
+// when the stream's Run is called.
+func (e *bridgeExecutor) OpenStream(
+	ctx context.Context, req api.CommandRequest,
+) (api.CommandStream, error) {
+	if e.bridge == nil {
+		return nil, errors.New("cli: no command bridge configured")
+	}
+	adm, err := e.bridge.Admit(ctx, cmdsurface.Invocation{
+		Path:  req.Path,
+		Args:  req.Args,
+		Flags: req.Flags,
+		Meta:  metaFromRequest(req.Meta),
+	})
+	if err != nil {
+		return nil, translateBridgeError(err)
+	}
+	return bridgeStream{adm: adm}, nil
+}
+
+// bridgeStream runs one admitted invocation through the Runner's
+// Stream, translating its events into the projection's.
+type bridgeStream struct {
+	adm *cmdsurface.Admission
+}
+
+// Run implements api.CommandStream. The runner's terminal "done"
+// event becomes the returned result rather than a frame; every other
+// event is forwarded as it arrives.
+func (s bridgeStream) Run(
+	ctx context.Context, events chan<- api.CommandEvent,
+) (api.CommandResult, error) {
+	in := make(chan cmdsurface.Event, 16)
+	errc := make(chan error, 1)
+	go func() { errc <- s.adm.Stream(ctx, in) }()
+
+	var res cmdsurface.Result
+	for ev := range in {
+		if ev.Kind == "done" {
+			if r, ok := ev.Data.(*cmdsurface.Result); ok && r != nil {
+				res = *r
+			}
+			continue
+		}
+		events <- api.CommandEvent{Kind: ev.Kind, Data: ev.Data, At: ev.At}
+	}
+	err := <-errc
+	return api.CommandResult{
+		ExitCode: res.ExitCode,
+		Data:     res.Data,
+		Stdout:   res.Stdout,
+		Stderr:   res.Stderr,
+	}, err
+}
+
 // metaFromRequest maps the HTTP layer's provenance onto the bridge's
 // Meta. Scopes travel in Extra, comma-joined, because Meta has no
 // typed field for entitlements and the permission gate is the one
