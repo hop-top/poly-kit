@@ -10,6 +10,7 @@ import (
 
 	"hop.top/kit/go/console/cli/idemstore"
 	"hop.top/kit/go/runtime/domain"
+	"hop.top/kit/go/storage/kv/memory"
 )
 
 // idemRunner counts runs and answers with a Result naming the
@@ -476,5 +477,45 @@ func TestIdempotency_SentinelsMapToCodes(t *testing.T) {
 	}
 	if IdempotencyRefusalCode(errors.New("x")) != "" {
 		t.Error("an unrelated error has no idempotency code")
+	}
+}
+
+// Inside slot 8 replay answers first and the result cache second. A
+// keyed read the cache runs or answers is recorded under its key and
+// its reservation released, so the key's retry replays instead of
+// meeting its own call as still running.
+func TestIdempotency_ReplayBeforeResultCache(t *testing.T) {
+	run := &tallyRunner{}
+	store := memory.New()
+	t.Cleanup(func() { _ = store.Close() })
+	b := New(newCacheTree(), WithRunner(run), WithResultCache(store),
+		WithIdempotency(NewIdempotencyLedger(idemstore.Memory()), time.Hour))
+	b.Expose("*", SurfaceREST)
+	ctx := context.Background()
+	read := func(key string) Result {
+		t.Helper()
+		inv := cacheRESTCall("widget", "list")
+		inv.Meta.IdempotencyKey = key
+		res, err := b.Invoke(ctx, inv)
+		if err != nil {
+			t.Fatalf("key %s: %v", key, err)
+		}
+		return res
+	}
+
+	if res := read("k1"); res.Replayed {
+		t.Fatal("first call replayed")
+	}
+	if res := read("k1"); !res.Replayed {
+		t.Fatal("a keyed read the cache ran was not recorded: its retry did not replay")
+	}
+	if res := read("k2"); res.Replayed {
+		t.Fatal("a new key replayed")
+	}
+	if res := read("k2"); !res.Replayed {
+		t.Fatal("a keyed read the cache answered was not recorded: its retry did not replay")
+	}
+	if n := run.calls.Load(); n != 1 {
+		t.Fatalf("runner ran %d times, want 1", n)
 	}
 }
