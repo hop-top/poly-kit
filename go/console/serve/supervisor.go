@@ -242,6 +242,9 @@ func (s *Supervisor) Run(ctx context.Context, selected []string, configs map[str
 	// nothing is queued behind another service's drain.
 	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
+	// Every Start sees the run's own record, so a service answering
+	// for its dependencies reports what the supervisor saw.
+	runCtx = ContextWithRunView(runCtx, st)
 
 	sup := s.startAll(runCtx, order, configs, st, em)
 
