@@ -14,7 +14,7 @@ it under `<tool> serve`; REST is `go/transport/api`.
 - serve the command tree over gRPC with no wiring → `rpcserve.With(rpcserve.Config{})` in `go/console/cli/rpcserve`
 - mount any Connect handler → `rpc.NewServer()`, `Server.Handle(path, handler)`, `rpc.ListenAndServe(ctx, addr, srv)`
 - bind the listener yourself (readiness, `:0` ports) → `Server.HTTPServer()`, then `Serve(ln)` and `Shutdown`
-- authenticate unary and streaming calls with the REST `api.AuthFunc` → `rpc.Authenticate(fn, rpc.OnAuthRefused(...))`
+- authenticate unary and streaming calls with the REST `api.AuthFunc` → `rpc.Authenticate(fn, rpc.OnAuthRefused(...))`; name an OAuth protected resource in the refusal → `rpc.AuthChallenge(pr.Challenge())`
 - read who called → `rpc.Authenticated(ctx)`, `rpc.ClaimsFromContext(ctx)`, then `api.IdentityOf`
 - request ids, logging, panic recovery on unary calls → `RequestIDInterceptor`, `LogInterceptor`, `RecoveryInterceptor`
 - CRUD over any `api.Service[T]` without codegen → `rpc.RPCResource[T]`, client `rpc/client.New[T]`

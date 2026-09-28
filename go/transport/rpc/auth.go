@@ -26,6 +26,17 @@ type AuthOption func(*authConfig)
 
 type authConfig struct {
 	onRefused func(ctx context.Context, call RefusedCall, err error)
+	challenge string
+}
+
+// AuthChallenge sets the WWW-Authenticate challenge a refused call
+// carries in its error metadata, which Connect sends as a response
+// header: an OAuth protected resource's
+// ([api.ProtectedResource.Challenge]), naming its metadata document
+// (RFC 9728 §5.1), so a client refused here finds the authorization
+// server. Without it a refusal carries no challenge.
+func AuthChallenge(challenge string) AuthOption {
+	return func(c *authConfig) { c.challenge = challenge }
 }
 
 // OnAuthRefused installs a hook called once for every call
@@ -85,7 +96,11 @@ func (a *authInterceptor) verify(
 		if a.cfg.onRefused != nil {
 			a.cfg.onRefused(ctx, call, err)
 		}
-		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		refusal := connect.NewError(connect.CodeUnauthenticated, err)
+		if a.cfg.challenge != "" {
+			refusal.Meta().Set("WWW-Authenticate", a.cfg.challenge)
+		}
+		return nil, refusal
 	}
 	ctx = context.WithValue(ctx, claimsKeyType{}, claims)
 	return context.WithValue(ctx, verifiedKey{}, true), nil

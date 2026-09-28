@@ -41,7 +41,7 @@ Task guide: [expose your CLI over gRPC](../../../../docs/adopters/guides/expose-
 
 - Normative text: [serve-lifecycle contract §"The rpc service"](../../../../docs/contracts/serve-lifecycle.md#the-rpc-service).
 - Disabled by default; `serve rpc` starts it. Own listener, default `127.0.0.1:8082`; HTTP/1.1 and h2c on one port, or TLS with HTTP/2 by ALPN under `services.rpc.tls`. Readiness carries the base URL.
-- `services.rpc.auth.mode` authenticates in place of `Auth`: `mtls` by client certificate, `jwt`, `jwks` or `oidc` by bearer token.
+- `services.rpc.auth.mode` authenticates in place of `Auth`: `mtls` by client certificate, `jwt`, `jwks` or `oidc` by bearer token. A bearer mode naming an issuer and a URL audience serves the RFC 9728 metadata document and names it in every `Unauthenticated` refusal's `WWW-Authenticate`.
 - Keys: `services.rpc.{addr,insecure_remote,insecure_no_policy}`; flag `--rpc-addr`.
 - HTTP-plane middleware: the chain every kit listener shares (request id through compression, health probes, Host and Origin checks, metrics endpoint), from `services.rpc.<block>`. Refusals are Connect errors in the caller's protocol. Connect's read limit and per-message compression follow `body_limit` and `compression`.
 - `Auth` (`api.AuthFunc`) gates every procedure, unary and streaming. Identity comes from what it verified; the body's `meta.caller`, `meta.tenant` and `meta.extra` are dropped.

@@ -1,7 +1,9 @@
 package rpcserve_test
 
 import (
+	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"path/filepath"
 	"testing"
@@ -108,4 +110,48 @@ func TestRPCServiceAPIKeyMode(t *testing.T) {
 	assert.Equal(t, "unlocked", resp.Msg.GetStdout())
 	_, err = c.Invoke(t.Context(), call("ping", nil))
 	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}
+
+// TestRPCServiceProtectedResource pins the RFC 9728 protected resource
+// on the rpc listener, as on the api and mcp services: under a bearer
+// mode naming an issuer and a URL audience, the metadata document
+// answers at its well-known path without a token, and an
+// unauthenticated call is refused with the challenge naming it.
+func TestRPCServiceProtectedResource(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+	resource := "http://" + addr + "/rpc"
+
+	_, base := startRPC(t, rpcserve.With(rpcserve.Config{}), []string{"rpc", "--rpc-addr", addr},
+		cli.WithIdentity(cli.IdentityConfig{Dir: filepath.Join(t.TempDir(), "identity")}),
+		func(r *cli.Root) {
+			r.Viper.Set("services.rpc.auth.mode", "jwt")
+			r.Viper.Set("services.rpc.auth.jwt.issuer", "https://login.example.com")
+			r.Viper.Set("services.rpc.auth.jwt.audience", []string{resource})
+		})
+	metadata := "http://" + addr + "/.well-known/oauth-protected-resource/rpc"
+
+	resp, err := http.Get(metadata)
+	require.NoError(t, err)
+	var doc struct {
+		Resource             string   `json:"resource"`
+		AuthorizationServers []string `json:"authorization_servers"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&doc))
+	_ = resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, resource, doc.Resource)
+	assert.Equal(t, []string{"https://login.example.com"}, doc.AuthorizationServers)
+
+	for _, proto := range protocols {
+		t.Run(proto.name, func(t *testing.T) {
+			_, err := client(base, proto).Invoke(t.Context(), call("ping", nil))
+			require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+			var ce *connect.Error
+			require.True(t, errors.As(err, &ce))
+			assert.Equal(t, `Bearer resource_metadata="`+metadata+`"`, ce.Meta().Get("WWW-Authenticate"))
+		})
+	}
 }

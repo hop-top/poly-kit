@@ -429,7 +429,8 @@ func (t *rpcTransport) Serve(ctx context.Context, _ transportsvc.Invoker) error 
 	// The HTTP-plane chain every kit listener shares, slots 1-11, in
 	// front of the Commands handler; authentication (12) is the
 	// interceptor mountOptions installs.
-	handler, err := cli.ServeHTTPHandler(t.svc.root, l, liftStreamWriteDeadline(rs))
+	handler, err := cli.ServeHTTPHandler(t.svc.root, l,
+		protectedResourceDocument(t.svc.tls.ProtectedResource(), liftStreamWriteDeadline(rs)))
 	if err != nil {
 		_ = ln.Close()
 		return err
@@ -525,14 +526,34 @@ func (t *rpcTransport) mountOptions(b *cmdsurface.Bridge, set cli.ServeHTTPSetti
 		opts = append(opts, cmdsurface.WithRPCCompression(set.CompressMinBytes))
 	}
 	if auth := t.svc.auth(); auth != nil {
-		opts = append(opts, cmdsurface.WithRPCInterceptors(
-			rpc.Authenticate(auth, rpc.OnAuthRefused(auditRPCAuthRefusal(b))),
-		))
+		authOpts := []rpc.AuthOption{rpc.OnAuthRefused(auditRPCAuthRefusal(b))}
+		if pr := t.svc.tls.ProtectedResource(); pr != nil {
+			authOpts = append(authOpts, rpc.AuthChallenge(pr.Challenge()))
+		}
+		opts = append(opts, cmdsurface.WithRPCInterceptors(rpc.Authenticate(auth, authOpts...)))
 	}
 	if len(t.svc.cfg.Interceptors) > 0 {
 		opts = append(opts, cmdsurface.WithRPCAdmittedInterceptors(t.svc.cfg.Interceptors...))
 	}
 	return opts
+}
+
+// protectedResourceDocument answers pr's metadata document (RFC 9728)
+// at its well-known path, without a token, as the api and mcp services
+// do under a bearer mode that names an issuer and a URL audience; every
+// other request goes to next. It is next alone when pr is nil.
+func protectedResourceDocument(pr *api.ProtectedResource, next http.Handler) http.Handler {
+	if pr == nil {
+		return next
+	}
+	doc, path := pr.Handler(), pr.MetadataPath()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == path {
+			doc.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // liftStreamWriteDeadline lifts the server's write deadline for

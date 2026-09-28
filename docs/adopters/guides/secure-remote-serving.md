@@ -320,6 +320,13 @@ services:
         audience: https://api.example.com    # required: tokens minted for this API only
 ```
 
+When `audience` is the service's own URL and the block names an
+issuer, each of the api, rpc and mcp services also publishes its OAuth
+protected resource metadata (RFC 9728) at
+`/.well-known/oauth-protected-resource<path>`, and a refused request's
+`WWW-Authenticate` names it, so an OAuth client finds the provider by
+itself.
+
 `jwks` names the key set by URL (`auth.jwks.url`) instead of
 discovering it; `jwt` trusts the tool's own identity keypair
 (`cli.WithIdentity`) and any public keys in

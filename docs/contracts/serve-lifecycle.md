@@ -1889,14 +1889,17 @@ its name under `services.<svc>.auth` or `services.all.auth`:
 - **Protected resource metadata (RFC 9728).** Under `jwt`, `jwks` or
   `oidc`, when the block names an authorization server (`oidc`'s
   `issuer`, or the block's `issuer`) and an `audience` that is an
-  absolute URL, the api service and the mcp service's HTTP transport
-  describe themselves as an OAuth protected resource: the resource is
+  absolute URL, the api service, the rpc service and the mcp
+  service's HTTP transport describe themselves as an OAuth protected
+  resource: the resource is
   the first such audience, which every token must already carry; the
   document `{resource, authorization_servers, bearer_methods_supported}`
   answers at `/.well-known/oauth-protected-resource` followed by the
   resource's path, without a token, ahead of slot 12, CORS-open; and
   every `401` carries `WWW-Authenticate: Bearer
-  resource_metadata="<origin>/.well-known/oauth-protected-resource<path>"`.
+  resource_metadata="<origin>/.well-known/oauth-protected-resource<path>"`
+  (on rpc, in the `Unauthenticated` error's metadata, which every
+  protocol sends as that response header).
   This is the MCP authorization flow at the edge; a client refused
   there finds the authorization server. Without an issuer or a URL
   audience there is no document and the challenge stays `Bearer`. A
