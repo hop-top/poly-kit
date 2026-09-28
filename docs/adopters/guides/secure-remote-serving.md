@@ -627,7 +627,7 @@ every audit record and never the command's output:
 ```console
 $ mytool audit verify
 FILE                                    STATUS    RECORDS  FIRST  HEAD  HEAD HASH  BREAK
-/home/op/.local/state/mytool/audit.chain  tampered  1        1      1     add2c04c…  …/audit.chain:2: hash does not match the record's bytes: the record was edited
+/home/me/.local/state/mytool/audit.chain  tampered  1        1      1     add2c04c…  …/audit.chain:2: hash does not match the record's bytes: the record was edited
 TAMPER_DETECTED: audit chain broken at …/audit.chain:2: hash does not match the record's bytes: the record was edited
 $ echo $?
 71
