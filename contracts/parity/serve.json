@@ -79,6 +79,7 @@
       "cmdreflect_discovery",
       "dependency_ordering_and_cycle_panic",
       "execution_runner_contract",
+      "mcp_service",
       "nearest_name_suggestion",
       "permission_gate_provenance_audit",
       "rest_projection",

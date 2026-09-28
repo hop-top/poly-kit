@@ -73,7 +73,7 @@ Failure outcomes, in the order the gates are evaluated:
 
 | Gate           | Failure               | Code                  | Exit | Message shape                                              |
 |----------------|-----------------------|-----------------------|------|------------------------------------------------------------|
-| Registration   | unknown identifier    | `NOT_FOUND`           | 3    | `unknown service "x"; known: api, socket` + nearest-name fix |
+| Registration   | unknown identifier    | `NOT_FOUND`           | 3    | `unknown service "x"; known: api, socket, mcp` + nearest-name fix |
 | Registration   | 2+ positional args    | `USAGE`               | 2    | `serve accepts at most one service name`                    |
 | Configuration  | invalid or incomplete | `USAGE`               | 2    | `service "x": <field>: <reason>`                            |
 | Policy         | denied for class      | `UNAUTHORIZED`        | 5    | `service "x" denied by policy (side_effect=…, network=…)`   |
@@ -190,8 +190,9 @@ Rules:
 
 Registration, naming, and enablement are unchanged: a transport
 service registers like any other, its identifier obeys the naming
-rules above, and `enabled` defaults to `false`. Kit ships `socket` on
-this seam; `api` predates it and keeps its own implementation.
+rules above, and `enabled` defaults to `false`. Kit ships `socket` and
+`mcp` on this seam; `api` predates it and keeps its own
+implementation.
 
 Adopters start from the task guides rather than this section: [serve
 your CLI over a Unix socket](../adopters/guides/serve-cli-over-unix-socket.md)
@@ -411,7 +412,8 @@ service: `services.api.addr`, `services.socket.path`, and so on. Kit
 does not reserve names inside a service's own block beyond the four
 lifecycle keys above.
 
-The two kit-shipped services own these:
+The kit-shipped services own these (the `mcp` service's keys are in
+[The mcp service](#keys-and-flags)):
 
 | Key                            | Type   | Default                | Meaning                                                        |
 |--------------------------------|--------|------------------------|----------------------------------------------------------------|
@@ -530,6 +532,12 @@ and `cmdsurface.Bridge.Audit` in
   no port and is not routable, and the socket file is created `0600`,
   so the filesystem permission is the access control. No address rule
   applies to it.
+- The mcp service's HTTP transport MUST apply every rule above to its
+  own listen address, with its own names: `MCPConfig.Auth` for
+  authentication, `services.mcp.insecure_remote` and
+  `services.mcp.insecure_no_policy` for the opt-ins, default address
+  `127.0.0.1:8081`. The stdio transport has no address and no address
+  rule; its trust model is in [The mcp service](#identity-and-trust).
 
 ### Provenance
 
@@ -585,8 +593,8 @@ of any of them.
   audit as `Invoke` — before it opens the stream, and runs it with
   `Admission.Stream`; it MUST NOT call the runner directly. The
   default permits everything.
-- `cli.WithPermission` installs the adopter's decision on the api
-  and socket services. It composes after the tool's policy engine:
+- `cli.WithPermission` installs the adopter's decision on the api,
+  socket, and mcp services. It composes after the tool's policy engine:
   a `--policy` that refuses a side-effect class refuses it for every
   caller, on every surface, before the adopter's decision is asked —
   the same `Engine.Authorize` the CLI runs.
@@ -611,6 +619,236 @@ of any of them.
   service. Sinks are best-effort and MUST NOT change a verdict.
 - CLI and in-process library invocations are not audited: the first
   is the operator's own act, the second has no caller to attribute.
+
+## The mcp service
+
+`cli.WithMCP` registers the third kit-shipped service, `mcp`: the
+tool's command tree served as Model Context Protocol tools, one tool
+per invocable leaf, named by its dotted path (`item.add`). It rides
+the [transport seam](#transport-services) exactly as `socket` does, so
+everything this page says about registration, reflection at `Start`,
+readiness, stop, exit codes, the root factory, the permission gate,
+and audit applies to it unchanged. Its surface is pinned to `mcp`
+([`cmdsurface.SurfaceMCP`](../../go/transport/cmdsurface/surface.go)),
+and the protocol layer is the official MCP Go SDK through
+[`go/transport/mcpsdk`](../../go/transport/mcpsdk/README.md); kit
+implements no MCP wire behavior of its own here.
+
+Like every service that arrives through the registry, `mcp` is
+`enabled: false` by default. `<tool> serve mcp` starts it.
+
+### Transports
+
+The service speaks one of two transports, chosen per run:
+
+| `services.mcp.transport` | Reached by                                        | Address in `ready_reported`     |
+|--------------------------|---------------------------------------------------|---------------------------------|
+| `http` (default)         | an MCP client over streamable HTTP                | `http://<host>:<port><path>`    |
+| `stdio`                  | the process that spawned `<tool> serve mcp --stdio` | none                          |
+
+`--stdio` selects `stdio` for one run and wins over configuration. An
+unknown transport value is a configuration failure at exit `2`.
+
+The HTTP transport listens on its **own** listener. It does not mount
+on the api service's router, for four reasons, each sufficient:
+
+- **Independent lifecycle.** `serve mcp` MUST start without the api
+  service — a tool may register `mcp` and not `api` at all — and
+  stopping one MUST NOT take the other down. A shared router would
+  make `mcp` a dependent of `api`.
+- **Different transport shape.** Streamable HTTP holds a response open
+  for server-to-client messages and for a confirmation round trip that
+  waits on a human. The api server's write timeout and its
+  `application/json` content-type middleware are correct for REST and
+  wrong for that.
+- **Separate exposure decisions.** An operator who opens the api to
+  the network has not thereby opened the MCP surface, and the reverse.
+  Each listener answers the [Exposure](#exposure) rules on its own
+  address.
+- **Separate audit and policy identity.** The two surfaces pin
+  different `Meta.Surface` values and are named separately in
+  `Policy.AllowDestructiveOn`; one listener per surface keeps a
+  refusal attributable to the surface that produced it.
+
+The cost is one more port. An adopter who needs one port mounts the
+SDK surface on `APIConfig.Handlers` by hand and accepts that it then
+lives inside the api service's lifecycle and exposure.
+
+HTTP sessions are stateful: the SDK issues an `Mcp-Session-Id`, and
+server-to-client requests travel on the open response stream. The
+SDK's DNS-rebinding protection for loopback listeners stays on.
+
+### Keys and flags
+
+| Key                                | Type   | Default          | Meaning                                                       |
+|------------------------------------|--------|------------------|---------------------------------------------------------------|
+| `services.mcp.transport`           | enum   | `http`           | `http` or `stdio`                                             |
+| `services.mcp.addr`                | string | `127.0.0.1:8081` | HTTP listen address; loopback unless authenticated or opted in |
+| `services.mcp.path`                | string | `/mcp`           | HTTP endpoint path; MUST begin with `/`                       |
+| `services.mcp.insecure_remote`     | bool   | `false`          | serve HTTP unauthenticated on a non-loopback address          |
+| `services.mcp.insecure_no_policy`  | bool   | `false`          | serve HTTP beyond loopback with no delegation policy          |
+
+`MCPConfig` carries the code defaults under the same names; the
+precedence is flag, then config, then `MCPConfig`, then the default.
+
+Flags, registered on `serve` like `--socket` and inert unless `mcp` is
+the service running:
+
+- `--stdio` selects the stdio transport.
+- `--mcp-addr` overrides `services.mcp.addr`. Passing it together with
+  the stdio transport is a configuration failure at exit `2`: it would
+  name an address nothing listens on.
+
+The two insecure opt-ins have **no flags**. The existing
+`--insecure-remote` and `--insecure-no-policy` name the api service;
+widening them to cover `mcp` would change what an existing script
+opts into without its author choosing it. They are set by key or by
+`MCPConfig`, which is also where a configuration reviewer finds them.
+
+### The tool catalog
+
+The tool list is what a model reads before it calls anything, so it
+lists what may run and nothing else. Empty `MCPConfig.Expose` exposes
+the whole tree, `Hide` carves exceptions after it, and then the
+service withholds, the way the REST projection withholds at mount:
+
+- an **interactive** leaf, which no transport can ever run;
+- a **destructive** leaf `Policy` does not permit on `mcp`
+  (`Policy.AllowDestructiveOn` must name `cmdsurface.SurfaceMCP`);
+- a leaf the permission gate refuses **for every caller**
+  (`CallerIndependent`).
+
+Self-hosting commands are never leaves. Withholding is advisory, never
+the gate: every call still passes `Bridge.Invoke`, and a call naming a
+withheld tool is refused as an unknown tool.
+
+### Identity and trust
+
+The service's rule for a leaf declaring `kit/auth-required` follows
+from what each transport can prove about its caller:
+
+- **HTTP.** An auth-required leaf runs only when `MCPConfig.Auth`
+  verified the request. A bare `Authorization` header is not
+  authentication, and a loopback TCP listener is reachable by every
+  local user, so loopback does not carry the socket's argument below.
+  Without `Auth`, auth-required leaves are refused on HTTP. With it,
+  every request is authenticated before the SDK sees it, and a refusal
+  is `401` plus an `ErrAuthRefused` audit record, exactly as on the
+  api service.
+- **stdio.** An auth-required leaf runs. The peer is the process that
+  spawned the service: it holds the only ends of the service's stdin
+  and stdout, and the service runs with that process's user, because
+  spawning a process cannot raise its privilege. Whoever can speak on
+  the channel could therefore already run `<tool>` directly with the
+  same credentials the command would use. That is the socket's
+  argument — an owner-only `0600` file admits only callers who already
+  hold the owner's authority — applied to a pair of pipes. The service
+  records the transport and the peer's process id; it does not invent
+  a principal.
+
+A refusal of an auth-required leaf is an `isError` tool result reading
+`authentication required`, audited with `ErrAuthRefused`.
+
+Provenance, by the same rule as the table in
+[Provenance](#provenance):
+
+| Field            | mcp over HTTP                                   | mcp over stdio                   |
+|------------------|-------------------------------------------------|----------------------------------|
+| `Caller`         | principal from the `Auth` claims                | —                                |
+| `Tenant`         | tenant from the `Auth` claims                   | —                                |
+| `Surface`        | `mcp`, pinned by the seam                       | `mcp`, pinned by the seam        |
+| `RequestID`      | `X-Request-ID`, issued when absent              | issued per call                  |
+| `TraceID`        | `traceparent` trace-id, else `X-Trace-ID`       | —                                |
+| `IdempotencyKey` | `Idempotency-Key`                               | —                                |
+| `RequestedAt`    | receipt time                                    | receipt time                     |
+| `Extra`          | `mcp_transport=http`, `remote_addr`, `scopes`, `mcp_client` | `mcp_transport=stdio`, `peer_pid`, `mcp_client` |
+
+`mcp_client` is the client's self-reported name from the MCP
+handshake: provenance, never a credential.
+
+### Confirmation
+
+Two confirmations can apply to one call, answered by different people
+and never merged.
+
+**The command's own gate** is unchanged from every other surface: a
+destructive command, or one a `--policy` marks `require_confirm`, runs
+only when the call carries its own `confirm` argument (and
+`confirm-token` for a typed-token command). It is reachable at all
+only once the adopter names `mcp` in `Policy.AllowDestructiveOn`.
+Over MCP the argument is chosen by the model, exactly as it is chosen
+by the program on the other end of REST or the socket.
+
+**The MCP confirmation gate** applies to a leaf that declares
+`kit/requires-confirmation`, and it is the one that puts a person in
+the loop. It is satisfied per call, and only by one of:
+
+1. **An elicitation the client's user accepts.** When the client has
+   declared form elicitation, the service asks it, before running
+   anything, `Approve execution of "<tool>"?`, with no form fields —
+   the answer is the elicitation's action. `accept` runs the call once.
+   `decline` or `cancel` refuses it (`confirmation declined`). A client
+   on protocol `2026-07-28` receives the question as an
+   `input_required` result and retries with the answer and the echoed
+   `requestState`; the state is bound by HMAC to the tool, the digest
+   of the arguments, and the verified caller, and expires after five
+   minutes. An older client receives a server-initiated
+   `elicitation/create` on the same session and the SDK resumes the
+   call. A `requestState` that fails verification is never honored:
+   it is audited, and the question is asked again.
+2. **An `X-Confirm-Token` request header**, over HTTP only, as on every
+   other kit MCP surface. It is the HTTP client's own per-request act.
+
+A client that offers neither — every stdio client without
+elicitation — is refused with `confirmation required`, naming both
+remedies. The service never answers the question on anyone's behalf,
+and no configuration makes it do so. Confirmation refusals are
+audited.
+
+An accepted elicitation satisfies only this gate. It does not supply a
+destructive command's `confirm` argument, and it does not lift the
+destructive ceiling or the permission gate, both of which run after
+it inside `Bridge.Invoke`.
+
+### stdio stream discipline
+
+Over stdio, standard output **is** the protocol. For as long as the
+service serves stdio:
+
+- The SDK transport holds the process's original standard input and
+  output. Every other reader and writer in the process is pointed
+  away from them: `os.Stdout` resolves to standard error and
+  `os.Stdin` to an empty reader, so a stray print in a command, a hook,
+  or a library lands in the operator's log instead of corrupting a
+  frame, and nothing but the SDK consumes a request byte.
+- The lifecycle trace, kit logging, and every hint or notice go to
+  standard error.
+- A served command's own output is captured into its `Result` by the
+  runner, per [Execution](#execution), and reaches the client inside
+  the tool result.
+
+End of input — the host closing the session — ends the service
+cleanly: `Start` returns nil, and `serve mcp --stdio` exits `0`. A
+signal is a clean stop as on every service.
+
+### Readiness, class, and stop
+
+- Ready is reported when the HTTP listener is bound, or when the stdio
+  streams are acquired — every acquisition that can fail
+  deterministically.
+- The service's policy class is `write-shared` with network `listen`
+  over HTTP and `none` over stdio, so a `--policy` that forbids
+  listeners still admits a stdio server.
+- `Stop` closes every MCP session, which cancels the calls in flight,
+  and drains the HTTP server within the stop budget.
+
+### Streaming
+
+A call carrying an MCP progress token streams each output line as a
+progress notification. It is admitted by `Bridge.Admit`, which applies
+the gates `Bridge.Invoke` does, in the same order, and audits the same
+verdicts, and then runs through `Admission.Stream`; streaming is a way
+of observing a call, never a way around its gates.
 
 ## Execution
 
@@ -715,8 +953,10 @@ command does not behave differently under either.
 The kit-shipped `socket` service is request/reply and uses `Run`. The
 `api` service uses `Run` for its request/reply routes and `Stream`
 for their streaming twins (`<route>/stream`), which it admits through
-the same gates before opening the stream. The WebSocket, SSE, and RPC
-surfaces in `cmdsurface` use `Stream`.
+the same gates before opening the stream. The `mcp` service uses
+`Run`, and `Stream` for a call carrying a progress token, admitted the
+same way (`Bridge.Admit`, then `Admission.Stream`). The WebSocket,
+SSE, and RPC surfaces in `cmdsurface` use `Stream`.
 
 ### Cancellation
 
@@ -811,7 +1051,7 @@ variable, no closure over a struct another invocation writes.
 A kit root supplies the factory through `cli.WithRootFactory(build)`,
 where `build` is the tool's own construction — `cli.New` plus every
 command it mounts, the function `main` already has. The kit-shipped
-`api` and `socket` services then hand their bridge the factory runner
+`api`, `socket`, and `mcp` services then hand their bridge the factory runner
 instead of the shared-tree one, and for every tree the factory
 returns:
 
@@ -1320,6 +1560,7 @@ be described as non-conformant for lacking one.
 |--------------|-----|
 | The REST / OpenAPI projection of the command tree | It exists because `cmdreflect` can walk a cobra tree and describe it. It is a projection of Go's command model, not of this contract, and no other SDK has a reflector to project from. |
 | The Unix socket service and `transportsvc` seam | Same reason, plus a platform floor: a socket service is not portable to every runtime a kit SDK targets. |
+| The built-in `mcp` service | It is a transport service on the Go seam over a reflected cobra tree. Ports serve MCP through their own surfaces; the protocol parity they owe is the MCP surface contract, not this service's wiring. |
 | `cmdreflect`-driven discovery, and the `invocable: false` reason vocabulary | The reasons (`interactive`, `self-hosting`, `management-only`) are properties of a reflected Go command tree. A port with no reflector has nothing to attach them to. |
 | The permission gate (`PermissionFunc`), provenance (`Meta`), and audit sinks | These are the [Security](#security) contract of the *transport services*. A port that serves nothing over a transport has no caller to authenticate, attribute, or audit. They become obligations for a port the day it ships a transport service, not before. |
 | The whole [Execution](#execution) section | Result shape, format selection, stream events, cancellation semantics, and tree isolation all describe what happens when a *transport* hands an invocation to a *runner*. Both ends are Go-only today. The flag-baseline and root-factory rules in particular exist because cobra and pflag keep parse state on the command tree; a port whose parser does not is not solving that problem. |
