@@ -131,11 +131,24 @@ which adds per-command fields surfacing kit's command annotations.
 1.1 is additive, so harnesses that ignore unknown fields read either.
 `kit toolspec` itself emits `"1.1"`.
 
-The string you pass to `cli.RegisterSpecCommand` is the label your
-manifest carries; the manifest kit builds has the same fields whatever
-the label says. `<tool> spec` does not read `KIT_TOOLSPEC_SCHEMA` —
-see [capability negotiation](claude-code-permissions.md#capability-negotiation-for-harness-implementers)
-for what a harness can and cannot request.
+The string you pass to `cli.RegisterSpecCommand` is the version you
+declare: the lowest `schema_version` your `<tool> spec` ever answers.
+A harness can raise it, never lower it, by setting
+`KIT_TOOLSPEC_SCHEMA` to the highest version it reads. `<tool> spec`
+and `kit toolspec` resolve the request with the same rule
+(`toolspec.NegotiateSchemaVersion`):
+
+| You declare | `KIT_TOOLSPEC_SCHEMA` | `<tool> spec` answers |
+|-------------|-----------------------|-----------------------|
+| `"1.0"` | unset, `1.0`, `0.9`, or malformed | `"1.0"` |
+| `"1.0"` | `1.1`, or anything above it (`2.0`) | `"1.1"` |
+| `"1.1"` | anything | `"1.1"` |
+
+A request is never refused; a malformed one is ignored. The manifest
+kit builds has the same fields whatever it resolves to, because 1.0
+is a subset of 1.1. Declare `"1.0"` (the scaffold's choice) unless
+you want every caller to see `"1.1"`. The full rule set is in
+[capability negotiation](claude-code-permissions.md#capability-negotiation-for-harness-implementers).
 
 ## Optional: curate
 

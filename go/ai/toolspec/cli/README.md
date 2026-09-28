@@ -38,7 +38,7 @@ Verified by `example_test.go` in this directory.
 
 ## Contract
 
-- `schemaVersion` is the CLI schema version (MAJOR.MINOR), distinct from the binary semver in `root.Config.Version`.
+- `schemaVersion` is the manifest schema version you declare (MAJOR.MINOR), distinct from the binary semver in `root.Config.Version`. It is a floor: a harness setting `KIT_TOOLSPEC_SCHEMA` higher gets the highest version kit emits up to its request, never less than you declared (`toolspec.NegotiateSchemaVersion`, shared with `kit toolspec`).
 - `<tool> spec` is tagged `kit/side-effect=read`, `kit/idempotent=yes` and carries `kit/spec-command`; it passes `Root.Validate` and skips the deprecation-warning middleware.
 - Flags: `--version` prints only the schema version; `--include-deprecated` opts deprecated leaves back in (default hidden); `--format` selects an adapter, `--format-help` lists them.
 - Reflection is delegated to `cmdreflect`; this package only projects descriptors and applies the manifest inclusion policy.

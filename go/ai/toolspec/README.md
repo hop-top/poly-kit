@@ -17,6 +17,7 @@ reflector (`hop.top/kit/go/ai/cmdreflect`), the `spec` subcommand
 - you read or build a spec in Go → `ToolSpec`, `Command`, `Contract`, `Safety`, `Permission`
 - you resolve a spec for a third-party tool → `toolspec.NewRegistry(toolspec.WithSource(...), toolspec.WithCache(store))` then `reg.Resolve(name)`
 - you advertise a running service's capabilities → `toolspec.NewCapabilitySet(name, version)`, `cs.Add(...)`, `cs.JSON()`
+- you emit a manifest and must honor a harness's `KIT_TOOLSPEC_SCHEMA` → `toolspec.NegotiateSchemaVersion(declared, os.Getenv(toolspec.SchemaVersionEnv))`
 
 ## Quick start
 
@@ -46,6 +47,12 @@ cmd.Annotations = map[string]string{
   `Safety.Permissions`; the harness default-policy table decodes
   tier × network into `auto` / `prompt` / `deny`:
   [Safety vocabulary](../../../docs/adopters/reference/toolspec-api.md#safety-vocabulary).
+- `NegotiateSchemaVersion` is the one rule for the manifest's
+  `schema_version`, shared by `kit toolspec` and `<tool> spec`: the
+  declared version is a floor, a well-formed request above it gets the
+  highest version kit emits up to the request (`LatestSchemaVersion`
+  at most), and a malformed request is ignored, never refused:
+  [Capability negotiation](../../../docs/adopters/integrations/claude-code-permissions.md#capability-negotiation-for-harness-implementers).
 - Legacy 4-tier annotations keep working; migration steps:
   [Migrate to the six-tier ladder](../../../docs/adopters/integrations/toolspec-adopter-guide.md#migrate-to-the-six-tier-ladder).
 

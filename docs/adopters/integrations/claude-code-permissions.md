@@ -153,30 +153,42 @@ Two manifest schema versions exist:
 | `"1.1"` | Adds per-command fields that surface kit's command annotations. Additive: a harness that ignores unknown fields reads a 1.1 manifest as it reads 1.0. |
 
 `kit toolspec` emits `"1.1"`. A kit-powered CLI's `<tool> spec`
-emits the label its author passed to `cli.RegisterSpecCommand`; the
-manifest it builds has the same fields whatever that label says.
-Always read `schema_version` from the payload (or `<tool> spec
---version`) rather than assume it.
+emits at least the version its author passed to
+`cli.RegisterSpecCommand` (the *declared* version); the manifest it
+builds has the same fields whatever version it resolves to. Always
+read `schema_version` from the payload (or `<tool> spec --version`)
+rather than assume it.
 
 Harnesses signal their max-supported schema version via the env var
 `KIT_TOOLSPEC_SCHEMA`:
 
 ```sh
-KIT_TOOLSPEC_SCHEMA=1.0 kit toolspec
+KIT_TOOLSPEC_SCHEMA=1.1 kit toolspec
+KIT_TOOLSPEC_SCHEMA=1.1 mytool spec --version
 ```
 
-`kit toolspec` applies these rules:
+`kit toolspec` and `<tool> spec` apply the same rules
+(`toolspec.NegotiateSchemaVersion`); `kit toolspec` declares `"1.1"`:
 
-- **Unset**: emits its native version, `"1.1"`.
-- **Well-formed `MAJOR.MINOR`, at, above or below the native
-  version**: still the native version. kit never downgrades: it has
-  no older layout to emit, and a 1.0 harness reads 1.1 because the
-  change is additive.
-- **Malformed**: ignored; the native version, like every other kit
-  env var that fails to parse.
+- **Unset or empty**: the declared version.
+- **Well-formed `MAJOR.MINOR` at or below the declared version**:
+  the declared version. kit never downgrades: it has no older layout
+  to emit, and a 1.0 harness reads 1.1 because the change is
+  additive.
+- **Well-formed `MAJOR.MINOR` above the declared version**: the
+  highest version kit emits that does not exceed the request, so
+  `1.1` or `2.0` against a tool declaring `"1.0"` gets `"1.1"`.
+- **Malformed**: ignored; the declared version, like every other kit
+  env var that fails to parse. No request is refused.
 
-`<tool> spec` does not read `KIT_TOOLSPEC_SCHEMA`; setting it there
-has no effect.
+| Declared | Request | Answer |
+|----------|---------|--------|
+| `"1.0"` | unset, `1.0`, `0.9`, `garbage` | `"1.0"` |
+| `"1.0"` | `1.1`, `2.0` | `"1.1"` |
+| `"1.1"` (`kit toolspec`) | anything | `"1.1"` |
+
+The variable is read each time the command runs, so set it on the
+process you spawn.
 
 ## What is and isn't shipped today
 

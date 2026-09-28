@@ -147,8 +147,10 @@ type Manifest struct {
 	Tool string `json:"tool"`
 	// Version is the tool's semver string (cli.Config.Version).
 	Version string `json:"version"`
-	// SchemaVersion is the CLI schema version (MAJOR.MINOR) the tool
-	// claims, supplied by the adopter via RegisterSpecCommand.
+	// SchemaVersion is the manifest schema version (MAJOR.MINOR),
+	// resolved by NegotiateSchemaVersion from the version the adopter
+	// declares via RegisterSpecCommand and the harness request in
+	// KIT_TOOLSPEC_SCHEMA.
 	SchemaVersion string `json:"schema_version"`
 	// Commands is the flat list of leaf commands in the tool's tree,
 	// each with its full discoverable metadata.

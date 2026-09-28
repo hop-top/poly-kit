@@ -48,13 +48,15 @@ $ tlc spec --format kit-manifest | jq '.commands[0]'
 
 Two schema versions exist: `"1.0"` and `"1.1"`, which only adds
 per-command fields. `kit toolspec` emits `"1.1"`; a kit-powered
-CLI's `<tool> spec` emits the label its author registered. Ignore
-fields you do not know and either version reads the same.
+CLI's `<tool> spec` emits at least the version its author declared.
+Ignore fields you do not know and either version reads the same.
 
 `KIT_TOOLSPEC_SCHEMA` states the highest version your harness
-supports. `kit toolspec` reads it but never downgrades, so today it
-always answers `"1.1"`; `<tool> spec` does not read it. The full rule
-set is in
+supports. `kit toolspec` and `<tool> spec` both read it and neither
+downgrades: the answer is the highest version the binary emits that
+your request allows, and never below what the author declared. So
+`kit toolspec` always answers `"1.1"`, and a tool declaring `"1.0"`
+answers `"1.1"` when you set `1.1` or higher. The full rule set is in
 [capability negotiation](claude-code-permissions.md#capability-negotiation-for-harness-implementers).
 
 ## Step 2 — Cache by binary fingerprint

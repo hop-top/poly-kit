@@ -10,6 +10,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -43,9 +44,24 @@ const specCommandAnnotation = "kit/spec-command"
 //	    return err
 //	}
 //
-// schemaVersion is the tool's CLI schema version (MAJOR.MINOR). Distinct from the
-// tool's binary semver (root.Config.Version): schema evolves on the
-// CLI surface, semver evolves on the binary.
+// schemaVersion is the manifest schema version the tool declares
+// (MAJOR.MINOR), distinct from the binary's semver
+// (root.Config.Version): schema evolves on the manifest layout,
+// semver on the binary. It is a floor, not a fixed answer. Each run
+// resolves the emitted schema_version with
+// [toolspec.NegotiateSchemaVersion] against the harness request in
+// KIT_TOOLSPEC_SCHEMA ([toolspec.SchemaVersionEnv]), the same rule
+// `kit toolspec` applies:
+//
+//   - unset, empty, malformed, or at or below schemaVersion: the
+//     manifest carries schemaVersion;
+//   - above schemaVersion: the highest version kit emits that the
+//     request allows ([toolspec.LatestSchemaVersion] at most).
+//
+// A request is never refused and never lowers the answer below
+// schemaVersion. The manifest's fields do not depend on the resolved
+// label: kit builds one layout, and every older version is a subset
+// of it.
 //
 // The returned error is non-nil only when adapter registration fails
 // (e.g. WithFormatAdapter supplies an adapter whose Name() or
@@ -59,8 +75,8 @@ const specCommandAnnotation = "kit/spec-command"
 //     leaf command (path, args, flags, side-effect, idempotency,
 //     deprecation status, exit-code set).
 //   - Renders via output.Render so --format json|yaml|table all work.
-//   - Accepts --version to print only schemaVersion and exit
-//     (agents use this for fast capability negotiation).
+//   - Accepts --version to print only the resolved schema version
+//     and exit (agents use this for fast capability negotiation).
 //   - Accepts --include-deprecated to opt into seeing deprecated
 //     leaves; default omits them.
 //
@@ -123,8 +139,9 @@ func RegisterSpecCommand(root *kitcli.Root, schemaVersion string, opts ...Regist
 	return cfgErr
 }
 
-// runSpec is the spec subcommand's RunE body. Walks the cobra
-// tree, applies curation (ErrorPatterns, Workflows,
+// runSpec is the spec subcommand's RunE body. Resolves the schema
+// version from the declared one and KIT_TOOLSPEC_SCHEMA, walks the
+// cobra tree, applies curation (ErrorPatterns, Workflows,
 // StateIntrospection from RegisterSpecCommand options), resolves
 // the active --format to a registered FormatAdapter, and
 // dispatches.
@@ -138,7 +155,8 @@ func RegisterSpecCommand(root *kitcli.Root, schemaVersion string, opts ...Regist
 // always emits via output.Render — agents using `--version` for
 // capability negotiation expect a tiny JSON/YAML payload, not a
 // per-adapter envelope.
-func runSpec(cmd *cobra.Command, root *kitcli.Root, schemaVersion string, cfg *registerConfig) error {
+func runSpec(cmd *cobra.Command, root *kitcli.Root, declared string, cfg *registerConfig) error {
+	schemaVersion := toolspec.NegotiateSchemaVersion(declared, os.Getenv(toolspec.SchemaVersionEnv))
 	versionOnly, _ := cmd.Flags().GetBool(versionOnlyFlag)
 	includeDeprecated, _ := cmd.Flags().GetBool(includeDeprecatedFlag)
 
