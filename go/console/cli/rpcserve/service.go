@@ -116,6 +116,21 @@ type Config struct {
 	// [DefaultMaxBodyBytes]). A larger message is refused with
 	// ResourceExhausted before it is decoded.
 	MaxBodyBytes int
+
+	// Interceptors are the adopter's Connect interceptors — metering,
+	// quotas, tracing — run inside kit's gates: only once Auth, the
+	// kit/auth-required and confirmation gates, exposure, the
+	// destructive ceiling and the permission gate have admitted the
+	// call, and around its run. A call kit refuses never reaches them
+	// (kit audits it). A call one of them refuses does not run, and
+	// is audited with its error. They apply in order, the first
+	// outermost.
+	//
+	// The request they see is the body as the client sent it, so its
+	// meta.caller is a claim: read identity from the verified claims,
+	// [rpc.ClaimsFromContext] with [api.IdentityOf]. See
+	// [cmdsurface.WithRPCAdmittedInterceptors].
+	Interceptors []connect.Interceptor
 }
 
 // With returns a Root option registering the `rpc` service: the
@@ -401,7 +416,8 @@ func (t *rpcTransport) Close(ctx context.Context) error {
 // Auth as an interceptor on every procedure, the call's provenance
 // from what the server verified rather than what the body claims, the
 // kit/auth-required gate answered by that verification, and the
-// message size bound.
+// message size bound; then the adopter's interceptors, inside them
+// all.
 func (t *rpcTransport) mountOptions(b *cmdsurface.Bridge) []cmdsurface.RPCOption {
 	opts := []cmdsurface.RPCOption{
 		cmdsurface.WithRPCCallMeta(rpcCallMeta),
@@ -414,6 +430,9 @@ func (t *rpcTransport) mountOptions(b *cmdsurface.Bridge) []cmdsurface.RPCOption
 		opts = append(opts, cmdsurface.WithRPCInterceptors(
 			rpc.Authenticate(t.svc.cfg.Auth, rpc.OnAuthRefused(auditRPCAuthRefusal(b))),
 		))
+	}
+	if len(t.svc.cfg.Interceptors) > 0 {
+		opts = append(opts, cmdsurface.WithRPCAdmittedInterceptors(t.svc.cfg.Interceptors...))
 	}
 	return opts
 }

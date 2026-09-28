@@ -44,6 +44,7 @@ type RPCOption func(*rpcConfig)
 
 type rpcConfig struct {
 	interceptors  []connect.Interceptor
+	admitted      []connect.Interceptor
 	handlerOpts   []connect.HandlerOption
 	callMeta      func(ctx context.Context, req connect.AnyRequest, claimed Meta) Meta
 	authenticated func(ctx context.Context, req connect.AnyRequest) bool
@@ -125,6 +126,8 @@ var _ cmdsurfacev1connect.CommandsHandler = (*rpcServer)(nil)
 // host verified, WithRPCAuthenticated for the kit/auth-required gate,
 // and WithRPCHandlerOptions for a message size bound. The rpc service
 // in go/console/cli/rpcserve sets all four.
+// WithRPCAdmittedInterceptors adds interceptors that see only the
+// calls every gate admitted.
 //
 // s is required; b is required. Returns a wrapped error when either
 // is nil.
@@ -187,15 +190,22 @@ func (s *rpcServer) Invoke(
 	if cerr != nil {
 		return nil, cerr
 	}
-	res, err := s.b.Invoke(ctx, inv)
+	adm, err := s.b.Admit(ctx, inv)
 	if err != nil {
 		return nil, mapBridgeError(err, leaf)
 	}
-	out, err := resultToProto(res)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+	run := func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		res, err := adm.Run(ctx)
+		if err != nil {
+			return nil, mapBridgeError(err, leaf)
+		}
+		out, err := resultToProto(res)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+		return connect.NewResponse(out), nil
 	}
-	return connect.NewResponse(out), nil
+	return s.runAdmittedUnary(ctx, req, adm, run)
 }
 
 // InvokeStream implements the server-streaming InvokeStream procedure.
@@ -218,7 +228,14 @@ func (s *rpcServer) InvokeStream(
 	if err != nil {
 		return mapBridgeError(err, leaf)
 	}
+	run := func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		return s.stream(ctx, conn, adm, leaf)
+	}
+	return s.runAdmittedStream(ctx, stream.Conn(), req.Msg, adm, run)
+}
 
+// stream runs an admitted invocation and forwards its Events to conn.
+func (s *rpcServer) stream(ctx context.Context, conn connect.StreamingHandlerConn, adm *Admission, leaf *Leaf) error {
 	// Run the streamer in its own goroutine so we can multiplex Event
 	// receipt with ctx cancellation observability.
 	events := make(chan Event, 16)
@@ -257,7 +274,7 @@ func (s *rpcServer) InvokeStream(
 				abort()
 				return connect.NewError(connect.CodeInternal, err)
 			}
-			if err := stream.Send(msg); err != nil {
+			if err := conn.Send(msg); err != nil {
 				abort()
 				return err
 			}

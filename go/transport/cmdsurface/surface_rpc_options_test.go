@@ -109,3 +109,71 @@ func TestRPCHandlerOptionsBoundTheMessage(t *testing.T) {
 		}
 	})
 }
+
+// countingInterceptor counts the unary and streaming calls it sees.
+type countingInterceptor struct{ unary, stream atomic.Int32 }
+
+func (c *countingInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		c.unary.Add(1)
+		return next(ctx, req)
+	}
+}
+
+func (c *countingInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+func (c *countingInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		c.stream.Add(1)
+		return next(ctx, conn)
+	}
+}
+
+// TestRPCAdmittedInterceptorsSeeOnlyAdmittedCalls pins that an
+// interceptor installed with WithRPCAdmittedInterceptors is skipped
+// by every call a gate refuses — unknown, not enabled, destructive,
+// unconfirmed — and wraps every admitted one, unary and streaming.
+func TestRPCAdmittedInterceptorsSeeOnlyAdmittedCalls(t *testing.T) {
+	forEachProtocol(t, func(t *testing.T, p wireProtocol) {
+		f := newFixture(t)
+		ic := &countingInterceptor{}
+		f.start(cmdsurface.WithRPCAdmittedInterceptors(ic))
+		client := f.client(p)
+
+		for _, path := range []string{"nope", "hidden-rpc", "destroy", "confirm"} {
+			if _, err := client.Invoke(context.Background(), invocation(path)); err == nil {
+				t.Fatalf("%s: unary admitted", path)
+			}
+			stream, err := client.InvokeStream(context.Background(), invocation(path))
+			if err == nil {
+				for stream.Receive() {
+				}
+				err = stream.Err()
+			}
+			if err == nil {
+				t.Fatalf("%s: stream admitted", path)
+			}
+		}
+		if n := ic.unary.Load() + ic.stream.Load(); n != 0 {
+			t.Fatalf("refused calls reached the interceptor %d times", n)
+		}
+
+		if _, err := client.Invoke(context.Background(), invocation("echo")); err != nil {
+			t.Fatalf("unary: %v", err)
+		}
+		stream, err := client.InvokeStream(context.Background(), invocation("lines"))
+		if err != nil {
+			t.Fatalf("stream: %v", err)
+		}
+		for stream.Receive() {
+		}
+		if err := stream.Err(); err != nil {
+			t.Fatalf("stream: %v", err)
+		}
+		if ic.unary.Load() != 1 || ic.stream.Load() != 1 {
+			t.Fatalf("admitted calls seen unary=%d stream=%d, want 1 and 1", ic.unary.Load(), ic.stream.Load())
+		}
+	})
+}

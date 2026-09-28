@@ -426,13 +426,19 @@ Options:
 - `WithRPCHandlerOptions(opts ...connect.HandlerOption)` — handler
   options such as `connect.WithReadMaxBytes`. Without one, a message
   of any size is read.
+- `WithRPCAdmittedInterceptors(ic ...connect.Interceptor)` —
+  interceptors that see only calls every gate admitted, around the
+  run. A refused call never reaches them; a call they refuse does not
+  run and is audited with their error. The request they see is the
+  body as sent, so its `meta` is a claim; a streaming interceptor's
+  conn replays the request message once.
 
 Per-leaf gates: `WithRPCAuthenticated`, or by default an
 `Authorization` header (or `inv.Meta.Caller`), when
 `Class.AuthRequired`; `X-Confirm-Token` header when
 `Class.RequiresConfirmation`. Both procedures then pass the bridge's
-gates: `Invoke` through `Bridge.Invoke`, `InvokeStream` through
-`Bridge.Admit` before the first message, so a streamed refusal is the
+gates through `Bridge.Admit` — `InvokeStream` before the first
+message — so a streamed refusal is the
 stream's error with no event sent. Error mapping: unknown /
 not-enabled / not-invocable → `CodeNotFound`, destructive-blocked and
 permission-denied → `CodePermissionDenied` (the message names which),
