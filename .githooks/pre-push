@@ -275,6 +275,11 @@ if [ -n "$HAS_SDK_LAYOUT" ] || [ -n "$HAS_CONFIG" ]; then
     echo "  lint-sdk-paths..."
     make lint-sdk-paths
 fi
+# ADR mentions can land in any text file, and the scan is one git grep.
+if [ -n "$CHANGED" ]; then
+    echo "  lint-adr-refs..."
+    make lint-adr-refs
+fi
 
 # --- Tests do NOT run here ---
 # They used to. `make test-go`/`test-ts`/`test-py`/`test-parity` take many

@@ -1,7 +1,7 @@
 .PHONY: api audit-php build builtins-sync check check-go-version check-mirror-sync check-template-sources clients \
 	clients-php clients-rs clients-test clients-ts job-integration-hatchet job-integration-restate \
 	job-integration-temporal job-test lint lint-config lint-docs lint-go lint-links lint-lock-php \
-	lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
+	lint-adr-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook \
 	test-parity test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-typeid test-py \
@@ -287,7 +287,7 @@ test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
 	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v
 
-lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths ## Run all linters
+lint: lint-go lint-ts lint-py lint-php lint-lock-py lint-lock-php audit-php lint-docs lint-readmes lint-config lint-links lint-sdk-paths lint-adr-refs ## Run all linters
 
 lint-go: check-go-version tools-golangci-lint ## Go: golangci-lint (pinned via GOLANGCI_LINT_VERSION + mise.toml Go pin)
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
@@ -380,6 +380,26 @@ lint-sdk-paths: ## Guard against repeated-sdk-segment path corruption recurrence
 		--exclude='Makefile' \
 		--exclude='.xray_*.md'
 	@echo "No repeated-sdk-segment corruption detected."
+
+# Decision records are kept outside this repository, so an ADR number in
+# a comment, doc, help string or workflow names a document no reader of
+# the repo can open. Point at the in-repo doc that holds the content, or
+# state the rationale inline. CHANGELOG.md files are excluded: they are
+# generated from commit history and never hand-edited.
+#
+# git grep exits 1 on no match and >1 on error; only 1 passes, so a
+# failed scan can never read as a clean one.
+lint-adr-refs: ## Guard against ADR-number mentions (decision records live outside the repo)
+	@echo "Scanning for ADR-number mentions..."
+	@status=0; \
+	git grep -nIE 'ADR[- ]?[0-9]{4}' -- . ':(exclude,glob)**/CHANGELOG.md' || status=$$?; \
+	case $$status in \
+		0) echo "error: ADR-number mentions found above; decision records are not in this repo." >&2; \
+		   echo "       Point at the in-repo doc that holds the content, or state the rationale inline." >&2; \
+		   exit 1 ;; \
+		1) echo "No ADR-number mentions found." ;; \
+		*) echo "error: git grep failed (exit $$status); scan did not run." >&2; exit $$status ;; \
+	esac
 
 proto: ## Generate protobuf + Connect/gRPC stubs
 # Generated files are committed for go-get compatibility.
