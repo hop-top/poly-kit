@@ -241,8 +241,9 @@ type PermissionDecision struct {
 // It receives the whole Leaf — path, [SafetyClass] with the parsed
 // kit/permissions scopes, and the reflected Descriptor — and the
 // Meta the transport populated: Caller, Tenant, Surface, and any
-// surface-specific Extra. Confirmation is not its concern; that
-// stays the command's own gate.
+// surface-specific Extra. What the caller asked for — the positional
+// args and parsed flags — is on ctx ([InvocationFromContext]).
+// Confirmation is not its concern; that stays the command's own gate.
 //
 // It runs after the bridge's built-in scope check, which already
 // refuses a remote caller lacking a scope the leaf declares under

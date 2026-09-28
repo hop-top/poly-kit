@@ -553,7 +553,7 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 	if err := scopeCheck(inv.Meta, leaf); err != nil {
 		return nil, b.refuse(ctx, inv, err)
 	}
-	if dec := b.Permission(ctx, inv.Meta, leaf); !dec.Allowed {
+	if dec := b.Permission(withInvocation(ctx, inv), inv.Meta, leaf); !dec.Allowed {
 		return nil, b.refuse(ctx, inv, fmt.Errorf("%w: %s on %s: %s",
 			ErrPermissionDenied, leaf.PathKey(), surface, dec.Reason))
 	}
@@ -766,11 +766,38 @@ func forwardIdempotencyKey(inv Invocation, leaf *Leaf) Invocation {
 	return inv
 }
 
+// invocationKey is the context key of the invocation the permission
+// gate is deciding.
+type invocationKey struct{}
+
+// withInvocation returns ctx carrying inv for the [PermissionFunc].
+func withInvocation(ctx context.Context, inv Invocation) context.Context {
+	return context.WithValue(ctx, invocationKey{}, inv)
+}
+
+// InvocationFromContext returns the invocation a [PermissionFunc] is
+// asked about: its positional Args and parsed Flags, beside the Meta
+// and Leaf the function receives as arguments. [Bridge.Admit] puts it
+// on the context it hands the permission gate, so a decision can read
+// what the caller asked for, not only who asked.
+//
+// It reports false when no invocation is being decided — a surface
+// consulting [Bridge.Permission] at mount time, before any caller
+// exists. The Flags map is the transport's; read it, never write it.
+func InvocationFromContext(ctx context.Context) (Invocation, bool) {
+	if ctx == nil {
+		return Invocation{}, false
+	}
+	inv, ok := ctx.Value(invocationKey{}).(Invocation)
+	return inv, ok
+}
+
 // Permission asks the bridge's [PermissionFunc] whether meta may
 // invoke leaf. Surfaces consult it at mount time with a Meta that
 // carries only the surface, and honor a refusal there only when the
 // decision is CallerIndependent — a caller-specific verdict cannot
-// be known before a caller exists.
+// be known before a caller exists. At mount time the context carries
+// no invocation ([InvocationFromContext] reports false).
 func (b *Bridge) Permission(ctx context.Context, meta Meta, leaf *Leaf) PermissionDecision {
 	if leaf == nil {
 		return PermissionDecision{Allowed: true}

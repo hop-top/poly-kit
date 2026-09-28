@@ -455,3 +455,73 @@ func TestNotInvocableReasonOrdersSelfHostingFirst(t *testing.T) {
 		})
 	}
 }
+
+// TestInvoke_PermissionSeesTheInvocation pins that the permission gate
+// can read what the caller asked for — the positional args and parsed
+// flags — through InvocationFromContext, and that a mount-time query
+// carries no invocation.
+func TestInvoke_PermissionSeesTheInvocation(t *testing.T) {
+	var seen Invocation
+	var found bool
+	b := New(newBridgeTree(),
+		WithRunner(countingRunner(new(int), nil)),
+		WithPermission(func(ctx context.Context, _ Meta, _ *Leaf) PermissionDecision {
+			seen, found = InvocationFromContext(ctx)
+			return PermissionDecision{Allowed: true}
+		}),
+	)
+	b.Expose("*", SurfaceREST)
+
+	_, err := b.Invoke(context.Background(), Invocation{
+		Path:  []string{"widget", "add"},
+		Args:  []string{"bolt"},
+		Flags: map[string]any{"count": 3},
+		Meta:  Meta{Surface: SurfaceREST, Caller: "alice"},
+	})
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if !found {
+		t.Fatal("InvocationFromContext reported no invocation inside the permission gate")
+	}
+	if len(seen.Args) != 1 || seen.Args[0] != "bolt" || seen.Flags["count"] != 3 {
+		t.Fatalf("permission gate saw args=%v flags=%v, want [bolt] count=3", seen.Args, seen.Flags)
+	}
+	if seen.Meta.Caller != "alice" {
+		t.Fatalf("permission gate saw caller %q, want alice", seen.Meta.Caller)
+	}
+
+	leaf, err := b.resolveLeaf([]string{"widget", "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found = true
+	b.Permission(context.Background(), Meta{Surface: SurfaceREST}, leaf)
+	if found {
+		t.Fatal("a mount-time Permission query reported an invocation")
+	}
+}
+
+// TestMeta_VerifiedScopes pins that only a verified caller holds
+// scopes: a transport-established caller and a claimed scopes entry
+// hold none.
+func TestMeta_VerifiedScopes(t *testing.T) {
+	extra := map[string]string{"scopes": "items:read, items:admin"}
+	cases := []struct {
+		name string
+		est  Establishment
+		want []string
+	}{
+		{"verified", EstablishedVerified, []string{"items:read", "items:admin"}},
+		{"transport", EstablishedTransport, nil},
+		{"claimed", EstablishedNone, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Meta{Established: tc.est, Extra: extra}.VerifiedScopes()
+			if strings.Join(got, "|") != strings.Join(tc.want, "|") || (got == nil) != (tc.want == nil) {
+				t.Fatalf("VerifiedScopes() = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}

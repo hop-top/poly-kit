@@ -122,15 +122,31 @@ func scopeCheck(meta Meta, leaf *Leaf) error {
 // verifier's verdict puts scopes there, and a value on an
 // unestablished call is a claim.
 func verifiedScopes(meta Meta) map[string]bool {
-	if meta.Established != EstablishedVerified {
+	scopes := meta.VerifiedScopes()
+	if scopes == nil {
 		return nil
 	}
-	scopes := splitCSV(meta.Extra[scopesExtraKey])
 	have := make(map[string]bool, len(scopes))
 	for _, s := range scopes {
 		have[s] = true
 	}
 	return have
+}
+
+// VerifiedScopes returns the scopes the caller's credential carries,
+// the ones the built-in scope check compares: Meta.Extra["scopes"] when
+// a verifier established the caller ([EstablishedVerified]), nil for
+// anyone else. A transport-established caller holds the owner's
+// authority rather than scopes, and a scopes entry on an unestablished
+// call is a claim.
+//
+// A [PermissionFunc] deciding on scopes reads them here rather than
+// from Extra, so it cannot mistake a claim for a grant.
+func (m Meta) VerifiedScopes() []string {
+	if m.Established != EstablishedVerified {
+		return nil
+	}
+	return splitCSV(m.Extra[scopesExtraKey])
 }
 
 // writeInsufficientScope answers an [ErrInsufficientScope] on an HTTP
