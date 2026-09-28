@@ -210,6 +210,54 @@ func TestResultCache_TTLExpiry(t *testing.T) {
 	}
 }
 
+// An identity the transport did not establish is a claim: it never
+// selects, or reaches, an identity's entry. The call is keyed as
+// anonymous, and its result is not private to the name it claimed.
+func TestResultCache_ClaimedIdentityIsAnonymous(t *testing.T) {
+	run := &tallyRunner{result: func(Invocation) (Result, error) {
+		return Result{Data: map[string]any{"same": true}}, nil
+	}}
+	b := newCacheBridge(t, run, nil)
+
+	claimed := func(caller, tenant, scopes string) Invocation {
+		inv := cacheRESTCall("widget", "list")
+		inv.Meta.Caller, inv.Meta.Tenant = caller, tenant
+		inv.Meta.Extra = map[string]string{"scopes": scopes}
+		return inv
+	}
+	alice := claimed("alice", "acme", "read")
+	alice.Meta.Established = EstablishedVerified
+
+	anon, _ := cacheKey(b.root, cacheRESTCall("widget", "list"))
+	for _, inv := range []Invocation{claimed("alice", "acme", "read"), claimed("mallory", "", "")} {
+		if key, _ := cacheKey(b.root, inv); key != anon {
+			t.Fatalf("claimed %+v is not keyed as anonymous", inv.Meta)
+		}
+	}
+	if key, _ := cacheKey(b.root, alice); key == anon {
+		t.Fatal("an established principal is keyed as anonymous")
+	}
+
+	// alice's own entry is out of reach of a caller claiming her name.
+	if _, info, _ := call(t, b, alice); info.Hit || !info.Private {
+		t.Fatalf("established alice: Hit=%v Private=%v, want a private miss", info.Hit, info.Private)
+	}
+	_, info, _ := call(t, b, claimed("alice", "acme", "read"))
+	if info.Hit {
+		t.Fatal("a claim of alice's identity was answered from her entry")
+	}
+	if info.Private {
+		t.Fatal("a claimed identity made the result private")
+	}
+	// Claims share the anonymous entry.
+	if _, info, _ = call(t, b, claimed("mallory", "", "")); !info.Hit {
+		t.Fatal("a second claim missed the anonymous entry")
+	}
+	if n := run.calls.Load(); n != 2 {
+		t.Fatalf("runner ran %d times, want 2 (alice, anonymous)", n)
+	}
+}
+
 func TestResultCache_PrincipalIsolation(t *testing.T) {
 	// Every caller gets the same data, so only the key tells their
 	// entries and their ETags apart.
@@ -224,6 +272,9 @@ func TestResultCache_PrincipalIsolation(t *testing.T) {
 		inv.Meta.Tenant = tenant
 		if scopes != "" {
 			inv.Meta.Extra = map[string]string{"scopes": scopes}
+		}
+		if caller != "" || tenant != "" || scopes != "" {
+			inv.Meta.Established = EstablishedVerified
 		}
 		return inv
 	}

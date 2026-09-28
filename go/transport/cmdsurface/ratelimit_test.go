@@ -177,6 +177,11 @@ func TestRateLimit_Keys(t *testing.T) {
 	addr := func(a string) Meta {
 		return Meta{Surface: SurfaceREST, Extra: map[string]string{"remote_addr": a}}
 	}
+	// verified is m with the identity its transport established.
+	verified := func(m Meta) Meta {
+		m.Established = EstablishedVerified
+		return m
+	}
 	same := []struct {
 		name string
 		a, b Meta
@@ -187,10 +192,21 @@ func TestRateLimit_Keys(t *testing.T) {
 			Meta{Surface: SurfaceREST, Tenant: "t1", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}},
 			Meta{Surface: SurfaceREST, Tenant: "t2", Extra: map[string]string{"remote_addr": "198.51.100.1:2"}}},
 		{"a principal is one caller from any address",
-			Meta{Surface: SurfaceREST, Caller: "alice", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}},
-			Meta{Surface: SurfaceREST, Caller: "alice", Extra: map[string]string{"remote_addr": "198.51.100.2:1"}}},
+			verified(Meta{Surface: SurfaceREST, Caller: "alice", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}}),
+			verified(Meta{Surface: SurfaceREST, Caller: "alice", Extra: map[string]string{"remote_addr": "198.51.100.2:1"}})},
 		{"a principal is one caller on any surface",
-			Meta{Surface: SurfaceREST, Caller: "alice"}, Meta{Surface: SurfaceMCP, Caller: "alice"}},
+			verified(Meta{Surface: SurfaceREST, Caller: "alice"}), verified(Meta{Surface: SurfaceMCP, Caller: "alice"})},
+		{"a transport-established principal is a principal",
+			Meta{Surface: SurfaceSocket, Caller: "alice", Established: EstablishedTransport},
+			verified(Meta{Surface: SurfaceREST, Caller: "alice"})},
+		{"a claimed caller is its address",
+			Meta{Surface: SurfaceREST, Caller: "alice", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}},
+			addr("198.51.100.1:2")},
+		{"claimed callers behind one address share its bucket",
+			Meta{Surface: SurfaceREST, Caller: "alice", Tenant: "t1", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}},
+			Meta{Surface: SurfaceREST, Caller: "bob", Tenant: "t2", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}}},
+		{"a claimed caller with no address is its surface",
+			Meta{Surface: SurfaceBus, Caller: "alice"}, Meta{Surface: SurfaceBus}},
 		{"no identity: one bucket per surface", Meta{Surface: SurfaceBus}, Meta{Surface: SurfaceBus}},
 	}
 	for _, c := range same {
@@ -205,13 +221,16 @@ func TestRateLimit_Keys(t *testing.T) {
 		{"two addresses", addr("198.51.100.1:1"), addr("198.51.100.2:1")},
 		{"two IPv6 /64s", addr("[2001:db8:1:2::1]:1"), addr("[2001:db8:1:3::1]:1")},
 		{"two principals behind one address",
-			Meta{Surface: SurfaceREST, Caller: "alice", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}},
-			Meta{Surface: SurfaceREST, Caller: "bob", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}}},
+			verified(Meta{Surface: SurfaceREST, Caller: "alice", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}}),
+			verified(Meta{Surface: SurfaceREST, Caller: "bob", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}})},
 		{"one principal, two tenants",
-			Meta{Surface: SurfaceREST, Caller: "alice", Tenant: "t1"},
-			Meta{Surface: SurfaceREST, Caller: "alice", Tenant: "t2"}},
+			verified(Meta{Surface: SurfaceREST, Caller: "alice", Tenant: "t1"}),
+			verified(Meta{Surface: SurfaceREST, Caller: "alice", Tenant: "t2"})},
 		{"principal vs the address it came from",
-			Meta{Surface: SurfaceREST, Caller: "198.51.100.1"}, addr("198.51.100.1:1")},
+			verified(Meta{Surface: SurfaceREST, Caller: "198.51.100.1"}), addr("198.51.100.1:1")},
+		{"a principal vs the same name claimed",
+			verified(Meta{Surface: SurfaceREST, Caller: "alice", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}}),
+			Meta{Surface: SurfaceREST, Caller: "alice", Extra: map[string]string{"remote_addr": "198.51.100.1:1"}}},
 		{"bus vs cron", Meta{Surface: SurfaceBus}, Meta{Surface: SurfaceCron}},
 	}
 	for _, c := range differ {
@@ -219,7 +238,7 @@ func TestRateLimit_Keys(t *testing.T) {
 			t.Errorf("%s: keys collide: %q", c.name, rateKey(c.a, RateTierRead))
 		}
 	}
-	if rateKey(Meta{Caller: "a"}, RateTierRead) == rateKey(Meta{Caller: "a"}, RateTierWrite) {
+	if rateKey(verified(Meta{Caller: "a"}), RateTierRead) == rateKey(verified(Meta{Caller: "a"}), RateTierWrite) {
 		t.Error("tiers share a key")
 	}
 }
@@ -352,6 +371,7 @@ func TestRateLimit_ConcurrentCallersAreIndependent(t *testing.T) {
 			for range 3 {
 				inv := restCall("ping")
 				inv.Meta.Caller = fmt.Sprintf("caller-%d", c)
+				inv.Meta.Established = EstablishedVerified
 				if _, err := b.Invoke(context.Background(), inv); err != nil {
 					failed.Add(1)
 				}

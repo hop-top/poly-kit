@@ -188,7 +188,8 @@ type CacheInfo struct {
 	// MaxAge is how long the result stays fresh from now.
 	MaxAge time.Duration
 	// Private reports that the result belongs to one caller: the
-	// invocation carried a principal, tenant or scopes.
+	// transport established an identity naming a principal, tenant or
+	// scopes.
 	Private bool
 	// Hit reports that the result was answered without running the
 	// command: from the store, or by an identical call in flight.
@@ -374,15 +375,20 @@ const cacheKeyPrefix = "kit/cache/v1/"
 
 // cacheKey is the store key for inv: a hash of the canonical invocation
 // — path, flags, args — and the caller's identity. Flags are encoded
-// with sorted keys, so their order in a request never matters.
+// with sorted keys, so their order in a request never matters. The
+// identity counts only when the transport established it
+// ([Meta.Authenticated]); a claimed one is keyed as anonymous, so it
+// never reaches the entry of the identity it names.
 func cacheKey(root interface{ Name() string }, inv Invocation) (string, error) {
 	doc := cacheKeyDoc{
-		Path:   inv.Path,
-		Args:   inv.Args,
-		Flags:  inv.Flags,
-		Caller: inv.Meta.Caller,
-		Tenant: inv.Meta.Tenant,
-		Scopes: callerScopes(inv.Meta),
+		Path:  inv.Path,
+		Args:  inv.Args,
+		Flags: inv.Flags,
+	}
+	if inv.Meta.Authenticated() {
+		doc.Caller = inv.Meta.Caller
+		doc.Tenant = inv.Meta.Tenant
+		doc.Scopes = callerScopes(inv.Meta)
 	}
 	if root != nil {
 		doc.Tool = root.Name()
@@ -404,7 +410,11 @@ func callerScopes(m Meta) []string {
 }
 
 // callerScoped reports whether a result belongs to one caller: the
-// invocation names a principal, a tenant or scopes.
+// transport established an identity naming a principal, a tenant or
+// scopes. A claimed identity is keyed as anonymous, and so is not.
 func callerScoped(m Meta) bool {
+	if !m.Authenticated() {
+		return false
+	}
 	return m.Caller != "" || m.Tenant != "" || len(callerScopes(m)) > 0
 }

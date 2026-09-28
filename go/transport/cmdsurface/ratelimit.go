@@ -199,13 +199,13 @@ func (b *Bridge) rateLimit(inv Invocation, leaf *Leaf) error {
 // tenants spends two budgets), else the client address, else the
 // surface, so bus and cron invocations share one bucket per surface.
 //
-// The principal is Meta.Caller, which the kit-shipped network
-// surfaces fill only from an identity they verified. A tenant the
-// caller merely claimed never splits an address's bucket: tenant
-// joins the key only beside a principal.
+// The principal is Meta.Caller only when the transport established
+// it ([Meta.Authenticated]). A caller or tenant merely claimed never
+// selects or splits a bucket: it neither escapes its address's budget
+// nor spends a principal's.
 func rateKey(meta Meta, tier RateTier) string {
 	switch {
-	case meta.Caller != "":
+	case meta.Authenticated() && meta.Caller != "":
 		return "p\x00" + meta.Caller + "\x00" + meta.Tenant + "\x00" + string(tier)
 	case clientHost(meta) != "":
 		return "a\x00" + clientHost(meta) + "\x00" + string(tier)
