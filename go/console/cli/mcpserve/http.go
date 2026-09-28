@@ -61,7 +61,8 @@ type httpServing struct {
 	mcpSrv *mcp.Server
 	stop   context.CancelFunc
 
-	// unread holds connections that have not yet sent a request.
+	// unread holds connections whose first request's headers have not
+	// all arrived: never used, or stalled mid-header.
 	unread map[net.Conn]struct{}
 }
 
@@ -152,11 +153,14 @@ func (h *httpServing) close(ctx context.Context) error {
 	return nil
 }
 
-// trackUnread records which connections have not sent a request yet.
-// An HTTP client may dial a connection it then leaves unused (Go's
-// transport parks a connection it dialed for a request another
-// connection served), and Shutdown waits five seconds before it
-// counts one of those as idle.
+// trackUnread records which connections have not sent a complete
+// request header yet. net/http leaves a connection in StateNew until
+// its first request's headers are read, so this covers one a client
+// leaves unused (Go's transport parks a connection it dialed for a
+// request another connection served) and one stalled mid-header.
+// Shutdown waits five seconds before it counts either as idle. A stall
+// in a later request's headers needs no tracking: the connection is
+// StateIdle while it waits, and Shutdown closes idle connections.
 func (h *httpServing) trackUnread(c net.Conn, st http.ConnState) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -170,8 +174,8 @@ func (h *httpServing) trackUnread(c net.Conn, st http.ConnState) {
 	delete(h.unread, c)
 }
 
-// closeUnread closes the connections that carry no request, so
-// Shutdown does not wait on them. Stopping has already canceled every
+// closeUnread closes the connections that carry no complete request,
+// so Shutdown does not wait on them. Stopping has already canceled every
 // request in flight; one arriving now would not be served.
 func (h *httpServing) closeUnread() {
 	h.mu.Lock()

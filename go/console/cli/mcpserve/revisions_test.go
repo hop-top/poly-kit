@@ -5,6 +5,7 @@ package mcpserve_test
 // revision, and the point here is what each revision's client sends.
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -381,4 +382,52 @@ func TestMCPServiceHTTPStopsPromptlyWithAnUnusedConnection(t *testing.T) {
 		t.Fatal("serve did not return after cancellation")
 	}
 	assert.Less(t, time.Since(start), 2*time.Second, "stop waited on a connection that carried no request")
+}
+
+// TestMCPServiceHTTPStopsPromptlyWithAStalledHeader: a client that
+// sends part of a request's headers and then stalls does not hold the
+// stop for the read-header timeout, whether the stall opens the
+// connection or follows a request it already carried.
+func TestMCPServiceHTTPStopsPromptlyWithAStalledHeader(t *testing.T) {
+	const partial = "POST /mcp HTTP/1.1\r\nHost: stalled\r\nContent-Type: appl"
+	for _, tc := range []struct {
+		name  string
+		first string // a complete request sent before the stall, if any
+	}{
+		{name: "first request"},
+		{name: "after a request", first: "GET /elsewhere HTTP/1.1\r\nHost: stalled\r\n\r\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			run, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"})
+			u, err := url.Parse(endpoint)
+			require.NoError(t, err)
+			conn, err := net.Dial("tcp", u.Host)
+			require.NoError(t, err)
+			defer conn.Close()
+			if tc.first != "" {
+				_, err = io.WriteString(conn, tc.first)
+				require.NoError(t, err)
+				resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+				require.NoError(t, err)
+				_, _ = io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+			}
+			_, err = io.WriteString(conn, partial)
+			require.NoError(t, err)
+			// A request on another connection: once it is answered, the
+			// server has accepted the stalled one and is reading from it.
+			r, _ := modernCall(t, endpoint, "tools/list", "", `{`+modernMeta(`{}`)+`}`, nil)
+			require.Equal(t, http.StatusOK, r.status)
+
+			start := time.Now()
+			run.stop()
+			select {
+			case err := <-run.errCh:
+				run.errCh <- err
+			case <-time.After(10 * time.Second):
+				t.Fatal("serve did not return after cancellation")
+			}
+			assert.Less(t, time.Since(start), 2*time.Second, "stop waited on a connection stalled mid-header")
+		})
+	}
 }
