@@ -208,6 +208,61 @@ func TestServeSocketRefusesUnexposedAndUnknownCommands(t *testing.T) {
 	assert.Equal(t, socket.CodeNotFound, resp.Error.Code)
 }
 
+// TestServeSocketExposeNarrowsTheTree pins SocketConfig.Expose as a
+// narrowing: a non-empty Expose reaches only what it names, and Hide
+// then carves exceptions out of it, in that order. An empty Expose
+// reaches the whole tree (TestServeSocketSelectorStartsAndInvokes).
+func TestServeSocketExposeNarrowsTheTree(t *testing.T) {
+	cases := []struct {
+		name    string
+		cfg     cli.SocketConfig
+		reached []string
+		refused []string
+	}{
+		{
+			name:    "expose names one leaf",
+			cfg:     cli.SocketConfig{Expose: []string{"item list"}},
+			reached: []string{"item list"},
+			refused: []string{"item add", "ping"},
+		},
+		{
+			name:    "hide applies after expose",
+			cfg:     cli.SocketConfig{Expose: []string{"item *"}, Hide: []string{"item add"}},
+			reached: []string{"item list"},
+			refused: []string{"item add", "ping"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := shortSocketPath(t)
+			tc.cfg.Path = path
+			r := socketRoot(t, tc.cfg)
+			item := &cobra.Command{Use: "item"}
+			for _, name := range []string{"list", "add"} {
+				item.AddCommand(&cobra.Command{
+					Use:  name,
+					RunE: func(cmd *cobra.Command, _ []string) error { return nil },
+				})
+			}
+			r.Cmd.AddCommand(item)
+
+			stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
+			defer stop()
+
+			for _, leaf := range tc.reached {
+				resp := callSocket(t, path, socket.Request{Path: strings.Fields(leaf)})
+				assert.True(t, resp.Ok, "%s: expected success, got %+v", leaf, resp.Error)
+			}
+			for _, leaf := range tc.refused {
+				resp := callSocket(t, path, socket.Request{Path: strings.Fields(leaf)})
+				if assert.False(t, resp.Ok, "%s: reached, want refused", leaf) {
+					assert.Equal(t, socket.CodeNotEnabled, resp.Error.Code, leaf)
+				}
+			}
+		})
+	}
+}
+
 // destructiveRoot builds a root with a destructive command, so the
 // policy path can be exercised end to end over a real socket.
 func destructiveRoot(t *testing.T, cfg cli.SocketConfig) *cli.Root {

@@ -37,7 +37,8 @@ type SocketConfig struct {
 
 	// Expose lists the command patterns the socket may invoke, in
 	// the pattern language of [cmdsurface.Bridge.Expose] ("widget
-	// add", "widget *", "*"). Empty exposes the whole tree: a local
+	// add", "widget *", "*"). A non-empty Expose narrows the socket
+	// to what it names. Empty exposes the whole tree: a local
 	// owner-only socket that reaches nothing is not useful, and the
 	// destructive ceiling still applies on top.
 	Expose []string
@@ -153,6 +154,12 @@ func newSocketService(root *Root, cfg *SocketConfig) *transportsvc.TransportServ
 		// Same class as the api service: it accepts requests that
 		// mutate shared state, and it listens.
 		transportsvc.WithClass(string(SideEffectWriteShared), "listen"),
+	}
+	if len(cfg.Expose) > 0 {
+		// A non-empty Expose narrows the whole-tree default: hide
+		// everything, then expose what was named, then Hide's
+		// exceptions, in that order.
+		opts = append(opts, transportsvc.Hide("*"))
 	}
 	for _, p := range cfg.Expose {
 		opts = append(opts, transportsvc.Expose(p))
