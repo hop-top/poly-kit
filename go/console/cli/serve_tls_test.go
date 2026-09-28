@@ -208,9 +208,15 @@ func TestAPIMutualTLS(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 	t.Run("a certificate the CA bundle does not verify fails the handshake", func(t *testing.T) {
+		before := rec.count()
 		_, err := f.rogueClient().Get(base + "/v1/commands/list")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "tls")
+		// Under TLS 1.3 the server refuses the client certificate after
+		// the client's half of the handshake, so the client sees either
+		// the TLS alert or the HTTP/2 connection it never got.
+		msg := err.Error()
+		assert.True(t, strings.Contains(msg, "tls") || strings.Contains(msg, "client conn could not be established"), msg)
+		assert.Equal(t, before, rec.count(), "the request never reached the service")
 	})
 }
 
