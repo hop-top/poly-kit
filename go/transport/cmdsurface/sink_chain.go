@@ -43,6 +43,9 @@ type chainRecord struct {
 	RequestedAt time.Time      `json:"requested_at,omitzero"`
 	Args        []string       `json:"args,omitempty"`
 	Flags       map[string]any `json:"flags,omitempty"`
+	// Cache is "hit" or "coalesced" when the result cache answered
+	// the call without running it; absent when it ran.
+	Cache string `json:"cache,omitempty"`
 }
 
 // errChainSinkNoLog is returned by Emit on a ChainSink without a Log.
@@ -64,6 +67,7 @@ func (c *ChainSink) Emit(_ context.Context, inv Invocation, res Result, err erro
 		RequestedAt: inv.Meta.RequestedAt.UTC(),
 		Args:        inv.Args,
 		Flags:       inv.Flags,
+		Cache:       inv.Meta.Extra[cacheExtraKey],
 	}
 	if err != nil {
 		rec.Error = err.Error()

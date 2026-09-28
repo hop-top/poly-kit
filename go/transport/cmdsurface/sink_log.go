@@ -64,6 +64,9 @@ func (l *LogSink) Emit(ctx context.Context, inv Invocation, res Result, err erro
 	if inv.Meta.Tenant != "" {
 		attrs = append(attrs, slog.String("tenant", inv.Meta.Tenant))
 	}
+	if mark := inv.Meta.Extra[cacheExtraKey]; mark != "" {
+		attrs = append(attrs, slog.String("cache", mark))
+	}
 	if level <= slog.LevelDebug {
 		if res.Stdout != "" {
 			attrs = append(attrs, slog.String("stdout", res.Stdout))

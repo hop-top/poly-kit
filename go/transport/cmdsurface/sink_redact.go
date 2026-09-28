@@ -221,7 +221,7 @@ var auditProvenanceExtra = map[string]bool{
 	"remote_addr": true, "http_method": true, "http_path": true,
 	"scopes": true, "oauth_issuer": true, "mcp_spec_version": true,
 	"mcp_client_name": true, "mcp_client_version": true,
-	"mcp_confirm_rejection": true,
+	"mcp_confirm_rejection": true, cacheExtraKey: true,
 }
 
 // auditOutputBlind is implemented by shipped sinks that never read

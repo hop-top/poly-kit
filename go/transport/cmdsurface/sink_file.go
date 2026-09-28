@@ -62,6 +62,9 @@ type fileSinkRecord struct {
 	RequestID string    `json:"request_id,omitempty"`
 	Caller    string    `json:"caller,omitempty"`
 	Tenant    string    `json:"tenant,omitempty"`
+	// Cache is "hit" or "coalesced" when the result cache answered
+	// the call without running it; absent when it ran.
+	Cache string `json:"cache,omitempty"`
 }
 
 // DefaultFileSinkFormat marshals inv/res/err to a fileSinkRecord
@@ -77,6 +80,7 @@ func DefaultFileSinkFormat(inv Invocation, res Result, err error) ([]byte, error
 		RequestID: inv.Meta.RequestID,
 		Caller:    inv.Meta.Caller,
 		Tenant:    inv.Meta.Tenant,
+		Cache:     inv.Meta.Extra[cacheExtraKey],
 	}
 	if err != nil {
 		r.Error = err.Error()

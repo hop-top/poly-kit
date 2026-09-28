@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/ai/cmdreflect"
+	"hop.top/kit/go/storage/kv"
 )
 
 // ErrSurfaceNotEnabled is returned when an Invocation's Meta.Surface
@@ -73,7 +74,10 @@ type Bridge struct {
 	// audit is the extra redaction from WithAuditRedaction, nil
 	// when none was given.
 	audit *auditExtra
-	mu    sync.RWMutex
+	// rcache is the read-tier result cache from WithResultCache, nil
+	// when it is off.
+	rcache *resultCache
+	mu     sync.RWMutex
 }
 
 // Leaf is the per-command view surface implementations need. Path
@@ -99,6 +103,9 @@ type Leaf struct {
 	// secretFlags names the flags carrying AnnotationSecretFlag,
 	// resolved once at discovery for the audit redactor.
 	secretFlags map[string]bool
+	// cacheTTL is the leaf's kit/cache-ttl on the read tier, zero
+	// when its results are never cached.
+	cacheTTL time.Duration
 }
 
 // PathKey returns the leaf path as a space-joined string (the form
@@ -116,6 +123,9 @@ type bridgeConfig struct {
 	// rateLimit is the slot-7 limiter from WithRateLimit, nil when
 	// the gate is off.
 	rateLimit *rateLimiter
+	// cache is the slot-8 result cache from WithResultCache, nil when
+	// the cache is off.
+	cache kv.TTLStore
 }
 
 // Option configures a Bridge at construction.
@@ -187,6 +197,7 @@ func New(root *cobra.Command, opts ...Option) *Bridge {
 		byPath: make(map[string]*Leaf),
 		sinks:  append(SinkSet(nil), cfg.sinks...),
 		audit:  newAuditExtra(cfg.redaction),
+		rcache: newResultCache(cfg.cache),
 	}
 	b.discover()
 	return b
@@ -239,6 +250,7 @@ func (b *Bridge) discover() {
 			Descriptor: d,
 
 			secretFlags: secretFlagSet(d.Cmd),
+			cacheTTL:    cacheTTLOf(d),
 		}
 		b.leaves = append(b.leaves, leaf)
 		b.byPath[leaf.PathKey()] = leaf
@@ -375,6 +387,9 @@ func matchPattern(pattern string, path []string) bool {
 //     the retry hint: the caller's bucket for the leaf's tier is
 //     empty. Only with [WithRateLimit], and only on remote surfaces.
 //
+// A read leaf declaring kit/cache-ttl may then be answered from the
+// result cache without running (see [WithResultCache]).
+//
 // Confirmation is deliberately not a gate here: it is the command's
 // own flag and its own refusal, the same on every surface as on the
 // CLI, so the Runner's Result carries it as an exit code.
@@ -413,6 +428,9 @@ type Admission struct {
 	b    *Bridge
 	inv  Invocation
 	leaf *Leaf
+	// cache is the result cache's part of the call, nil when the
+	// cache has nothing to do with it.
+	cache *cacheCall
 }
 
 // Admit applies the gates [Bridge.Invoke] applies, in the same order
@@ -420,7 +438,8 @@ type Admission struct {
 // audited exactly as Invoke audits it and returned with a nil
 // Admission. On success the Admission carries the normalized
 // invocation: Surface defaulted, RequestedAt stamped, the idempotency
-// key forwarded.
+// key forwarded, and — for a read the result cache handles — the
+// cache lookup's outcome, which Run answers without running on a hit.
 //
 // Admission alone emits nothing to the sinks: the record for an
 // admitted invocation is written when it runs, carrying its outcome.
@@ -464,7 +483,11 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 	// A runner holding no tree (a subprocess) learns from the
 	// invocation whether the leaf parses its own argv.
 	inv.ownArgv = leaf.Cmd != nil && leaf.Cmd.DisableFlagParsing
-	return &Admission{b: b, inv: forwardIdempotencyKey(inv, leaf), leaf: leaf}, nil
+	adm := &Admission{b: b, inv: forwardIdempotencyKey(inv, leaf), leaf: leaf}
+	// Slot 8, after any idempotency replay: the read-tier result
+	// cache. A hit is answered by Run without running.
+	adm.cache = b.cacheLookup(ctx, inv, leaf)
+	return adm, nil
 }
 
 // Invocation returns the admitted invocation as it will run.
@@ -479,6 +502,9 @@ func (a *Admission) Invocation() Invocation { return a.inv }
 // machine gate and before the run, without asking about a call the
 // gates would refuse and without answering the gates twice.
 func (a *Admission) Run(ctx context.Context) (Result, error) {
+	if a.cache != nil {
+		return a.runCached(ctx)
+	}
 	// Stamped before the run, so a Runner emitting to its own SinkSet
 	// redacts the leaf's secret flags as the bridge's sinks do.
 	ctx = a.b.auditContext(ctx, a.leaf)
@@ -498,9 +524,16 @@ func (a *Admission) Run(ctx context.Context) (Result, error) {
 // the Result is the one the done Event carried, and the error is the
 // Runner's — a cancellation when ctx ended the run, which is how a
 // client that disconnected mid-stream appears in the audit trail.
+//
+// A result cache hit is answered as a single done Event carrying the
+// stored Result, and nothing runs. A miss streams as usual and stores
+// nothing: only Run fills the cache.
 func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	if out == nil {
 		return errors.New("cmdsurface: nil event channel")
+	}
+	if a.cache != nil && a.cache.hit != nil {
+		return a.streamHit(ctx, out)
 	}
 	ctx = a.b.auditContext(ctx, a.leaf)
 	events := make(chan Event, cap(out))

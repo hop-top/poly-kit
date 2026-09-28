@@ -253,6 +253,23 @@ as `Invoke`. `Bridge.Runner()` still
 returns the Runner, but calling its `Run` or `Stream` directly skips
 every gate and the audit.
 
+### Result cache
+
+`WithResultCache(store kv.TTLStore)` turns on the read-tier result
+cache, off by default on a bare bridge (the `api` service turns it on
+with a memory store; see
+[result cache](transport-api.md#result-cache)). It reaches `rest`
+only, and a leaf only when it declares `kit/side-effect: read` and
+`AnnotationCacheTTL` (`kit/cache-ttl`, a Go duration greater than
+zero); `Leaf.CacheTTL()` reports it. `Admit` looks the call up after
+the permission gate (invocation slot 8); on a hit `Run` answers the
+stored result without running, and `Stream` answers it as the `done`
+event. On a miss `Run` runs once for every identical call in flight
+and stores a successful result. `Admission.Cache()` then returns a
+`CacheInfo` (ETag, remaining max-age, private, hit) for the transport
+to render. Every call is audited; one answered without running carries
+`Meta.Extra["cache"]` of `hit` or `coalesced`.
+
 ## Body limits
 
 Every HTTP entry point caps the request body by default at
