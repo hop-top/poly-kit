@@ -76,6 +76,7 @@ func buildMinimalSpec(cfg ProjectionConfig) map[string]any {
 		for k, v := range d.openAPIExtensions() {
 			op[k] = v
 		}
+		describeCacheMinimal(op, d)
 		entry[method] = op
 		if cfg.streams() {
 			sop := minimalStreamOp(d)

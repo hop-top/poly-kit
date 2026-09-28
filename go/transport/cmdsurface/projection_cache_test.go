@@ -1,6 +1,7 @@
 package cmdsurface_test
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"sync/atomic"
@@ -19,6 +20,24 @@ import (
 func cachedProjection(t *testing.T, auth api.AuthFunc) (url string, reads, writes *atomic.Int64) {
 	t.Helper()
 	reads, writes = &atomic.Int64{}, &atomic.Int64{}
+	store := memory.New()
+	t.Cleanup(func() { _ = store.Close() })
+	b := cmdsurface.New(cacheTree(reads, writes), cmdsurface.WithResultCache(store))
+	b.Expose("*", cmdsurface.SurfaceREST)
+	r := api.NewRouter()
+	var opts []cmdsurface.ProjectionOption
+	if auth != nil {
+		opts = append(opts, cmdsurface.WithProjectionAuth(auth))
+	}
+	if err := cmdsurface.MountProjection(b, r, opts...); err != nil {
+		t.Fatal(err)
+	}
+	return serve(t, r), reads, writes
+}
+
+// cacheTree is a tool whose widget list (read) and widget add (write)
+// both declare a one-minute kit/cache-ttl, counting their runs.
+func cacheTree(reads, writes *atomic.Int64) *cobra.Command {
 	root := &cobra.Command{Use: "tool"}
 	widget := &cobra.Command{Use: "widget"}
 	widget.AddCommand(
@@ -48,20 +67,7 @@ func cachedProjection(t *testing.T, auth api.AuthFunc) (url string, reads, write
 		},
 	)
 	root.AddCommand(widget)
-
-	store := memory.New()
-	t.Cleanup(func() { _ = store.Close() })
-	b := cmdsurface.New(root, cmdsurface.WithResultCache(store))
-	b.Expose("*", cmdsurface.SurfaceREST)
-	r := api.NewRouter()
-	var opts []cmdsurface.ProjectionOption
-	if auth != nil {
-		opts = append(opts, cmdsurface.WithProjectionAuth(auth))
-	}
-	if err := cmdsurface.MountProjection(b, r, opts...); err != nil {
-		t.Fatal(err)
-	}
-	return serve(t, r), reads, writes
+	return root
 }
 
 func request(t *testing.T, method, url string, header map[string]string) *http.Response {
@@ -158,5 +164,63 @@ func TestProjectionCache_PrivatePerPrincipal(t *testing.T) {
 	}
 	if n := reads.Load(); n != 2 {
 		t.Fatalf("widget list ran %d times for two principals, want 2", n)
+	}
+}
+
+// TestProjectionCache_SpecDeclaresRevalidation pins that the served
+// spec, huma's or the minimal one, declares 304, ETag and Cache-Control
+// on the read the cache answers, and nowhere the cache cannot answer:
+// the write that claims a TTL, or any route of a bridge with no store.
+func TestProjectionCache_SpecDeclaresRevalidation(t *testing.T) {
+	routers := map[string]func() *api.Router{
+		"huma": func() *api.Router {
+			return api.NewRouter(api.WithOpenAPI(api.OpenAPIConfig{Title: "tool", Version: "1.0.0"}))
+		},
+		"minimal": func() *api.Router { return api.NewRouter() },
+	}
+	for name, newRouter := range routers {
+		t.Run(name, func(t *testing.T) {
+			for _, withStore := range []bool{true, false} {
+				var opts []cmdsurface.Option
+				if withStore {
+					store := memory.New()
+					t.Cleanup(func() { _ = store.Close() })
+					opts = append(opts, cmdsurface.WithResultCache(store))
+				}
+				b := cmdsurface.New(cacheTree(&atomic.Int64{}, &atomic.Int64{}), opts...)
+				b.Expose("*", cmdsurface.SurfaceREST)
+				r := newRouter()
+				if err := cmdsurface.MountProjection(b, r); err != nil {
+					t.Fatal(err)
+				}
+				resp := request(t, http.MethodGet, serve(t, r)+api.OpenAPISpecPath, nil)
+				var doc struct {
+					Paths map[string]map[string]struct {
+						Parameters []struct{ Name, In string }
+						Responses  map[string]struct {
+							Headers map[string]any
+						}
+					}
+				}
+				if err := json.Unmarshal([]byte(readBody(t, resp)), &doc); err != nil {
+					t.Fatal(err)
+				}
+
+				list := doc.Paths["/v1/commands/widget/list"]["get"]
+				_, has304 := list.Responses["304"]
+				_, hasETag := list.Responses["200"].Headers["ETag"]
+				hasINM := false
+				for _, p := range list.Parameters {
+					hasINM = hasINM || (p.In == "header" && p.Name == "If-None-Match")
+				}
+				if has304 != withStore || hasETag != withStore || hasINM != withStore {
+					t.Errorf("store %v: widget list 304 %v, ETag %v, If-None-Match %v; want all %v",
+						withStore, has304, hasETag, hasINM, withStore)
+				}
+				if _, ok := doc.Paths["/v1/commands/widget/add"]["post"].Responses["304"]; ok {
+					t.Errorf("store %v: widget add declares 304; a write is never cached", withStore)
+				}
+			}
+		})
 	}
 }

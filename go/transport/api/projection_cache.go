@@ -46,9 +46,9 @@ func writeCacheHeaders(w http.ResponseWriter, r *http.Request, d CacheDirective)
 		return false
 	}
 	h := w.Header()
-	h.Set("ETag", d.etag())
-	h.Set("Cache-Control", d.cacheControl())
-	if !noneMatchHits(r.Header.Values("If-None-Match"), d.ETag) {
+	h.Set(headerETag, d.etag())
+	h.Set(headerCacheControl, d.cacheControl())
+	if !noneMatchHits(r.Header.Values(headerIfNoneMatch), d.ETag) {
 		return false
 	}
 	w.WriteHeader(http.StatusNotModified)

@@ -91,6 +91,7 @@ func describeCommandOp(spec *huma.OpenAPI, d CommandDescriptor) {
 	} else {
 		op.RequestBody = requestBodyFor(d)
 	}
+	describeCacheOp(op, d)
 	spec.AddOperation(op)
 }
 

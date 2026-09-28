@@ -201,6 +201,14 @@ type CommandDescriptor struct {
 	// AuthRequired reports that the command declares
 	// kit/auth-required.
 	AuthRequired bool `json:"auth_required,omitempty"`
+
+	// Cacheable reports that the command's GET route may answer from a
+	// result cache: with ETag and Cache-Control on 200, and 304 Not
+	// Modified on a matching If-None-Match (see [CacheDirective]). The
+	// OpenAPI document declares those on the operation. Whoever sets
+	// [CommandResult].Cache for the command sets it; a command
+	// projected onto POST ignores it.
+	Cacheable bool `json:"-"`
 }
 
 // Confirmation flag names. They are the command's OWN flags, the same

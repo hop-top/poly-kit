@@ -623,7 +623,9 @@ confirmation flags where a command is gated (`confirm` as an enum of
 its accepted values), and `[destructive]` in the summary
 so danger is visible in a generated client's method list. Every
 operation carries `x-kit-side-effect` and `x-kit-side-effect-source`,
-the discovery fields, in the minimal spec too. Operation
+the discovery fields, in the minimal spec too. A read the
+[result cache](#result-cache) answers also declares `If-None-Match`,
+`ETag`, `Cache-Control` and `304`, in both specs. Operation
 ids are `commands_<path_with_underscores>`.
 
 Only handlers registered on the raw router serve traffic; the huma
@@ -791,6 +793,7 @@ What is cached, and for whom:
 | Identical calls in flight | wait for the one already running and share its result, instead of running again. A waiter whose client leaves stops waiting; the run goes on |
 | Audit | every call is audited; one answered without running carries `cache: "hit"` (from the store) or `cache: "coalesced"` (shared a run in flight) |
 | Streams | the `/stream` route of a cached read answers a stored result as its final frame; a miss streams live and stores nothing |
+| OpenAPI | `/openapi.json` declares the cache on each read it answers: an optional `If-None-Match` header, `ETag` and `Cache-Control` on `200`, and a `304` with no body. The full and the [minimal](#openapi) spec say the same. A read without `kit/cache-ttl`, or a service with the cache off, declares none of it. The `/stream` operation is unchanged: a cached answer is the same event stream, with no `event` frames before the terminal `result` |
 
 A claimed identity shares the anonymous entry, so a command whose
 output depends on who calls — it reads `Meta.Caller`, the tenant or
@@ -826,8 +829,10 @@ TTL), a file backend without `path`, or `max_bytes` on anything but
 
 A bridge you assemble yourself turns the cache on with
 `cmdsurface.WithResultCache(store)`; [`MountProjection`](cmdsurface.md)
-then renders the headers. An executor of your own sets
-`CommandResult.Cache` (an `api.CacheDirective`) for the same effect.
+then renders the headers and declares them in the spec. An executor of
+your own sets `CommandResult.Cache` (an `api.CacheDirective`) for the
+same effect, and `CommandDescriptor.Cacheable` on the command so the
+spec declares it.
 
 ## Related pages
 
