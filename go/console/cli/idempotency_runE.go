@@ -104,7 +104,7 @@ func wrapIdempotencyRunE(
 		buf := &bytes.Buffer{}
 		origOut := cmd.OutOrStdout()
 		cmd.SetOut(io.MultiWriter(origOut, buf))
-		defer cmd.SetOut(origOut)
+		defer restoreOut(cmd, origOut)
 
 		err := orig(cmd, args)
 		// Skip recording when a flag-validator rejected the call
@@ -125,6 +125,30 @@ func wrapIdempotencyRunE(
 		})
 		return err
 	}
+}
+
+// restoreOut puts back the writer cmd wrote to before the capture.
+// A command that inherited its writer from an ancestor inherits it
+// again, rather than keeping the resolved writer as its own: a served
+// runner points the root at each invocation's buffer, and a leaf
+// pinned to one invocation's buffer would swallow every later
+// invocation's output.
+func restoreOut(cmd *cobra.Command, orig io.Writer) {
+	cmd.SetOut(nil)
+	if !sameWriter(cmd.OutOrStdout(), orig) {
+		cmd.SetOut(orig)
+	}
+}
+
+// sameWriter reports whether a and b are the same writer. Writers
+// whose dynamic type is not comparable are never the same.
+func sameWriter(a, b io.Writer) (same bool) {
+	defer func() {
+		if recover() != nil {
+			same = false
+		}
+	}()
+	return a == b
 }
 
 // exitCodeFor extracts a useful exit code from err. Unwraps to find
