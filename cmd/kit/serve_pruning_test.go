@@ -64,7 +64,7 @@ func newPruningTestServer(t *testing.T) (*httptest.Server, func()) {
 // fork tail that is then abandoned via the route, leaving a single
 // live head (the linear tip) plus a dead fork-tail head — the
 // canonical setup for exercising prune-fires-on-abandoned-subtree
-// (decision #10) through the wire.
+// (a dead head's subtree becomes prunable) through the wire.
 //
 // Topology:
 //
@@ -96,7 +96,7 @@ func seedAbandonedForkTail(t *testing.T, base, docType, id string) int {
 
 // TestServePrune_HappyPath: doc with abandoned-fork-tail, POST prune
 // with policy → 200 with non-empty versions_removed (the dead
-// subtree is now prunable per decision #10).
+// subtree is now prunable: only live heads anchor the retain floor).
 //
 // Uses max_age_seconds=1 + a >1s sleep to get every version under
 // the bound; the filter then collapses to "not in retain_floor",
@@ -108,7 +108,7 @@ func seedAbandonedForkTail(t *testing.T, base, docType, id string) int {
 // has the highest seq (most recent) — position-from-tail is 1, not
 // > 1, so the count bound doesn't exclude it. The age bound is the
 // load-bearing knob. Sub-second policy isn't expressible through the
-// wire (max_age_seconds is whole seconds per spec §5), so the small
+// wire (max_age_seconds is whole seconds), so the small
 // sleep is the price of admission for an HTTP-driven happy path.
 func TestServePrune_HappyPath(t *testing.T) {
 	srv, cleanup := newPruningTestServer(t)
@@ -146,8 +146,8 @@ func TestServePrune_NoOpEmptyArray(t *testing.T) {
 
 	seedDoc(t, srv.URL, "notes", "n1") // 3 linear versions, single live head.
 
-	// max_versions=10 — nothing exceeds, so no-op. Spec §5 calls for
-	// empty []string array, not null.
+	// max_versions=10 — nothing exceeds, so no-op. The protocol calls
+	// for an empty []string array, not null.
 	resp := doJSON(t, "POST", srv.URL+"/notes/n1/prune", map[string]any{
 		"max_versions": 10,
 	})
@@ -172,7 +172,7 @@ func TestServePrune_NoOpEmptyArray(t *testing.T) {
 	}
 }
 
-// TestServePrune_BothZero400: spec §5 explicitly rejects "policy
+// TestServePrune_BothZero400: the protocol explicitly rejects "policy
 // with both bounds zero" — the no-op case is shape-ambiguous against
 // "policy misconfigured" otherwise.
 func TestServePrune_BothZero400(t *testing.T) {
@@ -275,7 +275,7 @@ func TestServeAbandon_HappyPath(t *testing.T) {
 }
 
 // TestServeAbandon_Idempotent: abandoning the same head twice
-// returns 200 both times (spec §5 idempotent contract).
+// returns 200 both times (abandon is idempotent).
 func TestServeAbandon_Idempotent(t *testing.T) {
 	srv, cleanup := newPruningTestServer(t)
 	defer cleanup()
@@ -338,7 +338,7 @@ func TestServeAbandon_UnknownDoc404(t *testing.T) {
 }
 
 // TestServeAbandon_UnknownSeq404: known doc, but seq does not exist
-// → 404. Spec §5 lumps "doc unknown" and "seq unknown for known
+// → 404. The protocol lumps "doc unknown" and "seq unknown for known
 // doc" under the same 404 status.
 func TestServeAbandon_UnknownSeq404(t *testing.T) {
 	srv, cleanup := newPruningTestServer(t)

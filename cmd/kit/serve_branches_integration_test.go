@@ -22,7 +22,7 @@ import (
 //
 //   - TestServeBranching_FullCycle: exercises Create -> Update^2 ->
 //     Fork -> Update -> Merge against the live HTTP routes and asserts
-//     the wire shapes from spec §5 (heads count, parent_ids on the
+//     the wire shapes from engine-protocol.md (heads count, parent_ids on the
 //     merge tip, version count via History, topology payload shape).
 //
 //   - TestServeBranching_RestartPreservesBranchedHistory: builds a
@@ -33,7 +33,7 @@ import (
 //     state on the SQLite backend.
 //
 //   - TestServeBranching_ErrorMapping: out-of-range fromSeq/sourceSeq/
-//     targetSeq + missing-doc paths. Status codes match spec §5
+//     targetSeq + missing-doc paths. Status codes match engine-protocol.md
 //     (404 for missing document, 409 for out-of-range seq) and the
 //     error envelope mirrors the existing /revert handler shape
 //     ({"error": "..."}).
@@ -70,7 +70,8 @@ type versionWire struct {
 }
 
 // topologyEntry is the per-version wire shape inside the
-// History?topology=1 response (spec §5).
+// History?topology=1 response (engine-protocol.md §"History with
+// Topology").
 type topologyEntry struct {
 	VersionID string   `json:"version_id"`
 	Seq       int      `json:"seq"`
@@ -412,7 +413,7 @@ func TestServeBranching_RestartPreservesBranchedHistory(t *testing.T) {
 		}
 
 		gotTopo := c.historyTopology(id)
-		// Heads slice is order-deterministic on the wire (spec §5
+		// Heads slice is order-deterministic on the wire (the protocol
 		// shows an array; the engine returns ascending seq), so equal
 		// slices are required, not just equal sets. Same for versions.
 		if !reflect.DeepEqual(gotTopo, preTopology) {
@@ -439,8 +440,8 @@ func TestServeBranching_ErrorMapping(t *testing.T) {
 	c.update(id, fmt.Sprintf(`{"id":%q,"title":"v2"}`, id))
 
 	// envelope is the existing error shape across /history and /revert
-	// handlers ({"error": "..."} via jsonError). Spec §5 doesn't lock a
-	// new envelope, so we mirror what's already on the wire.
+	// handlers ({"error": "..."} via jsonError). The branching routes add
+	// no new envelope, so we mirror what's already on the wire.
 	type envelope struct {
 		Error string `json:"error"`
 	}
@@ -464,7 +465,7 @@ func TestServeBranching_ErrorMapping(t *testing.T) {
 		}
 	}
 
-	// 2. Fork with from_seq out of range → 409 + envelope (spec §5).
+	// 2. Fork with from_seq out of range → 409 + envelope.
 	{
 		url := fmt.Sprintf("%s/notes/%s/fork", c.base, id)
 		body, _ := json.Marshal(forkRequest{FromSeq: 999})
@@ -531,7 +532,7 @@ func TestServeBranching_ErrorMapping(t *testing.T) {
 		}
 	}
 
-	// 6. GET /branches on a missing doc → 404 (spec §5).
+	// 6. GET /branches on a missing doc → 404.
 	{
 		url := fmt.Sprintf("%s/notes/missing/branches", c.base)
 		resp := c.authedDo("GET", url, "", nil)

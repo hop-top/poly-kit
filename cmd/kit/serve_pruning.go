@@ -17,12 +17,12 @@ import (
 //	POST /:type/:id/prune    → apply RetentionPolicy, drop prunable versions.
 //	POST /:type/:id/abandon  → mark a head dead (filtered out by ?live=1).
 //
-// The third route in spec §5 — GET /:type/:id/branches?live=1 —
+// The third route in that section — GET /:type/:id/branches?live=1 —
 // extends the existing branches handler in serve_branches.go rather
 // than introducing a parallel route, since the wire shape is
 // identical and only the head-set is filtered.
 //
-// Wire shapes mirror the locked spec §5 byte-for-byte:
+// Wire shapes mirror engine-protocol.md byte-for-byte:
 //   - /prune body: max_versions, max_age_seconds (both int; either
 //     may be omitted/0 meaning "unlimited"; both 0 → 400). seconds
 //     not nanoseconds because operators rarely express retention in
@@ -44,7 +44,7 @@ func registerPruningRoutes(router routeRegistrar, vds *store.VersionedDocumentSt
 			jsonError(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		// Spec §5: explicit reject when both bounds are zero. A
+		// Explicit reject when both bounds are zero. A
 		// silent 200 with empty result would be ambiguous against the
 		// legitimate no-op case (policy set but nothing exceeds it).
 		if body.MaxVersions == 0 && body.MaxAgeSeconds == 0 {
@@ -63,7 +63,7 @@ func registerPruningRoutes(router routeRegistrar, vds *store.VersionedDocumentSt
 		}
 		// Normalize empty slice to non-nil for stable JSON: the
 		// no-op case must wire as `"versions_removed": []`, not
-		// `null` (spec §5 example shape).
+		// `null` (the documented example shape).
 		removed := result.VersionsRemoved
 		if removed == nil {
 			removed = []string{}
@@ -98,7 +98,7 @@ func registerPruningRoutes(router routeRegistrar, vds *store.VersionedDocumentSt
 			writeAbandonError(w, err)
 			return
 		}
-		// Spec §5: empty body, 200 status. Idempotent — repeated
+		// Empty body, 200 status. Idempotent — repeated
 		// abandons of the same head all return 200.
 		w.WriteHeader(http.StatusOK)
 	})
@@ -106,7 +106,7 @@ func registerPruningRoutes(router routeRegistrar, vds *store.VersionedDocumentSt
 
 // pruneRequest is the wire shape of POST /:type/:id/prune. Both
 // fields are optional; zero means "unlimited on this dimension."
-// MaxAgeSeconds is in seconds (not nanoseconds) per spec §5 — the
+// MaxAgeSeconds is in whole seconds (not nanoseconds) on the wire — the
 // handler converts to time.Duration for the engine API.
 type pruneRequest struct {
 	MaxVersions   int   `json:"max_versions"`
@@ -130,11 +130,11 @@ type abandonRequest struct {
 }
 
 // writePruningError maps engine errors from
-// [store.VersionedDocumentStore.Prune] to HTTP status codes per spec
-// §5: 404 if the document has no recorded history; otherwise 500
-// (the prune algorithm doesn't surface other documented error
-// classes today — refcount underflow is corruption-class and
-// belongs in a 500).
+// [store.VersionedDocumentStore.Prune] to HTTP status codes per
+// engine-protocol.md §"Prune": 404 if the document has no recorded
+// history; otherwise 500 (the prune algorithm doesn't surface other
+// documented error classes today — refcount underflow is
+// corruption-class and belongs in a 500).
 func writePruningError(w http.ResponseWriter, err error) {
 	msg := err.Error()
 	if strings.Contains(msg, "no history") {
@@ -146,7 +146,7 @@ func writePruningError(w http.ResponseWriter, err error) {
 
 // writeAbandonError maps engine errors from
 // [store.VersionedDocumentStore.Abandon] to HTTP status codes per
-// spec §5:
+// engine-protocol.md §"Abandon":
 //
 //   - 409 for [store.ErrNotAHead] (target seq has children) and
 //     [store.ErrCannotAbandonLastLiveHead] (would empty live-heads).

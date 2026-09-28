@@ -106,7 +106,7 @@ func seedDoc(t *testing.T, base, docType, id string) {
 }
 
 // TestServeBranches_ForkHappyPath exercises POST /:type/:id/fork
-// with a valid from_seq, asserting the spec §5 wire shape (201,
+// with a valid from_seq, asserting the engine-protocol.md wire shape (201,
 // version_id, seq, parent_ids, timestamp).
 func TestServeBranches_ForkHappyPath(t *testing.T) {
 	srv, cleanup := newBranchingTestServer(t)
@@ -311,7 +311,7 @@ func TestServeBranches_MergeInvalid(t *testing.T) {
 
 // TestServeBranches_HistoryTopology asserts that GET
 // /:type/:id/history?topology=1 returns the topology envelope per
-// spec §5: top-level `heads` array of version IDs plus per-version
+// engine-protocol.md: top-level `heads` array of version IDs plus per-version
 // entries with `version_id`, `seq`, `parent_ids`, `timestamp`.
 func TestServeBranches_HistoryTopology(t *testing.T) {
 	srv, cleanup := newBranchingTestServer(t)

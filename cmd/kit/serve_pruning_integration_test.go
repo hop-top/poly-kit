@@ -14,7 +14,7 @@ import (
 )
 
 // HTTP integration coverage for pruning is gated on the
-// /:type/:id/abandon and /:type/:id/prune routes from spec §5, which
+// /:type/:id/abandon and /:type/:id/prune routes, which
 // are owned by a parallel workstream and are not present in serve.go
 // yet. Rather than block on the route landing — and rather than test
 // routes that don't exist — this file drives the restart-durability
@@ -28,8 +28,8 @@ import (
 // This is the same shape as serve_restart_test.go's TestServe_
 // RestartPreservesHistory but at the engine layer rather than the
 // wire layer. When the /abandon and /prune routes land, a sibling
-// HTTP-driven version of this test should be added — the spec §7
-// "kit serve restart preserves post-prune state" line item is
+// HTTP-driven version of this test should be added — the
+// "kit serve restart preserves post-prune state" requirement is
 // satisfied here for the durability question (does the live bit and
 // the deleted-versions state survive Close + reopen?). The HTTP
 // wire-equivalence question is a different test and a different

@@ -51,8 +51,8 @@ func registerBranchingRoutes(router routeRegistrar, vds *store.VersionedDocument
 		parentIdx, _ := loadParentsIndex(r.Context(), vs, docType, id)
 
 		// Branches returns ascending-seq for deterministic iteration
-		// (engine/store contract); spec §5 wants most-recent-first on
-		// the wire. Reverse here.
+		// (engine/store contract); engine-protocol.md wants
+		// most-recent-first on the wire. Reverse here.
 		out := make([]map[string]any, 0, len(heads))
 		for i := len(heads) - 1; i >= 0; i-- {
 			h := heads[i]
@@ -131,9 +131,9 @@ func registerBranchingRoutes(router routeRegistrar, vds *store.VersionedDocument
 }
 
 // branchEntry is the per-version envelope used by /branches, /fork,
-// /merge, and the topology variant of /history. Matches spec §5
-// byte-for-byte: version_id, seq, parent_ids (always non-nil for
-// JSON), timestamp.
+// /merge, and the topology variant of /history. Matches
+// engine-protocol.md §"Branching" byte-for-byte: version_id, seq,
+// parent_ids (always non-nil for JSON), timestamp.
 //
 // Dead versions (Live=false) carry an
 // explicit "live": false key. Live=true versions omit the key
@@ -204,9 +204,9 @@ func loadParentsIndex(ctx context.Context, vs store.VersionStore, docType, id st
 }
 
 // writeBranchingError maps store errors from Fork/Merge to HTTP
-// status codes per spec §5: 404 if the document has no history,
-// 409 if a referenced seq is out of range. All other errors fall
-// back to 500 so caller bugs surface loudly.
+// status codes per engine-protocol.md §"Branching": 404 if the
+// document has no history, 409 if a referenced seq is out of range.
+// All other errors fall back to 500 so caller bugs surface loudly.
 func writeBranchingError(w http.ResponseWriter, err error) {
 	msg := err.Error()
 	switch {

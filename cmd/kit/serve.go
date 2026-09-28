@@ -542,8 +542,8 @@ func registerDocumentRoutes(router routeRegistrar, vds *store.VersionedDocumentS
 }
 
 // registerHistoryRoutes wires GET /:type/:id/history and
-// POST /:type/:id/revert per docs/engine-protocol.md §"Document
-// History" / §"Revert Document". The wire shape uses `version`
+// POST /:type/:id/revert per docs/adopters/reference/engine-protocol.md
+// §"Document History" / §"Revert Document". The wire shape uses `version`
 // (sequence number) on the boundary; internally [store.Version]
 // uses Seq, so handlers map between the two.
 //
