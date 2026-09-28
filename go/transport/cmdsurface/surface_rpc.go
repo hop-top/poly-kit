@@ -43,7 +43,10 @@ const authHeader = "Authorization"
 type RPCOption func(*rpcConfig)
 
 type rpcConfig struct {
-	interceptors []connect.Interceptor
+	interceptors  []connect.Interceptor
+	handlerOpts   []connect.HandlerOption
+	callMeta      func(ctx context.Context, req connect.AnyRequest, claimed Meta) Meta
+	authenticated func(ctx context.Context, req connect.AnyRequest) bool
 }
 
 // WithRPCInterceptors appends interceptors run on top of the server's
@@ -52,11 +55,43 @@ func WithRPCInterceptors(ic ...connect.Interceptor) RPCOption {
 	return func(c *rpcConfig) { c.interceptors = append(c.interceptors, ic...) }
 }
 
+// WithRPCHandlerOptions passes options to the generated handler after
+// the interceptors: connect.WithReadMaxBytes to bound a request
+// message, connect.WithCompressMinBytes, and the like. Without a
+// read bound a handler reads a message of any size.
+func WithRPCHandlerOptions(opts ...connect.HandlerOption) RPCOption {
+	return func(c *rpcConfig) { c.handlerOpts = append(c.handlerOpts, opts...) }
+}
+
+// WithRPCCallMeta installs fn to supply each call's provenance: the
+// [Meta] the bridge's permission gate and audit sinks see. claimed is
+// what the client put in the Invocation's meta; fn returns the Meta
+// to run with. Surface is pinned to [SurfaceRPC] and RequestedAt is
+// stamped afterwards whatever fn returns.
+//
+// fn fills Caller and Tenant only from an identity the host verified:
+// a caller named in the request body is a claim, not a principal.
+// Without fn the claimed Meta is used as sent, which is right only
+// when every client is trusted.
+func WithRPCCallMeta(fn func(ctx context.Context, req connect.AnyRequest, claimed Meta) Meta) RPCOption {
+	return func(c *rpcConfig) { c.callMeta = fn }
+}
+
+// WithRPCAuthenticated installs the predicate the gate for
+// kit/auth-required leaves asks: whether the caller is authenticated.
+// Without it the gate accepts any call carrying an Authorization
+// header or a claimed caller, which is presence, not verification — a
+// host that authenticates calls itself supplies the real answer here.
+func WithRPCAuthenticated(fn func(ctx context.Context, req connect.AnyRequest) bool) RPCOption {
+	return func(c *rpcConfig) { c.authenticated = fn }
+}
+
 // rpcServer wires a Bridge into the generated Commands handler. It is
 // internal — callers reach it only via MountRPC.
 type rpcServer struct {
 	b     *Bridge
 	index map[string]*Leaf
+	cfg   rpcConfig
 }
 
 var _ cmdsurfacev1connect.CommandsHandler = (*rpcServer)(nil)
@@ -85,6 +120,12 @@ var _ cmdsurfacev1connect.CommandsHandler = (*rpcServer)(nil)
 //     (clients inspect ExitCode themselves);
 //   - cancels the running Stream goroutine when the client disconnects.
 //
+// Options wire the host's own gates in: WithRPCInterceptors for
+// authentication and the like, WithRPCCallMeta for the provenance the
+// host verified, WithRPCAuthenticated for the kit/auth-required gate,
+// and WithRPCHandlerOptions for a message size bound. The rpc service
+// in go/console/cli/rpcserve sets all four.
+//
 // s is required; b is required. Returns a wrapped error when either
 // is nil.
 func MountRPC(b *Bridge, s rpcServerMount, opts ...RPCOption) error {
@@ -99,7 +140,7 @@ func MountRPC(b *Bridge, s rpcServerMount, opts ...RPCOption) error {
 		o(&cfg)
 	}
 
-	srv := &rpcServer{b: b, index: indexLeaves(b)}
+	srv := &rpcServer{b: b, index: indexLeaves(b), cfg: cfg}
 
 	// Server interceptors first, then caller-supplied ones.
 	var hopts []connect.HandlerOption
@@ -108,6 +149,7 @@ func MountRPC(b *Bridge, s rpcServerMount, opts ...RPCOption) error {
 	if len(ics) > 0 {
 		hopts = append(hopts, connect.WithInterceptors(ics...))
 	}
+	hopts = append(hopts, cfg.handlerOpts...)
 
 	path, handler := cmdsurfacev1connect.NewCommandsHandler(srv, hopts...)
 	s.Handle(path, handler)
@@ -140,8 +182,8 @@ func (s *rpcServer) Invoke(
 	ctx context.Context,
 	req *connect.Request[cmdsurfacev1.Invocation],
 ) (*connect.Response[cmdsurfacev1.Result], error) {
-	inv := invocationFromProto(req.Msg)
-	leaf, cerr := s.preflight(req.Header(), &inv)
+	inv := s.invocation(ctx, req, req.Msg)
+	leaf, cerr := s.preflight(ctx, req, &inv)
 	if cerr != nil {
 		return nil, cerr
 	}
@@ -167,8 +209,8 @@ func (s *rpcServer) InvokeStream(
 	req *connect.Request[cmdsurfacev1.Invocation],
 	stream *connect.ServerStream[cmdsurfacev1.Event],
 ) error {
-	inv := invocationFromProto(req.Msg)
-	leaf, cerr := s.preflight(req.Header(), &inv)
+	inv := s.invocation(ctx, req, req.Msg)
+	leaf, cerr := s.preflight(ctx, req, &inv)
 	if cerr != nil {
 		return cerr
 	}
@@ -223,14 +265,38 @@ func (s *rpcServer) InvokeStream(
 	}
 }
 
+// invocation decodes the wire Invocation and resolves its Meta
+// through the WithRPCCallMeta hook when one is installed.
+func (s *rpcServer) invocation(
+	ctx context.Context, req connect.AnyRequest, m *cmdsurfacev1.Invocation,
+) Invocation {
+	inv := invocationFromProto(m)
+	if s.cfg.callMeta != nil {
+		inv.Meta = s.cfg.callMeta(ctx, req, inv.Meta)
+	}
+	return inv
+}
+
+// authenticated answers the kit/auth-required gate: the installed
+// predicate, or, without one, the presence of an Authorization header
+// or a caller.
+func (s *rpcServer) authenticated(ctx context.Context, req connect.AnyRequest, inv *Invocation) bool {
+	if s.cfg.authenticated != nil {
+		return s.cfg.authenticated(ctx, req)
+	}
+	return req.Header().Get(authHeader) != "" || inv.Meta.Caller != ""
+}
+
 // preflight validates leaf existence, surface enablement, and the
 // gating headers. It overwrites inv.Path with the resolved leaf path
 // and forces inv.Meta.Surface = SurfaceRPC. Returns the resolved
 // leaf or a Connect error.
 func (s *rpcServer) preflight(
-	header http.Header,
+	ctx context.Context,
+	req connect.AnyRequest,
 	inv *Invocation,
 ) (*Leaf, *connect.Error) {
+	header := req.Header()
 	if inv == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("cmdsurface: nil invocation"))
@@ -251,7 +317,7 @@ func (s *rpcServer) preflight(
 				ErrSurfaceNotEnabled, leaf.PathKey(), SurfaceRPC))
 	}
 	if leaf.Class.AuthRequired {
-		if header.Get(authHeader) == "" && inv.Meta.Caller == "" {
+		if !s.authenticated(ctx, req, inv) {
 			return nil, connect.NewError(connect.CodeUnauthenticated,
 				fmt.Errorf("auth required: %s", leaf.PathKey()))
 		}
