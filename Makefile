@@ -403,8 +403,9 @@ lint-adr-refs: ## Guard against ADR-number mentions (decision records live outsi
 
 # Sibling of lint-adr-refs for everything else a reader of the repo
 # cannot open: a real home directory, a workspace-private doc, a design
-# note, working note or tracker name. The patterns and the placeholder
-# users allowed in example paths live in the script header.
+# note, working note or tracker name, or a spec/contract section or
+# decision number cited without naming its file. The patterns and the
+# placeholder users allowed in example paths live in the script header.
 lint-internal-refs: ## Guard against references to documents and paths outside the repo
 	@scripts/lint-internal-refs.sh
 

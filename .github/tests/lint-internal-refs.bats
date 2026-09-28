@@ -102,3 +102,47 @@ run_lint() {
     run_lint
     [ "$status" -eq 0 ]
 }
+
+@test "bare spec section fails" {
+    write_tracked go/s.go "// retain floor (spe""c §3 #2)"
+    run_lint
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"go/s.go:1:"* ]]
+    [[ "$output" == *"name no document"* ]]
+}
+
+@test "bare contract section fails" {
+    write_tracked go/c.go "// second signal aborts the drain (contrac""t §\"Signals\")"
+    run_lint
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"go/c.go:1:"* ]]
+}
+
+@test "bare decision numbers fail, with or without #" {
+    write_tracked go/d.go "$(printf '%s\n' "// live heads retained (decisio""n #10)" \
+        "// anonymous branches (spec model, decisio""n 1)")"
+    run_lint
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"go/d.go:1:"* ]]
+    [[ "$output" == *"go/d.go:2:"* ]]
+}
+
+@test "a file name in the path does not excuse a bare citation" {
+    write_tracked docs/guide.md "Heads are retained (spe""c §3)."
+    run_lint
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"docs/guide.md:1:"* ]]
+}
+
+@test "citations that name an in-repo file pass" {
+    write_tracked go/ok.go "$(printf '%s\n' \
+        '// wired per serve-lifecycle.md §"Middleware"' \
+        "// drain rule (serve-lifecycle.md contrac""t §\"Signals\")" \
+        "// payload bound (kit-init-pr-wiring.md spe""c §2)" \
+        "// retained per decisio""n #4 in docs/decisions.md" \
+        '// token list per RFC 7519 §4.1.3')"
+    write_tracked docs/x.md \
+        "- [serve lifecycle contrac""t §\"The rpc service\"](contracts/serve-lifecycle.md#the-rpc-service)"
+    run_lint
+    [ "$status" -eq 0 ]
+}

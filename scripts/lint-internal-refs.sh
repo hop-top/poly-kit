@@ -9,13 +9,17 @@
 # names something nobody can check. Point at the in-repo doc that holds
 # the rule, or state the rationale inline.
 #
-# Two checks:
+# Three checks:
 #
 #   1. Home-directory paths. /Users/<name> and /home/<name> are allowed
 #      only for placeholder users (alice, me, testuser, ...), so examples
 #      and fixtures stay possible but a real account never lands.
 #   2. Names of documents and trees that were never in the repo (see
 #      FORBIDDEN below).
+#   3. Section and decision citations that name no document (see
+#      CITATIONS below). A section mark after the word spec or contract,
+#      or a numbered decision, must share its line with a file name
+#      (serve-lifecycle.md §"Signals", a Markdown link to the file).
 #
 # Numbered decision-record mentions are covered by `make lint-adr-refs`.
 #
@@ -64,6 +68,16 @@ FORBIDDEN=(
   'AGENTS[.]md(#| [§])'
 )
 
+# Citations that must name the document they cite, one ERE each. A
+# hit passes when the same line names a file (NAMES_FILE).
+CITATIONS=(
+  # section of a spec or contract
+  '(^|[^A-Za-z])([Ss]pe[c](ification)?s?|[Cc]ontrac[t]s?) §'
+  # numbered decision, with or without # (one, several, dashed)
+  '(^|[^A-Za-z])[Dd]ecisio[n]s?[ -]#?[0-9]'
+)
+NAMES_FILE='[A-Za-z0-9_-][.](md|go|proto|ya?ml|json|rs|py|ts|php|sh|toml)([^A-Za-z0-9]|$)'
+
 SCOPE=(-- . ':(exclude,glob)**/CHANGELOG.md')
 
 found=0
@@ -107,6 +121,22 @@ for pat in "${FORBIDDEN[@]}"; do
   hits="$(run_grep "$pat")"
   if [ -n "$hits" ]; then
     printf '%s\n' "$hits"
+    found=1
+  fi
+done
+
+for pat in "${CITATIONS[@]}"; do
+  hits="$(run_grep "$pat")"
+  [ -n "$hits" ] || continue
+  # Match the file name in the line's text, not in the path:line: prefix.
+  bare="$(printf '%s\n' "$hits" | awk -v names="$NAMES_FILE" '{
+    text = $0
+    sub(/^[^:]*:[0-9]+:/, "", text)
+    if (text !~ names) print
+  }')"
+  if [ -n "$bare" ]; then
+    printf '%s\n' "$bare"
+    echo "error: section or decision citations above name no document; name the in-repo file on the same line, or state the rule inline." >&2
     found=1
   fi
 done
