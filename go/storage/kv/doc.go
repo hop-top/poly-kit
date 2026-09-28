@@ -12,8 +12,9 @@
 //
 //	store, err := kv.Open(kv.Config{Backend: "sqlite", Path: "cache.db"})
 //
-// kit ships four drivers, each registering the matching backend name:
+// kit ships five drivers, each registering the matching backend name:
 //
+//	kv/memory    "memory"    in-process, bounded, also a TTLStore
 //	kv/sqlite    "sqlite"    file-backed, also a TTLStore
 //	kv/badger    "badger"    directory-backed, also a TTLStore
 //	kv/etcd      "etcd"      distributed etcd cluster
@@ -26,7 +27,7 @@
 // while loopback, unix sockets and the local file backends stay reachable.
 //
 // Drivers opt in by registering with RegisterBackendContext rather than
-// RegisterBackend, and all four shipped drivers do. Open keeps its
+// RegisterBackend, and all five shipped drivers do. Open keeps its
 // signature and simply supplies a background context, so it connects
 // without consulting the policy; prefer OpenContext wherever a context is
 // at hand. A third-party driver registered the old way still works —

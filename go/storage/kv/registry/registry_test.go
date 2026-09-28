@@ -27,6 +27,7 @@ func TestOpenNamesDriverPackageWhenUnimported(t *testing.T) {
 		backend string
 		wantPkg string
 	}{
+		{"memory", "hop.top/kit/go/storage/kv/memory"},
 		{"sqlite", "hop.top/kit/go/storage/kv/sqlite"},
 		{"badger", "hop.top/kit/go/storage/kv/badger"},
 		{"etcd", "hop.top/kit/go/storage/kv/etcd"},

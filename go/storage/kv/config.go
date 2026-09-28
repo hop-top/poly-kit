@@ -13,8 +13,8 @@ import (
 // rejects a Config that omits what it needs. The zero value is not usable —
 // Backend is always required.
 type Config struct {
-	// Backend names the driver to open: "sqlite", "badger", "etcd" or
-	// "tidb". A name becomes valid once its driver package is imported
+	// Backend names the driver to open: "memory", "sqlite", "badger",
+	// "etcd" or "tidb". A name becomes valid once its driver package is imported
 	// (see the package doc); Backends lists what is registered.
 	Backend string
 
@@ -142,6 +142,7 @@ func OpenContext(ctx context.Context, cfg Config) (Store, error) {
 // registers each, so an unimported driver names its own remedy instead of
 // looking like a typo.
 var driverPackages = map[string]string{
+	"memory": "hop.top/kit/go/storage/kv/memory",
 	"sqlite": "hop.top/kit/go/storage/kv/sqlite",
 	"badger": "hop.top/kit/go/storage/kv/badger",
 	"etcd":   "hop.top/kit/go/storage/kv/etcd",
