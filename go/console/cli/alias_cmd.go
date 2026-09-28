@@ -38,7 +38,7 @@ func (r *Root) AliasesCmd() *cobra.Command {
 // AliasCmd returns a command group for managing aliases backed by an
 // alias.Store. Includes list (default), add, and remove subcommands.
 //
-// The returned command is self-annotated for §4 (Layer-A)
+// The returned command is self-annotated for Layer-A
 // conformance: every leaf carries kit/side-effect + Long, and the
 // group node itself is marked kit/top-level-verb because it sits at
 // depth-1 under adopter roots. Auto-applied verb defaults handle

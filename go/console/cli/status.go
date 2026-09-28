@@ -350,7 +350,7 @@ func (s StatusSection) toError() error {
 }
 
 // buildStatusCmd builds the `<tool> status` cobra command and
-// self-annotates it for §4 conformance.
+// self-annotates it for Layer-A conformance.
 func buildStatusCmd(r *Root, cfg StatusConfig) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",

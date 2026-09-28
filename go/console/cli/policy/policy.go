@@ -1,5 +1,5 @@
-// Package policy implements kit's delegation-safety policy engine
-// (cli-conventions-with-kit.md §8.6). Adopter tools wire enforcement
+// Package policy implements kit's delegation-safety policy engine.
+// Adopter tools wire enforcement
 // once via cli.WithPolicy; this package owns:
 //
 //   - Policy: the loaded YAML shape (allow / max_ops / require_confirm)
@@ -35,9 +35,9 @@ const (
 )
 
 // Policy declares per-side-effect-class rules. Loaded from YAML in
-// $XDG_CONFIG_HOME/<tool>/policies/<name>.yaml per §8.6.
+// $XDG_CONFIG_HOME/<tool>/policies/<name>.yaml.
 //
-// Field semantics (locked by §8.6):
+// Field semantics (locked):
 //   - Allow: per-side-effect verb glob list. The empty list under a
 //     class categorically refuses that class (e.g.
 //     `destructive: []` blocks every destructive command).

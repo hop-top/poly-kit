@@ -24,8 +24,6 @@ func WithIdempotencyStore(store idemstore.Store) func(*Root) {
 // the delegation policy engine read this tag to decide whether
 // duplicate-detection (--idempotency-key) is required and whether the
 // runtime should auto-record-and-replay results.
-//
-// See ~/.ops/docs/cli-conventions-with-kit.md §8.5.
 type Idempotency string
 
 const (
@@ -46,7 +44,7 @@ const (
 
 // idempotentAnnotation is the cobra annotation key kit reads to
 // discover the declared idempotency class. Reserved under the kit/
-// prefix per §3.5 of cli-conventions-with-kit.md.
+// prefix, which kit keeps for its own annotation keys.
 const idempotentAnnotation = "kit/idempotent"
 
 // GetIdempotency returns the declared idempotency class on a command.
@@ -73,8 +71,8 @@ func SetIdempotency(cmd *cobra.Command, i Idempotency) {
 }
 
 // validIdempotency is the closed set Root.Validate accepts. Adding a
-// new class here requires updating §8.5 of the
-// cli-conventions-with-kit.md spec first.
+// new class is a contract change: agents and the policy engine switch
+// on this set.
 var validIdempotency = map[Idempotency]bool{
 	IdempotencyYes:         true,
 	IdempotencyNo:          true,
@@ -86,7 +84,8 @@ var validIdempotency = map[Idempotency]bool{
 // runs, so adopters who accept the convention need not annotate
 // every leaf manually. Adopter-supplied tags are never overwritten.
 //
-// Locked by §8.5: any change here is a spec change.
+// Locked: agents rely on these defaults, so any change here is a
+// contract change.
 var defaultIdempotency = map[string]Idempotency{
 	"list":      IdempotencyYes,
 	"show":      IdempotencyYes,

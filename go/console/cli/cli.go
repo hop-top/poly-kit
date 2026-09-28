@@ -309,11 +309,11 @@ type Root struct {
 	// IdemStore is the idempotency-key replay backend used by the
 	// RunE middleware. nil disables replay (default); adopters wire
 	// one up via WithIdempotencyStore. Each tool MUST own its own
-	// store — cross-tool replay is out of scope by spec (§8.5).
+	// store — cross-tool replay is out of scope.
 	IdemStore idemstore.Store
 
-	// policyLoader is the loader for named --policy=<name> resolution
-	// (§8.6). nil means policy-file support is not wired; --confirm
+	// policyLoader is the loader for named --policy=<name> resolution.
+	// nil means policy-file support is not wired; --confirm
 	// and --max-ops still work without it.
 	policyLoader PolicyLoader
 	// promptSource supplies the terminal interactive prompts use.
@@ -383,7 +383,7 @@ type Root struct {
 	// reservedSnapshot() immediately after cli.New's functional
 	// opts run; queried via IsReserved during shape validation.
 	reservedSubcommands map[string]struct{}
-	// statusConfig is the StatusConfig from WithStatus (§4).
+	// statusConfig is the StatusConfig from WithStatus.
 	// Zero-value when WithStatus was not used.
 	statusConfig StatusConfig
 	// statusProviders is the registered provider map. Populated by
@@ -596,7 +596,7 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 		hideFlag(globalDryRunFlag)
 	}
 
-	// Delegation-safety globals (§8.6). Always registered: kit owns
+	// Delegation-safety globals. Always registered: kit owns
 	// the contract end-to-end. Adopters can override defaults via
 	// Config.Globals if needed, but the names are reserved.
 	pf.String(confirmFlag, "",
@@ -623,7 +623,7 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	_ = v.BindPFlag(autocorrectViperKey, pf.Lookup(autocorrectFlag))
 	hideFlag(autocorrectFlag)
 
-	// --api-version (§13). Capability negotiation: when set, hides
+	// --api-version. Capability negotiation: when set, hides
 	// commands annotated kit/since:<ver> newer than requested and
 	// refuses flags annotated kit/flag-since:<ver> newer than requested.
 	// Refused at parse time when below kit/min-api-version on the root.
@@ -873,7 +873,7 @@ func (r *Root) Execute(ctx context.Context) error {
 
 	r.applyGroupVisibility()
 
-	// --api-version (§13). Detect the requested version pre-parse so
+	// --api-version. Detect the requested version pre-parse so
 	// hidden commands are excluded from help and refused at dispatch.
 	// Filtering is opt-in: empty value means "all commands present".
 	if reqAPI := r.scanArgsForAPIVersion(); reqAPI != "" {
@@ -1282,7 +1282,7 @@ func (r *Root) checkShortLongOutputSchema(ve *ValidationError) {
 	})
 }
 
-// checkShape runs the §3 noun-verb pass: top-level verb annotation,
+// checkShape runs the noun-verb shape pass: top-level verb annotation,
 // MaxTopLevelVerbs cap, hierarchical depth annotations, and the
 // MaxHierarchyDepth ceiling. Passthrough strictness=reject is also
 // evaluated here so the single walk covers all shape concerns.

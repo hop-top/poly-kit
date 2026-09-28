@@ -7,9 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Annotation keys reserved under the kit/ prefix per §3.5 of
-// cli-conventions-with-kit.md for evolution / capability negotiation
-// (§13). All are opt-in; absence means "always present, never
+// Annotation keys reserved under the kit/ prefix for evolution and
+// capability negotiation. All are opt-in; absence means "always present, never
 // deprecated".
 const (
 	// kitDeprecatedSince is the schema version at which a command was
@@ -54,8 +53,8 @@ const (
 	kitSpecCommandAnnotation = "kit/spec-command"
 )
 
-// apiVersionFlag is the global flag name for capability negotiation
-// (§13). When set, commands annotated kit/since:<ver> newer than the
+// apiVersionFlag is the global flag name for capability negotiation.
+// When set, commands annotated kit/since:<ver> newer than the
 // requested version are hidden, and flags annotated kit/flag-since
 // newer than the requested version are refused.
 const apiVersionFlag = "api-version"

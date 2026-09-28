@@ -8,7 +8,7 @@ import (
 
 // Plan is the structured dry-run output of a write or destructive
 // command. Agents pre-validate via dry-run, then re-issue without it
-// for execution. See cli-conventions-with-kit.md §3.6.
+// for execution. See docs/adopters/reference/sideeffect.md.
 //
 // Adopters return a Plan from RunE when cli.IsDryRun(cmd) is true,
 // printing it through output.RenderPlan so --format json/yaml

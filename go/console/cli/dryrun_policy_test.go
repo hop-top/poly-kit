@@ -230,8 +230,8 @@ func TestPolicy_HelpAddendum_DerivesFromPolicy(t *testing.T) {
 	}
 }
 
-// TestPolicy_TreeWalk_3_6Convention: confirms cli-conventions §3.6
-// holds across an entire kit-shaped command tree without explicit
+// TestPolicy_TreeWalk_3_6Convention: confirms the tier-driven dry-run
+// default holds across an entire kit-shaped command tree without explicit
 // SupportsDryRun calls. Every write|destructive leaf in the tree
 // MUST resolve to "supported"; read|interactive leaves MUST NOT.
 func TestPolicy_TreeWalk_3_6Convention(t *testing.T) {
@@ -281,7 +281,7 @@ func TestPolicy_TreeWalk_3_6Convention(t *testing.T) {
 				cmd = found
 			}
 			assert.Equal(t, tc.supported, cli.IsDryRunSupported(cmd),
-				"§3.6: %s tier mismatch", tc.name)
+				"%s tier mismatch", tc.name)
 		})
 	}
 }

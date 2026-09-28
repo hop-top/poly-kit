@@ -51,8 +51,8 @@
 //     Auth) on top of [api.NewRouter]; adds "token claims/decode"
 //     subcommands when Auth is configured. For servers that need a
 //     custom lifecycle, per-route auth carve-outs, or multiple
-//     listeners, wire [api.NewRouter] directly instead — see
-//     docs/specs/cli-multi-server.md.
+//     listeners, wire [api.NewRouter] directly instead (see
+//     docs/adopters/reference/transport-api.md).
 //   - [WithIdentity]: loads or generates an Ed25519 keypair, signs a JWT
 //   - [WithPeers]: starts mDNS discovery and trust mesh
 //

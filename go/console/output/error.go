@@ -13,7 +13,7 @@
 // spellings.
 //
 // The Error shape is part of the tool's evolution-versioned schema; see
-// ~/.ops/docs/cli-conventions-with-kit.md §6.4 + §8.1.
+// docs/adopters/reference/output.md.
 package output
 
 import (
@@ -33,8 +33,8 @@ const (
 	TransienceUnknown   = envelope.TransienceUnknown
 )
 
-// Standard codes mapping the cross-tool exit codes from
-// ~/.ops/docs/cli-conventions-with-kit.md §8.1.
+// Standard codes mapping the cross-tool exit codes (see
+// docs/adopters/reference/output.md).
 const (
 	CodeOK                = envelope.CodeOK                // exit 0
 	CodeGeneric           = envelope.CodeGeneric           // exit 1
@@ -64,7 +64,7 @@ const (
 	CodeGraderInternal            = envelope.CodeGraderInternal
 )
 
-// Spec-assigned exit codes. See §8.1 / §8.6.
+// Spec-assigned exit codes. See docs/adopters/reference/output.md.
 //
 // ExitOK, ExitUsage, ExitNotFound, ExitConflict and ExitUnauthorized are
 // aliases of constants added to the envelope leaf; before that, those

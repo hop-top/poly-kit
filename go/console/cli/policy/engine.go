@@ -9,8 +9,8 @@ import (
 
 // sideEffectAnnotation is the cobra command annotation key kit reads
 // to discover the declared side-effect class. Mirrored from
-// cli.sideEffectAnnotation to break the import cycle; the spec
-// reserves the exact string per §3.5.
+// cli.sideEffectAnnotation to break the import cycle; kit reserves
+// the exact string under its kit/ prefix.
 const sideEffectAnnotation = "kit/side-effect"
 
 // readSideEffect returns the side-effect tag on cmd as a local
@@ -152,8 +152,8 @@ func matchAny(patterns []string, value string) bool {
 			return true
 		}
 		// Convenience: "delete:*" should match "delete <id>" or
-		// "delete subverb"; the colon form is what §8.6's example
-		// uses. Translate "<verb>:*" → prefix match on the verb.
+		// "delete subverb"; the colon form is the documented policy
+		// shorthand. Translate "<verb>:*" → prefix match on the verb.
 		if strings.HasSuffix(p, ":*") {
 			prefix := strings.TrimSuffix(p, ":*")
 			if value == prefix || strings.HasPrefix(value, prefix+" ") {

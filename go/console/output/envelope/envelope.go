@@ -20,7 +20,7 @@
 // human-readable behavior matches existing kit/fang output.
 //
 // The Error shape is part of the tool's evolution-versioned schema; see
-// ~/.ops/docs/cli-conventions-with-kit.md §6.4 + §8.1.
+// docs/adopters/reference/output.md.
 package envelope
 
 import (
@@ -227,8 +227,8 @@ func (e *Error) Error() string {
 // RunE middleware so it round-trips through middleware unchanged.
 func (e *Error) AsCLIError() *Error { return e }
 
-// Standard codes mapping the cross-tool exit codes from
-// ~/.ops/docs/cli-conventions-with-kit.md §8.1.
+// Standard codes mapping the cross-tool exit codes (see
+// docs/adopters/reference/output.md).
 const (
 	CodeOK                = "OK"                 // exit 0
 	CodeGeneric           = "GENERIC"            // exit 1
@@ -239,7 +239,7 @@ const (
 	CodeTransient         = "TRANSIENT"          // exit 6 — Factor-11 transient/retryable failure
 	CodeConsentRefused    = "CONSENT_REFUSED"    // exit 7 — Factor-10 confirmation gate declined
 	CodeProvenanceMissing = "PROVENANCE_MISSING" // exit 65 — Factor-12 strict-mode refusal
-	CodeRateLimited       = "RATE_LIMITED"       // exit 64 — Factor-10 max-ops budget exceeded (§8.6)
+	CodeRateLimited       = "RATE_LIMITED"       // exit 64 — Factor-10 max-ops budget exceeded
 	CodePrerequisite      = "PREREQUISITE"       // exit 70 — declared dependency unreachable
 )
 
@@ -305,7 +305,7 @@ const ExitConsentRefused = 7
 const ExitProvenanceMissing = 65
 
 // ExitRateLimited is the conventional exit code for Factor-10 rate-limit
-// refusals (--max-ops budget exceeded). See §8.1 / §8.6.
+// refusals (--max-ops budget exceeded).
 const ExitRateLimited = 64
 
 // ExitPrerequisite is the exit code for a declared external dependency
@@ -420,7 +420,7 @@ func PrerequisiteError(msg string) *Error {
 
 // RateLimitedError returns an *Error with CodeRateLimited and
 // ExitCode 64. Used by the policy middleware when --max-ops is
-// exhausted (§8.6).
+// exhausted.
 func RateLimitedError(msg string) *Error {
 	return &Error{Code: CodeRateLimited, Message: msg, ExitCode: ExitRateLimited, Transience: TransienceTransient}
 }

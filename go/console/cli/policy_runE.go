@@ -11,7 +11,7 @@ import (
 	"hop.top/kit/go/console/output"
 )
 
-// Policy globals (§8.6). Registered automatically on the root in
+// Policy globals. Registered automatically on the root in
 // cli.New unless explicitly disabled.
 const (
 	confirmFlag      = "confirm"
@@ -25,7 +25,7 @@ const (
 // annotation value should be "required" for opt-in; absent means
 // regular destructive behavior.
 //
-// Reserved under the kit/ prefix per §3.5.
+// Reserved under the kit/ prefix.
 const destructiveTokenAnnotation = "kit/destructive-token"
 
 // confirmMode is the parsed --confirm value.
@@ -63,7 +63,7 @@ func WithPolicy(loader PolicyLoader) func(*Root) {
 }
 
 // resolveConfirmMode parses the raw --confirm flag value, applying the
-// matrix in §8.6: empty value defaults to "prompt" when there is a
+// confirm matrix: empty value defaults to "prompt" when there is a
 // controlling terminal to ask on and "no" otherwise. Invalid values
 // fall through to that same default; the cli flag registration uses
 // string typing so the validator catches typos.
@@ -274,7 +274,7 @@ func (r *Root) wrapPolicyRunE(
 		}
 
 		// Policy gate first — refusals here aren't bypassed by
-		// --confirm=yes (per the "Do NOT" note in §8.6).
+		// --confirm=yes: a policy refusal is final.
 		var policyConfirm bool
 		if hasSE {
 			allowed, requireConfirm, reason := engine.Authorize(cmd)

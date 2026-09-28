@@ -8,7 +8,7 @@
 //
 // Stored payloads are opaque to idemstore: callers serialize whatever
 // envelope they need into Result.Output. The store does not redact
-// secrets — by spec (§8.5) that is the adopter's responsibility before
+// secrets — that is the adopter's responsibility before
 // recording.
 //
 // Persistence is per-tool: each adopter gets its own database file

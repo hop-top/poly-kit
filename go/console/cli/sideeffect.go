@@ -5,7 +5,7 @@ import (
 )
 
 // SideEffect classifies what a command does to observable state.
-// Agents and the delegation policy engine (see §8.6) read this
+// Agents and the delegation policy engine (go/console/cli/policy) read this
 // tag to decide whether confirmation, max-ops budget, or policy
 // gates apply.
 //
@@ -89,7 +89,7 @@ func isDestructiveLike(s SideEffect) bool {
 
 // sideEffectAnnotation is the cobra command annotation key kit reads
 // to discover the declared side-effect class. Reserved under the
-// kit/ prefix per §3.5 of cli-conventions-with-kit.md.
+// kit/ prefix, which kit keeps for its own annotation keys.
 const sideEffectAnnotation = "kit/side-effect"
 
 // GetSideEffect returns the declared side-effect class on a
@@ -116,8 +116,8 @@ func SetSideEffect(cmd *cobra.Command, s SideEffect) {
 }
 
 // validSideEffects is the closed set Root.Validate accepts.
-// Adding a new class here requires updating §3.5 of the
-// cli-conventions-with-kit.md spec first.
+// Adding a new class is a contract change: the dry-run default,
+// policy engine and toolspec walker all switch on this set.
 //
 // Both the legacy 4-tier vocabulary and the expanded 6-tier ladder
 // are valid declarations. The toolspec walker projects

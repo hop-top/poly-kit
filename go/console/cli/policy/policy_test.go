@@ -83,7 +83,7 @@ func TestEngine_AuthorizeWrite_DefaultPermitWhenNoAllowMap(t *testing.T) {
 func TestEngine_AuthorizeWrite_EmptyAllowClassRefuses(t *testing.T) {
 	t.Parallel()
 	// Allow map present but the class is the empty list:
-	// categorically refuse that class (per §8.6 example with
+	// categorically refuse that class (e.g.
 	// `destructive: []`).
 	p := policy.Policy{
 		Allow: map[policy.SideEffect][]string{

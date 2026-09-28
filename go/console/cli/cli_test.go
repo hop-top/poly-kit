@@ -24,7 +24,7 @@ func helpLines(t *testing.T) []string {
 	t.Helper()
 	// DisableValidate: tests exercise help/aliases/dispatch behavior
 	// against ad-hoc minimal cobra fixtures that don't carry the
-	// full Layer-A annotation set; the 12fcc-static §6 escape hatch.
+	// full Layer-A annotation set; DisableValidate is the escape hatch.
 	r := cli.New(cli.Config{Name: "mytool", Version: "1.2.3", Short: "A tool", DisableValidate: true})
 	r.Cmd.AddCommand(subCmd())
 	var buf bytes.Buffer

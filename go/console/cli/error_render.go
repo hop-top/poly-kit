@@ -97,7 +97,7 @@ func wrapRunE(orig func(*cobra.Command, []string) error) func(*cobra.Command, []
 // WrapRunE walks cmd's subtree and wraps every leaf RunE with kit's
 // RunE middleware chain (outer-to-inner):
 //
-//  1. Policy enforcement (§8.6). Runs the --confirm matrix, prompts on
+//  1. Policy enforcement. Runs the --confirm matrix, prompts on
 //     destructive commands when needed, gates against the loaded
 //     --policy, and accounts the --max-ops budget after success.
 //  2. Idempotency replay (when r.IdemStore is non-nil and the
