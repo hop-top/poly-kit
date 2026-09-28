@@ -77,26 +77,41 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+// HTTPServer returns the http.Server that serves s: s as the handler,
+// the configured read and write timeouts, and HTTP/1.1 plus
+// unencrypted HTTP/2 with prior knowledge (h2c) on the same port.
+// Connect and gRPC-Web clients work over either protocol; native gRPC
+// clients need HTTP/2 and get it without TLS.
+//
+// It is the construction [ListenAndServe] uses, for a caller that
+// binds its own listener — to report readiness only once the bind
+// succeeded, or to learn the port chosen for an ":0" address — and
+// then calls Serve and Shutdown itself. Addr is left empty.
+func (s *Server) HTTPServer() *http.Server {
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	return &http.Server{
+		Handler:      s,
+		ReadTimeout:  s.cfg.readTimeout,
+		WriteTimeout: s.cfg.writeTimeout,
+		Protocols:    protocols,
+	}
+}
+
 // ListenAndServe starts a server for Connect handlers and blocks until
 // ctx is canceled, then performs a graceful shutdown. It serves
 // HTTP/1.1 and unencrypted HTTP/2 with prior knowledge (h2c) on the
 // same port: Connect and gRPC-Web clients work over either, native
-// gRPC clients need HTTP/2 and get it without TLS.
+// gRPC clients need HTTP/2 and get it without TLS. See
+// [Server.HTTPServer] for the server it runs.
 func ListenAndServe(ctx context.Context, addr string, srv *Server, opts ...ServerOption) error {
 	for _, o := range opts {
 		o(srv.cfg)
 	}
 
-	protocols := new(http.Protocols)
-	protocols.SetHTTP1(true)
-	protocols.SetUnencryptedHTTP2(true)
-	httpSrv := &http.Server{
-		Addr:         addr,
-		Handler:      srv,
-		ReadTimeout:  srv.cfg.readTimeout,
-		WriteTimeout: srv.cfg.writeTimeout,
-		Protocols:    protocols,
-	}
+	httpSrv := srv.HTTPServer()
+	httpSrv.Addr = addr
 
 	errCh := make(chan error, 1)
 	go func() {

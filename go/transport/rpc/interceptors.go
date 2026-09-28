@@ -50,6 +50,10 @@ func ClaimsFromContext(ctx context.Context) any {
 // AuthFunc receives a synthetic *http.Request containing only
 // headers from the RPC metadata. AuthFunc implementations must
 // not rely on URL, Method, Body, or other http.Request fields.
+//
+// Deprecated: AuthInterceptor wraps unary calls only, so a streaming
+// procedure behind it runs unauthenticated. Use [Authenticate], which
+// covers unary and streaming handlers and can report refusals.
 func AuthInterceptor(fn api.AuthFunc) connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {

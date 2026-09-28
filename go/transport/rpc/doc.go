@@ -30,7 +30,8 @@
 // Interceptors mirror api/ middleware for cross-cutting concerns:
 //
 //   - [RequestIDInterceptor] — injects X-Request-ID
-//   - [AuthInterceptor] — validates auth via shared api.AuthFunc
+//   - [Authenticate] — validates auth via shared api.AuthFunc, on
+//     unary and streaming calls alike
 //   - [LogInterceptor] — logs procedure, duration, errors
 //   - [RecoveryInterceptor] — catches panics → connect.CodeInternal
 //

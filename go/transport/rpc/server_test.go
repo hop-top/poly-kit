@@ -133,3 +133,18 @@ func TestListenAndServeServesH2C(t *testing.T) {
 		assert.Equal(t, want, body)
 	}
 }
+
+// TestHTTPServerCarriesTheConfiguredServer pins that HTTPServer is the
+// server ListenAndServe runs: the handler, both timeouts, and h2c
+// beside HTTP/1.1.
+func TestHTTPServerCarriesTheConfiguredServer(t *testing.T) {
+	srv := rpc.NewServer(rpc.WithReadTimeout(3*time.Second), rpc.WithWriteTimeout(7*time.Second))
+	hs := srv.HTTPServer()
+	assert.Same(t, srv, hs.Handler)
+	assert.Equal(t, 3*time.Second, hs.ReadTimeout)
+	assert.Equal(t, 7*time.Second, hs.WriteTimeout)
+	require.NotNil(t, hs.Protocols)
+	assert.True(t, hs.Protocols.HTTP1())
+	assert.True(t, hs.Protocols.UnencryptedHTTP2())
+	assert.Empty(t, hs.Addr)
+}
