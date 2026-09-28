@@ -33,9 +33,9 @@ how kit itself is implemented.
 
 - [`guides/getting-started-cli.md`](guides/getting-started-cli.md) — extended walkthrough
 - [`guides/kit-init.md`](guides/kit-init.md) — `kit init` flow + flag reference
-- [`guides/create-cli-project.md`](guides/create-cli-project.md) — scaffold a new CLI (a scaffolded project ships its own `AGENTS.md`: how an agent discovers and calls it over REST and the socket)
+- [`guides/create-cli-project.md`](guides/create-cli-project.md) — scaffold a new CLI (a scaffolded project ships its own `AGENTS.md`: how an agent discovers and calls it over REST, the socket, MCP and gRPC)
 - [`guides/build-a-transport-service.md`](guides/build-a-transport-service.md) — put your own transport in front of your command tree
-- [`guides/expose-cli-over-grpc.md`](guides/expose-cli-over-grpc.md) — serve your commands to Connect, gRPC and gRPC-Web clients
+- [`guides/expose-cli-over-grpc.md`](guides/expose-cli-over-grpc.md) — serve your commands to Connect, gRPC and gRPC-Web clients with the built-in `rpc` service
 - [`guides/expose-cli-over-mcp.md`](guides/expose-cli-over-mcp.md) — serve your commands as MCP tools with the built-in `mcp` service
 - [`guides/expose-cli-over-rest.md`](guides/expose-cli-over-rest.md) — serve your commands as a versioned REST API with OpenAPI
 - [`guides/hook-cli-into-bus.md`](guides/hook-cli-into-bus.md) — first publish/subscribe

@@ -43,12 +43,12 @@ For now, see:
 
 ## Step 3: expose it on REST
 
-Nothing to mount: the scaffolded root registers the `api`, `socket`
-and `mcp` services, so every command you added in step 2 is already a
-route and an MCP tool.
+Nothing to mount: the scaffolded root registers the `api`, `socket`,
+`mcp` and `rpc` services, so every command you added in step 2 is
+already a route, an MCP tool and a gRPC call.
 
 ```bash
-./bin/mytool serve --list          # registered services: api enabled by default, socket and mcp off, none ready until serving
+./bin/mytool serve --list          # registered services: api enabled by default, socket, mcp and rpc off, none ready until serving
 ./bin/mytool serve api             # REST on 127.0.0.1:8080, OpenAPI at /openapi.json
 curl -s http://127.0.0.1:8080/v1/commands   # every command, invocable or withheld and why
 ```
@@ -56,10 +56,12 @@ curl -s http://127.0.0.1:8080/v1/commands   # every command, invocable or withhe
 See [`guides/expose-cli-over-rest.md`](guides/expose-cli-over-rest.md)
 for the route shape and the policy on destructive commands,
 [`guides/expose-cli-over-mcp.md`](guides/expose-cli-over-mcp.md) to
-plug the tool into Claude Desktop or an IDE with `serve mcp --stdio`, and
+plug the tool into Claude Desktop or an IDE with `serve mcp --stdio`,
+[`guides/expose-cli-over-grpc.md`](guides/expose-cli-over-grpc.md) to
+call it from Connect, gRPC and gRPC-Web clients with `serve rpc`, and
 [`guides/migrate-to-served-commands.md`](guides/migrate-to-served-commands.md)
-if you are bringing an existing `serve` command over. For WS and
-ConnectRPC beside REST, see
+if you are bringing an existing `serve` command over. For WS and a
+hand-mounted ConnectRPC service beside REST, see
 [`examples/multiprotocol/`](../../examples/multiprotocol/).
 
 ## Step 4: verify the CLI contract

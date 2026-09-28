@@ -40,12 +40,15 @@ benchmarks — not flag parsers and output renderers.
   Library, Webhook, OAuth callback, Signed URL, FaaS (AWS Lambda,
   Cloud Run). Destructive commands locked from remote surfaces by
   default. See [`go/transport/cmdsurface/`](go/transport/cmdsurface/).
-- **Served commands.** `<tool> serve` supervises three kit-shipped
+- **Served commands.** `<tool> serve` supervises four kit-shipped
   services over the same tree and gates: `api` (REST, discovery,
-  OpenAPI), `socket` (owner-only Unix socket), and `mcp` (MCP tools
-  over streamable HTTP or stdio, via the official MCP Go SDK). See
-  [`docs/contracts/serve-lifecycle.md`](docs/contracts/serve-lifecycle.md)
-  and [`docs/adopters/guides/expose-cli-over-mcp.md`](docs/adopters/guides/expose-cli-over-mcp.md).
+  OpenAPI), `socket` (owner-only Unix socket), `mcp` (MCP tools over
+  streamable HTTP or stdio, via the official MCP Go SDK), and `rpc`
+  (one typed `cmdsurface.v1.Commands` service for Connect, gRPC and
+  gRPC-Web clients). See
+  [`docs/contracts/serve-lifecycle.md`](docs/contracts/serve-lifecycle.md),
+  [`docs/adopters/guides/expose-cli-over-mcp.md`](docs/adopters/guides/expose-cli-over-mcp.md)
+  and [`docs/adopters/guides/expose-cli-over-grpc.md`](docs/adopters/guides/expose-cli-over-grpc.md).
 - **Guardrail primitives.** Path scoping (`go/core/scope`), egress
   filtering (`go/core/redact`), runtime circuit breakers
   (`go/core/breaker`), operating-mode declarations (`go/core/stage`).
