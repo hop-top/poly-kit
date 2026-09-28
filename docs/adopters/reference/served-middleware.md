@@ -165,19 +165,23 @@ The `mtls` keys are in the TLS table below.
 | Key | Default | Meaning |
 |---|---|---|
 | `tls.enabled` | on when a certificate source is set | serve TLS only (HTTP/2 and HTTP/1.1); `false` leaves a listener plaintext |
-| `tls.cert_file`, `tls.key_file` | — | PEM certificate chain and key, loaded at start |
+| `tls.cert_file`, `tls.key_file` | — | PEM certificate chain and key; reloaded when a file changes |
 | `tls.min_version` | `1.2` | `1.2` or `1.3` |
 | `tls.acme.enabled` | on when `domains` is set | obtain and renew certificates by ACME (TLS-ALPN-01, on the listener) |
 | `tls.acme.domains` | — | the names certificates are issued for |
 | `tls.acme.cache_dir` | `<state dir>/<tool>/acme` | account key and certificates |
 | `tls.acme.email` | — | contact the CA may use |
 | `tls.acme.directory_url` | Let's Encrypt production | another ACME directory |
-| `auth.mtls.ca_file` | — (required under `mtls`) | PEM bundle client certificates must chain to |
+| `auth.mtls.ca_file` | — (required under `mtls`) | PEM bundle client certificates must chain to; reloaded when it changes |
+| `auth.mtls.crl_file` | — | revocation lists (PEM `X509 CRL` blocks or one DER list); a listed leaf or intermediate fails the handshake; reloaded with the bundle |
 | `auth.mtls.principal` | `san` | `san` (URI, else DNS, else email SAN), `san_uri`, `san_dns`, `san_email`, `cn` |
 | `auth.mtls.tenant_oid` | — | OID of a subject attribute or extension holding the tenant |
 | `auth.mtls.tenant_san_pattern` | — | RE2 over the SANs; first capture group, else the whole match |
 
-Rules: [TLS and client certificates](../../contracts/serve-lifecycle.md#tls-and-client-certificates).
+A replaced file takes effect for new handshakes once its directory
+has been quiet for 250ms; a set that does not load is logged and the
+one in force keeps serving. There is no reload signal. Rules:
+[TLS and client certificates](../../contracts/serve-lifecycle.md#tls-and-client-certificates).
 
 ### Limits
 
@@ -293,6 +297,7 @@ One code per refusal class, the same string on every surface:
 | `body_too_large` | `413` | `ResourceExhausted` | `413`, JSON-RPC `-32600` | — (1 MiB line bound ends the connection) | 2 |
 | `host_rejected` | `403` | `PermissionDenied` | `403` | — | 5 |
 | `origin_rejected` | `403` | `PermissionDenied` | `403` | — | 5 |
+| `tls_handshake` | — (counted, never answered) | — | — | — | — |
 
 How each surface carries it:
 
@@ -321,7 +326,12 @@ How each surface carries it:
   `TRANSIENT`, 64 `RATE_LIMITED`.
 
 Every invocation-plane refusal is audited. HTTP-plane refusals are
-counted by code in `kit.serve.http.refusals` and logged. Mapping
+counted by code in `kit.serve.http.refusals` and logged.
+`tls_handshake` is a TLS listener's failed handshake — plaintext to a
+TLS port, a client certificate that does not verify or is revoked, a
+client that hangs up mid-handshake. No request exists, so nothing is
+answered or audited; it is counted in `kit.serve.http.refusals` and
+logged at debug, rate-limited (`serve -V` shows it). Mapping
 rules: [Refusals](../../contracts/serve-lifecycle.md#refusals). The
 command-level refusals (`unknown_command`, `not_invocable`,
 `destructive_blocked`, `permission_denied`, `confirmation_required`)
