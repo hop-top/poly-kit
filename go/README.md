@@ -13,7 +13,7 @@ Go implementations of the polyglot kit library, grouped by concern.
 | [`core/`](core/README.md) | operational primitives: config, redact, scope, breaker, identity | you need a building block with no I/O of its own |
 | [`integrations/`](integrations/README.md) | cross-cutting adapters; repo-host SPI | you talk to GitHub, GitLab, Gitea or Bitbucket |
 | [`runtime/`](runtime/README.md) | execution logic: bus, jobs, policy, provenance, side effects | a command does work that must be observed or replayed |
-| [`security/`](security/doc.go) | artifact signing, sandboxed exec, audit log, SARIF (no importable API yet; scope pinned in `doc.go` and `gaps_test.go`) | you need to trust an artifact or an execution |
+| [`security/`](security/README.md) | tamper-evident audit log; artifact signing, sandboxed exec and SARIF pinned as gaps in `gaps_test.go` | you need to trust an artifact or an execution |
 | [`storage/`](storage/README.md) | persistence layers: blob, kv, secret, sql, httpcache | data must outlive the process |
 | [`tools/`](tools/README.md) | static-analysis helpers for adopters | you lint a kit-based codebase |
 | [`transport/`](transport/README.md) | network exposure: REST, RPC, MCP, sockets, command surfaces | a command must be reachable from outside the process |

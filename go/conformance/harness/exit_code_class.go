@@ -27,8 +27,8 @@ import (
 // encoder — so reading the real table costs nothing the harness was not
 // already paying.
 
-// bandClassToCode carries the tool-specific >6 slots the conformance
-// tree owns. They are not in envelope's table by design: they are
+// bandClassToCode carries the tool-specific >6 slots declared outside
+// envelope: the conformance trees' and go/security's. They are not in envelope's table by design: they are
 // declared by the packages that own them, and putting them in the leaf
 // would invert the dependency the leaf exists to avoid.
 //
@@ -40,6 +40,7 @@ var bandClassToCode = map[string]int{
 	"CONFIG":           67,
 	"GRADE_FAIL":       68,
 	"GRADE_UNGRADABLE": 69,
+	"TAMPER_DETECTED":  71,
 }
 
 // ClassToExitCode resolves a kit exit-class symbol to its numeric code,

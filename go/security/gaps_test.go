@@ -52,26 +52,29 @@ func TestGap_SecuritySandboxedExec_Missing(t *testing.T) {
 	// while an allowed one succeeds.
 }
 
-// Gap: kit/security has no tamper-evident audit log.
+// Gap: kit/security's audit log heads are not signed.
 //
-// runtime/provenance records where each output field came from but
-// nothing detects truncation or edits to the record stream. The
-// third family is an append-only log where each record carries the
-// hash of the previous one, signed periodically with the identity
-// key so any break is detectable.
+// AuditLog chains every record to the one before it, so VerifyAuditLog
+// catches an edit, a deletion, or a reorder anywhere in the log. It
+// cannot catch records removed from the tail: the shorter chain still
+// holds. Today an operator closes that gap by recording AuditLog.Head
+// somewhere the writer cannot reach. The remaining piece signs the head
+// periodically with the identity key and appends the signature as a
+// record, so a verifier holding the public key detects truncation on
+// its own; the log also does not yet feed runtime/provenance.
 //
 // Desired API (sketch):
 //
-//	log, err := security.OpenAuditLog(store, signer)
-//	err = log.Append(ctx, record)
-//	report, err := log.Verify(ctx) // first break, if any
-func TestGap_SecurityAuditLog_Missing(t *testing.T) {
-	t.Skip("gap: kit/security audit log not implemented; provenance records are not tamper-evident")
+//	log, err := security.OpenAuditLog(path, security.AuditLogOptions{Signer: key, SignEvery: time.Minute})
+//	report, err := security.VerifyAuditLog(path, security.WithPublicKey(pub))
+//	// report.Break names the tail truncation past the last signature
+func TestGap_SecurityAuditLogSignedHead_Missing(t *testing.T) {
+	t.Skip("gap: kit/security audit log heads are not signed; tail truncation is detectable only against a head recorded elsewhere")
 
-	// Pin: placeholder package exists; the log does not. When it
-	// ships, this test should append records, assert Verify passes,
-	// then edit and truncate the backing store and assert Verify
-	// reports the first broken record in each case.
+	// Pin: the chain and its verifier exist; signing does not. When it
+	// ships, this test should append records past a signed head,
+	// truncate the tail, and assert verification with the public key
+	// reports the truncation.
 }
 
 // Gap: kit/security has no SARIF normalization.

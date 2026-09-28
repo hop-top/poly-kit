@@ -273,9 +273,10 @@ Go, the file cannot be stale without a test saying so.
 | `transiences` | the three-value transience vocabulary, so a port answering a fourth string fails |
 
 `extension_band` carries `owner` because kit's >6 band is allocated
-across three trees — `go/console/output/envelope` (64, 65, 70),
-`go/console/cli/conformance` (66 `LEAK_DETECTED`, 67 `CONFIG`) and
-`go/conformance/client` (68 `GRADE_FAIL`, 69 `GRADE_UNGRADABLE`). Ports
+across four trees — `go/console/output/envelope` (64, 65, 70),
+`go/console/cli/conformance` (66 `LEAK_DETECTED`, 67 `CONFIG`),
+`go/conformance/client` (68 `GRADE_FAIL`, 69 `GRADE_UNGRADABLE`) and
+`go/security` (71 `TAMPER_DETECTED`). Ports
 MUST export the slots envelope owns and MUST NOT claim the others: a
 port minting `LEAK_DETECTED` would be spending a number the conformance
 tree owns. The foreign rows are recorded, not exported, so a future

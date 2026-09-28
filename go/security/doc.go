@@ -32,6 +32,8 @@
 // out of scope for kit; that job belongs to a dedicated tool such as
 // rsx.
 //
-// There is no importable API yet. Each family ships as its own change;
-// gaps_test.go pins one skipped test per family until then.
+// The audit log ships first: [OpenAuditLog] appends hash-chained
+// records to a file and [VerifyAuditLog] reports the first place the
+// chain does not hold. The other families ship as their own changes;
+// gaps_test.go pins one skipped test per missing piece until then.
 package security

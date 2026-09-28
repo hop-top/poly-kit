@@ -135,9 +135,9 @@ type ExtensionBandSlot struct {
 // The spec reserves 0-6 for the shared taxonomy and leaves >6 to
 // documented per-tool codes. Kit allocates its band contiguously so no
 // two features claim the same number, but the allocation is spread
-// across three trees — this package, go/console/cli/conformance, and
-// go/conformance/client — and a contiguous allocation nobody can read in
-// one place is an allocation that collides.
+// across four trees — this package, go/console/cli/conformance,
+// go/conformance/client, and go/security — and a contiguous allocation
+// nobody can read in one place is an allocation that collides.
 //
 // The symbols for slots owned elsewhere are repeated as literals rather
 // than imported, for the same reason this package repeats "json" and
@@ -155,5 +155,6 @@ func ExtensionBand() []ExtensionBandSlot {
 		{Exit: 68, Class: "GRADE_FAIL", Owner: "hop.top/kit/go/conformance/client"},
 		{Exit: 69, Class: "GRADE_UNGRADABLE", Owner: "hop.top/kit/go/conformance/client"},
 		{Exit: ExitPrerequisite, Class: CodePrerequisite, Owner: "hop.top/kit/go/console/output/envelope"},
+		{Exit: 71, Class: "TAMPER_DETECTED", Owner: "hop.top/kit/go/security"},
 	}
 }

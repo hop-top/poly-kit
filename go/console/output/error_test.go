@@ -220,7 +220,8 @@ func TestExtensionBandSlotsAreUnique(t *testing.T) {
 	// claim the same slot. 64-69 are spoken for (RATE_LIMITED,
 	// PROVENANCE_MISSING here; LEAK_DETECTED, CONFIG in
 	// go/console/cli/conformance; GRADE_FAIL, GRADE_UNGRADABLE in
-	// go/conformance/client). PREREQUISITE takes 70.
+	// go/conformance/client). PREREQUISITE takes 70; TAMPER_DETECTED,
+	// in go/security, 71.
 	//
 	// The literals for the codes owned by other trees are repeated
 	// rather than imported: importing them here would make the console
@@ -238,6 +239,7 @@ func TestExtensionBandSlotsAreUnique(t *testing.T) {
 		{68, "GRADE_FAIL"},
 		{69, "GRADE_UNGRADABLE"},
 		{output.ExitPrerequisite, "PREREQUISITE"},
+		{71, "TAMPER_DETECTED"},
 	} {
 		if prior, dup := band[a.exit]; dup {
 			t.Fatalf("exit %d claimed by both %s and %s", a.exit, prior, a.name)

@@ -35,8 +35,8 @@ func (e *DeniedError) AsCLIError() *envelope.Error {
   stale on `CONSENT_REFUSED` 7 and `PREREQUISITE` 70.
 - `ExitClasses` enumerates the classes kit defines, `ClassForExitCode`
   reverses the lookup, and `ExtensionBand` records the >6 allocation
-  including the slots owned by `console/cli/conformance` (66, 67) and
-  `conformance/client` (68, 69).
+  including the slots owned by `console/cli/conformance` (66, 67),
+  `conformance/client` (68, 69) and `security` (71).
 - The retained error is unexported and never reaches the wire; `Cause` is
   the human-readable form, `Unwrap` the machine-matchable one.
 - `WithTransience` and `Retaining` copy rather than mutate, so a shared

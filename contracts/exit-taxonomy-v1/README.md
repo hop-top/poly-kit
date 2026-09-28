@@ -31,7 +31,7 @@ go test ./go/console/output/envelope/ -run TestGenerateExitTaxonomyContract \
 | `extension_band` | every allocated slot above 6, with the `owner` package that declares it |
 | `transiences` | the three-value transience vocabulary |
 
-Ports MUST export every class in `classes`, resolve each to its `exit`, and answer its `transience`. They MUST export the `extension_band` slots `envelope` owns and MUST NOT claim the slots owned by the conformance trees (66 `LEAK_DETECTED`, 67 `CONFIG`, 68 `GRADE_FAIL`, 69 `GRADE_UNGRADABLE`) — those rows are recorded so a future allocation cannot double-book a number, not so ports mint them.
+Ports MUST export every class in `classes`, resolve each to its `exit`, and answer its `transience`. They MUST export the `extension_band` slots `envelope` owns and MUST NOT claim the slots owned by the conformance trees (66 `LEAK_DETECTED`, 67 `CONFIG`, 68 `GRADE_FAIL`, 69 `GRADE_UNGRADABLE`) or by `go/security` (71 `TAMPER_DETECTED`) — those rows are recorded so a future allocation cannot double-book a number, not so ports mint them.
 
 Loaders, one per port, all run by `make test-parity-taxonomy`:
 

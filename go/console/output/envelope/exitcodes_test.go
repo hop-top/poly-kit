@@ -165,7 +165,7 @@ func TestConstructorsAgreeWithTheTable(t *testing.T) {
 }
 
 // TestExtensionBandSlotsAreUniqueAndContiguous guards the >6 band. The
-// slots are allocated across three trees, so nothing but a shared list
+// slots are allocated across four trees, so nothing but a shared list
 // can catch two features claiming the same number.
 func TestExtensionBandSlotsAreUniqueAndContiguous(t *testing.T) {
 	byExit := map[int]envelope.ExtensionBandSlot{}
@@ -176,14 +176,14 @@ func TestExtensionBandSlotsAreUniqueAndContiguous(t *testing.T) {
 		}
 		byExit[slot.Exit] = slot
 	}
-	for exit := 64; exit <= 70; exit++ {
+	for exit := 64; exit <= 71; exit++ {
 		if _, ok := byExit[exit]; !ok {
-			t.Errorf("band slot %d is unallocated; kit allocates 64-70 "+
+			t.Errorf("band slot %d is unallocated; kit allocates 64-71 "+
 				"contiguously so a gap means a row was dropped", exit)
 		}
 	}
-	if len(byExit) != 7 {
-		t.Errorf("band has %d slots, want 7 (64-70)", len(byExit))
+	if len(byExit) != 8 {
+		t.Errorf("band has %d slots, want 8 (64-71)", len(byExit))
 	}
 }
 

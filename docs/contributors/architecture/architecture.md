@@ -140,7 +140,7 @@ count toward the eleven.
 | `go/bridge` | kit/bridge protocol library: JSON payload types (text/url/file/blob oneof) + CLI manifest loader; wire format mirrored by `contracts/bridge.proto` |
 | `go/conformance` | Layer-A test helper for the adopter conformance suite; scenario/story runners, recorder, badge |
 | `go/integrations` | Parent of cross-cutting adapters; holds `repohost` (unified repo-host SPI, five drivers plus mocks) |
-| `go/security` | Trust in artifacts and execution: artifact signature verification (cosign, minisign, SLSA) for `core/upgrade`, sandboxed exec behind `runtime/sideeffect`, hash-chained audit log feeding `runtime/provenance`, SARIF normalization; no importable API yet, one gap test per family in `gaps_test.go` |
+| `go/security` | Trust in artifacts and execution: artifact signature verification (cosign, minisign, SLSA) for `core/upgrade`, sandboxed exec behind `runtime/sideeffect`, hash-chained audit log (shipped: `OpenAuditLog`, `VerifyAuditLog`, surfaced as `cmdsurface.ChainSink`), SARIF normalization; one gap test per missing piece in `gaps_test.go` |
 | `go/tools` | Static-analysis helpers shipped for adopters; `provenancelint` go/analysis Analyzer |
 
 ### Import layering
