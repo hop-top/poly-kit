@@ -13,7 +13,7 @@ import (
 // serveAuthState is what every kit-shipped transport service shares
 // on the security side: the adopter's permission gate, the audit
 // sinks, and the extra bridge options tests inject. It lives on the
-// Root so the api and socket services, and any service registered
+// Root so the api, socket, and mcp services, and any service registered
 // later, resolve the same values at Start.
 type serveAuthState struct {
 	permission cmdsurface.PermissionFunc
@@ -27,7 +27,7 @@ type serveAuthState struct {
 // WithPermission installs the permission gate every kit-shipped
 // transport service consults before running a command. It runs in
 // [cmdsurface.Bridge.Invoke] after the destructive ceiling and
-// before the command, on the api service and the socket service
+// before the command, on the api, socket, and mcp services
 // alike, so a caller is answered the same way whichever transport
 // carried the call.
 //

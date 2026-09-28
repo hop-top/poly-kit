@@ -675,8 +675,14 @@ SDK surface on `APIConfig.Handlers` by hand and accepts that it then
 lives inside the api service's lifecycle and exposure.
 
 HTTP sessions are stateful: the SDK issues an `Mcp-Session-Id`, and
-server-to-client requests travel on the open response stream. The
-SDK's DNS-rebinding protection for loopback listeners stays on.
+server-to-client requests travel on the open response stream. A
+stateful handler negotiates protocol versions through `2025-11-25`; a
+client asking for `2026-07-28` is answered at `2025-11-25`. The SDK
+serves `2026-07-28` only from a stateless handler, and a stateless
+handler has no server-to-client channel for the earlier protocols most
+hosts still speak. The stdio transport serves `2026-07-28` as well. The SDK's DNS-rebinding protection for loopback listeners stays
+on. Every response streams through the middleware in front of the SDK
+handler, so each layer of it keeps the response flushable.
 
 ### Keys and flags
 
@@ -788,14 +794,14 @@ the loop. It is satisfied per call, and only by one of:
    anything, `Approve execution of "<tool>"?`, with no form fields —
    the answer is the elicitation's action. `accept` runs the call once.
    `decline` or `cancel` refuses it (`confirmation declined`). A client
-   on protocol `2026-07-28` receives the question as an
+   on protocol `2026-07-28` (stdio) receives the question as an
    `input_required` result and retries with the answer and the echoed
    `requestState`; the state is bound by HMAC to the tool, the digest
    of the arguments, and the verified caller, and expires after five
-   minutes. An older client receives a server-initiated
-   `elicitation/create` on the same session and the SDK resumes the
-   call. A `requestState` that fails verification is never honored:
-   it is audited, and the question is asked again.
+   minutes. A client on an earlier protocol — every HTTP session —
+   receives a server-initiated `elicitation/create` on its session and
+   the SDK resumes the call. A `requestState` that fails verification
+   is never honored: it is audited, and the question is asked again.
 2. **An `X-Confirm-Token` request header**, over HTTP only, as on every
    other kit MCP surface. It is the HTTP client's own per-request act.
 

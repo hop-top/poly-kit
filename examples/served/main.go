@@ -2,11 +2,11 @@
 // serve capability: a kit CLI built with cli.New and a handful of
 // options, with no transport mounted by hand.
 //
-// Its tests (served_test.go) drive the real Execute path — the one
-// that installs the confirmation and policy gates — and assert every
-// claim the serve-lifecycle contract makes about a conformant
-// application command: the serve hierarchy exists, the api and socket
-// services are listed, readiness reaches the bus and the log,
+// Its tests (served_test.go, mcp_test.go) drive the real Execute path
+// — the one that installs the confirmation and policy gates — and
+// assert every claim the serve-lifecycle contract makes about a
+// conformant application command: the serve hierarchy exists, the
+// api, socket and mcp services are listed, readiness reaches the bus and the log,
 // discovery describes every command with the right reason, reads and
 // writes run over REST and the socket, destructive commands are
 // withheld until a surface is named and confirmed, interactive and
@@ -20,6 +20,8 @@
 //	item list    read               declares an output schema
 //	item watch   read               long-running: streams until done or canceled
 //	item add     write-local
+//	item tag     write-local        kit/requires-confirmation
+//	item sync    read               kit/auth-required
 //	item purge   destructive-shared
 //	shell        interactive
 //	upgrade      write, kit/self-hosting
@@ -103,7 +105,7 @@ type options struct {
 }
 
 // newRoot builds the fixture's root. This is the whole of the wiring
-// an adopter writes: the root, the reserved status verb, the two
+// an adopter writes: the root, the reserved status verb, the three
 // kit-shipped services, one service of their own, and the commands.
 func newRoot(opts options) *cli.Root {
 	if opts.heartbeat == nil {
@@ -119,6 +121,7 @@ func newRoot(opts options) *cli.Root {
 		cli.WithStatus(cli.StatusConfig{}),
 		cli.WithAPI(cli.APIConfig{Policy: policy}),
 		cli.WithSocket(cli.SocketConfig{Policy: policy}),
+		cli.WithMCP(cli.MCPConfig{Policy: policy}),
 		cli.WithService(opts.heartbeat),
 		cli.WithServiceBus(opts.bus),
 	)
@@ -160,6 +163,41 @@ func itemCmd(root *cli.Root, st *store) *cobra.Command {
 	cli.SetSideEffect(add, cli.SideEffectWriteLocal)
 	cli.SetIdempotency(add, cli.IdempotencyYes)
 
+	// tag declares kit/requires-confirmation: over MCP a person
+	// approves each call. It takes its operand as a flag, because MCP
+	// tools carry arguments by name.
+	tag := &cobra.Command{
+		Use:         "tag",
+		Short:       "Tag an item",
+		Long:        "Tag one item by name. Over MCP a person approves each call.",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"kit/requires-confirmation": "true"},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			name, _ := cmd.Flags().GetString("name")
+			fmt.Fprintf(cmd.OutOrStdout(), "tagged %s\n", name)
+			return nil
+		},
+	}
+	tag.Flags().String("name", "", "Item to tag")
+	cli.SetSideEffect(tag, cli.SideEffectWriteLocal)
+	cli.SetIdempotency(tag, cli.IdempotencyYes)
+
+	// sync declares kit/auth-required: it acts with the caller's
+	// credentials.
+	syncCmd := &cobra.Command{
+		Use:         "sync",
+		Short:       "Sync items with the caller's account",
+		Long:        "Sync every item with the caller's account. Needs the caller's credentials.",
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{"kit/auth-required": "true"},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			fmt.Fprintf(cmd.OutOrStdout(), "synced %d items\n", len(st.list()))
+			return nil
+		},
+	}
+	cli.SetSideEffect(syncCmd, cli.SideEffectRead)
+	cli.SetIdempotency(syncCmd, cli.IdempotencyYes)
+
 	purge := &cobra.Command{
 		Use:   "purge",
 		Short: "Remove every item",
@@ -173,7 +211,7 @@ func itemCmd(root *cli.Root, st *store) *cobra.Command {
 	cli.SetSideEffect(purge, cli.SideEffectDestructiveShared)
 	cli.SetIdempotency(purge, cli.IdempotencyYes)
 
-	item.AddCommand(list, watchCmd(st), add, purge)
+	item.AddCommand(list, watchCmd(st), add, tag, syncCmd, purge)
 	return item
 }
 

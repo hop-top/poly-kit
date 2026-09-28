@@ -13,7 +13,7 @@ import (
 
 // WithRootFactory makes every served invocation run on a tree of its
 // own, built by build, instead of on the serving Root's tree. The
-// kit-shipped api and socket services then hand the bridge a
+// kit-shipped api, socket, and mcp services then hand the bridge a
 // per-invocation runner ([cmdsurface.WithRootFactory]): nothing is
 // shared between invocations, nothing is reset, and they run in
 // parallel. Without this option the services keep the shared-tree

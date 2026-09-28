@@ -292,10 +292,12 @@ func TestServeExistsWithContractFlagsAndChildren(t *testing.T) {
 	assert.NotNil(t, serveCmd.Flags().Lookup("insecure-remote"), "--insecure-remote")
 	assert.Nil(t, serveCmd.Flags().Lookup("no-auth"), "--no-auth is mounted only when Auth is set")
 	assert.NotNil(t, serveCmd.Flags().Lookup("socket"), "--socket")
+	assert.NotNil(t, serveCmd.Flags().Lookup("stdio"), "--stdio")
+	assert.NotNil(t, serveCmd.Flags().Lookup("mcp-addr"), "--mcp-addr")
 
-	// The children, in registration order: kit's two, then the adopter's.
+	// The children, in registration order: kit's three, then the adopter's.
 	require.NotNil(t, root.ServeRegistry())
-	assert.Equal(t, []string{"api", "socket", "heartbeat"}, root.ServeRegistry().Names())
+	assert.Equal(t, []string{"api", "socket", "mcp", "heartbeat"}, root.ServeRegistry().Names())
 }
 
 func TestServeListNamesEveryService(t *testing.T) {
@@ -307,9 +309,11 @@ func TestServeListNamesEveryService(t *testing.T) {
 	got := out.String()
 	assert.Regexp(t, `(?m)^api\s`, got)
 	assert.Regexp(t, `(?m)^socket\s`, got)
+	assert.Regexp(t, `(?m)^mcp\s`, got)
 	assert.Regexp(t, `(?m)^heartbeat\s`, got)
 	assert.Less(t, strings.Index(got, "api"), strings.Index(got, "socket"))
-	assert.Less(t, strings.Index(got, "socket"), strings.Index(got, "heartbeat"),
+	assert.Less(t, strings.Index(got, "socket"), strings.Index(got, "\nmcp"))
+	assert.Less(t, strings.Index(got, "\nmcp"), strings.Index(got, "heartbeat"),
 		"the listing mirrors registration order")
 }
 
@@ -350,6 +354,8 @@ func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 		"item list":  {Invocable: true},
 		"item watch": {Invocable: true},
 		"item add":   {Invocable: true},
+		"item tag":   {Invocable: true},
+		"item sync":  {Invocable: true},
 		"item purge": {Reason: "unauthorized-destructive"},
 		"shell":      {Reason: "interactive"},
 		"upgrade":    {Reason: "self-hosting"},
@@ -365,7 +371,7 @@ func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 	// callable is not a route.
 	for name, v := range got {
 		if v.Invocable {
-			assert.Contains(t, []string{"item list", "item watch", "item add"}, name,
+			assert.Contains(t, []string{"item list", "item watch", "item add", "item tag", "item sync"}, name,
 				"unexpected invocable command %q", name)
 		}
 	}
