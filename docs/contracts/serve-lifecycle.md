@@ -1306,7 +1306,11 @@ What each slot does:
   replay for a call carrying a key the store has seen from the same
   principal, or a read-tier cache hit for a leaf declaring
   `kit/cache-ttl`. Idempotency is consulted first
-  ([Idempotency](#idempotency)). A miss continues.
+  ([Idempotency](#idempotency)). A miss continues. The cache keys the
+  identity the transport established; a claimed caller, tenant or
+  scopes is keyed as anonymous, so a command whose output depends on
+  who calls requires an established identity (`kit/auth-required`) or
+  declares no `kit/cache-ttl`.
 - **10.** The confirmation a surface obtains from a person: an MCP
   elicitation, an `X-Confirm-Token`. The command's own `--confirm`
   gate is unchanged; it runs inside the command, at 12, and answers
@@ -1550,6 +1554,7 @@ reads no HTTP-listener key.
 | `tracing`, `metrics`                    | HTTP half: api, mcp over HTTP, rpc; invocation half: bridge services | —  |
 | `metrics.scrape`, `security_headers`, `health`, `host_check`, `origin_check`, `body_limit`, `compression` | api, mcp over HTTP, rpc | socket |
 | `rate_limit`                            | bridge services                                | —                        |
+| `idempotency`                           | bridge services                                | —                        |
 | `cache`                                 | api                                            | every other service      |
 | `audit`, `audit.redact`                 | bridge services                                | —                        |
 

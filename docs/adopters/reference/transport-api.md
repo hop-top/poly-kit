@@ -790,6 +790,14 @@ What is cached, and for whom:
 | Audit | every call is audited; one answered without running carries `cache: "hit"` (from the store) or `cache: "coalesced"` (shared a run in flight) |
 | Streams | the `/stream` route of a cached read answers a stored result as its final frame; a miss streams live and stores nothing |
 
+A claimed identity shares the anonymous entry, so a command whose
+output depends on who calls — it reads `Meta.Caller`, the tenant or
+the scopes — either declares `kit/auth-required`, so every call
+carries a verified identity and gets its own entry, or declares no
+`kit/cache-ttl`. Otherwise, on a listener that does not authenticate,
+two callers claiming different identities are answered with one
+result.
+
 The cache is on by default and does nothing until a command declares
 `kit/cache-ttl`. Its block:
 

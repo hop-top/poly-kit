@@ -89,6 +89,11 @@ const (
 // never answered with another's result. Only a run that succeeds —
 // no error, exit code zero — is stored.
 //
+// Only an identity the transport established counts: a claimed
+// caller, tenant or scopes is keyed as anonymous. A command whose
+// output depends on Meta.Caller must therefore require an established
+// identity (kit/auth-required) or not declare kit/cache-ttl.
+//
 // The bridge does not close store.
 func WithResultCache(store kv.TTLStore) Option {
 	return func(c *bridgeConfig) { c.cache = store }
