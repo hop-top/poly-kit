@@ -3,10 +3,11 @@
 //
 // It includes a Router built on Go 1.22+ [net/http.ServeMux], a
 // composable Middleware chain, built-in middleware (logging, panic
-// recovery, CORS, request ID, content type, auth), request/response
-// helpers (Bind, JSON, Error), structured error mapping, and a
-// generic ResourceRouter that auto-wires CRUD endpoints for any
-// entity type implementing the Entity interface.
+// recovery, CORS, request ID, content type, auth, response
+// compression), request/response helpers (Bind, JSON, Error),
+// structured error mapping, and a generic ResourceRouter that
+// auto-wires CRUD endpoints for any entity type implementing the
+// Entity interface.
 //
 // # Router
 //
