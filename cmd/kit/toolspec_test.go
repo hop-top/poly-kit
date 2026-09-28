@@ -113,62 +113,30 @@ func TestToolspecCmd_VersionOnly(t *testing.T) {
 		"kit toolspec emits schema 1.1")
 }
 
-func TestNegotiateSchemaVersion_DefaultsToBinary(t *testing.T) {
-	cases := []struct {
-		name      string
-		requested string
-		want      string
-	}{
-		{"unset", "", "1.0"},
-		{"matching", "1.0", "1.0"},
-		{"future-major", "2.0", "1.0"}, // above the binary: binary version
-		{"malformed", "garbage", "1.0"},
-		{"partial", "1", "1.0"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := negotiateSchemaVersion("1.0", tc.requested)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
+// TestToolspecCmd_NeverDowngrades pins the documented rule on the
+// command itself: kit declares the newest schema version, so every
+// KIT_TOOLSPEC_SCHEMA value, well-formed or not, at, above or below
+// it, resolves to it, in the full manifest and the --version probe.
+// The rule lives in toolspec.NegotiateSchemaVersion, which
+// `<tool> spec` shares.
+func TestToolspecCmd_NeverDowngrades(t *testing.T) {
+	for _, requested := range []string{"", "1.0", "1.1", "0.9", "2.0", "garbage", "1"} {
+		t.Run("request="+requested, func(t *testing.T) {
+			t.Setenv(toolspec.SchemaVersionEnv, requested)
 
-// TestNegotiateSchemaVersion_NeverDowngrades pins the documented rule:
-// kit has one layout to emit, so a well-formed request below the
-// native version still resolves to the native version. 1.1 is
-// additive over 1.0, so a 1.0 reader handles it.
-func TestNegotiateSchemaVersion_NeverDowngrades(t *testing.T) {
-	for _, requested := range []string{"1.0", "1.1", "0.9", "2.0"} {
-		t.Run(requested, func(t *testing.T) {
-			got := negotiateSchemaVersion(kitToolspecSchemaVersion, requested)
-			assert.Equal(t, "1.1", got)
-		})
-	}
-}
+			out, err := runToolspec(t)
+			require.NoError(t, err)
+			var m toolspec.Manifest
+			require.NoError(t, json.Unmarshal([]byte(out), &m))
+			assert.Equal(t, "1.1", m.SchemaVersion)
 
-func TestParseSchemaVersion(t *testing.T) {
-	cases := []struct {
-		in    string
-		major int
-		minor int
-		ok    bool
-	}{
-		{"1.0", 1, 0, true},
-		{"2.5", 2, 5, true},
-		{"10.20", 10, 20, true},
-		{"", 0, 0, false},
-		{"1", 0, 0, false},
-		{"junk", 0, 0, false},
-		{"1.x", 0, 0, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.in, func(t *testing.T) {
-			major, minor, ok := parseSchemaVersion(tc.in)
-			assert.Equal(t, tc.ok, ok)
-			if ok {
-				assert.Equal(t, tc.major, major)
-				assert.Equal(t, tc.minor, minor)
+			out, err = runToolspec(t, "--version")
+			require.NoError(t, err)
+			var payload struct {
+				SchemaVersion string `json:"schema_version"`
 			}
+			require.NoError(t, json.Unmarshal([]byte(out), &payload))
+			assert.Equal(t, "1.1", payload.SchemaVersion)
 		})
 	}
 }

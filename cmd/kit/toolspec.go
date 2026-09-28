@@ -7,16 +7,19 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"hop.top/kit/go/ai/toolspec"
 	speccli "hop.top/kit/go/ai/toolspec/cli"
 	"hop.top/kit/go/ai/toolspec/policy"
 	kitcli "hop.top/kit/go/console/cli"
 )
 
 // kitToolspecSchemaVersion is the schema version kit's own manifest
-// claims. 1.1 adds per-command fields on ManifestCommand that surface
-// kit's command annotations; it is additive, so 1.0 clients that
-// ignore unknown fields read it unchanged.
-const kitToolspecSchemaVersion = "1.1"
+// declares: the newest one. 1.1 adds per-command fields on
+// ManifestCommand that surface kit's command annotations; it is
+// additive, so 1.0 clients that ignore unknown fields read it
+// unchanged. Declaring the newest version means negotiation never
+// moves it: kit never downgrades.
+const kitToolspecSchemaVersion = toolspec.LatestSchemaVersion
 
 // toolspecCmd is the discovery surface the toolspec contract mandates on the kit
 // binary itself — `kit toolspec` emits kit's own capability manifest
@@ -32,8 +35,9 @@ const kitToolspecSchemaVersion = "1.1"
 // serve `<tool> spec` only.
 //
 // Implementation is deliberately thin: BuildManifest already does
-// the cobra-tree projection. We honor KIT_TOOLSPEC_SCHEMA via the
-// shared negotiation helper; --version short-circuits to a
+// the cobra-tree projection. KIT_TOOLSPEC_SCHEMA goes through
+// toolspec.NegotiateSchemaVersion, the rule `<tool> spec` applies
+// too; --version short-circuits to a
 // minimal `{"schema_version": "..."}` payload for capability probes
 // that don't need the full manifest.
 func toolspecCmd(root *kitcli.Root) *cobra.Command {
@@ -62,7 +66,7 @@ func toolspecCmd(root *kitcli.Root) *cobra.Command {
 	cmd.RunE = func(c *cobra.Command, _ []string) error {
 		versionOnly, _ := c.Flags().GetBool("version")
 		includeDeprecated, _ := c.Flags().GetBool("include-deprecated")
-		schema := negotiateSchemaVersion(kitToolspecSchemaVersion, os.Getenv("KIT_TOOLSPEC_SCHEMA"))
+		schema := toolspec.NegotiateSchemaVersion(kitToolspecSchemaVersion, os.Getenv(toolspec.SchemaVersionEnv))
 
 		w := c.OutOrStdout()
 		enc := json.NewEncoder(w)
@@ -122,40 +126,4 @@ func toolspecPolicyCmd() *cobra.Command {
 		return enc.Encode(tbl)
 	}
 	return cmd
-}
-
-// negotiateSchemaVersion implements the toolspec contract's
-// KIT_TOOLSPEC_SCHEMA rule: kit never downgrades. It emits one layout
-// (kitToolspecSchemaVersion), so every well-formed request, at, above
-// or below it, resolves to the binary version; 1.1 is additive, so a
-// 1.0 reader handles it. Malformed values degrade silently to the
-// binary version per the contract.
-//
-// If kit ever emits more than one layout, grow a lookup table here.
-// The function signature (request → resolved) is locked.
-func negotiateSchemaVersion(binary, requested string) string {
-	if requested == "" {
-		return binary
-	}
-	// Validate the MAJOR.MINOR shape only; with one layout to emit,
-	// every parsed request resolves to the binary value.
-	major, minor, ok := parseSchemaVersion(requested)
-	if !ok {
-		return binary
-	}
-	_ = major
-	_ = minor
-	return binary
-}
-
-// parseSchemaVersion returns major, minor, ok for a "MAJOR.MINOR"
-// string. Mirrors the toolspec contract: malformed degrades silently
-// (ok=false → caller falls back).
-func parseSchemaVersion(s string) (int, int, bool) {
-	var major, minor int
-	n, err := fmt.Sscanf(s, "%d.%d", &major, &minor)
-	if err != nil || n != 2 {
-		return 0, 0, false
-	}
-	return major, minor, true
 }
