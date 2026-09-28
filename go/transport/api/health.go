@@ -43,6 +43,12 @@ type HealthConfig struct {
 	// the body says only that the process is unavailable, which is
 	// what an unauthenticated caller on a remote bind should learn.
 	Detail bool
+	// Routes is the handler inspected for an adopter route at a
+	// probe path. Nil means next itself. Set it when next wraps the
+	// router in further middleware (a Host check, say): the wrapper
+	// hides the router's routes from inspection, and without Routes
+	// an adopter's own /healthz would be shadowed.
+	Routes http.Handler
 }
 
 // HealthStatus is the JSON body both routes answer with.
@@ -79,10 +85,14 @@ func HealthRoutes(next http.Handler, cfg HealthConfig) http.Handler {
 	prefix := strings.TrimSuffix(cfg.PathPrefix, "/")
 	live := prefix + LivenessPath
 	ready := prefix + ReadinessPath
-	if servesExactly(next, live) {
+	routes := cfg.Routes
+	if routes == nil {
+		routes = next
+	}
+	if servesExactly(routes, live) {
 		live = ""
 	}
-	if servesExactly(next, ready) {
+	if servesExactly(routes, ready) {
 		ready = ""
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

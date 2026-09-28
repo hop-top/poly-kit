@@ -153,7 +153,7 @@ func (a *apiService) validateHealth() error {
 // it ready (not starting, failed, or stopped) and its own Ready still
 // agrees. A dependency the run did not start is not checked, the same
 // way it does not constrain start order.
-func (a *apiService) withHealth(ctx context.Context, h http.Handler) http.Handler {
+func (a *apiService) withHealth(ctx context.Context, h, routes http.Handler) http.Handler {
 	if !a.healthEnabled() {
 		return h
 	}
@@ -170,6 +170,7 @@ func (a *apiService) withHealth(ctx context.Context, h http.Handler) http.Handle
 		PathPrefix: prefix,
 		Checks:     checks,
 		Detail:     a.healthDetail(),
+		Routes:     routes,
 	})
 }
 

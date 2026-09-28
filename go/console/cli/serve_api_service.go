@@ -121,6 +121,9 @@ func (a *apiService) Validate() error {
 	if err := a.validateHealth(); err != nil {
 		return err
 	}
+	if err := a.validateGuards(); err != nil { // host_check, origin_check, security_headers
+		return err
+	}
 	if _, err := a.maxBodyBytes(); err != nil {
 		return err
 	}
@@ -375,8 +378,17 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 		return nil, err
 	}
 
-	// Health is slot 7: inside edge, in front of the router.
-	return api.Chain(edge...)(a.withHealth(ctx, router)), nil
+	// HTTP-plane slot 8 (Host/Origin) wraps the router itself, not its
+	// per-route mws, which huma's routes, /capabilities and unmatched
+	// paths bypass. Slot 7 (health) answers probes ahead of it and
+	// inspects the bare router for adopter routes at the probe paths;
+	// slot 6 (security headers) and edge wrap everything, probes
+	// included. See serve_api_guard.go and serve_api_health.go.
+	checked, err := a.hostOriginChecks(router)
+	if err != nil {
+		return nil, err
+	}
+	return api.Chain(edge...)(a.securityHeaders(a.withHealth(ctx, checked, router))), nil
 }
 
 // bridge builds the bridge the projection executes through. A tool

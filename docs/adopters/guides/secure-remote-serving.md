@@ -58,6 +58,11 @@ for your own command tree; substitute it.
   `Content-Length` declares it or a chunked body crosses the cap
   mid-read. Raise or lower it with `services.api.body_limit.max_bytes`
   (or `services.all.body_limit.max_bytes` for every service).
+- **No reach from a browser tab.** The api service refuses requests
+  whose `Host` it does not answer for (DNS rebinding) and writes from
+  pages on other origins (cross-site request forgery), and sets
+  hardening headers on every response. All on by default, loopback
+  and beyond.
 
 The socket service needs none of the address rules: a Unix socket has
 no port and is not routable. The file is created `0600`, so the
@@ -609,6 +614,98 @@ $ echo '{"path":["widget","list"],"request_id":"req-42","trace_id":"4bf92f3577b3
 A caller that disconnects mid-command cancels the command's context
 on both transports; a command that honors its context stops.
 
+### 8. Keep browsers out: Host, Origin, response headers
+
+Loopback is not private from a browser. Any page the operator opens
+can make the browser send requests to `127.0.0.1:8080`, and a page
+that re-resolves its own name to `127.0.0.1` (DNS rebinding) can read
+the answers too. The api service closes both paths by default:
+
+- **Host check.** The `Host` header must name a host the listener
+  answers for. A loopback bind answers to `localhost`, `127.0.0.1` and
+  `[::1]` on any port (so `ssh -L` forwards keep working); a named or
+  IP bind answers to that host. A wildcard bind (`0.0.0.0`, `::`,
+  `:8080`) cannot know its names, so it checks nothing until you list
+  them. The rebinding page arrives with its own name in `Host` and is
+  refused:
+
+  ```bash
+  curl -s -i http://127.0.0.1:8080/v1/commands -H 'Host: attacker.example'
+  ```
+
+  ```http
+  HTTP/1.1 403 Forbidden
+  Content-Type: application/json
+  X-Content-Type-Options: nosniff
+
+  {"status":403,"code":"host_rejected","message":"host \"attacker.example\" is not served here"}
+  ```
+
+- **Origin check.** A `POST`, `PUT`, `PATCH` or `DELETE` a browser
+  sends from another origin is refused with `403` and
+  `origin_rejected`. Requests without `Origin` (curl, SDKs, other
+  servers), same-origin requests, and `GET`/`HEAD`/`OPTIONS` pass.
+  A local dev server on another port is another origin.
+
+  ```bash
+  curl -s -X POST http://127.0.0.1:8080/v1/commands/widget/add \
+    -H 'Origin: https://attacker.example'
+  ```
+
+  ```json
+  {"status":403,"code":"origin_rejected","message":"cross-origin request from \"https://attacker.example\" refused"}
+  ```
+
+- **Security headers.** Every response, refusals included, carries
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`
+  and `Content-Security-Policy: default-src 'none'; frame-ancestors
+  'none'; base-uri 'none'; form-action 'none'`. The OpenAPI `/docs`
+  page keeps its own, looser policy. `Strict-Transport-Security` is
+  sent only on requests that reached the server over TLS; a
+  TLS-terminating proxy sends its own.
+
+Health probes are answered before the Host check, so an orchestrator
+addressing a pod by IP needs no entry.
+
+Serving under a DNS name, or to a browser app on another origin, is
+configuration:
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  api:
+    addr: 0.0.0.0:8443
+    host_check:
+      allow: [api.example.com, "tool.internal:8443"]
+    origin_check:
+      allow: ["https://console.example.com"]
+```
+
+A `host_check.allow` entry without a port matches any port; with one,
+only that port. `origin_check.allow` entries are bare origins,
+`scheme://host[:port]`; anything else fails validation at exit `2`,
+as does an unknown key in any of the three blocks. The list adds to
+the listener's own hosts; it never removes `localhost` from a
+loopback bind.
+
+Any of the keys can be set once for every service under
+`services.all`, and the service's own key wins. Lists replace; they
+are never merged:
+
+```yaml
+services:
+  all:
+    host_check:
+      allow: [tool.internal]
+  api:
+    host_check:
+      allow: [api.example.com]   # api answers to this, not tool.internal
+```
+
+To turn a check off, set its block's `enabled: false`. An origin you
+grant through `api.CORS` is only readable by that page; to let it
+write, list it in `origin_check.allow` too.
+
 ## Option reference
 
 | Option | Default | Effect |
@@ -624,8 +721,16 @@ on both transports; a command that honors its context stops.
 | `services.<svc>.audit.redact.secret_flags` | none | Extra flag names masked in audit records; `services.all` applies to every service. |
 | `services.<svc>.audit.redact.patterns` | none | Extra content patterns (RE2) masked in audit records. |
 | `--policy=<name>` | none | The tool's policy engine, applied to remote calls for every caller. Naming one permits a non-loopback address. |
+| `services.api.host_check.enabled` | `true` | Refuse a `Host` the listener does not answer for (`403`, `host_rejected`). |
+| `services.api.host_check.allow` | `[]` | Hosts accepted beyond the listener's own; `name` or `name:port`. Required for a wildcard bind to check anything. |
+| `services.api.origin_check.enabled` | `true` | Refuse cross-origin browser writes (`403`, `origin_rejected`). |
+| `services.api.origin_check.allow` | `[]` (same-origin only) | Cross-origin browser origins permitted to write, `scheme://host[:port]`. |
+| `services.api.security_headers.enabled` | `true` | `nosniff`, `no-referrer`, a deny-all CSP; HSTS over TLS only. |
+| `services.all.<block>.<key>` | unset | Shared default for the three blocks above; the service's own key wins. |
 
-Precedence for either opt-in is flag, then config key, then code. The
+Precedence for either opt-in is flag, then config key, then code.
+The guard keys have no flags: the service's key, then
+`services.all`, then the default. The
 socket path, exposure patterns, and destructive policy are documented
 in their own guides and are unchanged.
 
