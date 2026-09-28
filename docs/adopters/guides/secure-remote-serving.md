@@ -1289,9 +1289,13 @@ x-content-type-options: nosniff
 ```
 
 The listener no longer answers plaintext (`400 Client sent an HTTP
-request to an HTTPS server`), accepts TLS 1.2 and up
-(`tls.min_version: "1.3"` raises the floor), and loads the files at
-start, so restart after renewing them. The same keys under
+request to an HTTPS server`) and accepts TLS 1.2 and up
+(`tls.min_version: "1.3"` raises the floor). Renew the files in place:
+the listener watches their directories and serves new connections with
+the new pair once it loads, no restart needed. A pair that does not
+load — a half-written file, a key that does not match — is logged as
+`tls: reload rejected` and the previous pair keeps serving; write to a
+temporary file and rename it over the old one to avoid the warning. The same keys under
 `services.rpc` or `services.mcp` encrypt those listeners; the rpc
 service then negotiates HTTP/2 for native gRPC by ALPN instead of
 serving h2c. Put the keys under `services.all.tls` to encrypt every
@@ -1357,7 +1361,8 @@ HTTP/2 401
 A certificate the CA bundle does not verify never gets that far: the
 handshake fails. The health probes answer without a certificate, so an
 orchestrator needs none. Under `mtls` the certificate is the only
-verifier; `APIConfig.Auth` is not consulted.
+verifier; `APIConfig.Auth` is not consulted. A replaced `ca_file` is
+picked up like a replaced certificate.
 
 A failed handshake has no request to audit. The listener logs it at
 debug (run `serve -V` to see the reason), at most a few lines a second,

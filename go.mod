@@ -30,6 +30,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.9.1
 	github.com/drone/go-scm v1.42.2
 	github.com/failsafe-go/failsafe-go v0.9.6
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/gofrs/flock v0.13.0
 	github.com/google/cel-go v0.25.0
@@ -142,7 +143,6 @@ require (
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect

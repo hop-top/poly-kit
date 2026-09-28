@@ -3,12 +3,10 @@ package cli
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/asn1"
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -63,6 +61,9 @@ type ServeTLS struct {
 	// nil when the bearer mode names no authorization server or no
 	// URL audience.
 	resource *api.ProtectedResource
+	// files is what is read from files and reloaded when they change;
+	// nil when nothing is (certificates from ACME, no auth.mtls).
+	files *tlsFiles
 	// root and svc name the listener for the handshake log and its
 	// refusal count.
 	root *Root
@@ -131,7 +132,11 @@ func (t *ServeTLS) Auth() api.AuthFunc {
 //
 // A failed handshake is taken off srv's ErrorLog: it is logged at
 // debug, rate-limited, and counted as the tls_handshake refusal by a
-// linked provider that implements [ServeHTTPRefusals].
+// linked provider that implements [ServeHTTPRefusals]. Certificate
+// and CA files are watched while it serves, and a new
+// handshake is served with them once they change and load (see
+// [ResolveServeTLS]); a connection already open keeps the certificate
+// it was established with.
 func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 	if t != nil && t.apiKeys != nil {
 		defer func() { _ = t.apiKeys.Close() }()
@@ -139,8 +144,12 @@ func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 	if !t.Enabled() {
 		return srv.Serve(ln)
 	}
-	hs := newHandshakeLog(t.root, t.svc, serveListenerLogger(t.root))
+	logger := serveListenerLogger(t.root)
+	hs := newHandshakeLog(t.root, t.svc, logger)
 	srv.ErrorLog = api.HandshakeErrorLog(srv.ErrorLog, hs.failed)
+	if t.files != nil {
+		defer t.files.watch(logger)()
+	}
 	srv.TLSConfig = t.config.Clone()
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -181,6 +190,13 @@ func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 // it needs no TLS of the listener, though a bearer token sent in
 // plaintext beyond loopback can be replayed by anyone who sees it.
 // A key of a mode's block set under another mode is refused.
+//
+// The files — cert_file and key_file, ca_file — are read
+// here, and a set that does not load is refused, naming the key. While
+// [ServeTLS.Serve] runs they are read again whenever their directories
+// change; a set that loads replaces the one in force for every new
+// handshake, and one that does not is logged and ignored. ACME renews
+// its own certificates and is not watched.
 func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 	if r == nil || r.Viper == nil {
 		return &ServeTLS{}, nil
@@ -196,12 +212,17 @@ func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 		return nil, err
 	}
 
-	tc, err := res.tlsConfig(r.Config.Name)
+	tc, files, err := res.tlsConfig(r.Config.Name)
 	if err != nil {
 		return nil, err
 	}
 	if mode != AuthModeMTLS {
-		t := &ServeTLS{config: tc, root: r, svc: svc}
+		t := &ServeTLS{root: r, svc: svc}
+		if tc != nil {
+			if t, err = res.serveTLS(r, tc, files, nil); err != nil {
+				return nil, err
+			}
+		}
 		if mode == AuthModeAPIKey {
 			cfg, err := res.apiKeyStoreConfig(r)
 			if err != nil {
@@ -227,13 +248,48 @@ func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 			svcconfig.Key(svc, tlsBlock, "cert_file"), svcconfig.Key(svc, tlsBlock, "key_file"),
 			svcconfig.Key(svc, tlsACMEBlock, "domains"))
 	}
-	pool, verify, err := res.mtls()
+	verify, err := res.mtls(files)
 	if err != nil {
 		return nil, err
 	}
-	tc.ClientCAs = pool
 	tc.ClientAuth = tls.VerifyClientCertIfGiven
-	return &ServeTLS{config: tc, clientAuth: api.ClientCertAuth(verify), root: r, svc: svc}, nil
+	return res.serveTLS(r, tc, files, api.ClientCertAuth(verify))
+}
+
+// serveTLS completes the setting from the resolved configuration tc
+// and the files it reads. With no file to read (ACME, no auth.mtls),
+// tc is served as it is. Otherwise tc becomes the template of every
+// snapshot the files load into, and the listener's own configuration
+// hands each handshake the latest one.
+func (t tlsResolver) serveTLS(r *Root, tc *tls.Config, files *tlsFiles, verify api.AuthFunc) (*ServeTLS, error) {
+	st := &ServeTLS{config: tc, clientAuth: verify, root: r, svc: t.svc}
+	if files.certFile == "" && files.caFile == "" {
+		return st, nil
+	}
+	// The snapshot a handshake is served with replaces the listener's
+	// configuration whole, ALPN protocols included, so it carries the
+	// ones http.Server would add to the listener's: HTTP/2 and
+	// HTTP/1.1, after any of the template's own.
+	tc.NextProtos = slices.Clone(tc.NextProtos)
+	for _, p := range []string{"h2", "http/1.1"} {
+		if !slices.Contains(tc.NextProtos, p) {
+			tc.NextProtos = append(tc.NextProtos, p)
+		}
+	}
+	files.svc = t.svc
+	files.template = tc
+	snap, err := files.load()
+	if err != nil {
+		return nil, err
+	}
+	files.current.Store(snap)
+	st.files = files
+	st.config = &tls.Config{
+		MinVersion:         tc.MinVersion,
+		NextProtos:         tc.NextProtos,
+		GetConfigForClient: files.configForClient,
+	}
+	return st, nil
 }
 
 // tlsResolver reads one service's tls and auth keys.
@@ -285,14 +341,16 @@ func (t tlsResolver) list(block, key string) []string {
 	return out
 }
 
-// tlsConfig is the server configuration, nil when TLS is off.
-func (t tlsResolver) tlsConfig(tool string) (*tls.Config, error) {
+// tlsConfig is the server configuration, nil when TLS is off, and the
+// files it reads: the certificate and key when they come from files
+// (loaded by [tlsFiles.load], not here).
+func (t tlsResolver) tlsConfig(tool string) (*tls.Config, *tlsFiles, error) {
 	certFile, certKey := t.str(tlsBlock, "cert_file")
 	keyFile, keyKey := t.str(tlsBlock, "key_file")
 	domains := t.list(tlsACMEBlock, "domains")
 	acmeOn, acmeSet, err := t.boolean(tlsACMEBlock, "enabled")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !acmeSet {
 		acmeOn = len(domains) > 0
@@ -301,48 +359,45 @@ func (t tlsResolver) tlsConfig(tool string) (*tls.Config, error) {
 
 	on, set, err := t.boolean(tlsBlock, "enabled")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !set {
 		on = files || acmeOn
 	}
 	if !on {
-		return nil, nil
+		return nil, nil, nil
 	}
 	enabledKey := svcconfig.Key(t.svc, tlsBlock, "enabled")
 	switch {
 	case files && acmeOn:
-		return nil, fmt.Errorf("%s: both cert_file/key_file and tls.acme are set; use one certificate source",
+		return nil, nil, fmt.Errorf("%s: both cert_file/key_file and tls.acme are set; use one certificate source",
 			svcconfig.Key(t.svc, tlsBlock, ""))
 	case !files && !acmeOn:
-		return nil, fmt.Errorf("%s: TLS is on but has no certificate; set %s and %s, or %s",
+		return nil, nil, fmt.Errorf("%s: TLS is on but has no certificate; set %s and %s, or %s",
 			enabledKey, certKey, keyKey, svcconfig.Key(t.svc, tlsACMEBlock, "domains"))
 	}
 
 	minVersion, err := t.minVersion()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if files {
 		if certFile == "" || keyFile == "" {
-			return nil, fmt.Errorf("%s, %s: set both, or neither", certKey, keyKey)
+			return nil, nil, fmt.Errorf("%s, %s: set both, or neither", certKey, keyKey)
 		}
-		pair, err := tls.LoadX509KeyPair(certFile, keyFile)
-		if err != nil {
-			return nil, fmt.Errorf("%s, %s: %w", certKey, keyKey, err)
-		}
-		return &tls.Config{MinVersion: minVersion, Certificates: []tls.Certificate{pair}}, nil
+		return &tls.Config{MinVersion: minVersion},
+			&tlsFiles{certFile: certFile, keyFile: keyFile, certKey: certKey, keyKey: keyKey}, nil
 	}
 
 	domainsKey := svcconfig.Key(t.svc, tlsACMEBlock, "domains")
 	if len(domains) == 0 {
-		return nil, fmt.Errorf("%s: ACME is on but names no domain", domainsKey)
+		return nil, nil, fmt.Errorf("%s: ACME is on but names no domain", domainsKey)
 	}
 	cacheDir, _ := t.str(tlsACMEBlock, "cache_dir")
 	if cacheDir == "" {
 		dir, err := xdg.RawStateDir(tool)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", svcconfig.Key(t.svc, tlsACMEBlock, "cache_dir"), err)
+			return nil, nil, fmt.Errorf("%s: %w", svcconfig.Key(t.svc, tlsACMEBlock, "cache_dir"), err)
 		}
 		cacheDir = filepath.Join(dir, "acme")
 	}
@@ -358,7 +413,7 @@ func (t tlsResolver) tlsConfig(tool string) (*tls.Config, error) {
 	}
 	tc := m.TLSConfig()
 	tc.MinVersion = minVersion
-	return tc, nil
+	return tc, &tlsFiles{}, nil
 }
 
 // minVersion resolves tls.min_version: "1.2" (the default) or "1.3".
@@ -373,28 +428,22 @@ func (t tlsResolver) minVersion() (uint16, error) {
 	return 0, fmt.Errorf("%s: %q is not a supported version; use \"1.2\" or \"1.3\"", k, v)
 }
 
-// mtls resolves the auth.mtls block: the CA bundle client certificates
-// must chain to, and where the identity is read from.
-func (t tlsResolver) mtls() (*x509.CertPool, api.ClientCertConfig, error) {
+// mtls resolves the auth.mtls block into files and the verifier's
+// configuration: the CA bundle client certificates must chain to, and
+// where the identity is read from. The files are read by [tlsFiles.load], not here.
+func (t tlsResolver) mtls(files *tlsFiles) (api.ClientCertConfig, error) {
 	var verify api.ClientCertConfig
 	caFile, caKey := t.str(authMTLSBlock, "ca_file")
 	if caFile == "" {
-		return nil, verify, fmt.Errorf("%s: auth.mode %q needs the CA bundle client certificates chain to",
+		return verify, fmt.Errorf("%s: auth.mode %q needs the CA bundle client certificates chain to",
 			caKey, AuthModeMTLS)
 	}
-	pem, err := os.ReadFile(caFile)
-	if err != nil {
-		return nil, verify, fmt.Errorf("%s: %w", caKey, err)
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(pem) {
-		return nil, verify, fmt.Errorf("%s: %s holds no PEM certificate", caKey, caFile)
-	}
+	files.caFile, files.caKey = caFile, caKey
 
 	principal, pKey := t.str(authMTLSBlock, "principal")
 	principal = strings.ToLower(principal)
 	if principal != "" && !slices.Contains(api.PrincipalSources, principal) {
-		return nil, verify, fmt.Errorf("%s: unknown source %q; use one of %s",
+		return verify, fmt.Errorf("%s: unknown source %q; use one of %s",
 			pKey, principal, strings.Join(api.PrincipalSources, ", "))
 	}
 	verify.Principal = principal
@@ -402,19 +451,20 @@ func (t tlsResolver) mtls() (*x509.CertPool, api.ClientCertConfig, error) {
 	oid, oidKey := t.str(authMTLSBlock, "tenant_oid")
 	pattern, patKey := t.str(authMTLSBlock, "tenant_san_pattern")
 	if oid != "" && pattern != "" {
-		return nil, verify, fmt.Errorf("%s, %s: set one tenant source, not both", oidKey, patKey)
+		return verify, fmt.Errorf("%s, %s: set one tenant source, not both", oidKey, patKey)
 	}
+	var err error
 	if oid != "" {
 		if verify.TenantOID, err = parseOID(oid); err != nil {
-			return nil, verify, fmt.Errorf("%s: %w", oidKey, err)
+			return verify, fmt.Errorf("%s: %w", oidKey, err)
 		}
 	}
 	if pattern != "" {
 		if verify.TenantSAN, err = regexp.Compile(pattern); err != nil {
-			return nil, verify, fmt.Errorf("%s: %w", patKey, err)
+			return verify, fmt.Errorf("%s: %w", patKey, err)
 		}
 	}
-	return pool, verify, nil
+	return verify, nil
 }
 
 // parseOID parses a dotted object identifier, "2.5.4.11".

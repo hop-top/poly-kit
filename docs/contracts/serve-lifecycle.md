@@ -1796,8 +1796,17 @@ serving.
   response to a request that arrived over it.
 - ACME answers the TLS-ALPN-01 challenge on the listener itself, so
   the CA must reach it on port 443 under every name in `domains`.
-  Certificates from files load at start; a replaced file takes effect
-  on the next start.
+  Certificates from ACME renew themselves.
+- `cert_file`, `key_file` and `ca_file` load at start, and again
+  whenever a directory holding one changes, once it has been quiet for
+  250ms, as two sets: the certificate and key, and the bundle. A set
+  that loads — the key matches the certificate, no PEM block is cut
+  short, the bundle holds a certificate — replaces the one in force for
+  every new handshake; a connection already open keeps what it was
+  established with. A set that does not load is logged at warn and
+  ignored: the listener MUST keep serving the set in force, never a
+  pair it has not verified, and the other set still reloads. There is
+  no reload signal.
 - `auth.mode: mtls` needs TLS on and `ca_file`. The listener asks every
   client for a certificate, and a certificate that does not chain to
   the bundle ends the handshake. A request with no certificate reaches

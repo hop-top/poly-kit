@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,12 +14,14 @@ import (
 	"hop.top/kit/internal/testpki"
 )
 
-// TestTLSListenerCountsFailedHandshakes serves the api over TLS with
-// the kit provider scraping: a failed handshake is counted as
-// tls_handshake.
-func TestTLSListenerCountsFailedHandshakes(t *testing.T) {
+// TestTLSListenerCountsHandshakesAndReloadsItsCertificate serves the api
+// over TLS with the kit provider scraping: a failed handshake is counted
+// as tls_handshake, and a certificate renewed on disk is served without
+// a restart.
+func TestTLSListenerCountsHandshakesAndReloadsItsCertificate(t *testing.T) {
 	ca := testpki.NewCA(t, "served test CA")
-	certFile, keyFile := ca.Localhost(t).Write(t, t.TempDir(), "server")
+	dir := t.TempDir()
+	certFile, keyFile := ca.Localhost(t).Write(t, dir, "server")
 	config := map[string]any{
 		"services.api.tls.cert_file": certFile,
 		"services.api.tls.key_file":  keyFile,
@@ -47,4 +50,17 @@ func TestTLSListenerCountsFailedHandshakes(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		return strings.Contains(string(body), `kit_refusal_reason="tls_handshake"`)
 	}, 10*time.Second, 50*time.Millisecond, "the failed handshake is counted")
+
+	next := ca.Localhost(t)
+	testpki.Replace(t, certFile+".new", next.CertPEM)
+	testpki.Replace(t, keyFile, next.KeyPEM)
+	require.NoError(t, os.Rename(certFile+".new", certFile))
+	require.Eventually(t, func() bool {
+		resp, err := client().Get("https://" + addr + "/healthz")
+		if err != nil {
+			return false
+		}
+		_ = resp.Body.Close()
+		return resp.TLS.PeerCertificates[0].SerialNumber.Cmp(next.Cert().SerialNumber) == 0
+	}, 10*time.Second, 50*time.Millisecond, "the renewed certificate is served\n%s", run.stderr.String())
 }

@@ -162,6 +162,21 @@ func (ca *CA) WriteCA(t testing.TB, dir, name string) string {
 	return p
 }
 
+// Cert is the issued certificate, parsed.
+func (i Issued) Cert() *x509.Certificate { return i.TLS.Leaf }
+
+// Replace writes data to path the way a deployment tool does: into a
+// temporary file beside it, renamed over it, so no reader sees a
+// partial write.
+func Replace(t testing.TB, path string, data []byte) {
+	t.Helper()
+	tmp := path + ".tmp"
+	write(t, tmp, data)
+	if err := os.Rename(tmp, path); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // ClientTLS is a client configuration trusting ca, presenting certs.
 func (ca *CA) ClientTLS(certs ...tls.Certificate) *tls.Config {
 	return &tls.Config{RootCAs: ca.Pool(), Certificates: certs, MinVersion: tls.VersionTLS12}
