@@ -105,7 +105,7 @@ type backoffPolicy struct {
 	BackoffJitter     float64
 }
 
-// defaultBackoff returns the v1 defaults documented in design.md §5.
+// defaultBackoff returns the v1 retry defaults.
 func defaultBackoff() backoffPolicy {
 	return backoffPolicy{
 		InitialBackoff:    500 * time.Millisecond,

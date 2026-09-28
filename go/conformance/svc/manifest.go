@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Manifest is the parsed manifest.yaml shape per design §2.
+// Manifest is the parsed manifest.yaml shape.
 type Manifest struct {
 	SchemaVersion   string         `yaml:"schema_version"`
 	Binary          string         `yaml:"binary"`

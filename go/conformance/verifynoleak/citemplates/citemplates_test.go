@@ -88,7 +88,7 @@ func TestTemplates_GitHubActions_PinsSHAs(t *testing.T) {
 	require.NoError(t, err)
 	content := string(data)
 	// Each uses: line should reference an action by 40-char SHA, not
-	// by tag — see design.md §8.
+	// by tag, so a moved tag cannot swap the action.
 	for _, line := range strings.Split(content, "\n") {
 		trim := strings.TrimSpace(line)
 		if !strings.HasPrefix(trim, "- uses:") && !strings.HasPrefix(trim, "uses:") {

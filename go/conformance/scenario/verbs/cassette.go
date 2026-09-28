@@ -113,7 +113,7 @@ func matchesOpClass(class classifier.Class, op string) bool {
 }
 
 // matchesPredicate inspects the recorded request payload against the
-// closed-key match predicate from design §4. Returns true on a hit.
+// closed-key match predicate. Returns true on a hit.
 func matchesPredicate(adapter string, payload map[string]any, match map[string]any) bool {
 	if len(match) == 0 {
 		return true

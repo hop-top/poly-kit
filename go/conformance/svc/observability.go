@@ -9,7 +9,7 @@ import (
 // surface; the Prometheus client_golang exporter wires in via a
 // follow-up that does not change this API.
 //
-// Names match the design §11 prom names (kit_conf_svc_*) so the
+// Names match the Prometheus names (kit_conf_svc_*) so the
 // follow-up exporter can publish them directly.
 type Metrics struct {
 	GradeRequestsTotal *Counter // labels: status, tier

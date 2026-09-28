@@ -1,5 +1,5 @@
 // Package mdfence extracts YAML-fenced code blocks from Markdown
-// source per design.md §2. Pure function; no I/O, no YAML parsing.
+// source. Pure function; no I/O, no YAML parsing.
 //
 // Detection rules:
 //
@@ -16,7 +16,7 @@
 //
 //   - Parse YAML. Callers pass Block.Content to yaml.Unmarshal and
 //     handle parse failures themselves.
-//   - Detect "yaml-shaped" prose outside fences. Survey §1: too high
+//   - Detect "yaml-shaped" prose outside fences: too high
 //     a false-positive base rate; explicit non-goal.
 //   - Handle indented code blocks. CommonMark allows ` indented by 4
 //     spaces ` to be a code block, but no language tag attaches to

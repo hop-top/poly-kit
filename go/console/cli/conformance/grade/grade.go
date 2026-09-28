@@ -104,7 +104,7 @@ is convenience.`,
 }
 
 // gradeFlags is the parsed flag set; field names match the
-// design.md §3 surface. --format and --output are handled by
+// flag names. --format and --output are handled by
 // output.RegisterFlags / output.Dispatch; they intentionally do not
 // appear here.
 type gradeFlags struct {

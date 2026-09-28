@@ -9,7 +9,7 @@ import (
 	"hop.top/kit/go/console/output/envelope"
 )
 
-// Symbolic error codes for the svc surface. Per design §10. Each code
+// Symbolic error codes for the svc surface. Each code
 // corresponds to an HTTP status and a kit exit-code class.
 //
 // These constants intentionally live in this package rather than
@@ -53,8 +53,8 @@ const (
 	CodeL4BNotImplemented       = "L4B_NOT_IMPLEMENTED"
 )
 
-// HTTPStatus maps an output.Error.Code to an HTTP status code per
-// design §10's table. Unknown codes default to 500 (treat as internal).
+// HTTPStatus maps an output.Error.Code to an HTTP status code.
+// Unknown codes default to 500 (treat as internal).
 func HTTPStatus(code string) int {
 	switch code {
 	case "OK":
@@ -149,7 +149,7 @@ func SvcError(code, message, cause, fix string) *output.Error {
 }
 
 // errBody is the on-wire shape: {error: {code, message, hint,
-// request_id}}. Cause is intentionally not serialized (design §10).
+// request_id}}. Cause is intentionally not serialized.
 type errBody struct {
 	Code      string `json:"code"`
 	Message   string `json:"message"`

@@ -12,7 +12,7 @@ import (
 )
 
 // ErrModelNotRegistered signals a missing model lookup. Handlers map
-// this to CodeJudgeUnavailable (502) per design §10.
+// this to CodeJudgeUnavailable (502).
 var ErrModelNotRegistered = errors.New("judge: model not registered")
 
 // ModelRegistry resolves a named model into an AIJudge implementation.

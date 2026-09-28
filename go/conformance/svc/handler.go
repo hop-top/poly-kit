@@ -74,7 +74,7 @@ func (s *Service) Mount(router *api.Router) {
 	router.Handle("GET", "/readyz", s.handleReady)
 }
 
-// handleGrade implements POST /v1/grade per design §3.
+// handleGrade implements POST /v1/grade.
 func (s *Service) handleGrade(w http.ResponseWriter, r *http.Request) {
 	rid := api.GetRequestID(r)
 	claim := ClaimFromContext(r.Context())
@@ -190,7 +190,7 @@ func (s *Service) handleGrade(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// GradeResponse wraps Result + service metadata per design §4.
+// GradeResponse wraps Result + service metadata.
 type GradeResponse struct {
 	Result  *Result     `json:"result"`
 	Service ServiceMeta `json:"service"`
@@ -202,7 +202,8 @@ type ServiceMeta struct {
 	RequestID string `json:"request_id,omitempty"`
 }
 
-// handleRunAndGrade returns 501 per design §13.
+// handleRunAndGrade returns 501: server-side binary execution is not
+// available in this kit version.
 func (s *Service) handleRunAndGrade(w http.ResponseWriter, r *http.Request) {
 	rid := api.GetRequestID(r)
 	WriteError(w, SvcError(CodeL4BNotImplemented,

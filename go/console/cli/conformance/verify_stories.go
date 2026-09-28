@@ -21,7 +21,7 @@ import (
 // envelope: scan-source flag (--paths), rules override (--rules-file),
 // human|json output, sentinel-driven exit codes.
 //
-// design.md §7 owns the flag set; runVerifyStories owns the
+// The command owns the flag set; runVerifyStories owns the
 // orchestration.
 func verifyStoriesCmd() *cobra.Command {
 	var (

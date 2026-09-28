@@ -1,5 +1,4 @@
-// Package suppress implements the two-tier finding-suppression rules
-// from design.md §4:
+// Package suppress implements the two-tier finding-suppression rules:
 //
 //   - .verifynoleak.allow — gitignore-syntax path globs at the
 //     adopter repo root. Negation supported (!path/to/include-again).
@@ -158,7 +157,7 @@ const (
 )
 
 // ParseIgnoreDirectives scans the leading region of a file for
-// directives. Per design.md §4:
+// directives:
 //
 //   - YAML files: scan first 5 lines.
 //   - Markdown files: scan first 10 lines for IgnoreFile directives,
@@ -260,7 +259,7 @@ func HasFileLevelIgnore(ds []IgnoreDirective) bool {
 // lines distance rule. Used by the scanner to decide whether to drop
 // a block's findings.
 //
-// The rule (design.md §4): if a "ignore-next-block" comment appears
+// The rule: if a "ignore-next-block" comment appears
 // at line L, it scopes to the immediately-following fence opener at
 // line F so long as F-L ≤ 3 (== 2 blank lines + the comment line).
 // Beyond that, the directive is discarded.

@@ -38,7 +38,7 @@ func TestCmd_AliasConIsRegistered(t *testing.T) {
 }
 
 func TestVerifyNoLeak_MutualExclusion_StagedAndAudit(t *testing.T) {
-	// design.md §6: scan-source flags are mutually exclusive.
+	// Scan-source flags are mutually exclusive.
 	_, err := runCmd(t, "verify-no-leak", "--staged", "--audit")
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, conformance.ErrUsage), "mutual-exclusion violation must map to ErrUsage")
@@ -70,7 +70,7 @@ func TestVerifyNoLeak_PRBody_ZeroIsNoOp(t *testing.T) {
 }
 
 func TestVerifyNoLeak_HasAllDesignedFlags(t *testing.T) {
-	// Lock in the flag surface from design.md §6 so future PRs
+	// Lock in the flag surface so future PRs
 	// cannot silently drop one. We probe each flag by attempting
 	// --help and asserting it appears in the output.
 	out, err := runCmd(t, "verify-no-leak", "--help")

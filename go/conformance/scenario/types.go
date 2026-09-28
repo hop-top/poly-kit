@@ -53,7 +53,7 @@ type Step struct {
 
 // Assertion is one verb invocation in the scenario rubric. Per-kind
 // arguments are carried inline via the embedded map; the validator
-// pre-checks shape against the closed table in design §2.
+// pre-checks shape against the closed verb table.
 //
 // The grader walks Assertions in declaration order; the verbs/
 // registry resolves Kind to its evaluator.

@@ -8,7 +8,7 @@ import (
 )
 
 // TestVerbRegistryMatchesRulesJSON enforces the leak-rule
-// consistency invariant from design §13: every verb declared in
+// consistency invariant: every verb declared in
 // contracts/scenario-rules.json must be registered in the grader,
 // and every registered verb must be in the JSON. Drift between the
 // two surfaces is a CI failure rather than a silent run-time

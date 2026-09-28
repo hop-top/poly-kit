@@ -70,7 +70,7 @@ func TestExampleStoriesPassBothValidators(t *testing.T) {
 
 // TestScenarioShapedFileFailsBothValidators is the negative side: a
 // "story" that smuggles in scenario_id at root should fail BOTH
-// validators. This guards the design.md §5 belt-and-suspenders
+// validators. This guards the belt-and-suspenders
 // claim that CI's two invocations catch every malicious story.
 func TestScenarioShapedFileFailsBothValidators(t *testing.T) {
 	bad := []byte(`schema_version: "1"

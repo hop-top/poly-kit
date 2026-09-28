@@ -13,7 +13,7 @@ import (
 )
 
 // DefaultMaxCassetteSize is the body cap applied when WithMaxCassetteSize
-// is not set. 50 MiB matches design.md §2.
+// is not set (50 MiB).
 const DefaultMaxCassetteSize int64 = 50 * 1024 * 1024
 
 // New constructs a Client targeting baseURL. baseURL is the bare

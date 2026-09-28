@@ -57,7 +57,7 @@ const (
 // to attach detail while preserving identity.
 var (
 	ErrServiceUnreachable = &sentinel{code: CodeServiceUnavailable, exit: output.ExitTransient, transience: output.TransienceTransient, msg: "grade service unavailable"}
-	ErrServiceUnavailable = ErrServiceUnreachable // alias to match design.md vocab
+	ErrServiceUnavailable = ErrServiceUnreachable // alias for the service-side name
 	ErrServiceAuthFailed  = &sentinel{code: CodeServiceAuthFailed, exit: output.ExitUnauthorized, transience: output.TransiencePermanent, msg: "grade service auth failed"}
 	ErrUnauthorized       = ErrServiceAuthFailed
 	ErrServiceUsage       = &sentinel{code: CodeServiceUsage, exit: output.ExitUsage, transience: output.TransiencePermanent, msg: "grade service rejected request"}

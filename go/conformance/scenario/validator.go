@@ -47,7 +47,7 @@ func (e *ValidationErrors) Error() string {
 }
 
 // scenarioIDRegex enforces the kebab-case + dot/underscore-extension
-// shape from design §11 step 3.
+// scenario-ID shape.
 var scenarioIDRegex = regexp.MustCompile(`^[a-z][a-z0-9._-]*$`)
 
 // contentHashRegex enforces the design's "sha256:<lowercase-64-hex>"

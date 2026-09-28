@@ -1,5 +1,4 @@
-// Package validator implements the three-tier story validator per
-// design.md §6:
+// Package validator implements the three-tier story validator:
 //
 //	Tier 1   schema validity (always on)
 //	Tier 1.5 metadata key denylist (always on)
@@ -97,13 +96,13 @@ var storyIDRegex = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$`)
 var stepIDRegex = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // bannedVocabRegex flags assertion-shaped vocabulary in intent
-// fields. Whole-word, case-insensitive. Fires Severity=warn only —
-// curated by design.md §6 "Style warnings".
+// fields. Whole-word, case-insensitive. Fires Severity=warn only: a
+// style warning, not a leak.
 var bannedVocabRegex = regexp.MustCompile(`(?i)\b(should|must|will|assert|expect|exit code)\b`)
 
 // extraDenylistKeys are the metadata keys explicitly forbidden in
 // addition to the union of scenariorules.Verbs + TopLevelKeys.
-// design.md §6 calls these out for the cassette_* family which is
+// These cover the cassette_* family, which is
 // not in TopLevelKeys (it lives in compound_rules.R3.keys).
 var extraDenylistKeys = []string{
 	"cassette_must_contain",
@@ -361,7 +360,7 @@ func tier2Local(p *parser.ParsedStory, opts Options) []Finding {
 }
 
 // invokeHeadMatchesBinary checks the bare-name + path-ending-in-name
-// cases enumerated in design.md §2.
+// cases.
 func invokeHeadMatchesBinary(head, binary string) bool {
 	if head == binary {
 		return true
@@ -431,7 +430,7 @@ func tier3(p *parser.ParsedStory, opts Options) []Finding {
 	return out
 }
 
-// resolveToolspecPath implements the design.md §8 resolution order:
+// resolveToolspecPath implements the toolspec resolution order:
 //  1. opts.ToolspecOverride if set
 //  2. story.ToolspecRef if set (rejected if it escapes RepoRoot)
 //  3. <binary>.toolspec.yaml at RepoRoot

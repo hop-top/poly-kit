@@ -155,7 +155,7 @@ func evalProvenanceMatchesCassette(_ context.Context, _ AssertionSpec, vctx Verb
 }
 
 // collectCassetteURLs builds a set of (adapter, identifier) strings
-// the cassette recorded. Per design §9 v1 conventions:
+// the cassette recorded. v1 conventions:
 //   - http: req.url
 //   - sql: req.dsn (DB-level) — falls back to "sql://"
 //   - exec: "exec://" + argv[0]

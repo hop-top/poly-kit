@@ -12,8 +12,8 @@ import (
 )
 
 // TestEmbeddedJSONInSyncWithContracts protects against drift between
-// contracts/scenario-rules.json (the canonical wire-format file
-// 12fcc-scen owns) and the shared loader's vendored copy.
+// contracts/scenario-rules.json (the canonical wire-format file)
+// and the shared loader's vendored copy.
 //
 // On drift, the fix is documented in doc.go.
 func TestEmbeddedJSONInSyncWithContracts(t *testing.T) {

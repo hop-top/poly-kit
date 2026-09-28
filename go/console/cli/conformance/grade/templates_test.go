@@ -34,7 +34,7 @@ func TestCITemplatesPresent(t *testing.T) {
 
 // TestGitHubActionsSHAsPinned asserts the workflow uses SHA-pinned
 // actions (no @v4-style tag pins) — kit's verify-no-leak preferred
-// hardening. Regression test for design.md §9.
+// hardening.
 func TestGitHubActionsSHAsPinned(t *testing.T) {
 	repoRoot := findRepoRoot(t)
 	raw, err := os.ReadFile(filepath.Join(repoRoot, "templates/ci/grade/github-actions.yml"))
@@ -69,9 +69,8 @@ func TestGitHubActionsSHAsPinned(t *testing.T) {
 }
 
 // TestGitHubActionsEnablesPostingByDefault asserts the github
-// template ships --pr-comment + --status-check pre-enabled per
-// design.md §9 ("github template enables PR-comment + status-check
-// by default; other providers ship minimal shapes").
+// template ships --pr-comment + --status-check pre-enabled; other
+// providers ship minimal shapes.
 func TestGitHubActionsEnablesPostingByDefault(t *testing.T) {
 	repoRoot := findRepoRoot(t)
 	raw, err := os.ReadFile(filepath.Join(repoRoot, "templates/ci/grade/github-actions.yml"))

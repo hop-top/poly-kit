@@ -34,7 +34,7 @@ type RateQuota struct {
 	PerDay    int `json:"per_day"`
 }
 
-// DefaultQuota is the v1 default per-claim quota (design §8).
+// DefaultQuota is the v1 default per-claim quota.
 var DefaultQuota = RateQuota{Burst: 5, PerMinute: 30, PerDay: 1500}
 
 // HasScope reports whether the claim grants the given scope. Wildcard

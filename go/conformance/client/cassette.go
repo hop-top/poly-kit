@@ -78,7 +78,7 @@ func LoadManifest(cassetteDir string) (*Manifest, error) {
 // bytes (used as the Idempotency-Key). The Close call is a no-op for
 // the in-memory implementation; callers should still defer Close.
 //
-// Determinism rules (design.md §2):
+// Determinism rules:
 //   - tar header Mode=0644, Uid=Gid=0, ModTime=epoch, no Uname/Gname
 //   - gzip header writes no embedded filename / zero mtime
 //   - filesystem walk emits entries in byte-lex sorted order

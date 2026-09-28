@@ -49,7 +49,7 @@ func postStatusCheck(ctx context.Context, res *client.Result) error {
 }
 
 // buildCheckRunPayload assembles the Checks API JSON. Conclusion
-// mapping follows design.md §8: pass→success, fail→failure,
+// mapping: pass→success, fail→failure,
 // ungradable→neutral.
 func buildCheckRunPayload(sha string, r *client.Result) map[string]any {
 	conclusion := "neutral"

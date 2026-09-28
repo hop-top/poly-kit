@@ -15,7 +15,7 @@ import (
 // TestPackIsDeterministic packs the same fixture twice in a row and
 // asserts that the byte output (and therefore the Idempotency-Key) is
 // identical. This is the contract that lets retries collapse server-
-// side. Regression-guards design.md §2.
+// side.
 func TestPackIsDeterministic(t *testing.T) {
 	dir := t.TempDir()
 	writeFixture(t, dir, "manifest.yaml", "schema_version: \"1\"\nscenario_id: t.deterministic\n")

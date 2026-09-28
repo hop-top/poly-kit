@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-// Cassette wire-format constants per design §2.
+// Cassette wire-format constants.
 const (
 	CassetteContentType = "application/vnd.kit.cassette+tar+gzip"
 

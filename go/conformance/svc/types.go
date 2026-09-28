@@ -9,7 +9,7 @@ import (
 
 // ScenarioRef identifies a scenario by namespace + ID + optional
 // version. Resolution semantics (latest, etc.) live in the ScenarioStore
-// implementation; see design §6.
+// implementation.
 type ScenarioRef struct {
 	Namespace string
 	ID        string
@@ -37,7 +37,7 @@ type ScenarioMeta struct {
 	Deprecated     bool
 }
 
-// Validation regexes per design §6.
+// Validation regexes.
 var (
 	nsRe      = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
 	idRe      = regexp.MustCompile(`^[a-z][a-z0-9._-]*$`)
@@ -53,7 +53,7 @@ func ValidID(s string) bool { return idRe.MatchString(s) }
 // ValidVersion reports whether s matches the version regex.
 func ValidVersion(s string) bool { return versionRe.MatchString(s) }
 
-// ParseScenarioRef parses "ns/id" or "ns/id@version" per design §6.
+// ParseScenarioRef parses "ns/id" or "ns/id@version".
 // Empty version is allowed (caller treats it as "latest").
 func ParseScenarioRef(raw string) (ScenarioRef, error) {
 	raw = strings.TrimSpace(raw)

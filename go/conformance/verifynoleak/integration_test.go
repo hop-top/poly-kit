@@ -80,7 +80,7 @@ judge:
 }
 
 func TestPositive_ReadmeFencedYAMLBlock(t *testing.T) {
-	// Survey §1: the riskiest leak channel. An author illustrating
+	// The riskiest leak channel. An author illustrating
 	// "what a scenario looks like" in a README.
 	dir := t.TempDir()
 	p := writeFile(t, dir, "README.md", `# Example app

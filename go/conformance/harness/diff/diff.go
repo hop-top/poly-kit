@@ -64,9 +64,8 @@ type Diff struct {
 // Empty reports whether the diff has zero entries.
 func (d Diff) Empty() bool { return len(d.Entries) == 0 }
 
-// Format renders the diff as the multi-line text described in
-// design §1's failure-message shape. classifyRead is consulted to
-// flag Read-class modified entries as "informational only".
+// Format renders the diff as the multi-line failure message.
+// classifyRead is consulted to flag Read-class modified entries as "informational only".
 func (d Diff) Format(classifyRead func(adapter string, req map[string]any) bool) string {
 	if d.Empty() {
 		return ""

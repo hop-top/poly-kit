@@ -164,7 +164,7 @@ func TestApply_R4_DoesNotFireOnPromptOnly(t *testing.T) {
 	}
 }
 
-// ── Negative cases — survey §4 hot zones ──────────────────────────
+// ── Negative cases — known false-positive hot zones ───────────────
 
 func TestApply_NoFindings_OnSpacedToolspec(t *testing.T) {
 	// Shape mimics examples/spaced/spaced.toolspec.yaml top level.

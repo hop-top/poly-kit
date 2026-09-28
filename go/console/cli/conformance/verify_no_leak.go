@@ -19,9 +19,9 @@ import (
 )
 
 // verifyNoLeakCmd wires the rules engine + extractor + source
-// resolver into the user-facing verify-no-leak leaf. The command
-// shape mirrors design.md §6; flag interactions are enforced at the
-// top of RunE. Rendering routes through output.Dispatch — the
+// resolver into the user-facing verify-no-leak leaf. Flag
+// interactions are enforced at the top of RunE. Rendering routes
+// through output.Dispatch — the
 // kit-wide --format flag (including the "human" key registered by
 // the output package) is the single source of truth.
 func verifyNoLeakCmd() *cobra.Command {
@@ -138,7 +138,7 @@ func runVerifyNoLeak(cmd *cobra.Command, v *viper.Viper, f vnlFlags) error {
 	}
 
 	// Load rules: --rules-file overrides the embedded default. Override
-	// is logged to stderr per design.md §3 so an adopter can't silently
+	// is logged to stderr so an adopter can't silently
 	// neuter the detector.
 	var (
 		set *rules.Set
@@ -161,7 +161,7 @@ func runVerifyNoLeak(cmd *cobra.Command, v *viper.Viper, f vnlFlags) error {
 
 	// Load .verifynoleak.allow (no-op if missing). Layer kit-internal
 	// defaults on top only when scanning the kit repo itself or when
-	// KIT_INTERNAL_ALLOWLIST is set — design.md §5.
+	// KIT_INTERNAL_ALLOWLIST is set.
 	allowlist, err := suppress.LoadAllowlist(cwd)
 	if err != nil {
 		return ConfigError(".verifynoleak.allow load failed", err.Error(), "verify the file's syntax (gitignore-style)")
@@ -262,7 +262,7 @@ func runVerifyNoLeak(cmd *cobra.Command, v *viper.Viper, f vnlFlags) error {
 	}
 
 	// Run commit-message bodies through the markdown scanner — they
-	// frequently contain fenced YAML blocks (design.md §6).
+	// frequently contain fenced YAML blocks.
 	for _, m := range commitMsgs {
 		path := "commit:" + m.SHA
 		results = append(results, scanner.ReaderScanFile(path, "md", strings.NewReader(string(m.Body)), scanOpts))

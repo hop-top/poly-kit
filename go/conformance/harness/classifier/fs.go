@@ -25,8 +25,7 @@ const (
 // Rename is conservatively classified as Destructive: when the
 // destination pre-existed it is irrevocably overwritten. A future
 // refinement could re-classify Rename → Write when adopters opt
-// into a "destination-known-new" tag, but the conservative default
-// matches survey §3.6.
+// into a "destination-known-new" tag; the default stays conservative.
 var fsClass = map[string]Class{
 	FSOpWrite:    ClassWrite,
 	FSOpMkdir:    ClassWrite,

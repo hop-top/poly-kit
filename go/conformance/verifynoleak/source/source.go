@@ -1,8 +1,8 @@
 // Package source resolves the verify-no-leak scan-source flags into
 // a concrete list of file paths. Each scan-source is a function
 // returning ([]string, error); the command layer picks exactly one
-// based on the flag combination (design.md §6: mutually-exclusive
-// scan sources).
+// based on the flag combination (scan sources are mutually
+// exclusive).
 package source
 
 import (

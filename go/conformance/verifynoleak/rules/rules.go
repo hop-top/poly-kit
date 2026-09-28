@@ -1,6 +1,6 @@
 // Package rules holds the scenario-rule data model + the four
 // matchers that decide whether a parsed YAML document is
-// scenario-shaped per design.md §1.
+// scenario-shaped.
 //
 // The engine is pure: it does not read files, parse YAML, or write
 // output. Callers pass a parsed *yaml.Node and a loaded *Set; the
@@ -122,7 +122,7 @@ func (r Rule) matchKeyAtRoot(root *yaml.Node) (Finding, bool) {
 }
 
 // matchAnyKeyInSet — R3. Fires when any r.Keys entry appears anywhere
-// in the document tree. Surveys §3 calls these "novel compound terms"
+// in the document tree. These are "novel compound terms"
 // — by design we don't restrict to root because the leak channel
 // includes nested usage (e.g., per-step assertion blocks).
 func (r Rule) matchAnyKeyInSet(root *yaml.Node) (Finding, bool) {

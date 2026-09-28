@@ -26,7 +26,7 @@ import (
 	"hop.top/kit/go/conformance/verifynoleak/suppress"
 )
 
-// Default per-file size cap (1 MiB) matches design.md §6.
+// Default per-file size cap (1 MiB).
 const DefaultMaxFileSize = 1 << 20
 
 // Finding is the scanner-layer wrapper around a rules.Finding: it
@@ -47,7 +47,7 @@ type Finding struct {
 // FileResult is the per-file outcome of a scan: zero findings means
 // clean. Skipped reports whether the file was bypassed entirely
 // (binary, too large, unsupported extension); ParseError captures
-// best-effort YAML errors (warned, not fatal — see design.md §2).
+// best-effort YAML errors (warned, not fatal).
 type FileResult struct {
 	Path       string
 	Findings   []Finding
@@ -203,7 +203,7 @@ func scanMarkdown(path string, data []byte, set *rules.Set) ([]Finding, error) {
 
 // scanMarkdownWithDirectives extracts fenced YAML blocks, applies
 // the rules engine to each, and drops findings from blocks that a
-// preceding ignore-next-block directive covers (design.md §4).
+// preceding ignore-next-block directive covers.
 //
 // A parse failure in one block does not stop processing of
 // subsequent blocks; the error from the *last* failing block is
@@ -235,7 +235,7 @@ func scanMarkdownWithDirectives(path string, data []byte, set *rules.Set, direct
 }
 
 // fileKind classifies a path. Switch is the v1 surface; v1.1 may
-// add source-literal scanning per design.md §6.
+// add source-literal scanning.
 type fileKind int
 
 const (

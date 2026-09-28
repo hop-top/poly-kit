@@ -129,7 +129,7 @@ func TestNegative_NonScenarioAssertionsListShape(t *testing.T) {
 }
 
 func TestNegative_BareJudgeKeyword(t *testing.T) {
-	// design.md §1: bare "judge:" is too common; R4 requires the
+	// Bare "judge:" is too common; R4 requires the
 	// combination of prompt(_ref) and required_score/model.
 	dir := t.TempDir()
 	p := writeFile(t, dir, "doc.yaml", `judge: this is just a string
@@ -143,8 +143,8 @@ metadata:
 
 func TestNegative_ScenarioWordInProseOnly(t *testing.T) {
 	// A doc that mentions "scenario" repeatedly in prose, with no
-	// structural shape, must not trip. survey §3 explicitly rejects
-	// the prose-token approach as having extreme false-positive
+	// structural shape, must not trip. The prose-token approach is
+	// rejected as having extreme false-positive
 	// rate.
 	dir := t.TempDir()
 	p := writeFile(t, dir, "guide.md", `# Testing scenarios
