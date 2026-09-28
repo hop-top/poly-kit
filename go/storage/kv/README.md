@@ -23,9 +23,6 @@ streamed objects (`go/storage/blob`) or credentials (`go/storage/secret`).
 | [`sqlite`](sqlite/README.md) | `hop.top/kit/go/storage/kv/sqlite` | `Path` (file) | yes | default; one file, cross-language readable |
 | [`tidb`](tidb/README.md) | `hop.top/kit/go/storage/kv/tidb` | `DSN`, `Table` (default `kv`) | no | MySQL-compatible server already provisioned |
 
-[`registry/`](registry/README.md) holds the test proving what `Open` says
-when no driver is imported.
-
 ## Quick start
 
 ```go
@@ -54,7 +51,8 @@ Needs `_ "hop.top/kit/go/storage/kv/sqlite"` in the imports; see
 ## Contract
 
 - Registration is by blank import, from each driver's `init`. Naming a
-  backend whose driver is absent returns the import path to add;
+  backend whose driver is absent returns the import path to add
+  ([`registry/`](registry/README.md) holds the test proving it);
   `kv.Backends()` lists what the binary carries. No build tags.
 - `Config.Backend` is required. Each driver rejects a Config missing its
   own fields (`Path`, `Endpoints`, `DSN`).
