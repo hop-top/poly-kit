@@ -40,6 +40,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/celpermission"
 	"hop.top/kit/go/console/cli/mcpserve"
 	"hop.top/kit/go/console/cli/rpcserve"
 	"hop.top/kit/go/console/output"
@@ -115,9 +116,11 @@ type options struct {
 }
 
 // newRoot builds the fixture's root. This is the whole of the wiring
-// an adopter writes: the root, the reserved status and audit verbs, the four
-// kit-shipped services, one service of their own, the observability
-// provider an operator can turn on, and the commands.
+// an adopter writes: the root, the reserved status and audit verbs,
+// --policy files from $XDG_CONFIG_HOME/served/policies with their
+// permissions: rules evaluated, the four kit-shipped services, one
+// service of their own, the observability provider an operator can
+// turn on, and the commands.
 func newRoot(opts options) *cli.Root {
 	if opts.heartbeat == nil {
 		opts.heartbeat = newHeartbeat()
@@ -134,6 +137,8 @@ func newRoot(opts options) *cli.Root {
 	},
 		cli.WithStatus(cli.StatusConfig{}),
 		cli.WithAuditCommand(),
+		cli.WithPolicy(cli.DefaultPolicyLoader("served")),
+		celpermission.With(),
 		cli.WithAPI(cli.APIConfig{Policy: policy}),
 		cli.WithSocket(cli.SocketConfig{Policy: policy}),
 		mcpserve.With(mcpserve.Config{Policy: policy}),

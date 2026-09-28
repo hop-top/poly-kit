@@ -64,6 +64,15 @@ entity:
 See `go/core/stage/README.md` for the full primitive overview, and
 `runtime/policy/stage.yaml` for the ruleset.
 
+## Served invocations
+
+The same rules gate served commands. A tool's `--policy` file carries
+them under `permissions:` (same fields, no `on`), and
+[`celpermission`](../../console/cli/celpermission/README.md) compiles
+them with this CEL evaluator into the permission gate, binding caller,
+tenant, scopes, command, tier, surface, client address, args and flags
+onto `principal`, `resource`, `context` and `payload`.
+
 ## Sub-packages
 
 - [`cel/`](cel/README.md): the CEL evaluator, isolated so other engines never pull `cel-go`.

@@ -55,7 +55,8 @@ command tree through the same gates (policy, `WithPermission`,
 | `rpcserve.With(rpcserve.Config{})` | `rpc` | `cmdsurface.v1.Commands` over Connect, gRPC and gRPC-Web, h2c on `127.0.0.1:8082` |
 
 `mcp` lives in [`mcpserve/`](mcpserve/) and `rpc` in [`rpcserve/`](rpcserve/),
-so only a CLI that serves them links the MCP SDK or `go/transport/rpc`.
+so only a CLI that serves them links the MCP SDK or `go/transport/rpc`;
+[`celpermission.With()`](celpermission/) likewise links CEL for `--policy` rules.
 `mcp` over stdio admits `kit/auth-required` leaves on the spawn's trust and
 keeps stdout for the protocol; `kit/requires-confirmation` leaves need an
 accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:

@@ -59,6 +59,9 @@ claim out.
   once, over REST and the socket
 - `mcp_stdio_test.go`: the built binary as a desktop host spawns it,
   `serve mcp --stdio`
+- `permission_rules_test.go`: the `permissions:` rules of a `--policy`
+  file in `$XDG_CONFIG_HOME/served/policies/`, refusing over REST, and a
+  rule that does not compile refusing the start (exit 2)
 
 ## See also
 

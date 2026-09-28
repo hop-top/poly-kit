@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
 
 	"hop.top/kit/go/console/cli/policy"
+	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/transport/cmdsurface"
 )
 
@@ -17,7 +19,10 @@ import (
 // later, resolve the same values at Start.
 type serveAuthState struct {
 	permission cmdsurface.PermissionFunc
-	sinks      cmdsurface.SinkSet
+	// rules compiles the active --policy's permissions: block; nil
+	// until an evaluator is wired with WithPermissionRules.
+	rules PermissionRuleCompiler
+	sinks cmdsurface.SinkSet
 	// chains holds the audit chains services.<svc>.audit.sinks
 	// opened, shared by every service that names the same file.
 	chains auditChains
@@ -36,20 +41,43 @@ type serveAuthState struct {
 // alike, so a caller is answered the same way whichever transport
 // carried the call.
 //
-// fn is the last of three deciders, and each can only narrow. The
+// fn is the last of the deciders, and each can only narrow. The
 // bridge's built-in scope check runs first: a command declaring
 // kit/permissions runs on a served surface only for a caller whose
 // verified credential holds every scope it names, and is otherwise
 // refused insufficient_scope (see [cmdsurface.ErrInsufficientScope]).
 // Then the tool's policy engine: a --policy that refuses a command's
-// side-effect class refuses it here too, for every caller. fn is asked
-// last, for whatever else this caller may not do — a suspended
-// account, a tenant boundary, a rule richer than a scope list.
+// side-effect class refuses it here too, for every caller. Then the
+// policy's permissions: rules, when an evaluator is wired
+// ([WithPermissionRules]). fn is asked last, for whatever else this
+// caller may not do — a suspended account, a tenant boundary, a
+// decision that needs your own data.
 //
-// Without this option every caller the scope check and the policy
-// admit may run the command.
+// Without this option every caller the scope check, the policy and
+// its rules admit may run the command.
 func WithPermission(fn cmdsurface.PermissionFunc) func(*Root) {
 	return func(r *Root) { r.serveAuth.permission = fn }
+}
+
+// PermissionRuleCompiler turns the permissions: block of the active
+// --policy into a permission gate. It validates and compiles every
+// rule up front, and returns an error naming the first rule it cannot
+// use; the service then refuses to start.
+type PermissionRuleCompiler func(rules []policy.PermissionRule) (cmdsurface.PermissionFunc, error)
+
+// WithPermissionRules installs the evaluator for the permissions:
+// block of the tool's --policy file. The compiled rules join the
+// permission gate of every kit-shipped transport service, after the
+// scope check and the policy's allow lists and before the adopter's
+// [WithPermission]; they can only narrow what those admitted.
+//
+// kit's evaluator is CEL, in go/console/cli/celpermission: pass
+// celpermission.With() rather than calling this directly. It is
+// separate so a tool that never serves rules does not link cel-go.
+// A policy that declares rules while no evaluator is wired refuses
+// to serve rather than serve without them.
+func WithPermissionRules(compile PermissionRuleCompiler) func(*Root) {
+	return func(r *Root) { r.serveAuth.rules = compile }
 }
 
 // WithAuditSinks registers audit sinks on every kit-shipped transport
@@ -116,24 +144,57 @@ func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
 // policy engine's verdict comes first and is caller-independent: it
 // answers the same question wrapPolicyRunE asks on the CLI, from the
 // same --policy, so a command the policy refuses is refused on every
-// surface for everyone and discovery can say so at mount. The
-// adopter's gate runs second, for the caller-specific answer.
+// surface for everyone and discovery can say so at mount. The policy's
+// permissions: rules run second and the adopter's gate last, for the
+// caller-specific answer. The first refusal stands: a later decider is
+// never asked about a call an earlier one refused.
 func (r *Root) servePermission() (cmdsurface.PermissionFunc, error) {
 	engine, err := r.newPolicyEngine(r.Cmd)
 	if err != nil {
 		return nil, err
 	}
-	policyGate := permissionFromEngine(engine)
-	adopter := r.serveAuth.permission
-	if adopter == nil {
-		return policyGate, nil
+	gates := []cmdsurface.PermissionFunc{permissionFromEngine(engine)}
+	rules, err := r.servePermissionRules(engine.Policy())
+	if err != nil {
+		return nil, err
+	}
+	if rules != nil {
+		gates = append(gates, rules)
+	}
+	if adopter := r.serveAuth.permission; adopter != nil {
+		gates = append(gates, adopter)
+	}
+	if len(gates) == 1 {
+		return gates[0], nil
 	}
 	return func(ctx context.Context, meta cmdsurface.Meta, leaf *cmdsurface.Leaf) cmdsurface.PermissionDecision {
-		if dec := policyGate(ctx, meta, leaf); !dec.Allowed {
-			return dec
+		for _, gate := range gates {
+			if dec := gate(ctx, meta, leaf); !dec.Allowed {
+				return dec
+			}
 		}
-		return adopter(ctx, meta, leaf)
+		return cmdsurface.PermissionDecision{Allowed: true}
 	}, nil
+}
+
+// servePermissionRules compiles p's permissions: block with the wired
+// evaluator; nil when p declares no rules. A rule that does not compile,
+// or rules with no evaluator to run them, is a usage error: the service
+// refuses to start rather than serve without the rules the operator
+// named.
+func (r *Root) servePermissionRules(p policy.Policy) (cmdsurface.PermissionFunc, error) {
+	if len(p.Permissions) == 0 {
+		return nil, nil
+	}
+	if r.serveAuth.rules == nil {
+		return nil, output.UsageError(fmt.Sprintf(
+			"policy %q declares permissions: rules, but this tool wires no rule evaluator (celpermission.With)", p.Name))
+	}
+	gate, err := r.serveAuth.rules(p.Permissions)
+	if err != nil {
+		return nil, output.UsageError(fmt.Sprintf("policy %q: %v", p.Name, err))
+	}
+	return gate, nil
 }
 
 // refuseAll is the permission gate of a bridge whose shared options
