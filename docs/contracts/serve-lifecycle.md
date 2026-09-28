@@ -729,13 +729,19 @@ lists what may run and nothing else. Empty `mcpserve.Config.Expose` exposes
 the whole tree, `Hide` carves exceptions after it, and then the
 service withholds, the way the REST projection withholds at mount:
 
-- an **interactive** leaf, which no transport can ever run;
+- every command the reflector judges non-invocable under the same
+  reflection the REST projection uses — the Root's reserved verbs and
+  no `Allow*` options — with the same reasons: `interactive`,
+  `management-only` (kit's reserved verbs such as `status`),
+  `self-hosting`;
 - a **destructive** leaf `Policy` does not permit on `mcp`
   (`Policy.AllowDestructiveOn` must name `cmdsurface.SurfaceMCP`);
 - a leaf the permission gate refuses **for every caller**
   (`CallerIndependent`).
 
-Self-hosting commands are never leaves. Withholding is advisory, never
+The two catalogs therefore agree: a command REST discovery marks
+`invocable: false` is not an MCP tool, and every command REST mounts
+is one. Withholding is advisory, never
 the gate: every call still passes `Bridge.Invoke`, and a call naming a
 withheld tool is refused as an unknown tool.
 

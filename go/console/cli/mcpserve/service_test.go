@@ -533,3 +533,17 @@ func runServeArgs(t *testing.T, r *cli.Root, args []string, settle time.Duration
 		return nil
 	}
 }
+
+// TestMCPServiceWithholdsManagementOnlyCommands pins that a reserved
+// management verb (status) is not a tool, as it is not a REST route.
+func TestMCPServiceWithholdsManagementOnlyCommands(t *testing.T) {
+	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
+		cli.WithStatus(cli.StatusConfig{}))
+	sess := dialMCP(t, endpoint, nil, nil)
+	names := toolNames(t, sess)
+	assert.Contains(t, names, "ping")
+	assert.NotContains(t, names, "status", "management-only commands are withheld, as over REST")
+
+	_, err := sess.CallTool(t.Context(), &mcp.CallToolParams{Name: "status", Arguments: map[string]any{}})
+	require.Error(t, err, "a withheld tool is not callable")
+}

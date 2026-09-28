@@ -87,6 +87,9 @@ Each test name is the claim it pins:
   needs verified authentication over HTTP.
 - `TestUnauthenticatedRemoteMCPIsRefused` — `--mcp-addr 0.0.0.0:0`
   exits 2 naming `services.mcp.insecure_remote`.
+- `TestMCPAndRESTWithholdTheSameCommands` — every command REST
+  discovery withholds (`status` as management-only included) is not an
+  MCP tool, and every command REST mounts is one.
 - `TestMCPServesBesideTheOthersUnderTheSupervisor` — `serve --enable
   mcp` runs it on its own listener beside `api`.
 

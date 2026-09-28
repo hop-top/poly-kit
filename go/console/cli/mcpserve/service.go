@@ -457,7 +457,7 @@ func (t *transport) surface(ctx context.Context, impl serving) (*mcpsdk.Surface,
 	if b == nil {
 		return nil, errors.New("mcp: no bridge; the service has not started")
 	}
-	withholdFromCatalog(ctx, b)
+	withholdFromCatalog(ctx, b, t.svc.root)
 
 	cfg := t.svc.cfg
 	opts := append([]mcpsdk.Option(nil), cfg.ServerOptions...)
@@ -486,25 +486,33 @@ func (t *transport) surface(ctx context.Context, impl serving) (*mcpsdk.Surface,
 	return mcpsdk.New(b, opts...)
 }
 
-// withholdFromCatalog takes off the tool list what the REST projection
-// withholds at mount: interactive leaves, destructive leaves the
+// withholdFromCatalog takes off the tool list exactly what the REST
+// projection withholds at mount: every command the reflector judges
+// non-invocable for a served surface — interactive, management-only,
+// self-hosting — under the same reflection REST uses (the Root's
+// reserved verbs, no Allow* options), then destructive leaves the
 // policy refuses on mcp, and leaves the permission gate refuses for
 // every caller. The list is advisory — a call still meets every gate —
 // but a model reads it before it calls anything, and a tool that can
 // only ever refuse is noise it will act on.
-func withholdFromCatalog(ctx context.Context, b *cmdsurface.Bridge) {
+//
+// The bridge itself reflects more permissively (it describes reserved
+// verbs as leaves, the way the socket service reaches them); the
+// catalog is where the MCP surface narrows to REST's set.
+func withholdFromCatalog(ctx context.Context, b *cmdsurface.Bridge, root *cli.Root) {
+	served := cmdreflect.Reflect(root.Cmd, cmdreflect.WithReserved(root))
 	for _, leaf := range b.Leaves() {
 		if !leaf.Enabled[cmdsurface.SurfaceMCP] {
 			continue
 		}
-		if catalogWithholds(ctx, b, leaf) {
+		if catalogWithholds(ctx, b, served, leaf) {
 			b.Hide(leaf.PathKey(), cmdsurface.SurfaceMCP)
 		}
 	}
 }
 
-func catalogWithholds(ctx context.Context, b *cmdsurface.Bridge, leaf *cmdsurface.Leaf) bool {
-	if leaf.Descriptor != nil && leaf.Descriptor.Safety.Tier == cmdreflect.TierInteractive {
+func catalogWithholds(ctx context.Context, b *cmdsurface.Bridge, served *cmdreflect.Tree, leaf *cmdsurface.Leaf) bool {
+	if d := served.Lookup(leaf.PathKey()); d == nil || !d.Invocable {
 		return true
 	}
 	if !b.Policy().Allowed(leaf.Class, cmdsurface.SurfaceMCP) {

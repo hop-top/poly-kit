@@ -167,3 +167,28 @@ func toJSON(t *testing.T, v any) string {
 	require.NoError(t, err)
 	return string(b)
 }
+
+// TestMCPAndRESTWithholdTheSameCommands pins that the two catalogs
+// agree: a command REST discovery marks non-invocable — for any
+// reason, management-only included — is not an MCP tool, and every
+// command REST mounts is one.
+func TestMCPAndRESTWithholdTheSameCommands(t *testing.T) {
+	run := startServe(t, options{}, "--enable", "mcp", "--addr", "127.0.0.1:0", "--mcp-addr", "127.0.0.1:0")
+	rest := discover(t, "http://"+run.waitReady(t, "api").Address)
+	tools := map[string]bool{}
+	for _, name := range mcpTools(t, mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)) {
+		tools[strings.ReplaceAll(name, ".", " ")] = true
+	}
+
+	require.Contains(t, rest, "status")
+	for name, v := range rest {
+		if v.Invocable {
+			assert.True(t, tools[name], "%s is mounted over REST but not an MCP tool", name)
+		} else {
+			assert.False(t, tools[name], "%s is withheld over REST (%s) but listed over MCP", name, v.Reason)
+		}
+	}
+	for name := range tools {
+		assert.Contains(t, rest, name, "MCP tool %s is not described by REST discovery", name)
+	}
+}
