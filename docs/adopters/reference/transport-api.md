@@ -55,6 +55,10 @@ This is additive. `APIConfig.Handlers` and `APIConfig.Resources` keep
 working unchanged, and they are mounted **first**, so an adopter route
 always wins a pattern collision.
 
+A bare cobra tree — no kit root — gets the same projection from its
+bridge with `cmdsurface.MountProjection(b, r, opts...)`; see
+[cmdsurface.md](cmdsurface.md#rest). Everything below applies to both.
+
 ### Route shape
 
 Everything lives under a versioned prefix:
@@ -71,9 +75,9 @@ the projection is derived from the command tree: adding a required
 flag changes a request schema without the adopter touching a route.
 A path version gives that churn somewhere to land.
 
-The existing `cmdsurface.MountREST` mount (default prefix `/cmd`,
-POST-with-`Invocation`-envelope) is unchanged and stays the explicit,
-adopter-driven path. Projection is the automatic one.
+The older `cmdsurface.MountREST` mount (default prefix `/cmd`,
+POST-with-`Invocation`-envelope) is deprecated and frozen; the
+projection replaces it, and `MountRPC` carries a call envelope.
 
 ### Method selection
 

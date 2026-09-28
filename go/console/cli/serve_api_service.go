@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -313,7 +312,7 @@ func (a *apiService) Stop(ctx context.Context) error {
 func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	logger := kitlog.New(a.root.Viper)
 
-	pcfg, bridge, err := a.projection()
+	bridge, err := a.bridge()
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +320,6 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	a.mu.Lock()
 	a.stopping = stopping
 	a.mu.Unlock()
-	pcfg.Stopping = stopping
 
 	mws := []api.Middleware{
 		api.RequestID(),
@@ -333,7 +331,7 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 	}
 	if a.authenticates() {
 		mws = append(mws, api.Auth(a.cfg.Auth,
-			api.OnAuthRefused(auditAuthRefusal(bridge, commandPaths(pcfg)))))
+			api.OnAuthRefused(cmdsurface.ProjectionAuthRefusal(bridge))))
 	}
 
 	opts := []api.RouterOption{api.WithMiddleware(mws...)}
@@ -355,27 +353,24 @@ func (a *apiService) buildHandler(ctx context.Context) (http.Handler, error) {
 		a.cfg.OnHub(hub)
 	}
 
-	a.mountProjection(router, pcfg)
-
+	if err := a.mountProjection(router, bridge, stopping); err != nil {
+		return nil, err
+	}
 	return router, nil
 }
 
-// projection reflects the completed command tree into the projection
-// config and the bridge that executes it. A tool with no command
-// root projects nothing and audits nothing.
-func (a *apiService) projection() (api.ProjectionConfig, *cmdsurface.Bridge, error) {
+// bridge builds the bridge the projection executes through. A tool
+// with no command root projects nothing and audits nothing.
+func (a *apiService) bridge() (*cmdsurface.Bridge, error) {
 	if a.root == nil || a.root.Cmd == nil {
-		return api.ProjectionConfig{}, nil, nil
+		return nil, nil
 	}
-	// Config is the authority for name and version: Cmd.Version
-	// carries the rendered --version template, not the bare value.
-	return buildProjection(
-		a.root.Cmd, a.root.Config.Name, a.root.Config.Version, a.root, a.cfg,
-	)
+	return projectionBridge(a.root, a.cfg)
 }
 
 // mountProjection mounts the versioned REST projection plus its
-// OpenAPI description.
+// OpenAPI description, through the same [cmdsurface.MountProjection]
+// a bare cobra tree uses.
 //
 // It runs LAST, after the adopter's Handlers and Resources, so an
 // adopter route always wins a pattern collision: the projection is
@@ -385,83 +380,24 @@ func (a *apiService) projection() (api.ProjectionConfig, *cmdsurface.Bridge, err
 // The tree is reflected at start, because that is the first moment
 // cobra has all of it — WithAPI runs while the tree is still being
 // built.
-func (a *apiService) mountProjection(router *api.Router, cfg api.ProjectionConfig) {
-	if a.root == nil || a.root.Cmd == nil {
-		return
-	}
-	api.MountCommandProjection(router, cfg)
-	api.DescribeCommandProjection(router, cfg)
-	// Serves a floor spec only when the adopter never configured
-	// WithOpenAPI; a no-op otherwise.
-	api.MountMinimalProjectionSpec(router, cfg)
-}
-
-// auditAuthRefusal returns the hook the auth middleware calls for a
-// request it refuses. The refusal reaches the bridge's sinks as an
-// invocation that never ran, carrying what the transport knows at
-// that point: the request id, the trace id, the peer, and the
-// command the URL addressed when it is a projected route.
-func auditAuthRefusal(
-	bridge *cmdsurface.Bridge, known map[string]bool,
-) func(r *http.Request, err error) {
-	return func(r *http.Request, err error) {
-		if bridge == nil {
-			return
-		}
-		meta := api.RequestMetaFrom(r)
-		inv := cmdsurface.Invocation{
-			Path: projectedPathOf(r.URL.Path, known),
-			Meta: cmdsurface.Meta{
-				Surface:     cmdsurface.SurfaceREST,
-				RequestID:   meta.RequestID,
-				TraceID:     meta.TraceID,
-				RequestedAt: meta.ReceivedAt,
-				Extra: map[string]string{
-					"http_method": r.Method,
-					"http_path":   r.URL.Path,
-					"remote_addr": meta.RemoteAddr,
-				},
-			},
-		}
-		bridge.Audit(r.Context(), inv, cmdsurface.Result{},
-			fmt.Errorf("%w: %v", cmdsurface.ErrAuthRefused, err))
-	}
-}
-
-// projectedPathOf returns the command path a projected route
-// addresses, or nil for any other URL.
 //
-// A streaming route addresses the command before its trailing
-// "stream" segment. known — the projected commands, keyed by
-// space-joined path — settles which reading applies: a command is
-// only ever projected as a leaf, so a URL naming a known command is
-// that command, and one whose path minus "stream" is known is that
-// command's stream. An unknown URL keeps every segment.
-func projectedPathOf(urlPath string, known map[string]bool) []string {
-	prefix := api.CommandProjectionPrefix + "/"
-	if !strings.HasPrefix(urlPath, prefix) {
+// Authentication is the router's: the auth middleware above wraps
+// every route, and without Auth, Validate has already confined the
+// service to loopback unless the adopter accepted the exposure by
+// name. Config is the authority for name and version: Cmd.Version
+// carries the rendered --version template, not the bare value.
+func (a *apiService) mountProjection(
+	router *api.Router, bridge *cmdsurface.Bridge, stopping <-chan struct{},
+) error {
+	if bridge == nil {
 		return nil
 	}
-	rest := strings.Trim(strings.TrimPrefix(urlPath, prefix), "/")
-	if rest == "" {
-		return nil
-	}
-	path := strings.Split(rest, "/")
-	suffix := strings.TrimPrefix(api.StreamSuffix, "/")
-	if n := len(path); n > 1 && path[n-1] == suffix &&
-		!known[strings.Join(path, " ")] && known[strings.Join(path[:n-1], " ")] {
-		return path[:n-1]
-	}
-	return path
-}
-
-// commandPaths indexes the projected commands by space-joined path.
-func commandPaths(cfg api.ProjectionConfig) map[string]bool {
-	out := make(map[string]bool, len(cfg.Descriptors))
-	for _, d := range cfg.Descriptors {
-		out[d.PathKey()] = true
-	}
-	return out
+	return cmdsurface.MountProjection(bridge, router,
+		cmdsurface.WithProjectionTool(a.root.Config.Name, a.root.Config.Version),
+		cmdsurface.WithProjectionReserved(a.root),
+		cmdsurface.WithProjectionStopping(stopping),
+		cmdsurface.WithProjectionRouterAuth(),
+	)
 }
 
 // applyAPICompat maps the leaf `serve` command's own flags onto the

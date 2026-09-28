@@ -237,7 +237,7 @@ every gate and the audit.
 | Surface         | Direction           | Mount function   | Typical use                             | Reuses                          |
 |-----------------|---------------------|------------------|-----------------------------------------|---------------------------------|
 | `cli`           | local invocation    | (cobra itself)   | adopter's binary                        | `go/console/cli`                |
-| `rest`          | request / reply     | `cli.WithAPI` (`serve api`); `MountREST` deprecated | machine-to-machine calls over HTTP | the `api` service's projection under `/v1/commands` |
+| `rest`          | request / reply     | `cli.WithAPI` (`serve api`), `MountProjection`; `MountREST` deprecated | machine-to-machine calls over HTTP | the command projection under `/v1/commands` |
 | `ws`            | bidirectional       | `MountWS`        | interactive streaming clients           | `api.Hub` + `coder/websocket`   |
 | `sse`           | server-stream       | `MountSSE`       | one-way streaming to browsers           | `api.Router`                    |
 | `rpc`           | request / reply + server-stream | `rpcserve.With` (`serve rpc`), `MountRPC` | typed clients: Connect, gRPC, gRPC-Web  | `transport/rpc` (ConnectRPC)    |
@@ -252,8 +252,9 @@ every gate and the audit.
 | `socket`        | request / reply     | `cli.WithSocket` (`serve socket`) | local daemons, sidecars, agents on the host | `transport/socket` + `transportsvc` |
 
 REST and MCP each have one canonical implementation. REST is the
-[command projection](transport-api.md#command-projection) the `api`
-service mounts; a client that wants a call envelope rather than one
+[command projection](transport-api.md#command-projection): the `api`
+service mounts it for a kit root, `MountProjection` on a bare bridge;
+a client that wants a call envelope rather than one
 route per command uses `rpc`, whose Connect JSON `Invoke` takes the
 same `Invocation` and returns the same `Result`. MCP is the official
 SDK: the `mcp` service for a kit root
@@ -278,9 +279,11 @@ root := buildCobraTree()
 b := cmdsurface.New(root)
 
 // 3. Expose leaves on the surfaces you want, then mount.
-b.Expose("*", cmdsurface.SurfaceMCP, cmdsurface.SurfaceWS, cmdsurface.SurfaceSSE)
+b.Expose("*", cmdsurface.SurfaceREST, cmdsurface.SurfaceMCP,
+    cmdsurface.SurfaceWS, cmdsurface.SurfaceSSE)
 
 r := api.NewRouter()
+_ = cmdsurface.MountProjection(b, r) // REST under /v1/commands
 _ = mcpsdk.Mount(b, r)
 _ = cmdsurface.MountWS(b, r)
 _ = cmdsurface.MountSSE(b, r)
@@ -298,11 +301,70 @@ A tree built with `cli.New` skips all of this for REST and MCP:
 ### REST
 
 ```go
+func MountProjection(b *Bridge, r *api.Router, opts ...ProjectionOption) error
+func Projection(b *Bridge, opts ...ProjectionOption) (api.ProjectionConfig, error)
+```
+
+A kit root gets REST from `cli.WithAPI` with no mounting code. A bare
+cobra tree mounts the same
+[command projection](transport-api.md#command-projection) from its
+bridge: one route per command under `/v1/commands` at the method its
+side-effect class selects, a `/stream` twin, the discovery listing at
+`GET /v1/commands`, and the OpenAPI description (added to the
+router's spec under `api.WithOpenAPI`, a minimal `/openapi.json`
+otherwise). The `api` service mounts through this same function.
+
+```go
+b := cmdsurface.New(root)
+b.Expose("*", cmdsurface.SurfaceREST) // REST is off by default
+b.Hide("widget delete", cmdsurface.SurfaceREST)
+
+r := api.NewRouter(api.WithMiddleware(api.RequestID(), api.Recovery(nil)))
+err := cmdsurface.MountProjection(b, r,
+    cmdsurface.WithProjectionTool("widgets", version),
+    cmdsurface.WithProjectionAuth(verifyBearer),
+)
+```
+
+```bash
+curl -X POST http://localhost:8080/v1/commands/widget/add \
+  -H 'content-type: application/json' -d '{"flags":{"name":"foo"}}'
+```
+
+Every command is described; one is served only when its leaf is
+exposed on REST (else `withheld-by-config`), the destructive ceiling
+allows REST (else `unauthorized-destructive`), and the permission
+gate does not refuse every caller (else `permission-denied`). Calls
+run through the bridge with `Meta.Surface = rest`, so the gates and
+the audit are the ones every surface uses.
+
+Options:
+
+- `WithProjectionTool(name, version)` — label the discovery document.
+- `WithProjectionAuth(api.AuthFunc)` — authenticate every projection
+  route (other routes on the router are untouched); a refusal is a
+  401, audited to the bridge's sinks as `ErrAuthRefused`.
+- `WithProjectionRouterAuth()` — the router authenticates, or only
+  trusted callers reach the listener.
+- `WithProjectionReserved(lookup)` — withhold a kit root's reserved
+  verbs as `management-only`.
+- `WithProjectionStopping(ch)`, `WithProjectionHeartbeat(d)` — end
+  open streams on shutdown; set the stream keep-alive.
+
+`MountProjection` refuses to mount a served command declaring
+`kit/auth-required` when neither auth option says who authenticates
+it. A router with its own `api.Auth` passes
+`api.OnAuthRefused(cmdsurface.ProjectionAuthRefusal(b))` so its
+refusals land in the same audit stream.
+
+#### MountREST (deprecated)
+
+```go
 func MountREST(b *Bridge, r *api.Router, opts ...RESTOption) error
 ```
 
-**Deprecated.** Serve REST through the `api` service's projection;
-send a call envelope over `rpc` instead. Frozen until removal; see
+**Deprecated.** Use `MountProjection` (or `cli.WithAPI`); send a call
+envelope over `rpc` instead. Frozen until removal; see
 [Status](#status).
 
 Wire shape: `POST {prefix}/{path}` with a JSON `Invocation` body,
@@ -332,10 +394,6 @@ Sentinel-error mapping: `ErrUnknownCommand` → 404 `unknown_command`,
 through `api.MapError`. Confirmation-required leaves require an
 `X-Confirm-Token` header (presence-only, value not validated). See
 `go/transport/cmdsurface/surface_rest_test.go`.
-
-The REST projection the `api` service mounts under `/v1/commands` is
-the canonical REST surface; its wire format is in
-[transport-api.md](transport-api.md#command-projection).
 
 ### RPC
 
@@ -1187,7 +1245,7 @@ The package projects a cobra tree onto surfaces. Adopters supply:
 - **Secrets** — HMAC secrets, OAuth client_id/secret, signed-URL
   signing keys: load from env at construction time. Nothing in the
   package reads env directly.
-- **Authentication wiring** — `WithRESTAuth(api.AuthFunc)` /
+- **Authentication wiring** — `WithProjectionAuth(api.AuthFunc)` /
   `WithSSEAuth(api.AuthFunc)`. The bridge does not assume any
   identity provider.
 
@@ -1269,8 +1327,8 @@ REST under `/v1/commands`, `mcpserve.With` serves MCP, both under
 wired for you. Walkthrough:
 [migrate-to-served-commands.md](../guides/migrate-to-served-commands.md).
 
-A tree that stays a bare cobra root mounts `mcpsdk.Mount(b, r)` for
-MCP. Destructive leaves stay unreachable on REST and MCP unless
+A tree that stays a bare cobra root mounts `MountProjection(b, r)` for
+REST and `mcpsdk.Mount(b, r)` for MCP. Destructive leaves stay unreachable on REST and MCP unless
 `Policy.AllowDestructiveOn` names the surface.
 
 ## Threat model

@@ -152,21 +152,6 @@ func isLoopbackAddr(addr string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// leafByKey indexes a bridge's leaves by path key, so a projection
-// building one descriptor per command resolves each leaf in constant
-// time rather than rescanning the list per command.
-func leafByKey(b *cmdsurface.Bridge) map[string]*cmdsurface.Leaf {
-	if b == nil {
-		return nil
-	}
-	leaves := b.Leaves()
-	out := make(map[string]*cmdsurface.Leaf, len(leaves))
-	for _, leaf := range leaves {
-		out[leaf.PathKey()] = leaf
-	}
-	return out
-}
-
 // servePolicyConfigured reports whether a delegation policy is in
 // force for this invocation — that is, whether the permission gate
 // the transport services share can refuse anything at all.
