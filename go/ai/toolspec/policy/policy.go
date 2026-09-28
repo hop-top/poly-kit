@@ -19,7 +19,7 @@
 // Today's vocabulary mirrors the existing kit/side-effect enum
 // (read, write, destructive, interactive) and a 3-value network
 // axis (none, local-only, egress) plus the wildcard "any".
-// kit-toolspec-safety-ladder will populate the network axis on
+// A later schema will populate the network axis on
 // every command and may expand the side-effect enum; the schema
 // version on the table tracks both.
 package policy
@@ -47,8 +47,8 @@ const (
 )
 
 // Network is the network axis read from a command's kit/network
-// annotation. Currently a stub: kit-toolspec-safety-ladder will
-// land the annotation; until then, every command resolves at
+// annotation. Currently a stub: no command carries the
+// annotation yet; until then, every command resolves at
 // NetworkNone (no kit/network annotation = "no I/O").
 type Network string
 

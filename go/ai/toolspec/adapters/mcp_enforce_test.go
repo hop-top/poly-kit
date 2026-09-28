@@ -126,7 +126,7 @@ func TestEnforce_ReasonFlagsNetworkStub(t *testing.T) {
 	t.Parallel()
 	env := adapters.EnforceMCPRequest(fixtureManifest(), []string{"mytool", "list"}, policy.Default())
 	assert.Contains(t, env.Decision.Reason, "network axis: stub",
-		"reason should call out the safety-ladder dependency")
+		"reason should call out the stubbed network axis")
 }
 
 func TestEnforce_PathEcho(t *testing.T) {

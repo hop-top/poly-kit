@@ -315,8 +315,8 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		"Inverse of --add-service")
 
 	// kit init scaffolds new project trees (mkdir/write) and
-	// augments existing ones — declare the side-effect tier per
-	// cli-conventions §3.5. The tier-driven policy drives --dry-run support off
+	// augments existing ones — declare the side-effect tier
+	// (docs/adopters/reference/sideeffect.md). The tier-driven policy drives --dry-run support off
 	// this tier: write|destructive leaves accept --dry-run by
 	// default, so the kit-global --dry-run reaches RunE without an
 	// explicit opt-in. The pre-existing local --dry-run flag still

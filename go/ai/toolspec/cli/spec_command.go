@@ -3,8 +3,9 @@
 // registering all of the tool's commands; the spec subcommand walks the
 // live cobra tree and emits a toolspec.Manifest in the active --format.
 //
-// See ~/.ops/docs/cli-conventions-with-kit.md §13 for the locked
-// machine-readable shape and the capability-negotiation contract.
+// See docs/adopters/reference/toolspec-api.md for the machine-readable
+// shape and docs/adopters/integrations/toolspec-adopter-guide.md for
+// schema versioning.
 package cli
 
 import (
@@ -42,8 +43,7 @@ const specCommandAnnotation = "kit/spec-command"
 //	    return err
 //	}
 //
-// schemaVersion is the tool's CLI schema version (MAJOR.MINOR); see
-// ~/.ops/docs/cli-conventions-with-kit.md §13.2. Distinct from the
+// schemaVersion is the tool's CLI schema version (MAJOR.MINOR). Distinct from the
 // tool's binary semver (root.Config.Version): schema evolves on the
 // CLI surface, semver evolves on the binary.
 //

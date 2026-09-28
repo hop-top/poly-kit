@@ -120,7 +120,7 @@ link or shim with a different target is refused unless --force.`,
 	cmd.Flags().BoolVar(&opts.force, "force", false, "Replace an existing link with a different target")
 
 	// kit symlink mutates filesystem state (links/shims) — declare
-	// the side-effect tier per cli-conventions §3.5. The tier-driven policy drives
+	// the side-effect tier (docs/adopters/reference/sideeffect.md). The tier-driven policy drives
 	// --dry-run support off this tier: write|destructive leaves
 	// accept --dry-run by default. The FS impl chosen by pickFS
 	// substitutes describing impls when sideeffect.IsDryRun(ctx)=true.

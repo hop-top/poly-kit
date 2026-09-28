@@ -138,8 +138,8 @@ type Workflow struct {
 }
 
 // Manifest is the machine-readable capability manifest emitted by the
-// `<tool> spec` subcommand (see ~/.ops/docs/cli-conventions-with-kit.md
-// §13). Distinct from ToolSpec, which is the rich data model populated
+// `<tool> spec` subcommand (see docs/adopters/reference/toolspec-api.md).
+// Distinct from ToolSpec, which is the rich data model populated
 // by source plugins (LLM, tldr, completion, …); Manifest is the
 // authoritative, tool-internal description rendered for agents.
 type Manifest struct {

@@ -175,8 +175,8 @@ func (cfg *registerConfig) resolveAdapter(format string) (adapters.FormatAdapter
 //	cli.WithErrorPatterns([]toolspec.ErrorPattern{
 //	    {
 //	        Pattern: "profile.*not found",
-//	        Cause:   "profile id does not exist in $APS_DATA_PATH/profiles",
-//	        Fix:     "create with `aps profile add <id>`",
+//	        Cause:   "profile id does not exist in $MYTOOL_DATA_DIR/profiles",
+//	        Fix:     "create with `mytool profile add <id>`",
 //	    },
 //	})
 //
@@ -198,9 +198,9 @@ func WithErrorPatterns(p []toolspec.ErrorPattern) RegisterOption {
 //	    {
 //	        Name: "create-and-launch-profile",
 //	        Steps: []string{
-//	            "aps profile add <id>",
-//	            "aps capability add <id> <capability>",
-//	            "aps <id>",
+//	            "mytool profile add <id>",
+//	            "mytool capability add <id> <capability>",
+//	            "mytool <id>",
 //	        },
 //	    },
 //	})
@@ -220,9 +220,9 @@ func WithWorkflows(w []toolspec.Workflow) RegisterOption {
 // Example:
 //
 //	cli.WithStateIntrospection(&toolspec.StateIntrospection{
-//	    ConfigCommands: []string{"aps env", "aps version"},
-//	    EnvVars:        []string{"APS_DATA_PATH"},
-//	    AuthCommands:   []string{"aps auth status"},
+//	    ConfigCommands: []string{"mytool env", "mytool version"},
+//	    EnvVars:        []string{"MYTOOL_DATA_DIR"},
+//	    AuthCommands:   []string{"mytool auth status"},
 //	})
 //
 // Repeated calls overwrite — there is one tool-level introspection

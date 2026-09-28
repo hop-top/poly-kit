@@ -22,8 +22,8 @@ import (
 
 var version = "dev"
 
-// commandGroups maps each top-level command name to its cobra GroupID per
-// the §4.1 taxonomy from cli-conventions-with-kit.md. Every visible
+// commandGroups maps each top-level command name to its cobra GroupID in
+// the kit help taxonomy (ORGANIZE, ...). Every visible
 // top-level command should have an entry; unmapped commands fall back to
 // the default "COMMANDS" group.
 var commandGroups = map[string]string{
@@ -78,8 +78,8 @@ func newKitRoot(version string) (*cli.Root, *engine) {
 		Short:   "Generic document engine for kit apps",
 		// Help.Groups registers custom groups in display order. Kit adds
 		// the built-in "management" group (Hidden) automatically — do not
-		// re-list it here or AddGroup would duplicate it. The §4.1
-		// taxonomy from cli-conventions-with-kit.md drives the ordering.
+		// re-list it here or AddGroup would duplicate it. The order below
+		// is the help display order.
 		Help: cli.HelpConfig{
 			Groups: []cli.GroupConfig{
 				{ID: "organize", Title: "ORGANIZE"},

@@ -29,8 +29,7 @@ const kitToolspecSchemaVersion = "1.1"
 // kit-powered CLI gains via RegisterSpecCommand): `kit toolspec` is
 // the bootstrap manifest of the kit binary itself, used as the
 // well-known anchor for protocol discovery. The legacy
-// `<tool> manifest` alias was retired in schema 1.1 (the Layer-A track
-// §5); adopters now use `<tool> spec --format json` exclusively.
+// `<tool> manifest` alias was retired in schema 1.1; adopters now use `<tool> spec --format json` exclusively.
 //
 // Implementation is deliberately thin: BuildManifest already does
 // the cobra-tree projection. We honor KIT_TOOLSPEC_SCHEMA via the
@@ -131,7 +130,7 @@ func toolspecPolicyCmd() *cobra.Command {
 // version (kit has nothing older to downgrade to). Malformed values
 // degrade silently to the binary version per the contract.
 //
-// When kit-toolspec-safety-ladder ships "2.0", grow the lookup table
+// When kit ships "2.0", grow the lookup table
 // here. The function signature (request → resolved) is locked.
 func negotiateSchemaVersion(binary, requested string) string {
 	if requested == "" {

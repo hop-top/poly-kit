@@ -13,8 +13,8 @@ import (
 
 // Bus topic constants for kit-engine document mutations.
 //
-// Per cli-conventions §9, tools emit events under
-// `<tool>.<noun>.<verb>`. For the kit engine, "kit.engine" is the tool
+// Tools emit events under `<tool>.<noun>.<verb>` (see
+// docs/contracts/event-topics.md). For the kit engine, "kit.engine" is the tool
 // namespace, "document" is the noun, and the verb is the lifecycle.
 //
 // These constants name the default topics; adopters wiring

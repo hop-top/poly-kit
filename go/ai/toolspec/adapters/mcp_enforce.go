@@ -22,11 +22,11 @@
 // the wire (the MCP error envelope below is provided as a
 // convenience for hosts that emit JSON-RPC errors verbatim).
 //
-// # Stub for kit-toolspec-safety-ladder
+// # Network axis stub
 //
 // Today the manifest carries a single side-effect string per
-// command and no network axis. Until the safety-ladder track lands
-// the kit/network annotation, EnforceMCPRequest treats every
+// command and no network axis. Until commands carry a kit/network
+// annotation, EnforceMCPRequest treats every
 // command as network=none and resolves on side_effect alone. The
 // resolved Decision.Reason includes a "(network axis: stub)"
 // suffix so hosts can surface the limitation. Rich
@@ -87,7 +87,7 @@ const MCPErrorCodePolicyDeny = -32099
 //  1. Walk manifest.Commands looking for a path-equal entry.
 //     Path comparison is case-sensitive and segment-strict.
 //  2. Read the leaf's SideEffect; default network is NetworkNone
-//     until kit-toolspec-safety-ladder lands kit/network.
+//     until commands carry kit/network.
 //  3. Call table.Resolve(side_effect, network).
 //  4. Wrap the Decision into an EnforcementEnvelope; populate
 //     MCPError when the action is deny.
@@ -129,10 +129,10 @@ func EnforceMCPRequest(manifest toolspec.Manifest, path []string, table policy.T
 
 	d := table.Resolve(se, net)
 	// Suffix the reason with a note when the network axis is stubbed
-	// (kit/network annotation not yet populated by the safety-ladder
-	// track). This makes the limitation visible in audit logs.
+	// (no command carries a kit/network annotation yet). This makes
+	// the limitation visible in audit logs.
 	if net == policy.NetworkNone && !leafHasNetworkAnnotation(leaf) {
-		d.Reason = fmt.Sprintf("%s (network axis: stub, defaulting to none until kit-toolspec-safety-ladder lands)", d.Reason)
+		d.Reason = fmt.Sprintf("%s (network axis: stub, defaulting to none until commands declare kit/network)", d.Reason)
 	}
 
 	env := EnforcementEnvelope{Decision: d, Path: path}
@@ -180,15 +180,14 @@ func pathsEqual(a, b []string) bool {
 }
 
 // networkAxisFor reads the network axis for a manifest command.
-// Today the field doesn't exist on ManifestCommand (kit-toolspec-
-// safety-ladder will add it as ManifestCommand.Network or via the
-// Safety.Permissions block); this helper returns NetworkNone
+// Today the field doesn't exist on ManifestCommand (it will arrive
+// as ManifestCommand.Network or via the Safety.Permissions block); this helper returns NetworkNone
 // pending that work, so the policy resolver has a usable input.
 //
-// When the safety-ladder track lands, replace the body with the
+// When the field lands, replace the body with the
 // real annotation read; the function signature stays.
 func networkAxisFor(_ *toolspec.ManifestCommand) policy.Network {
-	// Stub: the network axis waits on the safety ladder. Until kit/network is populated, every command
+	// Stub: until kit/network is populated, every command
 	// resolves at NetworkNone. This is documented behavior, NOT a
 	// silent default — the EnforceMCPRequest reason field calls it
 	// out per call.
@@ -197,7 +196,7 @@ func networkAxisFor(_ *toolspec.ManifestCommand) policy.Network {
 
 // leafHasNetworkAnnotation reports whether the manifest command
 // already carries a network-axis annotation. Returns false today;
-// flips on naturally once the safety-ladder track adds the field
+// flips on naturally once the field is added
 // to ManifestCommand and we read it in networkAxisFor.
 func leafHasNetworkAnnotation(_ *toolspec.ManifestCommand) bool {
 	return false

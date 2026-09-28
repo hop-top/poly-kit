@@ -65,7 +65,7 @@ func TestToolspecCmd_FullManifest(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(out), &m))
 	assert.Equal(t, "kit", m.Tool)
 	assert.Equal(t, "1.1", m.SchemaVersion,
-		"schema version bumped to 1.1 by 12fcc-static §5")
+		"kit toolspec emits schema 1.1")
 	require.NotEmpty(t, m.Commands, "fixture leaf surfaces in manifest")
 	assert.Equal(t, []string{"kit", "ping"}, m.Commands[0].Path)
 }
@@ -110,7 +110,7 @@ func TestToolspecCmd_VersionOnly(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(out), &payload))
 	assert.Equal(t, "1.1", payload.SchemaVersion,
-		"schema version bumped to 1.1 by 12fcc-static §5")
+		"kit toolspec emits schema 1.1")
 }
 
 func TestNegotiateSchemaVersion_DefaultsToBinary(t *testing.T) {
