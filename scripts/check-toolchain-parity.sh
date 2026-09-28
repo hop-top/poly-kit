@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 #
 # check-toolchain-parity.sh — fail when a declared tool version disagrees
-# with the pin in mise.toml.
+# with the pin in the repo's mise config.
 #
-# mise.toml is the repo's toolchain source of truth. CI jobs read it
-# through scripts/toolchain-pins.sh, and so does the Makefile. Some files
+# The mise config is the repo's toolchain source of truth: mise.toml (the
+# kit-managed block, shared with the scaffold manifest) plus
+# .config/mise.toml (tools only this repo's CI uses). A tool declared in
+# both must agree. CI jobs read the pins through scripts/toolchain-pins.sh,
+# and so does the Makefile. Some files
 # cannot read it and carry their own copy of a version; this script holds
 # each copy to the pin:
 #
@@ -37,7 +40,9 @@
 #                          same version: this repo's mise.toml block is
 #                          emitted from that manifest, so a disagreement
 #                          is a revert waiting for the next
-#                          `kit init --update`
+#                          `kit init --update`. Tools pinned only in
+#                          .config/mise.toml must not appear there at all,
+#                          or every scaffold would install them
 #
 # A literal that differs on purpose (a release job that tests the oldest
 # supported Python, say) carries `toolchain-parity: allow` in a comment on
@@ -58,7 +63,16 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
 pins_script="$root/scripts/toolchain-pins.sh"
-pins=$("$pins_script") || exit 2
+rc=0
+pins=$("$pins_script") || rc=$?
+case "$rc" in
+    0) ;;
+    3) echo "error: mise.toml and .config/mise.toml pin the same tool at different versions (above)." >&2
+       exit 1 ;;
+    *) exit 2 ;;
+esac
+# The kit-managed block alone: what the scaffold manifest must agree with.
+managed_pins=$(TOOLCHAIN_PINS_FILES=mise.toml "$pins_script") || exit 2
 
 # Pins CI or the Makefile consume. Missing one would make a workflow
 # step read an empty version and fall back to the action's default.
@@ -89,7 +103,7 @@ tracked() {
 
 for t in $required; do
     if [ -z "$(pin "$t")" ]; then
-        printf 'mise.toml: no pin for %s (CI and the Makefile read it)\n' "$t"
+        printf 'mise config: no pin for %s in mise.toml or .config/mise.toml (CI and the Makefile read it)\n' "$t"
         findings=$((findings + 1))
     fi
 done
@@ -280,13 +294,21 @@ if [ -n "$node_pin" ] && [ -n "$python_pin" ]; then
 fi
 
 # --- scaffold manifest ----------------------------------------------------
+managed_pin() {
+    printf '%s\n' "$managed_pins" | awk -F= -v want="$1" '$1 == want { print $2; exit }'
+}
 for manifest in templates/shared/tool-versions.toml cmd/kit/init/managed_assets/tool-versions.toml; do
     [ -f "$manifest" ] || continue
     while IFS=$'\t' read -r line tool ver; do
-        want=$(pin "$tool")
-        # A tool only the manifest declares is a scaffold-only concern.
-        [ -n "$want" ] || continue
-        [ "$ver" = "$want" ] || report "$manifest:$line" "$tool" "$ver" "$want" "mise.toml $tool"
+        want=$(managed_pin "$tool")
+        if [ -n "$want" ]; then
+            [ "$ver" = "$want" ] || report "$manifest:$line" "$tool" "$ver" "$want" "mise.toml $tool"
+        elif [ -n "$(pin "$tool")" ]; then
+            printf '%s:%s: %s is pinned only for this repo (.config/mise.toml); the scaffold manifest must not add it to every generated project\n' \
+                "$manifest" "$line" "$tool"
+            findings=$((findings + 1))
+        fi
+        # Otherwise only the manifest declares it: a scaffold-only concern.
     done < <(awk '
         function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
         /^[[:space:]]*\[/ { sec = trim($0); in_tbl = (sec == "[runtimes]" || sec == "[workflow]"); next }
@@ -308,10 +330,10 @@ done
 
 if [ "$findings" -gt 0 ]; then
     echo "" >&2
-    echo "error: $findings toolchain declaration(s) disagree with mise.toml." >&2
-    echo "       mise.toml is the source of truth: change the pin there, then make" >&2
+    echo "error: $findings toolchain declaration(s) disagree with the mise config." >&2
+    echo "       mise.toml / .config/mise.toml are the source of truth: change the pin there, then make" >&2
     echo "       each file above agree (or mark a deliberate difference with" >&2
     echo "       'toolchain-parity: allow' and the reason, on the same line)." >&2
     exit 1
 fi
-echo "Toolchain declarations agree with mise.toml."
+echo "Toolchain declarations agree with mise.toml and .config/mise.toml."

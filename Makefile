@@ -8,8 +8,9 @@
 	test-release test-rs test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
 
-# Tool versions — mise.toml is the single source of truth for local and
-# the repo's own CI; scripts/toolchain-pins.sh reads it. CI jobs feed the
+# Tool versions — the mise config (mise.toml, plus .config/mise.toml for
+# tools only this repo's CI uses) is the single source of truth for local
+# and the repo's own CI; scripts/toolchain-pins.sh reads it. CI jobs feed the
 # same pins to their setup actions, and `make check-toolchain-parity`
 # fails when a file that carries its own copy (go.mod,
 # rust-toolchain.toml, a workflow literal) disagrees.

@@ -29,12 +29,15 @@ rust = "1.98.0"
 golangci-lint = "2.11.4"
 ruff = "0.15.11"
 lychee = "0.24.2"
-buf = "1.73.0"
-"npm:markdownlint-cli2" = "0.23.3"
+"npm:release-please" = "17"
 
 [env]
 _.file = ".env"
 # <<< kit-managed <<<'
+    write .config/mise.toml '# repo-only tools
+[tools]
+buf = "1.73.0"
+"npm:markdownlint-cli2" = "0.23.3"'
     write go.mod 'module example.com/m
 
 go 1.26.1'
@@ -93,7 +96,7 @@ rust   = "1.98.0"
 [workflow]
 ruff                 = "0.15.11"  # Python linter
 hadolint             = "2.12"     # only the manifest pins this
-"npm:markdownlint-cli2" = "0.23.3"'
+"npm:release-please" = "17"'
     mkdir -p "$REPO/cmd/kit/init/managed_assets"
     cp "$REPO/templates/shared/tool-versions.toml" "$REPO/cmd/kit/init/managed_assets/"
     git -C "$REPO" add -A
@@ -321,10 +324,10 @@ go 1.30.0'
 }
 
 @test "scaffold manifest: quoted backend key is compared under its tool name" {
-    edit templates/shared/tool-versions.toml 's/"npm:markdownlint-cli2" = "0.23.3"/"npm:markdownlint-cli2" = "0.22.0"/'
+    edit templates/shared/tool-versions.toml 's/"npm:release-please" = "17"/"npm:release-please" = "16"/'
     run_check
     [ "$status" -eq 1 ]
-    has "tool-versions.toml:10: markdownlint-cli2 0.22.0"
+    has "tool-versions.toml:10: release-please 16 disagrees with mise.toml release-please 17"
 }
 
 @test "stale embedded manifest copy for kit init fails" {
@@ -364,4 +367,47 @@ go 1.30.0'
     edit examples/app/py/.python-version 's/3.13/3.13.5/'
     run_check
     [ "$status" -eq 0 ]
+}
+
+# --- repo-only tools in .config/mise.toml ---------------------------------
+
+@test "pins: a repo-only tool is read from .config/mise.toml" {
+    run_pins buf
+    [ "$status" -eq 0 ]
+    [ "$output" = "1.73.0" ]
+    run_pins
+    has "markdownlint-cli2=0.23.3"
+}
+
+@test "pins: .config/mise.toml is optional" {
+    rm "$REPO/.config/mise.toml"
+    run_pins go
+    [ "$status" -eq 0 ]
+    [ "$output" = "1.26.1" ]
+}
+
+@test "a tool pinned in both files at the same version passes" {
+    printf 'go = "1.26.1"\n' >> "$REPO/.config/mise.toml"
+    git -C "$REPO" add -A
+    run_check
+    [ "$status" -eq 0 ]
+}
+
+@test "a tool pinned in both files at different versions fails" {
+    printf 'go = "1.27.0"\n' >> "$REPO/.config/mise.toml"
+    git -C "$REPO" add -A
+    run_pins
+    [ "$status" -eq 3 ]
+    has ".config/mise.toml:5: go 1.27.0 disagrees with mise.toml:4 1.26.1"
+    run_check
+    [ "$status" -eq 1 ]
+    has "pin the same tool at different versions"
+}
+
+@test "a repo-only tool added to the scaffold manifest fails" {
+    printf 'buf = "1.73.0"\n' >> "$REPO/templates/shared/tool-versions.toml"
+    git -C "$REPO" add -A
+    run_check
+    [ "$status" -eq 1 ]
+    has "templates/shared/tool-versions.toml:11: buf is pinned only for this repo"
 }

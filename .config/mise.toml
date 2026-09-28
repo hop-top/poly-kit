@@ -1,0 +1,6 @@
+# Tools only this repo's CI uses; kept out of the kit-managed block in
+# mise.toml so `kit init` does not add them to scaffolded projects.
+# mise loads this file together with mise.toml.
+[tools]
+buf = "1.73.0"
+"npm:markdownlint-cli2" = "0.23.3"

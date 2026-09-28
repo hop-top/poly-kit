@@ -33,12 +33,20 @@ make setup
 
 ### Toolchain versions
 
-`mise.toml` pins every tool this repo builds, lints and tests with, and
-CI installs the same versions from it. With [mise](https://mise.jdx.dev)
-installed, `mise trust && mise install` gives you what CI runs.
+Two mise config files pin every tool this repo builds, lints and tests
+with, and CI installs the same versions from them. With
+[mise](https://mise.jdx.dev) installed, `mise trust && mise install` at
+the repo root gives you what CI runs.
 
-- To bump a tool, change its pin in `mise.toml`. CI picks it up; no
-  workflow edit needed.
+- `mise.toml` holds the tools kit's scaffolds share (Go, Node.js, pnpm,
+  Python, uv, Rust, golangci-lint, ruff, lychee, ...). Its pins sit in a
+  block emitted from `templates/shared/tool-versions.toml`, so bump a
+  tool there and in `mise.toml` together, then run `make
+  sync-managed-assets builtins-sync`.
+- `.config/mise.toml` holds tools only this repo's CI uses (buf,
+  markdownlint-cli2). Bump them there; they never go in the scaffold
+  manifest, or every generated project would install them.
+- CI picks up either file; no workflow edit needed.
 - A few files carry their own copy and must move with it: the `go`
   directive in `go.mod`, `channel` in
   `sdk/experimental/rs/rust-toolchain.toml`, the locked `ruff` in the
@@ -48,10 +56,9 @@ installed, `mise trust && mise install` gives you what CI runs.
 - PHP is the exception: mise would build it from source, so CI installs
   the version `sdk/experimental/php/composer.json` requires, and the
   check holds each workflow's `php-version` to that.
-- `templates/shared/tool-versions.toml` pins what `kit init` gives
-  generated projects, and this repo's `mise.toml` block is emitted from
-  it, so a bump goes in both (then `make sync-managed-assets
-  builtins-sync`). The check fails when they disagree.
+- The check also fails when `mise.toml` and the scaffold manifest
+  disagree, when the manifest lists a `.config/mise.toml`-only tool, or
+  when the two mise files pin one tool differently.
 
 ## Git Hooks
 

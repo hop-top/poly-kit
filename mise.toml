@@ -2,11 +2,12 @@
 # against the kit tool-versions manifest. Add your own tools above the
 # marker. Run `kit init --update` to refresh managed tools.
 #
-# This repo's own toolchain source of truth: CI reads these pins
-# (scripts/toolchain-pins.sh), and `make check-toolchain-parity` fails when
-# go.mod, rust-toolchain.toml, a workflow, the devcontainer or the scaffold
-# manifest (templates/shared/tool-versions.toml, which the block below is
-# emitted from) disagrees.
+# This repo's own toolchain source of truth, with .config/mise.toml (tools
+# only this repo's CI uses): CI reads these pins (scripts/toolchain-pins.sh),
+# and `make check-toolchain-parity` fails when go.mod, rust-toolchain.toml,
+# a workflow, the devcontainer or the scaffold manifest
+# (templates/shared/tool-versions.toml, which the block below is emitted
+# from) disagrees.
 
 # >>> kit-managed >>>
 [tools]
@@ -24,8 +25,6 @@ actionlint = "1.7"
 shellcheck = "0.10"
 shfmt = "3.10"
 "npm:release-please" = "17"
-buf = "1.73.0"
-"npm:markdownlint-cli2" = "0.23.3"
 
 [env]
 _.file = ".env"
