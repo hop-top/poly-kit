@@ -229,7 +229,7 @@ func newService(root *cli.Root, cfg *Config, stdio *stdioStreams) *service {
 		transportsvc.Expose("*"),
 		transportsvc.WithBridgeOptions(cmdsurface.WithPolicy(cfg.Policy)),
 		transportsvc.WithBridgeOptionsFunc(func() []cmdsurface.Option {
-			shared, err := cli.ServeBridgeOptions(root)
+			shared, err := cli.ServeBridgeOptions(root, ServiceName)
 			if err != nil {
 				// Validate has already refused a --policy that cannot
 				// load, so this path is unreachable in practice.
@@ -351,7 +351,7 @@ func (s *service) validate() error {
 		return fmt.Errorf("transport: unknown transport %q; use %q or %q",
 			transport, TransportHTTP, TransportStdio)
 	}
-	return cli.ValidateServeBridge(s.root)
+	return cli.ValidateServeBridge(s.root, ServiceName)
 }
 
 // validateHTTP checks the address and path, then applies the api

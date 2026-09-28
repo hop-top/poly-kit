@@ -70,7 +70,10 @@ type Bridge struct {
 	byPath map[string]*Leaf
 	tree   *cmdreflect.Tree
 	sinks  SinkSet
-	mu     sync.RWMutex
+	// audit is the extra redaction from WithAuditRedaction, nil
+	// when none was given.
+	audit *auditExtra
+	mu    sync.RWMutex
 }
 
 // Leaf is the per-command view surface implementations need. Path
@@ -92,6 +95,10 @@ type Leaf struct {
 	//
 	// Always non-nil for a leaf the bridge discovered.
 	Descriptor *cmdreflect.Descriptor
+
+	// secretFlags names the flags carrying AnnotationSecretFlag,
+	// resolved once at discovery for the audit redactor.
+	secretFlags map[string]bool
 }
 
 // PathKey returns the leaf path as a space-joined string (the form
@@ -104,6 +111,7 @@ type bridgeConfig struct {
 	policy     Policy
 	permission PermissionFunc
 	sinks      SinkSet
+	redaction  AuditRedaction
 }
 
 // Option configures a Bridge at construction.
@@ -154,6 +162,7 @@ func New(root *cobra.Command, opts ...Option) *Bridge {
 		cfg:    cfg,
 		byPath: make(map[string]*Leaf),
 		sinks:  append(SinkSet(nil), cfg.sinks...),
+		audit:  newAuditExtra(cfg.redaction),
 	}
 	b.discover()
 	return b
@@ -204,6 +213,8 @@ func (b *Bridge) discover() {
 			Class:      classFromDescriptor(d),
 			Enabled:    enabled,
 			Descriptor: d,
+
+			secretFlags: secretFlagSet(d.Cmd),
 		}
 		b.leaves = append(b.leaves, leaf)
 		b.byPath[leaf.PathKey()] = leaf
@@ -372,8 +383,9 @@ func (b *Bridge) Invoke(ctx context.Context, inv Invocation) (Result, error) {
 //
 // An Admission runs at most once.
 type Admission struct {
-	b   *Bridge
-	inv Invocation
+	b    *Bridge
+	inv  Invocation
+	leaf *Leaf
 }
 
 // Admit applies the gates [Bridge.Invoke] applies, in the same order
@@ -397,6 +409,7 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 	surface := inv.Meta.Surface
 
 	leaf, err := b.resolveLeaf(inv.Path)
+	ctx = b.auditContext(ctx, leaf)
 	if err != nil {
 		return nil, b.refuse(ctx, inv, err)
 	}
@@ -419,7 +432,7 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 	// A runner holding no tree (a subprocess) learns from the
 	// invocation whether the leaf parses its own argv.
 	inv.ownArgv = leaf.Cmd != nil && leaf.Cmd.DisableFlagParsing
-	return &Admission{b: b, inv: forwardIdempotencyKey(inv, leaf)}, nil
+	return &Admission{b: b, inv: forwardIdempotencyKey(inv, leaf), leaf: leaf}, nil
 }
 
 // Invocation returns the admitted invocation as it will run.
@@ -434,6 +447,9 @@ func (a *Admission) Invocation() Invocation { return a.inv }
 // machine gate and before the run, without asking about a call the
 // gates would refuse and without answering the gates twice.
 func (a *Admission) Run(ctx context.Context) (Result, error) {
+	// Stamped before the run, so a Runner emitting to its own SinkSet
+	// redacts the leaf's secret flags as the bridge's sinks do.
+	ctx = a.b.auditContext(ctx, a.leaf)
 	res, err := a.b.cfg.runner.Run(ctx, a.inv)
 	if a.inv.Meta.Surface.remote() {
 		a.b.Audit(ctx, a.inv, res, err)
@@ -454,6 +470,7 @@ func (a *Admission) Stream(ctx context.Context, out chan<- Event) error {
 	if out == nil {
 		return errors.New("cmdsurface: nil event channel")
 	}
+	ctx = a.b.auditContext(ctx, a.leaf)
 	events := make(chan Event, cap(out))
 	errc := make(chan error, 1)
 	go func() { errc <- a.b.cfg.runner.Stream(ctx, a.inv, events) }()
@@ -530,10 +547,21 @@ func (b *Bridge) Permission(ctx context.Context, meta Meta, leaf *Leaf) Permissi
 // Sinks are best-effort: their errors are dropped here, as the
 // SinkSet contract already makes them non-fatal, and an audit sink
 // must never turn a refusal into a different refusal.
+//
+// Sinks receive a redacted copy (see [SinkSet.Emit]); the flags of
+// the leaf inv.Path names that carry [AnnotationSecretFlag] are
+// masked with the rest.
 func (b *Bridge) Audit(ctx context.Context, inv Invocation, res Result, err error) {
 	sinks := b.Sinks()
 	if len(sinks) == 0 {
 		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, stamped := ctx.Value(auditScopeKey{}).(auditScope); !stamped {
+		leaf, _ := b.resolveLeaf(inv.Path)
+		ctx = b.auditContext(ctx, leaf)
 	}
 	_ = sinks.Emit(ctx, inv, res, err)
 }

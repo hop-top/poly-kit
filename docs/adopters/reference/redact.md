@@ -29,6 +29,7 @@ anything user-facing that may have absorbed sensitive data.
 | Bulk-add pre-compiled rules | `Redactor.AddRules(rules...)` |
 | Override embedded gitleaks corpus | `KIT_REDACT_RULES_PATH=/path/to/file.toml` |
 | Override embedded Presidio corpus | `KIT_REDACT_PII_RULES_PATH=/path/to/file.toml` |
+| Redact served-command audit records | automatic: `cmdsurface.SinkSet.Emit` applies `Default()`; see [cmdsurface Redaction](cmdsurface.md#redaction) |
 
 ## Engine choice (RE2)
 
@@ -281,6 +282,7 @@ Both refresh targets are independent and safe to run in any order.
 - [`go/core/redact/README.md`](../../../go/core/redact/README.md): package README
 - [`go/core/redact/PERF.md`](../../../go/core/redact/PERF.md): performance budget + optimization roadmap
 - [`go/core/redact/rules/README.md`](../../../go/core/redact/rules/README.md): the embedded Presidio pack
+- [cmdsurface.md#redaction](cmdsurface.md#redaction): the audit sink pipeline, which applies `Default()` to every record
 - [scope.md](scope.md): sibling guardrail for FS paths
 - [breaker.md](breaker.md): egress volume and rate control
 - [go-primitives.md](go-primitives.md#i-need-guardrails-on-what-my-tool-can-do): guardrail primitives index

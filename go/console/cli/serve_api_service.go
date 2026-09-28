@@ -131,6 +131,11 @@ func (a *apiService) Validate() error {
 	if _, err := a.root.servePermission(); err != nil {
 		return err
 	}
+	// The audit.redact block is configuration too: an unknown key, or a
+	// pattern that does not compile, is refused here.
+	if _, err := serveAuditRedaction(a.root.Viper, APIServiceName); err != nil {
+		return err
+	}
 	return a.root.validateRootFactory()
 }
 

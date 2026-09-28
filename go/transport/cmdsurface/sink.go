@@ -82,8 +82,24 @@ type SinkSet []SinkSpec
 // called, and the slice of observed errors is returned (nil if all
 // succeeded). The order of the returned errors matches the order of
 // matching sinks in s.
+//
+// Emit is the audit pipeline's redaction point: sinks receive a
+// redacted copy of inv, res and err, never the caller's values. The
+// values of flags marked [AnnotationSecretFlag] or named like a
+// secret (token, password, api-key, …) are masked, as are secret
+// Meta.Extra entries and --name=value positional pairs; every other
+// string field (flag values, args, Extra values, stdout, stderr,
+// Data, the error message) is scanned with the redact package's
+// default rules, and secret values found by name are replaced
+// wherever they recur. A field too long to scan is withheld whole.
+// When every matching sink ignores Stdout, Stderr and Data, those
+// fields are dropped instead of scanned. Calling a Sink's Emit
+// directly bypasses all of this.
 func (s SinkSet) Emit(ctx context.Context, inv Invocation, res Result, err error) []error {
-	var errs []error
+	var (
+		matched    []Sink
+		withOutput bool
+	)
 	for _, spec := range s {
 		if spec.Sink == nil {
 			continue
@@ -91,7 +107,18 @@ func (s SinkSet) Emit(ctx context.Context, inv Invocation, res Result, err error
 		if !spec.matches(inv, res, err) {
 			continue
 		}
-		if e := spec.Sink.Emit(ctx, inv, res, err); e != nil {
+		matched = append(matched, spec.Sink)
+		if blind, ok := spec.Sink.(auditOutputBlind); !ok || !blind.auditIgnoresOutput() {
+			withOutput = true
+		}
+	}
+	if len(matched) == 0 {
+		return nil
+	}
+	rinv, rres, rerr := redactForAudit(ctx, inv, res, err, withOutput)
+	var errs []error
+	for _, sink := range matched {
+		if e := sink.Emit(ctx, rinv, rres, rerr); e != nil {
 			errs = append(errs, e)
 		}
 	}

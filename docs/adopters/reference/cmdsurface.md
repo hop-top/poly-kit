@@ -1028,6 +1028,67 @@ Built-in implementations:
 - `TelemetrySink` — fan-out into the kit-telemetry pipeline. See the
   "Telemetry sink" section below.
 
+### Redaction
+
+`SinkSet.Emit` is the one redaction point: every sink in the set
+receives the same redacted copy of `inv`, `res` and `err`, and the
+caller's values are left untouched. Both paths above go through it —
+`Bridge.Invoke`, `Bridge.Audit`, and a `sinkRunner` calling
+`SinkSet.Emit`. Calling a `Sink`'s own `Emit` directly bypasses it.
+Redaction has no off switch.
+
+Three checks find a secret:
+
+| Check | Catches | Result |
+|---|---|---|
+| `kit/secret` annotation (`MarkFlagSecret`), or `AuditRedaction.SecretFlags` | a flag, by declaration | value masked |
+| Name reads as secret | flags, `Meta.Extra` keys, `--name=value` and `--name value` args, map keys in `Data` | value masked |
+| Content rules: `redact.Default()`, then `AuditRedaction.Rules` | credential- or PII-shaped text in any other flag value, arg, `Extra` value, stdout, stderr, `Data` string, or error message | the match masked |
+
+A value masked by the first two checks is also replaced wherever it
+recurs in the record (a command echoing its `--dsn`, an error quoting
+a token), once it is at least 4 bytes and not `true`/`false`.
+
+The name check matches, after lowercasing and dropping separators:
+`token`, `passw`, `passphrase`, `secret`, `credential`, `bearer`,
+`cookie`, and `apikey`/`accesskey`/`privatekey`/`signingkey`/
+`encryptionkey`/`masterkey`/`sessionkey`/`clientkey` anywhere in the
+name; `auth`, `authorization`, `pwd`, `otp`, `jwt`, `session`, `creds`
+as a whole word; `key`, `pass`, `pin` only as the whole name. It errs
+toward masking: `--max-tokens` is masked, `--sort-key` and
+`--idempotency-key` are not. Map keys in `Data` mask only string and
+nested values; numbers and booleans stay.
+
+Also:
+
+- `Meta.Caller`, `Tenant`, `RequestID`, `TraceID` and
+  `IdempotencyKey` are provenance and pass through. The `Extra` keys
+  kit's own transports stamp (`remote_addr`, `http_method`,
+  `http_path`, `scopes`, `oauth_issuer`, the `mcp_*` keys) skip the
+  content rules, which would otherwise mask the remote address.
+- A field longer than 4 KiB, or `Data` whose strings total more, is
+  replaced by `[withheld from audit: …]` rather than shipped
+  unscanned.
+- The error keeps its identity for `errors.Is` (`ErrAuthRefused`
+  still matches) but has no `Unwrap`: unwrapping would reach the
+  unredacted message.
+- When every matching sink ignores output — `FileSink` with the
+  default format, `LogSink` above debug level, `TelemetrySink` —
+  `Stdout`, `Stderr` and `Data` are dropped instead of scanned.
+- Cost: the default corpus scans at roughly 10 µs per byte (see
+  `go/core/redact/PERF.md`); a typical record of short flags costs
+  well under a millisecond, and the 4 KiB cap bounds one field at
+  about 40 ms.
+
+Declare a flag secret in code with `MarkFlagSecret`; the annotation
+lives on the flag, so a persistent flag marked on the root is secret
+on every command that inherits it. Add flags or rules for one bridge
+with `WithAuditRedaction(cmdsurface.AuditRedaction{...})`; kit-shipped
+services read `services.<svc>.audit.redact.secret_flags` and
+`.patterns` (then `services.all.audit.redact.*`) into it. The block
+can only add; it has no `enabled` key, and an unknown key is refused
+at validation.
+
 ## Telemetry sink
 
 The telemetry sink fans every cmdsurface invocation completion into the
@@ -1066,9 +1127,10 @@ plus a synthetic `flags["_surface"]` stamp (kit-telemetry's canonical
 surface into `flags` rather than dropping it). Every value passes
 through `telemetry.MustLoadRedactor()` inside the emitter before
 publish. Full is the right tier when the adopter needs to slice on
-flag values during incident response, with the trade-off that the
-redactor (not the cmdsurface sink) is now the only thing between user
-input and the wire.
+flag values during incident response. The values reach the sink
+already redacted by `SinkSet.Emit` (see [Redaction](#redaction)), so
+secret-marked and secret-named flags are masked before the emitter's
+content rules run as a second layer.
 
 ### Size cap
 
@@ -1443,7 +1505,7 @@ REST and `mcpsdk.Mount(b, r)` for MCP. Destructive leaves stay unreachable on RE
 
 ## Threat model
 
-Three primary risks the bridge defends against:
+Four primary risks the bridge defends against:
 
 1. **Destructive remote exposure.** A `widget delete` leaf reachable
    on REST without auth = data loss. Defense:
@@ -1464,6 +1526,10 @@ Three primary risks the bridge defends against:
    `Class.AuthRequired` and `Class.RequiresConfirmation` are skipped
    because the signed URL IS the auth; the destructive ceiling
    still applies.
+4. **Secrets persisted by the audit trail.** A `--token` passed over
+   REST lands verbatim in a log file, a webhook, or a bus topic.
+   Defense: `SinkSet.Emit` redacts every record before any sink sees
+   it, with no off switch (see [Redaction](#redaction)).
 
 The surface matrix above is the full surface inventory.
 

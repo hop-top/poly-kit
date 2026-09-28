@@ -118,8 +118,9 @@ type Event struct {
 //
 //	<surface> <path...> args=[..] flags={..} caller=<id> tenant=<id> request=<id> trace=<id>
 //
-// Flag values are rendered with %v; secrets are the caller's
-// responsibility — the bridge does not redact.
+// Flag values are rendered with %v and String does not redact:
+// secrets are the caller's responsibility here. Audit sinks reached
+// through [SinkSet.Emit] receive a redacted copy instead.
 func (inv Invocation) String() string {
 	var b strings.Builder
 	if inv.Meta.Surface != "" {

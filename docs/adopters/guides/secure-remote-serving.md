@@ -51,7 +51,7 @@ for your own command tree; substitute it.
 - **One audit trail.** Every refusal — not authenticated, not
   permitted, not confirmed, body too large — and every command that
   ran over a remote surface reaches the sinks you register, with the
-  same fields.
+  same fields and with secrets redacted.
 - **Bounded request bodies.** Every route the api service serves —
   the projection, your `Handlers` and `Resources` — refuses a body
   over 1 MiB with `413` and code `body_too_large`, whether the
@@ -525,6 +525,48 @@ URL, and `BusSink` publishes it; see
 [the cmdsurface reference](../reference/cmdsurface.md#sinks).
 Sinks are best-effort and cannot change a verdict.
 
+#### Secrets never reach a sink
+
+Every record is redacted before any sink sees it; there is no switch
+to turn that off. A flag's value is masked as `***REDACTED***` when
+the flag is marked secret or its name reads as secret (`token`,
+`password`, `secret`, `api-key`, `auth`, `cookie`, …), and every echo
+of that value in stdout, stderr, or the error message is masked too.
+Everything else is scanned with the
+[redact](../reference/redact.md) default rules, which catch
+credential-shaped values whatever the flag is called:
+
+```json
+{"invocation":{"path":["db","connect"],"flags":{"dsn":"***REDACTED***","region":"eu-west-1","token":"***REDACTED***"}},"result":{"exit_code":0,"stdout":"connected via ***REDACTED***\n"}}
+```
+
+Mark a flag whose name does not give it away:
+
+```go
+cmd.Flags().String("dsn", "", "database DSN, password included")
+_ = cmdsurface.MarkFlagSecret(cmd.Flags(), "dsn")
+```
+
+An operator adds flags and content patterns per service, or for every
+service under `services.all`; the service's own key wins, and a list
+replaces rather than merges. The block can only add: it has no
+`enabled` key, and an unknown key is refused at exit 2.
+
+```yaml
+# ~/.config/mytool/config.yaml
+services:
+  all:
+    audit:
+      redact:
+        secret_flags: [conn]
+        patterns: ['acme_[a-z0-9]{32}']
+```
+
+A field longer than 4 KiB is withheld whole rather than shipped
+unscanned. See
+[the cmdsurface reference](../reference/cmdsurface.md#redaction) for
+exactly what is scanned and what it costs.
+
 ### 7. Propagate request and trace ids
 
 Send the standard headers and they travel into `Meta` and the audit
@@ -578,7 +620,9 @@ on both transports; a command that honors its context stops.
 | `APIConfig.MaxBodyBytes` | `0` (1 MiB) | Request body cap on every api route; over it is `413 body_too_large`, audited as `cmdsurface.ErrBodyTooLarge`. Negative disables. `services.api.body_limit.max_bytes` / `.enabled`, then `services.all.body_limit.*`, override it. |
 | `SocketConfig.Auth` | none | Verifies each socket request; the verified identity replaces the claimed one. |
 | `cli.WithPermission(fn)` | permit all | Permission gate on every kit-shipped transport service. |
-| `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. |
+| `cli.WithAuditSinks(specs...)` | none | Audit sinks on every kit-shipped transport service. Records are always redacted. |
+| `services.<svc>.audit.redact.secret_flags` | none | Extra flag names masked in audit records; `services.all` applies to every service. |
+| `services.<svc>.audit.redact.patterns` | none | Extra content patterns (RE2) masked in audit records. |
 | `--policy=<name>` | none | The tool's policy engine, applied to remote calls for every caller. Naming one permits a non-loopback address. |
 
 Precedence for either opt-in is flag, then config key, then code. The

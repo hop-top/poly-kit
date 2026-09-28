@@ -212,7 +212,7 @@ func newService(root *cli.Root, cfg *Config) *rpcService {
 		transportsvc.Expose("*"),
 		transportsvc.WithBridgeOptions(cmdsurface.WithPolicy(cfg.Policy)),
 		transportsvc.WithBridgeOptionsFunc(func() []cmdsurface.Option {
-			shared, err := cli.ServeBridgeOptions(root)
+			shared, err := cli.ServeBridgeOptions(root, ServiceName)
 			if err != nil {
 				// Validate has already refused a --policy that cannot
 				// load, so this path is unreachable in practice.
@@ -310,7 +310,7 @@ func (s *rpcService) validate() error {
 			)
 		}
 	}
-	return cli.ValidateServeBridge(s.root)
+	return cli.ValidateServeBridge(s.root, ServiceName)
 }
 
 // rpcTransport is the [transportsvc.Transport] behind the service: its

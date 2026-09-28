@@ -62,17 +62,23 @@ func WithAuditSinks(specs ...cmdsurface.SinkSpec) func(*Root) {
 
 // serveBridgeOptions returns the bridge options every kit-shipped
 // transport service applies at Start: the composed permission gate,
-// the audit sinks, and any test-injected options. It is resolved at
-// Start, not at registration, because --policy is parsed and adopter
-// options run only after the service was constructed.
-func (r *Root) serveBridgeOptions() ([]cmdsurface.Option, error) {
+// the audit sinks with svc's audit.redact block, and any
+// test-injected options. It is resolved at Start, not at
+// registration, because --policy is parsed and adopter options run
+// only after the service was constructed.
+func (r *Root) serveBridgeOptions(svc string) ([]cmdsurface.Option, error) {
 	perm, err := r.servePermission()
+	if err != nil {
+		return nil, err
+	}
+	redaction, err := serveAuditRedaction(r.Viper, svc)
 	if err != nil {
 		return nil, err
 	}
 	opts := []cmdsurface.Option{
 		cmdsurface.WithPermission(perm),
 		cmdsurface.WithSinks(r.serveAuth.sinks...),
+		cmdsurface.WithAuditRedaction(redaction),
 	}
 	return append(opts, r.serveAuth.bridgeOpts...), nil
 }
@@ -178,11 +184,12 @@ func (r *Root) servePolicyConfigured() bool {
 // into every kit CLI, served or not. A function nobody calls is
 // dropped.
 
-// ServeBridgeOptions returns the bridge options a kit-shipped
-// transport service applies when it starts: the per-invocation runner
-// when [WithRootFactory] is set (carrying the operator's replayed root
-// flags), then the composed permission gate ([WithPermission] after
-// the --policy engine), the audit sinks ([WithAuditSinks]), and any
+// ServeBridgeOptions returns the bridge options the kit-shipped
+// transport service svc applies when it starts: the per-invocation
+// runner when [WithRootFactory] is set (carrying the operator's
+// replayed root flags), then the composed permission gate
+// ([WithPermission] after the --policy engine), the audit sinks
+// ([WithAuditSinks]) with svc's audit.redact block, and any
 // test-injected options. It is the same set the socket service's
 // bridge gets, and it must be called at Start — --policy is parsed
 // and every Root option has run only by then.
@@ -190,20 +197,24 @@ func (r *Root) servePolicyConfigured() bool {
 // A service living outside this package — the MCP service in
 // go/console/cli/mcpserve — builds its bridge from it, so it meets
 // exactly the gates the built-in services do.
-func ServeBridgeOptions(r *Root) ([]cmdsurface.Option, error) {
-	shared, err := r.serveBridgeOptions()
+func ServeBridgeOptions(r *Root, svc string) ([]cmdsurface.Option, error) {
+	shared, err := r.serveBridgeOptions(svc)
 	if err != nil {
 		return nil, err
 	}
 	return append(r.serveRunnerOptions(), shared...), nil
 }
 
-// ValidateServeBridge is the configuration check every kit-shipped
-// transport service runs in its Validate hook: a --policy that cannot
-// load, or a root factory that cannot build a usable tree, is a usage
-// error before anything binds.
-func ValidateServeBridge(r *Root) error {
+// ValidateServeBridge is the configuration check the kit-shipped
+// transport service svc runs in its Validate hook: a --policy that
+// cannot load, an audit.redact block [ServeBridgeOptions] would
+// refuse, or a root factory that cannot build a usable tree, is a
+// usage error before anything binds.
+func ValidateServeBridge(r *Root, svc string) error {
 	if _, err := r.servePermission(); err != nil {
+		return err
+	}
+	if _, err := serveAuditRedaction(r.Viper, svc); err != nil {
 		return err
 	}
 	return r.validateRootFactory()

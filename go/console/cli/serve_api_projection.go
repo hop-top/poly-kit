@@ -21,7 +21,7 @@ func projectionBridge(r *Root, cfg *APIConfig) (*cmdsurface.Bridge, error) {
 	// The permission gate and the audit sinks are resolved now, at
 	// start: --policy is parsed by then and every adopter option has
 	// run.
-	shared, err := r.serveBridgeOptions()
+	shared, err := r.serveBridgeOptions(APIServiceName)
 	if err != nil {
 		return nil, err
 	}
