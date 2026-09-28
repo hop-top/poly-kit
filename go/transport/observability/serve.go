@@ -108,6 +108,14 @@ func (s *Serve) HTTPMiddleware(service string) func(http.Handler) http.Handler {
 	return s.Provider(service).HTTPMiddleware(service)
 }
 
+// RecordHTTPRefusal counts one refusal decided on service's HTTP
+// listener before any request exists — a failed TLS handshake — with
+// its code; see [Provider.RecordHTTPRefusal]. The kit CLI's listeners
+// call it through cli.ServeHTTPRefusals.
+func (s *Serve) RecordHTTPRefusal(ctx context.Context, service, code string) {
+	s.Provider(service).RecordHTTPRefusal(ctx, service, code)
+}
+
 // MetricsEndpoint returns the path and handler of service's metrics
 // scrape endpoint and whether it may answer beyond loopback, or "",
 // nil and false when it is off for service (see

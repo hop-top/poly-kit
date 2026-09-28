@@ -93,7 +93,7 @@ func newInstruments(m metric.Meter) (*instruments, error) {
 		metric.WithDescription("HTTP requests in progress on a served listener."))
 	err = errors.Join(err, e)
 	in.httpRefusals, e = m.Int64Counter(MetricHTTPRefusals, metric.WithUnit("{refusal}"),
-		metric.WithDescription("HTTP requests refused by HTTP-plane middleware, by refusal code."))
+		metric.WithDescription("HTTP requests refused by HTTP-plane middleware, and TLS handshakes a listener failed, by refusal code."))
 	err = errors.Join(err, e)
 	if err != nil {
 		return nil, err

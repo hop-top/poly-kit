@@ -63,6 +63,10 @@ type ServeTLS struct {
 	// nil when the bearer mode names no authorization server or no
 	// URL audience.
 	resource *api.ProtectedResource
+	// root and svc name the listener for the handshake log and its
+	// refusal count.
+	root *Root
+	svc  string
 }
 
 // ProtectedResource describes the listener as an OAuth 2.0 protected
@@ -124,6 +128,10 @@ func (t *ServeTLS) Auth() api.AuthFunc {
 //
 // When serving ends it releases what the verifier holds open: the API
 // key store under auth.mode: apikey.
+//
+// A failed handshake is taken off srv's ErrorLog: it is logged at
+// debug, rate-limited, and counted as the tls_handshake refusal by a
+// linked provider that implements [ServeHTTPRefusals].
 func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 	if t != nil && t.apiKeys != nil {
 		defer func() { _ = t.apiKeys.Close() }()
@@ -131,6 +139,8 @@ func (t *ServeTLS) Serve(srv *http.Server, ln net.Listener) error {
 	if !t.Enabled() {
 		return srv.Serve(ln)
 	}
+	hs := newHandshakeLog(t.root, t.svc, serveListenerLogger(t.root))
+	srv.ErrorLog = api.HandshakeErrorLog(srv.ErrorLog, hs.failed)
 	srv.TLSConfig = t.config.Clone()
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -191,7 +201,7 @@ func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 		return nil, err
 	}
 	if mode != AuthModeMTLS {
-		t := &ServeTLS{config: tc}
+		t := &ServeTLS{config: tc, root: r, svc: svc}
 		if mode == AuthModeAPIKey {
 			cfg, err := res.apiKeyStoreConfig(r)
 			if err != nil {
@@ -223,7 +233,7 @@ func ResolveServeTLS(r *Root, svc string) (*ServeTLS, error) {
 	}
 	tc.ClientCAs = pool
 	tc.ClientAuth = tls.VerifyClientCertIfGiven
-	return &ServeTLS{config: tc, clientAuth: api.ClientCertAuth(verify)}, nil
+	return &ServeTLS{config: tc, clientAuth: api.ClientCertAuth(verify), root: r, svc: svc}, nil
 }
 
 // tlsResolver reads one service's tls and auth keys.

@@ -1355,9 +1355,14 @@ HTTP/2 401
 ```
 
 A certificate the CA bundle does not verify never gets that far: the
-handshake fails, and the server logs it. The health probes answer
-without a certificate, so an orchestrator needs none. Under `mtls` the
-certificate is the only verifier; `APIConfig.Auth` is not consulted.
+handshake fails. The health probes answer without a certificate, so an
+orchestrator needs none. Under `mtls` the certificate is the only
+verifier; `APIConfig.Auth` is not consulted.
+
+A failed handshake has no request to audit. The listener logs it at
+debug (run `serve -V` to see the reason), at most a few lines a second,
+and counts it as `tls_handshake` in `kit.serve.http.refusals` when
+[metrics are on](../reference/served-observability.md).
 
 ### 11. Bound how fast a caller may call
 

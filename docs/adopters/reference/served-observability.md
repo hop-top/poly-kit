@@ -150,7 +150,7 @@ HTTP plane, labeled `kit.service`:
 |---|---|---|
 | `http.server.*` | per otelhttp | request duration and sizes, by method and status |
 | `kit.serve.http.requests.active` | up-down counter | HTTP requests in progress |
-| `kit.serve.http.refusals` | counter | requests refused by HTTP-plane middleware, by `kit.refusal.reason` |
+| `kit.serve.http.refusals` | counter | requests refused by HTTP-plane middleware, and TLS handshakes a listener failed, by `kit.refusal.reason` |
 | `rpc.server.*` | per otelconnect | RPC duration and sizes, when the RPC interceptor is wired |
 
 The duration buckets are the OpenTelemetry semantic conventions'
@@ -188,12 +188,17 @@ series by requesting commands that do not exist.
 | `deadline_exceeded` | `kit.serve.refusals` | an invocation whose context deadline passed, running or queued |
 | `body_too_large` | `kit.serve.http.refusals` | `api.BodyLimit`: a declared length over the cap, or a body of unknown length crossing it |
 | `host_rejected`, `origin_rejected` | `kit.serve.http.refusals` | `api.HostCheck`, `api.OriginCheck` |
+| `tls_handshake` | `kit.serve.http.refusals` | a kit TLS listener whose handshake failed: plaintext to a TLS port, an untrusted, unverified or revoked client certificate, a client that hung up mid-handshake. No request exists, so no span records it |
 | any other HTTP-plane code | `kit.serve.http.refusals` | middleware calling `api.RecordRefusal(r, code)` |
 
 HTTP-plane middleware that refuses a request calls
 `api.RecordRefusal(r, code)` before writing its response; the tracing
 and metrics middleware, which sits outside it, counts the code. A
 refusal the bridge decides is counted once, on the invocation plane.
+A listener counts a failed handshake with `Provider.RecordHTTPRefusal`;
+an adopter serving its own TLS listener can wrap its `http.Server`'s
+`ErrorLog` with `api.HandshakeErrorLog` and do the same. A TCP health
+check that connects and closes without a handshake is counted too.
 
 ## Scrape endpoint
 

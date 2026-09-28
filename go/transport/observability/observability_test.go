@@ -544,3 +544,22 @@ func TestHTTPSpanClientAddressIgnoresSpoofedForwardedFor(t *testing.T) {
 	}
 	assert.Equal(t, "192.0.2.10", client)
 }
+
+func TestListenerRefusalIsCountedByCode(t *testing.T) {
+	reader, mp := manualMeter(t)
+	p, err := New(context.Background(), Config{Metrics: Signal{Enabled: true}}, WithMeterProvider(mp))
+	require.NoError(t, err)
+
+	p.RecordHTTPRefusal(context.Background(), "api", api.CodeTLSHandshake)
+	p.RecordHTTPRefusal(context.Background(), "rpc", api.CodeTLSHandshake)
+	p.RecordHTTPRefusal(context.Background(), "api", "")
+
+	got := collect(t, reader)
+	assert.Equal(t, map[string]int64{"tls_handshake": 2}, sumBy(t, got[MetricHTTPRefusals], AttrRefusalReason))
+	assert.Equal(t, map[string]int64{"api": 1, "rpc": 1}, sumBy(t, got[MetricHTTPRefusals], AttrService))
+
+	// Off, or not started, it records nothing and does not panic.
+	var none *Provider
+	none.RecordHTTPRefusal(context.Background(), "api", api.CodeTLSHandshake)
+	NewServe().RecordHTTPRefusal(context.Background(), "api", api.CodeTLSHandshake)
+}

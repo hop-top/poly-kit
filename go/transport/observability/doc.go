@@ -81,5 +81,7 @@
 //   - kit.serve.http.requests.active: HTTP requests in progress,
 //     beside the http.server.* instruments otelhttp records.
 //   - kit.serve.http.refusals: requests refused by HTTP-plane
-//     middleware, by the code it recorded with api.RecordRefusal.
+//     middleware, by the code it recorded with api.RecordRefusal, and
+//     TLS handshakes a kit listener failed, as tls_handshake
+//     (Provider.RecordHTTPRefusal).
 package observability

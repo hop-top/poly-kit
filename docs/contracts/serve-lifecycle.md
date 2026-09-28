@@ -1811,8 +1811,12 @@ serving.
   code `Auth` (`APIConfig.Auth`, `rpcserve.Config.Auth`,
   `mcpserve.Config.Auth`) is not consulted, and the api service's
   `--no-auth` disables it as it disables `Auth`.
-- A handshake that fails is logged by the server and not audited: no
-  request exists to attribute.
+- A handshake that fails is not audited: no request exists to
+  attribute. The listener takes it off the server's error log, logs it
+  at debug with the client address and reason — a burst of five, then
+  one a second, the next line logged reporting how many were
+  suppressed — and counts it as `tls_handshake` (see
+  [Refusals](#refusals)).
 - Each of these is refused at validation, exit `2`, naming the key:
   `enabled: true` with no certificate source, both sources, one of
   `cert_file` and `key_file`, a pair that does not load, an unsupported
@@ -2112,6 +2116,7 @@ given in [Permission](#permission) and by each surface.
 | `body_too_large`         | http 10  | `413`                                 | `ResourceExhausted` | `413`, JSON-RPC `-32600`   | — (line bound)      | `USAGE` (2)        |
 | `host_rejected`          | http 8   | `403`                                 | `PermissionDenied`  | `403`                      | —                   | `UNAUTHORIZED` (5) |
 | `origin_rejected`        | http 8   | `403`                                 | `PermissionDenied`  | `403`                      | —                   | `UNAUTHORIZED` (5) |
+| `tls_handshake`          | handshake | — (counted, never answered)          | —                   | —                          | —                   | —                  |
 
 Per surface:
 
@@ -2164,6 +2169,13 @@ Every invocation-plane refusal reaches the audit sinks, as today.
 HTTP-plane refusals MUST be counted by code in metrics and logged,
 and SHOULD reach the sinks through `Bridge.Audit` when the request
 addresses a projected command, as authentication refusals already do.
+
+One class is counted and never answered: `tls_handshake`, a TLS
+listener's failed handshake (`api.CodeTLSHandshake`). No request
+exists, so it has no status, no Connect or MCP code, no sentinel and
+no exit class, and it reaches no sink. It MUST be counted in the
+HTTP-plane refusal metric with the listener's service, and logged at
+debug with a rate limit.
 
 ### Idempotency
 

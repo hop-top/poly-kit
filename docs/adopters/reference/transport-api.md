@@ -575,6 +575,13 @@ code once the handler returns; the tracing and metrics middleware
 With no observer, recording is a no-op, and the first code recorded
 for a request wins.
 
+A failed TLS handshake has no request to record on. net/http reports
+it on the server's `ErrorLog`; `HandshakeErrorLog(next, onFailure)`
+is an `ErrorLog` that hands each such failure to `onFailure(remoteAddr,
+reason)` and every other line to `next` unchanged, so a listener can
+log it at its own level and count it as `CodeTLSHandshake`
+(`tls_handshake`). The kit-shipped listeners do.
+
 `ObserveRoute(r)` works the same way for the route a `Router`
 matched: middleware that wraps the router from outside never sees
 `Request.Pattern`, which the mux sets on the request it dispatches.

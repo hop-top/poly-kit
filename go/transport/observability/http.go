@@ -120,6 +120,20 @@ func restoreForwardedFor(r *http.Request) {
 	}
 }
 
+// RecordHTTPRefusal counts one refusal with code on service's HTTP
+// listener under kit.serve.http.refusals, beside those
+// [Provider.HTTPMiddleware] counts: one decided before any request
+// exists, such as a failed TLS handshake ([api.CodeTLSHandshake]).
+// No span records it; there is no request to trace. It is a no-op
+// when metrics are off.
+func (p *Provider) RecordHTTPRefusal(ctx context.Context, service, code string) {
+	if p == nil || p.inst == nil || code == "" {
+		return
+	}
+	p.inst.httpRefusals.Add(ctx, 1, metric.WithAttributes(
+		AttrService.String(service), AttrRefusalReason.String(code)))
+}
+
 // spanName names an HTTP server span "<METHOD> <route>" when the mux
 // has matched a route pattern, else "<METHOD>": a raw path would put
 // caller-chosen text into the span name. In front of a router nothing
