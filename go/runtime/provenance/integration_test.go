@@ -55,7 +55,7 @@ func TestIntegration_RoundTripWithProvenance(t *testing.T) {
 	assert.Equal(t, 0.42, env.Data.Score.Value())
 
 	// Wrapper IsSet is false after unmarshal (consumers re-pair via
-	// the envelope block; design §2 contract).
+	// the envelope block).
 	assert.False(t, env.Data.Cohort.IsSet())
 	assert.False(t, env.Data.Score.IsSet())
 

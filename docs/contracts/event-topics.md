@@ -295,4 +295,4 @@ strings that hash, log and match exactly as before.
 - [Bus API Reference](../adopters/reference/bus-api.md)
 - [Domain events guide](../adopters/reference/domain-events.md)
 - [`runtime/sync.Replicator`](../../go/runtime/sync/replicator.go)
-- [RELEASING.md](../releasing.md) — current release notes
+- [releasing.md](../contributors/releasing.md) — current release notes

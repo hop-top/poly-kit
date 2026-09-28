@@ -5,9 +5,6 @@ package config_test
 // go/console/cli/gaps_test.go: each test calls t.Skip with a "gap:"
 // reason, and pins the current state so removing the skip yields a
 // failing test until the gap is closed.
-//
-// See docs/audits/known-parity-gaps.md (or kit-api-gaps when split)
-// for the gap rationale.
 
 import (
 	"testing"

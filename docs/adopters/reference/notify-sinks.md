@@ -22,7 +22,7 @@ redacts the rendered body, then POSTs it through a breaker-wrapped
 func New(url string, opts ...Option) bus.Sink
 ```
 
-No error: per spec decision #9, construction has no IO.
+No error: construction has no IO.
 Misconfiguration surfaces at the first `Drain`, not at startup.
 
 ### Options
@@ -101,7 +101,7 @@ redacted, then handed to a breaker-wrapped `Mailer.Send`.
 func New(m Mailer, opts ...Option) bus.Sink
 ```
 
-No error: per spec decision #9, construction has no IO. SMTP dial
+No error: construction has no IO. SMTP dial
 happens lazily inside `SMTPMailer.Send`. Required fields
 (recipients, subject template, body template) are validated at
 `Drain` time; a misconfigured sink returns a per-event error
@@ -211,7 +211,7 @@ breaker-wrapped runner.
 func New(opts ...Option) (bus.Sink, error)
 ```
 
-The exception case to spec decision #9: construction CAN fail
+The exception to the no-error constructor rule: construction CAN fail
 because the constructor probes platform tooling. Returning
 `(bus.Sink, error)` lets callers fail-fast on startup rather than
 discovering "notify-send not on PATH" on the first event.

@@ -17,7 +17,7 @@ rate-limited by the provider.
 
 This page lists the minimum scopes, env-var fallbacks, where to mint
 tokens, and the rate-limit story per provider. Wire any of these via
-the unified [`repohost.Config`](../../../go/integrations/repohost/config.go).
+the unified [`repohost.Config`](../../../../go/integrations/repohost/config.go).
 
 ## GitHub
 
@@ -149,7 +149,7 @@ For Gitea, step 3 still requires `Config.BaseURL` (no SaaS default).
 
 ## See also
 
-- [`go/integrations/repohost/config.go`](../../../go/integrations/repohost/config.go)
+- [`go/integrations/repohost/config.go`](../../../../go/integrations/repohost/config.go)
   — `Config` shape and field semantics.
 - [breaker reference](../../reference/breaker.md)
   — how the breaker integration handles 429s across drivers.

@@ -3,7 +3,7 @@ package cli_test
 // Tests in this file pin behavior for API gaps that the c12n review
 // surfaced in `hop.top/kit/go/console/cli`. The skip-stubs that lived
 // here originally have been replaced with real assertions as the gaps
-// were closed; see docs/audits/known-parity-gaps.md for the gap log.
+// were closed.
 
 import (
 	"os"

@@ -549,7 +549,8 @@ POST /:type/:id/prune
 Removes prunable versions per the supplied retention policy and
 returns what was removed. Heads are always retained; pruning never
 rewrites retained versions' `parent_ids`. A version with a retained
-descendant is retained transitively (decision #3, #4).
+descendant is retained transitively, so no retained version ever
+loses an ancestor.
 
 **Request:**
 
@@ -562,7 +563,7 @@ descendant is retained transitively (decision #3, #4).
 
 Either or both fields may be omitted (or set to `0`) to mean
 "unlimited on that dimension." When both bounds are set, a version
-must exceed BOTH to be a prune candidate (AND-rule, decision #1).
+must exceed BOTH to be a prune candidate (AND-rule).
 
 `max_age_seconds` is in whole seconds — operators rarely express
 retention in nanoseconds, and the wire shape mirrors that. The

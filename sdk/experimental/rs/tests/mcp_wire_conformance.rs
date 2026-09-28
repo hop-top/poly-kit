@@ -12,8 +12,8 @@
 //! otherwise emit insertion order, so the comparison is what proves the
 //! explicit sort in `mcp::wire` is correct.
 //!
-//! The fixtures are the parity contract. Where they and the ADRs
-//! disagree, the fixtures win.
+//! The fixtures are the parity contract. Where they and any prose
+//! description disagree, the fixtures win.
 
 #![cfg(feature = "mcp")]
 

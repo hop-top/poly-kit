@@ -73,7 +73,7 @@ type Provenance struct {
 }
 
 // Validate checks the Provenance for structural sanity. Validation
-// rules (per design §1):
+// rules:
 //
 //   - SchemaVersion must be set and known.
 //   - Source must be one of the four constants.
