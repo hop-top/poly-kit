@@ -110,7 +110,7 @@ enablement), pinned by tests.
 |---|---|---|
 | Protocol layer | ~400 lines in-repo | official MCP Go SDK |
 | Extra dependencies | none | `modelcontextprotocol/go-sdk` (+5 small indirects) |
-| Spec versions | 2024-11-05 and 2026-07-28, detected per request on one path | 2024-11-05 to 2025-11-25 stateful; 2026-07-28 with `WithStateless` or over stdio |
+| Spec versions | 2024-11-05 and 2026-07-28, detected per request on one path | 2024-11-05 to 2025-11-25 in a session, 2026-07-28 statelessly, on one endpoint; all statelessly with `WithStateless`; all over stdio |
 | Transport | single-POST JSON-RPC | streamable HTTP: sessions, SSE streams, stateless mode; stdio; any SDK transport |
 | Sessions / resumption / keep-alive | none | SDK-managed |
 | Auth/confirm block response | JSON-RPC result **and** mirrored HTTP status (401 / 428) | `isError` result only (HTTP status belongs to the SDK) |

@@ -26,7 +26,7 @@ identically. They differ in who owns the server.
 | Protocol layer | official MCP Go SDK, through `mcpsdk` | official MCP Go SDK | hand-rolled in kit |
 | Lifecycle | `<tool> serve mcp`, under the serve supervisor | yours | yours |
 | Transport | streamable HTTP on its own listener, or stdio | streamable HTTP (sessions, SSE, stateless), stdio, any SDK transport | single-POST JSON-RPC |
-| Protocol versions | 2024-11-05 … 2025-11-25 over HTTP; 2026-07-28 too over stdio | 2024-11-05 … 2025-11-25 stateful; 2026-07-28 with `WithStateless()` or over stdio | 2024-11-05 and 2026-07-28 on one path |
+| Protocol versions | 2024-11-05 … 2025-11-25 in a session, 2026-07-28 statelessly, on one HTTP endpoint; all over stdio | 2024-11-05 … 2025-11-25 in a session, 2026-07-28 statelessly, on one endpoint; all statelessly with `WithStateless()`; all over stdio | 2024-11-05 and 2026-07-28 on one path |
 | `kit/auth-required` | verified by `Config.Auth` over HTTP; spawn trust over stdio | an `Authorization` header by default; `WithAuthenticated` to verify | `Authorization` header presence |
 | Gate refusals | `isError` result | `isError` result | `isError` result **and** HTTP 401 / 428 |
 | Prompts, resources, subscriptions, pagination | `Config.ServerOptions` | full, via SDK pass-through | none |
@@ -376,9 +376,8 @@ Anything else — including 2026-07-28, which replaces `initialize`
 altogether, and unknown versions — falls back to 2025-11-25. The
 2026-07-28 protocol is instead negotiated per request via `_meta` and
 `Mcp-*` framing headers, handled entirely by the SDK, and only where
-there is no session to hold: a handler built with `WithStateless()`,
-or stdio. A stateful HTTP handler — the default, and the mcp
-service's — answers at 2025-11-25.
+there is no session to hold: the SDK serves it from a stateless
+handler, or over stdio.
 
 Both are served on one endpoint: a client that runs `initialize` gets
 a stateful session, and a 2026-07-28 request is answered statelessly,

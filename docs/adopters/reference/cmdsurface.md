@@ -1330,10 +1330,8 @@ does:
 - REST: a bridge-level projection mount exists (a bare cobra tree gets
   `/v1/commands` without a kit root), and `RunCloudRun` and
   `examples/cmdsurface` use it.
-- MCP: the `mcp` service serves the 2026-07-28 revision over HTTP
-  (its stateful transport refuses it today; `MountMCP` serves both
-  revisions on one path), `examples/cmdsurface` mounts `mcpsdk`, and
-  the wire-fixture generator no longer needs the exported mount.
+- MCP: `examples/cmdsurface` mounts `mcpsdk`, and the wire-fixture
+  generator no longer needs the exported mount.
 
 What goes with the deprecated MCP mount: gate refusals mirrored as
 HTTP 401 / 428 (the SDK reports `isError` only), zero-dependency MCP

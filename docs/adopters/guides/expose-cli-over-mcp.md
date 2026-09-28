@@ -279,9 +279,12 @@ covers the options and the trust boundary.
 
 ### Protocol versions
 
-HTTP sessions are stateful and negotiate protocol versions through
-`2025-11-25`; a client asking for `2026-07-28` over HTTP is answered
-at `2025-11-25`. The stdio transport serves `2026-07-28` as well.
+Over HTTP, a client that runs the `initialize` handshake gets a
+stateful session at a protocol version through `2025-11-25`; a
+`2026-07-28` request, which carries its version per request, is
+answered statelessly on the same endpoint, routed by the markers in
+[Routing precedence](#routing-precedence). The stdio transport serves
+`2026-07-28` as well.
 
 ## Move off MountMCP
 
@@ -308,10 +311,9 @@ bare bridge, [`mcpsdk`](serve-mcp-with-the-sdk.md) does.
 
 What does not carry over: gate refusals mirrored as HTTP `401` /
 `428` (the SDK reports `isError` only), the zero-dependency build, the
-`ttlMs` / `cacheScope` cache hints, `WithMCPOriginAllowlist` (the SDK's
-DNS-rebinding protection stays on for loopback listeners; beyond
-loopback, `Auth` and a proxy own origin policy), and `2026-07-28` over
-HTTP.
+`ttlMs` / `cacheScope` cache hints, and `WithMCPOriginAllowlist` (the
+SDK's DNS-rebinding protection stays on for loopback listeners; beyond
+loopback, `Auth` and a proxy own origin policy).
 
 ## The deprecated `MountMCP` mount
 
