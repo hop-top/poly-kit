@@ -1,18 +1,33 @@
 # served
 
-Conformance fixture for kit's zero-wiring serve capability.
+## What it answers
 
-`main.go` is a kit CLI built with `cli.New` and seven options — the
-reserved `status` verb, the kit-shipped `api`, `socket`, `mcp` and
-`rpc` services, one adopter-owned service, and a bus — plus one command per class the
-[serve-lifecycle contract](../../docs/contracts/serve-lifecycle.md)
-distinguishes. Nothing is mounted by hand. `served_test.go` and
-`mcp_test.go` and `rpc_test.go` drive the
-real `Execute` path (the one that installs the confirmation and policy
-gates) with the arguments an operator would type and asserts every
-claim the contract makes about a conformant application command.
+Does a kit CLI built with `cli.New` and options alone, nothing mounted by
+hand, meet every claim the
+[serve-lifecycle contract](../../docs/contracts/serve-lifecycle.md) makes
+about a conformant application command? `main.go` registers the reserved
+`status` verb, the kit-shipped `api`, `socket`, `mcp` and `rpc` services,
+one adopter-owned service (`heartbeat`) and a bus, plus one command per
+class the contract distinguishes. For the surface matrix without the
+serve lifecycle, see [`examples/cmdsurface`](../cmdsurface/README.md).
 
-## Command tree
+## Use it when
+
+- you want the reference root to diff your own against → `main.go`
+- you need to know what a claim means on the wire → the test that pins it
+- a claim holds here and not in your tool → the difference is in your wiring
+
+## Quick start
+
+```sh
+go run ./examples/served item list
+go run ./examples/served serve --list
+go run ./examples/served serve api --addr 127.0.0.1:0
+go run ./examples/served serve mcp --stdio
+go test -race ./examples/served/
+```
+
+## Contract
 
 | Command      | Class              | Served as                                                  |
 |--------------|--------------------|------------------------------------------------------------|
@@ -27,123 +42,23 @@ claim the contract makes about a conformant application command.
 | `serve`      | kit's own          | never: `self-hosting`                                      |
 | `status`     | reserved           | never: `management-only`                                   |
 
-## What the tests prove
+The tests drive the real `Execute` path, the one that installs the
+confirmation and policy gates, with the arguments an operator would
+type. Each test's name is the claim it pins; its doc comment spells the
+claim out.
 
-Each test name is the claim it pins:
+- `served_test.go`: the serve hierarchy and `--list`, readiness on the
+  bus and the log, discovery, REST and the socket, the destructive
+  ceiling, exposure refusals, the adopter service
+- `mcp_test.go`: the `mcp` service over HTTP
+- `rpc_test.go`: the `rpc` service over Connect, gRPC (h2c) and gRPC-Web
+- `mcp_stdio_test.go`: the built binary as a desktop host spawns it,
+  `serve mcp --stdio`
 
-- `TestServeExistsWithContractFlagsAndChildren` — `serve` carries
-  `--list`, `--enable`, `--disable`, the three timeouts, `--addr`
-  defaulting to `127.0.0.1:8080`, `--insecure-remote`, `--socket`,
-  `--stdio`, `--mcp-addr`, `--rpc-addr`; the registry lists `api`,
-  `socket`, `mcp`, `rpc`, `heartbeat` in registration order.
-- `TestServeListNamesEveryService` — `serve --list` mirrors that order.
-- `TestReadinessReachesTheBusAndTheLog` —
-  `kit.serve.service.ready_reported` carries the bound address; the
-  log counterpart carries it under `address=`; nothing prints
-  `Listening on`; a signal-initiated stop is a clean stop.
-- `TestDiscoveryDescribesEveryCommandWithItsReason` — every command
-  above with its `invocable` and `reason`; nothing else is invocable.
-- `TestReadAndWriteRunOverREST`, `TestReadAndWriteRunOverTheSocket` —
-  a read answers in `data` with `stdout` empty; a write runs and the
-  next read sees it.
-- `TestLongRunningReadStreamsOverREST` — `item watch` streams one
-  `event` frame per line and a terminal `result` frame with the exit
-  code and mapped status; a client that disconnects cancels it, so the
-  next call is not held behind it.
-- `TestDestructiveIsWithheldOverRESTByDefault`,
-  `TestDestructiveIsRefusedOverTheSocketByDefault` — 404 with the
-  discovery reason; `BLOCKED` over the socket.
-- `TestDestructiveRunsOverRESTOnceNamedAndConfirmed`,
-  `TestDestructiveRunsOverTheSocketOnceNamedAndConfirmed` — with
-  `Policy.AllowDestructiveOn` naming the surface, the command's own
-  gate refuses without `confirm` (exit 5, 403 over REST) and runs with
-  it.
-- `TestInteractiveAndSelfHostingAreNeverInvocableOverREST`,
-  `TestInteractiveAndSelfHostingAreNeverInvocableOverTheSocket` — with
-  every ceiling lifted, these classes still never run.
-- `TestUnauthenticatedRemoteServingIsRefused` — `--addr 0.0.0.0:0`
-  exits 2 with a message naming the three remedies.
-- `TestInsecureRemoteOptInIsHonoredByName` — `--insecure-remote`
-  lifts the refusal and changes nothing else.
-- `TestAdopterServiceStartsUnderTheSupervisor` — `serve heartbeat`
-  starts the adopter's service; `serve --enable heartbeat` starts it
-  beside `api` and the supervisor reports aggregate readiness.
+## See also
 
-`mcp_test.go` pins the `mcp` service:
-
-- `TestMCPToolsListMirrorsWhatMayRun` — readiness carries the endpoint
-  URL; `tools/list` withholds the destructive, interactive and
-  self-hosting commands.
-- `TestReadAnswersInStructuredContentOverMCP` — a schema-declaring read
-  answers in `structuredContent`.
-- `TestWriteTakesPositionalArgsOverMCP` — `item.add` requires the
-  `args` array its `kit/args` declares, the positional reaches the
-  command, and a call without it is an error naming `name`.
-- `TestDestructiveIsWithheldOverMCPByDefault`,
-  `TestDestructiveRunsOverMCPOnceNamedAndConfirmed` — refused until
-  `Policy.AllowDestructiveOn` names `mcp`, then the command's own gate
-  needs `confirm`.
-- `TestConfirmationRequiredIsApprovedByAPersonOverMCP` — `item.tag`
-  runs when the client's user accepts the elicitation, and is refused
-  by a client that cannot ask.
-- `TestAuthRequiredIsRefusedOverUnauthenticatedHTTP` — `item.sync`
-  needs verified authentication over HTTP.
-- `TestUnauthenticatedRemoteMCPIsRefused` — `--mcp-addr 0.0.0.0:0`
-  exits 2 naming `services.mcp.insecure_remote`.
-- `TestMCPAndRESTWithholdTheSameCommands` — every command REST
-  discovery withholds (`status` as management-only included) is not an
-  MCP tool, and every command REST mounts is one.
-- `TestMCPServesBesideTheOthersUnderTheSupervisor` — `serve --enable
-  mcp` runs it on its own listener beside `api`.
-
-`rpc_test.go` pins the `rpc` service, each over Connect, gRPC (h2c)
-and gRPC-Web where the protocol matters:
-
-- `TestReadAnswersOverEveryRPCProtocol` — `item list` answers in
-  `data_json` with exit code 0.
-- `TestLongRunningReadStreamsOverRPC` — `InvokeStream` of `item watch`
-  delivers one `stdout` event per line, then `done` with the result.
-- `TestDestructiveRunsOverRPCOnceNamedAndConfirmed` —
-  `permission_denied` until `Policy.AllowDestructiveOn` names `rpc`,
-  then the command's own gate refuses without `confirm` and runs with
-  it.
-- `TestConfirmationAndAuthGatesOverRPC` — `item tag` needs
-  `X-Confirm-Token`; `item sync` is `unauthenticated` without `Auth`,
-  bare header or not.
-- `TestRPCAndRESTWithholdTheSameCommands` — nothing REST discovery
-  withholds runs over RPC; `shell`, `upgrade`, `serve` and `status`
-  are `not_found`.
-- `TestUnauthenticatedRemoteRPCIsRefused` — `--rpc-addr 0.0.0.0:0`
-  exits 2 naming `services.rpc.insecure_remote`.
-
-`mcp_stdio_test.go` builds the fixture and runs it the way a desktop
-host does:
-
-- `TestMCPOverStdioFromABuiltBinary` — `served serve mcp --stdio`
-  spawned with pipes: every stdout line is a protocol message,
-  `item.add` takes its positional from `args`, `item.sync` runs on the
-  spawn's trust, `item.tag` runs once the
-  host's user approves, closing stdin exits `0`, and the lifecycle
-  trace is on stderr.
-- `TestMCPStdioRefusalsExitWithTheContractCodes` — `--stdio` with
-  `--mcp-addr` exits `2`.
-
-## Run
-
-```sh
-go run ./examples/served item list
-go run ./examples/served serve --list
-go run ./examples/served serve api --addr 127.0.0.1:0
-go run ./examples/served serve mcp --mcp-addr 127.0.0.1:0
-go run ./examples/served serve mcp --stdio
-```
-
-## Test
-
-```sh
-go test -race ./examples/served/
-```
-
-The fixture is the reference a template or an adopter can diff their
-own root against: if a claim holds here and not in your tool, the
-difference is in your wiring.
+- [serve-lifecycle contract](../../docs/contracts/serve-lifecycle.md): the normative text
+- Task guides: [REST](../../docs/adopters/guides/expose-cli-over-rest.md),
+  [Unix socket](../../docs/adopters/guides/serve-cli-over-unix-socket.md),
+  [MCP](../../docs/adopters/guides/expose-cli-over-mcp.md),
+  [gRPC](../../docs/adopters/guides/expose-cli-over-grpc.md)

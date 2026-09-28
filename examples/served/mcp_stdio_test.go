@@ -48,7 +48,10 @@ func isolatedEnv(t *testing.T) []string {
 // `served serve mcp --stdio`, speak MCP on its stdin and stdout, and
 // close its stdin to end the session. The SDK client rejects any line
 // on stdout that is not a protocol message, so the session working at
-// all is the proof that stdout carried nothing else.
+// all is the proof that stdout carried nothing else. Over it, `item.add`
+// takes its positional from args, `item.sync` runs on the spawn's
+// trust, `item.tag` runs once the host's user approves, closing stdin
+// exits 0, and the lifecycle trace is on stderr.
 func TestMCPOverStdioFromABuiltBinary(t *testing.T) {
 	bin := buildServed(t)
 
@@ -106,7 +109,8 @@ func TestMCPOverStdioFromABuiltBinary(t *testing.T) {
 }
 
 // TestMCPStdioRefusalsExitWithTheContractCodes pins the built binary's
-// exit codes for the stdio transport's configuration failure.
+// exit codes for the stdio transport's configuration failure: --stdio
+// with --mcp-addr exits 2.
 func TestMCPStdioRefusalsExitWithTheContractCodes(t *testing.T) {
 	bin := buildServed(t)
 

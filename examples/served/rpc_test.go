@@ -58,6 +58,9 @@ func startRPC(t *testing.T, opts options) string {
 
 // --- The rpc service -------------------------------------------------------------
 
+// TestReadAnswersOverEveryRPCProtocol pins that `item list`
+// answers in data_json with exit code 0 over Connect, gRPC (h2c) and
+// gRPC-Web.
 func TestReadAnswersOverEveryRPCProtocol(t *testing.T) {
 	base := startRPC(t, options{})
 	for name, c := range rpcClients(base) {
@@ -70,6 +73,9 @@ func TestReadAnswersOverEveryRPCProtocol(t *testing.T) {
 	}
 }
 
+// TestLongRunningReadStreamsOverRPC pins that InvokeStream of
+// `item watch` delivers one stdout event per line, then done with the
+// result.
 func TestLongRunningReadStreamsOverRPC(t *testing.T) {
 	base := startRPC(t, options{})
 	for name, c := range rpcClients(base) {
@@ -95,6 +101,9 @@ func TestLongRunningReadStreamsOverRPC(t *testing.T) {
 	}
 }
 
+// TestDestructiveRunsOverRPCOnceNamedAndConfirmed pins
+// permission_denied until Policy.AllowDestructiveOn names rpc; then the
+// command's own gate refuses without confirm and runs with it.
 func TestDestructiveRunsOverRPCOnceNamedAndConfirmed(t *testing.T) {
 	c := rpcClients(startRPC(t, options{}))["connect"]
 	_, err := c.Invoke(t.Context(), rpcCall("item purge", nil))
@@ -111,6 +120,9 @@ func TestDestructiveRunsOverRPCOnceNamedAndConfirmed(t *testing.T) {
 	assert.Contains(t, resp.Msg.GetStdout(), "purged 2 items")
 }
 
+// TestConfirmationAndAuthGatesOverRPC pins that `item tag` needs
+// X-Confirm-Token and `item sync` is unauthenticated without Auth, bare
+// Authorization header or not.
 func TestConfirmationAndAuthGatesOverRPC(t *testing.T) {
 	c := rpcClients(startRPC(t, options{}))["connect"]
 
@@ -130,7 +142,8 @@ func TestConfirmationAndAuthGatesOverRPC(t *testing.T) {
 }
 
 // TestRPCAndRESTWithholdTheSameCommands pins that nothing REST
-// discovery marks non-invocable runs over RPC.
+// discovery marks non-invocable runs over RPC: `shell`, `upgrade`,
+// `serve` and `status` are not_found.
 func TestRPCAndRESTWithholdTheSameCommands(t *testing.T) {
 	run := startServe(t, options{}, "--enable", "rpc", "--addr", "127.0.0.1:0", "--rpc-addr", "127.0.0.1:0")
 	rest := discover(t, "http://"+run.waitReady(t, "api").Address)
@@ -152,6 +165,8 @@ func TestRPCAndRESTWithholdTheSameCommands(t *testing.T) {
 	}
 }
 
+// TestUnauthenticatedRemoteRPCIsRefused pins that
+// --rpc-addr 0.0.0.0:0 exits 2 naming services.rpc.insecure_remote.
 func TestUnauthenticatedRemoteRPCIsRefused(t *testing.T) {
 	root := newRoot(options{})
 	var stderr safeBuffer

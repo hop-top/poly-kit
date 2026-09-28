@@ -274,6 +274,12 @@ func items(t *testing.T, raw json.RawMessage) []string {
 
 // --- The serve hierarchy -----------------------------------------------------
 
+// TestServeExistsWithContractFlagsAndChildren pins the serve parent: the
+// contract flags (--list, --enable, --disable, the three timeouts), the
+// services' own flags (--addr defaulting to 127.0.0.1:8080,
+// --insecure-remote, --socket, --stdio, --mcp-addr, --rpc-addr), and a
+// registry listing api, socket, mcp, rpc, heartbeat in registration
+// order.
 func TestServeExistsWithContractFlagsAndChildren(t *testing.T) {
 	root := newRoot(options{})
 	serveCmd := findServe(t, root)
@@ -301,6 +307,8 @@ func TestServeExistsWithContractFlagsAndChildren(t *testing.T) {
 	assert.Equal(t, []string{"api", "socket", "mcp", "rpc", "heartbeat"}, root.ServeRegistry().Names())
 }
 
+// TestServeListNamesEveryService pins that `serve --list` mirrors the
+// registry's registration order.
 func TestServeListNamesEveryService(t *testing.T) {
 	root := newRoot(options{})
 	var out safeBuffer
@@ -322,6 +330,10 @@ func TestServeListNamesEveryService(t *testing.T) {
 
 // --- Readiness -----------------------------------------------------------------
 
+// TestReadinessReachesTheBusAndTheLog pins that
+// kit.serve.service.ready_reported carries the bound address, the log
+// counterpart carries it under address=, nothing prints "Listening on",
+// and a signal-initiated stop is a clean stop.
 func TestReadinessReachesTheBusAndTheLog(t *testing.T) {
 	run := startServe(t, options{}, "api", "--addr", "127.0.0.1:0")
 	p := run.waitReady(t, "api")
@@ -348,6 +360,9 @@ func TestReadinessReachesTheBusAndTheLog(t *testing.T) {
 
 // --- Discovery -----------------------------------------------------------------
 
+// TestDiscoveryDescribesEveryCommandWithItsReason pins that REST
+// discovery lists every command of the fixture's tree with its
+// invocable flag and reason, and that nothing else is invocable.
 func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 	run := startServe(t, options{}, "api", "--addr", "127.0.0.1:0")
 	base := "http://" + run.waitReady(t, "api").Address
@@ -382,6 +397,8 @@ func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 
 // --- Execution over REST -------------------------------------------------------
 
+// TestReadAndWriteRunOverREST pins that a read answers in data with
+// stdout empty, and a write runs so the next read sees it.
 func TestReadAndWriteRunOverREST(t *testing.T) {
 	run := startServe(t, options{}, "api", "--addr", "127.0.0.1:0")
 	base := "http://" + run.waitReady(t, "api").Address
@@ -408,6 +425,10 @@ func TestReadAndWriteRunOverREST(t *testing.T) {
 		"the write reached the same state the read reports")
 }
 
+// TestLongRunningReadStreamsOverREST pins that `item watch` streams one
+// event frame per line and a terminal result frame carrying the exit
+// code and mapped status, and that a client that disconnects cancels
+// it, so the next call is not held behind it.
 func TestLongRunningReadStreamsOverREST(t *testing.T) {
 	run := startServe(t, options{}, "api", "--addr", "127.0.0.1:0")
 	base := "http://" + run.waitReady(t, "api").Address
@@ -463,6 +484,8 @@ func TestLongRunningReadStreamsOverREST(t *testing.T) {
 	}
 }
 
+// TestDestructiveIsWithheldOverRESTByDefault pins that `item purge`
+// has no route (404) and that discovery gives the reason.
 func TestDestructiveIsWithheldOverRESTByDefault(t *testing.T) {
 	run := startServe(t, options{}, "api", "--addr", "127.0.0.1:0")
 	base := "http://" + run.waitReady(t, "api").Address
@@ -473,6 +496,9 @@ func TestDestructiveIsWithheldOverRESTByDefault(t *testing.T) {
 	assert.Equal(t, verdict{Reason: "unauthorized-destructive"}, discover(t, base)["item purge"])
 }
 
+// TestDestructiveRunsOverRESTOnceNamedAndConfirmed pins that, with
+// Policy.AllowDestructiveOn naming rest, the command's own gate refuses
+// without confirm (exit 5, 403) and runs with it.
 func TestDestructiveRunsOverRESTOnceNamedAndConfirmed(t *testing.T) {
 	run := startServe(t,
 		options{allowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceREST}},
@@ -498,6 +524,9 @@ func TestDestructiveRunsOverRESTOnceNamedAndConfirmed(t *testing.T) {
 	assert.Equal(t, "purged 2 items\n", res.Stdout)
 }
 
+// TestInteractiveAndSelfHostingAreNeverInvocableOverREST pins that,
+// with every ceiling lifted, `shell`, `upgrade` and `serve` still never
+// run: 404, with interactive and self-hosting as discovery's reasons.
 func TestInteractiveAndSelfHostingAreNeverInvocableOverREST(t *testing.T) {
 	// Even with every destructive ceiling lifted, these classes stay out.
 	run := startServe(t,
@@ -517,6 +546,8 @@ func TestInteractiveAndSelfHostingAreNeverInvocableOverREST(t *testing.T) {
 
 // --- Execution over the socket -------------------------------------------------
 
+// TestReadAndWriteRunOverTheSocket pins that a read answers in data
+// with stdout empty, and a write runs so the next read sees it.
 func TestReadAndWriteRunOverTheSocket(t *testing.T) {
 	path := shortSocketPath(t)
 	run := startServe(t, options{}, "socket", "--socket", path)
@@ -537,6 +568,8 @@ func TestReadAndWriteRunOverTheSocket(t *testing.T) {
 	assert.Equal(t, "added washer\n", resp.Result.Stdout)
 }
 
+// TestDestructiveIsRefusedOverTheSocketByDefault pins that `item purge`
+// answers BLOCKED over the socket until a surface is named.
 func TestDestructiveIsRefusedOverTheSocketByDefault(t *testing.T) {
 	path := shortSocketPath(t)
 	run := startServe(t, options{}, "socket", "--socket", path)
@@ -566,6 +599,9 @@ func TestDestructiveOverTheSocketIsNotGrantedByNamingRPC(t *testing.T) {
 	assert.Contains(t, resp.Error.Message, "item purge on socket")
 }
 
+// TestDestructiveRunsOverTheSocketOnceNamedAndConfirmed pins that,
+// with Policy.AllowDestructiveOn naming socket, the command's own gate
+// refuses without confirm (exit 5) and runs with it.
 func TestDestructiveRunsOverTheSocketOnceNamedAndConfirmed(t *testing.T) {
 	path := shortSocketPath(t)
 	run := startServe(t,
@@ -587,6 +623,9 @@ func TestDestructiveRunsOverTheSocketOnceNamedAndConfirmed(t *testing.T) {
 	assert.Equal(t, "purged 2 items\n", resp.Result.Stdout)
 }
 
+// TestInteractiveAndSelfHostingAreNeverInvocableOverTheSocket pins
+// that, with every ceiling lifted, `shell` answers NOT_INVOCABLE and
+// `upgrade` and `serve` NOT_FOUND over the socket.
 func TestInteractiveAndSelfHostingAreNeverInvocableOverTheSocket(t *testing.T) {
 	path := shortSocketPath(t)
 	run := startServe(t,
@@ -611,6 +650,8 @@ func TestInteractiveAndSelfHostingAreNeverInvocableOverTheSocket(t *testing.T) {
 
 // --- Exposure ------------------------------------------------------------------
 
+// TestUnauthenticatedRemoteServingIsRefused pins that
+// --addr 0.0.0.0:0 exits 2 with a message naming the three remedies.
 func TestUnauthenticatedRemoteServingIsRefused(t *testing.T) {
 	root := newRoot(options{})
 	err := runToCompletion(t, root, []string{"serve", "api", "--addr", "0.0.0.0:0"}, 5*time.Second)
@@ -647,6 +688,8 @@ func TestUnboundedRemoteServingIsRefused(t *testing.T) {
 	}
 }
 
+// TestInsecureRemoteOptInIsHonoredByName pins that --insecure-remote
+// lifts that refusal and changes nothing else.
 func TestInsecureRemoteOptInIsHonoredByName(t *testing.T) {
 	// Both opt-ins: exposure beyond loopback needs an answer to who
 	// may call AND to what any caller may run.
@@ -662,6 +705,10 @@ func TestInsecureRemoteOptInIsHonoredByName(t *testing.T) {
 
 // --- Adopter services ----------------------------------------------------------
 
+// TestAdopterServiceStartsUnderTheSupervisor pins that
+// `serve heartbeat` starts the adopter's service, and
+// `serve --enable heartbeat` starts it beside api with the supervisor
+// reporting aggregate readiness.
 func TestAdopterServiceStartsUnderTheSupervisor(t *testing.T) {
 	// The selector form starts it even though it is not enabled.
 	hb := newHeartbeat()

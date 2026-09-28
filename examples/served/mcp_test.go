@@ -65,6 +65,9 @@ func accept(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 
 // --- The mcp service over HTTP ------------------------------------------------
 
+// TestMCPToolsListMirrorsWhatMayRun pins that readiness carries the
+// endpoint URL and tools/list withholds the destructive, interactive
+// and self-hosting commands.
 func TestMCPToolsListMirrorsWhatMayRun(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
 	endpoint := run.waitReady(t, mcpserve.ServiceName).Address
@@ -78,6 +81,8 @@ func TestMCPToolsListMirrorsWhatMayRun(t *testing.T) {
 	}
 }
 
+// TestReadAnswersInStructuredContentOverMCP pins that a read
+// declaring an output schema answers in structuredContent.
 func TestReadAnswersInStructuredContentOverMCP(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
 	sess := mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)
@@ -89,6 +94,9 @@ func TestReadAnswersInStructuredContentOverMCP(t *testing.T) {
 	assert.Contains(t, toJSON(t, data), `"bolt"`)
 }
 
+// TestWriteTakesPositionalArgsOverMCP pins that `item.add` requires
+// the args array its kit/args declares, the positional reaches the
+// command, and a call without it is an error naming `name`.
 func TestWriteTakesPositionalArgsOverMCP(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
 	sess := mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)
@@ -120,6 +128,8 @@ func TestWriteTakesPositionalArgsOverMCP(t *testing.T) {
 	assert.Equal(t, "missing required argument: name", text)
 }
 
+// TestDestructiveIsWithheldOverMCPByDefault pins that `item.purge` is
+// refused until Policy.AllowDestructiveOn names mcp.
 func TestDestructiveIsWithheldOverMCPByDefault(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
 	sess := mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)
@@ -128,6 +138,8 @@ func TestDestructiveIsWithheldOverMCPByDefault(t *testing.T) {
 	require.Error(t, err, "a withheld destructive tool is not callable")
 }
 
+// TestDestructiveRunsOverMCPOnceNamedAndConfirmed pins that, with
+// mcp named, the command's own gate still needs confirm.
 func TestDestructiveRunsOverMCPOnceNamedAndConfirmed(t *testing.T) {
 	run := startServe(t, options{allowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceMCP}},
 		"mcp", "--mcp-addr", "127.0.0.1:0")
@@ -142,6 +154,9 @@ func TestDestructiveRunsOverMCPOnceNamedAndConfirmed(t *testing.T) {
 	assert.Contains(t, text, "purged 2 items")
 }
 
+// TestConfirmationRequiredIsApprovedByAPersonOverMCP pins that
+// `item.tag` runs when the client's user accepts the elicitation and is
+// refused by a client that cannot ask.
 func TestConfirmationRequiredIsApprovedByAPersonOverMCP(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
 	endpoint := run.waitReady(t, mcpserve.ServiceName).Address
@@ -156,6 +171,8 @@ func TestConfirmationRequiredIsApprovedByAPersonOverMCP(t *testing.T) {
 	assert.Contains(t, text, "confirmation required")
 }
 
+// TestAuthRequiredIsRefusedOverUnauthenticatedHTTP pins that
+// `item.sync` needs verified authentication over HTTP.
 func TestAuthRequiredIsRefusedOverUnauthenticatedHTTP(t *testing.T) {
 	run := startServe(t, options{}, "mcp", "--mcp-addr", "127.0.0.1:0")
 	sess := mcpDial(t, run.waitReady(t, mcpserve.ServiceName).Address, nil)
@@ -165,6 +182,8 @@ func TestAuthRequiredIsRefusedOverUnauthenticatedHTTP(t *testing.T) {
 	assert.Equal(t, "authentication required", text)
 }
 
+// TestUnauthenticatedRemoteMCPIsRefused pins that
+// --mcp-addr 0.0.0.0:0 exits 2 naming services.mcp.insecure_remote.
 func TestUnauthenticatedRemoteMCPIsRefused(t *testing.T) {
 	root := newRoot(options{})
 	var stderr safeBuffer
@@ -177,6 +196,8 @@ func TestUnauthenticatedRemoteMCPIsRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), "services.mcp.insecure_remote")
 }
 
+// TestMCPServesBesideTheOthersUnderTheSupervisor pins that
+// `serve --enable mcp` runs it on its own listener beside api.
 func TestMCPServesBesideTheOthersUnderTheSupervisor(t *testing.T) {
 	run := startServe(t, options{}, "--enable", "mcp", "--mcp-addr", "127.0.0.1:0")
 	run.waitReady(t, "api")
