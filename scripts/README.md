@@ -9,6 +9,7 @@ none of them ship.
 |------|------------|-----------------|
 | [`preflight.sh`](preflight.sh) | verifies the host toolchain against the repo's declared minimums | `make preflight` fails or a tool version drifts |
 | [`lint-readmes`](lint-readmes) | folder README coverage, Contents links and shape caps | `make lint-readmes` fails; rules in `docs/contributors/readme-guide.md` |
+| [`sync-builtins.sh`](sync-builtins.sh) | copies `templates/` into the `internal/template/builtins/` embed mirror, rebasing Markdown links that leave a template tree | `make builtins-sync` or `make check-mirror-sync` reports drift |
 | [`lint-internal-refs.sh`](lint-internal-refs.sh) | fails on real home-directory paths and names of documents that live outside the repo | `make lint-internal-refs` fails |
 | [`install-hooks.sh`](install-hooks.sh) | points `core.hooksPath` at `.githooks/` for this clone | a fresh clone is not running the pre-push gate |
 | [`promote-release.sh`](promote-release.sh) | moves the release-please prerelease channel one step (alpha → beta → rc → release) | you cut the next channel; see `RELEASING.md` |

@@ -99,16 +99,20 @@ release process is in the
 ## Templates Mirror Sync
 
 The `templates/` tree (canonical source) and `internal/template/builtins/`
-(Go embed mirror used by `kit init` at runtime) must stay byte-identical
-for every file that exists in both. The `mirror-sync` workflow enforces
+(Go embed mirror used by `kit init` at runtime) must stay in sync: the
+mirror is exactly what `make builtins-sync` produces, a verbatim copy
+except that a relative Markdown link leaving a template tree (say
+`../../docs/...` in `templates/shared/README.md`) is rebased so it
+resolves from the mirror as well. The `mirror-sync` workflow enforces
 this on every PR touching either path.
 
 Scaffolder-only files (e.g. `build.sh`, `scaffold.sh`, `test-*.sh`,
 `lib.sh`, `tests/`, `dist/`) live in `templates/` and are intentionally
 NOT mirrored.
 
-When editing `templates/cli-*/...` or `templates/shared/...`, mirror your
-change to `internal/template/builtins/...`. Locally:
+When editing `templates/cli-*/...` or `templates/shared/...`, regenerate
+the mirror rather than editing `internal/template/builtins/...` by hand.
+Locally:
 
 ```sh
 make check-mirror-sync     # verify

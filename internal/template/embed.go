@@ -8,7 +8,8 @@ import (
 
 // builtins/ is a verbatim copy of templates/cli-{go,ts,py,php,rs} and
 // templates/shared, produced by `make builtins-sync` and checked by
-// `make check-mirror-sync`. Go sources (*.go, go.mod) ship as *.tmpl on both
+// `make check-mirror-sync`. The one rewrite: relative Markdown links that
+// leave a template tree are rebased to resolve from builtins/. Go sources (*.go, go.mod) ship as *.tmpl on both
 // sides so (a) Go's embed does not refuse a nested module and (b) `go build
 // ./...` does not try to compile template placeholders; `make
 // check-template-sources` enforces the suffix and the render engine strips

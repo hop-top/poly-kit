@@ -23,6 +23,8 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify mirror sync
-        # Strict comparison: templates/ is canonical and the mirror must be a
-        # byte-identical copy (Go sources ship as *.tmpl on both sides).
+        # Strict comparison: templates/ is canonical and the mirror must be
+        # byte-identical to what `make builtins-sync` produces from it (a
+        # verbatim copy, Markdown links leaving a template tree rebased; Go
+        # sources ship as *.tmpl on both sides).
         run: make check-mirror-sync

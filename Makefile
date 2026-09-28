@@ -459,18 +459,14 @@ build: preflight builtins-sync ## Build the kit binary (re-syncs built-in templa
 	@mkdir -p bin
 	go build -buildvcs=false -o bin/kit ./cmd/kit
 
-# Template trees mirrored verbatim into internal/template/builtins/ for
-# embedding. templates/ is canonical; the mirror is a byte-identical copy.
+# Template trees mirrored into internal/template/builtins/ for embedding.
+# templates/ is canonical; the mirror is a verbatim copy except for
+# relative Markdown links that leave a template tree, which
+# scripts/sync-builtins.sh rebases so they resolve from the mirror too.
 BUILTIN_TEMPLATES := cli-go cli-ts cli-py cli-php cli-rs shared
 
 builtins-sync: check-template-sources ## Sync templates/cli-{go,ts,py,php,rs,shared} into internal/template/builtins/ for embedding
-	@rm -rf internal/template/builtins
-	@mkdir -p internal/template/builtins
-	@for tmpl in $(BUILTIN_TEMPLATES); do \
-		if [ -d templates/$$tmpl ]; then \
-			cp -R templates/$$tmpl internal/template/builtins/$$tmpl; \
-		fi; \
-	done
+	@scripts/sync-builtins.sh internal/template/builtins $(BUILTIN_TEMPLATES)
 	@echo "synced built-in templates"
 
 check-template-sources: ## Verify mirrored templates ship Go sources (*.go, go.mod) as *.tmpl
@@ -488,13 +484,18 @@ check-template-sources: ## Verify mirrored templates ship Go sources (*.go, go.m
 		exit 1; \
 	fi
 
-check-mirror-sync: check-template-sources ## Verify templates/ and internal/template/builtins/ are in sync
-	@if diff -rq templates internal/template/builtins | grep -Ev '^Only in templates/?: ' | grep -q .; then \
+# Regenerates the mirror into a temp dir with the same script builtins-sync
+# runs and diffs it against the committed one, so the check and the sync
+# can never disagree about what "in sync" means.
+check-mirror-sync: check-template-sources ## Verify internal/template/builtins/ is what builtins-sync produces from templates/
+	@tmp=$$(mktemp -d) || exit 1; \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	scripts/sync-builtins.sh "$$tmp/builtins" $(BUILTIN_TEMPLATES) || exit 1; \
+	if ! diff -r "$$tmp/builtins" internal/template/builtins >"$$tmp/drift" 2>&1; then \
 		echo "Mirror drift detected between templates/ and internal/template/builtins/:"; \
-		diff -rq templates internal/template/builtins | grep -Ev '^Only in templates/?: '; \
+		sed -e "s|$$tmp/builtins|<builtins-sync output>|g" "$$tmp/drift"; \
 		echo ""; \
-		echo "Fix: copy diverged files from templates/ to internal/template/builtins/ (source is canonical),"; \
-		echo "or run: make builtins-sync"; \
+		echo "Fix: edit templates/ (source is canonical), then run: make builtins-sync"; \
 		exit 1; \
 	fi
 	@echo "Mirror in sync."
@@ -515,8 +516,8 @@ test-workflow: ## Run bats unit tests for cli-demo-media workflow shell logic
 test-hook: ## Run bats tests for pre-push hook
 	bats .github/tests/pre-push-hook.bats
 
-test-lint-scripts: ## Run bats tests for repo lint scripts
-	bats .github/tests/lint-internal-refs.bats
+test-lint-scripts: ## Run bats tests for repo lint and sync scripts
+	bats .github/tests/lint-internal-refs.bats .github/tests/sync-builtins.bats
 
 job-test:
 	go test ./go/runtime/job/... -count=1
