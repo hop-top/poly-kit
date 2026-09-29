@@ -36,7 +36,9 @@ func TestCLIDoesNotLinkTheMCPSDK(t *testing.T) {
 		}
 		// The permissions: rule evaluator is CEL, megabytes of it;
 		// only tools wiring celpermission.With pay for it.
-		if strings.HasPrefix(pkg, "github.com/google/cel-go") {
+		// cel-go moved to cel.dev/cel-go in v0.32; both paths guarded.
+		if strings.HasPrefix(pkg, "cel.dev/cel-go") ||
+			strings.HasPrefix(pkg, "github.com/google/cel-go") {
 			t.Errorf("go/console/cli depends on %s; the CEL rule evaluator belongs in go/console/cli/celpermission", pkg)
 		}
 	}
