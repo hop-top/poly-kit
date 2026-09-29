@@ -45,7 +45,17 @@ export type { RegisterOutputFlagsOptions } from './output/flags';
 export { registerOutputFlags, registryFor, resolveCols } from './output/flags';
 export type { DispatchOptions } from './output/dispatch';
 export { dispatch } from './output/dispatch';
-export type { CliError } from './output/error';
+import type { CliError as ErrorEnvelope } from './output/error';
+/**
+ * Structured error envelope; see `output/error`.
+ *
+ * A local alias, not `export type { CliError } from`: the declaration
+ * bundler rewrites a namespace member imported from another chunk as a
+ * value (`declare const ...: typeof CliError`), so the root barrel's
+ * `output` namespace would fail consumer type-checks (TS2693). A type
+ * declared in this module stays a type.
+ */
+export type CliError = ErrorEnvelope;
 export {
   CODE_OK,
   CODE_GENERIC,
