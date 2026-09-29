@@ -23,7 +23,6 @@ function makeProgram(argv: readonly string[]) {
 
 function captureStdout(): { restore: () => void; out: () => string } {
   const chunks: Buffer[] = [];
-  const original = process.stdout.write.bind(process.stdout);
   const spy = vi.spyOn(process.stdout, 'write').mockImplementation(
     ((c: string | Buffer) => {
       chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
@@ -31,7 +30,7 @@ function captureStdout(): { restore: () => void; out: () => string } {
     }) as typeof process.stdout.write,
   );
   return {
-    restore: () => spy.mockRestore() && original.toString,
+    restore: () => spy.mockRestore(),
     out: () => Buffer.concat(chunks).toString(),
   };
 }
