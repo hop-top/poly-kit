@@ -15,7 +15,7 @@ rust   = "1.98.0"  # Rust toolchain (stable; matches rust-toolchain.toml)
 
 [workflow]
 golangci-lint        = "2.11.4"  # Go linter aggregator (v2.x — required for Go 1.26+ targets; v1.x refuses)
-ruff                 = "0.15.11"  # Python linter + formatter
+ruff                 = "0.16.9"   # Python linter + formatter
 lychee               = "0.24.2"  # Markdown / URL link checker
 hadolint             = "2.12"  # Dockerfile linter
 actionlint           = "1.7"   # GitHub Actions workflow linter
