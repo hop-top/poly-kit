@@ -42,16 +42,21 @@ export const HEADER_MCP_NAME = 'Mcp-Name';
  * 2026-07-28 additions come from the SDK's ProtocolErrorCode;
  * HeaderMismatch (-32020) is spec-reserved but absent from the SDK
  * enum, so it is pinned here.
+ *
+ * The explicit enum-member annotations keep the declaration output a
+ * type reference. Inferred, it is `declare const X = ProtocolErrorCode.Y`,
+ * and the declaration bundler drops the `ProtocolErrorCode` import an
+ * initializer needs, leaving consumers an unresolved name (TS2304).
  */
-export const MCP_ERR_PARSE = ProtocolErrorCode.ParseError;
-export const MCP_ERR_INVALID_REQUEST = ProtocolErrorCode.InvalidRequest;
-export const MCP_ERR_METHOD_NOT_FOUND = ProtocolErrorCode.MethodNotFound;
-export const MCP_ERR_INVALID_PARAMS = ProtocolErrorCode.InvalidParams;
-export const MCP_ERR_INTERNAL = ProtocolErrorCode.InternalError;
+export const MCP_ERR_PARSE: ProtocolErrorCode.ParseError = ProtocolErrorCode.ParseError;
+export const MCP_ERR_INVALID_REQUEST: ProtocolErrorCode.InvalidRequest = ProtocolErrorCode.InvalidRequest;
+export const MCP_ERR_METHOD_NOT_FOUND: ProtocolErrorCode.MethodNotFound = ProtocolErrorCode.MethodNotFound;
+export const MCP_ERR_INVALID_PARAMS: ProtocolErrorCode.InvalidParams = ProtocolErrorCode.InvalidParams;
+export const MCP_ERR_INTERNAL: ProtocolErrorCode.InternalError = ProtocolErrorCode.InternalError;
 export const MCP_ERR_HEADER_MISMATCH = -32020;
-export const MCP_ERR_MISSING_CLIENT_CAPABILITY =
+export const MCP_ERR_MISSING_CLIENT_CAPABILITY: ProtocolErrorCode.MissingRequiredClientCapability =
   ProtocolErrorCode.MissingRequiredClientCapability;
-export const MCP_ERR_UNSUPPORTED_VERSION =
+export const MCP_ERR_UNSUPPORTED_VERSION: ProtocolErrorCode.UnsupportedProtocolVersion =
   ProtocolErrorCode.UnsupportedProtocolVersion;
 
 /** The two protocol revisions this surface serves. */
