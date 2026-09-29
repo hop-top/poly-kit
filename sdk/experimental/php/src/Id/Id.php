@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace HopTop\Kit\Id;
 
-use TypeID\Exception\ConstructorException;
-use TypeID\Exception\ValidationException;
+use TypeID\Exception\TypeIDException;
 use TypeID\TypeID;
 
 /**
@@ -25,7 +24,7 @@ use TypeID\TypeID;
 final class Id
 {
     /**
-     * TypeID v0.3 prefix grammar (matches `jewei/typeid-php` Validator):
+     * TypeID v0.3 prefix grammar (matches `jewei/typeid-php`):
      * lowercase a-z plus underscore separators, no leading or trailing
      * underscore, max 63 chars. Empty string is valid (no prefix).
      */
@@ -46,11 +45,13 @@ final class Id
 
         // Suffix is generated internally from a fresh UUIDv7; the only
         // remaining failure mode is an upstream UUIDv7 generator hiccup,
-        // which surfaces as ConstructorException and is genuinely a
-        // suffix-side issue (bad random bytes).
+        // which is genuinely a suffix-side issue (bad random bytes).
+        // `TypeIDException` is the marker every upstream exception
+        // implements; the concrete class was renamed across majors
+        // (`ConstructorException` in 1.x, `GenerationException` from 3.x).
         try {
             return TypeID::generate($prefix)->toString();
-        } catch (ConstructorException $e) {
+        } catch (TypeIDException $e) {
             throw new InvalidSuffixException(
                 "failed to generate TypeID suffix for prefix: {$prefix}",
                 previous: $e,
@@ -87,9 +88,10 @@ final class Id
 
         try {
             $tid = TypeID::fromString($s);
-        } catch (ConstructorException $e) {
+        } catch (TypeIDException $e) {
             // Prefix already validated locally — any remaining upstream
             // failure must concern the suffix (length, alphabet, overflow).
+            // 1.x throws `ConstructorException` here, 2.x+ `ValidationException`.
             throw new InvalidSuffixException(
                 "invalid TypeID suffix in: {$s}",
                 previous: $e,
@@ -117,15 +119,9 @@ final class Id
 
         try {
             return TypeID::fromUuid($uuid, $prefix)->toString();
-        } catch (ValidationException $e) {
-            // Prefix was already validated above; any remaining ValidationException
-            // means the encoded suffix failed Validator::isValidSuffix, which is
-            // a suffix-side problem traceable to a bad UUID.
-            throw new InvalidSuffixException(
-                "invalid UUID for TypeID suffix: {$uuid}",
-                previous: $e,
-            );
-        } catch (ConstructorException $e) {
+        } catch (TypeIDException $e) {
+            // Prefix was already validated above; any remaining upstream
+            // failure is a suffix-side problem traceable to a bad UUID.
             throw new InvalidSuffixException(
                 "invalid UUID for TypeID suffix: {$uuid}",
                 previous: $e,
@@ -136,7 +132,7 @@ final class Id
     /**
      * Validate a TypeID prefix against the v0.3 grammar.
      *
-     * Local check that mirrors `TypeID\Validator::isValidPrefix` so kit-side
+     * Local check that mirrors upstream's prefix grammar so kit-side
      * callers get a typed `InvalidPrefixException` without relying on
      * substring-matching upstream exception messages — which would silently
      * break if the upstream library rephrased its errors.
