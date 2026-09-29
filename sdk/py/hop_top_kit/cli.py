@@ -47,11 +47,16 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Optional, TextIO
 
-import click
 import typer
 
 from hop_top_kit import netpolicy, parity
 from hop_top_kit.parity import HELP_SECTION_ORDER, HELP_SECTIONS
+
+# Click layer typer drives: vendored ``typer._click`` on typer>=0.26, the
+# ``click`` package before that. Bind to it through typer's public
+# ``Context`` -- a ``click.Context`` subclass on typer>=0.26 would run
+# callbacks under Click's context stack, invisible to typer.
+_HelpFormatter = typer.Context.formatter_class
 
 
 @dataclass
@@ -371,7 +376,7 @@ _WHITE = "#FFFFFF"
 _ARG_COLOR = "#B5E89B"
 
 
-class _BrandHelpFormatter(click.HelpFormatter):
+class _BrandHelpFormatter(_HelpFormatter):
     """Click HelpFormatter that applies hop-top brand colors to help output.
 
     Color rules (mirrors Go's fang ColorScheme):
@@ -497,13 +502,13 @@ def _make_rich_help_config(theme: Theme, no_color: bool) -> dict:
     """Build a config dict for brand-colored help output.
 
     Returns a dict with a ``"context_class"`` key pointing to a
-    ``click.Context`` subclass whose ``formatter_class`` is set to
+    ``typer.Context`` subclass whose ``formatter_class`` is set to
     ``_BrandHelpFormatter`` (pre-bound to *theme*).
 
     When *no_color* is True (or the NO_COLOR env var is set), returns an
     empty dict so Click uses its plain default formatter.
 
-    Note: ``formatter_class`` is a class attribute on ``click.Context``,
+    Note: ``formatter_class`` is a class attribute on the Context,
     not a ``Context.__init__()`` kwarg, so it cannot go in
     ``context_settings``.  The caller must consume the ``"context_class"``
     key and wire it onto the Click command / TyperGroup subclass.
@@ -520,7 +525,7 @@ def _make_rich_help_config(theme: Theme, no_color: bool) -> dict:
     # Create a Context subclass whose formatter_class uses the brand formatter.
     brand_context = type(
         "_BrandContext",
-        (click.Context,),
+        (typer.Context,),
         {"formatter_class": bound_formatter},
     )
 
@@ -615,7 +620,7 @@ def create_app(
 
     effective_order: list[str] = hcfg.section_order if hcfg.section_order else HELP_SECTION_ORDER
 
-    def _format_usage_colored(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+    def _format_usage_colored(self, ctx: typer.Context, formatter: _HelpFormatter) -> None:
         """Color usage pieces structurally using param types."""
         pieces = self.collect_usage_pieces(ctx)
         no_col = getattr(formatter, "_no_color", False)
@@ -628,12 +633,14 @@ def create_app(
 
     groups_cfg = hcfg.groups
 
-    def _build_command_row(name: str, cmd: click.Command, limit: int) -> tuple[str, str]:
+    def _build_command_row(name: str, cmd: Any, limit: int) -> tuple[str, str]:
+        # Duck-typed, as typer does itself: typer>=0.26 has no Click
+        # Group/Argument/Option classes to isinstance-check against.
         term = name
-        has_subcmds = isinstance(cmd, click.MultiCommand)
+        has_subcmds = hasattr(cmd, "list_commands")
         if hasattr(cmd, "params"):
             for p in cmd.params:
-                if isinstance(p, click.Argument):
+                if p.param_type_name == "argument":
                     if p.required:
                         term += f" <{p.name}>"
                     else:
@@ -641,14 +648,12 @@ def create_app(
         if has_subcmds:
             term += " [command]"
         elif hasattr(cmd, "params") and any(
-            isinstance(p, click.Option) and p.name != "help" for p in cmd.params
+            p.param_type_name == "option" and p.name != "help" for p in cmd.params
         ):
             term += " [--flags]"
         return (term, cmd.get_short_help_str(limit))
 
-    def _format_commands_with_args(
-        self, ctx: click.Context, formatter: click.HelpFormatter
-    ) -> None:
+    def _format_commands_with_args(self, ctx: typer.Context, formatter: _HelpFormatter) -> None:
         """Override format_commands to show args/subcommands like Go/fang."""
         commands = []
         for cmd_name in self.list_commands(ctx):
@@ -690,7 +695,7 @@ def create_app(
                 with formatter.section(g.title):
                     formatter.write_dl(rows)
 
-    def _format_options_ordered(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+    def _format_options_ordered(self, ctx: typer.Context, formatter: _HelpFormatter) -> None:
         """Emit help sections in the order from HelpConfig or parity.json.
 
         Section names use fang vocabulary; 'flags'/'global flags' map to Click options.

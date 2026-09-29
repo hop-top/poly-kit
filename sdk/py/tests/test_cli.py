@@ -1,6 +1,7 @@
 import re
 
 import typer
+import typer.core
 from typer.testing import CliRunner
 
 from hop_top_kit.cli import (
@@ -199,9 +200,9 @@ def test_make_rich_help_config_no_color_still_has_context():
     theme = _build_theme()
     cfg = _make_rich_help_config(theme, no_color=True)
     assert "context_class" in cfg
-    import click
-
-    assert issubclass(cfg["context_class"], click.Context)
+    # Must extend the Context typer's own commands use (vendored Click on
+    # typer>=0.26), or callbacks run outside typer's context stack.
+    assert issubclass(cfg["context_class"], typer.core.TyperGroup.context_class)
 
 
 def test_make_rich_help_config_no_color_env_still_has_context(monkeypatch):
@@ -217,9 +218,9 @@ def test_make_rich_help_config_color_has_context_class():
     theme = _build_theme()
     cfg = _make_rich_help_config(theme, no_color=False)
     assert "context_class" in cfg
-    import click
-
-    assert issubclass(cfg["context_class"], click.Context)
+    # Must extend the Context typer's own commands use (vendored Click on
+    # typer>=0.26), or callbacks run outside typer's context stack.
+    assert issubclass(cfg["context_class"], typer.core.TyperGroup.context_class)
 
 
 # ---------------------------------------------------------------------------
@@ -849,3 +850,34 @@ def test_stream_register_idempotent():
     register_stream("rcmd", "b", "B stream")
     assert len(reg["rcmd"]) == 2
     reg.pop("rcmd", None)
+
+
+# ---------------------------------------------------------------------------
+# Click layer: typer>=0.26 vendors Click and drops the ``click`` package
+# ---------------------------------------------------------------------------
+
+
+def test_help_command_rows_show_operands_subcommands_and_flags():
+    """Command rows mark operands, sub-groups and flags on every typer."""
+    app, _ = create_app(name="mytool", version="1.0.0", help="A tool", no_color=True)
+
+    @app.command()
+    def deploy(target: str, env: str = typer.Argument("dev"), force: bool = False):
+        """Deploy it"""
+
+    sub = typer.Typer(help="Sub things")
+
+    @sub.command()
+    def one():
+        """One"""
+
+    @sub.command()
+    def two():
+        """Two"""
+
+    app.add_typer(sub, name="sub")
+
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "deploy <target> [env] [--flags]" in result.output
+    assert "sub [command]" in result.output
