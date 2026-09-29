@@ -56,7 +56,7 @@ require (
 	github.com/zalando/go-keyring v0.2.8
 	go.etcd.io/etcd/client/v3 v3.6.10
 	go.jetify.com/typeid v1.3.0
-	go.temporal.io/api v1.63.5
+	go.temporal.io/api v1.63.6
 	go.temporal.io/sdk v1.49.0
 	golang.org/x/crypto v0.55.0
 	golang.org/x/time v0.15.0
