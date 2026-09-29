@@ -99,8 +99,9 @@ func TestIsQuiet_ParsedBySubcommand(t *testing.T) {
 	assert.True(t, r.IsQuiet())
 }
 
-// TestIsQuiet_ReadsViper: quiet resolved from config or env lands in the
-// viper key the logger reads, not on the flag; the accessor must see it.
+// TestIsQuiet_ReadsViper: a quiet set on the viper by a source other
+// than the flag (a loaded config file, say) is what the logger reads;
+// the accessor must see it too.
 func TestIsQuiet_ReadsViper(t *testing.T) {
 	r := newQuietRoot(t, cli.Disable{})
 	r.Viper.Set("quiet", true)
