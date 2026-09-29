@@ -1,15 +1,16 @@
 """Flag registration helpers for SetFlag/TextFlag with display config.
 
-Registers Click options with prefix (+/-/=) and/or verbose (--add-X)
-forms. Developer controls which appear in help; all forms always parse.
+Registers options with prefix (+/-/=) and/or verbose (--add-X) forms on a
+typer or Click command, built from the Click layer that command runs on.
+Developer controls which appear in help; all forms always parse.
 """
 
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
-import click
-
+from ._click_compat import make_option
 from .setflag import SetFlag
 from .textflag import TextFlag
 
@@ -21,12 +22,12 @@ class FlagDisplay(Enum):
 
 
 def register_set_flag(
-    cmd: click.BaseCommand,
+    cmd: Any,
     name: str,
     usage: str,
     display: FlagDisplay = FlagDisplay.PREFIX,
 ) -> SetFlag:
-    """Register a set-valued flag on a Click command."""
+    """Register a set-valued flag on a typer or Click command."""
     sf = SetFlag()
 
     show_prefix = display in (FlagDisplay.PREFIX, FlagDisplay.BOTH)
@@ -34,8 +35,9 @@ def register_set_flag(
 
     if show_prefix:
         cmd.params.append(
-            click.Option(
-                [f"--{name}"],
+            make_option(
+                cmd,
+                param_decls=[f"--{name}"],
                 multiple=True,
                 help=f"{usage} (+add, -remove, =replace)",
                 callback=lambda ctx, param, vals: _apply_set_multi(sf, vals),
@@ -46,8 +48,9 @@ def register_set_flag(
 
     if show_verbose:
         cmd.params.append(
-            click.Option(
-                [f"--add-{name}"],
+            make_option(
+                cmd,
+                param_decls=[f"--add-{name}"],
                 multiple=True,
                 help=f"Add to {usage}",
                 callback=lambda ctx, param, vals: _apply_add(sf, vals),
@@ -56,8 +59,9 @@ def register_set_flag(
             )
         )
         cmd.params.append(
-            click.Option(
-                [f"--remove-{name}"],
+            make_option(
+                cmd,
+                param_decls=[f"--remove-{name}"],
                 multiple=True,
                 help=f"Remove from {usage}",
                 callback=lambda ctx, param, vals: _apply_remove(sf, vals),
@@ -66,8 +70,9 @@ def register_set_flag(
             )
         )
         cmd.params.append(
-            click.Option(
-                [f"--clear-{name}"],
+            make_option(
+                cmd,
+                param_decls=[f"--clear-{name}"],
                 is_flag=True,
                 default=False,
                 help=f"Clear all {usage}",
@@ -81,17 +86,18 @@ def register_set_flag(
 
 
 def register_text_flag(
-    cmd: click.BaseCommand,
+    cmd: Any,
     name: str,
     usage: str,
     display: FlagDisplay = FlagDisplay.PREFIX,
 ) -> TextFlag:
-    """Register a text-valued flag on a Click command."""
+    """Register a text-valued flag on a typer or Click command."""
     tf = TextFlag()
 
     cmd.params.append(
-        click.Option(
-            [f"--{name}"],
+        make_option(
+            cmd,
+            param_decls=[f"--{name}"],
             multiple=True,
             help=usage,
             callback=lambda ctx, param, vals: _apply_text_multi(tf, vals),
@@ -104,8 +110,9 @@ def register_text_flag(
 
     if show_verbose:
         cmd.params.append(
-            click.Option(
-                [f"--{name}-append"],
+            make_option(
+                cmd,
+                param_decls=[f"--{name}-append"],
                 help=f"Append to {usage} (new line)",
                 callback=lambda ctx, param, val: tf.append(val) if val else None,
                 expose_value=False,
@@ -113,8 +120,9 @@ def register_text_flag(
             )
         )
         cmd.params.append(
-            click.Option(
-                [f"--{name}-append-inline"],
+            make_option(
+                cmd,
+                param_decls=[f"--{name}-append-inline"],
                 help=f"Append to {usage} (inline)",
                 callback=lambda ctx, param, val: tf.append_inline(val) if val else None,
                 expose_value=False,
@@ -122,8 +130,9 @@ def register_text_flag(
             )
         )
         cmd.params.append(
-            click.Option(
-                [f"--{name}-prepend"],
+            make_option(
+                cmd,
+                param_decls=[f"--{name}-prepend"],
                 help=f"Prepend to {usage} (new line)",
                 callback=lambda ctx, param, val: tf.prepend(val) if val else None,
                 expose_value=False,
@@ -131,8 +140,9 @@ def register_text_flag(
             )
         )
         cmd.params.append(
-            click.Option(
-                [f"--{name}-prepend-inline"],
+            make_option(
+                cmd,
+                param_decls=[f"--{name}-prepend-inline"],
                 help=f"Prepend to {usage} (inline)",
                 callback=lambda ctx, param, val: tf.prepend_inline(val) if val else None,
                 expose_value=False,

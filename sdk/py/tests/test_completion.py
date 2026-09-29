@@ -229,15 +229,18 @@ class TestCompletionRegistry:
 
 class TestClickBridge:
     def test_to_click_completer(self):
-        """Verify bridge returns Click CompletionItems."""
+        """Bridge returns completion items carrying value + help.
+
+        Which Click layer's item class is used follows the driving context;
+        see test_click_layer.
+        """
         from hop_top_kit.completion import to_click_shell_complete
 
-        c = static_values("leo", "geo", "lunar")
+        c = static_completer(CompletionItem("leo", "Low Earth"), CompletionItem("geo"))
         fn = to_click_shell_complete(c)
         # Click signature: (ctx, param, incomplete) -> list
-        results = fn(None, None, "l")
-        assert len(results) == 2  # leo, lunar
-        # Should be click.shell_completion.CompletionItem instances
-        from click.shell_completion import CompletionItem as ClickCI
-
-        assert all(isinstance(r, ClickCI) for r in results)
+        results = fn(None, None, "")
+        assert [(r.value, r.help, r.type) for r in results] == [
+            ("leo", "Low Earth", "plain"),
+            ("geo", None, "plain"),
+        ]

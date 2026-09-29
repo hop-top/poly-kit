@@ -306,7 +306,10 @@ def launch(
 ```
 
 `to_click_shell_complete` returns a callable matching Click's
-`(ctx, param, incomplete) -> list[ClickCompletionItem]` signature.
+`(ctx, param, incomplete) -> list[CompletionItem]` signature. Items
+come from the Click layer driving `ctx`: the `click` package's
+`CompletionItem` under Click (and typer below 0.26), typer's vendored
+one under typer 0.26 and later.
 
 ---
 

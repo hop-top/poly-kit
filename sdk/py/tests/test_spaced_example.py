@@ -24,8 +24,11 @@ _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 pytestmark = pytest.mark.skipif(not _SPACED.is_file(), reason="examples/spaced is monorepo-only")
 
 
-def _spaced(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _spaced(
+    tmp_path: Path, *args: str, extra_env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
+    env.update(extra_env or {})
     env.update(
         HOME=str(tmp_path),
         XDG_CONFIG_HOME=str(tmp_path / "config"),
@@ -58,3 +61,20 @@ def test_root_quiet_suppresses_leaf_info(tmp_path: Path) -> None:
     stderr = _ANSI.sub("", r.stderr)
     assert "INFO" not in stderr, stderr
     assert "WARN" in stderr, stderr
+
+
+def test_root_telemetry_flag_completes_by_name(tmp_path: Path) -> None:
+    """``--telemetry`` is added to the root after typer builds it; typer's
+    completion lists only options of the Click layer it runs on."""
+    r = _spaced(
+        tmp_path,
+        extra_env={"_SPACED_COMPLETE": "complete_zsh", "_TYPER_COMPLETE_ARGS": "spaced --tel"},
+    )
+    assert r.returncode == 0, r.stderr
+    assert '"--telemetry"' in r.stdout, r.stdout
+
+
+def test_root_telemetry_flag_parses(tmp_path: Path) -> None:
+    r = _spaced(tmp_path, "--telemetry=off", "mission", "list")
+    assert r.returncode == 0, r.stderr
+    assert "Starman" in r.stdout

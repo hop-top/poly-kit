@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../../../ur
 # Also ensure commands can find data.py via their own sys.path injection.
 sys.path.insert(0, os.path.dirname(__file__))
 
-import click  # noqa: E402
 import typer  # noqa: E402
+import typer.core  # noqa: E402
 from hop_top_kit.alias import bridge_to_click  # noqa: E402
 from hop_top_kit.bus import create_bus  # noqa: E402
 from hop_top_kit.cli import create_app, GroupConfig, HelpConfig, set_command_group  # noqa: E402
@@ -89,10 +89,10 @@ def _ensure_telemetry_client() -> TelemetryClient | None:
     return _telemetry_client
 
 
-def _telemetry_pre_run_callback(ctx: click.Context, _param: click.Parameter, value: str) -> str:
+def _telemetry_pre_run_callback(ctx: typer.Context, _param: object, value: str) -> str:
     """Parse --telemetry into the module-global mode + stamp a start time.
 
-    Runs as an eager click callback so the value is available before any
+    Runs as an eager option callback so the value is available before any
     subcommand dispatches. Returns the raw value (unused; expose_value=False).
     """
     global _telemetry_mode, _telemetry_start_monotonic
@@ -369,13 +369,16 @@ if __name__ == "__main__":
     # Visible in --help; spaced go + ts mirror this flag with the same
     # shape so the cross-language parity contract includes --telemetry.
     #
-    # Registered as a click.Option directly (bypassing create_app's
+    # Registered as an option directly (bypassing create_app's
     # GlobalFlag mechanism) because GlobalFlag has no `hidden` field —
-    # using click.Option keeps the visibility decision local + explicit.
+    # a direct option keeps the visibility decision local + explicit.
+    # typer.core.TyperOption, not click.Option: typer>=0.26 runs on its
+    # vendored Click, and its help + shell completion skip options from
+    # the click package.
     _cmd.params.insert(
         0,
-        click.Option(
-            ["--telemetry"],
+        typer.core.TyperOption(
+            param_decls=["--telemetry"],
             default="off",
             is_eager=True,
             expose_value=False,
