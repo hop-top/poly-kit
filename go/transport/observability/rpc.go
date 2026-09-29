@@ -13,9 +13,9 @@ import (
 //
 // The server span is the child of the caller's W3C traceparent (the
 // remote parent is trusted, as the HTTP middleware trusts it), and the
-// rpc.server.* instruments are recorded when metrics are on. The span
-// is current in the handler's context, so the invocation span the
-// bridge starts is its child.
+// rpc.server.call.duration instrument is recorded when metrics are on.
+// The span is current in the handler's context, so the invocation span
+// the bridge starts is its child.
 func (p *Provider) RPCInterceptor() (connect.Interceptor, error) {
 	if !p.Enabled() {
 		return nil, nil
@@ -23,7 +23,6 @@ func (p *Provider) RPCInterceptor() (connect.Interceptor, error) {
 	opts := []otelconnect.Option{
 		otelconnect.WithPropagator(p.prop),
 		otelconnect.WithTrustRemote(),
-		otelconnect.WithoutServerPeerAttributes(),
 	}
 	if p.tp != nil {
 		opts = append(opts, otelconnect.WithTracerProvider(p.tp))
