@@ -234,7 +234,6 @@ def _tag_callback(ctx: typer.Context, param: typer.CallbackParam, value: tuple) 
 
 @app.command("launch")
 def launch_cmd(
-    ctx: typer.Context,
     mission: str | None = typer.Argument(None, help="Mission name"),
     payload: str | None = typer.Option(
         None, "--payload", help="Comma-separated payload (e.g. cargo,crew)"
@@ -268,7 +267,6 @@ def launch_cmd(
     from pathlib import Path
     from commands.launch import launch as _launch
     _launch(
-        ctx,
         mission=mission,
         payload=payload,
         orbit=orbit,

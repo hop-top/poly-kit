@@ -1,3 +1,4 @@
+import contextvars
 import importlib.util
 import re
 
@@ -19,6 +20,7 @@ from hop_top_kit.cli import (
     _make_rich_help_config,
     channel,
     create_app,
+    is_quiet,
     register_stream,
     set_command_group,
     verbose_count,
@@ -827,6 +829,80 @@ def test_verbose_quiet_overrides():
     result = runner.invoke(app, ["-V", "--quiet", "info"])
     assert result.exit_code == 0
     assert "v=0" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Quiet flag (--quiet) — is_quiet
+# ---------------------------------------------------------------------------
+
+
+def _quiet_app(disable: Disable | None = None):
+    """App with a command that echoes the quiet and verbose accessors."""
+    app, _ = create_app(name="qtool", version="0.1.0", help="Quiet test", disable=disable)
+
+    @app.command()
+    def info():
+        """Show quiet state."""
+        typer.echo(f"q={is_quiet()} v={verbose_count()}")
+
+    return app
+
+
+def test_is_quiet_before_parsing_is_false():
+    """Outside any dispatch the accessor reports the default."""
+    assert contextvars.Context().run(is_quiet) is False
+
+
+def test_is_quiet_default_false():
+    result = runner.invoke(_quiet_app(), ["info"])
+    assert result.exit_code == 0
+    assert "q=False" in result.output
+
+
+def test_is_quiet_flag_set():
+    result = runner.invoke(_quiet_app(), ["--quiet", "info"])
+    assert result.exit_code == 0
+    assert "q=True" in result.output
+
+
+def test_is_quiet_with_verbose_quiet_wins():
+    """-V and --quiet together: quiet reported, verbose count forced to 0."""
+    result = runner.invoke(_quiet_app(), ["-VV", "--quiet", "info"])
+    assert result.exit_code == 0
+    assert "q=True v=0" in result.output
+
+
+def test_is_quiet_resets_between_invocations():
+    """A later dispatch without --quiet must not inherit the earlier one."""
+    app = _quiet_app()
+    assert "q=True" in runner.invoke(app, ["--quiet", "info"]).output
+    result = runner.invoke(app, ["info"])
+    assert result.exit_code == 0
+    assert "q=False" in result.output
+
+
+def test_is_quiet_false_when_flag_disabled():
+    app = _quiet_app(Disable(quiet=True))
+    result = runner.invoke(app, ["info"])
+    assert result.exit_code == 0
+    assert "q=False" in result.output
+
+
+def test_is_quiet_agrees_with_logger_level():
+    """The accessors fed to the logger resolve to the contract's quiet level."""
+    from hop_top_kit.log import quiet_level, verbosity_level
+
+    app, _ = create_app(name="qtool", version="0.1.0", help="Quiet test")
+    seen: list[tuple[int, str]] = []
+
+    @app.command()
+    def info():
+        """Record the resolved level."""
+        seen.append(verbosity_level(verbose_count(), is_quiet()))
+
+    result = runner.invoke(app, ["-V", "--quiet", "info"])
+    assert result.exit_code == 0
+    assert seen == [quiet_level()]
 
 
 def test_verbose_flag_in_help():

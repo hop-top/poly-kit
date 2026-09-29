@@ -11,6 +11,7 @@ import typer
 
 sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
 from hop_top_kit.bus import Bus, create_event  # noqa: E402
+from hop_top_kit.cli import is_quiet  # noqa: E402
 from hop_top_kit.log import create_logger  # noqa: E402
 from hop_top_kit.setflag import SetFlag  # noqa: E402
 from hop_top_kit.wizard import (  # noqa: E402
@@ -62,7 +63,6 @@ def _tag_callback(ctx: typer.Context, param: typer.CallbackParam, value: tuple) 
 
 @app.command("launch")
 def launch(
-    ctx: typer.Context,
     mission: str = typer.Argument(
         ..., help="Mission name",
         shell_complete=to_click_shell_complete(
@@ -87,17 +87,7 @@ def launch(
 ) -> None:
     """Initiate launch sequence for a mission."""
     global log
-    # Root --quiet, read through the context typer passes in: typer>=0.26
-    # runs on its vendored Click, so the click package's context stack is
-    # empty here.
-    quiet = False
-    node: typer.Context | None = ctx
-    while node is not None:
-        if "quiet" in node.params:
-            quiet = bool(node.params["quiet"])
-            break
-        node = node.parent
-    log = create_logger(quiet=quiet)
+    log = create_logger(quiet=is_quiet())
 
     if _bus is not None:
         _bus.publish(create_event(
