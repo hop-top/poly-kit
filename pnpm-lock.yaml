@@ -69,8 +69,8 @@ importers:
         specifier: ^4.6.0
         version: 4.6.0
       hono:
-        specifier: ^4.12.10
-        version: 4.12.18
+        specifier: ^4.13.9
+        version: 4.13.9
       js-yaml:
         specifier: ^4.1.1
         version: 4.1.1
@@ -1227,8 +1227,8 @@ packages:
     resolution: {integrity: sha512-iZyKG96/JwPz1N55vj2Ie2vXbhu440zfUfJvSwEqEbeLluk7NnapfGqa7LH0mOsnDxTF85Mx8/dyR6HfqcbmbQ==}
     engines: {node: '>=20'}
 
-  hono@4.12.18:
-    resolution: {integrity: sha512-RWzP96k/yv0PQfyXnWjs6zot20TqfpfsNXhOnev8d1InAxubW93L11/oNUc3tQqn2G0bSdAOBpX+2uDFHV7kdQ==}
+  hono@4.13.9:
+    resolution: {integrity: sha512-7dMkQmZoC4E6F7AtaQSPhlWAdnBti+j7rreMZl8QB4jFiEhP9TWbGWUMi8WYzBCgmgulxuvLQupKqo+Co6Omyg==}
     engines: {node: '>=16.9.0'}
 
   hookified@1.15.1:
@@ -2741,7 +2741,7 @@ snapshots:
     dependencies:
       hookified: 1.15.1
 
-  hono@4.12.18: {}
+  hono@4.13.9: {}
 
   hookified@1.15.1: {}
 
