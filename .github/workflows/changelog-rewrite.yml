@@ -33,8 +33,11 @@ jobs:
         id: detect
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        # `:(glob)` magic: `**/` then matches zero or more directories, so the
+        # root CHANGELOG.md counts too. A plain `**/CHANGELOG.md` pathspec
+        # needs a `/` before the name and silently skips the root file.
         run: |
-          FILES=$(git diff --name-only "$BASE_SHA" -- '**/CHANGELOG.md')
+          FILES=$(git diff --name-only "$BASE_SHA" -- ':(glob)**/CHANGELOG.md')
           if [ -z "$FILES" ]; then
             echo "No changelogs modified"
             echo "found=false" >> "$GITHUB_OUTPUT"
@@ -76,10 +79,10 @@ jobs:
           git config user.email \
             "github-actions[bot]@users.noreply.github.com"
 
-          if git diff --quiet -- '**/CHANGELOG.md'; then
+          if git diff --quiet -- ':(glob)**/CHANGELOG.md'; then
             echo "No changes after rewrite (already processed)"
           else
-            git add '**/CHANGELOG.md'
+            git add -- ':(glob)**/CHANGELOG.md'
             git commit -m "chore: rewrite changelog"
             git push
           fi
