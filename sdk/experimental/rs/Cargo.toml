@@ -89,7 +89,7 @@ base64 = { version = "0.23", default-features = false, features = [
 # RustCrypto HKDF. Pinned to 0.12 rather than 0.13 because 0.12 is the line
 # built on the same `digest` 0.10 generation as the pinned sha2 — moving to
 # 0.13 would pull a second copy of sha2 into the tree for no gain.
-hkdf = { version = "0.12", default-features = false, optional = true }
+hkdf = { version = "0.13", default-features = false, optional = true }
 # NaCl secretbox (XSalsa20-Poly1305), the wire format the Go side uses.
 # RustCrypto's pure-Rust implementation: no libsodium C build, unlike
 # `dryoc`/`sodiumoxide`, and two orders of magnitude more downloads than
