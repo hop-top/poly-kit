@@ -20,6 +20,7 @@ answers *what text may leave the process?*.
 | Use the package-level default policy | `scope.Default()` |
 | Decide whether (path, op) is allowed | `Policy.Check(path, op)` |
 | Enforce policy (errors in Strict, logs in Warn) | `Policy.Enforce(path, op)` |
+| Ask whether the rules as written name this spelling of a path (no FS access) | `Policy.CheckLexical(path, op)` |
 | Load a declarative policy from disk | `scope.FromConfig("mytool")` |
 | Get default deny patterns | `scope.SecretPaths()` |
 | Build a pattern for a tool's XDG dir | `scope.ToolConfig("mytool")` (or Data/Cache/State/Runtime/Bin) |
@@ -54,6 +55,37 @@ Patterns use [doublestar v4](https://github.com/bmatcuk/doublestar) syntax.
 A leading `~` expands to the user home; on Windows, `%APPDATA%`,
 `%LOCALAPPDATA%` and `%USERPROFILE%` macros expand to their env values,
 falling back to the macro if unset, which simply never matches.
+
+### Matching rules as written
+
+`Policy.CheckLexical(path, op)` answers a different question from `Check`:
+not *may this file be touched?* but *do the rules, as the user wrote them,
+name this spelling of the path?* Use it when a tool refuses paths that
+traverse a symlink in an ungranted directory unless a rule names the path
+through the link, for example `/tmp/**` on macOS (where `/tmp` links to
+`/private/tmp`) or `~/code/**` where `~/code` is a symlink. Enforcement
+still goes through `Check` / `Enforce`.
+
+| | `Check` | `CheckLexical` |
+|---|---|---|
+| Symlinks on path | resolved (deepest existing ancestor for new paths) | never resolved |
+| Symlinks in pattern prefix | resolved | never resolved |
+| `~` | home, resolved through symlinks | `$HOME` (`%USERPROFILE%`) as set |
+| Filesystem access | `EvalSymlinks` / stat | none; not an existence oracle |
+| Path | any; cleaned | cleaned; must be absolute, else error |
+| Combined op (`Read\|Write`) | a rule matches on any shared bit | Allowed only if every bit is allowed |
+| Deny | any matching deny rule sharing a bit | any requested bit denied |
+| `/p/**` covers `/p` | yes | yes |
+
+Macros (`tool:*`, Windows `%APPDATA%` etc.) are expanded when rules are
+built, so both calls see the same rule text.
+
+```go
+p := scope.New().Allow("/tmp/**")
+p.CheckLexical("/tmp/x", scope.Read)         // Allowed
+p.CheckLexical("/private/tmp/x", scope.Read) // Unknown: not named as written
+p.Check("/private/tmp/x", scope.Read)        // Allowed on macOS: pattern resolved
+```
 
 ## Default deny list
 

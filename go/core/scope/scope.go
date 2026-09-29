@@ -27,6 +27,15 @@
 //
 // Rules are per-op: AllowOp/DenyOp in code, or {path, ops} entries in
 // scope.yaml (see FromConfig), so one path can be readable but not writable.
+//
+// Check vs CheckLexical: Check decides whether the file a path reaches may be
+// touched, so it resolves symlinks on both path and patterns. CheckLexical
+// decides whether the rules, as written, name that spelling of the path; it
+// never touches the filesystem and requires every requested op bit to be
+// allowed. Use it to refuse a path that traverses a symlink in an ungranted
+// directory unless a rule names the path through the link (e.g. "/tmp/**" on
+// macOS, where /tmp -> /private/tmp). Enforcement still goes through
+// Check/Enforce.
 package scope
 
 import (
