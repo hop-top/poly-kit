@@ -29,6 +29,12 @@ updates:
       interval: weekly
     commit-message:
       prefix: "build(deps):"
+    ignore:
+      # TypeScript 7 (native compiler) has no classic JS API; typescript-eslint
+      # (peer <6.1) and tsup's dts build cannot run on it yet. Lift once
+      # typescript-eslint supports 7 and the dts build works.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: uv
     directory: "/sdk/py"
