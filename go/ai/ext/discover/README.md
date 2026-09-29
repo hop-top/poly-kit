@@ -12,6 +12,7 @@ the plugins mounted as subcommands (`hop.top/kit/go/ai/ext/dispatch`).
 - you list plugins: `(&discover.Scanner{Prefix: "kit-"}).Scan()`; set `Paths` to scan specific directories instead of `$PATH`
 - you need name, version and description: `found.Enrich()` then `found.Meta()`
 - you interrogate one binary directly: `discover.Interrogate(path)`
+- you need host-specific `--ext-info` fields (e.g. a tool parameter schema): `found.Enrich()` then `found.Info().Decode(&yourFields)`, or `discover.InterrogateInfo(path)` for one binary
 - you run a plugin as an `ext.Extension`: `found.Init(ctx)` executes the binary
 
 ## Quick start
@@ -36,6 +37,7 @@ Verified by `example_test.go` in this directory.
 
 - `Scan` returns executables only, deduplicated by name, ordered by first occurrence across the scanned directories; `Name` has the prefix stripped.
 - `Interrogate` and `Enrich` execute the binary with `--ext-info` under a 5s timeout and parse JSON; on failure the `Found` stays usable with metadata synthesized from its name.
+- `Info` carries the verbatim `--ext-info` object in `Raw`, extra fields included; discovery never interprets them. `Found.Info()` is nil until `Enrich` succeeds (`Decode` on it then returns an error) and returns a copy without re-executing the binary.
 - Every `Found` reports `ext.CapDiscover`; `Close` is a no-op.
 - Wire shape and lifecycle: [ext-discover protocol](../../../../docs/contracts/ext-discover-protocol.md).
 

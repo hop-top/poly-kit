@@ -60,6 +60,15 @@ discovered binary as `CapDiscover`. Adopters may surface other
 capability names ("registry", "hook", "config") as a hint to
 operators.
 
+**Additional fields:** the response object may carry any other
+top-level fields. The host preserves the verbatim object and hands it
+to the host tool (`InterrogateInfo(path).Raw`, `Found.Info().Raw`,
+`Info.Decode(&v)`); discovery itself never interprets them. Each host
+tool defines and documents its own extra fields, e.g. a JSON-schema
+`parameters` block for plugins exposed as LLM tools. Hosts ignore
+fields they do not recognise, so sidecars can add fields without
+breaking older hosts.
+
 **Example response:**
 
 ```json
@@ -68,6 +77,22 @@ operators.
   "version": "0.4.1",
   "description": "Fetch one URL and emit JSON",
   "capabilities": ["discover"]
+}
+```
+
+**Example response with host-defined fields:**
+
+```json
+{
+  "name": "grep",
+  "version": "0.3.0",
+  "description": "Search files for a pattern",
+  "capabilities": ["discover"],
+  "parameters": {
+    "type": "object",
+    "properties": {"pattern": {"type": "string"}, "path": {"type": "string"}},
+    "required": ["pattern"]
+  }
 }
 ```
 
