@@ -63,7 +63,7 @@ require (
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	hop.top/aim v0.1.0-alpha.0
+	hop.top/aim v0.1.0-alpha.5
 	hop.top/cite v0.1.1
 	hop.top/xrr v0.1.0-alpha.5
 	modernc.org/sqlite v1.60.1
