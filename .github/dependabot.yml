@@ -48,6 +48,10 @@ updates:
       # node-gyp on Windows; revisit once upstream fixes land.
       - dependency-name: better-sqlite3
         update-types: ["version-update:semver-major"]
+      # Typings must not exceed the Node floor (engines >=22.12 in sdk/ts
+      # and ts-kit-engine): a newer major types APIs the floor lacks.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       # server pins core exactly: they must move together.
       modelcontextprotocol:
@@ -55,6 +59,9 @@ updates:
       # vitest peers on vite; @vitest/* ship in lockstep with vitest.
       vitest:
         patterns: ["vitest", "@vitest/*", "vite"]
+      # typescript-eslint and @typescript-eslint/* ship in lockstep.
+      typescript-eslint:
+        patterns: ["typescript-eslint", "@typescript-eslint/*"]
 
   - package-ecosystem: uv
     directory: "/sdk/py"
@@ -66,6 +73,11 @@ updates:
       # mcp pins mcp-types exactly: they must move together.
       mcp:
         patterns: ["mcp", "mcp-types"]
+      # Everything else: one PR for minor + patch. A dependency joins the
+      # first group it matches, so mcp stays ahead of this catch-all.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: uv
     directory: "/engine/sdk/py-kit-engine"
@@ -84,6 +96,11 @@ updates:
       # RustCrypto hash/KDF/MAC crates share the `digest` major: bump together.
       rustcrypto:
         patterns: ["sha2", "hkdf", "digest", "hmac"]
+      # Everything else: one PR for minor + patch. A dependency joins the
+      # first group it matches, so rustcrypto stays ahead of this catch-all.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
     ignore:
       # Stay on stable releases of the secretbox AEAD.
       - dependency-name: crypto_secretbox
