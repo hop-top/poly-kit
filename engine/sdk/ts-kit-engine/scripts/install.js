@@ -2,16 +2,16 @@
 "use strict";
 
 const { execFileSync } = require("child_process");
-const { existsSync, mkdirSync, createWriteStream, unlinkSync } = require("fs");
-const { join } = require("path");
+const fs = require("fs");
+const { join, posix } = require("path");
 const https = require("https");
 const crypto = require("crypto");
 
 const REPO = "hop-top/kit";
 const BIN_DIR = join(__dirname, "..", "bin");
-const BIN_NAME = process.platform === "win32" ? "kit.exe" : "kit";
 const PKG = require("../package.json");
 const VERSION = PKG.kit && PKG.kit.version || PKG.version;
+const CHECKSUMS_MAX_BYTES = 1 << 20;
 
 function which(name) {
   try {
@@ -50,10 +50,12 @@ function get(url) {
     const follow = (u) => {
       https.get(u, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
           follow(res.headers.location);
           return;
         }
         if (res.statusCode !== 200) {
+          res.resume();
           reject(new Error(`HTTP ${res.statusCode} for ${u}`));
           return;
         }
@@ -65,128 +67,170 @@ function get(url) {
 }
 
 function downloadFile(url, dest) {
-  return new Promise((resolve, reject) => {
-    const follow = (u) => {
-      https.get(u, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          follow(res.headers.location);
-          return;
-        }
-        if (res.statusCode !== 200) {
-          reject(new Error(`Download failed: ${res.statusCode}`));
-          return;
-        }
-        const file = createWriteStream(dest);
-        res.pipe(file);
-        file.on("finish", () => file.close(resolve));
-      }).on("error", reject);
-    };
-    follow(url);
-  });
+  return get(url).then((res) => new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    res.on("error", reject);
+    file.on("error", reject);
+    file.on("finish", () => file.close(resolve));
+    res.pipe(file);
+  }));
 }
 
+// Download the release checksums file. Any failure rejects: the caller must
+// never install a binary it could not verify.
 async function fetchChecksums(version) {
   const url = `https://github.com/${REPO}/releases/download/v${version}/checksums.txt`;
   try {
     const res = await get(url);
     const chunks = [];
-    for await (const chunk of res) chunks.push(chunk);
-    const text = Buffer.concat(chunks).toString();
-    const map = {};
-    for (const line of text.split("\n")) {
-      const [hash, name] = line.trim().split(/\s+/);
-      if (hash && name) map[name] = hash;
+    let total = 0;
+    for await (const chunk of res) {
+      total += chunk.length;
+      if (total > CHECKSUMS_MAX_BYTES) throw new Error("checksums file too large");
+      chunks.push(chunk);
     }
-    return map;
-  } catch {
-    return null;
+    return Buffer.concat(chunks).toString("utf8");
+  } catch (err) {
+    throw new Error(
+      `failed to fetch checksums from ${url}: ${err.message}; ` +
+      "refusing to install an unverified kit binary",
+    );
   }
+}
+
+// Parse "<hash>  <file>" (GNU coreutils) or "<hash> <file>"; mirrors the Go
+// upgrade package so every SDK reads checksums.txt the same way.
+function parseChecksumLine(line) {
+  line = line.trim();
+  if (!line || line.startsWith("#")) return null;
+  const idx = line.indexOf("  ");
+  const parts = idx > 0 ? [line.slice(0, idx), line.slice(idx + 2)] : line.split(/\s+/);
+  return parts.length === 2 ? parts : null;
+}
+
+function findChecksum(text, filename) {
+  for (const line of text.split("\n")) {
+    const parsed = parseChecksumLine(line);
+    if (parsed && posix.basename(parsed[1]) === filename) return parsed[0];
+  }
+  throw new Error(
+    `no checksum found for ${JSON.stringify(filename)} in release checksums; ` +
+    "refusing to install an unverified kit binary",
+  );
 }
 
 function sha256File(path) {
-  const { readFileSync } = require("fs");
-  const data = readFileSync(path);
-  return crypto.createHash("sha256").update(data).digest("hex");
+  return crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
 }
 
-async function extractTarGz(archive, destDir) {
+function verifyArchive(archivePath, archiveName, checksumsText) {
+  const expected = findChecksum(checksumsText, archiveName).toLowerCase();
+  const actual = sha256File(archivePath);
+  if (actual !== expected) {
+    throw new Error(`Checksum mismatch for ${archiveName}: expected ${expected}, got ${actual}`);
+  }
+}
+
+function extractBinary(archivePath, binName, destPath) {
   const { execSync } = require("child_process");
-  execSync(`tar -xzf "${archive}" -C "${destDir}"`, { stdio: "ignore" });
+  const dir = join(destPath, "..");
+  if (archivePath.endsWith(".zip")) {
+    execSync(`unzip -o "${archivePath}" -d "${dir}"`, { stdio: "ignore" });
+  } else {
+    execSync(`tar -xzf "${archivePath}" -C "${dir}"`, { stdio: "ignore" });
+  }
+  if (!fs.existsSync(destPath)) throw new Error(`binary ${binName} not found in archive`);
 }
 
-async function extractZip(archive, destDir) {
-  const { execSync } = require("child_process");
-  execSync(`unzip -o "${archive}" -d "${destDir}"`, { stdio: "ignore" });
-}
+const defaultDeps = { which, kitVersion, downloadFile, fetchChecksums };
 
-async function main() {
+// Download, verify and install the kit binary into binDir. The archive is
+// staged in a private temp dir inside binDir; only a verified binary is ever
+// moved to its final path, and the staging dir is always removed.
+async function install(opts = {}) {
+  const deps = { ...defaultDeps, ...opts.deps };
+  const binDir = opts.binDir || BIN_DIR;
+  const version = opts.version || VERSION;
+  const platform = opts.platform || process.platform;
+  const key = opts.platformKey || platformKey();
+  const log = opts.log || ((msg) => process.stdout.write(msg));
+  const binName = platform === "win32" ? "kit.exe" : "kit";
+
   // Check PATH first
-  const systemBin = which("kit");
+  const systemBin = deps.which("kit");
   if (systemBin) {
-    const ver = kitVersion(systemBin);
-    if (ver && compatible(ver, VERSION)) {
-      process.stdout.write(`kit-engine: found compatible kit ${ver} at ${systemBin}\n`);
-      return;
+    const ver = deps.kitVersion(systemBin);
+    if (ver && compatible(ver, version)) {
+      log(`kit-engine: found compatible kit ${ver} at ${systemBin}\n`);
+      return systemBin;
     }
   }
 
-  const binPath = join(BIN_DIR, BIN_NAME);
-  if (existsSync(binPath)) {
-    const ver = kitVersion(binPath);
-    if (ver && compatible(ver, VERSION)) {
-      process.stdout.write(`kit-engine: binary already present (${ver})\n`);
-      return;
+  const binPath = join(binDir, binName);
+  if (fs.existsSync(binPath)) {
+    const ver = deps.kitVersion(binPath);
+    if (ver && compatible(ver, version)) {
+      log(`kit-engine: binary already present (${ver})\n`);
+      return binPath;
     }
   }
 
-  const key = platformKey();
-  const ext = process.platform === "win32" ? "zip" : "tar.gz";
+  const ext = platform === "win32" ? "zip" : "tar.gz";
   const archiveName = `kit_${key}.${ext}`;
-  const ver = VERSION.replace(/^v/, "");
+  const ver = version.replace(/^v/, "");
   const url = `https://github.com/${REPO}/releases/download/v${ver}/${archiveName}`;
 
-  process.stdout.write(`kit-engine: downloading kit v${ver} for ${key}...\n`);
-  mkdirSync(BIN_DIR, { recursive: true });
+  log(`kit-engine: downloading kit v${ver} for ${key}...\n`);
+  fs.mkdirSync(binDir, { recursive: true });
+  const staging = fs.mkdtempSync(join(binDir, ".kit-install-"));
+  try {
+    const archivePath = join(staging, archiveName);
+    await deps.downloadFile(url, archivePath);
 
-  const archivePath = join(BIN_DIR, archiveName);
-  await downloadFile(url, archivePath);
+    verifyArchive(archivePath, archiveName, await deps.fetchChecksums(ver));
+    log("kit-engine: checksum verified\n");
 
-  // Verify checksum
-  const checksums = await fetchChecksums(ver);
-  if (checksums) {
-    const expected = checksums[archiveName];
-    if (expected) {
-      const actual = sha256File(archivePath);
-      if (actual !== expected) {
-        unlinkSync(archivePath);
-        throw new Error(`Checksum mismatch: expected ${expected}, got ${actual}`);
-      }
-      process.stdout.write("kit-engine: checksum verified\n");
-    }
+    const staged = join(staging, binName);
+    extractBinary(archivePath, binName, staged);
+    if (platform !== "win32") fs.chmodSync(staged, 0o755);
+    fs.renameSync(staged, binPath);
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true });
   }
 
-  // Extract
-  if (ext === "tar.gz") {
-    await extractTarGz(archivePath, BIN_DIR);
-  } else {
-    await extractZip(archivePath, BIN_DIR);
-  }
-  unlinkSync(archivePath);
-
-  // Ensure executable
-  if (process.platform !== "win32") {
-    const { chmodSync } = require("fs");
-    chmodSync(binPath, 0o755);
-  }
-
-  process.stdout.write("kit-engine: download complete\n");
+  log("kit-engine: download complete\n");
+  return binPath;
 }
 
-main().catch((err) => {
-  if (process.env.KIT_INSTALL_OPTIONAL === "1") {
-    console.warn(`kit-engine postinstall (skipped): ${err.message}`);
-  } else {
+// KIT_INSTALL_OPTIONAL=1 tolerates a failed install (nothing is installed);
+// it never bypasses verification.
+async function run(env = process.env, opts = {}) {
+  try {
+    await install(opts);
+    return 0;
+  } catch (err) {
+    if (env.KIT_INSTALL_OPTIONAL === "1") {
+      console.warn(`kit-engine postinstall (skipped): ${err.message}`);
+      return 0;
+    }
     console.error(`kit-engine postinstall: ${err.message}`);
-    process.exit(1);
+    return 1;
   }
-});
+}
+
+module.exports = {
+  compatible,
+  extractBinary,
+  fetchChecksums,
+  findChecksum,
+  install,
+  parseChecksumLine,
+  run,
+  verifyArchive,
+};
+
+if (require.main === module) {
+  run().then((code) => {
+    process.exitCode = code;
+  });
+}
