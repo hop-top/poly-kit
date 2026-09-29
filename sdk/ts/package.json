@@ -142,6 +142,35 @@
       "default": "./dist/mcp/index.js"
     }
   },
+  "typesVersions": {
+    "*": {
+      "cli": ["./dist/cli.d.ts"],
+      "output": ["./dist/output.d.ts"],
+      "xdg": ["./dist/xdg.d.ts"],
+      "config": ["./dist/config.d.ts"],
+      "sqlstore": ["./dist/sqlstore.d.ts"],
+      "upgrade": ["./dist/upgrade.d.ts"],
+      "llm": ["./dist/llm.d.ts"],
+      "routellm": ["./dist/routellm.d.ts"],
+      "alias": ["./dist/alias.d.ts"],
+      "tui": ["./dist/tui/index.d.ts"],
+      "errcorrect": ["./dist/errcorrect.d.ts"],
+      "safety": ["./dist/safety.d.ts"],
+      "provenance": ["./dist/provenance.d.ts"],
+      "stream": ["./dist/stream.d.ts"],
+      "progress": ["./dist/progress.d.ts"],
+      "auth": ["./dist/auth.d.ts"],
+      "api": ["./dist/api.d.ts"],
+      "rpc": ["./dist/rpc.d.ts"],
+      "aim": ["./dist/aim.d.ts"],
+      "netpolicy": ["./dist/netpolicy.d.ts"],
+      "scope": ["./dist/scope.d.ts"],
+      "serve": ["./dist/serve.d.ts"],
+      "telemetry": ["./dist/telemetry/index.d.ts"],
+      "id": ["./dist/id/index.d.ts"],
+      "mcp": ["./dist/mcp/index.d.ts"]
+    }
+  },
   "scripts": {
     "build": "tsup src/index.ts src/alias.ts src/cli.ts src/output.ts src/xdg.ts src/config.ts src/sqlstore.ts src/upgrade.ts src/llm.ts src/routellm.ts src/tui/index.ts src/errcorrect.ts src/safety.ts src/provenance.ts src/stream.ts src/progress.ts src/auth.ts src/api.ts src/rpc.ts src/aim.ts src/netpolicy.ts src/scope.ts src/serve.ts src/telemetry/index.ts src/id/index.ts src/mcp/index.ts --format cjs --dts",
     "lint": "eslint src/",

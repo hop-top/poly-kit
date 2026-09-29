@@ -12,9 +12,9 @@ alias resolution, and a TUI toolkit.
 pnpm add @hop-top/kit
 ```
 
-Subpath imports follow the package's `exports` map (see `package.json`):
-`@hop-top/kit/cli`, `@hop-top/kit/output`, `@hop-top/kit/xdg`,
-`@hop-top/kit/uri`, and so on.
+Subpath imports follow the package's `exports` map (see `package.json`),
+mirrored in `typesVersions` for `moduleResolution: node10`: `@hop-top/kit/cli`,
+`@hop-top/kit/output`, `@hop-top/kit/xdg`, `@hop-top/kit/uri`, and so on.
 
 ## Quick start
 

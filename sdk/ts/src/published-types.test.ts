@@ -30,6 +30,8 @@ const stageDir = path.join(pkgDir, `.consumer-types-${process.pid}`);
 const stagedPkgDir = path.join(stageDir, 'node_modules', ...pkg.name.split('/'));
 
 const modes: Record<string, Pick<ts.CompilerOptions, 'module' | 'moduleResolution'>> = {
+  // node10 ignores `exports`; subpaths resolve only through `typesVersions`.
+  node10: { module: ts.ModuleKind.CommonJS, moduleResolution: ts.ModuleResolutionKind.Node10 },
   node16: { module: ts.ModuleKind.Node16, moduleResolution: ts.ModuleResolutionKind.Node16 },
   nodenext: { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext },
   bundler: { module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler },
@@ -90,6 +92,9 @@ describe('published declarations', () => {
       strict: true,
       noEmit: true,
       skipLibCheck: false,
+      // `tsc --init` default; node16/nodenext imply it. Without it a
+      // node10 consumer trips on zod's own default imports (TS1259).
+      esModuleInterop: true,
       types: ['node'],
       typeRoots: [path.join(pkgDir, 'node_modules', '@types')],
     });

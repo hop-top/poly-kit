@@ -7,6 +7,7 @@ import * as kit from './index.js';
 const pkgDir = join(__dirname, '..');
 const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')) as {
   exports: Record<string, Record<string, string>>;
+  typesVersions?: Record<string, Record<string, string[]>>;
   scripts: Record<string, string>;
 };
 
@@ -38,6 +39,17 @@ describe('exports map contract', () => {
 
   it('root "." exposes the same condition set as the other entries', () => {
     expect(Object.keys(pkg.exports['.']).sort()).toEqual(['default', 'require', 'types']);
+  });
+
+  // moduleResolution node10 ignores `exports`; `typesVersions` is its only
+  // route to subpath types, so every subpath needs a matching entry.
+  it('typesVersions maps every subpath to its exports types target', () => {
+    const expected = Object.fromEntries(
+      subpaths
+        .filter(([subpath]) => subpath !== '.')
+        .map(([subpath, conditions]) => [subpath.replace(/^\.\//, ''), [conditions.types]]),
+    );
+    expect(pkg.typesVersions).toEqual({ '*': expected });
   });
 });
 
