@@ -38,7 +38,7 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/klauspost/compress v1.20.1
 	github.com/lucasb-eyer/go-colorful v1.4.1
-	github.com/mattn/go-isatty v0.0.23
+	github.com/mattn/go-isatty v0.0.24
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/openai/openai-go v1.12.0
 	github.com/openbao/openbao/api/v2 v2.5.1
@@ -66,7 +66,7 @@ require (
 	hop.top/aim v0.1.0-alpha.0
 	hop.top/cite v0.1.1
 	hop.top/xrr v0.1.0-alpha.5
-	modernc.org/sqlite v1.48.2
+	modernc.org/sqlite v1.60.1
 )
 
 require (
@@ -246,9 +246,9 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect
 	hop.top/mcp-tasks v0.1.0-alpha.1
-	modernc.org/libc v1.72.0 // indirect
+	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
+	modernc.org/memory v1.12.1 // indirect
 )
 
 replace hop.top/mcp-tasks => ./extensions/mcp-tasks
