@@ -40,7 +40,8 @@ fmt.Println("denied:", scopecmd.IsDeniedExit(err))
 - Policy source: `Default()` unless `--tool <name>` is given, which loads
   `FromConfig(<name>)` from `hop.top/kit/go/core/scope`.
 - `--op` accepts `read|write|exec` (short `r|w|x`); empty means `read`.
-  Anything else is a usage error.
+  Anything else is a usage error. Use it to probe per-op `scope.yaml`
+  rules (`{path, ops}` entries); `show` lists each rule's ops in `OPS`.
 - Exit codes: 0 allowed, 1 denied, 2 usage error. `test` exits 1 when
   any path is denied, or when the mode is strict and any decision is
   unknown.

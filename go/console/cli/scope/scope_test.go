@@ -186,3 +186,58 @@ func TestCheck_OutputToFile_JSON(t *testing.T) {
 	assert.Contains(t, s, `"path"`)
 	assert.Contains(t, s, `"allowed"`)
 }
+
+// writeToolConfig drops a scope.yaml for tool under a fresh XDG_CONFIG_HOME.
+func writeToolConfig(t *testing.T, tool, body string) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	toolDir := filepath.Join(dir, tool)
+	require.NoError(t, os.MkdirAll(toolDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(toolDir, "scope.yaml"), []byte(body), 0o644))
+}
+
+const perOpConfig = `mode: strict
+allow:
+  - path: "/srv/proj/**"
+    ops: [read]
+deny:
+  - path: "/srv/proj/**"
+    ops: [write, exec]
+`
+
+func TestCheck_PerOpConfig(t *testing.T) {
+	resetViper(t)
+	writeToolConfig(t, "optool", perOpConfig)
+
+	out, err := runCmd(t, "check", "/srv/proj/a", "--tool", "optool")
+	require.NoError(t, err, "default op is read")
+	assert.Contains(t, out, "allowed")
+
+	out, err = runCmd(t, "check", "/srv/proj/a", "--tool", "optool", "--op", "write")
+	require.Error(t, err)
+	assert.True(t, scopecmd.IsDeniedExit(err))
+	assert.Contains(t, out, "denied")
+}
+
+func TestTest_PerOpConfig(t *testing.T) {
+	resetViper(t)
+	writeToolConfig(t, "optool", perOpConfig)
+
+	_, err := runCmd(t, "test", "/srv/proj/a", "/srv/proj/b", "--tool", "optool", "--op", "read")
+	require.NoError(t, err)
+
+	_, err = runCmd(t, "test", "/srv/proj/a", "/srv/proj/b", "--tool", "optool", "--op", "exec")
+	require.Error(t, err)
+	assert.True(t, scopecmd.IsDeniedExit(err))
+}
+
+func TestShow_PerOpConfig(t *testing.T) {
+	resetViper(t)
+	writeToolConfig(t, "optool", perOpConfig)
+
+	out, err := runCmd(t, "show", "--tool", "optool")
+	require.NoError(t, err)
+	assert.Regexp(t, `ALLOW\s+read\s+/srv/proj/\*\*`, out)
+	assert.Regexp(t, `DENY\s+write\|exec\s+/srv/proj/\*\*`, out)
+}

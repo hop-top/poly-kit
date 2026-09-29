@@ -36,6 +36,8 @@ if err := p.Enforce("/Users/me/Documents/report.md", scope.OpWrite); err != nil 
 - `init()` pre-populates `scope.Default()` with `SecretPaths()` denied, so linking the package hardens the binary.
 - [`scope-defaults.json`](scope-defaults.json) is the canonical polyglot deny list; the TS and Python ports load [`contracts/parity/scope-defaults.json`](../../../contracts/parity/scope-defaults.json).
 - `scope.yaml`: `/etc/xdg/<tool>/scope.yaml` read first, user config merged over it; per-user `mode` wins, rules append.
+- `scope.yaml` rule entries: a bare pattern covers every op; `{path: <pattern>, ops: [read|write|exec]}` covers only the listed ops. `tool:*` macros work in both. Unknown keys and op names are load errors.
+- A trailing `/**` matches the directory itself: `~/proj/**` covers `~/proj`; `~/proj/*` does not; a bare `~/proj` never covers its children.
 - `kit scope` exit codes: `0` allowed, `1` denied, `2` usage error.
 
 ## Neighbours

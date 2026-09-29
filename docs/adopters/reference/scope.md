@@ -95,6 +95,43 @@ read first, then the user config is merged on top. Per-user `mode` wins;
 rules from both files are appended, and deny-wins still applies at check
 time.
 
+### Per-operation rules
+
+A bare pattern applies to every op (read, write, exec). To give one path
+different verdicts per op, write the entry as a `{path, ops}` mapping:
+
+```yaml
+# ~/.config/<tool>/scope.yaml
+mode: strict
+allow:
+  - tool:data              # bare: all ops
+  - path: "~/proj/**"      # reads only (ls, cat)
+    ops: [read]
+deny:
+  - path: "~/proj/**"      # no writes or execs (rm, ./script)
+    ops: [write, exec]
+```
+
+- `path` is required and accepts the same patterns and `tool:*` macros as
+  a bare entry.
+- `ops` lists any of `read`, `write`, `exec` (case-insensitive). Omit it
+  for all ops; an empty list is an error.
+- Unknown keys are an error, so a typo such as `op:` can't silently widen
+  an allow rule to every op.
+- Deny-wins is per op: a matching deny for `write` doesn't affect `read`.
+  With no matching rule for an op the result is Unknown (denied in Strict).
+- Bare and mapping entries can be mixed in the same list.
+
+`kit scope check <path> --tool <tool> --op write` shows the verdict for one
+op; `kit scope show --tool <tool>` lists each rule with its `OPS`.
+
+### Matching a directory itself
+
+A trailing `/**` matches the directory as well as everything below it, so
+`allow ~/proj/**` also permits reading (listing) `~/proj`. `~/proj/*` does
+not match `~/proj`, and a bare `~/proj` matches only the directory, never
+its children.
+
 ## CLI introspection
 
 `kit scope show [--tool <name>]` prints the effective policy.

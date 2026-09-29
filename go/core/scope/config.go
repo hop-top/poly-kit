@@ -14,9 +14,94 @@ import (
 
 // configFile is the on-disk YAML schema for scope.yaml.
 type configFile struct {
-	Mode  string   `yaml:"mode"`  // strict | warn | prompt
-	Allow []string `yaml:"allow"` // patterns + macros
-	Deny  []string `yaml:"deny"`  // patterns + macros
+	Mode  string      `yaml:"mode"`  // strict | warn | prompt
+	Allow []ruleEntry `yaml:"allow"` // patterns + macros, optionally per-op
+	Deny  []ruleEntry `yaml:"deny"`  // patterns + macros, optionally per-op
+}
+
+// allOps is the op set a bare pattern (or a mapping without ops) covers.
+const allOps = Read | Write | Exec
+
+// ruleEntry is one allow/deny list item. Two YAML forms:
+//
+//	allow:
+//	  - "~/proj/**"            # bare pattern: all ops
+//	  - path: "~/proj/**"      # mapping: only the listed ops
+//	    ops: [read]
+//
+// In the mapping form, path is required; ops is optional (absent = all
+// ops) but, when present, must list at least one of read|write|exec.
+// Unknown keys are rejected so a typo (e.g. "op:") cannot silently widen
+// an allow rule to every op.
+type ruleEntry struct {
+	Path string
+	Ops  Op
+}
+
+// UnmarshalYAML accepts either a scalar pattern or a {path, ops} mapping.
+func (e *ruleEntry) UnmarshalYAML(n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		e.Ops = allOps
+		return n.Decode(&e.Path)
+	case yaml.MappingNode:
+		return e.decodeMapping(n)
+	default:
+		return fmt.Errorf("line %d: rule entry must be a pattern string or a {path, ops} mapping", n.Line)
+	}
+}
+
+func (e *ruleEntry) decodeMapping(n *yaml.Node) error {
+	hasOps := false
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		switch key := n.Content[i].Value; key {
+		case "path":
+		case "ops":
+			hasOps = true
+		default:
+			return fmt.Errorf("line %d: unknown key %q in rule entry (want path|ops)", n.Content[i].Line, key)
+		}
+	}
+	var raw struct {
+		Path string   `yaml:"path"`
+		Ops  []string `yaml:"ops"`
+	}
+	if err := n.Decode(&raw); err != nil {
+		return err
+	}
+	if strings.TrimSpace(raw.Path) == "" {
+		return fmt.Errorf("line %d: rule entry needs a non-empty path", n.Line)
+	}
+	e.Path = raw.Path
+	if !hasOps {
+		e.Ops = allOps
+		return nil
+	}
+	if len(raw.Ops) == 0 {
+		return fmt.Errorf("line %d: ops must list at least one of read|write|exec (omit ops for all)", n.Line)
+	}
+	for _, name := range raw.Ops {
+		op, err := parseOpName(name)
+		if err != nil {
+			return fmt.Errorf("line %d: %w", n.Line, err)
+		}
+		e.Ops |= op
+	}
+	return nil
+}
+
+// parseOpName maps a config op name (case-insensitive) to its Op bit.
+func parseOpName(s string) (Op, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "read":
+		return Read, nil
+	case "write":
+		return Write, nil
+	case "exec":
+		return Exec, nil
+	default:
+		return 0, fmt.Errorf("unknown op %q (want read|write|exec)", s)
+	}
 }
 
 // FromConfig reads ~/.config/<tool>/scope.yaml (or the platform equivalent
@@ -28,7 +113,22 @@ type configFile struct {
 // A missing file is not an error: callers get scope.New() (empty Strict
 // policy). A parse error or unrecognized mode IS an error.
 //
-// Macros expand at load time:
+// Each allow/deny item is either a bare pattern, covering every op, or a
+// {path, ops} mapping restricting the rule to the listed ops:
+//
+//	mode: strict
+//	allow:
+//	  - tool:data              # all ops
+//	  - path: "~/proj/**"      # read only
+//	    ops: [read]
+//	deny:
+//	  - path: "~/proj/**"
+//	    ops: [write, exec]
+//
+// Deny-wins applies per op: above, reads under ~/proj are allowed while
+// writes and execs are denied.
+//
+// Macros expand at load time, in both forms:
 //
 //	tool:config|data|cache|state|runtime|bin
 //
@@ -82,19 +182,33 @@ func mergeFile(p *Policy, path, tool string) error {
 		}
 		p.SetMode(mode)
 	}
-	if len(cfg.Allow) > 0 {
-		patterns, err := expandMacros(cfg.Allow, tool)
-		if err != nil {
-			return fmt.Errorf("scope: %s: %w", path, err)
-		}
-		p.Allow(patterns...)
+	if err := applyEntries(cfg.Allow, tool, p.AllowOp); err != nil {
+		return fmt.Errorf("scope: %s: %w", path, err)
 	}
-	if len(cfg.Deny) > 0 {
-		patterns, err := expandMacros(cfg.Deny, tool)
-		if err != nil {
-			return fmt.Errorf("scope: %s: %w", path, err)
+	if err := applyEntries(cfg.Deny, tool, p.DenyOp); err != nil {
+		return fmt.Errorf("scope: %s: %w", path, err)
+	}
+	return nil
+}
+
+// applyEntries groups entries by op set (first-appearance order), expands
+// macros, and registers one rule per group via add. A list of bare
+// patterns therefore still yields a single all-ops rule.
+func applyEntries(entries []ruleEntry, tool string, add func(Op, ...Pattern) *Policy) error {
+	var order []Op
+	groups := map[Op][]string{}
+	for _, e := range entries {
+		if _, seen := groups[e.Ops]; !seen {
+			order = append(order, e.Ops)
 		}
-		p.Deny(patterns...)
+		groups[e.Ops] = append(groups[e.Ops], e.Path)
+	}
+	for _, op := range order {
+		patterns, err := expandMacros(groups[op], tool)
+		if err != nil {
+			return err
+		}
+		add(op, patterns...)
 	}
 	return nil
 }
