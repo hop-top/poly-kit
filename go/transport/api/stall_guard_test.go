@@ -248,7 +248,7 @@ var refuse = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 
 // TestReleaseStalledOnShutdown_RefusalBeforeTheBody pins that a request
 // refused before its body is read, whose client then stalls mid-body,
-// gets its answer and a closed connection at once, rather than a
+// gets its answer and a closed connection promptly, rather than a
 // connection held while net/http drains the body for the read timeout;
 // stopping the server is prompt too.
 func TestReleaseStalledOnShutdown_RefusalBeforeTheBody(t *testing.T) {
@@ -273,25 +273,130 @@ func TestReleaseStalledOnShutdown_RefusalBeforeTheBody(t *testing.T) {
 	assert.Less(t, shutdownTook(t, srv), quick)
 }
 
-// TestReleaseStalledOnShutdown_RefusalClosesTheConnection pins that a
-// refused request whose body arrived whole is still answered with
-// Connection: close, and the next request gets a fresh connection
-// that works: closing replaces the drain, whatever the body's state.
-func TestReleaseStalledOnShutdown_RefusalClosesTheConnection(t *testing.T) {
+// TestReleaseStalledOnShutdown_RefusalKeepsAWholeBodysConnection pins
+// that a refused request whose body arrived whole is answered on a
+// connection that stays open: the body is consumed, as net/http would,
+// and only a body still on the wire closes the connection.
+func TestReleaseStalledOnShutdown_RefusalKeepsAWholeBodysConnection(t *testing.T) {
 	var conns atomic.Int32
 	addr, _ := stallServer(t, refuse, nil, func(_ net.Conn, st http.ConnState) {
 		if st == http.StateNew {
 			conns.Add(1)
 		}
 	})
-	client := &http.Client{}
+	client := &http.Client{Transport: &http.Transport{}}
+	defer client.CloseIdleConnections()
 	for range 3 {
 		resp, err := client.Post("http://"+addr+"/", "application/json", strings.NewReader(`{"small":"body"}`))
 		require.NoError(t, err)
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 		require.Equal(t, http.StatusForbidden, resp.StatusCode)
-		assert.True(t, resp.Close)
+		assert.False(t, resp.Close)
 	}
-	assert.Equal(t, int32(3), conns.Load(), "each refusal closed its connection")
+	assert.Equal(t, int32(1), conns.Load(), "one connection served every refusal")
+}
+
+// TestReleaseStalledOnShutdown_RefusalWaitsForABodyInFlight pins that a
+// refusal is not sent ahead of a body the client is sending: headers
+// flushed, then the body a moment later, as Go's transport sends a
+// body it cannot see the length of in memory. A client may stop
+// sending once it has its answer (connect-go's releases the request
+// buffer when the response headers arrive), and the server closing on
+// a body still arriving resets the connection, which on Linux can
+// discard the answer itself. So the answer waits for the body, and
+// the connection stays open after it.
+func TestReleaseStalledOnShutdown_RefusalWaitsForABodyInFlight(t *testing.T) {
+	addr, _ := stallServer(t, refuse, nil)
+	c, err := net.Dial("tcp", addr)
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+	require.NoError(t, c.SetDeadline(time.Now().Add(4*quick)))
+	br := bufio.NewReader(c)
+	answers := make(chan *http.Response, 2)
+	readAnswer := func() {
+		resp, err := http.ReadResponse(br, nil)
+		if err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+		}
+		answers <- resp
+	}
+
+	_, err = io.WriteString(c, "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 11\r\n\r\n")
+	require.NoError(t, err)
+	go readAnswer()
+	select {
+	case <-answers:
+		t.Fatal("the refusal went out ahead of the body the client was sending")
+	case <-time.After(100 * time.Millisecond):
+	}
+	_, err = io.WriteString(c, "hello world")
+	require.NoError(t, err)
+	resp := <-answers
+	require.NotNil(t, resp, "the refusal is answered once the body is in")
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.False(t, resp.Close, "the body was consumed; the connection stays open")
+
+	_, err = io.WriteString(c, "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\n\r\nagain")
+	require.NoError(t, err)
+	go readAnswer()
+	resp = <-answers
+	require.NotNil(t, resp, "the same connection serves the next request")
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+}
+
+// TestReleaseStalledOnShutdown_RefusalOfAnExpectContinueRequest pins
+// that a request sent with Expect: 100-continue, whose client sends
+// the body only when asked, is refused at once: no 100 Continue asks
+// for the body, and the connection closes after the answer.
+func TestReleaseStalledOnShutdown_RefusalOfAnExpectContinueRequest(t *testing.T) {
+	addr, _ := stallServer(t, refuse, nil)
+	c, err := net.Dial("tcp", addr)
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+	require.NoError(t, c.SetDeadline(time.Now().Add(quick)))
+	_, err = io.WriteString(c, "POST / HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\nContent-Length: 11\r\n\r\n")
+	require.NoError(t, err)
+
+	resp, err := http.ReadResponse(bufio.NewReader(c), nil)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "the refusal, not a request for the body")
+	assert.True(t, resp.Close)
+}
+
+// TestReleaseStalledOnShutdown_LeavesAFullDuplexBodyAlone pins that a
+// handler that enabled full duplex reads its own body after its
+// headers went out: the guard does not consume it.
+func TestReleaseStalledOnShutdown_LeavesAFullDuplexBodyAlone(t *testing.T) {
+	echo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rc := http.NewResponseController(w)
+		if err := rc.EnableFullDuplex(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = rc.Flush()
+		b, _ := io.ReadAll(r.Body)
+		_, _ = w.Write(b)
+	})
+	addr, _ := stallServer(t, echo, nil)
+	c, err := net.Dial("tcp", addr)
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+	require.NoError(t, c.SetDeadline(time.Now().Add(4*quick)))
+
+	_, err = io.WriteString(c, "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 11\r\n\r\n")
+	require.NoError(t, err)
+	br := bufio.NewReader(c)
+	resp, err := http.ReadResponse(br, nil)
+	require.NoError(t, err, "the headers go out before the body is sent")
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	_, err = io.WriteString(c, "hello world")
+	require.NoError(t, err)
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "hello world", string(b), "the handler read its whole body")
 }

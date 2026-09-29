@@ -3,6 +3,7 @@ package rpcserve_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -382,6 +383,54 @@ func TestRPCServiceAuthGatesUnaryAndStreamingCalls(t *testing.T) {
 	}
 	assert.Equal(t, 2*len(protocols), refusals, "every refused call is audited, streams included")
 	assert.Equal(t, 2*len(protocols), runs, "every run is audited with its verified caller")
+}
+
+// lateBody sends a request's headers, then its body after delay: what
+// Go's transport does with a body it cannot see the length of in
+// memory, from a client slow to hand it over.
+type lateBody struct {
+	base  http.RoundTripper
+	delay time.Duration
+}
+
+func (l lateBody) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.Body != nil && r.Body != http.NoBody {
+		r = r.Clone(r.Context())
+		r.Body = &delayedBody{ReadCloser: r.Body, delay: l.delay}
+	}
+	return l.base.RoundTrip(r)
+}
+
+type delayedBody struct {
+	io.ReadCloser
+	delay time.Duration
+	once  sync.Once
+}
+
+func (d *delayedBody) Read(p []byte) (int, error) {
+	d.once.Do(func() { time.Sleep(d.delay) })
+	return d.ReadCloser.Read(p)
+}
+
+// TestRPCServiceStreamRefusalKeepsItsCodeForALateBody pins that a
+// streaming call refused before its request message is read reaches a
+// client still sending that message with its own code. connect-go
+// releases a call's request buffer when the response headers arrive;
+// answered before the body is in, its transport fails the rest of the
+// request and drops the connection with the answer on it, and a gRPC
+// or gRPC-Web client reads InvalidArgument ("incomplete envelope")
+// where the server sent Unauthenticated.
+func TestRPCServiceStreamRefusalKeepsItsCodeForALateBody(t *testing.T) {
+	base := startDefault(t, rpcserve.Config{Auth: bearerAuth})
+	for _, p := range protocols {
+		t.Run(p.name, func(t *testing.T) {
+			hc := h2cClient()
+			hc.Transport = lateBody{base: hc.Transport, delay: 100 * time.Millisecond}
+			c := cmdsurfacev1connect.NewCommandsClient(hc, base, p.opts...)
+			_, _, err := streamAll(t.Context(), c, call("tick", nil))
+			assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err), "%v", err)
+		})
+	}
 }
 
 // TestRPCServiceIgnoresClaimedIdentity pins that the body's caller,

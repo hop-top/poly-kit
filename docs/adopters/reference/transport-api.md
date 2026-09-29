@@ -460,11 +460,15 @@ whole mcp endpoint are exempt this way; everything else keeps it.
 `Shutdown`: when it begins, a connection whose first request's headers
 never finished is closed, and a body read still waiting on the client
 is ended so its handler returns; a request whose body was read drains
-untouched. It also ends a connection whose handler returned with the
-body still on the wire — a refusal answered before the body — rather
-than letting `net/http` wait for the rest of the body for the read
-timeout. Call it once `srv` has its `Handler` and `ConnState`; the api,
-rpc and mcp services install it with their timeouts.
+untouched. It also bounds what an HTTP/1 answer given before its body
+was read — a refusal — waits for: a body the client is still sending
+gets up to half a second (and 256 KiB) to arrive, so the answer is not
+lost to a client that stops sending once answered, and the connection
+stays open when it does. A body still on the wire after that ends the
+connection after the answer, rather than `net/http` waiting for it for
+the read timeout. Call it once `srv` has its `Handler` and
+`ConnState`; the api, rpc and mcp services install it with their
+timeouts.
 
 The api, rpc and mcp services read their timeouts from the `timeouts`
 block, per key: the service's own key, then `services.all`, then the

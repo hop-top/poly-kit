@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,10 +33,19 @@ import (
 // its body to the end — a refusal answered before the body is read
 // (Host, Origin, body limit, authentication): net/http would read the
 // rest of the body before answering, to reuse the connection, and a
-// client stalled mid-body would hold it for the read timeout. Such a
-// response carries Connection: close instead, the rest of the body is
-// not waited for, and the connection ends after the response. HTTP/2
-// resets the stream and needs nothing.
+// client stalled mid-body would hold it for the read timeout. The
+// guard bounds that read instead: before the response goes out it
+// waits up to half a second, and reads up to 256 KiB, for a body the
+// client is still sending, and the connection stays open when the
+// body ends in time. A body that does not carries Connection: close,
+// the rest of it is not waited for, and the connection ends after the
+// response. The wait is what keeps the answer: a client may stop
+// sending once it has one, and a server that closes on a body still
+// arriving resets the connection, which can discard the answer before
+// the client reads it. A request sent with Expect: 100-continue is
+// answered at once (its client sends no body unless asked), and a
+// handler that enabled full duplex reads its own body. HTTP/2 resets
+// the stream and needs nothing.
 //
 // Call it once srv carries its Handler and ConnState, before it
 // serves. It wraps the Handler outermost, so the body read it can end
@@ -127,7 +137,7 @@ func (g *stallGuard) wrap(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		cw := &closeOnUnreadBody{ResponseWriter: w, body: b}
+		cw := &closeOnUnreadBody{ResponseWriter: w, body: b, awaitable: awaitable(r)}
 		next.ServeHTTP(cw, r)
 		cw.handlerReturned()
 	})
@@ -155,16 +165,44 @@ func (g *stallGuard) release() {
 	}
 }
 
-// closeOnUnreadBody marks a response Connection: close when its
-// headers go out before the request body was read to its end. net/http
-// would otherwise read the rest of the body before sending them, and
+// A response about to go out with its request body unread first waits
+// this long, reading at most this much, for the rest of a body the
+// client is still sending. The size is what net/http reads of an
+// unread body before answering; the wait bounds what it would wait.
+const (
+	unreadBodyWait = 500 * time.Millisecond
+	unreadBodyMax  = 256 << 10
+)
+
+// awaitable reports whether r's unread body is worth waiting for
+// before answering: not one its client sends only when asked
+// (Expect: 100-continue), nor one declared larger than is read.
+func awaitable(r *http.Request) bool {
+	if strings.EqualFold(r.Header.Get("Expect"), "100-continue") {
+		return false
+	}
+	return r.ContentLength <= unreadBodyMax
+}
+
+// closeOnUnreadBody bounds what a response waits for of its request
+// body. When its headers go out before the body was read to its end,
+// it reads the rest for up to [unreadBodyWait]; a body that has not
+// ended by then marks the response Connection: close. net/http would
+// otherwise read the rest of the body before sending the headers, and
 // again when it closes the body, for as long as the client takes.
 type closeOnUnreadBody struct {
 	http.ResponseWriter
 	body *watchedBody
+	// awaitable is whether the body is waited for (see [awaitable]);
+	// fullDuplex, set when the handler enabled full duplex, is that
+	// the handler reads the body itself after its headers.
+	awaitable, fullDuplex bool
 	// wrote is set once the headers are fixed; closing once they went
 	// out with Connection: close.
 	wrote, closing bool
+	// drained is closed when the read awaitBody started returns; nil
+	// when none was started.
+	drained chan struct{}
 }
 
 // headersGoOut runs before the response's headers are fixed.
@@ -173,22 +211,63 @@ func (c *closeOnUnreadBody) headersGoOut() {
 		return
 	}
 	c.wrote = true
-	if !c.body.done.Load() {
-		c.Header().Set("Connection", "close")
-		c.closing = true
+	if c.body.done.Load() {
+		return
 	}
+	if c.awaitable && !c.fullDuplex && c.awaitBody() {
+		return
+	}
+	c.Header().Set("Connection", "close")
+	c.closing = true
+}
+
+// awaitBody reads the rest of the body, discarding it, and reports
+// whether it ended within [unreadBodyWait]. The read runs on its own
+// goroutine so that one still waiting when the time is up goes on
+// without holding the response; handlerReturned ends it. It is not
+// bounded with a read deadline instead: a read that times out cancels
+// the request's context, and the handler is still answering.
+func (c *closeOnUnreadBody) awaitBody() bool {
+	c.drained = make(chan struct{})
+	go func() {
+		defer close(c.drained)
+		_, _ = io.CopyN(io.Discard, c.body, unreadBodyMax)
+	}()
+	t := time.NewTimer(unreadBodyWait)
+	defer t.Stop()
+	select {
+	case <-c.drained:
+	case <-t.C:
+	}
+	return c.body.done.Load()
 }
 
 // handlerReturned covers a handler that wrote nothing, then ends a
 // body still unread on a closing connection: net/http reads it to the
 // end when it closes the body, and a read deadline of now makes that
-// read return at once. The connection ends after this response, so
-// nothing reads it again.
+// read — and one awaitBody left running — return at once. The
+// connection ends after this response, so nothing reads it again.
 func (c *closeOnUnreadBody) handlerReturned() {
 	c.headersGoOut()
 	if c.closing && !c.body.done.Load() {
-		_ = c.body.rc.SetReadDeadline(time.Now())
+		if err := c.body.rc.SetReadDeadline(time.Now()); err != nil {
+			return
+		}
 	}
+	if c.drained != nil {
+		<-c.drained
+	}
+}
+
+// EnableFullDuplex records that the handler reads its body alongside
+// its response, so the body is left to it, and enables it on the
+// server's writer.
+func (c *closeOnUnreadBody) EnableFullDuplex() error {
+	if err := http.NewResponseController(c.ResponseWriter).EnableFullDuplex(); err != nil {
+		return err
+	}
+	c.fullDuplex = true
+	return nil
 }
 
 func (c *closeOnUnreadBody) WriteHeader(code int) {

@@ -336,14 +336,14 @@ var rpcCORS = cli.ServeCORS{
 
 // refuseRPC writes an HTTP-plane refusal as a Connect error in the
 // protocol the request speaks — Connect, gRPC or gRPC-Web — its
-// message led by the stable code, and ends the connection after it,
-// reading no more of the request. PermissionDenied for the Host and
+// message led by the stable code. PermissionDenied for the Host and
 // Origin checks, ResourceExhausted for the body limit
 // (serve-lifecycle.md §"Refusals"). The refusal is decided before
 // anything reads the body; the stall guard cli.ConfigureServeHTTP
-// installs ends the connection after it without waiting on the rest
-// (api.ReleaseStalledOnShutdown), so a client stalled mid-body does
-// not hold the stop.
+// installs gives a body still arriving a bounded wait before the
+// refusal goes out, and ends the connection after it when the body
+// has not ended (api.ReleaseStalledOnShutdown), so a client stalled
+// mid-body does not hold the stop.
 func refuseRPC(w http.ResponseWriter, r *http.Request, e *api.APIError) {
 	code := connect.CodePermissionDenied
 	if e.Status == http.StatusRequestEntityTooLarge {

@@ -2557,12 +2557,19 @@ Stopping a service ends what is in flight per transport:
   begins, a connection with no complete request is closed, and a body
   read still waiting on the client is ended, so its handler returns.
   A request whose body has been read is untouched.
-- Independently of stopping, a handler that returns with its body
-  unread — a refusal answered before the body, such as
-  `host_rejected` or `body_too_large` — MUST NOT leave the connection
-  waiting on the rest of the body for the read timeout: what has
-  already arrived is consumed, and a body still on the wire ends the
-  connection after the response (`Connection: close`).
+- Independently of stopping, an HTTP/1 answer given before its body
+  was read — a refusal such as `host_rejected`, `body_too_large` or an
+  authentication refusal — MUST NOT leave the connection waiting on
+  the rest of the body for the read timeout. Before the answer goes
+  out, a body the client is still sending gets a bounded wait (500 ms,
+  256 KiB) and is consumed; the connection stays open when the body
+  ends within it. A body still on the wire after the wait ends the
+  connection after the response (`Connection: close`). A request sent
+  with `Expect: 100-continue` is answered at once, without asking for
+  its body. The wait is what keeps the answer: a client may stop
+  sending once it has one (connect-go does), and a server that closes
+  on a body still arriving resets the connection, which can discard
+  the answer before the client reads it.
 
 ### Isolation between invocations
 
