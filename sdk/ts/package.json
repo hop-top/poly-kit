@@ -196,7 +196,7 @@
     "@modelcontextprotocol/server": "2.1.0",
     "better-sqlite3": "^12.11.1",
     "commander": "^15.0.0",
-    "csv-stringify": "^6.7.0",
+    "csv-stringify": "^6.9.0",
     "eta": "^4.6.0",
     "hono": "^4.13.10",
     "js-yaml": "^4.3.2",
