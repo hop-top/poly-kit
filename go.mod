@@ -30,7 +30,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.9.1
 	github.com/drone/go-scm v1.42.2
 	github.com/failsafe-go/failsafe-go v0.9.7
-	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/gofrs/flock v0.13.0
 	github.com/google/cel-go v0.25.0
