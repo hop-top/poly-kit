@@ -39,7 +39,7 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/klauspost/compress v1.20.1
 	github.com/lucasb-eyer/go-colorful v1.4.1
-	github.com/mattn/go-isatty v0.0.23
+	github.com/mattn/go-isatty v0.0.24
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/openai/openai-go v1.12.0
 	github.com/openbao/openbao/api/v2 v2.5.1
@@ -64,7 +64,7 @@ require (
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
-	hop.top/aim v0.1.0-alpha.0
+	hop.top/aim v0.1.0-alpha.5
 	hop.top/cite v0.1.1
 	hop.top/xrr v0.1.0-alpha.5
 	modernc.org/sqlite v1.48.2
