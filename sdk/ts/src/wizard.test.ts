@@ -16,7 +16,7 @@ import {
   resultBool,
   resultStrings,
   resultChoice,
-  type Step,
+  Step,
 } from "./wizard";
 
 // --- construction ---
@@ -39,11 +39,11 @@ describe("Wizard construction", () => {
   it("rejects empty key", () => {
     expect(
       () =>
-        new Wizard({
+        new Wizard(new Step({
           key: "",
           kind: StepKind.TextInput,
           label: "Name",
-        } as Step),
+        })),
     ).toThrow(/key must not be empty/i);
   });
 
@@ -56,23 +56,23 @@ describe("Wizard construction", () => {
   it("rejects action without fn", () => {
     expect(
       () =>
-        new Wizard({
+        new Wizard(new Step({
           key: "act",
           kind: StepKind.Action,
           label: "do",
-        } as Step),
+        })),
     ).toThrow(/actionFn/i);
   });
 
   it("rejects select without options", () => {
     expect(
       () =>
-        new Wizard({
+        new Wizard(new Step({
           key: "sel",
           kind: StepKind.Select,
           label: "pick",
           options: [],
-        } as Step),
+        })),
     ).toThrow(/options/i);
   });
 

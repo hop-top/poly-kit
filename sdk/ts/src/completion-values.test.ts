@@ -112,35 +112,35 @@ describe('prefixedCompleter', () => {
 });
 
 describe('configKeysCompleter', () => {
-  it('returns top-level keys', () => {
+  it('returns top-level keys', async () => {
     const c = configKeysCompleter({ name: 'x', version: '1', debug: true });
-    const items = c.complete('');
+    const items = await c.complete('');
     const values = items.map((i: CompletionItem) => i.value);
     expect(values).toContain('name');
     expect(values).toContain('version');
     expect(values).toContain('debug');
   });
 
-  it('returns nested keys with dot notation', () => {
+  it('returns nested keys with dot notation', async () => {
     const c = configKeysCompleter({ db: { host: 'localhost', port: 5432 } });
-    const items = c.complete('db.');
+    const items = await c.complete('db.');
     const values = items.map((i: CompletionItem) => i.value);
     expect(values).toContain('db.host');
     expect(values).toContain('db.port');
   });
 
-  it('filters by prefix', () => {
+  it('filters by prefix', async () => {
     const c = configKeysCompleter({ name: 'x', namespace: 'y', version: '1' });
-    const items = c.complete('na');
+    const items = await c.complete('na');
     const values = items.map((i: CompletionItem) => i.value);
     expect(values).toEqual(['name', 'namespace']);
   });
 });
 
 describe('fileCompleter', () => {
-  it('returns items with value field', () => {
+  it('returns items with value field', async () => {
     const c = fileCompleter('.ts', '.js');
-    const items = c.complete('');
+    const items = await c.complete('');
     // file completer returns a marker item for shell-level file completion
     expect(items.length).toBeGreaterThanOrEqual(1);
     expect(items[0]).toHaveProperty('value');
@@ -148,9 +148,9 @@ describe('fileCompleter', () => {
 });
 
 describe('dirCompleter', () => {
-  it('returns items with value field', () => {
+  it('returns items with value field', async () => {
     const c = dirCompleter();
-    const items = c.complete('');
+    const items = await c.complete('');
     expect(items.length).toBeGreaterThanOrEqual(1);
     expect(items[0]).toHaveProperty('value');
   });
