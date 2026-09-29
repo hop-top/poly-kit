@@ -18,8 +18,12 @@ from hop_top_kit.cli import NEON, Theme
 from hop_top_kit.tui import badge, status
 
 theme = Theme(
-    palette=NEON, accent="#7ED957", secondary="#FF00FF",
-    muted="#858183", error="#ED4A5E", success="#52CF84",
+    palette=NEON,
+    accent="#7ED957",
+    secondary="#FF00FF",
+    muted="#858183",
+    error="#ED4A5E",
+    success="#52CF84",
 )
 print(status(theme, "Deployed", "success"))
 print(badge(theme, "beta"))

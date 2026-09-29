@@ -16,15 +16,18 @@ How a command tree is served over the Model Context Protocol from one mount that
 ```python
 from hop_top_kit.mcp import Bridge, Command, Request, Result, mount_mcp
 
-root = Command(name="app", children=[
-    Command(
-        name="ping",
-        short="Ping the server",
-        run=lambda flags: Result(stdout="pong\n"),
-        annotations={"kit/side-effect": "read"},
-    ),
-])
-surface = mount_mcp(Bridge(root))   # an ASGI callable
+root = Command(
+    name="app",
+    children=[
+        Command(
+            name="ping",
+            short="Ping the server",
+            run=lambda flags: Result(stdout="pong\n"),
+            annotations={"kit/side-effect": "read"},
+        ),
+    ],
+)
+surface = mount_mcp(Bridge(root))  # an ASGI callable
 res = surface.handle(Request(body=b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}'))
 print(res.status, res.body)
 ```

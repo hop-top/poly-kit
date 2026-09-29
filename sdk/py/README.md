@@ -31,11 +31,14 @@ from hop_top_kit.output.formatter import ColumnSpec
 app = create_app(name="mytool", version="1.0.0", help="does things")
 register_output_flags(app)
 
+
 @app.command("list")
 def list_items(ctx: typer.Context) -> None:
     rows = [{"name": "alpha", "count": 1}, {"name": "beta", "count": 2}]
-    cols = [ColumnSpec(header="name", key="name", priority=9),
-            ColumnSpec(header="count", key="count", priority=7)]
+    cols = [
+        ColumnSpec(header="name", key="name", priority=9),
+        ColumnSpec(header="count", key="count", priority=7),
+    ]
     dispatch(ctx, rows, columns=cols)
 ```
 
@@ -56,11 +59,10 @@ mytool list -o out.csv      # extension infers the formatter
 | [`hop_top_kit/id/`](hop_top_kit/id/README.md) | TypeID primitive, cross-language | you mint or parse prefixed identifiers |
 | [`hop_top_kit/tui/`](hop_top_kit/tui/README.md) | TUI toolkit | you build an interactive terminal surface |
 
-Non-directory modules: `hop_top_kit.cli` (CLI factory),
-`hop_top_kit.serve` (serve hierarchy and service lifecycle, cross-language,
-see [the contract](../../docs/contracts/serve-lifecycle.md)),
-`hop_top_kit.uri` (facade over `hop-top-cite`), `hop_top_kit.safety`
-(the Factor 10 `--force` TTY check).
+Non-directory modules: `hop_top_kit.cli` (CLI factory), `hop_top_kit.serve`
+(serve hierarchy and service lifecycle, cross-language, see [the
+contract](../../docs/contracts/serve-lifecycle.md)), `hop_top_kit.uri` (facade
+over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check).
 
 ## Contract
 
@@ -72,9 +74,7 @@ see [the contract](../../docs/contracts/serve-lifecycle.md)),
 
 ## See also
 
-- [Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md):
-  the MCP mount, the URI facade, output formatting rules and worked
-  examples, custom formatters, the telemetry envelope
+- [Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md): the MCP mount, the URI facade, output formatting rules and worked examples, custom formatters, the telemetry envelope
 - [Python CLI API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-api-reference.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md)
 
 <!-- release: track hop-top-cite >=0.1.0 -->
