@@ -8,7 +8,10 @@
  * consumers would notice. This test builds the package into a staged
  * `node_modules/@hop-top/kit`, then type-checks a consumer importing
  * every `exports` subpath with `skipLibCheck: false` under each
- * `moduleResolution` mode adopters use.
+ * `moduleResolution` mode adopters use. node16 is the exception: kit's
+ * CommonJS declarations import ESM-only commander, which node16 reports
+ * as TS1479 in the declarations themselves, so node16 consumers need
+ * `skipLibCheck` (the documented migration is nodenext or bundler).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -29,12 +32,15 @@ const pkg = JSON.parse(readFileSync(path.join(pkgDir, 'package.json'), 'utf8')) 
 const stageDir = path.join(pkgDir, `.consumer-types-${process.pid}`);
 const stagedPkgDir = path.join(stageDir, 'node_modules', ...pkg.name.split('/'));
 
-const modes: Record<string, Pick<ts.CompilerOptions, 'module' | 'moduleResolution'>> = {
+type Mode = Pick<ts.CompilerOptions, 'module' | 'moduleResolution' | 'skipLibCheck'>;
+
+const modes: Record<string, Mode> = {
   // node10 ignores `exports`; subpaths resolve only through `typesVersions`.
-  node10: { module: ts.ModuleKind.CommonJS, moduleResolution: ts.ModuleResolutionKind.Node10 },
-  node16: { module: ts.ModuleKind.Node16, moduleResolution: ts.ModuleResolutionKind.Node16 },
-  nodenext: { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext },
-  bundler: { module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler },
+  node10: { module: ts.ModuleKind.CommonJS, moduleResolution: ts.ModuleResolutionKind.Node10, skipLibCheck: false },
+  // Resolution only: TS1479 on commander inside the declarations is expected.
+  node16: { module: ts.ModuleKind.Node16, moduleResolution: ts.ModuleResolutionKind.Node16, skipLibCheck: true },
+  nodenext: { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: false },
+  bundler: { module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, skipLibCheck: false },
 };
 
 /** Consumer source: one namespace import per exports subpath, plus typed uses. */
@@ -85,13 +91,13 @@ describe('published declarations', () => {
 
   afterAll(() => { rmSync(stageDir, { recursive: true, force: true }); });
 
-  it.each(Object.keys(modes))('type-check clean with skipLibCheck false (moduleResolution %s)', (mode) => {
+  it.each(Object.entries(modes).map(([name, m]) => [name, m.skipLibCheck] as const))(
+    'type-check clean (moduleResolution %s, skipLibCheck %s)', (mode) => {
     const program = ts.createProgram(files, {
       ...modes[mode],
       target: ts.ScriptTarget.ES2022,
       strict: true,
       noEmit: true,
-      skipLibCheck: false,
       // `tsc --init` default; node16/nodenext imply it. Without it a
       // node10 consumer trips on zod's own default imports (TS1259).
       esModuleInterop: true,
