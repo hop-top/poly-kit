@@ -116,6 +116,33 @@ contract:
   suppressible through `disable`.
 - `showHelpAfterError` enabled.
 
+### verboseCount and isQuiet
+
+```ts
+function verboseCount(cmd: Command): number
+function isQuiet(cmd: Command): boolean
+```
+
+Call these from an action handler, passing the command (`this` in a
+`function` action). Both walk up to the root, so a subcommand reads the
+root's flags. A `preAction` hook on the root stores them.
+
+- `verboseCount` is the stacked `-V` count. 0 before parsing.
+- `isQuiet` reports `--quiet`. False before parsing and with
+  `disable.quiet`.
+- `--quiet` and `-V` combine without error; `--quiet` wins:
+  `verboseCount` reads 0, and a logger built with `quiet: isQuiet(cmd)`
+  runs at the parity contract's `verbosity.quiet_override` (warn).
+
+```ts
+import { isQuiet, verboseCount } from '@hop-top/kit/cli';
+
+program.command('sync').action(function (this: Command) {
+  if (verboseCount(this) > 0) process.stderr.write('resolving packages\n');
+  if (!isQuiet(this)) process.stderr.write('fetching 3 packages…\n');
+});
+```
+
 ### Command groups
 
 #### Declaring groups
