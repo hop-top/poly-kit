@@ -1,0 +1,59 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
+
+  - package-ecosystem: gomod
+    directory: "/extensions/mcp-tasks"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
+
+  - package-ecosystem: gomod
+    directory: "/incubator/qmochi"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
+
+  # pnpm workspace: the root lockfile covers sdk/ts, engine/sdk/ts-kit-engine
+  # and the examples.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
+
+  - package-ecosystem: uv
+    directory: "/sdk/py"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
+
+  - package-ecosystem: uv
+    directory: "/engine/sdk/py-kit-engine"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
+
+  - package-ecosystem: cargo
+    directory: "/sdk/experimental/rs"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
+
+  - package-ecosystem: composer
+    directory: "/sdk/experimental/php"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps):"
