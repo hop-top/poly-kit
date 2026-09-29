@@ -11,7 +11,7 @@ require (
 	connectrpc.com/connect v1.19.1
 	filippo.io/age v1.3.1
 	github.com/BurntSushi/toml v1.6.0
-	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/adrg/xdg v0.5.3
 	github.com/anthropics/anthropic-sdk-go v1.35.1
 	github.com/apple/pkl-go v0.14.0
