@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-import click
 import typer
 
 sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__file__), "../../../../sdk/py"))
@@ -63,6 +62,7 @@ def _tag_callback(ctx: typer.Context, param: typer.CallbackParam, value: tuple) 
 
 @app.command("launch")
 def launch(
+    ctx: typer.Context,
     mission: str = typer.Argument(
         ..., help="Mission name",
         shell_complete=to_click_shell_complete(
@@ -87,13 +87,16 @@ def launch(
 ) -> None:
     """Initiate launch sequence for a mission."""
     global log
+    # Root --quiet, read through the context typer passes in: typer>=0.26
+    # runs on its vendored Click, so the click package's context stack is
+    # empty here.
     quiet = False
-    click_ctx = click.get_current_context(silent=True)
-    while click_ctx:
-        if "quiet" in click_ctx.params:
-            quiet = bool(click_ctx.params["quiet"])
+    node: typer.Context | None = ctx
+    while node is not None:
+        if "quiet" in node.params:
+            quiet = bool(node.params["quiet"])
             break
-        click_ctx = click_ctx.parent
+        node = node.parent
     log = create_logger(quiet=quiet)
 
     if _bus is not None:
