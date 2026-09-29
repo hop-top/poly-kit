@@ -72,7 +72,7 @@ require (
 
 require (
 	connectrpc.com/cors v0.1.0
-	connectrpc.com/otelconnect v0.9.0
+	connectrpc.com/otelconnect v0.10.0
 	github.com/hop-top/fang/v2 v2.0.2-hop.1
 	github.com/rs/cors v1.11.1
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.46.0
