@@ -79,7 +79,7 @@ serde = { version = "1", features = ["derive"], optional = true }
 # rather than alphabetically. indexmap is already in the tree via serde_yaml.
 serde_json = { version = "1", features = ["preserve_order"], optional = true }
 serde_yaml = { version = "0.9", optional = true }
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.11", optional = true }
 # `default-features = false` drops the std/simd defaults: the envelope
 # codec needs only the standard alphabet, and `alloc` is what supplies
 # encode/decode to owned buffers.
