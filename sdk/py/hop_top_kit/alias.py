@@ -17,9 +17,17 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from typing import Any, Protocol
 
-import click
 import yaml
+
+
+class _CommandGroup(Protocol):
+    """A Click or typer group: anything with Click's lookup hooks."""
+
+    def get_command(self, ctx: Any, cmd_name: str) -> Any: ...
+
+    def list_commands(self, ctx: Any) -> list[str]: ...
 
 
 @dataclass
@@ -121,8 +129,8 @@ def save_to(path: str, aliases: dict[str, str]) -> None:
         yaml.dump(existing, f, default_flow_style=False)
 
 
-def bridge_to_click(group: click.Group, store_path: str) -> None:
-    """Patch a Click group's get_command to resolve aliases.
+def bridge_to_click(group: _CommandGroup, store_path: str) -> None:
+    """Patch a Click or typer group's get_command to resolve aliases.
 
     Uses Click's AliasedGroup pattern: overrides get_command() so
     aliases resolve natively, and list_commands() so aliases appear
@@ -139,9 +147,9 @@ def bridge_to_click(group: click.Group, store_path: str) -> None:
     original_list_commands = group.list_commands
 
     def get_command_with_aliases(
-        ctx: click.Context,
+        ctx: Any,
         cmd_name: str,
-    ) -> click.Command | None:
+    ) -> Any:
         # real command takes precedence
         rv = original_get_command(ctx, cmd_name)
         if rv is not None:
@@ -152,7 +160,7 @@ def bridge_to_click(group: click.Group, store_path: str) -> None:
         parts = target.split()
         return original_get_command(ctx, parts[0])
 
-    def list_commands_with_aliases(ctx: click.Context) -> list[str]:
+    def list_commands_with_aliases(ctx: Any) -> list[str]:
         cmds = original_list_commands(ctx)
         return sorted(set(cmds) | set(aliases.keys()))
 

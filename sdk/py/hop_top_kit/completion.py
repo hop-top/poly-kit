@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from click.shell_completion import CompletionItem as ClickCompletionItem
+from ._click_compat import completion_item
 
 
 @dataclass
@@ -178,13 +178,15 @@ def to_click_shell_complete(
     """Bridge a Completer to Click's ``shell_complete`` callback.
 
     Returns a callable with signature
-    ``(ctx, param, incomplete) -> list[click.shell_completion.CompletionItem]``
+    ``(ctx, param, incomplete) -> list[CompletionItem]``
     suitable for passing to Click's ``Option(shell_complete=...)``
-    or ``Argument(shell_complete=...)``.
+    or ``Argument(shell_complete=...)``. Items are built for the Click
+    layer driving ``ctx``: the ``click`` package's ``CompletionItem`` under
+    Click (and typer<0.26), typer's vendored one under typer>=0.26.
     """
 
-    def _bridge(ctx, param, incomplete: str) -> list[ClickCompletionItem]:
+    def _bridge(ctx, param, incomplete: str) -> list:
         items = completer.complete(incomplete)
-        return [ClickCompletionItem(i.value, help=i.description or None) for i in items]
+        return [completion_item(ctx, i.value, help=i.description or None) for i in items]
 
     return _bridge
