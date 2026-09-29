@@ -91,6 +91,13 @@ release-please machinery pointed at different branches.
    `ecosystems` entry in `publish.yml`, and dispatches to the per-language
    publish + mirror reusable workflows (`publish-ts.yml`, `publish-py.yml`,
    `publish-rs.yml`, `mirror-subtree.yml`).
+6. On a `kit/v*` tag the same file's `goreleaser` job runs
+   [`goreleaser-on-tag.yml@v0`](https://github.com/hop-top/.github/blob/main/.github/workflows/goreleaser-on-tag.yml)
+   with the root `.goreleaser.yaml`: it builds `./cmd/kit` for
+   linux/darwin/windows × amd64/arm64 and uploads
+   `kit_<os>_<arch>.tar.gz` (`.zip` on windows) and `checksums.txt` to the
+   `kit/v<version>` release. The engine SDKs download from there, see
+   [The engine SDKs' kit pin](#the-engine-sdks-kit-pin).
 
 ### Branch-aware release-please
 
@@ -213,6 +220,23 @@ nightly) fails when more than one version on
 the proxy, not local tags: the proxy is what a generated project's
 `go get` resolves against. `go test ./cmd/kit/init/` holds the pin equal
 to the manifest's `kit` version.
+
+### The engine SDKs' kit pin
+
+The engine SDKs run `kit serve` and fetch a `kit` binary when no
+compatible one (same major.minor) is on PATH: `find_kit_binary()` in
+`engine/sdk/py-kit-engine/kit_engine/_binary.py`, and the npm
+postinstall `engine/sdk/ts-kit-engine/scripts/install.js`. Both download
+`https://github.com/hop-top/poly-kit/releases/download/kit/v<version>/kit_<os>_<arch>.<tar.gz|zip>`
+and refuse to install it unless its SHA-256 matches that release's
+`checksums.txt`. Keep those names stable in `.goreleaser.yaml`.
+
+`<version>` is `VERSION` in `_binary.py` (marked
+`x-release-please-version`, a generic extra-file) and `kit.version` in
+the ts package's `package.json` (a json extra-file at `$.kit.version`),
+both on the root package, so each `kit` release PR sets them to the
+version it cuts. Each SDK's tests hold its pin equal to the manifest's
+`kit` version and to that wiring.
 
 ## Bump policy
 

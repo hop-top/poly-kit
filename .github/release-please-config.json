@@ -86,6 +86,15 @@
         {
           "type": "generic",
           "path": "internal/template/builtins/cli-go/kit-template.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "engine/sdk/py-kit-engine/kit_engine/_binary.py"
+        },
+        {
+          "type": "json",
+          "path": "engine/sdk/ts-kit-engine/package.json",
+          "jsonpath": "$.kit.version"
         }
       ],
       "prerelease": true,

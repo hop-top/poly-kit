@@ -1081,7 +1081,9 @@ See `templates/reserve-packages.sh` for implementation.
 
 ### Go
 
-- goreleaser builds binaries + creates GitHub Release
+- goreleaser (`.goreleaser.yaml`, the `goreleaser` job in
+  `publish.yml`) attaches the `kit` binary archives + `checksums.txt`
+  to the `kit/v<version>` GitHub Release that release-please creates
 - Module available via `go get hop.top/kit@v<version>`
 - No registry registration needed
   (proxy.golang.org auto-indexes)

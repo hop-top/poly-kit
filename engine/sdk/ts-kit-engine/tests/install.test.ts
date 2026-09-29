@@ -270,6 +270,64 @@ describe("run and KIT_INSTALL_OPTIONAL", () => {
   });
 });
 
+// --- release location --------------------------------------------------------
+
+// kit releases are tagged `kit/v<version>` on hop-top/poly-kit, and that
+// release carries the archives + checksums.txt (.goreleaser.yaml).
+const RELEASE = "https://github.com/hop-top/poly-kit/releases/download/kit/v0.5.0-alpha.16";
+const REPO_ROOT = join(__dirname, "..", "..", "..", "..");
+const PKG = JSON.parse(fs.readFileSync(join(__dirname, "..", "package.json"), "utf8"));
+
+describe("release location", () => {
+  it("downloads the archive from the kit component release", async () => {
+    const archive = goodArchive();
+    const h = harness(archive, `${sha256(archive)}  ${ARCHIVE}\n`);
+    const urls: string[] = [];
+    const download = h.deps.downloadFile;
+    h.deps.downloadFile = async (url: string, dest: string) => {
+      urls.push(url);
+      await download(url, dest);
+    };
+    await install.install({ ...h, version: "v0.5.0-alpha.16" });
+    expect(urls).toEqual([`${RELEASE}/${ARCHIVE}`]);
+  });
+
+  it("reads checksums.txt from the same release", async () => {
+    const get = fakeGet(200, "");
+    await install.fetchChecksums("0.5.0-alpha.16");
+    expect(get.mock.calls[0][0]).toBe(`${RELEASE}/checksums.txt`);
+  });
+
+  it("pins the kit release the manifest carries, bumped by the release PR", () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(join(REPO_ROOT, ".github", ".release-please-manifest.json"), "utf8"),
+    );
+    expect(PKG.kit.version).toBe(manifest["."]);
+
+    const config = JSON.parse(
+      fs.readFileSync(join(REPO_ROOT, ".github", "release-please-config.json"), "utf8"),
+    );
+    expect(config.packages["."]["extra-files"]).toContainEqual({
+      type: "json",
+      path: "engine/sdk/ts-kit-engine/package.json",
+      jsonpath: "$.kit.version",
+    });
+  });
+});
+
+describe("compatible", () => {
+  it.each(["kit v1.2.9\n", "kit v1.2.0-alpha.3", "kit version 1.2.9", "v1.2.9", "1.2.9"])(
+    "reads the version off `kit --version` output %j",
+    (out) => {
+      expect(install.compatible(out, "1.2.3")).toBe(true);
+    },
+  );
+
+  it.each(["kit v1.3.0", "kit v2.2.3", "", "\n"])("rejects %j", (out) => {
+    expect(install.compatible(out, "1.2.3")).toBe(false);
+  });
+});
+
 // --- extraction --------------------------------------------------------------
 
 describe("extractBinary", () => {

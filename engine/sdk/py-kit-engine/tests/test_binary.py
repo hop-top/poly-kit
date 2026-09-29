@@ -66,6 +66,7 @@ class _Env:
         self.archive = _tar_gz({"kit": BINARY})
         self.checksums: bytes | Exception = f"{_sha256(self.archive)}  {ARCHIVE}\n".encode()
         self.extracted = False
+        self.urls: list[str] = []
 
         monkeypatch.setattr(_binary.shutil, "which", lambda _name: None)
         monkeypatch.setattr(_binary, "_bin_dir", lambda: self.bin_dir)
@@ -84,12 +85,14 @@ class _Env:
 
     def _urlopen(self, url, timeout=None):
         assert url.endswith("/checksums.txt"), url
+        self.urls.append(url)
         if isinstance(self.checksums, Exception):
             raise self.checksums
         return io.BytesIO(self.checksums)
 
     def _download(self, url, dest):
         assert url.endswith("/" + ARCHIVE), url
+        self.urls.append(url)
         Path(dest).write_bytes(self.archive)
 
     @property
@@ -106,6 +109,14 @@ def test_installs_verified_archive(env):
     path = _binary.find_kit_binary("1.2.3")
     assert Path(path) == env.installed
     assert env.installed.read_bytes() == BINARY
+
+
+def test_downloads_from_the_kit_component_release(env):
+    # kit releases are tagged `kit/v<version>` on hop-top/poly-kit, and that
+    # release carries the archives + checksums.txt (.goreleaser.yaml).
+    _binary.find_kit_binary("v0.5.0-alpha.16")
+    base = "https://github.com/hop-top/poly-kit/releases/download/kit/v0.5.0-alpha.16"
+    assert sorted(env.urls) == [f"{base}/checksums.txt", f"{base}/{ARCHIVE}"]
 
 
 def test_checksum_line_with_path_prefix_matches_basename(env):
@@ -299,6 +310,21 @@ def probe(env, monkeypatch):
 
 def test_probe_returns_compatible_path_binary(probe):
     assert _binary.find_kit_binary("1.2.3") == "/opt/kit"
+
+
+@pytest.mark.parametrize(
+    "output",
+    ["kit v1.2.9\n", "kit v1.2.0-alpha.3\n", "kit version 1.2.9\n", "1.2.9\n"],
+)
+def test_probe_reads_the_version_kit_prints(probe, output):
+    # `kit --version` prints `kit v<version>`.
+    probe["result"] = output
+    assert _binary.find_kit_binary("1.2.3") == "/opt/kit"
+
+
+def test_probe_empty_output_falls_through(probe, env):
+    probe["result"] = "\n"
+    assert Path(_binary.find_kit_binary("1.2.3")) == env.installed
 
 
 @pytest.mark.parametrize(
