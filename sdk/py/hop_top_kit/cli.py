@@ -17,6 +17,7 @@ This module exposes the following public symbols:
     register_stream   — register a named output stream on a command
     channel           — get a writer for a named stream
     verbose_count     — get the current verbosity count from context
+    is_quiet          — report whether --quiet is in effect
     is_offline        — report whether --offline is in effect
 
 Contract accessors — pure in the parity data they are given, so tests can
@@ -103,7 +104,7 @@ def set_command_group(name: str, group_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Verbose count accessor (contextvars for request-scoped safety)
+# Verbose count + quiet accessors (contextvars for request-scoped safety)
 # ---------------------------------------------------------------------------
 
 _verbose_count: contextvars.ContextVar[int] = contextvars.ContextVar(
@@ -122,6 +123,17 @@ def verbose_count() -> int:
     Count-to-level mapping is the contract's; see ``verbosity.levels``.
     """
     return _verbose_count.get()
+
+
+def is_quiet() -> bool:
+    """Report whether ``--quiet`` is in effect for this invocation.
+
+    ``--quiet`` wins over ``-V``: when set, :func:`verbose_count` reads 0 and
+    the logger level is the contract's ``verbosity.quiet_override``. False
+    before the root callback runs and when ``Disable(quiet=True)`` drops the
+    flag.
+    """
+    return _quiet_flag.get()
 
 
 def is_offline() -> bool:
