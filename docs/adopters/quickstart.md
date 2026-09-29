@@ -12,7 +12,7 @@ LLM harnesses) can consume.
 
 - Go 1.26 or newer (compatibility floor — see `go.mod`).
 - `git`, `gh` CLI on `PATH`.
-- Optional: Node 22+ and Python 3.13+ if you plan to mirror the CLI in
+- Optional: Node 22.12+ and Python 3.13+ if you plan to mirror the CLI in
   TS or Python.
 
 ## Step 1: scaffold a new kit binary

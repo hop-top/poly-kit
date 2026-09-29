@@ -53,7 +53,7 @@ body:
     attributes:
       label: Language toolchain
       description: Only for SDK or build reports.
-      placeholder: go1.26.1 / node 22.11 / python 3.11.9 / rustc 1.83 / php 8.3
+      placeholder: go1.26.1 / node 22.12 / python 3.11.9 / rustc 1.83 / php 8.3
   - type: input
     id: os
     attributes:

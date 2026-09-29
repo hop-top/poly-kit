@@ -14,7 +14,7 @@ global flags, themed output.
 | Language   | Install                          | Min version |
 |------------|----------------------------------|-------------|
 | Go         | `go get hop.top/kit@latest`      | Go 1.26 (via `go.mod`) |
-| TypeScript | `pnpm add @hop-top/kit`          | Node 20+    |
+| TypeScript | `pnpm add @hop-top/kit`          | Node 22.12+ |
 | Python     | `pip install hop-top-kit`        | Python 3.11+ |
 
 ## Go

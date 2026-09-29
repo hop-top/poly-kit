@@ -157,7 +157,7 @@
     "@modelcontextprotocol/core": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
     "better-sqlite3": "^12.8.0",
-    "commander": "^14.0.3",
+    "commander": "^15.0.0",
     "csv-stringify": "^6.7.0",
     "eta": "^4.6.0",
     "hono": "^4.12.10",
@@ -182,7 +182,7 @@
     "vitest": "^1"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   },
   "license": "MIT"
 }
