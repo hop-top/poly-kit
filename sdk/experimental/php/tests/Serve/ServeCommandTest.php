@@ -59,7 +59,7 @@ final class ServeCommandTest extends TestCase
             policy: $policy,
             logger: new RecordingLogger(),
         );
-        $app->add($cmd);
+        $app->addCommand($cmd);
 
         return [new CommandTester($cmd), $cmd];
     }

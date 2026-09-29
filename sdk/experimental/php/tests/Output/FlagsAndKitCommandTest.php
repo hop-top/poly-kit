@@ -42,7 +42,7 @@ class FlagsAndKitCommandTest extends TestCase
                 return self::SUCCESS;
             }
         };
-        $app->add($cmd);
+        $app->addCommand($cmd);
 
         $tester = new CommandTester($cmd);
         $tester->execute(['--format' => 'json']);
@@ -75,7 +75,7 @@ class FlagsAndKitCommandTest extends TestCase
                 return self::SUCCESS;
             }
         };
-        $app->add($cmd);
+        $app->addCommand($cmd);
 
         $tester = new CommandTester($cmd);
         $tester->execute(['--format' => 'json']);

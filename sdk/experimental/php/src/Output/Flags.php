@@ -40,7 +40,7 @@ final class Flags
 
         // Hidden no-op command serves as the idempotency sentinel — cheaper
         // than reflection and survives getApplication() round-trips.
-        $app->add(self::buildSentinel());
+        $app->addCommand(self::buildSentinel());
 
         // Inject into the Application's default definition so every
         // Command gets the flags via mergeApplicationDefinition() at
