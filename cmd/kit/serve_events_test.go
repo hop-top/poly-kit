@@ -183,8 +183,29 @@ func TestRegisterDocumentRoutes_EmitsUpdated(t *testing.T) {
 // whose payload.seq increments monotonically (2, then 3) and whose
 // version_id is non-empty per event. The created event itself uses
 // seq=1; updates pick up from there.
+//
+// Events are recorded by a sync subscriber: it runs inside Publish,
+// which the PUT handler calls before answering, so recording order is
+// request order. The async recorder from newTestEngine runs each
+// delivery on its own goroutine and can record them in either order.
 func TestRegisterDocumentRoutes_UpdateSeqMonotonic(t *testing.T) {
-	router, _, b, events := newTestEngine(t)
+	router, _, b, _ := newTestEngine(t)
+
+	var (
+		mu      sync.Mutex
+		updates []DocumentEventPayload
+	)
+	b.Subscribe(string(TopicDocumentUpdated), func(_ context.Context, e bus.Event) error {
+		p, ok := e.Payload.(DocumentEventPayload)
+		if !ok {
+			t.Errorf("updated payload type = %T, want DocumentEventPayload", e.Payload)
+			return nil
+		}
+		mu.Lock()
+		updates = append(updates, p)
+		mu.Unlock()
+		return nil
+	})
 
 	srv := httptest.NewServer(router)
 	defer srv.Close()
@@ -215,22 +236,18 @@ func TestRegisterDocumentRoutes_UpdateSeqMonotonic(t *testing.T) {
 		t.Fatalf("bus close: %v", err)
 	}
 
-	var updates []captured
-	for _, e := range events() {
-		if e.topic == TopicDocumentUpdated {
-			updates = append(updates, e)
-		}
-	}
+	mu.Lock()
+	defer mu.Unlock()
 	if len(updates) != 2 {
 		t.Fatalf("got %d updated events, want 2: %+v", len(updates), updates)
 	}
 	wantSeq := []int{2, 3}
 	for i, u := range updates {
-		if u.payload.Seq != wantSeq[i] {
-			t.Errorf("updates[%d].seq = %d, want %d", i, u.payload.Seq, wantSeq[i])
+		if u.Seq != wantSeq[i] {
+			t.Errorf("updates[%d].seq = %d, want %d", i, u.Seq, wantSeq[i])
 		}
-		if u.payload.VersionID == "" {
-			t.Errorf("updates[%d] missing version_id: %+v", i, u.payload)
+		if u.VersionID == "" {
+			t.Errorf("updates[%d] missing version_id: %+v", i, u)
 		}
 	}
 }
