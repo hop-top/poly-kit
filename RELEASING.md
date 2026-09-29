@@ -79,8 +79,9 @@ release-please machinery pointed at different branches.
    the bot's branch: it rewrites changelog prose, then regenerates `uv.lock` and
    `composer.lock` when release-please bumped `pyproject.toml` or
    `composer.json` (the lock checks would otherwise fail on the release PR and
-   on every PR cut after it merges). The lockfile commit is pushed with the
-   release-bot app token so CI reruns on the synced branch. `Cargo.lock` needs
+   on every PR cut after it merges). Both commits are pushed with the
+   release-bot app token so CI runs on the new head; runs started by a
+   `GITHUB_TOKEN` push wait for maintainer approval instead. `Cargo.lock` needs
    nothing: release-please rewrites it itself.
 4. Merging the release PR creates GitHub releases + tags.
 5. `.github/workflows/publish.yml` fires on any `*/v*` tag (regardless of

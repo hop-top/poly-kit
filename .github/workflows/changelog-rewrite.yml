@@ -1,33 +1,49 @@
 name: Changelog Rewrite
 
 # Post-processing for release-please PRs, run in order on the bot's branch:
-#   rewrite   — rewrite changelog prose (pushes with GITHUB_TOKEN; no CI rerun)
+#   rewrite   — rewrite changelog prose
 #   lockfiles — regenerate uv.lock / composer.lock when release-please bumped
-#               pyproject.toml / composer.json; pushes with the release-bot app
-#               token so CI reruns and the lock checks see the synced files.
-# release-please rewrites its branch on every run; both jobs converge again on
-# the next `synchronize` event and commit nothing when there is nothing to do.
+#               pyproject.toml / composer.json
+# Both push with the release-bot app token, so CI runs on the new head. A push
+# made with GITHUB_TOKEN starts runs as github-actions[bot], which wait for
+# maintainer approval (`action_required`) and leave the head without CI.
+#
+# Each push fires `synchronize` and a new run of this workflow. That run
+# commits nothing: the rewrite marker makes `rewrite` a no-op, and `lockfiles`
+# finds the locks in sync. The concurrency group cancels the older run, so the
+# two runs never push `lockfiles` commits from the same head. release-please
+# rewrites its branch on every run and the cycle starts fresh from there.
 
 on:
   pull_request:
     branches: [main, next]
     types: [opened, synchronize, reopened, ready_for_review]
 
+concurrency:
+  group: changelog-rewrite-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   rewrite:
     if: startsWith(github.head_ref, 'release-please--')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       pull-requests: read
     steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - uses: actions/checkout@v7
-        # persist-credentials intentionally left on: the commit step below
-        # pushes back to the PR branch using the checkout credential.
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
+          # persist-credentials intentionally left on: the commit step below
+          # pushes with the app token so the resulting commit runs CI.
 
       - name: Detect modified changelogs
         id: detect
@@ -75,9 +91,9 @@ jobs:
       - name: Commit rewritten changelogs
         if: steps.detect.outputs.found == 'true'
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name "hop-top-release-bot[bot]"
           git config user.email \
-            "github-actions[bot]@users.noreply.github.com"
+            "285210535+hop-top-release-bot[bot]@users.noreply.github.com"
 
           if git diff --quiet -- ':(glob)**/CHANGELOG.md'; then
             echo "No changes after rewrite (already processed)"

@@ -77,6 +77,31 @@ run_step() {
     [ -n "$(step_script 'Commit rewritten changelogs')" ]
 }
 
+# job_block <job id>: print the job's lines, up to the next top-level job.
+job_block() {
+    awk -v id="$1" '
+        $0 ~ "^  " id ":$" { in_job = 1; print; next }
+        in_job && /^  [A-Za-z0-9_-]+:$/ { exit }
+        in_job { print }
+    ' "$WORKFLOW"
+}
+
+# A GITHUB_TOKEN push starts runs as github-actions[bot] that wait for
+# approval, so the release PR head would get no CI.
+@test "rewrite job checks out and pushes with the release-bot app token" {
+    local job
+    job="$(job_block rewrite)"
+    [ -n "$job" ]
+    grep -qF 'uses: actions/create-github-app-token@' <<<"$job"
+    grep -qF 'token: ${{ steps.app-token.outputs.token }}' <<<"$job"
+    ! grep -qF 'token: ${{ secrets.GITHUB_TOKEN }}' <<<"$job" || false
+}
+
+@test "a newer run cancels the older one on the same branch" {
+    grep -qxF '  group: changelog-rewrite-${{ github.head_ref || github.run_id }}' "$WORKFLOW"
+    grep -qxF '  cancel-in-progress: true' "$WORKFLOW"
+}
+
 @test "detect: root CHANGELOG.md alone is found" {
     commit_edit CHANGELOG.md
     run_step 'Detect modified changelogs'
