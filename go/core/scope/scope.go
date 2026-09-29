@@ -19,6 +19,14 @@
 // Patterns use bmatcuk/doublestar/v4 syntax. Symlinks are resolved at Check
 // time to defeat ~/foo -> /etc/passwd style escapes; ENOENT paths are matched
 // as-is so "intent to write" still triggers rules.
+//
+// Directory patterns: a trailing "/**" also matches the directory itself, so
+// "~/proj/**" covers ~/proj (e.g. listing it) as well as everything below.
+// "~/proj/*" does not match ~/proj, and a bare "~/proj" matches only ~/proj,
+// never its children.
+//
+// Rules are per-op: AllowOp/DenyOp in code, or {path, ops} entries in
+// scope.yaml (see FromConfig), so one path can be readable but not writable.
 package scope
 
 import (

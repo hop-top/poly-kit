@@ -181,3 +181,35 @@ func TestDefault_Singleton(t *testing.T) {
 	b := scope.Default()
 	assert.Same(t, a, b)
 }
+
+// TestCheck_TrailingDoubleStarMatchesDirItself pins doublestar v4 behavior
+// adopters rely on: "allow <dir>/**" also covers <dir> itself, so listing
+// the directory (a Read on <dir>) is allowed. A single "*" does not cover
+// the directory, and a bare path covers only itself, not its children.
+func TestCheck_TrailingDoubleStarMatchesDirItself(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o755))
+
+	p := scope.New().AllowOp(scope.Read, scope.Pattern(dir+"/**"))
+	for _, path := range []string{dir, dir + "/", filepath.Join(dir, "sub"), filepath.Join(dir, "sub", "f")} {
+		dec, err := p.Check(scope.Path(path), scope.Read)
+		require.NoError(t, err)
+		assert.Equal(t, scope.Allowed, dec, "%s/** must match %s", dir, path)
+	}
+	dec, err := p.Check(scope.Path(dir+"-sibling"), scope.Read)
+	require.NoError(t, err)
+	assert.Equal(t, scope.Unknown, dec, "%s/** must not match a sibling prefix", dir)
+
+	single := scope.New().AllowOp(scope.Read, scope.Pattern(dir+"/*"))
+	dec, err = single.Check(scope.Path(dir), scope.Read)
+	require.NoError(t, err)
+	assert.Equal(t, scope.Unknown, dec, "%s/* must not match the dir itself", dir)
+
+	bare := scope.New().AllowOp(scope.Read, scope.Pattern(dir))
+	dec, err = bare.Check(scope.Path(dir), scope.Read)
+	require.NoError(t, err)
+	assert.Equal(t, scope.Allowed, dec)
+	dec, err = bare.Check(scope.Path(filepath.Join(dir, "sub")), scope.Read)
+	require.NoError(t, err)
+	assert.Equal(t, scope.Unknown, dec, "bare %s must not match children", dir)
+}
