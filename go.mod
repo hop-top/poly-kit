@@ -13,7 +13,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/adrg/xdg v0.5.3
-	github.com/anthropics/anthropic-sdk-go v1.35.1
+	github.com/anthropics/anthropic-sdk-go v1.75.0
 	github.com/apple/pkl-go v0.14.0
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/aws/aws-lambda-go v1.54.0
@@ -36,7 +36,7 @@ require (
 	github.com/google/cel-go v0.25.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/mdns v1.0.6
-	github.com/invopop/jsonschema v0.13.0
+	github.com/invopop/jsonschema v0.14.0
 	github.com/klauspost/compress v1.18.6
 	github.com/lucasb-eyer/go-colorful v1.4.1
 	github.com/mattn/go-isatty v0.0.22
@@ -86,8 +86,11 @@ require (
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/nexus-rpc/nexus-proto-annotations v0.1.0 // indirect
+	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
+	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
+	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 )
 
 require (
