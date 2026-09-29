@@ -6,7 +6,7 @@ module hop.top/mcp-tasks
 
 go 1.25.0
 
-require github.com/modelcontextprotocol/go-sdk v1.7.0
+require github.com/modelcontextprotocol/go-sdk v1.8.0
 
 require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
