@@ -187,7 +187,16 @@ func TestConfirmationStateIsBoundAndVerified(t *testing.T) {
 	}
 	accept := `"inputResponses":{"` + key + `":{"action":"accept"}}`
 
-	forged := state[:len(state)-2] + "00"
+	// Flip the MAC's last hex digit: overwriting it with a fixed value
+	// reproduces the genuine state whenever the MAC already ends in it.
+	flip := "0"
+	if state[len(state)-1] == '0' {
+		flip = "1"
+	}
+	forged := state[:len(state)-1] + flip
+	if forged == state {
+		t.Fatalf("forged state %q equals the genuine one", forged)
+	}
 	res := call2026(t, url, `{}`, accept+`,"requestState":"`+forged+`"`)
 	if res["resultType"] != "input_required" {
 		t.Fatalf("forged retry = %v, want a fresh question", res)
