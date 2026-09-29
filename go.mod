@@ -13,7 +13,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/adrg/xdg v0.5.3
-	github.com/anthropics/anthropic-sdk-go v1.35.1
+	github.com/anthropics/anthropic-sdk-go v1.75.0
 	github.com/apple/pkl-go v0.14.0
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
 	github.com/aws/aws-lambda-go v1.54.0
@@ -26,8 +26,8 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
-	github.com/danielgtaylor/huma/v2 v2.37.3
-	github.com/dgraph-io/badger/v4 v4.9.1
+	github.com/danielgtaylor/huma/v2 v2.39.1
+	github.com/dgraph-io/badger/v4 v4.9.6
 	github.com/drone/go-scm v1.42.2
 	github.com/failsafe-go/failsafe-go v0.9.7
 	github.com/fsnotify/fsnotify v1.10.1
@@ -36,14 +36,14 @@ require (
 	github.com/google/cel-go v0.25.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/mdns v1.0.6
-	github.com/invopop/jsonschema v0.13.0
-	github.com/klauspost/compress v1.18.6
+	github.com/invopop/jsonschema v0.14.0
+	github.com/klauspost/compress v1.20.1
 	github.com/lucasb-eyer/go-colorful v1.4.1
-	github.com/mattn/go-isatty v0.0.22
+	github.com/mattn/go-isatty v0.0.23
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/openai/openai-go v1.12.0
 	github.com/openbao/openbao/api/v2 v2.5.1
-	github.com/restatedev/sdk-go v0.24.0
+	github.com/restatedev/sdk-go v1.1.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/spf13/cobra v1.10.2
@@ -56,7 +56,7 @@ require (
 	github.com/zalando/go-keyring v0.2.8
 	go.etcd.io/etcd/client/v3 v3.6.10
 	go.jetify.com/typeid v1.3.0
-	go.temporal.io/api v1.63.5
+	go.temporal.io/api v1.63.6
 	go.temporal.io/sdk v1.49.0
 	golang.org/x/crypto v0.55.0
 	golang.org/x/time v0.15.0
@@ -86,8 +86,11 @@ require (
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/nexus-rpc/nexus-proto-annotations v0.1.0 // indirect
+	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
+	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
+	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 )
 
 require (
@@ -172,7 +175,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
-	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/miekg/dns v1.1.55 // indirect
@@ -195,7 +197,7 @@ require (
 	github.com/nexus-rpc/sdk-go v0.7.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
-	github.com/pelletier/go-toml/v2 v2.3.0 // indirect
+	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
@@ -220,7 +222,6 @@ require (
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
