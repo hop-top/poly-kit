@@ -534,8 +534,8 @@ test-templates: ## Run bats tests for template scripts
 lint-templates: ## Run shellcheck lint via bats
 	bats templates/tests/lint.bats
 
-test-workflow: ## Run bats unit tests for cli-demo-media workflow shell logic
-	bats .github/tests/cli-demo-media.bats
+test-workflow: ## Run bats unit tests for workflow shell logic
+	bats .github/tests/cli-demo-media.bats .github/tests/changelog-rewrite.bats
 
 test-hook: ## Run bats tests for pre-push hook
 	bats .github/tests/pre-push-hook.bats
