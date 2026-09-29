@@ -311,6 +311,7 @@ lint-ts: ## TypeScript: eslint
 
 lint-py: ## Python: ruff check + format
 	cd sdk/py && uv run ruff check . && uv run ruff format --check .
+	cd engine/sdk/py-kit-engine && uv run ruff check . && uv run ruff format --check .
 
 # `uv sync` rewrites uv.lock in place when it disagrees with pyproject.toml,
 # so drift never fails a build — it just lands as an unrelated dirty file in

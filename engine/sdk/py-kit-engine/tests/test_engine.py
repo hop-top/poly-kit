@@ -6,6 +6,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import responses
+
 from kit_engine import KitEngine
 
 

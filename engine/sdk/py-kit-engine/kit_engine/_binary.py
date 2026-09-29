@@ -33,9 +33,7 @@ def _platform_key() -> tuple[str, str]:
     os_name = os_map.get(platform.system())
     arch = arch_map.get(platform.machine())
     if not os_name or not arch:
-        raise RuntimeError(
-            f"Unsupported platform: {platform.system()}/{platform.machine()}"
-        )
+        raise RuntimeError(f"Unsupported platform: {platform.system()}/{platform.machine()}")
     return os_name, arch
 
 
@@ -125,10 +123,7 @@ def _extract(archive: Path, dest_dir: Path, bin_name: str) -> Path:
     if archive.suffix == ".zip":
         with zipfile.ZipFile(archive) as zf:
             for info in zf.infolist():
-                if (
-                    _zip_member_is_regular(info)
-                    and _member_basename(info.filename).lower() == want
-                ):
+                if _zip_member_is_regular(info) and _member_basename(info.filename).lower() == want:
                     with zf.open(info) as src, open(dest, "xb") as out:
                         shutil.copyfileobj(src, out)
                     return dest
