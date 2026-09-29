@@ -975,7 +975,12 @@ def create_app(
 
 def _register_completion(app: typer.Typer, prog_name: str) -> None:
     """Add ``completion show|install`` subcommands to *app*."""
-    from click.shell_completion import get_completion_class
+    from typer._completion_classes import completion_init
+
+    # Register typer's shell completers for the runtime ``_<PROG>_COMPLETE``
+    # handler. typer only does so for ``add_completion=True`` apps, and
+    # since typer 0.26 its vendored Click ships no fallback completers.
+    completion_init()
 
     _SHELLS = ("bash", "zsh", "fish")
 
@@ -994,17 +999,20 @@ def _register_completion(app: typer.Typer, prog_name: str) -> None:
         shell: str = typer.Argument(..., help="Shell type (bash, zsh, fish)"),
     ) -> None:
         """Print completion script to stdout."""
-        comp_cls = get_completion_class(shell)
-        if comp_cls is None:
+        # typer's script (same one ``install`` writes): it sends the
+        # instructions typer's runtime completer parses.
+        from typer._completion_shared import get_completion_script
+
+        if shell not in _SHELLS:
             typer.echo(f"Unsupported shell: {shell}", err=True)
             raise typer.Exit(1)
-        comp = comp_cls(
-            cli=None,  # type: ignore[arg-type]
-            ctx_args={},
-            prog_name=prog_name,
-            complete_var=_complete_var(prog_name),
+        typer.echo(
+            get_completion_script(
+                prog_name=prog_name,
+                complete_var=_complete_var(prog_name),
+                shell=shell,
+            )
         )
-        typer.echo(comp.source())
 
     @completion_app.command("install")
     def _install(
