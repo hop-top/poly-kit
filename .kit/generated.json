@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "generated_by": "kit-init",
+  "files": [
+    {
+      "path": ".githooks/pre-pr",
+      "sha256": "9490355587aa0c022e1c8b27bffab6b7e9aefaea02283f9d5a5ac20e6ad0ad98",
+      "generatedAt": "2026-09-29T05:52:33.203175Z"
+    },
+    {
+      "path": ".githooks/pre-pr.ps1",
+      "sha256": "55d9ae9f6c1b60beef72be9886620cd266fb607eb69972ebe3bf02e5c5e51330",
+      "generatedAt": "2026-09-29T05:52:33.203175Z"
+    }
+  ]
+}
