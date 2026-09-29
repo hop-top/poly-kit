@@ -27,7 +27,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
 	github.com/danielgtaylor/huma/v2 v2.37.3
-	github.com/dgraph-io/badger/v4 v4.9.1
+	github.com/dgraph-io/badger/v4 v4.9.6
 	github.com/drone/go-scm v1.42.2
 	github.com/failsafe-go/failsafe-go v0.9.7
 	github.com/fsnotify/fsnotify v1.10.1
