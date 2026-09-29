@@ -1,5 +1,204 @@
 # Changelog
 
+## [0.5.0-alpha.16](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.15...kit/v0.5.0-alpha.16) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **serve:** services.<svc>.cors.* and services.all.cors.* were accepted and ignored; they are now applied on the api, mcp and rpc listeners and validated, and cors is a reserved block under every service. A config carrying stale cors keys either takes effect or is refused at exit 2; remove the keys or fix them to the block's shape.
+* **api:** api.CORS answers only real preflights; an OPTIONS without Access-Control-Request-Method now reaches the handler instead of a blanket 204. A "*" grant answers Access-Control-Allow-Origin: * rather than echoing the origin, and Access-Control-Allow-Credentials is sent to granted origins only. Routers relying on the blanket OPTIONS answer route OPTIONS themselves.
+* **cli:** services.socket.auth.mode was never read; any value but peer (mtls included) is now refused at serve validation with exit 2. Migration: remove services.socket.auth.mode, or set it to peer.
+* **serve:** a non-loopback api, rpc or mcp service with no --policy no longer fails validation; it starts and enforces kit-default, so unauthenticated callers can no longer write and destructive commands without a kit/permissions annotation are refused to everyone. Migration: name a --policy with the rules you want, or set services.<svc>.insecure_no_policy: true (APIConfig/rpcserve.Config/mcpserve.Config.InsecureNoPolicy, --insecure-no-policy for api) to keep an unbounded surface; add kit/permissions to destructive commands meant to run remotely under kit-default.
+* **policy:** a policy class entry now also governs its expanded tiers: `write: []` refuses write-local and write-shared commands, `destructive: []` refuses destructive-local and destructive-shared ones, on the CLI and on served surfaces. Policies that relied on the old literal match must add explicit entries (e.g. `write-shared: ["*"]`). Discovery for a verified caller now lists commands the caller would be refused as invocable=false; clients treating the listing as caller-independent should re-read it per credential.
+* **cli:** a tool with WithAPI and WithIdentity now gets the kit-reserved top-level token command even without APIConfig.Auth; rename an adopter command named token.
+* **cmdsurface:** callers on a transport-established surface (owner-only socket, stdio, cron, IAM-signed Lambda) share one idempotency scope and one rate-limit bucket per transport whatever Caller they claim. To separate them, install a verifier (SocketConfig.Auth) so the caller is established by it.
+* **cli:** a kit-shipped service now refuses a call that finds every in-flight slot taken and 64 calls already queued, with 503 overloaded and Retry-After (Connect Unavailable, socket OVERLOADED, MCP isError). Without cli.WithRootFactory one call runs at a time, so more than 65 concurrent callers see refusals where they used to wait. To keep the previous unbounded wait set services.all.concurrency.enabled: false, or raise services.<svc>.concurrency.max_queue (and max_inflight with a root factory).
+* **cmdsurface:** a command annotated kit/permissions is now refused on served surfaces (403 insufficient_scope) unless the caller's verified credential carries every listed scope; previously the default PermitAll ran it. Migrate by returning the scopes from the verifier (api.Claims.Scopes, a claims map scopes entry, socket.Identity.Scopes), or drop the annotation from commands that should stay open. A cli.WithPermission gate that re-implemented the check can be removed; it now runs after the built-in check and can only narrow.
+* **cli:** serve exits 2 on services.socket.timeouts.{read_header,read,write,idle}, services.socket.auth.mode: mtls, and services.<svc>.cache for any svc but api, all previously accepted and ignored. Migration: delete those keys, or move shared values under services.all.
+* **cmdsurface:** a served call repeating an Idempotency-Key its caller already completed now answers with the recorded result instead of running again, and a key reused for a different command or flags is refused 422 idempotency_key_reused. Send a fresh key per logical operation, or set services.<svc>.idempotency.enabled: false to run every call.
+* **api:** the 401 body code changes from "unauthorized" to "unauthenticated" for api.Auth (every api, mcp HTTP and projection route), webhook signature refusals, and the kit serve engine protocol. Clients branching on "unauthorized" must match "unauthenticated" (or the 401 status).
+* **transport:** a leaf declaring kit/auth-required no longer runs on a bare Authorization header, a claimed meta.caller, or a loopback api listener without Auth. Migrate: set APIConfig.Auth / rpcserve.Config.Auth / mcpserve.Config.Auth; bare mounts pass WithRESTAuth, WithSSEAuth, WithWSAuth, WithBusAuth, an api.Auth on the router (MountMCP), WithRPCAuthenticated or an established WithRPCCallMeta (MountRPC), WithCallMeta/WithAuthenticated (mcpsdk); Lambda API Gateway mappings need a gateway authorizer.
+* **cli:** the rpc and mcp listeners now check Host and Origin like the api service. A proxy that forwards another Host to a loopback bind needs services.<svc>.host_check.allow; a cross-origin browser client needs services.<svc>.origin_check.allow. HTTP-plane blocks (security_headers, health, host_check, origin_check, body_limit, compression, metrics.scrape) set under services.socket are refused at exit 2: remove them or move them under services.all.
+* **cli:** a kit-shipped service listening beyond loopback, and any service built from cli.ServeBridgeOptions, now refuses a caller over its per-tier rate with 429 rate_limited (ResourceExhausted, RATE_LIMITED). To keep the previous unlimited behavior set services.all.rate_limit.enabled: false, or raise services.<svc>.rate_limit.<tier>.per_minute and burst; a loopback service calls cli.ServeBridgeOptionsFor(r, svc, true).
+* **serve:** tls, tls.acme, auth and auth.mtls are registered middleware blocks under every services.<svc> and services.all; an unknown key inside them, an adopter service's own included, is refused at exit 2. Migration: move such keys out of the tls and auth blocks.
+* **cli:** serve refuses at exit 2 anything under services.all other than a registered middleware block (lifecycle keys, addr, path, insecure opt-ins, unknown blocks), and an unknown key inside a registered block of any service, not only api. Migration: move service-owned keys from services.all to services.<name>; fix or drop misspelled block keys.
+* **cli:** with APIConfig.Auth set, the OpenAPI document, /docs, /schemas, huma operations registered through APIConfig.Resources, and unmatched paths answer 401 without credentials (previously 200 or 404). An oversized body to an unmatched path is 413, not 404. To keep the spec public, return (nil, nil) from the AuthFunc for GET /openapi.json (and /docs, /schemas/ if wanted); every other route still requires a credential.
+* **cli:** the api service now answers 403 host_rejected to a Host its listener does not answer for (a loopback bind accepts localhost, 127.0.0.1, [::1]; a named or IP bind accepts that host; a wildcard bind checks nothing by default) and 403 origin_rejected to a POST/PUT/PATCH/DELETE from another browser origin. Opt out or widen with services.api.host_check.allow / .enabled: false and services.api.origin_check.allow / .enabled: false.
+* **cmdsurface:** cli.ServeBridgeOptions(r) and cli.ValidateServeBridge(r) are now ServeBridgeOptions(r, svc) and ValidateServeBridge(r, svc); pass the service's registered name.
+* **transport:** REST, projection (MountProjection included), MountMCP, MountRPC and RPCResource bodies over 1 MiB were accepted and are now refused (413 or ResourceExhausted); mcpsdk drops from the SDK's 4 MiB to 1 MiB. Raise per entry point with the new options or services.<svc>.body_limit.max_bytes; a negative Go option or body_limit.enabled: false removes the cap.
+* **templates:** `kit init --update` moves a scaffolded project's mise.toml pins: go 1.26 -> 1.26.1 (exact), pnpm 9 -> 11, uv 0.5 -> 0.12, golangci-lint 2.12 -> 2.11.4, ruff 0.8 -> 0.15.11, lychee 0.18 -> 0.24.2, npm:release-please 16 -> 17; new pins buf 1.73.0 and npm:markdownlint-cli2 0.23.3. Migration: run `kit init --update`, then `mise install`, then re-run the project's lint and lockfile checks under the new tools; lychee 0.24 rejects a `[config]` table and a boolean `verbose` in lychee.toml (use top-level keys and a level string such as "info").
+* **init:** kit init --update rewrites docker-compose service volumes from named volumes to ./.data/<service> bind mounts. Existing dev data stays in the old named volume; copy it over before restarting (e.g. docker run --rm -v <project>_pgdata:/from -v $PWD/.data/postgres:/to alpine cp -a /from/. /to/) or keep the old volume by editing the generated compose file.
+* **mcpsdk:** a 2026-07-28 client (SDK clients probe server/discover first) is now served per request without a session instead of being downgraded to a 2025-11-25 session. Handlers registered via WithServerConfigurator that issue server-to-client requests (sampling, roots, session elicitation) get no channel for such a client; return InputRequests (multi round-trip) instead, as over stdio. For session-only serving, wrap Surface.Server() in mcp.NewStreamableHTTPHandler directly.
+* **cli:** a socket service with a non-empty SocketConfig.Expose now refuses (NOT_ENABLED) every command outside those patterns, as documented; before, Expose was ignored and the whole tree was reachable. Add the patterns the socket must reach to Expose, or leave it empty for the whole tree.
+* **cmdsurface:** a PermissionFunc refusal on MountWebhooks, MountOAuth or a Lambda API Gateway handler now answers 403 permission_denied (was 500 internal_error), and a binding to an interactive or self-hosting leaf answers 500 not_invocable (was 500 internal_error). Bus error envelopes carry code permission_denied / not_invocable where they carried internal.
+* **cmdsurface:** MountREST answers a PermissionFunc refusal with 403 permission_denied and a call to an interactive or self-hosting leaf with 404 not_invocable, where both answered 500 internal_error. Clients that retried or alerted on those 500s should switch on the code instead.
+* **cmdsurface:** served argv gains "--" before positional args. Commands reading cmd.ArgsLenAtDash() see 0, and a subprocess's os.Args carries the "--", for every served invocation with args. SubprocessRunner argv form is now <bin> <path...> [--flag=v...] [-- args...]; callers driving a non-kit binary with options in Args move them into Path or Flags. InvokeArgs single-dash tokens ("-v") are positional, no longer cobra shorthand flags; use the long form. Commands that parse their own argv (DisableFlagParsing) unaffected.
+* **cmdsurface:** streaming calls over MountSSE, MountWS, RPC InvokeStream and StreamArgs now pass the permission and invocability gates. A call the PermissionFunc refuses, or one to an interactive or self-hosting leaf, is refused instead of streamed: SSE 403 permission_denied / 404 not_invocable, WS error frame permission_denied / not_invocable, RPC PermissionDenied / NotFound, StreamArgs ErrPermissionDenied / ErrNotInvocable. RPC Invoke and InvokeStream answer PermissionDenied / NotFound where they answered Internal. Remote streams are now audited once per refusal or run.
+* **cmdsurface:** application/proto on /cmdsurface.v1.Commands/* now means binary protobuf; JSON callers send application/json. Result.data numbers that do not survive a double round trip arrive as strings (exact digits also in data_json). Events and results gain typed fields (result, data_json).
+* **cmdsurface:** the socket service no longer invokes as `rpc`. A `SocketConfig.Policy` whose `AllowDestructiveOn` names `SurfaceRPC` no longer permits destructive commands over the socket; name `cmdsurface.SurfaceSocket` instead. Audit records, sink surface filters, and refusal messages for socket calls carry `socket`; update any `surfaces: [rpc]` sink filter meant for the socket.
+
+### Features
+
+* **api:** /healthz and /readyz on the api service ([f1e6247](https://github.com/hop-top/poly-kit/commit/f1e6247fcf84016c71cfec7a70e5ab47292f2692))
+* **api:** add `HostCheck`, `OriginCheck` and `SecurityHeaders` middleware ([0bef225](https://github.com/hop-top/poly-kit/commit/0bef225d418d776fc30e92071fbc40c23245a3b1))
+* **api:** body limit refusal in the listener's protocol ([52f52e4](https://github.com/hop-top/poly-kit/commit/52f52e47457b3da58453a19f20a691d90d340ea6))
+* **api:** declare result cache revalidation in OpenAPI specs ([8d66c90](https://github.com/hop-top/poly-kit/commit/8d66c90c7459f2b4ec2a7a3f1c954f5f6f8ece91))
+* **api:** ETag, 304 and Cache-Control on cached projected reads ([04fd10b](https://github.com/hop-top/poly-kit/commit/04fd10b8c885148cc09d549b5431e562f027c3f4))
+* **api:** gzip/zstd response compression middleware ([e815f94](https://github.com/hop-top/poly-kit/commit/e815f94897d56fc758d0e6eb51503d05099cebb5))
+* **api:** mark declared vs guessed side-effect in discovery and OpenAPI ([747c20b](https://github.com/hop-top/poly-kit/commit/747c20b703b350598ba4bf3c024033052d04c0dd))
+* **api:** record HTTP-plane refusals for metrics ([c6c1038](https://github.com/hop-top/poly-kit/commit/c6c10385d347a51bf91fbdf23801b45efd2ed62a))
+* **api:** resolve the client address behind trusted proxies ([9957b09](https://github.com/hop-top/poly-kit/commit/9957b091666ec88e84c75c2c9dd44d26f973dc24))
+* **api:** router-wide middleware via WithOuterMiddleware ([cde1a1e](https://github.com/hop-top/poly-kit/commit/cde1a1ee2a085da4fbf91b44b1955678af801818))
+* **api:** stream projected commands over SSE ([4f03760](https://github.com/hop-top/poly-kit/commit/4f03760fb4a142d16db27018a57c83454429fa08))
+* **cli/policy:** carry a permissions: block in the policy file ([146c700](https://github.com/hop-top/poly-kit/commit/146c70096ef033019a92d94cfe87f675cd323f3c))
+* **cli:** API keys with scopes, tenant, expiry and revocation ([ac37879](https://github.com/hop-top/poly-kit/commit/ac37879dc2e1180e081ba71cf07280653894d651))
+* **cli:** audit chains from services.&lt;svc&gt;.audit.sinks and audit verify ([72fa80a](https://github.com/hop-top/poly-kit/commit/72fa80a7c0adcff63334465ee9bb19d2207390fe))
+* **cli:** built-in mcp service over streamable HTTP ([46fa1bd](https://github.com/hop-top/poly-kit/commit/46fa1bda3435c0b61a9c552f56e48bee475aa37c))
+* **cli:** check Host and Origin, set security headers on the api service ([2944f56](https://github.com/hop-top/poly-kit/commit/2944f5672edb11ca4b937afd620f3bbad5453b33))
+* **cli:** compression block for the api service ([fb47c67](https://github.com/hop-top/poly-kit/commit/fb47c6738da1657c674b95abdc6a4bc255e17114))
+* **cli:** concurrency block, on by default for every service ([3b6fd62](https://github.com/hop-top/poly-kit/commit/3b6fd62c24aa684dae60c6e0faa32480ff2a5fcb))
+* **cli:** evaluate --policy permissions: rules in the served permission gate ([5bab095](https://github.com/hop-top/poly-kit/commit/5bab0954c0b4237d59e32ae2a306904bdc366be6))
+* **cli:** HTTP-plane middleware on the mcp and rpc listeners ([dc173fd](https://github.com/hop-top/poly-kit/commit/dc173fda6f06066ac0d0aa0dac0248a0c8c6ea91))
+* **cli:** point side-effect validation failures at spec coverage ([55e376f](https://github.com/hop-top/poly-kit/commit/55e376f5599a3b3e268a75e9be0dc0509f14299b))
+* **cli:** rate_limit block, on by default beyond loopback ([fa82a71](https://github.com/hop-top/poly-kit/commit/fa82a7161984348d5ec8d1c9a8c39a95f596d4b8))
+* **cli:** serve the mcp service over stdio ([3319c74](https://github.com/hop-top/poly-kit/commit/3319c7479738e7180cdf62681381b5372eccd197))
+* **cli:** services.&lt;svc&gt;.trusted_proxies on every kit HTTP listener ([4648c17](https://github.com/hop-top/poly-kit/commit/4648c17be122d94caf315e663e46b1b8042d93df))
+* **cli:** services.api.cache block and kit/cache-ttl validation ([ab71b54](https://github.com/hop-top/poly-kit/commit/ab71b546ec9ff82799fd0c0409234d560471a8ec))
+* **cli:** services.socket.auth.mode peer ([2da67c4](https://github.com/hop-top/poly-kit/commit/2da67c46929e5ac87a0d75e0cb095ccda9461536))
+* **cli:** shared resolver for services middleware config ([f3b5f6c](https://github.com/hop-top/poly-kit/commit/f3b5f6c82139f728674a452117390bb646911c3e))
+* **cli:** stream served commands on the api service ([9bc8457](https://github.com/hop-top/poly-kit/commit/9bc84571286ba73c3a909b1f6470955394659540))
+* **cli:** token create signs, token verify checks ([b3593f3](https://github.com/hop-top/poly-kit/commit/b3593f35b8286f7c955c63d0842860d297ea3f36))
+* **cli:** WithServeRateLimit code defaults for rate_limit ([a6389b6](https://github.com/hop-top/poly-kit/commit/a6389b68e78d813060eed7bd9acb3884f2bf7aeb))
+* **cli:** WithTokenCheck revocation hook for config-chosen verifiers ([588ed0a](https://github.com/hop-top/poly-kit/commit/588ed0a427ccc930f7d64b39dae7c8710a802b72))
+* **cmdreflect:** reflect undeclared positional args; carry args in toolspec ([7a139e5](https://github.com/hop-top/poly-kit/commit/7a139e5823ea3d4c0ad1ecb14976eba1615e8c53))
+* **cmdsurface:** admit invocation before streaming it ([893ebce](https://github.com/hop-top/poly-kit/commit/893ebcecad92b4983bba081ef583a1aaa1702299))
+* **cmdsurface:** bridge-level command projection mount ([2204cf4](https://github.com/hop-top/poly-kit/commit/2204cf4a57adfa0a8e71509466eda7b577ce651d))
+* **cmdsurface:** capacity gate on the invocation plane ([3d0c960](https://github.com/hop-top/poly-kit/commit/3d0c9601e96e5126b97fb840cab586972cabbfce))
+* **cmdsurface:** ChainSink appends audits to a tamper-evident log ([3c0a1ed](https://github.com/hop-top/poly-kit/commit/3c0a1ed85db389adc5731d021377ca43b1ae612d))
+* **cmdsurface:** Cloud Run projection switch and mount seam ([2348053](https://github.com/hop-top/poly-kit/commit/2348053c08b5c764d40a5fa57d7e8dbf55018aa0))
+* **cmdsurface:** configurable audit field scan limit ([09f5694](https://github.com/hop-top/poly-kit/commit/09f56941b219b03a8226bd14174061fdb2e65a19))
+* **cmdsurface:** deprecate `MountREST` and `MountMCP` ([f804e14](https://github.com/hop-top/poly-kit/commit/f804e14372463fb6ad89e35b2751e289cfe86307))
+* **cmdsurface:** enforce kit/permissions scopes in the permission gate ([dab3b29](https://github.com/hop-top/poly-kit/commit/dab3b2909a45452e8b29296a4e2e81a30fb99652))
+* **cmdsurface:** MountRPC call-meta, auth and handler options ([25cbaa4](https://github.com/hop-top/poly-kit/commit/25cbaa415045abd97d13a9f3f8efdd994b7805ab))
+* **cmdsurface:** MountRPC on generated cmdsurface.v1.Commands handler ([59f6622](https://github.com/hop-top/poly-kit/commit/59f6622214d70794dcb43651be25a22b6ceafa61))
+* **cmdsurface:** opt-in RPC response compression ([f1bd23b](https://github.com/hop-top/poly-kit/commit/f1bd23bc068dc44d2917fc72fb1522153b6dd996))
+* **cmdsurface:** publish cmdsurface.v1.Commands proto + Go stubs ([bc1cb7b](https://github.com/hop-top/poly-kit/commit/bc1cb7b896fab4c1156a5488ba39a1211aeaf8f3))
+* **cmdsurface:** rate-limit gate on the invocation plane ([f1193c5](https://github.com/hop-top/poly-kit/commit/f1193c53b41ef01a180f93a406b832f3cee21fe6))
+* **cmdsurface:** read-tier result cache at invocation slot 8 ([bf8969a](https://github.com/hop-top/poly-kit/commit/bf8969ae9094e643f55f319f1fc62be46c2560b5))
+* **cmdsurface:** replay Idempotency-Key on the served path ([8f5fbe8](https://github.com/hop-top/poly-kit/commit/8f5fbe8d3c5bd6fcc4bf5dd9b56349622d7be3ba))
+* **cmdsurface:** show the permission gate the invocation and verified scopes ([381d4ba](https://github.com/hop-top/poly-kit/commit/381d4bac93acd2c0016b917934f68d955d0d99eb))
+* **cmdsurface:** translate the declarative sinks: block ([1aece8a](https://github.com/hop-top/poly-kit/commit/1aece8aa0deec0ff21bf5e2474521ecf1f6c1a24))
+* **cmdsurface:** translate webhook, bus and cron config blocks into mount inputs ([4119ba6](https://github.com/hop-top/poly-kit/commit/4119ba6c4f255df254f55c6e5bb1ae0b4ac37978))
+* **examples:** long-running item watch in served fixture ([0f92f64](https://github.com/hop-top/poly-kit/commit/0f92f64001ebc052501381c263cddcc7b8f63971))
+* **kv:** in-memory driver with expiry and LRU eviction ([30df34b](https://github.com/hop-top/poly-kit/commit/30df34b96bfcf2f80bc1ba91d11c4a1707b3261d))
+* **mcp:** pass declared positional args as an args array ([f7c9707](https://github.com/hop-top/poly-kit/commit/f7c97072ac72d1cea24472aef9b5dea480469ff6))
+* **mcpsdk:** 403 insufficient_scope step-up challenge over HTTP ([e8cb81d](https://github.com/hop-top/poly-kit/commit/e8cb81d26d7469e5149b0cafeb17d1b5663f152e))
+* **mcpsdk:** add `WithOriginAllowlist` Origin validation ([c614d70](https://github.com/hop-top/poly-kit/commit/c614d7065c8c88d1fdd6c5714f8b9266c27c99d9))
+* **mcpsdk:** export JSON-RPC refusal writer, opt out of SDK rebinding check ([659b7ca](https://github.com/hop-top/poly-kit/commit/659b7ca47880f0ddd4cae220ddd6c7ef26575ff6))
+* **mcpsdk:** host-supplied call meta, auth verdict, elicited confirmation ([d9f3785](https://github.com/hop-top/poly-kit/commit/d9f3785d724bd1a9e1e7aed9d50030c14a399d81))
+* **mcpsdk:** serve 2026-07-28 statelessly beside sessions on one endpoint ([c99bf85](https://github.com/hop-top/poly-kit/commit/c99bf8501784d533457d5e8cf8be609abe3ecff2))
+* **mcpserve:** answer 2026-07-28 over HTTP beside sessions ([9ce0003](https://github.com/hop-top/poly-kit/commit/9ce0003d3f404dcf7835499a7b0a47eb1b8f514d))
+* **observability:** OpenTelemetry spans and metrics for served commands ([3d1366c](https://github.com/hop-top/poly-kit/commit/3d1366cb9dab05a5dc6497f0bf8e077cf900443a))
+* **observability:** Prometheus scrape endpoint at HTTP slot 7 ([d9d7bae](https://github.com/hop-top/poly-kit/commit/d9d7bae642c56369828c268f32bc9e89842961d8))
+* **policy:** per-caller delegation policy, persisted budgets, per-caller discovery ([9a88e4e](https://github.com/hop-top/poly-kit/commit/9a88e4e64ff0569bf2bac576988d4c718a793b66))
+* **rpc:** Authenticate interceptor for unary and streaming calls ([df0af01](https://github.com/hop-top/poly-kit/commit/df0af01253a84bc939501099f030bf369c64df37))
+* **rpc:** serve h2c alongside HTTP/1.1 in ListenAndServe ([2c9fa88](https://github.com/hop-top/poly-kit/commit/2c9fa88de9dca5cd27055b246b1438d413da1206))
+* **rpcserve:** adopter interceptors inside kit's gates ([495f3a4](https://github.com/hop-top/poly-kit/commit/495f3a4496f872c6e9aac5d3f9067717bd826985))
+* **rpcserve:** built-in rpc service on the transport seam ([31d0312](https://github.com/hop-top/poly-kit/commit/31d0312ccd224352d8d1fc44d2a0ba7908ef1a43))
+* **rpcserve:** serve RFC 9728 protected resource metadata ([809bd86](https://github.com/hop-top/poly-kit/commit/809bd86df93ff1799b81703fdc0af1797209be63))
+* **security:** hash-chained audit log with verifier ([726c1f1](https://github.com/hop-top/poly-kit/commit/726c1f11fa141fc4c613b92855c0b77b7fe2fa2e))
+* **serve:** check client certificates against auth.mtls.crl_file ([6fcf30a](https://github.com/hop-top/poly-kit/commit/6fcf30aea7b8066b86bd59ce9bc3a2a6573340c0))
+* **serve:** configurable server timeouts and per-command deadlines ([cf8ff3b](https://github.com/hop-top/poly-kit/commit/cf8ff3b4851d96436f35ae1c8b95ba9a3d1de4c7))
+* **serve:** cors block at HTTP slot 9 ([c031de0](https://github.com/hop-top/poly-kit/commit/c031de07ff413be79c1af9ccc154a02638dbc717))
+* **serve:** expose supervisor run record to services as RunView ([35957ad](https://github.com/hop-top/poly-kit/commit/35957adc826926212af648d3eb8bdfcbdb002e99))
+* **serve:** log and count failed TLS handshakes ([d675247](https://github.com/hop-top/poly-kit/commit/d6752473298ebcc7c9250058b5068c8ea11a8ec8))
+* **serve:** persisted per-caller quotas over time windows ([de057dc](https://github.com/hop-top/poly-kit/commit/de057dc56c8185ff118c92eee3c09bd36619f583))
+* **serve:** reload TLS certificate and CA files on change ([1f38762](https://github.com/hop-top/poly-kit/commit/1f38762fb81eb9e9a50ec90004c23b4845d2fe83))
+* **serve:** ship kit-default policy, the remote default without --policy ([c6a0b24](https://github.com/hop-top/poly-kit/commit/c6a0b240df133a6b3c22024ea4f5a90956d137e2))
+* **serve:** TLS and mTLS client-certificate auth on api, rpc and mcp listeners ([dc36ba1](https://github.com/hop-top/poly-kit/commit/dc36ba1aa384ed05a9d9f8a2371065d7901c5705))
+* **socket:** peer-credential authenticator ([7390af2](https://github.com/hop-top/poly-kit/commit/7390af23308f8a9f896d5f9b54f4fb684e737cd6))
+* **socket:** scope source for peer-authenticated callers ([f02511f](https://github.com/hop-top/poly-kit/commit/f02511f1a0d1d640dcbc9aaf75aff8f40caa5ea6))
+* **templates:** cli-go scaffold sets served middleware defaults ([52cf3ab](https://github.com/hop-top/poly-kit/commit/52cf3ab865c938c040d30f64a7dc5f31d3634089))
+* **templates:** mount spec and spec coverage in cli-go root ([e3e8f89](https://github.com/hop-top/poly-kit/commit/e3e8f89f995cac0d2ddb97c6a08f537ea963b0b9))
+* **templates:** register the mcp service in the cli-go scaffold ([41d5986](https://github.com/hop-top/poly-kit/commit/41d59861885f2b43e191eb17f6a92c075dccfcd6))
+* **templates:** register the rpc service in the cli-go scaffold ([bb59737](https://github.com/hop-top/poly-kit/commit/bb5973793f829816fd64302282db7e8a59796828))
+* **toolspec:** negotiate &lt;tool&gt; spec schema version from KIT_TOOLSPEC_SCHEMA ([e1bdd60](https://github.com/hop-top/poly-kit/commit/e1bdd60dd7146cdca06fb077fdd1b60a34054136))
+* **transport:** built-in bearer verifiers: jwt, jwks, oidc ([32638da](https://github.com/hop-top/poly-kit/commit/32638da9951835f8e29a4dd781132c7aa08d864f))
+* **transport:** cap request bodies on every HTTP entry point ([7170c70](https://github.com/hop-top/poly-kit/commit/7170c701dd6e2acb454ffdce7a64836e8a89b991))
+* **transport:** carry W3C trace context to runners and child processes ([2d0176f](https://github.com/hop-top/poly-kit/commit/2d0176f2a93cf124bc4a35d97255b1c16b3153ff))
+* **transport:** MCP authorization flow at the HTTP edge ([48dd9af](https://github.com/hop-top/poly-kit/commit/48dd9af275ce76797fda44aed4fef275e384a476))
+
+
+### Bug Fixes
+
+* **api:** api.Auth refuses as unauthenticated with a challenge, counted ([495bd55](https://github.com/hop-top/poly-kit/commit/495bd55790992ce88a5660a97a7e6afe01e13dfe))
+* **api:** CORS follows the Fetch standard ([a9e0511](https://github.com/hop-top/poly-kit/commit/a9e0511470596d396f4362ea9a469c5d0fa4e1e3))
+* **api:** name protected resource metadata in REST 403 insufficient_scope ([e9bee6c](https://github.com/hop-top/poly-kit/commit/e9bee6c94078e14185aea7bdd06a947123b526d7))
+* **api:** pass flush and deadline control through logger writer ([cc9abb9](https://github.com/hop-top/poly-kit/commit/cc9abb95e0d56eabb2070394b2e497d3e499ff0e))
+* **changelog:** keep commit and PR links on rewritten bullets ([af5ed1e](https://github.com/hop-top/poly-kit/commit/af5ed1efe198b42894b220972a5522a9ec104c7f))
+* **cli:** body limit, compression and auth cover every api route ([5e407be](https://github.com/hop-top/poly-kit/commit/5e407bed3afd4a4e2f0b0b4b60ae79d92fcb2185))
+* **cli:** charge max_ops budget only once slot 6 admits ([9434450](https://github.com/hop-top/poly-kit/commit/94344505e1ec4b035008035211cfe74d3c8b468c))
+* **cli:** close the result-cache store when api start fails ([7612ff5](https://github.com/hop-top/poly-kit/commit/7612ff59dfe4ecaa6923ff06a5e9c018c05a5c58))
+* **cli:** create API key store owner-only ([c3bc850](https://github.com/hop-top/poly-kit/commit/c3bc850a121f6c5aa976d22cb450bbe8d88392be))
+* **cli:** idempotency capture no longer pins the leaf's writer ([c1a87d1](https://github.com/hop-top/poly-kit/commit/c1a87d1bb73e5fb15750749735ee3500ff03b9ca))
+* **cli:** metrics scrape endpoint behind the Host and Origin checks ([373a46e](https://github.com/hop-top/poly-kit/commit/373a46e6d8d0611e6ba2a5c427ac5bafb51654c2))
+* **cli:** name the missing jwks url or oidc issuer before the audience ([89fea12](https://github.com/hop-top/poly-kit/commit/89fea12bb21a5aae0a15ea389f5edd2d91b930fa))
+* **cli:** narrow the socket service to SocketConfig.Expose ([cd521b8](https://github.com/hop-top/poly-kit/commit/cd521b83575b1c819fe8dbce08651d495aa6ad62))
+* **cli:** quota and caller policy name a transport-vouched caller by nothing it claims ([b322dc0](https://github.com/hop-top/poly-kit/commit/b322dc03f1ab4d47489c51500d79ca7129bd08d5))
+* **cli:** refuse bearer auth modes under services.socket ([8d08a68](https://github.com/hop-top/poly-kit/commit/8d08a68a85603abee4833931ba73798ed4adefea))
+* **cli:** refuse settings no service applies ([e379352](https://github.com/hop-top/poly-kit/commit/e37935280ddb39094896956f1309c63dca904eb4))
+* **cli:** refuse tls, tls.acme and auth.mtls under services.socket ([c578392](https://github.com/hop-top/poly-kit/commit/c578392243f38ddb35e308c221200a62a1059e1b))
+* **cli:** report empty kit/side-effect as missing in Root.Validate ([2d26586](https://github.com/hop-top/poly-kit/commit/2d265869690c9af49d34ee341ee2908de06e56b9))
+* **cli:** scope served --idempotency-key replay to the caller ([b5ed2fc](https://github.com/hop-top/poly-kit/commit/b5ed2fc16610604ec9b45d0cf1a43ca53dcf0df2))
+* **cli:** served idempotency store purges past the longest service ttl ([6e19a47](https://github.com/hop-top/poly-kit/commit/6e19a47b85505e49cc3d27094ef48cca5ba86b8b))
+* **cli:** services.* keys from env, -c and config files reach serve ([37334b6](https://github.com/hop-top/poly-kit/commit/37334b6509b5b1c92e6e7bc3c3c7553a42504b91))
+* **cli:** stop pre-parse flag scans at "--" ([917a833](https://github.com/hop-top/poly-kit/commit/917a833d3d3f5d758a87810e30c5ffb824139a04))
+* **cli:** tell a malformed kit/side-effect tag from a missing one on --dry-run ([deef800](https://github.com/hop-top/poly-kit/commit/deef8007b291cbb0c697876fa1e69eb9d213f42c))
+* **cli:** warn on runnable command groups without a side-effect tier ([247aeff](https://github.com/hop-top/poly-kit/commit/247aeffc127817f14a3eb4ac527f5b3e7377ed9c))
+* **cmdsurface:** add `SurfaceSocket`; socket service stops pinning rpc ([072228a](https://github.com/hop-top/poly-kit/commit/072228acc9c2135d0d7964682f3fd9d49fe045bc))
+* **cmdsurface:** admit streamed invocations through the bridge gates ([05e546c](https://github.com/hop-top/poly-kit/commit/05e546c21318eff67045bdb8b73abcb7724c2dfc))
+* **cmdsurface:** an idempotency replay takes no capacity slot ([0091412](https://github.com/hop-top/poly-kit/commit/009141288e8b7c16d5617871353f948ee3a55eaa))
+* **cmdsurface:** end options before served positional args ([26e7994](https://github.com/hop-top/poly-kit/commit/26e79940d7b6ef9b5f3a465043e7be031fed7438))
+* **cmdsurface:** idempotency scope follows the established identity ([62d71e7](https://github.com/hop-top/poly-kit/commit/62d71e762c5cba376c86a43b6d3ef14afbee003a))
+* **cmdsurface:** label the D2 initialize wire fixture legacy ([cdf6a51](https://github.com/hop-top/poly-kit/commit/cdf6a517202363e36c1a65e454e1698be0418748))
+* **cmdsurface:** map permission and invocability refusals on MountREST ([b5b0bfe](https://github.com/hop-top/poly-kit/commit/b5b0bfe69a34f8d790164b9f5cb4da4dbdac3050))
+* **cmdsurface:** MountMCP carries the idempotency key and marks replays ([fe22e34](https://github.com/hop-top/poly-kit/commit/fe22e3474684ca45e4c32f7df73f1aaba373018c))
+* **cmdsurface:** name permission and invocability refusals on passthrough surfaces ([9bb0d20](https://github.com/hop-top/poly-kit/commit/9bb0d20ac27d28d4513f5dd71a5966f132fdf797))
+* **cmdsurface:** one idempotency scope; transport-vouched callers are the owner ([fa54ef2](https://github.com/hop-top/poly-kit/commit/fa54ef2131d9a958554461c7226314847260b647))
+* **cmdsurface:** per-command deadline bounds a result-cache miss ([fc7ea26](https://github.com/hop-top/poly-kit/commit/fc7ea2604f2bed56dab42236b71b5c4cf9206215))
+* **cmdsurface:** rate-limit and result-cache keys trust only an established identity ([82c429d](https://github.com/hop-top/poly-kit/commit/82c429d627e36992c7e382d57493a1b4c912a69e))
+* **cmdsurface:** redact audit records before sink fan-out ([12b2b17](https://github.com/hop-top/poly-kit/commit/12b2b170539f4cbed1aa41e44accc5a0f80248f9))
+* **cmdsurface:** Retry-After on Lambda API Gateway 429 ([2296ec9](https://github.com/hop-top/poly-kit/commit/2296ec98413be3b51a84c99f238ba64542bd8e47))
+* **cmdsurface:** scope result-cache key as idempotency scopes it ([5b45f4b](https://github.com/hop-top/poly-kit/commit/5b45f4b08e7244b7d1cd9bd22545b420332ed052))
+* **examples:** make spaced lychee.toml loadable by lychee 0.24 ([04113ed](https://github.com/hop-top/poly-kit/commit/04113ed4c81f484e9110b727b31c517d849dc7cf))
+* **examples:** spaced ts .nvmrc on node 22 ([67a38f3](https://github.com/hop-top/poly-kit/commit/67a38f377b9387b80e10d7281298ca5846b76087))
+* **idemstore:** purge expired sqlite rows on open and periodically ([9943a67](https://github.com/hop-top/poly-kit/commit/9943a6778962388b8a38ab28f2dfe9062145c0c8))
+* **init:** resync kit init managed assets with templates/shared ([24f77d1](https://github.com/hop-top/poly-kit/commit/24f77d14da38363c22619f83440c88c1399628a4))
+* **mcp:** answer stdio requests read before end of input ([398f93f](https://github.com/hop-top/poly-kit/commit/398f93f590312175e669523fccf6f2169a375697))
+* **mcpsdk:** a task-augmented call carries no idempotency key ([8817461](https://github.com/hop-top/poly-kit/commit/8817461c10c277b80f9978fc6bc87e5ea8dcf188))
+* **mcpsdk:** admit a task once and run that admission ([91394e2](https://github.com/hop-top/poly-kit/commit/91394e2936318f1791d6018650becc062efc2ea9))
+* **mcpsdk:** ask for confirmation only after the machine gates ([ce7c37b](https://github.com/hop-top/poly-kit/commit/ce7c37bc06d2104c5c3647a42b4c998fafdfdcdb))
+* **mcpsdk:** run progress-streamed calls through the bridge gates ([c340c97](https://github.com/hop-top/poly-kit/commit/c340c97a616f9396d91f3f410ca0fb0e00b1e793))
+* **mcpserve:** end a stalled request body read on stop ([d216052](https://github.com/hop-top/poly-kit/commit/d216052e8fc4e113c448714555599d95b9a09534))
+* **mcpserve:** withhold management-only commands from the tool list ([711c7ef](https://github.com/hop-top/poly-kit/commit/711c7eff8a77e85df449c9f1da994aa77ffbd6b8))
+* **observability:** record the resolved client address on HTTP spans ([e562643](https://github.com/hop-top/poly-kit/commit/e562643a1be051c5fd2b473f510db042fc426824))
+* **observability:** second-scale buckets for the request duration histogram ([805520e](https://github.com/hop-top/poly-kit/commit/805520e3b969f0af599ea709d05d276f0b07b548))
+* **rpc:** map ResourceExhausted to 429 and rate_limited with Retry-After ([9ebe849](https://github.com/hop-top/poly-kit/commit/9ebe84943cadc7e15d23cf1b0b7d3c2edd50ea17))
+* **serve:** no-auth exposure refusal names auth.mode ([e4de35e](https://github.com/hop-top/poly-kit/commit/e4de35e3b7852e27b2ce9a11d6bcf330c45b8d99))
+* **serve:** refusal before the body waits for a body still arriving ([1c0442d](https://github.com/hop-top/poly-kit/commit/1c0442dc15d44659306d718a1ba6c0314be9d1a2))
+* **serve:** stalled clients no longer hold stop or refused connections ([409c53a](https://github.com/hop-top/poly-kit/commit/409c53a2604f24bb48dfa635f7c5527318e15d2a))
+* **transport:** kit/auth-required admits only an established caller ([d9a85bd](https://github.com/hop-top/poly-kit/commit/d9a85bd882f2ab8f3273c7c6ee861d6da1e8bc4e))
+
+
+### Performance
+
+* **redact:** screen rules by literal and length before regex ([9b02352](https://github.com/hop-top/poly-kit/commit/9b02352437e7484695816ea5a304256559b5ac99))
+
+
+### Build
+
+* **templates:** pin scaffold tools to the versions kit's CI runs ([2464b2c](https://github.com/hop-top/poly-kit/commit/2464b2c24e210a7a43155c2bf7ff277e712a53b4))
+
 ## [0.5.0-alpha.15](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.14...kit/v0.5.0-alpha.15) (2026-09-26)
 
 
