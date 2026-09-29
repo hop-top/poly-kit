@@ -398,16 +398,16 @@
         },
         {
             "name": "hop-top/cite",
-            "version": "v0.2.0",
+            "version": "v0.2.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/hop-top/cite-php.git",
-                "reference": "c53dd51367b8081f951bf2e72eddc9c217bf1e51"
+                "reference": "12576a4211a26c00212fca2cfbc5cd315560f656"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/hop-top/cite-php/zipball/c53dd51367b8081f951bf2e72eddc9c217bf1e51",
-                "reference": "c53dd51367b8081f951bf2e72eddc9c217bf1e51",
+                "url": "https://api.github.com/repos/hop-top/cite-php/zipball/12576a4211a26c00212fca2cfbc5cd315560f656",
+                "reference": "12576a4211a26c00212fca2cfbc5cd315560f656",
                 "shasum": ""
             },
             "require": {
@@ -435,9 +435,9 @@
             "description": "Custom URI scheme utilities (polyglot).",
             "homepage": "https://hop.top/cite",
             "support": {
-                "source": "https://github.com/hop-top/cite-php/tree/v0.2.0"
+                "source": "https://github.com/hop-top/cite-php/tree/v0.2.1"
             },
-            "time": "2026-06-06T18:26:55+00:00"
+            "time": "2026-08-30T02:36:20+00:00"
         },
         {
             "name": "jewei/typeid-php",
