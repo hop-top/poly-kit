@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -45,9 +46,19 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		return nil, fmt.Errorf("anthropic: API key required")
 	}
 
-	opts := []option.RequestOption{
-		option.WithAPIKey(cfg.Provider.APIKey),
+	// The key comes from kit's own resolution, so the SDK's credential
+	// autoload (auth profiles, env federation) stays off: a host profile
+	// would otherwise supply the base URL and workspace header, and log a
+	// shadow warning. ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN keep
+	// their fallback role.
+	opts := []option.RequestOption{option.WithoutEnvironmentDefaults()}
+	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
+		opts = append(opts, option.WithBaseURL(v))
 	}
+	if v, ok := os.LookupEnv("ANTHROPIC_AUTH_TOKEN"); ok {
+		opts = append(opts, option.WithAuthToken(v))
+	}
+	opts = append(opts, option.WithAPIKey(cfg.Provider.APIKey))
 	if cfg.Provider.BaseURL != "" {
 		opts = append(opts, option.WithBaseURL(cfg.Provider.BaseURL))
 	}
