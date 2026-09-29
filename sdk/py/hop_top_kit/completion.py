@@ -2,8 +2,9 @@
 hop_top_kit.completion — dynamic value completion system.
 
 Provides a Completer protocol + built-in completers + a registry
-for binding completers to flags/args. Bridges to Click's native
-shell_complete mechanism.
+for binding completers to flags/args. Bridges to typer's
+``autocompletion`` parameter and to Click's native ``shell_complete``
+mechanism.
 """
 
 from __future__ import annotations
@@ -168,6 +169,33 @@ class CompletionRegistry:
 
 
 # ---------------------------------------------------------------------------
+# typer bridge
+# ---------------------------------------------------------------------------
+
+
+def to_typer_autocompletion(
+    completer: Completer,
+) -> Callable[[str], list[str | tuple[str, str]]]:
+    """Bridge a Completer to typer's ``autocompletion`` callback.
+
+    Returns a callable ``(incomplete) -> list[str | tuple[str, str]]``
+    suitable for ``typer.Option(autocompletion=...)`` or
+    ``typer.Argument(autocompletion=...)``. Items with a description become
+    ``(value, description)`` pairs, the rest plain values. Plain values carry
+    no Click object, so the callback fits every Click layer typer runs on.
+
+    typer keeps only values starting with the typed text, case-sensitively,
+    so a completer's case-insensitive matches are dropped here.
+    """
+
+    def _autocompletion(incomplete: str) -> list[str | tuple[str, str]]:
+        items = completer.complete(incomplete or "")
+        return [(i.value, i.description) if i.description else i.value for i in items]
+
+    return _autocompletion
+
+
+# ---------------------------------------------------------------------------
 # Click bridge
 # ---------------------------------------------------------------------------
 
@@ -176,6 +204,10 @@ def to_click_shell_complete(
     completer: Completer,
 ) -> Callable:
     """Bridge a Completer to Click's ``shell_complete`` callback.
+
+    For plain Click commands. typer deprecates ``shell_complete`` on
+    ``typer.Option`` / ``typer.Argument``; use ``to_typer_autocompletion``
+    there.
 
     Returns a callable with signature
     ``(ctx, param, incomplete) -> list[CompletionItem]``

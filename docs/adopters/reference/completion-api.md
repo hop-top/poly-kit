@@ -1,7 +1,7 @@
 # Completion API Reference
 
 Dynamic value completion for CLI flags and positional arguments.
-Works with cobra (Go), Commander (TS), and Click/Typer (Python).
+Works with cobra (Go), Commander (TS), and typer/Click (Python).
 
 ---
 
@@ -285,13 +285,13 @@ reg.registerArg("launch", 0, missionCompleter);
 The `__complete` handler (from `completion.ts`) reads
 `__completionRegistry` at tab-press time.
 
-### Python -- Click/Typer
+### Python -- typer
 
-Bridge via `to_click_shell_complete`:
+Bridge via `to_typer_autocompletion`:
 
 ```python
 from hop_top_kit.completion import (
-    static_values, to_click_shell_complete,
+    static_values, to_typer_autocompletion,
 )
 
 orbit_c = static_values("LEO", "GTO", "GEO")
@@ -300,16 +300,51 @@ orbit_c = static_values("LEO", "GTO", "GEO")
 def launch(
     orbit: str = typer.Option(
         None, "--orbit",
-        shell_complete=to_click_shell_complete(orbit_c),
+        autocompletion=to_typer_autocompletion(orbit_c),
     ),
 ): ...
+```
+
+`to_typer_autocompletion` returns a callable matching typer's
+`autocompletion` contract, `(incomplete) -> list[str | tuple[str, str]]`:
+items with a description become `(value, description)` pairs, the rest
+plain values. It holds across the supported typer range and emits no
+warning; typer deprecates `shell_complete=` on `typer.Option` /
+`typer.Argument`.
+
+typer keeps only values that start with the typed text, compared
+case-sensitively, so a completer's case-insensitive matches are dropped:
+`static_values("LEO")` completes `L` but not `l`. The same filter drops
+`file_completer` / `dir_completer` results for a bare name in the current
+directory (they come back as `./name`); annotate the parameter as `Path`
+for typer's native file completion instead.
+
+### Python -- Click
+
+Bridge via `to_click_shell_complete`:
+
+```python
+import click
+from hop_top_kit.completion import (
+    static_values, to_click_shell_complete,
+)
+
+orbit_c = static_values("LEO", "GTO", "GEO")
+
+@click.command()
+@click.option(
+    "--orbit",
+    shell_complete=to_click_shell_complete(orbit_c),
+)
+def launch(orbit): ...
 ```
 
 `to_click_shell_complete` returns a callable matching Click's
 `(ctx, param, incomplete) -> list[CompletionItem]` signature. Items
 come from the Click layer driving `ctx`: the `click` package's
 `CompletionItem` under Click (and typer below 0.26), typer's vendored
-one under typer 0.26 and later.
+one under typer 0.26 and later. Click applies no filter of its own, so
+every item the completer returns is offered.
 
 ---
 
@@ -367,7 +402,7 @@ reg.registerArg('launch', 0, funcCompleter((prefix) => {
 ```python
 from hop_top_kit.completion import (
     CompletionItem, CompletionRegistry,
-    static_values, func_completer, to_click_shell_complete,
+    static_values, func_completer, to_typer_autocompletion,
 )
 
 _orbit_c = static_values("LEO", "GTO", "GEO", "SSO", "Heliocentric")
@@ -384,18 +419,18 @@ reg = CompletionRegistry()
 reg.register("--orbit", _orbit_c)
 reg.register_arg("launch", 0, func_completer(_mission_complete))
 
-# Wire into Typer/Click
+# Wire into typer
 @app.command()
 def launch(
     mission: str = typer.Argument(
         ...,
-        shell_complete=to_click_shell_complete(
+        autocompletion=to_typer_autocompletion(
             reg.for_arg("launch", 0),
         ),
     ),
     orbit: str = typer.Option(
         None, "--orbit",
-        shell_complete=to_click_shell_complete(_orbit_c),
+        autocompletion=to_typer_autocompletion(_orbit_c),
     ),
 ): ...
 ```
