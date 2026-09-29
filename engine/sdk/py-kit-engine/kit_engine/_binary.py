@@ -99,14 +99,51 @@ def _download(url: str, dest: Path) -> None:
     urllib.request.urlretrieve(url, dest)
 
 
+def _member_basename(name: str) -> str:
+    return name.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+
+
+def _zip_member_is_regular(info: zipfile.ZipInfo) -> bool:
+    if info.is_dir():
+        return False
+    # No unix file-type bits (Windows-built archives, bare permission bits)
+    # means a plain file; anything typed must be a regular file, not a link.
+    file_type = stat.S_IFMT(info.external_attr >> 16)
+    return file_type in (0, stat.S_IFREG)
+
+
 def _extract(archive: Path, dest_dir: Path, bin_name: str) -> Path:
+    """Copy only the kit binary out of ``archive`` to ``dest_dir / bin_name``.
+
+    The first regular-file member whose basename matches ``bin_name`` is
+    streamed to a path chosen here. Member names never become filesystem
+    paths and link members are skipped, so a crafted archive cannot write
+    outside ``dest_dir`` or smuggle in a symlink.
+    """
+    dest = dest_dir / bin_name
+    want = bin_name.lower()
     if archive.suffix == ".zip":
         with zipfile.ZipFile(archive) as zf:
-            zf.extractall(dest_dir)
+            for info in zf.infolist():
+                if (
+                    _zip_member_is_regular(info)
+                    and _member_basename(info.filename).lower() == want
+                ):
+                    with zf.open(info) as src, open(dest, "xb") as out:
+                        shutil.copyfileobj(src, out)
+                    return dest
     else:
         with tarfile.open(archive, "r:gz") as tf:
-            tf.extractall(dest_dir)
-    return dest_dir / bin_name
+            for member in tf:
+                if not member.isreg() or _member_basename(member.name).lower() != want:
+                    continue
+                src = tf.extractfile(member)
+                if src is None:
+                    break
+                with src, open(dest, "xb") as out:
+                    shutil.copyfileobj(src, out)
+                return dest
+    raise RuntimeError(f"Binary not found in archive: {bin_name}")
 
 
 def find_kit_binary(version: str | None = None) -> str:
@@ -162,11 +199,7 @@ def find_kit_binary(version: str | None = None) -> str:
         if not _verify_checksum(archive_path, expected):
             raise RuntimeError(f"Checksum mismatch for {archive_name}")
 
-        _extract(archive_path, Path(tmp), bin_name)
-        src = Path(tmp) / bin_name
-        if not src.exists():
-            raise RuntimeError(f"Binary not found in archive: {bin_name}")
-
+        src = _extract(archive_path, Path(tmp), bin_name)
         shutil.move(str(src), str(local_bin))
         if os_name != "windows":
             local_bin.chmod(local_bin.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP)
