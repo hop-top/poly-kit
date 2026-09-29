@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HopTop\Kit\Tests\Net;
 
 use HopTop\Kit\Net\NetPolicy;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -52,9 +53,8 @@ class NetPolicyTest extends TestCase
      * local dev backend. Hosts that are not literal loopback IPs — DNS
      * names included — are remote, because resolving them is itself
      * network access.
-     *
-     * @dataProvider loopbackCases
      */
+    #[DataProvider('loopbackCases')]
     public function testIsLoopbackHost(string $host, bool $want): void
     {
         $this->assertSame($want, NetPolicy::isLoopbackHost($host));
