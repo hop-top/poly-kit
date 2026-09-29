@@ -5,8 +5,13 @@
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "scripts/install.js"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format cjs --dts",
+    "postinstall": "node scripts/install.js",
     "test": "vitest run"
   },
   "devDependencies": {
