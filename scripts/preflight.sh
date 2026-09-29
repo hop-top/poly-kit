@@ -103,16 +103,32 @@ fi
 # Node + pnpm
 # ---------------------------------------------------------------------------
 node_required=$(grep -oE '"node":\s*"[^"]+"' "$REPO_ROOT/sdk/ts/package.json" 2>/dev/null \
-                | head -1 | sed -E 's/.*"node":\s*"([^"]+)".*/\1/' || true)
+                | head -1 | sed -E 's/.*"node":[[:space:]]*"([^"]+)".*/\1/' || true)
+# Floor from a ">=MAJOR[.MINOR[.PATCH]]" range; minor matters (require(esm)
+# is unflagged only from 22.12), so compare all three components.
+node_min=""
+[[ "$node_required" =~ \>=[[:space:]]*([0-9]+(\.[0-9]+){0,2}) ]] && node_min=${BASH_REMATCH[1]}
+node_min_major=${node_min%%.*}
+# version_lt A B: true when dotted version A sorts before B.
+version_lt() {
+  local -a a b
+  local i
+  IFS=. read -ra a <<<"$1"
+  IFS=. read -ra b <<<"$2"
+  for i in 0 1 2; do
+    (( ${a[i]:-0} < ${b[i]:-0} )) && return 0
+    (( ${a[i]:-0} > ${b[i]:-0} )) && return 1
+  done
+  return 1
+}
 if ! command -v node >/dev/null 2>&1; then
   fail "node" "not installed (sdk/ts wants node $node_required)" \
-       "mise install node@20    # or: brew install node"
+       "mise install node@${node_min_major:-22}    # or: brew install node"
 else
   node_have=$(node --version 2>/dev/null | sed 's/^v//')
-  node_major=${node_have%%.*}
-  if [[ -n "$node_required" && "$node_required" =~ \>=([0-9]+) && "$node_major" -lt "${BASH_REMATCH[1]}" ]]; then
+  if [[ -n "$node_min" ]] && version_lt "$node_have" "$node_min"; then
     fail "node" "v$node_have installed; sdk/ts wants $node_required" \
-         "mise install node@${BASH_REMATCH[1]}"
+         "mise install node@${node_min_major}"
   else
     ok "node" "v$node_have (sdk/ts: $node_required)"
   fi
