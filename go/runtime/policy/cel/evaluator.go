@@ -1,6 +1,6 @@
 // Package cel is the CEL backend for runtime/policy.
 //
-// Isolates github.com/google/cel-go transitive deps from the parent
+// Isolates cel.dev/cel-go transitive deps from the parent
 // policy package so callers wiring a non-CEL evaluator avoid them.
 package cel
 
@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sync"
 
-	celgo "github.com/google/cel-go/cel"
+	celgo "cel.dev/cel-go/cel"
 )
 
 // Evaluator compiles + evaluates CEL boolean expressions against the
