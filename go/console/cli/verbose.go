@@ -31,8 +31,8 @@ func (r *Root) VerboseCount() int {
 // IsQuiet reports whether --quiet is in effect.
 //
 // It reads the "quiet" key from r.Viper, the same key kit/log reads, so
-// it agrees with the logger: a quiet set through config or env counts,
-// not only the flag. --quiet and -V are not mutually exclusive;
+// it agrees with the logger: any source that sets "quiet" on r.Viper
+// counts, not only the flag. --quiet and -V are not mutually exclusive;
 // VerboseCount keeps the raw count and quiet wins at the logger, which
 // floors the level at the contract's quiet_override. Before parsing, or
 // with Disable.Quiet and no other source, it is false.
