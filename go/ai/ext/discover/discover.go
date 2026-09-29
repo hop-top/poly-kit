@@ -5,8 +5,10 @@
 package discover
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -34,18 +36,18 @@ type Found struct {
 	// Version comes from --ext-info interrogation, if available.
 	Version string
 
-	meta *ext.Metadata
+	info *Info
 }
 
 // Enrich populates the Found's metadata by interrogating the binary.
 // On failure the Found remains usable with synthesized metadata.
 func (f *Found) Enrich() error {
-	m, err := Interrogate(f.Path)
+	info, err := InterrogateInfo(f.Path)
 	if err != nil {
 		return err
 	}
-	f.meta = m
-	f.Version = m.Version
+	f.info = info
+	f.Version = info.Metadata.Version
 	return nil
 }
 
@@ -53,13 +55,23 @@ func (f *Found) Enrich() error {
 // successfully, it returns the interrogated metadata; otherwise it
 // synthesizes metadata from the discovered name and version.
 func (f *Found) Meta() ext.Metadata {
-	if f.meta != nil {
-		return *f.meta
+	if f.info != nil {
+		return f.info.Metadata
 	}
 	return ext.Metadata{
 		Name:    f.Name,
 		Version: f.Version,
 	}
+}
+
+// Info returns the full --ext-info response captured by the last
+// successful Enrich, or nil if Enrich has not succeeded. Each call
+// returns a fresh copy; reading it never executes the binary.
+func (f *Found) Info() *Info {
+	if f.info == nil {
+		return nil
+	}
+	return f.info.clone()
 }
 
 // Capabilities returns CapDiscover — external plugins are always discovered.
@@ -145,7 +157,37 @@ func isExecutable(fi os.FileInfo) bool {
 	return fi.Mode()&0111 != 0
 }
 
-// extInfoResponse is the JSON schema returned by --ext-info.
+// Info is a parsed --ext-info response.
+//
+// Metadata and Capabilities hold the protocol-defined fields. Raw is the
+// verbatim JSON object the binary printed, including any fields the
+// protocol does not define; hosts decode the fields they own from it
+// (see Decode). Discovery never interprets those extra fields.
+type Info struct {
+	Metadata     ext.Metadata
+	Capabilities []string
+	Raw          json.RawMessage
+}
+
+// Decode unmarshals the verbatim --ext-info payload into v, letting a
+// host read fields beyond name/version/description/capabilities.
+// Decode on a nil *Info (e.g. Found.Info() before a successful Enrich)
+// returns an error.
+func (i *Info) Decode(v any) error {
+	if i == nil {
+		return errors.New("discover: no ext-info payload (Enrich not run or failed)")
+	}
+	return json.Unmarshal(i.Raw, v)
+}
+
+func (i *Info) clone() *Info {
+	c := *i
+	c.Capabilities = append([]string(nil), i.Capabilities...)
+	c.Raw = append(json.RawMessage(nil), i.Raw...)
+	return &c
+}
+
+// extInfoResponse holds the protocol-defined fields of --ext-info.
 type extInfoResponse struct {
 	Name         string   `json:"name"`
 	Version      string   `json:"version"`
@@ -158,8 +200,20 @@ const interrogateTimeout = 5 * time.Second
 
 // Interrogate executes the binary at path with --ext-info and parses
 // the JSON response into ext.Metadata. Returns an error if the binary
-// does not support the flag or returns invalid JSON.
+// does not support the flag or returns invalid JSON. Use InterrogateInfo
+// to also receive capabilities and the verbatim payload.
 func Interrogate(path string) (*ext.Metadata, error) {
+	info, err := InterrogateInfo(path)
+	if err != nil {
+		return nil, err
+	}
+	return &info.Metadata, nil
+}
+
+// InterrogateInfo executes the binary at path with --ext-info once and
+// returns the parsed response together with the verbatim payload.
+// Errors match Interrogate.
+func InterrogateInfo(path string) (*Info, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), interrogateTimeout)
 	defer cancel()
 
@@ -174,9 +228,13 @@ func Interrogate(path string) (*ext.Metadata, error) {
 		return nil, fmt.Errorf("discover: parse ext-info from %s: %w", path, err)
 	}
 
-	return &ext.Metadata{
-		Name:        resp.Name,
-		Version:     resp.Version,
-		Description: resp.Description,
+	return &Info{
+		Metadata: ext.Metadata{
+			Name:        resp.Name,
+			Version:     resp.Version,
+			Description: resp.Description,
+		},
+		Capabilities: resp.Capabilities,
+		Raw:          json.RawMessage(bytes.TrimSpace(out)),
 	}, nil
 }
