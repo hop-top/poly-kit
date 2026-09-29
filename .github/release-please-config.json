@@ -158,6 +158,16 @@
       "component": "kit-ts",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "/templates/cli-ts/package.json.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "/internal/template/builtins/cli-ts/package.json.tmpl"
+        }
+      ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "prerelease",
