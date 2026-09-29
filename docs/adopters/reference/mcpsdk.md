@@ -178,11 +178,11 @@ A call still waiting on the host at that point (an `elicitation/create`
 question, a server ping) can never be answered; the SDK abandons it,
 and the session still ends cleanly.
 
-The SDK's own stdio transports behave differently: go-sdk v1.7.0
+The SDK's own stdio transports behave differently: go-sdk v1.8.0
 treats end of input as a broken connection, cancels every call in
-flight, and refuses to write their responses, so a host that closes
-early gets no answer and the session ends with `server is closing:
-EOF`. `StdioTransport` holds end of input back from the SDK until the
+flight, and never writes their responses, so a host that closes early
+gets no answer (v1.7.0 also ended the session with `server is closing:
+EOF`). `StdioTransport` holds end of input back from the SDK until the
 calls it has read are answered, tracking requests and responses on the
 wire; the framing and every protocol behavior stay the SDK's.
 `TestSDKIOTransportAbandonsCallsAtEndOfInput` pins the SDK behavior
@@ -272,7 +272,7 @@ How it behaves:
 The `tasks/get|update|cancel` methods are served by a thin
 HTTP-level handler in front of the SDK handler (wrapped inside
 `Handler`/`Mount` automatically), scoped strictly to the reserved
-`tasks/` method prefix: go-sdk v1.7.0 rejects unknown methods at the
+`tasks/` method prefix: go-sdk v1.8.0 rejects unknown methods at the
 transport layer before middleware runs, so no in-SDK seam exists.
 Task *creation* rides entirely inside the SDK via receiving
 middleware. Optional push (`notifications/tasks` over
@@ -281,7 +281,7 @@ own notification types onto listen streams, and shipping push would
 mean hand-rolling transport machinery this surface exists to avoid.
 
 This is the one place the surface's solely-the-SDK rule is amended:
-**go-sdk v1.7.0 ships no tasks support** (its trackers are issue
+**go-sdk v1.8.0 ships no tasks support** (its trackers are issue
 [#626], labeled SEP-1686 in its ROADMAP, and the in-progress PR
 [#755]), so implementing SEP-2663 beside the SDK duplicates nothing
 the SDK provides. The moment that changes, the rule applies again:

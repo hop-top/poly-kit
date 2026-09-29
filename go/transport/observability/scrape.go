@@ -217,7 +217,7 @@ func labelsOf(attrs attribute.Set, scope []label) []label {
 	for iter.Next() {
 		kv := iter.Attribute()
 		name := labelName(string(kv.Key))
-		value := kv.Value.Emit()
+		value := kv.Value.String()
 		if i, dup := at[name]; dup {
 			out[i].value += ";" + value
 			continue

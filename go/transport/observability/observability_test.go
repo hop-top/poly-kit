@@ -540,7 +540,7 @@ func TestHTTPSpanClientAddressIgnoresSpoofedForwardedFor(t *testing.T) {
 		if kv.Key == "client.address" || kv.Key == "http.client_ip" {
 			client = kv.Value.AsString()
 		}
-		assert.NotEqual(t, "6.6.6.6", kv.Value.Emit(), "attribute %s", kv.Key)
+		assert.NotEqual(t, "6.6.6.6", kv.Value.String(), "attribute %s", kv.Key)
 	}
 	assert.Equal(t, "192.0.2.10", client)
 }

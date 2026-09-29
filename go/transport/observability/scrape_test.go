@@ -71,11 +71,13 @@ func TestScrapeEndpointServesTheServeInstruments(t *testing.T) {
 		`le="+Inf"} 1`,
 		"# TYPE kit_serve_requests_active gauge\n",
 		"# TYPE kit_serve_http_requests_active gauge\n",
-		"# TYPE http_server_duration_milliseconds histogram\n", // otelhttp v0.60 semconv
+		"# TYPE http_server_request_duration_seconds histogram\n", // otelhttp stable semconv
 		"# TYPE target_info gauge\n",
 	} {
 		assert.Contains(t, body, want)
 	}
+	assert.Regexp(t, `http_server_request_duration_seconds_count\{[^}]*kit_service="api"`, body,
+		"otelhttp instruments carry the service label")
 
 	resp, body = scrape(t, h, http.MethodHead)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)

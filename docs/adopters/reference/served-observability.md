@@ -160,18 +160,17 @@ recommendation for `http.server.request.duration`. They are an advisory
 on the instrument: with `WithMeterProvider`, a view on your own meter
 provider overrides them.
 
-`http.server.*` follows the HTTP semantic conventions otelhttp v0.60
-emits by default, the pre-stable ones: `http.server.duration` in
-milliseconds (`http_server_duration_milliseconds` when scraped) and
-the counters `http.server.request.size` and `http.server.response.size`
-(`http_server_request_size_bytes_total`,
-`http_server_response_size_bytes_total`). Set
-`OTEL_SEMCONV_STABILITY_OPT_IN=http/dup` to record the stable names
-beside them: `http.server.request.duration` in seconds and the
+`http.server.*` follows the stable HTTP semantic conventions, the only
+ones otelhttp emits since v0.70: `http.server.request.duration` in
+seconds (`http_server_request_duration_seconds` when scraped) and the
 `http.server.request.body.size` and `http.server.response.body.size`
-histograms. The defaults change when kit moves to an otelhttp release
-that emits the stable names by default; a dashboard built on the old
-names should move with it.
+histograms (`http_server_request_body_size_bytes`,
+`http_server_response_body_size_bytes`). The pre-stable names
+(`http_server_duration_milliseconds`,
+`http_server_request_size_bytes_total`,
+`http_server_response_size_bytes_total`) are gone, and
+`OTEL_SEMCONV_STABILITY_OPT_IN` no longer changes them; a dashboard
+built on the old names must move to the new ones.
 
 An unresolved command path never becomes a label: a caller cannot mint
 series by requesting commands that do not exist.

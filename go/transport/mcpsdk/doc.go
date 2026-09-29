@@ -35,7 +35,7 @@
 // kit's safety gates enforced at task creation. The extension's wire
 // behavior lives in the standalone hop.top/mcp-tasks module
 // (in-repo under extensions/mcp-tasks); it exists beside the SDK
-// only because go-sdk v1.7.0 ships no tasks support — see the
+// only because go-sdk v1.8.0 ships no tasks support — see the
 // README's tasks section for the contract and the reconcile canary.
 //
 // This package contains no MCP protocol logic of its own. Kit-side
