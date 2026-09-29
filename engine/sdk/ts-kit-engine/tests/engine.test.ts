@@ -6,8 +6,14 @@ vi.mock("child_process", () => ({
   spawn: vi.fn(),
 }));
 
+vi.mock("fs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("fs")>()),
+  existsSync: vi.fn(() => false),
+}));
+
 import { KitEngine } from "../src/index";
 import { spawn } from "child_process";
+import { existsSync } from "fs";
 
 function createMockProcess(startupJSON: string) {
   const stdout = new EventEmitter();
@@ -41,6 +47,17 @@ describe("KitEngine", () => {
       expect.arrayContaining(["serve", "--port", "0", "--app", "test"]),
       expect.anything(),
     );
+  });
+
+  it("start prefers the kit binary the postinstall installed", async () => {
+    (spawn as any).mockReturnValue(createMockProcess('{"port":9876,"pid":1234}'));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+    (existsSync as any).mockReturnValueOnce(true);
+
+    await KitEngine.start();
+
+    const bin = (spawn as any).mock.calls.at(-1)[0];
+    expect(bin).toMatch(/ts-kit-engine[\\/]bin[\\/]kit(\.exe)?$/);
   });
 
   it("start passes flags correctly", async () => {

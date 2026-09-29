@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess } from "child_process";
+import { existsSync } from "fs";
+import { join } from "path";
 import { Collection } from "./collection";
 import { EventStream } from "./events";
 import { SyncClient } from "./sync";
@@ -29,6 +31,14 @@ export interface KitEngineOptions {
   binPath?: string;
 }
 
+// Where the package's postinstall (scripts/install.js) puts the kit binary
+// when none on PATH is compatible.
+const INSTALLED_KIT = join(__dirname, "..", "bin", process.platform === "win32" ? "kit.exe" : "kit");
+
+function defaultKitBin(): string {
+  return existsSync(INSTALLED_KIT) ? INSTALLED_KIT : "kit";
+}
+
 export class KitEngine {
   readonly port: number;
   readonly pid: number;
@@ -52,7 +62,7 @@ export class KitEngine {
   }
 
   static async start(opts?: KitEngineOptions): Promise<KitEngine> {
-    const bin = opts?.binPath ?? "kit";
+    const bin = opts?.binPath ?? defaultKitBin();
     const args = ["serve", `--port`, String(opts?.port ?? 0)];
     if (opts?.app) args.push("--app", opts.app);
     if (opts?.data) args.push("--data", opts.data);

@@ -11,7 +11,8 @@ const zlib = require("zlib");
 // kit releases are tagged `kit/v<version>` on the monorepo; that release
 // carries the `kit_<os>_<arch>` archives and checksums.txt.
 const REPO = "hop-top/poly-kit";
-const BIN_DIR = join(__dirname, "..", "bin");
+const PACKAGE_DIR = join(__dirname, "..");
+const BIN_DIR = join(PACKAGE_DIR, "bin");
 const PKG = require("../package.json");
 const VERSION = PKG.kit && PKG.kit.version || PKG.version;
 const CHECKSUMS_MAX_BYTES = 1 << 20;
@@ -341,9 +342,25 @@ async function install(opts = {}) {
   return binPath;
 }
 
+// A package outside any node_modules directory is a source checkout (this
+// monorepo's workspace), not an installed dependency.
+function isSourceCheckout(packageDir = PACKAGE_DIR) {
+  return !packageDir.split(/[\\/]/).includes("node_modules");
+}
+
+// Runs as the package's postinstall. A workspace install of the source
+// checkout skips it, so it never reaches the network there; running the
+// script directly always installs.
+//
 // KIT_INSTALL_OPTIONAL=1 tolerates a failed install (nothing is installed);
 // it never bypasses verification.
 async function run(env = process.env, opts = {}) {
+  if (env.npm_lifecycle_event === "postinstall" && isSourceCheckout(opts.packageDir)) {
+    (opts.log || ((msg) => process.stdout.write(msg)))(
+      "kit-engine: source checkout, skipping kit download\n",
+    );
+    return 0;
+  }
   try {
     await install(opts);
     return 0;
@@ -363,6 +380,7 @@ module.exports = {
   fetchChecksums,
   findChecksum,
   install,
+  isSourceCheckout,
   parseChecksumLine,
   releaseUrl,
   run,

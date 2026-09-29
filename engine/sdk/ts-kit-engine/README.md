@@ -21,8 +21,10 @@ reimplementing anything.
 npm install @hop-top/kit-engine
 ```
 
-The postinstall script checks PATH for `kit`; if missing, downloads the
-binary for your platform from GitHub releases.
+The postinstall uses a PATH `kit` matching the pinned release's major.minor,
+else downloads that [release](https://github.com/hop-top/poly-kit/releases)'s
+archive, verifies it against `checksums.txt` and installs it for `start()`.
+Failure fails `npm install` unless `KIT_INSTALL_OPTIONAL=1` (then use `binPath`).
 
 ## Usage
 

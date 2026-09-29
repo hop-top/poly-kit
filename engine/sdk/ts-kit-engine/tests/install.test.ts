@@ -328,6 +328,63 @@ describe("compatible", () => {
   });
 });
 
+// --- postinstall wiring ------------------------------------------------------
+
+describe("postinstall", () => {
+  const lifecycle = { npm_lifecycle_event: "postinstall" };
+  const checkout = () => join(tmp, "repo", "engine", "sdk", "ts-kit-engine");
+  const dependency = () => join(tmp, "app", "node_modules", "@hop-top", "kit-engine");
+
+  it("is a no-op in a source checkout: no PATH probe, no network", async () => {
+    const h = harness(goodArchive(), new Error("network must not be reached"));
+    const which = vi.fn(() => null);
+    const fetchChecksums = vi.fn(h.deps.fetchChecksums);
+    const code = await install.run(lifecycle, {
+      ...h,
+      packageDir: checkout(),
+      deps: { ...h.deps, which, fetchChecksums },
+    });
+    expect(code).toBe(0);
+    expect(which).not.toHaveBeenCalled();
+    expect(fetchChecksums).not.toHaveBeenCalled();
+    expect(binDirEntries()).toEqual([]);
+  });
+
+  it("installs when the package is a dependency under node_modules", async () => {
+    const archive = goodArchive();
+    const h = harness(archive, `${sha256(archive)}  ${ARCHIVE}\n`);
+    const code = await install.run(lifecycle, { ...h, packageDir: dependency() });
+    expect(code).toBe(0);
+    expect(binDirEntries()).toEqual(["kit"]);
+  });
+
+  it("fails a dependency install that cannot verify the binary", async () => {
+    const h = harness(goodArchive(), new Error("offline"));
+    const code = await install.run(lifecycle, { ...h, packageDir: dependency() });
+    expect(code).toBe(1);
+    expect(binDirEntries()).toEqual([]);
+  });
+
+  it("installs when run directly, even from a checkout", async () => {
+    const archive = goodArchive();
+    const h = harness(archive, `${sha256(archive)}  ${ARCHIVE}\n`);
+    const code = await install.run({}, { ...h, packageDir: checkout() });
+    expect(code).toBe(0);
+    expect(binDirEntries()).toEqual(["kit"]);
+  });
+
+  it("treats this workspace package as a source checkout", () => {
+    expect(install.isSourceCheckout()).toBe(true);
+    expect(install.isSourceCheckout(dependency())).toBe(false);
+    expect(install.isSourceCheckout("C:\\app\\node_modules\\@hop-top\\kit-engine")).toBe(false);
+  });
+
+  it("is wired as the package's postinstall and shipped with it", () => {
+    expect(PKG.scripts.postinstall).toBe("node scripts/install.js");
+    expect(PKG.files).toEqual(expect.arrayContaining(["dist", "scripts/install.js"]));
+  });
+});
+
 // --- extraction --------------------------------------------------------------
 
 describe("extractBinary", () => {
