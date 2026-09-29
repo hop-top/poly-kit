@@ -16,6 +16,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
+
+	tmpl "hop.top/kit/internal/template"
 )
 
 // kitTSPackage is the npm name of the TypeScript kit SDK (sdk/ts).
@@ -174,4 +177,45 @@ func TestBootstrap_CLITS_CommanderAndNodeFloor(t *testing.T) {
 		"generated project depends on commander 15, the major @hop-top/kit builds on")
 	assert.Equal(t, ">=22.12", pkg.Engines["node"],
 		"generated project declares the Node floor commander 15 requires")
+}
+
+// cliTSAllowedBuilds are the dependencies whose install scripts a
+// generated cli-ts project runs: esbuild (vitest's bundler) fetches its
+// platform binary, better-sqlite3 (@hop-top/kit) its native addon.
+// pnpm 11 refuses any other build script (strictDepBuilds), so a new
+// native dependency fails the install until it is reviewed here.
+var cliTSAllowedBuilds = map[string]bool{
+	"better-sqlite3": true,
+	"esbuild":        true,
+}
+
+// TestBootstrap_CLITS_AllowsItsDependencyBuilds pins the pnpm 11 build
+// allowlist a generated project ships. Without it the first `pnpm
+// install` exits ERR_PNPM_IGNORED_BUILDS. pnpm 11 reads allowBuilds
+// from pnpm-workspace.yaml only; package.json and .npmrc are ignored.
+func TestBootstrap_CLITS_AllowsItsDependencyBuilds(t *testing.T) {
+	target, _ := runBootstrapFor(t, "cli-ts")
+
+	raw, err := os.ReadFile(filepath.Join(target, "pnpm-workspace.yaml"))
+	require.NoError(t, err, "generated project ships pnpm-workspace.yaml")
+	var ws struct {
+		AllowBuilds map[string]bool `yaml:"allowBuilds"`
+	}
+	require.NoError(t, yaml.Unmarshal(raw, &ws), "pnpm-workspace.yaml is valid YAML:\n%s", raw)
+	assert.Equal(t, cliTSAllowedBuilds, ws.AllowBuilds,
+		"allowBuilds allows exactly the dependency builds the project needs")
+}
+
+// TestCLITSTiers_PNPMWorkspaceShipsWithPackageJSON keeps the build
+// allowlist on every tier that writes package.json: at a tier with the
+// manifest but without the allowlist, `pnpm install` fails again.
+func TestCLITSTiers_PNPMWorkspaceShipsWithPackageJSON(t *testing.T) {
+	root := kitRepoRoot(t)
+	for _, dir := range []string{"templates/cli-ts", "internal/template/builtins/cli-ts"} {
+		tiers, err := tmpl.LoadTiers(os.DirFS(filepath.Join(root, dir)))
+		require.NoError(t, err)
+		require.NotEmpty(t, tiers["package.json"], "%s/tiers.yaml maps package.json", dir)
+		assert.Equal(t, tiers["package.json"], tiers["pnpm-workspace.yaml"],
+			"%s/tiers.yaml ships pnpm-workspace.yaml on package.json's tiers", dir)
+	}
 }
