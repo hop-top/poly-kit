@@ -8,7 +8,9 @@ const https = require("https");
 const crypto = require("crypto");
 const zlib = require("zlib");
 
-const REPO = "hop-top/kit";
+// kit releases are tagged `kit/v<version>` on the monorepo; that release
+// carries the `kit_<os>_<arch>` archives and checksums.txt.
+const REPO = "hop-top/poly-kit";
 const BIN_DIR = join(__dirname, "..", "bin");
 const PKG = require("../package.json");
 const VERSION = PKG.kit && PKG.kit.version || PKG.version;
@@ -32,11 +34,17 @@ function kitVersion(binPath) {
   }
 }
 
+// Accept the same major.minor. `kit --version` prints `kit v<version>`;
+// the version is its last word.
 function compatible(found, wanted) {
-  // Accept same major.minor
-  const f = found.replace(/^v/, "").split(".");
+  const words = found.trim().split(/\s+/);
+  const f = words[words.length - 1].replace(/^v/, "").split(".");
   const w = wanted.replace(/^v/, "").split(".");
-  return f[0] === w[0] && f[1] === w[1];
+  return f.length > 1 && f[0] === w[0] && f[1] === w[1];
+}
+
+function releaseUrl(version, filename) {
+  return `https://github.com/${REPO}/releases/download/kit/v${version}/${filename}`;
 }
 
 function platformKey() {
@@ -80,7 +88,7 @@ function downloadFile(url, dest) {
 // Download the release checksums file. Any failure rejects: the caller must
 // never install a binary it could not verify.
 async function fetchChecksums(version) {
-  const url = `https://github.com/${REPO}/releases/download/v${version}/checksums.txt`;
+  const url = releaseUrl(version, "checksums.txt");
   try {
     const res = await get(url);
     const chunks = [];
@@ -309,7 +317,7 @@ async function install(opts = {}) {
   const ext = platform === "win32" ? "zip" : "tar.gz";
   const archiveName = `kit_${key}.${ext}`;
   const ver = version.replace(/^v/, "");
-  const url = `https://github.com/${REPO}/releases/download/v${ver}/${archiveName}`;
+  const url = releaseUrl(ver, archiveName);
 
   log(`kit-engine: downloading kit v${ver} for ${key}...\n`);
   fs.mkdirSync(binDir, { recursive: true });
@@ -356,6 +364,7 @@ module.exports = {
   findChecksum,
   install,
   parseChecksumLine,
+  releaseUrl,
   run,
   verifyArchive,
 };

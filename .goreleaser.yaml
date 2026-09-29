@@ -1,12 +1,26 @@
 version: 2
 project_name: kit
 
+# Builds the `kit` binary for every `kit/v<version>` release. publish.yml
+# runs this through hop-top/.github goreleaser-on-tag.yml, which
+# synthesizes a bare `v<version>` tag for GoReleaser and uploads
+# dist/*.tar.gz, dist/*.zip and dist/checksums.txt to the real
+# `kit/v<version>` release itself.
+#
+# The engine SDKs (engine/sdk/py-kit-engine, engine/sdk/ts-kit-engine)
+# download `kit_<os>_<arch>.<tar.gz|zip>` and verify it against
+# checksums.txt from that release: keep the archive names versionless
+# and the checksum file name as is, or the SDK auto-download breaks.
+
 builds:
-  - id: spaced
-    dir: examples/spaced/go
-    binary: spaced
+  - id: kit
+    main: ./cmd/kit
+    binary: kit
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -buildvcs=false
     goos:
       - darwin
       - linux
@@ -18,29 +32,22 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 archives:
-  - id: spaced
-    builds: [spaced]
+  - id: kit
+    ids: [kit]
     name_template: >-
-      spaced_{{.Version}}_{{.Os}}_{{.Arch}}
+      kit_{{.Os}}_{{.Arch}}
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: checksums.txt
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^chore:'
-      - '^ci:'
-      - '^docs:'
-      - '^test:'
+  # release-please writes the changelog.
+  disable: true
 
 release:
-  github:
-    owner: hop-top
-    name: kit
-  draft: false
-  prerelease: auto
+  # GoReleaser OSS cannot publish to the prefixed `kit/v<version>`
+  # release; goreleaser-on-tag.yml uploads the archives instead.
+  disable: true

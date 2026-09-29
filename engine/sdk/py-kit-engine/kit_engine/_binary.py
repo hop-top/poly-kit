@@ -16,8 +16,10 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-REPO = "hop-top/kit"
-VERSION = "0.1.0"
+# kit releases are tagged `kit/v<version>` on the monorepo; that release
+# carries the `kit_<os>_<arch>` archives and checksums.txt.
+REPO = "hop-top/poly-kit"
+VERSION = "0.5.0-alpha.16"  # x-release-please-version
 
 _CHECKSUMS_MAX_BYTES = 1 << 20
 
@@ -47,9 +49,13 @@ def _bin_dir() -> Path:
     return Path.home() / ".local" / "bin"
 
 
+def _release_url(version: str, filename: str) -> str:
+    return f"https://github.com/{REPO}/releases/download/kit/v{version}/{filename}"
+
+
 def _fetch_checksums(version: str) -> str:
     """Download the release checksums file; raise if it cannot be read."""
-    url = f"https://github.com/{REPO}/releases/download/v{version}/checksums.txt"
+    url = _release_url(version, "checksums.txt")
     try:
         with urllib.request.urlopen(url, timeout=30) as resp:
             return resp.read(_CHECKSUMS_MAX_BYTES).decode()
@@ -144,14 +150,19 @@ def _extract(archive: Path, dest_dir: Path, bin_name: str) -> Path:
 def _version_matches(binary: str, want: str) -> bool:
     """True if ``binary --version`` reports the same major.minor as ``want``.
 
-    A binary that cannot be run, fails, times out or prints undecodable
-    output is treated as a mismatch so the caller falls through to download.
+    ``kit --version`` prints ``kit v<version>``; the version is its last
+    word. A binary that cannot be run, fails, times out or prints
+    undecodable output is treated as a mismatch so the caller falls
+    through to download.
     """
     try:
         out = subprocess.check_output([binary, "--version"], text=True, timeout=5)
     except (OSError, subprocess.SubprocessError, ValueError):
         return False
-    return out.strip().lstrip("v").split(".")[:2] == want.split(".")[:2]
+    words = out.split()
+    if not words:
+        return False
+    return words[-1].lstrip("v").split(".")[:2] == want.split(".")[:2]
 
 
 def find_kit_binary(version: str | None = None) -> str:
@@ -171,7 +182,7 @@ def find_kit_binary(version: str | None = None) -> str:
     os_name, arch = _platform_key()
     ext = "zip" if os_name == "windows" else "tar.gz"
     archive_name = f"kit_{os_name}_{arch}.{ext}"
-    url = f"https://github.com/{REPO}/releases/download/v{ver}/{archive_name}"
+    url = _release_url(ver, archive_name)
 
     expected = _find_checksum(_fetch_checksums(ver), archive_name)
 

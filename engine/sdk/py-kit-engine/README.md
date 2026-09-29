@@ -21,9 +21,12 @@ reimplementing anything.
 pip install hop-top-kit-engine
 ```
 
-The SDK shells out to a `kit` binary on PATH: install it from the
-[kit releases](https://github.com/hop-top/poly-kit/releases) or pass an
-explicit path via `bin_path=`. Real-time event streaming needs the
+The SDK shells out to a `kit` binary. Without `bin_path=`, it uses `kit`
+from PATH when its major.minor matches the kit release this package pins;
+otherwise it downloads that release's archive for your platform from the
+[kit releases](https://github.com/hop-top/poly-kit/releases) into the
+virtualenv's `bin/` (or `~/.local/bin`), and installs it only if it
+matches the release's `checksums.txt`. Real-time event streaming needs the
 optional `ws` extra: `pip install 'hop-top-kit-engine[ws]'`.
 
 ## Usage
