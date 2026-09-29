@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
+import stat
 import tarfile
 import urllib.error
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -16,14 +19,38 @@ ARCHIVE = "kit_linux_amd64.tar.gz"
 BINARY = b"#!/bin/sh\necho kit\n"
 
 
-def _tar_gz(members: dict[str, bytes]) -> bytes:
+def _tar_gz(members: dict[str, bytes | tarfile.TarInfo]) -> bytes:
+    """Build a tar.gz; a ``TarInfo`` value adds a link/special member as-is."""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tf:
         for name, data in members.items():
+            if isinstance(data, tarfile.TarInfo):
+                tf.addfile(data)
+                continue
             info = tarfile.TarInfo(name)
             info.size = len(data)
             info.mode = 0o755
             tf.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def _link(name: str, target: str, kind: bytes = tarfile.SYMTYPE) -> tarfile.TarInfo:
+    info = tarfile.TarInfo(name)
+    info.type = kind
+    info.linkname = target
+    return info
+
+
+def _zip(members: dict[str, bytes], symlinks: dict[str, str] | None = None) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in members.items():
+            zf.writestr(name, data)
+        for name, target in (symlinks or {}).items():
+            info = zipfile.ZipInfo(name)
+            info.create_system = 3  # unix
+            info.external_attr = (stat.S_IFLNK | 0o777) << 16
+            zf.writestr(info, target)
     return buf.getvalue()
 
 
@@ -137,3 +164,115 @@ def test_checksum_mismatch_fails_closed(env):
         _binary.find_kit_binary("1.2.3")
     assert not env.extracted
     assert not env.installed.exists()
+
+
+# --- extraction ---------------------------------------------------------------
+
+
+@pytest.fixture
+def box(tmp_path):
+    """A dest dir nested inside a sandbox so escapes stay observable."""
+    dest = tmp_path / "box" / "dest"
+    dest.mkdir(parents=True)
+    return dest
+
+
+def _write(path: Path, data: bytes) -> Path:
+    path.write_bytes(data)
+    return path
+
+
+def _entries(root: Path) -> set[str]:
+    return {str(p.relative_to(root)) for p in root.rglob("*")}
+
+
+def test_extract_tar_nested_binary(box):
+    archive = _write(box.parent / "a.tar.gz", _tar_gz({"kit_1.2.3_linux_amd64/kit": BINARY}))
+    out = _binary._extract(archive, box, "kit")
+    assert out == box / "kit"
+    assert out.read_bytes() == BINARY
+
+
+def test_extract_tar_writes_only_binary(box):
+    archive = _write(
+        box.parent / "a.tar.gz",
+        _tar_gz({"README.md": b"readme", "docs/x.txt": b"x", "kit": BINARY}),
+    )
+    _binary._extract(archive, box, "kit")
+    assert _entries(box) == {"kit"}
+
+
+def test_extract_tar_ignores_traversal_members(box):
+    sandbox = box.parent
+    archive = _write(
+        sandbox / "a.tar.gz",
+        _tar_gz(
+            {
+                "../escape": b"pwn",
+                "../../escape2": b"pwn",
+                str(sandbox / "abs-escape"): b"pwn",
+                "kit": BINARY,
+            }
+        ),
+    )
+    _binary._extract(archive, box, "kit")
+    assert not (sandbox / "escape").exists()
+    assert not (sandbox.parent / "escape2").exists()
+    assert not (sandbox / "abs-escape").exists()
+    assert (box / "kit").read_bytes() == BINARY
+
+
+def test_extract_tar_symlink_dir_cannot_escape(box, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    archive = _write(
+        box.parent / "a.tar.gz",
+        _tar_gz({"d": _link("d", str(outside)), "d/pwn": b"pwn", "kit": BINARY}),
+    )
+    _binary._extract(archive, box, "kit")
+    assert not (outside / "pwn").exists()
+    assert (box / "kit").read_bytes() == BINARY
+
+
+@pytest.mark.parametrize("kind", [tarfile.SYMTYPE, tarfile.LNKTYPE], ids=["symlink", "hardlink"])
+def test_extract_tar_rejects_link_as_binary(box, tmp_path, kind):
+    target = _write(tmp_path / "target", b"not kit")
+    archive = _write(box.parent / "a.tar.gz", _tar_gz({"kit": _link("kit", str(target), kind)}))
+    with pytest.raises(RuntimeError, match="not found"):
+        _binary._extract(archive, box, "kit")
+    assert not os.path.lexists(box / "kit")
+
+
+def test_extract_zip_nested_binary(box):
+    archive = _write(box.parent / "a.zip", _zip({"kit_1.2.3_windows_amd64/kit.exe": BINARY}))
+    out = _binary._extract(archive, box, "kit.exe")
+    assert out.read_bytes() == BINARY
+    assert _entries(box) == {"kit.exe"}
+
+
+def test_extract_zip_ignores_traversal_members(box):
+    sandbox = box.parent
+    archive = _write(
+        sandbox / "a.zip",
+        _zip({"../escape": b"pwn", "sub/../../escape2": b"pwn", "kit.exe": BINARY}),
+    )
+    _binary._extract(archive, box, "kit.exe")
+    assert not (sandbox / "escape").exists()
+    assert not (sandbox / "escape2").exists()
+    assert _entries(box) == {"kit.exe"}
+
+
+def test_extract_zip_rejects_symlink_binary(box):
+    archive = _write(box.parent / "a.zip", _zip({}, symlinks={"kit.exe": "/etc/passwd"}))
+    with pytest.raises(RuntimeError, match="not found"):
+        _binary._extract(archive, box, "kit.exe")
+    assert not os.path.lexists(box / "kit.exe")
+
+
+def test_install_rejects_symlinked_binary(env, tmp_path):
+    target = _write(tmp_path / "target", b"not kit")
+    env.archive = _tar_gz({"kit": _link("kit", str(target))})
+    env.checksums = f"{_sha256(env.archive)}  {ARCHIVE}\n".encode()
+    with pytest.raises(RuntimeError, match="not found"):
+        _binary.find_kit_binary("1.2.3")
+    assert not os.path.lexists(env.installed)
