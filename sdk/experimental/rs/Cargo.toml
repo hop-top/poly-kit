@@ -104,7 +104,7 @@ getrandom = { version = "0.2", optional = true }
 dirs = { version = "5", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
 regex = { version = "1", optional = true }
-thiserror = { version = "1", optional = true }
+thiserror = { version = "2", optional = true }
 rmcp = { version = "3.1.4", default-features = false, optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
 comfy-table = { version = "7", default-features = false, optional = true }
