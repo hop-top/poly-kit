@@ -35,6 +35,18 @@ updates:
       # typescript-eslint supports 7 and the dts build works.
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
+      # v5 changes load semantics (empty docs throw, `<<` merge keys,
+      # timestamps); needs a migration, not a bump.
+      - dependency-name: js-yaml
+        update-types: ["version-update:semver-major"]
+      # v13 segfaults on Node 22.12-22.13 (darwin-arm64) and still needs
+      # node-gyp on Windows; revisit once upstream fixes land.
+      - dependency-name: better-sqlite3
+        update-types: ["version-update:semver-major"]
+    groups:
+      # server pins core exactly: they must move together.
+      modelcontextprotocol:
+        patterns: ["@modelcontextprotocol/*"]
 
   - package-ecosystem: uv
     directory: "/sdk/py"
@@ -42,6 +54,10 @@ updates:
       interval: weekly
     commit-message:
       prefix: "build(deps):"
+    groups:
+      # mcp pins mcp-types exactly: they must move together.
+      mcp:
+        patterns: ["mcp", "mcp-types"]
 
   - package-ecosystem: uv
     directory: "/engine/sdk/py-kit-engine"
@@ -56,6 +72,14 @@ updates:
       interval: weekly
     commit-message:
       prefix: "build(deps):"
+    groups:
+      # RustCrypto hash/KDF/MAC crates share the `digest` major: bump together.
+      rustcrypto:
+        patterns: ["sha2", "hkdf", "digest", "hmac"]
+    ignore:
+      # Stay on stable releases of the secretbox AEAD.
+      - dependency-name: crypto_secretbox
+        versions: [">= 0.2.0-pre.0, < 0.2.0"]
 
   - package-ecosystem: composer
     directory: "/sdk/experimental/php"
