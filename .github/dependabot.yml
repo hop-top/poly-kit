@@ -4,6 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
     commit-message:
       prefix: "build(deps):"
     groups:
@@ -11,20 +13,39 @@ updates:
       # api, sdk and exporters must share a version: bump the set together.
       connect-otel:
         patterns: ["connectrpc.com/*", "go.opentelemetry.io/*"]
+      # Everything else: one PR for minor + patch. A dependency joins the
+      # first group it matches, so the groups above stay ahead of this one.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: gomod
     directory: "/extensions/mcp-tasks"
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    groups:
+      # One PR per run for minor + patch; majors stay separate for review.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: gomod
     directory: "/incubator/qmochi"
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    groups:
+      # One PR per run for minor + patch; majors stay separate for review.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # pnpm workspace: the root lockfile covers sdk/ts, engine/sdk/ts-kit-engine
   # and the examples.
@@ -32,6 +53,8 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
     commit-message:
       prefix: "build(deps):"
     ignore:
@@ -48,6 +71,9 @@ updates:
       # node-gyp on Windows; revisit once upstream fixes land.
       - dependency-name: better-sqlite3
         update-types: ["version-update:semver-major"]
+      # Typings track the better-sqlite3 major deferred above.
+      - dependency-name: "@types/better-sqlite3"
+        update-types: ["version-update:semver-major"]
       # Typings must not exceed the Node floor (engines >=22.12 in sdk/ts
       # and ts-kit-engine): a newer major types APIs the floor lacks.
       - dependency-name: "@types/node"
@@ -62,11 +88,20 @@ updates:
       # typescript-eslint and @typescript-eslint/* ship in lockstep.
       typescript-eslint:
         patterns: ["typescript-eslint", "@typescript-eslint/*"]
+      # Everything else: one PR for minor + patch. A dependency joins the
+      # first group it matches, so the groups above stay ahead of this one.
+      # esbuild stays out: vite pins its range, so it gets its own PR.
+      minor-patch:
+        patterns: ["*"]
+        exclude-patterns: ["esbuild"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: uv
     directory: "/sdk/py"
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
     commit-message:
       prefix: "build(deps):"
     groups:
@@ -83,13 +118,22 @@ updates:
     directory: "/engine/sdk/py-kit-engine"
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    groups:
+      # One PR per run for minor + patch; majors stay separate for review.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: cargo
     directory: "/sdk/experimental/rs"
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
     commit-message:
       prefix: "build(deps):"
     groups:
@@ -110,5 +154,12 @@ updates:
     directory: "/sdk/experimental/php"
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
     commit-message:
       prefix: "build(deps):"
+    groups:
+      # One PR per run for minor + patch; majors stay separate for review.
+      minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
