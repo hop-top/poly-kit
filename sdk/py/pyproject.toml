@@ -8,7 +8,8 @@ version = "0.5.0-alpha.5"
 description = "Shared CLI utilities for hop-top tools — Python edition"
 requires-python = ">=3.11"
 dependencies = [
-    "typer>=0.12,<0.28",
+    "typer>=0.20,<0.28",
+    "click>=8.2",
     "platformdirs>=4.0",
     "PyYAML>=6.0",
     "packaging>=24.0",
@@ -23,7 +24,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "typer>=0.12,<0.28", "click>=8", "ruff>=0.8", "mcp>=2.0,<3", "mcp-types>=2.0,<3"]
+dev = ["pytest>=8", "ruff>=0.8", "mcp>=2.0,<3", "mcp-types>=2.0,<3"]
 # Optional HTTPS sink for the telemetry client. The JSONL sink works
 # without it; only adopters who emit to a remote NDJSON collector need
 # httpx pulled in.
