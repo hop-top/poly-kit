@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.5.0-alpha.17](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.16...kit/v0.5.0-alpha.17) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** Go module graph moves `github.com/restatedev/sdk-go` from 0.24 to 1.1 (minimum version selection lifts adopters that import restate directly): restate 1.0 breaking changes apply to their own code (`TerminalError` is a type; testing module split out). `github.com/invopop/jsonschema` 0.14 swaps its ordered-map type and changes reflection for `omitzero` and `json:",string"` fields for adopters reflecting schemas themselves. Migration: follow restate's 1.0 upgrade notes; re-check reflected schemas.
+* **engine-ts:** `ts-kit-engine` declares `engines.node >=22.12` (was `>=20`). Migration: run on Node 22.12+ or 24.
+* **deps:** RPC telemetry from `observability.RPCInterceptor` follows OTel RPC semconv 1.43, no opt-out. `rpc.server.call.duration` (s) replaces `rpc.server.duration` (ms); `rpc.server.request.size`, `rpc.server.response.size`, `rpc.server.requests_per_rpc`, `rpc.server.responses_per_rpc` removed; `rpc.system` -> `rpc.system.name` (value `connect_rpc` -> `connectrpc`); `rpc.method` fully qualified (`cmdsurface.v1.Commands/Invoke`), `rpc.service` removed; `rpc.response.status_code` replaces the gRPC/Connect code attributes. Migration: move dashboards and alerts to the new names.
+* **ts:** `@hop-top/kit` requires Node >=22.12. `commander` 15 and `@clack/prompts` 1.x ship ESM-only; CJS dist loads them via require(esm), unflagged from Node 22.12 (commander itself declares >=22.12). Node 20 EOL 2026-04-30. Older runtimes: `@hop-top/kit`, `./cli`, `./alias`, `./tui` throw ERR_REQUIRE_ESM. Migration: upgrade to Node 22.12+ or 24; TS consumers on `module: node16` without `skipLibCheck` move to `nodenext` or `bundler`.
+* **deps:** otelhttp 0.70 emits only stable HTTP semconv. Scraped names change: `http_server_duration_milliseconds` -> `http_server_request_duration_seconds`, `http_server_request_size_bytes_total` / `http_server_response_size_bytes_total` -> `http_server_request_body_size_bytes` / `http_server_response_body_size_bytes` histograms. `OTEL_SEMCONV_STABILITY_OPT_IN` no longer applies. Migration: move dashboards and alerts to the new names.
+
+### Features
+
+* **go:** `Root.IsQuiet()` accessor next to `VerboseCount()` ([0c2526a](https://github.com/hop-top/poly-kit/commit/0c2526a36590b1df37a6d23251cdce09f4481efa))
+* **py:** `to_typer_autocompletion` completion bridge ([e03e805](https://github.com/hop-top/poly-kit/commit/e03e805f2cd6a99f2273ea3da99eef7e81a08940))
+* **py:** public `is_quiet()` accessor next to `verbose_count()` ([0cd6ec0](https://github.com/hop-top/poly-kit/commit/0cd6ec0f0b11f710cd043cc5e6bb8567fc83b814))
+* **release:** ship kit binaries for engine SDK auto-download ([9ff1653](https://github.com/hop-top/poly-kit/commit/9ff1653ff5cd3ff994d4b59e866d9c44ff2f6421))
+* **ts:** `isQuiet(cmd)` accessor next to `verboseCount(cmd)` ([faa6776](https://github.com/hop-top/poly-kit/commit/faa6776ef07df6230cf1aeaf2dac6751b4cd2503))
+
+
+### Bug Fixes
+
+* **engine-py:** extract only the kit binary from release archives ([84b1ad6](https://github.com/hop-top/poly-kit/commit/84b1ad6c507efc9bc0d889f4794099a588958e84))
+* **engine-py:** fail closed when kit binary checksums unavailable ([9a3e28a](https://github.com/hop-top/poly-kit/commit/9a3e28a842475593b84b10d90713b6a46e06c6d8))
+* **engine-py:** narrow kit version-probe exception handling ([71377b8](https://github.com/hop-top/poly-kit/commit/71377b8a7f3fa1ed3ffb939e292fc0149f8c6295))
+* **engine-ts:** extract only the kit binary, without a shell ([2cfe052](https://github.com/hop-top/poly-kit/commit/2cfe0521878443a3f9486c2e64f7d1cca44cf9a2))
+* **engine-ts:** fail closed when kit binary checksums unavailable ([dd1a465](https://github.com/hop-top/poly-kit/commit/dd1a4656051d01e3585ef19d19b944cda109e7d5))
+* **engine-ts:** run kit install on npm postinstall ([2837a80](https://github.com/hop-top/poly-kit/commit/2837a8033862eefcaa25048a3efe0a1ff11c0bd1))
+* **llm:** keep anthropic adapter off SDK credential autoload ([fb77f7e](https://github.com/hop-top/poly-kit/commit/fb77f7ea684f980acd6da61902557617515d74df))
+* **py:** build Click objects from the layer typer runs on ([a4d2a20](https://github.com/hop-top/poly-kit/commit/a4d2a208f2986e9dedbc15902540cee72378166b))
+* **py:** read root `--quiet` from typer-injected context in spaced ([02e470b](https://github.com/hop-top/poly-kit/commit/02e470bee215afb4c4a1f516cec0fc7fd5680994))
+* **scripts:** enforce full node floor in preflight ([7c144f4](https://github.com/hop-top/poly-kit/commit/7c144f42b52fef42cffeea01b60c6409727b70a7))
+* **templates:** allow cli-ts dependency builds under pnpm 11 ([c2d9567](https://github.com/hop-top/poly-kit/commit/c2d9567ea590f5c0a357616430c5f1aca1c78c06))
+* **templates:** declare `@hop-top/kit` in cli-ts scaffold ([b2efb07](https://github.com/hop-top/poly-kit/commit/b2efb077f55e1327847a0993556938396f8fe53e))
+* **templates:** move cli-ts scaffold to commander 15 + node &gt;=22.12 ([8ebe6f3](https://github.com/hop-top/poly-kit/commit/8ebe6f3aa812f90888e5c10ab141b879c9ba86f5))
+* **ts:** declare `@types/better-sqlite3` as optional peer ([8f62908](https://github.com/hop-top/poly-kit/commit/8f6290870013c60ad9abe6df6aec816fb90883d1))
+
+
+### Build
+
+* **deps:** bump Go deps ([d88c618](https://github.com/hop-top/poly-kit/commit/d88c618de630876d63dfcbecf1cc5f8eb71acdd1))
+* **deps:** bump Go modules; otel 1.46, otelhttp stable HTTP metrics ([c0a2b21](https://github.com/hop-top/poly-kit/commit/c0a2b215c065cf1716271634957ac60e591b66f5))
+* **deps:** bump otelconnect 0.10; RPC metrics on semconv 1.43 ([99a07ed](https://github.com/hop-top/poly-kit/commit/99a07ed61380203f87ba89ebb9f1909336504d48))
+* **engine-ts:** require node &gt;=22.12 in ts-kit-engine ([684eaa1](https://github.com/hop-top/poly-kit/commit/684eaa157d5d7b38c66018055d7257e4855fe680))
+* **ts:** require node &gt;=22.12; bump commander 15 ([68905f6](https://github.com/hop-top/poly-kit/commit/68905f6f0c664f56994508fdd8f4779f627ae565))
+
 ## [0.5.0-alpha.16](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.15...kit/v0.5.0-alpha.16) (2026-09-29)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.16. This release includes new features and bug fixes.
