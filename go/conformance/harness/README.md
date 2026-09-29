@@ -58,4 +58,4 @@ compose.
 
 - [Conformance reference](../../../docs/adopters/reference/conformance.md#integration-harness): every primitive, the xrr wiring example, the full classifier and annotation tables, every option, failure-message shapes, hazards and mitigations
 
-<!-- release: track hop.top/xrr v0.1.0-alpha.3 -->
+<!-- release: track hop.top/xrr v0.1.0-alpha.5 -->

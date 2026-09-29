@@ -161,8 +161,10 @@ func TestSDKIOTransportAbandonsCallsAtEndOfInput(t *testing.T) {
 
 	assert.NotContains(t, out.responses(t), float64(2),
 		"the SDK answered a call in flight at end of input; StdioTransport's hold may be redundant")
-	require.Error(t, err, "the SDK reports the abandoned response as a session error")
-	assert.Contains(t, err.Error(), "server is closing")
+	// go-sdk v1.7.0 ended the session with "server is closing: EOF";
+	// v1.8.0 cancels the call with end of input as the cause and ends
+	// the session without reporting it.
+	assert.NoError(t, err, "the SDK drops the abandoned response silently")
 }
 
 func TestStdioTransportAnswersCallsReadBeforeEndOfInput(t *testing.T) {

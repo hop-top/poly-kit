@@ -165,7 +165,7 @@ func TestStatelessMode(t *testing.T) {
 
 // TestSDKNativeTasksCanary is the reconcile-with-upstream signal.
 // Kit implements SEP-2663 itself (the tasks extension module plus the
-// WithTasks binding) because go-sdk v1.7.0 ships no tasks support of
+// WithTasks binding) because go-sdk v1.8.0 ships no tasks support of
 // its own: a server that has not registered the methods answers every
 // tasks/* call with HTTP 400 and a `... "tasks/*" unsupported` body.
 // The extension supplies them through the SDK's own custom-method

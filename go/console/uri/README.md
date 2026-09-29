@@ -59,4 +59,4 @@ uri.Register(root, uri.Config{
 
 `examples/spaced/go/main.go` is the worked reference wiring.
 
-<!-- release: track hop.top/cite v0.1.0 -->
+<!-- release: track hop.top/cite v0.1.1 -->

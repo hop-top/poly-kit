@@ -50,7 +50,7 @@
 // unknown, expired, or foreign task ID answers one identical -32602 —
 // there is no oracle for the existence of another caller's tasks, and
 // no tasks/list. Push notifications (notifications/tasks over
-// subscriptions/listen) are not implemented: go-sdk v1.7.0 routes
+// subscriptions/listen) are not implemented: go-sdk v1.8.0 routes
 // only its own notification types onto listen streams, so a
 // conformant push would require reimplementing the transport layer.
 // Poll-based operation — the required core of the extension — is

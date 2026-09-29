@@ -41,9 +41,6 @@ func (p *Provider) HTTPMiddleware(service string) func(http.Handler) http.Handle
 		otelhttp.WithTracerProvider(tp),
 		otelhttp.WithPropagators(p.prop),
 		otelhttp.WithSpanNameFormatter(spanName),
-		otelhttp.WithMetricAttributesFn(func(*http.Request) []attribute.KeyValue {
-			return []attribute.KeyValue{AttrService.String(service)}
-		}),
 	}
 	if p.mp != nil {
 		opts = append(opts, otelhttp.WithMeterProvider(p.mp))
@@ -80,6 +77,11 @@ func (p *Provider) HTTPMiddleware(service string) func(http.Handler) http.Handle
 		})
 		instrumented := otelhttp.NewHandler(counted, service, opts...)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// otelhttp adds the labeler's attributes to the http.server.*
+			// instruments it records for this request.
+			l, _ := otelhttp.LabelerFromContext(r.Context())
+			l.Add(AttrService.String(service))
+			r = r.WithContext(otelhttp.ContextWithLabeler(r.Context(), l))
 			instrumented.ServeHTTP(w, maskForwardedFor(r))
 		})
 	}
