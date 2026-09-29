@@ -26,7 +26,7 @@ The built-in `mcp` and `rpc` services get the same per-invocation
 spans and metrics through their bridges, and their HTTP listeners the
 same request spans and metrics as the api service's, under
 `services.mcp.*` and `services.rpc.*`. The rpc service wires no
-`otelconnect` interceptor of its own, so `rpc.server.*` appears only
+`otelconnect` interceptor of its own, so `rpc.server.call.duration` appears only
 when you add one.
 
 ## Linking the provider
@@ -153,7 +153,7 @@ HTTP plane, labeled `kit.service`:
 | `http.server.*` | per otelhttp | request duration and sizes, by method and status |
 | `kit.serve.http.requests.active` | up-down counter | HTTP requests in progress |
 | `kit.serve.http.refusals` | counter | requests refused by HTTP-plane middleware, and TLS handshakes a listener failed, by `kit.refusal.reason` |
-| `rpc.server.*` | per otelconnect | RPC duration and sizes, when the RPC interceptor is wired |
+| `rpc.server.call.duration` | histogram (s) | RPC call duration, by `rpc.system.name`, `rpc.method` and `rpc.response.status_code`, when the RPC interceptor is wired |
 
 The duration buckets are the OpenTelemetry semantic conventions'
 recommendation for `http.server.request.duration`. They are an advisory
@@ -171,6 +171,16 @@ histograms (`http_server_request_body_size_bytes`,
 `http_server_response_size_bytes_total`) are gone, and
 `OTEL_SEMCONV_STABILITY_OPT_IN` no longer changes them; a dashboard
 built on the old names must move to the new ones.
+
+`rpc.server.*` follows the RPC semantic conventions otelconnect emits
+since v0.10 (semconv 1.43), with no opt-out: `rpc.server.call.duration`
+in seconds (`rpc_server_call_duration_seconds` when scraped), labeled
+`rpc.system.name` (`connectrpc`), a fully-qualified `rpc.method`
+(`cmdsurface.v1.Commands/Invoke`) and `rpc.response.status_code`. The
+earlier names are gone: `rpc.server.duration` in milliseconds, the
+`rpc.server.request.size`, `rpc.server.response.size`,
+`rpc.server.requests_per_rpc` and `rpc.server.responses_per_rpc`
+histograms, and the `rpc.system` and `rpc.service` attributes.
 
 An unresolved command path never becomes a label: a caller cannot mint
 series by requesting commands that do not exist.
