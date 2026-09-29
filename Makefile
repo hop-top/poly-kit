@@ -306,8 +306,10 @@ lint-go: check-go-version tools-golangci-lint ## Go: golangci-lint (pinned via G
 	@GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./...
 	@find go cmd contracts engine examples incubator -name "go.mod" -execdir env GOFLAGS=-buildvcs=false $(GOLANGCI_LINT) run ./... \;
 
-lint-ts: ## TypeScript: eslint
+lint-ts: ## TypeScript: eslint + tsc type-check (src and tests)
 	cd sdk/ts && pnpm eslint src/
+	cd sdk/ts && pnpm run typecheck
+	cd engine/sdk/ts-kit-engine && pnpm run typecheck
 
 lint-py: ## Python: ruff check + format
 	cd sdk/py && uv run ruff check . && uv run ruff format --check .

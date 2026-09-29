@@ -12,6 +12,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format cjs --dts",
     "postinstall": "node scripts/install.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.test.json",
     "test": "vitest run"
   },
   "devDependencies": {
