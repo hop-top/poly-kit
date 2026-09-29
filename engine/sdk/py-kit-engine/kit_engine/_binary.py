@@ -146,37 +146,32 @@ def _extract(archive: Path, dest_dir: Path, bin_name: str) -> Path:
     raise RuntimeError(f"Binary not found in archive: {bin_name}")
 
 
+def _version_matches(binary: str, want: str) -> bool:
+    """True if ``binary --version`` reports the same major.minor as ``want``.
+
+    A binary that cannot be run, fails, times out or prints undecodable
+    output is treated as a mismatch so the caller falls through to download.
+    """
+    try:
+        out = subprocess.check_output([binary, "--version"], text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    return out.strip().lstrip("v").split(".")[:2] == want.split(".")[:2]
+
+
 def find_kit_binary(version: str | None = None) -> str:
     """Find or download the kit binary. Returns path to executable."""
     ver = (version or VERSION).lstrip("v")
 
     found = shutil.which("kit")
-    if found:
-        try:
-            out = subprocess.check_output(
-                [found, "--version"], text=True, timeout=5
-            ).strip()
-            found_ver = out.lstrip("v").split(".")
-            want_ver = ver.split(".")
-            if found_ver[:2] == want_ver[:2]:
-                return found
-        except Exception:
-            pass
+    if found and _version_matches(found, ver):
+        return found
 
     bin_dir = _bin_dir()
     bin_name = "kit.exe" if platform.system() == "Windows" else "kit"
     local_bin = bin_dir / bin_name
-    if local_bin.exists():
-        try:
-            out = subprocess.check_output(
-                [str(local_bin), "--version"], text=True, timeout=5
-            ).strip()
-            found_ver = out.lstrip("v").split(".")
-            want_ver = ver.split(".")
-            if found_ver[:2] == want_ver[:2]:
-                return str(local_bin)
-        except Exception:
-            pass
+    if local_bin.exists() and _version_matches(str(local_bin), ver):
+        return str(local_bin)
 
     os_name, arch = _platform_key()
     ext = "zip" if os_name == "windows" else "tar.gz"
