@@ -26,6 +26,21 @@ func servedSerial(t *testing.T, c *http.Client, url string) *big.Int {
 	_ = resp.Body.Close()
 	return resp.TLS.PeerCertificates[0].SerialNumber
 }
+
+// rejectedSince reports whether a reload logged after offset in logs
+// was rejected with want. Any change in a watched directory reloads, so
+// a replacement written through a temporary file beside the target can
+// log the rejection of the contents still in force before the rename
+// lands: only the reason tells a test's replacement apart.
+func rejectedSince(logs *logBuffer, offset int, want string) bool {
+	for _, line := range strings.Split(logs.String()[offset:], "\n") {
+		if strings.Contains(line, "tls: reload rejected") && strings.Contains(line, want) {
+			return true
+		}
+	}
+	return false
+}
+
 func accepted(c *http.Client, url string) bool {
 	resp, err := c.Get(url)
 	if err != nil {
@@ -56,9 +71,11 @@ func TestAPITLSReloadsCertificateFiles(t *testing.T) {
 		s := servedSerial(t, f.client(), url)
 		return s != nil && s.Cmp(next.Cert().SerialNumber) == 0
 	}, "the replaced certificate is served\n%s", logs)
-	assert.Contains(t, logs.String(), "tls: reloaded certificate files")
+	// The swap is logged once it is in force, so the line can trail the
+	// first handshake served with it.
+	eventually(t, func() bool { return strings.Contains(logs.String(), "tls: reloaded certificate files") },
+		"the reload is logged\n%s", logs)
 
-	rejected := func() int { return strings.Count(logs.String(), "tls: reload rejected") }
 	other := f.ca.Localhost(t)
 	for _, tc := range []struct {
 		name string
@@ -70,10 +87,10 @@ func TestAPITLSReloadsCertificateFiles(t *testing.T) {
 		{"a chain cut short mid-write", append(bytes.Clone(other.CertPEM), f.ca.PEM[:len(f.ca.PEM)/2]...), "PEM block is incomplete"},
 	} {
 		t.Run(tc.name+" is rejected and the old certificate keeps serving", func(t *testing.T) {
-			before := rejected()
+			since := len(logs.String())
 			testpki.Replace(t, f.certFile, tc.data)
-			eventually(t, func() bool { return rejected() > before }, "the replacement is rejected\n%s", logs)
-			assert.Contains(t, logs.String(), tc.want)
+			eventually(t, func() bool { return rejectedSince(logs, since, tc.want) },
+				"the replacement is rejected with %q\n%s", tc.want, logs)
 			s := servedSerial(t, f.client(), url)
 			require.NotNil(t, s, "the listener still serves")
 			assert.Zero(t, s.Cmp(next.Cert().SerialNumber), "the certificate in force is unchanged")
@@ -100,11 +117,10 @@ func TestAPIMutualTLSReloadsTheCABundle(t *testing.T) {
 	assert.False(t, accepted(f.client(f.clientCert), url), "the removed CA's clients are not")
 
 	t.Run("a bundle with no certificate is rejected; the one in force stays", func(t *testing.T) {
-		before := strings.Count(logs.String(), "tls: reload rejected")
+		since := len(logs.String())
 		testpki.Replace(t, f.caFile, []byte("nope"))
-		eventually(t, func() bool { return strings.Count(logs.String(), "tls: reload rejected") > before },
+		eventually(t, func() bool { return rejectedSince(logs, since, "holds no PEM certificate") },
 			"the bundle is rejected\n%s", logs)
-		assert.Contains(t, logs.String(), "holds no PEM certificate")
 		assert.True(t, accepted(f.client(bob), url))
 	})
 }

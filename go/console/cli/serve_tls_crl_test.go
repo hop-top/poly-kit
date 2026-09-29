@@ -53,7 +53,8 @@ func TestAPIMutualTLSRevocation(t *testing.T) {
 	eventually(t, func() bool { return !accepted(f.client(f.clientCert), url) },
 		"a certificate revoked while serving is refused\n%s", logs)
 	assert.False(t, accepted(resuming, url), "a resumed session of a revoked certificate is refused")
-	assert.Contains(t, logs.String(), "tls: reload rejected")
+	eventually(t, func() bool { return strings.Contains(logs.String(), "tls: reload rejected") },
+		"the certificate write is rejected\n%s", logs)
 	assert.True(t, accepted(f.client(), strings.Replace(url, "/v1/commands/list", "/healthz", 1)),
 		"the certificate in force still serves")
 }
