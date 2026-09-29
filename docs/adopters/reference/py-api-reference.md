@@ -98,6 +98,38 @@ class GlobalFlag:       # extra persistent root flag
 `no_color=True` is a deprecated shorthand for
 `Disable(no_color=True)`; the `NO_COLOR` env var does the same.
 
+### verbose_count and is_quiet
+
+```python
+def verbose_count() -> int
+def is_quiet() -> bool
+```
+
+Read these inside a command to size a logger or skip chatty output.
+Both are set by the root callback on every dispatch and scoped with
+`contextvars`, so a second invocation in the same process never
+inherits the first one's flags.
+
+- `verbose_count()` is the stacked `-V` count. 0 before dispatch.
+- `is_quiet()` reports `--quiet`. False before dispatch and with
+  `Disable(quiet=True)`.
+- `--quiet` and `-V` combine without error; `--quiet` wins:
+  `verbose_count()` reads 0, and a logger built with
+  `quiet=is_quiet()` runs at the parity contract's
+  `verbosity.quiet_override` (warn).
+
+```python
+from hop_top_kit.cli import is_quiet, verbose_count
+from hop_top_kit.log import with_verbose
+
+@app.command()
+def sync():
+    log = with_verbose(verbose_count(), quiet=is_quiet())
+    log.debug("resolving packages")
+    if not is_quiet():
+        typer.echo("fetching 3 packages…", err=True)
+```
+
 ### Command groups
 
 #### GroupConfig

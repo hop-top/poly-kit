@@ -37,7 +37,9 @@ if err := root.Execute(context.Background()); err != nil {
 
 `root.Execute(ctx)` runs the cobra command through fang, which
 handles `--version`, styled help, and error formatting. Subcommands
-read `root.Viper` for `quiet`, `no-color`, and `format`.
+read `root.Viper` for `no-color` and `format`, and
+[`root.VerboseCount()` / `root.IsQuiet()`](#verbosecount-and-isquiet)
+for `-V` and `--quiet`.
 
 ## Verify the result
 
@@ -151,6 +153,36 @@ func (r *Root) Execute(ctx context.Context) error
 
 Runs the root command through fang. Handles version output, styled
 help, error rendering, and man page generation.
+
+#### VerboseCount and IsQuiet
+
+```go
+func (r *Root) VerboseCount() int
+func (r *Root) IsQuiet() bool
+```
+
+Read these inside a `RunE` to size a logger or skip chatty output.
+
+- `VerboseCount` is the stacked `-V` count, read from the persistent
+  flag, whichever command parsed it. 0 before parsing.
+- `IsQuiet` reads the `quiet` key on `root.Viper`, the key `kit/log`
+  reads, so it agrees with the logger whatever set the key: the flag,
+  or a config file the tool loads into `root.Viper`. False before
+  parsing, and with `Disable.Quiet` unless something else sets the key.
+- `--quiet` and `-V` combine without error. `VerboseCount` keeps the
+  raw count; `--quiet` wins at the logger, which floors the level at
+  the parity contract's `verbosity.quiet_override` (warn).
+
+```go
+RunE: func(cmd *cobra.Command, _ []string) error {
+    logger := kitlog.WithVerbose(root.Viper, root.VerboseCount())
+    logger.Debug("resolving packages")
+    if !root.IsQuiet() {
+        fmt.Fprintln(cmd.ErrOrStderr(), "fetching 3 packages…")
+    }
+    return nil
+},
+```
 
 ### Command groups
 

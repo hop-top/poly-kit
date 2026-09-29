@@ -17,6 +17,27 @@ equivalents) must satisfy the same contract.
 | `--offline` | Disable network access. Highest-precedence override; flips off any per-command opt-in (`--push`, `--sync`, peer discovery, upgrade check). Enforced beneath the language's default HTTP client (Go: `net/http` transport; Python: the `urllib` opener chain; TS: `globalThis.fetch`) for HTTP(S); callers that open sockets directly (raw `net.Dial`/`node:net`/`socket`, SQL drivers, gRPC) or inject their own transport are covered only when they route their dialer through the language's guard helper (Go: `netpolicy.GuardDial`); a dependency that dials its own socket and exposes no dialer hook cannot be reached, and must consult the offline marker itself. Loopback is exempt. Logging-class egress — telemetry, and any remote-logging or crash-reporting sink — is also exempt: `--offline` stops traffic the user asked for, it is not a second consent gate on diagnostics. |
 
 
+## Reading `-V` and `--quiet`
+
+Commands read the parsed verbosity through an accessor, not by walking
+the parser's context. `--quiet` and `-V` combine without error and
+`--quiet` wins: the logger level floors at the parity contract's
+`verbosity.quiet_override`.
+
+| Port | Verbose count | Quiet |
+|------|---------------|-------|
+| Go | `root.VerboseCount()` | `root.IsQuiet()` |
+| TypeScript | `verboseCount(cmd)` | `isQuiet(cmd)` |
+| Python | `verbose_count()` | `is_quiet()` |
+| Rust | none | none |
+| PHP | none | none |
+
+Go's `VerboseCount` keeps the raw count under `--quiet`, and the logger
+applies the override. The TypeScript and Python counts read 0 under
+`--quiet`. Rust and PHP have no accessor: neither port wires the global
+flag layer yet (Rust's `cli` module is empty; PHP's `Cli` class is a
+placeholder).
+
 ## Help Subcommand
 
 No advertised `help` subcommand; users discover help via the
