@@ -37,7 +37,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/mdns v1.0.6
 	github.com/invopop/jsonschema v0.13.0
-	github.com/klauspost/compress v1.18.6
+	github.com/klauspost/compress v1.20.1
 	github.com/lucasb-eyer/go-colorful v1.4.1
 	github.com/mattn/go-isatty v0.0.22
 	github.com/modelcontextprotocol/go-sdk v1.8.0
