@@ -5,7 +5,7 @@
 //! richer tables (borders, UTF-8 box-drawing, theming) override the
 //! 'table' key in the Registry with their own Formatter.
 //!
-//! Renderer: built on `comfy-table::Preset::NOTHING` so column widths
+//! Renderer: built on `comfy_table::presets::NOTHING` so column widths
 //! are computed for us and we don't reinvent padding math.
 //!
 //! Options:
@@ -70,7 +70,7 @@ impl Formatter for TableFormatter {
 
         let mut table = Table::new();
         table
-            .load_preset(NOTHING)
+            .load_style(NOTHING)
             .set_content_arrangement(ContentArrangement::Disabled);
 
         if header && !columns.is_empty() {
