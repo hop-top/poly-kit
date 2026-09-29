@@ -627,9 +627,9 @@ dependencies = [
 
 [[package]]
 name = "hop-top-cite"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f59ed2a8c316ae482ac20078e9c92489948d4fd44c2485290e4e2ace0026234"
+checksum = "f5184b2a9e64dbacac0e313b084a5587834737818c7fe707f886a3759fff783f"
 dependencies = [
  "serde",
  "serde_json",
