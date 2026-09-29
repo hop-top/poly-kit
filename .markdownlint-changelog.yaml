@@ -1,0 +1,13 @@
+# markdownlint config for release-please CHANGELOG.md files (lint-docs).
+#
+# Entries are commit subjects and BREAKING CHANGE footers copied verbatim;
+# no one edits the file, so a finding can only be fixed by rewriting
+# history. Structure (headings, lists, links) stays linted against the
+# shared config; rules that judge commit prose as authored markdown are
+# off below, each with the reason it cannot hold for commit text.
+extends: examples/spaced/.markdownlint.yaml
+
+# Spaces inside emphasis: commit prose uses `*` as a wildcard or literal
+# (cors.* keys, a "*" origin grant). CommonMark renders those as plain
+# asterisks; MD037 reads the pair as emphasis with inner spaces.
+MD037: false

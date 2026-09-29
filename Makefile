@@ -347,8 +347,12 @@ lint-rs: ## Rust: cargo fmt --check + clippy (all features)
 	cd sdk/experimental/rs && cargo fmt --all -- --check
 	cd sdk/experimental/rs && cargo clippy --all-features --all-targets -- -D warnings
 
+# release-please CHANGELOG.md files get their own config: their entries are
+# commit text copied verbatim, so prose rules there are relaxed (see
+# .markdownlint-changelog.yaml); structure is still checked.
 lint-docs: ## Markdown: markdownlint (version pinned in mise.toml)
-	npx --yes markdownlint-cli2@$(MARKDOWNLINT_CLI2_VERSION) "README.md" "CHANGELOG.md" "RELEASING.md" "AGENTS.md" "docs/**/*.md" "cmd/kit/README.md" "incubator/**/*.md" --config examples/spaced/.markdownlint.yaml
+	npx --yes markdownlint-cli2@$(MARKDOWNLINT_CLI2_VERSION) "README.md" "RELEASING.md" "AGENTS.md" "docs/**/*.md" "cmd/kit/README.md" "incubator/**/*.md" "#incubator/**/CHANGELOG.md" --config examples/spaced/.markdownlint.yaml
+	npx --yes markdownlint-cli2@$(MARKDOWNLINT_CLI2_VERSION) "CHANGELOG.md" "incubator/**/CHANGELOG.md" --config .markdownlint-changelog.yaml
 
 lint-readmes: ## Markdown: folder README coverage, Contents links, shape caps
 	scripts/lint-readmes
