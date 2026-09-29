@@ -1120,6 +1120,26 @@ func TestParityLogQuiet(t *testing.T) {
 	})
 }
 
+// TestParityLogQuietWinsOverVerbose: --quiet and -V are accepted together
+// and quiet wins — the level floors at the contract's quiet_override
+// (warn): INFO and DEBUG gone, the dry-run WARN kept.
+func TestParityLogQuietWinsOverVerbose(t *testing.T) {
+	bins := parityHarness(t)
+	forAll(t, bins, func(t *testing.T, b binary) {
+		r := invoke(b, "--quiet", "-VV", "launch", "starman", "--dry-run")
+		assert.Equal(t, 0, r.code,
+			"%s: --quiet -VV launch --dry-run must exit 0\nstderr: %s",
+			b.lang, r.stderr)
+		stderr := stripANSI(r.stderr)
+		assert.NotContains(t, stderr, "INFO",
+			"%s: --quiet must win over -VV for INFO", b.lang)
+		assert.NotContains(t, stderr, "DEBU",
+			"%s: --quiet must win over -VV for DEBUG", b.lang)
+		assert.Contains(t, stderr, "WARN",
+			"%s: --quiet keeps WARN (quiet_override)", b.lang)
+	})
+}
+
 // TestParityLogWarnOnDryRun: launch --dry-run emits a WARN about dry run mode.
 func TestParityLogWarnOnDryRun(t *testing.T) {
 	bins := parityHarness(t)
