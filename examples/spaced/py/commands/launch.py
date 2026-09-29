@@ -18,7 +18,7 @@ from hop_top_kit.wizard import (  # noqa: E402
 )
 from hop_top_kit.completion import (  # noqa: E402
     CompletionItem, CompletionRegistry, static_values, func_completer,
-    to_click_shell_complete,
+    to_typer_autocompletion,
 )
 from data import find_mission, MISSIONS  # noqa: E402
 
@@ -65,7 +65,7 @@ def launch(
     ctx: typer.Context,
     mission: str = typer.Argument(
         ..., help="Mission name",
-        shell_complete=to_click_shell_complete(
+        autocompletion=to_typer_autocompletion(
             launch_completions.for_arg("launch", 0),
         ),
     ),
@@ -74,7 +74,7 @@ def launch(
     ),
     orbit: Optional[str] = typer.Option(
         None, "--orbit", help="Target orbit (e.g. LEO, GTO)",
-        shell_complete=to_click_shell_complete(_orbit_completer),
+        autocompletion=to_typer_autocompletion(_orbit_completer),
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Simulate launch without committing"),
     output: Optional[Path] = typer.Option(
