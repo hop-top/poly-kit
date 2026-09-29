@@ -1,5 +1,7 @@
+import importlib.util
 import re
 
+import pytest
 import typer
 import typer.core
 from typer.testing import CliRunner
@@ -716,6 +718,32 @@ def test_completion_show_fish():
     assert "commandline" in result.output
 
 
+@pytest.mark.parametrize("shell", ["bash", "zsh", "fish"])
+def test_completion_show_script_drives_the_runtime_completer(shell):
+    """The shown script sends the instruction the app's own completer accepts."""
+    app = _grouped_app()
+    shown = runner.invoke(app, ["completion", "show", shell])
+    assert shown.exit_code == 0
+    instructions = set(re.findall(r"_MYTOOL_COMPLETE=(\w+)", shown.output))
+    assert instructions, shown.output
+
+    for instruction in instructions:
+        result = runner.invoke(
+            app,
+            [],
+            env={
+                "_MYTOOL_COMPLETE": instruction,
+                "COMP_WORDS": "mytool ",
+                "COMP_CWORD": "1",
+                "_TYPER_COMPLETE_ARGS": "mytool ",
+                "_TYPER_COMPLETE_WORD_TO_COMPLETE": "",
+                "_TYPER_COMPLETE_FISH_ACTION": "get-args",
+            },
+        )
+        assert result.exit_code == 0, result.output
+        assert "run" in result.output
+
+
 def test_completion_show_invalid_shell():
     """completion show <invalid> exits non-zero."""
     app = _grouped_app()
@@ -881,3 +909,49 @@ def test_help_command_rows_show_operands_subcommands_and_flags():
     assert result.exit_code == 0
     assert "deploy <target> [env] [--flags]" in result.output
     assert "sub [command]" in result.output
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("typer._click") is None,
+    reason="typer<0.26 runs on the click package itself",
+)
+def test_create_app_runs_without_the_click_package():
+    """The app factory binds to typer's Click layer, never ``click`` itself."""
+    import subprocess
+    import sys
+    import textwrap
+
+    script = textwrap.dedent(
+        """
+        import sys
+
+        sys.modules["click"] = None  # any `import click` now raises
+
+        from typer.testing import CliRunner
+
+        from hop_top_kit.cli import GroupConfig, HelpConfig, create_app
+
+        app, _ = create_app(
+            name="mytool",
+            version="1.0.0",
+            help="A tool",
+            help_config=HelpConfig(
+                groups=[
+                    GroupConfig(id="commands", title="COMMANDS"),
+                    GroupConfig(id="management", title="MANAGEMENT"),
+                ],
+            ),
+        )
+
+        @app.command()
+        def deploy(target: str):
+            \"\"\"Deploy it\"\"\"
+
+        runner = CliRunner()
+        for args in (["--version"], ["--help"], ["completion", "show", "bash"]):
+            result = runner.invoke(app, args)
+            assert result.exit_code == 0, (args, result.output, result.exception)
+        """
+    )
+    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
