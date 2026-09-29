@@ -25,7 +25,7 @@ spaced elon status
 
 ### TypeScript
 
-Requires Node 20+.
+Requires Node 22.12+.
 
 ```sh
 npx tsx ts/spaced.ts mission list
