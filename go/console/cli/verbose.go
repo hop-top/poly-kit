@@ -11,7 +11,7 @@ import (
 
 // VerboseCount returns the -V count from the root command.
 // Counts map to levels via the parity contract's verbosity.levels table;
-// the contract's quiet_override wins when --quiet is set.
+// the contract's quiet_override wins when --quiet is set (see IsQuiet).
 //
 // The count is read from the persistent flag at call time: cobra
 // shares one *pflag.Flag between the root's persistent set and every
@@ -26,6 +26,21 @@ func (r *Root) VerboseCount() int {
 		return 0
 	}
 	return n
+}
+
+// IsQuiet reports whether --quiet is in effect.
+//
+// It reads the "quiet" key from r.Viper, the same key kit/log reads, so
+// it agrees with the logger: a quiet set through config or env counts,
+// not only the flag. --quiet and -V are not mutually exclusive;
+// VerboseCount keeps the raw count and quiet wins at the logger, which
+// floors the level at the contract's quiet_override. Before parsing, or
+// with Disable.Quiet and no other source, it is false.
+func (r *Root) IsQuiet() bool {
+	if r == nil || r.Viper == nil {
+		return false
+	}
+	return r.Viper.GetBool("quiet")
 }
 
 // verbosityShorthand returns the single-character shorthand declared by
