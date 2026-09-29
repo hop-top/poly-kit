@@ -37,10 +37,11 @@ export { HintSet, hintsEnabled, renderHints, active,
 export type { Hint, HintOptions } from './hint.js';
 
 // ---------------------------------------------------------------------------
-// Verbose count — stacking -V flags
+// Verbose count — stacking -V flags; quiet
 // ---------------------------------------------------------------------------
 
 const verboseCountMap = new WeakMap<Command, number>();
+const quietMap = new WeakMap<Command, boolean>();
 
 /**
  * Return the single-character shorthand declared by the parity contract's
@@ -75,6 +76,24 @@ export function verboseCount(cmd: Command): number {
     c = c.parent ?? null;
   }
   return 0;
+}
+
+/**
+ * Report whether `--quiet` is in effect for a parsed command tree.
+ *
+ * `--quiet` wins over `-V`: when set, `verboseCount` reads 0 and the
+ * logger level is the contract's `verbosity.quiet_override`. False before
+ * parsing and when `disable.quiet` drops the flag.
+ */
+export function isQuiet(cmd: Command): boolean {
+  // Walk up to root to find the stored flag.
+  let c: Command | null = cmd;
+  while (c) {
+    const q = quietMap.get(c);
+    if (q !== undefined) return q;
+    c = c.parent ?? null;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -768,11 +787,12 @@ export function createCLI(cfg: CLIConfig): CLIResult {
     verbosityFlagSpec(parity), 'Increase verbosity',
     (_: string, prev: number) => prev + 1, 0,
   );
-  // Store count after parse; quiet overrides verbose.
+  // Store count + quiet after parse; quiet overrides verbose.
   program.hook('preAction', (thisCmd) => {
     const opts = thisCmd.opts();
-    const count = opts.quiet ? 0 : (opts.verbose ?? 0);
-    verboseCountMap.set(thisCmd, count);
+    const quiet = opts.quiet === true;
+    quietMap.set(thisCmd, quiet);
+    verboseCountMap.set(thisCmd, quiet ? 0 : (opts.verbose ?? 0));
   });
 
   if (cfg.groups?.some(g => g.hidden)) {

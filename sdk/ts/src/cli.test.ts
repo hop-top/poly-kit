@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createCLI, buildTheme, applyHelpTheme, Neon, Dark,
-         setCommandGroup, verboseCount, registerStream,
+         setCommandGroup, verboseCount, isQuiet, registerStream,
          channel, getStreamDefs } from './cli';
 
 describe('createCLI', () => {
@@ -604,6 +604,61 @@ describe('verbose flag', () => {
       count = verboseCount(this);
     });
     await program.parseAsync(['node', 't', '-VV', '--quiet', 'run']);
+    expect(count).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Quiet accessor
+// ---------------------------------------------------------------------------
+
+describe('isQuiet', () => {
+  async function quietOf(argv: string[], disableQuiet = false): Promise<boolean | undefined> {
+    const { program } = createCLI({
+      name: 't', version: '0.1.0', description: 't',
+      disable: { quiet: disableQuiet },
+    });
+    let quiet: boolean | undefined;
+    program.command('run').action(function (this: any) {
+      quiet = isQuiet(this);
+    });
+    await program.parseAsync(['node', 't', ...argv]);
+    return quiet;
+  }
+
+  it('is false before parsing', () => {
+    const { program } = createCLI({ name: 't', version: '0.1.0', description: 't' });
+    const run = program.command('run');
+    expect(isQuiet(program)).toBe(false);
+    expect(isQuiet(run)).toBe(false);
+  });
+
+  it('is false when --quiet is absent', async () => {
+    expect(await quietOf(['run'])).toBe(false);
+  });
+
+  it('reads root --quiet from a subcommand', async () => {
+    expect(await quietOf(['--quiet', 'run'])).toBe(true);
+  });
+
+  it('reads root --quiet given after the subcommand', async () => {
+    expect(await quietOf(['run', '--quiet'])).toBe(true);
+  });
+
+  it('is false when the flag is disabled', async () => {
+    expect(await quietOf(['run'], true)).toBe(false);
+  });
+
+  it('wins over -V: quiet reported, verbose count 0', async () => {
+    const { program } = createCLI({ name: 't', version: '0.1.0', description: 't' });
+    let quiet: boolean | undefined;
+    let count = -1;
+    program.command('run').action(function (this: any) {
+      quiet = isQuiet(this);
+      count = verboseCount(this);
+    });
+    await program.parseAsync(['node', 't', '-VV', '--quiet', 'run']);
+    expect(quiet).toBe(true);
     expect(count).toBe(0);
   });
 });
