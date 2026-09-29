@@ -10,6 +10,7 @@ the process is `go/core/redact`.
 
 - build a policy in code → `scope.New().Allow(...).Deny(...)`
 - decide or enforce on a path → `Policy.Check(path, op)`, `Policy.Enforce(path, op)`
+- ask whether the rules as written name a path (no symlink resolution, no FS access) → `Policy.CheckLexical(path, op)`
 - use or swap the process-wide policy → `scope.Default()`, `scope.SetDefault(p)`
 - load a declarative policy → `scope.FromConfig("mytool")`
 - build patterns → `scope.SecretPaths()`, `scope.ToolConfig("mytool")`, `scope.UserDocs()`, `scope.SystemDirs()`
@@ -32,6 +33,7 @@ if err := p.Enforce("/Users/me/Documents/report.md", scope.OpWrite); err != nil 
 - Deny-wins: a matching deny rule beats any allow rule; no match is Unknown.
 - Strict (default) denies Unknown and returns `ErrDenied`; Warn logs and allows; Prompt calls the registered `PromptFunc`, and a missing callback denies.
 - Symlinks resolve at `Check` time; a nonexistent path resolves through its deepest existing ancestor so deny rules match by intent.
+- `CheckLexical` never touches the filesystem: path and patterns are cleaned and `~`-expanded from `$HOME` only, so `/tmp/**` covers `/tmp/x` but not `/private/tmp/x`. Path must be absolute. Per-bit ops: Allowed only when every requested bit is allowed, Denied when any is denied (`Check` matches a rule on any shared bit).
 - Patterns are doublestar v4; `~` expands to home, and `%APPDATA%`, `%LOCALAPPDATA%`, `%USERPROFILE%` expand on Windows.
 - `init()` pre-populates `scope.Default()` with `SecretPaths()` denied, so linking the package hardens the binary.
 - [`scope-defaults.json`](scope-defaults.json) is the canonical polyglot deny list; the TS and Python ports load [`contracts/parity/scope-defaults.json`](../../../contracts/parity/scope-defaults.json).
