@@ -3,7 +3,7 @@ import { createRequire } from "module";
 import { EventEmitter } from "events";
 import { Readable } from "stream";
 import { createHash } from "crypto";
-import { gzipSync } from "zlib";
+import { deflateRawSync, gzipSync } from "zlib";
 import * as fs from "fs";
 import * as os from "os";
 import { join } from "path";
@@ -50,6 +50,55 @@ function tarGz(entries: TarEntry[]): Buffer {
   }
   blocks.push(Buffer.alloc(1024));
   return gzipSync(Buffer.concat(blocks));
+}
+
+function paxRecord(key: string, value: string): Buffer {
+  const body = ` ${key}=${value}\n`;
+  let len = body.length;
+  while (`${len}${body}`.length !== len) len = `${len}${body}`.length;
+  return Buffer.from(`${len}${body}`);
+}
+
+type ZipEntry = { name: string; data?: Buffer; mode?: number; deflate?: boolean };
+
+function zip(entries: ZipEntry[]): Buffer {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const e of entries) {
+    const raw = e.data ?? Buffer.alloc(0);
+    const body = e.deflate ? deflateRawSync(raw) : raw;
+    const name = Buffer.from(e.name);
+    const method = e.deflate ? 8 : 0;
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(method, 8);
+    local.writeUInt32LE(body.length, 18);
+    local.writeUInt32LE(raw.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE((3 << 8) | 20, 4); // made by unix
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(method, 10);
+    central.writeUInt32LE(body.length, 20);
+    central.writeUInt32LE(raw.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt32LE(((e.mode ?? 0o100755) << 16) >>> 0, 38);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, name, body);
+    centrals.push(central, name);
+    offset += local.length + name.length + body.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(cd.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, eocd]);
 }
 
 function sha256(buf: Buffer): string {
@@ -217,6 +266,165 @@ describe("run and KIT_INSTALL_OPTIONAL", () => {
       harness(goodArchive(), new Error("offline")),
     );
     expect(code).toBe(0);
+    expect(binDirEntries()).toEqual([]);
+  });
+});
+
+// --- extraction --------------------------------------------------------------
+
+describe("extractBinary", () => {
+  let box: string;
+  let dest: string;
+
+  beforeEach(() => {
+    box = join(tmp, "box");
+    fs.mkdirSync(join(box, "stage"), { recursive: true });
+    dest = join(box, "stage", "kit");
+  });
+
+  function extract(archive: Buffer, name = "a.tar.gz", binName = "kit", out = dest) {
+    const p = join(box, name);
+    fs.writeFileSync(p, archive);
+    install.extractBinary(p, binName, out);
+    return out;
+  }
+
+  const stageEntries = () => fs.readdirSync(join(box, "stage"));
+
+  it("extracts a nested binary and nothing else", () => {
+    extract(
+      tarGz([
+        { name: "README.md", data: Buffer.from("readme") },
+        { name: "kit_1.2.3_linux_amd64/", type: "5" },
+        { name: "kit_1.2.3_linux_amd64/kit", data: BINARY },
+      ]),
+    );
+    expect(fs.readFileSync(dest)).toEqual(BINARY);
+    expect(stageEntries()).toEqual(["kit"]);
+  });
+
+  it("ignores traversal and absolute members", () => {
+    extract(
+      tarGz([
+        { name: "../escape", data: Buffer.from("pwn") },
+        { name: "../../escape2", data: Buffer.from("pwn") },
+        { name: join(box, "abs-escape"), data: Buffer.from("pwn") },
+        { name: "kit", data: BINARY },
+      ]),
+    );
+    expect(fs.existsSync(join(box, "escape"))).toBe(false);
+    expect(fs.existsSync(join(tmp, "escape2"))).toBe(false);
+    expect(fs.existsSync(join(box, "abs-escape"))).toBe(false);
+    expect(stageEntries()).toEqual(["kit"]);
+    expect(fs.readFileSync(dest)).toEqual(BINARY);
+  });
+
+  it("cannot write through a symlinked directory", () => {
+    const outside = join(tmp, "outside");
+    fs.mkdirSync(outside);
+    extract(
+      tarGz([
+        { name: "d", type: "2", linkname: outside },
+        { name: "d/pwn", data: Buffer.from("pwn") },
+        { name: "kit", data: BINARY },
+      ]),
+    );
+    expect(fs.existsSync(join(outside, "pwn"))).toBe(false);
+    expect(fs.readFileSync(dest)).toEqual(BINARY);
+  });
+
+  it.each([
+    ["symlink", "2"],
+    ["hardlink", "1"],
+  ])("rejects a %s posing as the binary", (_kind, type) => {
+    const target = join(tmp, "target");
+    fs.writeFileSync(target, "not kit");
+    expect(() => extract(tarGz([{ name: "kit", type, linkname: target }]))).toThrow(/not found/);
+    expect(stageEntries()).toEqual([]);
+  });
+
+  it("honours pax and GNU long names", () => {
+    const long = `${"d".repeat(120)}/kit`;
+    extract(
+      tarGz([
+        { name: "PaxHeader", type: "x", data: paxRecord("path", long) },
+        { name: "truncated-name", data: BINARY },
+      ]),
+    );
+    expect(fs.readFileSync(dest)).toEqual(BINARY);
+
+    fs.rmSync(dest);
+    extract(
+      tarGz([
+        { name: "././@LongLink", type: "L", data: Buffer.from(`${long}\0`) },
+        { name: "truncated-name", data: BINARY },
+      ]),
+    );
+    expect(fs.readFileSync(dest)).toEqual(BINARY);
+  });
+
+  it("rejects a truncated archive", () => {
+    const full = tarGz([{ name: "kit", data: Buffer.alloc(4096, 1) }]);
+    const { gunzipSync } = nodeRequire("zlib");
+    const cut = gzipSync(gunzipSync(full).subarray(0, 1024));
+    expect(() => extract(cut)).toThrow();
+    expect(stageEntries()).toEqual([]);
+  });
+
+  it("does not pass archive paths through a shell", () => {
+    // Each probe would create $KIT_PWN<n> if the path reached a shell.
+    const weird = join(box, '$(touch "$KIT_PWN1")`touch "$KIT_PWN2"`";touch "$KIT_PWN3";"');
+    fs.mkdirSync(weird);
+    const probes = [1, 2, 3].map((n) => join(box, `PWNED${n}`));
+    probes.forEach((probe, i) => vi.stubEnv(`KIT_PWN${i + 1}`, probe));
+    const out = join(weird, "kit");
+    const p = join(weird, "a.tar.gz");
+    fs.writeFileSync(p, tarGz([{ name: "kit", data: BINARY }]));
+    try {
+      install.extractBinary(p, "kit", out);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(fs.readFileSync(out)).toEqual(BINARY);
+    for (const probe of probes) expect(fs.existsSync(probe)).toBe(false);
+  });
+
+  it("extracts stored and deflated zip members", () => {
+    extract(zip([{ name: "kit_1.2.3_windows_amd64/kit.exe", data: BINARY }]), "a.zip", "kit.exe", join(box, "stage", "kit.exe"));
+    expect(fs.readFileSync(join(box, "stage", "kit.exe"))).toEqual(BINARY);
+    fs.rmSync(join(box, "stage", "kit.exe"));
+    extract(zip([{ name: "kit.exe", data: BINARY, deflate: true }]), "a.zip", "kit.exe", join(box, "stage", "kit.exe"));
+    expect(fs.readFileSync(join(box, "stage", "kit.exe"))).toEqual(BINARY);
+  });
+
+  it("ignores zip traversal members", () => {
+    const out = join(box, "stage", "kit.exe");
+    extract(
+      zip([
+        { name: "../escape", data: Buffer.from("pwn") },
+        { name: "sub/../../escape2", data: Buffer.from("pwn") },
+        { name: "kit.exe", data: BINARY },
+      ]),
+      "a.zip",
+      "kit.exe",
+      out,
+    );
+    expect(fs.existsSync(join(box, "escape"))).toBe(false);
+    expect(fs.existsSync(join(box, "escape2"))).toBe(false);
+    expect(stageEntries()).toEqual(["kit.exe"]);
+  });
+
+  it("rejects a zip symlink posing as the binary", () => {
+    const out = join(box, "stage", "kit.exe");
+    expect(() =>
+      extract(zip([{ name: "kit.exe", data: Buffer.from("/etc/passwd"), mode: 0o120777 }]), "a.zip", "kit.exe", out),
+    ).toThrow(/not found/);
+    expect(stageEntries()).toEqual([]);
+  });
+
+  it("install rejects a symlinked binary end to end", async () => {
+    const archive = tarGz([{ name: "kit", type: "2", linkname: "/bin/sh" }]);
+    await expect(install.install(harness(archive, `${sha256(archive)}  ${ARCHIVE}\n`))).rejects.toThrow(/not found/);
     expect(binDirEntries()).toEqual([]);
   });
 });

@@ -6,6 +6,7 @@ const fs = require("fs");
 const { join, posix } = require("path");
 const https = require("https");
 const crypto = require("crypto");
+const zlib = require("zlib");
 
 const REPO = "hop-top/kit";
 const BIN_DIR = join(__dirname, "..", "bin");
@@ -131,15 +132,145 @@ function verifyArchive(archivePath, archiveName, checksumsText) {
   }
 }
 
-function extractBinary(archivePath, binName, destPath) {
-  const { execSync } = require("child_process");
-  const dir = join(destPath, "..");
-  if (archivePath.endsWith(".zip")) {
-    execSync(`unzip -o "${archivePath}" -d "${dir}"`, { stdio: "ignore" });
-  } else {
-    execSync(`tar -xzf "${archivePath}" -C "${dir}"`, { stdio: "ignore" });
+// --- archive reading ---------------------------------------------------------
+//
+// Only the kit binary is read out of the release archive, in-process: the
+// first regular-file member whose basename matches is written to a path
+// chosen here (mirrors go/core/upgrade extractTarGz). Member names never
+// become filesystem paths, link members are skipped and no shell or external
+// tar/unzip is involved.
+
+function memberBasename(name) {
+  return name.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop();
+}
+
+function cstring(buf, start, len) {
+  const field = buf.subarray(start, start + len);
+  const nul = field.indexOf(0);
+  return field.subarray(0, nul === -1 ? field.length : nul).toString("utf8");
+}
+
+function tarSize(header) {
+  if (header[124] & 0x80) throw new Error("tar: base-256 sizes are not supported");
+  const size = parseInt(cstring(header, 124, 12).trim() || "0", 8);
+  if (!Number.isSafeInteger(size) || size < 0) throw new Error("tar: invalid member size");
+  return size;
+}
+
+function paxPath(body) {
+  let path = null;
+  let off = 0;
+  while (off < body.length) {
+    const space = body.indexOf(0x20, off);
+    if (space === -1) break;
+    const len = parseInt(body.subarray(off, space).toString("ascii"), 10);
+    if (!(len > 0) || off + len > body.length) throw new Error("tar: malformed pax header");
+    const record = body.subarray(space + 1, off + len - 1).toString("utf8");
+    const eq = record.indexOf("=");
+    if (eq !== -1 && record.slice(0, eq) === "path") path = record.slice(eq + 1);
+    off += len;
   }
-  if (!fs.existsSync(destPath)) throw new Error(`binary ${binName} not found in archive`);
+  return path;
+}
+
+// Regular-file typeflags: '0', legacy NUL, and '7' (contiguous file).
+const TAR_REGULAR = new Set(["0", "\0", "7"]);
+
+function readTarGzMember(archive, binName) {
+  const data = zlib.gunzipSync(archive);
+  const want = binName.toLowerCase();
+  let longName = null;
+  let pax = null;
+  for (let off = 0; off + 512 <= data.length;) {
+    const header = data.subarray(off, off + 512);
+    if (header.every((b) => b === 0)) break;
+    const size = tarSize(header);
+    const body = off + 512;
+    if (body + size > data.length) throw new Error("tar: truncated archive");
+    const content = data.subarray(body, body + size);
+    off = body + Math.ceil(size / 512) * 512;
+
+    const type = String.fromCharCode(header[156]);
+    if (type === "L") { longName = cstring(content, 0, content.length); continue; }
+    if (type === "x") { pax = paxPath(content); continue; }
+    if (type === "g") continue;
+
+    let name = cstring(header, 0, 100);
+    if (cstring(header, 257, 6).startsWith("ustar")) {
+      const prefix = cstring(header, 345, 155);
+      if (prefix) name = `${prefix}/${name}`;
+    }
+    name = pax || longName || name;
+    pax = null;
+    longName = null;
+
+    if (TAR_REGULAR.has(type) && memberBasename(name).toLowerCase() === want) {
+      return Buffer.from(content);
+    }
+  }
+  return null;
+}
+
+const S_IFMT = 0o170000;
+const S_IFREG = 0o100000;
+
+function readZipMember(archive, binName) {
+  const want = binName.toLowerCase();
+  const floor = Math.max(0, archive.length - 22 - 0xffff);
+  let eocd = -1;
+  for (let i = archive.length - 22; i >= floor; i--) {
+    if (archive.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd === -1) throw new Error("zip: end of central directory not found");
+  const count = archive.readUInt16LE(eocd + 10);
+  let p = archive.readUInt32LE(eocd + 16);
+  if (p === 0xffffffff || count === 0xffff) throw new Error("zip: zip64 archives are not supported");
+
+  for (let i = 0; i < count; i++) {
+    if (p + 46 > archive.length || archive.readUInt32LE(p) !== 0x02014b50) {
+      throw new Error("zip: corrupt central directory");
+    }
+    const flags = archive.readUInt16LE(p + 8);
+    const method = archive.readUInt16LE(p + 10);
+    const compSize = archive.readUInt32LE(p + 20);
+    const size = archive.readUInt32LE(p + 24);
+    const nameLen = archive.readUInt16LE(p + 28);
+    const extraLen = archive.readUInt16LE(p + 30);
+    const commentLen = archive.readUInt16LE(p + 32);
+    const fileType = (archive.readUInt32LE(p + 38) >>> 16) & S_IFMT;
+    const localOff = archive.readUInt32LE(p + 42);
+    const name = archive.toString("utf8", p + 46, p + 46 + nameLen);
+    p += 46 + nameLen + extraLen + commentLen;
+
+    // No unix file-type bits (e.g. Windows-built archives) means a plain
+    // file; anything typed must be a regular file, not a link.
+    const regular = !name.endsWith("/") && (fileType === 0 || fileType === S_IFREG);
+    if (!regular || memberBasename(name).toLowerCase() !== want) continue;
+    if (flags & 0x1) throw new Error("zip: encrypted members are not supported");
+
+    if (localOff + 30 > archive.length || archive.readUInt32LE(localOff) !== 0x04034b50) {
+      throw new Error("zip: corrupt local header");
+    }
+    const start = localOff + 30 + archive.readUInt16LE(localOff + 26) + archive.readUInt16LE(localOff + 28);
+    if (start + compSize > archive.length) throw new Error("zip: truncated archive");
+    const raw = archive.subarray(start, start + compSize);
+    let out;
+    if (method === 0) out = Buffer.from(raw);
+    else if (method === 8) out = zlib.inflateRawSync(raw);
+    else throw new Error(`zip: unsupported compression method ${method}`);
+    if (out.length !== size) throw new Error("zip: member size mismatch");
+    return out;
+  }
+  return null;
+}
+
+function extractBinary(archivePath, binName, destPath) {
+  const archive = fs.readFileSync(archivePath);
+  const data = archivePath.endsWith(".zip")
+    ? readZipMember(archive, binName)
+    : readTarGzMember(archive, binName);
+  if (!data) throw new Error(`binary ${binName} not found in archive`);
+  fs.writeFileSync(destPath, data, { flag: "wx", mode: 0o755 });
 }
 
 const defaultDeps = { which, kitVersion, downloadFile, fetchChecksums };
