@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.16](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.15...kit/v0.5.0-alpha.16) (2026-09-29)
 
+The hop-top team is happy to announce Kit 0.5.0-alpha.16. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -198,6 +200,8 @@
 ### Build
 
 * **templates:** pin scaffold tools to the versions kit's CI runs ([2464b2c](https://github.com/hop-top/poly-kit/commit/2464b2c24e210a7a43155c2bf7ff277e712a53b4))
+
+Full diff: [kit/v0.5.0-alpha.15...kit/v0.5.0-alpha.16](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.15...kit/v0.5.0-alpha.16)
 
 ## [0.5.0-alpha.15](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.14...kit/v0.5.0-alpha.15) (2026-09-26)
 
