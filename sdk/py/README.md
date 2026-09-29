@@ -17,7 +17,7 @@ Optional extras, so adopters who do not use a surface do not carry it:
 |-------|----------|--------------|
 | `mcp` | `mcp>=2.0,<3`, `mcp-types>=2.0,<3` | you serve the Model Context Protocol |
 | `telemetry-https` | `httpx>=0.27` | you emit telemetry to a remote NDJSON collector |
-| `dev` | pytest, ruff, click | you develop against the SDK |
+| `dev` | pytest, ruff | you develop against the SDK |
 
 ## Quick start
 
