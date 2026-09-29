@@ -194,7 +194,10 @@ Subpath imports follow the package's `exports` map (see
   [`sdk/ts/src/id/`](../../../sdk/ts/src/id/).
 - `@hop-top/kit/xdg` — XDG Base Directory paths.
 - `@hop-top/kit/config` — config-file loading.
-- `@hop-top/kit/sqlstore` — embedded SQLite key/value store.
+- `@hop-top/kit/sqlstore` — embedded SQLite key/value store. Its types
+  reference `better-sqlite3`: install `@types/better-sqlite3` (an optional
+  peer dependency) or type-checking with `skipLibCheck: false` fails with
+  TS7016.
 - `@hop-top/kit/upgrade` — semver upgrade detection.
 - `@hop-top/kit/llm` / `routellm` — LLM client + routing helpers.
 - `@hop-top/kit/alias` — alias resolution + completion.
