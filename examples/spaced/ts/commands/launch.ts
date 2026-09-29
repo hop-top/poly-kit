@@ -5,6 +5,7 @@
 import { Command } from 'commander';
 import * as fs from 'fs';
 import { registerSetFlag, FlagDisplay } from '../../../../sdk/ts/src/flagregister';
+import { isQuiet } from '../../../../sdk/ts/src/cli';
 import { createLogger } from '../../../../sdk/ts/src/log';
 import { Bus, createEvent } from '../../../../sdk/ts/src/bus';
 import {
@@ -35,7 +36,7 @@ export function launchCommand(bus?: Bus): Command {
   cmd.action(function (missionName: string | undefined) {
       const opts = this.opts();
       const rootOpts = this.parent?.opts() ?? {};
-      const logger = createLogger({ quiet: rootOpts.quiet, noColor: rootOpts.color === false });
+      const logger = createLogger({ quiet: isQuiet(this), noColor: rootOpts.color === false });
 
       if (opts['interactive']) {
         runLaunchWizard();
