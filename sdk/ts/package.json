@@ -193,7 +193,7 @@
     "@hop-top/cite": "^0.1.0",
     "@modelcontextprotocol/core": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "^13.0.3",
     "commander": "^15.0.0",
     "csv-stringify": "^6.7.0",
     "eta": "^4.6.0",
