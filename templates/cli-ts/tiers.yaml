@@ -7,6 +7,7 @@ files:
   "tsconfig.json": [1, 2, 3, 4]
   "vitest.config.ts": [1, 2, 3, 4]
   "package.json": [1, 2, 3, 4]
+  "pnpm-workspace.yaml": [1, 2, 3, 4]
 
   "src/index.ts": [3, 4]
   "src/cli.ts": [3, 4]

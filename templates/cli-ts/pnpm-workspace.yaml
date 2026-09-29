@@ -1,0 +1,6 @@
+# pnpm reads build-script approvals from this file only. Dependencies
+# not listed here may not run install scripts; `pnpm install` fails
+# (ERR_PNPM_IGNORED_BUILDS) until a new one is reviewed and added.
+allowBuilds:
+  better-sqlite3: true # @hop-top/kit: native SQLite addon
+  esbuild: true # vitest: platform binary
