@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import os
 import platform
+import posixpath
 import shutil
 import stat
 import subprocess
@@ -16,6 +18,8 @@ from pathlib import Path
 
 REPO = "hop-top/kit"
 VERSION = "0.1.0"
+
+_CHECKSUMS_MAX_BYTES = 1 << 20
 
 
 def _platform_key() -> tuple[str, str]:
@@ -45,19 +49,42 @@ def _bin_dir() -> Path:
     return Path.home() / ".local" / "bin"
 
 
-def _fetch_checksums(version: str) -> dict[str, str]:
+def _fetch_checksums(version: str) -> str:
+    """Download the release checksums file; raise if it cannot be read."""
     url = f"https://github.com/{REPO}/releases/download/v{version}/checksums.txt"
     try:
         with urllib.request.urlopen(url, timeout=30) as resp:
-            text = resp.read().decode()
-        result = {}
-        for line in text.strip().splitlines():
-            parts = line.split()
-            if len(parts) == 2:
-                result[parts[1]] = parts[0]
-        return result
-    except Exception:
-        return {}
+            return resp.read(_CHECKSUMS_MAX_BYTES).decode()
+    except (OSError, ValueError, http.client.HTTPException) as e:
+        raise RuntimeError(
+            f"Failed to fetch checksums from {url}: {e}\n"
+            "Refusing to install an unverified kit binary; "
+            "install kit manually and add to PATH."
+        ) from e
+
+
+def _parse_checksum_line(line: str) -> tuple[str, str] | None:
+    """Parse ``<hash>  <file>`` (GNU coreutils) or ``<hash> <file>``."""
+    line = line.strip()
+    if not line or line.startswith("#"):
+        return None
+    idx = line.find("  ")
+    parts = [line[:idx], line[idx + 2 :]] if idx > 0 else line.split()
+    if len(parts) != 2:
+        return None
+    return parts[0], parts[1]
+
+
+def _find_checksum(text: str, filename: str) -> str:
+    """Return the expected hash for ``filename``; raise if it has no entry."""
+    for line in text.splitlines():
+        parsed = _parse_checksum_line(line)
+        if parsed and posixpath.basename(parsed[1]) == filename:
+            return parsed[0]
+    raise RuntimeError(
+        f"no checksum found for {filename!r} in release checksums; "
+        "refusing to install an unverified kit binary"
+    )
 
 
 def _verify_checksum(path: Path, expected: str) -> bool:
@@ -65,7 +92,7 @@ def _verify_checksum(path: Path, expected: str) -> bool:
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
-    return h.hexdigest() == expected
+    return h.hexdigest() == expected.lower()
 
 
 def _download(url: str, dest: Path) -> None:
@@ -119,7 +146,7 @@ def find_kit_binary(version: str | None = None) -> str:
     archive_name = f"kit_{os_name}_{arch}.{ext}"
     url = f"https://github.com/{REPO}/releases/download/v{ver}/{archive_name}"
 
-    checksums = _fetch_checksums(ver)
+    expected = _find_checksum(_fetch_checksums(ver), archive_name)
 
     bin_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
@@ -132,8 +159,7 @@ def find_kit_binary(version: str | None = None) -> str:
                 "Install kit manually and add to PATH."
             ) from e
 
-        expected = checksums.get(archive_name)
-        if expected and not _verify_checksum(archive_path, expected):
+        if not _verify_checksum(archive_path, expected):
             raise RuntimeError(f"Checksum mismatch for {archive_name}")
 
         _extract(archive_path, Path(tmp), bin_name)
