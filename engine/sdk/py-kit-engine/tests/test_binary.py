@@ -276,3 +276,77 @@ def test_install_rejects_symlinked_binary(env, tmp_path):
     with pytest.raises(RuntimeError, match="not found"):
         _binary.find_kit_binary("1.2.3")
     assert not os.path.lexists(env.installed)
+
+
+# --- version probes -------------------------------------------------------------
+
+
+@pytest.fixture
+def probe(env, monkeypatch):
+    """Make ``kit`` resolvable on PATH and control what ``--version`` does."""
+    monkeypatch.setattr(_binary.shutil, "which", lambda _name: "/opt/kit")
+    outcome: dict[str, object] = {"result": "v1.2.9\n"}
+
+    def check_output(cmd, **_kwargs):
+        result = outcome["result"]
+        if isinstance(result, BaseException):
+            raise result
+        return result
+
+    monkeypatch.setattr(_binary.subprocess, "check_output", check_output)
+    return outcome
+
+
+def test_probe_returns_compatible_path_binary(probe):
+    assert _binary.find_kit_binary("1.2.3") == "/opt/kit"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FileNotFoundError("kit"),
+        PermissionError("kit"),
+        _binary.subprocess.CalledProcessError(1, ["kit"]),
+        _binary.subprocess.TimeoutExpired(["kit"], 5),
+        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+    ],
+    ids=["missing", "denied", "exit-1", "timeout", "undecodable"],
+)
+def test_probe_failure_falls_through_to_download(probe, env, error):
+    probe["result"] = error
+    assert Path(_binary.find_kit_binary("1.2.3")) == env.installed
+
+
+def test_probe_incompatible_version_falls_through(probe, env):
+    probe["result"] = "v9.9.9\n"
+    assert Path(_binary.find_kit_binary("1.2.3")) == env.installed
+
+
+def test_probe_programming_errors_propagate(probe):
+    probe["result"] = TypeError("bug")
+    with pytest.raises(TypeError, match="bug"):
+        _binary.find_kit_binary("1.2.3")
+
+
+def test_local_bin_probe_failure_falls_through(env, monkeypatch):
+    env.bin_dir.mkdir(parents=True)
+    env.installed.write_bytes(b"stale")
+
+    def check_output(cmd, **_kwargs):
+        raise _binary.subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(_binary.subprocess, "check_output", check_output)
+    _binary.find_kit_binary("1.2.3")
+    assert env.installed.read_bytes() == BINARY
+
+
+def test_local_bin_programming_errors_propagate(env, monkeypatch):
+    env.bin_dir.mkdir(parents=True)
+    env.installed.write_bytes(b"stale")
+
+    def check_output(cmd, **_kwargs):
+        raise TypeError("bug")
+
+    monkeypatch.setattr(_binary.subprocess, "check_output", check_output)
+    with pytest.raises(TypeError, match="bug"):
+        _binary.find_kit_binary("1.2.3")
