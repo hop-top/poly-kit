@@ -151,7 +151,7 @@
   "dependencies": {
     "@bufbuild/protobuf": "^2.11.0",
     "@clack/prompts": "^1.2.0",
-    "@connectrpc/connect": "^2.1.1",
+    "@connectrpc/connect": "^2.2.0",
     "@connectrpc/connect-web": "^2.1.1",
     "@hop-top/cite": "^0.1.0",
     "@modelcontextprotocol/core": "2.0.0",

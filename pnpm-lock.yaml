@@ -42,11 +42,11 @@ importers:
         specifier: ^1.2.0
         version: 1.4.0
       '@connectrpc/connect':
-        specifier: ^2.1.1
-        version: 2.1.1(@bufbuild/protobuf@2.12.0)
+        specifier: ^2.2.0
+        version: 2.2.0(@bufbuild/protobuf@2.12.0)
       '@connectrpc/connect-web':
         specifier: ^2.1.1
-        version: 2.1.1(@bufbuild/protobuf@2.12.0)(@connectrpc/connect@2.1.1(@bufbuild/protobuf@2.12.0))
+        version: 2.1.1(@bufbuild/protobuf@2.12.0)(@connectrpc/connect@2.2.0(@bufbuild/protobuf@2.12.0))
       '@hop-top/cite':
         specifier: ^0.1.0
         version: 0.1.0
@@ -143,8 +143,8 @@ packages:
       '@bufbuild/protobuf': ^2.7.0
       '@connectrpc/connect': 2.1.1
 
-  '@connectrpc/connect@2.1.1':
-    resolution: {integrity: sha512-JzhkaTvM73m2K1URT6tv53k2RwngSmCXLZJgK580qNQOXRzZRR/BCMfZw3h+90JpnG6XksP5bYT+cz0rpUzUWQ==}
+  '@connectrpc/connect@2.2.0':
+    resolution: {integrity: sha512-M63OQ1ZFcPUm85CuewJ9G9CMV8LjzGR9935xOnXNQGSazAbwMb3x2W7vXBYM1zqrP7XFD8uxp/dUAhirclgwnQ==}
     peerDependencies:
       '@bufbuild/protobuf': ^2.7.0
 
@@ -1800,12 +1800,12 @@ snapshots:
       fast-wrap-ansi: 0.2.0
       sisteransi: 1.0.5
 
-  '@connectrpc/connect-web@2.1.1(@bufbuild/protobuf@2.12.0)(@connectrpc/connect@2.1.1(@bufbuild/protobuf@2.12.0))':
+  '@connectrpc/connect-web@2.1.1(@bufbuild/protobuf@2.12.0)(@connectrpc/connect@2.2.0(@bufbuild/protobuf@2.12.0))':
     dependencies:
       '@bufbuild/protobuf': 2.12.0
-      '@connectrpc/connect': 2.1.1(@bufbuild/protobuf@2.12.0)
+      '@connectrpc/connect': 2.2.0(@bufbuild/protobuf@2.12.0)
 
-  '@connectrpc/connect@2.1.1(@bufbuild/protobuf@2.12.0)':
+  '@connectrpc/connect@2.2.0(@bufbuild/protobuf@2.12.0)':
     dependencies:
       '@bufbuild/protobuf': 2.12.0
 
