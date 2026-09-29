@@ -1,9 +1,13 @@
 #!/usr/bin/env bats
-# Tests for the changelog pathspecs in .github/workflows/changelog-rewrite.yml.
+# Tests for .github/workflows/changelog-rewrite.yml and the script it runs.
 #
-# Each test pulls a step's `run:` script out of the workflow file itself, so
-# the test follows the workflow, and runs it in a throwaway repo holding a root
-# CHANGELOG.md and a nested one.
+# Pathspec tests pull a step's `run:` script out of the workflow file itself,
+# so the test follows the workflow, and run it in a throwaway repo holding a
+# root CHANGELOG.md and a nested one. Rewrite tests run
+# scripts/rewrite-changelog.sh on a raw release-please entry.
+#
+# `[[ ]]` does not trip errexit under bash 3.2 (macOS /bin/bash), so a
+# `[[ ]]` that is not a test's last command ends in `|| false`.
 #
 # Run: bats .github/tests/changelog-rewrite.bats
 # Or:  make test-workflow
@@ -108,6 +112,71 @@ run_step() {
 @test "commit: clean tree commits nothing" {
     run_step 'Commit rewritten changelogs'
     [ "$status" -eq 0 ]
-    [[ "$output" == *"already processed"* ]]
+    [[ "$output" == *"already processed"* ]] || false
     [ "$(git -C "$TMP/origin.git" rev-parse main)" = "$BASE_SHA" ]
+}
+
+# --- scripts/rewrite-changelog.sh ------------------------------------------
+
+REWRITE="$BATS_TEST_DIRNAME/../../scripts/rewrite-changelog.sh"
+
+# rewrite_fixture: write a raw release-please entry to $REPO/CHANGELOG.md, with
+# a stub `gh` first on PATH so the Contributors lookup never reaches GitHub.
+rewrite_fixture() {
+    mkdir -p "$TMP/bin"
+    printf '#!/bin/sh\nexit 1\n' > "$TMP/bin/gh"
+    chmod +x "$TMP/bin/gh"
+    cat > "$REPO/CHANGELOG.md" <<'MD'
+# Changelog
+
+## [0.6.0](https://github.com/hop-top/kit/compare/kit-v0.5.0...kit-v0.6.0) (2026-04-18)
+
+### Features
+
+* **bus:** pluggable adapter ([abc1234](https://github.com/hop-top/kit/commit/abc1234))
+* **cli:** scaffolder ([#46](https://github.com/hop-top/kit/pull/46)) ([def5678](https://github.com/hop-top/kit/commit/def5678))
+
+### Bug Fixes
+
+* **core:** raw sha (aaa1111)
+MD
+}
+
+run_rewrite() {
+    run env PATH="$TMP/bin:$PATH" bash "$REWRITE" \
+        --file "$REPO/CHANGELOG.md" --component Kit --repo hop-top/kit "$@"
+}
+
+@test "rewrite: commit and PR links on bullets survive" {
+    rewrite_fixture
+    run_rewrite
+    [ "$status" -eq 0 ]
+    local f="$REPO/CHANGELOG.md"
+    grep -qxF '* **bus:** pluggable adapter ([abc1234](https://github.com/hop-top/kit/commit/abc1234))' "$f"
+    grep -qxF '* **cli:** scaffolder ([#46](https://github.com/hop-top/kit/pull/46)) ([def5678](https://github.com/hop-top/kit/commit/def5678))' "$f"
+    grep -qxF '* **core:** raw sha (aaa1111)' "$f"
+}
+
+@test "rewrite: intro, full diff link and marker still added; second run is a no-op" {
+    rewrite_fixture
+    run_rewrite
+    [ "$status" -eq 0 ]
+    local f="$REPO/CHANGELOG.md"
+    grep -qxF 'The hop-top team is happy to announce Kit 0.6.0. This release includes new features and bug fixes.' "$f"
+    grep -qxF 'Full diff: [kit-v0.5.0...kit-v0.6.0](https://github.com/hop-top/kit/compare/kit-v0.5.0...kit-v0.6.0)' "$f"
+    cp "$f" "$TMP/first.md"
+    run_rewrite
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"already rewritten"* ]] || false
+    cmp -s "$TMP/first.md" "$f"
+}
+
+@test "rewrite: --dry-run leaves the file alone and reports no stripping" {
+    rewrite_fixture
+    cp "$REPO/CHANGELOG.md" "$TMP/before.md"
+    run_rewrite --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"[dry-run] No changes made."* ]] || false
+    [[ "$output" != *"strip"* ]] || false
+    cmp -s "$TMP/before.md" "$REPO/CHANGELOG.md"
 }

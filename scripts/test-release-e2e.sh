@@ -220,10 +220,10 @@ bash "$REWRITE" --file "$DIR/CHANGELOG.md" --component kit \
   --repo hop-top/kit
 assert_file_contains "$DIR/CHANGELOG.md" \
   "team is happy" "t9: intro paragraph present"
-assert_file_not_contains "$DIR/CHANGELOG.md" \
-  '(abc1234)' "t9: no commit SHAs"
-assert_file_not_contains "$DIR/CHANGELOG.md" \
-  '\[#46\]' "t9: no PR link syntax"
+assert_file_contains "$DIR/CHANGELOG.md" \
+  'pluggable adapter (abc1234)$' "t9: commit SHA kept"
+assert_file_contains "$DIR/CHANGELOG.md" \
+  'scaffolder (\[#46\](https://github.com/hop-top/kit/pull/46))$' "t9: PR link kept"
 assert_file_contains "$DIR/CHANGELOG.md" \
   "Full diff" "t9: full diff link"
 
@@ -367,7 +367,7 @@ echo "$out" | grep -q '^---\|^+++\|^@@' \
   || fail "t19e: missing diff output"
 
 # ======================================================
-# Linked SHA stripping tests
+# Linked SHA and PR link tests
 # ======================================================
 
 LINKED_SHA_CHANGELOG='# Changelog
@@ -384,22 +384,18 @@ LINKED_SHA_CHANGELOG='# Changelog
 * **core:** raw sha (aaa1111)
 '
 
-info "Test 20: Linked SHA stripping"
+info "Test 20: Linked SHAs and PR links kept"
 DIR=$(make_changelog_repo "t20" "$LINKED_SHA_CHANGELOG")
 bash "$REWRITE" --file "$DIR/CHANGELOG.md" --component kit \
   --repo hop-top/kit
-assert_file_not_contains "$DIR/CHANGELOG.md" \
-  'abc1234' "t20a: linked SHA stripped"
-assert_file_not_contains "$DIR/CHANGELOG.md" \
-  'def5678' "t20b: combined PR+SHA stripped"
-assert_file_not_contains "$DIR/CHANGELOG.md" \
-  '\[#46\]' "t20c: PR link stripped"
-assert_file_not_contains "$DIR/CHANGELOG.md" \
-  'aaa1111' "t20d: raw SHA stripped"
 assert_file_contains "$DIR/CHANGELOG.md" \
-  'pluggable adapter$' "t20e: bus line is clean"
+  'pluggable adapter (\[abc1234\](https://github.com/hop-top/kit/commit/abc1234))$' \
+  "t20a: linked SHA kept"
 assert_file_contains "$DIR/CHANGELOG.md" \
-  'scaffolder$' "t20f: cli line is clean"
+  'scaffolder (\[#46\](https://github.com/hop-top/kit/pull/46)) (\[def5678\](https://github.com/hop-top/kit/commit/def5678))$' \
+  "t20b: combined PR+SHA links kept"
+assert_file_contains "$DIR/CHANGELOG.md" \
+  'raw sha (aaa1111)$' "t20c: raw SHA kept"
 
 # ======================================================
 # Summary

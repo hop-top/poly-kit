@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Rewrite raw release-please changelog into polished format.
+# Rewrite raw release-please changelog into polished format: intro line,
+# Contributors, "Full diff" link. Bullets stay as release-please wrote them,
+# commit and PR links included, so each line traces back to its change.
 # Idempotent — detects prior rewrite via "team is happy" marker.
 
 MARKER="team is happy to announce"
@@ -104,11 +106,6 @@ else
   release_type="miscellaneous improvements"
 fi
 
-# --- Strip SHAs and PR links (entry only) ---
-
-entry=$(echo "$entry" \
-  | sed -E 's/( \(\[#[0-9]+\]\([^)]+\)\))?( \((\[)?[a-f0-9]{7,}(\]\([^)]+\))?\))?$//')
-
 # trim trailing blank lines from entry
 entry=$(echo "$entry" | awk '
   /^[[:space:]]*$/ { blank = blank ORS; next }
@@ -162,7 +159,7 @@ tmp=$(mktemp -p "$(dirname "$FILE")")
   echo ""
   echo "$intro"
 
-  # entry body (sections + bullets, SHAs stripped)
+  # entry body (sections + bullets, links kept)
   echo "$entry"
 
   # contributors
@@ -189,9 +186,6 @@ if $DRY_RUN; then
   echo "[dry-run] Version: $version"
   echo "[dry-run] Release type: $release_type"
   echo "[dry-run] Intro: \"$intro\""
-  sha_count=$(diff "$FILE" "$tmp" \
-    | grep -c '^[<>].*([a-f0-9]\{7,\})' 2>/dev/null) || sha_count=0
-  echo "[dry-run] Would strip SHAs from $sha_count bullet points"
   if [[ -n "$contributors" ]]; then
     contrib_count=$(echo "$contributors" | grep -c '^\*') || contrib_count=0
     echo "[dry-run] Would add Contributors section ($contrib_count contributors)"
