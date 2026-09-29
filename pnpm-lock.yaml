@@ -72,8 +72,8 @@ importers:
         specifier: ^4.12.10
         version: 4.12.18
       js-yaml:
-        specifier: ^4.1.1
-        version: 4.1.1
+        specifier: ^5.4.2
+        version: 5.4.2
       picomatch:
         specifier: ^4.0.4
         version: 4.0.4
@@ -1284,8 +1284,8 @@ packages:
   js-tokens@9.0.1:
     resolution: {integrity: sha512-mxa9E9ITFOt0ban3j6L5MpjwegGz6lBQmM1IJkWeBZGcMxto50+eWdjC/52xDbS2vy0k7vIMK0Fe2wfL9OQSpQ==}
 
-  js-yaml@4.1.1:
-    resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
+  js-yaml@5.4.2:
+    resolution: {integrity: sha512-m+aqu+LwO1O6sIopafj8HUVl5aawITwZQe/yHpMCKjaWBaA/d07B/QdMb3529REftiU+RMMHL3Vlsw3hON7vWg==}
     hasBin: true
 
   json-schema-traverse@0.4.1:
@@ -2775,7 +2775,7 @@ snapshots:
 
   js-tokens@9.0.1: {}
 
-  js-yaml@4.1.1:
+  js-yaml@5.4.2:
     dependencies:
       argparse: 2.0.1
 
