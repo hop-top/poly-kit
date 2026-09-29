@@ -92,7 +92,7 @@ Builtins::register($formatters);
 Flags::register($app);
 Flags::setRegistry($app, $formatters);
 
-$app->add(new ServeCommand(
+$app->addCommand(new ServeCommand(
     registry: $registry,
     configs: ['api' => new ServiceConfig(enabled: true)],
 ));
