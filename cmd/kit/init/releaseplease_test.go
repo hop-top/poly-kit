@@ -158,21 +158,6 @@ func TestRenderReleasePlease_Fresh_WritesCallerAndTracksIt(t *testing.T) {
 	assert.Equal(t, sha256Hex([]byte(content)), m.Files[0].SHA256)
 }
 
-func TestRenderReleasePlease_Fresh_ReportsMissingConfig(t *testing.T) {
-	target := t.TempDir()
-	actions, err := renderReleasePlease(target, rpInputs(), fixedNow())
-	require.NoError(t, err)
-
-	a := mustAction(t, actions, ".github/release-please-config.json")
-	assert.Equal(t, "missing", a.Action)
-	assert.Equal(t, "release-please-config", a.Reason)
-	assert.Contains(t, a.Detail, ".github/.release-please-manifest.json")
-	// kit never invents a release config (tag shape, channels and
-	// labels are per-repo decisions).
-	assertAbsent(t, target, ".github/release-please-config.json")
-	assertAbsent(t, target, ".github/.release-please-manifest.json")
-}
-
 func TestRenderReleasePlease_OrgConfigPresent_NoMissingReport(t *testing.T) {
 	target := t.TempDir()
 	writeRel(t, target, ".github/release-please-config.json", `{"packages":{".":{}}}`)

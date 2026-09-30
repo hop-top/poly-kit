@@ -133,9 +133,27 @@ for the user to diff/merge.
 `kit init` renders `.github/workflows/release-please.yml`: a caller
 of the hop-top/.github `release-please-on-push` reusable workflow
 (release-bot App token, one run per branch at a time, config check).
-It never writes the release-please config or manifest — their shape
-(tag form, channel, labels) is per repo; the summary reports when
-they are missing, and the release-please run skips until both exist.
+When the repo has neither `.github/release-please-config.json` nor
+`.github/.release-please-manifest.json`, kit writes a starter pair in
+the org shape: tags `<component>/v<version>`, release PR titles
+`chore(release): <component> <version>`, labels
+`status:release-pending` / `status:release-tagged`, and every package
+on the alpha channel starting at `0.1.0-alpha.0`. One runtime gives one
+package at the repo root named after the project; `--runtime go,ts,py`
+puts Go at the root and each other runtime under `ts/`, `py/`, … as
+`<name>-ts`, `<name>-py`. The manifest stays `{}` (first release
+`0.1.0-alpha.0`) unless a python or rust package exists — those
+release types ignore `initial-version`, so every package is seeded
+and the first release is `0.1.0-alpha.1`.
+
+The pair is yours from then on: kit never rewrites it, and reports
+instead of writing when only one of the two exists. Create the two
+labels before the first release-please run — nothing creates them:
+
+```bash
+gh label create status:release-pending --force
+gh label create status:release-tagged --force
+```
 
 ### Adopt the caller in a repo that already runs release-please
 

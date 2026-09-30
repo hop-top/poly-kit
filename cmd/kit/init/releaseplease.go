@@ -22,9 +22,11 @@
 //   - settings (triggers, config paths, target branch) are read back
 //     from the live caller on every run, so a refresh never undoes
 //     what a migration carried over;
-//   - kit never writes release-please config or manifest (tag shape,
-//     channels and labels are per-repo decisions): a missing pair is
-//     reported, and the reusable workflow skips until it exists.
+//   - when a repo has neither a release-please config nor a manifest
+//     at the reusable workflow's default paths, kit writes a starter
+//     pair (releaseplease_seed.go) and never touches either again;
+//     anything else missing is reported, and the reusable workflow
+//     skips until both exist.
 package kitinit
 
 import (
@@ -64,6 +66,7 @@ const (
 	rpReasonDirty     = "uncommitted-release-please"
 	rpReasonDuplicate = "duplicate-release-please"
 	rpReasonNoConfig  = "release-please-config"
+	rpReasonSeed      = "seed"
 )
 
 // renderReleasePleaseCaller produces the caller for s.
@@ -309,7 +312,11 @@ func renderReleasePlease(target string, in Inputs, now func() time.Time) ([]Work
 		}
 	}
 
-	actions = append(actions, missingConfigActions(target, settings)...)
+	cfgActions, err := releasePleaseConfigActions(target, in, settings)
+	if err != nil {
+		return nil, err
+	}
+	actions = append(actions, cfgActions...)
 
 	if dirty && !in.DryRun {
 		if err := writeWorkflowManifest(manifestPath, manifest); err != nil {
@@ -365,9 +372,10 @@ func customSuffix(wf releasePleaseWorkflow) string {
 	return " (custom: " + wf.Why + ")"
 }
 
-// missingConfigActions reports a missing release-please config or
-// manifest at the paths the caller passes.
-func missingConfigActions(target string, s releasePleaseSettings) []WorkflowAction {
+// releasePleaseConfigActions seeds the starter config + manifest when
+// both are missing at the reusable workflow's default paths, and
+// reports a missing file otherwise. Never overwrites either file.
+func releasePleaseConfigActions(target string, in Inputs, s releasePleaseSettings) ([]WorkflowAction, error) {
 	cfg, man := s.ConfigFile, s.ManifestFile
 	if cfg == "" {
 		cfg = releasePleaseDefaultConfig
@@ -378,13 +386,40 @@ func missingConfigActions(target string, s releasePleaseSettings) []WorkflowActi
 	cfgOK, manOK := fileExists(target, cfg), fileExists(target, man)
 	switch {
 	case cfgOK && manOK:
-		return nil
+		return nil, nil
+	case !cfgOK && !manOK && s.ConfigFile == "" && s.ManifestFile == "":
+		name := in.Name
+		if name == "" {
+			name = filepath.Base(target)
+		}
+		cfgBody, manBody := renderReleasePleaseSeed(name, in.Runtime)
+		if !in.DryRun {
+			if err := writeWorkflowFile(filepath.Join(target, filepath.FromSlash(cfg)), string(cfgBody)); err != nil {
+				return nil, err
+			}
+			if err := writeWorkflowFile(filepath.Join(target, filepath.FromSlash(man)), string(manBody)); err != nil {
+				return nil, err
+			}
+		}
+		manDetail := "empty: each package's first release is its initial-version (0.1.0-alpha.0)"
+		if string(manBody) != "{}\n" {
+			manDetail = "seeded at 0.1.0-alpha.0 (python / rust ignore initial-version): first release 0.1.0-alpha.1"
+		}
+		return []WorkflowAction{
+			{
+				Path: cfg, Action: "write", Reason: rpReasonSeed,
+				Detail: "starter config (tags <component>/v<version>, alpha channel); yours from now on. " +
+					"Create its labels before the first release-please run: gh label create " +
+					releasePleaseLabelPending + " --force && gh label create " + releasePleaseLabelTagged + " --force",
+			},
+			{Path: man, Action: "write", Reason: rpReasonSeed, Detail: manDetail},
+		}, nil
 	case !cfgOK && !manOK:
 		return []WorkflowAction{{
 			Path: cfg, Action: "missing", Reason: rpReasonNoConfig,
 			Detail: "no " + cfg + " or " + man + ": release-please runs skip until both exist " +
 				"(shape: hop-top/.github docs/bootstrap-checklist.md, section 5)",
-		}}
+		}}, nil
 	}
 	missing := cfg
 	if cfgOK {
@@ -393,7 +428,7 @@ func missingConfigActions(target string, s releasePleaseSettings) []WorkflowActi
 	return []WorkflowAction{{
 		Path: missing, Action: "missing", Reason: rpReasonNoConfig,
 		Detail: "release-please runs fail until " + missing + " exists",
-	}}
+	}}, nil
 }
 
 // defaultReleasePleaseSettings: push on the default branch plus manual

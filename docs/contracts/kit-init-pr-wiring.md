@@ -428,8 +428,25 @@ The release-please generator applies the rules above plus:
 3. **Settings read back.** The caller's triggers, `config-file`,
    `manifest-file` and `target-branch` are re-read from the live caller
    on every run, so refresh never reverts a migration.
-4. **No config writes.** A missing config or manifest is reported
-   (`missing`); kit does not author either.
+4. **Starter config, written once.** When neither
+   `.github/release-please-config.json` nor
+   `.github/.release-please-manifest.json` exists (and the caller uses
+   those default paths), kit writes a starter pair (`write`, reason
+   `seed`): tags `<component>/v<version>`, release PR title
+   `chore(release): ${component} ${version}` with `component-no-space`,
+   labels `status:release-pending` / `status:release-tagged`, one PR per
+   package, and the alpha prerelease channel (`prerelease`,
+   `prerelease-type: alpha.0`, `versioning: prerelease`,
+   `bump-minor-pre-major`, `initial-version: 0.1.0-alpha.0`) per
+   package. One runtime is the `.` package named after the project;
+   several put Go at `.` (excluding the port directories) and each
+   other runtime at `<runtime>/` as `<name>-<runtime>`. The manifest is
+   `{}` unless a python or rust package exists — those release types
+   ignore `initial-version` — in which case every package is seeded at
+   `0.1.0-alpha.0`. The pair is not tracked in `.kit/generated.json`
+   (release-please rewrites the manifest every release) and is never
+   written again; a single missing file, or a missing pair at custom
+   paths, is reported (`missing`).
 
 ### Dry-run / JSON output
 
@@ -445,7 +462,7 @@ generator would touch:
   "reason": "user-edited" | "new" | "refresh" | "manifest-only" | "convergence"
           | "migrated" | "existing-release-please" | "custom-release-please"
           | "uncommitted-release-please" | "duplicate-release-please"
-          | "release-please-config",
+          | "release-please-config" | "seed",
   "detail": "what to do next (release-please generator)"
 }
 ```
