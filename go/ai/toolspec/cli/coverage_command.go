@@ -57,6 +57,13 @@ func registerCoverageCommand(spec *cobra.Command, root *kitcli.Root) {
 		return runCoverage(c, root)
 	}
 
+	// Versioned independently of the manifest: the report's shape
+	// is CoverageReport, not toolspec.Manifest, so a manifest schema
+	// bump says nothing about it.
+	_ = kitcli.SetOutputSchema(cmd, kitcli.OutputSchema{
+		Type:    &CoverageReport{},
+		Version: "1.0",
+	})
 	_ = kitcli.SetExamples(cmd, []kitcli.Example{
 		{
 			Title:   "See the gap",
