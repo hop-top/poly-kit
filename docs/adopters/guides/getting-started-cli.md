@@ -509,10 +509,12 @@ Once mounted via `root.AliasCmd(store)` (where `store` is an
 
 ```
 $ kit alias add d deploy
-alias d → deploy
+ALIAS  TARGET
+d      deploy
 
 $ kit alias add ds "deploy staging"
-alias ds → deploy staging
+ALIAS  TARGET
+ds     deploy staging
 
 $ kit alias list
 ALIAS  TARGET
