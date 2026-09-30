@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,6 +146,58 @@ func TestNewContext_OfflineAllowsSchemedLoopback(t *testing.T) {
 			store, err := etcd.NewContext(offlineOpenCtx(t), []string{ep}, "")
 			if errors.Is(err, netpolicy.ErrOffline) {
 				t.Fatalf("schemed loopback endpoint refused while offline: %v", err)
+			}
+			if err != nil {
+				t.Fatalf("open: %v", err)
+			}
+			_ = store.Close()
+		})
+	}
+}
+
+// Credentials in an endpoint's userinfo must never reach the refusal: the
+// dial target is the authority's host:port, which carries none.
+func TestNewContext_OfflineRefusalOmitsUserinfo(t *testing.T) {
+	port, reached := etcdListener(t)
+	for _, ep := range []string{
+		fmt.Sprintf("http://kit-user:kit-secret@kit-offline-probe.invalid:%d", port),
+		fmt.Sprintf("https://kit-user@kit-offline-probe.invalid:%d/v3?x=1", port),
+	} {
+		t.Run(ep, func(t *testing.T) {
+			_, err := etcd.NewContext(offlineOpenCtx(t), []string{ep}, "")
+			if !errors.Is(err, netpolicy.ErrOffline) {
+				t.Fatalf("endpoint slipped the policy check: %v", err)
+			}
+			msg := err.Error()
+			for _, secret := range []string{"kit-user", "kit-secret", "@"} {
+				if strings.Contains(msg, secret) {
+					t.Fatalf("refusal leaks userinfo %q: %s", secret, msg)
+				}
+			}
+			want := fmt.Sprintf("kit-offline-probe.invalid:%d", port)
+			if !strings.Contains(msg, want) {
+				t.Fatalf("refusal does not name the dial target %q: %s", want, msg)
+			}
+		})
+	}
+	if reached() {
+		t.Fatal("etcd open reached a listener despite offline context")
+	}
+}
+
+// Userinfo must not disguise a loopback endpoint as remote: a local etcd
+// with credentials in its URL stays reachable while offline.
+func TestNewContext_OfflineAllowsLoopbackWithUserinfo(t *testing.T) {
+	port, _ := etcdListener(t)
+	for _, ep := range []string{
+		fmt.Sprintf("http://u:p@127.0.0.1:%d", port),
+		fmt.Sprintf("https://u@localhost:%d", port),
+		fmt.Sprintf("http://u:p@[::1]:%d/path", port),
+	} {
+		t.Run(ep, func(t *testing.T) {
+			store, err := etcd.NewContext(offlineOpenCtx(t), []string{ep}, "")
+			if errors.Is(err, netpolicy.ErrOffline) {
+				t.Fatalf("loopback endpoint with userinfo refused while offline: %v", err)
 			}
 			if err != nil {
 				t.Fatalf("open: %v", err)
