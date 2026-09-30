@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -15,8 +14,9 @@ type aliasEntry struct {
 	Target string `table:"TARGET" json:"target" yaml:"target"`
 }
 
-// aliasSchemaVersion versions the []aliasEntry shape every alias
-// listing renders.
+// aliasSchemaVersion versions the aliasEntry shape the alias commands
+// render: a list of entries for the listings, the one entry affected
+// for add and delete.
 const aliasSchemaVersion = "1.0"
 
 // setAliasListSchema declares the listing shape shared by `aliases`,
@@ -134,11 +134,11 @@ func (r *Root) aliasAddCmd(store *alias.Store) *cobra.Command {
 			if err := store.Save(); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "alias %s → %s\n", name, target)
-			return nil
+			return output.Dispatch(cmd, r.Viper, aliasEntry{Alias: name, Target: target})
 		},
 	}
 	SetSideEffect(cmd, SideEffectWriteLocal)
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &aliasEntry{}, Version: aliasSchemaVersion})
 	return cmd
 }
 
@@ -154,16 +154,19 @@ func (r *Root) aliasRemoveCmd(store *alias.Store) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			// The entry as it stood, rendered after the delete; an
+			// alias that did not exist renders with an empty target.
+			target, _ := store.Get(name)
 			if err := store.Remove(name); err != nil {
 				return err
 			}
 			if err := store.Save(); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "deleted alias %s\n", name)
-			return nil
+			return output.Dispatch(cmd, r.Viper, aliasEntry{Alias: name, Target: target})
 		},
 	}
 	SetSideEffect(cmd, SideEffectWriteLocal)
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &aliasEntry{}, Version: aliasSchemaVersion})
 	return cmd
 }
