@@ -225,7 +225,8 @@ func TestAliasCmd_Add(t *testing.T) {
 	r.Cmd.SetOut(&buf)
 	r.Cmd.SetArgs([]string{"alias", "add", "d", "deploy"})
 	require.NoError(t, r.Execute(t.Context()))
-	assert.Contains(t, buf.String(), "alias d")
+	// The added entry, in the active format (table by default).
+	assert.Equal(t, "ALIAS  TARGET\nd      deploy\n", buf.String())
 
 	v, ok := store.Get("d")
 	assert.True(t, ok)
@@ -245,7 +246,8 @@ func TestAliasCmd_Delete(t *testing.T) {
 	r.Cmd.SetOut(&buf)
 	r.Cmd.SetArgs([]string{"alias", "delete", "d"})
 	require.NoError(t, r.Execute(t.Context()))
-	assert.Contains(t, buf.String(), "deleted")
+	// The deleted entry as it stood, in the active format.
+	assert.Equal(t, "ALIAS  TARGET\nd      deploy\n", buf.String())
 
 	_, ok := store.Get("d")
 	assert.False(t, ok)
@@ -266,7 +268,8 @@ func TestAliasCmd_DeleteRemoveAlias(t *testing.T) {
 	r.Cmd.SetOut(&buf)
 	r.Cmd.SetArgs([]string{"alias", "remove", "d"})
 	require.NoError(t, r.Execute(t.Context()))
-	assert.Contains(t, buf.String(), "deleted")
+	// The deleted entry as it stood, in the active format.
+	assert.Equal(t, "ALIAS  TARGET\nd      deploy\n", buf.String())
 
 	_, ok := store.Get("d")
 	assert.False(t, ok)

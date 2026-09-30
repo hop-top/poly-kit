@@ -113,8 +113,6 @@ func isCobraGenerated(root, c *cobra.Command) bool {
 // fails the test until its entry is removed, and a command missing
 // from it must declare a schema.
 var awaitingSchemaDecision = map[string]string{
-	"kittool alias add":      "prints \"alias <name> → <target>\"",
-	"kittool alias delete":   "prints \"deleted alias <name>\"",
 	"kittool serve":          "long-running; --list prints a fixed-width text table",
 	"kittool uri completion": "prints a shell completion script",
 }
