@@ -215,7 +215,9 @@ Subpath imports follow the package's `exports` map (see
   the marker is still refused; loopback stays reachable. Callers that
   inject their own transport wrap it with `guardFetch`, and socket-level
   clients (`node:net`, SQL drivers, gRPC) consult `isOffline()`
-  themselves. Match the refusal with `isOfflineError(err)`.
+  themselves. Match the refusal with `isOfflineError(err)`; its message
+  names method, scheme, host and path only, never query, fragment or
+  userinfo.
 - `@hop-top/kit/id` — TypeID primitive (cross-language; see
   [TypeID primitive](../../announcements/2026-05-typeid-primitive.md)). Source:
   [`sdk/ts/src/id/`](../../../sdk/ts/src/id/).

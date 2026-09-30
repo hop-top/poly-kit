@@ -15,6 +15,7 @@ import {
   install,
   isOffline,
   isOfflineError,
+  OfflineError,
   withOffline,
 } from './netpolicy';
 
@@ -134,6 +135,83 @@ describe('guardFetch', () => {
     expect((err as Error).message).toContain('POST');
     expect((err as Error).message).toContain('https://example.invalid/x');
     expect((err as Error).message).toContain('--offline');
+  });
+
+  // The refusal names where the request was going, never what it carried:
+  // scheme, host and path only. Query, fragment and userinfo may hold
+  // credentials (an API key param, basic-auth userinfo) and are dropped.
+  // Mirrors Go's TestGuard_RefusalOmitsQueryFragmentUserinfo.
+  describe('refusal omits query, fragment and userinfo', () => {
+    const raw =
+      'https://alice:pw-secret@example.invalid/v1/models/m:generate' +
+      '?alt=sse&key=q-secret#frag-secret';
+    const leaks = ['alice', 'pw-secret', 'q-secret', 'key=', 'alt=sse', 'frag-secret', '?', '#', '@'];
+
+    // The fetch spec forbids credentials in a Request URL, so the Request
+    // case carries query and fragment only.
+    const noUserinfo = raw.replace('alice:pw-secret@', '');
+
+    for (const [label, call] of [
+      ['string input', (f: typeof globalThis.fetch) => f(raw, { method: 'POST' })],
+      ['URL input', (f: typeof globalThis.fetch) => f(new URL(raw), { method: 'POST' })],
+      [
+        'Request input',
+        (f: typeof globalThis.fetch) => f(new Request(noUserinfo, { method: 'POST' })),
+      ],
+    ] as const) {
+      it(label, async () => {
+        const guarded = guardFetch(recorder().fn);
+
+        const err = await withOffline(true, async () => {
+          try {
+            await call(guarded);
+            return null;
+          } catch (e) {
+            return e;
+          }
+        });
+
+        expect(isOfflineError(err), `expected ErrOffline, got ${err}`).toBe(true);
+        const msg = (err as Error).message;
+        expect(msg).toBe(
+          'POST https://example.invalid/v1/models/m:generate: network disabled by --offline',
+        );
+        for (const leak of leaks) {
+          expect(msg, `refusal carries ${leak}`).not.toContain(leak);
+        }
+      });
+    }
+
+    // An unparseable target is refused (fail closed) and cannot be
+    // stripped reliably, so none of it is echoed.
+    it('unparseable target', async () => {
+      const guarded = guardFetch(recorder().fn);
+
+      const err = await withOffline(true, async () => {
+        try {
+          await guarded('not a url?key=q-secret#frag-secret');
+          return null;
+        } catch (e) {
+          return e;
+        }
+      });
+
+      expect(isOfflineError(err), `expected ErrOffline, got ${err}`).toBe(true);
+      const msg = (err as Error).message;
+      expect(msg).toMatch(/^GET .*: network disabled by --offline$/);
+      for (const leak of leaks) {
+        expect(msg, `refusal carries ${leak}`).not.toContain(leak);
+      }
+    });
+
+    // An adopter constructing the error by hand gets the same stripping.
+    it('OfflineError constructed directly', () => {
+      const err = new OfflineError('GET', raw);
+      expect(isOfflineError(err)).toBe(true);
+      expect(err.message).toBe(
+        'GET https://example.invalid/v1/models/m:generate: network disabled by --offline',
+      );
+    });
   });
 
   // Wrapping must be idempotent, mirroring Go's Guard.
