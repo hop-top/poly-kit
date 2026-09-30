@@ -1,8 +1,8 @@
 # Python SDK Reference
 
 > Every long-form surface of `hop-top-kit` (`sdk/py`): the MCP mount, the
-> URI facade, output formatting rules and worked examples, and the
-> telemetry envelope. The package front page is
+> URI facade, output formatting rules and worked examples, the telemetry
+> envelope, and LLM messages (content parts, tool-call round trips). The package front page is
 > [`sdk/py/README.md`](../../../sdk/py/README.md).
 
 ## Who this is for
@@ -519,3 +519,66 @@ its consumers are all Cobra commands. The SDK envelope swaps that for a
 free-form `event` name + `attrs` dict so non-CLI adopters can use it too.
 This is a documented divergence; consumers that need command-path
 semantics should pass `"command_path"` inside `attrs`.
+
+## LLM messages
+
+`hop_top_kit.llm` mirrors the Go `llm` package's data types; the
+[LLM client reference](llm.md) is the source of truth for the contract.
+`llm.Message` carries `role` and `content`, plus three optional fields:
+
+| Field | Role | Meaning |
+|-------|------|---------|
+| `parts` | `user` | `ContentPart` list; when non-empty it replaces `content` |
+| `tool_calls` | `assistant` only | `ToolCall(id, name, arguments)` list the model made; `content` may be empty |
+| `tool_call_id` | `tool` only | the `ToolCall.id` this result answers; result text in `content` |
+
+`Message("user", "hi")` still works; the new fields default to empty.
+
+### Returning tool results
+
+Replay the model's calls, then send one result per call, linked by ID:
+
+```python
+from hop_top_kit import llm
+
+msgs.append(llm.Message(role="assistant", content=resp.content, tool_calls=resp.tool_calls))
+for call in resp.tool_calls:
+    msgs.append(llm.Message(role="tool", tool_call_id=call.id, content=run(call)))
+resp = client.call_with_tools(llm.Request(messages=msgs), tools)
+```
+
+`ToolCall.arguments` takes a JSON string, JSON bytes, or a
+JSON-serializable value such as a `dict`; empty (`None`, `""`, `b""`)
+means `{}`.
+
+### Content parts
+
+```python
+part = llm.ContentPart(type=llm.PartType.IMAGE, source=llm.FileSource("cat.png"))
+msg = llm.Message(role="user", parts=[llm.ContentPart(type=llm.PartType.TEXT, text="What is this?"), part])
+```
+
+`PartType` is `text`, `image`, `audio` or `video`. A part's media comes
+from a `MediaSource`: `InlineSource(data, mime_type)`, `URLSource(url)`
+(downloaded on `read()`) or `FileSource(path)` (MIME from the
+extension). `ContentPart.mime_type` overrides the source's.
+
+### RouteLLM wire mapping
+
+`hop_top_kit.routellm_adapter` sends the OpenAI chat shape, the same
+mapping as the Go `openai` adapter; `map_messages()` returns the list it
+sends:
+
+| Message | Wire |
+|---------|------|
+| `assistant` + `tool_calls` | `tool_calls: [{id, type: "function", function: {name, arguments}}]`, `arguments` a JSON string; `content` omitted when empty |
+| `tool` + `tool_call_id` | `{role: "tool", content, tool_call_id}`, one message per result |
+| `user` (or empty role) + `parts` | `content` array: `text`; `image_url` (URL passthrough, else a base64 data URI); a PDF becomes a `file` part |
+| neither | `{role, content}`, as before |
+
+It raises `llm.LLMError` instead of degrading to plain text:
+`tool_calls` or `tool_call_id` on the wrong role, a `tool` message
+without `tool_call_id`, a tool result with `parts` or `tool_calls`,
+assistant tool calls with `parts`, a call without an `id`, arguments
+that are not valid JSON, `parts` on a role other than `user`, an image
+without a MIME type or source, and `audio` or `video` parts.
