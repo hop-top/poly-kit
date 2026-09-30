@@ -1574,7 +1574,8 @@ $ mytool quota show
 SERVICE  CALLER                 OPS    MAX OPS  BYTES     MAX BYTES  WINDOW    RESETS
 api      principal/alice/acme   10000  10000    52428800  104857600  24h0m0s   2026-09-29T00:00:00Z
 $ mytool quota reset principal/alice/acme
-reset 1 quota count(s)
+RESET
+1
 $ mytool quota reset --all --service api
 ```
 
