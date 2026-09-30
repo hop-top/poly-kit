@@ -152,3 +152,18 @@ func TestToolLinkage_Rejects(t *testing.T) {
 		})
 	}
 }
+
+func TestToolLinkage_ProviderDataIgnored(t *testing.T) {
+	plain, err := captureMessages(t, toolRound())
+	require.NoError(t, err)
+
+	msgs := toolRound()
+	for i := range msgs[2].ToolCalls {
+		msgs[2].ToolCalls[i].ProviderData = llm.ProviderData{
+			"google": json.RawMessage(`{"thought_signature":"SIG_A"}`),
+		}
+	}
+	withData, err := captureMessages(t, msgs)
+	require.NoError(t, err)
+	assert.Equal(t, plain, withData, "another provider's opaque data never reaches the wire")
+}

@@ -50,7 +50,10 @@ type chatMessage struct {
 }
 
 // chatToolCall mirrors an OpenAI assistant tool call; Arguments is the
-// JSON-encoded string OpenAI sends.
+// JSON-encoded string OpenAI sends. ExtraContent is the provider-keyed
+// opaque state OpenAI-compatible APIs attach to a call (Gemini's
+// extra_content.google.thought_signature); it maps 1:1 onto
+// [llm.ToolCall.ProviderData].
 type chatToolCall struct {
 	ID       string `json:"id"`
 	Type     string `json:"type,omitempty"`
@@ -58,6 +61,7 @@ type chatToolCall struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
 	} `json:"function"`
+	ExtraContent llm.ProviderData `json:"extra_content,omitempty"`
 }
 
 // chatCompletionResponse mirrors the OpenAI chat completion response.
@@ -111,9 +115,10 @@ func (s *Server) handleChatCompletions(
 				args = json.RawMessage(tc.Function.Arguments)
 			}
 			msgs[i].ToolCalls = append(msgs[i].ToolCalls, llm.ToolCall{
-				ID:        tc.ID,
-				Name:      tc.Function.Name,
-				Arguments: args,
+				ID:           tc.ID,
+				Name:         tc.Function.Name,
+				Arguments:    args,
+				ProviderData: tc.ExtraContent,
 			})
 		}
 	}
