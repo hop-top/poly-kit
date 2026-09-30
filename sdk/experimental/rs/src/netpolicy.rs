@@ -98,7 +98,9 @@ impl NetPolicy {
 pub struct OfflineError {
     /// HTTP method of the refused request.
     pub method: String,
-    /// Destination of the refused request, with any userinfo redacted.
+    /// Destination of the refused request: scheme, host (with port) and
+    /// path only. Query, fragment and userinfo never appear, as they may
+    /// carry credentials.
     pub url: String,
 }
 
@@ -147,6 +149,24 @@ pub fn is_loopback(host: &str) -> bool {
         .and_then(|h| h.strip_suffix(']'))
         .unwrap_or(host);
     bare.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
+/// Render `url` as scheme, host (with port) and path only: enough to say
+/// where a refused request was going, nothing it carried. Query,
+/// fragment and userinfo are dropped because they may hold credentials
+/// (an API key param, basic-auth userinfo). An opaque URL (`mailto:`)
+/// keeps its scheme alone. Mirrors Go's `netpolicy` refusal.
+fn destination(url: &reqwest::Url) -> String {
+    if url.cannot_be_a_base() {
+        return format!("{}:", url.scheme());
+    }
+    let mut d = url.clone();
+    d.set_query(None);
+    d.set_fragment(None);
+    // Both fail only on URLs that cannot carry userinfo at all.
+    let _ = d.set_username("");
+    let _ = d.set_password(None);
+    d.to_string()
 }
 
 /// The port's shared HTTP client: the single construction path through
@@ -213,16 +233,9 @@ impl GuardedClient {
     /// crate without passing through here.
     pub async fn execute(&self, req: reqwest::Request) -> Result<reqwest::Response, NetError> {
         if !self.policy.allows(req.url()) {
-            let mut url = req.url().clone();
-            // Match Go's url.Redacted(): never echo credentials back in
-            // an error message.
-            if !url.username().is_empty() || url.password().is_some() {
-                let _ = url.set_username("xxxxx");
-                let _ = url.set_password(Some("xxxxx"));
-            }
             return Err(OfflineError {
                 method: req.method().to_string(),
-                url: url.to_string(),
+                url: destination(req.url()),
             }
             .into());
         }
@@ -320,6 +333,26 @@ mod tests {
             e.to_string(),
             "GET https://example.com/x: network disabled by --offline"
         );
+    }
+
+    #[test]
+    fn destination_keeps_scheme_host_port_path_only() {
+        let cases = [
+            (
+                "https://alice:pw-secret@example.invalid:8443/v1/m:generate?key=q-secret#frag",
+                "https://example.invalid:8443/v1/m:generate",
+            ),
+            ("https://example.invalid", "https://example.invalid/"),
+            (
+                "http://[2001:db8::1]:9000/x?y",
+                "http://[2001:db8::1]:9000/x",
+            ),
+            ("mailto:alice@example.invalid?subject=q-secret", "mailto:"),
+        ];
+        for (raw, want) in cases {
+            let url: reqwest::Url = raw.parse().unwrap();
+            assert_eq!(destination(&url), want, "{raw}");
+        }
     }
 
     #[test]

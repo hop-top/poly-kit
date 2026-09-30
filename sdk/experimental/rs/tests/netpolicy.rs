@@ -255,3 +255,85 @@ async fn telemetry_https_sink_builds_without_a_net_policy() {
          --offline must not be able to suppress logging-class egress"
     );
 }
+
+// The refusal names where the request was going, never what it carried:
+// scheme, host and path only. Query, fragment and userinfo may hold
+// credentials (an API key param, basic-auth userinfo) and are dropped.
+// Mirrors Go's TestGuard_RefusalOmitsQueryFragmentUserinfo.
+const SECRET_URL: &str = "https://alice:pw-secret@example.invalid/v1/models/m:generate\
+                          ?alt=sse&key=q-secret#frag-secret";
+const LEAKS: [&str; 9] = [
+    "alice",
+    "pw-secret",
+    "q-secret",
+    "key=",
+    "alt=sse",
+    "frag-secret",
+    "?",
+    "#",
+    "@",
+];
+
+fn assert_no_leak(msg: &str) {
+    for leak in LEAKS {
+        assert!(!msg.contains(leak), "refusal {msg:?} carries {leak:?}");
+    }
+}
+
+#[tokio::test]
+async fn refusal_omits_query_fragment_userinfo() {
+    let client = GuardedClient::new(NetPolicy::offline()).expect("build client");
+    let err = client
+        .post(SECRET_URL)
+        .query(&[("extra", "q-secret")])
+        .send()
+        .await
+        .expect_err("expected offline refusal");
+
+    assert!(err.is_offline(), "not an offline refusal: {err}");
+    let offline = err.as_offline().expect("typed offline variant");
+    assert_eq!(offline.url, "https://example.invalid/v1/models/m:generate");
+    let msg = err.to_string();
+    assert_eq!(
+        msg,
+        "POST https://example.invalid/v1/models/m:generate: network disabled by --offline"
+    );
+    assert_no_leak(&msg);
+    assert_no_leak(&format!("{err:?}"));
+}
+
+// The port is part of where the request was going, so it stays.
+#[tokio::test]
+async fn refusal_keeps_port() {
+    let client = GuardedClient::new(NetPolicy::offline()).expect("build client");
+    let err = client
+        .get("http://u:p@example.invalid:8443/x?key=q-secret")
+        .send()
+        .await
+        .expect_err("expected offline refusal");
+
+    assert_eq!(
+        err.to_string(),
+        "GET http://example.invalid:8443/x: network disabled by --offline"
+    );
+}
+
+// ApiClient surfaces the refusal as its message; the same stripping holds.
+#[tokio::test]
+async fn api_client_refusal_omits_query() {
+    use hop_top_kit::api::{ApiClient, OFFLINE_CODE};
+
+    let client = ApiClient::with_policy(
+        "https://alice:pw-secret@api.example.com",
+        NetPolicy::offline(),
+    )
+    .expect("build api client");
+    let err = client
+        .get::<serde_json::Value>("v1/items?key=q-secret#frag-secret")
+        .await
+        .expect_err("api client reached the wire while offline");
+
+    assert_eq!(err.code, OFFLINE_CODE);
+    assert_no_leak(&err.message);
+    assert!(err.message.contains("network disabled by --offline"));
+}
