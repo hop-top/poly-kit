@@ -42,6 +42,8 @@ func completeCmd(cfg Config) *cobra.Command {
 	cmd.Flags().StringVar(&f.PolicyFile, "policy", "", "Path to URI policy JSON/YAML file")
 	cmd.Flags().StringVar(&f.Format, "format", formatLines, "Output format: lines|json|yaml|table")
 	annotateRead(cmd)
+	// --input renders vanity rows, --type completion rows.
+	setOutputSchemaAnyOf(cmd, &[]vanityRow{}, &[]completionRow{})
 	return cmd
 }
 
