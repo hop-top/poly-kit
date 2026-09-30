@@ -10,6 +10,8 @@ Optional Eva contract validation runs post-completion when configured.
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
 from collections.abc import Iterator
 from typing import Any
@@ -55,6 +57,120 @@ def parse_router_threshold(model: str) -> tuple[str, float]:
 
 
 # ------------------------------------------------------------------
+# Message mapping (OpenAI chat wire shape)
+# ------------------------------------------------------------------
+
+
+def map_messages(messages: list[llm.Message]) -> list[dict[str, Any]]:
+    """Map :class:`llm.Message` values to OpenAI chat messages.
+
+    RouteLLM speaks the OpenAI chat shape. An assistant turn carrying
+    ``tool_calls`` becomes a message with ``tool_calls`` (arguments as a
+    JSON string); a role ``"tool"`` result becomes a ``tool`` message with
+    ``tool_call_id``; ``parts`` become a user content array. Messages
+    without those fields map to ``{"role", "content"}`` as before.
+
+    Raises :class:`llm.LLMError` for linkage or parts the wire cannot
+    express instead of degrading them to plain text.
+    """
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        linked = _map_tool_linkage(m)
+        if linked is not None:
+            out.append(linked)
+            continue
+        if not m.parts:
+            out.append({"role": m.role, "content": m.content})
+            continue
+        # Multimodal path: only user messages support content parts.
+        if m.role not in ("", "user"):
+            raise llm.LLMError(f"routellm: message role {m.role!r} does not support content parts")
+        out.append({"role": "user", "content": [_map_part(p) for p in m.parts]})
+    return out
+
+
+def _map_tool_linkage(m: llm.Message) -> dict[str, Any] | None:
+    """Map the tool-call half of a conversation, or return None."""
+    if m.role == "tool":
+        if not m.tool_call_id:
+            raise llm.LLMError("routellm: tool result needs tool_call_id")
+        if m.tool_calls or m.parts:
+            raise llm.LLMError(f"routellm: tool result {m.tool_call_id!r} carries only content")
+        return {"role": "tool", "content": m.content, "tool_call_id": m.tool_call_id}
+    if m.tool_call_id:
+        raise llm.LLMError(f"routellm: tool_call_id is valid only on role tool, got {m.role!r}")
+    if not m.tool_calls:
+        return None
+    if m.role != "assistant":
+        raise llm.LLMError(f"routellm: tool_calls are valid only on role assistant, got {m.role!r}")
+    if m.parts:
+        raise llm.LLMError("routellm: assistant tool calls do not support content parts")
+
+    msg: dict[str, Any] = {"role": "assistant"}
+    if m.content:
+        msg["content"] = m.content
+    msg["tool_calls"] = [
+        {
+            "id": _require_call_id(tc),
+            "type": "function",
+            "function": {"name": tc.name, "arguments": _arguments_json(tc)},
+        }
+        for tc in m.tool_calls
+    ]
+    return msg
+
+
+def _require_call_id(tc: llm.ToolCall) -> str:
+    if not tc.id:
+        raise llm.LLMError(f"routellm: tool call {tc.name!r} needs an id")
+    return tc.id
+
+
+def _arguments_json(tc: llm.ToolCall) -> str:
+    """Return the call's arguments as a JSON string; empty means ``{}``."""
+    args = tc.arguments
+    if args is None or args in ("", b""):
+        return "{}"
+    if isinstance(args, bytes):
+        args = args.decode("utf-8")
+    if isinstance(args, str):
+        try:
+            json.loads(args)
+        except ValueError:
+            raise llm.LLMError(
+                f"routellm: tool call {tc.id!r} arguments are not valid JSON"
+            ) from None
+        return args
+    try:
+        return json.dumps(args, separators=(",", ":"))
+    except (TypeError, ValueError) as exc:
+        raise llm.LLMError(f"routellm: tool call {tc.id!r} arguments are not valid JSON") from exc
+
+
+def _map_part(p: llm.ContentPart) -> dict[str, Any]:
+    if p.type == llm.PartType.TEXT:
+        return {"type": "text", "text": p.text}
+    if p.type != llm.PartType.IMAGE:
+        raise llm.LLMError(f"routellm: unsupported modality {str(p.type)!r}")
+
+    mime = p.mime_type or (p.source.mime_type if p.source is not None else "")
+    if mime == "application/pdf":
+        return {"type": "file", "file": {"file_data": _read_base64(p.source)}}
+    if p.source is not None and p.source.url:
+        return {"type": "image_url", "image_url": {"url": p.source.url}}
+    if not mime:
+        raise llm.LLMError("routellm: image part has no MIME type")
+    data = _read_base64(p.source)
+    return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}}
+
+
+def _read_base64(src: llm.MediaSource | None) -> str:
+    if src is None:
+        raise llm.LLMError("routellm: content part has no media source")
+    return base64.b64encode(src.read()).decode("ascii")
+
+
+# ------------------------------------------------------------------
 # Adapter
 # ------------------------------------------------------------------
 
@@ -90,7 +206,7 @@ class RouteLLMAdapter:
     # -- Completer protocol ------------------------------------
 
     def complete(self, req: llm.Request) -> llm.Response:
-        messages = [{"role": m.role, "content": m.content} for m in req.messages]
+        messages = map_messages(req.messages)
 
         kwargs: dict[str, Any] = {}
         if req.temperature is not None:
@@ -128,7 +244,7 @@ class RouteLLMAdapter:
     # -- Streamer protocol -------------------------------------
 
     def stream(self, req: llm.Request) -> Iterator[llm.Token]:
-        messages = [{"role": m.role, "content": m.content} for m in req.messages]
+        messages = map_messages(req.messages)
 
         kwargs: dict[str, Any] = {"stream": True}
         if req.temperature is not None:

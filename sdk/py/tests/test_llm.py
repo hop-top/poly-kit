@@ -494,3 +494,73 @@ class TestErrors:
 
     def test_not_fallbackable_generic(self):
         assert not llm.is_fallbackable(ValueError("nope"))
+
+
+# ---------------------------------------------------------------------------
+# Message: parts + tool-call linkage
+# ---------------------------------------------------------------------------
+
+
+class TestMessage:
+    def test_role_content_positional_still_works(self):
+        m = llm.Message("user", "hi")
+        assert m.role == "user"
+        assert m.content == "hi"
+        assert m.parts == []
+        assert m.tool_calls == []
+        assert m.tool_call_id == ""
+
+    def test_content_defaults_empty_for_tool_call_turn(self):
+        call = llm.ToolCall(id="call_1", name="get_weather", arguments='{"city":"NYC"}')
+        m = llm.Message(role="assistant", tool_calls=[call])
+        assert m.content == ""
+        assert m.tool_calls == [call]
+
+    def test_tool_result_links_by_id(self):
+        m = llm.Message(role="tool", content="sunny", tool_call_id="call_1")
+        assert m.tool_call_id == "call_1"
+
+    def test_defaults_not_shared_between_instances(self):
+        a = llm.Message("user", "a")
+        b = llm.Message("user", "b")
+        a.tool_calls.append(llm.ToolCall(id="x", name="y"))
+        a.parts.append(llm.ContentPart(type=llm.PartType.TEXT, text="t"))
+        assert b.tool_calls == []
+        assert b.parts == []
+
+
+class TestContentPart:
+    def test_part_types_match_go_wire_names(self):
+        assert [p.value for p in llm.PartType] == ["text", "image", "audio", "video"]
+        assert llm.PartType.IMAGE == "image"
+
+    def test_defaults(self):
+        p = llm.ContentPart(type=llm.PartType.TEXT, text="hello")
+        assert p.source is None
+        assert p.mime_type == ""
+        assert p.metadata == {}
+
+    def test_inline_source(self):
+        src = llm.InlineSource(b"\x89PNG", "image/png")
+        assert src.read() == b"\x89PNG"
+        assert src.url == ""
+        assert src.mime_type == "image/png"
+        assert isinstance(src, llm.MediaSource)
+
+    def test_url_source_is_url_backed(self):
+        src = llm.URLSource("https://example.com/cat.png")
+        assert src.url == "https://example.com/cat.png"
+        assert src.mime_type == ""
+        assert isinstance(src, llm.MediaSource)
+
+    def test_file_source_infers_mime_and_reads(self, tmp_path):
+        f = tmp_path / "doc.pdf"
+        f.write_bytes(b"%PDF-1.7")
+        src = llm.FileSource(str(f))
+        assert src.url == ""
+        assert src.mime_type == "application/pdf"
+        assert src.read() == b"%PDF-1.7"
+        assert isinstance(src, llm.MediaSource)
+
+    def test_file_source_without_extension_has_no_mime(self, tmp_path):
+        assert llm.FileSource(str(tmp_path / "blob")).mime_type == ""

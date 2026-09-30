@@ -12,10 +12,13 @@ entry-point plugins; this module contains only the core plumbing.
 
 from __future__ import annotations
 
+import mimetypes
 import os
 import time
+import urllib.request
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 from urllib.parse import parse_qs, urlparse
 
@@ -30,6 +33,12 @@ __all__ = [  # noqa: RUF022 — grouped by category
     "ToolCaller",
     "Provider",
     # Data types
+    "PartType",
+    "MediaSource",
+    "InlineSource",
+    "URLSource",
+    "FileSource",
+    "ContentPart",
     "Message",
     "Request",
     "Response",
@@ -100,10 +109,136 @@ class Provider(Protocol):
 # ---------------------------------------------------------------------------
 
 
+class PartType(StrEnum):
+    """Classifies a content part in a multimodal message."""
+
+    TEXT = "text"
+    IMAGE = "image"
+    AUDIO = "audio"
+    VIDEO = "video"
+
+
+@runtime_checkable
+class MediaSource(Protocol):
+    """Binary media input for a :class:`ContentPart`.
+
+    Implementations: :class:`InlineSource`, :class:`URLSource`,
+    :class:`FileSource`.
+    """
+
+    @property
+    def url(self) -> str:
+        """Non-empty when the source is URL-backed."""
+        ...
+
+    @property
+    def mime_type(self) -> str:
+        """Inferred MIME type, or empty string."""
+        ...
+
+    def read(self) -> bytes:
+        """Return the media bytes."""
+        ...
+
+
+@dataclass(frozen=True)
+class InlineSource:
+    """In-memory media bytes with an explicit MIME type."""
+
+    data: bytes
+    mime_type: str = ""
+
+    @property
+    def url(self) -> str:
+        return ""
+
+    def read(self) -> bytes:
+        return self.data
+
+
+@dataclass(frozen=True)
+class URLSource:
+    """URL-backed media; :meth:`read` downloads lazily."""
+
+    url: str
+
+    @property
+    def mime_type(self) -> str:
+        return ""
+
+    def read(self) -> bytes:
+        with urllib.request.urlopen(self.url) as resp:
+            return resp.read()
+
+
+@dataclass(frozen=True)
+class FileSource:
+    """Media file on disk; MIME type inferred from the extension."""
+
+    path: str
+
+    @property
+    def url(self) -> str:
+        return ""
+
+    @property
+    def mime_type(self) -> str:
+        if not os.path.splitext(self.path)[1]:
+            return ""
+        return mimetypes.guess_type(self.path)[0] or ""
+
+    def read(self) -> bytes:
+        with open(self.path, "rb") as fh:
+            return fh.read()
+
+
+@dataclass
+class ContentPart:
+    """A single typed element within a multimodal message.
+
+    Rule: if a :class:`Message` has ``parts``, they take precedence over
+    its ``content``.
+    """
+
+    type: PartType
+    text: str = ""
+    source: MediaSource | None = None
+    mime_type: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
 @dataclass
 class Message:
+    """A single role+content pair in a conversation.
+
+    Multimodal rule: if ``parts`` is non-empty, it takes precedence over
+    ``content``.
+
+    Tool-call linkage: an agentic loop replays a tool round as two kinds
+    of message:
+
+    - role ``"assistant"`` with ``tool_calls``: the calls the model made,
+      copied from :attr:`ToolResponse.tool_calls`. ``content`` carries any
+      text the model produced alongside them and may be empty.
+    - role ``"tool"`` with ``tool_call_id``: one tool's result, in
+      ``content``. ``tool_call_id`` equals the :attr:`ToolCall.id` it
+      answers. Send one message per call.
+
+    ``tool_calls`` is valid only on role ``"assistant"`` and
+    ``tool_call_id`` only on role ``"tool"``; adapters raise
+    :class:`LLMError` for either field on any other role, a tool result
+    carrying ``parts``, and linkage the provider cannot express, rather
+    than degrading it to plain text. Messages that set neither field map
+    exactly as before.
+    """
+
     role: str
-    content: str
+    content: str = ""
+    parts: list[ContentPart] = field(default_factory=list)
+    # Tool invocations of an assistant turn.
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    # Links a role "tool" result to the ToolCall it answers.
+    tool_call_id: str = ""
 
 
 @dataclass
@@ -146,6 +281,14 @@ class ToolDef:
 
 @dataclass
 class ToolCall:
+    """A single tool invocation returned by the model.
+
+    ``id`` is the handle a tool result quotes back in
+    :attr:`Message.tool_call_id`. ``arguments`` is the JSON arguments
+    object: a JSON string or bytes, or a JSON-serializable value; empty
+    means ``{}``.
+    """
+
     id: str
     name: str
     arguments: Any = None
