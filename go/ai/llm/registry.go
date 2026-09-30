@@ -59,6 +59,7 @@ func SetDefaultRegistry(fn RegistryProvider) {
 	defer registryMu.Unlock()
 	registryProvider = fn
 	registryCache = nil
+	resetCatalogMemo()
 }
 
 // ResetDefaultRegistry is shorthand for SetDefaultRegistry(nil).

@@ -12,9 +12,15 @@
 // as Gemini thought signatures, that the provider requires back.
 //
 // Provider keys: [Resolve] reads a key only from the URI's api_key
-// param. [ApplyAPIKey] puts the scheme's key there from a secret store
-// or the environment, per the table [ProviderKeyFor] exposes; a
-// required key found nowhere yields a [*MissingKeyError].
+// param. [ApplyAPIKey] puts the scheme's key there from llm.yaml, a
+// secret store or the environment, under the names [ProviderKeyFor]
+// resolves (adapter [Declaration], aim catalog facts, <SCHEME>_API_KEY);
+// a required key found nowhere yields a [*MissingKeyError].
+//
+// Schemes: [Resolve] also accepts a curated aim alias of a registered
+// scheme ("fireworks-ai", "togetherai") and a provider from the cached
+// aim catalog that no adapter registers, through the adapter claiming
+// its protocol. Neither reads the network.
 package llm
 
 import (
@@ -22,7 +28,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	llmerrors "hop.top/kit/go/ai/llm/errors"
@@ -201,99 +206,6 @@ type ProviderData map[string]json.RawMessage
 type ToolResponse struct {
 	Content   string
 	ToolCalls []ToolCall
-}
-
-// ---------------------------------------------------------------------------
-// Registry
-// ---------------------------------------------------------------------------
-
-// Factory creates a Provider from a resolved configuration.
-type Factory func(cfg ResolvedConfig) (Provider, error)
-
-// Registry maps URI schemes to adapter factories.
-type Registry struct {
-	mu        sync.RWMutex
-	factories map[string]Factory
-}
-
-// DefaultRegistry is the process-wide registry used by adapter init
-// functions and the package-level [Register] / [Resolve] helpers.
-var DefaultRegistry = NewRegistry()
-
-// Register adds a factory for the given scheme to [DefaultRegistry].
-func Register(scheme string, f Factory) { DefaultRegistry.Register(scheme, f) }
-
-// Resolve looks up and creates a provider via [DefaultRegistry].
-func Resolve(uri string) (Provider, error) { return DefaultRegistry.Resolve(uri) }
-
-// Schemes returns the list of registered schemes in [DefaultRegistry].
-func Schemes() []string { return DefaultRegistry.Schemes() }
-
-// NewRegistry creates an empty adapter registry.
-func NewRegistry() *Registry {
-	return &Registry{factories: make(map[string]Factory)}
-}
-
-// Register adds a factory for the given scheme. Panics on duplicate.
-func (r *Registry) Register(scheme string, f Factory) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, ok := r.factories[scheme]; ok {
-		panic(fmt.Sprintf(
-			"llm: adapter already registered for scheme %q", scheme,
-		))
-	}
-	r.factories[scheme] = f
-}
-
-// Schemes returns a sorted list of registered URI schemes.
-func (r *Registry) Schemes() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	schemes := make([]string, 0, len(r.factories))
-	for s := range r.factories {
-		schemes = append(schemes, s)
-	}
-	return schemes
-}
-
-// Resolve parses a provider URI, looks up the factory by scheme,
-// and creates a Provider. It uses [ParseURI] to build a minimal
-// [ResolvedConfig] directly from the URI components and parameters.
-func (r *Registry) Resolve(uri string) (Provider, error) {
-	parsed, err := ParseURI(uri)
-	if err != nil {
-		return nil, fmt.Errorf("llm: invalid URI %q: %w", uri, err)
-	}
-
-	r.mu.RLock()
-	f, ok := r.factories[parsed.Scheme]
-	r.mu.RUnlock()
-
-	if !ok {
-		return nil, llmerrors.NewProviderNotFound(parsed.Scheme)
-	}
-
-	cfg := ResolvedConfig{
-		URI: parsed,
-		Provider: ProviderConfig{
-			Model: parsed.Model,
-		},
-	}
-	if parsed.Host != "" {
-		cfg.Provider.BaseURL = "http://" + parsed.Host
-	}
-	if parsed.Params != nil {
-		cfg.Provider.Params = parsed.Params
-		if v, ok := parsed.Params["api_key"]; ok {
-			cfg.Provider.APIKey = v
-		}
-		if v, ok := parsed.Params["base_url"]; ok {
-			cfg.Provider.BaseURL = v
-		}
-	}
-
-	return f(cfg)
 }
 
 // ---------------------------------------------------------------------------

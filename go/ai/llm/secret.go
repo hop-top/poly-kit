@@ -19,44 +19,96 @@ type ProviderKey struct {
 	EnvVars []string
 
 	// Optional marks a local runtime (ollama, lmstudio, routellm,
-	// triton): a key found under EnvVars is used, a missing one is not
-	// an error, and the universal [FallbackEnvKey] is never lent to it.
+	// triton, or a catalog provider on a loopback host): a key found
+	// under EnvVars is used, a missing one is not an error, and the
+	// universal [FallbackEnvKey] is never lent to it.
 	Optional bool
 }
 
-// providerKeys is kit's single scheme → credential table. Every scheme
-// an adapter registers has an entry; a test fails when one is missing.
-//
-// google and gemini are one adapter under two names. GOOGLE_API_KEY
-// outranks GEMINI_API_KEY because Google's genai SDK
-// (google.golang.org/genai, getAPIKeyFromEnv) reads them in that order.
-//
-// The OpenAI-compatible gateways carry their own variables: lending
-// them OPENAI_API_KEY would send an OpenAI key to a host that is not
-// OpenAI.
-var providerKeys = map[string]ProviderKey{
-	"anthropic":  {EnvVars: []string{"ANTHROPIC_API_KEY"}},
-	"openai":     {EnvVars: []string{"OPENAI_API_KEY"}},
-	"google":     {EnvVars: []string{"GOOGLE_API_KEY", "GEMINI_API_KEY"}},
-	"gemini":     {EnvVars: []string{"GOOGLE_API_KEY", "GEMINI_API_KEY"}},
-	"openrouter": {EnvVars: []string{"OPENROUTER_API_KEY"}},
-	"groq":       {EnvVars: []string{"GROQ_API_KEY"}},
-	"xai":        {EnvVars: []string{"XAI_API_KEY"}},
-	"together":   {EnvVars: []string{"TOGETHER_API_KEY"}},
-	"fireworks":  {EnvVars: []string{"FIREWORKS_API_KEY"}},
-	"deepseek":   {EnvVars: []string{"DEEPSEEK_API_KEY"}},
-	"mistral":    {EnvVars: []string{"MISTRAL_API_KEY"}},
-	"ollama":     {EnvVars: []string{"OLLAMA_API_KEY"}, Optional: true},
-	"lmstudio":   {Optional: true},
-	"routellm":   {EnvVars: []string{"ROUTELLM_API_KEY"}, Optional: true},
-	"triton":     {EnvVars: []string{"TRITON_API_KEY"}, Optional: true},
-}
-
-// envKeyCompat pins the single name [EnvKeyFor] returned before
-// providerKeys listed more than one; GEMINI_API_KEY still resolves.
+// envKeyCompat pins the single name [EnvKeyFor] returned before the
+// google entry listed more than one; GEMINI_API_KEY still resolves.
 var envKeyCompat = map[string]string{
 	"google": "GEMINI_API_KEY",
 	"gemini": "GEMINI_API_KEY",
+}
+
+// keyPlan is a scheme's resolved credential source.
+type keyPlan struct {
+	// known is false for a scheme no adapter serves: kit lends no
+	// credential to a host it cannot reach.
+	known bool
+	// literal is llm.yaml providers.<scheme>.api_key.
+	literal string
+	// envVar is llm.yaml providers.<scheme>.api_key_env.
+	envVar string
+	// key lists envVar first, then the layered provider key.
+	key ProviderKey
+}
+
+// keyPlan resolves scheme's credential, highest precedence first:
+//
+//  1. llm.yaml providers.<scheme>.api_key, then api_key_env
+//  2. the adapter's [Declaration].Key
+//  3. aim catalog facts: key vars in catalog order, optional when local
+//  4. the <SCHEME>_API_KEY convention
+//
+// The universal [FallbackEnvKey] (5) is the lookup's, for required keys
+// only. Layer 3 reads only the cached catalog; nothing is fetched.
+func (r *Registry) keyPlan(ctx context.Context, scheme string) keyPlan {
+	rt, ok := r.route(ctx, scheme)
+	if !ok {
+		return keyPlan{}
+	}
+	plan := keyPlan{known: true, key: layeredKey(ctx, scheme, rt)}
+	plan.literal, plan.envVar = configuredKey(scheme, rt.scheme)
+	if plan.envVar != "" {
+		vars := []string{plan.envVar}
+		for _, v := range plan.key.EnvVars {
+			if v != plan.envVar {
+				vars = append(vars, v)
+			}
+		}
+		plan.key.EnvVars = vars
+	}
+	return plan
+}
+
+// layeredKey is layers 2-4 of [Registry.keyPlan] for a routed scheme.
+func layeredKey(ctx context.Context, scheme string, rt route) ProviderKey {
+	if k := rt.decl.Key; k != nil {
+		return ProviderKey{EnvVars: slices.Clone(k.EnvVars), Optional: k.Optional}
+	}
+	facts := rt.catalog
+	if facts == nil {
+		if p, ok := catalogProvider(ctx, scheme); ok {
+			facts = &p
+		}
+	}
+	if facts != nil {
+		if k, ok := factsKey(*facts); ok {
+			return k
+		}
+	}
+	// A registered scheme (or an alias of one) takes its registered
+	// name's convention; a catalog provider takes its own.
+	name := rt.scheme
+	if rt.catalog != nil {
+		name = scheme
+	}
+	return ProviderKey{EnvVars: []string{conventionKey(name)}}
+}
+
+// configuredKey reads llm.yaml's api_key and api_key_env for scheme,
+// or for the registered scheme it is an alias of when scheme has no
+// block of its own. A block belongs to its scheme: it is never lent to
+// another provider.
+func configuredKey(scheme, registered string) (literal, envVar string) {
+	cf := loadConfigFile()
+	fp, ok := cf.Providers[scheme]
+	if !ok && registered != scheme {
+		fp = cf.Providers[registered]
+	}
+	return fp.APIKey, fp.APIKeyEnv
 }
 
 // FallbackEnvKey is the universal env var consulted when a
@@ -92,12 +144,21 @@ func (e *MissingKeyError) Unwrap() error { return secret.ErrNotFound }
 
 // ProviderKeyFor returns the credential description for the scheme of
 // providerURI ("openrouter://vendor/model" or just "openrouter").
-// ok is false for a scheme kit has no entry for. The returned EnvVars
+//
+// EnvVars resolve, highest precedence first: llm.yaml
+// providers.<scheme>.api_key_env; the adapter's [Declaration].Key,
+// used as given; the cached aim catalog's key vars for the provider
+// (optional when its base URL is on loopback); the <SCHEME>_API_KEY
+// convention. A scheme reached through an alias ("fireworks-ai") or
+// through its catalog protocol resolves like the provider it names.
+// The catalog is read from the on-disk cache only, never fetched: with
+// no cache, declarations and the convention answer.
+//
+// ok is false for a scheme no adapter serves. The returned EnvVars
 // slice is a copy.
 func ProviderKeyFor(providerURI string) (key ProviderKey, ok bool) {
-	key, ok = providerKeys[schemeOf(providerURI)]
-	key.EnvVars = slices.Clone(key.EnvVars)
-	return key, ok
+	plan := DefaultRegistry.keyPlan(context.Background(), schemeOf(providerURI))
+	return plan.key, plan.known
 }
 
 // EnvKeyFor returns the canonical env var name for the provider
@@ -105,20 +166,25 @@ func ProviderKeyFor(providerURI string) (key ProviderKey, ok bool) {
 // ("openai://gpt-4") or just a scheme ("openai"); only the scheme
 // portion drives the lookup.
 //
-// EnvKeyFor answers with one name. For google and gemini it stays
-// GEMINI_API_KEY for compatibility, although GOOGLE_API_KEY outranks
-// it; [ProviderKeyFor] lists every name in precedence order.
+// EnvKeyFor answers with one name: llm.yaml's api_key_env when set,
+// else the first of [ProviderKeyFor]'s EnvVars. For google and gemini
+// it stays GEMINI_API_KEY for compatibility, although GOOGLE_API_KEY
+// outranks it; [ProviderKeyFor] lists every name in precedence order.
 //
 // When the scheme is unknown or takes no key of its own (lmstudio),
 // EnvKeyFor returns [FallbackEnvKey] so callers can still resolve a
 // value from the universal LLM_API_KEY variable.
 func EnvKeyFor(providerURI string) string {
 	scheme := schemeOf(providerURI)
+	plan := DefaultRegistry.keyPlan(context.Background(), scheme)
+	if plan.envVar != "" {
+		return plan.envVar
+	}
 	if name, ok := envKeyCompat[scheme]; ok {
 		return name
 	}
-	if key, ok := providerKeys[scheme]; ok && len(key.EnvVars) > 0 {
-		return key.EnvVars[0]
+	if plan.known && len(plan.key.EnvVars) > 0 {
+		return plan.key.EnvVars[0]
 	}
 	return FallbackEnvKey
 }
@@ -127,6 +193,7 @@ func EnvKeyFor(providerURI string) string {
 // canonical fallback chain, where names are [ProviderKeyFor]'s EnvVars
 // (or [EnvKeyFor] for a scheme without any):
 //
+//  0. llm.yaml providers.<scheme>.api_key, when set
 //  1. store.Get(ctx, name) for each name — keyring / vault / etc.
 //  2. os.Getenv(name) for each name — provider-specific env var
 //  3. os.Getenv(FallbackEnvKey) — universal LLM_API_KEY
@@ -138,7 +205,11 @@ func EnvKeyFor(providerURI string) string {
 // lets adopters call SecretFor unconditionally even when no secret
 // store is configured.
 func SecretFor(ctx context.Context, store secret.Store, providerURI string) (string, error) {
-	names := providerKeys[schemeOf(providerURI)].EnvVars
+	plan := DefaultRegistry.keyPlan(ctx, schemeOf(providerURI))
+	if plan.literal != "" {
+		return plan.literal, nil
+	}
+	names := plan.key.EnvVars
 	if len(names) == 0 {
 		names = []string{EnvKeyFor(providerURI)}
 	}
@@ -150,11 +221,12 @@ func SecretFor(ctx context.Context, store secret.Store, providerURI string) (str
 // model ("openrouter://openai/gpt-4.1-nano") otherwise reaches its
 // provider unauthenticated.
 //
-// The key resolves as in [SecretFor]; store may be nil. uri comes back
-// unchanged when it already carries api_key (the caller's choice
-// outranks the environment), when its scheme takes no key or is one
-// kit has no entry for (kit lends no credential to an unknown host),
-// and when a local runtime's own variable is unset.
+// The key resolves as in [SecretFor], names per [ProviderKeyFor];
+// store may be nil. uri comes back unchanged when it already carries
+// api_key (the caller's choice outranks everything else), when its
+// scheme takes no key or is one no adapter serves (kit lends no
+// credential to an unknown host), and when a local runtime's own
+// variable is unset.
 //
 // A required key that resolves nowhere yields a [*MissingKeyError]
 // (errors.Is ErrMissingKey); store backend failures come back wrapped
@@ -172,24 +244,28 @@ func ApplyAPIKey(ctx context.Context, store secret.Store, uri string) (string, e
 	if _, explicit := parsed.Params["api_key"]; explicit {
 		return uri, nil
 	}
-	key, known := providerKeys[parsed.Scheme]
-	if !known || len(key.EnvVars) == 0 {
-		return uri, nil
-	}
-
-	value, err := lookupKey(ctx, store, key.EnvVars, !key.Optional)
-	switch {
-	case errors.Is(err, secret.ErrNotFound):
-		if key.Optional {
+	// A scheme no adapter serves has a zero plan: no literal, no names.
+	plan := DefaultRegistry.keyPlan(ctx, parsed.Scheme)
+	value := plan.literal
+	if value == "" {
+		key := plan.key
+		if len(key.EnvVars) == 0 {
 			return uri, nil
 		}
-		return "", &MissingKeyError{
-			Scheme:  parsed.Scheme,
-			Model:   parsed.Model,
-			EnvVars: append(slices.Clone(key.EnvVars), FallbackEnvKey),
+		value, err = lookupKey(ctx, store, key.EnvVars, !key.Optional)
+		switch {
+		case errors.Is(err, secret.ErrNotFound):
+			if key.Optional {
+				return uri, nil
+			}
+			return "", &MissingKeyError{
+				Scheme:  parsed.Scheme,
+				Model:   parsed.Model,
+				EnvVars: append(slices.Clone(key.EnvVars), FallbackEnvKey),
+			}
+		case err != nil:
+			return "", fmt.Errorf("llm: resolve %s API key: %w", parsed.Scheme, err)
 		}
-	case err != nil:
-		return "", fmt.Errorf("llm: resolve %s API key: %w", parsed.Scheme, err)
 	}
 
 	// ParseURI splits the query on & and does not unescape, so a key

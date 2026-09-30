@@ -55,6 +55,38 @@ ollama://llama3.2:3b?base_url=http://gpu-box:11434
 Each scheme resolves once its adapter package is imported, blank
 imports included (`_ "hop.top/kit/go/ai/llm/ollama"`).
 
+### Aliases and catalog providers
+
+A scheme also resolves under the aim catalog's name for the same
+provider, to the same adapter, base URL and key:
+
+| Alias | Scheme |
+|-------|--------|
+| `fireworks-ai` | `fireworks` |
+| `togetherai` | `together` |
+
+A provider in the aim catalog that no adapter registers by name
+resolves through the adapter speaking its protocol. The `openai`
+adapter speaks `openai-compatible` (most catalog providers), `openai`,
+`openrouter`, `groq`, `xai`, `togetherai` and `mistral`:
+
+```text
+digitalocean://llama3.3-70b-instruct
+```
+
+The base URL is the catalog's. A `${VAR}` placeholder in it is
+expanded from that environment variable, and only when the catalog
+lists the variable as one of the provider's settings, not a key
+(`DATABRICKS_HOST` for `databricks`). An unset variable, a placeholder
+naming anything else, or a provider with no catalog base URL is an
+error naming what to set; pass `?base_url=` instead. No request is
+made to a guessed host.
+
+Kit reads the catalog only from aim's on-disk cache (`llm.Default`'s
+registry, `Cache().Load()`); `Resolve` never fetches it. With no cache
+(offline, first run) catalog providers do not resolve; registered
+schemes and their aliases are unaffected.
+
 ## Quick start
 
 ```go
@@ -234,12 +266,24 @@ cfg, _ := llm.LoadConfig("anthropic://claude-sonnet-4-5-20250514?temperature=0.7
 
 Three-layer merge: config file < URI params < env vars.
 
+A provider block in `{xdg.ConfigDir("hop")}/llm.yaml` may carry the key
+itself or name the variable holding it:
+
+```yaml
+providers:
+  openrouter:
+    api_key_env: MY_OPENROUTER_KEY   # or api_key: sk-or-...
+```
+
+`LoadConfig` reads `api_key`, else the variable `api_key_env` names.
+[Provider keys](#provider-keys) gives both the highest precedence.
+
 ## Provider keys
 
 `llm.Resolve` reads a key from the URI's `api_key` param and nowhere
 else, so a URI-form model such as `openrouter://openai/gpt-4.1-nano`
 reaches its provider unauthenticated unless the key is put on the URI.
-`llm.ApplyAPIKey` does that from kit's scheme → key table:
+`llm.ApplyAPIKey` does that:
 
 ```go
 uri, err := llm.ApplyAPIKey(ctx, store, "openrouter://openai/gpt-4.1-nano")
@@ -253,6 +297,21 @@ case err != nil:
 }
 provider, err := llm.Resolve(uri)
 ```
+
+Key sources, highest precedence first:
+
+1. `llm.yaml` `providers.<scheme>.api_key`, then the variable
+   `providers.<scheme>.api_key_env` names (other names still follow)
+2. the adapter's declaration (`llm.Declaration.Key`, given at
+   `Register`): google's two variables, the local runtimes
+3. aim catalog facts for the provider: its key variables in catalog
+   order (names ending `_KEY`, `_APIKEY`, `_PAT`, `_TOKEN`), optional
+   when its base URL is on loopback; read from the on-disk cache only
+4. the `<SCHEME>_API_KEY` convention, other characters folded to `_`
+5. `LLM_API_KEY`, for required keys only
+
+A URI's own `api_key` outranks all five. For the registered schemes
+every layer agrees, cache or not:
 
 | Scheme | Key variables, highest precedence first | Required |
 |--------|------------------------------------------|----------|
@@ -271,6 +330,10 @@ provider, err := llm.Resolve(uri)
 | `triton` | `TRITON_API_KEY` | no |
 | `lmstudio` | none | no |
 
+An alias uses its scheme's key (`fireworks-ai` reads
+`FIREWORKS_API_KEY`); a catalog provider its catalog variables
+(`digitalocean` reads `DIGITALOCEAN_ACCESS_TOKEN`).
+
 Resolution order for a required key: the secret store under each name
 (nil store skips it), then the environment under each name, then
 `LLM_API_KEY`. Every name is also the store key, uppercase. The google
@@ -280,18 +343,19 @@ order.
 
 `ApplyAPIKey` leaves the URI unchanged when it already carries
 `api_key`, when the scheme is local and its own variable is unset
-(`LLM_API_KEY` is never lent to a local runtime), and when kit has no
-entry for the scheme. It needs `scheme://`; mapping a bare model id to a
+(`LLM_API_KEY` is never lent to a local runtime), and when no adapter
+serves the scheme (kit lends no credential to a host it cannot reach). It needs `scheme://`; mapping a bare model id to a
 scheme is the caller's policy. A required key found nowhere returns a
 `*MissingKeyError` (`errors.Is(err, llm.ErrMissingKey)`, also
 `secret.ErrNotFound`) listing the names consulted. Errors name
 variables, never values; the returned URI holds the key, so don't log it.
 
-Lower-level helpers: `llm.ProviderKeyFor(uri)` returns the table row,
-`llm.SecretFor(ctx, store, uri)` returns the key itself, and
-`llm.EnvKeyFor(uri)` returns one name (for `google`/`gemini` it stays
-`GEMINI_API_KEY` for compatibility; unknown schemes and `lmstudio` get
-`LLM_API_KEY`).
+Lower-level helpers: `llm.ProviderKeyFor(uri)` returns the resolved
+variables and whether the key is optional (`ok` false when no adapter
+serves the scheme), `llm.SecretFor(ctx, store, uri)` returns the key
+itself, and `llm.EnvKeyFor(uri)` returns one name (`api_key_env` when
+set; for `google`/`gemini` it stays `GEMINI_API_KEY` for compatibility;
+unknown schemes and `lmstudio` get `LLM_API_KEY`).
 
 ## Model registry
 
@@ -420,6 +484,22 @@ llm.Register("myscheme", func(cfg llm.ResolvedConfig) (llm.Provider, error) {
     return &MyAdapter{model: cfg.Model}, nil
 })
 ```
+
+Without a declaration the scheme's key comes from the aim catalog, else
+`MYSCHEME_API_KEY`. Declare what the catalog cannot know:
+
+```go
+llm.Register("myscheme", New, llm.Declaration{
+    Key:       &llm.ProviderKey{EnvVars: []string{"MY_KEY", "MY_OLD_KEY"}},
+    BaseURL:   "https://api.example.com/v1", // passed as cfg.Provider.BaseURL
+    Protocols: []string{"my-protocol"},      // serve catalog providers speaking it
+})
+```
+
+A declaration outranks the catalog. `Key` is used as given
+(`&llm.ProviderKey{Optional: true}` with no names: takes no key);
+`BaseURL` applies when the URI names none, aliases included; a protocol
+has one claimant, and a second `Register` claiming it panics.
 
 ## Interfaces
 

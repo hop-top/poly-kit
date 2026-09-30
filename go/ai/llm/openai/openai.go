@@ -3,6 +3,11 @@
 // Registers schemes: openai, openrouter, xai, lmstudio, groq, together,
 // fireworks, deepseek, mistral. lmstudio defaults to LM Studio's local
 // server, http://localhost:1234/v1.
+//
+// It also claims the OpenAI wire protocols (see protocols): a
+// provider in the aim catalog that no adapter registers by name, and
+// whose protocol is one of them ("openai-compatible" for most), resolves
+// here with the catalog's base URL.
 // Implements [llm.Completer], [llm.Streamer], [llm.ToolCaller].
 package openai
 
@@ -30,8 +35,12 @@ var schemes = []string{
 	"groq", "together", "fireworks", "deepseek", "mistral",
 }
 
-// defaultBaseURLs maps scheme to its default API base URL.
-// Schemes not listed here fall back to OpenAI's URL.
+// defaultBaseURLs maps scheme to its default API base URL, declared at
+// registration so an alias of the scheme ("fireworks-ai") gets it too.
+// Kit keeps its own even where the aim catalog has one: a scheme must
+// reach its host with no catalog cached (offline, first run), and a
+// declaration outranks the catalog. Schemes not listed here fall back
+// to OpenAI's URL.
 var defaultBaseURLs = map[string]string{
 	"openrouter": "https://openrouter.ai/api/v1",
 	"xai":        "https://api.x.ai/v1",
@@ -45,9 +54,33 @@ var defaultBaseURLs = map[string]string{
 	"lmstudio": "http://localhost:1234/v1",
 }
 
+// protocols are the aim catalog protocols (derived from each provider's
+// AI SDK package) this adapter speaks: the OpenAI Chat Completions wire.
+// Only catalog providers that no adapter registers by name route by
+// protocol, so these reach catalog-only providers such as DigitalOcean
+// (openai-compatible) or Meta (openai).
+var protocols = []string{
+	"openai-compatible", "openai", "openrouter",
+	"groq", "xai", "togetherai", "mistral",
+}
+
+// declaration is what this adapter states about scheme s.
+func declaration(s string) llm.Declaration {
+	d := llm.Declaration{BaseURL: defaultBaseURLs[s]}
+	switch s {
+	case "openai":
+		d.Protocols = protocols
+	case "lmstudio":
+		// LM Studio's local server takes no key: none is sent even when
+		// LMSTUDIO_API_KEY, which the aim catalog lists, is set.
+		d.Key = &llm.ProviderKey{Optional: true}
+	}
+	return d
+}
+
 func init() {
 	for _, s := range schemes {
-		llm.Register(s, New)
+		llm.Register(s, New, declaration(s))
 	}
 }
 
