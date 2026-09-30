@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0-alpha.21](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.20...kit/v0.5.0-alpha.21) (2026-09-30)
+
+
+### Bug Fixes
+
+* **cli:** alias add/delete render the affected entry ([0e26003](https://github.com/hop-top/poly-kit/commit/0e260038e66fefe7e7d47027862c2c73a512bf3b))
+* **cli:** declare output schema for alias listings ([c359773](https://github.com/hop-top/poly-kit/commit/c35977373263257ed22303e6dbafe45342898a5c))
+* **cli:** declare output schema for peer list ([6882cca](https://github.com/hop-top/poly-kit/commit/6882ccade098c41220fa447bf64ae85d9706c549))
+* **cli:** declare output schemas for token commands ([21e9f78](https://github.com/hop-top/poly-kit/commit/21e9f781714e80eddcd71de774e99d4c55f182f8))
+* **cli:** peer trust/block/revoke render result; empty list renders [] ([710e0c6](https://github.com/hop-top/poly-kit/commit/710e0c6e0fdfbe48829da05ca2425202b0ed1ea8))
+* **cli:** quota reset renders {reset} via output.Dispatch ([4b146f8](https://github.com/hop-top/poly-kit/commit/4b146f8a58607047401ffe8049f67cbe7eb4daac))
+* **cli:** serve --list renders rows via output.Dispatch ([dbb246d](https://github.com/hop-top/poly-kit/commit/dbb246d455ec19c64eab61a65136b531563fd92d))
+* **cli:** structured output for token create, key create, key revoke ([67a7168](https://github.com/hop-top/poly-kit/commit/67a7168d22bb62fcb0a543e095f7b2748d37bce4))
+* **toolspec:** declare output schema for spec coverage ([d322b2a](https://github.com/hop-top/poly-kit/commit/d322b2a09813781681820a1724dd11bd266cdb89))
+* **uri:** declare output schemas for structured leaves ([be65bcd](https://github.com/hop-top/poly-kit/commit/be65bcd294cfb2f2ee3896a87103a675502656b0))
+
 ## [0.5.0-alpha.20](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.19...kit/v0.5.0-alpha.20) (2026-09-30)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.20. This release includes new features and bug fixes.
