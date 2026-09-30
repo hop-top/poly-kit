@@ -102,6 +102,26 @@ def _is_loopback(host: str | None) -> bool:
         return False
 
 
+def _destination(url: str) -> str:
+    """Render ``url`` as scheme, host and path only.
+
+    Enough to say where a refused request was going, nothing it carried:
+    query, fragment and userinfo are dropped because they may hold
+    credentials (an API key param, basic-auth userinfo). The port stays.
+    An opaque URL (``mailto:``) keeps its scheme alone, and a target that
+    does not parse cannot be stripped reliably, so none of it is echoed.
+    Mirrors Go's ``netpolicy`` refusal.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "<unparseable URL>"
+    host = parts.netloc.rpartition("@")[2]
+    if not host and not parts.path.startswith("/"):
+        return f"{parts.scheme}:"
+    return f"{parts.scheme}://{host}{parts.path}"
+
+
 class _OfflineHandler(urllib.request.BaseHandler):
     """Refuses non-loopback requests while the offline marker is set.
 
@@ -120,7 +140,9 @@ class _OfflineHandler(urllib.request.BaseHandler):
             return None
         if _is_loopback(req.host):
             return None
-        raise OfflineError(f"{req.get_method()} {req.full_url}: network disabled by --offline")
+        raise OfflineError(
+            f"{req.get_method()} {_destination(req.full_url)}: network disabled by --offline"
+        )
 
 
 def guard(opener: urllib.request.OpenerDirector | None) -> urllib.request.OpenerDirector:

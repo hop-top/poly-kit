@@ -88,6 +88,62 @@ def test_blocks_external_when_offline(clean_marker):
     assert not rec.reached, "request reached the handler despite offline marker"
 
 
+_SECRET_URL = (
+    "https://alice:pw-secret@example.invalid/v1/models/m:generate?alt=sse&key=q-secret#frag-secret"
+)
+_LEAKS = ("alice", "pw-secret", "q-secret", "key=", "alt=sse", "frag-secret", "?", "#", "@")
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_refusal_omits_query_fragment_userinfo(clean_marker, method: str):
+    """The refusal names where the request was going, never what it carried.
+
+    Scheme, host and path only: query, fragment and userinfo may hold
+    credentials (an API key param, basic-auth userinfo) and are dropped.
+    Mirrors Go's ``TestGuard_RefusalOmitsQueryFragmentUserinfo``.
+    """
+    rec = _Recorder()
+    op = _opener(rec)
+    netpolicy.set_offline(True)
+
+    data = b"{}" if method == "POST" else None
+    with pytest.raises(netpolicy.OfflineError) as ei:
+        op.open(urllib.request.Request(_SECRET_URL, data=data, method=method))
+
+    msg = str(ei.value)
+    assert msg == (
+        f"{method} https://example.invalid/v1/models/m:generate: network disabled by --offline"
+    )
+    for leak in _LEAKS:
+        assert leak not in msg, f"refusal {msg!r} carries {leak!r}"
+    assert isinstance(ei.value, OSError)
+    assert not rec.reached
+
+
+def test_refusal_keeps_port(clean_marker):
+    """The port is part of where the request was going, so it stays."""
+    netpolicy.set_offline(True)
+
+    with pytest.raises(netpolicy.OfflineError) as ei:
+        _opener(_Recorder()).open("http://u:p@example.invalid:8443/x?key=q-secret")
+
+    assert str(ei.value) == "GET http://example.invalid:8443/x: network disabled by --offline"
+
+
+@pytest.mark.parametrize(
+    ("url", "want"),
+    [
+        # Opaque: the part after the scheme is not a path, so none of it shows.
+        ("mailto:alice@example.invalid?subject=q-secret", "mailto:"),
+        # Unparseable: cannot be stripped reliably, so none of it shows.
+        ("http://[::1/x?key=q-secret", "<unparseable URL>"),
+    ],
+)
+def test_destination_edge_cases(url: str, want: str):
+    """Targets the guard cannot render as scheme://host/path echo nothing."""
+    assert netpolicy._destination(url) == want
+
+
 def test_allows_when_not_offline(clean_marker):
     """An unmarked process must be entirely unaffected."""
     rec = _Recorder()
