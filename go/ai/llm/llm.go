@@ -7,7 +7,9 @@
 // Tool calling round-trips through [Message]: an assistant message
 // carries the model's [ToolCall]s in ToolCalls, and each result goes
 // back as a role "tool" message whose ToolCallID names the call it
-// answers. See [Message] for the per-role contract.
+// answers. See [Message] for the per-role contract. Replay the calls
+// verbatim: [ToolCall.ProviderData] carries provider-opaque state, such
+// as Gemini thought signatures, that the provider requires back.
 package llm
 
 import (
@@ -166,11 +168,29 @@ type ToolDef struct {
 // ID is the handle a tool result quotes back in [Message.ToolCallID].
 // Adapters whose provider does not return one synthesize a unique ID so
 // the linkage holds across providers.
+//
+// ProviderData is state the provider attached to the call that must go
+// back with it, unchanged, when the call is replayed (see
+// [ProviderData]). Callers copy ToolCalls from [ToolResponse.ToolCalls]
+// verbatim and never need to read it.
 type ToolCall struct {
-	ID        string
-	Name      string
-	Arguments json.RawMessage
+	ID           string
+	Name         string
+	Arguments    json.RawMessage
+	ProviderData ProviderData
 }
+
+// ProviderData holds provider-opaque state, keyed by adapter namespace
+// (for example "google"). Each value is JSON owned by that namespace's
+// adapter: an adapter writes only its own key when it parses a response,
+// reads only its own key when it replays history, and ignores every
+// other key, so history can move through fallback chains and between
+// providers without leaking one provider's state into another's request.
+//
+// Callers treat the map as immutable and pass it through as is; nil
+// means the provider attached nothing. Keys and value shapes are
+// documented by each adapter package.
+type ProviderData map[string]json.RawMessage
 
 // ToolResponse is the result of a tool-calling completion.
 type ToolResponse struct {

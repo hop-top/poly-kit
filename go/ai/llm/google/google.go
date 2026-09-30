@@ -5,6 +5,24 @@
 // Default base URL: https://generativelanguage.googleapis.com/v1beta
 // Implements: [llm.Provider], [llm.Completer], [llm.Streamer],
 // [llm.ToolCaller]
+//
+// # Thought signatures
+//
+// Gemini thinking models attach an opaque thoughtSignature to the first
+// functionCall part of each step and reject (400) a tool loop whose
+// current turn replays a call without it. The adapter keeps it in
+// [llm.ToolCall.ProviderData] under the "google" key as
+// {"thought_signature": "<sig>"} (the shape Gemini's OpenAI-compatible
+// API uses in extra_content.google) and sends it back on the same
+// functionCall part. Replay [llm.ToolResponse.ToolCalls] verbatim to keep
+// it.
+//
+// A current-turn step with no signed call (history built by hand or by
+// another provider) gets Gemini's documented skip value
+// "skip_thought_signature_validator" on its first functionCall part, so
+// the request is accepted; Google notes this costs reasoning quality.
+// Earlier turns are not validated and go out as given. Signatures Gemini
+// puts on text parts are optional to return and are not kept.
 package google
 
 import (
@@ -114,6 +132,21 @@ type part struct {
 	// Tool-related fields.
 	FunctionCall     *functionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *functionResponse `json:"functionResponse,omitempty"`
+
+	// ThoughtSignature is opaque and must return on the same part.
+	ThoughtSignature string `json:"thoughtSignature,omitempty"`
+}
+
+// providerDataKey namespaces this adapter's [llm.ProviderData].
+const providerDataKey = "google"
+
+// skipThoughtSignature is Gemini's documented stand-in for a
+// functionCall part that has no signature of its own.
+const skipThoughtSignature = "skip_thought_signature_validator"
+
+// providerData is the JSON under providerDataKey.
+type providerData struct {
+	ThoughtSignature string `json:"thought_signature,omitempty"`
 }
 
 type inlineData struct {
@@ -401,6 +434,7 @@ func (a *Adapter) buildBody(
 	// callNames resolves a tool result's ToolCallID to the function
 	// name Gemini needs on the functionResponse.
 	callNames := map[string]string{}
+	turn := currentTurnStart(req.Messages)
 	for i, m := range req.Messages {
 		if m.Role == "system" {
 			systemParts = append(systemParts, part{Text: m.Content})
@@ -421,7 +455,7 @@ func (a *Adapter) buildBody(
 			contents = append(contents, content{Role: "user", Parts: []part{p}})
 			continue
 		}
-		c, err := mapMessage(ctx, m)
+		c, err := mapMessage(ctx, m, i >= turn)
 		if err != nil {
 			return nil, err
 		}
@@ -480,8 +514,11 @@ func (a *Adapter) buildBody(
 // Gemini uses "user" and "model" roles; "assistant" is mapped to "model".
 //
 // An assistant turn with ToolCalls gets one functionCall part per call
-// after its text (or Parts); an empty Content adds no text part.
-func mapMessage(ctx context.Context, m llm.Message) (content, error) {
+// after its text (or Parts); an empty Content adds no text part. Each
+// call's thought signature goes back on its own part. In the current
+// turn, a step without any signed call gets the skip value on its first
+// call, the only one Gemini validates.
+func mapMessage(ctx context.Context, m llm.Message, currentTurn bool) (content, error) {
 	if m.ToolCallID != "" {
 		return content{}, fmt.Errorf("gemini: ToolCallID is valid only on role tool, got %q", m.Role)
 	}
@@ -497,6 +534,8 @@ func mapMessage(ctx context.Context, m llm.Message) (content, error) {
 	if len(m.Parts) == 0 && m.Content == "" {
 		c.Parts = nil
 	}
+	first := len(c.Parts)
+	signed := false
 	for _, tc := range m.ToolCalls {
 		args := json.RawMessage(`{}`)
 		if len(tc.Arguments) > 0 {
@@ -505,11 +544,59 @@ func mapMessage(ctx context.Context, m llm.Message) (content, error) {
 			}
 			args = tc.Arguments
 		}
+		sig, err := thoughtSignature(tc)
+		if err != nil {
+			return content{}, err
+		}
+		signed = signed || sig != ""
 		c.Parts = append(c.Parts, part{
-			FunctionCall: &functionCall{Name: tc.Name, Args: args},
+			FunctionCall:     &functionCall{Name: tc.Name, Args: args},
+			ThoughtSignature: sig,
 		})
 	}
+	if currentTurn && !signed {
+		c.Parts[first].ThoughtSignature = skipThoughtSignature
+	}
 	return c, nil
+}
+
+// currentTurnStart returns the index of the last user message: Gemini's
+// turn begins at the most recent user message that is not a
+// functionResponse, and only that turn's signatures are validated.
+func currentTurnStart(msgs []llm.Message) int {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "user" {
+			return i
+		}
+	}
+	return 0
+}
+
+// thoughtSignature reads this adapter's signature from a call's
+// ProviderData; other namespaces are ignored.
+func thoughtSignature(tc llm.ToolCall) (string, error) {
+	raw, ok := tc.ProviderData[providerDataKey]
+	if !ok {
+		return "", nil
+	}
+	var d providerData
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return "", fmt.Errorf("gemini: tool call %q provider data: %w", tc.ID, err)
+	}
+	return d.ThoughtSignature, nil
+}
+
+// signatureData wraps a thought signature as [llm.ProviderData]; nil
+// when the part carried none.
+func signatureData(sig string) llm.ProviderData {
+	if sig == "" {
+		return nil
+	}
+	raw, err := json.Marshal(providerData{ThoughtSignature: sig})
+	if err != nil {
+		return nil
+	}
+	return llm.ProviderData{providerDataKey: raw}
 }
 
 // functionResponsePart maps a role "tool" message to a functionResponse
@@ -650,9 +737,10 @@ func (a *Adapter) parseToolResponse(gr generateResponse) llm.ToolResponse {
 				id = newCallID()
 			}
 			resp.ToolCalls = append(resp.ToolCalls, llm.ToolCall{
-				ID:        id,
-				Name:      p.FunctionCall.Name,
-				Arguments: p.FunctionCall.Args,
+				ID:           id,
+				Name:         p.FunctionCall.Name,
+				Arguments:    p.FunctionCall.Args,
+				ProviderData: signatureData(p.ThoughtSignature),
 			})
 		}
 	}

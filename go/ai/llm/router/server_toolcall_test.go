@@ -22,7 +22,8 @@ func TestServer_ChatCompletion_ToolLinkage(t *testing.T) {
 			{"role": "user", "content": "Weather?"},
 			{"role": "assistant", "content": null, "tool_calls": [
 				{"id": "call_1", "type": "function",
-				 "function": {"name": "get_weather", "arguments": "{\"city\":\"NYC\"}"}}
+				 "function": {"name": "get_weather", "arguments": "{\"city\":\"NYC\"}"},
+				 "extra_content": {"google": {"thought_signature": "SIG_A"}}}
 			]},
 			{"role": "tool", "tool_call_id": "call_1", "content": "sunny"}
 		]
@@ -41,6 +42,9 @@ func TestServer_ChatCompletion_ToolLinkage(t *testing.T) {
 	assert.Equal(t, "call_1", msgs[1].ToolCalls[0].ID)
 	assert.Equal(t, "get_weather", msgs[1].ToolCalls[0].Name)
 	assert.JSONEq(t, `{"city":"NYC"}`, string(msgs[1].ToolCalls[0].Arguments))
+	assert.JSONEq(t, `{"thought_signature":"SIG_A"}`,
+		string(msgs[1].ToolCalls[0].ProviderData["google"]),
+		"extra_content must reach the provider as ProviderData")
 	assert.Equal(t, "tool", msgs[2].Role)
 	assert.Equal(t, "call_1", msgs[2].ToolCallID)
 	assert.Equal(t, "sunny", msgs[2].Content)

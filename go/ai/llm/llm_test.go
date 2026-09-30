@@ -547,6 +547,23 @@ func TestCallWithTools_Fallback_5xxTriggersNext(t *testing.T) {
 	assert.Equal(t, "tool-ok", got.Content)
 }
 
+func TestCallWithTools_Fallback_KeepsProviderData(t *testing.T) {
+	data := llm.ProviderData{"google": json.RawMessage(`{"thought_signature":"SIG_A"}`)}
+	primary := &mockToolCaller{
+		toolErr: llmerrors.NewHTTPStatusError(500, "internal"),
+	}
+	fb := &mockToolCaller{toolResp: llm.ToolResponse{ToolCalls: []llm.ToolCall{
+		{ID: "c1", Name: "f", ProviderData: data},
+	}}}
+
+	client := llm.NewClient(primary, llm.WithFallback(fb))
+
+	got, err := client.CallWithTools(context.Background(), llm.Request{}, nil)
+	require.NoError(t, err)
+	require.Len(t, got.ToolCalls, 1)
+	assert.Equal(t, data, got.ToolCalls[0].ProviderData)
+}
+
 func TestCallWithTools_Fallback_4xxDoesNotTrigger(t *testing.T) {
 	primary := &mockToolCaller{
 		toolErr: llmerrors.NewAuth("openai", fmt.Errorf("bad key")),

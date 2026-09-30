@@ -90,6 +90,15 @@ resp, err = client.CallWithTools(ctx, llm.Request{Messages: msgs}, tools)
 | `ToolCalls` | `assistant` only | calls the model made; `Content` may be empty |
 | `ToolCallID` | `tool` only | the `ToolCall.ID` this result answers; result text in `Content` |
 
+Keep `resp.ToolCalls` verbatim, including `ToolCall.ProviderData`, when
+you store or replay history. It holds provider-opaque state keyed by
+adapter namespace, which the provider needs back on the same call.
+Gemini thinking models are the case today: they put a thought signature
+on the first call of each step and return 400 ("Function call is
+missing a thought_signature") if it is missing from the current turn.
+Each adapter reads only its own key and ignores the rest, so history
+can pass between providers in a fallback chain.
+
 Wire mapping per adapter:
 
 | Adapter | Assistant calls | Tool result |
@@ -102,6 +111,16 @@ Wire mapping per adapter:
 - Gemini may omit call IDs; the adapter then synthesizes one
   (`call_...`), so `ToolCall.ID` is always set. Requests to Gemini carry
   no IDs: it pairs results with calls by name and order.
+- Gemini thought signatures live in `ProviderData["google"]` as
+  `{"thought_signature": "..."}` and go back as `thoughtSignature` on
+  the same `functionCall` part. With parallel calls only the first
+  carries one. A step in the current turn with no signed call (history
+  built by hand or by another provider) gets Gemini's documented
+  `skip_thought_signature_validator` on its first call, so the request
+  is accepted, at some cost to reasoning quality; earlier turns go out
+  as given.
+- The router server's OpenAI-compatible endpoint maps a tool call's
+  `extra_content` onto `ProviderData` unchanged.
 - Adapters return an error instead of degrading: `ToolCalls` or
   `ToolCallID` on the wrong role, a result with `Parts`, arguments that
   are not valid JSON, a call without an ID (`openai`, `anthropic`), a

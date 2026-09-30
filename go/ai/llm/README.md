@@ -48,6 +48,10 @@ fmt.Println(resp.Message.Content)
   adapters return an error for linkage their provider cannot express
   instead of sending it as plain text:
   [Tool calling](../../../docs/adopters/reference/llm.md#tool-calling).
+- Replay `resp.ToolCalls` verbatim: `ToolCall.ProviderData` holds
+  provider-opaque state keyed by adapter (Gemini thought signatures
+  under `google`) that the provider requires back; each adapter reads
+  only its own key and ignores the rest.
 - Picker: filters on `aim.Filter` plus token bounds, ranks by budget tier,
   tiebreaks alphabetically on `(Provider, ID)`; `ErrNoProviderMatches` +
   `*NoMatchError`; `LLM_PICKER_TRACE` gates one `slog` event per call:

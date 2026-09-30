@@ -106,3 +106,22 @@ func TestToolLinkage_Rejects(t *testing.T) {
 		})
 	}
 }
+
+func TestToolLinkage_ProviderDataIgnored(t *testing.T) {
+	round := func(data llm.ProviderData) []llm.Message {
+		return []llm.Message{
+			{Role: "user", Content: "Weather in NYC?"},
+			{Role: "assistant", ToolCalls: []llm.ToolCall{
+				{ID: "call_1", Name: "get_weather", Arguments: json.RawMessage(`{"city":"NYC"}`), ProviderData: data},
+			}},
+			{Role: "tool", ToolCallID: "call_1", Content: "sunny"},
+		}
+	}
+	plain, err := captureMessages(t, round(nil))
+	require.NoError(t, err)
+	withData, err := captureMessages(t, round(llm.ProviderData{
+		"google": json.RawMessage(`{"thought_signature":"SIG_A"}`),
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, plain, withData, "another provider's opaque data never reaches the wire")
+}
