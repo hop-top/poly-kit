@@ -18,6 +18,14 @@ on:
     branches: [main, next]
   workflow_dispatch: {}
 
+# One run per branch at a time, newest push wins. A run that started before
+# a release PR merged still sees the old latest release; if it finishes after
+# the merge it no longer finds that PR open and re-opens a release PR for the
+# version just tagged. Cancelling it on the next push closes that window.
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   pull-requests: write
