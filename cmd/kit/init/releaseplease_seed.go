@@ -7,6 +7,13 @@
 // Conventions (the hop-top release-please adopters and poly-kit's own
 // config; checked by hop-top/.github's release-please-preflight.yml):
 //   - tags `<component>/v<version>`: include-component-in-tag + "/";
+//     Go packages override include-component-in-tag to false and tag
+//     bare `v<version>` (a Go module version is a plain semver tag).
+//     release-please then leaves the component out of that package's
+//     release PR title (strategy getComponent() returns "" when the
+//     component is not in the tag; with component-no-space the title
+//     reads "chore(release): <version>"); its release branch still
+//     carries the component;
 //   - release PR title "chore(release): ${component} ${version}" with
 //     component-no-space;
 //   - labels status:release-pending / status:release-tagged;
@@ -58,6 +65,23 @@ var releaseTypes = []struct{ runtime, releaseType string }{
 	{"php", "php"},
 }
 
+// releasePleaseLabels are the labels the starter config names; nothing
+// creates them on GitHub, and release-please fails at the labeling call
+// without them. Colors and descriptions as on hop-top repos.
+var releasePleaseLabels = []RepoLabel{
+	{Name: releasePleaseLabelPending, Color: "ededed", Description: "Release PR awaiting merge"},
+	{Name: releasePleaseLabelTagged, Color: "ededed", Description: "Release tagged"},
+}
+
+// releaseLabelCommands is the manual fallback for creating them.
+func releaseLabelCommands() string {
+	cmds := make([]string, len(releasePleaseLabels))
+	for i, l := range releasePleaseLabels {
+		cmds[i] = "gh label create " + l.Name + " --color " + l.Color + " --force"
+	}
+	return strings.Join(cmds, " && ")
+}
+
 // releaseTypesNeedingSeed ignore `initial-version` (fixed stable 0.1.0).
 var releaseTypesNeedingSeed = map[string]bool{"python": true, "rust": true}
 
@@ -68,15 +92,18 @@ type rpSeedSection struct {
 }
 
 type rpSeedPackage struct {
-	ReleaseType       string   `json:"release-type"`
-	Component         string   `json:"component"`
-	ChangelogPath     string   `json:"changelog-path"`
-	BumpMinorPreMajor bool     `json:"bump-minor-pre-major"`
-	ExcludePaths      []string `json:"exclude-paths,omitempty"`
-	Prerelease        bool     `json:"prerelease"`
-	PrereleaseType    string   `json:"prerelease-type"`
-	Versioning        string   `json:"versioning"`
-	InitialVersion    string   `json:"initial-version"`
+	ReleaseType string `json:"release-type"`
+	Component   string `json:"component"`
+	// IncludeComponentInTag overrides the top-level true for Go
+	// packages: a Go module version is a bare v<version> tag.
+	IncludeComponentInTag *bool    `json:"include-component-in-tag,omitempty"`
+	ChangelogPath         string   `json:"changelog-path"`
+	BumpMinorPreMajor     bool     `json:"bump-minor-pre-major"`
+	ExcludePaths          []string `json:"exclude-paths,omitempty"`
+	Prerelease            bool     `json:"prerelease"`
+	PrereleaseType        string   `json:"prerelease-type"`
+	Versioning            string   `json:"versioning"`
+	InitialVersion        string   `json:"initial-version"`
 }
 
 type rpSeedConfig struct {
@@ -120,15 +147,21 @@ func renderReleasePleaseSeed(name string, runtimes []string) (config, manifest [
 			path, comp = rt.runtime, component+"-"+rt.runtime
 			ports = append(ports, path)
 		}
+		var bareTag *bool
+		if rt.releaseType == "go" {
+			no := false
+			bareTag = &no
+		}
 		packages[path] = rpSeedPackage{
-			ReleaseType:       rt.releaseType,
-			Component:         comp,
-			ChangelogPath:     "CHANGELOG.md",
-			BumpMinorPreMajor: true,
-			Prerelease:        true,
-			PrereleaseType:    "alpha.0",
-			Versioning:        "prerelease",
-			InitialVersion:    releasePleaseInitialVersion,
+			ReleaseType:           rt.releaseType,
+			Component:             comp,
+			IncludeComponentInTag: bareTag,
+			ChangelogPath:         "CHANGELOG.md",
+			BumpMinorPreMajor:     true,
+			Prerelease:            true,
+			PrereleaseType:        "alpha.0",
+			Versioning:            "prerelease",
+			InitialVersion:        releasePleaseInitialVersion,
 		}
 		seed = seed || releaseTypesNeedingSeed[rt.releaseType]
 	}

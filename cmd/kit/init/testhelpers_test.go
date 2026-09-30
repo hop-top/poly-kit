@@ -57,6 +57,18 @@ func (r *recordingGitRunner) Push(_ context.Context, dir string) error {
 type recordingGitHubRunner struct {
 	createCalls  []RepoConfig
 	protectCalls []string
+	labelCalls   []labelCall
+	labelErr     error
+}
+
+type labelCall struct {
+	repo   string
+	labels []RepoLabel
+}
+
+func (r *recordingGitHubRunner) CreateLabels(_ context.Context, fullName string, labels []RepoLabel) error {
+	r.labelCalls = append(r.labelCalls, labelCall{repo: fullName, labels: labels})
+	return r.labelErr
 }
 
 func (r *recordingGitHubRunner) Create(_ context.Context, _ string, cfg RepoConfig) (RepoInfo, error) {
