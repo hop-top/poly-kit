@@ -15,6 +15,8 @@
 //     sibling now equals the live file, delete the sibling before
 //     writing a new one.
 //   - Track every generated file in `.kit/generated.json`.
+//   - Retire callers no longer rendered (retiredWorkflows): removed
+//     while unedited, reported once edited, ignored when untracked.
 package kitinit
 
 import (
@@ -104,14 +106,11 @@ type workflowSpec struct {
 // reusable currently published) and carry a TODO because
 // `hop-top/.github` does not yet host a per-language test reusable.
 var runtimeWorkflows = map[string][]workflowSpec{
+	// No release caller for Go: the Go package is always the repo-root
+	// module, tagged bare v<version> by the starter release-please
+	// config, and proxy.golang.org serves it straight from that tag —
+	// nothing to publish. See retiredWorkflows.
 	"go": {
-		{
-			OutFile:      "release-go-caller.yml",
-			Upstream:     "publish-on-tag.yml",
-			Trigger:      "release",
-			Notes:        []string{"Publishes Go module tags via the unified hop-top/.github publish-on-tag pipeline."},
-			UpstreamTODO: "hop-top/.github exposes the unified publish-on-tag.yml; no dedicated publish-go.yml exists yet. Confirm the input shape with the maintainer before opting in.",
-		},
 		{
 			OutFile:      "test-go-caller.yml",
 			Upstream:     "ci.yml",
@@ -181,6 +180,73 @@ var runtimeWorkflows = map[string][]workflowSpec{
 			UpstreamTODO: "hop-top/.github does not yet host a per-language test-py.yml; this caller targets the generic ci.yml. Replace `Upstream` once a dedicated reusable lands.",
 		},
 	},
+}
+
+// retiredWorkflows are callers earlier kit init versions rendered and
+// this one no longer does, with the reason reported when retiring one.
+// A copy kit still owns (manifest hash matches) is removed; an edited
+// copy is left in place and reported on every run until deleted.
+var retiredWorkflows = []struct{ OutFile, Why string }{
+	{
+		OutFile: "release-go-caller.yml",
+		Why: "Go modules publish through proxy.golang.org straight from their bare v<version> tags; " +
+			"this caller sent those tags to publish-on-tag.yml, which only routes <component>/v<version>",
+	},
+}
+
+// retireWorkflows applies retiredWorkflows against manifest. Mutates
+// manifest (and index) in place; touches disk only outside dry-run.
+func retireWorkflows(target string, manifest *Manifest, index map[string]int, dryRun bool) ([]WorkflowAction, bool, error) {
+	var actions []WorkflowAction
+	changed := false
+	for _, r := range retiredWorkflows {
+		rel := filepath.ToSlash(filepath.Join(".github", "workflows", r.OutFile))
+		entry, tracked := lookupManifest(manifest, index, rel)
+		if !tracked {
+			continue // never kit's: not ours to touch
+		}
+		abs := filepath.Join(target, filepath.FromSlash(rel))
+		body, err := os.ReadFile(abs)
+		switch {
+		case os.IsNotExist(err):
+			dropManifestEntry(manifest, index, rel)
+			changed = true
+			actions = append(actions, WorkflowAction{Path: rel, Action: "manifest-update", Reason: "retired", Detail: r.Why})
+		case err != nil:
+			return nil, false, fmt.Errorf("kit init: read %q: %w", abs, err)
+		case sha256Hex(body) == entry.SHA256:
+			if !dryRun {
+				if err := removeFileIfExists(abs); err != nil {
+					return nil, false, err
+				}
+			}
+			dropManifestEntry(manifest, index, rel)
+			changed = true
+			actions = append(actions, WorkflowAction{Path: rel, Action: "remove", Reason: "retired", Detail: r.Why})
+		default:
+			actions = append(actions, WorkflowAction{
+				Path: rel, Action: "keep", Reason: "retired-user-edited",
+				Detail: "kit no longer generates this file and it was edited, so it stays: " + r.Why +
+					"; delete it once nothing depends on it",
+			})
+		}
+	}
+	return actions, changed, nil
+}
+
+// dropManifestEntry removes rel from manifest, rebuilding index.
+func dropManifestEntry(m *Manifest, index map[string]int, rel string) {
+	i, ok := index[rel]
+	if !ok {
+		return
+	}
+	m.Files = append(m.Files[:i], m.Files[i+1:]...)
+	for k := range index {
+		delete(index, k)
+	}
+	for j, f := range m.Files {
+		index[f.Path] = j
+	}
 }
 
 // renderWorkflowCaller produces the textual content of a single caller
@@ -304,9 +370,6 @@ func renderWorkflows(target string, runtimes []string, in Inputs, now func() tim
 		now = time.Now
 	}
 	plans := planWorkflows(target, runtimes)
-	if len(plans) == 0 {
-		return nil, nil
-	}
 
 	manifestPath := filepath.Join(target, filepath.FromSlash(manifestRelPath))
 	manifest, err := readManifest(manifestPath)
@@ -315,7 +378,20 @@ func renderWorkflows(target string, runtimes []string, in Inputs, now func() tim
 	}
 	index := manifest.index()
 
-	actions := make([]WorkflowAction, 0, len(plans))
+	retired, retiredChanged, err := retireWorkflows(target, manifest, index, in.DryRun)
+	if err != nil {
+		return nil, err
+	}
+	if len(plans) == 0 {
+		if retiredChanged && !in.DryRun {
+			if err := writeWorkflowManifest(manifestPath, manifest); err != nil {
+				return nil, fmt.Errorf("kit init: write manifest %q: %w", manifestPath, err)
+			}
+		}
+		return retired, nil
+	}
+
+	actions := make([]WorkflowAction, 0, len(plans)+len(retired))
 	for _, p := range plans {
 		action, err := applyWorkflow(p, manifest, index, in.DryRun, now)
 		if err != nil {
@@ -323,6 +399,7 @@ func renderWorkflows(target string, runtimes []string, in Inputs, now func() tim
 		}
 		actions = append(actions, action)
 	}
+	actions = append(actions, retired...)
 
 	// Persist manifest. In dry-run we computed actions and projected
 	// manifest mutations onto the in-memory copy but never wrote the file.

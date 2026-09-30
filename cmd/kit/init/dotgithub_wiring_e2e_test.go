@@ -140,8 +140,9 @@ func e2eBootstrap(t *testing.T, in Inputs) (target string, summary Summary) {
 func TestE2E_Bootstrap_DefaultFlags_WiresAllNonBusGenerators(t *testing.T) {
 	target, summary := e2eBootstrap(t, e2eInputs("demo", false))
 
-	// Workflow callers. Default Runtime = ["go"] → release + test.
-	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "release-go-caller.yml"))
+	// Workflow callers. Default Runtime = ["go"] → test caller only: the
+	// root Go module publishes via proxy.golang.org from its bare tags.
+	assert.NoFileExists(t, filepath.Join(target, ".github", "workflows", "release-go-caller.yml"))
 	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "test-go-caller.yml"))
 
 	// Before-PR hook — bash + ps1 companion.
@@ -228,7 +229,6 @@ func TestE2E_Bootstrap_ManifestSchemaAndHashes(t *testing.T) {
 	mustMatch := []string{
 		PrePrHookPath,
 		PrePrHookPs1Path,
-		".github/workflows/release-go-caller.yml",
 		".github/workflows/test-go-caller.yml",
 	}
 	for _, rel := range mustMatch {
@@ -257,7 +257,7 @@ func TestE2E_Bootstrap_WithBusWorkflows_AllFourLand(t *testing.T) {
 	}
 
 	// Workflow callers + hooks still land in lockstep.
-	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "release-go-caller.yml"))
+	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "test-go-caller.yml"))
 	assert.FileExists(t, filepath.Join(target, ".githooks", "pre-pr"))
 	assert.FileExists(t, filepath.Join(target, ".githooks", "post-pr-open"))
 
@@ -384,7 +384,7 @@ func TestE2E_Augment_HashMatch_RefreshesAndKeepsAllGenerators(t *testing.T) {
 func TestE2E_Augment_UserEdited_WritesSuggestSibling(t *testing.T) {
 	target, _ := e2eBootstrap(t, e2eInputs("demo", false))
 
-	relPath := ".github/workflows/release-go-caller.yml"
+	relPath := ".github/workflows/test-go-caller.yml"
 	absPath := filepath.Join(target, filepath.FromSlash(relPath))
 
 	// Snapshot kit's would-be content so we can verify the sibling
@@ -451,7 +451,7 @@ func TestE2E_Augment_UserEdited_WritesSuggestSibling(t *testing.T) {
 func TestE2E_Augment_SuggestionCleanup_RemovesAcceptedSibling(t *testing.T) {
 	target, _ := e2eBootstrap(t, e2eInputs("demo", false))
 
-	relPath := ".github/workflows/release-go-caller.yml"
+	relPath := ".github/workflows/test-go-caller.yml"
 	absPath := filepath.Join(target, filepath.FromSlash(relPath))
 
 	// Seed a stale .kit-suggested sibling whose content equals the live

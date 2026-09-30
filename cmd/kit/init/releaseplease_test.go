@@ -388,7 +388,7 @@ func TestBootstrap_WithoutReleasePlease_NoCaller(t *testing.T) {
 	_, ok := findAction(sum.Workflows, rpCaller)
 	assert.False(t, ok)
 	// The other callers are unaffected.
-	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "release-go-caller.yml"))
+	assert.FileExists(t, filepath.Join(target, ".github", "workflows", "test-go-caller.yml"))
 }
 
 func TestBootstrap_WithoutGitHubWorkflows_NoReleasePleaseCaller(t *testing.T) {

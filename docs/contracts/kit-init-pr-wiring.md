@@ -410,6 +410,22 @@ user effectively accepted the suggestion). This keeps the working tree
 from accumulating stale `.kit-suggested` files once the user's edits
 converge with what kit would write.
 
+### Retired callers
+
+A caller kit init no longer renders is retired on the next run:
+removed (`remove`, reason `retired`) while its manifest hash still
+matches, its manifest entry dropped (`manifest-update` when the file is
+already gone); left in place and reported on every run (`keep`, reason
+`retired-user-edited`) once edited; never touched when kit did not
+generate it (no manifest entry).
+
+Retired: `release-go-caller.yml`. The Go package kit init scaffolds is
+always the repo-root module (`cli-go`; the starter release-please
+config puts Go at `.`), tagged bare `v<version>`, which
+proxy.golang.org serves directly — there is nothing to publish, and the
+caller sent those tags to `publish-on-tag.yml`, which only routes
+`<component>/v<version>`. Go keeps `test-go-caller.yml`.
+
 ### Release-please caller
 
 The release-please generator applies the rules above plus:
@@ -434,8 +450,8 @@ The release-please generator applies the rules above plus:
    those default paths), kit writes a starter pair (`write`, reason
    `seed`): tags `<component>/v<version>` except Go packages, which set
    `include-component-in-tag: false` and tag bare `v<version>` (their
-   release PR title then omits the component; the release branch keeps
-   it), release PR title
+   release PR title then reads `chore(release): <version>` without the
+   component — accepted; the release branch keeps it), release PR title
    `chore(release): ${component} ${version}` with `component-no-space`,
    labels `status:release-pending` / `status:release-tagged`, one PR per
    package, and the alpha prerelease channel (`prerelease`,
@@ -472,7 +488,7 @@ generator would touch:
   "reason": "user-edited" | "new" | "refresh" | "manifest-only" | "convergence"
           | "migrated" | "existing-release-please" | "custom-release-please"
           | "uncommitted-release-please" | "duplicate-release-please"
-          | "release-please-config" | "seed",
+          | "release-please-config" | "seed" | "retired" | "retired-user-edited",
   "detail": "what to do next (release-please generator)"
 }
 ```

@@ -48,7 +48,7 @@ func readManifestFile(t *testing.T, target string) Manifest {
 	return m
 }
 
-func TestPlanWorkflows_GoRuntime_EmitsReleaseAndTest(t *testing.T) {
+func TestPlanWorkflows_GoRuntime_EmitsTestOnly(t *testing.T) {
 	plans := planWorkflows("/tmp/repo", []string{"go"})
 	var rels []string
 	for _, p := range plans {
@@ -56,7 +56,6 @@ func TestPlanWorkflows_GoRuntime_EmitsReleaseAndTest(t *testing.T) {
 	}
 	sort.Strings(rels)
 	assert.Equal(t, []string{
-		".github/workflows/release-go-caller.yml",
 		".github/workflows/test-go-caller.yml",
 	}, rels)
 }
@@ -68,7 +67,6 @@ func TestPlanWorkflows_AllSupportedRuntimes(t *testing.T) {
 		got[p.RelPath] = true
 	}
 	for _, want := range []string{
-		".github/workflows/release-go-caller.yml",
 		".github/workflows/release-rs-caller.yml",
 		".github/workflows/release-ts-caller.yml",
 		".github/workflows/release-php-caller.yml",
@@ -121,7 +119,7 @@ func TestRenderWorkflowCaller_TestUsesCi(t *testing.T) {
 
 func TestRenderWorkflows_Bootstrap_WritesFilesAndManifest(t *testing.T) {
 	target := t.TempDir()
-	in := Inputs{Runtime: []string{"go"}, WithGitHubWorkflows: true}
+	in := Inputs{Runtime: []string{"rs"}, WithGitHubWorkflows: true}
 
 	actions, err := renderWorkflows(target, in.Runtime, in, fixedNow())
 	require.NoError(t, err)
@@ -133,8 +131,8 @@ func TestRenderWorkflows_Bootstrap_WritesFilesAndManifest(t *testing.T) {
 
 	// Files exist on disk with the expected `uses:` line.
 	for _, rel := range []string{
-		".github/workflows/release-go-caller.yml",
-		".github/workflows/test-go-caller.yml",
+		".github/workflows/release-rs-caller.yml",
+		".github/workflows/test-rs-caller.yml",
 	} {
 		body, err := os.ReadFile(filepath.Join(target, filepath.FromSlash(rel)))
 		require.NoError(t, err, "missing %s", rel)
@@ -182,7 +180,7 @@ func TestRenderWorkflows_NoRuntimes_NoOp(t *testing.T) {
 
 func TestRenderWorkflows_PreExistingFile_DivergentHash_WritesSibling(t *testing.T) {
 	target := t.TempDir()
-	rel := ".github/workflows/release-go-caller.yml"
+	rel := ".github/workflows/release-rs-caller.yml"
 	abs := filepath.Join(target, filepath.FromSlash(rel))
 	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o750))
 
@@ -190,11 +188,11 @@ func TestRenderWorkflows_PreExistingFile_DivergentHash_WritesSibling(t *testing.
 	userContent := "# user-authored, do not touch\nname: my-custom-release\n"
 	require.NoError(t, os.WriteFile(abs, []byte(userContent), 0o644))
 
-	in := Inputs{Runtime: []string{"go"}, WithGitHubWorkflows: true}
+	in := Inputs{Runtime: []string{"rs"}, WithGitHubWorkflows: true}
 	actions, err := renderWorkflows(target, in.Runtime, in, fixedNow())
 	require.NoError(t, err)
 
-	// Find the action for release-go-caller.
+	// Find the action for release-rs-caller.
 	var releaseAction *WorkflowAction
 	for i := range actions {
 		if actions[i].Path == rel {
@@ -228,13 +226,13 @@ func TestRenderWorkflows_PreExistingFile_DivergentHash_WritesSibling(t *testing.
 
 func TestRenderWorkflows_RefreshInPlace_WhenManifestHashMatches(t *testing.T) {
 	target := t.TempDir()
-	in := Inputs{Runtime: []string{"go"}, WithGitHubWorkflows: true}
+	in := Inputs{Runtime: []string{"rs"}, WithGitHubWorkflows: true}
 
-	// First run: bootstrap → writes the two go callers.
+	// First run: bootstrap → writes the two rs callers.
 	_, err := renderWorkflows(target, in.Runtime, in, fixedNow())
 	require.NoError(t, err)
 
-	rel := ".github/workflows/release-go-caller.yml"
+	rel := ".github/workflows/release-rs-caller.yml"
 	abs := filepath.Join(target, filepath.FromSlash(rel))
 
 	// Tamper with the renderer output (swap the upstream filename) and
@@ -244,17 +242,17 @@ func TestRenderWorkflows_RefreshInPlace_WhenManifestHashMatches(t *testing.T) {
 	// To simulate a regenerated stub, replace the file content with the
 	// manifest-matching original first, then call again with a mutated
 	// runtimeWorkflows table.
-	origSpecs := runtimeWorkflows["go"]
-	t.Cleanup(func() { runtimeWorkflows["go"] = origSpecs })
+	origSpecs := runtimeWorkflows["rs"]
+	t.Cleanup(func() { runtimeWorkflows["rs"] = origSpecs })
 
-	runtimeWorkflows["go"] = []workflowSpec{
+	runtimeWorkflows["rs"] = []workflowSpec{
 		{
-			OutFile:  "release-go-caller.yml",
+			OutFile:  "release-rs-caller.yml",
 			Upstream: "publish-on-tag-v2.yml", // different upstream → different content
 			Trigger:  "release",
 		},
 		{
-			OutFile:  "test-go-caller.yml",
+			OutFile:  "test-rs-caller.yml",
 			Upstream: "ci.yml",
 			Trigger:  "test",
 		},
@@ -298,9 +296,9 @@ func TestRenderWorkflows_IdempotentRerun_SkipsUnchanged(t *testing.T) {
 
 func TestRenderWorkflows_AcceptedSuggestion_IsRemoved(t *testing.T) {
 	target := t.TempDir()
-	in := Inputs{Runtime: []string{"go"}, WithGitHubWorkflows: true}
+	in := Inputs{Runtime: []string{"rs"}, WithGitHubWorkflows: true}
 
-	rel := ".github/workflows/release-go-caller.yml"
+	rel := ".github/workflows/release-rs-caller.yml"
 	abs := filepath.Join(target, filepath.FromSlash(rel))
 
 	// 1. Pre-existing user-authored file → produces a sibling.
@@ -354,11 +352,11 @@ func TestRenderWorkflows_Disabled_NoOp(t *testing.T) {
 // must also be cleaned up.
 func TestRenderWorkflows_UserEditConverges_ReclaimsManifest(t *testing.T) {
 	target := t.TempDir()
-	in := Inputs{Runtime: []string{"go"}, WithGitHubWorkflows: true}
+	in := Inputs{Runtime: []string{"rs"}, WithGitHubWorkflows: true}
 
-	rel := ".github/workflows/release-go-caller.yml"
+	rel := ".github/workflows/release-rs-caller.yml"
 	abs := filepath.Join(target, filepath.FromSlash(rel))
-	relTest := ".github/workflows/test-go-caller.yml"
+	relTest := ".github/workflows/test-rs-caller.yml"
 
 	// Bootstrap so the manifest exists with hash X for the release file.
 	_, err := renderWorkflows(target, in.Runtime, in, fixedNow())
@@ -613,7 +611,6 @@ func TestBootstrap_WithGitHubWorkflows(t *testing.T) {
 
 	target := filepath.Join(tmpDir, name)
 	for _, rel := range []string{
-		".github/workflows/release-go-caller.yml",
 		".github/workflows/test-go-caller.yml",
 		".kit/generated.json",
 	} {
@@ -622,7 +619,7 @@ func TestBootstrap_WithGitHubWorkflows(t *testing.T) {
 
 	// Manifest entries match the on-disk file count for the generated paths.
 	m := readManifestFile(t, target)
-	assert.Len(t, m.Files, 2)
+	assert.Len(t, m.Files, 1)
 }
 
 // TestBootstrap_WithoutGitHubWorkflows confirms the opt-out path: when
