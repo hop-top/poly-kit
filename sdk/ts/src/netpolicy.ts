@@ -52,13 +52,38 @@ import { AsyncLocalStorage } from 'node:async_hooks';
  */
 export const ErrOffline = 'OfflineError';
 
-/** Error rejected by {@link guardFetch}. Matchable via {@link isOfflineError}. */
+/**
+ * Error rejected by {@link guardFetch}. Matchable via {@link isOfflineError}.
+ *
+ * The message names the method and the destination as scheme, host and
+ * path only; `url` is reduced by {@link destination} whoever constructs
+ * the error.
+ */
 export class OfflineError extends Error {
   override readonly name = ErrOffline;
 
   constructor(method: string, url: string) {
-    super(`${method} ${url}: network disabled by --offline`);
+    super(`${method} ${destination(url)}: network disabled by --offline`);
   }
+}
+
+/**
+ * Render url as scheme, host and path only: enough to say where a refused
+ * request was going, nothing it carried. Query, fragment and userinfo are
+ * dropped because they may hold credentials (an API key param, basic-auth
+ * userinfo). An opaque URL (`data:`, `mailto:`) keeps its scheme alone,
+ * and a target that does not parse cannot be stripped reliably, so none
+ * of it is echoed. Mirrors Go's `netpolicy` refusal.
+ */
+function destination(url: string): string {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return '<unparseable URL>';
+  }
+  if (u.host === '' && !u.pathname.startsWith('/')) return u.protocol;
+  return `${u.protocol}//${u.host}${u.pathname}`;
 }
 
 /**
