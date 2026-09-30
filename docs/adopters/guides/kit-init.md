@@ -201,13 +201,16 @@ Every package except Go publishes through one
 `publish-on-tag.yml` whose `ecosystems` map lists each release-please
 component (`<name>-ts`, `<name>-py`, …) with its directory, registry
 package and mirror repo. Package names and mirrors follow the org
-conventions for the owner kit finds (`--org`, the module path, or the
-origin remote); check them before the first release tag. A repo with a
+conventions for the owner kit finds (`--org`, the origin remote, or the
+module path); check them before the first release tag. A repo with a
 single ts, py or rs package publishes without a mirror.
 
-Go gets no publish step: its release-please tags are bare `v<version>`
-and proxy.golang.org serves the module straight from them. A pure-Go
-repo therefore has no `publish.yml`, just `test-go-caller.yml`.
+Go in a new repo gets no publish step: its release-please tags are
+bare `v<version>` and proxy.golang.org serves the module straight from
+them. A pure-Go repo therefore has no `publish.yml`, just
+`test-go-caller.yml`. A polyglot repo whose Go package already tags
+`<component>/v<version>` and ships through a mirror repo (a vanity
+import such as `hop.top/<name>`) keeps its mirror-only Go entry.
 
 If another workflow already publishes through hop-top/.github,
 `publish.yml` only lands as a `.kit-suggested` sibling, so nothing

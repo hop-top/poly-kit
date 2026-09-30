@@ -442,15 +442,21 @@ through the `ecosystems` map:
   the starter layout, so config and map always agree. Each entry carries
   `dir`, `ecosystem` (`node`→`ts`, `python`→`py`, `rust`→`rs`, `php`),
   `package`, and `mirror` when mirroring.
-- **Go is never listed** (bare `v<version>` tags, proxy.golang.org), so a
-  pure-Go repo gets no `publish.yml`. Nor are `simple` / spec packages.
+- **Go tagging bare `v<version>`** (the starter config) is not listed —
+  proxy.golang.org serves those tags — so a new pure-Go repo gets no
+  `publish.yml`. **Go tagging `<component>/v<version>` in a
+  multi-package config** (poly-kit, poly-aim: a vanity module served
+  from a mirror repo) keeps a mirror-only entry (`ecosystem: go`,
+  `mirror: <owner>/<component>`, no `-go` suffix), so those repos keep
+  publishing exactly as today. A single-package Go repo never gets one.
+  `simple` / spec packages are never listed.
 - **Mirrors:** a single-package ts / py / rs repo sets
   `enable-mirror: false`; every other repo mirrors each component to
   `<owner>/<component>` (`-<ecosystem>` appended when missing — php always
   mirrors, since `publish-on-tag.yml` notifies Packagist from the mirror
   job).
 - **Names** follow hop-top conventions for the owner (`--org`, else the
-  `github.com/<owner>/` module path, else the origin remote, else
+  origin remote, else a `github.com/<owner>/` module path, else
   `OWNER`): `@<owner>/<name>` (npm), `<owner>-<name>` (PyPI, crates.io),
   `<owner>/<name>` (Packagist). The write action asks for a review.
 - **Secrets** passed: `GH_MIRROR_PAT` (required by `publish-on-tag.yml`)

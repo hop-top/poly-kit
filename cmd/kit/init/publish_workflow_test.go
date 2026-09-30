@@ -155,7 +155,7 @@ func TestPublish_FromExistingConfig(t *testing.T) {
 	target := t.TempDir()
 	writeRel(t, target, ".github/release-please-config.json", `{
 	  "packages": {
-	    ".": {"release-type": "go", "component": "kit"},
+	    ".": {"release-type": "go", "component": "kit", "include-component-in-tag": false},
 	    "sdk/ts": {"release-type": "node", "component": "kit-ts"},
 	    "sdk/py": {"release-type": "python", "component": "kit-py"},
 	    "spec": {"release-type": "simple", "component": "spec"}
@@ -316,4 +316,77 @@ func TestPublish_GoesLiveAfterOtherPublisherRemoved_PrunesSibling(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, "write", mustAction(t, actions, publishRel).Action)
 	assertAbsent(t, target, publishRel+suggestedSuffix)
+}
+
+// --- Go repos that publish through a mirror (vanity import -> mirror) -----------------
+
+// poly-kit / poly-aim shape: a multi-package config whose Go package tags
+// <component>/v<version> keeps its mirror-only Go entry, so the vanity
+// module's mirror keeps receiving tags.
+func TestPublish_ExistingPrefixedGoInPolyglot_KeepsMirrorEntry(t *testing.T) {
+	target := t.TempDir()
+	writeRel(t, target, ".github/release-please-config.json", `{
+	  "include-component-in-tag": true,
+	  "packages": {
+	    ".": {"release-type": "go", "component": "kit"},
+	    "extensions/mcp-tasks": {"release-type": "go", "component": "mcp-tasks"},
+	    "sdk/ts": {"release-type": "node", "component": "kit-ts"}
+	  }
+	}`)
+	in := publishInputs("go")
+	_, err := renderWorkflows(target, in.Runtime, in, fixedNow())
+	require.NoError(t, err)
+	d := parsePublish(t, readRel(t, target, publishRel))
+	assert.Equal(t, map[string]map[string]any{
+		"kit":       {"dir": ".", "ecosystem": "go", "mirror": "acme/kit"},
+		"mcp-tasks": {"dir": "extensions/mcp-tasks", "ecosystem": "go", "mirror": "acme/mcp-tasks"},
+		"kit-ts":    {"dir": "sdk/ts", "ecosystem": "ts", "package": "@acme/kit", "mirror": "acme/kit-ts"},
+	}, d.Ecosystems)
+}
+
+// Bare v<version> Go tags (the starter config) never reach publish.yml.
+func TestPublish_ExistingBareGo_Omitted(t *testing.T) {
+	for _, cfg := range []string{
+		`{"packages": {".": {"release-type": "go", "component": "app", "include-component-in-tag": false},
+		  "ts": {"release-type": "node", "component": "app-ts"}}}`,
+		`{"include-component-in-tag": false, "packages": {".": {"release-type": "go", "component": "app"},
+		  "ts": {"release-type": "node", "component": "app-ts", "include-component-in-tag": true}}}`,
+	} {
+		target := t.TempDir()
+		writeRel(t, target, ".github/release-please-config.json", cfg)
+		in := publishInputs("go")
+		_, err := renderWorkflows(target, in.Runtime, in, fixedNow())
+		require.NoError(t, err)
+		d := parsePublish(t, readRel(t, target, publishRel))
+		assert.NotContains(t, d.Ecosystems, "app", cfg)
+		assert.Contains(t, d.Ecosystems, "app-ts", cfg)
+	}
+}
+
+// cxr / aps shape: one prefixed Go package, no publish.yml today — the
+// repo itself is the module's source; mirroring it onto itself is wrong.
+func TestPublish_ExistingSingleGo_None(t *testing.T) {
+	target := t.TempDir()
+	writeRel(t, target, ".github/release-please-config.json",
+		`{"include-component-in-tag": true, "tag-separator": "/", "packages": {".": {"release-type": "go", "component": "cxr"}}}`)
+	in := publishInputs("go")
+	actions, err := renderWorkflows(target, in.Runtime, in, fixedNow())
+	require.NoError(t, err)
+	assertAbsent(t, target, publishRel)
+	_, ok := findAction(actions, publishRel)
+	assert.False(t, ok)
+}
+
+// An existing repo's origin remote beats a module path kit synthesized
+// from the author name (augment without --module).
+func TestPublish_OriginRemoteBeatsModule(t *testing.T) {
+	target := gitRepoWith(t, map[string]string{"README.md": "x\n"})
+	rpGit(t, target, "remote", "add", "origin", "https://github.com/hop-top/demo.git")
+	in := publishInputs("ts")
+	in.Org = ""
+	in.Module = "github.com/some-author/demo"
+	_, err := renderWorkflows(target, in.Runtime, in, fixedNow())
+	require.NoError(t, err)
+	d := parsePublish(t, readRel(t, target, publishRel))
+	assert.Equal(t, "@hop-top/demo", d.Ecosystems["demo"]["package"])
 }
