@@ -51,6 +51,15 @@ func addServiceFlag(cmd *cobra.Command) {
 	cmd.Flags().String("service", APIServiceName, "Service whose auth.apikey store holds the keys")
 }
 
+// apiKeyCreated is what token key create renders under a data format
+// (json, yaml): the key, shown once, with the id and principal the
+// store recorded for it. Human formats print the bare key instead.
+type apiKeyCreated struct {
+	Key       string `json:"key" yaml:"key"`
+	ID        string `json:"id" yaml:"id"`
+	Principal string `json:"principal" yaml:"principal"`
+}
+
 func tokenKeyCreateCmd(r *Root) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -77,11 +86,14 @@ func tokenKeyCreateCmd(r *Root) *cobra.Command {
 				}
 			}
 			return withAPIKeys(cmd, r, func(ctx context.Context, keys *authn.APIKeys) error {
-				raw, _, err := keys.Create(ctx, authn.NewAPIKey{
+				raw, rec, err := keys.Create(ctx, authn.NewAPIKey{
 					Principal: sub, Tenant: tenant, Scopes: scopes, TTL: expires,
 				})
 				if err != nil {
 					return err
+				}
+				if isDataFormat(cmd, r.Viper) {
+					return output.Dispatch(cmd, r.Viper, apiKeyCreated{Key: raw, ID: rec.ID, Principal: rec.Principal})
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), raw)
 				return nil
@@ -95,6 +107,8 @@ func tokenKeyCreateCmd(r *Root) *cobra.Command {
 	addServiceFlag(cmd)
 	SetSideEffect(cmd, SideEffectWriteLocal)
 	SetIdempotency(cmd, IdempotencyNo)
+	// Describes --format json|yaml; human formats print the bare key.
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &apiKeyCreated{}, Version: "1.0"})
 	return cmd
 }
 
@@ -108,6 +122,23 @@ type apiKeyRow struct {
 	CreatedAt string   `json:"created_at" table:"CREATED"`
 	ExpiresAt string   `json:"expires_at,omitempty" table:"EXPIRES"`
 	RevokedAt string   `json:"revoked_at,omitempty" table:"REVOKED"`
+}
+
+// apiKeyRowOf renders k as of now: its state is revoked, expired or
+// active, in that order of precedence.
+func apiKeyRowOf(k authn.APIKey, now time.Time) apiKeyRow {
+	row := apiKeyRow{ID: k.ID, Principal: k.Principal, Tenant: k.Tenant,
+		Scopes: k.Scopes, CreatedAt: k.CreatedAt.Format(time.RFC3339), State: "active"}
+	if !k.ExpiresAt.IsZero() {
+		row.ExpiresAt = k.ExpiresAt.Format(time.RFC3339)
+		if !now.Before(k.ExpiresAt) {
+			row.State = "expired"
+		}
+	}
+	if !k.RevokedAt.IsZero() {
+		row.RevokedAt, row.State = k.RevokedAt.Format(time.RFC3339), "revoked"
+	}
+	return row
 }
 
 func tokenKeyListCmd(r *Root) *cobra.Command {
@@ -127,18 +158,7 @@ func tokenKeyListCmd(r *Root) *cobra.Command {
 				now := time.Now()
 				rows := make([]apiKeyRow, 0, len(list))
 				for _, k := range list {
-					row := apiKeyRow{ID: k.ID, Principal: k.Principal, Tenant: k.Tenant,
-						Scopes: k.Scopes, CreatedAt: k.CreatedAt.Format(time.RFC3339), State: "active"}
-					if !k.ExpiresAt.IsZero() {
-						row.ExpiresAt = k.ExpiresAt.Format(time.RFC3339)
-						if !now.Before(k.ExpiresAt) {
-							row.State = "expired"
-						}
-					}
-					if !k.RevokedAt.IsZero() {
-						row.RevokedAt, row.State = k.RevokedAt.Format(time.RFC3339), "revoked"
-					}
-					rows = append(rows, row)
+					rows = append(rows, apiKeyRowOf(k, now))
 				}
 				return output.Dispatch(cmd, r.Viper, rows)
 			})
@@ -167,13 +187,13 @@ func tokenKeyRevokeCmd(r *Root) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "revoked %s (%s)\n", rec.ID, rec.Principal)
-				return nil
+				return output.Dispatch(cmd, r.Viper, apiKeyRowOf(*rec, time.Now()))
 			})
 		},
 	}
 	addServiceFlag(cmd)
 	SetSideEffect(cmd, SideEffectWriteLocal)
 	SetIdempotency(cmd, IdempotencyYes)
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &apiKeyRow{}, Version: "1.0"})
 	return cmd
 }

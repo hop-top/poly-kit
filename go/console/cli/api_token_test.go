@@ -273,3 +273,47 @@ func TestTokenVerifyUsesTheServiceMode(t *testing.T) {
 func identityClaims(sub string, iat, exp time.Time) identity.Claims {
 	return identity.Claims{Subject: sub, IssuedAt: iat.Unix(), ExpiresAt: exp.Unix()}
 }
+
+// TestTokenCreatePrintsTheBareTokenForHumanFormats pins the output
+// scripts capture with $(tool token create ...): the signed JWT and a
+// newline, nothing else, under the default format and every human
+// one. Only a data format (json, yaml) wraps it in a document.
+func TestTokenCreatePrintsTheBareTokenForHumanFormats(t *testing.T) {
+	for _, format := range []string{"", "table", "text"} {
+		t.Run("format="+format, func(t *testing.T) {
+			r := tokenRoot(t, true, nil)
+			args := []string{"create", "--sub", "alice"}
+			if format != "" {
+				args = append(args, "--format", format)
+			}
+			out, err := runToken(t, r, args...)
+			require.NoError(t, err)
+			raw := strings.TrimSuffix(out, "\n")
+			assert.Equal(t, raw+"\n", out, "exactly one line")
+			assert.Regexp(t, `^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`, raw, "a bare compact JWT")
+			v, err := authn.NewJWT([]authn.Key{authn.IdentityKey(r.Identity)}, authn.Options{})
+			require.NoError(t, err)
+			_, err = v.Verify(t.Context(), raw)
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestTokenCreateStructuredFormatsWrapTheToken pins the data-format
+// shape: {"token": <jwt>}, the same token the bare form prints.
+func TestTokenCreateStructuredFormatsWrapTheToken(t *testing.T) {
+	r := tokenRoot(t, true, nil)
+	out, err := runToken(t, r, "create", "--sub", "alice", "--format", "json")
+	require.NoError(t, err)
+	var doc map[string]string
+	require.NoError(t, json.Unmarshal([]byte(out), &doc), out)
+	require.Len(t, doc, 1, out)
+	v, err := authn.NewJWT([]authn.Key{authn.IdentityKey(r.Identity)}, authn.Options{})
+	require.NoError(t, err)
+	_, err = v.Verify(t.Context(), doc["token"])
+	require.NoError(t, err)
+
+	out, err = runToken(t, r, "create", "--sub", "alice", "--format", "yaml")
+	require.NoError(t, err)
+	assert.Regexp(t, `^token: [A-Za-z0-9_.-]+\n$`, out)
+}

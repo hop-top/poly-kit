@@ -113,17 +113,14 @@ func isCobraGenerated(root, c *cobra.Command) bool {
 // fails the test until its entry is removed, and a command missing
 // from it must declare a schema.
 var awaitingSchemaDecision = map[string]string{
-	"kittool alias add":        "prints \"alias <name> → <target>\"",
-	"kittool alias delete":     "prints \"deleted alias <name>\"",
-	"kittool peer block":       "prints nothing",
-	"kittool peer revoke":      "prints nothing",
-	"kittool peer trust":       "prints nothing",
-	"kittool quota reset":      "prints \"reset <n> quota count(s)\"",
-	"kittool serve":            "long-running; --list prints a fixed-width text table",
-	"kittool token create":     "prints the raw signed JWT",
-	"kittool token key create": "prints the raw API key",
-	"kittool token key revoke": "prints \"revoked <id> (<principal>)\"",
-	"kittool uri completion":   "prints a shell completion script",
+	"kittool alias add":      "prints \"alias <name> → <target>\"",
+	"kittool alias delete":   "prints \"deleted alias <name>\"",
+	"kittool peer block":     "prints nothing",
+	"kittool peer revoke":    "prints nothing",
+	"kittool peer trust":     "prints nothing",
+	"kittool quota reset":    "prints \"reset <n> quota count(s)\"",
+	"kittool serve":          "long-running; --list prints a fixed-width text table",
+	"kittool uri completion": "prints a shell completion script",
 }
 
 // TestKitCommands_DeclareOutputSchema fails when any command kit
