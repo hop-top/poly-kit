@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.20](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.19...kit/v0.5.0-alpha.20) (2026-09-30)
 
+The hop-top team is happy to announce Kit 0.5.0-alpha.20. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -14,6 +16,8 @@
 * **llm:** honour ANTHROPIC_WORKSPACE_ID in the anthropic adapter ([b722f79](https://github.com/hop-top/poly-kit/commit/b722f79b8c40b68bfaffdf1253c0cb530427533b))
 * **llm:** register the ollama scheme on import ([a381172](https://github.com/hop-top/poly-kit/commit/a3811725f58602b9969a39a9b1a8f70c16cd61cc))
 * **llm:** round-trip Gemini thought signatures on tool calls ([8a8fe3d](https://github.com/hop-top/poly-kit/commit/8a8fe3d4ac85211bb413bca7af1f8181925bd5ef))
+
+Full diff: [kit/v0.5.0-alpha.19...kit/v0.5.0-alpha.20](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.19...kit/v0.5.0-alpha.20)
 
 ## [0.5.0-alpha.19](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.18...kit/v0.5.0-alpha.19) (2026-09-30)
 
