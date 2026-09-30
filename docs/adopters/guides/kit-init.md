@@ -102,6 +102,8 @@ kit init mytool --dry-run --format json
 | `--dry-run`         | `false`     | Preview without writing                                  |
 | `--force`           | `false`     | Bypass non-destructive guards (no overwrite either way) |
 | `-y`, `--yes`       | `false`     | Non-interactive: skip wizard prompts                     |
+| `--with-release-please` | `true`  | Render the release-please caller (see [Release-please](#release-please)); `--without-release-please` skips it |
+| `--migrate-release-please` | `false` | Replace a plain, committed hand-written release-please workflow with the caller |
 
 JSON summary output is controlled by the kit-owned global flag,
 `--format json` (see
@@ -125,6 +127,48 @@ for the user to diff/merge.
 | 2    | tier 1 + `.github/workflows/ci.yml`                              |
 | 3    | tier 2 + `main.go`, `cmd/root.go`, `cmd/hello.go` (only if missing): a kit root with `serve`, the `api`, `socket`, `mcp` and `rpc` services, and a sample command |
 | 4    | tier 3 + `README.md`, `*.toolspec.yaml`, full conformance set    |
+
+## Release-please
+
+`kit init` renders `.github/workflows/release-please.yml`: a caller
+of the hop-top/.github `release-please-on-push` reusable workflow
+(release-bot App token, one run per branch at a time, config check).
+It never writes the release-please config or manifest — their shape
+(tag form, channel, labels) is per repo; the summary reports when
+they are missing, and the release-please run skips until both exist.
+
+### Adopt the caller in a repo that already runs release-please
+
+```bash
+kit init --mode augment --tier 0 --no-github -y                  # 1. look
+kit init --mode augment --tier 0 --no-github -y --migrate-release-please  # 2. replace
+```
+
+1. Without the flag nothing that runs release-please is touched: the
+   caller lands as `release-please.yml.kit-suggested` and the summary
+   names the existing workflow. There is never a second live
+   release-please workflow.
+2. With `--migrate-release-please` kit replaces the existing workflow
+   when it is **plain** (one job: optional checkout, the release-bot
+   App token, the action with `config-file` / `manifest-file` /
+   `target-branch` / `token`; push-on-branches and/or
+   `workflow_dispatch` triggers) **and** committed unchanged in git.
+   Triggers, config paths and target branch carry over into the
+   caller; a file named other than `release-please.yml` is removed.
+   A PAT or `GITHUB_TOKEN` job switches to the release-bot App — the
+   summary says so.
+
+Anything else — extra jobs (e.g. a publish job chained on release
+outputs), job outputs, run steps, other action inputs, other
+triggers — is **custom**: kit reports what makes it custom and never
+rewrites it. Move the extra jobs into the suggested caller (chain
+them with `needs: release-please` on its outputs), then delete the
+old workflow.
+
+Re-running is a no-op once the caller is in place: kit reads its
+triggers and paths back from the live file instead of re-deriving
+them. Hand-edits to the caller follow the usual rule — the next run
+offers a `.kit-suggested` sibling instead of overwriting.
 
 ## Migration from `kit scaffold`
 

@@ -71,9 +71,12 @@ type ManifestEntry struct {
 // a single generated path. Schema mirrors Section 6 of the contract.
 type WorkflowAction struct {
 	Path          string `json:"path"`
-	Action        string `json:"action"` // write | skip-unchanged | suggest-sibling | manifest-update
+	Action        string `json:"action"` // write | skip-unchanged | suggest-sibling | manifest-update | remove | keep | missing
 	SuggestedPath string `json:"suggested_path,omitempty"`
-	Reason        string `json:"reason,omitempty"` // user-edited | new | refresh | manifest-only | convergence
+	Reason        string `json:"reason,omitempty"` // user-edited | new | refresh | manifest-only | convergence | migrated | *-release-please | release-please-config
+	// Detail is a human-readable explanation (what to do next) for
+	// actions that need one; release-please generator only today.
+	Detail string `json:"detail,omitempty"`
 }
 
 // workflowSpec describes one caller stub to render: the output file name

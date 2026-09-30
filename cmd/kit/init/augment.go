@@ -185,6 +185,13 @@ func runAugment(ctx context.Context, deps Deps, in Inputs, cwd string) (Summary,
 			return Summary{}, fmt.Errorf("augment: render github workflows: %w", werr)
 		}
 		workflowActions = wfActions
+		if in.WithReleasePlease {
+			rpActions, rerr := renderReleasePlease(cwd, in, nil)
+			if rerr != nil {
+				return Summary{}, fmt.Errorf("augment: render release-please caller: %w", rerr)
+			}
+			workflowActions = append(workflowActions, rpActions...)
+		}
 	}
 
 	// Steps 9-10: NO git.Init, NO github.Create — existing repo.

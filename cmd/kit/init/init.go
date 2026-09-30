@@ -65,6 +65,9 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		withoutGithookPostPROpenFlag bool
 		withBusWorkflowsFlag         bool
 		withoutBusWorkflowsFlag      bool
+		withReleasePleaseFlag        bool
+		withoutReleasePleaseFlag     bool
+		migrateReleasePleaseFlag     bool
 
 		// Managed-block refresh flags. When any of these is set,
 		// RunE short-circuits before the detect/Gather flow and
@@ -199,6 +202,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 				&withGithookPostPROpenFlag, &withoutGithookPostPROpenFlag,
 				&withBusWorkflowsFlag, &withoutBusWorkflowsFlag,
 			)
+			applyReleasePleaseFlags(cmd, flagset)
 
 			// 5. Wizard only spins up for interactive (non-yes) runs.
 			var wizard Wizarder
@@ -299,6 +303,13 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		"Render .github/workflows/kit-bus-*.yml PR-lifecycle bus workflows (opt-in)")
 	f.BoolVar(&withoutBusWorkflowsFlag, "without-bus-workflows", false,
 		"Skip rendering kit-bus PR-lifecycle workflows (no-op when already disabled)")
+	f.BoolVar(&withReleasePleaseFlag, "with-release-please", true,
+		"Render .github/workflows/release-please.yml calling the hop-top/.github release-please-on-push reusable workflow")
+	f.BoolVar(&withoutReleasePleaseFlag, "without-release-please", false,
+		"Skip the release-please caller (complement of --with-release-please)")
+	f.BoolVar(&migrateReleasePleaseFlag, "migrate-release-please", false,
+		"Replace an existing hand-written release-please workflow with the caller when it is plain "+
+			"(one release-please job) and committed; custom workflows are reported, never rewritten")
 
 	// Managed-block refresh / drift / service ops. These flags
 	// short-circuit the bootstrap/augment flow at the top of RunE;
@@ -353,6 +364,27 @@ func parseModeOverride(s string) (Mode, error) {
 		return ModeAugment, nil
 	default:
 		return ModeUnset, fmt.Errorf("kit init: invalid --mode %q (want bootstrap|augment)", s)
+	}
+}
+
+// applyReleasePleaseFlags folds the release-please flags into fs,
+// leaving fields nil when unset (same Changed-aware semantics as
+// buildFlagSet). --without-release-please wins over --with-.
+func applyReleasePleaseFlags(cmd *cobra.Command, fs *FlagSet) {
+	f := cmd.Flags()
+	if f.Changed("without-release-please") {
+		if v, _ := f.GetBool("without-release-please"); v {
+			off := false
+			fs.WithReleasePlease = &off
+		}
+	}
+	if fs.WithReleasePlease == nil && f.Changed("with-release-please") {
+		v, _ := f.GetBool("with-release-please")
+		fs.WithReleasePlease = &v
+	}
+	if f.Changed("migrate-release-please") {
+		v, _ := f.GetBool("migrate-release-please")
+		fs.MigrateReleasePlease = &v
 	}
 }
 
