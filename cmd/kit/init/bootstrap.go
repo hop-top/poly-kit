@@ -49,6 +49,7 @@ type GitRunner interface {
 type GitHubRunner interface {
 	Create(ctx context.Context, dir string, cfg RepoConfig) (RepoInfo, error)
 	ProtectMain(ctx context.Context, fullName string) error
+	CreateLabels(ctx context.Context, fullName string, labels []RepoLabel) error
 }
 
 // Deps groups the bootstrap-flow collaborators. All fields required
@@ -295,6 +296,14 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 				return Summary{}, fmt.Errorf("bootstrap: protect main: %w", err)
 			}
 		}
+		// The release-please config names two labels nothing else
+		// creates; the first release-please run fails without them.
+		// Not fatal: the repo exists by now, and the summary carries
+		// the manual commands on failure.
+		if in.WithGitHubWorkflows && in.WithReleasePlease && info.Repo != "" {
+			lerr := deps.GitHub.CreateLabels(ctx, info.Repo, releasePleaseLabels)
+			noteReleaseLabels(workflowActions, info.Repo, lerr)
+		}
 		if len(manifest.Hooks.PostInit) > 0 {
 			if err := deps.Hooks.Run(ctx, "post_init", manifest.Hooks.PostInit, templateRoot, hookCtx, out); err != nil {
 				return Summary{}, fmt.Errorf("bootstrap: post_init hook: %w", err)
@@ -471,4 +480,7 @@ func (defaultGitHubRunner) Create(ctx context.Context, dir string, cfg RepoConfi
 }
 func (defaultGitHubRunner) ProtectMain(ctx context.Context, fullName string) error {
 	return ProtectMain(ctx, fullName)
+}
+func (defaultGitHubRunner) CreateLabels(ctx context.Context, fullName string, labels []RepoLabel) error {
+	return CreateLabels(ctx, fullName, labels)
 }

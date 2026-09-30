@@ -115,6 +115,33 @@ func parseGhCreateOutput(out string, cfg RepoConfig) RepoInfo {
 	return info
 }
 
+// RepoLabel is one GitHub issue / PR label.
+type RepoLabel struct {
+	Name        string
+	Color       string // hex, no leading '#'
+	Description string
+}
+
+// CreateLabels creates (or, with --force, updates) each label on
+// fullName ("<owner>/<name>"). Idempotent: an existing label is updated
+// in place instead of failing.
+func CreateLabels(ctx context.Context, fullName string, labels []RepoLabel) error {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return fmt.Errorf("gh not found on PATH")
+	}
+	for _, l := range labels {
+		args := []string{"label", "create", l.Name, "--repo", fullName, "--color", l.Color}
+		if l.Description != "" {
+			args = append(args, "--description", l.Description)
+		}
+		args = append(args, "--force")
+		if out, err := exec.CommandContext(ctx, "gh", args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("gh label create %s: %s: %w", l.Name, strings.TrimSpace(string(out)), err)
+		}
+	}
+	return nil
+}
+
 // ProtectMain enables branch protection on main:
 //   - Require PRs (1+ review)
 //   - Disallow force pushes / deletions

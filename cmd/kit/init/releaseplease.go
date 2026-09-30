@@ -372,6 +372,26 @@ func customSuffix(wf releasePleaseWorkflow) string {
 	return " (custom: " + wf.Why + ")"
 }
 
+const seedConfigDetail = "starter config (Go packages tag v<version>, others <component>/v<version>; " +
+	"alpha channel); yours from now on. "
+
+// noteReleaseLabels rewrites the seeded config's detail once bootstrap
+// has tried to create the labels on the new GitHub repo.
+func noteReleaseLabels(actions []WorkflowAction, repo string, err error) {
+	for i, a := range actions {
+		if a.Path != releasePleaseDefaultConfig || a.Reason != rpReasonSeed {
+			continue
+		}
+		if err == nil {
+			actions[i].Detail = seedConfigDetail + "Labels " + releasePleaseLabelPending + " / " +
+				releasePleaseLabelTagged + " created on " + repo + "."
+		} else {
+			actions[i].Detail = seedConfigDetail + "Labels: could not create them on " + repo + " (" +
+				err.Error() + "); run: " + releaseLabelCommands() + " --repo " + repo
+		}
+	}
+}
+
 // releasePleaseConfigActions seeds the starter config + manifest when
 // both are missing at the reusable workflow's default paths, and
 // reports a missing file otherwise. Never overwrites either file.
@@ -408,9 +428,8 @@ func releasePleaseConfigActions(target string, in Inputs, s releasePleaseSetting
 		return []WorkflowAction{
 			{
 				Path: cfg, Action: "write", Reason: rpReasonSeed,
-				Detail: "starter config (tags <component>/v<version>, alpha channel); yours from now on. " +
-					"Create its labels before the first release-please run: gh label create " +
-					releasePleaseLabelPending + " --force && gh label create " + releasePleaseLabelTagged + " --force",
+				Detail: seedConfigDetail + "Create its labels before the first release-please run: " +
+					releaseLabelCommands(),
 			},
 			{Path: man, Action: "write", Reason: rpReasonSeed, Detail: manDetail},
 		}, nil

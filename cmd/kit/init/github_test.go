@@ -193,3 +193,25 @@ func TestCreate_SourceArg(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateLabels_ForceCreatesEachLabel(t *testing.T) {
+	logPath := setupStubGh(t)
+	err := kitinit.CreateLabels(context.Background(), "acme/demo", []kitinit.RepoLabel{
+		{Name: "status:release-pending", Color: "ededed", Description: "Release PR awaiting merge"},
+		{Name: "status:release-tagged", Color: "ededed", Description: "Release tagged"},
+	})
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(readLog(t, logPath)), "\n")
+	require.Len(t, lines, 2)
+	// --force: update-or-create, so an existing label never fails.
+	assert.Equal(t, "label create status:release-pending --repo acme/demo --color ededed --description Release PR awaiting merge --force", lines[0])
+	assert.Equal(t, "label create status:release-tagged --repo acme/demo --color ededed --description Release tagged --force", lines[1])
+}
+
+func TestCreateLabels_GhFailureSurfaces(t *testing.T) {
+	setupStubGh(t)
+	t.Setenv("STUB_GH_FAIL", "1")
+	err := kitinit.CreateLabels(context.Background(), "acme/demo", []kitinit.RepoLabel{{Name: "x", Color: "ededed"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "x")
+}

@@ -432,7 +432,10 @@ The release-please generator applies the rules above plus:
    `.github/release-please-config.json` nor
    `.github/.release-please-manifest.json` exists (and the caller uses
    those default paths), kit writes a starter pair (`write`, reason
-   `seed`): tags `<component>/v<version>`, release PR title
+   `seed`): tags `<component>/v<version>` except Go packages, which set
+   `include-component-in-tag: false` and tag bare `v<version>` (their
+   release PR title then omits the component; the release branch keeps
+   it), release PR title
    `chore(release): ${component} ${version}` with `component-no-space`,
    labels `status:release-pending` / `status:release-tagged`, one PR per
    package, and the alpha prerelease channel (`prerelease`,
@@ -447,6 +450,13 @@ The release-please generator applies the rules above plus:
    (release-please rewrites the manifest every release) and is never
    written again; a single missing file, or a missing pair at custom
    paths, is reported (`missing`).
+5. **Release labels.** When bootstrap creates the GitHub repo (not
+   `--no-github`, account type not `none`, not `--dry-run`) and the
+   release-please generator runs, kit creates both labels on it
+   (`gh label create … --force`: create-or-update, so re-creating is
+   never an error; color `ededed`). A failure there is reported on the
+   config's action with the manual commands, not fatal. Every other
+   path — augment, `--no-github`, dry-run — prints the commands.
 
 ### Dry-run / JSON output
 

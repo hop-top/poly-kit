@@ -135,7 +135,9 @@ of the hop-top/.github `release-please-on-push` reusable workflow
 (release-bot App token, one run per branch at a time, config check).
 When the repo has neither `.github/release-please-config.json` nor
 `.github/.release-please-manifest.json`, kit writes a starter pair in
-the org shape: tags `<component>/v<version>`, release PR titles
+the org shape: tags `<component>/v<version>` — except Go packages,
+which tag bare `v<version>` so `go get` resolves them (their release PR
+title reads `chore(release): <version>`) — release PR titles
 `chore(release): <component> <version>`, labels
 `status:release-pending` / `status:release-tagged`, and every package
 on the alpha channel starting at `0.1.0-alpha.0`. One runtime gives one
@@ -147,12 +149,16 @@ release types ignore `initial-version`, so every package is seeded
 and the first release is `0.1.0-alpha.1`.
 
 The pair is yours from then on: kit never rewrites it, and reports
-instead of writing when only one of the two exists. Create the two
-labels before the first release-please run — nothing creates them:
+instead of writing when only one of the two exists.
+
+The two labels must exist before the first release-please run. When
+`kit init` creates the GitHub repo itself it creates them too
+(idempotent). Otherwise — augment, `--no-github`, `--dry-run` — the
+summary prints the commands:
 
 ```bash
-gh label create status:release-pending --force
-gh label create status:release-tagged --force
+gh label create status:release-pending --color ededed --force
+gh label create status:release-tagged --color ededed --force
 ```
 
 ### Adopt the caller in a repo that already runs release-please

@@ -54,6 +54,11 @@ func pkg(releaseType, component string, exclude ...string) map[string]any {
 		"versioning":           "prerelease",
 		"initial-version":      "0.1.0-alpha.0",
 	}
+	// Go packages tag bare v<version>: a Go module version is a plain
+	// semver tag. Every other package inherits <component>/v<version>.
+	if releaseType == "go" {
+		p["include-component-in-tag"] = false
+	}
 	if len(exclude) > 0 {
 		ex := make([]any, len(exclude))
 		for i, e := range exclude {
@@ -169,6 +174,11 @@ func TestSeedConfig_SatisfiesPreflightInvariants(t *testing.T) {
 		cfg, man := renderReleasePleaseSeed("my-tool", rts)
 		c, m := decodeSeed(t, cfg, man)
 		for path, p := range c.Packages {
+			if p["release-type"] == "go" {
+				assert.Equal(t, false, p["include-component-in-tag"], path)
+			} else {
+				assert.NotContains(t, p, "include-component-in-tag", path)
+			}
 			comp, _ := p["component"].(string)
 			assert.NotEmpty(t, comp, path)
 			assert.NotContains(t, comp, "/", path)
@@ -323,4 +333,81 @@ func TestRenderReleasePlease_CustomPathsMissing_ReportedNotSeeded(t *testing.T) 
 	assertAbsent(t, target, rpConfig)
 	assertAbsent(t, target, rpManifest)
 	assertAbsent(t, target, "rp/config.json")
+}
+
+// --- release labels on the GitHub repo bootstrap creates ------------------------------
+
+func labelBootstrapInputs(name string) Inputs {
+	in := e2eInputs(name, false)
+	in.WithReleasePlease = true
+	in.AccountType = "org"
+	in.Org = "acme"
+	in.NoGitHub = false
+	in.NoPush = true
+	in.Visibility = "private"
+	return in
+}
+
+func bootstrapWith(t *testing.T, in Inputs, gh *recordingGitHubRunner) Summary {
+	t.Helper()
+	if !builtinAvailable(t, "cli-go") {
+		t.Skip("cli-go template not available")
+	}
+	t.Chdir(t.TempDir())
+	deps := e2eDeps()
+	deps.GitHub = gh
+	sum, err := runBootstrap(t.Context(), deps, in)
+	require.NoError(t, err)
+	return sum
+}
+
+func TestBootstrap_CreatesReleaseLabelsOnNewRepo(t *testing.T) {
+	gh := &recordingGitHubRunner{}
+	sum := bootstrapWith(t, labelBootstrapInputs("lbl"), gh)
+
+	require.Len(t, gh.labelCalls, 1)
+	assert.Equal(t, "acme/lbl", gh.labelCalls[0].repo)
+	assert.Equal(t, []RepoLabel{
+		{Name: "status:release-pending", Color: "ededed", Description: "Release PR awaiting merge"},
+		{Name: "status:release-tagged", Color: "ededed", Description: "Release tagged"},
+	}, gh.labelCalls[0].labels)
+	d := mustAction(t, sum.Workflows, rpConfig).Detail
+	assert.Contains(t, d, "created on acme/lbl")
+	assert.NotContains(t, d, "gh label create")
+}
+
+func TestBootstrap_NoGitHub_PrintsLabelCommands(t *testing.T) {
+	gh := &recordingGitHubRunner{}
+	in := labelBootstrapInputs("lblno")
+	in.NoGitHub = true
+	sum := bootstrapWith(t, in, gh)
+	assert.Empty(t, gh.labelCalls)
+	assert.Contains(t, mustAction(t, sum.Workflows, rpConfig).Detail, "gh label create status:release-pending")
+}
+
+func TestBootstrap_WithoutReleasePlease_NoLabels(t *testing.T) {
+	gh := &recordingGitHubRunner{}
+	in := labelBootstrapInputs("lbloff")
+	in.WithReleasePlease = false
+	bootstrapWith(t, in, gh)
+	require.Len(t, gh.createCalls, 1)
+	assert.Empty(t, gh.labelCalls)
+}
+
+func TestBootstrap_DryRun_NoLabels(t *testing.T) {
+	gh := &recordingGitHubRunner{}
+	in := labelBootstrapInputs("lbldry")
+	in.DryRun = true
+	sum := bootstrapWith(t, in, gh)
+	assert.Empty(t, gh.labelCalls)
+	assert.Contains(t, mustAction(t, sum.Workflows, rpConfig).Detail, "gh label create")
+}
+
+func TestBootstrap_LabelFailure_IsReportedNotFatal(t *testing.T) {
+	gh := &recordingGitHubRunner{labelErr: assert.AnError}
+	sum := bootstrapWith(t, labelBootstrapInputs("lblerr"), gh)
+	require.Len(t, gh.labelCalls, 1)
+	d := mustAction(t, sum.Workflows, rpConfig).Detail
+	assert.Contains(t, d, "could not create")
+	assert.Contains(t, d, "gh label create status:release-tagged")
 }
