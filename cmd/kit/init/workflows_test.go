@@ -67,10 +67,6 @@ func TestPlanWorkflows_AllSupportedRuntimes(t *testing.T) {
 		got[p.RelPath] = true
 	}
 	for _, want := range []string{
-		".github/workflows/release-rs-caller.yml",
-		".github/workflows/release-ts-caller.yml",
-		".github/workflows/release-php-caller.yml",
-		".github/workflows/release-py-caller.yml",
 		".github/workflows/test-go-caller.yml",
 		".github/workflows/test-rs-caller.yml",
 		".github/workflows/test-ts-caller.yml",
@@ -131,7 +127,7 @@ func TestRenderWorkflows_Bootstrap_WritesFilesAndManifest(t *testing.T) {
 
 	// Files exist on disk with the expected `uses:` line.
 	for _, rel := range []string{
-		".github/workflows/release-rs-caller.yml",
+		".github/workflows/publish.yml",
 		".github/workflows/test-rs-caller.yml",
 	} {
 		body, err := os.ReadFile(filepath.Join(target, filepath.FromSlash(rel)))
@@ -180,7 +176,7 @@ func TestRenderWorkflows_NoRuntimes_NoOp(t *testing.T) {
 
 func TestRenderWorkflows_PreExistingFile_DivergentHash_WritesSibling(t *testing.T) {
 	target := t.TempDir()
-	rel := ".github/workflows/release-rs-caller.yml"
+	rel := ".github/workflows/test-rs-caller.yml"
 	abs := filepath.Join(target, filepath.FromSlash(rel))
 	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o750))
 
@@ -192,7 +188,7 @@ func TestRenderWorkflows_PreExistingFile_DivergentHash_WritesSibling(t *testing.
 	actions, err := renderWorkflows(target, in.Runtime, in, fixedNow())
 	require.NoError(t, err)
 
-	// Find the action for release-rs-caller.
+	// Find the action for test-rs-caller.
 	var releaseAction *WorkflowAction
 	for i := range actions {
 		if actions[i].Path == rel {
@@ -232,7 +228,7 @@ func TestRenderWorkflows_RefreshInPlace_WhenManifestHashMatches(t *testing.T) {
 	_, err := renderWorkflows(target, in.Runtime, in, fixedNow())
 	require.NoError(t, err)
 
-	rel := ".github/workflows/release-rs-caller.yml"
+	rel := ".github/workflows/test-rs-caller.yml"
 	abs := filepath.Join(target, filepath.FromSlash(rel))
 
 	// Tamper with the renderer output (swap the upstream filename) and
@@ -247,13 +243,8 @@ func TestRenderWorkflows_RefreshInPlace_WhenManifestHashMatches(t *testing.T) {
 
 	runtimeWorkflows["rs"] = []workflowSpec{
 		{
-			OutFile:  "release-rs-caller.yml",
-			Upstream: "publish-on-tag-v2.yml", // different upstream → different content
-			Trigger:  "release",
-		},
-		{
 			OutFile:  "test-rs-caller.yml",
-			Upstream: "ci.yml",
+			Upstream: "ci-v2.yml", // different upstream → different content
 			Trigger:  "test",
 		},
 	}
@@ -275,7 +266,7 @@ func TestRenderWorkflows_RefreshInPlace_WhenManifestHashMatches(t *testing.T) {
 	// File now contains the new upstream reference.
 	got, err := os.ReadFile(abs)
 	require.NoError(t, err)
-	assert.Contains(t, string(got), "publish-on-tag-v2.yml")
+	assert.Contains(t, string(got), "ci-v2.yml")
 }
 
 func TestRenderWorkflows_IdempotentRerun_SkipsUnchanged(t *testing.T) {
@@ -298,7 +289,7 @@ func TestRenderWorkflows_AcceptedSuggestion_IsRemoved(t *testing.T) {
 	target := t.TempDir()
 	in := Inputs{Runtime: []string{"rs"}, WithGitHubWorkflows: true}
 
-	rel := ".github/workflows/release-rs-caller.yml"
+	rel := ".github/workflows/test-rs-caller.yml"
 	abs := filepath.Join(target, filepath.FromSlash(rel))
 
 	// 1. Pre-existing user-authored file → produces a sibling.
@@ -354,7 +345,7 @@ func TestRenderWorkflows_UserEditConverges_ReclaimsManifest(t *testing.T) {
 	target := t.TempDir()
 	in := Inputs{Runtime: []string{"rs"}, WithGitHubWorkflows: true}
 
-	rel := ".github/workflows/release-rs-caller.yml"
+	rel := ".github/workflows/publish.yml"
 	abs := filepath.Join(target, filepath.FromSlash(rel))
 	relTest := ".github/workflows/test-rs-caller.yml"
 
