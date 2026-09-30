@@ -3,6 +3,11 @@
 // Adapters register via [Register] with a URI scheme. The [Client] facade
 // wraps a resolved adapter, probes capabilities via type assertion, and
 // supports fallback chains and event hooks.
+//
+// Tool calling round-trips through [Message]: an assistant message
+// carries the model's [ToolCall]s in ToolCalls, and each result goes
+// back as a role "tool" message whose ToolCallID names the call it
+// answers. See [Message] for the per-role contract.
 package llm
 
 import (
@@ -69,10 +74,33 @@ type ContentPart struct {
 // Message is a single role+content pair in a conversation.
 //
 // Multimodal rule: if len(Parts) > 0, Parts takes precedence over Content.
+//
+// # Tool-call linkage
+//
+// An agentic loop replays a tool round as two kinds of message:
+//
+//   - Role "assistant" with ToolCalls: the calls the model made, copied
+//     from [ToolResponse.ToolCalls]. Content carries any text the model
+//     produced alongside them and may be empty.
+//   - Role "tool" with ToolCallID: one tool's result, in Content.
+//     ToolCallID equals the [ToolCall.ID] it answers. Send one message
+//     per call; adapters group consecutive results where the provider
+//     expects them in a single turn.
+//
+// ToolCalls is valid only on role "assistant" and ToolCallID only on
+// role "tool"; adapters reject either field on any other role, a tool
+// result carrying Parts, and linkage the provider cannot express,
+// rather than degrading it to plain text. Messages that set neither
+// field map exactly as before.
 type Message struct {
 	Role    string
 	Content string
 	Parts   []ContentPart
+
+	// ToolCalls lists the tool invocations of an assistant turn.
+	ToolCalls []ToolCall
+	// ToolCallID links a role "tool" result to the ToolCall it answers.
+	ToolCallID string
 }
 
 // Request carries all parameters for a completion call.
@@ -134,6 +162,10 @@ type ToolDef struct {
 }
 
 // ToolCall is a single tool invocation returned by the model.
+//
+// ID is the handle a tool result quotes back in [Message.ToolCallID].
+// Adapters whose provider does not return one synthesize a unique ID so
+// the linkage holds across providers.
 type ToolCall struct {
 	ID        string
 	Name      string

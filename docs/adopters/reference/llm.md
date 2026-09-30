@@ -68,6 +68,49 @@ for _, tc := range resp.ToolCalls {
 }
 ```
 
+### Returning tool results
+
+The next request replays the model's calls, then one result per call,
+linked by ID:
+
+```go
+msgs = append(msgs, llm.Message{
+    Role: "assistant", Content: resp.Content, ToolCalls: resp.ToolCalls,
+})
+for _, tc := range resp.ToolCalls {
+    msgs = append(msgs, llm.Message{
+        Role: "tool", ToolCallID: tc.ID, Content: run(tc),
+    })
+}
+resp, err = client.CallWithTools(ctx, llm.Request{Messages: msgs}, tools)
+```
+
+| Field | Role | Meaning |
+|-------|------|---------|
+| `ToolCalls` | `assistant` only | calls the model made; `Content` may be empty |
+| `ToolCallID` | `tool` only | the `ToolCall.ID` this result answers; result text in `Content` |
+
+Wire mapping per adapter:
+
+| Adapter | Assistant calls | Tool result |
+|---------|-----------------|-------------|
+| `openai` and its schemes, `routellm` | `tool_calls` | `role: tool` + `tool_call_id` |
+| `anthropic` | `tool_use` blocks | `tool_result` blocks in one `user` message per run of results |
+| `gemini` / `google` | `functionCall` parts | `functionResponse` parts in one `user` content; name from the linked call; a JSON-object result is the response, other text is `{"output": ...}` |
+| `ollama` | `tool_calls`, arguments as an object | `role: tool` + `tool_call_id` + `tool_name` |
+
+- Gemini may omit call IDs; the adapter then synthesizes one
+  (`call_...`), so `ToolCall.ID` is always set. Requests to Gemini carry
+  no IDs: it pairs results with calls by name and order.
+- Adapters return an error instead of degrading: `ToolCalls` or
+  `ToolCallID` on the wrong role, a result with `Parts`, arguments that
+  are not valid JSON, a call without an ID (`openai`, `anthropic`), a
+  result without `ToolCallID` (`openai`, `anthropic`, `gemini`), or a
+  Gemini result whose ID matches no earlier call. `ollama` still accepts
+  a bare `role: tool` message, as it did before.
+- A tool error travels as result text; no adapter sets a provider
+  error flag such as Anthropic's `is_error`.
+
 ## Fallback chains
 
 ```go

@@ -78,9 +78,24 @@ type chatRequest struct {
 }
 
 type chatMessage struct {
-	Role    string   `json:"role"`
-	Content string   `json:"content"`
-	Images  []string `json:"images,omitempty"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	Images     []string   `json:"images,omitempty"`
+	ToolCalls  []toolCall `json:"tool_calls,omitempty"`
+	ToolName   string     `json:"tool_name,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+}
+
+type toolCall struct {
+	ID       string       `json:"id,omitempty"`
+	Function toolFunction `json:"function"`
+}
+
+// toolFunction.Arguments is a JSON object on the Ollama wire, not the
+// string OpenAI uses.
+type toolFunction struct {
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
 }
 
 type chatResponse struct {
@@ -236,9 +251,15 @@ func (s *streamIterator) Close() error {
 
 func (a *Adapter) buildBody(ctx context.Context, req llm.Request, stream bool) ([]byte, error) {
 	msgs := make([]chatMessage, 0, len(req.Messages))
+	// callNames resolves a tool result's ToolCallID to the tool_name
+	// Ollama also accepts.
+	callNames := map[string]string{}
 	for _, m := range req.Messages {
 		cm, err := mapOllamaMessage(ctx, m)
 		if err != nil {
+			return nil, err
+		}
+		if err := mapToolLinkage(m, &cm, callNames); err != nil {
 			return nil, err
 		}
 		msgs = append(msgs, cm)
@@ -261,6 +282,46 @@ func (a *Adapter) buildBody(ctx context.Context, req llm.Request, stream bool) (
 	}
 
 	return json.Marshal(cr)
+}
+
+// mapToolLinkage adds tool-call linkage to cm: tool_calls on an
+// assistant turn, and tool_call_id plus the resolved tool_name on a
+// role "tool" result. A tool message without ToolCallID passes through
+// as before, since Ollama accepts one.
+func mapToolLinkage(m llm.Message, cm *chatMessage, callNames map[string]string) error {
+	if m.ToolCallID != "" && m.Role != "tool" {
+		return fmt.Errorf("ollama: ToolCallID is valid only on role tool, got %q", m.Role)
+	}
+	if len(m.ToolCalls) > 0 && m.Role != "assistant" {
+		return fmt.Errorf("ollama: ToolCalls are valid only on role assistant, got %q", m.Role)
+	}
+
+	if m.Role == "tool" {
+		if len(m.Parts) > 0 {
+			return fmt.Errorf("ollama: tool result %q carries only Content", m.ToolCallID)
+		}
+		cm.ToolCallID = m.ToolCallID
+		cm.ToolName = callNames[m.ToolCallID]
+		return nil
+	}
+
+	for _, tc := range m.ToolCalls {
+		args := json.RawMessage(`{}`)
+		if len(tc.Arguments) > 0 {
+			if !json.Valid(tc.Arguments) {
+				return fmt.Errorf("ollama: tool call %q arguments are not valid JSON", tc.ID)
+			}
+			args = tc.Arguments
+		}
+		cm.ToolCalls = append(cm.ToolCalls, toolCall{
+			ID:       tc.ID,
+			Function: toolFunction{Name: tc.Name, Arguments: args},
+		})
+		if tc.ID != "" {
+			callNames[tc.ID] = tc.Name
+		}
+	}
+	return nil
 }
 
 // mapOllamaMessage converts an llm.Message to an Ollama chatMessage.

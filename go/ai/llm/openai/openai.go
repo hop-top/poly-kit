@@ -191,6 +191,15 @@ func mapMessages(
 ) ([]oai.ChatCompletionMessageParamUnion, error) {
 	out := make([]oai.ChatCompletionMessageParamUnion, 0, len(msgs))
 	for _, m := range msgs {
+		linked, err := mapToolLinkage(m)
+		if err != nil {
+			return nil, err
+		}
+		if linked != nil {
+			out = append(out, *linked)
+			continue
+		}
+
 		if len(m.Parts) == 0 {
 			// Text-only path (unchanged).
 			switch m.Role {
@@ -215,6 +224,61 @@ func mapMessages(
 		out = append(out, oai.UserMessage(parts))
 	}
 	return out, nil
+}
+
+// mapToolLinkage maps the tool-call half of a conversation: an assistant
+// turn carrying ToolCalls becomes a message with tool_calls, and a role
+// "tool" result becomes a tool message with tool_call_id. It returns nil
+// and no error for any other message, which then maps as before.
+func mapToolLinkage(m llm.Message) (*oai.ChatCompletionMessageParamUnion, error) {
+	switch {
+	case m.Role == "tool":
+		if m.ToolCallID == "" {
+			return nil, fmt.Errorf("openai: tool result needs ToolCallID")
+		}
+		if len(m.ToolCalls) > 0 || len(m.Parts) > 0 {
+			return nil, fmt.Errorf("openai: tool result %q carries only Content", m.ToolCallID)
+		}
+		msg := oai.ToolMessage(m.Content, m.ToolCallID)
+		return &msg, nil
+
+	case m.ToolCallID != "":
+		return nil, fmt.Errorf("openai: ToolCallID is valid only on role tool, got %q", m.Role)
+
+	case len(m.ToolCalls) == 0:
+		return nil, nil
+
+	case m.Role != "assistant":
+		return nil, fmt.Errorf("openai: ToolCalls are valid only on role assistant, got %q", m.Role)
+
+	case len(m.Parts) > 0:
+		return nil, fmt.Errorf("openai: assistant tool calls do not support content parts")
+	}
+
+	var asst oai.ChatCompletionAssistantMessageParam
+	if m.Content != "" {
+		asst.Content.OfString = param.NewOpt(m.Content)
+	}
+	for _, tc := range m.ToolCalls {
+		if tc.ID == "" {
+			return nil, fmt.Errorf("openai: tool call %q needs an ID", tc.Name)
+		}
+		args := "{}"
+		if len(tc.Arguments) > 0 {
+			if !json.Valid(tc.Arguments) {
+				return nil, fmt.Errorf("openai: tool call %q arguments are not valid JSON", tc.ID)
+			}
+			args = string(tc.Arguments)
+		}
+		asst.ToolCalls = append(asst.ToolCalls, oai.ChatCompletionMessageToolCallParam{
+			ID: tc.ID,
+			Function: oai.ChatCompletionMessageToolCallFunctionParam{
+				Name:      tc.Name,
+				Arguments: args,
+			},
+		})
+	}
+	return &oai.ChatCompletionMessageParamUnion{OfAssistant: &asst}, nil
 }
 
 // mapContentParts converts llm.ContentPart slice to OpenAI content part params.

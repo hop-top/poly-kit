@@ -41,6 +41,13 @@ fmt.Println(resp.Message.Content)
   request.errored, fallback.applied, route.selected, eva.evaluated}`;
   `WithTopicPrefix` rebrands the `source.category` prefix,
   `WithTopics` overrides individual topics.
+- Tool round trip: replay the model's calls as
+  `{Role: "assistant", ToolCalls: resp.ToolCalls}`, then one
+  `{Role: "tool", ToolCallID: call.ID, Content: result}` per call.
+  `ToolCalls` is valid only on `assistant`, `ToolCallID` only on `tool`;
+  adapters return an error for linkage their provider cannot express
+  instead of sending it as plain text:
+  [Tool calling](../../../docs/adopters/reference/llm.md#tool-calling).
 - Picker: filters on `aim.Filter` plus token bounds, ranks by budget tier,
   tiebreaks alphabetically on `(Provider, ID)`; `ErrNoProviderMatches` +
   `*NoMatchError`; `LLM_PICKER_TRACE` gates one `slog` event per call:
