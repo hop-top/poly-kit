@@ -93,6 +93,7 @@ func handlerGenerateCmd(defaults HandlerConfig) *cobra.Command {
 	installHandlerFlags(cmd, &f, true)
 	setSideEffect(cmd, "write-local")
 	setIdempotency(cmd, "yes")
+	// --dry-run with --output prints a plan (dryRunPlan), not this row.
 	setOutputSchema(cmd, &handlerGenerateRow{})
 	return cmd
 }

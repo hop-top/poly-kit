@@ -102,6 +102,9 @@ type handlerIDRow struct {
 	HandlerID string `table:"HANDLER ID" json:"handler_id" yaml:"handler_id"`
 }
 
+// handlerGenerateRow is what `uri handler generate` renders and the
+// shape its output schema declares. With --dry-run and --output it
+// prints a dry-run plan (dryRunPlan) instead.
 type handlerGenerateRow struct {
 	Platform  string `table:"PLATFORM" json:"platform" yaml:"platform"`
 	HandlerID string `table:"HANDLER ID" json:"handler_id" yaml:"handler_id"`
