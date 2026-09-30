@@ -1,7 +1,8 @@
 // Package openai adapts openai/openai-go to the llm provider interfaces.
 //
 // Registers schemes: openai, openrouter, xai, lmstudio, groq, together,
-// fireworks, deepseek, mistral.
+// fireworks, deepseek, mistral. lmstudio defaults to LM Studio's local
+// server, http://localhost:1234/v1.
 // Implements [llm.Completer], [llm.Streamer], [llm.ToolCaller].
 package openai
 
@@ -39,6 +40,9 @@ var defaultBaseURLs = map[string]string{
 	"fireworks":  "https://api.fireworks.ai/inference/v1",
 	"deepseek":   "https://api.deepseek.com",
 	"mistral":    "https://api.mistral.ai/v1",
+	// LM Studio's local server; override with ?base_url= for another
+	// host or port.
+	"lmstudio": "http://localhost:1234/v1",
 }
 
 func init() {
