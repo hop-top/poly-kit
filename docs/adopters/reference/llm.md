@@ -45,12 +45,20 @@ Local schemes default to the server's documented address, so a bare
 | `lmstudio` | `http://localhost:1234/v1` |
 | `ollama` | `http://localhost:11434` |
 
-Point at another host or port with `?base_url=`:
+Point at another host or port with a host-form URI or `?base_url=`:
 
 ```text
+lmstudio://gpu-box:1234/qwen2.5-7b-instruct
 lmstudio://qwen2.5-7b-instruct?base_url=http://gpu-box:1234/v1
+ollama://gpu-box:11434/llama3.2:3b
 ollama://llama3.2:3b?base_url=http://gpu-box:11434
 ```
+
+LM Studio serves its OpenAI-compatible API under `/v1` only, so
+`lmstudio` appends `/v1` to any base URL that doesn't already end in
+it: a host-form URI, `?base_url=`, a config-file `base_url` or
+`LLM_BASE_URL`. `http://gpu-box:1234` and `http://gpu-box:1234/v1`
+reach the same endpoint. Other schemes use the base URL as given.
 
 Each scheme resolves once its adapter package is imported, blank
 imports included (`_ "hop.top/kit/go/ai/llm/ollama"`).

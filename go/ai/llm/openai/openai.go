@@ -2,7 +2,8 @@
 //
 // Registers schemes: openai, openrouter, xai, lmstudio, groq, together,
 // fireworks, deepseek, mistral. lmstudio defaults to LM Studio's local
-// server, http://localhost:1234/v1.
+// server, http://localhost:1234/v1, and appends /v1 to any base URL
+// that lacks it.
 //
 // It also claims the OpenAI wire protocols (see protocols): a
 // provider in the aim catalog that no adapter registers by name, and
@@ -18,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	oai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -49,8 +51,8 @@ var defaultBaseURLs = map[string]string{
 	"fireworks":  "https://api.fireworks.ai/inference/v1",
 	"deepseek":   "https://api.deepseek.com",
 	"mistral":    "https://api.mistral.ai/v1",
-	// LM Studio's local server; override with ?base_url= for another
-	// host or port.
+	// LM Studio's local server; name another host or port with a
+	// host-form URI or ?base_url=.
 	"lmstudio": "http://localhost:1234/v1",
 }
 
@@ -113,6 +115,9 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 			base = "https://api.openai.com/v1"
 		}
 	}
+	if cfg.URI.Scheme == "lmstudio" {
+		base = lmstudioAPIRoot(base)
+	}
 	opts = append(opts, option.WithBaseURL(base))
 
 	model := cfg.Provider.Model
@@ -125,6 +130,18 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		model:  model,
 		scheme: cfg.URI.Scheme,
 	}, nil
+}
+
+// lmstudioAPIRoot returns base ending in /v1. LM Studio serves its
+// OpenAI-compatible API under /v1 only, so a base URL naming just the
+// server (a host-form URI, base_url, LLM_BASE_URL) gets /v1 appended;
+// one already ending in /v1, with or without a trailing slash, is kept.
+func lmstudioAPIRoot(base string) string {
+	trimmed := strings.TrimRight(base, "/")
+	if strings.HasSuffix(trimmed, "/v1") {
+		return base
+	}
+	return trimmed + "/v1"
 }
 
 // Close is a no-op; the HTTP client has no persistent connections to tear down.
