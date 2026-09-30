@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0-alpha.20](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.19...kit/v0.5.0-alpha.20) (2026-09-30)
+
+
+### Features
+
+* **llm:** resolve provider keys and apply them to model URIs ([7c83952](https://github.com/hop-top/poly-kit/commit/7c8395213e314d41a1d2c8682ee531e904997b33))
+
+
+### Bug Fixes
+
+* **llm:** default lmstudio scheme to LM Studio's local server ([abb3264](https://github.com/hop-top/poly-kit/commit/abb326452feaabe320e634bfc25ac02a498d152d))
+* **llm:** honour ANTHROPIC_WORKSPACE_ID in the anthropic adapter ([b722f79](https://github.com/hop-top/poly-kit/commit/b722f79b8c40b68bfaffdf1253c0cb530427533b))
+* **llm:** register the ollama scheme on import ([a381172](https://github.com/hop-top/poly-kit/commit/a3811725f58602b9969a39a9b1a8f70c16cd61cc))
+* **llm:** round-trip Gemini thought signatures on tool calls ([8a8fe3d](https://github.com/hop-top/poly-kit/commit/8a8fe3d4ac85211bb413bca7af1f8181925bd5ef))
+
 ## [0.5.0-alpha.19](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.18...kit/v0.5.0-alpha.19) (2026-09-30)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.19. This release includes new features and bug fixes.
