@@ -124,7 +124,10 @@ func peerListCmd(r *Root) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(records) == 0 {
+			format := resolvePeerListFormat(cmd)
+			// A data format gets its document even when it is empty:
+			// `[]`, not silence a parser has to special-case.
+			if len(records) == 0 && format != output.JSON && format != output.YAML {
 				fmt.Fprintln(r.Streams.Human, "No peers found.")
 				return nil
 			}
@@ -138,7 +141,6 @@ func peerListCmd(r *Root) *cobra.Command {
 					LastSeen: util.RelativeTime(rec.LastSeen),
 				})
 			}
-			format := resolvePeerListFormat(cmd)
 			return output.Render(r.Streams.Data, format, rows)
 		},
 	}
@@ -167,6 +169,32 @@ func resolvePeerListFormat(cmd *cobra.Command) output.Format {
 	return output.Table
 }
 
+// peerTrustRow is what peer trust, block and revoke render: the peer
+// and the trust state the registry holds for it afterwards, under
+// peerRow's field names and labels.
+type peerTrustRow struct {
+	ID    string `json:"id"    yaml:"id"    table:"ID,priority=9"`
+	Trust string `json:"trust" yaml:"trust" table:"Trust,priority=6"`
+}
+
+// renderPeerTrust reads id back from the registry after a trust change
+// and renders the state it was left in.
+func renderPeerTrust(cmd *cobra.Command, r *Root, id string) error {
+	rec, err := r.PeerRegistry.Get(id)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		return output.NotFoundError(fmt.Sprintf("peer: %s not found", id))
+	}
+	return output.Dispatch(cmd, r.Viper, peerTrustRow{ID: rec.ID, Trust: trustLabel(rec.Trust)})
+}
+
+// setPeerTrustSchema declares the shape renderPeerTrust prints.
+func setPeerTrustSchema(cmd *cobra.Command) {
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &peerTrustRow{}, Version: "1.0"})
+}
+
 func peerTrustCmd(r *Root) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trust <id>",
@@ -175,12 +203,16 @@ func peerTrustCmd(r *Root) *cobra.Command {
 			"local trust manager. Trusting is idempotent — re-trusting " +
 			"an already-trusted peer is a no-op.",
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			return r.PeerTrust.Trust(args[0])
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := r.PeerTrust.Trust(args[0]); err != nil {
+				return err
+			}
+			return renderPeerTrust(cmd, r, args[0])
 		},
 	}
 	SetSideEffect(cmd, SideEffectWrite)
 	SetIdempotency(cmd, IdempotencyYes)
+	setPeerTrustSchema(cmd)
 	return cmd
 }
 
@@ -192,12 +224,16 @@ func peerBlockCmd(r *Root) *cobra.Command {
 			"manager; the mesh refuses connections from blocked peers " +
 			"until explicitly trusted again.",
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			return r.PeerTrust.Block(args[0])
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := r.PeerTrust.Block(args[0]); err != nil {
+				return err
+			}
+			return renderPeerTrust(cmd, r, args[0])
 		},
 	}
 	SetSideEffect(cmd, SideEffectWrite)
 	SetIdempotency(cmd, IdempotencyYes)
+	setPeerTrustSchema(cmd)
 	return cmd
 }
 
@@ -209,12 +245,16 @@ func peerRevokeCmd(r *Root) *cobra.Command {
 			"first-contact connections will require re-trusting via " +
 			"`peer trust`.",
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			return r.PeerTrust.Revoke(args[0])
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := r.PeerTrust.Revoke(args[0]); err != nil {
+				return err
+			}
+			return renderPeerTrust(cmd, r, args[0])
 		},
 	}
 	SetSideEffect(cmd, SideEffectWrite)
 	SetIdempotency(cmd, IdempotencyYes)
+	setPeerTrustSchema(cmd)
 	return cmd
 }
 
