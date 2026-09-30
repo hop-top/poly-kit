@@ -80,7 +80,7 @@ class OfflineGuardTest extends TestCase
 
     /**
      * Credentials in the URL must not leak into the error message, which
-     * is printed and logged. Mirrors Go's use of URL.Redacted().
+     * is printed and logged.
      */
     public function testBlockedExceptionRedactsCredentials(): void
     {
@@ -92,6 +92,29 @@ class OfflineGuardTest extends TestCase
             $this->fail('expected OfflineException');
         } catch (OfflineException $e) {
             $this->assertStringNotContainsString('hunter2', $e->getMessage());
+        }
+    }
+
+    /**
+     * The refusal names where the request was going, never what it
+     * carried: scheme, host and path only. Query, fragment and userinfo
+     * may hold credentials (an API key param, basic-auth userinfo) and
+     * are dropped. Mirrors Go's TestGuard_RefusalOmitsQueryFragmentUserinfo.
+     */
+    public function testRefusalOmitsQueryFragmentUserinfo(): void
+    {
+        NetPolicy::setOffline(true);
+        $client = $this->guardedClient();
+
+        try {
+            $client->request('POST', OfflineExceptionTest::SECRET_URL);
+            $this->fail('expected OfflineException');
+        } catch (OfflineException $e) {
+            $this->assertSame(
+                'POST https://example.invalid/v1/models/m:generate: network disabled by --offline',
+                $e->getMessage(),
+            );
+            OfflineExceptionTest::assertNoLeak($e->getMessage());
         }
     }
 

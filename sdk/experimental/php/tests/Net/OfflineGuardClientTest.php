@@ -94,6 +94,27 @@ class OfflineGuardClientTest extends TestCase
         $client->sendRequest(new Request('GET', 'https://example.invalid/x'));
     }
 
+    /**
+     * The PSR-18 seam refuses with the same stripped destination as the
+     * Guzzle stack.
+     */
+    public function testRefusalOmitsQueryFragmentUserinfo(): void
+    {
+        NetPolicy::setOffline(true);
+        $client = new OfflineGuardClient($this->innerClient());
+
+        try {
+            $client->sendRequest(new Request('POST', OfflineExceptionTest::SECRET_URL));
+            $this->fail('expected OfflineException');
+        } catch (OfflineException $e) {
+            $this->assertSame(
+                'POST https://example.invalid/v1/models/m:generate: network disabled by --offline',
+                $e->getMessage(),
+            );
+            OfflineExceptionTest::assertNoLeak($e->getMessage());
+        }
+    }
+
     public function testWrapIsIdempotent(): void
     {
         $inner = $this->innerClient();

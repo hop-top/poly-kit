@@ -367,6 +367,9 @@ is the scope `--offline` describes.
 The marker alone is advisory — a caller who forgets to consult it still
 reaches the wire. Enforcement therefore sits beneath the caller, and a
 blocked request throws `OfflineException` rather than skipping silently.
+Its message names the method and the destination as scheme, host and
+path only; query, fragment and userinfo never appear, as they may carry
+credentials.
 
 For Guzzle, guard the **handler stack**:
 

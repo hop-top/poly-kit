@@ -8,7 +8,6 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use Psr\Http\Message\RequestInterface;
-use Psr\Http\Message\UriInterface;
 
 /**
  * Enforces the `--offline` marker inside the Guzzle handler stack.
@@ -98,28 +97,12 @@ final class OfflineGuard
                     // directly would escape sendAsync() uncaught.
                     return Create::rejectionFor(OfflineException::forRequest(
                         $request->getMethod(),
-                        self::redact($uri),
+                        (string) $uri,
                     ));
                 }
 
                 return $handler($request, $options);
             };
         };
-    }
-
-    /**
-     * Render $uri with any userinfo password masked. The message is
-     * printed and logged, so credentials must not ride along. Mirrors
-     * Go's url.URL.Redacted().
-     */
-    private static function redact(UriInterface $uri): string
-    {
-        $userInfo = $uri->getUserInfo();
-        if ($userInfo !== '' && str_contains($userInfo, ':')) {
-            [$user] = explode(':', $userInfo, 2);
-            $uri = $uri->withUserInfo($user, 'xxxxx');
-        }
-
-        return (string) $uri;
     }
 }

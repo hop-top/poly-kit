@@ -42,6 +42,8 @@ var_dump(NetPolicy::isLoopbackHost('127.0.0.1:8080')); // bool(true)
 
 - A blocked request always throws `OfflineException`; nothing is skipped silently. The exception
   implements PSR-18 `ClientExceptionInterface`
+- The message names method, scheme, host (with port) and path only: query, fragment and userinfo
+  never appear, as they may carry credentials
 - Loopback stays reachable: `localhost`, `127.0.0.0/8`, `[::1]` and an empty authority (unix socket).
   DNS names are remote even when they would resolve to loopback
 - The marker is process state, not per request; long-lived servers wrap a per-client

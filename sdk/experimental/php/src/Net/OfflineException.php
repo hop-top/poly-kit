@@ -23,15 +23,50 @@ use RuntimeException;
 final class OfflineException extends RuntimeException implements ClientExceptionInterface
 {
     /**
+     * The message names $method and the destination of $url as scheme,
+     * host (with port) and path only; see {@see destination()}.
+     *
      * @param string $method HTTP method of the refused request.
-     * @param string $url    Redacted URL of the refused request.
+     * @param string $url    URL of the refused request, as sent.
      */
     public static function forRequest(string $method, string $url): self
     {
         return new self(sprintf(
             '%s %s: network disabled by --offline',
             $method,
-            $url,
+            self::destination($url),
         ));
+    }
+
+    /**
+     * Render $url as scheme, host (with port) and path only: enough to say
+     * where a refused request was going, nothing it carried. Query,
+     * fragment and userinfo are dropped because they may hold credentials
+     * (an API key param, basic-auth userinfo). An opaque URL (`mailto:`)
+     * keeps its scheme alone, and a URL that does not parse cannot be
+     * stripped reliably, so none of it is echoed. Mirrors Go's
+     * `netpolicy` refusal.
+     */
+    private static function destination(string $url): string
+    {
+        $parts = parse_url($url);
+        if ($parts === false) {
+            return '<unparseable URL>';
+        }
+
+        $scheme = $parts['scheme'] ?? '';
+        $authority = ($parts['host'] ?? '') . (isset($parts['port']) ? ':' . $parts['port'] : '');
+        $path = $parts['path'] ?? '';
+
+        if ($authority === '' && !str_starts_with($path, '/')) {
+            return $scheme !== '' ? $scheme . ':' : '';
+        }
+
+        $prefix = $scheme !== '' ? $scheme . ':' : '';
+        if ($authority !== '' || $scheme !== '') {
+            $prefix .= '//';
+        }
+
+        return $prefix . $authority . $path;
     }
 }
