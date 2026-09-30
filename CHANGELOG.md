@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.17](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.16...kit/v0.5.0-alpha.17) (2026-09-30)
 
+The hop-top team is happy to announce Kit 0.5.0-alpha.17. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -45,6 +47,13 @@
 * **deps:** bump otelconnect 0.10; RPC metrics on semconv 1.43 ([99a07ed](https://github.com/hop-top/poly-kit/commit/99a07ed61380203f87ba89ebb9f1909336504d48))
 * **engine-ts:** require node &gt;=22.12 in ts-kit-engine ([684eaa1](https://github.com/hop-top/poly-kit/commit/684eaa157d5d7b38c66018055d7257e4855fe680))
 * **ts:** require node &gt;=22.12; bump commander 15 ([68905f6](https://github.com/hop-top/poly-kit/commit/68905f6f0c664f56994508fdd8f4779f627ae565))
+
+### Contributors
+
+* @hop-top-release-bot[bot]
+* Jad Bitar (@jadb)
+
+Full diff: [kit/v0.5.0-alpha.16...kit/v0.5.0-alpha.17](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.16...kit/v0.5.0-alpha.17)
 
 ## [0.5.0-alpha.16](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.15...kit/v0.5.0-alpha.16) (2026-09-29)
 
