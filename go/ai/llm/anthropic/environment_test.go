@@ -145,6 +145,27 @@ func TestNew_EnvBaseURLFallback(t *testing.T) {
 	assert.Equal(t, "kit-key", req.Header.Get("X-Api-Key"))
 }
 
+// ANTHROPIC_WORKSPACE_ID is sent as the anthropic-workspace-id header,
+// which keys not scoped to a workspace need.
+func TestNew_EnvWorkspaceID(t *testing.T) {
+	_, rt, _ := isolateAnthropicEnv(t)
+	t.Setenv("ANTHROPIC_WORKSPACE_ID", "wrkspc_test")
+
+	completeOnce(t, "")
+
+	assert.Equal(t, "wrkspc_test", rt.only(t).Header.Get("Anthropic-Workspace-Id"))
+}
+
+// An empty ANTHROPIC_WORKSPACE_ID sends no header.
+func TestNew_EmptyEnvWorkspaceID(t *testing.T) {
+	_, rt, _ := isolateAnthropicEnv(t)
+	t.Setenv("ANTHROPIC_WORKSPACE_ID", "")
+
+	completeOnce(t, "")
+
+	assert.Empty(t, rt.only(t).Header.Get("Anthropic-Workspace-Id"))
+}
+
 // A configured base URL wins over ANTHROPIC_BASE_URL.
 func TestNew_ConfigBaseURLWinsOverEnv(t *testing.T) {
 	_, rt, _ := isolateAnthropicEnv(t)

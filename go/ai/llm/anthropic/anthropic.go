@@ -49,14 +49,18 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	// The key comes from kit's own resolution, so the SDK's credential
 	// autoload (auth profiles, env federation) stays off: a host profile
 	// would otherwise supply the base URL and workspace header, and log a
-	// shadow warning. ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN keep
-	// their fallback role.
+	// shadow warning. ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN and
+	// ANTHROPIC_WORKSPACE_ID keep their fallback role; the workspace ID
+	// is what keys not scoped to a workspace must send.
 	opts := []option.RequestOption{option.WithoutEnvironmentDefaults()}
 	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
 		opts = append(opts, option.WithBaseURL(v))
 	}
 	if v, ok := os.LookupEnv("ANTHROPIC_AUTH_TOKEN"); ok {
 		opts = append(opts, option.WithAuthToken(v))
+	}
+	if v := os.Getenv("ANTHROPIC_WORKSPACE_ID"); v != "" {
+		opts = append(opts, option.WithHeader("anthropic-workspace-id", v))
 	}
 	opts = append(opts, option.WithAPIKey(cfg.Provider.APIKey))
 	if cfg.Provider.BaseURL != "" {
