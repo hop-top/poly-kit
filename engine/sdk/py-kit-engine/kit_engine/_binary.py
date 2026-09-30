@@ -19,7 +19,7 @@ from pathlib import Path
 # kit releases are tagged `kit/v<version>` on the monorepo; that release
 # carries the `kit_<os>_<arch>` archives and checksums.txt.
 REPO = "hop-top/poly-kit"
-VERSION = "0.5.0-alpha.17"  # x-release-please-version
+VERSION = "0.5.0-alpha.18"  # x-release-please-version
 
 _CHECKSUMS_MAX_BYTES = 1 << 20
 
