@@ -15,9 +15,19 @@ type aliasEntry struct {
 	Target string `table:"TARGET" json:"target" yaml:"target"`
 }
 
+// aliasSchemaVersion versions the []aliasEntry shape every alias
+// listing renders.
+const aliasSchemaVersion = "1.0"
+
+// setAliasListSchema declares the listing shape shared by `aliases`,
+// `alias` and `alias list`.
+func setAliasListSchema(cmd *cobra.Command) {
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]aliasEntry{}, Version: aliasSchemaVersion})
+}
+
 // AliasesCmd returns a hidden subcommand that lists active aliases.
 func (r *Root) AliasesCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:    "aliases",
 		Short:  "List active command aliases",
 		Hidden: true,
@@ -33,6 +43,8 @@ func (r *Root) AliasesCmd() *cobra.Command {
 			return output.Dispatch(cmd, r.Viper, entries)
 		},
 	}
+	setAliasListSchema(cmd)
+	return cmd
 }
 
 // AliasCmd returns a command group for managing aliases backed by an
@@ -60,6 +72,8 @@ func (r *Root) AliasCmd(store *alias.Store) *cobra.Command {
 	SetSideEffect(cmd, SideEffectRead)
 	SetIdempotency(cmd, IdempotencyYes)
 	SetTopLevelVerb(cmd)
+	// The group node runs `alias list`, so it renders the same shape.
+	setAliasListSchema(cmd)
 
 	cmd.AddCommand(r.aliasListCmd(store))
 	cmd.AddCommand(r.aliasAddCmd(store))
@@ -80,6 +94,7 @@ func (r *Root) aliasListCmd(store *alias.Store) *cobra.Command {
 		},
 	}
 	SetSideEffect(cmd, SideEffectRead)
+	setAliasListSchema(cmd)
 	return cmd
 }
 
