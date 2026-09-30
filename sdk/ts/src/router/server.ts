@@ -16,6 +16,17 @@ import { RoutingError } from "./router";
 export interface ChatMessage {
   role: string;
   content: string;
+  /** Assistant turn: the tool calls the model made. */
+  tool_calls?: ChatToolCall[];
+  /** Role `tool`: the `ChatToolCall.id` this result answers. */
+  tool_call_id?: string;
+}
+
+/** An OpenAI assistant tool call; `arguments` is a JSON-encoded string. */
+export interface ChatToolCall {
+  id: string;
+  type?: string;
+  function: { name: string; arguments: string };
 }
 
 export interface ChatCompletionRequest {
