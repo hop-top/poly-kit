@@ -182,9 +182,54 @@ func extractSystem(
 	var system string
 	out := make([]anthropic.MessageParam, 0, len(msgs))
 
-	for _, m := range msgs {
+	for i, m := range msgs {
 		if m.Role == "system" {
 			system = m.Content
+			continue
+		}
+
+		if err := checkLinkageRole(m); err != nil {
+			return "", nil, err
+		}
+
+		if m.Role == "tool" {
+			block, err := toolResultBlock(m)
+			if err != nil {
+				return "", nil, err
+			}
+			// Consecutive results answer one assistant turn and belong
+			// in a single user message.
+			if i > 0 && msgs[i-1].Role == "tool" {
+				last := &out[len(out)-1]
+				last.Content = append(last.Content, block)
+				continue
+			}
+			out = append(out, anthropic.MessageParam{
+				Role:    anthropic.MessageParamRoleUser,
+				Content: []anthropic.ContentBlockParamUnion{block},
+			})
+			continue
+		}
+
+		if len(m.ToolCalls) > 0 {
+			var blocks []anthropic.ContentBlockParamUnion
+			var err error
+			if len(m.Parts) > 0 {
+				blocks, err = mapAnthropicParts(ctx, m.Parts)
+				if err != nil {
+					return "", nil, err
+				}
+			} else if m.Content != "" {
+				blocks = append(blocks, anthropic.NewTextBlock(m.Content))
+			}
+			uses, err := toolUseBlocks(m.ToolCalls)
+			if err != nil {
+				return "", nil, err
+			}
+			out = append(out, anthropic.MessageParam{
+				Role:    anthropic.MessageParamRoleAssistant,
+				Content: append(blocks, uses...),
+			})
 			continue
 		}
 
@@ -208,6 +253,58 @@ func extractSystem(
 	}
 
 	return system, out, nil
+}
+
+// checkLinkageRole rejects tool-call linkage on a role that cannot carry
+// it: ToolCalls belong to assistant turns, ToolCallID to tool results.
+func checkLinkageRole(m llm.Message) error {
+	if len(m.ToolCalls) > 0 && m.Role != "assistant" {
+		return fmt.Errorf("anthropic: ToolCalls are valid only on role assistant, got %q", m.Role)
+	}
+	if m.ToolCallID != "" && m.Role != "tool" {
+		return fmt.Errorf("anthropic: ToolCallID is valid only on role tool, got %q", m.Role)
+	}
+	return nil
+}
+
+// toolResultBlock maps a role "tool" message to a tool_result block
+// linked to its tool_use by tool_use_id.
+func toolResultBlock(m llm.Message) (anthropic.ContentBlockParamUnion, error) {
+	if m.ToolCallID == "" {
+		return anthropic.ContentBlockParamUnion{}, fmt.Errorf("anthropic: tool result needs ToolCallID")
+	}
+	if len(m.Parts) > 0 {
+		return anthropic.ContentBlockParamUnion{}, fmt.Errorf(
+			"anthropic: tool result %q carries only Content", m.ToolCallID,
+		)
+	}
+	res := anthropic.ToolResultBlockParam{ToolUseID: m.ToolCallID}
+	// The API rejects empty text blocks, so an empty result sends none.
+	if m.Content != "" {
+		res.Content = []anthropic.ToolResultBlockParamContentUnion{
+			{OfText: &anthropic.TextBlockParam{Text: m.Content}},
+		}
+	}
+	return anthropic.ContentBlockParamUnion{OfToolResult: &res}, nil
+}
+
+// toolUseBlocks maps an assistant turn's calls to tool_use blocks.
+func toolUseBlocks(calls []llm.ToolCall) ([]anthropic.ContentBlockParamUnion, error) {
+	out := make([]anthropic.ContentBlockParamUnion, 0, len(calls))
+	for _, tc := range calls {
+		if tc.ID == "" {
+			return nil, fmt.Errorf("anthropic: tool call %q needs an ID", tc.Name)
+		}
+		input := json.RawMessage(`{}`)
+		if len(tc.Arguments) > 0 {
+			if !json.Valid(tc.Arguments) {
+				return nil, fmt.Errorf("anthropic: tool call %q arguments are not valid JSON", tc.ID)
+			}
+			input = tc.Arguments
+		}
+		out = append(out, anthropic.NewToolUseBlock(tc.ID, input, tc.Name))
+	}
+	return out, nil
 }
 
 // mapAnthropicParts converts llm.ContentPart slice to Anthropic content blocks.

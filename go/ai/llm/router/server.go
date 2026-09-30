@@ -43,8 +43,21 @@ type chatCompletionRequest struct {
 }
 
 type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string         `json:"role"`
+	Content    string         `json:"content"`
+	ToolCalls  []chatToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string         `json:"tool_call_id,omitempty"`
+}
+
+// chatToolCall mirrors an OpenAI assistant tool call; Arguments is the
+// JSON-encoded string OpenAI sends.
+type chatToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type,omitempty"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
 
 // chatCompletionResponse mirrors the OpenAI chat completion response.
@@ -87,7 +100,22 @@ func (s *Server) handleChatCompletions(
 	// Convert to llm.Request.
 	msgs := make([]llm.Message, len(req.Messages))
 	for i, m := range req.Messages {
-		msgs[i] = llm.Message{Role: m.Role, Content: m.Content}
+		msgs[i] = llm.Message{
+			Role:       m.Role,
+			Content:    m.Content,
+			ToolCallID: m.ToolCallID,
+		}
+		for _, tc := range m.ToolCalls {
+			var args json.RawMessage
+			if tc.Function.Arguments != "" {
+				args = json.RawMessage(tc.Function.Arguments)
+			}
+			msgs[i].ToolCalls = append(msgs[i].ToolCalls, llm.ToolCall{
+				ID:        tc.ID,
+				Name:      tc.Function.Name,
+				Arguments: args,
+			})
+		}
 	}
 
 	llmReq := llm.Request{

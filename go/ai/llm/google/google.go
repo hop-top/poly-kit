@@ -11,6 +11,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -120,14 +121,18 @@ type inlineData struct {
 	Data     string `json:"data"`
 }
 
+// functionCall.ID is read from responses only. Requests leave it empty:
+// Gemini pairs a functionResponse with its call by name and order, and
+// the ID kit holds may be one it synthesized.
 type functionCall struct {
+	ID   string          `json:"id,omitempty"`
 	Name string          `json:"name"`
 	Args json.RawMessage `json:"args"`
 }
 
 type functionResponse struct {
-	Name     string         `json:"name"`
-	Response map[string]any `json:"response"`
+	Name     string          `json:"name"`
+	Response json.RawMessage `json:"response"`
 }
 
 type generationConfig struct {
@@ -393,14 +398,35 @@ func (a *Adapter) buildBody(
 ) ([]byte, error) {
 	contents := make([]content, 0, len(req.Messages))
 	var systemParts []part
-	for _, m := range req.Messages {
+	// callNames resolves a tool result's ToolCallID to the function
+	// name Gemini needs on the functionResponse.
+	callNames := map[string]string{}
+	for i, m := range req.Messages {
 		if m.Role == "system" {
 			systemParts = append(systemParts, part{Text: m.Content})
+			continue
+		}
+		if m.Role == "tool" {
+			p, err := functionResponsePart(m, callNames)
+			if err != nil {
+				return nil, err
+			}
+			// Consecutive results answer one model turn and belong in
+			// a single content.
+			if i > 0 && req.Messages[i-1].Role == "tool" {
+				last := &contents[len(contents)-1]
+				last.Parts = append(last.Parts, p)
+				continue
+			}
+			contents = append(contents, content{Role: "user", Parts: []part{p}})
 			continue
 		}
 		c, err := mapMessage(ctx, m)
 		if err != nil {
 			return nil, err
+		}
+		for _, tc := range m.ToolCalls {
+			callNames[tc.ID] = tc.Name
 		}
 		contents = append(contents, c)
 	}
@@ -452,7 +478,73 @@ func (a *Adapter) buildBody(
 
 // mapMessage converts an llm.Message to a Gemini content object.
 // Gemini uses "user" and "model" roles; "assistant" is mapped to "model".
+//
+// An assistant turn with ToolCalls gets one functionCall part per call
+// after its text (or Parts); an empty Content adds no text part.
 func mapMessage(ctx context.Context, m llm.Message) (content, error) {
+	if m.ToolCallID != "" {
+		return content{}, fmt.Errorf("gemini: ToolCallID is valid only on role tool, got %q", m.Role)
+	}
+	if len(m.ToolCalls) > 0 && m.Role != "assistant" {
+		return content{}, fmt.Errorf("gemini: ToolCalls are valid only on role assistant, got %q", m.Role)
+	}
+
+	c, err := mapContent(ctx, m)
+	if err != nil || len(m.ToolCalls) == 0 {
+		return c, err
+	}
+
+	if len(m.Parts) == 0 && m.Content == "" {
+		c.Parts = nil
+	}
+	for _, tc := range m.ToolCalls {
+		args := json.RawMessage(`{}`)
+		if len(tc.Arguments) > 0 {
+			if !json.Valid(tc.Arguments) {
+				return content{}, fmt.Errorf("gemini: tool call %q arguments are not valid JSON", tc.ID)
+			}
+			args = tc.Arguments
+		}
+		c.Parts = append(c.Parts, part{
+			FunctionCall: &functionCall{Name: tc.Name, Args: args},
+		})
+	}
+	return c, nil
+}
+
+// functionResponsePart maps a role "tool" message to a functionResponse
+// part. Gemini names the function rather than the call, so the name is
+// resolved from the earlier call whose ID matches ToolCallID. A result
+// that is a JSON object is sent as the response struct; anything else
+// is wrapped as {"output": Content}.
+func functionResponsePart(m llm.Message, callNames map[string]string) (part, error) {
+	if m.ToolCallID == "" {
+		return part{}, fmt.Errorf("gemini: tool result needs ToolCallID")
+	}
+	if len(m.ToolCalls) > 0 || len(m.Parts) > 0 {
+		return part{}, fmt.Errorf("gemini: tool result %q carries only Content", m.ToolCallID)
+	}
+	name, ok := callNames[m.ToolCallID]
+	if !ok {
+		return part{}, fmt.Errorf(
+			"gemini: tool result %q matches no earlier assistant tool call", m.ToolCallID,
+		)
+	}
+
+	resp := json.RawMessage(m.Content)
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(resp, &obj) != nil || obj == nil {
+		wrapped, err := json.Marshal(map[string]string{"output": m.Content})
+		if err != nil {
+			return part{}, fmt.Errorf("gemini: encode tool result: %w", err)
+		}
+		resp = wrapped
+	}
+	return part{FunctionResponse: &functionResponse{Name: name, Response: resp}}, nil
+}
+
+// mapContent maps a message's role and text or Parts.
+func mapContent(ctx context.Context, m llm.Message) (content, error) {
 	role := m.Role
 	if role == "assistant" {
 		role = "model"
@@ -553,7 +645,12 @@ func (a *Adapter) parseToolResponse(gr generateResponse) llm.ToolResponse {
 			textParts = append(textParts, p.Text)
 		}
 		if p.FunctionCall != nil {
+			id := p.FunctionCall.ID
+			if id == "" {
+				id = newCallID()
+			}
 			resp.ToolCalls = append(resp.ToolCalls, llm.ToolCall{
+				ID:        id,
 				Name:      p.FunctionCall.Name,
 				Arguments: p.FunctionCall.Args,
 			})
@@ -562,6 +659,13 @@ func (a *Adapter) parseToolResponse(gr generateResponse) llm.ToolResponse {
 	resp.Content = strings.Join(textParts, "")
 
 	return resp
+}
+
+// newCallID synthesizes a tool-call ID for a functionCall Gemini
+// returned without one, so a tool result can still quote it back in
+// [llm.Message.ToolCallID].
+func newCallID() string {
+	return "call_" + rand.Text()
 }
 
 func extractContentText(c content) string {
