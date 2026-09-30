@@ -7,12 +7,16 @@
 //
 // The ecosystems keys are the release-please components: read from an
 // existing release-please config, else the starter layout
-// (planReleasePackages), so the two files agree on names. Go packages are
-// left out — their bare v<version> tags are served by proxy.golang.org —
-// so a pure-Go repo gets no publish.yml.
+// (planReleasePackages), so the two files agree on names. Go packages
+// tagging bare v<version> (the starter config) are left out —
+// proxy.golang.org serves those tags — so a pure-Go repo gets no
+// publish.yml. A Go package that tags <component>/v<version> in a
+// multi-package config (poly-kit, poly-aim: a vanity module served from
+// a mirror repo) keeps a mirror-only entry, so its mirror keeps
+// receiving tags exactly as today.
 //
 // Package names and mirror repos follow the hop-top conventions for an
-// owner resolved from --org, the Go module path or the origin remote
+// owner resolved from --org, the origin remote or the Go module path
 // (`OWNER` placeholder otherwise); the summary asks for a review.
 //
 // A repo that already publishes through hop-top/.github from another
@@ -80,8 +84,13 @@ func publishEntries(target string, in Inputs) ([]publishEntry, int) {
 	if pkgs, ok := configPackages(target); ok {
 		total = len(pkgs)
 		for _, p := range pkgs {
-			if eco, ok := releaseTypeEcosystems[p.ReleaseType]; ok && p.Component != "" {
+			if p.Component == "" {
+				continue
+			}
+			if eco, ok := releaseTypeEcosystems[p.ReleaseType]; ok {
 				entries = append(entries, publishEntry{Component: p.Component, Dir: p.Path, Ecosystem: eco})
+			} else if p.ReleaseType == "go" && p.PrefixedTag && total > 1 {
+				entries = append(entries, publishEntry{Component: p.Component, Dir: p.Path, Ecosystem: "go"})
 			}
 		}
 	} else {
@@ -106,10 +115,12 @@ func configPackages(target string) ([]releasePackage, bool) {
 			continue
 		}
 		var cfg struct {
-			ReleaseType string `json:"release-type"`
-			Packages    map[string]struct {
-				ReleaseType string `json:"release-type"`
-				Component   string `json:"component"`
+			ReleaseType           string `json:"release-type"`
+			IncludeComponentInTag *bool  `json:"include-component-in-tag"`
+			Packages              map[string]struct {
+				ReleaseType           string `json:"release-type"`
+				Component             string `json:"component"`
+				IncludeComponentInTag *bool  `json:"include-component-in-tag"`
 			} `json:"packages"`
 		}
 		if json.Unmarshal(data, &cfg) != nil || len(cfg.Packages) == 0 {
@@ -121,7 +132,15 @@ func configPackages(target string) ([]releasePackage, bool) {
 			if rt == "" {
 				rt = cfg.ReleaseType
 			}
-			out = append(out, releasePackage{Path: path, ReleaseType: rt, Component: p.Component})
+			// release-please's default is true; package overrides top level.
+			prefixed := true
+			if cfg.IncludeComponentInTag != nil {
+				prefixed = *cfg.IncludeComponentInTag
+			}
+			if p.IncludeComponentInTag != nil {
+				prefixed = *p.IncludeComponentInTag
+			}
+			out = append(out, releasePackage{Path: path, ReleaseType: rt, Component: p.Component, PrefixedTag: prefixed})
 		}
 		return out, true
 	}
@@ -140,14 +159,12 @@ var (
 	remoteOwnerRe = regexp.MustCompile(`github\.com[:/]([^/]+)/`)
 )
 
-// publishOwner resolves the GitHub owner: --org, the Go module path,
-// then the origin remote.
+// publishOwner resolves the GitHub owner: --org, the origin remote (an
+// existing repo's ground truth), then a github.com module path (which
+// Gather may have synthesized from the author name).
 func publishOwner(target string, in Inputs) (string, bool) {
 	if in.Org != "" {
 		return strings.ToLower(in.Org), true
-	}
-	if m := moduleOwnerRe.FindStringSubmatch(in.Module); m != nil {
-		return strings.ToLower(m[1]), true
 	}
 	if isGitWorkTree(target) {
 		if url, err := runGitIn(target, "config", "--get", "remote.origin.url"); err == nil {
@@ -155,6 +172,9 @@ func publishOwner(target string, in Inputs) (string, bool) {
 				return strings.ToLower(m[1]), true
 			}
 		}
+	}
+	if m := moduleOwnerRe.FindStringSubmatch(in.Module); m != nil {
+		return strings.ToLower(m[1]), true
 	}
 	return ownerPlaceholder, false
 }
@@ -177,8 +197,8 @@ func renderPublishWorkflow(entries []publishEntry, owner string, ownerKnown, sin
 	b.WriteString("# kit will surface conflicting refreshes as `.kit-suggested` siblings.\n")
 	b.WriteString("# Publishes each release-please component tag (<component>/v<version>)\n")
 	b.WriteString("# through the hop-top/.github publish-on-tag reusable workflow, which\n")
-	b.WriteString("# routes it to its registry by the ecosystems map below. Go is not\n")
-	b.WriteString("# listed: its bare v<version> tags are served by proxy.golang.org.\n")
+	b.WriteString("# routes it to its registry by the ecosystems map below. Go packages\n")
+	b.WriteString("# tagging bare v<version> are not listed: proxy.golang.org serves them.\n")
 	b.WriteString("# Review package names and mirror repos before the first release tag.\n\n")
 	b.WriteString("name: publish\n\non:\n  push:\n    tags: ['*/v*']\n  workflow_dispatch: {}\n\n")
 	b.WriteString("jobs:\n  publish:\n    permissions:\n      contents: read\n")
@@ -209,10 +229,12 @@ func renderPublishWorkflow(entries []publishEntry, owner string, ownerKnown, sin
 		fmt.Fprintf(&b, "        %s:\n", yamlScalar(e.Component))
 		fmt.Fprintf(&b, "          dir: %s\n", yamlScalar(e.Dir))
 		fmt.Fprintf(&b, "          ecosystem: %s\n", e.Ecosystem)
-		fmt.Fprintf(&b, "          package: %s\n", yamlScalar(registryPackage(e.Ecosystem, owner, base)))
+		if e.Ecosystem != "go" { // go: mirror only, no registry
+			fmt.Fprintf(&b, "          package: %s\n", yamlScalar(registryPackage(e.Ecosystem, owner, base)))
+		}
 		if mirrored {
 			mirror := e.Component
-			if !strings.HasSuffix(mirror, "-"+e.Ecosystem) {
+			if e.Ecosystem != "go" && !strings.HasSuffix(mirror, "-"+e.Ecosystem) {
 				mirror += "-" + e.Ecosystem
 			}
 			fmt.Fprintf(&b, "          mirror: %s\n", yamlScalar(owner+"/"+mirror))

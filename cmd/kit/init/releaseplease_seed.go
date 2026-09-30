@@ -124,6 +124,9 @@ type rpSeedConfig struct {
 // tag prefix and publish.yml ecosystems key).
 type releasePackage struct {
 	Path, Runtime, ReleaseType, Component string
+	// PrefixedTag: tags read <component>/v<version> (read from an
+	// existing config; unused for the starter layout).
+	PrefixedTag bool
 }
 
 // planReleasePackages lays out packages for a project named name
