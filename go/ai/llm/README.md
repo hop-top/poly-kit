@@ -17,6 +17,7 @@ provider-specific wire detail (the adapter sub-packages below).
 - one provider may fail → `llm.WithFallback(secondary)`, `llm.OnFallback(fn)`
 - you pick a model by capability and budget → `llm.PickProvider(ctx, reg, profile, llm.BudgetBalanced)`; restrict with `llm.LoadPool()` + `PickProviderInPool`
 - you observe calls → `llm.OnRequest`/`OnResponse`/`OnError`/`OnRoute`/`OnEvaResult`, or `llm.WithBus(bus)`
+- a URI-form model needs its provider key → `llm.ApplyAPIKey(ctx, store, uri)`; `errors.Is(err, llm.ErrMissingKey)` when none is set: [Provider keys](../../../docs/adopters/reference/llm.md#provider-keys)
 - you add a provider → `llm.Register("myscheme", func(cfg llm.ResolvedConfig) (llm.Provider, error) {...})`
 
 ## Quick start
@@ -35,8 +36,7 @@ fmt.Println(resp.Message.Content)
 
 - Provider URI: `scheme://model[?param=val]`; 14 schemes, capabilities per
   scheme: [Provider URIs](../../../docs/adopters/reference/llm.md#provider-uris).
-- Config merge: file < URI params < env vars. Pool: file < env
-  (`LLM_POOL_DISABLE`) < CLI (`ResolvePool`).
+- Config merge: file < URI params < env vars. Pool: file < env (`LLM_POOL_DISABLE`) < CLI (`ResolvePool`).
 - Bus topics default to `kit.ai.{request.started, response.received,
   request.errored, fallback.applied, route.selected, eva.evaluated}`;
   `WithTopicPrefix` rebrands the `source.category` prefix,
