@@ -7,7 +7,6 @@ namespace HopTop\Kit\Net;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\UriInterface;
 
 /**
  * PSR-18 decorator enforcing the `--offline` marker.
@@ -53,22 +52,10 @@ final class OfflineGuardClient implements ClientInterface
         if (NetPolicy::isOffline() && !NetPolicy::isLoopbackHost($uri->getHost())) {
             throw OfflineException::forRequest(
                 $request->getMethod(),
-                self::redact($uri),
+                (string) $uri,
             );
         }
 
         return $this->inner->sendRequest($request);
-    }
-
-    /** Mask any userinfo password before the URL reaches a log. */
-    private static function redact(UriInterface $uri): string
-    {
-        $userInfo = $uri->getUserInfo();
-        if ($userInfo !== '' && str_contains($userInfo, ':')) {
-            [$user] = explode(':', $userInfo, 2);
-            $uri = $uri->withUserInfo($user, 'xxxxx');
-        }
-
-        return (string) $uri;
     }
 }
