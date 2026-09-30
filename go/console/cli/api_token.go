@@ -108,6 +108,8 @@ func tokenClaimsCmd(_ *Root) *cobra.Command {
 
 	SetSideEffect(cmd, SideEffectRead)
 	SetIdempotency(cmd, IdempotencyYes)
+	// JSON whatever --format says: the template is for a signer.
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &tokenClaims{}, Version: "1.0"})
 	return cmd
 }
 
@@ -237,6 +239,8 @@ func tokenVerifyCmd(r *Root) *cobra.Command {
 	cmd.Flags().String("service", APIServiceName, "Service whose auth.mode verifies the token")
 	SetSideEffect(cmd, SideEffectRead)
 	SetIdempotency(cmd, IdempotencyYes)
+	// The verdict prints as JSON on both exits, valid and refused.
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &tokenVerdict{}, Version: "1.0"})
 	return cmd
 }
 
@@ -318,5 +322,8 @@ func tokenDecodeCmd(_ *Root) *cobra.Command {
 	}
 	SetSideEffect(cmd, SideEffectRead)
 	SetIdempotency(cmd, IdempotencyYes)
+	// A JWT payload is a JSON object of claims (RFC 7519 §4), printed
+	// as-is; the claim names are the issuer's, so none is fixed here.
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &map[string]any{}, Version: "1.0"})
 	return cmd
 }
