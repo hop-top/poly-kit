@@ -144,6 +144,7 @@ func peerListCmd(r *Root) *cobra.Command {
 	}
 	SetSideEffect(cmd, SideEffectRead)
 	SetIdempotency(cmd, IdempotencyYes)
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]peerRow{}, Version: "1.0"})
 	return cmd
 }
 
