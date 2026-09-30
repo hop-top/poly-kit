@@ -2,12 +2,16 @@
 
 ## [0.5.0-alpha.18](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.17...kit/v0.5.0-alpha.18) (2026-09-30)
 
+The hop-top team is happy to announce Kit 0.5.0-alpha.18. This release includes new features.
+
 
 ### Features
 
 * **ext:** expose full --ext-info payload from discovery ([45b5f54](https://github.com/hop-top/poly-kit/commit/45b5f54b21cb7bb6a958c96bc98aaf7b7225ef0e))
 * **scope:** add Policy.CheckLexical for rules as written ([3ffdfff](https://github.com/hop-top/poly-kit/commit/3ffdfffac7407e92fa0da4e2c166dfc087d8cdc3))
 * **scope:** per-op allow/deny entries in scope.yaml ([47a388d](https://github.com/hop-top/poly-kit/commit/47a388d59b89052be94db8c19f4a2dbd7bf3f06b))
+
+Full diff: [kit/v0.5.0-alpha.17...kit/v0.5.0-alpha.18](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.17...kit/v0.5.0-alpha.18)
 
 ## [0.5.0-alpha.17](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.16...kit/v0.5.0-alpha.17) (2026-09-29)
 
