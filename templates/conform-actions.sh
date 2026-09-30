@@ -244,18 +244,16 @@ run_generated_actions() {
   fi
 
   # --- Release-please ---
-  if [ ! -f ".release-please-manifest.json" ]; then
-    if [ "$DRY_RUN" = true ]; then
-      log_applied "release-please" \
-        "Would generate release-please config (dry run)"
-    else
-      NAME="${APP_NAME}" \
-        setup_release_please "." "${DETECTED_LANGS[@]}"
-      log_applied "release-please" \
-        "Generated release-please config"
-    fi
+  # `kit init` owns the release-please wiring (the caller of the
+  # hop-top/.github release-please-on-push reusable workflow). The
+  # config + manifest shape (tag form, channel, labels) is a
+  # per-repo decision, so conform only reports its absence.
+  if [ -f ".github/release-please-config.json" ] ||
+    [ -f "release-please-config.json" ]; then
+    log_skipped "release-please" "Config already exists"
   else
-    log_skipped "release-please" "Manifest already exists"
+    log_skipped "release-please" \
+      "No config: run \`kit init --mode augment\` for the caller; config shape per hop-top/.github docs/bootstrap-checklist.md (section 5)"
   fi
 }
 

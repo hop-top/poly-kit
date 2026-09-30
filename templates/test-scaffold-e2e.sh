@@ -43,6 +43,15 @@ assert_file_exists() {
   fi
 }
 
+assert_file_not_exists() {
+  local file="$1" label="${2:-$1}"
+  if [ -e "$file" ]; then
+    fail "$label unexpectedly exists: $file"
+  else
+    pass "$label absent"
+  fi
+}
+
 assert_dir_exists() {
   local dir="$1" label="${2:-$1}"
   if [ -d "$dir" ]; then
@@ -810,30 +819,12 @@ assert_file_exists "$TEST11_DIR/.github/dependabot.yml" \
   "test11 dependabot.yml"
 assert_file_contains "$TEST11_DIR/.github/dependabot.yml" \
   "cargo" "test11 dependabot has cargo ecosystem"
-assert_file_exists "$TEST11_DIR/release-please-config.json" \
-  "test11 release-please-config.json"
-assert_file_contains "$TEST11_DIR/release-please-config.json" \
-  '"release-type": "rust"' "test11 release-please uses rust release-type"
-assert_file_contains "$TEST11_DIR/release-please-config.json" \
-  '"path": "Cargo.toml"' "test11 release-please tracks Cargo.toml"
-assert_file_contains "$TEST11_DIR/release-please-config.json" \
-  '"prerelease": true' "test11 release-please package is prerelease"
-assert_file_contains "$TEST11_DIR/release-please-config.json" \
-  '"prerelease-type": "alpha.0"' "test11 release-please seeds alpha.0"
-assert_file_contains "$TEST11_DIR/release-please-config.json" \
-  '"versioning": "prerelease"' "test11 release-please counter-only versioning"
-assert_file_contains "$TEST11_DIR/release-please-config.json" \
-  '"initial-version": "0.1.0-alpha.0"' "test11 release-please initial-version"
-assert_file_excludes "$TEST11_DIR/release-please-config.json" \
-  'bump-patch-for-minor-pre-major' "test11 release-please feat bumps minor pre-1.0"
-assert_file_exists "$TEST11_DIR/.release-please-manifest.json" \
-  "test11 release-please manifest"
-assert_file_contains "$TEST11_DIR/.release-please-manifest.json" \
-  '^{}$' "test11 release-please manifest is empty so initial-version applies"
-assert_file_exists "$TEST11_DIR/.github/workflows/release-please.yml" \
-  "test11 release-please workflow"
-assert_file_contains "$TEST11_DIR/.github/workflows/release-please.yml" \
-  "release-rs:" "test11 release workflow has release-rs job"
+# release-please is kit init's (the caller of the hop-top/.github
+# reusable workflow); scaffold.sh no longer emits any of it.
+assert_file_not_exists "$TEST11_DIR/release-please-config.json" \
+  "test11 no scaffolded release-please config"
+assert_file_not_exists "$TEST11_DIR/.github/workflows/release-please.yml" \
+  "test11 no scaffolded release-please workflow"
 
 # ======================================================
 # Test 12: Polyglot with rs (go,ts,py,rs)

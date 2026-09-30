@@ -421,7 +421,6 @@ EOF
   mkdir -p "$fake_templates"
   cp "$SCRIPT_DIR/lib.sh" "$fake_templates/"
   cp "$SCRIPT_DIR/conform-actions.sh" "$fake_templates/"
-  cp "$SCRIPT_DIR/setup-release-please.sh" "$fake_templates/"
   cp "$SCRIPT_DIR/conform.sh" "$fake_templates/"
   # Copy any blueprint dirs the action helpers need so
   # the additive-merge checks don't fail looking for

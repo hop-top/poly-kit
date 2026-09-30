@@ -27,13 +27,6 @@
   [ "$status" -eq 0 ]
 }
 
-@test "setup-release-please.sh passes shellcheck" {
-  run shellcheck -x \
-    "$BATS_TEST_DIRNAME/../setup-release-please.sh"
-  echo "$output"
-  [ "$status" -eq 0 ]
-}
-
 @test "build.sh passes shellcheck" {
   run shellcheck -x "$BATS_TEST_DIRNAME/../build.sh"
   echo "$output"
@@ -87,7 +80,6 @@
     "$BATS_TEST_DIRNAME/../conform.sh"
     "$BATS_TEST_DIRNAME/../conform-actions.sh"
     "$BATS_TEST_DIRNAME/../scaffold.sh"
-    "$BATS_TEST_DIRNAME/../setup-release-please.sh"
     "$BATS_TEST_DIRNAME/../build.sh"
     "$BATS_TEST_DIRNAME/../reserve-packages.sh"
   )
