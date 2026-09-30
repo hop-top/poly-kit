@@ -559,6 +559,7 @@ func TestDefaultBaseURLs(t *testing.T) {
 		"fireworks":  "https://api.fireworks.ai/inference/v1",
 		"deepseek":   "https://api.deepseek.com",
 		"mistral":    "https://api.mistral.ai/v1",
+		"lmstudio":   "http://localhost:1234/v1",
 	}
 
 	for scheme, wantURL := range expected {
@@ -567,11 +568,70 @@ func TestDefaultBaseURLs(t *testing.T) {
 		assert.Equal(t, wantURL, got, "scheme %s", scheme)
 	}
 
-	// openai and lmstudio use the hardcoded fallback, not the map.
-	for _, s := range []string{"openai", "lmstudio"} {
-		_, ok := defaultBaseURLs[s]
-		assert.False(t, ok, "%s should not be in defaultBaseURLs", s)
-	}
+	// openai uses the hardcoded fallback, not the map.
+	_, ok := defaultBaseURLs["openai"]
+	assert.False(t, ok, "openai should not be in defaultBaseURLs")
+}
+
+// recordingTransport answers every request with a canned completion and
+// records its URL, so a default base URL can be checked without a server
+// listening there.
+type recordingTransport struct{ urls []string }
+
+func (rt *recordingTransport) RoundTrip(
+	r *http.Request,
+) (*http.Response, error) {
+	rt.urls = append(rt.urls, r.URL.String())
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			completionJSON("ok", "assistant", "stop"),
+		)),
+		Request: r,
+	}, nil
+}
+
+// swapDefaultTransport routes http.DefaultClient, which openai-go uses
+// unless given another client, through rt for the test's duration.
+func swapDefaultTransport(t *testing.T, rt http.RoundTripper) {
+	t.Helper()
+	orig := http.DefaultClient.Transport
+	http.DefaultClient.Transport = rt
+	t.Cleanup(func() { http.DefaultClient.Transport = orig })
+}
+
+func TestResolve_LMStudioDefaultsToLocalServer(t *testing.T) {
+	rt := &recordingTransport{}
+	swapDefaultTransport(t, rt)
+
+	p, err := llm.Resolve("lmstudio://local-model")
+	require.NoError(t, err)
+
+	resp, err := p.(llm.Completer).Complete(context.Background(), llm.Request{
+		Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "ok", resp.Content)
+	require.Len(t, rt.urls, 1)
+	assert.Equal(t, "http://localhost:1234/v1/chat/completions", rt.urls[0])
+}
+
+func TestResolve_LMStudioBaseURLParamOverridesDefault(t *testing.T) {
+	rt := &recordingTransport{}
+	swapDefaultTransport(t, rt)
+
+	p, err := llm.Resolve(
+		"lmstudio://local-model?base_url=http://gpu-box:5678/v1",
+	)
+	require.NoError(t, err)
+
+	_, err = p.(llm.Completer).Complete(context.Background(), llm.Request{
+		Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+	})
+	require.NoError(t, err)
+	require.Len(t, rt.urls, 1)
+	assert.Equal(t, "http://gpu-box:5678/v1/chat/completions", rt.urls[0])
 }
 
 func TestNewSchemeDefaultBaseURL(t *testing.T) {

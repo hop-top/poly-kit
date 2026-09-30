@@ -35,6 +35,21 @@ scheme://model[?param=val]
 | `routellm` | RouteLLM | Complete, Stream (routed) |
 | `triton` | NVIDIA Triton | Score (inference) |
 
+### Local servers
+
+Local schemes default to the server's documented address, so a bare
+`scheme://model` reaches a server running with stock settings:
+
+| Scheme | Default base URL |
+|--------|------------------|
+| `lmstudio` | `http://localhost:1234/v1` |
+
+Point at another host or port with `?base_url=`:
+
+```text
+lmstudio://qwen2.5-7b-instruct?base_url=http://gpu-box:1234/v1
+```
+
 ## Quick start
 
 ```go
