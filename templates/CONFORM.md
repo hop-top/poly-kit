@@ -95,7 +95,11 @@ Config files generated from detected languages. Skipped if
 already present; missing ecosystems appended to existing files.
 
 - `.github/dependabot.yml` — ecosystems from detected languages
-- `.release-please-manifest.json` + `release-please-config.json`
+
+release-please is not generated here: `kit init` renders the
+`.github/workflows/release-please.yml` caller, and the config +
+manifest are authored per repo (conform reports when they are
+missing).
 
 ### Safe: Additive Merge
 

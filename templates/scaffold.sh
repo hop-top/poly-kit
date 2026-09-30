@@ -13,9 +13,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# shellcheck source=setup-release-please.sh
-source "$SCRIPT_DIR/setup-release-please.sh"
-
 # shellcheck source=reserve-packages.sh
 source "$SCRIPT_DIR/reserve-packages.sh"
 
@@ -700,14 +697,11 @@ mkdir -p "$OUTPUT/.github"
   echo "- Commits: Conventional Commits (feat|fix|refactor|...)"
 } > "$OUTPUT/.github/copilot-instructions.md"
 
-# f. release-please config
-setup_release_please "$OUTPUT" "${LANG_ARRAY[@]}"
-
 # --- First commit + push -------------------------------
 
 # init.sh already committed the template files; this commit
 # picks up the post-init artifacts (mise.toml, .devcontainer/,
-# .env.example, copilot instructions, release-please config).
+# .env.example, copilot instructions).
 (cd "$OUTPUT" && git add -A && git commit -m "feat: scaffold $NAME" --allow-empty) || true
 
 if [ "$NO_PUSH" = false ] && [ -n "$REPO_URL" ]; then
@@ -724,3 +718,6 @@ fi
 
 echo ""
 echo "Project ready at $OUTPUT"
+echo "Release wiring: run \`kit init --mode augment\` in $OUTPUT for the"
+echo "release-please caller; add its config + manifest per hop-top/.github"
+echo "docs/bootstrap-checklist.md (section 5)."

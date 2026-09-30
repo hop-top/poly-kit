@@ -17,9 +17,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
-# shellcheck source=setup-release-please.sh
-source "$SCRIPT_DIR/setup-release-please.sh"
-
 # shellcheck source=conform-actions.sh
 source "$SCRIPT_DIR/conform-actions.sh"
 
