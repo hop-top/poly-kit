@@ -161,9 +161,10 @@ func TestQuotaShowAndReset(t *testing.T) {
 	_, err = run("quota", "reset")
 	require.Error(t, err, "a caller or --all is required")
 
-	out, err = run("quota", "reset", "address/127.0.0.1")
+	out, err = run("quota", "reset", "address/127.0.0.1", "--format", "json")
 	require.NoError(t, err)
-	assert.Contains(t, out, "reset 1")
+	assert.JSONEq(t, `{"reset": 1}`, out)
+	assertMatchesOutputSchema(t, []string{"quota", "reset"}, out)
 
 	_, err = run("quota", "reset", "address/127.0.0.1")
 	require.Error(t, err, "nothing left to reset")

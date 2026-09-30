@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -88,6 +87,12 @@ func quotaShowCmd(r *Root) *cobra.Command {
 	return cmd
 }
 
+// quotaResetResult is what quota reset renders: how many quota counts
+// it cleared.
+type quotaResetResult struct {
+	Reset int `json:"reset" yaml:"reset" table:"RESET"`
+}
+
 func quotaResetCmd(r *Root) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reset [caller]",
@@ -115,8 +120,7 @@ func quotaResetCmd(r *Root) *cobra.Command {
 				e.SuggestedFix = "run `" + r.Config.Name + " quota show` for the callers counted"
 				return e
 			}
-			_, err = fmt.Fprintf(c.OutOrStdout(), "reset %d quota count(s)\n", n)
-			return err
+			return output.Dispatch(c, r.Viper, quotaResetResult{Reset: n})
 		},
 	}
 	cmd.Flags().String("service", "", "Reset this service's quota only")
@@ -124,6 +128,7 @@ func quotaResetCmd(r *Root) *cobra.Command {
 	SetSideEffect(cmd, SideEffectWriteLocal)
 	SetIdempotency(cmd, IdempotencyYes)
 	cmd.Annotations[kitExitCodes] = "OK,GENERIC,USAGE,NOT_FOUND"
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &quotaResetResult{}, Version: "1.0"})
 	_ = SetExamples(cmd, []Example{
 		{Title: "One principal", Command: r.Config.Name + " quota reset principal/alice/acme"},
 		{Title: "Every caller of the api service", Command: r.Config.Name + " quota reset --all --service api"},

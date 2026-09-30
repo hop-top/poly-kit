@@ -118,7 +118,6 @@ var awaitingSchemaDecision = map[string]string{
 	"kittool peer block":     "prints nothing",
 	"kittool peer revoke":    "prints nothing",
 	"kittool peer trust":     "prints nothing",
-	"kittool quota reset":    "prints \"reset <n> quota count(s)\"",
 	"kittool serve":          "long-running; --list prints a fixed-width text table",
 	"kittool uri completion": "prints a shell completion script",
 }
