@@ -132,6 +132,10 @@ func serveParentCmd(root *Root) *cobra.Command {
 
 	SetSideEffect(cmd, SideEffectWriteShared)
 	SetIdempotency(cmd, IdempotencyNo)
+	// The schema describes `serve --list`, the only form that renders
+	// a document. The long-running forms (the supervisor, a named
+	// service) emit logs while they run, never a document to parse.
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]serveListRow{}, Version: "1.0"})
 
 	// `list` is reserved selector vocabulary, so the listing is a flag
 	// rather than a child: registering a `list` service is refused by
@@ -257,6 +261,15 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	return nil
 }
 
+// serveListRow is one row of `serve --list`: a registered service and
+// whether it is configured, enabled for a bare `serve`, and ready.
+type serveListRow struct {
+	Service    string `json:"service"    yaml:"service"    table:"SERVICE"`
+	Configured bool   `json:"configured" yaml:"configured" table:"CONFIGURED"`
+	Enabled    bool   `json:"enabled"    yaml:"enabled"    table:"ENABLED"`
+	Ready      bool   `json:"ready"      yaml:"ready"      table:"READY"`
+}
+
 // runServeList prints the registered services with their configured,
 // enabled, and ready state, in registration order so the listing
 // mirrors the adopter's wiring (serve-lifecycle.md §"Command hierarchy").
@@ -274,14 +287,25 @@ func runServeList(cmd *cobra.Command, root *Root) error {
 	// WithAPI's default-on included; anything else would list a
 	// service as disabled that a bare `serve` is about to start.
 	applyAPIEnabledDefault(root, configs)
-	w := cmd.OutOrStdout()
-	fmt.Fprintf(w, "%-20s %-11s %-8s %s\n", "SERVICE", "CONFIGURED", "ENABLED", "READY")
+	rows := []serveListRow{}
 	for _, svc := range reg.List() {
 		name := svc.Name()
 		cfg, configured := configs[name]
-		fmt.Fprintf(w, "%-20s %-11t %-8t %t\n", name, configured, cfg.Enabled, svc.Ready())
+		rows = append(rows, serveListRow{Service: name, Configured: configured, Enabled: cfg.Enabled, Ready: svc.Ready()})
 	}
-	return nil
+	// The table keeps its fixed-width layout: generated project
+	// READMEs and the adopter docs print it verbatim, and the table
+	// formatter sizes columns to their content. Every other format is
+	// Dispatch's.
+	if activeOutputFormat(cmd, root.Viper) == output.Table {
+		w := cmd.OutOrStdout()
+		fmt.Fprintf(w, "%-20s %-11s %-8s %s\n", "SERVICE", "CONFIGURED", "ENABLED", "READY")
+		for _, row := range rows {
+			fmt.Fprintf(w, "%-20s %-11t %-8t %t\n", row.Service, row.Configured, row.Enabled, row.Ready)
+		}
+		return nil
+	}
+	return output.Dispatch(cmd, root.Viper, rows)
 }
 
 // serveHelpAddendum appends the registered service names to the serve
