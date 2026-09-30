@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"hop.top/kit/go/core/netpolicy"
@@ -118,5 +119,34 @@ func TestGuard_Idempotent(t *testing.T) {
 	}
 	if netpolicy.Guard(nil) == nil {
 		t.Fatal("Guard(nil) returned nil")
+	}
+}
+
+// The refusal names where the request was going, never what it carried:
+// scheme, host and path only. Query, fragment and userinfo may hold
+// credentials (an API key param, basic-auth userinfo) and are dropped.
+func TestGuard_RefusalOmitsQueryFragmentUserinfo(t *testing.T) {
+	const raw = "https://alice:pw-secret@example.invalid/v1/models/m:generate" +
+		"?alt=sse&key=q-secret#frag-secret"
+	req, err := http.NewRequestWithContext(
+		netpolicy.WithOffline(t.Context(), true), http.MethodPost, raw, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// RoundTrip directly: through an http.Client, net/http's own
+	// *url.Error would quote the URL around the guard's message.
+	_, err = netpolicy.Guard(&tripRecorder{}).RoundTrip(req)
+	if !errors.Is(err, netpolicy.ErrOffline) {
+		t.Fatalf("expected ErrOffline, got %v", err)
+	}
+	msg := err.Error()
+	if want := "POST https://example.invalid/v1/models/m:generate: "; !strings.HasPrefix(msg, want) {
+		t.Errorf("refusal = %q, want prefix %q", msg, want)
+	}
+	for _, leak := range []string{"alice", "pw-secret", "q-secret", "key=", "alt=sse", "frag-secret", "?", "#", "@"} {
+		if strings.Contains(msg, leak) {
+			t.Errorf("refusal %q carries %q", msg, leak)
+		}
 	}
 }

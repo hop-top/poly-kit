@@ -92,6 +92,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 )
 
 // ErrOffline is returned by Guard when a request is attempted on a
@@ -155,9 +156,19 @@ func Guard(base http.RoundTripper) http.RoundTripper {
 // the destination is not loopback.
 func (g *guard) RoundTrip(req *http.Request) (*http.Response, error) {
 	if IsOffline(req.Context()) && !isLoopback(req.URL.Host) {
-		return nil, fmt.Errorf("%s %s: %w", req.Method, req.URL.Redacted(), ErrOffline)
+		return nil, fmt.Errorf("%s %s: %w", req.Method, destination(req.URL), ErrOffline)
 	}
 	return g.base.RoundTrip(req)
+}
+
+// destination renders u as scheme, host and path only: enough to say
+// where a refused request was going, nothing it carried. Query,
+// fragment and userinfo are dropped because they may hold credentials
+// (an API key param, basic-auth userinfo); URL.Redacted masks only the
+// password and keeps the rest.
+func destination(u *url.URL) string {
+	d := url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path, RawPath: u.RawPath}
+	return d.String()
 }
 
 // Install wraps http.DefaultTransport with Guard, so every client that

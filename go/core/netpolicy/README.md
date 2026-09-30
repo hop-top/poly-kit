@@ -35,6 +35,7 @@ websocket) are in `example_dialer_test.go`.
 ## Contract
 
 - Refusals return `ErrOffline`; match with `errors.Is` (net/http wraps it in `*url.Error`).
+- A refusal names method, scheme, host and path only: query, fragment and userinfo never appear, as they may carry credentials. net/http's `*url.Error` still quotes the full URL around it, so keep credentials out of URLs (headers instead).
 - Loopback addresses and unix sockets are exempt: `--offline` means no network, not no self.
 - `Guard` and `Install` are idempotent. `Install` mutates `http.DefaultTransport`; call it once at start-up, never concurrently with in-flight requests.
 - Not covered, and not coverable from here: dependencies that call `net.Dial` with no dialer hook, callers holding a `*net.Dialer` (wrap `DialContext` at the call site), transports captured before `Install` ran. For those `--offline` stays advisory; consult `IsOffline` yourself.
