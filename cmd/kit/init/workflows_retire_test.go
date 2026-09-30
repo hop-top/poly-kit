@@ -53,7 +53,7 @@ func TestPlanWorkflows_Go_NoReleaseCaller(t *testing.T) {
 	}
 	assert.NotContains(t, rels, retiredGoCaller)
 	assert.Contains(t, rels, ".github/workflows/test-go-caller.yml")
-	assert.Contains(t, rels, ".github/workflows/release-ts-caller.yml")
+	assert.Contains(t, rels, ".github/workflows/test-ts-caller.yml")
 }
 
 func TestRetire_ManagedUnchanged_Removed(t *testing.T) {

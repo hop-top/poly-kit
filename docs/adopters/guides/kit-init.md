@@ -194,14 +194,28 @@ triggers and paths back from the live file instead of re-deriving
 them. Hand-edits to the caller follow the usual rule — the next run
 offers a `.kit-suggested` sibling instead of overwriting.
 
-### Go publishes from its tags
+### Publishing: one publish.yml
 
-A Go project gets `test-go-caller.yml` but no release caller: its
-release-please tags are bare `v<version>` and proxy.golang.org serves
-the module straight from them. Re-running `kit init` in a repo that
-still has the `release-go-caller.yml` an earlier version generated
-removes it when unedited, and reports it (for you to delete) when
-edited.
+Every package except Go publishes through one
+`.github/workflows/publish.yml`: a caller of hop-top/.github's
+`publish-on-tag.yml` whose `ecosystems` map lists each release-please
+component (`<name>-ts`, `<name>-py`, …) with its directory, registry
+package and mirror repo. Package names and mirrors follow the org
+conventions for the owner kit finds (`--org`, the module path, or the
+origin remote); check them before the first release tag. A repo with a
+single ts, py or rs package publishes without a mirror.
+
+Go gets no publish step: its release-please tags are bare `v<version>`
+and proxy.golang.org serves the module straight from them. A pure-Go
+repo therefore has no `publish.yml`, just `test-go-caller.yml`.
+
+If another workflow already publishes through hop-top/.github,
+`publish.yml` only lands as a `.kit-suggested` sibling, so nothing
+publishes twice.
+
+Re-running `kit init` in a repo that still has the per-language
+`release-<lang>-caller.yml` files an earlier version generated removes
+each one that is unedited, and reports edited ones for you to delete.
 
 ## Migration from `kit scaffold`
 

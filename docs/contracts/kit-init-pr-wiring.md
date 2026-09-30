@@ -23,8 +23,10 @@ boundary is:
 ### What `kit init` generates
 
 - `.github/workflows/*.yml` **caller** stubs that `uses:` reusable workflows
-  hosted in `hop-top/.github` (e.g. `hop-top/.github/.github/workflows/release-go.yml@<ref>`).
-  One caller keeps a fixed, non-`*-caller` name:
+  hosted in `hop-top/.github`: `test-<runtime>-caller.yml` per runtime
+  (calls `ci.yml`), and two with fixed, non-`*-caller` names:
+  `.github/workflows/publish.yml` (calls `publish-on-tag.yml`, Section 6)
+  and
   `.github/workflows/release-please.yml` (calls `release-please-on-push.yml`),
   the file name adopters already run release-please from — the
   workflow's run history, `gh workflow run release-please.yml` and the
@@ -419,12 +421,45 @@ already gone); left in place and reported on every run (`keep`, reason
 `retired-user-edited`) once edited; never touched when kit did not
 generate it (no manifest entry).
 
-Retired: `release-go-caller.yml`. The Go package kit init scaffolds is
+Retired: `release-{ts,py,rs,php}-caller.yml`, replaced by `publish.yml`
+(below) — each fired on every tag and left out its reusable workflow's
+required `working-directory` input. And `release-go-caller.yml`: the Go
+package kit init scaffolds is
 always the repo-root module (`cli-go`; the starter release-please
 config puts Go at `.`), tagged bare `v<version>`, which
 proxy.golang.org serves directly — there is nothing to publish, and the
 caller sent those tags to `publish-on-tag.yml`, which only routes
 `<component>/v<version>`. Go keeps `test-go-caller.yml`.
+
+### publish.yml
+
+`.github/workflows/publish.yml` is the one caller of `publish-on-tag.yml`,
+which reads a `<component>/v<version>` tag and routes it to its registry
+through the `ecosystems` map:
+
+- **Keys are the release-please components**, read from an existing
+  release-please config (`.github/` first, then the repo root) or else
+  the starter layout, so config and map always agree. Each entry carries
+  `dir`, `ecosystem` (`node`→`ts`, `python`→`py`, `rust`→`rs`, `php`),
+  `package`, and `mirror` when mirroring.
+- **Go is never listed** (bare `v<version>` tags, proxy.golang.org), so a
+  pure-Go repo gets no `publish.yml`. Nor are `simple` / spec packages.
+- **Mirrors:** a single-package ts / py / rs repo sets
+  `enable-mirror: false`; every other repo mirrors each component to
+  `<owner>/<component>` (`-<ecosystem>` appended when missing — php always
+  mirrors, since `publish-on-tag.yml` notifies Packagist from the mirror
+  job).
+- **Names** follow hop-top conventions for the owner (`--org`, else the
+  `github.com/<owner>/` module path, else the origin remote, else
+  `OWNER`): `@<owner>/<name>` (npm), `<owner>-<name>` (PyPI, crates.io),
+  `<owner>/<name>` (Packagist). The write action asks for a review.
+- **Secrets** passed: `GH_MIRROR_PAT` (required by `publish-on-tag.yml`)
+  plus only what the listed ecosystems use.
+- **One publisher.** When another workflow (not retired in the same run)
+  already calls `publish-on-tag.yml` or `publish-{ts,py,rs}.yml`,
+  `publish.yml` is written only as a `.kit-suggested` sibling (reason
+  `existing-publisher`), so no tag publishes twice. A hand-written
+  `publish.yml` follows the usual never-overwrite rule.
 
 ### Release-please caller
 
@@ -488,7 +523,8 @@ generator would touch:
   "reason": "user-edited" | "new" | "refresh" | "manifest-only" | "convergence"
           | "migrated" | "existing-release-please" | "custom-release-please"
           | "uncommitted-release-please" | "duplicate-release-please"
-          | "release-please-config" | "seed" | "retired" | "retired-user-edited",
+          | "release-please-config" | "seed" | "retired" | "retired-user-edited"
+          | "existing-publisher",
   "detail": "what to do next (release-please generator)"
 }
 ```
@@ -579,7 +615,7 @@ run so adopters who never operate a bus host don't see clutter in
 
 | Flag                              | Default | Effect                                                                     |
 |-----------------------------------|---------|----------------------------------------------------------------------------|
-| `--with-github-workflows`         | `true`  | Render `.github/workflows/*-caller.yml` stubs.                    |
+| `--with-github-workflows`         | `true`  | Render `.github/workflows/test-*-caller.yml` stubs and `publish.yml`. |
 | `--with-githook-pre-pr`           | `true`  | Render `.githooks/pre-pr` and helpers.                            |
 | `--with-githook-post-pr-open`     | `true`  | Render `.githooks/post-pr-open` and helpers.                      |
 | `--with-bus-workflows`            | `false` | Render `.github/workflows/kit-bus-*.yml`. Opt-in. Disabled at runtime by default per Section 3. |

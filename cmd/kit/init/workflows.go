@@ -97,19 +97,16 @@ type workflowSpec struct {
 }
 
 // runtimeWorkflows maps each runtime tag (as used by Inputs.Runtime) to
-// its release + test caller specs. Names follow the contract:
-// `<verb>-<runtime>-caller.yml`. Where a per-runtime reusable workflow
-// does not exist upstream (Go, PHP), we point at the unified
-// `publish-on-tag.yml` for release and pin a TODO for the reviewer.
+// its test caller spec (`test-<runtime>-caller.yml`). Releases publish
+// through the one publish.yml (publish_workflow.go), not per runtime.
 //
 // Test callers point at `ci.yml` (the only language-agnostic CI
 // reusable currently published) and carry a TODO because
 // `hop-top/.github` does not yet host a per-language test reusable.
 var runtimeWorkflows = map[string][]workflowSpec{
-	// No release caller for Go: the Go package is always the repo-root
+	// Go publishes nothing: the Go package is always the repo-root
 	// module, tagged bare v<version> by the starter release-please
-	// config, and proxy.golang.org serves it straight from that tag —
-	// nothing to publish. See retiredWorkflows.
+	// config, and proxy.golang.org serves it straight from that tag.
 	"go": {
 		{
 			OutFile:      "test-go-caller.yml",
@@ -121,12 +118,6 @@ var runtimeWorkflows = map[string][]workflowSpec{
 	},
 	"rs": {
 		{
-			OutFile:  "release-rs-caller.yml",
-			Upstream: "publish-rs.yml",
-			Trigger:  "release",
-			Notes:    []string{"Publishes the crate via the hop-top/.github publish-rs reusable workflow."},
-		},
-		{
 			OutFile:      "test-rs-caller.yml",
 			Upstream:     "ci.yml",
 			Trigger:      "test",
@@ -135,12 +126,6 @@ var runtimeWorkflows = map[string][]workflowSpec{
 		},
 	},
 	"ts": {
-		{
-			OutFile:  "release-ts-caller.yml",
-			Upstream: "publish-ts.yml",
-			Trigger:  "release",
-			Notes:    []string{"Publishes the npm package via the hop-top/.github publish-ts reusable workflow."},
-		},
 		{
 			OutFile:      "test-ts-caller.yml",
 			Upstream:     "ci.yml",
@@ -151,13 +136,6 @@ var runtimeWorkflows = map[string][]workflowSpec{
 	},
 	"php": {
 		{
-			OutFile:      "release-php-caller.yml",
-			Upstream:     "publish-on-tag.yml",
-			Trigger:      "release",
-			Notes:        []string{"Publishes the Packagist package via the unified hop-top/.github publish-on-tag pipeline."},
-			UpstreamTODO: "hop-top/.github does not yet host a dedicated publish-php.yml; the unified publish-on-tag.yml currently handles PHP via the `php` ecosystem entry. Confirm the input shape with the maintainer before opting in.",
-		},
-		{
 			OutFile:      "test-php-caller.yml",
 			Upstream:     "ci.yml",
 			Trigger:      "test",
@@ -166,12 +144,6 @@ var runtimeWorkflows = map[string][]workflowSpec{
 		},
 	},
 	"py": {
-		{
-			OutFile:  "release-py-caller.yml",
-			Upstream: "publish-py.yml",
-			Trigger:  "release",
-			Notes:    []string{"Publishes the PyPI package via the hop-top/.github publish-py reusable workflow."},
-		},
 		{
 			OutFile:      "test-py-caller.yml",
 			Upstream:     "ci.yml",
@@ -192,7 +164,15 @@ var retiredWorkflows = []struct{ OutFile, Why string }{
 		Why: "Go modules publish through proxy.golang.org straight from their bare v<version> tags; " +
 			"this caller sent those tags to publish-on-tag.yml, which only routes <component>/v<version>",
 	},
+	{OutFile: "release-php-caller.yml", Why: retiredByPublish},
+	{OutFile: "release-py-caller.yml", Why: retiredByPublish},
+	{OutFile: "release-rs-caller.yml", Why: retiredByPublish},
+	{OutFile: "release-ts-caller.yml", Why: retiredByPublish},
 }
+
+const retiredByPublish = "replaced by .github/workflows/publish.yml, one caller of publish-on-tag.yml " +
+	"that routes each <component>/v<version> tag to its registry (this caller fired on every tag " +
+	"and lacked the reusable workflow's required inputs)"
 
 // retireWorkflows applies retiredWorkflows against manifest. Mutates
 // manifest (and index) in place; touches disk only outside dry-run.
@@ -232,6 +212,52 @@ func retireWorkflows(target string, manifest *Manifest, index map[string]int, dr
 		}
 	}
 	return actions, changed, nil
+}
+
+// applyPublishWorkflow applies the section 6 policy to publish.yml,
+// except that a repo already publishing through another workflow (one
+// not being retired by this run) gets publish.yml only as a sibling.
+func applyPublishWorkflow(target string, p plannedWorkflow, note string, retired []WorkflowAction,
+	manifest *Manifest, index map[string]int, dryRun bool, now func() time.Time,
+) (WorkflowAction, error) {
+	removed := map[string]bool{}
+	for _, a := range retired {
+		if a.Action == "remove" {
+			removed[a.Path] = true
+		}
+	}
+	others, err := existingPublishers(target, removed)
+	if err != nil {
+		return WorkflowAction{}, err
+	}
+	if len(others) > 0 {
+		if !dryRun {
+			if err := writeWorkflowFile(p.AbsPath+suggestedSuffix, p.Content); err != nil {
+				return WorkflowAction{}, err
+			}
+		}
+		return WorkflowAction{
+			Path: p.RelPath, Action: "suggest-sibling", SuggestedPath: p.RelPath + suggestedSuffix,
+			Reason: "existing-publisher",
+			Detail: strings.Join(others, ", ") + " already publishes through hop-top/.github; " +
+				"move its components into the suggested publish.yml, then delete it",
+		}, nil
+	}
+	a, err := applyWorkflow(p, manifest, index, dryRun, now)
+	if err != nil {
+		return WorkflowAction{}, err
+	}
+	if a.Action == "write" {
+		a.Detail = note
+		// A suggestion left while another workflow published is now
+		// the live file: drop it in this run, not the next.
+		if !dryRun {
+			if err := pruneAcceptedSuggestion(p.AbsPath, p.AbsPath+suggestedSuffix); err != nil {
+				return WorkflowAction{}, err
+			}
+		}
+	}
+	return a, nil
 }
 
 // dropManifestEntry removes rel from manifest, rebuilding index.
@@ -382,6 +408,16 @@ func renderWorkflows(target string, runtimes []string, in Inputs, now func() tim
 	if err != nil {
 		return nil, err
 	}
+	var publishActions []WorkflowAction
+	if pub, note, ok := planPublishWorkflow(target, in); ok {
+		a, err := applyPublishWorkflow(target, pub, note, retired, manifest, index, in.DryRun, now)
+		if err != nil {
+			return nil, err
+		}
+		publishActions = append(publishActions, a)
+		retiredChanged = true // manifest may have changed; rewritten below
+	}
+	retired = append(publishActions, retired...)
 	if len(plans) == 0 {
 		if retiredChanged && !in.DryRun {
 			if err := writeWorkflowManifest(manifestPath, manifest); err != nil {

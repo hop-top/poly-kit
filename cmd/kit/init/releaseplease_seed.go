@@ -119,10 +119,19 @@ type rpSeedConfig struct {
 	Packages              map[string]rpSeedPackage `json:"packages"`
 }
 
-// renderReleasePleaseSeed returns the starter config and manifest for a
-// project named name shipping runtimes (unknown runtimes ignored; none
-// known = go).
-func renderReleasePleaseSeed(name string, runtimes []string) (config, manifest []byte) {
+// releasePackage is one package of the starter layout: where it lives,
+// its runtime and release-please release type, and its component (the
+// tag prefix and publish.yml ecosystems key).
+type releasePackage struct {
+	Path, Runtime, ReleaseType, Component string
+}
+
+// planReleasePackages lays out packages for a project named name
+// shipping runtimes (unknown runtimes ignored; none known = go): one
+// runtime is the `.` package named after the project; several put Go
+// at `.` and each other runtime at `<runtime>/` as `<name>-<runtime>`.
+// Ordered as releaseTypes.
+func planReleasePackages(name string, runtimes []string) []releasePackage {
 	want := map[string]bool{}
 	for _, r := range runtimes {
 		want[strings.ToLower(r)] = true
@@ -136,25 +145,36 @@ func renderReleasePleaseSeed(name string, runtimes []string) (config, manifest [
 	if len(selected) == 0 {
 		selected = releaseTypes[:1]
 	}
-
 	component := sanitizeComponent(name)
-	packages := map[string]rpSeedPackage{}
-	seed := false
-	var ports []string
+	out := make([]releasePackage, 0, len(selected))
 	for _, rt := range selected {
 		path, comp := ".", component
 		if len(selected) > 1 && rt.runtime != "go" {
 			path, comp = rt.runtime, component+"-"+rt.runtime
-			ports = append(ports, path)
+		}
+		out = append(out, releasePackage{Path: path, Runtime: rt.runtime, ReleaseType: rt.releaseType, Component: comp})
+	}
+	return out
+}
+
+// renderReleasePleaseSeed returns the starter config and manifest for a
+// project named name shipping runtimes (see planReleasePackages).
+func renderReleasePleaseSeed(name string, runtimes []string) (config, manifest []byte) {
+	packages := map[string]rpSeedPackage{}
+	seed := false
+	var ports []string
+	for _, pkg := range planReleasePackages(name, runtimes) {
+		if pkg.Path != "." {
+			ports = append(ports, pkg.Path)
 		}
 		var bareTag *bool
-		if rt.releaseType == "go" {
+		if pkg.ReleaseType == "go" {
 			no := false
 			bareTag = &no
 		}
-		packages[path] = rpSeedPackage{
-			ReleaseType:           rt.releaseType,
-			Component:             comp,
+		packages[pkg.Path] = rpSeedPackage{
+			ReleaseType:           pkg.ReleaseType,
+			Component:             pkg.Component,
 			IncludeComponentInTag: bareTag,
 			ChangelogPath:         "CHANGELOG.md",
 			BumpMinorPreMajor:     true,
@@ -163,7 +183,7 @@ func renderReleasePleaseSeed(name string, runtimes []string) (config, manifest [
 			Versioning:            "prerelease",
 			InitialVersion:        releasePleaseInitialVersion,
 		}
-		seed = seed || releaseTypesNeedingSeed[rt.releaseType]
+		seed = seed || releaseTypesNeedingSeed[pkg.ReleaseType]
 	}
 	if root, ok := packages["."]; ok && len(ports) > 0 {
 		sort.Strings(ports)
