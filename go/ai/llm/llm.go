@@ -10,6 +10,11 @@
 // answers. See [Message] for the per-role contract. Replay the calls
 // verbatim: [ToolCall.ProviderData] carries provider-opaque state, such
 // as Gemini thought signatures, that the provider requires back.
+//
+// Provider keys: [Resolve] reads a key only from the URI's api_key
+// param. [ApplyAPIKey] puts the scheme's key there from a secret store
+// or the environment, per the table [ProviderKeyFor] exposes; a
+// required key found nowhere yields a [*MissingKeyError].
 package llm
 
 import (
