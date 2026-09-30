@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.21](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.20...kit/v0.5.0-alpha.21) (2026-09-30)
 
+The hop-top team is happy to announce Kit 0.5.0-alpha.21. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
@@ -15,6 +17,8 @@
 * **cli:** structured output for token create, key create, key revoke ([67a7168](https://github.com/hop-top/poly-kit/commit/67a7168d22bb62fcb0a543e095f7b2748d37bce4))
 * **toolspec:** declare output schema for spec coverage ([d322b2a](https://github.com/hop-top/poly-kit/commit/d322b2a09813781681820a1724dd11bd266cdb89))
 * **uri:** declare output schemas for structured leaves ([be65bcd](https://github.com/hop-top/poly-kit/commit/be65bcd294cfb2f2ee3896a87103a675502656b0))
+
+Full diff: [kit/v0.5.0-alpha.20...kit/v0.5.0-alpha.21](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.20...kit/v0.5.0-alpha.21)
 
 ## [0.5.0-alpha.20](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.19...kit/v0.5.0-alpha.20) (2026-09-30)
 
