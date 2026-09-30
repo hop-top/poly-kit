@@ -18,7 +18,7 @@ provider-specific wire detail (the adapter sub-packages below).
 - you pick a model by capability and budget → `llm.PickProvider(ctx, reg, profile, llm.BudgetBalanced)`; restrict with `llm.LoadPool()` + `PickProviderInPool`
 - you observe calls → `llm.OnRequest`/`OnResponse`/`OnError`/`OnRoute`/`OnEvaResult`, or `llm.WithBus(bus)`
 - a URI-form model needs its provider key → `llm.ApplyAPIKey(ctx, store, uri)`; `errors.Is(err, llm.ErrMissingKey)` when none is set: [Provider keys](../../../docs/adopters/reference/llm.md#provider-keys)
-- you add a provider → `llm.Register("myscheme", func(cfg llm.ResolvedConfig) (llm.Provider, error) {...})`
+- you add a provider → `llm.Register("myscheme", factory, llm.Declaration{...})`: [Custom adapters](../../../docs/adopters/reference/llm.md#custom-adapters)
 
 ## Quick start
 
@@ -34,8 +34,8 @@ fmt.Println(resp.Message.Content)
 
 ## Contract
 
-- Provider URI: `scheme://model[?param=val]`; 14 schemes, capabilities per
-  scheme: [Provider URIs](../../../docs/adopters/reference/llm.md#provider-uris).
+- Provider URI: `scheme://model[?param=val]`; 14 schemes, aim aliases, catalog
+  providers by protocol: [Provider URIs](../../../docs/adopters/reference/llm.md#provider-uris).
 - Config merge: file < URI params < env vars. Pool: file < env (`LLM_POOL_DISABLE`) < CLI (`ResolvePool`).
 - Bus topics default to `kit.ai.{request.started, response.received,
   request.errored, fallback.applied, route.selected, eva.evaluated}`;

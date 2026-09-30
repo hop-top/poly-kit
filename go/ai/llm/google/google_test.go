@@ -44,7 +44,9 @@ func TestNew_MissingModel(t *testing.T) {
 }
 
 func TestNew_MissingAPIKey(t *testing.T) {
-	// Ensure no key variable is set for this test.
+	// Ensure no key variable, and no llm.yaml key, is set for this test.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("GOOGLE_API_KEY", "")
 	t.Setenv("GEMINI_API_KEY", "")
 	t.Setenv("LLM_API_KEY", "")
@@ -57,6 +59,8 @@ func TestNew_MissingAPIKey(t *testing.T) {
 }
 
 func TestNew_APIKeyFromEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("GOOGLE_API_KEY", "")
 	t.Setenv("GEMINI_API_KEY", "env-key")
 

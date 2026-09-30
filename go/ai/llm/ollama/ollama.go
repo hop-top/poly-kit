@@ -28,8 +28,13 @@ const (
 	chatEndpoint   = "/api/chat"
 )
 
+// A local runtime: OLLAMA_API_KEY is sent when set (an authenticating
+// proxy in front of ollama) and never required. The aim catalog has no
+// local ollama entry, only the hosted ollama-cloud.
 func init() {
-	llm.Register(scheme, New)
+	llm.Register(scheme, New, llm.Declaration{
+		Key: &llm.ProviderKey{EnvVars: []string{"OLLAMA_API_KEY"}, Optional: true},
+	})
 }
 
 // Adapter is the Ollama provider. It implements [llm.Provider],

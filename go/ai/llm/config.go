@@ -53,9 +53,12 @@ type configFile struct {
 
 // configFileProvider mirrors a single provider block in the YAML.
 type configFileProvider struct {
-	APIKey  string `yaml:"api_key"`
-	BaseURL string `yaml:"base_url"`
-	Model   string `yaml:"model"`
+	APIKey string `yaml:"api_key"`
+	// APIKeyEnv names the variable holding the key, for a key kept
+	// under a name other than the provider's own.
+	APIKeyEnv string `yaml:"api_key_env"`
+	BaseURL   string `yaml:"base_url"`
+	Model     string `yaml:"model"`
 	// Any unknown keys land here.
 	Extra map[string]any `yaml:",inline"`
 }
@@ -150,7 +153,8 @@ func parseQuery(q string) map[string]string {
 
 // LoadConfig resolves the full provider configuration by merging:
 //
-//  1. Config file values for the URI's scheme
+//  1. Config file values for the URI's scheme (api_key, or the
+//     variable api_key_env names when api_key is unset)
 //  2. URI values (model, params)
 //  3. Environment variable overrides
 //
@@ -183,6 +187,9 @@ func LoadConfig(uri string) (ResolvedConfig, error) {
 	var pc ProviderConfig
 	if fp, ok := cf.Providers[parsed.Scheme]; ok {
 		pc.APIKey = fp.APIKey
+		if pc.APIKey == "" && fp.APIKeyEnv != "" {
+			pc.APIKey = os.Getenv(fp.APIKeyEnv)
+		}
 		pc.BaseURL = fp.BaseURL
 		pc.Model = fp.Model
 		if len(fp.Extra) > 0 {

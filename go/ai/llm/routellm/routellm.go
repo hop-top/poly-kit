@@ -28,8 +28,12 @@ import (
 	"hop.top/kit/go/ai/llm/openai"
 )
 
+// A local router: ROUTELLM_API_KEY is sent when set and never
+// required. The aim catalog has no routellm entry.
 func init() {
-	llm.Register("routellm", New)
+	llm.Register("routellm", New, llm.Declaration{
+		Key: &llm.ProviderKey{EnvVars: []string{"ROUTELLM_API_KEY"}, Optional: true},
+	})
 }
 
 // Adapter wraps an inner openai adapter for HTTP completions to a RouteLLM

@@ -55,7 +55,11 @@ func isolateKeys(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir()) // no aim catalog unless a test installs one
+	llm.ResetDefaultRegistry()
+	t.Cleanup(llm.ResetDefaultRegistry)
 	vars := []string{llm.FallbackEnvKey, "LLM_BASE_URL", "OPENAI_BASE_URL"}
+	vars = append(vars, fixtureEnvVars()...)
 	for _, names := range keyedSchemes {
 		vars = append(vars, names...)
 	}
@@ -86,6 +90,7 @@ func TestEnvKeyFor_GoogleKeepsGeminiName(t *testing.T) {
 }
 
 func TestProviderKeyFor_Table(t *testing.T) {
+	isolateKeys(t)
 	for scheme, names := range keyedSchemes {
 		got, ok := llm.ProviderKeyFor(scheme + "://vendor/model?x=1")
 		require.True(t, ok, scheme)
@@ -105,6 +110,7 @@ func TestProviderKeyFor_Table(t *testing.T) {
 // Every scheme an adapter registers gets a deliberate entry; a new
 // adapter without one would reach its provider unauthenticated.
 func TestProviderKeyFor_CoversEveryRegisteredScheme(t *testing.T) {
+	isolateKeys(t)
 	for _, scheme := range llm.Schemes() {
 		_, ok := llm.ProviderKeyFor(scheme)
 		assert.True(t, ok, "registered scheme %q has no provider key entry", scheme)

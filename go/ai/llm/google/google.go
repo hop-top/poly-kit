@@ -76,7 +76,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		return nil, fmt.Errorf("gemini: model is required")
 	}
 
-	// Env order comes from llm's provider key table: GOOGLE_API_KEY,
+	// Env order comes from this adapter's declaration: GOOGLE_API_KEY,
 	// GEMINI_API_KEY, then LLM_API_KEY, as Google's genai SDK reads them.
 	apiKey := cfg.Provider.APIKey
 	if apiKey == "" {
@@ -872,7 +872,15 @@ func (a *Adapter) mapAPIError(e *apiError, model string) error {
 // Registration
 // ---------------------------------------------------------------------------
 
+// declaration pins google's key order: GOOGLE_API_KEY before
+// GEMINI_API_KEY, as Google's genai SDK (google.golang.org/genai,
+// getAPIKeyFromEnv) reads them. The aim catalog also lists
+// GOOGLE_GENERATIVE_AI_API_KEY, which that SDK does not read.
+var declaration = llm.Declaration{
+	Key: &llm.ProviderKey{EnvVars: []string{"GOOGLE_API_KEY", "GEMINI_API_KEY"}},
+}
+
 func init() {
-	llm.Register("gemini", New)
-	llm.Register("google", New)
+	llm.Register("gemini", New, declaration)
+	llm.Register("google", New, declaration)
 }

@@ -19,8 +19,12 @@ import (
 	"hop.top/kit/go/ai/llm"
 )
 
+// A local inference server: TRITON_API_KEY is sent when set and never
+// required. The aim catalog has no triton entry.
 func init() {
-	llm.Register("triton", New)
+	llm.Register("triton", New, llm.Declaration{
+		Key: &llm.ProviderKey{EnvVars: []string{"TRITON_API_KEY"}, Optional: true},
+	})
 }
 
 // Scorer scores a float32 input vector and returns a scalar score.
