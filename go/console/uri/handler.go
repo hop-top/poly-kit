@@ -34,6 +34,7 @@ func handlerIDCmd(defaults HandlerConfig) *cobra.Command {
 	}
 	installHandlerFlags(cmd, &f, false)
 	annotateRead(cmd)
+	setOutputSchema(cmd, &handlerIDRow{})
 	return cmd
 }
 
@@ -92,6 +93,7 @@ func handlerGenerateCmd(defaults HandlerConfig) *cobra.Command {
 	installHandlerFlags(cmd, &f, true)
 	setSideEffect(cmd, "write-local")
 	setIdempotency(cmd, "yes")
+	setOutputSchema(cmd, &handlerGenerateRow{})
 	return cmd
 }
 

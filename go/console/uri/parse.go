@@ -27,6 +27,7 @@ func parseCmd(cfg Config) *cobra.Command {
 	}
 	installParseFlags(cmd, &flags)
 	annotateRead(cmd)
+	setOutputSchema(cmd, &uriRow{})
 	return cmd
 }
 
@@ -55,6 +56,7 @@ func resolveCmd(cfg Config) *cobra.Command {
 	}
 	installParseFlags(cmd, &flags)
 	annotateRead(cmd)
+	setOutputSchema(cmd, &actionRow{})
 	return cmd
 }
 
