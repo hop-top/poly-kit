@@ -98,7 +98,7 @@ func TestNew_APIKeyEnvPrecedence(t *testing.T) {
 			var got string
 			srv := httptest.NewServer(http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
-					got = r.URL.Query().Get("key")
+					got = r.Header.Get("x-goog-api-key")
 					writeJSON(w, geminiResponse("ok", "STOP", 1, 1))
 				},
 			))
@@ -127,7 +127,8 @@ func TestComplete_HappyPath(t *testing.T) {
 			assert.Equal(t, http.MethodPost, r.Method)
 			assert.Contains(t, r.URL.Path,
 				"/models/gemini-2.0-flash:generateContent")
-			assert.Equal(t, "test-key", r.URL.Query().Get("key"))
+			assert.Equal(t, "test-key", r.Header.Get("x-goog-api-key"))
+			assert.Empty(t, r.URL.Query().Get("key"))
 			assert.Equal(t, "application/json",
 				r.Header.Get("Content-Type"))
 

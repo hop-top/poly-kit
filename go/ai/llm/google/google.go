@@ -205,6 +205,25 @@ type apiError struct {
 	Status  string `json:"status"`
 }
 
+// newRequest builds a POST to the model's method. The key travels in
+// the x-goog-api-key header, as Google's genai SDK sends it, and never
+// in the URL: net/http quotes the URL in every transport error, and the
+// --offline guard names it in its refusal.
+func (a *Adapter) newRequest(
+	ctx context.Context, model, method string, body []byte,
+) (*http.Request, error) {
+	url := fmt.Sprintf("%s/models/%s:%s", a.baseURL, model, method)
+	httpReq, err := http.NewRequestWithContext(
+		ctx, http.MethodPost, url, bytes.NewReader(body),
+	)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", a.apiKey)
+	return httpReq, nil
+}
+
 // ---------------------------------------------------------------------------
 // Completer
 // ---------------------------------------------------------------------------
@@ -219,18 +238,10 @@ func (a *Adapter) Complete(
 		return llm.Response{}, err
 	}
 
-	url := fmt.Sprintf(
-		"%s/models/%s:generateContent?key=%s",
-		a.baseURL, model, a.apiKey,
-	)
-
-	httpReq, err := http.NewRequestWithContext(
-		ctx, http.MethodPost, url, bytes.NewReader(body),
-	)
+	httpReq, err := a.newRequest(ctx, model, "generateContent", body)
 	if err != nil {
 		return llm.Response{}, err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
@@ -269,18 +280,12 @@ func (a *Adapter) Stream(
 		return nil, err
 	}
 
-	url := fmt.Sprintf(
-		"%s/models/%s:streamGenerateContent?alt=sse&key=%s",
-		a.baseURL, model, a.apiKey,
-	)
-
-	httpReq, err := http.NewRequestWithContext(
-		ctx, http.MethodPost, url, bytes.NewReader(body),
+	httpReq, err := a.newRequest(
+		ctx, model, "streamGenerateContent?alt=sse", body,
 	)
 	if err != nil {
 		return nil, err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
@@ -383,18 +388,10 @@ func (a *Adapter) CallWithTools(
 		return llm.ToolResponse{}, err
 	}
 
-	url := fmt.Sprintf(
-		"%s/models/%s:generateContent?key=%s",
-		a.baseURL, model, a.apiKey,
-	)
-
-	httpReq, err := http.NewRequestWithContext(
-		ctx, http.MethodPost, url, bytes.NewReader(body),
-	)
+	httpReq, err := a.newRequest(ctx, model, "generateContent", body)
 	if err != nil {
 		return llm.ToolResponse{}, err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
