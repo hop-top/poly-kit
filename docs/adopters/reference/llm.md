@@ -234,6 +234,65 @@ cfg, _ := llm.LoadConfig("anthropic://claude-sonnet-4-5-20250514?temperature=0.7
 
 Three-layer merge: config file < URI params < env vars.
 
+## Provider keys
+
+`llm.Resolve` reads a key from the URI's `api_key` param and nowhere
+else, so a URI-form model such as `openrouter://openai/gpt-4.1-nano`
+reaches its provider unauthenticated unless the key is put on the URI.
+`llm.ApplyAPIKey` does that from kit's scheme → key table:
+
+```go
+uri, err := llm.ApplyAPIKey(ctx, store, "openrouter://openai/gpt-4.1-nano")
+switch {
+case errors.Is(err, llm.ErrMissingKey):
+    var missing *llm.MissingKeyError
+    errors.As(err, &missing) // missing.EnvVars[0] == "OPENROUTER_API_KEY"
+    // word the message and exit code your way
+case err != nil:
+    // secret-store backend failure, or uri has no scheme
+}
+provider, err := llm.Resolve(uri)
+```
+
+| Scheme | Key variables, highest precedence first | Required |
+|--------|------------------------------------------|----------|
+| `anthropic` | `ANTHROPIC_API_KEY` | yes |
+| `openai` | `OPENAI_API_KEY` | yes |
+| `google`, `gemini` | `GOOGLE_API_KEY`, then `GEMINI_API_KEY` | yes |
+| `openrouter` | `OPENROUTER_API_KEY` | yes |
+| `groq` | `GROQ_API_KEY` | yes |
+| `xai` | `XAI_API_KEY` | yes |
+| `together` | `TOGETHER_API_KEY` | yes |
+| `fireworks` | `FIREWORKS_API_KEY` | yes |
+| `deepseek` | `DEEPSEEK_API_KEY` | yes |
+| `mistral` | `MISTRAL_API_KEY` | yes |
+| `ollama` | `OLLAMA_API_KEY` | no |
+| `routellm` | `ROUTELLM_API_KEY` | no |
+| `triton` | `TRITON_API_KEY` | no |
+| `lmstudio` | none | no |
+
+Resolution order for a required key: the secret store under each name
+(nil store skips it), then the environment under each name, then
+`LLM_API_KEY`. Every name is also the store key, uppercase. The google
+order matches Google's genai SDK, which prefers `GOOGLE_API_KEY` when
+both are set; the `google` adapter reads the environment in the same
+order.
+
+`ApplyAPIKey` leaves the URI unchanged when it already carries
+`api_key`, when the scheme is local and its own variable is unset
+(`LLM_API_KEY` is never lent to a local runtime), and when kit has no
+entry for the scheme. It needs `scheme://`; mapping a bare model id to a
+scheme is the caller's policy. A required key found nowhere returns a
+`*MissingKeyError` (`errors.Is(err, llm.ErrMissingKey)`, also
+`secret.ErrNotFound`) listing the names consulted. Errors name
+variables, never values; the returned URI holds the key, so don't log it.
+
+Lower-level helpers: `llm.ProviderKeyFor(uri)` returns the table row,
+`llm.SecretFor(ctx, store, uri)` returns the key itself, and
+`llm.EnvKeyFor(uri)` returns one name (for `google`/`gemini` it stays
+`GEMINI_API_KEY` for compatibility; unknown schemes and `lmstudio` get
+`LLM_API_KEY`).
+
 ## Model registry
 
 `aim` (`hop.top/aim`, `v0.1.0-alpha.0`) is the source of truth for model

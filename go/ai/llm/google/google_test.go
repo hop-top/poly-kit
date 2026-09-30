@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -43,7 +44,8 @@ func TestNew_MissingModel(t *testing.T) {
 }
 
 func TestNew_MissingAPIKey(t *testing.T) {
-	// Ensure GEMINI_API_KEY is not set for this test.
+	// Ensure no key variable is set for this test.
+	t.Setenv("GOOGLE_API_KEY", "")
 	t.Setenv("GEMINI_API_KEY", "")
 	t.Setenv("LLM_API_KEY", "")
 
@@ -55,6 +57,7 @@ func TestNew_MissingAPIKey(t *testing.T) {
 }
 
 func TestNew_APIKeyFromEnv(t *testing.T) {
+	t.Setenv("GOOGLE_API_KEY", "")
 	t.Setenv("GEMINI_API_KEY", "env-key")
 
 	p, err := google.New(llm.ResolvedConfig{
@@ -62,6 +65,52 @@ func TestNew_APIKeyFromEnv(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, p)
+}
+
+// The adapter reads the environment in the order Google's genai SDK
+// does: GOOGLE_API_KEY, then GEMINI_API_KEY, then LLM_API_KEY.
+func TestNew_APIKeyEnvPrecedence(t *testing.T) {
+	cases := []struct {
+		name, google, gemini, universal, want string
+	}{
+		{"GOOGLE_API_KEY alone", "fake-google", "", "", "fake-google"},
+		{"GEMINI_API_KEY alone", "", "fake-gemini", "", "fake-gemini"},
+		{"both: GOOGLE_API_KEY wins", "fake-google", "fake-gemini", "", "fake-google"},
+		{"LLM_API_KEY last", "", "", "fake-universal", "fake-universal"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			for name, v := range map[string]string{
+				"GOOGLE_API_KEY": tc.google, "GEMINI_API_KEY": tc.gemini, "LLM_API_KEY": tc.universal,
+			} {
+				t.Setenv(name, v)
+				if v == "" {
+					require.NoError(t, os.Unsetenv(name))
+				}
+			}
+
+			var got string
+			srv := httptest.NewServer(http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					got = r.URL.Query().Get("key")
+					writeJSON(w, geminiResponse("ok", "STOP", 1, 1))
+				},
+			))
+			defer srv.Close()
+
+			p, err := google.New(llm.ResolvedConfig{
+				Provider: llm.ProviderConfig{Model: "gemini-2.0-flash", BaseURL: srv.URL},
+			})
+			require.NoError(t, err)
+			_, err = p.(llm.Completer).Complete(context.Background(), llm.Request{
+				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------

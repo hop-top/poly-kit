@@ -35,7 +35,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"hop.top/kit/go/ai/llm"
@@ -77,17 +76,16 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		return nil, fmt.Errorf("gemini: model is required")
 	}
 
+	// Env order comes from llm's provider key table: GOOGLE_API_KEY,
+	// GEMINI_API_KEY, then LLM_API_KEY, as Google's genai SDK reads them.
 	apiKey := cfg.Provider.APIKey
 	if apiKey == "" {
-		apiKey = os.Getenv("GEMINI_API_KEY")
-	}
-	if apiKey == "" {
-		apiKey = os.Getenv("LLM_API_KEY")
+		apiKey, _ = llm.SecretFor(context.Background(), nil, "google")
 	}
 	if apiKey == "" {
 		return nil, fmt.Errorf(
 			"gemini: API key is required (set via config, URI param, " +
-				"GEMINI_API_KEY, or LLM_API_KEY)",
+				"GOOGLE_API_KEY, GEMINI_API_KEY, or LLM_API_KEY)",
 		)
 	}
 
