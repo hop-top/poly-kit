@@ -467,6 +467,39 @@ func TestDefaultRegistry_ResolvesOllamaScheme(t *testing.T) {
 	assert.Equal(t, "http://localhost:11434/api/chat", gotURL)
 }
 
+// Ollama's native API sits at the server root, so a host-form URI
+// reaches /api/chat on that host with no path added.
+func TestDefaultRegistry_OllamaHostFormStaysAtRoot(t *testing.T) {
+	var gotURL string
+	orig := http.DefaultClient.Transport
+	http.DefaultClient.Transport = roundTripFunc(
+		func(r *http.Request) (*http.Response, error) {
+			gotURL = r.URL.String()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": {"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(
+					`{"message":{"role":"assistant","content":"local"},"done":true}`,
+				)),
+				Request: r,
+			}, nil
+		},
+	)
+	t.Cleanup(func() { http.DefaultClient.Transport = orig })
+
+	p, err := llm.Resolve("ollama://gpu-box:11434/llama3")
+	require.NoError(t, err)
+	defer p.Close()
+
+	_, err = p.(llm.Completer).Complete(context.Background(), llm.Request{
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "http://gpu-box:11434/api/chat", gotURL)
+}
+
 // ---------------------------------------------------------------------------
 // Multimodal
 // ---------------------------------------------------------------------------

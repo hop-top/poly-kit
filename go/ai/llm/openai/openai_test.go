@@ -21,8 +21,15 @@ import (
 
 func fakeServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
+	return fakeServerAt(t, "/chat/completions", handler)
+}
+
+// fakeServerAt serves handler at path only; LM Studio's API lives at
+// /v1/chat/completions.
+func fakeServerAt(t *testing.T, path string, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/chat/completions", handler)
+	mux.HandleFunc(path, handler)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
@@ -386,7 +393,11 @@ func TestError_Server500(t *testing.T) {
 func TestSchemeRegistration(t *testing.T) {
 	for _, scheme := range schemes {
 		t.Run(scheme, func(t *testing.T) {
-			srv := fakeServer(t, func(
+			path := "/chat/completions"
+			if scheme == "lmstudio" {
+				path = "/v1/chat/completions"
+			}
+			srv := fakeServerAt(t, path, func(
 				w http.ResponseWriter, _ *http.Request,
 			) {
 				w.Header().Set("Content-Type", "application/json")
@@ -416,7 +427,7 @@ func TestSchemeRegistration(t *testing.T) {
 
 func TestBaseURL_Override(t *testing.T) {
 	called := false
-	srv := fakeServer(t, func(
+	srv := fakeServerAt(t, "/v1/chat/completions", func(
 		w http.ResponseWriter, _ *http.Request,
 	) {
 		called = true
@@ -692,4 +703,88 @@ func TestAdapter_ImplementsAllInterfaces(t *testing.T) {
 	var _ llm.Completer = a
 	var _ llm.Streamer = a
 	var _ llm.ToolCaller = a
+}
+
+// LM Studio serves its OpenAI-compatible API under /v1 only, so every
+// way of naming the server must reach /v1/chat/completions exactly once.
+func TestResolve_LMStudioRequestPath(t *testing.T) {
+	tests := []struct {
+		name string
+		uri  string
+		want string
+	}{
+		{"bare", "lmstudio://local-model", "http://localhost:1234/v1/chat/completions"},
+		{"host form", "lmstudio://localhost:1234/local-model", "http://localhost:1234/v1/chat/completions"},
+		{"host form other host", "lmstudio://gpu-box:5678/local-model", "http://gpu-box:5678/v1/chat/completions"},
+		{"host form org model", "lmstudio://gpu-box:5678/org/local-model", "http://gpu-box:5678/v1/chat/completions"},
+		{"base_url with v1", "lmstudio://local-model?base_url=http://gpu-box:5678/v1", "http://gpu-box:5678/v1/chat/completions"},
+		{"base_url with v1 and slash", "lmstudio://local-model?base_url=http://gpu-box:5678/v1/", "http://gpu-box:5678/v1/chat/completions"},
+		{"base_url without v1", "lmstudio://local-model?base_url=http://gpu-box:5678", "http://gpu-box:5678/v1/chat/completions"},
+		{"base_url without v1 with slash", "lmstudio://local-model?base_url=http://gpu-box:5678/", "http://gpu-box:5678/v1/chat/completions"},
+		{"base_url proxy prefix", "lmstudio://local-model?base_url=https://proxy.example/lmstudio", "https://proxy.example/lmstudio/v1/chat/completions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rt := &recordingTransport{}
+			swapDefaultTransport(t, rt)
+
+			p, err := llm.Resolve(tt.uri)
+			require.NoError(t, err)
+			_, err = p.(llm.Completer).Complete(context.Background(), llm.Request{
+				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+			})
+			require.NoError(t, err)
+			require.Len(t, rt.urls, 1)
+			assert.Equal(t, tt.want, rt.urls[0])
+		})
+	}
+}
+
+// LLM_BASE_URL (and a config-file base_url) reach the adapter through
+// LoadConfig, not Resolve; the /v1 rule applies there too.
+func TestLoadConfig_LMStudioEnvBaseURLGetsV1(t *testing.T) {
+	for _, tt := range []struct{ env, want string }{
+		{"http://gpu-box:5678", "http://gpu-box:5678/v1/chat/completions"},
+		{"http://gpu-box:5678/v1", "http://gpu-box:5678/v1/chat/completions"},
+	} {
+		t.Run(tt.env, func(t *testing.T) {
+			t.Setenv("LLM_BASE_URL", tt.env)
+			rt := &recordingTransport{}
+			swapDefaultTransport(t, rt)
+
+			cfg, err := llm.LoadConfig("lmstudio://local-model")
+			require.NoError(t, err)
+			p, err := New(cfg)
+			require.NoError(t, err)
+			_, err = p.(llm.Completer).Complete(context.Background(), llm.Request{
+				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+			})
+			require.NoError(t, err)
+			require.Len(t, rt.urls, 1)
+			assert.Equal(t, tt.want, rt.urls[0])
+		})
+	}
+}
+
+// The /v1 rule is LM Studio's alone: another scheme's host form and
+// base_url reach the server exactly as given.
+func TestResolve_OtherSchemesKeepGivenBaseURL(t *testing.T) {
+	for _, tt := range []struct{ uri, want string }{
+		{"groq://gpu-box:5678/llama", "http://gpu-box:5678/chat/completions"},
+		{"openai://local-model?base_url=http://gpu-box:5678", "http://gpu-box:5678/chat/completions"},
+	} {
+		t.Run(tt.uri, func(t *testing.T) {
+			rt := &recordingTransport{}
+			swapDefaultTransport(t, rt)
+
+			p, err := llm.Resolve(tt.uri)
+			require.NoError(t, err)
+			_, err = p.(llm.Completer).Complete(context.Background(), llm.Request{
+				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+			})
+			require.NoError(t, err)
+			require.Len(t, rt.urls, 1)
+			assert.Equal(t, tt.want, rt.urls[0])
+		})
+	}
 }
