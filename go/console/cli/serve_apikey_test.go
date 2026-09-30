@@ -110,9 +110,15 @@ func TestAPIKeyModeEndToEnd(t *testing.T) {
 	_, _, err = rec.last(t)
 	assert.ErrorIs(t, err, cmdsurface.ErrAuthRefused)
 
-	out, err = runKey(t, path, "revoke", id)
+	out, err = runKey(t, path, "revoke", id, "--format", "json")
 	require.NoError(t, err)
-	assert.Contains(t, out, "revoked "+id)
+	var revoked apiKeyRow
+	require.NoError(t, json.Unmarshal([]byte(out), &revoked), out)
+	assert.Equal(t, id, revoked.ID)
+	assert.Equal(t, "ci-bot", revoked.Principal)
+	assert.Equal(t, "revoked", revoked.State)
+	assert.NotEmpty(t, revoked.RevokedAt)
+	assertMatchesOutputSchema(t, []string{"token", "key", "revoke"}, out)
 	resp, body = get(t, base+"/v1/commands/list", map[string]string{"X-API-Key": key})
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(body))
 	assert.Contains(t, string(body), "revoked")
@@ -124,6 +130,32 @@ func TestAPIKeyModeEndToEnd(t *testing.T) {
 	require.Len(t, rows, 1)
 	assert.Equal(t, "revoked", rows[0]["state"])
 	assert.NotContains(t, out, strings.Split(key, "_")[2], "no secret is listed")
+}
+
+// TestTokenKeyCreatePrintsTheBareKeyForHumanFormats pins the output
+// scripts capture: the key and a newline, nothing else, under the
+// default format and every human one. A data format (json, yaml)
+// wraps it with its id and principal.
+func TestTokenKeyCreatePrintsTheBareKeyForHumanFormats(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "keys", "apikeys.db")
+	for _, format := range []string{"", "table", "text"} {
+		args := []string{"create", "--sub", "ci-bot"}
+		if format != "" {
+			args = append(args, "--format", format)
+		}
+		out, err := runKey(t, path, args...)
+		require.NoError(t, err)
+		assert.Regexp(t, `^kit_[0-9a-f]{16}_[0-9a-f]{64}\n$`, out, "format=%q", format)
+	}
+
+	out, err := runKey(t, path, "create", "--sub", "ci-bot", "--format", "json")
+	require.NoError(t, err)
+	var doc apiKeyCreated
+	require.NoError(t, json.Unmarshal([]byte(out), &doc), out)
+	assert.Regexp(t, `^kit_[0-9a-f]{16}_[0-9a-f]{64}$`, doc.Key)
+	assert.Equal(t, strings.Split(doc.Key, "_")[1], doc.ID, "the id the key embeds")
+	assert.Equal(t, "ci-bot", doc.Principal)
+	assertMatchesOutputSchema(t, []string{"token", "key", "create"}, out)
 }
 
 // TestTokenKeyRefusals pins the verbs' exit codes.

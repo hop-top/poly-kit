@@ -113,6 +113,13 @@ func tokenClaimsCmd(_ *Root) *cobra.Command {
 	return cmd
 }
 
+// tokenCreated is what token create renders under a data format (json,
+// yaml). Human formats print the bare token instead, so the
+// $(tool token create) scripts depend on keeps working.
+type tokenCreated struct {
+	Token string `json:"token" yaml:"token"`
+}
+
 // tokenCreateCmd signs a token with the tool's identity keypair — the
 // token `auth.mode: jwt` accepts.
 func tokenCreateCmd(r *Root) *cobra.Command {
@@ -162,6 +169,9 @@ func tokenCreateCmd(r *Root) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if isDataFormat(cmd, r.Viper) {
+				return output.Dispatch(cmd, r.Viper, tokenCreated{Token: raw})
+			}
 			fmt.Fprintln(cmd.OutOrStdout(), raw)
 			return nil
 		},
@@ -175,6 +185,8 @@ func tokenCreateCmd(r *Root) *cobra.Command {
 
 	SetSideEffect(cmd, SideEffectRead)
 	SetIdempotency(cmd, IdempotencyNo)
+	// Describes --format json|yaml; human formats print the bare token.
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &tokenCreated{}, Version: "1.0"})
 	return cmd
 }
 
