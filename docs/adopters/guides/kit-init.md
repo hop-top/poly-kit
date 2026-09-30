@@ -194,6 +194,15 @@ triggers and paths back from the live file instead of re-deriving
 them. Hand-edits to the caller follow the usual rule — the next run
 offers a `.kit-suggested` sibling instead of overwriting.
 
+### Go publishes from its tags
+
+A Go project gets `test-go-caller.yml` but no release caller: its
+release-please tags are bare `v<version>` and proxy.golang.org serves
+the module straight from them. Re-running `kit init` in a repo that
+still has the `release-go-caller.yml` an earlier version generated
+removes it when unedited, and reports it (for you to delete) when
+edited.
+
 ## Migration from `kit scaffold`
 
 `kit scaffold` was removed in this release. Map old commands:
