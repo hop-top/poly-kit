@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-alpha.22](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.21...kit/v0.5.0-alpha.22) (2026-09-30)
+
+
+### Features
+
+* **llm:** provider keys, aliases and routing from aim provider facts ([e4644f8](https://github.com/hop-top/poly-kit/commit/e4644f86d5c4a2456f32b6d7b4e3cb4e55519a26))
+
 ## [0.5.0-alpha.21](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.20...kit/v0.5.0-alpha.21) (2026-09-30)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.21. This release includes maintenance release with bug fixes.

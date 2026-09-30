@@ -1,7 +1,7 @@
 name: cli-go
 description: "Single-binary Go CLI on a kit root: served commands, api + socket + mcp + rpc services (cobra)"
 # The release PR sets both pins (this and go.mod.tmpl) to the release it cuts.
-kit_version: ">=0.5.0-alpha.21" # x-release-please-version
+kit_version: ">=0.5.0-alpha.22" # x-release-please-version
 
 variables:
   - name: Name
