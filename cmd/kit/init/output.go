@@ -157,6 +157,9 @@ func WriteHuman(w io.Writer, s Summary) error {
 			if a.SuggestedPath != "" {
 				line += " → " + a.SuggestedPath
 			}
+			if a.Detail != "" {
+				line += fmt.Sprintf(" (%s)\n      %s", a.Reason, a.Detail)
+			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
 				return err
 			}

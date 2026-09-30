@@ -24,6 +24,11 @@ boundary is:
 
 - `.github/workflows/*.yml` **caller** stubs that `uses:` reusable workflows
   hosted in `hop-top/.github` (e.g. `hop-top/.github/.github/workflows/release-go.yml@<ref>`).
+  One caller keeps a fixed, non-`*-caller` name:
+  `.github/workflows/release-please.yml` (calls `release-please-on-push.yml`),
+  the file name adopters already run release-please from — the
+  workflow's run history, `gh workflow run release-please.yml` and the
+  preflight's default path survive a migration (Section 6).
 - `.githooks/pre-pr` (before-PR hook) and `.githooks/post-pr-open` (after-PR
   hook) plus any helper scripts they invoke.
 - `.github/workflows/kit-bus-*.yml` PR-scoped bus event workflows, generated
@@ -405,6 +410,27 @@ user effectively accepted the suggestion). This keeps the working tree
 from accumulating stale `.kit-suggested` files once the user's edits
 converge with what kit would write.
 
+### Release-please caller
+
+The release-please generator applies the rules above plus:
+
+1. **One live release-please workflow.** Every `.github/workflows/*.y{a,}ml`
+   is scanned for a job that runs `googleapis/release-please-action` (or
+   calls the reusable workflow). If one runs release-please and is not
+   the caller, the caller is written only as a `.kit-suggested` sibling
+   and the other file is reported (`keep`).
+2. **Opt-in migration** (`--migrate-release-please`) replaces a
+   hand-written workflow only when it is **plain** (the caller
+   reproduces all of it) and **committed unchanged** in git. The caller
+   carries its triggers, config paths and target branch; a legacy file
+   at another path is removed (`remove`). Custom or uncommitted files
+   are never touched.
+3. **Settings read back.** The caller's triggers, `config-file`,
+   `manifest-file` and `target-branch` are re-read from the live caller
+   on every run, so refresh never reverts a migration.
+4. **No config writes.** A missing config or manifest is reported
+   (`missing`); kit does not author either.
+
 ### Dry-run / JSON output
 
 `kit init --dry-run` (or `--format json`) reports, for each file the
@@ -413,11 +439,21 @@ generator would touch:
 ```json
 {
   "path": ".github/workflows/release-go.yml",
-  "action": "write" | "skip-unchanged" | "suggest-sibling" | "manifest-update",
+  "action": "write" | "skip-unchanged" | "suggest-sibling" | "manifest-update"
+          | "remove" | "keep" | "missing",
   "suggested_path": ".github/workflows/release-go.yml.kit-suggested",
-  "reason": "user-edited" | "new" | "refresh" | "manifest-only"
+  "reason": "user-edited" | "new" | "refresh" | "manifest-only" | "convergence"
+          | "migrated" | "existing-release-please" | "custom-release-please"
+          | "uncommitted-release-please" | "duplicate-release-please"
+          | "release-please-config",
+  "detail": "what to do next (release-please generator)"
 }
 ```
+
+`remove`, `keep` and `missing` come from the release-please generator
+only: a legacy workflow replaced by migration, a workflow that runs
+release-please left untouched, and a missing release-please config or
+manifest.
 
 `suggested_path` is present only when `action == "suggest-sibling"`.
 
@@ -504,6 +540,8 @@ run so adopters who never operate a bus host don't see clutter in
 | `--with-githook-pre-pr`           | `true`  | Render `.githooks/pre-pr` and helpers.                            |
 | `--with-githook-post-pr-open`     | `true`  | Render `.githooks/post-pr-open` and helpers.                      |
 | `--with-bus-workflows`            | `false` | Render `.github/workflows/kit-bus-*.yml`. Opt-in. Disabled at runtime by default per Section 3. |
+| `--with-release-please`           | `true`  | Render `.github/workflows/release-please.yml` (needs `--with-github-workflows`). |
+| `--migrate-release-please`        | `false` | Let the release-please generator replace a plain, committed hand-written release-please workflow (Section 6). |
 | `--dry-run`                       | `false` | Compute the file list without writing; emit JSON report.                   |
 | `--format json`                   | (off)   | Emit machine-readable plan output (see Section 6).                         |
 

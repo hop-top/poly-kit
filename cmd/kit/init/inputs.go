@@ -69,6 +69,12 @@ type Inputs struct {
 	WithGithookPostPROpen bool
 	WithBusWorkflows      bool
 
+	// WithReleasePlease renders .github/workflows/release-please.yml
+	// (needs WithGitHubWorkflows too). MigrateReleasePlease lets it
+	// replace a plain, committed hand-written release-please workflow.
+	WithReleasePlease    bool
+	MigrateReleasePlease bool
+
 	Mode Mode // populated by caller from detect.Detect
 
 	// Vars carries the union of built-in vars and resolved manifest
@@ -116,6 +122,8 @@ type FlagSet struct {
 	WithPrePrHook         *bool
 	WithGithookPostPROpen *bool
 	WithBusWorkflows      *bool
+	WithReleasePlease     *bool
+	MigrateReleasePlease  *bool
 
 	ModeOverride *string // --mode flag value before parsing
 }
@@ -181,6 +189,8 @@ func Gather(
 	in.WithGitHubWorkflows = derefBool(flags.WithGitHubWorkflows, true)
 	in.WithPrePrHook = derefBool(flags.WithPrePrHook, true)
 	in.WithGithookPostPROpen = derefBool(flags.WithGithookPostPROpen, true)
+	in.WithReleasePlease = derefBool(flags.WithReleasePlease, true)
+	in.MigrateReleasePlease = derefBool(flags.MigrateReleasePlease, false)
 
 	// Name: walk the full precedence chain here (instead of leaving it to
 	// the manifest required-var loop below) so the orchestrator-facing

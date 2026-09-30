@@ -168,6 +168,13 @@ func runBootstrap(ctx context.Context, deps Deps, in Inputs) (Summary, error) {
 			return Summary{}, fmt.Errorf("bootstrap: render github workflows: %w", err)
 		}
 		workflowActions = wfActions
+		if in.WithReleasePlease {
+			rpActions, rerr := renderReleasePlease(target, in, nil)
+			if rerr != nil {
+				return Summary{}, fmt.Errorf("bootstrap: render release-please caller: %w", rerr)
+			}
+			workflowActions = append(workflowActions, rpActions...)
+		}
 	}
 
 	postHookSummary, posterr := GeneratePostPROpenHook(target, in.WithGithookPostPROpen, in.DryRun)
