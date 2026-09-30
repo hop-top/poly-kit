@@ -147,6 +147,7 @@ func tokenKeyListCmd(r *Root) *cobra.Command {
 	addServiceFlag(cmd)
 	SetSideEffect(cmd, SideEffectRead)
 	SetIdempotency(cmd, IdempotencyYes)
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]apiKeyRow{}, Version: "1.0"})
 	return cmd
 }
 
