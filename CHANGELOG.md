@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.0-alpha.19](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.18...kit/v0.5.0-alpha.19) (2026-09-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **kit-init:** `kit init` no longer writes `release-<lang>-caller.yml`; it writes `.github/workflows/publish.yml` instead, and re-running it removes unedited kit-generated per-runtime release callers.
+* **kit-init:** `kit init --runtime go` no longer writes `.github/workflows/release-go-caller.yml`, and re-running it removes an unedited kit-generated copy.
+
+### Features
+
+* **kit-init:** bare `v<version>` tags for Go packages, create release labels on new repos ([16c38e7](https://github.com/hop-top/poly-kit/commit/16c38e7b73181045639e4bc60fa3932ca4c39cd7))
+* **kit-init:** one `publish.yml` replaces the per-runtime release callers ([ef32509](https://github.com/hop-top/poly-kit/commit/ef32509b12cf699c58905761aa64c45ce3561db8))
+* **kit-init:** render release-please caller for the hop-top/.github reusable workflow ([1f4818f](https://github.com/hop-top/poly-kit/commit/1f4818f4e60cb1015382bb6cc94a485b03d4a0e6))
+* **kit-init:** stop rendering `release-go-caller.yml`; retire kit-managed copies ([ffdb4c0](https://github.com/hop-top/poly-kit/commit/ffdb4c01e652e361cf551756676e7fb8eed90c7d))
+* **kit-init:** write a starter release-please config + manifest ([6203d67](https://github.com/hop-top/poly-kit/commit/6203d6781b4e7d24f2f9f84d3b284fc6095be1ca))
+* **py:** carry tool-call linkage and parts through llm Message ([4be6ea0](https://github.com/hop-top/poly-kit/commit/4be6ea0bdac1c0c2dfec2e5439fbd6672a5cbc13))
+* **ts:** tool-call linkage and content parts on llm Message ([1904790](https://github.com/hop-top/poly-kit/commit/19047905c00bec3adae2352932c8d397a04aa67e))
+
+
+### Bug Fixes
+
+* **kit-init:** keep mirror-published Go packages in `publish.yml` ([9d15bfa](https://github.com/hop-top/poly-kit/commit/9d15bfa210e5ef45222fcb1f54e80970937daaab))
+* **llm:** carry tool-call linkage through Message and adapters ([89473c2](https://github.com/hop-top/poly-kit/commit/89473c2eba2a2714efa8bfd29d4921db02fcf895))
+
 ## [0.5.0-alpha.18](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.17...kit/v0.5.0-alpha.18) (2026-09-30)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.18. This release includes new features.
