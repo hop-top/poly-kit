@@ -95,10 +95,16 @@ func dialTarget(ep string) (network, addr string) {
 	}
 	for _, scheme := range []string{"http://", "https://"} {
 		if rest, ok := strings.CutPrefix(ep, scheme); ok {
-			// Trim any path/query the URL form may carry; the dial
-			// only ever uses the authority.
+			// Reduce to host:port, as url.Host would: the authority
+			// ends at the first path, query or fragment delimiter, and
+			// userinfo ends at its last "@". The client dials url.Host,
+			// so credentials are never part of the target; keeping them
+			// would print them in a refusal and hide a loopback host.
 			if i := strings.IndexAny(rest, "/?#"); i >= 0 {
 				rest = rest[:i]
+			}
+			if i := strings.LastIndex(rest, "@"); i >= 0 {
+				rest = rest[i+1:]
 			}
 			return "tcp", rest
 		}
