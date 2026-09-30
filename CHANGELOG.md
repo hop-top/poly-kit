@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.19](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.18...kit/v0.5.0-alpha.19) (2026-09-30)
 
+The hop-top team is happy to announce Kit 0.5.0-alpha.19. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -23,6 +25,8 @@
 
 * **kit-init:** keep mirror-published Go packages in `publish.yml` ([9d15bfa](https://github.com/hop-top/poly-kit/commit/9d15bfa210e5ef45222fcb1f54e80970937daaab))
 * **llm:** carry tool-call linkage through Message and adapters ([89473c2](https://github.com/hop-top/poly-kit/commit/89473c2eba2a2714efa8bfd29d4921db02fcf895))
+
+Full diff: [kit/v0.5.0-alpha.18...kit/v0.5.0-alpha.19](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.18...kit/v0.5.0-alpha.19)
 
 ## [0.5.0-alpha.18](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.17...kit/v0.5.0-alpha.18) (2026-09-30)
 
