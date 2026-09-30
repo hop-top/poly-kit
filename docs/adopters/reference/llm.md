@@ -43,12 +43,17 @@ Local schemes default to the server's documented address, so a bare
 | Scheme | Default base URL |
 |--------|------------------|
 | `lmstudio` | `http://localhost:1234/v1` |
+| `ollama` | `http://localhost:11434` |
 
 Point at another host or port with `?base_url=`:
 
 ```text
 lmstudio://qwen2.5-7b-instruct?base_url=http://gpu-box:1234/v1
+ollama://llama3.2:3b?base_url=http://gpu-box:11434
 ```
+
+Each scheme resolves once its adapter package is imported, blank
+imports included (`_ "hop.top/kit/go/ai/llm/ollama"`).
 
 ## Quick start
 

@@ -424,6 +424,49 @@ func TestRegistryResolve(t *testing.T) {
 	assert.Equal(t, "resolved", resp.Content)
 }
 
+// roundTripFunc adapts a function to [http.RoundTripper].
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+// Importing the package is all an adopter does, so the scheme must
+// resolve through the package-level registry, not only a local one.
+func TestDefaultRegistry_ResolvesOllamaScheme(t *testing.T) {
+	var gotURL string
+	orig := http.DefaultClient.Transport
+	http.DefaultClient.Transport = roundTripFunc(
+		func(r *http.Request) (*http.Response, error) {
+			gotURL = r.URL.String()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": {"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(
+					`{"message":{"role":"assistant","content":"local"},"done":true}`,
+				)),
+				Request: r,
+			}, nil
+		},
+	)
+	t.Cleanup(func() { http.DefaultClient.Transport = orig })
+
+	assert.Contains(t, llm.Schemes(), "ollama")
+
+	p, err := llm.Resolve("ollama://llama3")
+	require.NoError(t, err)
+	defer p.Close()
+
+	resp, err := p.(llm.Completer).Complete(context.Background(), llm.Request{
+		Messages: []llm.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "local", resp.Content)
+	assert.Equal(t, "http://localhost:11434/api/chat", gotURL)
+}
+
 // ---------------------------------------------------------------------------
 // Multimodal
 // ---------------------------------------------------------------------------

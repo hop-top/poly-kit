@@ -23,9 +23,14 @@ import (
 )
 
 const (
+	scheme         = "ollama"
 	defaultBaseURL = "http://localhost:11434"
 	chatEndpoint   = "/api/chat"
 )
+
+func init() {
+	llm.Register(scheme, New)
+}
 
 // Adapter is the Ollama provider. It implements [llm.Provider],
 // [llm.Completer], and [llm.Streamer].
