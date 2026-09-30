@@ -17,11 +17,71 @@
  * ```
  */
 
+import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
+
 // ─── Data types ──────────────────────────────────────────────────────────────
 
+/** Classifies a content part in a multimodal message. */
+export type PartType = "text" | "image" | "audio" | "video";
+
+/**
+ * Binary media input for a {@link ContentPart}.
+ *
+ * Built by {@link inlineSource}, {@link urlSource} or {@link fileSource}.
+ */
+export interface MediaSource {
+  /** Non-empty when the source is URL-backed. */
+  url(): string;
+  /** Inferred MIME type, or `""`. */
+  mimeType(): string;
+  /** Reads the media bytes. */
+  read(): Promise<Uint8Array>;
+}
+
+/**
+ * A single typed element within a multimodal message.
+ *
+ * Rule: if a {@link Message} has non-empty `parts`, they are used
+ * instead of its `content`.
+ */
+export interface ContentPart {
+  type: PartType;
+  text?: string;
+  source?: MediaSource;
+  mimeType?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * A single role+content pair in a conversation.
+ *
+ * Multimodal rule: non-empty `parts` take precedence over `content`.
+ *
+ * Tool-call linkage: an agentic loop replays a tool round as two kinds
+ * of message.
+ *
+ * - Role `"assistant"` with `toolCalls`: the calls the model made,
+ *   copied from {@link ToolResponse.toolCalls}. `content` carries any
+ *   text the model produced alongside them and may be `""`.
+ * - Role `"tool"` with `toolCallId`: one tool's result, in `content`.
+ *   `toolCallId` equals the {@link ToolCall.id} it answers. Send one
+ *   message per call.
+ *
+ * `toolCalls` is valid only on role `"assistant"` and `toolCallId` only
+ * on role `"tool"`; adapters reject either field on any other role, a
+ * tool result carrying `parts`, and linkage the provider cannot express,
+ * rather than degrading it to plain text ({@link checkToolLinkage}).
+ * Messages that set neither field map exactly as before.
+ */
 export interface Message {
   role: string;
   content: string;
+  parts?: ContentPart[];
+  /** Tool invocations of an assistant turn. */
+  toolCalls?: ToolCall[];
+  /** Links a role `"tool"` result to the {@link ToolCall} it answers. */
+  toolCallId?: string;
 }
 
 export interface Request {
@@ -57,6 +117,14 @@ export interface ToolDef {
   parameters: unknown;
 }
 
+/**
+ * A single tool invocation returned by the model.
+ *
+ * `id` is the handle a tool result quotes back in
+ * {@link Message.toolCallId}. `arguments` is the parsed JSON value, or a
+ * JSON-encoded string (Go's `json.RawMessage`); adapters send a string
+ * as is and encode anything else.
+ */
 export interface ToolCall {
   id: string;
   name: string;
@@ -225,6 +293,96 @@ const CONNECTION_CODES = new Set([
 
 function isConnectionError(code: string): boolean {
   return CONNECTION_CODES.has(code);
+}
+
+// ─── Message rules ───────────────────────────────────────────────────────────
+
+/**
+ * Enforces the provider-independent tool-call linkage rules on one
+ * message: `toolCalls` only on role `"assistant"`, `toolCallId` only on
+ * role `"tool"`, and a tool result carries only `content` (no
+ * `toolCalls`, no `parts`). Throws {@link LLMError} otherwise, checking
+ * in the Go adapters' order. An empty `toolCalls` array counts as unset.
+ *
+ * Adapters call it before mapping a message, then add the rules their
+ * provider needs (for example a required `toolCallId`).
+ */
+export function checkToolLinkage(m: Message): void {
+  const hasCalls = (m.toolCalls?.length ?? 0) > 0;
+  if (m.role === "tool") {
+    if (hasCalls || (m.parts?.length ?? 0) > 0) {
+      throw new LLMError(
+        `tool result "${m.toolCallId ?? ""}" carries only content`
+      );
+    }
+    return;
+  }
+  if (m.toolCallId) {
+    throw new LLMError(
+      `toolCallId is valid only on role tool, got "${m.role}"`
+    );
+  }
+  if (hasCalls && m.role !== "assistant") {
+    throw new LLMError(
+      `toolCalls are valid only on role assistant, got "${m.role}"`
+    );
+  }
+}
+
+// ─── Media sources ───────────────────────────────────────────────────────────
+
+/** In-memory media bytes with a caller-supplied MIME type. */
+export function inlineSource(data: Uint8Array, mimeType: string): MediaSource {
+  return {
+    url: () => "",
+    mimeType: () => mimeType,
+    read: async () => data,
+  };
+}
+
+/** URL-backed media; `read()` downloads lazily. */
+export function urlSource(url: string): MediaSource {
+  return {
+    url: () => url,
+    mimeType: () => "",
+    read: async () => {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        throw new LLMError(
+          `url source: unexpected status ${resp.status} fetching ${url}`
+        );
+      }
+      return new Uint8Array(await resp.arrayBuffer());
+    },
+  };
+}
+
+const MIME_BY_EXT: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".pdf": "application/pdf",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+};
+
+/**
+ * File on disk, read on `read()`. The MIME type comes from the
+ * extension (common image, PDF, audio and video types); unknown
+ * extensions give `""`, so set {@link ContentPart.mimeType} instead.
+ */
+export function fileSource(path: string): MediaSource {
+  return {
+    url: () => "",
+    mimeType: () => MIME_BY_EXT[extname(path).toLowerCase()] ?? "",
+    read: async () => new Uint8Array(await readFile(path)),
+  };
 }
 
 // ─── URI parsing ─────────────────────────────────────────────────────────────

@@ -226,7 +226,8 @@ Subpath imports follow the package's `exports` map (see
   peer dependency) or type-checking with `skipLibCheck: false` fails with
   TS7016.
 - `@hop-top/kit/upgrade` — semver upgrade detection.
-- `@hop-top/kit/llm` / `routellm` — LLM client + routing helpers.
+- `@hop-top/kit/llm` / `routellm` — LLM client + routing helpers (see
+  [LLM tool calling](#llm-tool-calling)).
 - `@hop-top/kit/alias` — alias resolution + completion.
 - `@hop-top/kit/uri` — thin facade over `@hop-top/cite` for URI parsing,
   action resolution, completions, registries, and OS handler metadata.
@@ -808,6 +809,45 @@ for the cross-language contract.
 
 The harness at `sdk/tests/cross-lang/` diffs envelopes across SDKs. The
 TS telemetry runner is not wired into it as of this revision.
+
+## LLM tool calling
+
+`@hop-top/kit/llm` mirrors the Go `llm.Message`: `role`, `content`,
+optional `parts`, and tool-call linkage. The next request replays the
+model's calls, then one result per call, linked by id:
+
+```ts
+const resp = await client.callWithTools({ messages }, tools);
+messages.push({ role: 'assistant', content: resp.content, toolCalls: resp.toolCalls });
+for (const call of resp.toolCalls) {
+  messages.push({ role: 'tool', content: await run(call), toolCallId: call.id });
+}
+```
+
+| Field | Role | Meaning |
+|-------|------|---------|
+| `toolCalls` | `assistant` only | calls the model made; `content` may be `""` |
+| `toolCallId` | `tool` only | the `ToolCall.id` this result answers; result text in `content` |
+| `parts` | `user` | `ContentPart[]` (`text`, `image`, ...); used instead of `content` when non-empty |
+
+- `ToolCall.arguments` is the parsed JSON value or a JSON-encoded
+  string; adapters send a string as is and encode anything else.
+- `checkToolLinkage(message)` enforces the role rules and rejects a tool
+  result with `parts`; call it first in a custom adapter.
+- Media for a part comes from `inlineSource(bytes, mime)`,
+  `urlSource(url)` or `fileSource(path)`.
+- `routellm` sends `tool_calls` (`id`, `type: "function"`, `function`
+  with string `arguments`) and `role: "tool"` + `tool_call_id`, the
+  OpenAI shape the Go adapters use. It throws `LLMError` instead of
+  sending plain text for: either field on the wrong role, a tool result
+  without `toolCallId` or with `parts`, a call without an `id`,
+  arguments that are not valid JSON, `parts` on a non-`user` role, and
+  `audio` / `video` parts.
+- Messages without the new fields serialize as `{role, content}`, as
+  before.
+
+Go contract and per-provider wire mapping:
+[Returning tool results](llm.md#returning-tool-results).
 
 ## Related pages
 

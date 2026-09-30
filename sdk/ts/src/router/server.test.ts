@@ -191,3 +191,44 @@ describe("server /v1/chat/completions", () => {
     expect(router.score).toHaveBeenCalledWith("route me");
   });
 });
+
+describe("server tool-call linkage", () => {
+  it("forwards assistant tool_calls and tool_call_id upstream", async () => {
+    const upstream = mockUpstream();
+    const app = makeApp(0.9, upstream);
+
+    const body: ChatCompletionRequest = {
+      model: "router-mf-0.5",
+      messages: [
+        { role: "user", content: "Weather?" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "get_weather", arguments: '{"city":"NYC"}' },
+            },
+          ],
+        },
+        { role: "tool", content: "sunny", tool_call_id: "call_1" },
+      ],
+    };
+
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    expect(res.status).toBe(200);
+    const sent = (upstream as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as ChatCompletionRequest;
+    expect(sent.messages[1].tool_calls?.[0].id).toBe("call_1");
+    expect(sent.messages[1].tool_calls?.[0].function.arguments).toBe(
+      '{"city":"NYC"}',
+    );
+    expect(sent.messages[2].tool_call_id).toBe("call_1");
+  });
+});
