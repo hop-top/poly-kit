@@ -309,6 +309,34 @@ providers:
 `LoadConfig` reads `api_key`, else the variable `api_key_env` names.
 [Provider keys](#provider-keys) gives both the highest precedence.
 
+### Provider blocks and aliases
+
+A block configures its provider under any of the provider's names, for
+`LoadConfig`, key resolution and `ProviderSettingsFor` alike. Blocks
+tried, first found wins and is used whole (never merged):
+
+1. `providers.<scheme>`
+2. for an alias, the registered scheme it reaches (`fireworks-ai`
+   reads `providers.fireworks`)
+3. aim's catalog id and curated aliases for the provider (`fireworks`
+   reads `providers.fireworks-ai`, `google` reads `providers.gemini`)
+
+A catalog provider routed by protocol skips step 2: `digitalocean`
+never reads `providers.openai`, whose key and base URL belong to
+another host. A scheme no adapter serves reads its own block only.
+
+`llm.ProviderSettingsFor(uri)` returns that block as written (base
+URL, model, `api_key_env`, extras, and `Block`, the key it sits under),
+without the URI or `LLM_BASE_URL` layered over it and never the
+`api_key` value. Use it to apply the file's `base_url` yourself, e.g.
+to a fallback URI that must not inherit the primary's `LLM_BASE_URL`:
+
+```go
+if s, ok := llm.ProviderSettingsFor("fireworks-ai"); ok && s.BaseURL != "" {
+    uri += "?base_url=" + s.BaseURL
+}
+```
+
 ## Provider keys
 
 `llm.Resolve` reads a key from the URI's `api_key` param and nowhere
