@@ -55,8 +55,8 @@ client.shutdown(Duration::from_millis(200)).await.unwrap();
 
 ## Neighbours
 
-- `hop_top_kit::netpolicy` (src/netpolicy.rs): the `--offline` marker every reqwest call in this crate honours
-- `hop_top_kit::api` (src/api.rs): the guarded client the HTTPS sink is built on
+- `hop_top_kit::netpolicy` (src/netpolicy.rs): the `--offline` guard; the HTTPS sink builds its own client and is deliberately not refused
+- `hop_top_kit::api` (src/api.rs): the feature this one enables; the sink does not use its client
 - `hop_top_kit::id` (src/id/): TypeIDs for records; `install_id` here is a different, opaque token
 
 ## See also

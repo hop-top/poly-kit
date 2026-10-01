@@ -21,9 +21,9 @@ Exact details per API: signatures, flags, exit codes, config shapes, wire format
 | [`log-api.md`](log-api.md) | themed logger reading `quiet` and `no-color` from config | you log from a kit-built CLI |
 | [`php-sdk.md`](php-sdk.md) | PHP SDK long-form surfaces: URI facade, output rules, MCP over PSR-15, offline enforcement, telemetry | you require the experimental package and need the detail behind its README |
 | [`py-api-reference.md`](py-api-reference.md) | Python CLI factory, `hop_top_kit.cli` | you build a CLI with Typer |
-| [`py-sdk.md`](py-sdk.md) | Python SDK long-form surfaces: MCP mount, URI facade, output rules, telemetry envelope | you have `hop-top-kit` installed and need the detail behind its README |
+| [`py-sdk.md`](py-sdk.md) | Python SDK long-form surfaces: MCP mount, URI facade, output rules, offline enforcement, telemetry envelope | you have `hop-top-kit` installed and need the detail behind its README |
 | [`qmochi-charts.md`](qmochi-charts.md) | every qmochi chart type with options and worked examples, SVG output, automatic selection | you pick a terminal chart type or reach for one of its options |
-| [`rs-sdk.md`](rs-sdk.md) | Rust SDK long-form surfaces: serve, output, MCP, storage, httpcache wire contract, telemetry, bus | you depend on the experimental crate and need the detail behind its README |
+| [`rs-sdk.md`](rs-sdk.md) | Rust SDK long-form surfaces: serve, output, MCP, storage, httpcache wire contract, offline enforcement, telemetry, bus | you depend on the experimental crate and need the detail behind its README |
 | [`served-middleware.md`](served-middleware.md) | every `services.<svc>` middleware key, its default and reach, the order, and each refusal per surface | you configure auth or limits on a served tool, or map a refusal |
 | [`served-observability.md`](served-observability.md) | tracing and metrics for served commands: propagation, keys, spans, instruments | you trace or measure the api, socket or RPC services |
 | [`setflag-textflag-api.md`](setflag-textflag-api.md) | multi-value flags with prefix operators, Go, TS, Python | you replace `--add-X` / `--remove-X` pairs |

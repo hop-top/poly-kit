@@ -75,6 +75,8 @@ The app is pre-configured to the hop-top CLI contract:
 - `add_completion=False` — no `--install-completion`.
 - `no_args_is_help=True` — bare invocation shows help.
 - `-v, --version` prints `<name> v<version>` and exits.
+- `--offline` is always registered (no `Disable` field) and enforced
+  beneath `urllib`; see [is_offline](#is_offline).
 - Root callback with `invoke_without_command=True`.
 
 Supporting dataclasses:
@@ -129,6 +131,35 @@ def sync():
     if not is_quiet():
         typer.echo("fetching 3 packages…", err=True)
 ```
+
+### is_offline
+
+```python
+def is_offline() -> bool
+```
+
+Reports `--offline` for the current invocation. Like the verbosity
+accessors it is stamped by the root callback on every dispatch and
+scoped with `contextvars`; False before dispatch.
+
+You do not need it to be safe: once `--offline` is passed, a request
+through `urllib.request.urlopen` raises `hop_top_kit.netpolicy.OfflineError`
+(an `OSError`) before it leaves the process, loopback excepted. Read it
+to skip network work instead of letting it fail:
+
+```python
+from hop_top_kit.cli import is_offline
+
+@app.command()
+def sync():
+    if is_offline():
+        typer.echo("offline: skipping remote sync", err=True)
+        return
+    ...
+```
+
+Worker threads, other HTTP clients and what the guard does not cover:
+[Offline enforcement](py-sdk.md#offline-enforcement).
 
 ### Command groups
 
@@ -228,3 +259,4 @@ formats, `CLIError` with the `CODE_*` constants, and the
 - [`cli-api-reference.md`](cli-api-reference.md) — Go equivalent
 - [`ts-api-reference.md`](ts-api-reference.md) — TypeScript equivalent
 - [`cli-parity-guide.md`](../guides/cli-parity-guide.md) — required flags + parity contract
+- [`py-sdk.md`](py-sdk.md#offline-enforcement) — `--offline` enforcement in depth

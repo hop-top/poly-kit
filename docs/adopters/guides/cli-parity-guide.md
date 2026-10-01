@@ -14,7 +14,7 @@ equivalents) must satisfy the same contract.
 | `--quiet` | Suppress non-essential output |
 | `--no-color` | Disable ANSI colour |
 | `--help-all` | Show help including hidden groups |
-| `--offline` | Disable network access. Highest-precedence override; flips off any per-command opt-in (`--push`, `--sync`, peer discovery, upgrade check). Enforced beneath the language's default HTTP client (Go: `net/http` transport; Python: the `urllib` opener chain; TS: `globalThis.fetch`) for HTTP(S); callers that open sockets directly (raw `net.Dial`/`node:net`/`socket`, SQL drivers, gRPC) or inject their own transport are covered only when they route their dialer through the language's guard helper (Go: `netpolicy.GuardDial`); a dependency that dials its own socket and exposes no dialer hook cannot be reached, and must consult the offline marker itself. Loopback is exempt. Logging-class egress — telemetry, and any remote-logging or crash-reporting sink — is also exempt: `--offline` stops traffic the user asked for, it is not a second consent gate on diagnostics. A refused request fails with an error naming only its method and destination; see [Offline refusals](#offline-refusals). |
+| `--offline` | Disable network access. Highest-precedence override; flips off any per-command opt-in (`--push`, `--sync`, peer discovery, upgrade check). Enforced beneath the language's default HTTP client (Go: `net/http` transport; Python: the `urllib` opener chain; TS: `globalThis.fetch`; PHP: the Guzzle handler stack) for HTTP(S) — Rust has no default client, so there it is enforced by `GuardedClient`, the crate's only `reqwest` construction path; callers that open sockets directly (raw `net.Dial`/`node:net`/`socket`, SQL drivers, gRPC) or inject their own transport are covered only when they route their dialer through the language's guard helper (Go: `netpolicy.GuardDial`); a dependency that dials its own socket and exposes no dialer hook cannot be reached, and must consult the offline marker itself. Loopback is exempt. Logging-class egress — telemetry, and any remote-logging or crash-reporting sink — is also exempt: `--offline` stops traffic the user asked for, it is not a second consent gate on diagnostics. A refused request fails with an error naming only its method and destination; see [Offline refusals](#offline-refusals). |
 
 
 ## Offline refusals
@@ -32,18 +32,22 @@ GET https://api.example.com:8443/v1/models: network disabled by --offline
   alone; a target the port cannot parse prints `<unparseable URL>`.
 - Match the refusal by type, not by message text: Go
   `errors.Is(err, netpolicy.ErrOffline)`, TypeScript `isOfflineError(err)`,
-  Python `OfflineError` (an `OSError`), PHP `OfflineException`, Rust
-  `NetError::as_offline()`.
+  Python `OfflineError` (an `OSError`, not a `URLError`), PHP
+  `OfflineException`, Rust `NetError::as_offline()`.
 - Keep credentials out of URLs; send them in headers. The refusal hides
   them, but the layers around it do not: Go's `net/http` wraps the
-  refusal in a `*url.Error` that quotes the full request URL, and any
-  logger or retry wrapper that prints the URL leaks it the same way.
+  refusal in a `*url.Error` that quotes the full request URL, a Rust
+  `reqwest::Response` keeps the full URL in `url()` and in its body
+  errors, and any logger or retry wrapper that prints the URL leaks it
+  the same way.
 
 Per-port detail: [Go](../../../go/core/netpolicy/README.md#contract),
 [TypeScript](../reference/ts-api-reference.md#modules),
-[PHP](../reference/php-sdk.md#offline-enforcement), Python
-[`netpolicy.py`](../../../sdk/py/hop_top_kit/netpolicy.py), Rust
-[`netpolicy.rs`](../../../sdk/experimental/rs/src/netpolicy.rs).
+[Python](../reference/py-sdk.md#offline-enforcement),
+[PHP](../reference/php-sdk.md#offline-enforcement),
+[Rust](../reference/rs-sdk.md#offline-enforcement). Rust and PHP do not
+register `--offline` yet, having no global-flag layer: set the marker
+from your own flag, as each page's "CLI flag" section shows.
 
 ## Reading `-V` and `--quiet`
 
