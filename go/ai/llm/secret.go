@@ -37,17 +37,21 @@ type keyPlan struct {
 	// known is false for a scheme no adapter serves: kit lends no
 	// credential to a host it cannot reach.
 	known bool
-	// literal is llm.yaml providers.<scheme>.api_key.
+	// literal is api_key of the llm.yaml block configuring the scheme
+	// ([ProviderSettingsFor] picks it).
 	literal string
-	// envVar is llm.yaml providers.<scheme>.api_key_env.
+	// envVar is that block's api_key_env.
 	envVar string
+	// block is the providers key the block sits under.
+	block string
 	// key lists envVar first, then the layered provider key.
 	key ProviderKey
 }
 
 // keyPlan resolves scheme's credential, highest precedence first:
 //
-//  1. llm.yaml providers.<scheme>.api_key, then api_key_env
+//  1. llm.yaml api_key, then api_key_env, from the block
+//     [ProviderSettingsFor] picks (the scheme's own, else an alias's)
 //  2. the adapter's [Declaration].Key
 //  3. aim catalog facts: key vars in catalog order, optional when local
 //  4. the <SCHEME>_API_KEY convention
@@ -60,7 +64,8 @@ func (r *Registry) keyPlan(ctx context.Context, scheme string) keyPlan {
 		return keyPlan{}
 	}
 	plan := keyPlan{known: true, key: layeredKey(ctx, scheme, rt)}
-	plan.literal, plan.envVar = configuredKey(scheme, rt.scheme)
+	fp, block, _ := findBlock(loadConfigFile(), blockNames(scheme, rt, true))
+	plan.literal, plan.envVar, plan.block = fp.APIKey, fp.APIKeyEnv, block
 	if plan.envVar != "" {
 		vars := []string{plan.envVar}
 		for _, v := range plan.key.EnvVars {
@@ -96,19 +101,6 @@ func layeredKey(ctx context.Context, scheme string, rt route) ProviderKey {
 		name = scheme
 	}
 	return ProviderKey{EnvVars: []string{conventionKey(name)}}
-}
-
-// configuredKey reads llm.yaml's api_key and api_key_env for scheme,
-// or for the registered scheme it is an alias of when scheme has no
-// block of its own. A block belongs to its scheme: it is never lent to
-// another provider.
-func configuredKey(scheme, registered string) (literal, envVar string) {
-	cf := loadConfigFile()
-	fp, ok := cf.Providers[scheme]
-	if !ok && registered != scheme {
-		fp = cf.Providers[registered]
-	}
-	return fp.APIKey, fp.APIKeyEnv
 }
 
 // FallbackEnvKey is the universal env var consulted when a

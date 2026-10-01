@@ -5,6 +5,7 @@
 package llm
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -183,9 +184,10 @@ func LoadConfig(uri string) (ResolvedConfig, error) {
 		return ResolvedConfig{}, err
 	}
 
-	// Layer 1: config file provider block.
+	// Layer 1: the config file block configuring the scheme, an
+	// alias's included (see ProviderSettingsFor).
 	var pc ProviderConfig
-	if fp, ok := cf.Providers[parsed.Scheme]; ok {
+	if fp, _, ok := findBlock(cf, DefaultRegistry.blockNamesFor(context.Background(), parsed.Scheme)); ok {
 		pc.APIKey = fp.APIKey
 		if pc.APIKey == "" && fp.APIKeyEnv != "" {
 			pc.APIKey = os.Getenv(fp.APIKeyEnv)

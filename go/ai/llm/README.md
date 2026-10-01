@@ -36,7 +36,7 @@ fmt.Println(resp.Message.Content)
 
 - Provider URI: `scheme://model[?param=val]`; 14 schemes, aim aliases, catalog
   providers by protocol: [Provider URIs](../../../docs/adopters/reference/llm.md#provider-uris).
-- Config merge: file < URI params < env vars. Pool: file < env (`LLM_POOL_DISABLE`) < CLI (`ResolvePool`).
+- Config merge: file < URI params < env vars; an llm.yaml provider block also configures the provider's aliases, `llm.ProviderSettingsFor(uri)` returns it as written: [Provider blocks](../../../docs/adopters/reference/llm.md#provider-blocks-and-aliases). Pool: file < env (`LLM_POOL_DISABLE`) < CLI (`ResolvePool`).
 - Bus topics default to `kit.ai.{request.started, response.received,
   request.errored, fallback.applied, route.selected, eva.evaluated}`;
   `WithTopicPrefix` rebrands the `source.category` prefix,
