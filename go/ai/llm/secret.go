@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
@@ -121,15 +122,26 @@ type MissingKeyError struct {
 	// EnvVars lists every name consulted, highest precedence first,
 	// ending with [FallbackEnvKey].
 	EnvVars []string
+	// StoreErr, when non-nil, reports the secret-store backend failures
+	// met on the way: the key may sit in a store that could not be read.
+	// It names keys, never values.
+	StoreErr error
 }
 
 func (e *MissingKeyError) Error() string {
-	return fmt.Sprintf("llm: no API key for provider %q (model %q): set %s",
+	msg := fmt.Sprintf("llm: no API key for provider %q (model %q): set %s",
 		e.Scheme, e.Model, strings.Join(e.EnvVars, " or "))
+	if e.StoreErr != nil {
+		msg += " (" + e.StoreErr.Error() + ")"
+	}
+	return msg
 }
 
-// Is reports whether target is [ErrMissingKey].
-func (e *MissingKeyError) Is(target error) bool { return target == ErrMissingKey }
+// Is reports whether target is [ErrMissingKey] or, through StoreErr,
+// one of the store's errors.
+func (e *MissingKeyError) Is(target error) bool {
+	return target == ErrMissingKey || (e.StoreErr != nil && errors.Is(e.StoreErr, target))
+}
 
 // Unwrap returns [secret.ErrNotFound], the sentinel [SecretFor] uses.
 func (e *MissingKeyError) Unwrap() error { return secret.ErrNotFound }
@@ -193,6 +205,11 @@ func EnvKeyFor(providerURI string) string {
 // When all are empty, SecretFor returns secret.ErrNotFound so callers
 // can branch on a single sentinel.
 //
+// A store backend failure for a name counts as that name being absent
+// from the store: the search goes on. When a later source supplies the
+// key the failure is logged as a warning on [slog.Default]; when none
+// does, the returned error wraps it beside secret.ErrNotFound.
+//
 // Passing a nil store is allowed; it short-circuits step 1. This
 // lets adopters call SecretFor unconditionally even when no secret
 // store is configured.
@@ -205,7 +222,15 @@ func SecretFor(ctx context.Context, store secret.Store, providerURI string) (str
 	if len(names) == 0 {
 		names = []string{EnvKeyFor(providerURI)}
 	}
-	return lookupKey(ctx, store, names, true)
+	value, storeErr := lookupKey(ctx, store, names, true)
+	if value == "" {
+		if storeErr != nil {
+			return "", fmt.Errorf("%w (%w)", secret.ErrNotFound, storeErr)
+		}
+		return "", secret.ErrNotFound
+	}
+	warnStoreError(ctx, schemeOf(providerURI), storeErr)
+	return value, nil
 }
 
 // ApplyAPIKey returns uri with the provider's API key set as its
@@ -221,9 +246,12 @@ func SecretFor(ctx context.Context, store secret.Store, providerURI string) (str
 // variable is unset.
 //
 // A required key that resolves nowhere yields a [*MissingKeyError]
-// (errors.Is ErrMissingKey); store backend failures come back wrapped
-// and are not ErrMissingKey. uri must name its scheme: deriving one
-// from a bare model id is the caller's policy.
+// (errors.Is ErrMissingKey). A store backend failure for a name counts
+// as that name being absent from the store and the search goes on; it
+// is surfaced, never dropped: in the MissingKeyError's StoreErr when no
+// source has the key, else as a warning on [slog.Default]. uri must
+// name its scheme: deriving one from a bare model id is the caller's
+// policy.
 //
 // The returned URI holds the key: never log or print it. Errors never
 // carry key values.
@@ -244,20 +272,21 @@ func ApplyAPIKey(ctx context.Context, store secret.Store, uri string) (string, e
 		if len(key.EnvVars) == 0 {
 			return uri, nil
 		}
-		value, err = lookupKey(ctx, store, key.EnvVars, !key.Optional)
-		switch {
-		case errors.Is(err, secret.ErrNotFound):
+		var storeErr error
+		value, storeErr = lookupKey(ctx, store, key.EnvVars, !key.Optional)
+		if value == "" {
 			if key.Optional {
+				warnStoreError(ctx, parsed.Scheme, storeErr)
 				return uri, nil
 			}
 			return "", &MissingKeyError{
-				Scheme:  parsed.Scheme,
-				Model:   parsed.Model,
-				EnvVars: append(slices.Clone(key.EnvVars), FallbackEnvKey),
+				Scheme:   parsed.Scheme,
+				Model:    parsed.Model,
+				EnvVars:  append(slices.Clone(key.EnvVars), FallbackEnvKey),
+				StoreErr: storeErr,
 			}
-		case err != nil:
-			return "", fmt.Errorf("llm: resolve %s API key: %w", parsed.Scheme, err)
 		}
+		warnStoreError(ctx, parsed.Scheme, storeErr)
 	}
 
 	// ParseURI splits the query on & and does not unescape, so a key
@@ -273,19 +302,28 @@ func ApplyAPIKey(ctx context.Context, store secret.Store, uri string) (string, e
 }
 
 // lookupKey consults store then environment for each name, then the
-// universal variable when universal is set. secret.ErrNotFound means
-// nothing was found; any other store error surfaces unchanged.
-func lookupKey(ctx context.Context, store secret.Store, names []string, universal bool) (string, error) {
+// universal variable when universal is set. It returns "" when nothing
+// is found.
+//
+// A store backend failure (any error but secret.ErrNotFound) counts as
+// the name being absent from the store, so an unreadable keyring never
+// hides a key set in the environment. The failures come back in
+// storeErr, found or not, for the caller to surface.
+func lookupKey(ctx context.Context, store secret.Store, names []string, universal bool) (value string, storeErr error) {
+	var failed storeLookupError
+	defer func() {
+		if len(failed) > 0 {
+			storeErr = failed
+		}
+	}()
 	if store != nil {
 		for _, name := range names {
 			s, err := store.Get(ctx, name)
 			if err == nil && s != nil && len(s.Value) > 0 {
 				return string(s.Value), nil
 			}
-			// secret.ErrNotFound is the expected "no entry"; everything
-			// else surfaces unchanged so callers can see backend issues.
 			if err != nil && !errors.Is(err, secret.ErrNotFound) {
-				return "", err
+				failed = append(failed, fmt.Errorf("%s: %w", name, err))
 			}
 		}
 	}
@@ -299,7 +337,32 @@ func lookupKey(ctx context.Context, store secret.Store, names []string, universa
 			return v, nil
 		}
 	}
-	return "", secret.ErrNotFound
+	return "", nil
+}
+
+// storeLookupError lists the secret-store backend failures one key
+// lookup met, each naming the key asked for, never a value.
+type storeLookupError []error
+
+func (e storeLookupError) Error() string {
+	parts := make([]string, len(e))
+	for i, err := range e {
+		parts[i] = err.Error()
+	}
+	return "secret store: " + strings.Join(parts, "; ")
+}
+
+func (e storeLookupError) Unwrap() []error { return e }
+
+// warnStoreError logs err, a lookup's store failures, when a key was
+// resolved (or found optional) despite them: the call's result cannot
+// carry it, and an unreadable store should not pass unnoticed.
+func warnStoreError(ctx context.Context, scheme string, err error) {
+	if err == nil {
+		return
+	}
+	slog.Default().WarnContext(ctx, "llm: secret store lookup failed; key resolution went on without it",
+		"scheme", scheme, "error", err)
 }
 
 // schemeOf extracts the scheme from a provider URI. When the input
