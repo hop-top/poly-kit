@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
 )
 
@@ -37,7 +38,7 @@ displays migration history.`,
 }
 
 func migrateStatusCmd(m *Migrator, v *viper.Viper) *cobra.Command {
-	return &cobra.Command{
+	return withSideEffect(kitcli.SideEffectRead, &cobra.Command{
 		Use:   "status",
 		Short: "Show schema versions and pending migration count",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -48,14 +49,18 @@ func migrateStatusCmd(m *Migrator, v *viper.Viper) *cobra.Command {
 			}
 			return output.Dispatch(cmd, v, statuses)
 		},
-	}
+	})
 }
 
 func migrateRunCmd(m *Migrator) *cobra.Command {
-	return &cobra.Command{
+	// Backs up, then migrates each schema in place.
+	return withSideEffect(kitcli.SideEffectWriteLocal, &cobra.Command{
 		Use:   "run",
 		Short: "Run pending migrations",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if kitcli.IsDryRun(cmd) {
+				return planRun(cmd, m)
+			}
 			if err := m.Run(cmd.Context()); err != nil {
 				return err
 			}
@@ -67,25 +72,30 @@ func migrateRunCmd(m *Migrator) *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "Applied %d migration(s).\n", len(applied))
 			return nil
 		},
-	}
+	})
 }
 
 func migrateRollbackCmd(m *Migrator) *cobra.Command {
-	return &cobra.Command{
+	// Overwrites each schema's current state with its latest backup,
+	// so it asks first.
+	return withSideEffect(kitcli.SideEffectDestructiveLocal, &cobra.Command{
 		Use:   "rollback",
 		Short: "Restore from latest backup (manual mode only)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if kitcli.IsDryRun(cmd) {
+				return planRollback(cmd, m)
+			}
 			if err := m.RollbackLatest(); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "Rollback complete.")
 			return nil
 		},
-	}
+	})
 }
 
 func migrateHistoryCmd(m *Migrator, v *viper.Viper) *cobra.Command {
-	return &cobra.Command{
+	return withSideEffect(kitcli.SideEffectRead, &cobra.Command{
 		Use:   "history",
 		Short: "Show applied migrations",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -96,5 +106,48 @@ func migrateHistoryCmd(m *Migrator, v *viper.Viper) *cobra.Command {
 			}
 			return output.Dispatch(cmd, v, hist)
 		},
+	})
+}
+
+func withSideEffect(se kitcli.SideEffect, cmd *cobra.Command) *cobra.Command {
+	kitcli.SetSideEffect(cmd, se)
+	return cmd
+}
+
+// planRun is migrate run under --dry-run: each schema with pending
+// migrations becomes an effect; nothing is backed up or applied.
+func planRun(cmd *cobra.Command, m *Migrator) error {
+	plan := kitcli.Plan{Effects: []kitcli.Effect{}}
+	for _, st := range m.Status() {
+		if st.Err != nil {
+			return fmt.Errorf("migrate %s: %w", st.Schema, st.Err)
+		}
+		if st.Pending == 0 {
+			continue
+		}
+		plan.Effects = append(plan.Effects, kitcli.Effect{Kind: "update",
+			Target: "schema:" + st.Schema, Reversible: true,
+			Detail: fmt.Sprintf("back up, then apply %d migration(s) %s -> %s", st.Pending, st.Current, st.Target)})
 	}
+	return kitcli.RenderPlan(cmd, plan)
+}
+
+// planRollback is migrate rollback under --dry-run: it refuses where
+// the rollback would, and names the backup each schema would be
+// restored from without restoring it.
+func planRollback(cmd *cobra.Command, m *Migrator) error {
+	if m.autoRollback {
+		return fmt.Errorf("rollback: only available in manual rollback mode")
+	}
+	plan := kitcli.Plan{Effects: []kitcli.Effect{}}
+	for _, d := range m.drivers {
+		latest, err := newBackupOrchestrator(m.tool, d.Name(), m.retention).latestBackup()
+		if err != nil {
+			return fmt.Errorf("rollback %s: %w", d.Name(), err)
+		}
+		plan.Effects = append(plan.Effects, kitcli.Effect{Kind: "update",
+			Target: "schema:" + d.Name(), Reversible: false,
+			Detail: "restore from " + latest})
+	}
+	return kitcli.RenderPlan(cmd, plan)
 }

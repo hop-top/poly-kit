@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
+	kitcli "hop.top/kit/go/console/cli"
 )
 
 func listCmd() *cobra.Command {
@@ -70,6 +71,9 @@ process is still alive. Stale PID files are cleaned up automatically.`,
 			return nil
 		},
 	}
+	// Read: the listing removes pid files of processes already gone,
+	// housekeeping that changes no state a caller can observe.
+	kitcli.SetSideEffect(cmd, kitcli.SideEffectRead)
 	return cmd
 }
 

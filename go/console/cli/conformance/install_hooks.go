@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/cli"
 )
 
 // Marker strings the installer writes into each shim and recognizes
@@ -62,7 +63,9 @@ without --force. `,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runInstallHooks(cmd, installFlags{
-				dryRun: dryRun,
+				// The leaf's own --dry-run, or kit's (a context
+				// tagged dry-run).
+				dryRun: cli.IsDryRun(cmd),
 				force:  force,
 				format: format,
 				root:   root,

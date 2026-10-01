@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/core/stage"
 )
 
@@ -65,6 +66,17 @@ A non-active stage MUST carry --reason for audit clarity.`,
 				target.Until = &t
 			}
 
+			if kitcli.IsDryRun(cmd) {
+				// Validated as for the real set; nothing is proposed,
+				// so no policy veto is consulted and no event emitted.
+				return kitcli.RenderPlan(cmd, kitcli.Plan{
+					Args: map[string]any{"scope": scope, "stage": string(mode), "reason": reason, "until": until},
+					Effects: []kitcli.Effect{{Kind: "update", Target: "stage:" + scope,
+						Reversible: true, Detail: "set stage " + string(mode)}},
+					Warnings: []string{"the propose step runs on the real set: runtime policy may still veto it"},
+				})
+			}
+
 			mgr := stage.NewManager(managerOpts(cfg)...)
 			ctx := context.Background()
 
@@ -87,6 +99,8 @@ A non-active stage MUST carry --reason for audit clarity.`,
 	cmd.Flags().StringVar(&actor, "actor", "", "Identity of the principal making the change")
 	cmd.Flags().StringVar(&scope, "scope", "", "Scope to set (defaults to ProjectResolver)")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Skip the propose pre-event (admin override)")
+	// Persists the scope's stage and emits stage events.
+	kitcli.SetSideEffect(cmd, kitcli.SideEffectWrite)
 	return cmd
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	kitcli "hop.top/kit/go/console/cli"
 )
 
 // waitForExit polls the process until it is no longer running, up to 10s.
@@ -42,6 +43,9 @@ With no argument, the "default" slug is used.`,
 			if err != nil {
 				return fmt.Errorf("find process %d: %w", pid, err)
 			}
+			if kitcli.IsDryRun(cmd) {
+				return planStop(cmd, proc, pid, pidFile)
+			}
 
 			if err := proc.Signal(syscall.SIGTERM); err != nil {
 				return fmt.Errorf(
@@ -64,7 +68,28 @@ With no argument, the "default" slug is used.`,
 			return nil
 		},
 	}
+	// Terminates a process — by slug, or any PID named — so it asks
+	// first.
+	kitcli.SetSideEffect(cmd, kitcli.SideEffectDestructiveLocal)
 	return cmd
+}
+
+// planStop is router stop under --dry-run: the process must be there
+// to signal, as for the real stop, and is left running.
+func planStop(cmd *cobra.Command, proc *os.Process, pid int, pidFile string) error {
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return fmt.Errorf("process %d: %w", pid, err)
+	}
+	plan := kitcli.Plan{
+		Args: map[string]any{"pid": pid},
+		Effects: []kitcli.Effect{{Kind: "delete", Target: "pid:" + strconv.Itoa(pid),
+			Reversible: false, Detail: "send SIGTERM and wait for exit"}},
+	}
+	if pidFile != "" {
+		plan.Effects = append(plan.Effects, kitcli.Effect{Kind: "delete",
+			Target: pidFile, Reversible: false, Detail: "remove the pid file"})
+	}
+	return kitcli.RenderPlan(cmd, plan)
 }
 
 // resolvePID determines the target PID from arguments.

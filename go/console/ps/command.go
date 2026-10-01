@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	kitcli "hop.top/kit/go/console/cli"
 )
 
 // Provider supplies entries for the ps command.
@@ -79,6 +80,7 @@ func Command(name string, p Provider, v *viper.Viper) *cobra.Command {
 	cmd.Flags().DurationVarP(&intervalFlag, "interval", "i",
 		5*time.Second, "Poll interval for watch mode")
 
+	kitcli.SetSideEffect(cmd, kitcli.SideEffectRead)
 	return cmd
 }
 
