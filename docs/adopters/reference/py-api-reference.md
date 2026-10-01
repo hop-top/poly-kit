@@ -138,9 +138,10 @@ def sync():
 def is_offline() -> bool
 ```
 
-Reports `--offline` for the current invocation. Like the verbosity
-accessors it is stamped by the root callback on every dispatch and
-scoped with `contextvars`; False before dispatch.
+Reports `--offline` for the current invocation. The root callback sets
+it on every dispatch for the whole process (every thread and task sees
+it), and `netpolicy.offline_scope()` can mark a single unit of work;
+False before dispatch.
 
 You do not need it to be safe: once `--offline` is passed, a request
 through `urllib.request.urlopen` raises `hop_top_kit.netpolicy.OfflineError`
@@ -158,7 +159,7 @@ def sync():
     ...
 ```
 
-Worker threads, other HTTP clients and what the guard does not cover:
+Marker scope, other HTTP clients and what the guard does not cover:
 [Offline enforcement](py-sdk.md#offline-enforcement).
 
 ### Command groups

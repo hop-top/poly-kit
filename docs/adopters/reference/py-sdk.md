@@ -510,7 +510,7 @@ harness) never inherits the first invocation's `--offline`.
 ```python
 from hop_top_kit import netpolicy
 
-netpolicy.set_offline(True)   # mark the current context offline
+netpolicy.set_offline(True)   # mark the process offline
 netpolicy.install()           # once, at start-up
 netpolicy.is_offline()        # consult
 ```
@@ -558,43 +558,42 @@ except OSError as e:     # URLError included: attempted and failed
 
 ### Openers `install` cannot reach
 
-`install()` guards one opener. A request through any other opener is not
-refused until you guard it:
+`install()` guards the module-level opener and wraps
+`urllib.request.build_opener`, so `urlopen(..., context=ssl_ctx)` (which
+builds a fresh opener per call) and any opener built through
+`urllib.request.build_opener` after `install()` are refused too. Two
+openers stay out of reach until you guard them:
 
-- **Your own opener.** Wrap it with `guard`, which is idempotent;
-  `guard(None)` builds a default opener first.
+- **An `OpenerDirector` assembled by hand.**
+- **A `build_opener` imported by name before `install()` ran**
+  (`from urllib.request import build_opener` at module import).
 
-  ```python
-  opener = netpolicy.guard(urllib.request.build_opener(MyHandler()))
-  opener.open(url)
-  ```
-
-- **`urlopen(..., context=ssl_ctx)`.** Passing `context` makes `urlopen`
-  build a fresh opener for that call, bypassing the installed one. Build
-  the HTTPS handler yourself and guard it:
-
-  ```python
-  handler = urllib.request.HTTPSHandler(context=ssl_ctx)
-  netpolicy.guard(urllib.request.build_opener(handler)).open(url)
-  ```
-
-### Threads see the marker only through their context
-
-The marker is a `contextvars.ContextVar`, not a process global. Work
-that copies the caller's context sees it: asyncio tasks and
-`asyncio.to_thread`. Work that starts from an empty context does not:
-`threading.Thread`, `ThreadPoolExecutor.submit` and
-`loop.run_in_executor` read the marker as unset, so their requests go
-out even under `--offline`. Hand such work the caller's context:
+Wrap those with `guard`, which is idempotent; `guard(None)` builds a
+default opener first:
 
 ```python
-import contextvars
-
-pool.submit(contextvars.copy_context().run, fetch, url)
+opener = netpolicy.guard(my_opener)
+opener.open(url)
 ```
 
-Copy once per task; one context cannot be entered by two threads at
-once.
+### Marker scope
+
+`set_offline` (and so `--offline`) marks the whole process: every
+thread, `ThreadPoolExecutor` worker, `loop.run_in_executor` job and
+asyncio task is refused once it is set.
+
+To mark a single unit of work offline without touching the rest of the
+process, use `offline_scope`:
+
+```python
+with netpolicy.offline_scope():
+    fetch(url)           # refused
+```
+
+A scope reaches asyncio tasks and `asyncio.to_thread` started inside it,
+but not bare threads; it can't lift a process-wide mark. Two app
+dispatches running at once in different threads share the process flag,
+so keep `--offline` dispatches serial.
 
 ### Scope
 
