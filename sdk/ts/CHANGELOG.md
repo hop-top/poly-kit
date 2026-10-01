@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4) (2026-10-01)
 
+The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.4. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -33,6 +35,8 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Build
 
 * **ts:** require node &gt;=22.12; bump commander 15 ([68905f6](https://github.com/hop-top/poly-kit/commit/68905f6f0c664f56994508fdd8f4779f627ae565))
+
+Full diff: [kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4)
 
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3) (2026-09-05)
 
