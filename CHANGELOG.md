@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.0-alpha.24](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.23...kit/v0.5.0-alpha.24) (2026-10-01)
+
+
+### Features
+
+* **llm:** ResolveAPIKey reports where a provider key came from ([c86c146](https://github.com/hop-top/poly-kit/commit/c86c146dbfa4f0d20ebd5ed8df575a5968653466))
+
+
+### Bug Fixes
+
+* **cli:** kit's write leaves preview under --dry-run ([23012bb](https://github.com/hop-top/poly-kit/commit/23012bbc97aa56b30eb2ac9387dfa51cadaed06e))
+* **cli:** side-effect tier on every kit-shipped leaf ([5588776](https://github.com/hop-top/poly-kit/commit/5588776309559be8e6d1f94fe2b0dfbbf5fabdab))
+* **cli:** skip confirm gate only on a dry run kit applied ([778a3cb](https://github.com/hop-top/poly-kit/commit/778a3cb643ffc2c91c9ab3f3608b40bb9417a54a))
+* **kit:** engine prepare hook only for the root serve command ([bbe53b0](https://github.com/hop-top/poly-kit/commit/bbe53b01a42b4a63916cd71778a6fa96d85fafb6))
+* **llm/openai:** host form outranks LLM_BASE_URL in LoadConfig too ([03a7697](https://github.com/hop-top/poly-kit/commit/03a7697fde5530b80e23511150501276b98250d5))
+* **llm/openai:** host-form URI reaches self-hosted server under /v1 ([ae00c5b](https://github.com/hop-top/poly-kit/commit/ae00c5b029fd31f693704c58ff910bc75ecede87))
+* **llm:** alias-aware llm.yaml provider block lookup ([2f9095b](https://github.com/hop-top/poly-kit/commit/2f9095bb984fbb352a615f0139e0baaf7e332fdf))
+* **llm:** blank provider key counts as unset at every source ([9293132](https://github.com/hop-top/poly-kit/commit/9293132a9c1561318048404d98789adca728033b))
+* **llm:** mask credentials in URI and URL errors ([6419904](https://github.com/hop-top/poly-kit/commit/64199044e5bfddb9605fb052be0b466912db863e))
+* **llm:** ollama and triton send optional key as bearer token ([7d52f43](https://github.com/hop-top/poly-kit/commit/7d52f4397d5a94b0da1dace9fff7a296c2465592))
+* **llm:** one key and base URL precedence for LoadConfig, ApplyAPIKey and SecretFor ([daa309e](https://github.com/hop-top/poly-kit/commit/daa309e115b30396b8f11701686b8229f1add604))
+* **llm:** reject unparseable SDK base URL with URL masked ([4a8f00c](https://github.com/hop-top/poly-kit/commit/4a8f00c2eefe8b9db291c255d40912f52631f177))
+* **llm:** secret-store backend error no longer fails key resolution ([1bc4d81](https://github.com/hop-top/poly-kit/commit/1bc4d81280df3f777f4f51f11dec90a2571f24ee))
+
 ## [0.5.0-alpha.23](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.22...kit/v0.5.0-alpha.23) (2026-10-01)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.23. This release includes maintenance release with bug fixes.
