@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0-alpha.23](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.22...kit/v0.5.0-alpha.23) (2026-10-01)
+
+
+### Bug Fixes
+
+* **llm/google:** send API key in x-goog-api-key header ([f9227df](https://github.com/hop-top/poly-kit/commit/f9227df4b8496b27acd15ff5c1bf0d95e4dfc11d))
+* **llm:** append /v1 to lmstudio base URLs lacking it ([2e8e20a](https://github.com/hop-top/poly-kit/commit/2e8e20ada30717898714782458484c834fae43d7))
+* **netpolicy:** omit query, fragment, userinfo from offline refusal ([000b736](https://github.com/hop-top/poly-kit/commit/000b736d6325ff7c24b1d972b24fbf92ac3f753b))
+* **php:** omit query, fragment, userinfo from offline refusal ([668bc0a](https://github.com/hop-top/poly-kit/commit/668bc0a33cca5ec46eb15bf98bafd0245c28ddb8))
+* **storage/kv/etcd:** drop userinfo from endpoint dial target ([c2dd98d](https://github.com/hop-top/poly-kit/commit/c2dd98de0b6ebb5bbfdc3e1608bf2f14c09c32ef))
+* **storage/kv/etcd:** reject schemeless endpoint with userinfo ([b621dc1](https://github.com/hop-top/poly-kit/commit/b621dc13b3dc33f96fdc26a0c2ab391751c8c43e))
+* **ts:** omit query, fragment, userinfo from offline refusal ([b64cb25](https://github.com/hop-top/poly-kit/commit/b64cb25f79503a0874f56759081379d3644b1ab4))
+
 ## [0.5.0-alpha.22](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.21...kit/v0.5.0-alpha.22) (2026-09-30)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.22. This release includes new features.
