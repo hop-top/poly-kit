@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.2...kit-rs/v0.5.0-alpha.3) (2026-10-01)
 
+The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.3. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -26,6 +28,8 @@
 ### Build
 
 * **deps:** bump reqwest 0.13 in sdk/experimental/rs ([cc821d1](https://github.com/hop-top/poly-kit/commit/cc821d1c650ab7c0db5b9d26c459b1f7fa4ae028))
+
+Full diff: [kit-rs/v0.5.0-alpha.2...kit-rs/v0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.2...kit-rs/v0.5.0-alpha.3)
 
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.1...kit-rs/v0.5.0-alpha.2) (2026-09-05)
 
