@@ -152,11 +152,12 @@ pub fn is_loopback(host: &str) -> bool {
 }
 
 /// Render `url` as scheme, host (with port) and path only: enough to say
-/// where a refused request was going, nothing it carried. Query,
-/// fragment and userinfo are dropped because they may hold credentials
-/// (an API key param, basic-auth userinfo). An opaque URL (`mailto:`)
-/// keeps its scheme alone. Mirrors Go's `netpolicy` refusal.
-fn destination(url: &reqwest::Url) -> String {
+/// where a request was going, nothing it carried. Query, fragment and
+/// userinfo are dropped because they may hold credentials (an API key
+/// param, basic-auth userinfo). An opaque URL (`mailto:`) keeps its
+/// scheme alone. Mirrors Go's `netpolicy` refusal; also names the
+/// destination of a failed request in `api`'s transport errors.
+pub(crate) fn destination(url: &reqwest::Url) -> String {
     if url.cannot_be_a_base() {
         return format!("{}:", url.scheme());
     }

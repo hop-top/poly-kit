@@ -1,8 +1,17 @@
-use crate::netpolicy::{GuardedClient, NetError, NetPolicy};
+use crate::netpolicy::{destination, GuardedClient, NetError, NetPolicy, RequestBuilder};
+use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Structured error returned by the API on non-2xx responses.
+/// Structured error returned by [`ApiClient`].
+///
+/// On a non-2xx response it is the API's own error body (or a fallback
+/// carrying the status). When no response is decoded, `status` is 0 and
+/// `code` says why: [`OFFLINE_CODE`] for a request refused by the
+/// `--offline` policy, `"transport_error"` for one attempted and failed
+/// (connect, send, body decode). In both cases `message` names the
+/// destination as `METHOD scheme://host[:port]path` only; query, fragment
+/// and userinfo never appear, as they may carry credentials.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiError {
     pub status: u16,
@@ -77,13 +86,7 @@ impl ApiClient {
     where
         T: Serialize + for<'de> Deserialize<'de>,
     {
-        let resp = self
-            .request(reqwest::Method::POST, "")
-            .json(entity)
-            .send()
-            .await
-            .map_err(net_error)?;
-        parse_response(resp).await
+        self.call(Method::POST, "", |r| r.json(entity)).await
     }
 
     /// GET /{id} — fetch a single entity.
@@ -91,12 +94,7 @@ impl ApiClient {
     where
         T: for<'de> Deserialize<'de>,
     {
-        let resp = self
-            .request(reqwest::Method::GET, &format!("/{id}"))
-            .send()
-            .await
-            .map_err(net_error)?;
-        parse_response(resp).await
+        self.call(Method::GET, &format!("/{id}"), |r| r).await
     }
 
     /// GET / — list entities matching the query.
@@ -104,13 +102,7 @@ impl ApiClient {
     where
         T: for<'de> Deserialize<'de>,
     {
-        let resp = self
-            .request(reqwest::Method::GET, "")
-            .query(q)
-            .send()
-            .await
-            .map_err(net_error)?;
-        parse_response(resp).await
+        self.call(Method::GET, "", |r| r.query(q)).await
     }
 
     /// PUT /{id} — update an entity.
@@ -118,30 +110,54 @@ impl ApiClient {
     where
         T: Serialize + for<'de> Deserialize<'de>,
     {
-        let resp = self
-            .request(reqwest::Method::PUT, &format!("/{id}"))
-            .json(entity)
-            .send()
+        self.call(Method::PUT, &format!("/{id}"), |r| r.json(entity))
             .await
-            .map_err(net_error)?;
-        parse_response(resp).await
     }
 
     /// DELETE /{id} — remove an entity.
     pub async fn delete(&self, id: &str) -> Result<(), ApiError> {
-        let resp = self
-            .request(reqwest::Method::DELETE, &format!("/{id}"))
-            .send()
-            .await
-            .map_err(net_error)?;
-        let status = resp.status();
-        if status.is_success() {
+        let resp = self.send(&Method::DELETE, &format!("/{id}"), |r| r).await?;
+        if resp.status().is_success() {
             return Ok(());
         }
         Err(parse_error(resp).await)
     }
 
-    fn request(&self, method: reqwest::Method, path: &str) -> crate::netpolicy::RequestBuilder {
+    /// Issue a request and decode a 2xx JSON body into `T`.
+    async fn call<T>(
+        &self,
+        method: Method,
+        path: &str,
+        build: impl FnOnce(RequestBuilder) -> RequestBuilder,
+    ) -> Result<T, ApiError>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        let resp = self.send(&method, path, build).await?;
+        if resp.status().is_success() {
+            resp.json::<T>()
+                .await
+                .map_err(|e| transport_error(&method, e))
+        } else {
+            Err(parse_error(resp).await)
+        }
+    }
+
+    /// Issue a request through the guard, mapping any failure to
+    /// `ApiError`.
+    async fn send(
+        &self,
+        method: &Method,
+        path: &str,
+        build: impl FnOnce(RequestBuilder) -> RequestBuilder,
+    ) -> Result<reqwest::Response, ApiError> {
+        build(self.request(method.clone(), path))
+            .send()
+            .await
+            .map_err(|e| net_error(method, e))
+    }
+
+    fn request(&self, method: Method, path: &str) -> RequestBuilder {
         let url = format!("{}{}", self.base_url, path);
         let mut req = self
             .client
@@ -154,17 +170,6 @@ impl ApiClient {
     }
 }
 
-async fn parse_response<T: for<'de> Deserialize<'de>>(
-    resp: reqwest::Response,
-) -> Result<T, ApiError> {
-    let status = resp.status();
-    if status.is_success() {
-        resp.json::<T>().await.map_err(|e| transport_error(&e))
-    } else {
-        Err(parse_error(resp).await)
-    }
-}
-
 async fn parse_error(resp: reqwest::Response) -> ApiError {
     let status = resp.status().as_u16();
     resp.json::<ApiError>().await.unwrap_or_else(|_| ApiError {
@@ -174,25 +179,33 @@ async fn parse_error(resp: reqwest::Response) -> ApiError {
     })
 }
 
-fn transport_error(e: &reqwest::Error) -> ApiError {
+/// Map a reqwest failure onto `ApiError`. reqwest's own message quotes
+/// the full request URL (query and fragment included), so the URL is
+/// taken off the error and named through [`destination`] instead, the
+/// same rule as the offline refusal.
+fn transport_error(method: &Method, e: reqwest::Error) -> ApiError {
+    let message = match e.url().map(destination) {
+        Some(dest) => format!("{method} {dest}: {}", e.without_url()),
+        None => format!("{method}: {e}"),
+    };
     ApiError {
         status: 0,
         code: "transport_error".into(),
-        message: e.to_string(),
+        message,
     }
 }
 
 /// Map a guarded-client failure onto `ApiError`. An offline refusal
 /// keeps its own code so callers can branch on it without parsing the
 /// message; anything else is an ordinary transport failure.
-fn net_error(e: NetError) -> ApiError {
+fn net_error(method: &Method, e: NetError) -> ApiError {
     match e {
         NetError::Offline(o) => ApiError {
             status: 0,
             code: OFFLINE_CODE.into(),
             message: o.to_string(),
         },
-        NetError::Transport(t) => transport_error(&t),
+        NetError::Transport(t) => transport_error(method, t),
     }
 }
 
