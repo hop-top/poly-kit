@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.2...kit-php/v0.5.0-alpha.3) (2026-10-01)
 
+The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.3. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -18,6 +20,8 @@
 * **php:** omit query, fragment, userinfo from offline refusal ([668bc0a](https://github.com/hop-top/poly-kit/commit/668bc0a33cca5ec46eb15bf98bafd0245c28ddb8))
 * **sdk-php:** admit auth-required MCP leaves only for a verified caller ([4a7f761](https://github.com/hop-top/poly-kit/commit/4a7f761feaf294b17cb24272868194cc80c289a8))
 * **sdk:** add CONSENT_REFUSED and PREREQUISITE to the four SDK ports ([#314](https://github.com/hop-top/poly-kit/issues/314)) ([c937bef](https://github.com/hop-top/poly-kit/commit/c937befdab1030f77bc13ee9f641430b44f43705))
+
+Full diff: [kit-php/v0.5.0-alpha.2...kit-php/v0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.2...kit-php/v0.5.0-alpha.3)
 
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.1...kit-php/v0.5.0-alpha.2) (2026-09-05)
 
