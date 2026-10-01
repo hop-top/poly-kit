@@ -43,6 +43,8 @@ func (r *Root) AliasesCmd() *cobra.Command {
 			return output.Dispatch(cmd, r.Viper, entries)
 		},
 	}
+	SetSideEffect(cmd, SideEffectRead)
+	SetIdempotency(cmd, IdempotencyYes)
 	setAliasListSchema(cmd)
 	return cmd
 }
@@ -128,6 +130,17 @@ func (r *Root) aliasAddCmd(store *alias.Store) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			target := strings.Join(args[1:], " ")
+			if IsDryRun(cmd) {
+				kind := "create"
+				if _, ok := store.Get(name); ok {
+					kind = "update"
+				}
+				return RenderPlan(cmd, Plan{
+					Args: map[string]any{"name": name, "target": target},
+					Effects: []Effect{{Kind: kind, Target: "alias:" + name,
+						Reversible: true, Detail: "dispatch to " + target}},
+				})
+			}
 			if err := store.Set(name, target); err != nil {
 				return err
 			}
@@ -156,7 +169,17 @@ func (r *Root) aliasRemoveCmd(store *alias.Store) *cobra.Command {
 			name := args[0]
 			// The entry as it stood, rendered after the delete; an
 			// alias that did not exist renders with an empty target.
-			target, _ := store.Get(name)
+			target, existed := store.Get(name)
+			if IsDryRun(cmd) {
+				plan := Plan{Args: map[string]any{"name": name}, Effects: []Effect{}}
+				if existed {
+					plan.Effects = append(plan.Effects, Effect{Kind: "delete",
+						Target: "alias:" + name, Reversible: true, Detail: "was " + target})
+				} else {
+					plan.Warnings = []string{"no alias " + name + ": delete is a no-op"}
+				}
+				return RenderPlan(cmd, plan)
+			}
 			if err := store.Remove(name); err != nil {
 				return err
 			}

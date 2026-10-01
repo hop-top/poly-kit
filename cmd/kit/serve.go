@@ -203,6 +203,11 @@ func (e *engine) prepare(root *cli.Root, cmd *cobra.Command, args []string) erro
 	if list, _ := cmd.Flags().GetBool("list"); list {
 		return nil
 	}
+	// A dry run starts nothing, so the engine opens no store: the
+	// data dir and documents.db are created by the run they serve.
+	if cli.IsDryRun(cmd) {
+		return nil
+	}
 	if len(args) == 1 && args[0] != cli.APIServiceName {
 		return nil
 	}

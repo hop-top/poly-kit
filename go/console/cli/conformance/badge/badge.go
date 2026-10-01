@@ -132,6 +132,17 @@ func run(cmd *cobra.Command, f badgeFlags) error {
 		rep = parsed
 	}
 
+	if cli.IsDryRun(cmd) {
+		detail := "write the ungradable seed badge"
+		if !f.emitSeed {
+			detail = "write the badge for " + f.matrix
+		}
+		return cli.RenderPlan(cmd, cli.Plan{
+			Args:    map[string]any{"matrix": f.matrix, "emit_seed": f.emitSeed, "output": f.output},
+			Effects: []cli.Effect{{Kind: "write", Target: f.output, Reversible: true, Detail: detail}},
+		})
+	}
+
 	out, err := os.Create(f.output)
 	if err != nil {
 		return fmt.Errorf("badge: create %s: %w", f.output, err)

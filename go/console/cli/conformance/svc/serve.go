@@ -60,6 +60,15 @@ func runServe(cmd *cobra.Command, _ []string) error {
 			ExitCode: 2}
 	}
 
+	if cli.IsDryRun(cmd) {
+		return cli.RenderPlan(cmd, cli.Plan{
+			Args: map[string]any{"scenarios_root": scenariosRoot, "claims_db": claimsDB,
+				"judges_config": judgesConfig},
+			Effects: []cli.Effect{{Kind: "start", Target: addr + ":" + strconv.Itoa(port),
+				Reversible: true, Detail: "serve the conformance grading API until stopped"}},
+		})
+	}
+
 	ctx := cmd.Context()
 
 	store, err := svc.NewFSStore(ctx, scenariosRoot)

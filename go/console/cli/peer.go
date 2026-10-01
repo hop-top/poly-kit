@@ -190,6 +190,24 @@ func renderPeerTrust(cmd *cobra.Command, r *Root, id string) error {
 	return output.Dispatch(cmd, r.Viper, peerTrustRow{ID: rec.ID, Trust: trustLabel(rec.Trust)})
 }
 
+// planPeerTrust is peer trust, block and revoke under --dry-run: it
+// reads the peer as the real run would, so an unknown peer fails the
+// same way, and plans the trust change without writing it.
+func planPeerTrust(cmd *cobra.Command, r *Root, id string, to peer.TrustLevel) error {
+	rec, err := r.PeerRegistry.Get(id)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		return output.NotFoundError(fmt.Sprintf("peer: %s not found", id))
+	}
+	return RenderPlan(cmd, Plan{
+		Args: map[string]any{"id": id},
+		Effects: []Effect{{Kind: "update", Target: "peer:" + id, Reversible: true,
+			Detail: "trust " + trustLabel(rec.Trust) + " -> " + trustLabel(to)}},
+	})
+}
+
 // setPeerTrustSchema declares the shape renderPeerTrust prints.
 func setPeerTrustSchema(cmd *cobra.Command) {
 	_ = SetOutputSchema(cmd, OutputSchema{Type: &peerTrustRow{}, Version: "1.0"})
@@ -204,6 +222,9 @@ func peerTrustCmd(r *Root) *cobra.Command {
 			"an already-trusted peer is a no-op.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if IsDryRun(cmd) {
+				return planPeerTrust(cmd, r, args[0], peer.Trusted)
+			}
 			if err := r.PeerTrust.Trust(args[0]); err != nil {
 				return err
 			}
@@ -225,6 +246,9 @@ func peerBlockCmd(r *Root) *cobra.Command {
 			"until explicitly trusted again.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if IsDryRun(cmd) {
+				return planPeerTrust(cmd, r, args[0], peer.Blocked)
+			}
 			if err := r.PeerTrust.Block(args[0]); err != nil {
 				return err
 			}
@@ -246,6 +270,9 @@ func peerRevokeCmd(r *Root) *cobra.Command {
 			"`peer trust`.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if IsDryRun(cmd) {
+				return planPeerTrust(cmd, r, args[0], peer.Unknown)
+			}
 			if err := r.PeerTrust.Revoke(args[0]); err != nil {
 				return err
 			}

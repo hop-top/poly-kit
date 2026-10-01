@@ -111,6 +111,9 @@ func quotaResetCmd(r *Root) *cobra.Command {
 			if len(args) == 1 {
 				caller = args[0]
 			}
+			if IsDryRun(c) {
+				return planQuotaReset(c, r, svc, caller)
+			}
 			n, err := quotaReset(c.Context(), r, svc, caller)
 			if err != nil {
 				return err
@@ -134,6 +137,31 @@ func quotaResetCmd(r *Root) *cobra.Command {
 		{Title: "Every caller of the api service", Command: r.Config.Name + " quota reset --all --service api"},
 	})
 	return cmd
+}
+
+// planQuotaReset is quota reset under --dry-run: the services'
+// quota configuration resolves as for the real reset, and each quota
+// the reset would clear becomes an effect. The usage ledger is not
+// opened, so the plan does not say how many callers have usage.
+func planQuotaReset(c *cobra.Command, r *Root, svc, caller string) error {
+	if err := r.loadServiceConfig(); err != nil {
+		return err
+	}
+	quotas, err := quotaServices(r, svc)
+	if err != nil {
+		return err
+	}
+	who := caller
+	if who == "" {
+		who = "*"
+	}
+	plan := Plan{Args: map[string]any{"service": svc, "caller": caller}}
+	for _, q := range quotas {
+		plan.Effects = append(plan.Effects, Effect{Kind: "delete",
+			Target: "quota:" + q.Scope + "/" + who, Reversible: false,
+			Detail: "clear usage counted in the current window"})
+	}
+	return RenderPlan(c, plan)
 }
 
 func orAll(caller string) string {
