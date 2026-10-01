@@ -54,7 +54,8 @@ type Effect struct {
 
 // IsDryRun reports whether the command runs as a dry run: invoked
 // with --dry-run, or its context tagged by kit (sideeffect.WithDryRun),
-// which is how kit.dry_run from config or KIT_DRY_RUN arrives.
+// which is how kit.dry_run set on the root's viper (a tool loading it
+// from its config) arrives.
 // Adopters call this in RunE; if true, build a Plan and return it via
 // RenderPlan instead of executing.
 func IsDryRun(cmd *cobra.Command) bool {

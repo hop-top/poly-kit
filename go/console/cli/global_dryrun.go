@@ -17,8 +17,8 @@ import (
 const globalDryRunFlag = "dry-run"
 
 // globalDryRunViperKey is the viper key the global flag binds to.
-// Adopters can set this in config (yaml: kit.dry_run: true) or via
-// the env var KIT_DRY_RUN; the kit cli auto-resolves both.
+// A tool that loads its config into the root's viper can set it there
+// (yaml: kit.dry_run: true). No environment variable is bound to it.
 const globalDryRunViperKey = "kit.dry_run"
 
 // dryRunAnnotation is the cobra annotation key used by the legacy
@@ -232,8 +232,8 @@ func (r *Root) warnLegacySupportsDryRun() {
 }
 
 // globalDryRun reports whether kit's --dry-run is on for this
-// invocation: the global flag, or kit.dry_run from config or
-// KIT_DRY_RUN. False when the tool suppressed the global flag
+// invocation: the global flag, or kit.dry_run set on the root's
+// viper. False when the tool suppressed the global flag
 // (Disable.DryRun): a --dry-run the tool declares itself is the
 // tool's, and kit makes no promise on its behalf.
 func (r *Root) globalDryRun() bool {
