@@ -11,8 +11,11 @@ that skips itself is worse than no parity suite at all.
 from __future__ import annotations
 
 import importlib.util
+import urllib.request
 
 import pytest
+
+from hop_top_kit import netpolicy
 
 #: Test modules that need the ``mcp`` extra.
 MCP_MODULES = (
@@ -51,3 +54,21 @@ def pytest_report_header(config):
 @pytest.fixture(scope="session")
 def mcp_extra_installed() -> bool:
     return MCP_EXTRA_INSTALLED
+
+
+@pytest.fixture(autouse=True)
+def _reset_network_policy():
+    """Give every test a clean, unarmed network policy and restore it after.
+
+    The ``--offline`` marker is process state, and ``install()`` rewires
+    urllib's process-global opener machinery. A test that sets either and
+    fails before its own cleanup would otherwise leave every later test in
+    the session offline or guarded.
+    """
+    saved_opener = urllib.request._opener
+    saved_build_opener = urllib.request.build_opener
+    netpolicy.set_offline(False)
+    yield
+    netpolicy.set_offline(False)
+    urllib.request.build_opener = saved_build_opener
+    urllib.request._opener = saved_opener

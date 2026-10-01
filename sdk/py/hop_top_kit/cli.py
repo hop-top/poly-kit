@@ -889,7 +889,9 @@ def create_app(
         _quiet_flag.set(q)
         _verbose_count.set(0 if q else v)
         # --offline: stamp the resolved value and arm the transport
-        # chokepoint before any leaf runs. The marker is set on EVERY
+        # chokepoint before any leaf runs. The marker is process-wide, so
+        # threads and executors the leaf starts are refused too, not only
+        # work that inherits this context. It is set on EVERY
         # dispatch, not only when the flag is present: a process that
         # invokes the app more than once (a REPL, a test harness, an
         # embedding host) would otherwise inherit the previous

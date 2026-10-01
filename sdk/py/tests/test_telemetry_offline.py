@@ -91,7 +91,7 @@ def test_user_traffic_still_refused_while_offline() -> None:
     netpolicy.install()
     try:
         try:
-            urllib.request.urlopen("https://example.com/", timeout=1)
+            urllib.request.urlopen("https://example.invalid/", timeout=1)
         except netpolicy.OfflineError:
             pass
         else:

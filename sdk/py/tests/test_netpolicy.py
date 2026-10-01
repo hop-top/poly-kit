@@ -7,6 +7,7 @@ expressed against urllib's opener chain instead of ``http.RoundTripper``.
 from __future__ import annotations
 
 import email.message
+import ssl
 import urllib.request
 
 import pytest
@@ -60,19 +61,11 @@ class _Resp:
         return None
 
 
-@pytest.fixture
-def clean_marker():
-    """Reset the offline marker after each test."""
-    token = netpolicy._OFFLINE.set(False)
-    yield
-    netpolicy._OFFLINE.reset(token)
-
-
 def _opener(rec: _Recorder) -> urllib.request.OpenerDirector:
     return netpolicy.guard(urllib.request.build_opener(rec))
 
 
-def test_blocks_external_when_offline(clean_marker):
+def test_blocks_external_when_offline():
     """A marked process must stop the request before it reaches the wire.
 
     The destination is external: loopback is exempt by design.
@@ -95,7 +88,7 @@ _LEAKS = ("alice", "pw-secret", "q-secret", "key=", "alt=sse", "frag-secret", "?
 
 
 @pytest.mark.parametrize("method", ["GET", "POST"])
-def test_refusal_omits_query_fragment_userinfo(clean_marker, method: str):
+def test_refusal_omits_query_fragment_userinfo(method: str):
     """The refusal names where the request was going, never what it carried.
 
     Scheme, host and path only: query, fragment and userinfo may hold
@@ -120,7 +113,7 @@ def test_refusal_omits_query_fragment_userinfo(clean_marker, method: str):
     assert not rec.reached
 
 
-def test_refusal_keeps_port(clean_marker):
+def test_refusal_keeps_port():
     """The port is part of where the request was going, so it stays."""
     netpolicy.set_offline(True)
 
@@ -144,7 +137,7 @@ def test_destination_edge_cases(url: str, want: str):
     assert netpolicy._destination(url) == want
 
 
-def test_allows_when_not_offline(clean_marker):
+def test_allows_when_not_offline():
     """An unmarked process must be entirely unaffected."""
     rec = _Recorder()
     op = _opener(rec)
@@ -162,7 +155,7 @@ def test_allows_when_not_offline(clean_marker):
         "http://[::1]:9000/health",
     ],
 )
-def test_allows_loopback_when_offline(clean_marker, target: str):
+def test_allows_loopback_when_offline(target: str):
     """Loopback stays reachable: --offline means no network, not no self."""
     rec = _Recorder()
     op = _opener(rec)
@@ -173,7 +166,7 @@ def test_allows_loopback_when_offline(clean_marker, target: str):
     assert rec.reached, f"{target}: loopback request was blocked"
 
 
-def test_blocks_dns_names_when_offline(clean_marker):
+def test_blocks_dns_names_when_offline():
     """A DNS name is remote even if it might resolve to loopback.
 
     Resolving it is itself network access.
@@ -188,7 +181,7 @@ def test_blocks_dns_names_when_offline(clean_marker):
     assert not rec.reached, "DNS-named host was allowed through"
 
 
-def test_allows_non_network_schemes_when_offline(clean_marker, tmp_path):
+def test_allows_non_network_schemes_when_offline(tmp_path):
     """``file:`` and ``data:`` never touch the network, so they stay open."""
     rec = _Recorder()
     op = _opener(rec)
@@ -199,7 +192,7 @@ def test_allows_non_network_schemes_when_offline(clean_marker, tmp_path):
     assert rec.reached
 
 
-def test_set_offline_false_leaves_marker_clean(clean_marker):
+def test_set_offline_false_leaves_marker_clean():
     """``set_offline(False)`` must not mark the process."""
     netpolicy.set_offline(False)
     assert netpolicy.is_offline() is False
@@ -221,19 +214,58 @@ def test_guard_is_idempotent():
     assert netpolicy.guard(None) is not None
 
 
-def test_install_guards_module_level_urlopen(clean_marker):
+def test_install_guards_module_level_urlopen():
     """``install()`` must guard the opener ``urllib.request.urlopen`` uses.
 
     That is the chokepoint beneath every naive caller in the port: neither
     ``aim`` nor ``upgrade`` builds its own opener.
     """
-    saved = urllib.request._opener
-    try:
-        netpolicy.install()
-        netpolicy.install()  # idempotent
-        netpolicy.set_offline(True)
+    netpolicy.install()
+    netpolicy.install()  # idempotent
+    netpolicy.set_offline(True)
 
-        with pytest.raises(netpolicy.OfflineError):
-            urllib.request.urlopen("https://example.invalid/x", timeout=1)
-    finally:
-        urllib.request._opener = saved
+    with pytest.raises(netpolicy.OfflineError):
+        urllib.request.urlopen("https://example.invalid/x", timeout=1)
+
+
+def test_install_guards_urlopen_with_ssl_context():
+    """``urlopen(..., context=...)`` builds a fresh opener per call instead
+    of using the installed one. That opener must be guarded too, or passing
+    a custom CA bundle would be a way around ``--offline``.
+    """
+    netpolicy.install()
+    netpolicy.set_offline(True)
+
+    with pytest.raises(netpolicy.OfflineError) as ei:
+        urllib.request.urlopen(
+            "https://example.invalid/x?key=q-secret",
+            timeout=1,
+            context=ssl.create_default_context(),
+        )
+
+    assert str(ei.value) == "GET https://example.invalid/x: network disabled by --offline"
+
+
+def test_install_guards_openers_built_afterwards():
+    """An opener built through ``urllib.request.build_opener`` after
+    ``install()`` carries the guard without the caller wrapping it.
+    """
+    netpolicy.install()
+    netpolicy.set_offline(True)
+    rec = _Recorder()
+
+    with pytest.raises(netpolicy.OfflineError):
+        urllib.request.build_opener(rec).open("https://example.invalid/x")
+
+    assert not rec.reached
+
+
+def test_install_wraps_build_opener_once():
+    """Repeated ``install()`` must not stack wrappers on ``build_opener``."""
+    netpolicy.install()
+    wrapped = urllib.request.build_opener
+    netpolicy.install()
+
+    assert urllib.request.build_opener is wrapped
+    handlers = urllib.request.build_opener().handlers
+    assert sum(isinstance(h, netpolicy._OfflineHandler) for h in handlers) == 1
