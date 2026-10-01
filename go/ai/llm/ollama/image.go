@@ -68,7 +68,7 @@ func (a *Adapter) GenerateImage(
 	if err != nil {
 		return llm.ImageResponse{}, fmt.Errorf("ollama: image gen: build request: %w", llm.RedactURLError(err))
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	a.setHeaders(httpReq)
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {

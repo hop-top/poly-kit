@@ -19,8 +19,9 @@ import (
 	"hop.top/kit/go/ai/llm"
 )
 
-// A local inference server: TRITON_API_KEY is sent when set and never
-// required. The aim catalog has no triton entry.
+// A local inference server: TRITON_API_KEY is sent when set, as
+// "Authorization: Bearer <key>" (the gateway or proxy in front of
+// Triton checks it; Triton itself takes none), and never required. The aim catalog has no triton entry.
 func init() {
 	llm.Register("triton", New, llm.Declaration{
 		Key: &llm.ProviderKey{EnvVars: []string{"TRITON_API_KEY"}, Optional: true},
@@ -36,6 +37,7 @@ type Scorer interface {
 type Client struct {
 	baseURL   string
 	modelName string
+	apiKey    string
 	httpC     *http.Client
 }
 
@@ -61,9 +63,17 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		return nil, fmt.Errorf("triton: model name is required")
 	}
 
+	// The key is the one the URI carries ([llm.ApplyAPIKey] puts
+	// TRITON_API_KEY there). A blank key is no key: nothing is sent.
+	var apiKey string
+	if strings.TrimSpace(cfg.Provider.APIKey) != "" {
+		apiKey = cfg.Provider.APIKey
+	}
+
 	return &Client{
 		baseURL:   baseURL,
 		modelName: model,
+		apiKey:    apiKey,
 		httpC:     &http.Client{},
 	}, nil
 }
@@ -101,6 +111,9 @@ func (c *Client) Score(
 		return 0, fmt.Errorf("triton: create request: %w", llm.RedactURLError(err))
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 
 	resp, err := c.httpC.Do(httpReq)
 	if err != nil {

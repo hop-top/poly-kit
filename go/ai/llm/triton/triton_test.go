@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -151,4 +152,78 @@ func TestClient_Score_EmptyData(t *testing.T) {
 func TestClient_Close(t *testing.T) {
 	c := &Client{}
 	assert.NoError(t, c.Close())
+}
+
+// authServer answers every inference request with a score and records
+// its Authorization header values: nil when none was sent.
+func authServer(t *testing.T) (*httptest.Server, *[][]string) {
+	t.Helper()
+	var got [][]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Values("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(inferResponse{Outputs: []inferOutput{{Data: []float64{0.5}}}})
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &got
+}
+
+// The key the URI carries goes out as a bearer token; a blank or
+// missing key sends no Authorization header at all.
+func TestScore_SendsKeyWhenSet(t *testing.T) {
+	cases := map[string][]string{
+		"":         nil,
+		"  ":       nil,
+		"\t":       nil,
+		"fake-key": {"Bearer fake-key"},
+	}
+	for key, want := range cases {
+		t.Run(key, func(t *testing.T) {
+			srv, got := authServer(t)
+			p, err := New(llm.ResolvedConfig{Provider: llm.ProviderConfig{
+				BaseURL: srv.URL, Model: "mf", APIKey: key,
+			}})
+			require.NoError(t, err)
+			_, err = p.(*Client).Score(context.Background(), []float32{1})
+			require.NoError(t, err)
+			require.Len(t, *got, 1)
+			assert.Equal(t, want, (*got)[0])
+		})
+	}
+}
+
+// End to end: TRITON_API_KEY reaches the server through ApplyAPIKey
+// and Resolve when set, and nothing is sent when it is unset or blank.
+func TestScore_TritonAPIKeyEndToEnd(t *testing.T) {
+	cases := []struct {
+		name  string
+		unset bool
+		value string
+		want  []string
+	}{
+		{name: "unset", unset: true},
+		{name: "empty", value: ""},
+		{name: "whitespace", value: "  "},
+		{name: "set", value: "fake-triton", want: []string{"Bearer fake-triton"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("XDG_CACHE_HOME", t.TempDir())
+			t.Setenv("TRITON_API_KEY", tc.value)
+			if tc.unset {
+				require.NoError(t, os.Unsetenv("TRITON_API_KEY"))
+			}
+			srv, got := authServer(t)
+			uri, err := llm.ApplyAPIKey(context.Background(), nil, "triton://mf?base_url="+srv.URL)
+			require.NoError(t, err)
+			p, err := llm.Resolve(uri)
+			require.NoError(t, err)
+			_, err = p.(*Client).Score(context.Background(), []float32{1})
+			require.NoError(t, err)
+			require.Len(t, *got, 1)
+			assert.Equal(t, tc.want, (*got)[0])
+		})
+	}
 }

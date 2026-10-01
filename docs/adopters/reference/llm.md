@@ -55,6 +55,14 @@ ollama://gpu-box:11434/llama3.2:3b
 ollama://llama3.2:3b?base_url=http://gpu-box:11434
 ```
 
+A local server behind an authenticating proxy (or ollama.com's API)
+takes its key from the URI as any provider does: with `OLLAMA_API_KEY`
+or `TRITON_API_KEY` set, `ApplyAPIKey` puts it on the URI and the
+`ollama` and `triton` adapters send it as `Authorization: Bearer <key>`
+on every request (ollama chat, streamed chat and image generation;
+triton inference). Unset or [blank](#blank-keys), no `Authorization`
+header is sent and nothing is required.
+
 LM Studio serves its OpenAI-compatible API under `/v1` only, so
 `lmstudio` appends `/v1` to any base URL that doesn't already end in
 it: a host-form URI, `?base_url=`, a config-file `base_url` or
@@ -423,9 +431,9 @@ registered schemes every layer agrees, cache or not:
 | `fireworks` | `FIREWORKS_API_KEY` | yes |
 | `deepseek` | `DEEPSEEK_API_KEY` | yes |
 | `mistral` | `MISTRAL_API_KEY` | yes |
-| `ollama` | `OLLAMA_API_KEY` | no |
-| `routellm` | `ROUTELLM_API_KEY` | no |
-| `triton` | `TRITON_API_KEY` | no |
+| `ollama` | `OLLAMA_API_KEY`, sent as a bearer token | no |
+| `routellm` | `ROUTELLM_API_KEY`, sent as a bearer token | no |
+| `triton` | `TRITON_API_KEY`, sent as a bearer token | no |
 | `lmstudio` | none | no |
 
 An alias uses its scheme's key (`fireworks-ai` reads
@@ -477,8 +485,9 @@ blank everywhere is a `*MissingKeyError`, and nothing blank is sent (an
 The adapters hold the same line for what reaches them directly: the
 `openai` adapter sends no `Authorization` header for a blank key (and
 never the SDK's own `OPENAI_API_KEY` in its place), `anthropic` refuses
-a blank key and does not send a blank `ANTHROPIC_AUTH_TOKEN`, and
-`google` falls through a blank key to its variables.
+a blank key and does not send a blank `ANTHROPIC_AUTH_TOKEN`,
+`google` falls through a blank key to its variables, and `ollama` and
+`triton` send no `Authorization` header for a blank key.
 
 A non-blank key is used as written, surrounding whitespace included.
 
