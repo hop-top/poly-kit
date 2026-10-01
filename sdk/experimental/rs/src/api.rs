@@ -179,10 +179,11 @@ async fn parse_error(resp: reqwest::Response) -> ApiError {
     })
 }
 
-/// Map a reqwest failure onto `ApiError`. reqwest's own message quotes
-/// the full request URL (query and fragment included), so the URL is
-/// taken off the error and named through [`destination`] instead, the
-/// same rule as the offline refusal.
+/// Map a reqwest failure onto `ApiError` as `METHOD destination: kind`.
+/// The guard already strips send failures, but body-decode failures come
+/// from reqwest's own `Response` and quote the full request URL, so the
+/// URL is always taken off the error and named through [`destination`],
+/// the same rule as the offline refusal.
 fn transport_error(method: &Method, e: reqwest::Error) -> ApiError {
     let message = match e.url().map(destination) {
         Some(dest) => format!("{method} {dest}: {}", e.without_url()),
