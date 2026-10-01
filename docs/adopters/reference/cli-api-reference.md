@@ -98,7 +98,7 @@ type Disable struct {
     Chdir    bool // suppress -C/--chdir
     Progress bool // suppress --progress-format
     Config   bool // suppress -c/--config
-    DryRun   bool // suppress the global --dry-run
+    DryRun   bool // suppress the global --dry-run; a tool-owned --dry-run keeps the confirm gate
 }
 ```
 
