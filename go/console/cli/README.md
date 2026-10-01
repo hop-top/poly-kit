@@ -1,6 +1,6 @@
 # cli
 
-standardized CLI framework and flag parsing.
+standardized CLI framework and flag parsing. A `write`/`destructive` leaf previews under `--dry-run` (`cli.RenderPlan`) or calls `cli.OptOutDryRun`; the confirm gate skips only for a leaf that previews ([sideeffect.md](../../../docs/adopters/reference/sideeffect.md#--dry-run-and-the-confirm-gate)).
 
 ## Flag validators
 

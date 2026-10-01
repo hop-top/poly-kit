@@ -142,7 +142,26 @@ if sideeffect.IsDryRun(cmd.Context()) {
 
 `sideeffect.IsDryRun` lives in the sideeffect package, **not**
 in `cli`, so library code can branch on dry-run without taking a
-cli dependency.
+cli dependency. Inside a command, `cli.IsDryRun(cmd)` answers the
+same question: true for the flag and for a context kit tagged, which
+is how `kit.dry_run` from config or `KIT_DRY_RUN` arrives.
+
+A command that previews answers with a `cli.Plan`, written by
+`cli.RenderPlan` in the active `--format` (json and yaml serialize
+it, any other format prints the plan table):
+
+```go
+if cli.IsDryRun(cmd) {
+    return cli.RenderPlan(cmd, cli.Plan{Effects: []cli.Effect{
+        {Kind: "delete", Target: "pattern:" + name},
+    }})
+}
+```
+
+`RenderPlan` fills in `command` (the command path) and
+`generated_at`. Validate the invocation first, as the real run
+would, so a dry run fails where the run would; return the plan
+before the first side effect.
 
 ## Policy table
 
@@ -155,6 +174,16 @@ cli dependency.
 
 A command with no `kit/side-effect`, or one kit does not recognize,
 rejects `--dry-run`: see below.
+
+A rejection is a `USAGE` envelope (exit 2) with a `suggested_fix`,
+rendered in the active `--format` and raised before the command's
+RunE. A leaf marked `kit/exempt-validation` is still a command: the
+table applies to it. Only help and completion are exempt.
+
+When a tool suppresses kit's flag (`Disable.DryRun`) and declares a
+`--dry-run` of its own, kit makes no promise for it: the flag is
+the tool's, the policy table does not apply, and the confirm gate
+below stays on.
 
 Plus two annotation overrides:
 
@@ -259,6 +288,35 @@ The pilots in `cmd/kit/...` (`kit symlink`, `kit init`) take path
 (1): they were the only commands shipping with explicit opt-in
 under the original opt-in and now opt in via the side-effect tier alone.
 
+### `--dry-run` and the confirm gate
+
+A `destructive` leaf asks for confirmation (`--confirm`, or the
+prompt on a terminal) before it runs. Under `--dry-run` the question
+is skipped only when the policy table resolves **allow** for the
+leaf: kit's `--dry-run` is on and the leaf took it by tier, or by
+the legacy annotation. Taking it is the leaf's promise to preview,
+not act, so there is nothing to confirm.
+
+| Leaf under `--dry-run` | Confirm gate | RunE |
+|------------------------|--------------|------|
+| `write`/`destructive`, not opted out | skipped | runs as a preview |
+| opted out, `interactive`, untagged, malformed | not reached | not run: rejected |
+| `read` | not asked (reads never are) | runs normally |
+| `--dry-run` the tool declared itself (`Disable.DryRun`) | asked | runs |
+
+The rule holds when kit's pre-execution hook did not run — a command
+group whose own `PersistentPreRunE` shadows kit's chain: the RunE
+policy gate resolves the table again, refuses a leaf that does not
+take `--dry-run`, and tags the context for one that does.
+
+A leaf that takes `--dry-run` by tier but ignores it in RunE acts for
+real, unconfirmed: kit trusts the tier. Preview in RunE, or call
+`cli.OptOutDryRun`. In tests, `harness.AssertDryRunNoMutation` (in
+`hop.top/kit/go/conformance/harness`, see
+[conformance.md](conformance.md)) checks a leaf makes no mutating
+call under `--dry-run`; kit runs a check of its own over the leaves
+it ships (see [What kit's own commands do](#what-kits-own-commands-do)).
+
 ### Bus auto-tagging
 
 Adopters that publish events get the `Mechanism: "dry_run"`
@@ -304,6 +362,19 @@ For commands that have opted in:
   `sideeffect.Exec`.
 - **Bus events tagged** with `Mechanism: "dry_run"` (when payload
   embeds `bus.Qualifiers` and is passed by pointer).
+
+## What kit's own commands do
+
+Every `write` and `destructive` leaf kit ships previews under
+`--dry-run`: `alias add|delete`, `peer trust|block|revoke`,
+`quota reset`, `token key create|revoke`, `serve` (the services it
+would start), `breaker reset`, `conformance badge|grade|harness
+record|svc serve|svc token mint|revoke`, `uxp run|resume --exec`,
+and in the kit binary `init`, `symlink`, `telemetry
+enable|disable|reset`. Each validates its input, then prints a Plan
+(`init`, `symlink` and `telemetry enable|disable` print their own
+preview lines) and changes nothing. A tree-walk test fails when a
+new kit leaf neither previews nor opts out.
 
 ## What `--dry-run` does not guarantee
 
