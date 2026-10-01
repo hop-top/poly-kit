@@ -65,7 +65,7 @@ func TestDryRunConfirm_HookShadowed_OptedOutLeafRefused(t *testing.T) {
 	assert.Contains(t, stderr, "opted out")
 }
 
-// Same shadowed hook, a leaf that does not honour --dry-run and never
+// Same shadowed hook, a leaf that does not honor --dry-run and never
 // opted out either: an interactive one. Without the hook the confirm
 // skip used to be granted on the flag alone.
 func TestDryRunConfirm_HookShadowed_InteractiveLeafRefused(t *testing.T) {
@@ -85,10 +85,10 @@ func TestDryRunConfirm_HookShadowed_InteractiveLeafRefused(t *testing.T) {
 	assert.False(t, ran)
 }
 
-// With the hook shadowed, a leaf that does honour --dry-run still gets
+// With the hook shadowed, a leaf that does honor --dry-run still gets
 // the preview: the gate tags the context itself, so RunE sees dry-run
 // through either accessor, and the confirm question is not asked.
-func TestDryRunConfirm_HookShadowed_HonouringLeafPreviews(t *testing.T) {
+func TestDryRunConfirm_HookShadowed_HonoringLeafPreviews(t *testing.T) {
 	r := New(Config{Name: "ptool", Version: "0.0.0", Short: "p"})
 	group := &cobra.Command{
 		Use:               "pattern",
@@ -120,7 +120,7 @@ func TestDryRunConfirm_HookShadowed_HonouringLeafPreviews(t *testing.T) {
 }
 
 // A tool that suppressed kit's --dry-run and declares its own: kit
-// cannot know whether the leaf honours it, so the destructive leaf
+// cannot know whether the leaf honors it, so the destructive leaf
 // keeps its confirm gate. Before the fix the adopter's flag alone
 // skipped the gate.
 func TestDryRunConfirm_KitDryRunDisabled_LocalFlagKeepsGate(t *testing.T) {
@@ -158,11 +158,11 @@ func TestDryRunConfirm_ExemptValidationLeaf_PolicyApplies(t *testing.T) {
 	assert.False(t, ran)
 }
 
-// The honouring path end to end: a destructive leaf that previews
+// The honoring path end to end: a destructive leaf that previews
 // under --dry-run renders a Plan, is not asked to confirm, and does
 // not perform its effect. Without --dry-run the same leaf is asked as
 // before, and declining keeps the effect from happening.
-func TestDryRunConfirm_HonouringLeaf_PlanNoPrompt(t *testing.T) {
+func TestDryRunConfirm_HonoringLeaf_PlanNoPrompt(t *testing.T) {
 	newRoot := func(deleted *bool) *Root {
 		r := New(Config{Name: "ptool", Version: "0.0.0", Short: "p"})
 		leaf := &cobra.Command{
@@ -189,7 +189,7 @@ func TestDryRunConfirm_HonouringLeaf_PlanNoPrompt(t *testing.T) {
 			[]string{"delete", "x", "--dry-run", "--format", "json"}, "y\n", true)
 		require.NoError(t, err)
 		assert.False(t, deleted, "dry-run must not delete")
-		assert.NotContains(t, prompt, "Continue?", "no confirm question under an honoured dry-run")
+		assert.NotContains(t, prompt, "Continue?", "no confirm question under an honored dry-run")
 		var p Plan
 		require.NoError(t, json.Unmarshal([]byte(stdout), &p), "stdout=%q", stdout)
 		assert.Equal(t, "ptool delete", p.Command)
