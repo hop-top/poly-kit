@@ -222,7 +222,7 @@ func SecretFor(ctx context.Context, store secret.Store, providerURI string) (str
 	if len(names) == 0 {
 		names = []string{EnvKeyFor(providerURI)}
 	}
-	value, storeErr := lookupKey(ctx, store, names, true)
+	value, _, storeErr := lookupKey(ctx, store, names, true)
 	if value == "" {
 		if storeErr != nil {
 			return "", fmt.Errorf("%w (%w)", secret.ErrNotFound, storeErr)
@@ -238,8 +238,8 @@ func SecretFor(ctx context.Context, store secret.Store, providerURI string) (str
 // model ("openrouter://openai/gpt-4.1-nano") otherwise reaches its
 // provider unauthenticated.
 //
-// The key resolves as in [SecretFor], names per [ProviderKeyFor];
-// store may be nil. uri comes back unchanged when it already carries
+// The key resolves as in [ResolveAPIKey], which also reports where it
+// came from; store may be nil. uri comes back unchanged when it already carries
 // api_key (the caller's choice outranks everything else), when its
 // scheme takes no key or is one no adapter serves (kit lends no
 // credential to an unknown host), and when a local runtime's own
@@ -261,33 +261,15 @@ func ApplyAPIKey(ctx context.Context, store secret.Store, uri string) (string, e
 		// ParseURI quotes its input, which may carry a key.
 		return "", errors.New("llm: apply API key: provider URI must be scheme://model")
 	}
-	if _, explicit := parsed.Params["api_key"]; explicit {
+	res, err := DefaultRegistry.resolveKey(ctx, store, parsed)
+	if err != nil {
+		return "", err // a *MissingKeyError, carrying any store failure
+	}
+	warnStoreError(ctx, parsed.Scheme, res.StoreErr)
+	if res.Source.Kind == KeySourceURI || res.Value == "" {
 		return uri, nil
 	}
-	// A scheme no adapter serves has a zero plan: no literal, no names.
-	plan := DefaultRegistry.keyPlan(ctx, parsed.Scheme)
-	value := plan.literal
-	if value == "" {
-		key := plan.key
-		if len(key.EnvVars) == 0 {
-			return uri, nil
-		}
-		var storeErr error
-		value, storeErr = lookupKey(ctx, store, key.EnvVars, !key.Optional)
-		if value == "" {
-			if key.Optional {
-				warnStoreError(ctx, parsed.Scheme, storeErr)
-				return uri, nil
-			}
-			return "", &MissingKeyError{
-				Scheme:   parsed.Scheme,
-				Model:    parsed.Model,
-				EnvVars:  append(slices.Clone(key.EnvVars), FallbackEnvKey),
-				StoreErr: storeErr,
-			}
-		}
-		warnStoreError(ctx, parsed.Scheme, storeErr)
-	}
+	value := res.Value
 
 	// ParseURI splits the query on & and does not unescape, so a key
 	// holding either separator cannot travel as a param intact.
@@ -302,14 +284,14 @@ func ApplyAPIKey(ctx context.Context, store secret.Store, uri string) (string, e
 }
 
 // lookupKey consults store then environment for each name, then the
-// universal variable when universal is set. It returns "" when nothing
-// is found.
+// universal variable when universal is set, and says which answered. It
+// returns "" and a zero source when nothing is found.
 //
 // A store backend failure (any error but secret.ErrNotFound) counts as
 // the name being absent from the store, so an unreadable keyring never
 // hides a key set in the environment. The failures come back in
 // storeErr, found or not, for the caller to surface.
-func lookupKey(ctx context.Context, store secret.Store, names []string, universal bool) (value string, storeErr error) {
+func lookupKey(ctx context.Context, store secret.Store, names []string, universal bool) (value string, src KeySource, storeErr error) {
 	var failed storeLookupError
 	defer func() {
 		if len(failed) > 0 {
@@ -320,7 +302,7 @@ func lookupKey(ctx context.Context, store secret.Store, names []string, universa
 		for _, name := range names {
 			s, err := store.Get(ctx, name)
 			if err == nil && s != nil && len(s.Value) > 0 {
-				return string(s.Value), nil
+				return string(s.Value), KeySource{Kind: KeySourceStore, Name: name}, nil
 			}
 			if err != nil && !errors.Is(err, secret.ErrNotFound) {
 				failed = append(failed, fmt.Errorf("%s: %w", name, err))
@@ -329,15 +311,15 @@ func lookupKey(ctx context.Context, store secret.Store, names []string, universa
 	}
 	for _, name := range names {
 		if v := os.Getenv(name); v != "" {
-			return v, nil
+			return v, KeySource{Kind: KeySourceEnv, Name: name}, nil
 		}
 	}
 	if universal {
 		if v := os.Getenv(FallbackEnvKey); v != "" {
-			return v, nil
+			return v, KeySource{Kind: KeySourceFallback, Name: FallbackEnvKey}, nil
 		}
 	}
-	return "", nil
+	return "", KeySource{}, nil
 }
 
 // storeLookupError lists the secret-store backend failures one key
