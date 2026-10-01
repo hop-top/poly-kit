@@ -120,6 +120,9 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	if cfg.URI.Scheme == "lmstudio" || cfg.URI.Scheme == "openai" && isHostForm(cfg) {
 		base = apiRootV1(base)
 	}
+	if err := checkBaseURL("base URL", base); err != nil {
+		return nil, err
+	}
 	opts = append(opts, option.WithBaseURL(base))
 
 	model := cfg.Provider.Model
