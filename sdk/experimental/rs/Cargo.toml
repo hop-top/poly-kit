@@ -7,9 +7,11 @@ description = "Cross-language CLI UX parity toolkit"
 
 [features]
 default = []
-# The netpolicy chokepoint lives beneath `api`: it owns the crate's only
-# reqwest client construction path, so anything that can make a request
-# necessarily compiles it in. `thiserror` supplies the typed refusal.
+# The netpolicy chokepoint lives beneath `api`: it owns the reqwest client
+# construction path for user traffic, so anything that issues such a
+# request necessarily compiles it in. The telemetry HTTPS sink builds its
+# own client and is deliberately unguarded (logging-class egress).
+# `thiserror` supplies the typed refusal.
 api = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:thiserror"]
 blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
