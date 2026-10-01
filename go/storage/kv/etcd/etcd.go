@@ -49,6 +49,9 @@ func New(endpoints []string, prefix string) (*Store, error) {
 // reliable.
 func NewContext(ctx context.Context, endpoints []string, prefix string) (*Store, error) {
 	for _, ep := range endpoints {
+		if err := checkEndpoint(ep); err != nil {
+			return nil, err
+		}
 		network, addr := dialTarget(ep)
 		if err := netpolicy.CheckDial(ctx, network, addr); err != nil {
 			return nil, fmt.Errorf("etcd kv: connect: %w", err)
@@ -71,6 +74,22 @@ func NewContext(ctx context.Context, endpoints []string, prefix string) (*Store,
 		return nil, fmt.Errorf("etcd kv: connect: %w", err)
 	}
 	return &Store{client: client, prefix: prefix}, nil
+}
+
+// checkEndpoint rejects a schemeless endpoint that carries userinfo
+// ("user:pass@host:2379"). etcd has no such form: the client hands the raw
+// string to gRPC, and dialTarget would pass it through verbatim, printing
+// the credentials in any refusal. The error names only the part after the
+// last "@", so the credentials never reach it.
+func checkEndpoint(ep string) error {
+	if strings.Contains(ep, "://") || strings.HasPrefix(ep, "unix:") || strings.HasPrefix(ep, "unixs:") {
+		return nil
+	}
+	i := strings.LastIndex(ep, "@")
+	if i < 0 {
+		return nil
+	}
+	return fmt.Errorf("etcd kv: endpoint %q: userinfo not allowed in a schemeless endpoint; use host:port", ep[i+1:])
 }
 
 // dialTarget reduces an etcd endpoint to the network and address a dial
