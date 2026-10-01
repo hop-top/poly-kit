@@ -248,7 +248,7 @@ func (r *Root) globalDryRun() bool {
 
 // applyDryRun resolves the dry-run policy for cmd when kit's
 // --dry-run is on. It returns whether the leaf runs as a dry run, or
-// the refusal when the leaf does not honour --dry-run. An honouring
+// the refusal when the leaf does not honor --dry-run. An honoring
 // leaf's context is tagged with sideeffect.WithDryRun.
 //
 // Both the pre-execution hook and the RunE policy gate call it: the

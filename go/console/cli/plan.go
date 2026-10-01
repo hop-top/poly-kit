@@ -73,7 +73,7 @@ func IsDryRun(cmd *cobra.Command) bool {
 // path and a zero GeneratedAt to now, so a leaf fills in only what it
 // would change.
 //
-// A leaf honours --dry-run by returning RenderPlan(cmd, plan) before
+// A leaf honors --dry-run by returning RenderPlan(cmd, plan) before
 // its first side effect:
 //
 //	if cli.IsDryRun(cmd) {

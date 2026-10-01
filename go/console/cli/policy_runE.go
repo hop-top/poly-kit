@@ -265,7 +265,7 @@ func installConfirmTokenFlag(cmd *cobra.Command) {
 //
 //  1. Resolve the active confirm mode.
 //  2. Read the side-effect tag.
-//  0. Under kit's --dry-run: refuse when the leaf does not honour
+//  0. Under kit's --dry-run: refuse when the leaf does not honor
 //     it (see resolveDryRunPolicy); otherwise the run is a preview.
 //  3. If destructive: enforce the --confirm matrix; on prompt-mode,
 //     prompt; on rejection, abort UNAUTHORIZED. Skipped for a
@@ -290,7 +290,7 @@ func (r *Root) wrapPolicyRunE(
 		se, hasSE := GetSideEffect(cmd)
 
 		// Dry-run first, as the pre-execution hook would have: refuse
-		// --dry-run on a leaf that does not honour it, and learn
+		// --dry-run on a leaf that does not honor it, and learn
 		// whether this run is a preview. Resolved here again because
 		// a command whose own PersistentPreRunE shadows kit's chain
 		// never ran the hook.
@@ -328,7 +328,7 @@ func (r *Root) wrapPolicyRunE(
 		// for a dry run kit applied: the leaf's dry-run policy
 		// resolved "allow", so it contracted to preview, not act. The
 		// bare --dry-run flag is not enough — on a leaf that does not
-		// honour it, or a --dry-run kit does not own, the command
+		// honor it, or a --dry-run kit does not own, the command
 		// would act unconfirmed.
 		if !dryRun {
 			if (hasSE && isDestructiveLike(se)) || policyConfirm {
