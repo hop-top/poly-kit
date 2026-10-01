@@ -1,8 +1,9 @@
 # Python SDK Reference
 
 > Every long-form surface of `hop-top-kit` (`sdk/py`): the MCP mount, the
-> URI facade, output formatting rules and worked examples, the telemetry
-> envelope, and LLM messages (content parts, tool-call round trips). The package front page is
+> URI facade, output formatting rules and worked examples, offline
+> enforcement, the telemetry envelope, and LLM messages (content parts,
+> tool-call round trips). The package front page is
 > [`sdk/py/README.md`](../../../sdk/py/README.md).
 
 ## Who this is for
@@ -465,6 +466,151 @@ internally. The `Format` Literal extends to include the new built-ins
 (`csv`, `text`) - non-breaking for adopters that typed against the
 narrower set.
 
+## Offline enforcement
+
+The family-wide `--offline` global disables network access. It is the
+highest-precedence override: per-command network opt-ins behave as if
+their opt-out flag had been passed. It only forces opt-outs on — it never
+un-sets an explicitly passed `--no-*` flag.
+
+Loopback is exempt. `--offline` means "do not talk to the network", not
+"do not talk to myself", so `127.0.0.0/8`, `localhost` and `[::1]` stay
+reachable. Other hostnames are remote even when they would resolve to
+loopback, because performing that resolution is itself network access.
+`file:` and `data:` URLs are never refused: they resolve locally.
+
+### With `create_app`: nothing to do
+
+`create_app` registers `--offline` on every app; unlike `--quiet` it has
+no `Disable` field, because the flag name is reserved family-wide. On
+every dispatch the root callback stamps the marker from the flag, and
+when the flag is set it guards `urllib.request.urlopen`. A leaf that
+fetches with `urlopen` is refused without consulting anything.
+
+To skip work instead of letting it fail at the transport, read the
+marker:
+
+```python
+from hop_top_kit.cli import is_offline
+
+@app.command()
+def sync():
+    if is_offline():
+        typer.echo("offline: skipping remote sync", err=True)
+        return
+    ...
+```
+
+The marker is stamped on every dispatch, not only when the flag is
+present, so a process that invokes the app twice (a REPL, a test
+harness) never inherits the first invocation's `--offline`.
+
+### Without `create_app`
+
+```python
+from hop_top_kit import netpolicy
+
+netpolicy.set_offline(True)   # mark the current context offline
+netpolicy.install()           # once, at start-up
+netpolicy.is_offline()        # consult
+```
+
+`install()` guards the opener behind module-level
+`urllib.request.urlopen`, the chokepoint beneath every caller that does
+not build its own. It is idempotent, but it mutates process state: call
+it during start-up, never concurrently with in-flight requests.
+
+### Enforcement
+
+The marker alone is advisory — a caller who forgets to consult it still
+reaches the wire. Enforcement therefore sits in urllib's opener chain,
+ahead of every protocol handler, so a refused request never resolves DNS
+or opens a socket. A blocked request raises `OfflineError` rather than
+skipping silently:
+
+```text
+GET https://api.example.com:8443/v1/models: network disabled by --offline
+```
+
+The message names the method and the destination as scheme, host, port
+and path only; query, fragment and userinfo never appear, as they may
+carry credentials. See
+[Offline refusals](../guides/cli-parity-guide.md#offline-refusals) for
+the shape every port shares.
+
+Match the refusal by type. `OfflineError` subclasses `OSError`, so an
+`except OSError` written for transport failures still catches it — but
+it is **not** a `urllib.error.URLError`, so an `except URLError` alone
+lets it through:
+
+```python
+import urllib.request
+from hop_top_kit.netpolicy import OfflineError
+
+try:
+    with urllib.request.urlopen(url, timeout=10) as resp:
+        body = resp.read()
+except OfflineError:
+    body = None          # refused by --offline: degrade, don't retry
+except OSError as e:     # URLError included: attempted and failed
+    raise SystemExit(f"fetch failed: {e}")
+```
+
+### Openers `install` cannot reach
+
+`install()` guards one opener. A request through any other opener is not
+refused until you guard it:
+
+- **Your own opener.** Wrap it with `guard`, which is idempotent;
+  `guard(None)` builds a default opener first.
+
+  ```python
+  opener = netpolicy.guard(urllib.request.build_opener(MyHandler()))
+  opener.open(url)
+  ```
+
+- **`urlopen(..., context=ssl_ctx)`.** Passing `context` makes `urlopen`
+  build a fresh opener for that call, bypassing the installed one. Build
+  the HTTPS handler yourself and guard it:
+
+  ```python
+  handler = urllib.request.HTTPSHandler(context=ssl_ctx)
+  netpolicy.guard(urllib.request.build_opener(handler)).open(url)
+  ```
+
+### Threads see the marker only through their context
+
+The marker is a `contextvars.ContextVar`, not a process global. Work
+that copies the caller's context sees it: asyncio tasks and
+`asyncio.to_thread`. Work that starts from an empty context does not:
+`threading.Thread`, `ThreadPoolExecutor.submit` and
+`loop.run_in_executor` read the marker as unset, so their requests go
+out even under `--offline`. Hand such work the caller's context:
+
+```python
+import contextvars
+
+pool.submit(contextvars.copy_context().run, fetch, url)
+```
+
+Copy once per task; one context cannot be entered by two threads at
+once.
+
+### Scope
+
+Enforcement covers HTTP(S) through `urllib.request`, which is every
+network client in this port today (`aim`, `upgrade`, `llm.URLSource`).
+It does **not** cover code that opens a socket by other means: raw
+`socket`, `http.client` used without urllib, `httpx`, `requests`,
+`grpc` (`routellm_grpc`) or DB-API drivers. For those `--offline` stays
+advisory and the call site must consult `is_offline()` itself.
+
+The telemetry HTTPS sink is deliberately **not** guarded. It posts
+through `httpx`, outside urllib's opener chain. Telemetry is
+logging-class egress: `--offline` stops traffic the user asked for, it
+is not a second consent gate on diagnostics. Consent and
+`KIT_TELEMETRY_MODE` already govern whether anything is emitted.
+
 ## Telemetry
 
 `hop_top_kit.telemetry` implements the SDK-side cross-language event
@@ -505,6 +651,9 @@ pip install 'hop-top-kit[telemetry-https]'
 export KIT_TELEMETRY_ENDPOINT=https://collector.example.com/v1
 export KIT_TELEMETRY_SINK=https
 ```
+
+The HTTPS sink is not refused by `--offline`; see
+[Offline enforcement](#offline-enforcement).
 
 ### Opt out
 

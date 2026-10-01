@@ -2,8 +2,8 @@
 
 > Every long-form surface of the experimental `hop-top-kit` crate
 > (`sdk/experimental/rs`): serve, the URI facade, output formatting
-> rules, the MCP mount, storage, the httpcache wire contract, telemetry
-> and the bus. The crate front page is
+> rules, the MCP mount, storage, the httpcache wire contract, offline
+> enforcement, telemetry and the bus. The crate front page is
 > [`sdk/experimental/rs/README.md`](../../../sdk/experimental/rs/README.md),
 > which carries install, the module table and the feature matrix.
 
@@ -465,6 +465,141 @@ silently produce keys Go cannot read; `keying.json` has a case for each.
 `serde` + `serde_json` + `base64` + `sha2` cover the whole contract; nothing
 exotic is needed.
 
+The fetch closure owns the transport, so `--offline` is enforced only if
+the closure's client is a [`GuardedClient`](#offline-enforcement).
+
+## Offline enforcement
+
+The family-wide `--offline` global disables network access. It is the
+highest-precedence override: per-command network opt-ins behave as if
+their opt-out flag had been passed. It only forces opt-outs on — it never
+un-sets an explicitly passed `--no-*` flag.
+
+Loopback is exempt. `--offline` means "do not talk to the network", not
+"do not talk to myself", so `127.0.0.0/8`, `localhost` (any case) and
+`[::1]` stay reachable. Other hostnames are remote even when they would
+resolve to loopback, because performing that resolution is itself
+network access.
+
+Feature `api` carries it (`telemetry` enables `api`).
+
+### Setting the policy
+
+```rust
+use hop_top_kit::netpolicy::NetPolicy;
+
+let policy = NetPolicy::new(offline); // from your parsed --offline flag
+policy.is_offline();                  // consult
+```
+
+Go threads the marker through `context.Context`; Rust has no ambient
+request context, so the marker is a `NetPolicy` value handed to each
+client at construction. `NetPolicy::default()` is online, so a client
+built without one behaves as before.
+
+### Enforcement
+
+The policy alone is advisory — a caller who forgets to consult it still
+reaches the wire. Rust also has no process-wide default transport to
+install a guard over, so the chokepoint is construction: `GuardedClient`
+is the crate's only `reqwest::Client` construction path, it never hands
+out the inner client, and every request it sends passes the policy check.
+
+```rust
+use std::time::Duration;
+use hop_top_kit::netpolicy::{GuardedClient, NetPolicy};
+
+let client = GuardedClient::new(NetPolicy::new(offline))?;
+// or, with transport settings:
+let client = GuardedClient::build(
+    NetPolicy::new(offline),
+    reqwest::Client::builder().timeout(Duration::from_secs(10)),
+)?;
+
+let resp = client
+    .get("https://api.example.com/v1/items")
+    .bearer_auth(&token)
+    .send()
+    .await?;
+```
+
+The request builder offers `header`, `bearer_auth`, `body`, `json` and
+`query`; for anything else, build a `reqwest::Request` and pass it to
+`client.execute(req)`, which applies the same check.
+
+`ApiClient` is built on `GuardedClient`, so its methods are enforced
+with no opt-in. `ApiClient::new(url)` is online; pass the flag through
+`ApiClient::with_policy(url, NetPolicy::new(offline))`.
+
+### Detecting a refusal
+
+A blocked request returns an error rather than skipping silently:
+
+```text
+GET https://api.example.com:8443/v1/models: network disabled by --offline
+```
+
+The message names the method and the destination as scheme, host, port
+and path only; query, fragment and userinfo never appear, as they may
+carry credentials. See
+[Offline refusals](../guides/cli-parity-guide.md#offline-refusals) for
+the shape every port shares.
+
+Match it by type. `GuardedClient` returns `NetError`, whose
+`as_offline()` yields the `OfflineError` (`method`, `url`) and whose
+`is_offline()` is the boolean form:
+
+```rust
+match client.get(url).send().await {
+    Ok(resp) => { /* … */ }
+    Err(e) if e.is_offline() => { /* refused by --offline: degrade, don't retry */ }
+    Err(e) => return Err(e.into()),
+}
+```
+
+Behind a `Box<dyn Error>`, downcast first:
+`err.downcast_ref::<NetError>().and_then(NetError::as_offline)`.
+`ApiClient` maps a refusal to `ApiError` with `status` 0 and `code`
+equal to `hop_top_kit::api::OFFLINE_CODE` (`"offline"`); an attempted
+request that failed gets `code` `"transport_error"`.
+
+### What other errors carry
+
+Every error `GuardedClient` returns names its destination the same way:
+`NetError::Transport` (connect, send, or a request that failed to
+build) has its URL replaced by scheme, host, port and path, so its
+`Display`, `Debug` and `url()` never carry query, fragment or userinfo.
+`ApiClient` errors follow the same rule, its body decoding included.
+
+A `reqwest::Response` that `GuardedClient` hands back is reqwest's own:
+its `url()`, and the errors from its `json()`, `text()` and `bytes()`,
+still carry the full URL. Strip it before you print or log one —
+`err.without_url()` drops it — and keep credentials in headers, not
+URLs.
+
+### Scope
+
+Enforcement covers HTTP(S) sent through `GuardedClient`, and so
+`ApiClient`: every network client in this crate except the telemetry
+sink below. It does
+**not** cover a `reqwest::Client` you build yourself, raw `TcpStream`,
+gRPC, raw TLS or a networked database driver. For those `--offline` stays
+advisory and the call site must consult `NetPolicy::is_offline()`
+itself.
+
+The telemetry HTTPS sink is deliberately **not** guarded: it builds its
+own `reqwest::Client`. Telemetry is logging-class egress: `--offline`
+stops traffic the user asked for, it is not a second consent gate on
+diagnostics. Consent and telemetry mode already govern whether anything
+is emitted.
+
+### CLI flag
+
+Not yet wired. This crate's `cli` module is an empty placeholder, so
+nothing registers `--offline` for you. Declare it on your clap root and
+pass `NetPolicy::new(offline)` to every `GuardedClient` and
+`ApiClient::with_policy` you build.
+
 ## Telemetry
 
 The Rust telemetry SDK is feature-gated. It mirrors the Go canonical
@@ -546,7 +681,8 @@ collector that re-emits via `go/core/redact`.
 - `SinkKind::Jsonl` — append-only `.jsonl` file with 10 MB rotation.
   Default; pairs well with a Go-side collector that tails the spool.
 - `SinkKind::Https` — POST `application/x-ndjson` to `endpoint`, 5s
-  connect / 10s overall timeout, one retry on 5xx / transport.
+  connect / 10s overall timeout, one retry on 5xx / transport. Not
+  refused by `--offline`; see [Offline enforcement](#offline-enforcement).
 
 ### Env vars
 

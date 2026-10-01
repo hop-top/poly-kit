@@ -76,5 +76,5 @@ a C compiler on the build host and a slower first build.
 
 - [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md):
   serve, the URI facade, output rules, the MCP mount, storage and the
-  cross-process gate, the httpcache wire contract, telemetry, the bus
+  cross-process gate, the httpcache wire contract, offline enforcement, telemetry, the bus
 - [Serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md)

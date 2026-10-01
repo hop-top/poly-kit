@@ -62,7 +62,7 @@ mytool list -o out.csv      # extension infers the formatter
 Non-directory modules: `hop_top_kit.cli` (CLI factory), `hop_top_kit.serve`
 (serve hierarchy and service lifecycle, cross-language, see [the
 contract](../../docs/contracts/serve-lifecycle.md)), `hop_top_kit.uri` (facade
-over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check), `hop_top_kit.llm` (LLM types, client, `routellm://` adapter; see [LLM messages](../../docs/adopters/reference/py-sdk.md#llm-messages)).
+over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check), `hop_top_kit.llm` (LLM types, client, `routellm://` adapter; see [LLM messages](../../docs/adopters/reference/py-sdk.md#llm-messages)), `hop_top_kit.netpolicy` (the `--offline` guard beneath `urllib`; see [Offline enforcement](../../docs/adopters/reference/py-sdk.md#offline-enforcement)).
 
 ## Contract
 
@@ -74,7 +74,7 @@ over `hop-top-cite`), `hop_top_kit.safety` (the Factor 10 `--force` TTY check), 
 
 ## See also
 
-- [Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md): the MCP mount, the URI facade, output formatting rules and worked examples, custom formatters, the telemetry envelope, LLM messages and tool calls
+- [Python SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-sdk.md): the MCP mount, the URI facade, output formatting rules and worked examples, custom formatters, offline enforcement, the telemetry envelope, LLM messages and tool calls
 - [Python CLI API reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/py-api-reference.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md)
 
 <!-- release: track hop-top-cite >=0.1.0 -->
