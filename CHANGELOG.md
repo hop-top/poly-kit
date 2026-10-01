@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.23](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.22...kit/v0.5.0-alpha.23) (2026-10-01)
 
+The hop-top team is happy to announce Kit 0.5.0-alpha.23. This release includes maintenance release with bug fixes.
+
 
 ### Bug Fixes
 
@@ -12,6 +14,8 @@
 * **storage/kv/etcd:** drop userinfo from endpoint dial target ([c2dd98d](https://github.com/hop-top/poly-kit/commit/c2dd98de0b6ebb5bbfdc3e1608bf2f14c09c32ef))
 * **storage/kv/etcd:** reject schemeless endpoint with userinfo ([b621dc1](https://github.com/hop-top/poly-kit/commit/b621dc13b3dc33f96fdc26a0c2ab391751c8c43e))
 * **ts:** omit query, fragment, userinfo from offline refusal ([b64cb25](https://github.com/hop-top/poly-kit/commit/b64cb25f79503a0874f56759081379d3644b1ab4))
+
+Full diff: [kit/v0.5.0-alpha.22...kit/v0.5.0-alpha.23](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.22...kit/v0.5.0-alpha.23)
 
 ## [0.5.0-alpha.22](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.21...kit/v0.5.0-alpha.22) (2026-09-30)
 
