@@ -58,7 +58,30 @@ LM Studio serves its OpenAI-compatible API under `/v1` only, so
 `lmstudio` appends `/v1` to any base URL that doesn't already end in
 it: a host-form URI, `?base_url=`, a config-file `base_url` or
 `LLM_BASE_URL`. `http://gpu-box:1234` and `http://gpu-box:1234/v1`
-reach the same endpoint. Other schemes use the base URL as given.
+reach the same endpoint.
+
+An `openai` host-form URI reaches a self-hosted OpenAI-compatible
+server under `/v1`, where vLLM, llama.cpp's `llama-server`, TGI,
+Ollama's OpenAI endpoint and LocalAI serve the API, as
+`api.openai.com` does:
+
+```text
+openai://localhost:8000/meta-llama/Llama-3.1-8B-Instruct   # http://localhost:8000/v1
+openai://gpu-box:8080/qwen2.5-7b-instruct                  # http://gpu-box:8080/v1
+```
+
+A host form can't carry a path: `openai://gpu-box:8000/v1/m` names the
+model `v1/m`. For an API mounted anywhere else, name its root with
+`?base_url=`, a config-file `base_url` or `LLM_BASE_URL`, each of which
+outranks the host. `openai` uses those as given and never appends
+`/v1`, so a gateway or proxy prefix reaches the right path:
+
+```text
+openai://my-model?base_url=http://gpu-box:4000                      # LiteLLM proxy root
+openai://gpt-4o?base_url=https://gateway.example/acct/gw/openai     # gateway prefix
+```
+
+Other schemes use the base URL as given, host form included.
 
 Each scheme resolves once its adapter package is imported, blank
 imports included (`_ "hop.top/kit/go/ai/llm/ollama"`).
