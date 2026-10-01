@@ -122,3 +122,34 @@ func TestKeyLeak_KeyInHeaderNotURL(t *testing.T) {
 		assert.NotContains(t, got[0].rawQuery, "key=", name)
 	}
 }
+
+// baseURLSecret is a credential a caller embedded in the base URL
+// itself (userinfo or a query param); kit never puts one there, but
+// must not echo one it was given.
+const baseURLSecret = "fake-base-url-secret-must-not-leak"
+
+// Transport and request-build failures quote the request URL, which
+// starts with the base URL; credentials in it come back masked.
+func TestKeyLeak_BaseURLCredentials(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	host := strings.TrimPrefix(srv.URL, "http://")
+	srv.Close() // nothing listens on host any more: connection refused
+
+	bases := map[string]string{
+		"userinfo token": "http://" + baseURLSecret + "@" + host + "/v1beta",
+		"userinfo pass":  "http://user:" + baseURLSecret + "@" + host + "/v1beta",
+		"query key":      "http://" + host + "/v1beta?key=" + baseURLSecret,
+		"unparseable":    "http://h\x7f/v1beta?key=" + baseURLSecret,
+	}
+	for baseName, base := range bases {
+		p := newLeakAdapter(t, base)
+		for name, call := range callers {
+			t.Run(baseName+"/"+name, func(t *testing.T) {
+				err := call(context.Background(), p)
+				require.Error(t, err)
+				assert.NotContains(t, err.Error(), baseURLSecret)
+				assert.NotContains(t, err.Error(), leakKey)
+			})
+		}
+	}
+}

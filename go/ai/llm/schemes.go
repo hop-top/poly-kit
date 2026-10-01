@@ -219,7 +219,7 @@ func (rt route) baseURL(uriScheme string) (string, error) {
 func (r *Registry) Resolve(uri string) (Provider, error) {
 	parsed, err := ParseURI(uri)
 	if err != nil {
-		return nil, fmt.Errorf("llm: invalid URI %q: %w", uri, err)
+		return nil, fmt.Errorf("llm: invalid URI %q: %w", RedactURI(uri), err)
 	}
 
 	rt, ok := r.route(context.Background(), parsed.Scheme)

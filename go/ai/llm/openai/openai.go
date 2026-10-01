@@ -522,8 +522,11 @@ func (s *streamIter) Close() error {
 // ---------- error mapping ----------
 
 func mapError(err error, scheme, model string) error {
+	// Errors quote the request URL; a base URL may carry a credential.
+	err = llm.RedactURLError(err)
 	var apiErr *oai.Error
 	if errors.As(err, &apiErr) {
+		redactRequestURL(apiErr.Request)
 		switch apiErr.StatusCode {
 		case 401, 403:
 			return llmerrors.NewAuth(scheme, err)

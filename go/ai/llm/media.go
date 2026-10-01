@@ -61,17 +61,18 @@ func (s *urlSource) URL() string      { return s.url }
 func (s *urlSource) MimeType() string { return "" }
 
 func (s *urlSource) Reader(ctx context.Context) (io.ReadCloser, error) {
+	// The URL may be presigned: errors carry it masked by RedactURI.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
 	if err != nil {
-		return nil, err
+		return nil, RedactURLError(err)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, RedactURLError(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		resp.Body.Close()
-		return nil, fmt.Errorf("url source: unexpected status %d fetching %s", resp.StatusCode, s.url)
+		return nil, fmt.Errorf("url source: unexpected status %d fetching %s", resp.StatusCode, RedactURI(s.url))
 	}
 	return resp.Body, nil
 }
