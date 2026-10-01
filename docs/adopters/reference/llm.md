@@ -419,6 +419,33 @@ scheme is the caller's policy. A required key found nowhere returns a
 `secret.ErrNotFound`) listing the names consulted. Errors name
 variables, never values; the returned URI holds the key, so don't log it.
 
+### Where a key came from
+
+`llm.ResolveAPIKey(ctx, store, uri)` runs the same resolution as
+`ApplyAPIKey` and returns a `KeyResolution`: the key (`Value`), where
+it came from (`Source`), the scheme's plan (`Known`, `Key`, as
+`ProviderKeyFor` gives it) and any store failure met on the way
+(`StoreErr`, returned, not logged). Report a key's origin from it
+instead of instrumenting the store:
+
+```go
+res, err := llm.ResolveAPIKey(ctx, store, "openrouter://openai/gpt-4.1-nano")
+fmt.Println(res.Source) // "store:OPENROUTER_API_KEY"; never print res.Value
+```
+
+| `Source.Kind` | Key came from | `Source.Name` |
+|---------------|---------------|---------------|
+| `uri` | the URI's `api_key` param | empty |
+| `config` | an `llm.yaml` block's `api_key` | `providers.<block>.api_key` |
+| `store` | the secret store | the key name asked for |
+| `env` | a provider variable (incl. `api_key_env`'s) | the variable |
+| `fallback` | `LLM_API_KEY` | `LLM_API_KEY` |
+| `""` (none) | nothing: no key needed, or none found | empty |
+
+A required key found nowhere returns a `*MissingKeyError` beside a
+resolution that still describes the scheme. `String`, `%#v` and JSON
+leave `Value` out.
+
 Lower-level helpers: `llm.ProviderKeyFor(uri)` returns the resolved
 variables and whether the key is optional (`ok` false when no adapter
 serves the scheme), `llm.SecretFor(ctx, store, uri)` returns the key
