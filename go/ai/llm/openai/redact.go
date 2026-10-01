@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 
@@ -20,4 +21,15 @@ func redactRequestURL(req *http.Request) {
 		u = &url.URL{Scheme: req.URL.Scheme, Host: req.URL.Host, Path: req.URL.Path}
 	}
 	req.URL = u
+}
+
+// checkBaseURL rejects a base URL the SDK cannot parse. The SDK would
+// report it on every request with the raw URL flattened into a string
+// no caller can mask; this error carries it masked by [llm.RedactURI].
+// what names the setting in the message ("base URL", an env var).
+func checkBaseURL(what, base string) error {
+	if _, err := url.Parse(base); err != nil {
+		return fmt.Errorf("openai: invalid %s: %w", what, llm.RedactURLError(err))
+	}
+	return nil
 }

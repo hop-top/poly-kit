@@ -125,6 +125,9 @@ schemes and their aliases are unaffected.
 A URI can carry a key (`?api_key=`), and a base URL can carry one in
 its userinfo or query. No llm or adapter error echoes it: each URI or
 request URL an error quotes is masked, scheme, host and model kept.
+The openai-compatible and anthropic adapters reject an unparseable base
+URL when the provider is created, with the URL masked, instead of on
+every request.
 
 ```text
 llm: invalid URI "openai/gpt-4o?api_key=REDACTED": missing scheme in URI "openai/gpt-4o?api_key=REDACTED"

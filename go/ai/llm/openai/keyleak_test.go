@@ -76,3 +76,24 @@ func TestMapError_RedactsURLs(t *testing.T) {
 		})
 	}
 }
+
+// The SDK flattens a base URL parse error, URL included, into a plain
+// string no caller can mask; New rejects it first with the URL masked.
+func TestNew_UnparseableBaseURLRedacted(t *testing.T) {
+	for name, base := range map[string]string{
+		"userinfo token": "http://" + baseURLSecret + "@h\x7f/v1",
+		"userinfo pass":  "http://user:" + baseURLSecret + "@h\x7f/v1",
+		"query key":      "http://h\x7f/v1?key=" + baseURLSecret,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := New(llm.ResolvedConfig{
+				URI:      llm.URI{Scheme: "openai"},
+				Provider: llm.ProviderConfig{BaseURL: base, Model: "gpt-4o", APIKey: "k"},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "openai: invalid base URL")
+			assert.Contains(t, err.Error(), "REDACTED")
+			assert.NotContains(t, err.Error(), baseURLSecret)
+		})
+	}
+}

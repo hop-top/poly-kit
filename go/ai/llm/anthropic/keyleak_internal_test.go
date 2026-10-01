@@ -70,3 +70,35 @@ func TestMapError_RedactsURLs(t *testing.T) {
 		})
 	}
 }
+
+// The SDK flattens a base URL parse error, URL included, into a plain
+// string no caller can mask; New rejects it first with the URL masked,
+// whether the URL comes from the config or ANTHROPIC_BASE_URL.
+func TestNew_UnparseableBaseURLRedacted(t *testing.T) {
+	bases := map[string]string{
+		"userinfo token": "http://" + baseURLSecret + "@h\x7f/v1",
+		"userinfo pass":  "http://user:" + baseURLSecret + "@h\x7f/v1",
+		"query key":      "http://h\x7f/v1?key=" + baseURLSecret,
+	}
+	for name, base := range bases {
+		t.Run("config/"+name, func(t *testing.T) {
+			_, err := New(llm.ResolvedConfig{
+				Provider: llm.ProviderConfig{BaseURL: base, Model: "claude-sonnet-4-20250514", APIKey: "k"},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "anthropic: invalid base URL")
+			assert.Contains(t, err.Error(), "REDACTED")
+			assert.NotContains(t, err.Error(), baseURLSecret)
+		})
+		t.Run("env/"+name, func(t *testing.T) {
+			t.Setenv("ANTHROPIC_BASE_URL", base)
+			_, err := New(llm.ResolvedConfig{
+				Provider: llm.ProviderConfig{Model: "claude-sonnet-4-20250514", APIKey: "k"},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "anthropic: invalid ANTHROPIC_BASE_URL")
+			assert.Contains(t, err.Error(), "REDACTED")
+			assert.NotContains(t, err.Error(), baseURLSecret)
+		})
+	}
+}

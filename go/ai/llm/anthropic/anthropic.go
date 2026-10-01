@@ -54,6 +54,9 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	// is what keys not scoped to a workspace must send.
 	opts := []option.RequestOption{option.WithoutEnvironmentDefaults()}
 	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
+		if err := checkBaseURL("ANTHROPIC_BASE_URL", v); err != nil {
+			return nil, err
+		}
 		opts = append(opts, option.WithBaseURL(v))
 	}
 	if v, ok := os.LookupEnv("ANTHROPIC_AUTH_TOKEN"); ok {
@@ -64,6 +67,9 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	}
 	opts = append(opts, option.WithAPIKey(cfg.Provider.APIKey))
 	if cfg.Provider.BaseURL != "" {
+		if err := checkBaseURL("base URL", cfg.Provider.BaseURL); err != nil {
+			return nil, err
+		}
 		opts = append(opts, option.WithBaseURL(cfg.Provider.BaseURL))
 	}
 
