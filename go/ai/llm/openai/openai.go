@@ -136,8 +136,8 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 
 // isHostForm reports whether cfg's base URL is the one a host-form URI
 // (scheme://host:port/model) derives, http://host:port, rather than one
-// named outright by a base_url param, a config file or LLM_BASE_URL,
-// each of which outranks the host.
+// named outright by a base_url param (which outranks the host) or, when
+// the URI has no host, by LLM_BASE_URL or a config file.
 func isHostForm(cfg llm.ResolvedConfig) bool {
 	if _, ok := cfg.URI.Params["base_url"]; ok {
 		return false
