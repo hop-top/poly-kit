@@ -16,7 +16,6 @@ from __future__ import annotations
 import urllib.error
 import urllib.request
 
-import pytest
 import typer
 from typer.testing import CliRunner
 
@@ -24,16 +23,6 @@ from hop_top_kit import netpolicy
 from hop_top_kit.cli import create_app, is_offline
 
 runner = CliRunner()
-
-
-@pytest.fixture(autouse=True)
-def restore_process_state():
-    """Undo the process-global mutations ``--offline`` performs."""
-    saved_opener = urllib.request._opener
-    token = netpolicy._OFFLINE.set(False)
-    yield
-    netpolicy._OFFLINE.reset(token)
-    urllib.request._opener = saved_opener
 
 
 def test_offline_flag_registered():
@@ -147,8 +136,8 @@ def test_marker_does_not_leak_across_invocations():
     marker.
 
     The Go port carries the marker on the per-command context, so it cannot
-    outlive a dispatch. Python's ContextVar is process-scoped, so the value
-    has to be re-stamped every run — otherwise a long-lived host (a REPL, a
+    outlive a dispatch. Python's marker is process-wide (so worker threads
+    see it), so the value has to be re-stamped every run — otherwise a long-lived host (a REPL, a
     test harness, an embedding process) refuses requests nobody asked to
     block.
     """

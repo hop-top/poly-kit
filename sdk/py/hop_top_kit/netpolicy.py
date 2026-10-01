@@ -14,13 +14,38 @@ network", not "do not talk to myself": a local ``kit serve`` peer, a dev
 backend on 127.0.0.1 and unix sockets stay reachable so offline workflows
 remain usable.
 
+Marker scope
+------------
+The marker has two forms, matching the other ports:
+
+- :func:`set_offline` marks the whole process. It is a plain module-level
+  flag, so every thread sees it: ``threading.Thread``,
+  ``ThreadPoolExecutor``, ``loop.run_in_executor``, asyncio tasks and
+  ``asyncio.to_thread`` alike. This is what ``create_app``'s root callback
+  sets for ``--offline``. It mirrors TypeScript's ``setProcessOffline`` and
+  PHP's ``NetPolicy::setOffline``, and the process-global reach of Go's
+  ``netpolicy.Install``.
+- :func:`offline_scope` marks one context: the ``with`` block and the work
+  that copies its context (asyncio tasks, ``asyncio.to_thread``,
+  ``contextvars.copy_context().run``), but not threads that start from an
+  empty context. It mirrors Go's ``WithOffline`` and TypeScript's
+  ``withOffline``, for hosts that need one unit of work offline while the
+  rest of the process stays online.
+
+:func:`is_offline` is true when either applies. A scope can only add the
+marker, never lift the process-wide one.
+
 Scope
 -----
 :func:`guard` sits in the ``urllib.request`` opener chain, so it covers
 HTTP and HTTPS through ``urllib`` — which is every network client in the
-Python port today (``hop_top_kit.aim``, ``hop_top_kit.upgrade``). It does
-NOT cover code that opens a socket directly: raw ``socket``, ``httpx``
-(the optional telemetry HTTPS sink), ``grpc`` (``routellm_grpc``),
+Python port today (``hop_top_kit.aim``, ``hop_top_kit.upgrade``,
+``hop_top_kit.llm.URLSource``). :func:`install` guards both the opener
+module-level ``urlopen`` uses and every opener built afterwards through
+``urllib.request.build_opener`` — which includes the one-off opener
+``urlopen(..., context=...)`` builds per call. It does NOT cover code
+that opens a socket directly: raw ``socket``, ``httpx`` (the optional
+telemetry HTTPS sink), ``grpc`` (``routellm_grpc``),
 ``http.client`` used without urllib, or DB-API drivers. For those,
 ``--offline`` remains advisory and the call site must consult
 :func:`is_offline` itself. Closing that gap needs a wrapped socket factory
@@ -32,9 +57,11 @@ against urllib's opener chain instead of ``http.RoundTripper``.
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import ipaddress
 import urllib.request
+from collections.abc import Iterator
 from urllib.parse import urlsplit
 
 __all__ = [
@@ -42,6 +69,7 @@ __all__ = [
     "guard",
     "install",
     "is_offline",
+    "offline_scope",
     "set_offline",
 ]
 
@@ -55,22 +83,61 @@ class OfflineError(OSError):
     """
 
 
-_OFFLINE: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    "hop_top_kit_offline", default=False
+_process_offline = False
+"""The process-wide marker set by :func:`set_offline`.
+
+A module global, not a ``ContextVar``: ``threading.Thread``,
+``ThreadPoolExecutor`` and ``loop.run_in_executor`` start their work from
+an empty context, so a context-scoped marker set by the CLI would never
+reach them and their requests would go out under ``--offline``. A single
+reference store is atomic, so no lock is needed to publish it."""
+
+_scoped_offline: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "hop_top_kit_offline_scope", default=False
 )
-"""The offline marker. A ContextVar rather than a module global so async
-tasks and threads that copy the context inherit it, matching the Go port's
-per-context tag."""
+"""The per-context marker set by :func:`offline_scope`."""
 
 
 def set_offline(offline: bool) -> None:
-    """Mark the current context offline. ``False`` leaves it clean."""
-    _OFFLINE.set(bool(offline))
+    """Mark the whole process offline, or clear that mark with ``False``.
+
+    Process-wide: every thread, executor and task sees it, whichever one
+    called this. ``create_app`` calls it on every dispatch with the
+    resolved ``--offline`` value. ``False`` clears only this process-wide
+    mark; an enclosing :func:`offline_scope` stays in force.
+    """
+    global _process_offline
+    _process_offline = bool(offline)
+
+
+@contextlib.contextmanager
+def offline_scope(offline: bool = True) -> Iterator[None]:
+    """Mark the current context offline for the duration of the block.
+
+    Work that copies the context inherits the mark: asyncio tasks created
+    inside the block, ``asyncio.to_thread`` and
+    ``contextvars.copy_context().run``. Threads that start from an empty
+    context — ``threading.Thread``, ``ThreadPoolExecutor.submit``,
+    ``loop.run_in_executor`` — do not; use :func:`set_offline` when the
+    whole process must stay off the network.
+
+    ``offline=False`` leaves the context unchanged, so it neither marks a
+    clean context nor lifts an enclosing mark. Mirrors Go's
+    ``WithOffline``.
+    """
+    if not offline:
+        yield
+        return
+    token = _scoped_offline.set(True)
+    try:
+        yield
+    finally:
+        _scoped_offline.reset(token)
 
 
 def is_offline() -> bool:
-    """Report whether the current context carries the offline marker."""
-    return _OFFLINE.get()
+    """Report whether the process, or the current context, is offline."""
+    return _process_offline or _scoped_offline.get()
 
 
 # Schemes that never touch the network. ``file:`` and ``data:`` resolve
@@ -160,18 +227,44 @@ def guard(opener: urllib.request.OpenerDirector | None) -> urllib.request.Opener
     return opener
 
 
-def install() -> None:
-    """Guard the opener that module-level ``urllib.request.urlopen`` uses.
+def _guarded_build_opener(build_opener):
+    """Wrap ``build_opener`` so every opener it returns carries the guard."""
 
-    That is the chokepoint beneath every caller that does not build its
-    own opener — the common case across the port and adopter code — so the
-    policy is enforced without a per-site change.
+    def build(*handlers):
+        return guard(build_opener(*handlers))
+
+    build._hop_top_kit_unguarded = build_opener  # type: ignore[attr-defined]
+    build.__doc__ = build_opener.__doc__
+    build.__name__ = build_opener.__name__
+    return build
+
+
+def install() -> None:
+    """Guard the openers module-level ``urllib.request.urlopen`` uses.
+
+    Two seams, because ``urlopen`` has two ways to get an opener:
+
+    - The installed opener, used by a plain ``urlopen(url)``. It is wrapped
+      with :func:`guard` and reinstalled.
+    - ``urllib.request.build_opener``, which ``urlopen(..., context=...)``
+      calls to build a one-off opener per request, bypassing the installed
+      one. It is replaced with a wrapper that guards what it returns, so
+      passing an SSL context is not a way around ``--offline``. Callers
+      that build their own opener through it after ``install`` are covered
+      by the same wrapper.
+
+    That is the chokepoint beneath every caller that does not assemble its
+    own ``OpenerDirector``, so the policy is enforced without a per-site
+    change.
 
     Idempotent and safe to call more than once. Call it once during
     process start-up (``cli.create_app`` does this) and never concurrently
-    with in-flight requests: it mutates a process-global.
+    with in-flight requests: it mutates process-globals.
 
-    Callers that DO build their own opener must wrap it themselves with
-    :func:`guard`; ``install`` cannot reach them.
+    Not reachable from here: an ``OpenerDirector`` assembled by hand, and a
+    ``build_opener`` bound by name (``from urllib.request import
+    build_opener``) before ``install`` ran. Wrap those with :func:`guard`.
     """
+    if not hasattr(urllib.request.build_opener, "_hop_top_kit_unguarded"):
+        urllib.request.build_opener = _guarded_build_opener(urllib.request.build_opener)
     urllib.request.install_opener(guard(urllib.request._opener))
