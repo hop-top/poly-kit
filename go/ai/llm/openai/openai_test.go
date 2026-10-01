@@ -834,8 +834,9 @@ func TestResolve_OpenAIRequestPath(t *testing.T) {
 	}
 }
 
-// LoadConfig is the other way a host form reaches the adapter; an
-// LLM_BASE_URL outranks the host and is used as given.
+// LoadConfig is the other way a host form reaches the adapter. The URI
+// host outranks LLM_BASE_URL, as in Resolve; LLM_BASE_URL alone is used
+// as given.
 func TestLoadConfig_OpenAIHostForm(t *testing.T) {
 	tests := []struct {
 		name, uri, env, want string
@@ -843,7 +844,7 @@ func TestLoadConfig_OpenAIHostForm(t *testing.T) {
 		{"host form", "openai://gpu-box:8000/my-model", "", "http://gpu-box:8000/v1/chat/completions"},
 		{"env without v1", "openai://my-model", "http://gpu-box:8000", "http://gpu-box:8000/chat/completions"},
 		{"env with v1", "openai://my-model", "http://gpu-box:8000/v1", "http://gpu-box:8000/v1/chat/completions"},
-		{"env outranks host form", "openai://gpu-box:8000/my-model", "http://other:9000", "http://other:9000/chat/completions"},
+		{"host form outranks env", "openai://gpu-box:8000/my-model", "http://other:9000", "http://gpu-box:8000/v1/chat/completions"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

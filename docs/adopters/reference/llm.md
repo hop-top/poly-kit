@@ -72,10 +72,11 @@ openai://gpu-box:8080/qwen2.5-7b-instruct                  # http://gpu-box:8080
 ```
 
 A host form can't carry a path: `openai://gpu-box:8000/v1/m` names the
-model `v1/m`. For an API mounted anywhere else, name its root with
-`?base_url=`, a config-file `base_url` or `LLM_BASE_URL`, each of which
-outranks the host. `openai` uses those as given and never appends
-`/v1`, so a gateway or proxy prefix reaches the right path:
+model `v1/m`. For an API mounted anywhere else, drop the host and name
+its root with `?base_url=` (which outranks the host), `LLM_BASE_URL` or
+a config-file `base_url` (which a host form outranks; see
+[Configuration](#configuration)). `openai` uses those as given and never
+appends `/v1`, so a gateway or proxy prefix reaches the right path:
 
 ```text
 openai://my-model?base_url=http://gpu-box:4000                      # LiteLLM proxy root
