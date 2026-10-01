@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "hop-top-kit"
-version = "0.5.0-alpha.2"
+version = "0.5.0-alpha.3"
 dependencies = [
  "base64 0.23.1",
  "chrono",

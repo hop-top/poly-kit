@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.2...kit-rs/v0.5.0-alpha.3) (2026-10-01)
+
+The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.3. This release includes new features and bug fixes.
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** `hop-top-kit` (feature `api`) exposes reqwest types (`GuardedClient::build` takes `reqwest::ClientBuilder`; methods return reqwest `Error`/`Response`), so adopters must move to reqwest 0.13. TLS backend changes from native-tls (system OpenSSL) to rustls with aws-lc-rs, which builds aws-lc-sys (C toolchain + cmake at build time). Migration: bump your reqwest to 0.13; drop OpenSSL system deps if only needed for kit.
+* **sdk-rs:** an Authorization header no longer admits kit/auth-required leaves on the MCP mount. Set MountOptions.verifier to a Verifier returning Some(Identity) for a credential it accepts and None otherwise. Response gained a public www_authenticate field, so struct literals need it.
+
+### Features
+
+* **parity:** pin the exit-code taxonomy across all five ports ([#319](https://github.com/hop-top/poly-kit/issues/319)) ([dbe68c5](https://github.com/hop-top/poly-kit/commit/dbe68c5987738f62954597a8038e7b2929688005))
+
+
+### Bug Fixes
+
+* **cmdsurface:** label the D2 initialize wire fixture legacy ([cdf6a51](https://github.com/hop-top/poly-kit/commit/cdf6a517202363e36c1a65e454e1698be0418748))
+* **rs:** omit query, fragment from api transport errors ([9b14ad6](https://github.com/hop-top/poly-kit/commit/9b14ad6503f2ec9c2483ec844aa8ed17652c8a82))
+* **rs:** omit query, fragment from offline refusal ([60dd559](https://github.com/hop-top/poly-kit/commit/60dd55910bb1778d086c96337ab42ec5646adc50))
+* **rs:** strip query, fragment, userinfo from guarded transport errors ([199f7a1](https://github.com/hop-top/poly-kit/commit/199f7a167a62f8ba63713552970b6db308b1e35c))
+* **sdk-rs:** admit auth-required MCP leaves only for a verified caller ([430cb42](https://github.com/hop-top/poly-kit/commit/430cb42a3592905b4be0eb36b59f6b957aa21d08))
+* **sdk:** add CONSENT_REFUSED and PREREQUISITE to the four SDK ports ([#314](https://github.com/hop-top/poly-kit/issues/314)) ([c937bef](https://github.com/hop-top/poly-kit/commit/c937befdab1030f77bc13ee9f641430b44f43705))
+
+
+### Build
+
+* **deps:** bump reqwest 0.13 in sdk/experimental/rs ([cc821d1](https://github.com/hop-top/poly-kit/commit/cc821d1c650ab7c0db5b9d26c459b1f7fa4ae028))
+
+Full diff: [kit-rs/v0.5.0-alpha.2...kit-rs/v0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.2...kit-rs/v0.5.0-alpha.3)
+
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-rs/v0.5.0-alpha.1...kit-rs/v0.5.0-alpha.2) (2026-09-05)
 
 The hop-top team is happy to announce Kit's Rust SDK 0.5.0-alpha.2. This release includes new features.
