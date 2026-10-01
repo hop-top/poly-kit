@@ -352,7 +352,7 @@ case errors.Is(err, llm.ErrMissingKey):
     errors.As(err, &missing) // missing.EnvVars[0] == "OPENROUTER_API_KEY"
     // word the message and exit code your way
 case err != nil:
-    // secret-store backend failure, or uri has no scheme
+    // uri has no scheme, or the key cannot travel in a URI
 }
 provider, err := llm.Resolve(uri)
 ```
@@ -399,6 +399,16 @@ Resolution order for a required key: the secret store under each name
 order matches Google's genai SDK, which prefers `GOOGLE_API_KEY` when
 both are set; the `google` adapter reads the environment in the same
 order.
+
+A secret-store backend failure (a locked keyring, an unreachable
+vault: any error but `secret.ErrNotFound`) is not a missing key and
+does not stop the search: that name counts as absent from the store,
+and the next name, the environment and `LLM_API_KEY` still answer. It
+is surfaced, never dropped. When no source has the key, the
+`*MissingKeyError` carries it in `StoreErr` (also in its message and
+reachable with `errors.Is`); when a later source supplies the key,
+`ApplyAPIKey` and `SecretFor` log it as a warning on `slog.Default()`.
+Store errors name keys, never values.
 
 `ApplyAPIKey` leaves the URI unchanged when it already carries
 `api_key`, when the scheme is local and its own variable is unset

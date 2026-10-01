@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -295,12 +296,129 @@ func (failingStore) Get(context.Context, string) (*secret.Secret, error) { retur
 func (failingStore) List(context.Context, string) ([]string, error)      { return nil, errBackend }
 func (failingStore) Exists(context.Context, string) (bool, error)        { return false, errBackend }
 
-func TestApplyAPIKey_StoreErrorIsNotMissingKey(t *testing.T) {
-	isolateKeys(t)
-	_, err := llm.ApplyAPIKey(context.Background(), failingStore{}, "openai://gpt-4.1-nano")
-	require.Error(t, err)
-	assert.NotErrorIs(t, err, llm.ErrMissingKey)
-	assert.ErrorIs(t, err, errBackend)
+// partlyFailingStore fails for the names in fail and serves the rest
+// from inner.
+type partlyFailingStore struct {
+	inner secret.Store
+	fail  map[string]bool
+}
+
+func (s partlyFailingStore) Get(ctx context.Context, k string) (*secret.Secret, error) {
+	if s.fail[k] {
+		return nil, errBackend
+	}
+	return s.inner.Get(ctx, k)
+}
+
+func (s partlyFailingStore) List(ctx context.Context, p string) ([]string, error) {
+	return s.inner.List(ctx, p)
+}
+
+func (s partlyFailingStore) Exists(ctx context.Context, k string) (bool, error) {
+	if s.fail[k] {
+		return false, errBackend
+	}
+	return s.inner.Exists(ctx, k)
+}
+
+// captureLogs routes slog.Default to a buffer for the test's duration.
+func captureLogs(t *testing.T) *strings.Builder {
+	t.Helper()
+	var buf strings.Builder
+	orig := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(orig) })
+	return &buf
+}
+
+// A secret-store backend failure is not a missing key and does not end
+// the search: the next name, the environment and LLM_API_KEY still
+// answer. The failure is surfaced, never silent: logged as a warning
+// when a later source supplies the key, carried by the error when none
+// does.
+func TestApplyAPIKey_StoreErrorFallsThrough(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("provider env var answers", func(t *testing.T) {
+		isolateKeys(t)
+		logs := captureLogs(t)
+		t.Setenv("OPENAI_API_KEY", "fake-env")
+		got, err := llm.ApplyAPIKey(ctx, failingStore{}, "openai://gpt-4.1-nano")
+		require.NoError(t, err)
+		assert.Equal(t, "openai://gpt-4.1-nano?api_key=fake-env", got)
+		assert.Contains(t, logs.String(), "level=WARN")
+		assert.Contains(t, logs.String(), "scheme=openai")
+		assert.Contains(t, logs.String(), "OPENAI_API_KEY: backend unreachable")
+		assert.NotContains(t, logs.String(), "fake-env")
+	})
+	t.Run("LLM_API_KEY answers", func(t *testing.T) {
+		isolateKeys(t)
+		captureLogs(t)
+		t.Setenv(llm.FallbackEnvKey, "fake-universal")
+		got, err := llm.ApplyAPIKey(ctx, failingStore{}, "openai://m")
+		require.NoError(t, err)
+		assert.Equal(t, "openai://m?api_key=fake-universal", got)
+	})
+	t.Run("next store name answers", func(t *testing.T) {
+		isolateKeys(t)
+		captureLogs(t)
+		mem := memory.New()
+		require.NoError(t, mem.Set(ctx, "GEMINI_API_KEY", []byte("fake-gemini")))
+		store := partlyFailingStore{inner: mem, fail: map[string]bool{"GOOGLE_API_KEY": true}}
+		got, err := llm.ApplyAPIKey(ctx, store, "google://m")
+		require.NoError(t, err)
+		assert.Equal(t, "google://m?api_key=fake-gemini", got)
+	})
+	t.Run("nothing answers: missing key carrying the store error", func(t *testing.T) {
+		isolateKeys(t)
+		logs := captureLogs(t)
+		_, err := llm.ApplyAPIKey(ctx, failingStore{}, "openai://gpt-4.1-nano")
+		require.ErrorIs(t, err, llm.ErrMissingKey)
+		assert.ErrorIs(t, err, errBackend)
+		var missing *llm.MissingKeyError
+		require.ErrorAs(t, err, &missing)
+		require.ErrorIs(t, missing.StoreErr, errBackend)
+		assert.Equal(t, []string{"OPENAI_API_KEY", llm.FallbackEnvKey}, missing.EnvVars)
+		assert.Contains(t, err.Error(), "set OPENAI_API_KEY or LLM_API_KEY")
+		assert.Contains(t, err.Error(), "OPENAI_API_KEY: backend unreachable")
+		assert.Empty(t, logs.String(), "returned, not also logged")
+	})
+	t.Run("no store error: message unchanged", func(t *testing.T) {
+		isolateKeys(t)
+		_, err := llm.ApplyAPIKey(ctx, memory.New(), "openai://m")
+		var missing *llm.MissingKeyError
+		require.ErrorAs(t, err, &missing)
+		assert.NoError(t, missing.StoreErr)
+		assert.Equal(t, `llm: no API key for provider "openai" (model "m"): set OPENAI_API_KEY or LLM_API_KEY`, err.Error())
+	})
+	t.Run("local runtime: logged, uri untouched", func(t *testing.T) {
+		isolateKeys(t)
+		logs := captureLogs(t)
+		got, err := llm.ApplyAPIKey(ctx, failingStore{}, "ollama://llama3")
+		require.NoError(t, err)
+		assert.Equal(t, "ollama://llama3", got)
+		assert.Contains(t, logs.String(), "OLLAMA_API_KEY: backend unreachable")
+	})
+}
+
+func TestSecretFor_StoreErrorFallsThrough(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("env answers", func(t *testing.T) {
+		isolateKeys(t)
+		logs := captureLogs(t)
+		t.Setenv("OPENAI_API_KEY", "fake-env")
+		got, err := llm.SecretFor(ctx, failingStore{}, "openai")
+		require.NoError(t, err)
+		assert.Equal(t, "fake-env", got)
+		assert.Contains(t, logs.String(), "OPENAI_API_KEY: backend unreachable")
+	})
+	t.Run("nothing answers", func(t *testing.T) {
+		isolateKeys(t)
+		_, err := llm.SecretFor(ctx, failingStore{}, "openai")
+		require.ErrorIs(t, err, secret.ErrNotFound)
+		assert.ErrorIs(t, err, errBackend)
+	})
 }
 
 func TestApplyAPIKey_ErrorsNeverCarryKeys(t *testing.T) {
