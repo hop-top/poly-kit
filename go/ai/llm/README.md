@@ -4,10 +4,10 @@
 
 How a Go tool talks to any LLM provider through one client: completions,
 streaming, tool calling, image generation, speech synthesis,
-transcription and video analysis, selected by a `scheme://model` URI with
-a file < URI < env config merge, fallback chains and bus events. Wrong
-package when you need model metadata itself (`hop.top/aim`) or a
-provider-specific wire detail (the adapter sub-packages below).
+transcription and video analysis, selected by a `scheme://model` URI
+(config from llm.yaml and env, the URI highest), fallback chains and bus
+events. Wrong package when you need model metadata itself (`hop.top/aim`)
+or a provider-specific wire detail (the adapter sub-packages below).
 
 ## Use it when
 
@@ -36,7 +36,7 @@ fmt.Println(resp.Message.Content)
 
 - Provider URI: `scheme://model[?param=val]`; 14 schemes, aim aliases, catalog
   providers by protocol: [Provider URIs](../../../docs/adopters/reference/llm.md#provider-uris).
-- Config merge: file < URI params < env vars; an llm.yaml provider block also configures the provider's aliases, `llm.ProviderSettingsFor(uri)` returns it as written: [Provider blocks](../../../docs/adopters/reference/llm.md#provider-blocks-and-aliases). Pool: file < env (`LLM_POOL_DISABLE`) < CLI (`ResolvePool`).
+- Config merge (`LoadConfig`): the URI outranks all; base URL then `LLM_BASE_URL` > llm.yaml; the key as `ApplyAPIKey` resolves it; an llm.yaml provider block also configures the provider's aliases, `llm.ProviderSettingsFor(uri)` returns it as written: [Provider blocks](../../../docs/adopters/reference/llm.md#provider-blocks-and-aliases). Pool: file < env (`LLM_POOL_DISABLE`) < CLI (`ResolvePool`).
 - Bus topics default to `kit.ai.{request.started, response.received,
   request.errored, fallback.applied, route.selected, eva.evaluated}`;
   `WithTopicPrefix` rebrands the `source.category` prefix,

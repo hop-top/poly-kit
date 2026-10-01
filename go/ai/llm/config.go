@@ -1,7 +1,8 @@
 // Package llm provides configuration resolution for LLM providers.
 //
-// It supports a three-layer merge strategy: config file < URI < env vars.
-// Provider URIs follow the format scheme://model[?param=val&param2=val2].
+// [LoadConfig] merges llm.yaml, the environment and the URI, the URI
+// highest. Provider URIs follow the format
+// scheme://model[?param=val&param2=val2].
 package llm
 
 import (
@@ -152,12 +153,23 @@ func parseQuery(q string) map[string]string {
 	return m
 }
 
-// LoadConfig resolves the full provider configuration by merging:
+// LoadConfig resolves the full provider configuration for uri. Each
+// field, highest precedence first:
 //
-//  1. Config file values for the URI's scheme (api_key, or the
-//     variable api_key_env names when api_key is unset)
-//  2. URI values (model, params)
-//  3. Environment variable overrides
+//   - APIKey: as [ResolveAPIKey] resolves it with no secret store — the
+//     URI's api_key param; llm.yaml api_key, then the variable
+//     api_key_env names; the provider's key variables; LLM_API_KEY for
+//     a required key only. A key found nowhere leaves APIKey empty:
+//     reporting it is the caller's ([ApplyAPIKey] returns the error).
+//   - BaseURL: the URI's base_url param; the URI's host
+//     ("http://host:port"); LLM_BASE_URL; llm.yaml base_url. The
+//     adapter's own default is left to [Resolve] and the adapter.
+//   - Model: the URI's model; llm.yaml model.
+//   - Params: the URI's query params. Extras: the llm.yaml block's
+//     other keys.
+//
+// The llm.yaml block is the one [ProviderSettingsFor] finds, so an
+// alias ("fireworks-ai") reads its provider's block.
 //
 // When uri is empty, LLM_PROVIDER env var or the config file's default
 // field is used. Returns an error if no URI can be determined.
@@ -184,14 +196,12 @@ func LoadConfig(uri string) (ResolvedConfig, error) {
 		return ResolvedConfig{}, err
 	}
 
-	// Layer 1: the config file block configuring the scheme, an
-	// alias's included (see ProviderSettingsFor).
+	ctx := context.Background()
+
+	// The config file block configuring the scheme, an alias's
+	// included (see ProviderSettingsFor).
 	var pc ProviderConfig
-	if fp, _, ok := findBlock(cf, DefaultRegistry.blockNamesFor(context.Background(), parsed.Scheme)); ok {
-		pc.APIKey = fp.APIKey
-		if pc.APIKey == "" && fp.APIKeyEnv != "" {
-			pc.APIKey = os.Getenv(fp.APIKeyEnv)
-		}
+	if fp, _, ok := findBlock(cf, DefaultRegistry.blockNamesFor(ctx, parsed.Scheme)); ok {
 		pc.BaseURL = fp.BaseURL
 		pc.Model = fp.Model
 		if len(fp.Extra) > 0 {
@@ -199,36 +209,31 @@ func LoadConfig(uri string) (ResolvedConfig, error) {
 		}
 	}
 
-	// Layer 2: URI overrides.
+	// The key resolves as ApplyAPIKey resolves it. With no store the
+	// only error is a missing key, which is the caller's to report.
+	key, _ := DefaultRegistry.resolveKey(ctx, nil, parsed)
+	pc.APIKey = key.Value
+
 	if parsed.Model != "" {
 		pc.Model = parsed.Model
 	}
-	if parsed.Host != "" && pc.BaseURL == "" {
+
+	// Base URL: the URI's own choice outranks the environment, which
+	// outranks the file, as in Resolve.
+	if v := os.Getenv("LLM_BASE_URL"); v != "" {
+		pc.BaseURL = v
+	}
+	if parsed.Host != "" {
 		pc.BaseURL = "http://" + parsed.Host
 	}
-	// URI params override specific fields.
+	if v, ok := parsed.Params["base_url"]; ok {
+		pc.BaseURL = v
+	}
 	if parsed.Params != nil {
-		if v, ok := parsed.Params["base_url"]; ok {
-			pc.BaseURL = v
-		}
-		if v, ok := parsed.Params["api_key"]; ok {
-			pc.APIKey = v
-		}
-		// Store remaining params.
-		if pc.Params == nil {
-			pc.Params = make(map[string]string)
-		}
+		pc.Params = make(map[string]string, len(parsed.Params))
 		for k, v := range parsed.Params {
 			pc.Params[k] = v
 		}
-	}
-
-	// Layer 3: env var overrides.
-	if v := os.Getenv("LLM_API_KEY"); v != "" {
-		pc.APIKey = v
-	}
-	if v := os.Getenv("LLM_BASE_URL"); v != "" {
-		pc.BaseURL = v
 	}
 
 	// Fallbacks: env > config file.

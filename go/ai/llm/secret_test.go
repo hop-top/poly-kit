@@ -474,3 +474,11 @@ func ExampleApplyAPIKey() {
 	fmt.Println(uri)
 	// Output: openrouter://openai/gpt-4.1-nano?api_key=sk-or-example
 }
+
+// SecretFor names no model, so its missing-key message names none.
+func TestSecretFor_MissingKeyMessage(t *testing.T) {
+	isolateKeys(t)
+	_, err := llm.SecretFor(context.Background(), nil, "openai")
+	require.ErrorIs(t, err, llm.ErrMissingKey)
+	assert.Equal(t, `llm: no API key for provider "openai": set OPENAI_API_KEY or LLM_API_KEY`, err.Error())
+}

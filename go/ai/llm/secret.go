@@ -58,14 +58,17 @@ type keyPlan struct {
 //  4. the <SCHEME>_API_KEY convention
 //
 // The universal [FallbackEnvKey] (5) is the lookup's, for required keys
-// only. Layer 3 reads only the cached catalog; nothing is fetched.
+// only. Layer 3 reads only the cached catalog; nothing is fetched. A
+// scheme no adapter serves has layer 1 alone.
 func (r *Registry) keyPlan(ctx context.Context, scheme string) keyPlan {
 	rt, ok := r.route(ctx, scheme)
-	if !ok {
-		return keyPlan{}
+	var plan keyPlan
+	if ok {
+		plan = keyPlan{known: true, key: layeredKey(ctx, scheme, rt)}
 	}
-	plan := keyPlan{known: true, key: layeredKey(ctx, scheme, rt)}
-	fp, block, _ := findBlock(loadConfigFile(), blockNames(scheme, rt, true))
+	// A scheme no adapter serves still takes what its own block names:
+	// that key is its own, not lent.
+	fp, block, _ := findBlock(loadConfigFile(), blockNames(scheme, rt, ok))
 	plan.literal, plan.envVar, plan.block = fp.APIKey, fp.APIKeyEnv, block
 	if plan.envVar != "" {
 		vars := []string{plan.envVar}
@@ -129,8 +132,12 @@ type MissingKeyError struct {
 }
 
 func (e *MissingKeyError) Error() string {
-	msg := fmt.Sprintf("llm: no API key for provider %q (model %q): set %s",
-		e.Scheme, e.Model, strings.Join(e.EnvVars, " or "))
+	model := ""
+	if e.Model != "" {
+		model = fmt.Sprintf(" (model %q)", e.Model)
+	}
+	msg := fmt.Sprintf("llm: no API key for provider %q%s: set %s",
+		e.Scheme, model, strings.Join(e.EnvVars, " or "))
 	if e.StoreErr != nil {
 		msg += " (" + e.StoreErr.Error() + ")"
 	}
@@ -158,8 +165,9 @@ func (e *MissingKeyError) Unwrap() error { return secret.ErrNotFound }
 // The catalog is read from the on-disk cache only, never fetched: with
 // no cache, declarations and the convention answer.
 //
-// ok is false for a scheme no adapter serves. The returned EnvVars
-// slice is a copy.
+// ok is false for a scheme no adapter serves; EnvVars then holds only
+// its own llm.yaml api_key_env, if set. The returned EnvVars slice is a
+// copy.
 func ProviderKeyFor(providerURI string) (key ProviderKey, ok bool) {
 	plan := DefaultRegistry.keyPlan(context.Background(), schemeOf(providerURI))
 	return plan.key, plan.known
@@ -193,44 +201,45 @@ func EnvKeyFor(providerURI string) string {
 	return FallbackEnvKey
 }
 
-// SecretFor resolves the API key for providerURI through the
-// canonical fallback chain, where names are [ProviderKeyFor]'s EnvVars
-// (or [EnvKeyFor] for a scheme without any):
+// SecretFor returns the API key for the scheme of providerURI
+// ("openai://gpt-4" or just "openai"), resolved as [ResolveAPIKey]
+// resolves it apart from the URI's own api_key param, which SecretFor
+// ignores:
 //
-//  0. llm.yaml providers.<scheme>.api_key, when set
-//  1. store.Get(ctx, name) for each name — keyring / vault / etc.
+//  0. llm.yaml api_key of the block [ProviderSettingsFor] picks
+//  1. store.Get(ctx, name) for each [ProviderKeyFor] name — keyring /
+//     vault / etc.; the block's api_key_env comes first
 //  2. os.Getenv(name) for each name — provider-specific env var
-//  3. os.Getenv(FallbackEnvKey) — universal LLM_API_KEY
+//  3. os.Getenv(FallbackEnvKey) — universal LLM_API_KEY, for a required
+//     key only: never for a local runtime, a scheme taking no key, or
+//     one no adapter serves
 //
-// When all are empty, SecretFor returns secret.ErrNotFound so callers
-// can branch on a single sentinel.
+// When all are empty, SecretFor returns an error matching
+// secret.ErrNotFound (a [*MissingKeyError] for a required key) so
+// callers can branch on a single sentinel.
 //
 // A store backend failure for a name counts as that name being absent
 // from the store: the search goes on. When a later source supplies the
 // key the failure is logged as a warning on [slog.Default]; when none
-// does, the returned error wraps it beside secret.ErrNotFound.
+// does, the returned error carries it.
 //
 // Passing a nil store is allowed; it short-circuits step 1. This
 // lets adopters call SecretFor unconditionally even when no secret
 // store is configured.
 func SecretFor(ctx context.Context, store secret.Store, providerURI string) (string, error) {
-	plan := DefaultRegistry.keyPlan(ctx, schemeOf(providerURI))
-	if plan.literal != "" {
-		return plan.literal, nil
+	scheme := schemeOf(providerURI)
+	res, err := DefaultRegistry.resolveKey(ctx, store, URI{Scheme: scheme})
+	if err != nil {
+		return "", err // a *MissingKeyError: errors.Is secret.ErrNotFound
 	}
-	names := plan.key.EnvVars
-	if len(names) == 0 {
-		names = []string{EnvKeyFor(providerURI)}
-	}
-	value, _, storeErr := lookupKey(ctx, store, names, true)
-	if value == "" {
-		if storeErr != nil {
-			return "", fmt.Errorf("%w (%w)", secret.ErrNotFound, storeErr)
+	if res.Value == "" {
+		if res.StoreErr != nil {
+			return "", fmt.Errorf("%w (%w)", secret.ErrNotFound, res.StoreErr)
 		}
 		return "", secret.ErrNotFound
 	}
-	warnStoreError(ctx, schemeOf(providerURI), storeErr)
-	return value, nil
+	warnStoreError(ctx, scheme, res.StoreErr)
+	return res.Value, nil
 }
 
 // ApplyAPIKey returns uri with the provider's API key set as its
@@ -239,11 +248,12 @@ func SecretFor(ctx context.Context, store secret.Store, providerURI string) (str
 // provider unauthenticated.
 //
 // The key resolves as in [ResolveAPIKey], which also reports where it
-// came from; store may be nil. uri comes back unchanged when it already carries
-// api_key (the caller's choice outranks everything else), when its
-// scheme takes no key or is one no adapter serves (kit lends no
-// credential to an unknown host), and when a local runtime's own
-// variable is unset.
+// came from; [LoadConfig] resolves its APIKey the same way. store may
+// be nil. uri comes back unchanged when it already carries api_key (the
+// caller's choice outranks everything else), when its scheme takes no
+// key, when a local runtime's own variable is unset, and when no
+// adapter serves the scheme and its own llm.yaml block names no key
+// (kit lends no other credential to an unknown host).
 //
 // A required key that resolves nowhere yields a [*MissingKeyError]
 // (errors.Is ErrMissingKey). A store backend failure for a name counts
