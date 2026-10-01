@@ -2,17 +2,27 @@ package etcd_test
 
 import (
 	"context"
+	"io"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"hop.top/kit/go/storage/kv"
 	"hop.top/kit/go/storage/kv/etcd"
 )
 
 func startEtcd(t *testing.T) string {
+	t.Helper()
+	_, endpoint := startEtcdContainer(t)
+	return endpoint
+}
+
+func startEtcdContainer(t *testing.T) (testcontainers.Container, string) {
 	t.Helper()
 	ctx := context.Background()
 	req := testcontainers.ContainerRequest{
@@ -37,7 +47,7 @@ func startEtcd(t *testing.T) string {
 
 	endpoint, err := container.Endpoint(ctx, "")
 	require.NoError(t, err)
-	return endpoint
+	return container, endpoint
 }
 
 func TestEtcdIntegration(t *testing.T) {
@@ -91,5 +101,72 @@ func TestEtcdIntegration(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, ok)
 		assert.Equal(t, []byte("second"), val)
+	})
+}
+
+// Credentials from kv.Config reach a real cluster with auth enabled: the
+// right ones open and write, none are refused by the server, and a wrong
+// password fails the open without the password appearing in the error.
+func TestEtcdIntegrationAuth(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	testcontainers.SkipIfProviderIsNotHealthy(t)
+
+	container, endpoint := startEtcdContainer(t)
+	ctx := context.Background()
+	for _, cmd := range [][]string{
+		{"/usr/local/bin/etcdctl", "user", "add", "root:kit-secret"},
+		{"/usr/local/bin/etcdctl", "user", "grant-role", "root", "root"},
+		{"/usr/local/bin/etcdctl", "auth", "enable"},
+	} {
+		code, out, err := container.Exec(ctx, cmd)
+		require.NoError(t, err)
+		if code != 0 {
+			msg, _ := io.ReadAll(out)
+			t.Fatalf("%v: exit %d: %s", cmd, code, msg)
+		}
+	}
+
+	open := func(t *testing.T, username, password string) (kv.Store, error) {
+		t.Helper()
+		octx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		return kv.OpenContext(octx, kv.Config{
+			Backend:   "etcd",
+			Endpoints: []string{endpoint},
+			Prefix:    "auth/",
+			Username:  username,
+			Password:  password,
+		})
+	}
+
+	t.Run("Credentials", func(t *testing.T) {
+		store, err := open(t, "root", "kit-secret")
+		require.NoError(t, err)
+		defer store.Close()
+		require.NoError(t, store.Put(ctx, "k", []byte("v")))
+		val, ok, err := store.Get(ctx, "k")
+		require.NoError(t, err)
+		assert.True(t, ok)
+		assert.Equal(t, []byte("v"), val)
+	})
+
+	t.Run("NoCredentials", func(t *testing.T) {
+		store, err := open(t, "", "")
+		require.NoError(t, err, "an unauthenticated open is lazy and must not fail")
+		defer store.Close()
+		pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		assert.Error(t, store.Put(pctx, "k", []byte("v")), "server accepted an unauthenticated write")
+	})
+
+	t.Run("WrongPassword", func(t *testing.T) {
+		store, err := open(t, "root", "kit-wrong-secret")
+		if err == nil {
+			_ = store.Close()
+			t.Fatal("open with a wrong password succeeded")
+		}
+		assert.False(t, strings.Contains(err.Error(), "kit-wrong-secret"), "error leaks the password: %v", err)
 	})
 }

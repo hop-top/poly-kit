@@ -98,8 +98,15 @@ func TestCheckEndpoint(t *testing.T) {
 		ep   string
 		want string // a substring the error must carry
 	}{
+		// Userinfo anywhere it could be read as credentials: the client
+		// never sends it, so the error points at the supported fields.
 		{"kit-user:kit-secret@etcd.example:2379", "etcd.example:2379"},
 		{"kit-user@127.0.0.1:2379", "127.0.0.1:2379"},
+		{"http://kit-user:kit-secret@127.0.0.1:2379", "127.0.0.1:2379"},
+		{"https://kit-user@etcd.example:2379/v3?x=1", "etcd.example:2379"},
+		{"HTTP://kit-user:kit-secret@[::1]:2379", "[::1]:2379"},
+		{"http://kit-user:kit-secret:@etcd.example:2379", "etcd.example:2379"},
+		{"http://kit-user:p@ss@etcd.example:2379#f", "etcd.example:2379"},
 		{"grpc://etcd.example:2379", `"grpc"`},
 		{"grpc://kit-user:kit-secret@etcd.example:2379", `"grpc"`},
 		{"dns:///etcd.example:2379", `"dns"`},
@@ -123,6 +130,9 @@ func TestCheckEndpoint(t *testing.T) {
 			}
 			if !strings.Contains(msg, tc.want) {
 				t.Fatalf("error %q does not carry %q", msg, tc.want)
+			}
+			if strings.Contains(tc.want, ":") && !strings.Contains(msg, "Username") {
+				t.Fatalf("userinfo error does not point at the credential fields: %s", msg)
 			}
 		})
 	}

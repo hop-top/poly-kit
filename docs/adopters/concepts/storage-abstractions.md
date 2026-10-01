@@ -46,9 +46,15 @@ store, err := kv.Open(kv.Config{
 ```
 
 Config carries only the fields a given backend reads: `Path` for
-sqlite and badger, `Endpoints` plus `Prefix` for etcd, `DSN` plus
-`Table` for tidb. Opening a backend whose driver was not imported
-reports the package to import.
+sqlite and badger, `Endpoints` plus `Prefix` for etcd (and `Username`,
+`Password`, `TLS` when the cluster has auth on), `DSN` plus `Table` for
+tidb. Opening a backend whose driver was not imported reports the
+package to import.
+
+Credentials never go in an etcd endpoint: the etcd client ignores URL
+userinfo, so the driver rejects it and names the fields to use. Fetch
+the password from a `secret.Store` (below) into `Config.Password`;
+printing a Config redacts it.
 
 Use when: caching, session state, config persistence, sync queue.
 
