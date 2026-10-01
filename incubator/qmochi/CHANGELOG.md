@@ -2,6 +2,8 @@
 
 ## [0.2.0-alpha.2](https://github.com/hop-top/poly-kit/compare/qmochi/v0.2.0-alpha.1...qmochi/v0.2.0-alpha.2) (2026-10-01)
 
+The hop-top team is happy to announce Qmochi 0.2.0-alpha.2. This release includes miscellaneous improvements.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -10,6 +12,8 @@
 ### Build
 
 * **deps:** bump Go modules; otel 1.46, otelhttp stable HTTP metrics ([c0a2b21](https://github.com/hop-top/poly-kit/commit/c0a2b215c065cf1716271634957ac60e591b66f5))
+
+Full diff: [qmochi/v0.2.0-alpha.1...qmochi/v0.2.0-alpha.2](https://github.com/hop-top/poly-kit/compare/qmochi/v0.2.0-alpha.1...qmochi/v0.2.0-alpha.2)
 
 ## [0.2.0-alpha.1](https://github.com/hop-top/poly-kit/compare/qmochi/v0.2.0-alpha.0...qmochi/v0.2.0-alpha.1) (2026-09-05)
 
