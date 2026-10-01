@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6) (2026-10-01)
+
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.6. This release includes new features and bug fixes.
+
+
+### ⚠ BREAKING CHANGES
+
+* **sdk-py:** an Authorization header no longer admits kit/auth-required leaves on the MCP mount. Pass mount_mcp(verifier=...), returning an Identity for a credential it accepts and None otherwise.
+
+### Features
+
+* **parity:** pin the exit-code taxonomy across all five ports ([#319](https://github.com/hop-top/poly-kit/issues/319)) ([dbe68c5](https://github.com/hop-top/poly-kit/commit/dbe68c5987738f62954597a8038e7b2929688005))
+* **py:** `to_typer_autocompletion` completion bridge ([e03e805](https://github.com/hop-top/poly-kit/commit/e03e805f2cd6a99f2273ea3da99eef7e81a08940))
+* **py:** carry tool-call linkage and parts through llm Message ([4be6ea0](https://github.com/hop-top/poly-kit/commit/4be6ea0bdac1c0c2dfec2e5439fbd6672a5cbc13))
+* **py:** public `is_quiet()` accessor next to `verbose_count()` ([0cd6ec0](https://github.com/hop-top/poly-kit/commit/0cd6ec0f0b11f710cd043cc5e6bb8567fc83b814))
+
+
+### Bug Fixes
+
+* **py:** bind `create_app` help layer to typer's Click ([68d770f](https://github.com/hop-top/poly-kit/commit/68d770f8522d3406b8cc83596b0beea1a241b37b))
+* **py:** build Click objects from the layer typer runs on ([a4d2a20](https://github.com/hop-top/poly-kit/commit/a4d2a208f2986e9dedbc15902540cee72378166b))
+* **py:** emit typer completion script from `completion show` ([c1286c1](https://github.com/hop-top/poly-kit/commit/c1286c1199d08af5c174e42995bfa867bad6e83d))
+* **py:** hold --offline process-wide across threads and executors ([da8bf68](https://github.com/hop-top/poly-kit/commit/da8bf68bfc73667b8b7157dda9b41539755379cc))
+* **py:** omit query, fragment, userinfo from offline refusal ([4161a2f](https://github.com/hop-top/poly-kit/commit/4161a2ff03f47e2fe5f5ded05083dbb13766705d))
+* **py:** read root `--quiet` from typer-injected context in spaced ([02e470b](https://github.com/hop-top/poly-kit/commit/02e470bee215afb4c4a1f516cec0fc7fd5680994))
+* **sdk-py:** admit auth-required MCP leaves only for a verified caller ([6d6eb28](https://github.com/hop-top/poly-kit/commit/6d6eb2893a827dbac448fe59acd8a42503f3b822))
+* **sdk:** add CONSENT_REFUSED and PREREQUISITE to the four SDK ports ([#314](https://github.com/hop-top/poly-kit/issues/314)) ([c937bef](https://github.com/hop-top/poly-kit/commit/c937befdab1030f77bc13ee9f641430b44f43705))
+
+Full diff: [kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6)
+
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.4...kit-py/v0.5.0-alpha.5) (2026-09-05)
 
 The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.5. This release includes new features and bug fixes.
