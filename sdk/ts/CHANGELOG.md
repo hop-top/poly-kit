@@ -4,6 +4,36 @@ All notable changes to `@hop-top/kit` are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha.4](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.3...kit-ts/v0.5.0-alpha.4) (2026-10-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ts:** `@hop-top/kit` requires Node >=22.12. `commander` 15 and `@clack/prompts` 1.x ship ESM-only; CJS dist loads them via require(esm), unflagged from Node 22.12 (commander itself declares >=22.12). Node 20 EOL 2026-04-30. Older runtimes: `@hop-top/kit`, `./cli`, `./alias`, `./tui` throw ERR_REQUIRE_ESM. Migration: upgrade to Node 22.12+ or 24; TS consumers on `module: node16` without `skipLibCheck` move to `nodenext` or `bundler`.
+* **sdk-ts:** an Authorization header no longer admits kit/auth-required leaves on the MCP mount. Supply McpMountOptions.verifier, returning the caller for a credential it accepts and null otherwise.
+
+### Features
+
+* **parity:** pin the exit-code taxonomy across all five ports ([#319](https://github.com/hop-top/poly-kit/issues/319)) ([dbe68c5](https://github.com/hop-top/poly-kit/commit/dbe68c5987738f62954597a8038e7b2929688005))
+* **ts:** `isQuiet(cmd)` accessor next to `verboseCount(cmd)` ([faa6776](https://github.com/hop-top/poly-kit/commit/faa6776ef07df6230cf1aeaf2dac6751b4cd2503))
+* **ts:** tool-call linkage and content parts on llm Message ([1904790](https://github.com/hop-top/poly-kit/commit/19047905c00bec3adae2352932c8d397a04aa67e))
+
+
+### Bug Fixes
+
+* **scripts:** enforce full node floor in preflight ([7c144f4](https://github.com/hop-top/poly-kit/commit/7c144f42b52fef42cffeea01b60c6409727b70a7))
+* **sdk-ts:** admit auth-required MCP leaves only for a verified caller ([2d21195](https://github.com/hop-top/poly-kit/commit/2d21195618174026ce3b2e96b6f9586cfa3c6b23))
+* **sdk:** add CONSENT_REFUSED and PREREQUISITE to the four SDK ports ([#314](https://github.com/hop-top/poly-kit/issues/314)) ([c937bef](https://github.com/hop-top/poly-kit/commit/c937befdab1030f77bc13ee9f641430b44f43705))
+* **ts:** declare `@types/better-sqlite3` as optional peer ([8f62908](https://github.com/hop-top/poly-kit/commit/8f6290870013c60ad9abe6df6aec816fb90883d1))
+* **ts:** omit query, fragment, userinfo from offline refusal ([b64cb25](https://github.com/hop-top/poly-kit/commit/b64cb25f79503a0874f56759081379d3644b1ab4))
+* **ts:** published declarations type-check without skipLibCheck ([f9a829f](https://github.com/hop-top/poly-kit/commit/f9a829fd122c6e443eab2e41467ecc6ac0eda1e5))
+* **ts:** resolve subpath types under moduleResolution node10 ([a81178b](https://github.com/hop-top/poly-kit/commit/a81178b23908137b1745f015d1d4573a269bafac))
+
+
+### Build
+
+* **ts:** require node &gt;=22.12; bump commander 15 ([68905f6](https://github.com/hop-top/poly-kit/commit/68905f6f0c664f56994508fdd8f4779f627ae565))
+
 ## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-ts/v0.5.0-alpha.2...kit-ts/v0.5.0-alpha.3) (2026-09-05)
 
 The hop-top team is happy to announce Kit's TS SDK 0.5.0-alpha.3. This release includes new features and bug fixes.
