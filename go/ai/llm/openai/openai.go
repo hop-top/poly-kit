@@ -3,7 +3,9 @@
 // Registers schemes: openai, openrouter, xai, lmstudio, groq, together,
 // fireworks, deepseek, mistral. lmstudio defaults to LM Studio's local
 // server, http://localhost:1234/v1, and appends /v1 to any base URL
-// that lacks it.
+// that lacks it. An openai host-form URI (openai://host:port/model)
+// names a self-hosted OpenAI-compatible server and reaches it at
+// http://host:port/v1; an openai base_url is used as given.
 //
 // It also claims the OpenAI wire protocols (see protocols): a
 // provider in the aim catalog that no adapter registers by name, and
@@ -115,8 +117,8 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 			base = "https://api.openai.com/v1"
 		}
 	}
-	if cfg.URI.Scheme == "lmstudio" {
-		base = lmstudioAPIRoot(base)
+	if cfg.URI.Scheme == "lmstudio" || cfg.URI.Scheme == "openai" && isHostForm(cfg) {
+		base = apiRootV1(base)
 	}
 	opts = append(opts, option.WithBaseURL(base))
 
@@ -132,11 +134,30 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	}, nil
 }
 
-// lmstudioAPIRoot returns base ending in /v1. LM Studio serves its
+// isHostForm reports whether cfg's base URL is the one a host-form URI
+// (scheme://host:port/model) derives, http://host:port, rather than one
+// named outright by a base_url param, a config file or LLM_BASE_URL,
+// each of which outranks the host.
+func isHostForm(cfg llm.ResolvedConfig) bool {
+	if _, ok := cfg.URI.Params["base_url"]; ok {
+		return false
+	}
+	return cfg.Provider.BaseURL == "http://"+cfg.URI.Host
+}
+
+// apiRootV1 returns base ending in /v1; one already ending in /v1, with
+// or without a trailing slash, is kept.
+//
+// lmstudio applies it to every base URL: LM Studio serves its
 // OpenAI-compatible API under /v1 only, so a base URL naming just the
-// server (a host-form URI, base_url, LLM_BASE_URL) gets /v1 appended;
-// one already ending in /v1, with or without a trailing slash, is kept.
-func lmstudioAPIRoot(base string) string {
+// server (a host-form URI, base_url, LLM_BASE_URL) gets /v1 appended.
+//
+// openai applies it to the host form only. A host form cannot carry a
+// path, and the servers it names (vLLM, llama.cpp, TGI, Ollama, LocalAI,
+// LM Studio) serve the API under /v1, as api.openai.com does. A base_url
+// is the API root as given: gateways and proxies mount it under other
+// prefixes, so appending /v1 there would break them.
+func apiRootV1(base string) string {
 	trimmed := strings.TrimRight(base, "/")
 	if strings.HasSuffix(trimmed, "/v1") {
 		return base

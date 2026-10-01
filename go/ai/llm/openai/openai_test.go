@@ -766,8 +766,9 @@ func TestLoadConfig_LMStudioEnvBaseURLGetsV1(t *testing.T) {
 	}
 }
 
-// The /v1 rule is LM Studio's alone: another scheme's host form and
-// base_url reach the server exactly as given.
+// LM Studio's append-to-any-base-URL rule is lmstudio's alone: another
+// scheme's base_url, and its host form unless the scheme is openai,
+// reach the server exactly as given.
 func TestResolve_OtherSchemesKeepGivenBaseURL(t *testing.T) {
 	for _, tt := range []struct{ uri, want string }{
 		{"groq://gpu-box:5678/llama", "http://gpu-box:5678/chat/completions"},
@@ -785,6 +786,89 @@ func TestResolve_OtherSchemesKeepGivenBaseURL(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, rt.urls, 1)
 			assert.Equal(t, tt.want, rt.urls[0])
+		})
+	}
+}
+
+// completeOnce sends one completion through p over a recording transport
+// and returns the request URL.
+func completeOnce(t *testing.T, p llm.Provider) string {
+	t.Helper()
+	rt := &recordingTransport{}
+	swapDefaultTransport(t, rt)
+	_, err := p.(llm.Completer).Complete(context.Background(), llm.Request{
+		Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+	})
+	require.NoError(t, err)
+	require.Len(t, rt.urls, 1)
+	return rt.urls[0]
+}
+
+// An openai host-form URI names a self-hosted OpenAI-compatible server
+// (vLLM, llama.cpp, TGI, Ollama, LocalAI), which serves the API under
+// /v1 as api.openai.com does. A base_url, from the URI or anywhere else,
+// is the API root as given.
+func TestResolve_OpenAIRequestPath(t *testing.T) {
+	tests := []struct {
+		name string
+		uri  string
+		want string
+	}{
+		{"bare", "openai://gpt-4o", "https://api.openai.com/v1/chat/completions"},
+		{"host form", "openai://localhost:8000/my-model", "http://localhost:8000/v1/chat/completions"},
+		{"host form org model", "openai://gpu-box:8000/meta-llama/Llama-3.1-8B", "http://gpu-box:8000/v1/chat/completions"},
+		{"host form ipv6", "openai://[::1]:8000/my-model", "http://[::1]:8000/v1/chat/completions"},
+		{"base_url with v1", "openai://my-model?base_url=http://gpu-box:8000/v1", "http://gpu-box:8000/v1/chat/completions"},
+		{"base_url with v1 and slash", "openai://my-model?base_url=http://gpu-box:8000/v1/", "http://gpu-box:8000/v1/chat/completions"},
+		{"base_url without v1", "openai://my-model?base_url=http://gpu-box:8000", "http://gpu-box:8000/chat/completions"},
+		{"base_url proxy prefix", "openai://gpt-4o?base_url=https://gateway.example/acct/gw/openai", "https://gateway.example/acct/gw/openai/chat/completions"},
+		{"host form with base_url", "openai://gpu-box:8000/my-model?base_url=http://other:9000", "http://other:9000/chat/completions"},
+		{"host form with same base_url", "openai://gpu-box:8000/my-model?base_url=http://gpu-box:8000", "http://gpu-box:8000/chat/completions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := llm.Resolve(tt.uri)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, completeOnce(t, p))
+		})
+	}
+}
+
+// LoadConfig is the other way a host form reaches the adapter; an
+// LLM_BASE_URL outranks the host and is used as given.
+func TestLoadConfig_OpenAIHostForm(t *testing.T) {
+	tests := []struct {
+		name, uri, env, want string
+	}{
+		{"host form", "openai://gpu-box:8000/my-model", "", "http://gpu-box:8000/v1/chat/completions"},
+		{"env without v1", "openai://my-model", "http://gpu-box:8000", "http://gpu-box:8000/chat/completions"},
+		{"env with v1", "openai://my-model", "http://gpu-box:8000/v1", "http://gpu-box:8000/v1/chat/completions"},
+		{"env outranks host form", "openai://gpu-box:8000/my-model", "http://other:9000", "http://other:9000/chat/completions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LLM_BASE_URL", tt.env)
+			cfg, err := llm.LoadConfig(tt.uri)
+			require.NoError(t, err)
+			p, err := New(cfg)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, completeOnce(t, p))
+		})
+	}
+}
+
+// The openai host-form rule is the openai scheme's alone: other
+// schemes' host forms reach the server exactly as given.
+func TestResolve_OtherSchemesHostFormUnchanged(t *testing.T) {
+	for _, tt := range []struct{ uri, want string }{
+		{"groq://gpu-box:5678/llama", "http://gpu-box:5678/chat/completions"},
+		{"openrouter://gpu-box:5678/meta/llama", "http://gpu-box:5678/chat/completions"},
+		{"deepseek://gpu-box:5678/deepseek-chat", "http://gpu-box:5678/chat/completions"},
+	} {
+		t.Run(tt.uri, func(t *testing.T) {
+			p, err := llm.Resolve(tt.uri)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, completeOnce(t, p))
 		})
 	}
 }
