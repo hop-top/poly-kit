@@ -75,7 +75,26 @@ func TestParseURI_Anthropic(t *testing.T) {
 
 // --- LoadConfig tests ---
 
+// isolateConfigEnv gives a LoadConfig test a throwaway HOME and cache
+// and clears every variable LoadConfig reads, so a developer's
+// environment can neither satisfy nor poison an assertion. No adapter
+// is registered in this package: every scheme here is unknown to the
+// registry and takes only its own llm.yaml block's key.
+func isolateConfigEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	for _, v := range []string{
+		"LLM_API_KEY", "LLM_BASE_URL", "LLM_PROVIDER", "LLM_FALLBACK",
+		"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OLLAMA_API_KEY",
+	} {
+		t.Setenv(v, "")
+		require.NoError(t, os.Unsetenv(v))
+	}
+}
+
 func TestLoadConfig_NoConfigFile_EnvOnly(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 	// no config file exists
@@ -87,6 +106,7 @@ func TestLoadConfig_NoConfigFile_EnvOnly(t *testing.T) {
 }
 
 func TestLoadConfig_WithConfigFile(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 
@@ -116,7 +136,8 @@ fallback:
 	assert.Equal(t, []string{"ollama://llama3"}, cfg.Fallbacks)
 }
 
-func TestLoadConfig_EnvOverridesConfigFile(t *testing.T) {
+func TestLoadConfig_EnvAndConfigFile(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 
@@ -137,12 +158,15 @@ func TestLoadConfig_EnvOverridesConfigFile(t *testing.T) {
 
 	cfg, err := LoadConfig("openai://gpt-4o")
 	require.NoError(t, err)
-	// env overrides config file
-	assert.Equal(t, "sk-from-env", cfg.Provider.APIKey)
+	// The file's api_key outranks LLM_API_KEY, which is a fallback for
+	// a required key, as in ApplyAPIKey.
+	assert.Equal(t, "sk-from-config", cfg.Provider.APIKey)
+	// LLM_BASE_URL overrides the file's base_url.
 	assert.Equal(t, "https://custom.api.com/v1", cfg.Provider.BaseURL)
 }
 
 func TestLoadConfig_URIOverridesConfigFile(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 
@@ -168,6 +192,7 @@ func TestLoadConfig_URIOverridesConfigFile(t *testing.T) {
 }
 
 func TestLoadConfig_MergeOrder(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 
@@ -184,18 +209,23 @@ func TestLoadConfig_MergeOrder(t *testing.T) {
 		filepath.Join(hopDir, "llm.yaml"), []byte(configYAML), 0o644,
 	))
 
-	// env overrides api_key
 	t.Setenv("LLM_API_KEY", "sk-env")
+	t.Setenv("LLM_BASE_URL", "https://env.api.com")
 
-	cfg, err := LoadConfig("openai://gpt-4o?base_url=https://uri.api.com")
+	cfg, err := LoadConfig("openai://gpt-4o?base_url=https://uri.api.com&api_key=sk-uri")
 	require.NoError(t, err)
-	// env > URI > config: api_key from env
-	assert.Equal(t, "sk-env", cfg.Provider.APIKey)
-	// URI param overrides config base_url
+	// URI > env > config for both.
+	assert.Equal(t, "sk-uri", cfg.Provider.APIKey)
 	assert.Equal(t, "https://uri.api.com", cfg.Provider.BaseURL)
+
+	cfg, err = LoadConfig("openai://gpt-4o")
+	require.NoError(t, err)
+	assert.Equal(t, "sk-config", cfg.Provider.APIKey)
+	assert.Equal(t, "https://env.api.com", cfg.Provider.BaseURL)
 }
 
 func TestLoadConfig_LLMProviderDefault(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 	t.Setenv("LLM_PROVIDER", "anthropic://claude-sonnet-4-20250514")
@@ -208,6 +238,7 @@ func TestLoadConfig_LLMProviderDefault(t *testing.T) {
 }
 
 func TestLoadConfig_LLMFallback(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 	t.Setenv("LLM_FALLBACK", "ollama://llama3,openai://gpt-3.5-turbo")
@@ -221,6 +252,7 @@ func TestLoadConfig_LLMFallback(t *testing.T) {
 }
 
 func TestLoadConfig_LLMFallbackOverridesConfig(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 
@@ -243,6 +275,7 @@ func TestLoadConfig_LLMFallbackOverridesConfig(t *testing.T) {
 }
 
 func TestLoadConfig_DefaultFromConfigFile(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 
@@ -265,6 +298,7 @@ providers:
 }
 
 func TestLoadConfig_NoURINoDefault(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 
@@ -273,6 +307,7 @@ func TestLoadConfig_NoURINoDefault(t *testing.T) {
 }
 
 func TestLoadConfig_ProviderExtras(t *testing.T) {
+	isolateConfigEnv(t)
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
 

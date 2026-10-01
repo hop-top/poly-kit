@@ -3,7 +3,8 @@
 > Reference for `hop.top/kit/go/ai/llm`: provider-agnostic LLM client
 > for Go. Unified interface for completions, streaming, tool calling,
 > image generation, speech synthesis, transcription, and video analysis
-> across providers. Three-layer config merge: file < URI < env vars.
+> across providers. Config merged from llm.yaml, env and the URI, the
+> URI highest.
 > License: MIT.
 
 ## Install
@@ -295,7 +296,18 @@ topics; empty fields fall back to `DefaultTopics`.
 cfg, _ := llm.LoadConfig("anthropic://claude-sonnet-4-5-20250514?temperature=0.7")
 ```
 
-Three-layer merge: config file < URI params < env vars.
+Each field, highest precedence first:
+
+| Field | Sources |
+|-------|---------|
+| `APIKey` | as [Provider keys](#provider-keys) resolves it, no secret store: URI `api_key`, `llm.yaml` `api_key` / `api_key_env`, the provider's variables, `LLM_API_KEY` (required keys only); empty when found nowhere |
+| `BaseURL` | URI `?base_url=`, URI host (`http://host:port`), `LLM_BASE_URL`, `llm.yaml` `base_url` |
+| `Model` | URI model, `llm.yaml` `model` |
+
+The URI is the caller's own choice and outranks everything, as in
+`llm.Resolve`, which reads the URI alone: for a URI naming its key or
+endpoint, `LoadConfig` and `Resolve` agree. `LoadConfig` and
+`ApplyAPIKey` agree on the key in every case.
 
 A provider block in `{xdg.ConfigDir("hop")}/llm.yaml` may carry the key
 itself or name the variable holding it:
@@ -306,8 +318,9 @@ providers:
     api_key_env: MY_OPENROUTER_KEY   # or api_key: sk-or-...
 ```
 
-`LoadConfig` reads `api_key`, else the variable `api_key_env` names.
-[Provider keys](#provider-keys) gives both the highest precedence.
+`LoadConfig` and `ApplyAPIKey` read `api_key`, else the variable
+`api_key_env` names; [Provider keys](#provider-keys) gives both the
+highest precedence after the URI's own `api_key`.
 
 ### Provider blocks and aliases
 
@@ -413,7 +426,8 @@ Store errors name keys, never values.
 `ApplyAPIKey` leaves the URI unchanged when it already carries
 `api_key`, when the scheme is local and its own variable is unset
 (`LLM_API_KEY` is never lent to a local runtime), and when no adapter
-serves the scheme (kit lends no credential to a host it cannot reach). It needs `scheme://`; mapping a bare model id to a
+serves the scheme and its own `llm.yaml` block names no key (kit lends
+no other credential to a host it cannot reach). It needs `scheme://`; mapping a bare model id to a
 scheme is the caller's policy. A required key found nowhere returns a
 `*MissingKeyError` (`errors.Is(err, llm.ErrMissingKey)`, also
 `secret.ErrNotFound`) listing the names consulted. Errors name
@@ -449,7 +463,7 @@ leave `Value` out.
 Lower-level helpers: `llm.ProviderKeyFor(uri)` returns the resolved
 variables and whether the key is optional (`ok` false when no adapter
 serves the scheme), `llm.SecretFor(ctx, store, uri)` returns the key
-itself, and `llm.EnvKeyFor(uri)` returns one name (`api_key_env` when
+itself (the same chain, ignoring the URI's own `api_key`), and `llm.EnvKeyFor(uri)` returns one name (`api_key_env` when
 set; for `google`/`gemini` it stays `GEMINI_API_KEY` for compatibility;
 unknown schemes and `lmstudio` get `LLM_API_KEY`).
 
