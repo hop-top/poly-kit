@@ -64,6 +64,16 @@ also applies; both gates compose.`,
 			"kit/idempotent": "no",
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cli.IsDryRun(cmd) {
+				// Before the inline prompt: a preview has nothing
+				// to confirm.
+				return cli.RenderPlan(cmd, cli.Plan{Effects: []cli.Effect{
+					{Kind: "delete", Target: "telemetry:consent", Reversible: false,
+						Detail: "clear the consent decision; the next interactive run re-prompts"},
+					{Kind: "update", Target: "telemetry:install_id", Reversible: false,
+						Detail: "rotate the anonymous installation id"},
+				}})
+			}
 			return runReset(
 				cmd.Context(),
 				cmd.InOrStdin(),

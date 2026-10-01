@@ -11,6 +11,7 @@ import (
 
 	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/storage/kv"
 	"hop.top/kit/go/transport/authn"
 )
 
@@ -29,14 +30,9 @@ func tokenKeyCmd(r *Root) *cobra.Command {
 // withAPIKeys opens the key store of the --service flag's service and
 // runs fn over it.
 func withAPIKeys(cmd *cobra.Command, r *Root, fn func(context.Context, *authn.APIKeys) error) error {
-	svc, _ := cmd.Flags().GetString("service")
-	res := tlsResolver{cfg: svcconfig.New(r.Viper), svc: svc}
-	if err := res.cfg.ValidateBlock(authAPIKeyBlock, svc, svcconfig.Shared); err != nil {
-		return output.WrapError(err, output.CodeUsage, output.ExitUsage)
-	}
-	cfg, err := res.apiKeyStoreConfig(r)
+	cfg, err := apiKeyStoreFor(cmd, r)
 	if err != nil {
-		return output.WrapError(err, output.CodeUsage, output.ExitUsage)
+		return err
 	}
 	ctx := cmd.Context()
 	store, err := openAPIKeyStore(ctx, cfg)
@@ -45,6 +41,33 @@ func withAPIKeys(cmd *cobra.Command, r *Root, fn func(context.Context, *authn.AP
 	}
 	defer func() { _ = store.Close() }()
 	return fn(ctx, authn.NewAPIKeys(store, nil))
+}
+
+// apiKeyStoreFor resolves the store config of the --service whose
+// keys cmd manages, without opening it.
+func apiKeyStoreFor(cmd *cobra.Command, r *Root) (kv.Config, error) {
+	svc, _ := cmd.Flags().GetString("service")
+	res := tlsResolver{cfg: svcconfig.New(r.Viper), svc: svc}
+	if err := res.cfg.ValidateBlock(authAPIKeyBlock, svc, svcconfig.Shared); err != nil {
+		return kv.Config{}, output.WrapError(err, output.CodeUsage, output.ExitUsage)
+	}
+	cfg, err := res.apiKeyStoreConfig(r)
+	if err != nil {
+		return kv.Config{}, output.WrapError(err, output.CodeUsage, output.ExitUsage)
+	}
+	return cfg, nil
+}
+
+// planAPIKey is token key create and revoke under --dry-run: the
+// store's configuration resolves as for the real run, but the store
+// is not opened — opening a store that does not exist yet creates it.
+func planAPIKey(cmd *cobra.Command, r *Root, args map[string]any, effect Effect, warnings ...string) error {
+	cfg, err := apiKeyStoreFor(cmd, r)
+	if err != nil {
+		return err
+	}
+	effect.Detail = strings.TrimSpace(effect.Detail + " in " + cfg.Path)
+	return RenderPlan(cmd, Plan{Args: args, Effects: []Effect{effect}, Warnings: warnings})
 }
 
 func addServiceFlag(cmd *cobra.Command) {
@@ -84,6 +107,12 @@ func tokenKeyCreateCmd(r *Root) *cobra.Command {
 					return output.UsageError(fmt.Sprintf(
 						"token key create: scope %q: a scope is one non-empty word with no spaces", s))
 				}
+			}
+			if IsDryRun(cmd) {
+				return planAPIKey(cmd, r,
+					map[string]any{"sub": sub, "tenant": tenant, "scopes": scopes, "expires": expires.String()},
+					Effect{Kind: "create", Target: "apikey:" + sub, Reversible: true,
+						Detail: "issue an API key"})
 			}
 			return withAPIKeys(cmd, r, func(ctx context.Context, keys *authn.APIKeys) error {
 				raw, rec, err := keys.Create(ctx, authn.NewAPIKey{
@@ -179,6 +208,12 @@ func tokenKeyRevokeCmd(r *Root) *cobra.Command {
 			"stays listed as revoked. Exit 3 when no key has the id.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if IsDryRun(cmd) {
+				return planAPIKey(cmd, r, map[string]any{"id": args[0]},
+					Effect{Kind: "update", Target: "apikey:" + args[0], Reversible: false,
+						Detail: "revoke the API key"},
+					"whether a key has this id is not checked: the store is not opened")
+			}
 			return withAPIKeys(cmd, r, func(ctx context.Context, keys *authn.APIKeys) error {
 				rec, err := keys.Revoke(ctx, args[0])
 				if errors.Is(err, authn.ErrAPIKeyNotFound) {

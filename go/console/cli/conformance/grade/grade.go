@@ -151,6 +151,10 @@ func run(cmd *cobra.Command, v *viper.Viper, f gradeFlags) error {
 		token = os.Getenv("KIT_CONFORMANCE_TOKEN")
 	}
 
+	if cli.IsDryRun(cmd) {
+		return planGrade(cmd, f, service)
+	}
+
 	// Build client.
 	c, err := client.New(service,
 		client.WithToken(token),
@@ -217,4 +221,24 @@ func run(cmd *cobra.Command, v *viper.Viper, f gradeFlags) error {
 // middleware exits with the kit-wide usage code (2).
 func usageError(detail string) error {
 	return output.UsageError("conformance grade: " + detail)
+}
+
+// planGrade is grade under --dry-run: the flags validated as for a
+// real grade; the upload and the GitHub posts become effects, none of
+// them sent.
+func planGrade(cmd *cobra.Command, f gradeFlags, service string) error {
+	plan := cli.Plan{
+		Args: map[string]any{"cassette": f.cassetteDir, "service": service, "tier": f.tier},
+		Effects: []cli.Effect{{Kind: "create", Target: service, Reversible: false,
+			Detail: "upload cassette " + f.cassetteDir + " for grading"}},
+	}
+	if f.prComment {
+		plan.Effects = append(plan.Effects, cli.Effect{Kind: "create",
+			Target: "github:pr-comment", Detail: "post the verdict as a PR comment"})
+	}
+	if f.statusCheck {
+		plan.Effects = append(plan.Effects, cli.Effect{Kind: "create",
+			Target: "github:status-check", Detail: "post the verdict as a status check"})
+	}
+	return cli.RenderPlan(cmd, plan)
 }

@@ -228,7 +228,7 @@ func runCmd() *cobra.Command {
 	bindCommon(cmd, &c)
 	// --exec is the gate: argv-print is read; spawned subprocess is
 	// the only mutating path. Tag as write so the kit-global
-	// --dry-run reaches RunE and the executable path can guard.
+	// --dry-run reaches RunE, where --exec plans the spawn instead.
 	kitcli.SetSideEffect(cmd, kitcli.SideEffectWrite)
 	kitcli.SetIdempotency(cmd, kitcli.IdempotencyNo)
 	return cmd
@@ -552,10 +552,20 @@ func buildAndMaybeExec(cmd *cobra.Command, inv invoke.Invocation, doExec bool) e
 		return err
 	}
 
+	argv := shellEscape(append([]string{spec.Path}, spec.Args...))
+	if doExec && kitcli.IsDryRun(cmd) {
+		// --exec is the only mutating path; under --dry-run the spawn
+		// becomes the plan's one effect.
+		return kitcli.RenderPlan(cmd, kitcli.Plan{
+			Args: map[string]any{"tool": string(inv.CLI), "argv": append([]string{spec.Path}, spec.Args...)},
+			Effects: []kitcli.Effect{{Kind: "exec", Target: spec.Path, Reversible: false,
+				Detail: argv}},
+		})
+	}
 	if !doExec {
 		// Print argv as one shell-quoted line, plus a newline-separated
 		// breakdown for readability.
-		fmt.Fprintln(w, shellEscape(append([]string{spec.Path}, spec.Args...)))
+		fmt.Fprintln(w, argv)
 		return nil
 	}
 

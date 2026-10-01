@@ -28,6 +28,9 @@ func resetCmd() *cobra.Command {
 				if !yes {
 					return errors.New("breaker reset --all requires --yes")
 				}
+				if kitcli.IsDryRun(cmd) {
+					return planReset(cmd, bpkg.List())
+				}
 				bpkg.ResetAll()
 				cmd.Println("reset all breakers")
 				return nil
@@ -35,6 +38,9 @@ func resetCmd() *cobra.Command {
 				b, err := lookupOrError(args[0])
 				if err != nil {
 					return err
+				}
+				if kitcli.IsDryRun(cmd) {
+					return planReset(cmd, []bpkg.Breaker{b})
 				}
 				b.Reset()
 				cmd.Printf("reset breaker %q\n", b.Name())
@@ -49,4 +55,16 @@ func resetCmd() *cobra.Command {
 	kitcli.SetSideEffect(cmd, kitcli.SideEffectWrite)
 	kitcli.SetIdempotency(cmd, kitcli.IdempotencyYes)
 	return cmd
+}
+
+// planReset is breaker reset under --dry-run: one effect per breaker
+// the reset would close, with the state it would leave.
+func planReset(cmd *cobra.Command, bs []bpkg.Breaker) error {
+	plan := kitcli.Plan{Effects: []kitcli.Effect{}}
+	for _, b := range bs {
+		plan.Effects = append(plan.Effects, kitcli.Effect{Kind: "update",
+			Target: "breaker:" + b.Name(), Reversible: false,
+			Detail: b.State().String() + " -> closed"})
+	}
+	return kitcli.RenderPlan(cmd, plan)
 }

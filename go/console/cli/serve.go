@@ -220,6 +220,17 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	if outcome.Err != nil {
 		return outcome.Err
 	}
+	if IsDryRun(cmd) {
+		// The invocation validated and resolved as a real one would;
+		// the preview names the services it would start.
+		plan := Plan{Args: map[string]any{"services": outcome.Selected}}
+		for _, name := range outcome.Selected {
+			plan.Effects = append(plan.Effects, Effect{Kind: "start",
+				Target: "service:" + name, Reversible: true,
+				Detail: "run until stopped"})
+		}
+		return RenderPlan(cmd, plan)
+	}
 
 	// The supervisor owns the signals from here: the first begins the
 	// drain, a second aborts it (serve-lifecycle.md §"Signals").

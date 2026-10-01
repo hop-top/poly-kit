@@ -199,6 +199,19 @@ func run(cmd *cobra.Command, v *viper.Viper, f recordFlags) error {
 		return ioError(fmt.Sprintf("--binary %q is not an executable file", f.binary))
 	}
 
+	if cli.IsDryRun(cmd) {
+		return cli.RenderPlan(cmd, cli.Plan{
+			Args: map[string]any{"scenario": f.scenarioPath, "binary": absBinary,
+				"out": f.out, "scenario_id": refID, "scenario_version": refVersion},
+			Effects: []cli.Effect{
+				{Kind: "exec", Target: absBinary, Reversible: false,
+					Detail: fmt.Sprintf("run the scenario's %d step(s); their effects are the binary's", len(sc.Steps))},
+				{Kind: "write", Target: f.out, Reversible: true, Detail: "write the cassette"},
+			},
+			PrerequisitesChecked: []string{"scenario-valid", "story-resolved", "binary-present"},
+		})
+	}
+
 	// Working directory: adopter-staged or fresh temp.
 	workdir := f.workdir
 	if workdir != "" {

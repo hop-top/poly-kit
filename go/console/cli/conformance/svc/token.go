@@ -67,6 +67,14 @@ func runMint(cmd *cobra.Command, _ []string) error {
 			Message:  "at least one --scope is required (e.g. grade:myteam)",
 			ExitCode: 2}
 	}
+	if cli.IsDryRun(cmd) {
+		return cli.RenderPlan(cmd, cli.Plan{
+			Args: map[string]any{"claims_db": db, "tenant": tenant, "scopes": scopes,
+				"tier_max": tierMax, "expires_in": expiresIn.String()},
+			Effects: []cli.Effect{{Kind: "create", Target: "claim:" + db, Reversible: true,
+				Detail: "mint a bearer token claim"}},
+		})
+	}
 	store, err := svc.OpenSQLClaimStore(db)
 	if err != nil {
 		return &output.Error{Code: svc.CodeSvcInternal,
@@ -189,6 +197,14 @@ func runRevoke(cmd *cobra.Command, args []string) error {
 		return &output.Error{Code: "USAGE",
 			Message:  "--claims-db is required (or KIT_CONF_SVC_CLAIMS_DB)",
 			ExitCode: 2}
+	}
+	if cli.IsDryRun(cmd) {
+		return cli.RenderPlan(cmd, cli.Plan{
+			Args: map[string]any{"claims_db": db, "token_id": id},
+			Effects: []cli.Effect{{Kind: "update", Target: "claim:" + id, Reversible: false,
+				Detail: "revoke the claim"}},
+			Warnings: []string{"whether the claim exists is not checked: the store is not opened"},
+		})
 	}
 	store, err := svc.OpenSQLClaimStore(db)
 	if err != nil {
