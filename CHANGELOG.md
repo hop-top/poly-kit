@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.24](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.23...kit/v0.5.0-alpha.24) (2026-10-01)
 
+The hop-top team is happy to announce Kit 0.5.0-alpha.24. This release includes new features and bug fixes.
+
 
 ### Features
 
@@ -23,6 +25,8 @@
 * **llm:** one key and base URL precedence for LoadConfig, ApplyAPIKey and SecretFor ([daa309e](https://github.com/hop-top/poly-kit/commit/daa309e115b30396b8f11701686b8229f1add604))
 * **llm:** reject unparseable SDK base URL with URL masked ([4a8f00c](https://github.com/hop-top/poly-kit/commit/4a8f00c2eefe8b9db291c255d40912f52631f177))
 * **llm:** secret-store backend error no longer fails key resolution ([1bc4d81](https://github.com/hop-top/poly-kit/commit/1bc4d81280df3f777f4f51f11dec90a2571f24ee))
+
+Full diff: [kit/v0.5.0-alpha.23...kit/v0.5.0-alpha.24](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.23...kit/v0.5.0-alpha.24)
 
 ## [0.5.0-alpha.23](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.22...kit/v0.5.0-alpha.23) (2026-10-01)
 
