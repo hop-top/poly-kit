@@ -873,3 +873,43 @@ func TestResolve_OtherSchemesHostFormUnchanged(t *testing.T) {
 		})
 	}
 }
+
+// authRecorder answers every request with a canned completion and
+// records its Authorization header values: nil when none was sent.
+type authRecorder struct{ auth [][]string }
+
+func (ar *authRecorder) RoundTrip(r *http.Request) (*http.Response, error) {
+	ar.auth = append(ar.auth, r.Header.Values("Authorization"))
+	return (&recordingTransport{}).RoundTrip(r)
+}
+
+// A blank key is no key: no Authorization header at all, never
+// "Bearer " with nothing after it, and never the SDK's own
+// OPENAI_API_KEY in its place. A key is sent as written.
+func TestNew_BlankAPIKeySendsNoAuthorization(t *testing.T) {
+	cases := map[string][]string{
+		"":         nil,
+		"  ":       nil,
+		"\t":       nil,
+		"fake-key": {"Bearer fake-key"},
+	}
+	for key, want := range cases {
+		t.Run(fmt.Sprintf("%q", key), func(t *testing.T) {
+			t.Setenv("OPENAI_API_KEY", "fake-sdk-env")
+			ar := &authRecorder{}
+			swapDefaultTransport(t, ar)
+
+			p, err := New(llm.ResolvedConfig{
+				URI:      llm.URI{Scheme: "openai", Model: "m"},
+				Provider: llm.ProviderConfig{APIKey: key, BaseURL: "http://blank.invalid/v1", Model: "m"},
+			})
+			require.NoError(t, err)
+			_, err = p.(llm.Completer).Complete(context.Background(), llm.Request{
+				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+			})
+			require.NoError(t, err)
+			require.Len(t, ar.auth, 1)
+			assert.Equal(t, want, ar.auth[0])
+		})
+	}
+}

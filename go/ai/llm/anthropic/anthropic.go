@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -42,7 +43,7 @@ var (
 
 // New creates an Adapter from a resolved config.
 func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
-	if cfg.Provider.APIKey == "" {
+	if strings.TrimSpace(cfg.Provider.APIKey) == "" {
 		return nil, fmt.Errorf("anthropic: API key required")
 	}
 
@@ -51,7 +52,8 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	// would otherwise supply the base URL and workspace header, and log a
 	// shadow warning. ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN and
 	// ANTHROPIC_WORKSPACE_ID keep their fallback role; the workspace ID
-	// is what keys not scoped to a workspace must send.
+	// is what keys not scoped to a workspace must send. A blank key or
+	// token is no credential: the key is required, the token not sent.
 	opts := []option.RequestOption{option.WithoutEnvironmentDefaults()}
 	if v, ok := os.LookupEnv("ANTHROPIC_BASE_URL"); ok {
 		if err := checkBaseURL("ANTHROPIC_BASE_URL", v); err != nil {
@@ -59,7 +61,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		}
 		opts = append(opts, option.WithBaseURL(v))
 	}
-	if v, ok := os.LookupEnv("ANTHROPIC_AUTH_TOKEN"); ok {
+	if v := os.Getenv("ANTHROPIC_AUTH_TOKEN"); strings.TrimSpace(v) != "" {
 		opts = append(opts, option.WithAuthToken(v))
 	}
 	if v := os.Getenv("ANTHROPIC_WORKSPACE_ID"); v != "" {

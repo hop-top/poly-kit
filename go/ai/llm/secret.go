@@ -69,8 +69,9 @@ func (r *Registry) keyPlan(ctx context.Context, scheme string) keyPlan {
 	// A scheme no adapter serves still takes what its own block names:
 	// that key is its own, not lent.
 	fp, block, _ := findBlock(loadConfigFile(), blockNames(scheme, rt, ok))
-	plan.literal, plan.envVar, plan.block = fp.APIKey, fp.APIKeyEnv, block
-	if plan.envVar != "" {
+	plan.literal, plan.block = fp.APIKey, block
+	if !blankKey(fp.APIKeyEnv) {
+		plan.envVar = fp.APIKeyEnv
 		vars := []string{plan.envVar}
 		for _, v := range plan.key.EnvVars {
 			if v != plan.envVar {
@@ -214,7 +215,8 @@ func EnvKeyFor(providerURI string) string {
 //     key only: never for a local runtime, a scheme taking no key, or
 //     one no adapter serves
 //
-// When all are empty, SecretFor returns an error matching
+// A blank value (empty or only whitespace) counts as unset at every
+// step. When all are blank, SecretFor returns an error matching
 // secret.ErrNotFound (a [*MissingKeyError] for a required key) so
 // callers can branch on a single sentinel.
 //
@@ -249,11 +251,14 @@ func SecretFor(ctx context.Context, store secret.Store, providerURI string) (str
 //
 // The key resolves as in [ResolveAPIKey], which also reports where it
 // came from; [LoadConfig] resolves its APIKey the same way. store may
-// be nil. uri comes back unchanged when it already carries api_key (the
-// caller's choice outranks everything else), when its scheme takes no
-// key, when a local runtime's own variable is unset, and when no
-// adapter serves the scheme and its own llm.yaml block names no key
-// (kit lends no other credential to an unknown host).
+// be nil. uri comes back unchanged when it already carries a non-blank
+// api_key (the caller's choice outranks everything else). A blank one
+// (empty or only whitespace) is no key: it is removed and the key
+// resolves as if uri named none. uri also comes back unchanged, a blank
+// api_key aside, when its scheme takes no key, when a local runtime's
+// own variable is unset, and when no adapter serves the scheme and its
+// own llm.yaml block names no key (kit lends no other credential to an
+// unknown host).
 //
 // A required key that resolves nowhere yields a [*MissingKeyError]
 // (errors.Is ErrMissingKey). A store backend failure for a name counts
@@ -270,6 +275,11 @@ func ApplyAPIKey(ctx context.Context, store secret.Store, uri string) (string, e
 	if err != nil {
 		// ParseURI quotes its input, which may carry a key.
 		return "", errors.New("llm: apply API key: provider URI must be scheme://model")
+	}
+	// A blank api_key is no key: it leaves the URI, and the key resolves
+	// as if the URI never named one.
+	if v, named := parsed.Params["api_key"]; named && blankKey(v) {
+		uri = stripURIParam(uri, "api_key")
 	}
 	res, err := DefaultRegistry.resolveKey(ctx, store, parsed)
 	if err != nil {
@@ -294,8 +304,9 @@ func ApplyAPIKey(ctx context.Context, store secret.Store, uri string) (string, e
 }
 
 // lookupKey consults store then environment for each name, then the
-// universal variable when universal is set, and says which answered. It
-// returns "" and a zero source when nothing is found.
+// universal variable when universal is set, and says which answered. A
+// blank value counts as unset. It returns "" and a zero source when
+// nothing is found.
 //
 // A store backend failure (any error but secret.ErrNotFound) counts as
 // the name being absent from the store, so an unreadable keyring never
@@ -311,7 +322,7 @@ func lookupKey(ctx context.Context, store secret.Store, names []string, universa
 	if store != nil {
 		for _, name := range names {
 			s, err := store.Get(ctx, name)
-			if err == nil && s != nil && len(s.Value) > 0 {
+			if err == nil && s != nil && !blankKey(string(s.Value)) {
 				return string(s.Value), KeySource{Kind: KeySourceStore, Name: name}, nil
 			}
 			if err != nil && !errors.Is(err, secret.ErrNotFound) {
@@ -320,12 +331,12 @@ func lookupKey(ctx context.Context, store secret.Store, names []string, universa
 		}
 	}
 	for _, name := range names {
-		if v := os.Getenv(name); v != "" {
+		if v := os.Getenv(name); !blankKey(v) {
 			return v, KeySource{Kind: KeySourceEnv, Name: name}, nil
 		}
 	}
 	if universal {
-		if v := os.Getenv(FallbackEnvKey); v != "" {
+		if v := os.Getenv(FallbackEnvKey); !blankKey(v) {
 			return v, KeySource{Kind: KeySourceFallback, Name: FallbackEnvKey}, nil
 		}
 	}

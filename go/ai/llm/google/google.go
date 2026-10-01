@@ -79,7 +79,7 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 	// Env order comes from this adapter's declaration: GOOGLE_API_KEY,
 	// GEMINI_API_KEY, then LLM_API_KEY, as Google's genai SDK reads them.
 	apiKey := cfg.Provider.APIKey
-	if apiKey == "" {
+	if strings.TrimSpace(apiKey) == "" {
 		apiKey, _ = llm.SecretFor(context.Background(), nil, "google")
 	}
 	if apiKey == "" {

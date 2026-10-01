@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"hop.top/kit/go/storage/secret"
 )
@@ -15,7 +16,7 @@ type KeySourceKind string
 const (
 	// KeySourceNone: no key was found, or the scheme takes none.
 	KeySourceNone KeySourceKind = ""
-	// KeySourceURI: the URI's own api_key param.
+	// KeySourceURI: the URI's own api_key param, when not blank.
 	KeySourceURI KeySourceKind = "uri"
 	// KeySourceConfig: api_key in an llm.yaml provider block.
 	KeySourceConfig KeySourceKind = "config"
@@ -88,7 +89,9 @@ func (r KeyResolution) GoString() string { return r.String() }
 // The key resolves highest precedence first: the URI's api_key param;
 // llm.yaml api_key, then the variable api_key_env names; the names of
 // [ProviderKeyFor], each from store (nil skips it) then environment;
-// [FallbackEnvKey] for a required key only.
+// [FallbackEnvKey] for a required key only. A blank value (empty or
+// only whitespace) counts as unset at every source, the URI's api_key
+// included: resolution goes on to the next source.
 //
 // A required key found nowhere returns the resolution, still
 // describing the scheme, with a [*MissingKeyError]. A scheme no adapter
@@ -114,11 +117,11 @@ func (r *Registry) resolveKey(ctx context.Context, store secret.Store, parsed UR
 		Known:  plan.known,
 		Key:    ProviderKey{EnvVars: slices.Clone(plan.key.EnvVars), Optional: plan.key.Optional},
 	}
-	if v, explicit := parsed.Params["api_key"]; explicit {
+	if v, explicit := uriKey(parsed); explicit {
 		res.Value, res.Source = v, KeySource{Kind: KeySourceURI}
 		return res, nil
 	}
-	if plan.literal != "" {
+	if !blankKey(plan.literal) {
 		res.Value = plan.literal
 		res.Source = KeySource{Kind: KeySourceConfig, Name: "providers." + plan.block + ".api_key"}
 		return res, nil
@@ -138,4 +141,54 @@ func (r *Registry) resolveKey(ctx context.Context, store secret.Store, parsed UR
 		}
 	}
 	return res, nil
+}
+
+// blankKey reports whether v holds no key: it is empty or only
+// whitespace. Every key source treats a blank value as unset, so
+// resolution goes on to the next source and nothing blank is sent: an
+// Authorization header with an empty bearer token is never valid.
+func blankKey(v string) bool { return strings.TrimSpace(v) == "" }
+
+// uriKey returns u's own api_key param; explicit is false when u has
+// none or it is blank.
+func uriKey(u URI) (v string, explicit bool) {
+	v, ok := u.Params["api_key"]
+	return v, ok && !blankKey(v)
+}
+
+// dropBlankURIKey removes a blank api_key param from u, so it reaches
+// neither an adapter nor a caller's params as if it were a key.
+func dropBlankURIKey(u *URI) {
+	v, ok := u.Params["api_key"]
+	if !ok || !blankKey(v) {
+		return
+	}
+	delete(u.Params, "api_key")
+	if len(u.Params) == 0 {
+		u.Params = nil
+	}
+}
+
+// stripURIParam removes every name param from raw's query, splitting it
+// as [ParseURI] does, and the "?" too when nothing is left.
+func stripURIParam(raw, name string) string {
+	scheme := strings.Index(raw, "://")
+	if scheme < 0 {
+		return raw
+	}
+	q := strings.Index(raw[scheme+3:], "?")
+	if q < 0 {
+		return raw
+	}
+	q += scheme + 3
+	var kept []string
+	for _, pair := range strings.Split(raw[q+1:], "&") {
+		if k, _, _ := strings.Cut(pair, "="); k != name {
+			kept = append(kept, pair)
+		}
+	}
+	if len(kept) == 0 {
+		return raw[:q]
+	}
+	return raw[:q+1] + strings.Join(kept, "&")
 }

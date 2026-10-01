@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/ai/llm"
+	"hop.top/kit/go/ai/llm/anthropic"
 )
 
 // recordingTransport answers every request with a canned Messages
@@ -187,4 +188,41 @@ func TestNew_EnvAuthToken(t *testing.T) {
 	req := rt.only(t)
 	assert.Equal(t, "kit-key", req.Header.Get("X-Api-Key"))
 	assert.True(t, strings.HasSuffix(req.Header.Get("Authorization"), "env-token"))
+}
+
+// A blank ANTHROPIC_AUTH_TOKEN is no token: no "Bearer " header with
+// nothing after it.
+func TestNew_BlankEnvAuthToken(t *testing.T) {
+	for _, v := range []string{"", "  "} {
+		_, rt, _ := isolateAnthropicEnv(t)
+		t.Setenv("ANTHROPIC_AUTH_TOKEN", v)
+
+		completeOnce(t, "")
+
+		req := rt.only(t)
+		assert.Equal(t, "kit-key", req.Header.Get("X-Api-Key"))
+		assert.Nil(t, req.Header.Values("Authorization"), "token %q", v)
+	}
+}
+
+// A blank key is no key: the adapter refuses it before any request,
+// whether it comes through Resolve or straight to New.
+func TestNew_BlankAPIKey(t *testing.T) {
+	for _, v := range []string{"", "  ", "\t"} {
+		_, rt, _ := isolateAnthropicEnv(t)
+		_, err := anthropic.New(llm.ResolvedConfig{Provider: llm.ProviderConfig{
+			APIKey: v,
+			Model:  "claude-sonnet-4-20250514",
+		}})
+		require.Error(t, err, "key %q", v)
+		assert.Contains(t, err.Error(), "API key required")
+
+		_, err = anthropicFactory(llm.ResolvedConfig{Provider: llm.ProviderConfig{
+			APIKey: v,
+			Model:  "claude-sonnet-4-20250514",
+		}})
+		require.Error(t, err, "key %q", v)
+		assert.Contains(t, err.Error(), "API key required")
+		assert.Empty(t, rt.reqs)
+	}
 }
