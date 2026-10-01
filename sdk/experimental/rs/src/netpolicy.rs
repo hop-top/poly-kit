@@ -105,13 +105,21 @@ pub struct OfflineError {
 }
 
 /// Errors surfaced by [`GuardedClient`]. Refusals are a distinct,
-/// matchable variant; everything else is reqwest's own error.
+/// matchable variant; everything else is reqwest's own error, with its
+/// URL stripped the same way as a refusal's.
 #[derive(Debug, Error)]
 pub enum NetError {
     /// The request was refused by the offline policy.
     #[error(transparent)]
     Offline(#[from] OfflineError),
-    /// The request was attempted and reqwest failed it.
+    /// The request was attempted and reqwest failed it (or rejected it
+    /// while building, e.g. an unsupported scheme).
+    ///
+    /// reqwest quotes the request URL in its Display and Debug output,
+    /// so the guard replaces it before the error is returned:
+    /// `reqwest::Error::url` holds scheme, host (with port) and path
+    /// only. Query, fragment and userinfo are gone and cannot be
+    /// recovered from the error, as they may carry credentials.
     #[error(transparent)]
     Transport(#[from] reqwest::Error),
 }
@@ -158,8 +166,16 @@ pub fn is_loopback(host: &str) -> bool {
 /// scheme alone. Mirrors Go's `netpolicy` refusal; also names the
 /// destination of a failed request in `api`'s transport errors.
 pub(crate) fn destination(url: &reqwest::Url) -> String {
+    stripped(url).to_string()
+}
+
+/// [`destination`] as a URL, for handing back on a reqwest error.
+fn stripped(url: &reqwest::Url) -> reqwest::Url {
     if url.cannot_be_a_base() {
-        return format!("{}:", url.scheme());
+        // A bare scheme always parses.
+        return format!("{}:", url.scheme())
+            .parse()
+            .expect("scheme-only URL");
     }
     let mut d = url.clone();
     d.set_query(None);
@@ -167,7 +183,17 @@ pub(crate) fn destination(url: &reqwest::Url) -> String {
     // Both fail only on URLs that cannot carry userinfo at all.
     let _ = d.set_username("");
     let _ = d.set_password(None);
-    d.to_string()
+    d
+}
+
+/// Swap the URL on a reqwest error for its [`stripped`] form, so the
+/// error's Display, Debug and `url()` name where the request was going
+/// and nothing it carried.
+fn scrub(e: reqwest::Error) -> reqwest::Error {
+    match e.url().map(stripped) {
+        Some(url) => e.with_url(url),
+        None => e,
+    }
 }
 
 /// The port's shared HTTP client: the single construction path through
@@ -177,6 +203,12 @@ pub(crate) fn destination(url: &reqwest::Url) -> String {
 /// one out would let a caller send a request that never reaches
 /// [`GuardedClient::execute`], which is the only place the policy is
 /// applied.
+///
+/// Errors it returns never carry the request's query, fragment or
+/// userinfo: see [`NetError::Transport`]. A `reqwest::Response` it hands
+/// back is reqwest's own, so its `url()` and the errors of its body
+/// methods (`json`, `text`, `bytes`) still carry the full URL; callers
+/// that surface those must strip it themselves.
 #[derive(Debug, Clone)]
 pub struct GuardedClient {
     inner: reqwest::Client,
@@ -231,7 +263,8 @@ impl GuardedClient {
 
     /// Issue `req`, refusing it when the policy forbids the
     /// destination. This is the chokepoint: no request leaves this
-    /// crate without passing through here.
+    /// crate without passing through here. A failure's URL is stripped
+    /// to scheme, host and path (see [`NetError::Transport`]).
     pub async fn execute(&self, req: reqwest::Request) -> Result<reqwest::Response, NetError> {
         if !self.policy.allows(req.url()) {
             return Err(OfflineError {
@@ -240,7 +273,10 @@ impl GuardedClient {
             }
             .into());
         }
-        Ok(self.inner.execute(req).await?)
+        self.inner
+            .execute(req)
+            .await
+            .map_err(|e| NetError::Transport(scrub(e)))
     }
 }
 
@@ -299,7 +335,7 @@ impl RequestBuilder {
 
     /// Issue the request through the guard.
     pub async fn send(self) -> Result<reqwest::Response, NetError> {
-        let req = self.inner.build()?;
+        let req = self.inner.build().map_err(scrub)?;
         self.client.execute(req).await
     }
 }

@@ -337,3 +337,73 @@ async fn api_client_refusal_omits_query() {
     assert_no_leak(&err.message);
     assert!(err.message.contains("network disabled by --offline"));
 }
+
+// A genuine transport failure carries the same stripped destination as a
+// refusal. reqwest quotes its error URL in Display and Debug, so the
+// guard swaps it for scheme, host (with port) and path before handing
+// the error back. Nothing the request carried may surface through
+// Display, Debug or the source chain.
+fn closed_port() -> u16 {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    l.local_addr().expect("addr").port()
+}
+
+fn assert_chain_no_leak(err: &NetError) {
+    assert_no_leak(&format!("{err}"));
+    assert_no_leak(&format!("{err:?}"));
+    let mut src = std::error::Error::source(err);
+    while let Some(s) = src {
+        assert_no_leak(&format!("{s}"));
+        assert_no_leak(&format!("{s:?}"));
+        src = s.source();
+    }
+}
+
+#[tokio::test]
+async fn transport_error_omits_query_fragment_userinfo() {
+    let port = closed_port();
+    let client = GuardedClient::new(NetPolicy::offline()).expect("build client");
+    let err = client
+        .post(format!(
+            "http://alice:pw-secret@127.0.0.1:{port}/v1/models/m:generate\
+             ?alt=sse&key=q-secret#frag-secret"
+        ))
+        .query(&[("extra", "q-secret")])
+        .send()
+        .await
+        .expect_err("closed port answered");
+
+    assert!(!err.is_offline(), "loopback refused: {err}");
+    let NetError::Transport(t) = &err else {
+        panic!("not a transport error: {err:?}");
+    };
+    assert!(t.is_connect() || t.is_request(), "unexpected kind: {t:?}");
+    assert_eq!(
+        t.url().map(|u| u.as_str()),
+        Some(format!("http://127.0.0.1:{port}/v1/models/m:generate").as_str())
+    );
+    assert_eq!(
+        err.to_string(),
+        format!("error sending request for url (http://127.0.0.1:{port}/v1/models/m:generate)")
+    );
+    assert_chain_no_leak(&err);
+}
+
+// reqwest rejects a non-HTTP scheme before sending and quotes the URL in
+// that error too. Nothing reaches the wire.
+#[tokio::test]
+async fn builder_error_omits_query_fragment_userinfo() {
+    let client = GuardedClient::new(NetPolicy::online()).expect("build client");
+    let err = client
+        .get("ftp://alice:pw-secret@example.invalid/x?key=q-secret#frag-secret")
+        .send()
+        .await
+        .expect_err("ftp request succeeded");
+
+    assert!(!err.is_offline());
+    assert_eq!(
+        err.to_string(),
+        "builder error for url (ftp://example.invalid/x)"
+    );
+    assert_chain_no_leak(&err);
+}
