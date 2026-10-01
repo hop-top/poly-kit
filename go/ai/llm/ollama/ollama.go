@@ -28,8 +28,9 @@ const (
 	chatEndpoint   = "/api/chat"
 )
 
-// A local runtime: OLLAMA_API_KEY is sent when set (an authenticating
-// proxy in front of ollama) and never required. The aim catalog has no
+// A local runtime: OLLAMA_API_KEY is sent when set, as
+// "Authorization: Bearer <key>" (ollama.com's API, an authenticating
+// proxy in front of ollama), and never required. The aim catalog has no
 // local ollama entry, only the hosted ollama-cloud.
 func init() {
 	llm.Register(scheme, New, llm.Declaration{
@@ -42,6 +43,7 @@ func init() {
 type Adapter struct {
 	baseURL string
 	model   string
+	apiKey  string
 	client  *http.Client
 }
 
@@ -59,11 +61,28 @@ func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
 		return nil, fmt.Errorf("ollama: model is required")
 	}
 
+	// The key is the one the URI carries ([llm.ApplyAPIKey] puts
+	// OLLAMA_API_KEY there). A blank key is no key: nothing is sent.
+	var apiKey string
+	if strings.TrimSpace(cfg.Provider.APIKey) != "" {
+		apiKey = cfg.Provider.APIKey
+	}
+
 	return &Adapter{
 		baseURL: base,
 		model:   model,
+		apiKey:  apiKey,
 		client:  http.DefaultClient,
 	}, nil
+}
+
+// setHeaders sets what every request carries: the JSON content type
+// and, when the adapter has a key, a bearer Authorization header.
+func (a *Adapter) setHeaders(r *http.Request) {
+	r.Header.Set("Content-Type", "application/json")
+	if a.apiKey != "" {
+		r.Header.Set("Authorization", "Bearer "+a.apiKey)
+	}
 }
 
 // Close is a no-op; the adapter uses a shared HTTP client.
@@ -141,7 +160,7 @@ func (a *Adapter) Complete(
 	if err != nil {
 		return llm.Response{}, llm.RedactURLError(err)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	a.setHeaders(httpReq)
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
@@ -191,7 +210,7 @@ func (a *Adapter) Stream(
 	if err != nil {
 		return nil, llm.RedactURLError(err)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	a.setHeaders(httpReq)
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
