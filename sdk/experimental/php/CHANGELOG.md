@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0-alpha.3](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.2...kit-php/v0.5.0-alpha.3) (2026-10-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sdk-php:** an Authorization header no longer admits kit/auth-required leaves on the MCP mount. Pass new Mount(verifier: ...) returning an Identity for a credential it accepts and null otherwise.
+
+### Features
+
+* **parity:** pin the exit-code taxonomy across all five ports ([#319](https://github.com/hop-top/poly-kit/issues/319)) ([dbe68c5](https://github.com/hop-top/poly-kit/commit/dbe68c5987738f62954597a8038e7b2929688005))
+
+
+### Bug Fixes
+
+* **php:** map every typeid-php failure through `TypeIDException` ([8f2c47d](https://github.com/hop-top/poly-kit/commit/8f2c47dce02f382b176d6827ba33921d52ca0b69))
+* **php:** omit query, fragment, userinfo from offline refusal ([668bc0a](https://github.com/hop-top/poly-kit/commit/668bc0a33cca5ec46eb15bf98bafd0245c28ddb8))
+* **sdk-php:** admit auth-required MCP leaves only for a verified caller ([4a7f761](https://github.com/hop-top/poly-kit/commit/4a7f761feaf294b17cb24272868194cc80c289a8))
+* **sdk:** add CONSENT_REFUSED and PREREQUISITE to the four SDK ports ([#314](https://github.com/hop-top/poly-kit/issues/314)) ([c937bef](https://github.com/hop-top/poly-kit/commit/c937befdab1030f77bc13ee9f641430b44f43705))
+
 ## [0.5.0-alpha.2](https://github.com/hop-top/poly-kit/compare/kit-php/v0.5.0-alpha.1...kit-php/v0.5.0-alpha.2) (2026-09-05)
 
 The hop-top team is happy to announce Kit's PHP SDK 0.5.0-alpha.2. This release includes new features and bug fixes.
