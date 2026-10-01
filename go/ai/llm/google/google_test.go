@@ -117,6 +117,55 @@ func TestNew_APIKeyEnvPrecedence(t *testing.T) {
 	}
 }
 
+// A blank key is no key, wherever it comes from: a blank configured key
+// falls through to the environment, and a blank variable to the next
+// one, as an unset one would.
+func TestNew_BlankAPIKey(t *testing.T) {
+	cases := []struct {
+		name, cfgKey, google, gemini, want string
+	}{
+		{"blank config key, env set", "  ", "fake-google", "", "fake-google"},
+		{"blank GOOGLE_API_KEY, GEMINI_API_KEY set", "", " \t ", "fake-gemini", "fake-gemini"},
+		{"all blank", " ", "  ", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			t.Setenv("XDG_CACHE_HOME", t.TempDir())
+			t.Setenv("GOOGLE_API_KEY", tc.google)
+			t.Setenv("GEMINI_API_KEY", tc.gemini)
+			t.Setenv("LLM_API_KEY", "")
+			require.NoError(t, os.Unsetenv("LLM_API_KEY"))
+
+			var got []string
+			srv := httptest.NewServer(http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					got = append(got, r.Header.Get("x-goog-api-key"))
+					writeJSON(w, geminiResponse("ok", "STOP", 1, 1))
+				},
+			))
+			defer srv.Close()
+
+			p, err := google.New(llm.ResolvedConfig{
+				Provider: llm.ProviderConfig{Model: "gemini-2.0-flash", BaseURL: srv.URL, APIKey: tc.cfgKey},
+			})
+			if tc.want == "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "API key is required")
+				assert.Empty(t, got)
+				return
+			}
+			require.NoError(t, err)
+			_, err = p.(llm.Completer).Complete(context.Background(), llm.Request{
+				Messages: []llm.Message{{Role: "user", Content: "Hi"}},
+			})
+			require.NoError(t, err)
+			assert.Equal(t, []string{tc.want}, got)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Complete
 // ---------------------------------------------------------------------------

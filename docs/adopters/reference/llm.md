@@ -323,7 +323,7 @@ Each field, highest precedence first:
 
 | Field | Sources |
 |-------|---------|
-| `APIKey` | as [Provider keys](#provider-keys) resolves it, no secret store: URI `api_key`, `llm.yaml` `api_key` / `api_key_env`, the provider's variables, `LLM_API_KEY` (required keys only); empty when found nowhere |
+| `APIKey` | as [Provider keys](#provider-keys) resolves it, no secret store: URI `api_key`, `llm.yaml` `api_key` / `api_key_env`, the provider's variables, `LLM_API_KEY` (required keys only); empty when found nowhere. A [blank](#blank-keys) URI `api_key` is dropped from `URI.Params` and `Params` |
 | `BaseURL` | URI `?base_url=`, URI host (`http://host:port`), `LLM_BASE_URL`, `llm.yaml` `base_url` |
 | `Model` | URI model, `llm.yaml` `model` |
 
@@ -378,6 +378,8 @@ if s, ok := llm.ProviderSettingsFor("fireworks-ai"); ok && s.BaseURL != "" {
 `llm.Resolve` reads a key from the URI's `api_key` param and nowhere
 else, so a URI-form model such as `openrouter://openai/gpt-4.1-nano`
 reaches its provider unauthenticated unless the key is put on the URI.
+A [blank](#blank-keys) `api_key` is no key: `Resolve` drops it and the
+adapter gets none.
 `llm.ApplyAPIKey` does that:
 
 ```go
@@ -405,8 +407,9 @@ Key sources, highest precedence first:
 4. the `<SCHEME>_API_KEY` convention, other characters folded to `_`
 5. `LLM_API_KEY`, for required keys only
 
-A URI's own `api_key` outranks all five. For the registered schemes
-every layer agrees, cache or not:
+A URI's own `api_key` outranks all five. A [blank](#blank-keys) value
+at any source counts as unset, so the next source answers. For the
+registered schemes every layer agrees, cache or not:
 
 | Scheme | Key variables, highest precedence first | Required |
 |--------|------------------------------------------|----------|
@@ -446,8 +449,12 @@ reachable with `errors.Is`); when a later source supplies the key,
 `ApplyAPIKey` and `SecretFor` log it as a warning on `slog.Default()`.
 Store errors name keys, never values.
 
-`ApplyAPIKey` leaves the URI unchanged when it already carries
-`api_key`, when the scheme is local and its own variable is unset
+`ApplyAPIKey` leaves the URI unchanged when it already carries a
+non-blank `api_key`. A blank one (`?api_key=`, `?api_key`, spaces) is
+removed and the key resolves as if the URI named none, so
+`openai://m?api_key=` with no key set returns a `*MissingKeyError`
+before any request. The URI is also unchanged, a blank `api_key` aside,
+when the scheme is local and its own variable is unset
 (`LLM_API_KEY` is never lent to a local runtime), and when no adapter
 serves the scheme and its own `llm.yaml` block names no key (kit lends
 no other credential to a host it cannot reach). It needs `scheme://`; mapping a bare model id to a
@@ -455,6 +462,25 @@ scheme is the caller's policy. A required key found nowhere returns a
 `*MissingKeyError` (`errors.Is(err, llm.ErrMissingKey)`, also
 `secret.ErrNotFound`) listing the names consulted. Errors name
 variables, never values; the returned URI holds the key, so don't log it.
+
+### Blank keys
+
+A key that is empty or only whitespace is no key, at every source: the
+URI's `api_key` param, `llm.yaml` `api_key`, the variable `api_key_env`
+names, the secret store, the provider variables and `LLM_API_KEY`. It
+counts as unset: resolution moves on to the next source, a required key
+blank everywhere is a `*MissingKeyError`, and nothing blank is sent (an
+`Authorization: Bearer` header with no token is never valid). A blank
+`api_key_env` names no variable. `ApplyAPIKey`, `ResolveAPIKey`,
+`LoadConfig` and `SecretFor` agree on this for every source.
+
+The adapters hold the same line for what reaches them directly: the
+`openai` adapter sends no `Authorization` header for a blank key (and
+never the SDK's own `OPENAI_API_KEY` in its place), `anthropic` refuses
+a blank key and does not send a blank `ANTHROPIC_AUTH_TOKEN`, and
+`google` falls through a blank key to its variables.
+
+A non-blank key is used as written, surrounding whitespace included.
 
 ### Where a key came from
 
@@ -472,7 +498,7 @@ fmt.Println(res.Source) // "store:OPENROUTER_API_KEY"; never print res.Value
 
 | `Source.Kind` | Key came from | `Source.Name` |
 |---------------|---------------|---------------|
-| `uri` | the URI's `api_key` param | empty |
+| `uri` | the URI's non-blank `api_key` param | empty |
 | `config` | an `llm.yaml` block's `api_key` | `providers.<block>.api_key` |
 | `store` | the secret store | the key name asked for |
 | `env` | a provider variable (incl. `api_key_env`'s) | the variable |

@@ -163,6 +163,7 @@ func parseQuery(q string) map[string]string {
 //     api_key_env names; the provider's key variables; LLM_API_KEY for
 //     a required key only. A key found nowhere leaves APIKey empty:
 //     reporting it is the caller's ([ApplyAPIKey] returns the error).
+//     A blank api_key param is no key and is dropped from the params.
 //   - BaseURL: the URI's base_url param; the URI's host
 //     ("http://host:port"); LLM_BASE_URL; llm.yaml base_url. The
 //     adapter's own default is left to [Resolve] and the adapter.
@@ -197,6 +198,8 @@ func LoadConfig(uri string) (ResolvedConfig, error) {
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
+	// A blank api_key is no key: it is dropped, not passed on.
+	dropBlankURIKey(&parsed)
 
 	ctx := context.Background()
 

@@ -211,6 +211,10 @@ func (rt route) baseURL(uriScheme string) (string, error) {
 // its protocol ([Declaration.Protocols]). Resolve never fetches the
 // catalog.
 //
+// The key is the URI's api_key param alone. A blank one (empty or only
+// whitespace) is no key: it is dropped, and the adapter gets neither a
+// key nor the param.
+//
 // Base URL, highest first: the URI's base_url param or host, the
 // declared [Declaration.BaseURL], and for a catalog provider the
 // catalog's base URL with its ${VAR} placeholders expanded. A catalog
@@ -226,6 +230,9 @@ func (r *Registry) Resolve(uri string) (Provider, error) {
 	if !ok {
 		return nil, llmerrors.NewProviderNotFound(parsed.Scheme)
 	}
+	// A blank api_key is no key: the adapter gets none, and no blank
+	// param among its params.
+	dropBlankURIKey(&parsed)
 
 	cfg := ResolvedConfig{
 		URI: parsed,

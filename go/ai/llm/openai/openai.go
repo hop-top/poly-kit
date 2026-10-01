@@ -105,9 +105,14 @@ var (
 
 // New creates an Adapter from the resolved config.
 func New(cfg llm.ResolvedConfig) (llm.Provider, error) {
-	opts := []option.RequestOption{
-		option.WithAPIKey(cfg.Provider.APIKey),
+	// A blank key is no key: send no Authorization header rather than
+	// "Bearer " with nothing after it. Deleting the header also drops
+	// the one the SDK sets from OPENAI_API_KEY, which kit never lends.
+	auth := option.WithHeaderDel("authorization")
+	if strings.TrimSpace(cfg.Provider.APIKey) != "" {
+		auth = option.WithAPIKey(cfg.Provider.APIKey)
 	}
+	opts := []option.RequestOption{auth}
 
 	base := cfg.Provider.BaseURL
 	if base == "" {

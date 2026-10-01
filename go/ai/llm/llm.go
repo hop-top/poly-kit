@@ -12,7 +12,8 @@
 // as Gemini thought signatures, that the provider requires back.
 //
 // Provider keys: [Resolve] reads a key only from the URI's api_key
-// param. [ApplyAPIKey] puts the scheme's key there from llm.yaml, a
+// param, and drops a blank one (empty or only whitespace), which no
+// key source counts as a key. [ApplyAPIKey] puts the scheme's key there from llm.yaml, a
 // secret store or the environment, under the names [ProviderKeyFor]
 // resolves (adapter [Declaration], aim catalog facts, <SCHEME>_API_KEY);
 // a required key found nowhere yields a [*MissingKeyError].
