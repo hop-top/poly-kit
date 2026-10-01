@@ -2,6 +2,7 @@ package etcd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -76,20 +77,64 @@ func NewContext(ctx context.Context, endpoints []string, prefix string) (*Store,
 	return &Store{client: client, prefix: prefix}, nil
 }
 
-// checkEndpoint rejects a schemeless endpoint that carries userinfo
-// ("user:pass@host:2379"). etcd has no such form: the client hands the raw
-// string to gRPC, and dialTarget would pass it through verbatim, printing
-// the credentials in any refusal. The error names only the part after the
-// last "@", so the credentials never reach it.
+// checkEndpoint rejects an endpoint whose dial target could leak or
+// could never connect, before anything prints or dials it.
+//
+// The client (clientv3 internal/endpoint, not importable) interprets
+// exactly three forms: bare host:port, http(s):// — reduced to the URL
+// host, scheme case-folded by net/url — and the unix(s) socket forms.
+// Anything else carrying "://" is handed to the dialer verbatim as a TCP
+// address: it can never connect, and the client's own logger prints it,
+// userinfo included. Such an endpoint is rejected; the error names the
+// scheme only when it is a well-formed one, so nothing else is echoed.
+//
+// Userinfo has no meaning in a host-based form. In a schemeless endpoint
+// ("user:pass@host:2379") the client would dial the raw string, printing
+// the credentials in any refusal; it is rejected, and the error names only
+// the part after the last "@". A socket path is a file or abstract name,
+// not an authority: an "@" there is not userinfo, and unix dials are
+// never refused by the policy, so the socket forms pass unchanged.
 func checkEndpoint(ep string) error {
-	if strings.Contains(ep, "://") || strings.HasPrefix(ep, "unix:") || strings.HasPrefix(ep, "unixs:") {
+	if strings.HasPrefix(ep, "unix:") || strings.HasPrefix(ep, "unixs:") {
 		return nil
 	}
-	i := strings.LastIndex(ep, "@")
-	if i < 0 {
+	scheme, _, hasScheme := strings.Cut(ep, "://")
+	if !hasScheme {
+		if i := strings.LastIndex(ep, "@"); i >= 0 {
+			return fmt.Errorf("etcd kv: endpoint %q: userinfo not allowed in a schemeless endpoint; use host:port", ep[i+1:])
+		}
 		return nil
 	}
-	return fmt.Errorf("etcd kv: endpoint %q: userinfo not allowed in a schemeless endpoint; use host:port", ep[i+1:])
+	if isHTTPScheme(scheme) {
+		return nil
+	}
+	if !validScheme(scheme) {
+		return errors.New("etcd kv: endpoint has a malformed scheme; use http://, https://, unix://, unixs:// or host:port")
+	}
+	return fmt.Errorf("etcd kv: endpoint scheme %q not supported; use http://, https://, unix://, unixs:// or host:port", scheme)
+}
+
+// isHTTPScheme reports whether scheme is one the client reduces to its URL
+// host. net/url folds a scheme to lower case, so the match does too.
+func isHTTPScheme(scheme string) bool {
+	return strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https")
+}
+
+// validScheme reports whether s is an RFC 3986 scheme:
+// ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ).
+func validScheme(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		switch {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z':
+		case i > 0 && ('0' <= c && c <= '9' || c == '+' || c == '-' || c == '.'):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // dialTarget reduces an etcd endpoint to the network and address a dial
@@ -98,9 +143,10 @@ func checkEndpoint(ep string) error {
 //
 // etcd accepts http(s):// and unix(s):// schemes as well as bare host:port.
 // url.Parse cannot be used alone: it rejects "127.0.0.1:2379" outright and
-// reads "localhost:2379" as scheme "localhost". Anything unrecognized is
-// passed through as a TCP address, so an endpoint form not handled here is
-// still policy-checked rather than silently exempted.
+// reads "localhost:2379" as scheme "localhost". checkEndpoint has already
+// rejected every other scheme; anything left unrecognized is passed
+// through as a TCP address, so it is still policy-checked rather than
+// silently exempted.
 func dialTarget(ep string) (network, addr string) {
 	for _, scheme := range []string{"unix://", "unixs://"} {
 		if rest, ok := strings.CutPrefix(ep, scheme); ok {
@@ -112,21 +158,19 @@ func dialTarget(ep string) (network, addr string) {
 			return "unix", rest
 		}
 	}
-	for _, scheme := range []string{"http://", "https://"} {
-		if rest, ok := strings.CutPrefix(ep, scheme); ok {
-			// Reduce to host:port, as url.Host would: the authority
-			// ends at the first path, query or fragment delimiter, and
-			// userinfo ends at its last "@". The client dials url.Host,
-			// so credentials are never part of the target; keeping them
-			// would print them in a refusal and hide a loopback host.
-			if i := strings.IndexAny(rest, "/?#"); i >= 0 {
-				rest = rest[:i]
-			}
-			if i := strings.LastIndex(rest, "@"); i >= 0 {
-				rest = rest[i+1:]
-			}
-			return "tcp", rest
+	if scheme, rest, ok := strings.Cut(ep, "://"); ok && isHTTPScheme(scheme) {
+		// Reduce to host:port, as url.Host would: the authority
+		// ends at the first path, query or fragment delimiter, and
+		// userinfo ends at its last "@". The client dials url.Host,
+		// so credentials are never part of the target; keeping them
+		// would print them in a refusal and hide a loopback host.
+		if i := strings.IndexAny(rest, "/?#"); i >= 0 {
+			rest = rest[:i]
 		}
+		if i := strings.LastIndex(rest, "@"); i >= 0 {
+			rest = rest[i+1:]
+		}
+		return "tcp", rest
 	}
 	return "tcp", ep
 }

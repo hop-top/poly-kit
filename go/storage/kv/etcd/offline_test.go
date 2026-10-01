@@ -326,3 +326,67 @@ func TestNew_ContextFreeDoesNotReportPolicyRefusals(t *testing.T) {
 	}
 	_ = store.Close()
 }
+
+// An endpoint scheme the client does not interpret is dialed verbatim as
+// a TCP address, which can never connect — and the client's own logger
+// would print it, userinfo included. It is rejected at open on any
+// context, before the client exists, without echoing the endpoint.
+func TestNewContext_RejectsUnsupportedScheme(t *testing.T) {
+	port, reached := etcdListener(t)
+	for _, ep := range []string{
+		fmt.Sprintf("grpc://kit-user:kit-secret@kit-offline-probe.invalid:%d", port),
+		fmt.Sprintf("grpc://kit-user:kit-secret@127.0.0.1:%d", port),
+		fmt.Sprintf("dns:///127.0.0.1:%d", port),
+	} {
+		for name, ctx := range map[string]context.Context{
+			"online":  t.Context(),
+			"offline": offlineOpenCtx(t),
+		} {
+			t.Run(name+"/"+ep, func(t *testing.T) {
+				store, err := etcd.NewContext(ctx, []string{ep}, "")
+				if err == nil {
+					_ = store.Close()
+					t.Fatal("endpoint with an unsupported scheme was accepted")
+				}
+				if errors.Is(err, netpolicy.ErrOffline) {
+					t.Fatalf("rejected by the policy, not the endpoint check: %v", err)
+				}
+				for _, secret := range []string{"kit-user", "kit-secret", "@"} {
+					if strings.Contains(err.Error(), secret) {
+						t.Fatalf("error leaks %q: %v", secret, err)
+					}
+				}
+			})
+		}
+	}
+	if reached() {
+		t.Fatal("a connection was attempted for a rejected endpoint")
+	}
+}
+
+// The client folds the scheme to lower case, so "HTTP://127.0.0.1" dials
+// loopback and must stay reachable offline, while "HTTP://" userinfo must
+// never reach a refusal.
+func TestNewContext_UppercaseScheme(t *testing.T) {
+	port, reached := etcdListener(t)
+	t.Run("loopback allowed offline", func(t *testing.T) {
+		store, err := etcd.NewContext(offlineOpenCtx(t), []string{fmt.Sprintf("HTTP://127.0.0.1:%d", port)}, "")
+		if err != nil {
+			t.Fatalf("uppercase-scheme loopback refused offline: %v", err)
+		}
+		_ = store.Close()
+	})
+	t.Run("remote refused offline", func(t *testing.T) {
+		_, err := etcd.NewContext(offlineOpenCtx(t), []string{fmt.Sprintf("HTTPS://kit-offline-probe.invalid:%d/v3", port)}, "")
+		if !errors.Is(err, netpolicy.ErrOffline) {
+			t.Fatalf("uppercase-scheme remote endpoint slipped the policy: %v", err)
+		}
+		if want := fmt.Sprintf("kit-offline-probe.invalid:%d", port); !strings.Contains(err.Error(), want) ||
+			strings.Contains(err.Error(), "HTTPS") {
+			t.Fatalf("refusal does not name the dial target %q alone: %v", want, err)
+		}
+		if reached() {
+			t.Fatal("etcd open reached a listener despite offline context")
+		}
+	})
+}
