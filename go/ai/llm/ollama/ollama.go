@@ -139,13 +139,13 @@ func (a *Adapter) Complete(
 		a.baseURL+chatEndpoint, bytes.NewReader(body),
 	)
 	if err != nil {
-		return llm.Response{}, err
+		return llm.Response{}, llm.RedactURLError(err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
-		return llm.Response{}, err
+		return llm.Response{}, llm.RedactURLError(err)
 	}
 	defer resp.Body.Close()
 
@@ -189,13 +189,13 @@ func (a *Adapter) Stream(
 		a.baseURL+chatEndpoint, bytes.NewReader(body),
 	)
 	if err != nil {
-		return nil, err
+		return nil, llm.RedactURLError(err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
-		return nil, err
+		return nil, llm.RedactURLError(err)
 	}
 
 	if err := a.checkStatus(resp, model); err != nil {

@@ -66,13 +66,13 @@ func (a *Adapter) GenerateImage(
 		a.baseURL+generateEndpoint, bytes.NewReader(body),
 	)
 	if err != nil {
-		return llm.ImageResponse{}, fmt.Errorf("ollama: image gen: build request: %w", err)
+		return llm.ImageResponse{}, fmt.Errorf("ollama: image gen: build request: %w", llm.RedactURLError(err))
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
-		return llm.ImageResponse{}, fmt.Errorf("ollama: image gen: %w", err)
+		return llm.ImageResponse{}, fmt.Errorf("ollama: image gen: %w", llm.RedactURLError(err))
 	}
 	defer resp.Body.Close()
 

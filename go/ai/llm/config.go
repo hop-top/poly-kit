@@ -90,6 +90,8 @@ type PoolEntry struct {
 //
 // The scheme is required. The model may be empty. Host:port is detected
 // when the authority portion contains a colon followed by digits.
+//
+// Errors quote raw with its credentials masked by [RedactURI].
 func ParseURI(raw string) (URI, error) {
 	if raw == "" {
 		return URI{}, fmt.Errorf("empty URI")
@@ -97,12 +99,12 @@ func ParseURI(raw string) (URI, error) {
 
 	idx := strings.Index(raw, "://")
 	if idx < 0 {
-		return URI{}, fmt.Errorf("missing scheme in URI %q", raw)
+		return URI{}, fmt.Errorf("missing scheme in URI %q", RedactURI(raw))
 	}
 
 	scheme := raw[:idx]
 	if scheme == "" {
-		return URI{}, fmt.Errorf("empty scheme in URI %q", raw)
+		return URI{}, fmt.Errorf("empty scheme in URI %q", RedactURI(raw))
 	}
 
 	rest := raw[idx+3:] // everything after "://"

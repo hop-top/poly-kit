@@ -477,10 +477,13 @@ func (s *streamIter) Close() error {
 // ---------------------------------------------------------------------------
 
 func mapError(err error, model string) error {
+	// Errors quote the request URL; a base URL may carry a credential.
+	err = llm.RedactURLError(err)
 	var apiErr *anthropic.Error
 	if !errors.As(err, &apiErr) {
 		return err
 	}
+	redactRequestURL(apiErr.Request)
 
 	switch apiErr.StatusCode {
 	case 401, 403:

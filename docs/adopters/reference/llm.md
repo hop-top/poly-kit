@@ -120,6 +120,25 @@ registry, `Cache().Load()`); `Resolve` never fetches it. With no cache
 (offline, first run) catalog providers do not resolve; registered
 schemes and their aliases are unaffected.
 
+### Credentials in errors
+
+A URI can carry a key (`?api_key=`), and a base URL can carry one in
+its userinfo or query. No llm or adapter error echoes it: each URI or
+request URL an error quotes is masked, scheme, host and model kept.
+
+```text
+llm: invalid URI "openai/gpt-4o?api_key=REDACTED": missing scheme in URI "openai/gpt-4o?api_key=REDACTED"
+```
+
+Mask the URIs you print or log yourself the same way:
+
+- `llm.RedactURI(uri)` replaces the value of `api_key`, `key`, `token`,
+  `secret`, `password`, `signature` and names ending in `_key`,
+  `_token`, `_secret` and the like, plus userinfo (`user:pass@`), with
+  `REDACTED`. The URI need not parse.
+- `llm.RedactURLError(err)` masks the URL net/http quotes in a
+  transport error (`*url.Error`); use the error it returns.
+
 ## Quick start
 
 ```go

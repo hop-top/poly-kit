@@ -98,13 +98,13 @@ func (c *Client) Score(
 	httpReq, err := http.NewRequestWithContext(
 		ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return 0, fmt.Errorf("triton: create request: %w", err)
+		return 0, fmt.Errorf("triton: create request: %w", llm.RedactURLError(err))
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpC.Do(httpReq)
 	if err != nil {
-		return 0, fmt.Errorf("triton: inference request: %w", err)
+		return 0, fmt.Errorf("triton: inference request: %w", llm.RedactURLError(err))
 	}
 	defer resp.Body.Close()
 

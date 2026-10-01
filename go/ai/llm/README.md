@@ -19,6 +19,7 @@ or a provider-specific wire detail (the adapter sub-packages below).
 - you observe calls → `llm.OnRequest`/`OnResponse`/`OnError`/`OnRoute`/`OnEvaResult`, or `llm.WithBus(bus)`
 - a URI-form model needs its provider key → `llm.ApplyAPIKey(ctx, store, uri)`; `errors.Is(err, llm.ErrMissingKey)` when none is set; `llm.ResolveAPIKey` also says where it came from: [Provider keys](../../../docs/adopters/reference/llm.md#provider-keys)
 - you add a provider → `llm.Register("myscheme", factory, llm.Declaration{...})`: [Custom adapters](../../../docs/adopters/reference/llm.md#custom-adapters)
+- you print or log a model URI or base URL → `llm.RedactURI(uri)`, `llm.RedactURLError(err)`; kit's own errors already mask them: [Credentials in errors](../../../docs/adopters/reference/llm.md#credentials-in-errors)
 
 ## Quick start
 
@@ -56,8 +57,7 @@ fmt.Println(resp.Message.Content)
   tiebreaks alphabetically on `(Provider, ID)`; `ErrNoProviderMatches` +
   `*NoMatchError`; `LLM_PICKER_TRACE` gates one `slog` event per call:
   [Picker](../../../docs/adopters/reference/llm.md#picker).
-- Model metadata comes from `hop.top/aim` `v0.1.0-alpha.0` via
-  `llm.Default(ctx)`; inject with `llm.SetDefaultRegistry`.
+- Model metadata comes from `hop.top/aim` `v0.1.0-alpha.0` via `llm.Default(ctx)`; inject with `llm.SetDefaultRegistry`.
 - License: MIT.
 
 ## Neighbours

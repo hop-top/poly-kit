@@ -217,7 +217,7 @@ func (a *Adapter) newRequest(
 		ctx, http.MethodPost, url, bytes.NewReader(body),
 	)
 	if err != nil {
-		return nil, err
+		return nil, llm.RedactURLError(err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-goog-api-key", a.apiKey)
@@ -245,7 +245,7 @@ func (a *Adapter) Complete(
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
-		return llm.Response{}, err
+		return llm.Response{}, llm.RedactURLError(err)
 	}
 	defer resp.Body.Close()
 
@@ -289,7 +289,7 @@ func (a *Adapter) Stream(
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
-		return nil, err
+		return nil, llm.RedactURLError(err)
 	}
 
 	if err := a.checkStatus(resp, model); err != nil {
@@ -395,7 +395,7 @@ func (a *Adapter) CallWithTools(
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {
-		return llm.ToolResponse{}, err
+		return llm.ToolResponse{}, llm.RedactURLError(err)
 	}
 	defer resp.Body.Close()
 
