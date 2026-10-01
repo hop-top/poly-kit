@@ -19,7 +19,7 @@ streamed objects (`go/storage/blob`) or credentials (`go/storage/secret`).
 |---------|-------------|---------------|-----|--------------|
 | [`badger`](badger/README.md) | `hop.top/kit/go/storage/kv/badger` | `Path` (dir) | yes | high write throughput, Go-only readers |
 | [`memory`](memory/README.md) | `hop.top/kit/go/storage/kv/memory` | none (`memory.WithMaxBytes` in code) | yes | in-process cache; bounded, emptied on restart |
-| [`etcd`](etcd/README.md) | `hop.top/kit/go/storage/kv/etcd` | `Endpoints`, `Prefix` | no | coordination data on an existing cluster |
+| [`etcd`](etcd/README.md) | `hop.top/kit/go/storage/kv/etcd` | `Endpoints`, `Prefix`; `Username`, `Password`, `TLS` for auth | no | coordination data on an existing cluster |
 | [`sqlite`](sqlite/README.md) | `hop.top/kit/go/storage/kv/sqlite` | `Path` (file) | yes | default; one file, cross-language readable |
 | [`tidb`](tidb/README.md) | `hop.top/kit/go/storage/kv/tidb` | `DSN`, `Table` (default `kv`) | no | MySQL-compatible server already provisioned |
 
@@ -55,7 +55,8 @@ Needs `_ "hop.top/kit/go/storage/kv/sqlite"` in the imports; see
   ([`registry/`](registry/README.md) holds the test proving it);
   `kv.Backends()` lists what the binary carries. No build tags.
 - `Config.Backend` is required. Each driver rejects a Config missing its
-  own fields (`Path`, `Endpoints`, `DSN`).
+  own fields (`Path`, `Endpoints`, `DSN`). etcd credentials go in
+  `Username`/`Password`/`TLS`, never an endpoint; printing a Config redacts them.
 - `OpenContext` refuses a remote `tidb` or `etcd` under an offline context;
   loopback, unix sockets and file backends stay reachable. `Open` supplies
   a background context and connects unpoliced.

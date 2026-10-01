@@ -2,6 +2,7 @@ package kv
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"sort"
 	"strings"
@@ -26,6 +27,21 @@ type Config struct {
 
 	// Prefix namespaces every key written by the etcd backend.
 	Prefix string
+
+	// Username and Password authenticate the etcd backend, as the etcd
+	// client's own Username and Password. Set both or neither: the client
+	// ignores either alone, so the backend rejects it. Never put them in
+	// an endpoint: etcd does not read URL userinfo, and the backend
+	// rejects an endpoint that carries any. Printing a Config redacts
+	// Password (see String).
+	Username string
+	Password string
+
+	// TLS secures the etcd backend's transport: it applies to https://
+	// and unixs:// endpoints, and to host:port and unix:// ones when set.
+	// Combining it with an http:// endpoint is rejected, since the client
+	// would drop it silently. nil leaves https:// on the system roots.
+	TLS *tls.Config
 
 	// DSN is the MySQL-compatible connection string for tidb.
 	DSN string

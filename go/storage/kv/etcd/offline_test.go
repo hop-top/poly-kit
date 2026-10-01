@@ -155,67 +155,30 @@ func TestNewContext_OfflineAllowsSchemedLoopback(t *testing.T) {
 	}
 }
 
-// Credentials in an endpoint's userinfo must never reach the refusal: the
-// dial target is the authority's host:port, which carries none.
-func TestNewContext_OfflineRefusalOmitsUserinfo(t *testing.T) {
-	port, reached := etcdListener(t)
-	for _, ep := range []string{
-		fmt.Sprintf("http://kit-user:kit-secret@kit-offline-probe.invalid:%d", port),
-		fmt.Sprintf("https://kit-user@kit-offline-probe.invalid:%d/v3?x=1", port),
-	} {
-		t.Run(ep, func(t *testing.T) {
-			_, err := etcd.NewContext(offlineOpenCtx(t), []string{ep}, "")
-			if !errors.Is(err, netpolicy.ErrOffline) {
-				t.Fatalf("endpoint slipped the policy check: %v", err)
-			}
-			msg := err.Error()
-			for _, secret := range []string{"kit-user", "kit-secret", "@"} {
-				if strings.Contains(msg, secret) {
-					t.Fatalf("refusal leaks userinfo %q: %s", secret, msg)
-				}
-			}
-			want := fmt.Sprintf("kit-offline-probe.invalid:%d", port)
-			if !strings.Contains(msg, want) {
-				t.Fatalf("refusal does not name the dial target %q: %s", want, msg)
-			}
-		})
+// The context-free New goes through the same check.
+func TestNew_RejectsSchemelessUserinfo(t *testing.T) {
+	store, err := etcd.New([]string{"kit-user:kit-secret@127.0.0.1:2379"}, "")
+	if err == nil {
+		_ = store.Close()
+		t.Fatal("schemeless endpoint with userinfo was accepted")
 	}
-	if reached() {
-		t.Fatal("etcd open reached a listener despite offline context")
+	if strings.Contains(err.Error(), "kit-secret") {
+		t.Fatalf("error leaks the password: %v", err)
 	}
 }
 
-// Userinfo must not disguise a loopback endpoint as remote: a local etcd
-// with credentials in its URL stays reachable while offline.
-func TestNewContext_OfflineAllowsLoopbackWithUserinfo(t *testing.T) {
-	port, _ := etcdListener(t)
-	for _, ep := range []string{
-		fmt.Sprintf("http://u:p@127.0.0.1:%d", port),
-		fmt.Sprintf("https://u@localhost:%d", port),
-		fmt.Sprintf("http://u:p@[::1]:%d/path", port),
-	} {
-		t.Run(ep, func(t *testing.T) {
-			store, err := etcd.NewContext(offlineOpenCtx(t), []string{ep}, "")
-			if errors.Is(err, netpolicy.ErrOffline) {
-				t.Fatalf("loopback endpoint with userinfo refused while offline: %v", err)
-			}
-			if err != nil {
-				t.Fatalf("open: %v", err)
-			}
-			_ = store.Close()
-		})
-	}
-}
-
-// A schemeless endpoint carrying userinfo is not a form etcd dials: the
-// client would hand the raw string to gRPC. It is rejected at open, on any
-// context, before the client exists — and the error names the host
-// without echoing the credentials.
-func TestNewContext_RejectsSchemelessUserinfo(t *testing.T) {
+// Userinfo in any endpoint is rejected at open, on any context, before
+// the client exists: the client dials url.Host and never sends it, so
+// credentials there would be silently dropped. The error names the host
+// alone and points at the supported credential fields.
+func TestNewContext_RejectsEndpointUserinfo(t *testing.T) {
 	port, reached := etcdListener(t)
 	for _, tc := range []struct{ ep, host string }{
 		{fmt.Sprintf("kit-user:kit-secret@kit-offline-probe.invalid:%d", port), fmt.Sprintf("kit-offline-probe.invalid:%d", port)},
 		{fmt.Sprintf("kit-user@127.0.0.1:%d", port), fmt.Sprintf("127.0.0.1:%d", port)},
+		{fmt.Sprintf("http://kit-user:kit-secret@kit-offline-probe.invalid:%d", port), fmt.Sprintf("kit-offline-probe.invalid:%d", port)},
+		{fmt.Sprintf("https://kit-user@127.0.0.1:%d/v3?x=1", port), fmt.Sprintf("127.0.0.1:%d", port)},
+		{fmt.Sprintf("HTTP://kit-user:kit-secret@[::1]:%d", port), fmt.Sprintf("[::1]:%d", port)},
 	} {
 		for name, ctx := range map[string]context.Context{
 			"online":  t.Context(),
@@ -225,7 +188,7 @@ func TestNewContext_RejectsSchemelessUserinfo(t *testing.T) {
 				store, err := etcd.NewContext(ctx, []string{tc.ep}, "")
 				if err == nil {
 					_ = store.Close()
-					t.Fatal("schemeless endpoint with userinfo was accepted")
+					t.Fatal("endpoint with userinfo was accepted")
 				}
 				if errors.Is(err, netpolicy.ErrOffline) {
 					t.Fatalf("rejected by the policy, not the endpoint check: %v", err)
@@ -239,6 +202,9 @@ func TestNewContext_RejectsSchemelessUserinfo(t *testing.T) {
 				if !strings.Contains(msg, tc.host) {
 					t.Fatalf("error does not name the endpoint host %q: %s", tc.host, msg)
 				}
+				if !strings.Contains(msg, "Username") {
+					t.Fatalf("error does not point at the credential fields: %s", msg)
+				}
 			})
 		}
 	}
@@ -247,31 +213,17 @@ func TestNewContext_RejectsSchemelessUserinfo(t *testing.T) {
 	}
 }
 
-// The context-free New goes through the same check.
-func TestNew_RejectsSchemelessUserinfo(t *testing.T) {
-	store, err := etcd.New([]string{"kit-user:kit-secret@127.0.0.1:2379"}, "")
-	if err == nil {
-		_ = store.Close()
-		t.Fatal("schemeless endpoint with userinfo was accepted")
-	}
-	if strings.Contains(err.Error(), "kit-secret") {
-		t.Fatalf("error leaks the password: %v", err)
-	}
-}
-
-// URL-form userinfo stays accepted: it is reduced to host:port, as the
-// client itself reduces it. Online, so nothing but the endpoint check can
-// refuse it.
-func TestNewContext_AcceptsURLUserinfo(t *testing.T) {
+// An "@" past the authority is path, query or fragment, not userinfo.
+func TestNewContext_AcceptsAtSignOutsideAuthority(t *testing.T) {
 	port, _ := etcdListener(t)
 	for _, ep := range []string{
-		fmt.Sprintf("http://u:p@kit-offline-probe.invalid:%d", port),
-		fmt.Sprintf("https://u@127.0.0.1:%d", port),
+		fmt.Sprintf("http://127.0.0.1:%d/a@b", port),
+		fmt.Sprintf("http://127.0.0.1:%d?q=a@b", port),
 	} {
 		t.Run(ep, func(t *testing.T) {
-			store, err := etcd.NewContext(t.Context(), []string{ep}, "")
+			store, err := etcd.NewContext(offlineOpenCtx(t), []string{ep}, "")
 			if err != nil {
-				t.Fatalf("URL-form userinfo rejected: %v", err)
+				t.Fatalf("open: %v", err)
 			}
 			_ = store.Close()
 		})
