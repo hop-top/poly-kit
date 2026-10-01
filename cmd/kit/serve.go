@@ -197,7 +197,9 @@ func (e *engine) mountFlags(root *cli.Root) {
 // directory is refused before anything binds. Every other command,
 // `serve --list`, and a `serve <other service>` pass through untouched.
 func (e *engine) prepare(root *cli.Root, cmd *cobra.Command, args []string) error {
-	if cmd.Name() != "serve" {
+	// The kit-owned serve parent only: other leaves named serve
+	// (`kit conformance svc serve`) run services of their own.
+	if cmd.Parent() != root.Cmd || cmd.Name() != "serve" {
 		return nil
 	}
 	if list, _ := cmd.Flags().GetBool("list"); list {
