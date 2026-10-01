@@ -265,9 +265,11 @@ func installConfirmTokenFlag(cmd *cobra.Command) {
 //
 //  1. Resolve the active confirm mode.
 //  2. Read the side-effect tag.
+//  0. Under kit's --dry-run: refuse when the leaf does not honour
+//     it (see resolveDryRunPolicy); otherwise the run is a preview.
 //  3. If destructive: enforce the --confirm matrix; on prompt-mode,
-//     prompt; on rejection, abort UNAUTHORIZED. Skipped under
-//     --dry-run since dry runs make no real side-effect.
+//     prompt; on rejection, abort UNAUTHORIZED. Skipped for a
+//     preview, which makes no real side-effect.
 //  4. If a policy is active: ask Engine.Authorize. Refuse when not
 //     allowed. Lift policy-mandated require_confirm into the prompt
 //     gate too.
@@ -286,6 +288,16 @@ func (r *Root) wrapPolicyRunE(
 	}
 	return func(cmd *cobra.Command, args []string) error {
 		se, hasSE := GetSideEffect(cmd)
+
+		// Dry-run first, as the pre-execution hook would have: refuse
+		// --dry-run on a leaf that does not honour it, and learn
+		// whether this run is a preview. Resolved here again because
+		// a command whose own PersistentPreRunE shadows kit's chain
+		// never ran the hook.
+		dryRun, refusal := r.applyDryRun(cmd)
+		if refusal != nil {
+			return renderPolicyError(cmd, refusal)
+		}
 
 		// Build the policy engine for this invocation. Cheap; it just
 		// reads the flag values and (optionally) loads YAML.
@@ -312,9 +324,13 @@ func (r *Root) wrapPolicyRunE(
 		}
 
 		// Confirmation gate — only meaningful for destructive ops, or
-		// when policy.require_confirm matched the verb. --dry-run
-		// short-circuits: dry runs have no real side-effect to confirm.
-		if !IsDryRun(cmd) {
+		// when policy.require_confirm matched the verb. Skipped only
+		// for a dry run kit applied: the leaf's dry-run policy
+		// resolved "allow", so it contracted to preview, not act. The
+		// bare --dry-run flag is not enough — on a leaf that does not
+		// honour it, or a --dry-run kit does not own, the command
+		// would act unconfirmed.
+		if !dryRun {
 			if (hasSE && isDestructiveLike(se)) || policyConfirm {
 				if err := r.gateConfirm(cmd, se); err != nil {
 					return err
@@ -330,7 +346,7 @@ func (r *Root) wrapPolicyRunE(
 		// Post-flight ops budget: only count mutating ops.
 		if hasSE && (isWriteLike(se) || isDestructiveLike(se)) {
 			// Don't account dry-run mutations against the budget.
-			if !IsDryRun(cmd) {
+			if !dryRun {
 				if rerr := engine.RecordOp(cmd); rerr != nil {
 					return renderPolicyError(cmd, output.RateLimitedError(
 						"max-ops budget exceeded after running "+cmd.CommandPath(),

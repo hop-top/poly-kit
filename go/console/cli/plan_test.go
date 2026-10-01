@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 	"time"
@@ -8,7 +9,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/output"
 )
 
 // TestPlan_RoundTrip_JSON locks the JSON shape: every field declared in
@@ -163,4 +166,39 @@ func TestIsDryRun_False(t *testing.T) {
 
 	// Nil command must not panic.
 	assert.False(t, cli.IsDryRun(nil))
+}
+
+// TestPlan_YAMLKeysMatchJSON pins --format yaml to the JSON field
+// names. Without yaml tags yaml.v3 lowercases the Go names, printing
+// prerequisiteschecked and generatedat where JSON says
+// prerequisites_checked and generated_at.
+func TestPlan_YAMLKeysMatchJSON(t *testing.T) {
+	p := cli.Plan{
+		Command:              "tool create thing",
+		Args:                 map[string]any{"name": "alpha"},
+		Effects:              []cli.Effect{{Kind: "create", Target: "thing:alpha", Reversible: true, Detail: "new"}},
+		PrerequisitesChecked: []string{"auth"},
+		Warnings:             []string{"replaces existing"},
+		GeneratedAt:          time.Date(2026, 5, 2, 15, 0, 0, 0, time.UTC),
+	}
+	var js, ys bytes.Buffer
+	require.NoError(t, output.RenderPlan(&js, output.JSON, p))
+	require.NoError(t, output.RenderPlan(&ys, output.YAML, p))
+
+	var fromJSON, fromYAML map[string]any
+	require.NoError(t, json.Unmarshal(js.Bytes(), &fromJSON))
+	require.NoError(t, yaml.Unmarshal(ys.Bytes(), &fromYAML))
+	assert.ElementsMatch(t, mapKeys(fromJSON), mapKeys(fromYAML))
+
+	jsEffect := fromJSON["effects"].([]any)[0].(map[string]any)
+	ysEffect := fromYAML["effects"].([]any)[0].(map[string]any)
+	assert.ElementsMatch(t, mapKeys(jsEffect), mapKeys(ysEffect))
+}
+
+func mapKeys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

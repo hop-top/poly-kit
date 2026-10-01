@@ -1474,6 +1474,29 @@ func isBuiltin(cmd *cobra.Command) bool {
 	if cmd == nil {
 		return false
 	}
+	if isCobraBuiltin(cmd) {
+		return true
+	}
+	// Exempt any leaf the adopter marked kit/exempt-validation=true.
+	// Used for the rare commands kit ships internally that can't
+	// reasonably carry the full annotation set (e.g. hidden compat
+	// shims that exist only to keep older scripts compiling).
+	if cmd.Annotations != nil && cmd.Annotations["kit/exempt-validation"] == "true" {
+		return true
+	}
+	return false
+}
+
+// isCobraBuiltin reports whether cmd is one of the commands cobra
+// itself registers: completion and its shell sub-leaves, the
+// auto-registered help, and the hidden __complete helpers. Unlike
+// isBuiltin it does not cover kit/exempt-validation leaves: those are
+// runnable commands an author wrote, so runtime gates such as the
+// dry-run policy still apply to them.
+func isCobraBuiltin(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
 	switch cmd.Name() {
 	case "completion", "help", "__complete", "__completeNoDesc":
 		return true
@@ -1482,13 +1505,6 @@ func isBuiltin(cmd *cobra.Command) bool {
 	// completion parent. Cobra registers these automatically; the
 	// adopter doesn't author them, so they ride kit's exemption.
 	if p := cmd.Parent(); p != nil && p.Name() == "completion" {
-		return true
-	}
-	// Exempt any leaf the adopter marked kit/exempt-validation=true.
-	// Used for the rare commands kit ships internally that can't
-	// reasonably carry the full annotation set (e.g. hidden compat
-	// shims that exist only to keep older scripts compiling).
-	if cmd.Annotations != nil && cmd.Annotations["kit/exempt-validation"] == "true" {
 		return true
 	}
 	return false

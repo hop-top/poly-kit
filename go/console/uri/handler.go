@@ -145,19 +145,19 @@ func (f handlerFlags) spec() generate.HandlerSpec {
 }
 
 type dryRunPlan struct {
-	Command              string         `json:"command" table:"COMMAND"`
-	Args                 map[string]any `json:"args,omitempty"`
-	Effects              []dryRunEffect `json:"effects" table:"-"`
-	PrerequisitesChecked []string       `json:"prerequisites_checked,omitempty"`
-	Warnings             []string       `json:"warnings,omitempty"`
-	GeneratedAt          time.Time      `json:"generated_at"`
+	Command              string         `json:"command" yaml:"command" table:"COMMAND"`
+	Args                 map[string]any `json:"args,omitempty" yaml:"args,omitempty"`
+	Effects              []dryRunEffect `json:"effects" yaml:"effects" table:"-"`
+	PrerequisitesChecked []string       `json:"prerequisites_checked,omitempty" yaml:"prerequisites_checked,omitempty"`
+	Warnings             []string       `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	GeneratedAt          time.Time      `json:"generated_at" yaml:"generated_at"`
 }
 
 type dryRunEffect struct {
-	Kind       string `json:"kind" table:"KIND"`
-	Target     string `json:"target" table:"TARGET"`
-	Reversible bool   `json:"reversible" table:"REVERSIBLE"`
-	Detail     string `json:"detail,omitempty" table:"DETAIL"`
+	Kind       string `json:"kind" yaml:"kind" table:"KIND"`
+	Target     string `json:"target" yaml:"target" table:"TARGET"`
+	Reversible bool   `json:"reversible" yaml:"reversible" table:"REVERSIBLE"`
+	Detail     string `json:"detail,omitempty" yaml:"detail,omitempty" table:"DETAIL"`
 }
 
 func isDryRun(cmd *cobra.Command) bool {

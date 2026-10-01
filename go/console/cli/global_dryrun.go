@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/cli/cmdmeta"
+	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/runtime/sideeffect"
 )
 
@@ -229,62 +231,105 @@ func (r *Root) warnLegacySupportsDryRun() {
 	})
 }
 
+// globalDryRun reports whether kit's --dry-run is on for this
+// invocation: the global flag, or kit.dry_run from config or
+// KIT_DRY_RUN. False when the tool suppressed the global flag
+// (Disable.DryRun): a --dry-run the tool declares itself is the
+// tool's, and kit makes no promise on its behalf.
+func (r *Root) globalDryRun() bool {
+	if r == nil || r.Viper == nil || r.Config.Disable.DryRun {
+		return false
+	}
+	// Read viper rather than cobra: the global flag is bound to
+	// viper, and viper is the source of truth that also picks up
+	// env/config defaults if the adopter wired them.
+	return r.Viper.GetBool(globalDryRunViperKey)
+}
+
+// applyDryRun resolves the dry-run policy for cmd when kit's
+// --dry-run is on. It returns whether the leaf runs as a dry run, or
+// the refusal when the leaf does not honour --dry-run. An honouring
+// leaf's context is tagged with sideeffect.WithDryRun.
+//
+// Both the pre-execution hook and the RunE policy gate call it: the
+// hook so PreRunE and RunE see the tagged context, the gate because a
+// command whose own PersistentPreRunE shadows kit's chain never runs
+// the hook, and the confirm gate must not take the flag's word for it.
+func (r *Root) applyDryRun(cmd *cobra.Command) (bool, *output.Error) {
+	if !r.globalDryRun() || cmd == nil {
+		return false, nil
+	}
+	// Help and completion are exempt: they don't dispatch RunE.
+	if !isLeaf(cmd) || isCobraBuiltin(cmd) {
+		return false, nil
+	}
+	p := resolveDryRunPolicy(cmd)
+	if ce := dryRunRefusal(cmd, p); ce != nil {
+		return false, ce
+	}
+	if p != dryRunPolicyAllow {
+		// Read-tier: accept the flag silently. Don't tag ctx —
+		// reads have no side effects to preview.
+		return false, nil
+	}
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !sideeffect.IsDryRun(ctx) {
+		cmd.SetContext(sideeffect.WithDryRun(ctx, true))
+	}
+	return true, nil
+}
+
+// dryRunRefusal returns the USAGE envelope refusing --dry-run on cmd
+// under policy p, or nil when p accepts the flag.
+//
+// No message starts with the flag: a renderer that capitalises the
+// first word (fang's error style does) would print --Dry-Run.
+func dryRunRefusal(cmd *cobra.Command, p dryRunPolicy) *output.Error {
+	var msg, fix string
+	switch p {
+	case dryRunPolicyRejectInteractive:
+		msg = fmt.Sprintf("%q does not accept --dry-run: interactive "+
+			"sessions have no batch boundary to scope the preview",
+			cmd.CommandPath())
+		fix = "run without --dry-run"
+	case dryRunPolicyRejectOptOut:
+		msg = fmt.Sprintf("%q does not support --dry-run: the command "+
+			"explicitly opted out via cli.OptOutDryRun",
+			cmd.CommandPath())
+		if why := cmd.Annotations[kitDryRunRationale]; why != "" {
+			msg += " (" + why + ")"
+		}
+		fix = "run without --dry-run; see the command's documentation for the rationale"
+	case dryRunPolicyRejectUntagged:
+		msg = fmt.Sprintf("%q cannot apply --dry-run: the command is "+
+			"missing the required kit/side-effect tag",
+			cmd.CommandPath())
+		fix = "adopter must call cli.SetSideEffect(cmd, ...) to declare the tier"
+	case dryRunPolicyRejectMalformed:
+		s, _ := GetSideEffect(cmd)
+		msg = fmt.Sprintf("%q cannot apply --dry-run: the command has a "+
+			"malformed kit/side-effect tag %q that names no tier",
+			cmd.CommandPath(), string(s))
+		fix = "adopter must pass one of the cli.SideEffect constants to cli.SetSideEffect"
+	default:
+		return nil
+	}
+	ce := output.UsageError(msg)
+	ce.SuggestedFix = fix
+	return ce
+}
+
 // installDryRunHook returns a PersistentPreRunE func that wraps the
 // command's context with sideeffect.WithDryRun when the global flag
 // is set, and applies the tier-driven policy table. Composes into the
 // kit PersistentPreRunE chain via Hooks.PrePersistentRunE.
 func (r *Root) installDryRunHook() func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
-		if r == nil || r.Viper == nil {
-			return nil
-		}
-		// Read viper rather than cobra: the global flag is bound to
-		// viper, and viper is the source of truth that also picks up
-		// env/config defaults if the adopter wired them.
-		on := r.Viper.GetBool(globalDryRunViperKey)
-		if !on {
-			return nil
-		}
-		// Help/completion are exempt — they don't dispatch RunE.
-		if !isLeaf(cmd) || isBuiltin(cmd) {
-			return nil
-		}
-		switch resolveDryRunPolicy(cmd) {
-		case dryRunPolicyAllow:
-			cmd.SetContext(sideeffect.WithDryRun(cmd.Context(), true))
-			return nil
-		case dryRunPolicyNoOp:
-			// Read-tier: accept the flag silently. Don't tag ctx —
-			// reads have no side effects to preview.
-			return nil
-		case dryRunPolicyRejectInteractive:
-			return fmt.Errorf(
-				"--dry-run is not meaningful for interactive commands "+
-					"(%q); interactive sessions have no batch boundary "+
-					"to scope the preview; run without --dry-run",
-				cmd.CommandPath())
-		case dryRunPolicyRejectOptOut:
-			return fmt.Errorf(
-				"--dry-run is not supported by %q: the command "+
-					"explicitly opted out via cli.OptOutDryRun; "+
-					"run without --dry-run; see the command's "+
-					"documentation for the rationale",
-				cmd.CommandPath())
-		case dryRunPolicyRejectUntagged:
-			return fmt.Errorf(
-				"--dry-run cannot be applied to %q: the command "+
-					"is missing the required kit/side-effect tag; "+
-					"adopter must call cli.SetSideEffect(cmd, ...) "+
-					"to declare the tier",
-				cmd.CommandPath())
-		case dryRunPolicyRejectMalformed:
-			s, _ := GetSideEffect(cmd)
-			return fmt.Errorf(
-				"--dry-run cannot be applied to %q: the command "+
-					"has a malformed kit/side-effect tag %q that "+
-					"names no tier; adopter must pass one of the "+
-					"cli.SideEffect constants to cli.SetSideEffect",
-				cmd.CommandPath(), string(s))
+		if _, ce := r.applyDryRun(cmd); ce != nil {
+			return ce
 		}
 		return nil
 	}
