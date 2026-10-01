@@ -144,7 +144,8 @@ if sideeffect.IsDryRun(cmd.Context()) {
 in `cli`, so library code can branch on dry-run without taking a
 cli dependency. Inside a command, `cli.IsDryRun(cmd)` answers the
 same question: true for the flag and for a context kit tagged, which
-is how `kit.dry_run` from config or `KIT_DRY_RUN` arrives.
+is how `kit.dry_run` arrives when a tool sets it on the root's viper
+from its own config. No environment variable is bound to it.
 
 A command that previews answers with a `cli.Plan`, written by
 `cli.RenderPlan` in the active `--format` (json and yaml serialize
@@ -365,16 +366,37 @@ For commands that have opted in:
 
 ## What kit's own commands do
 
+Every runnable leaf kit ships declares its `kit/side-effect` tier, so
+the confirm gate, the policy table and `--policy` classes apply to it.
+The tiers of the command packages that are not obvious from the verb:
+
+| Command | Tier | Under `--dry-run` |
+|---------|------|-------------------|
+| `router start` | `write-local` | plans the server spawn and pid file |
+| `router stop` | `destructive-local` (asks first) | checks the process, plans the SIGTERM |
+| `router list`, `router config` | `read` | — |
+| `stage set` | `write` | plans the stage change; the propose step is not run |
+| `stage show`, `stage list`, `stage why` | `read` | — |
+| `migrate run` | `write-local` | plans each schema with pending migrations |
+| `migrate rollback` | `destructive-local` (asks first) | names the backup each schema would be restored from |
+| `migrate status`, `migrate history` | `read` | — |
+| pkl config wizard (`init`) | `write-local` | its own preview |
+| `ps` | `read` | — |
+| extension plugins (`dispatch.Register`) | `write`, opted out | refused: kit cannot preview another program |
+| `conformance install-hooks` | `write-local` | its own preview |
+| `conformance verify-no-leak`, `verify-stories`, `static`, `generate-stories` | `read` | — |
+
 Every `write` and `destructive` leaf kit ships previews under
-`--dry-run`: `alias add|delete`, `peer trust|block|revoke`,
-`quota reset`, `token key create|revoke`, `serve` (the services it
-would start), `breaker reset`, `conformance badge|grade|harness
-record|svc serve|svc token mint|revoke`, `uxp run|resume --exec`,
-and in the kit binary `init`, `symlink`, `telemetry
-enable|disable|reset`. Each validates its input, then prints a Plan
-(`init`, `symlink` and `telemetry enable|disable` print their own
-preview lines) and changes nothing. A tree-walk test fails when a
-new kit leaf neither previews nor opts out.
+`--dry-run`, plugins excepted: also `alias add|delete`,
+`peer trust|block|revoke`, `quota reset`, `token key create|revoke`,
+`serve` (the services it would start), `breaker reset`,
+`conformance badge|grade|harness record|svc serve|svc token
+mint|revoke`, `uxp run|resume --exec`, and in the kit binary `init`,
+`symlink`, `telemetry enable|disable|reset`. Each validates its
+input, then prints a Plan (`init`, `symlink`, `telemetry
+enable|disable`, the pkl wizard and `install-hooks` print their own
+preview lines) and changes nothing. Tree-walk tests fail when a new
+kit leaf has no tier, or neither previews nor opts out.
 
 ## What `--dry-run` does not guarantee
 
