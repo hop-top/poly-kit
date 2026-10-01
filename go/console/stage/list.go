@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/projects"
 	"hop.top/kit/go/core/stage"
@@ -44,6 +45,7 @@ func listCmd(_ Config) *cobra.Command {
 			return output.Render(cmd.OutOrStdout(), format, rows)
 		},
 	}
+	kitcli.SetSideEffect(cmd, kitcli.SideEffectRead)
 	return cmd
 }
 

@@ -84,6 +84,13 @@ The alias "con" is available for terser invocation
 	for _, c := range []*cobra.Command{verify, install, stories, static, generateStories, svc} {
 		cli.SetExemptValidation(c)
 	}
+	// Exempt from Layer-A validation, not from the runtime gates: each
+	// still names its tier. The verifiers and the reserved placeholders
+	// only read; install-hooks writes .githooks/ and core.hooksPath.
+	for _, c := range []*cobra.Command{verify, stories, static, generateStories} {
+		cli.SetSideEffect(c, cli.SideEffectRead)
+	}
+	cli.SetSideEffect(install, cli.SideEffectWriteLocal)
 	// Depth-3 leaves (harness record) require kit/hierarchical on
 	// every intermediate; the harness group annotates itself, the
 	// conformance parent is annotated here.

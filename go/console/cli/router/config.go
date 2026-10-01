@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+	kitcli "hop.top/kit/go/console/cli"
 )
 
 func configCmd() *cobra.Command {
@@ -40,5 +41,6 @@ defaults, and prints the result.`,
 			return nil
 		},
 	}
+	kitcli.SetSideEffect(cmd, kitcli.SideEffectRead)
 	return cmd
 }

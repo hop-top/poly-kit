@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"hop.top/kit/go/ai/llm/routellm"
+	kitcli "hop.top/kit/go/console/cli"
 )
 
 func startCmd() *cobra.Command {
@@ -57,13 +58,23 @@ for a health check before returning.`,
 				}
 			}
 
+			cmdArgs := buildServerArgs(cfg)
+			if kitcli.IsDryRun(cmd) {
+				return kitcli.RenderPlan(cmd, kitcli.Plan{
+					Args: map[string]any{"config": cfgPath, "slug": slug, "daemon": daemon},
+					Effects: []kitcli.Effect{
+						{Kind: "exec", Target: "python", Reversible: true,
+							Detail: "python " + strings.Join(cmdArgs, " ")},
+						{Kind: "write", Target: pidFile, Reversible: true, Detail: "record the server pid"},
+					},
+				})
+			}
+
 			if _, err := ensureStateDir(); err != nil {
 				return fmt.Errorf("create state dir: %w", err)
 			}
 
 			// Build command arguments.
-			cmdArgs := buildServerArgs(cfg)
-
 			proc := exec.CommandContext(
 				cmd.Context(), "python", cmdArgs...,
 			)
@@ -131,6 +142,9 @@ for a health check before returning.`,
 		&pidPath, "pid", "",
 		"Path to PID file (default: state dir / slug.pid)",
 	)
+	// Spawns the server process and writes its pid file; `router stop`
+	// undoes both.
+	kitcli.SetSideEffect(cmd, kitcli.SideEffectWriteLocal)
 
 	return cmd
 }

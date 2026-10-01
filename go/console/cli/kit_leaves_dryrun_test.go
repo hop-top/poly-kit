@@ -9,9 +9,12 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"hop.top/cite/handle/generate"
 	"hop.top/cite/scheme"
+	"hop.top/kit/go/ai/ext/dispatch"
 	"hop.top/kit/go/console/alias"
 	"hop.top/kit/go/console/cli"
 	breakercmd "hop.top/kit/go/console/cli/breaker"
@@ -26,42 +30,62 @@ import (
 	conformancecmd "hop.top/kit/go/console/cli/conformance"
 	routercmd "hop.top/kit/go/console/cli/router"
 	scopecmd "hop.top/kit/go/console/cli/scope"
+	"hop.top/kit/go/console/ps"
+	stagecmd "hop.top/kit/go/console/stage"
+	"hop.top/kit/go/core/config/pkl"
+	"hop.top/kit/go/core/upgrade"
 	uxpcmd "hop.top/kit/go/core/uxp/invoke/cmd/uxp"
 	"hop.top/kit/go/runtime/peer"
 	_ "hop.top/kit/go/storage/kv/sqlite"
 )
 
+// kitLeafCase is how one write or destructive kit leaf shows it
+// honors --dry-run: the arguments of one --dry-run invocation, run
+// here in a sandbox, or the test that already proves it when the leaf
+// needs what this walk does not build (a pkl evaluator, git).
+type kitLeafCase struct {
+	args      []string
+	coveredBy string
+}
+
 // kitLeafDryRunCases is every write or destructive leaf kit ships,
-// keyed by its path under the test root, with the arguments one
-// --dry-run invocation needs. Each must answer --dry-run with a Plan
-// and change nothing. A leaf that cannot honor --dry-run opts out
-// with cli.OptOutDryRun (and cli.SetDryRunRationale) instead of
-// appearing here.
-func kitLeafDryRunCases(sandbox string) map[string][]string {
+// keyed by its path under the test root. A run case must answer
+// --dry-run with a Plan and change nothing. A leaf that cannot honor
+// --dry-run opts out with cli.OptOutDryRun (and
+// cli.SetDryRunRationale) instead of appearing here. pid is a live
+// process router stop may name.
+func kitLeafDryRunCases(sandbox string, pid int) map[string]kitLeafCase {
 	scenario, binary := recordFixture(sandbox)
-	return map[string][]string{
-		"ktool alias add":             {"alias", "add", "x", "status"},
-		"ktool alias delete":          {"alias", "delete", "x"},
-		"ktool peer trust":            {"peer", "trust", "p1"},
-		"ktool peer block":            {"peer", "block", "p1"},
-		"ktool peer revoke":           {"peer", "revoke", "p1"},
-		"ktool quota reset":           {"quota", "reset", "--all", "-c", "services.api.quota.ops=10"},
-		"ktool serve":                 {"serve"},
-		"ktool token key create":      {"token", "key", "create", "--sub", "alice"},
-		"ktool token key revoke":      {"token", "key", "revoke", "k1"},
-		"ktool uri handler generate":  {"uri", "handler", "generate", "--platform", "linux", "--output", filepath.Join(sandbox, "out", "x.desktop")},
-		"ktool breaker reset":         {"breaker", "reset", "--all", "--yes"},
-		"ktool conformance badge":     {"conformance", "badge", "--emit-seed", "--output", filepath.Join(sandbox, "out", "badge.json")},
-		"ktool conformance grade":     {"conformance", "grade", filepath.Join(sandbox, "out"), "--service", "http://127.0.0.1:1"},
-		"ktool conformance svc serve": {"conformance", "svc", "serve", "--scenarios-root", filepath.Join(sandbox, "out"), "--claims-db", filepath.Join(sandbox, "out", "claims.db")},
-		"ktool conformance svc token mint": {"conformance", "svc", "token", "mint",
-			"--claims-db", filepath.Join(sandbox, "out", "claims.db"), "--scope", "grade:x"},
-		"ktool conformance svc token revoke": {"conformance", "svc", "token", "revoke", "t1",
-			"--claims-db", filepath.Join(sandbox, "out", "claims.db")},
-		"ktool conformance harness record": {"conformance", "harness", "record",
-			"--scenario", scenario, "--binary", binary, "--out", filepath.Join(sandbox, "out", "cassette")},
-		"ktool uxp run":    {"uxp", "run", "--tool", "claude", "--exec", "hello"},
-		"ktool uxp resume": {"uxp", "resume", "--tool", "claude", "--continue", "--exec"},
+	out := filepath.Join(sandbox, "out")
+	run := func(args ...string) kitLeafCase { return kitLeafCase{args: args} }
+	return map[string]kitLeafCase{
+		"ktool alias add":                    run("alias", "add", "x", "status"),
+		"ktool alias delete":                 run("alias", "delete", "x"),
+		"ktool peer trust":                   run("peer", "trust", "p1"),
+		"ktool peer block":                   run("peer", "block", "p1"),
+		"ktool peer revoke":                  run("peer", "revoke", "p1"),
+		"ktool quota reset":                  run("quota", "reset", "--all", "-c", "services.api.quota.ops=10"),
+		"ktool serve":                        run("serve"),
+		"ktool token key create":             run("token", "key", "create", "--sub", "alice"),
+		"ktool token key revoke":             run("token", "key", "revoke", "k1"),
+		"ktool uri handler generate":         run("uri", "handler", "generate", "--platform", "linux", "--output", filepath.Join(out, "x.desktop")),
+		"ktool breaker reset":                run("breaker", "reset", "--all", "--yes"),
+		"ktool conformance badge":            run("conformance", "badge", "--emit-seed", "--output", filepath.Join(out, "badge.json")),
+		"ktool conformance grade":            run("conformance", "grade", out, "--service", "http://127.0.0.1:1"),
+		"ktool conformance svc serve":        run("conformance", "svc", "serve", "--scenarios-root", out, "--claims-db", filepath.Join(out, "claims.db")),
+		"ktool conformance svc token mint":   run("conformance", "svc", "token", "mint", "--claims-db", filepath.Join(out, "claims.db"), "--scope", "grade:x"),
+		"ktool conformance svc token revoke": run("conformance", "svc", "token", "revoke", "t1", "--claims-db", filepath.Join(out, "claims.db")),
+		"ktool conformance harness record": run("conformance", "harness", "record",
+			"--scenario", scenario, "--binary", binary, "--out", filepath.Join(out, "cassette")),
+		"ktool conformance install-hooks": {coveredBy: "go/console/cli/conformance TestInstallHooks_DryRunDoesNotWrite"},
+		"ktool uxp run":                   run("uxp", "run", "--tool", "claude", "--exec", "hello"),
+		"ktool uxp resume":                run("uxp", "resume", "--tool", "claude", "--continue", "--exec"),
+		"ktool router start":              run("router", "start"),
+		"ktool router stop":               run("router", "stop", strconv.Itoa(pid)),
+		"ktool stage set":                 run("stage", "set", "feature_freeze", "--scope", "acme", "--reason", "release"),
+		"ktool migrate run":               run("migrate", "run"),
+		"ktool migrate rollback":          run("migrate", "rollback"),
+		"ktool init":                      {coveredBy: "go/core/config/pkl TestRunWizard_DryRun"},
 	}
 }
 
@@ -97,8 +121,55 @@ func newKitLeavesRoot(t *testing.T, sandbox string) *cli.Root {
 		routercmd.Cmd(),
 		configcmd.Command("ktool"),
 		uxpcmd.Cmd(),
+		stagecmd.New(stagecmd.Config{}),
+		upgrade.MigrateCommand(upgrade.NewMigrator("ktool", "1.0.0", upgrade.WithManualRollback()), r.Viper),
+		pkl.NewConfigCommand(filepath.Join(sandbox, "config.pkl"), pkl.CommandOpts{}),
+		ps.Command("ktool", noProcs{}, r.Viper),
 	)
+	// One extension binary for dispatch to register as a plugin leaf.
+	plugins := filepath.Join(sandbox, "plugins")
+	if _, err := os.Stat(filepath.Join(plugins, "ktool-plug")); err != nil {
+		mustWrite(filepath.Join(plugins, "ktool-plug"), "#!/bin/sh\nexit 0\n", 0o755)
+	}
+	dispatch.Register(r.Cmd, "ktool", plugins)
 	return r
+}
+
+type noProcs struct{}
+
+func (noProcs) List(context.Context) ([]ps.Entry, error) { return nil, nil }
+
+// validTiers are the kit/side-effect values kit resolves.
+var validTiers = map[cli.SideEffect]bool{
+	cli.SideEffectRead: true, cli.SideEffectWrite: true, cli.SideEffectWriteLocal: true,
+	cli.SideEffectWriteShared: true, cli.SideEffectDestructive: true,
+	cli.SideEffectDestructiveLocal: true, cli.SideEffectDestructiveShared: true,
+	cli.SideEffectInteractive: true,
+}
+
+// TestKitLeaves_DeclareATier: every runnable leaf kit ships names its
+// kit/side-effect tier. An untagged leaf gets no confirm gate, no
+// dry-run and no policy class, whatever it does; a new one fails here.
+func TestKitLeaves_DeclareATier(t *testing.T) {
+	sandbox := isolateKitLeaves(t)
+	r := newKitLeavesRoot(t, sandbox)
+	walkLeaves(r.Cmd, func(c *cobra.Command) {
+		if isCobraBuiltin(c) {
+			return
+		}
+		if se, _ := cli.GetSideEffect(c); !validTiers[se] {
+			t.Errorf("%s: kit/side-effect %q is not a tier; declare it with cli.SetSideEffect", c.CommandPath(), se)
+		}
+	})
+}
+
+// isCobraBuiltin mirrors the commands cobra registers itself.
+func isCobraBuiltin(c *cobra.Command) bool {
+	switch c.Name() {
+	case "help", "completion", "__complete", "__completeNoDesc":
+		return true
+	}
+	return c.Parent() != nil && c.Parent().Name() == "completion"
 }
 
 // TestKitLeaves_HonorDryRunOrOptOut walks every leaf kit ships. A
@@ -108,7 +179,12 @@ func newKitLeavesRoot(t *testing.T, sandbox string) *cli.Root {
 // that neither previews nor opts out fails here.
 func TestKitLeaves_HonorDryRunOrOptOut(t *testing.T) {
 	sandbox := isolateKitLeaves(t)
-	cases := kitLeafDryRunCases(sandbox)
+	// A live process router stop can name; a stop that ignored
+	// --dry-run would signal it, and the test would see it gone.
+	sleeper := exec.Command("/bin/sleep", "60")
+	require.NoError(t, sleeper.Start())
+	t.Cleanup(func() { _ = sleeper.Process.Kill(); _ = sleeper.Wait() })
+	cases := kitLeafDryRunCases(sandbox, sleeper.Process.Pid)
 
 	r := newKitLeavesRoot(t, sandbox)
 	// The peer the peer leaves name: a dry run reads it as the real
@@ -137,19 +213,22 @@ func TestKitLeaves_HonorDryRunOrOptOut(t *testing.T) {
 	}
 
 	for _, path := range applied {
-		args, ok := cases[path]
-		if !ok {
+		tc, ok := cases[path]
+		if !ok || tc.coveredBy != "" {
 			continue
 		}
 		t.Run(path, func(t *testing.T) {
 			before := snapshot(t, sandbox)
 			r := newKitLeavesRoot(t, sandbox)
-			stdout, stderr, err := execute(r, append(args, "--dry-run", "--confirm", "no", "--format", "json"))
+			// No --confirm: with no terminal it resolves to "no", and
+			// stage set declares a --confirm of its own.
+			stdout, stderr, err := execute(r, append(tc.args, "--dry-run", "--format", "json"))
 			require.NoError(t, err, "stderr=%s", stderr)
 			assertPlan(t, stdout, path)
 			require.Equal(t, before, snapshot(t, sandbox), "--dry-run changed the sandbox")
 		})
 	}
+	require.NoError(t, sleeper.Process.Signal(syscall.Signal(0)), "router stop --dry-run signaled the process")
 }
 
 func assertPlan(t *testing.T, stdout, path string) {
@@ -187,7 +266,7 @@ func isolateKitLeaves(t *testing.T) string {
 		require.NoError(t, os.MkdirAll(dir, 0o755))
 		t.Setenv(kv[0], dir)
 	}
-	for _, k := range []string{"CI", "KIT_DRY_RUN", "KIT_CONFORMANCE_SERVICE", "KIT_CONFORMANCE_TOKEN", "GITHUB_TOKEN"} {
+	for _, k := range []string{"CI", "KIT_CONFORMANCE_SERVICE", "KIT_CONFORMANCE_TOKEN", "GITHUB_TOKEN"} {
 		t.Setenv(k, "")
 	}
 	// No binary is reachable by name: a leaf that ignores --dry-run
@@ -273,4 +352,25 @@ func mustWrite(path, body string, mode os.FileMode) {
 	if err := os.WriteFile(path, []byte(body), mode); err != nil {
 		panic(err)
 	}
+}
+
+// TestKitLeaves_DestructiveAskFirst: kit's destructive leaves sit
+// behind the confirm gate. Refused under --confirm=no, they leave
+// their target alone.
+func TestKitLeaves_DestructiveAskFirst(t *testing.T) {
+	sandbox := isolateKitLeaves(t)
+	sleeper := exec.Command("/bin/sleep", "60")
+	require.NoError(t, sleeper.Start())
+	t.Cleanup(func() { _ = sleeper.Process.Kill(); _ = sleeper.Wait() })
+
+	for _, args := range [][]string{
+		{"router", "stop", strconv.Itoa(sleeper.Process.Pid)},
+		{"migrate", "rollback"},
+	} {
+		r := newKitLeavesRoot(t, sandbox)
+		_, stderr, err := execute(r, append(args, "--confirm", "no", "--format", "json"))
+		require.Error(t, err, "%v must be refused without confirmation", args)
+		require.Contains(t, stderr, "UNAUTHORIZED", "%v", args)
+	}
+	require.NoError(t, sleeper.Process.Signal(syscall.Signal(0)), "refused router stop signaled the process")
 }

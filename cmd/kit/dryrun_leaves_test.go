@@ -40,6 +40,7 @@ func kitBinaryDryRunCases(sandbox string) map[string]kitDryRunCase {
 		"kit conformance badge":            {args: []string{"conformance", "badge", "--emit-seed", "--output", filepath.Join(out, "b.json")}, plan: true},
 		"kit conformance grade":            {args: []string{"conformance", "grade", out, "--service", "http://127.0.0.1:1"}, plan: true},
 		"kit conformance harness record":   {coveredBy: "go/console/cli TestKitLeaves_HonorDryRunOrOptOut"},
+		"kit conformance install-hooks":    {coveredBy: "go/console/cli/conformance TestInstallHooks_DryRunDoesNotWrite"},
 		"kit conformance svc serve":        {args: []string{"conformance", "svc", "serve", "--scenarios-root", out, "--claims-db", db}, plan: true},
 		"kit conformance svc token mint":   {args: []string{"conformance", "svc", "token", "mint", "--claims-db", db, "--scope", "grade:x"}, plan: true},
 		"kit conformance svc token revoke": {args: []string{"conformance", "svc", "token", "revoke", "t1", "--claims-db", db}, plan: true},
@@ -135,7 +136,7 @@ func isolateKitBinary(t *testing.T) string {
 		require.NoError(t, os.MkdirAll(dir, 0o755))
 		t.Setenv(kv[0], dir)
 	}
-	for _, k := range []string{"CI", "KIT_DRY_RUN", "KIT_CONFORMANCE_SERVICE", "KIT_CONFORMANCE_TOKEN", "GITHUB_TOKEN"} {
+	for _, k := range []string{"CI", "KIT_CONFORMANCE_SERVICE", "KIT_CONFORMANCE_TOKEN", "GITHUB_TOKEN"} {
 		t.Setenv(k, "")
 	}
 	// No binary is reachable by name: a leaf that ignores --dry-run
@@ -189,4 +190,32 @@ func containsPath(xs []string, x string) bool {
 		}
 	}
 	return false
+}
+
+// TestKitBinary_LeavesDeclareATier: every runnable leaf of the kit
+// binary names its kit/side-effect tier, so the confirm gate, the
+// dry-run policy and --policy classes apply to it. A new untagged
+// leaf fails here.
+func TestKitBinary_LeavesDeclareATier(t *testing.T) {
+	isolateKitBinary(t)
+	root, eng := newKitRoot("dev")
+	defer eng.close()
+	tiers := map[cli.SideEffect]bool{
+		cli.SideEffectRead: true, cli.SideEffectWrite: true, cli.SideEffectWriteLocal: true,
+		cli.SideEffectWriteShared: true, cli.SideEffectDestructive: true,
+		cli.SideEffectDestructiveLocal: true, cli.SideEffectDestructiveShared: true,
+		cli.SideEffectInteractive: true,
+	}
+	walkKitLeaves(root.Cmd, func(c *cobra.Command) {
+		switch c.Name() {
+		case "help", "completion", "__complete", "__completeNoDesc":
+			return
+		}
+		if c.Parent() != nil && c.Parent().Name() == "completion" {
+			return
+		}
+		if se, _ := cli.GetSideEffect(c); !tiers[se] {
+			t.Errorf("%s: kit/side-effect %q is not a tier; declare it with cli.SetSideEffect", c.CommandPath(), se)
+		}
+	})
 }

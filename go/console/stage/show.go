@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/stage"
 )
@@ -51,6 +52,7 @@ When the scope has no stage set, prints "stage: active (default)".`,
 			return output.Render(cmd.OutOrStdout(), format, []showRow{row})
 		},
 	}
+	kitcli.SetSideEffect(cmd, kitcli.SideEffectRead)
 	return cmd
 }
 

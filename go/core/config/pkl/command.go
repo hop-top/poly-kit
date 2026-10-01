@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	kitcli "hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/wizard"
 	"hop.top/kit/go/core/config"
 )
@@ -23,7 +24,9 @@ func NewConfigCommand(pklPath string, opts CommandOpts) *cobra.Command {
 		Use:   "init",
 		Short: "Initialize configuration interactively",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dryRun, _ := cmd.Flags().GetBool("dry-run")
+			// The command's own --dry-run, or kit's (a context
+			// tagged dry-run).
+			dryRun := kitcli.IsDryRun(cmd)
 			answersFile, _ := cmd.Flags().GetString("answers-file")
 			scopeStr, _ := cmd.Flags().GetString("scope")
 
@@ -58,6 +61,9 @@ func NewConfigCommand(pklPath string, opts CommandOpts) *cobra.Command {
 	cmd.Flags().Bool("dry-run", false, "preview without writing config")
 	cmd.Flags().String("answers-file", "", "path to YAML answers file")
 	cmd.Flags().String("scope", "project", "config scope (system|user|project)")
+	// Writes the config file of the chosen scope; previews under
+	// --dry-run.
+	kitcli.SetSideEffect(cmd, kitcli.SideEffectWriteLocal)
 
 	return cmd
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/ai/ext/discover"
+	kitcli "hop.top/kit/go/console/cli"
 )
 
 const groupID = "plugins"
@@ -51,6 +52,13 @@ func Register(cmd *cobra.Command, prefix string, searchDir string) {
 				return runPlugin(c, f.Path, args)
 			},
 		}
+
+		// A plugin is another program: kit cannot tell what it
+		// changes, nor make it preview. Tagged write so a policy can
+		// scope it; --dry-run is refused rather than passed on.
+		kitcli.SetSideEffect(sub, kitcli.SideEffectWrite)
+		kitcli.OptOutDryRun(sub)
+		_ = kitcli.SetDryRunRationale(sub, "external plugin binary: kit cannot preview what it does")
 
 		original := sub.HelpFunc()
 		sub.SetHelpFunc(func(c *cobra.Command, args []string) {
