@@ -15,7 +15,7 @@ bulk values on a SQL server (`go/storage/kv/tidb`).
 ## Contract
 
 - Registered as `"etcd"` via `kv.RegisterBackendContext`; `Endpoints` is required, `Prefix` defaults to empty. Pulls in gRPC, protobuf and zap; a binary that never imports this package does not link them.
-- Offline handling differs from `tidb`: gRPC dials on its own background context and `clientv3.New` returns before connecting, so endpoints are checked with `netpolicy.CheckDial` at open time. `http(s)://`, `unix(s)://` and bare `host:port` forms are all reduced to a dial target; for `http(s)://` that is the URL host (`host:port`), so userinfo neither leaks into a refusal nor hides a loopback host. Unrecognised forms are still checked as TCP.
+- Offline handling differs from `tidb`: gRPC dials on its own background context and `clientv3.New` returns before connecting, so endpoints are checked with `netpolicy.CheckDial` at open time. `http(s)://`, `unix(s)://` and bare `host:port` forms are all reduced to a dial target; for `http(s)://` that is the URL host (`host:port`), so userinfo neither leaks into a refusal nor hides a loopback host. A schemeless endpoint carrying userinfo (`user:pass@host:2379`) is rejected at open on any context, and the error names only `host:2379`. Unrecognised forms are still checked as TCP.
 - No TTL: `*Store` is a `kv.Store` only.
 - Not part of the kv-v1 cross-language corpus.
 - Tests: `etcd_integration_test.go` starts an etcd container via testcontainers and skips under `-short` or when Docker is unhealthy; `offline_test.go` and `dialtarget_test.go` run without a server.

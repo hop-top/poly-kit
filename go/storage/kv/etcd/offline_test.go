@@ -207,6 +207,77 @@ func TestNewContext_OfflineAllowsLoopbackWithUserinfo(t *testing.T) {
 	}
 }
 
+// A schemeless endpoint carrying userinfo is not a form etcd dials: the
+// client would hand the raw string to gRPC. It is rejected at open, on any
+// context, before the client exists — and the error names the host
+// without echoing the credentials.
+func TestNewContext_RejectsSchemelessUserinfo(t *testing.T) {
+	port, reached := etcdListener(t)
+	for _, tc := range []struct{ ep, host string }{
+		{fmt.Sprintf("kit-user:kit-secret@kit-offline-probe.invalid:%d", port), fmt.Sprintf("kit-offline-probe.invalid:%d", port)},
+		{fmt.Sprintf("kit-user@127.0.0.1:%d", port), fmt.Sprintf("127.0.0.1:%d", port)},
+	} {
+		for name, ctx := range map[string]context.Context{
+			"online":  t.Context(),
+			"offline": offlineOpenCtx(t),
+		} {
+			t.Run(name+"/"+tc.ep, func(t *testing.T) {
+				store, err := etcd.NewContext(ctx, []string{tc.ep}, "")
+				if err == nil {
+					_ = store.Close()
+					t.Fatal("schemeless endpoint with userinfo was accepted")
+				}
+				if errors.Is(err, netpolicy.ErrOffline) {
+					t.Fatalf("rejected by the policy, not the endpoint check: %v", err)
+				}
+				msg := err.Error()
+				for _, secret := range []string{"kit-user", "kit-secret", "@"} {
+					if strings.Contains(msg, secret) {
+						t.Fatalf("error leaks userinfo %q: %s", secret, msg)
+					}
+				}
+				if !strings.Contains(msg, tc.host) {
+					t.Fatalf("error does not name the endpoint host %q: %s", tc.host, msg)
+				}
+			})
+		}
+	}
+	if reached() {
+		t.Fatal("a connection was attempted for a rejected endpoint")
+	}
+}
+
+// The context-free New goes through the same check.
+func TestNew_RejectsSchemelessUserinfo(t *testing.T) {
+	store, err := etcd.New([]string{"kit-user:kit-secret@127.0.0.1:2379"}, "")
+	if err == nil {
+		_ = store.Close()
+		t.Fatal("schemeless endpoint with userinfo was accepted")
+	}
+	if strings.Contains(err.Error(), "kit-secret") {
+		t.Fatalf("error leaks the password: %v", err)
+	}
+}
+
+// URL-form userinfo stays accepted: it is reduced to host:port, as the
+// client itself reduces it. Online, so nothing but the endpoint check can
+// refuse it.
+func TestNewContext_AcceptsURLUserinfo(t *testing.T) {
+	port, _ := etcdListener(t)
+	for _, ep := range []string{
+		fmt.Sprintf("http://u:p@kit-offline-probe.invalid:%d", port),
+		fmt.Sprintf("https://u@127.0.0.1:%d", port),
+	} {
+		t.Run(ep, func(t *testing.T) {
+			store, err := etcd.NewContext(t.Context(), []string{ep}, "")
+			if err != nil {
+				t.Fatalf("URL-form userinfo rejected: %v", err)
+			}
+			_ = store.Close()
+		})
+	}
+}
+
 // Unix sockets are filesystem objects, not the network, and must stay
 // reachable while offline.
 func TestNewContext_OfflineAllowsUnixSocket(t *testing.T) {
