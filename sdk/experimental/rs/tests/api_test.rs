@@ -161,3 +161,124 @@ async fn auth_header_is_set() {
 
     mock.assert_async().await;
 }
+
+// A transport failure names where the request was going, never what it
+// carried: `METHOD scheme://host[:port]path`. Query, fragment and
+// userinfo may hold credentials (an API key param, basic-auth userinfo)
+// and reqwest's own message quotes the full URL, so it is not reused.
+// Same rule as the offline refusal.
+const LEAKS: [&str; 9] = [
+    "alice",
+    "pw-secret",
+    "q-secret",
+    "key=",
+    "search=",
+    "frag-secret",
+    "?",
+    "#",
+    "@",
+];
+
+fn assert_no_leak(msg: &str) {
+    for leak in LEAKS {
+        assert!(!msg.contains(leak), "message {msg:?} carries {leak:?}");
+    }
+}
+
+// A loopback port with nothing listening: bind, read the port, release.
+fn closed_port() -> u16 {
+    let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    l.local_addr().expect("addr").port()
+}
+
+#[tokio::test]
+async fn transport_error_omits_query_fragment_userinfo() {
+    let port = closed_port();
+    let client = ApiClient::new(&format!("http://alice:pw-secret@127.0.0.1:{port}"));
+
+    let err = client
+        .get::<Item>("v1/items?key=q-secret#frag-secret")
+        .await
+        .expect_err("closed port answered");
+
+    assert_eq!(err.status, 0);
+    assert_eq!(err.code, "transport_error");
+    assert_eq!(
+        err.message,
+        format!("GET http://127.0.0.1:{port}/v1/items: error sending request")
+    );
+    assert_no_leak(&err.message);
+    assert_no_leak(&err.to_string());
+}
+
+#[tokio::test]
+async fn transport_error_omits_serialized_query() {
+    let port = closed_port();
+    let client = ApiClient::new(&format!("http://alice:pw-secret@127.0.0.1:{port}/v1"));
+    let q = Query {
+        search: Some("q-secret".into()),
+        ..Default::default()
+    };
+
+    let err = client
+        .list::<Item>(&q)
+        .await
+        .expect_err("closed port answered");
+
+    assert_eq!(err.code, "transport_error");
+    assert_eq!(
+        err.message,
+        format!("GET http://127.0.0.1:{port}/v1: error sending request")
+    );
+    assert_no_leak(&err.message);
+}
+
+// reqwest attaches the URL to body-decode failures too.
+#[tokio::test]
+async fn decode_error_omits_query_userinfo() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("not json")
+        .create_async()
+        .await;
+    let base = server.url().replace("http://", "http://alice:pw-secret@");
+    let client = ApiClient::new(&format!("{base}/v1"));
+    let q = Query {
+        search: Some("q-secret".into()),
+        ..Default::default()
+    };
+
+    let err = client.list::<Item>(&q).await.expect_err("bad body decoded");
+
+    assert_eq!(err.status, 0);
+    assert_eq!(err.code, "transport_error");
+    assert_eq!(
+        err.message,
+        format!("GET {}/v1: error decoding response body", server.url())
+    );
+    assert_no_leak(&err.message);
+    mock.assert_async().await;
+}
+
+// reqwest rejects a non-HTTP scheme before sending and quotes the URL in
+// that error as well. Nothing reaches the wire.
+#[tokio::test]
+async fn builder_error_omits_query_userinfo() {
+    let client = ApiClient::new("ftp://alice:pw-secret@example.invalid/v1");
+
+    let err = client
+        .delete("x?key=q-secret#frag-secret")
+        .await
+        .expect_err("ftp request succeeded");
+
+    assert_eq!(err.code, "transport_error");
+    assert_eq!(
+        err.message,
+        "DELETE ftp://example.invalid/v1/x: builder error"
+    );
+    assert_no_leak(&err.message);
+}
