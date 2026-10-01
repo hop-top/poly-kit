@@ -1,8 +1,14 @@
 # CLI Parity Guide
 
 kit enforces identical CLI behaviour across Go, TypeScript,
-and Python. Every tool built with kit/cli (or its TS/Py
-equivalents) must satisfy the same contract.
+and Python — the three languages with a CLI layer. Every tool
+built with kit/cli (or its TS/Py equivalents) must satisfy the
+same contract.
+
+The experimental Rust and PHP SDKs do not wire the global-flag
+layer yet. Where a section names them, it says what each port
+ships today; elsewhere "all three languages" means Go,
+TypeScript and Python.
 
 ## Global Flags
 

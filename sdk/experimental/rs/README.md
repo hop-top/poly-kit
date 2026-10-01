@@ -13,8 +13,7 @@ Nothing is on by default: name the features you use. Runnable crate examples liv
 
 ## Modules
 
-Paths are relative to `src/`; the [feature table](#features) is the
-authority for what each feature pulls in.
+Paths are relative to `src/`; the [feature table](#features) is the authority on what each pulls in.
 
 | Path | What it is | Start here when |
 |------|------------|-----------------|
@@ -38,31 +37,32 @@ authority for what each feature pulls in.
 
 ## Features
 
-Every module is feature-gated and `default = []`, so a dependant that names
-no features compiles the crate with **zero** transitive dependencies. Add
-only what you use:
+Every module is feature-gated and `default = []`: name no features, compile **zero** dependencies.
 
 | Feature | Pulls in | Normal deps |
 |---------|----------|-------------|
 | `blob` | `thiserror` | 6 |
-| `bus` | `serde`, `serde_json` | 11 |
 | `sqldb` | `rusqlite` (bundled SQLite), `thiserror` | 12 |
 | `kv` | `sqldb` — nothing of its own | 12 |
-| `sqlstore` | `sqldb` + `serde`, `serde_json` | 19 |
-| `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 29 |
-| `sqlstore-encrypt` | `sqlstore` + `crypto_secretbox`, `hkdf`, `sha2` | 42 |
-| `mcp` | `rmcp` (default-features off) + `serde`, `serde_json` | — |
-| `serve` | `output` + `tokio`, `serde_json` | 59 |
-| `serve-cli` | `serve` + `cli` (`clap`) | 77 |
+| `bus` | `serde`, `serde_json` | 14 |
+| `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
+| `output` | `serde`, `serde_json`, `serde_yaml`, `comfy-table`, `thiserror` | 22 |
+| `sqlstore` | `sqldb` + `serde`, `serde_json` | 22 |
+| `sqlstore-blob` | `sqlstore` + `blob` — nothing of its own | 22 |
+| `id` | `mti`, `uuid`, `serde`, `thiserror` | 25 |
+| `httpcache` | `kv` + `serde`, `serde_json`, `sha2`, `base64` | 33 |
+| `cli` | `output` + `clap` | 35 |
+| `serve` | `output` + `tokio`, `serde_json` | 37 |
+| `mcp` | `rmcp` (default-features off) + `serde`, `serde_json` | 39 |
+| `uri` | `hop-top-cite` | 41 |
+| `sqlstore-encrypt` | `sqlstore` + `crypto_secretbox`, `hkdf`, `sha2` | 50 |
+| `serve-cli` | `serve` + `cli` | 50 |
+| `api` | `reqwest`, `tokio`, `serde`, `serde_json`, `thiserror` | 113 |
+| `telemetry` | `api` + `serde_yaml`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
-`mcp` is the heaviest feature: `rmcp` carries an async runtime in its tree
-even with default features off. Counts are non-dev crates, reproducible
-with `cargo tree --no-default-features --features <feature> -e normal`.
-
-`sqlstore-blob` adds blob-backed backup/restore and pulls in only what
-`blob` already carries. `rusqlite` uses the `bundled` feature, so SQLite is
-compiled from source and no system `libsqlite3` is required, at the cost of
-a C compiler on the build host and a slower first build.
+Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`.
+`api` and `telemetry` are heaviest: `reqwest` brings `tokio` and a TLS stack. `rusqlite` uses `bundled`, so
+SQLite builds from source: no system `libsqlite3`, but a C compiler and a slower first build.
 
 ## Contract
 
@@ -75,6 +75,6 @@ a C compiler on the build host and a slower first build.
 ## See also
 
 - [Rust SDK reference](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/reference/rs-sdk.md):
-  serve, the URI facade, output rules, the MCP mount, storage and the
-  cross-process gate, the httpcache wire contract, offline enforcement, telemetry, the bus
+  serve, the URI facade, output rules, the MCP mount, storage and the cross-process gate,
+  the httpcache wire contract, offline enforcement, telemetry, the bus
 - [Serve lifecycle contract](https://github.com/hop-top/poly-kit/blob/main/docs/contracts/serve-lifecycle.md), [CLI parity guide](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/cli-parity-guide.md), [Serve MCP from any SDK](https://github.com/hop-top/poly-kit/blob/main/docs/adopters/guides/serve-mcp-from-any-sdk.md)

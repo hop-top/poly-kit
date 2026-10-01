@@ -13,14 +13,16 @@
 //! `http.DefaultTransport`, so a bare `&http.Client{}` inherits the
 //! policy without a per-site change. Rust has no such process-global:
 //! `reqwest::Client::new()` builds an independent stack every time, and
-//! nothing reqwest 0.12 exposes lets a policy see a request before it is
+//! nothing reqwest 0.13 exposes lets a policy see a request before it is
 //! sent. Its `connector_layer` hook receives an opaque `Unnameable` (no
 //! destination to inspect) and fires only on new connections, so pooled
 //! reuse would slip past; a custom `dns_resolver` never sees IP-literal
 //! URLs at all and cannot surface a typed error to the caller.
 //!
 //! So the chokepoint here is construction rather than transport: this
-//! module owns the port's only `reqwest::Client` construction path, and
+//! module owns the port's `reqwest::Client` construction path for user
+//! traffic (the telemetry sink's own client is the one, deliberate,
+//! exception: see Scope), and
 //! hands back a [`GuardedClient`] that does not expose the inner
 //! `reqwest::Client`. Every request necessarily passes through
 //! [`GuardedClient::execute`], which is where the policy is applied.
@@ -40,7 +42,9 @@
 //! # Scope
 //!
 //! [`GuardedClient`] covers HTTP and HTTPS through reqwest — every
-//! network client in this port today. It does NOT cover code that opens
+//! network client in this port today except the telemetry HTTPS sink,
+//! which is deliberately unguarded: telemetry is logging-class egress,
+//! not traffic `--offline` stops. It does NOT cover code that opens
 //! a socket directly: raw `TcpStream`, SQL drivers, gRPC or raw TLS. For
 //! those, `--offline` remains advisory and the call site must consult
 //! [`NetPolicy::is_offline`] itself. It also cannot reach a
@@ -196,8 +200,9 @@ fn scrub(e: reqwest::Error) -> reqwest::Error {
     }
 }
 
-/// The port's shared HTTP client: the single construction path through
-/// which every reqwest request in this crate is issued.
+/// The port's shared HTTP client: the construction path through which
+/// every user-traffic reqwest request in this crate is issued (the
+/// telemetry sink's own client is the deliberate exception).
 ///
 /// It deliberately does not expose its inner `reqwest::Client`. Handing
 /// one out would let a caller send a request that never reaches

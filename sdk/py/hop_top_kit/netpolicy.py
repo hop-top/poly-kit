@@ -258,8 +258,10 @@ def install() -> None:
     change.
 
     Idempotent and safe to call more than once. Call it once during
-    process start-up (``cli.create_app`` does this) and never concurrently
-    with in-flight requests: it mutates process-globals.
+    process start-up and never concurrently with in-flight requests: it
+    mutates process-globals. Apps built with ``cli.create_app`` need not
+    call it: the root callback does, on dispatch, when ``--offline`` is
+    set.
 
     Not reachable from here: an ``OpenerDirector`` assembled by hand, and a
     ``build_opener`` bound by name (``from urllib.request import
