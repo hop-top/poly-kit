@@ -168,3 +168,23 @@ func findChild(cmd *cobra.Command, name string) *cobra.Command {
 	}
 	return nil
 }
+
+// TestCommand_HandlerGenerateDryRunYAMLKeys pins the dry-run plan's
+// yaml keys to its json ones: prerequisites_checked and generated_at,
+// not yaml.v3's lowercased Go names.
+func TestCommand_HandlerGenerateDryRunYAMLKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tlc.desktop")
+	for _, format := range []string{"json", "yaml"} {
+		root := kitcli.New(kitcli.Config{Name: "fixture", Short: "fixture", DisableValidate: true})
+		uricmd.Register(root.Cmd, testConfig())
+		var out bytes.Buffer
+		root.Cmd.SetOut(&out)
+		root.Cmd.SetErr(&bytes.Buffer{})
+		root.Cmd.SetArgs([]string{"uri", "handler", "generate", "--platform", "linux",
+			"--output", path, "--dry-run", "--format", format})
+		require.NoError(t, root.Execute(context.Background()))
+		assert.Contains(t, out.String(), "prerequisites_checked", format)
+		assert.Contains(t, out.String(), "generated_at", format)
+		assert.NotContains(t, out.String(), "generatedat", format)
+	}
+}

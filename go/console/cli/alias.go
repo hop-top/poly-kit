@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
@@ -33,12 +34,18 @@ func (r *Root) Alias(name string, target *cobra.Command) error {
 	if target.Parent() == r.Cmd {
 		target.Aliases = append(target.Aliases, name)
 	} else {
+		// The shim dispatches the target's RunE, so it carries the
+		// target's annotations: the confirm gate, the dry-run policy
+		// and validation read the command cobra dispatched — the
+		// shim — and would otherwise treat a destructive target as
+		// untagged.
 		shim := &cobra.Command{
-			Use:    name,
-			Short:  fmt.Sprintf("Alias for %s", path),
-			Hidden: true,
-			RunE:   target.RunE,
-			Run:    target.Run,
+			Use:         name,
+			Short:       fmt.Sprintf("Alias for %s", path),
+			Hidden:      true,
+			RunE:        target.RunE,
+			Run:         target.Run,
+			Annotations: maps.Clone(target.Annotations),
 		}
 		r.Cmd.AddCommand(shim)
 	}
