@@ -187,7 +187,7 @@
     }
   },
   "dependencies": {
-    "@bufbuild/protobuf": "^2.15.0",
+    "@bufbuild/protobuf": "^2.16.0",
     "@clack/prompts": "^1.8.1",
     "@connectrpc/connect": "^2.2.0",
     "@connectrpc/connect-web": "^2.2.0",
@@ -198,7 +198,7 @@
     "commander": "^15.0.0",
     "csv-stringify": "^6.9.0",
     "eta": "^4.6.0",
-    "hono": "^4.13.10",
+    "hono": "^4.13.12",
     "js-yaml": "^4.3.2",
     "picomatch": "^4.0.7",
     "pino": "^10.3.1",
