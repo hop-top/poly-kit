@@ -72,6 +72,27 @@ func WithServiceBus(p serve.Publisher) func(*Root) {
 	}
 }
 
+// WithOwnServiceConfig declares that the tool layers services.* into
+// [Root.Viper] itself, so `serve` (the supervisor, the selector and
+// --list) and the quota commands read services.* exactly as the tool
+// left it.
+//
+// By default `serve` layers services.* on its own before reading it:
+// the services block of the tool's system, user and project config
+// files (the project file discovered from the working directory up
+// to $HOME), of each -c <path>, every <TOOL>_SERVICES_* variable and
+// every -c services.<key>=<value>, merged above whatever the tool put
+// at Viper's config-file rung. A tool with its own loader (its own
+// file order, profiles, its own environment prefix) passes this
+// option so that none of that happens: no file is discovered or read,
+// no variable is bound and no -c token is applied by `serve`. The
+// tool's loader is then the only source, -c included; read the
+// tokens with [Root.ConfigArgs]. The serve flags (--addr, --socket,
+// --enable, --disable and the timeouts) still apply for one run.
+func WithOwnServiceConfig() func(*Root) {
+	return func(r *Root) { r.serveOwnConfig = true }
+}
+
 // ensureServeRegistry creates the registry and mounts the serve parent
 // on first use. Mounting here rather than in New is what lets the
 // registry take the `serve` word away from WithAPI's leaf: whichever

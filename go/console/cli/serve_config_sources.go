@@ -32,8 +32,12 @@ import (
 // as the tool wired it. Layering is idempotent, so a tool that already
 // loads the same files and variables into the Viper gets the same
 // values twice.
+//
+// A tool that passed [WithOwnServiceConfig] layers services.* itself:
+// nothing is read, bound or set here, and every caller reads the Viper
+// as the tool left it.
 func (r *Root) loadServiceConfig() error {
-	if r == nil || r.Viper == nil {
+	if r == nil || r.Viper == nil || r.serveOwnConfig {
 		return nil
 	}
 	extra, overrides, err := r.ConfigArgs()
