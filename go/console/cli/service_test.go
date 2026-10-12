@@ -305,13 +305,20 @@ func TestService_StaleSocketIsNotRunningAndReplaced(t *testing.T) {
 // instanceStatusRows runs `service status --format json` on a fresh root.
 func instanceStatusRows(t *testing.T, opts ...func(*Root)) []serviceStatusRow {
 	t.Helper()
+	return instanceStatus(t, opts...).Services
+}
+
+// instanceStatus runs `service status --format json` on a fresh root
+// built with opts.
+func instanceStatus(t *testing.T, opts ...func(*Root)) serviceStatusOutput {
+	t.Helper()
 	r := authRoot(t, append([]func(*Root){WithAPI(APIConfig{})}, opts...)...)
 	out, _, code, err := run(t, r, "service", "status", "--format", "json")
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
-	var rows []serviceStatusRow
-	require.NoError(t, json.Unmarshal([]byte(out), &rows), out)
-	return rows
+	var got serviceStatusOutput
+	require.NoError(t, json.Unmarshal([]byte(out), &got), out)
+	return got
 }
 
 // controlPathOf is the control socket r's `service` commands use.

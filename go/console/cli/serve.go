@@ -422,7 +422,7 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	// (a platform or sandbox without unix sockets) leaves the run
 	// serving without one, and says so.
 	control, controlErr := listenControl(ep, root.Config.Name+" "+ServiceCommandName+" stop",
-		stopRequested, serviceStatusRows(reg, outcome.Selected))
+		stopRequested, serviceStatusRows(reg, outcome.Selected), root.serviceStatusSections)
 	var refused *output.Error
 	if errors.As(controlErr, &refused) {
 		return controlErr

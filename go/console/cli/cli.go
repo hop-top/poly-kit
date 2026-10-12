@@ -411,8 +411,11 @@ type Root struct {
 	// WithStatus (defaults) and RegisterStatusProvider (adopter
 	// overrides). nil until WithStatus runs or an adopter calls
 	// RegisterStatusProvider directly.
-	statusProviders   map[string]StatusProvider
-	statusProvidersMu sync.Mutex
+	statusProviders map[string]StatusProvider
+	// serviceStatusProviders feed `service status`: run by the
+	// instance, see RegisterServiceStatusProvider.
+	serviceStatusProviders map[string]StatusProvider
+	statusProvidersMu      sync.Mutex
 	// invokedAs caches the trimmed value of the KIT_INVOKED_AS env var
 	// captured at cli.New time. Empty string means standalone
 	// invocation. Exposed via Root.InvokedAs. See invokedas.go for the

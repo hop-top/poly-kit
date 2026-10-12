@@ -32,6 +32,8 @@ import (
 // response lines back:
 //
 //	{"op":"status"}  → {"ok":true,"pid":…,"services":[…]}
+//	{"op":"status","sections":true}
+//	                 → {"ok":true,"pid":…,"services":[…],"sections":[…]}
 //	{"op":"stop"}    → {"ok":true,"stopping":true}
 //	                   … the run drains …
 //	                   {"ok":true,"stopped":true,"exit_code":0}
@@ -58,12 +60,19 @@ const controlSocketName = "control.sock"
 // controlDialTimeout bounds a client's connect and a request's read.
 const controlDialTimeout = 2 * time.Second
 
+// controlSectionsTimeout bounds the read of a status answer that
+// carries the tool's sections: the instance runs its providers at
+// once, each under the status pipeline's per-provider deadline.
+const controlSectionsTimeout = controlDialTimeout + defaultStatusProviderTimeout
+
 // defaultStopWait bounds how long `service stop` waits for the drain:
 // the supervisor's default shutdown budget plus slack.
 const defaultStopWait = serve.DefaultShutdownTimeout + 30*time.Second
 
 type controlRequest struct {
 	Op string `json:"op"`
+	// Sections asks a status answer to carry the tool's sections.
+	Sections bool `json:"sections,omitempty"`
 }
 
 type controlResponse struct {
@@ -74,6 +83,7 @@ type controlResponse struct {
 	Code       string             `json:"code,omitempty"`
 	PID        int                `json:"pid,omitempty"`
 	Services   []serviceStatusRow `json:"services,omitempty"`
+	Sections   []StatusSection    `json:"sections,omitempty"`
 	Stopping   bool               `json:"stopping,omitempty"`
 	Stopped    bool               `json:"stopped,omitempty"`
 	ExitCode   *int               `json:"exit_code,omitempty"`
@@ -110,6 +120,8 @@ type controlServer struct {
 	lock   *flock.Flock
 	cancel context.CancelFunc
 	status func() []serviceStatusRow
+	// sections runs the tool's service status providers.
+	sections func(context.Context) []StatusSection
 
 	mu      sync.Mutex
 	waiters []net.Conn
@@ -123,11 +135,11 @@ type controlServer struct {
 }
 
 // listenControl opens the control socket at ep. cancel ends the run;
-// status reports its services. The path is
+// status reports its services and sections the tool's. The path is
 // claimed first (claimControlPath): a live instance on it is a
 // CONFLICT, and a stale socket file is replaced.
 func listenControl(ep controlEndpoint, stopHint string, cancel context.CancelFunc,
-	status func() []serviceStatusRow,
+	status func() []serviceStatusRow, sections func(context.Context) []StatusSection,
 ) (*controlServer, error) {
 	lock, err := claimControlPath(ep.path, stopHint)
 	if err != nil {
@@ -143,7 +155,7 @@ func listenControl(ep controlEndpoint, stopHint string, cancel context.CancelFun
 		_ = lock.Unlock()
 		return nil, err
 	}
-	cs := &controlServer{ln: ln, lock: lock, cancel: cancel, status: status}
+	cs := &controlServer{ln: ln, lock: lock, cancel: cancel, status: status, sections: sections}
 	cs.wg.Add(1)
 	go cs.serve()
 	return cs, nil
@@ -192,7 +204,11 @@ func (cs *controlServer) handle(conn net.Conn) {
 	}
 	switch req.Op {
 	case "status":
-		_ = enc.Encode(controlResponse{OK: true, PID: os.Getpid(), Services: cs.status()})
+		resp := controlResponse{OK: true, PID: os.Getpid(), Services: cs.status()}
+		if req.Sections && cs.sections != nil {
+			resp.Sections = cs.sections(context.Background())
+		}
+		_ = enc.Encode(resp)
 	case "stop":
 		cs.mu.Lock()
 		if cs.closed {
@@ -350,7 +366,8 @@ func serviceStatusCmd(root *Root) *cobra.Command {
 		Use:   "status",
 		Short: "Show the running instance's services, readiness and addresses",
 		Long: "Ask the running instance, over its control socket, which services it\n" +
-			"started, whether each is ready, and where each listens.\n\n" +
+			"started, whether each is ready, and where each listens, followed by\n" +
+			"any sections the tool reports about the instance.\n\n" +
 			"Exits 3 (NOT_FOUND) when no instance is running.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -359,7 +376,7 @@ func serviceStatusCmd(root *Root) *cobra.Command {
 	}
 	SetSideEffect(cmd, SideEffectRead)
 	SetIdempotency(cmd, IdempotencyYes)
-	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]serviceStatusRow{}, Version: "1.0"})
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &serviceStatusOutput{}, Version: "1.0"})
 	return cmd
 }
 
@@ -368,31 +385,33 @@ func runServiceStatus(cmd *cobra.Command, root *Root) error {
 	if err != nil {
 		return err
 	}
-	rows, notRunning, err := fetchStatus(ep.path)
+	out, notRunning, err := fetchStatus(ep.path, true)
 	if err != nil {
 		return err
 	}
 	if notRunning {
 		return notRunningError(root, ep)
 	}
-	if rows == nil {
-		rows = []serviceStatusRow{}
-	}
-	return output.Dispatch(cmd, root.Viper, rows)
+	return renderServiceStatus(cmd, root, out)
 }
 
-// fetchStatus asks the instance at path for its services.
-func fetchStatus(path string) (rows []serviceStatusRow, notRunning bool, err error) {
+// fetchStatus asks the instance at path for its status, with the
+// tool's sections when sections is set.
+func fetchStatus(path string, sections bool) (out serviceStatusOutput, notRunning bool, err error) {
 	conn, notRunning, err := dialControl(path)
 	if err != nil || notRunning {
-		return nil, notRunning, err
+		return out, notRunning, err
 	}
 	defer func() { _ = conn.Close() }()
-	_, resp, err := controlCall(conn, "status")
-	if err != nil {
-		return nil, false, err
+	wait := controlDialTimeout
+	if sections {
+		wait = controlSectionsTimeout
 	}
-	return resp.Services, false, nil
+	_, resp, err := controlSend(conn, controlRequest{Op: "status", Sections: sections}, wait)
+	if err != nil {
+		return out, false, err
+	}
+	return serviceStatusOutput{Services: resp.Services, Sections: resp.Sections}, false, nil
 }
 
 // serviceStopCmd builds `service stop`.

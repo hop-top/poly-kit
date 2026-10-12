@@ -138,7 +138,7 @@ func serviceRestartCmd(root *Root) *cobra.Command {
 	// Restarting the instance from inside one of its own served calls
 	// would take down the server answering it.
 	setAnnotationTrue(cmd, cmdmeta.KeySelfHosting)
-	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]serviceStatusRow{}, Version: "1.0"})
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &serviceStatusOutput{}, Version: "1.0"})
 	cmd.Flags().Duration("wait", defaultRestartWait,
 		"How long to wait for the drain and the new instance's readiness")
 	return cmd
@@ -194,11 +194,20 @@ func runServiceRestart(cmd *cobra.Command, root *Root) error {
 			"%s is still draining after %s", root.Config.Name, wait))
 	}
 
-	rows, err := awaitRestarted(root, ep.path, ack.PID, deadline, wait)
-	if err != nil {
+	if err := awaitRestarted(root, ep.path, ack.PID, deadline, wait); err != nil {
 		return err
 	}
-	return output.Dispatch(cmd, root.Viper, rows)
+	// Readiness was polled without the tool's sections; the report
+	// carries them, as `service status` does.
+	out, notRunning, err := fetchStatus(ep.path, true)
+	if err == nil && notRunning {
+		err = fmt.Errorf("%s stopped answering right after it came up", root.Config.Name)
+	}
+	if err != nil {
+		return output.TransientError(fmt.Sprintf("%s restarted, but its status could not be read: %v",
+			root.Config.Name, err))
+	}
+	return renderServiceStatus(cmd, root, out)
 }
 
 // awaitRestarted polls the control socket at path until the new
@@ -206,30 +215,27 @@ func runServiceRestart(cmd *cobra.Command, root *Root) error {
 // passes, or as soon as pid, the re-executed process, is gone: a new
 // run that refused to start (a bad configuration change) exits rather
 // than answering.
-func awaitRestarted(root *Root, path string, pid int, deadline time.Time, wait time.Duration) ([]serviceStatusRow, error) {
+func awaitRestarted(root *Root, path string, pid int, deadline time.Time, wait time.Duration) error {
 	name := root.Config.Name
 	answered := false
 	for {
 		if got, ok := pollStatus(path); ok {
 			answered = true
 			if allReady(got) {
-				if got == nil {
-					got = []serviceStatusRow{}
-				}
-				return got, nil
+				return nil
 			}
 		} else if pid > 0 && !processAlive(pid) {
 			e := output.GenericError(fmt.Sprintf(
 				"%s (pid %d) drained and re-executed, but the new run exited without coming up", name, pid))
 			e.SuggestedFix = "read its stderr or service log for the reason, then start it with `" +
 				name + " " + ServiceCommandName + " start`"
-			return nil, e
+			return e
 		}
 		if time.Now().After(deadline) {
 			if !answered {
-				return nil, output.TransientError(fmt.Sprintf("%s did not come back within %s", name, wait))
+				return output.TransientError(fmt.Sprintf("%s did not come back within %s", name, wait))
 			}
-			return nil, output.TransientError(fmt.Sprintf(
+			return output.TransientError(fmt.Sprintf(
 				"%s restarted but not every service was ready within %s", name, wait))
 		}
 		time.Sleep(restartPollInterval)
@@ -237,11 +243,11 @@ func awaitRestarted(root *Root, path string, pid int, deadline time.Time, wait t
 }
 
 func pollStatus(path string) ([]serviceStatusRow, bool) {
-	rows, notRunning, err := fetchStatus(path)
+	out, notRunning, err := fetchStatus(path, false)
 	if err != nil || notRunning {
 		return nil, false
 	}
-	return rows, true
+	return out.Services, true
 }
 
 func allReady(rows []serviceStatusRow) bool {

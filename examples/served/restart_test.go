@@ -56,6 +56,20 @@ type statusRow struct {
 	PID     int    `json:"pid"`
 }
 
+// statusSection is one of the tool's `service status` sections.
+type statusSection struct {
+	Title  string         `json:"title"`
+	Status string         `json:"status"`
+	Data   map[string]any `json:"data"`
+}
+
+// serviceStatus is what `service status` and `service restart` print
+// as json.
+type serviceStatus struct {
+	Services []statusRow     `json:"services"`
+	Sections []statusSection `json:"sections"`
+}
+
 // indexAfter is the index of needle in s at or after from, or -1.
 func indexAfter(s, needle string, from int) int {
 	if from < 0 || from > len(s) {
@@ -98,13 +112,16 @@ func TestBinaryServiceRestart(t *testing.T) {
 	out, stderr, code := binClient(t, home, "service", "restart", "--format", "json", "--wait", "30s")
 	require.Equal(t, 0, code, "stdout: %s\nstderr: %s\ninstance:\n%s", out, stderr, r.output())
 
-	var rows []statusRow
-	require.NoError(t, json.Unmarshal([]byte(out), &rows), out)
+	var report serviceStatus
+	require.NoError(t, json.Unmarshal([]byte(out), &report), out)
+	rows := report.Services
 	require.Len(t, rows, 2)
 	for _, row := range rows {
 		assert.True(t, row.Ready, "%s ready when restart returns", row.Service)
 		assert.Equal(t, pid, row.PID, "%s answers from the same pid", row.Service)
 	}
+	require.Len(t, report.Sections, 1, "the new run reports the tool's section")
+	assert.Equal(t, "store", report.Sections[0].Title)
 	select {
 	case <-r.done:
 		t.Fatalf("the process exited instead of re-executing:\n%s", r.output())

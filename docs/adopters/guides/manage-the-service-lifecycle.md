@@ -44,6 +44,9 @@ SERVICE  READY  ADDR            PID
 api      true   127.0.0.1:8080  41237
 ```
 
+`--format json` prints `{"services": [...], "sections": [...]}`; the
+sections are your tool's (see below).
+
 | Situation | `service status` | `service stop` |
 |---|---|---|
 | An instance is running | its services, exit 0 | drains it, waits, `result: stopped`, exit 0 |
@@ -113,6 +116,49 @@ test can apply it to a root it already built:
 ```go
 cli.WithServiceControlScope(func(*cobra.Command) (string, error) { return "t2", nil })(root)
 ```
+
+## Add sections to `service status`
+
+`service status` prints kit's rows, then sections your tool reports
+about the running instance: queue depths, the profile it serves,
+per-channel health. Register them with
+`root.RegisterServiceStatusProvider`, the same `cli.StatusProvider`
+type the root `status` takes:
+
+```go
+root.RegisterServiceStatusProvider("queue", func(ctx context.Context) (cli.StatusSection, error) {
+    return cli.StatusSection{Title: "queue", Priority: 1000,
+        Data: map[string]any{"depth": q.Len()}}, nil
+})
+```
+
+```sh
+$ mytool service status
+SERVICE  READY  ADDR            PID
+api      true   127.0.0.1:8080  41237
+
+SECTION  STATUS  DETAIL
+queue    ok      depth=12
+```
+
+```sh
+$ mytool service status --format json
+{"services":[{"service":"api","ready":true,"addr":"127.0.0.1:8080","pid":41237}],
+ "sections":[{"title":"queue","data":{"depth":12},"status":"ok","priority":1000}]}
+```
+
+- The running instance calls the provider, not the client: `q` is the
+  daemon's queue. Register it on the root that runs `service start`.
+- All providers run at once, each with a 2s deadline. A slow one is
+  reported `unavailable`, a failing or panicking one as an `error`
+  section; `service status` still exits 0.
+- `Sensitive: true` sections are redacted with the root status's
+  patterns (`StatusConfig.RedactPatterns` included) before they leave
+  the instance. There is no `--show-sensitive` here.
+- `sections` is `[]` when you register none. `service restart` prints
+  the same object for the new run.
+- These sections are separate from the root `status`: providers you
+  register with `RegisterStatusProvider` stay there.
 
 ## Restart
 

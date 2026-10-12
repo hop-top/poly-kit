@@ -102,6 +102,31 @@ default socket.
   sockets) leaves the run serving without a control channel and logs
   `service control socket unavailable` on stderr.
 
+#### `service status` output
+
+`service status` prints an object: `services`, kit's fixed rows (one
+per service the instance started, with `service`, `ready`, `addr`,
+`pid`), and `sections`, the tool's own sections about the running
+instance, in the root status's `StatusSection` shape. `sections` is
+`[]` when the tool registers none. `service restart` prints the same
+object for the new run.
+
+- Sections come from providers the tool registers with
+  `RegisterServiceStatusProvider`. The **instance** runs them, all at
+  once, on each `service status` request, each under the status
+  pipeline's per-provider deadline (2s): what they report is the
+  running instance's state, not the client's. A provider that misses
+  its deadline is `unavailable`; one that errors or panics is an
+  `error` section; neither fails the command.
+- Sections are ordered by `priority`, then `title`. Sections marked
+  `sensitive` are redacted with the root status's patterns before they
+  leave the instance; `service status` has no flag that reveals them.
+- json and yaml carry the whole object. The tabular formats print
+  kit's rows, then, when there are sections, a blank line and one
+  `SECTION`/`STATUS`/`DETAIL` row per section.
+- These providers do not feed the root `status`, and the root
+  `status` providers do not feed `service status`.
+
 ### Restart in place
 
 `service restart` asks the running instance to drain and come back as

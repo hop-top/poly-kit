@@ -12,8 +12,9 @@
 // withheld until a surface is named and confirmed, interactive and
 // self-hosting commands never run remotely, the api binds loopback
 // and refuses unauthenticated remote serving, an adopter service
-// starts under the same supervisor, and instances of different
-// profiles are controlled independently.
+// starts under the same supervisor, instances of different profiles
+// are controlled independently, and `service status` carries the
+// tool's own section.
 //
 // The command tree is deliberately small and covers one command per
 // class the contract distinguishes:
@@ -138,7 +139,8 @@ const profileEnv = "SERVED_PROFILE"
 // permissions: rules evaluated, the four kit-shipped services, one
 // service of their own, the observability provider an operator can
 // turn on, the identity keypair tokens are signed with, the control
-// scope per profile, and the commands.
+// scope per profile, the instance's own `service status` section, and
+// the commands.
 func newRoot(opts options) *cli.Root {
 	if opts.heartbeat == nil {
 		opts.heartbeat = newHeartbeat()
@@ -181,6 +183,12 @@ func newRoot(opts options) *cli.Root {
 
 	st := newStore()
 	root.Cmd.AddCommand(itemCmd(root, st), shellCmd(), upgradeCmd())
+	// Run by the instance on each `service status`: the count is the
+	// running instance's, not the client's.
+	root.RegisterServiceStatusProvider("store", func(context.Context) (cli.StatusSection, error) {
+		return cli.StatusSection{Title: "store", Priority: 1000,
+			Data: map[string]any{"items": len(st.list())}}, nil
+	})
 	return root
 }
 
