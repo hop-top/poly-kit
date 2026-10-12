@@ -111,7 +111,7 @@ func startMCP(t *testing.T, cfg mcpserve.Config, args []string, opts ...func(*cl
 		}
 		return nil
 	})
-	all := append([]func(*cli.Root){mcpserve.With(cfg), cli.WithServiceBus(b)}, opts...)
+	all := append([]func(*cli.Root){mcpserve.With(cfg), cli.WithServiceBus(b), ownScope()}, opts...)
 	run.root = newServeRoot(t, all...)
 	mcpCommands(run.root)
 	run.root.Cmd.SetErr(&lockedWriter{w: run.err})

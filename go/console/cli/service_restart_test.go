@@ -89,7 +89,8 @@ func startInstance(t *testing.T, r *Root, svc *gateService) (<-chan error, conte
 	require.Eventually(t, svc.Ready, 10*time.Second, 5*time.Millisecond, "instance never ready")
 	// The control socket opens before the services start; wait for it
 	// to answer too.
-	require.Eventually(t, func() bool { _, ok := pollStatus(r); return ok },
+	path := controlPathOf(t, r)
+	require.Eventually(t, func() bool { _, ok := pollStatus(path); return ok },
 		10*time.Second, 5*time.Millisecond, "control socket never answered")
 	return errCh, cancel
 }
@@ -348,9 +349,7 @@ func TestService_RestartUnsupportedPlatform(t *testing.T) {
 	assert.Contains(t, err.Error(), "not supported on this platform")
 
 	// The instance refuses the op itself, and keeps running.
-	path, err := controlSocketPath(d)
-	require.NoError(t, err)
-	conn, err := net.Dial("unix", path)
+	conn, err := net.Dial("unix", controlPathOf(t, d))
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
 	_, _, err = controlCall(conn, "restart")

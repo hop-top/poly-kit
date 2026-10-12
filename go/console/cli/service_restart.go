@@ -162,12 +162,16 @@ func runServiceRestart(cmd *cobra.Command, root *Root) error {
 	}
 	deadline := time.Now().Add(wait)
 
-	conn, notRunning, err := dialControl(root)
+	ep, err := root.controlEndpoint(cmd)
+	if err != nil {
+		return err
+	}
+	conn, notRunning, err := dialControl(ep.path)
 	if err != nil {
 		return err
 	}
 	if notRunning {
-		return notRunningError(root)
+		return notRunningError(root, ep)
 	}
 	dec, ack, err := controlCall(conn, "restart")
 	if err != nil {
@@ -190,23 +194,23 @@ func runServiceRestart(cmd *cobra.Command, root *Root) error {
 			"%s is still draining after %s", root.Config.Name, wait))
 	}
 
-	rows, err := awaitRestarted(root, ack.PID, deadline, wait)
+	rows, err := awaitRestarted(root, ep.path, ack.PID, deadline, wait)
 	if err != nil {
 		return err
 	}
 	return output.Dispatch(cmd, root.Viper, rows)
 }
 
-// awaitRestarted polls the control socket until the new instance
-// answers with every service ready. It gives up when deadline passes,
-// or as soon as pid, the re-executed process, is gone: a new run that
-// refused to start (a bad configuration change) exits rather than
-// answering.
-func awaitRestarted(root *Root, pid int, deadline time.Time, wait time.Duration) ([]serviceStatusRow, error) {
+// awaitRestarted polls the control socket at path until the new
+// instance answers with every service ready. It gives up when deadline
+// passes, or as soon as pid, the re-executed process, is gone: a new
+// run that refused to start (a bad configuration change) exits rather
+// than answering.
+func awaitRestarted(root *Root, path string, pid int, deadline time.Time, wait time.Duration) ([]serviceStatusRow, error) {
 	name := root.Config.Name
 	answered := false
 	for {
-		if got, ok := pollStatus(root); ok {
+		if got, ok := pollStatus(path); ok {
 			answered = true
 			if allReady(got) {
 				if got == nil {
@@ -232,17 +236,12 @@ func awaitRestarted(root *Root, pid int, deadline time.Time, wait time.Duration)
 	}
 }
 
-func pollStatus(root *Root) ([]serviceStatusRow, bool) {
-	conn, notRunning, err := dialControl(root)
+func pollStatus(path string) ([]serviceStatusRow, bool) {
+	rows, notRunning, err := fetchStatus(path)
 	if err != nil || notRunning {
 		return nil, false
 	}
-	defer func() { _ = conn.Close() }()
-	_, resp, err := controlCall(conn, "status")
-	if err != nil {
-		return nil, false
-	}
-	return resp.Services, true
+	return rows, true
 }
 
 func allReady(rows []serviceStatusRow) bool {

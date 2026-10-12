@@ -27,8 +27,14 @@ import (
 // returns its stdout, stderr and exit code.
 func binClient(t *testing.T, home string, args ...string) (string, string, int) {
 	t.Helper()
+	return binClientEnv(t, home, nil, args...)
+}
+
+// binClientEnv is binClient with extra environment.
+func binClientEnv(t *testing.T, home string, env []string, args ...string) (string, string, int) {
+	t.Helper()
 	cmd := exec.Command(servedBinary(t), args...)
-	cmd.Env = binaryEnv(home, nil)
+	cmd.Env = binaryEnv(home, env)
 	cmd.Dir = home
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

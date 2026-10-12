@@ -59,6 +59,23 @@ Every connection's peer credentials are checked against the instance's
 own uid where the platform reports them. `service status`,
 `service stop` and `service restart` are its clients.
 
+A tool that runs more than one instance per user (one per profile,
+workspace or tenant) gives each a **control scope**. The scope is
+resolved by every `service` leaf at command time, after flag parsing
+and the tool's own pre-run hooks. The control socket of scope `<s>` is
+`<runtime dir>/<tool>/control-<s>.sock`. The empty scope is the
+default socket.
+
+- `service start` MUST listen, and `service stop`, `service restart`
+  and `service status` MUST dial, the socket of the same resolved
+  scope. A client reaches only the instance of its own scope.
+- A scope MUST be one path segment of ASCII letters, digits, `.`, `_`
+  and `-`, and not `.` or `..`. Anything else is refused as `USAGE`
+  (exit 2) by every leaf, a dry run included. A socket path over the
+  103-byte unix limit is refused the same way.
+- `service restart` re-executes with the launch argv and environment,
+  so a scope derived from them is resolved again unchanged.
+
 - `service stop` MUST end the run exactly as the first `SIGINT` or
   `SIGTERM` does: the run's context is canceled and every service is
   drained in reverse start order within its budgets. The instance MUST
@@ -67,9 +84,23 @@ own uid where the platform reports them. `service status`,
   `not_running`.
 - `service status` with no instance running MUST exit 3 (`NOT_FOUND`):
   the thing asked about, a running instance, does not exist.
-- A socket file nobody answers on is stale and is replaced by the next
-  instance. A second instance that finds a live socket keeps running
-  without a control channel and says so on stderr.
+- An instance holds an exclusive lock on `<socket path>.lock`
+  (owner-only, `0600`) from before its first service starts until its
+  run ends. A `service start` whose scope's lock is held, or whose
+  socket a live listener answers on (a connect that succeeds or times
+  out), MUST be refused with `CONFLICT` (exit 4) naming the socket
+  path, before it starts any service. It MUST NOT run without a
+  control channel: `service stop`, `restart` and `status` would keep
+  reaching the first instance and the second would answer only to
+  signals.
+- A socket file is removed only when the lock is held, the file is a
+  socket, and a connect to it is refused: that is a stale socket from
+  an instance that did not exit cleanly, and the new instance replaces
+  it. Anything else at the path (a regular file, a directory, a
+  symlink) is left alone and the start refused with `CONFLICT`.
+- Any other failure to listen (a platform or sandbox without unix
+  sockets) leaves the run serving without a control channel and logs
+  `service control socket unavailable` on stderr.
 
 ### Restart in place
 

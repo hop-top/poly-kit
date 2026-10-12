@@ -342,6 +342,10 @@ type Root struct {
 	// serveOwnConfig records WithOwnServiceConfig: the tool layers
 	// services.* into Viper itself and serve reads no source of its own.
 	serveOwnConfig bool
+	// controlScope resolves the scope of the instance a `service`
+	// command addresses; nil is the one default instance. See
+	// WithServiceControlScope.
+	controlScope ServiceControlScope
 	// socketCfg is the built-in socket service's configuration, nil
 	// until WithSocket runs.
 	socketCfg *SocketConfig

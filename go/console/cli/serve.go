@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -383,6 +384,14 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	if outcome.Err != nil {
 		return outcome.Err
 	}
+	// Where `service stop`, `service restart` and `service status`
+	// reach this run: resolved here, after the tool's own
+	// configuration and profile resolution, so a bad scope is refused
+	// by a dry run as well.
+	ep, err := root.controlEndpoint(cmd)
+	if err != nil {
+		return err
+	}
 	if IsDryRun(cmd) {
 		// The invocation validated and resolved as a real one would;
 		// the preview names the services it would start.
@@ -404,6 +413,27 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	// on.
 	ctx, stopRequested := context.WithCancel(sigCtx)
 	defer stopRequested()
+
+	// The control socket `service stop`, `service restart` and
+	// `service status` talk to, claimed before anything starts. A live
+	// instance already on it is a CONFLICT: a second run would serve
+	// with no control channel, unreachable but by signal, while those
+	// commands went on reaching the first. Any other failure to listen
+	// (a platform or sandbox without unix sockets) leaves the run
+	// serving without one, and says so.
+	control, controlErr := listenControl(ep, root.Config.Name+" "+ServiceCommandName+" stop",
+		stopRequested, serviceStatusRows(reg, outcome.Selected))
+	var refused *output.Error
+	if errors.As(controlErr, &refused) {
+		return controlErr
+	}
+	// Released by close after the run; this covers the returns below
+	// that come before it.
+	defer func() {
+		if control != nil {
+			control.close(1)
+		}
+	}()
 
 	// Tracing and metrics start before any service and flush after
 	// the last one stops, so every request the services answer is
@@ -428,20 +458,17 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 		serve.WithEscalation(escalate),
 	)
 
-	// The control socket `service stop`, `service restart` and
-	// `service status` talk to.
-	// A run without one still serves: another instance answering on
-	// the socket keeps it, and only loses its stop/status channel.
-	control, err := listenControl(root, stopRequested, serviceStatusRows(reg, outcome.Selected))
-	if err != nil {
+	if controlErr != nil {
 		logger.Warn("service control socket unavailable; service stop and service status will not reach this instance",
-			"error", err)
+			"error", controlErr)
 	}
 
 	res := sup.Run(ctx, outcome.Selected, configs)
-	if control != nil && control.close(res.ExitCode()) {
+	cs := control
+	control = nil
+	if cs != nil && cs.close(res.ExitCode()) {
 		restart = &pendingRestart{
-			control: control,
+			control: cs,
 			logger:  logger,
 			// Read before the deferred stop cancels it: set only by a
 			// shutdown signal or the caller.

@@ -79,6 +79,7 @@ func corsAPI(t *testing.T, set map[string]any, auth ...api.AuthFunc) string {
 			r.Viper.Set(k, v)
 		}
 	}
+	ownScope()(r)
 	base, stop := serveAPI(t, r)
 	t.Cleanup(stop)
 	return base

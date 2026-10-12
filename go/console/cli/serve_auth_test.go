@@ -601,7 +601,7 @@ func TestLoopbackWithoutPolicyServes(t *testing.T) {
 	// the name every guide uses.
 	for _, addr := range []string{"localhost:0", "[::1]:0"} {
 		t.Run(addr, func(t *testing.T) {
-			r := authRoot(t, WithAPI(APIConfig{Addr: addr}))
+			r := authRoot(t, WithAPI(APIConfig{Addr: addr}), ownScope())
 			_, stop := serveAPI(t, r)
 			stop()
 		})
