@@ -689,7 +689,7 @@ only; `services.api.health.detail` turns it on or off explicitly.
 A dependency counts as ready when the serve supervisor recorded it
 ready and its own `Ready` still agrees, so a dependency that crashed
 under the `isolate` failure policy fails readiness even if it never
-reset its own flag. A dependency the run did not start (`serve api`
+reset its own flag. A dependency the run did not start (`service start api`
 alone) is not checked, the same way it does not constrain start
 order.
 

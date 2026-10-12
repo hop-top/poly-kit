@@ -21,9 +21,9 @@ serve lifecycle, see [`examples/cmdsurface`](../cmdsurface/README.md).
 
 ```sh
 go run ./examples/served item list
-go run ./examples/served serve --list
-go run ./examples/served serve api --addr 127.0.0.1:0
-go run ./examples/served serve mcp --stdio
+go run ./examples/served service list
+go run ./examples/served service start api --addr 127.0.0.1:0
+go run ./examples/served service start mcp --stdio
 go test -race ./examples/served/
 ```
 
@@ -40,7 +40,7 @@ go test -race ./examples/served/
 | `item purge` | destructive-shared | withheld (`unauthorized-destructive`) until a surface is named, then needs `confirm` |
 | `shell`      | interactive        | never: 404 + `interactive` over REST, `NOT_INVOCABLE` over the socket |
 | `upgrade`    | `kit/self-hosting` | never: 404 + `self-hosting` over REST, `NOT_FOUND` over the socket |
-| `serve`      | kit's own          | never: `self-hosting`                                      |
+| `service start`      | kit's own          | never: `self-hosting`                                      |
 | `status`     | reserved           | never: `management-only`                                   |
 | `audit verify` | reserved         | never: `management-only`                                   |
 | `token create`, `token verify`, `token key ...` | reserved | never: `management-only`; `create` signs with the identity keypair, `key` issues API keys into sqlite |
@@ -59,11 +59,11 @@ claim out.
 - `idempotency_test.go`: a write retried with its `Idempotency-Key` runs
   once, over REST and the socket
 - `mcp_stdio_test.go`: the built binary as a desktop host spawns it,
-  `serve mcp --stdio`
+  `service start mcp --stdio`
 - `permission_rules_test.go`: the `permissions:` rules of a `--policy`
   file in `$XDG_CONFIG_HOME/served/policies/`, refusing over REST, and a
   rule that does not compile refusing the start (exit 2)
-- `token_test.go`: `token create`, then `serve` with
+- `token_test.go`: `token create`, then `service start` with
   `services.all.auth.mode: jwt`, then `item sync` with the token over
   REST and RPC; the same with `token key create`, `auth.mode: apikey`
   and `token key revoke`

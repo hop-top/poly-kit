@@ -23,7 +23,7 @@ func TestEnginePrepare_KitServeOpensStore(t *testing.T) {
 	defer eng.close()
 
 	data := filepath.Join(sandbox, "engine")
-	cmd, args, err := root.Cmd.Find([]string{"serve"})
+	cmd, args, err := root.Cmd.Find([]string{"service", "start"})
 	require.NoError(t, err)
 	require.NoError(t, cmd.ParseFlags([]string{"--data", data}))
 

@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/cli/svcconfig"
 	kitlog "hop.top/kit/go/console/log"
 	"hop.top/kit/go/console/output"
@@ -73,54 +76,110 @@ func WithServiceBus(p serve.Publisher) func(*Root) {
 }
 
 // WithOwnServiceConfig declares that the tool layers services.* into
-// [Root.Viper] itself, so `serve` (the supervisor, the selector and
-// --list) and the quota commands read services.* exactly as the tool
-// left it.
+// [Root.Viper] itself, so `service start` (the supervisor and the
+// selector), `service list` and the quota commands read services.*
+// exactly as the tool left it.
 //
-// By default `serve` layers services.* on its own before reading it:
-// the services block of the tool's system, user and project config
-// files (the project file discovered from the working directory up
-// to $HOME), of each -c <path>, every <TOOL>_SERVICES_* variable and
-// every -c services.<key>=<value>, merged above whatever the tool put
-// at Viper's config-file rung. A tool with its own loader (its own
-// file order, profiles, its own environment prefix) passes this
-// option so that none of that happens: no file is discovered or read,
-// no variable is bound and no -c token is applied by `serve`. The
-// tool's loader is then the only source, -c included; read the
-// tokens with [Root.ConfigArgs]. The serve flags (--addr, --socket,
-// --enable, --disable and the timeouts) still apply for one run.
+// By default those commands layer services.* on their own before
+// reading it: the services block of the tool's system, user and
+// project config files (the project file discovered from the working
+// directory up to $HOME), of each -c <path>, every <TOOL>_SERVICES_*
+// variable and every -c services.<key>=<value>, merged above whatever
+// the tool put at Viper's config-file rung. A tool with its own loader
+// (its own file order, profiles, its own environment prefix) passes
+// this option so that none of that happens: no file is discovered or
+// read, no variable is bound and no -c token is applied by kit. The
+// tool's loader is then the only source, -c included; read the tokens
+// with [Root.ConfigArgs]. The `service start` flags (--addr, --socket,
+// --enable, --disable and the timeouts) still apply for one run. The
+// deprecated root `serve` and its --list run the same paths.
 func WithOwnServiceConfig() func(*Root) {
 	return func(r *Root) { r.serveOwnConfig = true }
 }
 
-// ensureServeRegistry creates the registry and mounts the serve parent
-// on first use. Mounting here rather than in New is what lets the
-// registry take the `serve` word away from WithAPI's leaf: whichever
-// option runs, exactly one command owns the word (serve-lifecycle.md
-// §"Compatibility").
+// ensureServeRegistry creates the registry and mounts the `service`
+// group on first use: `service start`, `service list`, `service stop`
+// and `service status`, plus the hidden, deprecated root `serve` that
+// runs `service start`. Mounting here rather than in New is what lets
+// the registry take the `serve` word away from any leaf a prior option
+// mounted: whichever option runs, exactly one command owns the word
+// (serve-lifecycle.md §"Compatibility").
 func (r *Root) ensureServeRegistry() {
 	if r.serveReg != nil {
 		return
 	}
 	r.serveReg = serve.NewRegistry()
 
-	// The registry wins: drop any leaf `serve` a prior WithAPI
+	// The registry wins: drop any leaf `serve` a prior option
 	// mounted. The two MUST NOT both own the word.
 	for _, c := range r.Cmd.Commands() {
-		if c.Name() == "serve" {
+		if c.Name() == serveAliasName {
 			r.Cmd.RemoveCommand(c)
 		}
 	}
-	r.Cmd.AddCommand(serveParentCmd(r))
+	r.serveCmd = serviceStartCmd(r)
+	r.serviceCmd = serviceGroupCmd(r, r.serveCmd)
+	r.serveAlias = serveAliasCmd(r)
+	r.Cmd.AddCommand(r.serviceCmd, r.serveAlias)
+	// Reserved whether the registry was created by an option inside
+	// New (where the snapshot would catch them) or later.
+	r.MarkReserved(ServiceCommandName)
+	r.MarkReserved(serveAliasName)
 }
 
-// ServeRegistry returns the registry `serve` children are registered
-// into, or nil when no service has been registered. Adopters that
-// need to inspect or extend the set after construction use it; the
-// normal path is [WithService].
+// ServiceCommandName is the word kit mounts its service lifecycle
+// group under: `<tool> service start|list|stop|status`.
+const ServiceCommandName = "service"
+
+// serveAliasName is the deprecated root word for `service start`.
+const serveAliasName = "serve"
+
+// ServeRegistry returns the registry `service start` selects from, or
+// nil when no service has been registered. Adopters that need to
+// inspect or extend the set after construction use it; the normal path
+// is [WithService].
 func (r *Root) ServeRegistry() *serve.Registry { return r.serveReg }
 
-// serveParentCmd builds the kit-owned `serve` command.
+// ServiceCommand returns the kit-owned `service` group, or nil when no
+// service is registered. It is the extension point for an adopter's own
+// lifecycle leaves:
+//
+//	root.ServiceCommand().AddCommand(setupCmd) // <tool> service setup
+//
+// A leaf added here is a management command like kit's own: withheld
+// from every served surface and exempt from the shape checks. The
+// words start, list, stop and status are kit's.
+func (r *Root) ServiceCommand() *cobra.Command {
+	if r == nil {
+		return nil
+	}
+	return r.serviceCmd
+}
+
+// ServeCommand returns kit's `service start` command, the one that
+// runs the services, or nil when no service is registered. Services
+// that put their own flags on it, like the mcp and rpc services, find
+// it here; the deprecated root `serve` shares every one of its flags.
+func (r *Root) ServeCommand() *cobra.Command {
+	if r == nil {
+		return nil
+	}
+	return r.serveCmd
+}
+
+// serviceGroupCmd builds the `service` group around start.
+func serviceGroupCmd(root *Root, start *cobra.Command) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   ServiceCommandName,
+		Short: "Run, inspect and stop the tool's services",
+		Long: "Run the tool's services under one lifecycle, list them, and ask a\n" +
+			"running instance for its status or to stop.",
+	}
+	cmd.AddCommand(start, serviceListCmd(root), serviceStopCmd(root), serviceStatusCmd(root))
+	return cmd
+}
+
+// serviceStartCmd builds `service start`.
 //
 // With no positional argument it is the supervisor over every
 // configured and enabled service; with exactly one it is the selector,
@@ -128,41 +187,24 @@ func (r *Root) ServeRegistry() *serve.Registry { return r.serveReg }
 // implementation, so a single service started by the selector observes
 // the same readiness, shutdown, and exit semantics as the same service
 // started by the supervisor (serve-lifecycle.md §"Command hierarchy").
-func serveParentCmd(root *Root) *cobra.Command {
+func serviceStartCmd(root *Root) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "serve [service]",
+		Use:   "start [service]",
 		Short: "Run configured services under one lifecycle",
 		Long: "Run every configured and enabled service under one lifecycle,\n" +
 			"or exactly the named service.\n\n" +
 			"Naming a service starts it even when it is not enabled, provided\n" +
 			"its configuration and policy validate.",
-		Args: cobra.MaximumNArgs(1),
-		ValidArgsFunction: func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			if root.serveReg == nil {
-				return nil, cobra.ShellCompDirectiveNoFileComp
-			}
-			return root.serveReg.Names(), cobra.ShellCompDirectiveNoFileComp
-		},
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: serviceNames(root),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if list, _ := cmd.Flags().GetBool("list"); list {
-				return runServeList(cmd, root)
-			}
 			return runServe(cmd, root, args)
 		},
 	}
-
-	SetSideEffect(cmd, SideEffectWriteShared)
-	SetIdempotency(cmd, IdempotencyNo)
-	// The schema describes `serve --list`, the only form that renders
-	// a document. The long-running forms (the supervisor, a named
-	// service) emit logs while they run, never a document to parse.
-	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]serveListRow{}, Version: "1.0"})
-
-	// `list` is reserved selector vocabulary, so the listing is a flag
-	// rather than a child: registering a `list` service is refused by
-	// the registry, and a `serve list` child would be ambiguous with
-	// the selector form for exactly that reason.
-	cmd.Flags().Bool("list", false, "List registered services and their state")
+	annotateServeRunner(cmd)
+	// The running forms emit logs, never a document; the one document
+	// `service start` renders is its --dry-run plan.
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &Plan{}, Version: "1.0"})
 	cmd.Flags().StringSlice("enable", nil,
 		"Enable a service for this run (repeatable, supervisor form only)")
 	cmd.Flags().StringSlice("disable", nil,
@@ -173,7 +215,97 @@ func serveParentCmd(root *Root) *cobra.Command {
 		"Per-service budget for one stop (default 30s)")
 	cmd.Flags().Duration("shutdown-timeout", 0,
 		"Total shutdown budget across all services (default 60s)")
+	return cmd
+}
 
+// annotateServeRunner declares what running the services is: a shared
+// write that is not idempotent, and self-hosting by its own mark rather
+// than only by the word serve, so `service start` is withheld from
+// every served surface — starting it inside a served invocation would
+// start a server inside the server.
+func annotateServeRunner(cmd *cobra.Command) {
+	SetSideEffect(cmd, SideEffectWriteShared)
+	SetIdempotency(cmd, IdempotencyNo)
+	setAnnotationTrue(cmd, cmdmeta.KeySelfHosting)
+}
+
+// serveAliasCmd builds the hidden root `serve`, the deprecated spelling
+// of `service start`. It shares every flag of `service start` (see
+// syncServeAlias) and keeps the `--list` flag `service list` replaced.
+func serveAliasCmd(root *Root) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:               serveAliasName + " [service]",
+		Short:             "Deprecated: use `service start`",
+		Long:              "Deprecated spelling of `service start`; `serve --list` is `service list`.",
+		Hidden:            true,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: serviceNames(root),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if list, _ := cmd.Flags().GetBool("list"); list {
+				return runServeList(cmd, root)
+			}
+			return runServe(cmd, root, args)
+		},
+	}
+	annotateServeRunner(cmd)
+	cmd.Annotations[kitDeprecatedSince] = serveAliasDeprecatedSince
+	cmd.Annotations[kitReplacedBy] = ServiceCommandName + " start"
+	cmd.Flags().Bool("list", false, "Deprecated: use `service list`")
+	// Unchanged from when this was the serve command: the schema
+	// describes `serve --list`.
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]serveListRow{}, Version: "1.0"})
+	return cmd
+}
+
+// serveAliasDeprecatedSince is the kit release that moved `serve` to
+// `service start`.
+const serveAliasDeprecatedSince = "0.5.0-alpha.25"
+
+// syncServeAlias gives the deprecated `serve` every flag `service
+// start` has. Services register theirs (--addr, --socket, --mcp-addr,
+// ...) on `service start` as their options run; the alias takes the
+// same *pflag.Flag, so a value parsed on either command is the value
+// the services read. Idempotent; run before argv is parsed.
+func (r *Root) syncServeAlias() {
+	if r.serveCmd == nil || r.serveAlias == nil {
+		return
+	}
+	inherited := r.serveCmd.InheritedFlags()
+	r.serveCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		if f.Name == "help" || inherited.Lookup(f.Name) != nil {
+			return
+		}
+		if r.serveAlias.Flags().Lookup(f.Name) == nil {
+			r.serveAlias.Flags().AddFlag(f)
+		}
+	})
+}
+
+// serviceNames completes a service name from the registry.
+func serviceNames(root *Root) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		if root.serveReg == nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return root.serveReg.Names(), cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+// serviceListCmd builds `service list`.
+func serviceListCmd(root *Root) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List registered services and their state",
+		Long: "List every registered service with whether it is configured,\n" +
+			"enabled for a bare `service start`, and ready in this process.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runServeList(cmd, root)
+		},
+	}
+	SetSideEffect(cmd, SideEffectRead)
+	SetIdempotency(cmd, IdempotencyYes)
+	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]serveListRow{}, Version: "1.0"})
 	return cmd
 }
 
@@ -257,6 +389,10 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	// drain, a second aborts it (serve-lifecycle.md §"Signals").
 	ctx, escalate, stop := serve.SignalContext(cmd.Context())
 	defer stop()
+	// `service stop` ends the run the way the first signal does: by
+	// canceling the context the supervisor runs on.
+	ctx, stopRequested := context.WithCancel(ctx)
+	defer stopRequested()
 
 	// Tracing and metrics start before any service and flush after
 	// the last one stops, so every request the services answer is
@@ -281,7 +417,19 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 		serve.WithEscalation(escalate),
 	)
 
+	// The control socket `service stop` and `service status` talk to.
+	// A run without one still serves: another instance answering on
+	// the socket keeps it, and only loses its stop/status channel.
+	control, err := listenControl(root, stopRequested, serviceStatusRows(reg, outcome.Selected))
+	if err != nil {
+		logger.Warn("service control socket unavailable; service stop and service status will not reach this instance",
+			"error", err)
+	}
+
 	res := sup.Run(ctx, outcome.Selected, configs)
+	if control != nil {
+		control.close(res.ExitCode())
+	}
 	// Every service has stopped: nothing can audit any more, so the
 	// chains they opened are synced and released.
 	if err := root.closeAuditChains(); err != nil && res.Err == nil {
@@ -293,8 +441,9 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	return nil
 }
 
-// serveListRow is one row of `serve --list`: a registered service and
-// whether it is configured, enabled for a bare `serve`, and ready.
+// serveListRow is one row of `service list`: a registered service and
+// whether it is configured, enabled for a bare `service start`, and
+// ready.
 type serveListRow struct {
 	Service    string `json:"service"    yaml:"service"    table:"SERVICE"`
 	Configured bool   `json:"configured" yaml:"configured" table:"CONFIGURED"`
@@ -340,9 +489,9 @@ func runServeList(cmd *cobra.Command, root *Root) error {
 	return output.Dispatch(cmd, root.Viper, rows)
 }
 
-// serveHelpAddendum appends the registered service names to the serve
-// command's help, so `serve --help` answers "which services can I
-// name?" without a second invocation.
+// serveHelpAddendum appends the registered service names to the help
+// of `service start`, so `service start --help` answers "which services
+// can I name?" without a second invocation.
 func (r *Root) serveHelpAddendum() {
 	if r.serveReg == nil {
 		return
@@ -351,14 +500,10 @@ func (r *Root) serveHelpAddendum() {
 	if len(names) == 0 {
 		return
 	}
-	for _, c := range r.Cmd.Commands() {
-		if c.Name() != "serve" {
-			continue
-		}
-		addendum := "\nServices: " + strings.Join(names, ", ")
-		if !strings.Contains(c.Long, addendum) {
+	addendum := "\nServices: " + strings.Join(names, ", ")
+	for _, c := range []*cobra.Command{r.serveCmd, r.serveAlias} {
+		if c != nil && !strings.Contains(c.Long, addendum) {
 			c.Long += "\n" + addendum
 		}
-		return
 	}
 }

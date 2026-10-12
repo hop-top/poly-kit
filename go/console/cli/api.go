@@ -118,9 +118,9 @@ type APIConfig struct {
 // there is one; key create|list|revoke with API keys.
 //
 // The API now reaches the command surface as a service under the
-// kit-owned `serve` parent rather than as a leaf `serve` command
+// kit-owned `service start` parent rather than as a leaf `service start` command
 // (serve-lifecycle.md §"Compatibility"). For a tool whose only service is the
-// API this is not observable: `<tool> serve` still starts the HTTP
+// API this is not observable: `<tool> service start` still starts the HTTP
 // server with the same `--addr` and `--no-auth` flags and the same
 // behavior. A tool that registers services of its own gains them as
 // siblings under the same lifecycle.
@@ -144,8 +144,8 @@ func WithAPI(cfg APIConfig) func(*Root) {
 	}
 }
 
-// mountAPIServeFlags puts the leaf `serve` command's own flags onto
-// the serve parent, so an adopter's existing `<tool> serve --addr :9000`
+// mountAPIServeFlags puts the leaf `service start` command's own flags onto
+// the serve parent, so an adopter's existing `<tool> service start --addr :9000`
 // keeps working verbatim.
 //
 // They are per-service flags for the api service, and the contract
@@ -162,10 +162,7 @@ func (r *Root) mountAPIServeFlags() {
 	if cfg == nil {
 		return
 	}
-	for _, c := range r.Cmd.Commands() {
-		if c.Name() != "serve" {
-			continue
-		}
+	if c := r.serveCmd; c != nil {
 		if c.Flags().Lookup("addr") == nil {
 			c.Flags().String("addr", cfg.Addr, "Listen address for the api service")
 		}
@@ -180,6 +177,5 @@ func (r *Root) mountAPIServeFlags() {
 			c.Flags().Bool(insecureNoPolicyFlag, false,
 				"Serve the api service on a non-loopback address with no delegation policy, rather than kit-default")
 		}
-		return
 	}
 }

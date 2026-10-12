@@ -48,19 +48,19 @@ Nothing to mount: the scaffolded root registers the `api`, `socket`,
 already a route, an MCP tool and a gRPC call.
 
 ```bash
-./bin/mytool serve --list          # registered services: api enabled by default, socket, mcp and rpc off, none ready until serving
-./bin/mytool serve api             # REST on 127.0.0.1:8080, OpenAPI at /openapi.json
+./bin/mytool service list          # registered services: api enabled by default, socket, mcp and rpc off, none ready until serving
+./bin/mytool service start api             # REST on 127.0.0.1:8080, OpenAPI at /openapi.json
 curl -s http://127.0.0.1:8080/v1/commands   # every command, invocable or withheld and why
 ```
 
 See [`guides/expose-cli-over-rest.md`](guides/expose-cli-over-rest.md)
 for the route shape and the policy on destructive commands,
 [`guides/expose-cli-over-mcp.md`](guides/expose-cli-over-mcp.md) to
-plug the tool into Claude Desktop or an IDE with `serve mcp --stdio`,
+plug the tool into Claude Desktop or an IDE with `service start mcp --stdio`,
 [`guides/expose-cli-over-grpc.md`](guides/expose-cli-over-grpc.md) to
-call it from Connect, gRPC and gRPC-Web clients with `serve rpc`, and
+call it from Connect, gRPC and gRPC-Web clients with `service start rpc`, and
 [`guides/migrate-to-served-commands.md`](guides/migrate-to-served-commands.md)
-if you are bringing an existing `serve` command over. For WS and a
+if you are bringing an existing `service start` command over. For WS and a
 hand-mounted ConnectRPC service beside REST, see
 [`examples/multiprotocol/`](../../examples/multiprotocol/).
 

@@ -113,7 +113,7 @@ func startStdio(t *testing.T, opts ...func(*cli.Root)) *stdioPeer {
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	r.SetArgs([]string{"serve", "mcp", "--stdio"})
+	r.SetArgs([]string{"service", "start", "mcp", "--stdio"})
 	go func() {
 		p.err = r.Execute(ctx)
 		_ = svcOut.Close()
@@ -345,7 +345,7 @@ func TestMCPStdioConfirmationNeedsElicitation(t *testing.T) {
 func TestMCPStdioRefusesAnHTTPAddress(t *testing.T) {
 	r := cli.New(cli.Config{Name: "test", Version: "0.1.0", DisableValidate: true}, With(Config{}))
 	r.Cmd.SetErr(io.Discard)
-	r.SetArgs([]string{"serve", "mcp", "--stdio", "--mcp-addr", "127.0.0.1:0"})
+	r.SetArgs([]string{"service", "start", "mcp", "--stdio", "--mcp-addr", "127.0.0.1:0"})
 	err := r.Execute(context.Background())
 	var oe *output.Error
 	require.True(t, errors.As(err, &oe), "%v", err)
@@ -368,7 +368,7 @@ func TestMCPServiceClassFollowsTheTransport(t *testing.T) {
 	r := cli.New(cli.Config{Name: "test", Version: "0.1.0", DisableValidate: true},
 		With(Config{}), cli.WithServicePolicy(denyListeners{}))
 	r.Cmd.SetErr(io.Discard)
-	r.SetArgs([]string{"serve", "mcp", "--mcp-addr", "127.0.0.1:0"})
+	r.SetArgs([]string{"service", "start", "mcp", "--mcp-addr", "127.0.0.1:0"})
 	err := r.Execute(context.Background())
 	var oe *output.Error
 	require.True(t, errors.As(err, &oe), "%v", err)

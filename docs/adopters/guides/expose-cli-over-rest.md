@@ -70,7 +70,7 @@ func main() {
 ```
 
 ```bash
-mytool serve
+mytool service start
 ```
 
 Every command carrying `kit/side-effect` is now reachable from this
@@ -123,7 +123,7 @@ Entries with `"invocable": false` have no route. The `reason` says
 why — `interactive`, `self-hosting`, `unauthorized-destructive`,
 `hidden-internal`, `deprecated`, `withheld-by-config` and the rest of
 the reflector's vocabulary. Read it before assuming a missing route
-is a bug. `serve` is always `self-hosting`: it is the process you are
+is a bug. `service start` is always `self-hosting`: it is the process you are
 talking to.
 
 `side_effect_source` says whether `side_effect` is your declaration.
@@ -447,7 +447,7 @@ string-keyed map with `sub` and `tenant`; the principal, tenant and
 scopes reach the permission gate and the audit trail as
 `Meta.Caller`, `Meta.Tenant` and the verified scopes.
 
-A non-loopback address with neither is refused at `serve`, exit `2`,
+A non-loopback address with neither is refused at `service start`, exit `2`,
 with a message naming the fix. The walkthrough — the refusal, the
 opt-ins, API keys and client certificates, a permission policy, the
 audit trail — is [secure-remote-serving.md](secure-remote-serving.md).
@@ -497,7 +497,7 @@ func main() {
 ```
 
 ```bash
-mytool serve
+mytool service start
 ```
 
 What you get, and what you owe:
@@ -509,12 +509,12 @@ What you get, and what you owe:
   an unconfirmed destructive command is refused with `403`, a
   typed-token command needs its token, and interactive and
   self-hosting commands stay unmounted. Root flags from your own
-  `mytool serve` command line reach every request.
+  `mytool service start` command line reach every request.
 - `newRoot` runs once per request, so keep it cheap: open stores and
   clients once, outside it, and make them safe for concurrent use.
   Anything reached through a package-level variable is shared across
   requests, factory or not.
-- A `newRoot` that cannot build a valid tree is refused when `serve`
+- A `newRoot` that cannot build a valid tree is refused when `service start`
   validates, at exit `2`, before the server binds.
 
 ### 11. Stream a long-running command
@@ -650,7 +650,7 @@ as it applies to REST:
   runs on a tree of its own, in parallel.
 - **Each request starts clean.** Flags from one request do not carry
   into the next. Every command starts from the flag state the
-  operator's own `mytool serve` command line left, plus only what the
+  operator's own `mytool service start` command line left, plus only what the
   request carries, on the shared tree and on a factory's alike.
   Standard input is empty.
 - **A cancellation is not a failure.** A command that fails while its
@@ -668,7 +668,7 @@ be lying about what your commands promise:
 - **Interactive commands.** A command tiered `interactive` needs a
   terminal and a human; it is never mounted, and appears in
   discovery with `reason: "interactive"`.
-- **Self-hosting commands.** `serve` and everything under it, any
+- **Self-hosting commands.** `service start` and everything under it, any
   command declaring `kit/network: ingress`, and any command annotated
   `kit/self-hosting: true` would start a server inside the server or
   replace the binary that is serving. They are never mounted, and

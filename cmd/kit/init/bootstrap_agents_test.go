@@ -60,20 +60,20 @@ func TestBootstrap_CLIGo_AgentsFragment(t *testing.T) {
 		// The fragment is only true for the tool it ships with, so
 		// every tool-specific value must be substituted, not generic.
 		assert.Contains(t, got, "# demo for agents")
-		assert.Contains(t, got, "demo serve api --addr 127.0.0.1:8080")
-		assert.Contains(t, got, "demo serve socket --socket /tmp/demo.sock")
+		assert.Contains(t, got, "demo service start api --addr 127.0.0.1:8080")
+		assert.Contains(t, got, "demo service start socket --socket /tmp/demo.sock")
 		// Each selector blocks in the foreground, so the opener must
 		// offer the both-surfaces form rather than listing two
 		// selectors an agent would run in sequence and hang on.
 		assert.Contains(t, got,
-			"demo serve --addr 127.0.0.1:8080 --enable socket --socket /tmp/demo.sock")
+			"demo service start --addr 127.0.0.1:8080 --enable socket --socket /tmp/demo.sock")
 		assert.Contains(t, got, "pick ONE per process")
-		assert.Contains(t, got, "a bare `serve` gives you REST alone",
+		assert.Contains(t, got, "a bare `service start` gives you REST\nalone",
 			"socket, mcp and rpc are registered but off, so the doc must not promise them")
 		assert.Contains(t, got, "registers four", "api, socket, mcp and rpc")
-		assert.Contains(t, got, "demo serve mcp --stdio")
-		assert.Contains(t, got, "demo serve mcp --mcp-addr 127.0.0.1:8081")
-		assert.Contains(t, got, "demo serve rpc --rpc-addr 127.0.0.1:8082")
+		assert.Contains(t, got, "demo service start mcp --stdio")
+		assert.Contains(t, got, "demo service start mcp --mcp-addr 127.0.0.1:8081")
+		assert.Contains(t, got, "demo service start rpc --rpc-addr 127.0.0.1:8082")
 		assert.Contains(t, got, "/cmdsurface.v1.Commands/Invoke")
 		assert.NotContains(t, got, "{{", "no unrendered template action may survive")
 		assert.NotContains(t, got, ".Name", "the variable must be substituted, not named")

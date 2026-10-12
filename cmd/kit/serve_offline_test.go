@@ -17,12 +17,10 @@ func newServeCmdForTest(t *testing.T) *cobra.Command {
 	t.Helper()
 	root, eng := newKitRoot("0.0.0-test")
 	t.Cleanup(eng.close)
-	for _, c := range root.Cmd.Commands() {
-		if c.Name() == "serve" {
-			return c
-		}
+	if c := root.ServeCommand(); c != nil {
+		return c
 	}
-	t.Fatal("kit root has no serve command")
+	t.Fatal("kit root has no service start command")
 	return nil
 }
 

@@ -106,7 +106,7 @@ type rpcRun struct {
 	stop  context.CancelFunc
 }
 
-// startRPC runs `serve <args>` on a root carrying the rpc service
+// startRPC runs `service start <args>` on a root carrying the rpc service
 // (added by with) and the commands above, and waits for the rpc
 // service's readiness. It returns the base URL readiness reported.
 func startRPC(t *testing.T, with func(*cli.Root), args []string, opts ...func(*cli.Root)) (*rpcRun, string) {
@@ -127,7 +127,7 @@ func startRPC(t *testing.T, with func(*cli.Root), args []string, opts ...func(*c
 
 	ctx, cancel := context.WithCancel(context.Background())
 	run.stop = cancel
-	run.root.SetArgs(append([]string{"serve"}, args...))
+	run.root.SetArgs(append([]string{"service", "start"}, args...))
 	go func() { run.errCh <- run.root.Execute(ctx) }()
 	t.Cleanup(func() {
 		cancel()
@@ -241,7 +241,10 @@ func TestRPCServiceServesEveryProtocol(t *testing.T) {
 func TestRPCServiceWithholdsWhatNeverRunsRemotely(t *testing.T) {
 	base := startDefault(t, rpcserve.Config{}, cli.WithStatus(cli.StatusConfig{}))
 	c := client(base, protocols[0])
-	for _, path := range []string{"shell", "status", "serve", "nope"} {
+	for _, path := range []string{
+		"shell", "status", "serve", "nope",
+		"service start", "service stop", "service status", "service list",
+	} {
 		_, err := c.Invoke(t.Context(), call(path, nil))
 		assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err), path)
 	}
@@ -578,13 +581,13 @@ func TestRPCServiceStopEndsOpenStreams(t *testing.T) {
 	assert.Error(t, stream.Err(), "the open stream ended")
 }
 
-// serveErr runs `serve <args>` on a root with the rpc service and
+// serveErr runs `service start <args>` on a root with the rpc service and
 // returns the refusal it ends with.
 func serveErr(t *testing.T, cfg rpcserve.Config, args []string, opts ...func(*cli.Root)) *output.Error {
 	t.Helper()
 	r := newServeRoot(t, append([]func(*cli.Root){rpcserve.With(cfg)}, opts...)...)
 	rpcCommands(r)
-	err := runServeArgs(t, r, append([]string{"serve"}, args...), 5*time.Second)
+	err := runServeArgs(t, r, append([]string{"service", "start"}, args...), 5*time.Second)
 	require.Error(t, err)
 	var oe *output.Error
 	require.ErrorAs(t, err, &oe, err.Error())
@@ -602,7 +605,7 @@ func TestRPCServiceExposureRefusals(t *testing.T) {
 	t.Run("authenticated with no policy serves under kit-default", func(t *testing.T) {
 		r := newServeRoot(t, rpcserve.With(rpcserve.Config{Auth: bearerAuth}))
 		rpcCommands(r)
-		err := runServeArgs(t, r, []string{"serve", "rpc", "--rpc-addr", "0.0.0.0:0"}, 2*time.Second)
+		err := runServeArgs(t, r, []string{"service", "start", "rpc", "--rpc-addr", "0.0.0.0:0"}, 2*time.Second)
 		assert.NoError(t, err)
 	})
 	t.Run("bad address", func(t *testing.T) {
@@ -614,7 +617,7 @@ func TestRPCServiceExposureRefusals(t *testing.T) {
 		r := newServeRoot(t, rpcserve.With(rpcserve.Config{}))
 		rpcCommands(r)
 		r.Viper.Set("services.rpc.addr", "0.0.0.0:0")
-		err := runServeArgs(t, r, []string{"serve", "rpc"}, 5*time.Second)
+		err := runServeArgs(t, r, []string{"service", "start", "rpc"}, 5*time.Second)
 		var oe *output.Error
 		require.ErrorAs(t, err, &oe)
 		assert.Equal(t, 2, oe.ExitCode)
@@ -628,7 +631,7 @@ func TestRPCServiceInsecureOptInsAreConfigKeys(t *testing.T) {
 	r.Viper.Set("services.rpc.insecure_remote", true)
 	r.Viper.Set("services.rpc.insecure_no_policy", true)
 	// Past validation, the run binds; cancellation is a clean stop.
-	err := runServeArgs(t, r, []string{"serve", "rpc", "--rpc-addr", "0.0.0.0:0"}, 2*time.Second)
+	err := runServeArgs(t, r, []string{"service", "start", "rpc", "--rpc-addr", "0.0.0.0:0"}, 2*time.Second)
 	assert.NoError(t, err)
 }
 
@@ -636,14 +639,14 @@ func TestRPCServiceIsListedAndDisabledByDefault(t *testing.T) {
 	r := newServeRoot(t, rpcserve.With(rpcserve.Config{}))
 	var out strings.Builder
 	r.Cmd.SetOut(&out)
-	r.SetArgs([]string{"serve", "--list"})
+	r.SetArgs([]string{"service", "list"})
 	require.NoError(t, r.Execute(context.Background()))
 	assert.Regexp(t, `(?m)^rpc\s+false\s+false`, out.String())
 
 	// The supervisor form with nothing enabled is a usage error, not
 	// a server nobody asked for.
 	r2 := newServeRoot(t, rpcserve.With(rpcserve.Config{}))
-	err := runServeArgs(t, r2, []string{"serve"}, 2*time.Second)
+	err := runServeArgs(t, r2, []string{"service", "start"}, 2*time.Second)
 	var oe *output.Error
 	require.ErrorAs(t, err, &oe)
 	assert.Equal(t, 2, oe.ExitCode)

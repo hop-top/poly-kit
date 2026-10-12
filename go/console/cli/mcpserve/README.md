@@ -2,7 +2,7 @@
 
 ## What it answers
 
-How a kit CLI serves its command tree as MCP tools under `<tool> serve`,
+How a kit CLI serves its command tree as MCP tools under `<tool> service start`,
 with the same lifecycle and gates as the `api` and `socket` services,
 without every other kit CLI linking the MCP SDK. `mcpserve.With`
 registers the `mcp` service; the protocol is the official Go SDK via
@@ -10,8 +10,8 @@ registers the `mcp` service; the protocol is the official Go SDK via
 
 ## Use it when
 
-- serve MCP over streamable HTTP → `mcpserve.With(mcpserve.Config{})`, then `<tool> serve mcp`
-- serve a desktop host that spawns the tool → `<tool> serve mcp --stdio`
+- serve MCP over streamable HTTP → `mcpserve.With(mcpserve.Config{})`, then `<tool> service start mcp`
+- serve a desktop host that spawns the tool → `<tool> service start mcp --stdio`
 - expose it beyond loopback → `Config.Auth` plus `--policy`, or the `services.mcp.insecure_*` opt-ins
 - permit destructive commands over MCP → `Config.Policy.AllowDestructiveOn` naming `cmdsurface.SurfaceMCP`
 - add prompts or resources → `Config.ServerOptions` with `mcpsdk.WithServerConfigurator`
@@ -29,7 +29,7 @@ root := cli.New(cli.Config{Name: "mytool", Version: version},
 ## Contract
 
 - Normative text: [serve-lifecycle contract §"The mcp service"](../../../../docs/contracts/serve-lifecycle.md#the-mcp-service).
-- Disabled by default; `serve mcp` starts it. HTTP on its own listener, default `127.0.0.1:8081`, path `/mcp`.
+- Disabled by default; `service start mcp` starts it. HTTP on its own listener, default `127.0.0.1:8081`, path `/mcp`.
 - Keys: `services.mcp.{transport,addr,path,insecure_remote,insecure_no_policy}`; flags `--stdio`, `--mcp-addr`.
 - HTTP over TLS under `services.mcp.tls`; `services.mcp.auth.mode` authenticates in place of `Auth`: `mtls` by client certificate, `jwt`, `jwks` or `oidc` by bearer token.
 - HTTP-plane middleware on the HTTP transport: the chain every kit listener shares, from `services.mcp.<block>`; refusals are JSON-RPC errors. The SDK's body cap follows `body_limit`; its DNS-rebinding check stays beneath kit's Host check unless `host_check` admits other names.

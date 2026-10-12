@@ -69,9 +69,9 @@ func main() {
 ```
 
 `mcpserve.With` registers a service named `mcp`. Like `socket`, it is
-registered and not enabled: a bare `mytool serve` leaves it off,
-`mytool serve mcp` starts it, and `services.mcp.enabled: true` puts it
-under a bare `serve`. It does not need the `api` service; register it
+registered and not enabled: a bare `mytool service start` leaves it off,
+`mytool service start mcp` starts it, and `services.mcp.enabled: true` puts it
+under a bare `service start`. It does not need the `api` service; register it
 alone if MCP is all you serve.
 
 Every command the REST projection would mount becomes one tool, named
@@ -85,18 +85,18 @@ command declares its positional arguments, one `args` array — see
 Over streamable HTTP, on the service's own listener:
 
 ```console
-$ mytool serve mcp
+$ mytool service start mcp
 INFO serve: ready_reported object=service elapsed_ms=0 service=mcp address=http://127.0.0.1:8081/mcp
 ```
 
-The listener is the service's own, not the api's: `serve mcp` runs
+The listener is the service's own, not the api's: `service start mcp` runs
 without the api, and stopping one never stops the other. Wait for the
 `ready_reported` line and read the endpoint from `address=`.
 
 Over stdio, for a host that spawns the tool:
 
 ```sh
-mytool serve mcp --stdio
+mytool service start mcp --stdio
 ```
 
 Standard output then carries protocol messages only; logs, the
@@ -104,7 +104,7 @@ lifecycle trace and hints go to standard error. When the host closes
 standard input the service answers every request it has already read,
 then stops, and the process exits `0`.
 
-Both surfaces under one supervisor: `mytool serve --enable mcp` runs
+Both surfaces under one supervisor: `mytool service start --enable mcp` runs
 `api` on `127.0.0.1:8080` and `mcp` on `127.0.0.1:8081`.
 
 ### 3. Connect a host
@@ -118,7 +118,7 @@ project root for Claude Code, `mcp.json` for Cursor:
   "mcpServers": {
     "mytool": {
       "command": "/usr/local/bin/mytool",
-      "args": ["serve", "mcp", "--stdio"]
+      "args": ["service", "start", "mcp", "--stdio"]
     }
   }
 }
@@ -167,7 +167,7 @@ printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"sh","version":"0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' |
-  mytool serve mcp --stdio
+  mytool service start mcp --stdio
 ```
 
 In practice, point an MCP client at the endpoint rather than curl: the
@@ -214,7 +214,7 @@ The normative text is the
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `services.mcp.enabled` | `false` | start under a bare `serve` |
+| `services.mcp.enabled` | `false` | start under a bare `service start` |
 | `services.mcp.transport` | `http` | `http` or `stdio`; `--stdio` wins for one run |
 | `services.mcp.addr` | `127.0.0.1:8081` | HTTP listen address; `--mcp-addr` wins for one run |
 | `services.mcp.path` | `/mcp` | HTTP endpoint path |

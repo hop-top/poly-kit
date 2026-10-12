@@ -13,7 +13,7 @@ This page covers two intents:
 
 - Tool authors creating a new CLI from scratch (`kit init`).
 - App teams that want shared identity / sync without writing native
-  bindings (`kit serve`).
+  bindings (`kit service start`).
 - Polyglot teams: TS or Python apps spawn `kit` as a subprocess and
   talk HTTP.
 
@@ -203,7 +203,7 @@ The five managed files are:
 ### Recommended path
 
 ```bash
-kit serve --port 8080 --data ./myapp-data
+kit service start --port 8080 --data ./myapp-data
 ```
 
 Output:
@@ -229,7 +229,7 @@ curl http://localhost:8080/capabilities
 # {service:"kit", version:"...", resources:[...]}
 ```
 
-### `kit serve` flag reference
+### `kit service start` flag reference
 
 | Flag         | Default       | Description                                |
 |--------------|---------------|--------------------------------------------|
@@ -305,7 +305,7 @@ Multiple apps share one engine instance to reduce resource usage.
 
 ```bash
 # Start daemon
-kit serve --daemon --port 8080 --data ~/.kit
+kit service start --daemon --port 8080 --data ~/.kit
 
 # App A — namespace via header
 curl -X POST http://localhost:8080/notes/ \

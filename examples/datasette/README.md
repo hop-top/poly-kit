@@ -10,7 +10,7 @@ Recipe for browsing a kit instance's SQLite state with
   `snapshots`). Includes faceting, canned queries, and column
   descriptions.
 - `inspect.sh` — convenience script that locates the kit data
-  directory and runs `datasette serve --immutable` against it.
+  directory and runs `datasette service start --immutable` against it.
 
 ## Quick start
 

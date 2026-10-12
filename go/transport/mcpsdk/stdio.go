@@ -18,7 +18,7 @@ import (
 // end of input does not abandon the calls already read.
 //
 // A host may write its requests and close its end at once
-// (`printf ... | tool serve mcp --stdio`). The SDK (go-sdk v1.8.0,
+// (`printf ... | tool service start mcp --stdio`). The SDK (go-sdk v1.8.0,
 // internal/jsonrpc2) treats end of input as a broken connection: it
 // cancels every call in flight and never writes their responses, so
 // such a host gets no answer at all (v1.7.0 also ended the session

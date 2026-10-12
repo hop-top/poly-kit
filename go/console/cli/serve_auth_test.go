@@ -179,7 +179,7 @@ func apiSvc(t *testing.T, r *Root) *apiService {
 func serveAPI(t *testing.T, r *Root, args ...string) (string, func()) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	r.SetArgs(append([]string{"serve", "api"}, args...))
+	r.SetArgs(append([]string{"service", "start", "api"}, args...))
 	errCh := make(chan error, 1)
 	go func() { errCh <- r.Execute(ctx) }()
 
@@ -212,7 +212,7 @@ func serveAPI(t *testing.T, r *Root, args ...string) (string, func()) {
 func serveSocket(t *testing.T, r *Root, path string) func() {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	r.SetArgs([]string{"serve", "socket"})
+	r.SetArgs([]string{"service", "start", "socket"})
 	errCh := make(chan error, 1)
 	go func() { errCh <- r.Execute(ctx) }()
 

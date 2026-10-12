@@ -82,7 +82,7 @@ func (r *Registry) Lookup(name string) (Service, bool) {
 }
 
 // Names returns every registered identifier in registration order, so
-// `serve --list` and the startup log mirror the adopter's wiring
+// `service list` and the startup log mirror the adopter's wiring
 // (serve-lifecycle.md §"Ordering").
 func (r *Registry) Names() []string {
 	r.mu.RLock()

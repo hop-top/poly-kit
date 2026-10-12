@@ -78,7 +78,7 @@ binary that is serving. Any one of three signals marks it:
 
 | Signal | Example |
 |--------|---------|
-| it is named `serve`, or sits under one, at any depth | `mytool serve`, `mytool serve socket`, `mytool svc serve` |
+| it is named `service start`, or sits under one, at any depth | `mytool service start`, `mytool service start socket`, `mytool svc serve` |
 | it declares `kit/network: ingress` | a `listen` command that accepts connections |
 | it carries `kit/self-hosting: true` | an `upgrade` that replaces the binary |
 
@@ -87,7 +87,7 @@ tree withholds its server too. **No option lifts `self-hosting`**:
 the relaxations below exist so a consumer can reflect for the surface
 it has — a terminal lifts `interactive`, the spec lifts
 `management-only` — and no projected surface ever has "is the process
-itself". Kit's own `serve` is both reserved and self-hosting; it
+itself". Kit's own `service start` is both reserved and self-hosting; it
 reports `self-hosting`, the answer that says why calling it through a
 transport can never work.
 

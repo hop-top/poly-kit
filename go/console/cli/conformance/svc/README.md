@@ -34,21 +34,21 @@ if errors.As(err, &cliErr) {
 
 ## Contract
 
-- `serve` flags: `--port` (0 = auto), `--addr`, `--scenarios-root`
+- `service start` flags: `--port` (0 = auto), `--addr`, `--scenarios-root`
   (`KIT_CONF_SVC_SCENARIOS_ROOT`, required), `--claims-db`
   (`KIT_CONF_SVC_CLAIMS_DB`, required), `--judges-config`
   (`KIT_CONF_SVC_JUDGES_CONFIG`; omitted means every AI judge is refused),
   `--hard-cap-mb` (64), `--soft-cap-mb` (8)
-- `serve` prints one JSON line on stdout at startup: `port`, `pid`,
+- `service start` prints one JSON line on stdout at startup: `port`, `pid`,
   `version`, `scenarios_loaded`; shuts down on context cancel with a 30s grace
 - `token mint` prints the plaintext token once; `token list` shows
   `token_id`, sha256 prefix and scopes, never plaintext
 - Exit codes: 2 missing required flag, 1 store, judges config or listen failure
-- All leaves are exempt from Layer-A validation; `serve` is annotated
+- All leaves are exempt from Layer-A validation; `service start` is annotated
   side effect `write`, idempotent `no`
 
 ## Neighbours
 
 - `hop.top/kit/go/conformance/svc`: service, `FSStore`, `SQLClaimStore`, judges
-- `hop.top/kit/go/transport/api`: router and middleware `serve` mounts on
+- `hop.top/kit/go/transport/api`: router and middleware `service start` mounts on
 - `hop.top/kit/go/console/cli/conformance/grade`: the client side

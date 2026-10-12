@@ -324,6 +324,15 @@ type Root struct {
 	// until the first WithService/WithServices/WithAPI option runs.
 	// Its presence is what mounts the kit-owned serve parent.
 	serveReg *serve.Registry
+	// serviceCmd is the kit-owned `service` group, serveCmd its
+	// `start` leaf, and serveAlias the hidden deprecated root `serve`
+	// that runs the same thing; all nil until the registry exists.
+	// Every behavior keyed to kit's serve command (the per-service
+	// flags, the policy exemption, the help addendum) finds it
+	// through these pointers, never by name.
+	serviceCmd *cobra.Command
+	serveCmd   *cobra.Command
+	serveAlias *cobra.Command
 	// servePolicy is the third validation gate for service selection;
 	// nil passes every service.
 	servePolicy serve.PolicyGate
@@ -701,6 +710,9 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	for _, o := range opts {
 		o(r)
 	}
+	// The deprecated `serve` shares the flags the options put on
+	// `service start`; Prepare repeats this for later registrations.
+	r.syncServeAlias()
 	// The token command, once every option has run: WithAPI and
 	// WithIdentity may come in either order.
 	if r.apiCfg != nil && (r.apiCfg.Auth != nil || r.identityCfg != nil || r.apiKeysCfg != nil) {
@@ -1112,10 +1124,14 @@ func (r *Root) prepareTree() {
 	// know which leaves accept --dry-run. Idempotent.
 	r.applyDryRunHelpAddendum()
 
-	// List the registered services on `serve --help`, so the question
+	// List the registered services on `service start --help`, so the question
 	// "which services can I name?" is answered without a second
 	// invocation. Idempotent.
 	r.serveHelpAddendum()
+
+	// The deprecated `serve` takes every flag the services put on
+	// `service start`, whichever option registered them. Idempotent.
+	r.syncServeAlias()
 
 	// Emit a one-time deprecation warning when any leaf still uses
 	// the legacy kit/dry-run: supported annotation. The
