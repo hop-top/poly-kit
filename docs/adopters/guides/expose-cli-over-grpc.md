@@ -71,17 +71,17 @@ func main() {
 ```
 
 ```bash
-mytool serve rpc
+mytool service start rpc
 ```
 
 ```text
 INFO serve: ready_reported object=service service=rpc address=http://127.0.0.1:8082
 ```
 
-The service is off until you name it: `serve rpc` starts it alone,
-`serve --enable rpc` starts it beside every enabled service (the `api`
+The service is off until you name it: `service start rpc` starts it alone,
+`service start --enable rpc` starts it beside every enabled service (the `api`
 service, when you also registered `WithAPI`), and
-`services.rpc.enabled: true` in config makes a bare `serve` start it.
+`services.rpc.enabled: true` in config makes a bare `service start` start it.
 `--rpc-addr` overrides the address for one run.
 
 The service lives in its own package so that a CLI that never serves
@@ -327,7 +327,7 @@ rpcserve.With(rpcserve.Config{
 ```
 
 A hidden command answers `not_found`. Interactive, self-hosting and
-management-only commands (`shell`, `serve`, `status`) never run over
+management-only commands (`shell`, `service start`, `status`) never run over
 RPC, exactly as they are never mounted over REST.
 
 ### 10. Enable auth and limits
@@ -356,7 +356,7 @@ services:
 ```
 
 ```bash
-mytool serve rpc --policy=readonly
+mytool service start rpc --policy=readonly
 ```
 
 A refused call is `unauthenticated` and is recorded in the audit

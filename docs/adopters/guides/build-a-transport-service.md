@@ -182,8 +182,8 @@ func main() {
 }
 ```
 
-Now `mytool serve tcp` starts it, `mytool serve --list` shows it, and
-`services.tcp.enabled: true` includes it in `mytool serve`.
+Now `mytool service start tcp` starts it, `mytool service list` shows it, and
+`services.tcp.enabled: true` includes it in `mytool service start`.
 
 The name must match `^[a-z][a-z0-9-]*$` and must not be `all`, `none`,
 or `list`. An invalid name panics at construction — it is a wiring
@@ -272,7 +272,7 @@ These are consequences for you as the author, not background theory:
   `Serve` reports as a runtime crash instead of a start failure.
 - **`Close` must make `Serve` return.** The supervisor bounds `Stop`
   and abandons it when it overruns; a `Serve` that keeps running
-  holds your endpoint open after `serve` has reported it stopped.
+  holds your endpoint open after `service start` has reported it stopped.
 - **`Close` may be called more than once**, including concurrently
   with cancellation. Make it idempotent.
 - **`Serve` returning `nil` after cancellation is a clean stop.**

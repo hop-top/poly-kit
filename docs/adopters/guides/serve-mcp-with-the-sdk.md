@@ -24,7 +24,7 @@ identically. They differ in who owns the server.
 |---|---|---|---|
 | Starts from | a kit root (`cli.New`) | a `cmdsurface.Bridge` | a `cmdsurface.Bridge` |
 | Protocol layer | official MCP Go SDK, through `mcpsdk` | official MCP Go SDK | hand-rolled in kit |
-| Lifecycle | `<tool> serve mcp`, under the serve supervisor | yours | yours |
+| Lifecycle | `<tool> service start mcp`, under the serve supervisor | yours | yours |
 | Transport | streamable HTTP on its own listener, or stdio | streamable HTTP (sessions, SSE, stateless), stdio, any SDK transport | single-POST JSON-RPC |
 | Protocol versions | 2024-11-05 … 2025-11-25 in a session, 2026-07-28 statelessly, on one HTTP endpoint; all over stdio | 2024-11-05 … 2025-11-25 in a session, 2026-07-28 statelessly, on one endpoint; all statelessly with `WithStateless()`; all over stdio | 2024-11-05 and 2026-07-28 on one path |
 | `kit/auth-required` | verified by `Config.Auth` over HTTP; spawn trust over stdio | refused by default; established by `WithCallMeta` or `WithAuthenticated` | verified by an `api.Auth` on the router |
@@ -116,7 +116,7 @@ Patterns are **space-separated leaf paths**, not dotted tool names:
 
 ### 3. Serve over stdio instead (optional)
 
-On a kit root, `acme serve mcp --stdio` already does this, with the
+On a kit root, `acme service start mcp --stdio` already does this, with the
 auth and confirmation gates adapted to a spawned process — see
 [expose-cli-over-mcp.md](expose-cli-over-mcp.md#3-connect-a-host).
 On a bare bridge:

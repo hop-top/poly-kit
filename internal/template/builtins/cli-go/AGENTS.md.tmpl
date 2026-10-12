@@ -10,40 +10,40 @@ expect both.
 REST only:
 
 ```sh
-{{.Name}} serve api --addr 127.0.0.1:8080
+{{.Name}} service start api --addr 127.0.0.1:8080
 ```
 
 Socket only:
 
 ```sh
-{{.Name}} serve socket --socket /tmp/{{.Name}}.sock
+{{.Name}} service start socket --socket /tmp/{{.Name}}.sock
 ```
 
 MCP only — over HTTP, or over stdio when you spawn the process
 yourself:
 
 ```sh
-{{.Name}} serve mcp --mcp-addr 127.0.0.1:8081
-{{.Name}} serve mcp --stdio
+{{.Name}} service start mcp --mcp-addr 127.0.0.1:8081
+{{.Name}} service start mcp --stdio
 ```
 
 gRPC only — Connect, gRPC and gRPC-Web on one port:
 
 ```sh
-{{.Name}} serve rpc --rpc-addr 127.0.0.1:8082
+{{.Name}} service start rpc --rpc-addr 127.0.0.1:8082
 ```
 
 REST and the socket, under one lifecycle:
 
 ```sh
-{{.Name}} serve --addr 127.0.0.1:8080 --enable socket --socket /tmp/{{.Name}}.sock
+{{.Name}} service start --addr 127.0.0.1:8080 --enable socket --socket /tmp/{{.Name}}.sock
 ```
 
-A bare `{{.Name}} serve` starts every *enabled* service. This tool
+A bare `{{.Name}} service start` starts every *enabled* service. This tool
 registers four: `api`, enabled by default, and `socket`, `mcp` and
-`rpc`, registered but off — so a bare `serve` gives you REST alone. Turn the
-socket on for that run with `--enable socket`, or persistently in the
-config file:
+`rpc`, registered but off — so a bare `service start` gives you REST
+alone. Turn the socket on for that run with `--enable socket`, or
+persistently in the config file:
 
 ```yaml
 services:
@@ -52,13 +52,14 @@ services:
     path: /tmp/{{.Name}}.sock
 ```
 
-Run `{{.Name}} serve --list` to see which services are configured and
+Run `{{.Name}} service list` to see which services are configured and
 enabled before you start.
 
-`serve api` binds loopback and refuses a non-loopback address without
-`--insecure-remote`; `serve mcp` binds `127.0.0.1:8081` and
-`serve rpc` binds `127.0.0.1:8082` by the same rule. The socket is mode `0600`. Whichever form you
-use, each service prints its resolved address on its
+`service start api` binds loopback and refuses a non-loopback address
+without `--insecure-remote`; `service start mcp` binds `127.0.0.1:8081`
+and `service start rpc` binds `127.0.0.1:8082` by the same rule. The
+socket is mode `0600`. Whichever form you use, each service prints its
+resolved address on its
 `ready_reported` line under `address=`; wait for that rather than for
 a banner.
 
@@ -157,7 +158,7 @@ Pass `--socket` so you know the path rather than deriving it, then
 call:
 
 ```sh
-{{.Name}} serve socket --socket /tmp/{{.Name}}.sock
+{{.Name}} service start socket --socket /tmp/{{.Name}}.sock
 
 python3 -c '
 import socket, sys
@@ -338,8 +339,8 @@ them apart before you retry.
 
 ## Never
 
-- Never call `serve` or any `self-hosting` command from inside a served
-  invocation. You would start a server inside the server.
+- Never call `service start`, `service stop` or any `self-hosting`
+  command from inside a served invocation. You would start a server inside the server.
 - Never retry a `DENIED`, `BLOCKED`, or `unauthorized-destructive`
   refusal unchanged. Nothing you send lifts it; a human must.
 - Never retry an `interactive` or `self-hosting` command on another

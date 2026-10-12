@@ -146,7 +146,7 @@ type Config struct {
 // go/console/cli itself does not depend on it.
 //
 // Like [cli.WithSocket], the service is NOT enabled by default. Start
-// it with `<tool> serve rpc`, or set services.rpc.enabled.
+// it with `<tool> service start rpc`, or set services.rpc.enabled.
 func With(cfg Config) func(*cli.Root) {
 	return with(cfg, nil)
 }
@@ -161,18 +161,11 @@ func with(cfg Config, serverOpts []rpc.ServerOption) func(*cli.Root) {
 	}
 }
 
-// serveCmd returns the kit-owned serve parent, or nil before one is
-// mounted.
+// serveCmd returns kit's `service start`, the command the services'
+// flags go on (the deprecated root `serve` shares them), or nil before
+// one is mounted.
 func serveCmd(r *cli.Root) *cobra.Command {
-	if r == nil || r.Cmd == nil {
-		return nil
-	}
-	for _, c := range r.Cmd.Commands() {
-		if c.Name() == "serve" {
-			return c
-		}
-	}
-	return nil
+	return r.ServeCommand()
 }
 
 // mountServeFlags puts --rpc-addr on the serve parent, the way

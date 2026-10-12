@@ -1,4 +1,4 @@
-// `kit serve` is the reference implementation of the engine wire
+// `kit service start` is the reference implementation of the engine wire
 // protocol, served as kit's own api service (see engine below).
 // Routes, request/response shapes, status codes, and the
 // error envelope below conform to
@@ -91,7 +91,7 @@ func errorCode(status int, msg string) string {
 }
 
 // serveNetOpts resolves the effective peer/sync opt-outs for
-// `kit serve`. The kit-global --offline flag is the highest-precedence
+// `kit service start`. The kit-global --offline flag is the highest-precedence
 // network override: when it tagged the command context (see
 // cli.IsOffline) both opt-outs flip on regardless of the individual
 // --no-peer/--no-sync values. The override only forces the opt-outs
@@ -108,17 +108,17 @@ func serveNetOpts(cmd *cobra.Command) (noPeer, noSync bool) {
 // routeRegistrar is the slice of *api.Router the engine's route
 // registrars need. The api service builds the router; the engine wraps
 // it in a capRouter so every route also lands in the /capabilities set
-// the leaf `serve` command used to get from api.WithCapabilities.
+// the leaf `service start` command used to get from api.WithCapabilities.
 type routeRegistrar interface {
 	Handle(method, path string, handler http.HandlerFunc)
 }
 
-// engine is the document engine behind `kit serve`: the stores it
+// engine is the document engine behind `kit service start`: the stores it
 // opens before the api service starts, the tokens it mints for the
 // run, and the bus its document events publish to.
 //
 // It is the adopter side of kit's own migration from a hand-written
-// leaf `serve` command to the api service: the routes are unchanged,
+// leaf `service start` command to the api service: the routes are unchanged,
 // the server, the listener, the startup line and the shutdown are the
 // service's. See docs/adopters/guides/migrate-to-served-commands.md.
 type engine struct {
@@ -159,15 +159,13 @@ func (e *engine) close() {
 	_ = e.bus.Close(ctx)
 }
 
-// mountFlags puts the engine's flags on the kit-owned serve parent,
+// mountFlags puts the engine's flags on kit's `service start` (the
+// deprecated `kit service start` shares them),
 // beside the api service's own --addr. They predate the hierarchy and
 // every SDK sidecar passes them, so they stay where scripts expect
 // them; each configures the api service and nothing else.
 func (e *engine) mountFlags(root *cli.Root) {
-	for _, c := range root.Cmd.Commands() {
-		if c.Name() != "serve" {
-			continue
-		}
+	if c := root.ServeCommand(); c != nil {
 		xdgData := os.Getenv("XDG_DATA_HOME")
 		if xdgData == "" {
 			home, _ := os.UserHomeDir()
@@ -187,19 +185,20 @@ func (e *engine) mountFlags(root *cli.Root) {
 			"on every write. --port, --data, --versions, --no-peer and --no-sync\n" +
 			"configure it; the startup JSON line on stdout carries the bound port\n" +
 			"and the tokens for this run."
-		return
 	}
 }
 
-// prepare is the root's PrePersistentRunE hook. For a `serve` that
+// prepare is the root's PrePersistentRunE hook. For a `service start` that
 // will start the api service it maps --port onto the service's listen
 // address, opens the stores and mints the tokens, so a bad data
 // directory is refused before anything binds. Every other command,
-// `serve --list`, and a `serve <other service>` pass through untouched.
+// `service list`, and a `service start <other service>` pass through
+// untouched.
 func (e *engine) prepare(root *cli.Root, cmd *cobra.Command, args []string) error {
-	// The kit-owned serve parent only: other leaves named serve
-	// (`kit conformance svc serve`) run services of their own.
-	if cmd.Parent() != root.Cmd || cmd.Name() != "serve" {
+	// Kit's `service start`, or the deprecated root `service start` that runs
+	// it, only: other leaves named serve (`kit conformance svc serve`)
+	// run services of their own.
+	if cmd != root.ServeCommand() && (cmd.Parent() != root.Cmd || cmd.Name() != "serve") {
 		return nil
 	}
 	if list, _ := cmd.Flags().GetBool("list"); list {

@@ -42,7 +42,7 @@ const (
 
 // apiService adapts the HTTP API to the serve.Service lifecycle.
 //
-// It wraps exactly the server construction the leaf `serve` command
+// It wraps exactly the server construction the leaf `service start` command
 // performed — the same middleware stack, the same router options, the
 // same WebSocket hub — so a tool whose only service is the API behaves
 // as it did before (serve-lifecycle.md §"Compatibility").
@@ -367,7 +367,7 @@ func (a *apiService) closeResultCache() error {
 	return store.Close()
 }
 
-// buildHandler assembles the router exactly as the leaf `serve`
+// buildHandler assembles the router exactly as the leaf `service start`
 // command did.
 //
 // The projection's bridge is built first, before the middleware,
@@ -524,7 +524,7 @@ func (a *apiService) mountProjection(
 	)
 }
 
-// applyAPICompat maps the leaf `serve` command's own flags onto the
+// applyAPICompat maps the leaf `service start` command's own flags onto the
 // api service and preserves its default-on behavior.
 //
 // Two things keep an existing adopter working (serve-lifecycle.md
@@ -577,9 +577,9 @@ func applyAPIFlags(cmd *cobra.Command, root *Root) {
 
 // applyAPIEnabledDefault resolves WithAPI's default-on enablement into
 // configs. It is the one place that resolution lives: the supervisor
-// consults it before starting, and `serve --list` consults it before
+// consults it before starting, and `service list` consults it before
 // reporting, so the listing never says "not enabled" about a service
-// a bare `serve` is about to start.
+// a bare `service start` is about to start.
 func applyAPIEnabledDefault(root *Root, configs map[string]serve.Config) {
 	if root.apiCfg == nil || root.serveReg == nil {
 		return

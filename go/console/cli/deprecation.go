@@ -18,6 +18,10 @@ const (
 	// kitRemovalTarget is the schema version in which a deprecated
 	// command will be removed (purely informational).
 	kitRemovalTarget = "kit/removal-target"
+	// kitReplacedBy names the command that replaces a deprecated one,
+	// as a path below the root. The deprecation notice names it when
+	// the command carries no message of its own.
+	kitReplacedBy = "kit/replaced-by"
 	// kitSince is the schema version in which a command first
 	// appeared. Read by --api-version filtering: commands newer than
 	// the requested version are hidden.
@@ -113,6 +117,9 @@ func emitDeprecationWarning(cmd *cobra.Command) {
 		// back to a generic notice if the adopter only set the
 		// annotations.
 		w.Message = cmd.CommandPath() + " is deprecated"
+		if by := cmd.Annotations[kitReplacedBy]; by != "" {
+			w.Message += "; use " + cmd.Root().Name() + " " + by
+		}
 	}
 
 	format := activeFormat(cmd)

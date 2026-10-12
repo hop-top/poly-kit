@@ -22,7 +22,7 @@ go run ./examples/notebook list
 go run ./examples/notebook get <id>
 go run ./examples/notebook edit <id> --title "Renamed"
 go run ./examples/notebook history <id>
-go run ./examples/notebook serve --addr :9090
+go run ./examples/notebook service start --addr :9090
 ```
 
 ## Test

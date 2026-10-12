@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"encoding/base64"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -150,6 +151,15 @@ func TestKitCommands_DeclareOutputSchema(t *testing.T) {
 // setup, when set, seeds state on the tree first; a non-nil return
 // replaces args (for argv that depends on the seeded state).
 func TestKitCommands_OutputMatchesSchema(t *testing.T) {
+	// `service stop` looks for a running instance's control socket;
+	// point it at an empty runtime directory of the test's own.
+	runtimeDir, err := os.MkdirTemp("", "kr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(runtimeDir) })
+	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
+
 	cases := []struct {
 		name  string
 		args  []string
@@ -182,6 +192,9 @@ func TestKitCommands_OutputMatchesSchema(t *testing.T) {
 			return []string{"token", "key", "revoke", strings.Split(key, "_")[1]}
 		}},
 		{name: "serve --list", args: []string{"serve", "--list"}},
+		{name: "service list", args: []string{"service", "list"}},
+		{name: "service start --dry-run", args: []string{"service", "start", "--dry-run"}},
+		{name: "service stop not running", args: []string{"service", "stop"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

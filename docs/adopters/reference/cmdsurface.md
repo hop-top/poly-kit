@@ -102,7 +102,7 @@ A command a surface must not expose is still described, with
 | `interactive` | `kit/side-effect=interactive`: needs a terminal and a human |
 | `unauthorized-destructive` | destructive and not authorized on this surface |
 | `management-only` | reserved to the tool's own management surface (e.g. `spec`) |
-| `self-hosting` | `serve` and its children, `kit/network=ingress`, or `kit/self-hosting`: runs from the CLI only |
+| `self-hosting` | `service start` and its children, `kit/network=ingress`, or `kit/self-hosting`: runs from the CLI only |
 | `malformed-schema` | declared metadata does not resolve (bad side-effect value, invalid output schema) |
 
 Exactly one reason is recorded per command; when several rules apply
@@ -390,11 +390,11 @@ it. SSE, OAuth and signed-URL routes are GET-only and read no body.
 | Surface         | Direction           | Mount function   | Typical use                             | Reuses                          |
 |-----------------|---------------------|------------------|-----------------------------------------|---------------------------------|
 | `cli`           | local invocation    | (cobra itself)   | adopter's binary                        | `go/console/cli`                |
-| `rest`          | request / reply     | `cli.WithAPI` (`serve api`), `MountProjection`; `MountREST` deprecated | machine-to-machine calls over HTTP | the command projection under `/v1/commands` |
+| `rest`          | request / reply     | `cli.WithAPI` (`service start api`), `MountProjection`; `MountREST` deprecated | machine-to-machine calls over HTTP | the command projection under `/v1/commands` |
 | `ws`            | bidirectional       | `MountWS`        | interactive streaming clients           | `api.Hub` + `coder/websocket`   |
 | `sse`           | server-stream       | `MountSSE`       | one-way streaming to browsers           | `api.Router`                    |
-| `rpc`           | request / reply + server-stream | `rpcserve.With` (`serve rpc`), `MountRPC` | typed clients: Connect, gRPC, gRPC-Web  | `transport/rpc` (ConnectRPC)    |
-| `mcp`           | discovery + exec    | `mcpserve.With` (`serve mcp`), `mcpsdk.Mount`; `MountMCP` deprecated | LLM tool calls | official MCP Go SDK (`transport/mcpsdk`) |
+| `rpc`           | request / reply + server-stream | `rpcserve.With` (`service start rpc`), `MountRPC` | typed clients: Connect, gRPC, gRPC-Web  | `transport/rpc` (ConnectRPC)    |
+| `mcp`           | discovery + exec    | `mcpserve.With` (`service start mcp`), `mcpsdk.Mount`; `MountMCP` deprecated | LLM tool calls | official MCP Go SDK (`transport/mcpsdk`) |
 | `webhook`       | inbound HTTP        | `MountWebhooks`  | third-party push (GitHub, Stripe, …)    | `api.Router` + `text/template`  |
 | `bus`           | pub/sub             | `MountBus`       | async workflows, fan-in                 | `transport/api.EventPublisher`  |
 | `cron`          | scheduled           | `MountCron`      | recurring jobs                          | `robfig/cron/v3` (pluggable)    |
@@ -402,7 +402,7 @@ it. SSE, OAuth and signed-URL routes are GET-only and read no body.
 | `oauth-cb`      | inbound HTTP        | `MountOAuth`     | OAuth provider callback                 | `api.Router` + `StateStore`     |
 | `signed`        | inbound HTTP        | `MountSigned`    | one-shot magic-link exec                | `api.Router` + `NonceStore`     |
 | `faas`          | provider-driven     | `LambdaHandler` / `RunCloudRun` | Lambda + Cloud Run               | aws-lambda-go, `net/http`       |
-| `socket`        | request / reply     | `cli.WithSocket` (`serve socket`) | local daemons, sidecars, agents on the host | `transport/socket` + `transportsvc` |
+| `socket`        | request / reply     | `cli.WithSocket` (`service start socket`) | local daemons, sidecars, agents on the host | `transport/socket` + `transportsvc` |
 
 REST and MCP each have one canonical implementation. REST is the
 [command projection](transport-api.md#command-projection): the `api`
@@ -447,7 +447,7 @@ _ = http.ListenAndServe(":8080", r)
 
 One line per surface. Same cobra tree, same handlers, same policy.
 A tree built with `cli.New` skips all of this for REST and MCP:
-`cli.WithAPI` and `mcpserve.With` serve them under `<tool> serve`.
+`cli.WithAPI` and `mcpserve.With` serve them under `<tool> service start`.
 
 ## Per-surface reference
 
@@ -562,7 +562,7 @@ error goes through `api.MapError`. Confirmation-required leaves require an
 func MountRPC(b *Bridge, s rpcServerMount, opts ...RPCOption) error
 ```
 
-To serve the tool's own tree under `<tool> serve` with no mounting
+To serve the tool's own tree under `<tool> service start` with no mounting
 code, register the built-in service instead:
 `rpcserve.With(rpcserve.Config{})` from `go/console/cli/rpcserve`
 ([task guide](../guides/expose-cli-over-grpc.md)). It calls `MountRPC`
@@ -1720,7 +1720,7 @@ b, _ := cmdsurface.FromConfig(root, cfg)
 The migration is additive — no cobra handler changes. Make the tree a
 kit root (`cli.New`) and register the services: `cli.WithAPI` serves
 REST under `/v1/commands`, `mcpserve.With` serves MCP, both under
-`<tool> serve`, with the root factory, the permission gate and audit
+`<tool> service start`, with the root factory, the permission gate and audit
 wired for you. Walkthrough:
 [migrate-to-served-commands.md](../guides/migrate-to-served-commands.md).
 
@@ -1781,7 +1781,7 @@ Deprecated — frozen, fixes only, no new options:
 | Deprecated | Use instead | Remains for, until removal |
 |------------|-------------|----------------------------|
 | `MountREST`, `RESTOption`, `WithREST*` | `MountProjection` on a bare bridge, `cli.WithAPI` on a kit root (both the `/v1/commands` projection); `MountRPC` for a call envelope | existing callers |
-| `MountMCP`, `MCPOption`, `WithMCP*` | `mcpserve.With` (`serve mcp`); `mcpsdk.Mount` / `Handler` / `ServeStdio` on a bare bridge | existing callers |
+| `MountMCP`, `MCPOption`, `WithMCP*` | `mcpserve.With` (`service start mcp`); `mcpsdk.Mount` / `Handler` / `ServeStdio` on a bare bridge | existing callers |
 | `CloudRunSurfaces.REST`, `CloudRunSurfaces.MCP` | `CloudRunSurfaces.Projection`; `mcpsdk.Mount` in a `CloudRunConfig.Mounts` entry | existing callers |
 | `Config.MCP`, `MCPConfig` (the `mcp:` block) | `services.mcp.*` on the `mcp` service | existing configs; nothing mounts from it |
 

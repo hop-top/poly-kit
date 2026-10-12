@@ -1,6 +1,6 @@
-// Package serve holds the contract types for the kit serve hierarchy:
+// Package serve holds the contract types for the kit service hierarchy:
 // the [Service] a tool can run, the [Registry] services register into,
-// the pure resolution of a `serve` invocation into a runnable set, and
+// the pure resolution of a `service start` invocation into a runnable set, and
 // the mapping from a lifecycle outcome to a process exit code.
 //
 // The normative specification is
@@ -19,8 +19,8 @@
 //
 // # Hierarchy
 //
-//	<tool> serve            supervisor — every configured AND enabled service
-//	<tool> serve <service>  selector   — exactly one, overriding enablement
+//	<tool> service start            supervisor — every configured AND enabled service
+//	<tool> service start <service>  selector   — exactly one, overriding enablement
 //
 // Explicit selection overrides aggregate enablement, provided the
 // service is registered and its configuration and policy validate.

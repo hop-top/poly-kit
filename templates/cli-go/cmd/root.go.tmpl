@@ -3,9 +3,9 @@
 // The root carries the kit global flags (--format, --quiet, --no-color,
 // -c/--config, -v/--verbose, ...), the reserved `status` and `spec`
 // verbs (`spec coverage` is the side-effect annotation gate), and the
-// `serve` supervisor with the built-in api, socket, mcp and rpc
+// `service start` supervisor with the built-in api, socket, mcp and rpc
 // services registered. Every command added to root.Cmd is reachable
-// from the shell and, under `serve`, over REST, the Unix socket, MCP
+// from the shell and, under `service start`, over REST, the Unix socket, MCP
 // and gRPC behind the same safety policy — there is nothing to mount.
 package cmd
 
@@ -44,24 +44,24 @@ func newRoot() *cli.Root {
 		// `status` is the introspection verb every kit root is validated
 		// to carry.
 		cli.WithStatus(cli.StatusConfig{}),
-		// `serve api`: the command tree over REST on 127.0.0.1:8080, with
+		// `service start api`: the command tree over REST on 127.0.0.1:8080, with
 		// discovery at /v1/commands and an OpenAPI document. Enabled by
-		// default under a bare `serve`. A non-loopback address needs
+		// default under a bare `service start`. A non-loopback address needs
 		// Auth, or services.api.insecure_remote by name.
 		cli.WithAPI(cli.APIConfig{}),
-		// `serve socket`: the same tree over an owner-only Unix socket.
-		// Registered but not enabled; `serve socket` starts it, or set
+		// `service start socket`: the same tree over an owner-only Unix socket.
+		// Registered but not enabled; `service start socket` starts it, or set
 		// services.socket.enabled in the config file.
 		cli.WithSocket(cli.SocketConfig{}),
-		// `serve mcp`: the same tree as MCP tools, one per command, on
+		// `service start mcp`: the same tree as MCP tools, one per command, on
 		// its own listener at http://127.0.0.1:8081/mcp, or over stdio
-		// for a desktop host that spawns `{{.Name}} serve mcp --stdio`.
+		// for a desktop host that spawns `{{.Name}} service start mcp --stdio`.
 		// Registered but not enabled, like the socket. It links the
 		// MCP SDK, which adds about 2 MB to a stripped release binary
 		// (3 MB with symbols); delete this option and its import to
 		// drop both.
 		mcpserve.With(mcpserve.Config{}),
-		// `serve rpc`: the same tree as the cmdsurface.v1.Commands
+		// `service start rpc`: the same tree as the cmdsurface.v1.Commands
 		// service, for Connect, gRPC and gRPC-Web clients on one port,
 		// 127.0.0.1:8082. Registered but not enabled, like the socket.
 		// It adds about 0.4 MB to a stripped release binary (0.6 MB with
@@ -135,7 +135,7 @@ func ExitCode(err error) int {
 // files, which beat defaults. `-c <path>` merges one more file and
 // `-c key=value` overrides one key; both come from kit's own flag.
 //
-// Everything `serve` reads — services.api.addr, services.api.enabled,
+// Everything `service start` reads — services.api.addr, services.api.enabled,
 // services.socket.path, services.mcp.transport, services.rpc.addr, ...
 // — resolves through here.
 func loadConfig(r *cli.Root) error {

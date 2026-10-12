@@ -34,7 +34,7 @@ const (
 	// listener. It is the default.
 	TransportHTTP = "http"
 	// TransportStdio serves the process's standard input and output,
-	// for a host that spawns `<tool> serve mcp --stdio`.
+	// for a host that spawns `<tool> service start mcp --stdio`.
 	TransportStdio = "stdio"
 )
 
@@ -148,7 +148,7 @@ type Config struct {
 // links the MCP SDK; go/console/cli itself does not depend on it.
 //
 // Like [cli.WithSocket], the service is NOT enabled by default. Start
-// it with `<tool> serve mcp` (HTTP) or `<tool> serve mcp --stdio`, or
+// it with `<tool> service start mcp` (HTTP) or `<tool> service start mcp --stdio`, or
 // set services.mcp.enabled.
 func With(cfg Config) func(*cli.Root) {
 	return with(cfg, nil)
@@ -162,18 +162,11 @@ func with(cfg Config, stdio *stdioStreams) func(*cli.Root) {
 	}
 }
 
-// serveCmd returns the kit-owned serve parent, or nil before one is
-// mounted.
+// serveCmd returns kit's `service start`, the command the services'
+// flags go on (the deprecated root `serve` shares them), or nil before
+// one is mounted.
 func serveCmd(r *cli.Root) *cobra.Command {
-	if r == nil || r.Cmd == nil {
-		return nil
-	}
-	for _, c := range r.Cmd.Commands() {
-		if c.Name() == "serve" {
-			return c
-		}
-	}
-	return nil
+	return r.ServeCommand()
 }
 
 // mountServeFlags puts --stdio and --mcp-addr on the serve parent, the

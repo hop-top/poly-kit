@@ -7,7 +7,7 @@ answers Connect, gRPC and gRPC-Web on one port (HTTP/1.1 and h2c), the
 interceptors that mirror `go/transport/api`'s middleware, the generic
 CRUD entity service, and its typed client. The tool's own command tree
 as an RPC service is `cmdsurface.MountRPC`, and `rpcserve.With` serves
-it under `<tool> serve`; REST is `go/transport/api`.
+it under `<tool> service start`; REST is `go/transport/api`.
 
 ## Use it when
 

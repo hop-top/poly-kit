@@ -25,7 +25,7 @@ You need:
 
 ## What you get
 
-`WithSocket` registers a `socket` service under your tool's `serve`
+`WithSocket` registers a `socket` service under your tool's `service start`
 command. Starting it gives you:
 
 - **One socket file**, owner-only (`0600`), under your tool's runtime
@@ -80,7 +80,7 @@ Name the service explicitly. This is the shortest path, and it starts
 the socket even though `enabled` is `false`:
 
 ```console
-$ mytool serve socket
+$ mytool service start socket
 INFO service started service=socket
 INFO service ready service=socket address=/run/user/1000/mytool/mytool.sock
 ```
@@ -88,10 +88,10 @@ INFO service ready service=socket address=/run/user/1000/mytool/mytool.sock
 Override the path for one run:
 
 ```console
-$ mytool serve socket --socket /tmp/mytool.sock
+$ mytool service start socket --socket /tmp/mytool.sock
 ```
 
-Or configure it, and let `mytool serve` start it alongside your other
+Or configure it, and let `mytool service start` start it alongside your other
 services:
 
 ```yaml
@@ -106,7 +106,7 @@ services:
 where the runtime dir is `$XDG_RUNTIME_DIR` when set, and otherwise
 your platform's location for ephemeral per-user files — on macOS
 `~/Library/Application Support`, and the temp directory when neither
-is available. Run `mytool serve socket` and read the `address` field
+is available. Run `mytool service start socket` and read the `address` field
 in the ready line if you want the resolved value.
 
 **Why `0600`.** A Unix socket has no port and is not routable, so the
@@ -406,7 +406,7 @@ which is a different answer from one that does not exist:
 
 | `code` | Meaning | Typical cause |
 |---|---|---|
-| `NOT_FOUND` | the path resolves to no reachable command | typo; or a hidden, deprecated, or self-hosting command the reflector excluded — `serve` itself answers this |
+| `NOT_FOUND` | the path resolves to no reachable command | typo; or a hidden, deprecated, or self-hosting command the reflector excluded — `service start` itself answers this |
 | `NOT_ENABLED` | the command exists but not on this surface | excluded by your `Expose` / `Hide` patterns |
 | `NOT_INVOCABLE` | the command can never run through a transport | an `interactive` command; the message names the reason |
 | `BLOCKED` | destructive command refused by policy | `Policy.AllowDestructiveOn` does not name `cmdsurface.SurfaceSocket` |
@@ -431,7 +431,7 @@ with the parser's message in `result.stderr`.
 
 ### 10. Stop it, and know when it is ready
 
-`serve` reports readiness once the socket is bound, carrying the
+`service start` reports readiness once the socket is bound, carrying the
 resolved path:
 
 ```console
@@ -495,7 +495,7 @@ func main() {
 ```
 
 ```bash
-mytool serve socket
+mytool service start socket
 ```
 
 What you get, and what you owe:
@@ -507,13 +507,13 @@ What you get, and what you owe:
   an unconfirmed destructive command is refused with exit `5` in its
   result, a typed-token command needs its token, and interactive and
   self-hosting commands answer `NOT_INVOCABLE` and `NOT_FOUND` as
-  before. Root flags from your own `mytool serve socket` command line
+  before. Root flags from your own `mytool service start socket` command line
   reach every request.
 - `newRoot` runs once per request, so keep it cheap: open stores and
   clients once, outside it, and make them safe for concurrent use.
   Anything reached through a package-level variable is shared across
   requests, factory or not.
-- A `newRoot` that cannot build a valid tree is refused when `serve`
+- A `newRoot` that cannot build a valid tree is refused when `service start`
   validates, at exit `2`, before the socket binds.
 
 ### 12. Know who is calling
@@ -535,7 +535,7 @@ services:
 ```
 
 The same keys work from the command line
-(`mytool -c services.socket.auth.mode=peer serve socket`) and the
+(`mytool -c services.socket.auth.mode=peer service start socket`) and the
 environment (`MYTOOL_SERVICES_SOCKET_AUTH_MODE=peer`).
 
 What changes:
@@ -587,7 +587,7 @@ adding to it: the operator's configuration has the last word, and an
 empty list grants nothing.
 
 Peer credentials come from `SO_PEERCRED` on Linux and
-`LOCAL_PEERCRED` on macOS and FreeBSD. On any other platform `serve`
+`LOCAL_PEERCRED` on macOS and FreeBSD. On any other platform `service start`
 refuses the mode at exit `2` before the socket binds. So do
 `mode: mtls` (the socket has no TLS listener), an unknown mode, an
 `auth.peer` key without `mode: peer`, `scopes` that is not a list of
@@ -637,7 +637,7 @@ as it applies to the socket:
   own, in parallel.
 - **Each request starts clean.** Flags from one request do not carry
   into the next. Every command starts from the flag state the
-  operator's own `mytool serve socket` command line left, plus only
+  operator's own `mytool service start socket` command line left, plus only
   what the request carries, on the shared tree and on a factory's
   alike. Standard input is empty: a destructive command with no
   `confirm` flag is refused, never prompted on the operator's
@@ -676,7 +676,7 @@ Stated plainly, so you can decide what to put in front of it:
 - **No interactive or self-hosting commands.** A command tiered
   `interactive` is refused by the bridge's gate, before the policy
   gate, with `NOT_INVOCABLE` — there is no terminal on a socket — and
-  the runner refuses it again as a backstop. `serve`, any command
+  the runner refuses it again as a backstop. `service start`, any command
   declaring `kit/network: ingress`, and any command annotated
   `kit/self-hosting: true` are never reachable at all: they are not
   leaves, so a call answers `NOT_FOUND`.

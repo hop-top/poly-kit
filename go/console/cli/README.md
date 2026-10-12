@@ -43,7 +43,7 @@ See [flag-enums.md](../../../docs/adopters/reference/flag-enums.md).
 
 ## Served commands
 
-`<tool> serve` supervises services; kit ships four, each projecting the
+`<tool> service start` supervises services; kit ships four, each projecting the
 command tree through the same gates (policy, `WithPermission`,
 `WithAuditSinks`, `WithRootFactory`):
 
@@ -51,7 +51,7 @@ command tree through the same gates (policy, `WithPermission`,
 |--------|---------|------------|
 | `WithAPI(APIConfig{})` | `api` (on by default) | REST under `/v1/commands`, `127.0.0.1:8080` |
 | `WithSocket(SocketConfig{})` | `socket` | NDJSON over a `0600` Unix socket |
-| `mcpserve.With(mcpserve.Config{})` | `mcp` | MCP tools over streamable HTTP (`127.0.0.1:8081/mcp`), or stdio with `serve mcp --stdio` |
+| `mcpserve.With(mcpserve.Config{})` | `mcp` | MCP tools over streamable HTTP (`127.0.0.1:8081/mcp`), or stdio with `service start mcp --stdio` |
 | `rpcserve.With(rpcserve.Config{})` | `rpc` | `cmdsurface.v1.Commands` over Connect, gRPC and gRPC-Web, h2c on `127.0.0.1:8082` |
 
 `mcp` lives in [`mcpserve/`](mcpserve/) and `rpc` in [`rpcserve/`](rpcserve/),

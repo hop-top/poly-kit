@@ -32,7 +32,7 @@ and the data is unrecoverable.
 ## 1. Greenfield: start an encrypted engine
 
 ```bash
-kit serve --port 8080 --data ./engine-data --encrypt
+kit service start --port 8080 --data ./engine-data --encrypt
 ```
 
 The first run generates the identity keypair (if one doesn't
@@ -67,7 +67,7 @@ The safe migration:
 
 ```bash
 kill $(cat ./engine-data/kit-engine.pid)
-# or Ctrl-C the foreground kit serve
+# or Ctrl-C the foreground kit service start
 ```
 
 ### b. Back up the data dir
@@ -98,7 +98,7 @@ trust survives the migration.
 ### e. Start the engine with `--encrypt`
 
 ```bash
-kit serve --port 8080 --data ./engine-data --encrypt
+kit service start --port 8080 --data ./engine-data --encrypt
 ```
 
 The engine creates a new, encrypted `documents.db`.

@@ -1,9 +1,9 @@
 # Migrate to served commands
 
 You're here because your kit tool already serves something — a
-hand-written `serve` command that starts its own HTTP server, or a
+hand-written `service start` command that starts its own HTTP server, or a
 cobra tree you mount on REST and MCP through `cmdsurface` by hand — and
-you want kit's built-in serve instead: the `serve` supervisor, the
+you want kit's built-in serve instead: the `service start` supervisor, the
 `api`, `socket` and `mcp` services, the command projection, and the
 safety defaults, with your mounting code gone. This page walks the diff for
 both starting points.
@@ -20,7 +20,7 @@ Every kit tool that serves implements the same five things:
 5. Discovery: some way for a caller to learn what is served.
 
 Kit ships all five. Registering the `api` service is the whole setup:
-`serve` supervises it, readiness is an event and a log line, the
+`service start` supervises it, readiness is an event and a log line, the
 address is a config key, every conformant command is projected under
 `/v1/commands` behind the policy gate, and `GET /v1/commands` says
 what is mounted and why the rest is not. The `socket` service gives
@@ -50,9 +50,9 @@ is the part that was never specific to your tool.
 
 ## The mechanical migration
 
-### Path A — from a hand-written `serve` leaf
+### Path A — from a hand-written `service start` leaf
 
-Your old tool: a kit root, a `widget` command, and a `serve` leaf that
+Your old tool: a kit root, a `widget` command, and a `service start` leaf that
 builds a mux, binds `--addr`, prints `Listening on`, and blocks.
 
 ```go
@@ -198,19 +198,19 @@ func widgetCmd() *cobra.Command {
 ```
 
 The whole diff is in [Concrete diffs](#concrete-diffs). Exactly one
-command owns the `serve` word: the option mounts kit's, and yours must
+command owns the `service start` word: the option mounts kit's, and yours must
 go. A leaf you keep adding after `cli.New` is a second owner, which
 the contract forbids.
 
 #### Step 2 — Move the address into configuration
 
-`--addr` keeps working on `serve` — it is the documented exception for
+`--addr` keeps working on `service start` — it is the documented exception for
 adopters whose scripts pass it — but its value has moved: the listen
 address is now `services.api.addr`, and its default is loopback.
 
 | Before | After |
 |--------|-------|
-| `cmd.Flags().String("addr", ":8080", ...)` on your leaf | `services.api.addr` in the config file; `--addr` on `serve` still overrides it |
+| `cmd.Flags().String("addr", ":8080", ...)` on your leaf | `services.api.addr` in the config file; `--addr` on `service start` still overrides it |
 | a hard-coded `":8080"` | `services.api.addr: 127.0.0.1:8080`, or `Auth`, or `services.api.insecure_remote: true` — see step 4 |
 | `MYTOOL_ADDR` or your own env var | `MYTOOL_SERVICES_API_ADDR` (kit's `<TOOL>_` prefix, dots as underscores) |
 | your own enable/disable switch | `services.api.enabled` — `true` by default for `WithAPI`, an explicit `false` wins |
@@ -224,21 +224,21 @@ services:
 ```
 
 This only takes effect if the file reaches `root.Viper`, which is what
-`serve` reads. Layer it in a `PrePersistentRunE` hook with
+`service start` reads. Layer it in a `PrePersistentRunE` hook with
 `config.OptionsForTool` and `config.BindEnv`; the
 [cli-go template's `cmd/root.go`](../../../templates/cli-go/cmd/root.go.tmpl)
 is the reference wiring.
 
 If your tool already has its own loader (its own file order,
 profiles, its own environment prefix), pass `cli.WithOwnServiceConfig()`
-to `cli.New`. Without it, `serve` also reads the `services` block of
+to `cli.New`. Without it, `service start` also reads the `services` block of
 the system file, the user file and a project file found from the
 working directory (`.kit/config.yaml`, `.kit.yaml`, `kit.yaml`), binds
 every `MYTOOL_SERVICES_*` variable and applies `-c`, all merged above
 your loader's config-file layers. A `kit.yaml` in whatever directory
 the daemon starts from can then move its socket or turn on its api
-while your own config view says otherwise. With the option, `serve`
-and `serve --list` read `services.*` only from what your loader put
+while your own config view says otherwise. With the option, `service
+start` and `service list` read `services.*` only from what your loader put
 in `root.Viper`; read `-c` with `root.ConfigArgs()` in your loader.
 
 ```go
@@ -258,7 +258,7 @@ structured key — which for a `:0` address is the only place the bound
 port is knowable:
 
 ```console
-$ mytool serve --addr 127.0.0.1:0
+$ mytool service start --addr 127.0.0.1:0
 INFO serve: started object=service elapsed_ms=0 service=api
 INFO serve: ready_reported object=service elapsed_ms=1 service=api address=127.0.0.1:63911
 INFO serve: ready_reported object=supervisor elapsed_ms=1
@@ -296,17 +296,17 @@ func announce(b bus.Bus) func(*cli.Root) {
 }
 ```
 
-Kit's own `kit serve` does exactly this to keep the startup JSON its SDK
+Kit's own `kit service start` does exactly this to keep the startup JSON its SDK
 sidecars read.
 
 #### Step 4 — Decide who may reach it
 
 The api service binds `127.0.0.1:8080` and refuses, at the
 configuration gate, to serve unauthenticated anywhere else. If your
-leaf listened on `:8080`, the first `serve` after migration says:
+leaf listened on `:8080`, the first `service start` after migration says:
 
 ```console
-$ mytool serve --addr :8080
+$ mytool service start --addr :8080
 USAGE: service "api": addr: ":8080" is not a loopback address and the api service has no authentication; set services.api.auth.mode or APIConfig.Auth, listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback
 ```
 
@@ -419,7 +419,7 @@ func buildTree() *cobra.Command {
 
 #### Step 1 — Make the tree a kit root
 
-`cli.New` replaces the bare root and the mode switch: `serve` is a
+`cli.New` replaces the bare root and the mode switch: `service start` is a
 command now, so there is no argument-count test to write. Add
 `cli.WithStatus` (a kit root is validated to carry it), give every leaf
 a `Long`, and write the annotations through `cli.SetSideEffect` and
@@ -507,14 +507,14 @@ Two things move for an MCP client:
 - **The endpoint.** MCP no longer shares the REST port: it listens on
   `127.0.0.1:8081`, path `/mcp` (`services.mcp.addr`,
   `services.mcp.path`). Like `socket` it is registered and not
-  enabled — `serve mcp` starts it alone, `--enable mcp` or
+  enabled — `service start mcp` starts it alone, `--enable mcp` or
   `services.mcp.enabled: true` starts it beside the api.
 - **The tool list.** It now carries only what may run, the way REST
   discovery does: the destructive leaf is absent rather than listed
   and refused, and so is kit's management-only `status`.
 
 ```console
-$ mytool serve --enable mcp --addr 127.0.0.1:0 --mcp-addr 127.0.0.1:0
+$ mytool service start --enable mcp --addr 127.0.0.1:0 --mcp-addr 127.0.0.1:0
 INFO serve: ready_reported object=service elapsed_ms=0 service=api address=127.0.0.1:61524
 INFO serve: ready_reported object=service elapsed_ms=1 service=mcp address=http://127.0.0.1:61525/mcp
 $ curl -s http://127.0.0.1:61524/v1/commands | jq -c '.commands[] | select(.name|startswith("widget")) | {name, invocable, reason}'
@@ -526,7 +526,7 @@ and over MCP, after the `initialize` handshake (streamable HTTP wants
 `Accept: application/json, text/event-stream` and the
 `Mcp-Session-Id` it returns),
 `tools/list` names `["widget.list"]`. A desktop host spawns
-`mytool serve mcp --stdio` instead;
+`mytool service start mcp --stdio` instead;
 [expose-cli-over-mcp.md](expose-cli-over-mcp.md#3-connect-a-host)
 has the host entry.
 
@@ -582,8 +582,8 @@ kit-shipped service; audit sinks move to `cli.WithAuditSinks`.
 #### Step 5 — Add the socket
 
 `cli.WithSocket(cli.SocketConfig{})` registers the same tree over an
-owner-only Unix socket. It is not enabled by default: `serve socket`
-starts it, or `services.socket.enabled: true` lets a bare `serve` start
+owner-only Unix socket. It is not enabled by default: `service start socket`
+starts it, or `services.socket.enabled: true` lets a bare `service start` start
 it beside the api. [serve-cli-over-unix-socket.md](serve-cli-over-unix-socket.md)
 covers the wire format.
 
@@ -755,9 +755,9 @@ and after of each compile and run as printed.
  }
 ```
 
-### A larger one: `kit serve` itself
+### A larger one: `kit service start` itself
 
-Kit's own `serve` was path A at scale — a 650-line leaf with a document
+Kit's own `service start` was path A at scale — a 650-line leaf with a document
 store, minted tokens, a WebSocket hub, and a startup JSON line that two
 SDKs parse. After the migration the routes are unchanged and the
 server, listener, startup line and shutdown are the api service's;
@@ -776,9 +776,9 @@ with what to do and how to check it.
 
 | You will see | What to do | Check |
 |--------------|------------|-------|
-| `serve` has children and flags: `serve api`, `serve socket`, `--list`, `--enable`, `--disable`, the timeouts | nothing; a bare `serve` still starts a single-API tool | `mytool serve --help`, `mytool serve --list` |
-| the startup line is gone; a `ready_reported` line carries `address=` | read the structured field, or subscribe (step 3) | `mytool serve 2>&1 \| grep ready_reported` |
-| `services.api.enabled` defaults to `true` for `WithAPI` | an explicit `false` in the config file turns it off | `mytool serve` with the key set exits 2, "no services configured and enabled" |
+| `service start` has children and flags: `service start api`, `service start socket`, `--list`, `--enable`, `--disable`, the timeouts | nothing; a bare `service start` still starts a single-API tool | `mytool service start --help`, `mytool service list` |
+| the startup line is gone; a `ready_reported` line carries `address=` | read the structured field, or subscribe (step 3) | `mytool service start 2>&1 \| grep ready_reported` |
+| `services.api.enabled` defaults to `true` for `WithAPI` | an explicit `false` in the config file turns it off | `mytool service start` with the key set exits 2, "no services configured and enabled" |
 | `GET /v1/commands` and `/v1/commands/<path>` exist | nothing to mount; withhold with `Hide` if a command must stay off | `curl -s http://127.0.0.1:8080/v1/commands` |
 | the api binds loopback and refuses `:8080` unauthenticated | `Auth`, `127.0.0.1`, or `insecure_remote` (step 4) | the refusal message names the three |
 | a schema-declaring command answers in `data`, not `stdout` | declare schemas with `cli.SetOutputSchema` where a client wants data | `curl` a read command: `{"exit_code":0,"data":[...]}` |
@@ -846,9 +846,9 @@ There is no such line. The `ready_reported` log line and the bus event
 carry `address=`; wait for either, or simply retry the connection —
 the listener exists only once the service is ready.
 
-### Both `serve` commands exist
+### Both `service start` commands exist
 
-`WithAPI` and `WithService` mount kit's `serve` and drop a leaf mounted
+`WithAPI` and `WithService` mount kit's `service start` and drop a leaf mounted
 before them; a leaf you add after `cli.New` is a second owner of the
 word and the tree is ambiguous. Delete it.
 
@@ -915,6 +915,6 @@ checks.
 - [secure-remote-serving.md](secure-remote-serving.md) — `Auth`, the
   permission gate, the audit trail.
 - [build-a-transport-service.md](build-a-transport-service.md) — a
-  transport of your own as a `serve` sibling.
+  transport of your own as a `service start` sibling.
 - [`examples/served`](../../../examples/served/README.md) — the
   conformance fixture.

@@ -19,7 +19,7 @@ serving requests" in five steps.
 ## 1. Start the engine
 
 ```bash
-kit serve --port 8080 --data ./engine-data
+kit service start --port 8080 --data ./engine-data
 ```
 
 What happens:
@@ -42,7 +42,7 @@ curl http://localhost:8080/health
 
 Expected: HTTP 200 with a JSON body containing the engine version
 and identity fingerprint. Non-200 means the engine isn't ready —
-check the `kit serve` log line.
+check the `kit service start` log line.
 
 ## 3. Point a tool at it
 
@@ -78,11 +78,11 @@ on connection refused.
 
 ```bash
 kill $(cat ./engine-data/kit-engine.pid)
-# or simply Ctrl-C the foreground kit serve process
+# or simply Ctrl-C the foreground kit service start process
 ```
 
 The PID file is written when `--daemon` is used. State on disk
-(`./engine-data/`) survives — the next `kit serve` on the same
+(`./engine-data/`) survives — the next `kit service start` on the same
 data dir resumes with the same identity and documents.
 
 ## Daemon mode
@@ -91,7 +91,7 @@ For multiple kit-using tools on one host that should share an
 engine, run it as a daemon:
 
 ```bash
-kit serve --daemon --port 8080 --data ~/.kit
+kit service start --daemon --port 8080 --data ~/.kit
 ```
 
 Tools find the running engine via the PID file at
@@ -104,7 +104,7 @@ Add `--encrypt` to encrypt the SQLite document store with a key
 derived from the engine's identity:
 
 ```bash
-kit serve --port 8080 --data ./engine-data --encrypt
+kit service start --port 8080 --data ./engine-data --encrypt
 ```
 
 Don't toggle this flag on an existing data dir without re-keying

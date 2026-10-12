@@ -96,10 +96,10 @@ type SocketConfig struct {
 //
 // Unlike [WithAPI], the socket service is NOT enabled by default.
 // WithAPI's default-on behavior is a compatibility obligation to
-// adopters whose `serve` predates the hierarchy; a service arriving
+// adopters whose `service start` predates the hierarchy; a service arriving
 // through the registry for the first time gets the contract's default
 // instead, which is `enabled: false` (serve-lifecycle.md §"Configuration
-// surface"). Start it with `<tool> serve socket`, which overrides
+// surface"). Start it with `<tool> service start socket`, which overrides
 // enablement, or set services.socket.enabled.
 func WithSocket(cfg SocketConfig) func(*Root) {
 	return func(r *Root) {
@@ -116,18 +116,12 @@ func WithSocket(cfg SocketConfig) func(*Root) {
 // The contract makes per-service flags valid under the selector form,
 // which is the form this service is normally started with. It is
 // registered on the parent because that is where cobra resolves flags
-// for `serve socket`, and it is inert when the socket service is not
+// for `service start socket`, and it is inert when the socket service is not
 // the one selected.
 func (r *Root) mountSocketServeFlags() {
-	for _, c := range r.Cmd.Commands() {
-		if c.Name() != "serve" {
-			continue
-		}
-		if c.Flags().Lookup("socket") == nil {
-			c.Flags().String("socket", "",
-				"Socket path for the socket service")
-		}
-		return
+	if c := r.serveCmd; c != nil && c.Flags().Lookup("socket") == nil {
+		c.Flags().String("socket", "",
+			"Socket path for the socket service")
 	}
 }
 

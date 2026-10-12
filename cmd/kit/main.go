@@ -33,7 +33,8 @@ var commandGroups = map[string]string{
 	"symlink":  "organize",
 
 	// INTERACT — long-running interactive surfaces.
-	"serve": "interact",
+	"service": "interact",
+	"serve":   "interact",
 
 	// INSTANCE — node-bound concerns (mesh peers, audit).
 	"peer": "instance",
@@ -103,7 +104,7 @@ func newKitRoot(version string) (*cli.Root, *engine) {
 		// root.RegisterStatusProvider before Execute.
 		cli.WithStatus(cli.StatusConfig{}),
 		// The api service carries the document engine. A wildcard
-		// loopback port keeps `kit serve` auto-assigning as the leaf
+		// loopback port keeps `kit service start` auto-assigning as the leaf
 		// command did; Auth is the engine's own rule (reads open, writes
 		// need the run's bearer token).
 		cli.WithAPI(cli.APIConfig{
@@ -114,7 +115,7 @@ func newKitRoot(version string) (*cli.Root, *engine) {
 			Handlers: func(r *api.Router) { eng.registerRoutes(r, root) },
 		}),
 		// The socket service: kit's own commands over an owner-only Unix
-		// socket. Registered, not enabled; `kit serve socket` starts it.
+		// socket. Registered, not enabled; `kit service start socket` starts it.
 		cli.WithSocket(cli.SocketConfig{}),
 		cli.WithServiceBus(eng.bus),
 	)

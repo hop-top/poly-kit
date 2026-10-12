@@ -1,7 +1,7 @@
 # Serve Hierarchy and Service Lifecycle
 
-> `<tool> serve` supervises every configured and enabled service;
-> `<tool> serve <service>` selects exactly one.
+> `<tool> service start` supervises every configured and enabled
+> service; `<tool> service start <service>` selects exactly one.
 > Authority: [`go/console/serve`](../../go/console/serve/).
 
 A kit-based tool exposes long-running work as **services**: an HTTP
@@ -17,36 +17,70 @@ authority for behavior; the package is the authority for signatures.
 
 ## Command hierarchy
 
-| Invocation              | Role       | Runs                                                      |
-|-------------------------|------------|-----------------------------------------------------------|
-| `<tool> serve`          | supervisor | every service that is **configured** AND **enabled**       |
-| `<tool> serve <service>`| selector   | exactly the named service, subject to validation           |
-| `<tool> serve --list`   | inspection | registered services with configured / enabled / ready state|
+| Invocation                      | Role       | Runs                                                       |
+|---------------------------------|------------|------------------------------------------------------------|
+| `<tool> service start`          | supervisor | every service that is **configured** AND **enabled**        |
+| `<tool> service start <service>`| selector   | exactly the named service, subject to validation            |
+| `<tool> service list`           | inspection | registered services with configured / enabled / ready state |
+| `<tool> service status`         | inspection | the running instance's services, readiness and addresses    |
+| `<tool> service stop`           | control    | asks the running instance to drain and exit                 |
 
 Rules:
 
-- `<tool> serve` MUST resolve its service set from configuration
-  only. It MUST NOT take a positional service argument.
-- `<tool> serve <service>` MUST accept exactly one positional
+- `<tool> service start` MUST resolve its service set from
+  configuration only when given no positional argument.
+- `<tool> service start <service>` MUST accept exactly one positional
   argument. Two or more positional arguments is a usage error.
-- The inspection form is the flag `--list`, not a `list` child.
-  `list` is reserved selector vocabulary and cannot be registered as a
-  service, so a `serve list` child would be indistinguishable from the
-  selector form naming a service called `list` — the exact ambiguity
-  the reservation exists to prevent.
-- The two forms share one lifecycle implementation. A single service
-  started by the selector observes the same readiness, shutdown, and
-  exit semantics as the same service started by the supervisor.
+- The inspection form is its own leaf, `service list`, not a form of
+  `service start`. `list` is still reserved selector vocabulary and
+  cannot be registered as a service.
+- The two forms of `service start` share one lifecycle implementation.
+  A single service started by the selector observes the same
+  readiness, shutdown, and exit semantics as the same service started
+  by the supervisor.
 - Global flags (`--config`, `--format`, `--log-level`, and the rest of
   the kit root flag set) are inherited unchanged by both forms.
   Per-service flags are registered by the service itself and are only
   valid under the selector form.
+- `service start` and `service stop` are self-hosting: no served
+  surface may expose them. The whole `service` group is reserved
+  management vocabulary; an adopter MAY add leaves of its own under it
+  (`<tool> service setup`), and they are management commands too.
+- The root `status` is the tool's own status (profile, environment,
+  auth, effective configuration) and is unrelated to `service status`.
+
+### Control channel
+
+While `service start` runs, it listens on a Unix socket at
+`<runtime dir>/<tool>/control.sock`, created owner-only (`0600`).
+Every connection's peer credentials are checked against the instance's
+own uid where the platform reports them. `service status` and
+`service stop` are its clients.
+
+- `service stop` MUST end the run exactly as the first `SIGINT` or
+  `SIGTERM` does: the run's context is canceled and every service is
+  drained in reverse start order within its budgets. The instance MUST
+  NOT kill itself or signal itself. The client waits for the drain and
+  exits 0; with no instance running it exits 0 with the result
+  `not_running`.
+- `service status` with no instance running MUST exit 3 (`NOT_FOUND`):
+  the thing asked about, a running instance, does not exist.
+- A socket file nobody answers on is stale and is replaced by the next
+  instance. A second instance that finds a live socket keeps running
+  without a control channel and says so on stderr.
+
+### Compatibility: `<tool> service start`
+
+`<tool> service start [service]` is the deprecated spelling of `<tool> service
+start [service]`, and `<tool> service list` of `<tool> service list`.
+It is hidden, behaves identically, shares every flag, and writes a
+`DEPRECATION` notice to stderr. It is removed after one release.
 
 ### The override rule
 
 Explicit selection overrides aggregate enablement:
 
-> `<tool> serve <service>` MUST start `<service>` even when
+> `<tool> service start <service>` MUST start `<service>` even when
 > `services.<service>.enabled` is `false`, PROVIDED the service is
 > registered and its configuration and policy validate.
 
@@ -74,7 +108,7 @@ Failure outcomes, in the order the gates are evaluated:
 | Gate           | Failure               | Code                  | Exit | Message shape                                              |
 |----------------|-----------------------|-----------------------|------|------------------------------------------------------------|
 | Registration   | unknown identifier    | `NOT_FOUND`           | 3    | `unknown service "x"; known: api, socket, mcp` + nearest-name fix |
-| Registration   | 2+ positional args    | `USAGE`               | 2    | `serve accepts at most one service name`                    |
+| Registration   | 2+ positional args    | `USAGE`               | 2    | `service start accepts at most one service name`                    |
 | Configuration  | invalid or incomplete | `USAGE`               | 2    | `service "x": <field>: <reason>`                            |
 | Policy         | denied for class      | `UNAUTHORIZED`        | 5    | `service "x" denied by policy (side_effect=…, network=…)`   |
 
@@ -125,7 +159,7 @@ a `DependsOn` list.
   duplicate contract of
   [`output.Registry`](../../go/console/output/registry.go). A
   collision is a wiring bug in `main`, discoverable on the first run
-  rather than at the first `serve`; there is no last-writer-wins path.
+  rather than at the first `service start`; there is no last-writer-wins path.
 - An adopter deliberately replacing a kit-shipped service calls
   `Override` instead. This is the documented escape hatch, and the
   only way a duplicate name is accepted.
@@ -181,7 +215,7 @@ Rules:
   is the acquisition readiness is about: ready is reported when `Bind`
   returns nil, and never before.
 - `Close` MUST make `Serve` return. A `Close` that leaves the listener
-  open leaves the process holding a port after `serve` has reported it
+  open leaves the process holding a port after `service start` has reported it
   stopped.
 - A transport declares its configuration gate, its side-effect and
   network class, and its `DependsOn` list through the seam's options
@@ -204,7 +238,7 @@ The seam lives under `go/transport/` rather than beside the contract
 types in [`go/console/serve`](../../go/console/serve/) because the
 command-tree half of it reaches `cmdsurface`, which reaches
 `cmdreflect`, which reaches `go/console/cli`, which registers services
-back into `serve`. Keeping the contract package free of the transport
+back into `service start`. Keeping the contract package free of the transport
 stack is what keeps that acyclic.
 
 ## Readiness
@@ -356,7 +390,7 @@ indistinguishable: one service failing is the only service failing.
 ### Re-execution
 
 A run is over when the supervisor returns; the root it ran on is not
-consumed. Executing `serve` again on the same root — a test harness, a
+consumed. Executing `service start` again on the same root — a test harness, a
 tool that restarts its services in-process — MUST start a run that
 observes only the new call's context and signals: it keeps serving
 until that context is canceled, and it returns when it is. A run MUST
@@ -432,7 +466,7 @@ Resolution follows the standard kit precedence in
 then config file, then default. A `-c key=value` override counts as a
 flag and a `-c <path>` file as a config file.
 
-`serve` layers every `services.*` key from these sources itself,
+`service start` layers every `services.*` key from these sources itself,
 before any service reads one, whether or not the tool loads its own
 configuration: the `services` block of the tool's system, user
 (`~/.config/<tool>/config.yaml`) and project config files and of each
@@ -442,14 +476,14 @@ as the tool wired them. A service configured only by environment
 variables is configured.
 
 A tool that layers its own configuration can take that job away from
-`serve` (Go: `cli.WithOwnServiceConfig()`). `serve` then discovers,
-reads and binds nothing: the supervisor, the selector and `--list`
+`service start` (Go: `cli.WithOwnServiceConfig()`). kit then discovers,
+reads and binds nothing: the supervisor, the selector and `service list`
 read `services.*` exactly as the tool's loader left it, and the tool
 owns every source above, `-c` included. The project file is the
 reason to: it is found from the working directory, so without the
 option a `kit.yaml` in whatever directory a daemon starts from can
 move its socket or turn on its api, behind the tool's own view of its
-configuration. The serve flags (`--addr`, `--socket`, `--enable`,
+configuration. The `service start` flags (`--addr`, `--socket`, `--enable`,
 `--disable`, the timeouts) still apply for one run.
 
 | Key                                | Type       | Default | Meaning                                     |
@@ -529,7 +563,7 @@ Flags:
 - `--ready-timeout`, `--stop-timeout`, `--shutdown-timeout` map to the
   keys above.
 - Per-service flags registered by a service are only accepted under
-  `<tool> serve <service>`; passing one to the supervisor form is a
+  `<tool> service start <service>`; passing one to the supervisor form is a
   usage error, because it would silently apply to one member of a set.
   The api service's `--addr`, `--no-auth`, and `--insecure-remote`
   are the documented exception: the first two predate the hierarchy,
@@ -858,7 +892,7 @@ and the protocol layer is the official MCP Go SDK through
 implements no MCP wire behavior of its own here.
 
 Like every service that arrives through the registry, `mcp` is
-`enabled: false` by default. `<tool> serve mcp` starts it.
+`enabled: false` by default. `<tool> service start mcp` starts it.
 
 The service lives in its own package so that only a tool serving MCP
 links the MCP SDK: `go/console/cli` MUST NOT depend on it. It reaches
@@ -879,7 +913,7 @@ The service speaks one of two transports, chosen per run:
 | `services.mcp.transport` | Reached by                                        | Address in `ready_reported`     |
 |--------------------------|---------------------------------------------------|---------------------------------|
 | `http` (default)         | an MCP client over streamable HTTP                | `http://<host>:<port><path>`    |
-| `stdio`                  | the process that spawned `<tool> serve mcp --stdio` | none                          |
+| `stdio`                  | the process that spawned `<tool> service start mcp --stdio` | none                          |
 
 `--stdio` selects `stdio` for one run and wins over configuration. An
 unknown transport value is a configuration failure at exit `2`.
@@ -887,7 +921,7 @@ unknown transport value is a configuration failure at exit `2`.
 The HTTP transport listens on its **own** listener. It does not mount
 on the api service's router, for four reasons, each sufficient:
 
-- **Independent lifecycle.** `serve mcp` MUST start without the api
+- **Independent lifecycle.** `service start mcp` MUST start without the api
   service — a tool may register `mcp` and not `api` at all — and
   stopping one MUST NOT take the other down. A shared router would
   make `mcp` a dependent of `api`.
@@ -954,7 +988,7 @@ service runs over HTTP.
 precedence is flag, then config, then `mcpserve.Config`, then the
 default.
 
-Flags, registered on `serve` like `--socket` and inert unless `mcp` is
+Flags, registered on `service start` like `--socket` and inert unless `mcp` is
 the service running:
 
 - `--stdio` selects the stdio transport.
@@ -1112,7 +1146,7 @@ service serves stdio:
   the tool result.
 
 End of input — the host closing the session — ends the service
-cleanly: `Start` returns nil, and `serve mcp --stdio` exits `0`. Every
+cleanly: `Start` returns nil, and `service start mcp --stdio` exits `0`. Every
 request read before end of input is answered first, so a host may
 write its requests and close its end without waiting. A call still
 waiting on the host at that point — a confirmation question — can
@@ -1155,7 +1189,7 @@ and the handler is `cmdsurface.MountRPC` over the generated Connect
 handler; kit implements no wire behavior of its own here.
 
 Like every service that arrives through the registry, `rpc` is
-`enabled: false` by default. `<tool> serve rpc` starts it.
+`enabled: false` by default. `<tool> service start rpc` starts it.
 
 The service lives in its own package for the reason `mcp` does:
 `go/transport/rpc` registers protobuf types at init, which the linker
@@ -1213,7 +1247,7 @@ the drain for the whole stop budget.
 | `services.rpc.insecure_no_policy`  | bool   | `false`          | beyond loopback with no `--policy`, no policy rather than `kit-default` |
 
 `rpcserve.Config` carries the code defaults under the same names. The
-flag `--rpc-addr`, registered on `serve` like `--mcp-addr`, overrides
+flag `--rpc-addr`, registered on `service start` like `--mcp-addr`, overrides
 `services.rpc.addr` for one run. The insecure opt-ins have no flags,
 for the reason the mcp service's have none.
 
@@ -2599,7 +2633,7 @@ With the default **shared-tree** runner (`InProcessRunner(root)`):
   its own and every ancestor's persistent set — is returned to the
   **baseline**: the value and `Changed` bit it had when the runner was
   built. For a kit root, that is the state the operator's own command
-  line left, so `mytool --no-color serve socket` serves invocations
+  line left, so `mytool --no-color service start socket` serves invocations
   that see `--no-color`, and each invocation adds only the flags it
   carries. After the invocation, the baseline is restored, so the
   tree is clean between invocations too.
@@ -2651,7 +2685,7 @@ returns:
   bridge before any tree is built.
 - The persistent root flags the operator set on the serving command
   line are replayed onto it, `Changed` bit included, so
-  `mytool --no-color -c key=val serve socket` serves invocations that
+  `mytool --no-color -c key=val service start socket` serves invocations that
   see both. This is the factory form's counterpart of the shared
   runner's baseline.
 - The factory is exercised once when the service validates. One that
@@ -2685,7 +2719,7 @@ transport surfaces them unchanged.
 | Class        | Reason            | Which commands                                                              | Lifted by     |
 |--------------|-------------------|-----------------------------------------------------------------------------|---------------|
 | interactive  | `interactive`     | `kit/side-effect: interactive` — a shell, a TUI, anything needing a terminal | the CLI only  |
-| self-hosting | `self-hosting`    | `serve` and everything under it; `kit/network: ingress`; `kit/self-hosting: true` | nothing       |
+| self-hosting | `self-hosting`    | `service start` and everything under it; `kit/network: ingress`; `kit/self-hosting: true` | nothing       |
 | management   | `management-only` | kit's reserved verbs (`spec`, `status`, …) and their children               | `AllowReserved` |
 
 Rules:
@@ -2700,9 +2734,9 @@ Rules:
   surface, and no reflection option lifts the reason. Running it
   inside a served invocation would start a server inside the server,
   or replace the binary that is serving. Any one of three signals
-  marks it: the name `serve`, or a position under one, at any depth
+  marks it: the name `service start`, or a position under one, at any depth
   — the depth-1 verb the hierarchy above gives to exactly one
-  command, and any nested `serve` that starts a server of its own; a
+  command, and any nested `service start` that starts a server of its own; a
   declared
   `kit/network: ingress`, because accepting connections is what a
   server does; or the explicit `kit/self-hosting: true`, which is how
@@ -2716,7 +2750,7 @@ Rules:
   default; a consumer that has a use for it reflects with
   `AllowReserved`, as the socket service's bridge does, and the policy
   gate decides from there.
-- Kit's own `serve` is both reserved and self-hosting. It reports
+- Kit's own `service start` is both reserved and self-hosting. It reports
   `self-hosting`, the answer that says why calling it through a
   transport can never work rather than merely who owns the word.
 
@@ -2727,9 +2761,9 @@ out of scope: there is no override.
 
 Adopters calling [`cli.WithAPI(...)`](../../go/console/cli/api.go)
 keep working. `WithAPI` registers the HTTP API as the `api` service
-under the kit-owned `serve` parent rather than mounting a
-single-purpose leaf `serve` command. For a tool whose only service is
-the API, `<tool> serve` starts the same server, with the same `--addr`
+under the kit-owned `service start` parent rather than mounting a
+single-purpose leaf `service start` command. For a tool whose only service is
+the API, `<tool> service start` starts the same server, with the same `--addr`
 and `--no-auth` flags, and exits the same way.
 
 - `WithAPI` remains supported for the whole of the current major
@@ -2739,7 +2773,7 @@ and `--no-auth` flags, and exits the same way.
 - An adopter MUST NOT be required to write mounting code to gain the
   supervisor. Migration is opt-in and mechanical: move `--addr` into
   `services.api.addr` and add services as siblings.
-- Exactly one command owns the `serve` word, whichever option mounts
+- Exactly one command owns the `service start` word, whichever option mounts
   it first. The two MUST NOT both own it.
 - An adopter replacing the built-in API with its own implementation
   registers it under the same name through `WithServiceOverride`.
@@ -2756,9 +2790,9 @@ and `--no-auth` flags, and exits the same way.
 Eight differences are visible to an adopter who upgrades without
 changing a line:
 
-1. **`serve` gained children and flags.** It accepts an optional
+1. **`service start` gained children and flags.** It accepts an optional
    service name and the `--list`, `--enable`, `--disable`, and timeout
-   flags. `<tool> serve` with no argument is unchanged for a
+   flags. `<tool> service start` with no argument is unchanged for a
    single-API tool.
 2. **The startup line moved into the lifecycle trace.** The leaf
    command printed `Listening on <addr>` to stderr. The api service
@@ -2807,7 +2841,7 @@ changing a line:
    `127.0.0.1:8080` rather than `:8080`. An adopter who set no
    address is unaffected on the same machine and no longer reachable
    from others. An adopter who set a non-loopback address — `:8080`
-   included — and no `Auth` now gets exit `2` at `serve` with a
+   included — and no `Auth` now gets exit `2` at `service start` with a
    message naming the fix; setting `services.api.insecure_remote:
    true` restores the previous behavior verbatim, by name. An adopter
    with `Auth` is unaffected on any address. See
@@ -2815,7 +2849,7 @@ changing a line:
    [secure-remote-serving.md](../adopters/guides/secure-remote-serving.md).
 6. **The api service refuses to serve beyond loopback with no
    delegation policy.** An adopter serving on a non-loopback address
-   who names no `--policy` now gets exit `2` at `serve` with a
+   who names no `--policy` now gets exit `2` at `service start` with a
    message naming the fix, whether or not they authenticate. Without
    a policy the permission gate permits every command for every
    caller, so this closes a surface that admitted callers and then
@@ -2841,9 +2875,9 @@ changing a line:
      `confirm` flag could prompt on the operator's terminal.
    - A command that fails while its caller's context is done is
      reported as a cancellation rather than as a command failure.
-   - `serve`, any command declaring `kit/network: ingress`, and any
+   - `service start`, any command declaring `kit/network: ingress`, and any
      command annotated `kit/self-hosting` are withheld from every
-     transport with the reason `self-hosting`. Before, kit's `serve`
+     transport with the reason `self-hosting`. Before, kit's `service start`
      was reachable over the socket, and would have started a second
      supervisor inside the first. Interactive commands, which the
      socket's bridge admits as leaves, are now refused by the bridge
@@ -2873,10 +2907,10 @@ changing a line:
    refuses `write-local` and `write-shared` commands, and
    `destructive: []` the `-local` and `-shared` destructive ones; they
    used to pass. A policy that meant to allow them names them
-   (`write-shared: ["*"]`). The `serve` command itself is not gated by
+   (`write-shared: ["*"]`). The `service start` command itself is not gated by
    the `--policy` it carries.
 
-Migrating from a hand-written leaf `serve` command, or from a tree
+Migrating from a hand-written leaf `service start` command, or from a tree
 mounted on REST and MCP through `cmdsurface` by hand, is a mechanical
 diff walked in
 [migrate-to-served-commands.md](../adopters/guides/migrate-to-served-commands.md):
@@ -2911,12 +2945,16 @@ observing the CLI from the outside would be wrong about the tool if a
 port answered differently; it is out when it exists because of the
 machinery one language happens to have.
 
-Where a port has shipped a `serve` at all, everything under
+Where a port has shipped a `service start` at all, everything under
 [Required](#required-of-every-sdk) is a conformance obligation.
-A port with no `serve` is not in violation of this section — it has
+A port with no `service start` is not in violation of this section — it has
 simply not implemented the surface yet, and
 [`contracts/parity/serve.json`](../../contracts/parity/serve.json)
-records that as a pending gap rather than a failure.
+records that as a pending gap rather than a failure. The TypeScript,
+Python, PHP and Rust ports still mount the hierarchy under the earlier
+`serve` word, without `service list`, `service status`, `service stop`
+or the control channel; moving them under `service` is pending parity
+work, and until it lands their `serve` is held to the rules below.
 
 Every port has a mount point for the command half: Go through the
 root's `WithService` option, TypeScript and Python on any commander or
@@ -2929,8 +2967,8 @@ command.
 
 #### The hierarchy and the override rule
 
-`<tool> serve` MUST be the supervisor over every configured and
-enabled service, `<tool> serve <service>` MUST be the selector over
+`<tool> service start` MUST be the supervisor over every configured and
+enabled service, `<tool> service start <service>` MUST be the selector over
 exactly one, and both MUST share one lifecycle implementation. Two or
 more positional arguments is `USAGE`, exit `2`.
 
@@ -2944,12 +2982,12 @@ services MUST exit `2` rather than `0`.
 This is the load-bearing part of the whole page. An operator's
 `systemd` unit, container entrypoint, or CI script is written against
 the hierarchy and the override rule and against nothing else; a port
-that made `serve <service>` respect `enabled` would silently do
+that made `service start <service>` respect `enabled` would silently do
 nothing where the reference starts a server.
 
 `--list` is required as a **flag**, not a `list` child, for the reason
 given in [Command hierarchy](#command-hierarchy): `list` is reserved
-selector vocabulary, so `serve list` would be ambiguous with the
+selector vocabulary, so `service start list` would be ambiguous with the
 selector form. The *columns* it prints are not contract — a port
 renders them through its own output layer.
 
@@ -3005,7 +3043,7 @@ topic strings in the table.** A subscriber is written against the
 string and does not know which language published it, so the strings
 are not negotiable for a port that publishes at all. Not every SDK
 has a bus — PHP has none today — and this section does not require one
-to be built before `serve` can ship. A port without a bus satisfies
+to be built before `service start` can ship. A port without a bus satisfies
 the requirement through the log alone.
 
 Fixed for either sink:
@@ -3076,7 +3114,7 @@ graceful path rather than inventing a different escalation.
 #### The exit-code taxonomy
 
 The table in [Exit behavior](#exit-behavior) is contract in full,
-because it is the only part of a `serve` run a supervising process
+because it is the only part of a `service start` run a supervising process
 reads programmatically:
 
 | Situation                                  | Code            | Exit |
@@ -3130,7 +3168,7 @@ env resolution at all.
 
 #### The `--enable` / `--disable` and timeout flags
 
-`--enable <name>` and `--disable <name>` MUST be accepted on `serve`
+`--enable <name>` and `--disable <name>` MUST be accepted on `service start`
 as repeatable flags, and their rules from
 [Configuration surface](#configuration-surface) are contract in full:
 
@@ -3190,7 +3228,7 @@ contract, because they read like rules:
   `DependsOn` mean anything. A port with no dependency declarations
   MAY start concurrently; what it MUST NOT do is report the aggregate
   ready before every service has.
-- **Re-execution on the same root.** The rule that a second `serve`
+- **Re-execution on the same root.** The rule that a second `service start`
   run must not inherit the first run's context describes a hazard
   cobra creates by storing a context on the command tree. A port whose
   command objects hold no context has nothing to get wrong here; the
@@ -3201,7 +3239,7 @@ contract, because they read like rules:
 
 `contracts/parity/serve.json` records, per language, which of the
 required behaviors above a port has shipped. A language that has not
-implemented `serve` is marked `PENDING` there rather than `FAIL`: the
+implemented `service start` is marked `PENDING` there rather than `FAIL`: the
 harness's job is to make the gap visible, not to fail a build over
 work that has not started.
 

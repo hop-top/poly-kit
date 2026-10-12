@@ -40,7 +40,7 @@ benchmarks — not flag parsers and output renderers.
   Library, Webhook, OAuth callback, Signed URL, FaaS (AWS Lambda,
   Cloud Run). Destructive commands locked from remote surfaces by
   default. See [`go/transport/cmdsurface/`](go/transport/cmdsurface/).
-- **Served commands.** `<tool> serve` supervises four kit-shipped
+- **Served commands.** `<tool> service start` supervises four kit-shipped
   services over the same tree and gates: `api` (REST, discovery,
   OpenAPI), `socket` (owner-only Unix socket), `mcp` (MCP tools over
   streamable HTTP or stdio, via the official MCP Go SDK), and `rpc`

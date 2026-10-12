@@ -98,7 +98,7 @@ func startServe(t *testing.T, opts options, args ...string) *serveRun {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	run.cancel = cancel
-	run.root.SetArgs(append([]string{"serve"}, args...))
+	run.root.SetArgs(append([]string{"service", "start"}, args...))
 	go func() { run.errCh <- run.root.Execute(ctx) }()
 	t.Cleanup(func() { _ = run.stop(t) })
 	return run
@@ -369,18 +369,22 @@ func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 	got := discover(t, base)
 
 	want := map[string]verdict{
-		"item list":    {Invocable: true},
-		"item watch":   {Invocable: true},
-		"item add":     {Invocable: true},
-		"item tag":     {Invocable: true},
-		"item sync":    {Invocable: true},
-		"item export":  {Invocable: true},
-		"item purge":   {Reason: "unauthorized-destructive"},
-		"shell":        {Reason: "interactive"},
-		"upgrade":      {Reason: "self-hosting"},
-		"serve":        {Reason: "self-hosting"},
-		"status":       {Reason: "management-only"},
-		"audit verify": {Reason: "management-only"},
+		"item list":      {Invocable: true},
+		"item watch":     {Invocable: true},
+		"item add":       {Invocable: true},
+		"item tag":       {Invocable: true},
+		"item sync":      {Invocable: true},
+		"item export":    {Invocable: true},
+		"item purge":     {Reason: "unauthorized-destructive"},
+		"shell":          {Reason: "interactive"},
+		"upgrade":        {Reason: "self-hosting"},
+		"service start":  {Reason: "self-hosting"},
+		"service stop":   {Reason: "self-hosting"},
+		"service status": {Reason: "management-only"},
+		"service list":   {Reason: "management-only"},
+		"serve":          {Reason: "hidden-internal"},
+		"status":         {Reason: "management-only"},
+		"audit verify":   {Reason: "management-only"},
 	}
 	for name, v := range want {
 		require.Contains(t, got, name, "%s must be described", name)
@@ -536,14 +540,16 @@ func TestInteractiveAndSelfHostingAreNeverInvocableOverREST(t *testing.T) {
 		"api", "--addr", "127.0.0.1:0")
 	base := "http://" + run.waitReady(t, "api").Address
 
-	for _, path := range []string{"shell", "upgrade", "serve"} {
+	for _, path := range []string{"shell", "upgrade", "serve", "service/start", "service/stop"} {
 		status, body := httpDo(t, http.MethodPost, base+"/v1/commands/"+path, `{}`)
 		assert.Equal(t, http.StatusNotFound, status, "%s: %s", path, body)
 	}
 	got := discover(t, base)
 	assert.Equal(t, verdict{Reason: "interactive"}, got["shell"])
 	assert.Equal(t, verdict{Reason: "self-hosting"}, got["upgrade"])
-	assert.Equal(t, verdict{Reason: "self-hosting"}, got["serve"])
+	assert.Equal(t, verdict{Reason: "self-hosting"}, got["service start"])
+	assert.Equal(t, verdict{Reason: "self-hosting"}, got["service stop"])
+	assert.False(t, got["serve"].Invocable, "the deprecated serve is withheld too")
 }
 
 // --- Execution over the socket -------------------------------------------------

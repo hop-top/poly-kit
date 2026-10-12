@@ -118,7 +118,7 @@ func main() {
 ```
 
 ```console
-$ mytool serve
+$ mytool service start
 INFO service started service=api
 INFO service ready service=api address=127.0.0.1:8080
 ```
@@ -145,7 +145,7 @@ cli.WithAPI(cli.APIConfig{Addr: "0.0.0.0:8080"})
 ```
 
 ```console
-$ mytool serve
+$ mytool service start
 USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and the api service has no authentication; set services.api.auth.mode or APIConfig.Auth, listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback
 $ echo $?
 2
@@ -158,7 +158,7 @@ accept the exposure by name (step 4). `--addr` on the command line is refused
 the same way, and so is `--no-auth` on a non-loopback address:
 
 ```console
-$ mytool serve --no-auth
+$ mytool service start --no-auth
 USAGE: service "api": addr: "0.0.0.0:8080" is not a loopback address and --no-auth disables authentication; drop --no-auth, listen on 127.0.0.1, or set services.api.insecure_remote: true (or --insecure-remote) to serve unauthenticated beyond loopback
 ```
 
@@ -432,7 +432,7 @@ services:
 ```
 
 ```console
-$ mytool serve --insecure-remote
+$ mytool service start --insecure-remote
 ```
 
 The flag wins over the config key, and the config key wins over the
@@ -460,7 +460,7 @@ services:
 ```
 
 ```console
-$ mytool serve --insecure-no-policy
+$ mytool service start --insecure-no-policy
 ```
 
 Same precedence: flag, then config key, then code. With it set and no
@@ -476,7 +476,7 @@ you accepted. Under `insecure_remote` alone nobody is established, so
 `kit-default` lets every caller read and refuses every write:
 
 ```console
-$ mytool serve --addr 0.0.0.0:8080 --insecure-remote
+$ mytool service start --addr 0.0.0.0:8080 --insecure-remote
 $ curl -s -X POST http://10.0.0.5:8080/v1/commands/widget/add -d '{}' | jq -r .message
 api: permission denied: cmdsurface: permission denied: widget add on rest: policy: write not allowed for widget add (policy kit-default: ...)
 ```
@@ -700,7 +700,7 @@ side-effect class refuses it on every surface, before your decision is
 asked, and discovery reflects it the same way:
 
 ```console
-$ mytool serve api --policy=readonly
+$ mytool service start api --policy=readonly
 $ curl -s http://127.0.0.1:8080/v1/commands | jq '.commands[] | select(.name=="widget purge")'
 ```
 
@@ -739,7 +739,7 @@ callers:
 ```
 
 ```console
-$ mytool serve api --policy=team
+$ mytool service start api --policy=team
 ```
 
 `max_ops` gives each matching principal, per tenant, a budget of write
@@ -818,7 +818,7 @@ permissions:
 ```
 
 ```console
-$ mytool serve api --policy=ops
+$ mytool service start api --policy=ops
 ```
 
 What a rule can read:
@@ -848,7 +848,7 @@ Every rule compiles when the service starts. One that does not refuses
 the start with exit 2, naming it:
 
 ```console
-$ mytool serve api --policy=ops
+$ mytool service start api --policy=ops
 USAGE: service "api": USAGE: policy "ops": permission rule "tenant-boundary" does not compile: ERROR: <input>:1:... Syntax error: ...
 $ echo $?
 2
@@ -1443,7 +1443,7 @@ warning, but a certificate revoked since is not in it. kit does not
 query OCSP responders.
 
 A failed handshake has no request to audit. The listener logs it at
-debug (run `serve -V` to see the reason), at most a few lines a second,
+debug (run `service start -V` to see the reason), at most a few lines a second,
 and counts it as `tls_handshake` in `kit.serve.http.refusals` when
 [metrics are on](../reference/served-observability.md).
 

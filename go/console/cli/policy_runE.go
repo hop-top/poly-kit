@@ -175,12 +175,21 @@ func (r *Root) newPolicyEngine(cmd *cobra.Command) (*policy.Engine, error) {
 	return policy.NewEngine(p, maxOps), nil
 }
 
-// startsServices reports whether cmd is the root's serve command. Its
-// --policy names the policy the served surfaces enforce on the calls
-// they carry; it does not gate the operator's act of starting them,
-// which a policy refusing its write tier would otherwise refuse.
+// startsServices reports whether cmd runs the services: kit's
+// `service start`, or the deprecated root `serve` that runs the same
+// thing. Its --policy names the policy the served surfaces enforce on
+// the calls they carry; it does not gate the operator's act of starting
+// them, which a policy refusing its write tier would otherwise refuse.
+//
+// A tool with no registry that mounts its own depth-1 `serve` keeps the
+// exemption: that is the word the serve-lifecycle contract gives the
+// supervisor. Once kit owns the services, only kit's commands are
+// exempt, by identity rather than by name.
 func (r *Root) startsServices(cmd *cobra.Command) bool {
-	return r.Cmd != nil && cmd.Parent() == r.Cmd && cmd.Name() == "serve"
+	if r.serveCmd != nil {
+		return cmd == r.serveCmd || cmd == r.serveAlias
+	}
+	return r.Cmd != nil && cmd.Parent() == r.Cmd && cmd.Name() == serveAliasName
 }
 
 // runCaller is the caller a served run executes for: the identity the

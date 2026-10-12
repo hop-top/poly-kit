@@ -10,7 +10,7 @@ order:
 | Option | Why it is there |
 |--------|-----------------|
 | `cli.WithStatus(cli.StatusConfig{})` | every kit root is validated to carry the reserved `status` verb; without it `Execute` refuses to run |
-| `cli.WithAPI(cli.APIConfig{})` | registers the `api` service: the command tree over REST on `127.0.0.1:8080`, discovery at `/v1/commands`, an OpenAPI document; enabled by default under a bare `serve` |
+| `cli.WithAPI(cli.APIConfig{})` | registers the `api` service: the command tree over REST on `127.0.0.1:8080`, discovery at `/v1/commands`, an OpenAPI document; enabled by default under a bare `service start` |
 | `cli.WithSocket(cli.SocketConfig{})` | registers the `socket` service: the same tree over an owner-only Unix socket; registered but not enabled, per the serve contract's default |
 | `mcpserve.With(mcpserve.Config{})` | registers the `mcp` service: the same tree as MCP tools over streamable HTTP on `127.0.0.1:8081/mcp`, or over stdio with `--stdio`; registered but not enabled. It is the one option that links the MCP SDK (about 2 MB stripped); removing it and its import drops the SDK |
 | `rpcserve.With(rpcserve.Config{})` | registers the `rpc` service: the same tree as the `cmdsurface.v1.Commands` service for Connect, gRPC and gRPC-Web clients on `127.0.0.1:8082`; registered but not enabled. It adds about 0.4 MB stripped (0.6 MB with symbols); removing it and its import drops it |
@@ -27,7 +27,7 @@ the rate limit on loopback too. The generated README lists them.
 
 Nothing else is mounted by hand. Reflection happens when a service
 starts, so a command file added to this package is served the next
-time `serve` runs. The destructive ceiling, the confirmation gate, the
+time `service start` runs. The destructive ceiling, the confirmation gate, the
 loopback default and the unauthenticated-remote refusal all come from
 kit; the template sets no `Policy`, so destructive commands are
 withheld from every served surface until the adopter names one.
@@ -60,17 +60,17 @@ makes the fragment wrong should fail one of those two.
 the real bootstrap path, compiles the result against the checkout of
 kit, and drives the binary:
 `TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring` asserts
-`spec coverage --min 100`, `serve --list`, the contract's `serve`
-flags, `serve api` on loopback,
+`spec coverage --min 100`, `service list`, the contract's `service start`
+flags, `service start api` on loopback,
 discovery reasons (`unauthorized-destructive`, `self-hosting`,
 `management-only`), a read over REST answering in `data`, the 404 on
 a destructive route, the exit-2 refusal of `--addr 0.0.0.0:0`, a
 socket path reaching the socket service through `-c`, an MCP session
-over stdio spawned from the README's host entry, `serve mcp` on its
+over stdio spawned from the README's host entry, `service start mcp` on its
 own loopback listener, the exit-2 refusal of `--mcp-addr 0.0.0.0:0`,
-the README's `Invoke` call answered by `serve rpc` on its own loopback
+the README's `Invoke` call answered by `service start rpc` on its own loopback
 listener, and the exit-2 refusal of `--rpc-addr 0.0.0.0:0`. The
-README's `serve --list` table is compared with the binary's output.
+README's `service list` table is compared with the binary's output.
 Run it after every edit to a `.tmpl` here, then `make builtins-sync` so the
 embedded mirror under `internal/template/builtins/` matches.
 

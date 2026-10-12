@@ -11,7 +11,7 @@ import (
 // heartbeat is the adopter-owned service the fixture registers beside
 // kit's api and socket. It does nothing but tick, which is enough to
 // prove that a service registered through cli.WithService appears as
-// a sibling in `serve --list`, starts under the same supervisor, and
+// a sibling in `service list`, starts under the same supervisor, and
 // observes the same readiness and stop semantics.
 type heartbeat struct {
 	mu      sync.Mutex

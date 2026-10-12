@@ -3,7 +3,7 @@
 //
 // The test renders cli-go through the real bootstrap path, points the
 // rendered module at this checkout of kit, compiles it, and drives the
-// binary: `serve --list`, `serve api` on loopback, discovery, a read
+// binary: `service list`, `service start api` on loopback, discovery, a read
 // over REST, the destructive ceiling, the unauthenticated-remote
 // refusal, the socket through the config file, the mcp service over
 // stdio and HTTP, and the rpc service answering the README's call.
@@ -162,7 +162,7 @@ func serveRenderedUntil(t *testing.T, bin, service string, args ...string) (addr
 	t.Helper()
 	readyAddr := readyAddrOf(service)
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, bin, append([]string{"serve"}, args...)...)
+	cmd := exec.CommandContext(ctx, bin, append([]string{"service", "start"}, args...)...)
 	cmd.Env = isolatedEnv(t)
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGINT) }
 	stderr, err := cmd.StderrPipe()
@@ -330,8 +330,8 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		assert.Zero(t, rep.Unannotated)
 	})
 
-	t.Run("serve --list names api, socket, mcp and rpc", func(t *testing.T) {
-		stdout, stderr, code := runRendered(t, bin, "serve", "--list")
+	t.Run("service list names api, socket, mcp and rpc", func(t *testing.T) {
+		stdout, stderr, code := runRendered(t, bin, "service", "list")
 		require.Equal(t, 0, code, stderr)
 		// The README prints this table; only api is enabled out of the
 		// box, and nothing is ready when asked from the shell.
@@ -347,15 +347,15 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 			"registration order: the template registers mcp before rpc")
 
 		// The README shows a fresh project's table verbatim.
-		assert.Equal(t, readmeBlock(t, project, "$ demo serve --list\n", "```"), stdout,
-			"README's serve --list table must be what the binary prints")
+		assert.Equal(t, readmeBlock(t, project, "$ demo service list\n", "```"), stdout,
+			"README's service list table must be what the binary prints")
 	})
 
-	t.Run("serve --help carries the contract's flags", func(t *testing.T) {
-		stdout, stderr, _ := runRendered(t, bin, "serve", "--help")
+	t.Run("service start --help carries the contract's flags", func(t *testing.T) {
+		stdout, stderr, _ := runRendered(t, bin, "service", "start", "--help")
 		help := stdout + stderr
 		for _, flag := range []string{
-			"--list", "--enable", "--disable", "--ready-timeout", "--stop-timeout",
+			"--enable", "--disable", "--ready-timeout", "--stop-timeout",
 			"--shutdown-timeout", "--addr", "--insecure-remote", "--socket",
 			"--stdio", "--mcp-addr", "--rpc-addr",
 		} {
@@ -384,7 +384,7 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		entry, ok := hosts.MCPServers["demo"]
 		require.True(t, ok, "the README's host entry is keyed by the tool's name")
 		assert.Equal(t, "demo", entry.Command)
-		require.Equal(t, []string{"serve", "mcp", "--stdio"}, entry.Args)
+		require.Equal(t, []string{"service", "start", "mcp", "--stdio"}, entry.Args)
 
 		// A host that never gets an answer must fail the test, not hang
 		// it until the suite's deadline.
@@ -402,7 +402,7 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 
 		tools := renderedMCPTools(ctx, t, sess)
 		assert.Contains(t, tools, "hello", "every invocable command is a tool")
-		for _, withheld := range []string{"nuke", "serve", "status"} {
+		for _, withheld := range []string{"nuke", "serve", "status", "service_start", "service_stop"} {
 			assert.NotContains(t, tools, withheld,
 				"the tool list carries only what may run: %s is withheld", withheld)
 		}
@@ -438,7 +438,7 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 	})
 
 	t.Run("unauthenticated remote mcp is refused at exit 2", func(t *testing.T) {
-		_, stderr, code := runRendered(t, bin, "serve", "mcp", "--mcp-addr", "0.0.0.0:0")
+		_, stderr, code := runRendered(t, bin, "service", "start", "mcp", "--mcp-addr", "0.0.0.0:0")
 		assert.Equal(t, 2, code, stderr)
 		assert.Contains(t, stderr, "services.mcp.insecure_remote")
 	})
@@ -447,7 +447,7 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		// The README's curl: its procedure path and body, and the
 		// reply it shows, against the built binary.
 		section := readmeBlock(t, project, "### Call it over gRPC\n", "\n## ")
-		curl := regexp.MustCompile(`(?s)demo serve rpc\ncurl -s http://127\.0\.0\.1:8082(/\S+).*?-d '([^']*)'`).
+		curl := regexp.MustCompile(`(?s)demo service start rpc\ncurl -s http://127\.0\.0\.1:8082(/\S+).*?-d '([^']*)'`).
 			FindStringSubmatch(section)
 		require.Len(t, curl, 3, "README has no serve rpc + curl example:\n%s", section)
 		procedure, payload := curl[1], curl[2]
@@ -472,7 +472,7 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 	})
 
 	t.Run("unauthenticated remote rpc is refused at exit 2", func(t *testing.T) {
-		_, stderr, code := runRendered(t, bin, "serve", "rpc", "--rpc-addr", "0.0.0.0:0")
+		_, stderr, code := runRendered(t, bin, "service", "start", "rpc", "--rpc-addr", "0.0.0.0:0")
 		assert.Equal(t, 2, code, stderr)
 		assert.Contains(t, stderr, "services.rpc.insecure_remote")
 	})
@@ -504,8 +504,10 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		require.Contains(t, byName, "nuke", "a withheld command is still described")
 		assert.False(t, byName["nuke"].Invocable)
 		assert.Equal(t, "unauthorized-destructive", byName["nuke"].Reason)
+		require.Contains(t, byName, "service start")
+		assert.Equal(t, "self-hosting", byName["service start"].Reason)
 		require.Contains(t, byName, "serve")
-		assert.Equal(t, "self-hosting", byName["serve"].Reason)
+		assert.False(t, byName["serve"].Invocable, "the deprecated serve is withheld")
 		require.Contains(t, byName, "status")
 		assert.Equal(t, "management-only", byName["status"].Reason)
 
@@ -627,7 +629,7 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 	})
 
 	t.Run("unauthenticated remote serving is refused at exit 2", func(t *testing.T) {
-		_, stderr, code := runRendered(t, bin, "serve", "api", "--addr", "0.0.0.0:0")
+		_, stderr, code := runRendered(t, bin, "service", "start", "api", "--addr", "0.0.0.0:0")
 		assert.Equal(t, 2, code, stderr)
 		assert.Contains(t, stderr, "not a loopback address")
 		assert.Contains(t, stderr, "insecure_remote")
@@ -646,7 +648,7 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 			[]byte(fmt.Sprintf("services:\n  socket:\n    path: %s\n", sock)), 0o644))
 
 		ctx, cancel := context.WithCancel(context.Background())
-		cmd := exec.CommandContext(ctx, bin, "-c", cfg, "serve", "socket")
+		cmd := exec.CommandContext(ctx, bin, "-c", cfg, "service", "start", "socket")
 		cmd.Env = isolatedEnv(t)
 		cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGINT) }
 		var stderr strings.Builder
@@ -718,9 +720,9 @@ func TestBootstrap_CLIGo_ServesItsCommandsWithoutWiring(t *testing.T) {
 		require.NotNil(t, wire.Error)
 		assert.Equal(t, "BLOCKED", wire.Error.Code)
 
-		// serve is self-hosting, and over the socket that reads as
-		// NOT_FOUND rather than NOT_INVOCABLE.
-		ask(map[string]any{"path": []string{"serve"}})
+		// service start is self-hosting, and over the socket that
+		// reads as NOT_FOUND rather than NOT_INVOCABLE.
+		ask(map[string]any{"path": []string{"service", "start"}})
 		require.False(t, wire.Ok)
 		require.NotNil(t, wire.Error)
 		assert.Equal(t, "NOT_FOUND", wire.Error.Code)

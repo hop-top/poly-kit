@@ -2,7 +2,7 @@
 
 ## What it answers
 
-Which services `<tool> serve [service]` runs, in what order, and what exit
+Which services `<tool> service start [service]` runs, in what order, and what exit
 code the run ends on: Registry, Resolve, StartOrder, ExitCodeFor, Supervisor.
 The cobra command and the `services.*` config block belong to
 `hop.top/kit/go/console/cli`; transports to `hop.top/kit/go/transport/...`.
@@ -65,7 +65,7 @@ this package is the authority for signatures only. Points a caller gets wrong:
 
 ## Neighbours
 
-- `hop.top/kit/go/console/cli`: `serve` command, `WithService`,
+- `hop.top/kit/go/console/cli`: `service start` command, `WithService`,
   `WithServiceOverride`, `WithServicePolicy`, `services.*` resolution
   (`WithOwnServiceConfig` hands it to a tool with its own loader)
 - kit-shipped services: `api` (`cli.WithAPI`), `socket` (`cli.WithSocket`),

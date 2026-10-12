@@ -94,7 +94,7 @@ type mcpRun struct {
 	err   *strings.Builder
 }
 
-// startMCP runs `serve <args>` on a root carrying the mcp service and
+// startMCP runs `service start <args>` on a root carrying the mcp service and
 // the commands above, and waits for the mcp service's readiness.
 func startMCP(t *testing.T, cfg mcpserve.Config, args []string, opts ...func(*cli.Root)) (*mcpRun, string) {
 	t.Helper()
@@ -118,7 +118,7 @@ func startMCP(t *testing.T, cfg mcpserve.Config, args []string, opts ...func(*cl
 
 	ctx, cancel := context.WithCancel(context.Background())
 	run.stop = cancel
-	run.root.SetArgs(append([]string{"serve"}, args...))
+	run.root.SetArgs(append([]string{"service", "start"}, args...))
 	go func() { run.errCh <- run.root.Execute(ctx) }()
 	t.Cleanup(func() {
 		cancel()
@@ -220,6 +220,10 @@ func TestMCPServiceHTTPListsAndCallsTools(t *testing.T) {
 	assert.NotContains(t, names, "nuke", "a destructive leaf the policy refuses is withheld")
 	assert.NotContains(t, names, "shell", "an interactive leaf is withheld")
 	assert.NotContains(t, names, "serve", "self-hosting commands are never tools")
+	for _, n := range names {
+		assert.False(t, strings.HasPrefix(n, "service"),
+			"kit's service lifecycle commands are never tools: %s", n)
+	}
 
 	text, isErr := callTool(t, sess, "ping", nil)
 	assert.False(t, isErr)
@@ -429,13 +433,13 @@ func TestMCPServiceRunsOnTheRootFactory(t *testing.T) {
 	assert.Greater(t, builds.Load(), before, "a served call runs on a tree the factory built")
 }
 
-// serveErr runs `serve <args>` on a root with the mcp service and
+// serveErr runs `service start <args>` on a root with the mcp service and
 // returns the refusal it ends with.
 func serveErr(t *testing.T, cfg mcpserve.Config, args []string, opts ...func(*cli.Root)) *output.Error {
 	t.Helper()
 	r := newServeRoot(t, append([]func(*cli.Root){mcpserve.With(cfg)}, opts...)...)
 	mcpCommands(r)
-	err := runServeArgs(t, r, append([]string{"serve"}, args...), 5*time.Second)
+	err := runServeArgs(t, r, append([]string{"service", "start"}, args...), 5*time.Second)
 	require.Error(t, err)
 	var oe *output.Error
 	require.ErrorAs(t, err, &oe, err.Error())
@@ -453,7 +457,7 @@ func TestMCPServiceHTTPExposureRefusals(t *testing.T) {
 	t.Run("authenticated with no policy serves under kit-default", func(t *testing.T) {
 		r := newServeRoot(t, mcpserve.With(mcpserve.Config{Auth: bearerAuth}))
 		mcpCommands(r)
-		err := runServeArgs(t, r, []string{"serve", "mcp", "--mcp-addr", "0.0.0.0:0"}, 2*time.Second)
+		err := runServeArgs(t, r, []string{"service", "start", "mcp", "--mcp-addr", "0.0.0.0:0"}, 2*time.Second)
 		assert.NoError(t, err)
 	})
 	t.Run("bad address", func(t *testing.T) {
@@ -479,7 +483,7 @@ func TestMCPServiceInsecureOptInsAreConfigKeys(t *testing.T) {
 	r.Viper.Set("services.mcp.insecure_remote", true)
 	r.Viper.Set("services.mcp.insecure_no_policy", true)
 	// Past validation, the run binds; cancellation is a clean stop.
-	err := runServeArgs(t, r, []string{"serve", "mcp", "--mcp-addr", "0.0.0.0:0"}, 2*time.Second)
+	err := runServeArgs(t, r, []string{"service", "start", "mcp", "--mcp-addr", "0.0.0.0:0"}, 2*time.Second)
 	assert.NoError(t, err)
 }
 
@@ -487,14 +491,14 @@ func TestMCPServiceIsListedAndDisabledByDefault(t *testing.T) {
 	r := newServeRoot(t, mcpserve.With(mcpserve.Config{}))
 	var out strings.Builder
 	r.Cmd.SetOut(&out)
-	r.SetArgs([]string{"serve", "--list"})
+	r.SetArgs([]string{"service", "list"})
 	require.NoError(t, r.Execute(context.Background()))
 	assert.Regexp(t, `(?m)^mcp\s+false\s+false`, out.String())
 
 	// The supervisor form with nothing enabled is a usage error, not
 	// a server nobody asked for.
 	r2 := newServeRoot(t, mcpserve.With(mcpserve.Config{}))
-	err := runServeArgs(t, r2, []string{"serve"}, 2*time.Second)
+	err := runServeArgs(t, r2, []string{"service", "start"}, 2*time.Second)
 	var oe *output.Error
 	require.ErrorAs(t, err, &oe)
 	assert.Equal(t, 2, oe.ExitCode)
