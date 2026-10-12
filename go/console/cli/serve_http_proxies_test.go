@@ -18,7 +18,7 @@ func proxiedAPI(t *testing.T, set map[string]any) (url string, rec *auditRecorde
 	t.Helper()
 	isolateHome(t)
 	rec = &auditRecorder{}
-	r := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}), WithAuditSinks(rec.spec()))
+	r := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}), WithAuditSinks(rec.spec()), ownScope())
 	r.Viper.Set("services.api.rate_limit.enabled", true)
 	r.Viper.Set("services.api.rate_limit.read.per_minute", 1)
 	r.Viper.Set("services.api.rate_limit.read.burst", 1)

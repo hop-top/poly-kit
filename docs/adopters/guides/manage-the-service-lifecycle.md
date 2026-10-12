@@ -59,10 +59,60 @@ Only the instance's own user can use the control socket. It is created
 connection's peer uid, as the kernel reports it, must match the
 instance's uid.
 
-One control socket per tool per user: a second `service start` while
-one is running keeps serving, logs `service control socket unavailable`
-on stderr, and is reachable only by signal. A socket file nobody
-answers on (an instance that crashed) is replaced by the next start.
+One control socket per tool per user, unless you scope it (next
+section): a second `service start` while one is running is refused
+with exit 4 (`CONFLICT`) naming the socket, before it starts anything.
+A socket file nobody answers on (an instance that crashed) is replaced
+by the next start; a socket something still answers on, or a file that
+is not a socket, is never removed.
+
+## One instance per profile
+
+A tool that runs one daemon per profile (or workspace, or tenant) on
+one host gives each instance its own control socket with
+`cli.WithServiceControlScope`. Kit calls your function from each
+`service` leaf, after flags are parsed and your pre-run hooks ran, and
+uses the scope it returns for `start` (listen) and `stop`, `restart`,
+`status` (dial):
+
+```go
+root := cli.New(cfg,
+    cli.WithAPI(cli.APIConfig{}),
+    cli.WithServiceControlScope(func(cmd *cobra.Command) (string, error) {
+        return activeProfile(cmd) // "" is the default, unscoped instance
+    }),
+)
+```
+
+```sh
+$ MYTOOL_PROFILE=work mytool service start &   # control-work.sock
+$ MYTOOL_PROFILE=home mytool service start &   # control-home.sock
+$ MYTOOL_PROFILE=work mytool service stop      # drains work only
+$ MYTOOL_PROFILE=home mytool service status    # home's services
+```
+
+- The socket is `<runtime dir>/<tool>/control-<scope>.sock`, so a
+  scope is letters, digits, `.`, `_` and `-` only. Anything else exits
+  2 (`USAGE`); map your profile names onto that set. Keep it short: the
+  whole path must fit the 103-byte unix socket limit.
+- Derive the scope from what a restarted instance sees again: its
+  arguments, environment or configuration. `service restart`
+  re-executes with the same ones, and the new run must listen where
+  the old one did.
+- An error your function returns is returned by the command as it is.
+- `mytool is not running in control scope work` (exit 3) names the
+  scope a client looked in.
+
+Tests that start two instances of your tool at once, in one process or
+in parallel test binaries, are two instances too: the second is refused
+with exit 4. Point `XDG_RUNTIME_DIR` at a temporary directory per test
+binary (a `TestMain` does it once), and give instances that run side
+by side distinct scopes. The option is a plain `func(*cli.Root)`, so a
+test can apply it to a root it already built:
+
+```go
+cli.WithServiceControlScope(func(*cobra.Command) (string, error) { return "t2", nil })(root)
+```
 
 ## Restart
 

@@ -13,21 +13,23 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
-	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/transport/socket"
 )
 
 // The control channel.
 //
 // While `service start` runs it listens on a Unix socket at
-// <runtime dir>/<tool>/control.sock, and `service stop`, `service
-// restart` and `service status` are its only clients. The protocol is
-// one JSON request line per connection and JSON response lines back:
+// <runtime dir>/<tool>/control.sock — control-<scope>.sock for a tool
+// that scopes its instances (service_control_scope.go) — and `service
+// stop`, `service restart` and `service status` are its only clients.
+// The protocol is one JSON request line per connection and JSON
+// response lines back:
 //
 //	{"op":"status"}  → {"ok":true,"pid":…,"services":[…]}
 //	{"op":"stop"}    → {"ok":true,"stopping":true}
@@ -93,15 +95,6 @@ type serviceStopRow struct {
 	Result string `json:"result" yaml:"result" table:"RESULT"`
 }
 
-// controlSocketPath is where the tool's control socket lives.
-func controlSocketPath(r *Root) (string, error) {
-	tool := "kit"
-	if r != nil && r.Config.Name != "" {
-		tool = r.Config.Name
-	}
-	return xdg.RuntimeFile(tool, controlSocketName)
-}
-
 // controlIntent is what the control channel asked the run to end for.
 type controlIntent int
 
@@ -114,6 +107,7 @@ const (
 // controlServer is the daemon's half of the control channel.
 type controlServer struct {
 	ln     net.Listener
+	lock   *flock.Flock
 	cancel context.CancelFunc
 	status func() []serviceStatusRow
 
@@ -128,40 +122,28 @@ type controlServer struct {
 	wg             sync.WaitGroup
 }
 
-// errControlInUse reports a control socket a live instance answers on.
-var errControlInUse = errors.New("another instance is running")
-
-// listenControl opens the control socket. cancel ends the run;
-// status reports its services. A socket file nobody answers on is a
-// stale one from an instance that did not exit cleanly, and is
-// replaced; one a live instance answers on is left alone and reported
-// as errControlInUse.
-func listenControl(r *Root, cancel context.CancelFunc, status func() []serviceStatusRow) (*controlServer, error) {
-	path, err := controlSocketPath(r)
+// listenControl opens the control socket at ep. cancel ends the run;
+// status reports its services. The path is
+// claimed first (claimControlPath): a live instance on it is a
+// CONFLICT, and a stale socket file is replaced.
+func listenControl(ep controlEndpoint, stopHint string, cancel context.CancelFunc,
+	status func() []serviceStatusRow,
+) (*controlServer, error) {
+	lock, err := claimControlPath(ep.path, stopHint)
 	if err != nil {
 		return nil, err
 	}
-	if len(path) > maxSocketPathLen {
-		return nil, fmt.Errorf("control socket path %q is over the %d-byte limit", path, maxSocketPathLen)
-	}
-	if _, statErr := os.Lstat(path); statErr == nil {
-		if conn, dialErr := net.DialTimeout("unix", path, controlDialTimeout); dialErr == nil {
-			_ = conn.Close()
-			return nil, fmt.Errorf("%w: %s", errControlInUse, path)
-		}
-		if rmErr := os.Remove(path); rmErr != nil {
-			return nil, rmErr
-		}
-	}
-	ln, err := net.Listen("unix", path)
+	ln, err := net.Listen("unix", ep.path)
 	if err != nil {
+		_ = lock.Unlock()
 		return nil, err
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := os.Chmod(ep.path, 0o600); err != nil {
 		_ = ln.Close()
+		_ = lock.Unlock()
 		return nil, err
 	}
-	cs := &controlServer{ln: ln, cancel: cancel, status: status}
+	cs := &controlServer{ln: ln, lock: lock, cancel: cancel, status: status}
 	cs.wg.Add(1)
 	go cs.serve()
 	return cs, nil
@@ -259,6 +241,8 @@ func (cs *controlServer) close(exitCode int) (restart bool) {
 	restart = cs.intent == intentRestart
 	cs.mu.Unlock()
 	_ = cs.ln.Close()
+	// The socket is unlinked; the path is free for the next instance.
+	_ = cs.lock.Unlock()
 	for _, conn := range waiters {
 		code := exitCode
 		_ = json.NewEncoder(conn).Encode(controlResponse{OK: true, Stopped: true, ExitCode: &code})
@@ -305,13 +289,9 @@ func serviceStatusRows(reg *serve.Registry, selected []string) func() []serviceS
 	}
 }
 
-// dialControl connects to a running instance. notRunning is true when
-// there is none: no socket file, or one nobody answers on.
-func dialControl(r *Root) (conn net.Conn, notRunning bool, err error) {
-	path, err := controlSocketPath(r)
-	if err != nil {
-		return nil, false, err
-	}
+// dialControl connects to the instance listening at path. notRunning
+// is true when there is none: no socket file, or one nobody answers on.
+func dialControl(path string) (conn net.Conn, notRunning bool, err error) {
 	conn, err = net.DialTimeout("unix", path, controlDialTimeout)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOENT) ||
@@ -326,11 +306,17 @@ func dialControl(r *Root) (conn net.Conn, notRunning bool, err error) {
 // controlCall sends op and decodes the first response line, leaving
 // conn open for any that follow.
 func controlCall(conn net.Conn, op string) (*json.Decoder, controlResponse, error) {
+	return controlSend(conn, controlRequest{Op: op}, controlDialTimeout)
+}
+
+// controlSend sends req and decodes the first response line, waiting
+// at most wait for it.
+func controlSend(conn net.Conn, req controlRequest, wait time.Duration) (*json.Decoder, controlResponse, error) {
 	var resp controlResponse
-	if err := json.NewEncoder(conn).Encode(controlRequest{Op: op}); err != nil {
+	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		return nil, resp, err
 	}
-	_ = conn.SetReadDeadline(time.Now().Add(controlDialTimeout))
+	_ = conn.SetReadDeadline(time.Now().Add(wait))
 	dec := json.NewDecoder(conn)
 	if err := dec.Decode(&resp); err != nil {
 		return nil, resp, fmt.Errorf("control socket: %w", err)
@@ -352,8 +338,8 @@ func controlCall(conn net.Conn, op string) (*json.Decoder, controlResponse, erro
 // NOT_FOUND, exit 3 — the thing asked about, a running instance, could
 // not be located. Not a usage error (the invocation was right) and not
 // a failure to ask (that is exit 1 or 6).
-func notRunningError(r *Root) *output.Error {
-	e := output.NotFoundError(r.Config.Name + " is not running")
+func notRunningError(r *Root, ep controlEndpoint) *output.Error {
+	e := output.NotFoundError(notRunningMessage(r, ep))
 	e.SuggestedFix = "start it with `" + r.Config.Name + " " + ServiceCommandName + " start`"
 	return e
 }
@@ -378,23 +364,35 @@ func serviceStatusCmd(root *Root) *cobra.Command {
 }
 
 func runServiceStatus(cmd *cobra.Command, root *Root) error {
-	conn, notRunning, err := dialControl(root)
+	ep, err := root.controlEndpoint(cmd)
+	if err != nil {
+		return err
+	}
+	rows, notRunning, err := fetchStatus(ep.path)
 	if err != nil {
 		return err
 	}
 	if notRunning {
-		return notRunningError(root)
+		return notRunningError(root, ep)
 	}
-	defer func() { _ = conn.Close() }()
-	_, resp, err := controlCall(conn, "status")
-	if err != nil {
-		return err
-	}
-	rows := resp.Services
 	if rows == nil {
 		rows = []serviceStatusRow{}
 	}
 	return output.Dispatch(cmd, root.Viper, rows)
+}
+
+// fetchStatus asks the instance at path for its services.
+func fetchStatus(path string) (rows []serviceStatusRow, notRunning bool, err error) {
+	conn, notRunning, err := dialControl(path)
+	if err != nil || notRunning {
+		return nil, notRunning, err
+	}
+	defer func() { _ = conn.Close() }()
+	_, resp, err := controlCall(conn, "status")
+	if err != nil {
+		return nil, false, err
+	}
+	return resp.Services, false, nil
 }
 
 // serviceStopCmd builds `service stop`.
@@ -428,7 +426,11 @@ func runServiceStop(cmd *cobra.Command, root *Root) error {
 			Detail: "drain every running service and exit",
 		}}})
 	}
-	conn, notRunning, err := dialControl(root)
+	ep, err := root.controlEndpoint(cmd)
+	if err != nil {
+		return err
+	}
+	conn, notRunning, err := dialControl(ep.path)
 	if err != nil {
 		return err
 	}

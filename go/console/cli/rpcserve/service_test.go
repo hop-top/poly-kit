@@ -121,7 +121,7 @@ func startRPC(t *testing.T, with func(*cli.Root), args []string, opts ...func(*c
 		return nil
 	})
 	run := &rpcRun{errCh: make(chan error, 1)}
-	all := append([]func(*cli.Root){with, cli.WithServiceBus(b)}, opts...)
+	all := append([]func(*cli.Root){with, cli.WithServiceBus(b), ownScope()}, opts...)
 	run.root = newServeRoot(t, all...)
 	rpcCommands(run.root)
 

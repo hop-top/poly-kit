@@ -46,6 +46,20 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	// A runtime directory of the binary's own: every `service start`
+	// claims a control socket there, and one claimed by another
+	// package's test binary, or by a tool the user runs, refuses the
+	// start.
+	runtimeDir, err := os.MkdirTemp("", "kr")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "runtime dir:", err)
+		os.Exit(1)
+	}
+	if err := os.Setenv("XDG_RUNTIME_DIR", runtimeDir); err != nil {
+		fmt.Fprintln(os.Stderr, "runtime dir:", err)
+		os.Exit(1)
+	}
+
 	root := findModuleRoot()
 	if root == "" {
 		fmt.Fprintln(os.Stderr, "parity: could not find go.mod / module root")
@@ -131,6 +145,7 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 	os.RemoveAll(tmp)
+	_ = os.RemoveAll(runtimeDir)
 	os.Exit(code)
 }
 

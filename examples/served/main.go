@@ -11,8 +11,9 @@
 // writes run over REST, the socket and RPC, destructive commands are
 // withheld until a surface is named and confirmed, interactive and
 // self-hosting commands never run remotely, the api binds loopback
-// and refuses unauthenticated remote serving, and an adopter service
-// starts under the same supervisor.
+// and refuses unauthenticated remote serving, an adopter service
+// starts under the same supervisor, and instances of different
+// profiles are controlled independently.
 //
 // The command tree is deliberately small and covers one command per
 // class the contract distinguishes:
@@ -126,13 +127,18 @@ type options struct {
 	apiKeys string
 }
 
+// profileEnv names the profile an instance runs for. Each profile's
+// instance has a control socket of its own, so `service stop` under
+// one profile never reaches another's.
+const profileEnv = "SERVED_PROFILE"
+
 // newRoot builds the fixture's root. This is the whole of the wiring
 // an adopter writes: the root, the reserved status and audit verbs,
 // --policy files from $XDG_CONFIG_HOME/served/policies with their
 // permissions: rules evaluated, the four kit-shipped services, one
 // service of their own, the observability provider an operator can
-// turn on, the identity keypair tokens are signed with, and the
-// commands.
+// turn on, the identity keypair tokens are signed with, the control
+// scope per profile, and the commands.
 func newRoot(opts options) *cli.Root {
 	if opts.heartbeat == nil {
 		opts.heartbeat = newHeartbeat()
@@ -155,6 +161,9 @@ func newRoot(opts options) *cli.Root {
 		cli.WithServiceBus(opts.bus),
 		cli.WithObservability(opts.observe),
 		cli.WithAPIKeys(cli.APIKeysConfig{Path: opts.apiKeys}),
+		cli.WithServiceControlScope(func(*cobra.Command) (string, error) {
+			return os.Getenv(profileEnv), nil
+		}),
 	}
 	if opts.identity != nil {
 		// The tool's keypair: `token create` signs with it, and

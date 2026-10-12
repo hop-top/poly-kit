@@ -303,15 +303,23 @@ func TestService_StaleSocketIsNotRunningAndReplaced(t *testing.T) {
 }
 
 // instanceStatusRows runs `service status --format json` on a fresh root.
-func instanceStatusRows(t *testing.T) []serviceStatusRow {
+func instanceStatusRows(t *testing.T, opts ...func(*Root)) []serviceStatusRow {
 	t.Helper()
-	r := authRoot(t, WithAPI(APIConfig{}))
+	r := authRoot(t, append([]func(*Root){WithAPI(APIConfig{})}, opts...)...)
 	out, _, code, err := run(t, r, "service", "status", "--format", "json")
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 	var rows []serviceStatusRow
 	require.NoError(t, json.Unmarshal([]byte(out), &rows), out)
 	return rows
+}
+
+// controlPathOf is the control socket r's `service` commands use.
+func controlPathOf(t *testing.T, r *Root) string {
+	t.Helper()
+	ep, err := r.controlEndpoint(r.ServeCommand())
+	require.NoError(t, err)
+	return ep.path
 }
 
 func TestService_StatusAndStopReachTheRunningInstance(t *testing.T) {
@@ -351,25 +359,26 @@ func TestService_StatusAndStopReachTheRunningInstance(t *testing.T) {
 	s := authRoot(t, WithAPI(APIConfig{}))
 	_, _, code, _ = run(t, s, "service", "status")
 	assert.Equal(t, output.ExitNotFound, code)
-	path, err := controlSocketPath(s)
-	require.NoError(t, err)
-	_, statErr := os.Stat(path)
+	_, statErr := os.Stat(controlPathOf(t, s))
 	assert.True(t, errors.Is(statErr, os.ErrNotExist), "control socket unlinked")
 }
 
-func TestService_SecondInstanceKeepsTheFirstsControlSocket(t *testing.T) {
+// A second instance on a control socket a live one serves is refused
+// before it starts anything: it would otherwise serve with no control
+// channel while stop, restart and status went on reaching the first.
+func TestService_SecondInstanceIsRefused(t *testing.T) {
 	isolateRuntime(t)
 	first := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
 	_, stopFirst := serveAPI(t, first)
 	defer stopFirst()
 
 	second := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
-	stderr := &lockedStringWriter{b: &strings.Builder{}}
-	second.Cmd.SetErr(stderr)
-	_, stopSecond := serveAPI(t, second)
-	defer stopSecond()
-	assert.Contains(t, stderr.String(), "service control socket unavailable",
-		"the second instance serves, and says it has no control channel")
+	code, err := startRefused(t, second)
+	require.Error(t, err)
+	assert.Equal(t, output.ExitConflict, code)
+	assert.Contains(t, err.Error(), controlPathOf(t, second), "names the contested path")
+	assert.False(t, apiSvc(t, second).Ready(), "nothing started")
+	assert.Empty(t, apiSvc(t, second).Addr(), "nothing bound")
 
 	rows := instanceStatusRows(t)
 	require.Len(t, rows, 1)
@@ -381,9 +390,7 @@ func TestService_ControlSocketIsOwnerOnly(t *testing.T) {
 	d := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
 	_, stop := serveAPI(t, d)
 	defer stop()
-	path, err := controlSocketPath(d)
-	require.NoError(t, err)
-	info, err := os.Stat(path)
+	info, err := os.Stat(controlPathOf(t, d))
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }

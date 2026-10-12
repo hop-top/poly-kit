@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -61,6 +63,9 @@ type serveRun struct {
 	cancel   context.CancelFunc
 }
 
+// scopeSeq numbers the in-process instances' control scopes.
+var scopeSeq atomic.Int64
+
 // startServe runs `served serve <args>` in the background with a bus
 // wired, so readiness is observed the way a subscriber would observe
 // it: on kit.serve.service.ready_reported, with the address in the
@@ -93,6 +98,9 @@ func startServe(t *testing.T, opts options, args ...string) *serveRun {
 	})
 
 	run.root = newRoot(opts)
+	// A control scope of its own: tests run two instances at once.
+	scope := fmt.Sprintf("t%d", scopeSeq.Add(1))
+	cli.WithServiceControlScope(func(*cobra.Command) (string, error) { return scope, nil })(run.root)
 	run.root.Cmd.SetErr(run.stderr)
 	run.root.Cmd.SetOut(run.stdout)
 

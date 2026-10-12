@@ -380,7 +380,7 @@ func TestAPIProtectedResourceMetadata(t *testing.T) {
 		"services.api.auth.mode":          "oidc",
 		"services.api.auth.oidc.issuer":   srv.URL,
 		"services.api.auth.oidc.audience": "kit-api",
-	}, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
+	}, WithAPI(APIConfig{Addr: "127.0.0.1:0"}), ownScope())
 	base2, stop2 := serveAPI(t, r2)
 	defer stop2()
 	resp, _ = get(t, base2+"/v1/commands/list", nil)

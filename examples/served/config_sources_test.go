@@ -32,10 +32,23 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	// A runtime directory of the binary's own for the in-process runs:
+	// every `service start` claims a control socket there, and one
+	// claimed by another package's test binary, or by a tool the user
+	// runs, refuses the start.
+	runtimeDir, err := os.MkdirTemp("", "kr")
+	if err == nil {
+		err = os.Setenv("XDG_RUNTIME_DIR", runtimeDir)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "runtime dir:", err)
+		os.Exit(1)
+	}
 	code := m.Run()
 	if binDir != "" {
 		_ = os.RemoveAll(binDir)
 	}
+	_ = os.RemoveAll(runtimeDir)
 	os.Exit(code)
 }
 
