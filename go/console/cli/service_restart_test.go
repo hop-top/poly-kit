@@ -232,8 +232,9 @@ func TestService_RestartDrainsThenReexecs(t *testing.T) {
 	res := awaitClient(t, client)
 	require.NoError(t, res.err)
 	assert.Equal(t, 0, res.code)
-	var rows []serviceStatusRow
-	require.NoError(t, json.Unmarshal([]byte(res.out), &rows), res.out)
+	var got serviceStatusOutput
+	require.NoError(t, json.Unmarshal([]byte(res.out), &got), res.out)
+	rows := got.Services
 	require.Len(t, rows, 1)
 	assert.Equal(t, "svc", rows[0].Service)
 	assert.True(t, rows[0].Ready)

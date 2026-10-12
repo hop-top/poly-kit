@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -332,4 +333,21 @@ func TestServiceScope_ReleasedOnStop(t *testing.T) {
 	_, _, code, err := run(t, client(t, "work"), "service", "status")
 	require.True(t, errors.As(err, &ce))
 	assert.Equal(t, output.ExitNotFound, code)
+}
+
+// The json shape `service status` declares carries both halves.
+func TestServiceStatus_ShapeWithoutSections(t *testing.T) {
+	isolateRuntime(t)
+	d := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
+	_, stop := serveAPI(t, d)
+	defer stop()
+	out, _, _, err := run(t, client(t, ""), "service", "status", "--format", "json")
+	require.NoError(t, err)
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(out), &raw), out)
+	assert.JSONEq(t, `[]`, string(raw["sections"]))
+	var rows []serviceStatusRow
+	require.NoError(t, json.Unmarshal(raw["services"], &rows))
+	require.Len(t, rows, 1)
+	assert.Equal(t, APIServiceName, rows[0].Service)
 }
