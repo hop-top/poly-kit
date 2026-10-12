@@ -384,6 +384,7 @@ func TestDiscoveryDescribesEveryCommandWithItsReason(t *testing.T) {
 		"item sync":      {Invocable: true},
 		"item export":    {Invocable: true},
 		"item purge":     {Reason: "unauthorized-destructive"},
+		"item follow":    {Reason: "withheld-by-command"},
 		"shell":          {Reason: "interactive"},
 		"upgrade":        {Reason: "self-hosting"},
 		"service start":  {Reason: "self-hosting"},

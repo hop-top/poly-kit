@@ -33,6 +33,7 @@ go test -race ./examples/served/
 |--------------|--------------------|------------------------------------------------------------|
 | `item list`  | read, output schema | `GET /v1/commands/item/list`, answers in `data`; MCP tool `item.list`, answers in `structuredContent` |
 | `item watch` | read, long-running | `GET /v1/commands/item/watch/stream`, one event per line until done or disconnected |
+| `item follow` | read, long-running, `kit/withhold-from: rest,sse,rpc,mcp` | the socket only: 404 + `withheld-by-command` over REST, no MCP tool, `NotFound` over RPC |
 | `item add`   | write-local, `kit/args: name` | `POST /v1/commands/item/add` with `{"args":["washer"]}`; MCP tool `item.add` with the same `args` |
 | `item tag`   | write-local, `kit/requires-confirmation` | MCP tool `item.tag`: runs once a person approves the elicitation |
 | `item sync`  | read, `kit/auth-required` | `401 unauthenticated` over REST and HTTP MCP without `Auth`; runs over the socket and MCP stdio |
@@ -56,6 +57,8 @@ claim out.
   `audit verify` (exit 71 on an edited record)
 - `mcp_test.go`: the `mcp` service over HTTP
 - `rpc_test.go`: the `rpc` service over Connect, gRPC (h2c) and gRPC-Web
+- `withhold_test.go`: the built binary keeps `item follow` off REST,
+  MCP and RPC and runs it over the socket
 - `idempotency_test.go`: a write retried with its `Idempotency-Key` runs
   once, over REST and the socket
 - `mcp_stdio_test.go`: the built binary as a desktop host spawns it,

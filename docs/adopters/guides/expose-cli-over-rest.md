@@ -121,8 +121,10 @@ curl -s http://127.0.0.1:8080/v1/commands
 
 Entries with `"invocable": false` have no route. The `reason` says
 why — `interactive`, `self-hosting`, `unauthorized-destructive`,
-`hidden-internal`, `deprecated`, `withheld-by-config` and the rest of
-the reflector's vocabulary. Read it before assuming a missing route
+`hidden-internal`, `deprecated`, `withheld-by-config`,
+`withheld-by-command` (the command's own `kit/withhold-from`; see
+[Keep a command on the socket only](serve-cli-over-unix-socket.md#keep-a-command-on-the-socket-only))
+and the rest of the reflector's vocabulary. Read it before assuming a missing route
 is a bug. `service start` is always `self-hosting`: it is the process you are
 talking to.
 

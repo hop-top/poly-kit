@@ -437,6 +437,11 @@ func descriptorToProjection(d *cmdreflect.Descriptor, b *Bridge, leaf *Leaf) api
 
 	if out.Invocable {
 		switch {
+		case leaf != nil && leaf.Withheld(SurfaceREST):
+			// The command took itself off REST (kit/withhold-from):
+			// no route, whatever the deployment exposes.
+			out.Invocable = false
+			out.Reason = ReasonWithheldByCommand
 		case !restEnabled(leaf):
 			// The deployment took this one off REST. A distinct
 			// reason keeps "we chose not to" separable from "policy

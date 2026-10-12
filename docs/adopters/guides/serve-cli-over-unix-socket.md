@@ -402,6 +402,39 @@ which is a different answer from one that does not exist:
 {"ok":false,"error":{"code":"NOT_ENABLED","message":"cmdsurface: surface not enabled for command: widget delete on socket"}}
 ```
 
+#### Keep a command on the socket only
+
+`Expose` and `Hide` belong to one service. When the command itself
+must never be served over the network — a long-running watch that would
+hold a served runner for as long as its caller follows — declare it on
+the command, once, and every service honors it:
+
+```go
+watch := &cobra.Command{Use: "watch", RunE: runWatch}
+cli.SetSideEffect(watch, cli.SideEffectRead)
+cli.SetWithholdFrom(watch,
+    cmdsurface.SurfaceREST, cmdsurface.SurfaceSSE,
+    cmdsurface.SurfaceRPC, cmdsurface.SurfaceMCP)
+```
+
+`SetWithholdFrom` writes the `kit/withhold-from` annotation
+(`rest,sse,rpc,mcp`). On each named surface the command is gone:
+
+| Surface | Discovery                                              | A call                                |
+|---------|--------------------------------------------------------|---------------------------------------|
+| REST    | `invocable: false`, reason `withheld-by-command`; no route, no stream route, no OpenAPI path | `404`                                 |
+| MCP     | not in `tools/list`                                    | JSON-RPC invalid params (unknown tool) |
+| RPC     | —                                                      | `NotFound`                            |
+| socket  | unchanged unless `socket` is named                     | runs; `NOT_ENABLED` when named        |
+
+No `Expose`, no `surfaces.commands.<path>.enabled` list and no service
+default serves it on a surface it names; configuration can still hide
+it from the others. A value naming an unknown surface stops every
+kit-shipped service from starting (exit `2`, naming the command).
+
+`kit/self-hosting: true` is the stronger form: it keeps the command out
+of every served invocation, the socket's included.
+
 ### 9. Read errors
 
 | `code` | Meaning | Typical cause |

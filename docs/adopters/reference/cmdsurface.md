@@ -484,7 +484,8 @@ curl -X POST http://localhost:8080/v1/commands/widget/add \
   -H 'content-type: application/json' -d '{"flags":{"name":"foo"}}'
 ```
 
-Every command is described; one is served only when its leaf is
+Every command is described; one is served only when it does not
+withhold itself from REST (else `withheld-by-command`), its leaf is
 exposed on REST (else `withheld-by-config`), the destructive ceiling
 allows REST (else `unauthorized-destructive`), and the permission
 gate does not refuse every caller (else `permission-denied`). Calls
@@ -1515,6 +1516,29 @@ b := cmdsurface.New(root, cmdsurface.WithPolicy(cmdsurface.Policy{
 
 `WithRunner` / `WithPolicy` layered on top of `FromConfig` override
 the YAML — explicit options always win.
+
+### Command-declared withholding
+
+A command can keep itself off named surfaces with
+`AnnotationWithholdFrom` (`kit/withhold-from`, a comma-separated
+surface list; `cli.SetWithholdFrom` writes it):
+
+```go
+cmd.Annotations[cmdsurface.AnnotationWithholdFrom] = "rest,sse,rpc,mcp"
+```
+
+The named surfaces are never in the leaf's `Enabled` set: the default
+set, `Expose` and `surfaces.commands.<path>.enabled` all skip them,
+while `Hide` still narrows the rest. `Leaf.Withheld(s)` reports one.
+Every surface then answers as it does for a hidden leaf — no route,
+no tool, `ErrSurfaceNotEnabled` on a call (its message names the
+annotation) — except that REST discovery gives the reason
+`withheld-by-command` (`ReasonWithheldByCommand`) instead of
+`withheld-by-config`. `ParseWithholdFrom` parses a value and
+`ValidateWithholdFrom(root)` names every command whose value names an
+unknown surface; the kit-shipped services run it before they bind. A
+leaf whose value does not parse is withheld from every surface but
+`cli` and `lib`.
 
 ### Declarative surface blocks
 
