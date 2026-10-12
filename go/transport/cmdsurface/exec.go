@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
+	"weak"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -39,6 +41,11 @@ var ErrNotInvocable = errors.New("cmdsurface: command not invocable through a ru
 // One invocation at a time is the throughput consequence; see
 // [WithRootFactory] for the alternative.
 //
+// The mutex is the tree's, not the runner's: every runner built over
+// the same root, such as the one each bridge of a multi-service
+// instance builds, takes the same lock, so invocations never overlap
+// across them either.
+//
 // The runner does not mutate the tree beyond that: writers, argv,
 // context, stdin, and the silence bits are restored on return.
 //
@@ -52,6 +59,7 @@ func InProcessRunner(root *cobra.Command, opts ...RunnerOption) Runner {
 	}
 	if r.newRoot == nil && root != nil {
 		r.baseline = captureFlagState(root)
+		r.mu = treeLock(root)
 	}
 	return r
 }
@@ -84,7 +92,33 @@ type inProcessRunner struct {
 	root     *cobra.Command
 	newRoot  func() *cobra.Command
 	baseline map[*pflag.Flag]flagState
-	mu       sync.Mutex
+	// mu serializes invocations on root. It is the tree's lock, shared
+	// by every runner over the same root, not the runner's own: see
+	// [treeLock].
+	mu *sync.Mutex
+}
+
+// treeLocks maps a shared tree to the lock every runner over it takes.
+// Keys are weak, so a tree that is dropped is not kept alive by its
+// lock, and the entry goes with it.
+var treeLocks sync.Map // weak.Pointer[cobra.Command] -> *sync.Mutex
+
+// treeLock returns the lock that serializes invocations on root. What
+// an invocation mutates — argv, writers, context, stdin, flag values —
+// lives on the tree, so the lock belongs to the tree: two runners over
+// one root, such as the bridges of the services of one instance, must
+// take the same one or their invocations overwrite each other's
+// writers and flags.
+func treeLock(root *cobra.Command) *sync.Mutex {
+	key := weak.Make(root)
+	if mu, ok := treeLocks.Load(key); ok {
+		return mu.(*sync.Mutex)
+	}
+	mu, loaded := treeLocks.LoadOrStore(key, new(sync.Mutex))
+	if !loaded {
+		runtime.AddCleanup(root, func(k weak.Pointer[cobra.Command]) { treeLocks.Delete(k) }, key)
+	}
+	return mu.(*sync.Mutex)
 }
 
 // parallelism is how many invocations the runner runs at once: one on
@@ -136,6 +170,9 @@ func (r *inProcessRunner) prepare(ctx context.Context, inv Invocation) (*executi
 	ex := &execution{}
 	if r.newRoot != nil {
 		ex.root = r.newRoot()
+		ex.release = ex.undo
+	} else if r.mu == nil {
+		// No tree, so nothing to lock: refused below.
 		ex.release = ex.undo
 	} else {
 		r.mu.Lock()

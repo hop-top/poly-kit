@@ -143,7 +143,7 @@ func SubprocessRunner(binaryPath string) Runner
 
 | Runner | Isolation | Concurrency |
 |--------|-----------|-------------|
-| `InProcessRunner(root)` | one shared tree; flag chain reset to its baseline around every invocation, leaf context set explicitly, empty stdin, writers and argv restored | serialized: one invocation at a time |
+| `InProcessRunner(root)` | one shared tree; flag chain reset to its baseline around every invocation, leaf context set explicitly, empty stdin, writers and argv restored | serialized: one invocation at a time per tree, across every runner (every service of an instance) built over the same root |
 | `InProcessRunner(nil, WithRootFactory(f))` | a fresh tree per invocation; nothing shared, nothing reset | parallel |
 | `SubprocessRunner(binary)` | a process per invocation; cancellation kills the process group | parallel |
 

@@ -2356,9 +2356,11 @@ Rules:
 - `max_inflight` is an upper bound. A runner over one shared tree
   runs one invocation at a time: over it the gate admits one and
   queues the rest, so a waiting caller is bounded, counted and
-  cancelable rather than blocked on the runner's lock. With a root
-  factory (`cli.WithRootFactory`) up to `max_inflight` run in
-  parallel.
+  cancelable rather than blocked on the runner's lock. The gate is
+  per service while the tree is shared by all of them, so a call
+  admitted by one service while another service's call runs waits on
+  the tree's lock. With a root factory (`cli.WithRootFactory`) up to
+  `max_inflight` run in parallel.
 - A transport that commits its response before running — an SSE or
   projection stream — takes the call's place before it commits
   (`Admission.Reserve`), so an overload is answered with `503` and
@@ -2727,9 +2729,18 @@ making it one.
 
 With the default **shared-tree** runner (`InProcessRunner(root)`):
 
-- Invocations are serialized: one at a time per bridge. The tree is
-  one object, and a second invocation parsing flags while the first
-  runs would race on them.
+- Invocations are serialized: one at a time **per tree**, not per
+  bridge. The tree is one object, and a second invocation parsing
+  flags while the first runs would race on them. The lock belongs to
+  the tree, so every runner built over the same root takes the same
+  one: the services of one instance (`socket`, `api`, `rpc`, `mcp`)
+  each build a bridge and a runner of their own over the one command
+  tree the tool built, and a call on one service never overlaps a
+  call on another. Each caller gets its own output and exit status,
+  whichever services the calls arrive on; a call that arrives while
+  another runs waits its turn (in the service's capacity queue when
+  `concurrency` is on, else on the lock). Two roots do not share a
+  lock.
 - Before each invocation, every flag the leaf's parse will touch —
   its own and every ancestor's persistent set — is returned to the
   **baseline**: the value and `Changed` bit it had when the runner was
