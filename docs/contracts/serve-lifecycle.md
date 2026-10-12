@@ -441,6 +441,17 @@ configuration: the `services` block of the tool's system, user
 as the tool wired them. A service configured only by environment
 variables is configured.
 
+A tool that layers its own configuration can take that job away from
+`serve` (Go: `cli.WithOwnServiceConfig()`). `serve` then discovers,
+reads and binds nothing: the supervisor, the selector and `--list`
+read `services.*` exactly as the tool's loader left it, and the tool
+owns every source above, `-c` included. The project file is the
+reason to: it is found from the working directory, so without the
+option a `kit.yaml` in whatever directory a daemon starts from can
+move its socket or turn on its api, behind the tool's own view of its
+configuration. The serve flags (`--addr`, `--socket`, `--enable`,
+`--disable`, the timeouts) still apply for one run.
+
 | Key                                | Type       | Default | Meaning                                     |
 |------------------------------------|------------|---------|---------------------------------------------|
 | `services.<name>.enabled`          | bool       | `false` | supervisor starts this service              |

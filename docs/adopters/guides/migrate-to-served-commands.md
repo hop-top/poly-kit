@@ -229,6 +229,26 @@ This only takes effect if the file reaches `root.Viper`, which is what
 [cli-go template's `cmd/root.go`](../../../templates/cli-go/cmd/root.go.tmpl)
 is the reference wiring.
 
+If your tool already has its own loader (its own file order,
+profiles, its own environment prefix), pass `cli.WithOwnServiceConfig()`
+to `cli.New`. Without it, `serve` also reads the `services` block of
+the system file, the user file and a project file found from the
+working directory (`.kit/config.yaml`, `.kit.yaml`, `kit.yaml`), binds
+every `MYTOOL_SERVICES_*` variable and applies `-c`, all merged above
+your loader's config-file layers. A `kit.yaml` in whatever directory
+the daemon starts from can then move its socket or turn on its api
+while your own config view says otherwise. With the option, `serve`
+and `serve --list` read `services.*` only from what your loader put
+in `root.Viper`; read `-c` with `root.ConfigArgs()` in your loader.
+
+```go
+root := cli.New(cfg,
+    cli.WithAPI(cli.APIConfig{}),
+    cli.WithSocket(cli.SocketConfig{}),
+    cli.WithOwnServiceConfig(), // the loader below owns services.*
+)
+```
+
 #### Step 3 — Replace the startup line
 
 The leaf printed `Listening on :8080`. Nothing prints that now. The api

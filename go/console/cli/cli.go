@@ -330,6 +330,9 @@ type Root struct {
 	// serveBus is the bus the supervisor publishes lifecycle events
 	// to; nil leaves only the log counterpart.
 	serveBus serve.Publisher
+	// serveOwnConfig records WithOwnServiceConfig: the tool layers
+	// services.* into Viper itself and serve reads no source of its own.
+	serveOwnConfig bool
 	// socketCfg is the built-in socket service's configuration, nil
 	// until WithSocket runs.
 	socketCfg *SocketConfig
