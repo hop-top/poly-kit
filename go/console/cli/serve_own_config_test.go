@@ -56,13 +56,21 @@ func adopterLayers(t *testing.T, r *Root, sock string) {
 	}))
 }
 
-// listEnabled runs `serve --list` and returns each service's enabled
-// state as the listing reports it.
-func listEnabled(t *testing.T, r *Root) map[string]bool {
+// serviceListArgs is the listing; serveAliasListArgs is the same
+// listing through the deprecated root alias.
+var (
+	serviceListArgs    = []string{"service", "list"}
+	serveAliasListArgs = []string{"serve", "--list"}
+)
+
+// listEnabled runs the listing argv names (`service list` or the
+// deprecated `serve --list`) and returns each service's enabled state
+// as the listing reports it.
+func listEnabled(t *testing.T, r *Root, argv []string) map[string]bool {
 	t.Helper()
 	var out bytes.Buffer
 	r.Cmd.SetOut(&out)
-	r.SetArgs([]string{"serve", "--list", "--format", "json"})
+	r.SetArgs(append(append([]string{}, argv...), "--format", "json"))
 	require.NoError(t, r.Execute(context.Background()))
 	var rows []serveListRow
 	require.NoError(t, json.Unmarshal(out.Bytes(), &rows), out.String())
@@ -73,14 +81,14 @@ func listEnabled(t *testing.T, r *Root) map[string]bool {
 	return got
 }
 
-// dryRunServices runs a bare `serve --dry-run` (the start path up to
-// the point a service would bind) and returns the services it would
-// start.
+// dryRunServices runs a bare `service start --dry-run` (the start path
+// up to the point a service would bind) and returns the services it
+// would start.
 func dryRunServices(t *testing.T, r *Root) []string {
 	t.Helper()
 	var out bytes.Buffer
 	r.Cmd.SetOut(&out)
-	r.SetArgs([]string{"serve", "--dry-run", "--format", "json"})
+	r.SetArgs([]string{"service", "start", "--dry-run", "--format", "json"})
 	require.NoError(t, r.Execute(context.Background()))
 	var plan struct {
 		Args struct {
@@ -103,16 +111,20 @@ func TestOwnServiceConfigIgnoresServesOwnSources(t *testing.T) {
 			ownConfigFixture(t, marker)
 			adopterSock := tmpSocket(t)
 
-			for _, form := range []string{"start", "list"} {
+			for _, form := range []string{"service start", "service list", "serve --list"} {
 				r := authRoot(t, WithAPI(APIConfig{}), WithSocket(SocketConfig{}), WithOwnServiceConfig())
 				adopterLayers(t, r, adopterSock)
 
-				if form == "start" {
+				switch form {
+				case "service start":
 					assert.Equal(t, []string{SocketServiceName}, dryRunServices(t, r),
-						"serve starts what the tool's own layering says, socket only")
-				} else {
-					assert.Equal(t, map[string]bool{APIServiceName: false, SocketServiceName: true}, listEnabled(t, r),
-						"--list reads the tool's own layering")
+						"service start starts what the tool's own layering says, socket only")
+				case "service list":
+					assert.Equal(t, map[string]bool{APIServiceName: false, SocketServiceName: true},
+						listEnabled(t, r, serviceListArgs), "service list reads the tool's own layering")
+				default:
+					assert.Equal(t, map[string]bool{APIServiceName: false, SocketServiceName: true},
+						listEnabled(t, r, serveAliasListArgs), "the deprecated alias reads the same layering")
 				}
 				assert.Equal(t, adopterSock, r.Viper.GetString("services.socket.path"),
 					"%s: a project file in the working directory does not move the socket", form)
@@ -121,15 +133,16 @@ func TestOwnServiceConfigIgnoresServesOwnSources(t *testing.T) {
 				assert.Equal(t, "127.0.0.1:47182", r.Viper.GetString("services.api.addr"),
 					"%s: neither the project file nor the user file is merged above the tool's layers", form)
 				assert.False(t, r.Viper.GetBool("services.api.insecure_remote"),
-					"%s: no <TOOL>_SERVICES_* variable is bound by serve", form)
+					"%s: no <TOOL>_SERVICES_* variable is bound by kit", form)
 			}
 		})
 	}
 }
 
 // TestServiceConfigSourcesDefaultStillDiscoversFiles pins the default:
-// without WithOwnServiceConfig, serve layers the discovered files and
-// variables over whatever the tool put at the config-file rung.
+// without WithOwnServiceConfig, service start and service list layer
+// the discovered files and variables over whatever the tool put at the
+// config-file rung.
 func TestServiceConfigSourcesDefaultStillDiscoversFiles(t *testing.T) {
 	for _, marker := range projectMarkerFiles {
 		t.Run(marker, func(t *testing.T) {
@@ -143,7 +156,7 @@ func TestServiceConfigSourcesDefaultStillDiscoversFiles(t *testing.T) {
 
 			r = authRoot(t, WithAPI(APIConfig{}), WithSocket(SocketConfig{}))
 			adopterLayers(t, r, tmpSocket(t))
-			assert.Equal(t, map[string]bool{APIServiceName: true, SocketServiceName: true}, listEnabled(t, r))
+			assert.Equal(t, map[string]bool{APIServiceName: true, SocketServiceName: true}, listEnabled(t, r, serviceListArgs))
 		})
 	}
 }
