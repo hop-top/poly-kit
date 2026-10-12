@@ -51,6 +51,7 @@ func kitBinaryDryRunCases(sandbox string) map[string]kitDryRunCase {
 		"kit serve":                        {args: []string{"serve"}, plan: true},
 		"kit service start":                {args: []string{"service", "start"}, plan: true},
 		"kit service stop":                 {args: []string{"service", "stop"}, plan: true},
+		"kit service restart":              {args: []string{"service", "restart"}, plan: true},
 		"kit symlink": {args: []string{"symlink", "--target", filepath.Join(sandbox, "fixture", "demo"),
 			"--name", "demo", "--dir", filepath.Join(sandbox, "bin")}},
 		"kit telemetry disable": {args: []string{"telemetry", "disable"}},

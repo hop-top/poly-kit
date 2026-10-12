@@ -70,7 +70,7 @@ func TestService_GroupShape(t *testing.T) {
 	svc := child(r.Cmd, ServiceCommandName)
 	require.NotNil(t, svc)
 	assert.Same(t, r.ServiceCommand(), svc)
-	for _, leaf := range []string{"start", "list", "stop", "status"} {
+	for _, leaf := range []string{"start", "list", "stop", "restart", "status"} {
 		assert.NotNil(t, child(svc, leaf), "service %s", leaf)
 	}
 	assert.Same(t, r.ServeCommand(), child(svc, "start"))
@@ -119,9 +119,9 @@ func TestService_WithheldFromServedSurfaces(t *testing.T) {
 	r := authRoot(t, WithAPI(APIConfig{}))
 
 	// Without the reserved lookup only their own mark withholds them:
-	// neither start nor stop is named serve.
+	// neither start, stop nor restart is named serve.
 	tree := cmdreflect.Reflect(r.Cmd)
-	for _, path := range []string{"service start", "service stop", "serve"} {
+	for _, path := range []string{"service start", "service stop", "service restart", "serve"} {
 		d := tree.Lookup(path)
 		require.NotNil(t, d, path)
 		assert.True(t, d.Surface.SelfHosting, "%s is self-hosting", path)
@@ -131,13 +131,15 @@ func TestService_WithheldFromServedSurfaces(t *testing.T) {
 	base, stop := serveAPI(t, r)
 	defer stop()
 	entries := listing(t, base, nil)
-	for _, name := range []string{"service start", "service stop", "service status", "service list"} {
+	for _, name := range []string{"service start", "service stop", "service restart", "service status", "service list"} {
 		e, ok := entries[name]
 		require.True(t, ok, "%s listed with a reason", name)
 		assert.False(t, e.Invocable, name)
 	}
-	resp, body := postJSON(t, base+"/v1/commands/service/stop", `{}`, nil)
-	assert.NotEqual(t, http.StatusOK, resp.StatusCode, string(body))
+	for _, leaf := range []string{"stop", "restart"} {
+		resp, body := postJSON(t, base+"/v1/commands/service/"+leaf, `{}`, nil)
+		assert.NotEqual(t, http.StatusOK, resp.StatusCode, string(body))
+	}
 }
 
 func TestService_PolicyOnStartReachesServedCalls(t *testing.T) {

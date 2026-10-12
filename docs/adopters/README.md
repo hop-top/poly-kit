@@ -39,7 +39,7 @@ how kit itself is implemented.
 - [`guides/expose-cli-over-mcp.md`](guides/expose-cli-over-mcp.md) — serve your commands as MCP tools with the built-in `mcp` service
 - [`guides/expose-cli-over-rest.md`](guides/expose-cli-over-rest.md) — serve your commands as a versioned REST API with OpenAPI
 - [`guides/hook-cli-into-bus.md`](guides/hook-cli-into-bus.md) — first publish/subscribe
-- [`guides/manage-the-service-lifecycle.md`](guides/manage-the-service-lifecycle.md) — `service start|list|status|stop`, your own `service` leaves, and migrating from `serve`
+- [`guides/manage-the-service-lifecycle.md`](guides/manage-the-service-lifecycle.md) — `service start|list|status|stop|restart`, your own `service` leaves, and migrating from `serve`
 - [`guides/migrate-to-served-commands.md`](guides/migrate-to-served-commands.md) — replace a hand-written `serve` or manual `cmdsurface` mounting with the built-in services
 - [`guides/run-the-engine.md`](guides/run-the-engine.md) — start the engine sidecar
 - [`guides/secure-remote-serving.md`](guides/secure-remote-serving.md) — auth beyond loopback, one permission gate, one audit trail

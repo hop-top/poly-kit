@@ -68,6 +68,7 @@ func kitLeafDryRunCases(sandbox string, pid int) map[string]kitLeafCase {
 		"ktool serve":                        run("serve"),
 		"ktool service start":                run("service", "start"),
 		"ktool service stop":                 run("service", "stop"),
+		"ktool service restart":              run("service", "restart"),
 		"ktool token key create":             run("token", "key", "create", "--sub", "alice"),
 		"ktool token key revoke":             run("token", "key", "revoke", "k1"),
 		"ktool uri handler generate":         run("uri", "handler", "generate", "--platform", "linux", "--output", filepath.Join(out, "x.desktop")),
