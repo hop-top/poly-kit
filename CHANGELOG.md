@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.25](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.24...kit/v0.5.0-alpha.25) (2026-10-12)
 
+The hop-top team is happy to announce Kit 0.5.0-alpha.25. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -20,6 +22,8 @@
 * **cli:** `WithOwnServiceConfig` stops serve re-reading config sources ([b6e9412](https://github.com/hop-top/poly-kit/commit/b6e9412c26cd61d1f305be4bbeae29a98a0b19e3))
 * **cli:** scope the `service` control socket per instance; refuse a taken one ([8940adf](https://github.com/hop-top/poly-kit/commit/8940adfa14019f7a16226b724518749f72cb1814))
 * **cmdsurface:** one `InProcessRunner` lock per tree, shared across services ([2ad79e5](https://github.com/hop-top/poly-kit/commit/2ad79e5bd26dcae28053cad13c959236c6816181))
+
+Full diff: [kit/v0.5.0-alpha.24...kit/v0.5.0-alpha.25](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.24...kit/v0.5.0-alpha.25)
 
 ## [0.5.0-alpha.24](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.23...kit/v0.5.0-alpha.24) (2026-10-01)
 
