@@ -339,8 +339,9 @@ them apart before you retry.
 
 ## Never
 
-- Never call `service start`, `service stop` or any `self-hosting`
-  command from inside a served invocation. You would start a server inside the server.
+- Never call `service start`, `service stop`, `service restart` or any
+  `self-hosting` command from inside a served invocation. You would start
+  a server inside the server, or take down the one answering you.
 - Never retry a `DENIED`, `BLOCKED`, or `unauthorized-destructive`
   refusal unchanged. Nothing you send lifts it; a human must.
 - Never retry an `interactive` or `self-hosting` command on another

@@ -77,6 +77,7 @@ func TestKitServe_ProjectsKitCommandsBehindTheGates(t *testing.T) {
 	}
 	assert.Equal(t, "self-hosting", got["service start"].Reason, "kit's service start is the process being talked to")
 	assert.Equal(t, "self-hosting", got["service stop"].Reason, "service stop would stop the process being talked to")
+	assert.Equal(t, "self-hosting", got["service restart"].Reason, "service restart would replace the process being talked to")
 	assert.False(t, got["serve"].Invocable, "the deprecated serve is withheld too")
 	assert.Equal(t, "self-hosting", got["symlink"].Reason, "symlink relinks the binary that is serving")
 	assert.Equal(t, "self-hosting", got["conformance svc serve"].Reason, "a nested serve starts a server of its own")

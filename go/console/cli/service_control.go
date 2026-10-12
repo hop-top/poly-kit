@@ -25,14 +25,17 @@ import (
 // The control channel.
 //
 // While `service start` runs it listens on a Unix socket at
-// <runtime dir>/<tool>/control.sock, and `service stop` and `service
-// status` are its only clients. The protocol is one JSON request line
-// per connection and JSON response lines back:
+// <runtime dir>/<tool>/control.sock, and `service stop`, `service
+// restart` and `service status` are its only clients. The protocol is
+// one JSON request line per connection and JSON response lines back:
 //
-//	{"op":"status"} → {"ok":true,"pid":…,"services":[…]}
-//	{"op":"stop"}   → {"ok":true,"stopping":true}
-//	                  … the run drains …
-//	                  {"ok":true,"stopped":true,"exit_code":0}
+//	{"op":"status"}  → {"ok":true,"pid":…,"services":[…]}
+//	{"op":"stop"}    → {"ok":true,"stopping":true}
+//	                   … the run drains …
+//	                   {"ok":true,"stopped":true,"exit_code":0}
+//	{"op":"restart"} → {"ok":true,"restarting":true,"pid":…}
+//	                   … the run drains, the process re-executes …
+//	                   EOF, or {"ok":false,"error":…} when it did not
 //
 // Only the daemon's own user may use it. The socket is created owner
 // only (0600, in the runtime directory xdg creates 0700), and every
@@ -43,7 +46,8 @@ import (
 // A stop request cancels the run's context, exactly as the first
 // SIGINT/SIGTERM does: the supervisor drains every service in reverse
 // start order within its budgets. Nothing is killed and the daemon
-// sends itself no signal.
+// sends itself no signal. A restart request drains the same way and
+// then re-executes the binary in place (service_restart.go).
 
 // controlSocketName is the control socket's file name under the tool's
 // runtime directory.
@@ -61,13 +65,17 @@ type controlRequest struct {
 }
 
 type controlResponse struct {
-	OK       bool               `json:"ok"`
-	Error    string             `json:"error,omitempty"`
-	PID      int                `json:"pid,omitempty"`
-	Services []serviceStatusRow `json:"services,omitempty"`
-	Stopping bool               `json:"stopping,omitempty"`
-	Stopped  bool               `json:"stopped,omitempty"`
-	ExitCode *int               `json:"exit_code,omitempty"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+	// Code classifies a refusal that is not an authorization failure
+	// (CONFLICT, USAGE); empty is UNAUTHORIZED.
+	Code       string             `json:"code,omitempty"`
+	PID        int                `json:"pid,omitempty"`
+	Services   []serviceStatusRow `json:"services,omitempty"`
+	Stopping   bool               `json:"stopping,omitempty"`
+	Stopped    bool               `json:"stopped,omitempty"`
+	ExitCode   *int               `json:"exit_code,omitempty"`
+	Restarting bool               `json:"restarting,omitempty"`
 }
 
 // serviceStatusRow is one row of `service status`: a service the
@@ -94,6 +102,15 @@ func controlSocketPath(r *Root) (string, error) {
 	return xdg.RuntimeFile(tool, controlSocketName)
 }
 
+// controlIntent is what the control channel asked the run to end for.
+type controlIntent int
+
+const (
+	intentNone controlIntent = iota
+	intentStop
+	intentRestart
+)
+
 // controlServer is the daemon's half of the control channel.
 type controlServer struct {
 	ln     net.Listener
@@ -102,8 +119,13 @@ type controlServer struct {
 
 	mu      sync.Mutex
 	waiters []net.Conn
-	closed  bool
-	wg      sync.WaitGroup
+	// restartWaiters are the restart clients, held open past close
+	// until the process re-executes (which closes them) or reports
+	// why it did not (finishRestart).
+	restartWaiters []net.Conn
+	intent         controlIntent
+	closed         bool
+	wg             sync.WaitGroup
 }
 
 // errControlInUse reports a control socket a live instance answers on.
@@ -196,10 +218,30 @@ func (cs *controlServer) handle(conn net.Conn) {
 			_ = enc.Encode(controlResponse{OK: true, Stopping: true})
 			return
 		}
+		// A stop outranks a restart already draining: the instance
+		// exits instead of coming back.
+		cs.intent = intentStop
 		cs.waiters = append(cs.waiters, conn)
 		keep = true
 		cs.mu.Unlock()
 		_ = enc.Encode(controlResponse{OK: true, Stopping: true})
+		cs.cancel()
+	case "restart":
+		if !reexecSupported {
+			_ = enc.Encode(controlResponse{Code: output.CodeUsage, Error: errReexecUnsupported.Error()})
+			return
+		}
+		cs.mu.Lock()
+		if cs.closed || cs.intent == intentStop {
+			cs.mu.Unlock()
+			_ = enc.Encode(controlResponse{Code: output.CodeConflict, Error: "the instance is already stopping"})
+			return
+		}
+		cs.intent = intentRestart
+		cs.restartWaiters = append(cs.restartWaiters, conn)
+		keep = true
+		cs.mu.Unlock()
+		_ = enc.Encode(controlResponse{OK: true, Restarting: true, PID: os.Getpid()})
 		cs.cancel()
 	default:
 		_ = enc.Encode(controlResponse{Error: fmt.Sprintf("unknown op %q", req.Op)})
@@ -207,12 +249,14 @@ func (cs *controlServer) handle(conn net.Conn) {
 }
 
 // close stops accepting, unlinks the socket and tells every waiting
-// stop client the run's exit code.
-func (cs *controlServer) close(exitCode int) {
+// stop client the run's exit code. It reports whether the run ended
+// for a restart; the restart clients stay connected for finishRestart.
+func (cs *controlServer) close(exitCode int) (restart bool) {
 	cs.mu.Lock()
 	cs.closed = true
 	waiters := cs.waiters
 	cs.waiters = nil
+	restart = cs.intent == intentRestart
 	cs.mu.Unlock()
 	_ = cs.ln.Close()
 	for _, conn := range waiters {
@@ -221,6 +265,25 @@ func (cs *controlServer) close(exitCode int) {
 		_ = conn.Close()
 	}
 	cs.wg.Wait()
+	if !restart {
+		cs.finishRestart("a stop was requested during the drain")
+	}
+	return restart
+}
+
+// finishRestart releases the restart clients: with a reason when the
+// process is not re-executing, without one when it is about to.
+func (cs *controlServer) finishRestart(reason string) {
+	cs.mu.Lock()
+	waiters := cs.restartWaiters
+	cs.restartWaiters = nil
+	cs.mu.Unlock()
+	for _, conn := range waiters {
+		if reason != "" {
+			_ = json.NewEncoder(conn).Encode(controlResponse{Error: "not restarted: " + reason})
+		}
+		_ = conn.Close()
+	}
 }
 
 // serviceStatusRows reports the services a run selected, as the
@@ -273,7 +336,14 @@ func controlCall(conn net.Conn, op string) (*json.Decoder, controlResponse, erro
 		return nil, resp, fmt.Errorf("control socket: %w", err)
 	}
 	if !resp.OK {
-		return nil, resp, output.UnauthorizedError("control socket refused the request: " + resp.Error)
+		msg := "control socket refused the request: " + resp.Error
+		switch resp.Code {
+		case output.CodeConflict:
+			return nil, resp, output.ConflictError(msg)
+		case output.CodeUsage:
+			return nil, resp, output.UsageError(msg)
+		}
+		return nil, resp, output.UnauthorizedError(msg)
 	}
 	return dec, resp, nil
 }

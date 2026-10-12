@@ -98,12 +98,12 @@ func WithOwnServiceConfig() func(*Root) {
 }
 
 // ensureServeRegistry creates the registry and mounts the `service`
-// group on first use: `service start`, `service list`, `service stop`
-// and `service status`, plus the hidden, deprecated root `serve` that
-// runs `service start`. Mounting here rather than in New is what lets
-// the registry take the `serve` word away from any leaf a prior option
-// mounted: whichever option runs, exactly one command owns the word
-// (serve-lifecycle.md §"Compatibility").
+// group on first use: `service start`, `service list`, `service stop`,
+// `service restart` and `service status`, plus the hidden, deprecated
+// root `serve` that runs `service start`. Mounting here rather than in
+// New is what lets the registry take the `serve` word away from any
+// leaf a prior option mounted: whichever option runs, exactly one
+// command owns the word (serve-lifecycle.md §"Compatibility").
 func (r *Root) ensureServeRegistry() {
 	if r.serveReg != nil {
 		return
@@ -128,7 +128,7 @@ func (r *Root) ensureServeRegistry() {
 }
 
 // ServiceCommandName is the word kit mounts its service lifecycle
-// group under: `<tool> service start|list|stop|status`.
+// group under: `<tool> service start|list|stop|restart|status`.
 const ServiceCommandName = "service"
 
 // serveAliasName is the deprecated root word for `service start`.
@@ -148,7 +148,7 @@ func (r *Root) ServeRegistry() *serve.Registry { return r.serveReg }
 //
 // A leaf added here is a management command like kit's own: withheld
 // from every served surface and exempt from the shape checks. The
-// words start, list, stop and status are kit's.
+// words start, list, stop, restart and status are kit's.
 func (r *Root) ServiceCommand() *cobra.Command {
 	if r == nil {
 		return nil
@@ -171,11 +171,12 @@ func (r *Root) ServeCommand() *cobra.Command {
 func serviceGroupCmd(root *Root, start *cobra.Command) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   ServiceCommandName,
-		Short: "Run, inspect and stop the tool's services",
+		Short: "Run, inspect, stop and restart the tool's services",
 		Long: "Run the tool's services under one lifecycle, list them, and ask a\n" +
-			"running instance for its status or to stop.",
+			"running instance for its status, to stop, or to restart in place.",
 	}
-	cmd.AddCommand(start, serviceListCmd(root), serviceStopCmd(root), serviceStatusCmd(root))
+	cmd.AddCommand(start, serviceListCmd(root), serviceStopCmd(root),
+		serviceRestartCmd(root), serviceStatusCmd(root))
 	return cmd
 }
 
@@ -310,7 +311,16 @@ func serviceListCmd(root *Root) *cobra.Command {
 }
 
 // runServe resolves the invocation and runs the resulting set.
-func runServe(cmd *cobra.Command, root *Root, args []string) error {
+func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
+	// A `service restart` re-executes the process once everything
+	// below is released: deferred first, this runs after every other
+	// deferred cleanup (service_restart.go).
+	var restart *pendingRestart
+	defer func() {
+		if restart != nil {
+			err = restart.run(err)
+		}
+	}()
 	// Validation may open audit chains before a later step fails;
 	// whatever path this returns by, they are released.
 	defer func() { _ = root.closeAuditChains() }()
@@ -387,11 +397,12 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 
 	// The supervisor owns the signals from here: the first begins the
 	// drain, a second aborts it (serve-lifecycle.md §"Signals").
-	ctx, escalate, stop := serve.SignalContext(cmd.Context())
+	sigCtx, escalate, stop := serve.SignalContext(cmd.Context())
 	defer stop()
-	// `service stop` ends the run the way the first signal does: by
-	// canceling the context the supervisor runs on.
-	ctx, stopRequested := context.WithCancel(ctx)
+	// `service stop` and `service restart` end the run the way the
+	// first signal does: by canceling the context the supervisor runs
+	// on.
+	ctx, stopRequested := context.WithCancel(sigCtx)
 	defer stopRequested()
 
 	// Tracing and metrics start before any service and flush after
@@ -417,7 +428,8 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 		serve.WithEscalation(escalate),
 	)
 
-	// The control socket `service stop` and `service status` talk to.
+	// The control socket `service stop`, `service restart` and
+	// `service status` talk to.
 	// A run without one still serves: another instance answering on
 	// the socket keeps it, and only loses its stop/status channel.
 	control, err := listenControl(root, stopRequested, serviceStatusRows(reg, outcome.Selected))
@@ -427,8 +439,14 @@ func runServe(cmd *cobra.Command, root *Root, args []string) error {
 	}
 
 	res := sup.Run(ctx, outcome.Selected, configs)
-	if control != nil {
-		control.close(res.ExitCode())
+	if control != nil && control.close(res.ExitCode()) {
+		restart = &pendingRestart{
+			control: control,
+			logger:  logger,
+			// Read before the deferred stop cancels it: set only by a
+			// shutdown signal or the caller.
+			signaled: sigCtx.Err() != nil,
+		}
 	}
 	// Every service has stopped: nothing can audit any more, so the
 	// chains they opened are synced and released.

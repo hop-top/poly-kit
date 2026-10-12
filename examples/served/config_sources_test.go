@@ -76,15 +76,7 @@ var apiAddrRE = regexp.MustCompile(`ready_reported .*service=api address=(\S+)`)
 func runBinary(t *testing.T, home string, env []string, args ...string) *binRun {
 	t.Helper()
 	cmd := exec.Command(servedBinary(t), args...)
-	cmd.Env = append([]string{
-		"PATH=/usr/bin:/bin",
-		"HOME=" + home,
-		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
-		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
-		"XDG_DATA_HOME=" + filepath.Join(home, ".data"),
-		"XDG_CACHE_HOME=" + filepath.Join(home, ".cache"),
-		"XDG_RUNTIME_DIR=" + filepath.Join(home, "run"),
-	}, env...)
+	cmd.Env = binaryEnv(home, env)
 	cmd.Dir = home
 	pipe, err := cmd.StderrPipe()
 	require.NoError(t, err)
@@ -132,6 +124,20 @@ func runBinary(t *testing.T, home string, env []string, args ...string) *binRun 
 		t.Fatalf("served %v neither became ready nor exited:\n%s", args, run.output())
 	}
 	return run
+}
+
+// binaryEnv is the isolated environment every run under home shares,
+// plus extra.
+func binaryEnv(home string, extra []string) []string {
+	return append([]string{
+		"PATH=/usr/bin:/bin",
+		"HOME=" + home,
+		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
+		"XDG_STATE_HOME=" + filepath.Join(home, ".state"),
+		"XDG_DATA_HOME=" + filepath.Join(home, ".data"),
+		"XDG_CACHE_HOME=" + filepath.Join(home, ".cache"),
+		"XDG_RUNTIME_DIR=" + filepath.Join(home, "run"),
+	}, extra...)
 }
 
 func (r *binRun) output() string {

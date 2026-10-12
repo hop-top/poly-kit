@@ -24,6 +24,7 @@ authority for behavior; the package is the authority for signatures.
 | `<tool> service list`           | inspection | registered services with configured / enabled / ready state |
 | `<tool> service status`         | inspection | the running instance's services, readiness and addresses    |
 | `<tool> service stop`           | control    | asks the running instance to drain and exit                 |
+| `<tool> service restart`        | control    | asks the running instance to drain and re-execute in place  |
 
 Rules:
 
@@ -42,7 +43,8 @@ Rules:
   the kit root flag set) are inherited unchanged by both forms.
   Per-service flags are registered by the service itself and are only
   valid under the selector form.
-- `service start` and `service stop` are self-hosting: no served
+- `service start`, `service stop` and `service restart` are
+  self-hosting: no served
   surface may expose them. The whole `service` group is reserved
   management vocabulary; an adopter MAY add leaves of its own under it
   (`<tool> service setup`), and they are management commands too.
@@ -54,8 +56,8 @@ Rules:
 While `service start` runs, it listens on a Unix socket at
 `<runtime dir>/<tool>/control.sock`, created owner-only (`0600`).
 Every connection's peer credentials are checked against the instance's
-own uid where the platform reports them. `service status` and
-`service stop` are its clients.
+own uid where the platform reports them. `service status`,
+`service stop` and `service restart` are its clients.
 
 - `service stop` MUST end the run exactly as the first `SIGINT` or
   `SIGTERM` does: the run's context is canceled and every service is
@@ -68,6 +70,48 @@ own uid where the platform reports them. `service status` and
 - A socket file nobody answers on is stale and is replaced by the next
   instance. A second instance that finds a live socket keeps running
   without a control channel and says so on stderr.
+
+### Restart in place
+
+`service restart` asks the running instance to drain and come back as
+a new run of the same process.
+
+- The drain MUST be exactly `service stop`'s: the run's context is
+  canceled and every service stops in reverse start order within its
+  budgets. Nothing is killed.
+- After the drain, and after the run has released what it held (audit
+  chains, the idempotency store, observability flushed), the instance
+  MUST replace its own process image (`exec(2)`) with the binary
+  `os.Executable` names, the argv and environment it was launched with,
+  from the directory it was launched in. The pid is kept, so an OS
+  service manager (systemd, launchd) sees no exit. Configuration,
+  flags and the binary itself are read afresh by the new run.
+- The instance MUST NOT re-execute when the run did not end for the
+  restart alone: a shutdown signal (or the caller's context) during
+  the drain, or a `service stop`, wins and the process exits as a
+  stop; a drain that did not end cleanly exits with the run's failure.
+  A restart requested while a stop is draining is refused (`CONFLICT`,
+  exit 4).
+- If the re-execution fails, the instance MUST exit non-zero
+  (`GENERIC`, exit 1) with the reason on stderr: the services are
+  already down, and a non-zero exit is what tells a service manager to
+  start the tool again.
+- The client waits, bounded by `--wait`, for the old image to go
+  (re-execution closes its connection) and for the new instance's
+  control socket to answer with every service ready, then prints that
+  status (the `service status` rows) and exits 0. A drain or readiness
+  that outlasts `--wait` is `TRANSIENT`, exit 6; an instance that
+  reports it did not re-execute is `GENERIC`, exit 1, with its reason.
+  A new run that exits instead of coming up (a configuration it
+  refuses) is `GENERIC`, exit 1, reported as soon as the process is
+  gone rather than at `--wait`.
+- With no instance running, `service restart` MUST exit 3
+  (`NOT_FOUND`), as `service status` does. Unlike `service stop`, whose
+  goal — nothing running — already holds, restart's goal — a fresh
+  instance running — does not, and restart does not start one.
+- On a platform without `exec(2)` (Windows) `service restart` MUST
+  refuse with `USAGE`, exit 2, rather than emulate the restart under a
+  new pid; the instance refuses the request the same way.
 
 ### Compatibility: `<tool> service start`
 
@@ -415,6 +459,7 @@ this contract allocates no new numbers.
 | One service failed to start                | `GENERIC`       | 1    |
 | One service crashed at runtime             | `GENERIC`       | 1    |
 | Shutdown budget exceeded                   | `GENERIC`       | 1    |
+| Re-execution failed after a restart drain  | `GENERIC`       | 1    |
 
 Notes:
 
@@ -3128,6 +3173,7 @@ reads programmatically:
 | One service failed to start                | `GENERIC`       | 1    |
 | One service crashed at runtime             | `GENERIC`       | 1    |
 | Shutdown budget exceeded                   | `GENERIC`       | 1    |
+| Re-execution failed after a restart drain  | `GENERIC`       | 1    |
 
 Including the two that are easy to get wrong: a signal-initiated stop
 exits `0`, and start failure and runtime crash share exit `1`. The
