@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0-alpha.25](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.24...kit/v0.5.0-alpha.25) (2026-10-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** kit's serve command moves to `<tool> service start`; `serve --list` becomes `service list`; `service start` has no `--list`; root `serve` is a hidden deprecated alias removed after one release; served discovery lists `serve` as hidden-internal and the `service` leaves as withheld; code finding the serve command by name must use `Root.ServeCommand`.
+
+### Features
+
+* **cli:** `kit/withhold-from` keeps a command off named served surfaces ([1795be2](https://github.com/hop-top/poly-kit/commit/1795be25be89437a461539a7582cc8130833484c))
+* **cli:** `service restart` drains and re-executes in place ([e49786b](https://github.com/hop-top/poly-kit/commit/e49786ba04bff609c5e3a9c8c89a322662cbacab))
+* **cli:** `service` group for the service lifecycle ([2407f11](https://github.com/hop-top/poly-kit/commit/2407f118483d29fed5836247774a53d478b58260))
+* **cli:** tool status sections in `service status` ([0045d96](https://github.com/hop-top/poly-kit/commit/0045d9648888ffd2d142b89545b6eefe26e47a92))
+
+
+### Bug Fixes
+
+* **cli:** `WithOwnServiceConfig` stops serve re-reading config sources ([b6e9412](https://github.com/hop-top/poly-kit/commit/b6e9412c26cd61d1f305be4bbeae29a98a0b19e3))
+* **cli:** scope the `service` control socket per instance; refuse a taken one ([8940adf](https://github.com/hop-top/poly-kit/commit/8940adfa14019f7a16226b724518749f72cb1814))
+* **cmdsurface:** one `InProcessRunner` lock per tree, shared across services ([2ad79e5](https://github.com/hop-top/poly-kit/commit/2ad79e5bd26dcae28053cad13c959236c6816181))
+
 ## [0.5.0-alpha.24](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.23...kit/v0.5.0-alpha.24) (2026-10-01)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.24. This release includes new features and bug fixes.
