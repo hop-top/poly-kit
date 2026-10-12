@@ -2858,6 +2858,46 @@ Rules:
 Forced remote execution of an interactive or self-hosting command is
 out of scope: there is no override.
 
+### Commands withheld from named surfaces
+
+A command MAY withhold itself from named surfaces while every other
+surface keeps it: `kit/withhold-from`, a comma-separated list of
+surface names (`cmdsurface.AnnotationWithholdFrom`; in Go,
+`cli.SetWithholdFrom`). The case it exists for is a long-running
+command — an event watch — that must not hold a served runner but must
+stay reachable over the socket the tool's own CLI uses; it names
+`rest,sse,rpc,mcp` and leaves `socket` out. `kit/self-hosting` is the
+all-surfaces form and is unchanged.
+
+Rules:
+
+- A named surface is never enabled for the command on any bridge: not
+  by the default enabled set, `Bridge.Expose`, a service's `Expose`,
+  nor `surfaces.commands.<path>.enabled`. It is the command author's
+  declaration; a deployment can hide the command from more surfaces
+  but cannot serve it on one it names.
+- Discovery on a named surface MUST NOT offer it. REST describes it
+  with `invocable: false` and the reason `withheld-by-command`
+  (distinct from `withheld-by-config`, the deployment's `Hide`), and
+  mounts no route, no stream route and no OpenAPI path; MCP lists no
+  tool. RPC has no discovery.
+- A call on a named surface is refused at gate 2 with `not_enabled`
+  (`ErrSurfaceNotEnabled`, whose message names `kit/withhold-from`):
+  REST `404` (no route exists), Connect `NotFound`, MCP the JSON-RPC
+  invalid-params error of an unknown tool, socket `NOT_ENABLED`. No new
+  code: it is the answer `Hide` already gets, so a client needs no new
+  branch, and the not-found family says what is true on that surface —
+  the command is not there — without suggesting the caller could lift
+  it.
+- `rest` covers everything the REST projection serves for the command,
+  its `/stream` route included; `sse` names the separate SSE surface.
+- A surface it does not name is unaffected. The socket keeps the
+  command unless `socket` is named.
+- A value naming an unknown surface is a configuration error: every
+  kit-shipped service refuses to start (exit `2`), naming the command
+  and the value. A bridge built without that check fails closed,
+  withholding the command from every surface but `cli` and `lib`.
+
 ## Compatibility
 
 Adopters calling [`cli.WithAPI(...)`](../../go/console/cli/api.go)

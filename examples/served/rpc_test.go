@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -154,7 +155,11 @@ func TestRPCAndRESTWithholdTheSameCommands(t *testing.T) {
 		if v.Invocable {
 			continue
 		}
-		_, err := c.Invoke(t.Context(), rpcCall(name, nil))
+		// Bounded: a withheld command that runs until canceled
+		// (`item follow`) must fail this test, not hang it.
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		_, err := c.Invoke(ctx, rpcCall(name, nil))
+		cancel()
 		require.Error(t, err, "%s is withheld over REST (%s) but ran over RPC", name, v.Reason)
 		assert.Contains(t, []connect.Code{connect.CodeNotFound, connect.CodePermissionDenied},
 			connect.CodeOf(err), name)

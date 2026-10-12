@@ -230,7 +230,12 @@ func (b *Bridge) applyCommandConfig(pattern string, surfaces []Surface) {
 			delete(leaf.Enabled, k)
 		}
 		for s := range set {
-			leaf.Enabled[s] = true
+			// A surface the command withholds itself from stays off:
+			// the per-command list is authoritative over the defaults,
+			// not over the command.
+			if !leaf.withheld[s] {
+				leaf.Enabled[s] = true
+			}
 		}
 	}
 }

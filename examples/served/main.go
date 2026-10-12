@@ -21,6 +21,7 @@
 //
 //	item list    read               declares an output schema
 //	item watch   read               long-running: streams until done or canceled
+//	item follow  read               long-running, kit/withhold-from: the socket only
 //	item add     write-local
 //	item tag     write-local        kit/requires-confirmation
 //	item sync    read               kit/auth-required
@@ -126,6 +127,9 @@ type options struct {
 	// apiKeys is the API key store's file; empty is the default under
 	// the data dir.
 	apiKeys string
+	// edit changes the built tree before it runs, the way an adopter
+	// would annotate a command differently; nil changes nothing.
+	edit func(*cli.Root)
 }
 
 // profileEnv names the profile an instance runs for. Each profile's
@@ -189,6 +193,9 @@ func newRoot(opts options) *cli.Root {
 		return cli.StatusSection{Title: "store", Priority: 1000,
 			Data: map[string]any{"items": len(st.list())}}, nil
 	})
+	if opts.edit != nil {
+		opts.edit(root)
+	}
 	return root
 }
 
@@ -294,7 +301,7 @@ func itemCmd(root *cli.Root, st *store) *cobra.Command {
 	cli.SetSideEffect(purge, cli.SideEffectDestructiveShared)
 	cli.SetIdempotency(purge, cli.IdempotencyYes)
 
-	item.AddCommand(list, watchCmd(st), add, tag, syncCmd, export, purge)
+	item.AddCommand(list, watchCmd(st), followCmd(st), add, tag, syncCmd, export, purge)
 	return item
 }
 
@@ -333,6 +340,44 @@ func watchCmd(st *store) *cobra.Command {
 	cmd.Flags().Duration("interval", time.Second, "time between reports")
 	cli.SetSideEffect(cmd, cli.SideEffectRead)
 	cli.SetIdempotency(cmd, cli.IdempotencyYes)
+	return cmd
+}
+
+// followCmd is the long-running read a tool keeps off its served
+// surfaces: each call would hold a served runner for as long as the
+// caller follows, so it is withheld from REST (its stream route
+// included), SSE, RPC and MCP, and stays on the socket the tool's own
+// CLI talks to.
+func followCmd(st *store) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "follow",
+		Short: "Follow the item count",
+		Long:  "Report the item count once per interval, count times, or until canceled when count is 0. Served over the socket only.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			count, _ := cmd.Flags().GetInt("count")
+			interval, _ := cmd.Flags().GetDuration("interval")
+			for i := 1; count == 0 || i <= count; i++ {
+				fmt.Fprintf(cmd.OutOrStdout(), "follow %d: %d items\n", i, len(st.list()))
+				if count != 0 && i == count {
+					return nil
+				}
+				select {
+				case <-cmd.Context().Done():
+					return cmd.Context().Err()
+				case <-time.After(interval):
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().Int("count", 0, "stop after this many reports; 0 runs until canceled")
+	cmd.Flags().Duration("interval", time.Second, "time between reports")
+	cli.SetSideEffect(cmd, cli.SideEffectRead)
+	cli.SetIdempotency(cmd, cli.IdempotencyYes)
+	cli.SetWithholdFrom(cmd,
+		cmdsurface.SurfaceREST, cmdsurface.SurfaceSSE,
+		cmdsurface.SurfaceRPC, cmdsurface.SurfaceMCP)
 	return cmd
 }
 

@@ -118,6 +118,9 @@ type Leaf struct {
 	// cacheTTL is the leaf's kit/cache-ttl on the read tier, zero
 	// when its results are never cached.
 	cacheTTL time.Duration
+	// withheld is the leaf's kit/withhold-from: surfaces Enabled
+	// never holds, whatever enables them. nil when it declares none.
+	withheld map[Surface]bool
 }
 
 // PathKey returns the leaf path as a space-joined string (the form
@@ -279,9 +282,12 @@ func (b *Bridge) discover() {
 		if d.IsRoot() || d.Surface.HasSubCommands {
 			continue
 		}
+		withheld := withheldOf(d.Cmd)
 		enabled := make(map[Surface]bool, len(defaultSet))
 		for k, v := range defaultSet {
-			enabled[k] = v
+			if !withheld[k] {
+				enabled[k] = v
+			}
 		}
 		timeout, _ := CommandTimeout(d.Cmd)
 		leaf := &Leaf{
@@ -294,6 +300,7 @@ func (b *Bridge) discover() {
 
 			secretFlags: secretFlagSet(d.Cmd),
 			cacheTTL:    cacheTTLOf(d),
+			withheld:    withheld,
 		}
 		b.leaves = append(b.leaves, leaf)
 		b.byPath[leaf.PathKey()] = leaf
@@ -343,8 +350,9 @@ func (b *Bridge) Leaves() []*Leaf {
 //   - "widget *"    — every leaf under "widget"
 //   - "*"           — every leaf
 //
-// When surfaces is empty Expose is a no-op. Returns the receiver
-// for chaining.
+// When surfaces is empty Expose is a no-op. It never enables a
+// surface a leaf withholds itself from with [AnnotationWithholdFrom].
+// Returns the receiver for chaining.
 func (b *Bridge) Expose(pattern string, surfaces ...Surface) *Bridge {
 	return b.setSurfaces(pattern, surfaces, true)
 }
@@ -366,6 +374,9 @@ func (b *Bridge) setSurfaces(pattern string, surfaces []Surface, value bool) *Br
 			continue
 		}
 		for _, s := range surfaces {
+			if value && leaf.withheld[s] {
+				continue
+			}
 			leaf.Enabled[s] = value
 		}
 	}
@@ -597,6 +608,10 @@ func (b *Bridge) Admit(ctx context.Context, inv Invocation) (*Admission, error) 
 func (b *Bridge) callerIndependentGates(inv Invocation, leaf *Leaf) error {
 	surface := inv.Meta.Surface
 	if !leaf.Enabled[surface] {
+		if leaf.withheld[surface] {
+			return fmt.Errorf("%w: %s on %s (the command withholds itself: %s)",
+				ErrSurfaceNotEnabled, leaf.PathKey(), surface, AnnotationWithholdFrom)
+		}
 		return fmt.Errorf("%w: %s on %s", ErrSurfaceNotEnabled, leaf.PathKey(), surface)
 	}
 	if reason := notInvocableReason(leaf); reason != cmdreflect.ReasonNone {

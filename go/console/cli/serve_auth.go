@@ -526,9 +526,9 @@ func ServeBridgeOptionsExposed(r *Root, svc string, exp ServeExposure) ([]cmdsur
 // cannot load, an audit.redact block, audit.sinks list, rate_limit or
 // concurrency block [ServeBridgeOptions] would refuse, an audit chain
 // that cannot open, a timeouts block that does not parse or a
-// kit/timeout annotation that does not, or a root factory that cannot
-// build a usable tree, is a usage error before anything binds. The
-// chains it opens are the ones Start reuses.
+// kit/timeout or kit/withhold-from annotation that does not, or a root
+// factory that cannot build a usable tree, is a usage error before
+// anything binds. The chains it opens are the ones Start reuses.
 func ValidateServeBridge(r *Root, svc string) error {
 	if _, err := r.servePermission(ServeExposure{Loopback: true}); err != nil {
 		return err

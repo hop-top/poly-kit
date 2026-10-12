@@ -114,8 +114,8 @@ func durationValue(raw any) (time.Duration, error) {
 
 // validateServeTimeouts refuses svc's timeouts block when a key is
 // unknown or does not parse, and any command in the tree whose
-// kit/timeout annotation does not parse. It runs in Validate, before
-// anything binds.
+// kit/timeout or kit/withhold-from annotation does not parse. It runs
+// in Validate, before anything binds.
 func validateServeTimeouts(r *Root, svc string) error {
 	var v *viper.Viper
 	if r != nil {
@@ -130,7 +130,12 @@ func validateServeTimeouts(r *Root, svc string) error {
 	if r == nil {
 		return nil
 	}
-	return cmdsurface.ValidateCommandTimeouts(r.Cmd)
+	if err := cmdsurface.ValidateCommandTimeouts(r.Cmd); err != nil {
+		return err
+	}
+	// Not a timeout, but the same kind of check at the same moment: a
+	// served-command annotation every kit-shipped service reads.
+	return cmdsurface.ValidateWithholdFrom(r.Cmd)
 }
 
 // ConfigureServeHTTP applies service svc's server settings to srv,
