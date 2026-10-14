@@ -31,11 +31,18 @@ type Naming interface {
 const defaultTimeLayout = "20060102-150405"
 
 // defaultNaming names backups <basename>.pre-v<version>.<ts>.bak, with
-// .<attempt> before .bak when attempt > 0.
+// .<attempt> before .bak when attempt > 0. <basename> is the database's
+// whole file name, extension included, so app.db and app.sqlite in one
+// directory never claim each other's backups.
+//
+// Releases up to kit v0.5.0-alpha.25 dropped the extension
+// (app.pre-v3.<ts>.bak for app.db). Parse does not recognize those
+// names, since one could belong to any app.* in the directory, so
+// WithKeep neither counts nor deletes them.
 type defaultNaming struct{}
 
 func (defaultNaming) Name(dbPath string, version int, taken time.Time, attempt int) string {
-	n := fmt.Sprintf("%s.pre-v%d.%s", dbStem(dbPath), version, taken.UTC().Format(defaultTimeLayout))
+	n := fmt.Sprintf("%s.pre-v%d.%s", filepath.Base(dbPath), version, taken.UTC().Format(defaultTimeLayout))
 	if attempt > 0 {
 		n += "." + strconv.Itoa(attempt)
 	}
@@ -43,7 +50,7 @@ func (defaultNaming) Name(dbPath string, version int, taken time.Time, attempt i
 }
 
 func (defaultNaming) Parse(dbPath, fileName string) (time.Time, int, bool) {
-	re := regexp.MustCompile(`^` + regexp.QuoteMeta(dbStem(dbPath)) +
+	re := regexp.MustCompile(`^` + regexp.QuoteMeta(filepath.Base(dbPath)) +
 		`\.pre-v\d+\.(\d{8}-\d{6})(?:\.(\d+))?\.bak$`)
 	m := re.FindStringSubmatch(fileName)
 	if m == nil {
@@ -60,12 +67,6 @@ func (defaultNaming) Parse(dbPath, fileName string) (time.Time, int, bool) {
 		}
 	}
 	return taken, attempt, true
-}
-
-// dbStem is the database file's base name without its extension.
-func dbStem(dbPath string) string {
-	base := filepath.Base(dbPath)
-	return base[:len(base)-len(filepath.Ext(base))]
 }
 
 // freeBackupName returns the first path in dir the Naming yields for
