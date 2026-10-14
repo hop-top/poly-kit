@@ -22,9 +22,10 @@ const backupSubdir = ".dbs"
 //
 // Use this for non-DB migrations (state files, JSON snapshots,
 // metadata blobs) where a generic file copy is the right primitive.
-// Use sqlstore.BackupBeforeMigrate for SQLite databases — that
-// helper checkpoints the WAL before copying, which this generic
-// helper deliberately does not do.
+// Never use it on a SQLite database: a file copy misses rows still in
+// the WAL and can tear while another connection writes. Use
+// sqlstore.BackupBeforeMigrate, which snapshots through SQLite itself
+// (VACUUM INTO).
 //
 // If srcPath does not exist, BackupBeforeMigrate returns ("", nil)
 // and migrator is not called — there is nothing to back up.
