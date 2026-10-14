@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/url"
 	"os"
@@ -191,49 +190,6 @@ func Backup(ctx context.Context, dbPath string, dest blob.Store, key string) err
 
 	if err := dest.Put(ctx, key, f, "application/x-sqlite3"); err != nil {
 		return fmt.Errorf("backup: blob put: %w", err)
-	}
-	return nil
-}
-
-// Restore retrieves a SQLite backup from src blob.Store at key and writes
-// it to dbPath, overwriting any existing file. If src is nil, this is a
-// no-op (no remote store configured).
-func Restore(ctx context.Context, dbPath string, src blob.Store, key string) error {
-	if src == nil {
-		return nil
-	}
-
-	rc, err := src.Get(ctx, key)
-	if err != nil {
-		return fmt.Errorf("restore: blob get: %w", err)
-	}
-	defer rc.Close()
-
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
-		return fmt.Errorf("restore: mkdir: %w", err)
-	}
-
-	tmp := dbPath + ".restore.tmp"
-	out, err := os.Create(tmp)
-	if err != nil {
-		return fmt.Errorf("restore: create tmp: %w", err)
-	}
-
-	if _, err := io.Copy(out, rc); err != nil {
-		out.Close()
-		os.Remove(tmp)
-		return fmt.Errorf("restore: write: %w", err)
-	}
-	if err := out.Sync(); err != nil {
-		out.Close()
-		os.Remove(tmp)
-		return fmt.Errorf("restore: sync: %w", err)
-	}
-	out.Close()
-
-	if err := os.Rename(tmp, dbPath); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("restore: rename: %w", err)
 	}
 	return nil
 }
