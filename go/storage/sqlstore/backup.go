@@ -91,9 +91,10 @@ func BackupBeforeMigrate(dbPath string, version int, opts ...Option) (string, er
 //
 //	<basename>.pre-v<version>.<20060102-150405>.bak
 //
-// with the timestamp in UTC; WithNaming replaces it. A name some file
-// already holds is never overwritten: the Naming is asked again with the
-// next attempt number.
+// with <basename> the database's file name, extension included
+// (app.db.pre-v3.<ts>.bak), and the timestamp in UTC; WithNaming
+// replaces it. A name some file already holds is never overwritten: the
+// Naming is asked again with the next attempt number.
 //
 // The copy is taken with SQLite's VACUUM INTO, which reads the database
 // in one transaction: it includes rows still in the WAL and is

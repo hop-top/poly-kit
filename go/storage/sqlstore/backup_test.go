@@ -188,7 +188,7 @@ func TestBackupBeforeMigrate(t *testing.T) {
 		if filepath.Dir(got) != expectedDir {
 			t.Fatalf("backup not in default .dbs dir: got %s, want under %s", got, expectedDir)
 		}
-		if !strings.HasPrefix(filepath.Base(got), "test.pre-v7.") {
+		if !strings.HasPrefix(filepath.Base(got), "test.db.pre-v7.") {
 			t.Fatalf("backup name missing version: %s", got)
 		}
 		if !strings.HasSuffix(got, ".bak") {
@@ -240,7 +240,7 @@ func TestBackupBeforeMigrate(t *testing.T) {
 		if a == b {
 			t.Fatalf("second backup reused %s", a)
 		}
-		if filepath.Base(b) != "test.pre-v1.20260102-030405.1.bak" {
+		if filepath.Base(b) != "test.db.pre-v1.20260102-030405.1.bak" {
 			t.Fatalf("collision name = %s", filepath.Base(b))
 		}
 	})
@@ -683,5 +683,64 @@ func TestRestoreNilStoreNoop(t *testing.T) {
 	err := Restore(ctx, "/nonexistent/path.db", nil, "key")
 	if err != nil {
 		t.Fatalf("Restore with nil store should be no-op: %v", err)
+	}
+}
+
+// TestBackupBeforeMigrate_RetentionSameStem: app.db and app.sqlite in
+// one directory back up into the same default .dbs dir; WithKeep on one
+// never counts or deletes the other's backups.
+func TestBackupBeforeMigrate_RetentionSameStem(t *testing.T) {
+	dir := t.TempDir()
+	dbA := filepath.Join(dir, "app.db")
+	dbB := filepath.Join(dir, "app.sqlite")
+	newTestDB(t, dbA, 1)
+	newTestDB(t, dbB, 2)
+	out := filepath.Join(dir, ".dbs")
+
+	// A backup an older kit release named <stem>.pre-v... for app.db;
+	// it cannot be told apart from one of app.sqlite, so retention
+	// leaves it alone.
+	legacy := "app.pre-v1.20200101-000000.bak"
+	if err := os.MkdirAll(out, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, legacy), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	made := map[string][]string{}
+	for i := 0; i < 4; i++ {
+		for j, db := range []string{dbA, dbB} {
+			at := base.Add(time.Duration(2*i+j) * time.Minute)
+			got, err := BackupBeforeMigrate(db, i+1, WithKeep(2), withClock(func() time.Time { return at }))
+			if err != nil {
+				t.Fatalf("backup %s #%d: %v", filepath.Base(db), i, err)
+			}
+			made[db] = append(made[db], filepath.Base(got))
+		}
+	}
+	want := map[string]bool{legacy: true}
+	for _, db := range []string{dbA, dbB} {
+		for _, n := range made[db][2:] {
+			want[n] = true
+		}
+	}
+	names := listDir(t, out)
+	if len(names) != len(want) {
+		t.Fatalf("after retention: %v, want %v", names, want)
+	}
+	for _, n := range names {
+		if !want[n] {
+			t.Fatalf("after retention: %v, want %v", names, want)
+		}
+	}
+	for _, db := range []string{dbA, dbB} {
+		for _, n := range made[db][2:] {
+			checkBackup(t, filepath.Join(out, n))
+		}
+	}
+	if !strings.HasPrefix(made[dbA][0], "app.db.pre-v1.") || !strings.HasPrefix(made[dbB][0], "app.sqlite.pre-v1.") {
+		t.Fatalf("names = %v, want the full file name as prefix", made)
 	}
 }
