@@ -15,9 +15,9 @@ import (
 
 // Gap: kit/core/xdg has no BackupBeforeMigrate helper.
 //
-// sqlstore.BackupBeforeMigrate (go/storage/sqlstore/backup.go:24)
-// already does this for SQLite databases — including a WAL
-// checkpoint. But it is sqlite-specific and lives in storage/sqlstore.
+// sqlstore.BackupBeforeMigrate already does this for SQLite
+// databases, through a consistent VACUUM INTO snapshot. But it is
+// sqlite-specific and lives in storage/sqlstore.
 // tlc, rsx, and ctxt each hand-rolled the same pattern (per-tool
 // backup dir, timestamped name, mkdir, copy) for non-DB files: state
 // dirs, JSON snapshots, metadata blobs. The convention of writing
