@@ -188,8 +188,8 @@ b := bus.New(bus.WithAdapter(a))
 
 // after
 import (
-	"hop.top/kit/go/runtime/bus"
-	"hop.top/kit/go/runtime/bus/sqlite"
+    "hop.top/kit/go/runtime/bus"
+    "hop.top/kit/go/runtime/bus/sqlite"
 )
 
 a, err := sqlite.NewAdapter(path, sqlite.WithPollInterval(time.Second))
@@ -222,8 +222,8 @@ store, err := idemstore.OpenSQLite(path, idemstore.DefaultTTL)
 
 // after
 import (
-	"hop.top/kit/go/console/cli/idemstore"
-	"hop.top/kit/go/console/cli/idemstore/sqlite"
+    "hop.top/kit/go/console/cli/idemstore"
+    "hop.top/kit/go/console/cli/idemstore/sqlite"
 )
 
 store, err := sqlite.Open(path, idemstore.DefaultTTL)

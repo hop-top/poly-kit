@@ -20,8 +20,8 @@ dir, _ := os.MkdirTemp("", "peers")
 defer os.RemoveAll(dir)
 
 root := cli.New(cli.Config{Name: "mytool", Version: "0.1.0", Short: "peers example"},
-	cli.WithIdentity(cli.IdentityConfig{Dir: dir}),
-	peers.With(peers.Config{DataDir: dir}))
+    cli.WithIdentity(cli.IdentityConfig{Dir: dir}),
+    peers.With(peers.Config{DataDir: dir}))
 
 p := peers.Of(root)
 fmt.Println("mesh:", p.Mesh != nil)

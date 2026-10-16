@@ -20,16 +20,16 @@ defer os.RemoveAll(dir)
 
 a, err := sqlite.NewAdapter(filepath.Join(dir, "events.db"), sqlite.WithPollInterval(10*time.Millisecond))
 if err != nil {
-	fmt.Println("open:", err)
-	return
+    fmt.Println("open:", err)
+    return
 }
 b := bus.New(bus.WithAdapter(a))
 defer b.Close(context.Background())
 
 got := make(chan bus.Event, 1)
 b.Subscribe("shop.order.item.created", func(_ context.Context, e bus.Event) error {
-	got <- e
-	return nil
+    got <- e
+    return nil
 })
 _ = b.Publish(context.Background(), bus.NewEvent("shop.order.item.created", "checkout", "item-42"))
 
