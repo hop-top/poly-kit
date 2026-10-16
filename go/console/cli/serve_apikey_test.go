@@ -203,7 +203,7 @@ func TestAPIKeyVerifierReleasesItsStore(t *testing.T) {
 	require.NoError(t, err)
 	key := strings.TrimSpace(out)
 
-	cfg, err := tlsResolver{svc: APIServiceName}.apiKeyStoreConfig(&Root{apiKeysCfg: &APIKeysConfig{Path: path}})
+	cfg, err := tlsResolver{svc: APIServiceName}.apiKeyStoreConfig(apiKeysRoot(path))
 	require.NoError(t, err)
 	v := &apiKeyVerifier{cfg: cfg}
 	req, err := http.NewRequest(http.MethodGet, "/", nil)
@@ -245,4 +245,12 @@ func TestAPIKeyStoreIsOwnerOnly(t *testing.T) {
 			assert.Equal(t, os.FileMode(0o600), si.Mode().Perm(), side)
 		}
 	}
+}
+
+// apiKeysRoot is a bare Root whose serve plane names the key store at
+// path, as WithAPIKeys would.
+func apiKeysRoot(path string) *Root {
+	r := &Root{}
+	stateOf(r).apiKeysCfg = &APIKeysConfig{Path: path}
+	return r
 }

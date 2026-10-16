@@ -36,14 +36,14 @@ type usageState struct {
 // store (etcd, TiDB) when several instances serve the same callers
 // and must count them together. The Root does not close it.
 func WithUsageStore(store kv.Store) func(*Root) {
-	return func(r *Root) { r.serveAuth.usage.store = store }
+	return func(r *Root) { stateOf(r).serveAuth.usage.store = store }
 }
 
 // usageLedgerOf returns the Root's usage ledger, opening the default
 // store on first use. It is a function rather than a Root method so a
 // tool that serves nothing does not link it (see ServeBridgeOptions).
 func usageLedgerOf(r *Root) (*cmdsurface.UsageLedger, error) {
-	u := &r.serveAuth.usage
+	u := &stateOf(r).serveAuth.usage
 	u.once.Do(func() {
 		if u.store != nil {
 			u.ledger = cmdsurface.NewUsageLedger(u.store)

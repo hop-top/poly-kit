@@ -40,7 +40,7 @@ func leafOf(t *testing.T, r *Root, use string) *cmdsurface.Leaf {
 func setPolicy(t *testing.T, r *Root, p policy.Policy) {
 	t.Helper()
 	WithPolicy(func(string) (policy.Policy, error) { return p, nil })(r)
-	require.NoError(t, r.Cmd.PersistentFlags().Set(policyFlag, p.Name))
+	require.NoError(t, r.Cmd.PersistentFlags().Set("policy", p.Name))
 }
 
 // TestPermissionRulesSitBetweenThePolicyAndTheAdopter pins slot 6's

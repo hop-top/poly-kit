@@ -51,10 +51,10 @@ func (r *Root) mountTokenCmd() {
 	if !has["verify"] {
 		cmd.AddCommand(tokenVerifyCmd(r))
 	}
-	if !has["create"] && r.identityCfg != nil {
+	if !has["create"] && IdentityConfigured(r) {
 		cmd.AddCommand(tokenCreateCmd(r))
 	}
-	if !has["key"] && r.apiKeysCfg != nil {
+	if !has["key"] && stateOf(r).apiKeysCfg != nil {
 		cmd.AddCommand(tokenKeyCmd(r))
 	}
 }

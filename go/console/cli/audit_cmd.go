@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/security"
@@ -86,7 +87,7 @@ func auditVerifyCmd(r *Root) *cobra.Command {
 
 	SetSideEffect(cmd, SideEffectRead)
 	SetIdempotency(cmd, IdempotencyYes)
-	cmd.Annotations[kitExitCodes] = "OK,GENERIC,NOT_FOUND," + security.CodeTamperDetected
+	cmd.Annotations[cmdmeta.KeyExitCodes] = "OK,GENERIC,NOT_FOUND," + security.CodeTamperDetected
 	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]AuditVerifyRow{}, Version: "1.0"})
 	_ = SetExamples(cmd, []Example{
 		{Title: "Every configured chain", Command: r.Config.Name + " audit verify"},
@@ -154,8 +155,9 @@ func auditVerifyPaths(r *Root, file string) ([]string, error) {
 		return []string{abs}, nil
 	}
 	var services []string
-	if r.serveReg != nil {
-		services = r.serveReg.Names()
+	st := stateOf(r)
+	if st.serveReg != nil {
+		services = st.serveReg.Names()
 	}
 	paths, err := serveAuditChainPaths(r.Viper, r.Config.Name, services)
 	if err != nil {

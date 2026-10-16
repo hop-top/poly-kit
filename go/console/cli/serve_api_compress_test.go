@@ -114,7 +114,7 @@ func TestAPICompressionValidation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			keys["services.api.addr"] = "127.0.0.1:0"
 			r := compressFixture(t, APIConfig{}, keys)
-			svc, ok := r.serveReg.Lookup(APIServiceName)
+			svc, ok := stateOf(r).serveReg.Lookup(APIServiceName)
 			require.True(t, ok)
 			err := svc.(*apiService).Validate()
 			require.Error(t, err)
@@ -128,7 +128,7 @@ func TestAPICompressionValidation(t *testing.T) {
 			"services.api.compression.enabled":   true,
 			"services.all.compression.min_bytes": 0,
 		})
-		svc, _ := r.serveReg.Lookup(APIServiceName)
+		svc, _ := stateOf(r).serveReg.Lookup(APIServiceName)
 		require.NoError(t, svc.(*apiService).Validate())
 	})
 }

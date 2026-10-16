@@ -167,7 +167,7 @@ func runServeExpect(t *testing.T, r *Root, args []string, settle time.Duration) 
 // apiSvc returns the registered api service.
 func apiSvc(t *testing.T, r *Root) *apiService {
 	t.Helper()
-	svc, ok := r.serveReg.Lookup(APIServiceName)
+	svc, ok := stateOf(r).serveReg.Lookup(APIServiceName)
 	require.True(t, ok)
 	a, ok := svc.(*apiService)
 	require.True(t, ok)
@@ -333,7 +333,7 @@ func scopeGate(_ context.Context, meta cmdsurface.Meta, leaf *cmdsurface.Leaf) c
 func TestAPIDefaultAddrIsLoopback(t *testing.T) {
 	r := authRoot(t, WithAPI(APIConfig{}))
 	assert.Equal(t, "127.0.0.1:8080", DefaultAPIAddr)
-	assert.Equal(t, DefaultAPIAddr, r.apiCfg.Addr)
+	assert.Equal(t, DefaultAPIAddr, stateOf(r).apiCfg.Addr)
 	for _, c := range r.Cmd.Commands() {
 		if c.Name() == "serve" {
 			assert.Equal(t, DefaultAPIAddr, c.Flags().Lookup("addr").DefValue,
@@ -446,7 +446,7 @@ func TestInsecureRemoteOptIn(t *testing.T) {
 			return nil
 		},
 		"APIConfig": func(r *Root) []string {
-			r.apiCfg.InsecureRemote = true
+			stateOf(r).apiCfg.InsecureRemote = true
 			return nil
 		},
 	}
@@ -647,7 +647,7 @@ func TestInsecureNoPolicyOptIn(t *testing.T) {
 			return nil
 		},
 		"APIConfig": func(r *Root) []string {
-			r.apiCfg.InsecureNoPolicy = true
+			stateOf(r).apiCfg.InsecureNoPolicy = true
 			return nil
 		},
 	}
@@ -717,7 +717,7 @@ func TestInsecureRemoteDoesNotWaiveThePolicyGate(t *testing.T) {
 			return nil
 		},
 		"APIConfig": func(r *Root) []string {
-			r.apiCfg.InsecureRemote = true
+			stateOf(r).apiCfg.InsecureRemote = true
 			return nil
 		},
 	} {
@@ -1092,7 +1092,7 @@ func TestConfirmationRefusalIsAudited(t *testing.T) {
 func TestRESTClientDisconnectCancelsInvocation(t *testing.T) {
 	runner := newBlockingRunner()
 	r := authRoot(t, WithAPI(APIConfig{Addr: "127.0.0.1:0"}))
-	r.serveAuth.bridgeOpts = []cmdsurface.Option{cmdsurface.WithRunner(runner)}
+	stateOf(r).serveAuth.bridgeOpts = []cmdsurface.Option{cmdsurface.WithRunner(runner)}
 	base, stop := serveAPI(t, r)
 	defer stop()
 
@@ -1122,7 +1122,7 @@ func TestSocketClientDisconnectCancelsInvocation(t *testing.T) {
 	runner := newBlockingRunner()
 	path := tmpSocket(t)
 	r := authRoot(t, WithSocket(SocketConfig{Path: path}))
-	r.serveAuth.bridgeOpts = []cmdsurface.Option{cmdsurface.WithRunner(runner)}
+	stateOf(r).serveAuth.bridgeOpts = []cmdsurface.Option{cmdsurface.WithRunner(runner)}
 	stop := serveSocket(t, r, path)
 	defer stop()
 

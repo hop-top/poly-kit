@@ -56,7 +56,7 @@ type APIKeysConfig struct {
 //
 //	import _ "hop.top/kit/go/storage/kv/sqlite"
 func WithAPIKeys(cfg APIKeysConfig) func(*Root) {
-	return func(r *Root) { r.apiKeysCfg = &cfg }
+	return func(r *Root) { stateOf(r).apiKeysCfg = &cfg }
 }
 
 // apiKeyStoreConfig resolves the kv store svc's API keys live in:
@@ -64,11 +64,11 @@ func WithAPIKeys(cfg APIKeysConfig) func(*Root) {
 // default, then the kit default. It opens nothing.
 func (t tlsResolver) apiKeyStoreConfig(r *Root) (kv.Config, error) {
 	cfg := kv.Config{Backend: DefaultAPIKeyBackend}
-	if r != nil && r.apiKeysCfg != nil {
-		if r.apiKeysCfg.Backend != "" {
-			cfg.Backend = r.apiKeysCfg.Backend
+	if st, ok := lookup(r); ok && st.apiKeysCfg != nil {
+		if st.apiKeysCfg.Backend != "" {
+			cfg.Backend = st.apiKeysCfg.Backend
 		}
-		cfg.Path = r.apiKeysCfg.Path
+		cfg.Path = st.apiKeysCfg.Path
 	}
 	backendKey := svcconfig.Key(t.svc, authAPIKeyBlock, "backend")
 	if b, k := t.str(authAPIKeyBlock, "backend"); b != "" {

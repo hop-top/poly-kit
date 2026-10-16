@@ -138,12 +138,21 @@ func destructiveTokenSha(cmd *cobra.Command) string {
 	return hex.EncodeToString(h[:6])
 }
 
-// newPolicyEngine builds a policy.Engine from the active flags. When
-// --policy is unset it returns an Engine with an empty Policy
-// (default-permit) parameterized by --max-ops only.
-func (r *Root) newPolicyEngine(cmd *cobra.Command) (*policy.Engine, error) {
-	maxOps := flagInt(cmd, maxOpsFlag)
-	policyName := flagValue(cmd, policyFlag)
+// PolicyFlags returns the delegation policy flags visible to cmd: the
+// --policy name (empty when unset) and the --max-ops budget (0 when
+// unset or unparseable).
+func PolicyFlags(cmd *cobra.Command) (name string, maxOps int) {
+	return flagValue(cmd, policyFlag), flagInt(cmd, maxOpsFlag)
+}
+
+// PolicyEngine builds the policy.Engine r enforces for cmd from the
+// active flags ([PolicyFlags]), resolving a named --policy through
+// the loader WithPolicy wired. When --policy is unset it returns an
+// Engine with an empty Policy (default-permit) parameterized by
+// --max-ops only. A --policy that names no loadable policy is a usage
+// error.
+func PolicyEngine(r *Root, cmd *cobra.Command) (*policy.Engine, error) {
+	policyName, maxOps := PolicyFlags(cmd)
 
 	var p policy.Policy
 	switch {
@@ -185,12 +194,27 @@ func (r *Root) newPolicyEngine(cmd *cobra.Command) (*policy.Engine, error) {
 // exemption: that is the word the serve-lifecycle contract gives the
 // supervisor. Once kit owns the services, only kit's commands are
 // exempt, by identity rather than by name.
+//
+// The extension that owns the services decides ([PolicyExemption]);
+// the first one that owns the decision answers. Without one, the
+// depth-1 `serve` is exempt by name.
 func (r *Root) startsServices(cmd *cobra.Command) bool {
-	if r.serveCmd != nil {
-		return cmd == r.serveCmd || cmd == r.serveAlias
+	decided, exempt := false, false
+	extHooks(r, func(h PolicyExemption) {
+		if decided {
+			return
+		}
+		exempt, decided = h.ExemptFromPolicy(r, cmd)
+	})
+	if decided {
+		return exempt
 	}
-	return r.Cmd != nil && cmd.Parent() == r.Cmd && cmd.Name() == serveAliasName
+	return r.Cmd != nil && cmd.Parent() == r.Cmd && cmd.Name() == supervisorCommandName
 }
+
+// supervisorCommandName is the depth-1 word the serve-lifecycle
+// contract gives a tool's own supervisor.
+const supervisorCommandName = "serve"
 
 // runCaller is the caller a served run executes for: the identity the
 // transport established for the invocation the bridge admitted, so
@@ -335,7 +359,7 @@ func (r *Root) wrapPolicyRunE(
 
 		// Build the policy engine for this invocation. Cheap; it just
 		// reads the flag values and (optionally) loads YAML.
-		engine, err := r.newPolicyEngine(cmd)
+		engine, err := PolicyEngine(r, cmd)
 		if err != nil {
 			if ce, ok := err.(*output.Error); ok {
 				return renderPolicyError(cmd, ce)

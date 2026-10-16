@@ -64,7 +64,7 @@ type serveAuthState struct {
 // Without this option every caller the scope check, the policy and
 // its rules admit may run the command.
 func WithPermission(fn cmdsurface.PermissionFunc) func(*Root) {
-	return func(r *Root) { r.serveAuth.permission = fn }
+	return func(r *Root) { stateOf(r).serveAuth.permission = fn }
 }
 
 // WithTokenCheck installs a revocation check on every credential
@@ -82,7 +82,7 @@ func WithPermission(fn cmdsurface.PermissionFunc) func(*Root) {
 // A verifier installed in code (APIConfig.Auth and its siblings) is
 // the adopter's own and is not wrapped; set authn.Options.Check there.
 func WithTokenCheck(check func(ctx context.Context, t *authn.Token) error) func(*Root) {
-	return func(r *Root) { r.serveAuth.tokenCheck = check }
+	return func(r *Root) { stateOf(r).serveAuth.tokenCheck = check }
 }
 
 // tokenCheck returns the WithTokenCheck check, nil when unset.
@@ -90,7 +90,7 @@ func (r *Root) tokenCheck() func(ctx context.Context, t *authn.Token) error {
 	if r == nil {
 		return nil
 	}
-	return r.serveAuth.tokenCheck
+	return stateOf(r).serveAuth.tokenCheck
 }
 
 // PermissionRuleCompiler turns the permissions: block of the active
@@ -111,7 +111,7 @@ type PermissionRuleCompiler func(rules []policy.PermissionRule) (cmdsurface.Perm
 // A policy that declares rules while no evaluator is wired refuses
 // to serve rather than serve without them.
 func WithPermissionRules(compile PermissionRuleCompiler) func(*Root) {
-	return func(r *Root) { r.serveAuth.rules = compile }
+	return func(r *Root) { stateOf(r).serveAuth.rules = compile }
 }
 
 // WithAuditSinks registers audit sinks on every kit-shipped transport
@@ -126,7 +126,10 @@ func WithPermissionRules(compile PermissionRuleCompiler) func(*Root) {
 // [cmdsurface.LogSink], [cmdsurface.WebhookSink], and
 // [cmdsurface.BusSink] for ready-made destinations.
 func WithAuditSinks(specs ...cmdsurface.SinkSpec) func(*Root) {
-	return func(r *Root) { r.serveAuth.sinks = append(r.serveAuth.sinks, specs...) }
+	return func(r *Root) {
+		st := stateOf(r)
+		st.serveAuth.sinks = append(st.serveAuth.sinks, specs...)
+	}
 }
 
 // serveBridgeOptions returns the bridge options every kit-shipped
@@ -166,9 +169,10 @@ func (r *Root) serveBridgeOptions(svc string, exp ServeExposure) ([]cmdsurface.O
 	if err != nil {
 		return nil, err
 	}
+	st := stateOf(r)
 	opts := []cmdsurface.Option{
 		cmdsurface.WithPermission(perm),
-		cmdsurface.WithSinks(r.serveAuth.sinks...),
+		cmdsurface.WithSinks(st.serveAuth.sinks...),
 		cmdsurface.WithSinks(configured...),
 		cmdsurface.WithAuditRedaction(redaction),
 		cmdsurface.WithCommandTimeout(commandTimeout),
@@ -176,7 +180,7 @@ func (r *Root) serveBridgeOptions(svc string, exp ServeExposure) ([]cmdsurface.O
 	opts = append(opts, idem...)
 	opts = append(opts, capacity...)
 	opts = append(opts, quota...)
-	return append(opts, r.serveAuth.bridgeOpts...), nil
+	return append(opts, st.serveAuth.bridgeOpts...), nil
 }
 
 // servePermission builds the permission gate the services share. The
@@ -192,12 +196,13 @@ func (r *Root) serveBridgeOptions(svc string, exp ServeExposure) ([]cmdsurface.O
 // only once every decider has admitted the call, so a call the rules
 // or the adopter refuse spends nothing.
 func (r *Root) servePermission(exp ServeExposure) (cmdsurface.PermissionFunc, error) {
-	engine, err := r.newPolicyEngine(r.Cmd)
+	engine, err := PolicyEngine(r, r.Cmd)
 	if err != nil {
 		return nil, err
 	}
 	if exp.kitDefault() && !r.servePolicyConfigured() {
-		engine = policy.NewEngine(policy.KitDefault(), flagInt(r.Cmd, maxOpsFlag))
+		_, maxOps := PolicyFlags(r.Cmd)
+		engine = policy.NewEngine(policy.KitDefault(), maxOps)
 	}
 	var ledger *cmdsurface.UsageLedger
 	if engine.Policy().HasBudgets() {
@@ -214,7 +219,7 @@ func (r *Root) servePermission(exp ServeExposure) (cmdsurface.PermissionFunc, er
 	if rules != nil {
 		gates = append(gates, rules)
 	}
-	if adopter := r.serveAuth.permission; adopter != nil {
+	if adopter := stateOf(r).serveAuth.permission; adopter != nil {
 		gates = append(gates, adopter)
 	}
 	if ledger != nil {
@@ -242,11 +247,12 @@ func (r *Root) servePermissionRules(p policy.Policy) (cmdsurface.PermissionFunc,
 	if len(p.Permissions) == 0 {
 		return nil, nil
 	}
-	if r.serveAuth.rules == nil {
+	st := stateOf(r)
+	if st.serveAuth.rules == nil {
 		return nil, output.UsageError(fmt.Sprintf(
 			"policy %q declares permissions: rules, but this tool wires no rule evaluator (celpermission.With)", p.Name))
 	}
-	gate, err := r.serveAuth.rules(p.Permissions)
+	gate, err := st.serveAuth.rules(p.Permissions)
 	if err != nil {
 		return nil, output.UsageError(fmt.Sprintf("policy %q: %v", p.Name, err))
 	}
@@ -406,7 +412,7 @@ func isLoopbackAddr(addr string) bool {
 // refuse anything at all; any other enforces kit-default.
 //
 // It asks the flag rather than the engine because a "no policy"
-// engine is not nil: newPolicyEngine always returns one, and with
+// engine is not nil: PolicyEngine always returns one, and with
 // --policy unset its Allow map is nil, which Authorize default-
 // permits for every side-effect class, destructive included. A nil
 // engine and a --policy-less engine are equally toothless, so the
@@ -418,7 +424,8 @@ func (r *Root) servePolicyConfigured() bool {
 	if r == nil || r.Cmd == nil {
 		return false
 	}
-	return strings.TrimSpace(flagValue(r.Cmd, policyFlag)) != ""
+	name, _ := PolicyFlags(r.Cmd)
+	return strings.TrimSpace(name) != ""
 }
 
 // The hooks below are package functions rather than Root methods on

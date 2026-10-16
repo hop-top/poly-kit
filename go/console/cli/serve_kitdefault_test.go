@@ -67,14 +67,14 @@ func TestServeBridgeOptionsForReadsTheOptInKey(t *testing.T) {
 func TestNamedPolicyWinsOverKitDefault(t *testing.T) {
 	open := policy.Policy{Name: "open"}
 	r := authRoot(t, WithPolicy(func(string) (policy.Policy, error) { return open, nil }))
-	require.NoError(t, r.Cmd.PersistentFlags().Set(policyFlag, "open"))
+	require.NoError(t, r.Cmd.PersistentFlags().Set("policy", "open"))
 	assert.NoError(t, invokeAdd(exposedBridge(t, r, "api", ServeExposure{}), cmdsurface.Meta{}))
 }
 
 func TestKitDefaultNameResolvesWithoutALoader(t *testing.T) {
 	r := authRoot(t)
-	require.NoError(t, r.Cmd.PersistentFlags().Set(policyFlag, policy.KitDefaultName))
-	engine, err := r.newPolicyEngine(r.Cmd)
+	require.NoError(t, r.Cmd.PersistentFlags().Set("policy", policy.KitDefaultName))
+	engine, err := PolicyEngine(r, r.Cmd)
 	require.NoError(t, err)
 	assert.Equal(t, policy.KitDefaultName, engine.Policy().Name)
 }

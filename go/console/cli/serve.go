@@ -27,7 +27,7 @@ import (
 func WithService(svc serve.Service) func(*Root) {
 	return func(r *Root) {
 		r.ensureServeRegistry()
-		r.serveReg.Register(svc)
+		stateOf(r).serveReg.Register(svc)
 	}
 }
 
@@ -38,7 +38,7 @@ func WithServices(svcs ...serve.Service) func(*Root) {
 	return func(r *Root) {
 		r.ensureServeRegistry()
 		for _, svc := range svcs {
-			r.serveReg.Register(svc)
+			stateOf(r).serveReg.Register(svc)
 		}
 	}
 }
@@ -51,7 +51,7 @@ func WithServices(svcs ...serve.Service) func(*Root) {
 func WithServiceOverride(svc serve.Service) func(*Root) {
 	return func(r *Root) {
 		r.ensureServeRegistry()
-		r.serveReg.Override(svc)
+		stateOf(r).serveReg.Override(svc)
 	}
 }
 
@@ -62,7 +62,7 @@ func WithServiceOverride(svc serve.Service) func(*Root) {
 func WithServicePolicy(gate serve.PolicyGate) func(*Root) {
 	return func(r *Root) {
 		r.ensureServeRegistry()
-		r.servePolicy = gate
+		stateOf(r).servePolicy = gate
 	}
 }
 
@@ -72,7 +72,7 @@ func WithServicePolicy(gate serve.PolicyGate) func(*Root) {
 func WithServiceBus(p serve.Publisher) func(*Root) {
 	return func(r *Root) {
 		r.ensureServeRegistry()
-		r.serveBus = p
+		stateOf(r).serveBus = p
 	}
 }
 
@@ -95,7 +95,7 @@ func WithServiceBus(p serve.Publisher) func(*Root) {
 // --enable, --disable and the timeouts) still apply for one run. The
 // deprecated root `serve` and its --list run the same paths.
 func WithOwnServiceConfig() func(*Root) {
-	return func(r *Root) { r.serveOwnConfig = true }
+	return func(r *Root) { stateOf(r).serveOwnConfig = true }
 }
 
 // ensureServeRegistry creates the registry and mounts the `service`
@@ -106,10 +106,11 @@ func WithOwnServiceConfig() func(*Root) {
 // leaf a prior option mounted: whichever option runs, exactly one
 // command owns the word (serve-lifecycle.md §"Compatibility").
 func (r *Root) ensureServeRegistry() {
-	if r.serveReg != nil {
+	st := stateOf(r)
+	if st.serveReg != nil {
 		return
 	}
-	r.serveReg = serve.NewRegistry()
+	st.serveReg = serve.NewRegistry()
 
 	// The registry wins: drop any leaf `serve` a prior option
 	// mounted. The two MUST NOT both own the word.
@@ -118,10 +119,10 @@ func (r *Root) ensureServeRegistry() {
 			r.Cmd.RemoveCommand(c)
 		}
 	}
-	r.serveCmd = serviceStartCmd(r)
-	r.serviceCmd = serviceGroupCmd(r, r.serveCmd)
-	r.serveAlias = serveAliasCmd(r)
-	r.Cmd.AddCommand(r.serviceCmd, r.serveAlias)
+	st.serveCmd = serviceStartCmd(r)
+	st.serviceCmd = serviceGroupCmd(r, st.serveCmd)
+	st.serveAlias = serveAliasCmd(r)
+	r.Cmd.AddCommand(st.serviceCmd, st.serveAlias)
 	// Reserved whether the registry was created by an option inside
 	// New (where the snapshot would catch them) or later.
 	r.MarkReserved(ServiceCommandName)
@@ -139,7 +140,12 @@ const serveAliasName = "serve"
 // nil when no service has been registered. Adopters that need to
 // inspect or extend the set after construction use it; the normal path
 // is [WithService].
-func (r *Root) ServeRegistry() *serve.Registry { return r.serveReg }
+func (r *Root) ServeRegistry() *serve.Registry {
+	if s, ok := lookup(r); ok {
+		return s.serveReg
+	}
+	return nil
+}
 
 // ServiceCommand returns the kit-owned `service` group, or nil when no
 // service is registered. It is the extension point for an adopter's own
@@ -151,10 +157,10 @@ func (r *Root) ServeRegistry() *serve.Registry { return r.serveReg }
 // from every served surface and exempt from the shape checks. The
 // words start, list, stop, restart and status are kit's.
 func (r *Root) ServiceCommand() *cobra.Command {
-	if r == nil {
-		return nil
+	if s, ok := lookup(r); ok {
+		return s.serviceCmd
 	}
-	return r.serviceCmd
+	return nil
 }
 
 // ServeCommand returns kit's `service start` command, the one that
@@ -162,10 +168,10 @@ func (r *Root) ServiceCommand() *cobra.Command {
 // that put their own flags on it, like the mcp and rpc services, find
 // it here; the deprecated root `serve` shares every one of its flags.
 func (r *Root) ServeCommand() *cobra.Command {
-	if r == nil {
-		return nil
+	if s, ok := lookup(r); ok {
+		return s.serveCmd
 	}
-	return r.serveCmd
+	return nil
 }
 
 // serviceGroupCmd builds the `service` group around start.
@@ -250,8 +256,8 @@ func serveAliasCmd(root *Root) *cobra.Command {
 		},
 	}
 	annotateServeRunner(cmd)
-	cmd.Annotations[kitDeprecatedSince] = serveAliasDeprecatedSince
-	cmd.Annotations[kitReplacedBy] = ServiceCommandName + " start"
+	cmd.Annotations[cmdmeta.KeyDeprecatedSince] = serveAliasDeprecatedSince
+	cmd.Annotations[cmdmeta.KeyReplacedBy] = ServiceCommandName + " start"
 	cmd.Flags().Bool("list", false, "Deprecated: use `service list`")
 	// Unchanged from when this was the serve command: the schema
 	// describes `serve --list`.
@@ -269,27 +275,29 @@ const serveAliasDeprecatedSince = "0.5.0-alpha.25"
 // same *pflag.Flag, so a value parsed on either command is the value
 // the services read. Idempotent; run before argv is parsed.
 func (r *Root) syncServeAlias() {
-	if r.serveCmd == nil || r.serveAlias == nil {
+	st := stateOf(r)
+	if st.serveCmd == nil || st.serveAlias == nil {
 		return
 	}
-	inherited := r.serveCmd.InheritedFlags()
-	r.serveCmd.Flags().VisitAll(func(f *pflag.Flag) {
+	inherited := st.serveCmd.InheritedFlags()
+	st.serveCmd.Flags().VisitAll(func(f *pflag.Flag) {
 		if f.Name == "help" || inherited.Lookup(f.Name) != nil {
 			return
 		}
-		if r.serveAlias.Flags().Lookup(f.Name) == nil {
-			r.serveAlias.Flags().AddFlag(f)
+		if st.serveAlias.Flags().Lookup(f.Name) == nil {
+			st.serveAlias.Flags().AddFlag(f)
 		}
 	})
 }
 
 // serviceNames completes a service name from the registry.
 func serviceNames(root *Root) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	st := stateOf(root)
 	return func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		if root.serveReg == nil {
+		if st.serveReg == nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
-		return root.serveReg.Names(), cobra.ShellCompDirectiveNoFileComp
+		return st.serveReg.Names(), cobra.ShellCompDirectiveNoFileComp
 	}
 }
 
@@ -327,7 +335,8 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	defer func() { _ = root.closeAuditChains() }()
 	// The idempotency store is opened on the first keyed call.
 	defer func() { _ = root.closeServeIdempotency() }()
-	reg := root.serveReg
+	st := stateOf(root)
+	reg := st.serveReg
 	if reg == nil {
 		return output.UsageError("no services registered")
 	}
@@ -379,7 +388,7 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	outcome := serve.Resolve(reg, serve.Request{
 		Args:    args,
 		Configs: configs,
-		Policy:  root.servePolicy,
+		Policy:  st.servePolicy,
 	})
 	if outcome.Err != nil {
 		return outcome.Err
@@ -422,7 +431,7 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	// (a platform or sandbox without unix sockets) leaves the run
 	// serving without one, and says so.
 	control, controlErr := listenControl(ep, root.Config.Name+" "+ServiceCommandName+" stop",
-		stopRequested, serviceStatusRows(reg, outcome.Selected), root.serviceStatusSections)
+		stopRequested, serviceStatusRows(reg, outcome.Selected), func(ctx context.Context) []StatusSection { return ServiceStatusSections(ctx, root) })
 	var refused *output.Error
 	if errors.As(controlErr, &refused) {
 		return controlErr
@@ -454,7 +463,7 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	sup := serve.NewSupervisor(
 		reg, supCfg,
 		serve.WithLogger(logger),
-		serve.WithPublisher(root.serveBus),
+		serve.WithPublisher(st.serveBus),
 		serve.WithEscalation(escalate),
 	)
 
@@ -500,7 +509,7 @@ type serveListRow struct {
 // enabled, and ready state, in registration order so the listing
 // mirrors the adopter's wiring (serve-lifecycle.md §"Command hierarchy").
 func runServeList(cmd *cobra.Command, root *Root) error {
-	reg := root.serveReg
+	reg := stateOf(root).serveReg
 	if reg == nil {
 		return output.UsageError("no services registered")
 	}
@@ -523,7 +532,7 @@ func runServeList(cmd *cobra.Command, root *Root) error {
 	// READMEs and the adopter docs print it verbatim, and the table
 	// formatter sizes columns to their content. Every other format is
 	// Dispatch's.
-	if activeOutputFormat(cmd, root.Viper) == output.Table {
+	if ActiveFormat(cmd, root.Viper) == output.Table {
 		w := cmd.OutOrStdout()
 		fmt.Fprintf(w, "%-20s %-11s %-8s %s\n", "SERVICE", "CONFIGURED", "ENABLED", "READY")
 		for _, row := range rows {
@@ -538,15 +547,16 @@ func runServeList(cmd *cobra.Command, root *Root) error {
 // of `service start`, so `service start --help` answers "which services
 // can I name?" without a second invocation.
 func (r *Root) serveHelpAddendum() {
-	if r.serveReg == nil {
+	st := stateOf(r)
+	if st.serveReg == nil {
 		return
 	}
-	names := r.serveReg.Names()
+	names := st.serveReg.Names()
 	if len(names) == 0 {
 		return
 	}
 	addendum := "\nServices: " + strings.Join(names, ", ")
-	for _, c := range []*cobra.Command{r.serveCmd, r.serveAlias} {
+	for _, c := range []*cobra.Command{st.serveCmd, st.serveAlias} {
 		if c != nil && !strings.Contains(c.Long, addendum) {
 			c.Long += "\n" + addendum
 		}

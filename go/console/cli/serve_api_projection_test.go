@@ -79,7 +79,7 @@ func projectionFixture(t *testing.T) *Root {
 // projectionHandler returns the api service's assembled handler.
 func projectionHandler(t *testing.T, r *Root) http.Handler {
 	t.Helper()
-	svc, ok := r.serveReg.Lookup(APIServiceName)
+	svc, ok := stateOf(r).serveReg.Lookup(APIServiceName)
 	require.True(t, ok, "WithAPI must register the api service")
 	a, ok := svc.(*apiService)
 	require.True(t, ok)

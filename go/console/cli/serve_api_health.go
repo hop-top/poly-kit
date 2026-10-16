@@ -158,10 +158,10 @@ func (a *apiService) dependencyReady(dep string, view serve.RunView, hasView boo
 			return false
 		}
 	}
-	if a.root == nil || a.root.serveReg == nil {
+	if a.root == nil || stateOf(a.root).serveReg == nil {
 		return true
 	}
-	svc, ok := a.root.serveReg.Lookup(dep)
+	svc, ok := stateOf(a.root).serveReg.Lookup(dep)
 	if !ok {
 		return true
 	}

@@ -548,10 +548,11 @@ func applyAPICompat(cmd *cobra.Command, root *Root, configs map[string]serve.Con
 // applyAPIFlags carries the serve parent's --addr, --no-auth,
 // --insecure-remote and --insecure-no-policy onto the api service.
 func applyAPIFlags(cmd *cobra.Command, root *Root) {
-	if root.apiCfg == nil || root.serveReg == nil {
+	st := stateOf(root)
+	if st.apiCfg == nil || st.serveReg == nil {
 		return
 	}
-	svc, ok := root.serveReg.Lookup(APIServiceName)
+	svc, ok := st.serveReg.Lookup(APIServiceName)
 	if !ok {
 		return
 	}
@@ -581,10 +582,11 @@ func applyAPIFlags(cmd *cobra.Command, root *Root) {
 // reporting, so the listing never says "not enabled" about a service
 // a bare `service start` is about to start.
 func applyAPIEnabledDefault(root *Root, configs map[string]serve.Config) {
-	if root.apiCfg == nil || root.serveReg == nil {
+	st := stateOf(root)
+	if st.apiCfg == nil || st.serveReg == nil {
 		return
 	}
-	if _, ok := root.serveReg.Lookup(APIServiceName); !ok {
+	if _, ok := st.serveReg.Lookup(APIServiceName); !ok {
 		return
 	}
 	explicitlyConfigured := root.Viper != nil &&

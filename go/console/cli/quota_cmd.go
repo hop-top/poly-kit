@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -130,7 +131,7 @@ func quotaResetCmd(r *Root) *cobra.Command {
 	cmd.Flags().Bool("all", false, "Reset every caller")
 	SetSideEffect(cmd, SideEffectWriteLocal)
 	SetIdempotency(cmd, IdempotencyYes)
-	cmd.Annotations[kitExitCodes] = "OK,GENERIC,USAGE,NOT_FOUND"
+	cmd.Annotations[cmdmeta.KeyExitCodes] = "OK,GENERIC,USAGE,NOT_FOUND"
 	_ = SetOutputSchema(cmd, OutputSchema{Type: &quotaResetResult{}, Version: "1.0"})
 	_ = SetExamples(cmd, []Example{
 		{Title: "One principal", Command: r.Config.Name + " quota reset principal/alice/acme"},
@@ -175,10 +176,11 @@ func orAll(caller string) string {
 // quotas: svc alone when named, else every registered service.
 func quotaServices(r *Root, svc string) ([]cmdsurface.Quota, error) {
 	names := []string{svc}
+	st := stateOf(r)
 	if svc == "" {
 		names = nil
-		if r.serveReg != nil {
-			names = r.serveReg.Names()
+		if st.serveReg != nil {
+			names = st.serveReg.Names()
 		}
 	}
 	var out []cmdsurface.Quota

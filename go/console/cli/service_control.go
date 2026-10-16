@@ -63,7 +63,7 @@ const controlDialTimeout = 2 * time.Second
 // controlSectionsTimeout bounds the read of a status answer that
 // carries the tool's sections: the instance runs its providers at
 // once, each under the status pipeline's per-provider deadline.
-const controlSectionsTimeout = controlDialTimeout + defaultStatusProviderTimeout
+const controlSectionsTimeout = controlDialTimeout + StatusProviderTimeout
 
 // defaultStopWait bounds how long `service stop` waits for the drain:
 // the supervisor's default shutdown budget plus slack.

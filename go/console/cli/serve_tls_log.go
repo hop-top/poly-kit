@@ -59,7 +59,7 @@ func newHandshakeLog(r *Root, svc string, logger *log.Logger) *handshakeLog {
 // failed is the listener's [api.HandshakeErrorLog] hook: count the
 // failure, and log it at debug unless the rate is spent.
 func (h *handshakeLog) failed(remoteAddr, reason string) {
-	if c, ok := h.root.serveObs.(ServeHTTPRefusals); ok {
+	if c, ok := stateOf(h.root).serveObs.(ServeHTTPRefusals); ok {
 		c.RecordHTTPRefusal(context.Background(), h.svc, api.CodeTLSHandshake)
 	}
 	if !h.limit.Allow() {

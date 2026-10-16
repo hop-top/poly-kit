@@ -248,7 +248,7 @@ func (r *Root) serveConfiguredAuditSinks(svc string) ([]cmdsurface.SinkSpec, err
 	if err != nil || len(cfgs) == 0 {
 		return nil, err
 	}
-	ch := &r.serveAuth.chains
+	ch := &stateOf(r).serveAuth.chains
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
 	if ch.open == nil {
@@ -286,7 +286,7 @@ func sameChainOptions(a, b security.AuditLogOptions) bool {
 // closeAuditChains closes every chain the services opened. Called once
 // the supervisor has stopped every service.
 func (r *Root) closeAuditChains() error {
-	ch := &r.serveAuth.chains
+	ch := &stateOf(r).serveAuth.chains
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
 	var errs []error

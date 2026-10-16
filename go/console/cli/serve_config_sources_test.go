@@ -125,7 +125,7 @@ func TestServiceConfigSourcesConfigureAServiceFromTheEnvironment(t *testing.T) {
 	t.Setenv("TOOL_SERVICES_SOCKET_READY_TIMEOUT", "7s")
 	r := authRoot(t, WithSocket(SocketConfig{Path: tmpSocket(t)}))
 	require.NoError(t, r.loadServiceConfig())
-	cfg, configured := serveConfigs(r.Viper, r.serveReg.Names(), nil, nil)[SocketServiceName]
+	cfg, configured := serveConfigs(r.Viper, stateOf(r).serveReg.Names(), nil, nil)[SocketServiceName]
 	require.True(t, configured, "a block set only by the environment configures the service")
 	assert.True(t, cfg.Enabled)
 	assert.Equal(t, 7*time.Second, cfg.ReadyTimeout)

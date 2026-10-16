@@ -84,7 +84,7 @@ func TestService_GroupShape(t *testing.T) {
 	alias := child(r.Cmd, "serve")
 	require.NotNil(t, alias)
 	assert.True(t, alias.Hidden)
-	assert.Same(t, r.serveAlias, alias)
+	assert.Same(t, stateOf(r).serveAlias, alias)
 }
 
 func TestService_NoRegistryNoGroup(t *testing.T) {
@@ -102,17 +102,17 @@ func TestService_FlagsLandOnStartAndAreSharedWithAlias(t *testing.T) {
 		"enable", "disable", "ready-timeout", "stop-timeout", "shutdown-timeout"} {
 		f := start.Flags().Lookup(name)
 		require.NotNil(t, f, "--%s on service start", name)
-		assert.Same(t, f, r.serveAlias.Flags().Lookup(name), "--%s shared with serve", name)
+		assert.Same(t, f, stateOf(r).serveAlias.Flags().Lookup(name), "--%s shared with serve", name)
 	}
 	assert.Nil(t, start.Flags().Lookup("list"), "service list replaces --list")
-	assert.NotNil(t, r.serveAlias.Flags().Lookup("list"), "the alias keeps --list")
+	assert.NotNil(t, stateOf(r).serveAlias.Flags().Lookup("list"), "the alias keeps --list")
 }
 
 func TestService_FlagsRegisteredAfterNewReachTheAlias(t *testing.T) {
 	r := authRoot(t, WithAPI(APIConfig{}))
 	r.ServeCommand().Flags().String("late", "", "registered after New")
 	require.NoError(t, r.Prepare())
-	assert.NotNil(t, r.serveAlias.Flags().Lookup("late"))
+	assert.NotNil(t, stateOf(r).serveAlias.Flags().Lookup("late"))
 }
 
 func TestService_WithheldFromServedSurfaces(t *testing.T) {
@@ -183,19 +183,30 @@ func TestService_PolicyOnStartReachesServedCalls(t *testing.T) {
 	}
 }
 
+// The plane owns the --policy exemption once it owns the services, and
+// grants it by identity: `service start` and the deprecated `serve`,
+// never the other `service` leaves. (Without the plane, cli exempts a
+// tool's own depth-1 `serve` by name; cli's own tests pin that.)
 func TestService_PolicyExemptionIsByIdentity(t *testing.T) {
 	r := authRoot(t, WithAPI(APIConfig{}))
-	assert.True(t, r.startsServices(r.ServeCommand()))
-	assert.True(t, r.startsServices(r.serveAlias))
+	st, ok := lookup(r)
+	require.True(t, ok, "WithAPI attaches the plane")
+	exempt := func(c *cobra.Command) bool {
+		t.Helper()
+		e, owns := st.ExemptFromPolicy(r, c)
+		require.True(t, owns, "the plane owns the decision once it has a registry")
+		return e
+	}
+	assert.True(t, exempt(r.ServeCommand()))
+	assert.True(t, exempt(st.serveAlias))
 	for _, leaf := range []string{"list", "stop", "status"} {
-		assert.False(t, r.startsServices(child(r.ServiceCommand(), leaf)), leaf)
+		assert.False(t, exempt(child(r.ServiceCommand(), leaf)), leaf)
 	}
 
-	// No registry: an adopter's own root serve keeps the exemption.
-	bare := New(Config{Name: "tool", Version: "1.0.0", DisableValidate: true})
-	own := &cobra.Command{Use: "serve", Short: "s", RunE: func(*cobra.Command, []string) error { return nil }}
-	bare.Cmd.AddCommand(own)
-	assert.True(t, bare.startsServices(own))
+	// A plane with no registry yet leaves the decision to cli.
+	bare := &state{}
+	_, owns := bare.ExemptFromPolicy(r, r.ServeCommand())
+	assert.False(t, owns)
 }
 
 func TestService_ValidatesAndAcceptsAdopterLeaves(t *testing.T) {

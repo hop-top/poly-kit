@@ -132,10 +132,11 @@ func WithAPI(cfg APIConfig) func(*Root) {
 		if cfg.Addr == "" {
 			cfg.Addr = DefaultAPIAddr
 		}
-		r.apiCfg = &cfg
+		st := stateOf(r)
+		st.apiCfg = &cfg
 
 		r.ensureServeRegistry()
-		r.serveReg.Register(newAPIService(r, &cfg))
+		st.serveReg.Register(newAPIService(r, &cfg))
 		r.mountAPIServeFlags()
 
 		if cfg.Auth != nil {
@@ -158,11 +159,12 @@ func WithAPI(cfg APIConfig) func(*Root) {
 // without auth acceptable — and a qualifier that is valid in fewer
 // places than the flags it qualifies would be a trap.
 func (r *Root) mountAPIServeFlags() {
-	cfg := r.apiCfg
+	st := stateOf(r)
+	cfg := st.apiCfg
 	if cfg == nil {
 		return
 	}
-	if c := r.serveCmd; c != nil {
+	if c := st.serveCmd; c != nil {
 		if c.Flags().Lookup("addr") == nil {
 			c.Flags().String("addr", cfg.Addr, "Listen address for the api service")
 		}

@@ -58,7 +58,7 @@ func (p httpPlane) validateMetricsScrape() error {
 		return nil
 	}
 	key := p.metricsScrapeSetting(metricsScrapeEnabled)
-	if obs := p.root.serveObs; obs != nil {
+	if obs := stateOf(p.root).serveObs; obs != nil {
 		if _, ok := obs.(ServeMetricsEndpoint); !ok {
 			return fmt.Errorf("%s: the linked observability provider serves no metrics endpoint", key)
 		}
@@ -89,7 +89,7 @@ func (p httpPlane) validateMetricsScrape() error {
 // resolution, so a disagreement with validateMetricsScrape fails
 // closed rather than exposing the endpoint.
 func (p httpPlane) withMetrics(h, routes http.Handler) (http.Handler, error) {
-	ep, ok := p.root.serveObs.(ServeMetricsEndpoint)
+	ep, ok := stateOf(p.root).serveObs.(ServeMetricsEndpoint)
 	if !ok {
 		return h, nil
 	}

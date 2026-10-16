@@ -80,7 +80,7 @@ const observabilityStopBudget = 5 * time.Second
 // enabled as well, that listener answers a Prometheus scrape at
 // /metrics (see [ServeMetricsEndpoint]).
 func WithObservability(p ServeObservability) func(*Root) {
-	return func(r *Root) { r.serveObs = p }
+	return func(r *Root) { stateOf(r).serveObs = p }
 }
 
 // startObservability starts the linked provider for one serve run
@@ -90,7 +90,8 @@ func WithObservability(p ServeObservability) func(*Root) {
 // without the telemetry the operator asked for is a silent failure.
 func (r *Root) startObservability(ctx context.Context, services []string) (func(), error) {
 	noop := func() {}
-	if r.serveObs == nil {
+	st := stateOf(r)
+	if st.serveObs == nil {
 		if key := observabilityRequested(r.Viper, services); key != "" {
 			e := output.UsageError(fmt.Sprintf(
 				"%s is set but this tool links no observability provider", key))
@@ -99,7 +100,7 @@ func (r *Root) startObservability(ctx context.Context, services []string) (func(
 		}
 		return noop, nil
 	}
-	stop, err := r.serveObs.Start(ctx, r.Viper, r.Config.Name, r.Config.Version, services)
+	stop, err := st.serveObs.Start(ctx, r.Viper, r.Config.Name, r.Config.Version, services)
 	if err != nil {
 		return noop, output.UsageError(fmt.Sprintf("observability: %v", err))
 	}
@@ -136,8 +137,8 @@ func observabilityRequested(v *viper.Viper, services []string) string {
 // middleware for service, or a pass-through when there is none, so it
 // can stand in a middleware list unconditionally.
 func (r *Root) observeMiddleware(service string) func(http.Handler) http.Handler {
-	if r != nil && r.serveObs != nil {
-		if mw := r.serveObs.HTTPMiddleware(service); mw != nil {
+	if st, ok := lookup(r); ok && st.serveObs != nil {
+		if mw := st.serveObs.HTTPMiddleware(service); mw != nil {
 			return mw
 		}
 	}
@@ -147,8 +148,9 @@ func (r *Root) observeMiddleware(service string) func(http.Handler) http.Handler
 // serveObservabilityOptions returns the bridge options that
 // instrument service's invocations, or nil.
 func (r *Root) serveObservabilityOptions(service string) []cmdsurface.Option {
-	if r == nil || r.serveObs == nil {
+	st, ok := lookup(r)
+	if !ok || st.serveObs == nil {
 		return nil
 	}
-	return r.serveObs.BridgeOptions(service)
+	return st.serveObs.BridgeOptions(service)
 }

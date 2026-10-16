@@ -37,7 +37,11 @@ import (
 // nothing is read, bound or set here, and every caller reads the Viper
 // as the tool left it.
 func (r *Root) loadServiceConfig() error {
-	if r == nil || r.Viper == nil || r.serveOwnConfig {
+	if r == nil || r.Viper == nil {
+		return nil
+	}
+	st, _ := lookup(r)
+	if st != nil && st.serveOwnConfig {
 		return nil
 	}
 	extra, overrides, err := r.ConfigArgs()
@@ -75,8 +79,8 @@ func (r *Root) loadServiceConfig() error {
 	}
 
 	var names []string
-	if r.serveReg != nil {
-		names = r.serveReg.Names()
+	if st != nil && st.serveReg != nil {
+		names = st.serveReg.Names()
 	}
 	for _, kv := range os.Environ() {
 		name, _, _ := strings.Cut(kv, "=")

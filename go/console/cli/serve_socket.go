@@ -104,8 +104,9 @@ type SocketConfig struct {
 func WithSocket(cfg SocketConfig) func(*Root) {
 	return func(r *Root) {
 		r.ensureServeRegistry()
-		r.socketCfg = &cfg
-		r.serveReg.Register(newSocketService(r, &cfg))
+		st := stateOf(r)
+		st.socketCfg = &cfg
+		st.serveReg.Register(newSocketService(r, &cfg))
 		r.mountSocketServeFlags()
 	}
 }
@@ -119,7 +120,7 @@ func WithSocket(cfg SocketConfig) func(*Root) {
 // for `service start socket`, and it is inert when the socket service is not
 // the one selected.
 func (r *Root) mountSocketServeFlags() {
-	if c := r.serveCmd; c != nil && c.Flags().Lookup("socket") == nil {
+	if c := stateOf(r).serveCmd; c != nil && c.Flags().Lookup("socket") == nil {
 		c.Flags().String("socket", "",
 			"Socket path for the socket service")
 	}
@@ -387,8 +388,9 @@ func resolvePeerScopes(res tlsResolver, cfg *SocketConfig) (func(socket.PeerCred
 // flag, then services.socket.path, then SocketConfig.Path, then the
 // XDG runtime default.
 func resolveSocketPath(root *Root, cfg *SocketConfig) (string, error) {
-	if root != nil && root.socketFlag != "" {
-		return expandSocketPath(root.socketFlag)
+	st := stateOf(root)
+	if root != nil && st.socketFlag != "" {
+		return expandSocketPath(st.socketFlag)
 	}
 	if root != nil && root.Viper != nil {
 		if v := root.Viper.GetString(serveKeyPrefix + SocketServiceName + socketSubkeyPath); v != "" {
@@ -463,10 +465,11 @@ const maxSocketPathLen = 103
 // owner-only file). The invocation-plane blocks — tracing, metrics,
 // audit — apply to it as to every transport service.
 func validateSocketBlocks(root *Root) error {
-	if root.socketCfg == nil || root.serveReg == nil {
+	st := stateOf(root)
+	if st.socketCfg == nil || st.serveReg == nil {
 		return nil
 	}
-	if _, ok := root.serveReg.Lookup(SocketServiceName); !ok {
+	if _, ok := st.serveReg.Lookup(SocketServiceName); !ok {
 		return nil
 	}
 	return svcconfig.New(root.Viper).ValidateNoHTTP(SocketServiceName)
@@ -475,11 +478,12 @@ func validateSocketBlocks(root *Root) error {
 // applySocketFlags records the --socket flag so the service resolves
 // it at bind time. It mirrors applyAPICompat's role for --addr.
 func applySocketFlags(cmd *cobra.Command, root *Root) {
-	if root.socketCfg == nil || root.serveReg == nil {
+	st := stateOf(root)
+	if st.socketCfg == nil || st.serveReg == nil {
 		return
 	}
 	if f := cmd.Flags().Lookup("socket"); f != nil && f.Changed {
 		path, _ := cmd.Flags().GetString("socket")
-		root.socketFlag = path
+		st.socketFlag = path
 	}
 }

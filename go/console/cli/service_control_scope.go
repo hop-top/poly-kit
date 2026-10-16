@@ -47,7 +47,7 @@ type ServiceControlScope func(cmd *cobra.Command) (string, error)
 // run listens where the old one did only if it resolves the same
 // scope.
 func WithServiceControlScope(fn ServiceControlScope) func(*Root) {
-	return func(r *Root) { r.controlScope = fn }
+	return func(r *Root) { stateOf(r).controlScope = fn }
 }
 
 // controlEndpoint is where one invocation finds its instance's
@@ -61,8 +61,8 @@ type controlEndpoint struct {
 // the tool's scope, then the path.
 func (r *Root) controlEndpoint(cmd *cobra.Command) (controlEndpoint, error) {
 	var scope string
-	if r != nil && r.controlScope != nil {
-		s, err := r.controlScope(cmd)
+	if st, ok := lookup(r); ok && st.controlScope != nil {
+		s, err := st.controlScope(cmd)
 		if err != nil {
 			return controlEndpoint{}, err
 		}

@@ -64,7 +64,7 @@ type rateLimitCode = cmdsurface.RateLimit
 // field keeps the kit default. It does not switch the limit on:
 // enablement stays with the enabled key and the service's exposure.
 func WithServeRateLimit(cfg cmdsurface.RateLimit) func(*Root) {
-	return func(r *Root) { r.serveRateLimitCode = cfg }
+	return func(r *Root) { stateOf(r).serveRateLimitCode = cfg }
 }
 
 // serveRateLimit resolves svc's rate_limit block over no code
@@ -145,7 +145,7 @@ func tierRule(cfg cmdsurface.RateLimit, tier cmdsurface.RateTier) cmdsurface.Rat
 // exposure: the literal-host rule, with the socket service and stdio
 // on the loopback side.
 func (r *Root) serveRateLimitOptions(svc string, loopback bool) ([]cmdsurface.Option, error) {
-	cfg, on, err := serveRateLimitOver(r.Viper, svc, loopback, r.serveRateLimitCode)
+	cfg, on, err := serveRateLimitOver(r.Viper, svc, loopback, stateOf(r).serveRateLimitCode)
 	if err != nil || !on {
 		return nil, err
 	}

@@ -68,7 +68,7 @@ type serveIdempotencyState struct {
 // replay is [WithIdempotencyStore]; a served record is scoped to its
 // caller, so the two never share records.
 func WithServeIdempotencyStore(store idemstore.Store) func(*Root) {
-	return func(r *Root) { r.serveAuth.idem.store = store }
+	return func(r *Root) { stateOf(r).serveAuth.idem.store = store }
 }
 
 // serveIdempotency resolves svc's idempotency block. An unknown key,
@@ -129,7 +129,7 @@ func (r *Root) serveIdempotencyOptions(svc string) ([]cmdsurface.Option, error) 
 // first use. Kit's own store is opened on the first keyed call, not
 // here, so a service that never sees a key creates no file.
 func (r *Root) serveIdempotencyLedger() *cmdsurface.IdempotencyLedger {
-	st := &r.serveAuth.idem
+	st := &stateOf(r).serveAuth.idem
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	if st.ledger != nil {
@@ -159,8 +159,9 @@ func (r *Root) serveIdempotencyLedger() *cmdsurface.IdempotencyLedger {
 // with. With none, it is [idemstore.DefaultTTL].
 func (r *Root) serveIdempotencyStoreTTL() time.Duration {
 	var longest time.Duration
-	if r.serveReg != nil {
-		for _, svc := range r.serveReg.Names() {
+	st := stateOf(r)
+	if st.serveReg != nil {
+		for _, svc := range st.serveReg.Names() {
 			cfg, err := serveIdempotency(r.Viper, svc)
 			if err != nil || !cfg.enabled {
 				continue
@@ -188,7 +189,7 @@ func (r *Root) serveToolName() string {
 // closeServeIdempotency closes the store kit opened for the served
 // transports. Called once every service has stopped.
 func (r *Root) closeServeIdempotency() error {
-	st := &r.serveAuth.idem
+	st := &stateOf(r).serveAuth.idem
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	if st.ledger == nil || !st.owned {
