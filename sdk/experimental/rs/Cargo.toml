@@ -15,7 +15,7 @@ default = []
 api = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:thiserror"]
 blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
-output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep:comfy-table"]
+output = ["dep:serde", "dep:serde_json", "dep:serde_norway", "dep:thiserror", "dep:comfy-table"]
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
 bus = ["dep:serde", "dep:serde_json"]
@@ -55,7 +55,7 @@ telemetry = [
     "dep:reqwest",
     "dep:serde",
     "dep:serde_json",
-    "dep:serde_yaml",
+    "dep:serde_norway",
     "dep:sha2",
     "dep:getrandom",
     "dep:dirs",
@@ -78,9 +78,9 @@ serde = { version = "1", features = ["derive"], optional = true }
 # preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so
 # object key order survives round-trips and projection at every nesting depth.
 # Required for --format=json/yaml to emit columns in ColumnSpec / --cols order
-# rather than alphabetically. indexmap is already in the tree via serde_yaml.
+# rather than alphabetically. indexmap is already in the tree via serde_norway.
 serde_json = { version = "1", features = ["preserve_order"], optional = true }
-serde_yaml = { version = "0.9", optional = true }
+serde_norway = { version = "0.9", optional = true }
 sha2 = { version = "0.11", optional = true }
 # `default-features = false` drops the std/simd defaults: the envelope
 # codec needs only the standard alphabet, and `alloc` is what supplies

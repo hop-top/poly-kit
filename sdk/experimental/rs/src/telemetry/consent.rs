@@ -116,14 +116,14 @@ pub fn load_consent() -> Consent {
 
 fn read_canonical(p: &std::path::Path) -> Option<Consent> {
     let content = fs::read_to_string(p).ok()?;
-    let parsed: CanonicalWrapper = serde_yaml::from_str(&content).ok()?;
+    let parsed: CanonicalWrapper = serde_norway::from_str(&content).ok()?;
     let raw = parsed.kit?.telemetry?.consent?;
     consent_from_raw(raw)
 }
 
 fn read_legacy(p: &std::path::Path) -> Option<Consent> {
     let content = fs::read_to_string(p).ok()?;
-    let parsed: LegacyWrapper = serde_yaml::from_str(&content).ok()?;
+    let parsed: LegacyWrapper = serde_norway::from_str(&content).ok()?;
     let raw = parsed.telemetry?.consent?;
     consent_from_raw(raw)
 }
