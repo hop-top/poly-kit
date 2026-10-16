@@ -1,0 +1,16 @@
+# osv-scanner configuration, read by .github/workflows/vulnerability-scan.yml.
+# A bare `osv-scanner scan source -r .` from the repo root picks it up too.
+#
+# An entry names one advisory and says why it does not apply here. Nothing
+# is ignored in bulk, and an advisory with a fix is never listed: bump the
+# dependency instead.
+
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+reason = """
+Advisory covers golang.org/x/crypto/openpgp, which is unmaintained and has
+no fixed release, and it is filed against the whole module. No package in
+this repository's build graph, tests included, imports openpgp; govulncheck
+reports it as required but never imported. Remove this entry when the
+advisory is withdrawn or narrowed to the package.
+"""
