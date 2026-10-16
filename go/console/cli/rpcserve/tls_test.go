@@ -14,6 +14,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/rpcserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1/cmdsurfacev1connect"
 	"hop.top/kit/internal/testpki"
@@ -107,7 +108,7 @@ func TestRPCServiceServesTLS(t *testing.T) {
 func TestRPCServiceMutualTLS(t *testing.T) {
 	p := newPKI(t, true)
 	rec := &recorder{}
-	base := startDefault(t, rpcserve.Config{}, p.with(nil), cli.WithAuditSinks(rec.spec()))
+	base := startDefault(t, rpcserve.Config{}, p.with(nil), service.WithAuditSinks(rec.spec()))
 
 	for _, proto := range protocols {
 		t.Run(proto.name, func(t *testing.T) {

@@ -748,7 +748,7 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// Transport, rather than relying on each leaf to remember to check.
 	//
 	// Once per process: Install is a read-modify-write of a package
-	// global, and a root factory (see root_factory.go) runs New on
+	// global, and a root factory (service.WithRootFactory) runs New on
 	// every served invocation, concurrently with commands whose HTTP
 	// clients read that global. Guarding twice is a no-op anyway.
 	installNetPolicyOnce.Do(netpolicy.Install)

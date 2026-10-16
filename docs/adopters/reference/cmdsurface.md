@@ -172,7 +172,7 @@ and policy gates, the kit-managed flags, validation — without
 executing, so a factory over a kit root is
 `func() *cobra.Command { r := newRoot(); _ = r.Prepare(); return r.Cmd }`
 (check the error in real code). The kit-shipped `api` and `socket`
-services build exactly that from `cli.WithRootFactory(newRoot)` and
+services build exactly that from `service.WithRootFactory(newRoot)` and
 replay the operator's root flags onto each tree; a bridge wired by
 hand does the same.
 
@@ -326,7 +326,7 @@ b := cmdsurface.New(root, cmdsurface.WithIdempotency(ledger, time.Hour))
 
 Share one ledger between bridges that answer for the same keys; the
 kit-shipped services share one per process
-(`cli.WithServeIdempotencyStore` sets its store).
+(`service.WithServeIdempotencyStore` sets its store).
 `Admission.Replayed()` tells a surface before the run that nothing
 will run, so it asks no person; `Admission.Abandon()` frees the key of
 an admission that will not run. Rules, markers and keys:
@@ -387,7 +387,7 @@ a negative value disables it.
 | `rpc.RPCResource` | `connect.WithReadMaxBytes` in opts | `CodeResourceExhausted` | no |
 | `MountWebhooks` | `WithWebhookMaxBody` | 413 `payload_too_large` | no |
 | `MountWS` (per message) | `WithWSMaxMessageBytes` (32 KiB) | close `1009` | yes |
-| `cli.WithAPI` service | `APIConfig.MaxBodyBytes`; `services.api.body_limit.*`, `services.all.body_limit.*` | 413 `body_too_large` | yes |
+| `service.WithAPI` service | `APIConfig.MaxBodyBytes`; `services.api.body_limit.*`, `services.all.body_limit.*` | 413 `body_too_large` | yes |
 | `mcpserve` service (HTTP) | `services.mcp.body_limit.*`, `services.all.body_limit.*` | 413, JSON-RPC `-32600` | no |
 | `rpcserve` service | `rpcserve.Config.MaxBodyBytes` (4 MiB); `services.rpc.body_limit.*`, `services.all.body_limit.*` | `CodeResourceExhausted` | no |
 
@@ -400,7 +400,7 @@ it. SSE, OAuth and signed-URL routes are GET-only and read no body.
 | Surface         | Direction           | Mount function   | Typical use                             | Reuses                          |
 |-----------------|---------------------|------------------|-----------------------------------------|---------------------------------|
 | `cli`           | local invocation    | (cobra itself)   | adopter's binary                        | `go/console/cli`                |
-| `rest`          | request / reply     | `cli.WithAPI` (`service start api`), `MountProjection`; `MountREST` deprecated | machine-to-machine calls over HTTP | the command projection under `/v1/commands` |
+| `rest`          | request / reply     | `service.WithAPI` (`service start api`), `MountProjection`; `MountREST` deprecated | machine-to-machine calls over HTTP | the command projection under `/v1/commands` |
 | `ws`            | bidirectional       | `MountWS`        | interactive streaming clients           | `api.Hub` + `coder/websocket`   |
 | `sse`           | server-stream       | `MountSSE`       | one-way streaming to browsers           | `api.Router`                    |
 | `rpc`           | request / reply + server-stream | `rpcserve.With` (`service start rpc`), `MountRPC` | typed clients: Connect, gRPC, gRPC-Web  | `transport/rpc` (ConnectRPC)    |
@@ -412,7 +412,7 @@ it. SSE, OAuth and signed-URL routes are GET-only and read no body.
 | `oauth-cb`      | inbound HTTP        | `MountOAuth`     | OAuth provider callback                 | `api.Router` + `StateStore`     |
 | `signed`        | inbound HTTP        | `MountSigned`    | one-shot magic-link exec                | `api.Router` + `NonceStore`     |
 | `faas`          | provider-driven     | `LambdaHandler` / `RunCloudRun` | Lambda + Cloud Run               | aws-lambda-go, `net/http`       |
-| `socket`        | request / reply     | `cli.WithSocket` (`service start socket`) | local daemons, sidecars, agents on the host | `transport/socket` + `transportsvc` |
+| `socket`        | request / reply     | `service.WithSocket` (`service start socket`) | local daemons, sidecars, agents on the host | `transport/socket` + `transportsvc` |
 
 REST and MCP each have one canonical implementation. REST is the
 [command projection](transport-api.md#command-projection): the `api`
@@ -457,7 +457,7 @@ _ = http.ListenAndServe(":8080", r)
 
 One line per surface. Same cobra tree, same handlers, same policy.
 A tree built with `cli.New` skips all of this for REST and MCP:
-`cli.WithAPI` and `mcpserve.With` serve them under `<tool> service start`.
+`service.WithAPI` and `mcpserve.With` serve them under `<tool> service start`.
 
 ## Per-surface reference
 
@@ -468,7 +468,7 @@ func MountProjection(b *Bridge, r *api.Router, opts ...ProjectionOption) error
 func Projection(b *Bridge, opts ...ProjectionOption) (api.ProjectionConfig, error)
 ```
 
-A kit root gets REST from `cli.WithAPI` with no mounting code. A bare
+A kit root gets REST from `service.WithAPI` with no mounting code. A bare
 cobra tree mounts the same
 [command projection](transport-api.md#command-projection) from its
 bridge: one route per command under `/v1/commands` at the method its
@@ -530,7 +530,7 @@ refusals land in the same audit stream.
 func MountREST(b *Bridge, r *api.Router, opts ...RESTOption) error
 ```
 
-**Deprecated.** Use `MountProjection` (or `cli.WithAPI`); send a call
+**Deprecated.** Use `MountProjection` (or `service.WithAPI`); send a call
 envelope over `rpc` instead. Frozen until removal; see
 [Status](#status).
 
@@ -1191,7 +1191,7 @@ Built-in implementations:
   one before it; `security.VerifyAuditLog` reports the first record
   that was edited, deleted, reordered or inserted. Kit-shipped
   services open one from `services.<svc>.audit.sinks: [chain]`, and
-  `cli.WithAuditCommand` mounts `<tool> audit verify`; see
+  `service.WithAuditCommand` mounts `<tool> audit verify`; see
   [the secure serving guide](../guides/secure-remote-serving.md#keep-a-tamper-evident-trail).
 - `TelemetrySink` — fan-out into the kit-telemetry pipeline. See the
   "Telemetry sink" section below.
@@ -1752,7 +1752,7 @@ b, _ := cmdsurface.FromConfig(root, cfg)
 ### Migrating an existing kit-CLI to REST/MCP
 
 The migration is additive — no cobra handler changes. Make the tree a
-kit root (`cli.New`) and register the services: `cli.WithAPI` serves
+kit root (`cli.New`) and register the services: `service.WithAPI` serves
 REST under `/v1/commands`, `mcpserve.With` serves MCP, both under
 `<tool> service start`, with the root factory, the permission gate and audit
 wired for you. Walkthrough:
@@ -1814,7 +1814,7 @@ Deprecated — frozen, fixes only, no new options:
 
 | Deprecated | Use instead | Remains for, until removal |
 |------------|-------------|----------------------------|
-| `MountREST`, `RESTOption`, `WithREST*` | `MountProjection` on a bare bridge, `cli.WithAPI` on a kit root (both the `/v1/commands` projection); `MountRPC` for a call envelope | existing callers |
+| `MountREST`, `RESTOption`, `WithREST*` | `MountProjection` on a bare bridge, `service.WithAPI` on a kit root (both the `/v1/commands` projection); `MountRPC` for a call envelope | existing callers |
 | `MountMCP`, `MCPOption`, `WithMCP*` | `mcpserve.With` (`service start mcp`); `mcpsdk.Mount` / `Handler` / `ServeStdio` on a bare bridge | existing callers |
 | `CloudRunSurfaces.REST`, `CloudRunSurfaces.MCP` | `CloudRunSurfaces.Projection`; `mcpsdk.Mount` in a `CloudRunConfig.Mounts` entry | existing callers |
 | `Config.MCP`, `MCPConfig` (the `mcp:` block) | `services.mcp.*` on the `mcp` service | existing configs; nothing mounts from it |

@@ -18,6 +18,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/mcpserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/transport/cmdsurface"
 )
 
@@ -244,7 +245,7 @@ func TestMCPServiceTrustedProxies(t *testing.T) {
 				set["services.mcp.trusted_proxies"] = "127.0.0.1, ::1"
 			}
 			_, endpoint := startMCP(t, mcpserve.Config{Auth: bearerAuth}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
-				withConfig(set), cli.WithAuditSinks(cmdsurface.SinkSpec{Sink: sink, OnError: true, OnOK: true}))
+				withConfig(set), service.WithAuditSinks(cmdsurface.SinkSpec{Sink: sink, OnError: true, OnOK: true}))
 
 			params := `{"name":"ping","arguments":{},` + modernMeta(`{}`) + `}`
 			fwd := map[string]string{"X-Forwarded-For": "198.51.100.7"}

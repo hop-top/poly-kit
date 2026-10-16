@@ -32,6 +32,7 @@ import (
 	"hop.top/kit/engine/store"
 	"hop.top/kit/go/ai/toolspec"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 	kitlog "hop.top/kit/go/console/log"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/runtime/bus"
@@ -165,7 +166,7 @@ func (e *engine) close() {
 // every SDK sidecar passes them, so they stay where scripts expect
 // them; each configures the api service and nothing else.
 func (e *engine) mountFlags(root *cli.Root) {
-	if c := root.ServeCommand(); c != nil {
+	if c := service.ServeCommand(root); c != nil {
 		xdgData := os.Getenv("XDG_DATA_HOME")
 		if xdgData == "" {
 			home, _ := os.UserHomeDir()
@@ -198,7 +199,7 @@ func (e *engine) prepare(root *cli.Root, cmd *cobra.Command, args []string) erro
 	// Kit's `service start`, or the deprecated root `service start` that runs
 	// it, only: other leaves named serve (`kit conformance svc serve`)
 	// run services of their own.
-	if cmd != root.ServeCommand() && (cmd.Parent() != root.Cmd || cmd.Name() != "serve") {
+	if cmd != service.ServeCommand(root) && (cmd.Parent() != root.Cmd || cmd.Name() != "serve") {
 		return nil
 	}
 	if list, _ := cmd.Flags().GetBool("list"); list {
@@ -209,7 +210,7 @@ func (e *engine) prepare(root *cli.Root, cmd *cobra.Command, args []string) erro
 	if cli.IsDryRun(cmd) {
 		return nil
 	}
-	if len(args) == 1 && args[0] != cli.APIServiceName {
+	if len(args) == 1 && args[0] != service.APIServiceName {
 		return nil
 	}
 
@@ -335,7 +336,7 @@ func (e *engine) shutdown(root *cli.Root) http.HandlerFunc {
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
-		svc, ok := root.ServeRegistry().Lookup(cli.APIServiceName)
+		svc, ok := service.ServeRegistry(root).Lookup(service.APIServiceName)
 		if !ok {
 			return
 		}
@@ -355,7 +356,7 @@ func (e *engine) shutdown(root *cli.Root) http.HandlerFunc {
 func (e *engine) announce(out io.Writer) {
 	e.bus.Subscribe("kit.serve.service.ready_reported", func(_ context.Context, ev bus.Event) error {
 		p, ok := ev.Payload.(serve.EventPayload)
-		if !ok || p.Service != cli.APIServiceName {
+		if !ok || p.Service != service.APIServiceName {
 			return nil
 		}
 		_, portStr, err := net.SplitHostPort(p.Address)

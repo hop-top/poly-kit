@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 )
 
 // newServeCmdForTest builds kit's real root and returns its serve
@@ -17,7 +18,7 @@ func newServeCmdForTest(t *testing.T) *cobra.Command {
 	t.Helper()
 	root, eng := newKitRoot("0.0.0-test")
 	t.Cleanup(eng.close)
-	if c := root.ServeCommand(); c != nil {
+	if c := service.ServeCommand(root); c != nil {
 		return c
 	}
 	t.Fatal("kit root has no service start command")

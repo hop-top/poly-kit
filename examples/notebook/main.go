@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/runtime/domain"
 	dsqlite "hop.top/kit/go/runtime/domain/sqlite"
 	"hop.top/kit/go/runtime/domain/version"
@@ -131,7 +132,7 @@ func main() {
 	},
 		cli.WithIdentity(cli.IdentityConfig{}),
 		cli.WithPeers(cli.PeerConfig{Service: "_notebook._tcp"}),
-		cli.WithAPI(cli.APIConfig{
+		service.WithAPI(service.APIConfig{
 			Addr: ":8080",
 			OpenAPI: &api.OpenAPIConfig{
 				Title:   "Notebook API",

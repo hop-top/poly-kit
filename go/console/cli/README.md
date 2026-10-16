@@ -44,13 +44,19 @@ See [flag-enums.md](../../../docs/adopters/reference/flag-enums.md).
 ## Served commands
 
 `<tool> service start` supervises services; kit ships four, each projecting the
-command tree through the same gates (policy, `WithPermission`,
-`WithAuditSinks`, `WithRootFactory`):
+command tree through the same gates (policy, `service.WithPermission`,
+`service.WithAuditSinks`, `service.WithRootFactory`). The serve plane lives in
+[`service/`](service/), so a CLI that serves nothing links none of it:
+`cli` never imports it, and it attaches to a Root through the extension slot
+(`cli.Extend`, with the `OptionsHook`, `InitHook`, `PrepareHook` and
+`PolicyExemption` hooks). See
+[migrate-to-cli-service.md](../../../docs/adopters/guides/migrate-to-cli-service.md)
+for the move from `cli`.
 
 | Option | Service | Reached by |
 |--------|---------|------------|
-| `WithAPI(APIConfig{})` | `api` (on by default) | REST under `/v1/commands`, `127.0.0.1:8080` |
-| `WithSocket(SocketConfig{})` | `socket` | NDJSON over a `0600` Unix socket |
+| `service.WithAPI(service.APIConfig{})` | `api` (on by default) | REST under `/v1/commands`, `127.0.0.1:8080` |
+| `service.WithSocket(service.SocketConfig{})` | `socket` | NDJSON over a `0600` Unix socket |
 | `mcpserve.With(mcpserve.Config{})` | `mcp` | MCP tools over streamable HTTP (`127.0.0.1:8081/mcp`), or stdio with `service start mcp --stdio` |
 | `rpcserve.With(rpcserve.Config{})` | `rpc` | `cmdsurface.v1.Commands` over Connect, gRPC and gRPC-Web, h2c on `127.0.0.1:8082` |
 
@@ -76,4 +82,5 @@ accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
 | [`policy/`](policy/README.md) | delegation-safety policy YAML enforced per agent-driven invocation |
 | [`router/`](router/README.md) | `kit llm router` subtree: start, stop, list, inspect RouteLLM instances |
 | [`scope/`](scope/README.md) | `kit scope show`, `check`, `test`: would the path policy allow this path |
+| [`service/`](service/) | the serve plane: `service` group, the api and socket services, auth, TLS, the HTTP plane, audit, quota, rate limit, observability |
 | [`svcconfig/`](svcconfig/README.md) | which value a served service's middleware key resolves to, and whether the `services` block is valid |

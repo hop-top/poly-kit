@@ -17,6 +17,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/mcpserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/runtime/bus"
@@ -111,7 +112,7 @@ func startMCP(t *testing.T, cfg mcpserve.Config, args []string, opts ...func(*cl
 		}
 		return nil
 	})
-	all := append([]func(*cli.Root){mcpserve.With(cfg), cli.WithServiceBus(b), ownScope()}, opts...)
+	all := append([]func(*cli.Root){mcpserve.With(cfg), service.WithServiceBus(b), ownScope()}, opts...)
 	run.root = newServeRoot(t, all...)
 	mcpCommands(run.root)
 	run.root.Cmd.SetErr(&lockedWriter{w: run.err})
@@ -308,7 +309,7 @@ func TestMCPServiceHTTPAuthAttributesAndAudits(t *testing.T) {
 	})
 	_, endpoint := startMCP(t, mcpserve.Config{Auth: bearerAuth},
 		[]string{"mcp", "--mcp-addr", "127.0.0.1:0"},
-		cli.WithAuditSinks(cmdsurface.SinkSpec{Sink: sink, OnError: true, OnOK: true}))
+		service.WithAuditSinks(cmdsurface.SinkSpec{Sink: sink, OnError: true, OnOK: true}))
 
 	// Refused at the HTTP layer: the SDK never sees the request.
 	client := mcp.NewClient(&mcp.Implementation{Name: "cli-test", Version: "0"}, nil)
@@ -395,7 +396,7 @@ func TestMCPServicePermissionGateWithholdsAndRefuses(t *testing.T) {
 		return cmdsurface.PermissionDecision{Allowed: true}
 	}
 	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
-		cli.WithPermission(deny))
+		service.WithPermission(deny))
 	sess := dialMCP(t, endpoint, http.Header{"X-Confirm-Token": {"yes"}}, nil)
 
 	names := toolNames(t, sess)
@@ -419,12 +420,12 @@ func TestMCPServiceRunsOnTheRootFactory(t *testing.T) {
 	var factory func() *cli.Root
 	factory = func() *cli.Root {
 		builds.Add(1)
-		r := newServeRoot(t, mcpserve.With(mcpserve.Config{}), cli.WithRootFactory(factory))
+		r := newServeRoot(t, mcpserve.With(mcpserve.Config{}), service.WithRootFactory(factory))
 		mcpCommands(r)
 		return r
 	}
 	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
-		cli.WithRootFactory(factory))
+		service.WithRootFactory(factory))
 	sess := dialMCP(t, endpoint, nil, nil)
 
 	before := builds.Load()
@@ -514,7 +515,7 @@ func TestMCPServiceAsksAPersonOnlyAfterTheMachineGates(t *testing.T) {
 		return cmdsurface.PermissionDecision{Allowed: true}
 	}
 	_, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
-		cli.WithPermission(deny))
+		service.WithPermission(deny))
 
 	var asked atomic.Int32
 	sess := dialMCP(t, endpoint, nil, &mcp.ClientOptions{

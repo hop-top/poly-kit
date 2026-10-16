@@ -15,7 +15,7 @@ seam for a new transport is `go/transport/transportsvc`.
 
 ## Use it when
 
-- project the tree onto REST → `MountProjection`, or the `api` service (`cli.WithAPI`) on a kit root
+- project the tree onto REST → `MountProjection`, or the `api` service (`service.WithAPI`) on a kit root
 - project the tree onto RPC or streaming → `MountRPC`, `MountWS`, `MountSSE`
 - expose leaves as LLM tools → `mcpsdk.Mount`, or the `mcp` service (`mcpserve.With`)
 - accept third-party push or scheduled work → `MountWebhooks`, `MountBus`, `MountCron`
@@ -46,7 +46,7 @@ _ = http.ListenAndServe(":8080", r)
 
 ## Contract
 
-- Fourteen surfaces are declared: `cli`, `rest`, `ws`, `sse`, `rpc`, `mcp`, `webhook`, `bus`, `cron`, `lib`, `oauth-cb`, `signed`, `faas`, `socket`. `socket` is the Unix socket service (`cli.WithSocket`), distinct from `rpc` (ConnectRPC).
+- Fourteen surfaces are declared: `cli`, `rest`, `ws`, `sse`, `rpc`, `mcp`, `webhook`, `bus`, `cron`, `lib`, `oauth-cb`, `signed`, `faas`, `socket`. `socket` is the Unix socket service (`service.WithSocket`), distinct from `rpc` (ConnectRPC).
 - `kit/side-effect=destructive` blocks every remote surface unless the surface is listed in `Policy.AllowDestructiveOn`; YAML `destructive_default: deny_remote` is the conservative default.
 - `kit/auth-required` is a bridge gate on every remote surface: the leaf runs only when the transport established the caller (`Meta.Established`: a verifier accepted a credential, or the transport proves the caller, as the socket's `0600` file and the stdio spawn do), else `ErrAuthRefused`. A claimed `Meta.Caller` or a bare `Authorization` header never counts. `kit/requires-confirmation` gates every surface through the same `Policy`.
 - Discovery answers per caller: `MountProjection`'s `GET /v1/commands` from a request an `api.Auth` verified asks `Bridge.Verdict` for each served command and lists a refusal as `invocable: false` with `insufficient-scope` or `permission-denied`; an anonymous request gets the shared listing. `Bridge.Verdict` asks the `PermissionFunc` on a `ProbeContext`, which must charge nothing.

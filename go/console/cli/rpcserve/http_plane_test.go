@@ -18,6 +18,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/rpcserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1/cmdsurfacev1connect"
 )
 
@@ -181,7 +182,7 @@ func TestRPCServiceTrustedProxies(t *testing.T) {
 			if trusted {
 				set["services.rpc.trusted_proxies"] = []string{"127.0.0.1", "::1"}
 			}
-			base := startDefault(t, rpcserve.Config{Auth: bearerAuth}, withConfig(set), cli.WithAuditSinks(rec.spec()))
+			base := startDefault(t, rpcserve.Config{Auth: bearerAuth}, withConfig(set), service.WithAuditSinks(rec.spec()))
 			fwd := http.Header{"X-Forwarded-For": {"198.51.100.7"}}
 			for _, p := range protocols {
 				good := fwd.Clone()

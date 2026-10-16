@@ -7,7 +7,7 @@ How a served kit tool enforces the `permissions:` rules of its
 same engine and evaluator [`runtime/policy`](../../../runtime/policy/README.md)
 runs on bus events. Separate from `go/console/cli` so only a tool that
 wires it links cel-go. Wrong package for a decision that needs your own
-data (use `cli.WithPermission`) or for scopes alone (`kit/permissions`).
+data (use `service.WithPermission`) or for scopes alone (`kit/permissions`).
 
 ## Use it when
 
@@ -42,7 +42,7 @@ _, err = b.Invoke(ctx, inv) // Tenant "globex":
 - Reason: `permission rule "<name>": <message>`, carried by
   `ErrPermissionDenied` and the audit record. Never `CallerIndependent`.
 - Runs in slot 6 after the scope check and the policy's `allow`, before
-  `cli.WithPermission`: rules only narrow.
+  `service.WithPermission`: rules only narrow.
 - Budget: one decision over three rules ≤ 10 µs (about 3.5 µs, Apple
   M1); `TestGate_WithinBudget` fails above 50 µs.
 

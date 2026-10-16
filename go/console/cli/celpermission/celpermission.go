@@ -8,7 +8,7 @@
 //
 //	root := cli.New(cfg,
 //	    cli.WithPolicy(cli.DefaultPolicyLoader("mytool")),
-//	    cli.WithAPI(cli.APIConfig{Auth: authenticate}),
+//	    service.WithAPI(service.APIConfig{Auth: authenticate}),
 //	    celpermission.With(),
 //	)
 //
@@ -47,6 +47,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	clipolicy "hop.top/kit/go/console/cli/policy"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/runtime/policy"
 	"hop.top/kit/go/runtime/policy/cel"
 	"hop.top/kit/go/transport/cmdsurface"
@@ -62,7 +63,7 @@ const topic = "kit.transport.invocation.permission_decided"
 // every kit-shipped transport service. A policy whose rules do not
 // compile refuses the service at start, naming the rule.
 func With() func(*cli.Root) {
-	return cli.WithPermissionRules(New)
+	return service.WithPermissionRules(New)
 }
 
 // New compiles rules into a [cmdsurface.PermissionFunc]. Every rule is

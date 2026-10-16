@@ -20,7 +20,8 @@ You need:
 
 - A kit project with a cobra root (see
   [create-cli-project.md](create-cli-project.md))
-- `hop.top/kit/go/console/cli` importable
+- `hop.top/kit/go/console/cli` and `hop.top/kit/go/console/cli/service`
+  importable
 - A Unix-like host. Unix domain sockets are not available on Windows.
 
 ## What you get
@@ -55,11 +56,12 @@ import (
     "log"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
 )
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.0.0"},
-        cli.WithSocket(cli.SocketConfig{}),
+        service.WithSocket(service.SocketConfig{}),
     )
 
     root.Cmd.AddCommand(widgetCmd()) // your existing commands
@@ -192,6 +194,7 @@ import (
     "github.com/spf13/cobra"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/console/output"
 )
 
@@ -205,7 +208,7 @@ type Widget struct {
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2"},
         cli.WithStatus(cli.StatusConfig{}),
-        cli.WithSocket(cli.SocketConfig{}),
+        service.WithSocket(service.SocketConfig{}),
     )
 
     list := &cobra.Command{
@@ -313,12 +316,13 @@ import (
     "log"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/transport/cmdsurface"
 )
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.0.0"},
-        cli.WithSocket(cli.SocketConfig{
+        service.WithSocket(service.SocketConfig{
             Policy: cmdsurface.Policy{
                 AllowDestructiveOn: []cmdsurface.Surface{cmdsurface.SurfaceSocket},
             },
@@ -373,11 +377,12 @@ import (
     "log"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
 )
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.0.0"},
-        cli.WithSocket(cli.SocketConfig{
+        service.WithSocket(service.SocketConfig{
             Expose: []string{"widget *", "status"},
             Hide:   []string{"widget delete"},
         }),
@@ -443,7 +448,7 @@ of every served invocation, the socket's included.
 | `NOT_ENABLED` | the command exists but not on this surface | excluded by your `Expose` / `Hide` patterns |
 | `NOT_INVOCABLE` | the command can never run through a transport | an `interactive` command; the message names the reason |
 | `BLOCKED` | destructive command refused by policy | `Policy.AllowDestructiveOn` does not name `cmdsurface.SurfaceSocket` |
-| `DENIED` | the permission gate refused this caller | `cli.WithPermission`, or a `--policy` that refuses the class; the message carries the reason. Led by `cmdsurface: insufficient scope`, the verified identity lacks a scope the command's `kit/permissions` names — return it in `Identity.Scopes` |
+| `DENIED` | the permission gate refused this caller | `service.WithPermission`, or a `--policy` that refuses the class; the message carries the reason. Led by `cmdsurface: insufficient scope`, the verified identity lacks a scope the command's `kit/permissions` names — return it in `Identity.Scopes` |
 | `UNAUTHENTICATED` | the authenticator refused the request | only sent under `auth.mode: peer` (step 12) or with `SocketConfig.Auth` |
 | `RATE_LIMITED` | the caller's rate limit is spent | `services.socket.rate_limit.enabled: true`; wait `retry_after_ms` |
 | `QUOTA_EXCEEDED` | the caller's quota for the window is spent | `services.socket.quota.ops` or `.bytes`; wait `retry_after_ms`, or `quota reset` |
@@ -488,7 +493,7 @@ others wait in a bounded queue, 64 deep; past it a request is refused
 `OVERLOADED` with `retry_after_ms`
 (`services.socket.concurrency`). To
 run requests in parallel, hand kit the function that builds your root
-— the one `main` already has — with `cli.WithRootFactory`. Every
+— the one `main` already has — with `service.WithRootFactory`. Every
 request then runs on a tree of its own.
 
 ```go
@@ -501,12 +506,13 @@ import (
     "github.com/spf13/cobra"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
 )
 
 func newRoot() *cli.Root {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.0.0"},
-        cli.WithSocket(cli.SocketConfig{}),
-        cli.WithRootFactory(newRoot), // a fresh tree per request
+        service.WithSocket(service.SocketConfig{}),
+        service.WithRootFactory(newRoot), // a fresh tree per request
     )
     root.Cmd.AddCommand(&cobra.Command{
         Use:         "ping",
@@ -605,7 +611,7 @@ services:
 Your code's way decides per peer, from the kernel's account of it:
 
 ```go
-cli.WithSocket(cli.SocketConfig{
+service.WithSocket(service.SocketConfig{
     PeerScopes: func(c socket.PeerCred) []string {
         if c.UID == 0 {
             return []string{"widgets:read", "widgets:admin"}
@@ -639,7 +645,7 @@ the message.
 | `PeerScopes` | `func(socket.PeerCred) []string` | none | under `auth.mode: peer`, an admitted peer's scopes; `services.socket.auth.peer.scopes` replaces it when set (step 12) |
 
 Parallel execution is a root option rather than a field:
-`cli.WithRootFactory(newRoot)` (step 11). Without it, requests run one
+`service.WithRootFactory(newRoot)` (step 11). Without it, requests run one
 at a time on the tool's own tree.
 
 Configuration precedence is flag, then config file, then
@@ -666,7 +672,7 @@ as it applies to the socket:
   connection are answered in order. Across connections the service
   runs commands in process on the tool's own command tree, one at a
   time, by default: a request waits for the one running. With
-  `cli.WithRootFactory` (step 11) every request runs on a tree of its
+  `service.WithRootFactory` (step 11) every request runs on a tree of its
   own, in parallel.
 - **Each request starts clean.** Flags from one request do not carry
   into the next. Every command starts from the flag state the

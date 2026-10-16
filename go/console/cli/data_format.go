@@ -8,13 +8,6 @@ import (
 	"hop.top/kit/go/console/output"
 )
 
-// isDataFormat reports whether cmd's output will be rendered as a data
-// document — json or yaml — rather than for a person or a script.
-func isDataFormat(cmd *cobra.Command, v *viper.Viper) bool {
-	format := ActiveFormat(cmd, v)
-	return format == output.JSON || format == output.YAML
-}
-
 // ActiveFormat resolves --format the way output.Dispatch does (the
 // flag when set on the command line, else the viper value, else the
 // flag default, else table), so a command that renders one format

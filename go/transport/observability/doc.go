@@ -17,7 +17,7 @@
 // With the kit CLI, one option links it and configuration does the
 // rest:
 //
-//	root := cli.New(cfg, cli.WithAPI(apiCfg), cli.WithObservability(observability.NewServe()))
+//	root := cli.New(cfg, service.WithAPI(apiCfg), service.WithObservability(observability.NewServe()))
 //
 //	services:
 //	  all:                          # every service; services.<svc> overrides per key

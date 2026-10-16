@@ -14,6 +14,7 @@ import (
 
 	"hop.top/kit/go/ai/cmdreflect"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
@@ -22,7 +23,7 @@ import (
 )
 
 // ServiceName is the identifier the MCP service registers under. Like
-// [cli.APIServiceName] it is a CLI word, a config key segment
+// [service.APIServiceName] it is a CLI word, a config key segment
 // (services.mcp.*), and a bus payload value at once, so it is stable
 // across releases.
 const ServiceName = "mcp"
@@ -40,7 +41,7 @@ const (
 
 // DefaultAddr is the HTTP listen address when neither Config.Addr,
 // services.mcp.addr, nor --mcp-addr sets one. It is a loopback address
-// for the same reason [cli.DefaultAPIAddr] is.
+// for the same reason [service.DefaultAPIAddr] is.
 const DefaultAddr = "127.0.0.1:8081"
 
 // DefaultPath is the HTTP endpoint path when neither Config.Path nor
@@ -147,7 +148,7 @@ type Config struct {
 // It lives in its own package so that only a tool that serves MCP
 // links the MCP SDK; go/console/cli itself does not depend on it.
 //
-// Like [cli.WithSocket], the service is NOT enabled by default. Start
+// Like [service.WithSocket], the service is NOT enabled by default. Start
 // it with `<tool> service start mcp` (HTTP) or `<tool> service start mcp --stdio`, or
 // set services.mcp.enabled.
 func With(cfg Config) func(*cli.Root) {
@@ -157,7 +158,7 @@ func With(cfg Config) func(*cli.Root) {
 // with is With with the stdio streams overridable, for tests.
 func with(cfg Config, stdio *stdioStreams) func(*cli.Root) {
 	return func(r *cli.Root) {
-		cli.WithService(newService(r, &cfg, stdio))(r)
+		service.WithService(newService(r, &cfg, stdio))(r)
 		mountServeFlags(r)
 	}
 }
@@ -166,7 +167,7 @@ func with(cfg Config, stdio *stdioStreams) func(*cli.Root) {
 // flags go on (the deprecated root `serve` shares them), or nil before
 // one is mounted.
 func serveCmd(r *cli.Root) *cobra.Command {
-	return r.ServeCommand()
+	return service.ServeCommand(r)
 }
 
 // mountServeFlags puts --stdio and --mcp-addr on the serve parent, the
@@ -187,23 +188,23 @@ func mountServeFlags(r *cli.Root) {
 	}
 }
 
-// service is the transport service with a class that depends on the
+// mcpService is the transport service with a class that depends on the
 // transport resolved for the run: a listener over HTTP, no network at
 // all over stdio.
-type service struct {
+type mcpService struct {
 	*transportsvc.TransportService
 	root  *cli.Root
 	cfg   *Config
 	stdio *stdioStreams
 	// tls is the HTTP listener's resolved services.mcp.tls and
 	// auth.mode, set by validate and again at bind.
-	tls *cli.ServeTLS
+	tls *service.ServeTLS
 }
 
 // auth is the verifier every HTTP request passes: the one
 // services.mcp.auth.mode selects (mtls, jwt, jwks, oidc), else
 // Config.Auth.
-func (s *service) auth() api.AuthFunc {
+func (s *mcpService) auth() api.AuthFunc {
 	if f := s.tls.Auth(); f != nil {
 		return f
 	}
@@ -211,8 +212,8 @@ func (s *service) auth() api.AuthFunc {
 }
 
 // resolveTLS resolves services.mcp.tls and auth.mode into s.tls.
-func (s *service) resolveTLS() error {
-	t, err := cli.ResolveServeTLS(s.root, ServiceName)
+func (s *mcpService) resolveTLS() error {
+	t, err := service.ResolveServeTLS(s.root, ServiceName)
 	if err != nil {
 		return err
 	}
@@ -221,7 +222,7 @@ func (s *service) resolveTLS() error {
 }
 
 // Class implements [serve.Classified].
-func (s *service) Class() (sideEffect, network string) {
+func (s *mcpService) Class() (sideEffect, network string) {
 	if s.transport() == TransportStdio {
 		return string(cli.SideEffectWriteShared), "none"
 	}
@@ -229,18 +230,18 @@ func (s *service) Class() (sideEffect, network string) {
 }
 
 var (
-	_ serve.Service    = (*service)(nil)
-	_ serve.Validator  = (*service)(nil)
-	_ serve.Addressed  = (*service)(nil)
-	_ serve.Classified = (*service)(nil)
+	_ serve.Service    = (*mcpService)(nil)
+	_ serve.Validator  = (*mcpService)(nil)
+	_ serve.Addressed  = (*mcpService)(nil)
+	_ serve.Classified = (*mcpService)(nil)
 )
 
 // newService builds the service on the transport seam, with the
 // bridge wiring every kit-shipped service gets: the adopter's Policy,
-// then [cli.ServeBridgeOptions] — the root factory's runner, the
+// then [service.ServeBridgeOptions] — the root factory's runner, the
 // shared permission gate and audit sinks — resolved at Start.
-func newService(root *cli.Root, cfg *Config, stdio *stdioStreams) *service {
-	s := &service{root: root, cfg: cfg, stdio: stdio}
+func newService(root *cli.Root, cfg *Config, stdio *stdioStreams) *mcpService {
+	s := &mcpService{root: root, cfg: cfg, stdio: stdio}
 	tr := &transport{svc: s}
 
 	opts := []transportsvc.TransportOption{
@@ -251,8 +252,8 @@ func newService(root *cli.Root, cfg *Config, stdio *stdioStreams) *service {
 			// refused the configuration that errs here, so this is
 			// unreachable in practice.
 			// stdio is reachable only by the process that spawned it.
-			loopback := s.transport() == TransportStdio || cli.IsLoopbackAddr(s.addr())
-			shared, _ := cli.ServeBridgeOptionsExposed(root, ServiceName, cli.ServeExposure{
+			loopback := s.transport() == TransportStdio || service.IsLoopbackAddr(s.addr())
+			shared, _ := service.ServeBridgeOptionsExposed(root, ServiceName, service.ServeExposure{
 				Loopback:         loopback,
 				InsecureNoPolicy: s.optIn(subkeyInsecureNoPolicy, s.cfg.InsecureNoPolicy),
 			})
@@ -281,7 +282,7 @@ func newService(root *cli.Root, cfg *Config, stdio *stdioStreams) *service {
 // flag returns this run's value of a serve flag and whether the
 // operator set it. Flags are read from the parsed serve command at
 // use, so a re-executed root never inherits a previous run's value.
-func (s *service) flag(name string) (string, bool) {
+func (s *mcpService) flag(name string) (string, bool) {
 	c := serveCmd(s.root)
 	if c == nil {
 		return "", false
@@ -295,7 +296,7 @@ func (s *service) flag(name string) (string, bool) {
 
 // transport resolves the transport for this run: --stdio, then
 // services.mcp.transport, then Config.Transport, then http.
-func (s *service) transport() string {
+func (s *mcpService) transport() string {
 	if v, set := s.flag(stdioFlag); set && v == "true" {
 		return TransportStdio
 	}
@@ -312,7 +313,7 @@ func (s *service) transport() string {
 
 // addr resolves the HTTP listen address: --mcp-addr, then
 // services.mcp.addr, then Config.Addr, then [DefaultAddr].
-func (s *service) addr() string {
+func (s *mcpService) addr() string {
 	if v, set := s.flag(addrFlag); set && v != "" {
 		return v
 	}
@@ -329,7 +330,7 @@ func (s *service) addr() string {
 
 // path resolves the HTTP endpoint path: services.mcp.path, then
 // Config.Path, then [DefaultPath].
-func (s *service) path() string {
+func (s *mcpService) path() string {
 	if s.root.Viper != nil {
 		if v := s.root.Viper.GetString(keyPrefix + subkeyPath); v != "" {
 			return v
@@ -343,7 +344,7 @@ func (s *service) path() string {
 
 // optIn resolves a boolean opt-in: the config key when set, else the
 // code value. There is no flag layer.
-func (s *service) optIn(subkey string, code bool) bool {
+func (s *mcpService) optIn(subkey string, code bool) bool {
 	if s.root.Viper != nil {
 		key := keyPrefix + subkey
 		if s.root.Viper.IsSet(key) {
@@ -356,7 +357,7 @@ func (s *service) optIn(subkey string, code bool) bool {
 // validate is the service's configuration gate (serve-lifecycle.md §"The
 // override rule"): every refusal here is a usage error at exit 2,
 // before anything binds.
-func (s *service) validate() error {
+func (s *mcpService) validate() error {
 	switch transport := s.transport(); transport {
 	case TransportStdio:
 		if _, set := s.flag(addrFlag); set {
@@ -371,19 +372,19 @@ func (s *service) validate() error {
 		// The HTTP-plane blocks under services.mcp (and services.all):
 		// the stdio transport has no HTTP plane, so they are read, and
 		// checked, on this transport only.
-		if err := cli.ValidateServeHTTPListener(s.root, s.httpListener()); err != nil {
+		if err := service.ValidateServeHTTPListener(s.root, s.httpListener()); err != nil {
 			return err
 		}
 	default:
 		return fmt.Errorf("transport: unknown transport %q; use %q or %q",
 			transport, TransportHTTP, TransportStdio)
 	}
-	return cli.ValidateServeBridge(s.root, ServiceName)
+	return service.ValidateServeBridge(s.root, ServiceName)
 }
 
 // validateHTTP checks the address and path, then applies the api
 // service's two exposure refusals under this service's names.
-func (s *service) validateHTTP() error {
+func (s *mcpService) validateHTTP() error {
 	addr := s.addr()
 	if _, _, err := net.SplitHostPort(addr); err != nil {
 		return fmt.Errorf("addr: %w", err)
@@ -394,7 +395,7 @@ func (s *service) validateHTTP() error {
 	if err := s.resolveTLS(); err != nil {
 		return err
 	}
-	if cli.IsLoopbackAddr(addr) {
+	if service.IsLoopbackAddr(addr) {
 		return nil
 	}
 	if s.auth() == nil && !s.optIn(subkeyInsecureRemote, s.cfg.InsecureRemote) {
@@ -412,8 +413,8 @@ func (s *service) validateHTTP() error {
 // HTTP-plane chain kit's listeners share: its blocks are
 // services.mcp.*, its readiness the service's, and its refusals
 // JSON-RPC error bodies.
-func (s *service) httpListener() cli.ServeHTTPListener {
-	return cli.ServeHTTPListener{
+func (s *mcpService) httpListener() service.ServeHTTPListener {
+	return service.ServeHTTPListener{
 		Service: ServiceName,
 		Addr:    s.addr(),
 		Ready:   s.Ready,
@@ -428,7 +429,7 @@ func (s *service) httpListener() cli.ServeHTTPListener {
 // routing headers it sends; and the session id it must read to send
 // the next request. A tool whose input schema binds a parameter to a
 // header (x-mcp-header) adds its Mcp-Param-* header to allow_headers.
-var mcpCORS = cli.ServeCORS{
+var mcpCORS = service.ServeCORS{
 	Methods: []string{http.MethodGet, http.MethodPost, http.MethodDelete},
 	AllowHeaders: []string{
 		"Mcp-Session-Id", "Mcp-Protocol-Version", "Mcp-Method", "Mcp-Name", "Last-Event-ID",
@@ -436,9 +437,9 @@ var mcpCORS = cli.ServeCORS{
 	ExposeHeaders: []string{"Mcp-Session-Id", "Mcp-Protocol-Version"},
 }
 
-// serving is one transport's half of a run: acquire, serve a surface,
+// mcpServing is one transport's half of a run: acquire, serve a surface,
 // release.
-type serving interface {
+type mcpServing interface {
 	bind(ctx context.Context) (addr string, err error)
 	serve(ctx context.Context, s *mcpsdk.Surface) error
 	close(ctx context.Context) error
@@ -449,14 +450,14 @@ type serving interface {
 // win, and builds the SDK surface at Serve over the bridge the seam
 // reflected at Start.
 type transport struct {
-	svc *service
+	svc *mcpService
 
 	mu   sync.Mutex
-	impl serving
+	impl mcpServing
 }
 
 func (t *transport) Bind(ctx context.Context) (string, error) {
-	var impl serving
+	var impl mcpServing
 	switch t.svc.transport() {
 	case TransportStdio:
 		impl = newStdio(t.svc.stdio)
@@ -502,7 +503,7 @@ func (t *transport) Close(ctx context.Context) error {
 // call is admitted by Bridge.Admit before it runs, so the policy,
 // invocability and permission gates the seam promises hold on both
 // transports.
-func (t *transport) surface(ctx context.Context, impl serving) (*mcpsdk.Surface, error) {
+func (t *transport) surface(ctx context.Context, impl mcpServing) (*mcpsdk.Surface, error) {
 	b := t.svc.Bridge()
 	if b == nil {
 		return nil, errors.New("mcp: no bridge; the service has not started")
