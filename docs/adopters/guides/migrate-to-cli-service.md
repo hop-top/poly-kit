@@ -140,6 +140,53 @@ A project generated from the `cli-go` template needs these edits in
 `"hop.top/kit/go/console/cli/service"`. The rules above make both
 edits; a project generated after the move already has them.
 
+## The SQLite bus adapter
+
+The compiler reports `undefined: bus.NewSQLiteAdapter`. The SQLite
+adapter moved out of `go/runtime/bus` into
+`hop.top/kit/go/runtime/bus/sqlite`, so a program that only publishes
+in process links no SQLite. Three of its four names lost the `SQLite`
+prefix, which the package name now carries:
+
+| Before | After |
+|--------|-------|
+| `bus.NewSQLiteAdapter` | `sqlite.NewAdapter` |
+| `bus.SQLiteAdapter` | `sqlite.Adapter` |
+| `bus.SQLiteOption` | `sqlite.Option` |
+| `bus.WithPollInterval` | `sqlite.WithPollInterval` |
+
+```sh
+gofmt -w -r 'bus.NewSQLiteAdapter -> sqlite.NewAdapter' .
+gofmt -w -r 'bus.SQLiteAdapter -> sqlite.Adapter' .
+gofmt -w -r 'bus.SQLiteOption -> sqlite.Option' .
+gofmt -w -r 'bus.WithPollInterval -> sqlite.WithPollInterval' .
+```
+
+Then add the import, `"hop.top/kit/go/runtime/bus/sqlite"`. The bus
+itself, `bus.New` and `bus.WithAdapter`, stays where it was:
+
+```go
+// before
+import "hop.top/kit/go/runtime/bus"
+
+a, err := bus.NewSQLiteAdapter(path, bus.WithPollInterval(time.Second))
+b := bus.New(bus.WithAdapter(a))
+
+// after
+import (
+	"hop.top/kit/go/runtime/bus"
+	"hop.top/kit/go/runtime/bus/sqlite"
+)
+
+a, err := sqlite.NewAdapter(path, sqlite.WithPollInterval(time.Second))
+b := bus.New(bus.WithAdapter(a))
+```
+
+A file that also imports another package named `sqlite`
+(`hop.top/kit/go/storage/kv/sqlite`, for one) imports one of them
+under an alias, `import bussqlite "hop.top/kit/go/runtime/bus/sqlite"`,
+and uses `bussqlite.` on the right of the rules.
+
 ## Planes outside kit
 
 The serve plane attaches to a `Root` through an extension slot that is

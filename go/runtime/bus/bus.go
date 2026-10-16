@@ -96,7 +96,8 @@ func WithInvalidTopicReporter(fn ErrFunc) Option {
 
 // WithAdapter sets the transport adapter for the bus.
 // When omitted, New uses an in-memory adapter.
-// A typed-nil adapter (e.g. (*SQLiteAdapter)(nil)) is treated as unset.
+// A typed-nil adapter (e.g. a (*sqlite.Adapter)(nil) from a failed
+// sqlite.NewAdapter) is treated as unset.
 func WithAdapter(a Adapter) Option {
 	return func(o *busOpts) {
 		if !isNilAdapter(a) {
