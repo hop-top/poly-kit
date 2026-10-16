@@ -46,7 +46,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `kv` | `sqldb` — nothing of its own | 12 |
 | `bus` | `serde`, `serde_json` | 14 |
 | `timeutil` | `chrono`, `interim`, `thiserror` | 19 |
-| `output` | `serde`, `serde_json`, `serde_yaml`, `comfy-table`, `thiserror` | 22 |
+| `output` | `serde`, `serde_json`, `serde_norway`, `comfy-table`, `thiserror` | 22 |
 | `sqlstore` | `sqldb` + `serde`, `serde_json` | 22 |
 | `sqlstore-blob` | `sqlstore` + `blob` — nothing of its own | 22 |
 | `id` | `mti`, `uuid`, `serde`, `thiserror` | 25 |
@@ -58,7 +58,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `sqlstore-encrypt` | `sqlstore` + `crypto_secretbox`, `hkdf`, `sha2` | 50 |
 | `serve-cli` | `serve` + `cli` | 50 |
 | `api` | `reqwest`, `tokio`, `serde`, `serde_json`, `thiserror` | 113 |
-| `telemetry` | `api` + `serde_yaml`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
+| `telemetry` | `api` + `serde_norway`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
 Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`.
 `api` and `telemetry` are heaviest: `reqwest` brings `tokio` and a TLS stack. `rusqlite` uses `bundled`, so

@@ -9,8 +9,8 @@ use crate::output::option::{OptionSpec, Options};
 
 // No options yet. The cross-language facade in py/ts/go/php exposes
 // emitter-style knobs (e.g. inline depth, explicit document markers),
-// but serde_yaml::to_string doesn't expose them; honoring them would
-// require switching to serde_yaml_ng or hand-rolling output. Track via
+// but serde_norway::to_string doesn't expose them; honoring them would
+// require switching to another YAML backend or hand-rolling output. Track via
 // follow-up once a real adopter needs it.
 static OPTS: &[OptionSpec] = &[];
 
@@ -37,7 +37,7 @@ impl Formatter for YamlFormatter {
         cols: &[String],
     ) -> std::io::Result<()> {
         let projected = project(data, cols);
-        let s = serde_yaml::to_string(&projected)
+        let s = serde_norway::to_string(&projected)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         out.write_all(s.as_bytes())?;
         Ok(())

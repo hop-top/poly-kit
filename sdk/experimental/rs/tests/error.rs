@@ -228,7 +228,7 @@ fn render_error_json_wire_round_trip() {
 #[test]
 fn render_error_yaml_wire_round_trip() {
     let out = render("yaml", &CliError::transient("upstream timeout"));
-    let back: CliError = serde_yaml::from_str(&out).expect("decode");
+    let back: CliError = serde_norway::from_str(&out).expect("decode");
     assert_eq!(back, CliError::transient("upstream timeout"));
 }
 
