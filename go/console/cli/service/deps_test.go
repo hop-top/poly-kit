@@ -10,6 +10,8 @@ import (
 // the opt-in services on a tool: mcpserve, rpcserve and celpermission
 // import this package, never the reverse, so a tool serving REST and
 // the socket links neither the MCP SDK, the rpc transport nor CEL.
+// Serving does not force peer discovery either: no runtime/peer, no
+// mDNS.
 func TestServePlaneLinksNoOptInService(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs go list")
@@ -30,8 +32,11 @@ func TestServePlaneLinksNoOptInService(t *testing.T) {
 		"hop.top/kit/go/console/cli/celpermission": true,
 		"hop.top/kit/go/transport/mcpsdk":          true,
 		"hop.top/kit/go/transport/rpc":             true,
+		"hop.top/kit/go/console/cli/peers":         true,
+		"hop.top/kit/go/runtime/peer":              true,
 	}
-	modules := []string{"github.com/modelcontextprotocol/go-sdk", "cel.dev/cel-go", "github.com/google/cel-go"}
+	modules := []string{"github.com/modelcontextprotocol/go-sdk", "cel.dev/cel-go", "github.com/google/cel-go",
+		"github.com/hashicorp/mdns", "github.com/miekg/dns"}
 	sawCLI := false
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		f := strings.Fields(line)

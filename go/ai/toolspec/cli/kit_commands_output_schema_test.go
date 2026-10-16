@@ -16,6 +16,7 @@ import (
 	"hop.top/kit/go/conformance/harness"
 	"hop.top/kit/go/console/alias"
 	kitcli "hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/peers"
 	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/runtime/peer"
 )
@@ -52,7 +53,7 @@ func kitCommandTree(t *testing.T) *kitcli.Root {
 		service.WithQuotaCommand(),
 		kitcli.WithURI(kitcli.URIConfig{}),
 		kitcli.WithIdentity(kitcli.IdentityConfig{Dir: filepath.Join(dir, "identity")}),
-		kitcli.WithPeers(kitcli.PeerConfig{DataDir: filepath.Join(dir, "peers")}),
+		peers.With(peers.Config{DataDir: filepath.Join(dir, "peers")}),
 		service.WithAPI(service.APIConfig{}),
 		service.WithAPIKeys(service.APIKeysConfig{Path: filepath.Join(dir, "keys.db")}),
 		service.WithSocket(service.SocketConfig{Path: filepath.Join(dir, "kit.sock")}),
@@ -240,7 +241,7 @@ func seedAlias(t *testing.T, r *kitcli.Root) []string {
 
 func seedPeer(t *testing.T, r *kitcli.Root) []string {
 	t.Helper()
-	if err := r.PeerRegistry.Add(peer.PeerInfo{
+	if err := peers.Of(r).Registry.Add(peer.PeerInfo{
 		ID: "peer-1", Name: "one", PublicKey: []byte("key"), Addrs: []string{"127.0.0.1:7000"},
 	}); err != nil {
 		t.Fatalf("seed peer: %v", err)

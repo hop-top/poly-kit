@@ -17,6 +17,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/idemstore"
+	idemsqlite "hop.top/kit/go/console/cli/idemstore/sqlite"
 	"hop.top/kit/go/transport/api"
 )
 
@@ -190,7 +191,7 @@ func TestServeIdempotencyStorePurgesPastTheServiceTTL(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(db), 0o750))
 
 	now := time.Now().UTC()
-	seed, err := idemstore.OpenSQLite(db, 1000*time.Hour)
+	seed, err := idemsqlite.Open(db, 1000*time.Hour)
 	require.NoError(t, err)
 	require.NoError(t, seed.Record(t.Context(), "within", idemstore.Result{Output: []byte("w"), Recorded: now.Add(-48 * time.Hour)}))
 	require.NoError(t, seed.Record(t.Context(), "past", idemstore.Result{Output: []byte("p"), Recorded: now.Add(-100 * time.Hour)}))
@@ -200,7 +201,7 @@ func TestServeIdempotencyStorePurgesPastTheServiceTTL(t *testing.T) {
 	require.Equal(t, http.StatusOK, mint(t, h, "k1").Code, "a keyed call opens the store")
 	require.NoError(t, closeServeIdempotency(r))
 
-	check, err := idemstore.OpenSQLite(db, 1000*time.Hour)
+	check, err := idemsqlite.Open(db, 1000*time.Hour)
 	require.NoError(t, err)
 	defer check.Close()
 	_, hit, err := check.Lookup(t.Context(), "within")

@@ -22,7 +22,6 @@ import (
 	configoverrides "hop.top/kit/go/core/config"
 	"hop.top/kit/go/core/identity"
 	"hop.top/kit/go/core/netpolicy"
-	"hop.top/kit/go/runtime/peer"
 )
 
 // Disable controls which built-in global flags are suppressed.
@@ -59,10 +58,10 @@ type Flag struct {
 // Hooks bundles optional hook functions that compose into the cobra root's
 // PersistentPreRunE chain. Adopters use these slots instead of assigning to
 // r.Cmd.PersistentPreRunE directly, which would silently overwrite kit's
-// built-in chain (chdir → identity → peer init).
+// built-in chain (chdir → identity → extension init).
 type Hooks struct {
 	// PrePersistentRunE runs after kit's built-in chain (chdir →
-	// identity → peer init) and before subcommand RunE. If it returns
+	// identity → extension init) and before subcommand RunE. If it returns
 	// an error the command short-circuits.
 	PrePersistentRunE func(cmd *cobra.Command, args []string) error
 }
@@ -298,13 +297,6 @@ type Root struct {
 	// Identity holds the resolved keypair when WithIdentity is used.
 	// Nil when identity management is not enabled.
 	Identity *identity.Keypair
-	// Mesh holds the peer mesh when WithPeers is used.
-	// Nil when peer management is not enabled.
-	Mesh *peer.Mesh
-	// PeerRegistry holds the peer registry when WithPeers is used.
-	PeerRegistry *peer.Registry
-	// PeerTrust holds the trust manager when WithPeers is used.
-	PeerTrust *peer.TrustManager
 	// IdemStore is the idempotency-key replay backend used by the
 	// RunE middleware. nil disables replay (default); adopters wire
 	// one up via WithIdempotencyStore. Each tool MUST own its own
@@ -319,7 +311,6 @@ type Root struct {
 	// nil means the real controlling terminal (ControllingTTY).
 	promptSource       PromptSource
 	identityCfg        *IdentityConfig
-	peerCfg            *PeerConfig
 	telemetryCfg       *TelemetryConfig
 	aliases            map[string]string
 	aliasCompletionSet bool              // guards single ValidArgsFunction wrap
@@ -688,8 +679,9 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	// order; the first error short-circuits the chain. Order:
 	//   1. chdir (so XDG paths / peer registry see the resolved cwd)
 	//   2. identity init failure (deferred so --help still works)
-	//   3. peer init failure (deferred for the same reason)
-	//   4. extension init failures (InitHook), in attach order
+	//   3. extension init failures (InitHook, e.g. peers), in attach
+	//      order, deferred for the same reason
+	//   4. progress reporter, dry-run, session globals
 	//   5. cfg.Hooks.PrePersistentRunE (adopter-supplied)
 	var hooks []func(cmd *cobra.Command, args []string) error
 
@@ -708,11 +700,6 @@ func New(cfg Config, opts ...func(*Root)) *Root {
 	}
 
 	if err := r.initIdentity(); err != nil {
-		hooks = append(hooks, func(_ *cobra.Command, _ []string) error {
-			return err
-		})
-	}
-	if err := r.initPeers(); err != nil {
 		hooks = append(hooks, func(_ *cobra.Command, _ []string) error {
 			return err
 		})

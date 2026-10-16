@@ -69,7 +69,7 @@ type Event struct {
 	//
 	// TYPE ERASURE WARNING:
 	// Payload is `any` and crosses process boundaries via JSON
-	// (NetworkAdapter, SQLiteAdapter, dpkms hub). In-process
+	// (NetworkAdapter, sqlite.Adapter, dpkms hub). In-process
 	// subscribers receive the original Go value publishers passed
 	// to NewEvent. Cross-process subscribers receive the JSON-
 	// decoded form: objects → map[string]any, arrays → []any,

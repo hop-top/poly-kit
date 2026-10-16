@@ -54,7 +54,9 @@
 //
 // Bus supports pluggable adapters via [WithAdapter]:
 //   - MemoryAdapter: in-process, goroutine-based async (default)
-//   - SQLiteAdapter: cross-process via shared SQLite + polling
+//   - sqlite.Adapter (go/runtime/bus/sqlite): cross-process via shared
+//     SQLite + polling; a separate package, so only programs that use it
+//     link SQLite
 //   - NetworkAdapter: cross-machine via WebSocket
 //
 // # Network Adapter
@@ -89,7 +91,7 @@
 //
 // [Event.Payload] is typed as `any`. Publishers pass any Go value;
 // in-process subscribers receive that exact value. Cross-process
-// subscribers (NetworkAdapter, SQLiteAdapter, dpkms hub) receive
+// subscribers (NetworkAdapter, sqlite.Adapter, dpkms hub) receive
 // the JSON-decoded form — objects become map[string]any, arrays
 // []any, numbers float64. The publisher's Go struct type is NOT
 // preserved over the wire.

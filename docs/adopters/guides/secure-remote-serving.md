@@ -142,8 +142,8 @@ Change the address and nothing else:
 
 ```go
 import (
-	"hop.top/kit/go/console/cli"
-	"hop.top/kit/go/console/cli/service"
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
 )
 
 service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080"})
@@ -425,8 +425,8 @@ so by name, in code, config, or on the command line:
 
 ```go
 import (
-	"hop.top/kit/go/console/cli"
-	"hop.top/kit/go/console/cli/service"
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
 )
 
 service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080", InsecureRemote: true})
@@ -456,8 +456,8 @@ that separately:
 
 ```go
 import (
-	"hop.top/kit/go/console/cli"
-	"hop.top/kit/go/console/cli/service"
+    "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
 )
 
 service.WithAPI(service.APIConfig{Addr: "0.0.0.0:8080", InsecureNoPolicy: true})

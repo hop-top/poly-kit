@@ -13,6 +13,7 @@ import (
 	breakercmd "hop.top/kit/go/console/cli/breaker"
 	configcmd "hop.top/kit/go/console/cli/config"
 	conformancecmd "hop.top/kit/go/console/cli/conformance"
+	"hop.top/kit/go/console/cli/peers"
 	scopecmd "hop.top/kit/go/console/cli/scope"
 	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
@@ -96,7 +97,7 @@ func newKitRoot(version string) (*cli.Root, *engine) {
 		},
 	},
 		cli.WithIdentity(cli.IdentityConfig{}),
-		cli.WithPeers(cli.PeerConfig{}),
+		peers.With(peers.Config{}),
 		// Mount the reserved `kit status` subcommand so the kit
 		// binary itself dogfoods the the static-conformance contract surface. Six
 		// default providers (profile/env/workspace/auth/effective-

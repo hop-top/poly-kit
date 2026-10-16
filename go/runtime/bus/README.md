@@ -5,8 +5,8 @@
 How does one package tell the rest of the process that something
 happened, without knowing who listens? In-process publish/subscribe
 with MQTT-style wildcards (`*` one segment, `#` zero or more trailing
-segments); optional adapters fan events out to SQLite or to peer
-processes. Wrong package for request/response (call the function) and
+segments); optional adapters fan events out to SQLite (`go/runtime/bus/sqlite`)
+or to peer processes. Wrong package for request/response (call the function) and
 for durable cross-process queueing (`go/runtime/job`).
 
 ## Use it when
@@ -61,6 +61,7 @@ Verified by `example_test.go` in this directory.
 
 - `go/runtime/notify`: outbound sinks (webhook, email, OS-native), filter and retry decorators built on `bus.Sink`.
 - `go/runtime/sideeffect`: dry-run wrapper that stamps `Mechanism: "dry_run"` on published payloads.
+- `go/runtime/bus/sqlite`: SQLite adapter for cross-process delivery on one machine (`sqlite.NewAdapter`, passed to `WithAdapter`).
 - `go/transport/api`: WebSocket transport behind `WithNetwork`.
 
 ## See also

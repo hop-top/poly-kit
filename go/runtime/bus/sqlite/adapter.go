@@ -1,4 +1,9 @@
-package bus
+// Package sqlite is the SQLite adapter for go/runtime/bus: events are
+// persisted to a shared SQLite database and delivered to subscribers
+// by polling, so processes on one machine share one bus. Pass it to
+// bus.New with bus.WithAdapter. It lives outside bus so a program
+// that only publishes in process links no SQLite.
+package sqlite
 
 import (
 	"context"
@@ -8,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"hop.top/kit/go/runtime/bus"
 	"hop.top/kit/go/storage/sqlstore"
 )
 
@@ -25,17 +31,17 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_id ON events(id);
 `
 
-// SQLiteOption configures the SQLiteAdapter.
-type SQLiteOption func(*SQLiteAdapter)
+// Option configures the Adapter.
+type Option func(*Adapter)
 
 // WithPollInterval sets the polling interval for subscriber delivery.
-func WithPollInterval(d time.Duration) SQLiteOption {
-	return func(a *SQLiteAdapter) { a.pollInterval = d }
+func WithPollInterval(d time.Duration) Option {
+	return func(a *Adapter) { a.pollInterval = d }
 }
 
-// SQLiteAdapter persists events to SQLite and delivers them to
+// Adapter persists events to SQLite and delivers them to
 // subscribers via polling. Suitable for cross-process event sharing.
-type SQLiteAdapter struct {
+type Adapter struct {
 	store        *sqlstore.Store
 	pollInterval time.Duration
 
@@ -51,14 +57,14 @@ type SQLiteAdapter struct {
 type sqliteSub struct {
 	id      uint64
 	pattern string
-	sync    Handler
-	async   AsyncHandler
+	sync    bus.Handler
+	async   bus.AsyncHandler
 	lastID  int64
 }
 
-// NewSQLiteAdapter opens (or creates) a SQLite-backed adapter at path.
+// NewAdapter opens (or creates) a SQLite-backed adapter at path.
 // WAL mode is enabled automatically via sqlstore.
-func NewSQLiteAdapter(path string, opts ...SQLiteOption) (*SQLiteAdapter, error) {
+func NewAdapter(path string, opts ...Option) (*Adapter, error) {
 	store, err := sqlstore.Open(path, sqlstore.Options{
 		MigrateSQL: eventsMigration,
 	})
@@ -72,7 +78,7 @@ func NewSQLiteAdapter(path string, opts ...SQLiteOption) (*SQLiteAdapter, error)
 		return nil, err
 	}
 
-	a := &SQLiteAdapter{
+	a := &Adapter{
 		store:        store,
 		pollInterval: defaultPollInterval,
 	}
@@ -90,9 +96,9 @@ func NewSQLiteAdapter(path string, opts ...SQLiteOption) (*SQLiteAdapter, error)
 }
 
 // Publish persists the event and returns. Delivery happens via polling.
-func (a *SQLiteAdapter) Publish(ctx context.Context, e Event) error {
+func (a *Adapter) Publish(ctx context.Context, e bus.Event) error {
 	if a.closed.Load() {
-		return ErrBusClosed
+		return bus.ErrBusClosed
 	}
 
 	payload, err := json.Marshal(e.Payload)
@@ -111,7 +117,7 @@ func (a *SQLiteAdapter) Publish(ctx context.Context, e Event) error {
 	return err
 }
 
-func (a *SQLiteAdapter) Subscribe(pattern string, h Handler) Unsubscribe {
+func (a *Adapter) Subscribe(pattern string, h bus.Handler) bus.Unsubscribe {
 	a.mu.Lock()
 	id := a.nextID
 	a.nextID++
@@ -123,7 +129,7 @@ func (a *SQLiteAdapter) Subscribe(pattern string, h Handler) Unsubscribe {
 	return a.unsub(id)
 }
 
-func (a *SQLiteAdapter) SubscribeAsync(pattern string, h AsyncHandler) Unsubscribe {
+func (a *Adapter) SubscribeAsync(pattern string, h bus.AsyncHandler) bus.Unsubscribe {
 	a.mu.Lock()
 	id := a.nextID
 	a.nextID++
@@ -135,7 +141,7 @@ func (a *SQLiteAdapter) SubscribeAsync(pattern string, h AsyncHandler) Unsubscri
 	return a.unsub(id)
 }
 
-func (a *SQLiteAdapter) unsub(id uint64) Unsubscribe {
+func (a *Adapter) unsub(id uint64) bus.Unsubscribe {
 	return func() {
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -149,7 +155,7 @@ func (a *SQLiteAdapter) unsub(id uint64) Unsubscribe {
 }
 
 // currentMaxID returns the current max event ID. Caller must hold mu.
-func (a *SQLiteAdapter) currentMaxID() int64 {
+func (a *Adapter) currentMaxID() int64 {
 	var maxID sql.NullInt64
 	_ = a.store.DB().QueryRow("SELECT MAX(id) FROM events").Scan(&maxID)
 	if maxID.Valid {
@@ -158,7 +164,7 @@ func (a *SQLiteAdapter) currentMaxID() int64 {
 	return 0
 }
 
-func (a *SQLiteAdapter) pollLoop(ctx context.Context) {
+func (a *Adapter) pollLoop(ctx context.Context) {
 	defer a.wg.Done()
 	ticker := time.NewTicker(a.pollInterval)
 	defer ticker.Stop()
@@ -175,7 +181,7 @@ func (a *SQLiteAdapter) pollLoop(ctx context.Context) {
 	}
 }
 
-func (a *SQLiteAdapter) deliverPending(ctx context.Context) {
+func (a *Adapter) deliverPending(ctx context.Context) {
 	a.mu.RLock()
 	if len(a.subs) == 0 {
 		a.mu.RUnlock()
@@ -241,7 +247,7 @@ func (a *SQLiteAdapter) deliverPending(ctx context.Context) {
 			if ev.id <= snap[i].lastID {
 				continue
 			}
-			if !Topic(ev.topic).Match(snap[i].pattern) {
+			if !bus.Topic(ev.topic).Match(snap[i].pattern) {
 				if ev.id > snap[i].lastID {
 					snap[i].lastID = ev.id
 				}
@@ -252,8 +258,8 @@ func (a *SQLiteAdapter) deliverPending(ctx context.Context) {
 			var payload any
 			_ = json.Unmarshal([]byte(ev.payload), &payload)
 
-			event := Event{
-				Topic:     Topic(ev.topic),
+			event := bus.Event{
+				Topic:     bus.Topic(ev.topic),
 				Source:    ev.source,
 				Timestamp: ts,
 				Payload:   payload,
@@ -265,7 +271,7 @@ func (a *SQLiteAdapter) deliverPending(ctx context.Context) {
 			if snap[i].async != nil {
 				h := snap[i].async
 				a.wg.Add(1)
-				go func(fn AsyncHandler, ev Event) {
+				go func(fn bus.AsyncHandler, ev bus.Event) {
 					defer a.wg.Done()
 					fn(context.Background(), ev)
 				}(h, event)
@@ -290,7 +296,7 @@ func (a *SQLiteAdapter) deliverPending(ctx context.Context) {
 }
 
 // Close stops polling, waits for in-flight delivery, and closes the store.
-func (a *SQLiteAdapter) Close(ctx context.Context) error {
+func (a *Adapter) Close(ctx context.Context) error {
 	if a.closed.Swap(true) {
 		return nil
 	}

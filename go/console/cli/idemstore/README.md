@@ -9,9 +9,9 @@ registration, output capture, and replay are the `RunE` middleware in
 
 ## Use it when
 
-- production CLI needs replay across invocations → `idemstore.OpenSQLite(path, ttl)`, path from `xdg.StateFile("<tool>", "idempotency.db")`
+- production CLI needs replay across invocations → `sqlite.Open(path, ttl)` from `hop.top/kit/go/console/cli/idemstore/sqlite`, path from `xdg.StateFile("<tool>", "idempotency.db")`
 - tests or one-shot processes → `idemstore.Memory()`
-- isolated sqlite without a file → `idemstore.OpenSQLite(":memory:", ttl)`
+- isolated sqlite without a file → `sqlite.Open(":memory:", ttl)`
 - install on a kit root → `cli.WithIdempotencyStore(store)`; `nil` disables replay
 - custom backend → implement `idemstore.Store` (`Lookup`, `Record`, `Close`)
 - served transports' replay store → `service.WithServeIdempotencyStore(store)`; default `serve-idempotency.db` in the tool's state dir
@@ -19,7 +19,7 @@ registration, output capture, and replay are the `RunE` middleware in
 ## Quick start
 
 ```go
-store, err := idemstore.OpenSQLite(":memory:", idemstore.DefaultTTL)
+store, err := sqlite.Open(":memory:", idemstore.DefaultTTL)
 if err != nil {
     fmt.Println("open:", err)
     return
@@ -46,14 +46,8 @@ fmt.Print(string(r.Output))
 - `Result.Output` is opaque bytes, replayed verbatim to stdout. Redaction
   before recording is the adopter's responsibility; the store never redacts.
 - `Result.ExitCode` mirrors the original run's exit code (1 for unstructured failures, `output.Error.ExitCode` otherwise).
-- SQLite TTL: zero or negative `ttl` becomes `DefaultTTL` (24h). Expired rows
-  are hidden from `Lookup` and deleted: all of them when the store opens, then
-  up to 1000 on the first `Record` after each interval (the TTL, at most one
-  hour); a full batch lets the next `Record` continue. A failed purge never
-  fails the open or the `Record`. `Memory()` enforces no TTL.
-- SQLite schema: table `idempotency(key text primary key, exit_code integer,
-  output blob, recorded text)`, `recorded` as RFC3339Nano UTC. Parent
-  directory is created with mode 0750.
+- TTL and schema of the sqlite `Store`: see [`sqlite/`](sqlite/README.md).
+  `Memory()` enforces no TTL.
 - Persistence is per tool: one database per `<tool>`, no cross-tool replay.
 - Middleware behavior: on a `Lookup` error the original command runs anyway (over-execute rather than refuse); flag-validation rejections are not recorded.
 - Keys are scoped by caller. A key typed on the command line is stored as
@@ -70,7 +64,8 @@ fmt.Print(string(r.Output))
 ## Neighbours
 
 - `hop.top/kit/go/console/cli`: `--idempotency-key` flag, `WrapRunE` replay middleware, `Idempotency` annotations.
-- `hop.top/kit/go/storage/sqldb`: sqlite open and pragmas used by `OpenSQLite`.
+- `hop.top/kit/go/console/cli/idemstore/sqlite`: the sqlite `Store` (`sqlite.Open`). A separate package, so a CLI that never opens it links no SQLite.
+- `hop.top/kit/go/storage/sqldb`: sqlite open and pragmas used by `sqlite.Open`.
 - `hop.top/kit/go/core/xdg`: `StateFile` for the default database location.
 
 ## See also
