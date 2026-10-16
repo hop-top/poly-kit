@@ -37,7 +37,8 @@ var (
 		"hop.top/kit/go/storage/kv/memory":      "the usage ledger store belongs to the serve plane",
 		"hop.top/kit/go/storage/kv/sqlite":      "the usage ledger store belongs to the serve plane",
 		// The SQLite stores: opt-in packages of their own.
-		"hop.top/kit/go/runtime/bus/sqlite": "the SQLite bus adapter is opt-in (sqlite.NewAdapter)",
+		"hop.top/kit/go/runtime/bus/sqlite":           "the SQLite bus adapter is opt-in (sqlite.NewAdapter)",
+		"hop.top/kit/go/console/cli/idemstore/sqlite": "the SQLite idempotency store is opt-in (sqlite.Open)",
 	}
 	forbiddenModulePrefixes = map[string]string{
 		"github.com/modelcontextprotocol/go-sdk": "MCP belongs in go/console/cli/mcpserve",

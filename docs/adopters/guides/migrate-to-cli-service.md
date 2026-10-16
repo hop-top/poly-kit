@@ -187,6 +187,39 @@ A file that also imports another package named `sqlite`
 under an alias, `import bussqlite "hop.top/kit/go/runtime/bus/sqlite"`,
 and uses `bussqlite.` on the right of the rules.
 
+## The SQLite idempotency store
+
+The compiler reports `undefined: idemstore.OpenSQLite`. The sqlite
+`Store` moved out of `go/console/cli/idemstore` into
+`hop.top/kit/go/console/cli/idemstore/sqlite` and is now `sqlite.Open`.
+It still returns an `idemstore.Store`; `idemstore.Store`,
+`idemstore.Result`, `idemstore.DefaultTTL` and `idemstore.Memory()`
+stay where they were.
+
+```sh
+gofmt -w -r 'idemstore.OpenSQLite -> sqlite.Open' .
+```
+
+```go
+// before
+import "hop.top/kit/go/console/cli/idemstore"
+
+store, err := idemstore.OpenSQLite(path, idemstore.DefaultTTL)
+
+// after
+import (
+	"hop.top/kit/go/console/cli/idemstore"
+	"hop.top/kit/go/console/cli/idemstore/sqlite"
+)
+
+store, err := sqlite.Open(path, idemstore.DefaultTTL)
+```
+
+A file that imports another package named `sqlite` aliases one of
+them, as for the bus adapter. A tool that serves needs no edit: the
+served transports' default replay store already opens through the new
+package.
+
 ## Planes outside kit
 
 The serve plane attaches to a `Root` through an extension slot that is

@@ -1,0 +1,141 @@
+package sqlite_test
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"hop.top/kit/go/console/cli/idemstore"
+	"hop.top/kit/go/console/cli/idemstore/sqlite"
+)
+
+func TestOpen_RoundTrip(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "idem.db")
+	s, err := sqlite.Open(dbPath, idemstore.DefaultTTL)
+	require.NoError(t, err)
+	defer s.Close()
+
+	ctx := context.Background()
+
+	// Miss before record.
+	_, hit, err := s.Lookup(ctx, "k1")
+	require.NoError(t, err)
+	assert.False(t, hit, "missing key returns hit=false")
+
+	// Record then lookup.
+	want := idemstore.Result{
+		Key:      "k1",
+		ExitCode: 0,
+		Output:   []byte(`{"ok":true}`),
+	}
+	require.NoError(t, s.Record(ctx, "k1", want))
+
+	got, hit, err := s.Lookup(ctx, "k1")
+	require.NoError(t, err)
+	require.True(t, hit, "recorded key must be a hit")
+	assert.Equal(t, want.Key, got.Key)
+	assert.Equal(t, want.ExitCode, got.ExitCode)
+	assert.Equal(t, want.Output, got.Output)
+	assert.False(t, got.Recorded.IsZero(),
+		"Record must stamp Recorded when zero")
+}
+
+func TestOpen_OverwriteOnRecord(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "idem.db")
+	s, err := sqlite.Open(dbPath, idemstore.DefaultTTL)
+	require.NoError(t, err)
+	defer s.Close()
+
+	ctx := context.Background()
+
+	require.NoError(t, s.Record(ctx, "k", idemstore.Result{
+		Output: []byte("v1"), ExitCode: 0,
+	}))
+	require.NoError(t, s.Record(ctx, "k", idemstore.Result{
+		Output: []byte("v2"), ExitCode: 7,
+	}))
+
+	got, hit, err := s.Lookup(ctx, "k")
+	require.NoError(t, err)
+	require.True(t, hit)
+	assert.Equal(t, []byte("v2"), got.Output, "last-write-wins")
+	assert.Equal(t, 7, got.ExitCode)
+}
+
+func TestOpen_TTL_Expiry(t *testing.T) {
+	const ttl = time.Minute
+
+	dbPath := filepath.Join(t.TempDir(), "idem.db")
+	s, err := sqlite.Open(dbPath, ttl)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Fake clock: expiry is driven by advancing `current`, never by
+	// real elapsed time.
+	base := time.Now().UTC()
+	current := base
+	sqlite.SetNow(s, func() time.Time { return current })
+
+	ctx := context.Background()
+	require.NoError(t, s.Record(ctx, "k", idemstore.Result{
+		Output: []byte("v"),
+	}))
+
+	// Within TTL: hit.
+	current = base.Add(ttl)
+	_, hit, err := s.Lookup(ctx, "k")
+	require.NoError(t, err)
+	require.True(t, hit, "fresh entry must be a hit")
+
+	// Past TTL: miss.
+	current = base.Add(ttl + time.Second)
+	_, hit, err = s.Lookup(ctx, "k")
+	require.NoError(t, err)
+	assert.False(t, hit, "expired entry must be a miss")
+}
+
+func TestOpen_TTL_DefaultsTo24h(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "idem.db")
+	// ttl=0 must promote to DefaultTTL (24h).
+	s, err := sqlite.Open(dbPath, 0)
+	require.NoError(t, err)
+	defer s.Close()
+
+	ctx := context.Background()
+	require.NoError(t, s.Record(ctx, "k", idemstore.Result{
+		Output: []byte("v"),
+	}))
+	_, hit, err := s.Lookup(ctx, "k")
+	require.NoError(t, err)
+	assert.True(t, hit,
+		"with TTL=0 promoted to default 24h, fresh entry must be a hit")
+}
+
+func TestOpen_PathRequired(t *testing.T) {
+	_, err := sqlite.Open("", time.Minute)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "path required")
+}
+
+func TestOpen_PersistsAcrossOpens(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "idem.db")
+
+	s1, err := sqlite.Open(dbPath, idemstore.DefaultTTL)
+	require.NoError(t, err)
+	require.NoError(t, s1.Record(context.Background(), "persist", idemstore.Result{
+		Output: []byte("survives"), ExitCode: 0,
+	}))
+	require.NoError(t, s1.Close())
+
+	s2, err := sqlite.Open(dbPath, idemstore.DefaultTTL)
+	require.NoError(t, err)
+	defer s2.Close()
+
+	got, hit, err := s2.Lookup(context.Background(), "persist")
+	require.NoError(t, err)
+	require.True(t, hit, "data must survive Close+Open")
+	assert.Equal(t, []byte("survives"), got.Output)
+}

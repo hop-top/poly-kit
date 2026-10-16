@@ -121,6 +121,8 @@ want and the abstraction stays swappable.
 | kv/tidb | `kv` | `hop.top/kit/go/storage/kv/tidb` | Needs a TiDB/MySQL server; blank-import to reach it via `kv.Open` |
 | blob/local | `blob` | `hop.top/kit/go/storage/blob/local` | Local filesystem |
 | blob/s3 | `blob` | `hop.top/kit/go/storage/blob/s3` | You supply the AWS SDK client |
+| bus/sqlite | `bus.Adapter` | `hop.top/kit/go/runtime/bus/sqlite` | Shared SQLite file, polled; pass `sqlite.NewAdapter(path)` to `bus.WithAdapter` |
+| idemstore/sqlite | `idemstore.Store` | `hop.top/kit/go/console/cli/idemstore/sqlite` | Per-tool file with TTL; pass `sqlite.Open(path, ttl)` to `cli.WithIdempotencyStore` |
 
 `kv.Open` dispatches on `Config.Backend` through a driver registry:
 blank-import the backend package you want and it registers itself. A
@@ -203,7 +205,7 @@ Deep dives: [`expose-cli-over-rest.md`](../guides/expose-cli-over-rest.md),
 
 | Primitive | What it is | Reach for it when | Import path |
 |---|---|---|---|
-| bus | Pub/sub over topics; memory, SQLite and network transports behind one interface | Decoupling producers from consumers; hooking a CLI | `hop.top/kit/go/runtime/bus` |
+| bus | Pub/sub over topics; memory, SQLite (`bus/sqlite`) and network transports behind one interface | Decoupling producers from consumers; hooking a CLI | `hop.top/kit/go/runtime/bus` |
 | job | Backend-agnostic async job queue: `Job`, `Service`, `Status`, poller, state machine | Work that outlives the request | `hop.top/kit/go/runtime/job` |
 | notify | Outbound notification sinks with severity filtering and retry | Telling a human something happened | `hop.top/kit/go/runtime/notify` |
 | domain | Generic DDD building blocks: Entity, Repository, StateMachine, audit | Modelling entities with lifecycle and audit | `hop.top/kit/go/runtime/domain` |
