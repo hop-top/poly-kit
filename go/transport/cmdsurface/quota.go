@@ -150,7 +150,7 @@ func QuotaKey(q Quota, meta Meta) string {
 // the key slot 13 counts the run under.
 func (b *Bridge) quotaCheck(ctx context.Context, adm *Admission) error {
 	g := b.cfg.quota
-	if g == nil || !adm.inv.Meta.Surface.remote() {
+	if g == nil || !isRemote(adm.inv.Meta.Surface) {
 		return nil
 	}
 	key := QuotaKey(g.q, adm.inv.Meta)

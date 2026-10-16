@@ -44,6 +44,16 @@ the same Runner under provider invocation contracts.
   `go/ai/cmdreflect`. See [Command reflection](#command-reflection).
 - **Surface** — a transport projection identified by a string constant
   (`SurfaceREST`, `SurfaceMCP`, etc.). Fourteen surfaces are declared.
+  `Surface`, its constants, `AllSurfaces`, `Surface.IsValid` and
+  `Surface.String`, and `Establishment` with its three constants, are
+  declared and documented in the leaf package
+  `go/transport/cmdsurface/admitted`; cmdsurface aliases every one of
+  them under the same name, so `cmdsurface.SurfaceREST` and
+  `admitted.SurfaceREST` are the same value. The leaf also carries the
+  caller of a served run (`admitted.Caller`, read with
+  `admitted.CallerFrom`) and `admitted.ScopeIdempotencyKey`, so a
+  command, and kit's own RunE middleware, can read them without
+  linking the bridge.
 - **Invocation** — the transport-agnostic call envelope: `Path`,
   `Args`, `Flags`, `Meta`. Every surface decodes its wire format into
   this shape. `Args` are positional however they are spelled: `-x` is

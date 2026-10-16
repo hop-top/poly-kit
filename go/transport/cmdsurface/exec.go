@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"hop.top/kit/go/ai/cmdreflect"
+	"hop.top/kit/go/transport/cmdsurface/admitted"
 )
 
 // ErrNotInvocable is returned when the resolved leaf can never run
@@ -91,7 +92,7 @@ func WithRootFactory(newRoot func() *cobra.Command) RunnerOption {
 type inProcessRunner struct {
 	root     *cobra.Command
 	newRoot  func() *cobra.Command
-	baseline map[*pflag.Flag]flagState
+	baseline map[*pflag.Flag]admitted.FlagState
 	// mu serializes invocations on root. It is the tree's lock, shared
 	// by every runner over the same root, not the runner's own: see
 	// [treeLock].
@@ -354,36 +355,23 @@ func lookupFlag(cmd *cobra.Command, name string) *pflag.Flag {
 	return nil
 }
 
-// flagState is the value and Changed a flag had when the runner was
-// built: the baseline every invocation starts from and returns to.
-// For a tree built by cli.New at service start, that is the state the
-// operator's own command line left — a served invocation inherits how
-// the process was configured and adds only the flags it carries.
-type flagState struct {
-	value   string
-	slice   []string
-	isSlice bool
-	changed bool
-}
-
-// captureFlagState snapshots every flag on every command under root.
+// captureFlagState snapshots every flag on every command under root:
+// the baseline every invocation starts from and returns to. For a tree
+// built by cli.New at service start, that is the state the operator's
+// own command line left — a served invocation inherits how the process
+// was configured and adds only the flags it carries.
 // Persistent flags are shared by pointer between a command and the
 // merged sets of its descendants, so the map is keyed by *pflag.Flag
 // and each flag is recorded once.
-func captureFlagState(root *cobra.Command) map[*pflag.Flag]flagState {
-	out := map[*pflag.Flag]flagState{}
+func captureFlagState(root *cobra.Command) map[*pflag.Flag]admitted.FlagState {
+	out := map[*pflag.Flag]admitted.FlagState{}
 	var walk func(*cobra.Command)
 	walk = func(c *cobra.Command) {
 		record := func(f *pflag.Flag) {
 			if _, seen := out[f]; seen {
 				return
 			}
-			st := flagState{value: f.Value.String(), changed: f.Changed}
-			if sv, ok := f.Value.(pflag.SliceValue); ok {
-				st.isSlice = true
-				st.slice = append([]string(nil), sv.GetSlice()...)
-			}
-			out[f] = st
+			out[f] = admitted.CaptureFlag(f)
 		}
 		c.Flags().VisitAll(record)
 		c.PersistentFlags().VisitAll(record)
@@ -401,7 +389,7 @@ func captureFlagState(root *cobra.Command) map[*pflag.Flag]flagState {
 // them is emptied instead, because pflag appends to a slice on every
 // Set after the first and would otherwise stack the invocation's
 // values on top of the baseline.
-func resetFlags(leaf *cobra.Command, baseline map[*pflag.Flag]flagState, passed map[string]any) {
+func resetFlags(leaf *cobra.Command, baseline map[*pflag.Flag]admitted.FlagState, passed map[string]any) {
 	seen := map[*pflag.Flag]bool{}
 	reset := func(f *pflag.Flag) {
 		if seen[f] {
@@ -409,11 +397,11 @@ func resetFlags(leaf *cobra.Command, baseline map[*pflag.Flag]flagState, passed 
 		}
 		seen[f] = true
 		_, isPassed := passed[f.Name]
-		var st *flagState
+		var st *admitted.FlagState
 		if known, ok := baseline[f]; ok {
 			st = &known
 		}
-		restoreFlag(f, st, isPassed)
+		admitted.RestoreFlag(f, st, isPassed)
 	}
 	for c := leaf; c != nil; c = c.Parent() {
 		c.Flags().VisitAll(reset)
@@ -427,68 +415,13 @@ func resetFlags(leaf *cobra.Command, baseline map[*pflag.Flag]flagState, passed 
 // keeps its value — restoring it would invoke the adopter's own
 // function — but its Changed bit is cleared like any other.
 //
-// It is the primitive behind this package's per-invocation reset,
-// exported so a caller that re-parses a tree — a cobra root executed
-// more than once in a process — returns flags to their defaults the
-// same way, rather than growing a second implementation of the same
-// pflag edge cases: slice flags, which pflag appends to on every Set
-// after the first; callback-backed flags, whose Set is the adopter's
-// own function; and values whose String form does not round-trip
-// through Set.
-func ResetFlagToDefault(f *pflag.Flag) {
-	if f == nil {
-		return
-	}
-	restoreFlag(f, nil, false)
-}
-
-// restoreFlag puts one flag back to st. A flag the baseline never saw
-// (st nil: registered after the runner was built) goes to its
-// declared default. Callback-backed flags (pflag Func and BoolFunc)
-// are left alone: their Set IS the adopter's callback, and a reset
-// would invoke it.
-func restoreFlag(f *pflag.Flag, st *flagState, passed bool) {
-	// Changed is bookkeeping pflag owns, not part of the value, so it
-	// is restored for every flag — including the callback-backed ones
-	// that return early below. Set first so no later branch can skip
-	// it.
-	f.Changed = st != nil && st.changed
-
-	// A callback-backed flag's Set IS the adopter's function, so its
-	// value is left alone: restoring it would invoke that function
-	// with a value the operator never passed.
-	switch f.Value.Type() {
-	case "func", "boolfunc":
-		return
-	}
-	if sv, ok := f.Value.(pflag.SliceValue); ok {
-		switch {
-		case passed:
-			_ = sv.Replace(nil)
-		case st != nil && st.isSlice:
-			_ = sv.Replace(append([]string(nil), st.slice...))
-		default:
-			_ = sv.Replace(defaultSlice(f.DefValue))
-		}
-	} else {
-		target := f.DefValue
-		if st != nil {
-			target = st.value
-		}
-		// A Value whose String form does not round-trip through Set
-		// (pflag's nil IP prints "<nil>") falls back to its default.
-		if err := f.Value.Set(target); err != nil && target != f.DefValue {
-			_ = f.Value.Set(f.DefValue)
-		}
-	}
-}
-
-// defaultSlice parses the "[a,b]" form pflag prints as a slice flag's
-// default back into its elements.
-func defaultSlice(def string) []string {
-	def = strings.TrimSuffix(strings.TrimPrefix(def, "["), "]")
-	if def == "" {
-		return nil
-	}
-	return strings.Split(def, ",")
-}
+// It is [admitted.ResetFlagToDefault], the primitive behind this
+// package's per-invocation reset ([admitted.RestoreFlag] with no
+// baseline), exported so a caller that re-parses a tree — a cobra root
+// executed more than once in a process — returns flags to their
+// defaults the same way, rather than growing a second implementation
+// of the same pflag edge cases: slice flags, which pflag appends to on
+// every Set after the first; callback-backed flags, whose Set is the
+// adopter's own function; and values whose String form does not
+// round-trip through Set.
+func ResetFlagToDefault(f *pflag.Flag) { admitted.ResetFlagToDefault(f) }

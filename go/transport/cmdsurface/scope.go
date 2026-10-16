@@ -96,7 +96,7 @@ func RequiredScopes(err error) ([]string, bool) {
 // pass, as they pass the authentication gate.
 func scopeCheck(meta Meta, leaf *Leaf) error {
 	need := leaf.Class.Permissions
-	if len(need) == 0 || !meta.Surface.remote() || meta.Established == EstablishedTransport {
+	if len(need) == 0 || !isRemote(meta.Surface) || meta.Established == EstablishedTransport {
 		return nil
 	}
 	have := verifiedScopes(meta)

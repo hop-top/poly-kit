@@ -36,6 +36,24 @@ const (
 	// binary — and so must only ever run from the local CLI, never
 	// from inside a served invocation.
 	KeySelfHosting = "kit/self-hosting"
+	// KeyCacheTTL is how long the served result cache may answer a
+	// read command after a successful run ([ParseCacheTTL]). The
+	// bridge honors it only on a command declared kit/side-effect:
+	// read.
+	KeyCacheTTL = "kit/cache-ttl"
+	// KeyWithholdFrom is the comma-separated list of served surfaces
+	// a command is kept off while every other surface keeps it.
+	KeyWithholdFrom = "kit/withhold-from"
+	// KeyDeprecatedSince is the schema version at which a command was
+	// marked deprecated. It pairs with cobra.Command.Deprecated for
+	// the human message.
+	KeyDeprecatedSince = "kit/deprecated-since"
+	// KeyReplacedBy names the command that replaces a deprecated one,
+	// as a path below the root.
+	KeyReplacedBy = "kit/replaced-by"
+	// KeyExitCodes is the comma-separated list of exit-code symbols a
+	// command may produce, for manifest emission.
+	KeyExitCodes = "kit/exit-codes"
 )
 
 // ReadBool reports whether key is present on cmd with the value

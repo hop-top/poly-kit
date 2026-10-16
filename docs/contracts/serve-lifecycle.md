@@ -866,11 +866,14 @@ of any of them.
   transport only carries the key.
   A command's own `--idempotency-key` middleware MUST scope a served
   invocation's key to its caller with the same scope the bridge uses
-  (`cmdsurface.ScopeIdempotencyKey`, over `cmdsurface.IdempotencyScope`).
+  (`admitted.ScopeIdempotencyKey`, which `cmdsurface.ScopeIdempotencyKey`
+  forwards to, over `cmdsurface.IdempotencyScope`).
   The bridge carries the admitted `Meta` on the run's context, whatever
-  the runner, and `cmdsurface.AdmittedMeta` is the one accessor a
-  command reads it with; a runner that hands the call to a child
-  process MUST pass the scope as `KIT_IDEMPOTENCY_SCOPE`.
+  the runner. A command reads the full `Meta` with
+  `cmdsurface.AdmittedMeta`, and its caller with `admitted.CallerFrom`
+  from `go/transport/cmdsurface/admitted`, which links no part of the
+  bridge; both answer from the same stamp. A runner that hands the call
+  to a child process MUST pass the scope as `KIT_IDEMPOTENCY_SCOPE`.
 
 ### Permission
 
@@ -916,7 +919,8 @@ of any of them.
   established, peer credentials on the socket included, holds its
   credential's scopes only. The command runs
   under the same answer: the in-process run sees the admitted `Meta`
-  (`cmdsurface.AdmittedMeta`), so the `--policy` check inside the
+  (`cmdsurface.AdmittedMeta`) and its caller (`admitted.CallerFrom`,
+  which the `--policy` check reads), so the `--policy` check inside the
   command asks for the same caller. The policy's `permissions:` rules
   sit between the policy and the adopter's decision (see slot 6 under
   [Middleware](#gate-order-on-the-invocation-plane)).
