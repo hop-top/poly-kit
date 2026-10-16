@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -260,7 +261,7 @@ func TestMCPStdioKeepsStdoutForTheProtocol(t *testing.T) {
 
 func TestMCPStdioAdmitsAuthRequiredOnSpawnTrust(t *testing.T) {
 	audit := &stdioAudit{}
-	p := startStdio(t, cli.WithAuditSinks(cmdsurface.SinkSpec{Sink: audit, OnOK: true, OnError: true}))
+	p := startStdio(t, service.WithAuditSinks(cmdsurface.SinkSpec{Sink: audit, OnOK: true, OnError: true}))
 	p.initialize(false)
 
 	text, isErr := p.call(2, "secret")
@@ -282,7 +283,7 @@ func TestMCPStdioAdmitsAuthRequiredOnSpawnTrust(t *testing.T) {
 func TestMCPStdioConfirmationNeedsElicitation(t *testing.T) {
 	t.Run("refused without elicitation", func(t *testing.T) {
 		audit := &stdioAudit{}
-		p := startStdio(t, cli.WithAuditSinks(cmdsurface.SinkSpec{Sink: audit, OnOK: true, OnError: true}))
+		p := startStdio(t, service.WithAuditSinks(cmdsurface.SinkSpec{Sink: audit, OnOK: true, OnError: true}))
 		p.initialize(false)
 		text, isErr := p.call(2, "deploy")
 		assert.True(t, isErr)
@@ -366,7 +367,7 @@ func (denyListeners) Allow(_, network string) (bool, string) {
 func TestMCPServiceClassFollowsTheTransport(t *testing.T) {
 	// A policy that forbids listeners refuses the HTTP transport...
 	r := cli.New(cli.Config{Name: "test", Version: "0.1.0", DisableValidate: true},
-		With(Config{}), cli.WithServicePolicy(denyListeners{}))
+		With(Config{}), service.WithServicePolicy(denyListeners{}))
 	r.Cmd.SetErr(io.Discard)
 	r.SetArgs([]string{"service", "start", "mcp", "--mcp-addr", "127.0.0.1:0"})
 	err := r.Execute(context.Background())
@@ -375,7 +376,7 @@ func TestMCPServiceClassFollowsTheTransport(t *testing.T) {
 	assert.Equal(t, 5, oe.ExitCode)
 
 	// ...and still admits a stdio server, which listens on nothing.
-	p := startStdio(t, cli.WithServicePolicy(denyListeners{}))
+	p := startStdio(t, service.WithServicePolicy(denyListeners{}))
 	p.initialize(false)
 	text, _ := p.call(2, "ping")
 	assert.Equal(t, "pong", text)

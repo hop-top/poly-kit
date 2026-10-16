@@ -52,13 +52,14 @@ import (
     "os"
 
     "hop.top/kit/go/console/cli"
+    "hop.top/kit/go/console/cli/service"
     "hop.top/kit/go/console/cli/mcpserve"
 )
 
 func main() {
     root := cli.New(cli.Config{Name: "mytool", Version: "1.4.2", Short: "Manage widgets"},
         cli.WithStatus(cli.StatusConfig{}),
-        cli.WithAPI(cli.APIConfig{}),
+        service.WithAPI(service.APIConfig{}),
         mcpserve.With(mcpserve.Config{}),
     )
     root.Cmd.AddCommand(widgetCmd())
@@ -185,7 +186,7 @@ A call naming a withheld tool is an unknown tool. A client whose
 identity the service established — verified by `Config.Auth` over
 HTTP, the spawning peer over stdio — also gets its own list: a tool
 the permission gate would refuse it (a missing `kit/permissions` scope,
-a `--policy` caller rule, your `cli.WithPermission` decision) is left
+a `--policy` caller rule, your `service.WithPermission` decision) is left
 off. Listing is advisory; every call still passes the bridge's gates.
 
 | Gate | Over HTTP | Over stdio |
@@ -194,7 +195,7 @@ off. Listing is advisory; every call still passes the bridge's gates.
 | `kit/auth-required` | runs only when a verifier (`auth.mode` or `Config.Auth`) verified the request; a bare `Authorization` header is not authentication | runs: the peer spawned the process and already holds your user's authority |
 | `kit/requires-confirmation` | an elicitation the client's user accepts, or an `X-Confirm-Token` header | an elicitation the client's user accepts |
 | destructive | withheld until `Policy.AllowDestructiveOn` names `cmdsurface.SurfaceMCP`; then the command's own `confirm` argument | same |
-| permission, audit | `cli.WithPermission`, `cli.WithAuditSinks` | same |
+| permission, audit | `service.WithPermission`, `service.WithAuditSinks` | same |
 
 A gate's refusal is an `isError` tool result, not an HTTP status:
 `authentication required`, `confirmation required` (naming both

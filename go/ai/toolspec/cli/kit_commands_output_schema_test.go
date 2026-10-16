@@ -16,6 +16,7 @@ import (
 	"hop.top/kit/go/conformance/harness"
 	"hop.top/kit/go/console/alias"
 	kitcli "hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/runtime/peer"
 )
 
@@ -47,14 +48,14 @@ func kitCommandTree(t *testing.T) *kitcli.Root {
 
 	r := kitcli.New(kitcli.Config{Name: "kittool", Version: "0.0.1", Short: "kit command tree"},
 		kitcli.WithStatus(kitcli.StatusConfig{}),
-		kitcli.WithAuditCommand(),
-		kitcli.WithQuotaCommand(),
+		service.WithAuditCommand(),
+		service.WithQuotaCommand(),
 		kitcli.WithURI(kitcli.URIConfig{}),
 		kitcli.WithIdentity(kitcli.IdentityConfig{Dir: filepath.Join(dir, "identity")}),
 		kitcli.WithPeers(kitcli.PeerConfig{DataDir: filepath.Join(dir, "peers")}),
-		kitcli.WithAPI(kitcli.APIConfig{}),
-		kitcli.WithAPIKeys(kitcli.APIKeysConfig{Path: filepath.Join(dir, "keys.db")}),
-		kitcli.WithSocket(kitcli.SocketConfig{Path: filepath.Join(dir, "kit.sock")}),
+		service.WithAPI(service.APIConfig{}),
+		service.WithAPIKeys(service.APIKeysConfig{Path: filepath.Join(dir, "keys.db")}),
+		service.WithSocket(service.SocketConfig{Path: filepath.Join(dir, "kit.sock")}),
 	)
 	r.Cmd.AddCommand(
 		r.AliasCmd(alias.NewStore(filepath.Join(dir, "aliases.yaml"))),

@@ -23,6 +23,12 @@ func WithIdentity(cfg IdentityConfig) func(*Root) {
 	}
 }
 
+// IdentityConfigured reports whether WithIdentity was applied to r,
+// whatever order the options came in. A nil r has no identity.
+func IdentityConfigured(r *Root) bool {
+	return r != nil && r.identityCfg != nil
+}
+
 // initIdentity resolves the identity keypair based on config.
 func (r *Root) initIdentity() error {
 	cfg := r.identityCfg

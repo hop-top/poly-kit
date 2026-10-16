@@ -24,6 +24,7 @@ Task-oriented how-tos for adopters: one outcome per page, with the audience name
 | [`kit-init.md`](kit-init.md) | `kit init` modes, flags and outputs | you bootstrap a project or add kit conventions to an existing repo |
 | [`kit-template-yaml.md`](kit-template-yaml.md) | `kit-template.yaml` manifest schema | you author a template under `templates/` |
 | [`migrate-to-appshell.md`](migrate-to-appshell.md) | move a hand-rolled bubbletea TUI onto `tui.AppShell` | you already have a TUI and want the shell's diff |
+| [`migrate-to-cli-service.md`](migrate-to-cli-service.md) | move serve options from `go/console/cli` to `go/console/cli/service` | your tool serves and the compiler reports `undefined: cli.WithAPI` after an upgrade |
 | [`migrate-to-served-commands.md`](migrate-to-served-commands.md) | replace a hand-written `serve` or manual `cmdsurface` mounting with built-in services | you already serve something and want the supervisor |
 | [`run-the-engine.md`](run-the-engine.md) | start the engine sidecar and connect a tool to it | you have read the engine concept and want it running |
 | [`secret-management-guide.md`](secret-management-guide.md) | unified secret interface and its backends | you read or write secrets and want to swap providers via config |

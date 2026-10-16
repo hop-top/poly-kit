@@ -16,8 +16,8 @@ adopter-driven mounting of arbitrary surfaces is
 - publish request start and end on the bus → `api.WithBusIntegration(b, ...)`
 - rebrand the emitted topics → `api.WithTopicPrefix`, `api.WithTopics`
 - get every conformant command as a REST route for free → register the `api` service; no `Expose`, no `MountREST`
-- permit a destructive command on REST → `cli.APIConfig{Policy: cmdsurface.Policy{AllowDestructiveOn: ...}}`
-- keep a command off REST → `cli.APIConfig{Hide: []string{"admin *"}}`
+- permit a destructive command on REST → `service.APIConfig{Policy: cmdsurface.Policy{AllowDestructiveOn: ...}}`
+- keep a command off REST → `service.APIConfig{Hide: []string{"admin *"}}`
 - describe every projected operation → `WithOpenAPI`, served at `/openapi.json`
 - stream a long-running command's output as it is written → `<route>/stream`, server-sent events, same method and parameters
 - keep browser pages out (DNS rebinding, cross-site writes) → `api.HostCheck`, `api.ListenerHosts`, `api.OriginCheck`; on by default on kit's HTTP listeners (`api`, `mcp`, `rpc`)
@@ -56,7 +56,7 @@ r := api.NewRouter(
 - `go/transport/cmdsurface`: the bridge, the policy gate, and the explicit `MountREST` mount (prefix `/cmd`, POST-with-`Invocation`-envelope).
 - `go/transport/socket`: the same command tree over a Unix domain socket.
 - `go/transport/transportsvc`: the seam for a transport of your own.
-- `go/console/cli`: `cli.WithAPI`, `cli.SetOutputSchema`, `cli.WithRootFactory`.
+- `go/console/cli`: `service.WithAPI`, `cli.SetOutputSchema`, `service.WithRootFactory`.
 
 ## See also
 

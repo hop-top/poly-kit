@@ -30,6 +30,7 @@ import (
 	conformancecmd "hop.top/kit/go/console/cli/conformance"
 	routercmd "hop.top/kit/go/console/cli/router"
 	scopecmd "hop.top/kit/go/console/cli/scope"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/ps"
 	stagecmd "hop.top/kit/go/console/stage"
 	"hop.top/kit/go/core/config/pkl"
@@ -100,10 +101,10 @@ func newKitLeavesRoot(t *testing.T, sandbox string) *cli.Root {
 	r := cli.New(cli.Config{Name: "ktool", Version: "0.0.0", Short: "kit leaves", DisableValidate: true},
 		cli.WithIdentity(cli.IdentityConfig{Dir: filepath.Join(sandbox, "identity")}),
 		cli.WithPeers(cli.PeerConfig{DataDir: filepath.Join(sandbox, "peers")}),
-		cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}),
-		cli.WithAPIKeys(cli.APIKeysConfig{Path: filepath.Join(sandbox, "apikeys.db")}),
-		cli.WithQuotaCommand(),
-		cli.WithAuditCommand(),
+		service.WithAPI(service.APIConfig{Addr: "127.0.0.1:0"}),
+		service.WithAPIKeys(service.APIKeysConfig{Path: filepath.Join(sandbox, "apikeys.db")}),
+		service.WithQuotaCommand(),
+		service.WithAuditCommand(),
 		cli.WithStatus(cli.StatusConfig{}),
 		cli.WithURI(cli.URIConfig{
 			Policy: scheme.Policy{DefaultNamespaceSegments: 1},

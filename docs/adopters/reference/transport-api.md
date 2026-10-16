@@ -200,7 +200,7 @@ A request's context is the command's: a client that disconnects
 cancels the command it started. Commands run one at a time per
 service by default — the in-process runner serializes on the shared
 command tree — or in parallel, each on a tree of its own, when the
-tool opts in with `cli.WithRootFactory`. Either way each starts from
+tool opts in with `service.WithRootFactory`. Either way each starts from
 the flag state the operator's own command line left, plus only the
 flags the request carries.
 
@@ -350,7 +350,7 @@ and ends each stream with an `error` frame, `503` `shutting_down`.
 Request/reply calls drain as before.
 
 **One tree, one command at a time.** Unless the tool opts in with
-`cli.WithRootFactory`, commands share the tool's command tree and run
+`service.WithRootFactory`, commands share the tool's command tree and run
 one at a time — a stream that runs for an hour holds the tree for an
 hour. Serve long-running commands with a root factory.
 

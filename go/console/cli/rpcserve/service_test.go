@@ -19,6 +19,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/rpcserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/runtime/bus"
@@ -121,7 +122,7 @@ func startRPC(t *testing.T, with func(*cli.Root), args []string, opts ...func(*c
 		return nil
 	})
 	run := &rpcRun{errCh: make(chan error, 1)}
-	all := append([]func(*cli.Root){with, cli.WithServiceBus(b), ownScope()}, opts...)
+	all := append([]func(*cli.Root){with, service.WithServiceBus(b), ownScope()}, opts...)
 	run.root = newServeRoot(t, all...)
 	rpcCommands(run.root)
 
@@ -342,7 +343,7 @@ func bearerAuth(r *http.Request) (any, error) {
 
 func TestRPCServiceAuthGatesUnaryAndStreamingCalls(t *testing.T) {
 	rec := &recorder{}
-	base := startDefault(t, rpcserve.Config{Auth: bearerAuth}, cli.WithAuditSinks(rec.spec()))
+	base := startDefault(t, rpcserve.Config{Auth: bearerAuth}, service.WithAuditSinks(rec.spec()))
 
 	for _, p := range protocols {
 		t.Run(p.name, func(t *testing.T) {
@@ -452,7 +453,7 @@ func TestRPCServiceIgnoresClaimedIdentity(t *testing.T) {
 			cfg.Auth = bearerAuth
 			hdr.Set("Authorization", "Bearer good")
 		}
-		base := startDefault(t, cfg, cli.WithPermission(perm))
+		base := startDefault(t, cfg, service.WithPermission(perm))
 		req := call("ping", hdr)
 		req.Msg.Meta = &cmdsurfacev1.Meta{
 			Caller: "root", Tenant: "evil", RequestId: "body-id",
@@ -482,7 +483,7 @@ func TestRPCServicePermissionGateRefuses(t *testing.T) {
 		}
 		return cmdsurface.PermissionDecision{Allowed: true}
 	}
-	base := startDefault(t, rpcserve.Config{}, cli.WithPermission(deny))
+	base := startDefault(t, rpcserve.Config{}, service.WithPermission(deny))
 	c := client(base, protocols[0])
 	_, err := c.Invoke(t.Context(), call("ping", nil))
 	assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
@@ -516,11 +517,11 @@ func TestRPCServiceRunsOnTheRootFactory(t *testing.T) {
 	var factory func() *cli.Root
 	factory = func() *cli.Root {
 		builds.Add(1)
-		r := newServeRoot(t, rpcserve.With(rpcserve.Config{}), cli.WithRootFactory(factory))
+		r := newServeRoot(t, rpcserve.With(rpcserve.Config{}), service.WithRootFactory(factory))
 		rpcCommands(r)
 		return r
 	}
-	base := startDefault(t, rpcserve.Config{}, cli.WithRootFactory(factory))
+	base := startDefault(t, rpcserve.Config{}, service.WithRootFactory(factory))
 	before := builds.Load()
 	_, err := client(base, protocols[0]).Invoke(t.Context(), call("ping", nil))
 	require.NoError(t, err)

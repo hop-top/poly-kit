@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/rpcserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/cmdsurface/gen/cmdsurfacev1"
 )
@@ -117,7 +117,7 @@ func TestRPCServiceInterceptorsRunInsideKitsGates(t *testing.T) {
 	t.Run("refused by kit", func(t *testing.T) {
 		log := &callLog{}
 		ics := []connect.Interceptor{spy{name: "a", log: log, peek: true}}
-		authed := startDefault(t, rpcserve.Config{Auth: bearerAuth, Interceptors: ics}, cli.WithPermission(deny))
+		authed := startDefault(t, rpcserve.Config{Auth: bearerAuth, Interceptors: ics}, service.WithPermission(deny))
 		anon := startDefault(t, rpcserve.Config{Interceptors: ics})
 
 		cases := []struct {
@@ -151,7 +151,7 @@ func TestRPCServiceInterceptorsRunInsideKitsGates(t *testing.T) {
 		base := startDefault(t, rpcserve.Config{
 			Auth:         bearerAuth,
 			Interceptors: []connect.Interceptor{spy{name: "a", log: log, peek: true}, spy{name: "b", log: log, refuse: "tick"}},
-		}, cli.WithAuditSinks(rec.spec()))
+		}, service.WithAuditSinks(rec.spec()))
 		c := client(base, protocols[0])
 
 		resp, err := c.Invoke(t.Context(), call("ping", good))

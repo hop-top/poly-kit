@@ -7,10 +7,10 @@ package cli_test
 import (
 	"testing"
 
-	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 )
 
-// Gap: cli.WithAPI is the spec'd HTTP-server scaffolding, but it
+// Gap: service.WithAPI is the spec'd HTTP-server scaffolding, but it
 // only models a single listener.
 //
 // dpkms's serve.go is 660 LOC and predates WithAPI; it composes:
@@ -29,7 +29,7 @@ import (
 // Desired API:
 //
 //	cli.New(cfg,
-//	    cli.WithAPI(httpCfg),
+//	    service.WithAPI(httpCfg),
 //	    cli.WithGRPC(grpcCfg),
 //	    cli.WithBus(busCfg),
 //	    cli.WithCookieBridge(bridgeCfg),
@@ -43,11 +43,11 @@ import (
 // — design TBD; the gap is "no path through cli for multi-server
 // composition".
 func TestGap_WithAPI_MultiServer_Missing(t *testing.T) {
-	t.Skip("gap: cli.WithAPI is single-listener; no multi-server composition (HTTP+gRPC+WS+bridge) — dpkms's 660 LOC serve.go predates the spec")
+	t.Skip("gap: service.WithAPI is single-listener; no multi-server composition (HTTP+gRPC+WS+bridge) — dpkms's 660 LOC serve.go predates the spec")
 
 	// Pin: WithAPI exists and works for one listener. The gap is
 	// the absence of a sibling option (or an extended APIConfig)
 	// that registers additional transports under a shared
 	// lifecycle.
-	_ = cli.WithAPI(cli.APIConfig{})
+	_ = service.WithAPI(service.APIConfig{})
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/runtime/bus"
@@ -100,7 +101,7 @@ func startServe(t *testing.T, opts options, args ...string) *serveRun {
 	run.root = newRoot(opts)
 	// A control scope of its own: tests run two instances at once.
 	scope := fmt.Sprintf("t%d", scopeSeq.Add(1))
-	cli.WithServiceControlScope(func(*cobra.Command) (string, error) { return scope, nil })(run.root)
+	service.WithServiceControlScope(func(*cobra.Command) (string, error) { return scope, nil })(run.root)
 	run.root.Cmd.SetErr(run.stderr)
 	run.root.Cmd.SetOut(run.stdout)
 
@@ -301,8 +302,8 @@ func TestServeExistsWithContractFlagsAndChildren(t *testing.T) {
 	// supervisor-form exception); --no-auth appears only with Auth.
 	addr := serveCmd.Flags().Lookup("addr")
 	require.NotNil(t, addr, "--addr")
-	assert.Equal(t, cli.DefaultAPIAddr, addr.DefValue, "the api service defaults to loopback")
-	assert.Equal(t, "127.0.0.1:8080", cli.DefaultAPIAddr)
+	assert.Equal(t, service.DefaultAPIAddr, addr.DefValue, "the api service defaults to loopback")
+	assert.Equal(t, "127.0.0.1:8080", service.DefaultAPIAddr)
 	assert.NotNil(t, serveCmd.Flags().Lookup("insecure-remote"), "--insecure-remote")
 	assert.Nil(t, serveCmd.Flags().Lookup("no-auth"), "--no-auth is mounted only when Auth is set")
 	assert.NotNil(t, serveCmd.Flags().Lookup("socket"), "--socket")
@@ -311,8 +312,8 @@ func TestServeExistsWithContractFlagsAndChildren(t *testing.T) {
 	assert.NotNil(t, serveCmd.Flags().Lookup("rpc-addr"), "--rpc-addr")
 
 	// The children, in registration order: kit's four, then the adopter's.
-	require.NotNil(t, root.ServeRegistry())
-	assert.Equal(t, []string{"api", "socket", "mcp", "rpc", "heartbeat"}, root.ServeRegistry().Names())
+	require.NotNil(t, service.ServeRegistry(root))
+	assert.Equal(t, []string{"api", "socket", "mcp", "rpc", "heartbeat"}, service.ServeRegistry(root).Names())
 }
 
 // TestServeListNamesEveryService pins that `serve --list` mirrors the

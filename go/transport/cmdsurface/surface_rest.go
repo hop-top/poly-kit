@@ -56,7 +56,7 @@ import (
 //     The token value is not validated here (issuance is a later task).
 //
 // Deprecated: the canonical REST surface is the command projection
-// under /v1/commands, which the api service mounts (cli.WithAPI in
+// under /v1/commands, which the api service mounts (service.WithAPI in
 // hop.top/kit/go/console/cli): one route per command, the method its
 // side-effect class selects, discovery and OpenAPI. A client that
 // wants this mount's Invocation-in, Result-out envelope uses MountRPC,

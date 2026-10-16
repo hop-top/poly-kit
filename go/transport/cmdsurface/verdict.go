@@ -3,6 +3,9 @@ package cmdsurface
 import (
 	"context"
 	"fmt"
+
+	"hop.top/kit/go/transport/cmdsurface/admitted"
+	"hop.top/kit/internal/admittedctx"
 )
 
 // ReasonInsufficientScope is the discovery reason for a command the
@@ -33,8 +36,33 @@ type admittedKey struct{}
 // admitted, for the command it runs. The bridge stamps the run's
 // context before handing it to any Runner, so every runner's command
 // sees it.
+//
+// It stamps the caller too, as [CallerOf] builds it, under the key the
+// leaf package reads ([admitted.CallerFrom]): kit's RunE middleware
+// scopes a served --idempotency-key and answers --policy caller rules
+// from it without linking the bridge. Both values come from the same
+// meta, so the two accessors cannot disagree.
 func withAdmitted(ctx context.Context, meta Meta) context.Context {
+	ctx = context.WithValue(ctx, admittedctx.CallerKey{}, CallerOf(meta))
 	return context.WithValue(ctx, admittedKey{}, meta)
+}
+
+// CallerOf is the leaf view of meta's caller, the value a command and
+// kit's RunE middleware read with [admitted.CallerFrom]: how the
+// caller was established; who, in which tenant and with which scopes
+// when a verifier established it (a name on any other call is a
+// claim); and the [IdempotencyScope] its --idempotency-key is confined
+// to. It is the one constructor of that value, so a change to how a
+// caller is established reaches both views.
+func CallerOf(meta Meta) admitted.Caller {
+	c := admitted.Caller{
+		Established:      meta.Established,
+		IdempotencyScope: IdempotencyScope(meta),
+	}
+	if meta.Established == EstablishedVerified {
+		c.Principal, c.Tenant, c.Scopes = meta.Caller, meta.Tenant, meta.Scopes()
+	}
+	return c
 }
 
 // AdmittedMeta returns the Meta of the invocation the bridge admitted

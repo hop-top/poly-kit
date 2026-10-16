@@ -15,6 +15,7 @@ import (
 
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/cli/rpcserve"
+	"hop.top/kit/go/console/cli/service"
 	"hop.top/kit/go/core/identity"
 	"hop.top/kit/go/storage/kv"
 	_ "hop.top/kit/go/storage/kv/sqlite"
@@ -36,7 +37,7 @@ func TestRPCServiceBearerJWTMode(t *testing.T) {
 	}}
 	run, base := startRPC(t, rpcserve.With(cfg), []string{"rpc", "--rpc-addr", "127.0.0.1:0"},
 		cli.WithIdentity(cli.IdentityConfig{Dir: filepath.Join(t.TempDir(), "identity")}),
-		cli.WithAuditSinks(rec.spec()),
+		service.WithAuditSinks(rec.spec()),
 		func(r *cli.Root) { r.Viper.Set("services.rpc.auth.mode", "jwt") })
 	require.NotNil(t, run.root.Identity)
 
