@@ -3,7 +3,8 @@ package cli
 import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"hop.top/kit/go/transport/cmdsurface"
+
+	"hop.top/kit/go/transport/cmdsurface/admitted"
 )
 
 // ResetFlags resets all flag values on cmd and its children to their
@@ -15,7 +16,7 @@ import (
 // Root executed repeatedly needs no explicit call. It stays exported
 // for adopters driving a tree through cobra directly.
 //
-// The per-flag work is [cmdsurface.ResetFlagToDefault], the same
+// The per-flag work is [admitted.ResetFlagToDefault], the same
 // primitive the in-process runner uses between served invocations, so
 // both paths agree on pflag's edge cases: a slice flag is emptied
 // rather than appended to, and a callback-backed flag keeps its value
@@ -39,7 +40,7 @@ func resetFlagSet(cmd *cobra.Command, seen map[*pflag.Flag]bool) {
 			return
 		}
 		seen[f] = true
-		cmdsurface.ResetFlagToDefault(f)
+		admitted.ResetFlagToDefault(f)
 	}
 	cmd.Flags().VisitAll(reset)
 	cmd.PersistentFlags().VisitAll(reset)

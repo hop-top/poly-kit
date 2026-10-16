@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"hop.top/kit/go/console/cli/policy"
 	"hop.top/kit/go/console/output"
-	"hop.top/kit/go/transport/cmdsurface"
+	"hop.top/kit/go/transport/cmdsurface/admitted"
 )
 
 // Policy globals. Registered automatically on the root in
@@ -198,11 +198,36 @@ func (r *Root) startsServices(cmd *cobra.Command) bool {
 // answered at the bridge's permission gate. nil on the CLI and for a
 // served caller nobody established.
 func runCaller(cmd *cobra.Command) *policy.Caller {
-	meta, ok := cmdsurface.AdmittedMeta(cmd.Context())
+	c, ok := admitted.CallerFrom(cmd.Context())
 	if !ok {
 		return nil
 	}
-	return policyCaller(meta)
+	return PolicyCaller(c)
+}
+
+// PolicyCaller is the policy's view of an admitted caller: nil unless
+// the transport established it. A caller the transport itself vouches
+// for (the owner-only socket, stdio) holds the owner's authority and is
+// named by nothing it claims: it matches no rule and spends no budget
+// of another's name. A verified caller — by any verifier, peer
+// credentials on the socket included — holds its credential's scopes
+// only.
+//
+// The --policy check inside a served command and the served permission
+// gate both map the caller through it, so the two cannot disagree.
+func PolicyCaller(c admitted.Caller) *policy.Caller {
+	switch c.Established {
+	case admitted.EstablishedTransport:
+		return &policy.Caller{Owner: true}
+	case admitted.EstablishedVerified:
+		return &policy.Caller{
+			Principal: c.Principal,
+			Tenant:    c.Tenant,
+			Scopes:    c.Scopes,
+		}
+	default:
+		return nil
+	}
 }
 
 // renderPolicyError writes ce to cmd's stderr in the active --format

@@ -369,26 +369,12 @@ func budgetDecision(ctx context.Context, ledger *cmdsurface.UsageLedger, b polic
 	return cmdsurface.PermissionDecision{Allowed: true}
 }
 
-// policyCaller is the policy's view of the caller meta describes: nil
-// unless the transport established it. A caller the transport itself
-// vouches for (the owner-only socket, stdio) holds the owner's
-// authority and is named by nothing it claims: it matches no rule and
-// spends no budget of another's name. A verified caller — by any
-// verifier, peer credentials on the socket included — holds its
-// credential's scopes only.
+// policyCaller is the policy's view of the caller meta describes
+// ([PolicyCaller] over [cmdsurface.CallerOf]): the same mapping the
+// --policy check inside the served command applies to the caller the
+// bridge stamped for it.
 func policyCaller(meta cmdsurface.Meta) *policy.Caller {
-	switch meta.Established {
-	case cmdsurface.EstablishedTransport:
-		return &policy.Caller{Owner: true}
-	case cmdsurface.EstablishedVerified:
-		return &policy.Caller{
-			Principal: meta.Caller,
-			Tenant:    meta.Tenant,
-			Scopes:    meta.Scopes(),
-		}
-	default:
-		return nil
-	}
+	return PolicyCaller(cmdsurface.CallerOf(meta))
 }
 
 // isLoopbackAddr reports whether a host:port listen address binds a
