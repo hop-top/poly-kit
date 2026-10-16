@@ -36,6 +36,11 @@ var (
 		"hop.top/kit/go/storage/kv":             "the usage ledger store belongs to the serve plane",
 		"hop.top/kit/go/storage/kv/memory":      "the usage ledger store belongs to the serve plane",
 		"hop.top/kit/go/storage/kv/sqlite":      "the usage ledger store belongs to the serve plane",
+		// Peer discovery: go/console/cli/peers, with the mesh and its store.
+		"hop.top/kit/go/console/cli/peers": "peer discovery is opt-in (peers.With)",
+		"hop.top/kit/go/runtime/peer":      "the peer mesh belongs to go/console/cli/peers",
+		"hop.top/kit/go/storage/sqlstore":  "the peer store belongs to go/console/cli/peers",
+		"hop.top/kit/go/storage/sqldb":     "SQLite comes only with an opt-in store",
 		// The SQLite stores: opt-in packages of their own.
 		"hop.top/kit/go/runtime/bus/sqlite":           "the SQLite bus adapter is opt-in (sqlite.NewAdapter)",
 		"hop.top/kit/go/console/cli/idemstore/sqlite": "the SQLite idempotency store is opt-in (sqlite.Open)",
@@ -54,6 +59,9 @@ var (
 		"github.com/gofrs/flock":           "file locks come with the serve plane",
 		"github.com/aws/aws-lambda-go":     "the Lambda adapter comes with the bridge",
 		"github.com/robfig/cron/v3":        "cron comes with the bridge",
+		"modernc.org/sqlite":               "SQLite comes only with an opt-in store (peers, bus/sqlite, idemstore/sqlite)",
+		"github.com/hashicorp/mdns":        "mDNS comes with go/console/cli/peers",
+		"github.com/miekg/dns":             "DNS comes with mDNS, in go/console/cli/peers",
 	}
 )
 
@@ -86,9 +94,10 @@ func closure(t *testing.T, target string) (pkgs, mods map[string]bool) {
 }
 
 // TestCLIRootLinksNoServePlane pins that a kit CLI which never serves
-// links none of the serve plane, nor any opt-in service: they live in
-// go/console/cli/service, mcpserve, rpcserve and celpermission, and
-// only tools importing them pay for them.
+// links none of the serve plane, nor any opt-in service, nor SQLite or
+// mDNS: they live in go/console/cli/service, mcpserve, rpcserve,
+// celpermission, peers, bus/sqlite and idemstore/sqlite, and only
+// tools importing them pay for them.
 func TestCLIRootLinksNoServePlane(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs go list")

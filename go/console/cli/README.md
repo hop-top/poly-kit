@@ -79,6 +79,7 @@ accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
 | [`config/`](config/README.md) | `config path` and `config paths` subcommands: which file loads and the precedence chain |
 | [`conformance/`](conformance/README.md) | the `kit conformance` command tree and its exit codes |
 | [`idemstore/`](idemstore/README.md) | storage backend for `--idempotency-key` recorded results |
+| [`peers/`](peers/README.md) | peer discovery on a Root: `peers.With`, the mesh, registry and trust via `peers.Of`, the `peer` commands |
 | [`policy/`](policy/README.md) | delegation-safety policy YAML enforced per agent-driven invocation |
 | [`router/`](router/README.md) | `kit llm router` subtree: start, stop, list, inspect RouteLLM instances |
 | [`scope/`](scope/README.md) | `kit scope show`, `check`, `test`: would the path policy allow this path |

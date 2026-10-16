@@ -1,4 +1,13 @@
-package cli
+// Package peers adds peer discovery to a cli.Root: the peer mesh, its
+// registry and trust manager, and the `peer` command group. It attaches
+// through the Root's extension slot (cli.Extend), so a CLI that does
+// not discover peers links neither mDNS nor the peer store's SQLite.
+//
+//	root := cli.New(cfg, cli.WithIdentity(cli.IdentityConfig{}), peers.With(peers.Config{}))
+//	if m := peers.Of(root).Mesh; m != nil {
+//		go m.Start(ctx)
+//	}
+package peers
 
 import (
 	"fmt"
@@ -7,14 +16,15 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/core/util"
 	"hop.top/kit/go/runtime/peer"
 	"hop.top/kit/go/storage/sqlstore"
 )
 
-// PeerConfig configures peer mesh management.
-type PeerConfig struct {
+// Config configures peer mesh management.
+type Config struct {
 	// Discovery overrides the default discoverer. Nil = static (no-op).
 	Discovery peer.Discoverer
 	// Service is the mDNS service name (default "_kit._tcp").
@@ -24,22 +34,59 @@ type PeerConfig struct {
 	DataDir string
 }
 
-// WithPeers enables peer mesh management on the CLI root.
-func WithPeers(cfg PeerConfig) func(*Root) {
-	return func(r *Root) {
-		r.peerCfg = &cfg
+// Peers is a Root's peer mesh, registry and trust manager. They stay
+// nil until cli.New has initialized them, and stay nil when that
+// failed; the root's PersistentPreRunE then returns the failure.
+type Peers struct {
+	// Mesh is the peer mesh.
+	Mesh *peer.Mesh
+	// Registry is the peer registry the mesh and the `peer` commands
+	// read and write.
+	Registry *peer.Registry
+	// Trust is the trust manager over Registry.
+	Trust *peer.TrustManager
+
+	cfg Config
+}
+
+var key = cli.NewExtensionKey[*Peers]("peers")
+
+// With enables peer mesh management on the root. It requires
+// cli.WithIdentity, in either order: cli.New initializes the peers once
+// every option has run and the identity keypair is resolved. A second
+// With replaces the first one's Config.
+func With(cfg Config) func(*cli.Root) {
+	return func(r *cli.Root) {
+		p := cli.Extend(r, key, func(*cli.Root) *Peers { return &Peers{} })
+		p.cfg = cfg
 	}
 }
 
-// initPeers creates the registry, trust manager, mesh and attaches commands.
-func (r *Root) initPeers() error {
-	cfg := r.peerCfg
-	if cfg == nil {
-		return nil
+// Of returns r's peers. It never returns nil: without With, on a Root
+// not built by cli.New, on a nil Root, or when initialization failed,
+// Mesh, Registry and Trust are nil, as the Root fields they replace
+// were. Test the field, not the result: peers.Of(root).Mesh != nil. Of
+// attaches nothing.
+func Of(r *cli.Root) *Peers {
+	if p, ok := cli.Extension(r, key); ok {
+		return p
 	}
+	return &Peers{}
+}
+
+var _ cli.InitHook = (*Peers)(nil)
+
+// Init creates the registry, trust manager and mesh and mounts the
+// `peer` commands. cli.New calls it (cli.InitHook) after every option
+// has run and the identity keypair is resolved, and defers an error to
+// the root's PersistentPreRunE, so --help and completion still work.
+// The `peer` group is mounted after New's snapshot of reserved
+// subcommands, so it is not kit-reserved.
+func (p *Peers) Init(r *cli.Root) error {
+	cfg := p.cfg
 
 	if r.Identity == nil {
-		return fmt.Errorf("peer: WithPeers requires WithIdentity")
+		return fmt.Errorf("peer: peers.With requires cli.WithIdentity")
 	}
 
 	dataDir := cfg.DataDir
@@ -65,25 +112,21 @@ func (r *Root) initPeers() error {
 
 	tm := peer.NewTrustManager(registry, r.Identity)
 
-	// Build self PeerInfo from identity if available.
-	var self peer.PeerInfo
-	if r.Identity != nil {
-		pubPEM, _ := r.Identity.MarshalPublicKey()
-		self = peer.PeerInfo{
-			ID:        r.Identity.PublicKeyID(),
-			PublicKey: pubPEM,
-		}
+	pubPEM, _ := r.Identity.MarshalPublicKey()
+	self := peer.PeerInfo{
+		ID:        r.Identity.PublicKeyID(),
+		PublicKey: pubPEM,
 	}
 
-	r.PeerRegistry = registry
-	r.PeerTrust = tm
-	r.Mesh = peer.NewMesh(self, tm, disc)
+	p.Registry = registry
+	p.Trust = tm
+	p.Mesh = peer.NewMesh(self, tm, disc)
 
-	r.Cmd.AddCommand(peerCmd(r))
+	r.Cmd.AddCommand(peerCmd(r, p))
 	return nil
 }
 
-func peerCmd(r *Root) *cobra.Command {
+func peerCmd(r *cli.Root, p *Peers) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "peer",
 		Short: "Manage mesh peers",
@@ -91,10 +134,10 @@ func peerCmd(r *Root) *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		peerListCmd(r),
-		peerTrustCmd(r),
-		peerBlockCmd(r),
-		peerRevokeCmd(r),
+		peerListCmd(r, p),
+		peerTrustCmd(r, p),
+		peerBlockCmd(r, p),
+		peerRevokeCmd(r, p),
 	)
 	return cmd
 }
@@ -111,7 +154,7 @@ type peerRow struct {
 	LastSeen string `json:"last_seen" yaml:"last_seen" table:"Last Seen,priority=5"`
 }
 
-func peerListCmd(r *Root) *cobra.Command {
+func peerListCmd(r *cli.Root, p *Peers) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "Show known peers",
@@ -120,7 +163,7 @@ func peerListCmd(r *Root) *cobra.Command {
 			"addresses, and last-seen timestamp.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			records, err := r.PeerRegistry.List()
+			records, err := p.Registry.List()
 			if err != nil {
 				return err
 			}
@@ -144,9 +187,9 @@ func peerListCmd(r *Root) *cobra.Command {
 			return output.Render(r.Streams.Data, format, rows)
 		},
 	}
-	SetSideEffect(cmd, SideEffectRead)
-	SetIdempotency(cmd, IdempotencyYes)
-	_ = SetOutputSchema(cmd, OutputSchema{Type: &[]peerRow{}, Version: "1.0"})
+	cli.SetSideEffect(cmd, cli.SideEffectRead)
+	cli.SetIdempotency(cmd, cli.IdempotencyYes)
+	_ = cli.SetOutputSchema(cmd, cli.OutputSchema{Type: &[]peerRow{}, Version: "1.0"})
 	return cmd
 }
 
@@ -179,8 +222,8 @@ type peerTrustRow struct {
 
 // renderPeerTrust reads id back from the registry after a trust change
 // and renders the state it was left in.
-func renderPeerTrust(cmd *cobra.Command, r *Root, id string) error {
-	rec, err := r.PeerRegistry.Get(id)
+func renderPeerTrust(cmd *cobra.Command, r *cli.Root, p *Peers, id string) error {
+	rec, err := p.Registry.Get(id)
 	if err != nil {
 		return err
 	}
@@ -193,27 +236,27 @@ func renderPeerTrust(cmd *cobra.Command, r *Root, id string) error {
 // planPeerTrust is peer trust, block and revoke under --dry-run: it
 // reads the peer as the real run would, so an unknown peer fails the
 // same way, and plans the trust change without writing it.
-func planPeerTrust(cmd *cobra.Command, r *Root, id string, to peer.TrustLevel) error {
-	rec, err := r.PeerRegistry.Get(id)
+func planPeerTrust(cmd *cobra.Command, p *Peers, id string, to peer.TrustLevel) error {
+	rec, err := p.Registry.Get(id)
 	if err != nil {
 		return err
 	}
 	if rec == nil {
 		return output.NotFoundError(fmt.Sprintf("peer: %s not found", id))
 	}
-	return RenderPlan(cmd, Plan{
+	return cli.RenderPlan(cmd, cli.Plan{
 		Args: map[string]any{"id": id},
-		Effects: []Effect{{Kind: "update", Target: "peer:" + id, Reversible: true,
+		Effects: []cli.Effect{{Kind: "update", Target: "peer:" + id, Reversible: true,
 			Detail: "trust " + trustLabel(rec.Trust) + " -> " + trustLabel(to)}},
 	})
 }
 
 // setPeerTrustSchema declares the shape renderPeerTrust prints.
 func setPeerTrustSchema(cmd *cobra.Command) {
-	_ = SetOutputSchema(cmd, OutputSchema{Type: &peerTrustRow{}, Version: "1.0"})
+	_ = cli.SetOutputSchema(cmd, cli.OutputSchema{Type: &peerTrustRow{}, Version: "1.0"})
 }
 
-func peerTrustCmd(r *Root) *cobra.Command {
+func peerTrustCmd(r *cli.Root, p *Peers) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trust <id>",
 		Short: "Explicitly trust a peer",
@@ -222,22 +265,22 @@ func peerTrustCmd(r *Root) *cobra.Command {
 			"an already-trusted peer is a no-op.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if IsDryRun(cmd) {
-				return planPeerTrust(cmd, r, args[0], peer.Trusted)
+			if cli.IsDryRun(cmd) {
+				return planPeerTrust(cmd, p, args[0], peer.Trusted)
 			}
-			if err := r.PeerTrust.Trust(args[0]); err != nil {
+			if err := p.Trust.Trust(args[0]); err != nil {
 				return err
 			}
-			return renderPeerTrust(cmd, r, args[0])
+			return renderPeerTrust(cmd, r, p, args[0])
 		},
 	}
-	SetSideEffect(cmd, SideEffectWrite)
-	SetIdempotency(cmd, IdempotencyYes)
+	cli.SetSideEffect(cmd, cli.SideEffectWrite)
+	cli.SetIdempotency(cmd, cli.IdempotencyYes)
 	setPeerTrustSchema(cmd)
 	return cmd
 }
 
-func peerBlockCmd(r *Root) *cobra.Command {
+func peerBlockCmd(r *cli.Root, p *Peers) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "block <id>",
 		Short: "Block a peer",
@@ -246,22 +289,22 @@ func peerBlockCmd(r *Root) *cobra.Command {
 			"until explicitly trusted again.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if IsDryRun(cmd) {
-				return planPeerTrust(cmd, r, args[0], peer.Blocked)
+			if cli.IsDryRun(cmd) {
+				return planPeerTrust(cmd, p, args[0], peer.Blocked)
 			}
-			if err := r.PeerTrust.Block(args[0]); err != nil {
+			if err := p.Trust.Block(args[0]); err != nil {
 				return err
 			}
-			return renderPeerTrust(cmd, r, args[0])
+			return renderPeerTrust(cmd, r, p, args[0])
 		},
 	}
-	SetSideEffect(cmd, SideEffectWrite)
-	SetIdempotency(cmd, IdempotencyYes)
+	cli.SetSideEffect(cmd, cli.SideEffectWrite)
+	cli.SetIdempotency(cmd, cli.IdempotencyYes)
 	setPeerTrustSchema(cmd)
 	return cmd
 }
 
-func peerRevokeCmd(r *Root) *cobra.Command {
+func peerRevokeCmd(r *cli.Root, p *Peers) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "revoke <id>",
 		Short: "Revoke trust from a peer",
@@ -270,17 +313,17 @@ func peerRevokeCmd(r *Root) *cobra.Command {
 			"`peer trust`.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if IsDryRun(cmd) {
-				return planPeerTrust(cmd, r, args[0], peer.Unknown)
+			if cli.IsDryRun(cmd) {
+				return planPeerTrust(cmd, p, args[0], peer.Unknown)
 			}
-			if err := r.PeerTrust.Revoke(args[0]); err != nil {
+			if err := p.Trust.Revoke(args[0]); err != nil {
 				return err
 			}
-			return renderPeerTrust(cmd, r, args[0])
+			return renderPeerTrust(cmd, r, p, args[0])
 		},
 	}
-	SetSideEffect(cmd, SideEffectWrite)
-	SetIdempotency(cmd, IdempotencyYes)
+	cli.SetSideEffect(cmd, cli.SideEffectWrite)
+	cli.SetIdempotency(cmd, cli.IdempotencyYes)
 	setPeerTrustSchema(cmd)
 	return cmd
 }

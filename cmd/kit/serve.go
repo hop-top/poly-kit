@@ -32,6 +32,7 @@ import (
 	"hop.top/kit/engine/store"
 	"hop.top/kit/go/ai/toolspec"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/peers"
 	"hop.top/kit/go/console/cli/service"
 	kitlog "hop.top/kit/go/console/log"
 	"hop.top/kit/go/console/serve"
@@ -297,10 +298,10 @@ func (e *engine) registerRoutes(router *api.Router, root *cli.Root) {
 		if root.Identity != nil {
 			registerIdentityRoutes(cr, root)
 		}
-		if root.Mesh != nil && !e.noPeer {
-			registerPeerRoutes(cr, root)
+		if p := peers.Of(root); p.Mesh != nil && !e.noPeer {
+			registerPeerRoutes(cr, p)
 			go func() {
-				if err := root.Mesh.Start(e.bg); err != nil {
+				if err := p.Mesh.Start(e.bg); err != nil {
 					kitlog.New(root.Viper).Error("mesh start", "error", err)
 				}
 			}()
@@ -771,14 +772,13 @@ func registerIdentityRoutes(router routeRegistrar, root *cli.Root) {
 	})
 }
 
-func registerPeerRoutes(router routeRegistrar, root *cli.Root) {
+func registerPeerRoutes(router routeRegistrar, p *peers.Peers) {
 	router.Handle("GET", "/peers", func(w http.ResponseWriter, _ *http.Request) {
-		peers := root.Mesh.Peers()
-		_ = json.NewEncoder(w).Encode(peers)
+		_ = json.NewEncoder(w).Encode(p.Mesh.Peers())
 	})
 
 	router.Handle("POST", "/peers/{id}/trust", func(w http.ResponseWriter, r *http.Request) {
-		if err := root.PeerTrust.Trust(api.PathParam(r, "id")); err != nil {
+		if err := p.Trust.Trust(api.PathParam(r, "id")); err != nil {
 			jsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -786,7 +786,7 @@ func registerPeerRoutes(router routeRegistrar, root *cli.Root) {
 	})
 
 	router.Handle("POST", "/peers/{id}/block", func(w http.ResponseWriter, r *http.Request) {
-		if err := root.PeerTrust.Block(api.PathParam(r, "id")); err != nil {
+		if err := p.Trust.Block(api.PathParam(r, "id")); err != nil {
 			jsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}

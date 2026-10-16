@@ -213,6 +213,7 @@ Deep dives: [`expose-cli-over-rest.md`](../guides/expose-cli-over-rest.md),
 | domain/version | Append-only version DAG over a domain repository | Entity history you can walk | `hop.top/kit/go/runtime/domain/version` |
 | sync | Local-first entity replication across multiple remotes, HLC clock | Offline-capable data that reconciles later | `hop.top/kit/go/runtime/sync` |
 | peer | Decentralised peer discovery and trust mesh, TOFU | Peer-to-peer tool topologies | `hop.top/kit/go/runtime/peer` |
+| peers | The peer mesh on a `cli.Root`: `peers.With`, `peers.Of(root).Mesh`, and the `peer` commands | Your CLI discovers and trusts peers | `hop.top/kit/go/console/cli/peers` |
 
 Job backends — the core types are engine-agnostic; pick one:
 
@@ -406,6 +407,7 @@ root, rather than an API to call.
 | spec | `<tool> spec` — emit your toolspec manifest | `hop.top/kit/go/ai/toolspec/cli` |
 | audit | `audit verify` — check the served transports' audit chain; mount with `service.WithAuditCommand()` | `hop.top/kit/go/console/cli/service` |
 | quota | `quota show`, `quota reset` — read and clear the served quotas' counts; mount with `service.WithQuotaCommand()` | `hop.top/kit/go/console/cli/service` |
+| peer | `peer list/trust/block/revoke` — the mesh's known peers and their trust; mount with `peers.With(peers.Config{})` | `hop.top/kit/go/console/cli/peers` |
 | upgrade | Self-upgrade and migration commands | `hop.top/kit/go/core/upgrade` |
 
 ## What is not in this index

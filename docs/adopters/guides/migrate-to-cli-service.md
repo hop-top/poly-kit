@@ -7,13 +7,25 @@ You're here because your kit tool serves — it passes `WithAPI`,
 plane moved out of `go/console/cli` into its own package. This page is
 the whole migration: one rewrite per moved name, plus an import.
 
+The same release moved the SQLite bus adapter, the SQLite idempotency
+store and peer discovery into opt-in packages. If the compiler reports
+`undefined: bus.NewSQLiteAdapter`, `undefined: idemstore.OpenSQLite`,
+`undefined: cli.WithPeers` or `root.Mesh undefined`, see
+[The SQLite bus adapter](#the-sqlite-bus-adapter),
+[The SQLite idempotency store](#the-sqlite-idempotency-store) and
+[Peer discovery](#peer-discovery).
+
 ## What moved, and why
 
 A CLI that never serves no longer links the HTTP API, the socket,
-authentication, TLS, audit, quota, rate limit or the transport bridge.
-On darwin/arm64, a CLI built on `cli.Root` alone shrank from 31.3 MB
-to 26.0 MB (21.0 MB to 17.4 MB stripped) and from 74 linked modules to
-64. A CLI that serves links what it linked before.
+authentication, TLS, audit, quota, rate limit or the transport bridge,
+and one that uses neither the SQLite stores nor peers links no SQLite
+and no mDNS. On darwin/arm64, a CLI built on `cli.Root` alone shrank
+from 31.3 MB to 18.6 MB (21.0 MB to 12.6 MB stripped) and from 74
+linked modules to 53: the serve plane accounts for 5.3 MB and 10
+modules of that, the SQLite stores and peers for 7.4 MB and 11
+modules. A CLI that serves links what it linked before, less mDNS if
+it does not use peers.
 
 The serve options, types and constants moved to
 `hop.top/kit/go/console/cli/service` with the same names, and the three
@@ -138,7 +150,9 @@ A project generated from the `cli-go` template needs these edits in
 `cli.WithSocket(cli.SocketConfig{})` become `service.WithAPI(…)` and
 `service.WithSocket(…)`, and the import block gains
 `"hop.top/kit/go/console/cli/service"`. The rules above make both
-edits; a project generated after the move already has them.
+edits; a project generated after the move already has them. The
+SQLite and peer moves need no edit there: the template uses none of
+their names.
 
 ## The SQLite bus adapter
 
@@ -219,6 +233,73 @@ A file that imports another package named `sqlite` aliases one of
 them, as for the bus adapter. A tool that serves needs no edit: the
 served transports' default replay store already opens through the new
 package.
+
+## Peer discovery
+
+The compiler reports `undefined: cli.WithPeers` or
+`root.Mesh undefined (type *cli.Root has no field or method Mesh)`.
+Peer discovery moved out of `go/console/cli` into
+`hop.top/kit/go/console/cli/peers`, so a CLI that does not discover
+peers links neither mDNS nor the peer store's SQLite. The option and
+its config are renamed, and the three `Root` fields became an
+accessor:
+
+| Before | After |
+|--------|-------|
+| `cli.WithPeers(cli.PeerConfig{…})` | `peers.With(peers.Config{…})` |
+| `cli.PeerConfig` | `peers.Config` |
+| `root.Mesh` | `peers.Of(root).Mesh` |
+| `root.PeerRegistry` | `peers.Of(root).Registry` |
+| `root.PeerTrust` | `peers.Of(root).Trust` |
+
+The option and the config type are one rule each:
+
+```sh
+gofmt -w -r 'cli.WithPeers -> peers.With' .
+gofmt -w -r 'cli.PeerConfig -> peers.Config' .
+```
+
+Then add the import, `"hop.top/kit/go/console/cli/peers"`.
+`peers.With` still requires `cli.WithIdentity`, in either order, and
+`peers.Config` keeps its fields (`Discovery`, `Service`, `DataDir`).
+
+The field accesses have no rule: a `gofmt -r` pattern cannot tell a
+`*cli.Root` from any other value with a `Mesh` field. Rewrite each one
+the compiler names:
+
+```go
+// before
+root := cli.New(cfg, cli.WithIdentity(cli.IdentityConfig{}), cli.WithPeers(cli.PeerConfig{}))
+mesh, reg, trust := root.Mesh, root.PeerRegistry, root.PeerTrust
+
+// after
+root := cli.New(cfg, cli.WithIdentity(cli.IdentityConfig{}), peers.With(peers.Config{}))
+p := peers.Of(root)
+mesh, reg, trust := p.Mesh, p.Registry, p.Trust
+```
+
+`peers.Of` never returns nil, so a "peers configured" check stays on
+the field. The tempting rewrite, `peers.Of(root) != nil`, is always
+true:
+
+```go
+// before
+if root.Mesh != nil && !noPeer {
+
+// after: not peers.Of(root) != nil
+if peers.Of(root).Mesh != nil && !noPeer {
+```
+
+The `peer` commands, their flags and output, the registry file and
+its location are unchanged. If initialization fails (no
+`cli.WithIdentity`, or the store does not open), the root's
+`PersistentPreRunE` still returns the error after `--chdir` ran; its
+text now names the new option: `peer: peers.With requires
+cli.WithIdentity`.
+
+A package named `peers` clashes with a local variable of that name in
+the scope that uses it, such as `peers := root.Mesh.Peers()`; rename
+the variable.
 
 ## Planes outside kit
 
