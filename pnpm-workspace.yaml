@@ -16,3 +16,16 @@ allowBuilds:
 # pnpm install idempotent across local + CI; same family of pnpm 11
 # default flip as the strictDepBuilds gate above.
 confirmModulesPurge: false
+# Transitive pins for advisories whose fixed release sits outside the
+# range the parent declares. Drop an entry once its parent ships a range
+# that resolves to a fixed release on its own.
+overrides:
+  # tsup 8.5.1 declares esbuild ^0.27.0; 0.27.3 through 0.28.0 allow an
+  # arbitrary file read through the dev server on Windows (fixed 0.28.1);
+  # 0.28.2 matches the direct esbuild devDependency in sdk/ts.
+  # tsup only bundles here and never runs the esbuild dev server.
+  tsup>esbuild: 0.28.2
+  # typeid-js 1.2.0 (latest) declares uuid ^10.0.0; the missing buffer
+  # bounds check is in v3/v5/v6, and typeid-js calls only v7 and stringify.
+  # 11.1.1 is the first release carrying the fix and keeps the CommonJS entry.
+  typeid-js>uuid: 11.1.1
