@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0-alpha.26](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.25...kit/v0.5.0-alpha.26) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sqlstore:** `BackupBeforeMigrate` default backup names include the database file's extension (app.db.pre-v3.20260101-000000.bak, was app.pre-v3.20260101-000000.bak). Callers locating backups by name must match the new prefix; `WithNaming` restores any other scheme.
+
+### Bug Fixes
+
+* **sqlstore:** `Restore` drops stale WAL sidecars, fsyncs dir ([57f9f1a](https://github.com/hop-top/poly-kit/commit/57f9f1a9c1bc13e849799f0085222e3c537cd9bf))
+* **sqlstore:** consistent `BackupBeforeMigrate` snapshot via VACUUM INTO ([1a1a82f](https://github.com/hop-top/poly-kit/commit/1a1a82ffd26b3a7cc0ac36ff523075b520a3015e))
+* **sqlstore:** default backup name keeps db extension ([a80e167](https://github.com/hop-top/poly-kit/commit/a80e167d4d4c86fd02c5e60d1770b8c45d6a56e9))
+
 ## [0.5.0-alpha.25](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.24...kit/v0.5.0-alpha.25) (2026-10-12)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.25. This release includes new features and bug fixes.
