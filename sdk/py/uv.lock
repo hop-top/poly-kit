@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -248,7 +248,7 @@ wheels = [
 
 [[package]]
 name = "hop-top-kit"
-version = "0.5.0a5"
+version = "0.5.0a6"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
