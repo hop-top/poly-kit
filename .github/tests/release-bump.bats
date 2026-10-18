@@ -40,14 +40,19 @@ at() {
 
 @test "breaking: footers and headers count as release-please parses them" {
     land "$(printf 'feat(q): a\n\nBREAKING CHANGE: Stop takes a deadline')" "$QM/q.go"
-    land "$(printf 'fix(q): b\n\nnote: BREAKING-CHANGE: shutdown is capped')" "$QM/q.go"
+    land "$(printf 'fix(q): b\n\nshutdown is capped, BREAKING-CHANGE: see the docs')" "$QM/q.go"
     land 'feat!:no space' "$QM/q.go"
-    land "$(printf 'docs(q): c\n\nno BREAKING CHANGE: here, mid-line')" "$QM/q.go"
+    land "$(printf 'fix(q): c\n\nwip!: renderer API')" "$QM/q.go"
+    land "$(printf 'docs(q): d\n\nno BREAKING CHANGE: here, mid-line')" "$QM/q.go"
+    # A footer: its value is not body text.
+    land "$(printf 'fix(q): e\n\nnote: BREAKING-CHANGE: in a footer')" "$QM/q.go"
     pr="$(release_pr qmochi "$QM" 0.2.0-alpha.2)"
     check "$pr"
     [ "$status" -eq 1 ]
-    [[ "$output" == *"3 breaking commit(s)"* ]] || false
-    [[ "$output" != *"docs(q): c"* ]]
+    [[ "$output" == *"4 breaking commit(s)"* ]] || false
+    [[ "$output" == *"fix(q): c"* ]] || false
+    [[ "$output" != *"docs(q): d"* ]] || false
+    [[ "$output" != *"fix(q): e"* ]]
 }
 
 @test "breaking: x.(y+1).0-alpha.0 or its stable form passes" {

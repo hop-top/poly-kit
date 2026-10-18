@@ -92,6 +92,76 @@ breaking() {
     [ "$(breaking "$(printf 'Some title\n\nfeat(x)!: y')")" = 0 ]
     [ "$(breaking "$(printf 'Merge branch x\n\nBREAKING CHANGE: y')")" = 0 ]
     [ "$(breaking "$(printf 'fix: x\n\n\nfeat: y\n\nBREAKING CHANGE: z')")" = 1 ]
+    [ "$(breaking "$(printf 'chore: squash\n\nBEGIN_NESTED_COMMIT\nfeat!: x\nEND_NESTED_COMMIT')")" = 1 ]
+}
+
+@test "parser: a trailing footer whose token ends in ! is a breaking commit" {
+    [ "$(breaking "$(printf 'fix: a\n\nwip!: b')")" = 1 ]
+    [ "$(breaking "$(printf 'fix: a\nfeat!: b')")" = 1 ]
+    [ "$(breaking "$(printf 'fix: a\n\nRefs!: 12')")" = 1 ]
+    [ "$(breaking "$(printf 'fix: a\n\nbody\n\nfeat(x)!: b')")" = 1 ]
+    [ "$(breaking "$(printf 'fix: a\n\nRefs: 1\nwip!: b')")" = 1 ]
+    [ "$(breaking "$(printf 'fix: a\n\nfeat!: b\n  continued\nRefs: 1')")" = 1 ]
+    [ "$(breaking "$(printf 'fix: a\n\nBREAKING-CHANGES: y\nwip!: b')")" = 1 ]
+    [ "$(breaking 'fix! #12')" = 1 ]
+    # Not trailing footers, or nothing after the colon.
+    [ "$(breaking "$(printf 'fix: a\n\nfeat!: b\n\nmore body')")" = 0 ]
+    [ "$(breaking "$(printf 'fix: a\n\nsome body\nwip!: b\nmore')")" = 0 ]
+    [ "$(breaking "$(printf 'fix: a\n\nwip!:')")" = 0 ]
+}
+
+@test "parser: the last breaking marker needs text; footers are not body" {
+    [ "$(breaking "$(printf 'fix: x\n\nBREAKING CHANGE:\nmore text')")" = 1 ]
+    [ "$(breaking "$(printf 'fix: x\n\nBREAKING CHANGE #3')")" = 1 ]
+    [ "$(breaking "$(printf 'fix: a\n\nfoo: bar\n  BREAKING CHANGE: x')")" = 1 ]
+    [ "$(breaking "$(printf 'fix: x\n\nBREAKING CHANGE:\nRefs: 12')")" = 0 ]
+    [ "$(breaking "$(printf 'feat!: x\n\nBREAKING CHANGE:')")" = 0 ]
+    [ "$(breaking "$(printf 'fix: x\n\nBREAKING CHANGE: y\n   \nRefs: 1')")" = 0 ]
+    [ "$(breaking "$(printf 'fix: a\n\nnote: BREAKING-CHANGE: capped')")" = 0 ]
+    [ "$(breaking "$(printf 'fix: a\n\nBREAKING CHANGES: y')")" = 0 ]
+}
+
+@test "parser: a scope left open drops the message; leading blanks are trimmed" {
+    [ "$(breaking "$(printf 'feat!: a\n\nfoo(bar')")" = 0 ]
+    [ "$(breaking "$(printf 'feat!: a\n\nsee foo(bar')")" = 1 ]
+    [ "$(breaking '  feat!: lead')" = 1 ]
+}
+
+@test "parser: one record per commit, footers included" {
+    lib "rp_parse_commits \"\$(printf 'feat(x)!: a\n\nRefs!: 12\nRelease-As: 1.2.3')\" | LC_ALL=C sort"
+    [ "$output" = "$(printf 'Refs\t\t1\t1\t0\nRelease-As\t\t0\t0\t0\nfeat\tx\t1\t1\t1')" ]
+}
+
+# visible <message> [config]: prints 1 when rp_visible accepts it for package p.
+visible() {
+    local cfg='{"packages": {"p": {}}}'
+    [ $# -lt 2 ] || cfg="$2"
+    bash -c '. "$1" && if rp_visible "$3" p "$2"; then echo 1; else echo 0; fi' _ \
+        "$SCRIPTS/release-lib.sh" "$1" "$cfg"
+}
+
+@test "visible: what puts a line in the changelog, as release-please writes it" {
+    [ "$(visible 'fix(q): x')" = 1 ]
+    [ "$(visible 'Feat: x')" = 1 ]
+    [ "$(visible 'chore(q)!: x')" = 1 ]
+    [ "$(visible "$(printf 'ci: a\n\nBREAKING CHANGE: b')")" = 1 ]
+    [ "$(visible "$(printf 'chore: x\n\nRelease-As: 1.2.3')")" = 1 ]
+    [ "$(visible "$(printf 'test(x): y\n\nfix: real')")" = 1 ]
+    [ "$(visible 'chore(q): tidy')" = 0 ]
+    [ "$(visible 'docs: x')" = 0 ]
+    [ "$(visible 'wip: x')" = 0 ]
+    [ "$(visible "$(printf 'chore: x\n\nRelease-As: nope')")" = 0 ]
+}
+
+@test "visible: changelog-sections decide, the first entry for a type winning" {
+    cfg='{"changelog-sections": [{"type": "docs", "section": "Docs"},
+        {"type": "chore", "section": "Misc", "hidden": true},
+        {"type": "chore", "scope": "deps", "section": "Deps"}], "packages": {"p": {}}}'
+    [ "$(visible 'docs: x' "$cfg")" = 1 ]
+    [ "$(visible 'fix: x' "$cfg")" = 0 ]
+    [ "$(visible 'chore(deps): y' "$cfg")" = 0 ]
+    cfg='{"packages": {"p": {"changelog-sections": [{"type": "ci", "section": "CI"}]}}}'
+    [ "$(visible 'ci: x' "$cfg")" = 1 ]
 }
 
 @test "semver: precedence follows the spec" {

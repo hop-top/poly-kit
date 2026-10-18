@@ -19,14 +19,22 @@
 #   to true, tag-separator to "-", include-v-in-tag to true. A package's own
 #   setting wins over the top-level one, as for release-as.
 #
-#   Breaking changes (commit.js). A message splits into one commit per
-#   paragraph that opens with a lowercase conventional type and ": ". A part
-#   counts only when its header parses (type, optional non-empty scope,
-#   optional "!", ":", a subject), and is breaking when the header has "!"
-#   before the colon, a body line starts with "BREAKING CHANGE:" followed by
-#   text, or a body line holds "BREAKING-CHANGE:" with text after it.
-#   BEGIN_NESTED_COMMIT blocks and BEGIN_COMMIT_OVERRIDE pull request bodies
-#   are not mirrored.
+#   Commit parsing (commit.js on @conventional-commits/parser 0.4). Each
+#   BEGIN_NESTED_COMMIT..END_NESTED_COMMIT block is a message of its own, and
+#   the rest splits into one message per paragraph that opens with a
+#   lowercase conventional type and ": ". A message, trimmed, is a header,
+#   a body, then footers: the trailing lines that each open with a token
+#   ("BREAKING CHANGE", "BREAKING-CHANGE", "!", or a type with an optional
+#   scope and "!") and a ":" or " #" separator, or that indent a footer's
+#   continuation. A header that does not parse, or a line that opens a scope
+#   ("<type>(") and never closes it, drops the message. A footer with a type
+#   is parsed again as a commit of its own, so "Refs!: 12" is a breaking
+#   commit. A commit is breaking when the last of its breaking markers has
+#   text: "!" in the header (the subject), a body line that opens with
+#   "BREAKING CHANGE:" or "BREAKING-CHANGE:" (the rest of the body from
+#   there), a BREAKING CHANGE footer (its last line); or when its body holds
+#   "BREAKING-CHANGE:" with text anywhere after it. BEGIN_COMMIT_OVERRIDE
+#   pull request bodies are not mirrored.
 #
 # Linked groups are this repo's own: the top-level "x-linked-groups" key of
 # the release-please config, which release-please ignores, lists each
@@ -148,36 +156,191 @@ rp_commit_files() {
     jq -Rs 'split("\u0000") | map(select(length > 0))'
 }
 
+# rp_parse_commits <message> [breaking] — the commits release-please parses
+# from the message (see the header), one per line:
+#   <type> TAB <scope> TAB <breaking> TAB <"!" in the header> TAB <a Release-As
+#   footer with a version>
+# the last three 1 or 0. With "breaking" it prints nothing and succeeds when
+# one of them is breaking. NBSP and ZWNBSP, whitespace to the parser, read as
+# a tab, which is whitespace to it too; a lone CR ends a line, as a CRLF does.
+rp_parse_commits() {
+  printf '%s\n' "$1" | LC_ALL=C awk -v mode="${2:-}" '
+    function wstrip(s) { sub(/^[ \t\v\f]+/, "", s); return s }
+
+    # head(s): the footer token s opens with: 0 none, 1 BREAKING CHANGE or
+    # BREAKING-CHANGE, 2 "!", 3 a type; sets HT (type), HS ("(scope)"), HB
+    # ("!" or empty), HP (separator) and HV (the value on this line). A
+    # matched marker that misses its separator is no footer at all.
+    function head(s,   r, kind) {
+      HT = ""; HS = ""; HB = ""
+      if (substr(s, 1, 1) == "!") { r = substr(s, 2); kind = 2 }
+      else if (s ~ /^BREAKING[ -]CHANGE/) { r = substr(s, 16); kind = 1 }
+      else {
+        if (!match(s, /^[^()!: \t\v\f]+/)) return 0
+        HT = substr(s, 1, RLENGTH); r = substr(s, RLENGTH + 1)
+        if (substr(r, 1, 1) == "(") {
+          if (!match(r, /^\([^()]+\)/)) return 0
+          HS = substr(r, 1, RLENGTH); r = substr(r, RLENGTH + 1)
+        }
+        if (substr(r, 1, 1) == "!") { HB = "!"; r = substr(r, 2) }
+        kind = 3
+      }
+      if (substr(r, 1, 1) == ":") { HP = ":"; r = substr(r, 2) }
+      else if (substr(r, 1, 2) == " #") { HP = " #"; r = substr(r, 3) }
+      else return 0
+      HV = wstrip(r)
+      return kind
+    }
+
+    # parse(d): parse the message L[d, 1..N[d]]; add a record per commit.
+    # bt follows the text of the last breaking marker seen.
+    function parse(d,   n, s, e, i, j, k, m, p, typ, scp, bang, bt, hit, ra,
+                        fs, be, bl, f, fr, b, t, kind, ht, hs, hb, hp, last, nf) {
+      n = N[d]
+      s = 1; while (s <= n && L[d, s] ~ /^[ \t\v\f]*$/) s++
+      if (s > n) return
+      e = n; while (L[d, e] ~ /^[ \t\v\f]*$/) e--
+      L[d, s] = wstrip(L[d, s]); sub(/[ \t\v\f]+$/, "", L[d, e])
+      if (!match(L[d, s], /^[^()!: \t\v\f]+(\([^()]+\))?!?(:| #)/)) return
+      p = substr(L[d, s], 1, RLENGTH - (substr(L[d, s], RLENGTH, 1) == ":" ? 1 : 2))
+      bt = wstrip(substr(L[d, s], RLENGTH + 1))
+      bang = substr(p, length(p)) == "!"
+      if (bang) p = substr(p, 1, length(p) - 1); else bt = ""
+      typ = p; scp = ""
+      if ((i = index(p, "(")) > 0) {
+        typ = substr(p, 1, i - 1); scp = substr(p, i + 1, length(p) - i - 1)
+      }
+      # A scope left open throws in the parser: no commit at all.
+      for (i = s + 1; i <= e; i++) {
+        if (L[d, i] ~ /^BREAKING[ -]CHANGE/ || !match(L[d, i], /^[^()!: \t\v\f]+\(/)) continue
+        if (substr(L[d, i], RLENGTH + 1) !~ /^[^()]*\)/) return
+      }
+      hit = 0; ra = 0
+      if (s < e) {
+        # OK[d, i]: every line from i on opens a footer or continues one.
+        OK[d, e + 1] = 1
+        for (i = e; i > s; i--)
+          OK[d, i] = (L[d, i] == "") ? OK[d, i + 1] : \
+            (OK[d, i + 1] && (head(L[d, i]) || L[d, i] ~ /^[ \t\v\f]/))
+        k = s + 1; while (L[d, k] == "") k++
+        fs = k
+        if (!(head(L[d, k]) && OK[d, k + 1])) {
+          fs = 0
+          for (i = k + 1; i <= e && !fs; i++)
+            if (L[d, i] != "" && head(L[d, i]) && OK[d, i + 1]) fs = i
+          be = fs ? fs - 1 : e
+          # The body: its first marker line, and its text without markers.
+          f = 0; fr = ""; b = ""; bl = 0
+          for (i = k; i <= be; i++) {
+            if ((t = L[d, i]) == "") continue
+            if (t ~ /^BREAKING[ -]CHANGE:/) {
+              t = wstrip(substr(t, 17))
+              if (!f) { f = i; fr = t }
+            } else if (t ~ /^BREAKING[ -]CHANGE/) t = substr(t, 16)
+            b = b "\n" t; bl = i
+          }
+          if (f) bt = (fr != "" || f < bl) ? "x" : ""
+          if ((j = index(b, "BREAKING-CHANGE:")) > 0 && substr(b, j + 16) ~ /[^ \t\n\v\f]/) hit = 1
+        }
+        # The footers. FT[d, ...] rebuilds a typed footer as the message the
+        # parser reads it as: "<type>(<scope>)!: <value>", continuations on
+        # lines of their own, a " #" separator dropped.
+        for (i = fs; fs && i <= e; ) {
+          kind = head(L[d, i]); ht = HT; hs = HS; hb = HB; hp = HP; last = HV
+          nf = 1; FT[d, 1] = ht hs hb (hp == ":" ? ": " : "") HV
+          for (j = i + 1; ; j = m + 1) {
+            m = j; while (m <= e && L[d, m] == "") m++
+            if (m > e || L[d, m] !~ /^[ \t\v\f]/) break
+            while (j < m) FT[d, ++nf] = L[d, j++]
+            last = wstrip(L[d, m]); FT[d, ++nf] = last
+          }
+          if (kind == 1) bt = last
+          if (kind == 3) {
+            if (tolower(ht) == "release-as" && last ~ /^[A-Za-z0-9_]*@?[0-9]+\.[0-9]+\.[0-9A-Za-z]/) ra = 1
+            N[d + 1] = nf
+            for (m = 1; m <= nf; m++) L[d + 1, m] = FT[d, m]
+            parse(d + 1)
+          }
+          for (i = j; i <= e && L[d, i] == ""; i++) ;
+        }
+      }
+      gsub(/\t/, " ", scp)
+      OUT[++NO] = typ "\t" scp "\t" ((hit || bt != "") ? 1 : 0) "\t" bang "\t" ra
+    }
+
+    # load(a, b): the lines M[a..b] as the message L[1, ...].
+    function load(a, b,   i, j, c, x) {
+      N[1] = 0
+      for (i = a; i <= b; i++) {
+        x = M[i]; sub(/\r$/, "", x)
+        c = split(x, PC, "\r")
+        if (c == 0) L[1, ++N[1]] = ""
+        for (j = 1; j <= c; j++) L[1, ++N[1]] = PC[j]
+      }
+    }
+
+    { raw[++nr] = $0 }
+
+    END {
+      for (i = 1; i <= nr; i++) msg = msg (i > 1 ? "\n" : "") raw[i]
+      gsub(/\302\240|\357\273\277/, "\t", msg)
+      main = msg; nn = 0
+      if ((p = index(msg, "BEGIN_NESTED_COMMIT")) > 0) {
+        main = substr(msg, 1, p - 1); rest = substr(msg, p + 19)
+        for (;;) {
+          p = index(rest, "BEGIN_NESTED_COMMIT")
+          seg = p ? substr(rest, 1, p - 1) : rest
+          if ((q = index(seg, "END_NESTED_COMMIT")) > 0) {
+            nest[++nn] = substr(seg, 1, q - 1); main = main substr(seg, q + 17)
+          } else nest[++nn] = seg
+          if (!p) break
+          rest = substr(rest, p + 19)
+        }
+      }
+      n = split(main, M, "\n"); a = 1
+      for (i = 3; i <= n; i++)
+        if ((M[i - 1] == "" || M[i - 1] == "\r") &&
+            M[i] ~ /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^\r]*\))?: /) {
+          load(a, i - 2); parse(1); a = i
+        }
+      load(a, n); parse(1)
+      for (k = 1; k <= nn; k++) { n = split(nest[k], M, "\n"); load(1, n); parse(1) }
+      if (mode == "breaking") {
+        for (i = 1; i <= NO; i++) if (split(OUT[i], R, "\t") && R[3] == 1) exit 0
+        exit 1
+      }
+      for (i = 1; i <= NO; i++) print OUT[i]
+    }'
+}
+
 # rp_is_breaking <message> — succeeds when release-please would count a
 # commit parsed from the message as breaking (see the header).
 rp_is_breaking() {
-  printf '%s\n' "$1" | awk '
-    function flush(   i, line, rest, pending) {
-      if (n == 0) return
-      if (lines[1] ~ /^[A-Za-z0-9_-]+(\([^()]+\))?!?:[ \t]*[^ \t]/) {
-        if (lines[1] ~ /^[A-Za-z0-9_-]+(\([^()]+\))?!:/) found = 1
-        pending = 0
-        for (i = 2; i <= n; i++) {
-          line = lines[i]
-          if (line ~ /^BREAKING CHANGE:[ \t]*[^ \t]/) found = 1
-          if (pending && line ~ /[^ \t]/) found = 1
-          if (match(line, /BREAKING-CHANGE:/)) {
-            rest = substr(line, RSTART + RLENGTH)
-            if (rest ~ /[^ \t]/) found = 1; else pending = 1
-          }
-        }
-      }
-      n = 0
-    }
-    {
-      sub(/\r$/, "")
-      if (NR > 1 && prev == "" &&
-          $0 ~ /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.*\))?: /)
-        flush()
-      lines[++n] = $0
-      prev = $0
-    }
-    END { flush(); exit(found ? 0 : 1) }'
+  rp_parse_commits "$1" breaking
+}
+
+# rp_visible <config-json> <path> <message> — succeeds when a commit parsed
+# from the message puts a line in package <path>'s changelog, without which
+# release-please opens no release PR for it, pin or not: its type has a
+# section that is not hidden (the package's changelog-sections, else the
+# top-level ones, else release-please's defaults), it is breaking, its header
+# has "!" after a type of word characters, or it carries a Release-As footer
+# with a version.
+rp_visible() {
+  rp_parse_commits "$3" | jq -R -s -e --argjson cfg "$1" --arg p "$2" '
+    ($cfg.packages[$p]["changelog-sections"] // $cfg["changelog-sections"] // [
+      {type: "feat"}, {type: "feature"}, {type: "fix"}, {type: "perf"},
+      {type: "revert"}, {type: "docs", hidden: true}, {type: "style", hidden: true},
+      {type: "chore", hidden: true}, {type: "refactor", hidden: true},
+      {type: "test", hidden: true}, {type: "build", hidden: true},
+      {type: "ci", hidden: true}]) as $sections
+    | split("\n") | map(select(length > 0) | split("\t"))
+    | any(.[]; . as [$type, $scope, $breaking, $bang, $release_as]
+        | $breaking == "1" or $release_as == "1"
+          or ($bang == "1" and ($type | test("^[A-Za-z0-9_]*$")))
+          or ((first($sections[] | select(.type == ($type | ascii_downcase)
+                and ((.scope // "") == "" or .scope == $scope))) // {hidden: true})
+              | .hidden != true))' >/dev/null
 }
 
 # rp_semver_valid <version>

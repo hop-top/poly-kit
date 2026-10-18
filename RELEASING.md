@@ -233,11 +233,14 @@ too, see [Linked releases](#linked-releases).
 
 A commit is breaking when release-please's parser says so: a `!` before the
 colon of a conventional header (`feat!:x` included), a body line that starts
-with `BREAKING CHANGE:` and text, or `BREAKING-CHANGE:` and text anywhere in a
-body line. A paragraph that opens with a lowercase type, a colon and a space
-counts as its own commit. A commit counts for a component when release-please routes it
-there: its files, the component's path and `exclude-paths`. Dependency bumps
-marked `!` (`build(deps)!:`) count.
+with `BREAKING CHANGE:` and text, a `BREAKING CHANGE:` footer with text,
+`BREAKING-CHANGE:` and text anywhere in the body, or a trailing footer whose
+token ends in `!` (`wip!: x`, `Refs!: 12`), which release-please parses as a
+breaking commit of its own. A paragraph that opens with a lowercase type, a
+colon and a space counts as its own commit. `scripts/release-lib.sh` has the
+full rules, corner cases included. A commit counts for a component when
+release-please routes it there: its files, the component's path and
+`exclude-paths`. Dependency bumps marked `!` (`build(deps)!:`) count.
 
 release-please does not do this by itself: while the manifest carries a
 prerelease suffix it bumps the counter whatever the commits say. Three pieces
