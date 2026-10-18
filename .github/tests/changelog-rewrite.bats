@@ -226,12 +226,14 @@ pin_fixture() {
 ### Miscellaneous
 
 * **release:** start group kit 0.6.0-alpha.0 ([e8f4601](https://github.com/hop-top/poly-kit/commit/e8f460105961fa394570d3a6e1b7fe3df37f9247))
+* **release:** start kit-py 0.6.0-alpha.0 ([#12](https://github.com/hop-top/poly-kit/issues/12)) ([0a1b2c3](https://github.com/hop-top/poly-kit/commit/0a1b2c3))
 
 
 ### Build
 
 * **release:** cut kit 0.6.0 ([abc1234](https://github.com/hop-top/poly-kit/commit/abc1234))
 * **deps:** bump otel ([c0a2b21](https://github.com/hop-top/poly-kit/commit/c0a2b21))
+* **release:** start kit 0.6.0-alpha.0 notes ([#13](https://github.com/hop-top/poly-kit/issues/13)) ([0b1c2d3](https://github.com/hop-top/poly-kit/commit/0b1c2d3))
 
 ## [0.5.0-alpha.26](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.25...kit/v0.5.0-alpha.26) (2026-10-01)
 
@@ -256,6 +258,16 @@ MD
     grep -qxF 'The hop-top team is happy to announce Kit 0.6.0-alpha.0. This release includes maintenance release with bug fixes.' "$f"
     # Older entries are left as they are.
     grep -qxF '* **release:** start kit 0.5.0-alpha.26 ([1111111](https://github.com/hop-top/poly-kit/commit/1111111))' "$f"
+}
+
+@test "rewrite: a squash-merged pin leaves too, its PR link and all; look-alikes stay" {
+    pin_fixture
+    run_rewrite
+    [ "$status" -eq 0 ]
+    local f="$REPO/CHANGELOG.md" latest
+    latest="$(sed -n '/^## \[0.6.0-alpha.0\]/,/^## \[0.5.0-alpha.26\]/p' "$f")"
+    [[ "$latest" != *"start kit-py"* ]] || false
+    grep -qxF '* **release:** start kit 0.6.0-alpha.0 notes ([#13](https://github.com/hop-top/poly-kit/issues/13)) ([0b1c2d3](https://github.com/hop-top/poly-kit/commit/0b1c2d3))' "$f"
 }
 
 # pins_fixture <manifest kit version>: give the fixture repo a release-please

@@ -82,14 +82,15 @@ after=$(sed -n "$((end_line + 1)),\$p" "$FILE" 2>/dev/null) || after=""
 
 # --- Drop release-as pin commits ---
 # scripts/release-as.sh commits a pin as "chore(release): start|cut
-# [group] <name> <version>". A hidden type, but the Release-As footer of a
-# root package pin lists it anyway (under "Miscellaneous"), and it tells a
-# reader nothing. A section left without bullets goes with it.
+# [group] <name> <version>", a squash merge adding its PR link. A hidden
+# type, but the Release-As footer of a root package pin lists it anyway
+# (under "Miscellaneous"), and it tells a reader nothing. A section left
+# without bullets goes with it.
 
 entry=$(printf '%s\n' "$entry" | awk '
   function flush() { if (hdr == "" || items) printf "%s", buf; buf = ""; hdr = ""; items = 0 }
   /^### / { flush(); hdr = $0 }
-  /^\* \*\*release:\*\* (start|cut) (group )?[^ ]+ v?[0-9]+\.[0-9]+\.[0-9][^ ]* \(\[[0-9a-f]+\]\(/ { next }
+  /^\* \*\*release:\*\* (start|cut) (group )?[^ ]+ v?[0-9]+\.[0-9]+\.[0-9][^ ]* (\(\[#[0-9]+\]\([^)]*\)\) )?\(\[[0-9a-f]+\]\(/ { next }
   { buf = buf $0 "\n"; if (hdr != "" && $0 ~ /^[*-] /) items = 1 }
   END { flush() }')
 
