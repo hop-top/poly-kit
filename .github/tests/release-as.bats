@@ -164,6 +164,21 @@ changed_lines() {
     [ "$(jq -r '.plugins[0].groupName' "$REPO/$CONFIG_FILE")" = kit ]
 }
 
+@test "cleanup: other plugins stay, a string entry included" {
+    m="$REPO/$CONFIG_FILE"
+    perl -0pi -e 's/  "packages": \{/  "plugins": ["node-workspace"],\n  "packages": {/' "$m"
+    git -C "$REPO" commit -qam "chore: a string plugin"
+    cp "$m" "$REPO/config.orig"
+    release_as --group kit 0.6.0-alpha.0
+    [ "$status" -eq 0 ]
+    [ "$(jq -c '.plugins | map(type)' "$m")" = '["string","object"]' ]
+    bump . 0.6.0-alpha.0 sdk/py 0.6.0-alpha.0
+    git -C "$REPO" commit -qam "chore(release): the release PR"
+    release_as --cleanup
+    [ "$status" -eq 0 ]
+    cmp "$m" "$REPO/config.orig"
+}
+
 @test "cleanup: drops a stale pin the manifest passed" {
     release_as qmochi 0.3.0-alpha.0
     bump incubator/qmochi 0.3.0-alpha.2

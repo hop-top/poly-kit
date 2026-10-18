@@ -263,6 +263,9 @@ does not count, and the proposed version from the PR. It fails when:
   not exactly `x.(y+1).0-alpha.0` (from 1.0, `(x+1).0.0-alpha.0`) or the stable
   form of either. `0.5.1-alpha.3 → 0.6.0-alpha.3` fails.
 - **linked**: see [Linked releases](#linked-releases).
+- **pins**: the PR's own config, at its head, still holds a pin its manifest
+  has reached, or a linked-versions plugin entry whose members keep no pin.
+  The PR is waiting for its `pins` job, see below.
 
 Each failure prints the `scripts/release-as.sh` command that fixes it. The job
 is skipped on every other PR. Run it locally the same way; `--config`,
@@ -291,8 +294,17 @@ is pushed.
 --cleanup` on the release PR's branch. A pin that the PR's manifest has
 reached is one the PR cuts, so it goes there, with a linked release's plugin
 entry once no member keeps a pin. Merging the release PR leaves the config as
-it was before the pins, and no later release PR re-proposes the version. A
-pin that survives anyway fails the next release PR as stale.
+it was before the pins, and no later release PR re-proposes the version.
+
+Until that commit lands, the check's pins rule fails the PR ("Waiting for the
+pins job"), and the job's push runs the check again. release-please rewrites
+its branch on every push to the base, pins included, and the job drops them
+again. The job runs after the changelog rewrite and the lockfile sync whether
+they passed or failed, but not in a cancelled run, which leaves it to the
+newer one. If it fails, re-run it, or run `scripts/release-as.sh --cleanup` on
+the PR branch and push. Once `breaking-bump` is a required check (see the
+release brake above), this holds the merge until the pins are gone; a pin
+that survives anyway fails the next release PR as stale.
 
 To fix a failing release PR, run the command the check printed on a branch off
 the PR's base, push, dry-run against that branch (the component's or group's

@@ -110,6 +110,33 @@ rp_group_members() {
     '.["x-linked-groups"] // [] | .[] | select(.group == $g) | .components[]' <<<"$1"
 }
 
+# rp_cleanup_plan <config-json> <manifest-json> — what a release PR drops from
+# the config once its manifest has moved (scripts/release-as.sh --cleanup),
+# one per line:
+#   pin TAB <path> TAB <version>  a release-as pin at or below the manifest's
+#                                 version of its package
+#   plugin TAB <group>            a linked-versions plugin entry none of whose
+#                                 components keeps a pin after that
+rp_cleanup_plan() {
+  local p v cur cut=""
+  while IFS=$'\t' read -r p v; do
+    [ -n "$p" ] || continue
+    cur=$(jq -r --arg p "$p" '.[$p] // empty' <<<"$2")
+    if [ -n "$cur" ] && [ "$(rp_semver_cmp "$v" "$cur")" -le 0 ]; then
+      printf 'pin\t%s\t%s\n' "$p" "$v"
+      cut="$cut$p"$'\n'
+    fi
+  done < <(jq -r '.packages | to_entries[] | select(.value | has("release-as"))
+    | "\(.key)\t\(.value["release-as"])"' <<<"$1")
+  jq -r --arg cut "$cut" '
+    ($cut | split("\n") | map(select(length > 0))) as $cut
+    | [.packages | to_entries[] | select(.value | has("release-as"))
+       | select(.key as $k | $cut | index($k) | not) | .value.component] as $pinned
+    | (.plugins // [])[] | objects | select(.type == "linked-versions")
+    | select(any(.components[]?; . as $c | $pinned | index($c)) | not)
+    | "plugin\t\(.groupName)"' <<<"$1"
+}
+
 # rp_tag <config-json> <path> <version> — the tag release-please gives that
 # package's release of <version>.
 rp_tag() {

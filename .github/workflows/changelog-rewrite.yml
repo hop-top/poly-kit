@@ -11,15 +11,25 @@ name: Changelog Rewrite
 # made with GITHUB_TOKEN starts runs as github-actions[bot], which wait for
 # maintainer approval (`action_required`) and leave the head without CI.
 #
+# `pins` runs after the other two whether they passed or failed, but not in a
+# cancelled run: the release-bump-check workflow holds the PR until the pins
+# are gone, so a failed changelog rewrite must not keep them there too. The
+# jobs still run one after another, each checking out the branch as the
+# previous one left it, so no two pushes race.
+#
 # Each push fires `synchronize` and a new run of this workflow. That run
 # commits nothing: the rewrite marker makes `rewrite` a no-op, `lockfiles`
-# finds the locks in sync, and `pins` finds nothing left to drop. The concurrency group cancels the older run, so the
-# two runs never push `lockfiles` commits from the same head. release-please
-# rewrites its branch on every run and the cycle starts fresh from there.
+# finds the locks in sync, and `pins` finds nothing left to drop. The
+# concurrency group cancels the older run, so the two runs never push from
+# the same head. release-please rewrites its branch on every run and the
+# cycle starts fresh from there.
+#
+# The branches are those release-bump-check.yml runs on, wherever a release
+# PR can target.
 
 on:
   pull_request:
-    branches: [main, next]
+    branches: [main, next, 'release/**']
     types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
@@ -185,8 +195,8 @@ jobs:
           fi
 
   pins:
-    needs: lockfiles
-    if: startsWith(github.head_ref, 'release-please--')
+    needs: [rewrite, lockfiles]
+    if: ${{ !cancelled() && startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

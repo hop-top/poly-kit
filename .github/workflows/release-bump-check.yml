@@ -8,7 +8,10 @@ name: Release Bump Check
 #   - a new major, or a new minor in pre-release, of a linked group member
 #     releases every member at that version, in one PR;
 #   - a PR never re-proposes a released version (a release-as pin or a
-#     Release-As footer left behind).
+#     Release-As footer left behind);
+#   - a release PR waits until its pins job has dropped the release-as pins
+#     (and linked-versions plugin entry) it cuts; that job's push runs this
+#     check again.
 # scripts/check-release-bump.sh does the work and prints the
 # scripts/release-as.sh command that fixes a failure; the paths and refs come
 # from its arguments, so a reusable workflow can call it the same way.

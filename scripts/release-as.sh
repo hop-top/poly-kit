@@ -280,7 +280,7 @@ case "$MODE" in
       PINNED="$PINNED$p"$'\n'
     done <<<"$MEMBERS"
     set_plugins "$(jq -c --arg g "$GROUP" --argjson m "$(jq -R . <<<"$MEMBERS" | jq -sc .)" '
-      (.plugins // []) | map(select(.type != "linked-versions" or .groupName != $g))
+      (.plugins // []) | map(select(type != "object" or .type != "linked-versions" or .groupName != $g))
       + [{type: "linked-versions", groupName: $g, components: $m}]' "$WORK")"
     cmp -s "$WORK" "$CONFIG_PATH" &&
       die "group $GROUP is already pinned to $VERSION; nothing written"
@@ -291,26 +291,22 @@ linked-versions plugin for $GROUP until the release PR drops both"
 member at $VERSION in its body)"
     ;;
   cleanup)
-    DROPPED=()
-    while IFS=$'\t' read -r p v; do
-      [ -n "$p" ] || continue
-      current=$(manifest_version "$p")
-      if [ -n "$current" ] && [ "$(rp_semver_cmp "$v" "$current")" -le 0 ]; then
-        edit unpin "$p" "" 1
-        DROPPED+=("$(rp_component "$CONFIG" "$p") $v")
-      fi
-    done < <(jq -r '.packages | to_entries[]
-      | select(.value | has("release-as")) | "\(.key)\t\(.value["release-as"])"' "$WORK")
-    KEPT=$(jq -c '
-      [.packages[] | select(has("release-as")) | .component] as $pinned
-      | (.plugins // []) | map(select(.type != "linked-versions"
-          or any(.components[]; . as $c | $pinned | index($c))))' "$WORK")
-    while IFS= read -r g; do
-      [ -n "$g" ] && DROPPED+=("linked-versions plugin for $g")
-    done < <(jq -r --argjson kept "$KEPT" '(.plugins // [])
-      | map(select(.type == "linked-versions") | select(. as $e | $kept | index($e) | not))
-      | .[].groupName' "$WORK")
-    set_plugins "$KEPT"
+    # The same plan check-release-bump.sh holds a release PR to.
+    DROPPED=() GONE=""
+    PLAN=$(rp_cleanup_plan "$CONFIG" "$(cat "$MANIFEST_PATH" 2>/dev/null || echo '{}')")
+    while IFS=$'\t' read -r kind p v; do
+      case "$kind" in
+        pin)
+          edit unpin "$p" "" 1
+          DROPPED+=("$(rp_component "$CONFIG" "$p") $v") ;;
+        plugin)
+          GONE="$GONE$p"$'\n'
+          DROPPED+=("linked-versions plugin for $p") ;;
+      esac
+    done <<<"$PLAN"
+    set_plugins "$(jq -c --arg gone "$GONE" '($gone | split("\n")) as $gone
+      | (.plugins // []) | map(select(type != "object" or .type != "linked-versions"
+          or (.groupName as $g | $gone | index($g) | not)))' "$WORK")"
     if cmp -s "$WORK" "$CONFIG_PATH"; then
       echo "no release-as pin the manifest has reached; nothing to drop"
       exit 0

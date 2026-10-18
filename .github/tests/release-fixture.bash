@@ -160,6 +160,13 @@ check() {
     run bash -c "cd '$REPO' && '$CHECK' next '$1'"
 }
 
+# pins_job <branch>: what the pins job does on a release PR branch.
+pins_job() {
+    git -C "$REPO" checkout -q "$1"
+    (cd "$REPO" && "$RELEASE_AS" --cleanup >/dev/null)
+    git -C "$REPO" checkout -q next
+}
+
 release_as() {
     run bash -c "cd '$REPO' && '$RELEASE_AS' $*"
 }

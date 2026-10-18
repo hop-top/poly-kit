@@ -13,6 +13,10 @@
 #   linked     the package is in a linked group and the proposed version
 #              starts a new major, or a new minor with a prerelease suffix,
 #              but not every group member releases at that version in this PR
+#   pins       <head>'s config still holds a release-as pin <head>'s manifest
+#              has reached, or a linked-versions plugin entry whose members
+#              keep no pin: the pins job has not dropped them yet, and merged
+#              now they would stay on the base branch
 #
 # It checks every package whose manifest entry differs between <head> and
 # the merge base of <base> and <head>, plus the packages the head branch
@@ -20,7 +24,9 @@
 # --groups--<group> for a linked group): a PR that re-proposes a released
 # version leaves the manifest as it was. release-please builds the PR from
 # the merge base, so its config and manifest say what the PR started from,
-# even after a sibling release moved <base> on. For each package:
+# even after a sibling release moved <base> on; only the pins rule reads
+# <head>'s config, which the pins job edits on the PR branch. For each
+# package:
 #
 #   current   its version in the merge base's manifest
 #   proposed  its version in <head>'s manifest
@@ -165,6 +171,31 @@ group_fix() {
 }
 
 FAILED=0
+
+# pins: the PR still carries pins it cuts, or a plugin entry with no pin left.
+# The pins job drops them on the PR branch, and its push runs this check
+# again; merged before that, they stay on the base branch.
+HEAD_CONFIG=$(rp_show "$HEAD" "$CONFIG_PATH") || die "no $CONFIG_PATH at $HEAD"
+PLAN=$(rp_cleanup_plan "$HEAD_CONFIG" "$HEAD_MANIFEST")
+if [ -n "$PLAN" ]; then
+  {
+    echo "Waiting for the pins job: the PR's config still holds what its release cuts:"
+    while IFS=$'\t' read -r kind p v; do
+      case "$kind" in
+        pin) echo "  $(rp_component "$HEAD_CONFIG" "$p"): release-as $v, reached by the PR's manifest ($(proposed_of "$p"))" ;;
+        plugin) echo "  the linked-versions plugin entry of group $p, whose members keep no pin" ;;
+      esac
+    done <<<"$PLAN"
+    echo "Merged as is, they stay on $BRANCH, and the next release PR proposes the"
+    echo "same versions again. The pins job drops them on the PR branch, and its push"
+    echo "runs this check again. If that job failed, re-run it, or run this on the"
+    echo "PR branch and push:"
+    echo ""
+    echo "  $HELPER --cleanup"
+  } >&2
+  fail "Waiting for the pins job" "the PR still carries the release-as pins it cuts; the pins job drops them, or run $HELPER --cleanup on the PR branch"
+fi
+
 while IFS= read -r path; do
   component=$(rp_component "$CONFIG" "$path")
   [ -n "$component" ] || die "package \"$path\" has no component in $CONFIG_PATH"

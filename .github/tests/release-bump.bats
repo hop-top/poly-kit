@@ -264,19 +264,60 @@ at() {
     [[ "$output" == *"scripts/release-as.sh --group kit 0.7.0-alpha.0"* ]]
 }
 
-# --- after release-as ---------------------------------------------------------
+# --- pins and after release-as -------------------------------------------------
 
-@test "after release-as: a pinned component and a pinned group pass" {
+@test "after release-as: pinned PRs pass once the pins job dropped the pins" {
     land "fix(q)!: drop the v1 renderer" "$QM/q.go"
     land "fix(cli)!: reserve the peer tree" cli/cli.go
     run bash -c "cd '$REPO' && '$RELEASE_AS' qmochi 0.3.0-alpha.0 && '$RELEASE_AS' --group kit 0.6.0-alpha.0"
     [ "$status" -eq 0 ]
-    pr="$(release_pr qmochi "$QM" 0.3.0-alpha.0)"
-    check "$pr"
+    qpr="$(release_pr qmochi "$QM" 0.3.0-alpha.0)"
+    gpr="$(group_pr kit . 0.6.0-alpha.0 sdk/py 0.6.0-alpha.0)"
+    check "$qpr"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Waiting for the pins job"* ]] || false
+    [[ "$output" == *"qmochi: release-as 0.3.0-alpha.0, reached by the PR's manifest (0.3.0-alpha.0)"* ]] || false
+    [[ "$output" == *"scripts/release-as.sh --cleanup"* ]] || false
+    # The group's pins are not this PR's to drop.
+    [[ "$output" != *"kit: release-as"* ]] || false
+    check "$gpr"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"kit-py: release-as 0.6.0-alpha.0"* ]] || false
+    [[ "$output" == *"linked-versions plugin entry of group kit"* ]] || false
+    pins_job "$qpr"
+    pins_job "$gpr"
+    check "$qpr"
     [ "$status" -eq 0 ]
+    check "$gpr"
+    [ "$status" -eq 0 ]
+}
+
+@test "pins: a plugin entry left without pins still waits for the pins job" {
+    land "fix(cli)!: reserve the peer tree" cli/cli.go
+    release_as --group kit 0.6.0-alpha.0
     pr="$(group_pr kit . 0.6.0-alpha.0 sdk/py 0.6.0-alpha.0)"
+    git -C "$REPO" checkout -q "$pr"
+    sed '/"release-as"/d' "$REPO/$CONFIG_FILE" > "$REPO/c.tmp"
+    mv "$REPO/c.tmp" "$REPO/$CONFIG_FILE"
+    jq -e '.plugins and ([.packages[] | has("release-as")] | any | not)' "$REPO/$CONFIG_FILE"
+    git -C "$REPO" commit -qam "chore: drop the pins by hand"
+    git -C "$REPO" checkout -q next
+    check "$pr"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"linked-versions plugin entry of group kit, whose members keep no pin"* ]] || false
+    [[ "$output" != *"release-as 0.6.0-alpha.0"* ]] || false
+    pins_job "$pr"
     check "$pr"
     [ "$status" -eq 0 ]
+}
+
+@test "pins: annotated in GitHub Actions" {
+    release_as qmochi 0.2.0-alpha.2
+    land "fix(q): align the chart" "$QM/q.go"
+    pr="$(release_pr qmochi "$QM" 0.2.0-alpha.2)"
+    run bash -c "cd '$REPO' && GITHUB_ACTIONS=true '$CHECK' next '$pr'"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"::error title=Waiting for the pins job::"* ]]
 }
 
 # --- plumbing -----------------------------------------------------------------

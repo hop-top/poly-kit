@@ -247,9 +247,26 @@ EOF
     local job
     job="$(job_block pins)"
     [ -n "$job" ]
-    grep -qF 'needs: lockfiles' <<<"$job"
     grep -qF 'uses: actions/create-github-app-token@' <<<"$job"
     grep -qF 'token: ${{ steps.app-token.outputs.token }}' <<<"$job"
+}
+
+# The breaking-bump check holds a release PR until its pins are gone, so a
+# failed rewrite or lockfile job must not keep them; a cancelled run leaves
+# them to the newer run.
+@test "pins job runs after rewrite and lockfiles, failed or not, unless cancelled" {
+    local job
+    job="$(job_block pins)"
+    grep -qxF '    needs: [rewrite, lockfiles]' <<<"$job"
+    grep -qxF "    if: \${{ !cancelled() && startsWith(github.head_ref, 'release-please--') }}" <<<"$job"
+}
+
+@test "runs on every branch the breaking-bump check runs on" {
+    local ours check
+    ours="$(grep -A1 '^  pull_request:' "$WORKFLOW" | grep 'branches:')"
+    check="$(grep -A1 '^  pull_request:' "$BATS_TEST_DIRNAME/../workflows/release-bump-check.yml" | grep 'branches:')"
+    [ -n "$ours" ]
+    [ "$ours" = "$check" ]
 }
 
 @test "pins: the pins and plugin entry the release cuts are dropped and pushed" {
