@@ -76,6 +76,10 @@ func (r *Root) AliasCmd(store *alias.Store) *cobra.Command {
 	SetTopLevelVerb(cmd)
 	// The group node runs `alias list`, so it renders the same shape.
 	setAliasListSchema(cmd)
+	// Kit's own command, mounted by the adopter after cli.New took its
+	// snapshot, so reserved by name here: alias add and remove rewrite
+	// the tool's alias file, and no served surface may.
+	r.MarkReserved("alias")
 
 	cmd.AddCommand(r.aliasListCmd(store))
 	cmd.AddCommand(r.aliasAddCmd(store))

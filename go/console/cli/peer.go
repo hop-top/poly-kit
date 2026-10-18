@@ -80,6 +80,11 @@ func (r *Root) initPeers() error {
 	r.Mesh = peer.NewMesh(self, tm, disc)
 
 	r.Cmd.AddCommand(peerCmd(r))
+	// Mounted after cli.New takes its snapshot of the commands kit
+	// owns, so reserved by name here. Reserved, it is management-only:
+	// no served surface lists, trusts, blocks or revokes a peer, and the
+	// trust-on-first-use step stays a person's on the command line.
+	r.MarkReserved("peer")
 	return nil
 }
 

@@ -55,9 +55,10 @@ command tree through the same gates (policy, `WithPermission`,
 | `rpcserve.With(rpcserve.Config{})` | `rpc` | `cmdsurface.v1.Commands` over Connect, gRPC and gRPC-Web, h2c on `127.0.0.1:8082` |
 
 No surface serves a kit-reserved verb that manages served state
-(`token`, `quota`, `audit`, `uri`); the socket serves only the
-introspection ones (`help`, `spec`, `status`, `version`). A command
-mounted after `cli.New` is never reserved.
+(`token`, `quota`, `audit`, `peer`, `alias`, `uri`); the socket serves
+only the introspection ones (`help`, `spec`, `status`, `version`). A
+command an adopter mounts after `cli.New` is not reserved, unless kit
+built it (`Root.AliasCmd`, which reserves `alias`).
 
 `mcp` lives in [`mcpserve/`](mcpserve/) and `rpc` in [`rpcserve/`](rpcserve/),
 so only a CLI that serves them links the MCP SDK or `go/transport/rpc`;
