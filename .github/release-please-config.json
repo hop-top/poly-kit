@@ -58,10 +58,12 @@
       "components": ["kit", "kit-php", "kit-py", "kit-rs", "kit-ts"]
     }
   ],
+  "plugins": [{"type": "linked-versions", "groupName": "kit", "components": ["kit", "kit-php", "kit-py", "kit-rs", "kit-ts"]}],
   "packages": {
     ".": {
       "release-type": "go",
       "component": "kit",
+      "release-as": "0.6.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "exclude-paths": [
@@ -127,6 +129,7 @@
     "sdk/experimental/php": {
       "release-type": "php",
       "component": "kit-php",
+      "release-as": "0.6.0-alpha.0",
       "package-name": "hop-top/kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
@@ -145,6 +148,7 @@
     "sdk/experimental/rs": {
       "release-type": "rust",
       "component": "kit-rs",
+      "release-as": "0.6.0-alpha.0",
       "package-name": "hop-top-kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
@@ -156,6 +160,7 @@
     "sdk/py": {
       "release-type": "python",
       "component": "kit-py",
+      "release-as": "0.6.0-alpha.0",
       "package-name": "hop-top-kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
@@ -167,6 +172,7 @@
     "sdk/ts": {
       "release-type": "node",
       "component": "kit-ts",
+      "release-as": "0.6.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "extra-files": [
