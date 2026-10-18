@@ -205,3 +205,67 @@ run_rewrite() {
     [[ "$output" != *"strip"* ]] || false
     cmp -s "$TMP/before.md" "$REPO/CHANGELOG.md"
 }
+
+# pins_fixture <manifest kit version>: give the fixture repo a release-please
+# config pinning kit and kit-py to 0.6.0-alpha.0 through a linked release,
+# a manifest (the release PR's proposed one), and the scripts the step runs.
+pins_fixture() {
+    mkdir -p "$REPO/.github" "$REPO/scripts"
+    cp "$BATS_TEST_DIRNAME/../../scripts/release-as.sh" \
+        "$BATS_TEST_DIRNAME/../../scripts/release-lib.sh" "$REPO/scripts/"
+    cat > "$REPO/.github/release-please-config.json" <<'EOF'
+{
+  "x-linked-groups": [
+    {
+      "group": "kit",
+      "components": ["kit", "kit-ts"]
+    }
+  ],
+  "plugins": [{"type": "linked-versions", "groupName": "kit", "components": ["kit", "kit-ts"]}],
+  "packages": {
+    ".": {
+      "component": "kit",
+      "release-as": "0.6.0-alpha.0",
+      "versioning": "prerelease"
+    },
+    "sdk/ts": {
+      "component": "kit-ts",
+      "release-as": "0.6.0-alpha.0",
+      "versioning": "prerelease"
+    }
+  }
+}
+EOF
+    printf '{\n  ".": "%s",\n  "sdk/ts": "%s"\n}\n' "$1" "$1" \
+        > "$REPO/.github/.release-please-manifest.json"
+    git -C "$REPO" add -A
+    git -C "$REPO" commit -qm "chore(release): release kit libraries"
+    git -C "$REPO" push -q
+}
+
+@test "pins job checks out and pushes with the release-bot app token" {
+    local job
+    job="$(job_block pins)"
+    [ -n "$job" ]
+    grep -qF 'needs: lockfiles' <<<"$job"
+    grep -qF 'uses: actions/create-github-app-token@' <<<"$job"
+    grep -qF 'token: ${{ steps.app-token.outputs.token }}' <<<"$job"
+}
+
+@test "pins: the pins and plugin entry the release cuts are dropped and pushed" {
+    pins_fixture 0.6.0-alpha.0
+    run_step 'Drop release-as pins this release cuts'
+    [ "$status" -eq 0 ]
+    [ "$(git -C "$TMP/origin.git" log -1 --format=%s main)" = "chore(release): drop release-as pins this release cuts" ]
+    git -C "$TMP/origin.git" show main:.github/release-please-config.json > "$TMP/pushed.json"
+    jq -e '(has("plugins") | not) and ([.packages[] | has("release-as")] | any | not)' "$TMP/pushed.json"
+}
+
+@test "pins: a release that does not cut them pushes nothing" {
+    pins_fixture 0.5.0-alpha.26
+    before="$(git -C "$TMP/origin.git" rev-parse main)"
+    run_step 'Drop release-as pins this release cuts'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"nothing to drop"* ]] || false
+    [ "$(git -C "$TMP/origin.git" rev-parse main)" = "$before" ]
+}
