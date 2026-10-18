@@ -13,6 +13,8 @@ none of them ship.
 | [`lint-internal-refs.sh`](lint-internal-refs.sh) | fails on real home-directory paths and names of documents that live outside the repo | `make lint-internal-refs` fails |
 | [`install-hooks.sh`](install-hooks.sh) | points `core.hooksPath` at `.githooks/` for this clone | a fresh clone is not running the pre-push gate |
 | [`promote-release.sh`](promote-release.sh) | moves the release-please prerelease channel one step (alpha → beta → rc → release) | you cut the next channel; see `RELEASING.md` |
+| [`release-as.sh`](release-as.sh) | pins the version release-please proposes next for a component or a linked group, and drops pins a release cuts | a breaking change needs a new minor line, a linked release is due, or you switch channel or cut stable; see `RELEASING.md` |
+| [`release-lib.sh`](release-lib.sh) | release-please routing, commit parsing, tag and semver helpers the two scripts above source | release-please changes how it routes or parses commits or names tags |
 | [`rewrite-changelog.sh`](rewrite-changelog.sh) | rewrites a raw release-please changelog into the polished format, idempotently | the changelog-rewrite workflow needs a local run |
 | [`test-release-e2e.sh`](test-release-e2e.sh) | end-to-end tests for the promotion and changelog-rewrite scripts | you change either script |
 | [`setup-pypi-publisher.sh`](setup-pypi-publisher.sh) | creates a PyPI pending trusted publisher through a browser session | you add a Python package to the release |
