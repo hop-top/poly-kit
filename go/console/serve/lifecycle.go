@@ -182,21 +182,8 @@ func (s *Supervisor) awaitReady(
 				}
 				return err
 			}
-			// A different service failing during this one's start
-			// window is still a failure of the run.
-			if exit.err != nil {
-				s.noteFailure(ctx, exit.name, exit.err, OutcomeRuntimeCrash, "runtime", st, em)
-				if s.cfg.FailurePolicy == FailFast && !st.isOptional(exit.name) {
-					return exit.err
-				}
-				continue
-			}
-			// An earlier service returning cleanly mid-start is a
-			// stop, not a failure.
-			if !st.markStopped(exit.name) {
-				em.emit(ctx, ObjectService, ActionStopped, EventPayload{
-					Service: exit.name, ElapsedMS: st.elapsedMS(),
-				})
+			if err := s.otherExit(ctx, exit, st, em); err != nil {
+				return err
 			}
 
 		case <-timer.C:
@@ -205,19 +192,64 @@ func (s *Supervisor) awaitReady(
 			if !st.isOptional(name) {
 				return err
 			}
-			// Its Start is still running: stop it, waiting for the
-			// release or for the run to end, whichever comes first.
-			released := s.release(ctx, sup, name, configs, st, em)
-			select {
-			case <-released:
-			case <-ctx.Done():
-			}
-			return nil
+			// Its Start is still running: stop it, and wait for the
+			// release, the end of the run, or a failure that ends it.
+			return s.awaitRelease(ctx, sup, s.release(ctx, sup, name, configs, st, em), st, em)
 
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
+}
+
+// awaitRelease waits for an optional service's release to end, the run
+// to end, or another service's Start to return in the meantime, which
+// it handles as the start window does: a failure under fail-fast ends
+// the start sequence there, before anything further starts.
+func (s *Supervisor) awaitRelease(
+	ctx context.Context,
+	sup *supervised,
+	released <-chan struct{},
+	st *runState,
+	em *emitter,
+) error {
+	for {
+		select {
+		case <-released:
+			return nil
+		case <-ctx.Done():
+			return nil
+		case exit := <-sup.exits:
+			if !sup.consume(exit, st) {
+				continue
+			}
+			if err := s.otherExit(ctx, exit, st, em); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// otherExit handles the Start of a service other than the one the
+// supervisor is waiting on returning while the run goes on. A failure
+// is reported, and returned when the failure policy says it ends the
+// run: under fail-fast, for a service the run depends on. failure_policy
+// governs those services only; an optional one's failure never ends the
+// run. A clean return is a stop, reported once.
+func (s *Supervisor) otherExit(ctx context.Context, exit serviceExit, st *runState, em *emitter) error {
+	if exit.err != nil {
+		s.noteFailure(ctx, exit.name, exit.err, OutcomeRuntimeCrash, "runtime", st, em)
+		if s.cfg.FailurePolicy == FailFast && !st.isOptional(exit.name) {
+			return exit.err
+		}
+		return nil
+	}
+	if !st.markStopped(exit.name) {
+		em.emit(ctx, ObjectService, ActionStopped, EventPayload{
+			Service: exit.name, ElapsedMS: st.elapsedMS(),
+		})
+	}
+	return nil
 }
 
 // emitAggregateReady publishes the supervisor-scoped readiness event
@@ -254,23 +286,12 @@ func (s *Supervisor) await(
 			if !sup.consume(exit, st) {
 				continue
 			}
-			if exit.err != nil {
-				s.noteFailure(ctx, exit.name, exit.err, OutcomeRuntimeCrash, "runtime", st, em)
-				// failure_policy governs the services the run depends
-				// on; an optional one's failure never ends the run.
-				if s.cfg.FailurePolicy == FailFast && !st.isOptional(exit.name) {
-					cancelRun()
-					return
-				}
-				continue
-			}
 			// A clean return under isolate is not a failure of that
 			// service, but the process must not survive as an empty
 			// shell: when the last one is gone the run is over.
-			if !st.markStopped(exit.name) {
-				em.emit(ctx, ObjectService, ActionStopped, EventPayload{
-					Service: exit.name, ElapsedMS: st.elapsedMS(),
-				})
+			if err := s.otherExit(ctx, exit, st, em); err != nil {
+				cancelRun()
+				return
 			}
 		}
 	}
