@@ -71,8 +71,9 @@ this package is the authority for signatures only. Points a caller gets wrong:
   budget) is emitted as `failed` with `optional: true` and recorded in
   `Result.Failed`/`Services`, but trips neither fail-fast nor the exit code.
   A timed-out one is stopped where it failed, concurrently, within its own
-  stop budget (a signal or a fail-fast trip ends the start sequence but not
-  that Stop, which shutdown joins); one whose Stop overruns is written off —
+  stop budget and the shutdown deadline (a signal or a fail-fast trip ends
+  the start sequence but not that Stop, which shutdown joins until the
+  deadline and then cancels); one whose Stop overruns is written off —
   not counted as running, not waited for at shutdown — and only a required
   goroutine can make the shutdown time out. Every started service failing
   is still a start failure, exit 1. No retry.

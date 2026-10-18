@@ -467,7 +467,11 @@ The supervisor installs a `signal.NotifyContext` for `SIGINT` and
 
 The supervisor's total shutdown budget is
 `services.shutdown_timeout` (default `60s`), an upper bound across all
-services. Exceeding it exits with the crash code.
+services, applied once: one deadline, set when the shutdown begins,
+bounds the ordered stop and the wait for the services' goroutines
+together, so whatever the stops use is gone from the wait. A required
+service's goroutine still running at the deadline exits with the crash
+code.
 
 ### One service fails while others run
 
@@ -523,13 +527,18 @@ the failure is not an outcome of the run:
   alongside the rest of the run and is bounded by the service's
   `stop_timeout`. A signal, or another service's failure that ends the
   run under `fail-fast`, ends the start sequence at once — nothing
-  further starts — and shutdown begins while the release finishes; it
-  is joined within `services.shutdown_timeout`. The `Stop` itself is not
-  cut short: the service never served, so there is nothing to drain,
-  but it may hold what it bound — a listener, a socket file — and its
-  `Stop` keeps its budget to let go of them, so a run never returns
-  with them still held. A `Stop` that overruns its own budget is
-  written off (below). The ordered stop does not stop the service a
+  further starts — and shutdown begins while the release finishes. The
+  signal does not cut that `Stop` short: the service never served, so
+  there is nothing to drain, but it may hold what it bound — a
+  listener, a socket file — and its `Stop` keeps its budget to let go
+  of them. That budget is its `stop_timeout` or what remains of the
+  shutdown deadline, whichever ends first: a release still running at
+  the shutdown deadline has its `Stop`'s context canceled there and is
+  left behind, and the run returns at the deadline, possibly with what
+  the service bound still held until the process exits. A release that
+  finishes within the deadline has let go of everything before the run
+  returns. A `Stop` that overruns its own `stop_timeout` is written off
+  (below). The ordered stop does not stop the service a
   second time, and neither the exit its `Start` makes once stopped nor
   a `Stop` that overran is a further failure: its record stays the
   failure that put it there. A service whose `Start` already returned
@@ -548,10 +557,10 @@ An optional service whose `Stop` overran is **written off**: its
 `Start` goroutine may never return, so the run stops counting it —
 the run ends when every other service has returned — and shutdown
 does not wait for it. Shutdown waits for every other optional
-service's goroutine within `services.shutdown_timeout` as it waits for
-the required ones, but only a *required* goroutine still running when
-that budget runs out is the run's shutdown timeout; an optional one is
-left behind.
+service's goroutine, and for every release, until the shutdown deadline
+as it waits for the required ones, but only a *required* goroutine
+still running at the deadline is the run's shutdown timeout; an
+optional one, or a release cut at the deadline, is left behind.
 
 Readiness and exit follow from that:
 

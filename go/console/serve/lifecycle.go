@@ -31,6 +31,13 @@ type supervised struct {
 	// failed; shutdown joins them.
 	releases sync.WaitGroup
 
+	// releaseCtx parents every release's Stop. It is not the run's
+	// context, so a signal does not cut a release short; capReleases
+	// cancels it when the shutdown deadline passes, so no release
+	// outlives the shutdown budget.
+	releaseCtx  context.Context
+	capReleases context.CancelFunc
+
 	startErr error
 }
 
@@ -81,6 +88,7 @@ func (s *Supervisor) startAll(
 		running: make(map[string]bool, len(order)),
 		done:    make(map[string]chan struct{}, len(order)),
 	}
+	sup.releaseCtx, sup.capReleases = context.WithCancel(context.WithoutCancel(ctx))
 
 	for _, name := range order {
 		if err := ctx.Err(); err != nil {
@@ -321,6 +329,11 @@ func (s *Supervisor) await(
 // ignores both cancellation and Stop must not hold the process open.
 // Its goroutine is abandoned, which is safe because the run is over
 // and the process is about to exit.
+//
+// services.shutdown_timeout bounds all of it once: the ordered stop,
+// any release still finishing, and the wait for the Start goroutines
+// share one deadline, set when the shutdown begins. A release still
+// running at that deadline has its Stop's context canceled there.
 func (s *Supervisor) shutdown(
 	ctx context.Context,
 	cancelRun context.CancelFunc,
@@ -329,18 +342,23 @@ func (s *Supervisor) shutdown(
 	em *emitter,
 ) Result {
 	cancelRun()
-	s.stopAll(ctx, st, em)
-	s.join(sup, st)
+	deadline := time.Now().Add(s.cfg.ShutdownTimeout)
+	// join returns at the deadline at the latest; a release still
+	// running then has its Stop's context canceled as the run ends.
+	defer sup.capReleases()
+
+	s.stopAll(ctx, deadline, st, em)
+	s.join(sup, st, deadline)
 	return s.finish(st, em)
 }
 
-// join waits, within the total shutdown budget, for every release and
-// every Start goroutine to return. Only a required service's goroutine
-// still running when the budget runs out is the run's shutdown
-// timeout: an optional one is the run's to leave behind, and one
-// already written off is not waited for at all.
-func (s *Supervisor) join(sup *supervised, st *runState) {
-	timer := time.NewTimer(s.cfg.ShutdownTimeout)
+// join waits, until the shutdown deadline, for every release and every
+// Start goroutine to return. Only a required service's goroutine still
+// running at the deadline is the run's shutdown timeout: an optional
+// one — a release cut at the deadline included — is the run's to leave
+// behind, and one already written off is not waited for at all.
+func (s *Supervisor) join(sup *supervised, st *runState, deadline time.Time) {
+	timer := time.NewTimer(time.Until(deadline))
 	defer timer.Stop()
 	expired := false
 	// stillRunning waits for ch until the shared budget runs out, then

@@ -23,13 +23,14 @@ func optionalSet(selected []string, configs map[string]Config) map[string]bool {
 // release is over.
 //
 // The Stop runs concurrently and is bounded by the service's stop
-// budget alone. A signal or a fail-fast trip ends the start sequence
-// without waiting for it, but does not cut it short: the service never
-// served, so there is nothing to drain, yet it may hold a bound
-// listener or a socket file, and its Stop still gets the time to let
-// go of them. Shutdown joins every release within its total budget. A
-// Stop that overruns its own budget is written off — the run stops
-// counting the service's goroutine and shutdown does not wait for it.
+// budget and by the shutdown deadline, whichever comes first. A signal
+// or a fail-fast trip ends the start sequence without waiting for it,
+// but does not cut it short: the service never served, so there is
+// nothing to drain, yet it may hold a bound listener or a socket file,
+// and its Stop still gets the time to let go of them — up to the
+// shutdown deadline, where its context is canceled. A Stop that
+// overruns either bound is written off — the run stops counting the
+// service's goroutine and shutdown does not wait for it.
 // Neither outcome is a second failure: the service's record stays the
 // failure that put it here, and only a clean Stop adds its stopped
 // event. The ordered stop skips a released service.
@@ -49,7 +50,7 @@ func (s *Supervisor) release(
 	}
 	st.markReleased(name)
 
-	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), stopBudget(configs, name))
+	stopCtx, cancel := context.WithTimeout(sup.releaseCtx, stopBudget(configs, name))
 	stopped := make(chan error, 1)
 	go func() { stopped <- svc.Stop(stopCtx) }()
 
