@@ -17,7 +17,8 @@
 # with the pinned version when it pins the one package the config file
 # itself reaches (the root package), which makes the commit count for it; a
 # linked group's plugin then adds the members without commits. Any other
-# package's pin waits for its next commit, and the script says so.
+# package's pin waits for its next commit of a visible type (one that puts a
+# line in its changelog), and the script says so when none is there yet.
 #
 # Edits are line-based so the config keeps its formatting: a pin is one
 # "release-as" line after the package's "component" line, and "plugins" one
@@ -324,6 +325,25 @@ esac
 # its PR opens; for a linked group the plugin then adds the members without
 # commits. A package the config file does not reach waits for its next
 # commit of a visible type.
+#
+# visible_since <tag> — succeeds when a commit since <tag> that release-please
+# routes to $PKG would put a line in its changelog (rp_visible). The
+# candidates are the commits touching $PKG's path, and those touching no file,
+# which reach every non-root package; rp_route then applies exclude-paths.
+visible_since() {
+  local sha
+  while IFS= read -r sha; do
+    rp_route "$CONFIG" "$(rp_commit_files "$sha")" | grep -qxF -- "$PKG" || continue
+    rp_visible "$CONFIG" "$PKG" "$(git log -1 --format=%B "$sha")" && return 0
+  done < <(git -c core.quotePath=false log --no-merges --format=%x01%H --name-only "$1..HEAD" |
+    awk -v p="$PKG/" -v root="$([ "$PKG" != . ] || echo 1)" '
+      function done_() { if (sha != "" && (root || !n || hit)) print sha }
+      /^\001/ { done_(); sha = substr($0, 2); n = 0; hit = 0; next }
+      NF { n++; if (index($0, p) == 1) hit = 1 }
+      END { done_() }')
+  return 1
+}
+
 FOOTER=""
 if [ "$MODE" != cleanup ]; then
   REACH=$(rp_route "$CONFIG" "$(jq -cn --arg f "$CONFIG_PATH" '[$f]')")
@@ -334,9 +354,10 @@ if [ "$MODE" != cleanup ]; then
     current=$(manifest_version "$PKG")
     tag=$( [ -z "$current" ] || rp_tag "$CONFIG" "$PKG" "$current")
     if [ -n "$tag" ] && git rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null &&
-       [ -z "$(git rev-list -1 "$tag..HEAD" -- "$PKG")" ]; then
-      echo "note: no commit has touched $PKG since $tag; release-please opens" \
-        "the $COMPONENT PR with the next commit there of a visible type" >&2
+       ! visible_since "$tag"; then
+      echo "note: no commit since $tag puts a line in $COMPONENT's changelog" \
+        "(hidden types such as chore, ci, build, docs, test and refactor do" \
+        "not); release-please opens the $COMPONENT PR with the next one that does" >&2
     fi
   fi
 fi

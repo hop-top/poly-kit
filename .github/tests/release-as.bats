@@ -31,14 +31,27 @@ changed_lines() {
     [[ "$output" == *'"chore(release): qmochi 0.3.0-alpha.0"'* ]]
 }
 
-@test "pin: a package without commits since its release is told it waits" {
+@test "pin: a package without visible commits since its release is told it waits" {
     release_as qmochi 0.3.0-alpha.0
     [ "$status" -eq 0 ]
-    [[ "$output" == *"no commit has touched incubator/qmochi since qmochi/v0.2.0-alpha.1"* ]] || false
-    land "fix(q): align the chart" incubator/qmochi/q.go
+    [[ "$output" == *"no commit since qmochi/v0.2.0-alpha.1 puts a line in qmochi's changelog"* ]] || false
+    # Hidden types, and commits release-please routes elsewhere, do not count.
+    land "chore(q): tidy" incubator/qmochi/q.go
+    land "feat(sdk-py): retry" sdk/py/kit.py
     release_as qmochi 0.4.0-alpha.0
     [ "$status" -eq 0 ]
-    [[ "$output" != *"no commit has touched"* ]]
+    [[ "$output" == *"no commit since qmochi/v0.2.0-alpha.1"* ]] || false
+    land "fix(q): align the chart" incubator/qmochi/q.go
+    release_as qmochi 0.5.0-alpha.0
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"no commit since"* ]]
+}
+
+@test "pin: a visible commit touching no file counts, as release-please routes it" {
+    git -C "$REPO" commit -q --allow-empty -m "feat: everywhere"
+    release_as qmochi 0.3.0-alpha.0
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"no commit since"* ]]
 }
 
 @test "pin: the package the config file reaches gets a Release-As footer" {
