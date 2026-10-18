@@ -17,6 +17,9 @@ import (
 	"hop.top/kit/go/transport/authn"
 )
 
+// tokenCommandName is the kit-owned token command's word.
+const tokenCommandName = "token"
+
 // mountTokenCmd mounts the kit-owned `token` command, or completes one
 // already mounted: claims, decode and verify always, create when the
 // tool has an identity keypair to sign with (cli.WithIdentity), and
@@ -26,14 +29,14 @@ import (
 func (r *Root) mountTokenCmd() {
 	var cmd *cobra.Command
 	for _, c := range r.Cmd.Commands() {
-		if c.Name() == "token" {
+		if c.Name() == tokenCommandName {
 			cmd = c
 			break
 		}
 	}
 	if cmd == nil {
 		cmd = &cobra.Command{
-			Use:   "token",
+			Use:   tokenCommandName,
 			Short: "Manage API tokens",
 		}
 		r.Cmd.AddCommand(cmd)
@@ -71,8 +74,9 @@ type tokenClaims struct {
 // of every leaf — kit/side-effect, kit/idempotent, Long — because
 // the root mounts them into the adopter's tree, and a tree that fails
 // its own validator would refuse to start. The command is mounted by
-// cli.New, so it is kit-reserved: served surfaces withhold it as
-// management-only, and no remote caller can mint or probe tokens.
+// cli.New, so it is kit-reserved: the api, mcp and rpc surfaces
+// withhold it as management-only, the socket withholds it by name, and
+// no served caller can mint or probe tokens.
 func tokenClaimsCmd(_ *Root) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "claims",

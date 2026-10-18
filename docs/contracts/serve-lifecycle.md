@@ -2221,13 +2221,14 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   every key in `public_key_files`; with neither it is refused. A
   token's `kid` selects the key; a key left in `public_key_files` after
   rotation keeps verifying what it signed.
-- `token create` (mounted with `WithAPI` and `WithIdentity`) signs a
-  token `jwt` accepts: EdDSA, the keypair's `kid` in the header, `sub`,
+- `token create` (mounted with `WithIdentity`, whether or not the tool
+  has `WithAPI`) signs a token `jwt` accepts: EdDSA, the keypair's `kid` in the header, `sub`,
   `exp`, and optionally `tenant`, `aud`, `iss` and the scopes, written
   as `scope` (space-delimited) and `scopes` (a list). `token verify
   <token>` checks one as `--service` (default `api`) would: exit `0`
   valid, `5` refused, `6` key set unreachable, `2` nothing to verify
-  with. The `token` command is kit-reserved and never served.
+  with. The `token` command is kit-reserved and never served: no
+  transport — api, mcp, rpc, socket — lists or runs any of its leaves.
 - `jwks` and `oidc` fetch nothing at start. The key set is fetched on
   the first request that needs it, again once older than `refresh`,
   and again — at most once a minute — when a token names a `kid` the
@@ -2315,8 +2316,12 @@ kit HTTP listeners, sent as `X-API-Key: <key>` or
   secret cannot be guessed, and a KDF would only cost every request.
 - `cli.WithAPIKeys` mounts `token key create --sub [--tenant]
   [--scopes] [--expires]`, `token key list` and `token key revoke
-  <id>` (exit `3` for an unknown id); each opens the store of
-  `--service` (default `api`). Revocation is immediate: the service
+  <id>` (exit `3` for an unknown id), whether or not the tool has
+  `WithAPI`: a tool serving only `mcp` or `rpc` under `auth.mode:
+  apikey` issues its own keys without registering a REST api. Each
+  verb opens the store of `--service` (default `api`; such a tool
+  names its service, `--service mcp`, when that service's
+  `auth.apikey` names a store of its own). Revocation is immediate: the service
   reads the store on every request. A revoked key stays listed.
 - The key's principal, tenant and scopes are the call's `Caller`,
   `Tenant` and `Meta.Extra["scopes"]`; `Established` is `verified`.
@@ -2956,7 +2961,11 @@ Rules:
   tool's own introspection surface and is withheld from projection by
   default; a consumer that has a use for it reflects with
   `AllowReserved`, as the socket service's bridge does, and the policy
-  gate decides from there.
+  gate decides from there. The `token` command is the exception: it
+  mints and inspects the credentials the served surfaces accept, and
+  the socket withholds it too (`NOT_ENABLED`), so no surface serves it.
+  An adopter's own `token`, in a tool where kit mounted none, is not
+  reserved and is served like any other command.
 - Kit's own `service start` is both reserved and self-hosting. It reports
   `self-hosting`, the answer that says why calling it through a
   transport can never work rather than merely who owns the word.
@@ -3166,6 +3175,15 @@ changing a line:
    another purpose now declares itself optional by default when that
    method returns true. Every service is required, and every run exits
    as before, unless one of those says otherwise.
+12. **A key source mounts `token` on its own, and no surface serves
+   it.** `cli.WithAPIKeys` or `cli.WithIdentity` now mounts the
+   kit-reserved `token` command without `WithAPI`, so a tool that
+   serves only `mcp` or `rpc` can issue the keys and tokens its
+   service accepts; such a tool with a `token` command of its own
+   renames it, as a `WithAPI` tool already had to. The socket no
+   longer runs `token`: it was the one surface that did, through its
+   bridge's admission of reserved verbs, and a call now answers
+   `NOT_ENABLED`. Run `token` on the command line instead.
 
 Migrating from a hand-written leaf `service start` command, or from a tree
 mounted on REST and MCP through `cmdsurface` by hand, is a mechanical

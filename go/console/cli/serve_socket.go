@@ -272,7 +272,30 @@ func (l *lazySocket) Serve(ctx context.Context, inv transportsvc.Invoker) error 
 	if l.tr == nil {
 		return errors.New("socket: Serve called before Bind")
 	}
+	l.withholdCredentials()
 	return l.tr.Serve(ctx, inv)
+}
+
+// withholdCredentials keeps the kit-owned token command off the
+// socket. The socket's bridge admits kit's reserved verbs for the
+// tool's own introspection, but token mints and inspects the
+// credentials the served surfaces accept, and it is never served
+// (serve-lifecycle.md §"Bearer tokens", §"API keys"). It is hidden on
+// the bridge rather than refused in front of it, so a call is refused,
+// and audited, like any command not exposed here; and it is hidden
+// last, so no Expose pattern brings it back. An adopter's own token
+// command, in a tool where kit mounted none, is not reserved and is
+// left alone.
+func (l *lazySocket) withholdCredentials() {
+	if l.svc == nil || !l.root.IsReserved(tokenCommandName) {
+		return
+	}
+	b := l.svc.Bridge()
+	if b == nil {
+		return
+	}
+	b.Hide(tokenCommandName, cmdsurface.SurfaceSocket)
+	b.Hide(tokenCommandName+" *", cmdsurface.SurfaceSocket)
 }
 
 func (l *lazySocket) Close(ctx context.Context) error {

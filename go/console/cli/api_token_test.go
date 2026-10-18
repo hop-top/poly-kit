@@ -134,7 +134,8 @@ func TestTokenCreateRefusals(t *testing.T) {
 
 // TestTokenCommandMounting pins where token and its leaves appear:
 // with Auth, claims, decode and verify; with an identity keypair,
-// create too, with or without Auth; with neither, no token command.
+// create too, with or without Auth or WithAPI; with API keys, key, with
+// or without WithAPI; with none of them, no token command.
 func TestTokenCommandMounting(t *testing.T) {
 	leaves := func(r *cli.Root) map[string]bool {
 		for _, c := range r.Cmd.Commands() {
@@ -165,6 +166,21 @@ func TestTokenCommandMounting(t *testing.T) {
 
 	assert.Nil(t, leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
 		cli.WithAPI(cli.APIConfig{}))))
+
+	// A tool that serves no REST api still issues what its services
+	// accept: the key source alone mounts token.
+	got = leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
+		cli.WithIdentity(cli.IdentityConfig{Dir: dir})))
+	assert.Equal(t, map[string]bool{"claims": true, "decode": true, "verify": true, "create": true}, got,
+		"WithIdentity alone mounts token create")
+
+	got = leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true},
+		cli.WithAPIKeys(cli.APIKeysConfig{Path: filepath.Join(t.TempDir(), "apikeys.db")})))
+	assert.Equal(t, map[string]bool{"claims": true, "decode": true, "verify": true, "key": true}, got,
+		"WithAPIKeys alone mounts token key")
+
+	assert.Nil(t, leaves(cli.New(cli.Config{Name: "t", Version: "1", DisableValidate: true})),
+		"no key source, no token command")
 }
 
 // verdict is what token verify prints.
