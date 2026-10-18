@@ -206,6 +206,58 @@ run_rewrite() {
     cmp -s "$TMP/before.md" "$REPO/CHANGELOG.md"
 }
 
+# A linked release's kit entry, as release-please writes it: the group pin
+# commit carries a Release-As footer, so it shows although chore is hidden.
+pin_fixture() {
+    mkdir -p "$TMP/bin"
+    printf '#!/bin/sh\nexit 1\n' > "$TMP/bin/gh"
+    chmod +x "$TMP/bin/gh"
+    cat > "$REPO/CHANGELOG.md" <<'MD'
+# Changelog
+
+## [0.6.0-alpha.0](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.26...kit/v0.6.0-alpha.0) (2026-10-18)
+
+
+### Bug Fixes
+
+* **cli:** reserve peer and alias ([dfa60d7](https://github.com/hop-top/poly-kit/commit/dfa60d7630d2842e72abc5f4928792e5a5b9d9af))
+
+
+### Miscellaneous
+
+* **release:** start group kit 0.6.0-alpha.0 ([e8f4601](https://github.com/hop-top/poly-kit/commit/e8f460105961fa394570d3a6e1b7fe3df37f9247))
+
+
+### Build
+
+* **release:** cut kit 0.6.0 ([abc1234](https://github.com/hop-top/poly-kit/commit/abc1234))
+* **deps:** bump otel ([c0a2b21](https://github.com/hop-top/poly-kit/commit/c0a2b21))
+
+## [0.5.0-alpha.26](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.25...kit/v0.5.0-alpha.26) (2026-10-01)
+
+### Miscellaneous
+
+* **release:** start kit 0.5.0-alpha.26 ([1111111](https://github.com/hop-top/poly-kit/commit/1111111))
+MD
+}
+
+@test "rewrite: release-as pin commits leave the entry, empty sections with them" {
+    pin_fixture
+    run_rewrite
+    [ "$status" -eq 0 ]
+    local f="$REPO/CHANGELOG.md" latest
+    latest="$(sed -n '/^## \[0.6.0-alpha.0\]/,/^## \[0.5.0-alpha.26\]/p' "$f")"
+    [[ "$latest" != *"start group kit"* ]] || false
+    [[ "$latest" != *"### Miscellaneous"* ]] || false
+    [[ "$latest" != *"cut kit 0.6.0"* ]] || false
+    grep -qxF '* **cli:** reserve peer and alias ([dfa60d7](https://github.com/hop-top/poly-kit/commit/dfa60d7630d2842e72abc5f4928792e5a5b9d9af))' "$f"
+    grep -qxF '* **deps:** bump otel ([c0a2b21](https://github.com/hop-top/poly-kit/commit/c0a2b21))' "$f"
+    grep -qxF '### Build' "$f"
+    grep -qxF 'The hop-top team is happy to announce Kit 0.6.0-alpha.0. This release includes maintenance release with bug fixes.' "$f"
+    # Older entries are left as they are.
+    grep -qxF '* **release:** start kit 0.5.0-alpha.26 ([1111111](https://github.com/hop-top/poly-kit/commit/1111111))' "$f"
+}
+
 # pins_fixture <manifest kit version>: give the fixture repo a release-please
 # config pinning kit and kit-py to 0.6.0-alpha.0 through a linked release,
 # a manifest (the release PR's proposed one), and the scripts the step runs.

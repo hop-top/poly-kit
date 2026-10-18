@@ -81,7 +81,8 @@ release-please machinery pointed at different branches.
    a `release-as` pin — see
    [Branch-aware release-please](#branch-aware-release-please).
 3. On every release PR, `.github/workflows/changelog-rewrite.yml` post-processes
-   the bot's branch: it rewrites changelog prose, then regenerates `uv.lock` and
+   the bot's branch: it rewrites changelog prose (dropping the line of a
+   `release-as` pin commit), then regenerates `uv.lock` and
    `composer.lock` when release-please bumped `pyproject.toml` or
    `composer.json` (the lock checks would otherwise fail on the release PR and
    on every PR cut after it merges), then drops the `release-as` pins the
@@ -355,6 +356,14 @@ one PR per component. `group-pull-request-title-pattern`
 (`chore${scope}: release ${component} libraries`) stays in the config for
 good: release-please needs it to recognise the merged group PR, and without it
 the merge tags no member.
+
+The group's pin commit is a `chore`, but its `Release-As:` footer gets it into
+`kit`'s changelog anyway, under "Miscellaneous" (so does a pin of `kit`
+alone). `scripts/rewrite-changelog.sh` drops that line on the release PR, and
+the section with it when nothing else is in it. Other commits that touch only
+the config reach `kit` alone too: give release tooling a hidden type
+(`ci(release)`, `chore(release)`), or it lands in `kit`'s changelog as a
+feature or fix.
 
 The check fails a member's release PR whose proposed version is linked unless
 that PR moves every member to the same version, and prints the `--group`
