@@ -1,7 +1,7 @@
 name: Changelog Rewrite
 
 # Post-processing for release-please PRs, run in order on the bot's branch:
-#   rewrite   — rewrite changelog prose
+#   rewrite   — rewrite changelog prose, dropping release-as pin commits
 #   lockfiles — regenerate uv.lock / composer.lock when release-please bumped
 #               pyproject.toml / composer.json
 #   pins      — drop the release-as pins (and the linked-versions plugin entry

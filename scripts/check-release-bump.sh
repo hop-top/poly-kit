@@ -8,8 +8,10 @@
 #              release-as pin is not newer than its current version; a pin
 #              left behind re-proposes a version that exists
 #   breaking   a breaking commit landed since the package's last release, but
-#              the proposed version is not x.(y+1).0-alpha.0 while the major
-#              is 0, (x+1).0.0-alpha.0 from 1.0, or the stable form of either
+#              the proposed version starts no new line: x.(y+1).0-alpha.0 or
+#              a higher line while the major is 0, (x+1).0.0-alpha.0 or higher
+#              from 1.0 (a linked group takes its highest), or the stable
+#              x.(y+1).0 / (x+1).0.0 of a stable cut
 #   linked     the package is in a linked group and the proposed version
 #              starts a new major, or a new minor with a prerelease suffix,
 #              but not every group member releases at that version in this PR

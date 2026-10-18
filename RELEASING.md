@@ -167,22 +167,31 @@ npx release-please@17 release-pr --dry-run \
   --target-branch <pushed-branch> | grep '^title:'
 ```
 
-**Release brake.** Release PRs on either branch are blocked until a member of
-`@hop-top/release` approves them. The `production-branch-guardrail` ruleset on
-`main` and `next` requires code-owner review with zero required approvals, and
-`.github/CODEOWNERS` covers exactly the managed `CHANGELOG.md` files, which
-release-please rewrites on every release PR. The config and manifest are
-deliberately not owned: promotions and counter reseeds are human edits to
-those files and merge review-free, like everything else. The ruleset also
-requires the `breaking-bump` check (see
-[Breaking changes start a new minor line](#breaking-changes-start-a-new-minor-line)),
-which passes, skipped, on every PR that is not a release PR.
-The nightly auto-cut (`.github/workflows/nightly-release.yml`) merges with
-`--auto`, so it only times a merge that is already approved; it cannot cut a
-release nobody approved, on either branch. Approve the PR you intend to ship
-and leave the sibling branch's PR alone. Approvals are dismissed on push and
-release-please rebuilds the PR on every push to its base, so approve after the
-last change you want in.
+**Release brake.** Release PRs on `next` are blocked until a member of
+`@hop-top/release` approves them. The `production-branch-guardrail` ruleset
+targets `refs/heads/next` and the default branch, which is `next` too, and
+requires code-owner review with zero required approvals; `.github/CODEOWNERS`
+covers exactly the managed `CHANGELOG.md` files, which release-please rewrites
+on every release PR. The config and manifest are deliberately not owned:
+promotions and counter reseeds are human edits to those files and merge
+review-free, like everything else. The nightly auto-cut
+(`.github/workflows/nightly-release.yml`) merges with `--auto`, so on `next`
+it only times a merge that is already approved. Approve the PR you intend to
+ship and leave the sibling branch's PR alone. Approvals are dismissed on push
+and release-please rebuilds the PR on every push to its base, so approve after
+the last change you want in.
+
+Not yet in place:
+
+- The ruleset does not cover `main`. Nothing requires an approval there, so
+  the brake, the nightly auto-cut's included, does not hold a release PR on
+  `main` until the owner adds `main` to the ruleset.
+- The ruleset requires no status check. Once this tooling is merged, the
+  `breaking-bump` check (see
+  [Breaking changes start a new minor line](#breaking-changes-start-a-new-minor-line))
+  becomes a required check on `next`, and on `main` once `main` is in the
+  ruleset. It passes, skipped, on every PR that is not a release PR, so
+  requiring it holds nothing else up. Until then it only reports.
 
 Channel transitions on `next` (`alpha → beta → rc`) are committed by
 `scripts/promote-release.sh <stage>` (`make promote-<stage>`), which rewrites
@@ -225,12 +234,14 @@ by the promote script.
 
 ### Breaking changes start a new minor line
 
-Any breaking change since a component's last release starts a new minor
-prerelease line for that component: `x.(y+1).0-alpha.0` while the major is 0,
-`(x+1).0.0-alpha.0` from 1.0. `qmochi` at `0.2.0-alpha.1` plus a `feat!:`
-becomes `0.3.0-alpha.0`; `feat:`, `fix:` and `perf:` alone keep counting
-(`0.2.0-alpha.2`). For a linked group's member the new line is a linked release
-too, see [Linked releases](#linked-releases).
+Any breaking change since a component's last release starts a new line for
+that component. On a prerelease channel that is `x.(y+1).0-alpha.0` while the
+major is 0, `(x+1).0.0-alpha.0` from 1.0, or a higher line when the component
+is in a linked group whose highest line is higher. A stable cut after a
+breaking change is `x.(y+1).0` (from 1.0, `(x+1).0.0`). `qmochi` at
+`0.2.0-alpha.1` plus a `feat!:` becomes `0.3.0-alpha.0`; `feat:`, `fix:` and
+`perf:` alone keep counting (`0.2.0-alpha.2`). For a linked group's member the
+new line is a linked release too, see [Linked releases](#linked-releases).
 
 A commit is breaking when release-please's parser says so: a `!` before the
 colon of a conventional header (`feat!:x` included), a body line that starts
@@ -260,9 +271,14 @@ does not count, and the proposed version from the PR. It fails when:
   a released version, which release-please only warns about
   (`DuplicateReleaseError`) after merging.
 - **breaking**: a breaking commit since the package's tag of the current
-  version (`qmochi/v0.2.0-alpha.1`) touches it, and the proposed version is
-  not exactly `x.(y+1).0-alpha.0` (from 1.0, `(x+1).0.0-alpha.0`) or the stable
-  form of either. `0.5.1-alpha.3 → 0.6.0-alpha.3` fails.
+  version (`qmochi/v0.2.0-alpha.1`) touches it, and the proposed version
+  starts no new line. A new line has patch 0, `alpha.0` or no prerelease
+  suffix (a stable cut), and a minor above the current one while the major
+  is 0, or a major above it with minor 0 from 1.0. So `x.(y+1).0-alpha.0`
+  passes, a higher line passes (a linked group's highest can be one), and
+  `x.(y+1).0` passes as a stable cut. `0.5.1-alpha.3 → 0.6.0-alpha.3` and
+  `0.5.1-alpha.3 → 0.6.0-beta.0` fail. The fix the check prints is
+  `x.(y+1).0-alpha.0`, or the group's highest for a linked group.
 - **linked**: see [Linked releases](#linked-releases).
 - **pins**: the PR's own config, at its head, still holds a pin its manifest
   has reached, or a linked-versions plugin entry whose members keep no pin.
@@ -327,7 +343,7 @@ How the rule meets the rest of the flow:
   `1.2.0`). A stable cut (a pin of `0.6.0` from `0.6.0-rc.N`) passes unless a
   breaking commit touched the component since `rc.N`; `main` takes fixes only,
   so such a commit should not be there. If it is, the check asks for
-  `0.7.0-alpha.0`.
+  `0.7.0-alpha.0`; a stable cut of `0.7.0` passes too.
 - **LTS lines** take fixes only, so the check has nothing to catch there.
 
 ### Linked releases
@@ -382,11 +398,16 @@ merges. Every other config change still lands on both branches alike.
 The risk is a `next → main` promotion inside that window. It carries the pins
 into `main`, and like every promotion it replays `next`'s history, including
 the `Release-As:` footer of a root pin commit. `main`'s release-please then
-proposes versions already tagged on `next`. The stale rule catches both: the
-proposed version is already tagged, so the check fails, and the fix is
-`scripts/release-as.sh --cleanup` for pins, or for a footer a pin of the
-version `main` should cut, which wins over it. Promote after the pending
-release PR merges and neither happens.
+proposes the versions `next`'s pending release PR cuts. The stale rule fails
+such a PR only when its check runs after `next` has tagged the version:
+creating a tag runs no check, so a `main` release PR whose check passed
+before the tag existed stays green until a push re-runs it (release-please
+rebuilds the PR on every push to `main`). The pins rule does not help either:
+`main`'s pins job drops the promoted pins like any other. So with release PRs
+open on both branches, re-run the other branch's check after one merges, and
+before approving it. The fix is `scripts/release-as.sh --cleanup` for pins, or
+for a footer a pin of the version `main` should cut, which wins over it.
+Promote after the pending release PR merges and none of this happens.
 
 ## Components
 

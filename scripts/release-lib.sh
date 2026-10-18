@@ -441,8 +441,10 @@ rp_semver_max() {
 }
 
 # rp_is_new_line <current> <proposed> — succeeds when <proposed> starts a line
-# a breaking change after <current> allows: a new minor while the major is 0,
-# or a new major (minor 0); patch 0; no prerelease or exactly alpha.0.
+# a breaking change after <current> allows: patch 0, alpha.0 or no prerelease
+# (a stable cut), and a minor above <current>'s while the major is 0, or a
+# major above it with minor 0. A line above rp_new_line's passes too: a linked
+# group takes its highest.
 rp_is_new_line() {
   local cmaj cmin pmaj pmin ppat pre
   cmaj=$(rp_semver_field "$1" 1); cmin=$(rp_semver_field "$1" 2)
