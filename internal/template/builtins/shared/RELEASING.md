@@ -71,6 +71,5 @@ disable the workflow in GitHub Actions settings.
 
 ## Version synchronization
 
-For polyglot projects, major.minor stays synchronized across
-all language ports via release-please `linked-versions`. Patch
-versions may differ.
+For polyglot projects, each language port keeps its own version:
+the starter release-please config does not link them.

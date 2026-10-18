@@ -1027,18 +1027,26 @@ time triggers the same publish flow.
 
 ## Version synchronization
 
-Polyglot monorepo packages (Go, TS, Python) share major.minor.
-Patch versions may differ. Enforced via release-please
-`linked-versions` — a minor/major bump in any language bumps all.
+The polyglot packages (`kit`, `kit-php`, `kit-py`, `kit-rs`,
+`kit-ts`) form the linked group `kit`, listed under
+`x-linked-groups` in the release-please config. Each versions on
+its own, except in a linked release: when a member's proposed
+version starts a new major, or a new minor with a prerelease
+suffix, every member releases at that version, the highest across
+the group, in one PR, members without changes included. Patches,
+prerelease counters and stable minors stay per package.
 
 ```
-Go  0.4.1    TS  0.4.0    Py  0.4.2    ← patch differs, ok
-Go  0.5.0    TS  0.5.0    Py  0.5.0    ← minor bump syncs all
+Go  0.5.0-alpha.26  TS  0.5.0-alpha.3  Py  0.5.0-alpha.5  ← counters differ, ok
+Go  0.6.0-alpha.0   TS  0.6.0-alpha.0  Py  0.6.0-alpha.0  ← new minor in pre-release: linked
+Go  0.6.1           TS  0.6.0          Py  0.6.2          ← patches differ, ok
 ```
 
-Standalone projects scaffolded from this monorepo follow their
-own version progression — `linked-versions` only applies to
-packages within the same group.
+`scripts/release-as.sh --group kit <version>` sets a linked
+release up, and the `breaking-bump` check fails a member's
+release PR that would skip it; RELEASING.md, "Linked releases",
+has the mechanics. Standalone projects scaffolded from this
+monorepo follow their own version progression.
 
 ## LTS policy
 
