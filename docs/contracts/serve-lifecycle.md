@@ -2982,11 +2982,17 @@ Rules:
   tool's own introspection surface and is withheld from projection by
   default; a consumer that has a use for it reflects with
   `AllowReserved`, as the socket service's bridge does, and the policy
-  gate decides from there. The `token` command is the exception: it
-  mints and inspects the credentials the served surfaces accept, and
-  the socket withholds it too (`NOT_ENABLED`), so no surface serves it.
-  An adopter's own `token`, in a tool where kit mounted none, is not
-  reserved and is served like any other command.
+  gate decides from there. The socket uses that only for the tool
+  describing itself: of the reserved verbs it serves `help`, `spec`,
+  `status` and `version`, and withholds every other one — `token`,
+  which mints and inspects the credentials the served surfaces accept;
+  `quota`, whose `reset` would let a caller clear its own limit;
+  `audit`; `uri`; the `service` group; and any reserved verb kit adds
+  later unless it joins that list — answering `NOT_ENABLED`, audited,
+  as for any command not exposed on it. No surface serves a reserved
+  verb that manages the tool's served state. A command an adopter mounts after
+  `cli.New` is not reserved and is served like any other, whatever its
+  name.
 - Kit's own `service start` is both reserved and self-hosting. It reports
   `self-hosting`, the answer that says why calling it through a
   transport can never work rather than merely who owns the word.
@@ -3201,10 +3207,17 @@ changing a line:
    kit-reserved `token` command without `WithAPI`, so a tool that
    serves only `mcp` or `rpc` can issue the keys and tokens its
    service accepts; such a tool with a `token` command of its own
-   renames it, as a `WithAPI` tool already had to. The socket no
-   longer runs `token`: it was the one surface that did, through its
-   bridge's admission of reserved verbs, and a call now answers
-   `NOT_ENABLED`. Run `token` on the command line instead.
+   renames it, as a `WithAPI` tool already had to.
+13. **The socket serves only kit's introspection verbs.** It used to
+   run every kit-reserved command, through its bridge's admission of
+   reserved verbs — `token` (minting keys), `quota show` and `quota
+   reset` (clearing the caller's own limit), `audit verify` and the
+   rest. It now serves `help`, `spec`, `status` and `version` of them,
+   and answers `NOT_ENABLED` for every other one, as the api, mcp and
+   rpc surfaces already withheld them. Run those on the command line.
+   A command mounted through an option passed to `cli.New` is reserved
+   too, and so is now withheld from the socket as it already was from
+   the other surfaces; mount it after `cli.New` to serve it.
 
 Migrating from a hand-written leaf `service start` command, or from a tree
 mounted on REST and MCP through `cmdsurface` by hand, is a mechanical
