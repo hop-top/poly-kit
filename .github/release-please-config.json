@@ -109,6 +109,7 @@
     "extensions/mcp-tasks": {
       "release-type": "go",
       "component": "mcp-tasks",
+      "release-as": "0.2.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
