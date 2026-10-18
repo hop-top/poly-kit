@@ -2987,12 +2987,15 @@ Rules:
   `status` and `version`, and withholds every other one — `token`,
   which mints and inspects the credentials the served surfaces accept;
   `quota`, whose `reset` would let a caller clear its own limit;
-  `audit`; `uri`; the `service` group; and any reserved verb kit adds
-  later unless it joins that list — answering `NOT_ENABLED`, audited,
-  as for any command not exposed on it. No surface serves a reserved
-  verb that manages the tool's served state. A command an adopter mounts after
-  `cli.New` is not reserved and is served like any other, whatever its
-  name.
+  `audit`; `peer`; `alias`; `uri`; the `service` group; and any
+  reserved verb kit adds later unless it joins that list — answering
+  `NOT_ENABLED`, audited, as for any command not exposed on it. No
+  surface serves a reserved verb that manages the tool's served state.
+  A command an adopter mounts after `cli.New` is not reserved and is
+  served like any other, whatever its name — except a command kit
+  builds and the adopter mounts, which kit reserves by name when it
+  builds it (`peer` once the mesh is up, `alias` from `Root.AliasCmd`,
+  `spec` from its registrar).
 - Kit's own `service start` is both reserved and self-hosting. It reports
   `self-hosting`, the answer that says why calling it through a
   transport can never work rather than merely who owns the word.
@@ -3218,6 +3221,21 @@ changing a line:
    A command mounted through an option passed to `cli.New` is reserved
    too, and so is now withheld from the socket as it already was from
    the other surfaces; mount it after `cli.New` to serve it.
+14. **`peer` and `alias` are reserved, and no surface serves them.**
+   `peer`, mounted once `cli.WithPeers` brings the mesh up, and the
+   `alias` group `Root.AliasCmd` builds were both mounted after kit
+   took its snapshot of the commands it owns, so neither was reserved
+   and every surface served them: an unauthenticated REST, rpc or
+   socket caller could trust a pending LAN announcer, skipping the
+   person's trust-on-first-use step, or block and revoke legitimate
+   peers, and MCP listed `peer.*` as tools; `alias add` and `remove`
+   rewrote the tool's alias file. Both are now reserved by name when
+   kit mounts or builds them: REST does not mount them and discovery
+   marks them `management-only`, rpc answers `not_found`, MCP lists no
+   such tool, and the socket answers `NOT_ENABLED`. Trust, block and
+   revoke peers, and manage aliases, on the command line. A tool's own
+   routes that call the trust manager deliberately, behind their own
+   auth, are unaffected.
 
 Migrating from a hand-written leaf `service start` command, or from a tree
 mounted on REST and MCP through `cmdsurface` by hand, is a mechanical
