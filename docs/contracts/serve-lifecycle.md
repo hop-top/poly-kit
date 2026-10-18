@@ -2958,7 +2958,7 @@ transport surfaces them unchanged.
 |--------------|-------------------|-----------------------------------------------------------------------------|---------------|
 | interactive  | `interactive`     | `kit/side-effect: interactive` — a shell, a TUI, anything needing a terminal | the CLI only  |
 | self-hosting | `self-hosting`    | `service start` and everything under it; `kit/network: ingress`; `kit/self-hosting: true` | nothing       |
-| management   | `management-only` | kit's reserved verbs (`spec`, `status`, …) and their children               | `AllowReserved` |
+| management   | `management-only` | kit's reserved verbs (`spec`, `status`, …) and their children; any tree marked `kit/reserved`, and its children | `AllowReserved` |
 
 Rules:
 
@@ -2995,12 +2995,34 @@ Rules:
   `audit`; `peer`; `alias`; `uri`; the `service` group; and any
   reserved verb kit adds later unless it joins that list — answering
   `NOT_ENABLED`, audited, as for any command not exposed on it. No
-  surface serves a reserved verb that manages the tool's served state.
-  A command an adopter mounts after `cli.New` is not reserved and is
-  served like any other, whatever its name — except a command kit
-  builds and the adopter mounts, which kit reserves by name when it
-  builds it (`peer` once the mesh is up, `alias` from `Root.AliasCmd`,
-  `spec` from its registrar).
+  surface serves a reserved verb, or a reserved tree, that manages the
+  tool's state.
+- A command is reserved in one of two ways. By name: every command
+  `cli.New` mounts, plus the ones kit mounts on the root later and
+  names itself (`peer` once the mesh is up, `spec` from its
+  registrar); the name covers its depth-one word only. By identity:
+  a tree kit builds for the adopter to mount, which marks its own root
+  `kit/reserved` and so is reserved wherever it is mounted, nested
+  under a group of the adopter's or not, and on the socket as on every
+  other surface. The trees that do: `Root.AliasCmd` (`alias`, which
+  rewrites the alias file), `upgrade.MigrateCommand` (`migrate`, whose
+  `rollback` restores a backup over the live database), `stage.New`
+  (`stage`, whose `set` changes what a scope may do), `uri.Command`
+  (`uri`, whose `handler generate` writes the desktop integration; the
+  same tree `cli.WithURI` reserves by name), `router.Cmd` (`router`,
+  which starts and kills server processes) and `pkl.NewConfigCommand`
+  (`init`, the configuration wizard, which writes the tool's config
+  file). Each of their leaves declares its side effect too, so the
+  destructive ceiling holds for them even under `AllowReserved`.
+- Kit factories that stay servable, because they change nothing the
+  served surfaces depend on: `ps.Command` (lists work, `read`),
+  `cli.AuthStatusCmd` (`read`), `config.Command`, `PathCommand` and
+  `PathsCommand` (`read`), and `Root.AliasesCmd` (hidden, so never
+  projected). The command groups kit's own binary mounts (`scope`,
+  `breaker`, `conformance`, `uxp`, `telemetry`, `toolspec`) are kit's
+  own surface, which `kit service start` projects on purpose, behind
+  its gates. Any other command an adopter mounts after `cli.New` is
+  not reserved and is served like any other, whatever its name.
 - Kit's own `service start` is both reserved and self-hosting. It reports
   `self-hosting`, the answer that says why calling it through a
   transport can never work rather than merely who owns the word.
@@ -3233,14 +3255,29 @@ changing a line:
    and every surface served them: an unauthenticated REST, rpc or
    socket caller could trust a pending LAN announcer, skipping the
    person's trust-on-first-use step, or block and revoke legitimate
-   peers, and MCP listed `peer.*` as tools; `alias add` and `remove`
-   rewrote the tool's alias file. Both are now reserved by name when
-   kit mounts or builds them: REST does not mount them and discovery
+   peers, and MCP listed `peer.*` as tools; `alias add` and `delete`
+   rewrote the tool's alias file. Both are now reserved — `peer` by
+   name, `alias` by identity (item 15): REST does not mount them and discovery
    marks them `management-only`, rpc answers `not_found`, MCP lists no
    such tool, and the socket answers `NOT_ENABLED`. Trust, block and
    revoke peers, and manage aliases, on the command line. A tool's own
    routes that call the trust manager deliberately, behind their own
    auth, are unaffected.
+15. **Kit's management trees reserve themselves.**
+   `upgrade.MigrateCommand`, `stage.New`, `uri.Command`, `router.Cmd`
+   and `pkl.NewConfigCommand`, which adopters mount after `cli.New`,
+   were not reserved, so every surface served what their side effects
+   and the policy allowed: `migrate run`, `stage set` and the config
+   wizard could run over REST, `router start` could spawn a server
+   process, and a policy admitting destructive commands let `migrate
+   rollback` restore a backup over the live database. Each now marks its root
+   `kit/reserved`, as `Root.AliasCmd` does, so the tree is
+   management-only wherever it is mounted — nested under an adopter's
+   group too — and `router start` is self-hosting besides. Their
+   leaves keep the side effects they declare. `ps.Command` declares
+   `read` and stays servable. Run migrations, stage changes, URI
+   handler generation, the router and the config wizard on the command
+   line.
 
 Migrating from a hand-written leaf `service start` command, or from a tree
 mounted on REST and MCP through `cmdsurface` by hand, is a mechanical

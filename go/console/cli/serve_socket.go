@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/cli/svcconfig"
 	"hop.top/kit/go/core/xdg"
 	"hop.top/kit/go/transport/cmdsurface"
@@ -296,7 +297,8 @@ var socketIntrospection = map[string]bool{
 // refused in front of it, so a call is refused, and audited, like any
 // command not exposed here (NOT_ENABLED); and it is hidden last, so no
 // Expose pattern brings it back. A command an adopter mounts after
-// cli.New is not reserved and is left alone, whatever its name.
+// cli.New is not reserved and is left alone, whatever its name, unless
+// kit built it and reserved the tree itself.
 func (l *lazySocket) withholdManagement() {
 	if l.svc == nil {
 		return
@@ -311,6 +313,14 @@ func (l *lazySocket) withholdManagement() {
 		}
 		b.Hide(name, cmdsurface.SurfaceSocket)
 		b.Hide(name+" *", cmdsurface.SurfaceSocket)
+	}
+	// A tree a kit factory reserved for itself (cmdmeta.KeyReserved) —
+	// migrate, stage, alias, router, uri — is withheld wherever the
+	// adopter mounted it, nested under a group of its own or not.
+	for _, leaf := range b.Leaves() {
+		if cmdmeta.InReservedTree(leaf.Cmd) {
+			b.Hide(strings.Join(leaf.Path, " "), cmdsurface.SurfaceSocket)
+		}
 	}
 }
 

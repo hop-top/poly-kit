@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"hop.top/kit/go/console/cli/cmdmeta"
 )
 
 // Command returns the top-level URI command with kit annotations attached.
@@ -22,6 +24,10 @@ candidates, and generate OS handler metadata for kit-powered applications.`,
 		Args: cobra.NoArgs,
 	}
 	setHierarchical(cmd)
+	// Kit-reserved wherever it is mounted, as cli.WithURI already
+	// reserves it by name: handler generate writes the tool's desktop
+	// integration, which no served caller should.
+	setAnnotation(cmd, cmdmeta.KeyReserved, "true")
 
 	if !disabled["parse"] {
 		cmd.AddCommand(parseCmd(cfg))

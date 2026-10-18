@@ -354,6 +354,12 @@ func reflectSurface(cmd *cobra.Command, root *cobra.Command, cfg *config) Surfac
 	if cfg.reserved != nil {
 		m.Reserved = cfg.reserved.IsReserved(depthOneName(cmd, root))
 	}
+	// A subtree a kit factory marked reserved is reserved wherever it
+	// is mounted, with or without the root's lookup: the lookup knows
+	// names at depth one only, and the factory had no root to tell.
+	if cmdmeta.InReservedTree(cmd) {
+		m.Reserved = true
+	}
 	return m
 }
 

@@ -80,6 +80,7 @@ func Command(name string, p Provider, v *viper.Viper) *cobra.Command {
 	cmd.Flags().DurationVarP(&intervalFlag, "interval", "i",
 		5*time.Second, "Poll interval for watch mode")
 
+	// It lists work and changes nothing, so it stays servable.
 	kitcli.SetSideEffect(cmd, kitcli.SideEffectRead)
 	return cmd
 }

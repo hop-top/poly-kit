@@ -40,8 +40,13 @@ fmt.Println(ok, steps[0].Suggest, "/", steps[0].Reason)
   leaf is what lets `hop.top/kit/go/ai/cmdreflect` and transports reflect
   a command tree without the `transport/api → cmdreflect → cli` cycle.
 - Boolean markers (`top-level-verb`, `hierarchical`, `passthrough`,
-  `retryable`, `self-hosting`) read true only when the value is the
-  string `"true"`. Nil command or nil annotation map reads false.
+  `retryable`, `self-hosting`, `reserved`) read true only when the value
+  is the string `"true"`. Nil command or nil annotation map reads false.
+- `kit/reserved` is a tree property: `InReservedTree` is true for the
+  marked command and everything under it, wherever it is mounted. A kit
+  factory sets it (`SetReserved`) on the root of a management tree it
+  builds for adopters to mount; the reflector reads it as
+  management-only, which no served surface runs.
 - `IsDryRunSupported` resolution order: `kit/dry-run: opted-out` is
   false; `kit/dry-run: supported` is true; side-effect `write*` or
   `destructive*` is true; `read`, `interactive`, unknown or missing tag

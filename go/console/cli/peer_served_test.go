@@ -9,11 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/alias"
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/core/identity"
 	"hop.top/kit/go/runtime/peer"
@@ -120,22 +122,39 @@ func TestPeerIsNeverServedOverTheSocket(t *testing.T) {
 }
 
 // TestAliasCommandIsReservedAndWithheld pins the same for kit's alias
-// group, which an adopter mounts after cli.New: alias add and remove
-// rewrite the tool's alias file, and no served caller may.
+// group, which an adopter mounts after cli.New, at the top level or
+// under a group of its own: alias add and remove rewrite the tool's
+// alias file, and no served caller may. The tree reserves itself, so
+// where it is mounted does not matter.
 func TestAliasCommandIsReservedAndWithheld(t *testing.T) {
-	testhome.Isolate(t)
-	path := shortSocketPath(t)
-	file := filepath.Join(t.TempDir(), "aliases.yaml")
-	r := newServeRoot(t, cli.WithSocket(cli.SocketConfig{Path: path}))
-	r.Cmd.AddCommand(r.AliasCmd(alias.NewStore(file)))
-	assert.True(t, r.IsReserved("alias"))
+	for name, parent := range map[string]string{"top level": "", "nested under a group": "settings"} {
+		t.Run(name, func(t *testing.T) {
+			testhome.Isolate(t)
+			path := shortSocketPath(t)
+			file := filepath.Join(t.TempDir(), "aliases.yaml")
+			r := newServeRoot(t, cli.WithSocket(cli.SocketConfig{Path: path}))
+			aliasCmd := r.AliasCmd(alias.NewStore(file))
+			prefix := []string{}
+			if parent != "" {
+				group := &cobra.Command{Use: parent, Short: "the adopter's group"}
+				group.AddCommand(aliasCmd)
+				r.Cmd.AddCommand(group)
+				prefix = []string{parent}
+			} else {
+				r.Cmd.AddCommand(aliasCmd)
+			}
+			assert.True(t, cmdmeta.InReservedTree(aliasCmd))
 
-	stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
-	defer stop()
-	for _, p := range [][]string{{"alias", "list"}, {"alias", "add"}, {"alias", "remove"}} {
-		resp := callSocket(t, path, socket.Request{Path: p, Args: []string{"x", "serve"}})
-		require.False(t, resp.Ok, "%v ran over the socket", p)
+			stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
+			defer stop()
+			for _, verb := range []string{"list", "add", "delete"} {
+				p := append(append([]string{}, prefix...), "alias", verb)
+				resp := callSocket(t, path, socket.Request{Path: p, Args: []string{"x", "serve"}})
+				require.False(t, resp.Ok, "%v ran over the socket", p)
+				assert.Equal(t, socket.CodeNotEnabled, resp.Error.Code, "%v", p)
+			}
+			_, err := os.Stat(file)
+			assert.True(t, os.IsNotExist(err), "no served caller wrote the alias file")
+		})
 	}
-	_, err := os.Stat(file)
-	assert.True(t, os.IsNotExist(err), "no served caller wrote the alias file")
 }
