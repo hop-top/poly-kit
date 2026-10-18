@@ -573,7 +573,7 @@ job-integration-temporal:
 
 test-release: ## Run e2e tests for release scripts
 	bash scripts/test-release-e2e.sh
-	bats .github/tests/release-lib.bats .github/tests/release-as.bats
+	bats .github/tests/release-lib.bats .github/tests/release-as.bats .github/tests/release-bump.bats
 
 promote: ## Interactive release promotion
 	@./scripts/promote-release.sh

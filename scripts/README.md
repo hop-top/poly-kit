@@ -14,6 +14,7 @@ none of them ship.
 | [`install-hooks.sh`](install-hooks.sh) | points `core.hooksPath` at `.githooks/` for this clone | a fresh clone is not running the pre-push gate |
 | [`promote-release.sh`](promote-release.sh) | moves the release-please prerelease channel one step (alpha → beta → rc → release) | you cut the next channel; see `RELEASING.md` |
 | [`release-as.sh`](release-as.sh) | pins the version release-please proposes next for a component or a linked group, and drops pins a release cuts | a breaking change needs a new minor line, a linked release is due, or you switch channel or cut stable; see `RELEASING.md` |
+| [`check-release-bump.sh`](check-release-bump.sh) | fails a release PR that re-proposes a released version, keeps the line after a breaking change, or splits a linked release | the release-bump-check workflow fails |
 | [`release-lib.sh`](release-lib.sh) | release-please routing, commit parsing, tag and semver helpers the two scripts above source | release-please changes how it routes or parses commits or names tags |
 | [`rewrite-changelog.sh`](rewrite-changelog.sh) | rewrites a raw release-please changelog into the polished format, idempotently | the changelog-rewrite workflow needs a local run |
 | [`test-release-e2e.sh`](test-release-e2e.sh) | end-to-end tests for the promotion and changelog-rewrite scripts | you change either script |
