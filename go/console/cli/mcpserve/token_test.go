@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/console/cli/mcpserve"
 	_ "hop.top/kit/go/storage/kv/sqlite"
 )
@@ -69,7 +70,7 @@ func connectWith(t *testing.T, endpoint, token string) (*mcp.ClientSession, erro
 // key create|list|revoke without WithAPI, and a key it issues
 // authenticates against the mcp service over HTTP.
 func TestMCPOnlyRootIssuesAPIKeys(t *testing.T) {
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	path := filepath.Join(t.TempDir(), "keys", "apikeys.db")
 	keys := cli.WithAPIKeys(cli.APIKeysConfig{Path: path})
 	apikeyMode := func(r *cli.Root) { r.Viper.Set("services.mcp.auth.mode", cli.AuthModeAPIKey) }
@@ -105,7 +106,7 @@ func TestMCPOnlyRootIssuesAPIKeys(t *testing.T) {
 // jwt: WithIdentity mounts token create without WithAPI, and a token
 // it signs authenticates against the mcp service over HTTP.
 func TestMCPOnlyRootSignsTokensForJWTMode(t *testing.T) {
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	dir := filepath.Join(t.TempDir(), "identity")
 	id := cli.WithIdentity(cli.IdentityConfig{Dir: dir})
 	jwtMode := func(r *cli.Root) { r.Viper.Set("services.mcp.auth.mode", "jwt") }
@@ -132,7 +133,7 @@ func TestMCPOnlyRootSignsTokensForJWTMode(t *testing.T) {
 // them is a tool, so no MCP caller can mint, list, revoke or probe
 // keys or tokens.
 func TestTokenIsNeverAnMCPTool(t *testing.T) {
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	dir := filepath.Join(t.TempDir(), "identity")
 	path := filepath.Join(t.TempDir(), "keys", "apikeys.db")
 	run, endpoint := startMCP(t, mcpserve.Config{}, []string{"mcp", "--mcp-addr", "127.0.0.1:0"},
@@ -156,6 +157,6 @@ func TestTokenIsNeverAnMCPTool(t *testing.T) {
 // TestNoTokenCommandWithoutAKeySource pins the other side: a root with
 // none of WithAPI, WithAPIKeys and WithIdentity has no token command.
 func TestNoTokenCommandWithoutAKeySource(t *testing.T) {
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	assert.Nil(t, tokenLeaves(newServeRoot(t, mcpserve.With(mcpserve.Config{}))))
 }
