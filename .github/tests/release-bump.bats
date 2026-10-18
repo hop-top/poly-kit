@@ -206,6 +206,18 @@ at() {
     [[ "$output" == *"kit-py does not here"* ]]
 }
 
+# kit-py's manifest already reads 0.6.0-alpha.0, released on its own: the
+# same version in the PR is not a member released by it.
+@test "linked: a member already at the version, not released here, is missing" {
+    at 0.5.0-alpha.26 0.6.0-alpha.0
+    land "fix(cli)!: reserve the peer tree" cli/cli.go
+    pr="$(release_pr kit . 0.6.0-alpha.0)"
+    check "$pr"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"kit-py does not here"* ]] || false
+    [[ "$output" == *"scripts/release-as.sh --group kit 0.7.0-alpha.0"* ]]
+}
+
 @test "linked: a new major in alpha needs the whole group" {
     at 1.2.0 1.2.0
     land "feat(cli)!: new config format" cli/cli.go
