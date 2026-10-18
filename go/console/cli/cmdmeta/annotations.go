@@ -36,6 +36,13 @@ const (
 	// binary — and so must only ever run from the local CLI, never
 	// from inside a served invocation.
 	KeySelfHosting = "kit/self-hosting"
+	// KeyReserved marks a command, and everything under it, as kit's
+	// own management surface: management-only on every served
+	// surface, wherever it is mounted. A kit factory that builds a
+	// command tree adopters mount sets it on the tree's root, since it
+	// has no Root to reserve a name on; it reserves the tree itself,
+	// nested under another group or not.
+	KeyReserved = "kit/reserved"
 )
 
 // ReadBool reports whether key is present on cmd with the value
@@ -79,4 +86,27 @@ func IsRetryable(cmd *cobra.Command) bool {
 // IsSelfHosting reports whether kit/self-hosting is "true" on cmd.
 func IsSelfHosting(cmd *cobra.Command) bool {
 	return ReadBool(cmd, KeySelfHosting)
+}
+
+// SetReserved marks cmd, and so its whole subtree, as kit-reserved
+// (KeyReserved).
+func SetReserved(cmd *cobra.Command) {
+	if cmd == nil {
+		return
+	}
+	if cmd.Annotations == nil {
+		cmd.Annotations = make(map[string]string)
+	}
+	cmd.Annotations[KeyReserved] = "true"
+}
+
+// InReservedTree reports whether cmd or any of its ancestors carries
+// KeyReserved.
+func InReservedTree(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if ReadBool(c, KeyReserved) {
+			return true
+		}
+	}
+	return false
 }

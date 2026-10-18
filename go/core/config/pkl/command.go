@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	kitcli "hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/wizard"
 	"hop.top/kit/go/core/config"
 )
@@ -64,6 +65,10 @@ func NewConfigCommand(pklPath string, opts CommandOpts) *cobra.Command {
 	// Writes the config file of the chosen scope; previews under
 	// --dry-run.
 	kitcli.SetSideEffect(cmd, kitcli.SideEffectWriteLocal)
+	// A wizard that writes the tool's own configuration: the command
+	// reserves itself wherever it is mounted, so no served surface
+	// runs it.
+	cmdmeta.SetReserved(cmd)
 
 	return cmd
 }

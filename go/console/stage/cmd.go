@@ -3,6 +3,8 @@ package stage
 import (
 	"github.com/spf13/cobra"
 
+	"hop.top/kit/go/console/cli/cmdmeta"
+
 	"hop.top/kit/go/core/stage"
 	"hop.top/kit/go/runtime/domain"
 )
@@ -56,6 +58,9 @@ Subcommands:
   list           print every scope's current stage`,
 		Args: cobra.NoArgs,
 	}
+	// Kit-reserved wherever it is mounted: set changes what a scope may
+	// do for everyone on it, so no served surface lists or runs stage.
+	cmdmeta.SetReserved(cmd)
 	cmd.AddCommand(showCmd(cfg), setCmd(cfg), whyCmd(cfg), listCmd(cfg))
 	return cmd
 }

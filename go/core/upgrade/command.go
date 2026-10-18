@@ -7,10 +7,16 @@ import (
 	"github.com/spf13/viper"
 
 	kitcli "hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/cmdmeta"
 	"hop.top/kit/go/console/output"
 )
 
 // MigrateCommand returns a cobra subcommand tree for schema migration management.
+//
+// The tree is kit-reserved wherever it is mounted (cmdmeta.KeyReserved):
+// it manages the tool's own database, so no served surface lists or
+// runs it — rollback restores a backup over the live data. Every leaf
+// declares its side effect.
 //
 //	<tool> migrate status     — show schema versions + pending count
 //	<tool> migrate run        — manually trigger migrations
@@ -27,6 +33,7 @@ displays migration history.`,
 	}
 
 	output.RegisterFlags(cmd, v)
+	cmdmeta.SetReserved(cmd)
 
 	cmd.AddCommand(
 		migrateStatusCmd(m, v),
