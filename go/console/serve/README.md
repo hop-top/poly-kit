@@ -13,6 +13,12 @@ The cobra command and the `services.*` config block belong to
   Start, Ready, Stop); register via `cli.WithService`
 - start order, config validation, policy class, or bound address matter →
   also implement `Dependent`, `Validator`, `Classified`, or `Addressed`
+- the rest of the run must survive this service failing (an auxiliary
+  listener whose port may be taken) → implement `Optional` for the default,
+  or set `Config.Optional` (`services.<name>.optional`)
+- you report status from inside the run → `RunViewFrom(ctx)`, then
+  `RunStatus.Services()`; after it, `Result.Services` (both JSON-ready
+  `ServiceStatus`)
 - you need the runnable set without starting anything → `Resolve(reg, Request)`
 - you need the exit code for an outcome → `ExitCodeFor`, `CodeFor`, `WorstOutcome`
 - you are the supervisor → `NewSupervisor(reg, cfg, opts...).Run(ctx,
@@ -61,6 +67,11 @@ this package is the authority for signatures only. Points a caller gets wrong:
 - Exit codes: clean stop 0; invalid selection, config invalid, no services 2;
   unknown service 3; policy denied 5; start failed, runtime crash, shutdown
   timeout 1. An outcome missing from the table exits 1.
+- An optional service's failure (start, ready timeout, crash, own stop
+  budget) is emitted as `failed` with `optional: true` and recorded in
+  `Result.Failed`/`Services`, but trips neither fail-fast nor the exit code;
+  a timed-out one is stopped where it failed. Every started service failing
+  is still a start failure, exit 1. No retry.
 - Ports reproduce [contracts/parity/serve.json](../../../contracts/parity/serve.json).
 
 ## Neighbours

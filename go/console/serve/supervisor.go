@@ -134,8 +134,16 @@ type Result struct {
 	// Ready is the identifiers that reported ready, in report order.
 	Ready []string
 
-	// Failed maps a service identifier to the error it returned.
+	// Failed maps a service identifier to the error it returned. It
+	// includes optional services, whose failures do not count toward
+	// Outcome; Services says which ones those are.
 	Failed map[string]error
+
+	// Services is every started service's final record, in start
+	// order: state, whether it was optional, and for a failed one the
+	// reason and error text. It is the JSON-ready form of Started,
+	// Ready and Failed together.
+	Services []ServiceStatus
 }
 
 // ExitCode is the process exit code for this run.
@@ -163,6 +171,24 @@ type runState struct {
 	// its budgets from. Held here rather than passed down so the
 	// shutdown path needs no argument the caller could forget.
 	stopConfigs map[string]Config
+
+	// optional names the services the run does not depend on. It is
+	// fixed before any service starts and only read afterwards.
+	optional map[string]bool
+
+	// reasons is each failed service's failure kind, the value its
+	// failed event carried under reason.
+	reasons map[string]string
+
+	// changed is each service's elapsed time at its latest recorded
+	// transition.
+	changed map[string]int64
+
+	// released names the services whose Stop already ran mid-run: an
+	// optional service stopped where it failed. The ordered stop
+	// skips them, and the exit their Start makes once stopped is
+	// expected and changes nothing.
+	released map[string]bool
 }
 
 func (st *runState) elapsedMS() int64 {
@@ -175,10 +201,13 @@ func (st *runState) record(o LifecycleOutcome) {
 	st.observed = append(st.observed, o)
 }
 
-func (st *runState) markFailed(name string, err error) {
+// markFailed records name's failure and its kind.
+func (st *runState) markFailed(name string, err error, reason string) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	st.failed[name] = err
+	st.reasons[name] = reason
+	st.changed[name] = st.elapsedMS()
 }
 
 // markStopped records that name's stopped event has been emitted and
@@ -191,6 +220,9 @@ func (st *runState) markStopped(name string) (already bool) {
 	}
 	already = st.stopped[name]
 	st.stopped[name] = true
+	if !already {
+		st.changed[name] = st.elapsedMS()
+	}
 	return already
 }
 
@@ -225,8 +257,15 @@ func (s *Supervisor) Run(ctx context.Context, selected []string, configs map[str
 		begin:       s.now(),
 		now:         s.now,
 		stopConfigs: configs,
+		optional:    optionalSet(selected, configs),
+		reasons:     make(map[string]string),
+		changed:     make(map[string]int64),
+		released:    make(map[string]bool),
 	}
-	em := &emitter{topics: s.topics, pub: s.pub, log: s.log, source: s.source}
+	em := &emitter{
+		topics: s.topics, pub: s.pub, log: s.log, source: s.source,
+		optional: st.optional,
+	}
 
 	if len(selected) == 0 {
 		return s.result(st, OutcomeNoServices, output.UsageError(
@@ -251,6 +290,12 @@ func (s *Supervisor) Run(ctx context.Context, selected []string, configs map[str
 	// A start failure short-circuits: services already running are
 	// stopped in reverse order, and the outcome is start-failed.
 	if sup.startErr != nil {
+		return s.shutdown(ctx, cancelRun, sup, st, em)
+	}
+	// Every service failing to start, optional ones included, leaves
+	// nothing serving: the run is down, not degraded.
+	if st.allFailed() {
+		st.record(OutcomeStartFailed)
 		return s.shutdown(ctx, cancelRun, sup, st, em)
 	}
 
@@ -333,7 +378,7 @@ func (s *Supervisor) startAll(
 		if !ok {
 			sup.startErr = fmt.Errorf("service %q disappeared from the registry", name)
 			st.record(OutcomeStartFailed)
-			st.markFailed(name, sup.startErr)
+			st.markFailed(name, sup.startErr, "unregistered")
 			em.emit(ctx, ObjectService, ActionFailed, EventPayload{
 				Qualifiers: bus.Qualifiers{Reason: "unregistered"},
 				Service:    name, Error: sup.startErr.Error(), ElapsedMS: st.elapsedMS(),
@@ -345,9 +390,7 @@ func (s *Supervisor) startAll(
 		var once sync.Once
 		report := func() { once.Do(func() { close(readyCh) }) }
 
-		st.mu.Lock()
-		st.started = append(st.started, name)
-		st.mu.Unlock()
+		st.markStarted(name)
 		sup.live++
 
 		em.emit(ctx, ObjectService, ActionStarted, EventPayload{
@@ -372,6 +415,10 @@ func (s *Supervisor) startAll(
 // awaitReady blocks until name reports ready, fails, or exhausts its
 // readiness budget. A service that has not reported ready within the
 // budget is a start failure (serve-lifecycle.md §"Readiness").
+//
+// A non-nil return ends the start sequence. An optional service's
+// start failure is recorded and reported here and returns nil, so the
+// next service starts (serve-lifecycle.md §"Optional services").
 func (s *Supervisor) awaitReady(
 	ctx context.Context,
 	name string,
@@ -392,9 +439,7 @@ func (s *Supervisor) awaitReady(
 	for {
 		select {
 		case <-readyCh:
-			st.mu.Lock()
-			st.ready = append(st.ready, name)
-			st.mu.Unlock()
+			st.markReady(name)
 			em.emit(ctx, ObjectService, ActionReadyReported, EventPayload{
 				Service: name, Address: addrOf(s.reg, name), ElapsedMS: st.elapsedMS(),
 			})
@@ -404,6 +449,9 @@ func (s *Supervisor) awaitReady(
 			// Every exit consumed here is one fewer goroutine the
 			// wait loop will see, whichever service it belonged to.
 			*live--
+			if st.isReleased(exit.name) {
+				continue
+			}
 
 			// A service returning before readiness is a start
 			// failure even when it returns nil: it was asked to
@@ -414,13 +462,16 @@ func (s *Supervisor) awaitReady(
 					err = errors.New("returned before reporting ready")
 				}
 				s.noteFailure(ctx, exit.name, err, OutcomeStartFailed, "start", st, em)
+				if st.isOptional(name) {
+					return nil
+				}
 				return err
 			}
 			// A different service failing during this one's start
 			// window is still a failure of the run.
 			if exit.err != nil {
 				s.noteFailure(ctx, exit.name, exit.err, OutcomeRuntimeCrash, "runtime", st, em)
-				if s.cfg.FailurePolicy == FailFast {
+				if s.cfg.FailurePolicy == FailFast && !st.isOptional(exit.name) {
 					return exit.err
 				}
 				continue
@@ -436,6 +487,12 @@ func (s *Supervisor) awaitReady(
 		case <-timer.C:
 			err := fmt.Errorf("not ready within %s", budget)
 			s.noteFailure(ctx, name, err, OutcomeStartFailed, "ready_timeout", st, em)
+			if st.isOptional(name) {
+				// Its Start is still running. Stop it here, so it
+				// cannot begin serving later while reported failed.
+				s.release(ctx, name, configs, st, em)
+				return nil
+			}
 			return err
 
 		case <-ctx.Done():
@@ -446,9 +503,11 @@ func (s *Supervisor) awaitReady(
 
 // emitAggregateReady publishes the supervisor-scoped readiness event
 // once every started service is ready (serve-lifecycle.md §"Readiness").
+// An optional service that failed before reporting ready does not
+// participate, the same way a skipped one does not.
 func (s *Supervisor) emitAggregateReady(ctx context.Context, st *runState, em *emitter) {
 	st.mu.Lock()
-	allReady := len(st.ready) == len(st.started) && len(st.started) > 0
+	allReady := len(st.ready)+st.optionalNeverReadyLocked() == len(st.started) && len(st.ready) > 0
 	st.mu.Unlock()
 	if allReady {
 		em.emit(ctx, ObjectSupervisor, ActionReadyReported, EventPayload{
@@ -474,9 +533,14 @@ func (s *Supervisor) await(
 
 		case exit := <-sup.exits:
 			sup.live--
+			if st.isReleased(exit.name) {
+				continue
+			}
 			if exit.err != nil {
 				s.noteFailure(ctx, exit.name, exit.err, OutcomeRuntimeCrash, "runtime", st, em)
-				if s.cfg.FailurePolicy == FailFast {
+				// failure_policy governs the services the run depends
+				// on; an optional one's failure never ends the run.
+				if s.cfg.FailurePolicy == FailFast && !st.isOptional(exit.name) {
 					cancelRun()
 					return
 				}
@@ -497,15 +561,16 @@ func (s *Supervisor) await(
 	// documented "the last running service stopped" exit; under
 	// fail-fast it can only happen after a failure already recorded
 	// one, or after a clean return, and WorstOutcome sorts it out.
-	st.mu.Lock()
-	anyFailed := len(st.failed) > 0
-	st.mu.Unlock()
-	if anyFailed && s.cfg.FailurePolicy == Isolate {
+	// Optional failures alone do not make it a crash, unless every
+	// service in the run failed: then nothing ended cleanly.
+	if (st.requiredFailed() && s.cfg.FailurePolicy == Isolate) || st.allFailed() {
 		st.record(OutcomeRuntimeCrash)
 	}
 }
 
-// noteFailure records a failure and emits its event.
+// noteFailure records a failure and emits its event. An optional
+// service's failure is recorded and emitted like any other, but is not
+// an outcome of the run.
 func (s *Supervisor) noteFailure(
 	ctx context.Context,
 	name string,
@@ -515,8 +580,10 @@ func (s *Supervisor) noteFailure(
 	st *runState,
 	em *emitter,
 ) {
-	st.markFailed(name, err)
-	st.record(outcome)
+	st.markFailed(name, err, reason)
+	if !st.isOptional(name) {
+		st.record(outcome)
+	}
 	em.emit(ctx, ObjectService, ActionFailed, EventPayload{
 		Qualifiers: bus.Qualifiers{Reason: reason},
 		Service:    name, Error: err.Error(), ElapsedMS: st.elapsedMS(),
@@ -528,13 +595,14 @@ func (s *Supervisor) finish(st *runState, em *emitter) Result {
 	started, ready, failed, observed := st.snapshot()
 	worst := WorstOutcome(observed)
 	res := Result{
-		Outcome: worst,
-		Started: started,
-		Ready:   ready,
-		Failed:  failed,
+		Outcome:  worst,
+		Started:  started,
+		Ready:    ready,
+		Failed:   failed,
+		Services: st.Services(),
 	}
 	if IsFailure(worst) {
-		res.Err = failureError(worst, failed)
+		res.Err = failureError(worst, failed, st.optional)
 	}
 	em.emit(context.Background(), ObjectSupervisor, ActionStopped, EventPayload{
 		Qualifiers: bus.Qualifiers{Reason: string(worst)},

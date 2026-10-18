@@ -370,6 +370,7 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	}
 
 	configs := serveConfigs(root.Viper, reg.Names(), enable, disable)
+	applyServiceOptional(root.Viper, reg, configs)
 	readyTO, _ := cmd.Flags().GetDuration("ready-timeout")
 	stopTO, _ := cmd.Flags().GetDuration("stop-timeout")
 	serveTimeoutOverrides(configs, readyTO, stopTO)
@@ -487,18 +488,21 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 }
 
 // serveListRow is one row of `service list`: a registered service and
-// whether it is configured, enabled for a bare `service start`, and
-// ready.
+// whether it is configured, enabled for a bare `service start`, ready,
+// and optional.
 type serveListRow struct {
 	Service    string `json:"service"    yaml:"service"    table:"SERVICE"`
 	Configured bool   `json:"configured" yaml:"configured" table:"CONFIGURED"`
 	Enabled    bool   `json:"enabled"    yaml:"enabled"    table:"ENABLED"`
 	Ready      bool   `json:"ready"      yaml:"ready"      table:"READY"`
+	Optional   bool   `json:"optional"   yaml:"optional"   table:"OPTIONAL"`
 }
 
 // runServeList prints the registered services with their configured,
-// enabled, and ready state, in registration order so the listing
-// mirrors the adopter's wiring (serve-lifecycle.md §"Command hierarchy").
+// enabled, ready and optional state, in registration order so the
+// listing mirrors the adopter's wiring (serve-lifecycle.md §"Command
+// hierarchy"). OPTIONAL is the last column, so the earlier columns keep
+// their positions for a script that reads them.
 func runServeList(cmd *cobra.Command, root *Root) error {
 	reg := root.serveReg
 	if reg == nil {
@@ -517,7 +521,13 @@ func runServeList(cmd *cobra.Command, root *Root) error {
 	for _, svc := range reg.List() {
 		name := svc.Name()
 		cfg, configured := configs[name]
-		rows = append(rows, serveListRow{Service: name, Configured: configured, Enabled: cfg.Enabled, Ready: svc.Ready()})
+		// Optional reads the same resolution the supervisor runs on,
+		// for a service not yet configured too: it is what applies
+		// the moment one is.
+		rows = append(rows, serveListRow{
+			Service: name, Configured: configured, Enabled: cfg.Enabled, Ready: svc.Ready(),
+			Optional: serviceOptional(root.Viper, svc),
+		})
 	}
 	// The table keeps its fixed-width layout: generated project
 	// READMEs and the adopter docs print it verbatim, and the table
@@ -525,9 +535,10 @@ func runServeList(cmd *cobra.Command, root *Root) error {
 	// Dispatch's.
 	if activeOutputFormat(cmd, root.Viper) == output.Table {
 		w := cmd.OutOrStdout()
-		fmt.Fprintf(w, "%-20s %-11s %-8s %s\n", "SERVICE", "CONFIGURED", "ENABLED", "READY")
+		fmt.Fprintf(w, "%-20s %-11s %-8s %-6s %s\n", "SERVICE", "CONFIGURED", "ENABLED", "READY", "OPTIONAL")
 		for _, row := range rows {
-			fmt.Fprintf(w, "%-20s %-11t %-8t %t\n", row.Service, row.Configured, row.Enabled, row.Ready)
+			fmt.Fprintf(w, "%-20s %-11t %-8t %-6t %t\n",
+				row.Service, row.Configured, row.Enabled, row.Ready, row.Optional)
 		}
 		return nil
 	}

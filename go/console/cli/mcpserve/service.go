@@ -106,6 +106,14 @@ type Config struct {
 	// services.mcp.insecure_no_policy sets the same thing.
 	InsecureNoPolicy bool
 
+	// Optional makes the service optional by default: when the tool
+	// runs it beside other services, its failure — a taken port, a
+	// missed readiness budget, a crash — is reported but does not
+	// bring them down or change the exit code. It is the default for
+	// services.mcp.optional, which wins when set. See
+	// docs/contracts/serve-lifecycle.md §"Optional services".
+	Optional bool
+
 	// Expose lists the command patterns the service may invoke, in
 	// the pattern language of [cmdsurface.Bridge.Expose]. Empty
 	// exposes the whole tree; the destructive ceiling still applies
@@ -228,11 +236,16 @@ func (s *service) Class() (sideEffect, network string) {
 	return string(cli.SideEffectWriteShared), "listen"
 }
 
+// Optional implements [serve.Optional]: Config.Optional is the
+// registration's default, and services.mcp.optional overrides it.
+func (s *service) Optional() bool { return s.cfg.Optional }
+
 var (
 	_ serve.Service    = (*service)(nil)
 	_ serve.Validator  = (*service)(nil)
 	_ serve.Addressed  = (*service)(nil)
 	_ serve.Classified = (*service)(nil)
+	_ serve.Optional   = (*service)(nil)
 )
 
 // newService builds the service on the transport seam, with the

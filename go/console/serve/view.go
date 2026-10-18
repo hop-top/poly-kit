@@ -45,6 +45,51 @@ type RunView interface {
 	State(name string) ServiceState
 }
 
+// ServiceStatus is one service's entry in the supervisor's record of a
+// run, with the detail behind its state. It is the shape a status
+// surface renders, readably or as JSON; its keys are the lifecycle
+// event payload's, so a status reader and an event subscriber read the
+// same words.
+type ServiceStatus struct {
+	// Service is the service identifier.
+	Service string `json:"service"`
+
+	// State is where the service stands, as [RunView.State] reports
+	// it.
+	State ServiceState `json:"state"`
+
+	// Optional is true when the run does not depend on the service
+	// ([Config].Optional).
+	Optional bool `json:"optional,omitempty"`
+
+	// Reason is the kind of failure, for a failed service: the value
+	// its failed event carries under reason (start, ready_timeout,
+	// runtime, stop, stop_timeout, escalated, unregistered). Empty
+	// otherwise.
+	Reason string `json:"reason,omitempty"`
+
+	// Error is the failure text, for a failed service.
+	Error string `json:"error,omitempty"`
+
+	// ElapsedMS is milliseconds from the start of the run to the
+	// service's latest recorded transition: started, ready, failed or
+	// stopped.
+	ElapsedMS int64 `json:"elapsed_ms"`
+}
+
+// RunStatus is the supervisor's [RunView] with the detail behind each
+// state. The view the supervisor attaches to every Start's context
+// implements it, so a service that answers status questions for the
+// whole process — an adopter's own status endpoint — reads the same
+// record [Result].Services carries when the run ends.
+type RunStatus interface {
+	RunView
+
+	// Services returns every service the run started, in the order
+	// it started them.
+	Services() []ServiceStatus
+}
+
 type runViewKey struct{}
 
 // ContextWithRunView returns ctx carrying v. The supervisor attaches
@@ -67,6 +112,11 @@ func RunViewFrom(ctx context.Context) (RunView, bool) {
 func (st *runState) State(name string) ServiceState {
 	st.mu.Lock()
 	defer st.mu.Unlock()
+	return st.stateLocked(name)
+}
+
+// stateLocked is State for a caller already holding st.mu.
+func (st *runState) stateLocked(name string) ServiceState {
 	if _, failed := st.failed[name]; failed {
 		return StateFailed
 	}

@@ -21,7 +21,40 @@ const (
 	serveSubkeyEnabled      = ".enabled"
 	serveSubkeyReadyTimeout = ".ready_timeout"
 	serveSubkeyStopTimeout  = ".stop_timeout"
+	serveSubkeyOptional     = ".optional"
 )
+
+// applyServiceOptional resolves services.<name>.optional into every
+// resolved service's block: see [serviceOptional].
+func applyServiceOptional(v *viper.Viper, reg *serve.Registry, configs map[string]serve.Config) {
+	if reg == nil {
+		return
+	}
+	for name, cfg := range configs {
+		svc, ok := reg.Lookup(name)
+		if !ok {
+			continue
+		}
+		cfg.Optional = serviceOptional(v, svc)
+		configs[name] = cfg
+	}
+}
+
+// serviceOptional is services.<name>.optional when any source sets
+// it, else the registration's own default ([serve.Optional]), else
+// false. The key wins in either direction: an adopter marks its
+// auxiliary service optional by default, and an operator who needs it
+// can make it required again, or the reverse
+// (serve-lifecycle.md §"Optional services").
+func serviceOptional(v *viper.Viper, svc serve.Service) bool {
+	if v != nil {
+		if key := serveKeyPrefix + svc.Name() + serveSubkeyOptional; v.IsSet(key) {
+			return v.GetBool(key)
+		}
+	}
+	o, ok := svc.(serve.Optional)
+	return ok && o.Optional()
+}
 
 // serveConfigs resolves the services.<name> block for every registered
 // service.
