@@ -119,6 +119,7 @@
     "incubator/qmochi": {
       "release-type": "go",
       "component": "qmochi",
+      "release-as": "0.3.0-alpha.0",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "prerelease": true,
