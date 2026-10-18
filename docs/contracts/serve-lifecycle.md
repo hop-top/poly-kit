@@ -519,11 +519,16 @@ the failure is not an outcome of the run:
   returning before it reported ready marks the service `failed`, and
   the supervisor goes on to start the next service. A service that
   missed its readiness budget is stopped there and then, so that it
-  cannot begin serving later while reported failed. That `Stop` is
-  bounded by the service's `stop_timeout` and by the run: the service
-  never served, so it has nothing to drain, and a signal or a required
-  failure under `fail-fast` cuts the `Stop` short instead of waiting
-  on it, and starts nothing further. A `Stop` still running then is
+  cannot begin serving later while reported failed. That `Stop` runs
+  alongside the rest of the run and is bounded by the service's
+  `stop_timeout`. A signal, or another service's failure that ends the
+  run under `fail-fast`, ends the start sequence at once — nothing
+  further starts — and shutdown begins while the release finishes; it
+  is joined within `services.shutdown_timeout`. The `Stop` itself is not
+  cut short: the service never served, so there is nothing to drain,
+  but it may hold what it bound — a listener, a socket file — and its
+  `Stop` keeps its budget to let go of them, so a run never returns
+  with them still held. A `Stop` that overruns its own budget is
   written off (below). The ordered stop does not stop the service a
   second time, and neither the exit its `Start` makes once stopped nor
   a `Stop` that overran is a further failure: its record stays the
