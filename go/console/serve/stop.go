@@ -39,6 +39,12 @@ func (s *Supervisor) stopAll(parent context.Context, st *runState, em *emitter) 
 	for i := len(order) - 1; i >= 0; i-- {
 		name := order[i]
 
+		// An optional service stopped where it failed is not stopped
+		// a second time.
+		if st.isReleased(name) {
+			continue
+		}
+
 		// A second signal aborts the drain: the remaining services
 		// are abandoned and the run exits with the crash code.
 		select {
@@ -46,7 +52,10 @@ func (s *Supervisor) stopAll(parent context.Context, st *runState, em *emitter) 
 			err := errors.New("drain aborted by second signal")
 			st.record(OutcomeRuntimeCrash)
 			for _, abandoned := range order[:i+1] {
-				st.markFailed(abandoned, err)
+				if st.isReleased(abandoned) {
+					continue
+				}
+				st.markFailed(abandoned, err, "escalated")
 				em.emit(base, ObjectService, ActionFailed, EventPayload{
 					Qualifiers: bus.Qualifiers{Reason: "escalated"},
 					Service:    abandoned, Error: err.Error(), ElapsedMS: st.elapsedMS(),
@@ -72,11 +81,7 @@ func (s *Supervisor) stopAll(parent context.Context, st *runState, em *emitter) 
 			continue
 		}
 
-		budget := DefaultStopTimeout
-		if c, ok := configs[name]; ok && c.StopTimeout > 0 {
-			budget = c.StopTimeout
-		}
-		s.stopOne(totalCtx, svc, name, budget, st, em)
+		s.stopOne(totalCtx, svc, name, stopBudget(configs, name), st, em)
 	}
 }
 
@@ -122,8 +127,12 @@ func (s *Supervisor) stopOne(
 			outcome = OutcomeShutdownTimeout
 		}
 		err := fmt.Errorf("stop exceeded %s", budget)
-		st.markFailed(name, err)
-		st.record(outcome)
+		st.markFailed(name, err, reason)
+		// The total budget running out is the run's failure, whoever
+		// it ran out on; one optional service's own stop budget is not.
+		if outcome == OutcomeShutdownTimeout || !st.isOptional(name) {
+			st.record(outcome)
+		}
 		em.emit(context.WithoutCancel(totalCtx), ObjectService, ActionFailed, EventPayload{
 			Qualifiers: bus.Qualifiers{Reason: reason},
 			Service:    name, Error: err.Error(), ElapsedMS: st.elapsedMS(),
@@ -136,11 +145,22 @@ func (s *Supervisor) stopOne(
 //
 // A failure that wraps a kit transient error propagates exit 6
 // unchanged, so agents and retry wrappers keep their existing branch
-// (serve-lifecycle.md §"Exit behavior").
-func failureError(o LifecycleOutcome, failed map[string]error) *output.Error {
-	msg := failureMessage(o, failed)
+// (serve-lifecycle.md §"Exit behavior"). Only the failures the outcome
+// is about are consulted: the required services', or every service's
+// when all that failed were optional.
+func failureError(o LifecycleOutcome, failed map[string]error, optional map[string]bool) *output.Error {
+	msg := failureMessage(o, failed, optional)
 
+	causes := make([]string, 0, len(failed))
 	for _, name := range sortedKeys(failed) {
+		if !optional[name] {
+			causes = append(causes, name)
+		}
+	}
+	if len(causes) == 0 {
+		causes = sortedKeys(failed)
+	}
+	for _, name := range causes {
 		var kitErr *output.Error
 		if errors.As(failed[name], &kitErr) && kitErr.Transience == output.TransienceTransient {
 			out := output.TransientError(msg)
@@ -157,7 +177,9 @@ func failureError(o LifecycleOutcome, failed map[string]error) *output.Error {
 	}
 }
 
-func failureMessage(o LifecycleOutcome, failed map[string]error) string {
+// failureMessage names every failed service. An optional one is marked,
+// so an operator reads which failure the exit is about.
+func failureMessage(o LifecycleOutcome, failed map[string]error, optional map[string]bool) string {
 	var b strings.Builder
 	switch o {
 	case OutcomeStartFailed:
@@ -173,6 +195,10 @@ func failureMessage(o LifecycleOutcome, failed map[string]error) string {
 			b.WriteString(": ")
 		} else {
 			b.WriteString("; ")
+		}
+		if optional[name] {
+			fmt.Fprintf(&b, "%s (optional): %v", name, failed[name])
+			continue
 		}
 		fmt.Fprintf(&b, "%s: %v", name, failed[name])
 	}

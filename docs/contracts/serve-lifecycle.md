@@ -21,7 +21,7 @@ authority for behavior; the package is the authority for signatures.
 |---------------------------------|------------|------------------------------------------------------------|
 | `<tool> service start`          | supervisor | every service that is **configured** AND **enabled**        |
 | `<tool> service start <service>`| selector   | exactly the named service, subject to validation            |
-| `<tool> service list`           | inspection | registered services with configured / enabled / ready state |
+| `<tool> service list`           | inspection | registered services with configured / enabled / ready / optional state |
 | `<tool> service status`         | inspection | the running instance's services, readiness and addresses    |
 | `<tool> service stop`           | control    | asks the running instance to drain and exit                 |
 | `<tool> service restart`        | control    | asks the running instance to drain and re-execute in place  |
@@ -242,8 +242,9 @@ A registration MUST provide, at minimum:
 | `Stop`     | drains and releases resources; bounded by the stop timeout          |
 
 A registration MAY additionally declare a config `Validate` hook, a
-side-effect/network class for the policy gate, per-service flags, and
-a `DependsOn` list.
+side-effect/network class for the policy gate, per-service flags, a
+`DependsOn` list, and that it is optional by default (see [Optional
+services](#optional-services)).
 
 ### Naming rules
 
@@ -351,7 +352,9 @@ service may still be idle, and it may later fail.
 
 - A service MUST report ready at most once per start.
 - The aggregate is ready when **every started service** is ready. A
-  skipped (disabled) service does not participate.
+  skipped (disabled) service does not participate, and neither does an
+  [optional](#optional-services) service that failed before reporting
+  ready.
 - A service that has not reported ready within its readiness timeout
   (default 30s, `services.<name>.ready_timeout`) is treated as a
   start failure — see [Exit behavior](#exit-behavior).
@@ -487,6 +490,84 @@ than it was asked to run.
 Both policies apply identically to the selector form, where they are
 indistinguishable: one service failing is the only service failing.
 
+Both policies govern the services the run depends on. A service marked
+optional is outside them, as the next section says.
+
+### Optional services
+
+A service is **optional** when the run does not depend on it: a daemon
+whose core service must keep serving when an auxiliary one, such as an
+MCP listener whose port is taken, cannot start. A service is optional
+when `services.<name>.optional` is true, or when that key is unset and
+the registration declares the service optional by default. The key
+wins over the registration in either direction, so an adopter can ship
+an auxiliary service optional and an operator can make it required
+again. A service is required unless something says otherwise.
+
+An optional service's failure is reported exactly as any other
+failure is — the `kit.serve.service.failed` event and its `ERROR` log
+line, with the same `reason` and `error` — and every event about an
+optional service also carries `optional: true`. What changes is that
+the failure is not an outcome of the run:
+
+- **Before ready.** A bind error, a missed `ready_timeout`, or `Start`
+  returning before it reported ready marks the service `failed`, and
+  the supervisor goes on to start the next service. A service that
+  missed its readiness budget is stopped there and then, within its
+  `stop_timeout`, so that it cannot begin serving later while reported
+  failed; the ordered stop does not stop it a second time, and the
+  exit its `Start` makes once stopped is not a further failure. A
+  service whose `Start` already returned is stopped in the ordered
+  stop, like every started service.
+- **After ready.** A crash marks the service `failed`, and the other
+  services keep running whatever `services.failure_policy` says.
+  Under `fail-fast` a *required* service's failure still brings every
+  service down, optional ones included; under `isolate` it is isolated
+  as before.
+- **In stop.** A `Stop` that returns an error or exceeds the service's
+  own `stop_timeout` is reported and does not raise the exit code.
+  Exhausting `services.shutdown_timeout`, or a second signal, is the
+  run's failure whichever service it lands on.
+
+Readiness and exit follow from that:
+
+- `kit.serve.supervisor.ready_reported` is emitted once every started
+  service is ready, except an optional service that failed before
+  reporting ready, which does not participate, as a skipped one does
+  not.
+- A run whose only failures are optional ones exits as if those
+  services had not been asked for: `0` after a signal, non-zero only
+  for a required failure. A rolling restart that finds the auxiliary
+  port taken stays a clean restart.
+- A run with nothing serving is down, not degraded. When every started
+  service fails to start, optional or not, the run is a start failure
+  at exit `1` — which is also what the selector form naming a single
+  optional service amounts to. A run that ends on its own, without a
+  signal, after every service it started failed, exits `1` too.
+- The refusal message names every failed service and marks an optional
+  one `(optional)`, so an operator reads which failure the exit is
+  about.
+
+There is **no retry**. The supervisor restarts no service, optional or
+not, and has no backoff: an optional service that failed stays failed
+for the rest of the run, and bringing it back means starting a new run.
+
+Ordering is unchanged. An optional service takes its place in the
+`DependsOn` order, and a service depending on an optional one that
+failed still starts; it is the dependent's job to cope. The api
+service's `/readyz` answers `503` for as long as such a dependency is
+failed, so an api that must report ready without its optional
+dependency should not declare it in `DependsOn`.
+
+The supervisor's record of the run carries the optional service as
+`failed` with its reason and error text, under the same keys the event
+payload uses: `service`, `state`, `optional`, `reason`, `error`,
+`elapsed_ms`. In Go that record is `Result.Services` when the run ends
+and `RunStatus.Services()` on the run view every `Start` receives while
+it runs, so a status surface a tool serves reads what the supervisor
+saw. `service list` shows each registered service's resolved optional
+value in an `OPTIONAL` column.
+
 ### Re-execution
 
 A run is over when the supervisor returns; the root it ran on is not
@@ -528,10 +609,15 @@ Notes:
   message and the `failed` event, not in a second numeric code.
 - Under `isolate`, the exit code reflects the worst outcome observed
   across the whole run, not the last one.
+- "One service" in the table means a required one. An
+  [optional](#optional-services) service's failure is not an outcome:
+  it raises the exit code only when every started service failed.
 - Failures are classified `TransiencePermanent` unless the underlying
   error is already a kit transient error, in which case exit `6`
   (`TRANSIENT`) is propagated unchanged so agents and retry wrappers
-  keep their existing branch.
+  keep their existing branch. Only the failures the exit is about are
+  consulted: an optional service's transient error does not turn a
+  required failure into exit `6`.
 - A refusal raised by the argument parser before the command runs — a
   positional count the command does not accept, an unknown or
   malformed flag, a flag missing its value or its required companion,
@@ -592,8 +678,14 @@ configuration. The `service start` flags (`--addr`, `--socket`, `--enable`,
 | `services.<name>.enabled`          | bool       | `false` | supervisor starts this service              |
 | `services.<name>.ready_timeout`    | duration   | `30s`   | budget from `Start` to ready                |
 | `services.<name>.stop_timeout`     | duration   | `30s`   | budget for one `Stop`                       |
+| `services.<name>.optional`         | bool       | the registration's, else `false` | the run does not depend on this service ([Optional services](#optional-services)) |
 | `services.failure_policy`          | enum       | `fail-fast` | `fail-fast` or `isolate`                |
 | `services.shutdown_timeout`        | duration   | `60s`   | total shutdown budget across all services   |
+
+Like the other lifecycle keys, `optional` has no `services.all`
+default: whether the run depends on a service is a decision about
+that service, and a blanket `services.all.optional` is refused at
+exit `2`.
 
 Service-specific keys live under the same block and are owned by the
 service: `services.api.addr`, `services.socket.path`, and so on. Kit
@@ -1087,7 +1179,10 @@ service runs over HTTP.
 
 `mcpserve.Config` carries the code defaults under the same names; the
 precedence is flag, then config, then `mcpserve.Config`, then the
-default.
+default. `mcpserve.Config.Optional` is likewise the default for the
+lifecycle key `services.mcp.optional`: a tool that runs `mcp` beside a
+core service sets it so a taken MCP port does not take the core down
+([Optional services](#optional-services)).
 
 Flags, registered on `service start` like `--socket` and inert unless `mcp` is
 the service running:
@@ -3061,6 +3156,16 @@ changing a line:
    used to pass. A policy that meant to allow them names them
    (`write-shared: ["*"]`). The `service start` command itself is not gated by
    the `--policy` it carries.
+11. **`optional` is a lifecycle key, and `service list` shows it.**
+   `services.<name>.optional` now decides whether the run depends on
+   the service ([Optional services](#optional-services)); a service
+   that read a flat key of that name for a meaning of its own sees the
+   supervisor read it too. `service list` prints a fifth column,
+   `OPTIONAL`, after `READY`; the first four keep their positions. A
+   service whose type already had an `Optional() bool` method for
+   another purpose now declares itself optional by default when that
+   method returns true. Every service is required, and every run exits
+   as before, unless one of those says otherwise.
 
 Migrating from a hand-written leaf `service start` command, or from a tree
 mounted on REST and MCP through `cmdsurface` by hand, is a mechanical
@@ -3318,6 +3423,18 @@ resolving dotted keys satisfies this section by reading the same key
 precedence engine first. The environment-variable spelling
 (`<TOOL>_SERVICES_API_ENABLED`) is contract only for a port that has
 env resolution at all.
+
+`services.<name>.optional` is not in this table yet. Go ships it with
+the behavior in [Optional services](#optional-services); the
+TypeScript, Python, Rust and PHP ports do not, and
+`contracts/parity/serve.json` does not record it. It belongs in the
+contract for the same reason `failure_policy` does — it decides
+whether a process survives, and a health check reads the difference —
+and joins this table, with a `behaviors` row in the fixture, once the
+ports implement it. Until then a port treats every service as
+required, which is what every port did before the key existed: a
+fleet sharing one YAML file gets the stricter behavior from a port
+that has not caught up, never a laxer one.
 
 #### The `--enable` / `--disable` and timeout flags
 
