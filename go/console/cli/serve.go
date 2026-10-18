@@ -373,9 +373,6 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 		return output.UsageError(err.Error())
 	}
 	configs := serveConfigs(root.Viper, reg.Names(), enable, disable)
-	readyTO, _ := cmd.Flags().GetDuration("ready-timeout")
-	stopTO, _ := cmd.Flags().GetDuration("stop-timeout")
-	serveTimeoutOverrides(configs, readyTO, stopTO)
 	applyAPICompat(cmd, root, configs)
 	applySocketFlags(cmd, root)
 
@@ -388,10 +385,14 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 		return outcome.Err
 	}
 	// Whether the run depends on each service is settled for what it
-	// runs, the selector form's unconfigured service included.
+	// runs, the selector form's unconfigured service included; the
+	// timeout flags then reach every entry, that one too.
 	if err := applyServiceOptional(root.Viper, reg, configs, outcome.Selected); err != nil {
 		return output.UsageError(err.Error())
 	}
+	readyTO, _ := cmd.Flags().GetDuration("ready-timeout")
+	stopTO, _ := cmd.Flags().GetDuration("stop-timeout")
+	serveTimeoutOverrides(configs, readyTO, stopTO)
 	// Where `service stop`, `service restart` and `service status`
 	// reach this run: resolved here, after the tool's own
 	// configuration and profile resolution, so a bad scope is refused
