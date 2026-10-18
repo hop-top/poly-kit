@@ -110,6 +110,28 @@ breaking() {
     [ "$(breaking "$(printf 'fix: a\n\nwip!:')")" = 0 ]
 }
 
+@test "parser: BREAKING CHANGE right after a closed scope is the ! marker" {
+    [ "$(breaking 'feat(api)BREAKING CHANGE: drop v1')" = 1 ]
+    [ "$(breaking 'feat(api)BREAKING-CHANGE: drop v1')" = 1 ]
+    [ "$(breaking 'feat(api)BREAKING CHANGE #3')" = 1 ]
+    [ "$(breaking 'feat(api)BREAKING CHANGE:')" = 0 ]
+    [ "$(breaking "$(printf 'fix: a\n\nRefs(x)BREAKING CHANGE: z')")" = 1 ]
+    [ "$(breaking "$(printf 'fix: a\n\nRefs(x) #BREAKING CHANGE: z')")" = 1 ]
+    # A trailing footer marks both commits; behind " #" only the footer's.
+    lib "rp_parse_commits \"\$(printf 'fix: a\n\nRefs(x)BREAKING CHANGE: z')\" | LC_ALL=C sort"
+    [ "$output" = "$(printf 'Refs\tx\t1\t1\t0\nfix\t\t1\t0\t0')" ]
+    lib "rp_parse_commits \"\$(printf 'fix: a\n\nRefs(x) #BREAKING CHANGE: z')\" | LC_ALL=C sort"
+    [ "$output" = "$(printf 'Refs\tx\t1\t1\t0\nfix\t\t0\t0\t0')" ]
+    # Without a scope it is no marker: the header does not parse, or the
+    # type takes it.
+    [ "$(breaking 'fixBREAKING CHANGE: x')" = 0 ]
+    [ "$(breaking 'fix BREAKING CHANGE: x')" = 0 ]
+    lib "rp_parse_commits 'fixBREAKING CHANGE: x'; rp_parse_commits 'fix BREAKING CHANGE: x'"
+    [ "$output" = "" ]
+    lib "rp_parse_commits 'fixBREAKING-CHANGE: x'"
+    [ "$output" = "$(printf 'fixBREAKING-CHANGE\t\t0\t0\t0')" ]
+}
+
 @test "parser: the last breaking marker needs text; footers are not body" {
     [ "$(breaking "$(printf 'fix: x\n\nBREAKING CHANGE:\nmore text')")" = 1 ]
     [ "$(breaking "$(printf 'fix: x\n\nBREAKING CHANGE #3')")" = 1 ]
@@ -144,6 +166,8 @@ visible() {
     [ "$(visible 'fix(q): x')" = 1 ]
     [ "$(visible 'Feat: x')" = 1 ]
     [ "$(visible 'chore(q)!: x')" = 1 ]
+    [ "$(visible 'ci(q)BREAKING CHANGE:')" = 1 ]
+    [ "$(visible "$(printf 'ci: a\n\nRefs(x) #BREAKING CHANGE: z')")" = 1 ]
     [ "$(visible "$(printf 'ci: a\n\nBREAKING CHANGE: b')")" = 1 ]
     [ "$(visible "$(printf 'chore: x\n\nRelease-As: 1.2.3')")" = 1 ]
     [ "$(visible "$(printf 'test(x): y\n\nfix: real')")" = 1 ]

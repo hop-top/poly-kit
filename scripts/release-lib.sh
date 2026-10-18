@@ -26,15 +26,17 @@
 #   a body, then footers: the trailing lines that each open with a token
 #   ("BREAKING CHANGE", "BREAKING-CHANGE", "!", or a type with an optional
 #   scope and "!") and a ":" or " #" separator, or that indent a footer's
-#   continuation. A header that does not parse, or a line that opens a scope
-#   ("<type>(") and never closes it, drops the message. A footer with a type
-#   is parsed again as a commit of its own, so "Refs!: 12" is a breaking
-#   commit. A commit is breaking when the last of its breaking markers has
-#   text: "!" in the header (the subject), a body line that opens with
-#   "BREAKING CHANGE:" or "BREAKING-CHANGE:" (the rest of the body from
-#   there), a BREAKING CHANGE footer (its last line); or when its body holds
-#   "BREAKING-CHANGE:" with text anywhere after it. BEGIN_COMMIT_OVERRIDE
-#   pull request bodies are not mirrored.
+#   continuation. Right after a closed scope, in a header or a token,
+#   "BREAKING CHANGE" or "BREAKING-CHANGE" stands for the "!". A header that
+#   does not parse, or a line that opens a scope ("<type>(") and never
+#   closes it, drops the message. A footer with a type is parsed again as a
+#   commit of its own, so "Refs!: 12" is a breaking commit. A commit is
+#   breaking when the last of its breaking markers has text: "!" in the
+#   header (the subject), a body line that opens with "BREAKING CHANGE:" or
+#   "BREAKING-CHANGE:" (the rest of the body from there), a footer whose
+#   token is or ends in BREAKING CHANGE (its last line); or when its body
+#   holds "BREAKING-CHANGE:" with text anywhere after it.
+#   BEGIN_COMMIT_OVERRIDE pull request bodies are not mirrored.
 #
 # Linked groups are this repo's own: the top-level "x-linked-groups" key of
 # the release-please config, which release-please ignores, lists each
@@ -185,8 +187,8 @@ rp_commit_files() {
 
 # rp_parse_commits <message> [breaking] — the commits release-please parses
 # from the message (see the header), one per line:
-#   <type> TAB <scope> TAB <breaking> TAB <"!" in the header> TAB <a Release-As
-#   footer with a version>
+#   <type> TAB <scope> TAB <breaking> TAB <"!", or BREAKING CHANGE for it, in
+#   the header> TAB <a Release-As footer with a version>
 # the last three 1 or 0. With "breaking" it prints nothing and succeeds when
 # one of them is breaking. NBSP and ZWNBSP, whitespace to the parser, read as
 # a tab, which is whitespace to it too; a lone CR ends a line, as a CRLF does.
@@ -196,7 +198,8 @@ rp_parse_commits() {
 
     # head(s): the footer token s opens with: 0 none, 1 BREAKING CHANGE or
     # BREAKING-CHANGE, 2 "!", 3 a type; sets HT (type), HS ("(scope)"), HB
-    # ("!" or empty), HP (separator) and HV (the value on this line). A
+    # ("!", BREAKING CHANGE after a scope, which the type takes when there
+    # is none, or empty), HP (separator) and HV (the value on this line). A
     # matched marker that misses its separator is no footer at all.
     function head(s,   r, kind) {
       HT = ""; HS = ""; HB = ""
@@ -210,6 +213,7 @@ rp_parse_commits() {
           HS = substr(r, 1, RLENGTH); r = substr(r, RLENGTH + 1)
         }
         if (substr(r, 1, 1) == "!") { HB = "!"; r = substr(r, 2) }
+        else if (r ~ /^BREAKING[ -]CHANGE/) { HB = substr(r, 1, 15); r = substr(r, 16) }
         kind = 3
       }
       if (substr(r, 1, 1) == ":") { HP = ":"; r = substr(r, 2) }
@@ -228,11 +232,11 @@ rp_parse_commits() {
       if (s > n) return
       e = n; while (L[d, e] ~ /^[ \t\v\f]*$/) e--
       L[d, s] = wstrip(L[d, s]); sub(/[ \t\v\f]+$/, "", L[d, e])
-      if (!match(L[d, s], /^[^()!: \t\v\f]+(\([^()]+\))?!?(:| #)/)) return
+      if (!match(L[d, s], /^[^()!: \t\v\f]+(\([^()]+\)(!|BREAKING[ -]CHANGE)?|!)?(:| #)/)) return
       p = substr(L[d, s], 1, RLENGTH - (substr(L[d, s], RLENGTH, 1) == ":" ? 1 : 2))
       bt = wstrip(substr(L[d, s], RLENGTH + 1))
-      bang = substr(p, length(p)) == "!"
-      if (bang) p = substr(p, 1, length(p) - 1); else bt = ""
+      bang = sub(/!$/, "", p) || sub(/\)BREAKING[ -]CHANGE$/, ")", p)
+      if (!bang) bt = ""
       typ = p; scp = ""
       if ((i = index(p, "(")) > 0) {
         typ = substr(p, 1, i - 1); scp = substr(p, i + 1, length(p) - i - 1)
@@ -281,7 +285,7 @@ rp_parse_commits() {
             while (j < m) FT[d, ++nf] = L[d, j++]
             last = wstrip(L[d, m]); FT[d, ++nf] = last
           }
-          if (kind == 1) bt = last
+          if (kind == 1 || length(hb) > 1) bt = last
           if (kind == 3) {
             if (tolower(ht) == "release-as" && last ~ /^[A-Za-z0-9_]*@?[0-9]+\.[0-9]+\.[0-9A-Za-z]/) ra = 1
             N[d + 1] = nf
@@ -351,8 +355,8 @@ rp_is_breaking() {
 # release-please opens no release PR for it, pin or not: its type has a
 # section that is not hidden (the package's changelog-sections, else the
 # top-level ones, else release-please's defaults), it is breaking, its header
-# has "!" after a type of word characters, or it carries a Release-As footer
-# with a version.
+# has "!" (or BREAKING CHANGE for it) after a type of word characters, or it
+# carries a Release-As footer with a version.
 rp_visible() {
   rp_parse_commits "$3" | jq -R -s -e --argjson cfg "$1" --arg p "$2" '
     ($cfg.packages[$p]["changelog-sections"] // $cfg["changelog-sections"] // [
