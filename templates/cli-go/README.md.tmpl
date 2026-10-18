@@ -75,17 +75,19 @@ Every command in `cmd/` is also a route. There is nothing to mount:
 whether the supervisor has a configuration for it (CONFIGURED — from
 your config file, or from `api`'s built-in default), whether a bare
 `service start` would start it (ENABLED — `api` is on by default, `socket`,
-`mcp` and `rpc` are off until you enable them), and whether it is accepting work
+`mcp` and `rpc` are off until you enable them), whether it is accepting work
 right now (READY — true only inside a running `service start`, so always false
-when you ask from the shell). A fresh project prints:
+when you ask from the shell), and whether the rest of a run carries on
+when it fails (OPTIONAL — `services.<name>.optional`, false unless set).
+A fresh project prints:
 
 ```console
 $ {{.Name}} service list
-SERVICE              CONFIGURED  ENABLED  READY
-api                  true        true     false
-socket               false       false    false
-mcp                  false       false    false
-rpc                  false       false    false
+SERVICE              CONFIGURED  ENABLED  READY  OPTIONAL
+api                  true        true     false  false
+socket               false       false    false  false
+mcp                  false       false    false  false
+rpc                  false       false    false  false
 ```
 
 ```sh
