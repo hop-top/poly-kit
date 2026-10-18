@@ -44,8 +44,9 @@ See [flag-enums.md](../../../docs/adopters/reference/flag-enums.md).
 ## Served commands
 
 `<tool> service start` supervises services; kit ships four, each projecting the
-command tree through the same gates (policy, `WithPermission`,
-`WithAuditSinks`, `WithRootFactory`):
+command tree through the same gates (policy, `WithPermission`, `WithAuditSinks`,
+`WithRootFactory`), none serving kit's management commands — the socket keeps
+`help`, `spec`, `status`, `version` — or trees marked `kit/reserved` (`cmdmeta`):
 
 | Option | Service | Reached by |
 |--------|---------|------------|
@@ -53,14 +54,6 @@ command tree through the same gates (policy, `WithPermission`,
 | `WithSocket(SocketConfig{})` | `socket` | NDJSON over a `0600` Unix socket |
 | `mcpserve.With(mcpserve.Config{})` | `mcp` | MCP tools over streamable HTTP (`127.0.0.1:8081/mcp`), or stdio with `service start mcp --stdio` |
 | `rpcserve.With(rpcserve.Config{})` | `rpc` | `cmdsurface.v1.Commands` over Connect, gRPC and gRPC-Web, h2c on `127.0.0.1:8082` |
-
-No surface serves a kit-reserved verb that manages the tool's state
-(`token`, `quota`, `audit`, `peer`, `uri`); the socket serves only the
-introspection ones (`help`, `spec`, `status`, `version`). A command an
-adopter mounts after `cli.New` is not reserved, unless kit built it as
-a management tree marked `kit/reserved` — `AliasCmd`, `upgrade.MigrateCommand`,
-`stage.New`, `uri.Command`, `router.Cmd`, `pkl.NewConfigCommand` — which is
-withheld wherever it is mounted.
 
 `mcp` lives in [`mcpserve/`](mcpserve/) and `rpc` in [`rpcserve/`](rpcserve/),
 so only a CLI that serves them links the MCP SDK or `go/transport/rpc`;
