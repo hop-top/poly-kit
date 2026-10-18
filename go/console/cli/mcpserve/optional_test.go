@@ -3,6 +3,7 @@ package mcpserve_test
 import (
 	"context"
 	"net"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -48,6 +49,22 @@ func (c *coreService) Stop(context.Context) error {
 	return nil
 }
 
+// isolateServeHome points HOME and every per-user XDG base at a fresh
+// temp dir, so a serve run merges none of the developer's own config
+// for the tool. The system file (/etc/<tool>/config.yaml) is not
+// redirectable by environment; the test tool's name keeps it absent.
+func isolateServeHome(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for k, sub := range map[string]string{
+		"XDG_CONFIG_HOME": "config", "XDG_DATA_HOME": "data",
+		"XDG_STATE_HOME": "state", "XDG_CACHE_HOME": "cache",
+	} {
+		t.Setenv(k, filepath.Join(home, sub))
+	}
+}
+
 // takenAddr returns a loopback address something already listens on.
 func takenAddr(t *testing.T) string {
 	t.Helper()
@@ -65,9 +82,11 @@ type coreAndMCPRun struct {
 }
 
 // coreAndMCP runs `serve` over [core, mcp] with mcp's port taken, and
-// cancels settle after the supervisor reports ready.
-func coreAndMCP(t *testing.T, cfg mcpserve.Config, keys map[string]any, settle time.Duration) coreAndMCPRun {
+// cancels once the supervisor reports ready: the start sequence, the
+// mcp failure included, is over by then.
+func coreAndMCP(t *testing.T, cfg mcpserve.Config, keys map[string]any) coreAndMCPRun {
 	t.Helper()
+	isolateServeHome(t)
 	b := bus.New()
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
 	var mu sync.Mutex
@@ -108,7 +127,6 @@ func coreAndMCP(t *testing.T, cfg mcpserve.Config, keys map[string]any, settle t
 	coreUp := false
 	select {
 	case <-supReady:
-		time.Sleep(settle)
 		coreUp = core.Ready()
 		cancel()
 	case err := <-errCh:
@@ -134,7 +152,7 @@ func coreAndMCP(t *testing.T, cfg mcpserve.Config, keys map[string]any, settle t
 // the mcp port is in use, reports mcp failed with the bind error, and
 // exits 0 on a signal.
 func TestMCPOptionalByDefaultSurvivesItsPortBeingTaken(t *testing.T) {
-	run := coreAndMCP(t, mcpserve.Config{Optional: true}, nil, 100*time.Millisecond)
+	run := coreAndMCP(t, mcpserve.Config{Optional: true}, nil)
 	require.NoError(t, run.err, "an optional mcp failing to bind is not the daemon failing")
 	assert.True(t, run.coreUp, "the core kept serving")
 	require.Len(t, run.failed, 1)
@@ -147,7 +165,7 @@ func TestMCPOptionalByDefaultSurvivesItsPortBeingTaken(t *testing.T) {
 // without the marker, mcp failing to bind fails the whole run, as it
 // did before.
 func TestMCPRequiredStillFailsTheRunWhenItsPortIsTaken(t *testing.T) {
-	run := coreAndMCP(t, mcpserve.Config{}, nil, 0)
+	run := coreAndMCP(t, mcpserve.Config{}, nil)
 	var oe *output.Error
 	require.ErrorAs(t, run.err, &oe)
 	assert.Equal(t, 1, oe.ExitCode)
@@ -159,7 +177,7 @@ func TestMCPRequiredStillFailsTheRunWhenItsPortIsTaken(t *testing.T) {
 // operator can make the adopter's optional mcp required again.
 func TestMCPOptionalKeyOverridesTheRegistrationDefault(t *testing.T) {
 	run := coreAndMCP(t, mcpserve.Config{Optional: true},
-		map[string]any{"services.mcp.optional": false}, 0)
+		map[string]any{"services.mcp.optional": false})
 	var oe *output.Error
 	require.ErrorAs(t, run.err, &oe)
 	assert.Equal(t, 1, oe.ExitCode)

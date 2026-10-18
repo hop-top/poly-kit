@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,7 +16,50 @@ import (
 	"hop.top/kit/go/console/cli"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
+	"hop.top/kit/go/runtime/bus"
 )
+
+// isolateServeHome points HOME and every per-user XDG base at a fresh
+// temp dir, so a serve run merges none of the developer's own config
+// for the tool. The system file (/etc/<tool>/config.yaml) is not
+// redirectable by environment; the test tools' names keep it absent.
+func isolateServeHome(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for k, sub := range map[string]string{
+		"XDG_CONFIG_HOME": "config", "XDG_DATA_HOME": "data",
+		"XDG_STATE_HOME": "state", "XDG_CACHE_HOME": "cache",
+	} {
+		t.Setenv(k, filepath.Join(home, sub))
+	}
+}
+
+// eventLog is a Publisher that keeps every lifecycle payload.
+type eventLog struct {
+	mu     sync.Mutex
+	events []bus.Event
+}
+
+func (l *eventLog) Publish(_ context.Context, e bus.Event) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.events = append(l.events, e)
+	return nil
+}
+
+// failed returns the failed payloads about name.
+func (l *eventLog) failed(name string) []serve.EventPayload {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var out []serve.EventPayload
+	for _, e := range l.events {
+		if p, ok := e.Payload.(serve.EventPayload); ok && e.Topic == "kit.serve.service.failed" && p.Service == name {
+			out = append(out, p)
+		}
+	}
+	return out
+}
 
 // unbindable fails its Start the way a listener whose port is taken
 // does: at once, before reporting ready.
@@ -39,6 +84,7 @@ func (d declaringUnbindable) Optional() bool { return d.optional }
 // enabled.
 func coreAndAux(t *testing.T, aux serve.Service) (*cli.Root, *stubService) {
 	t.Helper()
+	isolateServeHome(t)
 	core := &stubService{name: "core"}
 	r := newServeRoot(t, cli.WithServices(core, aux))
 	r.Viper.Set("services.core.enabled", true)
@@ -117,4 +163,46 @@ func TestServe_OptionalHasNoSharedDefault(t *testing.T) {
 	require.ErrorAs(t, runServeArgs(t, r, []string{"serve"}, 2*time.Second), &oe)
 	assert.Equal(t, 2, oe.ExitCode)
 	assert.Contains(t, oe.Message, "services.all.optional")
+}
+
+// TestServe_SelectorFormAppliesTheRegistrationDefault pins that naming
+// an optional service with no services.<name> block still runs it as
+// optional, as --list says: the events carry the default too.
+func TestServe_SelectorFormAppliesTheRegistrationDefault(t *testing.T) {
+	isolateServeHome(t)
+	log := &eventLog{}
+	r := newServeRoot(t,
+		cli.WithService(declaringUnbindable{&unbindable{name: "aux", optional: true}}),
+		cli.WithServiceBus(log))
+
+	var oe *output.Error
+	require.ErrorAs(t, runServeArgs(t, r, []string{"serve", "aux"}, 2*time.Second), &oe)
+	assert.Equal(t, 1, oe.ExitCode, "the only service failing is the run failing")
+	failed := log.failed("aux")
+	require.Len(t, failed, 1)
+	assert.True(t, failed[0].Optional, "the registration's default applies under the selector form")
+}
+
+// TestServe_OptionalMustBeABoolean pins that a value optional cannot
+// mean is refused, naming the key, rather than read as required.
+func TestServe_OptionalMustBeABoolean(t *testing.T) {
+	for _, bad := range []any{"ture", "maybe", 2, []string{"true"}} {
+		r, core := coreAndAux(t, &unbindable{name: "aux"})
+		r.Viper.Set("services.aux.optional", bad)
+
+		var oe *output.Error
+		require.ErrorAs(t, runServeArgs(t, r, []string{"serve"}, 2*time.Second), &oe, "%v", bad)
+		assert.Equal(t, 2, oe.ExitCode, "%v", bad)
+		assert.Contains(t, oe.Message, "services.aux.optional", "%v", bad)
+		assert.False(t, core.wasStarted(), "refused before anything starts")
+	}
+	for _, good := range []any{true, "true", "False", "1"} {
+		r, _ := coreAndAux(t, &unbindable{name: "aux"})
+		r.Viper.Set("services.aux.optional", good)
+		err := runServeArgs(t, r, []string{"serve"}, 300*time.Millisecond)
+		var oe *output.Error
+		if errors.As(err, &oe) {
+			assert.NotEqual(t, 2, oe.ExitCode, "%v is a boolean: %s", good, oe.Message)
+		}
+	}
 }

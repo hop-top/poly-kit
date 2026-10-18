@@ -369,8 +369,10 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 		)
 	}
 
+	if err := validateServiceOptional(root.Viper, reg); err != nil {
+		return output.UsageError(err.Error())
+	}
 	configs := serveConfigs(root.Viper, reg.Names(), enable, disable)
-	applyServiceOptional(root.Viper, reg, configs)
 	readyTO, _ := cmd.Flags().GetDuration("ready-timeout")
 	stopTO, _ := cmd.Flags().GetDuration("stop-timeout")
 	serveTimeoutOverrides(configs, readyTO, stopTO)
@@ -384,6 +386,11 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	})
 	if outcome.Err != nil {
 		return outcome.Err
+	}
+	// Whether the run depends on each service is settled for what it
+	// runs, the selector form's unconfigured service included.
+	if err := applyServiceOptional(root.Viper, reg, configs, outcome.Selected); err != nil {
+		return output.UsageError(err.Error())
 	}
 	// Where `service stop`, `service restart` and `service status`
 	// reach this run: resolved here, after the tool's own
@@ -517,6 +524,9 @@ func runServeList(cmd *cobra.Command, root *Root) error {
 	// WithAPI's default-on included; anything else would list a
 	// service as disabled that a bare `serve` is about to start.
 	applyAPIEnabledDefault(root, configs)
+	if err := validateServiceOptional(root.Viper, reg); err != nil {
+		return output.UsageError(err.Error())
+	}
 	rows := []serveListRow{}
 	for _, svc := range reg.List() {
 		name := svc.Name()
@@ -524,9 +534,10 @@ func runServeList(cmd *cobra.Command, root *Root) error {
 		// Optional reads the same resolution the supervisor runs on,
 		// for a service not yet configured too: it is what applies
 		// the moment one is.
+		optional, _ := serviceOptional(root.Viper, svc) // validated above
 		rows = append(rows, serveListRow{
 			Service: name, Configured: configured, Enabled: cfg.Enabled, Ready: svc.Ready(),
-			Optional: serviceOptional(root.Viper, svc),
+			Optional: optional,
 		})
 	}
 	// The table keeps its fixed-width layout: generated project

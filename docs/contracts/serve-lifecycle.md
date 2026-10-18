@@ -21,7 +21,7 @@ authority for behavior; the package is the authority for signatures.
 |---------------------------------|------------|------------------------------------------------------------|
 | `<tool> service start`          | supervisor | every service that is **configured** AND **enabled**        |
 | `<tool> service start <service>`| selector   | exactly the named service, subject to validation            |
-| `<tool> service list`           | inspection | registered services with configured / enabled / ready / optional state |
+| `<tool> service list`           | inspection | registered services with configured / enabled / ready state |
 | `<tool> service status`         | inspection | the running instance's services, readiness and addresses    |
 | `<tool> service stop`           | control    | asks the running instance to drain and exit                 |
 | `<tool> service restart`        | control    | asks the running instance to drain and re-execute in place  |
@@ -502,7 +502,12 @@ when `services.<name>.optional` is true, or when that key is unset and
 the registration declares the service optional by default. The key
 wins over the registration in either direction, so an adopter can ship
 an auxiliary service optional and an operator can make it required
-again. A service is required unless something says otherwise.
+again. A service is required unless something says otherwise. The
+registration's default holds under the selector form too, for a
+service with no `services.<name>` block at all. A value that is not a
+boolean — `true` or `false`, or a string such as an environment
+variable carries — is a configuration failure at exit `2` naming the
+key, rather than a silent "required".
 
 An optional service's failure is reported exactly as any other
 failure is — the `kit.serve.service.failed` event and its `ERROR` log
@@ -513,12 +518,17 @@ the failure is not an outcome of the run:
 - **Before ready.** A bind error, a missed `ready_timeout`, or `Start`
   returning before it reported ready marks the service `failed`, and
   the supervisor goes on to start the next service. A service that
-  missed its readiness budget is stopped there and then, within its
-  `stop_timeout`, so that it cannot begin serving later while reported
-  failed; the ordered stop does not stop it a second time, and the
-  exit its `Start` makes once stopped is not a further failure. A
-  service whose `Start` already returned is stopped in the ordered
-  stop, like every started service.
+  missed its readiness budget is stopped there and then, so that it
+  cannot begin serving later while reported failed. That `Stop` is
+  bounded by the service's `stop_timeout` and by the run: the service
+  never served, so it has nothing to drain, and a signal or a required
+  failure under `fail-fast` cuts the `Stop` short instead of waiting
+  on it, and starts nothing further. A `Stop` still running then is
+  written off (below). The ordered stop does not stop the service a
+  second time, and neither the exit its `Start` makes once stopped nor
+  a `Stop` that overran is a further failure: its record stays the
+  failure that put it there. A service whose `Start` already returned
+  is stopped in the ordered stop, like every started service.
 - **After ready.** A crash marks the service `failed`, and the other
   services keep running whatever `services.failure_policy` says.
   Under `fail-fast` a *required* service's failure still brings every
@@ -528,6 +538,15 @@ the failure is not an outcome of the run:
   own `stop_timeout` is reported and does not raise the exit code.
   Exhausting `services.shutdown_timeout`, or a second signal, is the
   run's failure whichever service it lands on.
+
+An optional service whose `Stop` overran is **written off**: its
+`Start` goroutine may never return, so the run stops counting it —
+the run ends when every other service has returned — and shutdown
+does not wait for it. Shutdown waits for every other optional
+service's goroutine within `services.shutdown_timeout` as it waits for
+the required ones, but only a *required* goroutine still running when
+that budget runs out is the run's shutdown timeout; an optional one is
+left behind.
 
 Readiness and exit follow from that:
 
@@ -565,8 +584,8 @@ payload uses: `service`, `state`, `optional`, `reason`, `error`,
 `elapsed_ms`. In Go that record is `Result.Services` when the run ends
 and `RunStatus.Services()` on the run view every `Start` receives while
 it runs, so a status surface a tool serves reads what the supervisor
-saw. `service list` shows each registered service's resolved optional
-value in an `OPTIONAL` column.
+saw. Go's `service list` also shows each registered service's resolved
+optional value, in an `OPTIONAL` column after `READY`.
 
 ### Re-execution
 
@@ -609,9 +628,11 @@ Notes:
   message and the `failed` event, not in a second numeric code.
 - Under `isolate`, the exit code reflects the worst outcome observed
   across the whole run, not the last one.
-- "One service" in the table means a required one. An
-  [optional](#optional-services) service's failure is not an outcome:
-  it raises the exit code only when every started service failed.
+- "One service" in the table means a required one, and so does the
+  shutdown budget's: a required service's goroutine still running when
+  it runs out. An [optional](#optional-services) service's failure is
+  not an outcome — a stop overrun or a goroutine left behind included
+  — and raises the exit code only when every started service failed.
 - Failures are classified `TransiencePermanent` unless the underlying
   error is already a kit transient error, in which case exit `6`
   (`TRANSIENT`) is propagated unchanged so agents and retry wrappers
@@ -3452,7 +3473,9 @@ and joins this table, with a `behaviors` row in the fixture, once the
 ports implement it. Until then a port treats every service as
 required, which is what every port did before the key existed: a
 fleet sharing one YAML file gets the stricter behavior from a port
-that has not caught up, never a laxer one.
+that has not caught up, never a laxer one. Go's `OPTIONAL` column in
+`service list` is not part of it either: the listing's columns are not
+contract, and the TypeScript and Rust ports print four.
 
 #### The `--enable` / `--disable` and timeout flags
 

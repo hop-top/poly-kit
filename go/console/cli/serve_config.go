@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -24,20 +27,45 @@ const (
 	serveSubkeyOptional     = ".optional"
 )
 
-// applyServiceOptional resolves services.<name>.optional into every
-// resolved service's block: see [serviceOptional].
-func applyServiceOptional(v *viper.Viper, reg *serve.Registry, configs map[string]serve.Config) {
+// applyServiceOptional resolves services.<name>.optional for each of
+// names into configs, creating the entry of a service that has no
+// block of its own: the selector form runs a service whatever its
+// configuration, and its registration's default still applies. Call it
+// after [serve.Resolve], whose supervisor form reads an entry as "is
+// configured"; names is normally the resolved selection.
+func applyServiceOptional(v *viper.Viper, reg *serve.Registry, configs map[string]serve.Config, names []string) error {
 	if reg == nil {
-		return
+		return nil
 	}
-	for name, cfg := range configs {
+	for _, name := range names {
 		svc, ok := reg.Lookup(name)
 		if !ok {
 			continue
 		}
-		cfg.Optional = serviceOptional(v, svc)
+		optional, err := serviceOptional(v, svc)
+		if err != nil {
+			return err
+		}
+		cfg := configs[name]
+		cfg.Optional = optional
 		configs[name] = cfg
 	}
+	return nil
+}
+
+// validateServiceOptional refuses a services.<name>.optional, for any
+// registered service, that is not a boolean: a typo there would
+// otherwise read as "required" without a word.
+func validateServiceOptional(v *viper.Viper, reg *serve.Registry) error {
+	if v == nil || reg == nil {
+		return nil
+	}
+	for _, svc := range reg.List() {
+		if _, err := serviceOptional(v, svc); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // serviceOptional is services.<name>.optional when any source sets
@@ -45,15 +73,35 @@ func applyServiceOptional(v *viper.Viper, reg *serve.Registry, configs map[strin
 // false. The key wins in either direction: an adopter marks its
 // auxiliary service optional by default, and an operator who needs it
 // can make it required again, or the reverse
-// (serve-lifecycle.md §"Optional services").
-func serviceOptional(v *viper.Viper, svc serve.Service) bool {
+// (serve-lifecycle.md §"Optional services"). A value that is not a
+// boolean — true or false, or a string strconv.ParseBool reads, as an
+// environment variable carries one — is an error naming the key.
+func serviceOptional(v *viper.Viper, svc serve.Service) (bool, error) {
 	if v != nil {
 		if key := serveKeyPrefix + svc.Name() + serveSubkeyOptional; v.IsSet(key) {
-			return v.GetBool(key)
+			switch raw := v.Get(key).(type) {
+			case bool:
+				return raw, nil
+			case string:
+				b, err := strconv.ParseBool(strings.TrimSpace(raw))
+				if err == nil {
+					return b, nil
+				}
+			}
+			return false, fmt.Errorf("%s: %v is not a boolean; use true or false", key, quoteValue(v.Get(key)))
 		}
 	}
 	o, ok := svc.(serve.Optional)
-	return ok && o.Optional()
+	return ok && o.Optional(), nil
+}
+
+// quoteValue renders a config value for a refusal: strings quoted,
+// anything else as written.
+func quoteValue(v any) string {
+	if s, ok := v.(string); ok {
+		return strconv.Quote(s)
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // serveConfigs resolves the services.<name> block for every registered
