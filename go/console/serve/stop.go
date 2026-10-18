@@ -19,21 +19,22 @@ import (
 // Each Stop is bounded by that service's stop timeout. A Stop that
 // exceeds its budget is abandoned — logged, emitted as failed, and the
 // supervisor proceeds to the next service rather than blocking the
-// whole shutdown on one straggler. Exceeding the supervisor's total
-// budget ends the sequence with OutcomeShutdownTimeout.
+// whole shutdown on one straggler. Reaching the shutdown deadline — the
+// supervisor's total budget, shared with the wait that follows — ends
+// the sequence with OutcomeShutdownTimeout.
 //
 // parent is the caller's context, which is typically already canceled
 // by the time shutdown runs; the stop budgets are therefore derived
 // from context.WithoutCancel so a service still gets its drain window
 // after the signal that triggered it.
-func (s *Supervisor) stopAll(parent context.Context, st *runState, em *emitter) {
+func (s *Supervisor) stopAll(parent context.Context, deadline time.Time, st *runState, em *emitter) {
 	st.mu.Lock()
 	order := append([]string(nil), st.started...)
 	configs := st.stopConfigs
 	st.mu.Unlock()
 
 	base := context.WithoutCancel(parent)
-	totalCtx, cancelTotal := context.WithTimeout(base, s.cfg.ShutdownTimeout)
+	totalCtx, cancelTotal := context.WithDeadline(base, deadline)
 	defer cancelTotal()
 
 	for i := len(order) - 1; i >= 0; i-- {
