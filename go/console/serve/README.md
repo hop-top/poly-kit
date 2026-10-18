@@ -13,12 +13,8 @@ The cobra command and the `services.*` config block belong to
   Start, Ready, Stop); register via `cli.WithService`
 - start order, config validation, policy class, or bound address matter →
   also implement `Dependent`, `Validator`, `Classified`, or `Addressed`
-- the rest of the run must survive this service failing (an auxiliary
-  listener whose port may be taken) → implement `Optional` for the default,
-  or set `Config.Optional` (`services.<name>.optional`)
-- you report status from inside the run → `RunViewFrom(ctx)`, then
-  `RunStatus.Services()`; after it, `Result.Services` (both JSON-ready
-  `ServiceStatus`)
+- the run must survive this service failing → `Optional` (`services.<name>.optional`);
+  its per-service record → `RunStatus.Services()` in the run, `Result.Services` after
 - you need the runnable set without starting anything → `Resolve(reg, Request)`
 - you need the exit code for an outcome → `ExitCodeFor`, `CodeFor`, `WorstOutcome`
 - you are the supervisor → `NewSupervisor(reg, cfg, opts...).Run(ctx,
@@ -28,9 +24,8 @@ The cobra command and the `services.*` config block belong to
 ## Quick start
 
 ```go
-// noopService is any serve.Service implementation.
 reg := serve.NewRegistry()
-reg.Register(noopService{name: "api"})
+reg.Register(noopService{name: "api"}) // noopService: any serve.Service
 reg.Register(noopService{name: "mcp"})
 
 configs := map[string]serve.Config{
@@ -40,18 +35,16 @@ configs := map[string]serve.Config{
 
 // Supervisor form: every configured AND enabled service.
 all := serve.Resolve(reg, serve.Request{Configs: configs})
-fmt.Println(all.Selected, all.Skipped, all.Err == nil)
+fmt.Println(all.Selected, all.Skipped, all.Err == nil) // [api] [mcp] true
 
 // Selector form: the named service, even when disabled.
 one := serve.Resolve(reg, serve.Request{Args: []string{"mcp"}, Configs: configs})
-fmt.Println(one.Selected, one.Explicit)
+fmt.Println(one.Selected, one.Explicit) // [mcp] true
 
 // Unknown name: the refusal already carries its exit code.
 bad := serve.Resolve(reg, serve.Request{Args: []string{"nope"}, Configs: configs})
-fmt.Println(bad.Err.ExitCode, serve.ExitCodeFor(serve.OutcomeUnknownService))
+fmt.Println(bad.Err.ExitCode, serve.ExitCodeFor(serve.OutcomeUnknownService)) // 3 3
 ```
-
-Prints `[api] [mcp] true`, `[mcp] true`, `3 3`.
 
 ## Contract
 
@@ -66,17 +59,8 @@ this package is the authority for signatures only. Points a caller gets wrong:
   the supervisor form resolving to zero services exits 2, not 0.
 - Exit codes: clean stop 0; invalid selection, config invalid, no services 2;
   unknown service 3; policy denied 5; start failed, runtime crash, shutdown
-  timeout 1. An outcome missing from the table exits 1.
-- An optional service's failure (start, ready timeout, crash, own stop
-  budget) is emitted as `failed` with `optional: true` and recorded in
-  `Result.Failed`/`Services`, but trips neither fail-fast nor the exit code.
-  A timed-out one is stopped where it failed, concurrently, within its own
-  stop budget and the shutdown deadline (a signal or a fail-fast trip ends
-  the start sequence but not that Stop, which shutdown joins until the
-  deadline and then cancels); one whose Stop overruns is written off —
-  not counted as running, not waited for at shutdown — and only a required
-  goroutine can make the shutdown time out. Every started service failing
-  is still a start failure, exit 1. No retry.
+  timeout 1. An outcome missing from the table exits 1. An optional service's
+  failure (`optional: true`) trips neither fail-fast nor the code unless all fail; no retry.
 - Ports reproduce [contracts/parity/serve.json](../../../contracts/parity/serve.json).
 
 ## Neighbours

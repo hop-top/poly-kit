@@ -46,7 +46,9 @@ fmt.Println(ok, steps[0].Suggest, "/", steps[0].Reason)
   marked command and everything under it, wherever it is mounted. A kit
   factory sets it (`SetReserved`) on the root of a management tree it
   builds for adopters to mount; the reflector reads it as
-  management-only, which no served surface runs.
+  management-only, which no served surface runs. Kit's own: `AliasCmd`,
+  `upgrade.MigrateCommand`, `stage.New`, `uri.Command`, `router.Cmd`,
+  `pkl.NewConfigCommand`.
 - `IsDryRunSupported` resolution order: `kit/dry-run: opted-out` is
   false; `kit/dry-run: supported` is true; side-effect `write*` or
   `destructive*` is true; `read`, `interactive`, unknown or missing tag
