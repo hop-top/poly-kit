@@ -272,30 +272,46 @@ func (l *lazySocket) Serve(ctx context.Context, inv transportsvc.Invoker) error 
 	if l.tr == nil {
 		return errors.New("socket: Serve called before Bind")
 	}
-	l.withholdCredentials()
+	l.withholdManagement()
 	return l.tr.Serve(ctx, inv)
 }
 
-// withholdCredentials keeps the kit-owned token command off the
-// socket. The socket's bridge admits kit's reserved verbs for the
-// tool's own introspection, but token mints and inspects the
-// credentials the served surfaces accept, and it is never served
-// (serve-lifecycle.md §"Bearer tokens", §"API keys"). It is hidden on
-// the bridge rather than refused in front of it, so a call is refused,
-// and audited, like any command not exposed here; and it is hidden
-// last, so no Expose pattern brings it back. An adopter's own token
-// command, in a tool where kit mounted none, is not reserved and is
-// left alone.
-func (l *lazySocket) withholdCredentials() {
-	if l.svc == nil || !l.root.IsReserved(tokenCommandName) {
+// socketIntrospection is the kit-reserved verbs the socket serves: the
+// tool describing itself. Every other reserved verb manages state the
+// served surfaces depend on — credentials (token), usage (quota), the
+// audit trail (audit), URI handlers (uri) — and is never served
+// (serve-lifecycle.md §"Interactive, self-hosting, and management
+// commands").
+var socketIntrospection = map[string]bool{
+	"help":    true,
+	"spec":    true,
+	"status":  true,
+	"version": true,
+}
+
+// withholdManagement keeps kit's reserved management verbs off the
+// socket. The socket's bridge reflects with AllowReserved so the tool's
+// own introspection is reachable; this narrows that back to
+// [socketIntrospection]. Each verb is hidden on the bridge rather than
+// refused in front of it, so a call is refused, and audited, like any
+// command not exposed here (NOT_ENABLED); and it is hidden last, so no
+// Expose pattern brings it back. A command an adopter mounts after
+// cli.New is not reserved and is left alone, whatever its name.
+func (l *lazySocket) withholdManagement() {
+	if l.svc == nil {
 		return
 	}
 	b := l.svc.Bridge()
 	if b == nil {
 		return
 	}
-	b.Hide(tokenCommandName, cmdsurface.SurfaceSocket)
-	b.Hide(tokenCommandName+" *", cmdsurface.SurfaceSocket)
+	for _, name := range l.root.ReservedSubcommands() {
+		if socketIntrospection[name] {
+			continue
+		}
+		b.Hide(name, cmdsurface.SurfaceSocket)
+		b.Hide(name+" *", cmdsurface.SurfaceSocket)
+	}
 }
 
 func (l *lazySocket) Close(ctx context.Context) error {
