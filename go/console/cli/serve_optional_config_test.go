@@ -18,7 +18,7 @@ func TestServiceConfigSourcesMarkAServiceOptionalFromTheEnvironment(t *testing.T
 	require.NoError(t, r.loadServiceConfig())
 
 	configs := serveConfigs(r.Viper, r.serveReg.Names(), nil, nil)
-	applyServiceOptional(r.Viper, r.serveReg, configs)
+	require.NoError(t, applyServiceOptional(r.Viper, r.serveReg, configs, r.serveReg.Names()))
 	assert.True(t, configs[SocketServiceName].Optional)
 }
 
@@ -32,6 +32,6 @@ func TestServiceOptionalDefaultsToRequired(t *testing.T) {
 	require.NoError(t, r.loadServiceConfig())
 
 	configs := serveConfigs(r.Viper, r.serveReg.Names(), nil, nil)
-	applyServiceOptional(r.Viper, r.serveReg, configs)
+	require.NoError(t, applyServiceOptional(r.Viper, r.serveReg, configs, r.serveReg.Names()))
 	assert.False(t, configs[SocketServiceName].Optional)
 }

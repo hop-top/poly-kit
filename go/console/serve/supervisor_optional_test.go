@@ -98,19 +98,59 @@ func (s *stuckFake) stopCount() int {
 	return s.stops
 }
 
-// delayedReady holds a fake's Start back by delay.
-type delayedReady struct {
-	*fake
+// cueFake reports ready after delay, then leaves when its cue closes:
+// cleanly, or with an error when fail is set. Canceled first, it
+// records that instead, so a test can tell the two departures apart.
+type cueFake struct {
+	name  string
+	trace *trace
 	delay time.Duration
+	fail  bool
+	cue   chan struct{}
+
+	mu    sync.Mutex
+	ready bool
 }
 
-func (d delayedReady) Start(ctx context.Context, report func()) error {
+func newCueFake(name string, tr *trace, delay time.Duration) *cueFake {
+	return &cueFake{name: name, trace: tr, delay: delay, cue: make(chan struct{})}
+}
+
+func (c *cueFake) Name() string { return c.name }
+
+func (c *cueFake) Start(ctx context.Context, report func()) error {
 	select {
-	case <-time.After(d.delay):
+	case <-time.After(c.delay):
 	case <-ctx.Done():
+		c.trace.add("canceled:" + c.name)
 		return nil
 	}
-	return d.fake.Start(ctx, report)
+	c.mu.Lock()
+	c.ready = true
+	c.mu.Unlock()
+	report()
+	select {
+	case <-c.cue:
+		c.trace.add("exit:" + c.name)
+		if c.fail {
+			return errors.New(c.name + " left")
+		}
+		return nil
+	case <-ctx.Done():
+		c.trace.add("canceled:" + c.name)
+		return nil
+	}
+}
+
+func (c *cueFake) Ready() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ready
+}
+
+func (c *cueFake) Stop(context.Context) error {
+	c.trace.add("stop:" + c.name)
+	return nil
 }
 
 // viewFake captures the run view its Start receives.
@@ -218,6 +258,10 @@ func TestSupervisor_RequiredStartFailureStillEndsTheRun(t *testing.T) {
 // failure nor a fail-fast trip, whether it arrives while a later
 // service starts or while the run goes on; and that the final shutdown
 // does not stop it again.
+//
+// The core leaves on its own cue, after the stopped service's Start
+// has returned. The run cannot end before it has accounted for that
+// return, so when it ends by itself the outcome below is settled.
 func TestSupervisor_OptionalReadyTimeoutIsStoppedOnce(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
@@ -234,16 +278,16 @@ func TestSupervisor_OptionalReadyTimeoutIsStoppedOnce(t *testing.T) {
 			t.Parallel()
 			tr := &trace{}
 			rec := &recorder{}
-			core := &fake{name: "core", trace: tr}
+			core := newCueFake("core", tr, tc.coreDelay)
 			stuck := &stuckFake{name: "aux", release: make(chan struct{})}
 			reg := serve.NewRegistry()
 			reg.Register(stuck)
-			reg.Register(delayedReady{fake: core, delay: tc.coreDelay})
+			reg.Register(core)
 
 			configs := enabledSet("aux", "core")
 			configs["aux"] = serve.Config{Enabled: true, Optional: true, ReadyTimeout: 30 * time.Millisecond}
 
-			ctx, cancel := context.WithCancel(t.Context())
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			sup := serve.NewSupervisor(reg, serve.SupervisorConfig{FailurePolicy: serve.FailFast},
 				serve.WithPublisher(rec))
@@ -253,16 +297,12 @@ func TestSupervisor_OptionalReadyTimeoutIsStoppedOnce(t *testing.T) {
 				return slices.Contains(rec.topics(), "kit.serve.supervisor.ready_reported")
 			})
 			assert.Equal(t, 1, stuck.stopCount(), "the timed-out service is stopped when it fails")
+			close(core.cue)
 
-			// Its Start has returned an error by now; give the
-			// supervisor the chance to (wrongly) treat that as a
-			// runtime crash before checking the core is still up.
-			time.Sleep(50 * time.Millisecond)
-			assert.True(t, core.Ready(), "the stopped service's exit must not trip fail-fast")
-			assert.NotContains(t, tr.events(), "stop:core")
-
-			cancel()
 			res := <-done
+			require.NoError(t, ctx.Err(), "the run ends by itself once the core leaves")
+			assert.Contains(t, tr.events(), "exit:core", "the core left on its cue")
+			assert.NotContains(t, tr.events(), "canceled:core", "the stopped service's exit must not trip fail-fast")
 			assert.Equal(t, serve.OutcomeCleanStop, res.Outcome)
 			assert.Equal(t, 1, stuck.stopCount(), "a service is stopped once per run")
 			aux := statusOf(t, res.Services, "aux")
@@ -279,6 +319,7 @@ func TestSupervisor_OptionalReadyTimeoutIsStoppedOnce(t *testing.T) {
 func TestSupervisor_OptionalEarlyReturnIsAnOptionalStartFailure(t *testing.T) {
 	t.Parallel()
 	tr := &trace{}
+	rec := &recorder{}
 	core := &fake{name: "core", trace: tr}
 	reg := serve.NewRegistry()
 	reg.Register(core)
@@ -286,12 +327,15 @@ func TestSupervisor_OptionalEarlyReturnIsAnOptionalStartFailure(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	sup := serve.NewSupervisor(reg, serve.SupervisorConfig{})
+	sup := serve.NewSupervisor(reg, serve.SupervisorConfig{}, serve.WithPublisher(rec))
 	done := runInBackground(ctx, sup, []string{"core", "aux"},
 		withOptional(enabledSet("core", "aux"), "aux"))
 
-	waitFor(t, func() bool { return slices.Contains(tr.events(), "ready:core") })
-	time.Sleep(20 * time.Millisecond)
+	// The aggregate readiness event comes only once the start sequence
+	// is over, the optional failure handled.
+	waitFor(t, func() bool {
+		return slices.Contains(rec.topics(), "kit.serve.supervisor.ready_reported")
+	})
 	assert.True(t, core.Ready())
 	cancel()
 	res := <-done
@@ -307,25 +351,35 @@ func TestSupervisor_OptionalEarlyReturnIsAnOptionalStartFailure(t *testing.T) {
 // that an optional service crashing after ready never brings the run
 // down and never raises the exit code, whatever failure_policy says;
 // the policy governs the required services.
+//
+// A witness, another optional service, fails only once the crash has
+// been reported. The supervisor handles one exit at a time, so the
+// witness's own failed event proves it carried on past the crash
+// rather than shutting down.
 func TestSupervisor_OptionalRuntimeCrashIsIsolatedUnderEitherPolicy(t *testing.T) {
 	t.Parallel()
 	for _, policy := range []serve.FailurePolicy{serve.FailFast, serve.Isolate} {
 		t.Run(string(policy), func(t *testing.T) {
 			t.Parallel()
 			tr := &trace{}
+			rec := &recorder{}
 			core := &fake{name: "core", trace: tr}
+			witness := newCueFake("witness", tr, 0)
+			witness.fail = true
 			reg := serve.NewRegistry()
 			reg.Register(core)
 			reg.Register(&fake{name: "aux", trace: tr, startErr: errors.New("boom"), failAfter: 20 * time.Millisecond})
+			reg.Register(witness)
 
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			sup := serve.NewSupervisor(reg, serve.SupervisorConfig{FailurePolicy: policy})
-			done := runInBackground(ctx, sup, []string{"core", "aux"},
-				withOptional(enabledSet("core", "aux"), "aux"))
+			sup := serve.NewSupervisor(reg, serve.SupervisorConfig{FailurePolicy: policy}, serve.WithPublisher(rec))
+			done := runInBackground(ctx, sup, []string{"core", "aux", "witness"},
+				withOptional(enabledSet("core", "aux", "witness"), "aux", "witness"))
 
-			waitFor(t, func() bool { return slices.Contains(tr.events(), "fail:aux") })
-			time.Sleep(20 * time.Millisecond)
+			waitFor(t, func() bool { return len(failedEvents(rec, "aux")) == 1 })
+			close(witness.cue)
+			waitFor(t, func() bool { return len(failedEvents(rec, "witness")) == 1 })
 			assert.True(t, core.Ready(), "the core keeps serving")
 			assert.NotContains(t, tr.events(), "stop:core")
 

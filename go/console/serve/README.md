@@ -69,9 +69,12 @@ this package is the authority for signatures only. Points a caller gets wrong:
   timeout 1. An outcome missing from the table exits 1.
 - An optional service's failure (start, ready timeout, crash, own stop
   budget) is emitted as `failed` with `optional: true` and recorded in
-  `Result.Failed`/`Services`, but trips neither fail-fast nor the exit code;
-  a timed-out one is stopped where it failed. Every started service failing
-  is still a start failure, exit 1. No retry.
+  `Result.Failed`/`Services`, but trips neither fail-fast nor the exit code.
+  A timed-out one is stopped where it failed, concurrently, cut short by a
+  signal; one whose Stop overruns is written off — not counted as running,
+  not waited for at shutdown — and only a required goroutine can make the
+  shutdown time out. Every started service failing is still a start failure,
+  exit 1. No retry.
 - Ports reproduce [contracts/parity/serve.json](../../../contracts/parity/serve.json).
 
 ## Neighbours

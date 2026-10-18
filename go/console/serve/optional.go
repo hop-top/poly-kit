@@ -2,7 +2,6 @@ package serve
 
 import (
 	"context"
-	"slices"
 	"time"
 )
 
@@ -18,88 +17,60 @@ func optionalSet(selected []string, configs map[string]Config) map[string]bool {
 	return out
 }
 
-// isOptional reports whether the run does not depend on name. The set
-// is fixed before any service starts, so it is read without the lock.
-func (st *runState) isOptional(name string) bool { return st.optional[name] }
-
-func (st *runState) markStarted(name string) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.started = append(st.started, name)
-	st.changed[name] = st.elapsedMS()
-}
-
-func (st *runState) markReady(name string) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.ready = append(st.ready, name)
-	st.changed[name] = st.elapsedMS()
-}
-
-func (st *runState) markReleased(name string) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.released[name] = true
-}
-
-// isReleased reports whether name's Stop already ran mid-run.
-func (st *runState) isReleased(name string) bool {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	return st.released[name]
-}
-
-// allFailed reports whether every service the run started has failed,
-// which leaves nothing serving whatever each one's optionality.
-func (st *runState) allFailed() bool {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	if len(st.started) == 0 {
-		return false
-	}
-	for _, name := range st.started {
-		if _, failed := st.failed[name]; !failed {
-			return false
-		}
-	}
-	return true
-}
-
-// requiredFailed reports whether a service the run depends on failed.
-func (st *runState) requiredFailed() bool {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	for name := range st.failed {
-		if !st.optional[name] {
-			return true
-		}
-	}
-	return false
-}
-
-// optionalNeverReadyLocked counts the optional services that failed
-// without ever reporting ready. The caller holds st.mu.
-func (st *runState) optionalNeverReadyLocked() int {
-	n := 0
-	for name := range st.failed {
-		if st.optional[name] && !slices.Contains(st.ready, name) {
-			n++
-		}
-	}
-	return n
-}
-
-// release stops an optional service at the point it failed rather
-// than at the end of the run, bounded by its own stop budget alone:
-// the supervisor's total budget belongs to the shutdown sequence. The
-// ordered stop then skips it, so it is stopped once per run.
-func (s *Supervisor) release(ctx context.Context, name string, configs map[string]Config, st *runState, em *emitter) {
+// release stops an optional service at the point it missed its
+// readiness budget, so it cannot begin serving later while reported
+// failed. It returns at once; the returned channel closes when the
+// release is over.
+//
+// The Stop runs concurrently and is bounded by the service's stop
+// budget and by the run itself: the service never served, so it has
+// nothing to drain, and a signal or a fail-fast trip cuts its Stop
+// short rather than wait on it. A Stop that has not returned by then
+// is written off — the run stops counting the service's goroutine and
+// shutdown does not wait for it. Neither outcome is a second failure:
+// the service's record stays the failure that put it here, and only a
+// clean Stop adds its stopped event. The ordered stop skips a released
+// service, and shutdown joins every release.
+func (s *Supervisor) release(
+	ctx context.Context,
+	sup *supervised,
+	name string,
+	configs map[string]Config,
+	st *runState,
+	em *emitter,
+) <-chan struct{} {
+	finished := make(chan struct{})
 	svc, ok := s.reg.Lookup(name)
 	if !ok {
-		return
+		close(finished)
+		return finished
 	}
 	st.markReleased(name)
-	s.stopOne(context.WithoutCancel(ctx), svc, name, stopBudget(configs, name), st, em)
+
+	stopCtx, cancel := context.WithTimeout(ctx, stopBudget(configs, name))
+	stopped := make(chan error, 1)
+	go func() { stopped <- svc.Stop(stopCtx) }()
+
+	sup.releases.Add(1)
+	go func() {
+		defer sup.releases.Done()
+		defer close(finished)
+		defer cancel()
+		select {
+		case err := <-stopped:
+			if err == nil && !st.markStopped(name) {
+				em.emit(context.WithoutCancel(ctx), ObjectService, ActionStopped, EventPayload{
+					Service: name, ElapsedMS: st.elapsedMS(),
+				})
+			}
+		case <-stopCtx.Done():
+			st.markAbandoned(name)
+			// Wake whichever loop is counting running services: this
+			// one no longer counts.
+			sup.exits <- serviceExit{name: name, abandoned: true}
+		}
+	}()
+	return finished
 }
 
 // stopBudget is name's stop timeout, or the default.
@@ -109,29 +80,3 @@ func stopBudget(configs map[string]Config, name string) time.Duration {
 	}
 	return DefaultStopTimeout
 }
-
-// Services implements [RunStatus] over the run's own record.
-func (st *runState) Services() []ServiceStatus {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	out := make([]ServiceStatus, 0, len(st.started))
-	for _, name := range st.started {
-		ss := ServiceStatus{
-			Service:   name,
-			State:     st.stateLocked(name),
-			Optional:  st.optional[name],
-			ElapsedMS: st.changed[name],
-		}
-		if err, failed := st.failed[name]; failed {
-			ss.Reason = st.reasons[name]
-			if err != nil {
-				ss.Error = err.Error()
-			}
-		}
-		out = append(out, ss)
-	}
-	return out
-}
-
-// The supervisor's run view reports detail, not only state.
-var _ RunStatus = (*runState)(nil)

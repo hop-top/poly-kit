@@ -129,9 +129,14 @@ func (s *Supervisor) stopOne(
 		err := fmt.Errorf("stop exceeded %s", budget)
 		st.markFailed(name, err, reason)
 		// The total budget running out is the run's failure, whoever
-		// it ran out on; one optional service's own stop budget is not.
+		// it ran out on; one optional service's own stop budget is not,
+		// and its goroutine, which may never return, is written off
+		// rather than waited for.
 		if outcome == OutcomeShutdownTimeout || !st.isOptional(name) {
 			st.record(outcome)
+		}
+		if st.isOptional(name) {
+			st.markAbandoned(name)
 		}
 		em.emit(context.WithoutCancel(totalCtx), ObjectService, ActionFailed, EventPayload{
 			Qualifiers: bus.Qualifiers{Reason: reason},
