@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 	"hop.top/kit/go/transport/socket"
@@ -41,7 +42,7 @@ var tokenPaths = [][]string{
 // on the api service: every token leaf is withheld from the projection,
 // described as not invocable, and a call to one mints nothing.
 func TestTokenIsNeverServedOverREST(t *testing.T) {
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	r := newServeRoot(t, append(keySources(t), cli.WithAPI(cli.APIConfig{Addr: "127.0.0.1:0"}))...)
 	base, stop := serveAPIInBackground(t, r, []string{"serve", "api"})
 	defer stop()
@@ -75,7 +76,7 @@ func TestTokenIsNeverServedOverREST(t *testing.T) {
 // a tool with no REST api at all: the key sources alone mount token,
 // and it stays kit-reserved.
 func TestTokenIsNeverServedOverTheSocket(t *testing.T) {
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	path := shortSocketPath(t)
 	r := newServeRoot(t, append(keySources(t), cli.WithSocket(cli.SocketConfig{Path: path}))...)
 	stop := serveInBackground(t, r, []string{"serve", "socket"}, path)
@@ -95,7 +96,7 @@ func TestTokenIsNeverServedOverTheSocket(t *testing.T) {
 // only. A tool with no key source mounts none, and a token command of
 // its own is the adopter's to serve.
 func TestAdoptersOwnTokenCommandIsStillServedOverTheSocket(t *testing.T) {
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	path := shortSocketPath(t)
 	r := newServeRoot(t, cli.WithSocket(cli.SocketConfig{Path: path}))
 	require.False(t, r.IsReserved("token"), "no key source, no kit token command")
@@ -118,7 +119,7 @@ func TestAdoptersOwnTokenCommandIsStillServedOverTheSocket(t *testing.T) {
 // with the socket counting calls per caller.
 func managedSocketRoot(t *testing.T, opts ...func(*cli.Root)) (*cli.Root, string) {
 	t.Helper()
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	path := shortSocketPath(t)
 	all := append(keySources(t),
 		cli.WithSocket(cli.SocketConfig{Path: path}),

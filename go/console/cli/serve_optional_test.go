@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -14,26 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
 	"hop.top/kit/go/runtime/bus"
 )
-
-// isolateServeHome points HOME and every per-user XDG base at a fresh
-// temp dir, so a serve run merges none of the developer's own config
-// for the tool. The system file (/etc/<tool>/config.yaml) is not
-// redirectable by environment; the test tools' names keep it absent.
-func isolateServeHome(t *testing.T) {
-	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	for k, sub := range map[string]string{
-		"XDG_CONFIG_HOME": "config", "XDG_DATA_HOME": "data",
-		"XDG_STATE_HOME": "state", "XDG_CACHE_HOME": "cache",
-	} {
-		t.Setenv(k, filepath.Join(home, sub))
-	}
-}
 
 // eventLog is a Publisher that keeps every lifecycle payload.
 type eventLog struct {
@@ -84,7 +68,7 @@ func (d declaringUnbindable) Optional() bool { return d.optional }
 // enabled.
 func coreAndAux(t *testing.T, aux serve.Service) (*cli.Root, *stubService) {
 	t.Helper()
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	core := &stubService{name: "core"}
 	r := newServeRoot(t, cli.WithServices(core, aux))
 	r.Viper.Set("services.core.enabled", true)
@@ -169,7 +153,7 @@ func TestServe_OptionalHasNoSharedDefault(t *testing.T) {
 // an optional service with no services.<name> block still runs it as
 // optional, as --list says: the events carry the default too.
 func TestServe_SelectorFormAppliesTheRegistrationDefault(t *testing.T) {
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	log := &eventLog{}
 	r := newServeRoot(t,
 		cli.WithService(declaringUnbindable{&unbindable{name: "aux", optional: true}}),

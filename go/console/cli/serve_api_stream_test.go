@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/transport/api"
 	"hop.top/kit/go/transport/cmdsurface"
 )
@@ -24,11 +25,7 @@ import (
 // a served command cannot read or write the developer's config.
 func isolateHome(t *testing.T) {
 	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	for _, k := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
-		t.Setenv(k, home+"/"+strings.ToLower(k))
-	}
+	testhome.Isolate(t)
 }
 
 // streamFrame is one parsed server-sent event.

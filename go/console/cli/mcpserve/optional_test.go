@@ -3,7 +3,6 @@ package mcpserve_test
 import (
 	"context"
 	"net"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -13,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/cli"
+	"hop.top/kit/go/console/cli/internal/testhome"
 	"hop.top/kit/go/console/cli/mcpserve"
 	"hop.top/kit/go/console/output"
 	"hop.top/kit/go/console/serve"
@@ -49,22 +49,6 @@ func (c *coreService) Stop(context.Context) error {
 	return nil
 }
 
-// isolateServeHome points HOME and every per-user XDG base at a fresh
-// temp dir, so a serve run merges none of the developer's own config
-// for the tool. The system file (/etc/<tool>/config.yaml) is not
-// redirectable by environment; the test tool's name keeps it absent.
-func isolateServeHome(t *testing.T) {
-	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	for k, sub := range map[string]string{
-		"XDG_CONFIG_HOME": "config", "XDG_DATA_HOME": "data",
-		"XDG_STATE_HOME": "state", "XDG_CACHE_HOME": "cache",
-	} {
-		t.Setenv(k, filepath.Join(home, sub))
-	}
-}
-
 // takenAddr returns a loopback address something already listens on.
 func takenAddr(t *testing.T) string {
 	t.Helper()
@@ -86,7 +70,7 @@ type coreAndMCPRun struct {
 // mcp failure included, is over by then.
 func coreAndMCP(t *testing.T, cfg mcpserve.Config, keys map[string]any) coreAndMCPRun {
 	t.Helper()
-	isolateServeHome(t)
+	testhome.Isolate(t)
 	b := bus.New()
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
 	var mu sync.Mutex
