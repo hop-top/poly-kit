@@ -195,10 +195,20 @@ DIR=$(make_wrapper_repo t5c \
   '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@$(id)')
 rc=0; bash "$DIR/scripts/promote-release.sh" --pin 2>/dev/null || rc=$?
 assert_exit_code 3 "$rc" "p5c: not a ref"
+SHA40=0123456789abcdef0123456789abcdef01234567
 DIR=$(make_wrapper_repo t5d \
-  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v0  # pin')
+  "    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@$SHA40  # pin")
 got=$(bash "$DIR/scripts/promote-release.sh" --pin)
-assert_eq "$got" "v0" "p5d: trailing comment ignored"
+assert_eq "$got" "$SHA40" "p5d: trailing comment ignored"
+for ref in v0 "${SHA40:0:7}" main 0123456789ABCDEF0123456789ABCDEF01234567; do
+  DIR=$(make_wrapper_repo "t5e-$ref" \
+    "    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@$ref")
+  rc=0; out=$(bash "$DIR/scripts/promote-release.sh" --pin 2>&1) || rc=$?
+  assert_exit_code 3 "$rc" "p5e: pin $ref refused"
+  assert_eq "${out#*: }" \
+    "pinned ref '$ref' is not a full commit SHA: $DIR/.github/workflows/release-please.yml must call release-please-on-push.yml at a 40-character commit SHA" \
+    "p5e: pin $ref: message"
+done
 
 info "Test p6: a promotion is committed alone, as a chore(release) commit"
 DIR=$(make_wrapper_repo t6)
@@ -272,6 +282,71 @@ DIR=$(make_wrapper_repo t11)
 rc=0; promote "$DIR" clear channel --package kit >/dev/null || rc=$?
 assert_exit_code 0 "$rc" "p11: exit 0"
 assert_eq "$(commits "$DIR")" 1 "p11: no empty commit"
+
+# Fetching the extension, offline: a global git config rewrites
+# https://github.com/hop-top/.github.git to a local repository, and a stub
+# npm stands in for `npm ci`. With STUB_NPM_RACE the stub plays a run that
+# finished first: it puts a complete copy at the final cache path.
+SRC="$TMPDIR_BASE/dotgithub"
+mkdir -p "$SRC/scripts/release-please-target/bin"
+git -C "$SRC" init -q
+echo "// fetched" > "$SRC/scripts/release-please-target/bin/promote.js"
+echo "outside the sparse checkout" > "$SRC/README.md"
+git -C "$SRC" add -A
+git -C "$SRC" -c user.name=Test -c user.email=test@test.com commit -q -m init
+SRC_SHA=$(git -C "$SRC" rev-parse HEAD)
+FETCH_GITCONFIG="$TMPDIR_BASE/fetch.gitconfig"
+printf '[url "file://%s"]\n\tinsteadOf = https://github.com/hop-top/.github.git\n' "$SRC" > "$FETCH_GITCONFIG"
+STUB_BIN="$TMPDIR_BASE/stub-bin"
+mkdir -p "$STUB_BIN"
+cat > "$STUB_BIN/npm" <<'EOSTUB'
+#!/usr/bin/env bash
+[ -f package.json ] || [ -f bin/promote.js ] || exit 1
+if [ -n "${STUB_NPM_RACE:-}" ]; then
+  final=${PWD%/scripts/release-please-target}
+  final=${final%.*}
+  mkdir -p "$final/scripts/release-please-target/bin"
+  echo "// first run" > "$final/scripts/release-please-target/bin/promote.js"
+fi
+EOSTUB
+chmod +x "$STUB_BIN/npm"
+
+# entries <dir>: its entries' names, sorted, space-separated.
+entries() { find "$1" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort | tr '\n' ' '; }
+
+# fetch_promote <cache home> <repo name>: a --dry-run through the real fetch path.
+fetch_promote() {
+  local dir
+  dir=$(make_wrapper_repo "$2" \
+    "    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@$SRC_SHA")
+  GIT_CONFIG_GLOBAL="$FETCH_GITCONFIG" XDG_CACHE_HOME="$1" PATH="$STUB_BIN:$PATH" \
+    NODE="$STUB_NODE" bash "$dir/scripts/promote-release.sh" channel beta --package kit --dry-run
+}
+
+info "Test p12: first use fetches the pinned commit into the cache; other pins' caches go"
+CACHE="$TMPDIR_BASE/cache12"
+ROOT="$CACHE/poly-kit/release-please-target"
+OLD_PIN=fedcba9876543210fedcba9876543210fedcba98
+mkdir -p "$ROOT/$OLD_PIN/scripts" "$ROOT/$SRC_SHA.inflight" "$ROOT/notes"
+rc=0; fetch_promote "$CACHE" t12 2>/dev/null || rc=$?
+assert_exit_code 0 "$rc" "p12: exit 0"
+assert_eq "$(sed -n 2p "$STUB_LOG")" "$ROOT/$SRC_SHA/scripts/release-please-target/bin/promote.js" \
+  "p12: promote.js run from the cache"
+assert_eq "$(cat "$ROOT/$SRC_SHA/scripts/release-please-target/bin/promote.js")" "// fetched" \
+  "p12: cache holds the pinned commit"
+assert_eq "$(find "$ROOT/$SRC_SHA" -name README.md)" "" "p12: sparse: only scripts/release-please-target"
+assert_eq "$(entries "$ROOT")" "$SRC_SHA $SRC_SHA.inflight notes " \
+  "p12: another pin's cache removed; temporary and foreign entries kept"
+
+info "Test p13: a run that finished first keeps its copy; nothing nested, nothing left over"
+CACHE="$TMPDIR_BASE/cache13"
+ROOT="$CACHE/poly-kit/release-please-target"
+rc=0; STUB_NPM_RACE=1 fetch_promote "$CACHE" t13 2>/dev/null || rc=$?
+assert_exit_code 0 "$rc" "p13: exit 0"
+assert_eq "$(entries "$ROOT")" "$SRC_SHA " "p13: no temporary copy left beside it"
+assert_eq "$(entries "$ROOT/$SRC_SHA")" "scripts " "p13: nothing moved inside it"
+assert_eq "$(cat "$ROOT/$SRC_SHA/scripts/release-please-target/bin/promote.js")" "// first run" \
+  "p13: the first run's copy kept"
 
 # ======================================================
 # rewrite-changelog.sh tests
