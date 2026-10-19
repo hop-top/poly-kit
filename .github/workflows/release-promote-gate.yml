@@ -35,7 +35,9 @@ jobs:
 
       - name: Resolve the extension pin
         id: pin
-        run: echo "ref=$(scripts/promote-release.sh --pin)" >> "$GITHUB_OUTPUT"
+        run: |
+          ref=$(scripts/promote-release.sh --pin)
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v7
         with:
