@@ -33,7 +33,29 @@ permissions:
   contents: read
 
 jobs:
+  # workflow_dispatch runs on whatever branch it is started from, and a branch
+  # without a role falls back to prereleases: release only from main, next or
+  # release/<major>.<minor> (the push filter above, as a regex, which a job
+  # `if:` cannot express).
+  branch-role:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.role.outputs.release }}
+    steps:
+      - id: role
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [[ "$REF" =~ ^refs/heads/(main|next|release/[0-9]+\.[0-9]+)$ ]]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::$REF has no release role (main, next, release/<major>.<minor>): not releasing"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
   release-please:
+    needs: branch-role
+    if: needs.branch-role.outputs.release == 'true'
     uses: hop-top/.github/.github/workflows/release-please-on-push.yml@d65cb73b7d6928ea382449858a130d0f3ef92624
     secrets:
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
