@@ -14,7 +14,7 @@
 #   scripts/promote-release.sh open-line 1.0.0 --group kit
 #   scripts/promote-release.sh clear channel --package kit
 #   scripts/promote-release.sh channel beta --package kit --dry-run
-#   scripts/promote-release.sh --pin      # print the pinned hop-top/.github ref
+#   scripts/promote-release.sh --pin      # print the pinned hop-top/.github commit
 #
 # The config change is committed on the current branch, alone, as
 # `chore(release): promote kit and qmochi to beta` (`open 1.0.0 for group
@@ -26,12 +26,13 @@
 # the promotion gate replays records. RELEASING.md has the rules.
 #
 # The extension comes from RELEASE_PLEASE_TARGET_DIR (a
-# scripts/release-please-target directory with its dependencies installed,
-# as the promotion gate sets up) when set; otherwise from a sparse checkout
-# of hop-top/.github at the pinned ref, cached under
-# ${XDG_CACHE_HOME:-~/.cache}/poly-kit/release-please-target/<ref> and
+# scripts/release-please-target directory with its dependencies installed)
+# when set; otherwise from a sparse checkout of hop-top/.github at the
+# pinned commit (a full SHA; anything else is refused), cached under
+# ${XDG_CACHE_HOME:-~/.cache}/poly-kit/release-please-target/<sha> and
 # installed with `npm ci --ignore-scripts` on first use (git, npm and
-# network needed once). NODE names the node binary (default: node, >= 20).
+# network needed once; the caches of other pins are removed then). NODE
+# names the node binary (default: node, >= 20).
 #
 # Exit: promote.js's own (0 written or nothing to do, 1 refused, 2 usage);
 # 1 also for staged or uncommitted changes; 3 when the extension cannot be
@@ -59,12 +60,16 @@ pinned_ref() {
     "")    die "no hop-top/.github release-please-on-push.yml call in $workflow" ;;
     *$'\n'*) die "more than one release-please-on-push.yml call in $workflow" ;;
   esac
-  [[ "$refs" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || die "pinned ref '$refs' is not a git ref or SHA"
+  # A tag or branch could move under the release run and the promotion gate.
+  [[ "$refs" =~ ^[0-9a-f]{40}$ ]] ||
+    die "pinned ref '$refs' is not a full commit SHA: $workflow must call release-please-on-push.yml at a 40-character commit SHA"
   echo "$refs"
 }
 
 # Sparse checkout of scripts/release-please-target at <ref> into <dir>,
-# dependencies installed; built aside and moved in only once complete.
+# dependencies installed; built aside and moved in only once complete. A
+# run that finished first keeps its copy. The caches of other pins are
+# removed once this one is in place.
 fetch_extension() {
   local ref="$1" dir="$2" tmp
   command -v git >/dev/null 2>&1 || die "git is required to fetch the extension"
@@ -84,7 +89,17 @@ fetch_extension() {
     rm -rf "$tmp"
     die "could not fetch or install hop-top/.github@$ref"
   fi
-  mv "$tmp" "$dir"
+  if [ -e "$dir" ]; then
+    rm -rf "$tmp"
+  else
+    mv "$tmp" "$dir"
+  fi
+  local other
+  for other in "$(dirname "$dir")"/*; do
+    if [ "$other" != "$dir" ] && [[ "${other##*/}" =~ ^[0-9a-f]{40}$ ]]; then
+      rm -rf "$other"
+    fi
+  done
 }
 
 extension_dir() {
@@ -94,7 +109,7 @@ extension_dir() {
     return
   fi
   ref=$(pinned_ref)
-  cache="${XDG_CACHE_HOME:-$HOME/.cache}/poly-kit/release-please-target/${ref//\//_}"
+  cache="${XDG_CACHE_HOME:-$HOME/.cache}/poly-kit/release-please-target/$ref"
   [ -f "$cache/scripts/release-please-target/bin/promote.js" ] || fetch_extension "$ref" "$cache"
   echo "$cache/scripts/release-please-target"
 }
