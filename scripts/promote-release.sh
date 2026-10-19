@@ -3,11 +3,11 @@
 # .github/release-please-config.json: promote a package's line to the next
 # channel (x-channel), open a line (x-open-line), or clear a record.
 #
-# A thin wrapper around bin/promote.js of hop-top/.github's release-please
+# A wrapper around bin/promote.js of hop-top/.github's release-please
 # extension (scripts/release-please-target), run at the commit
 # .github/workflows/release-please.yml pins: the code the release run itself
 # uses, so a record this writes is one that run accepts. Arguments pass
-# through unchanged, from the repository root:
+# through to promote.js, from the repository root:
 #
 #   scripts/promote-release.sh channel beta --package kit --package qmochi
 #   scripts/promote-release.sh channel rc --group kit
@@ -16,9 +16,14 @@
 #   scripts/promote-release.sh channel beta --package kit --dry-run
 #   scripts/promote-release.sh --pin      # print the pinned hop-top/.github ref
 #
-# It writes the config only; commit it to next, where the release-please run
-# on that push cuts the promoted packages' release PRs. RELEASING.md has the
-# rules.
+# The config change is committed on the current branch, alone, as
+# `chore(release): promote kit and qmochi to beta` (`open 1.0.0 for group
+# kit`, `clear channel for kit`), with promote.js's report as the body; push
+# it to next, where the release-please run cuts the promoted packages'
+# release PRs. Staged changes, or uncommitted changes in the config, refuse
+# the run. Nothing changed, nothing committed. --dry-run prints and writes
+# nothing; --no-commit (kept from promote.js) writes without committing, as
+# the promotion gate replays records. RELEASING.md has the rules.
 #
 # The extension comes from RELEASE_PLEASE_TARGET_DIR (a
 # scripts/release-please-target directory with its dependencies installed,
@@ -29,7 +34,8 @@
 # network needed once). NODE names the node binary (default: node, >= 20).
 #
 # Exit: promote.js's own (0 written or nothing to do, 1 refused, 2 usage);
-# 3 when the extension cannot be set up.
+# 1 also for staged or uncommitted changes; 3 when the extension cannot be
+# set up.
 #
 # Not to be confused with templates/shared/scripts/promote-release.sh, the
 # one scaffolded repositories get: it drives release-please's stock
@@ -42,6 +48,7 @@ workflow="$root/.github/workflows/release-please.yml"
 NODE="${NODE:-node}"
 
 die() { echo "promote-release: $*" >&2; exit 3; }
+refuse() { echo "promote-release: $*" >&2; exit 1; }
 
 # The ref release-please.yml calls release-please-on-push.yml at.
 pinned_ref() {
@@ -92,14 +99,98 @@ extension_dir() {
   echo "$cache/scripts/release-please-target"
 }
 
+# "a", "a and b", "a, b and c"
+join_names() {
+  local n=$# i=0 x out=""
+  for x in "$@"; do
+    i=$((i + 1))
+    if [ "$i" -eq 1 ]; then
+      out=$x
+    elif [ "$i" -eq "$n" ]; then
+      out="$out and $x"
+    else
+      out="$out, $x"
+    fi
+  done
+  echo "$out"
+}
+
 if [ "${1:-}" = "--pin" ]; then
   pinned_ref
   exit 0
+fi
+
+# promote.js's arguments, minus --no-commit; what the commit subject names.
+args=() positional=() names=()
+config=.github/release-please-config.json
+dry_run=false commit=true expect=""
+for a in "$@"; do
+  if [ -n "$expect" ]; then
+    case "$expect" in
+      package) names+=("$a") ;;
+      group) names+=("group $a") ;;
+      config) config=$a ;;
+    esac
+    expect="" args+=("$a")
+    continue
+  fi
+  case "$a" in
+    --no-commit) commit=false; continue ;;
+    --dry-run) dry_run=true ;;
+    --package | -p) expect=package ;;
+    --group | -g) expect=group ;;
+    --config) expect=config ;;
+    --manifest) expect=manifest ;;
+    --package=*) names+=("${a#--package=}") ;;
+    --group=*) names+=("group ${a#--group=}") ;;
+    --config=*) config=${a#--config=} ;;
+    -*) ;;
+    *) positional+=("$a") ;;
+  esac
+  args+=("$a")
+done
+
+cd "$root"
+if $dry_run || ! $commit; then
+  commit=false
+else
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 ||
+    refuse "$root is not a git work tree (--no-commit writes without committing)"
+  git diff --cached --quiet ||
+    refuse "staged changes detected: commit or unstage them before promoting"
+  git diff --quiet -- "$config" ||
+    refuse "$config has uncommitted changes: commit or discard them before promoting"
 fi
 
 ext=$(extension_dir)
 [ -f "$ext/bin/promote.js" ] || die "$ext/bin/promote.js not found"
 command -v "$NODE" >/dev/null 2>&1 || die "node is required (>= 20)"
 
-cd "$root"
-exec "$NODE" "$ext/bin/promote.js" "$@"
+if ! $commit; then
+  exec "$NODE" "$ext/bin/promote.js" "${args[@]+"${args[@]}"}"
+fi
+
+rc=0
+report=$("$NODE" "$ext/bin/promote.js" "${args[@]+"${args[@]}"}") || rc=$?
+[ -z "$report" ] || printf '%s\n' "$report"
+[ "$rc" -eq 0 ] || exit "$rc"
+if git diff --quiet -- "$config"; then
+  exit 0
+fi
+
+who=$(join_names "${names[@]+"${names[@]}"}")
+command=${positional[0]:-} value=${positional[1]:-}
+case "$command" in
+  channel) subject="promote $who to $value" ;;
+  open-line) subject="open $value for $who" ;;
+  clear)
+    if [ "$value" = all ]; then
+      subject="clear records of $who"
+    else
+      subject="clear $value for $who"
+    fi
+    ;;
+  *) subject="update promotion records of $who" ;;
+esac
+git commit -q -m "chore(release): $subject" -m "$report" -- "$config"
+echo "committed: chore(release): $subject (push it to next)"

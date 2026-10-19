@@ -144,7 +144,7 @@ gate() {
     run gate
     [ "$status" -eq 0 ]
     [[ "$output" == *'ok: .: x-channel {"line":"0.5.0","channel":"beta"}'* ]]
-    grep -q "^channel beta --package \. --config [^ ]*/replay\.json --manifest $REPO/$MANIFEST\$" "$STUB_CALLS"
+    grep -q "^channel beta --package \. --config [^ ]*/replay\.json --manifest $REPO/$MANIFEST --no-commit\$" "$STUB_CALLS"
 }
 
 @test "a record for another line than promote.js records fails" {
