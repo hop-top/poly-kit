@@ -1,31 +1,42 @@
 name: Release Promotion Gate
 
-# Validates promotion PRs under target versioning (RELEASING.md): changes to
-# the x-channel / x-open-line records in .github/release-please-config.json.
+# Guards the release state a PR can change (RELEASING.md):
 #
-# On a prerelease branch (target-context prereleaseBranches, default next) a
-# PR that changes those records must change nothing else in the config, and
-# every record it adds or changes must be the one bin/promote.js writes from
-# the base config: the package's current target as the line, one channel
-# step (alpha → beta → rc) from the channel the manifest shows, never
-# backwards, an open line not reached yet. Removing a record (promote.js
-# clear, or a release PR leaving the line) passes. On any other branch the
-# records are inert and the preflight checks their shape only.
+# - .github/.release-please-manifest.json is written by release PRs only: a
+#   PR from a release-please-- branch opened by the release bot. Any other PR
+#   that changes it fails, whatever the base branch; no version is ever
+#   hand-picked.
+# - Promotions: changes to the x-channel / x-open-line records in
+#   .github/release-please-config.json. On a prerelease branch (target-context
+#   prereleaseBranches, default next) a PR that changes those records must
+#   change nothing else in the config, and every record it adds or changes
+#   must be the one bin/promote.js writes: the package's current target as
+#   the line, one channel step (alpha → beta → rc) from the channel the
+#   manifest shows, never backwards, an open line not reached yet. Removing a
+#   record (promote.js clear, or a release PR leaving the line) passes. On
+#   any other branch the records are inert and the preflight checks their
+#   shape only.
 #
-# promote.js runs from hop-top/.github at the commit release-please.yml pins
-# (scripts/promote-release.sh --pin), the code the release run uses. Who may
+# The verdict rests on the PR's base commit only: the branch roles, the
+# config and manifest the records are replayed on, and the replaying
+# scripts/promote-release.sh with the hop-top/.github pin it reads from
+# release-please.yml (the code the release run uses; fetched on the first
+# replay). A PR cannot edit them to pass. This file itself runs as the PR
+# has it (pull_request), like every workflow: review changes to it.
+#
+# No `paths:` filter: the gate runs on every PR and exits early when neither
+# file changed, so `validate-promotion` can be a required check. Who may
 # promote is the repo's ordinary PR policy; the config is not code-owned.
 
 on:
   pull_request:
-    paths:
-      - '.github/release-please-config.json'
 
 permissions:
   contents: read
 
 jobs:
   validate-promotion:
+    name: validate-promotion
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -33,52 +44,51 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Resolve the extension pin
-        id: pin
-        run: |
-          ref=$(scripts/promote-release.sh --pin)
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v7
-        with:
-          repository: hop-top/.github
-          ref: ${{ steps.pin.outputs.ref }}
-          path: .hop-top-dotgithub
-          persist-credentials: false
-          sparse-checkout: scripts/release-please-target
-
       - id: pins
         run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ steps.pins.outputs.node }}
 
-      - name: Install the target-versioning extension
-        working-directory: .hop-top-dotgithub/scripts/release-please-target
-        run: npm ci --ignore-scripts --no-audit --no-fund
-
       - name: Validate promotion
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BASE_REF: ${{ github.base_ref }}
-          PROMOTE: scripts/promote-release.sh
-          RELEASE_PLEASE_TARGET_DIR: ${{ github.workspace }}/.hop-top-dotgithub/scripts/release-please-target
+          HEAD_REF: ${{ github.head_ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           set -euo pipefail
           CONFIG=.github/release-please-config.json
-          MANIFEST="$PWD/.github/.release-please-manifest.json"
+          MANIFEST=.github/.release-please-manifest.json
+          RELEASE_BOT='hop-top-release-bot[bot]'
           W=$(mktemp -d)
           trap 'rm -rf "$W"' EXIT
+
+          # The manifest is written by release PRs only. No manifest on the
+          # base: initial setup, adding one is allowed.
+          base_manifest=false
+          if git show "$BASE_SHA:$MANIFEST" > "$W/manifest.json" 2>/dev/null; then
+            base_manifest=true
+            if [ -f "$MANIFEST" ] && cmp -s "$W/manifest.json" "$MANIFEST"; then
+              :
+            elif [[ "$HEAD_REF" == release-please--* && "$PR_AUTHOR" == "$RELEASE_BOT" ]]; then
+              echo "ok: $MANIFEST changed by a release PR"
+            else
+              echo "::error file=$MANIFEST::the manifest is written by release PRs only (release-please--* branches opened by $RELEASE_BOT); no version is hand-picked: drop the change to $MANIFEST (a channel step or a new line goes through scripts/promote-release.sh)"
+              exit 1
+            fi
+          fi
 
           if ! git show "$BASE_SHA:$CONFIG" > "$W/base.json" 2>/dev/null; then
             echo "no $CONFIG on the base: initial setup, nothing to validate"
             exit 0
           fi
 
-          # Records are live only on a prerelease branch.
+          # Records are live only on a prerelease branch. The roles come from
+          # the base config: a PR cannot turn the gate off by editing them.
           if ! jq -e --arg b "$BASE_REF" '
               ([(.plugins // [])[] | objects | select(.type == "target-context")][0] // {})
-              | any((.prereleaseBranches // ["next"])[]?; . == $b)' "$CONFIG" >/dev/null; then
+              | any((.prereleaseBranches // ["next"])[]?; . == $b)' "$W/base.json" >/dev/null; then
             echo "$BASE_REF is not a prerelease branch: x-channel / x-open-line records are inert there"
             exit 0
           fi
@@ -109,7 +119,26 @@ jobs:
             '.[] | select(. as $r | any($head[0][]; .p == $r.p and .k == $r.k) | not) | "\(.p) \(.k)"' \
             "$W/base.records" |
             while read -r p k; do echo "ok: $p: $k removed"; done
-          # Added or changed records: replay promote.js on the base config.
+
+          # Added or changed records: replay the base's promote-release.sh
+          # (and so the base's extension pin) on the base config and manifest.
+          jq -r --slurpfile base "$W/base.records" \
+            '.[] | select(. as $r | any($base[0][]; . == $r) | not) | [.p, .k, (.v | tojson)] | @tsv' \
+            "$W/head.records" > "$W/changed.tsv"
+          if [ ! -s "$W/changed.tsv" ]; then
+            exit 0
+          fi
+          if ! $base_manifest; then
+            echo "::error file=$MANIFEST::no $MANIFEST on the base: no channel to replay the records from"
+            exit 1
+          fi
+          mkdir "$W/base"
+          if ! git archive "$BASE_SHA" scripts/promote-release.sh .github/workflows/release-please.yml |
+              tar -x -C "$W/base"; then
+            echo "::error::cannot read scripts/promote-release.sh and .github/workflows/release-please.yml at the base ($BASE_SHA)"
+            exit 1
+          fi
+          PROMOTE="$W/base/scripts/promote-release.sh"
           while IFS=$'\t' read -r p k v; do
             if [ "$k" = x-channel ]; then
               args=(channel "$(jq -r 'if type == "object" then (.channel // "") | tostring else "" end' <<<"$v")")
@@ -117,7 +146,13 @@ jobs:
               args=(open-line "$(jq -r 'if type == "string" then . else "" end' <<<"$v")")
             fi
             cp "$W/base.json" "$W/replay.json"
-            if ! out=$("$PROMOTE" "${args[@]}" --package "$p" --config "$W/replay.json" --manifest "$MANIFEST" --no-commit 2>&1); then
+            rc=0
+            out=$(bash "$PROMOTE" "${args[@]}" --package "$p" --config "$W/replay.json" \
+              --manifest "$W/manifest.json" --no-commit 2>&1 </dev/null) || rc=$?
+            if [ "$rc" -eq 3 ]; then
+              echo "::error::the base's scripts/promote-release.sh could not set up promote.js: ${out//$'\n'/; }"
+              exit 1
+            elif [ "$rc" -ne 0 ]; then
               echo "::error file=$CONFIG::$p: $k $v refused by promote.js: ${out//$'\n'/; }"
               fail=1
               continue
@@ -129,7 +164,5 @@ jobs:
               continue
             fi
             echo "ok: $p: $k $v"
-          done < <(jq -r --slurpfile base "$W/base.records" \
-            '.[] | select(. as $r | any($base[0][]; . == $r) | not) | [.p, .k, (.v | tojson)] | @tsv' \
-            "$W/head.records")
+          done < "$W/changed.tsv"
           exit "$fail"
