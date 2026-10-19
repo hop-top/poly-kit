@@ -107,7 +107,8 @@
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "target",
-      "initial-version": "0.5.0-alpha.0"
+      "initial-version": "0.5.0-alpha.0",
+      "x-channel": {"line": "0.5.0", "channel": "beta"}
     },
     "extensions/mcp-tasks": {
       "release-type": "go",
@@ -127,7 +128,8 @@
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "target",
-      "initial-version": "0.1.0-alpha.0"
+      "initial-version": "0.1.0-alpha.0",
+      "x-channel": {"line": "0.2.0", "channel": "beta"}
     },
     "sdk/experimental/php": {
       "release-type": "php",
