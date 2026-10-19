@@ -198,9 +198,11 @@ runs on every PR:
 
 - **The manifest is written by release PRs only.** A PR that changes
   `.github/.release-please-manifest.json` fails, whatever its base branch,
-  unless it is a release PR: a `release-please--*` branch opened by the
-  release bot. A channel step or a new line is a record, never a manifest
-  edit.
+  unless it is a release PR (a `release-please--*` branch opened by the
+  release bot) or a merge between this repository's own `next` and `main`
+  (head `next` or `main`, not a fork's branch of that name): the
+  `next → main` merge and forward-ports carry what release PRs wrote. A
+  channel step or a new line is a record, never a manifest edit.
 - **Promotions.** A PR to `next` that changes the records changes nothing
   else in the config, and each added or changed record is exactly what
   `promote.js` writes (current target as the line, one step, never
@@ -208,14 +210,15 @@ runs on every PR:
 
 The verdict rests on the PR's base commit only: the branch roles, the config
 and manifest the records are replayed on, and `scripts/promote-release.sh`
-with the pin it reads. A PR cannot edit them to pass.
+with the pin it reads. A PR cannot edit them to pass. The gate's own
+workflow file is the exception every `pull_request` workflow has: it runs as
+the PR has it, so changes to it need review.
 
 Once this setup is on `next`, the owner makes `validate-promotion` and the
-release-please preflight required checks on `next` (rulesets). The gate has
-no `paths:` filter so that it always reports; it exits early when neither
-file changed. The preflight still runs on release paths only, and a required
-check that never runs leaves the PR pending: its `paths:` filter goes when it
-becomes required.
+release-please preflight required checks on `next` (rulesets). Neither has a
+`paths:` filter, since a required check that never runs leaves the PR
+pending: both run on every PR, and the gate exits early when neither file
+changed.
 
 ### Opening a line (1.0)
 
