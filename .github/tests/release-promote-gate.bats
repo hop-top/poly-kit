@@ -90,6 +90,9 @@ EOF
     git -C "$REPO" add -A
     git -C "$REPO" commit -qm base
     export BASE_SHA="$(git -C "$REPO" rev-parse HEAD)"
+    # The integration branches as the checkout has them (origin/<branch>).
+    git -C "$REPO" update-ref refs/remotes/origin/main "$BASE_SHA"
+    git -C "$REPO" update-ref refs/remotes/origin/next "$BASE_SHA"
     export BASE_REF=next HEAD_REF=feat/something PR_AUTHOR=someone
     export HEAD_REPO=hop-top/poly-kit BASE_REPO=hop-top/poly-kit
 
@@ -117,6 +120,19 @@ edit_manifest() {
 # release_pr: the PR is a release PR (release-please-- branch, release bot).
 release_pr() {
     export HEAD_REF=release-please--branches--next--components--kit PR_AUTHOR="$RELEASE_BOT"
+}
+
+# integration_branch <branch> <jq filter>: move origin/<branch> to a commit
+# whose manifest is the base's with the filter applied; the PR is untouched.
+integration_branch() {
+    local blob tree commit
+    git -C "$REPO" show "$BASE_SHA:$MANIFEST" | jq "$2" > "$TMP/other.json"
+    blob=$(git -C "$REPO" hash-object -w "$TMP/other.json")
+    GIT_INDEX_FILE="$TMP/other.index" git -C "$REPO" read-tree "$BASE_SHA"
+    GIT_INDEX_FILE="$TMP/other.index" git -C "$REPO" update-index --cacheinfo "100644,$blob,$MANIFEST"
+    tree=$(GIT_INDEX_FILE="$TMP/other.index" git -C "$REPO" write-tree)
+    commit=$(git -C "$REPO" commit-tree "$tree" -p "$BASE_SHA" -m "$1")
+    git -C "$REPO" update-ref "refs/remotes/origin/$1" "$commit"
 }
 
 gate() {
@@ -283,6 +299,68 @@ gate() {
 @test "manifest: a deleted fork's branch named next fails" {
     export BASE_REF=main HEAD_REF=next HEAD_REPO=
     edit_manifest '.["."] = "0.5.0-rc.2"'
+    run gate
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"written by release PRs only"* ]]
+}
+
+@test "manifest: next or main into an LTS branch fails" {
+    export BASE_REF=release/1.2 HEAD_REF=main
+    edit_manifest '.["."] = "0.5.0-rc.2"'
+    run gate
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"written by release PRs only"* ]]
+}
+
+@test "manifest: a topic branch resolving next into main with next's values passes" {
+    export BASE_REF=main HEAD_REF=merge/next-into-main
+    integration_branch next '.["."] = "0.5.0-rc.2" | .["incubator/qmochi"] = "0.2.0-rc.0"'
+    edit_manifest '.["."] = "0.5.0-rc.2" | .["incubator/qmochi"] = "0.2.0-rc.0"'
+    run gate
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ok: $MANIFEST: every entry is main's or next's (a merge with next)"* ]]
+}
+
+@test "manifest: a topic branch resolving main into next with main's values passes" {
+    export HEAD_REF=sync/main-into-next
+    integration_branch main '.["incubator/qmochi"] = "0.1.4" | .["sdk/new"] = "0.1.0"'
+    edit_manifest '.["incubator/qmochi"] = "0.1.4" | .["sdk/new"] = "0.1.0"'
+    run gate
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"every entry is next's or main's (a merge with main)"* ]]
+}
+
+@test "manifest: a topic branch taking some entries from each side passes" {
+    export BASE_REF=main HEAD_REF=merge/next-into-main
+    integration_branch next '.["."] = "0.5.0-rc.2" | .["incubator/qmochi"] = "0.2.0-rc.0"'
+    edit_manifest '.["."] = "0.5.0-rc.2"'
+    run gate
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"every entry is main's or next's"* ]]
+}
+
+@test "manifest: a topic branch with a value from neither side fails" {
+    export BASE_REF=main HEAD_REF=merge/next-into-main
+    integration_branch next '.["."] = "0.5.0-rc.2" | .["incubator/qmochi"] = "0.2.0-rc.0"'
+    edit_manifest '.["."] = "0.5.0-rc.2" | .["incubator/qmochi"] = "0.2.0"'
+    run gate
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"written by release PRs only"* ]]
+}
+
+@test "manifest: a feature branch with a value from neither side fails" {
+    integration_branch main '.["incubator/qmochi"] = "0.1.4"'
+    edit_manifest '.["incubator/qmochi"] = "0.1.4" | .["."] = "0.5.0-beta.0"'
+    run gate
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"written by release PRs only"* ]]
+}
+
+@test "manifest: a topic branch into an LTS branch with main's values fails" {
+    export BASE_REF=release/1.2 HEAD_REF=sync/main
+    integration_branch main '.["incubator/qmochi"] = "0.1.4"'
+    integration_branch next '.["incubator/qmochi"] = "0.1.4"'
+    edit_manifest '.["incubator/qmochi"] = "0.1.4"'
     run gate
     [ "$status" -eq 1 ]
     [[ "$output" == *"written by release PRs only"* ]]
