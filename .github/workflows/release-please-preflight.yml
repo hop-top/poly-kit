@@ -1,9 +1,12 @@
 name: release-please-preflight
 
 # Catches release config drift at PR time instead of tag-push time.
-# Delegates to the shared hop-top/.github workflow; pinned to @v0, never
-# @main. Paths cover this repo's release config plus every shipping
-# component's manifest.
+# Delegates to the shared hop-top/.github workflow. Paths cover this repo's
+# release config plus every shipping component's manifest.
+#
+# Pinned with release-please.yml to the commit of hop-top/.github#87: v0's
+# preflight does not know `versioning: "target"` and fails the config. Move
+# the pin with release-please.yml's once #87 lands.
 on:
   pull_request:
     paths:
@@ -23,4 +26,4 @@ jobs:
   preflight:
     permissions:
       contents: read
-    uses: hop-top/.github/.github/workflows/release-please-preflight.yml@v0
+    uses: hop-top/.github/.github/workflows/release-please-preflight.yml@e90a473f1e9c8b0ad44000b29a36b78e2cffbe72
