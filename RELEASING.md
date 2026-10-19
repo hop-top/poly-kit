@@ -75,7 +75,7 @@ opens the line — see [LTS & backports](#lts--backports).
 
 ## Flow
 
-1. Every push to `next`, `main` or `release/**` runs
+1. Every push to `next`, `main` or a `release/<major>.<minor>` branch runs
    `.github/workflows/release-please.yml`, a caller of hop-top/.github's
    `release-please-on-push.yml` with `versioning-extension: true` (the
    googleapis action does not know `versioning: "target"`). One committed
@@ -375,7 +375,7 @@ according to the published LTS window.
   it affects, then is forward-ported up through the newer LTS lines → `main`
   → `next`. This keeps every active line and both integration branches
   consistent.
-- release-please runs on every push to `release/**` and tags stable patch
+- release-please runs on every push to `release/<major>.<minor>` and tags stable patch
   releases (`x.y.z`) from that line; a `feat` or breaking change there blocks
   the package (see [`release/x.y`](#releasexy-lts)).
 
