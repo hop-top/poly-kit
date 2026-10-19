@@ -323,11 +323,14 @@ fetch_promote() {
     NODE="$STUB_NODE" bash "$dir/scripts/promote-release.sh" channel beta --package kit --dry-run
 }
 
-info "Test p12: first use fetches the pinned commit into the cache; other pins' caches go"
+info "Test p12: first use fetches the pinned commit into the cache; idle pins' caches go"
 CACHE="$TMPDIR_BASE/cache12"
 ROOT="$CACHE/poly-kit/release-please-target"
-OLD_PIN=fedcba9876543210fedcba9876543210fedcba98
-mkdir -p "$ROOT/$OLD_PIN/scripts" "$ROOT/$SRC_SHA.inflight" "$ROOT/notes"
+IDLE_PIN=fedcba9876543210fedcba9876543210fedcba98
+RECENT_PIN=abcdefabcdefabcdefabcdefabcdefabcdefabcd
+mkdir -p "$ROOT/$IDLE_PIN/scripts" "$ROOT/$RECENT_PIN/scripts" "$ROOT/$SRC_SHA.inflight" "$ROOT/notes"
+# Last used long ago: the idle pin (and the foreign entries, kept by name).
+touch -t 200001010000 "$ROOT/$IDLE_PIN" "$ROOT/$SRC_SHA.inflight" "$ROOT/notes"
 rc=0; fetch_promote "$CACHE" t12 2>/dev/null || rc=$?
 assert_exit_code 0 "$rc" "p12: exit 0"
 assert_eq "$(sed -n 2p "$STUB_LOG")" "$ROOT/$SRC_SHA/scripts/release-please-target/bin/promote.js" \
@@ -335,8 +338,13 @@ assert_eq "$(sed -n 2p "$STUB_LOG")" "$ROOT/$SRC_SHA/scripts/release-please-targ
 assert_eq "$(cat "$ROOT/$SRC_SHA/scripts/release-please-target/bin/promote.js")" "// fetched" \
   "p12: cache holds the pinned commit"
 assert_eq "$(find "$ROOT/$SRC_SHA" -name README.md)" "" "p12: sparse: only scripts/release-please-target"
-assert_eq "$(entries "$ROOT")" "$SRC_SHA $SRC_SHA.inflight notes " \
-  "p12: another pin's cache removed; temporary and foreign entries kept"
+assert_eq "$(entries "$ROOT")" \
+  "$(printf '%s\n' "$SRC_SHA" "$SRC_SHA.inflight" "$RECENT_PIN" notes | sort | tr '\n' ' ')" \
+  "p12: idle pin's cache removed; a recently used pin, temporary and foreign entries kept"
+touch -t 200001010000 "$ROOT/$SRC_SHA"
+rc=0; fetch_promote "$CACHE" t12b 2>/dev/null || rc=$?
+assert_exit_code 0 "$rc" "p12: cached run exits 0"
+assert_eq "$(find "$ROOT/$SRC_SHA" -maxdepth 0 -mtime -1)" "$ROOT/$SRC_SHA" "p12: a use touches the cache"
 
 info "Test p13: a run that finished first keeps its copy; nothing nested, nothing left over"
 CACHE="$TMPDIR_BASE/cache13"

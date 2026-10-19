@@ -31,8 +31,8 @@
 # pinned commit (a full SHA; anything else is refused), cached under
 # ${XDG_CACHE_HOME:-~/.cache}/poly-kit/release-please-target/<sha> and
 # installed with `npm ci --ignore-scripts` on first use (git, npm and
-# network needed once; the caches of other pins are removed then). NODE
-# names the node binary (default: node, >= 20).
+# network needed once; the caches of other pins unused for 14 days are
+# removed then). NODE names the node binary (default: node, >= 20).
 #
 # Exit: promote.js's own (0 written or nothing to do, 1 refused, 2 usage);
 # 1 also for staged or uncommitted changes; 3 when the extension cannot be
@@ -47,6 +47,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workflow="$root/.github/workflows/release-please.yml"
 NODE="${NODE:-node}"
+CACHE_MAX_IDLE_DAYS=14
 
 die() { echo "promote-release: $*" >&2; exit 3; }
 refuse() { echo "promote-release: $*" >&2; exit 1; }
@@ -68,8 +69,9 @@ pinned_ref() {
 
 # Sparse checkout of scripts/release-please-target at <ref> into <dir>,
 # dependencies installed; built aside and moved in only once complete. A
-# run that finished first keeps its copy. The caches of other pins are
-# removed once this one is in place.
+# run that finished first keeps its copy. Once this one is in place, the
+# caches of other pins unused for CACHE_MAX_IDLE_DAYS are removed: each use
+# touches its cache, so worktrees on different pins keep theirs.
 fetch_extension() {
   local ref="$1" dir="$2" tmp
   command -v git >/dev/null 2>&1 || die "git is required to fetch the extension"
@@ -95,11 +97,11 @@ fetch_extension() {
     mv "$tmp" "$dir"
   fi
   local other
-  for other in "$(dirname "$dir")"/*; do
+  while IFS= read -r other; do
     if [ "$other" != "$dir" ] && [[ "${other##*/}" =~ ^[0-9a-f]{40}$ ]]; then
       rm -rf "$other"
     fi
-  done
+  done < <(find "$(dirname "$dir")" -mindepth 1 -maxdepth 1 -type d -mtime +"$CACHE_MAX_IDLE_DAYS")
 }
 
 extension_dir() {
@@ -111,6 +113,7 @@ extension_dir() {
   ref=$(pinned_ref)
   cache="${XDG_CACHE_HOME:-$HOME/.cache}/poly-kit/release-please-target/$ref"
   [ -f "$cache/scripts/release-please-target/bin/promote.js" ] || fetch_extension "$ref" "$cache"
+  touch "$cache" 2>/dev/null || : # last use, for pruning
   echo "$cache/scripts/release-please-target"
 }
 
