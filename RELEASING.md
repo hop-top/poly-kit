@@ -115,8 +115,8 @@ opens the line — see [LTS & backports](#lts--backports).
    [The engine SDKs' kit pin](#the-engine-sdks-kit-pin).
 
 `release-please.yml` and `release-please-preflight.yml` pin hop-top/.github
-to the commit of hop-top/.github#87, which adds the extension; the pin moves
-to the merged commit once #87 lands (`tooling-ref` too).
+to a full commit SHA on its `main` that carries the extension (v0 does not
+yet); move all three references (`uses:` twice and `tooling-ref`) together.
 `scripts/promote-release.sh` and the promotion gate read the pin from
 `release-please.yml`.
 
