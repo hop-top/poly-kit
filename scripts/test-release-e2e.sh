@@ -80,10 +80,12 @@ REWRITE="$SCRIPT_DIR/rewrite-changelog.sh"
 # promote-release.sh tests
 # ======================================================
 #
-# promote-release.sh hands its arguments to hop-top/.github's promote.js;
-# the promotion rules are that tool's (and its tests'). These cover the
-# wrapper: the pin it reads, the pass-through, the exit status. A stub
-# extension directory and a stub NODE keep them offline.
+# promote-release.sh hands its arguments to hop-top/.github's promote.js and
+# commits the config change; the promotion rules are that tool's (and its
+# tests'). These cover the wrapper: the pin it reads, the pass-through, the
+# exit status, the commit and its refusals. A stub extension directory and a
+# stub NODE keep them offline; every case that may commit runs on a copy of
+# the wrapper in a throwaway repo, never on this one.
 
 STUB_EXT="$TMPDIR_BASE/stub-ext"
 STUB_NODE="$TMPDIR_BASE/stub-node"
@@ -92,82 +94,184 @@ mkdir -p "$STUB_EXT/bin"
 echo "// stub" > "$STUB_EXT/bin/promote.js"
 cat > "$STUB_NODE" <<'EOSTUB'
 #!/usr/bin/env bash
-# Records the working directory and every argument, one per line.
+# Records the working directory and every argument, one per line. With
+# STUB_WRITE (and no --dry-run) it changes the config promote.js would write
+# and prints a report line.
 { pwd; printf '%s\n' "$@"; } > "$STUB_LOG"
-exit "${STUB_EXIT:-0}"
+[ "${STUB_EXIT:-0}" -eq 0 ] || { echo "refused: stub" >&2; exit "$STUB_EXIT"; }
+case " $* " in *" --dry-run "*) exit 0 ;; esac
+if [ -n "${STUB_WRITE:-}" ]; then
+  printf '{"promoted": "%s"}\n' "$STUB_WRITE" > .github/release-please-config.json
+  echo "kit (.): x-channel $STUB_WRITE"
+fi
 EOSTUB
 chmod +x "$STUB_NODE"
 export STUB_LOG
 
-# Copy of the wrapper in a throwaway repo layout whose release-please.yml
-# holds $1 as its body.
-make_pin_repo() {
-  local dir="$TMPDIR_BASE/$2"
+# make_wrapper_repo <name> [release-please.yml body]: a throwaway repo with a
+# copy of the wrapper, a release-please.yml and a committed config.
+make_wrapper_repo() {
+  local dir="$TMPDIR_BASE/$1"
   mkdir -p "$dir/scripts" "$dir/.github/workflows"
+  git -C "$dir" init -q
+  git -C "$dir" config user.name "Test"
+  git -C "$dir" config user.email "test@test.com"
   cp "$PROMOTE" "$dir/scripts/promote-release.sh"
-  printf '%s\n' "$1" > "$dir/.github/workflows/release-please.yml"
+  printf '%s\n' "${2:-    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v0}" \
+    > "$dir/.github/workflows/release-please.yml"
+  echo '{}' > "$dir/.github/release-please-config.json"
+  echo base > "$dir/README.md"
+  git -C "$dir" add -A
+  git -C "$dir" commit -q -m init
   echo "$dir"
 }
 
-info "Test 1: --pin prints the ref release-please.yml calls the extension at"
+# promote <repo> <args...>: the repo's wrapper copy with the stubs.
+promote() {
+  local dir="$1"
+  shift
+  RELEASE_PLEASE_TARGET_DIR="$STUB_EXT" NODE="$STUB_NODE" \
+    bash "$dir/scripts/promote-release.sh" "$@"
+}
+
+commits() { git -C "$1" rev-list --count HEAD; }
+
+info "Test p1: --pin prints the ref release-please.yml calls the extension at"
 want=$(sed -n 's|.*release-please-on-push\.yml@\([0-9a-f]*\).*|\1|p' \
   "$SCRIPT_DIR/../.github/workflows/release-please.yml")
 got=$(bash "$PROMOTE" --pin)
-assert_eq "$got" "$want" "t1: pin as release-please.yml has it"
+assert_eq "$got" "$want" "p1: pin as release-please.yml has it"
 if [[ "$got" =~ ^[0-9a-f]{40}$ ]]; then
-  pass "t1: pin is a full commit SHA"
+  pass "p1: pin is a full commit SHA"
 else
-  fail "t1: pin '$got' is not a full commit SHA"
+  fail "p1: pin '$got' is not a full commit SHA"
 fi
 
-info "Test 2: arguments reach promote.js unchanged, from the repo root"
+info "Test p2: --dry-run: arguments reach promote.js unchanged, from the repo root; no commit"
+DIR=$(make_wrapper_repo t2)
 rc=0
-(cd "$TMPDIR_BASE" && RELEASE_PLEASE_TARGET_DIR="$STUB_EXT" NODE="$STUB_NODE" \
-  bash "$PROMOTE" channel beta --package kit --package 'a b' --dry-run) || rc=$?
-assert_exit_code 0 "$rc" "t2: exit 0"
-expected=$(printf '%s\n' "$(cd "$SCRIPT_DIR/.." && pwd)" \
-  "$STUB_EXT/bin/promote.js" channel beta --package kit --package 'a b' --dry-run)
-assert_eq "$(cat "$STUB_LOG")" "$expected" "t2: argv and cwd as given"
+(cd "$TMPDIR_BASE" && STUB_WRITE=beta promote "$DIR" \
+  channel beta --package kit --package 'a b' --dry-run) || rc=$?
+assert_exit_code 0 "$rc" "p2: exit 0"
+expected=$(printf '%s\n' "$DIR" "$STUB_EXT/bin/promote.js" \
+  channel beta --package kit --package 'a b' --dry-run)
+assert_eq "$(cat "$STUB_LOG")" "$expected" "p2: argv and cwd as given"
+assert_eq "$(commits "$DIR")" 1 "p2: nothing committed"
 
-info "Test 3: promote.js's exit status is the wrapper's"
+info "Test p3: promote.js's exit status is the wrapper's; nothing committed"
+DIR=$(make_wrapper_repo t3)
 for code in 1 2; do
   rc=0
-  RELEASE_PLEASE_TARGET_DIR="$STUB_EXT" NODE="$STUB_NODE" STUB_EXIT=$code \
-    bash "$PROMOTE" channel rc --group kit 2>/dev/null || rc=$?
-  assert_exit_code "$code" "$rc" "t3: exit $code passed through"
+  STUB_EXIT=$code STUB_WRITE=rc promote "$DIR" channel rc --group kit 2>/dev/null || rc=$?
+  assert_exit_code "$code" "$rc" "p3: exit $code passed through"
 done
+assert_eq "$(commits "$DIR")" 1 "p3: nothing committed"
 
-info "Test 4: an extension directory without promote.js fails setup"
+info "Test p4: an extension directory without promote.js fails setup"
+DIR=$(make_wrapper_repo t4)
 rc=0
 out=$(RELEASE_PLEASE_TARGET_DIR="$TMPDIR_BASE/nowhere" NODE="$STUB_NODE" \
-  bash "$PROMOTE" channel beta --package kit 2>&1) || rc=$?
-assert_exit_code 3 "$rc" "t4: exit 3"
+  bash "$DIR/scripts/promote-release.sh" channel beta --package kit 2>&1) || rc=$?
+assert_exit_code 3 "$rc" "p4: exit 3"
 if echo "$out" | grep -q 'nowhere/bin/promote.js not found'; then
-  pass "t4: names the missing file"
+  pass "p4: names the missing file"
 else
-  fail "t4: message: $out"
+  fail "p4: message: $out"
 fi
 
-info "Test 5: a missing, doubled or malformed pin fails setup"
-DIR=$(make_pin_repo "name: release-please" t5a)
+info "Test p5: a missing, doubled or malformed pin fails setup"
+DIR=$(make_wrapper_repo t5a "name: release-please")
 rc=0; out=$(bash "$DIR/scripts/promote-release.sh" --pin 2>&1) || rc=$?
-assert_exit_code 3 "$rc" "t5a: no release-please-on-push call"
-assert_eq "${out#*: }" "no hop-top/.github release-please-on-push.yml call in $DIR/.github/workflows/release-please.yml" "t5a: message"
-DIR=$(make_pin_repo "$(printf '%s\n' \
+assert_exit_code 3 "$rc" "p5a: no release-please-on-push call"
+assert_eq "${out#*: }" "no hop-top/.github release-please-on-push.yml call in $DIR/.github/workflows/release-please.yml" "p5a: message"
+DIR=$(make_wrapper_repo t5b "$(printf '%s\n' \
   '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v0' \
-  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v1')" t5b)
+  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v1')")
 rc=0; out=$(bash "$DIR/scripts/promote-release.sh" --pin 2>&1) || rc=$?
-assert_exit_code 3 "$rc" "t5b: two calls"
-assert_eq "${out#*: }" "more than one release-please-on-push.yml call in $DIR/.github/workflows/release-please.yml" "t5b: message"
+assert_exit_code 3 "$rc" "p5b: two calls"
+assert_eq "${out#*: }" "more than one release-please-on-push.yml call in $DIR/.github/workflows/release-please.yml" "p5b: message"
 # shellcheck disable=SC2016 # the literal `$(id)` is the malformed ref
-DIR=$(make_pin_repo \
-  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@$(id)' t5c)
+DIR=$(make_wrapper_repo t5c \
+  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@$(id)')
 rc=0; bash "$DIR/scripts/promote-release.sh" --pin 2>/dev/null || rc=$?
-assert_exit_code 3 "$rc" "t5c: not a ref"
-DIR=$(make_pin_repo \
-  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v0  # pin' t5d)
+assert_exit_code 3 "$rc" "p5c: not a ref"
+DIR=$(make_wrapper_repo t5d \
+  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v0  # pin')
 got=$(bash "$DIR/scripts/promote-release.sh" --pin)
-assert_eq "$got" "v0" "t5d: trailing comment ignored"
+assert_eq "$got" "v0" "p5d: trailing comment ignored"
+
+info "Test p6: a promotion is committed alone, as a chore(release) commit"
+DIR=$(make_wrapper_repo t6)
+echo "unrelated" >> "$DIR/README.md"
+echo "new" > "$DIR/untracked.txt"
+rc=0
+(cd "$TMPDIR_BASE" && STUB_WRITE=beta promote "$DIR" \
+  channel beta --package kit --package qmochi >/dev/null) || rc=$?
+assert_exit_code 0 "$rc" "p6: exit 0"
+assert_eq "$(commits "$DIR")" 2 "p6: one commit"
+assert_eq "$(git -C "$DIR" log -1 --format=%s)" \
+  "chore(release): promote kit and qmochi to beta" "p6: subject"
+assert_eq "$(git -C "$DIR" log -1 --format=%b)" "kit (.): x-channel beta" "p6: body is promote.js's report"
+assert_eq "$(git -C "$DIR" show --name-only --format= HEAD)" \
+  ".github/release-please-config.json" "p6: only the config committed"
+assert_eq "$(git -C "$DIR" status --porcelain)" "$(printf ' M README.md\n?? untracked.txt')" \
+  "p6: other changes left as they were"
+
+info "Test p7: subjects for groups, opened lines and cleared records"
+DIR=$(make_wrapper_repo t7)
+STUB_WRITE=rc promote "$DIR" channel rc --group kit --package qmochi >/dev/null
+assert_eq "$(git -C "$DIR" log -1 --format=%s)" \
+  "chore(release): promote group kit and qmochi to rc" "p7: names in argument order"
+STUB_WRITE=open promote "$DIR" open-line 1.0.0 --group=kit >/dev/null
+assert_eq "$(git -C "$DIR" log -1 --format=%s)" \
+  "chore(release): open 1.0.0 for group kit" "p7: open-line"
+STUB_WRITE=clear promote "$DIR" clear channel -p a -p b -p c >/dev/null
+assert_eq "$(git -C "$DIR" log -1 --format=%s)" \
+  "chore(release): clear channel for a, b and c" "p7: clear, three packages"
+assert_eq "$(commits "$DIR")" 4 "p7: one commit each"
+
+info "Test p8: staged changes refuse the run; --dry-run ignores them"
+DIR=$(make_wrapper_repo t8)
+echo "staged" > "$DIR/staged.txt"
+git -C "$DIR" add staged.txt
+: > "$STUB_LOG"
+rc=0; out=$(STUB_WRITE=beta promote "$DIR" channel beta --package kit 2>&1) || rc=$?
+assert_exit_code 1 "$rc" "p8: refused"
+if echo "$out" | grep -q 'staged changes detected'; then
+  pass "p8: says why"
+else
+  fail "p8: message: $out"
+fi
+assert_eq "$(cat "$STUB_LOG")" "" "p8: promote.js not run"
+assert_eq "$(commits "$DIR")" 1 "p8: nothing committed"
+rc=0; STUB_WRITE=beta promote "$DIR" channel beta --package kit --dry-run >/dev/null || rc=$?
+assert_exit_code 0 "$rc" "p8: --dry-run with a staged file runs"
+assert_eq "$(commits "$DIR")" 1 "p8: --dry-run commits nothing"
+
+info "Test p9: uncommitted changes in the config refuse the run"
+DIR=$(make_wrapper_repo t9)
+echo '{"hand": "edit"}' > "$DIR/.github/release-please-config.json"
+rc=0; STUB_WRITE=beta promote "$DIR" channel beta --package kit 2>/dev/null || rc=$?
+assert_exit_code 1 "$rc" "p9: refused"
+assert_eq "$(commits "$DIR")" 1 "p9: nothing committed"
+
+info "Test p10: --no-commit writes without committing and is not passed on"
+DIR=$(make_wrapper_repo t10)
+rc=0; STUB_WRITE=beta promote "$DIR" channel beta --package kit --no-commit >/dev/null || rc=$?
+assert_exit_code 0 "$rc" "p10: exit 0"
+assert_eq "$(commits "$DIR")" 1 "p10: nothing committed"
+assert_eq "$(git -C "$DIR" status --porcelain)" " M .github/release-please-config.json" "p10: config written"
+if grep -qx -- '--no-commit' "$STUB_LOG"; then
+  fail "p10: --no-commit reached promote.js"
+else
+  pass "p10: --no-commit kept from promote.js"
+fi
+
+info "Test p11: nothing written, nothing committed"
+DIR=$(make_wrapper_repo t11)
+rc=0; promote "$DIR" clear channel --package kit >/dev/null || rc=$?
+assert_exit_code 0 "$rc" "p11: exit 0"
+assert_eq "$(commits "$DIR")" 1 "p11: no empty commit"
 
 # ======================================================
 # rewrite-changelog.sh tests

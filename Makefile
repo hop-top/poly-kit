@@ -576,12 +576,14 @@ test-release: ## Run e2e tests for release scripts
 	bash scripts/test-release-e2e.sh
 
 # Target-versioning steps (RELEASING.md), recorded in the release-please
-# config by hop-top/.github's promote.js; commit the result to next.
+# config by hop-top/.github's promote.js and committed on the current branch
+# (push it to next). DRY_RUN=1 prints only; NO_COMMIT=1 writes, no commit.
 #   make promote-beta PACKAGE='kit qmochi'     (paths or components)
 #   make promote-rc GROUP=kit DRY_RUN=1
 #   make promote-open-line LINE=1.0.0 GROUP=kit
 #   make promote ARGS='clear channel --package kit'
-PROMOTE_SELECT = $(foreach p,$(PACKAGE),--package $(p)) $(foreach g,$(GROUP),--group $(g)) $(if $(DRY_RUN),--dry-run)
+PROMOTE_SELECT = $(foreach p,$(PACKAGE),--package $(p)) $(foreach g,$(GROUP),--group $(g)) \
+	$(if $(DRY_RUN),--dry-run) $(if $(NO_COMMIT),--no-commit)
 
 promote: ## Run promote.js with ARGS (channel | open-line | clear; see RELEASING.md)
 	@scripts/promote-release.sh $(ARGS)

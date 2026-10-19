@@ -174,18 +174,23 @@ package or per group:
 Record a step with `scripts/promote-release.sh` (behind `make promote*`), a
 wrapper around hop-top/.github's `bin/promote.js` at the pinned commit (the
 code the release run uses; fetched into `~/.cache/poly-kit/` and installed on
-first use, needs git, node ≥ 20 and npm). It edits the config only; commit the
-change to `next`:
+first use, needs git, node ≥ 20 and npm). It writes the record and commits
+the config alone on the current branch, as `chore(release): promote kit and
+qmochi to beta` (`open 1.0.0 for group kit`, `clear channel for kit`), with
+promote.js's report as the body; get that commit onto `next`. It refuses to
+run with staged changes, or with uncommitted changes in the config:
 
 ```sh
 make promote-beta PACKAGE='kit qmochi'        # paths or component names
 make promote-rc GROUP=kit                     # every member of the kit family
-make promote-beta PACKAGE=kit DRY_RUN=1       # print, write nothing
+make promote-beta PACKAGE=kit DRY_RUN=1       # print; no write, no commit
+make promote-beta PACKAGE=kit NO_COMMIT=1     # write, commit it yourself
 make promote ARGS='clear channel --package kit'
 ```
 
-All or nothing: one refused package and nothing is written. A group member
-already on (or already promoted to) the channel is left as it is.
+All or nothing: one refused package and nothing is written or committed. A
+group member already on (or already promoted to) the channel is left as it
+is; nothing changed, nothing committed.
 
 `.github/workflows/release-promote-gate.yml` checks every PR to `next` that
 changes the records: it changes nothing else in the config, and each added or
@@ -262,8 +267,7 @@ With `next` at kit `0.5.0-alpha.26` and qmochi `0.2.0-alpha.1`:
 
 ```sh
 make promote-beta PACKAGE='kit qmochi'
-git commit -m "chore(release): promote kit and qmochi to beta" \
-  .github/release-please-config.json
+# committed: chore(release): promote kit and qmochi to beta
 ```
 
 Merged into `next`, the run proposes `kit 0.5.0-beta.0` and

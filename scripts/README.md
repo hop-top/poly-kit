@@ -12,7 +12,7 @@ none of them ship.
 | [`sync-builtins.sh`](sync-builtins.sh) | copies `templates/` into the `internal/template/builtins/` embed mirror, rebasing Markdown links that leave a template tree | `make builtins-sync` or `make check-mirror-sync` reports drift |
 | [`lint-internal-refs.sh`](lint-internal-refs.sh) | fails on real home-directory paths and names of documents that live outside the repo | `make lint-internal-refs` fails |
 | [`install-hooks.sh`](install-hooks.sh) | points `core.hooksPath` at `.githooks/` for this clone | a fresh clone is not running the pre-push gate |
-| [`promote-release.sh`](promote-release.sh) | records a target-versioning step (channel promotion, opened line) per package or group through hop-top/.github's `promote.js` | you promote a line or open one; see `RELEASING.md` |
+| [`promote-release.sh`](promote-release.sh) | records and commits a target-versioning step (channel promotion, opened line) per package or group through hop-top/.github's `promote.js` | you promote a line or open one; see `RELEASING.md` |
 | [`rewrite-changelog.sh`](rewrite-changelog.sh) | rewrites a raw release-please changelog into the polished format, idempotently | the changelog-rewrite workflow needs a local run |
 | [`test-release-e2e.sh`](test-release-e2e.sh) | end-to-end tests for the promotion wrapper and changelog-rewrite scripts | you change either script |
 | [`setup-pypi-publisher.sh`](setup-pypi-publisher.sh) | creates a PyPI pending trusted publisher through a browser session | you add a Python package to the release |

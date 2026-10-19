@@ -117,7 +117,7 @@ jobs:
               args=(open-line "$(jq -r 'if type == "string" then . else "" end' <<<"$v")")
             fi
             cp "$W/base.json" "$W/replay.json"
-            if ! out=$("$PROMOTE" "${args[@]}" --package "$p" --config "$W/replay.json" --manifest "$MANIFEST" 2>&1); then
+            if ! out=$("$PROMOTE" "${args[@]}" --package "$p" --config "$W/replay.json" --manifest "$MANIFEST" --no-commit 2>&1); then
               echo "::error file=$CONFIG::$p: $k $v refused by promote.js: ${out//$'\n'/; }"
               fail=1
               continue
