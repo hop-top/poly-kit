@@ -14,11 +14,11 @@ name: release-please
 # (release PRs by release-bot[bot] trigger downstream workflows and sidestep
 # the CODEOWNERS self-approval block). Labels come from the config.
 #
-# Pin: the commit of hop-top/.github#87 (adds the extension, not merged yet;
-# v0 has no extension, so `tooling-ref` names the same commit). Once #87
-# lands, move both to the merged commit. scripts/promote-release.sh and
-# release-promote-gate.yml read the pin from the `uses:` line;
-# release-please-preflight.yml carries it too.
+# Pin: a full commit SHA on hop-top/.github main that carries the
+# target-versioning extension (v0 does not yet, so `tooling-ref` names the
+# same commit). scripts/promote-release.sh and release-promote-gate.yml read
+# the pin from the `uses:` line and accept only a full SHA;
+# release-please-preflight.yml carries the same pin. Move all three together.
 
 on:
   push:
@@ -56,7 +56,7 @@ jobs:
   release-please:
     needs: branch-role
     if: needs.branch-role.outputs.release == 'true'
-    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@d65cb73b7d6928ea382449858a130d0f3ef92624
+    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@3664916da8a3dede32f31924c1c2908fae5eb3af
     secrets:
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
@@ -64,4 +64,4 @@ jobs:
       config-file: .github/release-please-config.json
       manifest-file: .github/.release-please-manifest.json
       versioning-extension: true
-      tooling-ref: d65cb73b7d6928ea382449858a130d0f3ef92624
+      tooling-ref: 3664916da8a3dede32f31924c1c2908fae5eb3af
