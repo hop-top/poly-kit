@@ -91,6 +91,7 @@ EOF
     git -C "$REPO" commit -qm base
     export BASE_SHA="$(git -C "$REPO" rev-parse HEAD)"
     export BASE_REF=next HEAD_REF=feat/something PR_AUTHOR=someone
+    export HEAD_REPO=hop-top/poly-kit BASE_REPO=hop-top/poly-kit
 
     step_script "Validate promotion" > "$TMP/gate.sh"
     [ -s "$TMP/gate.sh" ]
@@ -250,6 +251,38 @@ gate() {
     release_pr
     export HEAD_REF=feat/something
     edit_manifest '.["."] = "0.5.0-alpha.27"'
+    run gate
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"written by release PRs only"* ]]
+}
+
+@test "manifest: next merged into main carries next's manifest" {
+    export BASE_REF=main HEAD_REF=next
+    edit_manifest '.["."] = "0.5.0-rc.2"'
+    run gate
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ok: $MANIFEST changed by a merge from next"* ]]
+}
+
+@test "manifest: main forward-ported into next carries main's manifest" {
+    export HEAD_REF=main
+    edit_manifest '.["incubator/qmochi"] = "0.1.4"'
+    run gate
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ok: $MANIFEST changed by a merge from main"* ]]
+}
+
+@test "manifest: a fork's branch named next fails" {
+    export BASE_REF=main HEAD_REF=next HEAD_REPO=someone/poly-kit
+    edit_manifest '.["."] = "0.5.0-rc.2"'
+    run gate
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"written by release PRs only"* ]]
+}
+
+@test "manifest: a deleted fork's branch named next fails" {
+    export BASE_REF=main HEAD_REF=next HEAD_REPO=
+    edit_manifest '.["."] = "0.5.0-rc.2"'
     run gate
     [ "$status" -eq 1 ]
     [[ "$output" == *"written by release PRs only"* ]]

@@ -3,9 +3,11 @@ name: Release Promotion Gate
 # Guards the release state a PR can change (RELEASING.md):
 #
 # - .github/.release-please-manifest.json is written by release PRs only: a
-#   PR from a release-please-- branch opened by the release bot. Any other PR
-#   that changes it fails, whatever the base branch; no version is ever
-#   hand-picked.
+#   PR from a release-please-- branch opened by the release bot. A merge
+#   between this repository's own next and main (head next or main, not a
+#   fork; promotion merges and forward-ports) carries what release PRs wrote
+#   there. Any other PR that changes it fails, whatever the base branch; no
+#   version is ever hand-picked.
 # - Promotions: changes to the x-channel / x-open-line records in
 #   .github/release-please-config.json. On a prerelease branch (target-context
 #   prereleaseBranches, default next) a PR that changes those records must
@@ -55,6 +57,8 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BASE_REF: ${{ github.base_ref }}
           HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           set -euo pipefail
@@ -64,8 +68,9 @@ jobs:
           W=$(mktemp -d)
           trap 'rm -rf "$W"' EXIT
 
-          # The manifest is written by release PRs only. No manifest on the
-          # base: initial setup, adding one is allowed.
+          # The manifest is written by release PRs only, and travels with
+          # merges between this repository's own next and main. No manifest
+          # on the base: initial setup, adding one is allowed.
           base_manifest=false
           if git show "$BASE_SHA:$MANIFEST" > "$W/manifest.json" 2>/dev/null; then
             base_manifest=true
@@ -73,8 +78,10 @@ jobs:
               :
             elif [[ "$HEAD_REF" == release-please--* && "$PR_AUTHOR" == "$RELEASE_BOT" ]]; then
               echo "ok: $MANIFEST changed by a release PR"
+            elif [[ "$HEAD_REF" == next || "$HEAD_REF" == main ]] && [ "$HEAD_REPO" = "$BASE_REPO" ]; then
+              echo "ok: $MANIFEST changed by a merge from $HEAD_REF"
             else
-              echo "::error file=$MANIFEST::the manifest is written by release PRs only (release-please--* branches opened by $RELEASE_BOT); no version is hand-picked: drop the change to $MANIFEST (a channel step or a new line goes through scripts/promote-release.sh)"
+              echo "::error file=$MANIFEST::the manifest is written by release PRs only (release-please--* branches opened by $RELEASE_BOT) and travels with merges between this repository's next and main; no version is hand-picked: drop the change to $MANIFEST (a channel step or a new line goes through scripts/promote-release.sh)"
               exit 1
             fi
           fi
