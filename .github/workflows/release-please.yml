@@ -34,7 +34,7 @@ permissions:
 
 jobs:
   release-please:
-    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@e90a473f1e9c8b0ad44000b29a36b78e2cffbe72
+    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@d65cb73b7d6928ea382449858a130d0f3ef92624
     secrets:
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
@@ -42,4 +42,4 @@ jobs:
       config-file: .github/release-please-config.json
       manifest-file: .github/.release-please-manifest.json
       versioning-extension: true
-      tooling-ref: e90a473f1e9c8b0ad44000b29a36b78e2cffbe72
+      tooling-ref: d65cb73b7d6928ea382449858a130d0f3ef92624

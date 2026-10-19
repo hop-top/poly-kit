@@ -26,4 +26,4 @@ jobs:
   preflight:
     permissions:
       contents: read
-    uses: hop-top/.github/.github/workflows/release-please-preflight.yml@e90a473f1e9c8b0ad44000b29a36b78e2cffbe72
+    uses: hop-top/.github/.github/workflows/release-please-preflight.yml@d65cb73b7d6928ea382449858a130d0f3ef92624
