@@ -199,10 +199,13 @@ runs on every PR:
 - **The manifest is written by release PRs only.** A PR that changes
   `.github/.release-please-manifest.json` fails, whatever its base branch,
   unless it is a release PR (a `release-please--*` branch opened by the
-  release bot) or a merge between this repository's own `next` and `main`
-  (head `next` or `main`, not a fork's branch of that name): the
-  `next → main` merge and forward-ports carry what release PRs wrote. A
-  channel step or a new line is a record, never a manifest edit.
+  release bot) or a merge between this repository's own `next` and `main`,
+  which carries what release PRs wrote: the `next → main` merge and
+  forward-ports, as a PR from one into the other (not a fork's branch of
+  that name), or a topic branch resolving the merge's conflicts, where each
+  manifest entry is the base's value or the other branch's (`origin/next`
+  or `origin/main`). A channel step or a new line is a record, never a
+  manifest edit.
 - **Promotions.** A PR to `next` that changes the records changes nothing
   else in the config, and each added or changed record is exactly what
   `promote.js` writes (current target as the line, one step, never
@@ -400,7 +403,9 @@ according to the published LTS window.
 - A fix that applies to multiple lines lands on the **oldest** supported line
   it affects, then is forward-ported up through the newer LTS lines → `main`
   → `next`. This keeps every active line and both integration branches
-  consistent.
+  consistent. Forward-ports from an LTS line are cherry-picks of the fix, not
+  branch merges: an LTS branch carries its own manifest, and the promotion
+  gate refuses a merge of it into `main` or `next` by design.
 - release-please runs on every push to `release/<major>.<minor>` and tags stable patch
   releases (`x.y.z`) from that line; a `feat` or breaking change there blocks
   the package (see [`release/x.y`](#releasexy-lts)).
