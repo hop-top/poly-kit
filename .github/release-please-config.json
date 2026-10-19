@@ -51,9 +51,15 @@
       "hidden": true
     }
   ],
-  "linked-versions": [
+  "plugins": [
     {
-      "group": "kit",
+      "type": "target-context",
+      "stableBranches": ["main"],
+      "prereleaseBranches": ["next"]
+    },
+    {
+      "type": "conditional-linked-versions",
+      "groupName": "kit",
       "components": ["kit", "kit-php", "kit-py", "kit-rs", "kit-ts"]
     }
   ],
@@ -100,7 +106,7 @@
       ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.5.0-alpha.0"
     },
     "extensions/mcp-tasks": {
@@ -110,7 +116,7 @@
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.1.0-alpha.0"
     },
     "incubator/qmochi": {
@@ -120,7 +126,7 @@
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.1.0-alpha.0"
     },
     "sdk/experimental/php": {
@@ -138,7 +144,7 @@
       ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.5.0-alpha.0"
     },
     "sdk/experimental/rs": {
@@ -149,7 +155,7 @@
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.5.0-alpha.0"
     },
     "sdk/py": {
@@ -160,7 +166,7 @@
       "bump-minor-pre-major": true,
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.5.0-alpha.0"
     },
     "sdk/ts": {
@@ -180,7 +186,7 @@
       ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
-      "versioning": "prerelease",
+      "versioning": "target",
       "initial-version": "0.5.0-alpha.0"
     }
   }
