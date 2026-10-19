@@ -16,7 +16,8 @@ name: Changelog Rewrite
 
 on:
   pull_request:
-    branches: [main, next]
+    # Every branch release-please opens release PRs against (release-please.yml).
+    branches: [main, next, 'release/[0-9]+.[0-9]+']
     types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
