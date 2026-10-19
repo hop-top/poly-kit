@@ -76,7 +76,8 @@ opens the line — see [LTS & backports](#lts--backports).
 ## Flow
 
 1. Every push to `next`, `main` or a `release/<major>.<minor>` branch runs
-   `.github/workflows/release-please.yml`, a caller of hop-top/.github's
+   `.github/workflows/release-please.yml` (a manual run releases from those
+   branches only), a caller of hop-top/.github's
    `release-please-on-push.yml` with `versioning-extension: true` (the
    googleapis action does not know `versioning: "target"`). One committed
    config serves every branch; the extension reads the branch's role from the
@@ -192,11 +193,29 @@ All or nothing: one refused package and nothing is written or committed. A
 group member already on (or already promoted to) the channel is left as it
 is; nothing changed, nothing committed.
 
-`.github/workflows/release-promote-gate.yml` checks every PR to `next` that
-changes the records: it changes nothing else in the config, and each added or
-changed record is exactly what `promote.js` writes from the base config
-(current target as the line, one step, never backwards, an open line not yet
-reached). Removing a record always passes.
+`.github/workflows/release-promote-gate.yml` (check `validate-promotion`)
+runs on every PR:
+
+- **The manifest is written by release PRs only.** A PR that changes
+  `.github/.release-please-manifest.json` fails, whatever its base branch,
+  unless it is a release PR: a `release-please--*` branch opened by the
+  release bot. A channel step or a new line is a record, never a manifest
+  edit.
+- **Promotions.** A PR to `next` that changes the records changes nothing
+  else in the config, and each added or changed record is exactly what
+  `promote.js` writes (current target as the line, one step, never
+  backwards, an open line not yet reached). Removing a record always passes.
+
+The verdict rests on the PR's base commit only: the branch roles, the config
+and manifest the records are replayed on, and `scripts/promote-release.sh`
+with the pin it reads. A PR cannot edit them to pass.
+
+Once this setup is on `next`, the owner makes `validate-promotion` and the
+release-please preflight required checks on `next` (rulesets). The gate has
+no `paths:` filter so that it always reports; it exits early when neither
+file changed. The preflight still runs on release paths only, and a required
+check that never runs leaves the PR pending: its `paths:` filter goes when it
+becomes required.
 
 ### Opening a line (1.0)
 

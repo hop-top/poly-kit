@@ -1009,7 +1009,8 @@ Every new line starts on alpha by itself; stable is cut on `main` when
 
 Anyone whose PR merges under the repo's ordinary PR policy; the
 config is not code-owned. The promotion gate
-(`release-promote-gate.yml`) validates the recorded steps.
+(`release-promote-gate.yml`) validates the recorded steps and refuses
+manifest edits outside release PRs.
 
 ## Nightly auto-release
 
