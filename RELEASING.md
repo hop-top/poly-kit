@@ -1,8 +1,16 @@
 # Releasing
 
-Releases run via [release-please](https://github.com/googleapis/release-please).
-The manifest lives at `.github/.release-please-manifest.json`; the config at
-`.github/release-please-config.json`.
+Releases run via [release-please](https://github.com/googleapis/release-please)
+with hop-top/.github's **target-versioning** extension: the branch decides the
+version. A prerelease line on `next` previews one target stable version,
+`main` cuts exactly that version from its rc and otherwise only patches what is
+already stable, and `release/x.y` lines take patches only. Nothing ships that
+no prerelease previewed. Nobody picks a version and nobody writes `Release-As`.
+
+The config lives at `.github/release-please-config.json`, the manifest at
+`.github/.release-please-manifest.json`. The extension's own reference is
+`references/how-to/target-versioning.md` in hop-top/.github (added by
+hop-top/.github#87).
 
 ## Where does my work land first? (read this first)
 
@@ -10,14 +18,16 @@ Pick the branch by **what** you are contributing, not by what is convenient:
 
 | You are contributing… | Target branch | Why |
 |-----------------------|---------------|-----|
-| A new feature (`feat:`) | `next` | Minor/major work ships from `next` as `*-alpha`/`*-beta`/`*-rc`. |
-| A breaking change (`feat!:` / `BREAKING CHANGE`) | `next` | Same — everything that moves the minor/major lands on `next` first. |
-| A bug fix for the current stable release (`fix:` / `perf:`) | `main` | `main` is the current release line; stable ships from here. |
+| A new feature (`feat:`) | `next` | Every new line is previewed as `*-alpha`/`*-beta`/`*-rc` on `next` first. |
+| A breaking change (`feat!:` / `BREAKING CHANGE`) | `next` | Same — and on `main` it blocks the package's release. |
+| A bug fix for the current stable release (`fix:` / `perf:`) | `main` | `main` takes patches for what is already stable. |
 | A bug fix for an older supported release | its LTS worktree | See [LTS & backports](#lts--backports). |
 
 **Golden rule:** feature work is `next`-first; bug fixes are `main`-first and
 get **forward-ported to `next`** (and back-ported to LTS lines) where they
-apply. Never land a new feature directly on `main`.
+apply. A `feat` or breaking change landed on `main` for a package already
+stable there blocks that package's release until it is reverted (see
+[`main`](#main-stable)).
 
 Open your PR against the branch above. If unsure whether something is a "fix"
 or a "feature," treat behavior-changing or additive work as a feature → `next`.
@@ -31,24 +41,24 @@ line.
 next  ──●──●──●──●───►   feature / breaking work; cuts *-alpha|beta|rc.*
          \  \  \
           \  \  └─ forward-port of a fix from main
-main  ─────●──●──────►   current stable line; cuts stable x.y.z; fixes only
+main  ─────●──●──────►   stable: cuts x.y.z from an rc, then patches only
             \
-             └─ hops/<version>  LTS worktrees; back-ported fixes only
+             └─ hops/<version>  LTS worktrees (release/x.y); patches only
 ```
 
-- **`next`** — integration branch for the **next** minor/major. All `feat:`,
-  `feat!:`, and `BREAKING CHANGE` work lands here. Prereleases
-  (`*-alpha.N`, `*-beta.N`, `*-rc.N`) are cut and tagged from `next`.
-- **`main`** — the **current** stable release line. Only `fix:` / `perf:`
-  land here directly. Stable versions (`x.y.z`) are cut and tagged from
-  `main`. Fixes landed on `main` are **forward-ported to `next`** so the
-  next release keeps them.
-- **`hops/<version>`** — per-release worktrees for **LTS back-ports** (see
-  below). Fixes only, no features.
+- **`next`** — the prerelease branch. All `feat:`, `feat!:`, and
+  `BREAKING CHANGE` work lands here. Prereleases (`*-alpha.N`, `*-beta.N`,
+  `*-rc.N`) are cut and tagged from `next`; channel promotions and opened
+  lines are recorded here.
+- **`main`** — the stable branch. A package whose line reached rc on `next`
+  is cut stable when `next` merges into `main`; a package already stable on
+  `main` takes `fix:` / `perf:` patches only. Fixes landed on `main` are
+  **forward-ported to `next`**.
+- **`release/<major>.<minor>`** (worktree `hops/<version>`) — LTS lines;
+  patch releases only (see below).
 
-When `next` stabilizes and a new minor/major goes stable, `next` is promoted:
-its content merges into `main`, `main` tags the stable release, and a fresh
-`next` opens for the following cycle.
+When packages on `next` reach rc, `next` is merged into `main`: `main` cuts
+those rc packages stable and leaves the others for a later merge.
 
 ### Worktree layout
 
@@ -65,16 +75,19 @@ opens the line — see [LTS & backports](#lts--backports).
 
 ## Flow
 
-Prerelease flow (from `next`) and stable flow (from `main`) are the same
-release-please machinery pointed at different branches.
-
-1. Conventional commits on `next` (prereleases) or `main` (stable) trigger
-   release-please **for that branch**.
-2. release-please opens a release PR per component with bumped versions and
-   changelog entries. On either branch a plain merge advances the prerelease
-   counter (`*-alpha.N` → `*-alpha.N+1`; `beta`/`rc` via the promote gate).
-   Stable `x.y.z` is cut deliberately with a `Release-As:` footer — see
-   [Branch-aware release-please](#branch-aware-release-please).
+1. Every push to `next`, `main` or `release/**` runs
+   `.github/workflows/release-please.yml`, a caller of hop-top/.github's
+   `release-please-on-push.yml` with `versioning-extension: true` (the
+   googleapis action does not know `versioning: "target"`). One committed
+   config serves every branch; the extension reads the branch's role from the
+   `target-context` plugin (`main` stable, `next` prerelease, `release/x.y`
+   maintenance).
+2. release-please keeps one release PR per component current, with the
+   version the rules below give and its changelog entry (one PR for the whole
+   kit family when it links). A package the rules cannot version is
+   **blocked**: left out, and the run fails with the reason after every other
+   package was processed. A package the branch does not release (an alpha or
+   beta on `main`) is **skipped** with a notice; the run stays green.
 3. On every release PR, `.github/workflows/changelog-rewrite.yml` post-processes
    the bot's branch: it rewrites changelog prose, then regenerates `uv.lock` and
    `composer.lock` when release-please bumped `pyproject.toml` or
@@ -83,7 +96,8 @@ release-please machinery pointed at different branches.
    release-bot app token so CI runs on the new head; runs started by a
    `GITHUB_TOKEN` push wait for maintainer approval instead. `Cargo.lock` needs
    nothing: release-please rewrites it itself.
-4. Merging the release PR creates GitHub releases + tags.
+4. Merging the release PR creates GitHub releases + tags. A release is a
+   GitHub prerelease exactly when its version has a prerelease suffix.
 5. `.github/workflows/publish.yml` fires on any `*/v*` tag (regardless of
    originating branch) and calls the org-wide reusable workflow
    [`hop-top/.github/.github/workflows/publish-on-tag.yml@v0`](https://github.com/hop-top/.github/blob/main/.github/workflows/publish-on-tag.yml),
@@ -99,54 +113,188 @@ release-please machinery pointed at different branches.
    `kit/v<version>` release. The engine SDKs download from there, see
    [The engine SDKs' kit pin](#the-engine-sdks-kit-pin).
 
-### Branch-aware release-please
+`release-please.yml` and `release-please-preflight.yml` pin hop-top/.github
+to the commit of hop-top/.github#87, which adds the extension; the pin moves
+to the merged commit once #87 lands (`tooling-ref` too).
+`scripts/promote-release.sh` and the promotion gate read the pin from
+`release-please.yml`.
 
-release-please is run against **both** `next` and `main` via the workflow's
-`target-branch`, sharing one committed config.
+## Target versioning
 
-`.github/release-please-config.json` is byte-identical on both branches — every
-package carries `prerelease: true`, `versioning: prerelease`,
-`prerelease-type: alpha.0`. Nothing in the workflow patches it per branch.
-Keeping one config on both branches is what makes `next → main` promotion
-merges conflict-free, and it means a plain merge on **either** branch produces
-the next prerelease counter — `main` and `next` propose the same versions until
-a stable cut lands.
+Every package uses `versioning: "target"` and `prerelease-type: "alpha.0"`;
+the `plugins` list starts with `target-context`, then the
+`conditional-linked-versions` group `kit`. No `release-as` anywhere: the
+preflight and the run refuse it.
 
-**Cutting stable.** A version already on a prerelease track only leaves it via
-an explicit footer. Land a conventional commit on `main` carrying
-`Release-As: x.y.z` (no suffix) — a squash-merged `chore(release): cut x.y.z`
-PR is the usual vehicle — and release-please's next run on `main` proposes
-`x.y.z` instead of `-alpha.N+1`. Do **not** flip `prerelease: false` in the
-committed config: that diverges the file across branches and turns every later
-promotion merge into a config conflict.
+The **target** of `x.y.z-alpha.N` is `x.y.z`. The **required target** is the
+package's last stable release (from its tags) bumped by the commits since its
+latest release:
 
-Two `Release-As:` facts to check before merging that commit:
+| Change | Before 1.0 | From 1.0 |
+|---|---|---|
+| breaking (`feat!`, `BREAKING CHANGE:`) | `x.(y+1).0` | `(x+1).0.0` |
+| `feat` | `x.(y+1).0` | `x.(y+1).0` |
+| anything else (`fix`, `perf`, …) | `x.y.(z+1)` | `x.y.(z+1)` |
 
-- In manifest mode the footer applies to every package that sees the commit.
-  The root package sees every commit and the linked kit family follows it; an
-  empty commit (the usual `chore(release)` vehicle) reaches every package,
-  `incubator/qmochi` included, which does not share the kit family's version
-  line. A commit that touches files reaches only the packages whose paths it
-  touches.
-- Only the first `Release-As:` line in a commit body is honoured.
+The table is fixed: every package keeps `bump-minor-pre-major: true` and no
+`bump-patch-for-minor-pre-major`; nothing to retire at `1.0.0`.
 
-Dry-run first and read the proposed titles:
+### `next` (prerelease)
 
-```sh
-npx release-please@latest release-pr --dry-run \
-  --token "$(gh auth token)" --repo-url hop-top/poly-kit \
-  --config-file .github/release-please-config.json \
-  --manifest-file .github/.release-please-manifest.json \
-  --target-branch main | grep '^title:'
+| Situation | Proposal | Example |
+|---|---|---|
+| The current target covers the required one | counter + 1 | `0.5.0-alpha.26` + `feat!` → `0.5.0-alpha.27` |
+| The required target is higher | new line at `alpha.0`, whatever channel the old line was on | `0.5.1-alpha.3` + `feat!` → `0.6.0-alpha.0` |
+| The current target was released stable (a cut, or a hotfix on `main`) | new line from that stable | `0.6.0-rc.2`, `0.6.0` tagged, + `feat` → `0.7.0-alpha.0` |
+| The line is promoted (`x-channel` for this line) | `<channel>.0` on the same target, cut at once | `0.5.0-alpha.26`, beta on 0.5.0 → `0.5.0-beta.0` |
+| A line is opened (`x-open-line`) | `<line>-alpha.0`, cut at once, unless a change requires more (then blocked) | `0.9.0-alpha.3`, open 1.0.0 → `1.0.0-alpha.0` |
+
+### Channels: promote per package or group
+
+Every line starts and stays on alpha; the engine never changes a channel.
+Moving a package to beta, then rc, is a decision recorded in the config, per
+package or per group:
+
+```json
+"x-channel": {"line": "0.5.0", "channel": "beta"}
 ```
 
-**Release brake.** Release PRs on either branch are blocked until a member of
-`@hop-top/release` approves them. The `production-branch-guardrail` ruleset on
-`main` and `next` requires code-owner review with zero required approvals, and
+- **One step at a time**, `alpha → beta → rc`, from the channel the manifest
+  shows, never backwards. A promotion recorded but not released yet does not
+  count: rc waits until `x.y.z-beta.0` is merged.
+- **Cut at once**: the run on `next` that first sees the record proposes
+  `x.y.z-<channel>.0` with no other commit; later releases count on that
+  channel.
+- **Expires with its line**: after a line move or a stable cut the package
+  starts on alpha again, and the release PR on `next` that leaves the line
+  removes the record. A record for a line the package is not on is refused.
+- **Inert on `main` and `release/x.y`**: the records travel with the
+  `next → main` merge but are neither used nor edited there.
+
+Record a step with `scripts/promote-release.sh` (behind `make promote*`), a
+wrapper around hop-top/.github's `bin/promote.js` at the pinned commit (the
+code the release run uses; fetched into `~/.cache/poly-kit/` and installed on
+first use, needs git, node ≥ 20 and npm). It edits the config only; commit the
+change to `next`:
+
+```sh
+make promote-beta PACKAGE='kit qmochi'        # paths or component names
+make promote-rc GROUP=kit                     # every member of the kit family
+make promote-beta PACKAGE=kit DRY_RUN=1       # print, write nothing
+make promote ARGS='clear channel --package kit'
+```
+
+All or nothing: one refused package and nothing is written. A group member
+already on (or already promoted to) the channel is left as it is.
+
+`.github/workflows/release-promote-gate.yml` checks every PR to `next` that
+changes the records: it changes nothing else in the config, and each added or
+changed record is exactly what `promote.js` writes from the base config
+(current target as the line, one step, never backwards, an open line not yet
+reached). Removing a record always passes.
+
+### Opening a line (1.0)
+
+A line no change would open on its own — `1.0.0` from 0.x — is the same kind
+of step:
+
+```sh
+make promote-open-line LINE=1.0.0 GROUP=kit
+```
+
+It records `"x-open-line": "1.0.0"`; the next run on `next` opens
+`1.0.0-alpha.0` at once if that is at or above what the commits require, and
+blocks the package otherwise. The release PR that reaches the line removes the
+record.
+
+### `main` (stable)
+
+| Situation | Proposal |
+|---|---|
+| Manifest at `x.y.z-rc.N` (`next` merged in) | `x.y.z`, even with no commit since the merge |
+| … a commit since requires more than `x.y.z` | **blocked**: stable must equal what the rc previewed; land it on `next` |
+| … `x.y.z` already released (a hotfix on `main`, then `next` merged) | **blocked**: re-line on `next` (a change, or `open-line x.y.(z+1)`), promote via beta to rc, merge again |
+| Manifest stable, only fixes since | patch: `0.6.0` + `fix` → `0.6.1` |
+| Manifest stable, a `feat` or breaking change since | **blocked**: it would ship unpreviewed; revert it on `main`, land it on `next` |
+| Manifest at an alpha or beta | **skipped** with a notice |
+
+Only rc packages are cut: merging `next` into `main` while some packages are
+still on alpha or beta cuts the rc ones and leaves the others for a later
+merge. A hotfix on `main` that releases the version `next` previews moves
+`next` on: its next release opens the following line.
+
+### `release/x.y` (LTS)
+
+Stable patches only: `fix` → `x.y.(z+1)`. A `feat` or breaking change since
+the package's last release blocks it (every other package still gets its PR,
+the run fails at the end). A prerelease manifest there is skipped.
+
+### Linked family
+
+`kit`, `kit-php`, `kit-py`, `kit-rs` and `kit-ts` form the
+`conditional-linked-versions` group `kit`. They version independently except
+when one member's proposal opens a **new major** (always), or a **new minor
+line while the family is before 1.0** (on `next`). Then:
+
+- one release PR for the whole group, members without commits included;
+- every member moves to the group's target, the highest among them;
+- each member keeps its channel: one already on the target line keeps it (or
+  takes its promotion for that line), any other starts the line on alpha;
+  members on the same channel share one counter;
+- on `main` a linked major holds the whole family, the experimental kit-php
+  and kit-rs included: every member must be at an rc of the target. kit
+  `1.0.0` is not cut until kit-php, kit-py, kit-rs and kit-ts are all at
+  `1.0.0-rc.N`; one member still on alpha or beta blocks the group. **An
+  experimental SDK must reach rc (promote it via beta to rc on `next`) before
+  the family's 1.0 ships.**
+- pre-1.0 minors stay unlinked on `main`: each member is cut from its own rc,
+  and a member not at rc is skipped until a later merge.
+
+### `Release-As` footers
+
+Ignored: the run drops them from every target package's commits and logs
+`ignoring "Release-As: …"`. Old ones in history need no rewrite; do not write
+new ones.
+
+### Example: kit and qmochi to beta
+
+With `next` at kit `0.5.0-alpha.26` and qmochi `0.2.0-alpha.1`:
+
+```sh
+make promote-beta PACKAGE='kit qmochi'
+git commit -m "chore(release): promote kit and qmochi to beta" \
+  .github/release-please-config.json
+```
+
+Merged into `next`, the run proposes `kit 0.5.0-beta.0` and
+`qmochi 0.2.0-beta.0` at once. kit-py, kit-ts, kit-php, kit-rs and mcp-tasks
+stay on alpha: kit is promoted by package, and a promotion on the same line
+opens no new line, so the family does not link.
+
+### Dry run
+
+Before a config change lands, dry-run the extension (reads only; the config
+is read from the target branch, so run it against a branch that carries the
+change), from a checkout of hop-top/.github at the pinned commit:
+
+```sh
+cd scripts/release-please-target && npm ci
+TOKEN="$(gh auth token)" GITHUB_REPOSITORY=hop-top/poly-kit \
+TARGET_BRANCH=next \
+CONFIG_FILE=.github/release-please-config.json \
+MANIFEST_FILE=.github/.release-please-manifest.json \
+DRY_RUN=true node bin/run.js
+```
+
+### Release brake
+
+Release PRs on either branch are blocked until a member of `@hop-top/release`
+approves them. The `production-branch-guardrail` ruleset on `main` and `next`
+requires code-owner review with zero required approvals, and
 `.github/CODEOWNERS` covers exactly the managed `CHANGELOG.md` files, which
 release-please rewrites on every release PR. The config and manifest are
-deliberately not owned: promotions and counter reseeds are human edits to
-those files and merge review-free, like everything else.
+deliberately not owned: promotion records are human edits to the config and
+merge review-free (the promotion gate validates them), like everything else.
 The nightly auto-cut (`.github/workflows/nightly-release.yml`) merges with
 `--auto`, so it only times a merge that is already approved; it cannot cut a
 release nobody approved, on either branch. Approve the PR you intend to ship
@@ -154,53 +302,21 @@ and leave the sibling branch's PR alone. Approvals are dismissed on push and
 release-please rebuilds the PR on every push to its base, so approve after the
 last change you want in.
 
-Channel transitions on `next` (`alpha → beta → rc`) are committed by
-`scripts/promote-release.sh <stage>` (`make promote-<stage>`), which rewrites
-`prerelease-type` on every package to `<stage>.0` — or removes it for
-`release` — and commits `chore(release): promote to <stage>`, changing no
-other line. Open that commit as a PR:
-`.github/workflows/release-promote-gate.yml` permits only
-`release → alpha → beta → rc → release`, rejects skipped and backwards
-transitions, and requires that the PR change nothing but `prerelease-type`,
-with all packages sharing one value.
-
-release-please reads `prerelease-type` only when the version it bumps has no
-prerelease suffix, i.e. at the first bump after a stable version. While the
-manifest carries a suffix, every merged release PR bumps that counter whatever
-the config says: `0.5.0-alpha.3` becomes `0.5.0-alpha.4` under
-`prerelease-type: beta.0`. So each stage means:
-
-- `alpha` seeds the next line. Once the stable cut is merged back into
-  `next`, the first `feat:` proposes `x.y+1.0-alpha.0` (a `fix:` alone,
-  `x.y.z+1-alpha.0`).
-- `beta` and `rc` declare the channel for the gate. To move
-  `0.5.0-alpha.N` to `0.5.0-beta.0`, land a commit on `next` carrying
-  `Release-As: 0.5.0-beta.0` — dry-run first, as for a stable cut — after
-  which merges count `beta.1`, `beta.2`, …
-- `release` cuts nothing. It only resets the gate so the ladder can start
-  again at `alpha`. With the manifest at `0.5.0-rc.N` a merge on `next`
-  still proposes `rc.N+1`; with the manifest already stable and no
-  `prerelease-type`, a merge on either branch would propose a **stable**
-  version. Run `release` then `alpha` back to back right after the
-  `next → main` promotion merge, while the manifest still carries `rc`, and
-  land the same two commits on `main` so the config stays identical.
-
-Promoting `next` to stable is the `next → main` merge described in
-[Branch model](#branch-model); stable `x.y.z` is cut there with
-`Release-As: x.y.z`, never by the promote script.
-
 ## Components
 
-| Component | Path | Type | Prerelease channel (`next`) |
-|-----------|------|------|------------------------------|
-| kit | `.` | Go | alpha → beta → rc |
-| kit-php | `sdk/experimental/php` | PHP | experimental |
-| kit-py | `sdk/py` | Python | alpha → beta → rc |
-| kit-rs | `sdk/experimental/rs` | Rust | experimental |
-| kit-ts | `sdk/ts` | Node | alpha → beta → rc |
-| qmochi | `incubator/qmochi` | Go | alpha → beta → rc |
+| Component | Path | Type | Status |
+|-----------|------|------|--------|
+| kit | `.` | Go | linked family |
+| kit-php | `sdk/experimental/php` | PHP | linked family, experimental |
+| kit-py | `sdk/py` | Python | linked family |
+| kit-rs | `sdk/experimental/rs` | Rust | linked family, experimental |
+| kit-ts | `sdk/ts` | Node | linked family |
+| mcp-tasks | `extensions/mcp-tasks` | Go | independent |
+| qmochi | `incubator/qmochi` | Go | independent |
 
-`kit`, `kit-ts`, `kit-py`, `kit-rs`, and `kit-php` share a linked version.
+Each starts every line on alpha and is promoted on its own (or with its
+group); see [Linked family](#linked-family) for what links the five kit
+packages.
 
 ### The cli-go template's kit pin
 
@@ -238,25 +354,6 @@ both on the root package, so each `kit` release PR sets them to the
 version it cuts. Each SDK's tests hold its pin equal to the manifest's
 `kit` version and to that wiring.
 
-## Bump policy
-
-Bump size is the same on both branches; only the prerelease suffix differs
-(present on `next`, absent on `main`).
-
-Pre-1.0 (current):
-
-- `feat:` / `fix:` / `perf:` → minor (`0.x → 0.x+1`).
-- `feat!:` / `BREAKING CHANGE` → minor (downgraded from major via
-  `bump-minor-pre-major`).
-
-Post-1.0:
-
-- `feat:` → minor.
-- `fix:` / `perf:` → patch.
-- `feat!:` / `BREAKING CHANGE` → major.
-
-`bump-minor-pre-major: true` is retired at `1.0.0`.
-
 ## LTS & backports
 
 Each **major** release, and the **latest minor/patch** of the current major,
@@ -278,8 +375,9 @@ according to the published LTS window.
   it affects, then is forward-ported up through the newer LTS lines → `main`
   → `next`. This keeps every active line and both integration branches
   consistent.
-- release-please runs per LTS branch (via `target-branch`) and tags stable
-  patch releases (`x.y.z`) from that line.
+- release-please runs on every push to `release/**` and tags stable patch
+  releases (`x.y.z`) from that line; a `feat` or breaking change there blocks
+  the package (see [`release/x.y`](#releasexy-lts)).
 
 The LTS window (how many majors/minors stay supported, and for how long) is
 published separately; this file only describes the branch/worktree mechanics.
