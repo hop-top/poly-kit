@@ -319,7 +319,7 @@ fetch_promote() {
   local dir
   dir=$(make_wrapper_repo "$2" \
     "    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@$SRC_SHA")
-  GIT_CONFIG_GLOBAL="$FETCH_GITCONFIG" XDG_CACHE_HOME="$1" PATH="$STUB_BIN:$PATH" \
+  RELEASE_PLEASE_TARGET_DIR='' GIT_CONFIG_GLOBAL="$FETCH_GITCONFIG" XDG_CACHE_HOME="$1" PATH="$STUB_BIN:$PATH" \
     NODE="$STUB_NODE" bash "$dir/scripts/promote-release.sh" channel beta --package kit --dry-run
 }
 
