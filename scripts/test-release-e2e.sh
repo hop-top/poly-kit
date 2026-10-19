@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # -------------------------------------------------------
-# test-release-e2e.sh — E2e tests for release promotion
+# test-release-e2e.sh — E2e tests for the release promotion wrapper
 # and changelog rewrite scripts.
 # -------------------------------------------------------
 
@@ -39,6 +39,15 @@ assert_file_not_contains() {
   fi
 }
 
+assert_eq() {
+  local got="$1" want="$2" label="$3"
+  if [ "$got" = "$want" ]; then
+    pass "$label"
+  else
+    fail "$label: got '$got', want '$want'"
+  fi
+}
+
 assert_exit_code() {
   local expected="$1" actual="$2" label="$3"
   if [ "$actual" -eq "$expected" ]; then
@@ -46,41 +55,6 @@ assert_exit_code() {
   else
     fail "$label: expected exit $expected, got $actual"
   fi
-}
-
-# Create a temp git repo with release-please-config.json
-# $1 = dir name, $2 = prerelease-type (empty = none/release)
-make_promote_repo() {
-  local dir="$TMPDIR_BASE/$1"
-  mkdir -p "$dir"
-  git -C "$dir" init -q
-  git -C "$dir" config user.name "Test"
-  git -C "$dir" config user.email "test@test.com"
-
-  mkdir -p "$dir/.github"
-  if [ -n "${2:-}" ]; then
-    cat > "$dir/.github/release-please-config.json" <<EOJSON
-{
-  "packages": {
-    ".": { "prerelease-type": "$2" },
-    "sub": { "prerelease-type": "$2" }
-  }
-}
-EOJSON
-  else
-    cat > "$dir/.github/release-please-config.json" <<EOJSON
-{
-  "packages": {
-    ".": {},
-    "sub": {}
-  }
-}
-EOJSON
-  fi
-
-  git -C "$dir" add -A
-  git -C "$dir" commit -q -m "init"
-  echo "$dir"
 }
 
 # Create a temp git repo with a CHANGELOG.md
@@ -105,60 +79,95 @@ REWRITE="$SCRIPT_DIR/rewrite-changelog.sh"
 # ======================================================
 # promote-release.sh tests
 # ======================================================
+#
+# promote-release.sh hands its arguments to hop-top/.github's promote.js;
+# the promotion rules are that tool's (and its tests'). These cover the
+# wrapper: the pin it reads, the pass-through, the exit status. A stub
+# extension directory and a stub NODE keep them offline.
 
-info "Test 1: Initialize alpha from no stage"
-DIR=$(make_promote_repo "t1")
-(cd "$DIR" && bash "$PROMOTE" alpha)
-assert_file_contains "$DIR/.github/release-please-config.json" \
-  '"prerelease-type": "alpha"' "t1: root has alpha"
+STUB_EXT="$TMPDIR_BASE/stub-ext"
+STUB_NODE="$TMPDIR_BASE/stub-node"
+STUB_LOG="$TMPDIR_BASE/stub-node.log"
+mkdir -p "$STUB_EXT/bin"
+echo "// stub" > "$STUB_EXT/bin/promote.js"
+cat > "$STUB_NODE" <<'EOSTUB'
+#!/usr/bin/env bash
+# Records the working directory and every argument, one per line.
+{ pwd; printf '%s\n' "$@"; } > "$STUB_LOG"
+exit "${STUB_EXIT:-0}"
+EOSTUB
+chmod +x "$STUB_NODE"
+export STUB_LOG
 
-info "Test 2: Alpha → beta promotion"
-DIR=$(make_promote_repo "t2" "alpha")
-(cd "$DIR" && bash "$PROMOTE" beta)
-assert_file_contains "$DIR/.github/release-please-config.json" \
-  '"prerelease-type": "beta"' "t2: root has beta"
+# Copy of the wrapper in a throwaway repo layout whose release-please.yml
+# holds $1 as its body.
+make_pin_repo() {
+  local dir="$TMPDIR_BASE/$2"
+  mkdir -p "$dir/scripts" "$dir/.github/workflows"
+  cp "$PROMOTE" "$dir/scripts/promote-release.sh"
+  printf '%s\n' "$1" > "$dir/.github/workflows/release-please.yml"
+  echo "$dir"
+}
 
-info "Test 3: Beta → rc promotion"
-DIR=$(make_promote_repo "t3" "beta")
-(cd "$DIR" && bash "$PROMOTE" rc)
-assert_file_contains "$DIR/.github/release-please-config.json" \
-  '"prerelease-type": "rc"' "t3: root has rc"
+info "Test 1: --pin prints the ref release-please.yml calls the extension at"
+want=$(sed -n 's|.*release-please-on-push\.yml@\([0-9a-f]*\).*|\1|p' \
+  "$SCRIPT_DIR/../.github/workflows/release-please.yml")
+got=$(bash "$PROMOTE" --pin)
+assert_eq "$got" "$want" "t1: pin as release-please.yml has it"
+if [[ "$got" =~ ^[0-9a-f]{40}$ ]]; then
+  pass "t1: pin is a full commit SHA"
+else
+  fail "t1: pin '$got' is not a full commit SHA"
+fi
 
-info "Test 4: RC → release promotion"
-DIR=$(make_promote_repo "t4" "rc")
-(cd "$DIR" && bash "$PROMOTE" release)
-assert_file_not_contains "$DIR/.github/release-please-config.json" \
-  'prerelease-type' "t4: prerelease-type removed"
+info "Test 2: arguments reach promote.js unchanged, from the repo root"
+rc=0
+(cd "$TMPDIR_BASE" && RELEASE_PLEASE_TARGET_DIR="$STUB_EXT" NODE="$STUB_NODE" \
+  bash "$PROMOTE" channel beta --package kit --package 'a b' --dry-run) || rc=$?
+assert_exit_code 0 "$rc" "t2: exit 0"
+expected=$(printf '%s\n' "$(cd "$SCRIPT_DIR/.." && pwd)" \
+  "$STUB_EXT/bin/promote.js" channel beta --package kit --package 'a b' --dry-run)
+assert_eq "$(cat "$STUB_LOG")" "$expected" "t2: argv and cwd as given"
 
-info "Test 5: Invalid transition rejected (alpha → rc)"
-DIR=$(make_promote_repo "t5" "alpha")
-rc=0; (cd "$DIR" && bash "$PROMOTE" rc) 2>/dev/null || rc=$?
-assert_exit_code 1 "$rc" "t5: alpha→rc rejected"
+info "Test 3: promote.js's exit status is the wrapper's"
+for code in 1 2; do
+  rc=0
+  RELEASE_PLEASE_TARGET_DIR="$STUB_EXT" NODE="$STUB_NODE" STUB_EXIT=$code \
+    bash "$PROMOTE" channel rc --group kit 2>/dev/null || rc=$?
+  assert_exit_code "$code" "$rc" "t3: exit $code passed through"
+done
 
-info "Test 6: Skip stage rejected (alpha → release)"
-DIR=$(make_promote_repo "t6" "alpha")
-rc=0; (cd "$DIR" && bash "$PROMOTE" release) 2>/dev/null || rc=$?
-assert_exit_code 1 "$rc" "t6: alpha→release rejected"
+info "Test 4: an extension directory without promote.js fails setup"
+rc=0
+out=$(RELEASE_PLEASE_TARGET_DIR="$TMPDIR_BASE/nowhere" NODE="$STUB_NODE" \
+  bash "$PROMOTE" channel beta --package kit 2>&1) || rc=$?
+assert_exit_code 3 "$rc" "t4: exit 3"
+if echo "$out" | grep -q 'nowhere/bin/promote.js not found'; then
+  pass "t4: names the missing file"
+else
+  fail "t4: message: $out"
+fi
 
-info "Test 7: Dirty index rejected"
-DIR=$(make_promote_repo "t7" "alpha")
-echo "dirty" > "$DIR/staged.txt"
-git -C "$DIR" add "$DIR/staged.txt"
-rc=0; (cd "$DIR" && bash "$PROMOTE" beta) 2>/dev/null || rc=$?
-assert_exit_code 1 "$rc" "t7: dirty index rejected"
-
-info "Test 8: Interactive mode shows valid next stage"
-DIR=$(make_promote_repo "t8" "alpha")
-out=$(cd "$DIR" && echo "n" | bash "$PROMOTE" 2>&1) || true
-echo "$out" | grep -q "beta" \
-  && pass "t8: interactive shows beta as next" \
-  || fail "t8: interactive did not show beta"
-
-DIR=$(make_promote_repo "t8b")
-out=$(cd "$DIR" && echo "n" | bash "$PROMOTE" 2>&1) || true
-echo "$out" | grep -q "alpha" \
-  && pass "t8b: interactive shows alpha for no-stage" \
-  || fail "t8b: interactive did not show alpha"
+info "Test 5: a missing, doubled or malformed pin fails setup"
+DIR=$(make_pin_repo "name: release-please" t5a)
+rc=0; out=$(bash "$DIR/scripts/promote-release.sh" --pin 2>&1) || rc=$?
+assert_exit_code 3 "$rc" "t5a: no release-please-on-push call"
+assert_eq "${out#*: }" "no hop-top/.github release-please-on-push.yml call in $DIR/.github/workflows/release-please.yml" "t5a: message"
+DIR=$(make_pin_repo "$(printf '%s\n' \
+  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v0' \
+  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v1')" t5b)
+rc=0; out=$(bash "$DIR/scripts/promote-release.sh" --pin 2>&1) || rc=$?
+assert_exit_code 3 "$rc" "t5b: two calls"
+assert_eq "${out#*: }" "more than one release-please-on-push.yml call in $DIR/.github/workflows/release-please.yml" "t5b: message"
+# shellcheck disable=SC2016 # the literal `$(id)` is the malformed ref
+DIR=$(make_pin_repo \
+  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@$(id)' t5c)
+rc=0; bash "$DIR/scripts/promote-release.sh" --pin 2>/dev/null || rc=$?
+assert_exit_code 3 "$rc" "t5c: not a ref"
+DIR=$(make_pin_repo \
+  '    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@v0  # pin' t5d)
+got=$(bash "$DIR/scripts/promote-release.sh" --pin)
+assert_eq "$got" "v0" "t5d: trailing comment ignored"
 
 # ======================================================
 # rewrite-changelog.sh tests
@@ -290,50 +299,6 @@ fi
 # ======================================================
 # --dry-run tests
 # ======================================================
-
-info "Test 14: promote --dry-run doesn't modify config"
-DIR=$(make_promote_repo "t14" "alpha")
-cp "$DIR/.github/release-please-config.json" "$DIR/before.json"
-(cd "$DIR" && bash "$PROMOTE" --dry-run beta)
-if diff -q "$DIR/before.json" "$DIR/.github/release-please-config.json" \
-  >/dev/null 2>&1; then
-  pass "t14: config unchanged after --dry-run"
-else
-  fail "t14: config modified despite --dry-run"
-fi
-
-info "Test 15: promote --dry-run shows correct output"
-DIR=$(make_promote_repo "t15" "alpha")
-out=$(cd "$DIR" && bash "$PROMOTE" --dry-run beta 2>&1)
-echo "$out" | grep -q '\[dry-run\] Current stage: alpha' \
-  && pass "t15a: shows current stage" \
-  || fail "t15a: missing current stage"
-echo "$out" | grep -q '\[dry-run\] Target stage: beta' \
-  && pass "t15b: shows target stage" \
-  || fail "t15b: missing target stage"
-echo "$out" | grep -q '\[dry-run\] Would commit' \
-  && pass "t15c: shows would-commit message" \
-  || fail "t15c: missing would-commit"
-echo "$out" | grep -q '\[dry-run\] No changes made' \
-  && pass "t15d: shows no-changes notice" \
-  || fail "t15d: missing no-changes notice"
-
-info "Test 16: promote --dry-run interactive mode"
-DIR=$(make_promote_repo "t16" "beta")
-out=$(cd "$DIR" && bash "$PROMOTE" --dry-run 2>&1)
-echo "$out" | grep -q 'Current stage: beta' \
-  && pass "t16a: interactive shows current stage" \
-  || fail "t16a: missing current stage"
-echo "$out" | grep -q '\[dry-run\] No changes made' \
-  && pass "t16b: interactive dry-run ends cleanly" \
-  || fail "t16b: missing no-changes notice"
-
-info "Test 17: promote --dry-run with dirty index is allowed"
-DIR=$(make_promote_repo "t17" "alpha")
-echo "dirty" > "$DIR/staged.txt"
-git -C "$DIR" add "$DIR/staged.txt"
-rc=0; (cd "$DIR" && bash "$PROMOTE" --dry-run beta 2>&1) || rc=$?
-assert_exit_code 0 "$rc" "t17: dry-run ignores dirty index"
 
 info "Test 18: rewrite --dry-run doesn't modify changelog"
 DIR=$(make_changelog_repo "t18" "$RAW_CHANGELOG")
