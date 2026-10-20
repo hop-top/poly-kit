@@ -257,3 +257,20 @@ func TestTokenKey_WarnsWhenTheServiceIsNotUnderAPIKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, stderr, "warning:")
 }
+
+// TestTokenKey_SocketIsRefused pins that --service socket is refused:
+// the socket has no HTTP listener and never reads auth.mode: apikey,
+// so there is no "until it is" to warn about.
+func TestTokenKey_SocketIsRefused(t *testing.T) {
+	isolateHome(t)
+	codeDefault := filepath.Join(t.TempDir(), "default", "keys.db")
+	for _, verb := range [][]string{{"create", "--sub", "alice"}, {"list"}, {"revoke", "k1"}} {
+		_, err := tokenKey(t, keyStoreRoot(t, codeDefault), append(verb, "--service", "socket")...)
+		var oe *output.Error
+		require.ErrorAs(t, err, &oe, verb[0])
+		assert.Equal(t, output.ExitUsage, oe.ExitCode, verb[0])
+		assert.Contains(t, oe.Message, "token key "+verb[0]+": the socket service does not use API keys", verb[0])
+		assert.Equal(t, "pass --service naming one of api, mcp", oe.SuggestedFix)
+	}
+	assert.NoFileExists(t, codeDefault)
+}
