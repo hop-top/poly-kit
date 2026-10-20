@@ -10,10 +10,12 @@ Task-oriented how-tos for adopters: one outcome per page, with the audience name
 | [`build-a-transport-service.md`](build-a-transport-service.md) | put your own transport in front of the command tree and inherit the serve lifecycle | you carry requests over TCP, a channel or a queue kit does not ship |
 | [`choose-enforcement-mode.md`](choose-enforcement-mode.md) | pick `off`, `warn` or `strict` bus enforcement | you decide which mode to ship |
 | [`cli-parity-guide.md`](cli-parity-guide.md) | the CLI contract every Go, TypeScript and Python tool must satisfy | you check a port against the shared contract |
+| [`cmdsurface-example.md`](cmdsurface-example.md) | walkthroughs for the two `cmdsurface` examples: every surface in one binary, and the AWS Lambda and Cloud Run builds | you project one cobra tree onto several invocation surfaces and want the runnable reference |
 | [`completion-user-guide.md`](completion-user-guide.md) | enable tab completion per shell for any kit-built CLI | you install completion for bash, zsh or fish |
 | [`configure-bus-enforcement.md`](configure-bus-enforcement.md) | set enforcement and observe topic violations | you run a bus and want violations reported |
 | [`create-cli-project.md`](create-cli-project.md) | scaffold a runnable kit-based CLI in one command | you start a new tool on kit's template runtime |
 | [`encrypt-engine-data.md`](encrypt-engine-data.md) | encrypt engine SQLite documents at rest | you run the engine and need data encrypted on disk |
+| [`enforce-cli-conformance.md`](enforce-cli-conformance.md) | turn on `EnforceValidate=true` for an existing cobra tree: assert, fix failures, annotate, opt in to tiers | your tool predates the strict surface and must pass the conformance checker |
 | [`expose-cli-over-grpc.md`](expose-cli-over-grpc.md) | serve your commands as one typed RPC service with the built-in `rpc` service, over Connect, gRPC and gRPC-Web | you want generated clients, other languages or a browser to call your commands |
 | [`expose-cli-over-mcp.md`](expose-cli-over-mcp.md) | serve your commands as MCP tools with the built-in `mcp` service, over HTTP or stdio | you want LLM hosts to call your commands |
 | [`expose-cli-over-rest.md`](expose-cli-over-rest.md) | serve a cobra tree as a versioned REST API with OpenAPI | you want scripts or services to call your commands |
@@ -23,6 +25,7 @@ Task-oriented how-tos for adopters: one outcome per page, with the audience name
 | [`inspect-with-datasette.md`](inspect-with-datasette.md) | browse and query a `kit serve` SQLite state with Datasette | you inspect a running or stopped engine instance |
 | [`kit-init.md`](kit-init.md) | `kit init` modes, flags and outputs | you bootstrap a project or add kit conventions to an existing repo |
 | [`kit-template-yaml.md`](kit-template-yaml.md) | `kit-template.yaml` manifest schema | you author a template under `templates/` |
+| [`manage-the-service-lifecycle.md`](manage-the-service-lifecycle.md) | start, list, inspect, stop and restart the services a tool registers with the `service` command group | you run or control the services a tool serves |
 | [`migrate-to-appshell.md`](migrate-to-appshell.md) | move a hand-rolled bubbletea TUI onto `tui.AppShell` | you already have a TUI and want the shell's diff |
 | [`migrate-to-served-commands.md`](migrate-to-served-commands.md) | replace a hand-written `serve` or manual `cmdsurface` mounting with built-in services | you already serve something and want the supervisor |
 | [`run-the-engine.md`](run-the-engine.md) | start the engine sidecar and connect a tool to it | you have read the engine concept and want it running |
