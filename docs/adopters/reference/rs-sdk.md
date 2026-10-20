@@ -52,7 +52,7 @@ The Rust URI facade is experimental and feature-gated:
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.1", features = ["uri"] }
+hop-top-kit = { version = "0.5.0-alpha.2", features = ["uri"] }
 ```
 
 `hop_top_kit::uri` delegates to `hop-top-cite` (`0.1.0`); it does not
@@ -610,7 +610,7 @@ consent file say so.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.4.0-experimental.2", features = ["telemetry"] }
+hop-top-kit = { version = "0.5.0-alpha.2", features = ["telemetry"] }
 ```
 
 ```bash
