@@ -591,7 +591,7 @@ Wire behaviour is pinned by the shared cross-language fixtures in
 ### Use the v2 scoped packages
 
 The protocol layer comes from `@modelcontextprotocol/core` and
-`@modelcontextprotocol/server`, both pinned at `2.0.0`. They are already
+`@modelcontextprotocol/server`, both pinned at `2.3.1`. They are already
 dependencies of this package.
 
 **`@modelcontextprotocol/sdk` — the v1 package — is deliberately not a
@@ -689,7 +689,7 @@ conformant way to not support it.
 
 ## URI facade
 
-The URI module delegates to `@hop-top/cite` (`^0.1.0`); it does not
+The URI module delegates to `@hop-top/cite` (`^0.1.2`); it does not
 reimplement the URI contract. It mirrors the kit Go URI command intent
 for SDK consumers:
 

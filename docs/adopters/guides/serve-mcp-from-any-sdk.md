@@ -33,16 +33,16 @@ no socket open.
 
 | Language | Package | Protocol layer | Mount call |
 |---|---|---|---|
-| Go | `hop.top/kit` | `modelcontextprotocol/go-sdk` v1.7.0 | `cmdsurface.MountMCP` |
+| Go | `hop.top/kit` | `modelcontextprotocol/go-sdk` v1.8.0 | `cmdsurface.MountMCP` |
 | PHP | `hop-top/kit` | implemented directly — see below | `new RequestHandler(...)` |
-| Python | `hop-top-kit[mcp]` | `mcp` 2.0.0 + `mcp-types` 2.0.0 | `mount_mcp` |
+| Python | `hop-top-kit[mcp]` | `mcp>=2.0,<3` + `mcp-types>=2.0,<3` | `mount_mcp` |
 | Rust | `hop-top-kit` feature `mcp` | `rmcp` 3.1.4 | `Surface::mount` |
-| TypeScript | `@hop-top/kit/mcp` | `@modelcontextprotocol/core` + `@modelcontextprotocol/server` 2.0.0 | `createMcpHandler` |
+| TypeScript | `@hop-top/kit/mcp` | `@modelcontextprotocol/core` + `@modelcontextprotocol/server` 2.3.1 | `createMcpHandler` |
 
 ### TypeScript
 
 **Use the v2 scoped packages.** `@modelcontextprotocol/core` and
-`@modelcontextprotocol/server`, both pinned at `2.0.0`. They are already
+`@modelcontextprotocol/server`, both pinned at `2.3.1`. They are already
 dependencies of `@hop-top/kit`; you do not add them yourself.
 
 **Do not reach for `@modelcontextprotocol/sdk`.** That is the v1
