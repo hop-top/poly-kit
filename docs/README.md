@@ -1,7 +1,7 @@
 # kit documentation
 
-kit is a polyglot framework monorepo (Go, TypeScript, Python). Documentation
-is split by audience.
+kit is a polyglot framework monorepo (Go, TypeScript, Python, plus experimental
+Rust and PHP SDKs). Documentation is split by audience.
 
 ## I'm building an app ON kit
 

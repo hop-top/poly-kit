@@ -8,6 +8,9 @@ none of them ship.
 | Path | What it is | Start here when |
 |------|------------|-----------------|
 | [`preflight.sh`](preflight.sh) | verifies the host toolchain against the repo's declared minimums | `make preflight` fails or a tool version drifts |
+| [`check-toolchain-parity.sh`](check-toolchain-parity.sh) | fails when a version declared outside the mise config (`go.mod`, `rust-toolchain.toml`, `uv.lock`, workflows) disagrees with its pin | `make check-toolchain-parity` fails or you bump a tool |
+| [`toolchain-pins.sh`](toolchain-pins.sh) | prints the tool versions pinned in `mise.toml` and `.config/mise.toml`, one `name=version` per line | CI, the Makefile or a script needs a pinned version |
+| [`test-affected.sh`](test-affected.sh) | runs the Go, TypeScript, Python and parity suites a range of changes implicates | you test your branch before push; `make test-affected` |
 | [`lint-readmes`](lint-readmes) | folder README coverage, Contents links and shape caps | `make lint-readmes` fails; rules in `docs/contributors/readme-guide.md` |
 | [`sync-builtins.sh`](sync-builtins.sh) | copies `templates/` into the `internal/template/builtins/` embed mirror, rebasing Markdown links that leave a template tree | `make builtins-sync` or `make check-mirror-sync` reports drift |
 | [`lint-internal-refs.sh`](lint-internal-refs.sh) | fails on real home-directory paths and names of documents that live outside the repo | `make lint-internal-refs` fails |
