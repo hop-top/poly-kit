@@ -910,7 +910,7 @@ flowchart TD
     D --> E[More PRs merged to that branch]
     E --> B
 
-    D --> F{Nightly cron\nCI green?}
+    D --> F{Nightly cron, main and next only\nCI green?}
     F -- no --> D
     F -- yes --> G[Auto-merge release PR]
 
