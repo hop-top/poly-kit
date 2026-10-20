@@ -527,7 +527,7 @@ unknown schemes and `lmstudio` get `LLM_API_KEY`).
 
 ## Model registry
 
-`aim` (`hop.top/aim`, `v0.1.0-alpha.0`) is the source of truth for model
+`aim` (`hop.top/aim`, `v0.1.0-alpha.6`) is the source of truth for model
 metadata — capabilities, modalities, cost, context windows. The picker
 consumes this accessor; library code calls `llm.Default(ctx)` rather than
 constructing a registry directly so tests and embedders can inject custom

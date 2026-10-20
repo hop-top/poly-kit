@@ -375,7 +375,7 @@ pass `harness.WithInvoker(...)`.
 
 ### Wiring xrr into your adapter call sites
 
-The harness depends on **xrr** (`hop.top/xrr`, `v0.1.0-alpha.3`) to
+The harness depends on **xrr** (`hop.top/xrr`, `v0.1.0-alpha.5`) to
 capture side effects. xrr does *not* auto-instrument; the adopter
 wraps each adapter call site once. Example for HTTP:
 
