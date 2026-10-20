@@ -102,7 +102,7 @@ A command a surface must not expose is still described, with
 | `interactive` | `kit/side-effect=interactive`: needs a terminal and a human |
 | `unauthorized-destructive` | destructive and not authorized on this surface |
 | `management-only` | reserved to the tool's own management surface (e.g. `spec`) |
-| `self-hosting` | `service start` and its children, `kit/network=ingress`, or `kit/self-hosting`: runs from the CLI only |
+| `self-hosting` | `service start`, `service stop` and `service restart` (kit marks them `kit/self-hosting`), a command named `serve` and its children, or `kit/network=ingress`: runs from the CLI only |
 | `malformed-schema` | declared metadata does not resolve (bad side-effect value, invalid output schema) |
 
 Exactly one reason is recorded per command; when several rules apply
