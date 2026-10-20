@@ -28,8 +28,10 @@ flags. `--policy` given to it names the policy the services enforce on
 the calls they carry; it does not gate starting them.
 
 `service list` prints, per registered service, whether it is
-configured, enabled for a bare `service start`, and ready in this
-process.
+configured, enabled for a bare `service start`, ready in this
+process, and optional (`services.<name>.optional`: the run survives
+its failure). `OPTIONAL` is the last column, so a script that reads
+the earlier ones keeps working.
 
 ## Status and stop
 
@@ -49,7 +51,8 @@ sections are your tool's (see below).
 
 `STATE`, `OPTIONAL`, `REASON` and `ERROR` are the supervisor's record
 of the run: `state` is `starting`, `ready`, `stopped` or `failed`, and a
-failed service carries the failure's kind and text. A daemon whose
+failed service carries the failure's kind and text. A failed or stopped
+service reads `ready` false, whatever its own `Ready` said. A daemon whose
 optional `mcp` service could not bind its port keeps serving and says
 why:
 
