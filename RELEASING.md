@@ -271,14 +271,15 @@ line while the family is before 1.0** (on `next`). Then:
 - each member keeps its channel: one already on the target line keeps it (or
   takes its promotion for that line), any other starts the line on alpha;
   members on the same channel share one counter;
-- on `main` a linked major holds the whole family, the experimental kit-php
-  and kit-rs included: every member must be at an rc of the target. kit
-  `1.0.0` is not cut until kit-php, kit-py, kit-rs and kit-ts are all at
-  `1.0.0-rc.N`; one member still on alpha or beta blocks the group. **An
-  experimental SDK must reach rc (promote it via beta to rc on `next`) before
-  the family's 1.0 ships.**
-- pre-1.0 minors stay unlinked on `main`: each member is cut from its own rc,
-  and a member not at rc is skipped until a later merge.
+- on `main` a linked cut (a major, or a minor while pre-1.0) holds the whole
+  family, the experimental kit-php and kit-rs included: every member must be
+  at an rc of the target, then all are cut together in one release PR. kit
+  `0.5.0` (and later `1.0.0`) is not cut until kit-php, kit-py, kit-rs and
+  kit-ts are all at an rc of it; one member still on alpha or beta blocks
+  the group. **An experimental SDK must reach rc (promote it via beta to rc
+  on `next`) before the family's next stable minor (pre-1.0) or major ships.**
+- pre-1.0 stable patches (hotfixes on `main`) and post-1.0 minors stay
+  unlinked: each member is cut on its own.
 
 ### `Release-As` footers
 
