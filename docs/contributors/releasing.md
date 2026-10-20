@@ -903,11 +903,11 @@ c := llm.NewClient(provider,
 
 ```mermaid
 flowchart TD
-    A[Developer merges PR to main] --> B{release-please runs}
+    A["Developer merges PR to next, main or release/x.y"] --> B{release-please runs}
     B --> C[Creates/updates release PR]
     C --> D{Release PR open}
 
-    D --> E[More PRs merged to main]
+    D --> E[More PRs merged to that branch]
     E --> B
 
     D --> F{Nightly cron\nCI green?}

@@ -70,9 +70,9 @@ jobs:
             fi
             echo "CI green — merging #$PR_NUMBER"
 
-            # Plain merge (not squash): release-please PRs carry one commit
-            # per package with its own Release-As trailer; squashing collapses
-            # them and loses per-package version attribution.
+            # Plain merge (not squash): a release PR can carry commits for
+            # several packages (a linked family shares one); squashing
+            # collapses them and loses per-package version attribution.
             gh pr merge "$PR_NUMBER" \
               --merge \
               --auto \
