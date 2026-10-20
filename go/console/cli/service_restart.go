@@ -234,6 +234,14 @@ func awaitRestarted(root *Root, path string, pid int, deadline time.Time, wait t
 					name + " " + ServiceCommandName + " status` shows the instance"
 				return e
 			}
+			if ended := restartEnded(got); ended != "" {
+				e := output.GenericError(fmt.Sprintf(
+					"%s drained and re-executed, but the new run has no service running (%s); it exits without coming up",
+					name, ended))
+				e.SuggestedFix = "read its stderr or service log for the reason, then start it with `" +
+					name + " " + ServiceCommandName + " start`"
+				return e
+			}
 			if settled {
 				return nil
 			}
@@ -265,20 +273,51 @@ func pollStatus(path string) ([]serviceStatusRow, bool) {
 
 // restartSettled reads one status answer of the new run: settled when
 // every row is ready, stopped (a clean return is no failure), or
-// optional and failed; failed is the first required service the
-// supervisor recorded failed, nil when none is. A row is ready when it
-// says so and its state agrees: an answer without a state (an instance
-// that predates it) is taken at its ready.
+// optional and failed, and at least one is ready — a run with nothing
+// serving is down, not degraded; failed is the first required service
+// the supervisor recorded failed, nil when none is. A row is ready
+// when it says so and its state agrees: an answer without a state (an
+// instance that predates it) is taken at its ready.
 func restartSettled(rows []serviceStatusRow) (settled bool, failed *serviceStatusRow) {
 	settled = true
+	serving := false
 	for i, r := range rows {
 		switch {
 		case r.State == string(serve.StateFailed) && !r.Optional:
 			return false, &rows[i]
-		case r.State == string(serve.StateFailed), r.State == string(serve.StateStopped):
+		case restartRowEnded(r):
 		case !r.Ready || (r.State != "" && r.State != string(serve.StateReady)):
 			settled = false
+		default:
+			serving = true
 		}
 	}
-	return settled, nil
+	return settled && serving, nil
+}
+
+// restartEnded describes the new run when every row of its answer has
+// ended — failed or stopped — so nothing serves and the run is over;
+// "" otherwise.
+func restartEnded(rows []serviceStatusRow) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if !restartRowEnded(r) {
+			return ""
+		}
+		part := r.Service + " " + r.State
+		if r.Reason != "" {
+			part += " (" + r.Reason + ")"
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// restartRowEnded reports whether r's service is over for this run:
+// failed or stopped, neither of which the supervisor undoes.
+func restartRowEnded(r serviceStatusRow) bool {
+	return r.State == string(serve.StateFailed) || r.State == string(serve.StateStopped)
 }

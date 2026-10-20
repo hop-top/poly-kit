@@ -534,6 +534,44 @@ func TestService_RestartFailsAtOnceOnARequiredFailure(t *testing.T) {
 	assert.Less(t, took, 5*time.Second, "at once, not at --wait (10s)")
 }
 
+// heldUnbindable fails its Start at once, as a listener whose port is
+// taken does, and holds its Stop until release is closed: the run's
+// shutdown waits for that Stop, so the instance keeps answering.
+type heldUnbindable struct {
+	name    string
+	release chan struct{}
+}
+
+func (u *heldUnbindable) Name() string { return u.name }
+func (u *heldUnbindable) Start(context.Context, func()) error {
+	return errors.New("bind: address already in use")
+}
+func (u *heldUnbindable) Ready() bool { return false }
+func (u *heldUnbindable) Stop(ctx context.Context) error {
+	select {
+	case <-u.release:
+	case <-ctx.Done():
+	}
+	return nil
+}
+
+// TestService_RestartFailsWhenNothingRuns pins the run that is down,
+// not degraded: every service of the new run optional and failed.
+// Each row is settled on its own, but nothing serves and the run is
+// ending, so restart fails at once, exit 1, as for a new run that
+// exits without coming up.
+func TestService_RestartFailsWhenNothingRuns(t *testing.T) {
+	client := beginRestart(t)
+	aux := &heldUnbindable{name: "aux", release: make(chan struct{})}
+	startNewRun(t, map[string]any{"services.aux.optional": true}, aux)
+	t.Cleanup(func() { close(aux.release) })
+	res := awaitClient(t, client)
+	require.Error(t, res.err, res.out)
+	assert.Equal(t, output.ExitGeneric, res.code)
+	assert.Contains(t, res.err.Error(), "no service running")
+	assert.Contains(t, res.err.Error(), "aux failed (start)")
+}
+
 // TestRestartSettled pins how restart reads one answer of the new run.
 func TestRestartSettled(t *testing.T) {
 	row := func(ready bool, state string, optional bool) serviceStatusRow {
@@ -551,6 +589,9 @@ func TestRestartSettled(t *testing.T) {
 		"a stopped row beside a ready one": {[]serviceStatusRow{row(true, "ready", false), row(false, "stopped", false)}, true, false},
 		"not started yet":                  {[]serviceStatusRow{row(false, "not_in_run", true)}, false, false},
 		"an answer without a state, read":  {[]serviceStatusRow{row(true, "", false)}, true, false},
+		"only failed optional rows":        {[]serviceStatusRow{row(false, "failed", true), row(false, "failed", true)}, false, false},
+		"only stopped rows":                {[]serviceStatusRow{row(false, "stopped", false)}, false, false},
+		"stopped and failed optional":      {[]serviceStatusRow{row(false, "stopped", false), row(false, "failed", true)}, false, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			settled, failed := restartSettled(c.rows)
