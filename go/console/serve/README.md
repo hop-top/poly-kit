@@ -13,8 +13,8 @@ The cobra command and the `services.*` config block belong to
   Start, Ready, Stop); register via `cli.WithService`
 - start order, config validation, policy class, or bound address matter →
   also implement `Dependent`, `Validator`, `Classified`, or `Addressed`
-- the run must survive this service failing → `Optional` (`services.<name>.optional`);
-  its per-service record → `RunStatus.Services()` in the run, `Result.Services` after
+- the run must survive this service failing → `Optional` (`services.<name>.optional`); its
+  record → `RunStatus.Services()` in the run (`WithRunObserver` outside it), `Result.Services` after
 - you need the runnable set without starting anything → `Resolve(reg, Request)`
 - you need the exit code for an outcome → `ExitCodeFor`, `CodeFor`, `WorstOutcome`
 - you are the supervisor → `NewSupervisor(reg, cfg, opts...).Run(ctx,

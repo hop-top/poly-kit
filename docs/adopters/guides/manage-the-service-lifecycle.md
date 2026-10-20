@@ -40,12 +40,25 @@ it.
 
 ```sh
 $ mytool service status
-SERVICE  READY  ADDR            PID
-api      true   127.0.0.1:8080  41237
+SERVICE  READY  ADDR            PID    STATE  OPTIONAL  REASON  ERROR
+api      true   127.0.0.1:8080  41237  ready  false
 ```
 
 `--format json` prints `{"services": [...], "sections": [...]}`; the
 sections are your tool's (see below).
+
+`STATE`, `OPTIONAL`, `REASON` and `ERROR` are the supervisor's record
+of the run: `state` is `starting`, `ready`, `stopped` or `failed`, and a
+failed service carries the failure's kind and text. A daemon whose
+optional `mcp` service could not bind its port keeps serving and says
+why:
+
+```sh
+$ mytool service status
+SERVICE  READY  ADDR            PID    STATE   OPTIONAL  REASON  ERROR
+api      true   127.0.0.1:8080  41237  ready   false
+mcp      false                  41237  failed  true      start   bind: listen: listen tcp 127.0.0.1:8081: bind: address already in use
+```
 
 | Situation | `service status` | `service stop` |
 |---|---|---|
@@ -134,8 +147,8 @@ root.RegisterServiceStatusProvider("queue", func(ctx context.Context) (cli.Statu
 
 ```sh
 $ mytool service status
-SERVICE  READY  ADDR            PID
-api      true   127.0.0.1:8080  41237
+SERVICE  READY  ADDR            PID    STATE  OPTIONAL  REASON  ERROR
+api      true   127.0.0.1:8080  41237  ready  false
 
 SECTION  STATUS  DETAIL
 queue    ok      depth=12
@@ -143,7 +156,8 @@ queue    ok      depth=12
 
 ```sh
 $ mytool service status --format json
-{"services":[{"service":"api","ready":true,"addr":"127.0.0.1:8080","pid":41237}],
+{"services":[{"service":"api","ready":true,"addr":"127.0.0.1:8080","pid":41237,
+   "state":"ready","optional":false}],
  "sections":[{"title":"queue","data":{"depth":12},"status":"ok","priority":1000}]}
 ```
 
@@ -167,8 +181,8 @@ without the service manager seeing the process go away:
 
 ```sh
 $ mytool service restart
-SERVICE  READY  ADDR            PID
-api      true   127.0.0.1:8080  41237
+SERVICE  READY  ADDR            PID    STATE  OPTIONAL  REASON  ERROR
+api      true   127.0.0.1:8080  41237  ready  false
 ```
 
 The instance drains exactly as `service stop` makes it, releases what
