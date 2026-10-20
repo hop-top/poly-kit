@@ -191,11 +191,14 @@ the run held, then replaces its own process image: the binary
 with, from the directory it was launched in. The pid stays the same,
 so systemd or launchd sees no exit. The new run reads configuration
 and flags afresh. The client waits for the new instance to answer with
-every service ready and prints its status.
+every required service ready and prints its status. An optional service
+that failed in the new run is not waited for: it shows in that status
+as `failed`, with its reason and error.
 
 | Situation | `service restart` |
 |---|---|
 | An instance is running | drains, re-executes, waits for readiness, prints the new status, exit 0 |
+| A required service fails in the new run | exit 1 (`GENERIC`) at once, naming it with its reason and error |
 | No instance is running | `mytool is not running`, exit 3 (`NOT_FOUND`), like `service status`: restart does not start one |
 | A `service stop` is already draining | exit 4 (`CONFLICT`) |
 | A signal or `service stop` arrives during the drain | the instance exits as a stop; the client reports `not restarted`, exit 1 |

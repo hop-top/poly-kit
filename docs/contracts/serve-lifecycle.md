@@ -172,13 +172,19 @@ a new run of the same process.
   start the tool again.
 - The client waits, bounded by `--wait`, for the old image to go
   (re-execution closes its connection) and for the new instance's
-  control socket to answer with every service ready, then prints that
-  status (the `service status` rows) and exits 0. A drain or readiness
-  that outlasts `--wait` is `TRANSIENT`, exit 6; an instance that
-  reports it did not re-execute is `GENERIC`, exit 1, with its reason.
-  A new run that exits instead of coming up (a configuration it
-  refuses) is `GENERIC`, exit 1, reported as soon as the process is
-  gone rather than at `--wait`.
+  control socket to answer with every required service ready; failed
+  optional rows are reported, not waited for, as the supervisor's
+  readiness leaves them out ([§"Optional services"](#optional-services)).
+  It then prints that status (the `service status` rows, a failed
+  optional service's among them) and exits 0. A row is ready when its
+  `ready` and its `state` agree. A required service the new run
+  recorded `failed` will not come up, since nothing is restarted, so
+  it is `GENERIC`, exit 1, at once, naming the service, its `reason`
+  and its `error`. A drain or readiness that outlasts `--wait` is
+  `TRANSIENT`, exit 6; an instance that reports it did not re-execute
+  is `GENERIC`, exit 1, with its reason. A new run that exits instead
+  of coming up (a configuration it refuses) is `GENERIC`, exit 1,
+  reported as soon as the process is gone rather than at `--wait`.
 - With no instance running, `service restart` MUST exit 3
   (`NOT_FOUND`), as `service status` does. Unlike `service stop`, whose
   goal — nothing running — already holds, restart's goal — a fresh

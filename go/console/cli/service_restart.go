@@ -123,8 +123,9 @@ func serviceRestartCmd(root *Root) *cobra.Command {
 			"`service stop` does and then re-execute itself in place: the same\n" +
 			"binary, arguments and environment, under the same pid, so a service\n" +
 			"manager sees no exit. The new run reads its configuration and flags\n" +
-			"afresh. Waits for the new instance to answer with every service ready\n" +
-			"and prints its status.\n\n" +
+			"afresh. Waits for the new instance to answer with every required service\n" +
+			"ready and prints its status, a failed optional service among it. A\n" +
+			"required service that failed fails the restart at once, exit 1.\n\n" +
 			"Exits 3 (NOT_FOUND) when no instance is running, like `service status`:\n" +
 			"there is nothing to restart, and restart does not start one.",
 		Args: cobra.NoArgs,
@@ -211,17 +212,29 @@ func runServiceRestart(cmd *cobra.Command, root *Root) error {
 }
 
 // awaitRestarted polls the control socket at path until the new
-// instance answers with every service ready. It gives up when deadline
-// passes, or as soon as pid, the re-executed process, is gone: a new
-// run that refused to start (a bad configuration change) exits rather
-// than answering.
+// instance answers with every required service ready; an optional
+// service that failed is not waited for, and is reported in the status
+// restart prints. It gives up when deadline passes, at once when a
+// required service failed (the supervisor restarts nothing, so it will
+// not come up), or as soon as pid, the re-executed process, is gone: a
+// new run that refused to start (a bad configuration change) exits
+// rather than answering.
 func awaitRestarted(root *Root, path string, pid int, deadline time.Time, wait time.Duration) error {
 	name := root.Config.Name
 	answered := false
 	for {
 		if got, ok := pollStatus(path); ok {
 			answered = true
-			if allReady(got) {
+			settled, failed := restartSettled(got)
+			if failed != nil {
+				e := output.GenericError(fmt.Sprintf(
+					"%s restarted, but its required service %s failed (%s): %s",
+					name, failed.Service, failed.Reason, failed.Error))
+				e.SuggestedFix = "read its stderr or service log for the cause; `" +
+					name + " " + ServiceCommandName + " status` shows the instance"
+				return e
+			}
+			if settled {
 				return nil
 			}
 		} else if pid > 0 && !processAlive(pid) {
@@ -236,7 +249,7 @@ func awaitRestarted(root *Root, path string, pid int, deadline time.Time, wait t
 				return output.TransientError(fmt.Sprintf("%s did not come back within %s", name, wait))
 			}
 			return output.TransientError(fmt.Sprintf(
-				"%s restarted but not every service was ready within %s", name, wait))
+				"%s restarted but not every required service was ready within %s", name, wait))
 		}
 		time.Sleep(restartPollInterval)
 	}
@@ -250,11 +263,22 @@ func pollStatus(path string) ([]serviceStatusRow, bool) {
 	return out.Services, true
 }
 
-func allReady(rows []serviceStatusRow) bool {
-	for _, r := range rows {
-		if !r.Ready {
-			return false
+// restartSettled reads one status answer of the new run: settled when
+// every row is ready, or optional and failed; failed is the first
+// required service the supervisor recorded failed, nil when none is.
+// A row is ready when it says so and its state agrees: an answer
+// without a state (an instance that predates it) is taken at its
+// ready.
+func restartSettled(rows []serviceStatusRow) (settled bool, failed *serviceStatusRow) {
+	settled = true
+	for i, r := range rows {
+		switch {
+		case r.State == string(serve.StateFailed) && !r.Optional:
+			return false, &rows[i]
+		case r.State == string(serve.StateFailed):
+		case !r.Ready || (r.State != "" && r.State != string(serve.StateReady)):
+			settled = false
 		}
 	}
-	return true
+	return settled, nil
 }
