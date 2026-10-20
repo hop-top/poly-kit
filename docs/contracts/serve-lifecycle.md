@@ -2287,7 +2287,9 @@ its name under `services.<svc>.auth` or `services.all.auth`:
   has `WithAPI`) signs a token `jwt` accepts: EdDSA, the keypair's `kid` in the header, `sub`,
   `exp`, and optionally `tenant`, `aud`, `iss` and the scopes, written
   as `scope` (space-delimited) and `scopes` (a list). `token verify
-  <token>` checks one as `--service` (default `api`) would: exit `0`
+  <token>` checks one as `--service` (default `api`) would, its
+  `auth` block read from the same `services.*` sources `service start`
+  reads (the config files, `-c`, the environment): exit `0`
   valid, `5` refused, `6` key set unreachable, `2` nothing to verify
   with. The `token` command is kit-reserved and never served: no
   transport — api, mcp, rpc, socket — lists or runs any of its leaves.

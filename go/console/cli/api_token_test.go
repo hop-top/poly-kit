@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -250,25 +251,10 @@ func TestTokenVerify(t *testing.T) {
 // against the key set, and a service with no bearer mode and a tool
 // with no keypair has nothing to verify with, exit 2.
 func TestTokenVerifyUsesTheServiceMode(t *testing.T) {
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{
-			{Key: &priv.PublicKey, KeyID: "r1", Algorithm: "RS256", Use: "sig"},
-		}})
-	}))
-	defer srv.Close()
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: priv},
-		(&jose.SignerOptions{}).WithHeader("kid", "r1"))
-	require.NoError(t, err)
-	raw, err := jwt.Signed(signer).Claims(map[string]any{
-		"sub": "svc-a", "aud": "kit-api", "exp": time.Now().Add(time.Hour).Unix(),
-	}).Serialize()
-	require.NoError(t, err)
-
+	url, raw := jwksFixture(t)
 	r := tokenRoot(t, true, map[string]any{
 		"services.rpc.auth.mode":          "jwks",
-		"services.rpc.auth.jwks.url":      srv.URL,
+		"services.rpc.auth.jwks.url":      url,
 		"services.rpc.auth.jwks.audience": "kit-api",
 	})
 	out, err := runToken(t, r, "verify", "--service", "rpc", raw)
@@ -284,6 +270,62 @@ func TestTokenVerifyUsesTheServiceMode(t *testing.T) {
 		cli.WithAPI(cli.APIConfig{Auth: func(*http.Request) (any, error) { return nil, nil }}))
 	_, err = runToken(t, bare, "verify", raw)
 	assert.Equal(t, 2, exitCode(t, err))
+}
+
+// jwksFixture serves a one-key JWKS on loopback for the test's
+// lifetime and returns its URL and a token that key signed for the
+// kit-api audience.
+func jwksFixture(t *testing.T) (url, raw string) {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{
+			{Key: &priv.PublicKey, KeyID: "r1", Algorithm: "RS256", Use: "sig"},
+		}})
+	}))
+	t.Cleanup(srv.Close)
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: priv},
+		(&jose.SignerOptions{}).WithHeader("kid", "r1"))
+	require.NoError(t, err)
+	raw, err = jwt.Signed(signer).Claims(map[string]any{
+		"sub": "svc-a", "aud": "kit-api", "exp": time.Now().Add(time.Hour).Unix(),
+	}).Serialize()
+	require.NoError(t, err)
+	return srv.URL, raw
+}
+
+// TestTokenVerifyReadsTheServiceConfigSources pins that token verify
+// reads services.<svc>.auth from the sources `service start` reads —
+// the user config file and -c — so it checks a token with the verifier
+// the service would use. --service stays api by default.
+func TestTokenVerifyReadsTheServiceConfigSources(t *testing.T) {
+	for _, source := range []string{"config file", "-c"} {
+		t.Run(source, func(t *testing.T) {
+			url, raw := jwksFixture(t)
+			// The identity key does not verify a token the JWKS key
+			// signed: only the configured verifier does.
+			r := tokenRoot(t, true, nil)
+			args := []string{"verify", raw}
+			switch source {
+			case "config file":
+				dir := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "tool")
+				require.NoError(t, os.MkdirAll(dir, 0o700))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(
+					"services:\n  api:\n    auth:\n      mode: jwks\n      jwks:\n        url: "+url+
+						"\n        audience: kit-api\n"), 0o600))
+			case "-c":
+				args = append(args, "-c", "services.api.auth.mode=jwks",
+					"-c", "services.api.auth.jwks.url="+url, "-c", "services.api.auth.jwks.audience=kit-api")
+			}
+			out, err := runToken(t, r, args...)
+			require.NoError(t, err, out)
+			v := decodeVerdict(t, out)
+			assert.True(t, v.Valid)
+			assert.Equal(t, "jwks", v.Mode)
+			assert.Equal(t, "svc-a", v.Sub)
+		})
+	}
 }
 
 func identityClaims(sub string, iat, exp time.Time) identity.Claims {
