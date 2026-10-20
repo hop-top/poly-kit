@@ -176,19 +176,21 @@ a new run of the same process.
   `stopped` (one that returned cleanly on its own, a one-shot: a clean
   return is no failure); failed optional rows are reported, not waited
   for, as the supervisor's readiness leaves them out
-  ([§"Optional services"](#optional-services)). It then prints that
+  ([§"Optional services"](#optional-services)), while an optional row
+  still `starting` is waited on until it is ready, or failed once its
+  readiness budget ends. It then prints that
   status (the `service status` rows, a stopped or failed optional
   service's among them) and exits 0. A row is ready when its `ready`
   and its `state` agree; a row without a `state`, from an instance
   that predates it, is read by its `ready` alone. At least one row
   must be ready: a new run whose every row has ended, failed or
-  `stopped`, has nothing serving and is over, so it is `GENERIC`,
-  exit 1, at once, as a new run that exits without coming up. A
+  `stopped`, has nothing left running and is over, so it is
+  `GENERIC`, exit 1, at once, naming each service and its state. A
   required service the new run
   recorded `failed` will not come up, since nothing is restarted, so
   it is `GENERIC`, exit 1, at once, naming the service, its `reason`
-  and its `error`. A drain or readiness that outlasts `--wait` is
-  `TRANSIENT`, exit 6; an instance that reports it did not re-execute
+  and its `error`. A drain, or a new run whose services have not all
+  settled, that outlasts `--wait` is `TRANSIENT`, exit 6; an instance that reports it did not re-execute
   is `GENERIC`, exit 1, with its reason. A new run that exits instead
   of coming up (a configuration it refuses) is `GENERIC`, exit 1,
   reported as soon as the process is gone rather than at `--wait`.

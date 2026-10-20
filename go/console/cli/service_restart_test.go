@@ -557,9 +557,8 @@ func (u *heldUnbindable) Stop(ctx context.Context) error {
 
 // TestService_RestartFailsWhenNothingRuns pins the run that is down,
 // not degraded: every service of the new run optional and failed.
-// Each row is settled on its own, but nothing serves and the run is
-// ending, so restart fails at once, exit 1, as for a new run that
-// exits without coming up.
+// Each row is settled on its own, but nothing is left running and the
+// run is over, so restart fails at once, exit 1.
 func TestService_RestartFailsWhenNothingRuns(t *testing.T) {
 	client := beginRestart(t)
 	aux := &heldUnbindable{name: "aux", release: make(chan struct{})}
@@ -568,7 +567,7 @@ func TestService_RestartFailsWhenNothingRuns(t *testing.T) {
 	res := awaitClient(t, client)
 	require.Error(t, res.err, res.out)
 	assert.Equal(t, output.ExitGeneric, res.code)
-	assert.Contains(t, res.err.Error(), "no service running")
+	assert.Contains(t, res.err.Error(), "nothing left running")
 	assert.Contains(t, res.err.Error(), "aux failed (start)")
 }
 
