@@ -180,7 +180,11 @@ a new run of the same process.
   status (the `service status` rows, a stopped or failed optional
   service's among them) and exits 0. A row is ready when its `ready`
   and its `state` agree; a row without a `state`, from an instance
-  that predates it, is read by its `ready` alone. A required service the new run
+  that predates it, is read by its `ready` alone. At least one row
+  must be ready: a new run whose every row has ended, failed or
+  `stopped`, has nothing serving and is over, so it is `GENERIC`,
+  exit 1, at once, as a new run that exits without coming up. A
+  required service the new run
   recorded `failed` will not come up, since nothing is restarted, so
   it is `GENERIC`, exit 1, at once, naming the service, its `reason`
   and its `error`. A drain or readiness that outlasts `--wait` is
