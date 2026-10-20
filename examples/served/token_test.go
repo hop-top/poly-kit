@@ -98,12 +98,15 @@ func TestTokenCreateServeAndCall(t *testing.T) {
 // `token key revoke` stops it while the services run.
 func TestAPIKeyIssueServeAndRevoke(t *testing.T) {
 	keys := filepath.Join(t.TempDir(), "apikeys.db")
-	out, err := runCLI(t, newRoot(options{apiKeys: keys}), "token", "key", "create", "--sub", "ci-bot", "--scopes", "items:read")
+	// The services the run serves share the store services.all names;
+	// token key, reading the same configuration, needs no --service.
+	apikey := map[string]any{"services.all.auth.mode": "apikey"}
+	out, err := runCLI(t, newRoot(options{apiKeys: keys, config: apikey}), "token", "key", "create", "--sub", "ci-bot", "--scopes", "items:read")
 	require.NoError(t, err)
 	key := strings.TrimSpace(out)
 	id := strings.Split(key, "_")[1]
 
-	run := startServe(t, options{apiKeys: keys, config: map[string]any{"services.all.auth.mode": "apikey"}},
+	run := startServe(t, options{apiKeys: keys, config: apikey},
 		"--enable", "rpc", "--addr", "127.0.0.1:0", "--rpc-addr", "127.0.0.1:0")
 	api := "http://" + run.waitReady(t, "api").Address
 	c := rpcClients(run.waitReady(t, rpcserve.ServiceName).Address)["connect"]
@@ -127,7 +130,7 @@ func TestAPIKeyIssueServeAndRevoke(t *testing.T) {
 	assert.Equal(t, http.StatusOK, status)
 	assert.Equal(t, int32(0), exit)
 
-	_, err = runCLI(t, newRoot(options{apiKeys: keys}), "token", "key", "revoke", id)
+	_, err = runCLI(t, newRoot(options{apiKeys: keys, config: apikey}), "token", "key", "revoke", id)
 	require.NoError(t, err)
 	status, exit = sync()
 	assert.Equal(t, http.StatusUnauthorized, status, "revoked over REST")

@@ -293,7 +293,11 @@ never served: remote callers cannot mint tokens.
 (`_ "hop.top/kit/go/storage/kv/sqlite"`); then
 `mytool token key create --sub ci-bot --scopes widgets:read` prints a
 key once, callers send it as `X-API-Key`, `token key list` shows every
-key's state, and `token key revoke <id>` stops one at once. The
+key's state, and `token key revoke <id>` stops one at once. `token
+key` reads the same `services.*` configuration `service start` does
+and opens the store the service under `auth.mode: apikey` reads; when
+no service is under it yet, or two read different stores, name one
+with `--service mcp`. The
 default `sqlite` store is created owner-only (`0600`) and can be
 written while the service runs; a `badger` store is locked by the
 running service, so stop it before running `token key`.

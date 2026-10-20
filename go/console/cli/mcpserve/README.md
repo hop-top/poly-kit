@@ -17,7 +17,7 @@ registers the `mcp` service; the protocol is the official Go SDK via
 - add prompts or resources → `Config.ServerOptions` with `mcpsdk.WithServerConfigurator`
 - tune the HTTP listener's middleware (body limit, Host allowlist, compression, health, metrics scrape) → `services.mcp.<block>`, as on the `api` service
 - run `mcp` beside a core service that must survive it failing (port taken, crash) → `Config.Optional: true`; `services.mcp.optional` overrides it
-- issue the credentials an MCP-only tool accepts, with no REST api → `cli.WithAPIKeys` (`token key create --service mcp`, for `auth.mode: apikey`) or `cli.WithIdentity` (`token create`, for `auth.mode: jwt`); either mounts `token` without `cli.WithAPI`
+- issue the credentials an MCP-only tool accepts, with no REST api → `cli.WithAPIKeys` (`token key create`, for `auth.mode: apikey`: it writes the store `services.mcp.auth.apikey` names, from config files, `-c` or env) or `cli.WithIdentity` (`token create`, for `auth.mode: jwt`); either mounts `token` without `cli.WithAPI`
 
 ## Quick start
 
