@@ -3014,7 +3014,7 @@ transport surfaces them unchanged.
 | Class        | Reason            | Which commands                                                              | Lifted by     |
 |--------------|-------------------|-----------------------------------------------------------------------------|---------------|
 | interactive  | `interactive`     | `kit/side-effect: interactive` — a shell, a TUI, anything needing a terminal | the CLI only  |
-| self-hosting | `self-hosting`    | `service start` and everything under it; `kit/network: ingress`; `kit/self-hosting: true` | nothing       |
+| self-hosting | `self-hosting`    | `kit/self-hosting: true` (kit's `service start`, `service stop`, `service restart`); a command named `serve` or under one; `kit/network: ingress` | nothing       |
 | management   | `management-only` | kit's reserved verbs (`spec`, `status`, …) and their children; any tree marked `kit/reserved`, and its children | `AllowReserved` |
 
 Rules:
@@ -3029,14 +3029,15 @@ Rules:
   surface, and no reflection option lifts the reason. Running it
   inside a served invocation would start a server inside the server,
   or replace the binary that is serving. Any one of three signals
-  marks it: the name `service start`, or a position under one, at any depth
-  — the depth-1 verb the hierarchy above gives to exactly one
-  command, and any nested `service start` that starts a server of its own; a
+  marks it: the name `serve`, or a position under one, at any depth
+  — the legacy spelling of the supervisor, and any nested `serve` that
+  starts a server of its own; a
   declared
   `kit/network: ingress`, because accepting connections is what a
   server does; or the explicit `kit/self-hosting: true`, which is how
-  kit marks its own self-modifying commands and how an adopter marks
-  theirs. None of the three consults the reserved-verb list, so a
+  kit marks `service start`, `service stop` and `service restart` (each
+  would start or take down the server answering it) and how an adopter
+  marks theirs. None of the three consults the reserved-verb list, so a
   bare cobra tree withholds its server too. A bridge never discovers
   such a command as a leaf, so a call answers "unknown command" and
   discovery answers `self-hosting`; the runner refuses it as well.
@@ -3080,8 +3081,8 @@ Rules:
   own surface, which `kit service start` projects on purpose, behind
   its gates. Any other command an adopter mounts after `cli.New` is
   not reserved and is served like any other, whatever its name.
-- Kit's own `service start` is both reserved and self-hosting. It reports
-  `self-hosting`, the answer that says why calling it through a
+- Kit's own `service start`, `service stop` and `service restart` are both
+  reserved and self-hosting. Each reports `self-hosting`, the answer that says why calling it through a
   transport can never work rather than merely who owns the word.
 
 Forced remote execution of an interactive or self-hosting command is
