@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.0](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.26...kit/v0.5.0-beta.0) (2026-10-20)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.0. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -27,6 +29,8 @@
 * **release:** keep mcp-tasks commits out of kit ([dba2c35](https://github.com/hop-top/poly-kit/commit/dba2c355571f2e348f60d4df82a6cd63d77a7552))
 * **serve:** one shutdown deadline; a release is capped at it ([768d8c7](https://github.com/hop-top/poly-kit/commit/768d8c76e56a0a74e1c0979771978e16a7f87975))
 * **serve:** release Stop keeps its budget; fail-fast ends a release wait ([92812c2](https://github.com/hop-top/poly-kit/commit/92812c283cb9b68253f4aacace8c062cde202f0d))
+
+Full diff: [kit/v0.5.0-alpha.26...kit/v0.5.0-beta.0](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.26...kit/v0.5.0-beta.0)
 
 ## [0.5.0-alpha.26](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.25...kit/v0.5.0-alpha.26) (2026-10-17)
 
