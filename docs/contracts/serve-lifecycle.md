@@ -121,8 +121,9 @@ new run.
   the failure's kind (`start`, `ready_timeout`, `runtime`, ...), and
   `error`, its text; other rows carry neither key.
 - `ready` is the service's own report, except that a service the
-  supervisor recorded `failed` reads `false`: one that crashed under
-  `isolate` may never reset its own readiness.
+  supervisor recorded `failed` or `stopped` reads `false`: one that
+  crashed under `isolate`, or returned on its own, may never reset its
+  own readiness.
 - A daemon whose optional `mcp` could not bind its port answers with
   its core service `ready` and `mcp` `failed`, `optional: true`,
   `reason: start`, and the bind error as `error`.

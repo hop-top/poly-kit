@@ -100,7 +100,7 @@ type controlResponse struct {
 type serviceStatusRow struct {
 	Service string `json:"service" yaml:"service" table:"SERVICE"`
 	// Ready is the service's own Ready, and false once the supervisor
-	// recorded it failed.
+	// recorded it failed or stopped.
 	Ready bool   `json:"ready" yaml:"ready" table:"READY"`
 	Addr  string `json:"addr"  yaml:"addr"  table:"ADDR"`
 	PID   int    `json:"pid"   yaml:"pid"   table:"PID"`
@@ -357,9 +357,10 @@ func serviceStatusRows(reg *serve.Registry, selected []string, configs map[strin
 			}
 			if s, ok := record[name]; ok {
 				row.State, row.Reason, row.Error = string(s.State), s.Reason, s.Error
-				if s.State == serve.StateFailed {
+				if s.State == serve.StateFailed || s.State == serve.StateStopped {
 					// The supervisor's record wins: a service that
-					// crashed may never have reset its own Ready.
+					// crashed or returned may never have reset its
+					// own Ready.
 					row.Ready = false
 				}
 			}
