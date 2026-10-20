@@ -125,7 +125,8 @@ func serviceRestartCmd(root *Root) *cobra.Command {
 			"manager sees no exit. The new run reads its configuration and flags\n" +
 			"afresh. Waits for the new instance to answer with every required service\n" +
 			"ready or stopped and prints its status, a failed optional service among\n" +
-			"it. A required service that failed fails the restart at once, exit 1.\n\n" +
+			"it. A required service that failed fails the restart at once, exit 1, as\n" +
+			"does a new run with nothing left running.\n\n" +
 			"Exits 3 (NOT_FOUND) when no instance is running, like `service status`:\n" +
 			"there is nothing to restart, and restart does not start one.",
 		Args: cobra.NoArgs,
@@ -212,13 +213,16 @@ func runServiceRestart(cmd *cobra.Command, root *Root) error {
 }
 
 // awaitRestarted polls the control socket at path until the new
-// instance answers with every required service ready; an optional
-// service that failed is not waited for, and is reported in the status
-// restart prints. It gives up when deadline passes, at once when a
-// required service failed (the supervisor restarts nothing, so it will
-// not come up), or as soon as pid, the re-executed process, is gone: a
-// new run that refused to start (a bad configuration change) exits
-// rather than answering.
+// instance answers with every service settled: each required service
+// ready or stopped, at least one service ready; an optional service
+// that failed is not waited for, and is reported in the status restart
+// prints, while one still starting is waited on until its readiness
+// budget ends. It gives up when deadline passes; at once, exit 1, when
+// a required service failed (the supervisor restarts nothing, so it
+// will not come up) or nothing is left running (every service failed
+// or stopped: the run is over); or as soon as pid, the re-executed
+// process, is gone: a new run that refused to start (a bad
+// configuration change) exits rather than answering.
 func awaitRestarted(root *Root, path string, pid int, deadline time.Time, wait time.Duration) error {
 	name := root.Config.Name
 	answered := false
@@ -236,7 +240,7 @@ func awaitRestarted(root *Root, path string, pid int, deadline time.Time, wait t
 			}
 			if ended := restartEnded(got); ended != "" {
 				e := output.GenericError(fmt.Sprintf(
-					"%s drained and re-executed, but the new run has no service running (%s); it exits without coming up",
+					"%s drained and re-executed, but the new run has nothing left running (%s); the run is over",
 					name, ended))
 				e.SuggestedFix = "read its stderr or service log for the reason, then start it with `" +
 					name + " " + ServiceCommandName + " start`"
@@ -257,7 +261,8 @@ func awaitRestarted(root *Root, path string, pid int, deadline time.Time, wait t
 				return output.TransientError(fmt.Sprintf("%s did not come back within %s", name, wait))
 			}
 			return output.TransientError(fmt.Sprintf(
-				"%s restarted but not every required service was ready within %s", name, wait))
+				"%s restarted but not every service settled within %s (required ready or stopped; optional still starting)",
+				name, wait))
 		}
 		time.Sleep(restartPollInterval)
 	}
