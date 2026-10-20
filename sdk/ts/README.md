@@ -77,4 +77,4 @@ See `package.json` `exports` for the full list.
 
 MIT.
 
-<!-- release: track @hop-top/cite ^0.1.0 -->
+<!-- release: track @hop-top/cite ^0.1.2 -->
