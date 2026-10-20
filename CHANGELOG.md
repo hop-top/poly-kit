@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.5.0-beta.0](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.26...kit/v0.5.0-beta.0) (2026-10-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** upgrade.MigrateCommand, stage.New, router.Cmd, uri.Command, pkl.NewConfigCommand and Root.AliasCmd trees are kit-reserved wherever mounted: REST does not mount them, rpc answers not_found, MCP lists no such tool, the socket answers NOT_ENABLED. Run them on the command line.
+* **cli:** peer (cli.WithPeers) and the alias group (Root.AliasCmd) are now kit-reserved: REST does not mount them, rpc answers not_found, MCP lists no peer.* or alias.* tool, and the socket answers NOT_ENABLED. Trust, block and revoke peers, and manage aliases, on the command line; a tool's own routes calling the trust manager are unaffected.
+* **cli:** the socket service no longer runs kit-reserved commands other than help, spec, status and version: quota, audit, token, uri and any command mounted through an option passed to cli.New answer NOT_ENABLED. Run them on the command line, or mount an adopter command after cli.New to serve it over the socket.
+* **serve:** services.<name>.optional is a lifecycle key: a service's own flat key of that name is now read by the supervisor, and a non-boolean value is refused at exit 2. serve --list prints a fifth column, OPTIONAL, after READY. A service type that already has an Optional() bool method now declares itself optional by default when it returns true.
+* **cli:** a tool with WithAPIKeys or WithIdentity and no WithAPI now has the kit-reserved top-level token command; rename an adopter command named token. The socket service no longer runs token leaves (NOT_ENABLED); run token on the command line.
+
+### Features
+
+* **cli:** mount token from key sources alone; socket withholds it ([de524a6](https://github.com/hop-top/poly-kit/commit/de524a6e904a538822e28ba081fea0e2fb335a7e))
+* **serve:** concurrent release, written-off goroutines, selector default ([2ee7b5e](https://github.com/hop-top/poly-kit/commit/2ee7b5ed943b9756b44124eacf7aa3cc8a74f758))
+* **serve:** optional services survive their own failure ([f0a261f](https://github.com/hop-top/poly-kit/commit/f0a261f41e9c26572651df491bde0a73577dfd39))
+
+
+### Bug Fixes
+
+* **cli:** kit management trees reserve themselves ([5bbe217](https://github.com/hop-top/poly-kit/commit/5bbe217eea8190db90085f1de163976752588e2b))
+* **cli:** reserve peer and alias so no served surface runs them ([dfa60d7](https://github.com/hop-top/poly-kit/commit/dfa60d7630d2842e72abc5f4928792e5a5b9d9af))
+* **cli:** socket withholds every reserved verb but introspection ([dfa227d](https://github.com/hop-top/poly-kit/commit/dfa227dfa2c40ba87390fa10facd56a7813ab8b7))
+* **cli:** timeout flags reach an unconfigured service under the selector ([dc27b3e](https://github.com/hop-top/poly-kit/commit/dc27b3ebca8ee0b0c983abc176b2f0cd345d910d))
+* **release:** keep mcp-tasks commits out of kit ([dba2c35](https://github.com/hop-top/poly-kit/commit/dba2c355571f2e348f60d4df82a6cd63d77a7552))
+* **serve:** one shutdown deadline; a release is capped at it ([768d8c7](https://github.com/hop-top/poly-kit/commit/768d8c76e56a0a74e1c0979771978e16a7f87975))
+* **serve:** release Stop keeps its budget; fail-fast ends a release wait ([92812c2](https://github.com/hop-top/poly-kit/commit/92812c283cb9b68253f4aacace8c062cde202f0d))
+
 ## [0.5.0-alpha.26](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.25...kit/v0.5.0-alpha.26) (2026-10-17)
 
 The hop-top team is happy to announce Kit 0.5.0-alpha.26. This release includes maintenance release with bug fixes.
