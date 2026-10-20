@@ -297,10 +297,11 @@ func jwksFixture(t *testing.T) (url, raw string) {
 
 // TestTokenVerifyReadsTheServiceConfigSources pins that token verify
 // reads services.<svc>.auth from the sources `service start` reads —
-// the user config file and -c — so it checks a token with the verifier
-// the service would use. --service stays api by default.
+// the user config file, -c and the environment — so it checks a token
+// with the verifier the service would use. --service stays api by
+// default.
 func TestTokenVerifyReadsTheServiceConfigSources(t *testing.T) {
-	for _, source := range []string{"config file", "-c"} {
+	for _, source := range []string{"config file", "-c", "environment"} {
 		t.Run(source, func(t *testing.T) {
 			url, raw := jwksFixture(t)
 			// The identity key does not verify a token the JWKS key
@@ -317,6 +318,10 @@ func TestTokenVerifyReadsTheServiceConfigSources(t *testing.T) {
 			case "-c":
 				args = append(args, "-c", "services.api.auth.mode=jwks",
 					"-c", "services.api.auth.jwks.url="+url, "-c", "services.api.auth.jwks.audience=kit-api")
+			case "environment":
+				t.Setenv("TOOL_SERVICES_API_AUTH_MODE", "jwks")
+				t.Setenv("TOOL_SERVICES_API_AUTH_JWKS_URL", url)
+				t.Setenv("TOOL_SERVICES_API_AUTH_JWKS_AUDIENCE", "kit-api")
 			}
 			out, err := runToken(t, r, args...)
 			require.NoError(t, err, out)
