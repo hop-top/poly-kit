@@ -56,7 +56,7 @@ jobs:
   release-please:
     needs: branch-role
     if: needs.branch-role.outputs.release == 'true'
-    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@fed4be0294316e6bdae206f698923fddd881d0b5
+    uses: hop-top/.github/.github/workflows/release-please-on-push.yml@c6261e6832cbc71e72574433fb1a8650ae2e6616
     secrets:
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
@@ -64,4 +64,4 @@ jobs:
       config-file: .github/release-please-config.json
       manifest-file: .github/.release-please-manifest.json
       versioning-extension: true
-      tooling-ref: fed4be0294316e6bdae206f698923fddd881d0b5
+      tooling-ref: c6261e6832cbc71e72574433fb1a8650ae2e6616
