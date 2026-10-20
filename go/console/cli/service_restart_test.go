@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"hop.top/kit/go/console/output"
+	"hop.top/kit/go/console/serve"
 )
 
 // gateService is a service whose Stop can be held open, so a test can
@@ -386,14 +387,10 @@ func (h *heldService) Start(ctx context.Context, report func()) error {
 func (h *heldService) Ready() bool                { return h.ready.Load() }
 func (h *heldService) Stop(context.Context) error { h.ready.Store(false); return nil }
 
-// restartIntoCrashedAux runs `service restart` against an instance
-// whose new run serves aux, which crashes after reporting ready
-// without resetting its own Ready, and then svc. The new run's svc
-// reports ready only once the supervisor recorded aux failed, so
-// whatever restart reports, it read the failure. It returns the
-// client's result and how long the client took after the new run
-// was ready.
-func restartIntoCrashedAux(t *testing.T, optional bool) (clientResult, time.Duration) {
+// beginRestart starts an instance, asks it to restart with --wait 10s,
+// and returns once it has drained and re-executed (a stand-in for exec
+// records the call): the caller starts the stand-in for the new image.
+func beginRestart(t *testing.T) <-chan clientResult {
 	t.Helper()
 	isolateRuntime(t)
 	isolateHome(t)
@@ -409,32 +406,102 @@ func restartIntoCrashedAux(t *testing.T, optional bool) (clientResult, time.Dura
 		t.Fatal("the instance never re-executed")
 	}
 	require.NoError(t, awaitRun(t, errCh))
+	return client
+}
 
-	// The stand-in for the new image.
-	aux := newToggle("aux")
-	svc := &heldService{name: "svc", release: make(chan struct{})}
-	n := authRoot(t, WithServices(aux, svc))
-	n.Viper.Set("services.aux.enabled", true)
-	n.Viper.Set("services.svc.enabled", true)
-	n.Viper.Set("services.aux.optional", optional)
-	// A required service's crash leaves the instance running only
-	// under isolate; under fail-fast it would end the run.
-	n.Viper.Set("services.failure_policy", "isolate")
+// startNewRun starts the stand-in for the new image: `service start`
+// over svcs, every one enabled, keys set on top.
+func startNewRun(t *testing.T, keys map[string]any, svcs ...serve.Service) {
+	t.Helper()
+	n := authRoot(t, WithServices(svcs...))
+	for _, s := range svcs {
+		n.Viper.Set("services."+s.Name()+".enabled", true)
+	}
+	setKeys(n, keys)
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	done := make(chan struct{})
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("the new run did not end")
+		}
+	})
 	n.SetArgs([]string{"service", "start"})
-	go func() { _ = n.Execute(ctx) }()
+	go func() { defer close(done); _ = n.Execute(ctx) }()
+}
 
-	require.Eventually(t, func() bool { return statusRowsByName(t)["aux"].State == "ready" },
-		10*time.Second, 10*time.Millisecond)
-	close(aux.crash)
-	require.Eventually(t, func() bool { return statusRowsByName(t)["aux"].State == "failed" },
-		10*time.Second, 10*time.Millisecond)
-	require.True(t, aux.Ready(), "aux never reset its own Ready")
+// restartIntoNewRun runs `service restart` against an instance whose
+// new run serves first, then svc. svc reports ready only once settle
+// has returned, so whatever restart reports, it read what settle made
+// of first. It returns the client's result and how long the client
+// took after the new run was ready.
+func restartIntoNewRun(t *testing.T, first serve.Service, keys map[string]any, settle func()) (clientResult, time.Duration) {
+	t.Helper()
+	client := beginRestart(t)
+	svc := &heldService{name: "svc", release: make(chan struct{})}
+	startNewRun(t, keys, first, svc)
+	settle()
 	close(svc.release)
 	readyAt := time.Now()
 	res := awaitClient(t, client)
 	return res, time.Since(readyAt)
+}
+
+// awaitState waits until the running instance reports name in state.
+func awaitState(t *testing.T, name string, state serve.ServiceState) {
+	t.Helper()
+	require.Eventually(t, func() bool { return statusRowsByName(t)[name].State == string(state) },
+		10*time.Second, 10*time.Millisecond, "%s never %s", name, state)
+}
+
+// restartIntoCrashedAux is restartIntoNewRun with aux first: aux
+// crashes after reporting ready, without resetting its own Ready.
+func restartIntoCrashedAux(t *testing.T, optional bool) (clientResult, time.Duration) {
+	t.Helper()
+	aux := newToggle("aux")
+	// A required service's crash leaves the instance running only
+	// under isolate; under fail-fast it would end the run.
+	keys := map[string]any{"services.aux.optional": optional, "services.failure_policy": "isolate"}
+	return restartIntoNewRun(t, aux, keys, func() {
+		awaitState(t, "aux", serve.StateReady)
+		close(aux.crash)
+		awaitState(t, "aux", serve.StateFailed)
+		require.True(t, aux.Ready(), "aux never reset its own Ready")
+	})
+}
+
+// rowsOf decodes restart's json output into rows by service.
+func rowsOf(t *testing.T, out string) map[string]serviceStatusRow {
+	t.Helper()
+	var got serviceStatusOutput
+	require.NoError(t, json.Unmarshal([]byte(out), &got), out)
+	rows := map[string]serviceStatusRow{}
+	for _, r := range got.Services {
+		rows[r.Service] = r
+	}
+	return rows
+}
+
+// TestService_RestartSettlesOnAStoppedService pins that a service of
+// the new run that reported ready and then returned cleanly — a
+// one-shot — does not hold the restart: a clean return is no failure.
+// The status restart prints reports it stopped.
+func TestService_RestartSettlesOnAStoppedService(t *testing.T) {
+	q := &quitter{name: "oneshot", quit: make(chan struct{})}
+	res, _ := restartIntoNewRun(t, q, nil, func() {
+		awaitState(t, "oneshot", serve.StateReady)
+		close(q.quit)
+		awaitState(t, "oneshot", serve.StateStopped)
+	})
+	require.NoError(t, res.err)
+	assert.Equal(t, 0, res.code)
+	rows := rowsOf(t, res.out)
+	assert.True(t, rows["svc"].Ready)
+	assert.Equal(t, "stopped", rows["oneshot"].State)
+	assert.False(t, rows["oneshot"].Ready)
+	assert.Empty(t, rows["oneshot"].Reason)
 }
 
 // TestService_RestartReportsAFailedOptionalService pins that restart
@@ -445,12 +512,7 @@ func TestService_RestartReportsAFailedOptionalService(t *testing.T) {
 	res, _ := restartIntoCrashedAux(t, true)
 	require.NoError(t, res.err)
 	assert.Equal(t, 0, res.code)
-	var got serviceStatusOutput
-	require.NoError(t, json.Unmarshal([]byte(res.out), &got), res.out)
-	rows := map[string]serviceStatusRow{}
-	for _, r := range got.Services {
-		rows[r.Service] = r
-	}
+	rows := rowsOf(t, res.out)
 	assert.True(t, rows["svc"].Ready)
 	aux := rows["aux"]
 	assert.Equal(t, "failed", aux.State)
@@ -482,13 +544,13 @@ func TestRestartSettled(t *testing.T) {
 		settled bool
 		failed  bool
 	}{
-		"every row ready":                 {[]serviceStatusRow{row(true, "ready", false), row(true, "ready", true)}, true, false},
-		"a failed optional row":           {[]serviceStatusRow{row(true, "ready", false), row(false, "failed", true)}, true, false},
-		"a failed required row":           {[]serviceStatusRow{row(true, "ready", false), row(false, "failed", false)}, false, true},
-		"ready, but the state disagrees":  {[]serviceStatusRow{row(true, "starting", false)}, false, false},
-		"a stopped row":                   {[]serviceStatusRow{row(false, "stopped", false)}, false, false},
-		"not started yet":                 {[]serviceStatusRow{row(false, "not_in_run", true)}, false, false},
-		"an answer without a state, read": {[]serviceStatusRow{row(true, "", false)}, true, false},
+		"every row ready":                  {[]serviceStatusRow{row(true, "ready", false), row(true, "ready", true)}, true, false},
+		"a failed optional row":            {[]serviceStatusRow{row(true, "ready", false), row(false, "failed", true)}, true, false},
+		"a failed required row":            {[]serviceStatusRow{row(true, "ready", false), row(false, "failed", false)}, false, true},
+		"ready, but the state disagrees":   {[]serviceStatusRow{row(true, "starting", false)}, false, false},
+		"a stopped row beside a ready one": {[]serviceStatusRow{row(true, "ready", false), row(false, "stopped", false)}, true, false},
+		"not started yet":                  {[]serviceStatusRow{row(false, "not_in_run", true)}, false, false},
+		"an answer without a state, read":  {[]serviceStatusRow{row(true, "", false)}, true, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			settled, failed := restartSettled(c.rows)

@@ -193,7 +193,8 @@ so systemd or launchd sees no exit. The new run reads configuration
 and flags afresh. The client waits for the new instance to answer with
 every required service ready and prints its status. An optional service
 that failed in the new run is not waited for: it shows in that status
-as `failed`, with its reason and error.
+as `failed`, with its reason and error. Nor is a one-shot service that
+reported ready and returned cleanly: it shows as `stopped`.
 
 | Situation | `service restart` |
 |---|---|
