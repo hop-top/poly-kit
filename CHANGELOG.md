@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.5.0-beta.1](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.0...kit/v0.5.0-beta.1) (2026-10-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** `service status` and `service restart` rows: `ready` is now false for a service the supervisor recorded failed or stopped, whatever its own Ready says; rows gain `state`, `optional`, `reason`, `error` and the table gains STATE, OPTIONAL, REASON, ERROR columns after PID. `service restart` waits only for required services: a failed optional service no longer blocks it, and a failed required one fails it at once with exit 1 instead of exit 6 at --wait.
+* **cli:** `token key create|list|revoke` without --service no longer falls back to the api service; with no service under auth.mode: apikey it is refused, exit 2. Pass --service api for the old behaviour.
+
+### Features
+
+* **cli:** failure detail in `service status` ([72c0dd0](https://github.com/hop-top/poly-kit/commit/72c0dd0935cafd5efbeebf4dd8511db319ebd5c3))
+* **serve:** WithRunObserver hands each run's record to an outside surface ([abdd78c](https://github.com/hop-top/poly-kit/commit/abdd78c5d4f44caf8fd262652ff80a66792ac6bf))
+
+
+### Bug Fixes
+
+* **cli:** `service restart` fails when the new run has nothing serving ([4adfe90](https://github.com/hop-top/poly-kit/commit/4adfe90be49c24513476e214a6e66c085386f4ec))
+* **cli:** `service restart` settles on a stopped service ([1707f6b](https://github.com/hop-top/poly-kit/commit/1707f6b98b4d49176fe2a3effa8b17257a8c7dfd))
+* **cli:** `service restart` waits for required services only ([3bb983d](https://github.com/hop-top/poly-kit/commit/3bb983d0706e972a4c0af45f4e4869b6b7bb1168))
+* **cli:** `token key --service socket` is refused ([c3e0ccc](https://github.com/hop-top/poly-kit/commit/c3e0ccc84a2f91924d79194f1bc1838d17ac2580))
+* **cli:** `token key --service` refuses unregistered names, warns off-mode ([79b1797](https://github.com/hop-top/poly-kit/commit/79b17978e4fffd61ddf084cfc78a880041365d92))
+* **cli:** `token key` opens the store the service reads ([5fbfb4a](https://github.com/hop-top/poly-kit/commit/5fbfb4af27db28a15527152dce45cd639d8d9866))
+* **cli:** `token verify` reads the services.* config sources ([8984980](https://github.com/hop-top/poly-kit/commit/8984980555fea4900fc05be299f32a08cdd528a4))
+* **cli:** stopped service reads not ready in `service status` ([b3c2b9e](https://github.com/hop-top/poly-kit/commit/b3c2b9e8172f930e06f1118ae3540f2a09837c95))
+
 ## [0.5.0-beta.0](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.26...kit/v0.5.0-beta.0) (2026-10-20)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.0. This release includes new features and bug fixes.
