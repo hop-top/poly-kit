@@ -22,7 +22,7 @@ authority for behavior; the package is the authority for signatures.
 | `<tool> service start`          | supervisor | every service that is **configured** AND **enabled**        |
 | `<tool> service start <service>`| selector   | exactly the named service, subject to validation            |
 | `<tool> service list`           | inspection | registered services with configured / enabled / ready state |
-| `<tool> service status`         | inspection | the running instance's services, readiness and addresses    |
+| `<tool> service status`         | inspection | the running instance's services: readiness, address, state  |
 | `<tool> service stop`           | control    | asks the running instance to drain and exit                 |
 | `<tool> service restart`        | control    | asks the running instance to drain and re-execute in place  |
 
@@ -105,11 +105,27 @@ default socket.
 #### `service status` output
 
 `service status` prints an object: `services`, kit's fixed rows (one
-per service the instance started, with `service`, `ready`, `addr`,
-`pid`), and `sections`, the tool's own sections about the running
-instance, in the root status's `StatusSection` shape. `sections` is
-`[]` when the tool registers none. `service restart` prints the same
-object for the new run.
+per service the instance runs, with `service`, `ready`, `addr`, `pid`,
+`state`, `optional`, and for a failed service `reason` and `error`),
+and `sections`, the tool's own sections about the running instance, in
+the root status's `StatusSection` shape. `sections` is `[]` when the
+tool registers none. `service restart` prints the same object for the
+new run.
+
+- `state`, `optional`, `reason` and `error` are the supervisor's record
+  of the run ([§"Optional services"](#optional-services)), under the
+  lifecycle event payload's keys and words. `state` is `starting`,
+  `ready`, `stopped` or `failed`, or `not_in_run` for a selected
+  service the start sequence has not reached. `optional` is the
+  resolved `services.<name>.optional`. A `failed` row carries `reason`,
+  the failure's kind (`start`, `ready_timeout`, `runtime`, ...), and
+  `error`, its text; other rows carry neither key.
+- `ready` is the service's own report, except that a service the
+  supervisor recorded `failed` reads `false`: one that crashed under
+  `isolate` may never reset its own readiness.
+- A daemon whose optional `mcp` could not bind its port answers with
+  its core service `ready` and `mcp` `failed`, `optional: true`,
+  `reason: start`, and the bind error as `error`.
 
 - Sections come from providers the tool registers with
   `RegisterServiceStatusProvider`. The **instance** runs them, all at
@@ -122,8 +138,9 @@ object for the new run.
   `sensitive` are redacted with the root status's patterns before they
   leave the instance; `service status` has no flag that reveals them.
 - json and yaml carry the whole object. The tabular formats print
-  kit's rows, then, when there are sections, a blank line and one
-  `SECTION`/`STATUS`/`DETAIL` row per section.
+  kit's rows (`SERVICE`, `READY`, `ADDR`, `PID`, then `STATE`,
+  `OPTIONAL`, `REASON`, `ERROR`), then, when there are sections, a
+  blank line and one `SECTION`/`STATUS`/`DETAIL` row per section.
 - These providers do not feed the root `status`, and the root
   `status` providers do not feed `service status`.
 
@@ -598,8 +615,11 @@ payload uses: `service`, `state`, `optional`, `reason`, `error`,
 `elapsed_ms`. In Go that record is `Result.Services` when the run ends
 and `RunStatus.Services()` on the run view every `Start` receives while
 it runs, so a status surface a tool serves reads what the supervisor
-saw. Go's `service list` also shows each registered service's resolved
-optional value, in an `OPTIONAL` column after `READY`.
+saw; `serve.WithRunObserver` hands the same record to a surface outside
+the services, which is how `service status` reports it
+([§"`service status` output"](#service-status-output)). Go's
+`service list` also shows each registered service's resolved optional
+value, in an `OPTIONAL` column after `READY`.
 
 ### Re-execution
 

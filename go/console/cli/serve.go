@@ -423,6 +423,9 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	ctx, stopRequested := context.WithCancel(sigCtx)
 	defer stopRequested()
 
+	// `service status` reports the supervisor's record of the run,
+	// handed over as the run begins.
+	record := &runRecord{}
 	// The control socket `service stop`, `service restart` and
 	// `service status` talk to, claimed before anything starts. A live
 	// instance already on it is a CONFLICT: a second run would serve
@@ -431,7 +434,7 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 	// (a platform or sandbox without unix sockets) leaves the run
 	// serving without one, and says so.
 	control, controlErr := listenControl(ep, root.Config.Name+" "+ServiceCommandName+" stop",
-		stopRequested, serviceStatusRows(reg, outcome.Selected), root.serviceStatusSections)
+		stopRequested, serviceStatusRows(reg, outcome.Selected, configs, record), root.serviceStatusSections)
 	var refused *output.Error
 	if errors.As(controlErr, &refused) {
 		return controlErr
@@ -465,6 +468,7 @@ func runServe(cmd *cobra.Command, root *Root, args []string) (err error) {
 		serve.WithLogger(logger),
 		serve.WithPublisher(root.serveBus),
 		serve.WithEscalation(escalate),
+		serve.WithRunObserver(record.set),
 	)
 
 	if controlErr != nil {

@@ -2,6 +2,7 @@ package mcpserve_test
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"strings"
 	"sync"
@@ -70,6 +71,14 @@ type coreAndMCPRun struct {
 // mcp failure included, is over by then.
 func coreAndMCP(t *testing.T, cfg mcpserve.Config, keys map[string]any) coreAndMCPRun {
 	t.Helper()
+	return coreAndMCPWhile(t, cfg, keys, nil)
+}
+
+// coreAndMCPWhile is coreAndMCP calling during, when set, after the
+// supervisor reported ready and before the cancel: while the daemon
+// still runs.
+func coreAndMCPWhile(t *testing.T, cfg mcpserve.Config, keys map[string]any, during func()) coreAndMCPRun {
+	t.Helper()
 	testhome.Isolate(t)
 	b := bus.New()
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
@@ -112,6 +121,9 @@ func coreAndMCP(t *testing.T, cfg mcpserve.Config, keys map[string]any) coreAndM
 	select {
 	case <-supReady:
 		coreUp = core.Ready()
+		if during != nil {
+			during()
+		}
 		cancel()
 	case err := <-errCh:
 		mu.Lock()
@@ -165,4 +177,65 @@ func TestMCPOptionalKeyOverridesTheRegistrationDefault(t *testing.T) {
 	var oe *output.Error
 	require.ErrorAs(t, run.err, &oe)
 	assert.Equal(t, 1, oe.ExitCode)
+}
+
+// serviceStatusOf runs `service status <args>` against the running
+// daemon from a client root and returns stdout.
+func serviceStatusOf(t *testing.T, args ...string) string {
+	t.Helper()
+	var out strings.Builder
+	c := newServeRoot(t, cli.WithService(&coreService{}), mcpserve.With(mcpserve.Config{}))
+	c.Cmd.SetOut(&out)
+	c.Cmd.SetErr(&strings.Builder{})
+	c.SetArgs(append([]string{"service", "status"}, args...))
+	require.NoError(t, c.Execute(t.Context()))
+	return out.String()
+}
+
+// TestServiceStatusReportsTheOptionalMCPFailure pins what an operator
+// of a daemon running an optional MCP service reads when that
+// service's port is taken: `service status` reports the core ready and
+// mcp failed, optional, with the failure's kind and the bind error —
+// in json, and in the table, whose earlier columns keep their places.
+func TestServiceStatusReportsTheOptionalMCPFailure(t *testing.T) {
+	var jsonOut, tableOut string
+	run := coreAndMCPWhile(t, mcpserve.Config{Optional: true}, nil, func() {
+		jsonOut = serviceStatusOf(t, "--format", "json")
+		tableOut = serviceStatusOf(t, "--format", "table")
+	})
+	require.NoError(t, run.err)
+
+	var got struct {
+		Services []map[string]any `json:"services"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(jsonOut), &got), jsonOut)
+	require.Len(t, got.Services, 2, jsonOut)
+	core, mcp := got.Services[0], got.Services[1]
+	assert.Equal(t, "core", core["service"])
+	assert.Equal(t, true, core["ready"])
+	assert.Equal(t, "ready", core["state"])
+	assert.Equal(t, false, core["optional"])
+	assert.NotContains(t, core, "reason", "a running service has no failure detail")
+	assert.NotContains(t, core, "error")
+	for _, k := range []string{"addr", "pid"} {
+		assert.Contains(t, core, k, "the existing fields stay")
+	}
+
+	assert.Equal(t, mcpserve.ServiceName, mcp["service"])
+	assert.Equal(t, false, mcp["ready"])
+	assert.Equal(t, "failed", mcp["state"])
+	assert.Equal(t, true, mcp["optional"])
+	assert.Equal(t, "start", mcp["reason"])
+	require.Len(t, run.failed, 1)
+	assert.Equal(t, run.failed[0].Error, mcp["error"], "the text the failed event carried")
+	assert.Contains(t, mcp["error"], "bind")
+
+	lines := strings.Split(strings.TrimSpace(tableOut), "\n")
+	require.Len(t, lines, 3, tableOut)
+	assert.Equal(t, []string{"SERVICE", "READY", "ADDR", "PID", "STATE", "OPTIONAL", "REASON", "ERROR"},
+		strings.Fields(lines[0]))
+	mcpRow := lines[2]
+	for _, want := range []string{"mcp", "failed", "start", "bind: address already in use"} {
+		assert.Contains(t, mcpRow, want, tableOut)
+	}
 }

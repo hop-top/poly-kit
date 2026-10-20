@@ -91,12 +91,27 @@ type controlResponse struct {
 }
 
 // serviceStatusRow is one row of `service status`: a service the
-// running instance started, its readiness and where it listens.
+// running instance runs, its readiness and where it listens, then the
+// supervisor's record of it — its state, whether the run depends on
+// it, and for a failed service the kind of failure and its text, under
+// the keys the lifecycle events use. The record's columns come last,
+// so the earlier ones keep their positions for a script that reads
+// them.
 type serviceStatusRow struct {
 	Service string `json:"service" yaml:"service" table:"SERVICE"`
-	Ready   bool   `json:"ready"   yaml:"ready"   table:"READY"`
-	Addr    string `json:"addr"    yaml:"addr"    table:"ADDR"`
-	PID     int    `json:"pid"     yaml:"pid"     table:"PID"`
+	// Ready is the service's own Ready, and false once the supervisor
+	// recorded it failed.
+	Ready bool   `json:"ready" yaml:"ready" table:"READY"`
+	Addr  string `json:"addr"  yaml:"addr"  table:"ADDR"`
+	PID   int    `json:"pid"   yaml:"pid"   table:"PID"`
+	// State is the supervisor's: starting, ready, stopped, failed, or
+	// not_in_run for a service the run has not started (yet).
+	State    string `json:"state"    yaml:"state"    table:"STATE"`
+	Optional bool   `json:"optional" yaml:"optional" table:"OPTIONAL"`
+	// Reason is a failed service's failure kind (start, ready_timeout,
+	// runtime, ...) and Error its text; both empty otherwise.
+	Reason string `json:"reason,omitempty" yaml:"reason,omitempty" table:"REASON"`
+	Error  string `json:"error,omitempty"  yaml:"error,omitempty"  table:"ERROR"`
 }
 
 // serviceStopRow is the single row `service stop` reports.
@@ -286,17 +301,66 @@ func (cs *controlServer) finishRestart(reason string) {
 	}
 }
 
+// runRecord holds the supervisor's record of the run the control
+// channel answers for: set by the supervisor as the run begins
+// (serve.WithRunObserver), read on each status request.
+type runRecord struct {
+	mu sync.Mutex
+	st serve.RunStatus
+}
+
+func (r *runRecord) set(st serve.RunStatus) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.st = st
+}
+
+// services is the record's entry per started service, nil before the
+// run began.
+func (r *runRecord) services() map[string]serve.ServiceStatus {
+	r.mu.Lock()
+	st := r.st
+	r.mu.Unlock()
+	if st == nil {
+		return nil
+	}
+	out := map[string]serve.ServiceStatus{}
+	for _, s := range st.Services() {
+		out[s.Service] = s
+	}
+	return out
+}
+
 // serviceStatusRows reports the services a run selected, as the
-// control channel's status answer.
-func serviceStatusRows(reg *serve.Registry, selected []string) func() []serviceStatusRow {
+// control channel's status answer: each one's readiness and address
+// as the service reports them, and its state, optionality and failure
+// as the supervisor recorded them. configs is the run's resolved
+// per-service block.
+func serviceStatusRows(reg *serve.Registry, selected []string, configs map[string]serve.Config,
+	run *runRecord,
+) func() []serviceStatusRow {
+	optional := make(map[string]bool, len(selected))
+	for _, name := range selected {
+		optional[name] = configs[name].Optional
+	}
 	return func() []serviceStatusRow {
+		record := run.services()
 		rows := make([]serviceStatusRow, 0, len(selected))
 		for _, name := range selected {
-			row := serviceStatusRow{Service: name, PID: os.Getpid()}
+			row := serviceStatusRow{Service: name, PID: os.Getpid(),
+				State: string(serve.StateNotInRun), Optional: optional[name]}
 			if svc, ok := reg.Lookup(name); ok {
 				row.Ready = svc.Ready()
 				if a, ok := svc.(serve.Addressed); ok {
 					row.Addr = a.Addr()
+				}
+			}
+			if s, ok := record[name]; ok {
+				row.State, row.Reason, row.Error = string(s.State), s.Reason, s.Error
+				if s.State == serve.StateFailed {
+					// The supervisor's record wins: a service that
+					// crashed may never have reset its own Ready.
+					row.Ready = false
 				}
 			}
 			rows = append(rows, row)
@@ -366,7 +430,9 @@ func serviceStatusCmd(root *Root) *cobra.Command {
 		Use:   "status",
 		Short: "Show the running instance's services, readiness and addresses",
 		Long: "Ask the running instance, over its control socket, which services it\n" +
-			"started, whether each is ready, and where each listens, followed by\n" +
+			"runs, whether each is ready, and where each listens, with the state the\n" +
+			"supervisor recorded for each (starting, ready, stopped, failed), whether\n" +
+			"it is optional, and for a failed one the reason and error, followed by\n" +
 			"any sections the tool reports about the instance.\n\n" +
 			"Exits 3 (NOT_FOUND) when no instance is running.",
 		Args: cobra.NoArgs,
