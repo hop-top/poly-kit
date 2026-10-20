@@ -124,8 +124,8 @@ func serviceRestartCmd(root *Root) *cobra.Command {
 			"binary, arguments and environment, under the same pid, so a service\n" +
 			"manager sees no exit. The new run reads its configuration and flags\n" +
 			"afresh. Waits for the new instance to answer with every required service\n" +
-			"ready and prints its status, a failed optional service among it. A\n" +
-			"required service that failed fails the restart at once, exit 1.\n\n" +
+			"ready or stopped and prints its status, a failed optional service among\n" +
+			"it. A required service that failed fails the restart at once, exit 1.\n\n" +
 			"Exits 3 (NOT_FOUND) when no instance is running, like `service status`:\n" +
 			"there is nothing to restart, and restart does not start one.",
 		Args: cobra.NoArgs,
@@ -264,18 +264,18 @@ func pollStatus(path string) ([]serviceStatusRow, bool) {
 }
 
 // restartSettled reads one status answer of the new run: settled when
-// every row is ready, or optional and failed; failed is the first
-// required service the supervisor recorded failed, nil when none is.
-// A row is ready when it says so and its state agrees: an answer
-// without a state (an instance that predates it) is taken at its
-// ready.
+// every row is ready, stopped (a clean return is no failure), or
+// optional and failed; failed is the first required service the
+// supervisor recorded failed, nil when none is. A row is ready when it
+// says so and its state agrees: an answer without a state (an instance
+// that predates it) is taken at its ready.
 func restartSettled(rows []serviceStatusRow) (settled bool, failed *serviceStatusRow) {
 	settled = true
 	for i, r := range rows {
 		switch {
 		case r.State == string(serve.StateFailed) && !r.Optional:
 			return false, &rows[i]
-		case r.State == string(serve.StateFailed):
+		case r.State == string(serve.StateFailed), r.State == string(serve.StateStopped):
 		case !r.Ready || (r.State != "" && r.State != string(serve.StateReady)):
 			settled = false
 		}
