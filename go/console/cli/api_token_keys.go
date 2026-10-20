@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -61,10 +62,10 @@ func withAPIKeys(cmd *cobra.Command, r *Root, fn func(context.Context, *authn.AP
 // first, as `service start` layers them, so the verbs write the store
 // the running service reads.
 //
-// --service must name a registered service when the tool has a
-// registry. One that is not under auth.mode: apikey is still served —
-// its mode may be set next — with a warning that it does not accept
-// the store's keys yet.
+// --service must name a registered service that can hold API keys
+// (not kit's socket) when the tool has a registry. One that is not
+// under auth.mode: apikey is still served — its mode may be set next —
+// with a warning that it does not accept the store's keys yet.
 func apiKeyStoreFor(cmd *cobra.Command, r *Root) (kv.Config, []string, error) {
 	if err := r.loadServiceConfig(); err != nil {
 		return kv.Config{}, nil, err
@@ -77,8 +78,15 @@ func apiKeyStoreFor(cmd *cobra.Command, r *Root) (kv.Config, []string, error) {
 	}
 	verb := "token key " + cmd.Name()
 	if r.serveReg != nil {
+		var refusal string
 		if _, ok := r.serveReg.Lookup(svc); !ok {
-			e := output.UsageError(fmt.Sprintf("%s: unknown service %q", verb, svc))
+			refusal = fmt.Sprintf("%s: unknown service %q", verb, svc)
+		} else if !slices.Contains(apiKeyCandidates(r), svc) {
+			refusal = fmt.Sprintf("%s: the %s service does not use API keys: it has no HTTP listener "+
+				"and never reads auth.mode: %s", verb, svc, AuthModeAPIKey)
+		}
+		if refusal != "" {
+			e := output.UsageError(refusal)
 			e.SuggestedFix = "pass --service naming one of " + strings.Join(apiKeyCandidates(r), ", ")
 			return kv.Config{}, nil, e
 		}
