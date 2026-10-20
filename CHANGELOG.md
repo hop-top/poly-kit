@@ -2,6 +2,8 @@
 
 ## [0.5.0-beta.1](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.0...kit/v0.5.0-beta.1) (2026-10-20)
 
+The hop-top team is happy to announce Kit 0.5.0-beta.1. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -24,6 +26,8 @@
 * **cli:** `token key` opens the store the service reads ([5fbfb4a](https://github.com/hop-top/poly-kit/commit/5fbfb4af27db28a15527152dce45cd639d8d9866))
 * **cli:** `token verify` reads the services.* config sources ([8984980](https://github.com/hop-top/poly-kit/commit/8984980555fea4900fc05be299f32a08cdd528a4))
 * **cli:** stopped service reads not ready in `service status` ([b3c2b9e](https://github.com/hop-top/poly-kit/commit/b3c2b9e8172f930e06f1118ae3540f2a09837c95))
+
+Full diff: [kit/v0.5.0-beta.0...kit/v0.5.0-beta.1](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.0...kit/v0.5.0-beta.1)
 
 ## [0.5.0-beta.0](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-alpha.26...kit/v0.5.0-beta.0) (2026-10-20)
 
