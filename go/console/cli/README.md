@@ -38,8 +38,7 @@ Suggest-only by default. `cli.autocorrect` (`off|prompt|read`, via
 `--autocorrect` / `KIT_AUTOCORRECT` / config) opts into applying the fix —
 `read` only on `kit/side-effect: read` leaves, `prompt` only on a terminal,
 answered from `/dev/tty`. An applied rewrite reports `corrected_from` in the
-envelope and re-dispatches through every gate.
-See [flag-enums.md](../../../docs/adopters/reference/flag-enums.md).
+envelope and re-dispatches through every gate. See [flag-enums.md](../../../docs/adopters/reference/flag-enums.md).
 
 ## Served commands
 
@@ -55,13 +54,14 @@ command tree through the same gates (policy, `WithPermission`, `WithAuditSinks`,
 | `mcpserve.With(mcpserve.Config{})` | `mcp` | MCP tools over streamable HTTP (`127.0.0.1:8081/mcp`), or stdio with `service start mcp --stdio` |
 | `rpcserve.With(rpcserve.Config{})` | `rpc` | `cmdsurface.v1.Commands` over Connect, gRPC and gRPC-Web, h2c on `127.0.0.1:8082` |
 
-`mcp` lives in [`mcpserve/`](mcpserve/) and `rpc` in [`rpcserve/`](rpcserve/),
-so only a CLI that serves them links the MCP SDK or `go/transport/rpc`;
-[`celpermission.With()`](celpermission/) likewise links CEL for `--policy` rules.
-`mcp` over stdio admits `kit/auth-required` leaves on the spawn's trust and
-keeps stdout for the protocol; `kit/requires-confirmation` leaves need an
-accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
-[the mcp service](../../../docs/contracts/serve-lifecycle.md#the-mcp-service),
+The rest of the `service` group drives the running instance: `service list`, `status`, `stop`, `restart`
+([guide](../../../docs/adopters/guides/manage-the-service-lifecycle.md)). The kit-owned `token` group, never served:
+`token create` (`WithIdentity`), `token verify`, `token key create|list|revoke` (`WithAPIKeys`) ([guide](../../../docs/adopters/guides/secure-remote-serving.md)).
+
+`mcp` lives in [`mcpserve/`](mcpserve/) and `rpc` in [`rpcserve/`](rpcserve/), so only a CLI that serves them links the MCP SDK
+or `go/transport/rpc`; [`celpermission.With()`](celpermission/) likewise links CEL for `--policy` rules. `mcp` over stdio admits
+`kit/auth-required` leaves on the spawn's trust and keeps stdout for the protocol; `kit/requires-confirmation` leaves need an
+accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text: [the mcp service](../../../docs/contracts/serve-lifecycle.md#the-mcp-service),
 [the rpc service](../../../docs/contracts/serve-lifecycle.md#the-rpc-service).
 
 ## Sub-packages

@@ -268,7 +268,10 @@ keypair (`cli.WithIdentity`) and any keys in
 `auth.jwt.public_key_files`. `WithAPI` plus `WithIdentity` mounts
 `token create`, which signs with the keypair, and `token verify`,
 which checks a token the way a service would (`--service rpc` for
-another one; exit `5` when refused):
+another one; exit `5` when refused). `token verify` reads the
+`services.*` configuration from the sources `service start` does (the
+config files, `-c` and the environment), so its verdict is the one the
+running service reaches:
 
 ```console
 $ export TOKEN=$(mytool token create --sub ci-bot --tenant acme --scopes widgets:read --expires 1h)
@@ -297,7 +300,12 @@ key's state, and `token key revoke <id>` stops one at once. `token
 key` reads the same `services.*` configuration `service start` does
 and opens the store the service under `auth.mode: apikey` reads; when
 no service is under it yet, or two read different stores, name one
-with `--service mcp`. The
+with `--service mcp`. `--service` must name a registered service other
+than kit's `socket` (no HTTP listener, never reads `auth.mode:
+apikey`): an unregistered name and `socket` are refused with a usage
+error (exit `2`) that lists the services to choose from. A registered service whose `auth.mode` is not `apikey`
+is accepted, with a warning on stderr that it does not accept the
+store's keys until it is. The
 default `sqlite` store is created owner-only (`0600`) and can be
 written while the service runs; a `badger` store is locked by the
 running service, so stop it before running `token key`.
