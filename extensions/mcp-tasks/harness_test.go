@@ -25,7 +25,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hop.top/mcp-tasks"
+	tasks "hop.top/mcp-tasks"
 )
 
 // rpcError is a decoded JSON-RPC error object.

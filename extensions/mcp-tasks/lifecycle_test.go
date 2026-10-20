@@ -16,7 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"hop.top/mcp-tasks"
+	tasks "hop.top/mcp-tasks"
 )
 
 // TestStartTaskWithoutAttachFailsClosed pins the misuse mode: a host
@@ -185,10 +185,12 @@ func TestNonDeclaringClientInline(t *testing.T) {
 }
 
 // TestCancelCooperative pins tasks/cancel: empty ack with resultType
-// complete, cooperative context cancellation, terminal cancelled
+// complete, cooperative context cancellation, terminal canceled
 // state, idempotent re-cancel, and cancel-after-completion leaving
 // the completed state untouched.
 func TestCancelCooperative(t *testing.T) {
+	const wantStatus = "cancelled" //nolint:misspell // wire value fixed by the tasks spec
+
 	exec := func(ctx context.Context, h *tasks.Handle) (*mcp.CallToolResult, error) {
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -207,17 +209,17 @@ func TestCancelCooperative(t *testing.T) {
 	if ack["resultType"] != "complete" || !emptyAck(ack) {
 		t.Errorf("cancel ack = %v, want empty ack with resultType complete", ack)
 	}
-	final := pollUntil(t, ts, taskID, nil, "cancelled")
+	final := pollUntil(t, ts, taskID, nil, wantStatus)
 	if _, ok := final["result"]; ok {
-		t.Errorf("cancelled task carries result: %v", final)
+		t.Errorf("canceled task carries result: %v", final)
 	}
 
-	// Idempotent: cancelling a terminal task still acks.
+	// Idempotent: canceling a terminal task still acks.
 	if ack := cancel(4); ack["resultType"] != "complete" {
 		t.Errorf("re-cancel ack = %v", ack)
 	}
-	if res := resultMap(t, getTask(t, ts, taskID, nil)); res["status"] != "cancelled" {
-		t.Errorf("status after re-cancel = %v, want cancelled", res["status"])
+	if res := resultMap(t, getTask(t, ts, taskID, nil)); res["status"] != wantStatus {
+		t.Errorf("status after re-cancel = %v, want %s", res["status"], wantStatus)
 	}
 }
 
