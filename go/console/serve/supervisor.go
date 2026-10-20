@@ -70,6 +70,17 @@ func WithEscalation(ch <-chan os.Signal) Option {
 	return func(s *Supervisor) { s.escalate = ch }
 }
 
+// WithRunObserver hands fn the record of each run as the run begins,
+// before any service starts. It is how a status surface outside the
+// services — the control channel `service status` answers on — reads
+// what the supervisor saw: fn keeps the [RunStatus] and reads it when
+// asked, for as long as it likes. The record is live for the whole run
+// and safe for concurrent use. fn runs on Run's goroutine and must not
+// block; each Run hands it a record of its own.
+func WithRunObserver(fn func(RunStatus)) Option {
+	return func(s *Supervisor) { s.observe = fn }
+}
+
 // Supervisor runs a resolved set of services under one lifecycle:
 // ordered start, per-service readiness, policy-driven reaction to
 // failure, and ordered stop bounded by the configured budgets
@@ -89,6 +100,7 @@ type Supervisor struct {
 	source   string
 	now      func() time.Time
 	escalate <-chan os.Signal
+	observe  func(RunStatus)
 }
 
 // NewSupervisor returns a Supervisor over reg with cfg. Defaults are
@@ -160,6 +172,9 @@ func (r Result) ExitCode() int { return ExitCodeFor(r.Outcome) }
 // caller already made is the one the contract says to honor.
 func (s *Supervisor) Run(ctx context.Context, selected []string, configs map[string]Config) Result {
 	st := newRunState(s.now, selected, configs)
+	if s.observe != nil {
+		s.observe(st)
+	}
 	em := &emitter{
 		topics: s.topics, pub: s.pub, log: s.log, source: s.source,
 		optional: st.optional,
