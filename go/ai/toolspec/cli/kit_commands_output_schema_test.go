@@ -175,8 +175,8 @@ func TestKitCommands_OutputMatchesSchema(t *testing.T) {
 		{name: "token verify", setup: func(t *testing.T, r *kitcli.Root) []string {
 			return []string{"token", "verify", mustRun(t, r, "token", "create", "--sub", "alice")}
 		}},
-		{name: "token key list", args: []string{"token", "key", "list"}, setup: func(t *testing.T, r *kitcli.Root) []string {
-			mustRun(t, r, "token", "key", "create", "--sub", "alice")
+		{name: "token key list", args: []string{"token", "key", "list", "--service", "api"}, setup: func(t *testing.T, r *kitcli.Root) []string {
+			mustRun(t, r, "token", "key", "create", "--sub", "alice", "--service", "api")
 			return nil
 		}},
 		{name: "peer list empty", args: []string{"peer", "list"}},
@@ -186,10 +186,10 @@ func TestKitCommands_OutputMatchesSchema(t *testing.T) {
 		{name: "alias add", args: []string{"alias", "add", "st", "status"}},
 		{name: "alias delete", args: []string{"alias", "delete", "st"}, setup: seedAlias},
 		{name: "token create", args: []string{"token", "create", "--sub", "alice"}},
-		{name: "token key create", args: []string{"token", "key", "create", "--sub", "alice"}},
+		{name: "token key create", args: []string{"token", "key", "create", "--sub", "alice", "--service", "api"}},
 		{name: "token key revoke", setup: func(t *testing.T, r *kitcli.Root) []string {
-			key := mustRun(t, r, "token", "key", "create", "--sub", "alice")
-			return []string{"token", "key", "revoke", strings.Split(key, "_")[1]}
+			key := mustRun(t, r, "token", "key", "create", "--sub", "alice", "--service", "api")
+			return []string{"token", "key", "revoke", strings.Split(key, "_")[1], "--service", "api"}
 		}},
 		{name: "serve --list", args: []string{"serve", "--list"}},
 		{name: "service list", args: []string{"service", "list"}},

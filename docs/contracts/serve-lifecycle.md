@@ -2374,9 +2374,15 @@ kit HTTP listeners, sent as `X-API-Key: <key>` or
   <id>` (exit `3` for an unknown id), whether or not the tool has
   `WithAPI`: a tool serving only `mcp` or `rpc` under `auth.mode:
   apikey` issues its own keys without registering a REST api. Each
-  verb opens the store of `--service` (default `api`; such a tool
-  names its service, `--service mcp`, when that service's
-  `auth.apikey` names a store of its own). Revocation is immediate: the service
+  verb opens the store `--service`'s `auth.apikey` resolves to, read
+  from the same `services.*` sources `service start` reads (the config
+  files, `-c`, the environment) and resolved the way the service
+  resolves it, so the verbs write the store the running service reads.
+  Without `--service`, the store is the one every registered service
+  under `auth.mode: apikey` reads (the socket, which has no HTTP
+  listener, never counts). No such service, or two reading different
+  stores, is refused `USAGE` (exit `2`), naming the services to choose
+  from. Revocation is immediate: the service
   reads the store on every request. A revoked key stays listed.
 - The key's principal, tenant and scopes are the call's `Caller`,
   `Tenant` and `Meta.Extra["scopes"]`; `Established` is `verified`.
