@@ -118,7 +118,8 @@ opens the line — see [LTS & backports](#lts--backports).
 to a full commit SHA on its `main` that carries the extension (v0 does not
 yet); move all three references (`uses:` twice and `tooling-ref`) together.
 `scripts/promote-release.sh` and the promotion gate read the pin from
-`release-please.yml`.
+`release-please.yml`; `scripts/promote-release.sh --pin` prints it (the full
+commit SHA, nothing else).
 
 ## Target versioning
 
@@ -192,6 +193,17 @@ make promote ARGS='clear channel --package kit'
 All or nothing: one refused package and nothing is written or committed. A
 group member already on (or already promoted to) the channel is left as it
 is; nothing changed, nothing committed.
+
+With `--group`, `open-line` also leaves a member as it is when it has no
+release yet (the group's link gives it the version if the line links the
+family, else it opens at its `initial-version`) or is already on the line;
+named with `--package`, either is refused instead. Each skipped member is
+named in promote.js's report, so in the commit body. A `channel` step on a
+member whose line sits a linked gap behind the family's (a pre-1.0 minor, or
+a major) is still written, with a warning on stderr: the family's next link
+moves it to the family's line on alpha, and a linked cut on `main` needs it
+at an rc of that line. Warnings are not part of the report, so they never
+reach the commit body.
 
 `.github/workflows/release-promote-gate.yml` (check `validate-promotion`)
 runs on every PR:
