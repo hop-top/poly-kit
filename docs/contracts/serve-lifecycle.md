@@ -2391,7 +2391,10 @@ kit HTTP listeners, sent as `X-API-Key: <key>` or
   under `auth.mode: apikey` reads (the socket, which has no HTTP
   listener, never counts). No such service, or two reading different
   stores, is refused `USAGE` (exit `2`), naming the services to choose
-  from. Revocation is immediate: the service
+  from. A `--service` the registry does not hold is refused the same
+  way; one that is not under `auth.mode: apikey` is served, with a
+  warning on stderr (and in a dry run's plan) that it does not accept
+  the store's keys yet. Revocation is immediate: the service
   reads the store on every request. A revoked key stays listed.
 - The key's principal, tenant and scopes are the call's `Caller`,
   `Tenant` and `Meta.Extra["scopes"]`; `Established` is `verified`.

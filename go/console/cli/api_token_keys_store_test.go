@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -191,4 +192,68 @@ func TestTokenKey_ServiceFlagStillNamesOne(t *testing.T) {
 	createdID(t, r, "--service", "mcp")
 	assert.FileExists(t, b)
 	assert.NoFileExists(t, a)
+}
+
+// TestTokenKey_UnknownServiceIsRefused pins that --service must name a
+// registered service when the tool has a registry: a typo is a usage
+// error naming the candidates, and opens no store. A tool with no
+// registry has nothing to check the name against.
+func TestTokenKey_UnknownServiceIsRefused(t *testing.T) {
+	isolateHome(t)
+	codeDefault := filepath.Join(t.TempDir(), "default", "keys.db")
+	_, err := tokenKey(t, keyStoreRoot(t, codeDefault), "create", "--sub", "alice", "--service", "mpc")
+	var oe *output.Error
+	require.ErrorAs(t, err, &oe)
+	assert.Equal(t, output.ExitUsage, oe.ExitCode)
+	assert.Contains(t, oe.Message, `token key create: unknown service "mpc"`)
+	assert.Equal(t, "pass --service naming one of api, mcp", oe.SuggestedFix)
+	assert.NoFileExists(t, codeDefault)
+
+	_, err = tokenKey(t, keyStoreRoot(t, codeDefault), "list", "--service", "mpc")
+	require.ErrorAs(t, err, &oe)
+	assert.Equal(t, output.ExitUsage, oe.ExitCode, "every verb")
+
+	bare := authRoot(t, WithAPIKeys(APIKeysConfig{Path: codeDefault}))
+	require.Nil(t, bare.serveReg, "no service registered")
+	createdID(t, bare, "--service", "anything")
+	assert.FileExists(t, codeDefault)
+}
+
+// TestTokenKey_WarnsWhenTheServiceIsNotUnderAPIKey pins the advisory:
+// naming a service that is not under auth.mode: apikey still issues
+// into its store — the operator may set the mode next — but says that
+// the service does not accept those keys yet, on stderr and in a dry
+// run's plan. Under the mode, nothing is said.
+func TestTokenKey_WarnsWhenTheServiceIsNotUnderAPIKey(t *testing.T) {
+	isolateHome(t)
+	codeDefault := filepath.Join(t.TempDir(), "default", "keys.db")
+	run := func(r *Root, args ...string) (string, string, error) {
+		var out, errOut bytes.Buffer
+		r.Cmd.SetOut(&out)
+		r.Cmd.SetErr(&errOut)
+		r.SetArgs(append([]string{"token", "key"}, args...))
+		err := r.Execute(context.Background())
+		return out.String(), errOut.String(), err
+	}
+	const warning = `warning: token key create: services.mcp.auth.mode is not "apikey"; ` +
+		`the mcp service does not accept the keys in this store until it is`
+
+	out, stderr, err := run(keyStoreRoot(t, codeDefault), "create", "--sub", "alice", "--service", "mcp")
+	require.NoError(t, err)
+	assert.Regexp(t, `^kit_[0-9a-f]{16}_[0-9a-f]{64}\n$`, out, "stdout stays the bare key")
+	assert.Contains(t, stderr, warning)
+	assert.FileExists(t, codeDefault)
+
+	out, _, err = run(keyStoreRoot(t, codeDefault), "create", "--sub", "alice", "--service", "mcp",
+		"--dry-run", "--format", "json")
+	require.NoError(t, err)
+	var plan Plan
+	require.NoError(t, json.Unmarshal([]byte(out), &plan), out)
+	assert.Contains(t, plan.Warnings, strings.TrimPrefix(warning, "warning: "))
+
+	r := keyStoreRoot(t, codeDefault)
+	setKeys(r, map[string]any{"services.mcp.auth.mode": "apikey"})
+	_, stderr, err = run(r, "create", "--sub", "alice", "--service", "mcp")
+	require.NoError(t, err)
+	assert.NotContains(t, stderr, "warning:")
 }
