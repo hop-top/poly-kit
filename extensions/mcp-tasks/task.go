@@ -51,8 +51,8 @@ const (
 	MethodCancel = "tasks/cancel"
 )
 
-// Status is a task lifecycle status. completed, failed and cancelled
-// are terminal; a task never leaves a terminal status.
+// Status is a task lifecycle status. StatusCompleted, StatusFailed and
+// StatusCancelled are terminal; a task never leaves a terminal status.
 type Status string
 
 const (
@@ -60,7 +60,7 @@ const (
 	StatusInputRequired Status = "input_required"
 	StatusCompleted     Status = "completed"
 	StatusFailed        Status = "failed"
-	StatusCancelled     Status = "cancelled"
+	StatusCancelled     Status = "cancelled" //nolint:misspell // wire value fixed by the tasks spec
 )
 
 // terminal reports whether s is a terminal status.

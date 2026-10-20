@@ -123,6 +123,7 @@ func New(opts *Options) *Extension {
 // legacy initialize handshake and server/discover.
 func DeclareServerCapability(so *mcp.ServerOptions) {
 	if so.Capabilities == nil {
+		//nolint:staticcheck // SA1019: the SDK's own default; deprecated, still served, and dropping it would change what the server advertises
 		so.Capabilities = &mcp.ServerCapabilities{Logging: &mcp.LoggingCapabilities{}}
 	}
 	so.Capabilities.AddExtension(ExtensionID, map[string]any{})
@@ -192,7 +193,7 @@ func (e *Extension) Attach(s *mcp.Server) error {
 }
 
 // ExecuteFunc runs the long-lived operation behind a task. It
-// receives a context detached from the originating request (cancelled
+// receives a context detached from the originating request (canceled
 // only by tasks/cancel) and the task's Handle for input requests and
 // status messages. Its outcome maps onto the task exactly as SEP-2663
 // separates faults: a non-nil error is a protocol-level fault and
@@ -284,7 +285,7 @@ func (e *Extension) execute(ctx context.Context, h *Handle, run ExecuteFunc) {
 		switch {
 		case err != nil && h.cancelRequested.Load() && errors.Is(err, context.Canceled):
 			rec.Status = StatusCancelled
-			rec.StatusMessage = "cancelled at client request"
+			rec.StatusMessage = "cancelled at client request" //nolint:misspell // spelled like the wire status it reports
 		case err != nil:
 			rec.Status = StatusFailed
 			rec.StatusMessage = err.Error()
@@ -427,7 +428,7 @@ func (h *Handle) SetStatusMessage(ctx context.Context, msg string) error {
 
 // RequestInput moves the task to input_required with the given
 // requests and blocks until the client has answered every key via
-// tasks/update (partial updates accumulate) or ctx is cancelled.
+// tasks/update (partial updates accumulate) or ctx is canceled.
 // Keys must be unique over the task's lifetime — the SEP forbids
 // reuse — and RequestInput enforces that by failing on a reused key.
 // On success the task returns to working and the collected responses
