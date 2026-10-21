@@ -142,6 +142,14 @@
           "type": "json",
           "path": "composer.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "/templates/cli-php/composer.json.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "/internal/template/builtins/cli-php/composer.json.tmpl"
         }
       ],
       "prerelease": true,
