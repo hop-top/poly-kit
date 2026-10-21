@@ -6,6 +6,7 @@
 package kitinit
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // kitPHPPackage is the Composer name of the PHP kit SDK.
@@ -87,6 +89,53 @@ func TestBootstrap_CLIPHP_PHPFloorMatchesTheSDK(t *testing.T) {
 	pkg, _ := renderCLIPHPComposerJSON(t)
 	assert.Equal(t, sdk.Require["php"], pkg.Require["php"],
 		"a generated project requires the PHP the kit SDK requires")
+}
+
+// setupPHPAction is the action the generated PHP CI installs PHP with:
+// the project's mise toolchain carries no PHP (mise builds it from
+// source), and the runner's default PHP is older than the floor.
+const setupPHPAction = "shivammathur/setup-php@"
+
+// TestRenderShared_CIPHPSetsUpTheComposerFloor holds every job of the
+// generated PHP workflow to installing the PHP the generated
+// composer.json requires; without it composer runs on the runner's
+// default PHP and refuses the project's floor.
+func TestRenderShared_CIPHPSetsUpTheComposerFloor(t *testing.T) {
+	composer, _ := renderCLIPHPComposerJSON(t)
+	floor := strings.TrimPrefix(composer.Require["php"], "^")
+	require.Regexp(t, `^\d+\.\d+$`, floor, "composer.json's php floor is a caret on major.minor")
+
+	target := t.TempDir()
+	in := sharedTestInputs(t)
+	in.Template = "cli-php"
+	in.Runtime = []string{"php"}
+	in.Vars["Runtime"] = []string{"php"}
+	_, err := renderShared(context.Background(), sharedDeps(t), in, target, 0, false)
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile(filepath.Join(target, ".github", "workflows", "ci-php.yml"))
+	require.NoError(t, err)
+	var wf struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Uses string            `yaml:"uses"`
+				With map[string]string `yaml:"with"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	require.NoError(t, yaml.Unmarshal(raw, &wf), "ci-php.yml is valid YAML:\n%s", raw)
+	require.NotEmpty(t, wf.Jobs)
+
+	for name, job := range wf.Jobs {
+		var versions []string
+		for _, step := range job.Steps {
+			if strings.HasPrefix(step.Uses, setupPHPAction) {
+				versions = append(versions, step.With["php-version"])
+			}
+		}
+		assert.Equal(t, []string{floor}, versions,
+			"job %s sets up PHP %s, composer.json's floor, exactly once", name, floor)
+	}
 }
 
 // TestCLIPHPKitPin_BumpedByTheReleasePR pins the release wiring: every
