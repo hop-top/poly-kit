@@ -155,6 +155,16 @@
       "package-name": "hop-top-kit",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "/templates/cli-rs/Cargo.toml.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "/internal/template/builtins/cli-rs/Cargo.toml.tmpl"
+        }
+      ],
       "prerelease": true,
       "prerelease-type": "alpha.0",
       "versioning": "target",
