@@ -171,6 +171,14 @@
         {
           "type": "generic",
           "path": "/internal/template/builtins/cli-rs/Cargo.toml.tmpl"
+        },
+        {
+          "type": "generic",
+          "path": "/docs/adopters/reference/rs-sdk.md"
+        },
+        {
+          "type": "generic",
+          "path": "/docs/adopters/guides/serve-mcp-from-any-sdk.md"
         }
       ],
       "prerelease": true,
