@@ -208,7 +208,7 @@ disagree, **the fixtures win**.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.0", features = ["mcp"] }
+hop-top-kit = { version = "0.5.0-alpha.2", features = ["mcp"] }
 ```
 
 `rmcp` supplies the protocol vocabulary only — version constants, the
@@ -318,7 +318,7 @@ on it, and `httpcache` builds on `kv`.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.0", features = ["kv"] }
+hop-top-kit = { version = "0.5.0-alpha.2", features = ["kv"] }
 ```
 
 ```bash
@@ -712,7 +712,7 @@ publish/subscribe dispatch.
 
 ```toml
 [dependencies]
-hop-top-kit = { version = "0.5.0-alpha.0", features = ["bus"] }
+hop-top-kit = { version = "0.5.0-alpha.2", features = ["bus"] }
 ```
 
 ```bash

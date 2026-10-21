@@ -265,7 +265,7 @@ own permission decision as `Meta.Extra["scopes"]`, comma-joined.
 
 **Issue your own tokens with `jwt`.** It trusts the tool's identity
 keypair (`cli.WithIdentity`) and any keys in
-`auth.jwt.public_key_files`. `WithAPI` plus `WithIdentity` mounts
+`auth.jwt.public_key_files`. `WithIdentity` alone mounts
 `token create`, which signs with the keypair, and `token verify`,
 which checks a token the way a service would (`--service rpc` for
 another one; exit `5` when refused). `token verify` reads the
@@ -1709,7 +1709,7 @@ keys, defaults and refusals.
 | `kit/permissions` annotation | none | Scopes a verified caller must all hold; otherwise `403 insufficient_scope`. The owner (socket file, stdio, CLI) is not asked. |
 | `--policy=<name>` | `kit-default` beyond loopback, none on loopback | The tool's policy engine, applied to remote calls; its `callers` section answers per caller. `kit-default` is reserved for the shipped policy. |
 | `cli.WithPermission(fn)` | permit all | Permission decision on every kit-shipped transport service, after the scope check and `--policy`; can only narrow. |
-| `cli.WithIdentity(cfg)` | none | The keypair `auth.mode: jwt` trusts; with `WithAPI`, mounts `token create` and `token verify`. |
+| `cli.WithIdentity(cfg)` | none | The keypair `auth.mode: jwt` trusts; mounts `token create` and `token verify`, no `WithAPI` needed. |
 | `cli.WithAPIKeys(cfg)` | not mounted | Mounts `token key create`, `list` and `revoke` for `auth.mode: apikey`. |
 | `cli.WithTokenCheck(fn)` | none | Revocation check on every credential the `auth.mode` verifier accepted (`jwt`, `jwks`, `oidc`, `apikey`); an error refuses it `401`. |
 | `cli.WithServeRateLimit(cfg)` | kit tiers | The tool's own tier numbers below `rate_limit.*`; does not switch the limit on. |
