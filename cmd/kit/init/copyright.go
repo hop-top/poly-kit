@@ -152,15 +152,13 @@ func validateYears(years string) error {
 	return nil
 }
 
-// DefaultCopyrights returns the canonical 4-holder block used when no
+// DefaultCopyrights returns the canonical 2-holder block used when no
 // --author flag is supplied and no defaults.yaml override is present.
 // year is the current scaffold year, frozen at first render.
 func DefaultCopyrights(year int) []Copyright {
 	y := strconv.Itoa(year)
 	return []Copyright{
-		{Years: y, Holder: "Idea Crafters LLC", URL: "https://ideacrafters.com"},
-		{Years: y, Holder: "AI Experts", URL: "https://lesexperts.ai"},
-		{Years: y, Holder: "@jadb", URL: "https://github.com/jadb"},
-		{Years: y, Holder: "@monaam", URL: "https://github.com/monaam"},
+		{Years: y, Holder: "Idea Crafters LLC", URL: "open@ideacrafters.com"},
+		{Years: y, Holder: "Jad Bitar", URL: "https://github.com/jadb"},
 	}
 }

@@ -31,7 +31,7 @@ func renderLicense(t *testing.T, path string, cps []kitinit.Copyright) string {
 	return buf.String()
 }
 
-func TestLicenseMIT_DefaultFourHolders(t *testing.T) {
+func TestLicenseMIT_DefaultTwoHolders(t *testing.T) {
 	out := renderLicense(t,
 		"../../../templates/shared/LICENSE-MIT.tmpl",
 		kitinit.DefaultCopyrights(2026),
@@ -41,10 +41,8 @@ func TestLicenseMIT_DefaultFourHolders(t *testing.T) {
 	assert.Contains(t, out, "# >>> kit-managed: copyright >>>")
 	assert.Contains(t, out, "# <<< kit-managed: copyright <<<")
 	for _, want := range []string{
-		"Copyright (c) 2026 Idea Crafters LLC <https://ideacrafters.com>",
-		"Copyright (c) 2026 AI Experts <https://lesexperts.ai>",
-		"Copyright (c) 2026 @jadb <https://github.com/jadb>",
-		"Copyright (c) 2026 @monaam <https://github.com/monaam>",
+		"Copyright (c) 2026 Idea Crafters LLC <open@ideacrafters.com>",
+		"Copyright (c) 2026 Jad Bitar <https://github.com/jadb>",
 	} {
 		assert.Contains(t, out, want)
 	}

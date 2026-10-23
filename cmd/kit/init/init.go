@@ -280,7 +280,7 @@ func InitCmd(root *cli.Root) *cobra.Command {
 		"Copyright holder(s) for LICENSE files. Repeatable; each value may "+
 			"contain ';'-delimited holders. Grammar: '<year-or-range> <holder>"+
 			"[ <<URL>>]'. Bare names use the current year. Empty defaults to "+
-			"the canonical 4-holder block.")
+			"the canonical 2-holder block.")
 	f.StringVar(&emailFlag, "email", "", "Author email (defaults to git config user.email)")
 	f.StringVar(&themeFlag, "theme", "daylight", "Theme")
 	f.StringVar(&descriptionFlag, "description", "", "Project description")
@@ -457,7 +457,7 @@ func buildFlagSet(
 		fs.Author = author
 	}
 	// FlagSet.AuthorChanged tracks "user supplied --author at all" so
-	// the default 4-holder block kicks in only when the flag is absent.
+	// the default 2-holder block kicks in only when the flag is absent.
 	// Storing the bool (instead of relying on len(author)>0) lets an
 	// explicit `--author=` (empty value) still distinguish from unset.
 	fs.AuthorChanged = c("author")

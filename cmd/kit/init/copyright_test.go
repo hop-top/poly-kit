@@ -102,16 +102,13 @@ func TestParseCopyrights_MissingHolderAfterYears(t *testing.T) {
 	assert.Contains(t, err.Error(), "missing holder name")
 }
 
-func TestDefaultCopyrights_FourHolderBlock(t *testing.T) {
+func TestDefaultCopyrights_TwoHolderBlock(t *testing.T) {
 	got := kitinit.DefaultCopyrights(2026)
-	require.Len(t, got, 4)
+	require.Len(t, got, 2)
 	assert.Equal(t, "2026", got[0].Years)
 	assert.Equal(t, "Idea Crafters LLC", got[0].Holder)
-	assert.Equal(t, "https://ideacrafters.com", got[0].URL)
-	assert.Equal(t, "AI Experts", got[1].Holder)
-	assert.Equal(t, "https://lesexperts.ai", got[1].URL)
-	assert.Equal(t, "@jadb", got[2].Holder)
-	assert.Equal(t, "https://github.com/jadb", got[2].URL)
-	assert.Equal(t, "@monaam", got[3].Holder)
-	assert.Equal(t, "https://github.com/monaam", got[3].URL)
+	assert.Equal(t, "open@ideacrafters.com", got[0].URL)
+	assert.Equal(t, "2026", got[1].Years)
+	assert.Equal(t, "Jad Bitar", got[1].Holder)
+	assert.Equal(t, "https://github.com/jadb", got[1].URL)
 }
