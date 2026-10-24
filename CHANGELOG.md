@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0-beta.2](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.1...kit/v0.5.0-beta.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* **templates:** cli-php CI installs PHP 8.4 via setup-php ([35bcb0a](https://github.com/hop-top/poly-kit/commit/35bcb0af6f6a0cf61a812095753728ee7506c93c))
+* **templates:** cli-php requires current kit-php and PHP 8.4 ([ca85fa2](https://github.com/hop-top/poly-kit/commit/ca85fa2ba23e9924bd4e8e0cca40a2f65f42a12f))
+* **templates:** cli-php symfony/console range matches the SDK ([58ab035](https://github.com/hop-top/poly-kit/commit/58ab035b4b7d5a8d314b103cf71240c0e202bdfb))
+* **templates:** cli-rs pins current hop-top-kit, kit-rs release bumps it ([da72dbf](https://github.com/hop-top/poly-kit/commit/da72dbf8bf0a5a9013381a61aa602293cff54d09))
+
 ## [0.5.0-beta.1](https://github.com/hop-top/poly-kit/compare/kit/v0.5.0-beta.0...kit/v0.5.0-beta.1) (2026-10-20)
 
 The hop-top team is happy to announce Kit 0.5.0-beta.1. This release includes new features and bug fixes.
