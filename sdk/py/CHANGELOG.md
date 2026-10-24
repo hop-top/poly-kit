@@ -2,6 +2,8 @@
 
 ## [0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6) (2026-10-24)
 
+The hop-top team is happy to announce Kit's Python SDK 0.5.0-alpha.6. This release includes new features and bug fixes.
+
 
 ### ⚠ BREAKING CHANGES
 
@@ -23,6 +25,8 @@
 * **py:** omit query, fragment, userinfo from offline refusal ([4161a2f](https://github.com/hop-top/poly-kit/commit/4161a2ff03f47e2fe5f5ded05083dbb13766705d))
 * **py:** read root `--quiet` from typer-injected context in spaced ([02e470b](https://github.com/hop-top/poly-kit/commit/02e470bee215afb4c4a1f516cec0fc7fd5680994))
 * **sdk-py:** admit auth-required MCP leaves only for a verified caller ([6d6eb28](https://github.com/hop-top/poly-kit/commit/6d6eb2893a827dbac448fe59acd8a42503f3b822))
+
+Full diff: [kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.5...kit-py/v0.5.0-alpha.6)
 
 ## [0.5.0-alpha.5](https://github.com/hop-top/poly-kit/compare/kit-py/v0.5.0-alpha.4...kit-py/v0.5.0-alpha.5) (2026-09-05)
 
