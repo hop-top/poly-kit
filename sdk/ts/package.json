@@ -1,6 +1,6 @@
 {
   "name": "@hop-top/kit",
-  "version": "0.5.0-alpha.3",
+  "version": "0.5.0-alpha.4",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hop-top/poly-kit.git",
@@ -144,31 +144,81 @@
   },
   "typesVersions": {
     "*": {
-      "cli": ["./dist/cli.d.ts"],
-      "output": ["./dist/output.d.ts"],
-      "xdg": ["./dist/xdg.d.ts"],
-      "config": ["./dist/config.d.ts"],
-      "sqlstore": ["./dist/sqlstore.d.ts"],
-      "upgrade": ["./dist/upgrade.d.ts"],
-      "llm": ["./dist/llm.d.ts"],
-      "routellm": ["./dist/routellm.d.ts"],
-      "alias": ["./dist/alias.d.ts"],
-      "tui": ["./dist/tui/index.d.ts"],
-      "errcorrect": ["./dist/errcorrect.d.ts"],
-      "safety": ["./dist/safety.d.ts"],
-      "provenance": ["./dist/provenance.d.ts"],
-      "stream": ["./dist/stream.d.ts"],
-      "progress": ["./dist/progress.d.ts"],
-      "auth": ["./dist/auth.d.ts"],
-      "api": ["./dist/api.d.ts"],
-      "rpc": ["./dist/rpc.d.ts"],
-      "aim": ["./dist/aim.d.ts"],
-      "netpolicy": ["./dist/netpolicy.d.ts"],
-      "scope": ["./dist/scope.d.ts"],
-      "serve": ["./dist/serve.d.ts"],
-      "telemetry": ["./dist/telemetry/index.d.ts"],
-      "id": ["./dist/id/index.d.ts"],
-      "mcp": ["./dist/mcp/index.d.ts"]
+      "cli": [
+        "./dist/cli.d.ts"
+      ],
+      "output": [
+        "./dist/output.d.ts"
+      ],
+      "xdg": [
+        "./dist/xdg.d.ts"
+      ],
+      "config": [
+        "./dist/config.d.ts"
+      ],
+      "sqlstore": [
+        "./dist/sqlstore.d.ts"
+      ],
+      "upgrade": [
+        "./dist/upgrade.d.ts"
+      ],
+      "llm": [
+        "./dist/llm.d.ts"
+      ],
+      "routellm": [
+        "./dist/routellm.d.ts"
+      ],
+      "alias": [
+        "./dist/alias.d.ts"
+      ],
+      "tui": [
+        "./dist/tui/index.d.ts"
+      ],
+      "errcorrect": [
+        "./dist/errcorrect.d.ts"
+      ],
+      "safety": [
+        "./dist/safety.d.ts"
+      ],
+      "provenance": [
+        "./dist/provenance.d.ts"
+      ],
+      "stream": [
+        "./dist/stream.d.ts"
+      ],
+      "progress": [
+        "./dist/progress.d.ts"
+      ],
+      "auth": [
+        "./dist/auth.d.ts"
+      ],
+      "api": [
+        "./dist/api.d.ts"
+      ],
+      "rpc": [
+        "./dist/rpc.d.ts"
+      ],
+      "aim": [
+        "./dist/aim.d.ts"
+      ],
+      "netpolicy": [
+        "./dist/netpolicy.d.ts"
+      ],
+      "scope": [
+        "./dist/scope.d.ts"
+      ],
+      "serve": [
+        "./dist/serve.d.ts"
+      ],
+      "telemetry": [
+        "./dist/telemetry/index.d.ts"
+      ],
+      "id": [
+        "./dist/id/index.d.ts"
+      ],
+      "mcp": [
+        "./dist/mcp/index.d.ts"
+      ]
     }
   },
   "scripts": {
