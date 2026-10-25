@@ -9,9 +9,13 @@ mod goquote;
 mod loader;
 mod merge;
 mod migrate;
+#[cfg(not(target_arch = "wasm32"))]
+mod nearest;
 mod options;
 mod overrides;
 mod parse_scalar;
+#[cfg(not(target_arch = "wasm32"))]
+mod paths;
 mod precedence;
 mod resolved;
 mod scope;
@@ -27,11 +31,18 @@ pub use migrate::migrate;
 pub use migrate::{
     apply_migrations, MigrateError, MigrateFn, MigrateOptions, Migration, OnMigration,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use nearest::{nearest, nearest_with_depth, DEFAULT_MAX_DEPTH};
 pub use options::{Defaults, EnvOverride, Options};
 #[cfg(not(target_arch = "wasm32"))]
 pub use overrides::parse_config_args;
 pub use overrides::{apply_overrides, parse_overrides, with_project_marker, ParseOption};
 pub use parse_scalar::parse_scalar;
+#[cfg(not(target_arch = "wasm32"))]
+pub use paths::{
+    options_for_tool, options_for_tool_with_markers, options_for_tool_with_markers_from, paths,
+    paths_for_tool, paths_for_tool_with_markers, ResolvedPath,
+};
 #[cfg(not(target_arch = "wasm32"))]
 pub use precedence::load_yaml_layer;
 pub use precedence::{
