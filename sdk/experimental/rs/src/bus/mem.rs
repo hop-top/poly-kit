@@ -1,30 +1,18 @@
 //! In-memory pub/sub dispatch.
 //!
-//! # Dispatch model: synchronous, thread-safe
+//! # Dispatch model: sync here, async on [`SharedBus`]
 //!
 //! The Go canonical runtime (`go/runtime/bus/bus.go`) splits subscribers
 //! into two kinds. Sync handlers run inline and may veto the publish;
 //! async handlers run on goroutines drawn from a bounded semaphore pool,
 //! with a `WaitGroup` drained by `Close` under a caller deadline.
 //!
-//! This module ships **synchronous dispatch only**, for now. The earlier
-//! decision to leave async delivery out for good is superseded: a
-//! networked, multi-threaded Rust consumer needs it. The plan, in
-//! `docs/contributors/architecture/rust-bus-parity.md`, is:
-//!
-//! - an async dispatch path with a bounded pool and a draining close,
-//!   with tokio behind its own feature so the `bus` feature and the
-//!   `wasm32-unknown-unknown` build stay free of an async runtime;
-//! - the network adapter and the adapter seam it plugs into behind
-//!   their own features.
-//!
-//! Until those land, synchronous delivery is a strict subset of the
-//! async contract from the subscriber's point of view: a handler that
-//! would have run on a pool thread instead runs on the publisher's
-//! thread. Handlers that want to defer work can spawn a task themselves.
-//!
-//! Consequence to be aware of: a slow handler blocks the publisher, and
-//! [`Bus::publish`] returns only once every matching subscriber has run.
+//! A plain [`Bus`] carries sync handlers only: a slow handler blocks the
+//! publisher, and [`Bus::publish`] returns once every matching
+//! subscriber has run. Async subscriptions, the pool and the draining
+//! close live on [`SharedBus`]; see [`async_dispatch`](super::async_dispatch).
+//! [`BusBuilder::max_async`] sizes the pool of the [`SharedBus`] a built
+//! bus is wrapped in.
 //!
 //! # Threads, context and re-entrancy
 //!
@@ -110,6 +98,12 @@ pub enum BusError {
     /// done before the async drain finishes. Displays Go's `ctx.Err()`
     /// text. Publish never returns it.
     Context(ContextError),
+    /// Returned only by [`SharedBus::close_ctx`] on
+    /// wasm32-unknown-unknown, with this many async handlers still
+    /// running and the context live: that target cannot block for them.
+    /// The bus is closed; call close again once the executor has run
+    /// them. Go has no such case.
+    NotDrained(usize),
 }
 
 impl BusError {
@@ -132,6 +126,7 @@ impl fmt::Display for BusError {
             BusError::Closed => f.write_str("bus: publish after close"),
             BusError::Handler(m) => f.write_str(m),
             BusError::Context(e) => write!(f, "{e}"),
+            BusError::NotDrained(n) => write!(f, "bus: close: {n} async handler(s) still running"),
         }
     }
 }
@@ -175,6 +170,8 @@ pub struct Bus {
     pub(super) closed: bool,
     pub(super) enforce: Mode,
     pub(super) on_invalid: Option<SharedErrFn>,
+    /// Pool size handed to [`SharedBus`]; zero means the default.
+    pub(super) max_async: usize,
 }
 
 impl Default for Bus {
@@ -193,6 +190,7 @@ impl Bus {
             closed: false,
             enforce: Mode::Warn,
             on_invalid: None,
+            max_async: 0,
         }
     }
 
@@ -223,6 +221,10 @@ impl Bus {
     ) -> SubscriptionId {
         let id = SubscriptionId(self.next_id);
         self.next_id += 1;
+        if self.closed {
+            // As on SharedBus: a closed bus registers nothing.
+            return id;
+        }
         self.subs.push(Subscription {
             id,
             pattern: pattern.into(),
@@ -326,6 +328,7 @@ pub(super) fn check_topic(
 pub struct BusBuilder {
     enforce: Option<Mode>,
     on_invalid: Option<SharedErrFn>,
+    max_async: usize,
 }
 
 impl BusBuilder {
@@ -345,6 +348,17 @@ impl BusBuilder {
         self
     }
 
+    /// Sets how many async handlers may run at once on the
+    /// [`SharedBus`] this bus is wrapped in: Go's `WithMaxAsync`. Zero
+    /// means [`DEFAULT_MAX_ASYNC`]; Go also maps negatives there, which
+    /// `usize` cannot express. A plain `Bus` has no async handlers.
+    ///
+    /// [`DEFAULT_MAX_ASYNC`]: super::DEFAULT_MAX_ASYNC
+    pub fn max_async(mut self, n: usize) -> Self {
+        self.max_async = n;
+        self
+    }
+
     /// Finalises the bus.
     pub fn build(self) -> Bus {
         Bus {
@@ -353,6 +367,7 @@ impl BusBuilder {
             closed: false,
             enforce: self.enforce.unwrap_or_default(),
             on_invalid: self.on_invalid,
+            max_async: self.max_async,
         }
     }
 }

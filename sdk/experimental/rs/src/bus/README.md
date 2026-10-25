@@ -14,6 +14,7 @@ grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; cross-pro
 - handlers register in one place and publishers live elsewhere → wrap in `SharedBus`, clone it
 - an adopter rebrands topics under its own prefix → `prefix_topics(prefix, actions)`, which validates tense
 - a publish must fail on a malformed topic rather than warn → `Bus::builder().enforce(Mode::Strict)`
+- a handler must not hold up the publisher → `SharedBus::subscribe_async` with a `Spawn` for your executor
 
 ## Quick start
 
@@ -41,18 +42,33 @@ bus.publish(&event).unwrap();
 - Subscribe patterns: `*` matches exactly one segment, `#` matches zero or more trailing segments and must
   be last.
 - `Mode` defaults to `Warn` (validate, report, still deliver); `Strict` rejects; `Off` skips validation.
-- Dispatch is synchronous: handlers run inline in subscription order on the publisher's thread and the
-  first handler error vetoes the publish. `Bus` and `SharedBus` are `Send + Sync`, handlers must be too.
+- Sync dispatch: handlers run inline in subscription order on the publisher's thread and the first
+  handler error vetoes the publish. `Bus` and `SharedBus` are `Send + Sync`, handlers must be too.
+- Async dispatch, Go's `SubscribeAsync`, on `SharedBus` only: `subscribe_async(pattern, spawner, handler)`.
+  Handlers get the publish context and a copy of the event, are launched in subscription order after every
+  sync handler succeeded (a veto launches none), and return nothing, so they never fail a publish. No
+  async runtime is pulled in: `Spawn` (any `Fn(Task)`) puts each task on the caller's executor, e.g. a
+  closure calling `tokio::spawn` or `wasm_bindgen_futures::spawn_local`. A tokio adapter may follow behind
+  its own feature.
+- Pool: at most `max_async` handlers run at once (`Bus::builder().max_async(n)`, Go's `WithMaxAsync`;
+  default `DEFAULT_MAX_ASYNC` = 256, `0` means the default). A publish blocks while the pool is full, as
+  Go's does, so the executor must run tasks independently of the publishing thread. After close a
+  blocked publish returns `Ok` and launches nothing. On `wasm32-unknown-unknown` the pool is uncapped.
 - `Context` is the Rust form of Go's `context.Context`: cancellation, a deadline, typed values, and Go's
   error texts (`context canceled`, `context deadline exceeded`). `publish_ctx` hands it to `subscribe_ctx`
   handlers without reading it, as Go does; `publish` and `subscribe` are the background-context forms.
   On `wasm32-unknown-unknown` a context has no deadline (no clock).
 - `SharedBus::unsubscribe` waits until no in-flight publish can still call that handler, even when it
   returns `false` because close or another unsubscribe removed it first, as Go's closure always locks.
+  Unsubscribing an async subscription admits no new task for it; tasks already launched run on.
   `SharedBus::close_ctx(&ctx)` marks the bus closed, then waits for in-flight sync publishes with no
-  deadline, as Go's lock does; `ctx` bounds only the async drain, which arrives with async dispatch.
-  `close()` is `close_ctx` with the background context. With `ctx` already done and nothing left to drain
-  it returns `Ok`; Go's `select` picks nil or `ctx.Err()` at random.
+  deadline, as Go's lock does, then for launched async tasks until `ctx` is done: on expiry it returns
+  Go's `ctx.Err()` text (`BusError::Context`) and the bus stays closed. `close()` is `close_ctx` with the
+  background context. With `ctx` already done and nothing left to drain it returns `Ok`; Go's `select`
+  picks nil or `ctx.Err()` at random. On `wasm32-unknown-unknown` close cannot block for tasks: with
+  some still running and `ctx` live it returns `BusError::NotDrained`; call it again once they ran.
+- Subscribe after close registers nothing and drops the handler, so a handler holding a clone of the bus
+  cannot keep it alive. Go keeps the subscription on the closed bus.
 - Re-entrancy: a handler may publish, subscribe, unsubscribe and close on the `SharedBus` dispatching to
   it; Go deadlocks on all but the nested publish. Waits skip the calling thread's own publishes.
   Unsubscribe from a handler does not wait for other threads and takes effect at once. Close from a

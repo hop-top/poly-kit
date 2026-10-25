@@ -16,15 +16,15 @@
 //!
 //! The Go package also ships a `NetworkAdapter` (WebSocket peer relay,
 //! reconnect/backoff, star topology, auth handshake) and a SQLite-backed
-//! adapter. The network adapter is not yet ported but is in scope, along
-//! with async dispatch, behind their own features; the SQLite adapter
-//! stays out. The plan and feature layout live in
-//! `docs/contributors/architecture/rust-bus-parity.md`.
+//! adapter. The network adapter is not yet ported but is in scope, behind
+//! its own feature; the SQLite adapter stays out. The plan and feature
+//! layout live in `docs/contributors/architecture/rust-bus-parity.md`.
 //!
-//! Dispatch is currently synchronous — see [`mem`] for the model and its
-//! consequences, and [`SharedBus`] for threads, draining close and
-//! re-entrancy. Publish, handlers and close carry a [`Context`], the
-//! Rust form of Go's `context.Context`.
+//! See [`mem`] for sync dispatch, [`SharedBus`] for threads, draining
+//! close and re-entrancy, and [`async_dispatch`] for async subscribe,
+//! its bounded pool and the executor seam, which needs no async runtime.
+//! Publish, handlers and close carry a [`Context`], the Rust form of
+//! Go's `context.Context`.
 //!
 //! # Example
 //!
@@ -42,6 +42,7 @@
 //! bus.publish(&event).unwrap();
 //! ```
 
+pub mod async_dispatch;
 pub mod builder;
 pub mod config;
 pub mod context;
@@ -52,6 +53,7 @@ mod quote;
 mod shared;
 pub mod topic;
 
+pub use async_dispatch::{MaybeSend, Spawn, Task, DEFAULT_MAX_ASYNC};
 pub use builder::{parse_topic, prefixed_topic_of, topic_of, TopicBuilder};
 pub use config::{
     mode_from_config, mode_from_config_with, mode_from_env, mode_from_env_with, mode_from_string,
