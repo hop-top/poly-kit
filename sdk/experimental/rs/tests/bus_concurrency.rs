@@ -1,9 +1,11 @@
 //! Thread safety and re-entrancy of the in-memory bus.
 //!
 //! Ports `TestConcurrentPublishSubscribe` from
-//! `go/runtime/bus/bus_test.go`, and pins nested publish: Go's sync
-//! handlers may publish on the bus that is dispatching to them, and the
-//! inner publish delivers in full before the outer one continues.
+//! `go/runtime/bus/bus_test.go`, pins nested publish (Go's sync handlers
+//! may publish on the bus dispatching to them, and the inner publish
+//! delivers in full before the outer one continues), and pins that
+//! unsubscribe and close wait for in-flight dispatch, as Go's write lock
+//! does. `bus_drain.rs` covers the draining close in depth.
 
 #![cfg(feature = "bus")]
 
@@ -12,7 +14,10 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use hop_top_kit::bus::{Bus, BusError, ErrFn, Event, Handler, Mode, SharedBus, SubscriptionId};
+use hop_top_kit::bus::{
+    Bus, BusError, CancelHandle, Context, ContextError, ErrFn, Event, Handler, Mode, SharedBus,
+    SubscriptionId,
+};
 use serde_json::json;
 
 fn ev(topic: &str) -> Event {
@@ -43,6 +48,9 @@ const _: () = {
     assert_send_sync::<ErrFn>();
     assert_send_sync::<BusError>();
     assert_send_sync::<Event>();
+    assert_send_sync::<Context>();
+    assert_send_sync::<CancelHandle>();
+    assert_send_sync::<ContextError>();
 };
 
 #[test]
@@ -270,51 +278,63 @@ fn close_drops_handlers_outside_the_lock() {
     finishes(move || bus.close());
 }
 
-/// Starts a publish on another thread whose handler blocks until
-/// released. Returns once the handler is running.
-fn publish_with_blocked_handler(
+/// Runs `call` on another thread while `bus` has a handler blocked in
+/// flight, then releases the handler. Returns the order in which the
+/// handler finished and `call` returned.
+///
+/// `call` signals just before it starts, and the handler is released
+/// only after that signal, so a call that does not wait returns first.
+fn race_call_against_in_flight_handler(
     bus: &SharedBus,
-) -> (SubscriptionId, mpsc::Sender<()>, thread::JoinHandle<()>) {
+    call: impl FnOnce(SharedBus, SubscriptionId) + Send + 'static,
+) -> Vec<&'static str> {
+    let log = Arc::new(Mutex::new(Vec::new()));
     let (entered_tx, entered_rx) = mpsc::channel();
     let (release_tx, release_rx) = mpsc::channel::<()>();
     let release_rx = Mutex::new(release_rx);
+    let l = Arc::clone(&log);
     let id = bus.subscribe("test.bus.slow.ran", move |_| {
         entered_tx.send(()).unwrap();
         release_rx.lock().unwrap().recv().unwrap();
+        l.lock().unwrap().push("handler:done");
         Ok(())
     });
     let publisher = bus.clone();
-    let t = thread::spawn(move || {
-        publisher
-            .publish(&ev("test.bus.slow.ran"))
-            .expect("publish");
-    });
+    let p = thread::spawn(move || publisher.publish(&ev("test.bus.slow.ran")));
     entered_rx
         .recv_timeout(Duration::from_secs(5))
         .expect("handler entered");
-    (id, release_tx, t)
+
+    let (calling_tx, calling_rx) = mpsc::channel();
+    let (b, l) = (bus.clone(), Arc::clone(&log));
+    let caller = thread::spawn(move || {
+        calling_tx.send(()).unwrap();
+        call(b, id);
+        l.lock().unwrap().push("call:returned");
+    });
+    calling_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("caller started");
+    release_tx.send(()).unwrap();
+    caller.join().expect("caller");
+    p.join().expect("publisher").expect("publish");
+    let order = log.lock().unwrap().clone();
+    order
 }
 
-// Pins current behaviour, which differs from Go: Go's unsubscribe and
-// Close take the write lock and so wait for an in-flight sync dispatch.
-// Here they return while the handler is still running.
+// Go's unsubscribe and Close take the write lock, so they wait for an
+// in-flight sync dispatch. So do these.
 #[test]
-fn unsubscribe_returns_while_its_handler_is_in_flight() {
+fn unsubscribe_waits_for_its_in_flight_handler() {
     let bus = SharedBus::default();
-    let (id, release, publisher) = publish_with_blocked_handler(&bus);
-    let b = bus.clone();
-    finishes(move || assert!(b.unsubscribe(id)));
-    release.send(()).unwrap();
-    publisher.join().expect("publisher");
+    let order = race_call_against_in_flight_handler(&bus, |b, id| assert!(b.unsubscribe(id)));
+    assert_eq!(order, ["handler:done", "call:returned"]);
 }
 
 #[test]
-fn close_returns_while_a_handler_is_in_flight() {
+fn close_waits_for_an_in_flight_handler() {
     let bus = SharedBus::default();
-    let (_, release, publisher) = publish_with_blocked_handler(&bus);
-    let b = bus.clone();
-    finishes(move || b.close());
+    let order = race_call_against_in_flight_handler(&bus, |b, _| b.close());
+    assert_eq!(order, ["handler:done", "call:returned"]);
     assert!(bus.is_closed());
-    release.send(()).unwrap();
-    publisher.join().expect("publisher");
 }

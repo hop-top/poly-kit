@@ -42,8 +42,21 @@ bus.publish(&event).unwrap();
   be last.
 - `Mode` defaults to `Warn` (validate, report, still deliver); `Strict` rejects; `Off` skips validation.
 - Dispatch is synchronous: handlers run inline in subscription order on the publisher's thread and the
-  first handler error vetoes the publish. `Bus` and `SharedBus` are `Send + Sync`, handlers must be too;
-  a handler may publish, subscribe or unsubscribe on the `SharedBus` dispatching to it.
+  first handler error vetoes the publish. `Bus` and `SharedBus` are `Send + Sync`, handlers must be too.
+- `Context` is the Rust form of Go's `context.Context`: cancellation, a deadline, typed values, and Go's
+  error texts (`context canceled`, `context deadline exceeded`). `publish_ctx` hands it to `subscribe_ctx`
+  handlers without reading it, as Go does; `publish` and `subscribe` are the background-context forms.
+  On `wasm32-unknown-unknown` a context has no deadline (no clock).
+- `SharedBus::unsubscribe` waits until no in-flight publish can still call that handler, even when it
+  returns `false` because close or another unsubscribe removed it first, as Go's closure always locks.
+  `SharedBus::close_ctx(&ctx)` marks the bus closed, then waits for in-flight sync publishes with no
+  deadline, as Go's lock does; `ctx` bounds only the async drain, which arrives with async dispatch.
+  `close()` is `close_ctx` with the background context. With `ctx` already done and nothing left to drain
+  it returns `Ok`; Go's `select` picks nil or `ctx.Err()` at random.
+- Re-entrancy: a handler may publish, subscribe, unsubscribe and close on the `SharedBus` dispatching to
+  it; Go deadlocks on all but the nested publish. Waits skip the calling thread's own publishes.
+  Unsubscribe from a handler does not wait for other threads and takes effect at once. Close from a
+  handler waits for other threads' publishes, so two handlers closing at once deadlock, as in Go.
 - `publish` after `close` is `BusError::Closed`.
 - Parity: [event-topics.md](../../../../../docs/contracts/event-topics.md); the topic grammar is the
   parity obligation, there is no loaded fixture row.

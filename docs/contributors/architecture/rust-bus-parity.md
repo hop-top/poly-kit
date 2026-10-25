@@ -62,6 +62,41 @@ and it stays unported.
   transport.
 - The crate default feature set stays empty.
 
+## Thread-safe core
+
+`SharedBus` matches Go's `memBus` on results but not on mechanism. Go
+runs sync handlers under a read lock, and `Unsubscribe` and `Close`
+take the write lock. Rust snapshots the matching subscriptions under a
+mutex, counts the publish in flight, and runs handlers with the mutex
+released. Unsubscribe and close wait on that count.
+
+- Publish checks the topic, then the closed flag, then dispatches. It
+  never reads its `Context`; handlers receive it, as in Go.
+- Close marks the bus closed, then waits for in-flight sync publishes
+  with no deadline, which is Go's `mu.Lock()`. The context bounds only
+  the async drain that follows; that drain is empty until async
+  dispatch lands. When close returns, no sync handler is running.
+  With the context already done and nothing left to drain, Go's
+  `select` returns nil or `ctx.Err()` at random; Rust returns `Ok`.
+- Unsubscribe waits for the in-flight publishes that matched the
+  subscription, not for every in-flight publish as Go's lock does. It
+  waits even when it returns `false` because close or another
+  unsubscribe removed the subscription first, since Go's closure takes
+  the lock either way. It gives Go's guarantee: on return, the handler
+  is neither running nor about to run. It can return while an
+  unrelated handler is still running, which Go's cannot.
+- Re-entrancy, where Go deadlocks on everything but a nested publish:
+  - Waits skip the calling thread's own in-flight publishes.
+  - Unsubscribe from a handler does not wait for other threads. It takes
+    effect at once, so no invocation starts afterwards on this thread or
+    on another thread that has not reached the handler yet. A
+    dispatching thread therefore never blocks in unsubscribe, and
+    handlers removing each other cannot deadlock.
+  - Close from a handler waits for other threads' sync publishes, so two
+    handlers closing the bus at once deadlock, as in Go.
+- On `wasm32-unknown-unknown` there is one thread, so these waits never
+  block, and a `Context` has no deadline because there is no clock.
+
 ## Go-first rule
 
 Two pieces exist in the target behaviour but not in Go today:
