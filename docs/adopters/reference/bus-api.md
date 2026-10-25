@@ -36,6 +36,11 @@ Standard envelope for all bus messages.
 | `Timestamp`   | `time.Time`  | `timestamp`             | creation time (auto-set by `NewEvent`) |
 | `Payload`     | `any`        | `payload`               | event-specific data |
 | `WorkspaceID` | `string`     | `workspace_id,omitempty` | wsm workspace ULID; empty = global event |
+| `ID`          | `string`     | `id,omitempty`          | `evt_` TypeID, minted by `NewEvent` |
+| `Subject`     | `string`     | `subject,omitempty`     | CloudEvents subject |
+| `DataContentType` | `string` | `datacontenttype,omitempty` | media type of `Payload`; empty = `application/json` |
+| `DataSchema`  | `string`     | `dataschema,omitempty`  | schema URI for `Payload` |
+| `Extensions`  | `map[string]any` | `extensions,omitempty` | CloudEvents extension attributes |
 
 JSON keys are lowercase. Cross-process subscribers parse the lowercase
 form; capitalized keys break them.
@@ -406,6 +411,46 @@ b := bus.New(
     ),
 )
 ```
+
+Every network frame carries `workspace_id` when set; frames without
+the key (global events, older peers) decode as global.
+
+## CloudEvents
+
+`bus.ToCloudEvent(e)` / `bus.FromCloudEvent(ce)` map an `Event` to and
+from a CloudEvents 1.0 `CloudEvent`; `bus.MarshalCloudEvent` /
+`bus.UnmarshalCloudEvent` do the same through structured-mode JSON.
+
+| CloudEvents     | Event |
+|-----------------|-------|
+| `specversion`   | always `"1.0"` |
+| `id`            | `ID`; minted (`evt_` TypeID) when empty |
+| `source`        | `Source` |
+| `type`          | `Topic`, verbatim |
+| `subject`       | `Subject` |
+| `time`          | `Timestamp`, UTC RFC 3339; unset when zero |
+| `datacontenttype` | `DataContentType`; `application/json` when data is JSON and none set |
+| `dataschema`    | `DataSchema` |
+| `data`          | `Payload` as JSON; unset when `Payload` is nil |
+| `data_base64`   | `Payload` of type `[]byte` |
+| `workspaceid`   | `WorkspaceID` |
+| other extensions | `Extensions` |
+
+Extension names are lowercase ASCII letters and digits; values are
+string, bool or an integer in int32 range. `workspaceid` is reserved
+for `WorkspaceID`. Violations return a `*bus.CloudEventError` that
+matches `bus.ErrInvalidCloudEvent`.
+
+The network adapter sends kit frames by default. Opt in to CloudEvents
+frames per adapter once every peer runs a kit with CloudEvents support:
+
+```go
+bus.WithNetworkOption(bus.WithFrameFormat(bus.FrameCloudEvents))
+```
+
+Inbound frames are accepted in either format whatever the setting.
+CloudEvents frames carry the loop-prevention origin in the `kitorigin`
+extension, which the adapter strips before delivery.
 
 ## Cross-language parity
 

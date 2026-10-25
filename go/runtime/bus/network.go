@@ -104,6 +104,7 @@ type NetworkAdapter struct {
 	originID     string
 	auth         Authenticator
 	relay        bool // star-topology relay (re-forward inbound to non-origin peers)
+	frames       FrameFormat
 	offline      atomic.Bool
 	closed       atomic.Bool
 	wg           sync.WaitGroup
@@ -358,16 +359,7 @@ func (n *NetworkAdapter) forwardToRemotes(e Event, excludeOriginID string) {
 	if excludeOriginID != "" {
 		wireOrigin = excludeOriginID
 	}
-	msg := networkMsg{
-		Topic:       string(e.Topic),
-		Source:      e.Source,
-		Timestamp:   e.Timestamp,
-		Payload:     e.Payload,
-		Origin:      wireOrigin,
-		WorkspaceID: e.WorkspaceID,
-	}
-
-	data, err := json.Marshal(msg)
+	data, err := encodeFrame(n.frames, e, wireOrigin)
 	if err != nil {
 		return
 	}
@@ -436,33 +428,25 @@ func (n *NetworkAdapter) readLoop(ctx context.Context, wc *wsConn) {
 			return
 		}
 
-		var msg networkMsg
-		if err := json.Unmarshal(data, &msg); err != nil {
+		event, origin, err := decodeFrame(data)
+		if err != nil {
 			continue
 		}
 
 		// Learn peer originID once (used by relay mode to exclude origin
 		// when re-forwarding). Stored regardless of relay flag — cheap.
-		if id, _ := wc.peerOriginID.Load().(string); id == "" && msg.Origin != "" {
-			wc.peerOriginID.Store(msg.Origin)
+		if id, _ := wc.peerOriginID.Load().(string); id == "" && origin != "" {
+			wc.peerOriginID.Store(origin)
 		}
 
 		// Loop prevention: don't re-inject events we originated.
-		if msg.Origin == n.originID {
+		if origin == n.originID {
 			continue
-		}
-
-		event := Event{
-			Topic:       Topic(msg.Topic),
-			Source:      msg.Source,
-			Timestamp:   msg.Timestamp,
-			Payload:     msg.Payload,
-			WorkspaceID: msg.WorkspaceID,
 		}
 
 		// Mark context so outbound forwarder skips this event (or
 		// re-forwards to non-origin peers when relay is on).
-		pubCtx := context.WithValue(ctx, networkOriginKey, msg.Origin)
+		pubCtx := context.WithValue(ctx, networkOriginKey, origin)
 		_ = n.bus.Publish(pubCtx, event)
 	}
 }
