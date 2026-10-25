@@ -13,8 +13,9 @@
 //! - **Timestamp.** [`Event::timestamp`] is a `String`, not an instant.
 //!   Decoding validates it as Go's `time.Time` does and rewrites it to the
 //!   form Go re-encodes (see [`canonical_timestamp`]), so the same JSON
-//!   round-trips to the same text in both SDKs. Go's decoder also accepts
-//!   offsets of `+24:00` and offset minutes of `60`; this one refuses them.
+//!   round-trips to the same text in both SDKs. An offset with an hour
+//!   above 23 or a minute above 59 is refused (`invalid zone offset`), as
+//!   Go's `Event` decode does.
 //! - **Ids.** [`Event::new`] mints an `evt_` TypeID like Go's `NewEvent`.
 //!   [`Event::new_at`], the clock seam, does not: minting needs
 //!   randomness, which `wasm32-unknown-unknown` does not have without a
@@ -23,7 +24,8 @@
 //! - **Extension integers.** Extension values are [`serde_json::Value`]s,
 //!   so an integer literal beyond `u64` is seen as a float and reports
 //!   `unsupported extension value type`, where Go reports
-//!   `integer out of range`.
+//!   `integer out of range`. For the same reason `-0` (an integer to Go)
+//!   reports `unsupported extension value type`.
 //! - **Bytes.** Go's `encoding/json` escapes `<`, `>`, `&`, U+2028 and
 //!   U+2029; `serde_json` does not. The vectors compare JSON values.
 

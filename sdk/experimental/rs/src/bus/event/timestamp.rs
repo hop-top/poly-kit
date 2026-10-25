@@ -3,13 +3,21 @@
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// A timestamp that is not RFC 3339.
+/// Why a timestamp was refused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TimestampError;
+pub enum TimestampError {
+    /// Not RFC 3339 date-time.
+    Invalid,
+    /// The zone offset has an hour above 23 or a minute above 59.
+    Offset,
+}
 
 impl fmt::Display for TimestampError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("invalid RFC 3339 timestamp")
+        f.write_str(match self {
+            TimestampError::Invalid => "invalid RFC 3339 timestamp",
+            TimestampError::Offset => "invalid zone offset",
+        })
     }
 }
 
@@ -30,7 +38,7 @@ impl std::error::Error for TimestampError {}
 pub fn canonical_timestamp(s: &str) -> Result<String, TimestampError> {
     let b = s.as_bytes();
     if b.len() < 20 {
-        return Err(TimestampError);
+        return Err(TimestampError::Invalid);
     }
     let num = |from: usize, len: usize| -> Option<u32> {
         b[from..from + len].iter().try_fold(0u32, |acc, &c| {
@@ -45,22 +53,22 @@ pub fn canonical_timestamp(s: &str) -> Result<String, TimestampError> {
         num(14, 2),
         num(17, 2),
     ) else {
-        return Err(TimestampError);
+        return Err(TimestampError::Invalid);
     };
     let separators =
         b[4] == b'-' && b[7] == b'-' && b[10] == b'T' && b[13] == b':' && b[16] == b':';
     if !separators || !(1..=12).contains(&mo) || d < 1 || d > days_in_month(y, mo) {
-        return Err(TimestampError);
+        return Err(TimestampError::Invalid);
     }
     if h > 23 || mi > 59 || sec > 59 {
-        return Err(TimestampError);
+        return Err(TimestampError::Invalid);
     }
     let mut i = 19;
     let mut out = s[..19].to_string();
     if b[i] == b'.' || b[i] == b',' {
         let digits = b[i + 1..].iter().take_while(|c| c.is_ascii_digit()).count();
         if digits == 0 {
-            return Err(TimestampError);
+            return Err(TimestampError::Invalid);
         }
         let frac = s[i + 1..i + 1 + digits.min(9)].trim_end_matches('0');
         if !frac.is_empty() {
@@ -73,10 +81,10 @@ pub fn canonical_timestamp(s: &str) -> Result<String, TimestampError> {
         b"Z" => out.push('Z'),
         [sign @ (b'+' | b'-'), _, _, b':', _, _] if i + 6 == b.len() => {
             let (Some(oh), Some(om)) = (num(i + 1, 2), num(i + 4, 2)) else {
-                return Err(TimestampError);
+                return Err(TimestampError::Invalid);
             };
             if oh > 23 || om > 59 {
-                return Err(TimestampError);
+                return Err(TimestampError::Offset);
             }
             if oh == 0 && om == 0 {
                 out.push('Z');
@@ -85,7 +93,7 @@ pub fn canonical_timestamp(s: &str) -> Result<String, TimestampError> {
                 out.push_str(&s[i + 1..]);
             }
         }
-        _ => return Err(TimestampError),
+        _ => return Err(TimestampError::Invalid),
     }
     Ok(out)
 }

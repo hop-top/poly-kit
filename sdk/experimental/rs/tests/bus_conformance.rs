@@ -6,9 +6,9 @@
 //! that deny unknown fields, `version` must be `v1`, and the corpus
 //! directory must match [`FILES`] exactly.
 //!
-//! Sections the port cannot satisfy yet are listed in [`PENDING`]. Each is
-//! skipped with a printed line; when the capability lands its probe flips
-//! and the test fails until the entry is removed and the section asserted.
+//! Nothing is skipped. A section the port cannot satisfy yet is listed in a
+//! `PENDING` constant of (file, section) pairs, skipped with a printed
+//! line, and guarded by a probe that fails once the section passes.
 
 #![cfg(feature = "bus")]
 
@@ -40,9 +40,6 @@ const FILES: &[&str] = &[
     "validate.json",
     "validate_topic.json",
 ];
-
-/// (file, section) pairs skipped until the capability is ported.
-const PENDING: &[(&str, &str)] = &[];
 
 fn dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../contracts/bus-v1")
@@ -648,6 +645,7 @@ struct TsCase {
 struct TsReject {
     name: String,
     timestamp: Value,
+    error_contains: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -681,8 +679,14 @@ fn event_timestamp_vectors() {
         }
     }
     for c in &f.reject {
-        if serde_json::from_value::<Event>(json!({ "timestamp": c.timestamp })).is_ok() {
-            fails.push(format!("{}: decode succeeded, want error", c.name));
+        match serde_json::from_value::<Event>(json!({ "timestamp": c.timestamp })) {
+            Ok(_) => fails.push(format!("{}: decode succeeded, want error", c.name)),
+            Err(e) => {
+                let want = c.error_contains.as_deref().unwrap_or("");
+                if !e.to_string().contains(want) {
+                    fails.push(format!("{}: error {e} lacks {want:?}", c.name));
+                }
+            }
         }
     }
     for c in &f.defaults {
@@ -783,38 +787,6 @@ fn event_id_vectors() {
         }
     }
     check(fails);
-}
-
-// --- pending sections --------------------------------------------------
-
-fn landed(file: &str, section: &str) -> bool {
-    match (file, section) {
-        ("event_json.json", "decode_reject") => {
-            let f: EventFile = load(file);
-            f.decode_reject
-                .iter()
-                .all(|c| serde_json::from_value::<Event>(c.event.clone()).is_err())
-        }
-        _ => panic!("no probe for pending {file}:{section}"),
-    }
-}
-
-#[test]
-fn pending_sections() {
-    for (file, section) in PENDING {
-        assert!(FILES.contains(file), "pending file {file} unknown");
-        let raw = fs::read_to_string(dir().join(file)).unwrap();
-        let v: Value = serde_json::from_str(&raw).unwrap();
-        let sec = v[*section]
-            .as_array()
-            .unwrap_or_else(|| panic!("pending {file}:{section} no longer exists"));
-        assert!(!sec.is_empty(), "pending {file}:{section} is empty");
-        assert!(
-            !landed(file, section),
-            "{file}:{section} now passes; remove it from PENDING and assert it"
-        );
-        println!("SKIP {file}:{section} ({} cases) pending", sec.len());
-    }
 }
 
 #[test]
