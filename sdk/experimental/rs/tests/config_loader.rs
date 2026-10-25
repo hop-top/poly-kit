@@ -811,3 +811,38 @@ fn load_runs_migrations_on_each_file() {
     assert_eq!(cfg.engine, "m1");
     assert_eq!(cfg.retries, 9);
 }
+
+#[test]
+fn bus_mode_from_real_config() {
+    use hop_top_kit::bus::{mode_from_config_with, Mode};
+    let no_env = |_: &str| None;
+    // A loaded file, as a Value tree.
+    let d = tempfile::tempdir().unwrap();
+    let p = write(d.path(), "c.yaml", "kit:\n  bus:\n    enforce: strict\n");
+    let tree = hop_top_kit::config::get(
+        "kit",
+        &Options {
+            project_config_path: p,
+            ..Options::default()
+        },
+    )
+    .unwrap();
+    let root = Value::Map([("kit".to_string(), tree)].into_iter().collect());
+    assert_eq!(mode_from_config_with(Some(&root), no_env), Mode::Strict);
+    // The env/defaults view: config key beats KIT_BUS_ENFORCE.
+    let mut l = bind_env("APP", &[])
+        .unwrap()
+        .with_env(env(&[("APP_KIT_BUS_ENFORCE", "off")]));
+    assert_eq!(
+        mode_from_config_with(Some(&l), |_| Some("strict".into())),
+        Mode::Off
+    );
+    l.set("kit.bus.enforce", "warn".into());
+    assert_eq!(mode_from_config_with(Some(&l), no_env), Mode::Warn);
+    // Unparseable falls through to env, then Warn.
+    let bad = Value::Map(Map::new());
+    assert_eq!(
+        mode_from_config_with(Some(&bad), |_| Some("strict".into())),
+        Mode::Strict
+    );
+}

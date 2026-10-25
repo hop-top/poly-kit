@@ -199,20 +199,3 @@ fn flatten_into(flat: &mut BTreeMap<String, Value>, prefix: &str, v: Value) {
         _ => {}
     }
 }
-
-impl crate::bus::ConfigGetter for EnvLookup {
-    fn get(&self, key: &str) -> Option<String> {
-        self.get_value(key).map(|v| cast_string(&v))
-    }
-}
-
-/// A loaded value tree answers dotted keys (scalars only, cast like
-/// viper's `GetString`).
-impl crate::bus::ConfigGetter for Value {
-    fn get(&self, key: &str) -> Option<String> {
-        match self.lookup(key)? {
-            Value::Seq(_) | Value::Map(_) => None,
-            v => Some(cast_string(v)),
-        }
-    }
-}

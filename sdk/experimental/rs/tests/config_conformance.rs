@@ -69,7 +69,9 @@ fn encode(v: &Value) -> Json {
         Value::Uint(u) => s("uint", u.to_string()),
         Value::Float(_) => s("float", v.to_string()),
         Value::String(x) => s("string", x.clone()),
-        Value::Seq(items) => serde_json::json!({"seq": items.iter().map(encode).collect::<Vec<_>>()}),
+        Value::Seq(items) => {
+            serde_json::json!({"seq": items.iter().map(encode).collect::<Vec<_>>()})
+        }
         Value::Map(m) => {
             let o: serde_json::Map<String, Json> =
                 m.iter().map(|(k, v)| (k.clone(), encode(v))).collect();
@@ -274,7 +276,9 @@ fn precedence_vectors() {
                             Arc::new(move |k| env.get(k).cloned()),
                         ))
                     }
-                    "yaml" => Box::new(yaml_layer_from_str(&l.yaml, origin(&l.origin), &l.path).unwrap()),
+                    "yaml" => {
+                        Box::new(yaml_layer_from_str(&l.yaml, origin(&l.origin), &l.path).unwrap())
+                    }
                     "default" => Box::new(DefaultLayer {
                         defaults: l.defaults,
                     }),
@@ -285,8 +289,16 @@ fn precedence_vectors() {
         let refs: Vec<&dyn Layer> = layers.iter().map(|b| b.as_ref()).collect();
         let got = resolve_string(&c.key, &refs);
         assert_eq!(
-            (got.value.as_str(), got.origin.to_string(), got.detail.as_str()),
-            (c.want.value.as_str(), c.want.origin.clone(), c.want.detail.as_str()),
+            (
+                got.value.as_str(),
+                got.origin.to_string(),
+                got.detail.as_str()
+            ),
+            (
+                c.want.value.as_str(),
+                c.want.origin.clone(),
+                c.want.detail.as_str()
+            ),
             "{}",
             c.name
         );
@@ -369,7 +381,9 @@ fn numbers_as_f64(j: Json) -> Json {
     match j {
         Json::Number(n) => serde_json::json!(n.as_f64().unwrap()),
         Json::Array(a) => Json::Array(a.into_iter().map(numbers_as_f64).collect()),
-        Json::Object(o) => Json::Object(o.into_iter().map(|(k, v)| (k, numbers_as_f64(v))).collect()),
+        Json::Object(o) => {
+            Json::Object(o.into_iter().map(|(k, v)| (k, numbers_as_f64(v))).collect())
+        }
         other => other,
     }
 }
@@ -406,8 +420,18 @@ fn edit_vectors() {
             ..Options::default()
         };
         let res = match c.op.as_str() {
-            "set" => set(&c.key, c.value.as_ref().unwrap().as_str().unwrap(), Scope::Project, &opts),
-            "set_value" => set_value(&c.key, &decode(c.value.as_ref().unwrap()), Scope::Project, &opts),
+            "set" => set(
+                &c.key,
+                c.value.as_ref().unwrap().as_str().unwrap(),
+                Scope::Project,
+                &opts,
+            ),
+            "set_value" => set_value(
+                &c.key,
+                &decode(c.value.as_ref().unwrap()),
+                Scope::Project,
+                &opts,
+            ),
             "unset" => unset(&c.key, Scope::Project, &opts),
             op => panic!("op {op}"),
         };
@@ -424,7 +448,12 @@ fn edit_vectors() {
                 got.insert(top.clone(), get(&top, &opts).unwrap());
             }
         }
-        assert_eq!(encode(&Value::Map(got)), c.want.unwrap(), "{}:\n{text}", c.name);
+        assert_eq!(
+            encode(&Value::Map(got)),
+            c.want.unwrap(),
+            "{}:\n{text}",
+            c.name
+        );
         for k in &c.keeps {
             assert!(text.contains(k.as_str()), "{}: lost {k:?}:\n{text}", c.name);
         }
