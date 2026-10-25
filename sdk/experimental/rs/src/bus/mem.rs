@@ -5,33 +5,27 @@
 //! The Go canonical runtime (`go/runtime/bus/bus.go`) splits subscribers
 //! into two kinds. Sync handlers run inline and may veto the publish;
 //! async handlers run on goroutines drawn from a bounded semaphore pool,
-//! with a `WaitGroup` drained by `Close` under a caller deadline. That
-//! machinery buys concurrent fan-out in long-lived multi-threaded server
-//! processes.
+//! with a `WaitGroup` drained by `Close` under a caller deadline.
 //!
-//! This port ships **synchronous dispatch only**, and it is a decision,
-//! not an omission:
+//! This module ships **synchronous dispatch only**, for now. The earlier
+//! decision to leave async delivery out for good is superseded: a
+//! networked, multi-threaded Rust consumer needs it. The plan, in
+//! `docs/contributors/architecture/rust-bus-parity.md`, is:
 //!
-//! - No current Rust consumer needs concurrent delivery. The first one is
-//!   a single-user CLI that publishes a handful of events per invocation
-//!   and exits; handlers run in microseconds and never block on I/O.
-//! - A faithful port would make `tokio` a hard dependency of the `bus`
-//!   feature and reintroduce, in a language with different aliasing
-//!   rules, the exact races the Go code documents at length: the
-//!   RLock/semaphore priority inversion, the `wg.Add`-after-acquire
-//!   ordering, the closed-flag recheck between slot acquisition and
-//!   spawn. That is a large surface to carry, and to keep correct, for
-//!   behaviour nobody exercises.
-//! - Synchronous delivery is a strict subset of the async contract from
-//!   the subscriber's point of view: a handler that would have run on a
-//!   pool thread instead runs on the publisher's thread. Handlers that
-//!   want to defer work can spawn a task themselves.
+//! - a thread-safe bus core and an async dispatch path with a bounded
+//!   pool and a draining close, with tokio behind its own feature so the
+//!   `bus` feature and the `wasm32-unknown-unknown` build stay free of an
+//!   async runtime;
+//! - the network adapter and the adapter seam it plugs into behind
+//!   their own features.
+//!
+//! Until those land, synchronous delivery is a strict subset of the
+//! async contract from the subscriber's point of view: a handler that
+//! would have run on a pool thread instead runs on the publisher's
+//! thread. Handlers that want to defer work can spawn a task themselves.
 //!
 //! Consequence to be aware of: a slow handler blocks the publisher, and
 //! [`Bus::publish`] returns only once every matching subscriber has run.
-//! If a Rust consumer ever genuinely needs non-blocking fan-out, the
-//! honest move is to add an explicit async subscribe path backed by
-//! tokio behind its own feature — not to bolt threads onto this one.
 //!
 //! Everything else is behaviour-preserving against Go: subscription
 //! identity and removal, first-error veto semantics, publish-after-close

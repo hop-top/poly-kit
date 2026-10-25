@@ -764,10 +764,9 @@ wrap the bus in `SharedBus`, which hands out cheap clones over a single
 Delivery runs inline on the publisher's thread, in subscription order,
 and the first handler error vetoes the publish. The Go package's
 async-handler path — goroutine pool, bounding semaphore, `WaitGroup`
-drained by `Close` under a deadline — is **not** ported. No Rust consumer
-needs concurrent delivery, and a faithful port would make an async
-runtime a hard dependency of this feature. See the `bus::mem` module
-docs for the decision in full.
+drained by `Close` under a deadline — is not yet ported. It is planned
+behind its own feature so the `bus` feature stays free of an async
+runtime; see [rust-bus-parity.md](../../contributors/architecture/rust-bus-parity.md).
 
 Consequence: a slow handler blocks the publisher, and `publish` returns
 only once every matching subscriber has run. Handlers that want to defer
@@ -775,13 +774,12 @@ work should spawn a task themselves.
 
 ### Not ported
 
-The Go package's `NetworkAdapter` (WebSocket peer relay, reconnect and
-backoff, star topology, auth handshake) and its SQLite adapter are
-deliberately absent, as are kv's etcd/TiDB backends and blob's S3
-backend. No Rust consumer needs them today, and unported code is a
-maintenance liability. Should cross-process eventing become a real
-requirement, prefer a Unix-socket or SQLite-backed adapter over
-reimplementing the WebSocket star topology.
+The Go package's SQLite bus adapter is deliberately absent, as are kv's
+etcd/TiDB backends and blob's S3 backend. The bus `NetworkAdapter`
+(WebSocket peer relay, reconnect and backoff, star topology, auth
+handshake) is not yet ported but is in scope: networked Rust consumers
+need it, and it lands behind its own features. See
+[rust-bus-parity.md](../../contributors/architecture/rust-bus-parity.md).
 
 ### Cross-references
 

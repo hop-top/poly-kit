@@ -4,7 +4,8 @@
 
 How do in-process components publish and subscribe to named events under a validated four-segment topic
 grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; cross-process transport (the Go
-`NetworkAdapter` and SQLite adapter) is not ported.
+`NetworkAdapter`) is not yet ported and the SQLite adapter is out of scope; see
+[rust-bus-parity.md](../../../../../docs/contributors/architecture/rust-bus-parity.md).
 
 ## Use it when
 
