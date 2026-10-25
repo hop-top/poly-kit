@@ -1,0 +1,439 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/config-v1/edit.json",
+  "version": "v1",
+  "description": "`Set` / `SetValue` / `Unset` on one file: the values the file holds afterwards and the comments it keeps. `set` writes a !!str scalar; `set_value` writes a typed value ({kind, repr} for scalars, {seq}/{map}); `unset` removes the key and prunes mappings it leaves empty. Intermediate keys are created, a non-mapping in the way becomes a mapping. `want` is the whole document read back with `Get` typing ({map: ...}); `keeps` are substrings (comments, anchors) the written file must still contain. Bytes are not compared: Go re-emits the document, ports may splice.",
+  "cases": [
+    {
+      "name": "set new file",
+      "original": "",
+      "op": "set",
+      "key": "name",
+      "value": "alice",
+      "ok": true,
+      "want": {
+        "map": {
+          "name": {
+            "kind": "string",
+            "repr": "alice"
+          }
+        }
+      }
+    },
+    {
+      "name": "set quotes retyping text",
+      "original": "name: a\n",
+      "op": "set",
+      "key": "t",
+      "value": "0.9",
+      "ok": true,
+      "want": {
+        "map": {
+          "name": {
+            "kind": "string",
+            "repr": "a"
+          },
+          "t": {
+            "kind": "string",
+            "repr": "0.9"
+          }
+        }
+      }
+    },
+    {
+      "name": "set deep key",
+      "original": "",
+      "op": "set",
+      "key": "a.b.c",
+      "value": "deep",
+      "ok": true,
+      "want": {
+        "map": {
+          "a": {
+            "map": {
+              "b": {
+                "map": {
+                  "c": {
+                    "kind": "string",
+                    "repr": "deep"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "set overwrite keeps comments",
+      "original": "# head\nname: alice # who\nport: 1\n",
+      "op": "set",
+      "key": "name",
+      "value": "bob",
+      "ok": true,
+      "want": {
+        "map": {
+          "name": {
+            "kind": "string",
+            "repr": "bob"
+          },
+          "port": {
+            "kind": "int",
+            "repr": "1"
+          }
+        }
+      },
+      "keeps": [
+        "# head",
+        "# who"
+      ]
+    },
+    {
+      "name": "set appends after comments",
+      "original": "# first\nalpha: one\n# second\nbeta: two\n",
+      "op": "set",
+      "key": "gamma",
+      "value": "three",
+      "ok": true,
+      "want": {
+        "map": {
+          "alpha": {
+            "kind": "string",
+            "repr": "one"
+          },
+          "beta": {
+            "kind": "string",
+            "repr": "two"
+          },
+          "gamma": {
+            "kind": "string",
+            "repr": "three"
+          }
+        }
+      },
+      "keeps": [
+        "# first",
+        "# second"
+      ]
+    },
+    {
+      "name": "set_value float",
+      "original": "threshold: \"0.5\" # knob\n",
+      "op": "set_value",
+      "key": "threshold",
+      "value": {
+        "kind": "float",
+        "repr": "0.9"
+      },
+      "ok": true,
+      "want": {
+        "map": {
+          "threshold": {
+            "kind": "float",
+            "repr": "0.9"
+          }
+        }
+      },
+      "keeps": [
+        "# knob"
+      ]
+    },
+    {
+      "name": "set_value bool null int",
+      "original": "",
+      "op": "set_value",
+      "key": "k",
+      "value": {
+        "kind": "bool",
+        "repr": "true"
+      },
+      "ok": true,
+      "want": {
+        "map": {
+          "k": {
+            "kind": "bool",
+            "repr": "true"
+          }
+        }
+      }
+    },
+    {
+      "name": "set_value string stays string",
+      "original": "",
+      "op": "set_value",
+      "key": "k",
+      "value": {
+        "kind": "string",
+        "repr": "0.9"
+      },
+      "ok": true,
+      "want": {
+        "map": {
+          "k": {
+            "kind": "string",
+            "repr": "0.9"
+          }
+        }
+      }
+    },
+    {
+      "name": "set_value lookalike stays string",
+      "original": "",
+      "op": "set_value",
+      "key": "k",
+      "value": {
+        "kind": "string",
+        "repr": "yes"
+      },
+      "ok": true,
+      "want": {
+        "map": {
+          "k": {
+            "kind": "string",
+            "repr": "yes"
+          }
+        }
+      }
+    },
+    {
+      "name": "set_value map over scalar",
+      "original": "db: sqlite\nother: 1\n",
+      "op": "set_value",
+      "key": "db",
+      "value": {
+        "map": {
+          "driver": {
+            "kind": "string",
+            "repr": "postgres"
+          },
+          "port": {
+            "kind": "int",
+            "repr": "5432"
+          }
+        }
+      },
+      "ok": true,
+      "want": {
+        "map": {
+          "db": {
+            "map": {
+              "driver": {
+                "kind": "string",
+                "repr": "postgres"
+              },
+              "port": {
+                "kind": "int",
+                "repr": "5432"
+              }
+            }
+          },
+          "other": {
+            "kind": "int",
+            "repr": "1"
+          }
+        }
+      }
+    },
+    {
+      "name": "set_value list",
+      "original": "",
+      "op": "set_value",
+      "key": "tags",
+      "value": {
+        "seq": [
+          {
+            "kind": "string",
+            "repr": "a"
+          },
+          {
+            "kind": "int",
+            "repr": "1"
+          }
+        ]
+      },
+      "ok": true,
+      "want": {
+        "map": {
+          "tags": {
+            "seq": [
+              {
+                "kind": "string",
+                "repr": "a"
+              },
+              {
+                "kind": "int",
+                "repr": "1"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "set through scalar makes mapping",
+      "original": "a: 1\n",
+      "op": "set",
+      "key": "a.b",
+      "value": "v",
+      "ok": true,
+      "want": {
+        "map": {
+          "a": {
+            "map": {
+              "b": {
+                "kind": "string",
+                "repr": "v"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "set keeps anchor",
+      "original": "base: &b 1\nother: *b\n",
+      "op": "set_value",
+      "key": "base",
+      "value": {
+        "kind": "int",
+        "repr": "2"
+      },
+      "ok": true,
+      "want": {
+        "map": {
+          "base": {
+            "kind": "int",
+            "repr": "2"
+          },
+          "other": {
+            "kind": "null",
+            "repr": "<nil>"
+          }
+        }
+      },
+      "keeps": [
+        "&b",
+        "*b"
+      ]
+    },
+    {
+      "name": "set nested into existing",
+      "original": "core:\n  x: 1\n",
+      "op": "set_value",
+      "key": "core.y",
+      "value": {
+        "kind": "int",
+        "repr": "2"
+      },
+      "ok": true,
+      "want": {
+        "map": {
+          "core": {
+            "map": {
+              "x": {
+                "kind": "int",
+                "repr": "1"
+              },
+              "y": {
+                "kind": "int",
+                "repr": "2"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "set into flow mapping",
+      "original": "m: {a: 1}\n",
+      "op": "set_value",
+      "key": "m.b",
+      "value": {
+        "kind": "int",
+        "repr": "2"
+      },
+      "ok": true,
+      "want": {
+        "map": {
+          "m": {
+            "map": {
+              "a": {
+                "kind": "int",
+                "repr": "1"
+              },
+              "b": {
+                "kind": "int",
+                "repr": "2"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "unset leaf",
+      "original": "name: x # c\nport: 8080\n",
+      "op": "unset",
+      "key": "name",
+      "ok": true,
+      "want": {
+        "map": {
+          "port": {
+            "kind": "int",
+            "repr": "8080"
+          }
+        }
+      }
+    },
+    {
+      "name": "unset nested keeps sibling",
+      "original": "core:\n  a: 1\n  b: 2\n",
+      "op": "unset",
+      "key": "core.a",
+      "ok": true,
+      "want": {
+        "map": {
+          "core": {
+            "map": {
+              "b": {
+                "kind": "int",
+                "repr": "2"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "unset prunes empty parents",
+      "original": "keep: 1\ncore:\n  mid:\n    only: v\n",
+      "op": "unset",
+      "key": "core.mid.only",
+      "ok": true,
+      "want": {
+        "map": {
+          "keep": {
+            "kind": "int",
+            "repr": "1"
+          }
+        }
+      }
+    },
+    {
+      "name": "unset missing key",
+      "original": "a: 1\n",
+      "op": "unset",
+      "key": "zz",
+      "ok": false,
+      "error": "config unset: config: key not found"
+    },
+    {
+      "name": "unset missing file",
+      "original": "",
+      "op": "unset",
+      "key": "k",
+      "ok": false,
+      "error": "config unset: config: key not found"
+    }
+  ]
+}
