@@ -292,11 +292,11 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 
 # Shared bus conformance corpus: the Go and Rust runners read the same
 # vectors under contracts/bus-v1.
-test-parity-bus: ## bus-v1 conformance corpus (Go and Rust runners)
+test-parity-bus: ## bus-v1 conformance corpus, CloudEvents included (Go and Rust runners)
 	@echo "==> bus-v1 conformance: Go"
-	go test ./go/runtime/bus/ -run '^TestConformance' -count=1
+	go test ./go/runtime/bus/ -run '^(TestConformance|TestCloudEventsConformance)' -count=1
 	@echo "==> bus-v1 conformance: Rust"
-	cd sdk/experimental/rs && cargo test --test bus_conformance --all-features --locked
+	cd sdk/experimental/rs && cargo test --test bus_conformance --test bus_cloudevents_conformance --all-features --locked
 
 # Shared retry-v1 backoff corpus: Go and Rust runners read the same vectors.
 test-parity-config: ## config-v1 conformance corpus (Go and Rust runners)
