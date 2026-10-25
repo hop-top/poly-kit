@@ -167,3 +167,18 @@ fn edits_on_large_files_are_fast() {
     );
     assert!(text.starts_with("k1: &a1 v # c1\n"));
 }
+
+#[test]
+fn long_quoted_line_with_a_repair_loads_fast() {
+    let mut body = String::from("name:\tx\nextra: [");
+    for i in 0..100_000 {
+        body.push_str(if i == 0 { "'a'" } else { ", 'a'" });
+    }
+    body.push_str("]\n");
+    let start = Instant::now();
+    let s = load_str(&body).unwrap();
+    let took = start.elapsed();
+    eprintln!("500 KB quoted line + repair: {took:?}");
+    assert_eq!(s.name, "x");
+    assert!(took < Duration::from_secs(5), "{took:?}");
+}

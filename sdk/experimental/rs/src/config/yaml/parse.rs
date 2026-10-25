@@ -47,8 +47,9 @@ struct Failure {
     err: ParseError,
 }
 
-/// Parses after a failed first try: the repair pass, re-run while the
-/// tree shows a fix was wrong. Each round withdraws at least one fix.
+/// Repair rounds after the failed first parse: each round withdraws at
+/// least one wrong fix, so a parse costs the first try plus at most
+/// this many.
 const MAX_ROUNDS: usize = 4;
 
 /// Parses the first document of `src`. `Ok(None)` for a stream with no
@@ -69,11 +70,18 @@ pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
         Err(f) if !repair::repairable(&f.err.msg) => return Err(f.err),
         Err(f) => {
             let mut fixes = repair::candidates(body);
+            let mut failed: Option<ParseError> = None;
             let mut out = Err(f.err);
             for _ in 0..MAX_ROUNDS {
                 match parse_text(&fixes.apply(body)) {
+                    // A misread quote can make the inserts break the
+                    // parse; try once more with the tab fixes alone.
+                    Err(e) if !fixes.inserts.is_empty() && failed.is_none() => {
+                        failed = Some(e.err);
+                        fixes.inserts.clear();
+                    }
                     Err(e) => {
-                        out = Err(e.err);
+                        out = Err(failed.take().unwrap_or(e.err));
                         break;
                     }
                     Ok(root) => {
@@ -87,10 +95,11 @@ pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
             (out?, fixes)
         }
     };
-    let text = if fixes.tabs.is_empty() && fixes.inserts.is_empty() {
+    // Repaired offsets, original tabs (the dash check needs them).
+    let text = if fixes.inserts.is_empty() {
         std::borrow::Cow::Borrowed(body)
     } else {
-        std::borrow::Cow::Owned(fixes.apply(body))
+        std::borrow::Cow::Owned(fixes.apply_with(body, false))
     };
     if let Some(line) = repair::dash_tab(&text, root.as_ref()) {
         return Err(ParseError {
@@ -462,118 +471,5 @@ mod tests {
 }
 
 #[cfg(test)]
-mod repair_tests {
-    use super::*;
-
-    fn text_of<'a>(src: &'a str, n: &Node) -> &'a str {
-        let (s, e) = n.span.unwrap();
-        &src[s..e]
-    }
-
-    #[test]
-    fn bom_is_skipped_and_spans_stay_in_source() {
-        let src = "\u{feff}name: x\n";
-        let root = parse(src).unwrap().unwrap();
-        let v = root.get("name").unwrap();
-        assert_eq!(v.scalar_value(), Some("x"));
-        assert_eq!(text_of(src, v), "x");
-    }
-
-    #[test]
-    fn tab_after_colon_reads_like_libyaml() {
-        let src = "name:\tx\na:\n  b:\t\ty # c\n";
-        let root = parse(src).unwrap().unwrap();
-        assert_eq!(root.get("name").unwrap().scalar_value(), Some("x"));
-        let y = root.get("a").unwrap().get("b").unwrap();
-        assert_eq!((y.scalar_value(), text_of(src, y)), (Some("y"), "y"));
-        // A tab inside a quoted value is content, not a separator.
-        let root = parse("k: \"a:\tb\"\n").unwrap().unwrap();
-        assert_eq!(root.get("k").unwrap().scalar_value(), Some("a:\tb"));
-    }
-
-    #[test]
-    fn quoted_continuation_at_column_zero() {
-        let src = "name: \"x\ny\"\nz: 'p\n\nq' # c\nn:\n  k: \"u\n v\"\nend: 1\n";
-        let root = parse(src).unwrap().unwrap();
-        let name = root.get("name").unwrap();
-        assert_eq!(name.scalar_value(), Some("x y"));
-        assert_eq!(text_of(src, name), "\"x\ny\"");
-        let z = root.get("z").unwrap();
-        assert_eq!(z.scalar_value(), Some("p\nq"));
-        assert_eq!(text_of(src, z), "'p\n\nq'");
-        let k = root.get("n").unwrap().get("k").unwrap();
-        assert_eq!(k.scalar_value(), Some("u v"));
-        let end = root.get("end").unwrap();
-        assert_eq!(text_of(src, end), "1");
-    }
-
-    #[test]
-    fn flow_span_ends_at_bracket() {
-        let src = "t: [a, b] # c\nm: {a: 1}   # d\n";
-        let root = parse(src).unwrap().unwrap();
-        assert_eq!(text_of(src, root.get("t").unwrap()), "[a, b]");
-        assert_eq!(text_of(src, root.get("m").unwrap()), "{a: 1}");
-    }
-
-    #[test]
-    fn to_orig_maps_inserted_runs() {
-        let ins = [(4, 2), (10, 1)];
-        assert_eq!(repair::OrigMap::new(&ins).orig(3), 3);
-        assert_eq!(repair::OrigMap::new(&ins).orig(4), 4);
-        assert_eq!(repair::OrigMap::new(&ins).orig(5), 4);
-        assert_eq!(repair::OrigMap::new(&ins).orig(6), 4);
-        assert_eq!(repair::OrigMap::new(&ins).orig(12), 10);
-        assert_eq!(repair::OrigMap::new(&ins).orig(13), 10);
-        assert_eq!(repair::OrigMap::new(&ins).orig(14), 11);
-    }
-
-    #[test]
-    fn tab_led_continuation_reads_like_libyaml() {
-        let root = parse("name: \"x\n\ty\"\nz: 'a\n\t b'\n").unwrap().unwrap();
-        assert_eq!(root.get("name").unwrap().scalar_value(), Some("x y"));
-        assert_eq!(root.get("z").unwrap().scalar_value(), Some("a b"));
-    }
-
-    #[test]
-    fn tab_after_sequence_dash_is_rejected() {
-        let err = parse("tags:\n  -\tx\n").unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "yaml: line 2: found character that cannot start any token"
-        );
-        assert!(parse("tags:\n  - \tx\n").is_err());
-        assert!(parse("tags:\n  - x\t# c\n").is_ok());
-        assert!(parse("b: |\n  -\tx\n").is_ok());
-        assert!(parse("q: \"a\n  -\tx\"\n").is_ok());
-    }
-
-    #[test]
-    fn wrong_candidates_are_withdrawn() {
-        // A tab after `:` inside a quoted value, next to a real one.
-        let src = "a: \"k:\tv\"\nb:\tw\nc: |\n  d:\te\n";
-        let root = parse(src).unwrap().unwrap();
-        assert_eq!(root.get("a").unwrap().scalar_value(), Some("k:\tv"));
-        assert_eq!(root.get("b").unwrap().scalar_value(), Some("w"));
-        assert_eq!(root.get("c").unwrap().scalar_value(), Some("d:\te\n"));
-        // Document markers inside quotes stay errors, as in Go.
-        assert!(parse("a: \"x\n---\ny\"\n").is_err());
-    }
-
-    #[test]
-    fn repair_is_linear() {
-        let mut src = String::new();
-        for i in 0..20_000 {
-            src.push_str(&format!("k{i}:\tv\nq{i}: \"x\ny\"\n"));
-        }
-        PARSES.set(0);
-        let start = std::time::Instant::now();
-        let root = parse(&src).unwrap().unwrap();
-        assert!(PARSES.get() <= 3, "{} parses", PARSES.get());
-        assert_eq!(root.get("q19999").unwrap().scalar_value(), Some("x y"));
-        assert!(
-            start.elapsed() < std::time::Duration::from_secs(2),
-            "{:?}",
-            start.elapsed()
-        );
-    }
-}
+#[path = "parse_tests.rs"]
+mod repair_tests;

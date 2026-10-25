@@ -362,6 +362,7 @@ func TestConformanceLoad(t *testing.T) {
 				Prefix string `json:"prefix"`
 				Line   string `json:"line"`
 				Count  int    `json:"count"`
+				Suffix string `json:"suffix"`
 			} `json:"generate"`
 			Overrides     []string        `json:"overrides"`
 			OK            bool            `json:"ok"`
@@ -387,6 +388,7 @@ func TestConformanceLoad(t *testing.T) {
 				for i := 0; i < g.Count; i++ {
 					b.WriteString(strings.ReplaceAll(g.Line, "{i}", strconv.Itoa(i)))
 				}
+				b.WriteString(g.Suffix)
 				files = append(files, b.String())
 			}
 			for i, body := range files {

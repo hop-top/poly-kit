@@ -34,9 +34,16 @@ pub(super) struct Fixes {
 impl Fixes {
     /// The repaired text.
     pub(super) fn apply(&self, src: &str) -> String {
+        self.apply_with(src, true)
+    }
+
+    /// The repaired text; `tabs: false` keeps the tabs (same offsets).
+    pub(super) fn apply_with(&self, src: &str, tabs: bool) -> String {
         let mut b = src.as_bytes().to_vec();
-        for &t in &self.tabs {
-            b[t] = b' ';
+        if tabs {
+            for &t in &self.tabs {
+                b[t] = b' ';
+            }
         }
         let mut out = Vec::with_capacity(b.len() + self.inserts.iter().map(|i| i.1).sum::<usize>());
         let mut last = 0;
@@ -125,13 +132,6 @@ fn quoted_end(b: &[u8], q: usize) -> usize {
     b.len()
 }
 
-fn line_start(b: &[u8], i: usize) -> usize {
-    b[..i]
-        .iter()
-        .rposition(|c| *c == b'\n')
-        .map_or(0, |p| p + 1)
-}
-
 fn indent(b: &[u8], ls: usize) -> usize {
     b[ls..].iter().take_while(|c| **c == b' ').count()
 }
@@ -144,12 +144,18 @@ fn doc_marker(b: &[u8], ls: usize) -> bool {
             .is_none_or(|c| matches!(c, b' ' | b'\t' | b'\r' | b'\n'))
 }
 
-/// A value may start after nothing on the line or after one of these.
-fn value_start(prev: Option<u8>) -> bool {
-    matches!(prev, None | Some(b':' | b'-' | b',' | b'[' | b'{' | b'?'))
+/// A blank, line end or end of text after `b[i]`.
+fn blank_after(b: &[u8], i: usize) -> bool {
+    b.get(i + 1)
+        .is_none_or(|c| matches!(c, b' ' | b'\t' | b'\r' | b'\n'))
 }
 
-/// All candidate fixes in `src`.
+/// All candidate fixes in `src`, in one forward scan (O(len)).
+///
+/// Quotes count as opening a scalar only at a node start: at a line
+/// start, after a `:` value indicator, after a `-`/`?` indicator that
+/// itself sits at a node start, or after `,` `[` `{` inside a flow
+/// collection. A quote inside a plain scalar (`Rock, 'n roll`) is text.
 pub(super) fn candidates(src: &str) -> Fixes {
     let b = src.as_bytes();
     let mut f = Fixes::default();
@@ -166,34 +172,35 @@ pub(super) fn candidates(src: &str) -> Fixes {
             j += 1;
         }
     }
-    // Quoted scalars, skipping comments and block scalar bodies.
     let mut i = 0;
-    let mut prev: Option<u8> = None;
+    let mut ls = 0; // start of the current line
+    let mut start = true; // the next token begins a node
+    let mut flow = 0usize; // flow collection depth
     while i < b.len() {
         let c = b[i];
         if c == b'\n' {
-            prev = None;
             i += 1;
+            ls = i;
+            start = flow == 0 || start;
             continue;
         }
         if is_ws(c) || c == b'\r' {
             i += 1;
             continue;
         }
-        if c == b'#' && (i == 0 || matches!(b[i - 1], b' ' | b'\t' | b'\n')) {
+        if c == b'#' && (i == ls || matches!(b[i - 1], b' ' | b'\t')) {
             while i < b.len() && b[i] != b'\n' {
                 i += 1;
             }
             continue;
         }
-        // Anchors and tags are transparent to what follows.
-        if (c == b'&' || c == b'!') && value_start(prev) {
+        if start && (c == b'&' || c == b'!') {
             while i < b.len() && !matches!(b[i], b' ' | b'\t' | b'\r' | b'\n') {
                 i += 1;
             }
             continue;
         }
-        if (c == b'|' || c == b'>') && value_start(prev) {
+        if start && flow == 0 && (c == b'|' || c == b'>') {
             let mut j = i + 1;
             while j < b.len() && matches!(b[j], b'0'..=b'9' | b'+' | b'-') {
                 j += 1;
@@ -203,7 +210,7 @@ pub(super) fn candidates(src: &str) -> Fixes {
             }
             if j >= b.len() || matches!(b[j], b'\n' | b'\r' | b'#') {
                 // Skip the body: blank lines and lines indented deeper.
-                let ind = indent(b, line_start(b, i));
+                let ind = indent(b, ls);
                 let mut k = b[j..]
                     .iter()
                     .position(|c| *c == b'\n')
@@ -219,32 +226,51 @@ pub(super) fn candidates(src: &str) -> Fixes {
                     }
                     k = (end + 1).min(b.len());
                 }
-                prev = None;
                 i = k;
+                ls = k;
+                start = true;
                 continue;
             }
         }
-        if (c == b'"' || c == b'\'') && value_start(prev) {
+        if start && (c == b'"' || c == b'\'') {
             let e = quoted_end(b, i);
-            let need = i - line_start(b, i) + 1;
+            let need = i - ls + 1;
             for k in i..e {
                 if b[k] != b'\n' {
                     continue;
                 }
-                let ls = k + 1;
-                if ls >= b.len() || doc_marker(b, ls) || matches!(b[ls], b'\n' | b'\r') {
+                let next = k + 1;
+                ls = next;
+                if next >= b.len() || doc_marker(b, next) || matches!(b[next], b'\n' | b'\r') {
                     continue;
                 }
-                let sp = indent(b, ls);
+                let sp = indent(b, next);
                 if sp < need {
-                    f.inserts.push((ls, need - sp));
+                    f.inserts.push((next, need - sp));
                 }
             }
-            prev = Some(c);
+            start = false;
             i = e;
             continue;
         }
-        prev = Some(c);
+        match c {
+            b'-' | b'?' if start && blank_after(b, i) => start = true,
+            b':' if blank_after(b, i)
+                || (flow > 0 && matches!(b.get(i + 1), Some(b',' | b']' | b'}'))) =>
+            {
+                start = true
+            }
+            b'[' | b'{' if start || flow > 0 => {
+                flow += 1;
+                start = true;
+            }
+            b',' if flow > 0 => start = true,
+            b']' | b'}' if flow > 0 => {
+                flow -= 1;
+                start = false;
+            }
+            _ => start = false,
+        }
         i += 1;
     }
     f
@@ -295,8 +321,9 @@ pub(super) fn withdraw_wrong(f: &mut Fixes, root: Option<&Node>) -> bool {
     f.tabs.len() + f.inserts.len() != before
 }
 
-/// libyaml rejects a tab between a block sequence `-` and its entry
-/// (`-\tx`, `- \tx`); saphyr accepts it. The 1-based line
+/// libyaml rejects a tab between a block indicator at the start of a
+/// line (`-`, `?`, `:`) and what follows it (`-\tx`, `- \tx`,
+/// `:\tb`); saphyr accepts it. `text` must still hold the tabs. The 1-based line
 /// of the first one outside a scalar, if any.
 pub(super) fn dash_tab(text: &str, root: Option<&Node>) -> Option<usize> {
     let b = text.as_bytes();
@@ -312,8 +339,9 @@ pub(super) fn dash_tab(text: &str, root: Option<&Node>) -> Option<usize> {
             .position(|c| *c == b'\n')
             .map_or(b.len(), |p| ls + p);
         let mut i = ls + indent(b, ls);
-        // Each `-` entry indicator on the line, and the blanks after it.
-        while i + 1 < end && b[i] == b'-' && is_ws(b[i + 1]) {
+        // Each block indicator (`-`, `?`, `:`) opening the line, and the
+        // blanks after it.
+        while i + 1 < end && matches!(b[i], b'-' | b'?' | b':') && is_ws(b[i + 1]) {
             let mut j = i + 1;
             let mut tab = false;
             while j < end && is_ws(b[j]) {

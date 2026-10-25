@@ -350,6 +350,8 @@ struct Generate {
     prefix: String,
     line: String,
     count: usize,
+    #[serde(default)]
+    suffix: String,
 }
 
 #[test]
@@ -368,6 +370,7 @@ fn load_vectors() {
             for i in 0..g.count {
                 b.push_str(&g.line.replace("{i}", &i.to_string()));
             }
+            b.push_str(&g.suffix);
             files.push(b);
         }
         for (i, body) in files.iter().enumerate() {

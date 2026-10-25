@@ -98,9 +98,10 @@ pub(crate) fn check_unique(n: &Node) -> Result<(), DeError> {
     // Linear screen first; the pairwise pass below only runs to word
     // the errors in yaml.v3's order.
     let mut seen = std::collections::HashSet::with_capacity(entries.len());
+    // Every scalar key, merge keys included: a superset of the pairs the
+    // pass below reports (it skips only a merge key on the left).
     let dup = entries
         .iter()
-        .filter(|(k, _)| !k.is_merge_key())
         .filter_map(|(k, _)| k.scalar_value())
         .any(|k| !seen.insert(k));
     if !dup {

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/config-v1/load.json",
   "version": "v1",
-  "description": "`Load` into a fixed struct shape (name string, port int, ratio float, debug bool, tags []string, inner {a string, b int}, labels map[string]string, opt *string, extra any, all keyed by these lower-case names), starting from `start`, merging each YAML in `files` as an extra config file in order, then the `overrides` pairs. Merge rules are yaml.v3 decoding into an existing value: struct fields merge one by one; scalars, lists and each map entry are replaced; a null clears only the pointer, list and map fields and leaves scalars; unknown keys are ignored; `<<` merge keys expand with explicit keys winning. Each file is first decoded on its own as Go does: a duplicate key or a non-scalar key in a mapping the target reads fails, and decoding counts aliases with yaml.v3's budget (more than 100 aliased of more than 1000 decoded nodes, at a share above 0.99 up to 400k decoded, falling linearly to 0.10 at 4M, is `excessive aliasing`). Mappings under keys the target ignores are not decoded. A leading BOM, a tab after `:` and quoted-scalar continuation lines at column 0 read as libyaml reads them. `want` is the struct as JSON. `generate` ({prefix, line, count}) adds one more file after `files`: `prefix`, then `line` repeated `count` times with `{i}` replaced by 0..count-1 (large inputs without a large corpus). A failing case gives `error_contains` substrings; `<path>` stands for the failing file's path.",
+  "description": "`Load` into a fixed struct shape (name string, port int, ratio float, debug bool, tags []string, inner {a string, b int}, labels map[string]string, opt *string, extra any, all keyed by these lower-case names), starting from `start`, merging each YAML in `files` as an extra config file in order, then the `overrides` pairs. Merge rules are yaml.v3 decoding into an existing value: struct fields merge one by one; scalars, lists and each map entry are replaced; a null clears only the pointer, list and map fields and leaves scalars; unknown keys are ignored; `<<` merge keys expand with explicit keys winning. Each file is first decoded on its own as Go does: a duplicate key or a non-scalar key in a mapping the target reads fails, and decoding counts aliases with yaml.v3's budget (more than 100 aliased of more than 1000 decoded nodes, at a share above 0.99 up to 400k decoded, falling linearly to 0.10 at 4M, is `excessive aliasing`). Mappings under keys the target ignores are not decoded. A leading BOM, a tab after `:` and quoted-scalar continuation lines at column 0 read as libyaml reads them. `want` is the struct as JSON. `generate` ({prefix, line, count, suffix?}) adds one more file after `files`: `prefix`, then `line` repeated `count` times with `{i}` replaced by 0..count-1, then `suffix` (large inputs without a large corpus). A failing case gives `error_contains` substrings; `<path>` stands for the failing file's path.",
   "cases": [
     {
       "name": "later file wins per field",
@@ -724,6 +724,137 @@
         "prefix": "name:\tx\n",
         "line": "k{i}:\tv\nq{i}: \"a\nb\"\n",
         "count": 12000
+      },
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "quote after comma in a plain scalar",
+      "files": [
+        "name: Rock, 'n roll\nport:\t8080\ntags: ['x']\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "Rock, 'n roll",
+        "port": 8080,
+        "ratio": 0,
+        "debug": false,
+        "tags": [
+          "x"
+        ],
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "quote after question mark in a plain scalar",
+      "files": [
+        "extra: what? 'tis\nport: 1\nname:\tx\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 1,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": "what? 'tis"
+      }
+    },
+    {
+      "name": "quote after dash in a plain scalar",
+      "files": [
+        "extra: a - \"b\nport: 1\nname:\tx\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 1,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": "a - \"b"
+      }
+    },
+    {
+      "name": "quoted merge-key text duplicated by a merge key",
+      "files": [
+        "extra:\n  \"<<\": 1\n  <<: {a: 2}\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 3: mapping key \"<<\" already defined at line 2"
+      ]
+    },
+    {
+      "name": "tab after explicit value indicator is rejected",
+      "files": [
+        "? name\n:\tb\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: line 2: found character that cannot start any token"
+      ]
+    },
+    {
+      "name": "plain continuation starting with a quote",
+      "files": [
+        "extra: a\n  'b\nname:\tx\nport: 1\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 1,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": "a 'b"
+      }
+    },
+    {
+      "name": "500 KB quoted flow line with one repair",
+      "files": [],
+      "generate": {
+        "prefix": "name:\tx\nzz: ['a'",
+        "line": ", 'a'",
+        "count": 100000,
+        "suffix": "]\n"
       },
       "ok": true,
       "want": {
