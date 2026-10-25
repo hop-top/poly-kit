@@ -80,13 +80,13 @@ func TestStreamConformanceCursor(t *testing.T) {
 			default:
 				t.Fatalf("vector link %q", tc.Link)
 			}
-			resume, gap, err := c.linkUp(ack, tc.Reconnect)
+			resume, gap, err := c.linkUp(ack, c.request(), tc.Reconnect)
 			var linkUp any = map[string]any{"resume": resume, "invalidated": confGapOf(gap)}
 			if err != nil {
 				if !isProtocolError(err) {
 					t.Fatalf("link-up err = %v, want a protocol error", err)
 				}
-				linkUp = "protocol_error"
+				linkUp = map[string]string{"protocol_error": protocolKind(err)}
 			}
 			lu, _ := json.Marshal(linkUp)
 			assertJSONEqual(t, lu, tc.Expect.LinkUp)
@@ -100,7 +100,7 @@ func TestStreamConformanceCursor(t *testing.T) {
 					deliver, err := c.onEventOffset(fr.Event)
 					switch {
 					case err != nil:
-						got = "protocol_error"
+						got = map[string]string{"protocol_error": protocolKind(err)}
 					case deliver:
 						got = "deliver"
 					default:
@@ -119,7 +119,7 @@ func TestStreamConformanceCursor(t *testing.T) {
 						}
 					}
 					if err != nil {
-						got = "protocol_error"
+						got = map[string]string{"protocol_error": protocolKind(err)}
 					}
 				case len(fr.Position) > 0:
 					members := map[string]json.RawMessage{}
@@ -131,7 +131,7 @@ func TestStreamConformanceCursor(t *testing.T) {
 					}
 					got = "ok"
 					if err != nil {
-						got = "protocol_error"
+						got = map[string]string{"protocol_error": protocolKind(err)}
 					}
 				default:
 					t.Fatal("vector: empty frame")

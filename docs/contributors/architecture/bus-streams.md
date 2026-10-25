@@ -56,9 +56,9 @@ Non-goals for streams v1:
 
 - a durable log ships later; v1 defines the log seam and ships a ring
 - exactly-once delivery end to end
-- acknowledged publishes from a dialer to an acceptor (bus publishes in
-  flight from a dialer are at most once; writes that matter go through an
-  application's own idempotent request path)
+- acknowledged publishes from a dialer to an acceptor (a frame that was
+  written but lost in transit is not resent; writes that matter go
+  through an application's own idempotent request path)
 - a relay subscribing upstream on behalf of its downstream peers
 - per-tenant policy: kit provides scope, a per-link filter and an
   authorization hook; the hub decides
@@ -671,6 +671,13 @@ address's send cursor. The cursor survives the disconnect, and on
 reconnect the writer resumes from it, so queued events go out in publish
 order, before any later event.
 
+A write that fails closes an outbox link and rewinds the send cursor to
+that frame, so the next link sends it first. If the frame's bytes had
+reached the peer before the error (a write timeout, say), the peer gets
+it twice; dedupe by event `id`. A frame that was written successfully
+but lost with the connection is not resent: there are no publish acks
+in v1.
+
 - **start:** for an address given to `WithNetwork` or `Dial`, the outbox
   starts when the adapter registers it, not at the first successful
   connect. Events made during an offline start are kept. A plain
@@ -698,7 +705,7 @@ until it has succeeded once.
 | acceptor to dialer, across a reconnect, same processes | no gaps and no duplicates for the subscription, or an explicit `invalidated` |
 | acceptor to dialer, dialer restarted with a persisted position | at least once: entries after the persisted position are replayed; dedupe by `(stream, offset)` or event `id` |
 | acceptor restarted, ring log | no replay: new stream id, reset with reason `stream` |
-| dialer to acceptor, outbox on | queued events once, in order; frames in flight when the link dropped are lost (at most once); overflow drops oldest, counted |
+| dialer to acceptor, outbox on | queued events in order; a frame whose write failed is resent on the next link (a duplicate if its bytes had already reached the peer); a frame that was written but lost in transit is not resent; overflow drops oldest, counted |
 | dialer to acceptor, outbox off | the previous behaviour |
 | local handlers | per-sender order holds through **sync** handlers only; async handlers run one goroutine each and stay unordered |
 | end to end | no exactly-once; a sync handler veto does not hold back the position |

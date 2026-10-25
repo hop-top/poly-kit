@@ -205,7 +205,7 @@ func decodeEventFrame(data []byte, streamLink bool) (Event, string, frameOffset,
 	}
 	off, ok := parseOffsetToken(rawOff)
 	if !ok {
-		return Event{}, "", frameOffset{}, protocolErr("event frame without a valid offset")
+		return Event{}, "", frameOffset{}, protocolErr(pkOffset, "event frame without a valid offset")
 	}
 	return e, origin, frameOffset{value: off, ok: true}, nil
 }

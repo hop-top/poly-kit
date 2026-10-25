@@ -363,6 +363,13 @@ type Observer func(ctx context.Context, e Event)
 // PublishObserver is implemented by buses that can report accepted
 // events in publish order. The network adapter uses it to keep an
 // ordered log; a bus without it gets unordered forwarding.
+//
+// A Bus implementation that runs async handlers on other goroutines
+// should not hand them a publish context carrying the network adapter's
+// delivery marker; kit's buses drop it, so async handlers may make
+// Subscribe calls on the delivering address. Building the async
+// context from context.Background (as the SQLite adapter does) also
+// works.
 type PublishObserver interface {
 	ObservePublished(o Observer) Unsubscribe
 }

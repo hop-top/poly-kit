@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Dialer cursor rules. Input: an optional seeded or recorded position (`seed`), whether this connect is a reconnect, the link kind (`stream` with its ack's `stream` info and optional `resume` outcome, or `legacy`: a plain ack or no handshake), then a sequence of frames: `event` (the raw JSON offset token of an event frame, null for a missing one), `reset` and `position` control frames. Output: the link-up result (`resume` as reported in link.connected, and the invalidation published before anything else, if any), one result per frame (`deliver`, `drop` for a duplicate, `ok` for a position, an `invalidated` object, or `protocol_error`, after which the link is closed and no frames follow), and the final position (null when none is held). A resume is wanted when a position is held or the connect is a reconnect; a link that comes up without `replaying` while a resume is wanted invalidates. Reset (ack or frame) sets the position to (stream, head); position frames apply max; duplicates are offsets <= the position; reset or position naming another stream is a protocol error; a legacy link clears the position. Invalidation payload offsets are decimal strings, empty for `unsupported`. A `replaying` ack for a stream other than the held position's is treated as a reset with reason `stream`. A reset frame whose head is below the position is a protocol error (offsets only grow). The ack's resume outcome is checked against the request and the stream info before anything changes: a `replaying` outcome must repeat the requested `after` and not exceed `stream.head`; a `reset` outcome's `head` must not exceed `stream.head`; an outcome without a request is a protocol error (`link_up` is then the string `protocol_error` and the position is unchanged). A reset frame's `after` must not exceed its `head`.",
+  "description": "Dialer cursor rules. Input: an optional seeded or recorded position (`seed`), whether this connect is a reconnect, the link kind (`stream` with its ack's `stream` info and optional `resume` outcome, or `legacy`: a plain ack or no handshake), then a sequence of frames: `event` (the raw JSON offset token of an event frame, null for a missing one), `reset` and `position` control frames. Output: the link-up result (`resume` as reported in link.connected, and the invalidation published before anything else, if any), one result per frame (`deliver`, `drop` for a duplicate, `ok` for a position, an `invalidated` object, or `{\"protocol_error\": kind}`, after which the link is closed and no frames follow), and the final position (null when none is held). A resume is wanted when a position is held or the connect is a reconnect; a link that comes up without `replaying` while a resume is wanted invalidates. Reset (ack or frame) sets the position to (stream, head); position frames apply max; duplicates are offsets <= the position; reset or position naming another stream is a protocol error; a legacy link clears the position. Invalidation payload offsets are decimal strings, empty for `unsupported`. A `replaying` ack for a stream other than the held position's is treated as a reset with reason `stream`. A reset frame whose head is below the position is a protocol error (offsets only grow). The ack's resume outcome is checked against the request and the stream info before anything changes: a `replaying` outcome must repeat the requested `after` and not exceed `stream.head`; a `reset` outcome's `head` must not exceed `stream.head`; an outcome without a request is a protocol error (`link_up` is then `{\"protocol_error\": kind}` and the position is unchanged). A reset frame's `after` must not exceed its `head`.",
   "cases": [
     {
       "name": "fresh stream connect starts at the head",
@@ -380,7 +380,9 @@
           "invalidated": null
         },
         "frames": [
-          "protocol_error"
+          {
+            "protocol_error": "foreign_stream"
+          }
         ],
         "position": {
           "stream": "S",
@@ -414,7 +416,9 @@
           "invalidated": null
         },
         "frames": [
-          "protocol_error"
+          {
+            "protocol_error": "foreign_stream"
+          }
         ],
         "position": {
           "stream": "S",
@@ -498,7 +502,9 @@
         },
         "frames": [
           "deliver",
-          "protocol_error"
+          {
+            "protocol_error": "offset"
+          }
         ],
         "position": {
           "stream": "S",
@@ -529,7 +535,9 @@
           "invalidated": null
         },
         "frames": [
-          "protocol_error"
+          {
+            "protocol_error": "offset"
+          }
         ],
         "position": {
           "stream": "S",
@@ -711,7 +719,9 @@
         },
         "frames": [
           "deliver",
-          "protocol_error"
+          {
+            "protocol_error": "reset_head"
+          }
         ],
         "position": {
           "stream": "S",
@@ -741,7 +751,9 @@
       },
       "frames": [],
       "expect": {
-        "link_up": "protocol_error",
+        "link_up": {
+          "protocol_error": "replay_after"
+        },
         "frames": [],
         "position": {
           "stream": "S",
@@ -771,7 +783,9 @@
       },
       "frames": [],
       "expect": {
-        "link_up": "protocol_error",
+        "link_up": {
+          "protocol_error": "replay_after"
+        },
         "frames": [],
         "position": {
           "stream": "S",
@@ -802,7 +816,9 @@
       },
       "frames": [],
       "expect": {
-        "link_up": "protocol_error",
+        "link_up": {
+          "protocol_error": "reset_head"
+        },
         "frames": [],
         "position": {
           "stream": "S",
@@ -829,7 +845,9 @@
       },
       "frames": [],
       "expect": {
-        "link_up": "protocol_error",
+        "link_up": {
+          "protocol_error": "unrequested"
+        },
         "frames": [],
         "position": null
       }
@@ -862,7 +880,9 @@
           "invalidated": null
         },
         "frames": [
-          "protocol_error"
+          {
+            "protocol_error": "reset_after"
+          }
         ],
         "position": {
           "stream": "S",

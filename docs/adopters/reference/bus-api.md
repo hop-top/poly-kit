@@ -529,10 +529,26 @@ context of a sync handler that link is delivering (`link.connected`,
 `stream.invalidated`, or an event from that peer) they return an error
 wrapping `bus.ErrReentrantRequest` instead of blocking. To react to
 those events with a request, subscribe the handler with
-`SubscribeAsync` (async handlers run off the delivering goroutine and
-may pass their own context), or start a goroutine with a context not
-derived from the handler's. A sync handler that calls with an unrelated
-context blocks until the link closes, then gets an error.
+`SubscribeAsync` (on kit's buses, async handlers run off the
+delivering goroutine without the marker and may pass their own
+context), or start a goroutine with a context not derived from the
+handler's. A sync handler that calls with an unrelated context blocks
+until the link closes, then gets an error. A custom `Bus` that runs
+async handlers with the publish context must drop the marker itself,
+or build their context from `context.Background()`.
+
+Async handlers share the bus's bounded pool (`WithMaxAsync`). If every
+slot holds a handler waiting on a reply from one link, that link's
+reader blocks on the pool when it publishes the next event, so the
+reply never arrives: the stall lasts until the link closes (on a
+stream link, the dialer's watchdog closes it after three heartbeat
+intervals). Keep request-making async handlers well below the pool
+size, or bound their requests with a context deadline.
+
+`Subscribe`, `Unsubscribe` and `SetScope` need a registered address
+(`Connect`, `Dial` or `WithNetwork`); after `Disconnect` they return
+`bus.ErrDisconnected`. Use `WithSubscribe` and `WithScope` for the set a
+first connect asks for.
 
 Subscribe authorizers (`WithSubscribeAuthorizer`) run on the link's
 writer, which keeps the ack's offset an exact fence. They must be fast:
@@ -558,6 +574,8 @@ These change how the network adapter behaves for existing adopters:
 
 - Forwarding is ordered per sending adapter: one writer per link reads
   the adapter's log, instead of one goroutine per event.
+- An outbox link resends a frame whose write failed (a possible
+  duplicate); frames written but lost in transit are not resent.
 - A slow legacy link skips entries the log evicted before its writer
   reached them, instead of back-pressuring publishers. Skips are
   counted (`(*NetworkAdapter).Skipped(addr)`, `WithSkipFunc`) and

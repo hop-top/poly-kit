@@ -18,9 +18,10 @@ var errLinkClosed = errors.New("bus: link closed before the reply")
 // to the same address is delivering: link.connected, stream.invalidated
 // or an event from that peer. The reply could only be read by the
 // goroutine that is running the handler, so the call would block.
-// Subscribe the handler with SubscribeAsync (async handlers run off the
-// delivering goroutine and may pass their context), or start a goroutine
-// with a context not derived from the handler's.
+// Subscribe the handler with SubscribeAsync (on kit's buses, async
+// handlers run off the delivering goroutine without the marker and may
+// pass their context), or start a goroutine with a context not derived
+// from the handler's.
 //
 // The check needs the handler's context: a call with an unrelated
 // context from such a handler blocks until the link closes (then
@@ -30,8 +31,11 @@ var ErrReentrantRequest = errors.New("bus: request from a delivery of the same l
 // Subscribe adds patterns to what the acceptor at addr sends this
 // dialer. The first explicit subscription replaces the implicit "#".
 // It returns the ack's offset: every event after it is filtered by the
-// new set. On a disconnected address it only updates the set sent in
-// the next handshake and returns 0.
+// new set. On a registered address that is down it only updates the
+// set sent in the next handshake and returns 0. addr must be registered
+// (Connect, Dial or WithNetwork; use WithSubscribe for the set before
+// the first connect): an unknown or Disconnect-ed address returns
+// ErrDisconnected.
 //
 // From a sync bus handler fed by the link to addr, pass the handler's
 // context: the call returns ErrReentrantRequest instead of blocking.
@@ -67,7 +71,12 @@ func (n *NetworkAdapter) request(ctx context.Context, addr string, r ctlRequest)
 			}
 		}
 	}
-	ps := n.peerFor(addr)
+	ps := n.peer(addr)
+	if ps == nil {
+		// Never registered, or forgotten by Disconnect: do not bring it
+		// back (a reconnect loop still backing off would redial it).
+		return 0, fmt.Errorf("%w: %s", ErrDisconnected, addr)
+	}
 	n.mu.RLock()
 	l := n.conns[addr]
 	n.mu.RUnlock()
@@ -102,6 +111,9 @@ func (n *NetworkAdapter) request(ctx context.Context, addr string, r ctlRequest)
 		l.pendMu.Lock()
 		delete(l.pending, r.ID)
 		l.pendMu.Unlock()
+		if l.ctx.Err() != nil {
+			return 0, errLinkClosed
+		}
 		return 0, err
 	}
 	select {

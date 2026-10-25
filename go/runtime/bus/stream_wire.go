@@ -50,11 +50,43 @@ func streamErr(code, format string, args ...any) *StreamError {
 // closes with 1002 and the dialer reconnects with resume.
 var errProtocol = errors.New("bus: stream protocol error")
 
-func protocolErr(format string, args ...any) error {
-	return fmt.Errorf("%w: %s", errProtocol, fmt.Sprintf(format, args...))
+// Protocol error kinds. Vectors pin them, so a case cannot fail for the
+// wrong reason; the message text is not contract.
+const (
+	pkOffset         = "offset"          // event frame offset missing or malformed
+	pkStreamInfo     = "stream_info"     // ack stream id or offsets malformed
+	pkOldest         = "oldest"          // ack oldest beyond head+1
+	pkHeartbeat      = "heartbeat"       // ack heartbeat_ms missing or out of range
+	pkResume         = "resume"          // ack resume outcome malformed
+	pkUnrequested    = "unrequested"     // ack resume outcome without a request
+	pkReplayAfter    = "replay_after"    // ack replay after differs from the request or exceeds the head
+	pkResetHead      = "reset_head"      // reset head beyond the stream head, or below the position
+	pkResetAfter     = "reset_after"     // reset after beyond its head
+	pkResetMalformed = "reset_malformed" // reset frame members malformed
+	pkPosMalformed   = "position_malformed"
+	pkForeignStream  = "foreign_stream" // reset or position naming another stream
+)
+
+// protocolError is an errProtocol with a kind.
+type protocolError struct{ kind, msg string }
+
+func (e *protocolError) Error() string        { return errProtocol.Error() + ": " + e.msg }
+func (e *protocolError) Is(target error) bool { return target == errProtocol }
+
+func protocolErr(kind, format string, args ...any) error {
+	return &protocolError{kind: kind, msg: fmt.Sprintf(format, args...)}
 }
 
 func isProtocolError(err error) bool { return errors.Is(err, errProtocol) }
+
+// protocolKind returns the kind of a protocol error, "" for others.
+func protocolKind(err error) string {
+	var pe *protocolError
+	if errors.As(err, &pe) {
+		return pe.kind
+	}
+	return ""
+}
 
 // parseOffset parses an offset token: decimal digits, no sign, no
 // leading zeros, at most 2^64-1.
@@ -327,14 +359,14 @@ func dialerControl(m map[string]json.RawMessage) (dialerCtl, error) {
 		after, okA := parseOffsetToken(m["after"])
 		head, okH := parseOffsetToken(m["head"])
 		if !okS || !validStreamID(stream) || !okR || reason == "" || !okA || !okH {
-			return dialerCtl{}, protocolErr("malformed reset")
+			return dialerCtl{}, protocolErr(pkResetMalformed, "malformed reset")
 		}
 		return dialerCtl{Kind: "reset", Reset: resetInfo{stream, reason, after, head}}, nil
 	case "position":
 		stream, okS := memberString(m, "stream")
 		off, okO := parseOffsetToken(m["offset"])
 		if !okS || !validStreamID(stream) || !okO {
-			return dialerCtl{}, protocolErr("malformed position")
+			return dialerCtl{}, protocolErr(pkPosMalformed, "malformed position")
 		}
 		return dialerCtl{Kind: "position", Position: positionInfo{stream, off}}, nil
 	}

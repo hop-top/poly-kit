@@ -80,23 +80,23 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 		ps = n.peerFor(addr)
 	}
 
-	var ack *ackFrame
+	var (
+		ack  *ackFrame
+		sent *resumeReq // the resume request the acceptor answered
+	)
 	if n.auth != nil {
-		a, err := n.dialHandshake(ctx, conn, ps)
+		a, req, err := n.dialHandshake(ctx, conn, ps)
 		if err != nil {
 			return n.handshakeFailed(addr, ps, err)
 		}
-		ack = &a
+		ack, sent = &a, req
 	}
 
 	var peerCaps *streamCaps
 	if ack != nil {
 		peerCaps = ack.Caps
 	}
-	ps.mu.Lock()
-	err = checkAck(ack, ps.cursor.request())
-	ps.mu.Unlock()
-	if err != nil {
+	if err := checkAck(ack, sent); err != nil {
 		_ = conn.Close(statusProtocol, "protocol error")
 		return n.handshakeFailed(addr, ps, err)
 	}
@@ -133,12 +133,25 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 		_ = conn.Close(statusNormal, "duplicate")
 		return nil
 	}
+	ps.mu.Lock()
+	if ack != nil && !sameResume(ps.cursor.request(), sent) {
+		// Another link to addr delivered while we dialed: our ack
+		// answers a stale position. Lost a race; let the loop redial.
+		ps.mu.Unlock()
+		n.mu.Unlock()
+		_ = conn.Close(statusNormal, "duplicate")
+		return nil
+	}
+	resume, gap, err := ps.cursor.linkUp(ack, sent, ps.connected)
+	if err != nil {
+		ps.mu.Unlock()
+		n.mu.Unlock()
+		_ = conn.Close(statusProtocol, "protocol error")
+		return n.handshakeFailed(addr, ps, err)
+	}
 	n.conns[addr] = l
 	n.wg.Add(1)
 	n.mu.Unlock()
-
-	ps.mu.Lock()
-	resume, gap, _ := ps.cursor.linkUp(ack, ps.connected) // checked above, under no concurrent change
 	ps.connected = true
 	ps.send.linkUp(n.log)
 	// A fresh state also clears Final from an earlier refused session.
@@ -192,6 +205,15 @@ func (n *NetworkAdapter) handshakeFailed(addr string, ps *peerState, err error) 
 	return err
 }
 
+// sameResume reports whether two resume requests are equal (both nil
+// included).
+func sameResume(a, b *resumeReq) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
 // isFinalConnectErr reports whether a connect error stops retrying.
 func isFinalConnectErr(err error) bool {
 	var se *StreamError
@@ -200,11 +222,11 @@ func isFinalConnectErr(err error) bool {
 
 // dialHandshake sends the auth frame (caps, origin, session) and reads
 // the acceptor's reply.
-func (n *NetworkAdapter) dialHandshake(ctx context.Context, conn *websocket.Conn, ps *peerState) (ackFrame, error) {
+func (n *NetworkAdapter) dialHandshake(ctx context.Context, conn *websocket.Conn, ps *peerState) (ackFrame, *resumeReq, error) {
 	token, err := n.auth.Token()
 	if err != nil {
 		_ = conn.Close(statusInternal, "auth failed")
-		return ackFrame{}, err
+		return ackFrame{}, nil, err
 	}
 	caps := n.caps()
 	ps.mu.Lock()
@@ -215,31 +237,31 @@ func (n *NetworkAdapter) dialHandshake(ctx context.Context, conn *websocket.Conn
 	ps.mu.Unlock()
 	if err := conn.Write(ctx, websocket.MessageText, encodeAuthFrame(token, &caps, n.originID, sess)); err != nil {
 		_ = conn.Close(statusInternal, "auth write failed")
-		return ackFrame{}, err
+		return ackFrame{}, nil, err
 	}
 	ackCtx, ackCancel := context.WithTimeout(ctx, n.ackTimeout)
 	_, data, err := conn.Read(ackCtx)
 	ackCancel()
 	if err != nil {
 		if websocket.CloseStatus(err) == statusPolicy {
-			return ackFrame{}, ErrAuthFailed // the acceptor refused us
+			return ackFrame{}, nil, ErrAuthFailed // the acceptor refused us
 		}
 		_ = conn.Close(statusPolicy, "auth ack timeout")
-		return ackFrame{}, errAckTimeout
+		return ackFrame{}, nil, errAckTimeout
 	}
 	a, err := parseAck(data, n.caps().Streams)
 	switch {
 	case isProtocolError(err):
 		_ = conn.Close(statusProtocol, "protocol error")
-		return ackFrame{}, err
+		return ackFrame{}, nil, err
 	case err != nil:
 		_ = conn.Close(statusPolicy, "auth rejected")
-		return ackFrame{}, ErrAuthFailed
+		return ackFrame{}, nil, ErrAuthFailed
 	case a.Kind == "session_error":
 		_ = conn.Close(statusPolicy, "invalid session")
-		return ackFrame{}, a.Err
+		return ackFrame{}, nil, a.Err
 	}
-	return a, nil
+	return a, sess.Resume, nil
 }
 
 // Handler returns an http.Handler that accepts inbound WebSocket peers.

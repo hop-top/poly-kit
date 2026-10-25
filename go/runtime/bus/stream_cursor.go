@@ -86,21 +86,22 @@ func checkAck(a *ackFrame, req *resumeReq) error {
 	ro, head := a.Resume, a.Stream.Head
 	switch {
 	case req == nil:
-		return protocolErr("ack: resume outcome without a request")
+		return protocolErr(pkUnrequested, "ack: resume outcome without a request")
 	case ro.Status == ResumeReplaying && (ro.After != req.After || ro.After > head):
-		return protocolErr("ack: replay after %d, asked %d, head %d", ro.After, req.After, head)
+		return protocolErr(pkReplayAfter, "ack: replay after %d, asked %d, head %d", ro.After, req.After, head)
 	case ro.Status == ResumeReset && ro.Head > head:
-		return protocolErr("ack: reset head %d beyond stream head %d", ro.Head, head)
+		return protocolErr(pkResetHead, "ack: reset head %d beyond stream head %d", ro.Head, head)
 	}
 	return nil
 }
 
 // linkUp applies the acceptor's ack (nil for a legacy link: a plain ack
-// or no handshake). It returns the resume status for link.connected and
-// the invalidation to publish before anything else, if any; an ack that
-// fails checkAck is a protocol error and changes nothing.
-func (c *dialerCursor) linkUp(a *ackFrame, reconnect bool) (string, *gapInfo, error) {
-	if err := checkAck(a, c.request()); err != nil {
+// or no handshake), answering sent, the resume request the dialer sent.
+// It returns the resume status for link.connected and the invalidation
+// to publish before anything else, if any; an ack that fails checkAck
+// is a protocol error and changes nothing.
+func (c *dialerCursor) linkUp(a *ackFrame, sent *resumeReq, reconnect bool) (string, *gapInfo, error) {
+	if err := checkAck(a, sent); err != nil {
 		return "", nil, err
 	}
 	wanted := c.Held || reconnect
@@ -112,8 +113,12 @@ func (c *dialerCursor) linkUp(a *ackFrame, reconnect bool) (string, *gapInfo, er
 		return ResumeUnsupported, nil, nil
 	}
 	s := a.Stream
-	asked, askedStream := c.Offset, c.Stream
-	held := c.Held
+	held := sent != nil
+	var asked uint64
+	var askedStream string
+	if held {
+		asked, askedStream = sent.After, sent.Stream
+	}
 	c.Stream, c.Held = s.ID, true
 	switch {
 	case a.Resume == nil:
@@ -140,7 +145,7 @@ func (c *dialerCursor) linkUp(a *ackFrame, reconnect bool) (string, *gapInfo, er
 func (c *dialerCursor) onEventOffset(raw json.RawMessage) (bool, error) {
 	off, ok := parseOffsetToken(raw)
 	if !ok {
-		return false, protocolErr("event frame without a valid offset")
+		return false, protocolErr(pkOffset, "event frame without a valid offset")
 	}
 	return c.advance(off), nil
 }
@@ -156,15 +161,15 @@ func (c *dialerCursor) advance(off uint64) bool {
 // onReset applies a reset frame: the position moves to the head.
 func (c *dialerCursor) onReset(r resetInfo) (*gapInfo, error) {
 	if r.Stream != c.Stream {
-		return nil, protocolErr("reset for stream %q on a link to %q", r.Stream, c.Stream)
+		return nil, protocolErr(pkForeignStream, "reset for stream %q on a link to %q", r.Stream, c.Stream)
 	}
 	if r.After > r.Head {
-		return nil, protocolErr("reset after %d beyond head %d", r.After, r.Head)
+		return nil, protocolErr(pkResetAfter, "reset after %d beyond head %d", r.After, r.Head)
 	}
 	if r.Head < c.Offset {
 		// Offsets only grow: a reset to below the position would make
 		// the dialer re-deliver or drop events.
-		return nil, protocolErr("reset head %d below position %d", r.Head, c.Offset)
+		return nil, protocolErr(pkResetHead, "reset head %d below position %d", r.Head, c.Offset)
 	}
 	c.Offset = r.Head
 	return &gapInfo{Reason: r.Reason, Stream: r.Stream, After: r.After, Head: r.Head}, nil
@@ -173,7 +178,7 @@ func (c *dialerCursor) onReset(r resetInfo) (*gapInfo, error) {
 // onPosition applies a position frame: max of the two offsets.
 func (c *dialerCursor) onPosition(p positionInfo) error {
 	if p.Stream != c.Stream {
-		return protocolErr("position for stream %q on a link to %q", p.Stream, c.Stream)
+		return protocolErr(pkForeignStream, "position for stream %q on a link to %q", p.Stream, c.Stream)
 	}
 	if p.Offset > c.Offset {
 		c.Offset = p.Offset

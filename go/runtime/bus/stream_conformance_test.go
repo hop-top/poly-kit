@@ -200,6 +200,7 @@ func TestStreamConformanceControl(t *testing.T) {
 			Name    string `json:"name"`
 			Frame   string `json:"frame"`
 			Outcome string `json:"outcome"`
+			Kind    string `json:"kind"`
 			Ack     *struct {
 				ID string `json:"id"`
 				At string `json:"at"`
@@ -287,8 +288,8 @@ func TestStreamConformanceControl(t *testing.T) {
 			}
 			c, err := dialerControl(members)
 			if tc.Outcome == "protocol_error" {
-				if err == nil {
-					t.Fatalf("got %+v, want protocol error", c)
+				if tc.Kind == "" || protocolKind(err) != tc.Kind {
+					t.Fatalf("got %+v, %v, want protocol error kind %q", c, err, tc.Kind)
 				}
 				return
 			}

@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Handshake. auth: the acceptor's decoding of the dialer's first frame. `auth` must be a non-empty string, else `invalid_auth` (close 1008, no ack). Capability parsing is lenient: a non-object `caps` is absent; `streams` is a non-negative JSON integer, else 0; `frames` keeps the known names `kit` and `cloudevents` in order, dropping others; a non-string `origin` is empty. `session` is strict, with the control-frame codes: not an object, a non-array `subscribe`, or a malformed `resume` (stream 1-128 bytes, `after` an offset token) is `bad_request`; a bad pattern `invalid_pattern`; a bad scope `invalid_scope`. Absent or null members normalize to null. ack: the dialer's decoding of the reply: `type` must be `auth_ok` or `session_error`, else the handshake fails; a `session_error` carries `code`. `mine` is the dialer's own streams version (required in every ack case). Only when the negotiated version min(`mine`, `caps.streams`) is at least 1 must `stream` hold `id` (1-128 bytes), offset tokens `oldest` and `head` with oldest <= head+1, and an integer `heartbeat_ms` in 1000..86400000, and a present `resume` be well formed, else the handshake fails (`ok` false, a protocol error, final for the dialer); below that, `stream` and `resume` are ignored and normalize to null. negotiate: link version is the minimum of both `streams` (no peer caps: 0); the send format is the configured one when there was no handshake or the peer listed it, else kit. ack_encode: the acceptor's reply; a dialer that sent no caps gets exactly {\"type\":\"auth_ok\"}.",
+  "description": "Handshake. auth: the acceptor's decoding of the dialer's first frame. `auth` must be a non-empty string, else `invalid_auth` (close 1008, no ack). Capability parsing is lenient: a non-object `caps` is absent; `streams` is a non-negative JSON integer, else 0; `frames` keeps the known names `kit` and `cloudevents` in order, dropping others; a non-string `origin` is empty. `session` is strict, with the control-frame codes: not an object, a non-array `subscribe`, or a malformed `resume` (stream 1-128 bytes, `after` an offset token) is `bad_request`; a bad pattern `invalid_pattern`; a bad scope `invalid_scope`. Absent or null members normalize to null. ack: the dialer's decoding of the reply: `type` must be `auth_ok` or `session_error`, else the handshake fails; a `session_error` carries `code`. `mine` is the dialer's own streams version (required in every ack case). Only when the negotiated version min(`mine`, `caps.streams`) is at least 1 must `stream` hold `id` (1-128 bytes), offset tokens `oldest` and `head` with oldest <= head+1, and an integer `heartbeat_ms` in 1000..86400000, and a present `resume` be well formed, else the handshake fails (`ok` false, a protocol error, final for the dialer); below that, `stream` and `resume` are ignored and normalize to null. negotiate: link version is the minimum of both `streams` (no peer caps: 0); the send format is the configured one when there was no handshake or the peer listed it, else kit. ack_encode: the acceptor's reply; a dialer that sent no caps gets exactly {\"type\":\"auth_ok\"}. A failing ack case names its `error`: `rejected` (not an auth_ok or session_error reply) or the protocol error kind (`stream_info`, `oldest`, `heartbeat`, `resume`).",
   "auth": [
     {
       "name": "legacy auth frame",
@@ -256,37 +256,43 @@
       "name": "wrong type",
       "frame": "{\"type\":\"auth_no\"}",
       "ok": false,
-      "mine": 1
+      "mine": 1,
+      "error": "rejected"
     },
     {
       "name": "not JSON",
       "frame": "auth_ok",
       "ok": false,
-      "mine": 1
+      "mine": 1,
+      "error": "rejected"
     },
     {
       "name": "streams without stream info",
       "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]}}",
       "ok": false,
-      "mine": 1
+      "mine": 1,
+      "error": "stream_info"
     },
     {
       "name": "missing heartbeat",
       "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\"}}",
       "ok": false,
-      "mine": 1
+      "mine": 1,
+      "error": "heartbeat"
     },
     {
       "name": "bad head",
-      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":0,\"heartbeat_ms\":1}}",
+      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":0,\"heartbeat_ms\":1000}}",
       "ok": false,
-      "mine": 1
+      "mine": 1,
+      "error": "stream_info"
     },
     {
       "name": "malformed resume",
-      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":1},\"session\":{\"resume\":{\"status\":\"reset\"}}}",
+      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":1000},\"session\":{\"resume\":{\"status\":\"reset\"}}}",
       "ok": false,
-      "mine": 1
+      "mine": 1,
+      "error": "resume"
     },
     {
       "name": "dialer v0, acceptor v1 without stream info",
@@ -325,31 +331,36 @@
       "name": "heartbeat zero",
       "mine": 1,
       "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":0}}",
-      "ok": false
+      "ok": false,
+      "error": "heartbeat"
     },
     {
       "name": "heartbeat negative",
       "mine": 1,
       "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":-5}}",
-      "ok": false
+      "ok": false,
+      "error": "heartbeat"
     },
     {
       "name": "heartbeat 1e13 literal",
       "mine": 1,
       "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":1e13}}",
-      "ok": false
+      "ok": false,
+      "error": "heartbeat"
     },
     {
       "name": "heartbeat 10000000000000",
       "mine": 1,
       "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":10000000000000}}",
-      "ok": false
+      "ok": false,
+      "error": "heartbeat"
     },
     {
       "name": "heartbeat above a day",
       "mine": 1,
       "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":86400001}}",
-      "ok": false
+      "ok": false,
+      "error": "heartbeat"
     },
     {
       "name": "heartbeat of a day",
@@ -376,19 +387,22 @@
       "name": "heartbeat as a string",
       "mine": 1,
       "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":\"1000\"}}",
-      "ok": false
+      "ok": false,
+      "error": "heartbeat"
     },
     {
       "name": "oldest beyond head plus one",
       "mine": 1,
-      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"5\",\"head\":\"3\",\"heartbeat_ms\":1}}",
-      "ok": false
+      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"5\",\"head\":\"3\",\"heartbeat_ms\":1000}}",
+      "ok": false,
+      "error": "oldest"
     },
     {
       "name": "heartbeat below a second",
       "mine": 1,
       "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":999}}",
-      "ok": false
+      "ok": false,
+      "error": "heartbeat"
     },
     {
       "name": "heartbeat of a second",
@@ -410,6 +424,27 @@
         "heartbeat_ms": 1000
       },
       "resume": null
+    },
+    {
+      "name": "replay outcome without head",
+      "mine": 1,
+      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"5\",\"heartbeat_ms\":1000},\"session\":{\"resume\":{\"status\":\"replaying\",\"after\":\"1\"}}}",
+      "ok": false,
+      "error": "resume"
+    },
+    {
+      "name": "replay outcome with numeric after",
+      "mine": 1,
+      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"5\",\"heartbeat_ms\":1000},\"session\":{\"resume\":{\"status\":\"replaying\",\"after\":1,\"head\":\"5\"}}}",
+      "ok": false,
+      "error": "resume"
+    },
+    {
+      "name": "unknown resume status",
+      "mine": 1,
+      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"5\",\"heartbeat_ms\":1000},\"session\":{\"resume\":{\"status\":\"skipped\",\"after\":\"1\",\"head\":\"5\"}}}",
+      "ok": false,
+      "error": "resume"
     }
   ],
   "negotiate": [

@@ -235,9 +235,13 @@ func parseAck(data []byte, mine int) (ackFrame, error) {
 	si.Oldest, okO = parseOffsetToken(st["oldest"])
 	si.Head, okH = parseOffsetToken(st["head"])
 	hb, err := strconv.ParseInt(string(st["heartbeat_ms"]), 10, 64)
-	if !okID || !validStreamID(si.ID) || !okO || !okH || (si.Oldest > si.Head && si.Oldest-si.Head > 1) ||
-		err != nil || hb < minHeartbeatMs || hb > maxHeartbeatMs {
-		return ackFrame{}, protocolErr("ack: malformed stream info")
+	switch {
+	case !okID || !validStreamID(si.ID) || !okO || !okH:
+		return ackFrame{}, protocolErr(pkStreamInfo, "ack: malformed stream info")
+	case si.Oldest > si.Head && si.Oldest-si.Head > 1:
+		return ackFrame{}, protocolErr(pkOldest, "ack: oldest %d beyond head %d", si.Oldest, si.Head)
+	case err != nil || hb < minHeartbeatMs || hb > maxHeartbeatMs:
+		return ackFrame{}, protocolErr(pkHeartbeat, "ack: heartbeat_ms outside %d..%d", minHeartbeatMs, maxHeartbeatMs)
 	}
 	si.HeartbeatMs = hb
 	a.Stream = si
@@ -256,11 +260,11 @@ func parseAck(data []byte, mine int) (ackFrame, error) {
 	ro.Head, okHd = parseOffsetToken(r["head"])
 	switch {
 	case !okSt || !okA || !okHd:
-		return ackFrame{}, protocolErr("ack: malformed resume outcome")
+		return ackFrame{}, protocolErr(pkResume, "ack: malformed resume outcome")
 	case ro.Status == "reset" && ro.Reason == "":
-		return ackFrame{}, protocolErr("ack: reset without a reason")
+		return ackFrame{}, protocolErr(pkResume, "ack: reset without a reason")
 	case ro.Status != "reset" && ro.Status != "replaying":
-		return ackFrame{}, protocolErr("ack: unknown resume status %q", ro.Status)
+		return ackFrame{}, protocolErr(pkResume, "ack: unknown resume status %q", ro.Status)
 	}
 	a.Resume = ro
 	return a, nil

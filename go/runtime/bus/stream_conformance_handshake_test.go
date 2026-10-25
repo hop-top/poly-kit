@@ -2,6 +2,7 @@ package bus
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -44,18 +45,16 @@ func TestStreamConformanceHandshake(t *testing.T) {
 			Error   string   `json:"error"`
 		} `json:"auth"`
 		Ack []struct {
-			Name   string   `json:"name"`
-			Mine   *int     `json:"mine"`
-			Frame  string   `json:"frame"`
-			OK     bool     `json:"ok"`
-			Kind   string   `json:"kind"`
-			Caps   *caps    `json:"caps"`
-			Origin string   `json:"origin"`
-			Stream *stream  `json:"stream"`
-			Resume *outcome `json:"resume"`
-			Error  *struct {
-				Code string `json:"code"`
-			} `json:"error"`
+			Name   string          `json:"name"`
+			Mine   *int            `json:"mine"`
+			Frame  string          `json:"frame"`
+			OK     bool            `json:"ok"`
+			Kind   string          `json:"kind"`
+			Caps   *caps           `json:"caps"`
+			Origin string          `json:"origin"`
+			Stream *stream         `json:"stream"`
+			Resume *outcome        `json:"resume"`
+			Error  json.RawMessage `json:"error"`
 		} `json:"ack"`
 		Negotiate []struct {
 			Name       string `json:"name"`
@@ -90,6 +89,9 @@ func TestStreamConformanceHandshake(t *testing.T) {
 	for _, tc := range f.Auth {
 		t.Run("auth/"+tc.Name, func(t *testing.T) {
 			a, err := parseAuthFrame([]byte(tc.Frame))
+			if !tc.OK && tc.Error == "" {
+				t.Fatal("vector: failing auth case needs an error code")
+			}
 			if !tc.OK {
 				if err == nil || err.Code != tc.Error {
 					t.Fatalf("err = %v, want %s", err, tc.Error)
@@ -133,8 +135,19 @@ func TestStreamConformanceHandshake(t *testing.T) {
 			}
 			a, err := parseAck([]byte(tc.Frame), *tc.Mine)
 			if !tc.OK {
-				if err == nil {
-					t.Fatalf("got %+v, want failure", a)
+				var want string
+				if json.Unmarshal(tc.Error, &want) != nil || want == "" {
+					t.Fatal("vector: failing ack case needs an error kind")
+				}
+				switch {
+				case err == nil:
+					t.Fatalf("got %+v, want failure %s", a, want)
+				case want == "rejected":
+					if !errors.Is(err, errAckRejected) {
+						t.Fatalf("err = %v, want rejected", err)
+					}
+				case protocolKind(err) != want:
+					t.Fatalf("err = %v (kind %q), want kind %q", err, protocolKind(err), want)
 				}
 				return
 			}
@@ -145,7 +158,11 @@ func TestStreamConformanceHandshake(t *testing.T) {
 				t.Fatalf("kind = %s, want %s", a.Kind, tc.Kind)
 			}
 			if tc.Kind == "session_error" {
-				if a.Err == nil || a.Err.Code != tc.Error.Code {
+				var se struct {
+					Code string `json:"code"`
+				}
+				_ = json.Unmarshal(tc.Error, &se)
+				if a.Err == nil || a.Err.Code != se.Code {
 					t.Errorf("session error = %+v", a.Err)
 				}
 				return
@@ -220,6 +237,7 @@ func TestStreamConformanceEventFrames(t *testing.T) {
 			Frame      string       `json:"frame"`
 			StreamLink bool         `json:"stream_link"`
 			Outcome    string       `json:"outcome"`
+			Kind       string       `json:"kind"`
 			Origin     *string      `json:"origin"`
 			Offset     *string      `json:"offset"`
 			Event      *ceConfEvent `json:"event"`
@@ -254,6 +272,9 @@ func TestStreamConformanceEventFrames(t *testing.T) {
 			}
 			if got != tc.Outcome {
 				t.Fatalf("outcome = %s (%v), want %s", got, err, tc.Outcome)
+			}
+			if got == "protocol_error" && (tc.Kind == "" || protocolKind(err) != tc.Kind) {
+				t.Fatalf("kind = %q, want %q", protocolKind(err), tc.Kind)
 			}
 			if got != "event" {
 				return

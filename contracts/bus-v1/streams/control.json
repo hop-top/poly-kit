@@ -1,78 +1,751 @@
 {
   "version": "v1",
-  "description": "Control frames. classify: a frame that is not a JSON object is dropped; a member named exactly `specversion` makes a CloudEvents event; on a stream link only, a string member `type` makes a control frame; anything else is a kit event. acceptor: how an acceptor handles a control frame from its dialer: `request` (subscribe/unsubscribe, normalized; an absent `patterns` or `scope` key means the member was absent or null), `reply` (an `error` frame with `code`, echoing `id` only when the frame carried a valid id), or `ignore`. dialer: how a dialer handles a control frame from its acceptor: `ack`, `error`, `reset`, `position`, `ignore`, or `protocol_error` (close 1002). apply: applying a request to a link's subscription state; `patterns` null is the implicit `#`; `max` is the subscription cap; `effective` is what the authorizer sees (sorted patterns, implicit as [\"#\"]).",
+  "description": "Control frames. classify: a frame that is not a JSON object is dropped; a member named exactly `specversion` makes a CloudEvents event; on a stream link only, a string member `type` makes a control frame; anything else is a kit event. acceptor: how an acceptor handles a control frame from its dialer: `request` (subscribe/unsubscribe, normalized; an absent `patterns` or `scope` key means the member was absent or null), `reply` (an `error` frame with `code`, echoing `id` only when the frame carried a valid id), or `ignore`. dialer: how a dialer handles a control frame from its acceptor: `ack`, `error`, `reset`, `position`, `ignore`, or `protocol_error` (close 1002). apply: applying a request to a link's subscription state; `patterns` null is the implicit `#`; `max` is the subscription cap; `effective` is what the authorizer sees (sorted patterns, implicit as [\"#\"]). A dialer `protocol_error` names its `kind`.",
   "classify": [
-    {"name": "cloudevents on a stream link", "frame": "{\"specversion\":\"1.0\",\"type\":\"acme.crm.deal.created\"}", "stream_link": true, "kind": "cloudevents"},
-    {"name": "control on a stream link", "frame": "{\"type\":\"ack\",\"id\":\"s1\",\"at\":\"3\"}", "stream_link": true, "kind": "control"},
-    {"name": "type on a legacy link is a kit frame", "frame": "{\"type\":\"ack\",\"id\":\"s1\"}", "stream_link": false, "kind": "kit"},
-    {"name": "non-string type is a kit frame", "frame": "{\"type\":7,\"topic\":\"a.b.c.d\"}", "stream_link": true, "kind": "kit"},
-    {"name": "null type is a kit frame", "frame": "{\"type\":null,\"topic\":\"a.b.c.d\"}", "stream_link": true, "kind": "kit"},
-    {"name": "kit frame on a stream link", "frame": "{\"topic\":\"a.b.c.d\",\"offset\":\"1\"}", "stream_link": true, "kind": "kit"},
-    {"name": "specversion wins over type", "frame": "{\"specversion\":null,\"type\":\"subscribe\"}", "stream_link": true, "kind": "cloudevents"},
-    {"name": "case-folded Type is a kit frame", "frame": "{\"Type\":\"ack\"}", "stream_link": true, "kind": "kit"},
-    {"name": "array dropped", "frame": "[\"subscribe\"]", "stream_link": true, "kind": "drop"},
-    {"name": "null dropped", "frame": "null", "stream_link": true, "kind": "drop"},
-    {"name": "not JSON dropped", "frame": "{type:", "stream_link": false, "kind": "drop"}
+    {
+      "name": "cloudevents on a stream link",
+      "frame": "{\"specversion\":\"1.0\",\"type\":\"acme.crm.deal.created\"}",
+      "stream_link": true,
+      "kind": "cloudevents"
+    },
+    {
+      "name": "control on a stream link",
+      "frame": "{\"type\":\"ack\",\"id\":\"s1\",\"at\":\"3\"}",
+      "stream_link": true,
+      "kind": "control"
+    },
+    {
+      "name": "type on a legacy link is a kit frame",
+      "frame": "{\"type\":\"ack\",\"id\":\"s1\"}",
+      "stream_link": false,
+      "kind": "kit"
+    },
+    {
+      "name": "non-string type is a kit frame",
+      "frame": "{\"type\":7,\"topic\":\"a.b.c.d\"}",
+      "stream_link": true,
+      "kind": "kit"
+    },
+    {
+      "name": "null type is a kit frame",
+      "frame": "{\"type\":null,\"topic\":\"a.b.c.d\"}",
+      "stream_link": true,
+      "kind": "kit"
+    },
+    {
+      "name": "kit frame on a stream link",
+      "frame": "{\"topic\":\"a.b.c.d\",\"offset\":\"1\"}",
+      "stream_link": true,
+      "kind": "kit"
+    },
+    {
+      "name": "specversion wins over type",
+      "frame": "{\"specversion\":null,\"type\":\"subscribe\"}",
+      "stream_link": true,
+      "kind": "cloudevents"
+    },
+    {
+      "name": "case-folded Type is a kit frame",
+      "frame": "{\"Type\":\"ack\"}",
+      "stream_link": true,
+      "kind": "kit"
+    },
+    {
+      "name": "array dropped",
+      "frame": "[\"subscribe\"]",
+      "stream_link": true,
+      "kind": "drop"
+    },
+    {
+      "name": "null dropped",
+      "frame": "null",
+      "stream_link": true,
+      "kind": "drop"
+    },
+    {
+      "name": "not JSON dropped",
+      "frame": "{type:",
+      "stream_link": false,
+      "kind": "drop"
+    }
   ],
   "acceptor": [
-    {"name": "subscribe patterns", "frame": "{\"type\":\"subscribe\",\"id\":\"s1\",\"patterns\":[\"acme.crm.#\",\"acme.jobs.*.failed\"]}", "outcome": "request", "request": {"type": "subscribe", "id": "s1", "patterns": ["acme.crm.#", "acme.jobs.*.failed"]}},
-    {"name": "subscribe patterns and scope", "frame": "{\"type\":\"subscribe\",\"id\":\"s2\",\"patterns\":[\"a.#\"],\"scope\":{\"workspaces\":[\"ws1\",\"ws2\"]}}", "outcome": "request", "request": {"type": "subscribe", "id": "s2", "patterns": ["a.#"], "scope": {"workspaces": ["ws1", "ws2"]}}},
-    {"name": "scope-only subscribe", "frame": "{\"type\":\"subscribe\",\"id\":\"s3\",\"scope\":{\"workspaces\":[]}}", "outcome": "request", "request": {"type": "subscribe", "id": "s3", "scope": {"workspaces": []}}},
-    {"name": "unknown members ignored", "frame": "{\"type\":\"subscribe\",\"id\":\"s4\",\"patterns\":[\"a\"],\"future\":{\"x\":1}}", "outcome": "request", "request": {"type": "subscribe", "id": "s4", "patterns": ["a"]}},
-    {"name": "null scope is absent", "frame": "{\"type\":\"subscribe\",\"id\":\"s5\",\"patterns\":[\"a\"],\"scope\":null}", "outcome": "request", "request": {"type": "subscribe", "id": "s5", "patterns": ["a"]}},
-    {"name": "unsubscribe", "frame": "{\"type\":\"unsubscribe\",\"id\":\"u1\",\"patterns\":[\"acme.crm.#\"]}", "outcome": "request", "request": {"type": "unsubscribe", "id": "u1", "patterns": ["acme.crm.#"]}},
-    {"name": "unsubscribe ignores scope", "frame": "{\"type\":\"unsubscribe\",\"id\":\"u2\",\"patterns\":[\"a\"],\"scope\":{\"workspaces\":[\"w\"]}}", "outcome": "request", "request": {"type": "unsubscribe", "id": "u2", "patterns": ["a"]}},
-    {"name": "missing id", "frame": "{\"type\":\"subscribe\",\"patterns\":[\"a\"]}", "outcome": "reply", "reply": {"code": "bad_request"}},
-    {"name": "empty id", "frame": "{\"type\":\"subscribe\",\"id\":\"\",\"patterns\":[\"a\"]}", "outcome": "reply", "reply": {"code": "bad_request"}},
-    {"name": "id of 65 bytes", "frame": "{\"type\":\"subscribe\",\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"patterns\":[\"a\"]}", "outcome": "reply", "reply": {"code": "bad_request"}},
-    {"name": "id of 64 bytes", "frame": "{\"type\":\"subscribe\",\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"patterns\":[\"a\"]}", "outcome": "request", "request": {"type": "subscribe", "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "patterns": ["a"]}},
-    {"name": "numeric id", "frame": "{\"type\":\"subscribe\",\"id\":1,\"patterns\":[\"a\"]}", "outcome": "reply", "reply": {"code": "bad_request"}},
-    {"name": "neither patterns nor scope", "frame": "{\"type\":\"subscribe\",\"id\":\"s6\"}", "outcome": "reply", "reply": {"id": "s6", "code": "bad_request"}},
-    {"name": "empty patterns", "frame": "{\"type\":\"subscribe\",\"id\":\"s7\",\"patterns\":[]}", "outcome": "reply", "reply": {"id": "s7", "code": "bad_request"}},
-    {"name": "patterns not an array", "frame": "{\"type\":\"subscribe\",\"id\":\"s8\",\"patterns\":\"a.#\"}", "outcome": "reply", "reply": {"id": "s8", "code": "bad_request"}},
-    {"name": "non-string pattern", "frame": "{\"type\":\"subscribe\",\"id\":\"s9\",\"patterns\":[\"a\",1]}", "outcome": "reply", "reply": {"id": "s9", "code": "bad_request"}},
-    {"name": "invalid pattern", "frame": "{\"type\":\"subscribe\",\"id\":\"s10\",\"patterns\":[\"a.#.b\"]}", "outcome": "reply", "reply": {"id": "s10", "code": "invalid_pattern"}},
-    {"name": "pattern checked before scope", "frame": "{\"type\":\"subscribe\",\"id\":\"s11\",\"patterns\":[\"\"],\"scope\":7}", "outcome": "reply", "reply": {"id": "s11", "code": "invalid_pattern"}},
-    {"name": "scope not an object", "frame": "{\"type\":\"subscribe\",\"id\":\"s12\",\"scope\":[\"ws1\"]}", "outcome": "reply", "reply": {"id": "s12", "code": "invalid_scope"}},
-    {"name": "scope without workspaces", "frame": "{\"type\":\"subscribe\",\"id\":\"s13\",\"scope\":{}}", "outcome": "reply", "reply": {"id": "s13", "code": "invalid_scope"}},
-    {"name": "workspaces not strings", "frame": "{\"type\":\"subscribe\",\"id\":\"s14\",\"scope\":{\"workspaces\":[1]}}", "outcome": "reply", "reply": {"id": "s14", "code": "invalid_scope"}},
-    {"name": "unsubscribe without patterns", "frame": "{\"type\":\"unsubscribe\",\"id\":\"u3\"}", "outcome": "reply", "reply": {"id": "u3", "code": "bad_request"}},
-    {"name": "reset from a dialer", "frame": "{\"type\":\"reset\",\"id\":\"r1\",\"stream\":\"s\",\"reason\":\"lagged\",\"after\":\"1\",\"head\":\"2\"}", "outcome": "reply", "reply": {"id": "r1", "code": "bad_request"}},
-    {"name": "position from a dialer", "frame": "{\"type\":\"position\",\"stream\":\"s\",\"offset\":\"2\"}", "outcome": "reply", "reply": {"code": "bad_request"}},
-    {"name": "unknown type", "frame": "{\"type\":\"resume\",\"id\":\"x1\"}", "outcome": "reply", "reply": {"id": "x1", "code": "unknown_type"}},
-    {"name": "unknown type without id", "frame": "{\"type\":\"resume\"}", "outcome": "reply", "reply": {"code": "unknown_type"}},
-    {"name": "ack from a dialer ignored", "frame": "{\"type\":\"ack\",\"id\":\"s1\",\"at\":\"1\"}", "outcome": "ignore"},
-    {"name": "error from a dialer ignored", "frame": "{\"type\":\"error\",\"code\":\"bad_request\",\"message\":\"m\"}", "outcome": "ignore"}
+    {
+      "name": "subscribe patterns",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s1\",\"patterns\":[\"acme.crm.#\",\"acme.jobs.*.failed\"]}",
+      "outcome": "request",
+      "request": {
+        "type": "subscribe",
+        "id": "s1",
+        "patterns": [
+          "acme.crm.#",
+          "acme.jobs.*.failed"
+        ]
+      }
+    },
+    {
+      "name": "subscribe patterns and scope",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s2\",\"patterns\":[\"a.#\"],\"scope\":{\"workspaces\":[\"ws1\",\"ws2\"]}}",
+      "outcome": "request",
+      "request": {
+        "type": "subscribe",
+        "id": "s2",
+        "patterns": [
+          "a.#"
+        ],
+        "scope": {
+          "workspaces": [
+            "ws1",
+            "ws2"
+          ]
+        }
+      }
+    },
+    {
+      "name": "scope-only subscribe",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s3\",\"scope\":{\"workspaces\":[]}}",
+      "outcome": "request",
+      "request": {
+        "type": "subscribe",
+        "id": "s3",
+        "scope": {
+          "workspaces": []
+        }
+      }
+    },
+    {
+      "name": "unknown members ignored",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s4\",\"patterns\":[\"a\"],\"future\":{\"x\":1}}",
+      "outcome": "request",
+      "request": {
+        "type": "subscribe",
+        "id": "s4",
+        "patterns": [
+          "a"
+        ]
+      }
+    },
+    {
+      "name": "null scope is absent",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s5\",\"patterns\":[\"a\"],\"scope\":null}",
+      "outcome": "request",
+      "request": {
+        "type": "subscribe",
+        "id": "s5",
+        "patterns": [
+          "a"
+        ]
+      }
+    },
+    {
+      "name": "unsubscribe",
+      "frame": "{\"type\":\"unsubscribe\",\"id\":\"u1\",\"patterns\":[\"acme.crm.#\"]}",
+      "outcome": "request",
+      "request": {
+        "type": "unsubscribe",
+        "id": "u1",
+        "patterns": [
+          "acme.crm.#"
+        ]
+      }
+    },
+    {
+      "name": "unsubscribe ignores scope",
+      "frame": "{\"type\":\"unsubscribe\",\"id\":\"u2\",\"patterns\":[\"a\"],\"scope\":{\"workspaces\":[\"w\"]}}",
+      "outcome": "request",
+      "request": {
+        "type": "unsubscribe",
+        "id": "u2",
+        "patterns": [
+          "a"
+        ]
+      }
+    },
+    {
+      "name": "missing id",
+      "frame": "{\"type\":\"subscribe\",\"patterns\":[\"a\"]}",
+      "outcome": "reply",
+      "reply": {
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "empty id",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"\",\"patterns\":[\"a\"]}",
+      "outcome": "reply",
+      "reply": {
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "id of 65 bytes",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"patterns\":[\"a\"]}",
+      "outcome": "reply",
+      "reply": {
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "id of 64 bytes",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"patterns\":[\"a\"]}",
+      "outcome": "request",
+      "request": {
+        "type": "subscribe",
+        "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "patterns": [
+          "a"
+        ]
+      }
+    },
+    {
+      "name": "numeric id",
+      "frame": "{\"type\":\"subscribe\",\"id\":1,\"patterns\":[\"a\"]}",
+      "outcome": "reply",
+      "reply": {
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "neither patterns nor scope",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s6\"}",
+      "outcome": "reply",
+      "reply": {
+        "id": "s6",
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "empty patterns",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s7\",\"patterns\":[]}",
+      "outcome": "reply",
+      "reply": {
+        "id": "s7",
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "patterns not an array",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s8\",\"patterns\":\"a.#\"}",
+      "outcome": "reply",
+      "reply": {
+        "id": "s8",
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "non-string pattern",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s9\",\"patterns\":[\"a\",1]}",
+      "outcome": "reply",
+      "reply": {
+        "id": "s9",
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "invalid pattern",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s10\",\"patterns\":[\"a.#.b\"]}",
+      "outcome": "reply",
+      "reply": {
+        "id": "s10",
+        "code": "invalid_pattern"
+      }
+    },
+    {
+      "name": "pattern checked before scope",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s11\",\"patterns\":[\"\"],\"scope\":7}",
+      "outcome": "reply",
+      "reply": {
+        "id": "s11",
+        "code": "invalid_pattern"
+      }
+    },
+    {
+      "name": "scope not an object",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s12\",\"scope\":[\"ws1\"]}",
+      "outcome": "reply",
+      "reply": {
+        "id": "s12",
+        "code": "invalid_scope"
+      }
+    },
+    {
+      "name": "scope without workspaces",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s13\",\"scope\":{}}",
+      "outcome": "reply",
+      "reply": {
+        "id": "s13",
+        "code": "invalid_scope"
+      }
+    },
+    {
+      "name": "workspaces not strings",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s14\",\"scope\":{\"workspaces\":[1]}}",
+      "outcome": "reply",
+      "reply": {
+        "id": "s14",
+        "code": "invalid_scope"
+      }
+    },
+    {
+      "name": "unsubscribe without patterns",
+      "frame": "{\"type\":\"unsubscribe\",\"id\":\"u3\"}",
+      "outcome": "reply",
+      "reply": {
+        "id": "u3",
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "reset from a dialer",
+      "frame": "{\"type\":\"reset\",\"id\":\"r1\",\"stream\":\"s\",\"reason\":\"lagged\",\"after\":\"1\",\"head\":\"2\"}",
+      "outcome": "reply",
+      "reply": {
+        "id": "r1",
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "position from a dialer",
+      "frame": "{\"type\":\"position\",\"stream\":\"s\",\"offset\":\"2\"}",
+      "outcome": "reply",
+      "reply": {
+        "code": "bad_request"
+      }
+    },
+    {
+      "name": "unknown type",
+      "frame": "{\"type\":\"resume\",\"id\":\"x1\"}",
+      "outcome": "reply",
+      "reply": {
+        "id": "x1",
+        "code": "unknown_type"
+      }
+    },
+    {
+      "name": "unknown type without id",
+      "frame": "{\"type\":\"resume\"}",
+      "outcome": "reply",
+      "reply": {
+        "code": "unknown_type"
+      }
+    },
+    {
+      "name": "ack from a dialer ignored",
+      "frame": "{\"type\":\"ack\",\"id\":\"s1\",\"at\":\"1\"}",
+      "outcome": "ignore"
+    },
+    {
+      "name": "error from a dialer ignored",
+      "frame": "{\"type\":\"error\",\"code\":\"bad_request\",\"message\":\"m\"}",
+      "outcome": "ignore"
+    }
   ],
   "dialer": [
-    {"name": "ack", "frame": "{\"type\":\"ack\",\"id\":\"s1\",\"at\":\"1450\"}", "outcome": "ack", "ack": {"id": "s1", "at": "1450"}},
-    {"name": "ack with unknown members", "frame": "{\"type\":\"ack\",\"id\":\"s1\",\"at\":\"0\",\"extra\":true}", "outcome": "ack", "ack": {"id": "s1", "at": "0"}},
-    {"name": "ack without at ignored", "frame": "{\"type\":\"ack\",\"id\":\"s1\"}", "outcome": "ignore"},
-    {"name": "ack with numeric at ignored", "frame": "{\"type\":\"ack\",\"id\":\"s1\",\"at\":3}", "outcome": "ignore"},
-    {"name": "error with id", "frame": "{\"type\":\"error\",\"id\":\"s4\",\"code\":\"invalid_pattern\",\"message\":\"m\"}", "outcome": "error", "error": {"id": "s4", "code": "invalid_pattern"}},
-    {"name": "error without id", "frame": "{\"type\":\"error\",\"code\":\"unknown_type\",\"message\":\"m\"}", "outcome": "error", "error": {"id": "", "code": "unknown_type"}},
-    {"name": "error without code ignored", "frame": "{\"type\":\"error\",\"id\":\"s4\"}", "outcome": "ignore"},
-    {"name": "reset", "frame": "{\"type\":\"reset\",\"stream\":\"stm_1\",\"reason\":\"lagged\",\"after\":\"120\",\"head\":\"1300\"}", "outcome": "reset", "reset": {"stream": "stm_1", "reason": "lagged", "after": "120", "head": "1300"}},
-    {"name": "reset with unknown reason kept", "frame": "{\"type\":\"reset\",\"stream\":\"stm_1\",\"reason\":\"future\",\"after\":\"1\",\"head\":\"2\"}", "outcome": "reset", "reset": {"stream": "stm_1", "reason": "future", "after": "1", "head": "2"}},
-    {"name": "reset with bad head", "frame": "{\"type\":\"reset\",\"stream\":\"stm_1\",\"reason\":\"lagged\",\"after\":\"1\",\"head\":2}", "outcome": "protocol_error"},
-    {"name": "reset without stream", "frame": "{\"type\":\"reset\",\"reason\":\"lagged\",\"after\":\"1\",\"head\":\"2\"}", "outcome": "protocol_error"},
-    {"name": "reset without reason", "frame": "{\"type\":\"reset\",\"stream\":\"stm_1\",\"after\":\"1\",\"head\":\"2\"}", "outcome": "protocol_error"},
-    {"name": "position", "frame": "{\"type\":\"position\",\"stream\":\"stm_1\",\"offset\":\"1450\"}", "outcome": "position", "position": {"stream": "stm_1", "offset": "1450"}},
-    {"name": "position with bad offset", "frame": "{\"type\":\"position\",\"stream\":\"stm_1\",\"offset\":\"01\"}", "outcome": "protocol_error"},
-    {"name": "position with empty stream", "frame": "{\"type\":\"position\",\"stream\":\"\",\"offset\":\"1\"}", "outcome": "protocol_error"},
-    {"name": "subscribe from an acceptor ignored", "frame": "{\"type\":\"subscribe\",\"id\":\"s1\",\"patterns\":[\"a\"]}", "outcome": "ignore"},
-    {"name": "unknown type ignored", "frame": "{\"type\":\"future\"}", "outcome": "ignore"}
+    {
+      "name": "ack",
+      "frame": "{\"type\":\"ack\",\"id\":\"s1\",\"at\":\"1450\"}",
+      "outcome": "ack",
+      "ack": {
+        "id": "s1",
+        "at": "1450"
+      }
+    },
+    {
+      "name": "ack with unknown members",
+      "frame": "{\"type\":\"ack\",\"id\":\"s1\",\"at\":\"0\",\"extra\":true}",
+      "outcome": "ack",
+      "ack": {
+        "id": "s1",
+        "at": "0"
+      }
+    },
+    {
+      "name": "ack without at ignored",
+      "frame": "{\"type\":\"ack\",\"id\":\"s1\"}",
+      "outcome": "ignore"
+    },
+    {
+      "name": "ack with numeric at ignored",
+      "frame": "{\"type\":\"ack\",\"id\":\"s1\",\"at\":3}",
+      "outcome": "ignore"
+    },
+    {
+      "name": "error with id",
+      "frame": "{\"type\":\"error\",\"id\":\"s4\",\"code\":\"invalid_pattern\",\"message\":\"m\"}",
+      "outcome": "error",
+      "error": {
+        "id": "s4",
+        "code": "invalid_pattern"
+      }
+    },
+    {
+      "name": "error without id",
+      "frame": "{\"type\":\"error\",\"code\":\"unknown_type\",\"message\":\"m\"}",
+      "outcome": "error",
+      "error": {
+        "id": "",
+        "code": "unknown_type"
+      }
+    },
+    {
+      "name": "error without code ignored",
+      "frame": "{\"type\":\"error\",\"id\":\"s4\"}",
+      "outcome": "ignore"
+    },
+    {
+      "name": "reset",
+      "frame": "{\"type\":\"reset\",\"stream\":\"stm_1\",\"reason\":\"lagged\",\"after\":\"120\",\"head\":\"1300\"}",
+      "outcome": "reset",
+      "reset": {
+        "stream": "stm_1",
+        "reason": "lagged",
+        "after": "120",
+        "head": "1300"
+      }
+    },
+    {
+      "name": "reset with unknown reason kept",
+      "frame": "{\"type\":\"reset\",\"stream\":\"stm_1\",\"reason\":\"future\",\"after\":\"1\",\"head\":\"2\"}",
+      "outcome": "reset",
+      "reset": {
+        "stream": "stm_1",
+        "reason": "future",
+        "after": "1",
+        "head": "2"
+      }
+    },
+    {
+      "name": "reset with bad head",
+      "frame": "{\"type\":\"reset\",\"stream\":\"stm_1\",\"reason\":\"lagged\",\"after\":\"1\",\"head\":2}",
+      "outcome": "protocol_error",
+      "kind": "reset_malformed"
+    },
+    {
+      "name": "reset without stream",
+      "frame": "{\"type\":\"reset\",\"reason\":\"lagged\",\"after\":\"1\",\"head\":\"2\"}",
+      "outcome": "protocol_error",
+      "kind": "reset_malformed"
+    },
+    {
+      "name": "reset without reason",
+      "frame": "{\"type\":\"reset\",\"stream\":\"stm_1\",\"after\":\"1\",\"head\":\"2\"}",
+      "outcome": "protocol_error",
+      "kind": "reset_malformed"
+    },
+    {
+      "name": "position",
+      "frame": "{\"type\":\"position\",\"stream\":\"stm_1\",\"offset\":\"1450\"}",
+      "outcome": "position",
+      "position": {
+        "stream": "stm_1",
+        "offset": "1450"
+      }
+    },
+    {
+      "name": "position with bad offset",
+      "frame": "{\"type\":\"position\",\"stream\":\"stm_1\",\"offset\":\"01\"}",
+      "outcome": "protocol_error",
+      "kind": "position_malformed"
+    },
+    {
+      "name": "position with empty stream",
+      "frame": "{\"type\":\"position\",\"stream\":\"\",\"offset\":\"1\"}",
+      "outcome": "protocol_error",
+      "kind": "position_malformed"
+    },
+    {
+      "name": "subscribe from an acceptor ignored",
+      "frame": "{\"type\":\"subscribe\",\"id\":\"s1\",\"patterns\":[\"a\"]}",
+      "outcome": "ignore"
+    },
+    {
+      "name": "unknown type ignored",
+      "frame": "{\"type\":\"future\"}",
+      "outcome": "ignore"
+    }
   ],
   "apply": [
-    {"name": "first subscribe replaces implicit", "state": {"patterns": null}, "request": {"type": "subscribe", "patterns": ["a.#"]}, "max": 1000, "ok": true, "after": {"patterns": ["a.#"]}, "effective": {"patterns": ["a.#"]}},
-    {"name": "subscribe adds to the set", "state": {"patterns": ["a.#"]}, "request": {"type": "subscribe", "patterns": ["b.*", "a.#"]}, "max": 1000, "ok": true, "after": {"patterns": ["a.#", "b.*"]}, "effective": {"patterns": ["a.#", "b.*"]}},
-    {"name": "scope replaced, patterns kept", "state": {"patterns": ["a.#"], "scope": {"workspaces": ["w1"]}}, "request": {"type": "subscribe", "scope": {"workspaces": ["w2"]}}, "max": 1000, "ok": true, "after": {"patterns": ["a.#"], "scope": {"workspaces": ["w2"]}}, "effective": {"patterns": ["a.#"], "scope": {"workspaces": ["w2"]}}},
-    {"name": "scope-only keeps implicit", "state": {"patterns": null}, "request": {"type": "subscribe", "scope": {"workspaces": ["w1"]}}, "max": 1000, "ok": true, "after": {"patterns": null, "scope": {"workspaces": ["w1"]}}, "effective": {"patterns": ["#"], "scope": {"workspaces": ["w1"]}}},
-    {"name": "at the cap", "state": {"patterns": ["a"]}, "request": {"type": "subscribe", "patterns": ["b"]}, "max": 2, "ok": true, "after": {"patterns": ["a", "b"]}, "effective": {"patterns": ["a", "b"]}},
-    {"name": "duplicate does not count", "state": {"patterns": ["a", "b"]}, "request": {"type": "subscribe", "patterns": ["b"]}, "max": 2, "ok": true, "after": {"patterns": ["a", "b"]}, "effective": {"patterns": ["a", "b"]}},
-    {"name": "over the cap is all or nothing", "state": {"patterns": ["a"]}, "request": {"type": "subscribe", "patterns": ["b", "c"], "scope": {"workspaces": ["w"]}}, "max": 2, "ok": false, "code": "limit"},
-    {"name": "unsubscribe from explicit", "state": {"patterns": ["a", "b"]}, "request": {"type": "unsubscribe", "patterns": ["a", "zzz"]}, "max": 1000, "ok": true, "after": {"patterns": ["b"]}, "effective": {"patterns": ["b"]}},
-    {"name": "unsubscribe hash under implicit empties", "state": {"patterns": null}, "request": {"type": "unsubscribe", "patterns": ["#"]}, "max": 1000, "ok": true, "after": {"patterns": []}, "effective": {"patterns": []}},
-    {"name": "unsubscribe other under implicit materialises hash", "state": {"patterns": null}, "request": {"type": "unsubscribe", "patterns": ["a.#"]}, "max": 1000, "ok": true, "after": {"patterns": ["#"]}, "effective": {"patterns": ["#"]}}
+    {
+      "name": "first subscribe replaces implicit",
+      "state": {
+        "patterns": null
+      },
+      "request": {
+        "type": "subscribe",
+        "patterns": [
+          "a.#"
+        ]
+      },
+      "max": 1000,
+      "ok": true,
+      "after": {
+        "patterns": [
+          "a.#"
+        ]
+      },
+      "effective": {
+        "patterns": [
+          "a.#"
+        ]
+      }
+    },
+    {
+      "name": "subscribe adds to the set",
+      "state": {
+        "patterns": [
+          "a.#"
+        ]
+      },
+      "request": {
+        "type": "subscribe",
+        "patterns": [
+          "b.*",
+          "a.#"
+        ]
+      },
+      "max": 1000,
+      "ok": true,
+      "after": {
+        "patterns": [
+          "a.#",
+          "b.*"
+        ]
+      },
+      "effective": {
+        "patterns": [
+          "a.#",
+          "b.*"
+        ]
+      }
+    },
+    {
+      "name": "scope replaced, patterns kept",
+      "state": {
+        "patterns": [
+          "a.#"
+        ],
+        "scope": {
+          "workspaces": [
+            "w1"
+          ]
+        }
+      },
+      "request": {
+        "type": "subscribe",
+        "scope": {
+          "workspaces": [
+            "w2"
+          ]
+        }
+      },
+      "max": 1000,
+      "ok": true,
+      "after": {
+        "patterns": [
+          "a.#"
+        ],
+        "scope": {
+          "workspaces": [
+            "w2"
+          ]
+        }
+      },
+      "effective": {
+        "patterns": [
+          "a.#"
+        ],
+        "scope": {
+          "workspaces": [
+            "w2"
+          ]
+        }
+      }
+    },
+    {
+      "name": "scope-only keeps implicit",
+      "state": {
+        "patterns": null
+      },
+      "request": {
+        "type": "subscribe",
+        "scope": {
+          "workspaces": [
+            "w1"
+          ]
+        }
+      },
+      "max": 1000,
+      "ok": true,
+      "after": {
+        "patterns": null,
+        "scope": {
+          "workspaces": [
+            "w1"
+          ]
+        }
+      },
+      "effective": {
+        "patterns": [
+          "#"
+        ],
+        "scope": {
+          "workspaces": [
+            "w1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "at the cap",
+      "state": {
+        "patterns": [
+          "a"
+        ]
+      },
+      "request": {
+        "type": "subscribe",
+        "patterns": [
+          "b"
+        ]
+      },
+      "max": 2,
+      "ok": true,
+      "after": {
+        "patterns": [
+          "a",
+          "b"
+        ]
+      },
+      "effective": {
+        "patterns": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    {
+      "name": "duplicate does not count",
+      "state": {
+        "patterns": [
+          "a",
+          "b"
+        ]
+      },
+      "request": {
+        "type": "subscribe",
+        "patterns": [
+          "b"
+        ]
+      },
+      "max": 2,
+      "ok": true,
+      "after": {
+        "patterns": [
+          "a",
+          "b"
+        ]
+      },
+      "effective": {
+        "patterns": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    {
+      "name": "over the cap is all or nothing",
+      "state": {
+        "patterns": [
+          "a"
+        ]
+      },
+      "request": {
+        "type": "subscribe",
+        "patterns": [
+          "b",
+          "c"
+        ],
+        "scope": {
+          "workspaces": [
+            "w"
+          ]
+        }
+      },
+      "max": 2,
+      "ok": false,
+      "code": "limit"
+    },
+    {
+      "name": "unsubscribe from explicit",
+      "state": {
+        "patterns": [
+          "a",
+          "b"
+        ]
+      },
+      "request": {
+        "type": "unsubscribe",
+        "patterns": [
+          "a",
+          "zzz"
+        ]
+      },
+      "max": 1000,
+      "ok": true,
+      "after": {
+        "patterns": [
+          "b"
+        ]
+      },
+      "effective": {
+        "patterns": [
+          "b"
+        ]
+      }
+    },
+    {
+      "name": "unsubscribe hash under implicit empties",
+      "state": {
+        "patterns": null
+      },
+      "request": {
+        "type": "unsubscribe",
+        "patterns": [
+          "#"
+        ]
+      },
+      "max": 1000,
+      "ok": true,
+      "after": {
+        "patterns": []
+      },
+      "effective": {
+        "patterns": []
+      }
+    },
+    {
+      "name": "unsubscribe other under implicit materialises hash",
+      "state": {
+        "patterns": null
+      },
+      "request": {
+        "type": "unsubscribe",
+        "patterns": [
+          "a.#"
+        ]
+      },
+      "max": 1000,
+      "ok": true,
+      "after": {
+        "patterns": [
+          "#"
+        ]
+      },
+      "effective": {
+        "patterns": [
+          "#"
+        ]
+      }
+    }
   ]
 }

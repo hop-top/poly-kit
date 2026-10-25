@@ -102,6 +102,33 @@ func (g *gateAuth) arm() {
 	g.mu.Unlock()
 }
 
+// hold arms a new gate and returns it; later Verify calls wait on it
+// until open(gate). Earlier waiters keep waiting on their own gate.
+func (g *gateAuth) hold() chan struct{} {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.gate = make(chan struct{})
+	return g.gate
+}
+
+// open releases the waiters of one gate; if it is the current gate,
+// later Verify calls pass.
+func (g *gateAuth) open(gate chan struct{}) {
+	g.mu.Lock()
+	if g.gate == gate {
+		g.gate = nil
+	}
+	g.mu.Unlock()
+	close(gate)
+}
+
+// pass lets later Verify calls through without releasing earlier waiters.
+func (g *gateAuth) pass() {
+	g.mu.Lock()
+	g.gate = nil
+	g.mu.Unlock()
+}
+
 func (g *gateAuth) release() {
 	g.mu.Lock()
 	if g.gate != nil {
