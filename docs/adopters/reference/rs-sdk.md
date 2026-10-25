@@ -814,13 +814,17 @@ paths, writes and reload do not.
 ### Differences from Go
 
 - Writes splice only the targeted entry: values, kept comments and key
-  order match Go, bytes do not (Go re-emits the document).
+  order match Go, bytes do not (Go re-emits the document). An edit that
+  cannot keep every comment and anchor outside the entry is refused
+  with `ErrorKind::EditUnsupported`, file untouched.
 - No viper: `EnvLookup` (`bind_env`, `seed_defaults`, `sync`,
   `Options::env_lookup`) keeps viper's lookup order and implements the
   bus's `ConfigGetter`, as does a loaded `Value`.
 - Reload mutability comes from the `ReloadFields` trait, not
-  `reload:"true"` tags. Config structs derive `Default` with
-  `#[serde(default)]`.
+  `reload:"true"` tags; pin each list with `check_reload_fields` in a
+  test. Config structs derive `Default` with `#[serde(default)]`.
+- `watch_signal` is called on an `Arc<Reloadable<T>>` and reloads on
+  tokio's blocking pool.
 - Timestamps stay text; decode errors name Rust types.
 - Not ported yet: the PKL wizard, `RunWizard` and the config command
   (they need a console wizard and a CLI root), and the rest of
