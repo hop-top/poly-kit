@@ -20,6 +20,8 @@ import (
 // confFiles is every vector file this runner consumes. The corpus
 // directory must match it exactly, so a new file cannot go unrun.
 var confFiles = map[string]bool{
+	"builder.json":        true,
+	"parse_topic.json":    true,
 	"match.json":          true,
 	"validate.json":       true,
 	"validate_topic.json": true,
@@ -444,6 +446,116 @@ func TestConformanceEventJSON(t *testing.T) {
 		var dec Event
 		if err := json.Unmarshal(raw, &dec); err == nil {
 			t.Errorf("%s: decode succeeded, want error", c.Name)
+		}
+	}
+}
+
+// confPanicText runs f and returns the text of the error it panics
+// with, or "" when it returns normally.
+func confPanicText(f func()) (msg string) {
+	defer func() {
+		if r := recover(); r != nil {
+			if err, ok := r.(error); ok {
+				msg = err.Error()
+			} else {
+				msg = fmt.Sprint(r)
+			}
+		}
+	}()
+	f()
+	return ""
+}
+
+// confCheckPanic is confCheckErr for a render that panics: a non-empty
+// panic text is the error.
+func confCheckPanic(t *testing.T, name string, ok bool, want string, contains []string, text string) {
+	t.Helper()
+	var err error
+	if text != "" {
+		err = errors.New(text)
+	}
+	confCheckErr(t, name, ok, want, contains, err)
+}
+
+func TestConformanceBuilder(t *testing.T) {
+	var f struct {
+		confHeader
+		Cases []struct {
+			Name          string   `json:"name"`
+			Source        string   `json:"source"`
+			Category      string   `json:"category"`
+			Object        string   `json:"object"`
+			CtorModifiers []string `json:"ctor_modifiers"`
+			Mods          []string `json:"mods"`
+			Action        string   `json:"action"`
+			OK            bool     `json:"ok"`
+			Topic         string   `json:"topic"`
+			Error         string   `json:"error"`
+			ErrorContains []string `json:"error_contains"`
+		} `json:"cases"`
+	}
+	confLoad(t, "builder.json", &f)
+	if len(f.Cases) == 0 {
+		t.Fatal("no cases")
+	}
+	for _, c := range f.Cases {
+		b := PrefixedTopicOf(c.Source, c.Category, c.Object, c.CtorModifiers...)
+		for _, m := range c.Mods {
+			b = b.Mod(m)
+		}
+		var got Topic
+		text := confPanicText(func() { got = b.Action(c.Action) })
+		confCheckPanic(t, c.Name, c.OK, c.Error, c.ErrorContains, text)
+		if c.OK && string(got) != c.Topic {
+			t.Errorf("%s: topic = %q, want %q", c.Name, got, c.Topic)
+		}
+	}
+}
+
+func TestConformanceParseTopic(t *testing.T) {
+	var f struct {
+		confHeader
+		Cases []struct {
+			Name          string   `json:"name"`
+			Topic         string   `json:"topic"`
+			OK            bool     `json:"ok"`
+			Source        string   `json:"source"`
+			Category      string   `json:"category"`
+			Object        string   `json:"object"`
+			Modifier      string   `json:"modifier"`
+			Action        string   `json:"action"`
+			Rerender      string   `json:"rerender"`
+			RerenderError string   `json:"rerender_error"`
+			Error         string   `json:"error"`
+			ErrorContains []string `json:"error_contains"`
+		} `json:"cases"`
+	}
+	confLoad(t, "parse_topic.json", &f)
+	if len(f.Cases) == 0 {
+		t.Fatal("no cases")
+	}
+	for _, c := range f.Cases {
+		b, action, err := ParseTopic(c.Topic)
+		confCheckErr(t, c.Name, c.OK, c.Error, c.ErrorContains, err)
+		if !c.OK {
+			var ite *InvalidTopicError
+			if !errors.As(err, &ite) || string(ite.Topic) != c.Topic {
+				t.Errorf("%s: error does not carry the topic: %v", c.Name, err)
+			}
+			continue
+		}
+		if b.SourceSeg() != c.Source || b.CategorySeg() != c.Category ||
+			b.ObjectSeg() != c.Object || b.ModifierSeg() != c.Modifier || action != c.Action {
+			t.Errorf("%s: got %q %q %q %q action %q", c.Name,
+				b.SourceSeg(), b.CategorySeg(), b.ObjectSeg(), b.ModifierSeg(), action)
+		}
+		var re Topic
+		text := confPanicText(func() { re = b.Action(action) })
+		switch {
+		case c.RerenderError != "" && text != c.RerenderError:
+			t.Errorf("%s: rerender panic = %q, want %q", c.Name, text, c.RerenderError)
+		case c.RerenderError == "" && (text != "" || string(re) != c.Rerender):
+			t.Errorf("%s: rerender = %q (panic %q), want %q", c.Name, re, text, c.Rerender)
 		}
 	}
 }

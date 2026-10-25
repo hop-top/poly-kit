@@ -40,11 +40,19 @@
 //! bus.publish(&event).unwrap();
 //! ```
 
+pub mod builder;
+pub mod config;
 pub mod event;
 pub mod mem;
 pub mod qualifiers;
+mod quote;
 pub mod topic;
 
+pub use builder::{parse_topic, prefixed_topic_of, topic_of, TopicBuilder};
+pub use config::{
+    mode_from_config, mode_from_config_with, mode_from_env, mode_from_env_with, mode_from_string,
+    ConfigGetter, ParseModeError, CONFIG_KEY_ENFORCE, ENV_ENFORCE,
+};
 pub use event::Event;
 pub use mem::{Bus, BusBuilder, BusError, ErrFn, Handler, Mode, SharedBus, SubscriptionId};
 pub use qualifiers::{qualifiers_from, Qualifiers};

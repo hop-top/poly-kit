@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/parse_topic.json",
+  "version": "v1",
+  "description": "`ParseTopic` / `parse_topic`: validate with the construction-time validator, then split the Object segment on its FIRST underscore into `object` and `modifier`. On success `source`, `category`, `object`, `modifier` and `action` are the parsed parts, and `rerender` is what the returned builder renders for that action; `rerender_error` is the panic text instead, for the one shape that does not round-trip (empty object and modifier). On failure `error` is the exact invalid-topic message (`bus: invalid topic: \"<topic>\" (<validator message>)`), except the not-past-tense case, which uses `error_contains` (see README).",
+  "cases": [
+    {
+      "name": "no modifier",
+      "topic": "kit.config.snapshot.reloaded",
+      "ok": true,
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "modifier": "",
+      "action": "reloaded",
+      "rerender": "kit.config.snapshot.reloaded"
+    },
+    {
+      "name": "modifier",
+      "topic": "kit.config.snapshot_reload.failed",
+      "ok": true,
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "modifier": "reload",
+      "action": "failed",
+      "rerender": "kit.config.snapshot_reload.failed"
+    },
+    {
+      "name": "multi-underscore modifier splits on first underscore",
+      "topic": "kit.config.snapshot_partial_reload.failed",
+      "ok": true,
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "modifier": "partial_reload",
+      "action": "failed",
+      "rerender": "kit.config.snapshot_partial_reload.failed"
+    },
+    {
+      "name": "whitelist action",
+      "topic": "kit.breaker.circuit.half_opened",
+      "ok": true,
+      "source": "kit",
+      "category": "breaker",
+      "object": "circuit",
+      "modifier": "",
+      "action": "half_opened",
+      "rerender": "kit.breaker.circuit.half_opened"
+    },
+    {
+      "name": "underscore in action",
+      "topic": "kit.core.entity.pre_transitioned",
+      "ok": true,
+      "source": "kit",
+      "category": "core",
+      "object": "entity",
+      "modifier": "",
+      "action": "pre_transitioned",
+      "rerender": "kit.core.entity.pre_transitioned"
+    },
+    {
+      "name": "leading digit and underscore",
+      "topic": "1a._b.c2.created",
+      "ok": true,
+      "source": "1a",
+      "category": "_b",
+      "object": "c2",
+      "modifier": "",
+      "action": "created",
+      "rerender": "1a._b.c2.created"
+    },
+    {
+      "name": "trailing underscore on object",
+      "topic": "kit.config.snapshot_.reloaded",
+      "ok": true,
+      "source": "kit",
+      "category": "config",
+      "object": "snapshot",
+      "modifier": "",
+      "action": "reloaded",
+      "rerender": "kit.config.snapshot.reloaded"
+    },
+    {
+      "name": "leading underscore on object",
+      "topic": "kit.config._reload.failed",
+      "ok": true,
+      "source": "kit",
+      "category": "config",
+      "object": "",
+      "modifier": "reload",
+      "action": "failed",
+      "rerender": "kit.config._reload.failed"
+    },
+    {
+      "name": "object is a lone underscore",
+      "topic": "kit.config._.failed",
+      "ok": true,
+      "source": "kit",
+      "category": "config",
+      "object": "",
+      "modifier": "",
+      "action": "failed",
+      "rerender_error": "bus.TopicOf: bus: invalid topic: \"kit.config..failed\" (topic \"kit.config..failed\" has empty segment at position 2)"
+    },
+    {
+      "name": "empty",
+      "topic": "",
+      "ok": false,
+      "source": "",
+      "category": "",
+      "object": "",
+      "modifier": "",
+      "action": "",
+      "error": "bus: invalid topic: \"\" (topic is empty (expected source.category.object.action))"
+    },
+    {
+      "name": "three segments",
+      "topic": "kit.config.snapshot",
+      "ok": false,
+      "source": "",
+      "category": "",
+      "object": "",
+      "modifier": "",
+      "action": "",
+      "error": "bus: invalid topic: \"kit.config.snapshot\" (topic \"kit.config.snapshot\" has 3 segments; expected 4 (source.category.object.action))"
+    },
+    {
+      "name": "five segments",
+      "topic": "kit.config.snapshot.reload.x",
+      "ok": false,
+      "source": "",
+      "category": "",
+      "object": "",
+      "modifier": "",
+      "action": "",
+      "error": "bus: invalid topic: \"kit.config.snapshot.reload.x\" (topic \"kit.config.snapshot.reload.x\" has 5 segments; expected 4 (source.category.object.action))"
+    },
+    {
+      "name": "uppercase source",
+      "topic": "Kit.config.snapshot.reloaded",
+      "ok": false,
+      "source": "",
+      "category": "",
+      "object": "",
+      "modifier": "",
+      "action": "",
+      "error": "bus: invalid topic: \"Kit.config.snapshot.reloaded\" (topic \"Kit.config.snapshot.reloaded\" segment \"Kit\" must be lowercase letters, digits, or underscores)"
+    },
+    {
+      "name": "present-tense action",
+      "topic": "kit.config.snapshot.create",
+      "ok": false,
+      "source": "",
+      "category": "",
+      "object": "",
+      "modifier": "",
+      "action": "",
+      "error_contains": [
+        "bus: invalid topic: \"kit.config.snapshot.create\" (topic \"kit.config.snapshot.create\" action segment \"create\" is not past-tense (e.g. \"started\", \"created\")"
+      ]
+    },
+    {
+      "name": "punctuation in action",
+      "topic": "kit.config.snapshot.re-loaded",
+      "ok": false,
+      "source": "",
+      "category": "",
+      "object": "",
+      "modifier": "",
+      "action": "",
+      "error": "bus: invalid topic: \"kit.config.snapshot.re-loaded\" (topic \"kit.config.snapshot.re-loaded\" segment \"re-loaded\" must be lowercase letters, digits, or underscores)"
+    },
+    {
+      "name": "empty segment",
+      "topic": "kit..snapshot.reloaded",
+      "ok": false,
+      "source": "",
+      "category": "",
+      "object": "",
+      "modifier": "",
+      "action": "",
+      "error": "bus: invalid topic: \"kit..snapshot.reloaded\" (topic \"kit..snapshot.reloaded\" has empty segment at position 1)"
+    },
+    {
+      "name": "wildcard",
+      "topic": "kit.config.*.reloaded",
+      "ok": false,
+      "source": "",
+      "category": "",
+      "object": "",
+      "modifier": "",
+      "action": "",
+      "error": "bus: invalid topic: \"kit.config.*.reloaded\" (topic \"kit.config.*.reloaded\" segment \"*\" must be lowercase letters, digits, or underscores)"
+    },
+    {
+      "name": "trailing dot",
+      "topic": "kit.config.snapshot.reloaded.",
+      "ok": false,
+      "source": "",
+      "category": "",
+      "object": "",
+      "modifier": "",
+      "action": "",
+      "error": "bus: invalid topic: \"kit.config.snapshot.reloaded.\" (topic \"kit.config.snapshot.reloaded.\" has 5 segments; expected 4 (source.category.object.action))"
+    }
+  ]
+}
