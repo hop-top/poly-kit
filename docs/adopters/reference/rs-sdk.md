@@ -732,7 +732,7 @@ Two validators exist, deliberately, with different strictness:
 
 | Function | Contract | Used by |
 |----------|----------|---------|
-| `validate` | 4 segments matching `^[a-z][a-z0-9_]*$`, total length <= 128, wildcards rejected. Does not check verb tense. | `Bus::publish`, per the configured `Mode`. |
+| `validate` | 4 segments matching `^[a-z][a-z0-9_]*$`, total length <= 128, wildcards rejected. Does not check verb tense. | `publish`, per the configured `Mode`. |
 | `validate_topic` | Additionally requires a past-tense action segment (ends in `ed`, or appears in `PAST_TENSE_WHITELIST`). | `prefix_topics`, so misconfigured topic maps fail during adopter wiring. |
 
 Subscribe patterns keep wildcard support: `*` matches exactly one
@@ -741,10 +741,10 @@ segment, `#` matches zero or more trailing segments and must come last.
 ### Quick start
 
 ```rust
-use hop_top_kit::bus::{Bus, Event, Mode};
+use hop_top_kit::bus::{DynBus, Event, Mode};
 use serde_json::json;
 
-let mut bus = Bus::builder().enforce(Mode::Strict).build();
+let bus = DynBus::builder().enforce(Mode::Strict).build();
 bus.subscribe("crm.sales.deal.*", |e| {
     println!("{} from {}", e.topic, e.source);
     Ok(())
@@ -752,25 +752,47 @@ bus.subscribe("crm.sales.deal.*", |e| {
 
 let event = Event::new("crm.sales.deal.created", "crm", json!({"id": 1}));
 bus.publish(&event).unwrap();
+bus.close().unwrap();
 ```
 
-`Bus::subscribe` needs `&mut self` while `publish` needs `&self`. When
-handlers are registered in one place and events published in another,
-wrap the bus in `SharedBus`, which hands out cheap clones over a single
-`RefCell`.
+`DynBus` is the front door, the counterpart of Go's `bus.New`. Every
+method takes `&self`, and clones share one bus, so handlers can be
+registered in one place and events published in another. `DynBus::new()`
+is `New()` with no options. `Bus` and `SharedBus` remain as the
+in-memory building block underneath, with no adapter, network or sink
+layers.
 
-### Dispatch is synchronous
+### Adapter seam
 
-Delivery runs inline on the publisher's thread, in subscription order,
-and the first handler error vetoes the publish. The Go package's
-async-handler path — goroutine pool, bounding semaphore, `WaitGroup`
-drained by `Close` under a deadline — is not yet ported. It is planned
-behind its own feature so the `bus` feature stays free of an async
-runtime; see [rust-bus-parity.md](../../contributors/architecture/rust-bus-parity.md).
+`Adapter` is the transport trait, Go's `Adapter` interface:
+`publish`, `subscribe`, `subscribe_async`, `unsubscribe` and `close`.
+`MemoryAdapter` is the in-process implementation, as Go's
+`NewMemoryAdapter`. `DynBus` implements `Adapter` too.
 
-Consequence: a slow handler blocks the publisher, and `publish` returns
-only once every matching subscriber has run. Handlers that want to defer
-work should spawn a task themselves.
+```rust
+use hop_top_kit::bus::{DynBus, MemoryAdapter};
+
+let bus = DynBus::builder().with_adapter(MemoryAdapter::new()).build();
+```
+
+`build()` stacks the layers in Go's `New` order: the adapter behind
+topic enforcement (or, with none, the in-memory bus), then the network
+layer, then the env sinks. With an adapter, `max_async` does not apply,
+as in Go.
+
+`with_network(addrs)` is Go's `WithNetwork`. Until the network adapter
+is ported it panics on any address, so a bus can't silently stay
+local; an empty list is a no-op.
+
+### Dispatch
+
+Sync handlers run inline on the publisher's thread, in subscription
+order, and the first handler error vetoes the publish. Async handlers
+(`subscribe_async`, Go's `SubscribeAsync`) run after every sync handler
+succeeds, on a `Spawn` you supply for your executor, from a pool sized
+by `max_async` (default 256). `close_ctx` drains them until its context
+is done. No async runtime is pulled in; see
+[rust-bus-parity.md](../../contributors/architecture/rust-bus-parity.md).
 
 ### Not ported
 

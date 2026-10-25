@@ -14,8 +14,8 @@ use super::Value;
 use super::{load, Error, Options};
 use crate::bus::{prefix_topics, Topic};
 
-/// Where reload events go. The bus's [`SharedBus`](crate::bus::SharedBus)
-/// implements it; Go's counterpart is `domain.EventPublisher`.
+/// Where reload events go. The bus's [`DynBus`](crate::bus::DynBus) and
+/// [`SharedBus`](crate::bus::SharedBus) implement it; Go's counterpart is `domain.EventPublisher`.
 pub trait ReloadPublisher: Send + Sync {
     /// Publishes one event. Errors are dropped by [`Reloadable`].
     fn publish(&self, topic: &str, source: &str, payload: serde_json::Value) -> Result<(), String>;
@@ -24,6 +24,13 @@ pub trait ReloadPublisher: Send + Sync {
 impl ReloadPublisher for crate::bus::SharedBus {
     fn publish(&self, topic: &str, source: &str, payload: serde_json::Value) -> Result<(), String> {
         crate::bus::SharedBus::publish(self, &crate::bus::Event::new(topic, source, payload))
+            .map_err(|e| e.to_string())
+    }
+}
+
+impl ReloadPublisher for crate::bus::DynBus {
+    fn publish(&self, topic: &str, source: &str, payload: serde_json::Value) -> Result<(), String> {
+        crate::bus::DynBus::publish(self, &crate::bus::Event::new(topic, source, payload))
             .map_err(|e| e.to_string())
     }
 }

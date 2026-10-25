@@ -9,20 +9,21 @@ grammar? Service lifecycle events are emitted by `hop_top_kit::serve`; cross-pro
 
 ## Use it when
 
-- one component must react to another's state change without a direct call → `Bus::subscribe` with a
-  pattern, `Bus::publish` an `Event`
-- handlers register in one place and publishers live elsewhere → wrap in `SharedBus`, clone it
+- one component must react to another's state change without a direct call → `DynBus::subscribe` with a
+  pattern, `DynBus::publish` an `Event`; clones share one bus, so register and publish anywhere
 - an adopter rebrands topics under its own prefix → `prefix_topics(prefix, actions)`, which validates tense
-- a publish must fail on a malformed topic rather than warn → `Bus::builder().enforce(Mode::Strict)`
-- a handler must not hold up the publisher → `SharedBus::subscribe_async` with a `Spawn` for your executor
+- a publish must fail on a malformed topic rather than warn → `DynBus::builder().enforce(Mode::Strict)`
+- a handler must not hold up the publisher → `DynBus::subscribe_async` with a `Spawn` for your executor
+- the transport must be swappable → `DynBus::builder().with_adapter(a)`; `MemoryAdapter` is in-process
+- you need only the in-memory core, no layers → `Bus`, or `SharedBus` to share it
 
 ## Quick start
 
 ```rust
-use hop_top_kit::bus::{Bus, Event, Mode};
+use hop_top_kit::bus::{DynBus, Event, Mode};
 use serde_json::json;
 
-let mut bus = Bus::builder().enforce(Mode::Strict).build();
+let bus = DynBus::builder().enforce(Mode::Strict).build();
 bus.subscribe("crm.sales.deal.*", |e| {
     println!("{} from {}", e.topic, e.source);
     Ok(())
@@ -56,6 +57,8 @@ bus.publish(&event).unwrap();
   always locks, and admits no new async task. `close_ctx(&ctx)` waits for sync publishes with no deadline,
   then for async tasks until `ctx` is done (Go's `ctx.Err()` text; the bus stays closed). On
   `wasm32-unknown-unknown` it returns `BusError::NotDrained` instead of blocking.
+- `DynBus` layers in Go's `New` order: adapter behind topic enforcement (else the in-memory `SharedBus`),
+  then network (`with_network` panics on any address until that adapter lands), then env sinks.
 - Subscribe after close registers nothing. `publish` after `close` is `BusError::Closed`.
 - Re-entrancy: a handler may publish, subscribe, unsubscribe and close on the `SharedBus` dispatching to
   it; Go deadlocks on all but the nested publish. Two handlers closing at once deadlock, as in Go.

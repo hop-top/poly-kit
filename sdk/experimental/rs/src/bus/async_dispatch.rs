@@ -141,8 +141,19 @@ pub trait MaybeSend {}
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 impl<T: ?Sized> MaybeSend for T {}
 
-/// An async handler, boxed: builds the future for one event.
-pub(super) type AsyncHandler = Arc<dyn Fn(Context, Event) -> Task + Send + Sync>;
+/// An async handler, boxed: called with the publish context and a copy
+/// of the event, it returns the [`Task`] the subscription's [`Spawn`]
+/// runs. Go's `AsyncHandler`. Build one with [`async_handler`].
+pub type AsyncHandler = Arc<dyn Fn(Context, Event) -> Task + Send + Sync>;
+
+/// Boxes an `async` closure into an [`AsyncHandler`].
+pub fn async_handler<F, Fut>(f: F) -> AsyncHandler
+where
+    F: Fn(Context, Event) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = ()> + MaybeSend + 'static,
+{
+    Arc::new(move |ctx, e| Box::pin(f(ctx, e)) as Task)
+}
 
 thread_local! {
     /// Buses whose async task this thread is polling, innermost last.
@@ -254,8 +265,7 @@ impl SharedBus {
         F: Fn(Context, Event) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = ()> + MaybeSend + 'static,
     {
-        let handler: AsyncHandler = Arc::new(move |ctx, e| Box::pin(handler(ctx, e)) as Task);
-        self.add(pattern.into(), Kind::Async(spawner, handler))
+        self.add(pattern.into(), Kind::Async(spawner, async_handler(handler)))
     }
 
     /// The pool size: how many async handlers may run at once. Go's

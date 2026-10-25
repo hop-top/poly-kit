@@ -26,13 +26,19 @@
 //! Publish, handlers and close carry a [`Context`], the Rust form of
 //! Go's `context.Context`.
 //!
+//! [`DynBus`] is the bus to use: Go's `New`, composing the adapter,
+//! network and sink layers in Go's order. [`adapter`] holds the
+//! transport seam, [`Adapter`] and [`MemoryAdapter`]. [`Bus`] and
+//! [`SharedBus`] are the in-memory building block under it, with no
+//! adapter, network or env sinks.
+//!
 //! # Example
 //!
 //! ```
-//! use hop_top_kit::bus::{Bus, Event, Mode};
+//! use hop_top_kit::bus::{DynBus, Event, Mode};
 //! use serde_json::json;
 //!
-//! let mut bus = Bus::builder().enforce(Mode::Strict).build();
+//! let bus = DynBus::builder().enforce(Mode::Strict).build();
 //! bus.subscribe("crm.sales.deal.*", |e| {
 //!     println!("{} from {}", e.topic, e.source);
 //!     Ok(())
@@ -42,9 +48,11 @@
 //! bus.publish(&event).unwrap();
 //! ```
 
+pub mod adapter;
 pub mod async_dispatch;
 pub mod builder;
 pub mod cloudevents;
+mod compose;
 pub mod config;
 pub mod context;
 mod drain;
@@ -56,9 +64,11 @@ mod shared;
 pub mod stream;
 pub mod topic;
 
+pub use adapter::{async_handler, Adapter, AsyncHandler, MemoryAdapter};
 pub use async_dispatch::{MaybeSend, Spawn, Task, DEFAULT_MAX_ASYNC};
 pub use builder::{parse_topic, prefixed_topic_of, topic_of, TopicBuilder};
 pub use cloudevents::{CloudEvent, CloudEventError, FrameFormat};
+pub use compose::{DynBus, DynBusBuilder};
 pub use config::{
     mode_from_config, mode_from_config_with, mode_from_env, mode_from_env_with, mode_from_string,
     ConfigGetter, ParseModeError, CONFIG_KEY_ENFORCE, ENV_ENFORCE,
