@@ -307,6 +307,24 @@ fn source_paths(opts: &Options) -> Vec<String> {
     out
 }
 
+/// Checks `T::reload_fields()` against `T::default()` as serialized:
+/// every listed field exists under that name and every serialized field
+/// is listed. Call it from a test of each config type; an `Option`
+/// struct that is `None` by default is not looked into.
+pub fn check_reload_fields<T: ReloadFields + Serialize + Default>() -> Result<(), Error> {
+    let v = to_value(&T::default())?;
+    let mut out = Vec::new();
+    super::partition::mismatches(&T::reload_fields(), &v, "", &mut out);
+    if out.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::invalid(format!(
+            "config: ReloadFields drift: {}",
+            out.join("; ")
+        )))
+    }
+}
+
 /// Go `lookupPath`: a null on the way (an empty `Option`) resolves to
 /// null; a non-mapping on the way does not resolve.
 fn lookup(v: &Value, path: &str) -> Option<Value> {

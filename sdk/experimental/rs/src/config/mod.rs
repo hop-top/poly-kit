@@ -29,10 +29,15 @@
 //! - **Writes keep bytes, not Go's layout.** [`set`], [`set_value`] and
 //!   [`unset`] splice only the targeted entry, so comments, anchors and
 //!   formatting survive; values, kept comments and key order match Go,
-//!   bytes do not. A shape the splicer cannot handle falls back to
-//!   emitting the whole document (comments lost). A non-mapping document
-//!   root is an error (Go silently writes nothing useful); unsetting the
-//!   last key leaves an empty file where Go writes `{}`.
+//!   bytes do not; `\r\n` files stay `\r\n` (Go writes `\n`). An edit
+//!   the splicer cannot make without losing a comment or anchor outside
+//!   the edited entry (explicit `? key` entries, for one) is refused with
+//!   [`ErrorKind::EditUnsupported`] and the file is left untouched; Go
+//!   never refuses. So is an `unset` that would remove an anchor still
+//!   aliased elsewhere, where Go writes a file it cannot read back. A
+//!   non-mapping document root is an error (Go silently writes nothing
+//!   useful); unsetting the last key leaves an empty file where Go writes
+//!   `{}`.
 //! - **No viper.** `Options.Viper`, `BindEnv`, `SeedDefaults` and
 //!   `SyncToViper` become [`EnvLookup`] ([`bind_env`],
 //!   [`EnvLookup::seed_defaults`], [`EnvLookup::sync`],
@@ -47,9 +52,15 @@
 //!   replaces an `any` field whole. Decode errors keep yaml.v3's shape
 //!   but name Rust types (`int` for `i64`, `[]` for lists).
 //! - **Parser.** YAML is parsed by saphyr-parser (YAML 1.2) with yaml.v3's
-//!   tag resolution on top; syntax error texts differ from libyaml's, and
-//!   exotic inputs libyaml rejects may parse (implicit empty keys are
-//!   rejected as in libyaml).
+//!   tag resolution on top; syntax error texts differ from libyaml's.
+//!   Three inputs libyaml reads but saphyr-parser 0.1.0 rejects or
+//!   misreads are made readable first: a leading BOM (saphyr does not
+//!   skip it), a tab after `:`, and quoted-scalar continuation lines at
+//!   or left of the block indent. Implicit empty keys are rejected as in
+//!   libyaml. Other exotic inputs libyaml rejects may parse. Decoding
+//!   keeps yaml.v3's duplicate-key check (per file, before merging), its
+//!   non-scalar-key error and its alias budget (`document contains
+//!   excessive aliasing`).
 //! - **Callbacks.** [`Options::env_override`] receives `&mut dyn Any`
 //!   ([`Options::env_override_for`] downcasts); a migration cannot return
 //!   a nil map; `watch_signal` is async, ends with `Ok(())` when its
@@ -128,8 +139,8 @@ pub use registry::{load_registry, save_registry};
 pub use registry::{Registry, Source};
 #[cfg(not(target_arch = "wasm32"))]
 pub use reload::{
-    ReloadFailReason, ReloadFailedPayload, ReloadOptions, ReloadPublisher, ReloadTopics,
-    Reloadable, ReloadedPayload,
+    check_reload_fields, ReloadFailReason, ReloadFailedPayload, ReloadOptions, ReloadPublisher,
+    ReloadTopics, Reloadable, ReloadedPayload,
 };
 pub use resolved::{
     format_resolved, format_resolved_table, resolved_as_json, sorted_by_key, Origin, Resolved,

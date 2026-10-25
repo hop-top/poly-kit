@@ -59,16 +59,20 @@ async fn watch_signal_e2e_reload_on_signal() {
     let (dir, r) = setup(rec.clone());
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
     let w = r.clone();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
     let task = tokio::spawn(async move {
-        w.watch_signal(
+        w.watch_signal_ready(
             async {
                 let _ = stop_rx.await;
             },
             &[SignalKind::user_defined1()],
+            move || {
+                let _ = ready_tx.send(());
+            },
         )
         .await
     });
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    ready_rx.await.expect("handlers installed");
     let mut up = initial();
     up.endpoint = "https://after".into();
     write_cfg(dir.path(), &up);
@@ -89,16 +93,20 @@ async fn watch_signal_veto_does_not_kill_watcher() {
     let (dir, r) = setup(rec.clone());
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
     let w = r.clone();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
     let task = tokio::spawn(async move {
-        w.watch_signal(
+        w.watch_signal_ready(
             async {
                 let _ = stop_rx.await;
             },
             &[SignalKind::user_defined2()],
+            move || {
+                let _ = ready_tx.send(());
+            },
         )
         .await
     });
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    ready_rx.await.expect("handlers installed");
     let mut bad = initial();
     bad.listen_addr = ":9090".into();
     write_cfg(dir.path(), &bad);

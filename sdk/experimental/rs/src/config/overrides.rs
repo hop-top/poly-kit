@@ -77,7 +77,7 @@ pub fn parse_config_args(
                     quote(a)
                 )));
             }
-            let resolved = Path::new(a).join(&marker);
+            let resolved = super::paths::go_join(Path::new(a), &marker);
             let shown = resolved.display().to_string();
             match std::fs::metadata(&resolved) {
                 Ok(m) if m.is_dir() => {

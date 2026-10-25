@@ -236,3 +236,48 @@ fn reload_topics_prefix_and_bus_publisher() {
     });
     assert!(format!("{t:?}").contains("kit.config.snapshot.reload_failed"));
 }
+
+#[test]
+fn reload_fields_drift_is_caught() {
+    use hop_top_kit::config::{check_reload_fields, Field, ReloadFields};
+    use serde::{Deserialize, Serialize};
+
+    check_reload_fields::<ReloadCfg>().unwrap();
+
+    #[derive(Default, Serialize, Deserialize)]
+    #[serde(default)]
+    struct Inner {
+        a: i64,
+    }
+    #[derive(Default, Serialize, Deserialize)]
+    #[serde(default)]
+    struct Drifted {
+        #[serde(rename = "listen")]
+        listen_addr: String,
+        added: bool,
+        inner: Inner,
+        #[serde(flatten)]
+        flat: Inner2,
+    }
+    #[derive(Default, Serialize, Deserialize)]
+    #[serde(default)]
+    struct Inner2 {
+        f: i64,
+    }
+    impl ReloadFields for Drifted {
+        fn reload_fields() -> Vec<Field> {
+            vec![
+                Field::leaf("listen_addr"),
+                Field::nested("inner", vec![Field::leaf("a"), Field::leaf("b")]),
+                Field::inline(vec![Field::leaf("f")]),
+            ]
+        }
+    }
+    let err = check_reload_fields::<Drifted>().unwrap_err().to_string();
+    assert_eq!(
+        err,
+        "config: ReloadFields drift: listen_addr: listed but not serialized; \
+         inner.b: listed but not serialized; added: serialized but not listed; \
+         listen: serialized but not listed"
+    );
+}

@@ -35,7 +35,7 @@ pub fn nearest_with_depth(
     };
     let mut depth = 0;
     while max_depth == 0 || depth < max_depth {
-        let candidate = dir.join(marker);
+        let candidate = super::paths::go_join(&dir, marker);
         match std::fs::metadata(&candidate) {
             Ok(_) => return Ok(candidate),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

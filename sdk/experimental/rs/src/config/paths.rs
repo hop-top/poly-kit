@@ -55,6 +55,48 @@ fn clean(p: &Path) -> PathBuf {
     out
 }
 
+/// Go `filepath.Clean` of a `/`-separated path, lexically.
+fn go_clean_str(p: &str) -> String {
+    let rooted = p.starts_with('/');
+    let mut segs: Vec<&str> = Vec::new();
+    for seg in p.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => match segs.last() {
+                Some(&l) if l != ".." => {
+                    segs.pop();
+                }
+                _ if rooted => {}
+                _ => segs.push(".."),
+            },
+            s => segs.push(s),
+        }
+    }
+    let body = segs.join("/");
+    match (rooted, body.is_empty()) {
+        (true, _) => format!("/{body}"),
+        (false, true) => ".".to_string(),
+        (false, false) => body,
+    }
+}
+
+/// Go `filepath.Join(a, b)`: joined and cleaned (`./proj` + `m` is
+/// `proj/m`, `a/../b/` + `m` is `b/m`).
+pub(crate) fn go_join(a: &Path, b: &str) -> PathBuf {
+    if cfg!(unix) {
+        if let Some(a) = a.to_str() {
+            let joined = match (a.is_empty(), b.is_empty()) {
+                (true, true) => return PathBuf::new(),
+                (true, false) => b.to_string(),
+                (false, true) => a.to_string(),
+                (false, false) => format!("{a}/{b}"),
+            };
+            return PathBuf::from(go_clean_str(&joined));
+        }
+    }
+    a.join(b)
+}
+
 /// Go `filepath.Dir`: the root's parent is the root.
 fn parent(p: &Path) -> PathBuf {
     p.parent()
@@ -172,4 +214,33 @@ pub fn options_for_tool_with_markers_from(cwd: &Path, tool: &str, markers: &[&st
     opts.user_config_path = user_config_path(tool);
     opts.system_config_path = system_config_path(tool);
     opts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_matches_go() {
+        // Go filepath.Clean outputs.
+        for (i, want) in [
+            ("", "."),
+            (".", "."),
+            ("./proj", "proj"),
+            ("proj/", "proj"),
+            ("a/../b", "b"),
+            ("a/../..", ".."),
+            ("../../x", "../../x"),
+            ("/..", "/"),
+            ("/a/./b//c/", "/a/b/c"),
+            ("a//b/./../c", "a/c"),
+        ] {
+            assert_eq!(go_clean_str(i), want, "{i}");
+        }
+        assert_eq!(
+            go_join(Path::new("./proj"), ".kit.yaml"),
+            PathBuf::from("proj/.kit.yaml")
+        );
+        assert_eq!(go_join(Path::new(""), "m"), PathBuf::from("m"));
+    }
 }

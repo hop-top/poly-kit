@@ -2,6 +2,7 @@
 //! `config-signal`, Unix only.
 
 use std::future::Future;
+use std::sync::Arc;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -23,10 +24,26 @@ where
     /// published and the next signal is awaited. Errors only for no
     /// signals (`config.WatchSignal: at least one signal required`) or a
     /// signal handler that cannot be installed.
+    ///
+    /// Each reload (file reads) runs on tokio's blocking pool, so it
+    /// never stalls the executor. Called on an `Arc<Reloadable<T>>`.
     pub async fn watch_signal(
-        &self,
+        self: &Arc<Self>,
         shutdown: impl Future<Output = ()>,
         signals: &[SignalKind],
+    ) -> Result<(), Error> {
+        self.watch_signal_ready(shutdown, signals, || {}).await
+    }
+
+    /// [`watch_signal`](Self::watch_signal), calling `ready` once every
+    /// handler is installed: a signal sent after that is not lost (and
+    /// cannot take the default action, which for most signals ends the
+    /// process).
+    pub async fn watch_signal_ready(
+        self: &Arc<Self>,
+        shutdown: impl Future<Output = ()>,
+        signals: &[SignalKind],
+        ready: impl FnOnce(),
     ) -> Result<(), Error> {
         if signals.is_empty() {
             return Err(Error::invalid(
@@ -47,13 +64,15 @@ where
             }));
         }
         drop(tx);
+        ready();
         tokio::pin!(shutdown);
         let out = loop {
             tokio::select! {
                 () = &mut shutdown => break Ok(()),
                 got = rx.recv() => match got {
                     Some(()) => {
-                        let _ = self.reload(self.options());
+                        let me = Arc::clone(self);
+                        let _ = tokio::task::spawn_blocking(move || me.reload(me.options())).await;
                     }
                     None => break Ok(()),
                 },
