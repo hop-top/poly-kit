@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	test-parity test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-typeid test-py \
+	test-parity test-parity-bus test-parity-kv test-parity-mcp test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
 
@@ -200,7 +200,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: test-parity-typeid test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-bus test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -296,6 +296,12 @@ test-parity-taxonomy: ## exit-code taxonomy across Go + 4 SDKs
 # than test-go. KV_CROSSLANG gates the cross-process cases so a plain
 # `go test ./...` stays Rust-free; setting it here is what makes the
 # gate live in CI.
+test-parity-bus: ## bus-v1 conformance corpus (Go and Rust runners)
+	@echo "==> bus-v1 conformance: Go"
+	go test ./go/runtime/bus/ -run '^TestConformance' -count=1
+	@echo "==> bus-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --test bus_conformance --all-features
+
 test-parity-kv: ## kv-v1 cross-language storage-binding gate (Go <-> Rust)
 	@echo "==> kv-v1 parity: Go <-> Rust cross-process"
 	KV_CROSSLANG=1 go test ./go/storage/kv/sqlite/... -run '^TestCrossLang' -count=1 -timeout 300s -v

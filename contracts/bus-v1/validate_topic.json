@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/validate_topic.json",
+  "version": "v1",
+  "description": "Construction-time validator (Go `ValidateTopic`, Rust `validate_topic`): 4 non-empty segments of [a-z0-9_] (a leading digit or underscore is allowed), no length cap, and a past-tense action (ends in 'ed' or in the whitelist). `error` is the exact error text, or `error_contains` lists substrings the text must contain when the tail names a language-specific identifier (see README); positions are 0-based. Checks run in order: empty, segment count, segments left to right, tense.",
+  "cases": [
+    {
+      "name": "'crm.sales.deal.created'",
+      "topic": "crm.sales.deal.created",
+      "ok": true
+    },
+    {
+      "name": "'a.b.c.pre_transitioned'",
+      "topic": "a.b.c.pre_transitioned",
+      "ok": true
+    },
+    {
+      "name": "'1a.b.c.created'",
+      "topic": "1a.b.c.created",
+      "ok": true
+    },
+    {
+      "name": "'_a.b.c.created'",
+      "topic": "_a.b.c.created",
+      "ok": true
+    },
+    {
+      "name": "'a.b.c.speed'",
+      "topic": "a.b.c.speed",
+      "ok": true
+    },
+    {
+      "name": "'a.b.c.ed'",
+      "topic": "a.b.c.ed",
+      "ok": true
+    },
+    {
+      "name": "whitelist started",
+      "topic": "kit.runtime.entity.started",
+      "ok": true
+    },
+    {
+      "name": "whitelist ended",
+      "topic": "kit.runtime.entity.ended",
+      "ok": true
+    },
+    {
+      "name": "whitelist succeeded",
+      "topic": "kit.runtime.entity.succeeded",
+      "ok": true
+    },
+    {
+      "name": "whitelist failed",
+      "topic": "kit.runtime.entity.failed",
+      "ok": true
+    },
+    {
+      "name": "whitelist canceled",
+      "topic": "kit.runtime.entity.canceled",
+      "ok": true
+    },
+    {
+      "name": "whitelist snoozed",
+      "topic": "kit.runtime.entity.snoozed",
+      "ok": true
+    },
+    {
+      "name": "whitelist received",
+      "topic": "kit.runtime.entity.received",
+      "ok": true
+    },
+    {
+      "name": "whitelist sent",
+      "topic": "kit.runtime.entity.sent",
+      "ok": true
+    },
+    {
+      "name": "whitelist applied",
+      "topic": "kit.runtime.entity.applied",
+      "ok": true
+    },
+    {
+      "name": "whitelist selected",
+      "topic": "kit.runtime.entity.selected",
+      "ok": true
+    },
+    {
+      "name": "whitelist evaluated",
+      "topic": "kit.runtime.entity.evaluated",
+      "ok": true
+    },
+    {
+      "name": "whitelist installed",
+      "topic": "kit.runtime.entity.installed",
+      "ok": true
+    },
+    {
+      "name": "whitelist downloaded",
+      "topic": "kit.runtime.entity.downloaded",
+      "ok": true
+    },
+    {
+      "name": "whitelist released",
+      "topic": "kit.runtime.entity.released",
+      "ok": true
+    },
+    {
+      "name": "whitelist tripped",
+      "topic": "kit.runtime.entity.tripped",
+      "ok": true
+    },
+    {
+      "name": "whitelist opened",
+      "topic": "kit.runtime.entity.opened",
+      "ok": true
+    },
+    {
+      "name": "whitelist closed",
+      "topic": "kit.runtime.entity.closed",
+      "ok": true
+    },
+    {
+      "name": "whitelist half_opened",
+      "topic": "kit.runtime.entity.half_opened",
+      "ok": true
+    },
+    {
+      "name": "whitelist paid",
+      "topic": "kit.runtime.entity.paid",
+      "ok": true
+    },
+    {
+      "name": "whitelist made",
+      "topic": "kit.runtime.entity.made",
+      "ok": true
+    },
+    {
+      "name": "whitelist built",
+      "topic": "kit.runtime.entity.built",
+      "ok": true
+    },
+    {
+      "name": "whitelist read",
+      "topic": "kit.runtime.entity.read",
+      "ok": true
+    },
+    {
+      "name": "whitelist set",
+      "topic": "kit.runtime.entity.set",
+      "ok": true
+    },
+    {
+      "name": "whitelist put",
+      "topic": "kit.runtime.entity.put",
+      "ok": true
+    },
+    {
+      "name": "whitelist hit",
+      "topic": "kit.runtime.entity.hit",
+      "ok": true
+    },
+    {
+      "name": "whitelist lost",
+      "topic": "kit.runtime.entity.lost",
+      "ok": true
+    },
+    {
+      "name": "whitelist found",
+      "topic": "kit.runtime.entity.found",
+      "ok": true
+    },
+    {
+      "name": "whitelist won",
+      "topic": "kit.runtime.entity.won",
+      "ok": true
+    },
+    {
+      "name": "''",
+      "topic": "",
+      "ok": false,
+      "error": "topic is empty (expected source.category.object.action)"
+    },
+    {
+      "name": "'a.b.c'",
+      "topic": "a.b.c",
+      "ok": false,
+      "error": "topic \"a.b.c\" has 3 segments; expected 4 (source.category.object.action)"
+    },
+    {
+      "name": "'a.b.c.d.e'",
+      "topic": "a.b.c.d.e",
+      "ok": false,
+      "error": "topic \"a.b.c.d.e\" has 5 segments; expected 4 (source.category.object.action)"
+    },
+    {
+      "name": "'a..c.created'",
+      "topic": "a..c.created",
+      "ok": false,
+      "error": "topic \"a..c.created\" has empty segment at position 1"
+    },
+    {
+      "name": "'a.b.c.'",
+      "topic": "a.b.c.",
+      "ok": false,
+      "error": "topic \"a.b.c.\" has empty segment at position 3"
+    },
+    {
+      "name": "'.b.c.created'",
+      "topic": ".b.c.created",
+      "ok": false,
+      "error": "topic \".b.c.created\" has empty segment at position 0"
+    },
+    {
+      "name": "'A.b.c.created'",
+      "topic": "A.b.c.created",
+      "ok": false,
+      "error": "topic \"A.b.c.created\" segment \"A\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "'a.*.c.created'",
+      "topic": "a.*.c.created",
+      "ok": false,
+      "error": "topic \"a.*.c.created\" segment \"*\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "'a.b.c.#'",
+      "topic": "a.b.c.#",
+      "ok": false,
+      "error": "topic \"a.b.c.#\" segment \"#\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "'a-b.c.d.created'",
+      "topic": "a-b.c.d.created",
+      "ok": false,
+      "error": "topic \"a-b.c.d.created\" segment \"a-b\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "'é.b.c.created'",
+      "topic": "é.b.c.created",
+      "ok": false,
+      "error": "topic \"é.b.c.created\" segment \"é\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "'a.b.c.create'",
+      "topic": "a.b.c.create",
+      "ok": false,
+      "error_contains": [
+        "topic \"a.b.c.create\" action segment \"create\" is not past-tense (e.g. \"started\", \"created\")"
+      ]
+    },
+    {
+      "name": "'a.b.c.run'",
+      "topic": "a.b.c.run",
+      "ok": false,
+      "error_contains": [
+        "topic \"a.b.c.run\" action segment \"run\" is not past-tense (e.g. \"started\", \"created\")"
+      ]
+    },
+    {
+      "name": "'a.b.c.d'",
+      "topic": "a.b.c.d",
+      "ok": false,
+      "error_contains": [
+        "topic \"a.b.c.d\" action segment \"d\" is not past-tense (e.g. \"started\", \"created\")"
+      ]
+    },
+    {
+      "name": "'a.b.c.starting'",
+      "topic": "a.b.c.starting",
+      "ok": false,
+      "error_contains": [
+        "topic \"a.b.c.starting\" action segment \"starting\" is not past-tense (e.g. \"started\", \"created\")"
+      ]
+    },
+    {
+      "name": "'a.b.c.Created'",
+      "topic": "a.b.c.Created",
+      "ok": false,
+      "error": "topic \"a.b.c.Created\" segment \"Created\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "segment errors before tense",
+      "topic": "a..c.run",
+      "ok": false,
+      "error": "topic \"a..c.run\" has empty segment at position 1"
+    }
+  ]
+}

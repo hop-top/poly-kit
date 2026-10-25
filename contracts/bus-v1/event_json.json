@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/event_json.json",
+  "version": "v1",
+  "description": "Event envelope wire shape: lowercase keys topic, source, timestamp, payload, and workspace_id which is omitted when empty. `timestamp` is RFC 3339 with optional fractional seconds (trailing zeros trimmed) and the original zone offset, exactly as Go's time.Time marshals it; vectors only use that canonical form so Go can re-encode them byte-for-byte as a JSON value. mode `roundtrip`: decoding `event` yields the same fields and encoding them yields `event` again (compared as JSON values, not text). mode `decode`: only decoding is asserted; `wire_extra` keys are added to the wire object and must be ignored. Absent workspace_id decodes as the empty string. `decode_reject` lists wire objects every decoder must refuse.",
+  "cases": [
+    {
+      "name": "utc whole second",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "crm.sales.deal.created",
+        "source": "crm.client",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "id": 42,
+          "name": "acme"
+        }
+      }
+    },
+    {
+      "name": "nanosecond precision, positive offset",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "crm.sales.deal.created",
+        "source": "crm.client",
+        "timestamp": "2024-05-01T12:00:00.123456789+02:00",
+        "payload": {
+          "id": 1
+        }
+      }
+    },
+    {
+      "name": "millisecond, negative offset",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00.5-07:00",
+        "payload": {
+          "k": "v"
+        }
+      }
+    },
+    {
+      "name": "utc fractional",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-12-31T23:59:59.999999999Z",
+        "payload": {}
+      }
+    },
+    {
+      "name": "half-hour offset",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00+05:30",
+        "payload": {}
+      }
+    },
+    {
+      "name": "leap day",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-02-29T00:00:00Z",
+        "payload": {}
+      }
+    },
+    {
+      "name": "workspace scoped",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        },
+        "workspace_id": "01HZX3Q8E5K7R0M9T2V4W6Y8ZA"
+      }
+    },
+    {
+      "name": "null payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": null
+      }
+    },
+    {
+      "name": "string payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": "hello"
+      }
+    },
+    {
+      "name": "number payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": 42
+      }
+    },
+    {
+      "name": "array payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": [
+          1,
+          "two",
+          null,
+          true
+        ]
+      }
+    },
+    {
+      "name": "nested payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "a": {
+            "b": [
+              {
+                "c": 1.5
+              }
+            ]
+          },
+          "flag": false
+        }
+      }
+    },
+    {
+      "name": "empty source and topic still emitted",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "",
+        "source": "",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {}
+      }
+    },
+    {
+      "name": "unicode payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "msg": "héllo 世界"
+        }
+      }
+    },
+    {
+      "name": "qualifiers in payload",
+      "mode": "roundtrip",
+      "event": {
+        "topic": "a.b.c.failed",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "reason": "timeout",
+          "snapshot_id": "s1"
+        }
+      }
+    },
+    {
+      "name": "decode ignores unknown wire keys",
+      "mode": "decode",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "src",
+        "timestamp": "2024-05-01T12:00:00Z",
+        "payload": {
+          "x": 1
+        }
+      },
+      "wire_extra": {
+        "origin": "abc123"
+      }
+    }
+  ],
+  "decode_reject": [
+    {
+      "name": "timestamp not a time",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "s",
+        "timestamp": "not-a-time",
+        "payload": {}
+      }
+    },
+    {
+      "name": "timestamp without zone",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "s",
+        "timestamp": "2024-05-01T12:00:00",
+        "payload": {}
+      }
+    },
+    {
+      "name": "timestamp wrong type",
+      "event": {
+        "topic": "a.b.c.d",
+        "source": "s",
+        "timestamp": 12345,
+        "payload": {}
+      }
+    }
+  ]
+}

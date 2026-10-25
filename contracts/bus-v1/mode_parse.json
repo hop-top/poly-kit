@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/bus-v1/mode_parse.json",
+  "version": "v1",
+  "description": "Enforcement-mode string parsing (Go `ModeFromString`): trim surrounding whitespace, case-insensitive, empty or all-whitespace is the default (warn) with no error. Anything else returns `mode` warn together with an error whose text quotes the ORIGINAL (untrimmed) input. `display` pins the canonical lowercase name of each mode.",
+  "display": {
+    "off": "off",
+    "warn": "warn",
+    "strict": "strict"
+  },
+  "cases": [
+    {
+      "name": "'off'",
+      "input": "off",
+      "mode": "off",
+      "ok": true
+    },
+    {
+      "name": "'warn'",
+      "input": "warn",
+      "mode": "warn",
+      "ok": true
+    },
+    {
+      "name": "'strict'",
+      "input": "strict",
+      "mode": "strict",
+      "ok": true
+    },
+    {
+      "name": "'OFF'",
+      "input": "OFF",
+      "mode": "off",
+      "ok": true
+    },
+    {
+      "name": "'Warn'",
+      "input": "Warn",
+      "mode": "warn",
+      "ok": true
+    },
+    {
+      "name": "'STRICT'",
+      "input": "STRICT",
+      "mode": "strict",
+      "ok": true
+    },
+    {
+      "name": "'sTrIcT'",
+      "input": "sTrIcT",
+      "mode": "strict",
+      "ok": true
+    },
+    {
+      "name": "' off '",
+      "input": " off ",
+      "mode": "off",
+      "ok": true
+    },
+    {
+      "name": "'\\tstrict\\n'",
+      "input": "\tstrict\n",
+      "mode": "strict",
+      "ok": true
+    },
+    {
+      "name": "'  Warn'",
+      "input": "  Warn",
+      "mode": "warn",
+      "ok": true
+    },
+    {
+      "name": "''",
+      "input": "",
+      "mode": "warn",
+      "ok": true
+    },
+    {
+      "name": "'   '",
+      "input": "   ",
+      "mode": "warn",
+      "ok": true
+    },
+    {
+      "name": "'\\n\\t'",
+      "input": "\n\t",
+      "mode": "warn",
+      "ok": true
+    },
+    {
+      "name": "'bogus'",
+      "input": "bogus",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"bogus\" (want off|warn|strict)"
+    },
+    {
+      "name": "'on'",
+      "input": "on",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"on\" (want off|warn|strict)"
+    },
+    {
+      "name": "'0'",
+      "input": "0",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"0\" (want off|warn|strict)"
+    },
+    {
+      "name": "'1'",
+      "input": "1",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"1\" (want off|warn|strict)"
+    },
+    {
+      "name": "'true'",
+      "input": "true",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"true\" (want off|warn|strict)"
+    },
+    {
+      "name": "'of f'",
+      "input": "of f",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"of f\" (want off|warn|strict)"
+    },
+    {
+      "name": "'strict!'",
+      "input": "strict!",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"strict!\" (want off|warn|strict)"
+    },
+    {
+      "name": "'offf'",
+      "input": "offf",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"offf\" (want off|warn|strict)"
+    },
+    {
+      "name": "' bogus '",
+      "input": " bogus ",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \" bogus \" (want off|warn|strict)"
+    },
+    {
+      "name": "'strict;'",
+      "input": "strict;",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"strict;\" (want off|warn|strict)"
+    }
+  ]
+}

@@ -8,6 +8,10 @@ shared schemas and cross-language constants.
   `keying.json` (cache-key derivation), `entry.json` (on-store envelope),
   `cacheability.json` (storage gate). Contract of record for every port,
   including the Go implementation.
+- [bus-v1/](bus-v1/README.md): kit/runtime/bus conformance corpus — topic
+  matching, both topic validators with their error texts, `PrefixTopics`,
+  qualifiers, enforcement-mode parsing and the event envelope JSON. Go is
+  canonical; the Go and Rust runners read the same files.
 - [kv-v1/](kv-v1/): kit/storage/kv cross-language storage-binding corpus —
   `keys.json` (key/value cases in hex, expected `ORDER BY key` sequence,
   prefix-scan expectations). Contract of record for how keys bind to
