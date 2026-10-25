@@ -15,7 +15,20 @@ default = []
 api = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:thiserror"]
 blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
-output = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:thiserror", "dep:comfy-table"]
+# preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so
+# object key order survives round-trips and projection at every nesting depth.
+# Required for --format=json/yaml to emit columns in ColumnSpec / --cols order
+# rather than alphabetically. indexmap is already in the tree via serde_yaml.
+# Scoped to `output`: Cargo unifies features, so enabling it from the base
+# dependency would flip Map ordering for every crate in a consumer's build.
+output = [
+    "dep:serde",
+    "dep:serde_json",
+    "serde_json/preserve_order",
+    "dep:serde_yaml",
+    "dep:thiserror",
+    "dep:comfy-table",
+]
 cli = ["output", "dep:clap"]
 id = ["dep:mti", "dep:uuid", "dep:serde", "dep:thiserror"]
 bus = ["dep:serde", "dep:serde_json"]
@@ -43,7 +56,20 @@ timeutil = ["dep:chrono", "dep:interim", "dep:thiserror"]
 # `serve` is by definition a long-running concurrent surface, so there
 # is no non-async shape for it. Consumers who ship no services compile
 # none of it.
-serve = ["output", "dep:tokio", "dep:serde_json"]
+#
+# tokio carries only the pieces the supervisor uses (spawn, select!,
+# channels and Notify, timers, signals); the consumer picks the runtime
+# flavour.
+serve = [
+    "output",
+    "dep:tokio",
+    "tokio/rt",
+    "tokio/macros",
+    "tokio/sync",
+    "tokio/time",
+    "tokio/signal",
+    "dep:serde_json",
+]
 # The `serve` command: mounts `serve [SERVICE]` with its flags on any
 # clap root. Opt-in on top of `serve`, following `sqlstore-blob`, so a
 # consumer wiring the lifecycle into its own parser does not compile
@@ -52,6 +78,11 @@ serve-cli = ["serve", "cli"]
 telemetry = [
     "api",
     "dep:tokio",
+    "tokio/rt",
+    "tokio/sync",
+    "tokio/time",
+    "tokio/fs",
+    "tokio/io-util",
     "dep:reqwest",
     "dep:serde",
     "dep:serde_json",
@@ -75,11 +106,8 @@ interim = { version = "0.2", default-features = false, features = [
 ], optional = true }
 reqwest = { version = "0.13", features = ["json", "query"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
-# preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so
-# object key order survives round-trips and projection at every nesting depth.
-# Required for --format=json/yaml to emit columns in ColumnSpec / --cols order
-# rather than alphabetically. indexmap is already in the tree via serde_yaml.
-serde_json = { version = "1", features = ["preserve_order"], optional = true }
+# No crate-wide features: `output` adds preserve_order for itself.
+serde_json = { version = "1", optional = true }
 serde_yaml = { version = "0.9", optional = true }
 sha2 = { version = "0.11", optional = true }
 # `default-features = false` drops the std/simd defaults: the envelope
@@ -104,7 +132,10 @@ crypto_secretbox = { version = "0.1", default-features = false, features = [
 ], optional = true }
 getrandom = { version = "0.4", optional = true }
 dirs = { version = "7", optional = true }
-tokio = { version = "1", features = ["full"], optional = true }
+# No crate-wide features: each feature that uses tokio names the pieces it
+# needs, so `full` (and its socket, process and multi-thread runtime
+# stack) never reaches a consumer through this crate.
+tokio = { version = "1", optional = true }
 regex = { version = "1", optional = true }
 thiserror = { version = "2", optional = true }
 rmcp = { version = "3.1.4", default-features = false, optional = true }
@@ -125,10 +156,10 @@ rusqlite = { version = "0.40", default-features = false, features = [
 tokio = { version = "1", features = ["full"] }
 mockito = "1"
 serde = { version = "1", features = ["derive"] }
-# Must match the lib dependency's feature set, or the test build and the
-# shipped crate disagree about Map's backing store and the suite would
-# validate ordering the released crate does not have.
-serde_json = { version = "1", features = ["preserve_order"] }
+# No extra features: dev-dependency features unify into the test build, so
+# preserve_order here would hide a feature set the shipped crate does not
+# have. Tests that need ordering get it from `output`.
+serde_json = "1"
 tempfile = "3"
 uuid = { version = "1", features = ["v7", "serde"] }
 
