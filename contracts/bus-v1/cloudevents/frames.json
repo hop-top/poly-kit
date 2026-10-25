@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Network adapter frames. decode: a JSON object with a member named exactly `specversion` (any value, null included) is a CloudEvents frame (kind cloudevents), any other object a kit frame; `origin` is the loop-prevention origin (kit `origin`, CloudEvents `kitorigin` extension, stripped from the event); ok false means the frame is dropped (error text is not contract). encode: `format` kit or cloudevents with the given `origin`; `frame` compared as a JSON value. Kit frames omit `workspace_id` and `id` when empty; `payload` is always present.",
+  "description": "Network adapter frames. decode: only JSON objects are frames (null, arrays, scalars and non-JSON are dropped); an object with a member named exactly `specversion` (any value, null included) is a CloudEvents frame (kind cloudevents), any other object a kit frame, whose members are matched by exact key (case variants are ignored; null or absent means zero; a wrong JSON type drops the frame); `origin` is the loop-prevention origin (kit `origin`, CloudEvents `kitorigin` extension, stripped from the event); ok false means the frame is dropped (error text is not contract). encode: `format` kit or cloudevents with the given `origin`; `frame` compared as a JSON value. Kit frames omit `workspace_id` and `id` when empty; `payload` is always present.",
   "decode": [
     {
       "name": "kit frame from an older peer",
@@ -94,6 +94,46 @@
     {
       "name": "invalid cloudevents frame",
       "frame": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"bad_name\":1}",
+      "ok": false
+    },
+    {
+      "name": "kit frame keys are matched exactly",
+      "frame": "{\"Topic\":\"kit.test.frame.sent\",\"SOURCE\":\"x\",\"source\":\"s\",\"Origin\":\"x\",\"origin\":\"o\",\"Workspace_ID\":\"ws9\"}",
+      "ok": true,
+      "kind": "kit",
+      "origin": "o",
+      "event": {
+        "source": "s"
+      }
+    },
+    {
+      "name": "kit frame null members are zero",
+      "frame": "{\"topic\":\"kit.test.frame.sent\",\"source\":null,\"timestamp\":null,\"payload\":null,\"origin\":null}",
+      "ok": true,
+      "kind": "kit",
+      "origin": "",
+      "event": {
+        "topic": "kit.test.frame.sent"
+      }
+    },
+    {
+      "name": "kit frame member of the wrong type",
+      "frame": "{\"topic\":7,\"source\":\"s\"}",
+      "ok": false
+    },
+    {
+      "name": "null frame",
+      "frame": "null",
+      "ok": false
+    },
+    {
+      "name": "string frame",
+      "frame": "\"x\"",
+      "ok": false
+    },
+    {
+      "name": "number frame",
+      "frame": "1",
       "ok": false
     },
     {

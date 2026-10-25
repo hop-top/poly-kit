@@ -175,6 +175,16 @@ func TestCloudEventsConformanceDecode(t *testing.T) {
 	ceConfLoad(t, "decode.json", &f)
 	for _, tc := range f.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
+			switch {
+			case tc.OK && tc.Error != "":
+				t.Fatal("vector: ok case with error")
+			case tc.OK && tc.Canonical == nil:
+				t.Fatal("vector: ok case without canonical")
+			case !tc.OK && (tc.Canonical != nil || tc.Event != nil || tc.EventError != ""):
+				t.Fatal("vector: failing case with canonical, event or event_error")
+			case tc.Event != nil && tc.EventError != "":
+				t.Fatal("vector: event and event_error together")
+			}
 			var c CloudEvent
 			err := c.UnmarshalJSON([]byte(tc.Input))
 			if !tc.OK {
@@ -227,6 +237,12 @@ func TestCloudEventsConformanceEncode(t *testing.T) {
 	ceConfLoad(t, "encode.json", &f)
 	for _, tc := range f.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
+			switch {
+			case tc.OK && (tc.Error != "" || tc.CloudEvent == nil):
+				t.Fatal("vector: ok case needs cloudevent and no error")
+			case !tc.OK && (tc.CloudEvent != nil || tc.Text != "" || tc.MintID):
+				t.Fatal("vector: failing case with cloudevent, text or mint_id")
+			}
 			c, err := ToCloudEvent(tc.Event.event(t))
 			if !tc.OK {
 				if tc.Error == "" {
@@ -272,7 +288,7 @@ func TestCloudEventsConformanceFrames(t *testing.T) {
 			Frame  string       `json:"frame"`
 			OK     bool         `json:"ok"`
 			Kind   string       `json:"kind"`
-			Origin string       `json:"origin"`
+			Origin *string      `json:"origin"`
 			Event  *ceConfEvent `json:"event"`
 		} `json:"decode"`
 		Encode []struct {
@@ -286,9 +302,12 @@ func TestCloudEventsConformanceFrames(t *testing.T) {
 	ceConfLoad(t, "frames.json", &f)
 	for _, tc := range f.Decode {
 		t.Run("decode/"+tc.Name, func(t *testing.T) {
-			var probe map[string]json.RawMessage
-			_ = json.Unmarshal([]byte(tc.Frame), &probe)
-			_, isCE := probe["specversion"]
+			switch {
+			case tc.OK && (tc.Kind == "" || tc.Origin == nil):
+				t.Fatal("vector: ok frame needs kind and origin")
+			case !tc.OK && (tc.Kind != "" || tc.Origin != nil || tc.Event != nil):
+				t.Fatal("vector: dropped frame with kind, origin or event")
+			}
 			e, origin, err := decodeFrame([]byte(tc.Frame))
 			if !tc.OK {
 				if err == nil {
@@ -299,11 +318,11 @@ func TestCloudEventsConformanceFrames(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if kind := map[bool]string{true: "cloudevents", false: "kit"}[isCE]; kind != tc.Kind {
+			if kind, _, _ := frameKind([]byte(tc.Frame)); kind != tc.Kind {
 				t.Errorf("kind = %s, want %s", kind, tc.Kind)
 			}
-			if origin != tc.Origin {
-				t.Errorf("origin = %q, want %q", origin, tc.Origin)
+			if origin != *tc.Origin {
+				t.Errorf("origin = %q, want %q", origin, *tc.Origin)
 			}
 			if tc.Event != nil {
 				tc.Event.assertEvent(t, e)

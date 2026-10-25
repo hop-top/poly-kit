@@ -680,6 +680,18 @@
       "error": "cloudevents: time: invalid RFC 3339 timestamp"
     },
     {
+      "name": "time: offset moves UTC year below 0000",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"0000-01-01T00:00:00+01:00\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
+      "name": "time: offset moves UTC year past 9999",
+      "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"9999-12-31T23:00:00-02:00\"}",
+      "ok": false,
+      "error": "cloudevents: time: invalid RFC 3339 timestamp"
+    },
+    {
       "name": "time: offset hour 24",
       "input": "{\"specversion\":\"1.0\",\"id\":\"x\",\"source\":\"s\",\"type\":\"t\",\"time\":\"2026-10-25T12:00:00+24:00\"}",
       "ok": false,

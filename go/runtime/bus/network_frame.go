@@ -2,6 +2,7 @@ package bus
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -78,31 +79,81 @@ func encodeFrame(f FrameFormat, e Event, origin string) ([]byte, error) {
 	return c.MarshalJSON()
 }
 
-// decodeFrame parses one inbound frame of either format and returns the
-// event and its wire origin. A JSON object with a member named exactly
-// "specversion" (any value, null included) is a CloudEvents frame;
-// any other object is a kit frame. A CloudEvents frame whose kitorigin
-// is not a string is rejected.
-func decodeFrame(data []byte) (Event, string, error) {
-	// Probe by exact key: struct decoding would fold case and treat
-	// "SPECVERSION" as a CloudEvents frame.
-	var probe map[string]json.RawMessage
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return Event{}, "", err
+// Frame kinds reported by frameKind.
+const (
+	frameKindKit         = "kit"
+	frameKindCloudEvents = "cloudevents"
+)
+
+// errFrameNotObject rejects frames that are valid JSON but not an
+// object (null, arrays, scalars).
+var errFrameNotObject = errors.New("bus: frame is not a JSON object")
+
+// frameKind classifies one inbound frame and returns its top-level
+// members. A JSON object with a member named exactly "specversion"
+// (any value, null included; no case folding) is a CloudEvents frame;
+// any other object is a kit frame. Anything else is an error, and the
+// frame is dropped.
+func frameKind(data []byte) (string, map[string]json.RawMessage, error) {
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(data, &members); err != nil {
+		return "", nil, err
 	}
-	if _, isCE := probe["specversion"]; !isCE {
-		var msg networkMsg
-		if err := json.Unmarshal(data, &msg); err != nil {
+	if members == nil {
+		return "", nil, errFrameNotObject
+	}
+	if _, ok := members["specversion"]; ok {
+		return frameKindCloudEvents, members, nil
+	}
+	return frameKindKit, members, nil
+}
+
+// decodeKitFrame builds an Event from kit-frame members, matching keys
+// exactly (topic, source, timestamp, payload, origin, workspace_id,
+// id); a case variant such as "Topic" is ignored. A null or absent
+// member leaves its field zero; a member of the wrong JSON type drops
+// the frame.
+func decodeKitFrame(members map[string]json.RawMessage) (Event, string, error) {
+	var (
+		e      Event
+		topic  string
+		origin string
+	)
+	fields := []struct {
+		key string
+		dst any
+	}{
+		{"topic", &topic},
+		{"source", &e.Source},
+		{"timestamp", &e.Timestamp},
+		{"payload", &e.Payload},
+		{"origin", &origin},
+		{"workspace_id", &e.WorkspaceID},
+		{"id", &e.ID},
+	}
+	for _, f := range fields {
+		raw, ok := members[f.key]
+		if !ok {
+			continue
+		}
+		if err := json.Unmarshal(raw, f.dst); err != nil {
 			return Event{}, "", err
 		}
-		return Event{
-			ID:          msg.ID,
-			Topic:       Topic(msg.Topic),
-			Source:      msg.Source,
-			Timestamp:   msg.Timestamp,
-			Payload:     msg.Payload,
-			WorkspaceID: msg.WorkspaceID,
-		}, msg.Origin, nil
+	}
+	e.Topic = Topic(topic)
+	return e, origin, nil
+}
+
+// decodeFrame parses one inbound frame of either format (see
+// frameKind) and returns the event and its wire origin. A CloudEvents
+// frame whose kitorigin is not a string is rejected.
+func decodeFrame(data []byte) (Event, string, error) {
+	kind, members, err := frameKind(data)
+	if err != nil {
+		return Event{}, "", err
+	}
+	if kind == frameKindKit {
+		return decodeKitFrame(members)
 	}
 	var c CloudEvent
 	if err := c.UnmarshalJSON(data); err != nil {

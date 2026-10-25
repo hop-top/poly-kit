@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
-	"runtime"
 	"testing"
 	"time"
 
@@ -66,7 +65,7 @@ func waitConns(t *testing.T, n *NetworkAdapter, want int) {
 		if time.Now().After(deadline) {
 			t.Fatalf("adapter has %d conns, want %d", got, want)
 		}
-		runtime.Gosched()
+		time.Sleep(time.Millisecond)
 	}
 }
 

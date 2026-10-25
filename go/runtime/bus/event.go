@@ -109,8 +109,9 @@ type Event struct {
 	DataSchema string `json:"dataschema,omitempty"`
 	// Extensions holds CloudEvents extension attributes. Names are
 	// lowercase ASCII letters and digits; values are string, bool or an
-	// integer in int32 range. "workspaceid" is reserved: set
-	// WorkspaceID instead.
+	// integer in int32 range. "workspaceid" is reserved (set
+	// WorkspaceID instead), and so is "kitorigin" (owned by the network
+	// adapter).
 	Extensions map[string]any `json:"extensions,omitempty"`
 }
 
