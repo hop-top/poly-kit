@@ -122,11 +122,10 @@ impl EventPayload {
 
 /// The narrow slice of an event bus the supervisor needs.
 ///
-/// A trait rather than a concrete `Bus` because [`crate::bus::Bus`] is
-/// `Rc`-backed and therefore `!Send`, while the supervisor's futures
-/// may move between tokio worker threads. An adopter driving the
-/// supervisor on a current-thread runtime wires the kit bus behind this
-/// trait; anyone else supplies their own sink. Omitting one means
+/// A trait rather than a concrete `Bus`, so `serve` does not depend on
+/// the `bus` feature and the supervisor needs only the one call it
+/// makes. An adopter wires the kit bus (a `SharedBus` is `Send + Sync`)
+/// behind this trait, or supplies their own sink. Omitting one means
 /// events are not published, and the log counterpart still runs.
 pub trait Publisher: Send + Sync {
     /// Publishes one lifecycle transition. A publish failure is
