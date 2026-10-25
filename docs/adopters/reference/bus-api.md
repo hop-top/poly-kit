@@ -440,7 +440,8 @@ from a CloudEvents 1.0 `CloudEvent`; `bus.MarshalCloudEvent` /
 
 Extension names are lowercase ASCII letters and digits; values are
 string, bool or an integer in int32 range. `workspaceid` is reserved
-for `WorkspaceID` and `kitorigin` for the network adapter. kit has no
+for `WorkspaceID`, and `kitorigin` and `kitoffset` for the network
+adapter. kit has no
 alias option for the workspace extension: a consumer that wants another
 name (a tenant id, say) maps `workspaceid` itself. `time` follows RFC
 3339 with years 0000-9999, a `.` fraction of 1-9 digits and no leap
@@ -448,20 +449,78 @@ seconds. Violations return a `*bus.CloudEventError` that matches
 `bus.ErrInvalidCloudEvent`. The full rule set is pinned by the vectors
 in [`contracts/bus-v1/cloudevents`](../../../contracts/bus-v1/cloudevents/).
 
-The network adapter sends kit frames by default, in every SDK, and
-there is no capability negotiation yet: no peer may default to
-CloudEvents frames until peers advertise support. Opt in per adapter
-once every peer runs a kit that decodes CloudEvents frames:
+The network adapter sends kit frames by default, in every SDK. Opt in
+to CloudEvents frames per adapter:
 
 ```go
 bus.WithNetworkOption(bus.WithFrameFormat(bus.FrameCloudEvents))
 ```
 
+On a link with a handshake (an `Authenticator` on both sides) the
+format is negotiated: a peer that does not advertise `cloudevents` gets
+kit frames. Without a handshake the configured format is sent as is, so
+opt in there only once every peer decodes CloudEvents frames.
+
 Inbound frames are accepted in either format whatever the setting: a
 JSON object with a member named exactly `specversion` is a CloudEvents
 frame, anything else a kit frame.
 CloudEvents frames carry the loop-prevention origin in the `kitorigin`
-extension, which the adapter strips before delivery.
+extension and, on stream links, the offset in `kitoffset`; the adapter
+strips both before delivery.
+
+## Network streams
+
+Two adapters that both configure an `Authenticator` negotiate a stream
+link in the auth handshake (use `bus.OpenAuth()` when there is no
+secret). On a stream link:
+
+- every forwarded event carries an offset in the sender's stream,
+  delivered to handlers as metadata: `bus.StreamPositionFrom(ctx)`
+- a dialer subscribes by pattern and workspace scope:
+  `WithSubscribe`, `WithScope`, `(*NetworkAdapter).Subscribe`,
+  `Unsubscribe`, `SetScope`; the acceptor authorizes with
+  `WithSubscribeAuthorizer` and filters per link with `WithLinkFilter`
+- a reconnect resumes after the dialer's position with no gaps and no
+  duplicates; when that is impossible the dialer publishes
+  `kit.runtime.stream.invalidated`: mark live views fed by that peer
+  stale and refetch
+- the acceptor sends heartbeats (`WithHeartbeat`, default 15 s); a
+  dialer closes a link after three silent intervals and reconnects
+- link state: `kit.runtime.link.connected` / `disconnected` events and
+  `(*NetworkAdapter).LinkState(addr)`
+
+```go
+b := bus.New(
+    bus.WithNetwork("wss://hub.example/bus"),
+    bus.WithNetworkOption(
+        bus.WithAuth(bus.OpenAuth()),
+        bus.WithSubscribe("acme.crm.#"),
+        bus.WithScope(bus.Scope{Workspaces: []string{"ws1"}}),
+        bus.WithOutbox(),
+    ),
+)
+b.Subscribe(string(bus.TopicStreamInvalidated), func(ctx context.Context, e bus.Event) error {
+    // mark views stale, refetch
+    return nil
+})
+```
+
+Every adapter keeps a log of what it forwards (`WithStreamLog(n)`,
+default 1024 entries, or `WithLog` for your own `StreamLog`); size a
+hub's log for its clients' reconnect window. `WithOutbox()` keeps
+events published while an outbound peer is down and sends them in
+order on reconnect; overflow drops the oldest and counts them
+(`OutboxDropped`, `WithOutboxDropFunc`). A failed first dial through
+`WithNetwork` or `Dial` keeps retrying.
+
+Ordering holds per sending adapter through sync handlers; async
+handlers stay unordered. A consumer that queues events onward must
+persist the position it applied, from `StreamPositionFrom`, not
+`Position(addr)`. A bus without the ordered publish hook (for example
+the SQLite adapter) forwards as before and does not negotiate streams.
+The wire contract is
+[bus network streams](../../contributors/architecture/bus-streams.md),
+pinned by [`contracts/bus-v1/streams`](../../../contracts/bus-v1/streams/README.md).
 
 ## Cross-language parity
 

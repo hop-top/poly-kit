@@ -57,11 +57,17 @@ events, you do not need to override anything.
 | `core/upgrade.Checker`       | `kit.core.upgrade`          | `released`, `downloaded`, `installed`, `snoozed` |
 | `runtime/domain.Service[T]`  | `kit.runtime.entity`        | `created`, `updated`, `deleted` |
 | `runtime/domain.StateMachine`| `kit.runtime.state`         | `pre_transitioned`, `post_transitioned` |
+| `runtime/bus.NetworkAdapter` | `kit.runtime.stream`       | `invalidated` (reserved: local only, never forwarded) |
+| `runtime/bus.NetworkAdapter` | `kit.runtime.link`         | `connected`, `disconnected` (reserved: local only, never forwarded) |
 | `transport/api`              | `kit.api.request`           | `started`, `ended` |
 
 `core/breaker` and `core/upgrade` are bus-emitting, but they
 require `WithPublisher` to opt in. The other emitters publish
 unconditionally when wired to a bus.
+
+The network adapter owns `kit.runtime.stream.*` and
+`kit.runtime.link.*`: it publishes them on the local bus only, never
+logs or forwards them, and drops inbound frames that carry them.
 
 ## When to override
 

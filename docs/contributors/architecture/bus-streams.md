@@ -745,7 +745,7 @@ func OpenAuth() Authenticator
 func (n *NetworkAdapter) Dial(addr string)
 func (n *NetworkAdapter) Subscribe(ctx context.Context, addr string, patterns ...string) (uint64, error)
 func (n *NetworkAdapter) Unsubscribe(ctx context.Context, addr string, patterns ...string) (uint64, error)
-func (n *NetworkAdapter) SetScope(ctx context.Context, addr string, s *Scope) (uint64, error)
+func (n *NetworkAdapter) SetScope(ctx context.Context, addr string, s Scope) (uint64, error)
 func (n *NetworkAdapter) Position(addr string) (StreamPosition, bool)
 func (n *NetworkAdapter) LinkState(addr string) (LinkState, bool)
 func (n *NetworkAdapter) OutboxDropped(addr string) uint64
@@ -784,8 +784,9 @@ Re-break checks:
 
 ## Vectors
 
-`contracts/bus-v1/streams/`. The Go runner is
-`go/runtime/bus/stream_conformance_test.go`, and it is strict: unknown
+[`contracts/bus-v1/streams/`](../../../contracts/bus-v1/streams/README.md). The Go
+runners are `go/runtime/bus/stream_conformance_test.go` and
+`stream_wire_conformance_test.go`, and they are strict: unknown
 fields, a wrong `version` and unconsumed files all fail it.
 
 | File | Pins |
