@@ -70,7 +70,7 @@ fn from_json(v: serde_json::Value) -> Value {
     }
 }
 
-/// `pkl-amend-*.pkl` next to the module, removed on drop.
+/// `pkl-amend-*.pkl` next to the module (0600 on unix), removed on drop.
 struct TempFile(std::path::PathBuf);
 
 impl TempFile {
@@ -80,11 +80,12 @@ impl TempFile {
             .map_or(0, |d| d.as_nanos());
         for n in 0..1000u32 {
             let p = dir.join(format!("pkl-amend-{}-{nanos}-{n}.pkl", std::process::id()));
-            match std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&p)
-            {
+            let mut o = std::fs::OpenOptions::new();
+            o.write(true).create_new(true);
+            // Answers may hold secrets: private, as Go's os.CreateTemp.
+            #[cfg(unix)]
+            std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
+            match o.open(&p) {
                 Ok(_) => return Ok(TempFile(p)),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(e) => return Err(e),
@@ -155,5 +156,18 @@ mod tests {
         let got = generate_amendment("/x/config.pkl", &answers).unwrap();
         assert!(got.starts_with("amends \"/x/config.pkl\""));
         assert!(got.contains("name = \"app\"") && got.contains("port = 8080"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn amendment_temp_file_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let t = TempFile::create(d.path()).unwrap();
+        let mode = std::fs::metadata(&t.0).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        let p = t.0.clone();
+        drop(t);
+        assert!(!p.exists());
     }
 }
