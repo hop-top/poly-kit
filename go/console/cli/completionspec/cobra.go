@@ -15,7 +15,8 @@ import (
 const FlagEnumAnnotation = "kit.cli.flag.enum"
 
 // argsAnnotation is kit's declared-positionals annotation: a comma
-// separated name list, "?" marking an optional one.
+// separated name list, "?" marking an optional one. The grammar is
+// cmdreflect's; a test holds the two readers together.
 const argsAnnotation = "kit/args"
 
 // FromCobra builds the spec model from a cobra command tree.
@@ -236,8 +237,7 @@ func declaredArgs(c *cobra.Command) []Arg {
 			continue
 		}
 		a := Arg{}
-		n, a.Optional = strings.CutSuffix(n, "?")
-		a.Name, a.Variadic = strings.CutSuffix(n, "...")
+		a.Name, a.Optional = strings.CutSuffix(n, "?")
 		out = append(out, a)
 	}
 	return out

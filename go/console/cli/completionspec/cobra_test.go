@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"hop.top/kit/go/ai/cmdreflect"
 	"hop.top/kit/go/console/cli/completionspec"
 )
 
@@ -48,4 +49,30 @@ func TestFromCobraNoFileCompletionsOffersNothing(t *testing.T) {
 
 func TestFromCobraNil(t *testing.T) {
 	assert.Equal(t, completionspec.Spec{}, completionspec.FromCobra(nil))
+}
+
+// TestKitArgsGrammarMatchesCmdreflect: kit/args has one grammar, the
+// one cmdreflect reads (comma list, "?" optional). Any other suffix is
+// part of the name.
+func TestKitArgsGrammarMatchesCmdreflect(t *testing.T) {
+	for _, raw := range []string{"id", "id, name?", "files...", " a ,, b? ", "rest...?"} {
+		t.Run(raw, func(t *testing.T) {
+			root := &cobra.Command{Use: "tool"}
+			leaf := &cobra.Command{
+				Use:         "run",
+				Annotations: map[string]string{"kit/args": raw},
+				Run:         func(*cobra.Command, []string) {},
+			}
+			root.AddCommand(leaf)
+
+			got := completionspec.FromCobra(root).Root.Commands[0].Args
+			want := cmdreflect.Reflect(root).Lookup("run").Args
+			require.Len(t, got, len(want))
+			for i := range want {
+				assert.Equal(t, want[i].Name, got[i].Name)
+				assert.Equal(t, !want[i].Required, got[i].Optional)
+				assert.False(t, got[i].Variadic, "kit/args declares no variadics")
+			}
+		})
+	}
 }

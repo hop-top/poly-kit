@@ -200,7 +200,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: test-parity-typeid test-parity-bus test-parity-config test-parity-retry test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-bus test-parity-completion-spec test-parity-config test-parity-retry test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1

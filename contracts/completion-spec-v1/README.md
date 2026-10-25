@@ -50,7 +50,7 @@ Rules a port must reproduce:
 - No value: `bool`, `count`. Optional value: `no_opt_default` set.
   Repeatable: `count`, `*Slice`, `*Array`, `stringTo*`.
 - Positionals: none under `no_args`; else `kit/args` (comma list, `?`
-  optional, `...` variadic); else `use` operands: `<x>`, `[x]`, bare,
+  optional; nothing else is grammar); else `use` operands: `<x>`, `[x]`, bare,
   `...` variadic, a multi-word bracket joined without spaces,
   `[flags]`/`[command]`/flag syntax skipped. A command with a positional
   completer and no positional gets `[arg]`, optional and variadic.

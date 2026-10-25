@@ -70,6 +70,7 @@ accepted elicitation or, over HTTP, `X-Confirm-Token`. Normative text:
 | [`breaker/`](breaker/README.md) | `breaker` subcommand tree: which breakers are registered, their state, closing one |
 | [`cmdmeta/`](cmdmeta/README.md) | read the `kit/*` annotations on a cobra command without importing `cli` |
 | [`completion/`](completion/README.md) | dynamic shell completions for flags and positionals |
+| [`completionspec/`](completionspec/README.md) | `completion fig` / `completion usage`: the command tree as a Fig or Usage completion spec |
 | [`config/`](config/README.md) | `config path` and `config paths` subcommands: which file loads and the precedence chain |
 | [`conformance/`](conformance/README.md) | the `kit conformance` command tree and its exit codes |
 | [`idemstore/`](idemstore/README.md) | storage backend for `--idempotency-key` recorded results |
