@@ -32,39 +32,31 @@ fn memory_adapter_publish_subscribe() {
     let a = MemoryAdapter::new();
     let got = Arc::new(Mutex::new(None::<Event>));
     let g = Arc::clone(&got);
-    a.subscribe(
-        "test.event",
-        Box::new(move |_, e| {
-            *g.lock().unwrap() = Some(e.clone());
-            Ok(())
-        }),
-    );
+    a.subscribe("test.event", move |e| {
+        *g.lock().unwrap() = Some(e.clone());
+        Ok(())
+    });
 
     let e = Event::new("test.event", "src", json!("hello"));
-    let a = Arc::new(a);
-    let b = Arc::clone(&a);
-    within(move || b.publish(&Context::background(), &e)).expect("publish");
+    let b = a.clone();
+    within(move || b.publish(&e)).expect("publish");
     assert_eq!(got.lock().unwrap().as_ref().unwrap().source, "src");
 }
 
 #[test]
 fn memory_adapter_async_handler() {
-    let a = Arc::new(MemoryAdapter::new());
+    let a = MemoryAdapter::new();
     let called = Arc::new(AtomicBool::new(false));
     let c = Arc::clone(&called);
-    a.subscribe_async(
-        "test.event",
-        threads(),
-        async_handler(move |_, _| {
-            let c = Arc::clone(&c);
-            async move { c.store(true, Ordering::SeqCst) }
-        }),
-    );
+    a.subscribe_async("test.event", threads(), move |_, _| {
+        let c = Arc::clone(&c);
+        async move { c.store(true, Ordering::SeqCst) }
+    });
 
-    let b = Arc::clone(&a);
-    within(move || b.publish(&Context::background(), &ev("test.event"))).expect("publish");
-    let b = Arc::clone(&a);
-    within(move || b.close(&Context::background())).expect("close");
+    let b = a.clone();
+    within(move || b.publish(&ev("test.event"))).expect("publish");
+    let b = a.clone();
+    within(move || b.close_ctx(&Context::background())).expect("close");
     assert!(
         called.load(Ordering::SeqCst),
         "async handler was not called"
@@ -72,8 +64,37 @@ fn memory_adapter_async_handler() {
 }
 
 #[test]
+fn memory_adapter_through_the_trait() {
+    let a: Arc<dyn Adapter> = Arc::new(MemoryAdapter::new());
+    let hits = Arc::new(AtomicUsize::new(0));
+    let (h, h2) = (Arc::clone(&hits), Arc::clone(&hits));
+    a.subscribe(
+        "x",
+        Box::new(move |_, _| {
+            h.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }),
+    );
+    a.subscribe_async(
+        "x",
+        threads(),
+        async_handler(move |_, _| {
+            let h = Arc::clone(&h2);
+            async move {
+                h.fetch_add(1, Ordering::SeqCst);
+            }
+        }),
+    );
+    let b = Arc::clone(&a);
+    within(move || b.publish(&Context::background(), &ev("x"))).unwrap();
+    let b = Arc::clone(&a);
+    within(move || b.close(&Context::background())).unwrap();
+    assert_eq!(hits.load(Ordering::SeqCst), 2);
+}
+
+#[test]
 fn with_adapter_memory_adapter() {
-    let bus = Bus::builder().with_adapter(MemoryAdapter::new()).build();
+    let bus = DynBus::builder().with_adapter(MemoryAdapter::new()).build();
     let got = Arc::new(Mutex::new(None::<Event>));
     let g = Arc::clone(&got);
     bus.subscribe("test.event", move |e| {
@@ -144,7 +165,7 @@ fn adapter_path_enforces_the_mode_before_the_adapter() {
     // adapter itself validates nothing (its memBus mode is ModeOff).
     let reported = Arc::new(AtomicUsize::new(0));
     let r = Arc::clone(&reported);
-    let bus = Bus::builder()
+    let bus = DynBus::builder()
         .with_adapter(MemoryAdapter::new())
         .enforce(Mode::Strict)
         .invalid_topic_reporter(move |_| {
@@ -165,16 +186,15 @@ fn adapter_path_enforces_the_mode_before_the_adapter() {
     assert_eq!(delivered.load(Ordering::SeqCst), 0);
 
     // The adapter alone does not validate.
-    let a = Arc::new(MemoryAdapter::new());
-    let b = Arc::clone(&a);
-    within(move || b.publish(&Context::background(), &ev("Bad Topic"))).expect("no validation");
+    let a = MemoryAdapter::new();
+    within(move || a.publish(&ev("Bad Topic"))).expect("no validation");
 }
 
 #[test]
 fn adapter_path_warn_reports_and_delivers() {
     let reported = Arc::new(AtomicUsize::new(0));
     let r = Arc::clone(&reported);
-    let bus = Bus::builder()
+    let bus = DynBus::builder()
         .invalid_topic_reporter(move |_| {
             r.fetch_add(1, Ordering::SeqCst);
         })
@@ -193,18 +213,16 @@ fn adapter_path_warn_reports_and_delivers() {
 }
 
 #[test]
-fn an_arc_adapter_stays_reachable_by_its_owner() {
-    let a = Arc::new(MemoryAdapter::new());
-    let bus = Bus::builder().with_adapter(Arc::clone(&a)).build();
+fn an_adapter_stays_reachable_by_its_owner() {
+    // A clone of the adapter shares its subscriptions, as a Go pointer.
+    let a = MemoryAdapter::new();
+    let bus = DynBus::builder().with_adapter(a.clone()).build();
     let hits = Arc::new(AtomicUsize::new(0));
     let h = Arc::clone(&hits);
-    a.subscribe(
-        "x",
-        Box::new(move |_, _| {
-            h.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        }),
-    );
+    a.subscribe("x", move |_| {
+        h.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    });
     let b = bus.clone();
     within(move || b.publish(&ev("x"))).unwrap();
     assert_eq!(hits.load(Ordering::SeqCst), 1);
@@ -212,7 +230,7 @@ fn an_arc_adapter_stays_reachable_by_its_owner() {
 
 #[test]
 fn unsubscribe_and_publish_after_close_through_the_layers() {
-    let bus = Bus::builder().with_adapter(MemoryAdapter::new()).build();
+    let bus = DynBus::builder().with_adapter(MemoryAdapter::new()).build();
     let hits = Arc::new(AtomicUsize::new(0));
     let h = Arc::clone(&hits);
     let id = bus.subscribe("x", move |_| {
@@ -250,12 +268,15 @@ fn async_subscribe_through_the_builder() {
 }
 
 #[test]
-fn with_network_is_accepted_and_local_delivery_is_unchanged() {
-    // The network layer is a seam until the network adapter lands: the
-    // addresses are recorded and the bus behaves as without them.
-    let bus = Bus::builder()
-        .with_network(["ws://127.0.0.1:1/bus"])
-        .build();
+#[should_panic(expected = "network adapter not yet available in kit-rs")]
+fn with_network_panics_until_the_network_adapter_lands() {
+    // A bus that silently stayed local would pass for a networked one.
+    let _ = DynBus::builder().with_network(["ws://127.0.0.1:1/bus"]);
+}
+
+#[test]
+fn with_network_without_addresses_attaches_nothing() {
+    let bus = DynBus::builder().with_network(Vec::<String>::new()).build();
     let hits = Arc::new(AtomicUsize::new(0));
     let h = Arc::clone(&hits);
     bus.subscribe("x", move |_| {
@@ -270,10 +291,28 @@ fn with_network_is_accepted_and_local_delivery_is_unchanged() {
 }
 
 #[test]
+fn a_shared_dyn_adapter_is_an_adapter() {
+    let a: Arc<dyn Adapter> = Arc::new(MemoryAdapter::new());
+    let bus = DynBus::builder().with_adapter(Arc::clone(&a)).build();
+    let hits = Arc::new(AtomicUsize::new(0));
+    let h = Arc::clone(&hits);
+    a.subscribe(
+        "x",
+        Box::new(move |_, _| {
+            h.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }),
+    );
+    let b = bus.clone();
+    within(move || b.publish(&ev("x"))).unwrap();
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
+}
+
+#[test]
 fn a_dyn_bus_is_itself_an_adapter() {
     // Layers wrap layers: the composed bus can sit under another one.
     let inner = DynBus::new();
-    let outer = Bus::builder().with_adapter(inner.clone()).build();
+    let outer = DynBus::builder().with_adapter(inner.clone()).build();
     let hits = Arc::new(AtomicUsize::new(0));
     let h = Arc::clone(&hits);
     inner.subscribe("x", move |_| {

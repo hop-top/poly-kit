@@ -16,30 +16,20 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use super::async_dispatch::{MaybeSend, Spawn, Task};
+pub use super::async_dispatch::{async_handler, AsyncHandler};
+use super::async_dispatch::{MaybeSend, Spawn};
 use super::context::Context;
 use super::event::Event;
 use super::mem::{Bus, BusError, Handler, Mode, SubscriptionId};
 use super::shared::{Kind, SharedBus};
 
-/// An async handler as an [`Adapter`] takes it: called with the publish
-/// context and a copy of the event, it returns the [`Task`] the
-/// subscription's [`Spawn`] runs. Go's `AsyncHandler`. Build one from an
-/// `async` closure with [`async_handler`].
-pub type AsyncHandler = Arc<dyn Fn(Context, Event) -> Task + Send + Sync>;
-
-/// Boxes `f` into an [`AsyncHandler`]; the bound matches
-/// [`SharedBus::subscribe_async`].
-pub fn async_handler<F, Fut>(f: F) -> AsyncHandler
-where
-    F: Fn(Context, Event) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = ()> + MaybeSend + 'static,
-{
-    Arc::new(move |ctx, e| Box::pin(f(ctx, e)) as Task)
-}
-
 /// The transport layer for the bus: Go's `Adapter`. The default is
 /// [`MemoryAdapter`].
+///
+/// Adapters are `Send + Sync`, as the bus is, on every target. A future
+/// browser adapter holding a `JsValue` would need that bound relaxed on
+/// wasm32 (as [`MaybeSend`] does for task futures), which changes this
+/// trait.
 pub trait Adapter: Send + Sync {
     /// Delivers `event`. Delivery timing and error propagation are
     /// adapter-specific.
@@ -67,9 +57,13 @@ pub trait Adapter: Send + Sync {
     fn close(&self, ctx: &Context) -> Result<(), BusError>;
 }
 
-/// Lets a caller hand the builder an `Arc` and keep a handle on the
-/// adapter, as a Go caller keeps its pointer.
-impl<A: Adapter + ?Sized> Adapter for Arc<A> {
+/// Lets a caller hand the builder a shared `Arc<dyn Adapter>` and keep a
+/// handle on it, as a Go caller keeps its pointer. Concrete adapters are
+/// cheap clones sharing state ([`MemoryAdapter`], [`DynBus`]), so a clone
+/// serves the same purpose.
+///
+/// [`DynBus`]: super::DynBus
+impl Adapter for Arc<dyn Adapter> {
     fn publish(&self, ctx: &Context, event: &Event) -> Result<(), BusError> {
         (**self).publish(ctx, event)
     }
@@ -137,6 +131,61 @@ impl MemoryAdapter {
     /// Go's `NewMemoryAdapter`.
     pub fn new() -> Self {
         MemoryAdapter(SharedBus::new(Bus::builder().enforce(Mode::Off).build()))
+    }
+
+    /// Registers a handler that ignores the publish context. Go's
+    /// `Subscribe`; see [`SharedBus::subscribe`].
+    pub fn subscribe(
+        &self,
+        pattern: impl Into<String>,
+        handler: impl Fn(&Event) -> Result<(), BusError> + Send + Sync + 'static,
+    ) -> SubscriptionId {
+        self.0.subscribe(pattern, handler)
+    }
+
+    /// Registers a handler that receives the publish context.
+    pub fn subscribe_ctx(
+        &self,
+        pattern: impl Into<String>,
+        handler: impl Fn(&Context, &Event) -> Result<(), BusError> + Send + Sync + 'static,
+    ) -> SubscriptionId {
+        self.0.subscribe_ctx(pattern, handler)
+    }
+
+    /// Registers an async handler. Go's `SubscribeAsync`; see
+    /// [`SharedBus::subscribe_async`].
+    pub fn subscribe_async<F, Fut>(
+        &self,
+        pattern: impl Into<String>,
+        spawner: Arc<dyn Spawn>,
+        handler: F,
+    ) -> SubscriptionId
+    where
+        F: Fn(Context, Event) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + MaybeSend + 'static,
+    {
+        self.0.subscribe_async(pattern, spawner, handler)
+    }
+
+    /// Removes a subscription. Returns whether it was found.
+    pub fn unsubscribe(&self, id: SubscriptionId) -> bool {
+        self.0.unsubscribe(id)
+    }
+
+    /// [`MemoryAdapter::publish_ctx`] with [`Context::background`].
+    pub fn publish(&self, event: &Event) -> Result<(), BusError> {
+        self.0.publish(event)
+    }
+
+    /// Delivers `event` to the matching handlers. Go's `Publish`.
+    pub fn publish_ctx(&self, ctx: &Context, event: &Event) -> Result<(), BusError> {
+        self.0.publish_ctx(ctx, event)
+    }
+
+    /// Stops the adapter and waits for in-flight handlers until `ctx` is
+    /// done. Go's `Close`.
+    pub fn close_ctx(&self, ctx: &Context) -> Result<(), BusError> {
+        self.0.close_ctx(ctx)
     }
 }
 

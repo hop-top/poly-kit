@@ -357,8 +357,11 @@ impl SharedBus {
         Ok(())
     }
 
-    /// [`SharedBus::close_ctx`] with [`Context::background`]. Go's
-    /// `Close(context.Background())`, which cannot fail either.
+    /// [`SharedBus::close_ctx`] with [`Context::background`]: Go's
+    /// `Close(context.Background())`. Natively that cannot fail. On
+    /// wasm32-unknown-unknown the [`BusError::NotDrained`] it may give
+    /// is dropped here; call [`SharedBus::close_ctx`] to see it.
+    /// [`DynBus::close`](super::DynBus::close) returns it.
     pub fn close(&self) {
         // A background context is never done, so natively the drain
         // cannot fail; on wasm32-unknown-unknown it may be NotDrained.

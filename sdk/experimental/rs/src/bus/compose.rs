@@ -17,8 +17,9 @@
 //! layer is ported. Every layer is an [`Adapter`], so a new one wraps
 //! the bus without changing this module's public API.
 //!
-//! [`Bus`] and [`BusBuilder::build`] stay the plain in-memory bus with
-//! none of these layers; [`DynBus`] is the analogue of Go's `New`.
+//! [`DynBus`] is the front door, the analogue of Go's `New`. [`Bus`] and
+//! [`SharedBus`] are the in-memory building block with none of these
+//! layers.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -32,13 +33,28 @@ use super::mem::Bus;
 use super::mem::{check_topic, BusBuilder, BusError, Handler, Mode, SharedErrFn, SubscriptionId};
 use super::shared::SharedBus;
 
-/// The composed bus: Go's `Bus` interface value as `New` returns it.
+/// The bus: Go's `Bus` interface value as `New` returns it, and the one
+/// to reach for.
 ///
-/// Built by [`DynBus::new`], [`DynBus::builder`], or a [`BusBuilder`]
-/// given [`with_adapter`](BusBuilder::with_adapter) or
-/// [`with_network`](BusBuilder::with_network). Cheap to clone; clones
-/// share one bus. It is an [`Adapter`] itself, so it can sit under
-/// another bus.
+/// Built by [`DynBus::new`] or [`DynBus::builder`]. With no adapter it
+/// runs on the in-memory [`SharedBus`]; the adapter, network and
+/// env-sink layers stack on top as in Go. Cheap to clone; clones share
+/// one bus. It is an [`Adapter`] itself, so it can sit under another
+/// bus.
+///
+/// ```
+/// use hop_top_kit::bus::{DynBus, Event, Mode};
+/// use serde_json::json;
+///
+/// let bus = DynBus::builder().enforce(Mode::Strict).build();
+/// bus.subscribe("crm.sales.deal.*", |e| {
+///     println!("{} from {}", e.topic, e.source);
+///     Ok(())
+/// });
+/// let event = Event::new("crm.sales.deal.created", "crm", json!({"id": 1}));
+/// bus.publish(&event).unwrap();
+/// bus.close().unwrap();
+/// ```
 #[derive(Clone)]
 pub struct DynBus(Arc<dyn Adapter>);
 
@@ -146,43 +162,14 @@ impl Adapter for DynBus {
     }
 }
 
-/// Builds a [`DynBus`]: Go's `New` options. Enforcement, reporter and
-/// pool size mean what they do on [`BusBuilder`].
+/// Builds a [`DynBus`]: Go's `New` options, from [`DynBus::builder`].
+/// Enforcement, reporter and pool size mean what they do on
+/// [`BusBuilder`].
 #[derive(Default)]
 pub struct DynBusBuilder {
     base: BusBuilder,
     adapter: Option<Arc<dyn Adapter>>,
     network_addrs: Vec<String>,
-}
-
-impl BusBuilder {
-    /// Sets the transport adapter: Go's `WithAdapter`. The bus then
-    /// enforces the topic mode and delegates to `adapter`, and
-    /// [`max_async`](BusBuilder::max_async) no longer applies, as in Go.
-    /// Returns a [`DynBusBuilder`], whose `build` gives a [`DynBus`].
-    pub fn with_adapter(self, adapter: impl Adapter + 'static) -> DynBusBuilder {
-        DynBusBuilder::from(self).with_adapter(adapter)
-    }
-
-    /// Attaches the network layer: Go's `WithNetwork`. See
-    /// [`DynBusBuilder::with_network`].
-    pub fn with_network<I, S>(self, addrs: I) -> DynBusBuilder
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        DynBusBuilder::from(self).with_network(addrs)
-    }
-}
-
-impl From<BusBuilder> for DynBusBuilder {
-    fn from(base: BusBuilder) -> Self {
-        DynBusBuilder {
-            base,
-            adapter: None,
-            network_addrs: Vec::new(),
-        }
-    }
 }
 
 impl DynBusBuilder {
@@ -206,7 +193,10 @@ impl DynBusBuilder {
         self
     }
 
-    /// See [`BusBuilder::with_adapter`]. The last call wins.
+    /// Sets the transport adapter: Go's `WithAdapter`. The bus then
+    /// enforces the topic mode, reports to the reporter and delegates to
+    /// `adapter`; [`max_async`](Self::max_async) no longer applies, as in
+    /// Go. The last call wins.
     pub fn with_adapter(mut self, adapter: impl Adapter + 'static) -> Self {
         self.adapter = Some(Arc::new(adapter));
         self
@@ -215,15 +205,17 @@ impl DynBusBuilder {
     /// Attaches a network layer that connects to `addrs`: Go's
     /// `WithNetwork`. The last call wins; an empty list attaches none.
     ///
-    /// The network adapter is not ported yet: until it is, the
-    /// addresses are recorded and the bus is built without the layer,
-    /// delivering locally only.
+    /// # Panics
+    ///
+    /// With any address, until the network adapter is ported: a bus
+    /// that silently stayed local would pass for a networked one.
     pub fn with_network<I, S>(mut self, addrs: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
         self.network_addrs = addrs.into_iter().map(Into::into).collect();
+        assert!(self.network_addrs.is_empty(), "{NETWORK_UNAVAILABLE}");
         self
     }
 
@@ -250,10 +242,16 @@ fn compose(b: DynBusBuilder) -> Arc<dyn Adapter> {
     env_sink_layer(bus, reporter.as_ref())
 }
 
+/// Panic text of [`DynBusBuilder::with_network`] until the network
+/// adapter is ported.
+const NETWORK_UNAVAILABLE: &str =
+    "bus: with_network: network adapter not yet available in kit-rs; build without addresses";
+
 /// Step 2. Seam for the network adapter: with `addrs` non-empty it will
 /// attach a network adapter to `bus`, dial each address (a failed first
 /// dial keeps retrying) and return a layer that closes the network
-/// before `bus`. Until then it returns `bus`.
+/// before `bus`. Until then `with_network` refuses addresses, so `addrs`
+/// is empty here and this returns `bus`.
 fn network_layer(bus: Arc<dyn Adapter>, addrs: &[String]) -> Arc<dyn Adapter> {
     let _ = addrs;
     bus
@@ -295,5 +293,14 @@ impl Adapter for AdapterLayer {
     }
     fn close(&self, ctx: &Context) -> Result<(), BusError> {
         self.adapter.close(ctx)
+    }
+}
+
+/// Lifecycle events from `serve` go onto the bus; a publish failure is
+/// dropped, as that trait requires.
+#[cfg(feature = "serve")]
+impl crate::serve::Publisher for DynBus {
+    fn publish(&self, topic: &str, source: &str, payload: &crate::serve::EventPayload) {
+        let _ = DynBus::publish(self, &Event::new(topic, source, payload.to_json()));
     }
 }

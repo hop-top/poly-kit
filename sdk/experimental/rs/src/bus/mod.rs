@@ -26,17 +26,19 @@
 //! Publish, handlers and close carry a [`Context`], the Rust form of
 //! Go's `context.Context`.
 //!
-//! [`adapter`] holds the transport seam, [`Adapter`] and
-//! [`MemoryAdapter`]; [`DynBus`] is Go's `New`, composing the adapter,
-//! network and sink layers in Go's order.
+//! [`DynBus`] is the bus to use: Go's `New`, composing the adapter,
+//! network and sink layers in Go's order. [`adapter`] holds the
+//! transport seam, [`Adapter`] and [`MemoryAdapter`]. [`Bus`] and
+//! [`SharedBus`] are the in-memory building block under it, with no
+//! adapter, network or env sinks.
 //!
 //! # Example
 //!
 //! ```
-//! use hop_top_kit::bus::{Bus, Event, Mode};
+//! use hop_top_kit::bus::{DynBus, Event, Mode};
 //! use serde_json::json;
 //!
-//! let mut bus = Bus::builder().enforce(Mode::Strict).build();
+//! let bus = DynBus::builder().enforce(Mode::Strict).build();
 //! bus.subscribe("crm.sales.deal.*", |e| {
 //!     println!("{} from {}", e.topic, e.source);
 //!     Ok(())
