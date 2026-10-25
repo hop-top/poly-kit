@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -98,9 +99,13 @@ func LoadRegistry(path string) (*Registry, error) {
 }
 
 // SaveRegistry writes r to path inside a top-level `registry:` block.
-// Creates parent directories as needed.
+// Sources may carry tokens, so the file is private: parent directories
+// are created 0o700 and the file is written 0o600 to a temp file in the
+// same directory, then renamed into place, so readers never see a
+// partial or world-readable file.
 func SaveRegistry(path string, r *Registry) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	wrap := struct {
@@ -110,5 +115,39 @@ func SaveRegistry(path string, r *Registry) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	tmp, err := os.CreateTemp(dir, ".registry-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath) //nolint:errcheck // gone after a successful rename
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close() //nolint:errcheck // already failing
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close() //nolint:errcheck // already failing
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
+
+// redacted stands in for a non-empty token in formatted output.
+const redacted = "[REDACTED]"
+
+// String renders the source with its token redacted, so logging a
+// Source (or a Registry) never leaks the credential.
+func (s Source) String() string {
+	tok := ""
+	if s.Token != "" {
+		tok = redacted
+	}
+	return fmt.Sprintf("{Name:%s Type:%s Endpoint:%s Token:%s Dirs:%v}",
+		s.Name, s.Type, s.Endpoint, tok, s.Dirs)
+}
+
+// GoString is String for %#v.
+func (s Source) GoString() string { return "config.Source" + s.String() }
