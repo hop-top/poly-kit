@@ -129,7 +129,9 @@ interim = { version = "0.2", default-features = false, features = [
     "std",
     "chrono_0_4",
 ], optional = true }
-reqwest = { version = "0.13", features = ["json", "query"], optional = true }
+# Proxies come from the environment only (HTTP_PROXY etc.), as with Go net/http;
+# no system-proxy, which pulls macOS/Windows proxy settings and an old core-foundation.
+reqwest = { version = "0.13", default-features = false, features = ["default-tls", "charset", "http2", "json", "query"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 # No crate-wide features: `output` adds preserve_order for itself.
 serde_json = { version = "1", optional = true }
