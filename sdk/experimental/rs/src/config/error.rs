@@ -28,6 +28,11 @@ pub enum ErrorKind {
     Invalid,
     /// A migration chain failed.
     Migration,
+    /// `set`/`unset` could not edit the file in place without dropping
+    /// comments or anchors outside the edited entry; the file is left
+    /// as it was. Go re-emits the document and never hits this; the
+    /// port refuses rather than lose comments.
+    EditUnsupported,
 }
 
 /// A config error.

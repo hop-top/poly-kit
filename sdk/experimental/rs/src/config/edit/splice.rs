@@ -1,7 +1,14 @@
 //! Text splicing: apply an edit to the source by replacing or inserting
 //! only the bytes of the affected entry, so comments, blank lines,
 //! anchors and formatting elsewhere survive untouched. Returns `None`
-//! for shapes it does not handle; the caller then falls back.
+//! for shapes it does not handle; the caller then refuses the edit.
+//!
+//! Each splice also returns the source range it dropped: comments and
+//! anchors there go with the replaced or removed value (as Go drops the
+//! node that carried them); everywhere else they must survive.
+
+/// The source bytes a splice dropped.
+pub(crate) type Region = (usize, usize);
 
 use crate::config::yaml::{emit, Kind, Node, Style};
 
@@ -11,8 +18,42 @@ fn line_start(src: &str, pos: usize) -> usize {
     src[..pos].rfind('\n').map_or(0, |i| i + 1)
 }
 
+/// End of the line holding `pos`, before its `\n` (or `\r\n`).
 fn line_end(src: &str, pos: usize) -> usize {
-    src[pos..].find('\n').map_or(src.len(), |i| pos + i)
+    match src[pos..].find('\n') {
+        Some(i) if i > 0 && src.as_bytes()[pos + i - 1] == b'\r' => pos + i - 1,
+        Some(i) => pos + i,
+        None => src.len(),
+    }
+}
+
+/// Start of the line after the one holding `pos`.
+fn next_line_start(src: &str, pos: usize) -> usize {
+    src[pos..].find('\n').map_or(src.len(), |i| pos + i + 1)
+}
+
+/// `t` with the source's line endings (`\r\n` files stay `\r\n`).
+fn nl(src: &str, t: &str) -> String {
+    if src.contains("\r\n") {
+        t.replace("\r\n", "\n").replace('\n', "\r\n")
+    } else {
+        t.to_string()
+    }
+}
+
+/// A block scalar (`|`, `>`) value.
+fn is_block_scalar(v: &Node) -> bool {
+    matches!(v.style, Style::Literal | Style::Folded)
+}
+
+/// Where a value's droppable bytes start: a block scalar keeps its
+/// header line (and the comment on it) out of the dropped region.
+fn region_start(src: &str, v: &Node, s: usize) -> usize {
+    if is_block_scalar(v) {
+        line_end(src, s)
+    } else {
+        s
+    }
 }
 
 fn col(src: &str, pos: usize) -> usize {
@@ -96,55 +137,86 @@ fn replace_value(
     v: &Node,
     new: &Node,
     unit: usize,
-) -> Option<String> {
+) -> Option<(String, Region)> {
     if parent.style == Style::Flow {
-        let (s, e) = span(v)?;
         if is_empty_plain(v) {
-            return None;
+            // `{a: , b: 1}`: write the value after the colon.
+            let at = colon_after(src, k)? + 1;
+            let (at, text) = if src.as_bytes().get(at) == Some(&b' ') {
+                (at + 1, emit::flow(new))
+            } else {
+                (at, format!(" {}", emit::flow(new)))
+            };
+            return Some((replace(src, at, at, &text), (at, at)));
         }
-        return Some(replace(src, s, e, &emit::flow(new)));
+        let (s, e) = span(v)?;
+        return Some((replace(src, s, e, &emit::flow(new)), (s, e)));
     }
     let colon = colon_after(src, k)?;
     let kcol = col(src, span(k)?.0);
-    let text = emit::after_key(new, kcol, unit);
-    let block = emit::is_block(new);
+    let text = nl(src, &emit::after_key(new, kcol, unit));
+    // `header` stays on the key line (` x`, ` |-`, or nothing before a
+    // nested block); `body` is the following lines, if any.
+    let split = text.find(['\r', '\n']).unwrap_or(text.len());
+    let (header, body) = text.split_at(split);
     if is_empty_plain(v) {
-        let at = if block {
-            line_end(src, colon)
-        } else {
-            colon + 1
-        };
-        return Some(replace(src, at, at, &text));
+        let at = line_end(src, colon);
+        let out = format!(
+            "{}{header}{}{body}{}",
+            &src[..colon + 1],
+            &src[colon + 1..at],
+            &src[at..]
+        );
+        return Some((out, (colon + 1, colon + 1)));
     }
     let (s, e) = span(v)?;
-    let inline_old = !src[colon..s].contains('\n');
-    match (inline_old, block) {
-        (true, false) => Some(replace(src, s, e, text.trim_start_matches(' '))),
-        (true, true) => {
-            let at = line_end(src, e);
-            let ws = colon + 1 + src[colon + 1..s].trim_end_matches([' ', '\t']).len();
-            let out = format!("{}{}{text}{}", &src[..ws], &src[e..at], &src[at..]);
-            Some(out)
+    let dropped = (region_start(src, v, s), e);
+    // The comment on an old block scalar's header line stays with the key.
+    let header_comment = if is_block_scalar(v) {
+        let h = &src[s..line_end(src, s)];
+        h.find(" #").map(|i| h[i..].to_string()).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    if !src[colon..s].contains('\n') {
+        if body.is_empty() {
+            let new_text = format!("{}{header_comment}", header.trim_start_matches(' '));
+            return Some((replace(src, s, e, &new_text), dropped));
         }
-        (false, false) => {
-            let ls = line_start(src, s);
-            let pe = props_end(src, colon);
-            Some(format!(
-                "{}{text}{}{}",
-                &src[..pe],
-                &src[pe..ls.saturating_sub(1)],
-                &src[e..]
-            ))
-        }
-        (false, true) => {
-            let body = text.strip_prefix('\n')?;
-            Some(replace(src, line_start(src, s), e, body))
-        }
+        let at = line_end(src, e);
+        let ws = colon + 1 + src[colon + 1..s].trim_end_matches([' ', '\t']).len();
+        let out = format!(
+            "{}{header}{header_comment}{}{body}{}",
+            &src[..ws],
+            &src[e..at],
+            &src[at..]
+        );
+        return Some((out, dropped));
     }
+    // The old value starts on a later line: keep the key line (and its
+    // comment), drop from the end of that line through the value.
+    let pe = props_end(src, colon);
+    let ls = line_start(src, s);
+    let cut = ls.saturating_sub(1);
+    let cut = if cut > 0 && src.as_bytes()[cut - 1] == b'\r' {
+        cut - 1
+    } else {
+        cut
+    };
+    Some((
+        format!("{}{header}{}{body}{}", &src[..pe], &src[pe..cut], &src[e..]),
+        (cut, e),
+    ))
 }
 
 /// Appends `key: new` to mapping `map`.
-fn insert_entry(src: &str, map: &Node, key: &str, new: &Node, unit: usize) -> Option<String> {
+fn insert_entry(
+    src: &str,
+    map: &Node,
+    key: &str,
+    new: &Node,
+    unit: usize,
+) -> Option<(String, Region)> {
     let Kind::Map(entries) = &map.kind else {
         return None;
     };
@@ -154,11 +226,11 @@ fn insert_entry(src: &str, map: &Node, key: &str, new: &Node, unit: usize) -> Op
         return match entries.last() {
             Some((lk, lv)) => {
                 let at = entry_end(src, lk, lv)?;
-                Some(replace(src, at, at, &format!(", {entry}")))
+                Some((replace(src, at, at, &format!(", {entry}")), (at, at)))
             }
             None => {
                 let at = span(map)?.0 + 1;
-                Some(replace(src, at, at, &entry))
+                Some((replace(src, at, at, &entry), (at, at)))
             }
         };
     }
@@ -175,11 +247,11 @@ fn insert_entry(src: &str, map: &Node, key: &str, new: &Node, unit: usize) -> Op
         line.remove(0);
         line.push('\n');
     }
-    Some(replace(src, at, at, &line))
+    Some((replace(src, at, at, &nl(src, &line)), (at, at)))
 }
 
 /// Splices `key: value` into `src` (whose parsed root mapping is `root`).
-pub(crate) fn set(src: &str, root: &Node, key: &str, value: &Node) -> Option<String> {
+pub(crate) fn set(src: &str, root: &Node, key: &str, value: &Node) -> Option<(String, Region)> {
     let unit = indent_unit(src, root);
     let segs: Vec<&str> = key.split('.').collect();
     let mut cur = root;
@@ -202,7 +274,7 @@ pub(crate) fn set(src: &str, root: &Node, key: &str, value: &Node) -> Option<Str
 }
 
 /// Removes entry `key` from `map`, with its line(s) in block style.
-fn remove_entry(src: &str, map: &Node, key: &str) -> Option<String> {
+fn remove_entry(src: &str, map: &Node, key: &str) -> Option<(String, Region)> {
     let Kind::Map(entries) = &map.kind else {
         return None;
     };
@@ -221,19 +293,24 @@ fn remove_entry(src: &str, map: &Node, key: &str) -> Option<String> {
         } else {
             (ks, end)
         };
-        return Some(replace(src, from, to, ""));
+        return Some((replace(src, from, to, ""), (from, to)));
     }
     let ls = line_start(src, ks);
     if !src[ls..ks].trim().is_empty() {
         return None;
     }
-    let le = line_end(src, end);
-    let to = (le + 1).min(src.len());
-    Some(replace(src, ls, to, ""))
+    let mut to = next_line_start(src, end);
+    // A keep-chomped block scalar (`|+`) owns the blank lines after it.
+    if is_block_scalar(v) && src[span(v)?.0..line_end(src, span(v)?.0)].contains('+') {
+        while to < src.len() && src[to..next_line_start(src, to)].trim().is_empty() {
+            to = next_line_start(src, to);
+        }
+    }
+    Some((replace(src, ls, to, ""), (ls, to)))
 }
 
 /// Splices the removal of `key` (and of ancestors it leaves empty).
-pub(crate) fn unset(src: &str, root: &Node, key: &str) -> Option<String> {
+pub(crate) fn unset(src: &str, root: &Node, key: &str) -> Option<(String, Region)> {
     let parts: Vec<&str> = key.split('.').collect();
     let mut chain = vec![root];
     for p in &parts[..parts.len() - 1] {

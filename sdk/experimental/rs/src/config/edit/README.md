@@ -20,8 +20,12 @@ cargo test --features config --test config_setter
 
 - Only the bytes of the targeted entry change; comments, blank lines, anchors and layout
   elsewhere stay. A new key is appended after the mapping's last entry, at its indentation.
-- Every splice is re-parsed and must hold exactly the values Go's tree edit produces; a shape
-  the splicer does not handle falls back to emitting that tree whole (values right, comments lost).
+- Every splice is re-parsed and must hold exactly the values Go's tree edit produces, and every
+  comment, anchor and alias outside the bytes it dropped must still be there. Otherwise the edit
+  is refused (`ErrorKind::EditUnsupported`) and the file is not written; nothing is re-emitted
+  whole. Refused today: explicit `? key` entries, a new block value after an old block scalar
+  whose header carries a comment, and an `unset` that strands an alias.
+- `\r\n` files keep `\r\n`; a `|+` value takes its trailing blank lines with it on unset.
 - Bytes differ from Go, which re-emits the document; values, kept comments and key order match.
 
 ## Neighbours
