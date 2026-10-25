@@ -325,10 +325,18 @@ jobs:
           # `make check-toolchain-parity`.
           toolchain: ${{ steps.pins.outputs.rust }}
           targets: wasm32-unknown-unknown
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: sdk/experimental/rs
       - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features bus
+      # clippy-wasm32/clippy.toml denies the std clock reads that panic
+      # on this target, so a new SystemTime::now/Instant::now reachable
+      # from the bus fails here instead of at run time in a browser.
+      - name: clippy (wasm32, no clock reads)
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
       - name: bus does not enable serde_json/preserve_order
         run: |
           tree=$(cargo tree --locked -e normal,features --no-default-features --features bus -i serde_json)
@@ -338,6 +346,83 @@ jobs:
             exit 1
           fi
       - run: cargo test --locked --no-default-features --features bus
+
+  # The bus feature also ships in mobile apps. A check is enough: the
+  # bus is pure Rust, so neither target needs a linker or an NDK.
+  rs-mobile:
+    needs: [rs-lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-ios
+            os: macos-latest
+          - target: aarch64-linux-android
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: sdk/experimental/rs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+        working-directory: .
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # This action requires an explicit toolchain and runs
+          # `rustup default` with it, so it does not read
+          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # it reads is held equal to that file by
+          # `make check-toolchain-parity`.
+          toolchain: ${{ steps.pins.outputs.rust }}
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk/experimental/rs
+          key: ${{ matrix.target }}
+      - run: cargo check --locked --target "$TARGET" --no-default-features --features bus
+        env:
+          TARGET: ${{ matrix.target }}
+
+  # make test-rs covers default and --all-features only. Both unify
+  # features away from what a single-feature consumer builds: dev-deps
+  # bring tokio `full`, and `output` brings serde_json/preserve_order.
+  # These steps build features the way such a consumer does.
+  rs-features:
+    needs: [rs-lint]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/experimental/rs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+        working-directory: .
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # This action requires an explicit toolchain and runs
+          # `rustup default` with it, so it does not read
+          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # it reads is held equal to that file by
+          # `make check-toolchain-parity`.
+          toolchain: ${{ steps.pins.outputs.rust }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk/experimental/rs
+      # --lib leaves dev-dependencies out, so tokio carries only the
+      # features each crate feature declares.
+      - run: cargo check --locked --lib --no-default-features --features serve
+      - run: cargo check --locked --lib --no-default-features --features telemetry
+      # mcp without output: serde_json keeps sorted maps.
+      - run: cargo test --locked --no-default-features --features mcp
 
   php-test:
     runs-on: ubuntu-latest
@@ -373,7 +458,7 @@ jobs:
 
   # ── Stage 3: Parity (after all tests) ─────────────────────────
   parity:
-    needs: [go-race, go-test, php-test, py-test, rs-test, ts-test]
+    needs: [go-race, go-test, php-test, py-test, rs-features, rs-mobile, rs-test, rs-wasm, ts-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

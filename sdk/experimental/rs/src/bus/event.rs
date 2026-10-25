@@ -51,6 +51,9 @@ impl Event {
     /// Use [`Event::new_at`] with a time from the host (for example
     /// `Date.now()` in a browser) instead.
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    // The one sanctioned clock read in the bus: compiled out on
+    // wasm32-unknown-unknown, where CI denies `SystemTime::now`.
+    #[allow(clippy::disallowed_methods)]
     pub fn new(topic: impl Into<Topic>, source: impl Into<String>, payload: Value) -> Self {
         Self::new_at(topic, source, payload, SystemTime::now())
     }

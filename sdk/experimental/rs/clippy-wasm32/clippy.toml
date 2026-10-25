@@ -1,0 +1,11 @@
+# Lint config for the wasm32-unknown-unknown clippy run in CI (selected
+# with CLIPPY_CONF_DIR). That target has no system clock: std's clock
+# reads compile but panic at run time. Code built for it must take the
+# time from its caller instead, as `bus::Event::new_at` does.
+#
+# Kept out of the crate-root config on purpose: native-only modules
+# (kv, sqlstore, telemetry, mcp, serve) read the clock legitimately.
+disallowed-methods = [
+    { path = "std::time::SystemTime::now", reason = "panics on wasm32-unknown-unknown; take the time from the caller" },
+    { path = "std::time::Instant::now", reason = "panics on wasm32-unknown-unknown; take the time from the caller" },
+]
