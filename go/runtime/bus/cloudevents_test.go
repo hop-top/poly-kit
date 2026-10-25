@@ -140,6 +140,9 @@ func TestToCloudEvent_Errors(t *testing.T) {
 		{"workspaceid in extensions", func(e *Event) { e.Extensions = map[string]any{"workspaceid": "x"} }, "cloudevents: workspaceid: reserved for the workspace id"},
 		{"unencodable payload", func(e *Event) { e.Payload = func() {} }, "cloudevents: data: payload is not JSON-encodable"},
 		{"bad extension name", func(e *Event) { e.Extensions = map[string]any{"tenant_id": "x"} }, "cloudevents: tenant_id: invalid extension name"},
+		{"kitorigin in extensions", func(e *Event) { e.Extensions = map[string]any{"kitorigin": "x"} }, "cloudevents: kitorigin: reserved for the network origin"},
+		{"structured payload, text content type", func(e *Event) { e.Payload = map[string]any{"k": 1}; e.DataContentType = "text/plain" }, "cloudevents: data: non-JSON datacontenttype needs a string or binary payload"},
+		{"year past 9999 in UTC", func(e *Event) { e.Timestamp = time.Date(9999, 12, 31, 23, 0, 0, 0, time.FixedZone("", -2*3600)) }, "cloudevents: time: invalid RFC 3339 timestamp"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -182,6 +185,11 @@ func TestCloudEvent_Validate(t *testing.T) {
 		{"uint over int32", func(c *CloudEvent) { c.Extensions = map[string]any{"big": uint64(1) << 63} }, "cloudevents: big: integer out of range"},
 		{"extensions sorted, first wins", func(c *CloudEvent) { c.Extensions = map[string]any{"b_": 1, "a_": 1} }, "cloudevents: a_: invalid extension name"},
 		{"long name accepted", func(c *CloudEvent) { c.Extensions = map[string]any{"abcdefghijklmnopqrstuvwxyz": "ok"} }, ""},
+		{"uint in range accepted", func(c *CloudEvent) {
+			c.Extensions = map[string]any{"a": uint(1), "b": uint8(2), "c": uint16(3), "d": uint32(4), "e": uint64(5)}
+		}, ""},
+		{"uint32 over int32", func(c *CloudEvent) { c.Extensions = map[string]any{"big": uint32(1) << 31} }, "cloudevents: big: integer out of range"},
+		{"year 10000", func(c *CloudEvent) { c.Time = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC) }, "cloudevents: time: invalid RFC 3339 timestamp"},
 		{"int32 bounds accepted", func(c *CloudEvent) {
 			c.Extensions = map[string]any{"lo": int32(-2147483648), "hi": 2147483647, "n": json.Number("5")}
 		}, ""},
@@ -251,17 +259,17 @@ func TestCloudEvent_TimeNormalisedToUTC(t *testing.T) {
 }
 
 func TestCloudEvent_UnmarshalJSON(t *testing.T) {
-	in := `{"specversion":"1.0","id":"x1","source":"/dek/core","type":"dek.core.stream.reset",` +
+	in := `{"specversion":"1.0","id":"x1","source":"/acme/core","type":"acme.core.stream.reset",` +
 		`"time":"2026-10-25T08:00:00.5-04:00","subject":null,"datacontenttype":"application/json",` +
-		`"data":{"n":1},"tenantid":"t1","dekoffset":42,"live":false,"gone":null}`
+		`"data":{"n":1},"tenantid":"t1","seqoffset":42,"live":false,"gone":null}`
 	var c CloudEvent
 	if err := json.Unmarshal([]byte(in), &c); err != nil {
 		t.Fatal(err)
 	}
 	want := CloudEvent{
-		SpecVersion: "1.0", ID: "x1", Source: "/dek/core", Type: "dek.core.stream.reset",
+		SpecVersion: "1.0", ID: "x1", Source: "/acme/core", Type: "acme.core.stream.reset",
 		Time: ceTime, DataContentType: "application/json", Data: json.RawMessage(`{"n":1}`),
-		Extensions: map[string]any{"tenantid": "t1", "dekoffset": int64(42), "live": false},
+		Extensions: map[string]any{"tenantid": "t1", "seqoffset": int64(42), "live": false},
 	}
 	if !c.Time.Equal(want.Time) {
 		t.Fatalf("time = %v", c.Time)
@@ -327,16 +335,16 @@ func TestCloudEvent_UnmarshalJSON_Errors(t *testing.T) {
 			}
 			// encoding/json does not wrap Unmarshaler errors when the
 			// input is syntactically valid, so the text is exact.
-			if got := UnmarshalCloudEventErr(tc.in); got != tc.want {
+			if got := decodeErrText(tc.in); got != tc.want {
 				t.Fatalf("err = %q, want %q", got, tc.want)
 			}
 		})
 	}
 }
 
-// UnmarshalCloudEventErr returns the decode error text, bypassing
-// encoding/json's syntax pre-check so malformed input reaches the decoder.
-func UnmarshalCloudEventErr(in string) string {
+// decodeErrText returns the decode error text, calling UnmarshalJSON
+// directly so malformed input reaches the decoder.
+func decodeErrText(in string) string {
 	var c CloudEvent
 	if err := c.UnmarshalJSON([]byte(in)); err != nil {
 		return err.Error()
@@ -354,7 +362,7 @@ func TestCloudEvent_RoundTrip(t *testing.T) {
 		DataContentType: "application/json",
 		Payload:         map[string]any{"total": float64(3), "items": []any{"a"}},
 		WorkspaceID:     "ws1",
-		Extensions:      map[string]any{"tenantid": "t1", "dekoffset": int64(9)},
+		Extensions:      map[string]any{"tenantid": "t1", "seqoffset": int64(9)},
 	}
 	raw, err := MarshalCloudEvent(e)
 	if err != nil {
@@ -373,6 +381,57 @@ func TestCloudEvent_RoundTrip(t *testing.T) {
 	got, err = UnmarshalCloudEvent(raw)
 	if err != nil || !reflect.DeepEqual(got, bin) {
 		t.Fatalf("binary round trip: %v\ngot  %#v\nwant %#v", err, got, bin)
+	}
+}
+
+func TestToCloudEvent_ContentTypeRules(t *testing.T) {
+	cases := []struct {
+		dct     string
+		payload any
+		ok      bool
+	}{
+		{"application/json", map[string]any{"k": 1}, true},
+		{"application/cloudevents+json; charset=utf-8", []any{1}, true},
+		{"TEXT/JSON", 1, true},
+		{"text/plain", "hello", true},
+		{"application/octet-stream", []byte{1}, true},
+		{"text/plain", 1, false},
+		{"application/xml", json.RawMessage(`"<a/>"`), false},
+		{"jsonish", map[string]any{}, false},
+	}
+	for _, tc := range cases {
+		e := NewEvent("kit.test.order.created", "src", tc.payload)
+		e.DataContentType = tc.dct
+		_, err := ToCloudEvent(e)
+		if (err == nil) != tc.ok {
+			t.Errorf("%s / %T: err = %v, want ok=%v", tc.dct, tc.payload, err, tc.ok)
+		}
+	}
+}
+
+func TestToCloudEvent_EmptyBytesPayload(t *testing.T) {
+	e := Event{ID: "x", Topic: "kit.test.blob.stored", Source: "s", Payload: []byte{}}
+	raw, err := MarshalCloudEvent(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(raw), `"data_base64":""}`) {
+		t.Fatalf("got %s", raw)
+	}
+	got, err := UnmarshalCloudEvent(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, ok := got.Payload.([]byte); !ok || len(b) != 0 {
+		t.Fatalf("payload = %#v, want empty []byte", got.Payload)
+	}
+}
+
+func TestFromCloudEvent_OriginExtensionReserved(t *testing.T) {
+	c := validCE()
+	c.Extensions = map[string]any{"kitorigin": "A"}
+	if _, err := FromCloudEvent(c); err == nil || err.Error() != "cloudevents: kitorigin: reserved for the network origin" {
+		t.Fatalf("err = %v", err)
 	}
 }
 

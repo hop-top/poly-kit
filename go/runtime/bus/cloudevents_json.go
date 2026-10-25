@@ -114,7 +114,7 @@ func (c *CloudEvent) UnmarshalJSON(data []byte) error {
 			}
 		}
 		if name == "time" {
-			t, err := time.Parse(time.RFC3339Nano, s)
+			t, err := parseCETime(s)
 			if err != nil {
 				return &CloudEventError{Attribute: "time", Reason: "invalid RFC 3339 timestamp", Err: err}
 			}
@@ -147,7 +147,7 @@ func (c *CloudEvent) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(rawB64, &s); err != nil {
 			return ceErr("data_base64", "must be a string")
 		}
-		b, err := base64.StdEncoding.DecodeString(s)
+		b, err := decodeCEBase64(s)
 		if err != nil {
 			return &CloudEventError{Attribute: "data_base64", Reason: "invalid base64", Err: err}
 		}

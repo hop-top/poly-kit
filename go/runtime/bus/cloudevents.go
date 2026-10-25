@@ -88,8 +88,8 @@ var reservedAttrs = map[string]bool{
 }
 
 // Validate checks c against CloudEvents 1.0 and returns the first
-// violation, in this order: specversion, id, source, type, data,
-// then extensions by ascending name.
+// violation, in this order: specversion, id, source, type, time
+// (year 0000-9999 in UTC), data, then extensions by ascending name.
 func (c CloudEvent) Validate() error {
 	switch {
 	case c.SpecVersion == "":
@@ -102,6 +102,8 @@ func (c CloudEvent) Validate() error {
 		return ceErr("source", "required")
 	case c.Type == "":
 		return ceErr("type", "required")
+	case !c.Time.IsZero() && !ceTimeEncodable(c.Time):
+		return ceErr("time", "invalid RFC 3339 timestamp")
 	case c.Data != nil && c.DataBase64 != nil:
 		return ceErr("data", "data and data_base64 are mutually exclusive")
 	case c.Data != nil && !json.Valid(c.Data):
@@ -187,6 +189,22 @@ func extensionLabel(name string) string {
 	return name
 }
 
+// eventReservedExtension rejects extension names an Event may not set
+// directly: workspaceid (use WorkspaceID) and kitorigin (owned by the
+// network adapter).
+func eventReservedExtension(name string) error {
+	switch name {
+	case WorkspaceExtension:
+		return ceErr(name, "reserved for the workspace id")
+	case OriginExtension:
+		return ceErr(name, "reserved for the network origin")
+	}
+	return nil
+}
+
+// newEventID mints an "evt_" TypeID.
+func newEventID() (string, error) { return id.New(EventIDPrefix) }
+
 func reflectUint(v any) uint64 {
 	switch x := v.(type) {
 	case uint:
@@ -250,7 +268,11 @@ func ToCloudEvent(e Event) (CloudEvent, error) {
 		DataSchema:      e.DataSchema,
 	}
 	if c.ID == "" {
-		c.ID = id.MustNew(EventIDPrefix)
+		minted, err := newEventID()
+		if err != nil {
+			return CloudEvent{}, &CloudEventError{Attribute: "id", Reason: "cannot mint", Err: err}
+		}
+		c.ID = minted
 	}
 	switch p := e.Payload.(type) {
 	case nil:
@@ -258,7 +280,15 @@ func ToCloudEvent(e Event) (CloudEvent, error) {
 		if p != nil {
 			c.DataBase64 = p
 		}
+	case string:
+		raw, _ := marshalNoEscape(p)
+		c.Data = raw
 	default:
+		// JSON format §3.1: with a non-JSON content type, data must be
+		// a string (or binary), never a structured JSON value.
+		if c.DataContentType != "" && !isJSONMediaType(c.DataContentType) {
+			return CloudEvent{}, ceErr("data", "non-JSON datacontenttype needs a string or binary payload")
+		}
 		raw, err := marshalNoEscape(p)
 		if err != nil {
 			return CloudEvent{}, &CloudEventError{Attribute: "data", Reason: "payload is not JSON-encodable", Err: err}
@@ -274,8 +304,8 @@ func ToCloudEvent(e Event) (CloudEvent, error) {
 		c.Extensions = make(map[string]any, len(e.Extensions)+1)
 	}
 	for _, name := range sortedKeys(e.Extensions) {
-		if name == WorkspaceExtension {
-			return CloudEvent{}, ceErr(WorkspaceExtension, "reserved for the workspace id")
+		if err := eventReservedExtension(name); err != nil {
+			return CloudEvent{}, err
 		}
 		v, err := extensionValue(name, e.Extensions[name])
 		if err != nil {
@@ -320,6 +350,9 @@ func FromCloudEvent(c CloudEvent) (Event, error) {
 	}
 	for _, name := range sortedKeys(c.Extensions) {
 		v, _ := extensionValue(name, c.Extensions[name]) // validated above
+		if name == OriginExtension {
+			return Event{}, eventReservedExtension(name)
+		}
 		if name == WorkspaceExtension {
 			ws, ok := v.(string)
 			if !ok {

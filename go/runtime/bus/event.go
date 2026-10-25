@@ -3,8 +3,6 @@ package bus
 import (
 	"strings"
 	"time"
-
-	"hop.top/kit/go/core/id"
 )
 
 // Topic is a dot-separated event path following [Source].[Category].[Object].[Action] notation.
@@ -103,8 +101,9 @@ type Event struct {
 	// Subject is the CloudEvents subject: what, within Source, the
 	// event is about.
 	Subject string `json:"subject,omitempty"`
-	// DataContentType is the media type of Payload. Empty means
-	// application/json.
+	// DataContentType is the media type of Payload. When empty, a
+	// CloudEvent gets application/json for a JSON payload and no
+	// content type for a []byte payload.
 	DataContentType string `json:"datacontenttype,omitempty"`
 	// DataSchema is a URI identifying the schema Payload adheres to.
 	DataSchema string `json:"dataschema,omitempty"`
@@ -115,10 +114,18 @@ type Event struct {
 	Extensions map[string]any `json:"extensions,omitempty"`
 }
 
+// mintEventID returns a fresh "evt_" TypeID, or "" in the unreachable
+// case that minting fails (the prefix is a valid constant); an empty
+// ID is minted again on CloudEvents conversion.
+func mintEventID() string {
+	s, _ := newEventID()
+	return s
+}
+
 // NewEvent creates an Event with a fresh id and the current timestamp.
 func NewEvent(topic Topic, source string, payload any) Event {
 	return Event{
-		ID:        id.MustNew(EventIDPrefix),
+		ID:        mintEventID(),
 		Topic:     topic,
 		Source:    source,
 		Timestamp: time.Now(),
