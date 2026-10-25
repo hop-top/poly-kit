@@ -296,6 +296,49 @@ jobs:
           workspaces: sdk/experimental/rs
       - run: make test-rs
 
+  # The bus feature is embedded in multi-threaded and browser consumers.
+  # Holds it to what they build: wasm32-unknown-unknown with no default
+  # features, and no serde_json/preserve_order leaking out of `output`
+  # (Cargo unifies features, so the leak would reorder every Map in the
+  # consumer's tree). Bus tests run natively: wasm32-unknown-unknown has
+  # no test runner without wasm-bindgen-test.
+  rs-wasm:
+    needs: [rs-lint]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/experimental/rs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Tool versions from mise.toml, as a local `mise install` gets them.
+      - id: pins
+        run: scripts/toolchain-pins.sh >> "$GITHUB_OUTPUT"
+        working-directory: .
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # This action requires an explicit toolchain and runs
+          # `rustup default` with it, so it does not read
+          # sdk/experimental/rs/rust-toolchain.toml; the mise.toml pin
+          # it reads is held equal to that file by
+          # `make check-toolchain-parity`.
+          toolchain: ${{ steps.pins.outputs.rust }}
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sdk/experimental/rs
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features bus
+      - name: bus does not enable serde_json/preserve_order
+        run: |
+          tree=$(cargo tree --locked -e normal,features --no-default-features --features bus -i serde_json)
+          if grep -q preserve_order <<<"$tree"; then
+            echo "$tree"
+            echo "::error::--features bus enables serde_json/preserve_order"
+            exit 1
+          fi
+      - run: cargo test --locked --no-default-features --features bus
+
   php-test:
     runs-on: ubuntu-latest
     steps:
