@@ -5,9 +5,9 @@
 //! The Go async-handler tests (`TestPublish_AsyncHandler`,
 //! `TestPublish_AsyncDoesNotBlockPublisher`, `TestClose_WaitsForAsync`,
 //! `TestClose_RespectsDeadline`, `TestAsyncPool_BoundedGoroutines`,
-//! `TestWithMaxAsync_*`) have no analogue here: dispatch is synchronous,
-//! so there is no goroutine pool to bound and nothing in flight for
-//! close to drain. See the `bus::mem` module docs for that decision.
+//! `TestWithMaxAsync_*`) wait for async dispatch, which has not been
+//! ported yet. Close draining in-flight sync dispatch is covered in
+//! `bus_drain.rs` and `bus_concurrency.rs`.
 
 #![cfg(feature = "bus")]
 

@@ -1,10 +1,9 @@
 //! Request-scoped [`Context`]: cancellation, a deadline and typed values.
 //!
 //! The Rust form of the `context.Context` that Go threads through
-//! `Publish`, every handler and `Close`. The bus reads it in three
-//! places: publish refuses a context that is already done, handlers
-//! receive the publisher's context, and [`SharedBus::close_ctx`] bounds
-//! its drain by it. Go's network adapter carries a peer's origin as a
+//! `Publish`, every handler and `Close`. Publish passes it to the
+//! handlers without reading it, as Go does, and [`SharedBus::close_ctx`]
+//! bounds its async drain by it. Go's network adapter carries a peer's origin as a
 //! context value; here that is [`Context::with_value`].
 //!
 //! It needs no async runtime. Cancellation is a flag plus wake-up
@@ -19,9 +18,11 @@
 //! - No timer goroutine: a deadline is noticed when [`Context::err`] is
 //!   called, or when a waiter's timeout fires. Every observable result
 //!   is the same.
-//! - When several ancestors are done, the nearest one's error wins. Go
-//!   reports whichever finished first; the two differ only when a
-//!   cancel and a deadline race on different ancestors.
+//! - Go's cancellation is pushed down the tree as it happens; here it is
+//!   worked out on demand. Each cause records when it happened (a
+//!   cancel, the instant of the call; a deadline, the deadline itself)
+//!   and [`Context::err`] reports the earliest along the chain, which is
+//!   the error Go would have propagated first.
 //!
 //! # wasm32-unknown-unknown
 //!
@@ -82,12 +83,17 @@ enum Kind {
 
 type Waker = Arc<dyn Fn() + Send + Sync>;
 
+/// Why and when a node became done. The instant is `None` only on
+/// wasm32-unknown-unknown, which has no clock and no deadlines, so every
+/// cause there is a cancel and the order between them does not matter.
+type Cause = (ContextError, Option<Instant>);
+
 #[derive(Default)]
 struct CancelState(Mutex<CancelInner>);
 
 #[derive(Default)]
 struct CancelInner {
-    err: Option<ContextError>,
+    err: Option<Cause>,
     wakers: Vec<(u64, Waker)>,
     next_waker: u64,
 }
@@ -98,11 +104,11 @@ impl CancelState {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn err(&self) -> Option<ContextError> {
+    fn err(&self) -> Option<Cause> {
         self.lock().err
     }
 
-    fn finish(&self, err: ContextError) {
+    fn finish(&self, err: Cause) {
         let wakers = {
             let mut inner = self.lock();
             if inner.err.is_some() {
@@ -125,27 +131,27 @@ impl CancelState {
 #[derive(Clone)]
 pub struct CancelHandle {
     state: Arc<CancelState>,
-    deadline: Option<Instant>,
+    /// The context this handle cancels.
+    ctx: Context,
 }
 
 impl CancelHandle {
-    /// Cancels the context. Idempotent. A context whose deadline has
-    /// already passed stays [`ContextError::DeadlineExceeded`], as in
-    /// Go, where the deadline timer fires first.
+    /// Cancels the context. Idempotent. A context already done, through
+    /// its own deadline or an ancestor, keeps that error: in Go the
+    /// cause got there first and this cancel finds the context done.
     pub fn cancel(&self) {
-        let err = if deadline_passed(self.deadline) {
-            ContextError::DeadlineExceeded
-        } else {
-            ContextError::Canceled
-        };
-        self.state.finish(err);
+        let cause = self
+            .ctx
+            .cause()
+            .unwrap_or((ContextError::Canceled, stamp_now()));
+        self.state.finish(cause);
     }
 }
 
 impl fmt::Debug for CancelHandle {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CancelHandle")
-            .field("err", &self.state.err())
+            .field("err", &self.state.err().map(|(e, _)| e))
             .finish_non_exhaustive()
     }
 }
@@ -194,12 +200,25 @@ impl Context {
     /// `None` while the context is live; otherwise why it is done. Go's
     /// `ctx.Err()`.
     pub fn err(&self) -> Option<ContextError> {
-        self.nodes().find_map(|n| match &n.kind {
-            Kind::Cancel { state, deadline } => state
-                .err()
-                .or_else(|| deadline_passed(*deadline).then_some(ContextError::DeadlineExceeded)),
-            Kind::Value(_) => None,
-        })
+        self.cause().map(|(e, _)| e)
+    }
+
+    /// The earliest cause along the chain. On a tie the ancestor wins:
+    /// a context derived from one already done is done from the start
+    /// with the ancestor's error, as in Go.
+    fn cause(&self) -> Option<Cause> {
+        self.nodes()
+            .flat_map(|n| match &n.kind {
+                Kind::Cancel { state, deadline } => {
+                    let passed = deadline
+                        .filter(|d| deadline_passed(Some(*d)))
+                        .map(|d| (ContextError::DeadlineExceeded, Some(d)));
+                    [state.err(), passed]
+                }
+                Kind::Value(_) => [None, None],
+            })
+            .flatten()
+            .reduce(|best, c| if c.1 <= best.1 { c } else { best })
     }
 
     /// The earliest deadline on this context or its ancestors. Go's
@@ -239,7 +258,11 @@ impl Context {
             state: Arc::clone(&state),
             deadline,
         });
-        (ctx, CancelHandle { state, deadline })
+        let handle = CancelHandle {
+            state,
+            ctx: ctx.clone(),
+        };
+        (ctx, handle)
     }
 
     fn child(&self, kind: Kind) -> Context {
@@ -280,6 +303,16 @@ impl Drop for CancelWatch {
 #[allow(clippy::disallowed_methods)]
 pub(crate) fn now() -> Instant {
     Instant::now()
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn stamp_now() -> Option<Instant> {
+    Some(now())
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn stamp_now() -> Option<Instant> {
+    None
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]

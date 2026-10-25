@@ -81,6 +81,31 @@ fn cancel_after_deadline_keeps_deadline_exceeded() {
 }
 
 #[test]
+fn child_cancel_after_parent_deadline_reports_deadline_exceeded() {
+    // Go: the parent's deadline has already propagated, so the child is
+    // done before its own cancel runs.
+    let (parent, _c) = Context::background().with_timeout(Duration::ZERO);
+    let (child, cancel) = parent.with_cancel();
+    cancel.cancel();
+    assert_eq!(child.err(), Some(ContextError::DeadlineExceeded));
+}
+
+#[test]
+fn parent_cancel_before_child_deadline_reports_canceled() {
+    // Go: the parent's cancel reaches the child first, so the child's
+    // own deadline passing later changes nothing.
+    let (parent, cancel) = Context::background().with_cancel();
+    cancel.cancel();
+    let (child, _c) = parent.with_deadline(Instant::now());
+    assert_eq!(child.err(), Some(ContextError::Canceled));
+
+    let (parent, cancel) = Context::background().with_cancel();
+    let (child, _c) = parent.with_timeout(Duration::from_secs(3600));
+    cancel.cancel();
+    assert_eq!(child.err(), Some(ContextError::Canceled));
+}
+
+#[test]
 fn deadline_is_the_earliest_in_the_chain() {
     let soon = Instant::now() + Duration::from_secs(60);
     let later = soon + Duration::from_secs(60);
@@ -105,43 +130,44 @@ fn values_are_typed_and_the_nearest_wins() {
 }
 
 #[test]
-fn shared_publish_with_canceled_context_returns_go_error_and_skips_handlers() {
+fn shared_publish_with_canceled_context_still_dispatches() {
+    // Go's Publish never reads ctx: a canceled one reaches the handlers,
+    // which decide what it means.
     let bus = SharedBus::default();
-    let ran = Arc::new(Mutex::new(0));
-    let r = Arc::clone(&ran);
-    bus.subscribe("test.event", move |_| {
-        *r.lock().unwrap() += 1;
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let s = Arc::clone(&seen);
+    bus.subscribe_ctx("test.event", move |ctx, _| {
+        s.lock().unwrap().push(ctx.err());
         Ok(())
     });
 
     let (ctx, cancel) = Context::background().with_cancel();
     cancel.cancel();
-    let err = bus
-        .publish_ctx(&ctx, &ev("test.event"))
-        .expect_err("canceled");
-    assert!(
-        matches!(err, BusError::Context(ContextError::Canceled)),
-        "{err}"
-    );
-    assert_eq!(err.to_string(), "context canceled");
-    assert_eq!(*ran.lock().unwrap(), 0);
+    bus.publish_ctx(&ctx, &ev("test.event")).expect("publish");
+    assert_eq!(*seen.lock().unwrap(), [Some(ContextError::Canceled)]);
 }
 
 #[test]
-fn plain_publish_with_expired_deadline_returns_go_error() {
+fn plain_publish_with_expired_deadline_still_dispatches() {
     let mut bus = Bus::new();
-    bus.subscribe("test.event", |_| panic!("must not run"));
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let s = Arc::clone(&seen);
+    bus.subscribe_ctx("test.event", move |ctx, _| {
+        s.lock().unwrap().push(ctx.err());
+        Ok(())
+    });
     let (ctx, _cancel) = Context::background().with_timeout(Duration::ZERO);
-    let err = bus
-        .publish_ctx(&ctx, &ev("test.event"))
-        .expect_err("expired");
-    assert_eq!(err.to_string(), "context deadline exceeded");
+    bus.publish_ctx(&ctx, &ev("test.event")).expect("publish");
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [Some(ContextError::DeadlineExceeded)]
+    );
 }
 
 #[test]
-fn closed_takes_precedence_over_a_canceled_context() {
-    // Go's Publish checks the topic, then the closed flag; the context
-    // check sits after both, so every Go-visible outcome is unchanged.
+fn closed_bus_rejects_publish_whatever_the_context() {
+    // Go's Publish checks the topic, then the closed flag, and never
+    // reads ctx; a canceled context changes nothing.
     let bus = SharedBus::default();
     bus.close();
     let (ctx, cancel) = Context::background().with_cancel();

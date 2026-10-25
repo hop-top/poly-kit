@@ -1,11 +1,15 @@
 //! Draining close and unsubscribe on [`SharedBus`].
 //!
 //! Go's `Close` and the `Unsubscribe` closure take the write lock, so
-//! they wait for any publish already dispatching; `Close(ctx)` then
-//! returns `ctx.Err()` if the drain outlives the context. Ports
-//! `TestClose_RejectsPublish`, `TestClose_RespectsDeadline` and
-//! `TestClosePublishRace` with sync handlers, and pins the re-entrant
-//! cases Go deadlocks on.
+//! they wait for any sync dispatch already running, with no deadline;
+//! `Close(ctx)` bounds only the async drain that follows by `ctx`.
+//! Ports `TestClose_RejectsPublish` and `TestClosePublishRace` with
+//! sync handlers, pins that a done context never cuts the sync drain
+//! short, and pins the re-entrant cases Go deadlocks on.
+//!
+//! `TestClose_RespectsDeadline` and `TestClose_WaitsForAsync` exercise
+//! the async drain, which is the only part `ctx` bounds; they are ported
+//! with async dispatch.
 //!
 //! Synchronisation is by channels and barriers. `recv_timeout` serves
 //! only as a watchdog, so a deadlock fails instead of hanging.
@@ -17,7 +21,7 @@ use std::sync::{mpsc, Arc, Barrier, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-use hop_top_kit::bus::{BusError, Context, ContextError, Event, SharedBus, SubscriptionId};
+use hop_top_kit::bus::{BusError, Context, Event, SharedBus, SubscriptionId};
 use serde_json::json;
 
 const WATCHDOG: Duration = Duration::from_secs(10);
@@ -83,64 +87,58 @@ fn close_twice_is_ok() {
     bus.close_ctx(&Context::background()).expect("second");
 }
 
-#[test]
-fn close_respects_deadline() {
-    // Go: a handler outlives the context; Close returns DeadlineExceeded.
+/// Closes with `ctx` while a sync handler is blocked in flight, then
+/// releases the handler. Returns close's result and the order in which
+/// the release and close's return happened.
+fn close_during_blocked_handler(ctx: Context) -> (Result<(), BusError>, Vec<&'static str>) {
     let bus = SharedBus::default();
     let (_, blocked) = subscribe_blocking(&bus, "test.event");
     let publisher = publish_until_entered(&bus, "test.event", &blocked);
 
-    let b = bus.clone();
-    let err = within(move || {
-        let (ctx, _cancel) = Context::background().with_timeout(Duration::from_millis(20));
-        b.close_ctx(&ctx)
-    })
-    .expect_err("deadline");
-    assert!(
-        matches!(err, BusError::Context(ContextError::DeadlineExceeded)),
-        "{err}"
-    );
-    assert_eq!(err.to_string(), "context deadline exceeded");
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let (closing_tx, closing) = mpsc::channel();
+    let (b, l) = (bus.clone(), Arc::clone(&log));
+    let closer = thread::spawn(move || {
+        closing_tx.send(()).unwrap();
+        let res = b.close_ctx(&ctx);
+        l.lock().unwrap().push("close:returned");
+        res
+    });
+    closing.recv_timeout(WATCHDOG).expect("closer started");
+    log.lock().unwrap().push("handler:released");
+    blocked.release.send(()).unwrap();
 
-    // Closed even though the drain timed out, as in Go.
+    let res = within(move || closer.join().unwrap());
+    publisher
+        .join()
+        .unwrap()
+        .expect("in-flight publish completes");
     assert!(bus.is_closed());
     assert!(matches!(
         bus.publish(&ev("test.event")),
         Err(BusError::Closed)
     ));
-
-    blocked.release.send(()).unwrap();
-    publisher
-        .join()
-        .unwrap()
-        .expect("in-flight publish completes");
+    let order = log.lock().unwrap().clone();
+    (res, order)
 }
 
 #[test]
-fn close_returns_canceled_when_its_context_is_canceled() {
-    let bus = SharedBus::default();
-    let (_, blocked) = subscribe_blocking(&bus, "test.event");
-    let publisher = publish_until_entered(&bus, "test.event", &blocked);
+fn expired_deadline_does_not_cut_the_sync_drain_short() {
+    // Go's Close takes mu.Lock() before it looks at ctx: no sync handler
+    // is running when it returns, whatever the deadline.
+    let (ctx, _cancel) = Context::background().with_timeout(Duration::ZERO);
+    let (res, order) = close_during_blocked_handler(ctx);
+    res.expect("nothing async to drain");
+    assert_eq!(order, ["handler:released", "close:returned"]);
+}
 
+#[test]
+fn canceled_context_does_not_cut_the_sync_drain_short() {
     let (ctx, cancel) = Context::background().with_cancel();
-    let (closing_tx, closing) = mpsc::channel();
-    let b = bus.clone();
-    let closer = thread::spawn(move || {
-        closing_tx.send(()).unwrap();
-        b.close_ctx(&ctx)
-    });
-    closing.recv_timeout(WATCHDOG).expect("closer started");
     cancel.cancel();
-
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let _ = tx.send(closer.join().unwrap());
-    });
-    let err = rx.recv_timeout(WATCHDOG).expect("close woke on cancel");
-    assert_eq!(err.expect_err("canceled").to_string(), "context canceled");
-
-    blocked.release.send(()).unwrap();
-    publisher.join().unwrap().expect("publish");
+    let (res, order) = close_during_blocked_handler(ctx);
+    res.expect("nothing async to drain");
+    assert_eq!(order, ["handler:released", "close:returned"]);
 }
 
 #[test]
@@ -220,21 +218,32 @@ fn close_from_a_handler_does_not_wait_for_itself() {
 
 #[test]
 fn close_from_a_handler_still_drains_other_threads() {
+    // It skips its own publish but waits, with no deadline, for the
+    // sync publish blocked on another thread.
     let bus = SharedBus::default();
     let (_, blocked) = subscribe_blocking(&bus, "test.slow.ran");
     let slow = publish_until_entered(&bus, "test.slow.ran", &blocked);
 
-    let b = bus.clone();
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let (closing_tx, closing) = mpsc::channel();
+    let closing_tx = Mutex::new(closing_tx);
+    let (b, l) = (bus.clone(), Arc::clone(&log));
     bus.subscribe("test.closer.ran", move |_| {
-        let (ctx, _cancel) = Context::background().with_timeout(Duration::from_millis(20));
-        b.close_ctx(&ctx)
+        closing_tx.lock().unwrap().send(()).unwrap();
+        let (ctx, _cancel) = Context::background().with_timeout(Duration::ZERO);
+        b.close_ctx(&ctx)?;
+        l.lock().unwrap().push("close:returned");
+        Ok(())
     });
     let p = bus.clone();
-    let err = within(move || p.publish(&ev("test.closer.ran"))).expect_err("deadline");
-    assert_eq!(err.to_string(), "context deadline exceeded");
-
+    let closer = thread::spawn(move || p.publish(&ev("test.closer.ran")));
+    closing.recv_timeout(WATCHDOG).expect("closer started");
+    log.lock().unwrap().push("slow:released");
     blocked.release.send(()).unwrap();
+
+    within(move || closer.join().unwrap()).expect("publish");
     slow.join().unwrap().expect("publish");
+    assert_eq!(*log.lock().unwrap(), ["slow:released", "close:returned"]);
 }
 
 #[test]
@@ -335,12 +344,32 @@ fn handler_unsubscribing_one_running_elsewhere_does_not_wait() {
     slow.join().unwrap().expect("publish");
 }
 
+/// Name of the thread whose panic the scoped hook below keeps quiet.
+const QUIET: &str = "bus-drain-expected-panic";
+
 #[test]
 fn a_panicking_handler_does_not_wedge_close() {
     let bus = SharedBus::default();
     bus.subscribe("test.event", |_| panic!("boom"));
+
+    // Keep the expected panic out of the test output; every other
+    // thread's panic still reaches the previous hook.
+    let previous: Arc<dyn Fn(&std::panic::PanicHookInfo<'_>) + Send + Sync> =
+        Arc::from(std::panic::take_hook());
+    let fallback = Arc::clone(&previous);
+    std::panic::set_hook(Box::new(move |info| {
+        if thread::current().name() != Some(QUIET) {
+            fallback(info);
+        }
+    }));
     let p = bus.clone();
-    let joined = thread::spawn(move || p.publish(&ev("test.event"))).join();
+    let joined = thread::Builder::new()
+        .name(QUIET.into())
+        .spawn(move || p.publish(&ev("test.event")))
+        .unwrap()
+        .join();
+    drop(std::panic::take_hook());
+    std::panic::set_hook(Box::new(move |info| previous(info)));
     assert!(joined.is_err(), "handler panic propagates to the publisher");
 
     let b = bus.clone();

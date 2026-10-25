@@ -38,9 +38,9 @@
 //! Handlers receive the publisher's [`Context`], as Go's receive its
 //! `ctx`. [`Bus::publish`] is [`Bus::publish_ctx`] with
 //! [`Context::background`], and [`Bus::subscribe`] registers a handler
-//! that ignores the context. A context already done when a publish is
-//! admitted fails it with Go's context error text; see
-//! [`Bus::publish_ctx`].
+//! that ignores the context. As in Go, publish never reads the context
+//! itself: a canceled or expired one reaches the handlers, which decide
+//! what it means.
 //!
 //! Everything else is behaviour-preserving against Go: subscription
 //! identity and removal, first-error veto semantics, publish-after-close
@@ -106,8 +106,9 @@ pub enum BusError {
     Closed,
     /// A subscriber vetoed the publish.
     Handler(String),
-    /// The publish context was done before dispatch, or a draining
-    /// close outlived its context. Displays Go's `ctx.Err()` text.
+    /// Returned only by [`SharedBus::close_ctx`], when its context is
+    /// done before the async drain finishes. Displays Go's `ctx.Err()`
+    /// text. Publish never returns it.
     Context(ContextError),
 }
 
@@ -249,18 +250,14 @@ impl Bus {
     /// publish: no later handler runs, and the error is returned. Go's
     /// `Publish`.
     ///
-    /// Checks run in Go's order — topic, then closed — followed by one
-    /// Go does not make: a `ctx` already done fails with
-    /// [`BusError::Context`] and no handler runs. Go's in-memory bus
-    /// dispatches regardless and leaves the context to its handlers.
-    /// Nothing is checked between handlers, as in Go.
+    /// Checks run in Go's order: topic, then closed. `ctx` is not
+    /// checked, before or between handlers: a canceled or expired
+    /// context is handed to the handlers like any other, as Go's
+    /// in-memory bus does.
     pub fn publish_ctx(&self, ctx: &Context, event: &Event) -> Result<(), BusError> {
         check_topic(self.enforce, self.on_invalid.as_ref(), &event.topic)?;
         if self.closed {
             return Err(BusError::Closed);
-        }
-        if let Some(e) = ctx.err() {
-            return Err(e.into());
         }
         for s in &self.subs {
             if event.topic.matches(&s.pattern) {

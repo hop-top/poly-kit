@@ -20,31 +20,32 @@ use super::mem::{check_topic, Bus, BusError, Mode, SharedErrFn, SharedHandler, S
 ///
 /// Go's `memBus` runs sync handlers under a read lock; `Unsubscribe`
 /// and `Close` take the write lock, so they wait for every in-flight
-/// publish, and `Close(ctx)` then waits for async handlers until `ctx`
-/// is done. Any call back into the bus from a handler other than a
-/// nested publish deadlocks there.
+/// sync dispatch, and `Close(ctx)` then waits for async handlers until
+/// `ctx` is done. Any call back into the bus from a handler other than
+/// a nested publish deadlocks there.
 ///
 /// Here a publish snapshots its matching subscriptions under a mutex,
 /// counts itself in flight, and runs the handlers with the mutex
 /// released. Unsubscribe and close wait on that count instead of on a
 /// lock. The rules:
 ///
-/// - **Publish** is admitted after Go's checks (topic, then closed) and
-///   one more: a done context fails it; see [`SharedBus::publish_ctx`].
-///   Once admitted it is in flight until its last handler returns, and
-///   delivers to its whole snapshot, as in Go.
+/// - **Publish** is admitted after Go's checks, topic then closed, and
+///   never reads its context: a canceled or expired context is passed
+///   to the handlers like any other, as in Go. Once admitted, a publish
+///   is in flight until its last handler returns, and delivers to its
+///   whole snapshot.
 /// - **Unsubscribe** stops new publishes from matching at once, then
 ///   waits for every in-flight publish that matched the subscription,
 ///   so on return its handler is neither running nor about to run. Go
-///   waits for every in-flight publish; this waits only for those that
-///   could call the handler, which no caller can tell apart.
-/// - **Close** marks the bus closed, drops the subscriptions and waits
-///   for in-flight publishes, bounded by the caller's context. On expiry
-///   it returns Go's `ctx.Err()` text and the bus stays closed. Go's
-///   wait for in-flight *sync* dispatch is unbounded (a lock); only its
-///   async drain honours `ctx`. Here the whole drain does. If `ctx` is
-///   already done but nothing is in flight, close succeeds; Go's
-///   `select` picks either outcome at random.
+///   waits for every in-flight sync dispatch, matching or not; this
+///   returns while an unrelated handler may still be running. That is
+///   observable, but promises nothing Go's unsubscribe does not.
+/// - **Close** marks the bus closed, drops the subscriptions, and waits
+///   for every in-flight sync publish with no deadline, as Go's
+///   `mu.Lock()` does: when it returns, no sync handler is running,
+///   whatever `ctx` says. `ctx` bounds only the async drain that
+///   follows, as in Go; async dispatch has not landed, so today that
+///   drain is empty and [`SharedBus::close_ctx`] always succeeds.
 ///
 /// # Re-entrancy
 ///
@@ -57,14 +58,16 @@ use super::mem::{check_topic, Bus, BusError, Mode, SharedErrFn, SharedHandler, S
 ///   cannot finish until the call returns.
 /// - Unsubscribe from a handler of this bus does not wait at all. It
 ///   takes effect at once: no invocation of the removed handler starts
-///   after it returns, including later in the current publish, but one
-///   already running on another thread may still finish. A dispatching
-///   thread therefore never blocks in unsubscribe, so handlers removing
-///   each other across threads cannot deadlock.
-/// - Close from a handler drains other threads' publishes, bounded by
-///   its context. Two handlers closing the bus at once each wait for the
-///   other until their deadlines; with [`SharedBus::close`], which has
-///   none, that wait never ends. Close from a handler with a deadline.
+///   afterwards on this thread, including later in the current
+///   publish, or on another thread that has not yet reached it in its
+///   snapshot. An invocation already running, or one on another thread
+///   that has passed that check, may still run to completion. A
+///   dispatching thread therefore never blocks in unsubscribe, so
+///   handlers removing each other across threads cannot deadlock.
+/// - Close from a handler waits for other threads' sync publishes, with
+///   no deadline. Two handlers on different threads closing the bus at
+///   once therefore wait for each other forever, as any re-entrant
+///   close does in Go; close from outside a handler instead.
 ///
 /// No lock is held while a handler, reporter or handler drop runs. A
 /// removed handler is dropped by whichever call releases the last
@@ -81,9 +84,9 @@ use super::mem::{check_topic, Bus, BusError, Mode, SharedErrFn, SharedHandler, S
 ///
 /// # Async dispatch
 ///
-/// The in-flight count is the drain point async dispatch joins: an
-/// async handler task will count itself in after it acquires a pool
-/// slot, and close will wait for it under the same context.
+/// `async_in_flight` is the drain point async dispatch joins: an async
+/// handler task will count itself in after it acquires a pool slot,
+/// and close waits for it under `ctx` after the sync drain.
 #[derive(Clone)]
 pub struct SharedBus(Arc<Inner>);
 
@@ -104,6 +107,9 @@ struct State {
     closed: bool,
     /// Admitted publishes whose handlers have not all returned.
     in_flight: usize,
+    /// Async handler tasks still running. Always zero until async
+    /// dispatch lands; close's `ctx` bounds the wait on it.
+    async_in_flight: usize,
 }
 
 struct Sub {
@@ -161,6 +167,7 @@ impl SharedBus {
                 next_id: bus.next_id,
                 closed: bus.closed,
                 in_flight: 0,
+                async_in_flight: 0,
             }),
             idle: Condvar::new(),
         }))
@@ -242,9 +249,6 @@ impl SharedBus {
             if st.closed {
                 return Err(BusError::Closed);
             }
-            if let Some(e) = ctx.err() {
-                return Err(e.into());
-            }
             let subs: Vec<_> = st
                 .subs
                 .iter()
@@ -266,22 +270,22 @@ impl SharedBus {
         Ok(())
     }
 
-    /// [`SharedBus::close_ctx`] with [`Context::background`]: waits for
-    /// in-flight publishes however long they take. Go's
+    /// [`SharedBus::close_ctx`] with [`Context::background`]. Go's
     /// `Close(context.Background())`, which cannot fail either.
     pub fn close(&self) {
         // A background context is never done, so the drain cannot fail.
         let _ = self.close_ctx(&Context::background());
     }
 
-    /// Stops the bus accepting publishes, drops every subscription, and
-    /// waits for in-flight publishes until `ctx` is done. Go's
-    /// `Close(ctx)`.
+    /// Stops the bus accepting publishes, drops every subscription,
+    /// waits for in-flight sync publishes with no deadline, then waits
+    /// for async handlers until `ctx` is done. Go's `Close(ctx)`.
     ///
     /// Returns [`BusError::Context`] with Go's `ctx.Err()` text if `ctx`
-    /// is done first; the bus is closed either way, and the publishes
-    /// still in flight run to completion. Safe to call more than once.
-    /// See the [type docs](SharedBus) for calls from a handler.
+    /// is done before the async drain finishes; the bus is closed either
+    /// way, and no sync handler is running. Async dispatch has not
+    /// landed, so today this always returns `Ok`. Safe to call more than
+    /// once. See the [type docs](SharedBus) for calls from a handler.
     pub fn close_ctx(&self, ctx: &Context) -> Result<(), BusError> {
         let inner = &*self.0;
         let own = own_frames(inner.id);
@@ -297,7 +301,10 @@ impl SharedBus {
         let mut st = inner.lock();
         st.closed = true;
         let subs = std::mem::take(&mut st.subs);
-        let (st, drained) = inner.wait(st, ctx, |st| st.in_flight <= own);
+        // Go holds `mu.Lock()` here: the sync drain ignores `ctx`.
+        let background = Context::background();
+        let st = inner.wait(st, &background, |st| st.in_flight <= own).0;
+        let (st, drained) = inner.wait(st, ctx, |st| st.async_in_flight == 0);
         drop(st);
         drop(subs);
         drained.map_err(BusError::from)
