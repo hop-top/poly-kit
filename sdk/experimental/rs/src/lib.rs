@@ -11,11 +11,13 @@ pub mod uri;
 pub mod api;
 
 // Network policy marker + the guarded client every user-traffic reqwest
-// request in this crate is issued through. Gated on `api` because that
-// is the feature that brings reqwest in. `telemetry` enables `api`, but
-// its HTTPS sink builds its own client and is deliberately unguarded:
-// telemetry is logging-class egress, not traffic `--offline` stops.
-#[cfg(feature = "api")]
+// request in this crate is issued through. The marker, loopback check
+// and dial check are dependency-free under `netpolicy`; the reqwest
+// client inside is gated on `api`, which enables `netpolicy`.
+// `telemetry` enables `api`, but its HTTPS sink builds its own client
+// and is deliberately unguarded: telemetry is logging-class egress, not
+// traffic `--offline` stops.
+#[cfg(feature = "netpolicy")]
 pub mod netpolicy;
 
 #[cfg(feature = "blob")]

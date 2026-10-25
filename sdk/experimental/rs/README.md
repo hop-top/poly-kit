@@ -31,7 +31,7 @@ Paths are relative to `src/`; the [feature table](#features) is the authority on
 | [`timeutil/`](src/timeutil/README.md) | `since` and `until` relative-date parsing (feature `timeutil`) | a flag takes a human time expression |
 | [`sqldb.rs`](src/sqldb.rs) | SQLite connection setup, pragmas, numbered migrations (feature `sqldb`) | you open a database directly |
 | [`kv.rs`](src/kv.rs) | byte-keyed `Store` / `TtlStore` traits over SQLite (feature `kv`) | you need small keyed values with expiry |
-| [`netpolicy.rs`](src/netpolicy.rs) | `--offline` marker and the guarded reqwest client (feature `api`) | a request must honour `--offline` |
+| [`netpolicy/`](src/netpolicy/mod.rs) | `--offline` marker, loopback and dial checks (feature `netpolicy`, no deps, wasm-safe); the guarded reqwest client (feature `api`) | a request or a dial must honour `--offline` |
 | [`api.rs`](src/api.rs) | JSON API client over the guarded client (feature `api`) | you call an HTTP API from a kit CLI |
 | [`uri.rs`](src/uri.rs) | URI facade delegating to `hop-top-cite` (feature `uri`) | you parse or format kit URIs |
 | [`cli.rs`](src/cli.rs), [`tui.rs`](src/tui.rs) | placeholders, empty | never; both are reserved |
@@ -42,6 +42,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 
 | Feature | Pulls in | Normal deps |
 |---------|----------|-------------|
+| `netpolicy` | nothing | 0 |
 | `blob` | `thiserror` | 6 |
 | `sqldb` | `rusqlite` (bundled SQLite), `thiserror` | 12 |
 | `kv` | `sqldb` — nothing of its own | 12 |
@@ -59,7 +60,7 @@ Every module is feature-gated and `default = []`: name no features, compile **ze
 | `uri` | `hop-top-cite` | 41 |
 | `sqlstore-encrypt` | `sqlstore` + `crypto_secretbox`, `hkdf`, `sha2` | 50 |
 | `serve-cli` | `serve` + `cli` | 50 |
-| `api` | `reqwest`, `tokio`, `serde`, `serde_json`, `thiserror` | 113 |
+| `api` | `netpolicy` + `reqwest`, `tokio`, `serde`, `serde_json`, `thiserror` | 113 |
 | `telemetry` | `api` + `serde_yaml`, `sha2`, `getrandom`, `dirs`, `regex` | 131 |
 
 Counts are non-dev crates, root excluded, from `cargo tree --no-default-features --features <feature> -e normal`.

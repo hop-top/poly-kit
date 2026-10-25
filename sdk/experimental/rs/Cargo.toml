@@ -12,7 +12,12 @@ default = []
 # request necessarily compiles it in. The telemetry HTTPS sink builds its
 # own client and is deliberately unguarded (logging-class egress).
 # `thiserror` supplies the typed refusal.
-api = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:thiserror"]
+api = ["netpolicy", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:thiserror"]
+# The policy decision alone: `NetPolicy`, loopback classification, the
+# dial check and the typed refusal. No dependencies, wasm-safe, so a
+# client that dials its own sockets (websocket, SMTP, SQL) can enforce
+# `--offline` without compiling reqwest or tokio.
+netpolicy = []
 blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
 # preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so

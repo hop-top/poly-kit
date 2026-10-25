@@ -1,10 +1,11 @@
-// Mirrors go/core/netpolicy's suite. Cargo compiles every file under
-// tests/ unconditionally, so the whole body is gated on the `api`
-// feature — the module lives beneath it and the unresolved imports
-// would otherwise break `cargo test` under default features.
+// Mirrors go/core/netpolicy's suite for the reqwest client. Cargo
+// compiles every file under tests/ unconditionally, so the whole body is
+// gated on the `api` feature — the client lives beneath it and the
+// unresolved imports would otherwise break `cargo test` under default
+// features. The policy core's tables are in tests/netpolicy_core.rs.
 #![cfg(feature = "api")]
 
-use hop_top_kit::netpolicy::{is_loopback, GuardedClient, NetError, NetPolicy, OfflineError};
+use hop_top_kit::netpolicy::{GuardedClient, NetError, NetPolicy, OfflineError};
 
 // A policy-marked client must stop an external request before it opens
 // a socket. The destination is deliberately unroutable: loopback is
@@ -161,34 +162,6 @@ async fn naive_caller_is_refused() {
         err.as_offline().is_some(),
         "naive caller was not refused: {err}"
     );
-}
-
-// Host classification, matching Go's isLoopback table.
-#[test]
-fn loopback_classification() {
-    for host in ["127.0.0.1", "localhost", "::1", "127.1.2.3"] {
-        assert!(is_loopback(host), "{host} should be loopback");
-    }
-    for host in [
-        "example.com",
-        "my-host.internal",
-        "8.8.8.8",
-        "localhost.evil.com",
-    ] {
-        assert!(!is_loopback(host), "{host} should be remote");
-    }
-}
-
-// The default policy is online: a port that never wires the flag must
-// behave exactly as it does today.
-#[test]
-fn default_policy_is_online() {
-    assert!(!NetPolicy::default().is_offline());
-    assert!(NetPolicy::offline().is_offline());
-    assert!(!NetPolicy::online().is_offline());
-    // The bool constructor mirrors Go's WithOffline(ctx, bool).
-    assert!(NetPolicy::new(true).is_offline());
-    assert!(!NetPolicy::new(false).is_offline());
 }
 
 // ApiClient is the port's public HTTP surface: constructing it under an

@@ -1,111 +1,18 @@
-//! Network policy marker and the client that enforces it.
-//!
-//! The `--offline` global (cli-parity-guide, "Global Flags") promises
-//! that network access is disabled. Carrying that promise as a plain
-//! flag value cannot keep it: it is advisory, so any caller that forgets
-//! to consult it still reaches the wire. [`GuardedClient`] closes that
-//! gap by refusing the request at the point where it is sent, beneath
-//! every caller, where none can route around it.
-//!
-//! # Why this shape
-//!
-//! The Go side installs an `http.RoundTripper` over the process-global
-//! `http.DefaultTransport`, so a bare `&http.Client{}` inherits the
-//! policy without a per-site change. Rust has no such process-global:
-//! `reqwest::Client::new()` builds an independent stack every time, and
-//! nothing reqwest 0.13 exposes lets a policy see a request before it is
-//! sent. Its `connector_layer` hook receives an opaque `Unnameable` (no
-//! destination to inspect) and fires only on new connections, so pooled
-//! reuse would slip past; a custom `dns_resolver` never sees IP-literal
-//! URLs at all and cannot surface a typed error to the caller.
-//!
-//! So the chokepoint here is construction rather than transport: this
-//! module owns the port's `reqwest::Client` construction path for user
-//! traffic (the telemetry sink's own client is the one, deliberate,
-//! exception: see Scope), and
-//! hands back a [`GuardedClient`] that does not expose the inner
-//! `reqwest::Client`. Every request necessarily passes through
-//! [`GuardedClient::execute`], which is where the policy is applied.
-//!
-//! # Marker
-//!
-//! Rust has no ambient request-scoped context, so the marker is an
-//! explicit [`NetPolicy`] value threaded at client construction rather
-//! than a context value. [`NetPolicy::default`] is online, so a port
-//! that has not wired the flag behaves exactly as it did before.
-//!
-//! Loopback is deliberately exempt. `--offline` means "do not talk to
-//! the network", not "do not talk to myself": a local peer, a dev
-//! backend on 127.0.0.1 and unix sockets stay reachable so offline
-//! workflows remain usable.
-//!
-//! # Scope
-//!
-//! [`GuardedClient`] covers HTTP and HTTPS through reqwest — every
-//! network client in this port today except the telemetry HTTPS sink,
-//! which is deliberately unguarded: telemetry is logging-class egress,
-//! not traffic `--offline` stops. It does NOT cover code that opens
-//! a socket directly: raw `TcpStream`, SQL drivers, gRPC or raw TLS. For
-//! those, `--offline` remains advisory and the call site must consult
-//! [`NetPolicy::is_offline`] itself. It also cannot reach a
-//! `reqwest::Client` a consumer builds on its own, outside this module —
-//! that is the price of Rust having no default transport to install
-//! over.
-
-use std::net::IpAddr;
+//! The reqwest half of the policy: [`GuardedClient`], the construction
+//! path every user-traffic request in this crate is issued through, and
+//! the URL stripping its errors share with `api`. Gated on `api`.
 
 use thiserror::Error;
 
-/// The network policy marker. Threaded at client construction; the
-/// analogue of the Go side's context value.
-///
-/// Default is online, so an unwired port keeps its current behaviour.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct NetPolicy {
-    offline: bool,
-}
+use super::core::{NetPolicy, OfflineError};
 
 impl NetPolicy {
-    /// Build a policy from a boolean, mirroring Go's
-    /// `WithOffline(ctx, bool)`. This is the one-liner the CLI layer
-    /// calls once it registers the `--offline` flag.
-    pub fn new(offline: bool) -> Self {
-        Self { offline }
-    }
-
-    /// A policy that permits network access.
-    pub fn online() -> Self {
-        Self { offline: false }
-    }
-
-    /// A policy that refuses non-loopback network access.
-    pub fn offline() -> Self {
-        Self { offline: true }
-    }
-
-    /// Whether this policy refuses non-loopback network access.
-    pub fn is_offline(&self) -> bool {
-        self.offline
-    }
-
     /// Whether a request to `url` is permitted under this policy.
-    /// Loopback destinations are always permitted.
+    /// Loopback destinations are always permitted; a URL with no host
+    /// is refused while offline.
     pub fn allows(&self, url: &reqwest::Url) -> bool {
-        !self.offline || url.host_str().is_some_and(is_loopback)
+        !self.is_offline() || url.host_str().is_some_and(|h| self.allows_host(h))
     }
-}
-
-/// The typed refusal, the analogue of Go's `ErrOffline`. Callers match
-/// it with [`NetError::as_offline`] or by downcasting.
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
-#[error("{method} {url}: network disabled by --offline")]
-pub struct OfflineError {
-    /// HTTP method of the refused request.
-    pub method: String,
-    /// Destination of the refused request: scheme, host (with port) and
-    /// path only. Query, fragment and userinfo never appear, as they may
-    /// carry credentials.
-    pub url: String,
 }
 
 /// Errors surfaced by [`GuardedClient`]. Refusals are a distinct,
@@ -142,25 +49,6 @@ impl NetError {
     pub fn is_offline(&self) -> bool {
         self.as_offline().is_some()
     }
-}
-
-/// Whether `host` names a loopback address.
-///
-/// Hosts that are not literal IPs (DNS names) are treated as remote:
-/// resolving them would itself be network access. Matches Go's
-/// `isLoopback`, including the bare `localhost` special case and the
-/// whole 127.0.0.0/8 range.
-pub fn is_loopback(host: &str) -> bool {
-    if host.eq_ignore_ascii_case("localhost") {
-        return true;
-    }
-    // reqwest::Url::host_str keeps IPv6 literals bracketed; strip them
-    // so the address parses.
-    let bare = host
-        .strip_prefix('[')
-        .and_then(|h| h.strip_suffix(']'))
-        .unwrap_or(host);
-    bare.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
 /// Render `url` as scheme, host (with port) and path only: enough to say
@@ -247,7 +135,7 @@ impl GuardedClient {
 
     /// Start a request. The returned builder is reqwest's own, so the
     /// full builder surface stays available; it must be handed back to
-    /// [`GuardedClient::send`] (or [`GuardedClient::execute`]) to be
+    /// [`RequestBuilder::send`] (or [`GuardedClient::execute`]) to be
     /// issued.
     pub fn request(&self, method: reqwest::Method, url: impl reqwest::IntoUrl) -> RequestBuilder {
         RequestBuilder {
@@ -363,18 +251,6 @@ mod tests {
         let p = NetPolicy::online();
         assert!(p.allows(&"https://example.com/x".parse().unwrap()));
         assert!(p.allows(&"http://127.0.0.1/x".parse().unwrap()));
-    }
-
-    #[test]
-    fn offline_error_message_names_the_flag() {
-        let e = OfflineError {
-            method: "GET".into(),
-            url: "https://example.com/x".into(),
-        };
-        assert_eq!(
-            e.to_string(),
-            "GET https://example.com/x: network disabled by --offline"
-        );
     }
 
     #[test]
