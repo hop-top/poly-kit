@@ -39,7 +39,9 @@ func (f FrameFormat) String() string {
 // on send and strips it on receive, so it never reaches subscribers.
 const OriginExtension = "kitorigin"
 
-// WithFrameFormat selects the outbound frame format. Default FrameKit.
+// WithFrameFormat selects the outbound frame format. Default FrameKit,
+// in every kit SDK: there is no capability negotiation yet, so no peer
+// may default to CloudEvents frames until peers advertise support.
 // Switch a peer to FrameCloudEvents only once every peer it talks to
 // decodes CloudEvents frames (this kit version or later); older peers
 // misread them.
@@ -52,6 +54,7 @@ func WithFrameFormat(f FrameFormat) NetworkOption {
 func encodeFrame(f FrameFormat, e Event, origin string) ([]byte, error) {
 	if f != FrameCloudEvents {
 		return json.Marshal(networkMsg{
+			ID:          e.ID,
 			Topic:       string(e.Topic),
 			Source:      e.Source,
 			Timestamp:   e.Timestamp,
@@ -76,21 +79,24 @@ func encodeFrame(f FrameFormat, e Event, origin string) ([]byte, error) {
 }
 
 // decodeFrame parses one inbound frame of either format and returns the
-// event and its wire origin. A frame with a "specversion" member is a
-// CloudEvents frame; anything else is a kit frame.
+// event and its wire origin. A JSON object with a member named exactly
+// "specversion" (any value, null included) is a CloudEvents frame;
+// any other object is a kit frame. A CloudEvents frame whose kitorigin
+// is not a string is rejected.
 func decodeFrame(data []byte) (Event, string, error) {
-	var probe struct {
-		SpecVersion json.RawMessage `json:"specversion"`
-	}
+	// Probe by exact key: struct decoding would fold case and treat
+	// "SPECVERSION" as a CloudEvents frame.
+	var probe map[string]json.RawMessage
 	if err := json.Unmarshal(data, &probe); err != nil {
 		return Event{}, "", err
 	}
-	if probe.SpecVersion == nil {
+	if _, isCE := probe["specversion"]; !isCE {
 		var msg networkMsg
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return Event{}, "", err
 		}
 		return Event{
+			ID:          msg.ID,
 			Topic:       Topic(msg.Topic),
 			Source:      msg.Source,
 			Timestamp:   msg.Timestamp,
@@ -102,8 +108,13 @@ func decodeFrame(data []byte) (Event, string, error) {
 	if err := c.UnmarshalJSON(data); err != nil {
 		return Event{}, "", err
 	}
-	origin, _ := c.Extensions[OriginExtension].(string)
-	if _, ok := c.Extensions[OriginExtension]; ok {
+	var origin string
+	if v, ok := c.Extensions[OriginExtension]; ok {
+		s, isStr := v.(string)
+		if !isStr {
+			return Event{}, "", ceErr(OriginExtension, "must be a string")
+		}
+		origin = s
 		delete(c.Extensions, OriginExtension)
 		if len(c.Extensions) == 0 {
 			c.Extensions = nil

@@ -28,6 +28,9 @@ type networkMsg struct {
 	// global events keep the original frame shape, and frames from
 	// older peers, which never carry the key, decode as global.
 	WorkspaceID string `json:"workspace_id,omitempty"`
+	// ID mirrors Event.ID; omitted when empty. Older peers ignore it,
+	// and frames without it decode with an empty ID.
+	ID string `json:"id,omitempty"`
 }
 
 // wsConn wraps a single peer connection.

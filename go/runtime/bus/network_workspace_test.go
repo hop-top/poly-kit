@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 	"time"
 
@@ -46,9 +47,27 @@ func dialRaw(t *testing.T, n *NetworkAdapter) *websocket.Conn {
 		t.Fatalf("dial: %v", err)
 	}
 	t.Cleanup(func() { _ = conn.Close(websocket.StatusNormalClosure, "") })
-	// Let the handler register the conn before anyone publishes.
-	time.Sleep(50 * time.Millisecond)
+	waitConns(t, n, 1)
 	return conn
+}
+
+// waitConns blocks until n has registered want peer connections; the
+// accept handler registers them asynchronously after the dial returns.
+func waitConns(t *testing.T, n *NetworkAdapter, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		n.mu.RLock()
+		got := len(n.conns)
+		n.mu.RUnlock()
+		if got >= want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("adapter has %d conns, want %d", got, want)
+		}
+		runtime.Gosched()
+	}
 }
 
 func readFrame(t *testing.T, conn *websocket.Conn) map[string]any {
@@ -79,7 +98,7 @@ func TestNetwork_WorkspaceIDSurvivesWire(t *testing.T) {
 	if err := adapterB.Connect(context.Background(), "ws"+srv.URL[4:]); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	time.Sleep(50 * time.Millisecond)
+	waitConns(t, adapterA, 1)
 
 	got := recvOne(busB, "kit.test.workspace.scoped")
 	e := NewEvent("kit.test.workspace.scoped", "A", nil)
@@ -100,14 +119,22 @@ func TestNetwork_V1FrameEmitsWorkspaceID(t *testing.T) {
 	scoped := NewEvent("kit.test.workspace.scoped", "A", nil)
 	scoped.WorkspaceID = "ws1"
 	_ = b.Publish(context.Background(), scoped)
-	if got := readFrame(t, conn)["workspace_id"]; got != "ws1" {
+	frame := readFrame(t, conn)
+	if got := frame["workspace_id"]; got != "ws1" {
 		t.Fatalf("frame workspace_id = %v, want ws1", got)
 	}
+	if got := frame["id"]; got != scoped.ID {
+		t.Fatalf("frame id = %v, want %s", got, scoped.ID)
+	}
 
-	// Global events keep the old frame shape: no workspace_id key.
-	_ = b.Publish(context.Background(), NewEvent("kit.test.workspace.global", "A", nil))
-	if got, ok := readFrame(t, conn)["workspace_id"]; ok {
-		t.Fatalf("global frame carries workspace_id = %v, want key absent", got)
+	// Global events keep the old frame shape: no workspace_id key; an
+	// event without an id carries no id key.
+	_ = b.Publish(context.Background(), Event{Topic: "kit.test.workspace.global", Source: "A"})
+	frame = readFrame(t, conn)
+	for _, k := range []string{"workspace_id", "id"} {
+		if got, ok := frame[k]; ok {
+			t.Fatalf("frame carries %s = %v, want key absent", k, got)
+		}
 	}
 }
 
@@ -116,6 +143,7 @@ func TestNetwork_V1FrameAcceptsWorkspaceID(t *testing.T) {
 		name  string
 		frame string
 		want  string
+		id    string
 	}{
 		{
 			name:  "old frame without workspace_id",
@@ -124,8 +152,9 @@ func TestNetwork_V1FrameAcceptsWorkspaceID(t *testing.T) {
 		},
 		{
 			name:  "frame with workspace_id",
-			frame: `{"topic":"kit.test.frame.sent","source":"new","timestamp":"2026-01-01T00:00:00Z","payload":null,"origin":"new","workspace_id":"ws1"}`,
+			frame: `{"topic":"kit.test.frame.sent","source":"new","timestamp":"2026-01-01T00:00:00Z","payload":null,"origin":"new","workspace_id":"ws1","id":"evt_01jg000000e008000000000000"}`,
 			want:  "ws1",
+			id:    "evt_01jg000000e008000000000000",
 		},
 	}
 	for _, tc := range cases {
@@ -139,8 +168,8 @@ func TestNetwork_V1FrameAcceptsWorkspaceID(t *testing.T) {
 				t.Fatalf("write: %v", err)
 			}
 			e := waitEvent(t, got)
-			if e.WorkspaceID != tc.want {
-				t.Fatalf("WorkspaceID = %q, want %q", e.WorkspaceID, tc.want)
+			if e.WorkspaceID != tc.want || e.ID != tc.id {
+				t.Fatalf("WorkspaceID, ID = %q, %q; want %q, %q", e.WorkspaceID, e.ID, tc.want, tc.id)
 			}
 			if !e.Timestamp.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
 				t.Fatalf("Timestamp = %v", e.Timestamp)
