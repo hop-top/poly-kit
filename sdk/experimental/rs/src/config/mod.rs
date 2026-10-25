@@ -1,7 +1,65 @@
 //! Layered YAML configuration. Ports Go `go/core/config`.
 //!
-//! Gated behind the `config` feature.
+//! Gated behind the `config` feature. Merge rules, precedence, scalar
+//! typing, override syntax, migrations, defaults, partition and reload
+//! follow Go and are pinned by the shared `contracts/config-v1` corpus.
+//! The pure parts (YAML model, merge, overrides, precedence,
+//! [`parse_scalar`], [`Value`], [`partition`]) build on wasm32; files,
+//! paths, `set`/`unset` and reload do not. Hot reload on a signal is
+//! feature `config-signal` (Unix); PKL schemas are feature `config-pkl`.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use hop_top_kit::config::{load, options_for_tool};
+//!
+//! #[derive(Default, serde::Serialize, serde::Deserialize)]
+//! #[serde(default)]
+//! struct Cfg {
+//!     name: String,
+//!     port: i64,
+//! }
+//!
+//! let mut cfg = Cfg::default();
+//! load(&mut cfg, &options_for_tool("mytool")).unwrap();
+//! ```
+//!
+//! # Differences from Go
+//!
+//! - **Writes keep bytes, not Go's layout.** [`set`], [`set_value`] and
+//!   [`unset`] splice only the targeted entry, so comments, anchors and
+//!   formatting survive; values, kept comments and key order match Go,
+//!   bytes do not. A shape the splicer cannot handle falls back to
+//!   emitting the whole document (comments lost). A non-mapping document
+//!   root is an error (Go silently writes nothing useful); unsetting the
+//!   last key leaves an empty file where Go writes `{}`.
+//! - **No viper.** `Options.Viper`, `BindEnv`, `SeedDefaults` and
+//!   `SyncToViper` become [`EnvLookup`] ([`bind_env`],
+//!   [`EnvLookup::seed_defaults`], [`EnvLookup::sync`],
+//!   [`Options::env_lookup`]) with viper's lookup order.
+//! - **No struct tags.** Reload mutability comes from [`ReloadFields`]
+//!   instead of `reload:"true"`; field names are the serde names. Config
+//!   structs should derive `Default` with `#[serde(default)]`, which Go
+//!   gets implicitly from zero values.
+//! - **Typing.** Timestamps stay text (Go decodes `time.Time`);
+//!   non-string mapping keys become text keys (Go builds `map[any]any`); a
+//!   [`Value`]-typed field holding a mapping merges per key where Go
+//!   replaces an `any` field whole. Decode errors keep yaml.v3's shape
+//!   but name Rust types (`int` for `i64`, `[]` for lists).
+//! - **Parser.** YAML is parsed by saphyr-parser (YAML 1.2) with yaml.v3's
+//!   tag resolution on top; syntax error texts differ from libyaml's, and
+//!   exotic inputs libyaml rejects may parse (implicit empty keys are
+//!   rejected as in libyaml).
+//! - **Callbacks.** [`Options::env_override`] receives `&mut dyn Any`
+//!   ([`Options::env_override_for`] downcasts); a migration cannot return
+//!   a nil map; `watch_signal` is async, ends with `Ok(())` when its
+//!   shutdown future completes, and takes tokio signal kinds.
+//! - **Scope.** [`crate::xdg`] ports only the home and config-home
+//!   resolution, without the write guard. The PKL wizard, `RunWizard` and
+//!   the config command are deferred until kit-rs has a console wizard and
+//!   a CLI root.
 
+mod bus_getter;
 #[cfg(not(target_arch = "wasm32"))]
 mod edit;
 mod env;
