@@ -7,7 +7,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use super::async_dispatch::{own_tasks, AsyncHandler, Spawn, DEFAULT_MAX_ASYNC};
-use super::context::{Context, ContextError};
+use super::context::Context;
+use super::drain::{Threading, Undrained};
 use super::event::Event;
 use super::mem::{check_topic, Bus, BusError, Mode, SharedErrFn, SharedHandler, SubscriptionId};
 
@@ -112,6 +113,8 @@ pub(super) struct Inner {
     on_invalid: Option<SharedErrFn>,
     /// Pool size: async tasks counted at once, at most.
     pub(super) max_async: usize,
+    /// Whether waits may block; set by the target.
+    pub(super) threading: Threading,
     state: Mutex<State>,
     /// Signalled when an in-flight publish or async task finishes, when
     /// the bus closes, or when a context a waiter watches is canceled.
@@ -149,13 +152,6 @@ pub(super) struct Sub {
 pub(super) enum Kind {
     Sync(SharedHandler),
     Async(Arc<dyn Spawn>, AsyncHandler),
-}
-
-/// Why a drain wait ended before its condition held.
-enum Undrained {
-    Ctx(ContextError),
-    /// The wait would block the only thread (wasm32-unknown-unknown).
-    WouldBlock,
 }
 
 static NEXT_BUS: AtomicU64 = AtomicU64::new(0);
@@ -200,6 +196,7 @@ impl SharedBus {
                 0 => DEFAULT_MAX_ASYNC,
                 n => n,
             },
+            threading: Threading::TARGET,
             state: Mutex::new(State {
                 subs,
                 next_id: bus.next_id,
@@ -436,66 +433,9 @@ impl Inner {
         self.lock().async_in_flight -= 1;
         self.idle.notify_all();
     }
-
-    /// Blocks until `done` holds or `ctx` is done, counted in `waiters`
-    /// while blocked.
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    fn wait<'a>(
-        &'a self,
-        mut st: MutexGuard<'a, State>,
-        ctx: &Context,
-        done: impl Fn(&State) -> bool,
-        waiters: fn(&mut State) -> &mut usize,
-    ) -> (MutexGuard<'a, State>, Result<(), Undrained>) {
-        loop {
-            match check(done(&st), ctx) {
-                Err(Undrained::WouldBlock) => {}
-                res => return (st, res),
-            }
-            *waiters(&mut st) += 1;
-            st = match ctx.deadline() {
-                Some(d) => {
-                    let left = d.saturating_duration_since(super::context::now());
-                    let woke = self.idle.wait_timeout(st, left);
-                    woke.unwrap_or_else(PoisonError::into_inner).0
-                }
-                None => self.idle.wait(st).unwrap_or_else(PoisonError::into_inner),
-            };
-            *waiters(&mut st) -= 1;
-        }
-    }
-
-    /// One thread: blocking would hang it. Every in-flight publish is the
-    /// caller's own, which `done` already discounts, so sync waits always
-    /// hold; async tasks run only when the caller yields, so a wait for
-    /// them that does not hold yet reports [`Undrained::WouldBlock`].
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-    fn wait<'a>(
-        &'a self,
-        st: MutexGuard<'a, State>,
-        ctx: &Context,
-        done: impl Fn(&State) -> bool,
-        _waiters: fn(&mut State) -> &mut usize,
-    ) -> (MutexGuard<'a, State>, Result<(), Undrained>) {
-        let res = check(done(&st), ctx);
-        (st, res)
-    }
 }
 
-/// One step of a drain wait: `Ok` once `done`, the context's error once
-/// it is done, else [`Undrained::WouldBlock`], which the native wait
-/// turns into a block and the wasm one returns.
-fn check(done: bool, ctx: &Context) -> Result<(), Undrained> {
-    if done {
-        return Ok(());
-    }
-    match ctx.err() {
-        Some(e) => Err(Undrained::Ctx(e)),
-        None => Err(Undrained::WouldBlock),
-    }
-}
-
-fn drain_waiters(st: &mut State) -> &mut usize {
+pub(super) fn drain_waiters(st: &mut State) -> &mut usize {
     &mut st.drain_waiters
 }
 
@@ -531,25 +471,5 @@ impl Drop for InFlight<'_> {
             st.in_flight -= 1;
         }
         self.inner.idle.notify_all();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // The whole wasm32-unknown-unknown wait: an undrained wait with a
-    // live context must not report drained.
-    #[test]
-    fn an_undrained_wait_with_a_live_context_would_block() {
-        let live = Context::background();
-        assert!(check(true, &live).is_ok());
-        assert!(matches!(check(false, &live), Err(Undrained::WouldBlock)));
-        let (done, cancel) = live.with_cancel();
-        cancel.cancel();
-        assert!(matches!(
-            check(false, &done),
-            Err(Undrained::Ctx(ContextError::Canceled))
-        ));
     }
 }

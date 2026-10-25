@@ -51,20 +51,30 @@
 //!   handler that panics ends its task as the executor handles panics,
 //!   where a goroutine's panic ends the Go process.
 //! - Close called from an async handler does not wait for that handler,
-//!   where Go waits for it until `ctx` is done.
+//!   where Go waits for it until `ctx` is done. It still waits for every
+//!   other task, so two async handlers that close at once wait for each
+//!   other until `ctx` is done; with a background `ctx` that is forever,
+//!   as in Go. Close from a handler with a deadline, or from outside.
 //! - The executor is the caller's: see [`Spawn`] for what it must do.
 //!
 //! # wasm32-unknown-unknown
 //!
 //! That target has one thread and no `Send` futures, so [`Task`] drops
 //! the `Send` bound there and handlers' futures need not be `Send` (see
-//! [`MaybeSend`]). Blocking the only thread would hang it, so:
+//! [`MaybeSend`]). The handler closure itself must still be
+//! `Send + Sync`, as [`SharedBus`] is: it cannot capture an `Rc` or a
+//! `JsValue`, so build such state inside the future it returns.
+//! Blocking the only thread would hang it, so:
 //!
 //! - the pool is uncapped: a publish never waits for a slot;
 //! - close never waits for tasks, which run only once the caller
 //!   yields. With tasks still running and `ctx` live it returns
 //!   [`BusError::NotDrained`], the bus closed; call it again once the
 //!   executor has run them.
+//!
+//! The target only selects this policy; it is a value every target
+//! builds, so native tests run it too, and tests/bus_wasm.rs runs it on
+//! wasm32 under Node (`make test-rs-wasm`).
 //!
 //! [`BusBuilder::max_async`]: super::BusBuilder::max_async
 
@@ -290,9 +300,7 @@ impl SharedBus {
             if s.removed.load(Ordering::Acquire) {
                 return Slot::Removed;
             }
-            if cfg!(all(target_arch = "wasm32", target_os = "unknown"))
-                || st.async_in_flight < inner.max_async
-            {
+            if inner.threading.admits(st.async_in_flight, inner.max_async) {
                 st.async_in_flight += 1;
                 return Slot::Taken;
             }

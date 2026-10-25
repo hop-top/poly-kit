@@ -47,6 +47,7 @@ pub mod builder;
 pub mod cloudevents;
 pub mod config;
 pub mod context;
+mod drain;
 pub mod event;
 pub mod mem;
 pub mod qualifiers;

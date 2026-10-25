@@ -5,7 +5,7 @@
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
 	test-parity test-parity-bus test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-taxonomy test-parity-typeid test-py \
-	test-release test-rs test-templates test-ts \
+	test-release test-rs test-rs-wasm test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
 
 # Tool versions — the mise config (mise.toml, plus .config/mise.toml for
@@ -199,6 +199,21 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# All features ensures the api integration test (gated on feature=api)
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
+
+# The bus on wasm32-unknown-unknown, run under Node: one thread, so the
+# async pool is uncapped and close reports NotDrained instead of
+# blocking. wasm-bindgen-test-runner comes from wasm-bindgen-cli, whose
+# version must equal the wasm-bindgen in Cargo.lock.
+test-rs-wasm: ## Rust: bus wasm32 smoke test under Node (needs the matching wasm-bindgen-cli)
+	@want=$$(awk '/^name = "wasm-bindgen"$$/ { getline; gsub(/version = |"/, ""); print }' sdk/experimental/rs/Cargo.lock); \
+	have=$$(wasm-bindgen --version 2>/dev/null | awk '{ print $$2 }'); \
+	if [ "$$want" != "$$have" ]; then \
+		echo "wasm-bindgen-cli '$$have' does not match Cargo.lock wasm-bindgen $$want:"; \
+		echo "  cargo install wasm-bindgen-cli --version $$want --locked"; \
+		exit 1; \
+	fi
+	cd sdk/experimental/rs && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+		cargo test --locked --target wasm32-unknown-unknown --no-default-features --features bus --test bus_wasm
 
 test-parity: test-parity-typeid test-parity-bus test-parity-config test-parity-retry test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1

@@ -125,6 +125,9 @@ task on its own executor. A tokio adapter can follow behind a feature.
 - On `wasm32-unknown-unknown` the pool is uncapped, and close cannot
   block for tasks that run only once the caller yields: with tasks
   still running and a live context it returns `BusError::NotDrained`.
+  The target only selects this single-threaded policy, so native unit
+  tests run it; `make test-rs-wasm` runs a smoke test on wasm32 under
+  Node with `wasm-bindgen-test`.
 
 ## Go-first rule
 
