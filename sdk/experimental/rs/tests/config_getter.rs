@@ -290,3 +290,41 @@ fn registry_load_missing_empty_and_invalid() {
     std::fs::write(&bad, ":\n  - oops").unwrap();
     assert!(load_registry(&bad).is_err());
 }
+
+#[cfg(unix)]
+#[test]
+fn registry_save_is_private_and_atomic() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = tempfile::tempdir().unwrap();
+    let dir = d.path().join("sub");
+    let path = dir.join("registry.yaml");
+    let mut r = Registry::default();
+    r.add(Source {
+        token: "secret".into(),
+        ..src("remote", "ctxt")
+    });
+    for _ in 0..2 {
+        save_registry(&path, &r).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+    let dmode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+    assert_eq!(dmode, 0o700);
+    // No temp files left behind.
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    assert_eq!(load_registry(&path).unwrap(), r);
+}
+
+#[test]
+fn source_debug_redacts_token() {
+    let s = Source {
+        token: "secret".into(),
+        ..src("remote", "ctxt")
+    };
+    let mut r = Registry::default();
+    r.add(s.clone());
+    for out in [format!("{s:?}"), format!("{s:#?}"), format!("{r:?}")] {
+        assert!(!out.contains("secret"), "{out}");
+        assert!(out.contains("remote"), "{out}");
+    }
+}
