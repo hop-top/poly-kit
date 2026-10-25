@@ -110,6 +110,7 @@ config-signal = [
     "tokio/rt",
     "tokio/macros",
     "tokio/signal",
+    "tokio/sync",
 ]
 
 [dependencies]

@@ -18,14 +18,19 @@ mod nearest;
 mod options;
 mod overrides;
 mod parse_scalar;
+mod partition;
 #[cfg(not(target_arch = "wasm32"))]
 mod paths;
 mod precedence;
 mod registry;
+#[cfg(not(target_arch = "wasm32"))]
+mod reload;
 mod resolved;
 mod scope;
 #[cfg(not(target_arch = "wasm32"))]
 mod setter;
+#[cfg(all(feature = "config-signal", unix))]
+mod signal;
 mod value;
 pub(crate) mod yaml;
 
@@ -47,6 +52,7 @@ pub use options::{Defaults, EnvOverride, Options};
 pub use overrides::parse_config_args;
 pub use overrides::{apply_overrides, parse_overrides, with_project_marker, ParseOption};
 pub use parse_scalar::parse_scalar;
+pub use partition::{partition, Field, FieldDiff, ReloadFields};
 #[cfg(not(target_arch = "wasm32"))]
 pub use paths::{
     options_for_tool, options_for_tool_with_markers, options_for_tool_with_markers_from, paths,
@@ -60,6 +66,11 @@ pub use precedence::{
 #[cfg(not(target_arch = "wasm32"))]
 pub use registry::{load_registry, save_registry};
 pub use registry::{Registry, Source};
+#[cfg(not(target_arch = "wasm32"))]
+pub use reload::{
+    ReloadFailReason, ReloadFailedPayload, ReloadOptions, ReloadPublisher, ReloadTopics,
+    Reloadable, ReloadedPayload,
+};
 pub use resolved::{
     format_resolved, format_resolved_table, resolved_as_json, sorted_by_key, Origin, Resolved,
 };

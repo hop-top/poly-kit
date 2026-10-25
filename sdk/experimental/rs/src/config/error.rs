@@ -51,6 +51,18 @@ impl Error {
         Error::new(ErrorKind::Invalid, msg)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn immutable(paths: Vec<String>) -> Error {
+        Error {
+            kind: ErrorKind::ImmutableChanged,
+            msg: format!(
+                "config reload vetoed: immutable field(s) changed: {}",
+                paths.join(", ")
+            ),
+            paths,
+        }
+    }
+
     /// Go's `fmt.Errorf("<prefix>: %w", err)`.
     pub(crate) fn wrap(mut self, prefix: impl fmt::Display) -> Error {
         self.msg = format!("{prefix}: {}", self.msg);
