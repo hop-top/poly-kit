@@ -45,7 +45,7 @@ func TestStreamConformanceHandshake(t *testing.T) {
 		} `json:"auth"`
 		Ack []struct {
 			Name   string   `json:"name"`
-			Mine   int      `json:"mine"`
+			Mine   *int     `json:"mine"`
 			Frame  string   `json:"frame"`
 			OK     bool     `json:"ok"`
 			Kind   string   `json:"kind"`
@@ -128,7 +128,10 @@ func TestStreamConformanceHandshake(t *testing.T) {
 	}
 	for _, tc := range f.Ack {
 		t.Run("ack/"+tc.Name, func(t *testing.T) {
-			a, err := parseAck([]byte(tc.Frame), tc.Mine)
+			if tc.Mine == nil {
+				t.Fatal("vector: ack case without mine")
+			}
+			a, err := parseAck([]byte(tc.Frame), *tc.Mine)
 			if !tc.OK {
 				if err == nil {
 					t.Fatalf("got %+v, want failure", a)

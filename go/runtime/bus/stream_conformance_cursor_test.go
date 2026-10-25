@@ -41,10 +41,7 @@ func TestStreamConformanceCursor(t *testing.T) {
 				Position json.RawMessage `json:"position"`
 			} `json:"frames"`
 			Expect struct {
-				LinkUp struct {
-					Resume      string   `json:"resume"`
-					Invalidated *confGap `json:"invalidated"`
-				} `json:"link_up"`
+				LinkUp   json.RawMessage   `json:"link_up"`
 				Frames   []json.RawMessage `json:"frames"`
 				Position *confPos          `json:"position"`
 			} `json:"expect"`
@@ -83,13 +80,16 @@ func TestStreamConformanceCursor(t *testing.T) {
 			default:
 				t.Fatalf("vector link %q", tc.Link)
 			}
-			resume, gap := c.linkUp(ack, tc.Reconnect)
-			if resume != tc.Expect.LinkUp.Resume {
-				t.Errorf("resume = %s, want %s", resume, tc.Expect.LinkUp.Resume)
+			resume, gap, err := c.linkUp(ack, tc.Reconnect)
+			var linkUp any = map[string]any{"resume": resume, "invalidated": confGapOf(gap)}
+			if err != nil {
+				if !isProtocolError(err) {
+					t.Fatalf("link-up err = %v, want a protocol error", err)
+				}
+				linkUp = "protocol_error"
 			}
-			if got := confGapOf(gap); !reflect.DeepEqual(got, tc.Expect.LinkUp.Invalidated) {
-				t.Errorf("link-up invalidated\n got  %+v\n want %+v", got, tc.Expect.LinkUp.Invalidated)
-			}
+			lu, _ := json.Marshal(linkUp)
+			assertJSONEqual(t, lu, tc.Expect.LinkUp)
 			if len(tc.Frames) != len(tc.Expect.Frames) {
 				t.Fatal("vector: frames and expectations differ in length")
 			}

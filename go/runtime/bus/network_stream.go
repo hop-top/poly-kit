@@ -30,13 +30,13 @@ func WithLog(l StreamLog) NetworkOption {
 
 // WithHeartbeat sets the interval at which an acceptor proves a quiet
 // stream link alive. It is advertised to dialers in the ack, and is
-// clamped to 1 ms - 24 h.
+// clamped to 1 s - 24 h.
 func WithHeartbeat(d time.Duration) NetworkOption {
 	return func(n *NetworkAdapter) {
 		switch {
 		case d <= 0:
-		case d < time.Millisecond:
-			n.heartbeat = time.Millisecond
+		case d < minHeartbeatMs*time.Millisecond:
+			n.heartbeat = minHeartbeatMs * time.Millisecond
 		case d > maxHeartbeatMs*time.Millisecond:
 			n.heartbeat = maxHeartbeatMs * time.Millisecond
 		default:

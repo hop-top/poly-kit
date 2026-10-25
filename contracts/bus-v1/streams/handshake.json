@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "description": "Handshake. auth: the acceptor's decoding of the dialer's first frame. `auth` must be a non-empty string, else `invalid_auth` (close 1008, no ack). Capability parsing is lenient: a non-object `caps` is absent; `streams` is a non-negative JSON integer, else 0; `frames` keeps the known names `kit` and `cloudevents` in order, dropping others; a non-string `origin` is empty. `session` is strict, with the control-frame codes: not an object, a non-array `subscribe`, or a malformed `resume` (stream 1-128 bytes, `after` an offset token) is `bad_request`; a bad pattern `invalid_pattern`; a bad scope `invalid_scope`. Absent or null members normalize to null. ack: the dialer's decoding of the reply: `type` must be `auth_ok` or `session_error`, else the handshake fails; a `session_error` carries `code`. `mine` is the dialer's own streams version. Only when the negotiated version min(`mine`, `caps.streams`) is at least 1 must `stream` hold `id` (1-128 bytes), offset tokens `oldest` and `head` with oldest <= head+1, and an integer `heartbeat_ms` in 1..86400000, and a present `resume` be well formed, else the handshake fails (`ok` false, a protocol error, final for the dialer); below that, `stream` and `resume` are ignored and normalize to null. negotiate: link version is the minimum of both `streams` (no peer caps: 0); the send format is the configured one when there was no handshake or the peer listed it, else kit. ack_encode: the acceptor's reply; a dialer that sent no caps gets exactly {\"type\":\"auth_ok\"}.",
+  "description": "Handshake. auth: the acceptor's decoding of the dialer's first frame. `auth` must be a non-empty string, else `invalid_auth` (close 1008, no ack). Capability parsing is lenient: a non-object `caps` is absent; `streams` is a non-negative JSON integer, else 0; `frames` keeps the known names `kit` and `cloudevents` in order, dropping others; a non-string `origin` is empty. `session` is strict, with the control-frame codes: not an object, a non-array `subscribe`, or a malformed `resume` (stream 1-128 bytes, `after` an offset token) is `bad_request`; a bad pattern `invalid_pattern`; a bad scope `invalid_scope`. Absent or null members normalize to null. ack: the dialer's decoding of the reply: `type` must be `auth_ok` or `session_error`, else the handshake fails; a `session_error` carries `code`. `mine` is the dialer's own streams version (required in every ack case). Only when the negotiated version min(`mine`, `caps.streams`) is at least 1 must `stream` hold `id` (1-128 bytes), offset tokens `oldest` and `head` with oldest <= head+1, and an integer `heartbeat_ms` in 1000..86400000, and a present `resume` be well formed, else the handshake fails (`ok` false, a protocol error, final for the dialer); below that, `stream` and `resume` are ignored and normalize to null. negotiate: link version is the minimum of both `streams` (no peer caps: 0); the send format is the configured one when there was no handshake or the peer listed it, else kit. ack_encode: the acceptor's reply; a dialer that sent no caps gets exactly {\"type\":\"auth_ok\"}.",
   "auth": [
     {
       "name": "legacy auth frame",
@@ -383,6 +383,33 @@
       "mine": 1,
       "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"5\",\"head\":\"3\",\"heartbeat_ms\":1}}",
       "ok": false
+    },
+    {
+      "name": "heartbeat below a second",
+      "mine": 1,
+      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":999}}",
+      "ok": false
+    },
+    {
+      "name": "heartbeat of a second",
+      "mine": 1,
+      "frame": "{\"type\":\"auth_ok\",\"caps\":{\"streams\":1,\"frames\":[\"kit\"]},\"stream\":{\"id\":\"s\",\"oldest\":\"1\",\"head\":\"0\",\"heartbeat_ms\":1000}}",
+      "ok": true,
+      "kind": "auth_ok",
+      "caps": {
+        "streams": 1,
+        "frames": [
+          "kit"
+        ]
+      },
+      "origin": "",
+      "stream": {
+        "id": "s",
+        "oldest": "1",
+        "head": "0",
+        "heartbeat_ms": 1000
+      },
+      "resume": null
     }
   ],
   "negotiate": [

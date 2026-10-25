@@ -17,18 +17,24 @@ var errLinkClosed = errors.New("bus: link closed before the reply")
 // and SetScope when called with the context of a handler that the link
 // to the same address is delivering: link.connected, stream.invalidated
 // or an event from that peer. The reply could only be read by the
-// goroutine that is running the handler, so the call would block
-// forever. Issue the request from another goroutine instead.
+// goroutine that is running the handler, so the call would block.
+// Subscribe the handler with SubscribeAsync (async handlers run off the
+// delivering goroutine and may pass their context), or start a goroutine
+// with a context not derived from the handler's.
+//
+// The check needs the handler's context: a call with an unrelated
+// context from such a handler blocks until the link closes (then
+// returns an error) rather than forever.
 var ErrReentrantRequest = errors.New("bus: request from a delivery of the same link")
 
 // Subscribe adds patterns to what the acceptor at addr sends this
 // dialer. The first explicit subscription replaces the implicit "#".
 // It returns the ack's offset: every event after it is filtered by the
 // new set. On a disconnected address it only updates the set sent in
-// the next handshake and returns 0.//
-// Pass the handler's context when calling from a bus handler: a call
-// made while the link to addr is delivering returns ErrReentrantRequest
-// instead of blocking.
+// the next handshake and returns 0.
+//
+// From a sync bus handler fed by the link to addr, pass the handler's
+// context: the call returns ErrReentrantRequest instead of blocking.
 func (n *NetworkAdapter) Subscribe(ctx context.Context, addr string, patterns ...string) (uint64, error) {
 	return n.request(ctx, addr, ctlRequest{Type: "subscribe", Patterns: patterns})
 }
@@ -104,6 +110,10 @@ func (n *NetworkAdapter) request(ctx context.Context, addr string, r ctlRequest)
 		delete(l.pending, r.ID)
 		l.pendMu.Unlock()
 		return 0, ctx.Err()
+	case <-l.ctx.Done():
+		// The link closed; its reader may be the caller itself, blocked
+		// in a handler, so do not wait for failPending.
+		return 0, errLinkClosed
 	case reply, ok := <-ch:
 		if !ok {
 			return 0, errLinkClosed

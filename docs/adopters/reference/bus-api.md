@@ -484,7 +484,8 @@ secret). On a stream link:
   duplicates; when that is impossible the dialer publishes
   `kit.runtime.stream.invalidated`: mark live views fed by that peer
   stale and refetch
-- the acceptor sends heartbeats (`WithHeartbeat`, default 15 s); a
+- the acceptor sends heartbeats (`WithHeartbeat`, default 15 s, 1 s to
+  24 h); a
   dialer closes a link after three silent intervals and reconnects
 - link state: `kit.runtime.link.connected` / `disconnected` events and
   `(*NetworkAdapter).LinkState(addr)`
@@ -524,10 +525,14 @@ legacy link.
 
 `Subscribe`, `Unsubscribe` and `SetScope` wait for the acceptor's
 reply, which only the link's own reader can deliver. Called with the
-context of a handler that link is delivering (`link.connected`,
+context of a sync handler that link is delivering (`link.connected`,
 `stream.invalidated`, or an event from that peer) they return an error
-wrapping `bus.ErrReentrantRequest` instead of blocking; pass the
-handler's context, and issue the request from another goroutine.
+wrapping `bus.ErrReentrantRequest` instead of blocking. To react to
+those events with a request, subscribe the handler with
+`SubscribeAsync` (async handlers run off the delivering goroutine and
+may pass their own context), or start a goroutine with a context not
+derived from the handler's. A sync handler that calls with an unrelated
+context blocks until the link closes, then gets an error.
 
 Subscribe authorizers (`WithSubscribeAuthorizer`) run on the link's
 writer, which keeps the ack's offset an exact fence. They must be fast:
@@ -537,10 +542,15 @@ dialer.
 
 Handshake failures: a refused session (`*bus.StreamError`) or a
 malformed reply (a protocol error) is final, so the address is not
-retried until the next explicit `Connect`; a rejected token
-(`bus.ErrAuthFailed`) is retried. Each is reported through
+retried until the next explicit `Connect`. A rejected token
+(`bus.ErrAuthFailed`, code `auth`) and a missing ack (code `timeout`)
+are retried by a reconnect loop, which `WithNetwork`, `Dial` or a
+dropped link starts; a first `Connect` that fails starts none, so use
+`Dial` to keep trying. Each failure is reported through
 `WithNetworkErrorFunc` and as `kit.runtime.link.disconnected` with
-`final` and `code` (`protocol`, `auth`, or the session error code).
+`final` and `code` (`protocol`, `auth`, `timeout`, or the session error
+code). A `Connect` that loses a race with `Disconnect` returns
+`bus.ErrDisconnected`.
 
 ### Behaviour changes
 

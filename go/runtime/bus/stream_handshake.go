@@ -164,9 +164,13 @@ func encodeAuthFrame(token string, caps *streamCaps, origin string, s *sessionRe
 	return b
 }
 
-// maxHeartbeatMs bounds a peer-advertised heartbeat to one day, so the
+// Bounds on a peer-advertised heartbeat: at least a second, so a hub
+// cannot make its dialers' watchdogs churn, and at most a day, so the
 // interval can never overflow a time.Duration.
-const maxHeartbeatMs = 86_400_000
+const (
+	minHeartbeatMs = 1_000
+	maxHeartbeatMs = 86_400_000
+)
 
 type streamInfo struct {
 	ID           string
@@ -232,7 +236,7 @@ func parseAck(data []byte, mine int) (ackFrame, error) {
 	si.Head, okH = parseOffsetToken(st["head"])
 	hb, err := strconv.ParseInt(string(st["heartbeat_ms"]), 10, 64)
 	if !okID || !validStreamID(si.ID) || !okO || !okH || (si.Oldest > si.Head && si.Oldest-si.Head > 1) ||
-		err != nil || hb < 1 || hb > maxHeartbeatMs {
+		err != nil || hb < minHeartbeatMs || hb > maxHeartbeatMs {
 		return ackFrame{}, protocolErr("ack: malformed stream info")
 	}
 	si.HeartbeatMs = hb

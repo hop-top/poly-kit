@@ -202,7 +202,7 @@ then a close with 1008 (`invalid session`):
 | `origin` | the sender's loop-prevention origin id, known before the first event |
 | `stream.id` | acceptor's stream id, see 3.1 |
 | `stream.oldest`, `stream.head` | offsets as in 1.2, decimal strings |
-| `stream.heartbeat_ms` | acceptor's heartbeat interval in 1..86 400 000 (one day), see 4.1 |
+| `stream.heartbeat_ms` | acceptor's heartbeat interval in 1 000..86 400 000 (one second to one day), see 4.1 |
 | `session` | dialer's initial subscription, scope and resume request, applied atomically before the link is registered, so no event slips between ack and replay |
 | `session.resume` (ack) | outcome, see 3.3; absent when the dialer asked for no resume |
 
@@ -216,9 +216,17 @@ Forward compatibility:
   `caps.streams >= N`; in particular it requires `stream` in the ack
   only when min(own, acceptor's) `caps.streams >= 1`, so a dialer that
   advertises 0 connects to a v1 acceptor as a legacy link
-- every number a peer sends is bounded: offsets are at most 2^64-1,
-  `heartbeat_ms` 1..86 400 000, `oldest <= head + 1`; a reply outside
-  these bounds is a protocol error
+- a dialer checks what it can check, and any failure is a protocol
+  error: offsets are decimal tokens of at most 2^64-1; `heartbeat_ms`
+  is in 1 000..86 400 000; `oldest <= head + 1`; a `replaying` outcome
+  repeats the requested `after` and does not exceed `stream.head`; a
+  `reset` outcome's `head` does not exceed `stream.head`; an outcome
+  without a request is refused; a `reset` frame has `after <= head` and
+  `head` at or above the position. Live event offsets and `position`
+  offsets have no upper bound the dialer can check (the acceptor's log
+  keeps growing), so they are trusted: an acceptor that sends a huge
+  offset mutes its dialer until the next reset, the same harm as an
+  acceptor that withholds events
 
 ### 2.3 Auth is the handshake
 
@@ -402,7 +410,7 @@ rule for ports that queue.
 ### 4.1 Heartbeat
 
 On a stream link the acceptor's writer handles a tick every
-`heartbeat_ms` (default 15 000, `WithHeartbeat`). On each tick it sends:
+`heartbeat_ms` (default 15 000, `WithHeartbeat`, 1 000 to 86 400 000). On each tick it sends:
 
 ```json
 {"type": "position", "stream": "stm_01jg000000e00a000000000000", "offset": "1450"}
@@ -768,13 +776,16 @@ they return `ErrStreamsUnsupported`. Called with the context of a
 handler that the same link is delivering (`link.connected`,
 `stream.invalidated`, an event from that peer) they return an error
 wrapping `ErrReentrantRequest`: only that delivering goroutine could
-read the reply.
+read the reply. Async handlers run off that goroutine, so the marker is
+cleared for them. A request blocked on a reply also returns when its
+link closes.
 
 Handshake failures are classified: a session error and a protocol error
 are final (no retry until the next explicit `Connect`); a rejected
-token is retried. Each is reported through `WithNetworkErrorFunc` and
-published as `link.disconnected` with its `final` and `code`, once per
-change of code.
+token (code `auth`) or a missing ack (code `timeout`) is retried by a
+reconnect loop; a first explicit `Connect` that fails starts none. Each
+is reported through `WithNetworkErrorFunc` and published as
+`link.disconnected` with its `final` and `code`, once per change.
 
 Authorizers run on the link's writer so the ack's `at` stays an exact
 fence; they must be fast.

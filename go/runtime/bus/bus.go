@@ -300,6 +300,13 @@ func (b *memBus) Publish(ctx context.Context, e Event) error {
 
 	b.mu.RUnlock()
 
+	// Async handlers run on their own goroutine, so they are no longer
+	// inside a network link's delivery: clear its marker, which would
+	// otherwise refuse requests that cannot deadlock from here.
+	if ctx.Value(deliveryKey{}) != nil {
+		ctx = context.WithValue(ctx, deliveryKey{}, nil)
+	}
+
 	// Dispatch async handlers outside the lock. wg.Add is deferred
 	// until after the semaphore slot is acquired so Close's wg.Wait
 	// cannot stall on a goroutine that hasn't launched yet.

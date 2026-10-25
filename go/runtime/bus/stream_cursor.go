@@ -77,17 +77,39 @@ func (c *dialerCursor) request() *resumeReq {
 	return &resumeReq{Stream: c.Stream, After: c.Offset}
 }
 
+// checkAck validates an ack's resume outcome against the request the
+// dialer sent (nil when none) and the ack's stream info.
+func checkAck(a *ackFrame, req *resumeReq) error {
+	if a == nil || a.Stream == nil || a.Resume == nil {
+		return nil
+	}
+	ro, head := a.Resume, a.Stream.Head
+	switch {
+	case req == nil:
+		return protocolErr("ack: resume outcome without a request")
+	case ro.Status == ResumeReplaying && (ro.After != req.After || ro.After > head):
+		return protocolErr("ack: replay after %d, asked %d, head %d", ro.After, req.After, head)
+	case ro.Status == ResumeReset && ro.Head > head:
+		return protocolErr("ack: reset head %d beyond stream head %d", ro.Head, head)
+	}
+	return nil
+}
+
 // linkUp applies the acceptor's ack (nil for a legacy link: a plain ack
 // or no handshake). It returns the resume status for link.connected and
-// the invalidation to publish before anything else, if any.
-func (c *dialerCursor) linkUp(a *ackFrame, reconnect bool) (string, *gapInfo) {
+// the invalidation to publish before anything else, if any; an ack that
+// fails checkAck is a protocol error and changes nothing.
+func (c *dialerCursor) linkUp(a *ackFrame, reconnect bool) (string, *gapInfo, error) {
+	if err := checkAck(a, c.request()); err != nil {
+		return "", nil, err
+	}
 	wanted := c.Held || reconnect
 	if a == nil || a.Stream == nil {
 		c.Held = false
 		if wanted {
-			return ResumeUnsupported, &gapInfo{Reason: ReasonUnsupported}
+			return ResumeUnsupported, &gapInfo{Reason: ReasonUnsupported}, nil
 		}
-		return ResumeUnsupported, nil
+		return ResumeUnsupported, nil, nil
 	}
 	s := a.Stream
 	asked, askedStream := c.Offset, c.Stream
@@ -97,19 +119,19 @@ func (c *dialerCursor) linkUp(a *ackFrame, reconnect bool) (string, *gapInfo) {
 	case a.Resume == nil:
 		c.Offset = s.Head
 		if wanted {
-			return ResumeNone, &gapInfo{Reason: ReasonUnsupported}
+			return ResumeNone, &gapInfo{Reason: ReasonUnsupported}, nil
 		}
-		return ResumeNone, nil
+		return ResumeNone, nil, nil
 	case a.Resume.Status == ResumeReset:
 		c.Offset = a.Resume.Head
-		return ResumeReset, &gapInfo{Reason: a.Resume.Reason, Stream: s.ID, After: a.Resume.After, Head: a.Resume.Head}
+		return ResumeReset, &gapInfo{Reason: a.Resume.Reason, Stream: s.ID, After: a.Resume.After, Head: a.Resume.Head}, nil
 	case held && askedStream != s.ID:
 		// A replay of a stream we did not ask for: treat it as a reset.
 		c.Offset = s.Head
-		return ResumeReset, &gapInfo{Reason: ReasonStream, Stream: s.ID, After: asked, Head: s.Head}
+		return ResumeReset, &gapInfo{Reason: ReasonStream, Stream: s.ID, After: asked, Head: s.Head}, nil
 	default:
 		c.Offset = a.Resume.After
-		return ResumeReplaying, nil
+		return ResumeReplaying, nil, nil
 	}
 }
 
@@ -135,6 +157,9 @@ func (c *dialerCursor) advance(off uint64) bool {
 func (c *dialerCursor) onReset(r resetInfo) (*gapInfo, error) {
 	if r.Stream != c.Stream {
 		return nil, protocolErr("reset for stream %q on a link to %q", r.Stream, c.Stream)
+	}
+	if r.After > r.Head {
+		return nil, protocolErr("reset after %d beyond head %d", r.After, r.Head)
 	}
 	if r.Head < c.Offset {
 		// Offsets only grow: a reset to below the position would make

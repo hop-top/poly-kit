@@ -114,14 +114,16 @@ type NetworkAdapter struct {
 	unsub        Unsubscribe
 	onErr        ErrFunc
 
-	log       StreamLog
-	logSize   int
-	ordered   bool // the bus reports accepted events in order
-	notifyMu  sync.Mutex
-	notify    chan struct{}
-	heartbeat time.Duration
-	newTicker func(time.Duration) (<-chan time.Time, func())
-	testHook  func(event string)
+	log        StreamLog
+	logSize    int
+	ordered    bool // the bus reports accepted events in order
+	notifyMu   sync.Mutex
+	notify     chan struct{}
+	heartbeat  time.Duration
+	newTicker  func(time.Duration) (<-chan time.Time, func())
+	testHook   func(event string)
+	writeFault func(data []byte) error // test seam: fail a write
+	ackTimeout time.Duration
 
 	maxSubs      int
 	initialSubs  []string
@@ -147,11 +149,12 @@ func NewNetworkAdapter(b Bus, opts ...NetworkOption) *NetworkAdapter {
 			MaxDelay:  30 * time.Second,
 			Jitter:    true,
 		},
-		originID:  randomID(),
-		notify:    make(chan struct{}),
-		heartbeat: DefaultHeartbeat,
-		maxSubs:   DefaultMaxSubscriptions,
-		seeds:     map[string]StreamPosition{},
+		originID:   randomID(),
+		notify:     make(chan struct{}),
+		heartbeat:  DefaultHeartbeat,
+		ackTimeout: handshakeTimeout,
+		maxSubs:    DefaultMaxSubscriptions,
+		seeds:      map[string]StreamPosition{},
 		newTicker: func(d time.Duration) (<-chan time.Time, func()) {
 			t := time.NewTicker(d)
 			return t.C, t.Stop

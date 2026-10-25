@@ -126,13 +126,21 @@ func positiveDuration(d time.Duration) time.Duration {
 
 func (l *link) write(data []byte) bool {
 	ctx, cancel := context.WithTimeout(l.ctx, writeTimeout)
-	err := l.conn.Write(ctx, websocket.MessageText, data)
+	var err error
+	if f := l.n.writeFault; f != nil {
+		err = f(data)
+	}
+	if err == nil {
+		err = l.conn.Write(ctx, websocket.MessageText, data)
+	}
 	cancel()
 	if err != nil {
 		l.writeFail++
-		// A stream link closes on the first failure: its cursor has
-		// already passed the frame, and resume must not skip it.
-		if l.stream || l.writeFail >= maxWriteFailures || l.ctx.Err() != nil {
+		// A stream link closes on the first failure: the acceptor's
+		// cursor has passed the frame and the dialer resumes it. An
+		// outbox link closes too, and drain rewinds its cursor so the
+		// next link sends the frame again.
+		if l.stream || (l.outbound && l.n.outbox) || l.writeFail >= maxWriteFailures || l.ctx.Err() != nil {
 			l.close(statusGoingAway, "write failures", "")
 			return false
 		}
@@ -213,6 +221,9 @@ func (l *link) drain() bool {
 		}
 		for _, e := range entries {
 			if !l.send(e) {
+				if l.outbound && n.outbox {
+					l.cursor.at = e.Offset - 1 // resend it on the next link
+				}
 				return false
 			}
 		}

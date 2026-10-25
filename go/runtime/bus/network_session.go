@@ -14,13 +14,26 @@ import (
 
 const handshakeTimeout = 10 * time.Second
 
+// ErrDisconnected is returned by a Connect that lost a race with
+// Disconnect for the same address: no link was made.
+var ErrDisconnected = errors.New("bus: address disconnected during connect")
+
+// errAckTimeout reports a handshake whose ack never came: a transport
+// problem, retried, reported with code "timeout". It wraps ErrAuthFailed
+// for callers that matched that error before.
+var errAckTimeout = fmt.Errorf("%w: no ack before the timeout", ErrAuthFailed)
+
 // Connect establishes a WebSocket connection to a remote peer and
 // registers addr as an outbound peer. With an authenticator the auth
 // exchange doubles as the stream handshake. A refused session returns a
 // *StreamError and a malformed handshake reply a protocol error; both
 // are final, so the address is not retried until the next explicit
-// Connect. A rejected token (ErrAuthFailed) is retried, since the
-// authenticator may hand out a fresh one.
+// Connect. A rejected token (ErrAuthFailed) or a missing ack (an
+// ErrAuthFailed reported with code "timeout") may be retried: the
+// authenticator may hand out a fresh token. Only a reconnect loop
+// retries (one started by WithNetwork, Dial, or a dropped link); a
+// first Connect that fails starts none, so use Dial to keep trying.
+// A Connect that loses a race with Disconnect returns ErrDisconnected.
 func (n *NetworkAdapter) Connect(ctx context.Context, addr string) error {
 	return n.connect(ctx, addr, false)
 }
@@ -80,6 +93,13 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 	if ack != nil {
 		peerCaps = ack.Caps
 	}
+	ps.mu.Lock()
+	err = checkAck(ack, ps.cursor.request())
+	ps.mu.Unlock()
+	if err != nil {
+		_ = conn.Close(statusProtocol, "protocol error")
+		return n.handshakeFailed(addr, ps, err)
+	}
 	v, format := negotiate(n.caps(), peerCaps, n.auth != nil, n.frames)
 	l := n.newLink(conn, addr, true)
 	l.ps, l.cursor, l.format = ps, ps.send, format
@@ -103,7 +123,10 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 		// Disconnect forgot the address while we dialed.
 		n.mu.Unlock()
 		_ = conn.Close(statusNormal, "disconnect")
-		return nil
+		if fromLoop {
+			return nil
+		}
+		return ErrDisconnected
 	case n.conns[addr] != nil:
 		// Lost a race with a reconnect.
 		n.mu.Unlock()
@@ -115,7 +138,7 @@ func (n *NetworkAdapter) connect(ctx context.Context, addr string, fromLoop bool
 	n.mu.Unlock()
 
 	ps.mu.Lock()
-	resume, gap := ps.cursor.linkUp(ack, ps.connected)
+	resume, gap, _ := ps.cursor.linkUp(ack, ps.connected) // checked above, under no concurrent change
 	ps.connected = true
 	ps.send.linkUp(n.log)
 	// A fresh state also clears Final from an earlier refused session.
@@ -150,18 +173,18 @@ func (n *NetworkAdapter) handshakeFailed(addr string, ps *peerState, err error) 
 		code, final = se.Code, true
 	case isProtocolError(err):
 		code, final = "protocol", true
+	case errors.Is(err, errAckTimeout):
+		code = "timeout"
 	case errors.Is(err, ErrAuthFailed):
 		code = "auth"
 	default:
 		return err
 	}
 	ps.mu.Lock()
-	repeat := !final && !ps.state.Connected && ps.state.Code == code
+	repeat := !final && !ps.state.Connected && ps.state.Code == code && !ps.state.Final
 	ps.state.Connected = false
 	ps.state.Code = code
-	if final {
-		ps.state.Final = true
-	}
+	ps.state.Final = final
 	ps.mu.Unlock()
 	if !repeat {
 		n.publishDisconnected(addr, final, code)
@@ -194,12 +217,15 @@ func (n *NetworkAdapter) dialHandshake(ctx context.Context, conn *websocket.Conn
 		_ = conn.Close(statusInternal, "auth write failed")
 		return ackFrame{}, err
 	}
-	ackCtx, ackCancel := context.WithTimeout(ctx, handshakeTimeout)
+	ackCtx, ackCancel := context.WithTimeout(ctx, n.ackTimeout)
 	_, data, err := conn.Read(ackCtx)
 	ackCancel()
 	if err != nil {
+		if websocket.CloseStatus(err) == statusPolicy {
+			return ackFrame{}, ErrAuthFailed // the acceptor refused us
+		}
 		_ = conn.Close(statusPolicy, "auth ack timeout")
-		return ackFrame{}, ErrAuthFailed
+		return ackFrame{}, errAckTimeout
 	}
 	a, err := parseAck(data, n.caps().Streams)
 	switch {

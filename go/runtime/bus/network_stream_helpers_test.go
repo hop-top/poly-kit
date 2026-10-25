@@ -72,9 +72,10 @@ func field(g got, k string) any { return g.Payload.(map[string]any)[k] }
 // gateAuth accepts any token; armed, Verify blocks until released, so a
 // test can hold a reconnect while it publishes. reject fails Verify.
 type gateAuth struct {
-	mu     sync.Mutex
-	gate   chan struct{}
-	reject bool
+	mu      sync.Mutex
+	gate    chan struct{}
+	reject  bool
+	entered chan struct{} // optional: signaled when a gated Verify starts waiting
 }
 
 func (g *gateAuth) Token() (string, error) { return "open", nil }
@@ -87,6 +88,9 @@ func (g *gateAuth) Verify(string) error {
 		return ErrAuthFailed
 	}
 	if gate != nil {
+		if g.entered != nil {
+			g.entered <- struct{}{}
+		}
 		<-gate
 	}
 	return nil
