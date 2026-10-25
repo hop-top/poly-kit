@@ -25,20 +25,22 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | File | Pins |
 |------|------|
 | `completers.json` | per completer spec and prefix: the items `Complete` returns (or that it fails), and the bridge output, values joined to descriptions by a tab plus the directive integer |
-| `requests.json` | one command tree with aliases, enum flags and bound completers; per `__complete` / `__completeNoDesc` command line, the exact stdout including the `:<directive>` line |
+| `requests.json` | named command trees with aliases (including one named `completion`), enum flags and bound completers; per `__complete` / `__completeNoDesc` command line, the exact stdout including the `:<directive>` line, and optionally a stderr substring (the directive's name) |
 | `scripts.json` + `scripts/` | `completion bash\|zsh\|fish\|powershell [--no-descriptions]` output for a program name, byte for byte |
 
 Directives are cobra's bit set: 0 default, 1 error, 2 no space, 4 no file completion, 8 filter by extension, 16 directories only, 32 keep order.
 
 Prefix matching in the completers is case-insensitive; command, alias and flag-name matching in `__complete` is case-sensitive, as in cobra. Alias completion order follows Go map iteration, so those cases are `unordered`.
 
-Runners are strict: unknown fields, a `version` other than `v1`, a corpus file no runner consumes and a golden no case claims all fail the run.
+After a cobra bump, `make completion-regen` rewrites the script goldens and the Rust templates; see [`scripts/`](scripts/README.md).
+
+Runners are strict: unknown fields, a `version` other than `v1`, a corpus file no runner consumes, a tree no case uses and a golden no case claims all fail the run.
 
 ## Runners
 
 | Port | Runner |
 |------|--------|
-| Go | `go/console/cli/completion/completion_conformance_test.go` (`TestConformanceCompletion*`) |
+| Go | `go/console/cli/completion/completion_conformance_test.go` (`TestConformanceCompletion*`); template derivation in `completion_templates_test.go` |
 | Rust | `sdk/experimental/rs/tests/cli_completion_conformance.rs` |
 
 ## See also

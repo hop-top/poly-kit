@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,6 +28,11 @@ const completionConfDir = "../../../../contracts/completion-v1"
 
 // completionConfFiles is every vector file this runner consumes; the
 // corpus directory must match it exactly.
+// updateGoldens rewrites contracts/completion-v1/scripts from cobra (and,
+// in completion_templates_test.go, the Rust templates) instead of
+// comparing: `make completion-regen` after a cobra bump.
+var updateGoldens = flag.Bool("update", false, "rewrite the completion-v1 script goldens and the Rust templates")
+
 var completionConfFiles = map[string]bool{
 	"completers.json": true,
 	"requests.json":   true,
@@ -143,37 +149,42 @@ type confCommand struct {
 	Commands []confCommand `json:"commands"`
 }
 
+// confTree is a kit root built from the corpus.
+type confTree struct {
+	Program   string            `json:"program"`
+	About     string            `json:"about"`
+	Commands  []confCommand     `json:"commands"`
+	Aliases   map[string]string `json:"aliases"`
+	FlagEnums []struct {
+		Path   string   `json:"path"`
+		Flag   string   `json:"flag"`
+		Values []string `json:"values"`
+	} `json:"flag_enums"`
+	FlagCompleters []struct {
+		Path      string   `json:"path"`
+		Flag      string   `json:"flag"`
+		Completer confSpec `json:"completer"`
+	} `json:"flag_completers"`
+	ArgCompleters []struct {
+		Path      string   `json:"path"`
+		Completer confSpec `json:"completer"`
+	} `json:"arg_completers"`
+}
+
 type requestsFile struct {
-	Schema      string `json:"$schema"`
-	ID          string `json:"$id"`
-	Version     string `json:"version"`
-	Description string `json:"description"`
-	Tree        struct {
-		Program   string            `json:"program"`
-		About     string            `json:"about"`
-		Commands  []confCommand     `json:"commands"`
-		Aliases   map[string]string `json:"aliases"`
-		FlagEnums []struct {
-			Path   string   `json:"path"`
-			Flag   string   `json:"flag"`
-			Values []string `json:"values"`
-		} `json:"flag_enums"`
-		FlagCompleters []struct {
-			Path      string   `json:"path"`
-			Flag      string   `json:"flag"`
-			Completer confSpec `json:"completer"`
-		} `json:"flag_completers"`
-		ArgCompleters []struct {
-			Path      string   `json:"path"`
-			Completer confSpec `json:"completer"`
-		} `json:"arg_completers"`
-	} `json:"tree"`
-	Cases []struct {
-		Name      string   `json:"name"`
-		Args      []string `json:"args"`
-		NoDesc    bool     `json:"no_desc"`
-		Unordered bool     `json:"unordered"`
-		Stdout    []string `json:"stdout"`
+	Schema      string              `json:"$schema"`
+	ID          string              `json:"$id"`
+	Version     string              `json:"version"`
+	Description string              `json:"description"`
+	Trees       map[string]confTree `json:"trees"`
+	Cases       []struct {
+		Name           string   `json:"name"`
+		Tree           string   `json:"tree"`
+		Args           []string `json:"args"`
+		NoDesc         bool     `json:"no_desc"`
+		Unordered      bool     `json:"unordered"`
+		Stdout         []string `json:"stdout"`
+		StderrContains string   `json:"stderr_contains"`
 	} `json:"cases"`
 }
 
@@ -321,8 +332,11 @@ func TestConformanceCompletionRequests(t *testing.T) {
 	if len(f.Cases) == 0 {
 		t.Fatal("cases section is empty")
 	}
-	tree := f.Tree
-	build := func(t *testing.T) *cli.Root {
+	if len(f.Trees) == 0 {
+		t.Fatal("trees section is empty")
+	}
+	used := map[string]bool{}
+	build := func(t *testing.T, tree confTree) *cli.Root {
 		r := cli.New(cli.Config{Name: tree.Program, Version: "1.0.0", Short: tree.About, DisableValidate: true})
 		for _, c := range tree.Commands {
 			r.Cmd.AddCommand(buildConfCommand(t, c))
@@ -354,7 +368,12 @@ func TestConformanceCompletionRequests(t *testing.T) {
 	}
 	for _, c := range f.Cases {
 		t.Run(c.Name, func(t *testing.T) {
-			r := build(t)
+			tree, ok := f.Trees[c.Tree]
+			if !ok {
+				t.Fatalf("no tree %q", c.Tree)
+			}
+			used[c.Tree] = true
+			r := build(t, tree)
 			var stdout, stderr bytes.Buffer
 			r.Cmd.SetOut(&stdout)
 			r.Cmd.SetErr(&stderr)
@@ -377,7 +396,15 @@ func TestConformanceCompletionRequests(t *testing.T) {
 			if !sameLines(got[:len(got)-1], c.Stdout[:len(c.Stdout)-1], c.Unordered) {
 				t.Errorf("completions = %q, want %q", got[:len(got)-1], c.Stdout[:len(c.Stdout)-1])
 			}
+			if c.StderrContains != "" && !strings.Contains(stderr.String(), c.StderrContains) {
+				t.Errorf("stderr = %q, want it to contain %q", stderr.String(), c.StderrContains)
+			}
 		})
+	}
+	for name := range f.Trees {
+		if !used[name] {
+			t.Errorf("tree %q has no case", name)
+		}
 	}
 }
 
@@ -401,12 +428,12 @@ func TestConformanceCompletionScripts(t *testing.T) {
 	}
 	for _, c := range f.Cases {
 		t.Run(c.Name, func(t *testing.T) {
-			if _, ok := goldens[c.Golden]; !ok {
+			if _, ok := goldens[c.Golden]; !ok && !*updateGoldens {
 				t.Fatalf("golden %s is missing", c.Golden)
 			}
 			goldens[c.Golden] = true
 			want, err := os.ReadFile(filepath.Join(filepath.FromSlash(completionConfDir), c.Golden))
-			if err != nil {
+			if err != nil && !*updateGoldens {
 				t.Fatal(err)
 			}
 			r := cli.New(cli.Config{Name: c.Program, Version: "1.0.0", Short: "Kit app", DisableValidate: true})
@@ -421,6 +448,12 @@ func TestConformanceCompletionScripts(t *testing.T) {
 			if err := r.Execute(t.Context()); err != nil {
 				t.Fatal(err)
 			}
+			if *updateGoldens {
+				if err := os.WriteFile(filepath.Join(filepath.FromSlash(completionConfDir), c.Golden), stdout.Bytes(), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
 			if got := stdout.String(); got != string(want) {
 				t.Errorf("script differs from %s (%d bytes, want %d)%s",
 					c.Golden, len(got), len(want), firstDiff(got, string(want)))
@@ -428,7 +461,7 @@ func TestConformanceCompletionScripts(t *testing.T) {
 		})
 	}
 	for g, used := range goldens {
-		if !used {
+		if !used && !*updateGoldens {
 			t.Errorf("%s has no case", g)
 		}
 	}
