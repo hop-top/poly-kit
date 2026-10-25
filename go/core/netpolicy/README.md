@@ -37,6 +37,7 @@ websocket) are in `example_dialer_test.go`.
 - Refusals return `ErrOffline`; match with `errors.Is` (net/http wraps it in `*url.Error`).
 - A refusal names method, scheme, host and path only: query, fragment and userinfo never appear, as they may carry credentials. net/http's `*url.Error` still quotes the full URL around it, so keep credentials out of URLs (headers instead).
 - Loopback addresses and unix sockets are exempt: `--offline` means no network, not no self.
+- Loopback is `localhost` (exact), 127.0.0.0/8, `::1` and v4-mapped loopback, with or without a port. A portless bracketed host (`[::1]`, the URL host of `http://[::1]/`) is loopback only when the brackets hold an IPv6 address; `[127.0.0.1]` is remote.
 - `Guard` and `Install` are idempotent. `Install` mutates `http.DefaultTransport`; call it once at start-up, never concurrently with in-flight requests.
 - Not covered, and not coverable from here: dependencies that call `net.Dial` with no dialer hook, callers holding a `*net.Dialer` (wrap `DialContext` at the call site), transports captured before `Install` ran. For those `--offline` stays advisory; consult `IsOffline` yourself.
 
@@ -51,3 +52,4 @@ websocket) are in `example_dialer_test.go`.
 
 - [cli-parity-guide.md](../../../docs/adopters/guides/cli-parity-guide.md), "Global Flags"
 - [architecture.md](../../../docs/contributors/architecture/architecture.md), security surface map
+- [contracts/netpolicy-v1](../../../contracts/netpolicy-v1/README.md): shared loopback, dial and refusal vectors (Go and Rust runners)

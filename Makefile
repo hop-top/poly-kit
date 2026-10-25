@@ -4,7 +4,7 @@
 	check-toolchain-parity lint-adr-refs lint-internal-refs lint-lock-py lint-php lint-py lint-readmes lint-rs lint-sdk-paths lint-templates lint-ts openapi \
 	preflight promote promote-alpha promote-beta promote-rc promote-release proto proto-check refresh-pii-rules \
 	refresh-rules refresh-secret-rules setup test test-go test-go-integration test-go-race test-hook test-lint-scripts \
-	test-parity test-parity-bus test-parity-config test-parity-kv test-parity-mcp test-parity-retry test-parity-taxonomy test-parity-typeid test-py \
+	test-parity test-parity-bus test-parity-config test-parity-kv test-parity-mcp test-parity-netpolicy test-parity-retry test-parity-taxonomy test-parity-typeid test-py \
 	test-release test-rs test-templates test-ts \
 	test-affected test-workflow tools tools-golangci-lint
 
@@ -200,7 +200,7 @@ test-rs: ## Rust tests (default + all features, matches publish-rs.yml + manual 
 	# is exercised at PR time, not deferred to manual runs.
 	cd sdk/experimental/rs && cargo test --all-features --locked
 
-test-parity: test-parity-typeid test-parity-bus test-parity-config test-parity-retry test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
+test-parity: test-parity-typeid test-parity-bus test-parity-config test-parity-retry test-parity-netpolicy test-parity-kv test-parity-mcp test-parity-taxonomy ## Cross-language parity tests
 	go test -tags parity ./go/console/cli/... -timeout 300s -count=1
 	cd engine/sdk/py-kit-engine && uv sync --all-extras -q
 	go test -tags parity ./engine/sdk/parity/... -timeout 300s -count=1
@@ -310,6 +310,12 @@ test-parity-retry: ## retry-v1 conformance corpus (Go and Rust runners)
 	go test ./go/core/util/ -run '^TestConformanceRetry' -count=1
 	@echo "==> retry-v1 conformance: Rust"
 	cd sdk/experimental/rs && cargo test --test retry_conformance --locked
+
+test-parity-netpolicy: ## netpolicy-v1 conformance corpus (Go and Rust runners)
+	@echo "==> netpolicy-v1 conformance: Go"
+	go test ./go/core/netpolicy/ -run '^TestConformanceNetpolicy' -count=1
+	@echo "==> netpolicy-v1 conformance: Rust"
+	cd sdk/experimental/rs && cargo test --features api --test netpolicy_conformance --locked
 
 # Cross-process kv storage-binding gate over contracts/kv-v1/keys.json.
 # The Go test drives the Rust half as a `cargo test` subprocess, so this

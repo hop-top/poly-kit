@@ -15,6 +15,9 @@ in each corpus's own README.
 - [config-v1/](config-v1/README.md): kit/core/config corpus: scalar
   parsing and typing, overrides, precedence, layered load, set/unset.
   Go and Rust runners.
+- [netpolicy-v1/](netpolicy-v1/README.md): kit/core/netpolicy `--offline`
+  corpus: loopback classification, dial decision, offline URL guard,
+  refusal texts. Go and Rust runners.
 - [retry-v1/](retry-v1/README.md): kit/core/util retry backoff corpus:
   delay table, full-jitter bounds, stop rule. Go and Rust runners.
 - [kv-v1/](kv-v1/README.md): kit/storage/kv storage-binding corpus: keys

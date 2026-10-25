@@ -337,6 +337,21 @@ jobs:
         run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus --lib -- -D warnings
         env:
           CLIPPY_CONF_DIR: clippy-wasm32
+      # The netpolicy core is the dependency-free half of the --offline
+      # policy (no reqwest, no tokio), so a wasm client can check dials.
+      - run: cargo build --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy
+      - name: clippy (wasm32, bus and netpolicy)
+        run: cargo clippy --locked --target wasm32-unknown-unknown --no-default-features --features bus,netpolicy --lib -- -D warnings
+        env:
+          CLIPPY_CONF_DIR: clippy-wasm32
+      - name: netpolicy pulls no reqwest or tokio
+        run: |
+          tree=$(cargo tree --locked -e normal --no-default-features --features netpolicy)
+          if grep -qE '(reqwest|tokio) v' <<<"$tree"; then
+            echo "$tree"
+            echo "::error::--features netpolicy pulls reqwest or tokio"
+            exit 1
+          fi
       - name: bus does not enable serde_json/preserve_order
         run: |
           tree=$(cargo tree --locked -e normal,features --no-default-features --features bus -i serde_json)

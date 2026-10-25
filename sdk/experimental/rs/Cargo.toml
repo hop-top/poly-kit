@@ -7,12 +7,18 @@ description = "Cross-language CLI UX parity toolkit"
 
 [features]
 default = []
-# The netpolicy chokepoint lives beneath `api`: it owns the reqwest client
-# construction path for user traffic, so anything that issues such a
-# request necessarily compiles it in. The telemetry HTTPS sink builds its
-# own client and is deliberately unguarded (logging-class egress).
-# `thiserror` supplies the typed refusal.
-api = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:thiserror"]
+# The netpolicy guarded client lives beneath `api`: it owns the reqwest
+# client construction path for user traffic, so anything that issues
+# such a request necessarily compiles it in. The telemetry HTTPS sink
+# builds its own client and is deliberately unguarded (logging-class
+# egress). `thiserror` supplies the client's error type. No direct
+# tokio: nothing here names it, and reqwest brings its own.
+api = ["netpolicy", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:thiserror"]
+# The policy decision alone: `NetPolicy`, loopback classification, the
+# dial check and the typed refusal. No dependencies, wasm-safe, so a
+# client that dials its own sockets (websocket, SMTP, SQL) can enforce
+# `--offline` without compiling reqwest or tokio.
+netpolicy = []
 blob = ["dep:thiserror"]
 uri = ["dep:hop-top-cite"]
 # preserve_order backs serde_json::Map with indexmap instead of BTreeMap, so

@@ -150,3 +150,33 @@ func TestGuard_RefusalOmitsQueryFragmentUserinfo(t *testing.T) {
 		}
 	}
 }
+
+// A URL with no port keeps an IPv6 literal bracketed in URL.Host
+// ("[::1]"). It is still loopback when the bracketed text is a loopback
+// IPv6 address, v4-mapped included; brackets around anything else (an
+// IPv4 address, a name) are not an address and stay remote.
+func TestRoundTripper_BracketedHostWithoutPort(t *testing.T) {
+	cases := []struct {
+		target  string
+		allowed bool
+	}{
+		{"http://[::1]/health", true},
+		{"http://[::ffff:127.0.0.1]/health", true},
+		{"http://[2001:db8::1]/health", false},
+	}
+	for _, c := range cases {
+		rec := &tripRecorder{}
+		req, err := http.NewRequestWithContext(
+			netpolicy.WithOffline(t.Context(), true), http.MethodGet, c.target, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", c.target, err)
+		}
+		_, err = netpolicy.Guard(rec).RoundTrip(req)
+		if c.allowed && (err != nil || !rec.reached) {
+			t.Errorf("%s: refused while offline: %v", c.target, err)
+		}
+		if !c.allowed && !errors.Is(err, netpolicy.ErrOffline) {
+			t.Errorf("%s: want ErrOffline, got %v", c.target, err)
+		}
+	}
+}
