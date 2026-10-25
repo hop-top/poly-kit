@@ -270,3 +270,24 @@ func TestCheckDial_MatchesGuardExemptions(t *testing.T) {
 		}
 	}
 }
+
+// CheckDial applies the bracket rule too: a bracketed loopback IPv6
+// literal with no port is loopback, bracketed non-IPv6 text is not.
+func TestCheckDial_BracketedHostWithoutPort(t *testing.T) {
+	off := offlineCtx(t)
+	for _, addr := range []string{"[::1]", "[::ffff:127.0.0.1]", "[0:0:0:0:0:0:0:1]"} {
+		if err := netpolicy.CheckDial(off, "tcp", addr); err != nil {
+			t.Errorf("CheckDial(tcp,%s) = %v, want nil", addr, err)
+		}
+	}
+	for _, addr := range []string{"[127.0.0.1]", "[localhost]", "[2001:db8::1]", "[::1%lo0]", "[[::1]]"} {
+		err := netpolicy.CheckDial(off, "tcp", addr)
+		if !errors.Is(err, netpolicy.ErrOffline) {
+			t.Errorf("CheckDial(tcp,%s) = %v, want ErrOffline", addr, err)
+			continue
+		}
+		if want := "dial tcp " + addr + ": network disabled by --offline"; err.Error() != want {
+			t.Errorf("CheckDial(tcp,%s) = %q, want %q", addr, err.Error(), want)
+		}
+	}
+}
