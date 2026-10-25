@@ -283,6 +283,90 @@
       "topic": "a..c.run",
       "ok": false,
       "error": "topic \"a..c.run\" has empty segment at position 1"
+    },
+    {
+      "name": "ctrl: \"a\\u0000.b.c.d\"",
+      "topic": "a\u0000.b.c.d",
+      "ok": false,
+      "error": "topic \"a\\x00.b.c.d\" segment \"a\\x00\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b.c.d\\u007f\"",
+      "topic": "a.b.c.d",
+      "ok": false,
+      "error": "topic \"a.b.c.d\\x7f\" segment \"d\\x7f\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\\"d\"",
+      "topic": "a.b.c.\"d",
+      "ok": false,
+      "error": "topic \"a.b.c.\\\"d\" segment \"\\\"d\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b.c.d\\u00e9\"",
+      "topic": "a.b.c.dé",
+      "ok": false,
+      "error": "topic \"a.b.c.dé\" segment \"dé\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\u200bd\"",
+      "topic": "a.b.c.\u200bd",
+      "ok": false,
+      "error": "topic \"a.b.c.\\u200bd\" segment \"\\u200bd\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\u2028\"",
+      "topic": "a.b.c.\u2028",
+      "ok": false,
+      "error": "topic \"a.b.c.\\u2028\" segment \"\\u2028\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a\\tb.c.d.e\"",
+      "topic": "a\tb.c.d.e",
+      "ok": false,
+      "error": "topic \"a\\tb.c.d.e\" segment \"a\\tb\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\\\d\"",
+      "topic": "a.b.c.\\d",
+      "ok": false,
+      "error": "topic \"a.b.c.\\\\d\" segment \"\\\\d\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b.c.d\\u0007\"",
+      "topic": "a.b.c.d\u0007",
+      "ok": false,
+      "error": "topic \"a.b.c.d\\a\" segment \"d\\a\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\ud83d\\ude42\"",
+      "topic": "a.b.c.🙂",
+      "ok": false,
+      "error": "topic \"a.b.c.🙂\" segment \"🙂\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b.c.\\u00a0\"",
+      "topic": "a.b.c.\u00a0",
+      "ok": false,
+      "error": "topic \"a.b.c.\\u00a0\" segment \"\\u00a0\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b\\u0000.c.d.e\"",
+      "topic": "a.b\u0000.c.d.e",
+      "ok": false,
+      "error": "topic \"a.b\\x00.c.d.e\" has 5 segments; expected 4 (source.category.object.action)"
+    },
+    {
+      "name": "ctrl: \"a\\u001b.b.c.d\"",
+      "topic": "a\u001b.b.c.d",
+      "ok": false,
+      "error": "topic \"a\\x1b.b.c.d\" segment \"a\\x1b\" must be lowercase letters, digits, or underscores"
+    },
+    {
+      "name": "ctrl: \"a.b.c.d\\nx\"",
+      "topic": "a.b.c.d\nx",
+      "ok": false,
+      "error": "topic \"a.b.c.d\\nx\" segment \"d\\nx\" must be lowercase letters, digits, or underscores"
     }
   ]
 }

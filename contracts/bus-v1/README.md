@@ -40,7 +40,8 @@ Conventions:
 - Runners are strict: unknown fields, a `version` other than `v1`, an unknown event `mode`, a failing case with neither `error` nor `error_contains`, and a corpus file no runner consumes all fail the run.
 - JSON documents are compared as values, not text, so key order and payload escaping do not matter.
 - Timestamps are fixed strings in the canonical form Go re-encodes unchanged (fractional seconds with trailing zeros trimmed, original zone offset). No runner reads the clock.
-- Error-text quoting follows Go `%q` for printable text. Vectors avoid non-printable characters other than `\n`, whose escaping the languages share.
+- Error-text quoting follows Go `%q` (`strconv.Quote`): control characters, `\`, `"` and non-printable runes are escaped the Go way, and the `ctrl:` cases pin that. A port's quote helper must match, not use its language's debug formatting.
+- To extend a vector file: add the case, run the Go runner, and take the expectation from what Go produces. Only Go decides expectations; never edit one to make another port pass.
 
 ## What the error text contract covers
 

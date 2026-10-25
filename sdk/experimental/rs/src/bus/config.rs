@@ -15,6 +15,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use super::mem::{BusBuilder, Mode};
+use super::quote::quote;
 
 /// Environment variable that overrides the enforcement mode. Values
 /// (case-insensitive): `off`, `warn`, `strict`; anything else is ignored.
@@ -58,8 +59,8 @@ impl fmt::Display for ParseModeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "bus: unknown enforce mode {:?} (want off|warn|strict)",
-            self.0
+            "bus: unknown enforce mode {} (want off|warn|strict)",
+            quote(&self.0)
         )
     }
 }
@@ -84,6 +85,15 @@ impl FromStr for Mode {
             "strict" => Ok(Mode::Strict),
             _ => Err(ParseModeError(s.to_string())),
         }
+    }
+}
+
+/// Go-shaped [`Mode::from_str`]: the parsed mode, or [`Mode::Warn`] together
+/// with the error for an unknown value.
+pub fn mode_from_string(s: &str) -> (Mode, Option<ParseModeError>) {
+    match s.parse() {
+        Ok(m) => (m, None),
+        Err(e) => (Mode::Warn, Some(e)),
     }
 }
 

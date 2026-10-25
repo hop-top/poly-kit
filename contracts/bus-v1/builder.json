@@ -64,15 +64,6 @@
       "topic": "kit.config.snapshot_partial_reload.failed"
     },
     {
-      "name": "prefixed, no modifier",
-      "source": "kit",
-      "category": "config",
-      "object": "snapshot",
-      "action": "reloaded",
-      "ok": true,
-      "topic": "kit.config.snapshot.reloaded"
-    },
-    {
       "name": "prefixed, one modifier",
       "source": "kit",
       "category": "config",

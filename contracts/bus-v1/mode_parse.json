@@ -156,6 +156,89 @@
       "mode": "warn",
       "ok": false,
       "error": "bus: unknown enforce mode \"strict;\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"bo\\u0000gus\"",
+      "input": "bo\u0000gus",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"bo\\x00gus\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"\\u007fx\"",
+      "input": "x",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"\\x7fx\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"a\\u200bb\"",
+      "input": "a\u200bb",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"a\\u200bb\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"q\\\"uote\"",
+      "input": "q\"uote",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"q\\\"uote\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"back\\\\slash\"",
+      "input": "back\\slash",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"back\\\\slash\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"\\u65e5\\u672c\"",
+      "input": "日本",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"日本\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"tab\\there\"",
+      "input": "tab\there",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"tab\\there\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"\\u00a0off\\u2003\"",
+      "input": "\u00a0off\u2003",
+      "mode": "off",
+      "ok": true
+    },
+    {
+      "name": "ctrl: \"bell\\u0007\"",
+      "input": "bell\u0007",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"bell\\a\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"\\ud83d\\ude42\"",
+      "input": "🙂",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"🙂\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"\\u2028x\"",
+      "input": "\u2028x",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"\\u2028x\" (want off|warn|strict)"
+    },
+    {
+      "name": "ctrl: \"line\\nbreak\"",
+      "input": "line\nbreak",
+      "mode": "warn",
+      "ok": false,
+      "error": "bus: unknown enforce mode \"line\\nbreak\" (want off|warn|strict)"
     }
   ]
 }

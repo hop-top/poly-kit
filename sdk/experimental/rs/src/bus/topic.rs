@@ -25,6 +25,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use super::quote::{quote, quote_char};
+
 /// Maximum total length of a published topic.
 const MAX_TOPIC_LEN: usize = 128;
 
@@ -159,8 +161,9 @@ impl fmt::Display for InvalidTopicError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "bus: invalid topic: {:?} ({})",
-            self.topic.0, self.reason
+            "bus: invalid topic: {} ({})",
+            quote(&self.topic.0),
+            self.reason
         )
     }
 }
@@ -200,7 +203,7 @@ pub fn validate(t: &Topic) -> Result<(), InvalidTopicError> {
     }
     for (i, p) in parts.iter().enumerate() {
         if let Err(e) = validate_segment(p) {
-            return Err(invalid(format!("segment {} ({:?}): {}", i + 1, p, e)));
+            return Err(invalid(format!("segment {} ({}): {}", i + 1, quote(p), e)));
         }
     }
     Ok(())
@@ -225,7 +228,8 @@ fn validate_segment(seg: &str) -> Result<(), String> {
             }
             other => {
                 return Err(format!(
-                    "invalid character {other:?} (allowed: a-z, 0-9, _)"
+                    "invalid character {} (allowed: a-z, 0-9, _)",
+                    quote_char(other)
                 ));
             }
         }
@@ -257,25 +261,33 @@ pub fn validate_topic(t: &Topic) -> Result<(), String> {
     let parts: Vec<&str> = s.split('.').collect();
     if parts.len() != 4 {
         return Err(format!(
-            "topic {s:?} has {} segments; expected 4 (source.category.object.action)",
+            "topic {} has {} segments; expected 4 (source.category.object.action)",
+            quote(s),
             parts.len()
         ));
     }
     for (i, seg) in parts.iter().enumerate() {
         if seg.is_empty() {
-            return Err(format!("topic {s:?} has empty segment at position {i}"));
+            return Err(format!(
+                "topic {} has empty segment at position {i}",
+                quote(s)
+            ));
         }
         if !valid_segment(seg) {
             return Err(format!(
-                "topic {s:?} segment {seg:?} must be lowercase letters, digits, or underscores"
+                "topic {} segment {} must be lowercase letters, digits, or underscores",
+                quote(s),
+                quote(seg)
             ));
         }
     }
     let action = parts[3];
     if !is_past_tense(action) {
         return Err(format!(
-            "topic {s:?} action segment {action:?} is not past-tense \
-             (e.g. \"started\", \"created\"); see bus::PAST_TENSE_WHITELIST"
+            "topic {} action segment {} is not past-tense \
+              (e.g. \"started\", \"created\"); see bus::PAST_TENSE_WHITELIST",
+            quote(s),
+            quote(action)
         ));
     }
     Ok(())
@@ -304,7 +316,7 @@ pub fn prefix_topics(prefix: &str, actions: &[&str]) -> (TopicMap, Option<String
     if prefix.ends_with('.') {
         return (
             empty,
-            Some(format!("prefix {prefix:?} must not end with '.'")),
+            Some(format!("prefix {} must not end with '.'", quote(prefix))),
         );
     }
     let parts: Vec<&str> = prefix.split('.').collect();
@@ -312,7 +324,8 @@ pub fn prefix_topics(prefix: &str, actions: &[&str]) -> (TopicMap, Option<String
         return (
             empty,
             Some(format!(
-                "prefix {prefix:?} has {} segments; expected 3 (source.category.object)",
+                "prefix {} has {} segments; expected 3 (source.category.object)",
+                quote(prefix),
                 parts.len()
             )),
         );
@@ -322,7 +335,8 @@ pub fn prefix_topics(prefix: &str, actions: &[&str]) -> (TopicMap, Option<String
             return (
                 empty,
                 Some(format!(
-                    "prefix {prefix:?} has empty segment at position {i}"
+                    "prefix {} has empty segment at position {i}",
+                    quote(prefix)
                 )),
             );
         }
@@ -330,7 +344,9 @@ pub fn prefix_topics(prefix: &str, actions: &[&str]) -> (TopicMap, Option<String
             return (
                 empty,
                 Some(format!(
-                    "prefix {prefix:?} segment {seg:?} must be lowercase letters, digits, or underscores"
+                    "prefix {} segment {} must be lowercase letters, digits, or underscores",
+                    quote(prefix),
+                    quote(seg)
                 )),
             );
         }
@@ -342,7 +358,10 @@ pub fn prefix_topics(prefix: &str, actions: &[&str]) -> (TopicMap, Option<String
         if let Err(e) = validate_topic(&topic) {
             return (
                 out,
-                Some(format!("prefix_topics({prefix:?}, {actions:?}): {e}")),
+                Some(format!(
+                    "prefix_topics({}, {actions:?}): {e}",
+                    quote(prefix)
+                )),
             );
         }
         out.insert((*a).to_string(), topic);

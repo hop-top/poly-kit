@@ -18,8 +18,8 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 
 use hop_top_kit::bus::{
-    parse_topic, prefix_topics, prefixed_topic_of, qualifiers_from, validate, validate_topic,
-    Event, Mode, Qualifiers, Topic,
+    mode_from_string, parse_topic, prefix_topics, prefixed_topic_of, qualifiers_from, validate,
+    validate_topic, Event, Mode, Qualifiers, Topic,
 };
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -278,10 +278,13 @@ fn mode_parse_vectors() {
             "strict" => Mode::Strict,
             other => panic!("{}: unknown mode {other:?}", c.name),
         };
-        let got = c.input.parse::<Mode>();
-        // Go returns the fallback mode alongside the error.
-        if got.clone().unwrap_or_default() != want {
-            fails.push(format!("{}: mode = {got:?}, want {want}", c.name));
+        let (got, err) = mode_from_string(&c.input);
+        if got != want {
+            fails.push(format!("{}: mode = {got}, want {want}", c.name));
+        }
+        let parsed = c.input.parse::<Mode>();
+        if parsed.is_ok() != err.is_none() || parsed.as_ref().ok().is_some_and(|m| *m != want) {
+            fails.push(format!("{}: from_str = {parsed:?}", c.name));
         }
         expect_err(
             &mut fails,
@@ -291,7 +294,7 @@ fn mode_parse_vectors() {
                 error: &c.error,
                 error_contains: &None,
             },
-            got.err().map(|e| e.to_string()),
+            err.map(|e| e.to_string()),
         );
     }
     check(fails);
@@ -397,6 +400,7 @@ fn parse_topic_vectors() {
     let mut fails = vec![];
     for c in &f.cases {
         let parsed = parse_topic(&c.topic);
+        let err_topic = parsed.as_ref().err().map(|e| e.topic.as_str().to_string());
         expect_err(
             &mut fails,
             &c.name,
@@ -408,10 +412,8 @@ fn parse_topic_vectors() {
             parsed.as_ref().err().map(|e| e.to_string()),
         );
         let Ok((b, action)) = parsed else {
-            if let Err(e) = parse_topic(&c.topic) {
-                if e.topic.as_str() != c.topic {
-                    fails.push(format!("{}: error topic = {}", c.name, e.topic));
-                }
+            if err_topic.as_deref() != Some(c.topic.as_str()) {
+                fails.push(format!("{}: error topic = {err_topic:?}", c.name));
             }
             continue;
         };

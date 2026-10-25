@@ -3,15 +3,15 @@
 //!
 //! Go sets the process environment per test. Rust tests run in
 //! parallel, so everything here reads a fake environment through the
-//! `_with` variants; one test at the bottom exercises the real reader.
+//! `_with` variants; the real reader is tested in `bus_config_env.rs`.
 
 #![cfg(feature = "bus")]
 
 use std::collections::HashMap;
 
 use hop_top_kit::bus::{
-    mode_from_config_with, mode_from_env, mode_from_env_with, Bus, ConfigGetter, Event, Mode,
-    CONFIG_KEY_ENFORCE, ENV_ENFORCE,
+    mode_from_config_with, mode_from_env_with, Bus, ConfigGetter, Event, Mode, CONFIG_KEY_ENFORCE,
+    ENV_ENFORCE,
 };
 
 fn env_of(val: Option<&'static str>) -> impl Fn(&str) -> Option<String> {
@@ -166,15 +166,4 @@ fn with_enforce_from_config() {
         .enforce_from_config_with(Some(&g), env_of(Some("off")))
         .build();
     assert!(bad_topic_publish(&mut bus).unwrap_err().is_invalid_topic());
-}
-
-/// The only test that touches the real process environment.
-#[test]
-fn real_env_reader() {
-    std::env::set_var(ENV_ENFORCE, "strict");
-    assert_eq!(mode_from_env(), Mode::Strict);
-    std::env::set_var(ENV_ENFORCE, "bogus");
-    assert_eq!(mode_from_env(), Mode::Warn);
-    std::env::remove_var(ENV_ENFORCE);
-    assert_eq!(mode_from_env(), Mode::Warn);
 }
