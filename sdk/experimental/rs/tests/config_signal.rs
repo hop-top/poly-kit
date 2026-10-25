@@ -123,3 +123,58 @@ async fn watch_signal_veto_does_not_kill_watcher() {
     stop_tx.send(()).unwrap();
     task.await.unwrap().unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn watch_signal_publishes_a_panicked_reload() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let rec = Arc::new(Recorder::default());
+    let dir = tempfile::tempdir().unwrap();
+    let mut opts = Options {
+        project_config_path: write_cfg(dir.path(), &initial()),
+        ..Options::default()
+    };
+    let mut loaded = ReloadCfg::default();
+    load(&mut loaded, &opts).unwrap();
+    // The first reload's env hook panics inside `reload`.
+    let tripped = Arc::new(AtomicBool::new(false));
+    let t = tripped.clone();
+    opts.env_override = Some(Arc::new(move |_: &mut dyn std::any::Any| {
+        if !t.swap(true, Ordering::SeqCst) {
+            panic!("boom");
+        }
+    }));
+    let r = Arc::new(Reloadable::new(
+        loaded,
+        opts,
+        ReloadOptions::default().publisher(rec.clone()),
+    ));
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
+    let w = r.clone();
+    let task = tokio::spawn(async move {
+        w.watch_signal_ready(
+            async {
+                let _ = stop_rx.await;
+            },
+            &[SignalKind::window_change()],
+            move || {
+                let _ = ready_tx.send(());
+            },
+        )
+        .await
+    });
+    ready_rx.await.expect("handlers installed");
+    kill("-WINCH");
+    let failed = wait_for(&rec, "kit.config.snapshot.reload_failed", 1);
+    let err = failed[0].payload["error"].as_str().unwrap().to_string();
+    assert!(
+        err.starts_with("config reload: task ") && err.contains("boom"),
+        "{err}"
+    );
+    assert_eq!(failed[0].payload["reason"], "load_error");
+    // The watch survives: the next signal reloads normally.
+    kill("-WINCH");
+    wait_for(&rec, "kit.config.snapshot.reloaded", 1);
+    stop_tx.send(()).unwrap();
+    task.await.unwrap().unwrap();
+}

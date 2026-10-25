@@ -123,3 +123,47 @@ fn refused_edits_leave_the_file_untouched() {
     assert!(err.is(ErrorKind::EditUnsupported), "{err}");
     assert_eq!(std::fs::read_to_string(&p).unwrap(), body);
 }
+
+#[test]
+fn many_repairs_load_fast() {
+    // 20k tab separators and 20k under-indented continuations: one
+    // repair pass, a few parses, linear merge.
+    let mut body = String::from("name:\tx\n");
+    for i in 0..20_000 {
+        body.push_str(&format!("k{i}:\tv\nq{i}: \"a\nb\"\n"));
+    }
+    let start = Instant::now();
+    let s = load_str(&body).unwrap();
+    let took = start.elapsed();
+    eprintln!("40k-line repaired load: {took:?}");
+    assert_eq!(s.name, "x");
+    // Generous for unoptimized builds; release is far below a second.
+    assert!(took < Duration::from_secs(5), "{took:?}");
+}
+
+#[test]
+fn edits_on_large_files_are_fast() {
+    let d = tempfile::tempdir().unwrap();
+    let mut body = String::new();
+    for i in 0..20_000 {
+        body.push_str(&format!("k{i}: &a{i} v # c{i}\n"));
+    }
+    let p = write(d.path(), &body);
+    let opts = Options {
+        project_config_path: p.clone(),
+        ..Options::default()
+    };
+    let start = Instant::now();
+    set("k19999", "w", Scope::Project, &opts).unwrap();
+    unset("k0", Scope::Project, &opts).unwrap();
+    let took = start.elapsed();
+    eprintln!("20k-line set+unset: {took:?}");
+    assert!(took < Duration::from_secs(5), "{took:?}");
+    let text = std::fs::read_to_string(&p).unwrap();
+    assert!(
+        text.ends_with("k19999: &a19999 w # c19999\n"),
+        "{}",
+        &text[text.len() - 40..]
+    );
+    assert!(text.starts_with("k1: &a1 v # c1\n"));
+}

@@ -254,6 +254,20 @@ where
         Ok(())
     }
 
+    /// Publishes `reload_failed` (reason `load_error`) for a reload that
+    /// never returned, such as one that panicked.
+    #[cfg(all(feature = "config-signal", unix))]
+    pub(super) fn reload_aborted(&self, opts: &Options, cause: &str) {
+        let e = Error::invalid(format!("config reload: {cause}"));
+        self.failed(
+            opts,
+            ReloadFailReason::LoadError,
+            Vec::new(),
+            &e,
+            BTreeMap::new(),
+        );
+    }
+
     fn failed(
         &self,
         opts: &Options,

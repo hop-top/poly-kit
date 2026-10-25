@@ -14,8 +14,22 @@ use crate::config::yaml::{emit, Kind, Node, Style};
 
 use super::tree::nest;
 
+/// Start of the line holding `pos`. A leading BOM is not part of the
+/// first line (it is no indentation, and stays when that line goes).
 fn line_start(src: &str, pos: usize) -> usize {
-    src[..pos].rfind('\n').map_or(0, |i| i + 1)
+    match src[..pos].rfind('\n') {
+        Some(i) => i + 1,
+        None if src.starts_with('\u{feff}') && pos >= 3 => 3,
+        None => 0,
+    }
+}
+
+/// `|+` / `>2+`: a block scalar header with keep chomping.
+fn keeps_trailing(src: &str, header: usize) -> bool {
+    src[header + 1..]
+        .bytes()
+        .take_while(|c| matches!(c, b'0'..=b'9' | b'+' | b'-'))
+        .any(|c| c == b'+')
 }
 
 /// End of the line holding `pos`, before its `\n` (or `\r\n`).
@@ -301,7 +315,7 @@ fn remove_entry(src: &str, map: &Node, key: &str) -> Option<(String, Region)> {
     }
     let mut to = next_line_start(src, end);
     // A keep-chomped block scalar (`|+`) owns the blank lines after it.
-    if is_block_scalar(v) && src[span(v)?.0..line_end(src, span(v)?.0)].contains('+') {
+    if is_block_scalar(v) && keeps_trailing(src, span(v)?.0) {
         while to < src.len() && src[to..next_line_start(src, to)].trim().is_empty() {
             to = next_line_start(src, to);
         }

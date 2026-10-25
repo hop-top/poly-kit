@@ -355,9 +355,14 @@ func TestConformanceLoad(t *testing.T) {
 	var f struct {
 		confHeader
 		Cases []struct {
-			Name          string          `json:"name"`
-			Start         json.RawMessage `json:"start"`
-			Files         []string        `json:"files"`
+			Name     string          `json:"name"`
+			Start    json.RawMessage `json:"start"`
+			Files    []string        `json:"files"`
+			Generate *struct {
+				Prefix string `json:"prefix"`
+				Line   string `json:"line"`
+				Count  int    `json:"count"`
+			} `json:"generate"`
 			Overrides     []string        `json:"overrides"`
 			OK            bool            `json:"ok"`
 			Want          json.RawMessage `json:"want"`
@@ -375,7 +380,16 @@ func TestConformanceLoad(t *testing.T) {
 			}
 			dir := t.TempDir()
 			opts := Options{}
-			for i, body := range c.Files {
+			files := append([]string(nil), c.Files...)
+			if g := c.Generate; g != nil {
+				var b strings.Builder
+				b.WriteString(g.Prefix)
+				for i := 0; i < g.Count; i++ {
+					b.WriteString(strings.ReplaceAll(g.Line, "{i}", strconv.Itoa(i)))
+				}
+				files = append(files, b.String())
+			}
+			for i, body := range files {
 				p := filepath.Join(dir, fmt.Sprintf("f%d.yaml", i))
 				if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 					t.Fatal(err)

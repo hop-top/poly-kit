@@ -8,6 +8,8 @@
 //! `Option` hints come from the serializer), merges the layer into it
 //! here, then deserializes.
 
+use std::collections::HashMap;
+
 use super::yaml::de::{expand_merges, DeError};
 use super::yaml::{Kind, Node};
 
@@ -28,30 +30,34 @@ pub(crate) fn merge(dst: &mut Node, src: &Node) -> Result<(), DeError> {
     };
     let strukt = dst.hint.strukt;
     match (&mut dst.kind, src_entries) {
-        (Kind::Map(entries), Some(src_entries)) if strukt => {
-            for (k, v) in src_entries {
-                let key = k.scalar_value();
-                match entries.iter_mut().find(|(ek, _)| ek.scalar_value() == key) {
-                    Some((_, field)) => merge(field, v)?,
-                    // Fields the serializer skipped (or unknown ones,
-                    // which deserialization ignores like yaml.v3 does).
-                    None => entries.push((k.clone(), v.clone())),
+        (Kind::Map(entries), Some(src_entries)) => {
+            // Key → index, so a layer with many keys merges in linear time.
+            let mut index: HashMap<String, usize> = HashMap::with_capacity(entries.len());
+            for (i, (k, _)) in entries.iter().enumerate() {
+                if let Some(t) = k.scalar_value() {
+                    index.entry(t.to_string()).or_insert(i);
                 }
             }
-        }
-        (Kind::Map(entries), Some(src_entries)) => {
             for (k, v) in src_entries {
-                let key = k.scalar_value();
-                let slot = entries.iter_mut().find(|(ek, _)| ek.scalar_value() == key);
-                let v = v.target();
+                let slot = k.scalar_value().and_then(|t| index.get(t).copied());
                 match slot {
-                    Some((_, existing)) if v.is_null() => {
-                        if nullable(existing) {
+                    Some(i) if strukt => merge(&mut entries[i].1, v)?,
+                    Some(i) => {
+                        let v = v.target();
+                        let existing = &mut entries[i].1;
+                        if !v.is_null() || nullable(existing) {
                             *existing = v.clone();
                         }
                     }
-                    Some((_, existing)) => *existing = v.clone(),
-                    None => entries.push((k.clone(), v.clone())),
+                    // Fields the serializer skipped (or unknown ones,
+                    // which deserialization ignores like yaml.v3 does).
+                    None => {
+                        if let Some(t) = k.scalar_value() {
+                            index.insert(t.to_string(), entries.len());
+                        }
+                        let v = if strukt { v } else { v.target() };
+                        entries.push((k.clone(), v.clone()));
+                    }
                 }
             }
         }

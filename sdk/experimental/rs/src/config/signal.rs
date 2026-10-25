@@ -21,7 +21,9 @@ where
     /// `shutdown` completes, then returns `Ok(())`.
     ///
     /// Reload errors do not end the watch: the failure event is
-    /// published and the next signal is awaited. Errors only for no
+    /// published and the next signal is awaited. A reload that panics is
+    /// published as `reload_failed` (`load_error`, `config reload: task
+    /// ... panicked ...`) and the watch goes on. Errors only for no
     /// signals (`config.WatchSignal: at least one signal required`) or a
     /// signal handler that cannot be installed.
     ///
@@ -72,7 +74,13 @@ where
                 got = rx.recv() => match got {
                     Some(()) => {
                         let me = Arc::clone(self);
-                        let _ = tokio::task::spawn_blocking(move || me.reload(me.options())).await;
+                        let opts = self.options();
+                        let held = opts.clone();
+                        // A reload error was already published; a reload
+                        // that never returned (it panicked) is published here.
+                        if let Err(e) = tokio::task::spawn_blocking(move || me.reload(opts)).await {
+                            self.reload_aborted(&held, &e.to_string());
+                        }
                     }
                     None => break Ok(()),
                 },

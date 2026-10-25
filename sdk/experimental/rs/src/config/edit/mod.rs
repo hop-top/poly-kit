@@ -83,19 +83,17 @@ fn checked(
     if value_of(parsed.as_ref()) != value_of(Some(expected)) {
         return Err(refused());
     }
-    let mut kept: Vec<&str> = tokens(&text, parsed.as_ref())
-        .into_iter()
-        .map(|(_, t)| t)
-        .collect();
+    let mut kept: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for (_, t) in tokens(&text, parsed.as_ref()) {
+        *kept.entry(t).or_default() += 1;
+    }
     for (at, t) in tokens(src, Some(root)) {
         if (from..to).contains(&at) {
             continue;
         }
-        match kept.iter().position(|k| *k == t) {
-            Some(i) => {
-                kept.swap_remove(i);
-            }
-            None => return Err(refused()),
+        match kept.get_mut(t) {
+            Some(n) if *n > 0 => *n -= 1,
+            _ => return Err(refused()),
         }
     }
     Ok(text)
@@ -131,7 +129,12 @@ fn tokens<'a>(src: &'a str, root: Option<&Node>) -> Vec<(usize, &'a str)> {
     if let Some(r) = root {
         scalars(src, r, &mut spans);
     }
-    let inside = |i: usize| spans.iter().any(|&(s, e)| s <= i && i < e);
+    spans.sort_unstable();
+    // Scalars do not nest: the last span starting at or before `i`.
+    let inside = |i: usize| {
+        let k = spans.partition_point(|&(s, _)| s <= i);
+        k > 0 && i < spans[k - 1].1
+    };
     let b = src.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
@@ -336,5 +339,25 @@ mod tests {
             Some(("a: 1\nb: \"3\"\n".into(), (11, 12))),
             &expected,
         ));
+    }
+
+    #[test]
+    fn bom_files_edit_like_go() {
+        let src = "\u{feff}name: x # n\nport: 1\n";
+        assert_eq!(s(src, "z", "v"), "\u{feff}name: x # n\nport: 1\nz: v\n");
+        assert_eq!(unset(src, "name").unwrap(), "\u{feff}port: 1\n");
+        assert_eq!(s(src, "name", "y"), "\u{feff}name: y # n\nport: 1\n");
+        assert_eq!(
+            s("\u{feff}a:\n  b: 1\n", "a.c", "2"),
+            "\u{feff}a:\n  b: 1\n  c: \"2\"\n"
+        );
+    }
+
+    #[test]
+    fn keep_chomping_read_from_the_header() {
+        // A `+` in the header comment is not an indicator.
+        let src = "k: | # a+b\n  x\n\n# c\nz: 1\n";
+        assert_eq!(unset(src, "k").unwrap(), "\n# c\nz: 1\n");
+        assert_eq!(unset("k: |2+\n  x\n\nz: 1\n", "k").unwrap(), "z: 1\n");
     }
 }

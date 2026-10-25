@@ -334,12 +334,22 @@ struct LoadCase {
     start: Option<Json>,
     files: Vec<String>,
     #[serde(default)]
+    generate: Option<Generate>,
+    #[serde(default)]
     overrides: Vec<String>,
     ok: bool,
     #[serde(default)]
     want: Option<Json>,
     #[serde(default)]
     error_contains: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Generate {
+    prefix: String,
+    line: String,
+    count: usize,
 }
 
 #[test]
@@ -352,7 +362,15 @@ fn load_vectors() {
             None => Shape::default(),
         };
         let mut opts = Options::default();
-        for (i, body) in c.files.iter().enumerate() {
+        let mut files = c.files.clone();
+        if let Some(g) = &c.generate {
+            let mut b = g.prefix.clone();
+            for i in 0..g.count {
+                b.push_str(&g.line.replace("{i}", &i.to_string()));
+            }
+            files.push(b);
+        }
+        for (i, body) in files.iter().enumerate() {
             let p = d.path().join(format!("f{i}.yaml"));
             fs::write(&p, body).unwrap();
             opts.extra_config_paths.push(p);

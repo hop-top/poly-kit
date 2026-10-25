@@ -7,7 +7,7 @@ use std::sync::Arc;
 use saphyr_parser::{Event, Parser, ScalarStyle, Span, Tag};
 
 use super::resolve::{resolve, MAP_TAG, MERGE_TAG, SEQ_TAG, STR_TAG};
-use super::{Kind, Node, Style};
+use super::{repair, Kind, Node, Style};
 
 /// A syntax error, rendered like yaml.v3's (`yaml: line N: ...`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,64 +45,66 @@ enum Frame {
 /// A parse failure with the byte offset the parser reported.
 struct Failure {
     err: ParseError,
-    at: usize,
 }
 
-/// Retry budget for [`repair`]: one per tab separator or under-indented
-/// quoted line fixed.
-const MAX_REPAIRS: usize = 10_000;
+/// Parses after a failed first try: the repair pass, re-run while the
+/// tree shows a fix was wrong. Each round withdraws at least one fix.
+const MAX_ROUNDS: usize = 4;
 
 /// Parses the first document of `src`. `Ok(None)` for a stream with no
 /// document (empty or comments only).
 ///
-/// Three inputs libyaml (and so Go) reads but saphyr rejects are made
-/// readable first, without changing any value: a leading UTF-8 BOM is
-/// skipped; a tab after a `:` indicator becomes a space; continuation
-/// lines of a quoted scalar indented at or left of the enclosing block
-/// get leading spaces (which folding drops). Spans always point into
+/// A leading UTF-8 BOM is skipped. Input saphyr rejects where libyaml
+/// reads it (tab after `:`, under-indented quoted continuation) goes
+/// through [`repair`] once, in linear time. Spans always point into
 /// `src` as given.
 pub(crate) fn parse(src: &str) -> Result<Option<Node>, ParseError> {
     let (body, base) = match src.strip_prefix('\u{feff}') {
         Some(rest) => (rest, src.len() - rest.len()),
         None => (src, 0),
     };
-    let mut text = body.to_string();
-    let mut inserts: Vec<(usize, usize)> = Vec::new();
-    for _ in 0..=MAX_REPAIRS {
-        match parse_text(&text) {
-            Ok(mut root) => {
-                if base > 0 || !inserts.is_empty() {
-                    if let Some(r) = root.as_mut() {
-                        remap(r, &|m| to_orig(m, &inserts) + base);
+    let first = parse_text(body);
+    let (mut root, fixes) = match first {
+        Ok(root) => (root, repair::Fixes::default()),
+        Err(f) if !repair::repairable(&f.err.msg) => return Err(f.err),
+        Err(f) => {
+            let mut fixes = repair::candidates(body);
+            let mut out = Err(f.err);
+            for _ in 0..MAX_ROUNDS {
+                match parse_text(&fixes.apply(body)) {
+                    Err(e) => {
+                        out = Err(e.err);
+                        break;
+                    }
+                    Ok(root) => {
+                        if !repair::withdraw_wrong(&mut fixes, root.as_ref()) {
+                            out = Ok(root);
+                            break;
+                        }
                     }
                 }
-                return Ok(root);
             }
-            Err(f) => {
-                if !repair(&mut text, &mut inserts, &f) {
-                    return Err(f.err);
-                }
-            }
+            (out?, fixes)
+        }
+    };
+    let text = if fixes.tabs.is_empty() && fixes.inserts.is_empty() {
+        std::borrow::Cow::Borrowed(body)
+    } else {
+        std::borrow::Cow::Owned(fixes.apply(body))
+    };
+    if let Some(line) = repair::dash_tab(&text, root.as_ref()) {
+        return Err(ParseError {
+            line,
+            msg: "found character that cannot start any token".into(),
+        });
+    }
+    if base > 0 || !fixes.inserts.is_empty() {
+        if let Some(r) = root.as_mut() {
+            let map = repair::OrigMap::new(&fixes.inserts);
+            remap(r, &|m| map.orig(m) + base);
         }
     }
-    parse_text(&text).map_err(|f| f.err)
-}
-
-/// Offset in the unrepaired text for offset `m` in the repaired one.
-/// `inserts` holds `(original offset, spaces inserted there)`, sorted.
-fn to_orig(m: usize, inserts: &[(usize, usize)]) -> usize {
-    let mut shift = 0;
-    for &(p, n) in inserts {
-        let at = p + shift;
-        if m >= at + n {
-            shift += n;
-        } else if m >= at {
-            return p;
-        } else {
-            break;
-        }
-    }
-    m - shift
+    Ok(root)
 }
 
 /// Spans of the tree (not of alias targets, which nothing edits).
@@ -120,85 +122,15 @@ fn remap(n: &mut Node, f: &dyn Fn(usize) -> usize) {
     }
 }
 
-/// Rewrites `text` so the failure `f` does not recur, if it is one of
-/// the libyaml-accepted cases; `false` otherwise.
-fn repair(text: &mut String, inserts: &mut Vec<(usize, usize)>, f: &Failure) -> bool {
-    let b = text.as_bytes();
-    match f.err.msg.as_str() {
-        // The marker sits after the whitespace run that follows `:`.
-        "':' must be followed by a valid YAML whitespace" => {
-            let mut i = f.at.min(b.len());
-            while i > 0 && matches!(b[i - 1], b' ' | b'\t') {
-                i -= 1;
-            }
-            if i == 0 || b[i - 1] != b':' || !b[i..f.at.min(b.len())].contains(&b'\t') {
-                return false;
-            }
-            let end = f.at.min(b.len());
-            let fixed = text[i..end].replace('\t', " ");
-            text.replace_range(i..end, &fixed);
-            true
-        }
-        // The marker is the opening quote.
-        "invalid indentation in quoted scalar" => {
-            let q = f.at;
-            let Some(&quote) = b.get(q) else {
-                return false;
-            };
-            if quote != b'"' && quote != b'\'' {
-                return false;
-            }
-            let close = quoted_end(b, q);
-            let line_start = b[..q]
-                .iter()
-                .rposition(|c| *c == b'\n')
-                .map_or(0, |i| i + 1);
-            let need = q - line_start + 1;
-            let mut at: Vec<(usize, usize)> = Vec::new();
-            for i in q..close {
-                if b[i] != b'\n' {
-                    continue;
-                }
-                let ls = i + 1;
-                let ws = b[ls..].iter().take_while(|c| **c == b' ').count();
-                if ws < need {
-                    at.push((ls, need - ws));
-                }
-            }
-            if at.is_empty() {
-                return false;
-            }
-            for &(ls, n) in at.iter().rev() {
-                let orig = to_orig(ls, inserts);
-                match inserts.binary_search_by_key(&orig, |&(p, _)| p) {
-                    Ok(k) => inserts[k].1 += n,
-                    Err(k) => inserts.insert(k, (orig, n)),
-                }
-                text.insert_str(ls, &" ".repeat(n));
-            }
-            true
-        }
-        _ => false,
-    }
-}
-
-/// End (exclusive) of the quoted scalar opening at `q`, or the text end.
-fn quoted_end(b: &[u8], q: usize) -> usize {
-    let quote = b[q];
-    let mut i = q + 1;
-    while i < b.len() {
-        match (quote, b[i]) {
-            (b'"', b'\\') => i += 2,
-            (b'"', b'"') => return i + 1,
-            (b'\'', b'\'') if b.get(i + 1) == Some(&b'\'') => i += 2,
-            (b'\'', b'\'') => return i + 1,
-            _ => i += 1,
-        }
-    }
-    b.len()
+#[cfg(test)]
+thread_local! {
+    /// Full parses run, for the linearity test.
+    pub(super) static PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 fn parse_text(src: &str) -> Result<Option<Node>, Failure> {
+    #[cfg(test)]
+    PARSES.set(PARSES.get() + 1);
     let offsets: Vec<usize> = src
         .char_indices()
         .map(|(b, _)| b)
@@ -206,7 +138,7 @@ fn parse_text(src: &str) -> Result<Option<Node>, Failure> {
         .collect();
     let byte = |m: usize| offsets.get(m).copied().unwrap_or(src.len());
     let span_of = |s: &Span| (byte(s.start.index()), byte(s.end.index()));
-    let fail = |err: ParseError| Failure { err, at: 0 };
+    let fail = |err: ParseError| Failure { err };
 
     let mut parser = Parser::new_from_str(src);
     let mut stack: Vec<Frame> = Vec::new();
@@ -220,7 +152,6 @@ fn parse_text(src: &str) -> Result<Option<Node>, Failure> {
                 line: e.marker().line(),
                 msg: e.info().to_string(),
             },
-            at: byte(e.marker().index()),
         })?;
         let line = span.start.line();
         let (start, end) = span_of(&span);
@@ -587,12 +518,62 @@ mod repair_tests {
     #[test]
     fn to_orig_maps_inserted_runs() {
         let ins = [(4, 2), (10, 1)];
-        assert_eq!(to_orig(3, &ins), 3);
-        assert_eq!(to_orig(4, &ins), 4);
-        assert_eq!(to_orig(5, &ins), 4);
-        assert_eq!(to_orig(6, &ins), 4);
-        assert_eq!(to_orig(12, &ins), 10);
-        assert_eq!(to_orig(13, &ins), 10);
-        assert_eq!(to_orig(14, &ins), 11);
+        assert_eq!(repair::OrigMap::new(&ins).orig(3), 3);
+        assert_eq!(repair::OrigMap::new(&ins).orig(4), 4);
+        assert_eq!(repair::OrigMap::new(&ins).orig(5), 4);
+        assert_eq!(repair::OrigMap::new(&ins).orig(6), 4);
+        assert_eq!(repair::OrigMap::new(&ins).orig(12), 10);
+        assert_eq!(repair::OrigMap::new(&ins).orig(13), 10);
+        assert_eq!(repair::OrigMap::new(&ins).orig(14), 11);
+    }
+
+    #[test]
+    fn tab_led_continuation_reads_like_libyaml() {
+        let root = parse("name: \"x\n\ty\"\nz: 'a\n\t b'\n").unwrap().unwrap();
+        assert_eq!(root.get("name").unwrap().scalar_value(), Some("x y"));
+        assert_eq!(root.get("z").unwrap().scalar_value(), Some("a b"));
+    }
+
+    #[test]
+    fn tab_after_sequence_dash_is_rejected() {
+        let err = parse("tags:\n  -\tx\n").unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "yaml: line 2: found character that cannot start any token"
+        );
+        assert!(parse("tags:\n  - \tx\n").is_err());
+        assert!(parse("tags:\n  - x\t# c\n").is_ok());
+        assert!(parse("b: |\n  -\tx\n").is_ok());
+        assert!(parse("q: \"a\n  -\tx\"\n").is_ok());
+    }
+
+    #[test]
+    fn wrong_candidates_are_withdrawn() {
+        // A tab after `:` inside a quoted value, next to a real one.
+        let src = "a: \"k:\tv\"\nb:\tw\nc: |\n  d:\te\n";
+        let root = parse(src).unwrap().unwrap();
+        assert_eq!(root.get("a").unwrap().scalar_value(), Some("k:\tv"));
+        assert_eq!(root.get("b").unwrap().scalar_value(), Some("w"));
+        assert_eq!(root.get("c").unwrap().scalar_value(), Some("d:\te\n"));
+        // Document markers inside quotes stay errors, as in Go.
+        assert!(parse("a: \"x\n---\ny\"\n").is_err());
+    }
+
+    #[test]
+    fn repair_is_linear() {
+        let mut src = String::new();
+        for i in 0..20_000 {
+            src.push_str(&format!("k{i}:\tv\nq{i}: \"x\ny\"\n"));
+        }
+        PARSES.set(0);
+        let start = std::time::Instant::now();
+        let root = parse(&src).unwrap().unwrap();
+        assert!(PARSES.get() <= 3, "{} parses", PARSES.get());
+        assert_eq!(root.get("q19999").unwrap().scalar_value(), Some("x y"));
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "{:?}",
+            start.elapsed()
+        );
     }
 }

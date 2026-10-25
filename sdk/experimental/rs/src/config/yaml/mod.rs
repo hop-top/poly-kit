@@ -12,6 +12,7 @@ mod de_access;
 mod decode_support;
 pub(crate) mod emit;
 mod parse;
+mod repair;
 pub(crate) mod resolve;
 pub(crate) mod ser;
 mod style;
