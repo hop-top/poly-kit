@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/config-v1/load.json",
   "version": "v1",
-  "description": "`Load` into a fixed struct shape (name string, port int, ratio float, debug bool, tags []string, inner {a string, b int}, labels map[string]string, opt *string, all keyed by these lower-case names), starting from `start`, merging each YAML in `files` as an extra config file in order, then the `overrides` pairs. Merge rules are yaml.v3 decoding into an existing value: struct fields merge one by one; scalars, lists and each map entry are replaced; a null clears only the pointer, list and map fields and leaves scalars; unknown keys are ignored; `<<` merge keys expand with explicit keys winning. `want` is the struct as JSON. A failing case gives `error_contains` substrings; `<path>` stands for the failing file's path.",
+  "description": "`Load` into a fixed struct shape (name string, port int, ratio float, debug bool, tags []string, inner {a string, b int}, labels map[string]string, opt *string, extra any, all keyed by these lower-case names), starting from `start`, merging each YAML in `files` as an extra config file in order, then the `overrides` pairs. Merge rules are yaml.v3 decoding into an existing value: struct fields merge one by one; scalars, lists and each map entry are replaced; a null clears only the pointer, list and map fields and leaves scalars; unknown keys are ignored; `<<` merge keys expand with explicit keys winning. Each file is first decoded on its own as Go does: a duplicate key or a non-scalar key in a mapping the target reads fails, and decoding counts aliases with yaml.v3's budget (more than 100 aliased of more than 1000 decoded nodes, at a share above 0.99 up to 400k decoded, falling linearly to 0.10 at 4M, is `excessive aliasing`). Mappings under keys the target ignores are not decoded. A leading BOM, a tab after `:` and quoted-scalar continuation lines at column 0 read as libyaml reads them. `want` is the struct as JSON. A failing case gives `error_contains` substrings; `<path>` stands for the failing file's path.",
   "cases": [
     {
       "name": "later file wins per field",
@@ -22,7 +22,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -43,7 +44,8 @@
           "b": 2
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -66,7 +68,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -90,7 +93,8 @@
           "x": "1",
           "y": "3"
         },
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -111,7 +115,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -132,7 +137,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -151,7 +157,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       },
       "ok": true,
       "want": {
@@ -165,7 +172,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -185,7 +193,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -205,7 +214,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -225,7 +235,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -245,7 +256,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -265,7 +277,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -285,7 +298,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -305,7 +319,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       },
       "ok": true,
       "want": {
@@ -319,7 +334,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -343,7 +359,8 @@
           "b": 0
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -366,7 +383,8 @@
           "b": 2
         },
         "labels": null,
-        "opt": null
+        "opt": null,
+        "extra": null
       }
     },
     {
@@ -399,6 +417,264 @@
       "error_contains": [
         "apply CLI overrides: apply overrides: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!str `abc` into int"
       ]
+    },
+    {
+      "name": "utf-8 bom",
+      "files": [
+        "﻿name: x\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "tab after colon",
+      "files": [
+        "name:\tx\ninner:\n  b:\t2\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 2
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "double-quoted continuation at column 0",
+      "files": [
+        "name: \"x\ny\"\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x y",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "single-quoted continuation at column 0",
+      "files": [
+        "name: 'x\n\ny'\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "x\ny",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "nested quoted continuation under-indented",
+      "files": [
+        "labels:\n  k: \"x\ny\"\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": {
+          "k": "x y"
+        },
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "duplicate top-level key",
+      "files": [
+        "port: 1\nport: 2\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 2: mapping key \"port\" already defined at line 1"
+      ]
+    },
+    {
+      "name": "duplicate key in a read map",
+      "files": [
+        "labels:\n  a: x\n  a: y\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 3: mapping key \"a\" already defined at line 2"
+      ]
+    },
+    {
+      "name": "duplicate key under an ignored key",
+      "files": [
+        "zz:\n  a: 1\n  a: 2\nname: n\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "n",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "duplicate key in a later file",
+      "files": [
+        "name: a\n",
+        "port: 1\nport: 2\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 2: mapping key \"port\" already defined at line 1"
+      ]
+    },
+    {
+      "name": "sequence key into a struct",
+      "files": [
+        "? [a]\n: 1\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 1: cannot unmarshal !!seq into string"
+      ]
+    },
+    {
+      "name": "sequence key into a string map",
+      "files": [
+        "labels:\n  ? [a]\n  : x\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: unmarshal errors:\n  line 2: cannot unmarshal !!seq into string"
+      ]
+    },
+    {
+      "name": "excessive aliasing",
+      "files": [
+        "a0: &a0 [lol, lol, lol, lol, lol, lol, lol, lol, lol]\na1: &a1 [*a0, *a0, *a0, *a0, *a0, *a0, *a0, *a0, *a0]\na2: &a2 [*a1, *a1, *a1, *a1, *a1, *a1, *a1, *a1, *a1]\na3: &a3 [*a2, *a2, *a2, *a2, *a2, *a2, *a2, *a2, *a2]\na4: &a4 [*a3, *a3, *a3, *a3, *a3, *a3, *a3, *a3, *a3]\na5: &a5 [*a4, *a4, *a4, *a4, *a4, *a4, *a4, *a4, *a4]\na6: &a6 [*a5, *a5, *a5, *a5, *a5, *a5, *a5, *a5, *a5]\na7: &a7 [*a6, *a6, *a6, *a6, *a6, *a6, *a6, *a6, *a6]\na8: &a8 [*a7, *a7, *a7, *a7, *a7, *a7, *a7, *a7, *a7]\na9: &a9 [*a8, *a8, *a8, *a8, *a8, *a8, *a8, *a8, *a8]\nextra: *a9\n"
+      ],
+      "ok": false,
+      "error_contains": [
+        "load config <path>: yaml: document contains excessive aliasing"
+      ]
+    },
+    {
+      "name": "aliases under ignored keys are not expanded",
+      "files": [
+        "a0: &a0 [lol, lol, lol, lol, lol, lol, lol, lol, lol]\na1: &a1 [*a0, *a0, *a0, *a0, *a0, *a0, *a0, *a0, *a0]\na2: &a2 [*a1, *a1, *a1, *a1, *a1, *a1, *a1, *a1, *a1]\na3: &a3 [*a2, *a2, *a2, *a2, *a2, *a2, *a2, *a2, *a2]\na4: &a4 [*a3, *a3, *a3, *a3, *a3, *a3, *a3, *a3, *a3]\na5: &a5 [*a4, *a4, *a4, *a4, *a4, *a4, *a4, *a4, *a4]\na6: &a6 [*a5, *a5, *a5, *a5, *a5, *a5, *a5, *a5, *a5]\na7: &a7 [*a6, *a6, *a6, *a6, *a6, *a6, *a6, *a6, *a6]\na8: &a8 [*a7, *a7, *a7, *a7, *a7, *a7, *a7, *a7, *a7]\na9: &a9 [*a8, *a8, *a8, *a8, *a8, *a8, *a8, *a8, *a8]\nname: n\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "n",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": null
+      }
+    },
+    {
+      "name": "alias into any",
+      "files": [
+        "a: &x [1, 2]\nextra: *x\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "name": "alias of a map into any",
+      "files": [
+        "a: &x {k: v, n: 1}\nextra: *x\n"
+      ],
+      "ok": true,
+      "want": {
+        "name": "",
+        "port": 0,
+        "ratio": 0,
+        "debug": false,
+        "tags": null,
+        "inner": {
+          "a": "",
+          "b": 0
+        },
+        "labels": null,
+        "opt": null,
+        "extra": {
+          "k": "v",
+          "n": 1
+        }
+      }
     }
   ]
 }

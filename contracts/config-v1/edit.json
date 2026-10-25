@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hop.top/kit/contracts/config-v1/edit.json",
   "version": "v1",
-  "description": "`Set` / `SetValue` / `Unset` on one file: the values the file holds afterwards and the comments it keeps. `set` writes a !!str scalar; `set_value` writes a typed value ({kind, repr} for scalars, {seq}/{map}); `unset` removes the key and prunes mappings it leaves empty. Intermediate keys are created, a non-mapping in the way becomes a mapping. `want` is the whole document read back with `Get` typing ({map: ...}); `keeps` are substrings (comments, anchors) the written file must still contain. Bytes are not compared: Go re-emits the document, ports may splice.",
+  "description": "`Set` / `SetValue` / `Unset` on one file: the values the file holds afterwards and the comments it keeps. `set` writes a !!str scalar; `set_value` writes a typed value ({kind, repr} for scalars, {seq}/{map}); `unset` removes the key and prunes mappings it leaves empty. Intermediate keys are created, a non-mapping in the way becomes a mapping. `want` is the whole written document decoded into `any` ({map: ...}; aliases resolve to their anchor's value, so an edit of an anchored node shows through its aliases); `keeps` are substrings (comments, anchors) the written file must still contain. Bytes are not compared: Go re-emits the document, ports may splice.",
   "cases": [
     {
       "name": "set new file",
@@ -306,8 +306,8 @@
             "repr": "2"
           },
           "other": {
-            "kind": "null",
-            "repr": "<nil>"
+            "kind": "int",
+            "repr": "2"
           }
         }
       },
@@ -315,6 +315,226 @@
         "&b",
         "*b"
       ]
+    },
+    {
+      "name": "set inside anchored map shows through alias",
+      "original": "base: &b {x: 1}\nother: *b\n",
+      "op": "set_value",
+      "key": "base.y",
+      "value": {
+        "kind": "int",
+        "repr": "2"
+      },
+      "ok": true,
+      "want": {
+        "map": {
+          "base": {
+            "map": {
+              "x": {
+                "kind": "int",
+                "repr": "1"
+              },
+              "y": {
+                "kind": "int",
+                "repr": "2"
+              }
+            }
+          },
+          "other": {
+            "map": {
+              "x": {
+                "kind": "int",
+                "repr": "1"
+              },
+              "y": {
+                "kind": "int",
+                "repr": "2"
+              }
+            }
+          }
+        }
+      },
+      "keeps": [
+        "&b",
+        "*b"
+      ]
+    },
+    {
+      "name": "unset inside anchored map shows through alias",
+      "original": "base: &b {x: 1, y: 2}\nother: *b\n",
+      "op": "unset",
+      "key": "base.x",
+      "ok": true,
+      "want": {
+        "map": {
+          "base": {
+            "map": {
+              "y": {
+                "kind": "int",
+                "repr": "2"
+              }
+            }
+          },
+          "other": {
+            "map": {
+              "y": {
+                "kind": "int",
+                "repr": "2"
+              }
+            }
+          }
+        }
+      },
+      "keeps": [
+        "&b",
+        "*b"
+      ]
+    },
+    {
+      "name": "set anchored list to scalar",
+      "original": "a: &b [1, 2]\nc: *b\n",
+      "op": "set",
+      "key": "a",
+      "value": "z",
+      "ok": true,
+      "want": {
+        "map": {
+          "a": {
+            "kind": "string",
+            "repr": "z"
+          },
+          "c": {
+            "kind": "string",
+            "repr": "z"
+          }
+        }
+      },
+      "keeps": [
+        "&b",
+        "*b"
+      ]
+    },
+    {
+      "name": "flow value with trailing comment",
+      "original": "tags: [a, b] # c\nz: 1\n",
+      "op": "set",
+      "key": "tags",
+      "value": "x",
+      "ok": true,
+      "want": {
+        "map": {
+          "tags": {
+            "kind": "string",
+            "repr": "x"
+          },
+          "z": {
+            "kind": "int",
+            "repr": "1"
+          }
+        }
+      },
+      "keeps": [
+        "# c"
+      ]
+    },
+    {
+      "name": "multi-line string on key with comment",
+      "original": "k: v # c\nz: 1\n",
+      "op": "set",
+      "key": "k",
+      "value": "l1\nl2",
+      "ok": true,
+      "want": {
+        "map": {
+          "k": {
+            "kind": "string",
+            "repr": "l1\nl2"
+          },
+          "z": {
+            "kind": "int",
+            "repr": "1"
+          }
+        }
+      },
+      "keeps": [
+        "# c"
+      ]
+    },
+    {
+      "name": "flow mapping empty value",
+      "original": "m: {a: , b: 1}\n",
+      "op": "set",
+      "key": "m.a",
+      "value": "x",
+      "ok": true,
+      "want": {
+        "map": {
+          "m": {
+            "map": {
+              "a": {
+                "kind": "string",
+                "repr": "x"
+              },
+              "b": {
+                "kind": "int",
+                "repr": "1"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "unset keep-chomped block scalar",
+      "original": "k: |+\n  x\n\n# c\nz: 1\n",
+      "op": "unset",
+      "key": "k",
+      "ok": true,
+      "want": {
+        "map": {
+          "z": {
+            "kind": "int",
+            "repr": "1"
+          }
+        }
+      },
+      "keeps": [
+        "# c"
+      ]
+    },
+    {
+      "name": "set in CRLF file",
+      "original": "a: 1\r\nb: 2\r\n",
+      "op": "set",
+      "key": "c",
+      "value": "x",
+      "ok": true,
+      "want": {
+        "map": {
+          "a": {
+            "kind": "int",
+            "repr": "1"
+          },
+          "b": {
+            "kind": "int",
+            "repr": "2"
+          },
+          "c": {
+            "kind": "string",
+            "repr": "x"
+          }
+        }
+      }
+    },
+    {
+      "name": "unset last key leaves an empty mapping",
+      "original": "only: 1\n",
+      "op": "unset",
+      "key": "only",
+      "ok": true,
+      "want": {
+        "map": {}
+      }
     },
     {
       "name": "set nested into existing",

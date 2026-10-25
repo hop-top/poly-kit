@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hop.top/kit/contracts/config-v1/paths.json",
+  "version": "v1",
+  "description": "Lexical cleaning of joined paths, as Go `filepath.Join` does. `config_args`: `ParseConfigArgs` with a project marker, the argument a directory: the returned path is `Join(arg, marker)`, cleaned, and the error text quotes it cleaned. `nearest`: `NearestWithDepth(start, marker, 0)` returns `Join(dir, marker)` for the first directory walking up from `Abs(start)`. `layout` lists files to create; `<root>` is a fresh temporary directory; `<root>` in arguments and wants is replaced by it.",
+  "config_args": [
+    {
+      "name": "dot prefix",
+      "layout": [
+        "proj/.kit.yaml"
+      ],
+      "arg": "<root>/./proj",
+      "marker": ".kit.yaml",
+      "ok": true,
+      "want": "<root>/proj/.kit.yaml"
+    },
+    {
+      "name": "trailing slash",
+      "layout": [
+        "proj/.kit.yaml"
+      ],
+      "arg": "<root>/proj/",
+      "marker": ".kit.yaml",
+      "ok": true,
+      "want": "<root>/proj/.kit.yaml"
+    },
+    {
+      "name": "parent segment",
+      "layout": [
+        "a/x",
+        "b/.kit.yaml"
+      ],
+      "arg": "<root>/a/../b",
+      "marker": ".kit.yaml",
+      "ok": true,
+      "want": "<root>/b/.kit.yaml"
+    },
+    {
+      "name": "marker with dot segment",
+      "layout": [
+        "proj/.kit/config.yaml"
+      ],
+      "arg": "<root>/proj",
+      "marker": "./.kit/config.yaml",
+      "ok": true,
+      "want": "<root>/proj/.kit/config.yaml"
+    },
+    {
+      "name": "missing marker error is cleaned",
+      "layout": [
+        "proj/x"
+      ],
+      "arg": "<root>/./proj/",
+      "marker": ".kit.yaml",
+      "ok": false,
+      "error": "-c \"<root>/./proj/\": directory has no project marker \".kit.yaml\" (resolved to \"<root>/proj/.kit.yaml\")"
+    }
+  ],
+  "nearest": [
+    {
+      "name": "start with dot and parent segments",
+      "layout": [
+        "proj/.kit.yaml",
+        "proj/sub/deep/x"
+      ],
+      "start": "<root>/proj/./sub/../sub/deep",
+      "marker": ".kit.yaml",
+      "want": "<root>/proj/.kit.yaml"
+    },
+    {
+      "name": "marker with dot segment",
+      "layout": [
+        "proj/.kit/config.yaml",
+        "proj/sub/x"
+      ],
+      "start": "<root>/proj/sub",
+      "marker": "./.kit/config.yaml",
+      "want": "<root>/proj/.kit/config.yaml"
+    },
+    {
+      "name": "marker with trailing slash",
+      "layout": [
+        "proj/.kit/x",
+        "proj/sub/x"
+      ],
+      "start": "<root>/proj/sub",
+      "marker": ".kit/",
+      "want": "<root>/proj/.kit"
+    }
+  ]
+}

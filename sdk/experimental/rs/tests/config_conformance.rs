@@ -12,9 +12,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use hop_top_kit::config::{
-    get, list, load, parse_overrides, parse_scalar, resolve_string, set, set_value, unset,
-    yaml_layer_from_str, DefaultLayer, EnvLayer, FlagLayer, Layer, Map, Options, Origin, Scope,
-    Value,
+    get, load, parse_overrides, parse_scalar, resolve_string, set, set_value, unset,
+    yaml_layer_from_str, DefaultLayer, EnvLayer, FlagLayer, Layer, Options, Origin, Scope, Value,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
@@ -26,6 +25,7 @@ const FILES: &[&str] = &[
     "precedence.json",
     "load.json",
     "edit.json",
+    "paths.json",
 ];
 
 fn dir() -> PathBuf {
@@ -323,6 +323,7 @@ struct Shape {
     inner: Inner,
     labels: Option<BTreeMap<String, String>>,
     opt: Option<String>,
+    extra: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -441,13 +442,10 @@ fn edit_vectors() {
         }
         res.unwrap_or_else(|e| panic!("{}: {e}", c.name));
         let text = fs::read_to_string(&path).unwrap();
-        let mut got = Map::new();
-        for e in list(&opts).unwrap() {
-            let top = e.key.split('.').next().unwrap().to_string();
-            if !got.contains_key(&top) {
-                got.insert(top.clone(), get(&top, &opts).unwrap());
-            }
-        }
+        // The whole document decoded (aliases resolve), as Go's runner.
+        let got = yaml_layer_from_str(&text, Origin::Project, "")
+            .unwrap_or_else(|e| panic!("{}: written file does not parse: {e}\n{text}", c.name))
+            .data;
         assert_eq!(
             encode(&Value::Map(got)),
             c.want.unwrap(),
@@ -457,5 +455,69 @@ fn edit_vectors() {
         for k in &c.keeps {
             assert!(text.contains(k.as_str()), "{}: lost {k:?}:\n{text}", c.name);
         }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PathCase {
+    name: String,
+    layout: Vec<String>,
+    #[serde(default)]
+    arg: String,
+    #[serde(default)]
+    start: String,
+    marker: String,
+    #[serde(default)]
+    ok: Option<bool>,
+    #[serde(default)]
+    want: String,
+    #[serde(default)]
+    error: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PathsFile {
+    config_args: Vec<PathCase>,
+    nearest: Vec<PathCase>,
+}
+
+fn layout(files: &[String]) -> (tempfile::TempDir, String) {
+    let d = tempfile::tempdir().unwrap();
+    for f in files {
+        let p = d.path().join(f);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(&p, "").unwrap();
+    }
+    let root = d.path().display().to_string();
+    (d, root)
+}
+
+#[cfg(unix)]
+#[test]
+fn paths_vectors() {
+    use hop_top_kit::config::{nearest_with_depth, parse_config_args, ParseOption};
+    let f: PathsFile = read("paths.json");
+    for c in f.config_args {
+        let (_d, root) = layout(&c.layout);
+        let sub = |s: &str| s.replace("<root>", &root);
+        let got = parse_config_args(
+            &[sub(&c.arg)],
+            &[ParseOption::ProjectMarker(c.marker.clone())],
+        );
+        if c.ok != Some(true) {
+            assert_eq!(got.unwrap_err().to_string(), sub(&c.error), "{}", c.name);
+            continue;
+        }
+        let (paths, _) = got.unwrap_or_else(|e| panic!("{}: {e}", c.name));
+        assert_eq!(paths, [PathBuf::from(sub(&c.want))], "{}", c.name);
+    }
+    for c in f.nearest {
+        let (_d, root) = layout(&c.layout);
+        let sub = |s: &str| s.replace("<root>", &root);
+        let got = nearest_with_depth(sub(&c.start), &c.marker, 0)
+            .unwrap_or_else(|e| panic!("{}: {e}", c.name));
+        assert_eq!(got, PathBuf::from(sub(&c.want)), "{}", c.name);
     }
 }

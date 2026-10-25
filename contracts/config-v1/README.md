@@ -2,7 +2,7 @@
 
 ## What it answers
 
-What `kit/core/config` must compute, independent of language: CLI scalar typing, YAML scalar typing on read, `-c key=value` overrides, the precedence ladder, layered load merge rules, and what `set`/`unset` leave in a file. Wrong place for paths, XDG and reload; those depend on the filesystem and process and are covered by each port's tests.
+What `kit/core/config` must compute, independent of language: CLI scalar typing, YAML scalar typing on read, `-c key=value` overrides, the precedence ladder, layered load merge rules, and what `set`/`unset` leave in a file. Wrong place for XDG and reload; those depend on the filesystem and process and are covered by each port's tests.
 
 ## Use it when
 
@@ -28,8 +28,9 @@ Go is canonical. The vectors are the source of truth: a runner failure means the
 | `resolve.json` | `{yaml, want}` | `Get` typing: only int/float/bool/null tags convert, other tags yield source text |
 | `overrides.json` | `{pairs, ok, want \| error}` | `ParseOverrides`: dotted nesting, YAML values with raw fallback, exact errors |
 | `precedence.json` | `env_names[]`, `{key, layers, want}` | `ResolveString` hit order, env names, details |
-| `load.json` | `{start, files, overrides, ok, want \| error_contains}` | `Load` merge into a fixed struct shape |
-| `edit.json` | `{original, op, key, value, ok, want, keeps \| error}` | `Set`/`SetValue`/`Unset`: resulting values and kept comments |
+| `load.json` | `{start, files, overrides, ok, want \| error_contains}` | `Load` merge into a fixed struct shape; per-file duplicate and non-scalar keys, alias budget, BOM, tab separator, quoted continuation |
+| `edit.json` | `{original, op, key, value, ok, want, keeps \| error}` | `Set`/`SetValue`/`Unset`: the written document decoded (aliases resolved) and kept comments |
+| `paths.json` | `config_args[]`, `nearest[]` with `{layout, arg \| start, marker, want \| error}` | `filepath.Join` cleaning of `-c <dir>` + marker and of `Nearest` hits |
 
 Values are `{kind, repr}` (kind `int`, `float`, `bool`, `null`, `string`; repr is Go's `%v`), `{seq: [...]}` or `{map: {...}}`. `<path>` in an error stands for the failing file. Edits compare values and kept substrings, not bytes: Go re-emits the document, ports may splice.
 

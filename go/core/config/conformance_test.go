@@ -25,6 +25,7 @@ var confFiles = map[string]bool{
 	"precedence.json":   true,
 	"load.json":         true,
 	"edit.json":         true,
+	"paths.json":        true,
 }
 
 const confDir = "../../../contracts/config-v1"
@@ -342,6 +343,7 @@ type confShape struct {
 	Inner  confInner         `yaml:"inner" json:"inner"`
 	Labels map[string]string `yaml:"labels" json:"labels"`
 	Opt    *string           `yaml:"opt" json:"opt"`
+	Extra  any               `yaml:"extra" json:"extra"`
 }
 
 type confInner struct {
@@ -472,13 +474,13 @@ func TestConformanceEdit(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var doc yaml.Node
-			if err := yaml.Unmarshal(data, &doc); err != nil {
+			// The whole document decoded into any: aliases resolve.
+			var got any
+			if err := yaml.Unmarshal(data, &got); err != nil {
 				t.Fatalf("written file does not parse: %v\n%s", err, data)
 			}
-			var got any = map[string]any{}
-			if len(doc.Content) > 0 {
-				got = nodeToValue(doc.Content[0])
+			if got == nil {
+				got = map[string]any{}
 			}
 			if g, ok := confSame(t, got, c.Want); !ok {
 				t.Errorf("got %s, want %s\n%s", g, c.Want, data)
@@ -487,6 +489,68 @@ func TestConformanceEdit(t *testing.T) {
 				if !strings.Contains(string(data), k) {
 					t.Errorf("file lost %q:\n%s", k, data)
 				}
+			}
+		})
+	}
+}
+
+func TestConformancePaths(t *testing.T) {
+	type layoutCase struct {
+		Name   string   `json:"name"`
+		Layout []string `json:"layout"`
+		Arg    string   `json:"arg"`
+		Start  string   `json:"start"`
+		Marker string   `json:"marker"`
+		OK     *bool    `json:"ok"`
+		Want   string   `json:"want"`
+		Error  string   `json:"error"`
+	}
+	var f struct {
+		confHeader
+		ConfigArgs []layoutCase `json:"config_args"`
+		Nearest    []layoutCase `json:"nearest"`
+	}
+	confLoad(t, "paths.json", &f)
+	setup := func(t *testing.T, layout []string) (string, func(string) string) {
+		root := t.TempDir()
+		for _, l := range layout {
+			p := filepath.Join(root, filepath.FromSlash(l))
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return root, func(s string) string { return strings.ReplaceAll(s, "<root>", root) }
+	}
+	for _, c := range f.ConfigArgs {
+		t.Run("config_args/"+c.Name, func(t *testing.T) {
+			_, sub := setup(t, c.Layout)
+			paths, _, err := ParseConfigArgs([]string{sub(c.Arg)}, WithProjectMarker(c.Marker))
+			if c.OK == nil || !*c.OK {
+				if err == nil || err.Error() != sub(c.Error) {
+					t.Fatalf("err = %v, want %q", err, sub(c.Error))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(paths) != 1 || paths[0] != sub(c.Want) {
+				t.Errorf("paths = %v, want %q", paths, sub(c.Want))
+			}
+		})
+	}
+	for _, c := range f.Nearest {
+		t.Run("nearest/"+c.Name, func(t *testing.T) {
+			_, sub := setup(t, c.Layout)
+			got, err := NearestWithDepth(sub(c.Start), c.Marker, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != sub(c.Want) {
+				t.Errorf("got %q, want %q", got, sub(c.Want))
 			}
 		})
 	}
